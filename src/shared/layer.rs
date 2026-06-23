@@ -14,6 +14,7 @@ use crate::shared::{
     sdf::Sdf,
 };
 
+#[derive(Clone, Debug)]
 pub enum Layer {
     Clip(Clip),
     ClipSdf {

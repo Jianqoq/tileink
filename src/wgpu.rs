@@ -1,5 +1,6 @@
-mod allocator;
-mod memory;
-mod renderer;
+mod buffer;
 mod pipelines;
+mod renderer;
 mod types;
+
+pub use renderer::Renderer;

@@ -126,7 +126,7 @@ fn push_line_segment(
     );
     CubicPoints::flatten_euler(cubic, cubic.p0, cubic.p3, tolerance, |p0, p1| {
         let line = Line {
-            path_ix: path_id,
+            path_id,
             _pad: 0.0,
             p0: [p0.x, p0.y],
             p1: [p1.x, p1.y],
@@ -152,7 +152,7 @@ fn push_quad_segment(
     );
     CubicPoints::flatten_euler(cubic, cubic.p0, cubic.p3, tolerance, |p0, p1| {
         let line = Line {
-            path_ix: path_id,
+            path_id,
             _pad: 0.0,
             p0: [p0.x, p0.y],
             p1: [p1.x, p1.y],
@@ -180,7 +180,7 @@ fn push_cubic_segment(
     };
     CubicPoints::flatten_euler(cubic, cubic.p0, cubic.p3, tolerance, |p0, p1| {
         let line = Line {
-            path_ix: path_id,
+            path_id,
             _pad: 0.0,
             p0: [p0.x, p0.y],
             p1: [p1.x, p1.y],

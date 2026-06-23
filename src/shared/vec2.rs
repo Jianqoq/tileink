@@ -98,7 +98,7 @@ impl Vec2 {
         let p1 = p0.mix(p3, 1.0 / 3.0);
         CubicPoints { p0, p1, p2, p3 }
     }
-    
+
     pub fn quad_to_cubic(p0: Vec2, p1: Vec2, p2: Vec2) -> CubicPoints {
         let p3 = p2;
         let p2 = p1.mix(p2, 1.0 / 3.0);

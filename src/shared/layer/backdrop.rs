@@ -1,5 +1,5 @@
-use peniko::kurbo::{Affine, BezPath, Point, Rect, Shape};
 use peniko::Color;
+use peniko::kurbo::{Affine, BezPath, Point, Rect, Shape};
 
 use crate::shared::sdf::rect::Radius;
 

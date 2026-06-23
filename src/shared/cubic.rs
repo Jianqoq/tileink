@@ -1,6 +1,9 @@
 use std::f32::consts::FRAC_1_SQRT_2;
 
-use crate::shared::{euler::{CubicParams, EulerParams, EulerSeg, espc_int_approx, espc_int_inv_approx}, vec2::Vec2};
+use crate::shared::{
+    euler::{CubicParams, EulerParams, EulerSeg, espc_int_approx, espc_int_inv_approx},
+    vec2::Vec2,
+};
 
 const DERIV_THRESH: f32 = 1e-6;
 const DERIV_EPS: f32 = 1e-6;
@@ -26,11 +29,11 @@ impl CubicPoints {
         let p1 = cubic.p1;
         let p2 = cubic.p2;
         let p3 = cubic.p3;
-    
+
         if p0 == p1 && p0 == p2 && p0 == p3 {
             return;
         }
-    
+
         let tol = tol.max(1.0e-6);
         let scale = 1.0_f32;
         let mut t0_u: u32 = 0;
@@ -42,7 +45,7 @@ impl CubicPoints {
         }
         let mut last_t = 0.;
         let mut lp0 = t_start;
-    
+
         loop {
             let t0 = (t0_u as f32) * dt;
             if t0 == 1. {
@@ -66,7 +69,7 @@ impl CubicPoints {
             if cubic_params.err * scale <= tol || dt <= SUBDIV_LIMIT {
                 let euler_params = EulerParams::from_angles(cubic_params.th0, cubic_params.th1);
                 let es = EulerSeg::from_params(this_p0, this_p1, euler_params);
-    
+
                 let (k0, k1) = (es.params.k0 - 0.5 * es.params.k1, es.params.k1);
                 let normalized_offset = 0.0_f32;
                 let dist_scaled = normalized_offset * es.params.ch;
@@ -104,7 +107,7 @@ impl CubicPoints {
                     (scaled_int, EspcRobust::Normal)
                 };
                 let n = (n_frac * scale_multiplier).ceil().clamp(1.0, 100.0);
-    
+
                 for i in 0..n as usize {
                     let lp1 = if i == n as usize - 1 && t1 == 1.0 {
                         t_end

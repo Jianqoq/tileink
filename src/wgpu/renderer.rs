@@ -1,164 +1,231 @@
-use wgpu::{Device, Queue};
+use wgpu::{BufferUsages, Device, Queue};
 
 use crate::{
-    memory::Allocation,
     render::Render,
     shared::{
-        execution::DisplayItem,
-        layer::{Layer, mask::MaskMode},
+        bd_record::BackdropRecord,
+        execution::{BatchState, Command, CommandListId, ExecNode, ExecPlan, ROOT_COMMAND_LIST_ID},
+        layer::Layer,
+        line::Line,
+        path::PathRecord,
     },
-    wgpu::{memory::Memory, pipelines::filter::FilterGpuPipeline},
+    wgpu::{
+        buffer::{GpuImageBuffer, WgpuBuffer},
+        pipelines::{
+            cumsum::BackdropCumsumGpuPipeline, filter::FilterGpuPipeline, scan::ScanGpuPipeline,
+        },
+        types::tile_seg::TileSegment,
+    },
 };
 
 pub struct Renderer {
     device: Device,
     queue: Queue,
-    memory: Memory,
     filter: FilterGpuPipeline,
+    scan: ScanGpuPipeline,
+    cumsum: BackdropCumsumGpuPipeline,
+
+    bd_buffer: WgpuBuffer<BackdropRecord>,
+    path_buffer: WgpuBuffer<PathRecord>,
+    line_buffer: WgpuBuffer<Line>,
+    segments_buffer: WgpuBuffer<TileSegment>,
+    backdrop_pool_buffer: WgpuBuffer<i32>,
+}
+
+impl Renderer {
+    pub fn new(device: Device, queue: Queue) -> Self {
+        let filter = FilterGpuPipeline::new(&device);
+        let scan = ScanGpuPipeline::new(&device);
+        let cumsum = BackdropCumsumGpuPipeline::new(&device);
+        let bd_buffer = WgpuBuffer::new(
+            device.clone(),
+            queue.clone(),
+            BufferUsages::STORAGE,
+            0,
+            "bd_buffer",
+        );
+        let path_buffer = WgpuBuffer::new(
+            device.clone(),
+            queue.clone(),
+            BufferUsages::STORAGE,
+            0,
+            "path_buffer",
+        );
+        let line_buffer = WgpuBuffer::new(
+            device.clone(),
+            queue.clone(),
+            BufferUsages::STORAGE,
+            0,
+            "line_buffer",
+        );
+        let segments_buffer = WgpuBuffer::new(
+            device.clone(),
+            queue.clone(),
+            BufferUsages::STORAGE,
+            0,
+            "segments_buffer",
+        );
+        let backdrop_pool_buffer = WgpuBuffer::new(
+            device.clone(),
+            queue.clone(),
+            BufferUsages::STORAGE,
+            0,
+            "backdrop_pool_buffer",
+        );
+        Self {
+            device,
+            queue,
+            filter,
+            scan,
+            cumsum,
+            bd_buffer,
+            path_buffer,
+            line_buffer,
+            segments_buffer,
+            backdrop_pool_buffer,
+        }
+    }
 }
 
 impl Render for Renderer {
-    type ScanPrepared = ();
-    type CumsumPrepared = ();
-    type BinPrepared = ();
-    type CoarsePrepared = ();
-    type FinePrepared = ();
-    type ExecuteArgs<'a> = (&'a mut wgpu::CommandEncoder, Allocation);
+    type ScanArgs<'a> = &'a mut wgpu::CommandEncoder;
+    type CumsumArgs<'a> = &'a mut wgpu::CommandEncoder;
+    type CoarseArgs<'a> = &'a mut wgpu::CommandEncoder;
+    type FineArgs<'a> = &'a mut wgpu::CommandEncoder;
+    type ExecuteArgs<'a> = (&'a mut wgpu::CommandEncoder, &'a mut GpuImageBuffer);
 
     fn render(&mut self, scene: &crate::scene::Scene) {
+        self.bd_buffer.clear();
+        self.bd_buffer.extend_from_slice(&scene.bd_records);
+
+        self.path_buffer.clear();
+        self.path_buffer.extend_from_slice(&scene.path_records);
+
+        self.line_buffer.clear();
+        self.line_buffer.extend_from_slice(&scene.lines);
+
+        self.segments_buffer.resize_zeroed(scene.tile_cnt as usize);
+        self.backdrop_pool_buffer
+            .resize_zeroed(scene.backdrop_pool_capacity as usize);
         self.filter.clear_dispatch_keepalive();
-        let output =
-            self.memory
-                .allocate_image(scene.width, scene.height, peniko::Color::TRANSPARENT);
+        let mut output = GpuImageBuffer::new(
+            self.device.clone(),
+            self.queue.clone(),
+            wgpu::BufferUsages::STORAGE,
+            scene.width,
+            scene.height,
+            "renderer_output_placeholder",
+        );
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("classic_wgpu_render"),
             });
-        self.execute(scene, (&mut encoder, output));
+        self.execute(scene, (&mut encoder, &mut output));
     }
 
-    fn execute(&self, scene: &crate::scene::Scene, (encoder, target): Self::ExecuteArgs<'_>) {
-        let mut batch_start = None;
-        let mut batch_end = 0usize;
-
-        for item in &scene.items {
-            match item {
-                DisplayItem::Draw(draw_ix) => {
-                    if let Some(start) = batch_start {
-                        if batch_end == *draw_ix {
-                            batch_end = *draw_ix + 1;
-                        } else {
-                            self.execute_draw_batch(scene, start, batch_end);
-                            batch_start = Some(*draw_ix);
-                            batch_end = *draw_ix + 1;
-                        }
-                    } else {
-                        batch_start = Some(*draw_ix);
-                        batch_end = *draw_ix + 1;
-                    }
-                }
-                DisplayItem::BeginLayer(layer) => {
-                    if let Some(start) = batch_start.take() {
-                        self.execute_draw_batch(scene, start, batch_end);
-                    }
-                    match layer {
-                        Layer::Clip(_) | Layer::ClipSdf { .. } => {
-                            // Keep clip layers in global coordinates for now. Nested path/SDF clips need the
-                            // mask and content to agree on the full target coordinate space; making this local
-                            // again requires translating every nested clip primitive consistently.
-                            let content = self.memory.allocate_image(
-                                scene.width,
-                                scene.height,
-                                peniko::Color::TRANSPARENT,
-                            );
-                            let mask = self.memory.allocate_image(
-                                scene.width,
-                                scene.height,
-                                peniko::Color::TRANSPARENT,
-                            );
-                            self.execute(&layer.children, (encoder, content));
-                            let mask_commands = clip_mask_commands(&layer.kind);
-                            self.execute(&mask_commands, (encoder, mask));
-                            self.filter.execute_mask_composite(
-                                &mut self.memory,
-                                encoder,
-                                target,
-                                content,
-                                mask,
-                                scene.width,
-                                scene.height,
-                                MaskMode::Alpha,
-                            );
-                        }
-                        Layer::Opacity { opacity } => todo!(),
-                        Layer::Blend { blend } => todo!(),
-                        Layer::Filter { filter } => todo!(),
-                        Layer::SvgFilter {
-                            filters,
-                            transform,
-                            max_bounds,
-                        } => todo!(),
-                        Layer::BackdropFilter { filter, region } => todo!(),
-                        Layer::Mask { mode } => todo!(),
-                    }
-                    // Layer enter/composite will be handled here once the GPU pipeline exists.
-                }
-                DisplayItem::EndLayer => {
-                    if let Some(start) = batch_start.take() {
-                        self.execute_draw_batch(scene, start, batch_end);
-                    }
-                    // Layer exit/composite will be handled here once the GPU pipeline exists.
-                }
-            }
-        }
-
-        if let Some(start) = batch_start {
-            self.execute_draw_batch(scene, start, batch_end);
-        }
+    fn execute(&mut self, scene: &crate::scene::Scene, (encoder, target): Self::ExecuteArgs<'_>) {
+        let plan = self.prepare_exec_plan(scene);
+        self.execute_plan(scene, &plan, encoder, target);
     }
 
-    fn prepare_scan(&self) {}
+    fn scan(&self, scene: &crate::scene::Scene, encoder: Self::ScanArgs<'_>) {
+        self.scan
+            .prepare(
+                &self.device,
+                &self.path_buffer,
+                &self.bd_buffer,
+                &self.line_buffer,
+                &self.segments_buffer,
+                &self.backdrop_pool_buffer,
+                scene.width_in_tiles(),
+            )
+            .run(encoder, &self.scan);
+    }
 
-    fn flush(
-        &self,
-        _scan: Self::ScanPrepared,
-        _cumsum: Self::CumsumPrepared,
-        _bin: Self::BinPrepared,
-        _coarse: Self::CoarsePrepared,
-        _fine: Self::FinePrepared,
-    ) {
+    fn cumsum(&self, _scene: &crate::scene::Scene, encoder: Self::CumsumArgs<'_>) {
+        self.cumsum
+            .prepare(
+                &self.device,
+                &self.bd_buffer,
+                &self.backdrop_pool_buffer,
+                self.path_buffer.len() as u32,
+            )
+            .run(encoder, &self.cumsum);
+    }
+
+    fn coarse(&self, _scene: &crate::scene::Scene, _encoder: Self::CoarseArgs<'_>) {
         todo!()
     }
 
-    fn prepare_cumsum(&self) {
-        todo!()
-    }
-
-    fn prepare_bin(&self) {
-        todo!()
-    }
-
-    fn prepare_coarse(&self) {
-        todo!()
-    }
-
-    fn prepare_fine(&self) {
+    fn fine(&self, _scene: &crate::scene::Scene, _encoder: Self::FineArgs<'_>) {
         todo!()
     }
 }
 
 impl Renderer {
-    fn execute_draw_batch(&self, scene: &crate::scene::Scene, start: usize, end: usize) {
+    fn prepare_exec_plan(&self, scene: &crate::scene::Scene) -> ExecPlan {
+        ExecPlan {
+            nodes: scene.compile(ROOT_COMMAND_LIST_ID),
+        }
+    }
+
+    fn execute_plan(
+        &mut self,
+        scene: &crate::scene::Scene,
+        plan: &ExecPlan,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &mut GpuImageBuffer,
+    ) {
+        for node in &plan.nodes {
+            match node {
+                ExecNode::DrawBatch { draws, state: _ } => {
+                    self.execute_draw_batch(scene, draws.start, draws.end, encoder, target);
+                }
+                ExecNode::OffscreenLayer { layer, children } => {
+                    self.execute_offscreen_layer(scene, layer, children, encoder, target);
+                }
+            }
+        }
+    }
+
+    fn execute_offscreen_layer(
+        &mut self,
+        _scene: &crate::scene::Scene,
+        layer: &Layer,
+        _children: &[ExecNode],
+        _encoder: &mut wgpu::CommandEncoder,
+        _target: &mut GpuImageBuffer,
+    ) {
+        match layer {
+            Layer::Filter { filter: _ } => todo!(),
+            Layer::SvgFilter {
+                filters: _,
+                transform: _,
+                max_bounds: _,
+            } => todo!(),
+            Layer::BackdropFilter {
+                filter: _,
+                region: _,
+            } => todo!(),
+            Layer::Mask { mode: _ } => todo!(),
+            Layer::Clip(_) | Layer::ClipSdf { .. } => todo!(),
+            Layer::Opacity { opacity: _ } | Layer::Blend { blend: _ } => todo!(),
+        }
+    }
+
+    fn execute_draw_batch(
+        &mut self,
+        scene: &crate::scene::Scene,
+        start: usize,
+        end: usize,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &mut GpuImageBuffer,
+    ) {
         if start >= end {
             return;
         }
-        let _draw_records = &scene.draw_records[start..end];
-        self.prepare_scan();
-        self.prepare_cumsum();
-        self.prepare_bin();
-        self.prepare_coarse();
-        self.prepare_fine();
-        self.flush((), (), (), (), ());
+        let draw_records = &scene.draw_records[start..end];
+        self.scan(scene, encoder);
     }
 }

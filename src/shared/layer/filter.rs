@@ -1,6 +1,12 @@
 use peniko::{Color, kurbo};
 
-use crate::shared::{bounds::Bounds, brush::Brush, image::Image, layer::{backdrop::BackdropRegion, blend::Blend, mask::MaskMode}, pixel::{pack_premul_rgba8, src_over, unpack_premul_rgba8}};
+use crate::shared::{
+    bounds::Bounds,
+    brush::Brush,
+    image::Image,
+    layer::{backdrop::BackdropRegion, blend::Blend, mask::MaskMode},
+    pixel::{pack_premul_rgba8, src_over, unpack_premul_rgba8},
+};
 
 /// Static liquid-glass appearance inspired by `liquid-glass-react`.
 ///
