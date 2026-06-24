@@ -95,7 +95,6 @@ impl<'a> ScanCpuPrepared<'a> {
                     let segment_idx = backdrop_record.segment_start
                         + segment_bump.fetch_add(1, Ordering::Relaxed);
                     segments[segment_idx as usize] = segment;
-                    // emit(global_ix, segment);
                     last_z = z;
                 }
             }
