@@ -1,17 +1,17 @@
-pub struct BackdropCumsumGpuPipeline {}
+pub struct CumsumCpuPipeline {}
 
-pub struct BackdropCumsumPrepared {}
+pub struct CumsumPrepared {}
 
-impl BackdropCumsumPrepared {
+impl CumsumPrepared {
     pub fn run(&self) {}
 }
 
-impl BackdropCumsumGpuPipeline {
+impl CumsumCpuPipeline {
     pub fn new() -> Self {
         Self {}
     }
 
-    pub fn prepare(&self) -> BackdropCumsumPrepared {
-        BackdropCumsumPrepared {}
+    pub fn prepare(&self, backdrops: &mut Vec<i32>) -> CumsumPrepared {
+        CumsumPrepared {}
     }
 }

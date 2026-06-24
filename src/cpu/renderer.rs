@@ -3,7 +3,7 @@ use std::sync::atomic::AtomicU32;
 use peniko::Color;
 
 use crate::{
-    cpu::pipelines::scan::ScanCpuPipeline,
+    cpu::pipelines::{cumsum::CumsumCpuPipeline, scan::ScanCpuPipeline},
     render::Render,
     shared::{
         execution::{ExecNode, ExecPlan},
@@ -17,7 +17,12 @@ pub struct Renderer {
     image: Image,
     clear: Color,
     scan: ScanCpuPipeline,
+    cumsum: CumsumCpuPipeline,
     size: (u32, u32),
+
+    backdrops: Vec<i32>,
+    segments: Vec<LineSegment>,
+    segments_bump: Vec<AtomicU32>,
 }
 
 impl Render for Renderer {
@@ -46,42 +51,41 @@ impl Render for Renderer {
         );
     }
 
-    fn scan(&self, scene: &crate::scene::Scene, args: Self::ScanArgs<'_>) {
+    fn scan(&mut self, scene: &crate::scene::Scene, _: Self::ScanArgs<'_>) {
         let last_bd_record = scene.bd_records.last().unwrap().clone();
-        let mut backdrops =
-            vec![0; last_bd_record.data_offset as usize + last_bd_record.data_len as usize];
-        let mut segments = vec![
-            LineSegment::default();
-            last_bd_record.segment_start as usize
-                + last_bd_record.segment_capacity as usize
-        ];
-        let mut segments_bump = Vec::<AtomicU32>::with_capacity(scene.bd_records.len());
-        for _ in 0..scene.bd_records.len() {
-            segments_bump.push(AtomicU32::new(0));
-        }
+        self.backdrops.resize(
+            last_bd_record.data_offset as usize + last_bd_record.data_len as usize,
+            0,
+        );
+        self.segments.resize(
+            last_bd_record.segment_start as usize + last_bd_record.segment_capacity as usize,
+            LineSegment::default(),
+        );
+        self.segments_bump
+            .resize_with(scene.bd_records.len(), || AtomicU32::new(0));
         self.scan
             .prepare(
                 &scene.lines,
                 &scene.path_records,
                 &scene.draw_records,
                 &scene.bd_records,
-                &mut backdrops,
-                &mut segments,
-                &mut segments_bump,
+                &mut self.backdrops,
+                &mut self.segments,
+                &mut self.segments_bump,
                 (scene.width_in_tiles(), scene.height_in_tiles()),
             )
             .run();
     }
 
-    fn cumsum(&self, scene: &crate::scene::Scene, args: Self::CumsumArgs<'_>) {
+    fn cumsum(&mut self, _: &crate::scene::Scene, _: Self::CumsumArgs<'_>) {
+        self.cumsum.prepare(&mut self.backdrops).run();
+    }
+
+    fn coarse(&mut self, scene: &crate::scene::Scene, args: Self::CoarseArgs<'_>) {
         todo!()
     }
 
-    fn coarse(&self, scene: &crate::scene::Scene, args: Self::CoarseArgs<'_>) {
-        todo!()
-    }
-
-    fn fine(&self, scene: &crate::scene::Scene, args: Self::FineArgs<'_>) {
+    fn fine(&mut self, scene: &crate::scene::Scene, args: Self::FineArgs<'_>) {
         todo!()
     }
 }

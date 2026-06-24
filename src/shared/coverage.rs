@@ -1,6 +1,6 @@
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Coverage {
-    pub(crate) x: u8,
-    pub(crate) y: u8,
-    pub(crate) coverage: u8,
+    pub(crate) alphas: [(u8, u8); 32],
+    pub(crate) alpha_cnt: u8,
+    pub(crate) is_left: bool,
 }

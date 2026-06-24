@@ -129,7 +129,7 @@ impl Render for Renderer {
         self.execute_plan(scene, &plan, encoder, target);
     }
 
-    fn scan(&self, scene: &crate::scene::Scene, encoder: Self::ScanArgs<'_>) {
+    fn scan(&mut self, scene: &crate::scene::Scene, encoder: Self::ScanArgs<'_>) {
         self.scan
             .prepare(
                 &self.device,
@@ -143,7 +143,7 @@ impl Render for Renderer {
             .run(encoder, &self.scan);
     }
 
-    fn cumsum(&self, _scene: &crate::scene::Scene, encoder: Self::CumsumArgs<'_>) {
+    fn cumsum(&mut self, _scene: &crate::scene::Scene, encoder: Self::CumsumArgs<'_>) {
         self.cumsum
             .prepare(
                 &self.device,
@@ -154,11 +154,11 @@ impl Render for Renderer {
             .run(encoder, &self.cumsum);
     }
 
-    fn coarse(&self, _scene: &crate::scene::Scene, _encoder: Self::CoarseArgs<'_>) {
+    fn coarse(&mut self, _scene: &crate::scene::Scene, _encoder: Self::CoarseArgs<'_>) {
         todo!()
     }
 
-    fn fine(&self, _scene: &crate::scene::Scene, _encoder: Self::FineArgs<'_>) {
+    fn fine(&mut self, _scene: &crate::scene::Scene, _encoder: Self::FineArgs<'_>) {
         todo!()
     }
 }
