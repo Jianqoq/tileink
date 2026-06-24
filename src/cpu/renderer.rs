@@ -3,13 +3,16 @@ use std::sync::atomic::AtomicU32;
 use peniko::Color;
 
 use crate::{
-    cpu::pipelines::{cumsum::CumsumCpuPipeline, scan::ScanCpuPipeline},
+    cpu::pipelines::{
+        coarse::CoarseCpuPipeline, cumsum::CumsumCpuPipeline, scan::ScanCpuPipeline,
+    },
     render::Render,
     shared::{
         execution::{ExecNode, ExecPlan},
         image::Image,
         layer::Layer,
         line_seg::LineSegment,
+        draw_record::DrawRecord,
         tile_seg_range::TileSegmentRange,
     },
 };
@@ -19,6 +22,7 @@ pub struct Renderer {
     clear: Color,
     scan: ScanCpuPipeline,
     cumsum: CumsumCpuPipeline,
+    coarse: CoarseCpuPipeline,
     size: (u32, u32),
 
     backdrops: Vec<i32>,
@@ -35,7 +39,7 @@ impl Render for Renderer {
 
     type CumsumArgs<'a> = ();
 
-    type CoarseArgs<'a> = ();
+    type CoarseArgs<'a> = (&'a [DrawRecord], &'a mut Image);
 
     type FineArgs<'a> = ();
 
@@ -110,8 +114,18 @@ impl Render for Renderer {
             .run();
     }
 
-    fn coarse(&mut self, scene: &crate::scene::Scene, args: Self::CoarseArgs<'_>) {
-        todo!()
+    fn coarse(&mut self, scene: &crate::scene::Scene, (draw_records, target): Self::CoarseArgs<'_>) {
+        self.coarse
+            .prepare(
+                draw_records,
+                &scene.bd_records,
+                &self.backdrops,
+                &self.tile_segment_ranges,
+                &self.segments,
+                target,
+                (scene.width_in_tiles(), scene.height_in_tiles()),
+            )
+            .run();
     }
 
     fn fine(&mut self, scene: &crate::scene::Scene, args: Self::FineArgs<'_>) {
@@ -170,5 +184,6 @@ impl Renderer {
         let draw_records = &scene.draw_records[start..end];
         self.scan(scene, ());
         self.cumsum(scene, ());
+        self.coarse(scene, (draw_records, target));
     }
 }
