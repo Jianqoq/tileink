@@ -1,8 +1,11 @@
+use std::sync::atomic::{AtomicU32, Ordering};
+
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
     TILE_SCALE, TILE_SIZE,
     shared::{
+        bd_record::BackdropRecord,
         bounds::{Bounds, TileBbox},
         draw_record::DrawRecord,
         line::Line,
@@ -18,17 +21,32 @@ pub struct ScanCpuPrepared<'a> {
     lines: &'a [Line],
     path_records: &'a [PathRecord],
     draw_records: &'a [DrawRecord],
+    backdrop_records: &'a [BackdropRecord],
+    backdrops: &'a mut Vec<i32>, // [path_id][tile_y][tile_x]
+    segments: &'a mut Vec<LineSegment>,
+    segments_bump: &'a mut Vec<AtomicU32>,
     tiles_size: (u32, u32),
 }
 
 impl<'a> ScanCpuPrepared<'a> {
-    pub fn run(&self) {
+    pub fn run(&mut self) {
+        let backdrops = self.backdrops.as_mut_ptr() as *mut Vec<i32> as usize;
+        let segments = self.segments.as_mut_ptr() as *mut LineSegment as usize;
         (0..self.lines.len()).into_par_iter().for_each(|line_id| {
             let line = self.lines[line_id];
-            let path_record = self.path_records[line.path_id as usize];
+            let backdrop_ptr = backdrops as *mut i32;
+            let backdrops =
+                unsafe { std::slice::from_raw_parts_mut(backdrop_ptr, self.backdrops.len()) };
+            let segments_ptr = segments as *mut LineSegment;
+            let segments =
+                unsafe { std::slice::from_raw_parts_mut(segments_ptr, self.segments.len()) };
             let draw_record = &self.draw_records[line.path_id as usize];
+            let backdrop_record = &self.backdrop_records[line.path_id as usize];
+            let backdrop = &mut backdrops[backdrop_record.data_offset as usize
+                ..(backdrop_record.data_offset as usize + backdrop_record.data_len as usize)];
             let bbox = draw_record.tile_bbox(self.tiles_size.0, self.tiles_size.1);
             let plan = plan_scan_line(line, bbox);
+            let segment_bump = &self.segments_bump[line.path_id as usize];
             if let Some(plan) = plan {
                 for y in plan.ymin..plan.ymax {
                     let base = ((y - bbox.y0 as i32) * bbox.tile_stride() as i32) as usize;
@@ -60,6 +78,7 @@ impl<'a> ScanCpuPrepared<'a> {
                         backdrop[bump_ix] += plan.delta;
                     }
 
+                    let global_ix = (y as u32 * self.tiles_size.0 + x as u32) as usize;
                     let segment = clip_line_to_tile(
                         (plan.xy0, plan.xy1),
                         plan.is_down,
@@ -70,8 +89,12 @@ impl<'a> ScanCpuPrepared<'a> {
                         plan.imax - plan.imin,
                         plan.a,
                         plan.b,
+                        line.path_id,
+                        global_ix as u32,
                     );
-                    let global_ix = (y as u32 * self.tiles_size.0 + x as u32) as usize;
+                    let segment_idx = backdrop_record.segment_start
+                        + segment_bump.fetch_add(1, Ordering::Relaxed);
+                    segments[segment_idx as usize] = segment;
                     // emit(global_ix, segment);
                     last_z = z;
                 }
@@ -90,13 +113,21 @@ impl ScanCpuPipeline {
         lines: &'a [Line],
         path_records: &'a [PathRecord],
         draw_records: &'a [DrawRecord],
+        backdrop_records: &'a [BackdropRecord],
+        backdrops: &'a mut Vec<i32>,
+        segments: &'a mut Vec<LineSegment>,
+        segments_bump: &'a mut Vec<AtomicU32>,
         tiles_size: (u32, u32),
     ) -> ScanCpuPrepared<'a> {
         ScanCpuPrepared {
             lines,
             path_records,
             draw_records,
+            backdrop_records,
             tiles_size,
+            backdrops,
+            segments,
+            segments_bump,
         }
     }
 }
@@ -243,6 +274,8 @@ fn clip_line_to_tile(
     seg_count: u32,
     a: f32,
     b: f32,
+    path_id: u32,
+    tile_id: u32,
 ) -> LineSegment {
     let (mut xy0, mut xy1) = line;
     let tile_xy = [
@@ -329,6 +362,8 @@ fn clip_line_to_tile(
         point0: p0,
         point1: p1,
         y_edge,
+        path_id,
+        tile_id,
     }
 }
 

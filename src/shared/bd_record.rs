@@ -13,6 +13,7 @@ pub struct BackdropRecord {
     pub path_id: u32,
     /// 在 backdrop_pool 里的起始下标（i32 元素）
     pub data_offset: u32,
+    pub data_len: u32,
     /// 全图画布上的 tile 原点（scan_assign 里 bbox）
     pub tile_x0: u32,
     pub tile_y0: u32,

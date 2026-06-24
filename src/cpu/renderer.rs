@@ -1,3 +1,5 @@
+use std::sync::atomic::AtomicU32;
+
 use peniko::Color;
 
 use crate::{
@@ -7,6 +9,7 @@ use crate::{
         execution::{ExecNode, ExecPlan},
         image::Image,
         layer::Layer,
+        line_seg::LineSegment,
     },
 };
 
@@ -44,11 +47,27 @@ impl Render for Renderer {
     }
 
     fn scan(&self, scene: &crate::scene::Scene, args: Self::ScanArgs<'_>) {
+        let last_bd_record = scene.bd_records.last().unwrap().clone();
+        let mut backdrops =
+            vec![0; last_bd_record.data_offset as usize + last_bd_record.data_len as usize];
+        let mut segments = vec![
+            LineSegment::default();
+            last_bd_record.segment_start as usize
+                + last_bd_record.segment_capacity as usize
+        ];
+        let mut segments_bump = Vec::<AtomicU32>::with_capacity(scene.bd_records.len());
+        for _ in 0..scene.bd_records.len() {
+            segments_bump.push(AtomicU32::new(0));
+        }
         self.scan
             .prepare(
                 &scene.lines,
                 &scene.path_records,
                 &scene.draw_records,
+                &scene.bd_records,
+                &mut backdrops,
+                &mut segments,
+                &mut segments_bump,
                 (scene.width_in_tiles(), scene.height_in_tiles()),
             )
             .run();

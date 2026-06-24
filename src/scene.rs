@@ -249,6 +249,7 @@ impl Scene {
         self.bd_records.push(BackdropRecord {
             path_id,
             data_offset: backdrop_offset,
+            data_len: backdrop_len,
             tile_x0: tile_bbox.x0,
             tile_y0: tile_bbox.y0,
             tile_x1: tile_bbox.x1,
