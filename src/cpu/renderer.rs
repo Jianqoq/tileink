@@ -77,8 +77,10 @@ impl Render for Renderer {
             .run();
     }
 
-    fn cumsum(&mut self, _: &crate::scene::Scene, _: Self::CumsumArgs<'_>) {
-        self.cumsum.prepare(&mut self.backdrops).run();
+    fn cumsum(&mut self, scene: &crate::scene::Scene, _: Self::CumsumArgs<'_>) {
+        self.cumsum
+            .prepare(&mut self.backdrops, &scene.bd_records)
+            .run();
     }
 
     fn coarse(&mut self, scene: &crate::scene::Scene, args: Self::CoarseArgs<'_>) {
@@ -140,5 +142,6 @@ impl Renderer {
         }
         let draw_records = &scene.draw_records[start..end];
         self.scan(scene, ());
+        self.cumsum(scene, ());
     }
 }

@@ -373,3 +373,154 @@ fn span(a: f32, b: f32) -> u32 {
     let lo = a.min(b).floor();
     (hi - lo).max(1.0) as u32
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::Ordering;
+
+    use peniko::Color;
+
+    use super::{ScanCpuPipeline, plan_scan_line};
+    use crate::shared::{
+        bd_record::BackdropRecord,
+        bounds::{PixelBounds, TileBbox},
+        brush::Brush,
+        draw_record::DrawRecord,
+        fill::FillRule,
+        line::Line,
+        line_seg::LineSegment,
+        path::PathRecord,
+    };
+
+    fn one_tile_draw_record() -> DrawRecord {
+        DrawRecord {
+            path_id: Some(0),
+            brush: Brush::Solid(Color::BLACK),
+            fill_rule: FillRule::NonZero,
+            pixel_bounds: PixelBounds {
+                x0: 0,
+                y0: 0,
+                x1: 16,
+                y1: 16,
+            },
+            solid_rect: false,
+            opacity_depth: 0,
+            blend_depth: 0,
+            clip_depth: 0,
+            allow_solid_override: true,
+        }
+    }
+
+    fn one_tile_backdrop_record(segment_capacity: u32) -> BackdropRecord {
+        BackdropRecord {
+            path_id: 0,
+            data_offset: 0,
+            data_len: 1,
+            tile_x0: 0,
+            tile_y0: 0,
+            tile_x1: 1,
+            tile_y1: 1,
+            segment_start: 0,
+            segment_capacity,
+            segment_count: 0,
+        }
+    }
+
+    #[test]
+    fn plan_scan_line_rejects_zero_length_line() {
+        let bbox = TileBbox {
+            x0: 0,
+            y0: 0,
+            x1: 1,
+            y1: 1,
+        };
+        let line = Line {
+            path_id: 0,
+            _pad: 0.0,
+            p0: [4.0, 4.0],
+            p1: [4.0, 4.0],
+        };
+
+        assert!(plan_scan_line(line, bbox).is_none());
+    }
+
+    #[test]
+    fn run_adds_backdrop_delta_for_line_left_of_tile_bbox() {
+        let lines = [Line {
+            path_id: 0,
+            _pad: 0.0,
+            p0: [-4.0, 0.0],
+            p1: [-4.0, 16.0],
+        }];
+        let path_records = [PathRecord {
+            path_id: 0,
+            line_count: 1,
+            line_start: 0,
+            _pad: 0,
+        }];
+        let draw_records = [one_tile_draw_record()];
+        let backdrop_records = [one_tile_backdrop_record(1)];
+        let mut backdrops = vec![0];
+        let mut segments = vec![LineSegment::default(); 1];
+        let mut segments_bump = vec![0].into_iter().map(std::sync::atomic::AtomicU32::new).collect();
+
+        ScanCpuPipeline::new()
+            .prepare(
+                &lines,
+                &path_records,
+                &draw_records,
+                &backdrop_records,
+                &mut backdrops,
+                &mut segments,
+                &mut segments_bump,
+                (1, 1),
+            )
+            .run();
+
+        assert_eq!(backdrops, vec![-1]);
+        assert_eq!(segments_bump[0].load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn run_emits_segment_for_line_inside_tile() {
+        let lines = [Line {
+            path_id: 0,
+            _pad: 0.0,
+            p0: [4.0, 0.0],
+            p1: [4.0, 16.0],
+        }];
+        let path_records = [PathRecord {
+            path_id: 0,
+            line_count: 1,
+            line_start: 0,
+            _pad: 0,
+        }];
+        let draw_records = [one_tile_draw_record()];
+        let backdrop_records = [one_tile_backdrop_record(1)];
+        let mut backdrops = vec![0];
+        let mut segments = vec![LineSegment::default(); 1];
+        let mut segments_bump = vec![0].into_iter().map(std::sync::atomic::AtomicU32::new).collect();
+
+        ScanCpuPipeline::new()
+            .prepare(
+                &lines,
+                &path_records,
+                &draw_records,
+                &backdrop_records,
+                &mut backdrops,
+                &mut segments,
+                &mut segments_bump,
+                (1, 1),
+            )
+            .run();
+
+        assert_eq!(backdrops, vec![0]);
+        assert_eq!(segments_bump[0].load(Ordering::Relaxed), 1);
+        assert_eq!(segments[0].path_id, 0);
+        assert_eq!(segments[0].tile_id, 0);
+        assert!((segments[0].point0.0 - 4.0).abs() < 1e-3);
+        assert!((segments[0].point1.0 - 4.0).abs() < 1e-3);
+        assert!((segments[0].point0.1 - 0.0).abs() < 1e-6);
+        assert!((segments[0].point1.1 - 16.0).abs() < 1e-6);
+    }
+}

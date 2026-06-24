@@ -1,6 +1,6 @@
 mod blend;
 mod brush;
 mod coarse;
-mod cumsum;
+pub(crate) mod cumsum;
 mod fine;
 mod scan;
