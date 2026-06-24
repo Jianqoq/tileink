@@ -9,7 +9,7 @@ use crate::{
         bounds::{Bounds, TileBbox},
         draw_record::DrawRecord,
         line::Line,
-        line_seg::LineSegment,
+        line_seg::{Coverage, LineSegment},
         path::PathRecord,
     },
 };
@@ -363,6 +363,7 @@ fn clip_line_to_tile(
         y_edge,
         path_id,
         tile_id,
+        coverages: [Coverage::default(); 32],
     }
 }
 
