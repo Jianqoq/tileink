@@ -12,6 +12,7 @@ use crate::{
         line::Line,
         line_seg::LineSegment,
         path::PathRecord,
+        tile_seg_range::TileSegmentRange,
     },
 };
 
@@ -24,8 +25,12 @@ pub struct ScanCpuPrepared<'a> {
     draw_records: &'a [DrawRecord],
     backdrop_records: &'a [BackdropRecord],
     backdrops: &'a mut Vec<i32>, // [path_id][tile_y][tile_x]
+    tile_segment_ranges: &'a mut Vec<TileSegmentRange>,
     segments: &'a mut Vec<LineSegment>,
     segments_bump: &'a mut Vec<AtomicU32>,
+    segment_tile_counts: &'a mut Vec<u32>,
+    segment_tile_cursors: &'a mut Vec<u32>,
+    packed_segments: &'a mut Vec<LineSegment>,
     tiles_size: (u32, u32),
 }
 
@@ -100,6 +105,66 @@ impl<'a> ScanCpuPrepared<'a> {
                 }
             }
         });
+
+        self.pack_segments_by_tile();
+    }
+
+    fn pack_segments_by_tile(&mut self) {
+        for (path_ix, backdrop_record) in self.backdrop_records.iter().enumerate() {
+            let tile_count = backdrop_record.data_len as usize;
+            let ranges = &mut self.tile_segment_ranges[backdrop_record.data_offset as usize
+                ..backdrop_record.data_offset as usize + tile_count];
+            ranges.fill(TileSegmentRange::default());
+
+            let segment_count = self.segments_bump[path_ix].load(Ordering::Relaxed) as usize;
+            if tile_count == 0 || segment_count == 0 {
+                continue;
+            }
+
+            let raw_start = backdrop_record.segment_start as usize;
+            let raw_end = raw_start + segment_count;
+            let raw_segments = &self.segments[raw_start..raw_end];
+            let tiles_width = self.tiles_size.0;
+            let counts = &mut self.segment_tile_counts[backdrop_record.data_offset as usize
+                ..backdrop_record.data_offset as usize + tile_count];
+            counts.fill(0);
+
+            for segment in raw_segments.iter().copied() {
+                let local_ix = Self::local_tile_ix(backdrop_record, segment.tile_id, tiles_width);
+                counts[local_ix] += 1;
+            }
+
+            let mut next = raw_start as u32;
+            for (range, count) in ranges.iter_mut().zip(counts.iter().copied()) {
+                range.start = next;
+                next += count;
+                range.end = next;
+            }
+
+            let cursors = &mut self.segment_tile_cursors[backdrop_record.data_offset as usize
+                ..backdrop_record.data_offset as usize + tile_count];
+            for (cursor, range) in cursors.iter_mut().zip(ranges.iter()) {
+                *cursor = range.start;
+            }
+            let packed = &mut self.packed_segments[raw_start..raw_end];
+            for segment in raw_segments.iter().copied() {
+                let local_ix = Self::local_tile_ix(backdrop_record, segment.tile_id, tiles_width);
+                let dst = cursors[local_ix] as usize - raw_start;
+                packed[dst] = segment;
+                cursors[local_ix] += 1;
+            }
+
+            self.segments[raw_start..raw_end].copy_from_slice(&packed);
+        }
+    }
+
+    fn local_tile_ix(backdrop_record: &BackdropRecord, tile_id: u32, tiles_width: u32) -> usize {
+        let tile_x = tile_id % tiles_width;
+        let tile_y = tile_id / tiles_width;
+        let local_x = tile_x - backdrop_record.tile_x0;
+        let local_y = tile_y - backdrop_record.tile_y0;
+        let stride = backdrop_record.tile_x1 - backdrop_record.tile_x0;
+        (local_y * stride + local_x) as usize
     }
 }
 
@@ -115,8 +180,12 @@ impl ScanCpuPipeline {
         draw_records: &'a [DrawRecord],
         backdrop_records: &'a [BackdropRecord],
         backdrops: &'a mut Vec<i32>,
+        tile_segment_ranges: &'a mut Vec<TileSegmentRange>,
         segments: &'a mut Vec<LineSegment>,
         segments_bump: &'a mut Vec<AtomicU32>,
+        segment_tile_counts: &'a mut Vec<u32>,
+        segment_tile_cursors: &'a mut Vec<u32>,
+        packed_segments: &'a mut Vec<LineSegment>,
         tiles_size: (u32, u32),
     ) -> ScanCpuPrepared<'a> {
         ScanCpuPrepared {
@@ -126,8 +195,12 @@ impl ScanCpuPipeline {
             backdrop_records,
             tiles_size,
             backdrops,
+            tile_segment_ranges,
             segments,
             segments_bump,
+            segment_tile_counts,
+            segment_tile_cursors,
+            packed_segments,
         }
     }
 }
@@ -390,6 +463,7 @@ mod tests {
         line::Line,
         line_seg::LineSegment,
         path::PathRecord,
+        tile_seg_range::TileSegmentRange,
     };
 
     fn one_tile_draw_record() -> DrawRecord {
@@ -461,8 +535,12 @@ mod tests {
         let draw_records = [one_tile_draw_record()];
         let backdrop_records = [one_tile_backdrop_record(1)];
         let mut backdrops = vec![0];
+        let mut tile_segment_ranges = vec![TileSegmentRange::default(); 1];
         let mut segments = vec![LineSegment::default(); 1];
         let mut segments_bump = vec![0].into_iter().map(std::sync::atomic::AtomicU32::new).collect();
+        let mut segment_tile_counts = vec![0; 1];
+        let mut segment_tile_cursors = vec![0; 1];
+        let mut packed_segments = vec![LineSegment::default(); 1];
 
         ScanCpuPipeline::new()
             .prepare(
@@ -471,8 +549,12 @@ mod tests {
                 &draw_records,
                 &backdrop_records,
                 &mut backdrops,
+                &mut tile_segment_ranges,
                 &mut segments,
                 &mut segments_bump,
+                &mut segment_tile_counts,
+                &mut segment_tile_cursors,
+                &mut packed_segments,
                 (1, 1),
             )
             .run();
@@ -498,8 +580,12 @@ mod tests {
         let draw_records = [one_tile_draw_record()];
         let backdrop_records = [one_tile_backdrop_record(1)];
         let mut backdrops = vec![0];
+        let mut tile_segment_ranges = vec![TileSegmentRange::default(); 1];
         let mut segments = vec![LineSegment::default(); 1];
         let mut segments_bump = vec![0].into_iter().map(std::sync::atomic::AtomicU32::new).collect();
+        let mut segment_tile_counts = vec![0; 1];
+        let mut segment_tile_cursors = vec![0; 1];
+        let mut packed_segments = vec![LineSegment::default(); 1];
 
         ScanCpuPipeline::new()
             .prepare(
@@ -508,14 +594,22 @@ mod tests {
                 &draw_records,
                 &backdrop_records,
                 &mut backdrops,
+                &mut tile_segment_ranges,
                 &mut segments,
                 &mut segments_bump,
+                &mut segment_tile_counts,
+                &mut segment_tile_cursors,
+                &mut packed_segments,
                 (1, 1),
             )
             .run();
 
         assert_eq!(backdrops, vec![0]);
         assert_eq!(segments_bump[0].load(Ordering::Relaxed), 1);
+        assert_eq!(
+            tile_segment_ranges[0],
+            TileSegmentRange { start: 0, end: 1 }
+        );
         assert_eq!(segments[0].path_id, 0);
         assert_eq!(segments[0].tile_id, 0);
         assert!((segments[0].point0.0 - 4.0).abs() < 1e-3);

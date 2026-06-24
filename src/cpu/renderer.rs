@@ -10,6 +10,7 @@ use crate::{
         image::Image,
         layer::Layer,
         line_seg::LineSegment,
+        tile_seg_range::TileSegmentRange,
     },
 };
 
@@ -21,8 +22,12 @@ pub struct Renderer {
     size: (u32, u32),
 
     backdrops: Vec<i32>,
+    tile_segment_ranges: Vec<TileSegmentRange>,
     segments: Vec<LineSegment>,
     segments_bump: Vec<AtomicU32>,
+    segment_tile_counts: Vec<u32>,
+    segment_tile_cursors: Vec<u32>,
+    packed_segments: Vec<LineSegment>,
 }
 
 impl Render for Renderer {
@@ -57,7 +62,19 @@ impl Render for Renderer {
             last_bd_record.data_offset as usize + last_bd_record.data_len as usize,
             0,
         );
+        self.tile_segment_ranges.resize(
+            last_bd_record.data_offset as usize + last_bd_record.data_len as usize,
+            TileSegmentRange::default(),
+        );
         self.segments.resize(
+            last_bd_record.segment_start as usize + last_bd_record.segment_capacity as usize,
+            LineSegment::default(),
+        );
+        self.segment_tile_counts
+            .resize(last_bd_record.data_offset as usize + last_bd_record.data_len as usize, 0);
+        self.segment_tile_cursors
+            .resize(last_bd_record.data_offset as usize + last_bd_record.data_len as usize, 0);
+        self.packed_segments.resize(
             last_bd_record.segment_start as usize + last_bd_record.segment_capacity as usize,
             LineSegment::default(),
         );
@@ -70,8 +87,12 @@ impl Render for Renderer {
                 &scene.draw_records,
                 &scene.bd_records,
                 &mut self.backdrops,
+                &mut self.tile_segment_ranges,
                 &mut self.segments,
                 &mut self.segments_bump,
+                &mut self.segment_tile_counts,
+                &mut self.segment_tile_cursors,
+                &mut self.packed_segments,
                 (scene.width_in_tiles(), scene.height_in_tiles()),
             )
             .run();
