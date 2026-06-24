@@ -1,6 +1,7 @@
 use peniko::Color;
 
 use crate::{
+    cpu::pipelines::scan::ScanCpuPipeline,
     render::Render,
     shared::{
         execution::{ExecNode, ExecPlan},
@@ -12,6 +13,7 @@ use crate::{
 pub struct Renderer {
     image: Image,
     clear: Color,
+    scan: ScanCpuPipeline,
     size: (u32, u32),
 }
 
@@ -42,7 +44,14 @@ impl Render for Renderer {
     }
 
     fn scan(&self, scene: &crate::scene::Scene, args: Self::ScanArgs<'_>) {
-        todo!()
+        self.scan
+            .prepare(
+                &scene.lines,
+                &scene.path_records,
+                &scene.draw_records,
+                (scene.width_in_tiles(), scene.height_in_tiles()),
+            )
+            .run();
     }
 
     fn cumsum(&self, scene: &crate::scene::Scene, args: Self::CumsumArgs<'_>) {

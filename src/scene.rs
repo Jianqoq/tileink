@@ -224,14 +224,8 @@ impl Scene {
             path_id: Some(path_id),
             brush: brush.into(),
             fill_rule: rule,
-            pixel_bounds: Bounds::new(
-                pixel_bounds.x0,
-                pixel_bounds.y0,
-                pixel_bounds.x1,
-                pixel_bounds.y1,
-            ),
+            pixel_bounds,
             solid_rect: false,
-            sdf: None,
             opacity_depth: self
                 .layer_stack
                 .iter()

@@ -14,3 +14,4 @@ pub(crate) mod path_flatten;
 pub(crate) mod pixel;
 pub(crate) mod sdf;
 pub(crate) mod vec2;
+pub(crate) mod line_seg;
