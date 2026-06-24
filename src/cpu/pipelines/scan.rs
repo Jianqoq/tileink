@@ -152,10 +152,12 @@ impl<'a> ScanCpuPrepared<'a> {
             let packed = &mut self.packed_segments[raw_start..raw_end];
             let packed_ptr = packed.as_mut_ptr() as usize;
             raw_segments.par_iter().for_each(|segment| {
+                let mut segment = *segment;
+                Self::fill_segment_coverages(&mut segment);
                 let local_ix = Self::local_tile_ix(backdrop_record, segment.tile_id, tiles_width);
                 let dst = cursors[local_ix].fetch_add(1, Ordering::Relaxed) as usize - raw_start;
                 unsafe {
-                    (packed_ptr as *mut LineSegment).add(dst).write(*segment);
+                    (packed_ptr as *mut LineSegment).add(dst).write(segment);
                 }
             });
 
@@ -170,6 +172,56 @@ impl<'a> ScanCpuPrepared<'a> {
         let local_y = tile_y - backdrop_record.tile_y0;
         let stride = backdrop_record.tile_x1 - backdrop_record.tile_x0;
         (local_y * stride + local_x) as usize
+    }
+
+    fn fill_segment_coverages(segment: &mut LineSegment) {
+        segment.coverages.fill(Coverage::default());
+
+        let dx = segment.point1.0 - segment.point0.0;
+        let dy = segment.point1.1 - segment.point0.1;
+        let steps = dx.abs().max(dy.abs()).ceil() as usize;
+        if steps == 0 {
+            return;
+        }
+
+        let mut coverage = Coverage::default();
+        let x_inc = dx / steps as f32;
+        let y_inc = dy / steps as f32;
+        let mut x = segment.point0.0;
+        let mut y = segment.point0.1;
+        let mut seen = [0u64; (TILE_SIZE * TILE_SIZE / 64) as usize];
+
+        for _ in 0..=steps {
+            let px = x.floor() as i32;
+            let py = y.floor() as i32;
+            if (0..TILE_SIZE as i32).contains(&px) && (0..TILE_SIZE as i32).contains(&py) {
+                let pixel_ix = (py as usize) * TILE_SIZE as usize + px as usize;
+                let word_ix = pixel_ix / 64;
+                let bit = 1u64 << (pixel_ix % 64);
+                if seen[word_ix] & bit == 0 {
+                    let entry_ix = coverage.alpha_cnt as usize;
+                    if entry_ix >= coverage.alphas.len() {
+                        break;
+                    }
+                    seen[word_ix] |= bit;
+                    coverage.alphas[entry_ix] = (pixel_ix as u8, 255);
+                    coverage.alpha_cnt += 1;
+                }
+            }
+            x += x_inc;
+            y += y_inc;
+        }
+
+        if coverage.alpha_cnt == 0 {
+            let px = segment.point0.0.floor() as i32;
+            let py = segment.point0.1.floor() as i32;
+            if (0..TILE_SIZE as i32).contains(&px) && (0..TILE_SIZE as i32).contains(&py) {
+                coverage.alphas[0] = ((py as u8) * TILE_SIZE as u8 + px as u8, 255);
+                coverage.alpha_cnt = 1;
+            }
+        }
+
+        segment.coverages[0] = coverage;
     }
 }
 
@@ -621,6 +673,7 @@ mod tests {
         assert!((segments[0].point1.0 - 4.0).abs() < 1e-3);
         assert!((segments[0].point0.1 - 0.0).abs() < 1e-6);
         assert!((segments[0].point1.1 - 16.0).abs() < 1e-6);
+        assert!(segments[0].coverages[0].alpha_cnt > 0);
     }
 
     #[test]
@@ -719,5 +772,8 @@ mod tests {
         assert_eq!(segments[1].tile_id, 0);
         assert_eq!(segments[2].tile_id, 1);
         assert_eq!(segments[3].tile_id, 1);
+        assert!(segments
+            .iter()
+            .all(|segment| segment.coverages[0].alpha_cnt > 0));
     }
 }
