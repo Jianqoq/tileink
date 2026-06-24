@@ -25,8 +25,8 @@ pub struct Renderer {
     tile_segment_ranges: Vec<TileSegmentRange>,
     segments: Vec<LineSegment>,
     segments_bump: Vec<AtomicU32>,
-    segment_tile_counts: Vec<u32>,
-    segment_tile_cursors: Vec<u32>,
+    segment_tile_counts: Vec<AtomicU32>,
+    segment_tile_cursors: Vec<AtomicU32>,
     packed_segments: Vec<LineSegment>,
 }
 
@@ -71,9 +71,15 @@ impl Render for Renderer {
             LineSegment::default(),
         );
         self.segment_tile_counts
-            .resize(last_bd_record.data_offset as usize + last_bd_record.data_len as usize, 0);
+            .resize_with(
+                last_bd_record.data_offset as usize + last_bd_record.data_len as usize,
+                || AtomicU32::new(0),
+            );
         self.segment_tile_cursors
-            .resize(last_bd_record.data_offset as usize + last_bd_record.data_len as usize, 0);
+            .resize_with(
+                last_bd_record.data_offset as usize + last_bd_record.data_len as usize,
+                || AtomicU32::new(0),
+            );
         self.packed_segments.resize(
             last_bd_record.segment_start as usize + last_bd_record.segment_capacity as usize,
             LineSegment::default(),
