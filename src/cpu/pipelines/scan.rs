@@ -1,15 +1,16 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::{
     TILE_SCALE, TILE_SIZE,
     shared::{
         bd_record::BackdropRecord,
         bounds::{Bounds, TileBbox},
+        coverage::Coverage,
         draw_record::DrawRecord,
         line::Line,
-        line_seg::{Coverage, LineSegment},
+        line_seg::LineSegment,
         path::PathRecord,
     },
 };
