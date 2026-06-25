@@ -14,6 +14,7 @@ use crate::{
         image::Image,
         layer::Layer,
         line_seg::LineSegment,
+        tile_ptcl::{TilePtcl, TilePtclRange},
         tile_seg_range::TileSegmentRange,
     },
 };
@@ -34,6 +35,8 @@ pub struct Renderer {
     segment_tile_counts: Vec<AtomicU32>,
     segment_tile_cursors: Vec<AtomicU32>,
     packed_segments: Vec<LineSegment>,
+    tile_ptcl_ranges: Vec<TilePtclRange>,
+    tile_ptcls: Vec<TilePtcl>,
 }
 
 impl Render for Renderer {
@@ -115,16 +118,24 @@ impl Render for Renderer {
     }
 
     fn coarse(&mut self, scene: &crate::scene::Scene, draw_records: Self::CoarseArgs<'_>) {
-        self.coarse.prepare(draw_records).run();
+        self.coarse
+            .prepare(
+                draw_records,
+                &scene.bd_records,
+                &self.backdrops,
+                &self.tile_segment_ranges,
+                &mut self.tile_ptcl_ranges,
+                &mut self.tile_ptcls,
+                (scene.width_in_tiles(), scene.height_in_tiles()),
+            )
+            .run();
     }
 
     fn fine(&mut self, scene: &crate::scene::Scene, target: Self::FineArgs<'_>) {
         self.fine
             .prepare(
-                &scene.draw_records,
-                &scene.bd_records,
-                &self.backdrops,
-                &self.tile_segment_ranges,
+                &self.tile_ptcl_ranges,
+                &self.tile_ptcls,
                 &self.segments,
                 target,
                 (scene.width_in_tiles(), scene.height_in_tiles()),

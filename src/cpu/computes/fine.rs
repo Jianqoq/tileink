@@ -1,9 +1,10 @@
 use crate::{
     shared::{
         brush::Brush,
+        bounds::Bounds,
         fill::FillRule,
         line_seg::LineSegment,
-        pixel::{SegmentMask, TileMask, scale_premul_u8, src_over_premul_u8},
+        pixel::{MASK_OPAQUE, SegmentMask, TileMask, scale_premul_u8, src_over_premul_u8},
     },
     TILE_SIZE,
 };
@@ -167,6 +168,34 @@ pub(crate) fn rasterize_tile(
                 let pixel_ix = (global_y * image_width + global_x) as usize;
                 image[pixel_ix] = src_over_premul_u8(image[pixel_ix], src);
             }
+        }
+    }
+}
+
+pub(crate) fn composite_color_tile(
+    image: &mut [u32],
+    image_width: u32,
+    image_height: u32,
+    tile_x: u32,
+    tile_y: u32,
+    color: u32,
+) {
+    let bounds = Bounds::from_tile_coords(tile_x, tile_y, image_width, image_height);
+    let alpha = (color >> 24) as u8;
+    if alpha == 0 {
+        return;
+    }
+
+    for y in bounds.y0 as u32..bounds.y1 as u32 {
+        let row_start = (y * image_width + bounds.x0 as u32) as usize;
+        let row_end = (y * image_width + bounds.x1 as u32) as usize;
+        let row = &mut image[row_start..row_end];
+        if alpha == MASK_OPAQUE {
+            row.fill(color);
+            continue;
+        }
+        for dst in row {
+            *dst = src_over_premul_u8(*dst, color);
         }
     }
 }

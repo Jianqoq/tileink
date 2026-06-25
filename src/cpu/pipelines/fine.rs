@@ -1,17 +1,13 @@
-
 use crate::{
-    cpu::computes::fine::rasterize_tile,
+    cpu::computes::fine::{composite_color_tile, rasterize_tile},
     shared::{
-        bd_record::BackdropRecord, draw_record::DrawRecord, image::Image,
-        line_seg::LineSegment, tile_seg_range::TileSegmentRange,
+        image::Image, line_seg::LineSegment, tile_ptcl::TilePtcl, tile_ptcl::TilePtclRange,
     },
 };
 
 pub struct FineCpuPrepared<'a> {
-    draw_records: &'a [DrawRecord],
-    backdrop_records: &'a [BackdropRecord],
-    backdrops: &'a [i32],
-    tile_segment_ranges: &'a [TileSegmentRange],
+    tile_ptcl_ranges: &'a [TilePtclRange],
+    tile_ptcls: &'a [TilePtcl],
     segments: &'a [LineSegment],
     target: &'a mut Image,
     tiles_size: (u32, u32),
@@ -19,38 +15,48 @@ pub struct FineCpuPrepared<'a> {
 
 impl<'a> FineCpuPrepared<'a> {
     pub fn run(&mut self) {
-        for draw in self.draw_records {
-            let Some(path_id) = draw.path_id else {
-                continue;
-            };
-            let backdrop_record = &self.backdrop_records[path_id as usize];
-            let bbox = draw.tile_bbox(self.tiles_size.0, self.tiles_size.1);
-            let stride = backdrop_record.tile_x1 - backdrop_record.tile_x0;
-            if stride == 0 {
-                return;
-            }
-            for tile_y in bbox.y0..bbox.y1 {
-                for tile_x in bbox.x0..bbox.x1 {
-                    let local_x = tile_x - backdrop_record.tile_x0;
-                    let local_y = tile_y - backdrop_record.tile_y0;
-                    let local_ix = (local_y * stride + local_x) as usize;
-                    let backdrop_ix = backdrop_record.data_offset as usize + local_ix;
-                    let segment_range = self.tile_segment_ranges[backdrop_ix];
-                    let segments =
-                        &self.segments[segment_range.start as usize..segment_range.end as usize];
-                    let backdrop = self.backdrops[backdrop_ix];
+        for tile_y in 0..self.tiles_size.1 {
+            for tile_x in 0..self.tiles_size.0 {
+                let tile_ix = (tile_y * self.tiles_size.0 + tile_x) as usize;
+                let range = self.tile_ptcl_ranges[tile_ix];
+                if range.start == range.end {
+                    continue;
+                }
 
-                    rasterize_tile(
-                        &mut self.target.pixels,
-                        self.target.width,
-                        self.target.height,
-                        tile_x,
-                        tile_y,
-                        segments,
-                        backdrop,
-                        draw.fill_rule,
-                        &draw.brush,
-                    );
+                for ptcl in &self.tile_ptcls[range.start as usize..range.end as usize] {
+                    match ptcl {
+                        TilePtcl::End => break,
+                        TilePtcl::Color(color) => {
+                            composite_color_tile(
+                                &mut self.target.pixels,
+                                self.target.width,
+                                self.target.height,
+                                tile_x,
+                                tile_y,
+                                color.color,
+                            );
+                        }
+                        TilePtcl::Fill(fill) | TilePtcl::BeginClip(fill) => {
+                            let segments = &self.segments
+                                [fill.segment_range.start as usize..fill.segment_range.end as usize];
+                            rasterize_tile(
+                                &mut self.target.pixels,
+                                self.target.width,
+                                self.target.height,
+                                tile_x,
+                                tile_y,
+                                segments,
+                                fill.backdrop,
+                                fill.fill_rule,
+                                &fill.brush,
+                            );
+                        }
+                        TilePtcl::EndClip
+                        | TilePtcl::BeginOpacity { .. }
+                        | TilePtcl::EndOpacity
+                        | TilePtcl::BeginBlend { .. }
+                        | TilePtcl::EndBlend => {}
+                    }
                 }
             }
         }
@@ -66,19 +72,15 @@ impl FineCpuPipeline {
 
     pub fn prepare<'a>(
         &self,
-        draw_records: &'a [DrawRecord],
-        backdrop_records: &'a [BackdropRecord],
-        backdrops: &'a [i32],
-        tile_segment_ranges: &'a [TileSegmentRange],
+        tile_ptcl_ranges: &'a [TilePtclRange],
+        tile_ptcls: &'a [TilePtcl],
         segments: &'a [LineSegment],
         target: &'a mut Image,
         tiles_size: (u32, u32),
     ) -> FineCpuPrepared<'a> {
         FineCpuPrepared {
-            draw_records,
-            backdrop_records,
-            backdrops,
-            tile_segment_ranges,
+            tile_ptcl_ranges,
+            tile_ptcls,
             segments,
             target,
             tiles_size,
