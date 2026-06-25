@@ -3,8 +3,10 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
-    TILE_SCALE, TILE_SIZE, shared::{
-        bd_record::BackdropRecord, bounds::TileBbox, draw_record::DrawRecord, line::Line, line_seg::LineSegment, path::PathRecord, pixel::TileMask, tile_seg_range::TileSegmentRange,
+    TILE_SCALE, TILE_SIZE,
+    shared::{
+        bd_record::BackdropRecord, bounds::TileBbox, draw_record::DrawRecord, line::Line,
+        line_seg::LineSegment, path::PathRecord, pixel::TileMask, tile_seg_range::TileSegmentRange,
     },
 };
 
@@ -102,13 +104,14 @@ impl<'a> ScanCpuPrepared<'a> {
     }
 
     fn pack_segments_by_tile(&mut self) {
-        for (path_ix, backdrop_record) in self.backdrop_records.iter().enumerate() {
+        for backdrop_record in self.backdrop_records.iter() {
+            let path_id = backdrop_record.path_id as usize;
             let tile_count = backdrop_record.data_len as usize;
             let ranges = &mut self.tile_segment_ranges[backdrop_record.data_offset as usize
                 ..backdrop_record.data_offset as usize + tile_count];
             ranges.fill(TileSegmentRange::default());
 
-            let segment_count = self.segments_bump[path_ix].load(Ordering::Relaxed) as usize;
+            let segment_count = self.segments_bump[path_id].load(Ordering::Relaxed) as usize;
             if tile_count == 0 || segment_count == 0 {
                 continue;
             }
@@ -119,9 +122,9 @@ impl<'a> ScanCpuPrepared<'a> {
             let tiles_width = self.tiles_size.0;
             let counts = &self.segment_tile_counts[backdrop_record.data_offset as usize
                 ..backdrop_record.data_offset as usize + tile_count];
-            for count in counts.iter() {
+            counts.par_iter().for_each(|count| {
                 count.store(0, Ordering::Relaxed);
-            }
+            });
 
             raw_segments.par_iter().for_each(|segment| {
                 let local_ix = Self::local_tile_ix(backdrop_record, segment.tile_id, tiles_width);
@@ -578,9 +581,18 @@ mod tests {
         let mut backdrops = vec![0];
         let mut tile_segment_ranges = vec![TileSegmentRange::default(); 1];
         let mut segments = vec![LineSegment::default(); 1];
-        let mut segments_bump = vec![0].into_iter().map(std::sync::atomic::AtomicU32::new).collect();
-        let mut segment_tile_counts = vec![0].into_iter().map(std::sync::atomic::AtomicU32::new).collect();
-        let mut segment_tile_cursors = vec![0].into_iter().map(std::sync::atomic::AtomicU32::new).collect();
+        let mut segments_bump = vec![0]
+            .into_iter()
+            .map(std::sync::atomic::AtomicU32::new)
+            .collect();
+        let mut segment_tile_counts = vec![0]
+            .into_iter()
+            .map(std::sync::atomic::AtomicU32::new)
+            .collect();
+        let mut segment_tile_cursors = vec![0]
+            .into_iter()
+            .map(std::sync::atomic::AtomicU32::new)
+            .collect();
         let mut packed_segments = vec![LineSegment::default(); 1];
 
         ScanCpuPipeline::new()
@@ -623,9 +635,18 @@ mod tests {
         let mut backdrops = vec![0];
         let mut tile_segment_ranges = vec![TileSegmentRange::default(); 1];
         let mut segments = vec![LineSegment::default(); 1];
-        let mut segments_bump = vec![0].into_iter().map(std::sync::atomic::AtomicU32::new).collect();
-        let mut segment_tile_counts = vec![0].into_iter().map(std::sync::atomic::AtomicU32::new).collect();
-        let mut segment_tile_cursors = vec![0].into_iter().map(std::sync::atomic::AtomicU32::new).collect();
+        let mut segments_bump = vec![0]
+            .into_iter()
+            .map(std::sync::atomic::AtomicU32::new)
+            .collect();
+        let mut segment_tile_counts = vec![0]
+            .into_iter()
+            .map(std::sync::atomic::AtomicU32::new)
+            .collect();
+        let mut segment_tile_cursors = vec![0]
+            .into_iter()
+            .map(std::sync::atomic::AtomicU32::new)
+            .collect();
         let mut packed_segments = vec![LineSegment::default(); 1];
 
         ScanCpuPipeline::new()
