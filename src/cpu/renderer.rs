@@ -115,7 +115,17 @@ impl Render for Renderer {
         scene: &crate::scene::Scene,
         (draw_records, target): Self::CoarseArgs<'_>,
     ) {
-        self.coarse.prepare().run();
+        self.coarse
+            .prepare(
+                draw_records,
+                &scene.bd_records,
+                &self.backdrops,
+                &self.tile_segment_ranges,
+                &self.segments,
+                target,
+                (scene.width_in_tiles(), scene.height_in_tiles()),
+            )
+            .run();
     }
 
     fn fine(&mut self, scene: &crate::scene::Scene, args: Self::FineArgs<'_>) {

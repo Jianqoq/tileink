@@ -3,7 +3,7 @@ use crate::{
         brush::Brush,
         fill::FillRule,
         line_seg::LineSegment,
-        pixel::{scale_premul_u8, src_over_premul_u8},
+        pixel::{TileMask, scale_premul_u8, src_over_premul_u8},
     },
     TILE_SIZE,
 };
@@ -64,12 +64,17 @@ pub(crate) fn pixel_coverage(
 }
 
 fn build_tile_alpha(segments: &[LineSegment], backdrop: i32, fill_rule: FillRule) -> [u8; 256] {
-    let mut tile_alpha = [0u8; 256];
-    for y in 0..TILE_SIZE {
-        let row_start = (y * TILE_SIZE) as usize;
-        for x in 0..TILE_SIZE {
-            tile_alpha[row_start + x as usize] = pixel_coverage(segments, backdrop, fill_rule, x, y);
-        }
+    let mut edge_mask = TileMask::new();
+    for segment in segments {
+        edge_mask |= segment.edges;
+    }
+
+    let fill_alpha = (apply_rule(backdrop as f32, fill_rule).clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+    let mut tile_alpha = [fill_alpha; 256];
+    for pixel_ix in edge_mask.iter_ones() {
+        let x = (pixel_ix % TILE_SIZE as usize) as u32;
+        let y = (pixel_ix / TILE_SIZE as usize) as u32;
+        tile_alpha[pixel_ix] = pixel_coverage(segments, backdrop, fill_rule, x, y);
     }
     tile_alpha
 }

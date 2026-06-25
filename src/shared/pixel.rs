@@ -1,3 +1,5 @@
+use std::ops::{BitOr, BitOrAssign};
+
 use crate::{
     BLOCK_SIZE, TILE_SIZE,
     shared::{bounds::Bounds, image::rgba8_pack},
@@ -52,6 +54,13 @@ impl TileMask {
     }
 
     #[inline]
+    pub fn union(self, other: Self) -> Self {
+        Self {
+            words: std::array::from_fn(|i| self.words[i] | other.words[i]),
+        }
+    }
+
+    #[inline]
     pub fn iter_ones(self) -> TileMaskIter {
         TileMaskIter {
             words: self.words,
@@ -63,6 +72,20 @@ impl TileMask {
 impl From<[u64; 4]> for TileMask {
     fn from(words: [u64; 4]) -> Self {
         Self::from_words(words)
+    }
+}
+
+impl BitOr for TileMask {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        self.union(rhs)
+    }
+}
+
+impl BitOrAssign for TileMask {
+    fn bitor_assign(&mut self, rhs: Self) {
+        *self = self.union(rhs);
     }
 }
 
