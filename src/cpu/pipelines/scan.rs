@@ -189,35 +189,36 @@ impl<'a> ScanCpuPrepared<'a> {
         let y_inc = dy / steps as f32;
         let mut x = segment.point0.0;
         let mut y = segment.point0.1;
-        let mut seen = [0u64; (TILE_SIZE * TILE_SIZE / 64) as usize];
+        let mut row_min = [i16::MAX; TILE_SIZE as usize];
+        let mut row_max = [i16::MIN; TILE_SIZE as usize];
 
         for _ in 0..=steps {
             let px = x.floor() as i32;
             let py = y.floor() as i32;
             if (0..TILE_SIZE as i32).contains(&px) && (0..TILE_SIZE as i32).contains(&py) {
-                let pixel_ix = (py as usize) * TILE_SIZE as usize + px as usize;
-                let word_ix = pixel_ix / 64;
-                let bit = 1u64 << (pixel_ix % 64);
-                if seen[word_ix] & bit == 0 {
-                    let entry_ix = coverage.alpha_cnt as usize;
-                    if entry_ix >= coverage.alphas.len() {
-                        break;
-                    }
-                    seen[word_ix] |= bit;
-                    coverage.alphas[entry_ix] = (pixel_ix as u8, 255);
-                    coverage.alpha_cnt += 1;
-                }
+                let row = py as usize;
+                row_min[row] = row_min[row].min(px as i16);
+                row_max[row] = row_max[row].max(px as i16);
             }
             x += x_inc;
             y += y_inc;
         }
 
-        if coverage.alpha_cnt == 0 {
-            let px = segment.point0.0.floor() as i32;
-            let py = segment.point0.1.floor() as i32;
-            if (0..TILE_SIZE as i32).contains(&px) && (0..TILE_SIZE as i32).contains(&py) {
-                coverage.alphas[0] = ((py as u8) * TILE_SIZE as u8 + px as u8, 255);
-                coverage.alpha_cnt = 1;
+        for py in 0..TILE_SIZE as usize {
+            let min_x = row_min[py];
+            let max_x = row_max[py];
+            if min_x > max_x {
+                continue;
+            }
+            for px in min_x..=max_x {
+                let entry_ix = coverage.alpha_cnt as usize;
+                if entry_ix >= coverage.alphas.len() {
+                    segment.coverages[0] = coverage;
+                    return;
+                }
+                let pixel_ix = py * TILE_SIZE as usize + px as usize;
+                coverage.alphas[entry_ix] = (pixel_ix as u8, 255);
+                coverage.alpha_cnt += 1;
             }
         }
 

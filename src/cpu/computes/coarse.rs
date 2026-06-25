@@ -1,7 +1,6 @@
 use crate::{
     shared::{
         brush::Brush,
-        coverage::Coverage,
         fill::FillRule,
         line_seg::LineSegment,
         pixel::{scale_premul_u8, src_over_premul_u8},
@@ -17,6 +16,39 @@ fn apply_rule(value: f32, fill_rule: FillRule) -> f32 {
     }
 }
 
+#[inline]
+fn segment_coverage_at(segment: &LineSegment, x: u32, y: u32) -> f32 {
+    let p0 = segment.point0;
+    let p1 = segment.point1;
+    let delta_x = p1.0 - p0.0;
+    let delta_y = p1.1 - p0.1;
+    let row_y = y as f32;
+    let local_y = p0.1 - row_y;
+    let y0 = local_y.clamp(0.0, 1.0);
+    let y1 = (local_y + delta_y).clamp(0.0, 1.0);
+    let dy = y0 - y1;
+    let y_edge = delta_x.signum() * (row_y - segment.y_edge + 1.0).clamp(0.0, 1.0);
+
+    if dy == 0.0 {
+        return y_edge;
+    }
+
+    let recip = 1.0 / delta_y;
+    let t0 = (y0 - local_y) * recip;
+    let t1 = (y1 - local_y) * recip;
+    let sx0 = p0.0 + t0 * delta_x;
+    let sx1 = p0.0 + t1 * delta_x;
+    let pixel_x = x as f32;
+    let xmin = sx0.min(sx1) - pixel_x;
+    let xmax = sx0.max(sx1) - pixel_x;
+    let a_min = xmin.min(1.0) - 1.0e-6;
+    let b = xmax.min(1.0);
+    let c = b.max(0.0);
+    let d = a_min.max(0.0);
+    let a = (b + 0.5 * (d * d - c * c) - a_min) / (xmax - a_min);
+    y_edge + a * dy
+}
+
 pub(crate) fn pixel_coverage(
     segments: &[LineSegment],
     backdrop: i32,
@@ -24,25 +56,22 @@ pub(crate) fn pixel_coverage(
     x: u32,
     y: u32,
 ) -> u8 {
-    let mut coverage = apply_rule(backdrop as f32, fill_rule).clamp(0.0, 1.0) * 255.0;
+    let mut coverage = backdrop as f32;
     for segment in segments {
-        for segment_coverage in &segment.coverages {
-            if let Some(alpha) = lookup_coverage_alpha(segment_coverage, x, y) {
-                coverage = coverage.max(alpha as f32);
-            }
-        }
+        coverage += segment_coverage_at(segment, x, y);
     }
-    coverage.clamp(0.0, 255.0) as u8
+    (apply_rule(coverage, fill_rule).clamp(0.0, 1.0) * 255.0 + 0.5) as u8
 }
 
-fn lookup_coverage_alpha(coverage: &Coverage, x: u32, y: u32) -> Option<u8> {
-    let pixel_ix = (y * TILE_SIZE + x) as u8;
-    for &(ix, alpha) in coverage.alphas.iter().take(coverage.alpha_cnt as usize) {
-        if ix == pixel_ix {
-            return Some(alpha);
+fn build_tile_alpha(segments: &[LineSegment], backdrop: i32, fill_rule: FillRule) -> [u8; 256] {
+    let mut tile_alpha = [0u8; 256];
+    for y in 0..TILE_SIZE {
+        let row_start = (y * TILE_SIZE) as usize;
+        for x in 0..TILE_SIZE {
+            tile_alpha[row_start + x as usize] = pixel_coverage(segments, backdrop, fill_rule, x, y);
         }
     }
-    None
+    tile_alpha
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -61,17 +90,31 @@ pub(crate) fn rasterize_tile(
     let base_y = tile_y * TILE_SIZE;
     let tile_width = (image_width - base_x).min(TILE_SIZE);
     let tile_height = (image_height - base_y).min(TILE_SIZE);
+    let tile_alpha = build_tile_alpha(segments, backdrop, fill_rule);
     for local_y in 0..tile_height {
         let global_y = base_y + local_y;
-        for local_x in 0..tile_width {
-            let alpha = pixel_coverage(segments, backdrop, fill_rule, local_x, local_y);
-            if alpha == 0 {
+        let row_start = (local_y * TILE_SIZE) as usize;
+        let row = &tile_alpha[row_start..row_start + tile_width as usize];
+        let mut local_x = 0usize;
+        while local_x < row.len() {
+            if row[local_x] == 0 {
+                local_x += 1;
                 continue;
             }
-            let global_x = base_x + local_x;
-            let src = scale_premul_u8(brush.sample(global_x as f32 + 0.5, global_y as f32 + 0.5), alpha);
-            let pixel_ix = (global_y * image_width + global_x) as usize;
-            image[pixel_ix] = src_over_premul_u8(image[pixel_ix], src);
+            let span_start = local_x;
+            while local_x < row.len() && row[local_x] != 0 {
+                local_x += 1;
+            }
+            for span_x in span_start..local_x {
+                let alpha = row[span_x];
+                let global_x = base_x + span_x as u32;
+                let src = scale_premul_u8(
+                    brush.sample(global_x as f32 + 0.5, global_y as f32 + 0.5),
+                    alpha,
+                );
+                let pixel_ix = (global_y * image_width + global_x) as usize;
+                image[pixel_ix] = src_over_premul_u8(image[pixel_ix], src);
+            }
         }
     }
 }
@@ -80,7 +123,6 @@ pub(crate) fn rasterize_tile(
 mod tests {
     use super::pixel_coverage;
     use crate::shared::{
-        coverage::Coverage,
         fill::FillRule,
         line_seg::LineSegment,
     };
@@ -95,15 +137,15 @@ mod tests {
     }
 
     #[test]
-    fn pixel_coverage_consumes_segment_coverages() {
-        let mut segment = LineSegment::default();
-        segment.coverages[0] = Coverage {
-            alphas: [(3, 200); 32],
-            alpha_cnt: 1,
-            is_left: false,
+    fn pixel_coverage_consumes_segment_geometry() {
+        let segment = LineSegment {
+            point0: (4.0, 0.0),
+            point1: (12.0, 16.0),
+            y_edge: 1.0e9,
+            ..LineSegment::default()
         };
 
-        assert_eq!(pixel_coverage(&[segment], 0, FillRule::NonZero, 3, 0), 200);
-        assert_eq!(pixel_coverage(&[segment], 0, FillRule::NonZero, 4, 0), 0);
+        assert_eq!(pixel_coverage(&[segment], 0, FillRule::NonZero, 0, 4), 0);
+        assert!(pixel_coverage(&[segment], 0, FillRule::NonZero, 8, 4) > 0);
     }
 }
