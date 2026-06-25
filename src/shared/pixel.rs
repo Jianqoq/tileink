@@ -89,6 +89,80 @@ impl BitOrAssign for TileMask {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SegmentMask {
+    words: [u64; 4],
+}
+
+impl SegmentMask {
+    pub const fn new() -> Self {
+        Self { words: [0; 4] }
+    }
+
+    #[inline]
+    pub fn set(&mut self, index: usize) {
+        debug_assert!(index < BLOCK_SIZE as usize);
+        let word = index / u64::BITS as usize;
+        let bit = index % u64::BITS as usize;
+        self.words[word] |= 1u64 << bit;
+    }
+
+    #[inline]
+    pub fn get(&self, index: usize) -> bool {
+        debug_assert!(index < BLOCK_SIZE as usize);
+        let word = index / u64::BITS as usize;
+        let bit = index % u64::BITS as usize;
+        (self.words[word] & (1u64 << bit)) != 0
+    }
+
+    #[inline]
+    pub fn any(&self) -> bool {
+        self.words.iter().any(|&word| word != 0)
+    }
+
+    #[inline]
+    pub fn iter_ones(self) -> SegmentMaskIter {
+        SegmentMaskIter {
+            words: self.words,
+            word_index: 0,
+        }
+    }
+}
+
+impl IntoIterator for SegmentMask {
+    type Item = usize;
+    type IntoIter = SegmentMaskIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_ones()
+    }
+}
+
+pub struct SegmentMaskIter {
+    words: [u64; 4],
+    word_index: usize,
+}
+
+impl Iterator for SegmentMaskIter {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.word_index < self.words.len() {
+            let word = &mut self.words[self.word_index];
+            if *word == 0 {
+                self.word_index += 1;
+                continue;
+            }
+
+            let bit = word.trailing_zeros() as usize;
+            *word &= *word - 1;
+            return Some(self.word_index * u64::BITS as usize + bit);
+        }
+
+        None
+    }
+}
+
 impl IntoIterator for TileMask {
     type Item = usize;
     type IntoIter = TileMaskIter;
@@ -395,6 +469,18 @@ mod tests {
         mask.clear(3);
         assert!(!mask.get(3));
         assert!(mask.get(130));
+    }
+
+    #[test]
+    fn segment_mask_iterates_all_set_bits_in_order() {
+        let mut mask = SegmentMask::new();
+        mask.set(1);
+        mask.set(64);
+        mask.set(255);
+
+        assert!(mask.any());
+        assert!(mask.get(1));
+        assert_eq!(mask.iter_ones().collect::<Vec<_>>(), vec![1, 64, 255]);
     }
 
     #[test]

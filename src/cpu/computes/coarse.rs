@@ -3,7 +3,7 @@ use crate::{
         brush::Brush,
         fill::FillRule,
         line_seg::LineSegment,
-        pixel::{TileMask, scale_premul_u8, src_over_premul_u8},
+        pixel::{SegmentMask, TileMask, scale_premul_u8, src_over_premul_u8},
     },
     TILE_SIZE,
 };
@@ -49,6 +49,11 @@ fn segment_coverage_at(segment: &LineSegment, x: u32, y: u32) -> f32 {
     y_edge + a * dy
 }
 
+#[inline]
+fn pixel_ix(x: u32, y: u32) -> usize {
+    (y * TILE_SIZE + x) as usize
+}
+
 pub(crate) fn pixel_coverage(
     segments: &[LineSegment],
     backdrop: i32,
@@ -56,9 +61,29 @@ pub(crate) fn pixel_coverage(
     x: u32,
     y: u32,
 ) -> u8 {
+    let pixel_ix = pixel_ix(x, y);
     let mut coverage = backdrop as f32;
     for segment in segments {
+        if segment.edges.any() && !segment.edges.get(pixel_ix) {
+            continue;
+        }
         coverage += segment_coverage_at(segment, x, y);
+    }
+    (apply_rule(coverage, fill_rule).clamp(0.0, 1.0) * 255.0 + 0.5) as u8
+}
+
+#[inline]
+fn pixel_coverage_for_mask(
+    segments: &[LineSegment],
+    segment_mask: SegmentMask,
+    backdrop: i32,
+    fill_rule: FillRule,
+    x: u32,
+    y: u32,
+) -> u8 {
+    let mut coverage = backdrop as f32;
+    for seg_ix in segment_mask.iter_ones() {
+        coverage += segment_coverage_at(&segments[seg_ix], x, y);
     }
     (apply_rule(coverage, fill_rule).clamp(0.0, 1.0) * 255.0 + 0.5) as u8
 }
@@ -71,10 +96,32 @@ fn build_tile_alpha(segments: &[LineSegment], backdrop: i32, fill_rule: FillRule
 
     let fill_alpha = (apply_rule(backdrop as f32, fill_rule).clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
     let mut tile_alpha = [fill_alpha; 256];
-    for pixel_ix in edge_mask.iter_ones() {
-        let x = (pixel_ix % TILE_SIZE as usize) as u32;
-        let y = (pixel_ix / TILE_SIZE as usize) as u32;
-        tile_alpha[pixel_ix] = pixel_coverage(segments, backdrop, fill_rule, x, y);
+    if segments.len() <= TILE_SIZE as usize * TILE_SIZE as usize {
+        let mut pixel_segments = [SegmentMask::new(); 256];
+        for (seg_ix, segment) in segments.iter().enumerate() {
+            for pixel_ix in segment.edges.iter_ones() {
+                pixel_segments[pixel_ix].set(seg_ix);
+            }
+        }
+
+        for pixel_ix in edge_mask.iter_ones() {
+            let x = (pixel_ix % TILE_SIZE as usize) as u32;
+            let y = (pixel_ix / TILE_SIZE as usize) as u32;
+            tile_alpha[pixel_ix] = pixel_coverage_for_mask(
+                segments,
+                pixel_segments[pixel_ix],
+                backdrop,
+                fill_rule,
+                x,
+                y,
+            );
+        }
+    } else {
+        for pixel_ix in edge_mask.iter_ones() {
+            let x = (pixel_ix % TILE_SIZE as usize) as u32;
+            let y = (pixel_ix / TILE_SIZE as usize) as u32;
+            tile_alpha[pixel_ix] = pixel_coverage(segments, backdrop, fill_rule, x, y);
+        }
     }
     tile_alpha
 }
