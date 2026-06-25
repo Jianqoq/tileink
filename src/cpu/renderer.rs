@@ -3,7 +3,10 @@ use std::sync::atomic::AtomicU32;
 use peniko::Color;
 
 use crate::{
-    cpu::pipelines::{coarse::CoarseCpuPipeline, cumsum::CumsumCpuPipeline, scan::ScanCpuPipeline},
+    cpu::pipelines::{
+        coarse::CoarseCpuPipeline, cumsum::CumsumCpuPipeline, fine::FineCpuPipeline,
+        scan::ScanCpuPipeline,
+    },
     render::Render,
     shared::{
         draw_record::DrawRecord,
@@ -21,6 +24,7 @@ pub struct Renderer {
     scan: ScanCpuPipeline,
     cumsum: CumsumCpuPipeline,
     coarse: CoarseCpuPipeline,
+    fine: FineCpuPipeline,
     size: (u32, u32),
 
     backdrops: Vec<i32>,
@@ -37,9 +41,9 @@ impl Render for Renderer {
 
     type CumsumArgs<'a> = ();
 
-    type CoarseArgs<'a> = (&'a [DrawRecord], &'a mut Image);
+    type CoarseArgs<'a> = &'a [DrawRecord];
 
-    type FineArgs<'a> = ();
+    type FineArgs<'a> = &'a mut Image;
 
     type ExecuteArgs<'a> = &'a mut Image;
 
@@ -110,14 +114,14 @@ impl Render for Renderer {
             .run();
     }
 
-    fn coarse(
-        &mut self,
-        scene: &crate::scene::Scene,
-        (draw_records, target): Self::CoarseArgs<'_>,
-    ) {
-        self.coarse
+    fn coarse(&mut self, scene: &crate::scene::Scene, draw_records: Self::CoarseArgs<'_>) {
+        self.coarse.prepare(draw_records).run();
+    }
+
+    fn fine(&mut self, scene: &crate::scene::Scene, target: Self::FineArgs<'_>) {
+        self.fine
             .prepare(
-                draw_records,
+                &scene.draw_records,
                 &scene.bd_records,
                 &self.backdrops,
                 &self.tile_segment_ranges,
@@ -126,10 +130,6 @@ impl Render for Renderer {
                 (scene.width_in_tiles(), scene.height_in_tiles()),
             )
             .run();
-    }
-
-    fn fine(&mut self, scene: &crate::scene::Scene, args: Self::FineArgs<'_>) {
-        todo!()
     }
 }
 
@@ -184,6 +184,7 @@ impl Renderer {
         let draw_records = &scene.draw_records[start..end];
         self.scan(scene, ());
         self.cumsum(scene, ());
-        self.coarse(scene, (draw_records, target));
+        self.coarse(scene, draw_records);
+        self.fine(scene, target);
     }
 }
