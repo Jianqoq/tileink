@@ -3,16 +3,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
-    TILE_SCALE, TILE_SIZE,
-    shared::{
-        bd_record::BackdropRecord,
-        bounds::TileBbox,
-        coverage::Coverage,
-        draw_record::DrawRecord,
-        line::Line,
-        line_seg::LineSegment,
-        path::PathRecord,
-        tile_seg_range::TileSegmentRange,
+    TILE_SCALE, TILE_SIZE, shared::{
+        bd_record::BackdropRecord, bounds::TileBbox, draw_record::DrawRecord, line::Line, line_seg::LineSegment, path::PathRecord, pixel::TileMask, tile_seg_range::TileSegmentRange,
     },
 };
 
@@ -175,7 +167,7 @@ impl<'a> ScanCpuPrepared<'a> {
     }
 
     fn fill_segment_coverages(segment: &mut LineSegment) {
-        segment.coverages.fill(Coverage::default());
+        segment.edges = TileMask::new();
 
         let dx = segment.point1.0 - segment.point0.0;
         let dy = segment.point1.1 - segment.point0.1;
@@ -184,7 +176,6 @@ impl<'a> ScanCpuPrepared<'a> {
             return;
         }
 
-        let mut coverage = Coverage::default();
         let x_inc = dx / steps as f32;
         let y_inc = dy / steps as f32;
         let mut x = segment.point0.0;
@@ -211,18 +202,10 @@ impl<'a> ScanCpuPrepared<'a> {
                 continue;
             }
             for px in min_x..=max_x {
-                let entry_ix = coverage.alpha_cnt as usize;
-                if entry_ix >= coverage.alphas.len() {
-                    segment.coverages[0] = coverage;
-                    return;
-                }
                 let pixel_ix = py * TILE_SIZE as usize + px as usize;
-                coverage.alphas[entry_ix] = (pixel_ix as u8, 255);
-                coverage.alpha_cnt += 1;
+                segment.edges.set(pixel_ix);
             }
         }
-
-        segment.coverages[0] = coverage;
     }
 }
 
@@ -495,7 +478,7 @@ fn clip_line_to_tile(
         y_edge,
         path_id,
         tile_id,
-        coverages: [Coverage::default(); 32],
+        edges: TileMask::new(),
     }
 }
 
@@ -674,7 +657,7 @@ mod tests {
         assert!((segments[0].point1.0 - 4.0).abs() < 1e-3);
         assert!((segments[0].point0.1 - 0.0).abs() < 1e-6);
         assert!((segments[0].point1.1 - 16.0).abs() < 1e-6);
-        assert!(segments[0].coverages[0].alpha_cnt > 0);
+        assert!(segments[0].edges.any());
     }
 
     #[test]
@@ -773,8 +756,6 @@ mod tests {
         assert_eq!(segments[1].tile_id, 0);
         assert_eq!(segments[2].tile_id, 1);
         assert_eq!(segments[3].tile_id, 1);
-        assert!(segments
-            .iter()
-            .all(|segment| segment.coverages[0].alpha_cnt > 0));
+        assert!(segments.iter().all(|segment| segment.edges.any()));
     }
 }

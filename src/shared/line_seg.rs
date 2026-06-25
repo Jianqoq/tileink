@@ -1,4 +1,4 @@
-use crate::shared::coverage::Coverage;
+use crate::shared::pixel::TileMask;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LineSegment {
@@ -7,5 +7,5 @@ pub struct LineSegment {
     pub(crate) point0: (f32, f32),
     pub(crate) point1: (f32, f32),
     pub(crate) y_edge: f32,
-    pub(crate) coverages: [Coverage; 32]
+    pub(crate) edges: TileMask,
 }
