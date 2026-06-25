@@ -3,16 +3,14 @@ use std::sync::atomic::AtomicU32;
 use peniko::Color;
 
 use crate::{
-    cpu::pipelines::{
-        coarse::CoarseCpuPipeline, cumsum::CumsumCpuPipeline, scan::ScanCpuPipeline,
-    },
+    cpu::pipelines::{coarse::CoarseCpuPipeline, cumsum::CumsumCpuPipeline, scan::ScanCpuPipeline},
     render::Render,
     shared::{
+        draw_record::DrawRecord,
         execution::{ExecNode, ExecPlan},
         image::Image,
         layer::Layer,
         line_seg::LineSegment,
-        draw_record::DrawRecord,
         tile_seg_range::TileSegmentRange,
     },
 };
@@ -74,16 +72,14 @@ impl Render for Renderer {
             last_bd_record.segment_start as usize + last_bd_record.segment_capacity as usize,
             LineSegment::default(),
         );
-        self.segment_tile_counts
-            .resize_with(
-                last_bd_record.data_offset as usize + last_bd_record.data_len as usize,
-                || AtomicU32::new(0),
-            );
-        self.segment_tile_cursors
-            .resize_with(
-                last_bd_record.data_offset as usize + last_bd_record.data_len as usize,
-                || AtomicU32::new(0),
-            );
+        self.segment_tile_counts.resize_with(
+            last_bd_record.data_offset as usize + last_bd_record.data_len as usize,
+            || AtomicU32::new(0),
+        );
+        self.segment_tile_cursors.resize_with(
+            last_bd_record.data_offset as usize + last_bd_record.data_len as usize,
+            || AtomicU32::new(0),
+        );
         self.packed_segments.resize(
             last_bd_record.segment_start as usize + last_bd_record.segment_capacity as usize,
             LineSegment::default(),
@@ -114,18 +110,12 @@ impl Render for Renderer {
             .run();
     }
 
-    fn coarse(&mut self, scene: &crate::scene::Scene, (draw_records, target): Self::CoarseArgs<'_>) {
-        self.coarse
-            .prepare(
-                draw_records,
-                &scene.bd_records,
-                &self.backdrops,
-                &self.tile_segment_ranges,
-                &self.segments,
-                target,
-                (scene.width_in_tiles(), scene.height_in_tiles()),
-            )
-            .run();
+    fn coarse(
+        &mut self,
+        scene: &crate::scene::Scene,
+        (draw_records, target): Self::CoarseArgs<'_>,
+    ) {
+        self.coarse.prepare().run();
     }
 
     fn fine(&mut self, scene: &crate::scene::Scene, args: Self::FineArgs<'_>) {
