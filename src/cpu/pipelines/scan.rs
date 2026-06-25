@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::prelude::*;
 
 use crate::{
     TILE_SCALE, TILE_SIZE,
@@ -131,13 +131,7 @@ impl<'a> ScanCpuPrepared<'a> {
                 counts[local_ix].fetch_add(1, Ordering::Relaxed);
             });
 
-            let mut next = raw_start as u32;
-            for (range, count) in ranges.iter_mut().zip(counts.iter()) {
-                let count = count.load(Ordering::Relaxed);
-                range.start = next;
-                next += count;
-                range.end = next;
-            }
+            Self::fill_ranges_from_counts_parallel(ranges, counts, raw_start as u32);
 
             let cursors = &mut self.segment_tile_cursors[backdrop_record.data_offset as usize
                 ..backdrop_record.data_offset as usize + tile_count];
@@ -167,6 +161,54 @@ impl<'a> ScanCpuPrepared<'a> {
         let local_y = tile_y - backdrop_record.tile_y0;
         let stride = backdrop_record.tile_x1 - backdrop_record.tile_x0;
         (local_y * stride + local_x) as usize
+    }
+
+    fn fill_ranges_from_counts_parallel(
+        ranges: &mut [TileSegmentRange],
+        counts: &[AtomicU32],
+        start: u32,
+    ) {
+        debug_assert_eq!(ranges.len(), counts.len());
+        if ranges.is_empty() {
+            return;
+        }
+
+        let worker_count = rayon::current_num_threads().max(1);
+        let chunk_count = ranges.len().min(worker_count * 4).max(1);
+        let chunk_len = ranges.len().div_ceil(chunk_count);
+        let mut chunk_totals = vec![0u32; ranges.len().div_ceil(chunk_len)];
+
+        ranges
+            .par_chunks_mut(chunk_len)
+            .zip(counts.par_chunks(chunk_len))
+            .zip(chunk_totals.par_iter_mut())
+            .for_each(|((range_chunk, count_chunk), chunk_total)| {
+                let mut next = 0u32;
+                for (range, count) in range_chunk.iter_mut().zip(count_chunk.iter()) {
+                    let count = count.load(Ordering::Relaxed);
+                    range.start = next;
+                    next += count;
+                    range.end = next;
+                }
+                *chunk_total = next;
+            });
+
+        let mut chunk_offsets = Vec::with_capacity(chunk_totals.len());
+        let mut next = start;
+        for total in chunk_totals {
+            chunk_offsets.push(next);
+            next += total;
+        }
+
+        ranges
+            .par_chunks_mut(chunk_len)
+            .zip(chunk_offsets.into_par_iter())
+            .for_each(|(range_chunk, offset)| {
+                for range in range_chunk {
+                    range.start += offset;
+                    range.end += offset;
+                }
+            });
     }
 
     fn fill_segment_coverages(segment: &mut LineSegment) {
@@ -497,7 +539,9 @@ mod tests {
 
     use peniko::Color;
 
-    use super::{ScanCpuPipeline, plan_scan_line};
+    use std::sync::atomic::AtomicU32;
+
+    use super::{ScanCpuPipeline, ScanCpuPrepared, plan_scan_line};
     use crate::shared::{
         bd_record::BackdropRecord,
         bounds::{PixelBounds, TileBbox},
@@ -778,5 +822,30 @@ mod tests {
         assert_eq!(segments[2].tile_id, 1);
         assert_eq!(segments[3].tile_id, 1);
         assert!(segments.iter().all(|segment| segment.edges.any()));
+    }
+
+    #[test]
+    fn fill_ranges_from_counts_parallel_builds_prefix_sum() {
+        let mut ranges = vec![TileSegmentRange::default(); 8];
+        let counts = [3u32, 0, 2, 1, 4, 0, 0, 2]
+            .into_iter()
+            .map(AtomicU32::new)
+            .collect::<Vec<_>>();
+
+        ScanCpuPrepared::fill_ranges_from_counts_parallel(&mut ranges, &counts, 10);
+
+        assert_eq!(
+            ranges,
+            vec![
+                TileSegmentRange { start: 10, end: 13 },
+                TileSegmentRange { start: 13, end: 13 },
+                TileSegmentRange { start: 13, end: 15 },
+                TileSegmentRange { start: 15, end: 16 },
+                TileSegmentRange { start: 16, end: 20 },
+                TileSegmentRange { start: 20, end: 20 },
+                TileSegmentRange { start: 20, end: 20 },
+                TileSegmentRange { start: 20, end: 22 },
+            ]
+        );
     }
 }
