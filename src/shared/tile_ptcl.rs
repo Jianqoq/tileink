@@ -1,10 +1,8 @@
 use std::ops::Range;
 
-use crate::shared::{
-    brush::Brush,
-    fill::FillRule,
-    layer::blend::Blend,
-};
+use peniko::BlendMode;
+
+use crate::shared::{brush::Brush, fill::FillRule};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct TilePtclRange {
@@ -34,6 +32,6 @@ pub enum TilePtcl {
     EndClip,
     BeginOpacity { opacity: u8 },
     EndOpacity,
-    BeginBlend { blend: Blend },
+    BeginBlend { mode: BlendMode },
     EndBlend,
 }

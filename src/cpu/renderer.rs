@@ -1,6 +1,6 @@
 use std::sync::atomic::AtomicU32;
 
-use peniko::Color;
+use peniko::{BlendMode, Color};
 
 use crate::{
     cpu::pipelines::{
@@ -44,7 +44,17 @@ impl Render for Renderer {
 
     type CumsumArgs<'a> = ();
 
-    type CoarseArgs<'a> = &'a [DrawRecord];
+    type CoarseArgs<'a> = (
+        &'a [DrawRecord],
+        &'a [crate::shared::layer::Layer],
+        &'a [u32],
+        std::ops::Range<usize>,
+        &'a [f32],
+        std::ops::Range<usize>,
+        &'a [BlendMode],
+        &'a [u32],
+        std::ops::Range<usize>,
+    );
 
     type FineArgs<'a> = &'a mut Image;
 
@@ -112,10 +122,29 @@ impl Render for Renderer {
             .run();
     }
 
-    fn coarse(&mut self, scene: &crate::scene::Scene, draw_records: Self::CoarseArgs<'_>) {
+    fn coarse(&mut self, scene: &crate::scene::Scene, args: Self::CoarseArgs<'_>) {
+        let (
+            draw_records,
+            clip_layers,
+            clip_stack_data,
+            clip_stack,
+            opacity_stack_data,
+            opacity_stack,
+            blend_layers,
+            blend_stack_data,
+            blend_stack,
+        ) = args;
         self.coarse
             .prepare(
                 draw_records,
+                clip_layers,
+                clip_stack_data,
+                opacity_stack_data,
+                blend_layers,
+                blend_stack_data,
+                clip_stack,
+                opacity_stack,
+                blend_stack,
                 &scene.bd_records,
                 &self.backdrops,
                 &self.tile_segment_ranges,
@@ -146,11 +175,20 @@ impl Renderer {
                 ExecNode::DrawBatch {
                     draws,
                     state: _,
-                    clip_stack: _,
-                    opacity_stack: _,
-                    blend_stack: _,
+                    clip_stack,
+                    opacity_stack,
+                    blend_stack,
                 } => {
-                    self.execute_draw_batch(scene, draws.start, draws.end, target);
+                    self.execute_draw_batch(
+                        scene,
+                        plan,
+                        draws.start,
+                        draws.end,
+                        clip_stack.clone(),
+                        opacity_stack.clone(),
+                        blend_stack.clone(),
+                        target,
+                    );
                 }
                 ExecNode::OffscreenLayer { layer, children } => {
                     self.execute_offscreen_layer(scene, layer, children, target);
@@ -178,16 +216,19 @@ impl Renderer {
                 region: _,
             } => todo!(),
             Layer::Mask { mode: _ } => todo!(),
-            Layer::Clip(_) | Layer::ClipSdf { .. } => todo!(),
-            Layer::Opacity { opacity: _ } | Layer::Blend { blend: _ } => todo!(),
+            _ => unreachable!(),
         }
     }
 
     fn execute_draw_batch(
         &mut self,
         scene: &crate::scene::Scene,
+        plan: &ExecPlan,
         start: usize,
         end: usize,
+        clip_stack: std::ops::Range<usize>,
+        opacity_stack: std::ops::Range<usize>,
+        blend_stack: std::ops::Range<usize>,
         target: &mut Image,
     ) {
         if start >= end {
@@ -196,7 +237,20 @@ impl Renderer {
         let draw_records = &scene.draw_records[start..end];
         self.scan(scene, ());
         self.cumsum(scene, ());
-        self.coarse(scene, draw_records);
+        self.coarse(
+            scene,
+            (
+                draw_records,
+                &plan.clip_layers,
+                &plan.clip_stack_data,
+                clip_stack,
+                &plan.opacity_stack_data,
+                opacity_stack,
+                &plan.blend_layers,
+                &plan.blend_stack_data,
+                blend_stack,
+            ),
+        );
         self.fine(scene, target);
     }
 }

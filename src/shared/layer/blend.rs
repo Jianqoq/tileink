@@ -1,13 +1,43 @@
-use peniko::{BlendMode, Compose, Mix};
+use peniko::{
+    BlendMode, Compose, Mix,
+    kurbo::{Affine, BezPath},
+};
+
+use crate::shared::bounds::Bounds;
 
 #[derive(Clone, Debug)]
 pub struct Blend {
+    pub(crate) path: BezPath,
+    pub(crate) bounds: Bounds,
+    pub(crate) transform: Affine,
+    pub(crate) tolerance: f64,
     pub(crate) mode: BlendMode,
 }
 
 impl Blend {
     pub(crate) fn new(mix: Mix, compose: Compose) -> Self {
         Self {
+            path: BezPath::new(),
+            bounds: Bounds::new(0, 0, 0, 0),
+            transform: Affine::IDENTITY,
+            tolerance: 0.0,
+            mode: BlendMode::new(mix, compose),
+        }
+    }
+
+    pub(crate) fn with_geometry(
+        path: BezPath,
+        bounds: Bounds,
+        transform: Affine,
+        tolerance: f64,
+        mix: Mix,
+        compose: Compose,
+    ) -> Self {
+        Self {
+            path,
+            bounds,
+            transform,
+            tolerance,
             mode: BlendMode::new(mix, compose),
         }
     }

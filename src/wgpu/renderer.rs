@@ -214,7 +214,7 @@ impl Renderer {
             } => todo!(),
             Layer::Mask { mode: _ } => todo!(),
             Layer::Clip(_) | Layer::ClipSdf { .. } => todo!(),
-            Layer::Opacity { opacity: _ } | Layer::Blend { blend: _ } => todo!(),
+            Layer::Opacity(_) | Layer::Blend(_) => todo!(),
         }
     }
 

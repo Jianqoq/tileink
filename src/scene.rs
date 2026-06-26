@@ -10,7 +10,7 @@ use crate::shared::{
         ROOT_COMMAND_LIST_ID,
     },
     fill::FillRule,
-    layer::{Layer, LayerKind, clip::Clip},
+    layer::{Layer, LayerKind, blend::Blend, clip::Clip, opacity::Opacity},
     line::Line,
     path::PathRecord,
     path_flatten::PathFlatten,
@@ -169,6 +169,66 @@ impl Scene {
             .push(Command::Layer { layer, children });
         self.command_stack.push(children);
         self.layer_stack.push(LayerKind::Clip);
+    }
+
+    pub fn push_opacity_layer(
+        &mut self,
+        path: BezPath,
+        transform: Affine,
+        tolerance: f64,
+        opacity: f32,
+    ) {
+        self.ensure_command_root();
+        let bounds = transform.transform_rect_bbox(path.bounding_box());
+        let layer = Layer::Opacity(Opacity {
+            path,
+            bounds: Bounds {
+                x0: bounds.x0.floor() as i32,
+                y0: bounds.y0.floor() as i32,
+                x1: bounds.x1.ceil() as i32,
+                y1: bounds.y1.ceil() as i32,
+            },
+            transform,
+            tolerance,
+            opacity,
+        });
+        let children = self.command_lists.len();
+        self.command_lists.push(CommandList::default());
+        self.current_command_list_mut()
+            .commands
+            .push(Command::Layer { layer, children });
+        self.command_stack.push(children);
+        self.layer_stack.push(LayerKind::Opacity);
+    }
+
+    pub fn push_blend_layer(
+        &mut self,
+        path: BezPath,
+        transform: Affine,
+        tolerance: f64,
+        blend: Blend,
+    ) {
+        self.ensure_command_root();
+        let bounds = transform.transform_rect_bbox(path.bounding_box());
+        let layer = Layer::Blend(Blend {
+            path,
+            bounds: Bounds {
+                x0: bounds.x0.floor() as i32,
+                y0: bounds.y0.floor() as i32,
+                x1: bounds.x1.ceil() as i32,
+                y1: bounds.y1.ceil() as i32,
+            },
+            transform,
+            tolerance,
+            mode: blend.mode,
+        });
+        let children = self.command_lists.len();
+        self.command_lists.push(CommandList::default());
+        self.current_command_list_mut()
+            .commands
+            .push(Command::Layer { layer, children });
+        self.command_stack.push(children);
+        self.layer_stack.push(LayerKind::Blend);
     }
 
     pub fn pop_layer(&mut self) -> Option<LayerKind> {
@@ -413,8 +473,8 @@ impl Scene {
                                 );
                                 clip_stack.pop();
                             }
-                            Layer::Opacity { opacity } => {
-                                opacity_stack.push(*opacity);
+                            Layer::Opacity(opacity) => {
+                                opacity_stack.push(opacity.opacity);
                                 self.compile_into(
                                     *children,
                                     nodes,
@@ -425,9 +485,9 @@ impl Scene {
                                 );
                                 opacity_stack.pop();
                             }
-                            Layer::Blend { blend } => {
+                            Layer::Blend(blend) => {
                                 let blend_ix = plan.blend_layers.len() as u32;
-                                plan.blend_layers.push(blend.clone());
+                                plan.blend_layers.push(blend.mode);
                                 blend_stack.push(blend_ix);
                                 self.compile_into(
                                     *children,
@@ -475,7 +535,7 @@ impl Scene {
     fn can_fuse(layer: &Layer) -> bool {
         matches!(
             layer,
-            Layer::Clip(_) | Layer::ClipSdf { .. } | Layer::Opacity { .. } | Layer::Blend { .. }
+            Layer::Clip(_) | Layer::ClipSdf { .. } | Layer::Opacity(_) | Layer::Blend(_)
         )
     }
 }

@@ -3,6 +3,7 @@ pub(crate) mod blend;
 pub(crate) mod clip;
 pub(crate) mod filter;
 pub(crate) mod mask;
+pub(crate) mod opacity;
 
 use std::sync::Arc;
 
@@ -10,7 +11,10 @@ use usvg::{Transform, tiny_skia_path::IntRect};
 
 use crate::shared::{
     bounds::Bounds,
-    layer::{backdrop::BackdropRegion, blend::Blend, clip::Clip, filter::Filter, mask::MaskMode},
+    layer::{
+        backdrop::BackdropRegion, blend::Blend, clip::Clip, filter::Filter, mask::MaskMode,
+        opacity::Opacity,
+    },
     sdf::Sdf,
 };
 
@@ -21,12 +25,8 @@ pub enum Layer {
         sdf: Sdf,
         bounds: Bounds,
     },
-    Opacity {
-        opacity: f32,
-    },
-    Blend {
-        blend: Blend,
-    },
+    Opacity(Opacity),
+    Blend(Blend),
     Filter {
         filter: Filter,
     },
@@ -62,8 +62,8 @@ impl Layer {
         match self {
             Layer::Clip(_) => LayerKind::Clip,
             Layer::ClipSdf { .. } => LayerKind::ClipSdf,
-            Layer::Opacity { .. } => LayerKind::Opacity,
-            Layer::Blend { .. } => LayerKind::Blend,
+            Layer::Opacity(_) => LayerKind::Opacity,
+            Layer::Blend(_) => LayerKind::Blend,
             Layer::Filter { .. } => LayerKind::Filter,
             Layer::SvgFilter { .. } => LayerKind::SvgFilter,
             Layer::BackdropFilter { .. } => LayerKind::BackdropFilter,
