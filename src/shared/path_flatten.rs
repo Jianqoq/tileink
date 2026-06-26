@@ -29,13 +29,7 @@ impl<'a> PathFlatten<'a> {
                 PathEl::MoveTo(point) => {
                     if let (Some(start_pt), Some(end_pt)) = (contour_start, last) {
                         if is_open_contour_close(start_pt, end_pt) {
-                            push_line_segment(
-                                out,
-                                self.tile_cnt,
-                                self.path_id,
-                                end_pt,
-                                start_pt,
-                            );
+                            push_line_segment(out, self.tile_cnt, self.path_id, end_pt, start_pt);
                         }
                     }
                     contour_start = Some(*point);
@@ -43,13 +37,7 @@ impl<'a> PathFlatten<'a> {
                 }
                 PathEl::LineTo(point) => {
                     if let Some(p0) = last {
-                        push_line_segment(
-                            out,
-                            self.tile_cnt,
-                            self.path_id,
-                            p0,
-                            *point,
-                        );
+                        push_line_segment(out, self.tile_cnt, self.path_id, p0, *point);
                     }
                     last = Some(*point);
                 }
@@ -84,13 +72,7 @@ impl<'a> PathFlatten<'a> {
                 }
                 PathEl::ClosePath => {
                     if let (Some(end_pt), Some(start_pt)) = (last, contour_start) {
-                        push_line_segment(
-                            out,
-                            self.tile_cnt,
-                            self.path_id,
-                            end_pt,
-                            start_pt,
-                        );
+                        push_line_segment(out, self.tile_cnt, self.path_id, end_pt, start_pt);
                         last = Some(start_pt);
                     }
                 }
