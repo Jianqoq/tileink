@@ -5,7 +5,10 @@ use crate::shared::{
     bounds::{Bounds, PixelBounds},
     brush::Brush,
     draw_record::DrawRecord,
-    execution::{BatchState, Command, CommandList, CommandListId, ExecNode, ROOT_COMMAND_LIST_ID},
+    execution::{
+        BatchState, Command, CommandList, CommandListId, ExecNode, ExecPlan,
+        ROOT_COMMAND_LIST_ID,
+    },
     fill::FillRule,
     layer::{Layer, LayerKind, clip::Clip},
     line::Line,
@@ -293,9 +296,71 @@ impl Scene {
         }
     }
 
-    pub(crate) fn compile(&self, list_id: CommandListId) -> Vec<ExecNode> {
-        let mut nodes = Vec::new();
+    pub(crate) fn compile(&self, list_id: CommandListId) -> ExecPlan {
+        let mut plan = ExecPlan {
+            nodes: Vec::new(),
+            clip_layers: Vec::new(),
+            clip_stack_data: Vec::new(),
+            opacity_stack_data: Vec::new(),
+            blend_layers: Vec::new(),
+            blend_stack_data: Vec::new(),
+        };
+        let mut root_nodes = Vec::new();
+        let mut clip_stack = Vec::new();
+        let mut opacity_stack = Vec::new();
+        let mut blend_stack = Vec::new();
+        self.compile_into(
+            list_id,
+            &mut root_nodes,
+            &mut plan,
+            &mut clip_stack,
+            &mut opacity_stack,
+            &mut blend_stack,
+        );
+        plan.nodes = root_nodes;
+        plan
+    }
+
+    fn compile_into(
+        &self,
+        list_id: CommandListId,
+        nodes: &mut Vec<ExecNode>,
+        plan: &mut ExecPlan,
+        clip_stack: &mut Vec<u32>,
+        opacity_stack: &mut Vec<f32>,
+        blend_stack: &mut Vec<u32>,
+    ) {
         let mut pending_batch: Option<(usize, usize, BatchState)> = None;
+
+        let flush_batch = |pending_batch: &mut Option<(usize, usize, BatchState)>,
+                           nodes: &mut Vec<ExecNode>,
+                           plan: &mut ExecPlan,
+                           clip_stack: &[u32],
+                           opacity_stack: &[f32],
+                           blend_stack: &[u32]| {
+            let Some((start, end, batch_state)) = pending_batch.take() else {
+                return;
+            };
+            let clip_start = plan.clip_stack_data.len();
+            plan.clip_stack_data.extend_from_slice(clip_stack);
+            let clip_end = plan.clip_stack_data.len();
+
+            let opacity_start = plan.opacity_stack_data.len();
+            plan.opacity_stack_data.extend_from_slice(opacity_stack);
+            let opacity_end = plan.opacity_stack_data.len();
+
+            let blend_start = plan.blend_stack_data.len();
+            plan.blend_stack_data.extend_from_slice(blend_stack);
+            let blend_end = plan.blend_stack_data.len();
+
+            nodes.push(ExecNode::DrawBatch {
+                draws: start..end,
+                state: batch_state,
+                clip_stack: clip_start..clip_end,
+                opacity_stack: opacity_start..opacity_end,
+                blend_stack: blend_start..blend_end,
+            });
+        };
 
         for command in &self.command_lists[list_id].commands {
             match command {
@@ -305,14 +370,17 @@ impl Scene {
                         Some((start, end, batch_state))
                             if *end == *draw_ix && *batch_state == state =>
                         {
-                            let _ = start;
                             *end = *draw_ix + 1;
                         }
                         Some((start, end, batch_state)) => {
-                            nodes.push(ExecNode::DrawBatch {
-                                draws: *start..*end,
-                                state: *batch_state,
-                            });
+                            flush_batch(
+                                &mut pending_batch,
+                                nodes,
+                                plan,
+                                clip_stack,
+                                opacity_stack,
+                                blend_stack,
+                            );
                             pending_batch = Some((*draw_ix, *draw_ix + 1, state));
                         }
                         None => {
@@ -321,32 +389,87 @@ impl Scene {
                     }
                 }
                 Command::Layer { layer, children } => {
-                    if let Some((start, end, batch_state)) = pending_batch.take() {
-                        nodes.push(ExecNode::DrawBatch {
-                            draws: start..end,
-                            state: batch_state,
-                        });
-                    }
+                    flush_batch(
+                        &mut pending_batch,
+                        nodes,
+                        plan,
+                        clip_stack,
+                        opacity_stack,
+                        blend_stack,
+                    );
                     if Self::can_fuse(layer) {
-                        nodes.extend(self.compile(*children));
+                        match layer {
+                            Layer::Clip(_) | Layer::ClipSdf { .. } => {
+                                let clip_ix = plan.clip_layers.len() as u32;
+                                plan.clip_layers.push(layer.clone());
+                                clip_stack.push(clip_ix);
+                                self.compile_into(
+                                    *children,
+                                    nodes,
+                                    plan,
+                                    clip_stack,
+                                    opacity_stack,
+                                    blend_stack,
+                                );
+                                clip_stack.pop();
+                            }
+                            Layer::Opacity { opacity } => {
+                                opacity_stack.push(*opacity);
+                                self.compile_into(
+                                    *children,
+                                    nodes,
+                                    plan,
+                                    clip_stack,
+                                    opacity_stack,
+                                    blend_stack,
+                                );
+                                opacity_stack.pop();
+                            }
+                            Layer::Blend { blend } => {
+                                let blend_ix = plan.blend_layers.len() as u32;
+                                plan.blend_layers.push(blend.clone());
+                                blend_stack.push(blend_ix);
+                                self.compile_into(
+                                    *children,
+                                    nodes,
+                                    plan,
+                                    clip_stack,
+                                    opacity_stack,
+                                    blend_stack,
+                                );
+                                blend_stack.pop();
+                            }
+                            _ => unreachable!(),
+                        }
                     } else {
                         nodes.push(ExecNode::OffscreenLayer {
                             layer: layer.clone(),
-                            children: self.compile(*children),
+                            children: {
+                                let mut child_nodes = Vec::new();
+                                self.compile_into(
+                                    *children,
+                                    &mut child_nodes,
+                                    plan,
+                                    clip_stack,
+                                    opacity_stack,
+                                    blend_stack,
+                                );
+                                child_nodes
+                            },
                         });
                     }
                 }
             }
         }
 
-        if let Some((start, end, batch_state)) = pending_batch.take() {
-            nodes.push(ExecNode::DrawBatch {
-                draws: start..end,
-                state: batch_state,
-            });
-        }
-
-        nodes
+        flush_batch(
+            &mut pending_batch,
+            nodes,
+            plan,
+            clip_stack,
+            opacity_stack,
+            blend_stack,
+        );
     }
 
     fn can_fuse(layer: &Layer) -> bool {

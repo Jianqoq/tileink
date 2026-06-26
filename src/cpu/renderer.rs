@@ -56,13 +56,8 @@ impl Render for Renderer {
     }
 
     fn execute(&mut self, scene: &crate::scene::Scene, args: Self::ExecuteArgs<'_>) {
-        self.execute_plan(
-            scene,
-            &ExecPlan {
-                nodes: scene.compile(0),
-            },
-            args,
-        );
+        let plan = scene.compile(0);
+        self.execute_plan(scene, &plan, args);
     }
 
     fn scan(&mut self, scene: &crate::scene::Scene, _: Self::ScanArgs<'_>) {
@@ -148,7 +143,13 @@ impl Renderer {
     fn execute_plan(&mut self, scene: &crate::scene::Scene, plan: &ExecPlan, target: &mut Image) {
         for node in &plan.nodes {
             match node {
-                ExecNode::DrawBatch { draws, state: _ } => {
+                ExecNode::DrawBatch {
+                    draws,
+                    state: _,
+                    clip_stack: _,
+                    opacity_stack: _,
+                    blend_stack: _,
+                } => {
                     self.execute_draw_batch(scene, draws.start, draws.end, target);
                 }
                 ExecNode::OffscreenLayer { layer, children } => {

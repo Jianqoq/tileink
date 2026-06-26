@@ -165,9 +165,7 @@ impl Render for Renderer {
 
 impl Renderer {
     fn prepare_exec_plan(&self, scene: &crate::scene::Scene) -> ExecPlan {
-        ExecPlan {
-            nodes: scene.compile(ROOT_COMMAND_LIST_ID),
-        }
+        scene.compile(ROOT_COMMAND_LIST_ID)
     }
 
     fn execute_plan(
@@ -179,7 +177,13 @@ impl Renderer {
     ) {
         for node in &plan.nodes {
             match node {
-                ExecNode::DrawBatch { draws, state: _ } => {
+                ExecNode::DrawBatch {
+                    draws,
+                    state: _,
+                    clip_stack: _,
+                    opacity_stack: _,
+                    blend_stack: _,
+                } => {
                     self.execute_draw_batch(scene, draws.start, draws.end, encoder, target);
                 }
                 ExecNode::OffscreenLayer { layer, children } => {
