@@ -107,7 +107,6 @@ impl Render for Renderer {
         self.scan
             .prepare(
                 &scene.lines,
-                &scene.path_records,
                 &scene.draw_records,
                 &scene.bd_records,
                 &mut self.backdrops,

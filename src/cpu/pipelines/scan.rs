@@ -6,7 +6,7 @@ use crate::{
     TILE_SCALE, TILE_SIZE,
     shared::{
         bd_record::BackdropRecord, bounds::TileBbox, draw_record::DrawRecord, line::Line,
-        line_seg::LineSegment, path::PathRecord, pixel::TileMask, tile_seg_range::TileSegmentRange,
+        line_seg::LineSegment, pixel::TileMask, tile_seg_range::TileSegmentRange,
     },
 };
 
@@ -15,7 +15,6 @@ pub struct ScanCpuPipeline {}
 
 pub struct ScanCpuPrepared<'a> {
     lines: &'a [Line],
-    path_records: &'a [PathRecord],
     draw_records: &'a [DrawRecord],
     backdrop_records: &'a [BackdropRecord],
     backdrops: &'a mut Vec<i32>, // [path_id][tile_y][tile_x]
@@ -89,7 +88,6 @@ impl<'a> ScanCpuPrepared<'a> {
                         plan.imax - plan.imin,
                         plan.a,
                         plan.b,
-                        line.path_id,
                         global_ix as u32,
                     );
                     let segment_idx = backdrop_record.segment_start
@@ -212,8 +210,6 @@ impl<'a> ScanCpuPrepared<'a> {
     }
 
     fn fill_segment_coverages(segment: &mut LineSegment) {
-        segment.edges = TileMask::new();
-
         let dx = segment.point1.0 - segment.point0.0;
         let dy = segment.point1.1 - segment.point0.1;
         let steps = dx.abs().max(dy.abs()).ceil() as usize;
@@ -262,7 +258,6 @@ impl ScanCpuPipeline {
     pub fn prepare<'a>(
         &self,
         lines: &'a [Line],
-        path_records: &'a [PathRecord],
         draw_records: &'a [DrawRecord],
         backdrop_records: &'a [BackdropRecord],
         backdrops: &'a mut Vec<i32>,
@@ -276,7 +271,6 @@ impl ScanCpuPipeline {
     ) -> ScanCpuPrepared<'a> {
         ScanCpuPrepared {
             lines,
-            path_records,
             draw_records,
             backdrop_records,
             tiles_size,
@@ -433,7 +427,6 @@ fn clip_line_to_tile(
     seg_count: u32,
     a: f32,
     b: f32,
-    path_id: u32,
     tile_id: u32,
 ) -> LineSegment {
     let (mut xy0, mut xy1) = line;
@@ -521,7 +514,6 @@ fn clip_line_to_tile(
         point0: p0,
         point1: p1,
         y_edge,
-        path_id,
         tile_id,
         edges: TileMask::new(),
     }
@@ -613,12 +605,6 @@ mod tests {
             p0: [-4.0, 0.0],
             p1: [-4.0, 16.0],
         }];
-        let path_records = [PathRecord {
-            path_id: 0,
-            line_count: 1,
-            line_start: 0,
-            _pad: 0,
-        }];
         let draw_records = [one_tile_draw_record()];
         let backdrop_records = [one_tile_backdrop_record(1)];
         let mut backdrops = vec![0];
@@ -641,7 +627,6 @@ mod tests {
         ScanCpuPipeline::new()
             .prepare(
                 &lines,
-                &path_records,
                 &draw_records,
                 &backdrop_records,
                 &mut backdrops,
@@ -667,12 +652,6 @@ mod tests {
             p0: [4.0, 0.0],
             p1: [4.0, 16.0],
         }];
-        let path_records = [PathRecord {
-            path_id: 0,
-            line_count: 1,
-            line_start: 0,
-            _pad: 0,
-        }];
         let draw_records = [one_tile_draw_record()];
         let backdrop_records = [one_tile_backdrop_record(1)];
         let mut backdrops = vec![0];
@@ -695,7 +674,6 @@ mod tests {
         ScanCpuPipeline::new()
             .prepare(
                 &lines,
-                &path_records,
                 &draw_records,
                 &backdrop_records,
                 &mut backdrops,
@@ -715,7 +693,6 @@ mod tests {
             tile_segment_ranges[0],
             TileSegmentRange { start: 0, end: 1 }
         );
-        assert_eq!(segments[0].path_id, 0);
         assert_eq!(segments[0].tile_id, 0);
         assert!((segments[0].point0.0 - 4.0).abs() < 1e-3);
         assert!((segments[0].point1.0 - 4.0).abs() < 1e-3);
@@ -740,12 +717,6 @@ mod tests {
                 p1: [4.0, 16.0],
             },
         ];
-        let path_records = [PathRecord {
-            path_id: 0,
-            line_count: 2,
-            line_start: 0,
-            _pad: 0,
-        }];
         let draw_records = [DrawRecord {
             path_id: Some(0),
             tag: DrawTag::Brush,
@@ -792,7 +763,6 @@ mod tests {
         ScanCpuPipeline::new()
             .prepare(
                 &lines,
-                &path_records,
                 &draw_records,
                 &backdrop_records,
                 &mut backdrops,
