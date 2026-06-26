@@ -180,9 +180,7 @@ impl Renderer {
                 ExecNode::DrawBatch {
                     draws,
                     state: _,
-                    clip_stack: _,
-                    opacity_stack: _,
-                    blend_stack: _,
+                    fused_layers: _,
                 } => {
                     self.execute_draw_batch(scene, draws.start, draws.end, encoder, target);
                 }

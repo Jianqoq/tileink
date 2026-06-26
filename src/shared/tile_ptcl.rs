@@ -30,8 +30,8 @@ pub enum TilePtcl {
     Color(TileColorPtcl),
     BeginClip(TileFillPtcl),
     EndClip,
-    BeginOpacity { opacity: u8 },
+    BeginOpacity { opacity: u8, fill: TileFillPtcl },
     EndOpacity,
-    BeginBlend { mode: BlendMode },
+    BeginBlend { mode: BlendMode, fill: TileFillPtcl },
     EndBlend,
 }

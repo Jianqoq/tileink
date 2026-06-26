@@ -15,6 +15,7 @@ pub(crate) struct CommandList {
 pub(crate) enum Command {
     Draw(usize),
     Layer {
+        draw: usize,
         layer: Layer,
         children: CommandListId,
     },
@@ -27,44 +28,45 @@ pub(crate) struct BatchState {
     pub opacity_depth: u8,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum FusedLayerEntry {
+    Clip { draw_ix: u32 },
+    Opacity { draw_ix: u32, opacity: f32 },
+    Blend { draw_ix: u32, mode: BlendMode },
+}
+
+impl FusedLayerEntry {
+    pub fn draw_ix(self) -> u32 {
+        match self {
+            Self::Clip { draw_ix }
+            | Self::Opacity { draw_ix, .. }
+            | Self::Blend { draw_ix, .. } => draw_ix,
+        }
+    }
+}
+
 /// Flattened execution plan for one command list.
 ///
-/// `clip_stack_data`, `opacity_stack_data`, and `blend_stack_data` are stack
-/// snapshots referenced by `ExecNode::DrawBatch`. These are not coverage
-/// bounds. They only describe which fused layers are active for a batch.
+/// `fused_layers` stores ordered stack snapshots referenced by
+/// `ExecNode::DrawBatch`. These are not coverage bounds. They only describe
+/// which fused layers are active for a batch and in which nesting order.
 ///
 /// Semantically, clip / opacity / blend should also carry their own raster
 /// ranges or bounds so execution can restrict work to the layer's coverage
 /// instead of implicitly treating the layer state as full-screen.
 pub(crate) struct ExecPlan {
     pub nodes: Vec<ExecNode>,
-    /// Unique clip-layer payloads shared by batch-local clip stack slices.
-    pub clip_layers: Vec<Layer>,
-    /// Batch-local clip stack snapshots. Entries index into `clip_layers`.
-    pub clip_stack_data: Vec<u32>,
-    /// Batch-local opacity stack snapshots.
-    pub opacity_stack_data: Vec<f32>,
-    /// Unique blend modes shared by batch-local blend stack slices.
-    pub blend_layers: Vec<BlendMode>,
-    /// Batch-local blend stack snapshots. Entries index into `blend_layers`.
-    pub blend_stack_data: Vec<u32>,
+    /// Batch-local fused layer snapshots in user nesting order.
+    pub fused_layers: Vec<FusedLayerEntry>,
 }
 
 pub(crate) enum ExecNode {
     DrawBatch {
         draws: Range<usize>,
         state: BatchState,
-        /// Active clip stack for this batch. This is stack state, not clip
-        /// coverage. A later plan revision should pair clip state with its own
-        /// tile/pixel range.
-        clip_stack: Range<usize>,
-        /// Active opacity stack for this batch. This does not mean opacity
-        /// applies to the whole target; opacity should eventually carry its own
-        /// coverage range as well.
-        opacity_stack: Range<usize>,
-        /// Active blend stack for this batch. Like opacity/clip, this is only
-        /// state and should eventually be paired with layer-local coverage.
-        blend_stack: Range<usize>,
+        /// Active fused layer stack for this batch in nesting order. This is
+        /// stack state, not coverage.
+        fused_layers: Range<usize>,
     },
     OffscreenLayer {
         layer: Layer,

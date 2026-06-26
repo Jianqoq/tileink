@@ -1,12 +1,15 @@
-use peniko::kurbo::{Affine, BezPath, Shape};
+use peniko::{
+    Color,
+    kurbo::{Affine, BezPath, Shape},
+};
 
 use crate::shared::{
     bd_record::BackdropRecord,
     bounds::{Bounds, PixelBounds},
     brush::Brush,
-    draw_record::DrawRecord,
+    draw_record::{DrawRecord, DrawTag},
     execution::{
-        BatchState, Command, CommandList, CommandListId, ExecNode, ExecPlan,
+        BatchState, Command, CommandList, CommandListId, ExecNode, ExecPlan, FusedLayerEntry,
         ROOT_COMMAND_LIST_ID,
     },
     fill::FillRule,
@@ -141,7 +144,12 @@ impl Scene {
     fn remap_command(command: Command, draw_offset: usize, child_list_offset: usize) -> Command {
         match command {
             Command::Draw(draw_ix) => Command::Draw(draw_ix + draw_offset),
-            Command::Layer { layer, children } => Command::Layer {
+            Command::Layer {
+                draw,
+                layer,
+                children,
+            } => Command::Layer {
+                draw: draw + draw_offset,
                 layer,
                 children: children + child_list_offset,
             },
@@ -151,6 +159,19 @@ impl Scene {
     pub fn push_clip_layer(&mut self, path: BezPath, transform: Affine, tolerance: f64) {
         self.ensure_command_root();
         let bounds = transform.transform_rect_bbox(path.bounding_box());
+        let draw = self.push_layer_path(
+            DrawTag::Clip,
+            path.clone(),
+            transform,
+            FillRule::NonZero,
+            tolerance,
+            Bounds {
+                x0: bounds.x0.floor() as i32,
+                y0: bounds.y0.floor() as i32,
+                x1: bounds.x1.ceil() as i32,
+                y1: bounds.y1.ceil() as i32,
+            },
+        );
         let layer = Layer::Clip(Clip {
             path,
             bounds: Bounds {
@@ -166,7 +187,11 @@ impl Scene {
         self.command_lists.push(CommandList::default());
         self.current_command_list_mut()
             .commands
-            .push(Command::Layer { layer, children });
+            .push(Command::Layer {
+                draw,
+                layer,
+                children,
+            });
         self.command_stack.push(children);
         self.layer_stack.push(LayerKind::Clip);
     }
@@ -180,6 +205,19 @@ impl Scene {
     ) {
         self.ensure_command_root();
         let bounds = transform.transform_rect_bbox(path.bounding_box());
+        let draw = self.push_layer_path(
+            DrawTag::Opacity,
+            path.clone(),
+            transform,
+            FillRule::NonZero,
+            tolerance,
+            Bounds {
+                x0: bounds.x0.floor() as i32,
+                y0: bounds.y0.floor() as i32,
+                x1: bounds.x1.ceil() as i32,
+                y1: bounds.y1.ceil() as i32,
+            },
+        );
         let layer = Layer::Opacity(Opacity {
             path,
             bounds: Bounds {
@@ -196,7 +234,11 @@ impl Scene {
         self.command_lists.push(CommandList::default());
         self.current_command_list_mut()
             .commands
-            .push(Command::Layer { layer, children });
+            .push(Command::Layer {
+                draw,
+                layer,
+                children,
+            });
         self.command_stack.push(children);
         self.layer_stack.push(LayerKind::Opacity);
     }
@@ -210,6 +252,19 @@ impl Scene {
     ) {
         self.ensure_command_root();
         let bounds = transform.transform_rect_bbox(path.bounding_box());
+        let draw = self.push_layer_path(
+            DrawTag::Blend,
+            path.clone(),
+            transform,
+            FillRule::NonZero,
+            tolerance,
+            Bounds {
+                x0: bounds.x0.floor() as i32,
+                y0: bounds.y0.floor() as i32,
+                x1: bounds.x1.ceil() as i32,
+                y1: bounds.y1.ceil() as i32,
+            },
+        );
         let layer = Layer::Blend(Blend {
             path,
             bounds: Bounds {
@@ -226,7 +281,11 @@ impl Scene {
         self.command_lists.push(CommandList::default());
         self.current_command_list_mut()
             .commands
-            .push(Command::Layer { layer, children });
+            .push(Command::Layer {
+                draw,
+                layer,
+                children,
+            });
         self.command_stack.push(children);
         self.layer_stack.push(LayerKind::Blend);
     }
@@ -285,6 +344,7 @@ impl Scene {
         let draw_ix = self.draw_records.len();
         self.draw_records.push(DrawRecord {
             path_id: Some(path_id),
+            tag: DrawTag::Brush,
             brush: brush.into(),
             fill_rule: rule,
             pixel_bounds,
@@ -323,6 +383,85 @@ impl Scene {
         });
     }
 
+    fn push_layer_path(
+        &mut self,
+        tag: DrawTag,
+        path: BezPath,
+        transform: Affine,
+        rule: FillRule,
+        tolerance: f64,
+        bounds: Bounds,
+    ) -> usize {
+        let line_start = self.lines.len() as u32;
+        let path_id = self.path_cnt;
+        self.path_cnt += 1;
+        let mut local_tile_cnt = 0;
+        PathFlatten::new(&path, tolerance as f32, path_id, &mut local_tile_cnt)
+            .flatten(&mut self.lines);
+        let line_count = self.lines.len() as u32 - line_start;
+        self.path_records.push(PathRecord {
+            path_id,
+            line_count,
+            line_start,
+            _pad: 0,
+        });
+
+        let pixel_bounds = PixelBounds {
+            x0: bounds.x0,
+            y0: bounds.y0,
+            x1: bounds.x1,
+            y1: bounds.y1,
+        };
+        let tile_bbox = pixel_bounds.tile_bbox(self.width_in_tiles(), self.height_in_tiles());
+        let tile_stride = tile_bbox.tile_stride();
+        let tile_height = tile_bbox.tile_height();
+        let backdrop_len = tile_stride * tile_height;
+
+        let backdrop_offset = self.backdrop_pool_capacity;
+        self.backdrop_pool_capacity += backdrop_len;
+        let segment_start = self.tile_cnt;
+        self.tile_cnt += local_tile_cnt;
+
+        let draw_ix = self.draw_records.len();
+        self.draw_records.push(DrawRecord {
+            path_id: Some(path_id),
+            tag,
+            brush: Brush::Solid(Color::TRANSPARENT),
+            fill_rule: rule,
+            pixel_bounds,
+            solid_rect: false,
+            opacity_depth: self
+                .layer_stack
+                .iter()
+                .filter(|&&kind| kind == LayerKind::Opacity)
+                .count() as u8,
+            blend_depth: self
+                .layer_stack
+                .iter()
+                .filter(|&&kind| kind == LayerKind::Blend)
+                .count() as u8,
+            clip_depth: self
+                .layer_stack
+                .iter()
+                .filter(|&&kind| kind == LayerKind::Clip)
+                .count() as u8,
+            allow_solid_override: false,
+        });
+        self.bd_records.push(BackdropRecord {
+            path_id,
+            data_offset: backdrop_offset,
+            data_len: backdrop_len,
+            tile_x0: tile_bbox.x0,
+            tile_y0: tile_bbox.y0,
+            tile_x1: tile_bbox.x1,
+            tile_y1: tile_bbox.y1,
+            segment_start,
+            segment_capacity: local_tile_cnt,
+            segment_count: 0,
+        });
+        draw_ix
+    }
+
     pub fn reset(&mut self) {
         self.lines.clear();
         self.path_records.clear();
@@ -359,23 +498,15 @@ impl Scene {
     pub(crate) fn compile(&self, list_id: CommandListId) -> ExecPlan {
         let mut plan = ExecPlan {
             nodes: Vec::new(),
-            clip_layers: Vec::new(),
-            clip_stack_data: Vec::new(),
-            opacity_stack_data: Vec::new(),
-            blend_layers: Vec::new(),
-            blend_stack_data: Vec::new(),
+            fused_layers: Vec::new(),
         };
         let mut root_nodes = Vec::new();
-        let mut clip_stack = Vec::new();
-        let mut opacity_stack = Vec::new();
-        let mut blend_stack = Vec::new();
+        let mut fused_stack = Vec::new();
         self.compile_into(
             list_id,
             &mut root_nodes,
             &mut plan,
-            &mut clip_stack,
-            &mut opacity_stack,
-            &mut blend_stack,
+            &mut fused_stack,
         );
         plan.nodes = root_nodes;
         plan
@@ -386,39 +517,25 @@ impl Scene {
         list_id: CommandListId,
         nodes: &mut Vec<ExecNode>,
         plan: &mut ExecPlan,
-        clip_stack: &mut Vec<u32>,
-        opacity_stack: &mut Vec<f32>,
-        blend_stack: &mut Vec<u32>,
+        fused_stack: &mut Vec<FusedLayerEntry>,
     ) {
         let mut pending_batch: Option<(usize, usize, BatchState)> = None;
 
         let flush_batch = |pending_batch: &mut Option<(usize, usize, BatchState)>,
                            nodes: &mut Vec<ExecNode>,
                            plan: &mut ExecPlan,
-                           clip_stack: &[u32],
-                           opacity_stack: &[f32],
-                           blend_stack: &[u32]| {
+                           fused_stack: &[FusedLayerEntry]| {
             let Some((start, end, batch_state)) = pending_batch.take() else {
                 return;
             };
-            let clip_start = plan.clip_stack_data.len();
-            plan.clip_stack_data.extend_from_slice(clip_stack);
-            let clip_end = plan.clip_stack_data.len();
-
-            let opacity_start = plan.opacity_stack_data.len();
-            plan.opacity_stack_data.extend_from_slice(opacity_stack);
-            let opacity_end = plan.opacity_stack_data.len();
-
-            let blend_start = plan.blend_stack_data.len();
-            plan.blend_stack_data.extend_from_slice(blend_stack);
-            let blend_end = plan.blend_stack_data.len();
+            let fused_start = plan.fused_layers.len();
+            plan.fused_layers.extend_from_slice(fused_stack);
+            let fused_end = plan.fused_layers.len();
 
             nodes.push(ExecNode::DrawBatch {
                 draws: start..end,
                 state: batch_state,
-                clip_stack: clip_start..clip_end,
-                opacity_stack: opacity_start..opacity_end,
-                blend_stack: blend_start..blend_end,
+                fused_layers: fused_start..fused_end,
             });
         };
 
@@ -432,14 +549,12 @@ impl Scene {
                         {
                             *end = *draw_ix + 1;
                         }
-                        Some((start, end, batch_state)) => {
+                        Some(_) => {
                             flush_batch(
                                 &mut pending_batch,
                                 nodes,
                                 plan,
-                                clip_stack,
-                                opacity_stack,
-                                blend_stack,
+                                fused_stack,
                             );
                             pending_batch = Some((*draw_ix, *draw_ix + 1, state));
                         }
@@ -448,56 +563,41 @@ impl Scene {
                         }
                     }
                 }
-                Command::Layer { layer, children } => {
+                Command::Layer {
+                    draw,
+                    layer,
+                    children,
+                } => {
                     flush_batch(
                         &mut pending_batch,
                         nodes,
                         plan,
-                        clip_stack,
-                        opacity_stack,
-                        blend_stack,
+                        fused_stack,
                     );
                     if Self::can_fuse(layer) {
                         match layer {
                             Layer::Clip(_) | Layer::ClipSdf { .. } => {
-                                let clip_ix = plan.clip_layers.len() as u32;
-                                plan.clip_layers.push(layer.clone());
-                                clip_stack.push(clip_ix);
-                                self.compile_into(
-                                    *children,
-                                    nodes,
-                                    plan,
-                                    clip_stack,
-                                    opacity_stack,
-                                    blend_stack,
-                                );
-                                clip_stack.pop();
+                                fused_stack.push(FusedLayerEntry::Clip {
+                                    draw_ix: *draw as u32,
+                                });
+                                self.compile_into(*children, nodes, plan, fused_stack);
+                                fused_stack.pop();
                             }
                             Layer::Opacity(opacity) => {
-                                opacity_stack.push(opacity.opacity);
-                                self.compile_into(
-                                    *children,
-                                    nodes,
-                                    plan,
-                                    clip_stack,
-                                    opacity_stack,
-                                    blend_stack,
-                                );
-                                opacity_stack.pop();
+                                fused_stack.push(FusedLayerEntry::Opacity {
+                                    draw_ix: *draw as u32,
+                                    opacity: opacity.opacity,
+                                });
+                                self.compile_into(*children, nodes, plan, fused_stack);
+                                fused_stack.pop();
                             }
                             Layer::Blend(blend) => {
-                                let blend_ix = plan.blend_layers.len() as u32;
-                                plan.blend_layers.push(blend.mode);
-                                blend_stack.push(blend_ix);
-                                self.compile_into(
-                                    *children,
-                                    nodes,
-                                    plan,
-                                    clip_stack,
-                                    opacity_stack,
-                                    blend_stack,
-                                );
-                                blend_stack.pop();
+                                fused_stack.push(FusedLayerEntry::Blend {
+                                    draw_ix: *draw as u32,
+                                    mode: blend.mode,
+                                });
+                                self.compile_into(*children, nodes, plan, fused_stack);
+                                fused_stack.pop();
                             }
                             _ => unreachable!(),
                         }
@@ -510,9 +610,7 @@ impl Scene {
                                     *children,
                                     &mut child_nodes,
                                     plan,
-                                    clip_stack,
-                                    opacity_stack,
-                                    blend_stack,
+                                    fused_stack,
                                 );
                                 child_nodes
                             },
@@ -526,9 +624,7 @@ impl Scene {
             &mut pending_batch,
             nodes,
             plan,
-            clip_stack,
-            opacity_stack,
-            blend_stack,
+            fused_stack,
         );
     }
 

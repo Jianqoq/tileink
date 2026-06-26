@@ -3,11 +3,20 @@ use crate::{
     shared::{bounds::{Bounds, PixelBounds, TileBbox}, brush::Brush, fill::FillRule, sdf::Sdf},
 };
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DrawTag {
+    Brush,
+    Clip,
+    Opacity,
+    Blend,
+}
+
 /// One drawable path in document order (coarse iterates this list per tile).
 #[derive(Clone, Debug)]
 pub struct DrawRecord {
     /// Path index in [`Scene`](crate::gpu::scene::Scene), or `None` for non-path draws.
     pub path_id: Option<u32>,
+    pub tag: DrawTag,
     pub brush: Brush,
     pub fill_rule: FillRule,
     pub pixel_bounds: PixelBounds,
