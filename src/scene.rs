@@ -347,7 +347,7 @@ impl Scene {
             outline,
             brush,
             transform,
-            FillRule::NonZero,
+            FillRule::EvenOdd,
             tolerance,
             None,
         );
@@ -938,7 +938,7 @@ mod tests {
         assert!(bounds.y0 <= 8);
         assert!(bounds.x1 >= 22);
         assert!(bounds.y1 >= 22);
-        assert_eq!(scene.draw_records[0].fill_rule, FillRule::NonZero);
+        assert_eq!(scene.draw_records[0].fill_rule, FillRule::EvenOdd);
         assert!(!scene.draw_records[0].solid_rect);
     }
 
