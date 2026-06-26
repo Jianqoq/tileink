@@ -8,54 +8,6 @@ use crate::shared::{
     pixel::{pack_premul_rgba8, src_over, unpack_premul_rgba8},
 };
 
-/// Static liquid-glass appearance inspired by `liquid-glass-react`.
-///
-/// The effect combines a frosted backdrop, edge-only refraction, chromatic
-/// aberration, deterministic multi-sample scattering, a subtle tint, and
-/// directional rim lighting.
-#[derive(Clone, Copy, Debug)]
-pub struct LiquidGlass {
-    pub blur_radius: f32,
-    pub saturation: f32,
-    pub displacement_scale: f32,
-    pub aberration_intensity: f32,
-    pub edge_width: f32,
-    /// Maximum disk radius, in pixels, used to scatter refracted backdrop samples.
-    pub scatter_radius: f32,
-    /// Blend amount between the refracted sample and the scattered average.
-    pub scatter_strength: f32,
-    /// Number of deterministic disk samples. Values above 16 are clamped.
-    pub scatter_samples: u32,
-    /// Surface roughness multiplier applied to `scatter_radius`.
-    pub roughness: f32,
-    pub tint: Color,
-    pub tint_strength: f32,
-    pub highlight_strength: f32,
-    pub shadow_strength: f32,
-    pub light_direction: [f32; 2],
-}
-
-impl Default for LiquidGlass {
-    fn default() -> Self {
-        Self {
-            blur_radius: 6.0,
-            saturation: 1.4,
-            displacement_scale: 12.0,
-            aberration_intensity: 2.0,
-            edge_width: 18.0,
-            scatter_radius: 3.0,
-            scatter_strength: 0.28,
-            scatter_samples: 8,
-            roughness: 0.75,
-            tint: Color::from_rgb8(220, 238, 255),
-            tint_strength: 0.07,
-            highlight_strength: 0.36,
-            shadow_strength: 0.12,
-            light_direction: [-0.65, -0.76],
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub enum Filter {
     Blur(f32),
@@ -73,7 +25,6 @@ pub enum Filter {
         radius: f32,
         brush: Brush,
     },
-    LiquidGlass(LiquidGlass),
 }
 
 impl Filter {
@@ -159,17 +110,6 @@ impl Filter {
                 radius,
                 brush,
             } => apply_drop_shadow(image, *offset_x, *offset_y, *radius, brush),
-            Filter::LiquidGlass(glass) => {
-                blur(image, glass.blur_radius);
-                apply_saturation(image, glass.saturation);
-            }
-        }
-    }
-
-    pub(crate) fn apply_backdrop(&self, image: &mut Image, region: &BackdropRegion, mask: &Image) {
-        match self {
-            Filter::LiquidGlass(glass) => apply_liquid_glass(image, region, mask, *glass),
-            _ => self.apply(image),
         }
     }
 }
@@ -253,139 +193,6 @@ fn apply_saturation(image: &mut Image, amount: f32) {
             alpha,
         )
     });
-}
-
-pub(crate) fn apply_liquid_glass(
-    image: &mut Image,
-    region: &BackdropRegion,
-    mask: &Image,
-    glass: LiquidGlass,
-) {
-    blur(image, glass.blur_radius);
-    apply_saturation(image, glass.saturation);
-    let frosted = image.clone();
-
-    let BackdropRegion::Rect { rect, radius } = region else {
-        return;
-    };
-    let shape = crate::shared::sdf::rect::Rect {
-        start: kurbo::Point::new(rect.x0, rect.y0),
-        end: kurbo::Point::new(rect.x1, rect.y1),
-        radius: *radius,
-    };
-    let tint = glass.tint.to_rgba8();
-    let tint_rgb = [
-        tint.r as f32 / 255.0,
-        tint.g as f32 / 255.0,
-        tint.b as f32 / 255.0,
-    ];
-    let light = normalize(glass.light_direction);
-    let edge_width = glass.edge_width.max(1.0);
-    let width = image.width;
-    let height = image.height;
-
-    for y in 0..height {
-        for x in 0..width {
-            let ix = (y * width + x) as usize;
-            let coverage = unpack_premul_rgba8(mask.pixels[ix])[3];
-            if coverage <= 0.0 {
-                continue;
-            }
-
-            let px = x as f64 + 0.5;
-            let py = y as f64 + 0.5;
-            let distance = shape.distance(px, py) as f32;
-            let inward = (-distance).max(0.0);
-            let edge = 1.0 - smoothstep(0.0, edge_width, inward);
-            let edge = edge * edge;
-
-            let dx = (shape.distance(px + 0.5, py) - shape.distance(px - 0.5, py)) as f32;
-            let dy = (shape.distance(px, py + 0.5) - shape.distance(px, py - 0.5)) as f32;
-            let normal = normalize([dx, dy]);
-            let bend = glass.displacement_scale.max(0.0) * edge;
-            let aberration = glass.aberration_intensity.max(0.0);
-            let red_pos = [px as f32 - normal[0] * bend, py as f32 - normal[1] * bend];
-            let green_pos = [
-                px as f32 - normal[0] * bend * (1.0 - aberration * 0.05),
-                py as f32 - normal[1] * bend * (1.0 - aberration * 0.05),
-            ];
-            let blue_pos = [
-                px as f32 - normal[0] * bend * (1.0 - aberration * 0.10),
-                py as f32 - normal[1] * bend * (1.0 - aberration * 0.10),
-            ];
-            let red = sample_bilinear(&frosted, red_pos[0], red_pos[1]);
-            let green = sample_bilinear(&frosted, green_pos[0], green_pos[1]);
-            let blue = sample_bilinear(&frosted, blue_pos[0], blue_pos[1]);
-
-            let scatter_strength = glass.scatter_strength.clamp(0.0, 1.0) * (0.35 + 0.65 * edge);
-            let scatter_radius = glass.scatter_radius.max(0.0)
-                * glass.roughness.clamp(0.0, 1.0)
-                * (0.55 + 0.45 * edge);
-            let scattered =
-                if scatter_strength > 0.0 && scatter_radius > 0.0 && glass.scatter_samples > 0 {
-                    let scattered_red = sample_scattered(
-                        &frosted,
-                        red_pos[0],
-                        red_pos[1],
-                        scatter_radius,
-                        glass.scatter_samples,
-                    );
-                    let scattered_green = sample_scattered(
-                        &frosted,
-                        green_pos[0],
-                        green_pos[1],
-                        scatter_radius,
-                        glass.scatter_samples,
-                    );
-                    let scattered_blue = sample_scattered(
-                        &frosted,
-                        blue_pos[0],
-                        blue_pos[1],
-                        scatter_radius,
-                        glass.scatter_samples,
-                    );
-                    Some([
-                        scattered_red[0],
-                        scattered_green[1],
-                        scattered_blue[2],
-                        (scattered_red[3] + scattered_green[3] + scattered_blue[3]) / 3.0,
-                    ])
-                } else {
-                    None
-                };
-
-            let mut base = unpack_premul_rgba8(image.pixels[ix]);
-            let refracted = [
-                red[0],
-                green[1],
-                blue[2],
-                (red[3] + green[3] + blue[3]) / 3.0,
-            ];
-            for channel in 0..4 {
-                base[channel] = mix(base[channel], refracted[channel], edge);
-            }
-            if let Some(scattered) = scattered {
-                for channel in 0..4 {
-                    base[channel] = mix(base[channel], scattered[channel], scatter_strength);
-                }
-            }
-
-            let alpha = base[3];
-            let tint_amount = glass.tint_strength.clamp(0.0, 1.0) * (tint.a as f32 / 255.0);
-            for channel in 0..3 {
-                base[channel] = mix(base[channel], tint_rgb[channel] * alpha, tint_amount);
-            }
-
-            let facing_light = (normal[0] * light[0] + normal[1] * light[1]).clamp(-1.0, 1.0);
-            let highlight =
-                facing_light.max(0.0).powi(3) * edge * glass.highlight_strength.max(0.0);
-            let shadow = (-facing_light).max(0.0).powi(2) * edge * glass.shadow_strength.max(0.0);
-            for channel in 0..3 {
-                base[channel] = (base[channel] + highlight * alpha) * (1.0 - shadow);
-            }
-            image.pixels[ix] = pack_premul_rgba8(base);
-        }
-    }
 }
 
 const SCATTER_DISK: [[f32; 2]; 16] = [
