@@ -4,4 +4,3 @@ pub(crate) mod coarse;
 pub(crate) mod cumsum;
 pub(crate) mod fine;
 pub(crate) mod scan;
-pub(crate) mod filter;
