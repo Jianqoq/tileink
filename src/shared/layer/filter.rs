@@ -4,7 +4,7 @@ use crate::shared::{
     bounds::Bounds,
     brush::Brush,
     image::Image,
-    layer::{region::Region, blend::Blend, mask::MaskMode},
+    layer::{blend::Blend, mask::MaskMode, region::Region},
     pixel::{pack_premul_rgba8, src_over, unpack_premul_rgba8},
 };
 

@@ -1,12 +1,12 @@
 use crate::{
+    TILE_SIZE,
     shared::{
-        brush::Brush,
         bounds::Bounds,
+        brush::Brush,
         fill::FillRule,
         line_seg::LineSegment,
         pixel::{MASK_OPAQUE, SegmentMask, TileMask, scale_premul_u8, src_over_premul_u8},
     },
-    TILE_SIZE,
 };
 
 #[inline]
@@ -220,7 +220,16 @@ pub(crate) fn composite_color_tile(
     tile_y: u32,
     color: u32,
 ) {
-    composite_color_tile_into(image, image_width, image_height, 0, 0, tile_x, tile_y, color);
+    composite_color_tile_into(
+        image,
+        image_width,
+        image_height,
+        0,
+        0,
+        tile_x,
+        tile_y,
+        color,
+    );
 }
 
 pub(crate) fn composite_color_tile_into(
@@ -239,7 +248,12 @@ pub(crate) fn composite_color_tile_into(
         origin_x.saturating_add_unsigned(image_width) as u32,
         origin_y.saturating_add_unsigned(image_height) as u32,
     );
-    let target = Bounds::new(origin_x, origin_y, origin_x + image_width as i32, origin_y + image_height as i32);
+    let target = Bounds::new(
+        origin_x,
+        origin_y,
+        origin_x + image_width as i32,
+        origin_y + image_height as i32,
+    );
     let bounds = global_tile.intersect(target);
     if bounds.is_empty() {
         return;
@@ -270,10 +284,7 @@ pub(crate) fn composite_color_tile_into(
 #[cfg(test)]
 mod tests {
     use super::pixel_coverage;
-    use crate::shared::{
-        fill::FillRule,
-        line_seg::LineSegment,
-    };
+    use crate::shared::{fill::FillRule, line_seg::LineSegment};
 
     #[test]
     fn pixel_coverage_uses_backdrop_when_tile_has_no_segments() {

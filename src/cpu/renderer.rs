@@ -4,9 +4,14 @@ use peniko::Color;
 
 use crate::{
     TILE_SIZE,
-    cpu::pipelines::{
-        coarse::CoarseCpuPipeline, cumsum::CumsumCpuPipeline, fine::FineCpuPipeline,
-        scan::ScanCpuPipeline,
+    cpu::{
+        computes::blend::{
+            composite_blend_masked_at, composite_src_over_masked_at, scale_image_opacity,
+        },
+        pipelines::{
+            coarse::CoarseCpuPipeline, cumsum::CumsumCpuPipeline, filter::FilterCpuPipeline,
+            fine::FineCpuPipeline, scan::ScanCpuPipeline,
+        },
     },
     render::Render,
     shared::{
@@ -14,9 +19,8 @@ use crate::{
         draw_record::DrawRecord,
         execution::{ClipStackEntry, ExecOp, ExecPlan},
         image::{Image, rgba8_pack},
-        layer::{Layer, blend::Blend, mask::MaskMode},
+        layer::Layer,
         line_seg::LineSegment,
-        pixel::{pack_premul_rgba8, unpack_premul_rgba8},
         tile_ptcl::{TilePtcl, TilePtclRange},
         tile_seg_range::TileSegmentRange,
     },
@@ -29,6 +33,7 @@ pub struct Renderer {
     cumsum: CumsumCpuPipeline,
     coarse: CoarseCpuPipeline,
     fine: FineCpuPipeline,
+    filter: FilterCpuPipeline,
     size: (u32, u32),
 
     backdrops: Vec<i32>,
@@ -124,12 +129,7 @@ impl Render for Renderer {
     }
 
     fn coarse(&mut self, scene: &crate::scene::Scene, args: Self::CoarseArgs<'_>) {
-        let (
-            draw_records,
-            draw_range,
-            clip_stack_data,
-            clip_stack_range,
-        ) = args;
+        let (draw_records, draw_range, clip_stack_data, clip_stack_range) = args;
         self.coarse
             .prepare(
                 draw_records,
@@ -163,7 +163,13 @@ impl Render for Renderer {
 
 impl Renderer {
     fn execute_plan(&mut self, scene: &crate::scene::Scene, plan: &ExecPlan, target: &mut Image) {
-        self.execute_ops(scene, plan, &plan.ops, target);
+        self.execute_ops(
+            scene,
+            plan,
+            &plan.ops,
+            target,
+            Bounds::canvas(scene.width, scene.height),
+        );
     }
 
     fn execute_ops(
@@ -172,6 +178,7 @@ impl Renderer {
         plan: &ExecPlan,
         ops: &[ExecOp],
         target: &mut Image,
+        root_bounds: Bounds,
     ) {
         enum GroupFrame {
             Opacity {
@@ -199,24 +206,18 @@ impl Renderer {
             }
         }
 
-        fn current_target_bounds(
-            scene: &crate::scene::Scene,
-            groups: &[GroupFrame],
-        ) -> Bounds {
+        fn current_target_bounds(groups: &[GroupFrame], root_bounds: Bounds) -> Bounds {
             match groups.last() {
                 Some(GroupFrame::Opacity { bounds, .. })
                 | Some(GroupFrame::Blend { bounds, .. }) => *bounds,
-                None => Bounds::canvas(scene.width, scene.height),
+                None => root_bounds,
             }
         }
 
         for op in ops {
             match op {
-                ExecOp::DrawBatch {
-                    draws,
-                    clip_stack,
-                } => {
-                    let target_bounds = current_target_bounds(scene, &groups);
+                ExecOp::DrawBatch { draws, clip_stack } => {
+                    let target_bounds = current_target_bounds(&groups, root_bounds);
                     let dst = current_target(target, &mut groups);
                     self.execute_draw_batch(
                         scene,
@@ -258,9 +259,11 @@ impl Renderer {
                     debug_assert_eq!(*draw, end_draw);
                     debug_assert!((*opacity - end_opacity).abs() < f32::EPSILON);
                     debug_assert_eq!(*bounds, end_bounds);
-                    self.scale_image_opacity(&mut image, end_opacity);
+                    scale_image_opacity(&mut image, end_opacity);
                     let mask = self.rasterize_mask_image(scene, end_draw, end_bounds);
+                    let dst_bounds = current_target_bounds(&groups, root_bounds);
                     let dst = current_target(target, &mut groups);
+                    composite_src_over_masked_at(dst, &image, &mask, end_bounds, dst_bounds);
                 }
                 ExecOp::BeginBlend { draw, mode, bounds } => {
                     groups.push(GroupFrame::Blend {
@@ -284,16 +287,19 @@ impl Renderer {
                     debug_assert_eq!(*mode, end_mode);
                     debug_assert_eq!(*bounds, end_bounds);
                     let mask = self.rasterize_mask_image(scene, end_draw, end_bounds);
+                    let dst_bounds = current_target_bounds(&groups, root_bounds);
                     let dst = current_target(target, &mut groups);
-                    self.composite_blend_masked(dst, &image, &mask, end_mode, end_bounds);
+                    composite_blend_masked_at(dst, &image, &mask, end_mode, end_bounds, dst_bounds);
                 }
                 ExecOp::OffscreenLayer { layer, children } => {
+                    let target_bounds = current_target_bounds(&groups, root_bounds);
                     self.execute_offscreen_layer(
                         scene,
                         plan,
                         layer,
                         children,
                         current_target(target, &mut groups),
+                        target_bounds,
                     );
                 }
             }
@@ -307,9 +313,24 @@ impl Renderer {
         layer: &Layer,
         children: &[ExecOp],
         target: &mut Image,
+        target_bounds: Bounds,
     ) {
         match layer {
-            Layer::Filter { filter: _, region } => self.execute_ops(scene, plan, children, target),
+            Layer::Filter { filter, region } => {
+                let bounds = self.filter.filtered_region_bounds(
+                    filter,
+                    region,
+                    Bounds::canvas(scene.width, scene.height),
+                );
+                if bounds.is_empty() {
+                    return;
+                }
+                let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
+                self.execute_ops(scene, plan, children, &mut image, bounds);
+                self.filter.prepare(&mut image, filter).run();
+                let mask = self.filter.rasterize_region_mask(region, bounds);
+                composite_src_over_masked_at(target, &image, &mask, bounds, target_bounds);
+            }
             Layer::Backdrop {
                 filter: _,
                 region: _,
@@ -343,58 +364,12 @@ impl Renderer {
         self.fine(scene, (target, target_bounds));
     }
 
-    fn scale_image_opacity(&self, image: &mut Image, opacity: f32) {
-        let opacity = opacity.clamp(0.0, 1.0);
-        if opacity >= 1.0 {
-            return;
-        }
-        for px in &mut image.pixels {
-            let [r, g, b, a] = px.to_le_bytes();
-            *px = rgba8_pack([
-                ((r as f32 * opacity) + 0.5) as u8,
-                ((g as f32 * opacity) + 0.5) as u8,
-                ((b as f32 * opacity) + 0.5) as u8,
-                ((a as f32 * opacity) + 0.5) as u8,
-            ]);
-        }
-    }
-
-    fn composite_blend_masked(
+    fn rasterize_mask_image(
         &self,
-        dst: &mut Image,
-        content: &Image,
-        mask: &Image,
-        mode: peniko::BlendMode,
+        scene: &crate::scene::Scene,
+        draw_ix: usize,
         bounds: Bounds,
-    ) {
-        let blend = Blend::new(mode.mix, mode.compose);
-        for y in 0..content.height {
-            let dst_y = bounds.y0 + y as i32;
-            if dst_y < 0 || dst_y >= dst.height as i32 {
-                continue;
-            }
-            for x in 0..content.width {
-                let dst_x = bounds.x0 + x as i32;
-                if dst_x < 0 || dst_x >= dst.width as i32 {
-                    continue;
-                }
-                let ix = (y * content.width + x) as usize;
-                let coverage = ((mask.pixels[ix] >> 24) & 0xff) as f32 / 255.0;
-                if coverage <= 0.0 {
-                    continue;
-                }
-                let mut src_px = unpack_premul_rgba8(content.pixels[ix]);
-                for c in &mut src_px {
-                    *c *= coverage;
-                }
-                let dst_ix = (dst_y as u32 * dst.width + dst_x as u32) as usize;
-                let dst_px = unpack_premul_rgba8(dst.pixels[dst_ix]);
-                dst.pixels[dst_ix] = pack_premul_rgba8(blend.blend(src_px, dst_px));
-            }
-        }
-    }
-
-    fn rasterize_mask_image(&self, scene: &crate::scene::Scene, draw_ix: usize, bounds: Bounds) -> Image {
+    ) -> Image {
         let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
         let draw = &scene.draw_records[draw_ix];
         let Some(path_id) = draw.path_id else {

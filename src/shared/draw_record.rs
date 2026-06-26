@@ -1,6 +1,11 @@
 use crate::{
     TILE_SIZE,
-    shared::{bounds::{Bounds, PixelBounds, TileBbox}, brush::Brush, fill::FillRule, sdf::Sdf},
+    shared::{
+        bounds::{Bounds, PixelBounds, TileBbox},
+        brush::Brush,
+        fill::FillRule,
+        sdf::Sdf,
+    },
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

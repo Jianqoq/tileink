@@ -6,8 +6,7 @@ use crate::{
     TILE_SCALE, TILE_SIZE,
     shared::{
         bd_record::BackdropRecord, bounds::TileBbox, draw_record::DrawRecord, line::Line,
-        line_seg::LineSegment, path::PathRecord, pixel::TileMask,
-        tile_seg_range::TileSegmentRange,
+        line_seg::LineSegment, path::PathRecord, pixel::TileMask, tile_seg_range::TileSegmentRange,
     },
 };
 

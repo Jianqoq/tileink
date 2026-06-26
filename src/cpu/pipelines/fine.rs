@@ -1,7 +1,10 @@
 use crate::{
     cpu::computes::fine::{composite_color_tile_into, rasterize_tile_into},
     shared::{
-        bounds::{Bounds, PixelBounds}, image::Image, line_seg::LineSegment, tile_ptcl::TilePtcl,
+        bounds::{Bounds, PixelBounds},
+        image::Image,
+        line_seg::LineSegment,
+        tile_ptcl::TilePtcl,
         tile_ptcl::TilePtclRange,
     },
 };
@@ -54,8 +57,8 @@ impl<'a> FineCpuPrepared<'a> {
                             );
                         }
                         TilePtcl::Fill(fill) | TilePtcl::BeginClip(fill) => {
-                            let segments = &self.segments
-                                [fill.segment_range.start as usize..fill.segment_range.end as usize];
+                            let segments = &self.segments[fill.segment_range.start as usize
+                                ..fill.segment_range.end as usize];
                             rasterize_tile_into(
                                 &mut self.target.pixels,
                                 self.target.width,

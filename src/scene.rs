@@ -679,10 +679,7 @@ mod tests {
             op => panic!("expected BeginClip, got {op:#?}"),
         }
         match &plan.ops[1] {
-            ExecOp::DrawBatch {
-                draws,
-                clip_stack,
-            } => {
+            ExecOp::DrawBatch { draws, clip_stack } => {
                 assert_eq!(draws.clone(), 1..2);
                 assert_clip_stack(&plan, clip_stack.clone(), &[0]);
             }
@@ -697,10 +694,7 @@ mod tests {
             op => panic!("expected BeginBlend, got {op:#?}"),
         }
         match &plan.ops[3] {
-            ExecOp::DrawBatch {
-                draws,
-                clip_stack,
-            } => {
+            ExecOp::DrawBatch { draws, clip_stack } => {
                 assert_eq!(draws.clone(), 3..4);
                 assert_clip_stack(&plan, clip_stack.clone(), &[0]);
             }
@@ -715,10 +709,7 @@ mod tests {
             op => panic!("expected EndBlend, got {op:#?}"),
         }
         match &plan.ops[5] {
-            ExecOp::DrawBatch {
-                draws,
-                clip_stack,
-            } => {
+            ExecOp::DrawBatch { draws, clip_stack } => {
                 assert_eq!(draws.clone(), 4..5);
                 assert_clip_stack(&plan, clip_stack.clone(), &[0]);
             }
@@ -783,10 +774,7 @@ mod tests {
             op => panic!("expected BeginOpacity, got {op:#?}"),
         }
         match &plan.ops[1] {
-            ExecOp::DrawBatch {
-                draws,
-                clip_stack,
-            } => {
+            ExecOp::DrawBatch { draws, clip_stack } => {
                 assert_eq!(draws.clone(), 1..2);
                 assert_clip_stack(&plan, clip_stack.clone(), &[]);
             }
@@ -801,10 +789,7 @@ mod tests {
             op => panic!("expected BeginBlend, got {op:#?}"),
         }
         match &plan.ops[3] {
-            ExecOp::DrawBatch {
-                draws,
-                clip_stack,
-            } => {
+            ExecOp::DrawBatch { draws, clip_stack } => {
                 assert_eq!(draws.clone(), 3..4);
                 assert_clip_stack(&plan, clip_stack.clone(), &[]);
             }
@@ -819,10 +804,7 @@ mod tests {
             op => panic!("expected EndBlend, got {op:#?}"),
         }
         match &plan.ops[5] {
-            ExecOp::DrawBatch {
-                draws,
-                clip_stack,
-            } => {
+            ExecOp::DrawBatch { draws, clip_stack } => {
                 assert_eq!(draws.clone(), 4..5);
                 assert_clip_stack(&plan, clip_stack.clone(), &[]);
             }

@@ -1,9 +1,9 @@
-pub(crate) mod region;
 pub(crate) mod blend;
 pub(crate) mod clip;
 pub(crate) mod filter;
 pub(crate) mod mask;
 pub(crate) mod opacity;
+pub(crate) mod region;
 
 use std::sync::Arc;
 
@@ -12,8 +12,7 @@ use usvg::{Transform, tiny_skia_path::IntRect};
 use crate::shared::{
     bounds::Bounds,
     layer::{
-        region::Region, blend::Blend, clip::Clip, filter::Filter, mask::MaskMode,
-        opacity::Opacity,
+        blend::Blend, clip::Clip, filter::Filter, mask::MaskMode, opacity::Opacity, region::Region,
     },
     sdf::Sdf,
 };
@@ -21,20 +20,11 @@ use crate::shared::{
 #[derive(Clone, Debug)]
 pub enum Layer {
     Clip(Clip),
-    ClipSdf {
-        sdf: Sdf,
-        bounds: Bounds,
-    },
+    ClipSdf { sdf: Sdf, bounds: Bounds },
     Opacity(Opacity),
     Blend(Blend),
-    Filter {
-        filter: Filter,
-        region: Region
-    },
-    Backdrop {
-        filter: Filter,
-        region: Region,
-    }
+    Filter { filter: Filter, region: Region },
+    Backdrop { filter: Filter, region: Region },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
