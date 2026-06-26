@@ -14,7 +14,7 @@ use crate::{
         draw_record::DrawRecord,
         execution::{ClipStackEntry, ExecOp, ExecPlan},
         image::{Image, rgba8_pack},
-        layer::{Layer, blend::Blend, filter::composite_masked_image_at, mask::MaskMode},
+        layer::{Layer, blend::Blend, mask::MaskMode},
         line_seg::LineSegment,
         pixel::{pack_premul_rgba8, unpack_premul_rgba8},
         tile_ptcl::{TilePtcl, TilePtclRange},
@@ -261,7 +261,6 @@ impl Renderer {
                     self.scale_image_opacity(&mut image, end_opacity);
                     let mask = self.rasterize_mask_image(scene, end_draw, end_bounds);
                     let dst = current_target(target, &mut groups);
-                    composite_masked_image_at(dst, &image, &mask, end_bounds, MaskMode::Alpha);
                 }
                 ExecOp::BeginBlend { draw, mode, bounds } => {
                     groups.push(GroupFrame::Blend {
@@ -310,17 +309,11 @@ impl Renderer {
         target: &mut Image,
     ) {
         match layer {
-            Layer::Filter { filter: _ } => self.execute_ops(scene, plan, children, target),
-            Layer::SvgFilter {
-                filters: _,
-                transform: _,
-                max_bounds: _,
-            } => todo!(),
-            Layer::BackdropFilter {
+            Layer::Filter { filter: _, region } => self.execute_ops(scene, plan, children, target),
+            Layer::Backdrop {
                 filter: _,
                 region: _,
             } => todo!(),
-            Layer::Mask { mode: _ } => todo!(),
             _ => unreachable!(),
         }
     }

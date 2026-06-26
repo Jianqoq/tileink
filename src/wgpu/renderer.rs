@@ -205,17 +205,11 @@ impl Renderer {
         _target: &mut GpuImageBuffer,
     ) {
         match layer {
-            Layer::Filter { filter: _ } => todo!(),
-            Layer::SvgFilter {
-                filters: _,
-                transform: _,
-                max_bounds: _,
-            } => todo!(),
-            Layer::BackdropFilter {
+            Layer::Filter { filter: _, region } => todo!(),
+            Layer::Backdrop {
                 filter: _,
                 region: _,
             } => todo!(),
-            Layer::Mask { mode: _ } => todo!(),
             Layer::Clip(_) | Layer::ClipSdf { .. } => todo!(),
             Layer::Opacity(_) | Layer::Blend(_) => todo!(),
         }
