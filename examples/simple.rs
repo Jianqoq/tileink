@@ -2,7 +2,7 @@ mod common;
 
 use peniko::{
     Color,
-    kurbo::{Affine, Circle, Rect, Shape},
+    kurbo::{Affine, Circle, Rect, Shape, Stroke},
 };
 use tileink::{CpuRenderer, FillRule, Scene};
 
@@ -27,19 +27,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         0.1,
     );
 
-    push_rect_stroke(
-        &mut scene,
+    scene.push_stroke(
         Rect::new(72.0, 156.0, 178.0, 218.0),
-        12.0,
+        Stroke::new(12.0),
         Color::from_rgb8(230, 89, 80),
+        Affine::IDENTITY,
+        0.1,
     );
-    scene.push_path(
-        Circle::new((260.0, 184.0), 40.0)
-            .segment(30.0, 0.0, std::f64::consts::TAU)
-            .to_path(0.1),
+    scene.push_stroke(
+        Circle::new((260.0, 184.0), 40.0),
+        Stroke::new(10.0),
         Color::from_rgb8(222, 178, 106),
         Affine::IDENTITY,
-        FillRule::NonZero,
         0.1,
     );
 
@@ -51,48 +50,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Wrote {}", out.display());
 
     Ok(())
-}
-
-fn push_rect_stroke(scene: &mut Scene, rect: Rect, width: f64, color: Color) {
-    let half = width * 0.5;
-    scene.push_rect(
-        Rect::new(
-            rect.x0 - half,
-            rect.y0 - half,
-            rect.x1 + half,
-            rect.y0 + half,
-        ),
-        color,
-        FillRule::NonZero,
-    );
-    scene.push_rect(
-        Rect::new(
-            rect.x0 - half,
-            rect.y1 - half,
-            rect.x1 + half,
-            rect.y1 + half,
-        ),
-        color,
-        FillRule::NonZero,
-    );
-    scene.push_rect(
-        Rect::new(
-            rect.x0 - half,
-            rect.y0 + half,
-            rect.x0 + half,
-            rect.y1 - half,
-        ),
-        color,
-        FillRule::NonZero,
-    );
-    scene.push_rect(
-        Rect::new(
-            rect.x1 - half,
-            rect.y0 + half,
-            rect.x1 + half,
-            rect.y1 - half,
-        ),
-        color,
-        FillRule::NonZero,
-    );
 }

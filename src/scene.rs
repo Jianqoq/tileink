@@ -1,6 +1,6 @@
 use peniko::{
     Color,
-    kurbo::{Affine, Arc, BezPath, Rect, Shape},
+    kurbo::{Affine, Arc, BezPath, Rect, Shape, Stroke, StrokeOpts, stroke as kurbo_stroke},
 };
 
 use crate::shared::{
@@ -330,6 +330,26 @@ impl Scene {
             Affine::IDENTITY,
             rule,
             tolerance,
+        );
+    }
+
+    pub fn push_stroke(
+        &mut self,
+        shape: impl Shape,
+        stroke: Stroke,
+        brush: impl Into<Brush>,
+        transform: Affine,
+        tolerance: f64,
+    ) {
+        let path = shape.to_path(tolerance);
+        let outline = kurbo_stroke(path, &stroke, &StrokeOpts::default(), tolerance);
+        self.push_path_inner(
+            outline,
+            brush,
+            transform,
+            FillRule::NonZero,
+            tolerance,
+            None,
         );
     }
 
@@ -898,6 +918,27 @@ mod tests {
         assert_eq!(scene.path_records.len(), 1);
         assert_eq!(scene.bd_records.len(), 1);
         assert_eq!(scene.draw_records[0].tag, DrawTag::Brush);
+        assert!(!scene.draw_records[0].solid_rect);
+    }
+
+    #[test]
+    fn push_stroke_expands_shape_to_fill_path() {
+        let mut scene = test_scene();
+        scene.push_stroke(
+            Rect::new(10.0, 10.0, 20.0, 20.0),
+            Stroke::new(4.0),
+            Brush::Solid(rgb(255, 0, 0)),
+            Affine::IDENTITY,
+            0.1,
+        );
+
+        assert_eq!(scene.draw_records.len(), 1);
+        let bounds = scene.draw_records[0].pixel_bounds;
+        assert!(bounds.x0 <= 8);
+        assert!(bounds.y0 <= 8);
+        assert!(bounds.x1 >= 22);
+        assert!(bounds.y1 >= 22);
+        assert_eq!(scene.draw_records[0].fill_rule, FillRule::NonZero);
         assert!(!scene.draw_records[0].solid_rect);
     }
 
