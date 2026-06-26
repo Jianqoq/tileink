@@ -89,7 +89,11 @@ fn pixel_coverage_for_mask(
     (apply_rule(coverage, fill_rule).clamp(0.0, 1.0) * 255.0 + 0.5) as u8
 }
 
-fn build_tile_alpha(segments: &[LineSegment], backdrop: i32, fill_rule: FillRule) -> [u8; 256] {
+pub(crate) fn build_tile_alpha(
+    segments: &[LineSegment],
+    backdrop: i32,
+    fill_rule: FillRule,
+) -> [u8; 256] {
     let mut edge_mask = TileMask::new();
     for segment in segments {
         edge_mask |= segment.edges;
@@ -139,35 +143,71 @@ pub(crate) fn rasterize_tile(
     fill_rule: FillRule,
     brush: &Brush,
 ) {
+    rasterize_tile_into(
+        image,
+        image_width,
+        image_height,
+        0,
+        0,
+        tile_x,
+        tile_y,
+        segments,
+        backdrop,
+        fill_rule,
+        brush,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn rasterize_tile_into(
+    image: &mut [u32],
+    image_width: u32,
+    image_height: u32,
+    origin_x: i32,
+    origin_y: i32,
+    tile_x: u32,
+    tile_y: u32,
+    segments: &[LineSegment],
+    backdrop: i32,
+    fill_rule: FillRule,
+    brush: &Brush,
+) {
     let base_x = tile_x * TILE_SIZE;
     let base_y = tile_y * TILE_SIZE;
-    let tile_width = (image_width - base_x).min(TILE_SIZE);
-    let tile_height = (image_height - base_y).min(TILE_SIZE);
+    let target_x0 = origin_x;
+    let target_y0 = origin_y;
+    let target_x1 = origin_x + image_width as i32;
+    let target_y1 = origin_y + image_height as i32;
+    let global_x0 = base_x as i32;
+    let global_y0 = base_y as i32;
+    let global_x1 = global_x0 + TILE_SIZE as i32;
+    let global_y1 = global_y0 + TILE_SIZE as i32;
+    let clip_x0 = global_x0.max(target_x0);
+    let clip_y0 = global_y0.max(target_y0);
+    let clip_x1 = global_x1.min(target_x1);
+    let clip_y1 = global_y1.min(target_y1);
+    if clip_x0 >= clip_x1 || clip_y0 >= clip_y1 {
+        return;
+    }
+
     let tile_alpha = build_tile_alpha(segments, backdrop, fill_rule);
-    for local_y in 0..tile_height {
-        let global_y = base_y + local_y;
-        let row_start = (local_y * TILE_SIZE) as usize;
-        let row = &tile_alpha[row_start..row_start + tile_width as usize];
-        let mut local_x = 0usize;
-        while local_x < row.len() {
-            if row[local_x] == 0 {
-                local_x += 1;
+    for global_y in clip_y0..clip_y1 {
+        let tile_local_y = (global_y - global_y0) as u32;
+        let row_start = (tile_local_y * TILE_SIZE) as usize;
+        for global_x in clip_x0..clip_x1 {
+            let tile_local_x = (global_x - global_x0) as usize;
+            let alpha = tile_alpha[row_start + tile_local_x];
+            if alpha == 0 {
                 continue;
             }
-            let span_start = local_x;
-            while local_x < row.len() && row[local_x] != 0 {
-                local_x += 1;
-            }
-            for span_x in span_start..local_x {
-                let alpha = row[span_x];
-                let global_x = base_x + span_x as u32;
-                let src = scale_premul_u8(
-                    brush.sample(global_x as f32 + 0.5, global_y as f32 + 0.5),
-                    alpha,
-                );
-                let pixel_ix = (global_y * image_width + global_x) as usize;
-                image[pixel_ix] = src_over_premul_u8(image[pixel_ix], src);
-            }
+            let src = scale_premul_u8(
+                brush.sample(global_x as f32 + 0.5, global_y as f32 + 0.5),
+                alpha,
+            );
+            let local_x = (global_x - target_x0) as u32;
+            let local_y = (global_y - target_y0) as u32;
+            let pixel_ix = (local_y * image_width + local_x) as usize;
+            image[pixel_ix] = src_over_premul_u8(image[pixel_ix], src);
         }
     }
 }
@@ -180,15 +220,42 @@ pub(crate) fn composite_color_tile(
     tile_y: u32,
     color: u32,
 ) {
-    let bounds = Bounds::from_tile_coords(tile_x, tile_y, image_width, image_height);
+    composite_color_tile_into(image, image_width, image_height, 0, 0, tile_x, tile_y, color);
+}
+
+pub(crate) fn composite_color_tile_into(
+    image: &mut [u32],
+    image_width: u32,
+    image_height: u32,
+    origin_x: i32,
+    origin_y: i32,
+    tile_x: u32,
+    tile_y: u32,
+    color: u32,
+) {
+    let global_tile = Bounds::from_tile_coords(
+        tile_x,
+        tile_y,
+        origin_x.saturating_add_unsigned(image_width) as u32,
+        origin_y.saturating_add_unsigned(image_height) as u32,
+    );
+    let target = Bounds::new(origin_x, origin_y, origin_x + image_width as i32, origin_y + image_height as i32);
+    let bounds = global_tile.intersect(target);
+    if bounds.is_empty() {
+        return;
+    }
+
     let alpha = (color >> 24) as u8;
     if alpha == 0 {
         return;
     }
 
-    for y in bounds.y0 as u32..bounds.y1 as u32 {
-        let row_start = (y * image_width + bounds.x0 as u32) as usize;
-        let row_end = (y * image_width + bounds.x1 as u32) as usize;
+    for y in bounds.y0..bounds.y1 {
+        let local_y = (y - origin_y) as u32;
+        let local_x0 = (bounds.x0 - origin_x) as u32;
+        let local_x1 = (bounds.x1 - origin_x) as u32;
+        let row_start = (local_y * image_width + local_x0) as usize;
+        let row_end = (local_y * image_width + local_x1) as usize;
         let row = &mut image[row_start..row_end];
         if alpha == MASK_OPAQUE {
             row.fill(color);

@@ -4,7 +4,7 @@ use crate::{
     render::Render,
     shared::{
         bd_record::BackdropRecord,
-        execution::{BatchState, Command, CommandListId, ExecNode, ExecPlan, ROOT_COMMAND_LIST_ID},
+        execution::{ExecOp, ExecPlan, ROOT_COMMAND_LIST_ID},
         layer::Layer,
         line::Line,
         path::PathRecord,
@@ -175,16 +175,22 @@ impl Renderer {
         encoder: &mut wgpu::CommandEncoder,
         target: &mut GpuImageBuffer,
     ) {
-        for node in &plan.nodes {
-            match node {
-                ExecNode::DrawBatch {
+        for op in &plan.ops {
+            match op {
+                ExecOp::DrawBatch {
                     draws,
                     state: _,
-                    fused_layers: _,
+                    clip_stack: _,
                 } => {
                     self.execute_draw_batch(scene, draws.start, draws.end, encoder, target);
                 }
-                ExecNode::OffscreenLayer { layer, children } => {
+                ExecOp::BeginClip { draw: _, bounds: _ }
+                | ExecOp::EndClip
+                | ExecOp::BeginOpacity { .. }
+                | ExecOp::EndOpacity { .. }
+                | ExecOp::BeginBlend { .. }
+                | ExecOp::EndBlend { .. } => {}
+                ExecOp::OffscreenLayer { layer, children } => {
                     self.execute_offscreen_layer(scene, layer, children, encoder, target);
                 }
             }
@@ -195,7 +201,7 @@ impl Renderer {
         &mut self,
         _scene: &crate::scene::Scene,
         layer: &Layer,
-        _children: &[ExecNode],
+        _children: &[ExecOp],
         _encoder: &mut wgpu::CommandEncoder,
         _target: &mut GpuImageBuffer,
     ) {

@@ -2,10 +2,11 @@ use std::ops::Range;
 
 use peniko::BlendMode;
 
-use crate::shared::layer::Layer;
+use crate::shared::{bounds::Bounds, layer::Layer};
 
 pub(crate) type CommandListId = usize;
 pub(crate) const ROOT_COMMAND_LIST_ID: CommandListId = 0;
+pub(crate) type ClipStackEntry = u32;
 
 #[derive(Default)]
 pub(crate) struct CommandList {
@@ -28,48 +29,54 @@ pub(crate) struct BatchState {
     pub opacity_depth: u8,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum FusedLayerEntry {
-    Clip { draw_ix: u32 },
-    Opacity { draw_ix: u32, opacity: f32 },
-    Blend { draw_ix: u32, mode: BlendMode },
-}
-
-impl FusedLayerEntry {
-    pub fn draw_ix(self) -> u32 {
-        match self {
-            Self::Clip { draw_ix }
-            | Self::Opacity { draw_ix, .. }
-            | Self::Blend { draw_ix, .. } => draw_ix,
-        }
-    }
-}
-
-/// Flattened execution plan for one command list.
+/// GPU-friendly linear execution plan for one command list.
 ///
-/// `fused_layers` stores ordered stack snapshots referenced by
-/// `ExecNode::DrawBatch`. These are not coverage bounds. They only describe
-/// which fused layers are active for a batch and in which nesting order.
-///
-/// Semantically, clip / opacity / blend should also carry their own raster
-/// ranges or bounds so execution can restrict work to the layer's coverage
-/// instead of implicitly treating the layer state as full-screen.
+/// `clip_stack_data` stores ordered clip stack snapshots referenced by
+/// `ExecOp::DrawBatch`. Opacity and blend are expressed as explicit begin/end
+/// ops so their group lifetime survives across multiple draw batches.
+#[derive(Debug)]
 pub(crate) struct ExecPlan {
-    pub nodes: Vec<ExecNode>,
-    /// Batch-local fused layer snapshots in user nesting order.
-    pub fused_layers: Vec<FusedLayerEntry>,
+    pub ops: Vec<ExecOp>,
+    /// Batch-local clip stack snapshots in user nesting order.
+    pub clip_stack_data: Vec<ClipStackEntry>,
 }
 
-pub(crate) enum ExecNode {
+#[derive(Debug)]
+pub(crate) enum ExecOp {
     DrawBatch {
         draws: Range<usize>,
         state: BatchState,
-        /// Active fused layer stack for this batch in nesting order. This is
+        /// Active clip stack for this batch in nesting order. This is
         /// stack state, not coverage.
-        fused_layers: Range<usize>,
+        clip_stack: Range<usize>,
+    },
+    BeginClip {
+        draw: usize,
+        bounds: Bounds,
+    },
+    EndClip,
+    BeginOpacity {
+        draw: usize,
+        opacity: f32,
+        bounds: Bounds,
+    },
+    EndOpacity {
+        draw: usize,
+        opacity: f32,
+        bounds: Bounds,
+    },
+    BeginBlend {
+        draw: usize,
+        mode: BlendMode,
+        bounds: Bounds,
+    },
+    EndBlend {
+        draw: usize,
+        mode: BlendMode,
+        bounds: Bounds,
     },
     OffscreenLayer {
         layer: Layer,
-        children: Vec<ExecNode>,
+        children: Vec<ExecOp>,
     },
 }
