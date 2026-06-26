@@ -6,7 +6,7 @@ use crate::{
     TILE_SCALE, TILE_SIZE,
     shared::{
         bd_record::BackdropRecord, bounds::TileBbox, draw_record::DrawRecord, line::Line,
-        line_seg::LineSegment, pixel::TileMask, tile_seg_range::TileSegmentRange,
+        line_seg::LineSegment, path::PathRecord, tile_seg_range::TileSegmentRange,
     },
 };
 
@@ -15,141 +15,147 @@ pub struct ScanCpuPipeline {}
 
 pub struct ScanCpuPrepared<'a> {
     lines: &'a [Line],
+    path_records: &'a [PathRecord],
     draw_records: &'a [DrawRecord],
     backdrop_records: &'a [BackdropRecord],
     backdrops: &'a mut Vec<i32>, // [path_id][tile_y][tile_x]
     tile_segment_ranges: &'a mut Vec<TileSegmentRange>,
     segments: &'a mut Vec<LineSegment>,
     segments_bump: &'a mut Vec<AtomicU32>,
-    segment_tile_counts: &'a mut Vec<AtomicU32>,
+    segment_tile_counts: &'a mut Vec<u32>,
     segment_tile_cursors: &'a mut Vec<AtomicU32>,
-    packed_segments: &'a mut Vec<LineSegment>,
     tiles_size: (u32, u32),
 }
 
 impl<'a> ScanCpuPrepared<'a> {
     pub fn run(&mut self) {
         let backdrops = self.backdrops.as_mut_ptr() as *mut Vec<i32> as usize;
+        let ranges = self.tile_segment_ranges.as_mut_ptr() as usize;
         let segments = self.segments.as_mut_ptr() as *mut LineSegment as usize;
-        (0..self.lines.len()).into_par_iter().for_each(|line_id| {
-            let line = self.lines[line_id];
-            let backdrop_ptr = backdrops as *mut i32;
-            let backdrops =
-                unsafe { std::slice::from_raw_parts_mut(backdrop_ptr, self.backdrops.len()) };
-            let segments_ptr = segments as *mut LineSegment;
-            let segments =
-                unsafe { std::slice::from_raw_parts_mut(segments_ptr, self.segments.len()) };
-            let draw_record = &self.draw_records[line.path_id as usize];
-            let backdrop_record = &self.backdrop_records[line.path_id as usize];
-            let backdrop = &mut backdrops[backdrop_record.data_offset as usize
-                ..(backdrop_record.data_offset as usize + backdrop_record.data_len as usize)];
-            let bbox = draw_record.tile_bbox(self.tiles_size.0, self.tiles_size.1);
-            let plan = plan_scan_line(line, bbox);
-            let segment_bump = &self.segments_bump[line.path_id as usize];
-            if let Some(plan) = plan {
-                for y in plan.ymin..plan.ymax {
-                    let base = ((y - bbox.y0 as i32) * bbox.tile_stride() as i32) as usize;
-                    backdrop[base] += plan.delta;
+        let segment_tile_counts = self.segment_tile_counts.as_mut_ptr() as *mut Vec<u32> as usize;
+        (0..self.backdrop_records.len())
+            .into_par_iter()
+            .for_each(|record_ix| {
+                let backdrop_record = &self.backdrop_records[record_ix];
+                let path_id = backdrop_record.path_id as usize;
+                let path_record = &self.path_records[path_id];
+                let draw_record = &self.draw_records[path_id];
+                let bbox = draw_record.tile_bbox(self.tiles_size.0, self.tiles_size.1);
+                let tile_count = backdrop_record.data_len as usize;
+                let data_offset = backdrop_record.data_offset as usize;
+
+                let backdrop_ptr = backdrops as *mut i32;
+                let backdrops =
+                    unsafe { std::slice::from_raw_parts_mut(backdrop_ptr, self.backdrops.len()) };
+                let backdrop = &mut backdrops[data_offset..data_offset + tile_count];
+                backdrop.fill(0);
+
+                let ranges_ptr = ranges as *mut TileSegmentRange;
+                let ranges = unsafe {
+                    std::slice::from_raw_parts_mut(ranges_ptr.add(data_offset), tile_count)
+                };
+                ranges.fill(TileSegmentRange::default());
+
+                let counts_ptr = segment_tile_counts as *mut u32;
+                let counts = &mut unsafe { std::slice::from_raw_parts_mut(counts_ptr, self.segment_tile_counts.len()) }[data_offset..data_offset + tile_count];
+                for count in counts.iter_mut() {
+                    *count = 0;
                 }
 
-                let mut last_z = (plan.a * (plan.imin as f32 - 1.0) + plan.b).floor();
-                for i in plan.imin..plan.imax {
-                    let z = (plan.a * i as f32 + plan.b).floor();
-                    let y = (plan.y0 + i as f32 - z) as i32;
-                    let x = (plan.x0 + plan.sign * z) as i32;
-                    if y < bbox.y0 as i32
-                        || y >= bbox.y1 as i32
-                        || x < bbox.x0 as i32
-                        || x >= bbox.x1 as i32
-                    {
-                        last_z = z;
-                        continue;
+                let line_start = path_record.line_start as usize;
+                let line_end = line_start + path_record.line_count as usize;
+                let lines = &self.lines[line_start..line_end];
+
+                for &line in lines {
+                    if let Some(plan) = plan_scan_line(line, bbox) {
+                        for y in plan.ymin..plan.ymax {
+                            let base = ((y - bbox.y0 as i32) * bbox.tile_stride() as i32) as usize;
+                            backdrop[base] += plan.delta;
+                        }
+
+                        for_each_scanned_tile(&plan, bbox, self.tiles_size, |tile| {
+                            if tile.top_edge && tile.x + 1 < bbox.x1 as i32 {
+                                let x_bump = (tile.x + 1).max(bbox.x0 as i32);
+                                let bump_ix =
+                                    ((tile.y - bbox.y0 as i32) * bbox.tile_stride() as i32 + x_bump
+                                        - bbox.x0 as i32)
+                                        as usize;
+                                backdrop[bump_ix] += plan.delta;
+                            }
+
+                            let local_ix = Self::local_tile_ix(
+                                backdrop_record,
+                                tile.global_ix,
+                                self.tiles_size.0,
+                            );
+                            let count = counts[local_ix];
+                            counts[local_ix] = count + 1;
+                        });
                     }
-                    let top_edge = if i == plan.imin {
-                        (plan.y0 - plan.xy0[1] * TILE_SCALE).abs() <= 1.0e-5
-                    } else {
-                        last_z == z
-                    };
-                    if top_edge && x + 1 < bbox.x1 as i32 {
-                        let x_bump = (x + 1).max(bbox.x0 as i32);
-                        let bump_ix = ((y - bbox.y0 as i32) * bbox.tile_stride() as i32 + x_bump
-                            - bbox.x0 as i32) as usize;
-                        backdrop[bump_ix] += plan.delta;
+                }
+
+                let cursors = &self.segment_tile_cursors[data_offset..data_offset + tile_count];
+                let mut next = backdrop_record.segment_start;
+                for ((range, count), cursor) in ranges.iter_mut().zip(counts).zip(cursors) {
+                    let count = *count;
+                    range.start = next;
+                    next += count;
+                    range.end = next;
+                    cursor.store(range.start, Ordering::Relaxed);
+                }
+
+                let segment_count = next - backdrop_record.segment_start;
+                self.segments_bump[path_id].store(segment_count, Ordering::Relaxed);
+                debug_assert!(
+                    segment_count <= backdrop_record.segment_capacity,
+                    "scan emitted more segments than reserved capacity"
+                );
+
+                if segment_count == 0 {
+                    return;
+                }
+
+                let segments_ptr = segments as *mut LineSegment;
+                let segments =
+                    unsafe { std::slice::from_raw_parts_mut(segments_ptr, self.segments.len()) };
+
+                for &line in lines {
+                    if let Some(plan) = plan_scan_line(line, bbox) {
+                        for_each_scanned_tile(&plan, bbox, self.tiles_size, |tile| {
+                            let segment = clip_line_to_tile(
+                                (plan.xy0, plan.xy1),
+                                plan.is_down,
+                                plan.is_positive_slope,
+                                tile.x,
+                                tile.y,
+                                tile.seg_within_line,
+                                tile.seg_count,
+                                plan.a,
+                                plan.b,
+                            );
+                            let local_ix = Self::local_tile_ix(
+                                backdrop_record,
+                                tile.global_ix,
+                                self.tiles_size.0,
+                            );
+                            let dst = cursors[local_ix].load(Ordering::Relaxed);
+                            cursors[local_ix].store(dst + 1, Ordering::Relaxed);
+                            debug_assert!(
+                                dst < backdrop_record.segment_start
+                                    + backdrop_record.segment_capacity
+                            );
+                            segments[dst as usize] = segment;
+                        });
                     }
-
-                    let global_ix = (y as u32 * self.tiles_size.0 + x as u32) as usize;
-                    let segment = clip_line_to_tile(
-                        (plan.xy0, plan.xy1),
-                        plan.is_down,
-                        plan.is_positive_slope,
-                        x,
-                        y,
-                        i - plan.imin,
-                        plan.imax - plan.imin,
-                        plan.a,
-                        plan.b,
-                        global_ix as u32,
-                    );
-                    let segment_idx = backdrop_record.segment_start
-                        + segment_bump.fetch_add(1, Ordering::Relaxed);
-                    segments[segment_idx as usize] = segment;
-                    last_z = z;
                 }
-            }
-        });
 
-        self.pack_segments_by_tile();
-    }
-
-    fn pack_segments_by_tile(&mut self) {
-        for backdrop_record in self.backdrop_records.iter() {
-            let path_id = backdrop_record.path_id as usize;
-            let tile_count = backdrop_record.data_len as usize;
-            let ranges = &mut self.tile_segment_ranges[backdrop_record.data_offset as usize
-                ..backdrop_record.data_offset as usize + tile_count];
-            ranges.fill(TileSegmentRange::default());
-
-            let segment_count = self.segments_bump[path_id].load(Ordering::Relaxed) as usize;
-            if tile_count == 0 || segment_count == 0 {
-                continue;
-            }
-
-            let raw_start = backdrop_record.segment_start as usize;
-            let raw_end = raw_start + segment_count;
-            let raw_segments = &self.segments[raw_start..raw_end];
-            let tiles_width = self.tiles_size.0;
-            let counts = &self.segment_tile_counts[backdrop_record.data_offset as usize
-                ..backdrop_record.data_offset as usize + tile_count];
-            counts.par_iter().for_each(|count| {
-                count.store(0, Ordering::Relaxed);
+                debug_assert!(
+                    ranges
+                        .iter()
+                        .zip(cursors.iter())
+                        .all(|(range, cursor)| { range.end == cursor.load(Ordering::Relaxed) })
+                );
             });
-
-            raw_segments.par_iter().for_each(|segment| {
-                let local_ix = Self::local_tile_ix(backdrop_record, segment.tile_id, tiles_width);
-                counts[local_ix].fetch_add(1, Ordering::Relaxed);
-            });
-
-            Self::fill_ranges_from_counts_parallel(ranges, counts, raw_start as u32);
-
-            let cursors = &mut self.segment_tile_cursors[backdrop_record.data_offset as usize
-                ..backdrop_record.data_offset as usize + tile_count];
-            for (cursor, range) in cursors.iter().zip(ranges.iter()) {
-                cursor.store(range.start, Ordering::Relaxed);
-            }
-            let packed = &mut self.packed_segments[raw_start..raw_end];
-            let packed_ptr = packed.as_mut_ptr() as usize;
-            raw_segments.par_iter().for_each(|segment| {
-                let mut segment = *segment;
-                Self::fill_segment_coverages(&mut segment);
-                let local_ix = Self::local_tile_ix(backdrop_record, segment.tile_id, tiles_width);
-                let dst = cursors[local_ix].fetch_add(1, Ordering::Relaxed) as usize - raw_start;
-                unsafe {
-                    (packed_ptr as *mut LineSegment).add(dst).write(segment);
-                }
-            });
-
-            self.segments[raw_start..raw_end].copy_from_slice(&packed);
-        }
     }
 
     fn local_tile_ix(backdrop_record: &BackdropRecord, tile_id: u32, tiles_width: u32) -> usize {
@@ -161,6 +167,7 @@ impl<'a> ScanCpuPrepared<'a> {
         (local_y * stride + local_x) as usize
     }
 
+    #[cfg(test)]
     fn fill_ranges_from_counts_parallel(
         ranges: &mut [TileSegmentRange],
         counts: &[AtomicU32],
@@ -208,46 +215,6 @@ impl<'a> ScanCpuPrepared<'a> {
                 }
             });
     }
-
-    fn fill_segment_coverages(segment: &mut LineSegment) {
-        let dx = segment.point1.0 - segment.point0.0;
-        let dy = segment.point1.1 - segment.point0.1;
-        let steps = dx.abs().max(dy.abs()).ceil() as usize;
-        if steps == 0 {
-            return;
-        }
-
-        let x_inc = dx / steps as f32;
-        let y_inc = dy / steps as f32;
-        let mut x = segment.point0.0;
-        let mut y = segment.point0.1;
-        let mut row_min = [i16::MAX; TILE_SIZE as usize];
-        let mut row_max = [i16::MIN; TILE_SIZE as usize];
-
-        for _ in 0..=steps {
-            let px = x.floor() as i32;
-            let py = y.floor() as i32;
-            if (0..TILE_SIZE as i32).contains(&px) && (0..TILE_SIZE as i32).contains(&py) {
-                let row = py as usize;
-                row_min[row] = row_min[row].min(px as i16);
-                row_max[row] = row_max[row].max(px as i16);
-            }
-            x += x_inc;
-            y += y_inc;
-        }
-
-        for py in 0..TILE_SIZE as usize {
-            let min_x = row_min[py];
-            let max_x = row_max[py];
-            if min_x > max_x {
-                continue;
-            }
-            for px in min_x..=max_x {
-                let pixel_ix = py * TILE_SIZE as usize + px as usize;
-                segment.edges.set(pixel_ix);
-            }
-        }
-    }
 }
 
 impl ScanCpuPipeline {
@@ -258,19 +225,20 @@ impl ScanCpuPipeline {
     pub fn prepare<'a>(
         &self,
         lines: &'a [Line],
+        path_records: &'a [PathRecord],
         draw_records: &'a [DrawRecord],
         backdrop_records: &'a [BackdropRecord],
         backdrops: &'a mut Vec<i32>,
         tile_segment_ranges: &'a mut Vec<TileSegmentRange>,
         segments: &'a mut Vec<LineSegment>,
         segments_bump: &'a mut Vec<AtomicU32>,
-        segment_tile_counts: &'a mut Vec<AtomicU32>,
+        segment_tile_counts: &'a mut Vec<u32>,
         segment_tile_cursors: &'a mut Vec<AtomicU32>,
-        packed_segments: &'a mut Vec<LineSegment>,
         tiles_size: (u32, u32),
     ) -> ScanCpuPrepared<'a> {
         ScanCpuPrepared {
             lines,
+            path_records,
             draw_records,
             backdrop_records,
             tiles_size,
@@ -280,7 +248,6 @@ impl ScanCpuPipeline {
             segments_bump,
             segment_tile_counts,
             segment_tile_cursors,
-            packed_segments,
         }
     }
 }
@@ -300,6 +267,49 @@ pub(crate) struct ScanLinePlan {
     imax: u32,
     ymin: i32,
     ymax: i32,
+}
+
+#[derive(Clone, Copy)]
+struct ScannedTile {
+    x: i32,
+    y: i32,
+    global_ix: u32,
+    seg_within_line: u32,
+    seg_count: u32,
+    top_edge: bool,
+}
+
+fn for_each_scanned_tile(
+    plan: &ScanLinePlan,
+    bbox: TileBbox,
+    tiles_size: (u32, u32),
+    mut f: impl FnMut(ScannedTile),
+) {
+    let mut last_z = (plan.a * (plan.imin as f32 - 1.0) + plan.b).floor();
+    for i in plan.imin..plan.imax {
+        let z = (plan.a * i as f32 + plan.b).floor();
+        let y = (plan.y0 + i as f32 - z) as i32;
+        let x = (plan.x0 + plan.sign * z) as i32;
+        if y < bbox.y0 as i32 || y >= bbox.y1 as i32 || x < bbox.x0 as i32 || x >= bbox.x1 as i32 {
+            last_z = z;
+            continue;
+        }
+
+        let top_edge = if i == plan.imin {
+            (plan.y0 - plan.xy0[1] * TILE_SCALE).abs() <= 1.0e-5
+        } else {
+            last_z == z
+        };
+        f(ScannedTile {
+            x,
+            y,
+            global_ix: y as u32 * tiles_size.0 + x as u32,
+            seg_within_line: i - plan.imin,
+            seg_count: plan.imax - plan.imin,
+            top_edge,
+        });
+        last_z = z;
+    }
 }
 
 pub(crate) fn plan_scan_line(line: Line, bbox: TileBbox) -> Option<ScanLinePlan> {
@@ -427,7 +437,6 @@ fn clip_line_to_tile(
     seg_count: u32,
     a: f32,
     b: f32,
-    tile_id: u32,
 ) -> LineSegment {
     let (mut xy0, mut xy1) = line;
     let tile_xy = [
@@ -514,8 +523,6 @@ fn clip_line_to_tile(
         point0: p0,
         point1: p1,
         y_edge,
-        tile_id,
-        edges: TileMask::new(),
     }
 }
 
@@ -605,6 +612,12 @@ mod tests {
             p0: [-4.0, 0.0],
             p1: [-4.0, 16.0],
         }];
+        let path_records = [PathRecord {
+            path_id: 0,
+            line_count: 1,
+            line_start: 0,
+            _pad: 0,
+        }];
         let draw_records = [one_tile_draw_record()];
         let backdrop_records = [one_tile_backdrop_record(1)];
         let mut backdrops = vec![0];
@@ -614,19 +627,15 @@ mod tests {
             .into_iter()
             .map(std::sync::atomic::AtomicU32::new)
             .collect();
-        let mut segment_tile_counts = vec![0]
-            .into_iter()
-            .map(std::sync::atomic::AtomicU32::new)
-            .collect();
+        let mut segment_tile_counts = vec![0];
         let mut segment_tile_cursors = vec![0]
             .into_iter()
             .map(std::sync::atomic::AtomicU32::new)
             .collect();
-        let mut packed_segments = vec![LineSegment::default(); 1];
-
         ScanCpuPipeline::new()
             .prepare(
                 &lines,
+                &path_records,
                 &draw_records,
                 &backdrop_records,
                 &mut backdrops,
@@ -635,7 +644,6 @@ mod tests {
                 &mut segments_bump,
                 &mut segment_tile_counts,
                 &mut segment_tile_cursors,
-                &mut packed_segments,
                 (1, 1),
             )
             .run();
@@ -652,6 +660,12 @@ mod tests {
             p0: [4.0, 0.0],
             p1: [4.0, 16.0],
         }];
+        let path_records = [PathRecord {
+            path_id: 0,
+            line_count: 1,
+            line_start: 0,
+            _pad: 0,
+        }];
         let draw_records = [one_tile_draw_record()];
         let backdrop_records = [one_tile_backdrop_record(1)];
         let mut backdrops = vec![0];
@@ -661,19 +675,15 @@ mod tests {
             .into_iter()
             .map(std::sync::atomic::AtomicU32::new)
             .collect();
-        let mut segment_tile_counts = vec![0]
-            .into_iter()
-            .map(std::sync::atomic::AtomicU32::new)
-            .collect();
+        let mut segment_tile_counts = vec![0];
         let mut segment_tile_cursors = vec![0]
             .into_iter()
             .map(std::sync::atomic::AtomicU32::new)
             .collect();
-        let mut packed_segments = vec![LineSegment::default(); 1];
-
         ScanCpuPipeline::new()
             .prepare(
                 &lines,
+                &path_records,
                 &draw_records,
                 &backdrop_records,
                 &mut backdrops,
@@ -682,7 +692,6 @@ mod tests {
                 &mut segments_bump,
                 &mut segment_tile_counts,
                 &mut segment_tile_cursors,
-                &mut packed_segments,
                 (1, 1),
             )
             .run();
@@ -693,12 +702,10 @@ mod tests {
             tile_segment_ranges[0],
             TileSegmentRange { start: 0, end: 1 }
         );
-        assert_eq!(segments[0].tile_id, 0);
         assert!((segments[0].point0.0 - 4.0).abs() < 1e-3);
         assert!((segments[0].point1.0 - 4.0).abs() < 1e-3);
         assert!((segments[0].point0.1 - 0.0).abs() < 1e-6);
         assert!((segments[0].point1.1 - 16.0).abs() < 1e-6);
-        assert!(segments[0].edges.any());
     }
 
     #[test]
@@ -717,6 +724,12 @@ mod tests {
                 p1: [4.0, 16.0],
             },
         ];
+        let path_records = [PathRecord {
+            path_id: 0,
+            line_count: 2,
+            line_start: 0,
+            _pad: 0,
+        }];
         let draw_records = [DrawRecord {
             path_id: Some(0),
             tag: DrawTag::Brush,
@@ -750,19 +763,15 @@ mod tests {
             .into_iter()
             .map(std::sync::atomic::AtomicU32::new)
             .collect();
-        let mut segment_tile_counts = vec![0; 2]
-            .into_iter()
-            .map(std::sync::atomic::AtomicU32::new)
-            .collect();
+        let mut segment_tile_counts = vec![0; 2];
         let mut segment_tile_cursors = vec![0; 2]
             .into_iter()
             .map(std::sync::atomic::AtomicU32::new)
             .collect();
-        let mut packed_segments = vec![LineSegment::default(); 4];
-
         ScanCpuPipeline::new()
             .prepare(
                 &lines,
+                &path_records,
                 &draw_records,
                 &backdrop_records,
                 &mut backdrops,
@@ -771,7 +780,6 @@ mod tests {
                 &mut segments_bump,
                 &mut segment_tile_counts,
                 &mut segment_tile_cursors,
-                &mut packed_segments,
                 (2, 1),
             )
             .run();
@@ -784,11 +792,16 @@ mod tests {
                 TileSegmentRange { start: 2, end: 4 },
             ]
         );
-        assert_eq!(segments[0].tile_id, 0);
-        assert_eq!(segments[1].tile_id, 0);
-        assert_eq!(segments[2].tile_id, 1);
-        assert_eq!(segments[3].tile_id, 1);
-        assert!(segments.iter().all(|segment| segment.edges.any()));
+        assert!(
+            segments[0..2]
+                .iter()
+                .all(|segment| { segment.point0.0 <= 16.0 && segment.point1.0 <= 16.0 })
+        );
+        assert!(
+            segments[2..4]
+                .iter()
+                .all(|segment| { segment.point0.0 >= 0.0 && segment.point1.0 >= 0.0 })
+        );
     }
 
     #[test]

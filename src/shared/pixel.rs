@@ -1,93 +1,8 @@
-use std::ops::{BitOr, BitOrAssign};
-
 use crate::{
     BLOCK_SIZE, TILE_SIZE,
     shared::{bounds::Bounds, image::rgba8_pack},
 };
 use wide::u32x4;
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct TileMask {
-    words: [u64; 4],
-}
-
-impl TileMask {
-    pub const fn new() -> Self {
-        Self { words: [0; 4] }
-    }
-
-    pub const fn from_words(words: [u64; 4]) -> Self {
-        Self { words }
-    }
-
-    pub const fn words(&self) -> &[u64; 4] {
-        &self.words
-    }
-
-    #[inline]
-    pub fn set(&mut self, index: usize) {
-        debug_assert!(index < BLOCK_SIZE as usize);
-        let word = index / u64::BITS as usize;
-        let bit = index % u64::BITS as usize;
-        self.words[word] |= 1u64 << bit;
-    }
-
-    #[inline]
-    pub fn clear(&mut self, index: usize) {
-        debug_assert!(index < BLOCK_SIZE as usize);
-        let word = index / u64::BITS as usize;
-        let bit = index % u64::BITS as usize;
-        self.words[word] &= !(1u64 << bit);
-    }
-
-    #[inline]
-    pub fn get(&self, index: usize) -> bool {
-        debug_assert!(index < BLOCK_SIZE as usize);
-        let word = index / u64::BITS as usize;
-        let bit = index % u64::BITS as usize;
-        (self.words[word] & (1u64 << bit)) != 0
-    }
-
-    #[inline]
-    pub fn any(&self) -> bool {
-        self.words.iter().any(|&word| word != 0)
-    }
-
-    #[inline]
-    pub fn union(self, other: Self) -> Self {
-        Self {
-            words: std::array::from_fn(|i| self.words[i] | other.words[i]),
-        }
-    }
-
-    #[inline]
-    pub fn iter_ones(self) -> TileMaskIter {
-        TileMaskIter {
-            words: self.words,
-            word_index: 0,
-        }
-    }
-}
-
-impl From<[u64; 4]> for TileMask {
-    fn from(words: [u64; 4]) -> Self {
-        Self::from_words(words)
-    }
-}
-
-impl BitOr for TileMask {
-    type Output = Self;
-
-    fn bitor(self, rhs: Self) -> Self::Output {
-        self.union(rhs)
-    }
-}
-
-impl BitOrAssign for TileMask {
-    fn bitor_assign(&mut self, rhs: Self) {
-        *self = self.union(rhs);
-    }
-}
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SegmentMask {
@@ -144,40 +59,6 @@ pub struct SegmentMaskIter {
 }
 
 impl Iterator for SegmentMaskIter {
-    type Item = usize;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while self.word_index < self.words.len() {
-            let word = &mut self.words[self.word_index];
-            if *word == 0 {
-                self.word_index += 1;
-                continue;
-            }
-
-            let bit = word.trailing_zeros() as usize;
-            *word &= *word - 1;
-            return Some(self.word_index * u64::BITS as usize + bit);
-        }
-
-        None
-    }
-}
-
-impl IntoIterator for TileMask {
-    type Item = usize;
-    type IntoIter = TileMaskIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter_ones()
-    }
-}
-
-pub struct TileMaskIter {
-    words: [u64; 4],
-    word_index: usize,
-}
-
-impl Iterator for TileMaskIter {
     type Item = usize;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -441,35 +322,6 @@ pub(crate) fn src_over(dst: [f32; 4], src: [f32; 4]) -> [f32; 4] {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn tile_mask_iterates_all_set_bits_in_order() {
-        let mask = TileMask::from_words([
-            (1u64 << 0) | (1u64 << 5) | (1u64 << 63),
-            (1u64 << 0) | (1u64 << 7),
-            0,
-            1u64 << 63,
-        ]);
-
-        let bits: Vec<_> = mask.iter_ones().collect();
-        assert_eq!(bits, vec![0, 5, 63, 64, 71, 255]);
-    }
-
-    #[test]
-    fn tile_mask_set_get_clear_work() {
-        let mut mask = TileMask::new();
-        assert!(!mask.any());
-
-        mask.set(3);
-        mask.set(130);
-        assert!(mask.get(3));
-        assert!(mask.get(130));
-        assert_eq!(mask.into_iter().collect::<Vec<_>>(), vec![3, 130]);
-
-        mask.clear(3);
-        assert!(!mask.get(3));
-        assert!(mask.get(130));
-    }
 
     #[test]
     fn segment_mask_iterates_all_set_bits_in_order() {

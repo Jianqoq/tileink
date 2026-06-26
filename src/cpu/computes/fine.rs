@@ -270,7 +270,7 @@ pub(crate) fn composite_color_tile_into(
 #[cfg(test)]
 mod tests {
     use super::{build_tile_alpha, pixel_coverage};
-    use crate::shared::{fill::FillRule, line_seg::LineSegment, pixel::TileMask};
+    use crate::shared::{fill::FillRule, line_seg::LineSegment};
 
     #[test]
     fn pixel_coverage_uses_backdrop_when_tile_has_no_segments() {
@@ -295,14 +295,11 @@ mod tests {
     }
 
     #[test]
-    fn build_tile_alpha_recomputes_pixels_outside_edge_mask() {
-        let mut edges = TileMask::new();
-        edges.set(0);
+    fn build_tile_alpha_uses_segment_geometry() {
         let segment = LineSegment {
             point0: (4.0, 0.0),
             point1: (12.0, 16.0),
             y_edge: 1.0e9,
-            edges,
             ..LineSegment::default()
         };
 

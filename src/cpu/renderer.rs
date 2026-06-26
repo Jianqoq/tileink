@@ -43,9 +43,8 @@ pub struct Renderer {
     tile_segment_ranges: Vec<TileSegmentRange>,
     segments: Vec<LineSegment>,
     segments_bump: Vec<AtomicU32>,
-    segment_tile_counts: Vec<AtomicU32>,
+    segment_tile_counts: Vec<u32>,
     segment_tile_cursors: Vec<AtomicU32>,
-    packed_segments: Vec<LineSegment>,
     tile_ptcl_ranges: Vec<TilePtclRange>,
     tile_ptcls: Vec<TilePtcl>,
 }
@@ -102,17 +101,13 @@ impl Render for Renderer {
             last_bd_record.segment_start as usize + last_bd_record.segment_capacity as usize,
             LineSegment::default(),
         );
-        self.segment_tile_counts.resize_with(
+        self.segment_tile_counts.resize(
             last_bd_record.data_offset as usize + last_bd_record.data_len as usize,
-            || AtomicU32::new(0),
+            0,
         );
         self.segment_tile_cursors.resize_with(
             last_bd_record.data_offset as usize + last_bd_record.data_len as usize,
             || AtomicU32::new(0),
-        );
-        self.packed_segments.resize(
-            last_bd_record.segment_start as usize + last_bd_record.segment_capacity as usize,
-            LineSegment::default(),
         );
         self.segments_bump
             .resize_with(scene.bd_records.len(), || AtomicU32::new(0));
@@ -122,6 +117,7 @@ impl Render for Renderer {
         self.scan
             .prepare(
                 &scene.lines,
+                &scene.path_records,
                 &scene.draw_records,
                 &scene.bd_records,
                 &mut self.backdrops,
@@ -130,7 +126,6 @@ impl Render for Renderer {
                 &mut self.segments_bump,
                 &mut self.segment_tile_counts,
                 &mut self.segment_tile_cursors,
-                &mut self.packed_segments,
                 (scene.width_in_tiles(), scene.height_in_tiles()),
             )
             .run();
@@ -192,7 +187,6 @@ impl Renderer {
             segments_bump: Vec::new(),
             segment_tile_counts: Vec::new(),
             segment_tile_cursors: Vec::new(),
-            packed_segments: Vec::new(),
             tile_ptcl_ranges: Vec::new(),
             tile_ptcls: Vec::new(),
         }
