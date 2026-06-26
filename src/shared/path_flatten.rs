@@ -337,7 +337,7 @@ fn tile_cover_upper_bound_for_line(line: &Line) -> u32 {
     let p0 = (line.p0[0] / TILE_SIZE as f32, line.p0[1] / TILE_SIZE as f32);
     let p1 = (line.p1[0] / TILE_SIZE as f32, line.p1[1] / TILE_SIZE as f32);
 
-    span(p0.0, p1.0) + span(p0.1, p1.1)
+    span(p0.0, p1.0) + span(p0.1, p1.1) + 8
 }
 
 fn span(a: f32, b: f32) -> u32 {

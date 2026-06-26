@@ -1,4 +1,7 @@
-use std::sync::atomic::AtomicU32;
+use std::{
+    sync::atomic::{AtomicU32, Ordering},
+    time::Duration,
+};
 
 use peniko::Color;
 
@@ -45,6 +48,15 @@ pub struct Renderer {
     packed_segments: Vec<LineSegment>,
     tile_ptcl_ranges: Vec<TilePtclRange>,
     tile_ptcls: Vec<TilePtcl>,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RenderProfile {
+    pub scan: Duration,
+    pub cumsum: Duration,
+    pub coarse: Duration,
+    pub fine: Duration,
+    pub total: Duration,
 }
 
 impl Render for Renderer {
@@ -104,6 +116,9 @@ impl Render for Renderer {
         );
         self.segments_bump
             .resize_with(scene.bd_records.len(), || AtomicU32::new(0));
+        for bump in &self.segments_bump {
+            bump.store(0, Ordering::Relaxed);
+        }
         self.scan
             .prepare(
                 &scene.lines,
@@ -185,6 +200,49 @@ impl Renderer {
 
     pub fn render(&mut self, scene: &crate::scene::Scene) {
         <Self as Render>::render(self, scene);
+    }
+
+    pub fn render_profiled_flat(&mut self, scene: &crate::scene::Scene) -> RenderProfile {
+        let total_start = std::time::Instant::now();
+        let plan = scene.compile(0);
+        let mut profile = RenderProfile::default();
+
+        let start = std::time::Instant::now();
+        self.scan(scene, ());
+        profile.scan = start.elapsed();
+
+        let start = std::time::Instant::now();
+        self.cumsum(scene, ());
+        profile.cumsum = start.elapsed();
+
+        let mut image = Image::new(self.size.0, self.size.1, self.clear);
+        let target_bounds = Bounds::canvas(scene.width, scene.height);
+
+        for op in &plan.ops {
+            let ExecOp::DrawBatch { draws, clip_stack } = op else {
+                panic!("render_profiled_flat only supports scenes without layers");
+            };
+
+            let start = std::time::Instant::now();
+            self.coarse(
+                scene,
+                (
+                    &scene.draw_records,
+                    draws.start..draws.end,
+                    &plan.clip_stack_data,
+                    clip_stack.clone(),
+                ),
+            );
+            profile.coarse += start.elapsed();
+
+            let start = std::time::Instant::now();
+            self.fine(scene, (&mut image, target_bounds));
+            profile.fine += start.elapsed();
+        }
+
+        self.image = image;
+        profile.total = total_start.elapsed();
+        profile
     }
 
     pub fn image(&self) -> &Image {
