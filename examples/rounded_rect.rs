@@ -38,6 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Stroke::new(10.0),
         Color::from_rgb8(225, 142, 66),
         Affine::IDENTITY,
+        FillRule::NonZero,
         0.1,
     );
 

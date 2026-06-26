@@ -84,33 +84,6 @@ pub(crate) fn build_tile_alpha(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn rasterize_tile(
-    image: &mut [u32],
-    image_width: u32,
-    image_height: u32,
-    tile_x: u32,
-    tile_y: u32,
-    segments: &[LineSegment],
-    backdrop: i32,
-    fill_rule: FillRule,
-    brush: &Brush,
-) {
-    rasterize_tile_into(
-        image,
-        image_width,
-        image_height,
-        0,
-        0,
-        tile_x,
-        tile_y,
-        segments,
-        backdrop,
-        fill_rule,
-        brush,
-    );
-}
-
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn rasterize_tile_into(
     image: &mut [u32],
     image_width: u32,
@@ -162,26 +135,6 @@ pub(crate) fn rasterize_tile_into(
             image[pixel_ix] = src_over_premul_u8(image[pixel_ix], src);
         }
     }
-}
-
-pub(crate) fn composite_color_tile(
-    image: &mut [u32],
-    image_width: u32,
-    image_height: u32,
-    tile_x: u32,
-    tile_y: u32,
-    color: u32,
-) {
-    composite_color_tile_into(
-        image,
-        image_width,
-        image_height,
-        0,
-        0,
-        tile_x,
-        tile_y,
-        color,
-    );
 }
 
 pub(crate) fn composite_color_tile_into(

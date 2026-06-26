@@ -339,18 +339,12 @@ impl Scene {
         stroke: Stroke,
         brush: impl Into<Brush>,
         transform: Affine,
+        rule: FillRule,
         tolerance: f64,
     ) {
         let path = shape.to_path(tolerance);
         let outline = kurbo_stroke(path, &stroke, &StrokeOpts::default(), tolerance);
-        self.push_path_inner(
-            outline,
-            brush,
-            transform,
-            FillRule::EvenOdd,
-            tolerance,
-            None,
-        );
+        self.push_path_inner(outline, brush, transform, rule, tolerance, None);
     }
 
     pub fn push_path(
@@ -929,6 +923,7 @@ mod tests {
             Stroke::new(4.0),
             Brush::Solid(rgb(255, 0, 0)),
             Affine::IDENTITY,
+            FillRule::NonZero,
             0.1,
         );
 
@@ -938,7 +933,7 @@ mod tests {
         assert!(bounds.y0 <= 8);
         assert!(bounds.x1 >= 22);
         assert!(bounds.y1 >= 22);
-        assert_eq!(scene.draw_records[0].fill_rule, FillRule::EvenOdd);
+        assert_eq!(scene.draw_records[0].fill_rule, FillRule::NonZero);
         assert!(!scene.draw_records[0].solid_rect);
     }
 

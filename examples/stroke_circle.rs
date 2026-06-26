@@ -21,6 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Stroke::new(16.0),
         Color::from_rgb8(222, 96, 72),
         Affine::IDENTITY,
+        FillRule::NonZero,
         0.1,
     );
 

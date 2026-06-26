@@ -32,6 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Stroke::new(12.0),
         Color::from_rgb8(230, 89, 80),
         Affine::IDENTITY,
+        FillRule::NonZero,
         0.1,
     );
     scene.push_stroke(
@@ -39,6 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Stroke::new(10.0),
         Color::from_rgb8(222, 178, 106),
         Affine::IDENTITY,
+        FillRule::NonZero,
         0.1,
     );
 
