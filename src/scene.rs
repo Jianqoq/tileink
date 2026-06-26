@@ -1,6 +1,6 @@
 use peniko::{
     Color,
-    kurbo::{Affine, BezPath, Shape},
+    kurbo::{Affine, Arc, BezPath, Rect, Shape},
 };
 
 use crate::shared::{
@@ -303,7 +303,48 @@ impl Scene {
         Some(layer_kind)
     }
 
-    fn push_path(
+    pub fn push_rect(&mut self, rect: Rect, brush: impl Into<Brush>, rule: FillRule) {
+        let bounds = Bounds {
+            x0: rect.x0.min(rect.x1).floor() as i32,
+            y0: rect.y0.min(rect.y1).floor() as i32,
+            x1: rect.x0.max(rect.x1).ceil() as i32,
+            y1: rect.y0.max(rect.y1).ceil() as i32,
+        };
+        let draw = self.push_path_inner(
+            rect.to_path(0.0),
+            brush,
+            Affine::IDENTITY,
+            rule,
+            0.0,
+            Some(bounds),
+        );
+        if let Some(draw) = self.draw_records.get_mut(draw) {
+            draw.solid_rect = true;
+        }
+    }
+
+    pub fn push_arc(&mut self, arc: Arc, brush: impl Into<Brush>, rule: FillRule, tolerance: f64) {
+        self.push_path(
+            arc.to_path(tolerance),
+            brush,
+            Affine::IDENTITY,
+            rule,
+            tolerance,
+        );
+    }
+
+    pub fn push_path(
+        &mut self,
+        path: BezPath,
+        brush: impl Into<Brush>,
+        transform: Affine,
+        rule: FillRule,
+        tolerance: f64,
+    ) {
+        self.push_path_inner(path, brush, transform, rule, tolerance, None);
+    }
+
+    fn push_path_inner(
         &mut self,
         path: BezPath,
         brush: impl Into<Brush>,
@@ -311,7 +352,7 @@ impl Scene {
         rule: FillRule,
         tolerance: f64,
         bounds_override: Option<Bounds>,
-    ) {
+    ) -> usize {
         self.ensure_command_root();
         let line_start = self.lines.len() as u32;
         let path_id = self.path_cnt;
@@ -370,6 +411,7 @@ impl Scene {
             segment_capacity: local_tile_cnt,
             segment_count: 0,
         });
+        draw_ix
     }
 
     fn push_layer_path(
@@ -641,7 +683,6 @@ mod tests {
             Affine::IDENTITY,
             FillRule::NonZero,
             0.25,
-            None,
         );
         scene.push_blend_layer(
             rect_path(4.0, 4.0, 24.0, 24.0),
@@ -655,7 +696,6 @@ mod tests {
             Affine::IDENTITY,
             FillRule::NonZero,
             0.25,
-            None,
         );
         scene.pop_layer();
         scene.push_path(
@@ -664,7 +704,6 @@ mod tests {
             Affine::IDENTITY,
             FillRule::NonZero,
             0.25,
-            None,
         );
         scene.pop_layer();
 
@@ -731,7 +770,6 @@ mod tests {
             Affine::IDENTITY,
             FillRule::NonZero,
             0.25,
-            None,
         );
         scene.push_blend_layer(
             rect_path(4.0, 4.0, 24.0, 24.0),
@@ -745,7 +783,6 @@ mod tests {
             Affine::IDENTITY,
             FillRule::NonZero,
             0.25,
-            None,
         );
         scene.pop_layer();
         scene.push_path(
@@ -754,7 +791,6 @@ mod tests {
             Affine::IDENTITY,
             FillRule::NonZero,
             0.25,
-            None,
         );
         scene.pop_layer();
 
@@ -822,5 +858,46 @@ mod tests {
             }
             op => panic!("expected EndOpacity, got {op:#?}"),
         }
+    }
+
+    #[test]
+    fn push_rect_marks_solid_rect_and_sets_bounds() {
+        let mut scene = test_scene();
+        scene.push_rect(
+            Rect::new(2.0, 3.0, 18.0, 19.0),
+            Brush::Solid(rgb(255, 0, 0)),
+            FillRule::NonZero,
+        );
+
+        assert_eq!(scene.draw_records.len(), 1);
+        let draw = &scene.draw_records[0];
+        assert_eq!(
+            draw.pixel_bounds,
+            PixelBounds {
+                x0: 2,
+                y0: 3,
+                x1: 18,
+                y1: 19,
+            }
+        );
+        assert!(draw.solid_rect);
+        assert_eq!(draw.tag, DrawTag::Brush);
+    }
+
+    #[test]
+    fn push_arc_adds_draw_and_path_record() {
+        let mut scene = test_scene();
+        scene.push_arc(
+            Arc::new((16.0, 16.0), (8.0, 6.0), 0.0, std::f64::consts::PI, 0.0),
+            Brush::Solid(rgb(0, 255, 0)),
+            FillRule::NonZero,
+            0.25,
+        );
+
+        assert_eq!(scene.draw_records.len(), 1);
+        assert_eq!(scene.path_records.len(), 1);
+        assert_eq!(scene.bd_records.len(), 1);
+        assert_eq!(scene.draw_records[0].tag, DrawTag::Brush);
+        assert!(!scene.draw_records[0].solid_rect);
     }
 }
