@@ -162,6 +162,36 @@ impl Render for Renderer {
 }
 
 impl Renderer {
+    pub fn new(width: u32, height: u32, clear: Color) -> Self {
+        Self {
+            image: Image::new(width, height, clear),
+            clear,
+            scan: ScanCpuPipeline::new(),
+            cumsum: CumsumCpuPipeline::new(),
+            coarse: CoarseCpuPipeline::new(),
+            fine: FineCpuPipeline::new(),
+            filter: FilterCpuPipeline::new(),
+            size: (width, height),
+            backdrops: Vec::new(),
+            tile_segment_ranges: Vec::new(),
+            segments: Vec::new(),
+            segments_bump: Vec::new(),
+            segment_tile_counts: Vec::new(),
+            segment_tile_cursors: Vec::new(),
+            packed_segments: Vec::new(),
+            tile_ptcl_ranges: Vec::new(),
+            tile_ptcls: Vec::new(),
+        }
+    }
+
+    pub fn render(&mut self, scene: &crate::scene::Scene) {
+        <Self as Render>::render(self, scene);
+    }
+
+    pub fn image(&self) -> &Image {
+        &self.image
+    }
+
     fn execute_plan(&mut self, scene: &crate::scene::Scene, plan: &ExecPlan, target: &mut Image) {
         self.execute_ops(
             scene,

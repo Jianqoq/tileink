@@ -35,6 +35,24 @@ pub struct Scene {
 }
 
 impl Scene {
+    pub fn new(width: u32, height: u32) -> Self {
+        Self {
+            lines: Vec::new(),
+            path_records: Vec::new(),
+            draw_records: Vec::new(),
+            bd_records: Vec::new(),
+            command_lists: vec![CommandList::default()],
+            root_commands: ROOT_COMMAND_LIST_ID,
+            command_stack: vec![ROOT_COMMAND_LIST_ID],
+            layer_stack: Vec::new(),
+            path_cnt: 0,
+            backdrop_pool_capacity: 0,
+            tile_cnt: 0,
+            width,
+            height,
+        }
+    }
+
     fn draw_bounds(&self, draw_ix: usize) -> Bounds {
         let bounds = self.draw_records[draw_ix].pixel_bounds;
         Bounds::new(bounds.x0, bounds.y0, bounds.x1, bounds.y1)
@@ -632,21 +650,7 @@ mod tests {
     use peniko::{BlendMode, Compose, Mix, kurbo::PathEl};
 
     fn test_scene() -> Scene {
-        Scene {
-            lines: Vec::new(),
-            path_records: Vec::new(),
-            draw_records: Vec::new(),
-            bd_records: Vec::new(),
-            command_lists: vec![CommandList::default()],
-            root_commands: ROOT_COMMAND_LIST_ID,
-            command_stack: vec![ROOT_COMMAND_LIST_ID],
-            layer_stack: Vec::new(),
-            path_cnt: 0,
-            backdrop_pool_capacity: 0,
-            tile_cnt: 0,
-            width: 64,
-            height: 64,
-        }
+        Scene::new(64, 64)
     }
 
     fn rect_path(x0: f64, y0: f64, x1: f64, y1: f64) -> BezPath {
