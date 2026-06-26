@@ -169,12 +169,6 @@ impl Scene {
             transform,
             FillRule::NonZero,
             tolerance,
-            Bounds {
-                x0: bounds.x0.floor() as i32,
-                y0: bounds.y0.floor() as i32,
-                x1: bounds.x1.ceil() as i32,
-                y1: bounds.y1.ceil() as i32,
-            },
         );
         let layer = Layer::Clip(Clip {
             path,
@@ -215,12 +209,6 @@ impl Scene {
             transform,
             FillRule::NonZero,
             tolerance,
-            Bounds {
-                x0: bounds.x0.floor() as i32,
-                y0: bounds.y0.floor() as i32,
-                x1: bounds.x1.ceil() as i32,
-                y1: bounds.y1.ceil() as i32,
-            },
         );
         let layer = Layer::Opacity(Opacity {
             path,
@@ -262,12 +250,6 @@ impl Scene {
             transform,
             FillRule::NonZero,
             tolerance,
-            Bounds {
-                x0: bounds.x0.floor() as i32,
-                y0: bounds.y0.floor() as i32,
-                x1: bounds.x1.ceil() as i32,
-                y1: bounds.y1.ceil() as i32,
-            },
         );
         let layer = Layer::Blend(Blend {
             path,
@@ -344,6 +326,24 @@ impl Scene {
         self.push_path_inner(path, brush, transform, rule, tolerance, None);
     }
 
+    fn transform_path(path: BezPath, transform: Affine) -> BezPath {
+        if transform == Affine::IDENTITY {
+            path
+        } else {
+            transform * path
+        }
+    }
+
+    fn pixel_bounds_for_transformed_path(path: &BezPath) -> PixelBounds {
+        let rect = path.bounding_box();
+        PixelBounds {
+            x0: rect.x0.floor() as i32,
+            y0: rect.y0.floor() as i32,
+            x1: rect.x1.ceil() as i32,
+            y1: rect.y1.ceil() as i32,
+        }
+    }
+
     fn push_path_inner(
         &mut self,
         path: BezPath,
@@ -358,6 +358,7 @@ impl Scene {
         let path_id = self.path_cnt;
         self.path_cnt += 1;
         let mut local_tile_cnt = 0;
+        let path = Self::transform_path(path, transform);
         PathFlatten::new(&path, tolerance as f32, path_id, &mut local_tile_cnt)
             .flatten(&mut self.lines);
         let line_count = self.lines.len() as u32 - line_start;
@@ -374,7 +375,7 @@ impl Scene {
                 x1: bounds.x1,
                 y1: bounds.y1,
             },
-            None => PixelBounds::from_path(&path, transform),
+            None => Self::pixel_bounds_for_transformed_path(&path),
         };
         let tile_bbox = pixel_bounds.tile_bbox(self.width_in_tiles(), self.height_in_tiles());
         let tile_stride = tile_bbox.tile_stride();
@@ -421,12 +422,12 @@ impl Scene {
         transform: Affine,
         rule: FillRule,
         tolerance: f64,
-        bounds: Bounds,
     ) -> usize {
         let line_start = self.lines.len() as u32;
         let path_id = self.path_cnt;
         self.path_cnt += 1;
         let mut local_tile_cnt = 0;
+        let path = Self::transform_path(path, transform);
         PathFlatten::new(&path, tolerance as f32, path_id, &mut local_tile_cnt)
             .flatten(&mut self.lines);
         let line_count = self.lines.len() as u32 - line_start;
@@ -437,12 +438,7 @@ impl Scene {
             _pad: 0,
         });
 
-        let pixel_bounds = PixelBounds {
-            x0: bounds.x0,
-            y0: bounds.y0,
-            x1: bounds.x1,
-            y1: bounds.y1,
-        };
+        let pixel_bounds = Self::pixel_bounds_for_transformed_path(&path);
         let tile_bbox = pixel_bounds.tile_bbox(self.width_in_tiles(), self.height_in_tiles());
         let tile_stride = tile_bbox.tile_stride();
         let tile_height = tile_bbox.tile_height();
@@ -899,5 +895,57 @@ mod tests {
         assert_eq!(scene.bd_records.len(), 1);
         assert_eq!(scene.draw_records[0].tag, DrawTag::Brush);
         assert!(!scene.draw_records[0].solid_rect);
+    }
+
+    #[test]
+    fn push_path_flattens_transformed_geometry() {
+        let mut scene = test_scene();
+        scene.push_path(
+            rect_path(0.0, 0.0, 10.0, 10.0),
+            Brush::Solid(rgb(255, 0, 0)),
+            Affine::translate((8.0, 4.0)),
+            FillRule::NonZero,
+            0.25,
+        );
+
+        assert_eq!(
+            scene.draw_records[0].pixel_bounds,
+            PixelBounds {
+                x0: 8,
+                y0: 4,
+                x1: 18,
+                y1: 14,
+            }
+        );
+        assert!(scene.lines.iter().all(|line| {
+            [line.p0, line.p1].into_iter().all(|point| {
+                point[0] >= 8.0 && point[0] <= 18.0 && point[1] >= 4.0 && point[1] <= 14.0
+            })
+        }));
+    }
+
+    #[test]
+    fn push_layer_path_flattens_transformed_geometry() {
+        let mut scene = test_scene();
+        scene.push_clip_layer(
+            rect_path(0.0, 0.0, 10.0, 10.0),
+            Affine::translate((12.0, 6.0)),
+            0.25,
+        );
+
+        assert_eq!(
+            scene.draw_records[0].pixel_bounds,
+            PixelBounds {
+                x0: 12,
+                y0: 6,
+                x1: 22,
+                y1: 16,
+            }
+        );
+        assert!(scene.lines.iter().all(|line| {
+            [line.p0, line.p1].into_iter().all(|point| {
+                point[0] >= 12.0 && point[0] <= 22.0 && point[1] >= 6.0 && point[1] <= 16.0
+            })
+        }));
     }
 }
