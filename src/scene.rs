@@ -9,8 +9,7 @@ use crate::shared::{
     brush::Brush,
     draw_record::{DrawRecord, DrawTag},
     execution::{
-        BatchState, ClipStackEntry, Command, CommandList, CommandListId, ExecOp, ExecPlan,
-        ROOT_COMMAND_LIST_ID,
+        ClipStackEntry, Command, CommandList, CommandListId, ExecOp, ExecPlan, ROOT_COMMAND_LIST_ID,
     },
     fill::FillRule,
     layer::{Layer, LayerKind, blend::Blend, clip::Clip, opacity::Opacity},
@@ -354,21 +353,6 @@ impl Scene {
             fill_rule: rule,
             pixel_bounds,
             solid_rect: false,
-            opacity_depth: self
-                .layer_stack
-                .iter()
-                .filter(|&&kind| kind == LayerKind::Opacity)
-                .count() as u8,
-            blend_depth: self
-                .layer_stack
-                .iter()
-                .filter(|&&kind| kind == LayerKind::Blend)
-                .count() as u8,
-            clip_depth: self
-                .layer_stack
-                .iter()
-                .filter(|&&kind| kind == LayerKind::Clip)
-                .count() as u8,
             allow_solid_override: true,
         });
         self.current_command_list_mut()
@@ -435,21 +419,6 @@ impl Scene {
             fill_rule: rule,
             pixel_bounds,
             solid_rect: false,
-            opacity_depth: self
-                .layer_stack
-                .iter()
-                .filter(|&&kind| kind == LayerKind::Opacity)
-                .count() as u8,
-            blend_depth: self
-                .layer_stack
-                .iter()
-                .filter(|&&kind| kind == LayerKind::Blend)
-                .count() as u8,
-            clip_depth: self
-                .layer_stack
-                .iter()
-                .filter(|&&kind| kind == LayerKind::Clip)
-                .count() as u8,
             allow_solid_override: false,
         });
         self.bd_records.push(BackdropRecord {
@@ -491,15 +460,6 @@ impl Scene {
         self.height.div_ceil(crate::TILE_SIZE)
     }
 
-    fn batch_state_for_draw(&self, draw_ix: usize) -> BatchState {
-        let draw = &self.draw_records[draw_ix];
-        BatchState {
-            clip_depth: draw.clip_depth,
-            blend_depth: draw.blend_depth,
-            opacity_depth: draw.opacity_depth,
-        }
-    }
-
     pub(crate) fn compile(&self, list_id: CommandListId) -> ExecPlan {
         let mut ops = Vec::new();
         let mut plan = ExecPlan {
@@ -519,13 +479,13 @@ impl Scene {
         plan: &mut ExecPlan,
         clip_stack: &mut Vec<ClipStackEntry>,
     ) {
-        let mut pending_batch: Option<(usize, usize, BatchState)> = None;
+        let mut pending_batch: Option<(usize, usize)> = None;
 
-        let flush_batch = |pending_batch: &mut Option<(usize, usize, BatchState)>,
+        let flush_batch = |pending_batch: &mut Option<(usize, usize)>,
                            ops: &mut Vec<ExecOp>,
                            plan: &mut ExecPlan,
                            clip_stack: &[ClipStackEntry]| {
-            let Some((start, end, batch_state)) = pending_batch.take() else {
+            let Some((start, end)) = pending_batch.take() else {
                 return;
             };
             let clip_start = plan.clip_stack_data.len();
@@ -534,46 +494,30 @@ impl Scene {
 
             ops.push(ExecOp::DrawBatch {
                 draws: start..end,
-                state: batch_state,
                 clip_stack: clip_start..clip_end,
             });
         };
 
         for command in &self.command_lists[list_id].commands {
             match command {
-                Command::Draw(draw_ix) => {
-                    let state = self.batch_state_for_draw(*draw_ix);
-                    match &mut pending_batch {
-                        Some((start, end, batch_state))
-                            if *end == *draw_ix && *batch_state == state =>
-                        {
-                            *end = *draw_ix + 1;
-                        }
-                        Some(_) => {
-                            flush_batch(
-                                &mut pending_batch,
-                                ops,
-                                plan,
-                                clip_stack,
-                            );
-                            pending_batch = Some((*draw_ix, *draw_ix + 1, state));
-                        }
-                        None => {
-                            pending_batch = Some((*draw_ix, *draw_ix + 1, state));
-                        }
+                Command::Draw(draw_ix) => match &mut pending_batch {
+                    Some((start, end)) if *end == *draw_ix => {
+                        *end = *draw_ix + 1;
                     }
-                }
+                    Some(_) => {
+                        flush_batch(&mut pending_batch, ops, plan, clip_stack);
+                        pending_batch = Some((*draw_ix, *draw_ix + 1));
+                    }
+                    None => {
+                        pending_batch = Some((*draw_ix, *draw_ix + 1));
+                    }
+                },
                 Command::Layer {
                     draw,
                     layer,
                     children,
                 } => {
-                    flush_batch(
-                        &mut pending_batch,
-                        ops,
-                        plan,
-                        clip_stack,
-                    );
+                    flush_batch(&mut pending_batch, ops, plan, clip_stack);
                     if Self::can_fuse(layer) {
                         match layer {
                             Layer::Clip(_) | Layer::ClipSdf { .. } => {
@@ -622,12 +566,7 @@ impl Scene {
                             layer: layer.clone(),
                             children: {
                                 let mut child_ops = Vec::new();
-                                self.compile_into(
-                                    *children,
-                                    &mut child_ops,
-                                    plan,
-                                    clip_stack,
-                                );
+                                self.compile_into(*children, &mut child_ops, plan, clip_stack);
                                 child_ops
                             },
                         });
@@ -636,12 +575,7 @@ impl Scene {
             }
         }
 
-        flush_batch(
-            &mut pending_batch,
-            ops,
-            plan,
-            clip_stack,
-        );
+        flush_batch(&mut pending_batch, ops, plan, clip_stack);
     }
 
     fn can_fuse(layer: &Layer) -> bool {
@@ -657,10 +591,7 @@ mod tests {
     use super::*;
     use std::ops::Range;
 
-    use peniko::{
-        BlendMode, Compose, Mix,
-        kurbo::PathEl,
-    };
+    use peniko::{BlendMode, Compose, Mix, kurbo::PathEl};
 
     fn test_scene() -> Scene {
         Scene {
@@ -750,18 +681,9 @@ mod tests {
         match &plan.ops[1] {
             ExecOp::DrawBatch {
                 draws,
-                state,
                 clip_stack,
             } => {
                 assert_eq!(draws.clone(), 1..2);
-                assert_eq!(
-                    *state,
-                    BatchState {
-                        clip_depth: 1,
-                        blend_depth: 0,
-                        opacity_depth: 0,
-                    }
-                );
                 assert_clip_stack(&plan, clip_stack.clone(), &[0]);
             }
             op => panic!("expected first DrawBatch, got {op:#?}"),
@@ -777,18 +699,9 @@ mod tests {
         match &plan.ops[3] {
             ExecOp::DrawBatch {
                 draws,
-                state,
                 clip_stack,
             } => {
                 assert_eq!(draws.clone(), 3..4);
-                assert_eq!(
-                    *state,
-                    BatchState {
-                        clip_depth: 1,
-                        blend_depth: 1,
-                        opacity_depth: 0,
-                    }
-                );
                 assert_clip_stack(&plan, clip_stack.clone(), &[0]);
             }
             op => panic!("expected second DrawBatch, got {op:#?}"),
@@ -804,18 +717,9 @@ mod tests {
         match &plan.ops[5] {
             ExecOp::DrawBatch {
                 draws,
-                state,
                 clip_stack,
             } => {
                 assert_eq!(draws.clone(), 4..5);
-                assert_eq!(
-                    *state,
-                    BatchState {
-                        clip_depth: 1,
-                        blend_depth: 0,
-                        opacity_depth: 0,
-                    }
-                );
                 assert_clip_stack(&plan, clip_stack.clone(), &[0]);
             }
             op => panic!("expected third DrawBatch, got {op:#?}"),
@@ -829,12 +733,7 @@ mod tests {
     #[test]
     fn compile_keeps_opacity_group_alive_across_nested_batches() {
         let mut scene = test_scene();
-        scene.push_opacity_layer(
-            rect_path(0.0, 0.0, 32.0, 32.0),
-            Affine::IDENTITY,
-            0.25,
-            0.5,
-        );
+        scene.push_opacity_layer(rect_path(0.0, 0.0, 32.0, 32.0), Affine::IDENTITY, 0.25, 0.5);
         scene.push_path(
             rect_path(2.0, 2.0, 8.0, 8.0),
             Brush::Solid(rgb(255, 0, 0)),
@@ -886,18 +785,9 @@ mod tests {
         match &plan.ops[1] {
             ExecOp::DrawBatch {
                 draws,
-                state,
                 clip_stack,
             } => {
                 assert_eq!(draws.clone(), 1..2);
-                assert_eq!(
-                    *state,
-                    BatchState {
-                        clip_depth: 0,
-                        blend_depth: 0,
-                        opacity_depth: 1,
-                    }
-                );
                 assert_clip_stack(&plan, clip_stack.clone(), &[]);
             }
             op => panic!("expected first DrawBatch, got {op:#?}"),
@@ -913,18 +803,9 @@ mod tests {
         match &plan.ops[3] {
             ExecOp::DrawBatch {
                 draws,
-                state,
                 clip_stack,
             } => {
                 assert_eq!(draws.clone(), 3..4);
-                assert_eq!(
-                    *state,
-                    BatchState {
-                        clip_depth: 0,
-                        blend_depth: 1,
-                        opacity_depth: 1,
-                    }
-                );
                 assert_clip_stack(&plan, clip_stack.clone(), &[]);
             }
             op => panic!("expected second DrawBatch, got {op:#?}"),
@@ -940,18 +821,9 @@ mod tests {
         match &plan.ops[5] {
             ExecOp::DrawBatch {
                 draws,
-                state,
                 clip_stack,
             } => {
                 assert_eq!(draws.clone(), 4..5);
-                assert_eq!(
-                    *state,
-                    BatchState {
-                        clip_depth: 0,
-                        blend_depth: 0,
-                        opacity_depth: 1,
-                    }
-                );
                 assert_clip_stack(&plan, clip_stack.clone(), &[]);
             }
             op => panic!("expected third DrawBatch, got {op:#?}"),

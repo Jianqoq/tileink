@@ -179,7 +179,6 @@ impl Renderer {
             match op {
                 ExecOp::DrawBatch {
                     draws,
-                    state: _,
                     clip_stack: _,
                 } => {
                     self.execute_draw_batch(scene, draws.start, draws.end, encoder, target);

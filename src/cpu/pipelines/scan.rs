@@ -569,9 +569,6 @@ mod tests {
                 y1: 16,
             },
             solid_rect: false,
-            opacity_depth: 0,
-            blend_depth: 0,
-            clip_depth: 0,
             allow_solid_override: true,
         }
     }
@@ -762,9 +759,6 @@ mod tests {
                 y1: 16,
             },
             solid_rect: false,
-            opacity_depth: 0,
-            blend_depth: 0,
-            clip_depth: 0,
             allow_solid_override: true,
         }];
         let backdrop_records = [BackdropRecord {

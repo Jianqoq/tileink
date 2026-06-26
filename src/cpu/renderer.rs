@@ -214,7 +214,6 @@ impl Renderer {
             match op {
                 ExecOp::DrawBatch {
                     draws,
-                    state: _,
                     clip_stack,
                 } => {
                     let target_bounds = current_target_bounds(scene, &groups);

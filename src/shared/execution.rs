@@ -22,13 +22,6 @@ pub(crate) enum Command {
     },
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) struct BatchState {
-    pub clip_depth: u8,
-    pub blend_depth: u8,
-    pub opacity_depth: u8,
-}
-
 /// GPU-friendly linear execution plan for one command list.
 ///
 /// `clip_stack_data` stores ordered clip stack snapshots referenced by
@@ -45,7 +38,6 @@ pub(crate) struct ExecPlan {
 pub(crate) enum ExecOp {
     DrawBatch {
         draws: Range<usize>,
-        state: BatchState,
         /// Active clip stack for this batch in nesting order. This is
         /// stack state, not coverage.
         clip_stack: Range<usize>,

@@ -22,9 +22,6 @@ pub struct DrawRecord {
     pub pixel_bounds: PixelBounds,
     /// CPU `FillRect` fast path: coarse emits `Color` only (no flatten/scan).
     pub solid_rect: bool,
-    pub opacity_depth: u8,
-    pub blend_depth: u8,
-    pub clip_depth: u8,
     pub allow_solid_override: bool,
 }
 

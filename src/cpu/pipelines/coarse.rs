@@ -281,9 +281,6 @@ mod tests {
                     y1: 16,
                 },
                 solid_rect: false,
-                opacity_depth: 0,
-                blend_depth: 0,
-                clip_depth: 0,
                 allow_solid_override: false,
             },
             DrawRecord {
@@ -298,9 +295,6 @@ mod tests {
                     y1: 16,
                 },
                 solid_rect: false,
-                opacity_depth: 0,
-                blend_depth: 0,
-                clip_depth: 0,
                 allow_solid_override: false,
             },
             DrawRecord {
@@ -315,9 +309,6 @@ mod tests {
                     y1: 16,
                 },
                 solid_rect: false,
-                opacity_depth: 1,
-                blend_depth: 0,
-                clip_depth: 2,
                 allow_solid_override: true,
             },
         ];
