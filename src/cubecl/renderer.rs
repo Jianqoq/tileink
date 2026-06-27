@@ -14,8 +14,8 @@ use crate::{
 
 use super::{
     buffer::CubeBuffer,
-    pipelines::scan::ScanPipeline,
-    types::{CubeBufferLengths, CubeSceneConfig, build_scan_chunks},
+    pipelines::{cumsum::CumsumPipeline, scan::ScanPipeline},
+    types::{CubeBufferLengths, CubeSceneConfig, build_cumsum_plan, build_scan_chunks},
 };
 
 pub type WgpuRenderer = Renderer<::cubecl::wgpu::WgpuRuntime>;
@@ -82,6 +82,15 @@ impl<R: Runtime> Renderer<R> {
         ScanPipeline::run(&self.client, &self.scene, &mut self.scan, self.lengths);
     }
 
+    /// Runs the CubeCL backdrop row prefix-sum stage.
+    ///
+    /// This consumes scan's backdrop edge deltas and leaves cumulative backdrop
+    /// values in the same GPU buffer for coarse/fine stages. The pass is fully
+    /// GPU-resident; readback exists only in tests.
+    pub fn cumsum(&mut self) {
+        CumsumPipeline::run(&self.client, &self.scene, &mut self.scan, self.lengths);
+    }
+
     pub fn resize(&mut self, width: u32, height: u32) {
         if self.size == (width, height) {
             return;
@@ -146,6 +155,10 @@ pub(crate) struct SceneBuffers {
     pub(crate) scan_chunk_lens: CubeBuffer<u32>,
     pub(crate) scan_chunk_range_starts: CubeBuffer<u32>,
     pub(crate) scan_chunk_range_ends: CubeBuffer<u32>,
+    pub(crate) cumsum_chunk_backdrop_offsets: CubeBuffer<u32>,
+    pub(crate) cumsum_chunk_lens: CubeBuffer<u32>,
+    pub(crate) cumsum_row_chunk_starts: CubeBuffer<u32>,
+    pub(crate) cumsum_row_chunk_ends: CubeBuffer<u32>,
 }
 
 impl SceneBuffers {
@@ -178,11 +191,16 @@ impl SceneBuffers {
             scan_chunk_lens: CubeBuffer::new(client, 0),
             scan_chunk_range_starts: CubeBuffer::new(client, 0),
             scan_chunk_range_ends: CubeBuffer::new(client, 0),
+            cumsum_chunk_backdrop_offsets: CubeBuffer::new(client, 0),
+            cumsum_chunk_lens: CubeBuffer::new(client, 0),
+            cumsum_row_chunk_starts: CubeBuffer::new(client, 0),
+            cumsum_row_chunk_ends: CubeBuffer::new(client, 0),
         }
     }
 
     fn upload<R: Runtime>(&mut self, client: &::cubecl::client::ComputeClient<R>, scene: &Scene) {
         let (scan_chunks, scan_chunk_ranges) = build_scan_chunks(scene);
+        let cumsum_plan = build_cumsum_plan(scene);
         self.upload_lines(client, &scene.lines);
         self.upload_draws(client, &scene.draw_records);
         self.upload_backdrops(client, &scene.bd_records);
@@ -229,6 +247,14 @@ impl SceneBuffers {
                 .map(|range| range.end)
                 .collect::<Vec<_>>(),
         );
+        self.cumsum_chunk_backdrop_offsets
+            .replace(client, &cumsum_plan.chunk_backdrop_offsets);
+        self.cumsum_chunk_lens
+            .replace(client, &cumsum_plan.chunk_lens);
+        self.cumsum_row_chunk_starts
+            .replace(client, &cumsum_plan.row_chunk_starts);
+        self.cumsum_row_chunk_ends
+            .replace(client, &cumsum_plan.row_chunk_ends);
     }
 
     fn upload_lines<R: Runtime>(
@@ -407,6 +433,8 @@ pub(crate) struct ScanBuffers {
     pub(crate) segment_bumps: CubeBuffer<u32>,
     pub(crate) chunk_totals: CubeBuffer<u32>,
     pub(crate) chunk_offsets: CubeBuffer<u32>,
+    pub(crate) cumsum_chunk_totals: CubeBuffer<i32>,
+    pub(crate) cumsum_chunk_offsets: CubeBuffer<i32>,
 }
 
 impl ScanBuffers {
@@ -425,6 +453,8 @@ impl ScanBuffers {
             segment_bumps: CubeBuffer::new(client, 0),
             chunk_totals: CubeBuffer::new(client, 0),
             chunk_offsets: CubeBuffer::new(client, 0),
+            cumsum_chunk_totals: CubeBuffer::new(client, 0),
+            cumsum_chunk_offsets: CubeBuffer::new(client, 0),
         }
     }
 
@@ -457,6 +487,10 @@ impl ScanBuffers {
             .resize_uninit(client, lengths.scan_chunk_count);
         self.chunk_offsets
             .resize_uninit(client, lengths.scan_chunk_count);
+        self.cumsum_chunk_totals
+            .resize_uninit(client, lengths.cumsum_chunk_count);
+        self.cumsum_chunk_offsets
+            .resize_uninit(client, lengths.cumsum_chunk_count);
     }
 }
 
@@ -469,6 +503,7 @@ mod tests {
 
     use super::CubeBufferLengths;
     use super::WgpuRenderer;
+    use crate::cubecl::types::CUMSUM_CHUNK_SIZE;
     use crate::{FillRule, Scene};
 
     #[test]
@@ -481,6 +516,8 @@ mod tests {
         assert_eq!(lengths.backdrop_len, 0);
         assert_eq!(lengths.segment_capacity, 0);
         assert_eq!(lengths.scan_chunk_count, 0);
+        assert_eq!(lengths.cumsum_chunk_count, 0);
+        assert_eq!(lengths.cumsum_row_count, 0);
         assert_eq!(lengths.tile_count, 6);
         assert_eq!(lengths.image_pixels, 33 * 17);
     }
@@ -504,6 +541,8 @@ mod tests {
         assert_eq!(lengths.backdrop_len, scene.backdrop_pool_capacity as usize);
         assert_eq!(lengths.segment_capacity, scene.tile_cnt as usize);
         assert_eq!(lengths.scan_chunk_count, 1);
+        assert_eq!(lengths.cumsum_chunk_count, 2);
+        assert_eq!(lengths.cumsum_row_count, 2);
         assert_eq!(lengths.tile_count, 4 * 3);
         assert_eq!(lengths.image_pixels, 64 * 48);
     }
@@ -550,5 +589,88 @@ mod tests {
         assert!((p1x[0] - 4.0).abs() < 1e-3);
         assert!((p0y[0] - 0.0).abs() < 1e-6);
         assert!((p1y[0] - 16.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn cumsum_wgpu_scans_backdrop_rows_when_enabled() {
+        if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+            return;
+        }
+
+        let mut scene = Scene::new(48, 32);
+        scene.push_path(
+            Rect::new(0.0, 0.0, 48.0, 32.0).to_path(0.0),
+            Color::BLACK,
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.0,
+        );
+
+        let mut renderer = WgpuRenderer::new_default_device(48, 32, Color::TRANSPARENT);
+        renderer.prepare_scene(&scene);
+        let client = renderer.client.clone();
+        renderer
+            .scan
+            .backdrops
+            .replace(&client, &[1, -1, 2, 3, 0, -2]);
+        renderer.cumsum();
+
+        assert_eq!(
+            renderer.scan.backdrops.read(renderer.client()),
+            vec![1, 0, 2, 3, 3, 1]
+        );
+    }
+
+    #[test]
+    fn cumsum_wgpu_carries_across_chunks_when_enabled() {
+        if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+            return;
+        }
+
+        let row_tiles = CUMSUM_CHUNK_SIZE + 3;
+        let mut scene = Scene::new(row_tiles * crate::TILE_SIZE, crate::TILE_SIZE * 2);
+        scene.push_path(
+            Rect::new(
+                0.0,
+                0.0,
+                f64::from(row_tiles * crate::TILE_SIZE),
+                f64::from(crate::TILE_SIZE * 2),
+            )
+            .to_path(0.0),
+            Color::BLACK,
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.0,
+        );
+
+        let mut deltas = Vec::with_capacity((row_tiles * 2) as usize);
+        let mut expected = Vec::with_capacity((row_tiles * 2) as usize);
+        for row in 0..2 {
+            let mut carry = 0;
+            for x in 0..row_tiles {
+                let value = if row == 0 {
+                    1
+                } else if x % 2 == 0 {
+                    2
+                } else {
+                    -1
+                };
+                carry += value;
+                deltas.push(value);
+                expected.push(carry);
+            }
+        }
+
+        let mut renderer = WgpuRenderer::new_default_device(
+            row_tiles * crate::TILE_SIZE,
+            crate::TILE_SIZE * 2,
+            Color::TRANSPARENT,
+        );
+        renderer.prepare_scene(&scene);
+        let client = renderer.client.clone();
+        renderer.scan.backdrops.replace(&client, &deltas);
+        renderer.cumsum();
+
+        assert_eq!(renderer.scan.backdrops.read(renderer.client()), expected);
     }
 }
