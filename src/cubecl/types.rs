@@ -1,9 +1,15 @@
 use bytemuck::{Pod, Zeroable};
 
-use crate::scene::Scene;
+use crate::{scene::Scene, shared::draw_record::DrawTag};
 
 pub(crate) const SCAN_CHUNK_SIZE: u32 = 256;
 pub(crate) const CUMSUM_CHUNK_SIZE: u32 = 256;
+pub(crate) const COARSE_CHUNK_SIZE: u32 = 256;
+
+pub(crate) const CUBE_DRAW_BRUSH: u32 = 0;
+pub(crate) const CUBE_DRAW_CLIP: u32 = 1;
+pub(crate) const CUBE_DRAW_OPACITY: u32 = 2;
+pub(crate) const CUBE_DRAW_BLEND: u32 = 3;
 
 /// Scene-derived fixed capacities for CubeCL buffers.
 ///
@@ -22,6 +28,10 @@ pub struct CubeBufferLengths {
     pub scan_chunk_count: usize,
     pub cumsum_chunk_count: usize,
     pub cumsum_row_count: usize,
+    pub coarse_chunk_count: usize,
+    pub coarse_ptcl_capacity: usize,
+    pub tiles_width: usize,
+    pub tiles_height: usize,
     pub tile_count: usize,
     pub image_pixels: usize,
 }
@@ -30,6 +40,9 @@ impl CubeBufferLengths {
     pub(crate) fn from_scene(scene: &Scene) -> Self {
         let tiles_width = scene.width_in_tiles() as usize;
         let tiles_height = scene.height_in_tiles() as usize;
+        let tile_count = tiles_width * tiles_height;
+        let coarse_ptcl_capacity =
+            coarse_ptcl_capacity(scene, tiles_width as u32, tiles_height as u32);
         Self {
             line_count: scene.lines.len(),
             path_count: scene.path_records.len(),
@@ -64,10 +77,24 @@ impl CubeBufferLengths {
                     if stride == 0 { 0 } else { height as usize }
                 })
                 .sum(),
-            tile_count: tiles_width * tiles_height,
+            coarse_chunk_count: tile_count.div_ceil(COARSE_CHUNK_SIZE as usize),
+            coarse_ptcl_capacity,
+            tiles_width,
+            tiles_height,
+            tile_count,
             image_pixels: scene.width as usize * scene.height as usize,
         }
     }
+}
+
+fn coarse_ptcl_capacity(scene: &Scene, width_in_tiles: u32, height_in_tiles: u32) -> usize {
+    let draw_particles = scene
+        .draw_records
+        .iter()
+        .filter(|draw| draw.path_id.is_some() && matches!(draw.tag, DrawTag::Brush | DrawTag::Clip))
+        .map(|draw| draw.tile_bbox(width_in_tiles, height_in_tiles).tile_count() as usize)
+        .sum::<usize>();
+    width_in_tiles as usize * height_in_tiles as usize + draw_particles
 }
 
 #[repr(C)]
@@ -86,6 +113,8 @@ pub(crate) struct CubeSceneConfig {
     pub scan_chunk_count: u32,
     pub cumsum_chunk_count: u32,
     pub cumsum_row_count: u32,
+    pub coarse_chunk_count: u32,
+    pub coarse_ptcl_capacity: u32,
     pub clear_color: u32,
 }
 
@@ -105,6 +134,8 @@ impl CubeSceneConfig {
             scan_chunk_count: lengths.scan_chunk_count as u32,
             cumsum_chunk_count: lengths.cumsum_chunk_count as u32,
             cumsum_row_count: lengths.cumsum_row_count as u32,
+            coarse_chunk_count: lengths.coarse_chunk_count as u32,
+            coarse_ptcl_capacity: lengths.coarse_ptcl_capacity as u32,
             clear_color,
         }
     }

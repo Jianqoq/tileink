@@ -9,13 +9,17 @@ use crate::{
         fill::FillRule,
         image::rgba8_pack,
         line::Line,
+        pixel::premul_f32_to_u32,
     },
 };
 
 use super::{
     buffer::CubeBuffer,
-    pipelines::{cumsum::CumsumPipeline, scan::ScanPipeline},
-    types::{CubeBufferLengths, CubeSceneConfig, build_cumsum_plan, build_scan_chunks},
+    pipelines::{coarse::CoarsePipeline, cumsum::CumsumPipeline, scan::ScanPipeline},
+    types::{
+        CUBE_DRAW_BLEND, CUBE_DRAW_BRUSH, CUBE_DRAW_CLIP, CUBE_DRAW_OPACITY, CubeBufferLengths,
+        CubeSceneConfig, build_cumsum_plan, build_scan_chunks,
+    },
 };
 
 pub type WgpuRenderer = Renderer<::cubecl::wgpu::WgpuRuntime>;
@@ -34,6 +38,7 @@ pub struct Renderer<R: Runtime> {
     config: CubeBuffer<CubeSceneConfig>,
     scene: SceneBuffers,
     scan: ScanBuffers,
+    coarse: CoarseBuffers,
     target: CubeBuffer<u32>,
 }
 
@@ -45,6 +50,7 @@ impl<R: Runtime> Renderer<R> {
             config: CubeBuffer::new(&client, 1),
             scene: SceneBuffers::new(&client),
             scan: ScanBuffers::new(&client),
+            coarse: CoarseBuffers::new(&client),
             target: CubeBuffer::new(&client, width as usize * height as usize),
             client,
             clear,
@@ -66,6 +72,7 @@ impl<R: Runtime> Renderer<R> {
         self.lengths = lengths;
         self.scene.upload(&self.client, scene);
         self.scan.prepare_outputs(&self.client, lengths);
+        self.coarse.prepare_outputs(&self.client, lengths);
         self.config.replace(
             &self.client,
             &[CubeSceneConfig::new(scene, lengths, self.clear_color)],
@@ -89,6 +96,23 @@ impl<R: Runtime> Renderer<R> {
     /// GPU-resident; readback exists only in tests.
     pub fn cumsum(&mut self) {
         CumsumPipeline::run(&self.client, &self.scene, &mut self.scan, self.lengths);
+    }
+
+    /// Runs the CubeCL coarse stage for the current flat draw batch.
+    ///
+    /// The stage is fully GPU-resident: count visible draw particles per tile,
+    /// prefix those counts into compact ranges, then emit ordered particles.
+    /// Layer-stack wrappers are intentionally added with the execution-plan
+    /// upload stage, because they require batch/layer metadata not present in
+    /// the current CubeCL scene buffers.
+    pub fn coarse(&mut self) {
+        CoarsePipeline::run(
+            &self.client,
+            &self.scene,
+            &self.scan,
+            &mut self.coarse,
+            self.lengths,
+        );
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
@@ -137,6 +161,8 @@ pub(crate) struct SceneBuffers {
     pub(crate) draw_tags: CubeBuffer<u32>,
     pub(crate) draw_fill_rules: CubeBuffer<u32>,
     pub(crate) draw_solid_rects: CubeBuffer<u32>,
+    pub(crate) draw_solid_color_fast_paths: CubeBuffer<u32>,
+    pub(crate) draw_brush_colors: CubeBuffer<u32>,
     pub(crate) draw_pixel_x0: CubeBuffer<i32>,
     pub(crate) draw_pixel_y0: CubeBuffer<i32>,
     pub(crate) draw_pixel_x1: CubeBuffer<i32>,
@@ -173,6 +199,8 @@ impl SceneBuffers {
             draw_tags: CubeBuffer::new(client, 0),
             draw_fill_rules: CubeBuffer::new(client, 0),
             draw_solid_rects: CubeBuffer::new(client, 0),
+            draw_solid_color_fast_paths: CubeBuffer::new(client, 0),
+            draw_brush_colors: CubeBuffer::new(client, 0),
             draw_pixel_x0: CubeBuffer::new(client, 0),
             draw_pixel_y0: CubeBuffer::new(client, 0),
             draw_pixel_x1: CubeBuffer::new(client, 0),
@@ -301,10 +329,10 @@ impl SceneBuffers {
             &draws
                 .iter()
                 .map(|draw| match draw.tag {
-                    DrawTag::Brush => 0,
-                    DrawTag::Clip => 1,
-                    DrawTag::Opacity => 2,
-                    DrawTag::Blend => 3,
+                    DrawTag::Brush => CUBE_DRAW_BRUSH,
+                    DrawTag::Clip => CUBE_DRAW_CLIP,
+                    DrawTag::Opacity => CUBE_DRAW_OPACITY,
+                    DrawTag::Blend => CUBE_DRAW_BLEND,
                 })
                 .collect::<Vec<_>>(),
         );
@@ -323,6 +351,25 @@ impl SceneBuffers {
             &draws
                 .iter()
                 .map(|draw| u32::from(draw.solid_rect))
+                .collect::<Vec<_>>(),
+        );
+        self.draw_solid_color_fast_paths.replace(
+            client,
+            &draws
+                .iter()
+                .map(|draw| u32::from(draw.solid_rect && draw.brush.solid_color().is_some()))
+                .collect::<Vec<_>>(),
+        );
+        self.draw_brush_colors.replace(
+            client,
+            &draws
+                .iter()
+                .map(|draw| {
+                    draw.brush
+                        .solid_color()
+                        .map(|color| premul_f32_to_u32(color.premultiply().components))
+                        .unwrap_or(0)
+                })
                 .collect::<Vec<_>>(),
         );
         self.draw_pixel_x0.replace(
@@ -494,6 +541,67 @@ impl ScanBuffers {
     }
 }
 
+pub(crate) struct CoarseBuffers {
+    pub(crate) tile_ptcl_range_starts: CubeBuffer<u32>,
+    pub(crate) tile_ptcl_range_ends: CubeBuffer<u32>,
+    pub(crate) tile_ptcl_counts: CubeBuffer<u32>,
+    pub(crate) chunk_totals: CubeBuffer<u32>,
+    pub(crate) chunk_offsets: CubeBuffer<u32>,
+    pub(crate) ptcl_tags: CubeBuffer<u32>,
+    pub(crate) ptcl_backdrops: CubeBuffer<i32>,
+    pub(crate) ptcl_fill_rules: CubeBuffer<u32>,
+    pub(crate) ptcl_segment_starts: CubeBuffer<u32>,
+    pub(crate) ptcl_segment_ends: CubeBuffer<u32>,
+    pub(crate) ptcl_colors: CubeBuffer<u32>,
+}
+
+impl CoarseBuffers {
+    fn new<R: Runtime>(client: &::cubecl::client::ComputeClient<R>) -> Self {
+        Self {
+            tile_ptcl_range_starts: CubeBuffer::new(client, 0),
+            tile_ptcl_range_ends: CubeBuffer::new(client, 0),
+            tile_ptcl_counts: CubeBuffer::new(client, 0),
+            chunk_totals: CubeBuffer::new(client, 0),
+            chunk_offsets: CubeBuffer::new(client, 0),
+            ptcl_tags: CubeBuffer::new(client, 0),
+            ptcl_backdrops: CubeBuffer::new(client, 0),
+            ptcl_fill_rules: CubeBuffer::new(client, 0),
+            ptcl_segment_starts: CubeBuffer::new(client, 0),
+            ptcl_segment_ends: CubeBuffer::new(client, 0),
+            ptcl_colors: CubeBuffer::new(client, 0),
+        }
+    }
+
+    fn prepare_outputs<R: Runtime>(
+        &mut self,
+        client: &::cubecl::client::ComputeClient<R>,
+        lengths: CubeBufferLengths,
+    ) {
+        self.tile_ptcl_range_starts
+            .resize_uninit(client, lengths.tile_count);
+        self.tile_ptcl_range_ends
+            .resize_uninit(client, lengths.tile_count);
+        self.tile_ptcl_counts
+            .resize_uninit(client, lengths.tile_count);
+        self.chunk_totals
+            .resize_uninit(client, lengths.coarse_chunk_count);
+        self.chunk_offsets
+            .resize_uninit(client, lengths.coarse_chunk_count);
+        self.ptcl_tags
+            .resize_uninit(client, lengths.coarse_ptcl_capacity);
+        self.ptcl_backdrops
+            .resize_uninit(client, lengths.coarse_ptcl_capacity);
+        self.ptcl_fill_rules
+            .resize_uninit(client, lengths.coarse_ptcl_capacity);
+        self.ptcl_segment_starts
+            .resize_uninit(client, lengths.coarse_ptcl_capacity);
+        self.ptcl_segment_ends
+            .resize_uninit(client, lengths.coarse_ptcl_capacity);
+        self.ptcl_colors
+            .resize_uninit(client, lengths.coarse_ptcl_capacity);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use peniko::{
@@ -503,8 +611,15 @@ mod tests {
 
     use super::CubeBufferLengths;
     use super::WgpuRenderer;
+    use crate::cubecl::pipelines::coarse::TILE_WORKGROUP_SIZE;
     use crate::cubecl::types::CUMSUM_CHUNK_SIZE;
+    use crate::shared::pixel::premul_f32_to_u32;
     use crate::{FillRule, Scene};
+
+    const CUBE_PTCL_END: u32 = 0;
+    const CUBE_PTCL_FILL: u32 = 1;
+    const CUBE_PTCL_COLOR: u32 = 2;
+    const CUBE_PTCL_BEGIN_CLIP: u32 = 3;
 
     #[test]
     fn buffer_lengths_keep_empty_scene_allocations_zero_sized_except_target() {
@@ -518,6 +633,10 @@ mod tests {
         assert_eq!(lengths.scan_chunk_count, 0);
         assert_eq!(lengths.cumsum_chunk_count, 0);
         assert_eq!(lengths.cumsum_row_count, 0);
+        assert_eq!(lengths.coarse_chunk_count, 1);
+        assert_eq!(lengths.coarse_ptcl_capacity, 6);
+        assert_eq!(lengths.tiles_width, 3);
+        assert_eq!(lengths.tiles_height, 2);
         assert_eq!(lengths.tile_count, 6);
         assert_eq!(lengths.image_pixels, 33 * 17);
     }
@@ -543,6 +662,10 @@ mod tests {
         assert_eq!(lengths.scan_chunk_count, 1);
         assert_eq!(lengths.cumsum_chunk_count, 2);
         assert_eq!(lengths.cumsum_row_count, 2);
+        assert_eq!(lengths.coarse_chunk_count, 1);
+        assert_eq!(lengths.coarse_ptcl_capacity, 18);
+        assert_eq!(lengths.tiles_width, 4);
+        assert_eq!(lengths.tiles_height, 3);
         assert_eq!(lengths.tile_count, 4 * 3);
         assert_eq!(lengths.image_pixels, 64 * 48);
     }
@@ -672,5 +795,233 @@ mod tests {
         renderer.cumsum();
 
         assert_eq!(renderer.scan.backdrops.read(renderer.client()), expected);
+    }
+
+    #[test]
+    fn coarse_wgpu_emits_compact_solid_color_particles_when_enabled() {
+        if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+            return;
+        }
+
+        let red = Color::from_rgb8(255, 0, 0);
+        let blue = Color::from_rgb8(0, 0, 255);
+        let mut scene = Scene::new(32, 16);
+        scene.push_rect(Rect::new(0.0, 0.0, 32.0, 16.0), red, FillRule::NonZero);
+        scene.push_rect(Rect::new(16.0, 0.0, 32.0, 16.0), blue, FillRule::NonZero);
+
+        let mut renderer = WgpuRenderer::new_default_device(32, 16, Color::TRANSPARENT);
+        renderer.prepare_scene(&scene);
+        assert_eq!(
+            renderer.scene.draw_solid_rects.read(renderer.client()),
+            vec![1, 1]
+        );
+        assert_eq!(
+            renderer
+                .scene
+                .draw_solid_color_fast_paths
+                .read(renderer.client()),
+            vec![1, 1]
+        );
+        let client = renderer.client.clone();
+        renderer.scan.backdrops.replace(&client, &[1, 1, 1]);
+        renderer
+            .scan
+            .tile_segment_range_starts
+            .replace(&client, &[0, 0, 0]);
+        renderer
+            .scan
+            .tile_segment_range_ends
+            .replace(&client, &[0, 0, 0]);
+        renderer.coarse();
+
+        assert_eq!(
+            renderer
+                .coarse
+                .tile_ptcl_range_starts
+                .read(renderer.client()),
+            vec![0, 2]
+        );
+        assert_eq!(
+            renderer.coarse.tile_ptcl_range_ends.read(renderer.client()),
+            vec![2, 5]
+        );
+        assert_eq!(
+            renderer.coarse.ptcl_tags.read(renderer.client()),
+            vec![
+                CUBE_PTCL_COLOR,
+                CUBE_PTCL_END,
+                CUBE_PTCL_COLOR,
+                CUBE_PTCL_COLOR,
+                CUBE_PTCL_END
+            ]
+        );
+        assert_eq!(
+            renderer.coarse.ptcl_colors.read(renderer.client()),
+            vec![
+                premul_f32_to_u32(red.premultiply().components),
+                0,
+                premul_f32_to_u32(red.premultiply().components),
+                premul_f32_to_u32(blue.premultiply().components),
+                0
+            ]
+        );
+    }
+
+    #[test]
+    fn coarse_wgpu_keeps_particle_order_across_workgroup_draw_chunks_when_enabled() {
+        if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+            return;
+        }
+
+        let draw_count = TILE_WORKGROUP_SIZE as usize + 3;
+        let colors = (0..draw_count)
+            .map(|i| {
+                Color::from_rgb8(
+                    (i % 251) as u8,
+                    ((i * 37) % 251) as u8,
+                    ((i * 73) % 251) as u8,
+                )
+            })
+            .collect::<Vec<_>>();
+        let mut scene = Scene::new(16, 16);
+        for color in &colors {
+            scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), *color, FillRule::NonZero);
+        }
+
+        let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+        renderer.prepare_scene(&scene);
+        assert_eq!(renderer.lengths.coarse_ptcl_capacity, draw_count + 1);
+
+        let client = renderer.client.clone();
+        renderer
+            .scan
+            .backdrops
+            .replace(&client, &vec![1; draw_count]);
+        renderer
+            .scan
+            .tile_segment_range_starts
+            .replace(&client, &vec![0; draw_count]);
+        renderer
+            .scan
+            .tile_segment_range_ends
+            .replace(&client, &vec![0; draw_count]);
+        renderer.coarse();
+
+        let mut expected_tags = vec![CUBE_PTCL_COLOR; draw_count];
+        expected_tags.push(CUBE_PTCL_END);
+        let mut expected_colors = colors
+            .iter()
+            .map(|color| premul_f32_to_u32(color.premultiply().components))
+            .collect::<Vec<_>>();
+        expected_colors.push(0);
+
+        assert_eq!(
+            renderer
+                .coarse
+                .tile_ptcl_range_starts
+                .read(renderer.client()),
+            vec![0]
+        );
+        assert_eq!(
+            renderer.coarse.tile_ptcl_range_ends.read(renderer.client()),
+            vec![draw_count as u32 + 1]
+        );
+        assert_eq!(
+            renderer.coarse.ptcl_tags.read(renderer.client()),
+            expected_tags
+        );
+        assert_eq!(
+            renderer.coarse.ptcl_colors.read(renderer.client()),
+            expected_colors
+        );
+    }
+
+    #[test]
+    fn coarse_wgpu_keeps_segment_ranges_for_fill_particles_when_enabled() {
+        if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+            return;
+        }
+
+        let mut scene = Scene::new(16, 16);
+        scene.push_path(
+            Rect::new(0.0, 0.0, 16.0, 16.0).to_path(0.0),
+            Color::BLACK,
+            Affine::IDENTITY,
+            FillRule::EvenOdd,
+            0.0,
+        );
+
+        let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+        renderer.prepare_scene(&scene);
+        let client = renderer.client.clone();
+        renderer.scan.backdrops.replace(&client, &[0]);
+        renderer
+            .scan
+            .tile_segment_range_starts
+            .replace(&client, &[2]);
+        renderer.scan.tile_segment_range_ends.replace(&client, &[5]);
+        renderer.coarse();
+
+        assert_eq!(
+            renderer
+                .coarse
+                .tile_ptcl_range_starts
+                .read(renderer.client()),
+            vec![0]
+        );
+        assert_eq!(
+            renderer.coarse.tile_ptcl_range_ends.read(renderer.client()),
+            vec![2]
+        );
+        assert_eq!(
+            renderer.coarse.ptcl_tags.read(renderer.client()),
+            vec![CUBE_PTCL_FILL, CUBE_PTCL_END]
+        );
+        assert_eq!(
+            renderer.coarse.ptcl_segment_starts.read(renderer.client()),
+            vec![2, 0]
+        );
+        assert_eq!(
+            renderer.coarse.ptcl_segment_ends.read(renderer.client()),
+            vec![5, 0]
+        );
+        assert_eq!(
+            renderer.coarse.ptcl_fill_rules.read(renderer.client()),
+            vec![1, 0]
+        );
+    }
+
+    #[test]
+    fn coarse_wgpu_emits_clip_particles_when_enabled() {
+        if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+            return;
+        }
+
+        let mut scene = Scene::new(16, 16);
+        scene.push_clip_layer(
+            Rect::new(0.0, 0.0, 16.0, 16.0).to_path(0.0),
+            Affine::IDENTITY,
+            0.0,
+        );
+
+        let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+        renderer.prepare_scene(&scene);
+        let client = renderer.client.clone();
+        renderer.scan.backdrops.replace(&client, &[1]);
+        renderer
+            .scan
+            .tile_segment_range_starts
+            .replace(&client, &[0]);
+        renderer.scan.tile_segment_range_ends.replace(&client, &[0]);
+        renderer.coarse();
+
+        assert_eq!(
+            renderer.coarse.ptcl_tags.read(renderer.client()),
+            vec![CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_END]
+        );
+        assert_eq!(
+            renderer.coarse.ptcl_backdrops.read(renderer.client()),
+            vec![1, 0]
+        );
     }
 }
