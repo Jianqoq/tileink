@@ -113,35 +113,15 @@ pub fn fill_rect(scene: &mut Scene, rect: Rect, radius: Radius, brush: impl Into
 }
 
 pub fn stroke_rect(scene: &mut Scene, rect: Rect, radius: Radius, stroke: Stroke, color: Color) {
-    scene.push_stroke(
-        rect_path(rect, radius),
-        stroke,
-        color,
-        Affine::IDENTITY,
-        FillRule::NonZero,
-        0.1,
-    );
+    scene.push_rect_stroke(rect, radius, stroke, color, FillRule::NonZero);
 }
 
 pub fn fill_circle(scene: &mut Scene, circle: Circle, brush: impl Into<tileink::Brush>) {
-    scene.push_path(
-        circle.to_path(0.1),
-        brush,
-        Affine::IDENTITY,
-        FillRule::NonZero,
-        0.1,
-    );
+    scene.push_circle(circle, brush, FillRule::NonZero);
 }
 
 pub fn stroke_circle(scene: &mut Scene, circle: Circle, stroke: Stroke, color: Color) {
-    scene.push_stroke(
-        circle,
-        stroke,
-        color,
-        Affine::IDENTITY,
-        FillRule::NonZero,
-        0.1,
-    );
+    scene.push_circle_stroke(circle, stroke, color, FillRule::NonZero);
 }
 
 pub fn canvas_region(width: u32, height: u32) -> Region {

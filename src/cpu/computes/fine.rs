@@ -3,13 +3,16 @@ use peniko::BlendMode;
 use crate::{
     TILE_SIZE,
     shared::{
+        bounds::Bounds,
         brush::Brush,
         fill::FillRule,
         layer::blend::Blend,
         line_seg::LineSegment,
         pixel::{
-            TileBuffer, pack_premul_rgba8, scale_premul_u8, src_over_premul_u8, unpack_premul_rgba8,
+            TileBuffer, coverage_f32_to_u8, pack_premul_rgba8, scale_premul_u8, src_over_premul_u8,
+            unpack_premul_rgba8,
         },
+        sdf::Sdf,
     },
 };
 
@@ -197,6 +200,45 @@ pub(crate) fn rasterize_tile_buffer_into(
             }
             let src = scale_premul_u8(
                 brush.sample((base_x + x as u32) as f32 + 0.5, (base_y + y) as f32 + 0.5),
+                alpha,
+            );
+            tile[ix] = src_over_premul_u8(tile[ix], src);
+        }
+    }
+}
+
+pub(crate) fn rasterize_sdf_tile_buffer_into(
+    tile: &mut TileBuffer,
+    tile_x: u32,
+    tile_y: u32,
+    sdf: &Sdf,
+    brush: &Brush,
+    clip_mask: &[u8; 256],
+) {
+    let base_x = (tile_x * TILE_SIZE) as i32;
+    let base_y = (tile_y * TILE_SIZE) as i32;
+    let tile_bounds = Bounds::new(
+        base_x,
+        base_y,
+        base_x + TILE_SIZE as i32,
+        base_y + TILE_SIZE as i32,
+    );
+    let mut area = [0.0; crate::BLOCK_SIZE as usize];
+    sdf.fine_area(&mut area, tile_bounds, tile_bounds);
+
+    for y in 0..TILE_SIZE {
+        let row_start = (y * TILE_SIZE) as usize;
+        for x in 0..TILE_SIZE as usize {
+            let ix = row_start + x;
+            let alpha = combine_alpha(coverage_f32_to_u8(area[ix]), clip_mask[ix]);
+            if alpha == 0 {
+                continue;
+            }
+            let src = scale_premul_u8(
+                brush.sample(
+                    (base_x + x as i32) as f32 + 0.5,
+                    (base_y + y as i32) as f32 + 0.5,
+                ),
                 alpha,
             );
             tile[ix] = src_over_premul_u8(tile[ix], src);

@@ -5,8 +5,8 @@ use rayon::prelude::*;
 use crate::{
     TILE_SCALE, TILE_SIZE,
     shared::{
-        bd_record::BackdropRecord, bounds::TileBbox, draw_record::DrawRecord, line::Line,
-        line_seg::LineSegment, path::PathRecord, tile_seg_range::TileSegmentRange,
+        bd_record::BackdropRecord, bounds::TileBbox, line::Line, line_seg::LineSegment,
+        path::PathRecord, tile_seg_range::TileSegmentRange,
     },
 };
 
@@ -16,7 +16,6 @@ pub struct ScanCpuPipeline {}
 pub struct ScanCpuPrepared<'a> {
     lines: &'a [Line],
     path_records: &'a [PathRecord],
-    draw_records: &'a [DrawRecord],
     backdrop_records: &'a [BackdropRecord],
     backdrops: &'a mut Vec<i32>, // [path_id][tile_y][tile_x]
     tile_segment_ranges: &'a mut Vec<TileSegmentRange>,
@@ -31,7 +30,7 @@ impl<'a> ScanCpuPrepared<'a> {
     pub fn run(&mut self) {
         let backdrops = self.backdrops.as_mut_ptr() as *mut Vec<i32> as usize;
         let ranges = self.tile_segment_ranges.as_mut_ptr() as usize;
-        let segments = self.segments.as_mut_ptr() as *mut LineSegment as usize;
+        let segments = self.segments.as_mut_ptr() as usize;
         let segment_tile_counts = self.segment_tile_counts.as_mut_ptr() as *mut Vec<u32> as usize;
         (0..self.backdrop_records.len())
             .into_par_iter()
@@ -39,8 +38,12 @@ impl<'a> ScanCpuPrepared<'a> {
                 let backdrop_record = &self.backdrop_records[record_ix];
                 let path_id = backdrop_record.path_id as usize;
                 let path_record = &self.path_records[path_id];
-                let draw_record = &self.draw_records[path_id];
-                let bbox = draw_record.tile_bbox(self.tiles_size.0, self.tiles_size.1);
+                let bbox = TileBbox {
+                    x0: backdrop_record.tile_x0,
+                    y0: backdrop_record.tile_y0,
+                    x1: backdrop_record.tile_x1,
+                    y1: backdrop_record.tile_y1,
+                };
                 let tile_count = backdrop_record.data_len as usize;
                 let data_offset = backdrop_record.data_offset as usize;
 
@@ -228,7 +231,6 @@ impl ScanCpuPipeline {
         &self,
         lines: &'a [Line],
         path_records: &'a [PathRecord],
-        draw_records: &'a [DrawRecord],
         backdrop_records: &'a [BackdropRecord],
         backdrops: &'a mut Vec<i32>,
         tile_segment_ranges: &'a mut Vec<TileSegmentRange>,
@@ -241,7 +243,6 @@ impl ScanCpuPipeline {
         ScanCpuPrepared {
             lines,
             path_records,
-            draw_records,
             backdrop_records,
             tiles_size,
             backdrops,
@@ -541,39 +542,13 @@ fn span(a: f32, b: f32) -> u32 {
 mod tests {
     use std::sync::atomic::Ordering;
 
-    use peniko::Color;
-
     use std::sync::atomic::AtomicU32;
 
     use super::{ScanCpuPipeline, ScanCpuPrepared, plan_scan_line};
     use crate::shared::{
-        bd_record::BackdropRecord,
-        bounds::{PixelBounds, TileBbox},
-        brush::Brush,
-        draw_record::DrawRecord,
-        draw_record::DrawTag,
-        fill::FillRule,
-        line::Line,
-        line_seg::LineSegment,
-        path::PathRecord,
-        tile_seg_range::TileSegmentRange,
+        bd_record::BackdropRecord, bounds::TileBbox, line::Line, line_seg::LineSegment,
+        path::PathRecord, tile_seg_range::TileSegmentRange,
     };
-
-    fn one_tile_draw_record() -> DrawRecord {
-        DrawRecord {
-            path_id: Some(0),
-            tag: DrawTag::Brush,
-            brush: Brush::Solid(Color::BLACK),
-            fill_rule: FillRule::NonZero,
-            pixel_bounds: PixelBounds {
-                x0: 0,
-                y0: 0,
-                x1: 16,
-                y1: 16,
-            },
-            solid_rect: false,
-        }
-    }
 
     fn one_tile_backdrop_record(segment_capacity: u32) -> BackdropRecord {
         BackdropRecord {
@@ -622,7 +597,6 @@ mod tests {
             line_start: 0,
             _pad: 0,
         }];
-        let draw_records = [one_tile_draw_record()];
         let backdrop_records = [one_tile_backdrop_record(1)];
         let mut backdrops = vec![0];
         let mut tile_segment_ranges = vec![TileSegmentRange::default(); 1];
@@ -640,7 +614,6 @@ mod tests {
             .prepare(
                 &lines,
                 &path_records,
-                &draw_records,
                 &backdrop_records,
                 &mut backdrops,
                 &mut tile_segment_ranges,
@@ -670,7 +643,6 @@ mod tests {
             line_start: 0,
             _pad: 0,
         }];
-        let draw_records = [one_tile_draw_record()];
         let backdrop_records = [one_tile_backdrop_record(1)];
         let mut backdrops = vec![0];
         let mut tile_segment_ranges = vec![TileSegmentRange::default(); 1];
@@ -688,7 +660,6 @@ mod tests {
             .prepare(
                 &lines,
                 &path_records,
-                &draw_records,
                 &backdrop_records,
                 &mut backdrops,
                 &mut tile_segment_ranges,
@@ -734,19 +705,6 @@ mod tests {
             line_start: 0,
             _pad: 0,
         }];
-        let draw_records = [DrawRecord {
-            path_id: Some(0),
-            tag: DrawTag::Brush,
-            brush: Brush::Solid(Color::BLACK),
-            fill_rule: FillRule::NonZero,
-            pixel_bounds: PixelBounds {
-                x0: 0,
-                y0: 0,
-                x1: 32,
-                y1: 16,
-            },
-            solid_rect: false,
-        }];
         let backdrop_records = [BackdropRecord {
             path_id: 0,
             data_offset: 0,
@@ -775,7 +733,6 @@ mod tests {
             .prepare(
                 &lines,
                 &path_records,
-                &draw_records,
                 &backdrop_records,
                 &mut backdrops,
                 &mut tile_segment_ranges,

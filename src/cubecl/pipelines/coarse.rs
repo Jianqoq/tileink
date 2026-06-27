@@ -7,7 +7,7 @@ use crate::cubecl::{
         CUBE_LAYER_BLEND, CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY, CUBE_PTCL_BEGIN_BLEND,
         CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_BEGIN_OPACITY, CUBE_PTCL_COLOR, CUBE_PTCL_END,
         CUBE_PTCL_END_BLEND, CUBE_PTCL_END_CLIP, CUBE_PTCL_END_OPACITY, CUBE_PTCL_FILL,
-        CubeBufferLengths,
+        CUBE_PTCL_SDF, CUBE_SDF_NONE, CubeBufferLengths,
     },
 };
 
@@ -56,6 +56,7 @@ impl CoarsePipeline {
             unsafe { scene.draw_pixel_y0.arg() },
             unsafe { scene.draw_pixel_x1.arg() },
             unsafe { scene.draw_pixel_y1.arg() },
+            unsafe { scene.draw_sdf_kinds.arg() },
             unsafe { scene.backdrop_data_offsets.arg() },
             unsafe { scene.backdrop_tile_x0.arg() },
             unsafe { scene.backdrop_tile_y0.arg() },
@@ -127,6 +128,7 @@ impl CoarsePipeline {
             unsafe { scene.draw_pixel_y0.arg() },
             unsafe { scene.draw_pixel_x1.arg() },
             unsafe { scene.draw_pixel_y1.arg() },
+            unsafe { scene.draw_sdf_kinds.arg() },
             unsafe { scene.backdrop_data_offsets.arg() },
             unsafe { scene.backdrop_tile_x0.arg() },
             unsafe { scene.backdrop_tile_y0.arg() },
@@ -166,6 +168,7 @@ fn coarse_count(
     draw_pixel_y0: &Array<i32>,
     draw_pixel_x1: &Array<i32>,
     draw_pixel_y1: &Array<i32>,
+    draw_sdf_kinds: &Array<u32>,
     backdrop_data_offsets: &Array<u32>,
     backdrop_tile_x0: &Array<u32>,
     backdrop_tile_y0: &Array<u32>,
@@ -215,31 +218,50 @@ fn coarse_count(
     if wrapper_count != invalid {
         let mut draw_ix = draw_start + UNIT_POS;
         while draw_ix < draw_end {
-            let backdrop_ix = draw_backdrop_ix(
-                draw_ix,
-                tile_x,
-                tile_y,
-                tiles_width,
-                tiles_height,
-                draw_path_ids,
-                draw_tags,
-                draw_pixel_x0,
-                draw_pixel_y0,
-                draw_pixel_x1,
-                draw_pixel_y1,
-                backdrop_data_offsets,
-                backdrop_tile_x0,
-                backdrop_tile_y0,
-                backdrop_tile_x1,
-                backdrop_tile_y1,
-            );
-            if backdrop_ix != invalid {
-                let i = backdrop_ix as usize;
-                let draw_tag = draw_tags[draw_ix as usize];
-                if (draw_tag == CUBE_DRAW_BRUSH || draw_tag == CUBE_DRAW_CLIP)
-                    && (segment_starts[i] != segment_ends[i] || backdrops[i].load() != 0)
+            let draw_i = draw_ix as usize;
+            let draw_tag = draw_tags[draw_i];
+            if draw_sdf_kinds[draw_i] != CUBE_SDF_NONE {
+                if draw_tag == CUBE_DRAW_BRUSH
+                    && draw_tile_hit(
+                        draw_i,
+                        tile_x,
+                        tile_y,
+                        tiles_width,
+                        tiles_height,
+                        draw_pixel_x0,
+                        draw_pixel_y0,
+                        draw_pixel_x1,
+                        draw_pixel_y1,
+                    )
                 {
                     count += 1;
+                }
+            } else {
+                let backdrop_ix = draw_backdrop_ix(
+                    draw_ix,
+                    tile_x,
+                    tile_y,
+                    tiles_width,
+                    tiles_height,
+                    draw_path_ids,
+                    draw_tags,
+                    draw_pixel_x0,
+                    draw_pixel_y0,
+                    draw_pixel_x1,
+                    draw_pixel_y1,
+                    backdrop_data_offsets,
+                    backdrop_tile_x0,
+                    backdrop_tile_y0,
+                    backdrop_tile_x1,
+                    backdrop_tile_y1,
+                );
+                if backdrop_ix != invalid {
+                    let i = backdrop_ix as usize;
+                    if (draw_tag == CUBE_DRAW_BRUSH || draw_tag == CUBE_DRAW_CLIP)
+                        && (segment_starts[i] != segment_ends[i] || backdrops[i].load() != 0)
+                    {
+                        count += 1;
+                    }
                 }
             }
             draw_ix += workgroup_size as u32;
@@ -390,6 +412,7 @@ fn coarse_emit(
     draw_pixel_y0: &Array<i32>,
     draw_pixel_x1: &Array<i32>,
     draw_pixel_y1: &Array<i32>,
+    draw_sdf_kinds: &Array<u32>,
     backdrop_data_offsets: &Array<u32>,
     backdrop_tile_x0: &Array<u32>,
     backdrop_tile_y0: &Array<u32>,
@@ -505,53 +528,74 @@ fn coarse_emit(
         let mut ptcl_color = 0u32;
 
         if draw_ix < draw_end {
-            let backdrop_ix = draw_backdrop_ix(
-                draw_ix,
-                tile_x,
-                tile_y,
-                tiles_width,
-                tiles_height,
-                draw_path_ids,
-                draw_tags,
-                draw_pixel_x0,
-                draw_pixel_y0,
-                draw_pixel_x1,
-                draw_pixel_y1,
-                backdrop_data_offsets,
-                backdrop_tile_x0,
-                backdrop_tile_y0,
-                backdrop_tile_x1,
-                backdrop_tile_y1,
-            );
-
-            if backdrop_ix != invalid {
-                let backdrop_i = backdrop_ix as usize;
-                let segment_start = segment_starts[backdrop_i];
-                let segment_end = segment_ends[backdrop_i];
-                let backdrop = backdrops[backdrop_i].load();
-                let draw_i = draw_ix as usize;
-                let draw_tag = draw_tags[draw_i];
-                if (draw_tag == CUBE_DRAW_BRUSH || draw_tag == CUBE_DRAW_CLIP)
-                    && (segment_start != segment_end || backdrop != 0)
+            let draw_i = draw_ix as usize;
+            let draw_tag = draw_tags[draw_i];
+            if draw_sdf_kinds[draw_i] != CUBE_SDF_NONE {
+                if draw_tag == CUBE_DRAW_BRUSH
+                    && draw_tile_hit(
+                        draw_i,
+                        tile_x,
+                        tile_y,
+                        tiles_width,
+                        tiles_height,
+                        draw_pixel_x0,
+                        draw_pixel_y0,
+                        draw_pixel_x1,
+                        draw_pixel_y1,
+                    )
                 {
-                    if draw_tag == CUBE_DRAW_CLIP {
-                        ptcl_tag = u32::new(CUBE_PTCL_BEGIN_CLIP as i64);
-                    } else {
-                        let solid_color_fast_path = draw_solid_color_fast_paths[draw_i] == 1;
-                        let empty_segment_range = segment_start == segment_end;
-                        if solid_color_fast_path && empty_segment_range {
-                            ptcl_tag = u32::new(CUBE_PTCL_COLOR as i64);
-                        }
-                    }
                     valid = 1;
-                    ptcl_backdrop = backdrop;
-                    ptcl_fill_rule = draw_fill_rules[draw_i];
-                    ptcl_segment_start = segment_start;
-                    ptcl_segment_end = segment_end;
-                    if ptcl_tag == CUBE_PTCL_COLOR {
-                        ptcl_color = draw_brush_colors[draw_i];
-                    } else if draw_tag == CUBE_DRAW_BRUSH {
-                        ptcl_color = draw_ix;
+                    ptcl_tag = u32::new(CUBE_PTCL_SDF as i64);
+                    ptcl_segment_start = draw_ix;
+                    ptcl_color = draw_ix;
+                }
+            } else {
+                let backdrop_ix = draw_backdrop_ix(
+                    draw_ix,
+                    tile_x,
+                    tile_y,
+                    tiles_width,
+                    tiles_height,
+                    draw_path_ids,
+                    draw_tags,
+                    draw_pixel_x0,
+                    draw_pixel_y0,
+                    draw_pixel_x1,
+                    draw_pixel_y1,
+                    backdrop_data_offsets,
+                    backdrop_tile_x0,
+                    backdrop_tile_y0,
+                    backdrop_tile_x1,
+                    backdrop_tile_y1,
+                );
+
+                if backdrop_ix != invalid {
+                    let backdrop_i = backdrop_ix as usize;
+                    let segment_start = segment_starts[backdrop_i];
+                    let segment_end = segment_ends[backdrop_i];
+                    let backdrop = backdrops[backdrop_i].load();
+                    if (draw_tag == CUBE_DRAW_BRUSH || draw_tag == CUBE_DRAW_CLIP)
+                        && (segment_start != segment_end || backdrop != 0)
+                    {
+                        if draw_tag == CUBE_DRAW_CLIP {
+                            ptcl_tag = u32::new(CUBE_PTCL_BEGIN_CLIP as i64);
+                        } else {
+                            let solid_color_fast_path = draw_solid_color_fast_paths[draw_i] == 1;
+                            let empty_segment_range = segment_start == segment_end;
+                            if solid_color_fast_path && empty_segment_range {
+                                ptcl_tag = u32::new(CUBE_PTCL_COLOR as i64);
+                            }
+                        }
+                        valid = 1;
+                        ptcl_backdrop = backdrop;
+                        ptcl_fill_rule = draw_fill_rules[draw_i];
+                        ptcl_segment_start = segment_start;
+                        ptcl_segment_end = segment_end;
+                        if ptcl_tag == CUBE_PTCL_COLOR {
+                            ptcl_color = draw_brush_colors[draw_i];
+                        } else if draw_tag == CUBE_DRAW_BRUSH {
+                            ptcl_color = draw_ix;
+                        }
                     }
                 }
             }
@@ -920,6 +964,25 @@ fn draw_backdrop_ix(
     }
 
     result
+}
+
+#[cube]
+fn draw_tile_hit(
+    draw_i: usize,
+    tile_x: u32,
+    tile_y: u32,
+    tiles_width: u32,
+    tiles_height: u32,
+    draw_pixel_x0: &Array<i32>,
+    draw_pixel_y0: &Array<i32>,
+    draw_pixel_x1: &Array<i32>,
+    draw_pixel_y1: &Array<i32>,
+) -> bool {
+    let draw_x0 = pixel_tile_min(draw_pixel_x0[draw_i], tiles_width);
+    let draw_y0 = pixel_tile_min(draw_pixel_y0[draw_i], tiles_height);
+    let draw_x1 = pixel_tile_max(draw_pixel_x1[draw_i], tiles_width);
+    let draw_y1 = pixel_tile_max(draw_pixel_y1[draw_i], tiles_height);
+    tile_x >= draw_x0 && tile_x < draw_x1 && tile_y >= draw_y0 && tile_y < draw_y1
 }
 
 #[cube]

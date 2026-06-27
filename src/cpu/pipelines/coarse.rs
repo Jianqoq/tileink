@@ -2,10 +2,11 @@ use rayon::prelude::*;
 
 use crate::shared::{
     bd_record::BackdropRecord,
+    bounds::Bounds,
     draw_record::{DrawRecord, DrawTag},
     execution::LayerStackEntry,
     pixel::opacity_f32_to_u8,
-    tile_ptcl::{TileColorPtcl, TileFillPtcl, TilePtcl, TilePtclRange},
+    tile_ptcl::{TileColorPtcl, TileFillPtcl, TilePtcl, TilePtclRange, TileSdfPtcl},
     tile_seg_range::TileSegmentRange,
 };
 
@@ -88,7 +89,7 @@ impl<'a> CoarseCpuPrepared<'a> {
         let mut emitted_wrappers = Vec::new();
 
         for draw_ix in draw_range {
-            let Some((draw, backdrop, segment_range)) = Self::layer_tile_coverage(
+            let Some(coverage) = Self::draw_tile_coverage(
                 draw_ix,
                 tile_x,
                 tile_y,
@@ -100,6 +101,7 @@ impl<'a> CoarseCpuPrepared<'a> {
             ) else {
                 continue;
             };
+            let draw = coverage.draw();
 
             if !Self::ensure_batch_wrappers(
                 &mut ptcls,
@@ -117,32 +119,61 @@ impl<'a> CoarseCpuPrepared<'a> {
             }
 
             match draw.tag {
-                DrawTag::Brush => {
-                    if let Some(color) = draw.brush.solid_color()
-                        && draw.solid_rect
-                        && segment_range.start == segment_range.end
-                    {
-                        ptcls.push(TilePtcl::Color(TileColorPtcl {
-                            color: crate::shared::pixel::premul_f32_to_u32(
-                                color.premultiply().components,
-                            ),
+                DrawTag::Brush => match coverage {
+                    DrawTileCoverage::Path {
+                        draw,
+                        backdrop,
+                        segment_range,
+                    } => {
+                        if let Some(color) = draw.brush.solid_color()
+                            && draw.solid_rect
+                            && segment_range.start == segment_range.end
+                        {
+                            ptcls.push(TilePtcl::Color(TileColorPtcl {
+                                color: crate::shared::pixel::premul_f32_to_u32(
+                                    color.premultiply().components,
+                                ),
+                            }));
+                            continue;
+                        }
+                        ptcls.push(TilePtcl::Fill(TileFillPtcl {
+                            backdrop,
+                            fill_rule: draw.fill_rule,
+                            segment_range,
+                            brush: draw.brush.clone(),
                         }));
-                        continue;
                     }
-                    ptcls.push(TilePtcl::Fill(TileFillPtcl {
-                        backdrop,
-                        fill_rule: draw.fill_rule,
-                        segment_range,
-                        brush: draw.brush.clone(),
-                    }));
-                }
+                    DrawTileCoverage::Sdf { draw, sdf } => {
+                        if let Some(color) = draw.brush.solid_color()
+                            && sdf.tile_is_solid(tile_bounds(tile_x, tile_y))
+                        {
+                            ptcls.push(TilePtcl::Color(TileColorPtcl {
+                                color: crate::shared::pixel::premul_f32_to_u32(
+                                    color.premultiply().components,
+                                ),
+                            }));
+                            continue;
+                        }
+                        ptcls.push(TilePtcl::Sdf(TileSdfPtcl {
+                            sdf: *sdf,
+                            brush: draw.brush.clone(),
+                        }));
+                    }
+                },
                 DrawTag::Clip => {
-                    ptcls.push(TilePtcl::BeginClip(TileFillPtcl {
+                    if let DrawTileCoverage::Path {
+                        draw,
                         backdrop,
-                        fill_rule: draw.fill_rule,
                         segment_range,
-                        brush: draw.brush.clone(),
-                    }));
+                    } = coverage
+                    {
+                        ptcls.push(TilePtcl::BeginClip(TileFillPtcl {
+                            backdrop,
+                            fill_rule: draw.fill_rule,
+                            segment_range,
+                            brush: draw.brush.clone(),
+                        }));
+                    }
                 }
                 DrawTag::Opacity | DrawTag::Blend => {}
             }
@@ -273,6 +304,74 @@ impl<'a> CoarseCpuPrepared<'a> {
         }
         Some((draw, backdrop, segment_range.start..segment_range.end))
     }
+
+    #[allow(clippy::too_many_arguments)]
+    fn draw_tile_coverage<'b>(
+        draw_ix: usize,
+        tile_x: u32,
+        tile_y: u32,
+        draw_records: &'b [DrawRecord],
+        backdrop_records: &[BackdropRecord],
+        backdrops: &[i32],
+        tile_segment_ranges: &[TileSegmentRange],
+        tiles_size: (u32, u32),
+    ) -> Option<DrawTileCoverage<'b>> {
+        let draw = &draw_records[draw_ix];
+        if let Some(sdf) = &draw.sdf {
+            let bbox = draw.tile_bbox(tiles_size.0, tiles_size.1);
+            if tile_x >= bbox.x0 && tile_x < bbox.x1 && tile_y >= bbox.y0 && tile_y < bbox.y1 {
+                return Some(DrawTileCoverage::Sdf { draw, sdf });
+            }
+            return None;
+        }
+
+        let (draw, backdrop, segment_range) = Self::layer_tile_coverage(
+            draw_ix,
+            tile_x,
+            tile_y,
+            draw_records,
+            backdrop_records,
+            backdrops,
+            tile_segment_ranges,
+            tiles_size,
+        )?;
+        Some(DrawTileCoverage::Path {
+            draw,
+            backdrop,
+            segment_range,
+        })
+    }
+}
+
+enum DrawTileCoverage<'a> {
+    Path {
+        draw: &'a DrawRecord,
+        backdrop: i32,
+        segment_range: std::ops::Range<u32>,
+    },
+    Sdf {
+        draw: &'a DrawRecord,
+        sdf: &'a crate::shared::sdf::Sdf,
+    },
+}
+
+impl<'a> DrawTileCoverage<'a> {
+    fn draw(&self) -> &'a DrawRecord {
+        match self {
+            Self::Path { draw, .. } | Self::Sdf { draw, .. } => draw,
+        }
+    }
+}
+
+fn tile_bounds(tile_x: u32, tile_y: u32) -> Bounds {
+    let x0 = (tile_x * crate::TILE_SIZE) as i32;
+    let y0 = (tile_y * crate::TILE_SIZE) as i32;
+    Bounds::new(
+        x0,
+        y0,
+        x0 + crate::TILE_SIZE as i32,
+        y0 + crate::TILE_SIZE as i32,
+    )
 }
 
 pub struct CoarseCpuPipeline;
@@ -340,6 +439,7 @@ mod tests {
         let draw_records = [
             DrawRecord {
                 path_id: Some(0),
+                sdf: None,
                 tag: DrawTag::Clip,
                 brush: Brush::Solid(Color::TRANSPARENT),
                 fill_rule: FillRule::NonZero,
@@ -353,6 +453,7 @@ mod tests {
             },
             DrawRecord {
                 path_id: Some(1),
+                sdf: None,
                 tag: DrawTag::Clip,
                 brush: Brush::Solid(Color::TRANSPARENT),
                 fill_rule: FillRule::NonZero,
@@ -366,6 +467,7 @@ mod tests {
             },
             DrawRecord {
                 path_id: Some(2),
+                sdf: None,
                 tag: DrawTag::Brush,
                 brush: Brush::Solid(Color::BLACK),
                 fill_rule: FillRule::NonZero,
@@ -460,6 +562,7 @@ mod tests {
         let draw_records = [
             DrawRecord {
                 path_id: Some(0),
+                sdf: None,
                 tag: DrawTag::Brush,
                 brush: Brush::Solid(Color::from_rgb8(255, 0, 0)),
                 fill_rule: FillRule::NonZero,
@@ -473,6 +576,7 @@ mod tests {
             },
             DrawRecord {
                 path_id: Some(1),
+                sdf: None,
                 tag: DrawTag::Brush,
                 brush: Brush::Solid(Color::from_rgb8(0, 0, 255)),
                 fill_rule: FillRule::NonZero,

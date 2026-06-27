@@ -36,6 +36,15 @@ impl Radius {
             && (self.top_left - self.bottom_left).abs() <= EPS
             && (self.top_left - self.bottom_right).abs() <= EPS
     }
+
+    pub(crate) fn offset(self, amount: f32) -> Self {
+        Self {
+            top_left: (self.top_left + amount).max(0.0),
+            top_right: (self.top_right + amount).max(0.0),
+            bottom_left: (self.bottom_left + amount).max(0.0),
+            bottom_right: (self.bottom_right + amount).max(0.0),
+        }
+    }
 }
 
 #[repr(C)]
@@ -46,11 +55,25 @@ pub struct Rect {
     pub radius: Radius,
 }
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub struct RectStroke {
-    pub outer: Rect,
-    pub inner: Rect,
+#[derive(Clone, Copy)]
+struct FineRect {
+    tile_x0: i32,
+    tile_y0: i32,
+    pixel_bounds: Bounds,
+    x0: f32,
+    y0: f32,
+    x1: f32,
+    y1: f32,
+}
+
+impl FineRect {
+    fn row_start(self, y_px: i32) -> usize {
+        (y_px - self.tile_y0) as usize * TILE_SIZE as usize
+    }
+
+    fn tile_ix(self, row: usize, x_px: i32) -> usize {
+        row + (x_px - self.tile_x0) as usize
+    }
 }
 
 impl Rect {
@@ -95,27 +118,22 @@ impl Rect {
         pixel_bounds: Bounds,
     ) {
         let (x0, y0, x1, y1) = self.axis_bounds_f32();
-        let tile_x0 = tile_bounds.x0;
-        let tile_y0 = tile_bounds.y0;
-        let stride = TILE_SIZE as usize;
+        let rect = FineRect {
+            tile_x0: tile_bounds.x0,
+            tile_y0: tile_bounds.y0,
+            pixel_bounds,
+            x0,
+            y0,
+            x1,
+            y1,
+        };
 
         if self.radius.is_zero() {
-            Self::fine_sharp_rect(area, tile_x0, tile_y0, stride, pixel_bounds, x0, y0, x1, y1);
+            Self::fine_sharp_rect(area, rect);
         } else if self.radius.is_uniform() {
-            Self::fine_uniform_round_rect(
-                area,
-                tile_x0,
-                tile_y0,
-                stride,
-                pixel_bounds,
-                x0,
-                y0,
-                x1,
-                y1,
-                self.radius.top_left,
-            );
+            Self::fine_uniform_round_rect(area, rect, self.radius.top_left);
         } else {
-            self.fine_per_pixel(area, tile_x0, tile_y0, stride, pixel_bounds, x0, y0, x1, y1);
+            self.fine_per_pixel(area, rect);
         }
     }
 
@@ -175,17 +193,8 @@ impl Rect {
         qx.max(qy).min(0.0) + (qx.max(0.0).powi(2) + qy.max(0.0).powi(2)).sqrt() - r
     }
 
-    fn fine_sharp_rect(
-        area: &mut [f32; (TILE_SIZE * TILE_SIZE) as usize],
-        tile_x0: i32,
-        tile_y0: i32,
-        stride: usize,
-        pixel_bounds: Bounds,
-        x0: f32,
-        y0: f32,
-        x1: f32,
-        y1: f32,
-    ) {
+    fn fine_sharp_rect(area: &mut [f32; (TILE_SIZE * TILE_SIZE) as usize], rect: FineRect) {
+        let FineRect { x0, y0, x1, y1, .. } = rect;
         let out_y0 = y0 - 0.5;
         let out_y1 = y1 + 0.5;
         let inner_y0 = y0 + 0.5;
@@ -199,19 +208,19 @@ impl Rect {
         let hx = (x1 - x0) * 0.5;
         let hy = (y1 - y0) * 0.5;
 
-        for y_px in pixel_bounds.y0..pixel_bounds.y1 {
+        for y_px in rect.pixel_bounds.y0..rect.pixel_bounds.y1 {
             let py = y_px as f32 + 0.5;
             if py < out_y0 || py > out_y1 {
                 continue;
             }
-            let row = (y_px - tile_y0) as usize * stride;
+            let row = rect.row_start(y_px);
             let inner_row = py >= inner_y0 && py <= inner_y1;
             let ay = (py - cy).abs();
             let dy = ay - hy;
 
-            for x_px in pixel_bounds.x0..pixel_bounds.x1 {
+            for x_px in rect.pixel_bounds.x0..rect.pixel_bounds.x1 {
                 let px = x_px as f32 + 0.5;
-                let ix = row + (x_px - tile_x0) as usize;
+                let ix = rect.tile_ix(row, x_px);
                 if inner_row && px >= inner_x0 && px <= inner_x1 {
                     area[ix] = 1.0;
                 } else if px < out_x0 || px > out_x1 {
@@ -228,16 +237,10 @@ impl Rect {
 
     fn fine_uniform_round_rect(
         area: &mut [f32; (TILE_SIZE * TILE_SIZE) as usize],
-        tile_x0: i32,
-        tile_y0: i32,
-        stride: usize,
-        pixel_bounds: Bounds,
-        x0: f32,
-        y0: f32,
-        x1: f32,
-        y1: f32,
+        rect: FineRect,
         radius: f32,
     ) {
+        let FineRect { x0, y0, x1, y1, .. } = rect;
         let hx = (x1 - x0) * 0.5;
         let hy = (y1 - y0) * 0.5;
         let r = radius.min(hx).min(hy).max(0.0);
@@ -250,17 +253,17 @@ impl Rect {
         let inner_x0 = x0 + r + 0.5;
         let inner_x1 = x1 - r - 0.5;
 
-        for y_px in pixel_bounds.y0..pixel_bounds.y1 {
+        for y_px in rect.pixel_bounds.y0..rect.pixel_bounds.y1 {
             let py = y_px as f32 + 0.5;
             if py < out_y0 || py > out_y1 {
                 continue;
             }
-            let row = (y_px - tile_y0) as usize * stride;
+            let row = rect.row_start(y_px);
             let inner_row = py >= inner_y0 && py <= inner_y1;
 
-            for x_px in pixel_bounds.x0..pixel_bounds.x1 {
+            for x_px in rect.pixel_bounds.x0..rect.pixel_bounds.x1 {
                 let px = x_px as f32 + 0.5;
-                let ix = row + (x_px - tile_x0) as usize;
+                let ix = rect.tile_ix(row, x_px);
                 if px < out_x0 || px > out_x1 {
                     area[ix] = 0.0;
                 } else if inner_row && px >= inner_x0 && px <= inner_x1 {
@@ -273,33 +276,23 @@ impl Rect {
         }
     }
 
-    fn fine_per_pixel(
-        &self,
-        area: &mut [f32; (TILE_SIZE * TILE_SIZE) as usize],
-        tile_x0: i32,
-        tile_y0: i32,
-        stride: usize,
-        pixel_bounds: Bounds,
-        x0: f32,
-        y0: f32,
-        x1: f32,
-        y1: f32,
-    ) {
+    fn fine_per_pixel(&self, area: &mut [f32; (TILE_SIZE * TILE_SIZE) as usize], rect: FineRect) {
+        let FineRect { x0, y0, x1, y1, .. } = rect;
         let out_y0 = y0 - 0.5;
         let out_y1 = y1 + 0.5;
         let out_x0 = x0 - 0.5;
         let out_x1 = x1 + 0.5;
 
-        for y_px in pixel_bounds.y0..pixel_bounds.y1 {
+        for y_px in rect.pixel_bounds.y0..rect.pixel_bounds.y1 {
             let py = y_px as f32 + 0.5;
             if py < out_y0 || py > out_y1 {
                 continue;
             }
-            let row = (y_px - tile_y0) as usize * stride;
+            let row = rect.row_start(y_px);
 
-            for x_px in pixel_bounds.x0..pixel_bounds.x1 {
+            for x_px in rect.pixel_bounds.x0..rect.pixel_bounds.x1 {
                 let px = x_px as f32 + 0.5;
-                let ix = row + (x_px - tile_x0) as usize;
+                let ix = rect.tile_ix(row, x_px);
                 if px < out_x0 || px > out_x1 {
                     area[ix] = 0.0;
                 } else {
@@ -310,8 +303,15 @@ impl Rect {
     }
 }
 
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct RectStroke {
+    pub rect: Rect,
+    pub half_width: f32,
+}
+
 impl RectStroke {
-    pub(crate) fn tile_is_solid(&self, _bounds: Bounds) -> bool {
+    pub(crate) fn tile_is_solid(&self, _: Bounds) -> bool {
         false
     }
 
@@ -321,27 +321,42 @@ impl RectStroke {
         tile_bounds: Bounds,
         pixel_bounds: Bounds,
     ) {
-        for y_px in pixel_bounds.y0..pixel_bounds.y1 {
-            let row = (y_px - tile_bounds.y0) as usize * TILE_SIZE as usize;
-            for x_px in pixel_bounds.x0..pixel_bounds.x1 {
-                let ix = row + (x_px - tile_bounds.x0) as usize;
-                area[ix] = (rect_pixel_coverage(self.outer, x_px, y_px)
-                    - rect_pixel_coverage(self.inner, x_px, y_px))
-                .clamp(0.0, 1.0);
-            }
+        if self.half_width <= 0.0 {
+            return;
+        }
+
+        self.outer_rect().fine_area(area, tile_bounds, pixel_bounds);
+        let Some(inner) = self.inner_rect() else {
+            return;
+        };
+
+        let mut inner_area = [0.0; (TILE_SIZE * TILE_SIZE) as usize];
+        inner.fine_area(&mut inner_area, tile_bounds, pixel_bounds);
+        for (outer, inner) in area.iter_mut().zip(inner_area) {
+            *outer = (*outer - inner).clamp(0.0, 1.0);
         }
     }
-}
 
-fn rect_pixel_coverage(rect: Rect, x: i32, y: i32) -> f32 {
-    let (x0, y0, x1, y1) = rect.axis_bounds_f32();
-    let dx = overlap_1d(x as f32, x as f32 + 1.0, x0, x1);
-    let dy = overlap_1d(y as f32, y as f32 + 1.0, y0, y1);
-    dx * dy
-}
+    fn outer_rect(&self) -> Rect {
+        let (x0, y0, x1, y1) = self.rect.axis_bounds();
+        let half = f64::from(self.half_width.max(0.0));
+        Rect {
+            start: Point::new(x0 - half, y0 - half),
+            end: Point::new(x1 + half, y1 + half),
+            radius: self.rect.radius.offset(self.half_width.max(0.0)),
+        }
+    }
 
-fn overlap_1d(a0: f32, a1: f32, b0: f32, b1: f32) -> f32 {
-    (a1.min(b1) - a0.max(b0)).clamp(0.0, 1.0)
+    fn inner_rect(&self) -> Option<Rect> {
+        let (x0, y0, x1, y1) = self.rect.axis_bounds();
+        let half = f64::from(self.half_width.max(0.0));
+        let (ix0, iy0, ix1, iy1) = (x0 + half, y0 + half, x1 - half, y1 - half);
+        (ix0 < ix1 && iy0 < iy1).then(|| Rect {
+            start: Point::new(ix0, iy0),
+            end: Point::new(ix1, iy1),
+            radius: self.rect.radius.offset(-self.half_width.max(0.0)),
+        })
+    }
 }
 
 /// For convex SDFs, solid coverage on the pixel perimeter implies solid interior.

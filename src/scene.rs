@@ -1,6 +1,9 @@
 use peniko::{
     Color, Compose, Mix,
-    kurbo::{Affine, Arc, BezPath, Rect, Shape, Stroke, StrokeOpts, stroke as kurbo_stroke},
+    kurbo::{
+        Affine, Arc, BezPath, Circle, Point, Rect, Shape, Stroke, StrokeOpts,
+        stroke as kurbo_stroke,
+    },
 };
 
 use crate::shared::{
@@ -17,6 +20,11 @@ use crate::shared::{
     line::Line,
     path::PathRecord,
     path_flatten::PathFlatten,
+    sdf::{
+        Sdf,
+        circle::{Circle as SdfCircle, CircleStroke as SdfCircleStroke},
+        rect::{Radius, Rect as SdfRect, RectStroke as SdfRectStroke},
+    },
 };
 
 pub struct Scene {
@@ -197,6 +205,33 @@ impl Scene {
         self.layer_stack.push(LayerKind::Clip);
     }
 
+    /// Adds a rounded/sharp rectangle clip that is rasterized directly from an SDF.
+    ///
+    /// This avoids flattening simple rounded clips into path segments while keeping
+    /// the SDF geometry as the source of truth until render time.
+    pub fn push_clip_sdf_rect_layer(&mut self, rect: Rect, radius: Radius) {
+        self.ensure_command_root();
+        let layer = Layer::ClipSdf {
+            sdf: Sdf::Rect(SdfRect {
+                start: Point::new(rect.x0, rect.y0),
+                end: Point::new(rect.x1, rect.y1),
+                radius,
+            }),
+            bounds: Self::rect_bounds(rect),
+        };
+        let children = self.command_lists.len();
+        self.command_lists.push(CommandList::default());
+        self.current_command_list_mut()
+            .commands
+            .push(Command::Layer {
+                draw: 0,
+                layer,
+                children,
+            });
+        self.command_stack.push(children);
+        self.layer_stack.push(LayerKind::ClipSdf);
+    }
+
     pub fn push_opacity_layer(
         &mut self,
         path: BezPath,
@@ -322,23 +357,112 @@ impl Scene {
     }
 
     pub fn push_rect(&mut self, rect: Rect, brush: impl Into<Brush>, rule: FillRule) {
-        let bounds = Bounds {
+        self.push_sdf_draw(
+            Sdf::Rect(SdfRect {
+                start: Point::new(rect.x0, rect.y0),
+                end: Point::new(rect.x1, rect.y1),
+                radius: Radius::all(0.0),
+            }),
+            Self::rect_bounds(rect),
+            brush,
+            rule,
+        );
+    }
+
+    pub fn push_rect_stroke(
+        &mut self,
+        rect: Rect,
+        radius: Radius,
+        stroke: Stroke,
+        brush: impl Into<Brush>,
+        rule: FillRule,
+    ) {
+        if stroke.width <= 0.0 {
+            return;
+        }
+        if !stroke.dash_pattern.is_empty() {
+            let path = Self::rounded_rect_path(rect, radius, 0.1);
+            let outline = kurbo_stroke(path, &stroke, &StrokeOpts::default(), 0.1);
+            self.push_path_inner(outline, brush, Affine::IDENTITY, rule, 0.1, None);
+            return;
+        }
+
+        let half_width = (stroke.width * 0.5) as f32;
+        self.push_sdf_draw(
+            Sdf::RectStroke(SdfRectStroke {
+                rect: SdfRect {
+                    start: Point::new(rect.x0, rect.y0),
+                    end: Point::new(rect.x1, rect.y1),
+                    radius,
+                },
+                half_width,
+            }),
+            Self::rect_bounds_outset(rect, f64::from(half_width)),
+            brush,
+            rule,
+        );
+    }
+
+    fn rect_bounds(rect: Rect) -> Bounds {
+        Bounds {
             x0: rect.x0.min(rect.x1).floor() as i32,
             y0: rect.y0.min(rect.y1).floor() as i32,
             x1: rect.x0.max(rect.x1).ceil() as i32,
             y1: rect.y0.max(rect.y1).ceil() as i32,
-        };
-        let draw = self.push_path_inner(
-            rect.to_path(0.0),
-            brush,
-            Affine::IDENTITY,
-            rule,
-            0.0,
-            Some(bounds),
-        );
-        if let Some(draw) = self.draw_records.get_mut(draw) {
-            draw.solid_rect = true;
         }
+    }
+
+    fn rect_bounds_outset(rect: Rect, outset: f64) -> Bounds {
+        Bounds {
+            x0: (rect.x0.min(rect.x1) - outset).floor() as i32,
+            y0: (rect.y0.min(rect.y1) - outset).floor() as i32,
+            x1: (rect.x0.max(rect.x1) + outset).ceil() as i32,
+            y1: (rect.y0.max(rect.y1) + outset).ceil() as i32,
+        }
+    }
+
+    /// Adds a filled circle as exact SDF geometry instead of flattening it to path segments.
+    pub fn push_circle(&mut self, circle: Circle, brush: impl Into<Brush>, rule: FillRule) {
+        let rect = circle.bounding_box();
+        self.push_sdf_draw(
+            Sdf::Circle(SdfCircle {
+                center: circle.center,
+                radius: circle.radius as f32,
+            }),
+            Self::rect_bounds(rect),
+            brush,
+            rule,
+        );
+    }
+
+    pub fn push_circle_stroke(
+        &mut self,
+        circle: Circle,
+        stroke: Stroke,
+        brush: impl Into<Brush>,
+        rule: FillRule,
+    ) {
+        if stroke.width <= 0.0 {
+            return;
+        }
+        if !stroke.dash_pattern.is_empty() {
+            self.push_stroke(circle, stroke, brush, Affine::IDENTITY, rule, 0.1);
+            return;
+        }
+
+        let half_width = (stroke.width * 0.5) as f32;
+        self.push_sdf_draw(
+            Sdf::CircleStroke(SdfCircleStroke {
+                circle: SdfCircle {
+                    center: circle.center,
+                    radius: circle.radius as f32,
+                },
+                half_width,
+            }),
+            Self::rect_bounds_outset(circle.bounding_box(), f64::from(half_width)),
+            brush,
+            rule,
+        );
     }
 
     pub fn push_arc(&mut self, arc: Arc, brush: impl Into<Brush>, rule: FillRule, tolerance: f64) {
@@ -374,6 +498,26 @@ impl Scene {
         tolerance: f64,
     ) {
         self.push_path_inner(path, brush, transform, rule, tolerance, None);
+    }
+
+    fn rounded_rect_path(rect: Rect, radius: Radius, tolerance: f64) -> BezPath {
+        if radius.is_zero() {
+            rect.to_path(tolerance)
+        } else {
+            peniko::kurbo::RoundedRect::new(
+                rect.x0,
+                rect.y0,
+                rect.x1,
+                rect.y1,
+                (
+                    radius.top_left as f64,
+                    radius.top_right as f64,
+                    radius.bottom_right as f64,
+                    radius.bottom_left as f64,
+                ),
+            )
+            .to_path(tolerance)
+        }
     }
 
     fn transform_path(path: BezPath, transform: Affine) -> BezPath {
@@ -440,6 +584,7 @@ impl Scene {
         let draw_ix = self.draw_records.len();
         self.draw_records.push(DrawRecord {
             path_id: Some(path_id),
+            sdf: None,
             tag: DrawTag::Brush,
             brush: brush.into(),
             fill_rule: rule,
@@ -501,6 +646,7 @@ impl Scene {
         let draw_ix = self.draw_records.len();
         self.draw_records.push(DrawRecord {
             path_id: Some(path_id),
+            sdf: None,
             tag,
             brush: Brush::Solid(Color::TRANSPARENT),
             fill_rule: rule,
@@ -519,6 +665,35 @@ impl Scene {
             segment_capacity: local_tile_cnt,
             segment_count: 0,
         });
+        draw_ix
+    }
+
+    fn push_sdf_draw(
+        &mut self,
+        sdf: Sdf,
+        bounds: Bounds,
+        brush: impl Into<Brush>,
+        rule: FillRule,
+    ) -> usize {
+        self.ensure_command_root();
+        let draw_ix = self.draw_records.len();
+        self.draw_records.push(DrawRecord {
+            path_id: None,
+            sdf: Some(sdf),
+            tag: DrawTag::Brush,
+            brush: brush.into(),
+            fill_rule: rule,
+            pixel_bounds: PixelBounds {
+                x0: bounds.x0,
+                y0: bounds.y0,
+                x1: bounds.x1,
+                y1: bounds.y1,
+            },
+            solid_rect: false,
+        });
+        self.current_command_list_mut()
+            .commands
+            .push(Command::Draw(draw_ix));
         draw_ix
     }
 
@@ -606,7 +781,7 @@ impl Scene {
                     flush_batch(&mut pending_batch, ops, plan, layer_stack);
                     if Self::can_fuse(layer) {
                         match layer {
-                            Layer::Clip | Layer::ClipSdf { .. } => {
+                            Layer::Clip => {
                                 ops.push(ExecOp::BeginClip);
                                 layer_stack.push(LayerStackEntry::Clip { draw: *draw as u32 });
                                 self.compile_into(*children, ops, plan, layer_stack);
@@ -663,10 +838,7 @@ impl Scene {
     }
 
     fn can_fuse(layer: &Layer) -> bool {
-        matches!(
-            layer,
-            Layer::Clip | Layer::ClipSdf { .. } | Layer::Opacity(_) | Layer::Blend(_)
-        )
+        matches!(layer, Layer::Clip | Layer::Opacity(_) | Layer::Blend(_))
     }
 }
 
@@ -905,7 +1077,48 @@ mod tests {
     }
 
     #[test]
-    fn push_rect_marks_solid_rect_and_sets_bounds() {
+    fn compile_keeps_sdf_clip_as_sdf_offscreen_layer() {
+        let mut scene = test_scene();
+        scene.push_clip_sdf_rect_layer(Rect::new(4.0, 4.0, 32.0, 32.0), Radius::all(6.0));
+        scene.push_path(
+            rect_path(0.0, 0.0, 40.0, 40.0),
+            Brush::Solid(rgb(255, 0, 0)),
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.0,
+        );
+        scene.pop_layer();
+
+        let plan = scene.compile(ROOT_COMMAND_LIST_ID);
+        assert_eq!(scene.draw_records.len(), 1);
+        assert_eq!(plan.ops.len(), 1, "{:#?}", plan.ops);
+        match &plan.ops[0] {
+            ExecOp::OffscreenLayer {
+                layer:
+                    Layer::ClipSdf {
+                        sdf: Sdf::Rect(rect),
+                        bounds,
+                    },
+                outer_stack,
+                children,
+            } => {
+                assert_eq!(rect.radius.top_left, 6.0);
+                assert_eq!(*bounds, Bounds::new(4, 4, 32, 32));
+                assert!(outer_stack.is_empty());
+                match children.as_slice() {
+                    [ExecOp::DrawBatch { draws, layer_stack }] => {
+                        assert_eq!(draws.clone(), 0..1);
+                        assert!(layer_stack.is_empty());
+                    }
+                    ops => panic!("expected one child draw batch, got {ops:#?}"),
+                }
+            }
+            op => panic!("expected ClipSdf offscreen layer, got {op:#?}"),
+        }
+    }
+
+    #[test]
+    fn push_rect_records_sdf_rect_without_path_storage() {
         let mut scene = test_scene();
         scene.push_rect(
             Rect::new(2.0, 3.0, 18.0, 19.0),
@@ -914,6 +1127,8 @@ mod tests {
         );
 
         assert_eq!(scene.draw_records.len(), 1);
+        assert!(scene.path_records.is_empty());
+        assert!(scene.bd_records.is_empty());
         let draw = &scene.draw_records[0];
         assert_eq!(
             draw.pixel_bounds,
@@ -924,8 +1139,154 @@ mod tests {
                 y1: 19,
             }
         );
-        assert!(draw.solid_rect);
         assert_eq!(draw.tag, DrawTag::Brush);
+        assert!(draw.path_id.is_none());
+        assert!(!draw.solid_rect);
+        match draw.sdf {
+            Some(Sdf::Rect(rect)) => {
+                assert_eq!(rect.axis_bounds(), (2.0, 3.0, 18.0, 19.0));
+                assert!(rect.radius.is_zero());
+            }
+            sdf => panic!("expected rect SDF, got {sdf:?}"),
+        }
+    }
+
+    #[test]
+    fn push_circle_records_sdf_circle_without_path_storage() {
+        let mut scene = test_scene();
+        scene.push_circle(
+            Circle::new((16.0, 20.0), 8.0),
+            Brush::Solid(rgb(255, 0, 0)),
+            FillRule::NonZero,
+        );
+
+        assert_eq!(scene.draw_records.len(), 1);
+        assert!(scene.path_records.is_empty());
+        assert!(scene.bd_records.is_empty());
+        let draw = &scene.draw_records[0];
+        assert_eq!(
+            draw.pixel_bounds,
+            PixelBounds {
+                x0: 8,
+                y0: 12,
+                x1: 24,
+                y1: 28,
+            }
+        );
+        match draw.sdf {
+            Some(Sdf::Circle(circle)) => {
+                assert_eq!(circle.center, Point::new(16.0, 20.0));
+                assert_eq!(circle.radius, 8.0);
+            }
+            sdf => panic!("expected circle SDF, got {sdf:?}"),
+        }
+    }
+
+    #[test]
+    fn push_rect_stroke_records_sdf_without_path_storage() {
+        let mut scene = test_scene();
+        scene.push_rect_stroke(
+            Rect::new(10.0, 12.0, 30.0, 36.0),
+            Radius::all(4.0),
+            Stroke::new(6.0),
+            Brush::Solid(rgb(255, 0, 0)),
+            FillRule::NonZero,
+        );
+
+        assert_eq!(scene.draw_records.len(), 1);
+        assert!(scene.path_records.is_empty());
+        assert!(scene.bd_records.is_empty());
+        let draw = &scene.draw_records[0];
+        assert_eq!(
+            draw.pixel_bounds,
+            PixelBounds {
+                x0: 7,
+                y0: 9,
+                x1: 33,
+                y1: 39,
+            }
+        );
+        assert!(draw.path_id.is_none());
+        match draw.sdf {
+            Some(Sdf::RectStroke(stroke)) => {
+                assert_eq!(stroke.rect.axis_bounds(), (10.0, 12.0, 30.0, 36.0));
+                assert_eq!(stroke.rect.radius.top_left, 4.0);
+                assert_eq!(stroke.half_width, 3.0);
+            }
+            sdf => panic!("expected rect stroke SDF, got {sdf:?}"),
+        }
+    }
+
+    #[test]
+    fn push_circle_stroke_records_sdf_without_path_storage() {
+        let mut scene = test_scene();
+        scene.push_circle_stroke(
+            Circle::new((24.0, 20.0), 10.0),
+            Stroke::new(4.0),
+            Brush::Solid(rgb(255, 0, 0)),
+            FillRule::NonZero,
+        );
+
+        assert_eq!(scene.draw_records.len(), 1);
+        assert!(scene.path_records.is_empty());
+        assert!(scene.bd_records.is_empty());
+        let draw = &scene.draw_records[0];
+        assert_eq!(
+            draw.pixel_bounds,
+            PixelBounds {
+                x0: 12,
+                y0: 8,
+                x1: 36,
+                y1: 32,
+            }
+        );
+        match draw.sdf {
+            Some(Sdf::CircleStroke(stroke)) => {
+                assert_eq!(stroke.circle.center, Point::new(24.0, 20.0));
+                assert_eq!(stroke.circle.radius, 10.0);
+                assert_eq!(stroke.half_width, 2.0);
+            }
+            sdf => panic!("expected circle stroke SDF, got {sdf:?}"),
+        }
+    }
+
+    #[test]
+    fn push_sdf_stroke_with_zero_width_is_noop() {
+        let mut scene = test_scene();
+        scene.push_rect_stroke(
+            Rect::new(10.0, 12.0, 30.0, 36.0),
+            Radius::all(0.0),
+            Stroke::new(0.0),
+            Brush::Solid(rgb(255, 0, 0)),
+            FillRule::NonZero,
+        );
+        scene.push_circle_stroke(
+            Circle::new((24.0, 20.0), 10.0),
+            Stroke::new(0.0),
+            Brush::Solid(rgb(255, 0, 0)),
+            FillRule::NonZero,
+        );
+
+        assert!(scene.draw_records.is_empty());
+        assert!(scene.path_records.is_empty());
+        assert!(scene.bd_records.is_empty());
+    }
+
+    #[test]
+    fn push_dashed_circle_stroke_uses_path_storage() {
+        let mut scene = test_scene();
+        scene.push_circle_stroke(
+            Circle::new((24.0, 20.0), 10.0),
+            Stroke::new(4.0).with_dashes(0.0, [4.0, 4.0]),
+            Brush::Solid(rgb(255, 0, 0)),
+            FillRule::NonZero,
+        );
+
+        assert_eq!(scene.draw_records.len(), 1);
+        assert_eq!(scene.path_records.len(), 1);
+        assert_eq!(scene.bd_records.len(), 1);
+        assert!(scene.draw_records[0].path_id.is_some());
+        assert!(scene.draw_records[0].sdf.is_none());
     }
 
     #[test]

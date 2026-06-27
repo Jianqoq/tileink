@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn coarse_wgpu_emits_compact_solid_color_particles_when_enabled() {
+fn coarse_wgpu_emits_sdf_particles_for_rects_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;
     }
@@ -16,25 +16,15 @@ fn coarse_wgpu_emits_compact_solid_color_particles_when_enabled() {
     renderer.prepare_scene(&scene);
     assert_eq!(
         renderer.scene.draw_solid_rects.read(renderer.client()),
-        vec![1, 1]
+        vec![0, 0]
     );
     assert_eq!(
         renderer
             .scene
             .draw_solid_color_fast_paths
             .read(renderer.client()),
-        vec![1, 1]
+        vec![0, 0]
     );
-    let client = renderer.client.clone();
-    renderer.scan.backdrops.replace(&client, &[1, 1, 1]);
-    renderer
-        .scan
-        .tile_segment_range_starts
-        .replace(&client, &[0, 0, 0]);
-    renderer
-        .scan
-        .tile_segment_range_ends
-        .replace(&client, &[0, 0, 0]);
     run_default_coarse_stage(&mut renderer, &scene);
 
     assert_eq!(
@@ -51,22 +41,16 @@ fn coarse_wgpu_emits_compact_solid_color_particles_when_enabled() {
     assert_eq!(
         renderer.coarse.ptcl_tags.read(renderer.client()),
         vec![
-            CUBE_PTCL_COLOR,
+            CUBE_PTCL_SDF,
             CUBE_PTCL_END,
-            CUBE_PTCL_COLOR,
-            CUBE_PTCL_COLOR,
+            CUBE_PTCL_SDF,
+            CUBE_PTCL_SDF,
             CUBE_PTCL_END
         ]
     );
     assert_eq!(
         renderer.coarse.ptcl_colors.read(renderer.client()),
-        vec![
-            premul_f32_to_u32(red.premultiply().components),
-            0,
-            premul_f32_to_u32(red.premultiply().components),
-            premul_f32_to_u32(blue.premultiply().components),
-            0
-        ]
+        vec![0, 0, 0, 1, 0]
     );
 }
 
@@ -110,12 +94,9 @@ fn coarse_wgpu_keeps_particle_order_across_workgroup_draw_chunks_when_enabled() 
         .replace(&client, &vec![0; draw_count]);
     run_default_coarse_stage(&mut renderer, &scene);
 
-    let mut expected_tags = vec![CUBE_PTCL_COLOR; draw_count];
+    let mut expected_tags = vec![CUBE_PTCL_SDF; draw_count];
     expected_tags.push(CUBE_PTCL_END);
-    let mut expected_colors = colors
-        .iter()
-        .map(|color| premul_f32_to_u32(color.premultiply().components))
-        .collect::<Vec<_>>();
+    let mut expected_colors = (0..draw_count as u32).collect::<Vec<_>>();
     expected_colors.push(0);
 
     assert_eq!(
@@ -267,14 +248,14 @@ fn coarse_wgpu_wraps_draw_batch_with_active_clip_stack_when_enabled() {
         renderer.coarse.ptcl_tags.read(renderer.client()),
         vec![
             CUBE_PTCL_BEGIN_CLIP,
-            CUBE_PTCL_COLOR,
+            CUBE_PTCL_SDF,
             CUBE_PTCL_END_CLIP,
             CUBE_PTCL_END
         ]
     );
     assert_eq!(
         renderer.coarse.ptcl_colors.read(renderer.client()),
-        vec![0, premul_f32_to_u32(red.premultiply().components), 0, 0]
+        vec![0, 1, 0, 0]
     );
 }
 
@@ -334,7 +315,7 @@ fn coarse_wgpu_wraps_draw_batch_with_opacity_and_blend_stack_when_enabled() {
         vec![
             CUBE_PTCL_BEGIN_OPACITY,
             CUBE_PTCL_BEGIN_BLEND,
-            CUBE_PTCL_COLOR,
+            CUBE_PTCL_SDF,
             CUBE_PTCL_END_BLEND,
             CUBE_PTCL_END_OPACITY,
             CUBE_PTCL_END
@@ -345,7 +326,7 @@ fn coarse_wgpu_wraps_draw_batch_with_opacity_and_blend_stack_when_enabled() {
         vec![
             128,
             Mix::Multiply as u32 | ((Compose::SrcOver as u32) << 8),
-            premul_f32_to_u32(red.premultiply().components),
+            2,
             0,
             0,
             0

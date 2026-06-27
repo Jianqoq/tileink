@@ -184,7 +184,7 @@ fn collect_filter_brushes_for_ops(ops: &[ExecOp], upload: &mut GpuBrushUpload) {
                     collect_filter_brush(filter, upload);
                     collect_filter_brushes_for_ops(children, upload);
                 }
-                _ => {}
+                _ => collect_filter_brushes_for_ops(children, upload),
             }
         }
     }

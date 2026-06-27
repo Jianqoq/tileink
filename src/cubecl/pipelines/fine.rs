@@ -7,11 +7,12 @@ use crate::cubecl::{
         GPU_EXTEND_REPEAT, GpuBrushResources,
     },
     buffer::CubeBuffer,
-    renderer::{CoarseBuffers, ScanBuffers},
+    renderer::{CoarseBuffers, ScanBuffers, SceneBuffers},
     types::{
         CUBE_PTCL_BEGIN_BLEND, CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_BEGIN_OPACITY, CUBE_PTCL_COLOR,
         CUBE_PTCL_END, CUBE_PTCL_END_BLEND, CUBE_PTCL_END_CLIP, CUBE_PTCL_END_OPACITY,
-        CUBE_PTCL_FILL, CubeBufferLengths,
+        CUBE_PTCL_FILL, CUBE_PTCL_SDF, CUBE_SDF_CIRCLE, CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_RECT,
+        CUBE_SDF_RECT_STROKE, CubeBufferLengths,
     },
 };
 
@@ -31,6 +32,7 @@ pub(crate) struct FinePipeline;
 impl FinePipeline {
     pub(crate) fn run<R: Runtime>(
         client: &ComputeClient<R>,
+        scene: &SceneBuffers,
         scan: &ScanBuffers,
         coarse: &CoarseBuffers,
         brushes: GpuBrushResources<'_>,
@@ -38,7 +40,7 @@ impl FinePipeline {
         config: FineRenderConfig,
     ) {
         Self::clear(client, target, config.lengths, config.clear_color);
-        Self::render(client, scan, coarse, brushes, target, config);
+        Self::render(client, scene, scan, coarse, brushes, target, config);
     }
 
     pub(crate) fn clear<R: Runtime>(
@@ -64,6 +66,7 @@ impl FinePipeline {
 
     pub(crate) fn render<R: Runtime>(
         client: &ComputeClient<R>,
+        scene: &SceneBuffers,
         scan: &ScanBuffers,
         coarse: &CoarseBuffers,
         brushes: GpuBrushResources<'_>,
@@ -97,6 +100,16 @@ impl FinePipeline {
             unsafe { coarse.ptcl_segment_starts.arg() },
             unsafe { coarse.ptcl_segment_ends.arg() },
             unsafe { coarse.ptcl_colors.arg() },
+            unsafe { scene.draw_sdf_kinds.arg() },
+            unsafe { scene.draw_sdf_x0.arg() },
+            unsafe { scene.draw_sdf_y0.arg() },
+            unsafe { scene.draw_sdf_x1.arg() },
+            unsafe { scene.draw_sdf_y1.arg() },
+            unsafe { scene.draw_sdf_r0.arg() },
+            unsafe { scene.draw_sdf_r1.arg() },
+            unsafe { scene.draw_sdf_r2.arg() },
+            unsafe { scene.draw_sdf_r3.arg() },
+            unsafe { scene.draw_sdf_half_width.arg() },
             unsafe { scan.segment_p0x.arg() },
             unsafe { scan.segment_p0y.arg() },
             unsafe { scan.segment_p1x.arg() },
@@ -142,6 +155,16 @@ fn fine_render(
     ptcl_segment_starts: &Array<u32>,
     ptcl_segment_ends: &Array<u32>,
     ptcl_colors: &Array<u32>,
+    draw_sdf_kinds: &Array<u32>,
+    draw_sdf_x0: &Array<f32>,
+    draw_sdf_y0: &Array<f32>,
+    draw_sdf_x1: &Array<f32>,
+    draw_sdf_y1: &Array<f32>,
+    draw_sdf_r0: &Array<f32>,
+    draw_sdf_r1: &Array<f32>,
+    draw_sdf_r2: &Array<f32>,
+    draw_sdf_r3: &Array<f32>,
+    draw_sdf_half_width: &Array<f32>,
     segment_p0x: &Array<f32>,
     segment_p0y: &Array<f32>,
     segment_p1x: &Array<f32>,
@@ -198,6 +221,37 @@ fn fine_render(
         } else {
             if tag == CUBE_PTCL_COLOR {
                 pixel = src_over_premul_u8(pixel, scale_premul_u8(ptcl_colors[ptcl_i], clip_mask));
+            } else if tag == CUBE_PTCL_SDF {
+                let draw_ix = ptcl_colors[ptcl_i];
+                let alpha = combine_alpha(
+                    sdf_alpha_at(
+                        draw_ix,
+                        global_x as f32 + 0.5,
+                        global_y as f32 + 0.5,
+                        draw_sdf_kinds,
+                        draw_sdf_x0,
+                        draw_sdf_y0,
+                        draw_sdf_x1,
+                        draw_sdf_y1,
+                        draw_sdf_r0,
+                        draw_sdf_r1,
+                        draw_sdf_r2,
+                        draw_sdf_r3,
+                        draw_sdf_half_width,
+                    ),
+                    clip_mask,
+                );
+                if alpha > 0 {
+                    let color = sample_brush(
+                        draw_ix,
+                        global_x as f32 + 0.5,
+                        global_y as f32 + 0.5,
+                        brush_data,
+                        brush_params,
+                        brush_payloads,
+                    );
+                    pixel = src_over_premul_u8(pixel, scale_premul_u8(color, alpha));
+                }
             } else if tag == CUBE_PTCL_END_CLIP {
                 if clip_depth > 0 {
                     clip_depth -= 1;
@@ -368,6 +422,173 @@ fn coverage_to_alpha(value: f32, fill_rule: u32) -> u32 {
         alpha = (value - f32::new(2.0_f32) * (f32::new(0.5_f32) * value).round()).abs();
     }
     (alpha.clamp(0.0, 1.0) * 255.0 + 0.5) as u32
+}
+
+#[cube]
+#[allow(clippy::too_many_arguments)]
+fn sdf_alpha_at(
+    draw_ix: u32,
+    x: f32,
+    y: f32,
+    draw_sdf_kinds: &Array<u32>,
+    draw_sdf_x0: &Array<f32>,
+    draw_sdf_y0: &Array<f32>,
+    draw_sdf_x1: &Array<f32>,
+    draw_sdf_y1: &Array<f32>,
+    draw_sdf_r0: &Array<f32>,
+    draw_sdf_r1: &Array<f32>,
+    draw_sdf_r2: &Array<f32>,
+    draw_sdf_r3: &Array<f32>,
+    draw_sdf_half_width: &Array<f32>,
+) -> u32 {
+    let i = draw_ix as usize;
+    let kind = draw_sdf_kinds[i];
+    let mut coverage = 0.0;
+
+    if kind == CUBE_SDF_RECT {
+        coverage = sdf_coverage_from_dist(rect_sdf_distance(
+            x,
+            y,
+            draw_sdf_x0[i],
+            draw_sdf_y0[i],
+            draw_sdf_x1[i],
+            draw_sdf_y1[i],
+            draw_sdf_r0[i],
+            draw_sdf_r1[i],
+            draw_sdf_r2[i],
+            draw_sdf_r3[i],
+        ));
+    } else if kind == CUBE_SDF_RECT_STROKE {
+        let half = draw_sdf_half_width[i].max(0.0);
+        let x0 = draw_sdf_x0[i].min(draw_sdf_x1[i]);
+        let y0 = draw_sdf_y0[i].min(draw_sdf_y1[i]);
+        let x1 = draw_sdf_x0[i].max(draw_sdf_x1[i]);
+        let y1 = draw_sdf_y0[i].max(draw_sdf_y1[i]);
+        let outer = sdf_coverage_from_dist(rect_sdf_distance(
+            x,
+            y,
+            x0 - half,
+            y0 - half,
+            x1 + half,
+            y1 + half,
+            draw_sdf_r0[i] + half,
+            draw_sdf_r1[i] + half,
+            draw_sdf_r2[i] + half,
+            draw_sdf_r3[i] + half,
+        ));
+        let inner_x0 = x0 + half;
+        let inner_y0 = y0 + half;
+        let inner_x1 = x1 - half;
+        let inner_y1 = y1 - half;
+        let mut inner = 0.0;
+        if inner_x0 < inner_x1 && inner_y0 < inner_y1 {
+            inner = sdf_coverage_from_dist(rect_sdf_distance(
+                x,
+                y,
+                inner_x0,
+                inner_y0,
+                inner_x1,
+                inner_y1,
+                (draw_sdf_r0[i] - half).max(0.0),
+                (draw_sdf_r1[i] - half).max(0.0),
+                (draw_sdf_r2[i] - half).max(0.0),
+                (draw_sdf_r3[i] - half).max(0.0),
+            ));
+        }
+        coverage = (outer - inner).clamp(0.0, 1.0);
+    } else if kind == CUBE_SDF_CIRCLE {
+        coverage = sdf_coverage_from_dist(circle_sdf_distance(
+            x,
+            y,
+            draw_sdf_x0[i],
+            draw_sdf_y0[i],
+            draw_sdf_x1[i],
+        ));
+    } else if kind == CUBE_SDF_CIRCLE_STROKE {
+        let half = draw_sdf_half_width[i].max(0.0);
+        let radius = draw_sdf_x1[i].max(0.0);
+        let outer = sdf_coverage_from_dist(circle_sdf_distance(
+            x,
+            y,
+            draw_sdf_x0[i],
+            draw_sdf_y0[i],
+            radius + half,
+        ));
+        let mut inner = 0.0;
+        if radius > half {
+            inner = sdf_coverage_from_dist(circle_sdf_distance(
+                x,
+                y,
+                draw_sdf_x0[i],
+                draw_sdf_y0[i],
+                radius - half,
+            ));
+        }
+        coverage = (outer - inner).clamp(0.0, 1.0);
+    }
+
+    (coverage * 255.0 + 0.5) as u32
+}
+
+#[cube]
+fn sdf_coverage_from_dist(dist: f32) -> f32 {
+    (f32::new(0.5_f32) - dist).clamp(0.0, 1.0)
+}
+
+#[cube]
+fn circle_sdf_distance(x: f32, y: f32, cx: f32, cy: f32, radius: f32) -> f32 {
+    let dx = x - cx;
+    let dy = y - cy;
+    (dx * dx + dy * dy).sqrt() - radius
+}
+
+#[cube]
+#[allow(clippy::too_many_arguments)]
+fn rect_sdf_distance(
+    x: f32,
+    y: f32,
+    x0_raw: f32,
+    y0_raw: f32,
+    x1_raw: f32,
+    y1_raw: f32,
+    top_left: f32,
+    top_right: f32,
+    bottom_left: f32,
+    bottom_right: f32,
+) -> f32 {
+    let x0 = x0_raw.min(x1_raw);
+    let y0 = y0_raw.min(y1_raw);
+    let x1 = x0_raw.max(x1_raw);
+    let y1 = y0_raw.max(y1_raw);
+    let cx = (x0 + x1) * 0.5;
+    let cy = (y0 + y1) * 0.5;
+    let hx = (x1 - x0) * 0.5;
+    let hy = (y1 - y0) * 0.5;
+    let px = x - cx;
+    let py = y - cy;
+    let mut radius = top_left;
+    if px >= 0.0 {
+        if py <= 0.0 {
+            radius = top_right;
+        } else {
+            radius = bottom_right;
+        }
+    } else if py > 0.0 {
+        radius = bottom_left;
+    }
+    let r = radius.min(hx).min(hy).max(0.0);
+    let ax = px.abs();
+    let ay = py.abs();
+
+    if r <= 0.0 {
+        let dx = ax - hx;
+        let dy = ay - hy;
+        (dx.max(0.0) * dx.max(0.0) + dy.max(0.0) * dy.max(0.0)).sqrt() + dx.max(dy).min(0.0)
+    } else {
+        let qx = ax - hx + r;
+        let qy = ay - hy + r;
+        qx.max(qy).min(0.0) + (qx.max(0.0) * qx.max(0.0) + qy.max(0.0) * qy.max(0.0)).sqrt() - r
+    }
 }
 
 #[cube]

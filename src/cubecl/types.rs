@@ -24,6 +24,13 @@ pub(crate) const CUBE_PTCL_BEGIN_OPACITY: u32 = 5;
 pub(crate) const CUBE_PTCL_END_OPACITY: u32 = 6;
 pub(crate) const CUBE_PTCL_BEGIN_BLEND: u32 = 7;
 pub(crate) const CUBE_PTCL_END_BLEND: u32 = 8;
+pub(crate) const CUBE_PTCL_SDF: u32 = 9;
+
+pub(crate) const CUBE_SDF_NONE: u32 = 0;
+pub(crate) const CUBE_SDF_RECT: u32 = 1;
+pub(crate) const CUBE_SDF_CIRCLE: u32 = 2;
+pub(crate) const CUBE_SDF_RECT_STROKE: u32 = 3;
+pub(crate) const CUBE_SDF_CIRCLE_STROKE: u32 = 4;
 
 /// Scene-derived fixed capacities for CubeCL buffers.
 ///
@@ -105,7 +112,10 @@ fn coarse_ptcl_capacity(scene: &Scene, width_in_tiles: u32, height_in_tiles: u32
     let draw_particles = scene
         .draw_records
         .iter()
-        .filter(|draw| draw.path_id.is_some() && matches!(draw.tag, DrawTag::Brush | DrawTag::Clip))
+        .filter(|draw| {
+            (draw.path_id.is_some() || draw.sdf.is_some())
+                && matches!(draw.tag, DrawTag::Brush | DrawTag::Clip)
+        })
         .map(|draw| draw.tile_bbox(width_in_tiles, height_in_tiles).tile_count() as usize)
         .sum::<usize>();
     let group_begin_particles = scene

@@ -1,7 +1,8 @@
 use crate::{
     cpu::computes::fine::{
         build_tile_alpha, combine_alpha, composite_blend_group_tile,
-        composite_color_tile_buffer_into, composite_opacity_group_tile, rasterize_tile_buffer_into,
+        composite_color_tile_buffer_into, composite_opacity_group_tile,
+        rasterize_sdf_tile_buffer_into, rasterize_tile_buffer_into,
     },
     shared::{
         bounds::{Bounds, PixelBounds},
@@ -128,6 +129,11 @@ fn render_tile(
                     fill.fill_rule,
                     &fill.brush,
                     &clip_mask,
+                );
+            }
+            TilePtcl::Sdf(sdf) => {
+                rasterize_sdf_tile_buffer_into(
+                    tile, tile_x, tile_y, &sdf.sdf, &sdf.brush, &clip_mask,
                 );
             }
             TilePtcl::BeginClip(fill) => {

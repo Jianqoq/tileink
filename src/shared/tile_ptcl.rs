@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use peniko::BlendMode;
 
-use crate::shared::{brush::Brush, fill::FillRule};
+use crate::shared::{brush::Brush, fill::FillRule, sdf::Sdf};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct TilePtclRange {
@@ -24,9 +24,16 @@ pub struct TileColorPtcl {
 }
 
 #[derive(Clone, Debug)]
+pub struct TileSdfPtcl {
+    pub sdf: Sdf,
+    pub brush: Brush,
+}
+
+#[derive(Clone, Debug)]
 pub enum TilePtcl {
     End,
     Fill(TileFillPtcl),
+    Sdf(TileSdfPtcl),
     Color(TileColorPtcl),
     BeginClip(TileFillPtcl),
     EndClip,

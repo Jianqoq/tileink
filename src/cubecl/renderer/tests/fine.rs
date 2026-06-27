@@ -23,6 +23,104 @@ fn fine_wgpu_renders_solid_color_particles_when_enabled() {
 }
 
 #[test]
+fn fine_wgpu_renders_circle_sdf_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let red = Color::from_rgb8(255, 0, 0);
+    let mut scene = Scene::new(32, 32);
+    scene.push_circle(Circle::new((16.0, 16.0), 8.0), red, FillRule::NonZero);
+
+    let mut renderer = WgpuRenderer::new_default_device(32, 32, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+    let red_px = premul_f32_to_u32(red.premultiply().components);
+
+    assert_eq!(target[16 * 32 + 16], red_px);
+    assert_eq!(target[16 * 32 + 3], 0);
+}
+
+#[test]
+fn fine_wgpu_renders_rect_stroke_sdf_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let red = Color::from_rgb8(255, 0, 0);
+    let mut scene = Scene::new(64, 64);
+    scene.push_rect_stroke(
+        Rect::new(16.0, 16.0, 48.0, 48.0),
+        Radius::all(0.0),
+        Stroke::new(6.0),
+        red,
+        FillRule::NonZero,
+    );
+
+    let mut renderer = WgpuRenderer::new_default_device(64, 64, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+    let red_px = premul_f32_to_u32(red.premultiply().components);
+
+    assert_eq!(target[32 * 64 + 16], red_px);
+    assert_eq!(target[32 * 64 + 32], 0);
+    assert_eq!(target[32 * 64 + 8], 0);
+}
+
+#[test]
+fn fine_wgpu_renders_circle_stroke_sdf_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let blue = Color::from_rgb8(0, 128, 255);
+    let mut scene = Scene::new(64, 64);
+    scene.push_circle_stroke(
+        Circle::new((32.0, 32.0), 14.0),
+        Stroke::new(6.0),
+        blue,
+        FillRule::NonZero,
+    );
+
+    let mut renderer = WgpuRenderer::new_default_device(64, 64, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+    let blue_px = premul_f32_to_u32(blue.premultiply().components);
+
+    assert_eq!(target[32 * 64 + 18], blue_px);
+    assert_eq!(target[32 * 64 + 32], 0);
+    assert_eq!(target[32 * 64 + 10], 0);
+}
+
+#[test]
+fn fine_wgpu_preserves_rect_sdf_subpixel_coverage_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(32, 16);
+    scene.push_rect(
+        Rect::new(8.25, 0.0, 24.25, 16.0),
+        Color::from_rgb8(255, 0, 0),
+        FillRule::NonZero,
+    );
+
+    let mut renderer = WgpuRenderer::new_default_device(32, 16, Color::WHITE);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+    let edge = unpack_rgba8(target[8 * 32 + 8]);
+
+    assert_eq!(unpack_rgba8(target[8 * 32 + 7]), [255, 255, 255, 255]);
+    assert_eq!(unpack_rgba8(target[8 * 32 + 9]), [255, 0, 0, 255]);
+    assert_eq!(edge[0], 255);
+    assert_eq!(edge[1], edge[2]);
+    assert!(
+        edge[1] > 0 && edge[1] < 255,
+        "expected partially covered SDF edge pixel, got {edge:?}"
+    );
+}
+
+#[test]
 fn fine_wgpu_samples_linear_gradient_brush_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;

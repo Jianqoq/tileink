@@ -15,6 +15,7 @@ use crate::{
         line::Line,
         path_flatten::PathFlatten,
         pixel::{opacity_f32_to_u8, premul_f32_to_u32},
+        sdf::Sdf,
     },
 };
 
@@ -33,8 +34,9 @@ use super::{
     },
     types::{
         CUBE_DRAW_BLEND, CUBE_DRAW_BRUSH, CUBE_DRAW_CLIP, CUBE_DRAW_OPACITY, CUBE_LAYER_BLEND,
-        CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY, CubeBufferLengths, CubeSceneConfig, build_cumsum_plan,
-        build_scan_chunks,
+        CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY, CUBE_SDF_CIRCLE, CUBE_SDF_CIRCLE_STROKE,
+        CUBE_SDF_NONE, CUBE_SDF_RECT, CUBE_SDF_RECT_STROKE, CubeBufferLengths, CubeSceneConfig,
+        build_cumsum_plan, build_scan_chunks,
     },
 };
 
@@ -123,6 +125,7 @@ impl<R: Runtime> Render for Renderer<R> {
         let config = self.fine_config();
         FinePipeline::run(
             &self.client,
+            &self.scene,
             &self.scan,
             &self.coarse,
             self.draw_brushes.resources(),
@@ -224,6 +227,7 @@ impl<R: Runtime> Renderer<R> {
         match target {
             CubeRenderTarget::Main => FinePipeline::render(
                 &self.client,
+                &self.scene,
                 &self.scan,
                 &self.coarse,
                 self.draw_brushes.resources(),
@@ -232,6 +236,7 @@ impl<R: Runtime> Renderer<R> {
             ),
             CubeRenderTarget::Scratch(ix) => FinePipeline::render(
                 &self.client,
+                &self.scene,
                 &self.scan,
                 &self.coarse,
                 self.draw_brushes.resources(),
@@ -366,12 +371,12 @@ impl<R: Runtime> Renderer<R> {
                 ExecOp::DrawBatch { draws, layer_stack } => {
                     self.execute_draw_batch(scene, draws.clone(), layer_stack.clone(), target);
                 }
-                ExecOp::BeginClip { .. }
+                ExecOp::BeginClip
                 | ExecOp::EndClip
-                | ExecOp::BeginOpacity { .. }
-                | ExecOp::EndOpacity { .. }
-                | ExecOp::BeginBlend { .. }
-                | ExecOp::EndBlend { .. } => {}
+                | ExecOp::BeginOpacity
+                | ExecOp::EndOpacity
+                | ExecOp::BeginBlend
+                | ExecOp::EndBlend => {}
                 ExecOp::OffscreenLayer {
                     layer,
                     outer_stack,
@@ -486,6 +491,9 @@ impl<R: Runtime> Renderer<R> {
                     outer_stack,
                 );
                 self.release_scratch(content);
+            }
+            Layer::ClipSdf { .. } => {
+                panic!("CubeCL ClipSdf layers are not implemented; use the CPU renderer")
             }
             _ => panic!("CubeCL offscreen execution only accepts Filter and Backdrop layers"),
         }
@@ -1107,7 +1115,9 @@ fn max_scratch_for_ops(ops: &[ExecOp], held: usize) -> usize {
                     let content_held = held + 1;
                     max_count = max_count.max(max_scratch_for_ops(children, content_held));
                 }
-                _ => {}
+                _ => {
+                    max_count = max_count.max(max_scratch_for_ops(children, held));
+                }
             }
         }
     }
@@ -1306,13 +1316,16 @@ fn encode_filter_path_coord(value: f32) -> i32 {
 fn collect_filter_paths_for_ops(ops: &[ExecOp], upload: &mut FilterPathUpload) {
     for op in ops {
         if let ExecOp::OffscreenLayer {
-            layer: Layer::Filter { sample_region, .. } | Layer::Backdrop { sample_region, .. },
-            children,
-            ..
+            layer, children, ..
         } = op
         {
-            upload.push_region(sample_region);
-            collect_filter_paths_for_ops(children, upload);
+            match layer {
+                Layer::Filter { sample_region, .. } | Layer::Backdrop { sample_region, .. } => {
+                    upload.push_region(sample_region);
+                    collect_filter_paths_for_ops(children, upload);
+                }
+                _ => collect_filter_paths_for_ops(children, upload),
+            }
         }
     }
 }
@@ -1425,6 +1438,113 @@ impl WgpuRenderer {
     }
 }
 
+struct DrawSdfUpload {
+    kinds: Vec<u32>,
+    x0: Vec<f32>,
+    y0: Vec<f32>,
+    x1: Vec<f32>,
+    y1: Vec<f32>,
+    r0: Vec<f32>,
+    r1: Vec<f32>,
+    r2: Vec<f32>,
+    r3: Vec<f32>,
+    half_width: Vec<f32>,
+}
+
+impl DrawSdfUpload {
+    fn new(draws: &[DrawRecord]) -> Self {
+        let mut upload = Self {
+            kinds: Vec::with_capacity(draws.len()),
+            x0: Vec::with_capacity(draws.len()),
+            y0: Vec::with_capacity(draws.len()),
+            x1: Vec::with_capacity(draws.len()),
+            y1: Vec::with_capacity(draws.len()),
+            r0: Vec::with_capacity(draws.len()),
+            r1: Vec::with_capacity(draws.len()),
+            r2: Vec::with_capacity(draws.len()),
+            r3: Vec::with_capacity(draws.len()),
+            half_width: Vec::with_capacity(draws.len()),
+        };
+
+        for draw in draws {
+            match draw.sdf {
+                Some(Sdf::Rect(rect)) => {
+                    let (x0, y0, x1, y1) = rect.axis_bounds();
+                    upload.push(
+                        CUBE_SDF_RECT,
+                        [x0 as f32, y0 as f32, x1 as f32, y1 as f32],
+                        [
+                            rect.radius.top_left,
+                            rect.radius.top_right,
+                            rect.radius.bottom_left,
+                            rect.radius.bottom_right,
+                        ],
+                        0.0,
+                    );
+                }
+                Some(Sdf::RectStroke(stroke)) => {
+                    let (x0, y0, x1, y1) = stroke.rect.axis_bounds();
+                    upload.push(
+                        CUBE_SDF_RECT_STROKE,
+                        [x0 as f32, y0 as f32, x1 as f32, y1 as f32],
+                        [
+                            stroke.rect.radius.top_left,
+                            stroke.rect.radius.top_right,
+                            stroke.rect.radius.bottom_left,
+                            stroke.rect.radius.bottom_right,
+                        ],
+                        stroke.half_width,
+                    );
+                }
+                Some(Sdf::Circle(circle)) => {
+                    upload.push(
+                        CUBE_SDF_CIRCLE,
+                        [
+                            circle.center.x as f32,
+                            circle.center.y as f32,
+                            circle.radius,
+                            0.0,
+                        ],
+                        [0.0; 4],
+                        0.0,
+                    );
+                }
+                Some(Sdf::CircleStroke(stroke)) => {
+                    upload.push(
+                        CUBE_SDF_CIRCLE_STROKE,
+                        [
+                            stroke.circle.center.x as f32,
+                            stroke.circle.center.y as f32,
+                            stroke.circle.radius,
+                            0.0,
+                        ],
+                        [0.0; 4],
+                        stroke.half_width,
+                    );
+                }
+                None => {
+                    upload.push(CUBE_SDF_NONE, [0.0; 4], [0.0; 4], 0.0);
+                }
+            }
+        }
+
+        upload
+    }
+
+    fn push(&mut self, kind: u32, xy: [f32; 4], radii: [f32; 4], half_width: f32) {
+        self.kinds.push(kind);
+        self.x0.push(xy[0]);
+        self.y0.push(xy[1]);
+        self.x1.push(xy[2]);
+        self.y1.push(xy[3]);
+        self.r0.push(radii[0]);
+        self.r1.push(radii[1]);
+        self.r2.push(radii[2]);
+        self.r3.push(radii[3]);
+        self.half_width.push(half_width);
+    }
+}
+
 pub(crate) struct SceneBuffers {
     pub(crate) line_path_ids: CubeBuffer<u32>,
     pub(crate) line_p0x: CubeBuffer<f32>,
@@ -1441,6 +1561,16 @@ pub(crate) struct SceneBuffers {
     pub(crate) draw_pixel_y0: CubeBuffer<i32>,
     pub(crate) draw_pixel_x1: CubeBuffer<i32>,
     pub(crate) draw_pixel_y1: CubeBuffer<i32>,
+    pub(crate) draw_sdf_kinds: CubeBuffer<u32>,
+    pub(crate) draw_sdf_x0: CubeBuffer<f32>,
+    pub(crate) draw_sdf_y0: CubeBuffer<f32>,
+    pub(crate) draw_sdf_x1: CubeBuffer<f32>,
+    pub(crate) draw_sdf_y1: CubeBuffer<f32>,
+    pub(crate) draw_sdf_r0: CubeBuffer<f32>,
+    pub(crate) draw_sdf_r1: CubeBuffer<f32>,
+    pub(crate) draw_sdf_r2: CubeBuffer<f32>,
+    pub(crate) draw_sdf_r3: CubeBuffer<f32>,
+    pub(crate) draw_sdf_half_width: CubeBuffer<f32>,
     pub(crate) backdrop_data_offsets: CubeBuffer<u32>,
     pub(crate) backdrop_data_lens: CubeBuffer<u32>,
     pub(crate) backdrop_tile_x0: CubeBuffer<u32>,
@@ -1482,6 +1612,16 @@ impl SceneBuffers {
             draw_pixel_y0: CubeBuffer::new(client, 0),
             draw_pixel_x1: CubeBuffer::new(client, 0),
             draw_pixel_y1: CubeBuffer::new(client, 0),
+            draw_sdf_kinds: CubeBuffer::new(client, 0),
+            draw_sdf_x0: CubeBuffer::new(client, 0),
+            draw_sdf_y0: CubeBuffer::new(client, 0),
+            draw_sdf_x1: CubeBuffer::new(client, 0),
+            draw_sdf_y1: CubeBuffer::new(client, 0),
+            draw_sdf_r0: CubeBuffer::new(client, 0),
+            draw_sdf_r1: CubeBuffer::new(client, 0),
+            draw_sdf_r2: CubeBuffer::new(client, 0),
+            draw_sdf_r3: CubeBuffer::new(client, 0),
+            draw_sdf_half_width: CubeBuffer::new(client, 0),
             backdrop_data_offsets: CubeBuffer::new(client, 0),
             backdrop_data_lens: CubeBuffer::new(client, 0),
             backdrop_tile_x0: CubeBuffer::new(client, 0),
@@ -1722,6 +1862,18 @@ impl SceneBuffers {
                 .map(|draw| draw.pixel_bounds.y1)
                 .collect::<Vec<_>>(),
         );
+        let sdf_upload = DrawSdfUpload::new(draws);
+        self.draw_sdf_kinds.replace(client, &sdf_upload.kinds);
+        self.draw_sdf_x0.replace(client, &sdf_upload.x0);
+        self.draw_sdf_y0.replace(client, &sdf_upload.y0);
+        self.draw_sdf_x1.replace(client, &sdf_upload.x1);
+        self.draw_sdf_y1.replace(client, &sdf_upload.y1);
+        self.draw_sdf_r0.replace(client, &sdf_upload.r0);
+        self.draw_sdf_r1.replace(client, &sdf_upload.r1);
+        self.draw_sdf_r2.replace(client, &sdf_upload.r2);
+        self.draw_sdf_r3.replace(client, &sdf_upload.r3);
+        self.draw_sdf_half_width
+            .replace(client, &sdf_upload.half_width);
     }
 
     fn upload_backdrops<R: Runtime>(

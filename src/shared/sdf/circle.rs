@@ -86,3 +86,48 @@ impl Circle {
         }
     }
 }
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct CircleStroke {
+    pub circle: Circle,
+    pub half_width: f32,
+}
+
+impl CircleStroke {
+    pub(crate) fn tile_is_solid(&self, _: Bounds) -> bool {
+        false
+    }
+
+    pub(crate) fn fine_area(
+        &self,
+        area: &mut [f32; (TILE_SIZE * TILE_SIZE) as usize],
+        tile_bounds: Bounds,
+        pixel_bounds: Bounds,
+    ) {
+        if self.half_width <= 0.0 {
+            return;
+        }
+
+        Circle {
+            center: self.circle.center,
+            radius: self.circle.radius + self.half_width,
+        }
+        .fine_area(area, tile_bounds, pixel_bounds);
+
+        let inner_radius = self.circle.radius - self.half_width;
+        if inner_radius <= 0.0 {
+            return;
+        }
+
+        let mut inner_area = [0.0; (TILE_SIZE * TILE_SIZE) as usize];
+        Circle {
+            center: self.circle.center,
+            radius: inner_radius,
+        }
+        .fine_area(&mut inner_area, tile_bounds, pixel_bounds);
+        for (outer, inner) in area.iter_mut().zip(inner_area) {
+            *outer = (*outer - inner).clamp(0.0, 1.0);
+        }
+    }
+}
