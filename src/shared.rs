@@ -1,10 +1,7 @@
 pub(crate) mod bd_record;
 pub(crate) mod bounds;
 pub(crate) mod brush;
-pub(crate) mod coverage;
-pub(crate) mod cubic;
 pub(crate) mod draw_record;
-pub(crate) mod euler;
 pub(crate) mod execution;
 pub(crate) mod fill;
 pub(crate) mod image;
@@ -17,4 +14,3 @@ pub(crate) mod pixel;
 pub(crate) mod sdf;
 pub(crate) mod tile_ptcl;
 pub(crate) mod tile_seg_range;
-pub(crate) mod vec2;

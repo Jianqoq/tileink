@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use peniko::BlendMode;
 
-use crate::shared::{bounds::Bounds, layer::Layer};
+use crate::shared::layer::Layer;
 
 pub(crate) type CommandListId = usize;
 pub(crate) const ROOT_COMMAND_LIST_ID: CommandListId = 0;
@@ -48,31 +48,12 @@ pub(crate) enum ExecOp {
         /// stack state, not coverage.
         layer_stack: Range<usize>,
     },
-    BeginClip {
-        draw: usize,
-        bounds: Bounds,
-    },
+    BeginClip,
     EndClip,
-    BeginOpacity {
-        draw: usize,
-        opacity: f32,
-        bounds: Bounds,
-    },
-    EndOpacity {
-        draw: usize,
-        opacity: f32,
-        bounds: Bounds,
-    },
-    BeginBlend {
-        draw: usize,
-        mode: BlendMode,
-        bounds: Bounds,
-    },
-    EndBlend {
-        draw: usize,
-        mode: BlendMode,
-        bounds: Bounds,
-    },
+    BeginOpacity,
+    EndOpacity,
+    BeginBlend,
+    EndBlend,
     OffscreenLayer {
         layer: Layer,
         outer_stack: Range<usize>,

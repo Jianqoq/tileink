@@ -572,7 +572,6 @@ mod tests {
                 y1: 16,
             },
             solid_rect: false,
-            allow_solid_override: true,
         }
     }
 
@@ -747,7 +746,6 @@ mod tests {
                 y1: 16,
             },
             solid_rect: false,
-            allow_solid_override: true,
         }];
         let backdrop_records = [BackdropRecord {
             path_id: 0,

@@ -1,11 +1,7 @@
-use crate::{
-    TILE_SIZE,
-    shared::{
-        bounds::{Bounds, PixelBounds, TileBbox},
-        brush::Brush,
-        fill::FillRule,
-        sdf::Sdf,
-    },
+use crate::shared::{
+    bounds::{PixelBounds, TileBbox},
+    brush::Brush,
+    fill::FillRule,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -27,7 +23,6 @@ pub struct DrawRecord {
     pub pixel_bounds: PixelBounds,
     /// CPU `FillRect` fast path: coarse emits `Color` only (no flatten/scan).
     pub solid_rect: bool,
-    pub allow_solid_override: bool,
 }
 
 impl DrawRecord {

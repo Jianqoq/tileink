@@ -1,52 +1,15 @@
-use peniko::{
-    BlendMode, Compose, Mix,
-    kurbo::{Affine, BezPath},
-};
-
-use crate::shared::bounds::Bounds;
+use peniko::{BlendMode, Compose, Mix};
 
 #[derive(Clone, Debug)]
 pub struct Blend {
-    pub(crate) path: BezPath,
-    pub(crate) bounds: Bounds,
-    pub(crate) transform: Affine,
-    pub(crate) tolerance: f64,
     pub(crate) mode: BlendMode,
 }
 
 impl Blend {
     pub(crate) fn new(mix: Mix, compose: Compose) -> Self {
         Self {
-            path: BezPath::new(),
-            bounds: Bounds::new(0, 0, 0, 0),
-            transform: Affine::IDENTITY,
-            tolerance: 0.0,
             mode: BlendMode::new(mix, compose),
         }
-    }
-
-    pub(crate) fn with_geometry(
-        path: BezPath,
-        bounds: Bounds,
-        transform: Affine,
-        tolerance: f64,
-        mix: Mix,
-        compose: Compose,
-    ) -> Self {
-        Self {
-            path,
-            bounds,
-            transform,
-            tolerance,
-            mode: BlendMode::new(mix, compose),
-        }
-    }
-
-    pub(crate) fn is_normal_src_over(&self) -> bool {
-        matches!(
-            (self.mode.mix, self.mode.compose),
-            (Mix::Normal, Compose::SrcOver)
-        )
     }
 
     pub(crate) fn blend(&self, src: [f32; 4], dst: [f32; 4]) -> [f32; 4] {
@@ -69,16 +32,6 @@ pub(crate) fn src_over_premul(dst: [f32; 4], src: [f32; 4]) -> [f32; 4] {
         src[1] + dst[1] * dst_factor,
         src[2] + dst[2] * dst_factor,
         src[3] + dst[3] * dst_factor,
-    ]
-}
-
-#[inline]
-pub(crate) fn scale_premul(src: [f32; 4], factor: f32) -> [f32; 4] {
-    [
-        src[0] * factor,
-        src[1] * factor,
-        src[2] * factor,
-        src[3] * factor,
     ]
 }
 

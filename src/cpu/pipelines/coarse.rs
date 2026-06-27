@@ -350,7 +350,6 @@ mod tests {
                     y1: 16,
                 },
                 solid_rect: false,
-                allow_solid_override: false,
             },
             DrawRecord {
                 path_id: Some(1),
@@ -364,7 +363,6 @@ mod tests {
                     y1: 16,
                 },
                 solid_rect: false,
-                allow_solid_override: false,
             },
             DrawRecord {
                 path_id: Some(2),
@@ -378,7 +376,6 @@ mod tests {
                     y1: 16,
                 },
                 solid_rect: false,
-                allow_solid_override: true,
             },
         ];
         let backdrop_records = [
@@ -473,7 +470,6 @@ mod tests {
                     y1: 16,
                 },
                 solid_rect: true,
-                allow_solid_override: true,
             },
             DrawRecord {
                 path_id: Some(1),
@@ -487,7 +483,6 @@ mod tests {
                     y1: 16,
                 },
                 solid_rect: true,
-                allow_solid_override: true,
             },
         ];
         let backdrop_records = [

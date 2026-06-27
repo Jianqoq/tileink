@@ -13,10 +13,7 @@ use crate::shared::{
         ROOT_COMMAND_LIST_ID,
     },
     fill::FillRule,
-    layer::{
-        Layer, LayerKind, blend::Blend, clip::Clip, filter::Filter, opacity::Opacity,
-        region::Region,
-    },
+    layer::{Layer, LayerKind, blend::Blend, filter::Filter, opacity::Opacity, region::Region},
     line::Line,
     path::PathRecord,
     path_flatten::PathFlatten,
@@ -55,11 +52,6 @@ impl Scene {
             width,
             height,
         }
-    }
-
-    fn draw_bounds(&self, draw_ix: usize) -> Bounds {
-        let bounds = self.draw_records[draw_ix].pixel_bounds;
-        Bounds::new(bounds.x0, bounds.y0, bounds.x1, bounds.y1)
     }
 
     fn ensure_command_root(&mut self) {
@@ -184,7 +176,6 @@ impl Scene {
 
     pub fn push_clip_layer(&mut self, path: BezPath, transform: Affine, tolerance: f64) {
         self.ensure_command_root();
-        let bounds = transform.transform_rect_bbox(path.bounding_box());
         let draw = self.push_layer_path(
             DrawTag::Clip,
             path.clone(),
@@ -192,17 +183,7 @@ impl Scene {
             FillRule::NonZero,
             tolerance,
         );
-        let layer = Layer::Clip(Clip {
-            path,
-            bounds: Bounds {
-                x0: bounds.x0.floor() as i32,
-                y0: bounds.y0.floor() as i32,
-                x1: bounds.x1.ceil() as i32,
-                y1: bounds.y1.ceil() as i32,
-            },
-            transform,
-            tolerance,
-        });
+        let layer = Layer::Clip;
         let children = self.command_lists.len();
         self.command_lists.push(CommandList::default());
         self.current_command_list_mut()
@@ -224,7 +205,6 @@ impl Scene {
         opacity: f32,
     ) {
         self.ensure_command_root();
-        let bounds = transform.transform_rect_bbox(path.bounding_box());
         let draw = self.push_layer_path(
             DrawTag::Opacity,
             path.clone(),
@@ -232,18 +212,7 @@ impl Scene {
             FillRule::NonZero,
             tolerance,
         );
-        let layer = Layer::Opacity(Opacity {
-            path,
-            bounds: Bounds {
-                x0: bounds.x0.floor() as i32,
-                y0: bounds.y0.floor() as i32,
-                x1: bounds.x1.ceil() as i32,
-                y1: bounds.y1.ceil() as i32,
-            },
-            transform,
-            tolerance,
-            opacity,
-        });
+        let layer = Layer::Opacity(Opacity { opacity });
         let children = self.command_lists.len();
         self.command_lists.push(CommandList::default());
         self.current_command_list_mut()
@@ -265,7 +234,6 @@ impl Scene {
         blend: Blend,
     ) {
         self.ensure_command_root();
-        let bounds = transform.transform_rect_bbox(path.bounding_box());
         let draw = self.push_layer_path(
             DrawTag::Blend,
             path.clone(),
@@ -273,18 +241,7 @@ impl Scene {
             FillRule::NonZero,
             tolerance,
         );
-        let layer = Layer::Blend(Blend {
-            path,
-            bounds: Bounds {
-                x0: bounds.x0.floor() as i32,
-                y0: bounds.y0.floor() as i32,
-                x1: bounds.x1.ceil() as i32,
-                y1: bounds.y1.ceil() as i32,
-            },
-            transform,
-            tolerance,
-            mode: blend.mode,
-        });
+        let layer = Layer::Blend(Blend { mode: blend.mode });
         let children = self.command_lists.len();
         self.command_lists.push(CommandList::default());
         self.current_command_list_mut()
@@ -488,7 +445,6 @@ impl Scene {
             fill_rule: rule,
             pixel_bounds,
             solid_rect: false,
-            allow_solid_override: true,
         });
         self.current_command_list_mut()
             .commands
@@ -550,7 +506,6 @@ impl Scene {
             fill_rule: rule,
             pixel_bounds,
             solid_rect: false,
-            allow_solid_override: false,
         });
         self.bd_records.push(BackdropRecord {
             path_id,
@@ -651,54 +606,32 @@ impl Scene {
                     flush_batch(&mut pending_batch, ops, plan, layer_stack);
                     if Self::can_fuse(layer) {
                         match layer {
-                            Layer::Clip(_) | Layer::ClipSdf { .. } => {
-                                let bounds = self.draw_bounds(*draw);
-                                ops.push(ExecOp::BeginClip {
-                                    draw: *draw,
-                                    bounds,
-                                });
+                            Layer::Clip | Layer::ClipSdf { .. } => {
+                                ops.push(ExecOp::BeginClip);
                                 layer_stack.push(LayerStackEntry::Clip { draw: *draw as u32 });
                                 self.compile_into(*children, ops, plan, layer_stack);
                                 layer_stack.pop();
                                 ops.push(ExecOp::EndClip);
                             }
                             Layer::Opacity(opacity) => {
-                                let bounds = self.draw_bounds(*draw);
-                                ops.push(ExecOp::BeginOpacity {
-                                    draw: *draw,
-                                    opacity: opacity.opacity,
-                                    bounds,
-                                });
+                                ops.push(ExecOp::BeginOpacity);
                                 layer_stack.push(LayerStackEntry::Opacity {
                                     draw: *draw as u32,
                                     opacity: opacity.opacity,
                                 });
                                 self.compile_into(*children, ops, plan, layer_stack);
                                 layer_stack.pop();
-                                ops.push(ExecOp::EndOpacity {
-                                    draw: *draw,
-                                    opacity: opacity.opacity,
-                                    bounds,
-                                });
+                                ops.push(ExecOp::EndOpacity);
                             }
                             Layer::Blend(blend) => {
-                                let bounds = self.draw_bounds(*draw);
-                                ops.push(ExecOp::BeginBlend {
-                                    draw: *draw,
-                                    mode: blend.mode,
-                                    bounds,
-                                });
+                                ops.push(ExecOp::BeginBlend);
                                 layer_stack.push(LayerStackEntry::Blend {
                                     draw: *draw as u32,
                                     mode: blend.mode,
                                 });
                                 self.compile_into(*children, ops, plan, layer_stack);
                                 layer_stack.pop();
-                                ops.push(ExecOp::EndBlend {
-                                    draw: *draw,
-                                    mode: blend.mode,
-                                    bounds,
-                                });
+                                ops.push(ExecOp::EndBlend);
                             }
                             _ => unreachable!(),
                         }
@@ -732,7 +665,7 @@ impl Scene {
     fn can_fuse(layer: &Layer) -> bool {
         matches!(
             layer,
-            Layer::Clip(_) | Layer::ClipSdf { .. } | Layer::Opacity(_) | Layer::Blend(_)
+            Layer::Clip | Layer::ClipSdf { .. } | Layer::Opacity(_) | Layer::Blend(_)
         )
     }
 }
@@ -811,10 +744,7 @@ mod tests {
         assert_eq!(plan.ops.len(), 7, "{:#?}", plan.ops);
 
         match &plan.ops[0] {
-            ExecOp::BeginClip { draw, bounds } => {
-                assert_eq!(*draw, 0);
-                assert_eq!(*bounds, Bounds::new(0, 0, 32, 32));
-            }
+            ExecOp::BeginClip => {}
             op => panic!("expected BeginClip, got {op:#?}"),
         }
         match &plan.ops[1] {
@@ -829,11 +759,7 @@ mod tests {
             op => panic!("expected first DrawBatch, got {op:#?}"),
         }
         match &plan.ops[2] {
-            ExecOp::BeginBlend { draw, mode, bounds } => {
-                assert_eq!(*draw, 2);
-                assert_eq!(*mode, BlendMode::new(Mix::Multiply, Compose::SrcOver));
-                assert_eq!(*bounds, Bounds::new(4, 4, 24, 24));
-            }
+            ExecOp::BeginBlend => {}
             op => panic!("expected BeginBlend, got {op:#?}"),
         }
         match &plan.ops[3] {
@@ -854,11 +780,7 @@ mod tests {
             op => panic!("expected second DrawBatch, got {op:#?}"),
         }
         match &plan.ops[4] {
-            ExecOp::EndBlend { draw, mode, bounds } => {
-                assert_eq!(*draw, 2);
-                assert_eq!(*mode, BlendMode::new(Mix::Multiply, Compose::SrcOver));
-                assert_eq!(*bounds, Bounds::new(4, 4, 24, 24));
-            }
+            ExecOp::EndBlend => {}
             op => panic!("expected EndBlend, got {op:#?}"),
         }
         match &plan.ops[5] {
@@ -917,15 +839,7 @@ mod tests {
         assert_eq!(plan.ops.len(), 7, "{:#?}", plan.ops);
 
         match &plan.ops[0] {
-            ExecOp::BeginOpacity {
-                draw,
-                opacity,
-                bounds,
-            } => {
-                assert_eq!(*draw, 0);
-                assert_eq!(*opacity, 0.5);
-                assert_eq!(*bounds, Bounds::new(0, 0, 32, 32));
-            }
+            ExecOp::BeginOpacity => {}
             op => panic!("expected BeginOpacity, got {op:#?}"),
         }
         match &plan.ops[1] {
@@ -943,11 +857,7 @@ mod tests {
             op => panic!("expected first DrawBatch, got {op:#?}"),
         }
         match &plan.ops[2] {
-            ExecOp::BeginBlend { draw, mode, bounds } => {
-                assert_eq!(*draw, 2);
-                assert_eq!(*mode, BlendMode::new(Mix::Screen, Compose::SrcOver));
-                assert_eq!(*bounds, Bounds::new(4, 4, 24, 24));
-            }
+            ExecOp::BeginBlend => {}
             op => panic!("expected BeginBlend, got {op:#?}"),
         }
         match &plan.ops[3] {
@@ -971,11 +881,7 @@ mod tests {
             op => panic!("expected second DrawBatch, got {op:#?}"),
         }
         match &plan.ops[4] {
-            ExecOp::EndBlend { draw, mode, bounds } => {
-                assert_eq!(*draw, 2);
-                assert_eq!(*mode, BlendMode::new(Mix::Screen, Compose::SrcOver));
-                assert_eq!(*bounds, Bounds::new(4, 4, 24, 24));
-            }
+            ExecOp::EndBlend => {}
             op => panic!("expected EndBlend, got {op:#?}"),
         }
         match &plan.ops[5] {
@@ -993,15 +899,7 @@ mod tests {
             op => panic!("expected third DrawBatch, got {op:#?}"),
         }
         match &plan.ops[6] {
-            ExecOp::EndOpacity {
-                draw,
-                opacity,
-                bounds,
-            } => {
-                assert_eq!(*draw, 0);
-                assert_eq!(*opacity, 0.5);
-                assert_eq!(*bounds, Bounds::new(0, 0, 32, 32));
-            }
+            ExecOp::EndOpacity => {}
             op => panic!("expected EndOpacity, got {op:#?}"),
         }
     }

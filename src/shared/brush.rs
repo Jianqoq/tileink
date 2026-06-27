@@ -126,26 +126,6 @@ impl Brush {
         }
     }
 
-    pub(crate) fn gpu_payload(&self) -> Option<&[u32]> {
-        match self {
-            Self::Linear(gradient) => Some(gradient.ramp.as_ref()),
-            Self::Radial(gradient) => Some(gradient.ramp.as_ref()),
-            Self::Sweep(gradient) => Some(gradient.ramp.as_ref()),
-            Self::Pattern(pattern) => Some(&pattern.image.pixels),
-            Self::Solid(_) | Self::FourCorner(_) => None,
-        }
-    }
-
-    pub(crate) fn gpu_payload_len(&self) -> u32 {
-        match self {
-            Self::Linear(gradient) => gradient.ramp.len() as u32,
-            Self::Radial(gradient) => gradient.ramp.len() as u32,
-            Self::Sweep(gradient) => gradient.ramp.len() as u32,
-            Self::Pattern(pattern) => pattern.image.pixels.len() as u32,
-            Self::Solid(_) | Self::FourCorner(_) => 0,
-        }
-    }
-
     #[inline]
     pub(crate) fn sample(&self, x: f32, y: f32) -> u32 {
         match self {
@@ -269,48 +249,6 @@ impl FourCornerGradient {
         }
         pack_premul_rgba8(result)
     }
-}
-
-pub(crate) fn build_color_ramp(mut stops: Vec<(f32, [f32; 4])>, ramp_size: usize) -> Arc<[u32]> {
-    let ramp_size = ramp_size.max(2);
-    let mut ramp = vec![0_u32; ramp_size];
-    if stops.is_empty() {
-        return Arc::from(ramp.into_boxed_slice());
-    }
-    stops.sort_by(|a, b| a.0.total_cmp(&b.0));
-    for (ix, output) in ramp.iter_mut().enumerate() {
-        let t = ix as f32 / (ramp_size - 1) as f32;
-        let upper = stops.partition_point(|stop| stop.0 < t);
-        let (left, right) = match upper {
-            0 => (stops[0], stops[0]),
-            n if n >= stops.len() => {
-                let stop = stops[stops.len() - 1];
-                (stop, stop)
-            }
-            n => (stops[n - 1], stops[n]),
-        };
-        let span = right.0 - left.0;
-        let local_t = if span.abs() <= f32::EPSILON {
-            0.0
-        } else {
-            ((t - left.0) / span).clamp(0.0, 1.0)
-        };
-        let left = left.1;
-        let right = right.1;
-        let rgba = [
-            left[0] + (right[0] - left[0]) * local_t,
-            left[1] + (right[1] - left[1]) * local_t,
-            left[2] + (right[2] - left[2]) * local_t,
-            left[3] + (right[3] - left[3]) * local_t,
-        ];
-        *output = premul_f32_to_u32([
-            rgba[0] * rgba[3],
-            rgba[1] * rgba[3],
-            rgba[2] * rgba[3],
-            rgba[3],
-        ]);
-    }
-    Arc::from(ramp.into_boxed_slice())
 }
 
 pub(crate) fn estimate_gradient_ramp_size(gradient: &Gradient) -> usize {
@@ -536,31 +474,12 @@ mod tests {
     }
 
     #[test]
-    fn build_color_ramp_respects_requested_len() {
-        let ramp = build_color_ramp(
-            vec![(0.0, [1.0, 0.0, 0.0, 1.0]), (1.0, [0.0, 0.0, 1.0, 1.0])],
-            17,
-        );
-        assert_eq!(ramp.len(), 17);
-    }
-
-    #[test]
     fn from_gradient_with_ramp_size_uses_dynamic_len() {
         let brush = Brush::from_gradient_with_ramp_size(&linear_gradient(), 33);
         let Brush::Linear(gradient) = brush else {
             panic!("expected linear gradient");
         };
         assert_eq!(gradient.ramp.len(), 33);
-    }
-
-    #[test]
-    fn dynamic_ramp_sampling_preserves_endpoints() {
-        let brush = Brush::from_gradient_with_ramp_size(&linear_gradient(), 3);
-        assert_eq!(brush.sample(0.0, 0.0), brush.gpu_payload().unwrap()[0]);
-        assert_eq!(
-            brush.sample(1.0, 0.0),
-            *brush.gpu_payload().unwrap().last().unwrap()
-        );
     }
 
     #[test]

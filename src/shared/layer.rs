@@ -1,19 +1,17 @@
 pub(crate) mod blend;
-pub(crate) mod clip;
 pub mod filter;
-pub(crate) mod mask;
 pub(crate) mod opacity;
 pub mod region;
 
 use crate::shared::{
     bounds::Bounds,
-    layer::{blend::Blend, clip::Clip, filter::Filter, opacity::Opacity, region::Region},
+    layer::{blend::Blend, filter::Filter, opacity::Opacity, region::Region},
     sdf::Sdf,
 };
 
 #[derive(Clone, Debug)]
 pub enum Layer {
-    Clip(Clip),
+    Clip,
     ClipSdf {
         sdf: Sdf,
         bounds: Bounds,
@@ -39,17 +37,4 @@ pub enum LayerKind {
     Blend,
     Filter,
     Backdrop,
-}
-
-impl Layer {
-    pub(crate) fn kind(&self) -> LayerKind {
-        match self {
-            Layer::Clip(_) => LayerKind::Clip,
-            Layer::ClipSdf { .. } => LayerKind::ClipSdf,
-            Layer::Opacity(_) => LayerKind::Opacity,
-            Layer::Blend(_) => LayerKind::Blend,
-            Layer::Filter { .. } => LayerKind::Filter,
-            Layer::Backdrop { .. } => LayerKind::Backdrop,
-        }
-    }
 }
