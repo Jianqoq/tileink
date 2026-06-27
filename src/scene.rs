@@ -309,11 +309,12 @@ impl Scene {
         self.push_blend_layer_inner(path, transform, tolerance, Blend::new(mix, compose));
     }
 
-    /// Adds an offscreen filter group clipped by `region`.
+    /// Adds an offscreen filter group sampled from `sample_region`.
     ///
-    /// The CPU renderer uses this for real filter semantics instead of baking
-    /// example-specific filtered pixels into fixtures.
-    pub fn push_filter_layer(&mut self, filter: Filter, region: Region) {
+    /// Filters derive their final output bounds from this region. Blur and
+    /// drop-shadow expand it internally so their output is not clipped back to
+    /// the original geometry.
+    pub fn push_filter_layer(&mut self, filter: Filter, sample_region: Region) {
         self.ensure_command_root();
         let children = self.command_lists.len();
         self.command_lists.push(CommandList::default());
@@ -321,7 +322,10 @@ impl Scene {
             .commands
             .push(Command::Layer {
                 draw: 0,
-                layer: Layer::Filter { filter, region },
+                layer: Layer::Filter {
+                    filter,
+                    sample_region,
+                },
                 children,
             });
         self.command_stack.push(children);

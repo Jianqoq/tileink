@@ -209,10 +209,13 @@ impl Renderer {
         _target: &mut GpuImageBuffer,
     ) {
         match layer {
-            Layer::Filter { filter: _, region } => todo!(),
+            Layer::Filter {
+                filter: _,
+                sample_region: _,
+            } => todo!(),
             Layer::Backdrop {
                 filter: _,
-                region: _,
+                sample_region: _,
             } => todo!(),
             Layer::Clip(_) | Layer::ClipSdf { .. } => todo!(),
             Layer::Opacity(_) | Layer::Blend(_) => todo!(),

@@ -87,9 +87,9 @@ pub fn fill_rect(scene: &mut Scene, rect: Rect, radius: Radius, brush: impl Into
     );
 }
 
-pub fn stroke_rect(scene: &mut Scene, rect: Rect, stroke: Stroke, color: Color) {
+pub fn stroke_rect(scene: &mut Scene, rect: Rect, radius: Radius, stroke: Stroke, color: Color) {
     scene.push_stroke(
-        rect_path(rect, Radius::all(0.0)),
+        rect_path(rect, radius),
         stroke,
         color,
         Affine::IDENTITY,

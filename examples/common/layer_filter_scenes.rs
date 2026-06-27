@@ -47,12 +47,12 @@ pub fn filter_clip_opacity_scene() -> Scene {
     background(&mut scene);
 
     let clip = Rect::new(150.0, 82.0, 570.0, 338.0);
-    scene.push_filter_layer(Filter::Blur(10.0), Region::rect(clip, Radius::all(54.0)));
     scene.push_clip_layer(
         crate::common::rect_path(clip, Radius::all(54.0)),
         Default::default(),
         0.1,
     );
+    scene.push_filter_layer(Filter::Blur(10.0), Region::rect(clip, Radius::all(54.0)));
     scene.push_opacity_layer(
         crate::common::rect_path(clip, Radius::all(54.0)),
         Default::default(),
@@ -77,6 +77,7 @@ pub fn filter_clip_opacity_scene() -> Scene {
     stroke_rect(
         &mut scene,
         clip,
+        Radius::all(54.0),
         Stroke::new(3.0),
         Color::from_rgb8(15, 23, 42),
     );
@@ -164,6 +165,7 @@ pub fn backdrop_blur_scene() -> Scene {
     stroke_rect(
         &mut scene,
         panel,
+        Radius::all(34.0),
         Stroke::new(2.0),
         Color::from_rgba8(255, 255, 255, 220),
     );
@@ -211,6 +213,7 @@ pub fn liquid_glass_scene() -> Scene {
     stroke_rect(
         &mut scene,
         panel,
+        Radius::all(42.0),
         Stroke::new(2.0),
         Color::from_rgba8(255, 255, 255, 180),
     );

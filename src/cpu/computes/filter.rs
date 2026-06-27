@@ -1,4 +1,4 @@
-use peniko::kurbo::{Point, Shape};
+use peniko::kurbo::Shape;
 
 use crate::shared::{
     bounds::Bounds,
@@ -31,8 +31,12 @@ pub(crate) fn apply(image: &mut Image, filter: &Filter, bounds: Bounds) {
     }
 }
 
-pub(crate) fn filtered_region_bounds(filter: &Filter, region: &Region, canvas: Bounds) -> Bounds {
-    let bounds = region_bounds(region);
+pub(crate) fn filtered_region_bounds(
+    filter: &Filter,
+    sample_region: &Region,
+    canvas: Bounds,
+) -> Bounds {
+    let bounds = region_bounds(sample_region);
     let outset = match filter {
         Filter::Blur(radius) => blur_outset(*radius),
         Filter::DropShadow {
@@ -44,42 +48,6 @@ pub(crate) fn filtered_region_bounds(filter: &Filter, region: &Region, canvas: B
         _ => 0,
     };
     bounds.outset(outset).intersect(canvas)
-}
-
-pub(crate) fn rasterize_region_mask(region: &Region, bounds: Bounds) -> Image {
-    let mut image = Image::new(bounds.width(), bounds.height(), peniko::Color::TRANSPARENT);
-    match region {
-        Region::Rect { rect, radius } => {
-            for y in 0..image.height {
-                let py = bounds.y0 as f64 + y as f64 + 0.5;
-                for x in 0..image.width {
-                    let px = bounds.x0 as f64 + x as f64 + 0.5;
-                    if point_in_rounded_rect(px, py, *rect, *radius) {
-                        let ix = (y * image.width + x) as usize;
-                        image.pixels[ix] = rgba8_pack([255, 255, 255, 255]);
-                    }
-                }
-            }
-        }
-        Region::Path {
-            path,
-            transform,
-            tolerance: _,
-        } => {
-            let path = *transform * path;
-            for y in 0..image.height {
-                let py = bounds.y0 as f64 + y as f64 + 0.5;
-                for x in 0..image.width {
-                    let px = bounds.x0 as f64 + x as f64 + 0.5;
-                    if path.contains(Point::new(px, py)) {
-                        let ix = (y * image.width + x) as usize;
-                        image.pixels[ix] = rgba8_pack([255, 255, 255, 255]);
-                    }
-                }
-            }
-        }
-    }
-    image
 }
 
 fn apply_color_filter_pixel(px: u32, filter: &Filter, amount: f32) -> u32 {
@@ -313,75 +281,6 @@ fn region_bounds(region: &Region) -> Bounds {
             )
         }
     }
-}
-
-fn point_in_rounded_rect(
-    x: f64,
-    y: f64,
-    rect: peniko::kurbo::Rect,
-    radius: crate::shared::sdf::rect::Radius,
-) -> bool {
-    if !rect.contains(Point::new(x, y)) {
-        return false;
-    }
-    let w = (rect.x1 - rect.x0).max(0.0);
-    let h = (rect.y1 - rect.y0).max(0.0);
-    let corner_radius = |r: f32| (r as f64).max(0.0).min(w * 0.5).min(h * 0.5);
-
-    let tests = [
-        (
-            rect.x0,
-            rect.y0,
-            radius.top_left,
-            x < rect.x0 + corner_radius(radius.top_left)
-                && y < rect.y0 + corner_radius(radius.top_left),
-        ),
-        (
-            rect.x1,
-            rect.y0,
-            radius.top_right,
-            x > rect.x1 - corner_radius(radius.top_right)
-                && y < rect.y0 + corner_radius(radius.top_right),
-        ),
-        (
-            rect.x0,
-            rect.y1,
-            radius.bottom_left,
-            x < rect.x0 + corner_radius(radius.bottom_left)
-                && y > rect.y1 - corner_radius(radius.bottom_left),
-        ),
-        (
-            rect.x1,
-            rect.y1,
-            radius.bottom_right,
-            x > rect.x1 - corner_radius(radius.bottom_right)
-                && y > rect.y1 - corner_radius(radius.bottom_right),
-        ),
-    ];
-
-    for (cx, cy, r, active) in tests {
-        if !active {
-            continue;
-        }
-        let r = corner_radius(r);
-        if r <= 0.0 {
-            return true;
-        }
-        let center_x = if cx == rect.x0 {
-            rect.x0 + r
-        } else {
-            rect.x1 - r
-        };
-        let center_y = if cy == rect.y0 {
-            rect.y0 + r
-        } else {
-            rect.y1 - r
-        };
-        let dx = x - center_x;
-        let dy = y - center_y;
-        return dx * dx + dy * dy <= r * r;
-    }
-    true
 }
 
 fn blur_outset(radius: f32) -> i32 {

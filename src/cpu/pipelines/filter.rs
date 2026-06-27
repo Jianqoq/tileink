@@ -42,13 +42,9 @@ impl FilterCpuPipeline {
     pub fn filtered_region_bounds(
         &self,
         filter: &Filter,
-        region: &Region,
+        sample_region: &Region,
         canvas: Bounds,
     ) -> Bounds {
-        filter::filtered_region_bounds(filter, region, canvas)
-    }
-
-    pub fn rasterize_region_mask(&self, region: &Region, bounds: Bounds) -> Image {
-        filter::rasterize_region_mask(region, bounds)
+        filter::filtered_region_bounds(filter, sample_region, canvas)
     }
 }

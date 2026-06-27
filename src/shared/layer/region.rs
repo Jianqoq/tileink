@@ -2,9 +2,10 @@ use peniko::kurbo::{Affine, BezPath, Rect};
 
 use crate::shared::sdf::rect::Radius;
 
-/// Geometry that defines where a backdrop filter is visible.
+/// Geometry used to derive the source area sampled by a layer filter.
 ///
-/// This region is independent of content drawn inside the backdrop layer.
+/// Filters may expand this area internally; for example blur needs pixels
+/// outside the original sample region so the filtered output can spread.
 #[derive(Clone, Debug)]
 pub enum Region {
     Rect {

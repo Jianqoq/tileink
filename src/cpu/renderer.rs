@@ -310,10 +310,13 @@ impl Renderer {
         target_bounds: Bounds,
     ) {
         match offscreen.layer {
-            Layer::Filter { filter, region } => {
+            Layer::Filter {
+                filter,
+                sample_region,
+            } => {
                 let bounds = self.filter.filtered_region_bounds(
                     filter,
-                    region,
+                    sample_region,
                     Bounds::canvas(scene.width, scene.height),
                 );
                 if bounds.is_empty() {
@@ -321,8 +324,9 @@ impl Renderer {
                 }
                 let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
                 self.execute_ops(scene, plan, offscreen.children, &mut image, bounds);
+                println!("sample_region: {:?}, bounds: {:?}", sample_region, bounds);
                 self.filter.prepare(&mut image, filter, bounds).run();
-                let mut mask = self.filter.rasterize_region_mask(region, bounds);
+                let mut mask = Image::new(bounds.width(), bounds.height(), Color::WHITE);
                 self.apply_outer_clip_stack_to_mask(
                     scene,
                     plan,
@@ -334,7 +338,7 @@ impl Renderer {
             }
             Layer::Backdrop {
                 filter: _,
-                region: _,
+                sample_region: _,
             } => todo!(),
             _ => unreachable!(),
         }
@@ -460,7 +464,7 @@ mod tests {
 
     use super::Renderer;
     use crate::{
-        FillRule, Scene,
+        FillRule, Radius, Scene,
         shared::layer::{filter::Filter, region::Region},
     };
 
@@ -604,6 +608,34 @@ mod tests {
 
         assert_eq!(renderer.image().rgba8_at(70, 48), [255, 0, 0, 255]);
         assert_eq!(renderer.image().rgba8_at(74, 48), [255, 255, 255, 255]);
+    }
+
+    #[test]
+    fn filter_blur_outputs_expanded_bounds() {
+        let mut scene = Scene::new(96, 96);
+        let sample_rect = Rect::new(32.0, 32.0, 64.0, 64.0);
+        scene.push_filter_layer(
+            Filter::Blur(4.0),
+            Region::rect(sample_rect, Radius::all(0.0)),
+        );
+        scene.push_path(
+            sample_rect.to_path(0.0),
+            Color::from_rgb8(255, 0, 0),
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.0,
+        );
+        scene.pop_layer();
+
+        let mut renderer = Renderer::new(96, 96, Color::WHITE);
+        renderer.render(&scene);
+
+        let expanded_px = renderer.image().rgba8_at(28, 48);
+        assert_eq!(expanded_px[0], 255);
+        assert!(
+            expanded_px[1] < 245 && expanded_px[2] < 245,
+            "expected blur outside sample region, got {expanded_px:?}"
+        );
     }
 
     #[test]
