@@ -1,0 +1,448 @@
+use super::*;
+
+#[test]
+fn filter_wgpu_applies_color_filter_to_offscreen_children_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(16, 16);
+    scene.push_filter_layer(
+        Filter::Invert(1.0),
+        Region::rect(Rect::new(0.0, 0.0, 8.0, 16.0), Radius::all(0.0)),
+    );
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 16.0),
+        Color::from_rgb8(255, 0, 0),
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+
+    assert_eq!(target[8 * 16 + 4], rgba8_pack([0, 255, 255, 255]));
+    assert_eq!(target[8 * 16 + 12], 0);
+}
+
+#[test]
+fn filter_wgpu_applies_outer_clip_stack_to_offscreen_output_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(16, 16);
+    scene.push_clip_layer(
+        Rect::new(0.0, 0.0, 8.0, 16.0).to_path(0.0),
+        Affine::IDENTITY,
+        0.0,
+    );
+    scene.push_filter_layer(
+        Filter::Invert(1.0),
+        Region::rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::all(0.0)),
+    );
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 16.0),
+        Color::from_rgb8(255, 0, 0),
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+
+    assert_eq!(target[8 * 16 + 4], rgba8_pack([0, 255, 255, 255]));
+    assert_eq!(target[8 * 16 + 12], 0);
+}
+
+#[test]
+fn filter_wgpu_applies_outer_opacity_stack_to_offscreen_output_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(16, 16);
+    scene.push_opacity_layer(
+        Rect::new(0.0, 0.0, 16.0, 16.0).to_path(0.0),
+        Affine::IDENTITY,
+        0.0,
+        0.5,
+    );
+    scene.push_filter_layer(
+        Filter::Invert(1.0),
+        Region::rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::all(0.0)),
+    );
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 16.0),
+        Color::from_rgb8(255, 0, 0),
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+
+    assert_eq!(target[8 * 16 + 8], rgba8_pack([0, 128, 128, 128]));
+}
+
+#[test]
+fn filter_wgpu_applies_outer_blend_stack_to_offscreen_output_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let blue = Color::from_rgb8(0, 0, 255);
+    let mut scene = Scene::new(16, 16);
+    scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), blue, FillRule::NonZero);
+    scene.push_blend_layer(
+        Rect::new(0.0, 0.0, 8.0, 16.0).to_path(0.0),
+        Affine::IDENTITY,
+        0.0,
+        Mix::Multiply,
+        Compose::SrcOver,
+    );
+    scene.push_filter_layer(
+        Filter::Opacity(1.0),
+        Region::rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::all(0.0)),
+    );
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 16.0),
+        Color::from_rgb8(255, 0, 0),
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+
+    assert_eq!(target[8 * 16 + 4], rgba8_pack([0, 0, 0, 255]));
+    assert_eq!(
+        target[8 * 16 + 12],
+        premul_f32_to_u32(blue.premultiply().components)
+    );
+}
+
+#[test]
+fn filter_wgpu_blur_outputs_expanded_bounds_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(96, 96);
+    let sample_rect = Rect::new(32.0, 32.0, 64.0, 64.0);
+    scene.push_filter_layer(
+        Filter::Blur(4.0),
+        Region::rect(sample_rect, Radius::all(0.0)),
+    );
+    scene.push_rect(sample_rect, Color::from_rgb8(255, 0, 0), FillRule::NonZero);
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(96, 96, Color::WHITE);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+    let expanded_px = unpack_rgba8(target[48 * 96 + 28]);
+    let far_px = unpack_rgba8(target[48 * 96 + 16]);
+
+    assert_eq!(expanded_px[0], 255);
+    assert!(
+        expanded_px[1] < 245 && expanded_px[2] < 245,
+        "expected blur outside sample region, got {expanded_px:?}"
+    );
+    assert_eq!(far_px, [255, 255, 255, 255]);
+}
+
+#[test]
+fn filter_wgpu_drop_shadow_offsets_alpha_and_preserves_source_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(8, 8);
+    scene.push_filter_layer(
+        Filter::DropShadow {
+            offset_x: 2.0,
+            offset_y: 1.0,
+            radius: 0.0,
+            brush: Brush::Solid(Color::BLACK),
+        },
+        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::all(0.0)),
+    );
+    scene.push_rect(
+        Rect::new(2.0, 2.0, 3.0, 3.0),
+        Color::WHITE,
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(8, 8, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+
+    assert_eq!(target[2 * 8 + 2], rgba8_pack([255, 255, 255, 255]));
+    assert_eq!(target[3 * 8 + 4], rgba8_pack([0, 0, 0, 255]));
+    assert_eq!(target[1 * 8 + 1], 0);
+}
+
+#[test]
+fn filter_wgpu_drop_shadow_blurs_offset_alpha_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(32, 32);
+    scene.push_filter_layer(
+        Filter::DropShadow {
+            offset_x: 0.0,
+            offset_y: 8.0,
+            radius: 2.0,
+            brush: Brush::Solid(Color::BLACK),
+        },
+        Region::rect(Rect::new(0.0, 0.0, 32.0, 32.0), Radius::all(0.0)),
+    );
+    scene.push_rect(
+        Rect::new(8.0, 8.0, 16.0, 16.0),
+        Color::WHITE,
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(32, 32, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+    let shadow_px = unpack_rgba8(target[25 * 32 + 12]);
+    let source_px = unpack_rgba8(target[12 * 32 + 12]);
+    let far_px = unpack_rgba8(target[31 * 32 + 12]);
+
+    assert_eq!(source_px, [255, 255, 255, 255]);
+    assert_eq!(shadow_px[0..3], [0, 0, 0]);
+    assert!(
+        shadow_px[3] > 0 && shadow_px[3] < 255,
+        "expected blurred shadow edge, got {shadow_px:?}"
+    );
+    assert_eq!(far_px, [0, 0, 0, 0]);
+}
+
+#[test]
+fn filter_wgpu_drop_shadow_samples_linear_gradient_brush_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let shadow = Gradient::new_linear((0.0, 0.0), (31.0, 0.0))
+        .with_stops([Color::from_rgb8(255, 0, 0), Color::from_rgb8(0, 0, 255)]);
+    let mut scene = Scene::new(32, 48);
+    scene.push_filter_layer(
+        Filter::DropShadow {
+            offset_x: 0.0,
+            offset_y: 16.0,
+            radius: 0.0,
+            brush: Brush::from_gradient(&shadow),
+        },
+        Region::rect(Rect::new(0.0, 0.0, 32.0, 48.0), Radius::all(0.0)),
+    );
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 32.0, 16.0),
+        Color::WHITE,
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(32, 48, Color::TRANSPARENT);
+    renderer.render(&scene);
+    assert_eq!(renderer.filter_brushes.data.read(renderer.client())[0], 2);
+    let payload = renderer.filter_brushes.payloads.read(renderer.client());
+    assert_eq!(unpack_rgba8(payload[0]), [255, 0, 0, 255]);
+    assert_eq!(
+        *payload.last().map(|px| unpack_rgba8(*px)).as_ref().unwrap(),
+        [0, 0, 255, 255]
+    );
+    let target = renderer.target.read(renderer.client());
+    let left_shadow = unpack_rgba8(target[20 * 32 + 4]);
+    let right_shadow = unpack_rgba8(target[20 * 32 + 27]);
+
+    assert_eq!(left_shadow[3], 255);
+    assert_eq!(right_shadow[3], 255);
+    assert!(
+        left_shadow[0] > left_shadow[2],
+        "expected red side of gradient shadow, got {left_shadow:?}"
+    );
+    assert!(
+        right_shadow[2] > right_shadow[0],
+        "expected blue side of gradient shadow, got {right_shadow:?}"
+    );
+}
+
+#[test]
+fn filter_wgpu_drop_shadow_samples_pattern_brush_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let pattern = Brush::Pattern(PatternBrush {
+        image: Arc::new(Image {
+            width: 2,
+            height: 1,
+            pixels: vec![rgba8_pack([255, 0, 0, 255]), rgba8_pack([0, 0, 255, 255])],
+        }),
+        transform: IDENTITY_TRANSFORM,
+        opacity: 255,
+    });
+    let mut scene = Scene::new(16, 48);
+    scene.push_filter_layer(
+        Filter::DropShadow {
+            offset_x: 0.0,
+            offset_y: 16.0,
+            radius: 0.0,
+            brush: pattern,
+        },
+        Region::rect(Rect::new(0.0, 0.0, 16.0, 48.0), Radius::all(0.0)),
+    );
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 16.0),
+        Color::WHITE,
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(16, 48, Color::TRANSPARENT);
+    renderer.render(&scene);
+    assert_eq!(renderer.filter_brushes.data.read(renderer.client())[0], 6);
+    assert_eq!(
+        renderer.filter_brushes.payloads.read(renderer.client()),
+        vec![rgba8_pack([255, 0, 0, 255]), rgba8_pack([0, 0, 255, 255])]
+    );
+    let target = renderer.target.read(renderer.client());
+
+    assert_eq!(unpack_rgba8(target[20 * 16]), [255, 0, 0, 255]);
+    assert_eq!(unpack_rgba8(target[20 * 16 + 1]), [0, 0, 255, 255]);
+    assert_eq!(unpack_rgba8(target[20 * 16 + 2]), [255, 0, 0, 255]);
+}
+
+#[test]
+fn filter_wgpu_drop_shadow_samples_radial_gradient_brush_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let shadow = Gradient::new_radial((16.0, 24.0), 10.0)
+        .with_stops([Color::from_rgb8(255, 0, 0), Color::from_rgb8(0, 0, 255)]);
+    let mut scene = Scene::new(32, 48);
+    scene.push_filter_layer(
+        Filter::DropShadow {
+            offset_x: 0.0,
+            offset_y: 16.0,
+            radius: 0.0,
+            brush: Brush::from_gradient(&shadow),
+        },
+        Region::rect(Rect::new(0.0, 0.0, 32.0, 48.0), Radius::all(0.0)),
+    );
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 32.0, 16.0),
+        Color::WHITE,
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(32, 48, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+    let center = unpack_rgba8(target[24 * 32 + 16]);
+    let edge = unpack_rgba8(target[24 * 32 + 26]);
+
+    assert!(
+        center[0] > center[2],
+        "expected red radial center, got {center:?}"
+    );
+    assert!(edge[2] > edge[0], "expected blue radial edge, got {edge:?}");
+}
+
+#[test]
+fn filter_wgpu_rasterizes_path_region_mask_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut triangle = BezPath::new();
+    triangle.move_to((4.0, 4.0));
+    triangle.line_to((12.0, 4.0));
+    triangle.line_to((4.0, 12.0));
+    triangle.close_path();
+    let region = Region::path(triangle, Affine::IDENTITY, 0.0);
+    let mut scene = Scene::new(16, 16);
+    scene.push_backdrop_layer(Filter::Invert(1.0), region.clone());
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+    renderer.prepare_scene(&scene);
+    assert_eq!(
+        renderer.filter_paths.range_starts.read(renderer.client()),
+        vec![0]
+    );
+    assert_eq!(
+        renderer.filter_paths.range_ends.read(renderer.client()),
+        vec![3]
+    );
+    assert_eq!(
+        renderer.filter_paths.p0x.read(renderer.client()),
+        vec![1024, 3072, 1024]
+    );
+    let mask = renderer.acquire_scratch();
+    renderer.clear_buffer(mask, 0);
+    renderer.build_region_mask(
+        mask,
+        &region,
+        Some(0),
+        crate::shared::bounds::Bounds::new(4, 4, 12, 12),
+    );
+
+    let CubeRenderTarget::Scratch(mask_ix) = mask else {
+        unreachable!();
+    };
+    let pixels = renderer.scratch[mask_ix].read(renderer.client());
+    assert_eq!(pixels[6 * 16 + 6], rgba8_pack([255, 255, 255, 255]));
+    assert_eq!(pixels[10 * 16 + 10], 0);
+}
+
+#[test]
+fn filter_wgpu_rasterizes_nonzero_path_region_mask_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut path = BezPath::new();
+    for _ in 0..2 {
+        path.move_to((4.0, 4.0));
+        path.line_to((12.0, 4.0));
+        path.line_to((4.0, 12.0));
+        path.close_path();
+    }
+    let region = Region::path(path, Affine::IDENTITY, 0.0);
+    let mut scene = Scene::new(16, 16);
+    scene.push_backdrop_layer(Filter::Invert(1.0), region.clone());
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+    renderer.prepare_scene(&scene);
+    let mask = renderer.acquire_scratch();
+    renderer.clear_buffer(mask, 0);
+    renderer.build_region_mask(
+        mask,
+        &region,
+        Some(0),
+        crate::shared::bounds::Bounds::new(4, 4, 12, 12),
+    );
+
+    let CubeRenderTarget::Scratch(mask_ix) = mask else {
+        unreachable!();
+    };
+    let pixels = renderer.scratch[mask_ix].read(renderer.client());
+    assert_eq!(pixels[6 * 16 + 6], rgba8_pack([255, 255, 255, 255]));
+    assert_eq!(pixels[10 * 16 + 10], 0);
+}

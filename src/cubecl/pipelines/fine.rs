@@ -305,7 +305,7 @@ fn segment_coverage_at(p0x: f32, p0y: f32, p1x: f32, p1y: f32, y_edge: f32, x: u
     let y0 = local_y.clamp(0.0, 1.0);
     let y1 = (local_y + delta_y).clamp(0.0, 1.0);
     let dy = y0 - y1;
-    let x_sign = if delta_x >= 0.0 { 1.0 } else { -1.0 };
+    let x_sign = signum_f32(delta_x);
     let mut coverage = x_sign * (row_y - y_edge + 1.0).clamp(0.0, 1.0);
 
     if dy != 0.0 {
@@ -326,6 +326,18 @@ fn segment_coverage_at(p0x: f32, p0y: f32, p1x: f32, p1y: f32, y_edge: f32, x: u
     }
 
     coverage
+}
+
+#[cube]
+fn signum_f32(value: f32) -> f32 {
+    // Match CPU f32::signum semantics for coverage: vertical edges add no y-edge term.
+    let mut out = 0.0;
+    if value > 0.0 {
+        out = 1.0;
+    } else if value < 0.0 {
+        out = -1.0;
+    }
+    out
 }
 
 #[cube]
