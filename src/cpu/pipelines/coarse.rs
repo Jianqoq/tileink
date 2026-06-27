@@ -1,7 +1,8 @@
 use crate::shared::{
     bd_record::BackdropRecord,
     draw_record::{DrawRecord, DrawTag},
-    execution::ClipStackEntry,
+    execution::LayerStackEntry,
+    pixel::opacity_f32_to_u8,
     tile_ptcl::{TileColorPtcl, TileFillPtcl, TilePtcl, TilePtclRange},
     tile_seg_range::TileSegmentRange,
 };
@@ -9,10 +10,10 @@ use crate::shared::{
 pub struct CoarseCpuPrepared<'a> {
     draw_records: &'a [DrawRecord],
     draw_range: std::ops::Range<usize>,
-    clip_stack_data: &'a [ClipStackEntry],
-    // This range selects the batch's active clip stack snapshot from
+    layer_stack_data: &'a [LayerStackEntry],
+    // This range selects the batch's active fused layer stack snapshot from
     // the execution-plan arena. It is nesting state, not a screen-space bound.
-    clip_stack_range: std::ops::Range<usize>,
+    layer_stack_range: std::ops::Range<usize>,
     backdrop_records: &'a [BackdropRecord],
     backdrops: &'a [i32],
     tile_segment_ranges: &'a [TileSegmentRange],
@@ -33,7 +34,7 @@ impl<'a> CoarseCpuPrepared<'a> {
         let tile_count = (self.tiles_size.0 * self.tiles_size.1) as usize;
         let mut per_tile = vec![Vec::new(); tile_count];
         let mut per_tile_wrappers = vec![Vec::new(); tile_count];
-        let clip_stack = &self.clip_stack_data[self.clip_stack_range.clone()];
+        let layer_stack = &self.layer_stack_data[self.layer_stack_range.clone()];
 
         for draw in &self.draw_records[self.draw_range.clone()] {
             let Some(path_id) = draw.path_id else {
@@ -60,29 +61,32 @@ impl<'a> CoarseCpuPrepared<'a> {
                         continue;
                     }
 
-                    Self::ensure_batch_wrappers(
+                    if !Self::ensure_batch_wrappers(
                         &mut per_tile[tile_ix],
                         &mut per_tile_wrappers[tile_ix],
                         tile_x,
                         tile_y,
-                        clip_stack,
+                        layer_stack,
                         self.draw_records,
                         self.backdrop_records,
                         self.backdrops,
                         self.tile_segment_ranges,
                         self.tiles_size,
-                    );
+                    ) {
+                        continue;
+                    }
                     match draw.tag {
                         DrawTag::Brush => {
-                            if let Some(color) = draw.brush.solid_color() {
-                                if draw.solid_rect && segment_range.start == segment_range.end {
-                                    per_tile[tile_ix].push(TilePtcl::Color(TileColorPtcl {
-                                        color: crate::shared::pixel::premul_f32_to_u32(
-                                            color.premultiply().components,
-                                        ),
-                                    }));
-                                    continue;
-                                }
+                            if let Some(color) = draw.brush.solid_color()
+                                && draw.solid_rect
+                                && segment_range.start == segment_range.end
+                            {
+                                per_tile[tile_ix].push(TilePtcl::Color(TileColorPtcl {
+                                    color: crate::shared::pixel::premul_f32_to_u32(
+                                        color.premultiply().components,
+                                    ),
+                                }));
+                                continue;
                             }
                             per_tile[tile_ix].push(TilePtcl::Fill(TileFillPtcl {
                                 backdrop,
@@ -114,8 +118,12 @@ impl<'a> CoarseCpuPrepared<'a> {
             let start = self.tile_ptcls.len() as u32;
             if !ptcls.is_empty() {
                 self.tile_ptcls.extend(ptcls);
-                for _ in per_tile_wrappers[tile_ix].iter().rev() {
-                    self.tile_ptcls.push(TilePtcl::EndClip);
+                for wrapper in per_tile_wrappers[tile_ix].iter().rev() {
+                    self.tile_ptcls.push(match wrapper {
+                        LayerStackEntry::Clip { .. } => TilePtcl::EndClip,
+                        LayerStackEntry::Opacity { .. } => TilePtcl::EndOpacity,
+                        LayerStackEntry::Blend { .. } => TilePtcl::EndBlend,
+                    });
                 }
                 self.tile_ptcls.push(TilePtcl::End);
             }
@@ -131,29 +139,36 @@ impl<'a> CoarseCpuPrepared<'a> {
     /// batch, no wrapper particles are emitted for that tile.
     ///
     /// Current behavior:
-    /// - replays the active clip stack in user nesting order;
+    /// - replays the active fused layer stack in user nesting order;
     /// - emits a `Begin*` particle only when that layer's own draw covers the
     ///   tile.
     ///
     /// The matching `End*` particles are appended later when the tile particle
     /// list is finalized.
+    #[allow(clippy::too_many_arguments)]
     fn ensure_batch_wrappers(
         ptcls: &mut Vec<TilePtcl>,
-        emitted_wrappers: &mut Vec<ClipStackEntry>,
+        emitted_wrappers: &mut Vec<LayerStackEntry>,
         tile_x: u32,
         tile_y: u32,
-        clip_stack: &[ClipStackEntry],
+        layer_stack: &[LayerStackEntry],
         draw_records: &[DrawRecord],
         backdrop_records: &[BackdropRecord],
         backdrops: &[i32],
         tile_segment_ranges: &[TileSegmentRange],
         tiles_size: (u32, u32),
-    ) {
+    ) -> bool {
         if !ptcls.is_empty() {
-            return;
+            return true;
         }
 
-        for &draw_ix in clip_stack {
+        let mut pending = Vec::with_capacity(layer_stack.len());
+        for entry in layer_stack {
+            let draw_ix = match *entry {
+                LayerStackEntry::Clip { draw }
+                | LayerStackEntry::Opacity { draw, .. }
+                | LayerStackEntry::Blend { draw, .. } => draw,
+            };
             let Some((draw, backdrop, segment_range)) = Self::layer_tile_coverage(
                 draw_ix as usize,
                 tile_x,
@@ -164,19 +179,35 @@ impl<'a> CoarseCpuPrepared<'a> {
                 tile_segment_ranges,
                 tiles_size,
             ) else {
-                continue;
+                return false;
             };
 
-            ptcls.push(TilePtcl::BeginClip(TileFillPtcl {
-                backdrop,
-                fill_rule: draw.fill_rule,
-                segment_range,
-                brush: draw.brush.clone(),
-            }));
-            emitted_wrappers.push(draw_ix);
+            pending.push((
+                *entry,
+                TileFillPtcl {
+                    backdrop,
+                    fill_rule: draw.fill_rule,
+                    segment_range,
+                    brush: draw.brush.clone(),
+                },
+            ));
         }
+
+        for (entry, fill) in pending {
+            ptcls.push(match entry {
+                LayerStackEntry::Clip { .. } => TilePtcl::BeginClip(fill),
+                LayerStackEntry::Opacity { opacity, .. } => TilePtcl::BeginOpacity {
+                    opacity: opacity_f32_to_u8(opacity),
+                    fill,
+                },
+                LayerStackEntry::Blend { mode, .. } => TilePtcl::BeginBlend { mode, fill },
+            });
+            emitted_wrappers.push(entry);
+        }
+        true
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn layer_tile_coverage<'b>(
         draw_ix: usize,
         tile_x: u32,
@@ -218,17 +249,17 @@ impl CoarseCpuPipeline {
         Self
     }
 
-    /// Prepares the CPU coarse stage for one draw batch and the batch's clip
-    /// stack snapshot.
+    /// Prepares the CPU coarse stage for one draw batch and the batch's fused
+    /// layer stack snapshot.
     ///
-    /// `clip_stack_range` selects a batch-local ordered stack slice from the plan.
+    /// `layer_stack_range` selects a batch-local ordered stack slice from the plan.
     #[allow(clippy::too_many_arguments)]
     pub fn prepare<'a>(
         &self,
         draw_records: &'a [DrawRecord],
         draw_range: std::ops::Range<usize>,
-        clip_stack_data: &'a [ClipStackEntry],
-        clip_stack_range: std::ops::Range<usize>,
+        layer_stack_data: &'a [LayerStackEntry],
+        layer_stack_range: std::ops::Range<usize>,
         backdrop_records: &'a [BackdropRecord],
         backdrops: &'a [i32],
         tile_segment_ranges: &'a [TileSegmentRange],
@@ -239,8 +270,8 @@ impl CoarseCpuPipeline {
         CoarseCpuPrepared {
             draw_records,
             draw_range,
-            clip_stack_data,
-            clip_stack_range,
+            layer_stack_data,
+            layer_stack_range,
             backdrop_records,
             backdrops,
             tile_segment_ranges,
@@ -261,6 +292,7 @@ mod tests {
         bounds::PixelBounds,
         brush::Brush,
         draw_record::{DrawRecord, DrawTag},
+        execution::LayerStackEntry,
         fill::FillRule,
         tile_ptcl::TilePtcl,
         tile_seg_range::TileSegmentRange,
@@ -358,14 +390,17 @@ mod tests {
         ];
         let mut tile_ptcl_ranges = Vec::new();
         let mut tile_ptcls = Vec::new();
-        let clip_stack_data = [0, 1];
+        let layer_stack_data = [
+            LayerStackEntry::Clip { draw: 0 },
+            LayerStackEntry::Clip { draw: 1 },
+        ];
 
         CoarseCpuPipeline::new()
             .prepare(
                 &draw_records,
                 2..3,
-                &clip_stack_data,
-                0..clip_stack_data.len(),
+                &layer_stack_data,
+                0..layer_stack_data.len(),
                 &backdrop_records,
                 &backdrops,
                 &tile_segment_ranges,

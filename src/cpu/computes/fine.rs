@@ -1,11 +1,15 @@
+use peniko::BlendMode;
+
 use crate::{
     TILE_SIZE,
     shared::{
-        bounds::Bounds,
         brush::Brush,
         fill::FillRule,
+        layer::blend::Blend,
         line_seg::LineSegment,
-        pixel::{MASK_OPAQUE, scale_premul_u8, src_over_premul_u8},
+        pixel::{
+            TileBuffer, pack_premul_rgba8, scale_premul_u8, src_over_premul_u8, unpack_premul_rgba8,
+        },
     },
 };
 
@@ -20,6 +24,11 @@ fn apply_rule(value: f32, fill_rule: FillRule) -> f32 {
 #[inline]
 fn coverage_to_alpha(value: f32, fill_rule: FillRule) -> u8 {
     (apply_rule(value, fill_rule).clamp(0.0, 1.0) * 255.0 + 0.5) as u8
+}
+
+#[inline]
+pub(crate) fn combine_alpha(a: u8, b: u8) -> u8 {
+    ((a as u32 * b as u32 + 127) / 255) as u8
 }
 
 #[inline]
@@ -165,105 +174,91 @@ pub(crate) fn build_tile_alpha(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn rasterize_tile_into(
-    image: &mut [u32],
-    image_width: u32,
-    image_height: u32,
-    origin_x: i32,
-    origin_y: i32,
+pub(crate) fn rasterize_tile_buffer_into(
+    tile: &mut TileBuffer,
     tile_x: u32,
     tile_y: u32,
     segments: &[LineSegment],
     backdrop: i32,
     fill_rule: FillRule,
     brush: &Brush,
+    clip_mask: &[u8; 256],
 ) {
     let base_x = tile_x * TILE_SIZE;
     let base_y = tile_y * TILE_SIZE;
-    let target_x0 = origin_x;
-    let target_y0 = origin_y;
-    let target_x1 = origin_x + image_width as i32;
-    let target_y1 = origin_y + image_height as i32;
-    let global_x0 = base_x as i32;
-    let global_y0 = base_y as i32;
-    let global_x1 = global_x0 + TILE_SIZE as i32;
-    let global_y1 = global_y0 + TILE_SIZE as i32;
-    let clip_x0 = global_x0.max(target_x0);
-    let clip_y0 = global_y0.max(target_y0);
-    let clip_x1 = global_x1.min(target_x1);
-    let clip_y1 = global_y1.min(target_y1);
-    if clip_x0 >= clip_x1 || clip_y0 >= clip_y1 {
-        return;
-    }
-
     let tile_alpha = build_tile_alpha(segments, backdrop, fill_rule);
-    for global_y in clip_y0..clip_y1 {
-        let tile_local_y = (global_y - global_y0) as u32;
-        let row_start = (tile_local_y * TILE_SIZE) as usize;
-        for global_x in clip_x0..clip_x1 {
-            let tile_local_x = (global_x - global_x0) as usize;
-            let alpha = tile_alpha[row_start + tile_local_x];
+    for y in 0..TILE_SIZE {
+        let row_start = (y * TILE_SIZE) as usize;
+        for x in 0..TILE_SIZE as usize {
+            let ix = row_start + x;
+            let alpha = combine_alpha(tile_alpha[ix], clip_mask[ix]);
             if alpha == 0 {
                 continue;
             }
             let src = scale_premul_u8(
-                brush.sample(global_x as f32 + 0.5, global_y as f32 + 0.5),
+                brush.sample((base_x + x as u32) as f32 + 0.5, (base_y + y) as f32 + 0.5),
                 alpha,
             );
-            let local_x = (global_x - target_x0) as u32;
-            let local_y = (global_y - target_y0) as u32;
-            let pixel_ix = (local_y * image_width + local_x) as usize;
-            image[pixel_ix] = src_over_premul_u8(image[pixel_ix], src);
+            tile[ix] = src_over_premul_u8(tile[ix], src);
         }
     }
 }
 
-pub(crate) fn composite_color_tile_into(
-    image: &mut [u32],
-    image_width: u32,
-    image_height: u32,
-    origin_x: i32,
-    origin_y: i32,
-    tile_x: u32,
-    tile_y: u32,
+pub(crate) fn composite_color_tile_buffer_into(
+    tile: &mut TileBuffer,
     color: u32,
+    clip_mask: &[u8; 256],
 ) {
-    let global_tile = Bounds::from_tile_coords(
-        tile_x,
-        tile_y,
-        origin_x.saturating_add_unsigned(image_width) as u32,
-        origin_y.saturating_add_unsigned(image_height) as u32,
-    );
-    let target = Bounds::new(
-        origin_x,
-        origin_y,
-        origin_x + image_width as i32,
-        origin_y + image_height as i32,
-    );
-    let bounds = global_tile.intersect(target);
-    if bounds.is_empty() {
+    let color_alpha = (color >> 24) as u8;
+    if color_alpha == 0 {
         return;
     }
-
-    let alpha = (color >> 24) as u8;
-    if alpha == 0 {
-        return;
-    }
-
-    for y in bounds.y0..bounds.y1 {
-        let local_y = (y - origin_y) as u32;
-        let local_x0 = (bounds.x0 - origin_x) as u32;
-        let local_x1 = (bounds.x1 - origin_x) as u32;
-        let row_start = (local_y * image_width + local_x0) as usize;
-        let row_end = (local_y * image_width + local_x1) as usize;
-        let row = &mut image[row_start..row_end];
-        if alpha == MASK_OPAQUE {
-            row.fill(color);
+    for (dst, &mask) in tile.iter_mut().zip(clip_mask) {
+        let alpha = combine_alpha(color_alpha, mask);
+        if alpha == 0 {
             continue;
         }
-        for dst in row {
-            *dst = src_over_premul_u8(*dst, color);
+        *dst = src_over_premul_u8(*dst, scale_premul_u8(color, alpha));
+    }
+}
+
+pub(crate) fn composite_opacity_group_tile(
+    parent: &mut TileBuffer,
+    group: &TileBuffer,
+    layer_alpha: &[u8; 256],
+    parent_clip_mask: &[u8; 256],
+    opacity: u8,
+) {
+    for ix in 0..parent.len() {
+        let alpha = combine_alpha(
+            combine_alpha(layer_alpha[ix], parent_clip_mask[ix]),
+            opacity,
+        );
+        if alpha == 0 {
+            continue;
         }
+        parent[ix] = src_over_premul_u8(parent[ix], scale_premul_u8(group[ix], alpha));
+    }
+}
+
+pub(crate) fn composite_blend_group_tile(
+    parent: &mut TileBuffer,
+    group: &TileBuffer,
+    layer_alpha: &[u8; 256],
+    parent_clip_mask: &[u8; 256],
+    mode: BlendMode,
+) {
+    let blend = Blend::new(mode.mix, mode.compose);
+    for ix in 0..parent.len() {
+        let alpha = combine_alpha(layer_alpha[ix], parent_clip_mask[ix]);
+        if alpha == 0 {
+            continue;
+        }
+        let src = unpack_premul_rgba8(scale_premul_u8(group[ix], alpha));
+        if src[3] == 0.0 {
+            continue;
+        }
+        parent[ix] = pack_premul_rgba8(blend.blend(src, unpack_premul_rgba8(parent[ix])));
     }
 }
 

@@ -179,7 +179,7 @@ impl Renderer {
             match op {
                 ExecOp::DrawBatch {
                     draws,
-                    clip_stack: _,
+                    layer_stack: _,
                 } => {
                     self.execute_draw_batch(scene, draws.start, draws.end, encoder, target);
                 }
@@ -189,7 +189,11 @@ impl Renderer {
                 | ExecOp::EndOpacity { .. }
                 | ExecOp::BeginBlend { .. }
                 | ExecOp::EndBlend { .. } => {}
-                ExecOp::OffscreenLayer { layer, children } => {
+                ExecOp::OffscreenLayer {
+                    layer,
+                    outer_stack: _,
+                    children,
+                } => {
                     self.execute_offscreen_layer(scene, layer, children, encoder, target);
                 }
             }

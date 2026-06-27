@@ -6,11 +6,9 @@ use std::{
 use peniko::Color;
 
 use crate::{
-    TILE_SIZE,
     cpu::{
-        computes::blend::{
-            composite_blend_masked_at, composite_src_over_masked_at, scale_image_opacity,
-        },
+        computes::blend::composite_src_over_masked_at,
+        computes::fine::{build_tile_alpha, combine_alpha},
         pipelines::{
             coarse::CoarseCpuPipeline, cumsum::CumsumCpuPipeline, filter::FilterCpuPipeline,
             fine::FineCpuPipeline, scan::ScanCpuPipeline,
@@ -20,7 +18,7 @@ use crate::{
     shared::{
         bounds::Bounds,
         draw_record::DrawRecord,
-        execution::{ClipStackEntry, ExecOp, ExecPlan},
+        execution::{ExecOp, ExecPlan, LayerStackEntry},
         image::{Image, rgba8_pack},
         layer::Layer,
         line_seg::LineSegment,
@@ -58,6 +56,12 @@ pub struct RenderProfile {
     pub total: Duration,
 }
 
+struct OffscreenLayerRef<'a> {
+    layer: &'a Layer,
+    outer_stack: std::ops::Range<usize>,
+    children: &'a [ExecOp],
+}
+
 impl Render for Renderer {
     type ScanArgs<'a> = ();
 
@@ -66,7 +70,7 @@ impl Render for Renderer {
     type CoarseArgs<'a> = (
         &'a [DrawRecord],
         std::ops::Range<usize>,
-        &'a [ClipStackEntry],
+        &'a [LayerStackEntry],
         std::ops::Range<usize>,
     );
 
@@ -88,7 +92,7 @@ impl Render for Renderer {
     }
 
     fn scan(&mut self, scene: &crate::scene::Scene, _: Self::ScanArgs<'_>) {
-        let last_bd_record = scene.bd_records.last().unwrap().clone();
+        let last_bd_record = *scene.bd_records.last().unwrap();
         self.backdrops.resize(
             last_bd_record.data_offset as usize + last_bd_record.data_len as usize,
             0,
@@ -138,13 +142,13 @@ impl Render for Renderer {
     }
 
     fn coarse(&mut self, scene: &crate::scene::Scene, args: Self::CoarseArgs<'_>) {
-        let (draw_records, draw_range, clip_stack_data, clip_stack_range) = args;
+        let (draw_records, draw_range, layer_stack_data, layer_stack_range) = args;
         self.coarse
             .prepare(
                 draw_records,
                 draw_range,
-                clip_stack_data,
-                clip_stack_range,
+                layer_stack_data,
+                layer_stack_range,
                 &scene.bd_records,
                 &self.backdrops,
                 &self.tile_segment_ranges,
@@ -213,7 +217,7 @@ impl Renderer {
         let target_bounds = Bounds::canvas(scene.width, scene.height);
 
         for op in &plan.ops {
-            let ExecOp::DrawBatch { draws, clip_stack } = op else {
+            let ExecOp::DrawBatch { draws, layer_stack } = op else {
                 panic!("render_profiled_flat only supports scenes without layers");
             };
 
@@ -223,8 +227,8 @@ impl Renderer {
                 (
                     &scene.draw_records,
                     draws.start..draws.end,
-                    &plan.clip_stack_data,
-                    clip_stack.clone(),
+                    &plan.layer_stack_data,
+                    layer_stack.clone(),
                 ),
             );
             profile.coarse += start.elapsed();
@@ -261,128 +265,38 @@ impl Renderer {
         target: &mut Image,
         root_bounds: Bounds,
     ) {
-        enum GroupFrame {
-            Opacity {
-                draw: usize,
-                opacity: f32,
-                bounds: Bounds,
-                image: Image,
-            },
-            Blend {
-                draw: usize,
-                mode: peniko::BlendMode,
-                bounds: Bounds,
-                image: Image,
-            },
-        }
-
-        let mut groups = Vec::<GroupFrame>::new();
-
-        fn current_target<'a>(root: &'a mut Image, groups: &'a mut [GroupFrame]) -> &'a mut Image {
-            match groups.last_mut() {
-                Some(GroupFrame::Opacity { image, .. }) | Some(GroupFrame::Blend { image, .. }) => {
-                    image
-                }
-                None => root,
-            }
-        }
-
-        fn current_target_bounds(groups: &[GroupFrame], root_bounds: Bounds) -> Bounds {
-            match groups.last() {
-                Some(GroupFrame::Opacity { bounds, .. })
-                | Some(GroupFrame::Blend { bounds, .. }) => *bounds,
-                None => root_bounds,
-            }
-        }
-
         for op in ops {
             match op {
-                ExecOp::DrawBatch { draws, clip_stack } => {
-                    let target_bounds = current_target_bounds(&groups, root_bounds);
-                    let dst = current_target(target, &mut groups);
-                    self.execute_draw_batch(
-                        scene,
-                        plan,
-                        draws.start,
-                        draws.end,
-                        clip_stack.clone(),
-                        dst,
-                        target_bounds,
-                    );
-                }
-                ExecOp::BeginClip { draw: _, bounds: _ } | ExecOp::EndClip => {}
-                ExecOp::BeginOpacity {
-                    draw,
-                    opacity,
-                    bounds,
-                } => {
-                    groups.push(GroupFrame::Opacity {
-                        draw: *draw,
-                        opacity: *opacity,
-                        bounds: *bounds,
-                        image: Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT),
-                    });
-                }
-                ExecOp::EndOpacity {
-                    draw,
-                    opacity,
-                    bounds,
-                } => {
-                    let Some(GroupFrame::Opacity {
-                        draw: end_draw,
-                        opacity: end_opacity,
-                        bounds: end_bounds,
-                        mut image,
-                    }) = groups.pop()
-                    else {
-                        continue;
-                    };
-                    debug_assert_eq!(*draw, end_draw);
-                    debug_assert!((*opacity - end_opacity).abs() < f32::EPSILON);
-                    debug_assert_eq!(*bounds, end_bounds);
-                    scale_image_opacity(&mut image, end_opacity);
-                    let mask = self.rasterize_mask_image(scene, end_draw, end_bounds);
-                    let dst_bounds = current_target_bounds(&groups, root_bounds);
-                    let dst = current_target(target, &mut groups);
-                    composite_src_over_masked_at(dst, &image, &mask, end_bounds, dst_bounds);
-                }
-                ExecOp::BeginBlend { draw, mode, bounds } => {
-                    groups.push(GroupFrame::Blend {
-                        draw: *draw,
-                        mode: *mode,
-                        bounds: *bounds,
-                        image: Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT),
-                    });
-                }
-                ExecOp::EndBlend { draw, mode, bounds } => {
-                    let Some(GroupFrame::Blend {
-                        draw: end_draw,
-                        mode: end_mode,
-                        bounds: end_bounds,
-                        image,
-                    }) = groups.pop()
-                    else {
-                        continue;
-                    };
-                    debug_assert_eq!(*draw, end_draw);
-                    debug_assert_eq!(*mode, end_mode);
-                    debug_assert_eq!(*bounds, end_bounds);
-                    let mask = self.rasterize_mask_image(scene, end_draw, end_bounds);
-                    let dst_bounds = current_target_bounds(&groups, root_bounds);
-                    let dst = current_target(target, &mut groups);
-                    composite_blend_masked_at(dst, &image, &mask, end_mode, end_bounds, dst_bounds);
-                }
-                ExecOp::OffscreenLayer { layer, children } => {
-                    let target_bounds = current_target_bounds(&groups, root_bounds);
-                    self.execute_offscreen_layer(
-                        scene,
-                        plan,
+                ExecOp::DrawBatch { draws, layer_stack } => self.execute_draw_batch(
+                    scene,
+                    plan,
+                    draws.start,
+                    draws.end,
+                    layer_stack.clone(),
+                    target,
+                    root_bounds,
+                ),
+                ExecOp::BeginClip { .. }
+                | ExecOp::EndClip
+                | ExecOp::BeginOpacity { .. }
+                | ExecOp::EndOpacity { .. }
+                | ExecOp::BeginBlend { .. }
+                | ExecOp::EndBlend { .. } => {}
+                ExecOp::OffscreenLayer {
+                    layer,
+                    outer_stack,
+                    children,
+                } => self.execute_offscreen_layer(
+                    scene,
+                    plan,
+                    OffscreenLayerRef {
                         layer,
+                        outer_stack: outer_stack.clone(),
                         children,
-                        current_target(target, &mut groups),
-                        target_bounds,
-                    );
-                }
+                    },
+                    target,
+                    root_bounds,
+                ),
             }
         }
     }
@@ -391,12 +305,11 @@ impl Renderer {
         &mut self,
         scene: &crate::scene::Scene,
         plan: &ExecPlan,
-        layer: &Layer,
-        children: &[ExecOp],
+        offscreen: OffscreenLayerRef<'_>,
         target: &mut Image,
         target_bounds: Bounds,
     ) {
-        match layer {
+        match offscreen.layer {
             Layer::Filter { filter, region } => {
                 let bounds = self.filter.filtered_region_bounds(
                     filter,
@@ -407,9 +320,16 @@ impl Renderer {
                     return;
                 }
                 let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
-                self.execute_ops(scene, plan, children, &mut image, bounds);
+                self.execute_ops(scene, plan, offscreen.children, &mut image, bounds);
                 self.filter.prepare(&mut image, filter, bounds).run();
-                let mask = self.filter.rasterize_region_mask(region, bounds);
+                let mut mask = self.filter.rasterize_region_mask(region, bounds);
+                self.apply_outer_clip_stack_to_mask(
+                    scene,
+                    plan,
+                    offscreen.outer_stack,
+                    bounds,
+                    &mut mask,
+                );
                 composite_src_over_masked_at(target, &image, &mask, bounds, target_bounds);
             }
             Layer::Backdrop {
@@ -420,13 +340,14 @@ impl Renderer {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn execute_draw_batch(
         &mut self,
         scene: &crate::scene::Scene,
         plan: &ExecPlan,
         start: usize,
         end: usize,
-        clip_stack: std::ops::Range<usize>,
+        layer_stack: std::ops::Range<usize>,
         target: &mut Image,
         target_bounds: Bounds,
     ) {
@@ -438,14 +359,34 @@ impl Renderer {
             (
                 &scene.draw_records,
                 start..end,
-                &plan.clip_stack_data,
-                clip_stack,
+                &plan.layer_stack_data,
+                layer_stack,
             ),
         );
         self.fine(scene, (target, target_bounds));
     }
 
-    fn rasterize_mask_image(
+    fn apply_outer_clip_stack_to_mask(
+        &self,
+        scene: &crate::scene::Scene,
+        plan: &ExecPlan,
+        outer_stack: std::ops::Range<usize>,
+        bounds: Bounds,
+        mask: &mut Image,
+    ) {
+        for entry in &plan.layer_stack_data[outer_stack] {
+            let LayerStackEntry::Clip { draw } = *entry else {
+                continue;
+            };
+            let clip = self.rasterize_layer_mask(scene, draw as usize, bounds);
+            for (dst, src) in mask.pixels.iter_mut().zip(clip.pixels) {
+                let alpha = combine_alpha(((*dst >> 24) & 0xff) as u8, ((src >> 24) & 0xff) as u8);
+                *dst = rgba8_pack([alpha, alpha, alpha, alpha]);
+            }
+        }
+    }
+
+    fn rasterize_layer_mask(
         &self,
         scene: &crate::scene::Scene,
         draw_ix: usize,
@@ -462,6 +403,7 @@ impl Renderer {
         if stride == 0 {
             return image;
         }
+
         for tile_y in bbox.y0..bbox.y1 {
             for tile_x in bbox.x0..bbox.x1 {
                 let local_x = tile_x - backdrop_record.tile_x0;
@@ -473,24 +415,27 @@ impl Renderer {
                 if segment_range.start == segment_range.end && backdrop == 0 {
                     continue;
                 }
-                let alpha = crate::cpu::computes::fine::build_tile_alpha(
+
+                let alpha = build_tile_alpha(
                     &self.segments[segment_range.start as usize..segment_range.end as usize],
                     backdrop,
                     draw.fill_rule,
                 );
-                let base_x = tile_x * TILE_SIZE;
-                let base_y = tile_y * TILE_SIZE;
-                let clip_x0 = (base_x as i32).max(bounds.x0);
-                let clip_y0 = (base_y as i32).max(bounds.y0);
-                let clip_x1 = ((base_x + TILE_SIZE) as i32).min(bounds.x1);
-                let clip_y1 = ((base_y + TILE_SIZE) as i32).min(bounds.y1);
+                let base_x = (tile_x * crate::TILE_SIZE) as i32;
+                let base_y = (tile_y * crate::TILE_SIZE) as i32;
+                let clip_x0 = base_x.max(bounds.x0);
+                let clip_y0 = base_y.max(bounds.y0);
+                let clip_x1 = (base_x + crate::TILE_SIZE as i32).min(bounds.x1);
+                let clip_y1 = (base_y + crate::TILE_SIZE as i32).min(bounds.y1);
                 if clip_x0 >= clip_x1 || clip_y0 >= clip_y1 {
                     continue;
                 }
+
                 for global_y in clip_y0..clip_y1 {
-                    let row_start = ((global_y as u32 - base_y) * TILE_SIZE) as usize;
+                    let row_start = ((global_y - base_y) as u32 * crate::TILE_SIZE) as usize;
                     for global_x in clip_x0..clip_x1 {
-                        let a = alpha[row_start + (global_x as u32 - base_x) as usize];
+                        let tile_ix = row_start + (global_x - base_x) as usize;
+                        let a = alpha[tile_ix];
                         if a == 0 {
                             continue;
                         }
@@ -509,12 +454,15 @@ impl Renderer {
 #[cfg(test)]
 mod tests {
     use peniko::{
-        Color,
-        kurbo::{Affine, Rect, RoundedRect, Shape},
+        Color, Compose, Mix,
+        kurbo::{Affine, Circle, Rect, RoundedRect, Shape},
     };
 
     use super::Renderer;
-    use crate::{FillRule, Scene};
+    use crate::{
+        FillRule, Scene,
+        shared::layer::{filter::Filter, region::Region},
+    };
 
     fn render_single_rounded_rect() -> Renderer {
         let mut scene = Scene::new(320, 240);
@@ -529,6 +477,16 @@ mod tests {
         let mut renderer = Renderer::new(320, 240, Color::WHITE);
         renderer.render(&scene);
         renderer
+    }
+
+    fn assert_rgb_close(actual: [u8; 4], expected: [u8; 4], tolerance: u8) {
+        for channel in 0..4 {
+            let delta = actual[channel].abs_diff(expected[channel]);
+            assert!(
+                delta <= tolerance,
+                "channel {channel} expected {expected:?}, got {actual:?}"
+            );
+        }
     }
 
     #[test]
@@ -561,5 +519,154 @@ mod tests {
 
         assert_eq!(renderer.image().rgba8_at(279, 60), [37, 99, 235, 255]);
         assert_eq!(renderer.image().rgba8_at(280, 60), [255, 255, 255, 255]);
+    }
+
+    #[test]
+    fn clip_layer_masks_child_fill() {
+        let mut scene = Scene::new(96, 96);
+        scene.push_clip_layer(
+            Rect::new(24.0, 24.0, 72.0, 72.0).to_path(0.0),
+            Affine::IDENTITY,
+            0.0,
+        );
+        scene.push_path(
+            Rect::new(8.0, 8.0, 88.0, 88.0).to_path(0.0),
+            Color::from_rgb8(37, 99, 235),
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.0,
+        );
+        scene.pop_layer();
+
+        let mut renderer = Renderer::new(96, 96, Color::WHITE);
+        renderer.render(&scene);
+
+        assert_eq!(renderer.image().rgba8_at(48, 48), [37, 99, 235, 255]);
+        assert_eq!(renderer.image().rgba8_at(12, 48), [255, 255, 255, 255]);
+    }
+
+    #[test]
+    fn nested_clip_layers_intersect_child_fill() {
+        let mut scene = Scene::new(96, 96);
+        scene.push_clip_layer(
+            Rect::new(16.0, 16.0, 80.0, 80.0).to_path(0.0),
+            Affine::IDENTITY,
+            0.0,
+        );
+        scene.push_clip_layer(
+            Rect::new(40.0, 8.0, 88.0, 88.0).to_path(0.0),
+            Affine::IDENTITY,
+            0.0,
+        );
+        scene.push_path(
+            Rect::new(0.0, 0.0, 96.0, 96.0).to_path(0.0),
+            Color::from_rgb8(37, 99, 235),
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.0,
+        );
+        scene.pop_layer();
+        scene.pop_layer();
+
+        let mut renderer = Renderer::new(96, 96, Color::WHITE);
+        renderer.render(&scene);
+
+        assert_eq!(renderer.image().rgba8_at(48, 48), [37, 99, 235, 255]);
+        assert_eq!(renderer.image().rgba8_at(24, 48), [255, 255, 255, 255]);
+        assert_eq!(renderer.image().rgba8_at(84, 48), [255, 255, 255, 255]);
+    }
+
+    #[test]
+    fn outer_clip_does_not_clip_filter_source_before_blur() {
+        let mut scene = Scene::new(96, 96);
+        let clip = Circle::new((48.0, 48.0), 24.0).to_path(0.1);
+        scene.push_clip_layer(clip.clone(), Affine::IDENTITY, 0.1);
+        scene.push_filter_layer(
+            Filter::Blur(8.0),
+            Region::Path {
+                path: clip,
+                transform: Affine::IDENTITY,
+                tolerance: 0.1,
+            },
+        );
+        scene.push_path(
+            Rect::new(0.0, 0.0, 96.0, 96.0).to_path(0.0),
+            Color::from_rgb8(255, 0, 0),
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.0,
+        );
+        scene.pop_layer();
+        scene.pop_layer();
+
+        let mut renderer = Renderer::new(96, 96, Color::WHITE);
+        renderer.render(&scene);
+
+        assert_eq!(renderer.image().rgba8_at(70, 48), [255, 0, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(74, 48), [255, 255, 255, 255]);
+    }
+
+    #[test]
+    fn opacity_layer_composites_children_as_isolated_group() {
+        let mut scene = Scene::new(96, 96);
+        scene.push_opacity_layer(
+            Rect::new(8.0, 8.0, 88.0, 88.0).to_path(0.0),
+            Affine::IDENTITY,
+            0.0,
+            0.5,
+        );
+        scene.push_path(
+            Rect::new(16.0, 16.0, 64.0, 64.0).to_path(0.0),
+            Color::from_rgb8(255, 0, 0),
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.0,
+        );
+        scene.push_path(
+            Rect::new(32.0, 32.0, 80.0, 80.0).to_path(0.0),
+            Color::from_rgb8(255, 0, 0),
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.0,
+        );
+        scene.pop_layer();
+
+        let mut renderer = Renderer::new(96, 96, Color::WHITE);
+        renderer.render(&scene);
+
+        assert_rgb_close(renderer.image().rgba8_at(40, 40), [255, 128, 128, 255], 1);
+    }
+
+    #[test]
+    fn blend_layer_composites_tile_group_through_layer_mask() {
+        let mut scene = Scene::new(96, 96);
+        scene.push_path(
+            Rect::new(0.0, 0.0, 96.0, 96.0).to_path(0.0),
+            Color::from_rgb8(128, 128, 128),
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.0,
+        );
+        scene.push_blend_layer(
+            Rect::new(16.0, 16.0, 80.0, 80.0).to_path(0.0),
+            Affine::IDENTITY,
+            0.0,
+            Mix::Multiply,
+            Compose::SrcOver,
+        );
+        scene.push_path(
+            Rect::new(0.0, 0.0, 96.0, 96.0).to_path(0.0),
+            Color::from_rgb8(255, 0, 0),
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.0,
+        );
+        scene.pop_layer();
+
+        let mut renderer = Renderer::new(96, 96, Color::WHITE);
+        renderer.render(&scene);
+
+        assert_rgb_close(renderer.image().rgba8_at(40, 40), [128, 0, 0, 255], 1);
+        assert_eq!(renderer.image().rgba8_at(8, 40), [128, 128, 128, 255]);
     }
 }

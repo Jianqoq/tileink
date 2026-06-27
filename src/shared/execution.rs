@@ -6,7 +6,13 @@ use crate::shared::{bounds::Bounds, layer::Layer};
 
 pub(crate) type CommandListId = usize;
 pub(crate) const ROOT_COMMAND_LIST_ID: CommandListId = 0;
-pub(crate) type ClipStackEntry = u32;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum LayerStackEntry {
+    Clip { draw: u32 },
+    Opacity { draw: u32, opacity: f32 },
+    Blend { draw: u32, mode: BlendMode },
+}
 
 #[derive(Default)]
 pub(crate) struct CommandList {
@@ -24,23 +30,23 @@ pub(crate) enum Command {
 
 /// GPU-friendly linear execution plan for one command list.
 ///
-/// `clip_stack_data` stores ordered clip stack snapshots referenced by
-/// `ExecOp::DrawBatch`. Opacity and blend are expressed as explicit begin/end
-/// ops so their group lifetime survives across multiple draw batches.
+/// `layer_stack_data` stores ordered fused layer stack snapshots referenced by
+/// `ExecOp::DrawBatch`. The coarse stage replays this stack into tile-local
+/// begin/end particles so fine owns clip, opacity, and blend semantics.
 #[derive(Debug)]
 pub(crate) struct ExecPlan {
     pub ops: Vec<ExecOp>,
-    /// Batch-local clip stack snapshots in user nesting order.
-    pub clip_stack_data: Vec<ClipStackEntry>,
+    /// Batch-local fused layer stack snapshots in user nesting order.
+    pub layer_stack_data: Vec<LayerStackEntry>,
 }
 
 #[derive(Debug)]
 pub(crate) enum ExecOp {
     DrawBatch {
         draws: Range<usize>,
-        /// Active clip stack for this batch in nesting order. This is
+        /// Active fused layer stack for this batch in nesting order. This is
         /// stack state, not coverage.
-        clip_stack: Range<usize>,
+        layer_stack: Range<usize>,
     },
     BeginClip {
         draw: usize,
@@ -69,6 +75,7 @@ pub(crate) enum ExecOp {
     },
     OffscreenLayer {
         layer: Layer,
+        outer_stack: Range<usize>,
         children: Vec<ExecOp>,
     },
 }
