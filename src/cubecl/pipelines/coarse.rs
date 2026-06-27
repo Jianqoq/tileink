@@ -2,10 +2,24 @@ use ::cubecl::prelude::*;
 
 use crate::cubecl::{
     renderer::{CoarseBuffers, ScanBuffers, SceneBuffers},
-    types::{COARSE_CHUNK_SIZE, CUBE_DRAW_BRUSH, CUBE_DRAW_CLIP, CubeBufferLengths},
+    types::{
+        COARSE_CHUNK_SIZE, CUBE_DRAW_BLEND, CUBE_DRAW_BRUSH, CUBE_DRAW_CLIP, CUBE_DRAW_OPACITY,
+        CUBE_LAYER_BLEND, CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY, CUBE_PTCL_BEGIN_BLEND,
+        CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_BEGIN_OPACITY, CUBE_PTCL_COLOR, CUBE_PTCL_END,
+        CUBE_PTCL_END_BLEND, CUBE_PTCL_END_CLIP, CUBE_PTCL_END_OPACITY, CUBE_PTCL_FILL,
+        CubeBufferLengths,
+    },
 };
 
 pub(crate) const TILE_WORKGROUP_SIZE: u32 = 256;
+
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct CoarseBatch {
+    pub(crate) draw_start: u32,
+    pub(crate) draw_end: u32,
+    pub(crate) layer_stack_start: u32,
+    pub(crate) layer_stack_end: u32,
+}
 
 pub(crate) struct CoarsePipeline;
 
@@ -16,6 +30,7 @@ impl CoarsePipeline {
         scan: &ScanBuffers,
         coarse: &mut CoarseBuffers,
         lengths: CubeBufferLengths,
+        batch: CoarseBatch,
     ) {
         let tile_count = lengths.tile_count as u32;
         let chunk_count = lengths.coarse_chunk_count as u32;
@@ -31,7 +46,10 @@ impl CoarsePipeline {
             tile_count,
             lengths.tiles_width as u32,
             lengths.tiles_height as u32,
-            lengths.draw_count as u32,
+            batch.draw_start,
+            batch.draw_end,
+            batch.layer_stack_start,
+            batch.layer_stack_end,
             unsafe { scene.draw_path_ids.arg() },
             unsafe { scene.draw_tags.arg() },
             unsafe { scene.draw_pixel_x0.arg() },
@@ -46,6 +64,8 @@ impl CoarsePipeline {
             unsafe { scan.backdrops.arg() },
             unsafe { scan.tile_segment_range_starts.arg() },
             unsafe { scan.tile_segment_range_ends.arg() },
+            unsafe { scene.plan_layer_stack_tags.arg() },
+            unsafe { scene.plan_layer_stack_draws.arg() },
             unsafe { coarse.tile_ptcl_counts.arg() },
         );
 
@@ -81,7 +101,7 @@ impl CoarsePipeline {
             unsafe { coarse.tile_ptcl_range_ends.arg() },
         );
 
-        if lengths.draw_count == 0 || lengths.coarse_ptcl_capacity == 0 {
+        if batch.draw_start >= batch.draw_end || lengths.coarse_ptcl_capacity == 0 {
             return;
         }
 
@@ -93,7 +113,10 @@ impl CoarsePipeline {
             tile_count,
             lengths.tiles_width as u32,
             lengths.tiles_height as u32,
-            lengths.draw_count as u32,
+            batch.draw_start,
+            batch.draw_end,
+            batch.layer_stack_start,
+            batch.layer_stack_end,
             lengths.coarse_ptcl_capacity as u32,
             unsafe { scene.draw_path_ids.arg() },
             unsafe { scene.draw_tags.arg() },
@@ -113,6 +136,10 @@ impl CoarsePipeline {
             unsafe { scan.tile_segment_range_starts.arg() },
             unsafe { scan.tile_segment_range_ends.arg() },
             unsafe { coarse.tile_ptcl_range_starts.arg() },
+            unsafe { coarse.tile_ptcl_range_ends.arg() },
+            unsafe { scene.plan_layer_stack_tags.arg() },
+            unsafe { scene.plan_layer_stack_draws.arg() },
+            unsafe { scene.plan_layer_stack_payloads.arg() },
             unsafe { coarse.ptcl_tags.arg() },
             unsafe { coarse.ptcl_backdrops.arg() },
             unsafe { coarse.ptcl_fill_rules.arg() },
@@ -129,7 +156,10 @@ fn coarse_count(
     tile_count: u32,
     tiles_width: u32,
     tiles_height: u32,
-    draw_count: u32,
+    draw_start: u32,
+    draw_end: u32,
+    layer_stack_start: u32,
+    layer_stack_end: u32,
     draw_path_ids: &Array<u32>,
     draw_tags: &Array<u32>,
     draw_pixel_x0: &Array<i32>,
@@ -144,6 +174,8 @@ fn coarse_count(
     backdrops: &Array<Atomic<i32>>,
     segment_starts: &Array<u32>,
     segment_ends: &Array<u32>,
+    layer_stack_tags: &Array<u32>,
+    layer_stack_draws: &Array<u32>,
     tile_ptcl_counts: &mut Array<u32>,
 ) {
     let tile_ix = CUBE_POS as u32;
@@ -154,34 +186,64 @@ fn coarse_count(
     let invalid = u32::new(-1);
     let tile_x = tile_ix % tiles_width;
     let tile_y = tile_ix / tiles_width;
+    let wrapper_count = active_stack_count(
+        tile_x,
+        tile_y,
+        tiles_width,
+        tiles_height,
+        layer_stack_start,
+        layer_stack_end,
+        layer_stack_tags,
+        layer_stack_draws,
+        draw_path_ids,
+        draw_tags,
+        draw_pixel_x0,
+        draw_pixel_y0,
+        draw_pixel_x1,
+        draw_pixel_y1,
+        backdrop_data_offsets,
+        backdrop_tile_x0,
+        backdrop_tile_y0,
+        backdrop_tile_x1,
+        backdrop_tile_y1,
+        backdrops,
+        segment_starts,
+        segment_ends,
+    );
     let mut count = 0u32;
-    let mut draw_ix = UNIT_POS;
-    while draw_ix < draw_count {
-        let backdrop_ix = draw_backdrop_ix(
-            draw_ix,
-            tile_x,
-            tile_y,
-            tiles_width,
-            tiles_height,
-            draw_path_ids,
-            draw_tags,
-            draw_pixel_x0,
-            draw_pixel_y0,
-            draw_pixel_x1,
-            draw_pixel_y1,
-            backdrop_data_offsets,
-            backdrop_tile_x0,
-            backdrop_tile_y0,
-            backdrop_tile_x1,
-            backdrop_tile_y1,
-        );
-        if backdrop_ix != invalid {
-            let i = backdrop_ix as usize;
-            if segment_starts[i] != segment_ends[i] || backdrops[i].load() != 0 {
-                count += 1;
+
+    if wrapper_count != invalid {
+        let mut draw_ix = draw_start + UNIT_POS;
+        while draw_ix < draw_end {
+            let backdrop_ix = draw_backdrop_ix(
+                draw_ix,
+                tile_x,
+                tile_y,
+                tiles_width,
+                tiles_height,
+                draw_path_ids,
+                draw_tags,
+                draw_pixel_x0,
+                draw_pixel_y0,
+                draw_pixel_x1,
+                draw_pixel_y1,
+                backdrop_data_offsets,
+                backdrop_tile_x0,
+                backdrop_tile_y0,
+                backdrop_tile_x1,
+                backdrop_tile_y1,
+            );
+            if backdrop_ix != invalid {
+                let i = backdrop_ix as usize;
+                let draw_tag = draw_tags[draw_ix as usize];
+                if (draw_tag == CUBE_DRAW_BRUSH || draw_tag == CUBE_DRAW_CLIP)
+                    && (segment_starts[i] != segment_ends[i] || backdrops[i].load() != 0)
+                {
+                    count += 1;
+                }
             }
+            draw_ix += workgroup_size as u32;
         }
-        draw_ix += workgroup_size as u32;
     }
 
     let plane_total = plane_sum(count);
@@ -200,7 +262,7 @@ fn coarse_count(
             plane_ix += 1;
         }
         tile_ptcl_counts[tile_ix as usize] = if tile_count > 0 {
-            tile_count + 1
+            tile_count + wrapper_count * 2 + 1
         } else {
             tile_count
         };
@@ -315,7 +377,10 @@ fn coarse_emit(
     tile_count: u32,
     tiles_width: u32,
     tiles_height: u32,
-    draw_count: u32,
+    draw_start: u32,
+    draw_end: u32,
+    layer_stack_start: u32,
+    layer_stack_end: u32,
     ptcl_capacity: u32,
     draw_path_ids: &Array<u32>,
     draw_tags: &Array<u32>,
@@ -335,6 +400,10 @@ fn coarse_emit(
     segment_starts: &Array<u32>,
     segment_ends: &Array<u32>,
     tile_ptcl_range_starts: &Array<u32>,
+    tile_ptcl_range_ends: &Array<u32>,
+    layer_stack_tags: &Array<u32>,
+    layer_stack_draws: &Array<u32>,
+    layer_stack_payloads: &Array<u32>,
     ptcl_tags: &mut Array<u32>,
     ptcl_backdrops: &mut Array<i32>,
     ptcl_fill_rules: &mut Array<u32>,
@@ -352,20 +421,91 @@ fn coarse_emit(
     let tile_y = tile_ix / tiles_width;
     let mut cursor = tile_ptcl_range_starts[tile_ix as usize];
     let start = cursor;
+    let range_end = tile_ptcl_range_ends[tile_ix as usize];
+    if start >= range_end {
+        terminate!();
+    }
+
+    let wrapper_count = active_stack_count(
+        tile_x,
+        tile_y,
+        tiles_width,
+        tiles_height,
+        layer_stack_start,
+        layer_stack_end,
+        layer_stack_tags,
+        layer_stack_draws,
+        draw_path_ids,
+        draw_tags,
+        draw_pixel_x0,
+        draw_pixel_y0,
+        draw_pixel_x1,
+        draw_pixel_y1,
+        backdrop_data_offsets,
+        backdrop_tile_x0,
+        backdrop_tile_y0,
+        backdrop_tile_x1,
+        backdrop_tile_y1,
+        backdrops,
+        segment_starts,
+        segment_ends,
+    );
+    if wrapper_count == invalid {
+        terminate!();
+    }
+
+    if UNIT_POS == 0 {
+        emit_active_stack_begins(
+            cursor,
+            ptcl_capacity,
+            tile_x,
+            tile_y,
+            tiles_width,
+            tiles_height,
+            layer_stack_start,
+            layer_stack_end,
+            layer_stack_tags,
+            layer_stack_draws,
+            layer_stack_payloads,
+            draw_path_ids,
+            draw_tags,
+            draw_fill_rules,
+            draw_pixel_x0,
+            draw_pixel_y0,
+            draw_pixel_x1,
+            draw_pixel_y1,
+            backdrop_data_offsets,
+            backdrop_tile_x0,
+            backdrop_tile_y0,
+            backdrop_tile_x1,
+            backdrop_tile_y1,
+            backdrops,
+            segment_starts,
+            segment_ends,
+            ptcl_tags,
+            ptcl_backdrops,
+            ptcl_fill_rules,
+            ptcl_segment_starts,
+            ptcl_segment_ends,
+            ptcl_colors,
+        );
+    }
+    cursor += wrapper_count;
+    sync_cube();
 
     let mut plane_totals = SharedMemory::<u32>::new(workgroup_size);
-    let mut chunk_start = 0u32;
-    while chunk_start < draw_count {
+    let mut chunk_start = draw_start;
+    while chunk_start < draw_end {
         let draw_ix = chunk_start + UNIT_POS;
         let mut valid = 0u32;
-        let mut ptcl_tag = u32::new(1);
+        let mut ptcl_tag = u32::new(CUBE_PTCL_FILL as i64);
         let mut ptcl_backdrop = i32::new(0);
         let mut ptcl_fill_rule = 0u32;
         let mut ptcl_segment_start = 0u32;
         let mut ptcl_segment_end = 0u32;
         let mut ptcl_color = 0u32;
 
-        if draw_ix < draw_count {
+        if draw_ix < draw_end {
             let backdrop_ix = draw_backdrop_ix(
                 draw_ix,
                 tile_x,
@@ -390,16 +530,18 @@ fn coarse_emit(
                 let segment_start = segment_starts[backdrop_i];
                 let segment_end = segment_ends[backdrop_i];
                 let backdrop = backdrops[backdrop_i].load();
-                if segment_start != segment_end || backdrop != 0 {
-                    let draw_i = draw_ix as usize;
-                    let draw_tag = draw_tags[draw_i];
-                    if draw_tag == 1 {
-                        ptcl_tag = u32::new(3);
+                let draw_i = draw_ix as usize;
+                let draw_tag = draw_tags[draw_i];
+                if (draw_tag == CUBE_DRAW_BRUSH || draw_tag == CUBE_DRAW_CLIP)
+                    && (segment_start != segment_end || backdrop != 0)
+                {
+                    if draw_tag == CUBE_DRAW_CLIP {
+                        ptcl_tag = u32::new(CUBE_PTCL_BEGIN_CLIP as i64);
                     } else {
                         let solid_color_fast_path = draw_solid_color_fast_paths[draw_i] == 1;
                         let empty_segment_range = segment_start == segment_end;
                         if solid_color_fast_path && empty_segment_range {
-                            ptcl_tag = u32::new(2);
+                            ptcl_tag = u32::new(CUBE_PTCL_COLOR as i64);
                         }
                     }
                     valid = 1;
@@ -464,11 +606,24 @@ fn coarse_emit(
         chunk_start += workgroup_size as u32;
     }
 
-    if UNIT_POS == 0 && cursor > start {
-        store_particle(
+    if UNIT_POS == 0 {
+        emit_active_stack_ends(
             cursor,
             ptcl_capacity,
-            u32::new(0),
+            layer_stack_start,
+            layer_stack_end,
+            layer_stack_tags,
+            ptcl_tags,
+            ptcl_backdrops,
+            ptcl_fill_rules,
+            ptcl_segment_starts,
+            ptcl_segment_ends,
+            ptcl_colors,
+        );
+        store_particle(
+            cursor + wrapper_count,
+            ptcl_capacity,
+            u32::new(CUBE_PTCL_END as i64),
             0,
             0,
             0,
@@ -481,6 +636,228 @@ fn coarse_emit(
             ptcl_segment_ends,
             ptcl_colors,
         );
+    }
+}
+
+#[cube]
+fn active_stack_count(
+    tile_x: u32,
+    tile_y: u32,
+    tiles_width: u32,
+    tiles_height: u32,
+    layer_stack_start: u32,
+    layer_stack_end: u32,
+    layer_stack_tags: &Array<u32>,
+    layer_stack_draws: &Array<u32>,
+    draw_path_ids: &Array<u32>,
+    draw_tags: &Array<u32>,
+    draw_pixel_x0: &Array<i32>,
+    draw_pixel_y0: &Array<i32>,
+    draw_pixel_x1: &Array<i32>,
+    draw_pixel_y1: &Array<i32>,
+    backdrop_data_offsets: &Array<u32>,
+    backdrop_tile_x0: &Array<u32>,
+    backdrop_tile_y0: &Array<u32>,
+    backdrop_tile_x1: &Array<u32>,
+    backdrop_tile_y1: &Array<u32>,
+    backdrops: &Array<Atomic<i32>>,
+    segment_starts: &Array<u32>,
+    segment_ends: &Array<u32>,
+) -> u32 {
+    let invalid = u32::new(-1);
+    let mut count = 0u32;
+    let mut valid = u32::new(1);
+    let mut stack_ix = layer_stack_start;
+    while stack_ix < layer_stack_end {
+        let stack_i = stack_ix as usize;
+        if valid == 1 {
+            let layer_tag = layer_stack_tags[stack_i];
+            if layer_tag != CUBE_LAYER_CLIP
+                && layer_tag != CUBE_LAYER_OPACITY
+                && layer_tag != CUBE_LAYER_BLEND
+            {
+                valid = 0;
+            } else {
+                let backdrop_ix = draw_backdrop_ix(
+                    layer_stack_draws[stack_i],
+                    tile_x,
+                    tile_y,
+                    tiles_width,
+                    tiles_height,
+                    draw_path_ids,
+                    draw_tags,
+                    draw_pixel_x0,
+                    draw_pixel_y0,
+                    draw_pixel_x1,
+                    draw_pixel_y1,
+                    backdrop_data_offsets,
+                    backdrop_tile_x0,
+                    backdrop_tile_y0,
+                    backdrop_tile_x1,
+                    backdrop_tile_y1,
+                );
+                if backdrop_ix == invalid {
+                    valid = 0;
+                } else {
+                    let backdrop_i = backdrop_ix as usize;
+                    if segment_starts[backdrop_i] == segment_ends[backdrop_i]
+                        && backdrops[backdrop_i].load() == 0
+                    {
+                        valid = 0;
+                    } else {
+                        count += 1;
+                    }
+                }
+            }
+        }
+        stack_ix += 1;
+    }
+    if valid == 1 { count } else { invalid }
+}
+
+#[cube]
+#[allow(clippy::too_many_arguments)]
+fn emit_active_stack_begins(
+    dst_start: u32,
+    ptcl_capacity: u32,
+    tile_x: u32,
+    tile_y: u32,
+    tiles_width: u32,
+    tiles_height: u32,
+    layer_stack_start: u32,
+    layer_stack_end: u32,
+    layer_stack_tags: &Array<u32>,
+    layer_stack_draws: &Array<u32>,
+    layer_stack_payloads: &Array<u32>,
+    draw_path_ids: &Array<u32>,
+    draw_tags: &Array<u32>,
+    draw_fill_rules: &Array<u32>,
+    draw_pixel_x0: &Array<i32>,
+    draw_pixel_y0: &Array<i32>,
+    draw_pixel_x1: &Array<i32>,
+    draw_pixel_y1: &Array<i32>,
+    backdrop_data_offsets: &Array<u32>,
+    backdrop_tile_x0: &Array<u32>,
+    backdrop_tile_y0: &Array<u32>,
+    backdrop_tile_x1: &Array<u32>,
+    backdrop_tile_y1: &Array<u32>,
+    backdrops: &Array<Atomic<i32>>,
+    segment_starts: &Array<u32>,
+    segment_ends: &Array<u32>,
+    ptcl_tags: &mut Array<u32>,
+    ptcl_backdrops: &mut Array<i32>,
+    ptcl_fill_rules: &mut Array<u32>,
+    ptcl_segment_starts: &mut Array<u32>,
+    ptcl_segment_ends: &mut Array<u32>,
+    ptcl_colors: &mut Array<u32>,
+) {
+    let invalid = u32::new(-1);
+    let mut stack_ix = layer_stack_start;
+    let mut dst = dst_start;
+    while stack_ix < layer_stack_end {
+        let stack_i = stack_ix as usize;
+        let layer_tag = layer_stack_tags[stack_i];
+        if layer_tag == CUBE_LAYER_CLIP
+            || layer_tag == CUBE_LAYER_OPACITY
+            || layer_tag == CUBE_LAYER_BLEND
+        {
+            let draw_ix = layer_stack_draws[stack_i];
+            let backdrop_ix = draw_backdrop_ix(
+                draw_ix,
+                tile_x,
+                tile_y,
+                tiles_width,
+                tiles_height,
+                draw_path_ids,
+                draw_tags,
+                draw_pixel_x0,
+                draw_pixel_y0,
+                draw_pixel_x1,
+                draw_pixel_y1,
+                backdrop_data_offsets,
+                backdrop_tile_x0,
+                backdrop_tile_y0,
+                backdrop_tile_x1,
+                backdrop_tile_y1,
+            );
+            if backdrop_ix != invalid {
+                let backdrop_i = backdrop_ix as usize;
+                let mut ptcl_tag = u32::new(CUBE_PTCL_BEGIN_CLIP as i64);
+                if layer_tag == CUBE_LAYER_OPACITY {
+                    ptcl_tag = u32::new(CUBE_PTCL_BEGIN_OPACITY as i64);
+                } else if layer_tag == CUBE_LAYER_BLEND {
+                    ptcl_tag = u32::new(CUBE_PTCL_BEGIN_BLEND as i64);
+                }
+                store_particle(
+                    dst,
+                    ptcl_capacity,
+                    ptcl_tag,
+                    backdrops[backdrop_i].load(),
+                    draw_fill_rules[draw_ix as usize],
+                    segment_starts[backdrop_i],
+                    segment_ends[backdrop_i],
+                    layer_stack_payloads[stack_i],
+                    ptcl_tags,
+                    ptcl_backdrops,
+                    ptcl_fill_rules,
+                    ptcl_segment_starts,
+                    ptcl_segment_ends,
+                    ptcl_colors,
+                );
+                dst += 1;
+            }
+        }
+        stack_ix += 1;
+    }
+}
+
+#[cube]
+fn emit_active_stack_ends(
+    dst_start: u32,
+    ptcl_capacity: u32,
+    layer_stack_start: u32,
+    layer_stack_end: u32,
+    layer_stack_tags: &Array<u32>,
+    ptcl_tags: &mut Array<u32>,
+    ptcl_backdrops: &mut Array<i32>,
+    ptcl_fill_rules: &mut Array<u32>,
+    ptcl_segment_starts: &mut Array<u32>,
+    ptcl_segment_ends: &mut Array<u32>,
+    ptcl_colors: &mut Array<u32>,
+) {
+    let mut stack_ix = layer_stack_end;
+    let mut dst = dst_start;
+    while stack_ix > layer_stack_start {
+        stack_ix -= 1;
+        let layer_tag = layer_stack_tags[stack_ix as usize];
+        let mut ptcl_tag = u32::new(CUBE_PTCL_END_CLIP as i64);
+        let mut valid = u32::new(1);
+        if layer_tag == CUBE_LAYER_OPACITY {
+            ptcl_tag = u32::new(CUBE_PTCL_END_OPACITY as i64);
+        } else if layer_tag == CUBE_LAYER_BLEND {
+            ptcl_tag = u32::new(CUBE_PTCL_END_BLEND as i64);
+        } else if layer_tag != CUBE_LAYER_CLIP {
+            valid = 0;
+        }
+        if valid == 1 {
+            store_particle(
+                dst,
+                ptcl_capacity,
+                ptcl_tag,
+                0,
+                0,
+                0,
+                0,
+                0,
+                ptcl_tags,
+                ptcl_backdrops,
+                ptcl_fill_rules,
+                ptcl_segment_starts,
+                ptcl_segment_ends,
+                ptcl_colors,
+            );
+            dst += 1;
+        }
     }
 }
 
@@ -509,7 +886,12 @@ fn draw_backdrop_ix(
     let draw_tag = draw_tags[draw_i];
     let mut result = invalid;
 
-    if path_id != invalid && (draw_tag == CUBE_DRAW_BRUSH || draw_tag == CUBE_DRAW_CLIP) {
+    if path_id != invalid
+        && (draw_tag == CUBE_DRAW_BRUSH
+            || draw_tag == CUBE_DRAW_CLIP
+            || draw_tag == CUBE_DRAW_OPACITY
+            || draw_tag == CUBE_DRAW_BLEND)
+    {
         let draw_x0 = pixel_tile_min(draw_pixel_x0[draw_i], tiles_width);
         let draw_y0 = pixel_tile_min(draw_pixel_y0[draw_i], tiles_height);
         let draw_x1 = pixel_tile_max(draw_pixel_x1[draw_i], tiles_width);

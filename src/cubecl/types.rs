@@ -11,6 +11,20 @@ pub(crate) const CUBE_DRAW_CLIP: u32 = 1;
 pub(crate) const CUBE_DRAW_OPACITY: u32 = 2;
 pub(crate) const CUBE_DRAW_BLEND: u32 = 3;
 
+pub(crate) const CUBE_LAYER_CLIP: u32 = 0;
+pub(crate) const CUBE_LAYER_OPACITY: u32 = 1;
+pub(crate) const CUBE_LAYER_BLEND: u32 = 2;
+
+pub(crate) const CUBE_PTCL_END: u32 = 0;
+pub(crate) const CUBE_PTCL_FILL: u32 = 1;
+pub(crate) const CUBE_PTCL_COLOR: u32 = 2;
+pub(crate) const CUBE_PTCL_BEGIN_CLIP: u32 = 3;
+pub(crate) const CUBE_PTCL_END_CLIP: u32 = 4;
+pub(crate) const CUBE_PTCL_BEGIN_OPACITY: u32 = 5;
+pub(crate) const CUBE_PTCL_END_OPACITY: u32 = 6;
+pub(crate) const CUBE_PTCL_BEGIN_BLEND: u32 = 7;
+pub(crate) const CUBE_PTCL_END_BLEND: u32 = 8;
+
 /// Scene-derived fixed capacities for CubeCL buffers.
 ///
 /// The CubeCL backend keeps the CPU renderer's stage boundaries but makes
@@ -94,7 +108,27 @@ fn coarse_ptcl_capacity(scene: &Scene, width_in_tiles: u32, height_in_tiles: u32
         .filter(|draw| draw.path_id.is_some() && matches!(draw.tag, DrawTag::Brush | DrawTag::Clip))
         .map(|draw| draw.tile_bbox(width_in_tiles, height_in_tiles).tile_count() as usize)
         .sum::<usize>();
-    width_in_tiles as usize * height_in_tiles as usize + draw_particles
+    let group_begin_particles = scene
+        .draw_records
+        .iter()
+        .filter(|draw| {
+            draw.path_id.is_some() && matches!(draw.tag, DrawTag::Opacity | DrawTag::Blend)
+        })
+        .map(|draw| draw.tile_bbox(width_in_tiles, height_in_tiles).tile_count() as usize)
+        .sum::<usize>();
+    let layer_end_particles = scene
+        .draw_records
+        .iter()
+        .filter(|draw| {
+            draw.path_id.is_some()
+                && matches!(draw.tag, DrawTag::Clip | DrawTag::Opacity | DrawTag::Blend)
+        })
+        .map(|draw| draw.tile_bbox(width_in_tiles, height_in_tiles).tile_count() as usize)
+        .sum::<usize>();
+    width_in_tiles as usize * height_in_tiles as usize
+        + draw_particles
+        + group_begin_particles
+        + layer_end_particles
 }
 
 #[repr(C)]

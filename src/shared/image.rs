@@ -13,7 +13,7 @@ impl Image {
         Self {
             width,
             height,
-            pixels: vec![rgba8_pack(clear.to_rgba8().to_u8_array()); (width * height) as usize],
+            pixels: vec![premul_color_to_rgba8_pack(clear); (width * height) as usize],
         }
     }
 
@@ -26,6 +26,16 @@ pub(crate) fn rgba8_pack(rgba: [u8; 4]) -> u32 {
     rgba[0] as u32 | (rgba[1] as u32) << 8 | (rgba[2] as u32) << 16 | (rgba[3] as u32) << 24
 }
 
+pub(crate) fn premul_color_to_rgba8_pack(color: Color) -> u32 {
+    let [r, g, b, a] = color.premultiply().components;
+    rgba8_pack([
+        (r * 255.0 + 0.5) as u8,
+        (g * 255.0 + 0.5) as u8,
+        (b * 255.0 + 0.5) as u8,
+        (a * 255.0 + 0.5) as u8,
+    ])
+}
+
 pub(crate) fn unpack_rgba8(px: u32) -> [u8; 4] {
     [
         (px & 0xff) as u8,
@@ -33,4 +43,19 @@ pub(crate) fn unpack_rgba8(px: u32) -> [u8; 4] {
         ((px >> 16) & 0xff) as u8,
         ((px >> 24) & 0xff) as u8,
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Image, premul_color_to_rgba8_pack};
+    use peniko::Color;
+
+    #[test]
+    fn image_new_stores_premultiplied_clear_color() {
+        let clear = Color::from_rgba8(255, 0, 0, 128);
+        let image = Image::new(1, 1, clear);
+
+        assert_eq!(image.pixels[0], premul_color_to_rgba8_pack(clear));
+        assert_eq!(image.rgba8_at(0, 0), [128, 0, 0, 128]);
+    }
 }

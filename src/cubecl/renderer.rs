@@ -1,24 +1,31 @@
 use ::cubecl::prelude::Runtime;
-use peniko::Color;
+use peniko::{BlendMode, Color};
 
 use crate::{
     scene::Scene,
     shared::{
         bd_record::BackdropRecord,
         draw_record::{DrawRecord, DrawTag},
+        execution::{ExecOp, ExecPlan, LayerStackEntry, ROOT_COMMAND_LIST_ID},
         fill::FillRule,
-        image::rgba8_pack,
+        image::premul_color_to_rgba8_pack,
         line::Line,
-        pixel::premul_f32_to_u32,
+        pixel::{opacity_f32_to_u8, premul_f32_to_u32},
     },
 };
 
 use super::{
     buffer::CubeBuffer,
-    pipelines::{coarse::CoarsePipeline, cumsum::CumsumPipeline, scan::ScanPipeline},
+    pipelines::{
+        coarse::{CoarseBatch, CoarsePipeline},
+        cumsum::CumsumPipeline,
+        fine::{FinePipeline, FineRenderConfig},
+        scan::ScanPipeline,
+    },
     types::{
-        CUBE_DRAW_BLEND, CUBE_DRAW_BRUSH, CUBE_DRAW_CLIP, CUBE_DRAW_OPACITY, CubeBufferLengths,
-        CubeSceneConfig, build_cumsum_plan, build_scan_chunks,
+        CUBE_DRAW_BLEND, CUBE_DRAW_BRUSH, CUBE_DRAW_CLIP, CUBE_DRAW_OPACITY, CUBE_LAYER_BLEND,
+        CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY, CubeBufferLengths, CubeSceneConfig, build_cumsum_plan,
+        build_scan_chunks,
     },
 };
 
@@ -35,6 +42,9 @@ pub struct Renderer<R: Runtime> {
     clear_color: u32,
     size: (u32, u32),
     lengths: CubeBufferLengths,
+    max_clip_depth: usize,
+    max_group_depth: usize,
+    plan: Option<ExecPlan>,
     config: CubeBuffer<CubeSceneConfig>,
     scene: SceneBuffers,
     scan: ScanBuffers,
@@ -45,7 +55,7 @@ pub struct Renderer<R: Runtime> {
 impl<R: Runtime> Renderer<R> {
     pub fn new(device: &R::Device, width: u32, height: u32, clear: Color) -> Self {
         let client = R::client(device);
-        let clear_color = rgba8_pack(clear.to_rgba8().to_u8_array());
+        let clear_color = premul_color_to_rgba8_pack(clear);
         Self {
             config: CubeBuffer::new(&client, 1),
             scene: SceneBuffers::new(&client),
@@ -57,6 +67,9 @@ impl<R: Runtime> Renderer<R> {
             clear_color,
             size: (width, height),
             lengths: CubeBufferLengths::default(),
+            max_clip_depth: 0,
+            max_group_depth: 0,
+            plan: None,
         }
     }
 
@@ -64,19 +77,23 @@ impl<R: Runtime> Renderer<R> {
     ///
     /// This is the CubeCL version of the renderer memory contract: scene input
     /// buffers are uploaded once per scene, and every compute output has fixed
-    /// capacity before any kernel is launched. The actual scan/cumsum/coarse/fine
-    /// kernels are intentionally added in later review stages.
+    /// capacity before any kernel is launched.
     pub fn prepare_scene(&mut self, scene: &Scene) {
         self.resize(scene.width, scene.height);
         let lengths = CubeBufferLengths::from_scene(scene);
+        let plan = scene.compile(ROOT_COMMAND_LIST_ID);
+        let (max_clip_depth, max_group_depth) = plan_stack_depths(&plan);
         self.lengths = lengths;
-        self.scene.upload(&self.client, scene);
+        self.max_clip_depth = max_clip_depth;
+        self.max_group_depth = max_group_depth;
+        self.scene.upload(&self.client, scene, &plan);
         self.scan.prepare_outputs(&self.client, lengths);
         self.coarse.prepare_outputs(&self.client, lengths);
         self.config.replace(
             &self.client,
             &[CubeSceneConfig::new(scene, lengths, self.clear_color)],
         );
+        self.plan = Some(plan);
     }
 
     /// Runs the CubeCL scan stage.
@@ -98,27 +115,97 @@ impl<R: Runtime> Renderer<R> {
         CumsumPipeline::run(&self.client, &self.scene, &mut self.scan, self.lengths);
     }
 
-    /// Runs the CubeCL coarse stage for the current flat draw batch.
+    /// Runs the CubeCL coarse stage over the whole flat draw list.
     ///
     /// The stage is fully GPU-resident: count visible draw particles per tile,
     /// prefix those counts into compact ranges, then emit ordered particles.
-    /// Layer-stack wrappers are intentionally added with the execution-plan
-    /// upload stage, because they require batch/layer metadata not present in
-    /// the current CubeCL scene buffers.
+    /// Full scene rendering should use `render`, which runs coarse per
+    /// execution-plan draw batch with its active layer stack.
     pub fn coarse(&mut self) {
+        self.coarse_batch(0, self.lengths.draw_count as u32, 0, 0);
+    }
+
+    fn coarse_batch(
+        &mut self,
+        draw_start: u32,
+        draw_end: u32,
+        layer_stack_start: u32,
+        layer_stack_end: u32,
+    ) {
         CoarsePipeline::run(
             &self.client,
             &self.scene,
             &self.scan,
             &mut self.coarse,
             self.lengths,
+            CoarseBatch {
+                draw_start,
+                draw_end,
+                layer_stack_start,
+                layer_stack_end,
+            },
         );
     }
 
-    pub fn resize(&mut self, width: u32, height: u32) {
-        if self.size == (width, height) {
-            return;
+    /// Runs the CubeCL fine stage for the current coarse particle stream.
+    ///
+    /// The pass clears the target, then renders one workgroup per tile with one
+    /// lane per pixel. Use `fine_batch` internally when compositing multiple
+    /// execution-plan batches into the same target.
+    pub fn fine(&mut self) {
+        let config = self.fine_config();
+        FinePipeline::run(
+            &self.client,
+            &self.scan,
+            &self.coarse,
+            &mut self.target,
+            config,
+        );
+    }
+
+    fn clear_target(&mut self) {
+        FinePipeline::clear(
+            &self.client,
+            &mut self.target,
+            self.lengths,
+            self.clear_color,
+        );
+    }
+
+    fn fine_batch(&mut self) {
+        let config = self.fine_config();
+        FinePipeline::render(
+            &self.client,
+            &self.scan,
+            &self.coarse,
+            &mut self.target,
+            config,
+        );
+    }
+
+    fn fine_config(&self) -> FineRenderConfig {
+        FineRenderConfig {
+            lengths: self.lengths,
+            size: self.size,
+            clear_color: self.clear_color,
+            max_clip_depth: self.max_clip_depth,
+            max_group_depth: self.max_group_depth,
         }
+    }
+
+    pub fn render(&mut self, scene: &Scene) {
+        self.prepare_scene(scene);
+        self.scan();
+        self.cumsum();
+        self.clear_target();
+        self.execute_prepared_plan();
+    }
+
+    pub fn render_flat(&mut self, scene: &Scene) {
+        self.render(scene);
+    }
+
+    pub fn resize(&mut self, width: u32, height: u32) {
         self.size = (width, height);
         self.target
             .resize_uninit(&self.client, width as usize * height as usize);
@@ -143,6 +230,102 @@ impl<R: Runtime> Renderer<R> {
     pub fn runtime_name(&self) -> &'static str {
         R::name(&self.client)
     }
+
+    fn execute_prepared_plan(&mut self) {
+        let plan = self
+            .plan
+            .take()
+            .expect("CubeCL execute requires prepare_scene to upload an execution plan first");
+        self.execute_plan(&plan);
+        self.plan = Some(plan);
+    }
+
+    fn execute_plan(&mut self, plan: &ExecPlan) {
+        self.execute_ops(plan, &plan.ops);
+    }
+
+    fn execute_ops(&mut self, plan: &ExecPlan, ops: &[ExecOp]) {
+        for op in ops {
+            match op {
+                ExecOp::DrawBatch { draws, layer_stack } => {
+                    self.execute_draw_batch(plan, draws.clone(), layer_stack.clone());
+                }
+                ExecOp::BeginClip { .. }
+                | ExecOp::EndClip
+                | ExecOp::BeginOpacity { .. }
+                | ExecOp::EndOpacity { .. }
+                | ExecOp::BeginBlend { .. }
+                | ExecOp::EndBlend { .. } => {}
+                ExecOp::OffscreenLayer { .. } => {
+                    Self::unsupported_execute_op(op);
+                }
+            }
+        }
+    }
+
+    fn execute_draw_batch(
+        &mut self,
+        _plan: &ExecPlan,
+        draws: std::ops::Range<usize>,
+        layer_stack: std::ops::Range<usize>,
+    ) {
+        if draws.start >= draws.end {
+            return;
+        }
+        self.coarse_batch(
+            draws.start as u32,
+            draws.end as u32,
+            layer_stack.start as u32,
+            layer_stack.end as u32,
+        );
+        self.fine_batch();
+    }
+
+    fn unsupported_execute_op(op: &ExecOp) -> ! {
+        panic!(
+            "CubeCL execute currently supports flat draws and fused clip/opacity/blend layers; unsupported op: {op:?}"
+        );
+    }
+}
+
+fn plan_stack_depths(plan: &ExecPlan) -> (usize, usize) {
+    let mut max_clip_depth = 0;
+    let mut max_group_depth = 0;
+    for op in &plan.ops {
+        if let ExecOp::DrawBatch { layer_stack, .. } = op {
+            let entries = &plan.layer_stack_data[layer_stack.clone()];
+            max_clip_depth = max_clip_depth.max(
+                entries
+                    .iter()
+                    .filter(|entry| matches!(entry, LayerStackEntry::Clip { .. }))
+                    .count(),
+            );
+            max_group_depth = max_group_depth.max(
+                entries
+                    .iter()
+                    .filter(|entry| {
+                        matches!(
+                            entry,
+                            LayerStackEntry::Opacity { .. } | LayerStackEntry::Blend { .. }
+                        )
+                    })
+                    .count(),
+            );
+        }
+    }
+    (max_clip_depth, max_group_depth)
+}
+
+fn encode_layer_payload(entry: LayerStackEntry) -> u32 {
+    match entry {
+        LayerStackEntry::Clip { .. } => 0,
+        LayerStackEntry::Opacity { opacity, .. } => opacity_f32_to_u8(opacity) as u32,
+        LayerStackEntry::Blend { mode, .. } => encode_blend_mode(mode),
+    }
+}
+
+fn encode_blend_mode(mode: BlendMode) -> u32 {
+    mode.mix as u32 | ((mode.compose as u32) << 8)
 }
 
 impl WgpuRenderer {
@@ -185,6 +368,9 @@ pub(crate) struct SceneBuffers {
     pub(crate) cumsum_chunk_lens: CubeBuffer<u32>,
     pub(crate) cumsum_row_chunk_starts: CubeBuffer<u32>,
     pub(crate) cumsum_row_chunk_ends: CubeBuffer<u32>,
+    pub(crate) plan_layer_stack_tags: CubeBuffer<u32>,
+    pub(crate) plan_layer_stack_draws: CubeBuffer<u32>,
+    pub(crate) plan_layer_stack_payloads: CubeBuffer<u32>,
 }
 
 impl SceneBuffers {
@@ -223,15 +409,24 @@ impl SceneBuffers {
             cumsum_chunk_lens: CubeBuffer::new(client, 0),
             cumsum_row_chunk_starts: CubeBuffer::new(client, 0),
             cumsum_row_chunk_ends: CubeBuffer::new(client, 0),
+            plan_layer_stack_tags: CubeBuffer::new(client, 0),
+            plan_layer_stack_draws: CubeBuffer::new(client, 0),
+            plan_layer_stack_payloads: CubeBuffer::new(client, 0),
         }
     }
 
-    fn upload<R: Runtime>(&mut self, client: &::cubecl::client::ComputeClient<R>, scene: &Scene) {
+    fn upload<R: Runtime>(
+        &mut self,
+        client: &::cubecl::client::ComputeClient<R>,
+        scene: &Scene,
+        plan: &ExecPlan,
+    ) {
         let (scan_chunks, scan_chunk_ranges) = build_scan_chunks(scene);
         let cumsum_plan = build_cumsum_plan(scene);
         self.upload_lines(client, &scene.lines);
         self.upload_draws(client, &scene.draw_records);
         self.upload_backdrops(client, &scene.bd_records);
+        self.upload_plan_layer_stack(client, &plan.layer_stack_data);
 
         self.scan_chunk_path_ids.replace(
             client,
@@ -283,6 +478,42 @@ impl SceneBuffers {
             .replace(client, &cumsum_plan.row_chunk_starts);
         self.cumsum_row_chunk_ends
             .replace(client, &cumsum_plan.row_chunk_ends);
+    }
+
+    fn upload_plan_layer_stack<R: Runtime>(
+        &mut self,
+        client: &::cubecl::client::ComputeClient<R>,
+        layer_stack: &[LayerStackEntry],
+    ) {
+        self.plan_layer_stack_tags.replace(
+            client,
+            &layer_stack
+                .iter()
+                .map(|entry| match entry {
+                    LayerStackEntry::Clip { .. } => CUBE_LAYER_CLIP,
+                    LayerStackEntry::Opacity { .. } => CUBE_LAYER_OPACITY,
+                    LayerStackEntry::Blend { .. } => CUBE_LAYER_BLEND,
+                })
+                .collect::<Vec<_>>(),
+        );
+        self.plan_layer_stack_draws.replace(
+            client,
+            &layer_stack
+                .iter()
+                .map(|entry| match *entry {
+                    LayerStackEntry::Clip { draw }
+                    | LayerStackEntry::Opacity { draw, .. }
+                    | LayerStackEntry::Blend { draw, .. } => draw,
+                })
+                .collect::<Vec<_>>(),
+        );
+        self.plan_layer_stack_payloads.replace(
+            client,
+            &layer_stack
+                .iter()
+                .map(|entry| encode_layer_payload(*entry))
+                .collect::<Vec<_>>(),
+        );
     }
 
     fn upload_lines<R: Runtime>(
@@ -605,21 +836,22 @@ impl CoarseBuffers {
 #[cfg(test)]
 mod tests {
     use peniko::{
-        Color,
+        Color, Compose, Mix,
         kurbo::{Affine, Rect, Shape},
     };
 
     use super::CubeBufferLengths;
     use super::WgpuRenderer;
     use crate::cubecl::pipelines::coarse::TILE_WORKGROUP_SIZE;
-    use crate::cubecl::types::CUMSUM_CHUNK_SIZE;
+    use crate::cubecl::types::{
+        CUBE_PTCL_BEGIN_BLEND, CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_BEGIN_OPACITY, CUBE_PTCL_COLOR,
+        CUBE_PTCL_END, CUBE_PTCL_END_BLEND, CUBE_PTCL_END_CLIP, CUBE_PTCL_END_OPACITY,
+        CUBE_PTCL_FILL, CUMSUM_CHUNK_SIZE,
+    };
+    use crate::shared::execution::ExecOp;
+    use crate::shared::image::rgba8_pack;
     use crate::shared::pixel::premul_f32_to_u32;
     use crate::{FillRule, Scene};
-
-    const CUBE_PTCL_END: u32 = 0;
-    const CUBE_PTCL_FILL: u32 = 1;
-    const CUBE_PTCL_COLOR: u32 = 2;
-    const CUBE_PTCL_BEGIN_CLIP: u32 = 3;
 
     #[test]
     fn buffer_lengths_keep_empty_scene_allocations_zero_sized_except_target() {
@@ -1017,11 +1249,343 @@ mod tests {
 
         assert_eq!(
             renderer.coarse.ptcl_tags.read(renderer.client()),
-            vec![CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_END]
+            vec![CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_END, 0]
         );
         assert_eq!(
             renderer.coarse.ptcl_backdrops.read(renderer.client()),
-            vec![1, 0]
+            vec![1, 0, 0]
         );
+    }
+
+    #[test]
+    fn coarse_wgpu_wraps_draw_batch_with_active_clip_stack_when_enabled() {
+        if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+            return;
+        }
+
+        let red = Color::from_rgb8(255, 0, 0);
+        let mut scene = Scene::new(16, 16);
+        scene.push_clip_layer(
+            Rect::new(0.0, 0.0, 8.0, 16.0).to_path(0.0),
+            Affine::IDENTITY,
+            0.0,
+        );
+        scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), red, FillRule::NonZero);
+        scene.pop_layer();
+
+        let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+        renderer.prepare_scene(&scene);
+        renderer.scan();
+        renderer.cumsum();
+
+        let plan = renderer.plan.as_ref().unwrap();
+        let ExecOp::DrawBatch { draws, layer_stack } = &plan.ops[1] else {
+            panic!("expected clipped draw batch");
+        };
+        let draws = draws.clone();
+        let layer_stack = layer_stack.clone();
+        renderer.coarse_batch(
+            draws.start as u32,
+            draws.end as u32,
+            layer_stack.start as u32,
+            layer_stack.end as u32,
+        );
+
+        assert_eq!(
+            renderer.coarse.ptcl_tags.read(renderer.client()),
+            vec![
+                CUBE_PTCL_BEGIN_CLIP,
+                CUBE_PTCL_COLOR,
+                CUBE_PTCL_END_CLIP,
+                CUBE_PTCL_END
+            ]
+        );
+        assert_eq!(
+            renderer.coarse.ptcl_colors.read(renderer.client()),
+            vec![0, premul_f32_to_u32(red.premultiply().components), 0, 0]
+        );
+    }
+
+    #[test]
+    fn coarse_wgpu_wraps_draw_batch_with_opacity_and_blend_stack_when_enabled() {
+        if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+            return;
+        }
+
+        let red = Color::from_rgb8(255, 0, 0);
+        let mut scene = Scene::new(16, 16);
+        scene.push_opacity_layer(
+            Rect::new(0.0, 0.0, 16.0, 16.0).to_path(0.0),
+            Affine::IDENTITY,
+            0.0,
+            0.5,
+        );
+        scene.push_blend_layer(
+            Rect::new(0.0, 0.0, 16.0, 16.0).to_path(0.0),
+            Affine::IDENTITY,
+            0.0,
+            Mix::Multiply,
+            Compose::SrcOver,
+        );
+        scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), red, FillRule::NonZero);
+        scene.pop_layer();
+        scene.pop_layer();
+
+        let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+        renderer.prepare_scene(&scene);
+        renderer.scan();
+        renderer.cumsum();
+
+        let plan = renderer.plan.as_ref().unwrap();
+        let (draws, layer_stack) = plan
+            .ops
+            .iter()
+            .find_map(|op| match op {
+                ExecOp::DrawBatch { draws, layer_stack }
+                    if layer_stack.end - layer_stack.start == 2 =>
+                {
+                    Some((draws.clone(), layer_stack.clone()))
+                }
+                _ => None,
+            })
+            .expect("expected opacity+blend draw batch");
+        renderer.coarse_batch(
+            draws.start as u32,
+            draws.end as u32,
+            layer_stack.start as u32,
+            layer_stack.end as u32,
+        );
+
+        assert_eq!(
+            renderer.coarse.ptcl_tags.read(renderer.client()),
+            vec![
+                CUBE_PTCL_BEGIN_OPACITY,
+                CUBE_PTCL_BEGIN_BLEND,
+                CUBE_PTCL_COLOR,
+                CUBE_PTCL_END_BLEND,
+                CUBE_PTCL_END_OPACITY,
+                CUBE_PTCL_END
+            ]
+        );
+        assert_eq!(
+            renderer.coarse.ptcl_colors.read(renderer.client()),
+            vec![
+                128,
+                Mix::Multiply as u32 | ((Compose::SrcOver as u32) << 8),
+                premul_f32_to_u32(red.premultiply().components),
+                0,
+                0,
+                0
+            ]
+        );
+    }
+
+    #[test]
+    fn fine_wgpu_renders_solid_color_particles_when_enabled() {
+        if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+            return;
+        }
+
+        let red = Color::from_rgb8(255, 0, 0);
+        let blue = Color::from_rgb8(0, 0, 255);
+        let mut scene = Scene::new(32, 16);
+        scene.push_rect(Rect::new(0.0, 0.0, 32.0, 16.0), red, FillRule::NonZero);
+        scene.push_rect(Rect::new(16.0, 0.0, 32.0, 16.0), blue, FillRule::NonZero);
+
+        let mut renderer = WgpuRenderer::new_default_device(32, 16, Color::TRANSPARENT);
+        renderer.render_flat(&scene);
+        let target = renderer.target.read(renderer.client());
+
+        assert_eq!(target[0], premul_f32_to_u32(red.premultiply().components));
+        assert_eq!(target[15], premul_f32_to_u32(red.premultiply().components));
+        assert_eq!(target[16], premul_f32_to_u32(blue.premultiply().components));
+        assert_eq!(target[31], premul_f32_to_u32(blue.premultiply().components));
+    }
+
+    #[test]
+    fn fine_wgpu_rasterizes_fill_particles_when_enabled() {
+        if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+            return;
+        }
+
+        let red = Color::from_rgb8(255, 0, 0);
+        let mut scene = Scene::new(16, 16);
+        scene.push_path(
+            Rect::new(0.0, 0.0, 16.0, 16.0).to_path(0.0),
+            red,
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.0,
+        );
+
+        let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+        renderer.render_flat(&scene);
+        let target = renderer.target.read(renderer.client());
+
+        assert_eq!(
+            target[8 * 16 + 8],
+            premul_f32_to_u32(red.premultiply().components)
+        );
+    }
+
+    #[test]
+    fn fine_wgpu_applies_clip_particles_when_enabled() {
+        if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+            return;
+        }
+
+        let red = Color::from_rgb8(255, 0, 0);
+        let mut scene = Scene::new(16, 16);
+        scene.push_clip_layer(
+            Rect::new(0.0, 0.0, 8.0, 16.0).to_path(0.0),
+            Affine::IDENTITY,
+            0.0,
+        );
+        scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), red, FillRule::NonZero);
+
+        let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+        renderer.render_flat(&scene);
+        let target = renderer.target.read(renderer.client());
+
+        assert_eq!(
+            target[8 * 16 + 4],
+            premul_f32_to_u32(red.premultiply().components)
+        );
+        assert_eq!(target[8 * 16 + 12], 0);
+    }
+
+    #[test]
+    fn fine_wgpu_applies_opacity_layer_stack_when_enabled() {
+        if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+            return;
+        }
+
+        let red = Color::from_rgb8(255, 0, 0);
+        let mut scene = Scene::new(16, 16);
+        scene.push_opacity_layer(
+            Rect::new(0.0, 0.0, 8.0, 16.0).to_path(0.0),
+            Affine::IDENTITY,
+            0.0,
+            0.5,
+        );
+        scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), red, FillRule::NonZero);
+        scene.pop_layer();
+
+        let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+        renderer.render_flat(&scene);
+        let target = renderer.target.read(renderer.client());
+
+        assert_eq!(target[8 * 16 + 4], rgba8_pack([128, 0, 0, 128]));
+        assert_eq!(target[8 * 16 + 12], 0);
+    }
+
+    #[test]
+    fn fine_wgpu_applies_blend_layer_stack_when_enabled() {
+        if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+            return;
+        }
+
+        let red = Color::from_rgb8(255, 0, 0);
+        let blue = Color::from_rgb8(0, 0, 255);
+        let mut scene = Scene::new(16, 16);
+        scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), blue, FillRule::NonZero);
+        scene.push_blend_layer(
+            Rect::new(0.0, 0.0, 8.0, 16.0).to_path(0.0),
+            Affine::IDENTITY,
+            0.0,
+            Mix::Multiply,
+            Compose::SrcOver,
+        );
+        scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), red, FillRule::NonZero);
+        scene.pop_layer();
+
+        let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+        renderer.render_flat(&scene);
+        let target = renderer.target.read(renderer.client());
+
+        assert_eq!(target[8 * 16 + 4], rgba8_pack([0, 0, 0, 255]));
+        assert_eq!(
+            target[8 * 16 + 12],
+            premul_f32_to_u32(blue.premultiply().components)
+        );
+    }
+
+    #[test]
+    fn fine_wgpu_does_not_leak_clip_after_layer_pop_when_enabled() {
+        if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+            return;
+        }
+
+        let red = Color::from_rgb8(255, 0, 0);
+        let blue = Color::from_rgb8(0, 0, 255);
+        let mut scene = Scene::new(16, 16);
+        scene.push_clip_layer(
+            Rect::new(0.0, 0.0, 8.0, 16.0).to_path(0.0),
+            Affine::IDENTITY,
+            0.0,
+        );
+        scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), red, FillRule::NonZero);
+        scene.pop_layer();
+        scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), blue, FillRule::NonZero);
+
+        let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+        renderer.render_flat(&scene);
+        let target = renderer.target.read(renderer.client());
+
+        assert_eq!(
+            target[8 * 16 + 4],
+            premul_f32_to_u32(blue.premultiply().components)
+        );
+        assert_eq!(
+            target[8 * 16 + 12],
+            premul_f32_to_u32(blue.premultiply().components)
+        );
+    }
+
+    #[test]
+    fn fine_wgpu_intersects_nested_clip_layers_when_enabled() {
+        if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+            return;
+        }
+
+        let red = Color::from_rgb8(255, 0, 0);
+        let mut scene = Scene::new(16, 16);
+        scene.push_clip_layer(
+            Rect::new(0.0, 0.0, 12.0, 16.0).to_path(0.0),
+            Affine::IDENTITY,
+            0.0,
+        );
+        scene.push_clip_layer(
+            Rect::new(4.0, 0.0, 16.0, 16.0).to_path(0.0),
+            Affine::IDENTITY,
+            0.0,
+        );
+        scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), red, FillRule::NonZero);
+        scene.pop_layer();
+        scene.pop_layer();
+
+        let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+        renderer.render_flat(&scene);
+        let target = renderer.target.read(renderer.client());
+        let red_px = premul_f32_to_u32(red.premultiply().components);
+
+        assert_eq!(target[8 * 16 + 2], 0);
+        assert_eq!(target[8 * 16 + 8], red_px);
+        assert_eq!(target[8 * 16 + 14], 0);
+    }
+
+    #[test]
+    fn fine_wgpu_uses_premultiplied_clear_color_when_enabled() {
+        if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+            return;
+        }
+
+        let clear = Color::from_rgba8(255, 0, 0, 128);
+        let scene = Scene::new(4, 4);
+        let mut renderer = WgpuRenderer::new_default_device(4, 4, clear);
+        renderer.render_flat(&scene);
+        let target = renderer.target.read(renderer.client());
+
+        assert_eq!(target[0], premul_f32_to_u32(clear.premultiply().components));
     }
 }
