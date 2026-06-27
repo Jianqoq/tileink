@@ -3,4 +3,3 @@ pub(crate) mod cumsum;
 pub(crate) mod filter;
 pub(crate) mod fine;
 pub(crate) mod scan;
-pub(crate) mod utils;
