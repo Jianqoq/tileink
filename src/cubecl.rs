@@ -1,3 +1,4 @@
+mod brush;
 mod buffer;
 mod pipelines;
 mod renderer;

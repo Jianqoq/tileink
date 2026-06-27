@@ -2,6 +2,11 @@ use ::cubecl::prelude::*;
 
 use crate::{
     cubecl::{
+        brush::{
+            GPU_BRUSH_FOUR_CORNER, GPU_BRUSH_LINEAR, GPU_BRUSH_PARAM_STRIDE, GPU_BRUSH_PATTERN,
+            GPU_BRUSH_RADIAL, GPU_BRUSH_SWEEP, GPU_BRUSH_U32_STRIDE, GPU_EXTEND_REFLECT,
+            GPU_EXTEND_REPEAT, GpuBrushResources,
+        },
         buffer::CubeBuffer,
         renderer::{ScanBuffers, SceneBuffers},
         types::{
@@ -22,25 +27,6 @@ pub(crate) const FILTER_INVERT: u32 = 5;
 pub(crate) const FILTER_OPACITY: u32 = 6;
 pub(crate) const FILTER_SATURATE: u32 = 7;
 pub(crate) const FILTER_SEPIA: u32 = 8;
-
-pub(crate) const FILTER_BRUSH_U32_STRIDE: usize = 8;
-pub(crate) const FILTER_BRUSH_PARAM_STRIDE: usize = 12;
-pub(crate) const FILTER_BRUSH_SOLID: u32 = 1;
-pub(crate) const FILTER_BRUSH_LINEAR: u32 = 2;
-pub(crate) const FILTER_BRUSH_RADIAL: u32 = 3;
-pub(crate) const FILTER_BRUSH_SWEEP: u32 = 4;
-pub(crate) const FILTER_BRUSH_FOUR_CORNER: u32 = 5;
-pub(crate) const FILTER_BRUSH_PATTERN: u32 = 6;
-
-pub(crate) const FILTER_EXTEND_PAD: u32 = 0;
-pub(crate) const FILTER_EXTEND_REPEAT: u32 = 1;
-pub(crate) const FILTER_EXTEND_REFLECT: u32 = 2;
-
-pub(crate) struct FilterBrushResources<'a> {
-    pub(crate) data: &'a CubeBuffer<u32>,
-    pub(crate) params: &'a CubeBuffer<f32>,
-    pub(crate) payloads: &'a CubeBuffer<u32>,
-}
 
 pub(crate) struct FilterPathResources<'a> {
     pub(crate) range_starts: &'a CubeBuffer<u32>,
@@ -321,7 +307,7 @@ impl FilterPipeline {
         size: (u32, u32),
         bounds: Bounds,
         brush_index: u32,
-        brushes: FilterBrushResources<'_>,
+        brushes: GpuBrushResources<'_>,
     ) {
         let Some(region) = FilterRegion::new(size, bounds) else {
             return;
@@ -863,15 +849,15 @@ fn sample_filter_brush(
     brush_params: &Array<f32>,
     brush_payloads: &Array<u32>,
 ) -> u32 {
-    let data_base = (brush_index * FILTER_BRUSH_U32_STRIDE as u32) as usize;
+    let data_base = (brush_index * GPU_BRUSH_U32_STRIDE as u32) as usize;
     let kind = brush_data[data_base];
     let extend = brush_data[data_base + 1];
     let payload_offset = brush_data[data_base + 2];
     let payload_len = brush_data[data_base + 3];
-    let base = (brush_index * FILTER_BRUSH_PARAM_STRIDE as u32) as usize;
+    let base = (brush_index * GPU_BRUSH_PARAM_STRIDE as u32) as usize;
     let mut color = brush_data[data_base + 4];
 
-    if kind == FILTER_BRUSH_LINEAR {
+    if kind == GPU_BRUSH_LINEAR {
         let sx = brush_params[base];
         let sy = brush_params[base + 1];
         let ex = brush_params[base + 2];
@@ -884,7 +870,7 @@ fn sample_filter_brush(
             t = ((x - sx) * dx + (y - sy) * dy) / denominator;
         }
         color = sample_filter_ramp(brush_payloads, payload_offset, payload_len, t, extend);
-    } else if kind == FILTER_BRUSH_RADIAL {
+    } else if kind == GPU_BRUSH_RADIAL {
         color = sample_filter_radial(
             x,
             y,
@@ -895,7 +881,7 @@ fn sample_filter_brush(
             brush_params,
             brush_payloads,
         );
-    } else if kind == FILTER_BRUSH_SWEEP {
+    } else if kind == GPU_BRUSH_SWEEP {
         let cx = brush_params[base];
         let cy = brush_params[base + 1];
         let start_angle = brush_params[base + 2];
@@ -917,9 +903,9 @@ fn sample_filter_brush(
             t = (angle - start_angle) / span;
         }
         color = sample_filter_ramp(brush_payloads, payload_offset, payload_len, t, extend);
-    } else if kind == FILTER_BRUSH_FOUR_CORNER {
+    } else if kind == GPU_BRUSH_FOUR_CORNER {
         color = sample_filter_four_corner(x, y, base, payload_offset, brush_params, brush_payloads);
-    } else if kind == FILTER_BRUSH_PATTERN {
+    } else if kind == GPU_BRUSH_PATTERN {
         color = sample_filter_pattern(
             x,
             y,
@@ -1411,9 +1397,9 @@ fn rect_signed_distance(
 #[cube]
 fn apply_filter_extend(t: f32, extend: u32) -> f32 {
     let mut out = t.clamp(0.0, 1.0);
-    if extend == FILTER_EXTEND_REPEAT {
+    if extend == GPU_EXTEND_REPEAT {
         out = rem_euclid_f32(t, 1.0);
-    } else if extend == FILTER_EXTEND_REFLECT {
+    } else if extend == GPU_EXTEND_REFLECT {
         let value = rem_euclid_f32(t, 2.0);
         if value <= 1.0 {
             out = value;

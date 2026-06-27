@@ -1,12 +1,11 @@
 use ::cubecl::prelude::Runtime;
-use peniko::{BlendMode, Color, Extend, kurbo::Shape};
+use peniko::{BlendMode, Color, kurbo::Shape};
 
 use crate::{
     scene::Scene,
     shared::{
         bd_record::BackdropRecord,
         bounds::Bounds,
-        brush::Brush,
         draw_record::{DrawRecord, DrawTag},
         execution::{ExecOp, ExecPlan, LayerStackEntry, ROOT_COMMAND_LIST_ID},
         fill::FillRule,
@@ -19,17 +18,14 @@ use crate::{
 };
 
 use super::{
+    brush::{GpuBrushBuffers, GpuBrushUpload},
     buffer::CubeBuffer,
     pipelines::{
         coarse::{CoarseBatch, CoarsePipeline},
         cumsum::CumsumPipeline,
         filter::{
-            FILTER_BRIGHTNESS, FILTER_BRUSH_FOUR_CORNER, FILTER_BRUSH_LINEAR,
-            FILTER_BRUSH_PARAM_STRIDE, FILTER_BRUSH_PATTERN, FILTER_BRUSH_RADIAL,
-            FILTER_BRUSH_SOLID, FILTER_BRUSH_SWEEP, FILTER_BRUSH_U32_STRIDE, FILTER_CONTRAST,
-            FILTER_EXTEND_PAD, FILTER_EXTEND_REFLECT, FILTER_EXTEND_REPEAT, FILTER_GRAYSCALE,
-            FILTER_HUE_ROTATE, FILTER_INVERT, FILTER_OPACITY, FILTER_SATURATE, FILTER_SEPIA,
-            FilterBrushResources, FilterPathResources, FilterPipeline,
+            FILTER_BRIGHTNESS, FILTER_CONTRAST, FILTER_GRAYSCALE, FILTER_HUE_ROTATE, FILTER_INVERT,
+            FILTER_OPACITY, FILTER_SATURATE, FILTER_SEPIA, FilterPathResources, FilterPipeline,
         },
         fine::{FinePipeline, FineRenderConfig},
         scan::ScanPipeline,
@@ -61,7 +57,8 @@ pub struct Renderer<R: Runtime> {
     scene: SceneBuffers,
     scan: ScanBuffers,
     coarse: CoarseBuffers,
-    filter_brushes: FilterBrushBuffers,
+    draw_brushes: GpuBrushBuffers,
+    filter_brushes: GpuBrushBuffers,
     filter_paths: FilterPathBuffers,
     target: CubeBuffer<u32>,
     scratch: Vec<CubeBuffer<u32>>,
@@ -83,7 +80,8 @@ impl<R: Runtime> Renderer<R> {
             scene: SceneBuffers::new(&client),
             scan: ScanBuffers::new(&client),
             coarse: CoarseBuffers::new(&client),
-            filter_brushes: FilterBrushBuffers::new(&client),
+            draw_brushes: GpuBrushBuffers::new(&client),
+            filter_brushes: GpuBrushBuffers::new(&client),
             filter_paths: FilterPathBuffers::new(&client),
             target: CubeBuffer::new(&client, width as usize * height as usize),
             scratch: Vec::new(),
@@ -110,12 +108,14 @@ impl<R: Runtime> Renderer<R> {
         let plan = scene.compile(ROOT_COMMAND_LIST_ID);
         let (max_clip_depth, max_group_depth) = plan_stack_depths(&plan);
         let scratch_count = required_scratch_count(&plan);
-        let filter_brush_upload = FilterBrushUpload::from_plan(&plan);
+        let draw_brush_upload = GpuBrushUpload::from_scene_draws(scene);
+        let filter_brush_upload = GpuBrushUpload::from_filter_plan(&plan.ops);
         let filter_path_upload = FilterPathUpload::from_plan(&plan);
         self.lengths = lengths;
         self.max_clip_depth = max_clip_depth;
         self.max_group_depth = max_group_depth;
         self.prepare_scratch_buffers(scratch_count);
+        self.draw_brushes.upload(&self.client, draw_brush_upload);
         self.filter_brushes
             .upload(&self.client, filter_brush_upload);
         self.filter_paths.upload(&self.client, filter_path_upload);
@@ -191,6 +191,7 @@ impl<R: Runtime> Renderer<R> {
             &self.client,
             &self.scan,
             &self.coarse,
+            self.draw_brushes.resources(),
             &mut self.target,
             config,
         );
@@ -212,6 +213,7 @@ impl<R: Runtime> Renderer<R> {
                 &self.client,
                 &self.scan,
                 &self.coarse,
+                self.draw_brushes.resources(),
                 &mut self.target,
                 config,
             ),
@@ -219,6 +221,7 @@ impl<R: Runtime> Renderer<R> {
                 &self.client,
                 &self.scan,
                 &self.coarse,
+                self.draw_brushes.resources(),
                 &mut self.scratch[ix],
                 config,
             ),
@@ -1149,170 +1152,6 @@ fn next_filter_path_index(region: &Region, cursor: &mut usize) -> Option<u32> {
         Some(index)
     } else {
         None
-    }
-}
-
-struct FilterBrushBuffers {
-    data: CubeBuffer<u32>,
-    params: CubeBuffer<f32>,
-    payloads: CubeBuffer<u32>,
-}
-
-impl FilterBrushBuffers {
-    fn new<R: Runtime>(client: &::cubecl::client::ComputeClient<R>) -> Self {
-        Self {
-            data: CubeBuffer::new(client, 0),
-            params: CubeBuffer::new(client, 0),
-            payloads: CubeBuffer::new(client, 0),
-        }
-    }
-
-    fn upload<R: Runtime>(
-        &mut self,
-        client: &::cubecl::client::ComputeClient<R>,
-        upload: FilterBrushUpload,
-    ) {
-        self.data.replace(client, &upload.data);
-        self.params.replace(client, &upload.params);
-        self.payloads.replace(client, &upload.payloads);
-    }
-
-    fn resources(&self) -> FilterBrushResources<'_> {
-        FilterBrushResources {
-            data: &self.data,
-            params: &self.params,
-            payloads: &self.payloads,
-        }
-    }
-}
-
-#[derive(Default)]
-struct FilterBrushUpload {
-    data: Vec<u32>,
-    params: Vec<f32>,
-    payloads: Vec<u32>,
-}
-
-impl FilterBrushUpload {
-    fn from_plan(plan: &ExecPlan) -> Self {
-        let mut upload = Self::default();
-        collect_filter_brushes_for_ops(&plan.ops, &mut upload);
-        upload
-    }
-
-    fn push_brush(&mut self, brush: &Brush) {
-        let mut params = [0.0; FILTER_BRUSH_PARAM_STRIDE];
-        let mut kind = FILTER_BRUSH_SOLID;
-        let mut extend = FILTER_EXTEND_PAD;
-        let mut color = 0;
-        let mut image_width = 0;
-        let mut image_height = 0;
-        let mut opacity = 255;
-        let mut payload_offset = 0;
-        let mut payload_len = 0;
-
-        match brush {
-            Brush::Solid(value) => {
-                color = premul_color_to_rgba8_pack(*value);
-            }
-            Brush::Linear(gradient) => {
-                kind = FILTER_BRUSH_LINEAR;
-                extend = encode_filter_extend(gradient.extend);
-                params[0] = gradient.start[0];
-                params[1] = gradient.start[1];
-                params[2] = gradient.end[0];
-                params[3] = gradient.end[1];
-                (payload_offset, payload_len) = self.push_payload(&gradient.ramp);
-            }
-            Brush::Radial(gradient) => {
-                kind = FILTER_BRUSH_RADIAL;
-                extend = encode_filter_extend(gradient.extend);
-                params[0] = gradient.start_center[0];
-                params[1] = gradient.start_center[1];
-                params[2] = gradient.end_center[0];
-                params[3] = gradient.end_center[1];
-                params[4] = gradient.start_radius;
-                params[5] = gradient.end_radius;
-                params[6..12].copy_from_slice(&gradient.transform);
-                (payload_offset, payload_len) = self.push_payload(&gradient.ramp);
-            }
-            Brush::Sweep(gradient) => {
-                kind = FILTER_BRUSH_SWEEP;
-                extend = encode_filter_extend(gradient.extend);
-                params[0] = gradient.center[0];
-                params[1] = gradient.center[1];
-                params[2] = gradient.start_angle;
-                params[3] = gradient.end_angle;
-                (payload_offset, payload_len) = self.push_payload(&gradient.ramp);
-            }
-            Brush::FourCorner(gradient) => {
-                kind = FILTER_BRUSH_FOUR_CORNER;
-                params[0..4].copy_from_slice(&gradient.bounds);
-                (payload_offset, payload_len) = self.push_payload(&gradient.colors);
-            }
-            Brush::Pattern(pattern) => {
-                kind = FILTER_BRUSH_PATTERN;
-                params[0..6].copy_from_slice(&pattern.transform);
-                image_width = pattern.image.width;
-                image_height = pattern.image.height;
-                opacity = pattern.opacity as u32;
-                (payload_offset, payload_len) = self.push_payload(&pattern.image.pixels);
-            }
-        }
-
-        self.data.extend_from_slice(&[
-            kind,
-            extend,
-            payload_offset,
-            payload_len,
-            color,
-            image_width,
-            image_height,
-            opacity,
-        ]);
-        debug_assert_eq!(self.data.len() % FILTER_BRUSH_U32_STRIDE, 0);
-        self.params.extend_from_slice(&params);
-    }
-
-    fn push_payload(&mut self, payload: &[u32]) -> (u32, u32) {
-        let offset = self.payloads.len() as u32;
-        self.payloads.extend_from_slice(payload);
-        (offset, payload.len() as u32)
-    }
-}
-
-fn collect_filter_brushes_for_ops(ops: &[ExecOp], upload: &mut FilterBrushUpload) {
-    for op in ops {
-        if let ExecOp::OffscreenLayer {
-            layer, children, ..
-        } = op
-        {
-            match layer {
-                Layer::Filter { filter, .. } => {
-                    collect_filter_brushes_for_ops(children, upload);
-                    collect_filter_brush(filter, upload);
-                }
-                Layer::Backdrop { filter, .. } => {
-                    collect_filter_brush(filter, upload);
-                    collect_filter_brushes_for_ops(children, upload);
-                }
-                _ => {}
-            }
-        }
-    }
-}
-
-fn collect_filter_brush(filter: &Filter, upload: &mut FilterBrushUpload) {
-    if let Filter::DropShadow { brush, .. } = filter {
-        upload.push_brush(brush);
-    }
-}
-
-fn encode_filter_extend(extend: Extend) -> u32 {
-    match extend {
-        Extend::Pad => FILTER_EXTEND_PAD,
-        Extend::Repeat => FILTER_EXTEND_REPEAT,
-        Extend::Reflect => FILTER_EXTEND_REFLECT,
     }
 }
 

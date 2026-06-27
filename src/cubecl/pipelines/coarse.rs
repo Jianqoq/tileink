@@ -548,7 +548,11 @@ fn coarse_emit(
                     ptcl_fill_rule = draw_fill_rules[draw_i];
                     ptcl_segment_start = segment_start;
                     ptcl_segment_end = segment_end;
-                    ptcl_color = draw_brush_colors[draw_i];
+                    if ptcl_tag == CUBE_PTCL_COLOR {
+                        ptcl_color = draw_brush_colors[draw_i];
+                    } else if draw_tag == CUBE_DRAW_BRUSH {
+                        ptcl_color = draw_ix;
+                    }
                 }
             }
         }

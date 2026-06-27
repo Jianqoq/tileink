@@ -1,6 +1,11 @@
 use ::cubecl::prelude::*;
 
 use crate::cubecl::{
+    brush::{
+        GPU_BRUSH_FOUR_CORNER, GPU_BRUSH_LINEAR, GPU_BRUSH_PARAM_STRIDE, GPU_BRUSH_PATTERN,
+        GPU_BRUSH_RADIAL, GPU_BRUSH_SWEEP, GPU_BRUSH_U32_STRIDE, GPU_EXTEND_REFLECT,
+        GPU_EXTEND_REPEAT, GpuBrushResources,
+    },
     buffer::CubeBuffer,
     renderer::{CoarseBuffers, ScanBuffers},
     types::{
@@ -28,11 +33,12 @@ impl FinePipeline {
         client: &ComputeClient<R>,
         scan: &ScanBuffers,
         coarse: &CoarseBuffers,
+        brushes: GpuBrushResources<'_>,
         target: &mut CubeBuffer<u32>,
         config: FineRenderConfig,
     ) {
         Self::clear(client, target, config.lengths, config.clear_color);
-        Self::render(client, scan, coarse, target, config);
+        Self::render(client, scan, coarse, brushes, target, config);
     }
 
     pub(crate) fn clear<R: Runtime>(
@@ -60,6 +66,7 @@ impl FinePipeline {
         client: &ComputeClient<R>,
         scan: &ScanBuffers,
         coarse: &CoarseBuffers,
+        brushes: GpuBrushResources<'_>,
         target: &mut CubeBuffer<u32>,
         config: FineRenderConfig,
     ) {
@@ -95,6 +102,9 @@ impl FinePipeline {
             unsafe { scan.segment_p1x.arg() },
             unsafe { scan.segment_p1y.arg() },
             unsafe { scan.segment_y_edge.arg() },
+            unsafe { brushes.data.arg() },
+            unsafe { brushes.params.arg() },
+            unsafe { brushes.payloads.arg() },
             unsafe { target.arg() },
         );
     }
@@ -137,6 +147,9 @@ fn fine_render(
     segment_p1x: &Array<f32>,
     segment_p1y: &Array<f32>,
     segment_y_edge: &Array<f32>,
+    brush_data: &Array<u32>,
+    brush_params: &Array<f32>,
+    brush_payloads: &Array<u32>,
     target: &mut Array<u32>,
 ) {
     let tile_ix = CUBE_POS as u32;
@@ -253,7 +266,15 @@ fn fine_render(
                     }
                 } else {
                     let alpha = combine_alpha(alpha, clip_mask);
-                    let src = scale_premul_u8(ptcl_colors[ptcl_i], alpha);
+                    let color = sample_brush(
+                        ptcl_colors[ptcl_i],
+                        global_x as f32 + 0.5,
+                        global_y as f32 + 0.5,
+                        brush_data,
+                        brush_params,
+                        brush_payloads,
+                    );
+                    let src = scale_premul_u8(color, alpha);
                     pixel = src_over_premul_u8(pixel, src);
                 }
             }
@@ -347,6 +368,292 @@ fn coverage_to_alpha(value: f32, fill_rule: u32) -> u32 {
         alpha = (value - f32::new(2.0_f32) * (f32::new(0.5_f32) * value).round()).abs();
     }
     (alpha.clamp(0.0, 1.0) * 255.0 + 0.5) as u32
+}
+
+#[cube]
+fn sample_brush(
+    brush_index: u32,
+    x: f32,
+    y: f32,
+    brush_data: &Array<u32>,
+    brush_params: &Array<f32>,
+    brush_payloads: &Array<u32>,
+) -> u32 {
+    let data_base = (brush_index * GPU_BRUSH_U32_STRIDE as u32) as usize;
+    let kind = brush_data[data_base];
+    let extend = brush_data[data_base + 1];
+    let payload_offset = brush_data[data_base + 2];
+    let payload_len = brush_data[data_base + 3];
+    let base = (brush_index * GPU_BRUSH_PARAM_STRIDE as u32) as usize;
+    let mut color = brush_data[data_base + 4];
+
+    if kind == GPU_BRUSH_LINEAR {
+        let sx = brush_params[base];
+        let sy = brush_params[base + 1];
+        let ex = brush_params[base + 2];
+        let ey = brush_params[base + 3];
+        let dx = ex - sx;
+        let dy = ey - sy;
+        let denominator = dx * dx + dy * dy;
+        let mut t = 0.0;
+        if denominator > f32::new(0.000_000_119_209_29_f32) {
+            t = ((x - sx) * dx + (y - sy) * dy) / denominator;
+        }
+        color = sample_ramp(brush_payloads, payload_offset, payload_len, t, extend);
+    } else if kind == GPU_BRUSH_RADIAL {
+        color = sample_radial(
+            x,
+            y,
+            base,
+            extend,
+            payload_offset,
+            payload_len,
+            brush_params,
+            brush_payloads,
+        );
+    } else if kind == GPU_BRUSH_SWEEP {
+        let cx = brush_params[base];
+        let cy = brush_params[base + 1];
+        let start_angle = brush_params[base + 2];
+        let end_angle = brush_params[base + 3];
+        let span = end_angle - start_angle;
+        let mut t = 0.0;
+        if span.abs() > f32::new(0.000_000_119_209_29_f32) {
+            let tau = f32::new(6.283_185_5_f32);
+            let mut angle = (y - cy).atan2(x - cx);
+            if span > 0.0 {
+                while angle < start_angle {
+                    angle += tau;
+                }
+            } else {
+                while angle > start_angle {
+                    angle -= tau;
+                }
+            }
+            t = (angle - start_angle) / span;
+        }
+        color = sample_ramp(brush_payloads, payload_offset, payload_len, t, extend);
+    } else if kind == GPU_BRUSH_FOUR_CORNER {
+        color = sample_four_corner(x, y, base, payload_offset, brush_params, brush_payloads);
+    } else if kind == GPU_BRUSH_PATTERN {
+        color = sample_pattern(
+            x,
+            y,
+            base,
+            payload_offset,
+            payload_len,
+            brush_data[data_base + 5],
+            brush_data[data_base + 6],
+            brush_data[data_base + 7],
+            brush_params,
+            brush_payloads,
+        );
+    }
+
+    color
+}
+
+#[cube]
+fn sample_radial(
+    x: f32,
+    y: f32,
+    base: usize,
+    extend: u32,
+    payload_offset: u32,
+    payload_len: u32,
+    brush_params: &Array<f32>,
+    brush_payloads: &Array<u32>,
+) -> u32 {
+    let tx = brush_params[base + 6] * x + brush_params[base + 8] * y + brush_params[base + 10];
+    let ty = brush_params[base + 7] * x + brush_params[base + 9] * y + brush_params[base + 11];
+    let sx = brush_params[base];
+    let sy = brush_params[base + 1];
+    let ex = brush_params[base + 2];
+    let ey = brush_params[base + 3];
+    let start_radius = brush_params[base + 4];
+    let end_radius = brush_params[base + 5];
+    let qx = tx - sx;
+    let qy = ty - sy;
+    let dcx = ex - sx;
+    let dcy = ey - sy;
+    let dr = end_radius - start_radius;
+    let a = dcx * dcx + dcy * dcy - dr * dr;
+    let b = -2.0 * (qx * dcx + qy * dcy + start_radius * dr);
+    let c = qx * qx + qy * qy - start_radius * start_radius;
+    let mut has_t = false;
+    let mut t = 0.0;
+
+    if a.abs() <= f32::new(0.000001_f32) {
+        if b.abs() > f32::new(0.000001_f32) {
+            let candidate = -c / b;
+            if start_radius + candidate * dr >= 0.0 {
+                has_t = true;
+                t = candidate;
+            }
+        }
+    } else {
+        let discriminant = b * b - 4.0 * a * c;
+        if discriminant >= 0.0 {
+            let root = discriminant.sqrt();
+            let t0 = (-b - root) / (2.0 * a);
+            let t1 = (-b + root) / (2.0 * a);
+            let valid0 = start_radius + t0 * dr >= 0.0;
+            let valid1 = start_radius + t1 * dr >= 0.0;
+            if valid0 {
+                has_t = true;
+                if valid1 {
+                    t = t0.max(t1);
+                } else {
+                    t = t0;
+                }
+            } else if valid1 {
+                has_t = true;
+                t = t1;
+            }
+        }
+    }
+
+    let mut color = 0u32;
+    if has_t {
+        color = sample_ramp(brush_payloads, payload_offset, payload_len, t, extend);
+    }
+    color
+}
+
+#[cube]
+fn sample_four_corner(
+    x: f32,
+    y: f32,
+    base: usize,
+    payload_offset: u32,
+    brush_params: &Array<f32>,
+    brush_payloads: &Array<u32>,
+) -> u32 {
+    let x0 = brush_params[base];
+    let y0 = brush_params[base + 1];
+    let x1 = brush_params[base + 2];
+    let y1 = brush_params[base + 3];
+    let width = x1 - x0;
+    let height = y1 - y0;
+    let mut u = 0.0;
+    let mut v = 0.0;
+    if width.abs() > f32::new(0.000_000_119_209_29_f32) {
+        u = ((x - x0) / width).clamp(0.0, 1.0);
+    }
+    if height.abs() > f32::new(0.000_000_119_209_29_f32) {
+        v = ((y - y0) / height).clamp(0.0, 1.0);
+    }
+    let tl = brush_payloads[payload_offset as usize];
+    let tr = brush_payloads[(payload_offset + 1) as usize];
+    let br = brush_payloads[(payload_offset + 2) as usize];
+    let bl = brush_payloads[(payload_offset + 3) as usize];
+    let top = lerp_premul_u8(tl, tr, u);
+    let bottom = lerp_premul_u8(bl, br, u);
+    lerp_premul_u8(top, bottom, v)
+}
+
+#[cube]
+fn sample_pattern(
+    x: f32,
+    y: f32,
+    base: usize,
+    payload_offset: u32,
+    payload_len: u32,
+    width: u32,
+    height: u32,
+    opacity: u32,
+    brush_params: &Array<f32>,
+    brush_payloads: &Array<u32>,
+) -> u32 {
+    let mut color = 0u32;
+    if payload_len > 0 && width > 0 && height > 0 {
+        let tx = brush_params[base] * x + brush_params[base + 2] * y + brush_params[base + 4];
+        let ty = brush_params[base + 1] * x + brush_params[base + 3] * y + brush_params[base + 5];
+        let local_x = repeat_coord_i32(tx.floor() as i32, width);
+        let local_y = repeat_coord_i32(ty.floor() as i32, height);
+        let local_ix = (local_y * width + local_x).min(payload_len - 1);
+        color = scale_premul_u8(
+            brush_payloads[(payload_offset + local_ix) as usize],
+            opacity,
+        );
+    }
+    color
+}
+
+#[cube]
+fn sample_ramp(
+    brush_payloads: &Array<u32>,
+    payload_offset: u32,
+    payload_len: u32,
+    t: f32,
+    extend: u32,
+) -> u32 {
+    let mut color = 0u32;
+    if payload_len > 0 {
+        let last = payload_len - 1;
+        let position = apply_extend(t, extend) * last as f32;
+        let left_ix = position.floor() as u32;
+        let right_ix = (left_ix + 1).min(last);
+        let frac = position - left_ix as f32;
+        let left = brush_payloads[(payload_offset + left_ix) as usize];
+        let right = brush_payloads[(payload_offset + right_ix) as usize];
+        if frac <= f32::new(0.000_000_119_209_29_f32) || left_ix == right_ix {
+            color = left;
+        } else {
+            color = lerp_premul_u8(left, right, frac);
+        }
+    }
+    color
+}
+
+#[cube]
+fn apply_extend(t: f32, extend: u32) -> f32 {
+    let mut out = t.clamp(0.0, 1.0);
+    if extend == GPU_EXTEND_REPEAT {
+        out = rem_euclid_f32(t, 1.0);
+    } else if extend == GPU_EXTEND_REFLECT {
+        let value = rem_euclid_f32(t, 2.0);
+        if value <= 1.0 {
+            out = value;
+        } else {
+            out = 2.0 - value;
+        }
+    }
+    out
+}
+
+#[cube]
+fn rem_euclid_f32(value: f32, modulus: f32) -> f32 {
+    value - (value / modulus).floor() * modulus
+}
+
+#[cube]
+fn repeat_coord_i32(value: i32, size: u32) -> u32 {
+    let size_i = size as i32;
+    let mut out = value % size_i;
+    if out < 0 {
+        out += size_i;
+    }
+    out as u32
+}
+
+#[cube]
+fn lerp_premul_u8(a: u32, b: u32, t: f32) -> u32 {
+    let inv = 1.0 / 255.0;
+    let ar = (a & 255) as f32 * inv;
+    let ag = ((a >> 8) & 255) as f32 * inv;
+    let ab = ((a >> 16) & 255) as f32 * inv;
+    let aa = ((a >> 24) & 255) as f32 * inv;
+    let br = (b & 255) as f32 * inv;
+    let bg = ((b >> 8) & 255) as f32 * inv;
+    let bb = ((b >> 16) & 255) as f32 * inv;
+    let ba = ((b >> 24) & 255) as f32 * inv;
+    pack_premul_rgba8(
+        ar + (br - ar) * t,
+        ag + (bg - ag) * t,
+        ab + (bb - ab) * t,
+        aa + (ba - aa) * t,
+    )
 }
 
 #[cube]
