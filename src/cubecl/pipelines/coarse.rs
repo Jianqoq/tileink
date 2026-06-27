@@ -347,14 +347,13 @@ fn coarse_emit(
         terminate!();
     }
 
-    let lane = UNIT_POS as usize;
     let invalid = u32::new(-1);
     let tile_x = tile_ix % tiles_width;
     let tile_y = tile_ix / tiles_width;
     let mut cursor = tile_ptcl_range_starts[tile_ix as usize];
     let start = cursor;
 
-    let mut flags = SharedMemory::<u32>::new(workgroup_size);
+    let mut plane_totals = SharedMemory::<u32>::new(workgroup_size);
     let mut chunk_start = 0u32;
     while chunk_start < draw_count {
         let draw_ix = chunk_start + UNIT_POS;
@@ -413,30 +412,36 @@ fn coarse_emit(
             }
         }
 
-        flags[lane] = valid;
+        // Plane scans avoid the 8-step shared-memory scan for a 256-lane chunk.
+        let in_plane_exclusive = plane_exclusive_sum(valid);
+        let plane_total = plane_sum(valid);
+        if UNIT_POS_PLANE == 0 {
+            plane_totals[PLANE_POS as usize] = plane_total;
+        }
         sync_cube();
 
-        let step = RuntimeCell::<u32>::new(1);
-        while step.read() < workgroup_size as u32 {
-            let step_value = step.read();
-            let add = if UNIT_POS >= step_value {
-                flags[(UNIT_POS - step_value) as usize]
-            } else {
-                u32::new(0)
-            };
-            sync_cube();
-            if UNIT_POS >= step_value {
-                flags[lane] += add;
-            }
-            sync_cube();
-            step.store(step_value * 2);
+        let mut plane_offset = 0u32;
+        let mut plane_ix = 0u32;
+        while plane_ix < PLANE_POS {
+            plane_offset += plane_totals[plane_ix as usize];
+            plane_ix += 1;
         }
+        let particle_offset = plane_offset + in_plane_exclusive;
+        sync_cube();
 
-        let inclusive = flags[lane];
-        let exclusive = inclusive - valid;
+        if UNIT_POS == 0 {
+            let plane_count = CUBE_DIM.div_ceil(PLANE_DIM);
+            let mut emitted = 0u32;
+            let mut plane_ix = 0u32;
+            while plane_ix < plane_count {
+                emitted += plane_totals[plane_ix as usize];
+                plane_ix += 1;
+            }
+            plane_totals[0] = emitted;
+        }
         if valid == 1 {
             store_particle(
-                cursor + exclusive,
+                cursor + particle_offset,
                 ptcl_capacity,
                 ptcl_tag,
                 ptcl_backdrop,
@@ -452,8 +457,8 @@ fn coarse_emit(
                 ptcl_colors,
             );
         }
-        let emitted = flags[workgroup_size - 1];
         sync_cube();
+        let emitted = plane_totals[0];
         cursor += emitted;
         sync_cube();
         chunk_start += workgroup_size as u32;
