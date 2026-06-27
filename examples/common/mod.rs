@@ -11,17 +11,18 @@ use peniko::{
 use tileink::{CpuRenderer, CubeWgpuRenderer, FillRule, Image, Radius, Region, Scene};
 
 pub fn example_output(name: &str) -> PathBuf {
-    backend_output("cpu_out", name)
+    backend_output("cpu", name)
 }
 
 pub fn cubecl_example_output(name: &str) -> PathBuf {
-    backend_output("cubecl_out", name)
+    backend_output("cubecl", name)
 }
 
-fn backend_output(folder: &str, name: &str) -> PathBuf {
+fn backend_output(backend: &str, name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("examples")
-        .join(folder)
+        .join(backend)
+        .join("out")
         .join(format!("{name}.png"))
 }
 

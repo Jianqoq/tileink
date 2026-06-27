@@ -1,8 +1,26 @@
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
-$examplesDir = Join-Path $repoRoot "examples"
 $skip = @("bench_cpu")
+
+function Get-ExampleExecutable {
+    param(
+        [Parameter(Mandatory = $true)][string]$ExamplesOutDir,
+        [Parameter(Mandatory = $true)][string]$Name
+    )
+
+    $exe = Join-Path $ExamplesOutDir "$Name.exe"
+    if (Test-Path $exe) {
+        return $exe
+    }
+
+    $exe = Join-Path $ExamplesOutDir $Name
+    if (Test-Path $exe) {
+        return $exe
+    }
+
+    throw "Built executable not found for example '$Name' in $ExamplesOutDir"
+}
 
 Push-Location $repoRoot
 try {
@@ -11,25 +29,29 @@ try {
 
     $metadata = cargo metadata --format-version 1 --no-deps | ConvertFrom-Json
     $examplesOutDir = Join-Path $metadata.target_directory "release\examples"
+    $package = $metadata.packages | Where-Object { $_.name -eq "tileink" } | Select-Object -First 1
+    if ($null -eq $package) {
+        throw "Package 'tileink' not found in cargo metadata"
+    }
 
-    Get-ChildItem -Path $examplesDir -Filter "*.rs" |
-        Where-Object { $skip -notcontains $_.BaseName } |
-        Sort-Object BaseName |
-        ForEach-Object {
-            $name = $_.BaseName
-            $exe = Join-Path $examplesOutDir "$name.exe"
-            if (-not (Test-Path $exe)) {
-                $exe = Join-Path $examplesOutDir $name
-            }
-            if (-not (Test-Path $exe)) {
-                throw "Built executable not found for example '$name' in $examplesOutDir"
-            }
+    $exampleTargets = $package.targets |
+        Where-Object { $_.kind -contains "example" } |
+        Where-Object {
+            $path = $_.src_path.Replace("/", "\")
+            $path -like "*\examples\cpu\*" -or $path -like "*\examples\cubecl\*"
+        } |
+        Where-Object { $skip -notcontains [IO.Path]::GetFileNameWithoutExtension($_.src_path) } |
+        Sort-Object src_path
 
-            Write-Host "Running example: $name"
-            & $exe
-        }
+    foreach ($target in $exampleTargets) {
+        $name = $target.name
+        $exe = Get-ExampleExecutable -ExamplesOutDir $examplesOutDir -Name $name
+
+        Write-Host "Running example: $name"
+        & $exe
+    }
 } finally {
     Pop-Location
 }
 
-Write-Host "All examples finished. Outputs are in examples/cpu_out."
+Write-Host "All examples finished. Outputs are in examples/cpu/out and examples/cubecl/out."
