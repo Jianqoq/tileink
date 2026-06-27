@@ -17,4 +17,3 @@ pub use shared::{
     layer::{filter::Filter, region::Region},
     sdf::rect::Radius,
 };
-pub use wgpu::Renderer;
