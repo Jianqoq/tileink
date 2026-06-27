@@ -1,5 +1,5 @@
 use ::cubecl::prelude::Runtime;
-use peniko::{BlendMode, Color, Extend};
+use peniko::{BlendMode, Color, Extend, kurbo::Shape};
 
 use crate::{
     scene::Scene,
@@ -13,6 +13,7 @@ use crate::{
         image::premul_color_to_rgba8_pack,
         layer::{Layer, filter::Filter, region::Region},
         line::Line,
+        path_flatten::PathFlatten,
         pixel::{opacity_f32_to_u8, premul_f32_to_u32},
     },
 };
@@ -28,7 +29,7 @@ use super::{
             FILTER_BRUSH_SOLID, FILTER_BRUSH_SWEEP, FILTER_BRUSH_U32_STRIDE, FILTER_CONTRAST,
             FILTER_EXTEND_PAD, FILTER_EXTEND_REFLECT, FILTER_EXTEND_REPEAT, FILTER_GRAYSCALE,
             FILTER_HUE_ROTATE, FILTER_INVERT, FILTER_OPACITY, FILTER_SATURATE, FILTER_SEPIA,
-            FilterBrushResources, FilterPipeline,
+            FilterBrushResources, FilterPathResources, FilterPipeline,
         },
         fine::{FinePipeline, FineRenderConfig},
         scan::ScanPipeline,
@@ -61,6 +62,7 @@ pub struct Renderer<R: Runtime> {
     scan: ScanBuffers,
     coarse: CoarseBuffers,
     filter_brushes: FilterBrushBuffers,
+    filter_paths: FilterPathBuffers,
     target: CubeBuffer<u32>,
     scratch: Vec<CubeBuffer<u32>>,
     scratch_in_use: Vec<bool>,
@@ -82,6 +84,7 @@ impl<R: Runtime> Renderer<R> {
             scan: ScanBuffers::new(&client),
             coarse: CoarseBuffers::new(&client),
             filter_brushes: FilterBrushBuffers::new(&client),
+            filter_paths: FilterPathBuffers::new(&client),
             target: CubeBuffer::new(&client, width as usize * height as usize),
             scratch: Vec::new(),
             scratch_in_use: Vec::new(),
@@ -108,12 +111,14 @@ impl<R: Runtime> Renderer<R> {
         let (max_clip_depth, max_group_depth) = plan_stack_depths(&plan);
         let scratch_count = required_scratch_count(&plan);
         let filter_brush_upload = FilterBrushUpload::from_plan(&plan);
+        let filter_path_upload = FilterPathUpload::from_plan(&plan);
         self.lengths = lengths;
         self.max_clip_depth = max_clip_depth;
         self.max_group_depth = max_group_depth;
         self.prepare_scratch_buffers(scratch_count);
         self.filter_brushes
             .upload(&self.client, filter_brush_upload);
+        self.filter_paths.upload(&self.client, filter_path_upload);
         self.scene.upload(&self.client, scene, &plan);
         self.scan.prepare_outputs(&self.client, lengths);
         self.coarse.prepare_outputs(&self.client, lengths);
@@ -295,11 +300,13 @@ impl<R: Runtime> Renderer<R> {
 
     fn execute_plan(&mut self, plan: &ExecPlan) {
         let mut filter_brush_cursor = 0;
+        let mut filter_path_cursor = 0;
         self.execute_ops(
             plan,
             &plan.ops,
             CubeRenderTarget::Main,
             &mut filter_brush_cursor,
+            &mut filter_path_cursor,
         );
     }
 
@@ -309,6 +316,7 @@ impl<R: Runtime> Renderer<R> {
         ops: &[ExecOp],
         target: CubeRenderTarget,
         filter_brush_cursor: &mut usize,
+        filter_path_cursor: &mut usize,
     ) {
         for op in ops {
             match op {
@@ -332,6 +340,7 @@ impl<R: Runtime> Renderer<R> {
                     children,
                     target,
                     filter_brush_cursor,
+                    filter_path_cursor,
                 ),
             }
         }
@@ -356,6 +365,7 @@ impl<R: Runtime> Renderer<R> {
         self.fine_batch_to(target);
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn execute_offscreen_layer(
         &mut self,
         plan: &ExecPlan,
@@ -364,25 +374,27 @@ impl<R: Runtime> Renderer<R> {
         children: &[ExecOp],
         target: CubeRenderTarget,
         filter_brush_cursor: &mut usize,
+        filter_path_cursor: &mut usize,
     ) {
-        if !outer_stack.is_empty() {
-            panic!(
-                "CubeCL offscreen layers do not support an outer fused clip/opacity/blend stack yet"
-            );
-        }
-
         match layer {
             Layer::Filter {
                 filter,
                 sample_region,
             } => {
                 let bounds = supported_filter_bounds(filter, sample_region, self.size);
+                let _path_index = next_filter_path_index(sample_region, filter_path_cursor);
                 let source = self.acquire_scratch();
                 self.clear_buffer(source, 0);
-                self.execute_ops(plan, children, source, filter_brush_cursor);
+                self.execute_ops(
+                    plan,
+                    children,
+                    source,
+                    filter_brush_cursor,
+                    filter_path_cursor,
+                );
                 let brush_index = next_filter_brush_index(filter, filter_brush_cursor);
                 self.apply_filter(source, bounds, filter, brush_index);
-                self.composite_src_over(target, source, bounds);
+                self.composite_src_over_with_stack(target, source, None, bounds, outer_stack);
                 self.release_scratch(source);
             }
             Layer::Backdrop {
@@ -390,18 +402,41 @@ impl<R: Runtime> Renderer<R> {
                 sample_region,
             } => {
                 let bounds = supported_filter_bounds(filter, sample_region, self.size);
+                let path_index = next_filter_path_index(sample_region, filter_path_cursor);
                 let brush_index = next_filter_brush_index(filter, filter_brush_cursor);
                 let backdrop = self.acquire_scratch();
                 self.clear_buffer(backdrop, 0);
                 self.copy_region(target, backdrop, bounds);
                 self.apply_filter(backdrop, bounds, filter, brush_index);
-                self.composite_src_over(target, backdrop, bounds);
+                let mask = self.acquire_scratch();
+                self.clear_buffer(mask, 0);
+                self.build_region_mask(mask, sample_region, path_index, bounds);
+                self.composite_src_over_with_stack(
+                    target,
+                    backdrop,
+                    Some(mask),
+                    bounds,
+                    outer_stack.clone(),
+                );
+                self.release_scratch(mask);
                 self.release_scratch(backdrop);
 
                 let content = self.acquire_scratch();
                 self.clear_buffer(content, 0);
-                self.execute_ops(plan, children, content, filter_brush_cursor);
-                self.composite_src_over(target, content, Bounds::canvas(self.size.0, self.size.1));
+                self.execute_ops(
+                    plan,
+                    children,
+                    content,
+                    filter_brush_cursor,
+                    filter_path_cursor,
+                );
+                self.composite_src_over_with_stack(
+                    target,
+                    content,
+                    None,
+                    Bounds::canvas(self.size.0, self.size.1),
+                    outer_stack,
+                );
                 self.release_scratch(content);
             }
             _ => panic!("CubeCL offscreen execution only accepts Filter and Backdrop layers"),
@@ -773,34 +808,226 @@ impl<R: Runtime> Renderer<R> {
             (CubeRenderTarget::Main, CubeRenderTarget::Main) => unreachable!(),
         }
     }
+
+    fn composite_src_over_with_stack(
+        &mut self,
+        target: CubeRenderTarget,
+        source: CubeRenderTarget,
+        mask: Option<CubeRenderTarget>,
+        bounds: Bounds,
+        layer_stack: std::ops::Range<usize>,
+    ) {
+        if layer_stack.is_empty() && mask.is_none() {
+            self.composite_src_over(target, source, bounds);
+            return;
+        }
+        if source == target {
+            return;
+        }
+        match (target, source, mask) {
+            (
+                CubeRenderTarget::Main,
+                CubeRenderTarget::Scratch(source_ix),
+                Some(CubeRenderTarget::Scratch(mask_ix)),
+            ) => FilterPipeline::composite_src_over_stack_region(
+                &self.client,
+                &self.scene,
+                &self.scan,
+                &mut self.target,
+                &self.scratch[source_ix],
+                Some(&self.scratch[mask_ix]),
+                self.size,
+                bounds,
+                layer_stack.start as u32,
+                layer_stack.end as u32,
+                self.max_group_depth,
+            ),
+            (CubeRenderTarget::Main, CubeRenderTarget::Scratch(source_ix), None) => {
+                FilterPipeline::composite_src_over_stack_region(
+                    &self.client,
+                    &self.scene,
+                    &self.scan,
+                    &mut self.target,
+                    &self.scratch[source_ix],
+                    None,
+                    self.size,
+                    bounds,
+                    layer_stack.start as u32,
+                    layer_stack.end as u32,
+                    self.max_group_depth,
+                )
+            }
+            (
+                CubeRenderTarget::Scratch(target_ix),
+                CubeRenderTarget::Main,
+                Some(CubeRenderTarget::Scratch(mask_ix)),
+            ) => {
+                let (target, mask) =
+                    scratch_target_and_source(&mut self.scratch, target_ix, mask_ix);
+                FilterPipeline::composite_src_over_stack_region(
+                    &self.client,
+                    &self.scene,
+                    &self.scan,
+                    target,
+                    &self.target,
+                    Some(mask),
+                    self.size,
+                    bounds,
+                    layer_stack.start as u32,
+                    layer_stack.end as u32,
+                    self.max_group_depth,
+                )
+            }
+            (CubeRenderTarget::Scratch(target_ix), CubeRenderTarget::Main, None) => {
+                FilterPipeline::composite_src_over_stack_region(
+                    &self.client,
+                    &self.scene,
+                    &self.scan,
+                    &mut self.scratch[target_ix],
+                    &self.target,
+                    None,
+                    self.size,
+                    bounds,
+                    layer_stack.start as u32,
+                    layer_stack.end as u32,
+                    self.max_group_depth,
+                )
+            }
+            (
+                CubeRenderTarget::Scratch(target_ix),
+                CubeRenderTarget::Scratch(source_ix),
+                Some(CubeRenderTarget::Scratch(mask_ix)),
+            ) => {
+                let (target, source, mask) =
+                    scratch_target_source_mask(&mut self.scratch, target_ix, source_ix, mask_ix);
+                FilterPipeline::composite_src_over_stack_region(
+                    &self.client,
+                    &self.scene,
+                    &self.scan,
+                    target,
+                    source,
+                    Some(mask),
+                    self.size,
+                    bounds,
+                    layer_stack.start as u32,
+                    layer_stack.end as u32,
+                    self.max_group_depth,
+                )
+            }
+            (CubeRenderTarget::Scratch(target_ix), CubeRenderTarget::Scratch(source_ix), None) => {
+                let (source, target) =
+                    scratch_source_target(&mut self.scratch, source_ix, target_ix);
+                FilterPipeline::composite_src_over_stack_region(
+                    &self.client,
+                    &self.scene,
+                    &self.scan,
+                    target,
+                    source,
+                    None,
+                    self.size,
+                    bounds,
+                    layer_stack.start as u32,
+                    layer_stack.end as u32,
+                    self.max_group_depth,
+                )
+            }
+            (CubeRenderTarget::Main, CubeRenderTarget::Main, _)
+            | (_, _, Some(CubeRenderTarget::Main)) => {
+                panic!("CubeCL stack composite requires scratch source and scratch mask")
+            }
+        }
+    }
+
+    fn build_region_mask(
+        &mut self,
+        target: CubeRenderTarget,
+        region: &Region,
+        path_index: Option<u32>,
+        bounds: Bounds,
+    ) {
+        let CubeRenderTarget::Scratch(target_ix) = target else {
+            panic!("CubeCL region masks must be rendered into preallocated scratch");
+        };
+        match region {
+            Region::Rect { rect, radius } => FilterPipeline::rasterize_rect_mask(
+                &self.client,
+                &mut self.scratch[target_ix],
+                self.size,
+                bounds,
+                (
+                    rect.x0 as f32,
+                    rect.y0 as f32,
+                    rect.x1 as f32,
+                    rect.y1 as f32,
+                ),
+                (
+                    radius.top_left,
+                    radius.top_right,
+                    radius.bottom_left,
+                    radius.bottom_right,
+                ),
+            ),
+            Region::Path { .. } => FilterPipeline::rasterize_path_mask(
+                &self.client,
+                &mut self.scratch[target_ix],
+                self.size,
+                bounds,
+                path_index.expect("prepared Region::Path mask index is missing"),
+                self.filter_paths.resources(),
+            ),
+        }
+    }
 }
 
 fn plan_stack_depths(plan: &ExecPlan) -> (usize, usize) {
+    plan_stack_depths_for_ops(&plan.ops, plan)
+}
+
+fn plan_stack_depths_for_ops(ops: &[ExecOp], plan: &ExecPlan) -> (usize, usize) {
     let mut max_clip_depth = 0;
     let mut max_group_depth = 0;
-    for op in &plan.ops {
-        if let ExecOp::DrawBatch { layer_stack, .. } = op {
-            let entries = &plan.layer_stack_data[layer_stack.clone()];
-            max_clip_depth = max_clip_depth.max(
-                entries
-                    .iter()
-                    .filter(|entry| matches!(entry, LayerStackEntry::Clip { .. }))
-                    .count(),
-            );
-            max_group_depth = max_group_depth.max(
-                entries
-                    .iter()
-                    .filter(|entry| {
-                        matches!(
-                            entry,
-                            LayerStackEntry::Opacity { .. } | LayerStackEntry::Blend { .. }
-                        )
-                    })
-                    .count(),
-            );
+    for op in ops {
+        match op {
+            ExecOp::DrawBatch { layer_stack, .. } => {
+                let (clip_depth, group_depth) =
+                    layer_stack_depths(&plan.layer_stack_data[layer_stack.clone()]);
+                max_clip_depth = max_clip_depth.max(clip_depth);
+                max_group_depth = max_group_depth.max(group_depth);
+            }
+            ExecOp::OffscreenLayer {
+                outer_stack,
+                children,
+                ..
+            } => {
+                let (clip_depth, group_depth) =
+                    layer_stack_depths(&plan.layer_stack_data[outer_stack.clone()]);
+                let (child_clip_depth, child_group_depth) =
+                    plan_stack_depths_for_ops(children, plan);
+                max_clip_depth = max_clip_depth.max(clip_depth).max(child_clip_depth);
+                max_group_depth = max_group_depth.max(group_depth).max(child_group_depth);
+            }
+            _ => {}
         }
     }
     (max_clip_depth, max_group_depth)
+}
+
+fn layer_stack_depths(entries: &[LayerStackEntry]) -> (usize, usize) {
+    (
+        entries
+            .iter()
+            .filter(|entry| matches!(entry, LayerStackEntry::Clip { .. }))
+            .count(),
+        entries
+            .iter()
+            .filter(|entry| {
+                matches!(
+                    entry,
+                    LayerStackEntry::Opacity { .. } | LayerStackEntry::Blend { .. }
+                )
+            })
+            .count(),
+    )
 }
 
 fn required_scratch_count(plan: &ExecPlan) -> usize {
@@ -811,19 +1038,26 @@ fn max_scratch_for_ops(ops: &[ExecOp], held: usize) -> usize {
     let mut max_count = held;
     for op in ops {
         if let ExecOp::OffscreenLayer {
-            layer, children, ..
+            layer,
+            outer_stack,
+            children,
         } = op
         {
             match layer {
                 Layer::Filter { filter, .. } => {
                     let source_held = held + 1;
                     max_count = max_count.max(source_held + filter_scratch_extra(filter));
+                    if !outer_stack.is_empty() {
+                        max_count = max_count.max(source_held);
+                    }
                     max_count = max_count.max(max_scratch_for_ops(children, source_held));
                 }
                 Layer::Backdrop { filter, .. } => {
                     let backdrop_held = held + 1;
                     max_count = max_count.max(backdrop_held + filter_scratch_extra(filter));
-                    max_count = max_count.max(max_scratch_for_ops(children, backdrop_held));
+                    max_count = max_count.max(backdrop_held + 1);
+                    let content_held = held + 1;
+                    max_count = max_count.max(max_scratch_for_ops(children, content_held));
                 }
                 _ => {}
             }
@@ -888,6 +1122,16 @@ fn supported_filter_bounds(filter: &Filter, sample_region: &Region, size: (u32, 
 
 fn next_filter_brush_index(filter: &Filter, cursor: &mut usize) -> Option<u32> {
     if matches!(filter, Filter::DropShadow { .. }) {
+        let index = *cursor as u32;
+        *cursor += 1;
+        Some(index)
+    } else {
+        None
+    }
+}
+
+fn next_filter_path_index(region: &Region, cursor: &mut usize) -> Option<u32> {
+    if matches!(region, Region::Path { .. }) {
         let index = *cursor as u32;
         *cursor += 1;
         Some(index)
@@ -1060,6 +1304,135 @@ fn encode_filter_extend(extend: Extend) -> u32 {
     }
 }
 
+struct FilterPathBuffers {
+    range_starts: CubeBuffer<u32>,
+    range_ends: CubeBuffer<u32>,
+    p0x: CubeBuffer<i32>,
+    p0y: CubeBuffer<i32>,
+    p1x: CubeBuffer<i32>,
+    p1y: CubeBuffer<i32>,
+}
+
+impl FilterPathBuffers {
+    fn new<R: Runtime>(client: &::cubecl::client::ComputeClient<R>) -> Self {
+        Self {
+            range_starts: CubeBuffer::new(client, 0),
+            range_ends: CubeBuffer::new(client, 0),
+            p0x: CubeBuffer::new(client, 0),
+            p0y: CubeBuffer::new(client, 0),
+            p1x: CubeBuffer::new(client, 0),
+            p1y: CubeBuffer::new(client, 0),
+        }
+    }
+
+    fn upload<R: Runtime>(
+        &mut self,
+        client: &::cubecl::client::ComputeClient<R>,
+        upload: FilterPathUpload,
+    ) {
+        self.range_starts.replace(client, &upload.range_starts);
+        self.range_ends.replace(client, &upload.range_ends);
+        self.p0x.replace(client, &upload.p0x);
+        self.p0y.replace(client, &upload.p0y);
+        self.p1x.replace(client, &upload.p1x);
+        self.p1y.replace(client, &upload.p1y);
+    }
+
+    fn resources(&self) -> FilterPathResources<'_> {
+        FilterPathResources {
+            range_starts: &self.range_starts,
+            range_ends: &self.range_ends,
+            p0x: &self.p0x,
+            p0y: &self.p0y,
+            p1x: &self.p1x,
+            p1y: &self.p1y,
+        }
+    }
+}
+
+#[derive(Default)]
+struct FilterPathUpload {
+    range_starts: Vec<u32>,
+    range_ends: Vec<u32>,
+    p0x: Vec<i32>,
+    p0y: Vec<i32>,
+    p1x: Vec<i32>,
+    p1y: Vec<i32>,
+}
+
+impl FilterPathUpload {
+    fn from_plan(plan: &ExecPlan) -> Self {
+        let mut upload = Self::default();
+        collect_filter_paths_for_ops(&plan.ops, &mut upload);
+        upload
+    }
+
+    fn push_region(&mut self, region: &Region) {
+        let Region::Path {
+            path,
+            transform,
+            tolerance,
+        } = region
+        else {
+            return;
+        };
+
+        let start = self.p0x.len() as u32;
+        let path = *transform * path;
+        let mut tile_count = 0;
+        let mut lines = Vec::new();
+        PathFlatten::new(
+            &path,
+            *tolerance as f32,
+            self.range_starts.len() as u32,
+            &mut tile_count,
+        )
+        .flatten(&mut lines);
+        self.p0x.extend(
+            lines
+                .iter()
+                .map(|line| encode_filter_path_coord(line.p0[0])),
+        );
+        self.p0y.extend(
+            lines
+                .iter()
+                .map(|line| encode_filter_path_coord(line.p0[1])),
+        );
+        self.p1x.extend(
+            lines
+                .iter()
+                .map(|line| encode_filter_path_coord(line.p1[0])),
+        );
+        self.p1y.extend(
+            lines
+                .iter()
+                .map(|line| encode_filter_path_coord(line.p1[1])),
+        );
+        self.range_starts.push(start);
+        self.range_ends.push(self.p0x.len() as u32);
+    }
+}
+
+fn encode_filter_path_coord(value: f32) -> i32 {
+    (value * 256.0)
+        .round()
+        .clamp(i32::MIN as f32, i32::MAX as f32) as i32
+}
+
+fn collect_filter_paths_for_ops(ops: &[ExecOp], upload: &mut FilterPathUpload) {
+    for op in ops {
+        if let ExecOp::OffscreenLayer {
+            layer: Layer::Filter { sample_region, .. } | Layer::Backdrop { sample_region, .. },
+            children,
+            ..
+        } = op
+        {
+            upload.push_region(sample_region);
+            collect_filter_paths_for_ops(children, upload);
+        }
+    }
+}
+
 fn region_bounds(region: &Region) -> Bounds {
     match region {
         Region::Rect { rect, .. } => Bounds::new(
@@ -1068,8 +1441,16 @@ fn region_bounds(region: &Region) -> Bounds {
             rect.x1.ceil() as i32,
             rect.y1.ceil() as i32,
         ),
-        Region::Path { .. } => {
-            panic!("CubeCL offscreen color-filter stage does not support path sample regions yet")
+        Region::Path {
+            path, transform, ..
+        } => {
+            let rect = transform.transform_rect_bbox(path.bounding_box());
+            Bounds::new(
+                rect.x0.floor() as i32,
+                rect.y0.floor() as i32,
+                rect.x1.ceil() as i32,
+                rect.y1.ceil() as i32,
+            )
         }
     }
 }
@@ -1093,6 +1474,64 @@ fn scratch_source_target(
     } else {
         let (left, right) = scratch.split_at_mut(source_ix);
         (&right[0], &mut left[target_ix])
+    }
+}
+
+fn scratch_target_and_source(
+    scratch: &mut [CubeBuffer<u32>],
+    target_ix: usize,
+    source_ix: usize,
+) -> (&mut CubeBuffer<u32>, &CubeBuffer<u32>) {
+    assert_ne!(
+        target_ix, source_ix,
+        "target and source scratch buffers must differ"
+    );
+    if target_ix < source_ix {
+        let (left, right) = scratch.split_at_mut(source_ix);
+        (&mut left[target_ix], &right[0])
+    } else {
+        let (left, right) = scratch.split_at_mut(target_ix);
+        (&mut right[0], &left[source_ix])
+    }
+}
+
+fn scratch_target_source_mask(
+    scratch: &mut [CubeBuffer<u32>],
+    target_ix: usize,
+    source_ix: usize,
+    mask_ix: usize,
+) -> (&mut CubeBuffer<u32>, &CubeBuffer<u32>, &CubeBuffer<u32>) {
+    assert_ne!(
+        target_ix, source_ix,
+        "target and source scratch buffers must differ"
+    );
+    assert_ne!(
+        target_ix, mask_ix,
+        "target and mask scratch buffers must differ"
+    );
+    assert_ne!(
+        source_ix, mask_ix,
+        "source and mask scratch buffers must differ"
+    );
+
+    let (before, target_and_after) = scratch.split_at_mut(target_ix);
+    let (target_slice, after) = target_and_after.split_at_mut(1);
+    let target = &mut target_slice[0];
+    let source = scratch_ref_except_target(before, after, target_ix, source_ix);
+    let mask = scratch_ref_except_target(before, after, target_ix, mask_ix);
+    (target, source, mask)
+}
+
+fn scratch_ref_except_target<'a>(
+    before: &'a [CubeBuffer<u32>],
+    after: &'a [CubeBuffer<u32>],
+    target_ix: usize,
+    ix: usize,
+) -> &'a CubeBuffer<u32> {
+    if ix < target_ix {
+        &before[ix]
+    } else {
+        &after[ix - target_ix - 1]
     }
 }
 
@@ -1607,11 +2046,10 @@ mod tests {
 
     use peniko::{
         Color, Compose, Gradient, Mix,
-        kurbo::{Affine, Rect, Shape},
+        kurbo::{Affine, BezPath, Rect, Shape},
     };
 
-    use super::CubeBufferLengths;
-    use super::WgpuRenderer;
+    use super::{CubeBufferLengths, CubeRenderTarget, WgpuRenderer};
     use crate::cubecl::pipelines::coarse::TILE_WORKGROUP_SIZE;
     use crate::cubecl::types::{
         CUBE_PTCL_BEGIN_BLEND, CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_BEGIN_OPACITY, CUBE_PTCL_COLOR,
@@ -2309,6 +2747,109 @@ mod tests {
     }
 
     #[test]
+    fn filter_wgpu_applies_outer_clip_stack_to_offscreen_output_when_enabled() {
+        if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+            return;
+        }
+
+        let mut scene = Scene::new(16, 16);
+        scene.push_clip_layer(
+            Rect::new(0.0, 0.0, 8.0, 16.0).to_path(0.0),
+            Affine::IDENTITY,
+            0.0,
+        );
+        scene.push_filter_layer(
+            Filter::Invert(1.0),
+            Region::rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::all(0.0)),
+        );
+        scene.push_rect(
+            Rect::new(0.0, 0.0, 16.0, 16.0),
+            Color::from_rgb8(255, 0, 0),
+            FillRule::NonZero,
+        );
+        scene.pop_layer();
+        scene.pop_layer();
+
+        let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+        renderer.render(&scene);
+        let target = renderer.target.read(renderer.client());
+
+        assert_eq!(target[8 * 16 + 4], rgba8_pack([0, 255, 255, 255]));
+        assert_eq!(target[8 * 16 + 12], 0);
+    }
+
+    #[test]
+    fn filter_wgpu_applies_outer_opacity_stack_to_offscreen_output_when_enabled() {
+        if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+            return;
+        }
+
+        let mut scene = Scene::new(16, 16);
+        scene.push_opacity_layer(
+            Rect::new(0.0, 0.0, 16.0, 16.0).to_path(0.0),
+            Affine::IDENTITY,
+            0.0,
+            0.5,
+        );
+        scene.push_filter_layer(
+            Filter::Invert(1.0),
+            Region::rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::all(0.0)),
+        );
+        scene.push_rect(
+            Rect::new(0.0, 0.0, 16.0, 16.0),
+            Color::from_rgb8(255, 0, 0),
+            FillRule::NonZero,
+        );
+        scene.pop_layer();
+        scene.pop_layer();
+
+        let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+        renderer.render(&scene);
+        let target = renderer.target.read(renderer.client());
+
+        assert_eq!(target[8 * 16 + 8], rgba8_pack([0, 128, 128, 128]));
+    }
+
+    #[test]
+    fn filter_wgpu_applies_outer_blend_stack_to_offscreen_output_when_enabled() {
+        if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+            return;
+        }
+
+        let blue = Color::from_rgb8(0, 0, 255);
+        let mut scene = Scene::new(16, 16);
+        scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), blue, FillRule::NonZero);
+        scene.push_blend_layer(
+            Rect::new(0.0, 0.0, 8.0, 16.0).to_path(0.0),
+            Affine::IDENTITY,
+            0.0,
+            Mix::Multiply,
+            Compose::SrcOver,
+        );
+        scene.push_filter_layer(
+            Filter::Opacity(1.0),
+            Region::rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::all(0.0)),
+        );
+        scene.push_rect(
+            Rect::new(0.0, 0.0, 16.0, 16.0),
+            Color::from_rgb8(255, 0, 0),
+            FillRule::NonZero,
+        );
+        scene.pop_layer();
+        scene.pop_layer();
+
+        let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+        renderer.render(&scene);
+        let target = renderer.target.read(renderer.client());
+
+        assert_eq!(target[8 * 16 + 4], rgba8_pack([0, 0, 0, 255]));
+        assert_eq!(
+            target[8 * 16 + 12],
+            premul_f32_to_u32(blue.premultiply().components)
+        );
+    }
+
+    #[test]
     fn filter_wgpu_blur_outputs_expanded_bounds_when_enabled() {
         if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
             return;
@@ -2567,6 +3108,164 @@ mod tests {
         assert_eq!(target[8 * 16 + 8], rgba8_pack([0, 255, 255, 255]));
         assert_eq!(target[8 * 16 + 2], rgba8_pack([255, 0, 0, 255]));
         assert_eq!(target[8 * 16 + 14], rgba8_pack([255, 0, 0, 255]));
+    }
+
+    #[test]
+    fn filter_wgpu_rasterizes_path_region_mask_when_enabled() {
+        if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+            return;
+        }
+
+        let mut triangle = BezPath::new();
+        triangle.move_to((4.0, 4.0));
+        triangle.line_to((12.0, 4.0));
+        triangle.line_to((4.0, 12.0));
+        triangle.close_path();
+        let region = Region::path(triangle, Affine::IDENTITY, 0.0);
+        let mut scene = Scene::new(16, 16);
+        scene.push_backdrop_layer(Filter::Invert(1.0), region.clone());
+        scene.pop_layer();
+
+        let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+        renderer.prepare_scene(&scene);
+        assert_eq!(
+            renderer.filter_paths.range_starts.read(renderer.client()),
+            vec![0]
+        );
+        assert_eq!(
+            renderer.filter_paths.range_ends.read(renderer.client()),
+            vec![3]
+        );
+        assert_eq!(
+            renderer.filter_paths.p0x.read(renderer.client()),
+            vec![1024, 3072, 1024]
+        );
+        let mask = renderer.acquire_scratch();
+        renderer.clear_buffer(mask, 0);
+        renderer.build_region_mask(
+            mask,
+            &region,
+            Some(0),
+            crate::shared::bounds::Bounds::new(4, 4, 12, 12),
+        );
+
+        let CubeRenderTarget::Scratch(mask_ix) = mask else {
+            unreachable!();
+        };
+        let pixels = renderer.scratch[mask_ix].read(renderer.client());
+        assert_eq!(pixels[6 * 16 + 6], rgba8_pack([255, 255, 255, 255]));
+        assert_eq!(pixels[10 * 16 + 10], 0);
+    }
+
+    #[test]
+    fn filter_wgpu_rasterizes_nonzero_path_region_mask_when_enabled() {
+        if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+            return;
+        }
+
+        let mut path = BezPath::new();
+        for _ in 0..2 {
+            path.move_to((4.0, 4.0));
+            path.line_to((12.0, 4.0));
+            path.line_to((4.0, 12.0));
+            path.close_path();
+        }
+        let region = Region::path(path, Affine::IDENTITY, 0.0);
+        let mut scene = Scene::new(16, 16);
+        scene.push_backdrop_layer(Filter::Invert(1.0), region.clone());
+        scene.pop_layer();
+
+        let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+        renderer.prepare_scene(&scene);
+        let mask = renderer.acquire_scratch();
+        renderer.clear_buffer(mask, 0);
+        renderer.build_region_mask(
+            mask,
+            &region,
+            Some(0),
+            crate::shared::bounds::Bounds::new(4, 4, 12, 12),
+        );
+
+        let CubeRenderTarget::Scratch(mask_ix) = mask else {
+            unreachable!();
+        };
+        let pixels = renderer.scratch[mask_ix].read(renderer.client());
+        assert_eq!(pixels[6 * 16 + 6], rgba8_pack([255, 255, 255, 255]));
+        assert_eq!(pixels[10 * 16 + 10], 0);
+    }
+
+    #[test]
+    fn backdrop_wgpu_masks_blur_to_rect_sample_region_when_enabled() {
+        if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+            return;
+        }
+
+        let mut scene = Scene::new(24, 16);
+        scene.push_rect(
+            Rect::new(8.0, 4.0, 16.0, 12.0),
+            Color::from_rgb8(255, 0, 0),
+            FillRule::NonZero,
+        );
+        scene.push_backdrop_layer(
+            Filter::Blur(2.0),
+            Region::rect(Rect::new(8.0, 4.0, 16.0, 12.0), Radius::all(0.0)),
+        );
+        scene.pop_layer();
+
+        let mut renderer = WgpuRenderer::new_default_device(24, 16, Color::TRANSPARENT);
+        renderer.render(&scene);
+        let target = renderer.target.read(renderer.client());
+
+        assert_eq!(target[8 * 24 + 6], 0);
+        assert!(unpack_rgba8(target[8 * 24 + 12])[3] > 0);
+    }
+
+    #[test]
+    fn backdrop_wgpu_masks_color_filter_to_path_sample_region_when_enabled() {
+        if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+            return;
+        }
+
+        let mut triangle = BezPath::new();
+        triangle.move_to((4.0, 4.0));
+        triangle.line_to((12.0, 4.0));
+        triangle.line_to((4.0, 12.0));
+        triangle.close_path();
+
+        let mut scene = Scene::new(16, 16);
+        scene.push_rect(
+            Rect::new(0.0, 0.0, 16.0, 16.0),
+            Color::from_rgb8(255, 0, 0),
+            FillRule::NonZero,
+        );
+        scene.push_backdrop_layer(
+            Filter::Invert(1.0),
+            Region::path(triangle, Affine::IDENTITY, 0.0),
+        );
+        scene.pop_layer();
+
+        let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+        renderer.render(&scene);
+        assert_eq!(
+            renderer.filter_paths.range_starts.read(renderer.client()),
+            vec![0]
+        );
+        assert_eq!(
+            renderer.filter_paths.range_ends.read(renderer.client()),
+            vec![3]
+        );
+        assert_eq!(
+            renderer.filter_paths.p0x.read(renderer.client()),
+            vec![1024, 3072, 1024]
+        );
+        assert_eq!(
+            renderer.filter_paths.p1x.read(renderer.client()),
+            vec![3072, 1024, 1024]
+        );
+        let target = renderer.target.read(renderer.client());
+
+        assert_eq!(target[6 * 16 + 6], rgba8_pack([0, 255, 255, 255]));
+        assert_eq!(target[10 * 16 + 10], rgba8_pack([255, 0, 0, 255]));
     }
 
     #[test]
