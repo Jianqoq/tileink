@@ -74,11 +74,10 @@ fn cumsum_prefix_chunks(
     let lane = UNIT_POS as usize;
     let chunk_offset = chunk_backdrop_offsets[chunk_ix];
     let chunk_len = chunk_lens[chunk_ix];
-    let value = if lane < chunk_len as usize {
-        backdrops[(chunk_offset + lane as u32) as usize].load()
-    } else {
-        i32::new(0)
-    };
+    let mut value = i32::new(0);
+    if lane < chunk_len as usize {
+        value = backdrops[(chunk_offset + lane as u32) as usize].load();
+    }
     let mut shared = SharedMemory::<i32>::new(chunk_size);
     shared[lane] = value;
     sync_cube();

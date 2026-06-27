@@ -244,21 +244,31 @@ fn scan_count(
     let idxdy = 1.0 / (dx + dy);
     let mut a = dx * idxdy;
     let is_positive_slope = s1x >= s0x;
-    let sign = if is_positive_slope { 1.0 } else { -1.0 };
+    // CubeCL 0.10 can mis-lower `let x = if ...` in WGSL; keep scalar selections explicit.
+    let mut sign = f32::new(-1.0_f32);
+    if is_positive_slope {
+        sign = f32::new(1.0_f32);
+    }
     let xt0 = (s0x * sign).floor();
     let c = s0x * sign - xt0;
     let y0 = s0y.floor();
-    let ytop = if s0y == s1y { s0y.ceil() } else { y0 + 1.0 };
+    let mut ytop = y0 + 1.0;
+    if s0y == s1y {
+        ytop = s0y.ceil();
+    }
     let b = ((dy * c + dx * (ytop - s0y)) * idxdy).min(0.99999994);
     let robust_err = (a * (count as f32 - 1.0) + b).floor() - count_x as f32;
     if robust_err != 0.0 {
-        a -= if robust_err > 0.0 {
-            0.0000002
+        if robust_err > 0.0 {
+            a -= f32::new(0.0000002_f32);
         } else {
-            -0.0000002
-        };
+            a += f32::new(0.0000002_f32);
+        }
     }
-    let x0 = xt0 * sign + if is_positive_slope { 0.0 } else { -1.0 };
+    let mut x0 = xt0 * sign - f32::new(1.0_f32);
+    if is_positive_slope {
+        x0 = xt0 * sign;
+    }
     let xmin = s0x.min(s1x);
     if s0y >= bbox_y1 as f32 || s1y < bbox_y0 as f32 || xmin >= bbox_x1 as f32 {
         terminate!();
@@ -281,7 +291,10 @@ fn scan_count(
         imax = imaxf as u32;
     }
 
-    let delta = if is_down { -1 } else { 1 };
+    let mut delta = i32::new(1);
+    if is_down {
+        delta = i32::new(-1);
+    }
     let mut ymin = 0i32;
     let mut ymax = 0i32;
     if s0x.max(s1x) <= bbox_x0 as f32 {
@@ -289,7 +302,10 @@ fn scan_count(
         ymax = s1y.ceil() as i32;
         imax = imin;
     } else {
-        let fudge = if is_positive_slope { 0.0 } else { 1.0 };
+        let mut fudge = f32::new(1.0_f32);
+        if is_positive_slope {
+            fudge = f32::new(0.0_f32);
+        }
         if xmin < bbox_x0 as f32 {
             let mut f = ((sign * (bbox_x0 as f32 - x0) - b + fudge) / a).round();
             if (x0 + sign * (a * f + b).floor() < bbox_x0 as f32) == is_positive_slope {
@@ -298,7 +314,11 @@ fn scan_count(
             let ynext = (y0 + f - (a * f + b).floor() + 1.0) as i32;
             if is_positive_slope {
                 if f as u32 > imin {
-                    ymin = (y0 + if y0 == s0y { 0.0 } else { 1.0 }) as i32;
+                    let mut ystart = y0 + f32::new(1.0_f32);
+                    if y0 == s0y {
+                        ystart = y0;
+                    }
+                    ymin = ystart as i32;
                     ymax = ynext;
                     imin = f as u32;
                 }
@@ -343,11 +363,10 @@ fn scan_count(
             && tile_x >= bbox_x0 as i32
             && tile_x < bbox_x1 as i32
         {
-            let top_edge = if i == imin {
-                (y0 - xy0y * tile_scale).abs() <= 0.00001
-            } else {
-                last_z == z
-            };
+            let mut top_edge = last_z == z;
+            if i == imin {
+                top_edge = (y0 - xy0y * tile_scale).abs() <= 0.00001;
+            }
             if top_edge && tile_x + 1 < bbox_x1 as i32 {
                 let x_bump = (tile_x + 1).max(bbox_x0 as i32);
                 let bump_local = ((tile_y - bbox_y0 as i32) * bbox_stride as i32 + x_bump
@@ -379,21 +398,19 @@ fn scan_prefix_chunks(
     let chunk_len = scan_chunk_lens[chunk_ix];
     let mut shared = SharedMemory::<u32>::new(chunk_size);
 
-    let count = if lane < chunk_len as usize {
-        segment_tile_counts[(chunk_offset + lane as u32) as usize].load()
-    } else {
-        u32::new(0)
-    };
+    let mut count = u32::new(0);
+    if lane < chunk_len as usize {
+        count = segment_tile_counts[(chunk_offset + lane as u32) as usize].load();
+    }
     shared[lane] = count;
     sync_cube();
 
     let mut step = 1usize;
     while step < chunk_size {
-        let add = if lane >= step {
-            shared[lane - step]
-        } else {
-            u32::new(0)
-        };
+        let mut add = u32::new(0);
+        if lane >= step {
+            add = shared[lane - step];
+        }
         sync_cube();
         if lane >= step {
             shared[lane] += add;
@@ -538,21 +555,31 @@ fn scan_emit(
     let idxdy = 1.0 / (dx + dy);
     let mut a = dx * idxdy;
     let is_positive_slope = s1x >= s0x;
-    let sign = if is_positive_slope { 1.0 } else { -1.0 };
+    // Keep this as statements for the same CubeCL lowering reason documented in scan_count.
+    let mut sign = f32::new(-1.0_f32);
+    if is_positive_slope {
+        sign = f32::new(1.0_f32);
+    }
     let xt0 = (s0x * sign).floor();
     let c = s0x * sign - xt0;
     let y0 = s0y.floor();
-    let ytop = if s0y == s1y { s0y.ceil() } else { y0 + 1.0 };
+    let mut ytop = y0 + 1.0;
+    if s0y == s1y {
+        ytop = s0y.ceil();
+    }
     let b = ((dy * c + dx * (ytop - s0y)) * idxdy).min(0.99999994);
     let robust_err = (a * (count as f32 - 1.0) + b).floor() - count_x as f32;
     if robust_err != 0.0 {
-        a -= if robust_err > 0.0 {
-            0.0000002
+        if robust_err > 0.0 {
+            a -= f32::new(0.0000002_f32);
         } else {
-            -0.0000002
-        };
+            a += f32::new(0.0000002_f32);
+        }
     }
-    let x0 = xt0 * sign + if is_positive_slope { 0.0 } else { -1.0 };
+    let mut x0 = xt0 * sign - f32::new(1.0_f32);
+    if is_positive_slope {
+        x0 = xt0 * sign;
+    }
     let xmin = s0x.min(s1x);
     if s0y >= bbox_y1 as f32 || s1y < bbox_y0 as f32 || xmin >= bbox_x1 as f32 {
         terminate!();
@@ -578,7 +605,10 @@ fn scan_emit(
     if s0x.max(s1x) <= bbox_x0 as f32 {
         imax = imin;
     } else {
-        let fudge = if is_positive_slope { 0.0 } else { 1.0 };
+        let mut fudge = f32::new(1.0_f32);
+        if is_positive_slope {
+            fudge = f32::new(0.0_f32);
+        }
         if xmin < bbox_x0 as f32 {
             let mut f = ((sign * (bbox_x0 as f32 - x0) - b + fudge) / a).round();
             if (x0 + sign * (a * f + b).floor() < bbox_x0 as f32) == is_positive_slope {
@@ -649,9 +679,19 @@ fn scan_emit(
 
 #[cube]
 fn span(a: f32, b: f32) -> u32 {
-    let hi = a.max(b).ceil();
-    let lo = a.min(b).floor();
-    (hi - lo).max(1.0) as u32
+    let mut hi = a.ceil();
+    if b > a {
+        hi = b.ceil();
+    }
+    let mut lo = a.floor();
+    if b < a {
+        lo = b.floor();
+    }
+    let mut value = hi - lo;
+    if value < 1.0 {
+        value = 1.0;
+    }
+    value as u32
 }
 
 #[cube]
@@ -701,11 +741,10 @@ fn write_clipped_segment(
             xy0x = xt;
             xy0y = tile_min_y;
         } else {
-            let x_clip = if is_positive_slope {
-                tile_min_x
-            } else {
-                tile_max_x
-            };
+            let mut x_clip = tile_max_x;
+            if is_positive_slope {
+                x_clip = tile_min_x;
+            }
             let mut yt = xy0y + (xy1y - xy0y) * (x_clip - xy0x) / (xy1x - xy0x);
             yt = yt.clamp(tile_min_y + 0.001, tile_max_y);
             xy0x = x_clip;
@@ -721,11 +760,10 @@ fn write_clipped_segment(
             xy1x = xt;
             xy1y = tile_max_y;
         } else {
-            let x_clip = if is_positive_slope {
-                tile_max_x
-            } else {
-                tile_min_x
-            };
+            let mut x_clip = tile_min_x;
+            if is_positive_slope {
+                x_clip = tile_max_x;
+            }
             let mut yt = xy0y + (xy1y - xy0y) * (x_clip - xy0x) / (xy1x - xy0x);
             yt = yt.clamp(tile_min_y + 0.001, tile_max_y);
             xy1x = x_clip;

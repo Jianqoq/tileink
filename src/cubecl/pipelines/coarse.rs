@@ -261,11 +261,11 @@ fn coarse_count(
             tile_count += plane_totals[plane_ix as usize];
             plane_ix += 1;
         }
-        tile_ptcl_counts[tile_ix as usize] = if tile_count > 0 {
-            tile_count + wrapper_count * 2 + 1
-        } else {
-            tile_count
-        };
+        let mut stored_count = tile_count;
+        if tile_count > 0 {
+            stored_count = tile_count + wrapper_count * 2 + 1;
+        }
+        tile_ptcl_counts[tile_ix as usize] = stored_count;
     }
 }
 
@@ -283,11 +283,10 @@ fn coarse_prefix_chunks(
     let lane = UNIT_POS as usize;
     let chunk_offset = chunk_ix * chunk_size as u32;
     let chunk_len = (tile_count - chunk_offset).min(chunk_size as u32);
-    let count = if lane < chunk_len as usize {
-        tile_ptcl_counts[(chunk_offset + lane as u32) as usize]
-    } else {
-        u32::new(0)
-    };
+    let mut count = u32::new(0);
+    if lane < chunk_len as usize {
+        count = tile_ptcl_counts[(chunk_offset + lane as u32) as usize];
+    }
 
     let mut shared = SharedMemory::<u32>::new(chunk_size);
     shared[lane] = count;
@@ -712,7 +711,11 @@ fn active_stack_count(
         }
         stack_ix += 1;
     }
-    if valid == 1 { count } else { invalid }
+    let mut out = invalid;
+    if valid == 1 {
+        out = count;
+    }
+    out
 }
 
 #[cube]

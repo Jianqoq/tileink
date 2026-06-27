@@ -585,11 +585,11 @@ fn filter_composite_stack_region(
             pixel = src_over_premul_u8(parent, scale_premul_u8(pixel, alpha));
         } else {
             let src = scale_premul_u8(pixel, alpha);
-            pixel = if src >> 24 == 0 {
-                parent
+            if src >> 24 == 0 {
+                pixel = parent;
             } else {
-                blend_premul_u8(parent, src, payload)
-            };
+                pixel = blend_premul_u8(parent, src, payload);
+            }
         }
     }
 
@@ -776,11 +776,10 @@ fn filter_blur_region(
         d += 1;
     }
 
-    let scale = if sum > 0.0 {
-        1.0 / (255.0 * sum)
-    } else {
-        f32::new(0.0_f32)
-    };
+    let mut scale = f32::new(0.0_f32);
+    if sum > 0.0 {
+        scale = 1.0 / (255.0 * sum);
+    }
     target[dst_ix] = pack_premul_rgba8(r * scale, g * scale, b * scale, a * scale);
 }
 
@@ -1082,11 +1081,11 @@ fn sample_filter_ramp(
         let frac = position - left_ix as f32;
         let left = brush_payloads[(payload_offset + left_ix) as usize];
         let right = brush_payloads[(payload_offset + right_ix) as usize];
-        color = if frac <= f32::new(0.000_000_119_209_29_f32) || left_ix == right_ix {
-            left
+        if frac <= f32::new(0.000_000_119_209_29_f32) || left_ix == right_ix {
+            color = left;
         } else {
-            lerp_premul_u8(left, right, frac)
-        };
+            color = lerp_premul_u8(left, right, frac);
+        }
     }
     color
 }
@@ -1386,11 +1385,11 @@ fn rect_signed_distance(
     let py = y - cy;
     let mut r = radius_top_left;
     if px >= 0.0 {
-        r = if py <= 0.0 {
-            radius_top_right
+        if py <= 0.0 {
+            r = radius_top_right;
         } else {
-            radius_bottom_right
-        };
+            r = radius_bottom_right;
+        }
     } else if py > 0.0 {
         r = radius_bottom_left;
     }
@@ -1416,7 +1415,11 @@ fn apply_filter_extend(t: f32, extend: u32) -> f32 {
         out = rem_euclid_f32(t, 1.0);
     } else if extend == FILTER_EXTEND_REFLECT {
         let value = rem_euclid_f32(t, 2.0);
-        out = if value <= 1.0 { value } else { 2.0 - value };
+        if value <= 1.0 {
+            out = value;
+        } else {
+            out = 2.0 - value;
+        }
     }
     out
 }

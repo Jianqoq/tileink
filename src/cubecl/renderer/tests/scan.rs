@@ -43,3 +43,35 @@ fn scan_wgpu_emits_one_tile_vertical_line_when_enabled() {
     assert!((p0y[0] - 0.0).abs() < 1e-6);
     assert!((p1y[0] - 16.0).abs() < 1e-6);
 }
+
+#[test]
+fn scan_wgpu_emits_non_integer_horizontal_line_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut path = BezPath::new();
+    path.move_to((2.0, 8.5));
+    path.line_to((30.0, 8.5));
+
+    let mut scene = Scene::new(32, 16);
+    scene.push_path(path, Color::BLACK, Affine::IDENTITY, FillRule::NonZero, 0.0);
+
+    let mut renderer = WgpuRenderer::new_default_device(32, 16, Color::TRANSPARENT);
+    renderer.prepare_scene(&scene);
+    renderer.scan();
+
+    let counts = renderer.scan.segment_tile_counts.read(renderer.client());
+    let starts = renderer
+        .scan
+        .tile_segment_range_starts
+        .read(renderer.client());
+    let ends = renderer
+        .scan
+        .tile_segment_range_ends
+        .read(renderer.client());
+
+    assert_eq!(counts, vec![1, 1]);
+    assert_eq!(starts, vec![0, 1]);
+    assert_eq!(ends, vec![1, 2]);
+}

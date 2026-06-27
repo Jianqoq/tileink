@@ -208,11 +208,11 @@ fn fine_render(
                         pixel = src_over_premul_u8(parent, scale_premul_u8(pixel, alpha));
                     } else {
                         let src = scale_premul_u8(pixel, alpha);
-                        pixel = if src >> 24 == 0 {
-                            parent
+                        if src >> 24 == 0 {
+                            pixel = parent;
                         } else {
-                            blend_premul_u8(parent, src, payload)
-                        };
+                            pixel = blend_premul_u8(parent, src, payload);
+                        }
                     }
                 }
             } else if tag == CUBE_PTCL_FILL
