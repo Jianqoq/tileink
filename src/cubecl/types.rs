@@ -39,7 +39,7 @@ pub(crate) const CUBE_SDF_CIRCLE_STROKE: u32 = 4;
 /// compute stages must write into known memory ranges instead of growing
 /// per-dispatch vectors.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct CubeBufferLengths {
+pub(crate) struct CubeBufferLengths {
     pub line_count: usize,
     pub path_count: usize,
     pub draw_count: usize,
@@ -201,9 +201,23 @@ pub(crate) struct CubeScanChunkRange {
     pub end: u32,
 }
 
+#[cfg(test)]
 pub(crate) fn build_scan_chunks(scene: &Scene) -> (Vec<CubeScanChunk>, Vec<CubeScanChunkRange>) {
     let mut chunks = Vec::with_capacity(CubeBufferLengths::from_scene(scene).scan_chunk_count);
-    let mut ranges = vec![CubeScanChunkRange::default(); scene.path_records.len()];
+    let mut ranges = Vec::with_capacity(scene.path_records.len());
+    build_scan_chunks_into(scene, &mut chunks, &mut ranges);
+    (chunks, ranges)
+}
+
+pub(crate) fn build_scan_chunks_into(
+    scene: &Scene,
+    chunks: &mut Vec<CubeScanChunk>,
+    ranges: &mut Vec<CubeScanChunkRange>,
+) {
+    chunks.clear();
+    chunks.reserve(CubeBufferLengths::from_scene(scene).scan_chunk_count);
+    ranges.clear();
+    ranges.resize(scene.path_records.len(), CubeScanChunkRange::default());
 
     for record in &scene.bd_records {
         let range_start = chunks.len() as u32;
@@ -225,8 +239,6 @@ pub(crate) fn build_scan_chunks(scene: &Scene) -> (Vec<CubeScanChunk>, Vec<CubeS
             };
         }
     }
-
-    (chunks, ranges)
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -237,14 +249,24 @@ pub(crate) struct CubeCumsumPlan {
     pub row_chunk_ends: Vec<u32>,
 }
 
+#[cfg(test)]
 pub(crate) fn build_cumsum_plan(scene: &Scene) -> CubeCumsumPlan {
+    let mut plan = CubeCumsumPlan::default();
+    build_cumsum_plan_into(scene, &mut plan);
+    plan
+}
+
+pub(crate) fn build_cumsum_plan_into(scene: &Scene, plan: &mut CubeCumsumPlan) {
     let lengths = CubeBufferLengths::from_scene(scene);
-    let mut plan = CubeCumsumPlan {
-        chunk_backdrop_offsets: Vec::with_capacity(lengths.cumsum_chunk_count),
-        chunk_lens: Vec::with_capacity(lengths.cumsum_chunk_count),
-        row_chunk_starts: Vec::with_capacity(lengths.cumsum_row_count),
-        row_chunk_ends: Vec::with_capacity(lengths.cumsum_row_count),
-    };
+    plan.chunk_backdrop_offsets.clear();
+    plan.chunk_lens.clear();
+    plan.row_chunk_starts.clear();
+    plan.row_chunk_ends.clear();
+    plan.chunk_backdrop_offsets
+        .reserve(lengths.cumsum_chunk_count);
+    plan.chunk_lens.reserve(lengths.cumsum_chunk_count);
+    plan.row_chunk_starts.reserve(lengths.cumsum_row_count);
+    plan.row_chunk_ends.reserve(lengths.cumsum_row_count);
 
     for record in &scene.bd_records {
         let stride = record.tile_x1.saturating_sub(record.tile_x0);
@@ -268,8 +290,6 @@ pub(crate) fn build_cumsum_plan(scene: &Scene) -> CubeCumsumPlan {
                 .push(plan.chunk_backdrop_offsets.len() as u32);
         }
     }
-
-    plan
 }
 
 #[cfg(test)]

@@ -49,14 +49,14 @@ fn benchmark_dense_case(c: &mut Criterion, path_count: usize) {
 
     {
         let mut renderer = CubeWgpuRenderer::new_default_device(WIDTH, HEIGHT, Color::WHITE);
-        renderer.prepare_scene(&scene);
+        renderer.prepare_scene_for_bench(&scene);
         sync_cubecl(&renderer);
         group.bench_with_input(
             BenchmarkId::new("cubecl_prepare_scene", path_count),
             &path_count,
             |b, _| {
                 b.iter(|| {
-                    renderer.prepare_scene(black_box(&scene));
+                    renderer.prepare_scene_for_bench(black_box(&scene));
                     sync_cubecl(&renderer);
                 });
             },

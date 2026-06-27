@@ -11,7 +11,7 @@ pub const BLOCK_SIZE: u32 = 16 * 16;
 pub use cpu::Renderer as CpuRenderer;
 #[cfg(feature = "bench-api")]
 pub use cubecl::CubePreparedStage;
-pub use cubecl::{CubeBufferLengths, Renderer as CubeRenderer, WgpuRenderer as CubeWgpuRenderer};
+pub use cubecl::{Renderer as CubeRenderer, WgpuRenderer as CubeWgpuRenderer};
 pub use scene::Scene;
 pub use shared::{
     brush::Brush,

@@ -1,6 +1,6 @@
 use peniko::{
     Color,
-    kurbo::{Affine, Circle, Rect, Shape},
+    kurbo::{Circle, Rect},
 };
 use tileink::{CubeWgpuRenderer, FillRule, Scene};
 
@@ -50,12 +50,13 @@ pub fn build_tileink_scene(path_count: usize, dense: bool) -> Scene {
 pub fn prepared_cubecl_renderer(scene: &Scene) -> CubeWgpuRenderer {
     let mut renderer = CubeWgpuRenderer::new_default_device(WIDTH, HEIGHT, Color::WHITE);
     // Prepared stage benchmarks intentionally exclude scene upload and buffer preallocation.
-    renderer.prepare_scene(scene);
+    renderer.prepare_scene_for_bench(scene);
     sync_cubecl(&renderer);
     renderer
 }
 
 pub fn sync_cubecl(renderer: &CubeWgpuRenderer) {
     // CubeCL launches asynchronously; sync measures GPU completion without target readback.
-    cubecl_common::future::block_on(renderer.client().sync()).expect("CubeCL sync failed");
+    cubecl_common::future::block_on(renderer.client_for_bench().sync())
+        .expect("CubeCL sync failed");
 }

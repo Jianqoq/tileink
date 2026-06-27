@@ -1,5 +1,9 @@
 use super::*;
 
+fn pixel_ix(x: usize, y: usize, width: usize) -> usize {
+    y * width + x
+}
+
 #[test]
 fn filter_wgpu_applies_color_filter_to_offscreen_children_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
@@ -185,9 +189,9 @@ fn filter_wgpu_drop_shadow_offsets_alpha_and_preserves_source_when_enabled() {
     renderer.render(&scene);
     let target = renderer.target.read(renderer.client());
 
-    assert_eq!(target[2 * 8 + 2], rgba8_pack([255, 255, 255, 255]));
-    assert_eq!(target[3 * 8 + 4], rgba8_pack([0, 0, 0, 255]));
-    assert_eq!(target[1 * 8 + 1], 0);
+    assert_eq!(target[pixel_ix(2, 2, 8)], rgba8_pack([255, 255, 255, 255]));
+    assert_eq!(target[pixel_ix(4, 3, 8)], rgba8_pack([0, 0, 0, 255]));
+    assert_eq!(target[pixel_ix(1, 1, 8)], 0);
 }
 
 #[test]
