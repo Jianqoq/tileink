@@ -332,6 +332,29 @@ impl Scene {
         self.layer_stack.push(LayerKind::Filter);
     }
 
+    /// Adds a backdrop filter group sampled from the already-rendered target.
+    ///
+    /// The filter samples pixels behind this layer from `sample_region`, clips
+    /// the filtered backdrop back to that region, then renders this layer's
+    /// children normally on top.
+    pub fn push_backdrop_layer(&mut self, filter: Filter, sample_region: Region) {
+        self.ensure_command_root();
+        let children = self.command_lists.len();
+        self.command_lists.push(CommandList::default());
+        self.current_command_list_mut()
+            .commands
+            .push(Command::Layer {
+                draw: 0,
+                layer: Layer::Backdrop {
+                    filter,
+                    sample_region,
+                },
+                children,
+            });
+        self.command_stack.push(children);
+        self.layer_stack.push(LayerKind::Backdrop);
+    }
+
     pub fn pop_layer(&mut self) -> Option<LayerKind> {
         self.ensure_command_root();
         let layer_kind = self.layer_stack.pop()?;

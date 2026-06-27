@@ -153,7 +153,7 @@ pub fn backdrop_blur_scene() -> Scene {
     );
 
     let panel = Rect::new(142.0, 112.0, 578.0, 308.0);
-    scene.push_filter_layer(Filter::Blur(18.0), Region::rect(panel, Radius::all(34.0)));
+    scene.push_backdrop_layer(Filter::Blur(18.0), Region::rect(panel, Radius::all(34.0)));
     fill_rect(
         &mut scene,
         panel,
@@ -202,7 +202,7 @@ pub fn liquid_glass_scene() -> Scene {
     );
 
     let panel = Rect::new(126.0, 104.0, 594.0, 316.0);
-    scene.push_filter_layer(Filter::Blur(9.0), Region::rect(panel, Radius::all(42.0)));
+    scene.push_backdrop_layer(Filter::Blur(9.0), Region::rect(panel, Radius::all(42.0)));
     fill_rect(
         &mut scene,
         panel,

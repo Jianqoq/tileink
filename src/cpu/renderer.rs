@@ -3,7 +3,10 @@ use std::{
     time::Duration,
 };
 
-use peniko::Color;
+use peniko::{
+    Color,
+    kurbo::{Point, Shape},
+};
 
 use crate::{
     cpu::{
@@ -21,7 +24,10 @@ use crate::{
         execution::{ExecOp, ExecPlan, LayerStackEntry},
         image::{Image, rgba8_pack},
         layer::Layer,
+        layer::region::Region,
         line_seg::LineSegment,
+        pixel::coverage_f32_to_u8,
+        sdf::rect::Rect as SdfRect,
         tile_ptcl::{TilePtcl, TilePtclRange},
         tile_seg_range::TileSegmentRange,
     },
@@ -336,9 +342,60 @@ impl Renderer {
                 composite_src_over_masked_at(target, &image, &mask, bounds, target_bounds);
             }
             Layer::Backdrop {
-                filter: _,
-                sample_region: _,
-            } => todo!(),
+                filter,
+                sample_region,
+            } => {
+                let bounds = self.filter.filtered_region_bounds(
+                    filter,
+                    sample_region,
+                    Bounds::canvas(scene.width, scene.height),
+                );
+                if bounds.is_empty() {
+                    return;
+                }
+
+                let mut backdrop = copy_image_region(target, bounds, target_bounds);
+                self.filter.prepare(&mut backdrop, filter, bounds).run();
+
+                let mut backdrop_mask = rasterize_region_mask(sample_region, bounds);
+                self.apply_outer_clip_stack_to_mask(
+                    scene,
+                    plan,
+                    offscreen.outer_stack.clone(),
+                    bounds,
+                    &mut backdrop_mask,
+                );
+                composite_src_over_masked_at(
+                    target,
+                    &backdrop,
+                    &backdrop_mask,
+                    bounds,
+                    target_bounds,
+                );
+
+                let mut content = Image::new(
+                    target_bounds.width(),
+                    target_bounds.height(),
+                    Color::TRANSPARENT,
+                );
+                self.execute_ops(scene, plan, offscreen.children, &mut content, target_bounds);
+                let mut content_mask =
+                    Image::new(target_bounds.width(), target_bounds.height(), Color::WHITE);
+                self.apply_outer_clip_stack_to_mask(
+                    scene,
+                    plan,
+                    offscreen.outer_stack,
+                    target_bounds,
+                    &mut content_mask,
+                );
+                composite_src_over_masked_at(
+                    target,
+                    &content,
+                    &content_mask,
+                    target_bounds,
+                    target_bounds,
+                );
+            }
             _ => unreachable!(),
         }
     }
@@ -452,6 +509,91 @@ impl Renderer {
         }
         image
     }
+}
+
+fn copy_image_region(source: &Image, bounds: Bounds, source_bounds: Bounds) -> Image {
+    let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
+    for y in 0..image.height {
+        let src_y = bounds.y0 + y as i32 - source_bounds.y0;
+        if src_y < 0 || src_y >= source.height as i32 {
+            continue;
+        }
+        for x in 0..image.width {
+            let src_x = bounds.x0 + x as i32 - source_bounds.x0;
+            if src_x < 0 || src_x >= source.width as i32 {
+                continue;
+            }
+            let src_ix = (src_y as u32 * source.width + src_x as u32) as usize;
+            image.pixels[(y * image.width + x) as usize] = source.pixels[src_ix];
+        }
+    }
+    image
+}
+
+fn rasterize_region_mask(region: &Region, bounds: Bounds) -> Image {
+    let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
+    match region {
+        Region::Rect { rect, radius } => {
+            let sdf = SdfRect {
+                start: Point::new(rect.x0, rect.y0),
+                end: Point::new(rect.x1, rect.y1),
+                radius: *radius,
+            };
+            let tile_x0 = bounds.x0.div_euclid(crate::TILE_SIZE as i32);
+            let tile_y0 = bounds.y0.div_euclid(crate::TILE_SIZE as i32);
+            let tile_x1 =
+                (bounds.x1 + crate::TILE_SIZE as i32 - 1).div_euclid(crate::TILE_SIZE as i32);
+            let tile_y1 =
+                (bounds.y1 + crate::TILE_SIZE as i32 - 1).div_euclid(crate::TILE_SIZE as i32);
+            for tile_y in tile_y0..tile_y1 {
+                for tile_x in tile_x0..tile_x1 {
+                    let tile_bounds = Bounds::new(
+                        tile_x * crate::TILE_SIZE as i32,
+                        tile_y * crate::TILE_SIZE as i32,
+                        (tile_x + 1) * crate::TILE_SIZE as i32,
+                        (tile_y + 1) * crate::TILE_SIZE as i32,
+                    );
+                    let pixel_bounds = tile_bounds.intersect(bounds);
+                    if pixel_bounds.is_empty() {
+                        continue;
+                    }
+                    let mut area = [0.0; crate::BLOCK_SIZE as usize];
+                    sdf.fine_area(&mut area, tile_bounds, pixel_bounds);
+                    for global_y in pixel_bounds.y0..pixel_bounds.y1 {
+                        let tile_row =
+                            (global_y - tile_bounds.y0) as usize * crate::TILE_SIZE as usize;
+                        let local_y = (global_y - bounds.y0) as u32;
+                        for global_x in pixel_bounds.x0..pixel_bounds.x1 {
+                            let tile_ix = tile_row + (global_x - tile_bounds.x0) as usize;
+                            let alpha = coverage_f32_to_u8(area[tile_ix]);
+                            if alpha == 0 {
+                                continue;
+                            }
+                            let local_x = (global_x - bounds.x0) as u32;
+                            let ix = (local_y * image.width + local_x) as usize;
+                            image.pixels[ix] = rgba8_pack([alpha, alpha, alpha, alpha]);
+                        }
+                    }
+                }
+            }
+        }
+        Region::Path {
+            path, transform, ..
+        } => {
+            let path = *transform * path;
+            for y in 0..image.height {
+                let py = bounds.y0 as f64 + y as f64 + 0.5;
+                for x in 0..image.width {
+                    let px = bounds.x0 as f64 + x as f64 + 0.5;
+                    if path.contains(Point::new(px, py)) {
+                        let ix = (y * image.width + x) as usize;
+                        image.pixels[ix] = rgba8_pack([255, 255, 255, 255]);
+                    }
+                }
+            }
+        }
+    }
+    image
 }
 
 #[cfg(test)]
@@ -635,6 +777,27 @@ mod tests {
             expanded_px[1] < 245 && expanded_px[2] < 245,
             "expected blur outside sample region, got {expanded_px:?}"
         );
+    }
+
+    #[test]
+    fn backdrop_filter_samples_existing_target() {
+        let mut scene = Scene::new(48, 24);
+        scene.push_rect(
+            Rect::new(0.0, 0.0, 48.0, 24.0),
+            Color::from_rgb8(255, 0, 0),
+            FillRule::NonZero,
+        );
+        scene.push_backdrop_layer(
+            Filter::Invert(1.0),
+            Region::rect(Rect::new(8.0, 4.0, 32.0, 20.0), Radius::all(0.0)),
+        );
+        scene.pop_layer();
+
+        let mut renderer = Renderer::new(48, 24, Color::WHITE);
+        renderer.render(&scene);
+
+        assert_eq!(renderer.image().rgba8_at(12, 8), [0, 255, 255, 255]);
+        assert_eq!(renderer.image().rgba8_at(4, 8), [255, 0, 0, 255]);
     }
 
     #[test]
