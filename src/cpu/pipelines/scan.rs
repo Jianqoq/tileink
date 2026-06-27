@@ -330,6 +330,9 @@ pub(crate) fn plan_scan_line(line: Line, bbox: TileBbox) -> Option<ScanLinePlan>
     if dx + dy == 0.0 {
         return None;
     }
+    if dy == 0.0 && s0.1.floor() == s0.1 {
+        return None;
+    }
 
     let idxdy = 1.0 / (dx + dy);
     let mut a = dx * idxdy;

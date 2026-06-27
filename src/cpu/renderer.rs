@@ -505,3 +505,61 @@ impl Renderer {
         image
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use peniko::{
+        Color,
+        kurbo::{Affine, Rect, RoundedRect, Shape},
+    };
+
+    use super::Renderer;
+    use crate::{FillRule, Scene};
+
+    fn render_single_rounded_rect() -> Renderer {
+        let mut scene = Scene::new(320, 240);
+        scene.push_path(
+            RoundedRect::new(48.0, 48.0, 280.0, 200.0, (36.0, 36.0, 8.0, 8.0)).to_path(0.1),
+            Color::from_rgb8(37, 99, 235),
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.1,
+        );
+
+        let mut renderer = Renderer::new(320, 240, Color::WHITE);
+        renderer.render(&scene);
+        renderer
+    }
+
+    #[test]
+    fn rounded_rect_top_right_keeps_inside_filled() {
+        let renderer = render_single_rounded_rect();
+
+        assert_eq!(renderer.image().rgba8_at(260, 60), [37, 99, 235, 255]);
+    }
+
+    #[test]
+    fn rounded_rect_top_right_keeps_outside_empty() {
+        let renderer = render_single_rounded_rect();
+
+        assert_eq!(renderer.image().rgba8_at(276, 52), [255, 255, 255, 255]);
+    }
+
+    #[test]
+    fn plain_rect_right_edge_keeps_inside_filled() {
+        let mut scene = Scene::new(320, 240);
+        scene.push_path(
+            Rect::new(48.0, 48.0, 280.0, 200.0).to_path(0.0),
+            Color::from_rgb8(37, 99, 235),
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.0,
+        );
+
+        let mut renderer = Renderer::new(320, 240, Color::WHITE);
+        renderer.render(&scene);
+
+        assert_eq!(renderer.image().rgba8_at(279, 60), [37, 99, 235, 255]);
+        assert_eq!(renderer.image().rgba8_at(280, 60), [255, 255, 255, 255]);
+    }
+}

@@ -136,6 +136,9 @@ fn plan_scan_line(line: Line, bbox: TileBbox) -> ScanLinePlan {
     if dx + dy == 0.0 {
         return invalid;
     }
+    if dy == 0.0 && floor(s0.y) == s0.y {
+        return invalid;
+    }
 
     let idxdy = 1.0 / (dx + dy);
     var a = dx * idxdy;
