@@ -12,7 +12,19 @@ wide = "1.5.0"
 rayon = "1.12.0"
 
 [dev-dependencies]
+criterion = "0.5"
+cubecl-common = "0.10.0"
 png = "0.17"
+vello = { path = "C:\\Users\\JianJian Li\\vello\\vello", default-features = true }
+wgpu = "29.0.3"
+
+[[bench]]
+name = "cubecl_dense_compare"
+harness = false
+
+[[bench]]
+name = "gpu_compare"
+harness = false
 
 [[example]]
 name = "cpu_backdrop_blur"
