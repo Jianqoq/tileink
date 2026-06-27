@@ -209,16 +209,14 @@ pub(crate) fn composite_color_tile_buffer_into(
     color: u32,
     clip_mask: &[u8; 256],
 ) {
-    let color_alpha = (color >> 24) as u8;
-    if color_alpha == 0 {
+    if (color >> 24) as u8 == 0 {
         return;
     }
     for (dst, &mask) in tile.iter_mut().zip(clip_mask) {
-        let alpha = combine_alpha(color_alpha, mask);
-        if alpha == 0 {
+        if mask == 0 {
             continue;
         }
-        *dst = src_over_premul_u8(*dst, scale_premul_u8(color, alpha));
+        *dst = src_over_premul_u8(*dst, scale_premul_u8(color, mask));
     }
 }
 
@@ -264,8 +262,15 @@ pub(crate) fn composite_blend_group_tile(
 
 #[cfg(test)]
 mod tests {
-    use super::{build_tile_alpha, pixel_coverage};
-    use crate::shared::{fill::FillRule, line_seg::LineSegment};
+    use peniko::Color;
+
+    use super::{build_tile_alpha, composite_color_tile_buffer_into, pixel_coverage};
+    use crate::shared::{
+        fill::FillRule,
+        image::rgba8_pack,
+        line_seg::LineSegment,
+        pixel::{TileBuffer, premul_f32_to_u32},
+    };
 
     #[test]
     fn pixel_coverage_uses_backdrop_when_tile_has_no_segments() {
@@ -345,5 +350,15 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn composite_color_preserves_source_alpha_on_opaque_clip() {
+        let mut tile: TileBuffer = [rgba8_pack([248, 249, 251, 255]); 256];
+        let color = premul_f32_to_u32(Color::from_rgba8(37, 143, 93, 230).premultiply().components);
+
+        composite_color_tile_buffer_into(&mut tile, color, &[255; 256]);
+
+        assert_eq!(tile[0], rgba8_pack([57, 153, 109, 255]));
     }
 }

@@ -324,7 +324,6 @@ impl Renderer {
                 }
                 let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
                 self.execute_ops(scene, plan, offscreen.children, &mut image, bounds);
-                println!("sample_region: {:?}, bounds: {:?}", sample_region, bounds);
                 self.filter.prepare(&mut image, filter, bounds).run();
                 let mut mask = Image::new(bounds.width(), bounds.height(), Color::WHITE);
                 self.apply_outer_clip_stack_to_mask(
