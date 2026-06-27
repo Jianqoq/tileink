@@ -6,12 +6,13 @@ use peniko::{
 };
 
 use super::{CubeBufferLengths, CubeRenderTarget, WgpuRenderer};
-use crate::cubecl::pipelines::coarse::TILE_WORKGROUP_SIZE;
+use crate::cubecl::pipelines::coarse::{CoarseBatch, TILE_WORKGROUP_SIZE};
 use crate::cubecl::types::{
     CUBE_PTCL_BEGIN_BLEND, CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_BEGIN_OPACITY, CUBE_PTCL_COLOR,
     CUBE_PTCL_END, CUBE_PTCL_END_BLEND, CUBE_PTCL_END_CLIP, CUBE_PTCL_END_OPACITY, CUBE_PTCL_FILL,
     CUMSUM_CHUNK_SIZE,
 };
+use crate::render::Render;
 use crate::shared::brush::{Brush, IDENTITY_TRANSFORM, PatternBrush};
 use crate::shared::execution::ExecOp;
 use crate::shared::image::{Image, rgba8_pack, unpack_rgba8};
@@ -79,6 +80,28 @@ fn assert_images_close(expected: &Image, actual: &Image, tolerance: u8) {
     assert_eq!(
         mismatch_count, 0,
         "{mismatch_count} pixels differ; first mismatch: {first_mismatch:?}"
+    );
+}
+
+fn run_scan_stage(renderer: &mut WgpuRenderer, scene: &Scene) {
+    Render::scan(renderer, scene, ());
+}
+
+fn run_cumsum_stage(renderer: &mut WgpuRenderer, scene: &Scene) {
+    Render::cumsum(renderer, scene, ());
+}
+
+fn run_default_coarse_stage(renderer: &mut WgpuRenderer, scene: &Scene) {
+    let draw_end = renderer.lengths.draw_count as u32;
+    Render::coarse(
+        renderer,
+        scene,
+        CoarseBatch {
+            draw_start: 0,
+            draw_end,
+            layer_stack_start: 0,
+            layer_stack_end: 0,
+        },
     );
 }
 

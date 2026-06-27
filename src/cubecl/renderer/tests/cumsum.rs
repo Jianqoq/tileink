@@ -22,7 +22,7 @@ fn cumsum_wgpu_scans_backdrop_rows_when_enabled() {
         .scan
         .backdrops
         .replace(&client, &[1, -1, 2, 3, 0, -2]);
-    renderer.cumsum();
+    run_cumsum_stage(&mut renderer, &scene);
 
     assert_eq!(
         renderer.scan.backdrops.read(renderer.client()),
@@ -78,7 +78,7 @@ fn cumsum_wgpu_carries_across_chunks_when_enabled() {
     renderer.prepare_scene(&scene);
     let client = renderer.client.clone();
     renderer.scan.backdrops.replace(&client, &deltas);
-    renderer.cumsum();
+    run_cumsum_stage(&mut renderer, &scene);
 
     assert_eq!(renderer.scan.backdrops.read(renderer.client()), expected);
 }

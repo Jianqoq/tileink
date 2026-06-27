@@ -13,7 +13,7 @@ fn fine_wgpu_renders_solid_color_particles_when_enabled() {
     scene.push_rect(Rect::new(16.0, 0.0, 32.0, 16.0), blue, FillRule::NonZero);
 
     let mut renderer = WgpuRenderer::new_default_device(32, 16, Color::TRANSPARENT);
-    renderer.render_flat(&scene);
+    renderer.render(&scene);
     let target = renderer.target.read(renderer.client());
 
     assert_eq!(target[0], premul_f32_to_u32(red.premultiply().components));
@@ -38,7 +38,7 @@ fn fine_wgpu_samples_linear_gradient_brush_when_enabled() {
     );
 
     let mut renderer = WgpuRenderer::new_default_device(32, 16, Color::TRANSPARENT);
-    renderer.render_flat(&scene);
+    renderer.render(&scene);
     let target = renderer.target.read(renderer.client());
     let left = unpack_rgba8(target[8 * 32 + 2]);
     let right = unpack_rgba8(target[8 * 32 + 29]);
@@ -78,7 +78,7 @@ fn fine_wgpu_samples_radial_sweep_and_four_corner_brushes_when_enabled() {
     );
 
     let mut renderer = WgpuRenderer::new_default_device(96, 32, Color::TRANSPARENT);
-    renderer.render_flat(&scene);
+    renderer.render(&scene);
     let target = renderer.target.read(renderer.client());
     let radial_center = unpack_rgba8(target[16 * 96 + 16]);
     let radial_edge = unpack_rgba8(target[16 * 96 + 28]);
@@ -125,7 +125,7 @@ fn fine_wgpu_rasterizes_fill_particles_when_enabled() {
     );
 
     let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
-    renderer.render_flat(&scene);
+    renderer.render(&scene);
     let target = renderer.target.read(renderer.client());
 
     assert_eq!(
@@ -150,7 +150,7 @@ fn fine_wgpu_applies_clip_particles_when_enabled() {
     scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), red, FillRule::NonZero);
 
     let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
-    renderer.render_flat(&scene);
+    renderer.render(&scene);
     let target = renderer.target.read(renderer.client());
 
     assert_eq!(
@@ -178,7 +178,7 @@ fn fine_wgpu_applies_opacity_layer_stack_when_enabled() {
     scene.pop_layer();
 
     let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
-    renderer.render_flat(&scene);
+    renderer.render(&scene);
     let target = renderer.target.read(renderer.client());
 
     assert_eq!(target[8 * 16 + 4], rgba8_pack([128, 0, 0, 128]));
@@ -206,7 +206,7 @@ fn fine_wgpu_applies_blend_layer_stack_when_enabled() {
     scene.pop_layer();
 
     let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
-    renderer.render_flat(&scene);
+    renderer.render(&scene);
     let target = renderer.target.read(renderer.client());
 
     assert_eq!(target[8 * 16 + 4], rgba8_pack([0, 0, 0, 255]));
@@ -235,7 +235,7 @@ fn fine_wgpu_does_not_leak_clip_after_layer_pop_when_enabled() {
     scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), blue, FillRule::NonZero);
 
     let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
-    renderer.render_flat(&scene);
+    renderer.render(&scene);
     let target = renderer.target.read(renderer.client());
 
     assert_eq!(
@@ -271,7 +271,7 @@ fn fine_wgpu_intersects_nested_clip_layers_when_enabled() {
     scene.pop_layer();
 
     let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
-    renderer.render_flat(&scene);
+    renderer.render(&scene);
     let target = renderer.target.read(renderer.client());
     let red_px = premul_f32_to_u32(red.premultiply().components);
 
@@ -289,7 +289,7 @@ fn fine_wgpu_uses_premultiplied_clear_color_when_enabled() {
     let clear = Color::from_rgba8(255, 0, 0, 128);
     let scene = Scene::new(4, 4);
     let mut renderer = WgpuRenderer::new_default_device(4, 4, clear);
-    renderer.render_flat(&scene);
+    renderer.render(&scene);
     let target = renderer.target.read(renderer.client());
 
     assert_eq!(target[0], premul_f32_to_u32(clear.premultiply().components));

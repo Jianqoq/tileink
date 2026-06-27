@@ -6,7 +6,7 @@ use criterion::{
     measurement::WallTime,
 };
 use peniko::Color;
-use tileink::{CpuRenderer, CubeWgpuRenderer, Scene};
+use tileink::{CpuRenderer, CubePreparedStage, CubeWgpuRenderer, Scene};
 
 fn bench_prepared_cubecl_stage(
     group: &mut BenchmarkGroup<'_, WallTime>,
@@ -68,8 +68,8 @@ fn benchmark_dense_case(c: &mut Criterion, path_count: usize) {
         &scene,
         path_count,
         "cubecl_scan_only",
-        |renderer| renderer.scan(),
-        |renderer| renderer.scan(),
+        |renderer| renderer.run_prepared_stage_for_bench(&scene, CubePreparedStage::Scan),
+        |renderer| renderer.run_prepared_stage_for_bench(&scene, CubePreparedStage::Scan),
     );
 
     bench_prepared_cubecl_stage(
@@ -78,12 +78,12 @@ fn benchmark_dense_case(c: &mut Criterion, path_count: usize) {
         path_count,
         "cubecl_scan_cumsum",
         |renderer| {
-            renderer.scan();
-            renderer.cumsum();
+            renderer.run_prepared_stage_for_bench(&scene, CubePreparedStage::Scan);
+            renderer.run_prepared_stage_for_bench(&scene, CubePreparedStage::Cumsum);
         },
         |renderer| {
-            renderer.scan();
-            renderer.cumsum();
+            renderer.run_prepared_stage_for_bench(&scene, CubePreparedStage::Scan);
+            renderer.run_prepared_stage_for_bench(&scene, CubePreparedStage::Cumsum);
         },
     );
 
@@ -93,14 +93,14 @@ fn benchmark_dense_case(c: &mut Criterion, path_count: usize) {
         path_count,
         "cubecl_scan_cumsum_coarse",
         |renderer| {
-            renderer.scan();
-            renderer.cumsum();
-            renderer.coarse();
+            renderer.run_prepared_stage_for_bench(&scene, CubePreparedStage::Scan);
+            renderer.run_prepared_stage_for_bench(&scene, CubePreparedStage::Cumsum);
+            renderer.run_prepared_stage_for_bench(&scene, CubePreparedStage::Coarse);
         },
         |renderer| {
-            renderer.scan();
-            renderer.cumsum();
-            renderer.coarse();
+            renderer.run_prepared_stage_for_bench(&scene, CubePreparedStage::Scan);
+            renderer.run_prepared_stage_for_bench(&scene, CubePreparedStage::Cumsum);
+            renderer.run_prepared_stage_for_bench(&scene, CubePreparedStage::Coarse);
         },
     );
 
@@ -110,12 +110,12 @@ fn benchmark_dense_case(c: &mut Criterion, path_count: usize) {
         path_count,
         "cubecl_fine_only",
         |renderer| {
-            renderer.scan();
-            renderer.cumsum();
-            renderer.coarse();
-            renderer.fine();
+            renderer.run_prepared_stage_for_bench(&scene, CubePreparedStage::Scan);
+            renderer.run_prepared_stage_for_bench(&scene, CubePreparedStage::Cumsum);
+            renderer.run_prepared_stage_for_bench(&scene, CubePreparedStage::Coarse);
+            renderer.run_prepared_stage_for_bench(&scene, CubePreparedStage::Fine);
         },
-        |renderer| renderer.fine(),
+        |renderer| renderer.run_prepared_stage_for_bench(&scene, CubePreparedStage::Fine),
     );
 
     bench_prepared_cubecl_stage(
@@ -124,16 +124,16 @@ fn benchmark_dense_case(c: &mut Criterion, path_count: usize) {
         path_count,
         "cubecl_full_prepared",
         |renderer| {
-            renderer.scan();
-            renderer.cumsum();
-            renderer.coarse();
-            renderer.fine();
+            renderer.run_prepared_stage_for_bench(&scene, CubePreparedStage::Scan);
+            renderer.run_prepared_stage_for_bench(&scene, CubePreparedStage::Cumsum);
+            renderer.run_prepared_stage_for_bench(&scene, CubePreparedStage::Coarse);
+            renderer.run_prepared_stage_for_bench(&scene, CubePreparedStage::Fine);
         },
         |renderer| {
-            renderer.scan();
-            renderer.cumsum();
-            renderer.coarse();
-            renderer.fine();
+            renderer.run_prepared_stage_for_bench(&scene, CubePreparedStage::Scan);
+            renderer.run_prepared_stage_for_bench(&scene, CubePreparedStage::Cumsum);
+            renderer.run_prepared_stage_for_bench(&scene, CubePreparedStage::Coarse);
+            renderer.run_prepared_stage_for_bench(&scene, CubePreparedStage::Fine);
         },
     );
 

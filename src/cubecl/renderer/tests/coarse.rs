@@ -35,7 +35,7 @@ fn coarse_wgpu_emits_compact_solid_color_particles_when_enabled() {
         .scan
         .tile_segment_range_ends
         .replace(&client, &[0, 0, 0]);
-    renderer.coarse();
+    run_default_coarse_stage(&mut renderer, &scene);
 
     assert_eq!(
         renderer
@@ -108,7 +108,7 @@ fn coarse_wgpu_keeps_particle_order_across_workgroup_draw_chunks_when_enabled() 
         .scan
         .tile_segment_range_ends
         .replace(&client, &vec![0; draw_count]);
-    renderer.coarse();
+    run_default_coarse_stage(&mut renderer, &scene);
 
     let mut expected_tags = vec![CUBE_PTCL_COLOR; draw_count];
     expected_tags.push(CUBE_PTCL_END);
@@ -163,7 +163,7 @@ fn coarse_wgpu_keeps_segment_ranges_for_fill_particles_when_enabled() {
         .tile_segment_range_starts
         .replace(&client, &[2]);
     renderer.scan.tile_segment_range_ends.replace(&client, &[5]);
-    renderer.coarse();
+    run_default_coarse_stage(&mut renderer, &scene);
 
     assert_eq!(
         renderer
@@ -216,7 +216,7 @@ fn coarse_wgpu_emits_clip_particles_when_enabled() {
         .tile_segment_range_starts
         .replace(&client, &[0]);
     renderer.scan.tile_segment_range_ends.replace(&client, &[0]);
-    renderer.coarse();
+    run_default_coarse_stage(&mut renderer, &scene);
 
     assert_eq!(
         renderer.coarse.ptcl_tags.read(renderer.client()),
@@ -246,8 +246,8 @@ fn coarse_wgpu_wraps_draw_batch_with_active_clip_stack_when_enabled() {
 
     let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
     renderer.prepare_scene(&scene);
-    renderer.scan();
-    renderer.cumsum();
+    run_scan_stage(&mut renderer, &scene);
+    run_cumsum_stage(&mut renderer, &scene);
 
     let plan = renderer.plan.as_ref().unwrap();
     let ExecOp::DrawBatch { draws, layer_stack } = &plan.ops[1] else {
@@ -256,6 +256,7 @@ fn coarse_wgpu_wraps_draw_batch_with_active_clip_stack_when_enabled() {
     let draws = draws.clone();
     let layer_stack = layer_stack.clone();
     renderer.coarse_batch(
+        &scene,
         draws.start as u32,
         draws.end as u32,
         layer_stack.start as u32,
@@ -304,8 +305,8 @@ fn coarse_wgpu_wraps_draw_batch_with_opacity_and_blend_stack_when_enabled() {
 
     let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
     renderer.prepare_scene(&scene);
-    renderer.scan();
-    renderer.cumsum();
+    run_scan_stage(&mut renderer, &scene);
+    run_cumsum_stage(&mut renderer, &scene);
 
     let plan = renderer.plan.as_ref().unwrap();
     let (draws, layer_stack) = plan
@@ -321,6 +322,7 @@ fn coarse_wgpu_wraps_draw_batch_with_opacity_and_blend_stack_when_enabled() {
         })
         .expect("expected opacity+blend draw batch");
     renderer.coarse_batch(
+        &scene,
         draws.start as u32,
         draws.end as u32,
         layer_stack.start as u32,

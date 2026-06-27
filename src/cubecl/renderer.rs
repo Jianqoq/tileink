@@ -2,6 +2,7 @@ use ::cubecl::prelude::Runtime;
 use peniko::{BlendMode, Color, kurbo::Shape};
 
 use crate::{
+    render::Render,
     scene::Scene,
     shared::{
         bd_record::BackdropRecord,
@@ -71,6 +72,66 @@ enum CubeRenderTarget {
     Scratch(usize),
 }
 
+#[cfg(feature = "bench-api")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CubePreparedStage {
+    Scan,
+    Cumsum,
+    Coarse,
+    Fine,
+}
+
+impl<R: Runtime> Render for Renderer<R> {
+    type ScanArgs<'a> = ();
+    type CumsumArgs<'a> = ();
+    type CoarseArgs<'a> = CoarseBatch;
+    type FineArgs<'a> = ();
+    type ExecuteArgs<'a> = ();
+
+    fn render(&mut self, scene: &Scene) {
+        self.prepare_scene(scene);
+        <Self as Render>::scan(self, scene, ());
+        <Self as Render>::cumsum(self, scene, ());
+        self.clear_target();
+        self.execute_prepared_plan(scene);
+    }
+
+    fn execute(&mut self, scene: &Scene, _: Self::ExecuteArgs<'_>) {
+        <Self as Render>::render(self, scene);
+    }
+
+    fn scan(&mut self, _: &Scene, _: Self::ScanArgs<'_>) {
+        ScanPipeline::run(&self.client, &self.scene, &mut self.scan, self.lengths);
+    }
+
+    fn cumsum(&mut self, _: &Scene, _: Self::CumsumArgs<'_>) {
+        CumsumPipeline::run(&self.client, &self.scene, &mut self.scan, self.lengths);
+    }
+
+    fn coarse(&mut self, _: &Scene, batch: Self::CoarseArgs<'_>) {
+        CoarsePipeline::run(
+            &self.client,
+            &self.scene,
+            &self.scan,
+            &mut self.coarse,
+            self.lengths,
+            batch,
+        );
+    }
+
+    fn fine(&mut self, _: &Scene, _: Self::FineArgs<'_>) {
+        let config = self.fine_config();
+        FinePipeline::run(
+            &self.client,
+            &self.scan,
+            &self.coarse,
+            self.draw_brushes.resources(),
+            &mut self.target,
+            config,
+        );
+    }
+}
+
 impl<R: Runtime> Renderer<R> {
     pub fn new(device: &R::Device, width: u32, height: u32, clear: Color) -> Self {
         let client = R::client(device);
@@ -129,71 +190,23 @@ impl<R: Runtime> Renderer<R> {
         self.plan = Some(plan);
     }
 
-    /// Runs the CubeCL scan stage.
-    ///
-    /// The algorithm mirrors the CPU scan pipeline but splits it into GPU
-    /// passes: clear, per-line counting, chunk-local prefix, per-path chunk
-    /// offsets, offset application, and segment emission. This is a real GPU
-    /// implementation, not a temporary CPU fallback.
-    pub fn scan(&mut self) {
-        ScanPipeline::run(&self.client, &self.scene, &mut self.scan, self.lengths);
-    }
-
-    /// Runs the CubeCL backdrop row prefix-sum stage.
-    ///
-    /// This consumes scan's backdrop edge deltas and leaves cumulative backdrop
-    /// values in the same GPU buffer for coarse/fine stages. The pass is fully
-    /// GPU-resident; readback exists only in tests.
-    pub fn cumsum(&mut self) {
-        CumsumPipeline::run(&self.client, &self.scene, &mut self.scan, self.lengths);
-    }
-
-    /// Runs the CubeCL coarse stage over the whole flat draw list.
-    ///
-    /// The stage is fully GPU-resident: count visible draw particles per tile,
-    /// prefix those counts into compact ranges, then emit ordered particles.
-    /// Full scene rendering should use `render`, which runs coarse per
-    /// execution-plan draw batch with its active layer stack.
-    pub fn coarse(&mut self) {
-        self.coarse_batch(0, self.lengths.draw_count as u32, 0, 0);
-    }
-
     fn coarse_batch(
         &mut self,
+        scene: &Scene,
         draw_start: u32,
         draw_end: u32,
         layer_stack_start: u32,
         layer_stack_end: u32,
     ) {
-        CoarsePipeline::run(
-            &self.client,
-            &self.scene,
-            &self.scan,
-            &mut self.coarse,
-            self.lengths,
+        <Self as Render>::coarse(
+            self,
+            scene,
             CoarseBatch {
                 draw_start,
                 draw_end,
                 layer_stack_start,
                 layer_stack_end,
             },
-        );
-    }
-
-    /// Runs the CubeCL fine stage for the current coarse particle stream.
-    ///
-    /// The pass clears the target, then renders one workgroup per tile with one
-    /// lane per pixel. Use `fine_batch` internally when compositing multiple
-    /// execution-plan batches into the same target.
-    pub fn fine(&mut self) {
-        let config = self.fine_config();
-        FinePipeline::run(
-            &self.client,
-            &self.scan,
-            &self.coarse,
-            self.draw_brushes.resources(),
-            &mut self.target,
-            config,
         );
     }
 
@@ -239,15 +252,28 @@ impl<R: Runtime> Renderer<R> {
     }
 
     pub fn render(&mut self, scene: &Scene) {
-        self.prepare_scene(scene);
-        self.scan();
-        self.cumsum();
-        self.clear_target();
-        self.execute_prepared_plan();
+        <Self as Render>::render(self, scene);
     }
 
-    pub fn render_flat(&mut self, scene: &Scene) {
-        self.render(scene);
+    #[cfg(feature = "bench-api")]
+    #[doc(hidden)]
+    pub fn run_prepared_stage_for_bench(&mut self, scene: &Scene, stage: CubePreparedStage) {
+        let draw_end = self.lengths.draw_count as u32;
+        match stage {
+            CubePreparedStage::Scan => <Self as Render>::scan(self, scene, ()),
+            CubePreparedStage::Cumsum => <Self as Render>::cumsum(self, scene, ()),
+            CubePreparedStage::Coarse => <Self as Render>::coarse(
+                self,
+                scene,
+                CoarseBatch {
+                    draw_start: 0,
+                    draw_end,
+                    layer_stack_start: 0,
+                    layer_stack_end: 0,
+                },
+            ),
+            CubePreparedStage::Fine => <Self as Render>::fine(self, scene, ()),
+        }
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
@@ -304,19 +330,20 @@ impl<R: Runtime> Renderer<R> {
         R::name(&self.client)
     }
 
-    fn execute_prepared_plan(&mut self) {
+    fn execute_prepared_plan(&mut self, scene: &Scene) {
         let plan = self
             .plan
             .take()
             .expect("CubeCL execute requires prepare_scene to upload an execution plan first");
-        self.execute_plan(&plan);
+        self.execute_plan(scene, &plan);
         self.plan = Some(plan);
     }
 
-    fn execute_plan(&mut self, plan: &ExecPlan) {
+    fn execute_plan(&mut self, scene: &Scene, plan: &ExecPlan) {
         let mut filter_brush_cursor = 0;
         let mut filter_path_cursor = 0;
         self.execute_ops(
+            scene,
             plan,
             &plan.ops,
             CubeRenderTarget::Main,
@@ -327,6 +354,7 @@ impl<R: Runtime> Renderer<R> {
 
     fn execute_ops(
         &mut self,
+        scene: &Scene,
         plan: &ExecPlan,
         ops: &[ExecOp],
         target: CubeRenderTarget,
@@ -336,7 +364,7 @@ impl<R: Runtime> Renderer<R> {
         for op in ops {
             match op {
                 ExecOp::DrawBatch { draws, layer_stack } => {
-                    self.execute_draw_batch(plan, draws.clone(), layer_stack.clone(), target);
+                    self.execute_draw_batch(scene, draws.clone(), layer_stack.clone(), target);
                 }
                 ExecOp::BeginClip { .. }
                 | ExecOp::EndClip
@@ -349,6 +377,7 @@ impl<R: Runtime> Renderer<R> {
                     outer_stack,
                     children,
                 } => self.execute_offscreen_layer(
+                    scene,
                     plan,
                     layer,
                     outer_stack.clone(),
@@ -363,7 +392,7 @@ impl<R: Runtime> Renderer<R> {
 
     fn execute_draw_batch(
         &mut self,
-        _plan: &ExecPlan,
+        scene: &Scene,
         draws: std::ops::Range<usize>,
         layer_stack: std::ops::Range<usize>,
         target: CubeRenderTarget,
@@ -372,6 +401,7 @@ impl<R: Runtime> Renderer<R> {
             return;
         }
         self.coarse_batch(
+            scene,
             draws.start as u32,
             draws.end as u32,
             layer_stack.start as u32,
@@ -383,6 +413,7 @@ impl<R: Runtime> Renderer<R> {
     #[allow(clippy::too_many_arguments)]
     fn execute_offscreen_layer(
         &mut self,
+        scene: &Scene,
         plan: &ExecPlan,
         layer: &Layer,
         outer_stack: std::ops::Range<usize>,
@@ -401,6 +432,7 @@ impl<R: Runtime> Renderer<R> {
                 let source = self.acquire_scratch();
                 self.clear_buffer(source, 0);
                 self.execute_ops(
+                    scene,
                     plan,
                     children,
                     source,
@@ -439,6 +471,7 @@ impl<R: Runtime> Renderer<R> {
                 let content = self.acquire_scratch();
                 self.clear_buffer(content, 0);
                 self.execute_ops(
+                    scene,
                     plan,
                     children,
                     content,

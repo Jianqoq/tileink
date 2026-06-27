@@ -6,7 +6,7 @@ use common::{
     HEIGHT, WIDTH, build_tileink_scene, circle_at, color_at, prepared_cubecl_renderer, sync_cubecl,
 };
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
-use tileink::CubeWgpuRenderer;
+use tileink::{CubePreparedStage, CubeWgpuRenderer, Scene};
 
 struct VelloWgpuContext {
     _instance: wgpu::Instance,
@@ -81,17 +81,17 @@ fn build_vello_scene(path_count: usize, dense: bool) -> vello::Scene {
     scene
 }
 
-fn run_cubecl_prepared(renderer: &mut CubeWgpuRenderer) {
-    renderer.scan();
-    renderer.cumsum();
-    renderer.coarse();
-    renderer.fine();
+fn run_cubecl_prepared(renderer: &mut CubeWgpuRenderer, scene: &Scene) {
+    renderer.run_prepared_stage_for_bench(scene, CubePreparedStage::Scan);
+    renderer.run_prepared_stage_for_bench(scene, CubePreparedStage::Cumsum);
+    renderer.run_prepared_stage_for_bench(scene, CubePreparedStage::Coarse);
+    renderer.run_prepared_stage_for_bench(scene, CubePreparedStage::Fine);
 }
 
 fn benchmark_case(c: &mut Criterion, path_count: usize, dense: bool) {
     let tileink_scene = build_tileink_scene(path_count, dense);
     let mut cubecl_renderer = prepared_cubecl_renderer(&tileink_scene);
-    run_cubecl_prepared(&mut cubecl_renderer);
+    run_cubecl_prepared(&mut cubecl_renderer, &tileink_scene);
     sync_cubecl(&cubecl_renderer);
 
     let vello_context = VelloWgpuContext::new();
@@ -132,7 +132,7 @@ fn benchmark_case(c: &mut Criterion, path_count: usize, dense: bool) {
         &path_count,
         |b, _| {
             b.iter(|| {
-                run_cubecl_prepared(black_box(&mut cubecl_renderer));
+                run_cubecl_prepared(black_box(&mut cubecl_renderer), black_box(&tileink_scene));
                 sync_cubecl(&cubecl_renderer);
             });
         },

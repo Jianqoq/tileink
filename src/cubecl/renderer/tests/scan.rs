@@ -17,7 +17,7 @@ fn scan_wgpu_emits_one_tile_vertical_line_when_enabled() {
 
     let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
     renderer.prepare_scene(&scene);
-    renderer.scan();
+    run_scan_stage(&mut renderer, &scene);
 
     let ranges_start = renderer
         .scan
@@ -59,7 +59,7 @@ fn scan_wgpu_emits_non_integer_horizontal_line_when_enabled() {
 
     let mut renderer = WgpuRenderer::new_default_device(32, 16, Color::TRANSPARENT);
     renderer.prepare_scene(&scene);
-    renderer.scan();
+    run_scan_stage(&mut renderer, &scene);
 
     let counts = renderer.scan.segment_tile_counts.read(renderer.client());
     let starts = renderer
