@@ -1,5 +1,5 @@
 use peniko::{
-    Color,
+    Color, Compose, Mix,
     kurbo::{Affine, Arc, BezPath, Rect, Shape, Stroke, StrokeOpts, stroke as kurbo_stroke},
 };
 
@@ -12,7 +12,10 @@ use crate::shared::{
         ClipStackEntry, Command, CommandList, CommandListId, ExecOp, ExecPlan, ROOT_COMMAND_LIST_ID,
     },
     fill::FillRule,
-    layer::{Layer, LayerKind, blend::Blend, clip::Clip, opacity::Opacity},
+    layer::{
+        Layer, LayerKind, blend::Blend, clip::Clip, filter::Filter, opacity::Opacity,
+        region::Region,
+    },
     line::Line,
     path::PathRecord,
     path_flatten::PathFlatten,
@@ -253,7 +256,7 @@ impl Scene {
         self.layer_stack.push(LayerKind::Opacity);
     }
 
-    pub fn push_blend_layer(
+    pub(crate) fn push_blend_layer_inner(
         &mut self,
         path: BezPath,
         transform: Affine,
@@ -292,6 +295,36 @@ impl Scene {
             });
         self.command_stack.push(children);
         self.layer_stack.push(LayerKind::Blend);
+    }
+
+    pub fn push_blend_layer(
+        &mut self,
+        path: BezPath,
+        transform: Affine,
+        tolerance: f64,
+        mix: Mix,
+        compose: Compose,
+    ) {
+        self.push_blend_layer_inner(path, transform, tolerance, Blend::new(mix, compose));
+    }
+
+    /// Adds an offscreen filter group clipped by `region`.
+    ///
+    /// The CPU renderer uses this for real filter semantics instead of baking
+    /// example-specific filtered pixels into fixtures.
+    pub fn push_filter_layer(&mut self, filter: Filter, region: Region) {
+        self.ensure_command_root();
+        let children = self.command_lists.len();
+        self.command_lists.push(CommandList::default());
+        self.current_command_list_mut()
+            .commands
+            .push(Command::Layer {
+                draw: 0,
+                layer: Layer::Filter { filter, region },
+                children,
+            });
+        self.command_stack.push(children);
+        self.layer_stack.push(LayerKind::Filter);
     }
 
     pub fn pop_layer(&mut self) -> Option<LayerKind> {
@@ -702,7 +735,8 @@ mod tests {
             rect_path(4.0, 4.0, 24.0, 24.0),
             Affine::IDENTITY,
             0.25,
-            Blend::new(Mix::Multiply, Compose::SrcOver),
+            Mix::Multiply,
+            Compose::SrcOver,
         );
         scene.push_path(
             rect_path(6.0, 6.0, 12.0, 12.0),
@@ -789,7 +823,8 @@ mod tests {
             rect_path(4.0, 4.0, 24.0, 24.0),
             Affine::IDENTITY,
             0.25,
-            Blend::new(Mix::Screen, Compose::SrcOver),
+            Mix::Screen,
+            Compose::SrcOver,
         );
         scene.push_path(
             rect_path(6.0, 6.0, 12.0, 12.0),

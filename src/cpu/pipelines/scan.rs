@@ -57,7 +57,9 @@ impl<'a> ScanCpuPrepared<'a> {
                 ranges.fill(TileSegmentRange::default());
 
                 let counts_ptr = segment_tile_counts as *mut u32;
-                let counts = &mut unsafe { std::slice::from_raw_parts_mut(counts_ptr, self.segment_tile_counts.len()) }[data_offset..data_offset + tile_count];
+                let counts = &mut unsafe {
+                    std::slice::from_raw_parts_mut(counts_ptr, self.segment_tile_counts.len())
+                }[data_offset..data_offset + tile_count];
                 for count in counts.iter_mut() {
                     *count = 0;
                 }

@@ -3,11 +3,11 @@ use peniko::kurbo::{Point, Shape};
 use crate::shared::{
     bounds::Bounds,
     image::{Image, rgba8_pack},
-    layer::{filter::Filter, region::Region},
+    layer::{blend::src_over_premul, filter::Filter, region::Region},
     pixel::{pack_premul_rgba8, unpack_premul_rgba8},
 };
 
-pub(crate) fn apply(image: &mut Image, filter: &Filter) {
+pub(crate) fn apply(image: &mut Image, filter: &Filter, bounds: Bounds) {
     match filter {
         Filter::Blur(radius) => apply_gaussian_blur(image, *radius),
         Filter::Brightness(amount)
@@ -22,7 +22,12 @@ pub(crate) fn apply(image: &mut Image, filter: &Filter) {
                 *px = apply_color_filter_pixel(*px, filter, *amount);
             }
         }
-        Filter::DropShadow { .. } => {}
+        Filter::DropShadow {
+            offset_x,
+            offset_y,
+            radius,
+            brush,
+        } => apply_drop_shadow(image, bounds, *offset_x, *offset_y, *radius, brush),
     }
 }
 
@@ -184,6 +189,53 @@ fn apply_gaussian_blur(image: &mut Image, radius: f32) {
     );
 }
 
+fn apply_drop_shadow(
+    image: &mut Image,
+    bounds: Bounds,
+    offset_x: f32,
+    offset_y: f32,
+    radius: f32,
+    brush: &crate::shared::brush::Brush,
+) {
+    // Drop-shadow is a filter over the source alpha: offset the alpha mask,
+    // blur it, color it, then composite the original source back on top.
+    let source = image.clone();
+    let dx = offset_x.round() as i32;
+    let dy = offset_y.round() as i32;
+    let mut mask = Image::new(image.width, image.height, peniko::Color::TRANSPARENT);
+
+    for y in 0..source.height as i32 {
+        for x in 0..source.width as i32 {
+            let tx = x + dx;
+            let ty = y + dy;
+            if tx < 0 || ty < 0 || tx >= source.width as i32 || ty >= source.height as i32 {
+                continue;
+            }
+            let alpha = source.rgba8_at(x as u32, y as u32)[3];
+            let ix = (ty as u32 * source.width + tx as u32) as usize;
+            mask.pixels[ix] = rgba8_pack([alpha, alpha, alpha, alpha]);
+        }
+    }
+
+    apply_gaussian_blur(&mut mask, radius);
+    for y in 0..image.height {
+        for x in 0..image.width {
+            let ix = (y * image.width + x) as usize;
+            let alpha = f32::from(mask.rgba8_at(x, y)[3]) / 255.0;
+            let mut shadow = unpack_premul_rgba8(brush.sample(
+                bounds.x0 as f32 + x as f32 + 0.5,
+                bounds.y0 as f32 + y as f32 + 0.5,
+            ));
+            shadow[0] *= alpha;
+            shadow[1] *= alpha;
+            shadow[2] *= alpha;
+            shadow[3] *= alpha;
+            let src = unpack_premul_rgba8(source.pixels[ix]);
+            image.pixels[ix] = pack_premul_rgba8(src_over_premul(shadow, src));
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 enum Axis {
     Horizontal,
@@ -342,4 +394,31 @@ fn lerp(a: f32, b: f32, t: f32) -> f32 {
 
 fn lum(c: [f32; 3]) -> f32 {
     c[0] * 0.2126 + c[1] * 0.7152 + c[2] * 0.0722
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use peniko::Color;
+
+    #[test]
+    fn drop_shadow_offsets_alpha_and_preserves_source() {
+        let mut image = Image::new(8, 8, Color::TRANSPARENT);
+        image.pixels[(2 * 8 + 2) as usize] = rgba8_pack([255, 255, 255, 255]);
+
+        apply(
+            &mut image,
+            &Filter::DropShadow {
+                offset_x: 2.0,
+                offset_y: 1.0,
+                radius: 0.0,
+                brush: crate::shared::brush::Brush::Solid(Color::BLACK),
+            },
+            Bounds::canvas(8, 8),
+        );
+
+        assert_eq!(image.rgba8_at(2, 2), [255, 255, 255, 255]);
+        assert_eq!(image.rgba8_at(4, 3), [0, 0, 0, 255]);
+        assert_eq!(image.rgba8_at(1, 1), [0, 0, 0, 0]);
+    }
 }

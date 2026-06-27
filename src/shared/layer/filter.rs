@@ -1,12 +1,4 @@
-use peniko::{Color, kurbo};
-
-use crate::shared::{
-    bounds::Bounds,
-    brush::Brush,
-    image::Image,
-    layer::{blend::Blend, mask::MaskMode, region::Region},
-    pixel::{pack_premul_rgba8, src_over, unpack_premul_rgba8},
-};
+use crate::shared::brush::Brush;
 
 #[derive(Clone, Debug)]
 pub enum Filter {

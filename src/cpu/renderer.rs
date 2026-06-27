@@ -408,7 +408,7 @@ impl Renderer {
                 }
                 let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
                 self.execute_ops(scene, plan, children, &mut image, bounds);
-                self.filter.prepare(&mut image, filter).run();
+                self.filter.prepare(&mut image, filter, bounds).run();
                 let mask = self.filter.rasterize_region_mask(region, bounds);
                 composite_src_over_masked_at(target, &image, &mask, bounds, target_bounds);
             }

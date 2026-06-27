@@ -12,11 +12,12 @@ pub struct FilterCpuPipeline;
 pub struct FilterCpuPrepared<'a> {
     image: &'a mut Image,
     filter: &'a Filter,
+    bounds: Bounds,
 }
 
 impl<'a> FilterCpuPrepared<'a> {
     pub fn run(&mut self) {
-        filter::apply(self.image, self.filter);
+        filter::apply(self.image, self.filter, self.bounds);
     }
 }
 
@@ -25,8 +26,17 @@ impl FilterCpuPipeline {
         Self
     }
 
-    pub fn prepare<'a>(&self, image: &'a mut Image, filter: &'a Filter) -> FilterCpuPrepared<'a> {
-        FilterCpuPrepared { image, filter }
+    pub fn prepare<'a>(
+        &self,
+        image: &'a mut Image,
+        filter: &'a Filter,
+        bounds: Bounds,
+    ) -> FilterCpuPrepared<'a> {
+        FilterCpuPrepared {
+            image,
+            filter,
+            bounds,
+        }
     }
 
     pub fn filtered_region_bounds(

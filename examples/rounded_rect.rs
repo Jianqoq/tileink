@@ -1,53 +1,48 @@
 mod common;
 
-use peniko::{
-    Color,
-    kurbo::{Affine, Rect, RoundedRect, Shape, Stroke},
-};
-use tileink::{CpuRenderer, FillRule, Scene};
+use peniko::{Color, kurbo::Rect};
+use tileink::{Radius, Scene};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let width = 360;
-    let height = 240;
-    let mut scene = Scene::new(width, height);
-
-    scene.push_rect(
-        Rect::new(0.0, 0.0, width as f64, height as f64),
+    let mut scene = Scene::new(480, 320);
+    common::fill_rect(
+        &mut scene,
+        Rect::new(0.0, 0.0, 480.0, 320.0),
+        Radius::all(0.0),
         Color::from_rgb8(248, 249, 251),
-        FillRule::NonZero,
     );
-
-    scene.push_path(
-        RoundedRect::new(36.0, 34.0, 168.0, 132.0, 24.0).to_path(0.1),
-        Color::from_rgb8(54, 151, 118),
-        Affine::IDENTITY,
-        FillRule::NonZero,
-        0.1,
+    common::fill_rect(
+        &mut scene,
+        Rect::new(48.0, 48.0, 280.0, 200.0),
+        Radius {
+            top_left: 36.0,
+            top_right: 36.0,
+            bottom_left: 8.0,
+            bottom_right: 8.0,
+        },
+        Color::from_rgb8(37, 99, 235),
     );
-
-    scene.push_path(
-        RoundedRect::new(198.0, 34.0, 324.0, 132.0, (8.0, 28.0, 44.0, 18.0)).to_path(0.1),
-        Color::from_rgb8(73, 126, 214),
-        Affine::IDENTITY,
-        FillRule::NonZero,
-        0.1,
+    common::fill_rect(
+        &mut scene,
+        Rect::new(300.0, 56.0, 432.0, 188.0),
+        Radius {
+            top_left: 8.0,
+            top_right: 40.0,
+            bottom_left: 40.0,
+            bottom_right: 8.0,
+        },
+        Color::from_rgb8(220, 38, 38),
     );
-
-    scene.push_stroke(
-        RoundedRect::new(70.0, 158.0, 290.0, 212.0, 18.0),
-        Stroke::new(10.0),
-        Color::from_rgb8(225, 142, 66),
-        Affine::IDENTITY,
-        FillRule::NonZero,
-        0.1,
+    common::fill_rect(
+        &mut scene,
+        Rect::new(56.0, 208.0, 424.0, 288.0),
+        Radius {
+            top_left: 12.0,
+            top_right: 12.0,
+            bottom_left: 28.0,
+            bottom_right: 28.0,
+        },
+        Color::from_rgb8(22, 163, 74),
     );
-
-    let mut renderer = CpuRenderer::new(width, height, Color::WHITE);
-    renderer.render(&scene);
-
-    let out = common::example_output("rounded_rect");
-    common::save_image(renderer.image(), &out)?;
-    println!("Wrote {}", out.display());
-
-    Ok(())
+    common::render_to_png("rounded_rect", &scene, 480, 320, Color::WHITE)
 }

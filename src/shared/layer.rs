@@ -1,19 +1,13 @@
 pub(crate) mod blend;
 pub(crate) mod clip;
-pub(crate) mod filter;
+pub mod filter;
 pub(crate) mod mask;
 pub(crate) mod opacity;
-pub(crate) mod region;
-
-use std::sync::Arc;
-
-use usvg::{Transform, tiny_skia_path::IntRect};
+pub mod region;
 
 use crate::shared::{
     bounds::Bounds,
-    layer::{
-        blend::Blend, clip::Clip, filter::Filter, mask::MaskMode, opacity::Opacity, region::Region,
-    },
+    layer::{blend::Blend, clip::Clip, filter::Filter, opacity::Opacity, region::Region},
     sdf::Sdf,
 };
 
