@@ -13,3 +13,195 @@ rayon = "1.12.0"
 
 [dev-dependencies]
 png = "0.17"
+
+[[example]]
+name = "cpu_backdrop_blur"
+path = "examples/cpu/backdrop_blur.rs"
+
+[[example]]
+name = "cpu_bench_cpu"
+path = "examples/cpu/bench_cpu.rs"
+
+[[example]]
+name = "cpu_blend"
+path = "examples/cpu/blend.rs"
+
+[[example]]
+name = "cpu_blur"
+path = "examples/cpu/blur.rs"
+
+[[example]]
+name = "cpu_brightness"
+path = "examples/cpu/brightness.rs"
+
+[[example]]
+name = "cpu_clip"
+path = "examples/cpu/clip.rs"
+
+[[example]]
+name = "cpu_clip_filter"
+path = "examples/cpu/clip_filter.rs"
+
+[[example]]
+name = "cpu_contrast"
+path = "examples/cpu/contrast.rs"
+
+[[example]]
+name = "cpu_drop_shadow"
+path = "examples/cpu/drop_shadow.rs"
+
+[[example]]
+name = "cpu_even_odd"
+path = "examples/cpu/even_odd.rs"
+
+[[example]]
+name = "cpu_filter_clip_opacity"
+path = "examples/cpu/filter_clip_opacity.rs"
+
+[[example]]
+name = "cpu_filter_opacity"
+path = "examples/cpu/filter_opacity.rs"
+
+[[example]]
+name = "cpu_gradients"
+path = "examples/cpu/gradients.rs"
+
+[[example]]
+name = "cpu_grayscale"
+path = "examples/cpu/grayscale.rs"
+
+[[example]]
+name = "cpu_hue_rotate"
+path = "examples/cpu/hue_rotate.rs"
+
+[[example]]
+name = "cpu_invert"
+path = "examples/cpu/invert.rs"
+
+[[example]]
+name = "cpu_liquid_glass"
+path = "examples/cpu/liquid_glass.rs"
+
+[[example]]
+name = "cpu_opacity"
+path = "examples/cpu/opacity.rs"
+
+[[example]]
+name = "cpu_rounded_rect"
+path = "examples/cpu/rounded_rect.rs"
+
+[[example]]
+name = "cpu_saturate"
+path = "examples/cpu/saturate.rs"
+
+[[example]]
+name = "cpu_sepia"
+path = "examples/cpu/sepia.rs"
+
+[[example]]
+name = "cpu_simple"
+path = "examples/cpu/simple.rs"
+
+[[example]]
+name = "cpu_stroke_circle"
+path = "examples/cpu/stroke_circle.rs"
+
+[[example]]
+name = "cpu_svg_radial_gradient"
+path = "examples/cpu/svg_radial_gradient.rs"
+
+[[example]]
+name = "cubecl_backdrop_blur"
+path = "examples/cubecl/backdrop_blur.rs"
+
+[[example]]
+name = "cubecl_bench_cpu"
+path = "examples/cubecl/bench_cpu.rs"
+
+[[example]]
+name = "cubecl_blend"
+path = "examples/cubecl/blend.rs"
+
+[[example]]
+name = "cubecl_blur"
+path = "examples/cubecl/blur.rs"
+
+[[example]]
+name = "cubecl_brightness"
+path = "examples/cubecl/brightness.rs"
+
+[[example]]
+name = "cubecl_clip"
+path = "examples/cubecl/clip.rs"
+
+[[example]]
+name = "cubecl_clip_filter"
+path = "examples/cubecl/clip_filter.rs"
+
+[[example]]
+name = "cubecl_contrast"
+path = "examples/cubecl/contrast.rs"
+
+[[example]]
+name = "cubecl_drop_shadow"
+path = "examples/cubecl/drop_shadow.rs"
+
+[[example]]
+name = "cubecl_even_odd"
+path = "examples/cubecl/even_odd.rs"
+
+[[example]]
+name = "cubecl_filter_clip_opacity"
+path = "examples/cubecl/filter_clip_opacity.rs"
+
+[[example]]
+name = "cubecl_filter_opacity"
+path = "examples/cubecl/filter_opacity.rs"
+
+[[example]]
+name = "cubecl_gradients"
+path = "examples/cubecl/gradients.rs"
+
+[[example]]
+name = "cubecl_grayscale"
+path = "examples/cubecl/grayscale.rs"
+
+[[example]]
+name = "cubecl_hue_rotate"
+path = "examples/cubecl/hue_rotate.rs"
+
+[[example]]
+name = "cubecl_invert"
+path = "examples/cubecl/invert.rs"
+
+[[example]]
+name = "cubecl_liquid_glass"
+path = "examples/cubecl/liquid_glass.rs"
+
+[[example]]
+name = "cubecl_opacity"
+path = "examples/cubecl/opacity.rs"
+
+[[example]]
+name = "cubecl_rounded_rect"
+path = "examples/cubecl/rounded_rect.rs"
+
+[[example]]
+name = "cubecl_saturate"
+path = "examples/cubecl/saturate.rs"
+
+[[example]]
+name = "cubecl_sepia"
+path = "examples/cubecl/sepia.rs"
+
+[[example]]
+name = "cubecl_simple"
+path = "examples/cubecl/simple.rs"
+
+[[example]]
+name = "cubecl_stroke_circle"
+path = "examples/cubecl/stroke_circle.rs"
+
+[[example]]
+name = "cubecl_svg_radial_gradient"
+path = "examples/cubecl/svg_radial_gradient.rs"

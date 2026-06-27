@@ -8,12 +8,20 @@ use peniko::{
     Color,
     kurbo::{Affine, BezPath, Circle, Rect, Shape, Stroke},
 };
-use tileink::{CpuRenderer, FillRule, Image, Radius, Region, Scene};
+use tileink::{CpuRenderer, CubeWgpuRenderer, FillRule, Image, Radius, Region, Scene};
 
 pub fn example_output(name: &str) -> PathBuf {
+    backend_output("cpu_out", name)
+}
+
+pub fn cubecl_example_output(name: &str) -> PathBuf {
+    backend_output("cubecl_out", name)
+}
+
+fn backend_output(folder: &str, name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("examples")
-        .join("cpu_out")
+        .join(folder)
         .join(format!("{name}.png"))
 }
 
@@ -50,6 +58,22 @@ pub fn render_to_png(
     renderer.render(scene);
     let out = example_output(name);
     save_image(renderer.image(), &out)?;
+    println!("Wrote {}", out.display());
+    Ok(())
+}
+
+pub fn render_to_png_cubecl(
+    name: &str,
+    scene: &Scene,
+    width: u32,
+    height: u32,
+    clear: Color,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut renderer = CubeWgpuRenderer::new_default_device(width, height, clear);
+    renderer.render(scene);
+    let image = renderer.image();
+    let out = cubecl_example_output(name);
+    save_image(&image, &out)?;
     println!("Wrote {}", out.display());
     Ok(())
 }

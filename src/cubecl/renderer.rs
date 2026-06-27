@@ -10,7 +10,7 @@ use crate::{
         draw_record::{DrawRecord, DrawTag},
         execution::{ExecOp, ExecPlan, LayerStackEntry, ROOT_COMMAND_LIST_ID},
         fill::FillRule,
-        image::premul_color_to_rgba8_pack,
+        image::{Image, premul_color_to_rgba8_pack},
         layer::{Layer, filter::Filter, region::Region},
         line::Line,
         path_flatten::PathFlatten,
@@ -279,6 +279,18 @@ impl<R: Runtime> Renderer<R> {
 
     pub fn buffer_lengths(&self) -> CubeBufferLengths {
         self.lengths
+    }
+
+    /// Reads the rendered target back into a CPU image.
+    ///
+    /// Rendering stays GPU-resident; this is the explicit readback point used by
+    /// examples and consumers that need pixels on the CPU side.
+    pub fn image(&self) -> Image {
+        Image {
+            width: self.size.0,
+            height: self.size.1,
+            pixels: self.target.read(&self.client),
+        }
     }
 
     pub fn client(&self) -> &::cubecl::client::ComputeClient<R> {
