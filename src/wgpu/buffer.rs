@@ -1,5 +1,5 @@
+use ::wgpu::{Buffer, BufferAddress, BufferUsages, Device, Queue};
 use bytemuck::Pod;
-use wgpu::{Buffer, BufferAddress, BufferUsages, Device, Queue};
 
 const COPY_CHUNK_SIZE: usize = 64 * 1024;
 
@@ -11,7 +11,7 @@ pub(crate) struct WgpuBuffer<T> {
     label: &'static str,
     len: BufferAddress,
     capacity: BufferAddress,
-    _marker: std::marker::PhantomData<T>,
+    marker: std::marker::PhantomData<T>,
 }
 
 impl<T: Pod> WgpuBuffer<T> {
@@ -32,7 +32,7 @@ impl<T: Pod> WgpuBuffer<T> {
             label,
             len: 0,
             capacity,
-            _marker: std::marker::PhantomData,
+            marker: std::marker::PhantomData,
         }
     }
 
@@ -70,6 +70,11 @@ impl<T: Pod> WgpuBuffer<T> {
 
     pub(crate) fn clear(&mut self) {
         self.len = 0;
+    }
+
+    pub(crate) fn replace(&mut self, data: &[T]) {
+        self.clear();
+        self.extend_from_slice(data);
     }
 
     pub(crate) fn reserve(&mut self, additional: usize) {
@@ -116,6 +121,35 @@ impl<T: Pod> WgpuBuffer<T> {
         self.len = new_len;
     }
 
+    pub(crate) fn resize_zeroed_all(&mut self, new_len: usize) {
+        let new_len = bytes_for::<T>(new_len);
+        self.ensure_capacity_bytes(new_len);
+        self.zero_range(0, new_len);
+        self.len = new_len;
+    }
+
+    pub(crate) fn fill(&mut self, len: usize, value: T) {
+        let byte_len = bytes_for::<T>(len);
+        self.ensure_capacity_bytes(byte_len);
+        self.len = byte_len;
+        if len == 0 {
+            return;
+        }
+
+        let chunk_len = (COPY_CHUNK_SIZE / std::mem::size_of::<T>()).max(1);
+        let chunk = vec![value; chunk_len.min(len)];
+        let mut written = 0usize;
+        while written < len {
+            let count = (len - written).min(chunk.len());
+            self.queue.write_buffer(
+                &self.buffer,
+                bytes_for::<T>(written),
+                bytemuck::cast_slice(&chunk[..count]),
+            );
+            written += count;
+        }
+    }
+
     pub(crate) fn write(&mut self, index: usize, data: &[T]) {
         let offset = bytes_for::<T>(index);
         let raw = bytemuck::cast_slice(data);
@@ -142,8 +176,8 @@ impl<T: Pod> WgpuBuffer<T> {
         self.len = self.len.min(bytes_for::<T>(len));
     }
 
-    pub(crate) fn as_entire_binding(&self) -> wgpu::BindingResource<'_> {
-        wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+    pub(crate) fn as_entire_binding(&self) -> ::wgpu::BindingResource<'_> {
+        ::wgpu::BindingResource::Buffer(::wgpu::BufferBinding {
             buffer: &self.buffer,
             offset: 0,
             size: None,
@@ -199,18 +233,14 @@ impl GpuImageBuffer {
 
     pub(crate) fn clear(&mut self, color: u32) {
         let len = self.width as usize * self.height as usize;
-        if len == 0 {
-            return;
-        }
-        let data = vec![color; len];
-        self.pixels.write(0, &data);
+        self.pixels.fill(len, color);
     }
 
     pub(crate) fn buffer(&self) -> &Buffer {
         self.pixels.buffer()
     }
 
-    pub(crate) fn as_entire_binding(&self) -> wgpu::BindingResource<'_> {
+    pub(crate) fn as_entire_binding(&self) -> ::wgpu::BindingResource<'_> {
         self.pixels.as_entire_binding()
     }
 
@@ -229,7 +259,7 @@ fn create_buffer(
     capacity: BufferAddress,
     label: &'static str,
 ) -> Buffer {
-    device.create_buffer(&wgpu::BufferDescriptor {
+    device.create_buffer(&::wgpu::BufferDescriptor {
         label: Some(label),
         size: capacity.max(1),
         usage: usage | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
