@@ -1,4 +1,5 @@
 mod buffer;
+mod pipelines;
 mod renderer;
 mod types;
 

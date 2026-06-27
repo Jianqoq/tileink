@@ -65,6 +65,16 @@ impl<T: Pod> CubeBuffer<T> {
         self.reserve(client, len);
         self.len = len;
     }
+
+    pub(crate) unsafe fn arg<R: Runtime>(&self) -> ::cubecl::prelude::ArrayArg<R> {
+        unsafe { ::cubecl::prelude::ArrayArg::from_raw_parts(self.handle.clone(), self.len) }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn read<R: Runtime>(&self, client: &::cubecl::client::ComputeClient<R>) -> Vec<T> {
+        let bytes = client.read_one_unchecked(self.handle.clone());
+        bytemuck::cast_slice(&bytes[..bytes_for::<T>(self.len)]).to_vec()
+    }
 }
 
 fn bytes_for<T>(count: usize) -> usize {

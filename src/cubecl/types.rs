@@ -1,16 +1,8 @@
 use bytemuck::{Pod, Zeroable};
 
-use crate::{
-    scene::Scene,
-    shared::{
-        draw_record::{DrawRecord, DrawTag},
-        fill::FillRule,
-        tile_seg_range::TileSegmentRange,
-    },
-};
+use crate::scene::Scene;
 
 pub(crate) const SCAN_CHUNK_SIZE: u32 = 256;
-const NO_PATH: u32 = u32::MAX;
 
 /// Scene-derived fixed capacities for CubeCL buffers.
 ///
@@ -91,42 +83,6 @@ impl CubeSceneConfig {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Pod, Zeroable, PartialEq, Eq)]
-pub(crate) struct CubeDrawRecord {
-    pub path_id: u32,
-    pub tag: u32,
-    pub fill_rule: u32,
-    pub solid_rect: u32,
-    pub pixel_x0: i32,
-    pub pixel_y0: i32,
-    pub pixel_x1: i32,
-    pub pixel_y1: i32,
-}
-
-impl From<&DrawRecord> for CubeDrawRecord {
-    fn from(draw: &DrawRecord) -> Self {
-        Self {
-            path_id: draw.path_id.unwrap_or(NO_PATH),
-            tag: match draw.tag {
-                DrawTag::Brush => 0,
-                DrawTag::Clip => 1,
-                DrawTag::Opacity => 2,
-                DrawTag::Blend => 3,
-            },
-            fill_rule: match draw.fill_rule {
-                FillRule::NonZero => 0,
-                FillRule::EvenOdd => 1,
-            },
-            solid_rect: u32::from(draw.solid_rect),
-            pixel_x0: draw.pixel_bounds.x0,
-            pixel_y0: draw.pixel_bounds.y0,
-            pixel_x1: draw.pixel_bounds.x1,
-            pixel_y1: draw.pixel_bounds.y1,
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Pod, Zeroable, PartialEq, Eq)]
 pub(crate) struct CubeScanChunk {
     pub path_id: u32,
     pub backdrop_offset: u32,
@@ -169,31 +125,6 @@ pub(crate) fn build_scan_chunks(scene: &Scene) -> (Vec<CubeScanChunk>, Vec<CubeS
     (chunks, ranges)
 }
 
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
-pub(crate) struct CubeTileSegmentRange {
-    pub start: u32,
-    pub end: u32,
-}
-
-impl From<TileSegmentRange> for CubeTileSegmentRange {
-    fn from(range: TileSegmentRange) -> Self {
-        Self {
-            start: range.start,
-            end: range.end,
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
-pub(crate) struct CubeLineSegment {
-    pub point0: [f32; 2],
-    pub point1: [f32; 2],
-    pub y_edge: f32,
-    pub _pad0: f32,
-}
-
 #[cfg(test)]
 mod tests {
     use peniko::{
@@ -201,27 +132,8 @@ mod tests {
         kurbo::{Affine, Rect, Shape},
     };
 
-    use super::{CubeBufferLengths, CubeDrawRecord, SCAN_CHUNK_SIZE, build_scan_chunks};
+    use super::{CubeBufferLengths, SCAN_CHUNK_SIZE, build_scan_chunks};
     use crate::{FillRule, Scene};
-
-    #[test]
-    fn draw_record_conversion_keeps_scan_bounds_plain_pod() {
-        let mut scene = Scene::new(64, 64);
-        scene.push_path(
-            Rect::new(8.0, 9.0, 33.0, 41.0).to_path(0.0),
-            Color::BLACK,
-            Affine::IDENTITY,
-            FillRule::EvenOdd,
-            0.0,
-        );
-
-        let draw = CubeDrawRecord::from(&scene.draw_records[0]);
-
-        assert_eq!(draw.path_id, 0);
-        assert_eq!(draw.fill_rule, 1);
-        assert_eq!((draw.pixel_x0, draw.pixel_y0), (8, 9));
-        assert_eq!((draw.pixel_x1, draw.pixel_y1), (33, 41));
-    }
 
     #[test]
     fn scan_chunks_cover_each_backdrop_record_in_fixed_size_tiles() {

@@ -3,15 +3,19 @@ use peniko::Color;
 
 use crate::{
     scene::Scene,
-    shared::{bd_record::BackdropRecord, image::rgba8_pack, line::Line, path::PathRecord},
+    shared::{
+        bd_record::BackdropRecord,
+        draw_record::{DrawRecord, DrawTag},
+        fill::FillRule,
+        image::rgba8_pack,
+        line::Line,
+    },
 };
 
 use super::{
     buffer::CubeBuffer,
-    types::{
-        CubeBufferLengths, CubeDrawRecord, CubeLineSegment, CubeScanChunk, CubeScanChunkRange,
-        CubeSceneConfig, CubeTileSegmentRange, build_scan_chunks,
-    },
+    pipelines::scan::ScanPipeline,
+    types::{CubeBufferLengths, CubeSceneConfig, build_scan_chunks},
 };
 
 pub type WgpuRenderer = Renderer<::cubecl::wgpu::WgpuRuntime>;
@@ -68,6 +72,16 @@ impl<R: Runtime> Renderer<R> {
         );
     }
 
+    /// Runs the CubeCL scan stage.
+    ///
+    /// The algorithm mirrors the CPU scan pipeline but splits it into GPU
+    /// passes: clear, per-line counting, chunk-local prefix, per-path chunk
+    /// offsets, offset application, and segment emission. This is a real GPU
+    /// implementation, not a temporary CPU fallback.
+    pub fn scan(&mut self) {
+        ScanPipeline::run(&self.client, &self.scene, &mut self.scan, self.lengths);
+    }
+
     pub fn resize(&mut self, width: u32, height: u32) {
         if self.size == (width, height) {
             return;
@@ -104,60 +118,308 @@ impl WgpuRenderer {
     }
 }
 
-struct SceneBuffers {
-    lines: CubeBuffer<Line>,
-    path_records: CubeBuffer<PathRecord>,
-    draw_records: CubeBuffer<CubeDrawRecord>,
-    backdrop_records: CubeBuffer<BackdropRecord>,
-    scan_chunks: CubeBuffer<CubeScanChunk>,
-    scan_chunk_ranges: CubeBuffer<CubeScanChunkRange>,
+pub(crate) struct SceneBuffers {
+    pub(crate) line_path_ids: CubeBuffer<u32>,
+    pub(crate) line_p0x: CubeBuffer<f32>,
+    pub(crate) line_p0y: CubeBuffer<f32>,
+    pub(crate) line_p1x: CubeBuffer<f32>,
+    pub(crate) line_p1y: CubeBuffer<f32>,
+    pub(crate) draw_path_ids: CubeBuffer<u32>,
+    pub(crate) draw_tags: CubeBuffer<u32>,
+    pub(crate) draw_fill_rules: CubeBuffer<u32>,
+    pub(crate) draw_solid_rects: CubeBuffer<u32>,
+    pub(crate) draw_pixel_x0: CubeBuffer<i32>,
+    pub(crate) draw_pixel_y0: CubeBuffer<i32>,
+    pub(crate) draw_pixel_x1: CubeBuffer<i32>,
+    pub(crate) draw_pixel_y1: CubeBuffer<i32>,
+    pub(crate) backdrop_data_offsets: CubeBuffer<u32>,
+    pub(crate) backdrop_data_lens: CubeBuffer<u32>,
+    pub(crate) backdrop_tile_x0: CubeBuffer<u32>,
+    pub(crate) backdrop_tile_y0: CubeBuffer<u32>,
+    pub(crate) backdrop_tile_x1: CubeBuffer<u32>,
+    pub(crate) backdrop_tile_y1: CubeBuffer<u32>,
+    pub(crate) backdrop_segment_starts: CubeBuffer<u32>,
+    pub(crate) backdrop_segment_capacities: CubeBuffer<u32>,
+    pub(crate) scan_chunk_path_ids: CubeBuffer<u32>,
+    pub(crate) scan_chunk_backdrop_offsets: CubeBuffer<u32>,
+    pub(crate) scan_chunk_segment_starts: CubeBuffer<u32>,
+    pub(crate) scan_chunk_lens: CubeBuffer<u32>,
+    pub(crate) scan_chunk_range_starts: CubeBuffer<u32>,
+    pub(crate) scan_chunk_range_ends: CubeBuffer<u32>,
 }
 
 impl SceneBuffers {
     fn new<R: Runtime>(client: &::cubecl::client::ComputeClient<R>) -> Self {
         Self {
-            lines: CubeBuffer::new(client, 0),
-            path_records: CubeBuffer::new(client, 0),
-            draw_records: CubeBuffer::new(client, 0),
-            backdrop_records: CubeBuffer::new(client, 0),
-            scan_chunks: CubeBuffer::new(client, 0),
-            scan_chunk_ranges: CubeBuffer::new(client, 0),
+            line_path_ids: CubeBuffer::new(client, 0),
+            line_p0x: CubeBuffer::new(client, 0),
+            line_p0y: CubeBuffer::new(client, 0),
+            line_p1x: CubeBuffer::new(client, 0),
+            line_p1y: CubeBuffer::new(client, 0),
+            draw_path_ids: CubeBuffer::new(client, 0),
+            draw_tags: CubeBuffer::new(client, 0),
+            draw_fill_rules: CubeBuffer::new(client, 0),
+            draw_solid_rects: CubeBuffer::new(client, 0),
+            draw_pixel_x0: CubeBuffer::new(client, 0),
+            draw_pixel_y0: CubeBuffer::new(client, 0),
+            draw_pixel_x1: CubeBuffer::new(client, 0),
+            draw_pixel_y1: CubeBuffer::new(client, 0),
+            backdrop_data_offsets: CubeBuffer::new(client, 0),
+            backdrop_data_lens: CubeBuffer::new(client, 0),
+            backdrop_tile_x0: CubeBuffer::new(client, 0),
+            backdrop_tile_y0: CubeBuffer::new(client, 0),
+            backdrop_tile_x1: CubeBuffer::new(client, 0),
+            backdrop_tile_y1: CubeBuffer::new(client, 0),
+            backdrop_segment_starts: CubeBuffer::new(client, 0),
+            backdrop_segment_capacities: CubeBuffer::new(client, 0),
+            scan_chunk_path_ids: CubeBuffer::new(client, 0),
+            scan_chunk_backdrop_offsets: CubeBuffer::new(client, 0),
+            scan_chunk_segment_starts: CubeBuffer::new(client, 0),
+            scan_chunk_lens: CubeBuffer::new(client, 0),
+            scan_chunk_range_starts: CubeBuffer::new(client, 0),
+            scan_chunk_range_ends: CubeBuffer::new(client, 0),
         }
     }
 
     fn upload<R: Runtime>(&mut self, client: &::cubecl::client::ComputeClient<R>, scene: &Scene) {
-        let draw_records = scene
-            .draw_records
-            .iter()
-            .map(CubeDrawRecord::from)
-            .collect::<Vec<_>>();
         let (scan_chunks, scan_chunk_ranges) = build_scan_chunks(scene);
-        self.lines.replace(client, &scene.lines);
-        self.path_records.replace(client, &scene.path_records);
-        self.draw_records.replace(client, &draw_records);
-        self.backdrop_records.replace(client, &scene.bd_records);
-        self.scan_chunks.replace(client, &scan_chunks);
-        self.scan_chunk_ranges.replace(client, &scan_chunk_ranges);
+        self.upload_lines(client, &scene.lines);
+        self.upload_draws(client, &scene.draw_records);
+        self.upload_backdrops(client, &scene.bd_records);
+
+        self.scan_chunk_path_ids.replace(
+            client,
+            &scan_chunks
+                .iter()
+                .map(|chunk| chunk.path_id)
+                .collect::<Vec<_>>(),
+        );
+        self.scan_chunk_backdrop_offsets.replace(
+            client,
+            &scan_chunks
+                .iter()
+                .map(|chunk| chunk.backdrop_offset)
+                .collect::<Vec<_>>(),
+        );
+        self.scan_chunk_segment_starts.replace(
+            client,
+            &scan_chunks
+                .iter()
+                .map(|chunk| chunk.segment_start)
+                .collect::<Vec<_>>(),
+        );
+        self.scan_chunk_lens.replace(
+            client,
+            &scan_chunks
+                .iter()
+                .map(|chunk| chunk.len)
+                .collect::<Vec<_>>(),
+        );
+        self.scan_chunk_range_starts.replace(
+            client,
+            &scan_chunk_ranges
+                .iter()
+                .map(|range| range.start)
+                .collect::<Vec<_>>(),
+        );
+        self.scan_chunk_range_ends.replace(
+            client,
+            &scan_chunk_ranges
+                .iter()
+                .map(|range| range.end)
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    fn upload_lines<R: Runtime>(
+        &mut self,
+        client: &::cubecl::client::ComputeClient<R>,
+        lines: &[Line],
+    ) {
+        self.line_path_ids.replace(
+            client,
+            &lines.iter().map(|line| line.path_id).collect::<Vec<_>>(),
+        );
+        self.line_p0x.replace(
+            client,
+            &lines.iter().map(|line| line.p0[0]).collect::<Vec<_>>(),
+        );
+        self.line_p0y.replace(
+            client,
+            &lines.iter().map(|line| line.p0[1]).collect::<Vec<_>>(),
+        );
+        self.line_p1x.replace(
+            client,
+            &lines.iter().map(|line| line.p1[0]).collect::<Vec<_>>(),
+        );
+        self.line_p1y.replace(
+            client,
+            &lines.iter().map(|line| line.p1[1]).collect::<Vec<_>>(),
+        );
+    }
+
+    fn upload_draws<R: Runtime>(
+        &mut self,
+        client: &::cubecl::client::ComputeClient<R>,
+        draws: &[DrawRecord],
+    ) {
+        self.draw_path_ids.replace(
+            client,
+            &draws
+                .iter()
+                .map(|draw| draw.path_id.unwrap_or(u32::MAX))
+                .collect::<Vec<_>>(),
+        );
+        self.draw_tags.replace(
+            client,
+            &draws
+                .iter()
+                .map(|draw| match draw.tag {
+                    DrawTag::Brush => 0,
+                    DrawTag::Clip => 1,
+                    DrawTag::Opacity => 2,
+                    DrawTag::Blend => 3,
+                })
+                .collect::<Vec<_>>(),
+        );
+        self.draw_fill_rules.replace(
+            client,
+            &draws
+                .iter()
+                .map(|draw| match draw.fill_rule {
+                    FillRule::NonZero => 0,
+                    FillRule::EvenOdd => 1,
+                })
+                .collect::<Vec<_>>(),
+        );
+        self.draw_solid_rects.replace(
+            client,
+            &draws
+                .iter()
+                .map(|draw| u32::from(draw.solid_rect))
+                .collect::<Vec<_>>(),
+        );
+        self.draw_pixel_x0.replace(
+            client,
+            &draws
+                .iter()
+                .map(|draw| draw.pixel_bounds.x0)
+                .collect::<Vec<_>>(),
+        );
+        self.draw_pixel_y0.replace(
+            client,
+            &draws
+                .iter()
+                .map(|draw| draw.pixel_bounds.y0)
+                .collect::<Vec<_>>(),
+        );
+        self.draw_pixel_x1.replace(
+            client,
+            &draws
+                .iter()
+                .map(|draw| draw.pixel_bounds.x1)
+                .collect::<Vec<_>>(),
+        );
+        self.draw_pixel_y1.replace(
+            client,
+            &draws
+                .iter()
+                .map(|draw| draw.pixel_bounds.y1)
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    fn upload_backdrops<R: Runtime>(
+        &mut self,
+        client: &::cubecl::client::ComputeClient<R>,
+        records: &[BackdropRecord],
+    ) {
+        self.backdrop_data_offsets.replace(
+            client,
+            &records
+                .iter()
+                .map(|record| record.data_offset)
+                .collect::<Vec<_>>(),
+        );
+        self.backdrop_data_lens.replace(
+            client,
+            &records
+                .iter()
+                .map(|record| record.data_len)
+                .collect::<Vec<_>>(),
+        );
+        self.backdrop_tile_x0.replace(
+            client,
+            &records
+                .iter()
+                .map(|record| record.tile_x0)
+                .collect::<Vec<_>>(),
+        );
+        self.backdrop_tile_y0.replace(
+            client,
+            &records
+                .iter()
+                .map(|record| record.tile_y0)
+                .collect::<Vec<_>>(),
+        );
+        self.backdrop_tile_x1.replace(
+            client,
+            &records
+                .iter()
+                .map(|record| record.tile_x1)
+                .collect::<Vec<_>>(),
+        );
+        self.backdrop_tile_y1.replace(
+            client,
+            &records
+                .iter()
+                .map(|record| record.tile_y1)
+                .collect::<Vec<_>>(),
+        );
+        self.backdrop_segment_starts.replace(
+            client,
+            &records
+                .iter()
+                .map(|record| record.segment_start)
+                .collect::<Vec<_>>(),
+        );
+        self.backdrop_segment_capacities.replace(
+            client,
+            &records
+                .iter()
+                .map(|record| record.segment_capacity)
+                .collect::<Vec<_>>(),
+        );
     }
 }
 
-struct ScanBuffers {
-    backdrops: CubeBuffer<i32>,
-    tile_segment_ranges: CubeBuffer<CubeTileSegmentRange>,
-    segments: CubeBuffer<CubeLineSegment>,
-    segment_tile_counts: CubeBuffer<u32>,
-    segment_tile_cursors: CubeBuffer<u32>,
-    segment_bumps: CubeBuffer<u32>,
-    chunk_totals: CubeBuffer<u32>,
-    chunk_offsets: CubeBuffer<u32>,
+pub(crate) struct ScanBuffers {
+    pub(crate) backdrops: CubeBuffer<i32>,
+    pub(crate) tile_segment_range_starts: CubeBuffer<u32>,
+    pub(crate) tile_segment_range_ends: CubeBuffer<u32>,
+    pub(crate) segment_p0x: CubeBuffer<f32>,
+    pub(crate) segment_p0y: CubeBuffer<f32>,
+    pub(crate) segment_p1x: CubeBuffer<f32>,
+    pub(crate) segment_p1y: CubeBuffer<f32>,
+    pub(crate) segment_y_edge: CubeBuffer<f32>,
+    pub(crate) segment_tile_counts: CubeBuffer<u32>,
+    pub(crate) segment_tile_cursors: CubeBuffer<u32>,
+    pub(crate) segment_bumps: CubeBuffer<u32>,
+    pub(crate) chunk_totals: CubeBuffer<u32>,
+    pub(crate) chunk_offsets: CubeBuffer<u32>,
 }
 
 impl ScanBuffers {
     fn new<R: Runtime>(client: &::cubecl::client::ComputeClient<R>) -> Self {
         Self {
             backdrops: CubeBuffer::new(client, 0),
-            tile_segment_ranges: CubeBuffer::new(client, 0),
-            segments: CubeBuffer::new(client, 0),
+            tile_segment_range_starts: CubeBuffer::new(client, 0),
+            tile_segment_range_ends: CubeBuffer::new(client, 0),
+            segment_p0x: CubeBuffer::new(client, 0),
+            segment_p0y: CubeBuffer::new(client, 0),
+            segment_p1x: CubeBuffer::new(client, 0),
+            segment_p1y: CubeBuffer::new(client, 0),
+            segment_y_edge: CubeBuffer::new(client, 0),
             segment_tile_counts: CubeBuffer::new(client, 0),
             segment_tile_cursors: CubeBuffer::new(client, 0),
             segment_bumps: CubeBuffer::new(client, 0),
@@ -172,9 +434,19 @@ impl ScanBuffers {
         lengths: CubeBufferLengths,
     ) {
         self.backdrops.resize_uninit(client, lengths.backdrop_len);
-        self.tile_segment_ranges
+        self.tile_segment_range_starts
             .resize_uninit(client, lengths.backdrop_len);
-        self.segments
+        self.tile_segment_range_ends
+            .resize_uninit(client, lengths.backdrop_len);
+        self.segment_p0x
+            .resize_uninit(client, lengths.segment_capacity);
+        self.segment_p0y
+            .resize_uninit(client, lengths.segment_capacity);
+        self.segment_p1x
+            .resize_uninit(client, lengths.segment_capacity);
+        self.segment_p1y
+            .resize_uninit(client, lengths.segment_capacity);
+        self.segment_y_edge
             .resize_uninit(client, lengths.segment_capacity);
         self.segment_tile_counts
             .resize_uninit(client, lengths.backdrop_len);
@@ -196,6 +468,7 @@ mod tests {
     };
 
     use super::CubeBufferLengths;
+    use super::WgpuRenderer;
     use crate::{FillRule, Scene};
 
     #[test]
@@ -233,5 +506,49 @@ mod tests {
         assert_eq!(lengths.scan_chunk_count, 1);
         assert_eq!(lengths.tile_count, 4 * 3);
         assert_eq!(lengths.image_pixels, 64 * 48);
+    }
+
+    #[test]
+    fn scan_wgpu_emits_one_tile_vertical_line_when_enabled() {
+        if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+            return;
+        }
+
+        let mut scene = Scene::new(16, 16);
+        scene.push_path(
+            peniko::kurbo::Line::new((4.0, 0.0), (4.0, 16.0)).to_path(0.0),
+            Color::BLACK,
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.0,
+        );
+
+        let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+        renderer.prepare_scene(&scene);
+        renderer.scan();
+
+        let ranges_start = renderer
+            .scan
+            .tile_segment_range_starts
+            .read(renderer.client());
+        let ranges_end = renderer
+            .scan
+            .tile_segment_range_ends
+            .read(renderer.client());
+        let segment_bumps = renderer.scan.segment_bumps.read(renderer.client());
+        let backdrops = renderer.scan.backdrops.read(renderer.client());
+        let p0x = renderer.scan.segment_p0x.read(renderer.client());
+        let p0y = renderer.scan.segment_p0y.read(renderer.client());
+        let p1x = renderer.scan.segment_p1x.read(renderer.client());
+        let p1y = renderer.scan.segment_p1y.read(renderer.client());
+
+        assert_eq!(backdrops, vec![0]);
+        assert_eq!(segment_bumps, vec![1]);
+        assert_eq!(ranges_start, vec![0]);
+        assert_eq!(ranges_end, vec![1]);
+        assert!((p0x[0] - 4.0).abs() < 1e-3);
+        assert!((p1x[0] - 4.0).abs() < 1e-3);
+        assert!((p0y[0] - 0.0).abs() < 1e-6);
+        assert!((p1y[0] - 16.0).abs() < 1e-6);
     }
 }
