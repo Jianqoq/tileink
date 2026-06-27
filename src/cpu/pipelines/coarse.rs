@@ -1,3 +1,5 @@
+use rayon::prelude::*;
+
 use crate::shared::{
     bd_record::BackdropRecord,
     draw_record::{DrawRecord, DrawTag},
@@ -32,82 +34,26 @@ impl<'a> CoarseCpuPrepared<'a> {
     /// like unbounded state attached to every touched draw tile.
     pub fn run(&mut self) {
         let tile_count = (self.tiles_size.0 * self.tiles_size.1) as usize;
-        let mut per_tile = vec![Vec::new(); tile_count];
-        let mut per_tile_wrappers = vec![Vec::new(); tile_count];
         let layer_stack = &self.layer_stack_data[self.layer_stack_range.clone()];
 
-        for draw in &self.draw_records[self.draw_range.clone()] {
-            let Some(path_id) = draw.path_id else {
-                continue;
-            };
-            let backdrop_record = &self.backdrop_records[path_id as usize];
-            let bbox = draw.tile_bbox(self.tiles_size.0, self.tiles_size.1);
-            let stride = backdrop_record.tile_x1 - backdrop_record.tile_x0;
-            if stride == 0 {
-                continue;
-            }
-
-            for tile_y in bbox.y0..bbox.y1 {
-                for tile_x in bbox.x0..bbox.x1 {
-                    let local_x = tile_x - backdrop_record.tile_x0;
-                    let local_y = tile_y - backdrop_record.tile_y0;
-                    let local_ix = (local_y * stride + local_x) as usize;
-                    let backdrop_ix = backdrop_record.data_offset as usize + local_ix;
-                    let segment_range = self.tile_segment_ranges[backdrop_ix];
-                    let backdrop = self.backdrops[backdrop_ix];
-                    let tile_ix = (tile_y * self.tiles_size.0 + tile_x) as usize;
-
-                    if segment_range.start == segment_range.end && backdrop == 0 {
-                        continue;
-                    }
-
-                    if !Self::ensure_batch_wrappers(
-                        &mut per_tile[tile_ix],
-                        &mut per_tile_wrappers[tile_ix],
-                        tile_x,
-                        tile_y,
-                        layer_stack,
-                        self.draw_records,
-                        self.backdrop_records,
-                        self.backdrops,
-                        self.tile_segment_ranges,
-                        self.tiles_size,
-                    ) {
-                        continue;
-                    }
-                    match draw.tag {
-                        DrawTag::Brush => {
-                            if let Some(color) = draw.brush.solid_color()
-                                && draw.solid_rect
-                                && segment_range.start == segment_range.end
-                            {
-                                per_tile[tile_ix].push(TilePtcl::Color(TileColorPtcl {
-                                    color: crate::shared::pixel::premul_f32_to_u32(
-                                        color.premultiply().components,
-                                    ),
-                                }));
-                                continue;
-                            }
-                            per_tile[tile_ix].push(TilePtcl::Fill(TileFillPtcl {
-                                backdrop,
-                                fill_rule: draw.fill_rule,
-                                segment_range: segment_range.start..segment_range.end,
-                                brush: draw.brush.clone(),
-                            }));
-                        }
-                        DrawTag::Clip => {
-                            per_tile[tile_ix].push(TilePtcl::BeginClip(TileFillPtcl {
-                                backdrop,
-                                fill_rule: draw.fill_rule,
-                                segment_range: segment_range.start..segment_range.end,
-                                brush: draw.brush.clone(),
-                            }));
-                        }
-                        DrawTag::Opacity | DrawTag::Blend => {}
-                    }
-                }
-            }
-        }
+        // Coarse output is ordered per tile, so the safe parallel boundary is
+        // one worker-owned particle stream per tile. Each worker still scans
+        // draws in document order, preserving rendering semantics without locks.
+        let per_tile = (0..tile_count)
+            .into_par_iter()
+            .map(|tile_ix| {
+                Self::build_tile_ptcls(
+                    tile_ix,
+                    self.tiles_size,
+                    self.draw_range.clone(),
+                    layer_stack,
+                    self.draw_records,
+                    self.backdrop_records,
+                    self.backdrops,
+                    self.tile_segment_ranges,
+                )
+            })
+            .collect::<Vec<_>>();
 
         self.tile_ptcl_ranges.clear();
         self.tile_ptcl_ranges
@@ -118,18 +64,98 @@ impl<'a> CoarseCpuPrepared<'a> {
             let start = self.tile_ptcls.len() as u32;
             if !ptcls.is_empty() {
                 self.tile_ptcls.extend(ptcls);
-                for wrapper in per_tile_wrappers[tile_ix].iter().rev() {
-                    self.tile_ptcls.push(match wrapper {
-                        LayerStackEntry::Clip { .. } => TilePtcl::EndClip,
-                        LayerStackEntry::Opacity { .. } => TilePtcl::EndOpacity,
-                        LayerStackEntry::Blend { .. } => TilePtcl::EndBlend,
-                    });
-                }
                 self.tile_ptcls.push(TilePtcl::End);
             }
             let end = self.tile_ptcls.len() as u32;
             self.tile_ptcl_ranges[tile_ix] = TilePtclRange { start, end };
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn build_tile_ptcls(
+        tile_ix: usize,
+        tiles_size: (u32, u32),
+        draw_range: std::ops::Range<usize>,
+        layer_stack: &[LayerStackEntry],
+        draw_records: &[DrawRecord],
+        backdrop_records: &[BackdropRecord],
+        backdrops: &[i32],
+        tile_segment_ranges: &[TileSegmentRange],
+    ) -> Vec<TilePtcl> {
+        let tile_x = tile_ix as u32 % tiles_size.0;
+        let tile_y = tile_ix as u32 / tiles_size.0;
+        let mut ptcls = Vec::new();
+        let mut emitted_wrappers = Vec::new();
+
+        for draw_ix in draw_range {
+            let Some((draw, backdrop, segment_range)) = Self::layer_tile_coverage(
+                draw_ix,
+                tile_x,
+                tile_y,
+                draw_records,
+                backdrop_records,
+                backdrops,
+                tile_segment_ranges,
+                tiles_size,
+            ) else {
+                continue;
+            };
+
+            if !Self::ensure_batch_wrappers(
+                &mut ptcls,
+                &mut emitted_wrappers,
+                tile_x,
+                tile_y,
+                layer_stack,
+                draw_records,
+                backdrop_records,
+                backdrops,
+                tile_segment_ranges,
+                tiles_size,
+            ) {
+                continue;
+            }
+
+            match draw.tag {
+                DrawTag::Brush => {
+                    if let Some(color) = draw.brush.solid_color()
+                        && draw.solid_rect
+                        && segment_range.start == segment_range.end
+                    {
+                        ptcls.push(TilePtcl::Color(TileColorPtcl {
+                            color: crate::shared::pixel::premul_f32_to_u32(
+                                color.premultiply().components,
+                            ),
+                        }));
+                        continue;
+                    }
+                    ptcls.push(TilePtcl::Fill(TileFillPtcl {
+                        backdrop,
+                        fill_rule: draw.fill_rule,
+                        segment_range,
+                        brush: draw.brush.clone(),
+                    }));
+                }
+                DrawTag::Clip => {
+                    ptcls.push(TilePtcl::BeginClip(TileFillPtcl {
+                        backdrop,
+                        fill_rule: draw.fill_rule,
+                        segment_range,
+                        brush: draw.brush.clone(),
+                    }));
+                }
+                DrawTag::Opacity | DrawTag::Blend => {}
+            }
+        }
+
+        for wrapper in emitted_wrappers.iter().rev() {
+            ptcls.push(match wrapper {
+                LayerStackEntry::Clip { .. } => TilePtcl::EndClip,
+                LayerStackEntry::Opacity { .. } => TilePtcl::EndOpacity,
+                LayerStackEntry::Blend { .. } => TilePtcl::EndBlend,
+            });
+        }
+        ptcls
     }
 
     /// Emits the once-per-tile wrapper particles for the current batch.
@@ -225,6 +251,13 @@ impl<'a> CoarseCpuPrepared<'a> {
             return None;
         }
         let backdrop_record = &backdrop_records[path_id as usize];
+        if tile_x < backdrop_record.tile_x0
+            || tile_x >= backdrop_record.tile_x1
+            || tile_y < backdrop_record.tile_y0
+            || tile_y >= backdrop_record.tile_y1
+        {
+            return None;
+        }
         let stride = backdrop_record.tile_x1 - backdrop_record.tile_x0;
         if stride == 0 {
             return None;
@@ -297,6 +330,10 @@ mod tests {
         tile_ptcl::TilePtcl,
         tile_seg_range::TileSegmentRange,
     };
+
+    fn solid_color_u32(color: Color) -> u32 {
+        crate::shared::pixel::premul_f32_to_u32(color.premultiply().components)
+    }
 
     #[test]
     fn run_replays_clip_layers_in_user_nesting_order() {
@@ -419,5 +456,104 @@ mod tests {
         assert!(matches!(tile_ptcls[3], TilePtcl::EndClip));
         assert!(matches!(tile_ptcls[4], TilePtcl::EndClip));
         assert!(matches!(tile_ptcls[5], TilePtcl::End));
+    }
+
+    #[test]
+    fn run_builds_each_tile_stream_independently_in_draw_order() {
+        let draw_records = [
+            DrawRecord {
+                path_id: Some(0),
+                tag: DrawTag::Brush,
+                brush: Brush::Solid(Color::from_rgb8(255, 0, 0)),
+                fill_rule: FillRule::NonZero,
+                pixel_bounds: PixelBounds {
+                    x0: 0,
+                    y0: 0,
+                    x1: 32,
+                    y1: 16,
+                },
+                solid_rect: true,
+                allow_solid_override: true,
+            },
+            DrawRecord {
+                path_id: Some(1),
+                tag: DrawTag::Brush,
+                brush: Brush::Solid(Color::from_rgb8(0, 0, 255)),
+                fill_rule: FillRule::NonZero,
+                pixel_bounds: PixelBounds {
+                    x0: 16,
+                    y0: 0,
+                    x1: 32,
+                    y1: 16,
+                },
+                solid_rect: true,
+                allow_solid_override: true,
+            },
+        ];
+        let backdrop_records = [
+            BackdropRecord {
+                path_id: 0,
+                data_offset: 0,
+                data_len: 2,
+                tile_x0: 0,
+                tile_y0: 0,
+                tile_x1: 2,
+                tile_y1: 1,
+                segment_start: 0,
+                segment_capacity: 0,
+                segment_count: 0,
+            },
+            BackdropRecord {
+                path_id: 1,
+                data_offset: 2,
+                data_len: 1,
+                tile_x0: 1,
+                tile_y0: 0,
+                tile_x1: 2,
+                tile_y1: 1,
+                segment_start: 0,
+                segment_capacity: 0,
+                segment_count: 0,
+            },
+        ];
+        let backdrops = [1, 1, 1];
+        let tile_segment_ranges = [TileSegmentRange::default(); 3];
+        let mut tile_ptcl_ranges = Vec::new();
+        let mut tile_ptcls = Vec::new();
+
+        CoarseCpuPipeline::new()
+            .prepare(
+                &draw_records,
+                0..draw_records.len(),
+                &[],
+                0..0,
+                &backdrop_records,
+                &backdrops,
+                &tile_segment_ranges,
+                &mut tile_ptcl_ranges,
+                &mut tile_ptcls,
+                (2, 1),
+            )
+            .run();
+
+        assert_eq!(tile_ptcl_ranges.len(), 2);
+        assert_eq!(tile_ptcl_ranges[0].start, 0);
+        assert_eq!(tile_ptcl_ranges[0].end, 2);
+        assert_eq!(tile_ptcl_ranges[1].start, 2);
+        assert_eq!(tile_ptcl_ranges[1].end, 5);
+        assert!(matches!(
+            &tile_ptcls[0],
+            TilePtcl::Color(color) if color.color == solid_color_u32(Color::from_rgb8(255, 0, 0))
+        ));
+        assert!(matches!(tile_ptcls[1], TilePtcl::End));
+        assert!(matches!(
+            &tile_ptcls[2],
+            TilePtcl::Color(color) if color.color == solid_color_u32(Color::from_rgb8(255, 0, 0))
+        ));
+        assert!(matches!(
+            &tile_ptcls[3],
+            TilePtcl::Color(color) if color.color == solid_color_u32(Color::from_rgb8(0, 0, 255))
+        ));
+        assert!(matches!(tile_ptcls[4], TilePtcl::End));
     }
 }
