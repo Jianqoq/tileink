@@ -18,7 +18,7 @@ use crate::shared::execution::ExecOp;
 use crate::shared::image::{Image, rgba8_pack, unpack_rgba8};
 use crate::shared::layer::{filter::Filter, region::Region};
 use crate::shared::pixel::premul_f32_to_u32;
-use crate::{CpuRenderer, FillRule, Radius, Scene};
+use crate::{CpuRenderer, FillRule, Radius, Scene, StrokeWidths};
 
 fn mixed_shape_scene() -> Scene {
     let mut scene = Scene::new(360, 260);

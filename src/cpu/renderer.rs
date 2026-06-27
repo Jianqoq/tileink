@@ -671,7 +671,7 @@ mod tests {
 
     use super::Renderer;
     use crate::{
-        FillRule, Radius, Scene,
+        FillRule, Radius, Scene, StrokeWidths,
         shared::layer::{filter::Filter, region::Region},
     };
 
@@ -834,6 +834,33 @@ mod tests {
         assert_eq!(renderer.image().rgba8_at(16, 32), [255, 0, 0, 255]);
         assert_eq!(renderer.image().rgba8_at(32, 32), [255, 255, 255, 255]);
         assert_eq!(renderer.image().rgba8_at(8, 32), [255, 255, 255, 255]);
+    }
+
+    #[test]
+    fn sdf_rect_stroke_supports_per_side_widths() {
+        let mut scene = Scene::new(64, 64);
+        scene.push_rect_stroke_widths(
+            Rect::new(20.0, 20.0, 44.0, 44.0),
+            Radius::all(0.0),
+            StrokeWidths {
+                top: 2.0,
+                right: 8.0,
+                bottom: 4.0,
+                left: 12.0,
+            },
+            Color::from_rgb8(255, 0, 0),
+            FillRule::NonZero,
+        );
+
+        let mut renderer = Renderer::new(64, 64, Color::WHITE);
+        renderer.render(&scene);
+
+        assert_eq!(renderer.image().rgba8_at(16, 32), [255, 0, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(46, 32), [255, 0, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(32, 20), [255, 0, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(32, 44), [255, 0, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(32, 32), [255, 255, 255, 255]);
+        assert_eq!(renderer.image().rgba8_at(12, 32), [255, 255, 255, 255]);
     }
 
     #[test]

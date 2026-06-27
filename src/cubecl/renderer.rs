@@ -1448,7 +1448,10 @@ struct DrawSdfUpload {
     r1: Vec<f32>,
     r2: Vec<f32>,
     r3: Vec<f32>,
-    half_width: Vec<f32>,
+    stroke_top: Vec<f32>,
+    stroke_right: Vec<f32>,
+    stroke_bottom: Vec<f32>,
+    stroke_left: Vec<f32>,
 }
 
 impl DrawSdfUpload {
@@ -1463,7 +1466,10 @@ impl DrawSdfUpload {
             r1: Vec::with_capacity(draws.len()),
             r2: Vec::with_capacity(draws.len()),
             r3: Vec::with_capacity(draws.len()),
-            half_width: Vec::with_capacity(draws.len()),
+            stroke_top: Vec::with_capacity(draws.len()),
+            stroke_right: Vec::with_capacity(draws.len()),
+            stroke_bottom: Vec::with_capacity(draws.len()),
+            stroke_left: Vec::with_capacity(draws.len()),
         };
 
         for draw in draws {
@@ -1479,11 +1485,12 @@ impl DrawSdfUpload {
                             rect.radius.bottom_left,
                             rect.radius.bottom_right,
                         ],
-                        0.0,
+                        [0.0; 4],
                     );
                 }
                 Some(Sdf::RectStroke(stroke)) => {
                     let (x0, y0, x1, y1) = stroke.rect.axis_bounds();
+                    let half = stroke.widths.half();
                     upload.push(
                         CUBE_SDF_RECT_STROKE,
                         [x0 as f32, y0 as f32, x1 as f32, y1 as f32],
@@ -1493,7 +1500,7 @@ impl DrawSdfUpload {
                             stroke.rect.radius.bottom_left,
                             stroke.rect.radius.bottom_right,
                         ],
-                        stroke.half_width,
+                        [half.top, half.right, half.bottom, half.left],
                     );
                 }
                 Some(Sdf::Circle(circle)) => {
@@ -1506,7 +1513,7 @@ impl DrawSdfUpload {
                             0.0,
                         ],
                         [0.0; 4],
-                        0.0,
+                        [0.0; 4],
                     );
                 }
                 Some(Sdf::CircleStroke(stroke)) => {
@@ -1519,11 +1526,11 @@ impl DrawSdfUpload {
                             0.0,
                         ],
                         [0.0; 4],
-                        stroke.half_width,
+                        [stroke.half_width; 4],
                     );
                 }
                 None => {
-                    upload.push(CUBE_SDF_NONE, [0.0; 4], [0.0; 4], 0.0);
+                    upload.push(CUBE_SDF_NONE, [0.0; 4], [0.0; 4], [0.0; 4]);
                 }
             }
         }
@@ -1531,7 +1538,7 @@ impl DrawSdfUpload {
         upload
     }
 
-    fn push(&mut self, kind: u32, xy: [f32; 4], radii: [f32; 4], half_width: f32) {
+    fn push(&mut self, kind: u32, xy: [f32; 4], radii: [f32; 4], stroke_widths: [f32; 4]) {
         self.kinds.push(kind);
         self.x0.push(xy[0]);
         self.y0.push(xy[1]);
@@ -1541,7 +1548,10 @@ impl DrawSdfUpload {
         self.r1.push(radii[1]);
         self.r2.push(radii[2]);
         self.r3.push(radii[3]);
-        self.half_width.push(half_width);
+        self.stroke_top.push(stroke_widths[0]);
+        self.stroke_right.push(stroke_widths[1]);
+        self.stroke_bottom.push(stroke_widths[2]);
+        self.stroke_left.push(stroke_widths[3]);
     }
 }
 
@@ -1570,7 +1580,10 @@ pub(crate) struct SceneBuffers {
     pub(crate) draw_sdf_r1: CubeBuffer<f32>,
     pub(crate) draw_sdf_r2: CubeBuffer<f32>,
     pub(crate) draw_sdf_r3: CubeBuffer<f32>,
-    pub(crate) draw_sdf_half_width: CubeBuffer<f32>,
+    pub(crate) draw_sdf_stroke_top: CubeBuffer<f32>,
+    pub(crate) draw_sdf_stroke_right: CubeBuffer<f32>,
+    pub(crate) draw_sdf_stroke_bottom: CubeBuffer<f32>,
+    pub(crate) draw_sdf_stroke_left: CubeBuffer<f32>,
     pub(crate) backdrop_data_offsets: CubeBuffer<u32>,
     pub(crate) backdrop_data_lens: CubeBuffer<u32>,
     pub(crate) backdrop_tile_x0: CubeBuffer<u32>,
@@ -1621,7 +1634,10 @@ impl SceneBuffers {
             draw_sdf_r1: CubeBuffer::new(client, 0),
             draw_sdf_r2: CubeBuffer::new(client, 0),
             draw_sdf_r3: CubeBuffer::new(client, 0),
-            draw_sdf_half_width: CubeBuffer::new(client, 0),
+            draw_sdf_stroke_top: CubeBuffer::new(client, 0),
+            draw_sdf_stroke_right: CubeBuffer::new(client, 0),
+            draw_sdf_stroke_bottom: CubeBuffer::new(client, 0),
+            draw_sdf_stroke_left: CubeBuffer::new(client, 0),
             backdrop_data_offsets: CubeBuffer::new(client, 0),
             backdrop_data_lens: CubeBuffer::new(client, 0),
             backdrop_tile_x0: CubeBuffer::new(client, 0),
@@ -1872,8 +1888,14 @@ impl SceneBuffers {
         self.draw_sdf_r1.replace(client, &sdf_upload.r1);
         self.draw_sdf_r2.replace(client, &sdf_upload.r2);
         self.draw_sdf_r3.replace(client, &sdf_upload.r3);
-        self.draw_sdf_half_width
-            .replace(client, &sdf_upload.half_width);
+        self.draw_sdf_stroke_top
+            .replace(client, &sdf_upload.stroke_top);
+        self.draw_sdf_stroke_right
+            .replace(client, &sdf_upload.stroke_right);
+        self.draw_sdf_stroke_bottom
+            .replace(client, &sdf_upload.stroke_bottom);
+        self.draw_sdf_stroke_left
+            .replace(client, &sdf_upload.stroke_left);
     }
 
     fn upload_backdrops<R: Runtime>(

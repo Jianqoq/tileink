@@ -108,6 +108,10 @@ name = "cpu_rounded_rect"
 path = "examples/cpu/rounded_rect.rs"
 
 [[example]]
+name = "cpu_rect_stroke_widths"
+path = "examples/cpu/rect_stroke_widths.rs"
+
+[[example]]
 name = "cpu_saturate"
 path = "examples/cpu/saturate.rs"
 
@@ -202,6 +206,10 @@ path = "examples/cubecl/opacity.rs"
 [[example]]
 name = "cubecl_rounded_rect"
 path = "examples/cubecl/rounded_rect.rs"
+
+[[example]]
+name = "cubecl_rect_stroke_widths"
+path = "examples/cubecl/rect_stroke_widths.rs"
 
 [[example]]
 name = "cubecl_saturate"

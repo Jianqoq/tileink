@@ -23,7 +23,7 @@ use crate::shared::{
     sdf::{
         Sdf,
         circle::{Circle as SdfCircle, CircleStroke as SdfCircleStroke},
-        rect::{Radius, Rect as SdfRect, RectStroke as SdfRectStroke},
+        rect::{Radius, Rect as SdfRect, RectStroke as SdfRectStroke, StrokeWidths},
     },
 };
 
@@ -387,7 +387,33 @@ impl Scene {
             return;
         }
 
-        let half_width = (stroke.width * 0.5) as f32;
+        self.push_rect_stroke_widths(
+            rect,
+            radius,
+            StrokeWidths::all(stroke.width as f32),
+            brush,
+            rule,
+        );
+    }
+
+    /// Adds a rectangle stroke with independent per-side widths as SDF geometry.
+    ///
+    /// `widths` are full centered stroke widths. This path is meant for dense
+    /// rectangle borders; dashed or arbitrary stroked shapes should use
+    /// `push_stroke`, which expands through the path stroker.
+    pub fn push_rect_stroke_widths(
+        &mut self,
+        rect: Rect,
+        radius: Radius,
+        widths: StrokeWidths,
+        brush: impl Into<Brush>,
+        rule: FillRule,
+    ) {
+        let widths = widths.clamped();
+        if widths.is_empty() {
+            return;
+        }
+
         self.push_sdf_draw(
             Sdf::RectStroke(SdfRectStroke {
                 rect: SdfRect {
@@ -395,9 +421,9 @@ impl Scene {
                     end: Point::new(rect.x1, rect.y1),
                     radius,
                 },
-                half_width,
+                widths,
             }),
-            Self::rect_bounds_outset(rect, f64::from(half_width)),
+            Self::rect_bounds_outsets(rect, widths),
             brush,
             rule,
         );
@@ -418,6 +444,16 @@ impl Scene {
             y0: (rect.y0.min(rect.y1) - outset).floor() as i32,
             x1: (rect.x0.max(rect.x1) + outset).ceil() as i32,
             y1: (rect.y0.max(rect.y1) + outset).ceil() as i32,
+        }
+    }
+
+    fn rect_bounds_outsets(rect: Rect, widths: StrokeWidths) -> Bounds {
+        let half = widths.half();
+        Bounds {
+            x0: (rect.x0.min(rect.x1) - f64::from(half.left)).floor() as i32,
+            y0: (rect.y0.min(rect.y1) - f64::from(half.top)).floor() as i32,
+            x1: (rect.x0.max(rect.x1) + f64::from(half.right)).ceil() as i32,
+            y1: (rect.y0.max(rect.y1) + f64::from(half.bottom)).ceil() as i32,
         }
     }
 
@@ -1211,7 +1247,46 @@ mod tests {
             Some(Sdf::RectStroke(stroke)) => {
                 assert_eq!(stroke.rect.axis_bounds(), (10.0, 12.0, 30.0, 36.0));
                 assert_eq!(stroke.rect.radius.top_left, 4.0);
-                assert_eq!(stroke.half_width, 3.0);
+                assert_eq!(stroke.widths, StrokeWidths::all(6.0));
+            }
+            sdf => panic!("expected rect stroke SDF, got {sdf:?}"),
+        }
+    }
+
+    #[test]
+    fn push_rect_stroke_widths_records_per_side_sdf_widths() {
+        let mut scene = test_scene();
+        let widths = StrokeWidths {
+            top: 2.0,
+            right: 6.0,
+            bottom: 10.0,
+            left: 4.0,
+        };
+        scene.push_rect_stroke_widths(
+            Rect::new(10.0, 12.0, 30.0, 36.0),
+            Radius::all(4.0),
+            widths,
+            Brush::Solid(rgb(255, 0, 0)),
+            FillRule::NonZero,
+        );
+
+        assert_eq!(scene.draw_records.len(), 1);
+        assert!(scene.path_records.is_empty());
+        assert!(scene.bd_records.is_empty());
+        let draw = &scene.draw_records[0];
+        assert_eq!(
+            draw.pixel_bounds,
+            PixelBounds {
+                x0: 8,
+                y0: 11,
+                x1: 33,
+                y1: 41,
+            }
+        );
+        match draw.sdf {
+            Some(Sdf::RectStroke(stroke)) => {
+                assert_eq!(stroke.rect.axis_bounds(), (10.0, 12.0, 30.0, 36.0));
+                assert_eq!(stroke.widths, widths);
             }
             sdf => panic!("expected rect stroke SDF, got {sdf:?}"),
         }

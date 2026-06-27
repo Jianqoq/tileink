@@ -18,5 +18,5 @@ pub use shared::{
     fill::FillRule,
     image::Image,
     layer::{filter::Filter, region::Region},
-    sdf::rect::Radius,
+    sdf::rect::{Radius, StrokeWidths},
 };

@@ -37,12 +37,67 @@ impl Radius {
             && (self.top_left - self.bottom_right).abs() <= EPS
     }
 
-    pub(crate) fn offset(self, amount: f32) -> Self {
+    fn offset_corners(
+        self,
+        top_left: f32,
+        top_right: f32,
+        bottom_left: f32,
+        bottom_right: f32,
+    ) -> Self {
         Self {
-            top_left: (self.top_left + amount).max(0.0),
-            top_right: (self.top_right + amount).max(0.0),
-            bottom_left: (self.bottom_left + amount).max(0.0),
-            bottom_right: (self.bottom_right + amount).max(0.0),
+            top_left: (self.top_left + top_left).max(0.0),
+            top_right: (self.top_right + top_right).max(0.0),
+            bottom_left: (self.bottom_left + bottom_left).max(0.0),
+            bottom_right: (self.bottom_right + bottom_right).max(0.0),
+        }
+    }
+}
+
+/// Per-side full stroke widths for centered rectangle strokes.
+///
+/// The SDF renderer expands the outer edge and shrinks the inner edge by half
+/// of each side width, matching the existing `Stroke::width` centered-stroke
+/// semantics while allowing each side to differ.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StrokeWidths {
+    pub top: f32,
+    pub right: f32,
+    pub bottom: f32,
+    pub left: f32,
+}
+
+impl StrokeWidths {
+    pub fn all(width: f32) -> Self {
+        Self {
+            top: width,
+            right: width,
+            bottom: width,
+            left: width,
+        }
+    }
+
+    pub(crate) fn clamped(self) -> Self {
+        Self {
+            top: self.top.max(0.0),
+            right: self.right.max(0.0),
+            bottom: self.bottom.max(0.0),
+            left: self.left.max(0.0),
+        }
+    }
+
+    pub(crate) fn is_empty(self) -> bool {
+        let widths = self.clamped();
+        widths.top == 0.0 && widths.right == 0.0 && widths.bottom == 0.0 && widths.left == 0.0
+    }
+
+    pub(crate) fn half(self) -> Self {
+        let widths = self.clamped();
+        Self {
+            top: widths.top * 0.5,
+            right: widths.right * 0.5,
+            bottom: widths.bottom * 0.5,
+            left: widths.left * 0.5,
         }
     }
 }
@@ -307,7 +362,9 @@ impl Rect {
 #[derive(Debug, Clone, Copy)]
 pub struct RectStroke {
     pub rect: Rect,
-    pub half_width: f32,
+    /// Full side widths; rasterization derives inner and outer SDF bounds from
+    /// half of these values so uniform strokes match `kurbo::Stroke::width`.
+    pub widths: StrokeWidths,
 }
 
 impl RectStroke {
@@ -321,7 +378,7 @@ impl RectStroke {
         tile_bounds: Bounds,
         pixel_bounds: Bounds,
     ) {
-        if self.half_width <= 0.0 {
+        if self.widths.is_empty() {
             return;
         }
 
@@ -339,22 +396,37 @@ impl RectStroke {
 
     fn outer_rect(&self) -> Rect {
         let (x0, y0, x1, y1) = self.rect.axis_bounds();
-        let half = f64::from(self.half_width.max(0.0));
+        let half = self.widths.half();
         Rect {
-            start: Point::new(x0 - half, y0 - half),
-            end: Point::new(x1 + half, y1 + half),
-            radius: self.rect.radius.offset(self.half_width.max(0.0)),
+            start: Point::new(x0 - f64::from(half.left), y0 - f64::from(half.top)),
+            end: Point::new(x1 + f64::from(half.right), y1 + f64::from(half.bottom)),
+            radius: self.rect.radius.offset_corners(
+                half.top.max(half.left),
+                half.top.max(half.right),
+                half.bottom.max(half.left),
+                half.bottom.max(half.right),
+            ),
         }
     }
 
     fn inner_rect(&self) -> Option<Rect> {
         let (x0, y0, x1, y1) = self.rect.axis_bounds();
-        let half = f64::from(self.half_width.max(0.0));
-        let (ix0, iy0, ix1, iy1) = (x0 + half, y0 + half, x1 - half, y1 - half);
+        let half = self.widths.half();
+        let (ix0, iy0, ix1, iy1) = (
+            x0 + f64::from(half.left),
+            y0 + f64::from(half.top),
+            x1 - f64::from(half.right),
+            y1 - f64::from(half.bottom),
+        );
         (ix0 < ix1 && iy0 < iy1).then(|| Rect {
             start: Point::new(ix0, iy0),
             end: Point::new(ix1, iy1),
-            radius: self.rect.radius.offset(-self.half_width.max(0.0)),
+            radius: self.rect.radius.offset_corners(
+                -half.top.max(half.left),
+                -half.top.max(half.right),
+                -half.bottom.max(half.left),
+                -half.bottom.max(half.right),
+            ),
         })
     }
 }

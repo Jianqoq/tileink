@@ -109,7 +109,10 @@ impl FinePipeline {
             unsafe { scene.draw_sdf_r1.arg() },
             unsafe { scene.draw_sdf_r2.arg() },
             unsafe { scene.draw_sdf_r3.arg() },
-            unsafe { scene.draw_sdf_half_width.arg() },
+            unsafe { scene.draw_sdf_stroke_top.arg() },
+            unsafe { scene.draw_sdf_stroke_right.arg() },
+            unsafe { scene.draw_sdf_stroke_bottom.arg() },
+            unsafe { scene.draw_sdf_stroke_left.arg() },
             unsafe { scan.segment_p0x.arg() },
             unsafe { scan.segment_p0y.arg() },
             unsafe { scan.segment_p1x.arg() },
@@ -164,7 +167,10 @@ fn fine_render(
     draw_sdf_r1: &Array<f32>,
     draw_sdf_r2: &Array<f32>,
     draw_sdf_r3: &Array<f32>,
-    draw_sdf_half_width: &Array<f32>,
+    draw_sdf_stroke_top: &Array<f32>,
+    draw_sdf_stroke_right: &Array<f32>,
+    draw_sdf_stroke_bottom: &Array<f32>,
+    draw_sdf_stroke_left: &Array<f32>,
     segment_p0x: &Array<f32>,
     segment_p0y: &Array<f32>,
     segment_p1x: &Array<f32>,
@@ -237,7 +243,10 @@ fn fine_render(
                         draw_sdf_r1,
                         draw_sdf_r2,
                         draw_sdf_r3,
-                        draw_sdf_half_width,
+                        draw_sdf_stroke_top,
+                        draw_sdf_stroke_right,
+                        draw_sdf_stroke_bottom,
+                        draw_sdf_stroke_left,
                     ),
                     clip_mask,
                 );
@@ -439,7 +448,10 @@ fn sdf_alpha_at(
     draw_sdf_r1: &Array<f32>,
     draw_sdf_r2: &Array<f32>,
     draw_sdf_r3: &Array<f32>,
-    draw_sdf_half_width: &Array<f32>,
+    draw_sdf_stroke_top: &Array<f32>,
+    draw_sdf_stroke_right: &Array<f32>,
+    draw_sdf_stroke_bottom: &Array<f32>,
+    draw_sdf_stroke_left: &Array<f32>,
 ) -> u32 {
     let i = draw_ix as usize;
     let kind = draw_sdf_kinds[i];
@@ -459,7 +471,10 @@ fn sdf_alpha_at(
             draw_sdf_r3[i],
         ));
     } else if kind == CUBE_SDF_RECT_STROKE {
-        let half = draw_sdf_half_width[i].max(0.0);
+        let half_top = draw_sdf_stroke_top[i].max(0.0);
+        let half_right = draw_sdf_stroke_right[i].max(0.0);
+        let half_bottom = draw_sdf_stroke_bottom[i].max(0.0);
+        let half_left = draw_sdf_stroke_left[i].max(0.0);
         let x0 = draw_sdf_x0[i].min(draw_sdf_x1[i]);
         let y0 = draw_sdf_y0[i].min(draw_sdf_y1[i]);
         let x1 = draw_sdf_x0[i].max(draw_sdf_x1[i]);
@@ -467,19 +482,19 @@ fn sdf_alpha_at(
         let outer = sdf_coverage_from_dist(rect_sdf_distance(
             x,
             y,
-            x0 - half,
-            y0 - half,
-            x1 + half,
-            y1 + half,
-            draw_sdf_r0[i] + half,
-            draw_sdf_r1[i] + half,
-            draw_sdf_r2[i] + half,
-            draw_sdf_r3[i] + half,
+            x0 - half_left,
+            y0 - half_top,
+            x1 + half_right,
+            y1 + half_bottom,
+            draw_sdf_r0[i] + half_top.max(half_left),
+            draw_sdf_r1[i] + half_top.max(half_right),
+            draw_sdf_r2[i] + half_bottom.max(half_left),
+            draw_sdf_r3[i] + half_bottom.max(half_right),
         ));
-        let inner_x0 = x0 + half;
-        let inner_y0 = y0 + half;
-        let inner_x1 = x1 - half;
-        let inner_y1 = y1 - half;
+        let inner_x0 = x0 + half_left;
+        let inner_y0 = y0 + half_top;
+        let inner_x1 = x1 - half_right;
+        let inner_y1 = y1 - half_bottom;
         let mut inner = 0.0;
         if inner_x0 < inner_x1 && inner_y0 < inner_y1 {
             inner = sdf_coverage_from_dist(rect_sdf_distance(
@@ -489,10 +504,10 @@ fn sdf_alpha_at(
                 inner_y0,
                 inner_x1,
                 inner_y1,
-                (draw_sdf_r0[i] - half).max(0.0),
-                (draw_sdf_r1[i] - half).max(0.0),
-                (draw_sdf_r2[i] - half).max(0.0),
-                (draw_sdf_r3[i] - half).max(0.0),
+                (draw_sdf_r0[i] - half_top.max(half_left)).max(0.0),
+                (draw_sdf_r1[i] - half_top.max(half_right)).max(0.0),
+                (draw_sdf_r2[i] - half_bottom.max(half_left)).max(0.0),
+                (draw_sdf_r3[i] - half_bottom.max(half_right)).max(0.0),
             ));
         }
         coverage = (outer - inner).clamp(0.0, 1.0);
@@ -505,7 +520,7 @@ fn sdf_alpha_at(
             draw_sdf_x1[i],
         ));
     } else if kind == CUBE_SDF_CIRCLE_STROKE {
-        let half = draw_sdf_half_width[i].max(0.0);
+        let half = draw_sdf_stroke_top[i].max(0.0);
         let radius = draw_sdf_x1[i].max(0.0);
         let outer = sdf_coverage_from_dist(circle_sdf_distance(
             x,

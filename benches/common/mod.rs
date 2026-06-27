@@ -41,13 +41,7 @@ pub fn build_tileink_scene(path_count: usize, dense: bool) -> Scene {
     );
 
     for i in 0..path_count {
-        scene.push_path(
-            circle_at(i, dense).to_path(0.08),
-            color_at(i),
-            Affine::IDENTITY,
-            FillRule::NonZero,
-            0.08,
-        );
+        scene.push_circle(circle_at(i, dense), color_at(i), FillRule::NonZero);
     }
 
     scene

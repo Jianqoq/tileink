@@ -68,6 +68,40 @@ fn fine_wgpu_renders_rect_stroke_sdf_when_enabled() {
 }
 
 #[test]
+fn fine_wgpu_renders_rect_stroke_sdf_with_per_side_widths_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let red = Color::from_rgb8(255, 0, 0);
+    let mut scene = Scene::new(64, 64);
+    scene.push_rect_stroke_widths(
+        Rect::new(20.0, 20.0, 44.0, 44.0),
+        Radius::all(0.0),
+        StrokeWidths {
+            top: 2.0,
+            right: 8.0,
+            bottom: 4.0,
+            left: 12.0,
+        },
+        red,
+        FillRule::NonZero,
+    );
+
+    let mut renderer = WgpuRenderer::new_default_device(64, 64, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+    let red_px = premul_f32_to_u32(red.premultiply().components);
+
+    assert_eq!(target[32 * 64 + 16], red_px);
+    assert_eq!(target[32 * 64 + 46], red_px);
+    assert_eq!(target[20 * 64 + 32], red_px);
+    assert_eq!(target[44 * 64 + 32], red_px);
+    assert_eq!(target[32 * 64 + 32], 0);
+    assert_eq!(target[32 * 64 + 12], 0);
+}
+
+#[test]
 fn fine_wgpu_renders_circle_stroke_sdf_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;
