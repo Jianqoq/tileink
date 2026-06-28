@@ -1569,6 +1569,26 @@ mod tests {
     }
 
     #[test]
+    fn push_svg_renders_top_clipped_circle_without_double_top_backdrop() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 200 200">
+                <circle cx="100" r="80" fill="green"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert!(
+            renderer.image().rgba8_at(260, 8)[1] > 0,
+            "expected the top-clipped circle body to cover the right edge tile"
+        );
+        assert_eq!(
+            renderer.image().rgba8_at(271, 8),
+            [0, 0, 0, 0],
+            "top-clipped circle edge must not fill the whole right edge tile"
+        );
+    }
+
+    #[test]
     fn push_svg_keeps_group_opacity_isolated() {
         let renderer = render(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96">

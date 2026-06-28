@@ -368,7 +368,10 @@ fn scan_count(
         backdrops[(data_offset + local) as usize].fetch_add(delta);
         y += 1;
     }
-    if imin < imax && s0y < bbox_y0 as f32 && s1y > bbox_y0 as f32 {
+    if imin < imax
+        && s0y < bbox_y0 as f32 - f32::new(0.0001_f32)
+        && s1y > bbox_y0 as f32 + f32::new(0.0001_f32)
+    {
         let top_y = bbox_y0 as f32;
         let top_x = s0x + (s1x - s0x) * ((top_y - s0y) / (s1y - s0y));
         if top_x >= bbox_x0 as f32 - f32::new(0.0001_f32) && top_x < bbox_x1 as f32 {

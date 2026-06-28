@@ -77,10 +77,11 @@ impl<'a> ScanCpuPrepared<'a> {
                             let base = ((y - bbox.y0 as i32) * bbox.tile_stride() as i32) as usize;
                             backdrop[base] += plan.delta;
                         }
-                        if let Some(x_bump) = plan.top_clip_bump_x {
-                            if x_bump >= bbox.x0 as i32 && x_bump < bbox.x1 as i32 {
-                                backdrop[(x_bump - bbox.x0 as i32) as usize] += plan.delta;
-                            }
+                        if let Some(x_bump) = plan.top_clip_bump_x
+                            && x_bump >= bbox.x0 as i32
+                            && x_bump < bbox.x1 as i32
+                        {
+                            backdrop[(x_bump - bbox.x0 as i32) as usize] += plan.delta;
                         }
 
                         for_each_scanned_tile(&plan, bbox, self.tiles_size, |tile| {
@@ -438,7 +439,7 @@ pub(crate) fn plan_scan_line(line: Line, bbox: TileBbox) -> Option<ScanLinePlan>
 
 fn top_clip_backdrop_bump_x(s0: (f32, f32), s1: (f32, f32), bbox: TileBbox) -> Option<i32> {
     let top_y = bbox.y0 as f32;
-    if s0.1 >= top_y || s1.1 <= top_y {
+    if s0.1 >= top_y - TILE_BOUNDARY_EPSILON || s1.1 <= top_y + TILE_BOUNDARY_EPSILON {
         return None;
     }
 
@@ -973,6 +974,24 @@ mod tests {
             plan_scan_line(line_on_top, bbox).unwrap().top_clip_bump_x,
             None
         );
+    }
+
+    #[test]
+    fn plan_top_clipped_bump_ignores_endpoint_on_clip_top() {
+        let bbox = TileBbox {
+            x0: 1,
+            y0: 0,
+            x1: 17,
+            y1: 8,
+        };
+        let line = Line {
+            path_id: 0,
+            _pad: 0.0,
+            p0: [30.156_143, -6.175_184_2],
+            p1: [30.0, 0.0],
+        };
+
+        assert_eq!(plan_scan_line(line, bbox).unwrap().top_clip_bump_x, None);
     }
 
     #[test]
