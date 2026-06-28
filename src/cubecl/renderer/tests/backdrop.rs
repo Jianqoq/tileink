@@ -40,7 +40,10 @@ fn backdrop_wgpu_masks_blur_to_rect_sample_region_when_enabled() {
         FillRule::NonZero,
     );
     scene.push_backdrop_layer(
-        Filter::Blur(2.0),
+        Filter::Blur {
+            radius_x: 2.0,
+            radius_y: 2.0,
+        },
         Region::rect(Rect::new(8.0, 4.0, 16.0, 12.0), Radius::all(0.0)),
     );
     scene.pop_layer();

@@ -922,7 +922,10 @@ mod tests {
         let clip = Circle::new((48.0, 48.0), 24.0).to_path(0.1);
         scene.push_clip_layer(clip.clone(), Affine::IDENTITY, FillRule::NonZero, 0.1);
         scene.push_filter_layer(
-            Filter::Blur(8.0),
+            Filter::Blur {
+                radius_x: 8.0,
+                radius_y: 8.0,
+            },
             Region::Path {
                 path: clip,
                 transform: Affine::IDENTITY,
@@ -951,7 +954,10 @@ mod tests {
         let mut scene = Scene::new(96, 96);
         let sample_rect = Rect::new(32.0, 32.0, 64.0, 64.0);
         scene.push_filter_layer(
-            Filter::Blur(4.0),
+            Filter::Blur {
+                radius_x: 4.0,
+                radius_y: 4.0,
+            },
             Region::rect(sample_rect, Radius::all(0.0)),
         );
         scene.push_path(

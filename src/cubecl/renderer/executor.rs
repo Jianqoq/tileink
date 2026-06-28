@@ -236,10 +236,10 @@ impl<R: Runtime> Renderer<R> {
             Filter::Graph { primitives, .. } => {
                 self.apply_filter_graph(target, bounds, primitives, filter_cursors);
             }
-            Filter::Blur(radius) => {
-                if radius.max(0.0) > 0.0 {
+            Filter::Blur { radius_x, radius_y } => {
+                if radius_x.max(*radius_y).max(0.0) > 0.0 {
                     let temp = self.acquire_scratch();
-                    self.blur_buffer(target, temp, bounds, *radius);
+                    self.blur_buffer(target, temp, bounds, *radius_x, *radius_y);
                     self.release_scratch(temp);
                 }
             }
@@ -1150,13 +1150,31 @@ impl<R: Runtime> Renderer<R> {
         target: CubeRenderTarget,
         temp: CubeRenderTarget,
         bounds: Bounds,
-        radius: f32,
+        radius_x: f32,
+        radius_y: f32,
     ) {
-        if radius.max(0.0) <= 0.0 {
+        let radius_x = radius_x.max(0.0);
+        let radius_y = radius_y.max(0.0);
+        if radius_x <= 0.0 && radius_y <= 0.0 {
             return;
         }
-        self.blur_pass(target, temp, bounds, radius, 0);
-        self.blur_pass(temp, target, bounds, radius, 1);
+        // Keep SVG's independent X/Y blur semantics: single-axis blur writes
+        // into scratch first, then copies the completed pass back to target.
+        match (radius_x > 0.0, radius_y > 0.0) {
+            (true, true) => {
+                self.blur_pass(target, temp, bounds, radius_x, 0);
+                self.blur_pass(temp, target, bounds, radius_y, 1);
+            }
+            (true, false) => {
+                self.blur_pass(target, temp, bounds, radius_x, 0);
+                self.copy_region(temp, target, bounds);
+            }
+            (false, true) => {
+                self.blur_pass(target, temp, bounds, radius_y, 1);
+                self.copy_region(temp, target, bounds);
+            }
+            (false, false) => {}
+        }
     }
 
     fn blur_pass(
@@ -1231,7 +1249,7 @@ impl<R: Runtime> Renderer<R> {
 
         if radius.max(0.0) > 0.0 {
             let temp = self.acquire_scratch();
-            self.blur_buffer(shadow, temp, bounds, radius);
+            self.blur_buffer(shadow, temp, bounds, radius, radius);
             self.release_scratch(temp);
         }
 
@@ -1651,7 +1669,7 @@ fn filter_scratch_extra(filter: &Filter) -> usize {
             filters.iter().map(filter_scratch_extra).max().unwrap_or(0)
         }
         Filter::Graph { primitives, .. } => graph_scratch_extra(primitives),
-        Filter::Blur(radius) => usize::from(radius.max(0.0) > 0.0),
+        Filter::Blur { radius_x, radius_y } => usize::from(radius_x.max(*radius_y) > 0.0),
         Filter::ConvolveMatrix(_) => 1,
         Filter::DiffuseLighting(_) => 1,
         Filter::SpecularLighting(_) => 1,
@@ -1770,7 +1788,7 @@ fn encode_color_filter(filter: &Filter) -> (u32, f32) {
         Filter::Opacity(amount) => (FILTER_OPACITY, *amount),
         Filter::Saturate(amount) => (FILTER_SATURATE, *amount),
         Filter::Sepia(amount) => (FILTER_SEPIA, *amount),
-        Filter::Blur(_) => panic!("blur is handled by CubeCL separable blur passes"),
+        Filter::Blur { .. } => panic!("blur is handled by CubeCL separable blur passes"),
         Filter::ColorMatrix(_) => panic!("color matrix is handled by a dedicated CubeCL pass"),
         Filter::ComponentTransfer(_) => {
             panic!("component transfer is handled by a dedicated CubeCL pass")
@@ -1815,7 +1833,7 @@ fn filter_outset(filter: &Filter) -> i32 {
                 filters.iter().map(filter_outset).sum()
             }
         }
-        Filter::Blur(radius) => blur_outset(*radius),
+        Filter::Blur { radius_x, radius_y } => blur_outset(radius_x.max(*radius_y)),
         Filter::Offset { dx, dy } => dx.abs().ceil().max(dy.abs().ceil()) as i32,
         Filter::Morphology {
             radius_x,

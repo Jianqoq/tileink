@@ -25,7 +25,7 @@ pub(crate) fn apply(image: &mut Image, filter: &Filter, bounds: Bounds) {
             }
         }
         Filter::Graph { primitives, .. } => apply_graph(image, primitives, bounds),
-        Filter::Blur(radius) => apply_gaussian_blur(image, *radius),
+        Filter::Blur { radius_x, radius_y } => apply_gaussian_blur(image, *radius_x, *radius_y),
         Filter::ColorMatrix(matrix) => {
             for px in &mut image.pixels {
                 *px = apply_color_matrix_pixel(*px, *matrix);
@@ -746,7 +746,7 @@ fn filter_outset(filter: &Filter) -> i32 {
             }
         }
         Filter::Graph { .. } => 0,
-        Filter::Blur(radius) => blur_outset(*radius),
+        Filter::Blur { radius_x, radius_y } => blur_outset(radius_x.max(*radius_y)),
         Filter::Offset { dx, dy } => dx.abs().ceil().max(dy.abs().ceil()) as i32,
         Filter::Morphology {
             radius_x,
@@ -946,25 +946,26 @@ fn apply_offset(image: &mut Image, dx: i32, dy: i32) {
     }
 }
 
-fn apply_gaussian_blur(image: &mut Image, radius: f32) {
-    let radius = radius.max(0.0);
-    if radius <= 0.0 || image.width == 0 || image.height == 0 {
+fn apply_gaussian_blur(image: &mut Image, radius_x: f32, radius_y: f32) {
+    let radius_x = radius_x.max(0.0);
+    let radius_y = radius_y.max(0.0);
+    if (radius_x <= 0.0 && radius_y <= 0.0) || image.width == 0 || image.height == 0 {
         return;
     }
-    let kernel = gaussian_kernel(radius);
-    if kernel.len() <= 1 {
-        return;
+    // SVG feGaussianBlur has independent X/Y standard deviations; a zero axis
+    // is intentionally skipped so `stdDeviation="5 0"` stays horizontal-only.
+    if radius_x > 0.0 {
+        let kernel = gaussian_kernel(radius_x);
+        if kernel.len() > 1 {
+            image.pixels = blur_pass(image, &kernel, Axis::Horizontal);
+        }
     }
-    let tmp = blur_pass(image, &kernel, Axis::Horizontal);
-    image.pixels = blur_pass(
-        &Image {
-            width: image.width,
-            height: image.height,
-            pixels: tmp,
-        },
-        &kernel,
-        Axis::Vertical,
-    );
+    if radius_y > 0.0 {
+        let kernel = gaussian_kernel(radius_y);
+        if kernel.len() > 1 {
+            image.pixels = blur_pass(image, &kernel, Axis::Vertical);
+        }
+    }
 }
 
 fn apply_drop_shadow(
@@ -995,7 +996,7 @@ fn apply_drop_shadow(
         }
     }
 
-    apply_gaussian_blur(&mut mask, radius);
+    apply_gaussian_blur(&mut mask, radius, radius);
     for y in 0..image.height {
         for x in 0..image.width {
             let ix = (y * image.width + x) as usize;
@@ -1206,6 +1207,27 @@ mod tests {
         );
 
         assert_eq!(image.rgba8_at(0, 0), [64, 32, 64, 64]);
+    }
+
+    #[test]
+    fn anisotropic_blur_can_run_only_one_axis() {
+        let mut image = Image::new(3, 3, Color::TRANSPARENT);
+        image.pixels[(image.width + 1) as usize] = rgba8_pack([255, 255, 255, 255]);
+
+        apply(
+            &mut image,
+            &Filter::Blur {
+                radius_x: 1.0,
+                radius_y: 0.0,
+            },
+            Bounds::canvas(3, 3),
+        );
+
+        assert!(image.rgba8_at(0, 1)[3] > 0);
+        assert!(image.rgba8_at(1, 1)[3] > 0);
+        assert!(image.rgba8_at(2, 1)[3] > 0);
+        assert_eq!(image.rgba8_at(1, 0), [0, 0, 0, 0]);
+        assert_eq!(image.rgba8_at(1, 2), [0, 0, 0, 0]);
     }
 
     #[test]

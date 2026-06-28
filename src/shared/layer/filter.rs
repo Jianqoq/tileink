@@ -25,7 +25,10 @@ pub enum Filter {
         primitives: Vec<FilterPrimitive>,
         fixed_region: bool,
     },
-    Blur(f32),
+    Blur {
+        radius_x: f32,
+        radius_y: f32,
+    },
     Brightness(f32),
     Contrast(f32),
     ColorMatrix([f32; 20]),

@@ -158,7 +158,10 @@ fn filter_wgpu_blur_outputs_expanded_bounds_when_enabled() {
     let mut scene = Scene::new(96, 96);
     let sample_rect = Rect::new(32.0, 32.0, 64.0, 64.0);
     scene.push_filter_layer(
-        Filter::Blur(4.0),
+        Filter::Blur {
+            radius_x: 4.0,
+            radius_y: 4.0,
+        },
         Region::rect(sample_rect, Radius::all(0.0)),
     );
     scene.push_rect(sample_rect, Color::from_rgb8(255, 0, 0), FillRule::NonZero);
@@ -176,6 +179,37 @@ fn filter_wgpu_blur_outputs_expanded_bounds_when_enabled() {
         "expected blur outside sample region, got {expanded_px:?}"
     );
     assert_eq!(far_px, [255, 255, 255, 255]);
+}
+
+#[test]
+fn filter_wgpu_applies_anisotropic_blur_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(3, 3);
+    scene.push_filter_layer(
+        Filter::Blur {
+            radius_x: 1.0,
+            radius_y: 0.0,
+        },
+        Region::rect(Rect::new(0.0, 0.0, 3.0, 3.0), Radius::all(0.0)),
+    );
+    scene.push_rect(
+        Rect::new(1.0, 1.0, 2.0, 2.0),
+        Color::WHITE,
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(3, 3, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+
+    assert!(unpack_rgba8(target[pixel_ix(0, 1, 3)])[3] > 0);
+    assert!(unpack_rgba8(target[pixel_ix(2, 1, 3)])[3] > 0);
+    assert_eq!(target[pixel_ix(1, 0, 3)], 0);
+    assert_eq!(target[pixel_ix(1, 2, 3)], 0);
 }
 
 #[test]

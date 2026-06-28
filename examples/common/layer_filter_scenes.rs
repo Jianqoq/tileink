@@ -53,7 +53,13 @@ pub fn filter_clip_opacity_scene() -> Scene {
         FillRule::NonZero,
         0.1,
     );
-    scene.push_filter_layer(Filter::Blur(10.0), Region::rect(clip, Radius::all(54.0)));
+    scene.push_filter_layer(
+        Filter::Blur {
+            radius_x: 10.0,
+            radius_y: 10.0,
+        },
+        Region::rect(clip, Radius::all(54.0)),
+    );
     scene.push_opacity_layer(
         crate::common::rect_path(clip, Radius::all(54.0)),
         Default::default(),
@@ -97,7 +103,10 @@ pub fn clip_filter_scene() -> Scene {
         0.1,
     );
     scene.push_filter_layer(
-        Filter::Blur(14.0),
+        Filter::Blur {
+            radius_x: 14.0,
+            radius_y: 14.0,
+        },
         Region::path(clip.to_path(0.1), Default::default(), 0.1),
     );
     fill_rect(
@@ -159,7 +168,13 @@ pub fn backdrop_blur_scene() -> Scene {
     );
 
     let panel = Rect::new(142.0, 112.0, 578.0, 308.0);
-    scene.push_backdrop_layer(Filter::Blur(18.0), Region::rect(panel, Radius::all(34.0)));
+    scene.push_backdrop_layer(
+        Filter::Blur {
+            radius_x: 18.0,
+            radius_y: 18.0,
+        },
+        Region::rect(panel, Radius::all(34.0)),
+    );
     fill_rect(
         &mut scene,
         panel,
@@ -208,7 +223,13 @@ pub fn liquid_glass_scene() -> Scene {
     );
 
     let panel = Rect::new(126.0, 104.0, 594.0, 316.0);
-    scene.push_backdrop_layer(Filter::Blur(9.0), Region::rect(panel, Radius::all(42.0)));
+    scene.push_backdrop_layer(
+        Filter::Blur {
+            radius_x: 9.0,
+            radius_y: 9.0,
+        },
+        Region::rect(panel, Radius::all(42.0)),
+    );
     fill_rect(
         &mut scene,
         panel,

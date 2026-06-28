@@ -434,11 +434,10 @@ fn svg_filter_primitive(
     let region = nonzero_rect_to_bounds(primitive.rect());
     let (input, input2, kind) = match primitive.kind() {
         usvg::filter::Kind::GaussianBlur(blur) => {
-            let filter = Filter::Blur(equal_std_dev(
-                blur.std_dev_x().get(),
-                blur.std_dev_y().get(),
-                "anisotropic feGaussianBlur",
-            )?);
+            let filter = Filter::Blur {
+                radius_x: blur.std_dev_x().get(),
+                radius_y: blur.std_dev_y().get(),
+            };
             (
                 svg_filter_input(blur.input(), results, "feGaussianBlur")?,
                 None,
@@ -1330,6 +1329,26 @@ mod tests {
             spread[0] > 0 && spread[3] > 0,
             "blur should spread outside the original rect: {spread:?}"
         );
+    }
+
+    #[test]
+    fn push_svg_renders_anisotropic_fe_gaussian_blur() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="3" height="3">
+                <defs>
+                    <filter id="blur" x="0" y="0" width="3" height="3" filterUnits="userSpaceOnUse">
+                        <feGaussianBlur stdDeviation="1 0"/>
+                    </filter>
+                </defs>
+                <rect x="1" y="1" width="1" height="1" fill="#ffffff" filter="url(#blur)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert!(renderer.image().rgba8_at(0, 1)[3] > 0);
+        assert!(renderer.image().rgba8_at(2, 1)[3] > 0);
+        assert_eq!(renderer.image().rgba8_at(1, 0), [0, 0, 0, 0]);
+        assert_eq!(renderer.image().rgba8_at(1, 2), [0, 0, 0, 0]);
     }
 
     #[test]
