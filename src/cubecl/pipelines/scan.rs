@@ -343,6 +343,23 @@ fn scan_count(
     imax = imin.max(imax);
     ymin = ymin.max(bbox_y0 as i32);
     ymax = ymax.min(bbox_y1 as i32);
+    if ymin == bbox_y0 as i32 && ymax > ymin && s0y < bbox_y0 as f32 && s1y > bbox_y0 as f32 {
+        let dx_left = s1x - s0x;
+        if dx_left != 0.0 {
+            let left_x = bbox_x0 as f32;
+            let top_y = bbox_y0 as f32;
+            let top_x = s0x + (s1x - s0x) * ((top_y - s0y) / (s1y - s0y));
+            let left_y = s0y + (s1y - s0y) * ((left_x - s0x) / dx_left);
+            let eps = f32::new(0.0001_f32);
+            if top_x - left_x >= -eps
+                && top_x - left_x <= eps
+                && left_y - top_y >= -eps
+                && left_y - top_y <= eps
+            {
+                ymin += 1;
+            }
+        }
+    }
 
     let data_offset = backdrop_data_offsets[path_i];
     let mut y = ymin;
@@ -354,19 +371,17 @@ fn scan_count(
     if imin < imax && s0y < bbox_y0 as f32 && s1y > bbox_y0 as f32 {
         let top_y = bbox_y0 as f32;
         let top_x = s0x + (s1x - s0x) * ((top_y - s0y) / (s1y - s0y));
-        if top_x >= bbox_x0 as f32 && top_x < bbox_x1 as f32 {
-            // Top-clipped crossings have no original DDA top-edge event. Use
-            // the first scanned tile's owner so exact tile-boundary crossings
-            // keep the same backdrop column as normal top-edge crossings.
-            let z = (a * imin as f32 + b).floor();
-            let tile_y = (y0 + imin as f32 - z) as i32;
-            let tile_x = (x0 + sign * z) as i32;
-            if tile_y == bbox_y0 as i32
-                && tile_x >= bbox_x0 as i32
-                && tile_x < bbox_x1 as i32
-                && tile_x + 1 < bbox_x1 as i32
-            {
-                let bump_local = (tile_x + 1 - bbox_x0 as i32) as u32;
+        if top_x >= bbox_x0 as f32 - f32::new(0.0001_f32) && top_x < bbox_x1 as f32 {
+            // Top-clipped crossings have no original DDA top-edge event. The
+            // clipped boundary contributes from the first tile whose left edge
+            // is at or to the right of the crossing; exact tile-boundary
+            // crossings stay on that boundary instead of advancing one tile.
+            let mut x_bump = (top_x - f32::new(0.0001_f32)).ceil() as i32;
+            if top_x - bbox_x0 as f32 <= f32::new(0.0001_f32) {
+                x_bump = bbox_x0 as i32 + 1;
+            }
+            if x_bump >= bbox_x0 as i32 && x_bump < bbox_x1 as i32 {
+                let bump_local = (x_bump - bbox_x0 as i32) as u32;
                 backdrops[(data_offset + bump_local) as usize].fetch_add(delta);
             }
         }

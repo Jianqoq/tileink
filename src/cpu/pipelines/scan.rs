@@ -411,7 +411,12 @@ pub(crate) fn plan_scan_line(line: Line, bbox: TileBbox) -> Option<ScanLinePlan>
     imax = imin.max(imax);
     ymin = ymin.max(bbox.y0 as i32);
     ymax = ymax.min(bbox.y1 as i32);
-    let top_clip_bump_x = top_clip_backdrop_bump_x(s0, s1, bbox, a, b, x0, sign, y0, imin, imax);
+    if ymin == bbox.y0 as i32 && ymax > ymin && is_top_left_corner_clip(s0, s1, bbox) {
+        // The top-left clip corner is owned by the top edge. Keep the first
+        // row as segment coverage so a stroke cap cannot become full-tile fill.
+        ymin += 1;
+    }
+    let top_clip_bump_x = top_clip_backdrop_bump_x(s0, s1, bbox);
 
     Some(ScanLinePlan {
         xy0,
@@ -431,40 +436,40 @@ pub(crate) fn plan_scan_line(line: Line, bbox: TileBbox) -> Option<ScanLinePlan>
     })
 }
 
-fn top_clip_backdrop_bump_x(
-    s0: (f32, f32),
-    s1: (f32, f32),
-    bbox: TileBbox,
-    a: f32,
-    b: f32,
-    x0: f32,
-    sign: f32,
-    y0: f32,
-    imin: u32,
-    imax: u32,
-) -> Option<i32> {
+fn top_clip_backdrop_bump_x(s0: (f32, f32), s1: (f32, f32), bbox: TileBbox) -> Option<i32> {
     let top_y = bbox.y0 as f32;
-    if imin >= imax || s0.1 >= top_y || s1.1 <= top_y {
+    if s0.1 >= top_y || s1.1 <= top_y {
         return None;
     }
 
     let top_x = s0.0 + (s1.0 - s0.0) * ((top_y - s0.1) / (s1.1 - s0.1));
-    if top_x < bbox.x0 as f32 || top_x >= bbox.x1 as f32 {
+    if top_x < bbox.x0 as f32 - TILE_BOUNDARY_EPSILON || top_x >= bbox.x1 as f32 {
         return None;
     }
 
     // A line clipped by the backdrop's top boundary did not have an original
-    // DDA top-edge event in this row. Emit the missing row-delta using the
-    // first scanned tile's ownership, matching the normal top-edge path and
-    // keeping exact tile-boundary crossings out of the tile to their left.
-    let z = (a * imin as f32 + b).floor();
-    let tile_y = (y0 + imin as f32 - z) as i32;
-    let tile_x = (x0 + sign * z) as i32;
-    if tile_y == bbox.y0 as i32 && tile_x >= bbox.x0 as i32 && tile_x < bbox.x1 as i32 {
-        Some(tile_x + 1)
+    // DDA top-edge event. The clipped boundary contributes only to tiles whose
+    // left edge is at or to the right of the crossing; exact tile-boundary
+    // crossings therefore stay on that boundary instead of advancing one tile.
+    if top_x - bbox.x0 as f32 <= TILE_BOUNDARY_EPSILON {
+        Some(bbox.x0 as i32 + 1)
     } else {
-        None
+        Some((top_x - TILE_BOUNDARY_EPSILON).ceil() as i32)
     }
+}
+
+fn is_top_left_corner_clip(s0: (f32, f32), s1: (f32, f32), bbox: TileBbox) -> bool {
+    if s0.1 >= bbox.y0 as f32 || s1.1 <= bbox.y0 as f32 || s0.0 == s1.0 {
+        return false;
+    }
+
+    let left_x = bbox.x0 as f32;
+    let top_y = bbox.y0 as f32;
+    let top_x = s0.0 + (s1.0 - s0.0) * ((top_y - s0.1) / (s1.1 - s0.1));
+    let left_y = s0.1 + (s1.1 - s0.1) * ((left_x - s0.0) / (s1.0 - s0.0));
+
+    (top_x - left_x).abs() <= TILE_BOUNDARY_EPSILON
+        && (left_y - top_y).abs() <= TILE_BOUNDARY_EPSILON
 }
 
 fn clip_line_to_tile(
@@ -927,7 +932,7 @@ mod tests {
     }
 
     #[test]
-    fn run_uses_top_edge_ownership_for_exact_top_clipped_tile_boundary() {
+    fn plan_top_clipped_bump_snaps_exact_boundary_without_reprocessing_top_edge() {
         let bbox = TileBbox {
             x0: 0,
             y0: 0,
@@ -949,10 +954,95 @@ mod tests {
             },
         ];
 
+        assert_eq!(
+            plan_scan_line(lines[0], bbox).unwrap().top_clip_bump_x,
+            Some(2)
+        );
+        assert_eq!(
+            plan_scan_line(lines[1], bbox).unwrap().top_clip_bump_x,
+            Some(6)
+        );
+
+        let line_on_top = Line {
+            path_id: 0,
+            _pad: 0.0,
+            p0: [32.0, 0.0],
+            p1: [32.0, 32.0],
+        };
+        assert_eq!(
+            plan_scan_line(line_on_top, bbox).unwrap().top_clip_bump_x,
+            None
+        );
+    }
+
+    #[test]
+    fn run_cancels_top_clipped_stroke_cap_on_tile_boundary() {
+        let bbox = TileBbox {
+            x0: 0,
+            y0: 0,
+            x1: 11,
+            y1: 1,
+        };
+        let lines = [
+            Line {
+                path_id: 0,
+                _pad: 0.0,
+                p0: [159.862_64, -0.480_762],
+                p1: [19.862_64, 39.519_238],
+            },
+            Line {
+                path_id: 0,
+                _pad: 0.0,
+                p0: [160.137_36, 0.480_762],
+                p1: [159.862_64, -0.480_762],
+            },
+        ];
+
         let (_, backdrops, _, _) = scan_lines(&lines, bbox, 16);
 
-        assert_eq!(&backdrops[0..8], &[0, 0, 0, -1, 0, 0, 0, 1]);
-        assert_eq!(&backdrops[8..16], &[0, 0, 0, -1, 0, 0, 0, 1]);
+        assert_eq!(&backdrops[0..11], &[0; 11]);
+    }
+
+    #[test]
+    fn run_keeps_top_left_stroke_cap_out_of_backdrop() {
+        let bbox = TileBbox {
+            x0: 0,
+            y0: 0,
+            x1: 12,
+            y1: 12,
+        };
+        let lines = [
+            Line {
+                path_id: 0,
+                _pad: 0.0,
+                p0: [1.494_818_7, -1.328_727_7],
+                p1: [161.494_81, 178.671_28],
+            },
+            Line {
+                path_id: 0,
+                _pad: 0.0,
+                p0: [161.494_81, 178.671_28],
+                p1: [158.505_19, 181.328_72],
+            },
+            Line {
+                path_id: 0,
+                _pad: 0.0,
+                p0: [158.505_19, 181.328_72],
+                p1: [-1.494_818_7, 1.328_727_7],
+            },
+            Line {
+                path_id: 0,
+                _pad: 0.0,
+                p0: [-1.494_818_7, 1.328_727_7],
+                p1: [1.494_818_7, -1.328_727_7],
+            },
+        ];
+
+        let (record, mut backdrops, _, _) = scan_lines(&lines, bbox, 256);
+
+        assert_eq!(&backdrops[0..12], &[0; 12]);
+        run_backdrop_cumsum(&mut backdrops, &[record]);
+        assert_eq!(&backdrops[0..12], &[0; 12]);
     }
 
     #[test]
