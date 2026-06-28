@@ -211,12 +211,10 @@ pub(crate) fn capture_render_debug(
     }
 
     let capture_json = debug_capture_json(&capture);
-    capture.texts.push(
-        RenderDebugText {
-            name: "capture.json".to_string(),
-            contents: capture_json,
-        },
-    );
+    capture.texts.push(RenderDebugText {
+        name: "capture.json".to_string(),
+        contents: capture_json,
+    });
     capture
 }
 
@@ -588,7 +586,7 @@ fn tiles_svg(scene: &Scene, tiles: &[DebugTileSummary]) -> String {
         if active {
             let _ = writeln!(
                 out,
-                "<text x=\"{}\" y=\"{}\" font-size=\"7\" font-family=\"monospace\" fill=\"#1d4ed8\">p:{}</text>",
+                "<text x=\"{}\" y=\"{}\" font-size=\"7\" font-family=\"monospace\" fill=\"#1d4ed8\">scan:{}</text>",
                 x + 3,
                 y + 20,
                 tile.paths.len()
@@ -598,8 +596,12 @@ fn tiles_svg(scene: &Scene, tiles: &[DebugTileSummary]) -> String {
             for path in &tile.paths {
                 let _ = write!(
                     out,
-                    "path {} backdrop {} range {}..{}; ",
-                    path.path_id, path.backdrop, path.segment_start, path.segment_end
+                    "scan path {} backdrop {} range {}..{} segments {}; ",
+                    path.path_id,
+                    path.backdrop,
+                    path.segment_start,
+                    path.segment_end,
+                    path.segment_count
                 );
             }
             out.push_str("</title>\n");
@@ -765,6 +767,13 @@ mod tests {
         assert!(capture.texts.iter().any(|text| text.name == "tiles.svg"));
         assert!(capture.texts.iter().any(|text| text.name == "tile.json"));
         assert!(capture.texts.iter().any(|text| text.name == "tile.svg"));
+        let tiles_svg = capture
+            .texts
+            .iter()
+            .find(|text| text.name == "tiles.svg")
+            .expect("overview svg");
+        assert!(tiles_svg.contents.contains("scan:"));
+        assert!(!tiles_svg.contents.contains(">path:"));
         assert!(
             capture
                 .images
