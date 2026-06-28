@@ -2,6 +2,10 @@ use crate::shared::brush::Brush;
 
 #[derive(Clone, Debug)]
 pub enum Filter {
+    Chain {
+        filters: Vec<Filter>,
+        fixed_region: bool,
+    },
     Blur(f32),
     Brightness(f32),
     Contrast(f32),

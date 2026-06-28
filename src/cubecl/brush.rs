@@ -192,8 +192,14 @@ fn collect_filter_brushes_for_ops(ops: &[ExecOp], upload: &mut GpuBrushUpload) {
 }
 
 fn collect_filter_brush(filter: &Filter, upload: &mut GpuBrushUpload) {
-    if let Filter::DropShadow { brush, .. } = filter {
-        upload.push_brush(brush);
+    match filter {
+        Filter::Chain { filters, .. } => {
+            for filter in filters {
+                collect_filter_brush(filter, upload);
+            }
+        }
+        Filter::DropShadow { brush, .. } => upload.push_brush(brush),
+        _ => {}
     }
 }
 

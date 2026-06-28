@@ -85,7 +85,8 @@ impl Render for Renderer {
     type ExecuteArgs<'a> = &'a mut Image;
 
     fn render(&mut self, scene: &crate::scene::Scene) {
-        let mut image = Image::new(self.size.0, self.size.1, self.clear);
+        self.size = (scene.width, scene.height);
+        let mut image = Image::new(scene.width, scene.height, self.clear);
         self.execute(scene, &mut image);
         self.image = image;
     }

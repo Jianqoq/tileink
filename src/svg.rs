@@ -6,7 +6,7 @@ use peniko::{
 };
 use usvg::{Node, Paint, PaintOrder, SpreadMethod, tiny_skia_path::PathSegment};
 
-use crate::{Brush, FillRule, Scene};
+use crate::{Brush, FillRule, Filter, Radius, Region, Scene};
 
 #[derive(Clone, Copy, Debug)]
 pub struct SvgOptions {
@@ -78,9 +78,6 @@ impl SvgBuilder {
         if group.mask().is_some() {
             return Err(SvgError::unsupported("mask"));
         }
-        if !group.filters().is_empty() {
-            return Err(SvgError::unsupported("filter"));
-        }
         if group.isolate()
             && group.opacity().get() >= 1.0
             && group.blend_mode() == usvg::BlendMode::Normal
@@ -90,6 +87,7 @@ impl SvgBuilder {
                 "isolated group without opacity or blend",
             ));
         }
+        let filter_layers = svg_filter_layers(group.filters())?;
 
         let mut pushed_layers = 0;
         if let Some(clip) = group.clip_path() {
@@ -114,6 +112,10 @@ impl SvgBuilder {
                 self.options.tolerance,
                 group.opacity().get(),
             );
+            pushed_layers += 1;
+        }
+        for layer in filter_layers.into_iter().rev() {
+            scene.push_filter_layer(layer.filter, layer.region);
             pushed_layers += 1;
         }
 
@@ -277,6 +279,345 @@ impl SvgBuilder {
         }
         Ok(())
     }
+}
+
+struct SvgFilterLayer {
+    filter: Filter,
+    region: Region,
+}
+
+fn svg_filter_layers(
+    filters: &[std::sync::Arc<usvg::filter::Filter>],
+) -> Result<Vec<SvgFilterLayer>, SvgError> {
+    filters
+        .iter()
+        .filter_map(|filter| svg_filter_layer(filter.as_ref()).transpose())
+        .collect()
+}
+
+fn svg_filter_layer(filter: &usvg::filter::Filter) -> Result<Option<SvgFilterLayer>, SvgError> {
+    let mut lowered = Vec::new();
+    let mut previous_result = None;
+    for primitive in filter.primitives() {
+        if !same_nonzero_rect(primitive.rect(), filter.rect()) {
+            return Err(SvgError::unsupported("filter primitive subregion"));
+        }
+
+        let lowered_primitive = svg_filter_primitive(primitive, previous_result.as_deref())?;
+        previous_result = Some(primitive.result().to_string());
+        if let Some(lowered_primitive) = lowered_primitive {
+            lowered.push(lowered_primitive);
+        }
+    }
+
+    if lowered.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(SvgFilterLayer {
+            filter: Filter::Chain {
+                filters: lowered,
+                fixed_region: true,
+            },
+            region: Region::rect(nonzero_rect_to_kurbo(filter.rect()), Radius::all(0.0)),
+        }))
+    }
+}
+
+fn svg_filter_primitive(
+    primitive: &usvg::filter::Primitive,
+    previous_result: Option<&str>,
+) -> Result<Option<Filter>, SvgError> {
+    match primitive.kind() {
+        usvg::filter::Kind::GaussianBlur(blur) => {
+            ensure_current_filter_input(blur.input(), previous_result, "feGaussianBlur")?;
+            Ok(Some(Filter::Blur(equal_std_dev(
+                blur.std_dev_x().get(),
+                blur.std_dev_y().get(),
+                "anisotropic feGaussianBlur",
+            )?)))
+        }
+        usvg::filter::Kind::DropShadow(shadow) => {
+            ensure_current_filter_input(shadow.input(), previous_result, "feDropShadow")?;
+            let color = shadow.color();
+            Ok(Some(Filter::DropShadow {
+                offset_x: shadow.dx(),
+                offset_y: shadow.dy(),
+                radius: equal_std_dev(
+                    shadow.std_dev_x().get(),
+                    shadow.std_dev_y().get(),
+                    "anisotropic feDropShadow",
+                )?,
+                brush: Brush::Solid(
+                    Color::from_rgb8(color.red, color.green, color.blue)
+                        .multiply_alpha(shadow.opacity().get()),
+                ),
+            }))
+        }
+        usvg::filter::Kind::ColorMatrix(matrix) => {
+            ensure_current_filter_input(matrix.input(), previous_result, "feColorMatrix")?;
+            color_matrix_to_filter(matrix.kind())
+        }
+        usvg::filter::Kind::ComponentTransfer(transfer) => {
+            ensure_current_filter_input(transfer.input(), previous_result, "feComponentTransfer")?;
+            component_transfer_to_filter(transfer)
+        }
+        usvg::filter::Kind::Blend(_) => Err(SvgError::unsupported("feBlend")),
+        usvg::filter::Kind::Composite(_) => Err(SvgError::unsupported("feComposite")),
+        usvg::filter::Kind::ConvolveMatrix(_) => Err(SvgError::unsupported("feConvolveMatrix")),
+        usvg::filter::Kind::DiffuseLighting(_) => Err(SvgError::unsupported("feDiffuseLighting")),
+        usvg::filter::Kind::DisplacementMap(_) => Err(SvgError::unsupported("feDisplacementMap")),
+        usvg::filter::Kind::Flood(_) => Err(SvgError::unsupported("feFlood")),
+        usvg::filter::Kind::Image(_) => Err(SvgError::unsupported("feImage")),
+        usvg::filter::Kind::Merge(_) => Err(SvgError::unsupported("feMerge")),
+        usvg::filter::Kind::Morphology(_) => Err(SvgError::unsupported("feMorphology")),
+        usvg::filter::Kind::Offset(_) => Err(SvgError::unsupported("feOffset")),
+        usvg::filter::Kind::SpecularLighting(_) => Err(SvgError::unsupported("feSpecularLighting")),
+        usvg::filter::Kind::Tile(_) => Err(SvgError::unsupported("feTile")),
+        usvg::filter::Kind::Turbulence(_) => Err(SvgError::unsupported("feTurbulence")),
+    }
+}
+
+fn ensure_current_filter_input(
+    input: &usvg::filter::Input,
+    previous_result: Option<&str>,
+    primitive: &str,
+) -> Result<(), SvgError> {
+    let valid = match (previous_result, input) {
+        (None, usvg::filter::Input::SourceGraphic) => true,
+        (Some(previous), usvg::filter::Input::Reference(reference)) => reference == previous,
+        _ => false,
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(SvgError::unsupported(format!("{primitive} input graph")))
+    }
+}
+
+fn color_matrix_to_filter(
+    matrix: &usvg::filter::ColorMatrixKind,
+) -> Result<Option<Filter>, SvgError> {
+    match matrix {
+        usvg::filter::ColorMatrixKind::Saturate(amount) => Ok(Some(Filter::Saturate(amount.get()))),
+        usvg::filter::ColorMatrixKind::HueRotate(angle) => Ok(Some(Filter::HueRotate(*angle))),
+        usvg::filter::ColorMatrixKind::Matrix(values) => {
+            if matrix_is_identity(values) {
+                Ok(None)
+            } else if let Some(amount) = standard_grayscale_amount(values) {
+                Ok(Some(Filter::Grayscale(amount)))
+            } else if let Some(amount) = standard_sepia_amount(values) {
+                Ok(Some(Filter::Sepia(amount)))
+            } else {
+                Err(SvgError::unsupported("feColorMatrix matrix"))
+            }
+        }
+        usvg::filter::ColorMatrixKind::LuminanceToAlpha => {
+            Err(SvgError::unsupported("feColorMatrix luminanceToAlpha"))
+        }
+    }
+}
+
+fn component_transfer_to_filter(
+    transfer: &usvg::filter::ComponentTransfer,
+) -> Result<Option<Filter>, SvgError> {
+    let r = transfer.func_r();
+    let g = transfer.func_g();
+    let b = transfer.func_b();
+    let a = transfer.func_a();
+
+    if transfer_is_identity(r)
+        && transfer_is_identity(g)
+        && transfer_is_identity(b)
+        && transfer_is_identity(a)
+    {
+        return Ok(None);
+    }
+
+    let opacity_amount =
+        (transfer_is_identity(r) && transfer_is_identity(g) && transfer_is_identity(b))
+            .then(|| transfer_opacity_amount(a))
+            .flatten();
+    if let Some(amount) = opacity_amount {
+        return Ok(Some(Filter::Opacity(amount)));
+    }
+
+    if transfer_is_identity(a) {
+        if let Some((slope, intercept)) = same_linear_rgb(r, g, b) {
+            if nearly_eq(intercept, 0.0) {
+                return Ok(Some(Filter::Brightness(slope)));
+            }
+            if nearly_eq(intercept, 0.5 - 0.5 * slope) {
+                return Ok(Some(Filter::Contrast(slope)));
+            }
+        }
+
+        if let Some(amount) = same_invert_table_rgb(r, g, b) {
+            return Ok(Some(Filter::Invert(amount)));
+        }
+    }
+
+    Err(SvgError::unsupported("feComponentTransfer"))
+}
+
+fn transfer_opacity_amount(transfer: &usvg::filter::TransferFunction) -> Option<f32> {
+    if let Some([start, amount]) = transfer_table_pair(transfer) {
+        return nearly_eq(start, 0.0).then_some(amount);
+    }
+    let (slope, intercept) = transfer_linear(transfer)?;
+    nearly_eq(intercept, 0.0).then_some(slope)
+}
+
+fn same_invert_table_rgb(
+    r: &usvg::filter::TransferFunction,
+    g: &usvg::filter::TransferFunction,
+    b: &usvg::filter::TransferFunction,
+) -> Option<f32> {
+    let [r0, r1] = transfer_table_pair(r)?;
+    let [g0, g1] = transfer_table_pair(g)?;
+    let [b0, b1] = transfer_table_pair(b)?;
+    (nearly_eq(r0, g0)
+        && nearly_eq(r0, b0)
+        && nearly_eq(r1, g1)
+        && nearly_eq(r1, b1)
+        && nearly_eq(r1, 1.0 - r0))
+    .then_some(r0)
+}
+
+fn same_linear_rgb(
+    r: &usvg::filter::TransferFunction,
+    g: &usvg::filter::TransferFunction,
+    b: &usvg::filter::TransferFunction,
+) -> Option<(f32, f32)> {
+    let (rs, ri) = transfer_linear(r)?;
+    let (gs, gi) = transfer_linear(g)?;
+    let (bs, bi) = transfer_linear(b)?;
+    if nearly_eq(rs, gs) && nearly_eq(rs, bs) && nearly_eq(ri, gi) && nearly_eq(ri, bi) {
+        Some((rs, ri))
+    } else {
+        None
+    }
+}
+
+fn transfer_linear(transfer: &usvg::filter::TransferFunction) -> Option<(f32, f32)> {
+    match transfer {
+        usvg::filter::TransferFunction::Linear { slope, intercept } => Some((*slope, *intercept)),
+        _ => None,
+    }
+}
+
+fn transfer_table_pair(transfer: &usvg::filter::TransferFunction) -> Option<[f32; 2]> {
+    match transfer {
+        usvg::filter::TransferFunction::Table(values) if values.len() == 2 => {
+            Some([values[0], values[1]])
+        }
+        _ => None,
+    }
+}
+
+fn transfer_is_identity(transfer: &usvg::filter::TransferFunction) -> bool {
+    match transfer {
+        usvg::filter::TransferFunction::Identity => true,
+        usvg::filter::TransferFunction::Linear { slope, intercept } => {
+            nearly_eq(*slope, 1.0) && nearly_eq(*intercept, 0.0)
+        }
+        usvg::filter::TransferFunction::Table(values) if values.len() == 2 => {
+            nearly_eq(values[0], 0.0) && nearly_eq(values[1], 1.0)
+        }
+        _ => false,
+    }
+}
+
+fn matrix_is_identity(values: &[f32]) -> bool {
+    const IDENTITY: [f32; 20] = [
+        1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        1.0, 0.0,
+    ];
+    matrix_matches(values, &IDENTITY)
+}
+
+fn standard_grayscale_amount(values: &[f32]) -> Option<f32> {
+    let amount = 1.0 - matrix_value(values, 0, 0).map(|value| (value - 0.2126) / 0.7874)?;
+    let expected = [
+        0.2126 + 0.7874 * (1.0 - amount),
+        0.7152 - 0.7152 * (1.0 - amount),
+        0.0722 - 0.0722 * (1.0 - amount),
+        0.0,
+        0.0,
+        0.2126 - 0.2126 * (1.0 - amount),
+        0.7152 + 0.2848 * (1.0 - amount),
+        0.0722 - 0.0722 * (1.0 - amount),
+        0.0,
+        0.0,
+        0.2126 - 0.2126 * (1.0 - amount),
+        0.7152 - 0.7152 * (1.0 - amount),
+        0.0722 + 0.9278 * (1.0 - amount),
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+    ];
+    matrix_matches(values, &expected).then_some(amount.clamp(0.0, 1.0))
+}
+
+fn standard_sepia_amount(values: &[f32]) -> Option<f32> {
+    let amount = 1.0 - matrix_value(values, 0, 0).map(|value| (value - 0.393) / 0.607)?;
+    let expected = [
+        0.393 + 0.607 * (1.0 - amount),
+        0.769 - 0.769 * (1.0 - amount),
+        0.189 - 0.189 * (1.0 - amount),
+        0.0,
+        0.0,
+        0.349 - 0.349 * (1.0 - amount),
+        0.686 + 0.314 * (1.0 - amount),
+        0.168 - 0.168 * (1.0 - amount),
+        0.0,
+        0.0,
+        0.272 - 0.272 * (1.0 - amount),
+        0.534 - 0.534 * (1.0 - amount),
+        0.131 + 0.869 * (1.0 - amount),
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+    ];
+    matrix_matches(values, &expected).then_some(amount.clamp(0.0, 1.0))
+}
+
+fn matrix_value(values: &[f32], row: usize, column: usize) -> Option<f32> {
+    values.get(row * 5 + column).copied()
+}
+
+fn matrix_matches(values: &[f32], expected: &[f32; 20]) -> bool {
+    values.len() == expected.len()
+        && values
+            .iter()
+            .zip(expected)
+            .all(|(value, expected)| nearly_eq(*value, *expected))
+}
+
+fn equal_std_dev(x: f32, y: f32, feature: &str) -> Result<f32, SvgError> {
+    if nearly_eq(x, y) {
+        Ok(x)
+    } else {
+        Err(SvgError::unsupported(feature))
+    }
+}
+
+fn same_nonzero_rect(a: usvg::NonZeroRect, b: usvg::NonZeroRect) -> bool {
+    nearly_eq(a.left(), b.left())
+        && nearly_eq(a.top(), b.top())
+        && nearly_eq(a.right(), b.right())
+        && nearly_eq(a.bottom(), b.bottom())
+}
+
+fn nearly_eq(a: f32, b: f32) -> bool {
+    (a - b).abs() <= 1.0e-4
 }
 
 fn tiny_path_to_bez(path: &usvg::tiny_skia_path::Path) -> BezPath {
@@ -537,11 +878,71 @@ mod tests {
     }
 
     #[test]
+    fn push_svg_renders_fe_gaussian_blur() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="32" height="16">
+                <defs>
+                    <filter id="blur" x="0" y="0" width="32" height="16" filterUnits="userSpaceOnUse">
+                        <feGaussianBlur stdDeviation="2"/>
+                    </filter>
+                </defs>
+                <rect x="8" y="4" width="8" height="8" fill="#ff0000" filter="url(#blur)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        let center = renderer.image().rgba8_at(12, 8);
+        let spread = renderer.image().rgba8_at(6, 8);
+        assert!(
+            center[0] > 0 && center[3] > 0,
+            "blurred center should retain red coverage: {center:?}"
+        );
+        assert!(
+            spread[0] > 0 && spread[3] > 0,
+            "blur should spread outside the original rect: {spread:?}"
+        );
+    }
+
+    #[test]
+    fn push_svg_renders_fe_drop_shadow() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="32" height="24">
+                <defs>
+                    <filter id="shadow" x="0" y="0" width="32" height="24" filterUnits="userSpaceOnUse">
+                        <feDropShadow dx="8" dy="4" stdDeviation="0" flood-color="#0000ff"/>
+                    </filter>
+                </defs>
+                <rect x="4" y="4" width="8" height="8" fill="#00ff00" filter="url(#shadow)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(6, 6), [0, 255, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(16, 10), [0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn push_svg_preserves_css_filter_function_order() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8">
+                <rect width="8" height="8" fill="#202020" filter="brightness(200%) invert(100%)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        let px = renderer.image().rgba8_at(4, 4);
+        assert!(
+            px[0].abs_diff(191) <= 1 && px[1].abs_diff(191) <= 1 && px[2].abs_diff(191) <= 1,
+            "brightness must run before invert: {px:?}"
+        );
+    }
+
+    #[test]
     fn push_svg_unsupported_features_do_not_modify_scene() {
         let tree = parse(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
-                <defs><filter id="blur"><feGaussianBlur stdDeviation="2"/></filter></defs>
-                <g filter="url(#blur)"><rect width="16" height="16" fill="#ff0000"/></g>
+                <defs><filter id="offset"><feOffset dx="2" dy="2"/></filter></defs>
+                <g filter="url(#offset)"><rect width="16" height="16" fill="#ff0000"/></g>
             </svg>"##,
         );
         let mut scene = Scene::new(16, 16);
@@ -552,7 +953,7 @@ mod tests {
         );
 
         let err = scene.push_svg(&tree).unwrap_err();
-        assert_eq!(err.feature(), "filter");
+        assert_eq!(err.feature(), "feOffset");
 
         let mut renderer = CpuRenderer::new(16, 16, Color::TRANSPARENT);
         renderer.render(&scene);

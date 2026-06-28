@@ -196,6 +196,83 @@ fn filter_wgpu_drop_shadow_offsets_alpha_and_preserves_source_when_enabled() {
 }
 
 #[test]
+fn filter_wgpu_applies_filter_chain_in_order_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(8, 8);
+    scene.push_filter_layer(
+        Filter::Chain {
+            filters: vec![Filter::Brightness(2.0), Filter::Invert(1.0)],
+            fixed_region: false,
+        },
+        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::all(0.0)),
+    );
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 8.0, 8.0),
+        Color::from_rgb8(32, 32, 32),
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(8, 8, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let px = unpack_rgba8(renderer.target.read(renderer.client())[pixel_ix(4, 4, 8)]);
+
+    assert!(
+        px[0].abs_diff(191) <= 1 && px[1].abs_diff(191) <= 1 && px[2].abs_diff(191) <= 1,
+        "expected brightness before invert, got {px:?}"
+    );
+}
+
+#[test]
+fn filter_wgpu_uploads_drop_shadow_brushes_inside_chain_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(8, 8);
+    scene.push_filter_layer(
+        Filter::Chain {
+            filters: vec![
+                Filter::DropShadow {
+                    offset_x: 1.0,
+                    offset_y: 0.0,
+                    radius: 0.0,
+                    brush: Brush::Solid(Color::BLACK),
+                },
+                Filter::DropShadow {
+                    offset_x: 0.0,
+                    offset_y: 1.0,
+                    radius: 0.0,
+                    brush: Brush::Solid(Color::from_rgb8(255, 0, 0)),
+                },
+            ],
+            fixed_region: true,
+        },
+        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::all(0.0)),
+    );
+    scene.push_rect(
+        Rect::new(2.0, 2.0, 3.0, 3.0),
+        Color::WHITE,
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(8, 8, Color::TRANSPARENT);
+    renderer.prepare_scene(&scene);
+    let data = renderer.filter_brushes.data.read(renderer.client());
+
+    assert_eq!(data.len(), 2 * crate::cubecl::brush::GPU_BRUSH_U32_STRIDE);
+    assert_eq!(data[0], crate::cubecl::brush::GPU_BRUSH_SOLID);
+    assert_eq!(
+        data[crate::cubecl::brush::GPU_BRUSH_U32_STRIDE],
+        crate::cubecl::brush::GPU_BRUSH_SOLID
+    );
+}
+
+#[test]
 fn filter_wgpu_drop_shadow_blurs_offset_alpha_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;

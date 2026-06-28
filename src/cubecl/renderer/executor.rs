@@ -135,8 +135,7 @@ impl<R: Runtime> Renderer<R> {
                     filter_brush_cursor,
                     filter_path_cursor,
                 );
-                let brush_index = next_filter_brush_index(filter, filter_brush_cursor);
-                self.apply_filter(source, bounds, filter, brush_index);
+                self.apply_filter(source, bounds, filter, filter_brush_cursor);
                 self.composite_src_over_with_stack(target, source, None, bounds, outer_stack);
                 self.release_scratch(source);
             }
@@ -146,11 +145,10 @@ impl<R: Runtime> Renderer<R> {
             } => {
                 let bounds = supported_filter_bounds(filter, sample_region, self.size);
                 let path_index = next_filter_path_index(sample_region, filter_path_cursor);
-                let brush_index = next_filter_brush_index(filter, filter_brush_cursor);
                 let backdrop = self.acquire_scratch();
                 self.clear_buffer(backdrop, 0);
                 self.copy_region(target, backdrop, bounds);
-                self.apply_filter(backdrop, bounds, filter, brush_index);
+                self.apply_filter(backdrop, bounds, filter, filter_brush_cursor);
                 let mask = self.acquire_scratch();
                 self.clear_buffer(mask, 0);
                 self.build_region_mask(mask, sample_region, path_index, bounds);
@@ -212,9 +210,14 @@ impl<R: Runtime> Renderer<R> {
         target: CubeRenderTarget,
         bounds: Bounds,
         filter: &Filter,
-        brush_index: Option<u32>,
+        filter_brush_cursor: &mut usize,
     ) {
         match filter {
+            Filter::Chain { filters, .. } => {
+                for filter in filters {
+                    self.apply_filter(target, bounds, filter, filter_brush_cursor);
+                }
+            }
             Filter::Blur(radius) => {
                 if radius.max(0.0) > 0.0 {
                     let temp = self.acquire_scratch();
@@ -233,7 +236,7 @@ impl<R: Runtime> Renderer<R> {
                 *offset_x,
                 *offset_y,
                 *radius,
-                brush_index.expect("prepared DropShadow filter brush index is missing"),
+                next_filter_brush_index(filter_brush_cursor),
             ),
             _ => {
                 let (filter_kind, amount) = encode_color_filter(filter);
@@ -817,6 +820,9 @@ fn max_scratch_for_ops(ops: &[ExecOp], held: usize) -> usize {
 
 fn filter_scratch_extra(filter: &Filter) -> usize {
     match filter {
+        Filter::Chain { filters, .. } => {
+            filters.iter().map(filter_scratch_extra).max().unwrap_or(0)
+        }
         Filter::Blur(radius) => usize::from(radius.max(0.0) > 0.0),
         Filter::DropShadow { radius, .. } => 1 + usize::from(radius.max(0.0) > 0.0),
         _ => 0,
@@ -849,12 +855,30 @@ fn encode_color_filter(filter: &Filter) -> (u32, f32) {
         Filter::DropShadow { .. } => {
             panic!("drop-shadow is handled by the CubeCL shadow-mask passes")
         }
+        Filter::Chain { .. } => panic!("filter chains are expanded before CubeCL filter encoding"),
     }
 }
 
 fn supported_filter_bounds(filter: &Filter, sample_region: &Region, size: (u32, u32)) -> Bounds {
     let bounds = region_bounds(sample_region);
-    let outset = match filter {
+    let outset = filter_outset(filter);
+    bounds
+        .outset(outset)
+        .intersect(Bounds::canvas(size.0, size.1))
+}
+
+fn filter_outset(filter: &Filter) -> i32 {
+    match filter {
+        Filter::Chain {
+            filters,
+            fixed_region,
+        } => {
+            if *fixed_region {
+                0
+            } else {
+                filters.iter().map(filter_outset).sum()
+            }
+        }
         Filter::Blur(radius) => blur_outset(*radius),
         Filter::DropShadow {
             radius,
@@ -863,20 +887,13 @@ fn supported_filter_bounds(filter: &Filter, sample_region: &Region, size: (u32, 
             ..
         } => blur_outset(*radius) + offset_x.abs().ceil().max(offset_y.abs().ceil()) as i32,
         _ => 0,
-    };
-    bounds
-        .outset(outset)
-        .intersect(Bounds::canvas(size.0, size.1))
+    }
 }
 
-fn next_filter_brush_index(filter: &Filter, cursor: &mut usize) -> Option<u32> {
-    if matches!(filter, Filter::DropShadow { .. }) {
-        let index = *cursor as u32;
-        *cursor += 1;
-        Some(index)
-    } else {
-        None
-    }
+fn next_filter_brush_index(cursor: &mut usize) -> u32 {
+    let index = *cursor as u32;
+    *cursor += 1;
+    index
 }
 
 fn next_filter_path_index(region: &Region, cursor: &mut usize) -> Option<u32> {

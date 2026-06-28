@@ -9,6 +9,11 @@ use crate::shared::{
 
 pub(crate) fn apply(image: &mut Image, filter: &Filter, bounds: Bounds) {
     match filter {
+        Filter::Chain { filters, .. } => {
+            for filter in filters {
+                apply(image, filter, bounds);
+            }
+        }
         Filter::Blur(radius) => apply_gaussian_blur(image, *radius),
         Filter::Brightness(amount)
         | Filter::Contrast(amount)
@@ -37,7 +42,22 @@ pub(crate) fn filtered_region_bounds(
     canvas: Bounds,
 ) -> Bounds {
     let bounds = region_bounds(sample_region);
-    let outset = match filter {
+    let outset = filter_outset(filter);
+    bounds.outset(outset).intersect(canvas)
+}
+
+fn filter_outset(filter: &Filter) -> i32 {
+    match filter {
+        Filter::Chain {
+            filters,
+            fixed_region,
+        } => {
+            if *fixed_region {
+                0
+            } else {
+                filters.iter().map(filter_outset).sum()
+            }
+        }
         Filter::Blur(radius) => blur_outset(*radius),
         Filter::DropShadow {
             radius,
@@ -46,8 +66,7 @@ pub(crate) fn filtered_region_bounds(
             ..
         } => blur_outset(*radius) + offset_x.abs().ceil().max(offset_y.abs().ceil()) as i32,
         _ => 0,
-    };
-    bounds.outset(outset).intersect(canvas)
+    }
 }
 
 fn apply_color_filter_pixel(px: u32, filter: &Filter, amount: f32) -> u32 {

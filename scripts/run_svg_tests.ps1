@@ -15,10 +15,26 @@ $testsRoot = Join-Path $repo "src\svg\tests"
 
 Push-Location $repo
 try {
-    $metadata = cargo metadata --format-version 1 --no-deps | ConvertFrom-Json
+    $oldErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $metadataJson = cargo metadata --format-version 1 --no-deps
+    $metadataExit = $LASTEXITCODE
+    $ErrorActionPreference = $oldErrorActionPreference
+    if ($metadataExit -ne 0) {
+        throw "cargo metadata failed with exit code $metadataExit"
+    }
+    $metadata = $metadataJson | ConvertFrom-Json
     $example = Join-Path $metadata.target_directory "release\examples\svg_fixture_render.exe"
+
+    $oldErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     cargo build --release --example svg_fixture_render
-    if (-not (Test-Path $example)) {
+    $buildExit = $LASTEXITCODE
+    $ErrorActionPreference = $oldErrorActionPreference
+    if ($buildExit -ne 0) {
+        throw "cargo build failed with exit code $buildExit"
+    }
+    if (-not (Test-Path -Path $example)) {
         throw "Expected renderer executable was not created: $example"
     }
 
@@ -28,24 +44,16 @@ try {
         @(Get-Item -Path (Join-Path $testsRoot $Type))
     }
 
-    $backends = if ($Backend -eq "both") { @("cpu", "cubecl") } else { @($Backend) }
     $failures = New-Object System.Collections.Generic.List[string]
 
     foreach ($dir in $typeDirs) {
-        $svgs = Get-ChildItem -Path $dir.FullName -Filter "*.svg" -Recurse | Sort-Object FullName
-        foreach ($svg in $svgs) {
-            foreach ($targetBackend in $backends) {
-                $stem = [System.IO.Path]::GetFileNameWithoutExtension($svg.Name)
-                $out = Join-Path $svg.DirectoryName "$stem.$targetBackend.png"
-                Write-Host "[$targetBackend] $($svg.FullName)"
-                & $example $targetBackend $svg.FullName $out
-                if ($LASTEXITCODE -ne 0) {
-                    $message = "[$targetBackend] $($svg.FullName)"
-                    $failures.Add($message)
-                    if (-not $ContinueOnError) {
-                        throw "SVG render failed: $message"
-                    }
-                }
+        Write-Host "[$Backend] $($dir.FullName)"
+        & $example $dir.FullName $Backend
+        if ($LASTEXITCODE -ne 0) {
+            $message = "[$Backend] $($dir.FullName)"
+            $failures.Add($message)
+            if (-not $ContinueOnError) {
+                throw "SVG render failed: $message"
             }
         }
     }
