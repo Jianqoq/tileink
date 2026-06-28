@@ -815,7 +815,7 @@ impl Scene {
                     children,
                 } => {
                     flush_batch(&mut pending_batch, ops, plan, layer_stack);
-                    if Self::can_fuse(layer) {
+                    if self.can_fuse(layer, *children) {
                         match layer {
                             Layer::Clip => {
                                 ops.push(ExecOp::BeginClip);
@@ -851,6 +851,7 @@ impl Scene {
                         plan.layer_stack_data.extend_from_slice(layer_stack);
                         let stack_end = plan.layer_stack_data.len();
                         ops.push(ExecOp::OffscreenLayer {
+                            draw: *draw,
                             layer: layer.clone(),
                             outer_stack: stack_start..stack_end,
                             children: {
@@ -873,8 +874,27 @@ impl Scene {
         flush_batch(&mut pending_batch, ops, plan, layer_stack);
     }
 
-    fn can_fuse(layer: &Layer) -> bool {
-        matches!(layer, Layer::Clip | Layer::Opacity(_) | Layer::Blend(_))
+    fn can_fuse(&self, layer: &Layer, children: CommandListId) -> bool {
+        match layer {
+            Layer::Clip | Layer::Blend(_) => true,
+            Layer::Opacity(_) => !self.command_list_contains_offscreen(children),
+            _ => false,
+        }
+    }
+
+    fn command_list_contains_offscreen(&self, list_id: CommandListId) -> bool {
+        self.command_lists[list_id]
+            .commands
+            .iter()
+            .any(|command| match command {
+                Command::Draw(_) => false,
+                Command::Layer {
+                    layer, children, ..
+                } => {
+                    !matches!(layer, Layer::Clip | Layer::Opacity(_) | Layer::Blend(_))
+                        || self.command_list_contains_offscreen(*children)
+                }
+            })
     }
 }
 
@@ -1135,6 +1155,7 @@ mod tests {
         assert_eq!(plan.ops.len(), 1, "{:#?}", plan.ops);
         match &plan.ops[0] {
             ExecOp::OffscreenLayer {
+                draw,
                 layer:
                     Layer::ClipSdf {
                         sdf: Sdf::Rect(rect),
@@ -1143,6 +1164,7 @@ mod tests {
                 outer_stack,
                 children,
             } => {
+                assert_eq!(*draw, 0);
                 assert_eq!(rect.radius.top_left, 6.0);
                 assert_eq!(*bounds, Bounds::new(4, 4, 32, 32));
                 assert!(outer_stack.is_empty());
@@ -1155,6 +1177,48 @@ mod tests {
                 }
             }
             op => panic!("expected ClipSdf offscreen layer, got {op:#?}"),
+        }
+    }
+
+    #[test]
+    fn compile_keeps_opacity_with_offscreen_child_isolated() {
+        let mut scene = test_scene();
+        scene.push_opacity_layer(rect_path(0.0, 0.0, 48.0, 48.0), Affine::IDENTITY, 0.0, 0.5);
+        scene.push_filter_layer(
+            Filter::Opacity(1.0),
+            Region::rect(Rect::new(0.0, 0.0, 48.0, 48.0), Radius::all(0.0)),
+        );
+        scene.push_path(
+            rect_path(8.0, 8.0, 40.0, 40.0),
+            Brush::Solid(rgb(0, 0, 255)),
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.0,
+        );
+        scene.pop_layer();
+        scene.pop_layer();
+
+        let plan = scene.compile(ROOT_COMMAND_LIST_ID);
+        assert_eq!(plan.ops.len(), 1, "{:#?}", plan.ops);
+        match &plan.ops[0] {
+            ExecOp::OffscreenLayer {
+                draw,
+                layer: Layer::Opacity(opacity),
+                outer_stack,
+                children,
+            } => {
+                assert_eq!(*draw, 0);
+                assert_eq!(opacity.opacity, 0.5);
+                assert!(outer_stack.is_empty());
+                assert!(matches!(
+                    children.as_slice(),
+                    [ExecOp::OffscreenLayer {
+                        layer: Layer::Filter { .. },
+                        ..
+                    }]
+                ));
+            }
+            op => panic!("expected isolated opacity offscreen layer, got {op:#?}"),
         }
     }
 

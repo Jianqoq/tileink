@@ -692,16 +692,14 @@ fn composite_pixel(input1: u32, input2: u32, operator: CompositeOperator) -> u32
 }
 
 fn arithmetic_composite_pixel(input1: u32, input2: u32, k1: f32, k2: f32, k3: f32, k4: f32) -> u32 {
-    let a = straight_rgba8(input1);
-    let b = straight_rgba8(input2);
-    let out = [
+    let a = unpack_premul_rgba8(input1);
+    let b = unpack_premul_rgba8(input2);
+    pack_premul_rgba8([
         arithmetic_channel(a[0], b[0], k1, k2, k3, k4),
         arithmetic_channel(a[1], b[1], k1, k2, k3, k4),
         arithmetic_channel(a[2], b[2], k1, k2, k3, k4),
         arithmetic_channel(a[3], b[3], k1, k2, k3, k4),
-    ];
-    let alpha = out[3];
-    pack_premul_rgba8([out[0] * alpha, out[1] * alpha, out[2] * alpha, alpha])
+    ])
 }
 
 fn arithmetic_channel(a: f32, b: f32, k1: f32, k2: f32, k3: f32, k4: f32) -> f32 {
@@ -1384,8 +1382,9 @@ mod tests {
     }
 
     #[test]
-    fn graph_arithmetic_composite_runs_on_straight_channels() {
-        let mut image = Image::new(1, 1, Color::from_rgb8(255, 0, 0));
+    fn graph_arithmetic_composite_runs_on_premultiplied_channels() {
+        let mut image = Image::new(2, 1, Color::from_rgb8(255, 0, 0));
+        image.pixels[1] = 0;
         apply(
             &mut image,
             &Filter::Graph {
@@ -1393,7 +1392,7 @@ mod tests {
                     FilterPrimitive {
                         input: FilterInput::SourceGraphic,
                         input2: None,
-                        region: Bounds::canvas(1, 1),
+                        region: Bounds::canvas(2, 1),
                         kind: FilterPrimitiveKind::Filter(Box::new(Filter::Flood {
                             brush: Brush::Solid(Color::from_rgb8(0, 0, 255)),
                         })),
@@ -1401,7 +1400,7 @@ mod tests {
                     FilterPrimitive {
                         input: FilterInput::SourceGraphic,
                         input2: Some(FilterInput::Primitive(0)),
-                        region: Bounds::canvas(1, 1),
+                        region: Bounds::canvas(2, 1),
                         kind: FilterPrimitiveKind::Composite {
                             operator: CompositeOperator::Arithmetic {
                                 k1: 0.0,
@@ -1414,10 +1413,11 @@ mod tests {
                 ],
                 fixed_region: true,
             },
-            Bounds::canvas(1, 1),
+            Bounds::canvas(2, 1),
         );
 
         assert_eq!(image.rgba8_at(0, 0), [128, 0, 128, 255]);
+        assert_eq!(image.rgba8_at(1, 0), [0, 0, 128, 128]);
     }
 
     #[test]

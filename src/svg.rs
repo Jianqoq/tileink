@@ -115,7 +115,7 @@ impl SvgBuilder {
                 "isolated group without opacity or blend",
             ));
         }
-        let filter_layers = svg_filter_layers(group.filters())?;
+        let filter_layers = svg_filter_layers(group.filters(), self.base_transform)?;
 
         let mut pushed_layers = 0;
         if let Some(clip) = group.clip_path() {
@@ -145,10 +145,7 @@ impl SvgBuilder {
             pushed_layers += 1;
         }
         for layer in filter_layers.into_iter().rev() {
-            scene.push_filter_layer(
-                layer.filter,
-                transform_region(layer.region, self.base_transform),
-            );
+            scene.push_filter_layer(layer.filter, layer.region);
             pushed_layers += 1;
         }
 
@@ -424,19 +421,23 @@ struct SvgFilterLayer {
 
 fn svg_filter_layers(
     filters: &[std::sync::Arc<usvg::filter::Filter>],
+    transform: Affine,
 ) -> Result<Vec<SvgFilterLayer>, SvgError> {
     filters
         .iter()
-        .filter_map(|filter| svg_filter_layer(filter.as_ref()).transpose())
+        .filter_map(|filter| svg_filter_layer(filter.as_ref(), transform).transpose())
         .collect()
 }
 
-fn svg_filter_layer(filter: &usvg::filter::Filter) -> Result<Option<SvgFilterLayer>, SvgError> {
+fn svg_filter_layer(
+    filter: &usvg::filter::Filter,
+    transform: Affine,
+) -> Result<Option<SvgFilterLayer>, SvgError> {
     let mut primitives = Vec::new();
     let mut results = HashMap::new();
     for primitive in filter.primitives() {
         let index = primitives.len();
-        primitives.push(svg_filter_primitive(primitive, &results)?);
+        primitives.push(svg_filter_primitive(primitive, &results, transform)?);
         results.insert(primitive.result().to_string(), index);
     }
 
@@ -448,7 +449,10 @@ fn svg_filter_layer(filter: &usvg::filter::Filter) -> Result<Option<SvgFilterLay
                 primitives,
                 fixed_region: true,
             },
-            region: Region::rect(nonzero_rect_to_kurbo(filter.rect()), Radius::all(0.0)),
+            region: transform_region(
+                Region::rect(nonzero_rect_to_kurbo(filter.rect()), Radius::all(0.0)),
+                transform,
+            ),
         }))
     }
 }
@@ -456,14 +460,14 @@ fn svg_filter_layer(filter: &usvg::filter::Filter) -> Result<Option<SvgFilterLay
 fn svg_filter_primitive(
     primitive: &usvg::filter::Primitive,
     results: &HashMap<String, usize>,
+    transform: Affine,
 ) -> Result<FilterPrimitive, SvgError> {
-    let region = nonzero_rect_to_bounds(primitive.rect());
+    let region = transform_rect_to_bounds(nonzero_rect_to_kurbo(primitive.rect()), transform);
     let (input, input2, kind) = match primitive.kind() {
         usvg::filter::Kind::GaussianBlur(blur) => {
-            let filter = Filter::Blur {
-                radius_x: blur.std_dev_x().get(),
-                radius_y: blur.std_dev_y().get(),
-            };
+            let (radius_x, radius_y) =
+                transform_filter_radii(transform, blur.std_dev_x().get(), blur.std_dev_y().get());
+            let filter = Filter::Blur { radius_x, radius_y };
             (
                 svg_filter_input(blur.input(), results, "feGaussianBlur")?,
                 None,
@@ -471,14 +475,16 @@ fn svg_filter_primitive(
             )
         }
         usvg::filter::Kind::DropShadow(shadow) => {
+            let (offset_x, offset_y) = transform_filter_vector(transform, shadow.dx(), shadow.dy());
+            let (radius_x, radius_y) = transform_filter_radii(
+                transform,
+                shadow.std_dev_x().get(),
+                shadow.std_dev_y().get(),
+            );
             let filter = Filter::DropShadow {
-                offset_x: shadow.dx(),
-                offset_y: shadow.dy(),
-                radius: equal_std_dev(
-                    shadow.std_dev_x().get(),
-                    shadow.std_dev_y().get(),
-                    "anisotropic feDropShadow",
-                )?,
+                offset_x,
+                offset_y,
+                radius: equal_std_dev(radius_x, radius_y, "anisotropic feDropShadow")?,
                 brush: color_opacity_to_brush(shadow.color(), shadow.opacity().get()),
             };
             (
@@ -553,19 +559,19 @@ fn svg_filter_primitive(
             svg_filter_input(morphology.input(), results, "feMorphology")?,
             None,
             FilterPrimitiveKind::Filter(Box::new(Filter::Morphology {
-                radius_x: morphology.radius_x().get(),
-                radius_y: morphology.radius_y().get(),
+                radius_x: transform_filter_radius_x(transform, morphology.radius_x().get()),
+                radius_y: transform_filter_radius_y(transform, morphology.radius_y().get()),
                 operator: morphology_operator(morphology.operator()),
             })),
         ),
-        usvg::filter::Kind::Offset(offset) => (
-            svg_filter_input(offset.input(), results, "feOffset")?,
-            None,
-            FilterPrimitiveKind::Filter(Box::new(Filter::Offset {
-                dx: offset.dx(),
-                dy: offset.dy(),
-            })),
-        ),
+        usvg::filter::Kind::Offset(offset) => {
+            let (dx, dy) = transform_filter_vector(transform, offset.dx(), offset.dy());
+            (
+                svg_filter_input(offset.input(), results, "feOffset")?,
+                None,
+                FilterPrimitiveKind::Filter(Box::new(Filter::Offset { dx, dy })),
+            )
+        }
         usvg::filter::Kind::SpecularLighting(lighting) => (
             svg_filter_input(lighting.input(), results, "feSpecularLighting")?,
             None,
@@ -1156,6 +1162,49 @@ fn transform_region(region: Region, transform: Affine) -> Region {
     }
 }
 
+fn transform_filter_vector(transform: Affine, x: f32, y: f32) -> (f32, f32) {
+    // SVG filter lengths are in user space, while renderer filter kernels run in scene pixels.
+    let [a, b, c, d, _, _] = transform.as_coeffs();
+    (
+        (a * x as f64 + c * y as f64) as f32,
+        (b * x as f64 + d * y as f64) as f32,
+    )
+}
+
+fn transform_filter_radii(transform: Affine, x: f32, y: f32) -> (f32, f32) {
+    (
+        transform_filter_radius_x(transform, x),
+        transform_filter_radius_y(transform, y),
+    )
+}
+
+fn transform_filter_radius_x(transform: Affine, radius: f32) -> f32 {
+    let (x, y) = transform_filter_vector(transform, radius, 0.0);
+    x.hypot(y)
+}
+
+fn transform_filter_radius_y(transform: Affine, radius: f32) -> f32 {
+    let (x, y) = transform_filter_vector(transform, 0.0, radius);
+    x.hypot(y)
+}
+
+fn transform_rect_to_bounds(rect: Rect, transform: Affine) -> Bounds {
+    rect_to_bounds(if transform == Affine::IDENTITY {
+        rect
+    } else {
+        transform.transform_rect_bbox(rect)
+    })
+}
+
+fn rect_to_bounds(rect: Rect) -> Bounds {
+    Bounds::new(
+        rect.x0.floor() as i32,
+        rect.y0.floor() as i32,
+        rect.x1.ceil() as i32,
+        rect.y1.ceil() as i32,
+    )
+}
+
 fn rect_path(rect: Rect) -> BezPath {
     rect.to_path(0.0)
 }
@@ -1166,15 +1215,6 @@ fn nonzero_rect_to_kurbo(rect: usvg::NonZeroRect) -> Rect {
         rect.top() as f64,
         rect.right() as f64,
         rect.bottom() as f64,
-    )
-}
-
-fn nonzero_rect_to_bounds(rect: usvg::NonZeroRect) -> Bounds {
-    Bounds::new(
-        rect.left().floor() as i32,
-        rect.top().floor() as i32,
-        rect.right().ceil() as i32,
-        rect.bottom().ceil() as i32,
     )
 }
 
@@ -1305,6 +1345,28 @@ mod tests {
         let overlap = renderer.image().rgba8_at(40, 40);
         assert_eq!(overlap[0], 255);
         assert!(overlap[1].abs_diff(128) <= 1 && overlap[2].abs_diff(128) <= 1);
+    }
+
+    #[test]
+    fn push_svg_keeps_opacity_isolated_around_filtered_child() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+                <defs>
+                    <filter id="f" filterUnits="userSpaceOnUse" x="0" y="0" width="16" height="16">
+                        <feOffset in="SourceGraphic" dx="0" dy="0"/>
+                    </filter>
+                </defs>
+                <g opacity="0.5">
+                    <rect width="16" height="16" fill="#008000"/>
+                    <g filter="url(#f)">
+                        <rect width="16" height="16" fill="#0000ff"/>
+                    </g>
+                </g>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(8, 8), [0, 0, 128, 128]);
     }
 
     #[test]
@@ -1588,6 +1650,30 @@ mod tests {
     }
 
     #[test]
+    fn push_svg_scales_fe_offset_with_svg_transform() {
+        let renderer = render_with_options(
+            r##"<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                <filter id="filter1" filterUnits="userSpaceOnUse" x="0" y="0" width="200" height="200">
+                    <feOffset dx="100"/>
+                </filter>
+                <rect x="20" y="70" width="60" height="60" fill="green"/>
+                <rect x="20" y="70" width="60" height="60" fill="red" filter="url(#filter1)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+            SvgOptions {
+                transform: Affine::scale(1.5),
+                ..Default::default()
+            },
+            300,
+            300,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(90, 150), [0, 128, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(150, 150), [0, 0, 0, 0]);
+        assert_eq!(renderer.image().rgba8_at(180, 150), [255, 0, 0, 255]);
+    }
+
+    #[test]
     fn push_svg_renders_fe_flood() {
         let renderer = render(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
@@ -1718,6 +1804,42 @@ mod tests {
         );
 
         assert_eq!(renderer.image().rgba8_at(4, 4), [128, 0, 128, 255]);
+    }
+
+    #[test]
+    fn push_svg_scales_filter_graph_primitive_regions() {
+        let renderer = render_with_options(
+            r##"<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                <filter id="filter1" color-interpolation-filters="sRGB">
+                    <feFlood flood-color="blue"/>
+                    <feComposite operator="arithmetic" in2="SourceGraphic"
+                        k1="0.1" k2="0.2" k3="0.3" k4="0.4"/>
+                </filter>
+                <rect x="20" y="20" width="160" height="160" fill="seagreen" filter="url(#filter1)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+            SvgOptions {
+                transform: Affine::scale(1.5),
+                ..Default::default()
+            },
+            300,
+            300,
+        );
+
+        let inside = renderer.image().rgba8_at(260, 260);
+        let flood_only = renderer.image().rgba8_at(10, 10);
+        assert!(
+            (110..122).contains(&inside[0])
+                && (138..150).contains(&inside[1])
+                && (182..194).contains(&inside[2])
+                && inside[3] == 255,
+            "scaled primitive region should not clip the filtered rect: {inside:?}"
+        );
+        assert_eq!(
+            flood_only,
+            [102, 102, 153, 153],
+            "arithmetic must be evaluated on premultiplied channels before PNG unpremultiply"
+        );
     }
 
     #[test]

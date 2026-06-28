@@ -100,12 +100,14 @@ impl<R: Runtime> Renderer<R> {
                 | ExecOp::BeginBlend
                 | ExecOp::EndBlend => {}
                 ExecOp::OffscreenLayer {
+                    draw,
                     layer,
                     outer_stack,
                     children,
                 } => self.execute_offscreen_layer(
                     scene,
                     plan,
+                    *draw,
                     layer,
                     outer_stack.clone(),
                     children,
@@ -141,6 +143,7 @@ impl<R: Runtime> Renderer<R> {
         &mut self,
         scene: &Scene,
         plan: &ExecPlan,
+        draw: usize,
         layer: &Layer,
         outer_stack: std::ops::Range<usize>,
         children: &[ExecOp],
@@ -148,6 +151,24 @@ impl<R: Runtime> Renderer<R> {
         filter_cursors: &mut FilterCursors,
     ) {
         match layer {
+            Layer::Opacity(opacity) => {
+                let bounds =
+                    draw_bounds(scene, draw).intersect(Bounds::canvas(self.size.0, self.size.1));
+                if bounds.is_empty() {
+                    return;
+                }
+                let source = self.acquire_scratch();
+                self.clear_buffer(source, 0);
+                self.execute_ops(scene, plan, children, source, filter_cursors);
+                self.apply_color_filter(source, bounds, FILTER_OPACITY, opacity.opacity);
+
+                let mask = self.acquire_scratch();
+                self.clear_buffer(mask, 0);
+                self.build_layer_mask(mask, draw as u32, bounds);
+                self.composite_src_over_with_stack(target, source, Some(mask), bounds, outer_stack);
+                self.release_scratch(mask);
+                self.release_scratch(source);
+            }
             Layer::Filter {
                 filter,
                 sample_region,
@@ -199,7 +220,9 @@ impl<R: Runtime> Renderer<R> {
             Layer::ClipSdf { .. } => {
                 panic!("CubeCL ClipSdf layers are not implemented; use the CPU renderer")
             }
-            _ => panic!("CubeCL offscreen execution only accepts Filter and Backdrop layers"),
+            _ => panic!(
+                "CubeCL offscreen execution only accepts Opacity, Filter, and Backdrop layers"
+            ),
         }
     }
 
@@ -1572,6 +1595,26 @@ impl<R: Runtime> Renderer<R> {
             ),
         }
     }
+
+    pub(crate) fn build_layer_mask(&mut self, target: CubeRenderTarget, draw: u32, bounds: Bounds) {
+        let CubeRenderTarget::Scratch(target_ix) = target else {
+            panic!("CubeCL layer masks must be rendered into preallocated scratch");
+        };
+        FilterPipeline::rasterize_layer_mask(
+            &self.client,
+            &self.scene,
+            &self.scan,
+            &mut self.scratch[target_ix],
+            self.size,
+            bounds,
+            draw,
+        );
+    }
+}
+
+fn draw_bounds(scene: &Scene, draw_ix: usize) -> Bounds {
+    let bounds = scene.draw_records[draw_ix].pixel_bounds;
+    Bounds::new(bounds.x0, bounds.y0, bounds.x1, bounds.y1)
 }
 
 pub(super) fn plan_stack_depths(plan: &ExecPlan) -> (usize, usize) {
@@ -1636,9 +1679,15 @@ fn max_scratch_for_ops(ops: &[ExecOp], held: usize) -> usize {
             layer,
             outer_stack,
             children,
+            ..
         } = op
         {
             match layer {
+                Layer::Opacity(_) => {
+                    let source_held = held + 1;
+                    max_count = max_count.max(source_held + 1);
+                    max_count = max_count.max(max_scratch_for_ops(children, source_held));
+                }
                 Layer::Filter { filter, .. } => {
                     let source_held = held + 1;
                     max_count = max_count.max(source_held + filter_scratch_extra(filter));

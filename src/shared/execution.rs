@@ -55,6 +55,7 @@ pub(crate) enum ExecOp {
     BeginBlend,
     EndBlend,
     OffscreenLayer {
+        draw: usize,
         layer: Layer,
         outer_stack: Range<usize>,
         children: Vec<ExecOp>,

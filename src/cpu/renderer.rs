@@ -27,7 +27,7 @@ use crate::{
         layer::Layer,
         layer::region::Region,
         line_seg::LineSegment,
-        pixel::coverage_f32_to_u8,
+        pixel::{coverage_f32_to_u8, opacity_f32_to_u8},
         sdf::{Sdf, rect::Rect as SdfRect},
         tile_ptcl::{TilePtcl, TilePtclRange},
         tile_seg_range::TileSegmentRange,
@@ -64,6 +64,7 @@ pub struct RenderProfile {
 }
 
 struct OffscreenLayerRef<'a> {
+    draw: usize,
     layer: &'a Layer,
     outer_stack: std::ops::Range<usize>,
     children: &'a [ExecOp],
@@ -318,6 +319,7 @@ impl Renderer {
                 | ExecOp::BeginBlend
                 | ExecOp::EndBlend => {}
                 ExecOp::OffscreenLayer {
+                    draw,
                     layer,
                     outer_stack,
                     children,
@@ -325,6 +327,7 @@ impl Renderer {
                     scene,
                     plan,
                     OffscreenLayerRef {
+                        draw: *draw,
                         layer,
                         outer_stack: outer_stack.clone(),
                         children,
@@ -345,6 +348,25 @@ impl Renderer {
         target_bounds: Bounds,
     ) {
         match offscreen.layer {
+            Layer::Opacity(opacity) => {
+                let bounds = draw_bounds(scene, offscreen.draw).intersect(target_bounds);
+                if bounds.is_empty() {
+                    return;
+                }
+                let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
+                self.execute_ops(scene, plan, offscreen.children, &mut image, bounds);
+
+                let mut mask = self.rasterize_layer_mask(scene, offscreen.draw, bounds);
+                apply_opacity_to_mask(&mut mask, opacity.opacity);
+                self.apply_outer_clip_stack_to_mask(
+                    scene,
+                    plan,
+                    offscreen.outer_stack,
+                    bounds,
+                    &mut mask,
+                );
+                composite_src_over_masked_at(target, &image, &mask, bounds, target_bounds);
+            }
             Layer::ClipSdf { sdf, bounds } => {
                 if bounds.intersect(target_bounds).is_empty() {
                     return;
@@ -558,6 +580,22 @@ impl Renderer {
             }
         }
         image
+    }
+}
+
+fn draw_bounds(scene: &crate::scene::Scene, draw_ix: usize) -> Bounds {
+    let bounds = scene.draw_records[draw_ix].pixel_bounds;
+    Bounds::new(bounds.x0, bounds.y0, bounds.x1, bounds.y1)
+}
+
+fn apply_opacity_to_mask(mask: &mut Image, opacity: f32) {
+    let opacity = opacity_f32_to_u8(opacity);
+    if opacity == 255 {
+        return;
+    }
+    for px in &mut mask.pixels {
+        let alpha = combine_alpha(((*px >> 24) & 0xff) as u8, opacity);
+        *px = rgba8_pack([alpha, alpha, alpha, alpha]);
     }
 }
 
@@ -935,6 +973,23 @@ mod tests {
         assert_eq!(renderer.image().rgba8_at(48, 48), [37, 99, 235, 255]);
         assert_eq!(renderer.image().rgba8_at(24, 48), [255, 255, 255, 255]);
         assert_eq!(renderer.image().rgba8_at(84, 48), [255, 255, 255, 255]);
+    }
+
+    #[test]
+    fn opacity_layer_isolates_offscreen_children() {
+        let mut scene = Scene::new(16, 16);
+        let full = Rect::new(0.0, 0.0, 16.0, 16.0);
+        scene.push_opacity_layer(full.to_path(0.0), Affine::IDENTITY, 0.0, 0.5);
+        scene.push_rect(full, Color::from_rgb8(0, 128, 0), FillRule::NonZero);
+        scene.push_filter_layer(Filter::Opacity(1.0), Region::rect(full, Radius::all(0.0)));
+        scene.push_rect(full, Color::from_rgb8(0, 0, 255), FillRule::NonZero);
+        scene.pop_layer();
+        scene.pop_layer();
+
+        let mut renderer = Renderer::new(16, 16, Color::TRANSPARENT);
+        renderer.render(&scene);
+
+        assert_eq!(renderer.image().rgba8_at(8, 8), [0, 0, 128, 128]);
     }
 
     #[test]

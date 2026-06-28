@@ -571,6 +571,55 @@ impl FilterPipeline {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub(crate) fn rasterize_layer_mask<R: Runtime>(
+        client: &ComputeClient<R>,
+        scene: &SceneBuffers,
+        scan: &ScanBuffers,
+        target: &mut CubeBuffer<u32>,
+        size: (u32, u32),
+        bounds: Bounds,
+        draw: u32,
+    ) {
+        let Some(region) = FilterRegion::new(size, bounds) else {
+            return;
+        };
+        filter_layer_mask_region::launch::<R>(
+            client,
+            cube_count(region.pixel_count),
+            CubeDim::new_1d(FILTER_WORKGROUP_SIZE),
+            region.pixel_count,
+            region.width,
+            region.x0,
+            region.y0,
+            size.0,
+            size.0.div_ceil(16),
+            size.1.div_ceil(16),
+            draw,
+            unsafe { scene.draw_path_ids.arg() },
+            unsafe { scene.draw_tags.arg() },
+            unsafe { scene.draw_fill_rules.arg() },
+            unsafe { scene.draw_pixel_x0.arg() },
+            unsafe { scene.draw_pixel_y0.arg() },
+            unsafe { scene.draw_pixel_x1.arg() },
+            unsafe { scene.draw_pixel_y1.arg() },
+            unsafe { scene.backdrop_data_offsets.arg() },
+            unsafe { scene.backdrop_tile_x0.arg() },
+            unsafe { scene.backdrop_tile_y0.arg() },
+            unsafe { scene.backdrop_tile_x1.arg() },
+            unsafe { scene.backdrop_tile_y1.arg() },
+            unsafe { scan.backdrops.arg() },
+            unsafe { scan.tile_segment_range_starts.arg() },
+            unsafe { scan.tile_segment_range_ends.arg() },
+            unsafe { scan.segment_p0x.arg() },
+            unsafe { scan.segment_p0y.arg() },
+            unsafe { scan.segment_p1x.arg() },
+            unsafe { scan.segment_p1y.arg() },
+            unsafe { scan.segment_y_edge.arg() },
+            unsafe { target.arg() },
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn rasterize_rect_mask<R: Runtime>(
         client: &ComputeClient<R>,
         target: &mut CubeBuffer<u32>,
@@ -1546,6 +1595,83 @@ fn filter_composite_stack_region(
 
 #[cube(launch)]
 #[allow(clippy::too_many_arguments)]
+fn filter_layer_mask_region(
+    pixel_count: u32,
+    region_width: u32,
+    region_x0: u32,
+    region_y0: u32,
+    image_width: u32,
+    tiles_width: u32,
+    tiles_height: u32,
+    draw_ix: u32,
+    draw_path_ids: &Array<u32>,
+    draw_tags: &Array<u32>,
+    draw_fill_rules: &Array<u32>,
+    draw_pixel_x0: &Array<i32>,
+    draw_pixel_y0: &Array<i32>,
+    draw_pixel_x1: &Array<i32>,
+    draw_pixel_y1: &Array<i32>,
+    backdrop_data_offsets: &Array<u32>,
+    backdrop_tile_x0: &Array<u32>,
+    backdrop_tile_y0: &Array<u32>,
+    backdrop_tile_x1: &Array<u32>,
+    backdrop_tile_y1: &Array<u32>,
+    backdrops: &Array<Atomic<i32>>,
+    segment_starts: &Array<u32>,
+    segment_ends: &Array<u32>,
+    segment_p0x: &Array<f32>,
+    segment_p0y: &Array<f32>,
+    segment_p1x: &Array<f32>,
+    segment_p1y: &Array<f32>,
+    segment_y_edge: &Array<f32>,
+    target: &mut Array<u32>,
+) {
+    let region_ix = ABSOLUTE_POS as u32;
+    if region_ix >= pixel_count {
+        terminate!();
+    }
+
+    let x = region_x0 + region_ix % region_width;
+    let y = region_y0 + region_ix / region_width;
+    let tile_x = x / 16;
+    let tile_y = y / 16;
+    let local_x = x - tile_x * 16;
+    let local_y = y - tile_y * 16;
+    let alpha = layer_stack_alpha_at(
+        draw_ix,
+        tile_x,
+        tile_y,
+        local_x,
+        local_y,
+        tiles_width,
+        tiles_height,
+        draw_path_ids,
+        draw_tags,
+        draw_fill_rules,
+        draw_pixel_x0,
+        draw_pixel_y0,
+        draw_pixel_x1,
+        draw_pixel_y1,
+        backdrop_data_offsets,
+        backdrop_tile_x0,
+        backdrop_tile_y0,
+        backdrop_tile_x1,
+        backdrop_tile_y1,
+        backdrops,
+        segment_starts,
+        segment_ends,
+        segment_p0x,
+        segment_p0y,
+        segment_p1x,
+        segment_p1y,
+        segment_y_edge,
+    );
+    let ix = (y * image_width + x) as usize;
+    target[ix] = alpha | (alpha << 8) | (alpha << 16) | (alpha << 24);
+}
+
+#[cube(launch)]
+#[allow(clippy::too_many_arguments)]
 fn filter_rect_mask_region(
     pixel_count: u32,
     region_width: u32,
@@ -2299,20 +2425,20 @@ fn composite_inputs_pixel(
 #[cube]
 #[allow(clippy::too_many_arguments)]
 fn arithmetic_composite_pixel(input1: u32, input2: u32, k1: f32, k2: f32, k3: f32, k4: f32) -> u32 {
-    let a_r = straight_channel(input1 & 255, (input1 >> 24) & 255);
-    let a_g = straight_channel((input1 >> 8) & 255, (input1 >> 24) & 255);
-    let a_b = straight_channel((input1 >> 16) & 255, (input1 >> 24) & 255);
+    let a_r = (input1 & 255) as f32 / 255.0;
+    let a_g = ((input1 >> 8) & 255) as f32 / 255.0;
+    let a_b = ((input1 >> 16) & 255) as f32 / 255.0;
     let a_a = ((input1 >> 24) & 255) as f32 / 255.0;
-    let b_r = straight_channel(input2 & 255, (input2 >> 24) & 255);
-    let b_g = straight_channel((input2 >> 8) & 255, (input2 >> 24) & 255);
-    let b_b = straight_channel((input2 >> 16) & 255, (input2 >> 24) & 255);
+    let b_r = (input2 & 255) as f32 / 255.0;
+    let b_g = ((input2 >> 8) & 255) as f32 / 255.0;
+    let b_b = ((input2 >> 16) & 255) as f32 / 255.0;
     let b_a = ((input2 >> 24) & 255) as f32 / 255.0;
 
     let out_r = arithmetic_channel(a_r, b_r, k1, k2, k3, k4);
     let out_g = arithmetic_channel(a_g, b_g, k1, k2, k3, k4);
     let out_b = arithmetic_channel(a_b, b_b, k1, k2, k3, k4);
     let out_a = arithmetic_channel(a_a, b_a, k1, k2, k3, k4);
-    pack_premul_rgba8(out_r * out_a, out_g * out_a, out_b * out_a, out_a)
+    pack_premul_rgba8(out_r, out_g, out_b, out_a)
 }
 
 #[cube]
