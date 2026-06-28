@@ -66,6 +66,25 @@ fn mixed_shape_scene() -> Scene {
     scene
 }
 
+fn top_clipped_rect_scene() -> Scene {
+    let mut path = BezPath::new();
+    path.move_to((20.0, -8.0));
+    path.line_to((100.0, -8.0));
+    path.line_to((100.0, 40.0));
+    path.line_to((20.0, 40.0));
+    path.close_path();
+
+    let mut scene = Scene::new(128, 48);
+    scene.push_path(
+        path,
+        Color::from_rgb8(0, 0, 255),
+        Affine::IDENTITY,
+        FillRule::NonZero,
+        0.0,
+    );
+    scene
+}
+
 fn assert_images_close(expected: &Image, actual: &Image, tolerance: u8) {
     assert_eq!(
         (actual.width, actual.height),

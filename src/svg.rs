@@ -1539,6 +1539,11 @@ mod tests {
                 "expected green line coverage at ({x}, {y}), got {px:?}"
             );
         }
+        assert_eq!(
+            renderer.image().rgba8_at(80, 4),
+            [0, 0, 0, 0],
+            "the clipped stroke cap must not become a full-width top tile row"
+        );
     }
 
     #[test]
@@ -1755,6 +1760,27 @@ mod tests {
 
         assert_eq!(renderer.image().rgba8_at(1, 1), [255, 0, 0, 255]);
         assert_eq!(renderer.image().rgba8_at(3, 1), [0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn push_svg_renders_scaled_sliced_embedded_svg_image_top_tile() {
+        let renderer = render_with_options(
+            r##"<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                <image x="36" y="3" width="128" height="64"
+                       href="data:image/svg+xml,%3Csvg viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Crect fill='%2300f' height='20' rx='5' width='20'/%3E%3Crect fill='none' height='16' rx='4' stroke='%230f0' width='16' x='2' y='2'/%3E%3C/svg%3E"
+                       preserveAspectRatio="xMaxYMax slice"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+            SvgOptions {
+                transform: Affine::scale(1.5),
+                ..Default::default()
+            },
+            300,
+            300,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(100, 6), [0, 0, 255, 255]);
+        assert_eq!(renderer.image().rgba8_at(100, 18), [0, 0, 255, 255]);
     }
 
     #[test]

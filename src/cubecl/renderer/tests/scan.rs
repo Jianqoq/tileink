@@ -75,3 +75,26 @@ fn scan_wgpu_emits_non_integer_horizontal_line_when_enabled() {
     assert_eq!(starts, vec![0, 1]);
     assert_eq!(ends, vec![1, 2]);
 }
+
+#[test]
+fn scan_wgpu_emits_top_clipped_backdrop_bump_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let scene = top_clipped_rect_scene();
+    let record = scene.bd_records[0];
+    let stride = (record.tile_x1 - record.tile_x0) as usize;
+
+    let mut renderer = WgpuRenderer::new_default_device(128, 48, Color::TRANSPARENT);
+    renderer.prepare_scene(&scene);
+    run_scan_stage(&mut renderer, &scene);
+
+    let backdrops = renderer.scan.backdrops.read(renderer.client());
+    let first_row = &backdrops[0..stride];
+    let second_row = &backdrops[stride..stride * 2];
+
+    assert_eq!(first_row[0], 0);
+    assert_eq!(first_row[1], second_row[1]);
+    assert_eq!(first_row[1].abs(), 1);
+}

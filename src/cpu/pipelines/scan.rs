@@ -77,6 +77,11 @@ impl<'a> ScanCpuPrepared<'a> {
                             let base = ((y - bbox.y0 as i32) * bbox.tile_stride() as i32) as usize;
                             backdrop[base] += plan.delta;
                         }
+                        if let Some(x_bump) = plan.top_clip_bump_x {
+                            if x_bump >= bbox.x0 as i32 && x_bump < bbox.x1 as i32 {
+                                backdrop[(x_bump - bbox.x0 as i32) as usize] += plan.delta;
+                            }
+                        }
 
                         for_each_scanned_tile(&plan, bbox, self.tiles_size, |tile| {
                             if tile.top_edge && tile.x + 1 < bbox.x1 as i32 {
@@ -265,6 +270,7 @@ pub(crate) struct ScanLinePlan {
     imax: u32,
     ymin: i32,
     ymax: i32,
+    top_clip_bump_x: Option<i32>,
 }
 
 #[derive(Clone, Copy)]
@@ -405,6 +411,7 @@ pub(crate) fn plan_scan_line(line: Line, bbox: TileBbox) -> Option<ScanLinePlan>
     imax = imin.max(imax);
     ymin = ymin.max(bbox.y0 as i32);
     ymax = ymax.min(bbox.y1 as i32);
+    let top_clip_bump_x = top_clip_backdrop_bump_x(s0, s1, bbox, a, b, x0, sign, y0, imin, imax);
 
     Some(ScanLinePlan {
         xy0,
@@ -420,7 +427,44 @@ pub(crate) fn plan_scan_line(line: Line, bbox: TileBbox) -> Option<ScanLinePlan>
         imax,
         ymin,
         ymax,
+        top_clip_bump_x,
     })
+}
+
+fn top_clip_backdrop_bump_x(
+    s0: (f32, f32),
+    s1: (f32, f32),
+    bbox: TileBbox,
+    a: f32,
+    b: f32,
+    x0: f32,
+    sign: f32,
+    y0: f32,
+    imin: u32,
+    imax: u32,
+) -> Option<i32> {
+    let top_y = bbox.y0 as f32;
+    if imin >= imax || s0.1 >= top_y || s1.1 <= top_y {
+        return None;
+    }
+
+    let top_x = s0.0 + (s1.0 - s0.0) * ((top_y - s0.1) / (s1.1 - s0.1));
+    if top_x < bbox.x0 as f32 || top_x >= bbox.x1 as f32 {
+        return None;
+    }
+
+    // A line clipped by the backdrop's top boundary did not have an original
+    // DDA top-edge event in this row. Emit the missing row-delta using the
+    // first scanned tile's ownership, matching the normal top-edge path and
+    // keeping exact tile-boundary crossings out of the tile to their left.
+    let z = (a * imin as f32 + b).floor();
+    let tile_y = (y0 + imin as f32 - z) as i32;
+    let tile_x = (x0 + sign * z) as i32;
+    if tile_y == bbox.y0 as i32 && tile_x >= bbox.x0 as i32 && tile_x < bbox.x1 as i32 {
+        Some(tile_x + 1)
+    } else {
+        None
+    }
 }
 
 fn clip_line_to_tile(
@@ -573,6 +617,7 @@ mod tests {
 
     use super::{ScanCpuPipeline, ScanCpuPrepared, plan_scan_line};
     use crate::{
+        cpu::computes::cumsum::run_backdrop_cumsum,
         cpu::computes::fine::build_tile_alpha,
         shared::{
             bd_record::BackdropRecord, bounds::TileBbox, fill::FillRule, line::Line,
@@ -593,6 +638,60 @@ mod tests {
             segment_capacity,
             segment_count: 0,
         }
+    }
+
+    fn scan_lines(
+        lines: &[Line],
+        bbox: TileBbox,
+        segment_capacity: u32,
+    ) -> (
+        BackdropRecord,
+        Vec<i32>,
+        Vec<TileSegmentRange>,
+        Vec<LineSegment>,
+    ) {
+        let tile_count = bbox.tile_stride() * (bbox.y1 - bbox.y0);
+        let path_records = [PathRecord {
+            path_id: 0,
+            line_count: lines.len() as u32,
+            line_start: 0,
+            _pad: 0,
+        }];
+        let backdrop_record = BackdropRecord {
+            path_id: 0,
+            data_offset: 0,
+            data_len: tile_count,
+            tile_x0: bbox.x0,
+            tile_y0: bbox.y0,
+            tile_x1: bbox.x1,
+            tile_y1: bbox.y1,
+            segment_start: 0,
+            segment_capacity,
+            segment_count: 0,
+        };
+        let mut backdrops = vec![0; tile_count as usize];
+        let mut tile_segment_ranges = vec![TileSegmentRange::default(); tile_count as usize];
+        let mut segments = vec![LineSegment::default(); segment_capacity as usize];
+        let mut segments_bump = vec![AtomicU32::new(0)];
+        let mut segment_tile_counts = vec![0; tile_count as usize];
+        let mut segment_tile_cursors = (0..tile_count).map(|_| AtomicU32::new(0)).collect();
+
+        ScanCpuPipeline::new()
+            .prepare(
+                lines,
+                &path_records,
+                &[backdrop_record],
+                &mut backdrops,
+                &mut tile_segment_ranges,
+                &mut segments,
+                &mut segments_bump,
+                &mut segment_tile_counts,
+                &mut segment_tile_cursors,
+                (bbox.x1, bbox.y1),
+            )
+            .run();
+
+        (backdrop_record, backdrops, tile_segment_ranges, segments)
     }
 
     #[test]
@@ -792,6 +891,97 @@ mod tests {
                 .iter()
                 .all(|segment| { segment.point0.0 >= 0.0 && segment.point1.0 >= 0.0 })
         );
+    }
+
+    #[test]
+    fn run_adds_top_clipped_backdrop_bump_before_cumsum() {
+        let bbox = TileBbox {
+            x0: 0,
+            y0: 0,
+            x1: 8,
+            y1: 3,
+        };
+        let lines = [
+            Line {
+                path_id: 0,
+                _pad: 0.0,
+                p0: [20.0, -8.0],
+                p1: [20.0, 40.0],
+            },
+            Line {
+                path_id: 0,
+                _pad: 0.0,
+                p0: [100.0, 40.0],
+                p1: [100.0, -8.0],
+            },
+        ];
+
+        let (record, mut backdrops, _, _) = scan_lines(&lines, bbox, 16);
+
+        assert_eq!(&backdrops[0..8], &[0, 0, -1, 0, 0, 0, 0, 1]);
+        assert_eq!(&backdrops[8..16], &[0, 0, -1, 0, 0, 0, 0, 1]);
+        run_backdrop_cumsum(&mut backdrops, &[record]);
+        for row in backdrops.chunks_exact(8) {
+            assert_eq!(row, &[0, 0, -1, -1, -1, -1, -1, 0]);
+        }
+    }
+
+    #[test]
+    fn run_uses_top_edge_ownership_for_exact_top_clipped_tile_boundary() {
+        let bbox = TileBbox {
+            x0: 0,
+            y0: 0,
+            x1: 8,
+            y1: 2,
+        };
+        let lines = [
+            Line {
+                path_id: 0,
+                _pad: 0.0,
+                p0: [32.0, -8.0],
+                p1: [32.0, 32.0],
+            },
+            Line {
+                path_id: 0,
+                _pad: 0.0,
+                p0: [96.0, 32.0],
+                p1: [96.0, -8.0],
+            },
+        ];
+
+        let (_, backdrops, _, _) = scan_lines(&lines, bbox, 16);
+
+        assert_eq!(&backdrops[0..8], &[0, 0, 0, -1, 0, 0, 0, 1]);
+        assert_eq!(&backdrops[8..16], &[0, 0, 0, -1, 0, 0, 0, 1]);
+    }
+
+    #[test]
+    fn run_does_not_duplicate_existing_top_edge_bump() {
+        let bbox = TileBbox {
+            x0: 0,
+            y0: 0,
+            x1: 8,
+            y1: 2,
+        };
+        let lines = [
+            Line {
+                path_id: 0,
+                _pad: 0.0,
+                p0: [32.0, 0.0],
+                p1: [32.0, 32.0],
+            },
+            Line {
+                path_id: 0,
+                _pad: 0.0,
+                p0: [96.0, 32.0],
+                p1: [96.0, 0.0],
+            },
+        ];
+
+        let (_, backdrops, _, _) = scan_lines(&lines, bbox, 16);
+
+        assert_eq!(&backdrops[0..8], &[0, 0, 0, -1, 0, 0, 0, 1]);
+        assert_eq!(&backdrops[8..16], &[0, 0, 0, -1, 0, 0, 0, 1]);
     }
 
     #[test]

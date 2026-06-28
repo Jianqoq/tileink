@@ -45,3 +45,17 @@ fn render_wgpu_debug_capture_reads_back_scan_and_final_image_when_enabled() {
     assert!(!tile.paths.is_empty());
     assert_eq!(tile.final_rgba[0], renderer.image().rgba8_at(64, 64));
 }
+
+#[test]
+fn render_wgpu_fills_top_clipped_path_between_edge_tiles_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let scene = top_clipped_rect_scene();
+    let mut renderer = WgpuRenderer::new_default_device(128, 48, Color::TRANSPARENT);
+
+    renderer.render(&scene);
+
+    assert_eq!(renderer.image().rgba8_at(64, 6), [0, 0, 255, 255]);
+}
