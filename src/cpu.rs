@@ -1,4 +1,4 @@
-mod computes;
+pub(crate) mod computes;
 mod pipelines;
 mod renderer;
 

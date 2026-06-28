@@ -11,11 +11,14 @@ use resources::SceneUploadStaging;
 pub(crate) use resources::{CoarseBuffers, ScanBuffers, SceneBuffers};
 
 use crate::{
+    debug::{DebugScanBuffers, RenderDebugCapture, RenderOptions, capture_render_debug},
     render::Render,
     scene::Scene,
     shared::{
         execution::{ExecPlan, ROOT_COMMAND_LIST_ID},
         image::{Image, premul_color_to_rgba8_pack},
+        line_seg::LineSegment,
+        tile_seg_range::TileSegmentRange,
     },
 };
 
@@ -260,6 +263,59 @@ impl<R: Runtime> Renderer<R> {
 
     pub fn render(&mut self, scene: &Scene) {
         <Self as Render>::render(self, scene);
+    }
+
+    /// Renders a scene and returns backend-neutral debug data without writing files.
+    pub fn render_with_options(
+        &mut self,
+        scene: &Scene,
+        options: &RenderOptions,
+    ) -> RenderDebugCapture {
+        self.render(scene);
+        let image = self.image();
+        let (tile_segment_ranges, segments, backdrops) = self.read_debug_scan_buffers();
+        capture_render_debug(
+            "cubecl",
+            scene,
+            &image,
+            DebugScanBuffers {
+                backdrops: &backdrops,
+                tile_segment_ranges: &tile_segment_ranges,
+                segments: &segments,
+            },
+            options,
+        )
+    }
+
+    fn read_debug_scan_buffers(&self) -> (Vec<TileSegmentRange>, Vec<LineSegment>, Vec<i32>) {
+        let starts = self.scan.tile_segment_range_starts.read(&self.client);
+        let ends = self.scan.tile_segment_range_ends.read(&self.client);
+        let tile_segment_ranges = starts
+            .into_iter()
+            .zip(ends)
+            .map(|(start, end)| TileSegmentRange { start, end })
+            .collect();
+
+        let p0x = self.scan.segment_p0x.read(&self.client);
+        let p0y = self.scan.segment_p0y.read(&self.client);
+        let p1x = self.scan.segment_p1x.read(&self.client);
+        let p1y = self.scan.segment_p1y.read(&self.client);
+        let y_edge = self.scan.segment_y_edge.read(&self.client);
+        let segments = p0x
+            .into_iter()
+            .zip(p0y)
+            .zip(p1x)
+            .zip(p1y)
+            .zip(y_edge)
+            .map(|((((p0x, p0y), p1x), p1y), y_edge)| LineSegment {
+                point0: (p0x, p0y),
+                point1: (p1x, p1y),
+                y_edge,
+            })
+            .collect();
+
+        let backdrops = self.scan.backdrops.read(&self.client);
+        (tile_segment_ranges, segments, backdrops)
     }
 
     #[cfg(feature = "bench-api")]

@@ -1,5 +1,6 @@
 mod cpu;
 mod cubecl;
+mod debug;
 mod render;
 mod scene;
 mod shared;
@@ -13,6 +14,11 @@ pub use cpu::Renderer as CpuRenderer;
 #[cfg(feature = "bench-api")]
 pub use cubecl::CubePreparedStage;
 pub use cubecl::{Renderer as CubeRenderer, WgpuRenderer as CubeWgpuRenderer};
+pub use debug::{
+    DebugLineSegment, DebugTileDump, DebugTilePath, DebugTilePathSummary, DebugTileSummary,
+    RenderDebugCapture, RenderDebugImage, RenderDebugOptions, RenderDebugText, RenderOptions,
+    debug_capture_json,
+};
 pub use scene::Scene;
 pub use shared::{
     bounds::Bounds,

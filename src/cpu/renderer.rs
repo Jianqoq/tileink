@@ -17,6 +17,7 @@ use crate::{
             fine::FineCpuPipeline, scan::ScanCpuPipeline,
         },
     },
+    debug::{DebugScanBuffers, RenderDebugCapture, RenderOptions, capture_render_debug},
     render::Render,
     shared::{
         bounds::Bounds,
@@ -212,6 +213,26 @@ impl Renderer {
 
     pub fn render(&mut self, scene: &crate::scene::Scene) {
         <Self as Render>::render(self, scene);
+    }
+
+    /// Renders a scene and returns backend-neutral debug data without writing files.
+    pub fn render_with_options(
+        &mut self,
+        scene: &crate::scene::Scene,
+        options: &RenderOptions,
+    ) -> RenderDebugCapture {
+        self.render(scene);
+        capture_render_debug(
+            "cpu",
+            scene,
+            &self.image,
+            DebugScanBuffers {
+                backdrops: &self.backdrops,
+                tile_segment_ranges: &self.tile_segment_ranges,
+                segments: &self.segments,
+            },
+            options,
+        )
     }
 
     pub fn render_profiled_flat(&mut self, scene: &crate::scene::Scene) -> RenderProfile {

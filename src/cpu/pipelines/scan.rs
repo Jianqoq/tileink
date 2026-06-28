@@ -222,6 +222,7 @@ impl ScanCpuPipeline {
         Self {}
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn prepare<'a>(
         &self,
         lines: &'a [Line],

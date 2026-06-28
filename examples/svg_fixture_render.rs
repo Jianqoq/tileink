@@ -81,23 +81,15 @@ impl BatchRenderers {
         };
         let output = output_path(input, "cubecl");
         renderer.render(scene);
-        common::save_image(&renderer.image(), &output)?;
+        let image = renderer.image();
+        common::save_image(&image, &output)?;
         println!("[cubecl] wrote {}", output.display());
         Ok(())
     }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut args = std::env::args().skip(1);
-    let root = PathBuf::from(
-        args.next()
-            .ok_or("usage: svg_fixture_render <folder> [both|cpu|cubecl]")?,
-    );
-    let backend = args
-        .next()
-        .map(|value| Backend::parse(&value))
-        .transpose()?
-        .unwrap_or(Backend::Both);
+    let (root, backend) = parse_args()?;
 
     if !root.is_dir() {
         return Err(format!("input must be a folder: {}", root.display()).into());
@@ -137,6 +129,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+fn parse_args() -> Result<(PathBuf, Backend), Box<dyn std::error::Error>> {
+    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    if args.is_empty() {
+        return Err("usage: svg_fixture_render <folder> [both|cpu|cubecl]".into());
+    }
+
+    let root = PathBuf::from(&args[0]);
+    let mut backend = Backend::Both;
+    let mut ix = 1;
+
+    if args.get(ix).is_some_and(|value| !value.starts_with("--")) {
+        backend = Backend::parse(&args[ix])?;
+        ix += 1;
+    }
+
+    if ix < args.len() {
+        return Err(format!("unknown argument `{}`", args[ix]).into());
+    }
+
+    Ok((root, backend))
 }
 
 fn load_scene(

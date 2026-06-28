@@ -27,10 +27,10 @@ impl<'a> PathFlatten<'a> {
         for el in self.path.elements() {
             match el {
                 PathEl::MoveTo(point) => {
-                    if let (Some(start_pt), Some(end_pt)) = (contour_start, last) {
-                        if is_open_contour_close(start_pt, end_pt) {
-                            push_line_segment(out, self.tile_cnt, self.path_id, end_pt, start_pt);
-                        }
+                    if let (Some(start_pt), Some(end_pt)) = (contour_start, last)
+                        && is_open_contour_close(start_pt, end_pt)
+                    {
+                        push_line_segment(out, self.tile_cnt, self.path_id, end_pt, start_pt);
                     }
                     contour_start = Some(*point);
                     last = Some(*point);
@@ -78,10 +78,10 @@ impl<'a> PathFlatten<'a> {
                 }
             }
         }
-        if let (Some(start_pt), Some(end_pt)) = (contour_start, last) {
-            if is_open_contour_close(start_pt, end_pt) {
-                push_line_segment(out, self.tile_cnt, self.path_id, end_pt, start_pt);
-            }
+        if let (Some(start_pt), Some(end_pt)) = (contour_start, last)
+            && is_open_contour_close(start_pt, end_pt)
+        {
+            push_line_segment(out, self.tile_cnt, self.path_id, end_pt, start_pt);
         }
     }
 }
@@ -212,6 +212,7 @@ fn push_quad_segment(
     flatten_quad(out, tile_count, tolerance as f64, path_id, p0, p1, p2, 0);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn push_cubic_segment(
     out: &mut Vec<Line>,
     tile_count: &mut u32,
@@ -249,6 +250,7 @@ fn push_flat_line(out: &mut Vec<Line>, tile_count: &mut u32, path_id: u32, p0: P
     out.push(line);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn flatten_quad(
     out: &mut Vec<Line>,
     tile_count: &mut u32,
