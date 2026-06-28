@@ -562,7 +562,8 @@ impl SvgBuilder {
         image: &usvg::filter::Image,
         filter_bounds: Bounds,
         primitive_rect: Rect,
-        transform: Affine,
+        region_transform: Affine,
+        content_transform: Affine,
     ) -> Result<Brush, SvgError> {
         if self.image_depth >= MAX_IMAGE_DEPTH {
             return Err(SvgError::unsupported("recursive feImage"));
@@ -572,13 +573,29 @@ impl SvgBuilder {
         let height = filter_bounds.height().max(1);
         let mut scene = Scene::new(width, height);
         if !filter_bounds.is_empty() {
-            // usvg stores feImage children in primitive-subregion-local coordinates.
-            // Render them into the clipped filter buffer once, then reuse that
-            // raster as an absolute-coordinate graph input for CPU and CubeCL.
-            let local_transform =
-                Affine::translate((-f64::from(filter_bounds.x0), -f64::from(filter_bounds.y0)))
-                    * transform
-                    * Affine::translate((primitive_rect.x0, primitive_rect.y0));
+            let buffer_origin =
+                Affine::translate((-f64::from(filter_bounds.x0), -f64::from(filter_bounds.y0)));
+            let local_transform = if fe_image_root_is_primitive_local_image(image.root()) {
+                // External raster/SVG feImage content is already laid out by usvg
+                // in primitive-subregion-local coordinates. The renderer filter
+                // buffer is axis-aligned in scene pixels, so we place that local
+                // image at the transformed primitive bbox and keep only the
+                // filter-axis scale for child coordinates.
+                let primitive_bounds = transform_rect_to_bounds(primitive_rect, region_transform);
+                buffer_origin
+                    * Affine::translate((
+                        f64::from(primitive_bounds.x0),
+                        f64::from(primitive_bounds.y0),
+                    ))
+                    * filter_axis_scale(region_transform)
+            } else {
+                // Internal href targets preserve their own document coordinates.
+                // usvg does not move those roots into the primitive subregion, so
+                // keep the existing content transform plus primitive origin.
+                buffer_origin
+                    * content_transform
+                    * Affine::translate((primitive_rect.x0, primitive_rect.y0))
+            };
             SvgBuilder {
                 options: SvgOptions {
                     tolerance: self.options.tolerance,
@@ -783,6 +800,7 @@ fn svg_filter_primitive(
                     image,
                     filter_bounds,
                     primitive_rect,
+                    region_transform,
                     content_transform,
                 )?,
             },
@@ -1478,6 +1496,28 @@ fn inverse_affine_to_array(transform: Affine, feature: &str) -> Result<[f32; 6],
     inverse_affine(transform, feature).map(affine_to_array)
 }
 
+fn fe_image_root_is_primitive_local_image(root: &usvg::Group) -> bool {
+    let [Node::Group(group)] = root.children() else {
+        return false;
+    };
+    is_generated_image_group_id(group.id())
+        && group
+            .children()
+            .iter()
+            .all(|child| matches!(child, Node::Image(_)))
+}
+
+fn is_generated_image_group_id(id: &str) -> bool {
+    id.strip_prefix("image").is_some_and(|suffix| {
+        !suffix.is_empty() && suffix.bytes().all(|byte| byte.is_ascii_digit())
+    })
+}
+
+fn filter_axis_scale(transform: Affine) -> Affine {
+    let [a, b, c, d, _, _] = transform.as_coeffs();
+    Affine::scale_non_uniform(a.hypot(b), c.hypot(d))
+}
+
 fn transform_region(region: Region, transform: Affine) -> Region {
     if transform == Affine::IDENTITY {
         return region;
@@ -1818,6 +1858,26 @@ mod tests {
 
         assert_eq!(renderer.image().rgba8_at(6, 6), [0, 128, 0, 255]);
         assert_eq!(renderer.image().rgba8_at(10, 6), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn push_svg_places_external_fe_image_in_transformed_primitive_subregion() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80">
+                <defs>
+                    <filter id="f" x="0" y="0" width="1" height="1">
+                        <feImage x="20" width="20"
+                            href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3Crect width='1' height='1' fill='%23008000'/%3E%3C/svg%3E"/>
+                    </filter>
+                </defs>
+                <rect x="20" y="20" width="40" height="40" fill="#ff0000"
+                      filter="url(#f)" transform="rotate(45 40 40)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(16, 26), [0, 128, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(36, 46), [0, 0, 0, 0]);
     }
 
     #[test]

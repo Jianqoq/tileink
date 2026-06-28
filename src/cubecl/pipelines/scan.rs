@@ -405,7 +405,8 @@ fn scan_count(
         {
             let mut top_edge = last_z == z;
             if i == imin {
-                top_edge = (y0 - xy0y * tile_scale).abs() <= f32::new(DDA_TOP_EDGE_EPSILON);
+                top_edge =
+                    imin == 0 && (y0 - xy0y * tile_scale).abs() <= f32::new(DDA_TOP_EDGE_EPSILON);
             }
             if top_edge && tile_x + 1 < bbox_x1 as i32 {
                 let x_bump = (tile_x + 1).max(bbox_x0 as i32);

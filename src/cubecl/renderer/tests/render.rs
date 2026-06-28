@@ -59,3 +59,32 @@ fn render_wgpu_fills_top_clipped_path_between_edge_tiles_when_enabled() {
 
     assert_eq!(renderer.image().rgba8_at(64, 6), [0, 0, 255, 255]);
 }
+
+#[test]
+fn render_wgpu_keeps_left_clipped_skew_edge_from_double_backdrop_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut path = BezPath::new();
+    path.move_to((-90.0, 0.0));
+    path.line_to((90.0, 0.0));
+    path.line_to((304.515_66, 180.0));
+    path.line_to((124.515_66, 180.0));
+    path.close_path();
+
+    let mut scene = Scene::new(180, 180);
+    scene.push_path(
+        path,
+        Color::from_rgb8(0, 128, 0),
+        Affine::IDENTITY,
+        FillRule::NonZero,
+        0.0,
+    );
+    let mut renderer = WgpuRenderer::new_default_device(180, 180, Color::TRANSPARENT);
+
+    renderer.render(&scene);
+
+    assert_eq!(renderer.image().rgba8_at(161, 64), [0, 128, 0, 255]);
+    assert_eq!(renderer.image().rgba8_at(175, 64), [0, 0, 0, 0]);
+}

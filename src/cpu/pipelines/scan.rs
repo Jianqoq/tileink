@@ -299,7 +299,7 @@ fn for_each_scanned_tile(
         }
 
         let top_edge = if i == plan.imin {
-            (plan.y0 - plan.xy0[1] * TILE_SCALE).abs() <= DDA_TOP_EDGE_EPSILON
+            plan.imin == 0 && (plan.y0 - plan.xy0[1] * TILE_SCALE).abs() <= DDA_TOP_EDGE_EPSILON
         } else {
             last_z == z
         };
@@ -1255,6 +1255,87 @@ mod tests {
         assert_eq!(range.end - range.start, 2);
         assert!(alpha[4 * 16] > 0);
         assert_eq!(alpha[4 * 16 + 15], 0);
+    }
+
+    #[test]
+    fn run_keeps_right_clipped_skew_edge_from_filling_tile() {
+        let lines = [
+            Line {
+                path_id: 0,
+                _pad: 0.0,
+                p0: [-90.0, 0.0],
+                p1: [90.0, 0.0],
+            },
+            Line {
+                path_id: 0,
+                _pad: 0.0,
+                p0: [90.0, 0.0],
+                p1: [304.515_66, 180.0],
+            },
+            Line {
+                path_id: 0,
+                _pad: 0.0,
+                p0: [304.515_66, 180.0],
+                p1: [124.515_66, 180.0],
+            },
+            Line {
+                path_id: 0,
+                _pad: 0.0,
+                p0: [124.515_66, 180.0],
+                p1: [-90.0, 0.0],
+            },
+        ];
+        let path_records = [PathRecord {
+            path_id: 0,
+            line_count: lines.len() as u32,
+            line_start: 0,
+            _pad: 0,
+        }];
+        let backdrop_records = [BackdropRecord {
+            path_id: 0,
+            data_offset: 0,
+            data_len: 12 * 12,
+            tile_x0: 0,
+            tile_y0: 0,
+            tile_x1: 12,
+            tile_y1: 12,
+            segment_start: 0,
+            segment_capacity: 512,
+            segment_count: 0,
+        }];
+        let mut backdrops = vec![0; 12 * 12];
+        let mut tile_segment_ranges = vec![TileSegmentRange::default(); 12 * 12];
+        let mut segments = vec![LineSegment::default(); 512];
+        let mut segments_bump = vec![AtomicU32::new(0)];
+        let mut segment_tile_counts = vec![0; 12 * 12];
+        let mut segment_tile_cursors = (0..12 * 12).map(|_| AtomicU32::new(0)).collect();
+
+        ScanCpuPipeline::new()
+            .prepare(
+                &lines,
+                &path_records,
+                &backdrop_records,
+                &mut backdrops,
+                &mut tile_segment_ranges,
+                &mut segments,
+                &mut segments_bump,
+                &mut segment_tile_counts,
+                &mut segment_tile_cursors,
+                (12, 12),
+            )
+            .run();
+        run_backdrop_cumsum(&mut backdrops, &backdrop_records);
+
+        let tile_ix = 4 * 12 + 10;
+        let range = tile_segment_ranges[tile_ix];
+        let alpha = build_tile_alpha(
+            &segments[range.start as usize..range.end as usize],
+            backdrops[tile_ix],
+            FillRule::NonZero,
+        );
+
+        assert_eq!(alpha[15], 0);
+        assert_eq!(alpha[16 + 15], 0);
     }
 
     #[test]
