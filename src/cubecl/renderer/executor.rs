@@ -253,32 +253,6 @@ impl<R: Runtime> Renderer<R> {
                     self.release_scratch(temp);
                 }
             }
-            Filter::Morphology {
-                radius_x,
-                radius_y,
-                operator,
-            } => {
-                if (*radius_x).max(*radius_y).max(0.0) > 0.0 {
-                    let temp = self.acquire_scratch();
-                    let output = self.acquire_scratch();
-                    self.clear_buffer(temp, 0);
-                    self.clear_buffer(output, 0);
-                    self.morphology_buffer(
-                        target,
-                        temp,
-                        output,
-                        MorphologyPass {
-                            bounds,
-                            radius_x: *radius_x,
-                            radius_y: *radius_y,
-                            operator: *operator,
-                        },
-                    );
-                    self.copy_region(output, target, bounds);
-                    self.release_scratch(output);
-                    self.release_scratch(temp);
-                }
-            }
             Filter::DropShadow {
                 offset_x,
                 offset_y,
@@ -825,94 +799,6 @@ impl<R: Runtime> Renderer<R> {
                     bounds,
                     dx,
                     dy,
-                )
-            }
-            (CubeRenderTarget::Main, CubeRenderTarget::Main) => unreachable!(),
-        }
-    }
-
-    fn morphology_buffer(
-        &mut self,
-        source: CubeRenderTarget,
-        temp: CubeRenderTarget,
-        target: CubeRenderTarget,
-        pass: MorphologyPass,
-    ) {
-        let raw_radius_x = pass.radius_x.max(0.0).ceil() as u32;
-        let raw_radius_y = pass.radius_y.max(0.0).ceil() as u32;
-        if source == target
-            || source == temp
-            || temp == target
-            || (raw_radius_x == 0 && raw_radius_y == 0)
-        {
-            return;
-        }
-
-        if pass.operator == MorphologyOperator::Erode
-            && (raw_radius_x.saturating_mul(2) >= self.size.0
-                || raw_radius_y.saturating_mul(2) >= self.size.1)
-        {
-            self.clear_buffer(target, 0);
-            return;
-        }
-
-        let radius_x = raw_radius_x.min(self.size.0.saturating_sub(1));
-        let radius_y = raw_radius_y.min(self.size.1.saturating_sub(1));
-        let operator = encode_morphology_operator(pass.operator);
-        self.morphology_axis_buffer(source, temp, pass.bounds, radius_x, operator, 0);
-        self.morphology_axis_buffer(temp, target, pass.bounds, radius_y, operator, 1);
-    }
-
-    fn morphology_axis_buffer(
-        &mut self,
-        source: CubeRenderTarget,
-        target: CubeRenderTarget,
-        bounds: Bounds,
-        radius: u32,
-        operator: u32,
-        axis: u32,
-    ) {
-        if source == target {
-            return;
-        }
-
-        match (source, target) {
-            (CubeRenderTarget::Main, CubeRenderTarget::Scratch(target_ix)) => {
-                FilterPipeline::morphology_axis_region(
-                    &self.client,
-                    &self.target,
-                    &mut self.scratch[target_ix],
-                    self.size,
-                    bounds,
-                    radius,
-                    operator,
-                    axis,
-                )
-            }
-            (CubeRenderTarget::Scratch(source_ix), CubeRenderTarget::Main) => {
-                FilterPipeline::morphology_axis_region(
-                    &self.client,
-                    &self.scratch[source_ix],
-                    &mut self.target,
-                    self.size,
-                    bounds,
-                    radius,
-                    operator,
-                    axis,
-                )
-            }
-            (CubeRenderTarget::Scratch(source_ix), CubeRenderTarget::Scratch(target_ix)) => {
-                let (source, target) =
-                    scratch_source_target(&mut self.scratch, source_ix, target_ix);
-                FilterPipeline::morphology_axis_region(
-                    &self.client,
-                    source,
-                    target,
-                    self.size,
-                    bounds,
-                    radius,
-                    operator,
-                    axis,
                 )
             }
             (CubeRenderTarget::Main, CubeRenderTarget::Main) => unreachable!(),
