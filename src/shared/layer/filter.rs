@@ -1,7 +1,8 @@
-use peniko::Mix;
+use peniko::{Mix, kurbo::Shape};
 
 use crate::shared::bounds::Bounds;
 use crate::shared::brush::Brush;
+use crate::shared::layer::region::Region;
 
 pub const COMPONENT_TRANSFER_TABLE_SIZE: usize = 256;
 pub const COMPONENT_TRANSFER_CHANNELS: usize = 4;
@@ -127,6 +128,138 @@ pub(crate) fn filter_offset_to_pixel_delta(delta: f32) -> i32 {
     // Filter buffers are sampled at pixel centers. A positive N+0.5 offset moves
     // the source edge onto the next pixel center, so that pixel still owns the edge.
     (delta - 0.5).ceil() as i32
+}
+
+pub(crate) fn filtered_region_bounds(
+    filter: &Filter,
+    sample_region: &Region,
+    canvas: Bounds,
+) -> Bounds {
+    unclipped_filtered_region_bounds(filter, sample_region).intersect(canvas)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct FilterSurfaceBounds {
+    pub(crate) surface: Bounds,
+    pub(crate) output: Bounds,
+}
+
+pub(crate) fn filter_surface_bounds(
+    filter: &Filter,
+    sample_region: &Region,
+    target_bounds: Bounds,
+) -> Option<FilterSurfaceBounds> {
+    let full_output = unclipped_filtered_region_bounds(filter, sample_region);
+    let output = full_output.intersect(target_bounds);
+    if output.is_empty() {
+        return None;
+    }
+
+    // A filter can read source pixels outside its final output through blur,
+    // morphology, offset, drop-shadow, or graph tiling. The surface keeps only
+    // pixels that can still influence the visible target, so very large source
+    // bboxes outside the canvas do not turn into huge intermediate buffers.
+    let source_window = target_bounds.outset(filter_dependency_outset(filter));
+    let surface = full_output.intersect(source_window);
+    (!surface.is_empty()).then_some(FilterSurfaceBounds { surface, output })
+}
+
+pub(crate) fn unclipped_filtered_region_bounds(filter: &Filter, sample_region: &Region) -> Bounds {
+    region_bounds(sample_region).outset(filter_outset(filter))
+}
+
+fn filter_outset(filter: &Filter) -> i32 {
+    match filter {
+        Filter::Chain {
+            filters,
+            fixed_region,
+        } => {
+            if *fixed_region {
+                0
+            } else {
+                filters.iter().map(filter_outset).sum()
+            }
+        }
+        Filter::Graph { .. } => 0,
+        Filter::Blur { radius_x, radius_y } => blur_outset(radius_x.max(*radius_y)),
+        Filter::Offset { dx, dy } => dx.abs().ceil().max(dy.abs().ceil()) as i32,
+        Filter::Morphology {
+            radius_x,
+            radius_y,
+            operator,
+        } => match operator {
+            MorphologyOperator::Erode => 0,
+            MorphologyOperator::Dilate => (*radius_x).max(*radius_y).max(0.0).ceil() as i32,
+        },
+        Filter::DropShadow {
+            radius,
+            offset_x,
+            offset_y,
+            ..
+        } => blur_outset(*radius) + offset_x.abs().ceil().max(offset_y.abs().ceil()) as i32,
+        _ => 0,
+    }
+}
+
+fn filter_dependency_outset(filter: &Filter) -> i32 {
+    match filter {
+        Filter::Chain { filters, .. } => filters.iter().map(filter_dependency_outset).sum(),
+        Filter::Graph { primitives, .. } => graph_dependency_outset(primitives),
+        _ => filter_outset(filter),
+    }
+}
+
+fn graph_dependency_outset(primitives: &[FilterPrimitive]) -> i32 {
+    primitives.iter().map(primitive_dependency_outset).sum()
+}
+
+fn primitive_dependency_outset(primitive: &FilterPrimitive) -> i32 {
+    match &primitive.kind {
+        FilterPrimitiveKind::Filter(filter) => filter_dependency_outset(filter),
+        FilterPrimitiveKind::Tile { source_region } => {
+            bounds_distance(primitive.region, *source_region)
+        }
+        FilterPrimitiveKind::Identity
+        | FilterPrimitiveKind::Blend { .. }
+        | FilterPrimitiveKind::Composite { .. }
+        | FilterPrimitiveKind::Image { .. }
+        | FilterPrimitiveKind::Merge { .. } => 0,
+    }
+}
+
+fn bounds_distance(a: Bounds, b: Bounds) -> i32 {
+    (a.x0 - b.x0)
+        .abs()
+        .max((a.y0 - b.y0).abs())
+        .max((a.x1 - b.x1).abs())
+        .max((a.y1 - b.y1).abs())
+}
+
+fn region_bounds(region: &Region) -> Bounds {
+    match region {
+        Region::Rect { rect, .. } => rect_bounds(*rect),
+        Region::Path {
+            path,
+            transform,
+            tolerance: _,
+        } => {
+            let path = *transform * path;
+            rect_bounds(path.bounding_box())
+        }
+    }
+}
+
+fn rect_bounds(rect: peniko::kurbo::Rect) -> Bounds {
+    Bounds::new(
+        rect.x0.floor() as i32,
+        rect.y0.floor() as i32,
+        rect.x1.ceil() as i32,
+        rect.y1.ceil() as i32,
+    )
+}
+
+fn blur_outset(radius: f32) -> i32 {
+    (radius.max(0.0) * 3.0).ceil() as i32
 }
 
 #[derive(Clone, Debug)]

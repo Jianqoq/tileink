@@ -94,6 +94,13 @@ impl GpuBrushUpload {
         upload
     }
 
+    pub(crate) fn from_filter_ops_and_filter(ops: &[ExecOp], filter: &Filter) -> Self {
+        let mut upload = Self::default();
+        collect_filter_brushes_for_ops(ops, &mut upload);
+        collect_filter_brush(filter, &mut upload);
+        upload
+    }
+
     fn push_brush(&mut self, brush: &Brush) {
         let mut params = [0.0; GPU_BRUSH_PARAM_STRIDE];
         let mut kind = GPU_BRUSH_SOLID;

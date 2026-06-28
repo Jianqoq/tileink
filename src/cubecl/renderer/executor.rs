@@ -2,6 +2,7 @@ use ::cubecl::prelude::Runtime;
 use peniko::{BlendMode, Compose, Mix, kurbo::Shape};
 
 use crate::{
+    cpu::line_scanned_tile_count,
     scene::Scene,
     shared::{
         bounds::Bounds,
@@ -9,31 +10,38 @@ use crate::{
         layer::{
             Layer,
             filter::{
-                ComponentTransferTable, CompositeOperator, ConvolveEdgeMode, ConvolveMatrix,
-                DiffuseLighting, Filter, FilterInput, FilterPrimitive, FilterPrimitiveKind,
-                LightSource, MorphologyOperator, SpecularLighting, filter_offset_to_pixel_delta,
+                self as filter_model, ComponentTransferTable, CompositeOperator, ConvolveEdgeMode,
+                ConvolveMatrix, DiffuseLighting, Filter, FilterInput, FilterPrimitive,
+                FilterPrimitiveKind, LightSource, MorphologyOperator, SpecularLighting,
+                filter_offset_to_pixel_delta,
             },
             mask::MaskKind,
             region::Region,
         },
+        offscreen::{local_filter, local_offscreen_scene},
         path_flatten::PathFlatten,
         pixel::opacity_f32_to_u8,
     },
 };
 
 use crate::cubecl::{
+    brush::{GpuBrushBuffers, GpuBrushUpload},
     buffer::CubeBuffer,
     pipelines::{
+        cumsum::CumsumPipeline,
         filter::{
             FILTER_BRIGHTNESS, FILTER_CONTRAST, FILTER_GRAYSCALE, FILTER_HUE_ROTATE, FILTER_INVERT,
             FILTER_OPACITY, FILTER_SATURATE, FILTER_SEPIA, FilterPathResources, FilterPipeline,
             SVG_MASK_ALPHA, SVG_MASK_LUMINANCE,
         },
         fine::FinePipeline,
+        scan::ScanPipeline,
     },
+    renderer::{CoarseBuffers, ScanBuffers, SceneBuffers},
+    types::CubeBufferLengths,
 };
 
-use super::{CubeRenderTarget, Renderer};
+use super::{CubeRenderTarget, Renderer, resources::SceneUploadStaging};
 
 #[derive(Default)]
 struct FilterCursors {
@@ -61,6 +69,25 @@ struct LightingDispatch {
     light_source: LightSource,
 }
 
+struct SavedRendererState {
+    size: (u32, u32),
+    surface_origin: (i32, i32),
+    lengths: CubeBufferLengths,
+    max_clip_depth: usize,
+    max_group_depth: usize,
+    scene: SceneBuffers,
+    scan: ScanBuffers,
+    coarse: CoarseBuffers,
+    scene_upload: SceneUploadStaging,
+    draw_brushes: GpuBrushBuffers,
+    filter_brushes: GpuBrushBuffers,
+    filter_convolves: FilterConvolveBuffers,
+    filter_paths: FilterPathBuffers,
+    filter_transfers: FilterTransferBuffers,
+    scratch: Vec<CubeBuffer<u32>>,
+    scratch_in_use: Vec<bool>,
+}
+
 impl<R: Runtime> Renderer<R> {
     pub(super) fn execute_prepared_plan(&mut self, scene: &Scene) {
         let plan = self
@@ -80,6 +107,98 @@ impl<R: Runtime> Renderer<R> {
             CubeRenderTarget::Main,
             &mut filter_cursors,
         );
+    }
+
+    fn activate_local_scene_resources(
+        &mut self,
+        scene: &Scene,
+        plan: &ExecPlan,
+        parent_filter: &Filter,
+        scratch_count: usize,
+        surface_origin: (i32, i32),
+    ) -> SavedRendererState {
+        let saved = SavedRendererState {
+            size: self.size,
+            surface_origin: self.surface_origin,
+            lengths: self.lengths,
+            max_clip_depth: self.max_clip_depth,
+            max_group_depth: self.max_group_depth,
+            scene: std::mem::replace(&mut self.scene, SceneBuffers::new(&self.client)),
+            scan: std::mem::replace(&mut self.scan, ScanBuffers::new(&self.client)),
+            coarse: std::mem::replace(&mut self.coarse, CoarseBuffers::new(&self.client)),
+            scene_upload: std::mem::take(&mut self.scene_upload),
+            draw_brushes: std::mem::replace(
+                &mut self.draw_brushes,
+                GpuBrushBuffers::new(&self.client),
+            ),
+            filter_brushes: std::mem::replace(
+                &mut self.filter_brushes,
+                GpuBrushBuffers::new(&self.client),
+            ),
+            filter_convolves: std::mem::replace(
+                &mut self.filter_convolves,
+                FilterConvolveBuffers::new(&self.client),
+            ),
+            filter_paths: std::mem::replace(
+                &mut self.filter_paths,
+                FilterPathBuffers::new(&self.client),
+            ),
+            filter_transfers: std::mem::replace(
+                &mut self.filter_transfers,
+                FilterTransferBuffers::new(&self.client),
+            ),
+            scratch: std::mem::take(&mut self.scratch),
+            scratch_in_use: std::mem::take(&mut self.scratch_in_use),
+        };
+
+        let lengths = CubeBufferLengths::from_scene(scene);
+        let (max_clip_depth, max_group_depth) = plan_stack_depths(plan);
+        self.size = (scene.width, scene.height);
+        self.surface_origin = surface_origin;
+        self.lengths = lengths;
+        self.max_clip_depth = max_clip_depth;
+        self.max_group_depth = max_group_depth;
+        self.prepare_scratch_buffers(scratch_count.max(1));
+        self.draw_brushes
+            .upload(&self.client, GpuBrushUpload::from_scene_draws(scene));
+        self.filter_brushes.upload(
+            &self.client,
+            GpuBrushUpload::from_filter_ops_and_filter(&plan.ops, parent_filter),
+        );
+        self.filter_convolves.upload(
+            &self.client,
+            FilterConvolveUpload::from_ops_and_filter(&plan.ops, parent_filter),
+        );
+        self.filter_paths
+            .upload(&self.client, FilterPathUpload::from_plan(plan));
+        self.filter_transfers.upload(
+            &self.client,
+            FilterTransferUpload::from_ops_and_filter(&plan.ops, parent_filter),
+        );
+        self.scene
+            .upload(&self.client, scene, plan, &mut self.scene_upload);
+        self.scan.prepare_outputs(&self.client, lengths);
+        self.coarse.prepare_outputs(&self.client, lengths);
+        saved
+    }
+
+    fn restore_root_scene_resources(&mut self, saved: SavedRendererState) {
+        self.size = saved.size;
+        self.surface_origin = saved.surface_origin;
+        self.lengths = saved.lengths;
+        self.max_clip_depth = saved.max_clip_depth;
+        self.max_group_depth = saved.max_group_depth;
+        self.scene = saved.scene;
+        self.scan = saved.scan;
+        self.coarse = saved.coarse;
+        self.scene_upload = saved.scene_upload;
+        self.draw_brushes = saved.draw_brushes;
+        self.filter_brushes = saved.filter_brushes;
+        self.filter_convolves = saved.filter_convolves;
+        self.filter_paths = saved.filter_paths;
+        self.filter_transfers = saved.filter_transfers;
+        self.scratch = saved.scratch;
+        self.scratch_in_use = saved.scratch_in_use;
     }
 
     fn execute_ops(
@@ -230,21 +349,25 @@ impl<R: Runtime> Renderer<R> {
             Layer::Filter {
                 filter,
                 sample_region,
-            } => {
-                let bounds = supported_filter_bounds(filter, sample_region, self.size);
-                next_filter_path_index(sample_region, &mut filter_cursors.path);
-                let source = self.acquire_scratch();
-                self.clear_buffer(source, 0);
-                self.execute_ops(scene, plan, children, source, filter_cursors);
-                self.apply_filter(source, bounds, filter, filter_cursors);
-                self.composite_src_over_with_stack(target, source, None, bounds, outer_stack);
-                self.release_scratch(source);
-            }
+            } => self.execute_filter_layer_with_local_surface(
+                scene,
+                plan,
+                filter,
+                sample_region,
+                outer_stack,
+                children,
+                target,
+                filter_cursors,
+            ),
             Layer::Backdrop {
                 filter,
                 sample_region,
             } => {
-                let bounds = supported_filter_bounds(filter, sample_region, self.size);
+                let bounds = filter_model::filtered_region_bounds(
+                    filter,
+                    sample_region,
+                    Bounds::canvas(self.size.0, self.size.1),
+                );
                 let path_index = next_filter_path_index(sample_region, &mut filter_cursors.path);
                 let backdrop = self.acquire_scratch();
                 self.clear_buffer(backdrop, 0);
@@ -282,6 +405,91 @@ impl<R: Runtime> Renderer<R> {
                 "CubeCL offscreen execution only accepts Opacity, Filter, and Backdrop layers"
             ),
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn execute_filter_layer_with_local_surface(
+        &mut self,
+        scene: &Scene,
+        plan: &ExecPlan,
+        filter: &Filter,
+        sample_region: &Region,
+        outer_stack: std::ops::Range<usize>,
+        children: &[ExecOp],
+        target: CubeRenderTarget,
+        filter_cursors: &mut FilterCursors,
+    ) {
+        let target_bounds = Bounds::canvas(self.size.0, self.size.1);
+        let Some(filter_bounds) =
+            filter_model::filter_surface_bounds(filter, sample_region, target_bounds)
+        else {
+            advance_filter_layer_cursors(sample_region, children, filter, filter_cursors);
+            return;
+        };
+
+        advance_filter_layer_cursors(sample_region, children, filter, filter_cursors);
+        let local = local_offscreen_scene(
+            scene,
+            plan,
+            children,
+            filter_bounds.surface,
+            line_scanned_tile_count,
+        );
+        let local_filter = local_filter(filter, filter_bounds.surface);
+        let local_bounds = Bounds::canvas(
+            filter_bounds.surface.width(),
+            filter_bounds.surface.height(),
+        );
+        let local_origin = (
+            self.surface_origin.0 + filter_bounds.surface.x0,
+            self.surface_origin.1 + filter_bounds.surface.y0,
+        );
+        let local_scratch_count =
+            1 + required_scratch_count(&local.plan).max(filter_scratch_extra(&local_filter));
+        let saved = self.activate_local_scene_resources(
+            &local.scene,
+            &local.plan,
+            &local_filter,
+            local_scratch_count,
+            local_origin,
+        );
+
+        let source = CubeRenderTarget::Scratch(0);
+        self.scratch_in_use[0] = true;
+        self.clear_buffer(source, 0);
+        ScanPipeline::run(&self.client, &self.scene, &mut self.scan, self.lengths);
+        CumsumPipeline::run(&self.client, &self.scene, &mut self.scan, self.lengths);
+        let mut local_filter_cursors = FilterCursors::default();
+        self.execute_ops(
+            &local.scene,
+            &local.plan,
+            &local.children,
+            source,
+            &mut local_filter_cursors,
+        );
+        self.apply_filter(
+            source,
+            local_bounds,
+            &local_filter,
+            &mut local_filter_cursors,
+        );
+
+        let mut local_scratch = std::mem::take(&mut self.scratch);
+        let source_buffer = local_scratch.remove(0);
+        self.scratch_in_use.clear();
+        self.restore_root_scene_resources(saved);
+        self.composite_surface_src_over_with_stack(
+            target,
+            &source_buffer,
+            (
+                filter_bounds.surface.width(),
+                filter_bounds.surface.height(),
+            ),
+            (filter_bounds.surface.x0, filter_bounds.surface.y0),
+            filter_bounds.output,
+            outer_stack,
+        );
+        self.surface_sources.push(source_buffer);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -961,6 +1169,7 @@ impl<R: Runtime> Renderer<R> {
                     lighting.light_constant,
                     lighting.specular_exponent,
                     lighting.lighting_color,
+                    self.surface_origin,
                     light_kind,
                     params,
                 )
@@ -977,6 +1186,7 @@ impl<R: Runtime> Renderer<R> {
                     lighting.light_constant,
                     lighting.specular_exponent,
                     lighting.lighting_color,
+                    self.surface_origin,
                     light_kind,
                     params,
                 )
@@ -995,6 +1205,7 @@ impl<R: Runtime> Renderer<R> {
                     lighting.light_constant,
                     lighting.specular_exponent,
                     lighting.lighting_color,
+                    self.surface_origin,
                     light_kind,
                     params,
                 )
@@ -1737,6 +1948,49 @@ impl<R: Runtime> Renderer<R> {
         }
     }
 
+    fn composite_surface_src_over_with_stack(
+        &mut self,
+        target: CubeRenderTarget,
+        source: &CubeBuffer<u32>,
+        source_size: (u32, u32),
+        source_origin: (i32, i32),
+        bounds: Bounds,
+        layer_stack: std::ops::Range<usize>,
+    ) {
+        match target {
+            CubeRenderTarget::Main => FilterPipeline::composite_src_over_surface_stack_region(
+                &self.client,
+                &self.scene,
+                &self.scan,
+                &mut self.target,
+                source,
+                self.size,
+                source_size,
+                source_origin,
+                bounds,
+                layer_stack.start as u32,
+                layer_stack.end as u32,
+                self.max_group_depth,
+            ),
+            CubeRenderTarget::Scratch(target_ix) => {
+                FilterPipeline::composite_src_over_surface_stack_region(
+                    &self.client,
+                    &self.scene,
+                    &self.scan,
+                    &mut self.scratch[target_ix],
+                    source,
+                    self.size,
+                    source_size,
+                    source_origin,
+                    bounds,
+                    layer_stack.start as u32,
+                    layer_stack.end as u32,
+                    self.max_group_depth,
+                )
+            }
+        }
+    }
+
     fn composite_blend_with_stack(
         &mut self,
         target: CubeRenderTarget,
@@ -2172,46 +2426,6 @@ fn encode_color_filter(filter: &Filter) -> (u32, f32) {
     }
 }
 
-fn supported_filter_bounds(filter: &Filter, sample_region: &Region, size: (u32, u32)) -> Bounds {
-    let bounds = region_bounds(sample_region);
-    let outset = filter_outset(filter);
-    bounds
-        .outset(outset)
-        .intersect(Bounds::canvas(size.0, size.1))
-}
-
-fn filter_outset(filter: &Filter) -> i32 {
-    match filter {
-        Filter::Chain {
-            filters,
-            fixed_region,
-        } => {
-            if *fixed_region {
-                0
-            } else {
-                filters.iter().map(filter_outset).sum()
-            }
-        }
-        Filter::Blur { radius_x, radius_y } => blur_outset(radius_x.max(*radius_y)),
-        Filter::Offset { dx, dy } => dx.abs().ceil().max(dy.abs().ceil()) as i32,
-        Filter::Morphology {
-            radius_x,
-            radius_y,
-            operator,
-        } => match operator {
-            MorphologyOperator::Erode => 0,
-            MorphologyOperator::Dilate => (*radius_x).max(*radius_y).max(0.0).ceil() as i32,
-        },
-        Filter::DropShadow {
-            radius,
-            offset_x,
-            offset_y,
-            ..
-        } => blur_outset(*radius) + offset_x.abs().ceil().max(offset_y.abs().ceil()) as i32,
-        _ => 0,
-    }
-}
-
 fn next_filter_brush_index(cursor: &mut usize) -> u32 {
     let index = *cursor as u32;
     *cursor += 1;
@@ -2237,6 +2451,85 @@ fn next_filter_path_index(region: &Region, cursor: &mut usize) -> Option<u32> {
         Some(index)
     } else {
         None
+    }
+}
+
+fn advance_filter_layer_cursors(
+    sample_region: &Region,
+    children: &[ExecOp],
+    filter: &Filter,
+    cursors: &mut FilterCursors,
+) {
+    next_filter_path_index(sample_region, &mut cursors.path);
+    advance_filter_cursors_for_ops(children, cursors);
+    advance_filter_cursors_for_filter(filter, cursors);
+}
+
+fn advance_filter_cursors_for_ops(ops: &[ExecOp], cursors: &mut FilterCursors) {
+    for op in ops {
+        match op {
+            ExecOp::OffscreenLayer {
+                layer, children, ..
+            } => match layer {
+                Layer::Filter {
+                    filter,
+                    sample_region,
+                } => advance_filter_layer_cursors(sample_region, children, filter, cursors),
+                Layer::Backdrop {
+                    filter,
+                    sample_region,
+                } => {
+                    next_filter_path_index(sample_region, &mut cursors.path);
+                    advance_filter_cursors_for_filter(filter, cursors);
+                    advance_filter_cursors_for_ops(children, cursors);
+                }
+                _ => advance_filter_cursors_for_ops(children, cursors),
+            },
+            ExecOp::OffscreenMaskLayer {
+                layer,
+                content,
+                mask,
+                ..
+            } => {
+                next_filter_path_index(&layer.region, &mut cursors.path);
+                advance_filter_cursors_for_ops(content, cursors);
+                advance_filter_cursors_for_ops(mask, cursors);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn advance_filter_cursors_for_filter(filter: &Filter, cursors: &mut FilterCursors) {
+    match filter {
+        Filter::Chain { filters, .. } => {
+            for filter in filters {
+                advance_filter_cursors_for_filter(filter, cursors);
+            }
+        }
+        Filter::Graph { primitives, .. } => {
+            for primitive in primitives {
+                match &primitive.kind {
+                    FilterPrimitiveKind::Filter(filter) => {
+                        advance_filter_cursors_for_filter(filter, cursors)
+                    }
+                    FilterPrimitiveKind::Image { .. } => {
+                        next_filter_brush_index(&mut cursors.brush);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Filter::ComponentTransfer(_) => {
+            next_filter_transfer_index(&mut cursors.transfer);
+        }
+        Filter::ConvolveMatrix(matrix) => {
+            next_filter_convolve_offset(matrix, &mut cursors.convolve);
+        }
+        Filter::Flood { .. } | Filter::DropShadow { .. } => {
+            next_filter_brush_index(&mut cursors.brush);
+        }
+        _ => {}
     }
 }
 
@@ -2276,6 +2569,13 @@ impl FilterConvolveUpload {
         upload
     }
 
+    fn from_ops_and_filter(ops: &[ExecOp], filter: &Filter) -> Self {
+        let mut upload = Self::default();
+        collect_filter_convolves_for_ops(ops, &mut upload);
+        collect_filter_convolve(filter, &mut upload);
+        upload
+    }
+
     fn push_matrix(&mut self, matrix: &ConvolveMatrix) {
         self.kernels.extend_from_slice(&matrix.data);
     }
@@ -2306,6 +2606,13 @@ impl FilterTransferUpload {
     pub(super) fn from_plan(plan: &ExecPlan) -> Self {
         let mut upload = Self::default();
         collect_filter_transfers_for_ops(&plan.ops, &mut upload);
+        upload
+    }
+
+    fn from_ops_and_filter(ops: &[ExecOp], filter: &Filter) -> Self {
+        let mut upload = Self::default();
+        collect_filter_transfers_for_ops(ops, &mut upload);
+        collect_filter_transfer(filter, &mut upload);
         upload
     }
 
@@ -2564,10 +2871,6 @@ fn region_bounds(region: &Region) -> Bounds {
             )
         }
     }
-}
-
-fn blur_outset(radius: f32) -> i32 {
-    (radius.max(0.0) * 3.0).ceil() as i32
 }
 
 fn scratch_source_target(

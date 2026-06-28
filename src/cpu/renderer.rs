@@ -13,20 +13,24 @@ use crate::{
         computes::blend::{composite_blend_masked_at, composite_src_over_masked_at},
         computes::fine::{build_tile_alpha, combine_alpha},
         pipelines::{
-            coarse::CoarseCpuPipeline, cumsum::CumsumCpuPipeline, filter::FilterCpuPipeline,
-            fine::FineCpuPipeline, scan::ScanCpuPipeline,
+            coarse::CoarseCpuPipeline,
+            cumsum::CumsumCpuPipeline,
+            filter::FilterCpuPipeline,
+            fine::FineCpuPipeline,
+            scan::{ScanCpuPipeline, line_scanned_tile_count},
         },
     },
     debug::{DebugScanBuffers, RenderDebugCapture, RenderOptions, capture_render_debug},
     render::Render,
     shared::{
+        bd_record::BackdropRecord,
         bounds::Bounds,
         draw_record::DrawRecord,
         execution::{ExecOp, ExecPlan, LayerStackEntry},
         image::{Image, rgba8_pack},
-        layer::region::Region,
-        layer::{Layer, mask::MaskKind},
+        layer::{Layer, mask::MaskKind, region::Region},
         line_seg::LineSegment,
+        offscreen::local_offscreen_scene,
         pixel::{coverage_f32_to_u8, opacity_f32_to_u8},
         sdf::{Sdf, rect::Rect as SdfRect},
         tile_ptcl::{TilePtcl, TilePtclRange},
@@ -44,6 +48,11 @@ pub struct Renderer {
     filter: FilterCpuPipeline,
     size: (u32, u32),
 
+    main: RasterBuffers,
+}
+
+#[derive(Default)]
+struct RasterBuffers {
     backdrops: Vec<i32>,
     tile_segment_ranges: Vec<TileSegmentRange>,
     segments: Vec<LineSegment>,
@@ -52,6 +61,46 @@ pub struct Renderer {
     segment_tile_cursors: Vec<AtomicU32>,
     tile_ptcl_ranges: Vec<TilePtclRange>,
     tile_ptcls: Vec<TilePtcl>,
+}
+
+struct OffscreenSurface {
+    bounds: Bounds,
+    image: Image,
+    scene: crate::scene::Scene,
+    plan: ExecPlan,
+    children: Vec<ExecOp>,
+    buffers: RasterBuffers,
+}
+
+impl RasterBuffers {
+    fn clear_scan_outputs(&mut self) {
+        self.backdrops.clear();
+        self.tile_segment_ranges.clear();
+        self.segments.clear();
+        self.segment_tile_counts.clear();
+        self.segment_tile_cursors.clear();
+        self.segments_bump.clear();
+        self.tile_ptcl_ranges.clear();
+        self.tile_ptcls.clear();
+    }
+
+    fn resize_scan_outputs(&mut self, scene: &crate::scene::Scene, last_bd_record: BackdropRecord) {
+        let backdrop_len = last_bd_record.data_offset as usize + last_bd_record.data_len as usize;
+        let segment_len =
+            last_bd_record.segment_start as usize + last_bd_record.segment_capacity as usize;
+        self.backdrops.resize(backdrop_len, 0);
+        self.tile_segment_ranges
+            .resize(backdrop_len, TileSegmentRange::default());
+        self.segments.resize(segment_len, LineSegment::default());
+        self.segment_tile_counts.resize(backdrop_len, 0);
+        self.segment_tile_cursors
+            .resize_with(backdrop_len, || AtomicU32::new(0));
+        self.segments_bump
+            .resize_with(scene.bd_records.len(), || AtomicU32::new(0));
+        for bump in &self.segments_bump {
+            bump.store(0, Ordering::Relaxed);
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -101,92 +150,29 @@ impl Render for Renderer {
     }
 
     fn scan(&mut self, scene: &crate::scene::Scene, _: Self::ScanArgs<'_>) {
-        let Some(last_bd_record) = scene.bd_records.last().copied() else {
-            self.backdrops.clear();
-            self.tile_segment_ranges.clear();
-            self.segments.clear();
-            self.segment_tile_counts.clear();
-            self.segment_tile_cursors.clear();
-            self.segments_bump.clear();
-            return;
-        };
-        self.backdrops.resize(
-            last_bd_record.data_offset as usize + last_bd_record.data_len as usize,
-            0,
-        );
-        self.tile_segment_ranges.resize(
-            last_bd_record.data_offset as usize + last_bd_record.data_len as usize,
-            TileSegmentRange::default(),
-        );
-        self.segments.resize(
-            last_bd_record.segment_start as usize + last_bd_record.segment_capacity as usize,
-            LineSegment::default(),
-        );
-        self.segment_tile_counts.resize(
-            last_bd_record.data_offset as usize + last_bd_record.data_len as usize,
-            0,
-        );
-        self.segment_tile_cursors.resize_with(
-            last_bd_record.data_offset as usize + last_bd_record.data_len as usize,
-            || AtomicU32::new(0),
-        );
-        self.segments_bump
-            .resize_with(scene.bd_records.len(), || AtomicU32::new(0));
-        for bump in &self.segments_bump {
-            bump.store(0, Ordering::Relaxed);
-        }
-        self.scan
-            .prepare(
-                &scene.lines,
-                &scene.path_records,
-                &scene.bd_records,
-                &mut self.backdrops,
-                &mut self.tile_segment_ranges,
-                &mut self.segments,
-                &mut self.segments_bump,
-                &mut self.segment_tile_counts,
-                &mut self.segment_tile_cursors,
-                (scene.width_in_tiles(), scene.height_in_tiles()),
-            )
-            .run();
+        run_scan_pipeline(&self.scan, scene, &mut self.main);
     }
 
     fn cumsum(&mut self, scene: &crate::scene::Scene, _: Self::CumsumArgs<'_>) {
-        self.cumsum
-            .prepare(&mut self.backdrops, &scene.bd_records)
-            .run();
+        run_cumsum_pipeline(&self.cumsum, scene, &mut self.main);
     }
 
     fn coarse(&mut self, scene: &crate::scene::Scene, args: Self::CoarseArgs<'_>) {
         let (draw_records, draw_range, layer_stack_data, layer_stack_range) = args;
-        self.coarse
-            .prepare(
-                draw_records,
-                draw_range,
-                layer_stack_data,
-                layer_stack_range,
-                &scene.bd_records,
-                &self.backdrops,
-                &self.tile_segment_ranges,
-                &mut self.tile_ptcl_ranges,
-                &mut self.tile_ptcls,
-                (scene.width_in_tiles(), scene.height_in_tiles()),
-            )
-            .run();
+        run_coarse_pipeline(
+            &self.coarse,
+            scene,
+            draw_records,
+            draw_range,
+            layer_stack_data,
+            layer_stack_range,
+            &mut self.main,
+        );
     }
 
     fn fine(&mut self, scene: &crate::scene::Scene, target: Self::FineArgs<'_>) {
         let (target, target_bounds) = target;
-        self.fine
-            .prepare(
-                &self.tile_ptcl_ranges,
-                &self.tile_ptcls,
-                &self.segments,
-                target,
-                target_bounds,
-                (scene.width_in_tiles(), scene.height_in_tiles()),
-            )
-            .run();
+        run_fine_pipeline(&self.fine, scene, target, target_bounds, &self.main);
     }
 }
 
@@ -201,14 +187,7 @@ impl Renderer {
             fine: FineCpuPipeline::new(),
             filter: FilterCpuPipeline::new(),
             size: (width, height),
-            backdrops: Vec::new(),
-            tile_segment_ranges: Vec::new(),
-            segments: Vec::new(),
-            segments_bump: Vec::new(),
-            segment_tile_counts: Vec::new(),
-            segment_tile_cursors: Vec::new(),
-            tile_ptcl_ranges: Vec::new(),
-            tile_ptcls: Vec::new(),
+            main: RasterBuffers::default(),
         }
     }
 
@@ -228,9 +207,9 @@ impl Renderer {
             scene,
             &self.image,
             DebugScanBuffers {
-                backdrops: &self.backdrops,
-                tile_segment_ranges: &self.tile_segment_ranges,
-                segments: &self.segments,
+                backdrops: &self.main.backdrops,
+                tile_segment_ranges: &self.main.tile_segment_ranges,
+                segments: &self.main.segments,
             },
             options,
         )
@@ -284,13 +263,16 @@ impl Renderer {
     }
 
     fn execute_plan(&mut self, scene: &crate::scene::Scene, plan: &ExecPlan, target: &mut Image) {
+        let mut main = std::mem::take(&mut self.main);
         self.execute_ops(
             scene,
             plan,
             &plan.ops,
             target,
             Bounds::canvas(scene.width, scene.height),
+            &mut main,
         );
+        self.main = main;
     }
 
     fn execute_ops(
@@ -300,6 +282,7 @@ impl Renderer {
         ops: &[ExecOp],
         target: &mut Image,
         root_bounds: Bounds,
+        buffers: &mut RasterBuffers,
     ) {
         for op in ops {
             match op {
@@ -311,6 +294,7 @@ impl Renderer {
                     layer_stack.clone(),
                     target,
                     root_bounds,
+                    buffers,
                 ),
                 ExecOp::BeginClip
                 | ExecOp::EndClip
@@ -334,6 +318,7 @@ impl Renderer {
                     },
                     target,
                     root_bounds,
+                    buffers,
                 ),
                 ExecOp::OffscreenMaskLayer {
                     layer,
@@ -349,6 +334,7 @@ impl Renderer {
                     mask,
                     target,
                     root_bounds,
+                    buffers,
                 ),
             }
         }
@@ -361,6 +347,7 @@ impl Renderer {
         offscreen: OffscreenLayerRef<'_>,
         target: &mut Image,
         target_bounds: Bounds,
+        buffers: &mut RasterBuffers,
     ) {
         match offscreen.layer {
             Layer::Isolate => {
@@ -369,15 +356,16 @@ impl Renderer {
                     return;
                 }
                 let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
-                self.execute_ops(scene, plan, offscreen.children, &mut image, bounds);
+                self.execute_ops(scene, plan, offscreen.children, &mut image, bounds, buffers);
 
-                let mut mask = self.rasterize_layer_mask(scene, offscreen.draw, bounds);
+                let mut mask = self.rasterize_layer_mask(scene, offscreen.draw, bounds, buffers);
                 self.apply_outer_clip_stack_to_mask(
                     scene,
                     plan,
                     offscreen.outer_stack,
                     bounds,
                     &mut mask,
+                    buffers,
                 );
                 composite_src_over_masked_at(target, &image, &mask, bounds, target_bounds);
             }
@@ -387,9 +375,9 @@ impl Renderer {
                     return;
                 }
                 let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
-                self.execute_ops(scene, plan, offscreen.children, &mut image, bounds);
+                self.execute_ops(scene, plan, offscreen.children, &mut image, bounds, buffers);
 
-                let mut mask = self.rasterize_layer_mask(scene, offscreen.draw, bounds);
+                let mut mask = self.rasterize_layer_mask(scene, offscreen.draw, bounds, buffers);
                 apply_opacity_to_mask(&mut mask, opacity.opacity);
                 self.apply_outer_clip_stack_to_mask(
                     scene,
@@ -397,6 +385,7 @@ impl Renderer {
                     offscreen.outer_stack,
                     bounds,
                     &mut mask,
+                    buffers,
                 );
                 composite_src_over_masked_at(target, &image, &mask, bounds, target_bounds);
             }
@@ -406,15 +395,16 @@ impl Renderer {
                     return;
                 }
                 let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
-                self.execute_ops(scene, plan, offscreen.children, &mut image, bounds);
+                self.execute_ops(scene, plan, offscreen.children, &mut image, bounds, buffers);
 
-                let mut mask = self.rasterize_layer_mask(scene, offscreen.draw, bounds);
+                let mut mask = self.rasterize_layer_mask(scene, offscreen.draw, bounds, buffers);
                 self.apply_outer_clip_stack_to_mask(
                     scene,
                     plan,
                     offscreen.outer_stack,
                     bounds,
                     &mut mask,
+                    buffers,
                 );
                 composite_blend_masked_at(target, &image, &mask, bounds, target_bounds, blend.mode);
             }
@@ -427,7 +417,14 @@ impl Renderer {
                     target_bounds.height(),
                     Color::TRANSPARENT,
                 );
-                self.execute_ops(scene, plan, offscreen.children, &mut image, target_bounds);
+                self.execute_ops(
+                    scene,
+                    plan,
+                    offscreen.children,
+                    &mut image,
+                    target_bounds,
+                    buffers,
+                );
 
                 let mut mask = rasterize_sdf_mask(sdf, *bounds, target_bounds);
                 self.apply_outer_clip_stack_to_mask(
@@ -436,6 +433,7 @@ impl Renderer {
                     offscreen.outer_stack,
                     target_bounds,
                     &mut mask,
+                    buffers,
                 );
                 composite_src_over_masked_at(target, &image, &mask, target_bounds, target_bounds);
             }
@@ -443,26 +441,42 @@ impl Renderer {
                 filter,
                 sample_region,
             } => {
-                let bounds = self.filter.filtered_region_bounds(
-                    filter,
-                    sample_region,
-                    Bounds::canvas(scene.width, scene.height),
-                );
-                if bounds.is_empty() {
+                let Some(filter_bounds) =
+                    self.filter
+                        .surface_bounds(filter, sample_region, target_bounds)
+                else {
                     return;
-                }
-                let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
-                self.execute_ops(scene, plan, offscreen.children, &mut image, bounds);
-                self.filter.prepare(&mut image, filter, bounds).run();
-                let mut mask = Image::new(bounds.width(), bounds.height(), Color::WHITE);
+                };
+
+                let mut surface =
+                    OffscreenSurface::new(scene, plan, offscreen.children, filter_bounds.surface);
+                self.render_offscreen_surface(&mut surface);
+                self.filter
+                    .prepare(&mut surface.image, filter, filter_bounds.surface)
+                    .run();
+
+                let output =
+                    copy_image_region(&surface.image, filter_bounds.output, filter_bounds.surface);
+                let mut mask = Image::new(
+                    filter_bounds.output.width(),
+                    filter_bounds.output.height(),
+                    Color::WHITE,
+                );
                 self.apply_outer_clip_stack_to_mask(
                     scene,
                     plan,
                     offscreen.outer_stack,
-                    bounds,
+                    filter_bounds.output,
                     &mut mask,
+                    buffers,
                 );
-                composite_src_over_masked_at(target, &image, &mask, bounds, target_bounds);
+                composite_src_over_masked_at(
+                    target,
+                    &output,
+                    &mask,
+                    filter_bounds.output,
+                    target_bounds,
+                );
             }
             Layer::Backdrop {
                 filter,
@@ -487,6 +501,7 @@ impl Renderer {
                     offscreen.outer_stack.clone(),
                     bounds,
                     &mut backdrop_mask,
+                    buffers,
                 );
                 composite_src_over_masked_at(
                     target,
@@ -501,7 +516,14 @@ impl Renderer {
                     target_bounds.height(),
                     Color::TRANSPARENT,
                 );
-                self.execute_ops(scene, plan, offscreen.children, &mut content, target_bounds);
+                self.execute_ops(
+                    scene,
+                    plan,
+                    offscreen.children,
+                    &mut content,
+                    target_bounds,
+                    buffers,
+                );
                 let mut content_mask =
                     Image::new(target_bounds.width(), target_bounds.height(), Color::WHITE);
                 self.apply_outer_clip_stack_to_mask(
@@ -510,6 +532,7 @@ impl Renderer {
                     offscreen.outer_stack,
                     target_bounds,
                     &mut content_mask,
+                    buffers,
                 );
                 composite_src_over_masked_at(
                     target,
@@ -523,6 +546,19 @@ impl Renderer {
         }
     }
 
+    fn render_offscreen_surface(&mut self, surface: &mut OffscreenSurface) {
+        run_scan_pipeline(&self.scan, &surface.scene, &mut surface.buffers);
+        run_cumsum_pipeline(&self.cumsum, &surface.scene, &mut surface.buffers);
+        self.execute_ops(
+            &surface.scene,
+            &surface.plan,
+            &surface.children,
+            &mut surface.image,
+            Bounds::canvas(surface.bounds.width(), surface.bounds.height()),
+            &mut surface.buffers,
+        );
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn execute_mask_layer(
         &mut self,
@@ -534,6 +570,7 @@ impl Renderer {
         mask_ops: &[ExecOp],
         target: &mut Image,
         target_bounds: Bounds,
+        buffers: &mut RasterBuffers,
     ) {
         let bounds = region_bounds(&layer.region).intersect(target_bounds);
         if bounds.is_empty() {
@@ -541,17 +578,17 @@ impl Renderer {
         }
 
         let mut content = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
-        self.execute_ops(scene, plan, content_ops, &mut content, bounds);
+        self.execute_ops(scene, plan, content_ops, &mut content, bounds, buffers);
 
         let mut mask_source = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
-        self.execute_ops(scene, plan, mask_ops, &mut mask_source, bounds);
+        self.execute_ops(scene, plan, mask_ops, &mut mask_source, bounds, buffers);
         let mut mask = svg_mask_coverage(&mask_source, layer.kind);
         let region_mask = rasterize_region_mask(&layer.region, bounds);
         for (dst, src) in mask.pixels.iter_mut().zip(region_mask.pixels) {
             let alpha = combine_alpha(((*dst >> 24) & 0xff) as u8, ((src >> 24) & 0xff) as u8);
             *dst = rgba8_pack([alpha, alpha, alpha, alpha]);
         }
-        self.apply_outer_clip_stack_to_mask(scene, plan, outer_stack, bounds, &mut mask);
+        self.apply_outer_clip_stack_to_mask(scene, plan, outer_stack, bounds, &mut mask, buffers);
         composite_src_over_masked_at(target, &content, &mask, bounds, target_bounds);
     }
 
@@ -565,20 +602,21 @@ impl Renderer {
         layer_stack: std::ops::Range<usize>,
         target: &mut Image,
         target_bounds: Bounds,
+        buffers: &mut RasterBuffers,
     ) {
         if start >= end {
             return;
         }
-        self.coarse(
+        run_coarse_pipeline(
+            &self.coarse,
             scene,
-            (
-                &scene.draw_records,
-                start..end,
-                &plan.layer_stack_data,
-                layer_stack,
-            ),
+            &scene.draw_records,
+            start..end,
+            &plan.layer_stack_data,
+            layer_stack,
+            buffers,
         );
-        self.fine(scene, (target, target_bounds));
+        run_fine_pipeline(&self.fine, scene, target, target_bounds, buffers);
     }
 
     fn apply_outer_clip_stack_to_mask(
@@ -588,12 +626,13 @@ impl Renderer {
         outer_stack: std::ops::Range<usize>,
         bounds: Bounds,
         mask: &mut Image,
+        buffers: &RasterBuffers,
     ) {
         for entry in &plan.layer_stack_data[outer_stack] {
             let LayerStackEntry::Clip { draw } = *entry else {
                 continue;
             };
-            let clip = self.rasterize_layer_mask(scene, draw as usize, bounds);
+            let clip = self.rasterize_layer_mask(scene, draw as usize, bounds, buffers);
             for (dst, src) in mask.pixels.iter_mut().zip(clip.pixels) {
                 let alpha = combine_alpha(((*dst >> 24) & 0xff) as u8, ((src >> 24) & 0xff) as u8);
                 *dst = rgba8_pack([alpha, alpha, alpha, alpha]);
@@ -606,6 +645,7 @@ impl Renderer {
         scene: &crate::scene::Scene,
         draw_ix: usize,
         bounds: Bounds,
+        buffers: &RasterBuffers,
     ) -> Image {
         let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
         let draw = &scene.draw_records[draw_ix];
@@ -625,14 +665,14 @@ impl Renderer {
                 let local_y = tile_y - backdrop_record.tile_y0;
                 let local_ix = (local_y * stride + local_x) as usize;
                 let backdrop_ix = backdrop_record.data_offset as usize + local_ix;
-                let segment_range = self.tile_segment_ranges[backdrop_ix];
-                let backdrop = self.backdrops[backdrop_ix];
+                let segment_range = buffers.tile_segment_ranges[backdrop_ix];
+                let backdrop = buffers.backdrops[backdrop_ix];
                 if segment_range.start == segment_range.end && backdrop == 0 {
                     continue;
                 }
 
                 let alpha = build_tile_alpha(
-                    &self.segments[segment_range.start as usize..segment_range.end as usize],
+                    &buffers.segments[segment_range.start as usize..segment_range.end as usize],
                     backdrop,
                     draw.fill_rule,
                 );
@@ -666,9 +706,107 @@ impl Renderer {
     }
 }
 
+impl OffscreenSurface {
+    fn new(
+        scene: &crate::scene::Scene,
+        plan: &ExecPlan,
+        children: &[ExecOp],
+        bounds: Bounds,
+    ) -> Self {
+        let local = local_offscreen_scene(scene, plan, children, bounds, line_scanned_tile_count);
+        Self {
+            bounds,
+            image: Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT),
+            scene: local.scene,
+            plan: local.plan,
+            children: local.children,
+            buffers: RasterBuffers::default(),
+        }
+    }
+}
+
 fn draw_bounds(scene: &crate::scene::Scene, draw_ix: usize) -> Bounds {
     let bounds = scene.draw_records[draw_ix].pixel_bounds;
     Bounds::new(bounds.x0, bounds.y0, bounds.x1, bounds.y1)
+}
+
+fn run_scan_pipeline(
+    scan: &ScanCpuPipeline,
+    scene: &crate::scene::Scene,
+    buffers: &mut RasterBuffers,
+) {
+    let Some(last_bd_record) = scene.bd_records.last().copied() else {
+        buffers.clear_scan_outputs();
+        return;
+    };
+    buffers.resize_scan_outputs(scene, last_bd_record);
+    scan.prepare(
+        &scene.lines,
+        &scene.path_records,
+        &scene.bd_records,
+        &mut buffers.backdrops,
+        &mut buffers.tile_segment_ranges,
+        &mut buffers.segments,
+        &mut buffers.segments_bump,
+        &mut buffers.segment_tile_counts,
+        &mut buffers.segment_tile_cursors,
+        (scene.width_in_tiles(), scene.height_in_tiles()),
+    )
+    .run();
+}
+
+fn run_cumsum_pipeline(
+    cumsum: &CumsumCpuPipeline,
+    scene: &crate::scene::Scene,
+    buffers: &mut RasterBuffers,
+) {
+    cumsum
+        .prepare(&mut buffers.backdrops, &scene.bd_records)
+        .run();
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_coarse_pipeline(
+    coarse: &CoarseCpuPipeline,
+    scene: &crate::scene::Scene,
+    draw_records: &[DrawRecord],
+    draw_range: std::ops::Range<usize>,
+    layer_stack_data: &[LayerStackEntry],
+    layer_stack_range: std::ops::Range<usize>,
+    buffers: &mut RasterBuffers,
+) {
+    coarse
+        .prepare(
+            draw_records,
+            draw_range,
+            layer_stack_data,
+            layer_stack_range,
+            &scene.bd_records,
+            &buffers.backdrops,
+            &buffers.tile_segment_ranges,
+            &mut buffers.tile_ptcl_ranges,
+            &mut buffers.tile_ptcls,
+            (scene.width_in_tiles(), scene.height_in_tiles()),
+        )
+        .run();
+}
+
+fn run_fine_pipeline(
+    fine: &FineCpuPipeline,
+    scene: &crate::scene::Scene,
+    target: &mut Image,
+    target_bounds: Bounds,
+    buffers: &RasterBuffers,
+) {
+    fine.prepare(
+        &buffers.tile_ptcl_ranges,
+        &buffers.tile_ptcls,
+        &buffers.segments,
+        target,
+        target_bounds,
+        (scene.width_in_tiles(), scene.height_in_tiles()),
+    )
+    .run();
 }
 
 fn region_bounds(region: &Region) -> Bounds {
@@ -1179,6 +1317,43 @@ mod tests {
             expanded_px[1] < 245 && expanded_px[2] < 245,
             "expected blur outside sample region, got {expanded_px:?}"
         );
+    }
+
+    #[test]
+    fn filter_offset_preserves_source_outside_canvas() {
+        let mut scene = Scene::new(48, 16);
+        let source = Rect::new(-16.0, 0.0, 0.0, 16.0);
+        scene.push_filter_layer(
+            Filter::Offset { dx: 16.0, dy: 0.0 },
+            Region::rect(source, Radius::all(0.0)),
+        );
+        scene.push_rect(source, Color::from_rgb8(255, 0, 0), FillRule::NonZero);
+        scene.pop_layer();
+
+        let mut renderer = Renderer::new(48, 16, Color::TRANSPARENT);
+        renderer.render(&scene);
+
+        assert_eq!(renderer.image().rgba8_at(0, 8), [255, 0, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(15, 8), [255, 0, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(16, 8), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn filter_offset_with_huge_source_keeps_only_visible_dependency_window() {
+        let mut scene = Scene::new(64, 16);
+        let source = Rect::new(-100_000.0, 0.0, 100_000.0, 16.0);
+        scene.push_filter_layer(
+            Filter::Offset { dx: 20.0, dy: 0.0 },
+            Region::rect(source, Radius::all(0.0)),
+        );
+        scene.push_rect(source, Color::from_rgb8(0, 128, 0), FillRule::NonZero);
+        scene.pop_layer();
+
+        let mut renderer = Renderer::new(64, 16, Color::TRANSPARENT);
+        renderer.render(&scene);
+
+        assert_eq!(renderer.image().rgba8_at(0, 8), [0, 128, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(63, 8), [0, 128, 0, 255]);
     }
 
     #[test]

@@ -34,6 +34,21 @@ impl Bounds {
         }
     }
 
+    pub fn union(self, other: Bounds) -> Bounds {
+        if self.is_empty() {
+            return other;
+        }
+        if other.is_empty() {
+            return self;
+        }
+        Bounds {
+            x0: self.x0.min(other.x0),
+            y0: self.y0.min(other.y0),
+            x1: self.x1.max(other.x1),
+            y1: self.y1.max(other.y1),
+        }
+    }
+
     pub fn is_empty(self) -> bool {
         self.x0 >= self.x1 || self.y0 >= self.y1
     }
@@ -57,6 +72,15 @@ pub struct PixelBounds {
 }
 
 impl PixelBounds {
+    pub fn union(self, other: PixelBounds) -> PixelBounds {
+        PixelBounds {
+            x0: self.x0.min(other.x0),
+            y0: self.y0.min(other.y0),
+            x1: self.x1.max(other.x1),
+            y1: self.y1.max(other.y1),
+        }
+    }
+
     pub fn tile_bbox(&self, width_in_tiles: u32, height_in_tiles: u32) -> TileBbox {
         let tile_x0 = (self.x0.max(0) as u32 / TILE_SIZE).min(width_in_tiles);
         let tile_y0 = (self.y0.max(0) as u32 / TILE_SIZE).min(height_in_tiles);

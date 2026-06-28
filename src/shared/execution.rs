@@ -38,14 +38,14 @@ pub(crate) enum Command {
 /// `layer_stack_data` stores ordered fused layer stack snapshots referenced by
 /// `ExecOp::DrawBatch`. The coarse stage replays this stack into tile-local
 /// begin/end particles so fine owns clip, opacity, and blend semantics.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct ExecPlan {
     pub ops: Vec<ExecOp>,
     /// Batch-local fused layer stack snapshots in user nesting order.
     pub layer_stack_data: Vec<LayerStackEntry>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) enum ExecOp {
     DrawBatch {
         draws: Range<usize>,

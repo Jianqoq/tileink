@@ -62,6 +62,8 @@ pub struct Renderer<R: Runtime> {
     target: CubeBuffer<u32>,
     scratch: Vec<CubeBuffer<u32>>,
     scratch_in_use: Vec<bool>,
+    surface_sources: Vec<CubeBuffer<u32>>,
+    surface_origin: (i32, i32),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -149,6 +151,8 @@ impl<R: Runtime> Renderer<R> {
             target: CubeBuffer::new(&client, width as usize * height as usize),
             scratch: Vec::new(),
             scratch_in_use: Vec::new(),
+            surface_sources: Vec::new(),
+            surface_origin: (0, 0),
             client,
             clear_color,
             size: (width, height),
@@ -165,6 +169,8 @@ impl<R: Runtime> Renderer<R> {
     /// buffers are uploaded once per scene, and every compute output has fixed
     /// capacity before any kernel is launched.
     fn prepare_scene(&mut self, scene: &Scene) {
+        self.surface_sources.clear();
+        self.surface_origin = (0, 0);
         self.resize(scene.width, scene.height);
         let lengths = CubeBufferLengths::from_scene(scene);
         let plan = scene.compile(ROOT_COMMAND_LIST_ID);

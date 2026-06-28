@@ -1,4 +1,4 @@
-use peniko::{Compose, Mix, kurbo::Shape};
+use peniko::{Compose, Mix};
 
 use crate::shared::{
     bounds::Bounds,
@@ -12,7 +12,6 @@ use crate::shared::{
             FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator,
             SpecularLighting, filter_offset_to_pixel_delta,
         },
-        region::Region,
     },
     pixel::{pack_premul_rgba8, unpack_premul_rgba8},
 };
@@ -781,49 +780,6 @@ fn straight_rgba8(px: u32) -> [f32; 4] {
     }
 }
 
-pub(crate) fn filtered_region_bounds(
-    filter: &Filter,
-    sample_region: &Region,
-    canvas: Bounds,
-) -> Bounds {
-    let bounds = region_bounds(sample_region);
-    let outset = filter_outset(filter);
-    bounds.outset(outset).intersect(canvas)
-}
-
-fn filter_outset(filter: &Filter) -> i32 {
-    match filter {
-        Filter::Chain {
-            filters,
-            fixed_region,
-        } => {
-            if *fixed_region {
-                0
-            } else {
-                filters.iter().map(filter_outset).sum()
-            }
-        }
-        Filter::Graph { .. } => 0,
-        Filter::Blur { radius_x, radius_y } => blur_outset(radius_x.max(*radius_y)),
-        Filter::Offset { dx, dy } => dx.abs().ceil().max(dy.abs().ceil()) as i32,
-        Filter::Morphology {
-            radius_x,
-            radius_y,
-            operator,
-        } => match operator {
-            MorphologyOperator::Erode => 0,
-            MorphologyOperator::Dilate => (*radius_x).max(*radius_y).max(0.0).ceil() as i32,
-        },
-        Filter::DropShadow {
-            radius,
-            offset_x,
-            offset_y,
-            ..
-        } => blur_outset(*radius) + offset_x.abs().ceil().max(offset_y.abs().ceil()) as i32,
-        _ => 0,
-    }
-}
-
 fn apply_color_filter_pixel(px: u32, filter: &Filter, amount: f32) -> u32 {
     let mut c = unpack_premul_rgba8(px);
     if matches!(filter, Filter::Opacity(_)) {
@@ -1128,28 +1084,6 @@ fn blur_pass(image: &Image, kernel: &[f32], axis: Axis) -> Vec<u32> {
         }
     }
     out
-}
-
-fn region_bounds(region: &Region) -> Bounds {
-    match region {
-        Region::Rect { rect, .. } => Bounds::new(
-            rect.x0.floor() as i32,
-            rect.y0.floor() as i32,
-            rect.x1.ceil() as i32,
-            rect.y1.ceil() as i32,
-        ),
-        Region::Path {
-            path, transform, ..
-        } => {
-            let rect = transform.transform_rect_bbox(path.bounding_box());
-            Bounds::new(
-                rect.x0.floor() as i32,
-                rect.y0.floor() as i32,
-                rect.x1.ceil() as i32,
-                rect.y1.ceil() as i32,
-            )
-        }
-    }
 }
 
 fn blur_outset(radius: f32) -> i32 {

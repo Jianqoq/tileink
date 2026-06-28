@@ -46,6 +46,10 @@ impl<'a> ScanCpuPrepared<'a> {
                 };
                 let tile_count = backdrop_record.data_len as usize;
                 let data_offset = backdrop_record.data_offset as usize;
+                if tile_count == 0 {
+                    debug_assert_eq!(bbox.tile_count(), 0);
+                    return;
+                }
 
                 let backdrop_ptr = backdrops as *mut i32;
                 let backdrops =
@@ -311,6 +315,15 @@ fn for_each_scanned_tile(
         });
         last_z = z;
     }
+}
+
+pub(crate) fn line_scanned_tile_count(line: Line, bbox: TileBbox, tiles_size: (u32, u32)) -> u32 {
+    let Some(plan) = plan_scan_line(line, bbox) else {
+        return 0;
+    };
+    let mut count = 0;
+    for_each_scanned_tile(&plan, bbox, tiles_size, |_| count += 1);
+    count
 }
 
 pub(crate) fn plan_scan_line(line: Line, bbox: TileBbox) -> Option<ScanLinePlan> {
@@ -717,6 +730,59 @@ mod tests {
         };
 
         assert!(plan_scan_line(line, bbox).is_none());
+    }
+
+    #[test]
+    fn run_skips_zero_tile_backdrop_record() {
+        let lines = [Line {
+            path_id: 0,
+            _pad: 0.0,
+            p0: [0.0, 0.0],
+            p1: [0.0, 16.0],
+        }];
+        let path_records = [PathRecord {
+            path_id: 0,
+            line_count: 1,
+            line_start: 0,
+            _pad: 0,
+        }];
+        let backdrop_records = [BackdropRecord {
+            path_id: 0,
+            data_offset: 0,
+            data_len: 0,
+            tile_x0: 0,
+            tile_y0: 0,
+            tile_x1: 0,
+            tile_y1: 0,
+            segment_start: 0,
+            segment_capacity: 0,
+            segment_count: 0,
+        }];
+        let mut backdrops = Vec::new();
+        let mut tile_segment_ranges = Vec::new();
+        let mut segments = Vec::new();
+        let mut segments_bump = vec![AtomicU32::new(0)];
+        let mut segment_tile_counts = Vec::new();
+        let mut segment_tile_cursors = Vec::new();
+
+        ScanCpuPipeline::new()
+            .prepare(
+                &lines,
+                &path_records,
+                &backdrop_records,
+                &mut backdrops,
+                &mut tile_segment_ranges,
+                &mut segments,
+                &mut segments_bump,
+                &mut segment_tile_counts,
+                &mut segment_tile_cursors,
+                (1, 1),
+            )
+            .run();
+
+        assert!(backdrops.is_empty());
+        assert!(tile_segment_ranges.is_empty());
+        assert!(segments.is_empty());
     }
 
     #[test]

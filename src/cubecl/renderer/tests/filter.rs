@@ -690,6 +690,53 @@ fn filter_wgpu_offsets_filter_buffer_when_enabled() {
 }
 
 #[test]
+fn filter_wgpu_offset_preserves_source_outside_canvas_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(48, 16);
+    let source = Rect::new(-16.0, 0.0, 0.0, 16.0);
+    scene.push_filter_layer(
+        Filter::Offset { dx: 16.0, dy: 0.0 },
+        Region::rect(source, Radius::all(0.0)),
+    );
+    scene.push_rect(source, Color::from_rgb8(255, 0, 0), FillRule::NonZero);
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(48, 16, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+
+    assert_eq!(target[pixel_ix(0, 8, 48)], rgba8_pack([255, 0, 0, 255]));
+    assert_eq!(target[pixel_ix(15, 8, 48)], rgba8_pack([255, 0, 0, 255]));
+    assert_eq!(target[pixel_ix(16, 8, 48)], 0);
+}
+
+#[test]
+fn filter_wgpu_offset_with_huge_source_keeps_visible_dependency_window_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(64, 16);
+    let source = Rect::new(-100_000.0, 0.0, 100_000.0, 16.0);
+    scene.push_filter_layer(
+        Filter::Offset { dx: 20.0, dy: 0.0 },
+        Region::rect(source, Radius::all(0.0)),
+    );
+    scene.push_rect(source, Color::from_rgb8(0, 128, 0), FillRule::NonZero);
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(64, 16, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+
+    assert_eq!(target[pixel_ix(0, 8, 64)], rgba8_pack([0, 128, 0, 255]));
+    assert_eq!(target[pixel_ix(63, 8, 64)], rgba8_pack([0, 128, 0, 255]));
+}
+
+#[test]
 fn filter_wgpu_applies_color_matrix_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;
@@ -838,6 +885,41 @@ fn filter_wgpu_applies_diffuse_lighting_when_enabled() {
         center[0].abs_diff(180) <= 1 && center[1] == 0 && center[2] == 0 && center[3] == 255,
         "expected red diffuse lighting at alpha slope center, got {center:?}"
     );
+}
+
+#[test]
+fn filter_wgpu_point_light_uses_world_coords_for_translated_filter_surface_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(64, 8);
+    scene.push_filter_layer(
+        Filter::DiffuseLighting(DiffuseLighting {
+            surface_scale: 0.0,
+            diffuse_constant: 1.0,
+            lighting_color: [1.0, 1.0, 1.0],
+            light_source: LightSource::Point {
+                x: 45.5,
+                y: 2.5,
+                z: 1.0,
+            },
+        }),
+        Region::rect(Rect::new(40.0, 0.0, 60.0, 8.0), Radius::all(0.0)),
+    );
+    scene.push_rect(
+        Rect::new(40.0, 0.0, 60.0, 8.0),
+        Color::BLACK,
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(64, 8, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+    let lit = unpack_rgba8(target[pixel_ix(45, 2, 64)]);
+
+    assert_eq!(lit, [255, 255, 255, 255]);
 }
 
 #[test]

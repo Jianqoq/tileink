@@ -1,9 +1,12 @@
 use crate::{
-    cpu::computes::filter,
+    cpu::computes::filter as filter_compute,
     shared::{
         bounds::Bounds,
         image::Image,
-        layer::{filter::Filter, region::Region},
+        layer::{
+            filter::{self as filter_model, Filter, FilterSurfaceBounds},
+            region::Region,
+        },
     },
 };
 
@@ -17,7 +20,7 @@ pub struct FilterCpuPrepared<'a> {
 
 impl<'a> FilterCpuPrepared<'a> {
     pub fn run(&mut self) {
-        filter::apply(self.image, self.filter, self.bounds);
+        filter_compute::apply(self.image, self.filter, self.bounds);
     }
 }
 
@@ -45,6 +48,15 @@ impl FilterCpuPipeline {
         sample_region: &Region,
         canvas: Bounds,
     ) -> Bounds {
-        filter::filtered_region_bounds(filter, sample_region, canvas)
+        filter_model::filtered_region_bounds(filter, sample_region, canvas)
+    }
+
+    pub fn surface_bounds(
+        &self,
+        filter: &Filter,
+        sample_region: &Region,
+        target_bounds: Bounds,
+    ) -> Option<FilterSurfaceBounds> {
+        filter_model::filter_surface_bounds(filter, sample_region, target_bounds)
     }
 }
