@@ -26,6 +26,10 @@
 - If a suspected bug is found while coding, add a focused test first, then fix it.
 - Temporary diagnostic tests are allowed but must be removed before finishing unless they become permanent regression tests.
 
+## Debug
+
+- use renderer and `render_with_options` to capture debug info, you may need to write a temp rust function yourself to debug
+
 ## Completion policy
 
 After each feature or bug fix:
