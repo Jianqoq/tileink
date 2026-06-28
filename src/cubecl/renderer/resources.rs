@@ -15,10 +15,11 @@ use ::cubecl::prelude::Runtime;
 use crate::cubecl::{
     buffer::CubeBuffer,
     types::{
-        CUBE_DRAW_BLEND, CUBE_DRAW_BRUSH, CUBE_DRAW_CLIP, CUBE_DRAW_OPACITY, CUBE_LAYER_BLEND,
-        CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY, CUBE_SDF_CIRCLE, CUBE_SDF_CIRCLE_STROKE,
-        CUBE_SDF_NONE, CUBE_SDF_RECT, CUBE_SDF_RECT_STROKE, CubeBufferLengths, CubeCumsumPlan,
-        CubeScanChunk, CubeScanChunkRange, build_cumsum_plan_into, build_scan_chunks_into,
+        CUBE_DRAW_BLEND, CUBE_DRAW_BRUSH, CUBE_DRAW_CLIP, CUBE_DRAW_ISOLATE, CUBE_DRAW_OPACITY,
+        CUBE_LAYER_BLEND, CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY, CUBE_SDF_CIRCLE,
+        CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_NONE, CUBE_SDF_RECT, CUBE_SDF_RECT_STROKE,
+        CubeBufferLengths, CubeCumsumPlan, CubeScanChunk, CubeScanChunkRange,
+        build_cumsum_plan_into, build_scan_chunks_into,
     },
 };
 
@@ -486,6 +487,7 @@ impl SceneBuffers {
             |draw| match draw.tag {
                 DrawTag::Brush => CUBE_DRAW_BRUSH,
                 DrawTag::Clip => CUBE_DRAW_CLIP,
+                DrawTag::Isolate => CUBE_DRAW_ISOLATE,
                 DrawTag::Opacity => CUBE_DRAW_OPACITY,
                 DrawTag::Blend => CUBE_DRAW_BLEND,
             },

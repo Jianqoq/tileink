@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use peniko::BlendMode;
 
-use crate::shared::layer::Layer;
+use crate::shared::layer::{Layer, mask::Mask};
 
 pub(crate) type CommandListId = usize;
 pub(crate) const ROOT_COMMAND_LIST_ID: CommandListId = 0;
@@ -25,6 +25,11 @@ pub(crate) enum Command {
         draw: usize,
         layer: Layer,
         children: CommandListId,
+    },
+    MaskLayer {
+        layer: Mask,
+        content: CommandListId,
+        mask: CommandListId,
     },
 }
 
@@ -59,5 +64,11 @@ pub(crate) enum ExecOp {
         layer: Layer,
         outer_stack: Range<usize>,
         children: Vec<ExecOp>,
+    },
+    OffscreenMaskLayer {
+        layer: Mask,
+        outer_stack: Range<usize>,
+        content: Vec<ExecOp>,
+        mask: Vec<ExecOp>,
     },
 }

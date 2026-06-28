@@ -1,5 +1,6 @@
 pub(crate) mod blend;
 pub mod filter;
+pub mod mask;
 pub(crate) mod opacity;
 pub mod region;
 
@@ -16,6 +17,7 @@ pub enum Layer {
         sdf: Sdf,
         bounds: Bounds,
     },
+    Isolate,
     Opacity(Opacity),
     Blend(Blend),
     Filter {
@@ -33,8 +35,10 @@ pub enum LayerKind {
     Root,
     Clip,
     ClipSdf,
+    Isolate,
     Opacity,
     Blend,
+    Mask,
     Filter,
     Backdrop,
 }

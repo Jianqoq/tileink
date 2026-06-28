@@ -13,6 +13,7 @@ use crate::{
                 DiffuseLighting, Filter, FilterInput, FilterPrimitive, FilterPrimitiveKind,
                 LightSource, MorphologyOperator, SpecularLighting,
             },
+            mask::MaskKind,
             region::Region,
         },
         path_flatten::PathFlatten,
@@ -26,6 +27,7 @@ use crate::cubecl::{
         filter::{
             FILTER_BRIGHTNESS, FILTER_CONTRAST, FILTER_GRAYSCALE, FILTER_HUE_ROTATE, FILTER_INVERT,
             FILTER_OPACITY, FILTER_SATURATE, FILTER_SEPIA, FilterPathResources, FilterPipeline,
+            SVG_MASK_ALPHA, SVG_MASK_LUMINANCE,
         },
         fine::FinePipeline,
     },
@@ -114,6 +116,21 @@ impl<R: Runtime> Renderer<R> {
                     target,
                     filter_cursors,
                 ),
+                ExecOp::OffscreenMaskLayer {
+                    layer,
+                    outer_stack,
+                    content,
+                    mask,
+                } => self.execute_mask_layer(
+                    scene,
+                    plan,
+                    layer,
+                    outer_stack.clone(),
+                    content,
+                    mask,
+                    target,
+                    filter_cursors,
+                ),
             }
         }
     }
@@ -151,6 +168,23 @@ impl<R: Runtime> Renderer<R> {
         filter_cursors: &mut FilterCursors,
     ) {
         match layer {
+            Layer::Isolate => {
+                let bounds =
+                    draw_bounds(scene, draw).intersect(Bounds::canvas(self.size.0, self.size.1));
+                if bounds.is_empty() {
+                    return;
+                }
+                let source = self.acquire_scratch();
+                self.clear_buffer(source, 0);
+                self.execute_ops(scene, plan, children, source, filter_cursors);
+
+                let mask = self.acquire_scratch();
+                self.clear_buffer(mask, 0);
+                self.build_layer_mask(mask, draw as u32, bounds);
+                self.composite_src_over_with_stack(target, source, Some(mask), bounds, outer_stack);
+                self.release_scratch(mask);
+                self.release_scratch(source);
+            }
             Layer::Opacity(opacity) => {
                 let bounds =
                     draw_bounds(scene, draw).intersect(Bounds::canvas(self.size.0, self.size.1));
@@ -248,6 +282,49 @@ impl<R: Runtime> Renderer<R> {
                 "CubeCL offscreen execution only accepts Opacity, Filter, and Backdrop layers"
             ),
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn execute_mask_layer(
+        &mut self,
+        scene: &Scene,
+        plan: &ExecPlan,
+        layer: &crate::shared::layer::mask::Mask,
+        outer_stack: std::ops::Range<usize>,
+        content_ops: &[ExecOp],
+        mask_ops: &[ExecOp],
+        target: CubeRenderTarget,
+        filter_cursors: &mut FilterCursors,
+    ) {
+        let bounds =
+            region_bounds(&layer.region).intersect(Bounds::canvas(self.size.0, self.size.1));
+        if bounds.is_empty() {
+            return;
+        }
+        let path_index = next_filter_path_index(&layer.region, &mut filter_cursors.path);
+
+        let content = self.acquire_scratch();
+        self.clear_buffer(content, 0);
+        self.execute_ops(scene, plan, content_ops, content, filter_cursors);
+
+        let mask_source = self.acquire_scratch();
+        self.clear_buffer(mask_source, 0);
+        self.execute_ops(scene, plan, mask_ops, mask_source, filter_cursors);
+
+        let mask = self.acquire_scratch();
+        self.clear_buffer(mask, 0);
+        self.svg_mask_coverage(mask_source, mask, bounds, layer.kind);
+        self.release_scratch(mask_source);
+
+        let region_mask = self.acquire_scratch();
+        self.clear_buffer(region_mask, 0);
+        self.build_region_mask(region_mask, &layer.region, path_index, bounds);
+        self.apply_region_mask(region_mask, mask, bounds);
+        self.release_scratch(region_mask);
+
+        self.composite_src_over_with_stack(target, content, Some(mask), bounds, outer_stack);
+        self.release_scratch(mask);
+        self.release_scratch(content);
     }
 
     pub(crate) fn acquire_scratch(&mut self) -> CubeRenderTarget {
@@ -1689,6 +1766,46 @@ impl<R: Runtime> Renderer<R> {
             draw,
         );
     }
+
+    fn svg_mask_coverage(
+        &mut self,
+        source: CubeRenderTarget,
+        target: CubeRenderTarget,
+        bounds: Bounds,
+        kind: MaskKind,
+    ) {
+        let kind = encode_mask_kind(kind);
+        match (source, target) {
+            (CubeRenderTarget::Scratch(source_ix), CubeRenderTarget::Scratch(target_ix)) => {
+                let (source, target) =
+                    scratch_source_target(&mut self.scratch, source_ix, target_ix);
+                FilterPipeline::svg_mask_coverage_region(
+                    &self.client,
+                    source,
+                    target,
+                    self.size,
+                    bounds,
+                    kind,
+                );
+            }
+            _ => panic!("CubeCL SVG mask coverage requires scratch source and target"),
+        }
+    }
+
+    fn apply_region_mask(
+        &mut self,
+        mask: CubeRenderTarget,
+        target: CubeRenderTarget,
+        bounds: Bounds,
+    ) {
+        match (mask, target) {
+            (CubeRenderTarget::Scratch(mask_ix), CubeRenderTarget::Scratch(target_ix)) => {
+                let (mask, target) = scratch_source_target(&mut self.scratch, mask_ix, target_ix);
+                FilterPipeline::apply_region_mask(&self.client, mask, target, self.size, bounds);
+            }
+            _ => panic!("CubeCL region mask application requires scratch buffers"),
+        }
+    }
 }
 
 fn draw_bounds(scene: &Scene, draw_ix: usize) -> Bounds {
@@ -1723,10 +1840,37 @@ fn plan_stack_depths_for_ops(ops: &[ExecOp], plan: &ExecPlan) -> (usize, usize) 
                 max_clip_depth = max_clip_depth.max(clip_depth).max(child_clip_depth);
                 max_group_depth = max_group_depth.max(group_depth).max(child_group_depth);
             }
+            ExecOp::OffscreenMaskLayer {
+                outer_stack,
+                content,
+                mask,
+                ..
+            } => {
+                let (clip_depth, group_depth) =
+                    layer_stack_depths(&plan.layer_stack_data[outer_stack.clone()]);
+                let (content_clip_depth, content_group_depth) =
+                    plan_stack_depths_for_ops(content, plan);
+                let (mask_clip_depth, mask_group_depth) = plan_stack_depths_for_ops(mask, plan);
+                max_clip_depth = max_clip_depth
+                    .max(clip_depth)
+                    .max(content_clip_depth)
+                    .max(mask_clip_depth);
+                max_group_depth = max_group_depth
+                    .max(group_depth)
+                    .max(content_group_depth)
+                    .max(mask_group_depth);
+            }
             _ => {}
         }
     }
     (max_clip_depth, max_group_depth)
+}
+
+fn encode_mask_kind(kind: MaskKind) -> u32 {
+    match kind {
+        MaskKind::Alpha => SVG_MASK_ALPHA,
+        MaskKind::Luminance => SVG_MASK_LUMINANCE,
+    }
 }
 
 fn layer_stack_depths(entries: &[LayerStackEntry]) -> (usize, usize) {
@@ -1754,20 +1898,14 @@ pub(super) fn required_scratch_count(plan: &ExecPlan) -> usize {
 fn max_scratch_for_ops(ops: &[ExecOp], held: usize) -> usize {
     let mut max_count = held;
     for op in ops {
-        if let ExecOp::OffscreenLayer {
-            layer,
-            outer_stack,
-            children,
-            ..
-        } = op
-        {
-            match layer {
-                Layer::Opacity(_) => {
-                    let source_held = held + 1;
-                    max_count = max_count.max(source_held + 1);
-                    max_count = max_count.max(max_scratch_for_ops(children, source_held));
-                }
-                Layer::Blend(_) => {
+        match op {
+            ExecOp::OffscreenLayer {
+                layer,
+                outer_stack,
+                children,
+                ..
+            } => match layer {
+                Layer::Isolate | Layer::Opacity(_) | Layer::Blend(_) => {
                     let source_held = held + 1;
                     max_count = max_count.max(source_held + 1);
                     max_count = max_count.max(max_scratch_for_ops(children, source_held));
@@ -1790,7 +1928,15 @@ fn max_scratch_for_ops(ops: &[ExecOp], held: usize) -> usize {
                 _ => {
                     max_count = max_count.max(max_scratch_for_ops(children, held));
                 }
+            },
+            ExecOp::OffscreenMaskLayer { content, mask, .. } => {
+                let content_held = held + 1;
+                max_count = max_count.max(max_scratch_for_ops(content, content_held));
+                let mask_source_held = held + 2;
+                max_count = max_count.max(mask_source_held + 1);
+                max_count = max_count.max(max_scratch_for_ops(mask, mask_source_held));
             }
+            _ => {}
         }
     }
     max_count
@@ -2205,28 +2351,37 @@ fn encode_filter_path_coord(value: f32) -> i32 {
 
 fn collect_filter_paths_for_ops(ops: &[ExecOp], upload: &mut FilterPathUpload) {
     for op in ops {
-        if let ExecOp::OffscreenLayer {
-            layer, children, ..
-        } = op
-        {
-            match layer {
+        match op {
+            ExecOp::OffscreenLayer {
+                layer, children, ..
+            } => match layer {
                 Layer::Filter { sample_region, .. } | Layer::Backdrop { sample_region, .. } => {
                     upload.push_region(sample_region);
                     collect_filter_paths_for_ops(children, upload);
                 }
                 _ => collect_filter_paths_for_ops(children, upload),
+            },
+            ExecOp::OffscreenMaskLayer {
+                layer,
+                content,
+                mask,
+                ..
+            } => {
+                upload.push_region(&layer.region);
+                collect_filter_paths_for_ops(content, upload);
+                collect_filter_paths_for_ops(mask, upload);
             }
+            _ => {}
         }
     }
 }
 
 fn collect_filter_transfers_for_ops(ops: &[ExecOp], upload: &mut FilterTransferUpload) {
     for op in ops {
-        if let ExecOp::OffscreenLayer {
-            layer, children, ..
-        } = op
-        {
-            match layer {
+        match op {
+            ExecOp::OffscreenLayer {
+                layer, children, ..
+            } => match layer {
                 Layer::Filter { filter, .. } => {
                     collect_filter_transfers_for_ops(children, upload);
                     collect_filter_transfer(filter, upload);
@@ -2236,18 +2391,22 @@ fn collect_filter_transfers_for_ops(ops: &[ExecOp], upload: &mut FilterTransferU
                     collect_filter_transfers_for_ops(children, upload);
                 }
                 _ => collect_filter_transfers_for_ops(children, upload),
+            },
+            ExecOp::OffscreenMaskLayer { content, mask, .. } => {
+                collect_filter_transfers_for_ops(content, upload);
+                collect_filter_transfers_for_ops(mask, upload);
             }
+            _ => {}
         }
     }
 }
 
 fn collect_filter_convolves_for_ops(ops: &[ExecOp], upload: &mut FilterConvolveUpload) {
     for op in ops {
-        if let ExecOp::OffscreenLayer {
-            layer, children, ..
-        } = op
-        {
-            match layer {
+        match op {
+            ExecOp::OffscreenLayer {
+                layer, children, ..
+            } => match layer {
                 Layer::Filter { filter, .. } => {
                     collect_filter_convolves_for_ops(children, upload);
                     collect_filter_convolve(filter, upload);
@@ -2257,7 +2416,12 @@ fn collect_filter_convolves_for_ops(ops: &[ExecOp], upload: &mut FilterConvolveU
                     collect_filter_convolves_for_ops(children, upload);
                 }
                 _ => collect_filter_convolves_for_ops(children, upload),
+            },
+            ExecOp::OffscreenMaskLayer { content, mask, .. } => {
+                collect_filter_convolves_for_ops(content, upload);
+                collect_filter_convolves_for_ops(mask, upload);
             }
+            _ => {}
         }
     }
 }

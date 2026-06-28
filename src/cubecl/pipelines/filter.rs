@@ -10,8 +10,8 @@ use crate::{
         },
         renderer::{ScanBuffers, SceneBuffers},
         types::{
-            CUBE_DRAW_BLEND, CUBE_DRAW_BRUSH, CUBE_DRAW_CLIP, CUBE_DRAW_OPACITY, CUBE_LAYER_BLEND,
-            CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY,
+            CUBE_DRAW_BLEND, CUBE_DRAW_BRUSH, CUBE_DRAW_CLIP, CUBE_DRAW_ISOLATE, CUBE_DRAW_OPACITY,
+            CUBE_LAYER_BLEND, CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY,
         },
     },
     shared::bounds::Bounds,
@@ -31,6 +31,8 @@ pub(crate) const FILTER_INVERT: u32 = 5;
 pub(crate) const FILTER_OPACITY: u32 = 6;
 pub(crate) const FILTER_SATURATE: u32 = 7;
 pub(crate) const FILTER_SEPIA: u32 = 8;
+pub(crate) const SVG_MASK_ALPHA: u32 = 0;
+pub(crate) const SVG_MASK_LUMINANCE: u32 = 1;
 
 pub(crate) struct FilterPathResources<'a> {
     pub(crate) range_starts: &'a CubeBuffer<u32>,
@@ -110,6 +112,56 @@ impl FilterPipeline {
             region.y0,
             size.0,
             unsafe { source.arg() },
+            unsafe { target.arg() },
+        );
+    }
+
+    pub(crate) fn svg_mask_coverage_region<R: Runtime>(
+        client: &ComputeClient<R>,
+        source: &CubeBuffer<u32>,
+        target: &mut CubeBuffer<u32>,
+        size: (u32, u32),
+        bounds: Bounds,
+        kind: u32,
+    ) {
+        let Some(region) = FilterRegion::new(size, bounds) else {
+            return;
+        };
+        filter_svg_mask_coverage_region::launch::<R>(
+            client,
+            cube_count(region.pixel_count),
+            CubeDim::new_1d(FILTER_WORKGROUP_SIZE),
+            region.pixel_count,
+            region.width,
+            region.x0,
+            region.y0,
+            size.0,
+            kind,
+            unsafe { source.arg() },
+            unsafe { target.arg() },
+        );
+    }
+
+    pub(crate) fn apply_region_mask<R: Runtime>(
+        client: &ComputeClient<R>,
+        mask: &CubeBuffer<u32>,
+        target: &mut CubeBuffer<u32>,
+        size: (u32, u32),
+        bounds: Bounds,
+    ) {
+        let Some(region) = FilterRegion::new(size, bounds) else {
+            return;
+        };
+        filter_apply_region_mask::launch::<R>(
+            client,
+            cube_count(region.pixel_count),
+            CubeDim::new_1d(FILTER_WORKGROUP_SIZE),
+            region.pixel_count,
+            region.width,
+            region.x0,
+            region.y0,
+            size.0,
+            unsafe { mask.arg() },
             unsafe { target.arg() },
         );
     }
@@ -924,6 +976,65 @@ fn filter_source_alpha_region(
     let y = region_y0 + region_ix / region_width;
     let ix = (y * image_width + x) as usize;
     target[ix] = source[ix] & 0xff00_0000u32;
+}
+
+#[cube(launch)]
+fn filter_svg_mask_coverage_region(
+    pixel_count: u32,
+    region_width: u32,
+    region_x0: u32,
+    region_y0: u32,
+    image_width: u32,
+    kind: u32,
+    source: &Array<u32>,
+    target: &mut Array<u32>,
+) {
+    let region_ix = ABSOLUTE_POS as u32;
+    if region_ix >= pixel_count {
+        terminate!();
+    }
+    let x = region_x0 + region_ix % region_width;
+    let y = region_y0 + region_ix / region_width;
+    let ix = (y * image_width + x) as usize;
+    let px = source[ix];
+    let a = px >> 24;
+    let mut mask_alpha = a;
+    if kind == SVG_MASK_LUMINANCE {
+        let mut safe_a = a;
+        if safe_a == 0 {
+            safe_a = 1;
+        }
+        let r = px & 255;
+        let g = (px >> 8) & 255;
+        let b = (px >> 16) & 255;
+        let straight_r = (r * 255 + safe_a / 2) / safe_a;
+        let straight_g = (g * 255 + safe_a / 2) / safe_a;
+        let straight_b = (b * 255 + safe_a / 2) / safe_a;
+        mask_alpha = ((2126 * straight_r + 7152 * straight_g + 722 * straight_b) * a + 1_275_000)
+            / 2_550_000;
+    }
+    target[ix] = (mask_alpha << 24) | (mask_alpha << 16) | (mask_alpha << 8) | mask_alpha;
+}
+
+#[cube(launch)]
+fn filter_apply_region_mask(
+    pixel_count: u32,
+    region_width: u32,
+    region_x0: u32,
+    region_y0: u32,
+    image_width: u32,
+    mask: &Array<u32>,
+    target: &mut Array<u32>,
+) {
+    let region_ix = ABSOLUTE_POS as u32;
+    if region_ix >= pixel_count {
+        terminate!();
+    }
+    let x = region_x0 + region_ix % region_width;
+    let y = region_y0 + region_ix / region_width;
+    let ix = (y * image_width + x) as usize;
+    let alpha = combine_alpha(target[ix] >> 24, mask[ix] >> 24);
+    target[ix] = (alpha << 24) | (alpha << 16) | (alpha << 8) | alpha;
 }
 
 #[cube(launch)]
@@ -2259,6 +2370,9 @@ fn filter_draw_backdrop_ix(
         valid_draw = true;
     }
     if draw_tag == CUBE_DRAW_BLEND {
+        valid_draw = true;
+    }
+    if draw_tag == CUBE_DRAW_ISOLATE {
         valid_draw = true;
     }
 

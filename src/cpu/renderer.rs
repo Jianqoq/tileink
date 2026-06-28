@@ -24,8 +24,8 @@ use crate::{
         draw_record::DrawRecord,
         execution::{ExecOp, ExecPlan, LayerStackEntry},
         image::{Image, rgba8_pack},
-        layer::Layer,
         layer::region::Region,
+        layer::{Layer, mask::MaskKind},
         line_seg::LineSegment,
         pixel::{coverage_f32_to_u8, opacity_f32_to_u8},
         sdf::{Sdf, rect::Rect as SdfRect},
@@ -335,6 +335,21 @@ impl Renderer {
                     target,
                     root_bounds,
                 ),
+                ExecOp::OffscreenMaskLayer {
+                    layer,
+                    outer_stack,
+                    content,
+                    mask,
+                } => self.execute_mask_layer(
+                    scene,
+                    plan,
+                    layer,
+                    outer_stack.clone(),
+                    content,
+                    mask,
+                    target,
+                    root_bounds,
+                ),
             }
         }
     }
@@ -348,6 +363,24 @@ impl Renderer {
         target_bounds: Bounds,
     ) {
         match offscreen.layer {
+            Layer::Isolate => {
+                let bounds = draw_bounds(scene, offscreen.draw).intersect(target_bounds);
+                if bounds.is_empty() {
+                    return;
+                }
+                let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
+                self.execute_ops(scene, plan, offscreen.children, &mut image, bounds);
+
+                let mut mask = self.rasterize_layer_mask(scene, offscreen.draw, bounds);
+                self.apply_outer_clip_stack_to_mask(
+                    scene,
+                    plan,
+                    offscreen.outer_stack,
+                    bounds,
+                    &mut mask,
+                );
+                composite_src_over_masked_at(target, &image, &mask, bounds, target_bounds);
+            }
             Layer::Opacity(opacity) => {
                 let bounds = draw_bounds(scene, offscreen.draw).intersect(target_bounds);
                 if bounds.is_empty() {
@@ -491,6 +524,38 @@ impl Renderer {
     }
 
     #[allow(clippy::too_many_arguments)]
+    fn execute_mask_layer(
+        &mut self,
+        scene: &crate::scene::Scene,
+        plan: &ExecPlan,
+        layer: &crate::shared::layer::mask::Mask,
+        outer_stack: std::ops::Range<usize>,
+        content_ops: &[ExecOp],
+        mask_ops: &[ExecOp],
+        target: &mut Image,
+        target_bounds: Bounds,
+    ) {
+        let bounds = region_bounds(&layer.region).intersect(target_bounds);
+        if bounds.is_empty() {
+            return;
+        }
+
+        let mut content = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
+        self.execute_ops(scene, plan, content_ops, &mut content, bounds);
+
+        let mut mask_source = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
+        self.execute_ops(scene, plan, mask_ops, &mut mask_source, bounds);
+        let mut mask = svg_mask_coverage(&mask_source, layer.kind);
+        let region_mask = rasterize_region_mask(&layer.region, bounds);
+        for (dst, src) in mask.pixels.iter_mut().zip(region_mask.pixels) {
+            let alpha = combine_alpha(((*dst >> 24) & 0xff) as u8, ((src >> 24) & 0xff) as u8);
+            *dst = rgba8_pack([alpha, alpha, alpha, alpha]);
+        }
+        self.apply_outer_clip_stack_to_mask(scene, plan, outer_stack, bounds, &mut mask);
+        composite_src_over_masked_at(target, &content, &mask, bounds, target_bounds);
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn execute_draw_batch(
         &mut self,
         scene: &crate::scene::Scene,
@@ -604,6 +669,44 @@ impl Renderer {
 fn draw_bounds(scene: &crate::scene::Scene, draw_ix: usize) -> Bounds {
     let bounds = scene.draw_records[draw_ix].pixel_bounds;
     Bounds::new(bounds.x0, bounds.y0, bounds.x1, bounds.y1)
+}
+
+fn region_bounds(region: &Region) -> Bounds {
+    match region {
+        Region::Rect { rect, .. } => rect_bounds(*rect),
+        Region::Path {
+            path, transform, ..
+        } => {
+            let rect = transform.transform_rect_bbox(path.bounding_box());
+            rect_bounds(rect)
+        }
+    }
+}
+
+fn svg_mask_coverage(source: &Image, kind: MaskKind) -> Image {
+    let mut mask = Image::new(source.width, source.height, Color::TRANSPARENT);
+    for (dst, &src) in mask.pixels.iter_mut().zip(&source.pixels) {
+        let alpha = match kind {
+            MaskKind::Alpha => ((src >> 24) & 0xff) as u8,
+            MaskKind::Luminance => svg_luminance_mask_alpha(src),
+        };
+        *dst = rgba8_pack([alpha, alpha, alpha, alpha]);
+    }
+    mask
+}
+
+fn svg_luminance_mask_alpha(px: u32) -> u8 {
+    let a = (px >> 24) & 0xff;
+    if a == 0 {
+        return 0;
+    }
+    let r = px & 0xff;
+    let g = (px >> 8) & 0xff;
+    let b = (px >> 16) & 0xff;
+    let straight_r = (r * 255 + a / 2) / a;
+    let straight_g = (g * 255 + a / 2) / a;
+    let straight_b = (b * 255 + a / 2) / a;
+    ((2126 * straight_r + 7152 * straight_g + 722 * straight_b) * a / (10_000 * 255)) as u8
 }
 
 fn apply_opacity_to_mask(mask: &mut Image, opacity: f32) {
@@ -750,7 +853,11 @@ mod tests {
     use super::Renderer;
     use crate::{
         FillRule, Radius, Scene, StrokeWidths,
-        shared::layer::{filter::Filter, region::Region},
+        shared::layer::{
+            filter::Filter,
+            mask::{Mask, MaskKind},
+            region::Region,
+        },
     };
 
     fn render_single_rounded_rect() -> Renderer {
@@ -1182,5 +1289,93 @@ mod tests {
 
         assert_rgb_close(renderer.image().rgba8_at(4, 8), [0, 128, 0, 255], 1);
         assert_eq!(renderer.image().rgba8_at(12, 8), [128, 128, 128, 255]);
+    }
+
+    #[test]
+    fn isolate_layer_gives_child_blend_a_transparent_group_backdrop() {
+        let mut scene = Scene::new(16, 16);
+        let full = Rect::new(0.0, 0.0, 16.0, 16.0);
+        scene.push_rect(full, Color::from_rgb8(128, 128, 128), FillRule::NonZero);
+        scene.push_isolate_layer(full.to_path(0.0), Affine::IDENTITY, 0.0);
+        scene.push_blend_layer(
+            full.to_path(0.0),
+            Affine::IDENTITY,
+            0.0,
+            Mix::Multiply,
+            Compose::SrcOver,
+        );
+        scene.push_rect(full, Color::from_rgb8(255, 0, 0), FillRule::NonZero);
+        scene.pop_layer();
+        scene.pop_layer();
+
+        let mut renderer = Renderer::new(16, 16, Color::TRANSPARENT);
+        renderer.render(&scene);
+
+        assert_eq!(renderer.image().rgba8_at(8, 8), [255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn mask_layer_applies_alpha_coverage_and_region() {
+        let mut mask_scene = Scene::new(16, 16);
+        mask_scene.push_rect(
+            Rect::new(0.0, 0.0, 16.0, 16.0),
+            Color::from_rgba8(255, 255, 255, 128),
+            FillRule::NonZero,
+        );
+
+        let mut scene = Scene::new(16, 16);
+        scene.push_mask_layer(
+            mask_scene,
+            Mask {
+                region: Region::rect(Rect::new(0.0, 0.0, 8.0, 16.0), Radius::all(0.0)),
+                kind: MaskKind::Alpha,
+            },
+        );
+        scene.push_rect(
+            Rect::new(0.0, 0.0, 16.0, 16.0),
+            Color::from_rgb8(255, 0, 0),
+            FillRule::NonZero,
+        );
+        scene.pop_layer();
+
+        let mut renderer = Renderer::new(16, 16, Color::TRANSPARENT);
+        renderer.render(&scene);
+
+        assert_eq!(renderer.image().rgba8_at(4, 8), [128, 0, 0, 128]);
+        assert_eq!(renderer.image().rgba8_at(12, 8), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn mask_layer_uses_luminance_by_default_semantics() {
+        let mut mask_scene = Scene::new(16, 16);
+        mask_scene.push_rect(
+            Rect::new(0.0, 0.0, 16.0, 16.0),
+            Color::from_rgb8(255, 0, 0),
+            FillRule::NonZero,
+        );
+
+        let mut scene = Scene::new(16, 16);
+        scene.push_mask_layer(
+            mask_scene,
+            Mask {
+                region: Region::rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::all(0.0)),
+                kind: MaskKind::Luminance,
+            },
+        );
+        scene.push_rect(
+            Rect::new(0.0, 0.0, 16.0, 16.0),
+            Color::from_rgb8(0, 255, 0),
+            FillRule::NonZero,
+        );
+        scene.pop_layer();
+
+        let mut renderer = Renderer::new(16, 16, Color::TRANSPARENT);
+        renderer.render(&scene);
+
+        let px = renderer.image().rgba8_at(8, 8);
+        assert!(
+            px[1].abs_diff(54) <= 1 && px[3].abs_diff(54) <= 1,
+            "got {px:?}"
+        );
     }
 }

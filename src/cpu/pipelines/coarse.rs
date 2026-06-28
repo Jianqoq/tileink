@@ -175,7 +175,7 @@ impl<'a> CoarseCpuPrepared<'a> {
                         }));
                     }
                 }
-                DrawTag::Opacity | DrawTag::Blend => {}
+                DrawTag::Isolate | DrawTag::Opacity | DrawTag::Blend => {}
             }
         }
 

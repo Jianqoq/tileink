@@ -22,6 +22,7 @@ use crate::shared::layer::{
         CompositeOperator, ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, Filter, FilterInput,
         FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator, SpecularLighting,
     },
+    mask::{Mask, MaskKind},
     region::Region,
 };
 use crate::shared::pixel::premul_f32_to_u32;

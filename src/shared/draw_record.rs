@@ -9,6 +9,7 @@ use crate::shared::{
 pub enum DrawTag {
     Brush,
     Clip,
+    Isolate,
     Opacity,
     Blend,
 }

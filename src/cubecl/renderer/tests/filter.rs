@@ -98,6 +98,70 @@ fn filter_wgpu_isolates_blend_layer_with_offscreen_child_when_enabled() {
 }
 
 #[test]
+fn filter_wgpu_isolates_plain_isolate_layer_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(16, 16);
+    let full = Rect::new(0.0, 0.0, 16.0, 16.0);
+    scene.push_rect(full, Color::from_rgb8(128, 128, 128), FillRule::NonZero);
+    scene.push_isolate_layer(full.to_path(0.0), Affine::IDENTITY, 0.0);
+    scene.push_blend_layer(
+        full.to_path(0.0),
+        Affine::IDENTITY,
+        0.0,
+        Mix::Multiply,
+        Compose::SrcOver,
+    );
+    scene.push_rect(full, Color::from_rgb8(255, 0, 0), FillRule::NonZero);
+    scene.pop_layer();
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+
+    assert_eq!(target[8 * 16 + 8], rgba8_pack([255, 0, 0, 255]));
+}
+
+#[test]
+fn filter_wgpu_applies_mask_layer_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut mask_scene = Scene::new(16, 16);
+    mask_scene.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 16.0),
+        Color::from_rgba8(255, 255, 255, 128),
+        FillRule::NonZero,
+    );
+
+    let mut scene = Scene::new(16, 16);
+    scene.push_mask_layer(
+        mask_scene,
+        Mask {
+            region: Region::rect(Rect::new(0.0, 0.0, 8.0, 16.0), Radius::all(0.0)),
+            kind: MaskKind::Alpha,
+        },
+    );
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 16.0),
+        Color::from_rgb8(255, 0, 0),
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+
+    assert_eq!(target[8 * 16 + 4], rgba8_pack([128, 0, 0, 128]));
+    assert_eq!(target[8 * 16 + 12], 0);
+}
+
+#[test]
 fn filter_wgpu_applies_outer_clip_stack_to_offscreen_output_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;

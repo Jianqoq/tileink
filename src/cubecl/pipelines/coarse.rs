@@ -3,11 +3,11 @@ use ::cubecl::prelude::*;
 use crate::cubecl::{
     renderer::{CoarseBuffers, ScanBuffers, SceneBuffers},
     types::{
-        COARSE_CHUNK_SIZE, CUBE_DRAW_BLEND, CUBE_DRAW_BRUSH, CUBE_DRAW_CLIP, CUBE_DRAW_OPACITY,
-        CUBE_LAYER_BLEND, CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY, CUBE_PTCL_BEGIN_BLEND,
-        CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_BEGIN_OPACITY, CUBE_PTCL_COLOR, CUBE_PTCL_END,
-        CUBE_PTCL_END_BLEND, CUBE_PTCL_END_CLIP, CUBE_PTCL_END_OPACITY, CUBE_PTCL_FILL,
-        CUBE_PTCL_SDF, CUBE_SDF_NONE, CubeBufferLengths,
+        COARSE_CHUNK_SIZE, CUBE_DRAW_BLEND, CUBE_DRAW_BRUSH, CUBE_DRAW_CLIP, CUBE_DRAW_ISOLATE,
+        CUBE_DRAW_OPACITY, CUBE_LAYER_BLEND, CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY,
+        CUBE_PTCL_BEGIN_BLEND, CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_BEGIN_OPACITY, CUBE_PTCL_COLOR,
+        CUBE_PTCL_END, CUBE_PTCL_END_BLEND, CUBE_PTCL_END_CLIP, CUBE_PTCL_END_OPACITY,
+        CUBE_PTCL_FILL, CUBE_PTCL_SDF, CUBE_SDF_NONE, CubeBufferLengths,
     },
 };
 
@@ -941,7 +941,8 @@ fn draw_backdrop_ix(
         && (draw_tag == CUBE_DRAW_BRUSH
             || draw_tag == CUBE_DRAW_CLIP
             || draw_tag == CUBE_DRAW_OPACITY
-            || draw_tag == CUBE_DRAW_BLEND)
+            || draw_tag == CUBE_DRAW_BLEND
+            || draw_tag == CUBE_DRAW_ISOLATE)
     {
         let draw_x0 = pixel_tile_min(draw_pixel_x0[draw_i], tiles_width);
         let draw_y0 = pixel_tile_min(draw_pixel_y0[draw_i], tiles_height);

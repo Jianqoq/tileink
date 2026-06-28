@@ -175,11 +175,10 @@ impl GpuBrushUpload {
 
 fn collect_filter_brushes_for_ops(ops: &[ExecOp], upload: &mut GpuBrushUpload) {
     for op in ops {
-        if let ExecOp::OffscreenLayer {
-            layer, children, ..
-        } = op
-        {
-            match layer {
+        match op {
+            ExecOp::OffscreenLayer {
+                layer, children, ..
+            } => match layer {
                 Layer::Filter { filter, .. } => {
                     collect_filter_brushes_for_ops(children, upload);
                     collect_filter_brush(filter, upload);
@@ -189,7 +188,12 @@ fn collect_filter_brushes_for_ops(ops: &[ExecOp], upload: &mut GpuBrushUpload) {
                     collect_filter_brushes_for_ops(children, upload);
                 }
                 _ => collect_filter_brushes_for_ops(children, upload),
+            },
+            ExecOp::OffscreenMaskLayer { content, mask, .. } => {
+                collect_filter_brushes_for_ops(content, upload);
+                collect_filter_brushes_for_ops(mask, upload);
             }
+            _ => {}
         }
     }
 }
