@@ -31,6 +31,7 @@ pub enum Filter {
     ColorMatrix([f32; 20]),
     ComponentTransfer(Box<ComponentTransferTable>),
     ConvolveMatrix(ConvolveMatrix),
+    DiffuseLighting(DiffuseLighting),
     Flood {
         brush: Brush,
     },
@@ -115,4 +116,35 @@ pub enum ConvolveEdgeMode {
     None,
     Duplicate,
     Wrap,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DiffuseLighting {
+    pub surface_scale: f32,
+    pub diffuse_constant: f32,
+    pub lighting_color: [f32; 3],
+    pub light_source: LightSource,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum LightSource {
+    Distant {
+        azimuth: f32,
+        elevation: f32,
+    },
+    Point {
+        x: f32,
+        y: f32,
+        z: f32,
+    },
+    Spot {
+        x: f32,
+        y: f32,
+        z: f32,
+        points_at_x: f32,
+        points_at_y: f32,
+        points_at_z: f32,
+        specular_exponent: f32,
+        limiting_cone_angle: Option<f32>,
+    },
 }

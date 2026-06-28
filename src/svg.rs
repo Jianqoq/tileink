@@ -13,8 +13,8 @@ use crate::{
         brush::PatternBrush,
         layer::filter::{
             COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE, ComponentTransferTable,
-            CompositeOperator, ConvolveEdgeMode, ConvolveMatrix, FilterInput, FilterPrimitive,
-            FilterPrimitiveKind, MorphologyOperator,
+            CompositeOperator, ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, FilterInput,
+            FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator,
         },
     },
 };
@@ -500,9 +500,11 @@ fn svg_filter_primitive(
             None,
             FilterPrimitiveKind::Filter(Box::new(convolve_matrix_to_filter(convolve))),
         ),
-        usvg::filter::Kind::DiffuseLighting(_) => {
-            return Err(SvgError::unsupported("feDiffuseLighting"));
-        }
+        usvg::filter::Kind::DiffuseLighting(lighting) => (
+            svg_filter_input(lighting.input(), results, "feDiffuseLighting")?,
+            None,
+            FilterPrimitiveKind::Filter(Box::new(diffuse_lighting_to_filter(lighting))),
+        ),
         usvg::filter::Kind::DisplacementMap(_) => {
             return Err(SvgError::unsupported("feDisplacementMap"));
         }
@@ -619,6 +621,39 @@ fn convolve_edge_mode(edge_mode: usvg::filter::EdgeMode) -> ConvolveEdgeMode {
         usvg::filter::EdgeMode::None => ConvolveEdgeMode::None,
         usvg::filter::EdgeMode::Duplicate => ConvolveEdgeMode::Duplicate,
         usvg::filter::EdgeMode::Wrap => ConvolveEdgeMode::Wrap,
+    }
+}
+
+fn diffuse_lighting_to_filter(lighting: &usvg::filter::DiffuseLighting) -> Filter {
+    Filter::DiffuseLighting(DiffuseLighting {
+        surface_scale: lighting.surface_scale(),
+        diffuse_constant: lighting.diffuse_constant(),
+        lighting_color: color_to_rgb(lighting.lighting_color()),
+        light_source: light_source(lighting.light_source()),
+    })
+}
+
+fn light_source(source: usvg::filter::LightSource) -> LightSource {
+    match source {
+        usvg::filter::LightSource::DistantLight(light) => LightSource::Distant {
+            azimuth: light.azimuth,
+            elevation: light.elevation,
+        },
+        usvg::filter::LightSource::PointLight(light) => LightSource::Point {
+            x: light.x,
+            y: light.y,
+            z: light.z,
+        },
+        usvg::filter::LightSource::SpotLight(light) => LightSource::Spot {
+            x: light.x,
+            y: light.y,
+            z: light.z,
+            points_at_x: light.points_at_x,
+            points_at_y: light.points_at_y,
+            points_at_z: light.points_at_z,
+            specular_exponent: light.specular_exponent.get(),
+            limiting_cone_angle: light.limiting_cone_angle,
+        },
     }
 }
 
@@ -950,6 +985,14 @@ fn tiny_path_to_bez(path: &usvg::tiny_skia_path::Path) -> BezPath {
 
 fn color_opacity_to_brush(color: usvg::Color, opacity: f32) -> Brush {
     Brush::Solid(Color::from_rgb8(color.red, color.green, color.blue).multiply_alpha(opacity))
+}
+
+fn color_to_rgb(color: usvg::Color) -> [f32; 3] {
+    [
+        color.red as f32 / 255.0,
+        color.green as f32 / 255.0,
+        color.blue as f32 / 255.0,
+    ]
 }
 
 fn opacity_to_u8(opacity: f32) -> u8 {
@@ -1466,6 +1509,33 @@ mod tests {
         assert_eq!(renderer.image().rgba8_at(0, 0), [20, 0, 0, 255]);
         assert_eq!(renderer.image().rgba8_at(1, 0), [40, 0, 0, 255]);
         assert_eq!(renderer.image().rgba8_at(2, 0), [40, 0, 0, 255]);
+    }
+
+    #[test]
+    fn push_svg_renders_fe_diffuse_lighting() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="3" height="1">
+                <defs>
+                    <filter id="diffuse" x="0" y="0" width="3" height="1" filterUnits="userSpaceOnUse">
+                        <feDiffuseLighting surfaceScale="1" diffuseConstant="1" lighting-color="#ff0000">
+                            <feDistantLight azimuth="180" elevation="0"/>
+                        </feDiffuseLighting>
+                    </filter>
+                </defs>
+                <g filter="url(#diffuse)">
+                    <rect x="0" width="1" height="1" fill="#000000" fill-opacity="0"/>
+                    <rect x="1" width="1" height="1" fill="#000000" fill-opacity="0.5"/>
+                    <rect x="2" width="1" height="1" fill="#000000"/>
+                </g>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        let center = renderer.image().rgba8_at(1, 0);
+        assert!(
+            center[0].abs_diff(180) <= 1 && center[1] == 0 && center[2] == 0 && center[3] == 255,
+            "expected red diffuse lighting at alpha slope center, got {center:?}"
+        );
     }
 
     #[test]

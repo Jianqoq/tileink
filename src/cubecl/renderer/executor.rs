@@ -10,7 +10,8 @@ use crate::{
             Layer,
             filter::{
                 ComponentTransferTable, CompositeOperator, ConvolveEdgeMode, ConvolveMatrix,
-                Filter, FilterInput, FilterPrimitive, FilterPrimitiveKind, MorphologyOperator,
+                DiffuseLighting, Filter, FilterInput, FilterPrimitive, FilterPrimitiveKind,
+                LightSource, MorphologyOperator,
             },
             region::Region,
         },
@@ -250,6 +251,13 @@ impl<R: Runtime> Renderer<R> {
                 );
                 self.copy_region(temp, target, bounds);
                 self.release_scratch(temp);
+            }
+            Filter::DiffuseLighting(lighting) => {
+                let source = self.acquire_scratch();
+                self.clear_buffer(source, 0);
+                self.copy_region(target, source, bounds);
+                self.diffuse_lighting_buffer(source, target, bounds, lighting);
+                self.release_scratch(source);
             }
             Filter::Flood { .. } => self.apply_flood(
                 target,
@@ -691,6 +699,67 @@ impl<R: Runtime> Renderer<R> {
                     matrix.bias,
                     edge_mode,
                     preserve_alpha,
+                )
+            }
+            (CubeRenderTarget::Main, CubeRenderTarget::Main) => unreachable!(),
+        }
+    }
+
+    fn diffuse_lighting_buffer(
+        &mut self,
+        source: CubeRenderTarget,
+        target: CubeRenderTarget,
+        bounds: Bounds,
+        lighting: &DiffuseLighting,
+    ) {
+        if source == target {
+            return;
+        }
+        let light_kind = encode_light_source_kind(lighting.light_source);
+        let params = light_source_params(lighting.light_source);
+        match (source, target) {
+            (CubeRenderTarget::Main, CubeRenderTarget::Scratch(target_ix)) => {
+                FilterPipeline::diffuse_lighting_region(
+                    &self.client,
+                    &self.target,
+                    &mut self.scratch[target_ix],
+                    self.size,
+                    bounds,
+                    lighting.surface_scale,
+                    lighting.diffuse_constant,
+                    lighting.lighting_color,
+                    light_kind,
+                    params,
+                )
+            }
+            (CubeRenderTarget::Scratch(source_ix), CubeRenderTarget::Main) => {
+                FilterPipeline::diffuse_lighting_region(
+                    &self.client,
+                    &self.scratch[source_ix],
+                    &mut self.target,
+                    self.size,
+                    bounds,
+                    lighting.surface_scale,
+                    lighting.diffuse_constant,
+                    lighting.lighting_color,
+                    light_kind,
+                    params,
+                )
+            }
+            (CubeRenderTarget::Scratch(source_ix), CubeRenderTarget::Scratch(target_ix)) => {
+                let (source, target) =
+                    scratch_source_target(&mut self.scratch, source_ix, target_ix);
+                FilterPipeline::diffuse_lighting_region(
+                    &self.client,
+                    source,
+                    target,
+                    self.size,
+                    bounds,
+                    lighting.surface_scale,
+                    lighting.diffuse_constant,
+                    lighting.lighting_color,
+                    light_kind,
+                    params,
                 )
             }
             (CubeRenderTarget::Main, CubeRenderTarget::Main) => unreachable!(),
@@ -1517,6 +1586,7 @@ fn filter_scratch_extra(filter: &Filter) -> usize {
         Filter::Graph { primitives, .. } => graph_scratch_extra(primitives),
         Filter::Blur(radius) => usize::from(radius.max(0.0) > 0.0),
         Filter::ConvolveMatrix(_) => 1,
+        Filter::DiffuseLighting(_) => 1,
         Filter::Offset { .. } => 1,
         Filter::Morphology { .. } => 2,
         Filter::DropShadow { radius, .. } => 1 + usize::from(radius.max(0.0) > 0.0),
@@ -1578,6 +1648,43 @@ fn encode_convolve_edge_mode(edge_mode: ConvolveEdgeMode) -> u32 {
     }
 }
 
+fn encode_light_source_kind(light_source: LightSource) -> u32 {
+    match light_source {
+        LightSource::Distant { .. } => 0,
+        LightSource::Point { .. } => 1,
+        LightSource::Spot { .. } => 2,
+    }
+}
+
+fn light_source_params(light_source: LightSource) -> [f32; 9] {
+    match light_source {
+        LightSource::Distant { azimuth, elevation } => {
+            [azimuth, elevation, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0]
+        }
+        LightSource::Point { x, y, z } => [x, y, z, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0],
+        LightSource::Spot {
+            x,
+            y,
+            z,
+            points_at_x,
+            points_at_y,
+            points_at_z,
+            specular_exponent,
+            limiting_cone_angle,
+        } => [
+            x,
+            y,
+            z,
+            points_at_x,
+            points_at_y,
+            points_at_z,
+            specular_exponent,
+            limiting_cone_angle.unwrap_or(-1.0),
+            0.0,
+        ],
+    }
+}
+
 fn composite_arithmetic(operator: CompositeOperator) -> [f32; 4] {
     match operator {
         CompositeOperator::Arithmetic { k1, k2, k3, k4 } => [k1, k2, k3, k4],
@@ -1602,6 +1709,9 @@ fn encode_color_filter(filter: &Filter) -> (u32, f32) {
         }
         Filter::ConvolveMatrix(_) => {
             panic!("convolve matrix is handled by a dedicated CubeCL pass")
+        }
+        Filter::DiffuseLighting(_) => {
+            panic!("diffuse lighting is handled by a dedicated CubeCL pass")
         }
         Filter::Graph { .. } => panic!("filter graphs are handled by CubeCL graph execution"),
         Filter::Flood { .. } => panic!("flood is handled by the CubeCL brush fill pass"),

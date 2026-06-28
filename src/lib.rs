@@ -21,8 +21,8 @@ pub use shared::{
     image::Image,
     layer::{
         filter::{
-            CompositeOperator, ConvolveEdgeMode, ConvolveMatrix, Filter, FilterInput,
-            FilterPrimitive, FilterPrimitiveKind, MorphologyOperator,
+            CompositeOperator, ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, Filter,
+            FilterInput, FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator,
         },
         region::Region,
     },

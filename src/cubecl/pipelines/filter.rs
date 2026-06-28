@@ -375,6 +375,52 @@ impl FilterPipeline {
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn diffuse_lighting_region<R: Runtime>(
+        client: &ComputeClient<R>,
+        source: &CubeBuffer<u32>,
+        target: &mut CubeBuffer<u32>,
+        size: (u32, u32),
+        bounds: Bounds,
+        surface_scale: f32,
+        diffuse_constant: f32,
+        lighting_color: [f32; 3],
+        light_kind: u32,
+        light_params: [f32; 9],
+    ) {
+        let Some(region) = FilterRegion::new(size, bounds) else {
+            return;
+        };
+        filter_diffuse_lighting_region::launch::<R>(
+            client,
+            cube_count(region.pixel_count),
+            CubeDim::new_1d(FILTER_WORKGROUP_SIZE),
+            region.pixel_count,
+            region.width,
+            region.height,
+            region.x0,
+            region.y0,
+            size.0,
+            surface_scale,
+            diffuse_constant,
+            lighting_color[0],
+            lighting_color[1],
+            lighting_color[2],
+            light_kind,
+            light_params[0],
+            light_params[1],
+            light_params[2],
+            light_params[3],
+            light_params[4],
+            light_params[5],
+            light_params[6],
+            light_params[7],
+            light_params[8],
+            unsafe { source.arg() },
+            unsafe { target.arg() },
+        );
+    }
+
     pub(crate) fn offset_region<R: Runtime>(
         client: &ComputeClient<R>,
         source: &CubeBuffer<u32>,
@@ -1106,6 +1152,124 @@ fn filter_convolve_matrix_region(
     let g = (out_g / divisor + bias).clamp(0.0, 1.0);
     let b = (out_b / divisor + bias).clamp(0.0, 1.0);
     target[dst_ix] = pack_premul_rgba8(r * alpha, g * alpha, b * alpha, alpha);
+}
+
+#[cube(launch)]
+#[allow(clippy::too_many_arguments)]
+fn filter_diffuse_lighting_region(
+    pixel_count: u32,
+    region_width: u32,
+    region_height: u32,
+    region_x0: u32,
+    region_y0: u32,
+    image_width: u32,
+    surface_scale: f32,
+    diffuse_constant: f32,
+    light_r: f32,
+    light_g: f32,
+    light_b: f32,
+    light_kind: u32,
+    p0: f32,
+    p1: f32,
+    p2: f32,
+    p3: f32,
+    p4: f32,
+    p5: f32,
+    p6: f32,
+    p7: f32,
+    _p8: f32,
+    source: &Array<u32>,
+    target: &mut Array<u32>,
+) {
+    let region_ix = ABSOLUTE_POS as u32;
+    if region_ix >= pixel_count {
+        terminate!();
+    }
+    let x = region_x0 + region_ix % region_width;
+    let y = region_y0 + region_ix / region_width;
+    let dst_ix = (y * image_width + x) as usize;
+
+    // Match SVG diffuse lighting semantics: source alpha is the surface height,
+    // and the primitive writes opaque lit color instead of preserving input RGB.
+    let alpha = source_alpha_at(source, x, y, image_width);
+    let z = alpha * surface_scale;
+    let dx = alpha_gradient_x(
+        source,
+        x,
+        y,
+        image_width,
+        region_x0,
+        region_width,
+        region_y0,
+        region_height,
+    ) * surface_scale;
+    let dy = alpha_gradient_y(
+        source,
+        x,
+        y,
+        image_width,
+        region_x0,
+        region_width,
+        region_y0,
+        region_height,
+    ) * surface_scale;
+    let normal_len = (dx * dx + dy * dy + 1.0).sqrt();
+    let nx = -dx / normal_len;
+    let ny = -dy / normal_len;
+    let nz = 1.0 / normal_len;
+
+    let world_x = x as f32 + 0.5;
+    let world_y = y as f32 + 0.5;
+    let mut lx = p0 - world_x;
+    let mut ly = p1 - world_y;
+    let mut lz = p2 - z;
+    let mut attenuation = 1.0;
+    let eps = 0.000_001;
+
+    if light_kind == 0 {
+        let azimuth = p0 * f32::new(0.017_453_292_f32);
+        let elevation = p1 * f32::new(0.017_453_292_f32);
+        lx = azimuth.cos() * elevation.cos();
+        ly = azimuth.sin() * elevation.cos();
+        lz = elevation.sin();
+    } else {
+        let len = (lx * lx + ly * ly + lz * lz).sqrt();
+        if len <= eps {
+            target[dst_ix] = u32::new(0xff00_0000i64);
+            terminate!();
+        }
+        lx /= len;
+        ly /= len;
+        lz /= len;
+
+        if light_kind == 2 {
+            let mut sx = p3 - p0;
+            let mut sy = p4 - p1;
+            let mut sz = p5 - p2;
+            let slen = (sx * sx + sy * sy + sz * sz).sqrt();
+            if slen <= eps {
+                target[dst_ix] = u32::new(0xff00_0000i64);
+                terminate!();
+            }
+            sx /= slen;
+            sy /= slen;
+            sz /= slen;
+            let focus = (-(lx * sx + ly * sy + lz * sz)).max(0.0);
+            if p7 >= 0.0 && focus < (p7 * f32::new(0.017_453_292_f32)).cos() {
+                target[dst_ix] = u32::new(0xff00_0000i64);
+                terminate!();
+            }
+            attenuation = focus.powf(p6.max(0.0));
+        }
+    }
+
+    let amount = diffuse_constant * attenuation * (nx * lx + ny * ly + nz * lz).max(0.0);
+    target[dst_ix] = pack_premul_rgba8(
+        (light_r * amount).clamp(0.0, 1.0),
+        (light_g * amount).clamp(0.0, 1.0),
+        (light_b * amount).clamp(0.0, 1.0),
+        1.0,
+    );
 }
 
 #[cube(launch)]
@@ -2124,6 +2288,210 @@ fn straight_channel(premul: u32, alpha: u32) -> f32 {
     let mut out = 0.0;
     if alpha != 0 {
         out = premul as f32 / alpha as f32;
+    }
+    out
+}
+
+#[cube]
+fn source_alpha_at(source: &Array<u32>, x: u32, y: u32, image_width: u32) -> f32 {
+    ((source[(y * image_width + x) as usize] >> 24) & 255) as f32 / 255.0
+}
+
+#[cube]
+#[allow(clippy::too_many_arguments)]
+fn alpha_gradient_x(
+    source: &Array<u32>,
+    x: u32,
+    y: u32,
+    image_width: u32,
+    region_x0: u32,
+    region_width: u32,
+    region_y0: u32,
+    region_height: u32,
+) -> f32 {
+    let mut out = 0.0;
+    if region_width >= 2 {
+        let weighted_diff = alpha_gradient_x_sample(
+            source,
+            x,
+            y,
+            image_width,
+            region_x0,
+            region_width,
+            region_y0,
+            region_height,
+            -1,
+            1.0,
+        ) + alpha_gradient_x_sample(
+            source,
+            x,
+            y,
+            image_width,
+            region_x0,
+            region_width,
+            region_y0,
+            region_height,
+            0,
+            2.0,
+        ) + alpha_gradient_x_sample(
+            source,
+            x,
+            y,
+            image_width,
+            region_x0,
+            region_width,
+            region_y0,
+            region_height,
+            1,
+            1.0,
+        );
+        let weight_sum = gradient_sample_weight(y, region_y0, region_height, -1, 1.0)
+            + gradient_sample_weight(y, region_y0, region_height, 0, 2.0)
+            + gradient_sample_weight(y, region_y0, region_height, 1, 1.0);
+        let one_sided = x == region_x0 || x == region_x0 + region_width - 1;
+        let edge_scale = if one_sided { 2.0 } else { 1.0 };
+        out = weighted_diff * edge_scale / weight_sum.max(0.000_001);
+    }
+    out
+}
+
+#[cube]
+#[allow(clippy::too_many_arguments)]
+fn alpha_gradient_y(
+    source: &Array<u32>,
+    x: u32,
+    y: u32,
+    image_width: u32,
+    region_x0: u32,
+    region_width: u32,
+    region_y0: u32,
+    region_height: u32,
+) -> f32 {
+    let mut out = 0.0;
+    if region_height >= 2 {
+        let weighted_diff = alpha_gradient_y_sample(
+            source,
+            x,
+            y,
+            image_width,
+            region_x0,
+            region_width,
+            region_y0,
+            region_height,
+            -1,
+            1.0,
+        ) + alpha_gradient_y_sample(
+            source,
+            x,
+            y,
+            image_width,
+            region_x0,
+            region_width,
+            region_y0,
+            region_height,
+            0,
+            2.0,
+        ) + alpha_gradient_y_sample(
+            source,
+            x,
+            y,
+            image_width,
+            region_x0,
+            region_width,
+            region_y0,
+            region_height,
+            1,
+            1.0,
+        );
+        let weight_sum = gradient_sample_weight(x, region_x0, region_width, -1, 1.0)
+            + gradient_sample_weight(x, region_x0, region_width, 0, 2.0)
+            + gradient_sample_weight(x, region_x0, region_width, 1, 1.0);
+        let one_sided = y == region_y0 || y == region_y0 + region_height - 1;
+        let edge_scale = if one_sided { 2.0 } else { 1.0 };
+        out = weighted_diff * edge_scale / weight_sum.max(0.000_001);
+    }
+    out
+}
+
+#[cube]
+fn gradient_sample_weight(pos: u32, start: u32, len: u32, offset: i32, weight: f32) -> f32 {
+    let sample = pos as i32 + offset;
+    let end = start + len;
+    let mut out = 0.0;
+    if sample >= start as i32 && sample < end as i32 {
+        out = weight;
+    }
+    out
+}
+
+#[cube]
+#[allow(clippy::too_many_arguments)]
+fn alpha_gradient_x_sample(
+    source: &Array<u32>,
+    x: u32,
+    y: u32,
+    image_width: u32,
+    region_x0: u32,
+    region_width: u32,
+    region_y0: u32,
+    region_height: u32,
+    offset: i32,
+    weight: f32,
+) -> f32 {
+    let sy = y as i32 + offset;
+    let region_x1 = region_x0 + region_width - 1;
+    let region_y1 = region_y0 + region_height;
+    let mut out = 0.0;
+    if sy >= region_y0 as i32 && sy < region_y1 as i32 {
+        let syu = sy as u32;
+        let left = if x > region_x0 { x - 1 } else { x };
+        let right = if x < region_x1 { x + 1 } else { x };
+        let center = source_alpha_at(source, x, syu, image_width);
+        let diff = if x == region_x0 {
+            source_alpha_at(source, right, syu, image_width) - center
+        } else if x == region_x1 {
+            center - source_alpha_at(source, left, syu, image_width)
+        } else {
+            source_alpha_at(source, right, syu, image_width)
+                - source_alpha_at(source, left, syu, image_width)
+        };
+        out = weight * diff;
+    }
+    out
+}
+
+#[cube]
+#[allow(clippy::too_many_arguments)]
+fn alpha_gradient_y_sample(
+    source: &Array<u32>,
+    x: u32,
+    y: u32,
+    image_width: u32,
+    region_x0: u32,
+    region_width: u32,
+    region_y0: u32,
+    region_height: u32,
+    offset: i32,
+    weight: f32,
+) -> f32 {
+    let sx = x as i32 + offset;
+    let region_x1 = region_x0 + region_width;
+    let region_y1 = region_y0 + region_height - 1;
+    let mut out = 0.0;
+    if sx >= region_x0 as i32 && sx < region_x1 as i32 {
+        let sxu = sx as u32;
+        let top = if y > region_y0 { y - 1 } else { y };
+        let bottom = if y < region_y1 { y + 1 } else { y };
+        let center = source_alpha_at(source, sxu, y, image_width);
+        let diff = if y == region_y0 {
+            source_alpha_at(source, sxu, bottom, image_width) - center
+        } else if y == region_y1 {
+            center - source_alpha_at(source, sxu, top, image_width)
+        } else {
+            source_alpha_at(source, sxu, bottom, image_width)
+                - source_alpha_at(source, sxu, top, image_width)
+        };
+        out = weight * diff;
     }
     out
 }

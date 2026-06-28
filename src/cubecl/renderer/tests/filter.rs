@@ -591,6 +591,53 @@ fn filter_wgpu_applies_convolve_matrix_when_enabled() {
 }
 
 #[test]
+fn filter_wgpu_applies_diffuse_lighting_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(3, 1);
+    scene.push_filter_layer(
+        Filter::DiffuseLighting(DiffuseLighting {
+            surface_scale: 1.0,
+            diffuse_constant: 1.0,
+            lighting_color: [1.0, 0.0, 0.0],
+            light_source: LightSource::Distant {
+                azimuth: 180.0,
+                elevation: 0.0,
+            },
+        }),
+        Region::rect(Rect::new(0.0, 0.0, 3.0, 1.0), Radius::all(0.0)),
+    );
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 1.0, 1.0),
+        Color::from_rgba8(0, 0, 0, 0),
+        FillRule::NonZero,
+    );
+    scene.push_rect(
+        Rect::new(1.0, 0.0, 2.0, 1.0),
+        Color::from_rgba8(0, 0, 0, 128),
+        FillRule::NonZero,
+    );
+    scene.push_rect(
+        Rect::new(2.0, 0.0, 3.0, 1.0),
+        Color::BLACK,
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(3, 1, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+    let center = unpack_rgba8(target[pixel_ix(1, 0, 3)]);
+
+    assert!(
+        center[0].abs_diff(180) <= 1 && center[1] == 0 && center[2] == 0 && center[3] == 255,
+        "expected red diffuse lighting at alpha slope center, got {center:?}"
+    );
+}
+
+#[test]
 fn filter_wgpu_floods_with_uploaded_brush_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;

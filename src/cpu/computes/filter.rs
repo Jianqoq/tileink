@@ -8,8 +8,8 @@ use crate::shared::{
         blend::{Blend, src_over_premul},
         filter::{
             COMPONENT_TRANSFER_TABLE_SIZE, ComponentTransferTable, CompositeOperator,
-            ConvolveEdgeMode, ConvolveMatrix, Filter, FilterInput, FilterPrimitive,
-            FilterPrimitiveKind, MorphologyOperator,
+            ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, Filter, FilterInput,
+            FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator,
         },
         region::Region,
     },
@@ -36,6 +36,7 @@ pub(crate) fn apply(image: &mut Image, filter: &Filter, bounds: Bounds) {
             }
         }
         Filter::ConvolveMatrix(matrix) => apply_convolve_matrix(image, matrix),
+        Filter::DiffuseLighting(lighting) => apply_diffuse_lighting(image, bounds, lighting),
         Filter::Flood { brush } => apply_flood(image, bounds, brush),
         Filter::Brightness(amount)
         | Filter::Contrast(amount)
@@ -438,6 +439,173 @@ fn convolve_sample_coord(
         }
         ConvolveEdgeMode::Wrap => Some((x.rem_euclid(width) as u32, y.rem_euclid(height) as u32)),
     }
+}
+
+fn apply_diffuse_lighting(image: &mut Image, bounds: Bounds, lighting: &DiffuseLighting) {
+    if image.width == 0 || image.height == 0 {
+        return;
+    }
+
+    // SVG diffuse lighting treats source alpha as a height map and replaces the
+    // primitive output with opaque lit RGB, so reads must come from the original input.
+    let source = image.clone();
+    for y in 0..source.height {
+        for x in 0..source.width {
+            image.pixels[(y * image.width + x) as usize] =
+                diffuse_lighting_pixel(&source, bounds, x, y, lighting);
+        }
+    }
+}
+
+fn diffuse_lighting_pixel(
+    source: &Image,
+    bounds: Bounds,
+    x: u32,
+    y: u32,
+    lighting: &DiffuseLighting,
+) -> u32 {
+    let alpha = alpha_at(source, x, y);
+    let z = alpha * lighting.surface_scale;
+    let [nx, ny, nz] = surface_normal(source, x, y, lighting.surface_scale);
+    let world_x = bounds.x0 as f32 + x as f32 + 0.5;
+    let world_y = bounds.y0 as f32 + y as f32 + 0.5;
+    let light = light_vector(lighting.light_source, world_x, world_y, z);
+    let Some(([lx, ly, lz], attenuation)) = light else {
+        return 0xff00_0000;
+    };
+
+    let amount = lighting.diffuse_constant * attenuation * (nx * lx + ny * ly + nz * lz).max(0.0);
+    pack_premul_rgba8([
+        (lighting.lighting_color[0] * amount).clamp(0.0, 1.0),
+        (lighting.lighting_color[1] * amount).clamp(0.0, 1.0),
+        (lighting.lighting_color[2] * amount).clamp(0.0, 1.0),
+        1.0,
+    ])
+}
+
+fn surface_normal(source: &Image, x: u32, y: u32, surface_scale: f32) -> [f32; 3] {
+    let dx = alpha_gradient_x(source, x, y) * surface_scale;
+    let dy = alpha_gradient_y(source, x, y) * surface_scale;
+    normalize3([-dx, -dy, 1.0]).unwrap_or([0.0, 0.0, 1.0])
+}
+
+fn alpha_gradient_x(source: &Image, x: u32, y: u32) -> f32 {
+    if source.width < 2 {
+        return 0.0;
+    }
+
+    let x = x as i32;
+    let y = y as i32;
+    let one_sided = x == 0 || x == source.width as i32 - 1;
+    let left = (x - 1).max(0) as u32;
+    let center = x as u32;
+    let right = (x + 1).min(source.width as i32 - 1) as u32;
+    let mut weighted_diff = 0.0;
+    let mut weight_sum = 0.0;
+    for offset in -1..=1 {
+        let sy = y + offset;
+        if sy < 0 || sy >= source.height as i32 {
+            continue;
+        }
+        let weight = if offset == 0 { 2.0 } else { 1.0 };
+        let diff = if x == 0 {
+            alpha_at(source, right, sy as u32) - alpha_at(source, center, sy as u32)
+        } else if x == source.width as i32 - 1 {
+            alpha_at(source, center, sy as u32) - alpha_at(source, left, sy as u32)
+        } else {
+            alpha_at(source, right, sy as u32) - alpha_at(source, left, sy as u32)
+        };
+        weighted_diff += weight * diff;
+        weight_sum += weight;
+    }
+    let edge_scale = if one_sided { 2.0 } else { 1.0 };
+    weighted_diff * edge_scale / weight_sum.max(f32::EPSILON)
+}
+
+fn alpha_gradient_y(source: &Image, x: u32, y: u32) -> f32 {
+    if source.height < 2 {
+        return 0.0;
+    }
+
+    let x = x as i32;
+    let y = y as i32;
+    let one_sided = y == 0 || y == source.height as i32 - 1;
+    let top = (y - 1).max(0) as u32;
+    let center = y as u32;
+    let bottom = (y + 1).min(source.height as i32 - 1) as u32;
+    let mut weighted_diff = 0.0;
+    let mut weight_sum = 0.0;
+    for offset in -1..=1 {
+        let sx = x + offset;
+        if sx < 0 || sx >= source.width as i32 {
+            continue;
+        }
+        let weight = if offset == 0 { 2.0 } else { 1.0 };
+        let diff = if y == 0 {
+            alpha_at(source, sx as u32, bottom) - alpha_at(source, sx as u32, center)
+        } else if y == source.height as i32 - 1 {
+            alpha_at(source, sx as u32, center) - alpha_at(source, sx as u32, top)
+        } else {
+            alpha_at(source, sx as u32, bottom) - alpha_at(source, sx as u32, top)
+        };
+        weighted_diff += weight * diff;
+        weight_sum += weight;
+    }
+    let edge_scale = if one_sided { 2.0 } else { 1.0 };
+    weighted_diff * edge_scale / weight_sum.max(f32::EPSILON)
+}
+
+fn alpha_at(source: &Image, x: u32, y: u32) -> f32 {
+    ((source.pixels[(y * source.width + x) as usize] >> 24) & 255) as f32 / 255.0
+}
+
+fn light_vector(light_source: LightSource, x: f32, y: f32, z: f32) -> Option<([f32; 3], f32)> {
+    match light_source {
+        LightSource::Distant { azimuth, elevation } => {
+            let azimuth = azimuth.to_radians();
+            let elevation = elevation.to_radians();
+            Some((
+                [
+                    azimuth.cos() * elevation.cos(),
+                    azimuth.sin() * elevation.cos(),
+                    elevation.sin(),
+                ],
+                1.0,
+            ))
+        }
+        LightSource::Point {
+            x: lx,
+            y: ly,
+            z: lz,
+        } => normalize3([lx - x, ly - y, lz - z]).map(|light| (light, 1.0)),
+        LightSource::Spot {
+            x: lx,
+            y: ly,
+            z: lz,
+            points_at_x,
+            points_at_y,
+            points_at_z,
+            specular_exponent,
+            limiting_cone_angle,
+        } => {
+            let light = normalize3([lx - x, ly - y, lz - z])?;
+            let direction = normalize3([points_at_x - lx, points_at_y - ly, points_at_z - lz])?;
+            let focus =
+                (-(light[0] * direction[0] + light[1] * direction[1] + light[2] * direction[2]))
+                    .max(0.0);
+            if let Some(angle) = limiting_cone_angle
+                && focus < angle.to_radians().cos()
+            {
+                return None;
+            }
+            Some((light, focus.powf(specular_exponent.max(0.0))))
+        }
+    }
+}
+
+fn normalize3(v: [f32; 3]) -> Option<[f32; 3]> {
+    let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+    (len > f32::EPSILON).then_some([v[0] / len, v[1] / len, v[2] / len])
 }
 
 fn for_each_region_pixel(bounds: Bounds, region: Bounds, width: u32, mut f: impl FnMut(usize)) {
@@ -989,6 +1157,56 @@ mod tests {
         );
 
         assert_eq!(image.rgba8_at(0, 0), [64, 32, 64, 64]);
+    }
+
+    #[test]
+    fn diffuse_lighting_uses_alpha_height_normals() {
+        let mut image = Image::new(3, 1, Color::TRANSPARENT);
+        image.pixels[0] = rgba8_pack([0, 0, 0, 0]);
+        image.pixels[1] = rgba8_pack([0, 0, 0, 128]);
+        image.pixels[2] = rgba8_pack([0, 0, 0, 255]);
+
+        apply(
+            &mut image,
+            &Filter::DiffuseLighting(DiffuseLighting {
+                surface_scale: 1.0,
+                diffuse_constant: 1.0,
+                lighting_color: [1.0, 0.0, 0.0],
+                light_source: LightSource::Distant {
+                    azimuth: 180.0,
+                    elevation: 0.0,
+                },
+            }),
+            Bounds::canvas(3, 1),
+        );
+
+        let center = image.rgba8_at(1, 0);
+        assert!(
+            center[0].abs_diff(180) <= 1 && center[1] == 0 && center[2] == 0 && center[3] == 255,
+            "expected red diffuse response from alpha slope, got {center:?}"
+        );
+    }
+
+    #[test]
+    fn diffuse_lighting_point_light_uses_filter_bounds_as_user_space() {
+        let mut image = Image::new(1, 1, Color::from_rgb8(0, 0, 0));
+
+        apply(
+            &mut image,
+            &Filter::DiffuseLighting(DiffuseLighting {
+                surface_scale: 0.0,
+                diffuse_constant: 1.0,
+                lighting_color: [0.0, 1.0, 0.0],
+                light_source: LightSource::Point {
+                    x: 10.5,
+                    y: 20.5,
+                    z: 1.0,
+                },
+            }),
+            Bounds::new(10, 20, 11, 21),
+        );
+
+        assert_eq!(image.rgba8_at(0, 0), [0, 255, 0, 255]);
     }
 
     #[test]
