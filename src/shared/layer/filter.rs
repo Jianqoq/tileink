@@ -30,6 +30,7 @@ pub enum Filter {
     Contrast(f32),
     ColorMatrix([f32; 20]),
     ComponentTransfer(Box<ComponentTransferTable>),
+    ConvolveMatrix(ConvolveMatrix),
     Flood {
         brush: Brush,
     },
@@ -94,4 +95,24 @@ pub enum CompositeOperator {
 pub enum MorphologyOperator {
     Erode,
     Dilate,
+}
+
+#[derive(Clone, Debug)]
+pub struct ConvolveMatrix {
+    pub columns: u32,
+    pub rows: u32,
+    pub target_x: u32,
+    pub target_y: u32,
+    pub data: Vec<f32>,
+    pub divisor: f32,
+    pub bias: f32,
+    pub edge_mode: ConvolveEdgeMode,
+    pub preserve_alpha: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ConvolveEdgeMode {
+    None,
+    Duplicate,
+    Wrap,
 }

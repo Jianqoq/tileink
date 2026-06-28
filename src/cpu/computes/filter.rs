@@ -7,8 +7,9 @@ use crate::shared::{
     layer::{
         blend::{Blend, src_over_premul},
         filter::{
-            COMPONENT_TRANSFER_TABLE_SIZE, ComponentTransferTable, CompositeOperator, Filter,
-            FilterInput, FilterPrimitive, FilterPrimitiveKind, MorphologyOperator,
+            COMPONENT_TRANSFER_TABLE_SIZE, ComponentTransferTable, CompositeOperator,
+            ConvolveEdgeMode, ConvolveMatrix, Filter, FilterInput, FilterPrimitive,
+            FilterPrimitiveKind, MorphologyOperator,
         },
         region::Region,
     },
@@ -34,6 +35,7 @@ pub(crate) fn apply(image: &mut Image, filter: &Filter, bounds: Bounds) {
                 *px = apply_component_transfer_pixel(*px, table);
             }
         }
+        Filter::ConvolveMatrix(matrix) => apply_convolve_matrix(image, matrix),
         Filter::Flood { brush } => apply_flood(image, bounds, brush),
         Filter::Brightness(amount)
         | Filter::Contrast(amount)
@@ -359,6 +361,82 @@ fn morphology_replaces(candidate: f32, current: f32, operator: MorphologyOperato
     match operator {
         MorphologyOperator::Erode => candidate <= current,
         MorphologyOperator::Dilate => candidate >= current,
+    }
+}
+
+fn apply_convolve_matrix(image: &mut Image, matrix: &ConvolveMatrix) {
+    if matrix.columns == 0
+        || matrix.rows == 0
+        || matrix.target_x >= matrix.columns
+        || matrix.target_y >= matrix.rows
+        || matrix.divisor == 0.0
+        || matrix.data.len() != (matrix.columns * matrix.rows) as usize
+        || image.width == 0
+        || image.height == 0
+    {
+        return;
+    }
+
+    let source = image.clone();
+    for y in 0..source.height {
+        for x in 0..source.width {
+            image.pixels[(y * image.width + x) as usize] =
+                convolve_matrix_pixel(&source, x as i32, y as i32, matrix);
+        }
+    }
+}
+
+fn convolve_matrix_pixel(source: &Image, x: i32, y: i32, matrix: &ConvolveMatrix) -> u32 {
+    let mut out = [0.0; 4];
+    for ky in 0..matrix.rows {
+        for kx in 0..matrix.columns {
+            let kernel_ix =
+                ((matrix.rows - 1 - ky) * matrix.columns + (matrix.columns - 1 - kx)) as usize;
+            let weight = matrix.data[kernel_ix];
+            let sx = x + kx as i32 - matrix.target_x as i32;
+            let sy = y + ky as i32 - matrix.target_y as i32;
+            let sample = convolve_sample(source, sx, sy, matrix.edge_mode);
+            for channel in 0..4 {
+                out[channel] += sample[channel] * weight;
+            }
+        }
+    }
+
+    for channel in &mut out {
+        *channel = (*channel / matrix.divisor + matrix.bias).clamp(0.0, 1.0);
+    }
+    let alpha = if matrix.preserve_alpha {
+        straight_rgba8(source.pixels[(y as u32 * source.width + x as u32) as usize])[3]
+    } else {
+        out[3]
+    };
+    pack_premul_rgba8([out[0] * alpha, out[1] * alpha, out[2] * alpha, alpha])
+}
+
+fn convolve_sample(source: &Image, x: i32, y: i32, edge_mode: ConvolveEdgeMode) -> [f32; 4] {
+    let Some((x, y)) = convolve_sample_coord(source.width, source.height, x, y, edge_mode) else {
+        return [0.0; 4];
+    };
+    straight_rgba8(source.pixels[(y * source.width + x) as usize])
+}
+
+fn convolve_sample_coord(
+    width: u32,
+    height: u32,
+    x: i32,
+    y: i32,
+    edge_mode: ConvolveEdgeMode,
+) -> Option<(u32, u32)> {
+    let width = width as i32;
+    let height = height as i32;
+    match edge_mode {
+        ConvolveEdgeMode::None => {
+            (x >= 0 && y >= 0 && x < width && y < height).then_some((x as u32, y as u32))
+        }
+        ConvolveEdgeMode::Duplicate => {
+            Some((x.clamp(0, width - 1) as u32, y.clamp(0, height - 1) as u32))
+        }
+        ConvolveEdgeMode::Wrap => Some((x.rem_euclid(width) as u32, y.rem_euclid(height) as u32)),
     }
 }
 
@@ -1106,5 +1184,93 @@ mod tests {
                 .iter()
                 .all(|pixel| *pixel == rgba8_pack([0, 128, 0, 128]))
         );
+    }
+
+    #[test]
+    fn convolve_matrix_flips_kernel_and_respects_target() {
+        let mut image = Image::new(3, 1, Color::TRANSPARENT);
+        image.pixels = vec![
+            rgba8_pack([10, 0, 0, 255]),
+            rgba8_pack([20, 0, 0, 255]),
+            rgba8_pack([40, 0, 0, 255]),
+        ];
+
+        apply(
+            &mut image,
+            &Filter::ConvolveMatrix(ConvolveMatrix {
+                columns: 3,
+                rows: 1,
+                target_x: 1,
+                target_y: 0,
+                data: vec![1.0, 0.0, 0.0],
+                divisor: 1.0,
+                bias: 0.0,
+                edge_mode: ConvolveEdgeMode::Duplicate,
+                preserve_alpha: false,
+            }),
+            Bounds::canvas(3, 1),
+        );
+
+        assert_eq!(image.rgba8_at(0, 0), [20, 0, 0, 255]);
+        assert_eq!(image.rgba8_at(1, 0), [40, 0, 0, 255]);
+        assert_eq!(image.rgba8_at(2, 0), [40, 0, 0, 255]);
+    }
+
+    #[test]
+    fn convolve_matrix_edge_modes_control_out_of_bounds_sampling() {
+        let filter = |edge_mode| {
+            let mut image = Image::new(3, 1, Color::TRANSPARENT);
+            image.pixels = vec![
+                rgba8_pack([10, 0, 0, 255]),
+                rgba8_pack([20, 0, 0, 255]),
+                rgba8_pack([40, 0, 0, 255]),
+            ];
+            apply(
+                &mut image,
+                &Filter::ConvolveMatrix(ConvolveMatrix {
+                    columns: 3,
+                    rows: 1,
+                    target_x: 1,
+                    target_y: 0,
+                    data: vec![1.0, 0.0, 0.0],
+                    divisor: 1.0,
+                    bias: 0.0,
+                    edge_mode,
+                    preserve_alpha: false,
+                }),
+                Bounds::canvas(3, 1),
+            );
+            image
+        };
+
+        assert_eq!(filter(ConvolveEdgeMode::None).rgba8_at(2, 0), [0, 0, 0, 0]);
+        assert_eq!(
+            filter(ConvolveEdgeMode::Wrap).rgba8_at(2, 0),
+            [10, 0, 0, 255]
+        );
+    }
+
+    #[test]
+    fn convolve_matrix_preserve_alpha_keeps_source_alpha() {
+        let mut image = Image::new(1, 1, Color::TRANSPARENT);
+        image.pixels[0] = rgba8_pack([64, 0, 0, 128]);
+
+        apply(
+            &mut image,
+            &Filter::ConvolveMatrix(ConvolveMatrix {
+                columns: 1,
+                rows: 1,
+                target_x: 0,
+                target_y: 0,
+                data: vec![1.0],
+                divisor: 1.0,
+                bias: 0.25,
+                edge_mode: ConvolveEdgeMode::Duplicate,
+                preserve_alpha: true,
+            }),
+            Bounds::canvas(1, 1),
+        );
+
+        assert_eq!(image.rgba8_at(0, 0), [96, 32, 32, 128]);
     }
 }

@@ -4,8 +4,8 @@ use peniko::Color;
 mod executor;
 mod resources;
 use executor::{
-    FilterPathBuffers, FilterPathUpload, FilterTransferBuffers, FilterTransferUpload,
-    plan_stack_depths, required_scratch_count,
+    FilterConvolveBuffers, FilterConvolveUpload, FilterPathBuffers, FilterPathUpload,
+    FilterTransferBuffers, FilterTransferUpload, plan_stack_depths, required_scratch_count,
 };
 use resources::SceneUploadStaging;
 pub(crate) use resources::{CoarseBuffers, ScanBuffers, SceneBuffers};
@@ -53,6 +53,7 @@ pub struct Renderer<R: Runtime> {
     scene_upload: SceneUploadStaging,
     draw_brushes: GpuBrushBuffers,
     filter_brushes: GpuBrushBuffers,
+    filter_convolves: FilterConvolveBuffers,
     filter_paths: FilterPathBuffers,
     filter_transfers: FilterTransferBuffers,
     target: CubeBuffer<u32>,
@@ -139,6 +140,7 @@ impl<R: Runtime> Renderer<R> {
             scene_upload: SceneUploadStaging::default(),
             draw_brushes: GpuBrushBuffers::new(&client),
             filter_brushes: GpuBrushBuffers::new(&client),
+            filter_convolves: FilterConvolveBuffers::new(&client),
             filter_paths: FilterPathBuffers::new(&client),
             filter_transfers: FilterTransferBuffers::new(&client),
             target: CubeBuffer::new(&client, width as usize * height as usize),
@@ -167,6 +169,7 @@ impl<R: Runtime> Renderer<R> {
         let scratch_count = required_scratch_count(&plan);
         let draw_brush_upload = GpuBrushUpload::from_scene_draws(scene);
         let filter_brush_upload = GpuBrushUpload::from_filter_plan(&plan.ops);
+        let filter_convolve_upload = FilterConvolveUpload::from_plan(&plan);
         let filter_path_upload = FilterPathUpload::from_plan(&plan);
         let filter_transfer_upload = FilterTransferUpload::from_plan(&plan);
         self.lengths = lengths;
@@ -176,6 +179,8 @@ impl<R: Runtime> Renderer<R> {
         self.draw_brushes.upload(&self.client, draw_brush_upload);
         self.filter_brushes
             .upload(&self.client, filter_brush_upload);
+        self.filter_convolves
+            .upload(&self.client, filter_convolve_upload);
         self.filter_paths.upload(&self.client, filter_path_upload);
         self.filter_transfers
             .upload(&self.client, filter_transfer_upload);

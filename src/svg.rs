@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error, fmt};
+use std::{collections::HashMap, error::Error, fmt, sync::Arc};
 
 use peniko::{
     Color, ColorStop, Compose, Extend, Gradient, Mix,
@@ -7,13 +7,14 @@ use peniko::{
 use usvg::{Node, Paint, PaintOrder, SpreadMethod, tiny_skia_path::PathSegment};
 
 use crate::{
-    Brush, FillRule, Filter, Radius, Region, Scene,
+    Brush, CpuRenderer, FillRule, Filter, Radius, Region, Scene,
     shared::{
         bounds::Bounds,
+        brush::PatternBrush,
         layer::filter::{
             COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE, ComponentTransferTable,
-            CompositeOperator, FilterInput, FilterPrimitive, FilterPrimitiveKind,
-            MorphologyOperator,
+            CompositeOperator, ConvolveEdgeMode, ConvolveMatrix, FilterInput, FilterPrimitive,
+            FilterPrimitiveKind, MorphologyOperator,
         },
     },
 };
@@ -22,6 +23,8 @@ use crate::{
 pub struct SvgOptions {
     pub tolerance: f64,
 }
+
+const MAX_PATTERN_DEPTH: u8 = 16;
 
 impl Default for SvgOptions {
     fn default() -> Self {
@@ -69,7 +72,7 @@ impl Scene {
         options: SvgOptions,
     ) -> Result<(), SvgError> {
         let mut svg_scene = Scene::new(self.width, self.height);
-        SvgBuilder { options }.push_tree(&mut svg_scene, tree)?;
+        SvgBuilder::new(options).push_tree(&mut svg_scene, tree)?;
         self.merge(svg_scene);
         Ok(())
     }
@@ -77,9 +80,19 @@ impl Scene {
 
 struct SvgBuilder {
     options: SvgOptions,
+    base_transform: Affine,
+    pattern_depth: u8,
 }
 
 impl SvgBuilder {
+    fn new(options: SvgOptions) -> Self {
+        Self {
+            options,
+            base_transform: Affine::IDENTITY,
+            pattern_depth: 0,
+        }
+    }
+
     fn push_tree(&self, scene: &mut Scene, tree: &usvg::Tree) -> Result<(), SvgError> {
         self.push_group(scene, tree.root())
     }
@@ -104,7 +117,9 @@ impl SvgBuilder {
             pushed_layers += self.push_clip_path_layers(scene, clip)?;
         }
 
-        let layer_path = || rect_path(nonzero_rect_to_kurbo(group.abs_layer_bounding_box()));
+        let layer_path = || {
+            self.base_transform * rect_path(nonzero_rect_to_kurbo(group.abs_layer_bounding_box()))
+        };
         if group.blend_mode() != usvg::BlendMode::Normal {
             scene.push_blend_layer(
                 layer_path(),
@@ -125,7 +140,10 @@ impl SvgBuilder {
             pushed_layers += 1;
         }
         for layer in filter_layers.into_iter().rev() {
-            scene.push_filter_layer(layer.filter, layer.region);
+            scene.push_filter_layer(
+                layer.filter,
+                transform_region(layer.region, self.base_transform),
+            );
             pushed_layers += 1;
         }
 
@@ -154,7 +172,7 @@ impl SvgBuilder {
         }
 
         let data = tiny_path_to_bez(path.data());
-        let transform = transform_to_affine(path.abs_transform());
+        let transform = self.base_transform * transform_to_affine(path.abs_transform());
         match path.paint_order() {
             PaintOrder::FillAndStroke => {
                 self.push_fill(scene, path, &data, transform)?;
@@ -182,7 +200,7 @@ impl SvgBuilder {
             return Ok(());
         }
 
-        let brush = paint_to_brush(fill.paint(), fill.opacity().get())?;
+        let brush = self.paint_to_brush(fill.paint(), fill.opacity().get())?;
         scene.push_path(
             data.clone(),
             brush,
@@ -207,7 +225,7 @@ impl SvgBuilder {
             return Ok(());
         }
 
-        let brush = paint_to_brush(stroke.paint(), stroke.opacity().get())?;
+        let brush = self.paint_to_brush(stroke.paint(), stroke.opacity().get())?;
         let stroke_style = stroke_to_kurbo(stroke)?;
         scene.push_stroke(
             data.clone(),
@@ -233,7 +251,7 @@ impl SvgBuilder {
         let (path, rule) = self.single_clip_path(clip)?;
         scene.push_clip_layer(
             path,
-            transform_to_affine(clip.transform()),
+            self.base_transform * transform_to_affine(clip.transform()),
             rule,
             self.options.tolerance,
         );
@@ -288,6 +306,87 @@ impl SvgBuilder {
             }
         }
         Ok(())
+    }
+
+    fn paint_to_brush(&self, paint: &Paint, opacity: f32) -> Result<Brush, SvgError> {
+        match paint {
+            Paint::Color(color) => Ok(color_opacity_to_brush(*color, opacity)),
+            Paint::LinearGradient(source) => {
+                let transform = source.transform();
+                let stops = gradient_stops(source.stops(), opacity);
+                let gradient = Gradient::new_linear(
+                    (source.x1() as f64, source.y1() as f64),
+                    (source.x2() as f64, source.y2() as f64),
+                )
+                .with_extend(spread_method(source.spread_method()))
+                .with_stops(stops.as_slice());
+                let mut brush = Brush::from_gradient(&gradient);
+                let Brush::Linear(linear) = &mut brush else {
+                    unreachable!();
+                };
+                linear.transform = inverse_transform_array(transform, "gradientTransform")?;
+                Ok(brush)
+            }
+            Paint::RadialGradient(source) => {
+                let transform = source.transform();
+                let stops = gradient_stops(source.stops(), opacity);
+                let gradient = Gradient::new_two_point_radial(
+                    (source.fx() as f64, source.fy() as f64),
+                    source.fr().get(),
+                    (source.cx() as f64, source.cy() as f64),
+                    source.r().get(),
+                )
+                .with_extend(spread_method(source.spread_method()))
+                .with_stops(stops.as_slice());
+                let mut brush = Brush::from_gradient(&gradient);
+                let Brush::Radial(radial) = &mut brush else {
+                    unreachable!();
+                };
+                radial.transform = inverse_transform_array(transform, "gradientTransform")?;
+                Ok(brush)
+            }
+            Paint::Pattern(pattern) => self.pattern_to_brush(pattern, opacity),
+        }
+    }
+
+    fn pattern_to_brush(&self, pattern: &usvg::Pattern, opacity: f32) -> Result<Brush, SvgError> {
+        if self.pattern_depth >= MAX_PATTERN_DEPTH {
+            return Err(SvgError::unsupported("recursive pattern paint"));
+        }
+
+        let rect = pattern.rect();
+        let width = rect.width();
+        let height = rect.height();
+        let tile_width = width.ceil().max(1.0) as u32;
+        let tile_height = height.ceil().max(1.0) as u32;
+        // Render pattern content once in tile pixel space, then reuse the same
+        // world-to-tile transform for brush sampling so fractional tile sizes
+        // keep the SVG repeat period instead of snapping to integer user units.
+        let tile_transform =
+            Affine::scale_non_uniform(
+                f64::from(tile_width) / f64::from(width),
+                f64::from(tile_height) / f64::from(height),
+            ) * Affine::translate((-f64::from(rect.left()), -f64::from(rect.top())));
+
+        let mut tile_scene = Scene::new(tile_width, tile_height);
+        SvgBuilder {
+            options: self.options,
+            base_transform: tile_transform,
+            pattern_depth: self.pattern_depth + 1,
+        }
+        .push_group(&mut tile_scene, pattern.root())?;
+
+        let mut renderer = CpuRenderer::new(tile_width, tile_height, Color::TRANSPARENT);
+        renderer.render(&tile_scene);
+
+        let Some(pattern_inverse) = pattern.transform().invert() else {
+            return Err(SvgError::unsupported("non-invertible patternTransform"));
+        };
+        Ok(Brush::Pattern(PatternBrush {
+            image: Arc::new(renderer.image().clone()),
+            transform: affine_to_array(tile_transform * transform_to_affine(pattern_inverse)),
+            opacity: opacity_to_u8(opacity),
+        }))
     }
 }
 
@@ -396,9 +495,11 @@ fn svg_filter_primitive(
                 operator: composite_operator(composite.operator()),
             },
         ),
-        usvg::filter::Kind::ConvolveMatrix(_) => {
-            return Err(SvgError::unsupported("feConvolveMatrix"));
-        }
+        usvg::filter::Kind::ConvolveMatrix(convolve) => (
+            svg_filter_input(convolve.input(), results, "feConvolveMatrix")?,
+            None,
+            FilterPrimitiveKind::Filter(Box::new(convolve_matrix_to_filter(convolve))),
+        ),
         usvg::filter::Kind::DiffuseLighting(_) => {
             return Err(SvgError::unsupported("feDiffuseLighting"));
         }
@@ -495,6 +596,29 @@ fn composite_operator(operator: usvg::filter::CompositeOperator) -> CompositeOpe
         usvg::filter::CompositeOperator::Arithmetic { k1, k2, k3, k4 } => {
             CompositeOperator::Arithmetic { k1, k2, k3, k4 }
         }
+    }
+}
+
+fn convolve_matrix_to_filter(convolve: &usvg::filter::ConvolveMatrix) -> Filter {
+    let matrix = convolve.matrix();
+    Filter::ConvolveMatrix(ConvolveMatrix {
+        columns: matrix.columns(),
+        rows: matrix.rows(),
+        target_x: matrix.target_x(),
+        target_y: matrix.target_y(),
+        data: matrix.data().to_vec(),
+        divisor: convolve.divisor().get(),
+        bias: convolve.bias(),
+        edge_mode: convolve_edge_mode(convolve.edge_mode()),
+        preserve_alpha: convolve.preserve_alpha(),
+    })
+}
+
+fn convolve_edge_mode(edge_mode: usvg::filter::EdgeMode) -> ConvolveEdgeMode {
+    match edge_mode {
+        usvg::filter::EdgeMode::None => ConvolveEdgeMode::None,
+        usvg::filter::EdgeMode::Duplicate => ConvolveEdgeMode::Duplicate,
+        usvg::filter::EdgeMode::Wrap => ConvolveEdgeMode::Wrap,
     }
 }
 
@@ -824,49 +948,12 @@ fn tiny_path_to_bez(path: &usvg::tiny_skia_path::Path) -> BezPath {
     out
 }
 
-fn paint_to_brush(paint: &Paint, opacity: f32) -> Result<Brush, SvgError> {
-    match paint {
-        Paint::Color(color) => Ok(color_opacity_to_brush(*color, opacity)),
-        Paint::LinearGradient(source) => {
-            let transform = source.transform();
-            let stops = gradient_stops(source.stops(), opacity);
-            let gradient = Gradient::new_linear(
-                (source.x1() as f64, source.y1() as f64),
-                (source.x2() as f64, source.y2() as f64),
-            )
-            .with_extend(spread_method(source.spread_method()))
-            .with_stops(stops.as_slice());
-            let mut brush = Brush::from_gradient(&gradient);
-            let Brush::Linear(linear) = &mut brush else {
-                unreachable!();
-            };
-            linear.transform = inverse_transform_array(transform)?;
-            Ok(brush)
-        }
-        Paint::RadialGradient(source) => {
-            let transform = source.transform();
-            let stops = gradient_stops(source.stops(), opacity);
-            let gradient = Gradient::new_two_point_radial(
-                (source.fx() as f64, source.fy() as f64),
-                source.fr().get(),
-                (source.cx() as f64, source.cy() as f64),
-                source.r().get(),
-            )
-            .with_extend(spread_method(source.spread_method()))
-            .with_stops(stops.as_slice());
-            let mut brush = Brush::from_gradient(&gradient);
-            let Brush::Radial(radial) = &mut brush else {
-                unreachable!();
-            };
-            radial.transform = inverse_transform_array(transform)?;
-            Ok(brush)
-        }
-        Paint::Pattern(_) => Err(SvgError::unsupported("pattern paint")),
-    }
-}
-
 fn color_opacity_to_brush(color: usvg::Color, opacity: f32) -> Brush {
     Brush::Solid(Color::from_rgb8(color.red, color.green, color.blue).multiply_alpha(opacity))
+}
+
+fn opacity_to_u8(opacity: f32) -> u8 {
+    (opacity.clamp(0.0, 1.0) * 255.0 + 0.5) as u8
 }
 
 fn gradient_stops(stops: &[usvg::Stop], opacity: f32) -> Vec<ColorStop> {
@@ -958,9 +1045,16 @@ fn transform_to_affine(transform: usvg::Transform) -> Affine {
     ])
 }
 
-fn inverse_transform_array(transform: usvg::Transform) -> Result<[f32; 6], SvgError> {
+fn affine_to_array(transform: Affine) -> [f32; 6] {
+    transform.as_coeffs().map(|value| value as f32)
+}
+
+fn inverse_transform_array(
+    transform: usvg::Transform,
+    feature: &str,
+) -> Result<[f32; 6], SvgError> {
     let Some(transform) = transform.invert() else {
-        return Err(SvgError::unsupported("non-invertible gradientTransform"));
+        return Err(SvgError::unsupported(format!("non-invertible {feature}")));
     };
     Ok([
         transform.sx,
@@ -970,6 +1064,20 @@ fn inverse_transform_array(transform: usvg::Transform) -> Result<[f32; 6], SvgEr
         transform.tx,
         transform.ty,
     ])
+}
+
+fn transform_region(region: Region, transform: Affine) -> Region {
+    if transform == Affine::IDENTITY {
+        return region;
+    }
+    match region {
+        Region::Rect { rect, radius } => Region::rect(transform.transform_rect_bbox(rect), radius),
+        Region::Path {
+            path,
+            transform: region_transform,
+            tolerance,
+        } => Region::path(path, transform * region_transform, tolerance),
+    }
 }
 
 fn rect_path(rect: Rect) -> BezPath {
@@ -1013,6 +1121,16 @@ mod tests {
         let mut renderer = CpuRenderer::new(scene.width, scene.height, clear);
         renderer.render(&scene);
         renderer
+    }
+
+    fn assert_rgba_close(actual: [u8; 4], expected: [u8; 4], tolerance: u8) {
+        assert!(
+            actual
+                .iter()
+                .zip(expected)
+                .all(|(actual, expected)| actual.abs_diff(expected) <= tolerance),
+            "actual {actual:?}, expected {expected:?}"
+        );
     }
 
     #[test]
@@ -1070,6 +1188,66 @@ mod tests {
             right[2] > right[0],
             "right pixel should be blue-biased: {right:?}"
         );
+    }
+
+    #[test]
+    fn push_svg_renders_pattern_fill_with_opacity() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="12" height="4">
+                <defs>
+                    <pattern id="p" patternUnits="userSpaceOnUse" width="4" height="4">
+                        <rect width="2" height="4" fill="#ff0000"/>
+                        <rect x="2" width="2" height="4" fill="#0000ff"/>
+                    </pattern>
+                </defs>
+                <rect width="12" height="4" fill="url(#p)" fill-opacity="0.5"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_rgba_close(renderer.image().rgba8_at(1, 2), [128, 0, 0, 128], 1);
+        assert_rgba_close(renderer.image().rgba8_at(3, 2), [0, 0, 128, 128], 1);
+        assert_rgba_close(renderer.image().rgba8_at(5, 2), [128, 0, 0, 128], 1);
+    }
+
+    #[test]
+    fn push_svg_applies_pattern_transform_before_repeating() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="4">
+                <defs>
+                    <pattern id="p" patternUnits="userSpaceOnUse" width="4" height="4" patternTransform="translate(2 0)">
+                        <rect width="2" height="4" fill="#ff0000"/>
+                        <rect x="2" width="2" height="4" fill="#0000ff"/>
+                    </pattern>
+                </defs>
+                <rect width="8" height="4" fill="url(#p)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(1, 2), [0, 0, 255, 255]);
+        assert_eq!(renderer.image().rgba8_at(3, 2), [255, 0, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(5, 2), [0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn push_svg_renders_pattern_view_box() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="4">
+                <defs>
+                    <pattern id="p" patternUnits="userSpaceOnUse" width="4" height="4" viewBox="0 0 2 2" preserveAspectRatio="none">
+                        <rect width="1" height="2" fill="#ff0000"/>
+                        <rect x="1" width="1" height="2" fill="#0000ff"/>
+                    </pattern>
+                </defs>
+                <rect width="8" height="4" fill="url(#p)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(1, 2), [255, 0, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(3, 2), [0, 0, 255, 255]);
+        assert_eq!(renderer.image().rgba8_at(5, 2), [255, 0, 0, 255]);
     }
 
     #[test]
@@ -1265,6 +1443,29 @@ mod tests {
         );
 
         assert_eq!(renderer.image().rgba8_at(4, 4), [128, 0, 128, 255]);
+    }
+
+    #[test]
+    fn push_svg_renders_fe_convolve_matrix() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="3" height="1">
+                <defs>
+                    <filter id="convolve" x="0" y="0" width="3" height="1" filterUnits="userSpaceOnUse">
+                        <feConvolveMatrix order="3 1" targetX="1" targetY="0" edgeMode="duplicate" kernelMatrix="1 0 0"/>
+                    </filter>
+                </defs>
+                <g filter="url(#convolve)">
+                    <rect x="0" y="0" width="1" height="1" fill="#0a0000"/>
+                    <rect x="1" y="0" width="1" height="1" fill="#140000"/>
+                    <rect x="2" y="0" width="1" height="1" fill="#280000"/>
+                </g>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(0, 0), [20, 0, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(1, 0), [40, 0, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(2, 0), [40, 0, 0, 255]);
     }
 
     #[test]
