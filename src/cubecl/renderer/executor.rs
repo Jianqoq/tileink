@@ -9,8 +9,8 @@ use crate::{
         layer::{
             Layer,
             filter::{
-                ComponentTransferTable, CompositeOperator, Filter, FilterInput, FilterPrimitive,
-                FilterPrimitiveKind, MorphologyOperator,
+                ComponentTransferTable, CompositeOperator, ConvolveEdgeMode, ConvolveMatrix,
+                Filter, FilterInput, FilterPrimitive, FilterPrimitiveKind, MorphologyOperator,
             },
             region::Region,
         },
@@ -35,6 +35,7 @@ use super::{CubeRenderTarget, Renderer};
 #[derive(Default)]
 struct FilterCursors {
     brush: usize,
+    convolve: usize,
     path: usize,
     transfer: usize,
 }
@@ -237,6 +238,19 @@ impl<R: Runtime> Renderer<R> {
                 bounds,
                 next_filter_transfer_index(&mut filter_cursors.transfer),
             ),
+            Filter::ConvolveMatrix(matrix) => {
+                let temp = self.acquire_scratch();
+                self.clear_buffer(temp, 0);
+                self.convolve_matrix_buffer(
+                    target,
+                    temp,
+                    bounds,
+                    matrix,
+                    next_filter_convolve_offset(matrix, &mut filter_cursors.convolve),
+                );
+                self.copy_region(temp, target, bounds);
+                self.release_scratch(temp);
+            }
             Filter::Flood { .. } => self.apply_flood(
                 target,
                 bounds,
@@ -603,6 +617,83 @@ impl<R: Runtime> Renderer<R> {
                 table_index,
                 &self.filter_transfers.tables,
             ),
+        }
+    }
+
+    fn convolve_matrix_buffer(
+        &mut self,
+        source: CubeRenderTarget,
+        target: CubeRenderTarget,
+        bounds: Bounds,
+        matrix: &ConvolveMatrix,
+        kernel_offset: u32,
+    ) {
+        if source == target {
+            return;
+        }
+        let edge_mode = encode_convolve_edge_mode(matrix.edge_mode);
+        let preserve_alpha = u32::from(matrix.preserve_alpha);
+        match (source, target) {
+            (CubeRenderTarget::Main, CubeRenderTarget::Scratch(target_ix)) => {
+                FilterPipeline::convolve_matrix_region(
+                    &self.client,
+                    &self.target,
+                    &mut self.scratch[target_ix],
+                    self.size,
+                    bounds,
+                    &self.filter_convolves.kernels,
+                    kernel_offset,
+                    matrix.columns,
+                    matrix.rows,
+                    matrix.target_x,
+                    matrix.target_y,
+                    matrix.divisor,
+                    matrix.bias,
+                    edge_mode,
+                    preserve_alpha,
+                )
+            }
+            (CubeRenderTarget::Scratch(source_ix), CubeRenderTarget::Main) => {
+                FilterPipeline::convolve_matrix_region(
+                    &self.client,
+                    &self.scratch[source_ix],
+                    &mut self.target,
+                    self.size,
+                    bounds,
+                    &self.filter_convolves.kernels,
+                    kernel_offset,
+                    matrix.columns,
+                    matrix.rows,
+                    matrix.target_x,
+                    matrix.target_y,
+                    matrix.divisor,
+                    matrix.bias,
+                    edge_mode,
+                    preserve_alpha,
+                )
+            }
+            (CubeRenderTarget::Scratch(source_ix), CubeRenderTarget::Scratch(target_ix)) => {
+                let (source, target) =
+                    scratch_source_target(&mut self.scratch, source_ix, target_ix);
+                FilterPipeline::convolve_matrix_region(
+                    &self.client,
+                    source,
+                    target,
+                    self.size,
+                    bounds,
+                    &self.filter_convolves.kernels,
+                    kernel_offset,
+                    matrix.columns,
+                    matrix.rows,
+                    matrix.target_x,
+                    matrix.target_y,
+                    matrix.divisor,
+                    matrix.bias,
+                    edge_mode,
+                    preserve_alpha,
+                )
+            }
+            (CubeRenderTarget::Main, CubeRenderTarget::Main) => unreachable!(),
         }
     }
 
@@ -1425,6 +1516,7 @@ fn filter_scratch_extra(filter: &Filter) -> usize {
         }
         Filter::Graph { primitives, .. } => graph_scratch_extra(primitives),
         Filter::Blur(radius) => usize::from(radius.max(0.0) > 0.0),
+        Filter::ConvolveMatrix(_) => 1,
         Filter::Offset { .. } => 1,
         Filter::Morphology { .. } => 2,
         Filter::DropShadow { radius, .. } => 1 + usize::from(radius.max(0.0) > 0.0),
@@ -1478,6 +1570,14 @@ fn encode_morphology_operator(operator: MorphologyOperator) -> u32 {
     }
 }
 
+fn encode_convolve_edge_mode(edge_mode: ConvolveEdgeMode) -> u32 {
+    match edge_mode {
+        ConvolveEdgeMode::None => 0,
+        ConvolveEdgeMode::Duplicate => 1,
+        ConvolveEdgeMode::Wrap => 2,
+    }
+}
+
 fn composite_arithmetic(operator: CompositeOperator) -> [f32; 4] {
     match operator {
         CompositeOperator::Arithmetic { k1, k2, k3, k4 } => [k1, k2, k3, k4],
@@ -1499,6 +1599,9 @@ fn encode_color_filter(filter: &Filter) -> (u32, f32) {
         Filter::ColorMatrix(_) => panic!("color matrix is handled by a dedicated CubeCL pass"),
         Filter::ComponentTransfer(_) => {
             panic!("component transfer is handled by a dedicated CubeCL pass")
+        }
+        Filter::ConvolveMatrix(_) => {
+            panic!("convolve matrix is handled by a dedicated CubeCL pass")
         }
         Filter::Graph { .. } => panic!("filter graphs are handled by CubeCL graph execution"),
         Filter::Flood { .. } => panic!("flood is handled by the CubeCL brush fill pass"),
@@ -1563,6 +1666,12 @@ fn next_filter_transfer_index(cursor: &mut usize) -> u32 {
     index
 }
 
+fn next_filter_convolve_offset(matrix: &ConvolveMatrix, cursor: &mut usize) -> u32 {
+    let offset = *cursor as u32;
+    *cursor += matrix.data.len();
+    offset
+}
+
 fn next_filter_path_index(region: &Region, cursor: &mut usize) -> Option<u32> {
     if matches!(region, Region::Path { .. }) {
         let index = *cursor as u32;
@@ -1575,6 +1684,43 @@ fn next_filter_path_index(region: &Region, cursor: &mut usize) -> Option<u32> {
 
 pub(super) struct FilterTransferBuffers {
     pub(crate) tables: CubeBuffer<u32>,
+}
+
+pub(super) struct FilterConvolveBuffers {
+    pub(crate) kernels: CubeBuffer<f32>,
+}
+
+impl FilterConvolveBuffers {
+    pub(super) fn new<R: Runtime>(client: &::cubecl::client::ComputeClient<R>) -> Self {
+        Self {
+            kernels: CubeBuffer::new(client, 0),
+        }
+    }
+
+    pub(super) fn upload<R: Runtime>(
+        &mut self,
+        client: &::cubecl::client::ComputeClient<R>,
+        upload: FilterConvolveUpload,
+    ) {
+        self.kernels.replace(client, &upload.kernels);
+    }
+}
+
+#[derive(Default)]
+pub(super) struct FilterConvolveUpload {
+    kernels: Vec<f32>,
+}
+
+impl FilterConvolveUpload {
+    pub(super) fn from_plan(plan: &ExecPlan) -> Self {
+        let mut upload = Self::default();
+        collect_filter_convolves_for_ops(&plan.ops, &mut upload);
+        upload
+    }
+
+    fn push_matrix(&mut self, matrix: &ConvolveMatrix) {
+        self.kernels.extend_from_slice(&matrix.data);
+    }
 }
 
 impl FilterTransferBuffers {
@@ -1760,6 +1906,46 @@ fn collect_filter_transfers_for_ops(ops: &[ExecOp], upload: &mut FilterTransferU
                 _ => collect_filter_transfers_for_ops(children, upload),
             }
         }
+    }
+}
+
+fn collect_filter_convolves_for_ops(ops: &[ExecOp], upload: &mut FilterConvolveUpload) {
+    for op in ops {
+        if let ExecOp::OffscreenLayer {
+            layer, children, ..
+        } = op
+        {
+            match layer {
+                Layer::Filter { filter, .. } => {
+                    collect_filter_convolves_for_ops(children, upload);
+                    collect_filter_convolve(filter, upload);
+                }
+                Layer::Backdrop { filter, .. } => {
+                    collect_filter_convolve(filter, upload);
+                    collect_filter_convolves_for_ops(children, upload);
+                }
+                _ => collect_filter_convolves_for_ops(children, upload),
+            }
+        }
+    }
+}
+
+fn collect_filter_convolve(filter: &Filter, upload: &mut FilterConvolveUpload) {
+    match filter {
+        Filter::Chain { filters, .. } => {
+            for filter in filters {
+                collect_filter_convolve(filter, upload);
+            }
+        }
+        Filter::Graph { primitives, .. } => {
+            for primitive in primitives {
+                if let FilterPrimitiveKind::Filter(filter) = &primitive.kind {
+                    collect_filter_convolve(filter, upload);
+                }
+            }
+        }
+        Filter::ConvolveMatrix(matrix) => upload.push_matrix(matrix),
+        _ => {}
     }
 }
 

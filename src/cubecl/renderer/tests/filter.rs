@@ -544,6 +544,53 @@ fn filter_wgpu_applies_component_transfer_when_enabled() {
 }
 
 #[test]
+fn filter_wgpu_applies_convolve_matrix_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(3, 1);
+    scene.push_filter_layer(
+        Filter::ConvolveMatrix(ConvolveMatrix {
+            columns: 3,
+            rows: 1,
+            target_x: 1,
+            target_y: 0,
+            data: vec![1.0, 0.0, 0.0],
+            divisor: 1.0,
+            bias: 0.0,
+            edge_mode: ConvolveEdgeMode::Duplicate,
+            preserve_alpha: false,
+        }),
+        Region::rect(Rect::new(0.0, 0.0, 3.0, 1.0), Radius::all(0.0)),
+    );
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 1.0, 1.0),
+        Color::from_rgb8(10, 0, 0),
+        FillRule::NonZero,
+    );
+    scene.push_rect(
+        Rect::new(1.0, 0.0, 2.0, 1.0),
+        Color::from_rgb8(20, 0, 0),
+        FillRule::NonZero,
+    );
+    scene.push_rect(
+        Rect::new(2.0, 0.0, 3.0, 1.0),
+        Color::from_rgb8(40, 0, 0),
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(3, 1, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+
+    assert_eq!(target[pixel_ix(0, 0, 3)], rgba8_pack([20, 0, 0, 255]));
+    assert_eq!(target[pixel_ix(1, 0, 3)], rgba8_pack([40, 0, 0, 255]));
+    assert_eq!(target[pixel_ix(2, 0, 3)], rgba8_pack([40, 0, 0, 255]));
+}
+
+#[test]
 fn filter_wgpu_floods_with_uploaded_brush_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;

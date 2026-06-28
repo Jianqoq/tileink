@@ -329,6 +329,52 @@ impl FilterPipeline {
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn convolve_matrix_region<R: Runtime>(
+        client: &ComputeClient<R>,
+        source: &CubeBuffer<u32>,
+        target: &mut CubeBuffer<u32>,
+        size: (u32, u32),
+        bounds: Bounds,
+        kernels: &CubeBuffer<f32>,
+        kernel_offset: u32,
+        columns: u32,
+        rows: u32,
+        target_x: u32,
+        target_y: u32,
+        divisor: f32,
+        bias: f32,
+        edge_mode: u32,
+        preserve_alpha: u32,
+    ) {
+        let Some(region) = FilterRegion::new(size, bounds) else {
+            return;
+        };
+        filter_convolve_matrix_region::launch::<R>(
+            client,
+            cube_count(region.pixel_count),
+            CubeDim::new_1d(FILTER_WORKGROUP_SIZE),
+            region.pixel_count,
+            region.width,
+            region.height,
+            region.x0,
+            region.y0,
+            size.0,
+            kernel_offset,
+            columns,
+            rows,
+            target_x,
+            target_y,
+            divisor,
+            bias,
+            edge_mode,
+            preserve_alpha,
+            unsafe { kernels.arg() },
+            unsafe { source.arg() },
+            unsafe { target.arg() },
+        );
+    }
+
     pub(crate) fn offset_region<R: Runtime>(
         client: &ComputeClient<R>,
         source: &CubeBuffer<u32>,
@@ -963,6 +1009,103 @@ fn filter_component_transfer_region(
     let y = region_y0 + region_ix / region_width;
     let ix = (y * image_width + x) as usize;
     target[ix] = apply_component_transfer_pixel(target[ix], table_index, transfer_tables);
+}
+
+#[cube(launch)]
+#[allow(clippy::too_many_arguments)]
+fn filter_convolve_matrix_region(
+    pixel_count: u32,
+    region_width: u32,
+    region_height: u32,
+    region_x0: u32,
+    region_y0: u32,
+    image_width: u32,
+    kernel_offset: u32,
+    columns: u32,
+    rows: u32,
+    target_x: u32,
+    target_y: u32,
+    divisor: f32,
+    bias: f32,
+    edge_mode: u32,
+    preserve_alpha: u32,
+    kernels: &Array<f32>,
+    source: &Array<u32>,
+    target: &mut Array<u32>,
+) {
+    let region_ix = ABSOLUTE_POS as u32;
+    if region_ix >= pixel_count {
+        terminate!();
+    }
+    let x = region_x0 + region_ix % region_width;
+    let y = region_y0 + region_ix / region_width;
+    let dst_ix = (y * image_width + x) as usize;
+
+    if columns == 0 || rows == 0 || divisor == 0.0 {
+        target[dst_ix] = source[dst_ix];
+        terminate!();
+    }
+
+    let region_x1 = (region_x0 + region_width) as i32;
+    let region_y1 = (region_y0 + region_height) as i32;
+    let mut out_r = 0.0;
+    let mut out_g = 0.0;
+    let mut out_b = 0.0;
+    let mut out_a = 0.0;
+    let mut ky = 0;
+    while ky < rows {
+        let mut kx = 0;
+        while kx < columns {
+            let kernel_ix = kernel_offset + (rows - 1 - ky) * columns + (columns - 1 - kx);
+            let weight = kernels[kernel_ix as usize];
+            let mut sx = x as i32 + kx as i32 - target_x as i32;
+            let mut sy = y as i32 + ky as i32 - target_y as i32;
+            let mut sample = u32::new(0);
+            if edge_mode == 1 {
+                sx = sx.clamp(region_x0 as i32, region_x1 - 1);
+                sy = sy.clamp(region_y0 as i32, region_y1 - 1);
+                sample = source[(sy as u32 * image_width + sx as u32) as usize];
+            } else if edge_mode == 2 {
+                while sx < region_x0 as i32 {
+                    sx += region_width as i32;
+                }
+                while sx >= region_x1 {
+                    sx -= region_width as i32;
+                }
+                while sy < region_y0 as i32 {
+                    sy += region_height as i32;
+                }
+                while sy >= region_y1 {
+                    sy -= region_height as i32;
+                }
+                sample = source[(sy as u32 * image_width + sx as u32) as usize];
+            } else if sx >= region_x0 as i32
+                && sx < region_x1
+                && sy >= region_y0 as i32
+                && sy < region_y1
+            {
+                sample = source[(sy as u32 * image_width + sx as u32) as usize];
+            }
+
+            let alpha = (sample >> 24) & 255;
+            out_r += straight_channel(sample & 255, alpha) * weight;
+            out_g += straight_channel((sample >> 8) & 255, alpha) * weight;
+            out_b += straight_channel((sample >> 16) & 255, alpha) * weight;
+            out_a += (alpha as f32 / 255.0) * weight;
+            kx += 1;
+        }
+        ky += 1;
+    }
+
+    let base_alpha = (source[dst_ix] >> 24) as f32 / 255.0;
+    let mut alpha = (out_a / divisor + bias).clamp(0.0, 1.0);
+    if preserve_alpha == 1 {
+        alpha = base_alpha;
+    }
+    let r = (out_r / divisor + bias).clamp(0.0, 1.0);
+    let g = (out_g / divisor + bias).clamp(0.0, 1.0);
+    let b = (out_b / divisor + bias).clamp(0.0, 1.0);
+    target[dst_ix] = pack_premul_rgba8(r * alpha, g * alpha, b * alpha, alpha);
 }
 
 #[cube(launch)]

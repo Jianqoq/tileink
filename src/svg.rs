@@ -12,8 +12,8 @@ use crate::{
         bounds::Bounds,
         layer::filter::{
             COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE, ComponentTransferTable,
-            CompositeOperator, FilterInput, FilterPrimitive, FilterPrimitiveKind,
-            MorphologyOperator,
+            CompositeOperator, ConvolveEdgeMode, ConvolveMatrix, FilterInput, FilterPrimitive,
+            FilterPrimitiveKind, MorphologyOperator,
         },
     },
 };
@@ -396,9 +396,11 @@ fn svg_filter_primitive(
                 operator: composite_operator(composite.operator()),
             },
         ),
-        usvg::filter::Kind::ConvolveMatrix(_) => {
-            return Err(SvgError::unsupported("feConvolveMatrix"));
-        }
+        usvg::filter::Kind::ConvolveMatrix(convolve) => (
+            svg_filter_input(convolve.input(), results, "feConvolveMatrix")?,
+            None,
+            FilterPrimitiveKind::Filter(Box::new(convolve_matrix_to_filter(convolve))),
+        ),
         usvg::filter::Kind::DiffuseLighting(_) => {
             return Err(SvgError::unsupported("feDiffuseLighting"));
         }
@@ -495,6 +497,29 @@ fn composite_operator(operator: usvg::filter::CompositeOperator) -> CompositeOpe
         usvg::filter::CompositeOperator::Arithmetic { k1, k2, k3, k4 } => {
             CompositeOperator::Arithmetic { k1, k2, k3, k4 }
         }
+    }
+}
+
+fn convolve_matrix_to_filter(convolve: &usvg::filter::ConvolveMatrix) -> Filter {
+    let matrix = convolve.matrix();
+    Filter::ConvolveMatrix(ConvolveMatrix {
+        columns: matrix.columns(),
+        rows: matrix.rows(),
+        target_x: matrix.target_x(),
+        target_y: matrix.target_y(),
+        data: matrix.data().to_vec(),
+        divisor: convolve.divisor().get(),
+        bias: convolve.bias(),
+        edge_mode: convolve_edge_mode(convolve.edge_mode()),
+        preserve_alpha: convolve.preserve_alpha(),
+    })
+}
+
+fn convolve_edge_mode(edge_mode: usvg::filter::EdgeMode) -> ConvolveEdgeMode {
+    match edge_mode {
+        usvg::filter::EdgeMode::None => ConvolveEdgeMode::None,
+        usvg::filter::EdgeMode::Duplicate => ConvolveEdgeMode::Duplicate,
+        usvg::filter::EdgeMode::Wrap => ConvolveEdgeMode::Wrap,
     }
 }
 
@@ -1265,6 +1290,29 @@ mod tests {
         );
 
         assert_eq!(renderer.image().rgba8_at(4, 4), [128, 0, 128, 255]);
+    }
+
+    #[test]
+    fn push_svg_renders_fe_convolve_matrix() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="3" height="1">
+                <defs>
+                    <filter id="convolve" x="0" y="0" width="3" height="1" filterUnits="userSpaceOnUse">
+                        <feConvolveMatrix order="3 1" targetX="1" targetY="0" edgeMode="duplicate" kernelMatrix="1 0 0"/>
+                    </filter>
+                </defs>
+                <g filter="url(#convolve)">
+                    <rect x="0" y="0" width="1" height="1" fill="#0a0000"/>
+                    <rect x="1" y="0" width="1" height="1" fill="#140000"/>
+                    <rect x="2" y="0" width="1" height="1" fill="#280000"/>
+                </g>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(0, 0), [20, 0, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(1, 0), [40, 0, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(2, 0), [40, 0, 0, 255]);
     }
 
     #[test]
