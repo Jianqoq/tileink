@@ -857,6 +857,9 @@ fn write_clipped_segment(
                 p1y = p0y;
             }
         } else if p0y == 0.0 {
+            // Top-left clipped crossings must keep their left-edge correction so the paired
+            // left-edge exit cancels coverage outside tiny clipped caps.
+            y_edge = p0y;
             p0x = epsilon;
         } else {
             y_edge = p0y;

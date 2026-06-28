@@ -1225,6 +1225,28 @@ mod tests {
     }
 
     #[test]
+    fn push_svg_renders_line_with_default_y2_coordinate_without_endpoint_tile_fill() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+                <path d="M 20 40 L 160 0" stroke="red"/>
+                <line x1="20" y1="40" x2="160" stroke="green"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        let covered = renderer.image().rgba8_at(90, 20);
+        assert!(
+            covered[1] > 0,
+            "expected green line coverage, got {covered:?}"
+        );
+        assert_eq!(
+            renderer.image().rgba8_at(170, 8),
+            [0, 0, 0, 0],
+            "line endpoint must not fill the endpoint tile"
+        );
+    }
+
+    #[test]
     fn push_svg_keeps_group_opacity_isolated() {
         let renderer = render(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96">

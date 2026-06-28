@@ -460,6 +460,10 @@ fn clip_line_to_tile(
                 p1.1 = p0.1;
             }
         } else if p0.1 == 0.0 {
+            // A segment clipped at the top-left corner still contributes a left-edge crossing.
+            // Keeping that edge balances the matching left-edge exit and prevents a tiny cap
+            // from turning the whole tile into filled backdrop.
+            y_edge = p0.1;
             p0.0 = EPSILON;
         } else {
             y_edge = p0.1;
@@ -949,6 +953,65 @@ mod tests {
         assert_eq!(range.end - range.start, 2);
         assert!(alpha[4 * 16] > 0);
         assert_eq!(alpha[4 * 16 + 15], 0);
+    }
+
+    #[test]
+    fn run_keeps_top_left_clipped_cap_from_filling_tile() {
+        let lines = [
+            Line {
+                path_id: 0,
+                _pad: 0.0,
+                p0: [-0.137_36, -0.480_762],
+                p1: [0.137_36, 0.480_762],
+            },
+            Line {
+                path_id: 0,
+                _pad: 0.0,
+                p0: [0.137_36, 0.480_762],
+                p1: [-139.862_64, 40.480_762],
+            },
+        ];
+        let path_records = [PathRecord {
+            path_id: 0,
+            line_count: lines.len() as u32,
+            line_start: 0,
+            _pad: 0,
+        }];
+        let backdrop_records = [one_tile_backdrop_record(16)];
+        let mut backdrops = vec![0];
+        let mut tile_segment_ranges = vec![TileSegmentRange::default()];
+        let mut segments = vec![LineSegment::default(); 16];
+        let mut segments_bump = vec![AtomicU32::new(0)];
+        let mut segment_tile_counts = vec![0];
+        let mut segment_tile_cursors = vec![AtomicU32::new(0)];
+
+        ScanCpuPipeline::new()
+            .prepare(
+                &lines,
+                &path_records,
+                &backdrop_records,
+                &mut backdrops,
+                &mut tile_segment_ranges,
+                &mut segments,
+                &mut segments_bump,
+                &mut segment_tile_counts,
+                &mut segment_tile_cursors,
+                (1, 1),
+            )
+            .run();
+
+        let range = tile_segment_ranges[0];
+        let alpha = build_tile_alpha(
+            &segments[range.start as usize..range.end as usize],
+            backdrops[0],
+            FillRule::NonZero,
+        );
+
+        assert_eq!(backdrops, vec![0]);
+        assert_eq!(range.end - range.start, 2);
+        assert!(alpha[0] > 0);
+        assert_eq!(alpha[1], 0);
+        assert_eq!(alpha[16], 0);
     }
 
     #[test]
