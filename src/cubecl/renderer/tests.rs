@@ -13,10 +13,14 @@ use crate::cubecl::types::{
     CUMSUM_CHUNK_SIZE,
 };
 use crate::render::Render;
+use crate::shared::bounds::Bounds;
 use crate::shared::brush::{Brush, IDENTITY_TRANSFORM, PatternBrush};
 use crate::shared::execution::ExecOp;
 use crate::shared::image::{Image, rgba8_pack, unpack_rgba8};
-use crate::shared::layer::{filter::Filter, region::Region};
+use crate::shared::layer::{
+    filter::{CompositeOperator, Filter, FilterInput, FilterPrimitive, FilterPrimitiveKind},
+    region::Region,
+};
 use crate::shared::pixel::premul_f32_to_u32;
 use crate::{CpuRenderer, FillRule, Radius, Scene, StrokeWidths};
 

@@ -1,4 +1,4 @@
-use std::{error::Error, fmt};
+use std::{collections::HashMap, error::Error, fmt};
 
 use peniko::{
     Color, ColorStop, Compose, Extend, Gradient, Mix,
@@ -8,8 +8,12 @@ use usvg::{Node, Paint, PaintOrder, SpreadMethod, tiny_skia_path::PathSegment};
 
 use crate::{
     Brush, FillRule, Filter, Radius, Region, Scene,
-    shared::layer::filter::{
-        COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE, ComponentTransferTable,
+    shared::{
+        bounds::Bounds,
+        layer::filter::{
+            COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE, ComponentTransferTable,
+            CompositeOperator, FilterInput, FilterPrimitive, FilterPrimitiveKind,
+        },
     },
 };
 
@@ -301,26 +305,20 @@ fn svg_filter_layers(
 }
 
 fn svg_filter_layer(filter: &usvg::filter::Filter) -> Result<Option<SvgFilterLayer>, SvgError> {
-    let mut lowered = Vec::new();
-    let mut previous_result = None;
+    let mut primitives = Vec::new();
+    let mut results = HashMap::new();
     for primitive in filter.primitives() {
-        if !same_nonzero_rect(primitive.rect(), filter.rect()) {
-            return Err(SvgError::unsupported("filter primitive subregion"));
-        }
-
-        let lowered_primitive = svg_filter_primitive(primitive, previous_result.as_deref())?;
-        previous_result = Some(primitive.result().to_string());
-        if let Some(lowered_primitive) = lowered_primitive {
-            lowered.push(lowered_primitive);
-        }
+        let index = primitives.len();
+        primitives.push(svg_filter_primitive(primitive, &results)?);
+        results.insert(primitive.result().to_string(), index);
     }
 
-    if lowered.is_empty() {
+    if primitives.is_empty() {
         Ok(None)
     } else {
         Ok(Some(SvgFilterLayer {
-            filter: Filter::Chain {
-                filters: lowered,
+            filter: Filter::Graph {
+                primitives,
                 fixed_region: true,
             },
             region: Region::rect(nonzero_rect_to_kurbo(filter.rect()), Radius::all(0.0)),
@@ -330,20 +328,24 @@ fn svg_filter_layer(filter: &usvg::filter::Filter) -> Result<Option<SvgFilterLay
 
 fn svg_filter_primitive(
     primitive: &usvg::filter::Primitive,
-    previous_result: Option<&str>,
-) -> Result<Option<Filter>, SvgError> {
-    match primitive.kind() {
+    results: &HashMap<String, usize>,
+) -> Result<FilterPrimitive, SvgError> {
+    let region = nonzero_rect_to_bounds(primitive.rect());
+    let (input, input2, kind) = match primitive.kind() {
         usvg::filter::Kind::GaussianBlur(blur) => {
-            ensure_current_filter_input(blur.input(), previous_result, "feGaussianBlur")?;
-            Ok(Some(Filter::Blur(equal_std_dev(
+            let filter = Filter::Blur(equal_std_dev(
                 blur.std_dev_x().get(),
                 blur.std_dev_y().get(),
                 "anisotropic feGaussianBlur",
-            )?)))
+            )?);
+            (
+                svg_filter_input(blur.input(), results, "feGaussianBlur")?,
+                None,
+                FilterPrimitiveKind::Filter(Box::new(filter)),
+            )
         }
         usvg::filter::Kind::DropShadow(shadow) => {
-            ensure_current_filter_input(shadow.input(), previous_result, "feDropShadow")?;
-            Ok(Some(Filter::DropShadow {
+            let filter = Filter::DropShadow {
                 offset_x: shadow.dx(),
                 offset_y: shadow.dy(),
                 radius: equal_std_dev(
@@ -352,54 +354,121 @@ fn svg_filter_primitive(
                     "anisotropic feDropShadow",
                 )?,
                 brush: color_opacity_to_brush(shadow.color(), shadow.opacity().get()),
-            }))
+            };
+            (
+                svg_filter_input(shadow.input(), results, "feDropShadow")?,
+                None,
+                FilterPrimitiveKind::Filter(Box::new(filter)),
+            )
         }
         usvg::filter::Kind::ColorMatrix(matrix) => {
-            ensure_current_filter_input(matrix.input(), previous_result, "feColorMatrix")?;
-            color_matrix_to_filter(matrix.kind())
+            let kind = filter_to_primitive_kind(color_matrix_to_filter(matrix.kind())?);
+            (
+                svg_filter_input(matrix.input(), results, "feColorMatrix")?,
+                None,
+                kind,
+            )
         }
         usvg::filter::Kind::ComponentTransfer(transfer) => {
-            ensure_current_filter_input(transfer.input(), previous_result, "feComponentTransfer")?;
-            component_transfer_to_filter(transfer)
+            let kind = filter_to_primitive_kind(component_transfer_to_filter(transfer)?);
+            (
+                svg_filter_input(transfer.input(), results, "feComponentTransfer")?,
+                None,
+                kind,
+            )
         }
-        usvg::filter::Kind::Blend(_) => Err(SvgError::unsupported("feBlend")),
-        usvg::filter::Kind::Composite(_) => Err(SvgError::unsupported("feComposite")),
-        usvg::filter::Kind::ConvolveMatrix(_) => Err(SvgError::unsupported("feConvolveMatrix")),
-        usvg::filter::Kind::DiffuseLighting(_) => Err(SvgError::unsupported("feDiffuseLighting")),
-        usvg::filter::Kind::DisplacementMap(_) => Err(SvgError::unsupported("feDisplacementMap")),
-        usvg::filter::Kind::Flood(flood) => Ok(Some(Filter::Flood {
-            brush: color_opacity_to_brush(flood.color(), flood.opacity().get()),
-        })),
-        usvg::filter::Kind::Image(_) => Err(SvgError::unsupported("feImage")),
-        usvg::filter::Kind::Merge(_) => Err(SvgError::unsupported("feMerge")),
-        usvg::filter::Kind::Morphology(_) => Err(SvgError::unsupported("feMorphology")),
-        usvg::filter::Kind::Offset(offset) => {
-            ensure_current_filter_input(offset.input(), previous_result, "feOffset")?;
-            Ok(Some(Filter::Offset {
+        usvg::filter::Kind::Blend(blend) => (
+            svg_filter_input(blend.input1(), results, "feBlend")?,
+            Some(svg_filter_input(blend.input2(), results, "feBlend")?),
+            FilterPrimitiveKind::Blend {
+                mode: blend_mode_to_mix(blend.mode()),
+            },
+        ),
+        usvg::filter::Kind::Composite(composite) => (
+            svg_filter_input(composite.input1(), results, "feComposite")?,
+            Some(svg_filter_input(
+                composite.input2(),
+                results,
+                "feComposite",
+            )?),
+            FilterPrimitiveKind::Composite {
+                operator: composite_operator(composite.operator()),
+            },
+        ),
+        usvg::filter::Kind::ConvolveMatrix(_) => {
+            return Err(SvgError::unsupported("feConvolveMatrix"));
+        }
+        usvg::filter::Kind::DiffuseLighting(_) => {
+            return Err(SvgError::unsupported("feDiffuseLighting"));
+        }
+        usvg::filter::Kind::DisplacementMap(_) => {
+            return Err(SvgError::unsupported("feDisplacementMap"));
+        }
+        usvg::filter::Kind::Flood(flood) => (
+            FilterInput::SourceGraphic,
+            None,
+            FilterPrimitiveKind::Filter(Box::new(Filter::Flood {
+                brush: color_opacity_to_brush(flood.color(), flood.opacity().get()),
+            })),
+        ),
+        usvg::filter::Kind::Image(_) => return Err(SvgError::unsupported("feImage")),
+        usvg::filter::Kind::Merge(_) => return Err(SvgError::unsupported("feMerge")),
+        usvg::filter::Kind::Morphology(_) => return Err(SvgError::unsupported("feMorphology")),
+        usvg::filter::Kind::Offset(offset) => (
+            svg_filter_input(offset.input(), results, "feOffset")?,
+            None,
+            FilterPrimitiveKind::Filter(Box::new(Filter::Offset {
                 dx: offset.dx(),
                 dy: offset.dy(),
-            }))
+            })),
+        ),
+        usvg::filter::Kind::SpecularLighting(_) => {
+            return Err(SvgError::unsupported("feSpecularLighting"));
         }
-        usvg::filter::Kind::SpecularLighting(_) => Err(SvgError::unsupported("feSpecularLighting")),
-        usvg::filter::Kind::Tile(_) => Err(SvgError::unsupported("feTile")),
-        usvg::filter::Kind::Turbulence(_) => Err(SvgError::unsupported("feTurbulence")),
+        usvg::filter::Kind::Tile(_) => return Err(SvgError::unsupported("feTile")),
+        usvg::filter::Kind::Turbulence(_) => return Err(SvgError::unsupported("feTurbulence")),
+    };
+    Ok(FilterPrimitive {
+        input,
+        input2,
+        region,
+        kind,
+    })
+}
+
+fn filter_to_primitive_kind(filter: Option<Filter>) -> FilterPrimitiveKind {
+    match filter {
+        Some(filter) => FilterPrimitiveKind::Filter(Box::new(filter)),
+        None => FilterPrimitiveKind::Identity,
     }
 }
 
-fn ensure_current_filter_input(
+fn svg_filter_input(
     input: &usvg::filter::Input,
-    previous_result: Option<&str>,
+    results: &HashMap<String, usize>,
     primitive: &str,
-) -> Result<(), SvgError> {
-    let valid = match (previous_result, input) {
-        (None, usvg::filter::Input::SourceGraphic) => true,
-        (Some(previous), usvg::filter::Input::Reference(reference)) => reference == previous,
-        _ => false,
-    };
-    if valid {
-        Ok(())
-    } else {
-        Err(SvgError::unsupported(format!("{primitive} input graph")))
+) -> Result<FilterInput, SvgError> {
+    match input {
+        usvg::filter::Input::SourceGraphic => Ok(FilterInput::SourceGraphic),
+        usvg::filter::Input::SourceAlpha => Ok(FilterInput::SourceAlpha),
+        usvg::filter::Input::Reference(reference) => results
+            .get(reference)
+            .copied()
+            .map(FilterInput::Primitive)
+            .ok_or_else(|| SvgError::unsupported(format!("{primitive} input graph"))),
+    }
+}
+
+fn composite_operator(operator: usvg::filter::CompositeOperator) -> CompositeOperator {
+    match operator {
+        usvg::filter::CompositeOperator::Over => CompositeOperator::Over,
+        usvg::filter::CompositeOperator::In => CompositeOperator::In,
+        usvg::filter::CompositeOperator::Out => CompositeOperator::Out,
+        usvg::filter::CompositeOperator::Atop => CompositeOperator::Atop,
+        usvg::filter::CompositeOperator::Xor => CompositeOperator::Xor,
+        usvg::filter::CompositeOperator::Arithmetic { k1, k2, k3, k4 } => {
+            CompositeOperator::Arithmetic { k1, k2, k3, k4 }
+        }
     }
 }
 
@@ -698,13 +767,6 @@ fn equal_std_dev(x: f32, y: f32, feature: &str) -> Result<f32, SvgError> {
     }
 }
 
-fn same_nonzero_rect(a: usvg::NonZeroRect, b: usvg::NonZeroRect) -> bool {
-    nearly_eq(a.left(), b.left())
-        && nearly_eq(a.top(), b.top())
-        && nearly_eq(a.right(), b.right())
-        && nearly_eq(a.bottom(), b.bottom())
-}
-
 fn nearly_eq(a: f32, b: f32) -> bool {
     (a - b).abs() <= 1.0e-4
 }
@@ -887,6 +949,15 @@ fn nonzero_rect_to_kurbo(rect: usvg::NonZeroRect) -> Rect {
         rect.top() as f64,
         rect.right() as f64,
         rect.bottom() as f64,
+    )
+}
+
+fn nonzero_rect_to_bounds(rect: usvg::NonZeroRect) -> Bounds {
+    Bounds::new(
+        rect.left().floor() as i32,
+        rect.top().floor() as i32,
+        rect.right().ceil() as i32,
+        rect.bottom().ceil() as i32,
     )
 }
 
@@ -1108,6 +1179,62 @@ mod tests {
     }
 
     #[test]
+    fn push_svg_renders_fe_blend_with_input_graph_and_subregion() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8">
+                <defs>
+                    <filter id="blend" x="0" y="0" width="8" height="8" filterUnits="userSpaceOnUse">
+                        <feFlood flood-color="#0000ff" result="blue"/>
+                        <feBlend in="SourceGraphic" in2="blue" mode="multiply" x="0" y="0" width="4" height="8"/>
+                    </filter>
+                </defs>
+                <rect width="8" height="8" fill="#ff0000" filter="url(#blend)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(2, 4), [0, 0, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(6, 4), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn push_svg_renders_fe_composite_with_source_alpha() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8">
+                <defs>
+                    <filter id="mask" x="0" y="0" width="8" height="8" filterUnits="userSpaceOnUse">
+                        <feFlood flood-color="#0000ff" result="blue"/>
+                        <feComposite in="blue" in2="SourceAlpha" operator="in"/>
+                    </filter>
+                </defs>
+                <rect width="4" height="8" fill="#ff0000" filter="url(#mask)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(2, 4), [0, 0, 255, 255]);
+        assert_eq!(renderer.image().rgba8_at(6, 4), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn push_svg_renders_fe_composite_arithmetic() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8">
+                <defs>
+                    <filter id="arith" x="0" y="0" width="8" height="8" filterUnits="userSpaceOnUse">
+                        <feFlood flood-color="#0000ff" result="blue"/>
+                        <feComposite in="SourceGraphic" in2="blue" operator="arithmetic" k1="0" k2="0.5" k3="0.5" k4="0"/>
+                    </filter>
+                </defs>
+                <rect width="8" height="8" fill="#ff0000" filter="url(#arith)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(4, 4), [128, 0, 128, 255]);
+    }
+
+    #[test]
     fn push_svg_preserves_css_filter_function_order() {
         let renderer = render(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8">
@@ -1127,8 +1254,12 @@ mod tests {
     fn push_svg_unsupported_features_do_not_modify_scene() {
         let tree = parse(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
-                <defs><filter id="blend"><feBlend in2="SourceGraphic"/></filter></defs>
-                <g filter="url(#blend)"><rect width="16" height="16" fill="#ff0000"/></g>
+                <defs>
+                    <filter id="merge">
+                        <feMerge><feMergeNode in="SourceGraphic"/></feMerge>
+                    </filter>
+                </defs>
+                <g filter="url(#merge)"><rect width="16" height="16" fill="#ff0000"/></g>
             </svg>"##,
         );
         let mut scene = Scene::new(16, 16);
@@ -1139,7 +1270,7 @@ mod tests {
         );
 
         let err = scene.push_svg(&tree).unwrap_err();
-        assert_eq!(err.feature(), "feBlend");
+        assert_eq!(err.feature(), "feMerge");
 
         let mut renderer = CpuRenderer::new(16, 16, Color::TRANSPARENT);
         renderer.render(&scene);

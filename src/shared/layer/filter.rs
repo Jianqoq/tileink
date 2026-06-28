@@ -1,3 +1,6 @@
+use peniko::Mix;
+
+use crate::shared::bounds::Bounds;
 use crate::shared::brush::Brush;
 
 pub const COMPONENT_TRANSFER_TABLE_SIZE: usize = 256;
@@ -14,6 +17,12 @@ pub type ComponentTransferTable = [u32; COMPONENT_TRANSFER_TABLE_LEN];
 pub enum Filter {
     Chain {
         filters: Vec<Filter>,
+        fixed_region: bool,
+    },
+    /// A lowered SVG filter graph. Primitive regions are absolute pixel bounds;
+    /// each primitive output is transparent outside its own region.
+    Graph {
+        primitives: Vec<FilterPrimitive>,
         fixed_region: bool,
     },
     Blur(f32),
@@ -40,4 +49,37 @@ pub enum Filter {
         radius: f32,
         brush: Brush,
     },
+}
+
+#[derive(Clone, Debug)]
+pub struct FilterPrimitive {
+    pub input: FilterInput,
+    pub input2: Option<FilterInput>,
+    pub region: Bounds,
+    pub kind: FilterPrimitiveKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FilterInput {
+    SourceGraphic,
+    SourceAlpha,
+    Primitive(usize),
+}
+
+#[derive(Clone, Debug)]
+pub enum FilterPrimitiveKind {
+    Identity,
+    Filter(Box<Filter>),
+    Blend { mode: Mix },
+    Composite { operator: CompositeOperator },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum CompositeOperator {
+    Over,
+    In,
+    Out,
+    Atop,
+    Xor,
+    Arithmetic { k1: f32, k2: f32, k3: f32, k4: f32 },
 }

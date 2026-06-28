@@ -1,12 +1,15 @@
-use peniko::kurbo::Shape;
+use peniko::{Compose, Mix, kurbo::Shape};
 
 use crate::shared::{
     bounds::Bounds,
     brush::Brush,
-    image::{Image, rgba8_pack},
+    image::{Image, rgba8_pack, unpack_rgba8},
     layer::{
-        blend::src_over_premul,
-        filter::{COMPONENT_TRANSFER_TABLE_SIZE, ComponentTransferTable, Filter},
+        blend::{Blend, src_over_premul},
+        filter::{
+            COMPONENT_TRANSFER_TABLE_SIZE, ComponentTransferTable, CompositeOperator, Filter,
+            FilterInput, FilterPrimitive, FilterPrimitiveKind,
+        },
         region::Region,
     },
     pixel::{pack_premul_rgba8, unpack_premul_rgba8},
@@ -19,6 +22,7 @@ pub(crate) fn apply(image: &mut Image, filter: &Filter, bounds: Bounds) {
                 apply(image, filter, bounds);
             }
         }
+        Filter::Graph { primitives, .. } => apply_graph(image, primitives, bounds),
         Filter::Blur(radius) => apply_gaussian_blur(image, *radius),
         Filter::ColorMatrix(matrix) => {
             for px in &mut image.pixels {
@@ -53,6 +57,207 @@ pub(crate) fn apply(image: &mut Image, filter: &Filter, bounds: Bounds) {
     }
 }
 
+fn apply_graph(image: &mut Image, primitives: &[FilterPrimitive], bounds: Bounds) {
+    let source_graphic = image.clone();
+    let source_alpha = source_alpha_image(&source_graphic);
+    let mut outputs = Vec::with_capacity(primitives.len());
+
+    for primitive in primitives {
+        let output =
+            apply_graph_primitive(primitive, bounds, &source_graphic, &source_alpha, &outputs);
+        outputs.push(output);
+    }
+
+    if let Some(output) = outputs.pop() {
+        *image = output;
+    } else {
+        image.pixels.fill(0);
+    }
+}
+
+fn apply_graph_primitive(
+    primitive: &FilterPrimitive,
+    bounds: Bounds,
+    source_graphic: &Image,
+    source_alpha: &Image,
+    outputs: &[Image],
+) -> Image {
+    // Primitive subregions clip only the primitive output. Inputs still sample
+    // from the full filter bounds, which is required for blur/offset chains.
+    let region = primitive.region.intersect(bounds);
+    let input = resolve_graph_input(primitive.input, source_graphic, source_alpha, outputs);
+    match &primitive.kind {
+        FilterPrimitiveKind::Identity => clipped_image(input, bounds, region),
+        FilterPrimitiveKind::Filter(filter) => {
+            let mut image = input.clone();
+            apply(&mut image, filter, bounds);
+            clipped_image(&image, bounds, region)
+        }
+        FilterPrimitiveKind::Blend { mode } => {
+            let input2 =
+                resolve_required_graph_input(primitive, source_graphic, source_alpha, outputs);
+            blend_images(input, input2, bounds, region, *mode)
+        }
+        FilterPrimitiveKind::Composite { operator } => {
+            let input2 =
+                resolve_required_graph_input(primitive, source_graphic, source_alpha, outputs);
+            composite_images(input, input2, bounds, region, *operator)
+        }
+    }
+}
+
+fn resolve_required_graph_input<'a>(
+    primitive: &'a FilterPrimitive,
+    source_graphic: &'a Image,
+    source_alpha: &'a Image,
+    outputs: &'a [Image],
+) -> &'a Image {
+    resolve_graph_input(
+        primitive
+            .input2
+            .expect("dual-input filter primitive is missing input2"),
+        source_graphic,
+        source_alpha,
+        outputs,
+    )
+}
+
+fn resolve_graph_input<'a>(
+    input: FilterInput,
+    source_graphic: &'a Image,
+    source_alpha: &'a Image,
+    outputs: &'a [Image],
+) -> &'a Image {
+    match input {
+        FilterInput::SourceGraphic => source_graphic,
+        FilterInput::SourceAlpha => source_alpha,
+        FilterInput::Primitive(index) => &outputs[index],
+    }
+}
+
+fn source_alpha_image(source: &Image) -> Image {
+    Image {
+        width: source.width,
+        height: source.height,
+        pixels: source.pixels.iter().map(|px| px & 0xff00_0000).collect(),
+    }
+}
+
+fn clipped_image(source: &Image, bounds: Bounds, region: Bounds) -> Image {
+    let mut image = Image::new(source.width, source.height, peniko::Color::TRANSPARENT);
+    copy_region_pixels(source, &mut image, bounds, region);
+    image
+}
+
+fn copy_region_pixels(source: &Image, target: &mut Image, bounds: Bounds, region: Bounds) {
+    if region.is_empty() {
+        return;
+    }
+    for y in region.y0..region.y1 {
+        let local_y = (y - bounds.y0) as u32;
+        for x in region.x0..region.x1 {
+            let local_x = (x - bounds.x0) as u32;
+            let ix = (local_y * source.width + local_x) as usize;
+            target.pixels[ix] = source.pixels[ix];
+        }
+    }
+}
+
+fn blend_images(
+    input1: &Image,
+    input2: &Image,
+    bounds: Bounds,
+    region: Bounds,
+    mode: Mix,
+) -> Image {
+    let mut image = Image::new(input1.width, input1.height, peniko::Color::TRANSPARENT);
+    let blend = Blend::new(mode, Compose::SrcOver);
+    for_each_region_pixel(bounds, region, input1.width, |ix| {
+        image.pixels[ix] = blend.blend_pixel(input1.pixels[ix], input2.pixels[ix]);
+    });
+    image
+}
+
+fn composite_images(
+    input1: &Image,
+    input2: &Image,
+    bounds: Bounds,
+    region: Bounds,
+    operator: CompositeOperator,
+) -> Image {
+    let mut image = Image::new(input1.width, input1.height, peniko::Color::TRANSPARENT);
+    for_each_region_pixel(bounds, region, input1.width, |ix| {
+        image.pixels[ix] = composite_pixel(input1.pixels[ix], input2.pixels[ix], operator);
+    });
+    image
+}
+
+fn for_each_region_pixel(bounds: Bounds, region: Bounds, width: u32, mut f: impl FnMut(usize)) {
+    if region.is_empty() {
+        return;
+    }
+    for y in region.y0..region.y1 {
+        let local_y = (y - bounds.y0) as u32;
+        for x in region.x0..region.x1 {
+            let local_x = (x - bounds.x0) as u32;
+            f((local_y * width + local_x) as usize);
+        }
+    }
+}
+
+fn composite_pixel(input1: u32, input2: u32, operator: CompositeOperator) -> u32 {
+    match operator {
+        CompositeOperator::Over => {
+            Blend::new(Mix::Normal, Compose::SrcOver).blend_pixel(input1, input2)
+        }
+        CompositeOperator::In => {
+            Blend::new(Mix::Normal, Compose::SrcIn).blend_pixel(input1, input2)
+        }
+        CompositeOperator::Out => {
+            Blend::new(Mix::Normal, Compose::SrcOut).blend_pixel(input1, input2)
+        }
+        CompositeOperator::Atop => {
+            Blend::new(Mix::Normal, Compose::SrcAtop).blend_pixel(input1, input2)
+        }
+        CompositeOperator::Xor => Blend::new(Mix::Normal, Compose::Xor).blend_pixel(input1, input2),
+        CompositeOperator::Arithmetic { k1, k2, k3, k4 } => {
+            arithmetic_composite_pixel(input1, input2, k1, k2, k3, k4)
+        }
+    }
+}
+
+fn arithmetic_composite_pixel(input1: u32, input2: u32, k1: f32, k2: f32, k3: f32, k4: f32) -> u32 {
+    let a = straight_rgba8(input1);
+    let b = straight_rgba8(input2);
+    let out = [
+        arithmetic_channel(a[0], b[0], k1, k2, k3, k4),
+        arithmetic_channel(a[1], b[1], k1, k2, k3, k4),
+        arithmetic_channel(a[2], b[2], k1, k2, k3, k4),
+        arithmetic_channel(a[3], b[3], k1, k2, k3, k4),
+    ];
+    let alpha = out[3];
+    pack_premul_rgba8([out[0] * alpha, out[1] * alpha, out[2] * alpha, alpha])
+}
+
+fn arithmetic_channel(a: f32, b: f32, k1: f32, k2: f32, k3: f32, k4: f32) -> f32 {
+    (k1 * a * b + k2 * a + k3 * b + k4).clamp(0.0, 1.0)
+}
+
+fn straight_rgba8(px: u32) -> [f32; 4] {
+    let [r, g, b, a] = unpack_rgba8(px);
+    if a == 0 {
+        [0.0, 0.0, 0.0, 0.0]
+    } else {
+        let inv_alpha = 255.0 / a as f32;
+        [
+            r as f32 * inv_alpha / 255.0,
+            g as f32 * inv_alpha / 255.0,
+            b as f32 * inv_alpha / 255.0,
+            a as f32 / 255.0,
+        ]
+    }
+}
+
 pub(crate) fn filtered_region_bounds(
     filter: &Filter,
     sample_region: &Region,
@@ -75,6 +280,7 @@ fn filter_outset(filter: &Filter) -> i32 {
                 filters.iter().map(filter_outset).sum()
             }
         }
+        Filter::Graph { .. } => 0,
         Filter::Blur(radius) => blur_outset(*radius),
         Filter::Offset { dx, dy } => dx.abs().ceil().max(dy.abs().ceil()) as i32,
         Filter::DropShadow {
@@ -430,9 +636,10 @@ fn lum(c: [f32; 3]) -> f32 {
 mod tests {
     use super::*;
     use crate::shared::layer::filter::{
-        COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE,
+        COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE, CompositeOperator,
+        FilterInput, FilterPrimitive, FilterPrimitiveKind,
     };
-    use peniko::Color;
+    use peniko::{Color, Mix};
 
     #[test]
     fn drop_shadow_offsets_alpha_and_preserves_source() {
@@ -526,5 +733,93 @@ mod tests {
         );
 
         assert_eq!(image.rgba8_at(0, 0), [64, 32, 64, 64]);
+    }
+
+    #[test]
+    fn graph_resolves_inputs_and_clips_primitive_subregions() {
+        let mut image = Image::new(4, 2, Color::from_rgb8(255, 0, 0));
+        apply(
+            &mut image,
+            &Filter::Graph {
+                primitives: vec![
+                    FilterPrimitive {
+                        input: FilterInput::SourceGraphic,
+                        input2: None,
+                        region: Bounds::canvas(4, 2),
+                        kind: FilterPrimitiveKind::Filter(Box::new(Filter::Flood {
+                            brush: Brush::Solid(Color::from_rgb8(0, 0, 255)),
+                        })),
+                    },
+                    FilterPrimitive {
+                        input: FilterInput::SourceGraphic,
+                        input2: Some(FilterInput::Primitive(0)),
+                        region: Bounds::new(0, 0, 2, 2),
+                        kind: FilterPrimitiveKind::Blend {
+                            mode: Mix::Multiply,
+                        },
+                    },
+                    FilterPrimitive {
+                        input: FilterInput::Primitive(0),
+                        input2: Some(FilterInput::SourceAlpha),
+                        region: Bounds::new(2, 0, 4, 2),
+                        kind: FilterPrimitiveKind::Composite {
+                            operator: CompositeOperator::In,
+                        },
+                    },
+                    FilterPrimitive {
+                        input: FilterInput::Primitive(1),
+                        input2: Some(FilterInput::Primitive(2)),
+                        region: Bounds::canvas(4, 2),
+                        kind: FilterPrimitiveKind::Composite {
+                            operator: CompositeOperator::Over,
+                        },
+                    },
+                ],
+                fixed_region: true,
+            },
+            Bounds::canvas(4, 2),
+        );
+
+        assert_eq!(image.rgba8_at(0, 1), [0, 0, 0, 255]);
+        assert_eq!(image.rgba8_at(1, 1), [0, 0, 0, 255]);
+        assert_eq!(image.rgba8_at(2, 1), [0, 0, 255, 255]);
+        assert_eq!(image.rgba8_at(3, 1), [0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn graph_arithmetic_composite_runs_on_straight_channels() {
+        let mut image = Image::new(1, 1, Color::from_rgb8(255, 0, 0));
+        apply(
+            &mut image,
+            &Filter::Graph {
+                primitives: vec![
+                    FilterPrimitive {
+                        input: FilterInput::SourceGraphic,
+                        input2: None,
+                        region: Bounds::canvas(1, 1),
+                        kind: FilterPrimitiveKind::Filter(Box::new(Filter::Flood {
+                            brush: Brush::Solid(Color::from_rgb8(0, 0, 255)),
+                        })),
+                    },
+                    FilterPrimitive {
+                        input: FilterInput::SourceGraphic,
+                        input2: Some(FilterInput::Primitive(0)),
+                        region: Bounds::canvas(1, 1),
+                        kind: FilterPrimitiveKind::Composite {
+                            operator: CompositeOperator::Arithmetic {
+                                k1: 0.0,
+                                k2: 0.5,
+                                k3: 0.5,
+                                k4: 0.0,
+                            },
+                        },
+                    },
+                ],
+                fixed_region: true,
+            },
+            Bounds::canvas(1, 1),
+        );
+
+        assert_eq!(image.rgba8_at(0, 0), [128, 0, 128, 255]);
     }
 }

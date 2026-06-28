@@ -1,5 +1,5 @@
 use ::cubecl::prelude::Runtime;
-use peniko::{BlendMode, kurbo::Shape};
+use peniko::{BlendMode, Compose, Mix, kurbo::Shape};
 
 use crate::{
     scene::Scene,
@@ -8,7 +8,10 @@ use crate::{
         execution::{ExecOp, ExecPlan, LayerStackEntry},
         layer::{
             Layer,
-            filter::{ComponentTransferTable, Filter},
+            filter::{
+                ComponentTransferTable, CompositeOperator, Filter, FilterInput, FilterPrimitive,
+                FilterPrimitiveKind,
+            },
             region::Region,
         },
         path_flatten::PathFlatten,
@@ -210,6 +213,9 @@ impl<R: Runtime> Renderer<R> {
                     self.apply_filter(target, bounds, filter, filter_cursors);
                 }
             }
+            Filter::Graph { primitives, .. } => {
+                self.apply_filter_graph(target, bounds, primitives, filter_cursors);
+            }
             Filter::Blur(radius) => {
                 if radius.max(0.0) > 0.0 {
                     let temp = self.acquire_scratch();
@@ -259,6 +265,159 @@ impl<R: Runtime> Renderer<R> {
         }
     }
 
+    fn apply_filter_graph(
+        &mut self,
+        target: CubeRenderTarget,
+        bounds: Bounds,
+        primitives: &[FilterPrimitive],
+        filter_cursors: &mut FilterCursors,
+    ) {
+        if primitives.is_empty() {
+            self.clear_region(target, bounds);
+            return;
+        }
+
+        let mut source_alpha = None;
+        let mut outputs = Vec::with_capacity(primitives.len());
+        for primitive in primitives {
+            let output = self.apply_filter_graph_primitive(
+                target,
+                bounds,
+                primitive,
+                &outputs,
+                &mut source_alpha,
+                filter_cursors,
+            );
+            outputs.push(output);
+        }
+
+        let final_output = *outputs
+            .last()
+            .expect("filter graph should have produced a final output");
+        self.clear_region(target, bounds);
+        self.copy_region(final_output, target, bounds);
+
+        for output in outputs {
+            self.release_scratch(output);
+        }
+        if let Some(source_alpha) = source_alpha {
+            self.release_scratch(source_alpha);
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn apply_filter_graph_primitive(
+        &mut self,
+        source_graphic: CubeRenderTarget,
+        bounds: Bounds,
+        primitive: &FilterPrimitive,
+        outputs: &[CubeRenderTarget],
+        source_alpha: &mut Option<CubeRenderTarget>,
+        filter_cursors: &mut FilterCursors,
+    ) -> CubeRenderTarget {
+        let region = primitive.region.intersect(bounds);
+        let input = self.resolve_filter_graph_input(
+            source_graphic,
+            primitive.input,
+            outputs,
+            source_alpha,
+            bounds,
+        );
+        match &primitive.kind {
+            FilterPrimitiveKind::Identity => self.copy_filter_graph_region(input, bounds, region),
+            FilterPrimitiveKind::Filter(filter) => {
+                let temp = self.acquire_scratch();
+                self.clear_buffer(temp, 0);
+                self.copy_region(input, temp, bounds);
+                self.apply_filter(temp, bounds, filter, filter_cursors);
+                let output = self.copy_filter_graph_region(temp, bounds, region);
+                self.release_scratch(temp);
+                output
+            }
+            FilterPrimitiveKind::Blend { mode } => {
+                let input2 = self.resolve_required_filter_graph_input(
+                    source_graphic,
+                    primitive,
+                    outputs,
+                    source_alpha,
+                    bounds,
+                );
+                let output = self.acquire_scratch();
+                self.clear_buffer(output, 0);
+                self.blend_filter_inputs(input, input2, output, region, *mode);
+                output
+            }
+            FilterPrimitiveKind::Composite { operator } => {
+                let input2 = self.resolve_required_filter_graph_input(
+                    source_graphic,
+                    primitive,
+                    outputs,
+                    source_alpha,
+                    bounds,
+                );
+                let output = self.acquire_scratch();
+                self.clear_buffer(output, 0);
+                self.composite_filter_inputs(input, input2, output, region, *operator);
+                output
+            }
+        }
+    }
+
+    fn resolve_required_filter_graph_input(
+        &mut self,
+        source_graphic: CubeRenderTarget,
+        primitive: &FilterPrimitive,
+        outputs: &[CubeRenderTarget],
+        source_alpha: &mut Option<CubeRenderTarget>,
+        bounds: Bounds,
+    ) -> CubeRenderTarget {
+        self.resolve_filter_graph_input(
+            source_graphic,
+            primitive
+                .input2
+                .expect("dual-input filter primitive is missing input2"),
+            outputs,
+            source_alpha,
+            bounds,
+        )
+    }
+
+    fn resolve_filter_graph_input(
+        &mut self,
+        source_graphic: CubeRenderTarget,
+        input: FilterInput,
+        outputs: &[CubeRenderTarget],
+        source_alpha: &mut Option<CubeRenderTarget>,
+        bounds: Bounds,
+    ) -> CubeRenderTarget {
+        match input {
+            FilterInput::SourceGraphic => source_graphic,
+            FilterInput::Primitive(index) => outputs[index],
+            FilterInput::SourceAlpha => {
+                if let Some(target) = *source_alpha {
+                    return target;
+                }
+                let alpha = self.acquire_scratch();
+                self.clear_buffer(alpha, 0);
+                self.build_source_alpha(source_graphic, alpha, bounds);
+                *source_alpha = Some(alpha);
+                alpha
+            }
+        }
+    }
+
+    fn copy_filter_graph_region(
+        &mut self,
+        input: CubeRenderTarget,
+        bounds: Bounds,
+        region: Bounds,
+    ) -> CubeRenderTarget {
+        let output = self.acquire_scratch();
+        self.clear_buffer(output, 0);
+        self.copy_region(input, output, region.intersect(bounds));
+        output
+    }
+
     pub(crate) fn clear_buffer(&mut self, target: CubeRenderTarget, clear_color: u32) {
         match target {
             CubeRenderTarget::Main => {
@@ -270,6 +429,54 @@ impl<R: Runtime> Renderer<R> {
                 self.lengths,
                 clear_color,
             ),
+        }
+    }
+
+    fn clear_region(&mut self, target: CubeRenderTarget, bounds: Bounds) {
+        match target {
+            CubeRenderTarget::Main => {
+                FilterPipeline::clear_region(&self.client, &mut self.target, self.size, bounds)
+            }
+            CubeRenderTarget::Scratch(ix) => {
+                FilterPipeline::clear_region(&self.client, &mut self.scratch[ix], self.size, bounds)
+            }
+        }
+    }
+
+    fn build_source_alpha(
+        &mut self,
+        source: CubeRenderTarget,
+        target: CubeRenderTarget,
+        bounds: Bounds,
+    ) {
+        if source == target {
+            return;
+        }
+        match (source, target) {
+            (CubeRenderTarget::Main, CubeRenderTarget::Scratch(target_ix)) => {
+                FilterPipeline::source_alpha_region(
+                    &self.client,
+                    &self.target,
+                    &mut self.scratch[target_ix],
+                    self.size,
+                    bounds,
+                )
+            }
+            (CubeRenderTarget::Scratch(source_ix), CubeRenderTarget::Main) => {
+                FilterPipeline::source_alpha_region(
+                    &self.client,
+                    &self.scratch[source_ix],
+                    &mut self.target,
+                    self.size,
+                    bounds,
+                )
+            }
+            (CubeRenderTarget::Scratch(source_ix), CubeRenderTarget::Scratch(target_ix)) => {
+                let (source, target) =
+                    scratch_source_target(&mut self.scratch, source_ix, target_ix);
+                FilterPipeline::source_alpha_region(&self.client, source, target, self.size, bounds)
+            }
+            (CubeRenderTarget::Main, CubeRenderTarget::Main) => unreachable!(),
         }
     }
 
@@ -406,6 +613,96 @@ impl<R: Runtime> Renderer<R> {
                 FilterPipeline::copy_region(&self.client, source, target, self.size, bounds)
             }
             (CubeRenderTarget::Main, CubeRenderTarget::Main) => unreachable!(),
+        }
+    }
+
+    fn blend_filter_inputs(
+        &mut self,
+        input1: CubeRenderTarget,
+        input2: CubeRenderTarget,
+        target: CubeRenderTarget,
+        bounds: Bounds,
+        mode: Mix,
+    ) {
+        let size = self.size;
+        let mode = encode_blend_mode(BlendMode::new(mode, Compose::SrcOver));
+        self.dual_input_filter(
+            input1,
+            input2,
+            target,
+            move |client, input1, input2, target| {
+                FilterPipeline::blend_region(client, input1, input2, target, size, bounds, mode)
+            },
+        );
+    }
+
+    fn composite_filter_inputs(
+        &mut self,
+        input1: CubeRenderTarget,
+        input2: CubeRenderTarget,
+        target: CubeRenderTarget,
+        bounds: Bounds,
+        operator: CompositeOperator,
+    ) {
+        let size = self.size;
+        let operator_code = encode_composite_operator(operator);
+        let arithmetic = composite_arithmetic(operator);
+        self.dual_input_filter(
+            input1,
+            input2,
+            target,
+            move |client, input1, input2, target| {
+                FilterPipeline::composite_inputs_region(
+                    client,
+                    input1,
+                    input2,
+                    target,
+                    size,
+                    bounds,
+                    operator_code,
+                    arithmetic,
+                )
+            },
+        );
+    }
+
+    fn dual_input_filter(
+        &mut self,
+        input1: CubeRenderTarget,
+        input2: CubeRenderTarget,
+        target: CubeRenderTarget,
+        run: impl FnOnce(
+            &::cubecl::client::ComputeClient<R>,
+            &CubeBuffer<u32>,
+            &CubeBuffer<u32>,
+            &mut CubeBuffer<u32>,
+        ),
+    ) {
+        let CubeRenderTarget::Scratch(target_ix) = target else {
+            panic!("dual-input graph primitives must write to scratch output");
+        };
+        match (input1, input2) {
+            (CubeRenderTarget::Main, CubeRenderTarget::Main) => {
+                run(
+                    &self.client,
+                    &self.target,
+                    &self.target,
+                    &mut self.scratch[target_ix],
+                );
+            }
+            (CubeRenderTarget::Main, CubeRenderTarget::Scratch(b)) => {
+                let (target, input2) = scratch_target_and_source(&mut self.scratch, target_ix, b);
+                run(&self.client, &self.target, input2, target);
+            }
+            (CubeRenderTarget::Scratch(a), CubeRenderTarget::Main) => {
+                let (target, input1) = scratch_target_and_source(&mut self.scratch, target_ix, a);
+                run(&self.client, input1, &self.target, target);
+            }
+            (CubeRenderTarget::Scratch(a), CubeRenderTarget::Scratch(b)) => {
+                let (target, input1, input2) =
+                    scratch_target_and_two_sources(&mut self.scratch, target_ix, a, b);
+                run(&self.client, input1, input2, target);
+            }
         }
     }
 
@@ -965,11 +1262,28 @@ fn filter_scratch_extra(filter: &Filter) -> usize {
         Filter::Chain { filters, .. } => {
             filters.iter().map(filter_scratch_extra).max().unwrap_or(0)
         }
+        Filter::Graph { primitives, .. } => graph_scratch_extra(primitives),
         Filter::Blur(radius) => usize::from(radius.max(0.0) > 0.0),
         Filter::Offset { .. } => 1,
         Filter::DropShadow { radius, .. } => 1 + usize::from(radius.max(0.0) > 0.0),
         _ => 0,
     }
+}
+
+fn graph_scratch_extra(primitives: &[FilterPrimitive]) -> usize {
+    let source_alpha = primitives.iter().any(|primitive| {
+        primitive.input == FilterInput::SourceAlpha
+            || primitive.input2 == Some(FilterInput::SourceAlpha)
+    });
+    let unary_temp = primitives
+        .iter()
+        .filter_map(|primitive| match &primitive.kind {
+            FilterPrimitiveKind::Filter(filter) => Some(1 + filter_scratch_extra(filter)),
+            _ => None,
+        })
+        .max()
+        .unwrap_or(0);
+    primitives.len() + usize::from(source_alpha) + unary_temp
 }
 
 pub(crate) fn encode_layer_payload(entry: LayerStackEntry) -> u32 {
@@ -982,6 +1296,24 @@ pub(crate) fn encode_layer_payload(entry: LayerStackEntry) -> u32 {
 
 fn encode_blend_mode(mode: BlendMode) -> u32 {
     mode.mix as u32 | ((mode.compose as u32) << 8)
+}
+
+fn encode_composite_operator(operator: CompositeOperator) -> u32 {
+    match operator {
+        CompositeOperator::Over => 0,
+        CompositeOperator::In => 1,
+        CompositeOperator::Out => 2,
+        CompositeOperator::Atop => 3,
+        CompositeOperator::Xor => 4,
+        CompositeOperator::Arithmetic { .. } => 5,
+    }
+}
+
+fn composite_arithmetic(operator: CompositeOperator) -> [f32; 4] {
+    match operator {
+        CompositeOperator::Arithmetic { k1, k2, k3, k4 } => [k1, k2, k3, k4],
+        _ => [0.0; 4],
+    }
 }
 
 fn encode_color_filter(filter: &Filter) -> (u32, f32) {
@@ -999,6 +1331,7 @@ fn encode_color_filter(filter: &Filter) -> (u32, f32) {
         Filter::ComponentTransfer(_) => {
             panic!("component transfer is handled by a dedicated CubeCL pass")
         }
+        Filter::Graph { .. } => panic!("filter graphs are handled by CubeCL graph execution"),
         Filter::Flood { .. } => panic!("flood is handled by the CubeCL brush fill pass"),
         Filter::Offset { .. } => panic!("offset is handled by a dedicated CubeCL pass"),
         Filter::DropShadow { .. } => {
@@ -1259,6 +1592,13 @@ fn collect_filter_transfer(filter: &Filter, upload: &mut FilterTransferUpload) {
                 collect_filter_transfer(filter, upload);
             }
         }
+        Filter::Graph { primitives, .. } => {
+            for primitive in primitives {
+                if let FilterPrimitiveKind::Filter(filter) = &primitive.kind {
+                    collect_filter_transfer(filter, upload);
+                }
+            }
+        }
         Filter::ComponentTransfer(table) => upload.push_table(table),
         _ => {}
     }
@@ -1351,6 +1691,29 @@ fn scratch_target_source_mask(
     let source = scratch_ref_except_target(before, after, target_ix, source_ix);
     let mask = scratch_ref_except_target(before, after, target_ix, mask_ix);
     (target, source, mask)
+}
+
+fn scratch_target_and_two_sources(
+    scratch: &mut [CubeBuffer<u32>],
+    target_ix: usize,
+    source_a_ix: usize,
+    source_b_ix: usize,
+) -> (&mut CubeBuffer<u32>, &CubeBuffer<u32>, &CubeBuffer<u32>) {
+    assert_ne!(
+        target_ix, source_a_ix,
+        "target and first source scratch buffers must differ"
+    );
+    assert_ne!(
+        target_ix, source_b_ix,
+        "target and second source scratch buffers must differ"
+    );
+
+    let (before, target_and_after) = scratch.split_at_mut(target_ix);
+    let (target_slice, after) = target_and_after.split_at_mut(1);
+    let target = &mut target_slice[0];
+    let source_a = scratch_ref_except_target(before, after, target_ix, source_a_ix);
+    let source_b = scratch_ref_except_target(before, after, target_ix, source_b_ix);
+    (target, source_a, source_b)
 }
 
 fn scratch_ref_except_target<'a>(

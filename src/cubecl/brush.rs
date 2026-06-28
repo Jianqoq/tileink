@@ -7,7 +7,10 @@ use crate::{
         brush::Brush,
         execution::ExecOp,
         image::premul_color_to_rgba8_pack,
-        layer::{Layer, filter::Filter},
+        layer::{
+            Layer,
+            filter::{Filter, FilterPrimitiveKind},
+        },
     },
 };
 
@@ -196,6 +199,13 @@ fn collect_filter_brush(filter: &Filter, upload: &mut GpuBrushUpload) {
         Filter::Chain { filters, .. } => {
             for filter in filters {
                 collect_filter_brush(filter, upload);
+            }
+        }
+        Filter::Graph { primitives, .. } => {
+            for primitive in primitives {
+                if let FilterPrimitiveKind::Filter(filter) = &primitive.kind {
+                    collect_filter_brush(filter, upload);
+                }
             }
         }
         Filter::DropShadow { brush, .. } => upload.push_brush(brush),

@@ -15,10 +15,14 @@ pub use cubecl::CubePreparedStage;
 pub use cubecl::{Renderer as CubeRenderer, WgpuRenderer as CubeWgpuRenderer};
 pub use scene::Scene;
 pub use shared::{
+    bounds::Bounds,
     brush::Brush,
     fill::FillRule,
     image::Image,
-    layer::{filter::Filter, region::Region},
+    layer::{
+        filter::{CompositeOperator, Filter, FilterInput, FilterPrimitive, FilterPrimitiveKind},
+        region::Region,
+    },
     sdf::rect::{Radius, StrokeWidths},
 };
 pub use svg::{SvgError, SvgOptions};

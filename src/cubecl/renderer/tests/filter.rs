@@ -288,6 +288,73 @@ fn filter_wgpu_uploads_drop_shadow_brushes_inside_chain_when_enabled() {
 }
 
 #[test]
+fn filter_wgpu_executes_filter_graph_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(8, 8);
+    scene.push_filter_layer(
+        Filter::Graph {
+            primitives: vec![
+                FilterPrimitive {
+                    input: FilterInput::SourceGraphic,
+                    input2: None,
+                    region: Bounds::canvas(8, 8),
+                    kind: FilterPrimitiveKind::Filter(Box::new(Filter::Flood {
+                        brush: Brush::Solid(Color::from_rgb8(0, 0, 255)),
+                    })),
+                },
+                FilterPrimitive {
+                    input: FilterInput::SourceGraphic,
+                    input2: Some(FilterInput::Primitive(0)),
+                    region: Bounds::new(0, 0, 4, 8),
+                    kind: FilterPrimitiveKind::Blend {
+                        mode: Mix::Multiply,
+                    },
+                },
+                FilterPrimitive {
+                    input: FilterInput::Primitive(0),
+                    input2: Some(FilterInput::SourceAlpha),
+                    region: Bounds::new(4, 0, 8, 8),
+                    kind: FilterPrimitiveKind::Composite {
+                        operator: CompositeOperator::In,
+                    },
+                },
+                FilterPrimitive {
+                    input: FilterInput::Primitive(1),
+                    input2: Some(FilterInput::Primitive(2)),
+                    region: Bounds::canvas(8, 8),
+                    kind: FilterPrimitiveKind::Composite {
+                        operator: CompositeOperator::Over,
+                    },
+                },
+            ],
+            fixed_region: true,
+        },
+        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::all(0.0)),
+    );
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 8.0, 8.0),
+        Color::from_rgb8(255, 0, 0),
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(8, 8, Color::TRANSPARENT);
+    renderer.prepare_scene(&scene);
+    assert_eq!(
+        renderer.filter_brushes.data.read(renderer.client()).len(),
+        crate::cubecl::brush::GPU_BRUSH_U32_STRIDE
+    );
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+
+    assert_eq!(target[pixel_ix(2, 4, 8)], rgba8_pack([0, 0, 0, 255]));
+    assert_eq!(target[pixel_ix(6, 4, 8)], rgba8_pack([0, 0, 255, 255]));
+}
+
+#[test]
 fn filter_wgpu_offsets_filter_buffer_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;

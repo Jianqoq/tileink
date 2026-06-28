@@ -1,5 +1,7 @@
 use peniko::{BlendMode, Compose, Mix};
 
+use crate::shared::pixel::{pack_premul_rgba8, unpack_premul_rgba8};
+
 #[derive(Clone, Debug)]
 pub struct Blend {
     pub(crate) mode: BlendMode,
@@ -21,6 +23,10 @@ impl Blend {
             (Mix::Normal, compose) => blend_normal_compose(dst, src, compose),
             _ => blend_premul(dst, src, self.mode),
         }
+    }
+
+    pub(crate) fn blend_pixel(&self, src: u32, dst: u32) -> u32 {
+        pack_premul_rgba8(self.blend(unpack_premul_rgba8(src), unpack_premul_rgba8(dst)))
     }
 }
 
@@ -52,10 +58,10 @@ fn blend_normal_compose(dst: [f32; 4], src: [f32; 4], compose: Compose) -> [f32;
 }
 
 fn blend_premul(dst: [f32; 4], src: [f32; 4], blend: BlendMode) -> [f32; 4] {
-    if matches!(blend.compose, Compose::SrcOver) {
-        if let Some(result) = blend_src_over_highp(dst, src, blend.mix) {
-            return result;
-        }
+    if matches!(blend.compose, Compose::SrcOver)
+        && let Some(result) = blend_src_over_highp(dst, src, blend.mix)
+    {
+        return result;
     }
     let src_alpha = src[3].clamp(0.0, 1.0);
     let dst_alpha = dst[3].clamp(0.0, 1.0);

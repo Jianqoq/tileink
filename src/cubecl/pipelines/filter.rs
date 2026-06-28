@@ -44,6 +44,28 @@ pub(crate) struct FilterPathResources<'a> {
 pub(crate) struct FilterPipeline;
 
 impl FilterPipeline {
+    pub(crate) fn clear_region<R: Runtime>(
+        client: &ComputeClient<R>,
+        target: &mut CubeBuffer<u32>,
+        size: (u32, u32),
+        bounds: Bounds,
+    ) {
+        let Some(region) = FilterRegion::new(size, bounds) else {
+            return;
+        };
+        filter_clear_region::launch::<R>(
+            client,
+            cube_count(region.pixel_count),
+            CubeDim::new_1d(FILTER_WORKGROUP_SIZE),
+            region.pixel_count,
+            region.width,
+            region.x0,
+            region.y0,
+            size.0,
+            unsafe { target.arg() },
+        );
+    }
+
     pub(crate) fn copy_region<R: Runtime>(
         client: &ComputeClient<R>,
         source: &CubeBuffer<u32>,
@@ -64,6 +86,93 @@ impl FilterPipeline {
             region.y0,
             size.0,
             unsafe { source.arg() },
+            unsafe { target.arg() },
+        );
+    }
+
+    pub(crate) fn source_alpha_region<R: Runtime>(
+        client: &ComputeClient<R>,
+        source: &CubeBuffer<u32>,
+        target: &mut CubeBuffer<u32>,
+        size: (u32, u32),
+        bounds: Bounds,
+    ) {
+        let Some(region) = FilterRegion::new(size, bounds) else {
+            return;
+        };
+        filter_source_alpha_region::launch::<R>(
+            client,
+            cube_count(region.pixel_count),
+            CubeDim::new_1d(FILTER_WORKGROUP_SIZE),
+            region.pixel_count,
+            region.width,
+            region.x0,
+            region.y0,
+            size.0,
+            unsafe { source.arg() },
+            unsafe { target.arg() },
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn blend_region<R: Runtime>(
+        client: &ComputeClient<R>,
+        input1: &CubeBuffer<u32>,
+        input2: &CubeBuffer<u32>,
+        target: &mut CubeBuffer<u32>,
+        size: (u32, u32),
+        bounds: Bounds,
+        mode: u32,
+    ) {
+        let Some(region) = FilterRegion::new(size, bounds) else {
+            return;
+        };
+        filter_blend_region::launch::<R>(
+            client,
+            cube_count(region.pixel_count),
+            CubeDim::new_1d(FILTER_WORKGROUP_SIZE),
+            region.pixel_count,
+            region.width,
+            region.x0,
+            region.y0,
+            size.0,
+            mode,
+            unsafe { input1.arg() },
+            unsafe { input2.arg() },
+            unsafe { target.arg() },
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn composite_inputs_region<R: Runtime>(
+        client: &ComputeClient<R>,
+        input1: &CubeBuffer<u32>,
+        input2: &CubeBuffer<u32>,
+        target: &mut CubeBuffer<u32>,
+        size: (u32, u32),
+        bounds: Bounds,
+        operator: u32,
+        arithmetic: [f32; 4],
+    ) {
+        let Some(region) = FilterRegion::new(size, bounds) else {
+            return;
+        };
+        filter_composite_inputs_region::launch::<R>(
+            client,
+            cube_count(region.pixel_count),
+            CubeDim::new_1d(FILTER_WORKGROUP_SIZE),
+            region.pixel_count,
+            region.width,
+            region.x0,
+            region.y0,
+            size.0,
+            operator,
+            arithmetic[0],
+            arithmetic[1],
+            arithmetic[2],
+            arithmetic[3],
+            unsafe { input1.arg() },
+            unsafe { input2.arg() },
             unsafe { target.arg() },
         );
     }
@@ -495,6 +604,25 @@ fn cube_count(items: u32) -> CubeCount {
 }
 
 #[cube(launch)]
+fn filter_clear_region(
+    pixel_count: u32,
+    region_width: u32,
+    region_x0: u32,
+    region_y0: u32,
+    image_width: u32,
+    target: &mut Array<u32>,
+) {
+    let region_ix = ABSOLUTE_POS as u32;
+    if region_ix >= pixel_count {
+        terminate!();
+    }
+    let x = region_x0 + region_ix % region_width;
+    let y = region_y0 + region_ix / region_width;
+    let ix = (y * image_width + x) as usize;
+    target[ix] = 0;
+}
+
+#[cube(launch)]
 fn filter_copy_region(
     pixel_count: u32,
     region_width: u32,
@@ -512,6 +640,75 @@ fn filter_copy_region(
     let y = region_y0 + region_ix / region_width;
     let ix = (y * image_width + x) as usize;
     target[ix] = source[ix];
+}
+
+#[cube(launch)]
+fn filter_source_alpha_region(
+    pixel_count: u32,
+    region_width: u32,
+    region_x0: u32,
+    region_y0: u32,
+    image_width: u32,
+    source: &Array<u32>,
+    target: &mut Array<u32>,
+) {
+    let region_ix = ABSOLUTE_POS as u32;
+    if region_ix >= pixel_count {
+        terminate!();
+    }
+    let x = region_x0 + region_ix % region_width;
+    let y = region_y0 + region_ix / region_width;
+    let ix = (y * image_width + x) as usize;
+    target[ix] = source[ix] & 0xff00_0000u32;
+}
+
+#[cube(launch)]
+fn filter_blend_region(
+    pixel_count: u32,
+    region_width: u32,
+    region_x0: u32,
+    region_y0: u32,
+    image_width: u32,
+    mode: u32,
+    input1: &Array<u32>,
+    input2: &Array<u32>,
+    target: &mut Array<u32>,
+) {
+    let region_ix = ABSOLUTE_POS as u32;
+    if region_ix >= pixel_count {
+        terminate!();
+    }
+    let x = region_x0 + region_ix % region_width;
+    let y = region_y0 + region_ix / region_width;
+    let ix = (y * image_width + x) as usize;
+    target[ix] = blend_premul_u8(input2[ix], input1[ix], mode);
+}
+
+#[cube(launch)]
+#[allow(clippy::too_many_arguments)]
+fn filter_composite_inputs_region(
+    pixel_count: u32,
+    region_width: u32,
+    region_x0: u32,
+    region_y0: u32,
+    image_width: u32,
+    operator: u32,
+    k1: f32,
+    k2: f32,
+    k3: f32,
+    k4: f32,
+    input1: &Array<u32>,
+    input2: &Array<u32>,
+    target: &mut Array<u32>,
+) {
+    let region_ix = ABSOLUTE_POS as u32;
+    if region_ix >= pixel_count {
+        terminate!();
+    }
+    let x = region_x0 + region_ix % region_width;
+    let y = region_y0 + region_ix / region_width;
+    let ix = (y * image_width + x) as usize;
+    target[ix] = composite_inputs_pixel(input1[ix], input2[ix], operator, k1, k2, k3, k4);
 }
 
 #[cube(launch)]
@@ -1563,6 +1760,65 @@ fn apply_component_transfer_pixel(px: u32, table_index: u32, transfer_tables: &A
     let a = transfer_tables[(base + 3 * COMPONENT_TRANSFER_TABLE_SIZE_U32 + alpha) as usize] as f32
         * inv_255;
     pack_premul_rgba8(r * a, g * a, b * a, a)
+}
+
+#[cube]
+#[allow(clippy::too_many_arguments)]
+fn composite_inputs_pixel(
+    input1: u32,
+    input2: u32,
+    operator: u32,
+    k1: f32,
+    k2: f32,
+    k3: f32,
+    k4: f32,
+) -> u32 {
+    let mut out = blend_premul_u8(input2, input1, 3 << 8);
+    if operator == 1 {
+        out = blend_premul_u8(input2, input1, 5 << 8);
+    } else if operator == 2 {
+        out = blend_premul_u8(input2, input1, 7 << 8);
+    } else if operator == 3 {
+        out = blend_premul_u8(input2, input1, 9 << 8);
+    } else if operator == 4 {
+        out = blend_premul_u8(input2, input1, 11 << 8);
+    } else if operator == 5 {
+        out = arithmetic_composite_pixel(input1, input2, k1, k2, k3, k4);
+    }
+    out
+}
+
+#[cube]
+#[allow(clippy::too_many_arguments)]
+fn arithmetic_composite_pixel(input1: u32, input2: u32, k1: f32, k2: f32, k3: f32, k4: f32) -> u32 {
+    let a_r = straight_channel(input1 & 255, (input1 >> 24) & 255);
+    let a_g = straight_channel((input1 >> 8) & 255, (input1 >> 24) & 255);
+    let a_b = straight_channel((input1 >> 16) & 255, (input1 >> 24) & 255);
+    let a_a = ((input1 >> 24) & 255) as f32 / 255.0;
+    let b_r = straight_channel(input2 & 255, (input2 >> 24) & 255);
+    let b_g = straight_channel((input2 >> 8) & 255, (input2 >> 24) & 255);
+    let b_b = straight_channel((input2 >> 16) & 255, (input2 >> 24) & 255);
+    let b_a = ((input2 >> 24) & 255) as f32 / 255.0;
+
+    let out_r = arithmetic_channel(a_r, b_r, k1, k2, k3, k4);
+    let out_g = arithmetic_channel(a_g, b_g, k1, k2, k3, k4);
+    let out_b = arithmetic_channel(a_b, b_b, k1, k2, k3, k4);
+    let out_a = arithmetic_channel(a_a, b_a, k1, k2, k3, k4);
+    pack_premul_rgba8(out_r * out_a, out_g * out_a, out_b * out_a, out_a)
+}
+
+#[cube]
+fn straight_channel(premul: u32, alpha: u32) -> f32 {
+    let mut out = 0.0;
+    if alpha != 0 {
+        out = premul as f32 / alpha as f32;
+    }
+    out
+}
+
+#[cube]
+fn arithmetic_channel(a: f32, b: f32, k1: f32, k2: f32, k3: f32, k4: f32) -> f32 {
+    (k1 * a * b + k2 * a + k3 * b + k4).clamp(0.0, 1.0)
 }
 
 #[cube]
