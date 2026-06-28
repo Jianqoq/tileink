@@ -299,7 +299,7 @@ fn for_each_scanned_tile(
         }
 
         let top_edge = if i == plan.imin {
-            (plan.y0 - plan.xy0[1] * TILE_SCALE).abs() <= 1.0e-5
+            (plan.y0 - plan.xy0[1] * TILE_SCALE).abs() <= DDA_TOP_EDGE_EPSILON
         } else {
             last_z == z
         };
@@ -555,6 +555,7 @@ fn clamp_tile_coord(value: f32) -> f32 {
     }
 }
 
+const DDA_TOP_EDGE_EPSILON: f32 = 1.0e-5;
 const TILE_BOUNDARY_EPSILON: f32 = 1.0e-4;
 
 fn clip_segment_to_tile(

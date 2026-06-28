@@ -6,6 +6,8 @@ use crate::cubecl::{
 };
 
 const WORKGROUP_SIZE: u32 = 256;
+const DDA_TOP_EDGE_EPSILON: f32 = 1.0e-5;
+const TILE_BOUNDARY_EPSILON: f32 = 1.0e-4;
 
 pub(crate) struct ScanPipeline;
 
@@ -343,6 +345,7 @@ fn scan_count(
     imax = imin.max(imax);
     ymin = ymin.max(bbox_y0 as i32);
     ymax = ymax.min(bbox_y1 as i32);
+    let tile_boundary_epsilon = f32::new(TILE_BOUNDARY_EPSILON);
     if ymin == bbox_y0 as i32 && ymax > ymin && s0y < bbox_y0 as f32 && s1y > bbox_y0 as f32 {
         let dx_left = s1x - s0x;
         if dx_left != 0.0 {
@@ -350,11 +353,10 @@ fn scan_count(
             let top_y = bbox_y0 as f32;
             let top_x = s0x + (s1x - s0x) * ((top_y - s0y) / (s1y - s0y));
             let left_y = s0y + (s1y - s0y) * ((left_x - s0x) / dx_left);
-            let eps = f32::new(0.0001_f32);
-            if top_x - left_x >= -eps
-                && top_x - left_x <= eps
-                && left_y - top_y >= -eps
-                && left_y - top_y <= eps
+            if top_x - left_x >= -tile_boundary_epsilon
+                && top_x - left_x <= tile_boundary_epsilon
+                && left_y - top_y >= -tile_boundary_epsilon
+                && left_y - top_y <= tile_boundary_epsilon
             {
                 ymin += 1;
             }
@@ -369,18 +371,18 @@ fn scan_count(
         y += 1;
     }
     if imin < imax
-        && s0y < bbox_y0 as f32 - f32::new(0.0001_f32)
-        && s1y > bbox_y0 as f32 + f32::new(0.0001_f32)
+        && s0y < bbox_y0 as f32 - tile_boundary_epsilon
+        && s1y > bbox_y0 as f32 + tile_boundary_epsilon
     {
         let top_y = bbox_y0 as f32;
         let top_x = s0x + (s1x - s0x) * ((top_y - s0y) / (s1y - s0y));
-        if top_x >= bbox_x0 as f32 - f32::new(0.0001_f32) && top_x < bbox_x1 as f32 {
+        if top_x >= bbox_x0 as f32 - tile_boundary_epsilon && top_x < bbox_x1 as f32 {
             // Top-clipped crossings have no original DDA top-edge event. The
             // clipped boundary contributes from the first tile whose left edge
             // is at or to the right of the crossing; exact tile-boundary
             // crossings stay on that boundary instead of advancing one tile.
-            let mut x_bump = (top_x - f32::new(0.0001_f32)).ceil() as i32;
-            if top_x - bbox_x0 as f32 <= f32::new(0.0001_f32) {
+            let mut x_bump = (top_x - tile_boundary_epsilon).ceil() as i32;
+            if top_x - bbox_x0 as f32 <= tile_boundary_epsilon {
                 x_bump = bbox_x0 as i32 + 1;
             }
             if x_bump >= bbox_x0 as i32 && x_bump < bbox_x1 as i32 {
@@ -403,7 +405,7 @@ fn scan_count(
         {
             let mut top_edge = last_z == z;
             if i == imin {
-                top_edge = (y0 - xy0y * tile_scale).abs() <= 0.00001;
+                top_edge = (y0 - xy0y * tile_scale).abs() <= f32::new(DDA_TOP_EDGE_EPSILON);
             }
             if top_edge && tile_x + 1 < bbox_x1 as i32 {
                 let x_bump = (tile_x + 1).max(bbox_x0 as i32);
@@ -861,7 +863,7 @@ fn write_clipped_segment(
     let mut p0y = (xy0y - tile_min_y).clamp(0.0, tile_size);
     let mut p1x = (xy1x - tile_min_x).clamp(0.0, tile_size);
     let mut p1y = (xy1y - tile_min_y).clamp(0.0, tile_size);
-    let boundary_epsilon = f32::new(0.0001_f32);
+    let boundary_epsilon = f32::new(TILE_BOUNDARY_EPSILON);
     if p0x <= boundary_epsilon {
         p0x = 0.0;
     } else if tile_size - p0x <= boundary_epsilon {
