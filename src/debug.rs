@@ -211,8 +211,7 @@ pub(crate) fn capture_render_debug(
     }
 
     let capture_json = debug_capture_json(&capture);
-    capture.texts.insert(
-        0,
+    capture.texts.push(
         RenderDebugText {
             name: "capture.json".to_string(),
             contents: capture_json,
