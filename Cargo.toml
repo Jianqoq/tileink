@@ -10,6 +10,7 @@ bytemuck = "1.25.0"
 usvg = "0.47.0"
 wide = "1.5.0"
 rayon = "1.12.0"
+png = "0.17"
 
 [features]
 bench-api = []
@@ -17,7 +18,6 @@ bench-api = []
 [dev-dependencies]
 criterion = "0.5"
 cubecl-common = "0.10.0"
-png = "0.17"
 vello = { path = "C:\\Users\\JianJian Li\\vello\\vello", default-features = true }
 wgpu = "29.0.3"
 

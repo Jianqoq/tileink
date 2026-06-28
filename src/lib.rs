@@ -24,7 +24,7 @@ pub use shared::{
     bounds::Bounds,
     brush::Brush,
     fill::FillRule,
-    image::Image,
+    image::{Image, ImageSaveError},
     layer::{
         filter::{
             CompositeOperator, ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, Filter,

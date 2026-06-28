@@ -566,9 +566,14 @@ fn capture_svg(scene: &Scene) -> String {
         "<image href=\"final.png\" x=\"0\" y=\"0\" width=\"{}\" height=\"{}\"/>",
         width, height
     );
+    let stroke_width = 0.75;
     out.push_str("<g stroke=\"#ef4444\" stroke-width=\"0.75\" fill=\"none\">\n");
     for tile_x in 0..=width_in_tiles {
-        let x = (tile_x * TILE_SIZE).min(width);
+        let x = inset_grid_line(
+            (tile_x * TILE_SIZE).min(width) as f32,
+            width as f32,
+            stroke_width,
+        );
         let _ = writeln!(
             out,
             "<line x1=\"{}\" y1=\"0\" x2=\"{}\" y2=\"{}\"/>",
@@ -576,7 +581,11 @@ fn capture_svg(scene: &Scene) -> String {
         );
     }
     for tile_y in 0..=height_in_tiles {
-        let y = (tile_y * TILE_SIZE).min(height);
+        let y = inset_grid_line(
+            (tile_y * TILE_SIZE).min(height) as f32,
+            height as f32,
+            stroke_width,
+        );
         let _ = writeln!(
             out,
             "<line x1=\"0\" y1=\"{}\" x2=\"{}\" y2=\"{}\"/>",
@@ -599,6 +608,17 @@ fn capture_svg(scene: &Scene) -> String {
     }
     out.push_str("</g>\n</svg>\n");
     out
+}
+
+fn inset_grid_line(position: f32, limit: f32, stroke_width: f32) -> f32 {
+    let inset = stroke_width * 0.5;
+    if position <= 0.0 {
+        inset.min(limit)
+    } else if position >= limit {
+        (limit - inset).max(0.0)
+    } else {
+        position
+    }
 }
 
 fn tiles_svg(scene: &Scene, tiles: &[DebugTileSummary]) -> String {
@@ -700,8 +720,9 @@ fn tile_svg(tile: &DebugTileDump) -> String {
             );
         }
     }
+    let stroke_width = 0.5;
     for i in 0..=TILE_SIZE {
-        let p = i as f32 * cell;
+        let p = inset_grid_line(i as f32 * cell, grid, stroke_width);
         let _ = writeln!(
             out,
             "<line x1=\"{}\" y1=\"0\" x2=\"{}\" y2=\"{}\" stroke=\"#cbd5e1\" stroke-width=\"0.5\"/>",
@@ -833,6 +854,18 @@ mod tests {
             .expect("capture svg");
         assert!(capture_svg.contents.contains("href=\"final.png\""));
         assert!(capture_svg.contents.contains("stroke=\"#ef4444\""));
+        assert!(capture_svg.contents.contains("x1=\"31.625\""));
+        assert!(capture_svg.contents.contains("y1=\"31.625\""));
+        assert!(
+            !capture_svg
+                .contents
+                .contains("x1=\"32\" y1=\"0\" x2=\"32\"")
+        );
+        assert!(
+            !capture_svg
+                .contents
+                .contains("x1=\"0\" y1=\"32\" x2=\"32\"")
+        );
         assert!(capture_svg.contents.contains(">0</text>"));
         let tiles_svg = capture
             .texts

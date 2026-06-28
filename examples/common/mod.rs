@@ -1,8 +1,4 @@
-use std::{
-    fs::File,
-    io::BufWriter,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use peniko::{
     Color,
@@ -27,20 +23,7 @@ fn backend_output(backend: &str, name: &str) -> PathBuf {
 }
 
 pub fn save_image(image: &Image, path: impl AsRef<Path>) -> Result<(), Box<dyn std::error::Error>> {
-    let path = path.as_ref();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-
-    let file = File::create(path)?;
-    let writer = BufWriter::new(file);
-    let mut encoder = png::Encoder::new(writer, image.width, image.height);
-    encoder.set_color(png::ColorType::Rgba);
-    encoder.set_depth(png::BitDepth::Eight);
-
-    let mut png_writer = encoder.write_header()?;
-    png_writer.write_image_data(&image.rgba8_bytes())?;
-
+    image.save(path)?;
     Ok(())
 }
 
