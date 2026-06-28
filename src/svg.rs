@@ -317,7 +317,6 @@ impl SvgBuilder {
         match paint {
             Paint::Color(color) => Ok(color_opacity_to_brush(*color, opacity)),
             Paint::LinearGradient(source) => {
-                let transform = source.transform();
                 let stops = gradient_stops(source.stops(), opacity);
                 let gradient = Gradient::new_linear(
                     (source.x1() as f64, source.y1() as f64),
@@ -329,11 +328,10 @@ impl SvgBuilder {
                 let Brush::Linear(linear) = &mut brush else {
                     unreachable!();
                 };
-                linear.transform = inverse_transform_array(transform, "gradientTransform")?;
+                linear.transform = self.paint_server_inverse_transform(source.transform())?;
                 Ok(brush)
             }
             Paint::RadialGradient(source) => {
-                let transform = source.transform();
                 let stops = gradient_stops(source.stops(), opacity);
                 let gradient = Gradient::new_two_point_radial(
                     (source.fx() as f64, source.fy() as f64),
@@ -347,11 +345,23 @@ impl SvgBuilder {
                 let Brush::Radial(radial) = &mut brush else {
                     unreachable!();
                 };
-                radial.transform = inverse_transform_array(transform, "gradientTransform")?;
+                radial.transform = self.paint_server_inverse_transform(source.transform())?;
                 Ok(brush)
             }
             Paint::Pattern(pattern) => self.pattern_to_brush(pattern, opacity),
         }
+    }
+
+    fn paint_server_inverse_transform(
+        &self,
+        transform: usvg::Transform,
+    ) -> Result<[f32; 6], SvgError> {
+        // usvg lowers paint-server units into SVG user space. Scene transforms are applied to
+        // geometry before brush sampling, so fold the scene base transform into the inverse.
+        inverse_affine_to_array(
+            self.base_transform * transform_to_affine(transform),
+            "gradientTransform",
+        )
     }
 
     fn pattern_to_brush(&self, pattern: &usvg::Pattern, opacity: f32) -> Result<Brush, SvgError> {
@@ -1108,21 +1118,16 @@ fn affine_to_array(transform: Affine) -> [f32; 6] {
     transform.as_coeffs().map(|value| value as f32)
 }
 
-fn inverse_transform_array(
-    transform: usvg::Transform,
-    feature: &str,
-) -> Result<[f32; 6], SvgError> {
-    let Some(transform) = transform.invert() else {
+fn inverse_affine_to_array(transform: Affine, feature: &str) -> Result<[f32; 6], SvgError> {
+    let determinant = transform.determinant();
+    if !determinant.is_finite() || determinant.abs() <= f64::EPSILON {
         return Err(SvgError::unsupported(format!("non-invertible {feature}")));
-    };
-    Ok([
-        transform.sx,
-        transform.ky,
-        transform.kx,
-        transform.sy,
-        transform.tx,
-        transform.ty,
-    ])
+    }
+    let inverse = transform.inverse();
+    if !inverse.as_coeffs().iter().all(|value| value.is_finite()) {
+        return Err(SvgError::unsupported(format!("non-invertible {feature}")));
+    }
+    Ok(affine_to_array(inverse))
 }
 
 fn transform_region(region: Region, transform: Affine) -> Region {
@@ -1175,8 +1180,35 @@ mod tests {
     fn render(svg: &str, clear: Color) -> CpuRenderer {
         let tree = parse(svg);
         let size = tree.size();
-        let mut scene = Scene::new(size.width().ceil() as u32, size.height().ceil() as u32);
-        scene.push_svg(&tree).unwrap();
+        render_tree_with_options(
+            &tree,
+            clear,
+            SvgOptions::default(),
+            size.width().ceil() as u32,
+            size.height().ceil() as u32,
+        )
+    }
+
+    fn render_with_options(
+        svg: &str,
+        clear: Color,
+        options: SvgOptions,
+        width: u32,
+        height: u32,
+    ) -> CpuRenderer {
+        let tree = parse(svg);
+        render_tree_with_options(&tree, clear, options, width, height)
+    }
+
+    fn render_tree_with_options(
+        tree: &usvg::Tree,
+        clear: Color,
+        options: SvgOptions,
+        width: u32,
+        height: u32,
+    ) -> CpuRenderer {
+        let mut scene = Scene::new(width, height);
+        scene.push_svg_with_options(&tree, options).unwrap();
         let mut renderer = CpuRenderer::new(scene.width, scene.height, clear);
         renderer.render(&scene);
         renderer
@@ -1287,6 +1319,80 @@ mod tests {
         assert!(
             right[2] > right[0],
             "right pixel should be blue-biased: {right:?}"
+        );
+    }
+
+    #[test]
+    fn push_svg_scales_linear_gradient_paint_with_svg_transform() {
+        let renderer = render_with_options(
+            r##"<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"
+                    xmlns:xlink="http://www.w3.org/1999/xlink">
+                <defs>
+                    <rect id="lg1" y2="1" spreadMethod="reflect" width="50" height="50"/>
+                </defs>
+                <linearGradient id="lg2" xlink:href="#lg1" x2="0.7">
+                    <stop offset="0" stop-color="white"/>
+                    <stop offset="1" stop-color="black"/>
+                </linearGradient>
+                <rect x="20" y="20" width="160" height="160" fill="url(#lg2)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+            SvgOptions {
+                transform: Affine::scale(1.5),
+                ..Default::default()
+            },
+            300,
+            300,
+        );
+
+        let left = renderer.image().rgba8_at(32, 150);
+        let middle = renderer.image().rgba8_at(150, 150);
+        let end = renderer.image().rgba8_at(210, 150);
+        assert!(
+            left[0] > 245 && left[3] == 255,
+            "left side should stay near white after scene scaling: {left:?}"
+        );
+        assert!(
+            (40..120).contains(&middle[0]) && middle[3] == 255,
+            "middle should still be inside the gradient ramp: {middle:?}"
+        );
+        assert!(
+            end[0] < 5 && end[3] == 255,
+            "after x2 should clamp to black, not reflect from the rect href: {end:?}"
+        );
+        assert_eq!(renderer.image().rgba8_at(270, 150)[3], 0);
+    }
+
+    #[test]
+    fn push_svg_scales_radial_gradient_paint_with_svg_transform() {
+        let renderer = render_with_options(
+            r##"<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <radialGradient id="g" gradientUnits="userSpaceOnUse" cx="50" cy="50" r="40">
+                        <stop offset="0" stop-color="white"/>
+                        <stop offset="1" stop-color="black"/>
+                    </radialGradient>
+                </defs>
+                <rect x="10" y="10" width="80" height="80" fill="url(#g)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+            SvgOptions {
+                transform: Affine::scale(2.0),
+                ..Default::default()
+            },
+            200,
+            200,
+        );
+
+        let center = renderer.image().rgba8_at(100, 100);
+        let edge = renderer.image().rgba8_at(178, 100);
+        assert!(
+            center[0] > 245 && center[3] == 255,
+            "scaled radial gradient center should stay white: {center:?}"
+        );
+        assert!(
+            edge[0] < 20 && edge[3] == 255,
+            "scaled radial gradient edge should be near black: {edge:?}"
         );
     }
 
