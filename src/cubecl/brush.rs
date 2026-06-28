@@ -199,6 +199,7 @@ fn collect_filter_brush(filter: &Filter, upload: &mut GpuBrushUpload) {
             }
         }
         Filter::DropShadow { brush, .. } => upload.push_brush(brush),
+        Filter::Flood { brush } => upload.push_brush(brush),
         _ => {}
     }
 }

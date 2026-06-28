@@ -338,7 +338,6 @@ fn svg_filter_primitive(
         }
         usvg::filter::Kind::DropShadow(shadow) => {
             ensure_current_filter_input(shadow.input(), previous_result, "feDropShadow")?;
-            let color = shadow.color();
             Ok(Some(Filter::DropShadow {
                 offset_x: shadow.dx(),
                 offset_y: shadow.dy(),
@@ -347,10 +346,7 @@ fn svg_filter_primitive(
                     shadow.std_dev_y().get(),
                     "anisotropic feDropShadow",
                 )?,
-                brush: Brush::Solid(
-                    Color::from_rgb8(color.red, color.green, color.blue)
-                        .multiply_alpha(shadow.opacity().get()),
-                ),
+                brush: color_opacity_to_brush(shadow.color(), shadow.opacity().get()),
             }))
         }
         usvg::filter::Kind::ColorMatrix(matrix) => {
@@ -366,11 +362,19 @@ fn svg_filter_primitive(
         usvg::filter::Kind::ConvolveMatrix(_) => Err(SvgError::unsupported("feConvolveMatrix")),
         usvg::filter::Kind::DiffuseLighting(_) => Err(SvgError::unsupported("feDiffuseLighting")),
         usvg::filter::Kind::DisplacementMap(_) => Err(SvgError::unsupported("feDisplacementMap")),
-        usvg::filter::Kind::Flood(_) => Err(SvgError::unsupported("feFlood")),
+        usvg::filter::Kind::Flood(flood) => Ok(Some(Filter::Flood {
+            brush: color_opacity_to_brush(flood.color(), flood.opacity().get()),
+        })),
         usvg::filter::Kind::Image(_) => Err(SvgError::unsupported("feImage")),
         usvg::filter::Kind::Merge(_) => Err(SvgError::unsupported("feMerge")),
         usvg::filter::Kind::Morphology(_) => Err(SvgError::unsupported("feMorphology")),
-        usvg::filter::Kind::Offset(_) => Err(SvgError::unsupported("feOffset")),
+        usvg::filter::Kind::Offset(offset) => {
+            ensure_current_filter_input(offset.input(), previous_result, "feOffset")?;
+            Ok(Some(Filter::Offset {
+                dx: offset.dx(),
+                dy: offset.dy(),
+            }))
+        }
         usvg::filter::Kind::SpecularLighting(_) => Err(SvgError::unsupported("feSpecularLighting")),
         usvg::filter::Kind::Tile(_) => Err(SvgError::unsupported("feTile")),
         usvg::filter::Kind::Turbulence(_) => Err(SvgError::unsupported("feTurbulence")),
@@ -408,12 +412,15 @@ fn color_matrix_to_filter(
             } else if let Some(amount) = standard_sepia_amount(values) {
                 Ok(Some(Filter::Sepia(amount)))
             } else {
-                Err(SvgError::unsupported("feColorMatrix matrix"))
+                let mut matrix = [0.0; 20];
+                matrix.copy_from_slice(values);
+                Ok(Some(Filter::ColorMatrix(matrix)))
             }
         }
-        usvg::filter::ColorMatrixKind::LuminanceToAlpha => {
-            Err(SvgError::unsupported("feColorMatrix luminanceToAlpha"))
-        }
+        usvg::filter::ColorMatrixKind::LuminanceToAlpha => Ok(Some(Filter::ColorMatrix([
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.2126,
+            0.7152, 0.0722, 0.0, 0.0,
+        ]))),
     }
 }
 
@@ -642,9 +649,7 @@ fn tiny_path_to_bez(path: &usvg::tiny_skia_path::Path) -> BezPath {
 
 fn paint_to_brush(paint: &Paint, opacity: f32) -> Result<Brush, SvgError> {
     match paint {
-        Paint::Color(color) => Ok(Brush::Solid(
-            Color::from_rgb8(color.red, color.green, color.blue).multiply_alpha(opacity),
-        )),
+        Paint::Color(color) => Ok(color_opacity_to_brush(*color, opacity)),
         Paint::LinearGradient(source) => {
             let transform = source.transform();
             let stops = gradient_stops(source.stops(), opacity);
@@ -681,6 +686,10 @@ fn paint_to_brush(paint: &Paint, opacity: f32) -> Result<Brush, SvgError> {
         }
         Paint::Pattern(_) => Err(SvgError::unsupported("pattern paint")),
     }
+}
+
+fn color_opacity_to_brush(color: usvg::Color, opacity: f32) -> Brush {
+    Brush::Solid(Color::from_rgb8(color.red, color.green, color.blue).multiply_alpha(opacity))
 }
 
 fn gradient_stops(stops: &[usvg::Stop], opacity: f32) -> Vec<ColorStop> {
@@ -922,6 +931,79 @@ mod tests {
     }
 
     #[test]
+    fn push_svg_renders_fe_offset() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="16">
+                <defs>
+                    <filter id="offset" x="0" y="0" width="24" height="16" filterUnits="userSpaceOnUse">
+                        <feOffset dx="6" dy="2"/>
+                    </filter>
+                </defs>
+                <rect x="4" y="4" width="4" height="4" fill="#ff0000" filter="url(#offset)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(5, 5), [0, 0, 0, 0]);
+        assert_eq!(renderer.image().rgba8_at(11, 7), [255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn push_svg_renders_fe_flood() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+                <defs>
+                    <filter id="flood" x="0" y="0" width="16" height="16" filterUnits="userSpaceOnUse">
+                        <feFlood flood-color="#00ff00" flood-opacity="0.5"/>
+                    </filter>
+                </defs>
+                <rect x="4" y="4" width="4" height="4" fill="#ff0000" filter="url(#flood)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(12, 12), [0, 128, 0, 128]);
+    }
+
+    #[test]
+    fn push_svg_renders_fe_color_matrix() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8">
+                <defs>
+                    <filter id="matrix" x="0" y="0" width="8" height="8" filterUnits="userSpaceOnUse">
+                        <feColorMatrix type="matrix" values="
+                            0 0 0 0 0
+                            0 0 0 0 0
+                            1 0 0 0 0
+                            0 0 0 1 0"/>
+                    </filter>
+                </defs>
+                <rect width="8" height="8" fill="#ff0000" filter="url(#matrix)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(4, 4), [0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn push_svg_renders_fe_color_matrix_luminance_to_alpha() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8">
+                <defs>
+                    <filter id="alpha" x="0" y="0" width="8" height="8" filterUnits="userSpaceOnUse">
+                        <feColorMatrix type="luminanceToAlpha"/>
+                    </filter>
+                </defs>
+                <rect width="8" height="8" fill="#ff0000" filter="url(#alpha)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(4, 4), [0, 0, 0, 54]);
+    }
+
+    #[test]
     fn push_svg_preserves_css_filter_function_order() {
         let renderer = render(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8">
@@ -941,8 +1023,8 @@ mod tests {
     fn push_svg_unsupported_features_do_not_modify_scene() {
         let tree = parse(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
-                <defs><filter id="offset"><feOffset dx="2" dy="2"/></filter></defs>
-                <g filter="url(#offset)"><rect width="16" height="16" fill="#ff0000"/></g>
+                <defs><filter id="blend"><feBlend in2="SourceGraphic"/></filter></defs>
+                <g filter="url(#blend)"><rect width="16" height="16" fill="#ff0000"/></g>
             </svg>"##,
         );
         let mut scene = Scene::new(16, 16);
@@ -953,7 +1035,7 @@ mod tests {
         );
 
         let err = scene.push_svg(&tree).unwrap_err();
-        assert_eq!(err.feature(), "feOffset");
+        assert_eq!(err.feature(), "feBlend");
 
         let mut renderer = CpuRenderer::new(16, 16, Color::TRANSPARENT);
         renderer.render(&scene);

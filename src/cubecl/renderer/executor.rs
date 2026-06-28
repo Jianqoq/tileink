@@ -225,6 +225,21 @@ impl<R: Runtime> Renderer<R> {
                     self.release_scratch(temp);
                 }
             }
+            Filter::ColorMatrix(matrix) => self.apply_color_matrix_filter(target, bounds, *matrix),
+            Filter::Flood { .. } => {
+                self.apply_flood(target, bounds, next_filter_brush_index(filter_brush_cursor))
+            }
+            Filter::Offset { dx, dy } => {
+                let dx = dx.round() as i32;
+                let dy = dy.round() as i32;
+                if dx != 0 || dy != 0 {
+                    let temp = self.acquire_scratch();
+                    self.clear_buffer(temp, 0);
+                    self.offset_buffer(target, temp, bounds, dx, dy);
+                    self.copy_region(temp, target, bounds);
+                    self.release_scratch(temp);
+                }
+            }
             Filter::DropShadow {
                 offset_x,
                 offset_y,
@@ -286,6 +301,57 @@ impl<R: Runtime> Renderer<R> {
         }
     }
 
+    fn apply_color_matrix_filter(
+        &mut self,
+        target: CubeRenderTarget,
+        bounds: Bounds,
+        matrix: [f32; 20],
+    ) {
+        match target {
+            CubeRenderTarget::Main => FilterPipeline::apply_color_matrix(
+                &self.client,
+                &mut self.target,
+                self.size,
+                bounds,
+                matrix,
+            ),
+            CubeRenderTarget::Scratch(ix) => FilterPipeline::apply_color_matrix(
+                &self.client,
+                &mut self.scratch[ix],
+                self.size,
+                bounds,
+                matrix,
+            ),
+        }
+    }
+
+    fn apply_flood(&mut self, target: CubeRenderTarget, bounds: Bounds, brush_index: u32) {
+        match target {
+            CubeRenderTarget::Main => {
+                let brushes = self.filter_brushes.resources();
+                FilterPipeline::flood_region(
+                    &self.client,
+                    &mut self.target,
+                    self.size,
+                    bounds,
+                    brush_index,
+                    brushes,
+                )
+            }
+            CubeRenderTarget::Scratch(ix) => {
+                let brushes = self.filter_brushes.resources();
+                FilterPipeline::flood_region(
+                    &self.client,
+                    &mut self.scratch[ix],
+                    self.size,
+                    bounds,
+                    brush_index,
+                    brushes,
+                )
+            }
+        }
+    }
+
     fn copy_region(&mut self, source: CubeRenderTarget, target: CubeRenderTarget, bounds: Bounds) {
         if source == target {
             return;
@@ -313,6 +379,57 @@ impl<R: Runtime> Renderer<R> {
                 let (source, target) =
                     scratch_source_target(&mut self.scratch, source_ix, target_ix);
                 FilterPipeline::copy_region(&self.client, source, target, self.size, bounds)
+            }
+            (CubeRenderTarget::Main, CubeRenderTarget::Main) => unreachable!(),
+        }
+    }
+
+    fn offset_buffer(
+        &mut self,
+        source: CubeRenderTarget,
+        target: CubeRenderTarget,
+        bounds: Bounds,
+        dx: i32,
+        dy: i32,
+    ) {
+        if source == target {
+            return;
+        }
+        match (source, target) {
+            (CubeRenderTarget::Main, CubeRenderTarget::Scratch(target_ix)) => {
+                FilterPipeline::offset_region(
+                    &self.client,
+                    &self.target,
+                    &mut self.scratch[target_ix],
+                    self.size,
+                    bounds,
+                    dx,
+                    dy,
+                )
+            }
+            (CubeRenderTarget::Scratch(source_ix), CubeRenderTarget::Main) => {
+                FilterPipeline::offset_region(
+                    &self.client,
+                    &self.scratch[source_ix],
+                    &mut self.target,
+                    self.size,
+                    bounds,
+                    dx,
+                    dy,
+                )
+            }
+            (CubeRenderTarget::Scratch(source_ix), CubeRenderTarget::Scratch(target_ix)) => {
+                let (source, target) =
+                    scratch_source_target(&mut self.scratch, source_ix, target_ix);
+                FilterPipeline::offset_region(
+                    &self.client,
+                    source,
+                    target,
+                    self.size,
+                    bounds,
+                    dx,
+                    dy,
+                )
             }
             (CubeRenderTarget::Main, CubeRenderTarget::Main) => unreachable!(),
         }
@@ -824,6 +941,7 @@ fn filter_scratch_extra(filter: &Filter) -> usize {
             filters.iter().map(filter_scratch_extra).max().unwrap_or(0)
         }
         Filter::Blur(radius) => usize::from(radius.max(0.0) > 0.0),
+        Filter::Offset { .. } => 1,
         Filter::DropShadow { radius, .. } => 1 + usize::from(radius.max(0.0) > 0.0),
         _ => 0,
     }
@@ -852,6 +970,9 @@ fn encode_color_filter(filter: &Filter) -> (u32, f32) {
         Filter::Saturate(amount) => (FILTER_SATURATE, *amount),
         Filter::Sepia(amount) => (FILTER_SEPIA, *amount),
         Filter::Blur(_) => panic!("blur is handled by CubeCL separable blur passes"),
+        Filter::ColorMatrix(_) => panic!("color matrix is handled by a dedicated CubeCL pass"),
+        Filter::Flood { .. } => panic!("flood is handled by the CubeCL brush fill pass"),
+        Filter::Offset { .. } => panic!("offset is handled by a dedicated CubeCL pass"),
         Filter::DropShadow { .. } => {
             panic!("drop-shadow is handled by the CubeCL shadow-mask passes")
         }
@@ -880,6 +1001,7 @@ fn filter_outset(filter: &Filter) -> i32 {
             }
         }
         Filter::Blur(radius) => blur_outset(*radius),
+        Filter::Offset { dx, dy } => dx.abs().ceil().max(dy.abs().ceil()) as i32,
         Filter::DropShadow {
             radius,
             offset_x,

@@ -48,8 +48,12 @@ try {
 
     foreach ($dir in $typeDirs) {
         Write-Host "[$Backend] $($dir.FullName)"
+        $oldErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
         & $example $dir.FullName $Backend
-        if ($LASTEXITCODE -ne 0) {
+        $renderExit = $LASTEXITCODE
+        $ErrorActionPreference = $oldErrorActionPreference
+        if ($renderExit -ne 0) {
             $message = "[$Backend] $($dir.FullName)"
             $failures.Add($message)
             if (-not $ContinueOnError) {

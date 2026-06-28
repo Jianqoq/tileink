@@ -2,6 +2,7 @@ use peniko::kurbo::Shape;
 
 use crate::shared::{
     bounds::Bounds,
+    brush::Brush,
     image::{Image, rgba8_pack},
     layer::{blend::src_over_premul, filter::Filter, region::Region},
     pixel::{pack_premul_rgba8, unpack_premul_rgba8},
@@ -15,6 +16,12 @@ pub(crate) fn apply(image: &mut Image, filter: &Filter, bounds: Bounds) {
             }
         }
         Filter::Blur(radius) => apply_gaussian_blur(image, *radius),
+        Filter::ColorMatrix(matrix) => {
+            for px in &mut image.pixels {
+                *px = apply_color_matrix_pixel(*px, *matrix);
+            }
+        }
+        Filter::Flood { brush } => apply_flood(image, bounds, brush),
         Filter::Brightness(amount)
         | Filter::Contrast(amount)
         | Filter::Grayscale(amount)
@@ -27,6 +34,7 @@ pub(crate) fn apply(image: &mut Image, filter: &Filter, bounds: Bounds) {
                 *px = apply_color_filter_pixel(*px, filter, *amount);
             }
         }
+        Filter::Offset { dx, dy } => apply_offset(image, dx.round() as i32, dy.round() as i32),
         Filter::DropShadow {
             offset_x,
             offset_y,
@@ -59,6 +67,7 @@ fn filter_outset(filter: &Filter) -> i32 {
             }
         }
         Filter::Blur(radius) => blur_outset(*radius),
+        Filter::Offset { dx, dy } => dx.abs().ceil().max(dy.abs().ceil()) as i32,
         Filter::DropShadow {
             radius,
             offset_x,
@@ -153,6 +162,76 @@ fn apply_color_filter_pixel(px: u32, filter: &Filter, amount: f32) -> u32 {
     c[1] = rgb[1] * alpha;
     c[2] = rgb[2] * alpha;
     pack_premul_rgba8(c)
+}
+
+fn apply_color_matrix_pixel(px: u32, matrix: [f32; 20]) -> u32 {
+    let c = unpack_premul_rgba8(px);
+    let alpha = c[3];
+    let rgba = if alpha > 0.0 {
+        [c[0] / alpha, c[1] / alpha, c[2] / alpha, alpha]
+    } else {
+        [0.0, 0.0, 0.0, 0.0]
+    };
+    let out = [
+        matrix[0] * rgba[0]
+            + matrix[1] * rgba[1]
+            + matrix[2] * rgba[2]
+            + matrix[3] * rgba[3]
+            + matrix[4],
+        matrix[5] * rgba[0]
+            + matrix[6] * rgba[1]
+            + matrix[7] * rgba[2]
+            + matrix[8] * rgba[3]
+            + matrix[9],
+        matrix[10] * rgba[0]
+            + matrix[11] * rgba[1]
+            + matrix[12] * rgba[2]
+            + matrix[13] * rgba[3]
+            + matrix[14],
+        matrix[15] * rgba[0]
+            + matrix[16] * rgba[1]
+            + matrix[17] * rgba[2]
+            + matrix[18] * rgba[3]
+            + matrix[19],
+    ];
+    let out_alpha = out[3].clamp(0.0, 1.0);
+    pack_premul_rgba8([
+        out[0].clamp(0.0, 1.0) * out_alpha,
+        out[1].clamp(0.0, 1.0) * out_alpha,
+        out[2].clamp(0.0, 1.0) * out_alpha,
+        out_alpha,
+    ])
+}
+
+fn apply_flood(image: &mut Image, bounds: Bounds, brush: &Brush) {
+    for y in 0..image.height {
+        for x in 0..image.width {
+            image.pixels[(y * image.width + x) as usize] = brush.sample(
+                bounds.x0 as f32 + x as f32 + 0.5,
+                bounds.y0 as f32 + y as f32 + 0.5,
+            );
+        }
+    }
+}
+
+fn apply_offset(image: &mut Image, dx: i32, dy: i32) {
+    if dx == 0 && dy == 0 {
+        return;
+    }
+
+    let source = image.pixels.clone();
+    image.pixels.fill(0);
+    for y in 0..image.height as i32 {
+        for x in 0..image.width as i32 {
+            let tx = x + dx;
+            let ty = y + dy;
+            if tx < 0 || ty < 0 || tx >= image.width as i32 || ty >= image.height as i32 {
+                continue;
+            }
+            image.pixels[(ty as u32 * image.width + tx as u32) as usize] =
+                source[(y as u32 * image.width + x as u32) as usize];
+        }
+    }
 }
 
 fn apply_gaussian_blur(image: &mut Image, radius: f32) {
@@ -338,5 +417,57 @@ mod tests {
         assert_eq!(image.rgba8_at(2, 2), [255, 255, 255, 255]);
         assert_eq!(image.rgba8_at(4, 3), [0, 0, 0, 255]);
         assert_eq!(image.rgba8_at(1, 1), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn offset_shifts_pixels_and_clears_uncovered_area() {
+        let mut image = Image::new(4, 4, Color::TRANSPARENT);
+        image.pixels[(1 * 4 + 1) as usize] = rgba8_pack([255, 0, 0, 255]);
+
+        apply(
+            &mut image,
+            &Filter::Offset { dx: 1.0, dy: -1.0 },
+            Bounds::canvas(4, 4),
+        );
+
+        assert_eq!(image.rgba8_at(2, 0), [255, 0, 0, 255]);
+        assert_eq!(image.rgba8_at(1, 1), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn flood_replaces_filter_buffer_with_sampled_brush() {
+        let mut image = Image::new(3, 2, Color::from_rgb8(255, 0, 0));
+
+        apply(
+            &mut image,
+            &Filter::Flood {
+                brush: Brush::Solid(Color::from_rgb8(0, 255, 0)),
+            },
+            Bounds::new(10, 20, 13, 22),
+        );
+
+        assert!(
+            image
+                .pixels
+                .iter()
+                .all(|px| *px == rgba8_pack([0, 255, 0, 255]))
+        );
+    }
+
+    #[test]
+    fn color_matrix_runs_on_unpremultiplied_channels() {
+        let mut image = Image::new(1, 1, Color::TRANSPARENT);
+        image.pixels[0] = rgba8_pack([128, 0, 0, 128]);
+
+        apply(
+            &mut image,
+            &Filter::ColorMatrix([
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 1.0, 0.0,
+            ]),
+            Bounds::canvas(1, 1),
+        );
+
+        assert_eq!(image.rgba8_at(0, 0), [0, 0, 128, 128]);
     }
 }

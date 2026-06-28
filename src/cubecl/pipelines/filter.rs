@@ -90,6 +90,107 @@ impl FilterPipeline {
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn apply_color_matrix<R: Runtime>(
+        client: &ComputeClient<R>,
+        target: &mut CubeBuffer<u32>,
+        size: (u32, u32),
+        bounds: Bounds,
+        matrix: [f32; 20],
+    ) {
+        let Some(region) = FilterRegion::new(size, bounds) else {
+            return;
+        };
+        filter_color_matrix_region::launch::<R>(
+            client,
+            cube_count(region.pixel_count),
+            CubeDim::new_1d(FILTER_WORKGROUP_SIZE),
+            region.pixel_count,
+            region.width,
+            region.x0,
+            region.y0,
+            size.0,
+            matrix[0],
+            matrix[1],
+            matrix[2],
+            matrix[3],
+            matrix[4],
+            matrix[5],
+            matrix[6],
+            matrix[7],
+            matrix[8],
+            matrix[9],
+            matrix[10],
+            matrix[11],
+            matrix[12],
+            matrix[13],
+            matrix[14],
+            matrix[15],
+            matrix[16],
+            matrix[17],
+            matrix[18],
+            matrix[19],
+            unsafe { target.arg() },
+        );
+    }
+
+    pub(crate) fn offset_region<R: Runtime>(
+        client: &ComputeClient<R>,
+        source: &CubeBuffer<u32>,
+        target: &mut CubeBuffer<u32>,
+        size: (u32, u32),
+        bounds: Bounds,
+        dx: i32,
+        dy: i32,
+    ) {
+        let Some(region) = FilterRegion::new(size, bounds) else {
+            return;
+        };
+        filter_offset_region::launch::<R>(
+            client,
+            cube_count(region.pixel_count),
+            CubeDim::new_1d(FILTER_WORKGROUP_SIZE),
+            region.pixel_count,
+            region.width,
+            region.height,
+            region.x0,
+            region.y0,
+            size.0,
+            dx,
+            dy,
+            unsafe { source.arg() },
+            unsafe { target.arg() },
+        );
+    }
+
+    pub(crate) fn flood_region<R: Runtime>(
+        client: &ComputeClient<R>,
+        target: &mut CubeBuffer<u32>,
+        size: (u32, u32),
+        bounds: Bounds,
+        brush_index: u32,
+        brushes: GpuBrushResources<'_>,
+    ) {
+        let Some(region) = FilterRegion::new(size, bounds) else {
+            return;
+        };
+        filter_flood_region::launch::<R>(
+            client,
+            cube_count(region.pixel_count),
+            CubeDim::new_1d(FILTER_WORKGROUP_SIZE),
+            region.pixel_count,
+            region.width,
+            region.x0,
+            region.y0,
+            size.0,
+            brush_index,
+            unsafe { brushes.data.arg() },
+            unsafe { brushes.params.arg() },
+            unsafe { brushes.payloads.arg() },
+            unsafe { target.arg() },
+        );
+    }
+
     pub(crate) fn composite_src_over_region<R: Runtime>(
         client: &ComputeClient<R>,
         target: &mut CubeBuffer<u32>,
@@ -402,6 +503,111 @@ fn filter_color_region(
     let y = region_y0 + region_ix / region_width;
     let ix = (y * image_width + x) as usize;
     target[ix] = apply_color_filter_pixel(target[ix], filter_kind, amount);
+}
+
+#[cube(launch)]
+#[allow(clippy::too_many_arguments)]
+fn filter_color_matrix_region(
+    pixel_count: u32,
+    region_width: u32,
+    region_x0: u32,
+    region_y0: u32,
+    image_width: u32,
+    m00: f32,
+    m01: f32,
+    m02: f32,
+    m03: f32,
+    m04: f32,
+    m10: f32,
+    m11: f32,
+    m12: f32,
+    m13: f32,
+    m14: f32,
+    m20: f32,
+    m21: f32,
+    m22: f32,
+    m23: f32,
+    m24: f32,
+    m30: f32,
+    m31: f32,
+    m32: f32,
+    m33: f32,
+    m34: f32,
+    target: &mut Array<u32>,
+) {
+    let region_ix = ABSOLUTE_POS as u32;
+    if region_ix >= pixel_count {
+        terminate!();
+    }
+    let x = region_x0 + region_ix % region_width;
+    let y = region_y0 + region_ix / region_width;
+    let ix = (y * image_width + x) as usize;
+    target[ix] = apply_color_matrix_pixel(
+        target[ix], m00, m01, m02, m03, m04, m10, m11, m12, m13, m14, m20, m21, m22, m23, m24, m30,
+        m31, m32, m33, m34,
+    );
+}
+
+#[cube(launch)]
+fn filter_offset_region(
+    pixel_count: u32,
+    region_width: u32,
+    region_height: u32,
+    region_x0: u32,
+    region_y0: u32,
+    image_width: u32,
+    dx: i32,
+    dy: i32,
+    source: &Array<u32>,
+    target: &mut Array<u32>,
+) {
+    let region_ix = ABSOLUTE_POS as u32;
+    if region_ix >= pixel_count {
+        terminate!();
+    }
+    let x = region_x0 + region_ix % region_width;
+    let y = region_y0 + region_ix / region_width;
+    let sx = x as i32 - dx;
+    let sy = y as i32 - dy;
+    let region_x1 = (region_x0 + region_width) as i32;
+    let region_y1 = (region_y0 + region_height) as i32;
+    let ix = (y * image_width + x) as usize;
+    let mut pixel = 0u32;
+    if sx >= region_x0 as i32 && sx < region_x1 && sy >= region_y0 as i32 && sy < region_y1 {
+        pixel = source[(sy as u32 * image_width + sx as u32) as usize];
+    }
+    target[ix] = pixel;
+}
+
+#[cube(launch)]
+fn filter_flood_region(
+    pixel_count: u32,
+    region_width: u32,
+    region_x0: u32,
+    region_y0: u32,
+    image_width: u32,
+    brush_index: u32,
+    brush_data: &Array<u32>,
+    brush_params: &Array<f32>,
+    brush_payloads: &Array<u32>,
+    target: &mut Array<u32>,
+) {
+    let region_ix = ABSOLUTE_POS as u32;
+    if region_ix >= pixel_count {
+        terminate!();
+    }
+
+    let x = region_x0 + region_ix % region_width;
+    let y = region_y0 + region_ix / region_width;
+    let ix = (y * image_width + x) as usize;
+    target[ix] = sample_brush(
+        brush_index,
+        x as f32 + 0.5,
+        y as f32 + 0.5,
+        brush_data,
+        brush_params,
+        brush_payloads,
+    );
 }
 
 #[cube(launch)]
@@ -1234,6 +1440,58 @@ fn apply_color_filter_pixel(px: u32, filter_kind: u32, amount: f32) -> u32 {
     }
 
     pack_premul_rgba8(r, g, b, a)
+}
+
+#[cube]
+#[allow(clippy::too_many_arguments)]
+fn apply_color_matrix_pixel(
+    px: u32,
+    m00: f32,
+    m01: f32,
+    m02: f32,
+    m03: f32,
+    m04: f32,
+    m10: f32,
+    m11: f32,
+    m12: f32,
+    m13: f32,
+    m14: f32,
+    m20: f32,
+    m21: f32,
+    m22: f32,
+    m23: f32,
+    m24: f32,
+    m30: f32,
+    m31: f32,
+    m32: f32,
+    m33: f32,
+    m34: f32,
+) -> u32 {
+    let inv_255 = 1.0 / 255.0;
+    let premul_r = (px & 255) as f32 * inv_255;
+    let premul_g = ((px >> 8) & 255) as f32 * inv_255;
+    let premul_b = ((px >> 16) & 255) as f32 * inv_255;
+    let a = ((px >> 24) & 255) as f32 * inv_255;
+
+    let mut r = 0.0;
+    let mut g = 0.0;
+    let mut b = 0.0;
+    if a > 0.0 {
+        r = premul_r / a;
+        g = premul_g / a;
+        b = premul_b / a;
+    }
+
+    let out_r = m00 * r + m01 * g + m02 * b + m03 * a + m04;
+    let out_g = m10 * r + m11 * g + m12 * b + m13 * a + m14;
+    let out_b = m20 * r + m21 * g + m22 * b + m23 * a + m24;
+    let out_a = (m30 * r + m31 * g + m32 * b + m33 * a + m34).clamp(0.0, 1.0);
+    pack_premul_rgba8(
+        out_r.clamp(0.0, 1.0) * out_a,
+        out_g.clamp(0.0, 1.0) * out_a,
+        out_b.clamp(0.0, 1.0) * out_a,
+        out_a,
+    )
 }
 
 #[cube]

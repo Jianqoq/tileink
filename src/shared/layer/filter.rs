@@ -9,9 +9,17 @@ pub enum Filter {
     Blur(f32),
     Brightness(f32),
     Contrast(f32),
+    ColorMatrix([f32; 20]),
+    Flood {
+        brush: Brush,
+    },
     Grayscale(f32),
     HueRotate(f32),
     Invert(f32),
+    Offset {
+        dx: f32,
+        dy: f32,
+    },
     Opacity(f32),
     Saturate(f32),
     Sepia(f32),
