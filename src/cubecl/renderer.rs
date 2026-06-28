@@ -3,7 +3,10 @@ use peniko::Color;
 
 mod executor;
 mod resources;
-use executor::{FilterPathBuffers, FilterPathUpload, plan_stack_depths, required_scratch_count};
+use executor::{
+    FilterPathBuffers, FilterPathUpload, FilterTransferBuffers, FilterTransferUpload,
+    plan_stack_depths, required_scratch_count,
+};
 use resources::SceneUploadStaging;
 pub(crate) use resources::{CoarseBuffers, ScanBuffers, SceneBuffers};
 
@@ -51,6 +54,7 @@ pub struct Renderer<R: Runtime> {
     draw_brushes: GpuBrushBuffers,
     filter_brushes: GpuBrushBuffers,
     filter_paths: FilterPathBuffers,
+    filter_transfers: FilterTransferBuffers,
     target: CubeBuffer<u32>,
     scratch: Vec<CubeBuffer<u32>>,
     scratch_in_use: Vec<bool>,
@@ -136,6 +140,7 @@ impl<R: Runtime> Renderer<R> {
             draw_brushes: GpuBrushBuffers::new(&client),
             filter_brushes: GpuBrushBuffers::new(&client),
             filter_paths: FilterPathBuffers::new(&client),
+            filter_transfers: FilterTransferBuffers::new(&client),
             target: CubeBuffer::new(&client, width as usize * height as usize),
             scratch: Vec::new(),
             scratch_in_use: Vec::new(),
@@ -163,6 +168,7 @@ impl<R: Runtime> Renderer<R> {
         let draw_brush_upload = GpuBrushUpload::from_scene_draws(scene);
         let filter_brush_upload = GpuBrushUpload::from_filter_plan(&plan.ops);
         let filter_path_upload = FilterPathUpload::from_plan(&plan);
+        let filter_transfer_upload = FilterTransferUpload::from_plan(&plan);
         self.lengths = lengths;
         self.max_clip_depth = max_clip_depth;
         self.max_group_depth = max_group_depth;
@@ -171,6 +177,8 @@ impl<R: Runtime> Renderer<R> {
         self.filter_brushes
             .upload(&self.client, filter_brush_upload);
         self.filter_paths.upload(&self.client, filter_path_upload);
+        self.filter_transfers
+            .upload(&self.client, filter_transfer_upload);
         self.scene
             .upload(&self.client, scene, &plan, &mut self.scene_upload);
         self.scan.prepare_outputs(&self.client, lengths);

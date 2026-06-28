@@ -18,6 +18,10 @@ use crate::{
 };
 
 const FILTER_WORKGROUP_SIZE: u32 = 256;
+const COMPONENT_TRANSFER_TABLE_SIZE_U32: u32 =
+    crate::shared::layer::filter::COMPONENT_TRANSFER_TABLE_SIZE as u32;
+const COMPONENT_TRANSFER_TABLE_LEN_U32: u32 =
+    crate::shared::layer::filter::COMPONENT_TRANSFER_TABLE_LEN as u32;
 
 pub(crate) const FILTER_BRIGHTNESS: u32 = 1;
 pub(crate) const FILTER_CONTRAST: u32 = 2;
@@ -130,6 +134,32 @@ impl FilterPipeline {
             matrix[17],
             matrix[18],
             matrix[19],
+            unsafe { target.arg() },
+        );
+    }
+
+    pub(crate) fn apply_component_transfer<R: Runtime>(
+        client: &ComputeClient<R>,
+        target: &mut CubeBuffer<u32>,
+        size: (u32, u32),
+        bounds: Bounds,
+        table_index: u32,
+        transfer_tables: &CubeBuffer<u32>,
+    ) {
+        let Some(region) = FilterRegion::new(size, bounds) else {
+            return;
+        };
+        filter_component_transfer_region::launch::<R>(
+            client,
+            cube_count(region.pixel_count),
+            CubeDim::new_1d(FILTER_WORKGROUP_SIZE),
+            region.pixel_count,
+            region.width,
+            region.x0,
+            region.y0,
+            size.0,
+            table_index,
+            unsafe { transfer_tables.arg() },
             unsafe { target.arg() },
         );
     }
@@ -546,6 +576,27 @@ fn filter_color_matrix_region(
         target[ix], m00, m01, m02, m03, m04, m10, m11, m12, m13, m14, m20, m21, m22, m23, m24, m30,
         m31, m32, m33, m34,
     );
+}
+
+#[cube(launch)]
+fn filter_component_transfer_region(
+    pixel_count: u32,
+    region_width: u32,
+    region_x0: u32,
+    region_y0: u32,
+    image_width: u32,
+    table_index: u32,
+    transfer_tables: &Array<u32>,
+    target: &mut Array<u32>,
+) {
+    let region_ix = ABSOLUTE_POS as u32;
+    if region_ix >= pixel_count {
+        terminate!();
+    }
+    let x = region_x0 + region_ix % region_width;
+    let y = region_y0 + region_ix / region_width;
+    let ix = (y * image_width + x) as usize;
+    target[ix] = apply_component_transfer_pixel(target[ix], table_index, transfer_tables);
 }
 
 #[cube(launch)]
@@ -1467,6 +1518,7 @@ fn apply_color_matrix_pixel(
     m33: f32,
     m34: f32,
 ) -> u32 {
+    // SVG filter matrices operate on straight RGBA, while render buffers are premultiplied.
     let inv_255 = 1.0 / 255.0;
     let premul_r = (px & 255) as f32 * inv_255;
     let premul_g = ((px >> 8) & 255) as f32 * inv_255;
@@ -1492,6 +1544,35 @@ fn apply_color_matrix_pixel(
         out_b.clamp(0.0, 1.0) * out_a,
         out_a,
     )
+}
+
+#[cube]
+fn apply_component_transfer_pixel(px: u32, table_index: u32, transfer_tables: &Array<u32>) -> u32 {
+    let alpha = (px >> 24) & 255;
+    let base = table_index * COMPONENT_TRANSFER_TABLE_LEN_U32;
+    let r_index = straight_component_index(px & 255, alpha);
+    let g_index = straight_component_index((px >> 8) & 255, alpha);
+    let b_index = straight_component_index((px >> 16) & 255, alpha);
+    let inv_255 = 1.0 / 255.0;
+    let r = transfer_tables[(base + r_index) as usize] as f32 * inv_255;
+    let g = transfer_tables[(base + COMPONENT_TRANSFER_TABLE_SIZE_U32 + g_index) as usize] as f32
+        * inv_255;
+    let b = transfer_tables[(base + 2 * COMPONENT_TRANSFER_TABLE_SIZE_U32 + b_index) as usize]
+        as f32
+        * inv_255;
+    let a = transfer_tables[(base + 3 * COMPONENT_TRANSFER_TABLE_SIZE_U32 + alpha) as usize] as f32
+        * inv_255;
+    pack_premul_rgba8(r * a, g * a, b * a, a)
+}
+
+#[cube]
+fn straight_component_index(premul: u32, alpha: u32) -> u32 {
+    let safe_alpha = alpha.max(1);
+    let mut index = ((premul * 255 + safe_alpha / 2) / safe_alpha).min(255);
+    if alpha == 0 {
+        index = 0;
+    }
+    index
 }
 
 #[cube]

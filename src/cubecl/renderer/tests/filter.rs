@@ -4,6 +4,21 @@ fn pixel_ix(x: usize, y: usize, width: usize) -> usize {
     y * width + x
 }
 
+fn component_transfer_test_table() -> Box<crate::shared::layer::filter::ComponentTransferTable> {
+    use crate::shared::layer::filter::{
+        COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE,
+    };
+
+    let mut table = Box::new([0; COMPONENT_TRANSFER_TABLE_LEN]);
+    for i in 0..256 {
+        table[i] = i as u32;
+        table[COMPONENT_TRANSFER_TABLE_SIZE + i] = 255 - i as u32;
+        table[2 * COMPONENT_TRANSFER_TABLE_SIZE + i] = 255;
+        table[3 * COMPONENT_TRANSFER_TABLE_SIZE + i] = (i / 2) as u32;
+    }
+    table
+}
+
 #[test]
 fn filter_wgpu_applies_color_filter_to_offscreen_children_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
@@ -325,6 +340,33 @@ fn filter_wgpu_applies_color_matrix_when_enabled() {
     assert_eq!(
         renderer.target.read(renderer.client())[pixel_ix(4, 4, 8)],
         rgba8_pack([0, 0, 255, 255])
+    );
+}
+
+#[test]
+fn filter_wgpu_applies_component_transfer_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(8, 8);
+    scene.push_filter_layer(
+        Filter::ComponentTransfer(component_transfer_test_table()),
+        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::all(0.0)),
+    );
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 8.0, 8.0),
+        Color::from_rgba8(255, 128, 0, 128),
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(8, 8, Color::TRANSPARENT);
+    renderer.render(&scene);
+
+    assert_eq!(
+        renderer.target.read(renderer.client())[pixel_ix(4, 4, 8)],
+        rgba8_pack([64, 32, 64, 64])
     );
 }
 

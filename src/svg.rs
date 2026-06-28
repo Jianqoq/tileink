@@ -6,7 +6,12 @@ use peniko::{
 };
 use usvg::{Node, Paint, PaintOrder, SpreadMethod, tiny_skia_path::PathSegment};
 
-use crate::{Brush, FillRule, Filter, Radius, Region, Scene};
+use crate::{
+    Brush, FillRule, Filter, Radius, Region, Scene,
+    shared::layer::filter::{
+        COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE, ComponentTransferTable,
+    },
+};
 
 #[derive(Clone, Copy, Debug)]
 pub struct SvgOptions {
@@ -463,7 +468,9 @@ fn component_transfer_to_filter(
         }
     }
 
-    Err(SvgError::unsupported("feComponentTransfer"))
+    Ok(Some(Filter::ComponentTransfer(component_transfer_table(
+        r, g, b, a,
+    ))))
 }
 
 fn transfer_opacity_amount(transfer: &usvg::filter::TransferFunction) -> Option<f32> {
@@ -524,6 +531,13 @@ fn transfer_table_pair(transfer: &usvg::filter::TransferFunction) -> Option<[f32
 fn transfer_is_identity(transfer: &usvg::filter::TransferFunction) -> bool {
     match transfer {
         usvg::filter::TransferFunction::Identity => true,
+        // usvg uses empty vectors for missing or invalid tableValues; treat them as no-op.
+        usvg::filter::TransferFunction::Table(values)
+        | usvg::filter::TransferFunction::Discrete(values)
+            if values.is_empty() =>
+        {
+            true
+        }
         usvg::filter::TransferFunction::Linear { slope, intercept } => {
             nearly_eq(*slope, 1.0) && nearly_eq(*intercept, 0.0)
         }
@@ -532,6 +546,74 @@ fn transfer_is_identity(transfer: &usvg::filter::TransferFunction) -> bool {
         }
         _ => false,
     }
+}
+
+fn component_transfer_table(
+    r: &usvg::filter::TransferFunction,
+    g: &usvg::filter::TransferFunction,
+    b: &usvg::filter::TransferFunction,
+    a: &usvg::filter::TransferFunction,
+) -> Box<ComponentTransferTable> {
+    let mut table = Box::new([0; COMPONENT_TRANSFER_TABLE_LEN]);
+    fill_component_transfer_channel(&mut table, 0, r);
+    fill_component_transfer_channel(&mut table, 1, g);
+    fill_component_transfer_channel(&mut table, 2, b);
+    fill_component_transfer_channel(&mut table, 3, a);
+    table
+}
+
+fn fill_component_transfer_channel(
+    table: &mut ComponentTransferTable,
+    channel: usize,
+    transfer: &usvg::filter::TransferFunction,
+) {
+    let base = channel * COMPONENT_TRANSFER_TABLE_SIZE;
+    for i in 0..COMPONENT_TRANSFER_TABLE_SIZE {
+        let value = transfer_function_value(transfer, i as f32 / 255.0).clamp(0.0, 1.0);
+        table[base + i] = (value * 255.0 + 0.5) as u32;
+    }
+}
+
+fn transfer_function_value(transfer: &usvg::filter::TransferFunction, value: f32) -> f32 {
+    match transfer {
+        usvg::filter::TransferFunction::Identity => value,
+        usvg::filter::TransferFunction::Table(values) => table_transfer_value(values, value),
+        usvg::filter::TransferFunction::Discrete(values) => discrete_transfer_value(values, value),
+        usvg::filter::TransferFunction::Linear { slope, intercept } => slope * value + intercept,
+        usvg::filter::TransferFunction::Gamma {
+            amplitude,
+            exponent,
+            offset,
+        } => amplitude * value.powf(*exponent) + offset,
+    }
+}
+
+fn table_transfer_value(values: &[f32], value: f32) -> f32 {
+    match values.len() {
+        0 => value,
+        1 => values[0],
+        len => {
+            let position = value.clamp(0.0, 1.0) * (len - 1) as f32;
+            let left = position.floor() as usize;
+            let right = (left + 1).min(len - 1);
+            lerp(values[left], values[right], position - left as f32)
+        }
+    }
+}
+
+fn discrete_transfer_value(values: &[f32], value: f32) -> f32 {
+    match values.len() {
+        0 => value,
+        len => {
+            values[(value.clamp(0.0, 1.0) * len as f32)
+                .floor()
+                .min((len - 1) as f32) as usize]
+        }
+    }
+}
+
+fn lerp(a: f32, b: f32, t: f32) -> f32 {
+    a + (b - a) * t
 }
 
 fn matrix_is_identity(values: &[f32]) -> bool {
@@ -1001,6 +1083,28 @@ mod tests {
         );
 
         assert_eq!(renderer.image().rgba8_at(4, 4), [0, 0, 0, 54]);
+    }
+
+    #[test]
+    fn push_svg_renders_fe_component_transfer_mixed_types() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8">
+                <defs>
+                    <filter id="transfer" x="0" y="0" width="8" height="8" filterUnits="userSpaceOnUse">
+                        <feComponentTransfer>
+                            <feFuncR type="table" tableValues="0 1 0"/>
+                            <feFuncG type="discrete" tableValues="1 0"/>
+                            <feFuncB type="gamma" amplitude="1" exponent="2" offset="0"/>
+                            <feFuncA type="linear" slope="0.5" intercept="0.25"/>
+                        </feComponentTransfer>
+                    </filter>
+                </defs>
+                <rect width="8" height="8" fill="#804020" filter="url(#transfer)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(4, 4), [190, 191, 3, 191]);
     }
 
     #[test]

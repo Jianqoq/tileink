@@ -6,7 +6,11 @@ use crate::{
     shared::{
         bounds::Bounds,
         execution::{ExecOp, ExecPlan, LayerStackEntry},
-        layer::{Layer, filter::Filter, region::Region},
+        layer::{
+            Layer,
+            filter::{ComponentTransferTable, Filter},
+            region::Region,
+        },
         path_flatten::PathFlatten,
         pixel::opacity_f32_to_u8,
     },
@@ -25,6 +29,13 @@ use crate::cubecl::{
 
 use super::{CubeRenderTarget, Renderer};
 
+#[derive(Default)]
+struct FilterCursors {
+    brush: usize,
+    path: usize,
+    transfer: usize,
+}
+
 impl<R: Runtime> Renderer<R> {
     pub(super) fn execute_prepared_plan(&mut self, scene: &Scene) {
         let plan = self
@@ -36,15 +47,13 @@ impl<R: Runtime> Renderer<R> {
     }
 
     fn execute_plan(&mut self, scene: &Scene, plan: &ExecPlan) {
-        let mut filter_brush_cursor = 0;
-        let mut filter_path_cursor = 0;
+        let mut filter_cursors = FilterCursors::default();
         self.execute_ops(
             scene,
             plan,
             &plan.ops,
             CubeRenderTarget::Main,
-            &mut filter_brush_cursor,
-            &mut filter_path_cursor,
+            &mut filter_cursors,
         );
     }
 
@@ -54,8 +63,7 @@ impl<R: Runtime> Renderer<R> {
         plan: &ExecPlan,
         ops: &[ExecOp],
         target: CubeRenderTarget,
-        filter_brush_cursor: &mut usize,
-        filter_path_cursor: &mut usize,
+        filter_cursors: &mut FilterCursors,
     ) {
         for op in ops {
             match op {
@@ -79,8 +87,7 @@ impl<R: Runtime> Renderer<R> {
                     outer_stack.clone(),
                     children,
                     target,
-                    filter_brush_cursor,
-                    filter_path_cursor,
+                    filter_cursors,
                 ),
             }
         }
@@ -115,8 +122,7 @@ impl<R: Runtime> Renderer<R> {
         outer_stack: std::ops::Range<usize>,
         children: &[ExecOp],
         target: CubeRenderTarget,
-        filter_brush_cursor: &mut usize,
-        filter_path_cursor: &mut usize,
+        filter_cursors: &mut FilterCursors,
     ) {
         match layer {
             Layer::Filter {
@@ -124,18 +130,11 @@ impl<R: Runtime> Renderer<R> {
                 sample_region,
             } => {
                 let bounds = supported_filter_bounds(filter, sample_region, self.size);
-                next_filter_path_index(sample_region, filter_path_cursor);
+                next_filter_path_index(sample_region, &mut filter_cursors.path);
                 let source = self.acquire_scratch();
                 self.clear_buffer(source, 0);
-                self.execute_ops(
-                    scene,
-                    plan,
-                    children,
-                    source,
-                    filter_brush_cursor,
-                    filter_path_cursor,
-                );
-                self.apply_filter(source, bounds, filter, filter_brush_cursor);
+                self.execute_ops(scene, plan, children, source, filter_cursors);
+                self.apply_filter(source, bounds, filter, filter_cursors);
                 self.composite_src_over_with_stack(target, source, None, bounds, outer_stack);
                 self.release_scratch(source);
             }
@@ -144,11 +143,11 @@ impl<R: Runtime> Renderer<R> {
                 sample_region,
             } => {
                 let bounds = supported_filter_bounds(filter, sample_region, self.size);
-                let path_index = next_filter_path_index(sample_region, filter_path_cursor);
+                let path_index = next_filter_path_index(sample_region, &mut filter_cursors.path);
                 let backdrop = self.acquire_scratch();
                 self.clear_buffer(backdrop, 0);
                 self.copy_region(target, backdrop, bounds);
-                self.apply_filter(backdrop, bounds, filter, filter_brush_cursor);
+                self.apply_filter(backdrop, bounds, filter, filter_cursors);
                 let mask = self.acquire_scratch();
                 self.clear_buffer(mask, 0);
                 self.build_region_mask(mask, sample_region, path_index, bounds);
@@ -164,14 +163,7 @@ impl<R: Runtime> Renderer<R> {
 
                 let content = self.acquire_scratch();
                 self.clear_buffer(content, 0);
-                self.execute_ops(
-                    scene,
-                    plan,
-                    children,
-                    content,
-                    filter_brush_cursor,
-                    filter_path_cursor,
-                );
+                self.execute_ops(scene, plan, children, content, filter_cursors);
                 self.composite_src_over_with_stack(
                     target,
                     content,
@@ -210,12 +202,12 @@ impl<R: Runtime> Renderer<R> {
         target: CubeRenderTarget,
         bounds: Bounds,
         filter: &Filter,
-        filter_brush_cursor: &mut usize,
+        filter_cursors: &mut FilterCursors,
     ) {
         match filter {
             Filter::Chain { filters, .. } => {
                 for filter in filters {
-                    self.apply_filter(target, bounds, filter, filter_brush_cursor);
+                    self.apply_filter(target, bounds, filter, filter_cursors);
                 }
             }
             Filter::Blur(radius) => {
@@ -226,9 +218,16 @@ impl<R: Runtime> Renderer<R> {
                 }
             }
             Filter::ColorMatrix(matrix) => self.apply_color_matrix_filter(target, bounds, *matrix),
-            Filter::Flood { .. } => {
-                self.apply_flood(target, bounds, next_filter_brush_index(filter_brush_cursor))
-            }
+            Filter::ComponentTransfer(_) => self.apply_component_transfer_filter(
+                target,
+                bounds,
+                next_filter_transfer_index(&mut filter_cursors.transfer),
+            ),
+            Filter::Flood { .. } => self.apply_flood(
+                target,
+                bounds,
+                next_filter_brush_index(&mut filter_cursors.brush),
+            ),
             Filter::Offset { dx, dy } => {
                 let dx = dx.round() as i32;
                 let dy = dy.round() as i32;
@@ -251,7 +250,7 @@ impl<R: Runtime> Renderer<R> {
                 *offset_x,
                 *offset_y,
                 *radius,
-                next_filter_brush_index(filter_brush_cursor),
+                next_filter_brush_index(&mut filter_cursors.brush),
             ),
             _ => {
                 let (filter_kind, amount) = encode_color_filter(filter);
@@ -321,6 +320,32 @@ impl<R: Runtime> Renderer<R> {
                 self.size,
                 bounds,
                 matrix,
+            ),
+        }
+    }
+
+    fn apply_component_transfer_filter(
+        &mut self,
+        target: CubeRenderTarget,
+        bounds: Bounds,
+        table_index: u32,
+    ) {
+        match target {
+            CubeRenderTarget::Main => FilterPipeline::apply_component_transfer(
+                &self.client,
+                &mut self.target,
+                self.size,
+                bounds,
+                table_index,
+                &self.filter_transfers.tables,
+            ),
+            CubeRenderTarget::Scratch(ix) => FilterPipeline::apply_component_transfer(
+                &self.client,
+                &mut self.scratch[ix],
+                self.size,
+                bounds,
+                table_index,
+                &self.filter_transfers.tables,
             ),
         }
     }
@@ -971,6 +996,9 @@ fn encode_color_filter(filter: &Filter) -> (u32, f32) {
         Filter::Sepia(amount) => (FILTER_SEPIA, *amount),
         Filter::Blur(_) => panic!("blur is handled by CubeCL separable blur passes"),
         Filter::ColorMatrix(_) => panic!("color matrix is handled by a dedicated CubeCL pass"),
+        Filter::ComponentTransfer(_) => {
+            panic!("component transfer is handled by a dedicated CubeCL pass")
+        }
         Filter::Flood { .. } => panic!("flood is handled by the CubeCL brush fill pass"),
         Filter::Offset { .. } => panic!("offset is handled by a dedicated CubeCL pass"),
         Filter::DropShadow { .. } => {
@@ -1018,6 +1046,12 @@ fn next_filter_brush_index(cursor: &mut usize) -> u32 {
     index
 }
 
+fn next_filter_transfer_index(cursor: &mut usize) -> u32 {
+    let index = *cursor as u32;
+    *cursor += 1;
+    index
+}
+
 fn next_filter_path_index(region: &Region, cursor: &mut usize) -> Option<u32> {
     if matches!(region, Region::Path { .. }) {
         let index = *cursor as u32;
@@ -1025,6 +1059,43 @@ fn next_filter_path_index(region: &Region, cursor: &mut usize) -> Option<u32> {
         Some(index)
     } else {
         None
+    }
+}
+
+pub(super) struct FilterTransferBuffers {
+    pub(crate) tables: CubeBuffer<u32>,
+}
+
+impl FilterTransferBuffers {
+    pub(super) fn new<R: Runtime>(client: &::cubecl::client::ComputeClient<R>) -> Self {
+        Self {
+            tables: CubeBuffer::new(client, 0),
+        }
+    }
+
+    pub(super) fn upload<R: Runtime>(
+        &mut self,
+        client: &::cubecl::client::ComputeClient<R>,
+        upload: FilterTransferUpload,
+    ) {
+        self.tables.replace(client, &upload.tables);
+    }
+}
+
+#[derive(Default)]
+pub(super) struct FilterTransferUpload {
+    tables: Vec<u32>,
+}
+
+impl FilterTransferUpload {
+    pub(super) fn from_plan(plan: &ExecPlan) -> Self {
+        let mut upload = Self::default();
+        collect_filter_transfers_for_ops(&plan.ops, &mut upload);
+        upload
+    }
+
+    fn push_table(&mut self, table: &ComponentTransferTable) {
+        self.tables.extend_from_slice(table);
     }
 }
 
@@ -1157,6 +1228,39 @@ fn collect_filter_paths_for_ops(ops: &[ExecOp], upload: &mut FilterPathUpload) {
                 _ => collect_filter_paths_for_ops(children, upload),
             }
         }
+    }
+}
+
+fn collect_filter_transfers_for_ops(ops: &[ExecOp], upload: &mut FilterTransferUpload) {
+    for op in ops {
+        if let ExecOp::OffscreenLayer {
+            layer, children, ..
+        } = op
+        {
+            match layer {
+                Layer::Filter { filter, .. } => {
+                    collect_filter_transfers_for_ops(children, upload);
+                    collect_filter_transfer(filter, upload);
+                }
+                Layer::Backdrop { filter, .. } => {
+                    collect_filter_transfer(filter, upload);
+                    collect_filter_transfers_for_ops(children, upload);
+                }
+                _ => collect_filter_transfers_for_ops(children, upload),
+            }
+        }
+    }
+}
+
+fn collect_filter_transfer(filter: &Filter, upload: &mut FilterTransferUpload) {
+    match filter {
+        Filter::Chain { filters, .. } => {
+            for filter in filters {
+                collect_filter_transfer(filter, upload);
+            }
+        }
+        Filter::ComponentTransfer(table) => upload.push_table(table),
+        _ => {}
     }
 }
 

@@ -4,7 +4,11 @@ use crate::shared::{
     bounds::Bounds,
     brush::Brush,
     image::{Image, rgba8_pack},
-    layer::{blend::src_over_premul, filter::Filter, region::Region},
+    layer::{
+        blend::src_over_premul,
+        filter::{COMPONENT_TRANSFER_TABLE_SIZE, ComponentTransferTable, Filter},
+        region::Region,
+    },
     pixel::{pack_premul_rgba8, unpack_premul_rgba8},
 };
 
@@ -19,6 +23,11 @@ pub(crate) fn apply(image: &mut Image, filter: &Filter, bounds: Bounds) {
         Filter::ColorMatrix(matrix) => {
             for px in &mut image.pixels {
                 *px = apply_color_matrix_pixel(*px, *matrix);
+            }
+        }
+        Filter::ComponentTransfer(table) => {
+            for px in &mut image.pixels {
+                *px = apply_component_transfer_pixel(*px, table);
             }
         }
         Filter::Flood { brush } => apply_flood(image, bounds, brush),
@@ -165,6 +174,7 @@ fn apply_color_filter_pixel(px: u32, filter: &Filter, amount: f32) -> u32 {
 }
 
 fn apply_color_matrix_pixel(px: u32, matrix: [f32; 20]) -> u32 {
+    // SVG filter matrices operate on straight RGBA, while render buffers are premultiplied.
     let c = unpack_premul_rgba8(px);
     let alpha = c[3];
     let rgba = if alpha > 0.0 {
@@ -201,6 +211,29 @@ fn apply_color_matrix_pixel(px: u32, matrix: [f32; 20]) -> u32 {
         out[2].clamp(0.0, 1.0) * out_alpha,
         out_alpha,
     ])
+}
+
+fn apply_component_transfer_pixel(px: u32, table: &ComponentTransferTable) -> u32 {
+    let alpha = (px >> 24) & 255;
+    let r = table[straight_channel_index(px & 255, alpha)] as f32 / 255.0;
+    let g = table[COMPONENT_TRANSFER_TABLE_SIZE + straight_channel_index((px >> 8) & 255, alpha)]
+        as f32
+        / 255.0;
+    let b = table
+        [2 * COMPONENT_TRANSFER_TABLE_SIZE + straight_channel_index((px >> 16) & 255, alpha)]
+        as f32
+        / 255.0;
+    let a = table[3 * COMPONENT_TRANSFER_TABLE_SIZE + alpha as usize] as f32 / 255.0;
+    pack_premul_rgba8([r * a, g * a, b * a, a])
+}
+
+fn straight_channel_index(premul: u32, alpha: u32) -> usize {
+    let safe_alpha = alpha.max(1);
+    let mut index = ((premul * 255 + safe_alpha / 2) / safe_alpha).min(255);
+    if alpha == 0 {
+        index = 0;
+    }
+    index as usize
 }
 
 fn apply_flood(image: &mut Image, bounds: Bounds, brush: &Brush) {
@@ -396,6 +429,9 @@ fn lum(c: [f32; 3]) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::shared::layer::filter::{
+        COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE,
+    };
     use peniko::Color;
 
     #[test]
@@ -469,5 +505,26 @@ mod tests {
         );
 
         assert_eq!(image.rgba8_at(0, 0), [0, 0, 128, 128]);
+    }
+
+    #[test]
+    fn component_transfer_runs_on_unpremultiplied_channels() {
+        let mut table = Box::new([0; COMPONENT_TRANSFER_TABLE_LEN]);
+        for i in 0..256 {
+            table[i] = i as u32;
+            table[COMPONENT_TRANSFER_TABLE_SIZE + i] = 255 - i as u32;
+            table[2 * COMPONENT_TRANSFER_TABLE_SIZE + i] = 255;
+            table[3 * COMPONENT_TRANSFER_TABLE_SIZE + i] = (i / 2) as u32;
+        }
+        let mut image = Image::new(1, 1, Color::TRANSPARENT);
+        image.pixels[0] = rgba8_pack([128, 64, 0, 128]);
+
+        apply(
+            &mut image,
+            &Filter::ComponentTransfer(table),
+            Bounds::canvas(1, 1),
+        );
+
+        assert_eq!(image.rgba8_at(0, 0), [64, 32, 64, 64]);
     }
 }
