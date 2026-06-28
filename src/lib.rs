@@ -31,6 +31,7 @@ pub use shared::{
             FilterInput, FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator,
             SpecularLighting,
         },
+        mask::{Mask, MaskKind},
         region::Region,
     },
     sdf::rect::{Radius, StrokeWidths},

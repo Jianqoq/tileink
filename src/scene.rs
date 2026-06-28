@@ -16,7 +16,10 @@ use crate::shared::{
         ROOT_COMMAND_LIST_ID,
     },
     fill::FillRule,
-    layer::{Layer, LayerKind, blend::Blend, filter::Filter, opacity::Opacity, region::Region},
+    layer::{
+        Layer, LayerKind, blend::Blend, filter::Filter, mask::Mask, opacity::Opacity,
+        region::Region,
+    },
     line::Line,
     path::PathRecord,
     path_flatten::PathFlatten,
@@ -179,7 +182,84 @@ impl Scene {
                 layer,
                 children: children + child_list_offset,
             },
+            Command::MaskLayer {
+                layer,
+                content,
+                mask,
+            } => Command::MaskLayer {
+                layer,
+                content: content + child_list_offset,
+                mask: mask + child_list_offset,
+            },
         }
+    }
+
+    fn append_scene_as_command_list(&mut self, mut other: Scene) -> CommandListId {
+        self.ensure_command_root();
+        other.ensure_command_root();
+
+        assert!(
+            self.width == other.width && self.height == other.height,
+            "scene append requires matching dimensions"
+        );
+        assert!(
+            other.command_stack.len() == 1 && other.layer_stack.is_empty(),
+            "cannot append a scene with unclosed layers"
+        );
+
+        let line_offset = self.lines.len() as u32;
+        let path_offset = self.path_cnt;
+        let draw_offset = self.draw_records.len();
+        let backdrop_offset = self.backdrop_pool_capacity;
+        let tile_offset = self.tile_cnt;
+
+        for line in &mut other.lines {
+            line.path_id = line.path_id.saturating_add(path_offset);
+        }
+        self.lines.extend(other.lines);
+
+        for record in &mut other.path_records {
+            record.path_id = record.path_id.saturating_add(path_offset);
+            record.line_start = record.line_start.saturating_add(line_offset);
+        }
+        self.path_records.extend(other.path_records);
+
+        for draw in &mut other.draw_records {
+            if let Some(path_id) = &mut draw.path_id {
+                *path_id = path_id.saturating_add(path_offset);
+            }
+        }
+        self.draw_records.extend(other.draw_records);
+
+        for record in &mut other.bd_records {
+            record.path_id = record.path_id.saturating_add(path_offset);
+            record.data_offset = record.data_offset.saturating_add(backdrop_offset);
+            record.segment_start = record.segment_start.saturating_add(tile_offset);
+        }
+        self.bd_records.extend(other.bd_records);
+
+        let command_list_offset = self.command_lists.len();
+        let root_commands = other.root_commands;
+        let path_cnt = other.path_cnt;
+        let backdrop_pool_capacity = other.backdrop_pool_capacity;
+        let tile_cnt = other.tile_cnt;
+        for mut list in other.command_lists {
+            for command in &mut list.commands {
+                *command = Self::remap_command(
+                    std::mem::replace(command, Command::Draw(0)),
+                    draw_offset,
+                    command_list_offset,
+                );
+            }
+            self.command_lists.push(list);
+        }
+
+        self.path_cnt = self.path_cnt.saturating_add(path_cnt);
+        self.backdrop_pool_capacity = self
+            .backdrop_pool_capacity
+            .saturating_add(backdrop_pool_capacity);
+        self.tile_cnt = self.tile_cnt.saturating_add(tile_cnt);
+        command_list_offset + root_commands
     }
 
     pub fn push_clip_layer(
@@ -230,6 +310,34 @@ impl Scene {
             });
         self.command_stack.push(children);
         self.layer_stack.push(LayerKind::ClipSdf);
+    }
+
+    /// Starts an isolated source-over group.
+    ///
+    /// This is the renderer primitive for SVG/CSS `isolation:isolate` without
+    /// opacity, blending, or filtering. The children are composited into a
+    /// transparent offscreen buffer first, then the group is composited back
+    /// through the supplied layer path and any outer clips.
+    pub fn push_isolate_layer(&mut self, path: BezPath, transform: Affine, tolerance: f64) {
+        self.ensure_command_root();
+        let draw = self.push_layer_path(
+            DrawTag::Isolate,
+            path.clone(),
+            transform,
+            FillRule::NonZero,
+            tolerance,
+        );
+        let children = self.command_lists.len();
+        self.command_lists.push(CommandList::default());
+        self.current_command_list_mut()
+            .commands
+            .push(Command::Layer {
+                draw,
+                layer: Layer::Isolate,
+                children,
+            });
+        self.command_stack.push(children);
+        self.layer_stack.push(LayerKind::Isolate);
     }
 
     pub fn push_opacity_layer(
@@ -299,6 +407,27 @@ impl Scene {
         compose: Compose,
     ) {
         self.push_blend_layer_inner(path, transform, tolerance, Blend::new(mix, compose));
+    }
+
+    /// Starts a masked group using `mask_scene` as the mask source.
+    ///
+    /// The mask source is rendered isolated, converted to either alpha or
+    /// luminance coverage, clipped to `mask.region`, then applied to this
+    /// layer's content before compositing through any outer clips.
+    pub fn push_mask_layer(&mut self, mask_scene: Scene, mask: Mask) {
+        self.ensure_command_root();
+        let mask_commands = self.append_scene_as_command_list(mask_scene);
+        let content = self.command_lists.len();
+        self.command_lists.push(CommandList::default());
+        self.current_command_list_mut()
+            .commands
+            .push(Command::MaskLayer {
+                layer: mask,
+                content,
+                mask: mask_commands,
+            });
+        self.command_stack.push(content);
+        self.layer_stack.push(LayerKind::Mask);
     }
 
     /// Adds an offscreen filter group sampled from `sample_region`.
@@ -868,6 +997,37 @@ impl Scene {
                         });
                     }
                 }
+                Command::MaskLayer {
+                    layer,
+                    content,
+                    mask,
+                } => {
+                    flush_batch(&mut pending_batch, ops, plan, layer_stack);
+                    let stack_start = plan.layer_stack_data.len();
+                    plan.layer_stack_data.extend_from_slice(layer_stack);
+                    let stack_end = plan.layer_stack_data.len();
+                    ops.push(ExecOp::OffscreenMaskLayer {
+                        layer: layer.clone(),
+                        outer_stack: stack_start..stack_end,
+                        content: {
+                            let mut child_ops = Vec::new();
+                            let mut child_layer_stack = Vec::new();
+                            self.compile_into(
+                                *content,
+                                &mut child_ops,
+                                plan,
+                                &mut child_layer_stack,
+                            );
+                            child_ops
+                        },
+                        mask: {
+                            let mut mask_ops = Vec::new();
+                            let mut mask_layer_stack = Vec::new();
+                            self.compile_into(*mask, &mut mask_ops, plan, &mut mask_layer_stack);
+                            mask_ops
+                        },
+                    });
+                }
             }
         }
 
@@ -897,6 +1057,7 @@ impl Scene {
                     !matches!(layer, Layer::Clip | Layer::Opacity(_) | Layer::Blend(_))
                         || self.command_list_contains_offscreen(*children)
                 }
+                Command::MaskLayer { .. } => true,
             })
     }
 }
@@ -906,6 +1067,7 @@ mod tests {
     use super::*;
     use std::ops::Range;
 
+    use crate::shared::layer::mask::MaskKind;
     use peniko::{BlendMode, Compose, Mix, kurbo::PathEl};
 
     fn test_scene() -> Scene {
@@ -1270,6 +1432,95 @@ mod tests {
                 ));
             }
             op => panic!("expected isolated blend offscreen layer, got {op:#?}"),
+        }
+    }
+
+    #[test]
+    fn compile_keeps_isolate_as_offscreen_layer() {
+        let mut scene = test_scene();
+        scene.push_isolate_layer(rect_path(0.0, 0.0, 48.0, 48.0), Affine::IDENTITY, 0.0);
+        scene.push_path(
+            rect_path(8.0, 8.0, 40.0, 40.0),
+            Brush::Solid(rgb(255, 0, 0)),
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.0,
+        );
+        scene.pop_layer();
+
+        let plan = scene.compile(ROOT_COMMAND_LIST_ID);
+        assert_eq!(plan.ops.len(), 1, "{:#?}", plan.ops);
+        match &plan.ops[0] {
+            ExecOp::OffscreenLayer {
+                draw,
+                layer: Layer::Isolate,
+                outer_stack,
+                children,
+            } => {
+                assert_eq!(*draw, 0);
+                assert!(outer_stack.is_empty());
+                match children.as_slice() {
+                    [ExecOp::DrawBatch { draws, layer_stack }] => {
+                        assert_eq!(draws.clone(), 1..2);
+                        assert!(layer_stack.is_empty());
+                    }
+                    ops => panic!("expected one isolate child batch, got {ops:#?}"),
+                }
+            }
+            op => panic!("expected isolate offscreen layer, got {op:#?}"),
+        }
+    }
+
+    #[test]
+    fn compile_keeps_mask_content_and_mask_isolated() {
+        let mut scene = test_scene();
+        let mut mask_scene = test_scene();
+        mask_scene.push_rect(
+            Rect::new(0.0, 0.0, 32.0, 64.0),
+            Brush::Solid(rgb(255, 255, 255)),
+            FillRule::NonZero,
+        );
+        scene.push_mask_layer(
+            mask_scene,
+            Mask {
+                region: Region::rect(Rect::new(0.0, 0.0, 64.0, 64.0), Radius::all(0.0)),
+                kind: MaskKind::Alpha,
+            },
+        );
+        scene.push_rect(
+            Rect::new(0.0, 0.0, 64.0, 64.0),
+            Brush::Solid(rgb(255, 0, 0)),
+            FillRule::NonZero,
+        );
+        scene.pop_layer();
+
+        let plan = scene.compile(ROOT_COMMAND_LIST_ID);
+        assert_eq!(plan.ops.len(), 1, "{:#?}", plan.ops);
+        match &plan.ops[0] {
+            ExecOp::OffscreenMaskLayer {
+                layer,
+                outer_stack,
+                content,
+                mask,
+            } => {
+                assert!(outer_stack.is_empty());
+                assert_eq!(layer.kind, MaskKind::Alpha);
+                match content.as_slice() {
+                    [ExecOp::DrawBatch { draws, layer_stack }] => {
+                        assert_eq!(draws.clone(), 1..2);
+                        assert!(layer_stack.is_empty());
+                    }
+                    ops => panic!("expected one mask content batch, got {ops:#?}"),
+                }
+                match mask.as_slice() {
+                    [ExecOp::DrawBatch { draws, layer_stack }] => {
+                        assert_eq!(draws.clone(), 0..1);
+                        assert!(layer_stack.is_empty());
+                    }
+                    ops => panic!("expected one mask source batch, got {ops:#?}"),
+                }
+            }
+            op => panic!("expected mask offscreen layer, got {op:#?}"),
         }
     }
 

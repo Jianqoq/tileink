@@ -17,6 +17,7 @@ use crate::{
             FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator,
             SpecularLighting,
         },
+        layer::mask::{Mask as LayerMask, MaskKind},
     },
 };
 
@@ -103,19 +104,11 @@ impl SvgBuilder {
     }
 
     fn push_group(&self, scene: &mut Scene, group: &usvg::Group) -> Result<(), SvgError> {
-        if group.mask().is_some() {
-            return Err(SvgError::unsupported("mask"));
-        }
-        if group.isolate()
-            && group.opacity().get() >= 1.0
-            && group.blend_mode() == usvg::BlendMode::Normal
-            && group.clip_path().is_none()
-        {
-            return Err(SvgError::unsupported(
-                "isolated group without opacity or blend",
-            ));
-        }
         let filter_layers = svg_filter_layers(group.filters(), self.base_transform)?;
+        let mask_layer = group
+            .mask()
+            .map(|mask| self.svg_mask_layer(scene.width, scene.height, mask))
+            .transpose()?;
 
         let mut pushed_layers = 0;
         if let Some(clip) = group.clip_path() {
@@ -125,6 +118,15 @@ impl SvgBuilder {
         let layer_path = || {
             self.base_transform * rect_path(nonzero_rect_to_kurbo(group.abs_layer_bounding_box()))
         };
+        if group.isolate()
+            && group.opacity().get() >= 1.0
+            && group.blend_mode() == usvg::BlendMode::Normal
+            && mask_layer.is_none()
+            && filter_layers.is_empty()
+        {
+            scene.push_isolate_layer(layer_path(), Affine::IDENTITY, self.options.tolerance);
+            pushed_layers += 1;
+        }
         if group.blend_mode() != usvg::BlendMode::Normal {
             scene.push_blend_layer(
                 layer_path(),
@@ -144,6 +146,10 @@ impl SvgBuilder {
             );
             pushed_layers += 1;
         }
+        if let Some((mask_scene, mask)) = mask_layer {
+            scene.push_mask_layer(mask_scene, mask);
+            pushed_layers += 1;
+        }
         for layer in filter_layers.into_iter().rev() {
             scene.push_filter_layer(layer.filter, layer.region);
             pushed_layers += 1;
@@ -157,6 +163,36 @@ impl SvgBuilder {
             scene.pop_layer();
         }
         Ok(())
+    }
+
+    fn svg_mask_layer(
+        &self,
+        width: u32,
+        height: u32,
+        mask: &usvg::Mask,
+    ) -> Result<(Scene, LayerMask), SvgError> {
+        let mut mask_scene = Scene::new(width, height);
+        if let Some(parent) = mask.mask() {
+            let (parent_scene, parent_mask) = self.svg_mask_layer(width, height, parent)?;
+            mask_scene.push_mask_layer(parent_scene, parent_mask);
+            self.push_group(&mut mask_scene, mask.root())?;
+            mask_scene.pop_layer();
+        } else {
+            self.push_group(&mut mask_scene, mask.root())?;
+        }
+        Ok((
+            mask_scene,
+            LayerMask {
+                region: transform_region(
+                    Region::rect(nonzero_rect_to_kurbo(mask.rect()), Radius::all(0.0)),
+                    self.base_transform,
+                ),
+                kind: match mask.kind() {
+                    usvg::MaskType::Alpha => MaskKind::Alpha,
+                    usvg::MaskType::Luminance => MaskKind::Luminance,
+                },
+            },
+        ))
     }
 
     fn push_node(&self, scene: &mut Scene, node: &Node) -> Result<(), SvgError> {
@@ -1390,6 +1426,60 @@ mod tests {
         );
 
         assert_eq!(renderer.image().rgba8_at(8, 8), [0, 128, 0, 255]);
+    }
+
+    #[test]
+    fn push_svg_supports_isolated_group_without_opacity_or_blend() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+                <rect width="16" height="16" fill="#808080"/>
+                <g style="isolation:isolate">
+                    <rect width="16" height="16" fill="#ff0000" style="mix-blend-mode:multiply"/>
+                </g>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(8, 8), [255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn push_svg_supports_alpha_mask() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+                <defs>
+                    <mask id="m" mask-type="alpha" maskUnits="userSpaceOnUse" x="0" y="0" width="8" height="16">
+                        <rect width="16" height="16" fill="#ffffff" fill-opacity="0.5"/>
+                    </mask>
+                </defs>
+                <rect width="16" height="16" fill="#ff0000" mask="url(#m)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(4, 8), [128, 0, 0, 128]);
+        assert_eq!(renderer.image().rgba8_at(12, 8), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn push_svg_supports_luminance_mask() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+                <defs>
+                    <mask id="m" maskUnits="userSpaceOnUse" x="0" y="0" width="16" height="16">
+                        <rect width="16" height="16" fill="#ff0000"/>
+                    </mask>
+                </defs>
+                <rect width="16" height="16" fill="#00ff00" mask="url(#m)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        let px = renderer.image().rgba8_at(8, 8);
+        assert!(
+            px[1].abs_diff(54) <= 1 && px[3].abs_diff(54) <= 1,
+            "got {px:?}"
+        );
     }
 
     #[test]
