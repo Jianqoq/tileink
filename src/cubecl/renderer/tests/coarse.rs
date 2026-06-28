@@ -184,7 +184,7 @@ fn coarse_wgpu_emits_clip_particles_when_enabled() {
     let mut scene = Scene::new(16, 16);
     scene.push_clip_layer(
         Rect::new(0.0, 0.0, 16.0, 16.0).to_path(0.0),
-        Affine::IDENTITY,
+        Affine::IDENTITY,FillRule::NonZero, 
         0.0,
     );
 
@@ -219,7 +219,7 @@ fn coarse_wgpu_wraps_draw_batch_with_active_clip_stack_when_enabled() {
     let mut scene = Scene::new(16, 16);
     scene.push_clip_layer(
         Rect::new(0.0, 0.0, 8.0, 16.0).to_path(0.0),
-        Affine::IDENTITY,
+        Affine::IDENTITY,FillRule::NonZero, 
         0.0,
     );
     scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), red, FillRule::NonZero);

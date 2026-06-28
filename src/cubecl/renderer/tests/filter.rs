@@ -40,6 +40,7 @@ fn filter_wgpu_applies_outer_clip_stack_to_offscreen_output_when_enabled() {
     scene.push_clip_layer(
         Rect::new(0.0, 0.0, 8.0, 16.0).to_path(0.0),
         Affine::IDENTITY,
+        FillRule::NonZero,
         0.0,
     );
     scene.push_filter_layer(

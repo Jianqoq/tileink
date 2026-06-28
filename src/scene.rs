@@ -182,15 +182,15 @@ impl Scene {
         }
     }
 
-    pub fn push_clip_layer(&mut self, path: BezPath, transform: Affine, tolerance: f64) {
+    pub fn push_clip_layer(
+        &mut self,
+        path: BezPath,
+        transform: Affine,
+        rule: FillRule,
+        tolerance: f64,
+    ) {
         self.ensure_command_root();
-        let draw = self.push_layer_path(
-            DrawTag::Clip,
-            path.clone(),
-            transform,
-            FillRule::NonZero,
-            tolerance,
-        );
+        let draw = self.push_layer_path(DrawTag::Clip, path.clone(), transform, rule, tolerance);
         let layer = Layer::Clip;
         let children = self.command_lists.len();
         self.command_lists.push(CommandList::default());
@@ -916,7 +916,12 @@ mod tests {
     #[test]
     fn compile_lowers_clip_blend_batches_in_user_order() {
         let mut scene = test_scene();
-        scene.push_clip_layer(rect_path(0.0, 0.0, 32.0, 32.0), Affine::IDENTITY, 0.25);
+        scene.push_clip_layer(
+            rect_path(0.0, 0.0, 32.0, 32.0),
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.25,
+        );
         scene.push_path(
             rect_path(2.0, 2.0, 8.0, 8.0),
             Brush::Solid(rgb(255, 0, 0)),
@@ -1436,6 +1441,7 @@ mod tests {
         scene.push_clip_layer(
             rect_path(0.0, 0.0, 10.0, 10.0),
             Affine::translate((12.0, 6.0)),
+            FillRule::NonZero,
             0.25,
         );
 

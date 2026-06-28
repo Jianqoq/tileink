@@ -32,6 +32,7 @@ pub enum Brush {
 pub struct LinearGradient {
     pub(crate) start: [f32; 2],
     pub(crate) end: [f32; 2],
+    pub(crate) transform: [f32; 6],
     pub(crate) extend: Extend,
     pub(crate) ramp: Arc<[u32]>,
 }
@@ -81,6 +82,7 @@ impl Brush {
             GradientKind::Linear(position) => Self::Linear(LinearGradient {
                 start: [position.start.x as f32, position.start.y as f32],
                 end: [position.end.x as f32, position.end.y as f32],
+                transform: IDENTITY_TRANSFORM,
                 extend: gradient.extend,
                 ramp,
             }),
@@ -158,6 +160,7 @@ impl From<peniko::Color> for Brush {
 
 impl LinearGradient {
     fn t(&self, x: f32, y: f32) -> f32 {
+        let [x, y] = transform_point(self.transform, x, y);
         let dx = self.end[0] - self.start[0];
         let dy = self.end[1] - self.start[1];
         let denominator = dx * dx + dy * dy;

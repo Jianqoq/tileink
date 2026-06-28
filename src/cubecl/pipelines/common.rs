@@ -22,6 +22,8 @@ pub(crate) fn sample_brush(
     let mut color = brush_data[data_base + 4];
 
     if kind == GPU_BRUSH_LINEAR {
+        let tx = brush_params[base + 4] * x + brush_params[base + 6] * y + brush_params[base + 8];
+        let ty = brush_params[base + 5] * x + brush_params[base + 7] * y + brush_params[base + 9];
         let sx = brush_params[base];
         let sy = brush_params[base + 1];
         let ex = brush_params[base + 2];
@@ -31,7 +33,7 @@ pub(crate) fn sample_brush(
         let denominator = dx * dx + dy * dy;
         let mut t = 0.0;
         if denominator > f32::new(0.000_000_119_209_29_f32) {
-            t = ((x - sx) * dx + (y - sy) * dy) / denominator;
+            t = ((tx - sx) * dx + (ty - sy) * dy) / denominator;
         }
         color = sample_ramp(brush_payloads, payload_offset, payload_len, t, extend);
     } else if kind == GPU_BRUSH_RADIAL {

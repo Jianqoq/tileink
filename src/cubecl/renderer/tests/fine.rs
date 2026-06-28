@@ -277,6 +277,7 @@ fn fine_wgpu_applies_clip_particles_when_enabled() {
     scene.push_clip_layer(
         Rect::new(0.0, 0.0, 8.0, 16.0).to_path(0.0),
         Affine::IDENTITY,
+        FillRule::NonZero,
         0.0,
     );
     scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), red, FillRule::NonZero);
@@ -360,6 +361,7 @@ fn fine_wgpu_does_not_leak_clip_after_layer_pop_when_enabled() {
     scene.push_clip_layer(
         Rect::new(0.0, 0.0, 8.0, 16.0).to_path(0.0),
         Affine::IDENTITY,
+        FillRule::NonZero,
         0.0,
     );
     scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), red, FillRule::NonZero);
@@ -391,11 +393,13 @@ fn fine_wgpu_intersects_nested_clip_layers_when_enabled() {
     scene.push_clip_layer(
         Rect::new(0.0, 0.0, 12.0, 16.0).to_path(0.0),
         Affine::IDENTITY,
+        FillRule::NonZero,
         0.0,
     );
     scene.push_clip_layer(
         Rect::new(4.0, 0.0, 16.0, 16.0).to_path(0.0),
         Affine::IDENTITY,
+        FillRule::NonZero,
         0.0,
     );
     scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), red, FillRule::NonZero);

@@ -110,6 +110,7 @@ impl GpuBrushUpload {
                 params[1] = gradient.start[1];
                 params[2] = gradient.end[0];
                 params[3] = gradient.end[1];
+                params[4..10].copy_from_slice(&gradient.transform);
                 (payload_offset, payload_len) = self.push_payload(&gradient.ramp);
             }
             Brush::Radial(gradient) => {

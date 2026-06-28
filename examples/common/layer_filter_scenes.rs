@@ -2,7 +2,7 @@ use peniko::{
     Color,
     kurbo::{Circle, Rect, Shape, Stroke},
 };
-use tileink::{Filter, Radius, Region, Scene};
+use tileink::{FillRule, Filter, Radius, Region, Scene};
 
 use crate::common::{fill_circle, fill_rect, stroke_circle, stroke_rect};
 
@@ -50,6 +50,7 @@ pub fn filter_clip_opacity_scene() -> Scene {
     scene.push_clip_layer(
         crate::common::rect_path(clip, Radius::all(54.0)),
         Default::default(),
+        FillRule::NonZero,
         0.1,
     );
     scene.push_filter_layer(Filter::Blur(10.0), Region::rect(clip, Radius::all(54.0)));
@@ -89,7 +90,12 @@ pub fn clip_filter_scene() -> Scene {
     background(&mut scene);
 
     let clip = Circle::new((360.0, 210.0), 142.0);
-    scene.push_clip_layer(clip.to_path(0.1), Default::default(), 0.1);
+    scene.push_clip_layer(
+        clip.to_path(0.1),
+        Default::default(),
+        FillRule::NonZero,
+        0.1,
+    );
     scene.push_filter_layer(
         Filter::Blur(14.0),
         Region::path(clip.to_path(0.1), Default::default(), 0.1),

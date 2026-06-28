@@ -132,6 +132,10 @@ name = "cpu_svg_radial_gradient"
 path = "examples/cpu/svg_radial_gradient.rs"
 
 [[example]]
+name = "svg_fixture_render"
+path = "examples/svg_fixture_render.rs"
+
+[[example]]
 name = "cubecl_backdrop_blur"
 path = "examples/cubecl/backdrop_blur.rs"
 

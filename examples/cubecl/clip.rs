@@ -36,13 +36,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     scene.push_clip_layer(
         Circle::new((180.0, 130.0), 74.0).to_path(0.1),
         Affine::IDENTITY,
+        FillRule::NonZero,
         0.1,
     );
     let clip_path = Rect::new(118.0, 82.0, 300.0, 178.0).to_path(0.1);
     let clip_stroke_path = Rect::new(118.5, 82.5, 299.5, 177.5).to_path(0.1);
     let complex = complex_clip_path();
-    scene.push_clip_layer(clip_path.clone(), Affine::IDENTITY, 0.1);
-    scene.push_clip_layer(complex.clone(), Affine::IDENTITY, 0.1);
+    scene.push_clip_layer(clip_path.clone(), Affine::IDENTITY, FillRule::NonZero, 0.1);
+    scene.push_clip_layer(complex.clone(), Affine::IDENTITY, FillRule::NonZero, 0.1);
     common::fill_rect(
         &mut scene,
         Rect::new(64.0, 56.0, 330.0, 204.0),

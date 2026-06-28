@@ -738,6 +738,7 @@ mod tests {
         scene.push_clip_layer(
             Rect::new(24.0, 24.0, 72.0, 72.0).to_path(0.0),
             Affine::IDENTITY,
+            FillRule::NonZero,
             0.0,
         );
         scene.push_path(
@@ -887,11 +888,13 @@ mod tests {
         scene.push_clip_layer(
             Rect::new(16.0, 16.0, 80.0, 80.0).to_path(0.0),
             Affine::IDENTITY,
+            FillRule::NonZero,
             0.0,
         );
         scene.push_clip_layer(
             Rect::new(40.0, 8.0, 88.0, 88.0).to_path(0.0),
             Affine::IDENTITY,
+            FillRule::NonZero,
             0.0,
         );
         scene.push_path(
@@ -916,7 +919,7 @@ mod tests {
     fn outer_clip_does_not_clip_filter_source_before_blur() {
         let mut scene = Scene::new(96, 96);
         let clip = Circle::new((48.0, 48.0), 24.0).to_path(0.1);
-        scene.push_clip_layer(clip.clone(), Affine::IDENTITY, 0.1);
+        scene.push_clip_layer(clip.clone(), Affine::IDENTITY, FillRule::NonZero, 0.1);
         scene.push_filter_layer(
             Filter::Blur(8.0),
             Region::Path {
