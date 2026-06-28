@@ -1370,6 +1370,29 @@ mod tests {
     }
 
     #[test]
+    fn push_svg_keeps_blend_isolated_around_filtered_child() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+                <defs>
+                    <filter id="f" filterUnits="userSpaceOnUse" x="0" y="0" width="16" height="16">
+                        <feOffset in="SourceGraphic" dx="0" dy="0"/>
+                    </filter>
+                </defs>
+                <rect width="16" height="16" fill="#808080"/>
+                <g style="mix-blend-mode:multiply">
+                    <rect width="16" height="16" fill="#ff0000"/>
+                    <g filter="url(#f)">
+                        <rect width="16" height="16" fill="#00ff00"/>
+                    </g>
+                </g>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(8, 8), [0, 128, 0, 255]);
+    }
+
+    #[test]
     fn push_svg_renders_linear_gradient() {
         let renderer = render(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="4">

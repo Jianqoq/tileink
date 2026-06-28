@@ -10,7 +10,7 @@ use peniko::{
 
 use crate::{
     cpu::{
-        computes::blend::composite_src_over_masked_at,
+        computes::blend::{composite_blend_masked_at, composite_src_over_masked_at},
         computes::fine::{build_tile_alpha, combine_alpha},
         pipelines::{
             coarse::CoarseCpuPipeline, cumsum::CumsumCpuPipeline, filter::FilterCpuPipeline,
@@ -366,6 +366,24 @@ impl Renderer {
                     &mut mask,
                 );
                 composite_src_over_masked_at(target, &image, &mask, bounds, target_bounds);
+            }
+            Layer::Blend(blend) => {
+                let bounds = draw_bounds(scene, offscreen.draw).intersect(target_bounds);
+                if bounds.is_empty() {
+                    return;
+                }
+                let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
+                self.execute_ops(scene, plan, offscreen.children, &mut image, bounds);
+
+                let mut mask = self.rasterize_layer_mask(scene, offscreen.draw, bounds);
+                self.apply_outer_clip_stack_to_mask(
+                    scene,
+                    plan,
+                    offscreen.outer_stack,
+                    bounds,
+                    &mut mask,
+                );
+                composite_blend_masked_at(target, &image, &mask, bounds, target_bounds, blend.mode);
             }
             Layer::ClipSdf { sdf, bounds } => {
                 if bounds.intersect(target_bounds).is_empty() {
@@ -1139,5 +1157,30 @@ mod tests {
 
         assert_rgb_close(renderer.image().rgba8_at(40, 40), [128, 0, 0, 255], 1);
         assert_eq!(renderer.image().rgba8_at(8, 40), [128, 128, 128, 255]);
+    }
+
+    #[test]
+    fn blend_layer_isolates_offscreen_children() {
+        let mut scene = Scene::new(16, 16);
+        let full = Rect::new(0.0, 0.0, 16.0, 16.0);
+        scene.push_rect(full, Color::from_rgb8(128, 128, 128), FillRule::NonZero);
+        scene.push_blend_layer(
+            Rect::new(0.0, 0.0, 8.0, 16.0).to_path(0.0),
+            Affine::IDENTITY,
+            0.0,
+            Mix::Multiply,
+            Compose::SrcOver,
+        );
+        scene.push_rect(full, Color::from_rgb8(255, 0, 0), FillRule::NonZero);
+        scene.push_filter_layer(Filter::Opacity(1.0), Region::rect(full, Radius::all(0.0)));
+        scene.push_rect(full, Color::from_rgb8(0, 255, 0), FillRule::NonZero);
+        scene.pop_layer();
+        scene.pop_layer();
+
+        let mut renderer = Renderer::new(16, 16, Color::TRANSPARENT);
+        renderer.render(&scene);
+
+        assert_rgb_close(renderer.image().rgba8_at(4, 8), [0, 128, 0, 255], 1);
+        assert_eq!(renderer.image().rgba8_at(12, 8), [128, 128, 128, 255]);
     }
 }

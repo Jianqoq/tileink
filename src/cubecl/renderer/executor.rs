@@ -169,6 +169,30 @@ impl<R: Runtime> Renderer<R> {
                 self.release_scratch(mask);
                 self.release_scratch(source);
             }
+            Layer::Blend(blend) => {
+                let bounds =
+                    draw_bounds(scene, draw).intersect(Bounds::canvas(self.size.0, self.size.1));
+                if bounds.is_empty() {
+                    return;
+                }
+                let source = self.acquire_scratch();
+                self.clear_buffer(source, 0);
+                self.execute_ops(scene, plan, children, source, filter_cursors);
+
+                let mask = self.acquire_scratch();
+                self.clear_buffer(mask, 0);
+                self.build_layer_mask(mask, draw as u32, bounds);
+                self.composite_blend_with_stack(
+                    target,
+                    source,
+                    mask,
+                    bounds,
+                    outer_stack,
+                    blend.mode,
+                );
+                self.release_scratch(mask);
+                self.release_scratch(source);
+            }
             Layer::Filter {
                 filter,
                 sample_region,
@@ -1556,6 +1580,61 @@ impl<R: Runtime> Renderer<R> {
         }
     }
 
+    fn composite_blend_with_stack(
+        &mut self,
+        target: CubeRenderTarget,
+        source: CubeRenderTarget,
+        mask: CubeRenderTarget,
+        bounds: Bounds,
+        layer_stack: std::ops::Range<usize>,
+        mode: BlendMode,
+    ) {
+        let mode = encode_blend_mode(mode);
+        match (target, source, mask) {
+            (
+                CubeRenderTarget::Main,
+                CubeRenderTarget::Scratch(source_ix),
+                CubeRenderTarget::Scratch(mask_ix),
+            ) => FilterPipeline::composite_blend_stack_region(
+                &self.client,
+                &self.scene,
+                &self.scan,
+                &mut self.target,
+                &self.scratch[source_ix],
+                &self.scratch[mask_ix],
+                self.size,
+                bounds,
+                layer_stack.start as u32,
+                layer_stack.end as u32,
+                self.max_group_depth,
+                mode,
+            ),
+            (
+                CubeRenderTarget::Scratch(target_ix),
+                CubeRenderTarget::Scratch(source_ix),
+                CubeRenderTarget::Scratch(mask_ix),
+            ) => {
+                let (target, source, mask) =
+                    scratch_target_source_mask(&mut self.scratch, target_ix, source_ix, mask_ix);
+                FilterPipeline::composite_blend_stack_region(
+                    &self.client,
+                    &self.scene,
+                    &self.scan,
+                    target,
+                    source,
+                    mask,
+                    self.size,
+                    bounds,
+                    layer_stack.start as u32,
+                    layer_stack.end as u32,
+                    self.max_group_depth,
+                    mode,
+                )
+            }
+            _ => panic!("CubeCL blend stack composite requires scratch source and scratch mask"),
+        }
+    }
+
     pub(crate) fn build_region_mask(
         &mut self,
         target: CubeRenderTarget,
@@ -1684,6 +1763,11 @@ fn max_scratch_for_ops(ops: &[ExecOp], held: usize) -> usize {
         {
             match layer {
                 Layer::Opacity(_) => {
+                    let source_held = held + 1;
+                    max_count = max_count.max(source_held + 1);
+                    max_count = max_count.max(max_scratch_for_ops(children, source_held));
+                }
+                Layer::Blend(_) => {
                     let source_held = held + 1;
                     max_count = max_count.max(source_held + 1);
                     max_count = max_count.max(max_scratch_for_ops(children, source_held));

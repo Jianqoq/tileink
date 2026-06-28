@@ -876,8 +876,11 @@ impl Scene {
 
     fn can_fuse(&self, layer: &Layer, children: CommandListId) -> bool {
         match layer {
-            Layer::Clip | Layer::Blend(_) => true,
-            Layer::Opacity(_) => !self.command_list_contains_offscreen(children),
+            Layer::Clip => true,
+            // Group opacity and blend must wrap the composited child subtree.
+            // If a child opens its own offscreen layer, keeping the group fused
+            // would apply it to separate fragments before they are combined.
+            Layer::Opacity(_) | Layer::Blend(_) => !self.command_list_contains_offscreen(children),
             _ => false,
         }
     }
@@ -1219,6 +1222,54 @@ mod tests {
                 ));
             }
             op => panic!("expected isolated opacity offscreen layer, got {op:#?}"),
+        }
+    }
+
+    #[test]
+    fn compile_keeps_blend_with_offscreen_child_isolated() {
+        let mut scene = test_scene();
+        scene.push_blend_layer(
+            rect_path(0.0, 0.0, 48.0, 48.0),
+            Affine::IDENTITY,
+            0.0,
+            Mix::Multiply,
+            Compose::SrcOver,
+        );
+        scene.push_filter_layer(
+            Filter::Opacity(1.0),
+            Region::rect(Rect::new(0.0, 0.0, 48.0, 48.0), Radius::all(0.0)),
+        );
+        scene.push_path(
+            rect_path(8.0, 8.0, 40.0, 40.0),
+            Brush::Solid(rgb(0, 255, 0)),
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.0,
+        );
+        scene.pop_layer();
+        scene.pop_layer();
+
+        let plan = scene.compile(ROOT_COMMAND_LIST_ID);
+        assert_eq!(plan.ops.len(), 1, "{:#?}", plan.ops);
+        match &plan.ops[0] {
+            ExecOp::OffscreenLayer {
+                draw,
+                layer: Layer::Blend(blend),
+                outer_stack,
+                children,
+            } => {
+                assert_eq!(*draw, 0);
+                assert_eq!(blend.mode, BlendMode::new(Mix::Multiply, Compose::SrcOver));
+                assert!(outer_stack.is_empty());
+                assert!(matches!(
+                    children.as_slice(),
+                    [ExecOp::OffscreenLayer {
+                        layer: Layer::Filter { .. },
+                        ..
+                    }]
+                ));
+            }
+            op => panic!("expected isolated blend offscreen layer, got {op:#?}"),
         }
     }
 
