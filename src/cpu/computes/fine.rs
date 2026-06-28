@@ -16,6 +16,8 @@ use crate::{
     },
 };
 
+const AREA_EPSILON: f32 = 1.0e-6;
+
 #[inline]
 fn apply_rule(value: f32, fill_rule: FillRule) -> f32 {
     match fill_rule {
@@ -60,7 +62,10 @@ fn segment_coverage_at(segment: &LineSegment, x: u32, y: u32) -> f32 {
     let pixel_x = x as f32;
     let xmin = sx0.min(sx1) - pixel_x;
     let xmax = sx0.max(sx1) - pixel_x;
-    let a_min = xmin.min(1.0) - 1.0e-6;
+    if xmax - xmin <= AREA_EPSILON {
+        return y_edge + (1.0 - xmin).clamp(0.0, 1.0) * dy;
+    }
+    let a_min = xmin.min(1.0) - AREA_EPSILON;
     let b = xmax.min(1.0);
     let c = b.max(0.0);
     let d = a_min.max(0.0);
@@ -99,7 +104,10 @@ fn segment_area_at(xmin: f32, xmax: f32, x: u32) -> f32 {
     let pixel_x = x as f32;
     let xmin = xmin - pixel_x;
     let xmax = xmax - pixel_x;
-    let a_min = xmin.min(1.0) - 1.0e-6;
+    if xmax - xmin <= AREA_EPSILON {
+        return (1.0 - xmin).clamp(0.0, 1.0);
+    }
+    let a_min = xmin.min(1.0) - AREA_EPSILON;
     let b = xmax.min(1.0);
     let c = b.max(0.0);
     let d = a_min.max(0.0);
@@ -334,6 +342,18 @@ mod tests {
 
         assert_eq!(pixel_coverage(&[segment], 0, FillRule::NonZero, 0, 4), 0);
         assert!(pixel_coverage(&[segment], 0, FillRule::NonZero, 8, 4) > 0);
+    }
+
+    #[test]
+    fn pixel_coverage_handles_vertical_edges_without_cancellation() {
+        let segment = LineSegment {
+            point0: (0.75, 16.0),
+            point1: (0.75, 0.0),
+            y_edge: 1.0e9,
+            ..LineSegment::default()
+        };
+
+        assert_eq!(pixel_coverage(&[segment], 0, FillRule::NonZero, 0, 2), 64);
     }
 
     #[test]

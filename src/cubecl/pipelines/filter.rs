@@ -2794,11 +2794,14 @@ fn filter_segment_coverage_at(
         let pixel_x = x as f32;
         let xmin = sx0.min(sx1) - pixel_x;
         let xmax = sx0.max(sx1) - pixel_x;
-        let a_min = xmin.min(1.0) - f32::new(0.000001_f32);
-        let b = xmax.min(1.0);
-        let c = b.max(0.0);
-        let d = a_min.max(0.0);
-        let area = (b + f32::new(0.5_f32) * (d * d - c * c) - a_min) / (xmax - a_min);
+        let mut area = (f32::new(1.0_f32) - xmin).clamp(0.0, 1.0);
+        if xmax - xmin > f32::new(0.000001_f32) {
+            let a_min = xmin.min(1.0) - f32::new(0.000001_f32);
+            let b = xmax.min(1.0);
+            let c = b.max(0.0);
+            let d = a_min.max(0.0);
+            area = (b + f32::new(0.5_f32) * (d * d - c * c) - a_min) / (xmax - a_min);
+        }
         coverage += area * dy;
     }
 
@@ -2807,11 +2810,11 @@ fn filter_segment_coverage_at(
 
 #[cube]
 fn filter_signum_f32(value: f32) -> f32 {
-    // Match CPU f32::signum semantics for coverage: vertical edges add no y-edge term.
-    let mut out = 0.0;
-    if value > 0.0 {
-        out = 1.0;
-    } else if value < 0.0 {
+    // CPU coverage uses Rust f32::signum(), which returns +1 for +0.0.
+    // Filter compositing reuses scan/fine coverage for masks and outer stacks,
+    // so keep the same boundary-edge ownership here.
+    let mut out = 1.0;
+    if value < 0.0 {
         out = -1.0;
     }
     out
