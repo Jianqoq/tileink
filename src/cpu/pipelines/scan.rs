@@ -130,13 +130,8 @@ impl<'a> ScanCpuPrepared<'a> {
                             let segment = clip_line_to_tile(
                                 (plan.xy0, plan.xy1),
                                 plan.is_down,
-                                plan.is_positive_slope,
                                 tile.x,
                                 tile.y,
-                                tile.seg_within_line,
-                                tile.seg_count,
-                                plan.a,
-                                plan.b,
                             );
                             let local_ix = Self::local_tile_ix(
                                 backdrop_record,
@@ -259,7 +254,6 @@ pub(crate) struct ScanLinePlan {
     xy0: [f32; 2],
     xy1: [f32; 2],
     is_down: bool,
-    is_positive_slope: bool,
     a: f32,
     b: f32,
     x0: f32,
@@ -277,8 +271,6 @@ struct ScannedTile {
     x: i32,
     y: i32,
     global_ix: u32,
-    seg_within_line: u32,
-    seg_count: u32,
     top_edge: bool,
 }
 
@@ -307,8 +299,6 @@ fn for_each_scanned_tile(
             x,
             y,
             global_ix: y as u32 * tiles_size.0 + x as u32,
-            seg_within_line: i - plan.imin,
-            seg_count: plan.imax - plan.imin,
             top_edge,
         });
         last_z = z;
@@ -419,7 +409,6 @@ pub(crate) fn plan_scan_line(line: Line, bbox: TileBbox) -> Option<ScanLinePlan>
         xy0,
         xy1,
         is_down,
-        is_positive_slope,
         a,
         b,
         x0,
@@ -436,61 +425,27 @@ pub(crate) fn plan_scan_line(line: Line, bbox: TileBbox) -> Option<ScanLinePlan>
 fn clip_line_to_tile(
     line: ([f32; 2], [f32; 2]),
     is_down: bool,
-    is_positive_slope: bool,
     tile_x: i32,
     tile_y: i32,
-    seg_within_line: u32,
-    seg_count: u32,
-    a: f32,
-    b: f32,
 ) -> LineSegment {
-    let (mut xy0, mut xy1) = line;
+    let (line0, line1) = line;
     let tile_xy = [
         tile_x as f32 * TILE_SIZE as f32,
         tile_y as f32 * TILE_SIZE as f32,
     ];
     let tile_xy1 = [tile_xy[0] + TILE_SIZE as f32, tile_xy[1] + TILE_SIZE as f32];
 
-    if seg_within_line > 0 {
-        let z_prev = (a * (seg_within_line as f32 - 1.0) + b).floor();
-        let z = (a * seg_within_line as f32 + b).floor();
-        if z == z_prev {
-            let mut xt = xy0[0] + (xy1[0] - xy0[0]) * (tile_xy[1] - xy0[1]) / (xy1[1] - xy0[1]);
-            xt = xt.clamp(tile_xy[0] + 1e-3, tile_xy1[0]);
-            xy0 = [xt, tile_xy[1]];
-        } else {
-            let x_clip = if is_positive_slope {
-                tile_xy[0]
-            } else {
-                tile_xy1[0]
-            };
-            let mut yt = xy0[1] + (xy1[1] - xy0[1]) * (x_clip - xy0[0]) / (xy1[0] - xy0[0]);
-            yt = yt.clamp(tile_xy[1] + 1e-3, tile_xy1[1]);
-            xy0 = [x_clip, yt];
-        }
-    }
-    if seg_within_line < seg_count.saturating_sub(1) {
-        let z_next = (a * (seg_within_line as f32 + 1.0) + b).floor();
-        let z = (a * seg_within_line as f32 + b).floor();
-        if z == z_next {
-            let mut xt = xy0[0] + (xy1[0] - xy0[0]) * (tile_xy1[1] - xy0[1]) / (xy1[1] - xy0[1]);
-            xt = xt.clamp(tile_xy[0] + 1e-3, tile_xy1[0]);
-            xy1 = [xt, tile_xy1[1]];
-        } else {
-            let x_clip = if is_positive_slope {
-                tile_xy1[0]
-            } else {
-                tile_xy[0]
-            };
-            let mut yt = xy0[1] + (xy1[1] - xy0[1]) * (x_clip - xy0[0]) / (xy1[0] - xy0[0]);
-            yt = yt.clamp(tile_xy[1] + 1e-3, tile_xy1[1]);
-            xy1 = [x_clip, yt];
-        }
-    }
+    let (xy0, xy1) = clip_segment_to_tile(line0, line1, tile_xy, tile_xy1);
 
     let mut y_edge = 1e9f32;
-    let mut p0 = (xy0[0] - tile_xy[0], xy0[1] - tile_xy[1]);
-    let mut p1 = (xy1[0] - tile_xy[0], xy1[1] - tile_xy[1]);
+    let mut p0 = (
+        clamp_tile_coord(xy0[0] - tile_xy[0]),
+        clamp_tile_coord(xy0[1] - tile_xy[1]),
+    );
+    let mut p1 = (
+        clamp_tile_coord(xy1[0] - tile_xy[0]),
+        clamp_tile_coord(xy1[1] - tile_xy[1]),
+    );
     const EPSILON: f32 = 1e-6;
 
     if p0.0 == 0.0 {
@@ -532,6 +487,71 @@ fn clip_line_to_tile(
     }
 }
 
+fn clamp_tile_coord(value: f32) -> f32 {
+    let value = value.clamp(0.0, TILE_SIZE as f32);
+    if value <= TILE_BOUNDARY_EPSILON {
+        0.0
+    } else if TILE_SIZE as f32 - value <= TILE_BOUNDARY_EPSILON {
+        TILE_SIZE as f32
+    } else {
+        value
+    }
+}
+
+const TILE_BOUNDARY_EPSILON: f32 = 1.0e-4;
+
+fn clip_segment_to_tile(
+    p0: [f32; 2],
+    p1: [f32; 2],
+    tile_min: [f32; 2],
+    tile_max: [f32; 2],
+) -> ([f32; 2], [f32; 2]) {
+    let delta = [p1[0] - p0[0], p1[1] - p0[1]];
+    let mut t0 = 0.0;
+    let mut t1 = 1.0;
+
+    if clip_range(-delta[0], p0[0] - tile_min[0], &mut t0, &mut t1)
+        && clip_range(delta[0], tile_max[0] - p0[0], &mut t0, &mut t1)
+        && clip_range(-delta[1], p0[1] - tile_min[1], &mut t0, &mut t1)
+        && clip_range(delta[1], tile_max[1] - p0[1], &mut t0, &mut t1)
+    {
+        return (
+            [p0[0] + delta[0] * t0, p0[1] + delta[1] * t0],
+            [p0[0] + delta[0] * t1, p0[1] + delta[1] * t1],
+        );
+    }
+
+    (
+        [
+            p0[0].clamp(tile_min[0], tile_max[0]),
+            p0[1].clamp(tile_min[1], tile_max[1]),
+        ],
+        [
+            p1[0].clamp(tile_min[0], tile_max[0]),
+            p1[1].clamp(tile_min[1], tile_max[1]),
+        ],
+    )
+}
+
+fn clip_range(p: f32, q: f32, t0: &mut f32, t1: &mut f32) -> bool {
+    if p == 0.0 {
+        return q >= 0.0;
+    }
+    let r = q / p;
+    if p < 0.0 {
+        if r > *t1 {
+            return false;
+        }
+        *t0 = (*t0).max(r);
+    } else {
+        if r < *t0 {
+            return false;
+        }
+        *t1 = (*t1).min(r);
+    }
+    true
+}
+
 fn span(a: f32, b: f32) -> u32 {
     let hi = a.max(b).ceil();
     let lo = a.min(b).floor();
@@ -545,9 +565,12 @@ mod tests {
     use std::sync::atomic::AtomicU32;
 
     use super::{ScanCpuPipeline, ScanCpuPrepared, plan_scan_line};
-    use crate::shared::{
-        bd_record::BackdropRecord, bounds::TileBbox, line::Line, line_seg::LineSegment,
-        path::PathRecord, tile_seg_range::TileSegmentRange,
+    use crate::{
+        cpu::computes::fine::build_tile_alpha,
+        shared::{
+            bd_record::BackdropRecord, bounds::TileBbox, fill::FillRule, line::Line,
+            line_seg::LineSegment, path::PathRecord, tile_seg_range::TileSegmentRange,
+        },
     };
 
     fn one_tile_backdrop_record(segment_capacity: u32) -> BackdropRecord {
@@ -762,6 +785,169 @@ mod tests {
                 .iter()
                 .all(|segment| { segment.point0.0 >= 0.0 && segment.point1.0 >= 0.0 })
         );
+    }
+
+    #[test]
+    fn run_preserves_subtile_offsets_for_clipped_diagonal_stroke() {
+        let lines = [
+            Line {
+                path_id: 0,
+                _pad: 0.0,
+                p0: [1.494_818_7, -1.328_727_7],
+                p1: [161.494_81, 178.671_28],
+            },
+            Line {
+                path_id: 0,
+                _pad: 0.0,
+                p0: [161.494_81, 178.671_28],
+                p1: [158.505_19, 181.328_72],
+            },
+            Line {
+                path_id: 0,
+                _pad: 0.0,
+                p0: [158.505_19, 181.328_72],
+                p1: [-1.494_818_7, 1.328_727_7],
+            },
+            Line {
+                path_id: 0,
+                _pad: 0.0,
+                p0: [-1.494_818_7, 1.328_727_7],
+                p1: [1.494_818_7, -1.328_727_7],
+            },
+        ];
+        let path_records = [PathRecord {
+            path_id: 0,
+            line_count: lines.len() as u32,
+            line_start: 0,
+            _pad: 0,
+        }];
+        let backdrop_records = [BackdropRecord {
+            path_id: 0,
+            data_offset: 0,
+            data_len: 12 * 12,
+            tile_x0: 0,
+            tile_y0: 0,
+            tile_x1: 12,
+            tile_y1: 12,
+            segment_start: 0,
+            segment_capacity: 256,
+            segment_count: 0,
+        }];
+        let mut backdrops = vec![0; 12 * 12];
+        let mut tile_segment_ranges = vec![TileSegmentRange::default(); 12 * 12];
+        let mut segments = vec![LineSegment::default(); 256];
+        let mut segments_bump = vec![AtomicU32::new(0)];
+        let mut segment_tile_counts = vec![0; 12 * 12];
+        let mut segment_tile_cursors = (0..12 * 12).map(|_| AtomicU32::new(0)).collect();
+
+        ScanCpuPipeline::new()
+            .prepare(
+                &lines,
+                &path_records,
+                &backdrop_records,
+                &mut backdrops,
+                &mut tile_segment_ranges,
+                &mut segments,
+                &mut segments_bump,
+                &mut segment_tile_counts,
+                &mut segment_tile_cursors,
+                (13, 13),
+            )
+            .run();
+
+        let tile_ix = 2 * 12 + 2;
+        let range = tile_segment_ranges[tile_ix];
+        let alpha = build_tile_alpha(
+            &segments[range.start as usize..range.end as usize],
+            backdrops[tile_ix],
+            FillRule::NonZero,
+        );
+
+        assert!(segments_bump[0].load(Ordering::Relaxed) >= 2);
+        assert_eq!(range.end - range.start, 2);
+        assert_eq!(alpha[4 * 16], 255);
+    }
+
+    #[test]
+    fn run_snaps_clipped_segments_to_tile_boundaries() {
+        let lines = [
+            Line {
+                path_id: 0,
+                _pad: 0.0,
+                p0: [0.560_557, -0.498_273],
+                p1: [240.560_56, 269.501_74],
+            },
+            Line {
+                path_id: 0,
+                _pad: 0.0,
+                p0: [240.560_56, 269.501_74],
+                p1: [239.439_44, 270.498_26],
+            },
+            Line {
+                path_id: 0,
+                _pad: 0.0,
+                p0: [239.439_44, 270.498_26],
+                p1: [-0.560_557, 0.498_273],
+            },
+            Line {
+                path_id: 0,
+                _pad: 0.0,
+                p0: [-0.560_557, 0.498_273],
+                p1: [0.560_557, -0.498_273],
+            },
+        ];
+        let path_records = [PathRecord {
+            path_id: 0,
+            line_count: lines.len() as u32,
+            line_start: 0,
+            _pad: 0,
+        }];
+        let backdrop_records = [BackdropRecord {
+            path_id: 0,
+            data_offset: 0,
+            data_len: 19 * 19,
+            tile_x0: 0,
+            tile_y0: 0,
+            tile_x1: 19,
+            tile_y1: 19,
+            segment_start: 0,
+            segment_capacity: 512,
+            segment_count: 0,
+        }];
+        let mut backdrops = vec![0; 19 * 19];
+        let mut tile_segment_ranges = vec![TileSegmentRange::default(); 19 * 19];
+        let mut segments = vec![LineSegment::default(); 512];
+        let mut segments_bump = vec![AtomicU32::new(0)];
+        let mut segment_tile_counts = vec![0; 19 * 19];
+        let mut segment_tile_cursors = (0..19 * 19).map(|_| AtomicU32::new(0)).collect();
+
+        ScanCpuPipeline::new()
+            .prepare(
+                &lines,
+                &path_records,
+                &backdrop_records,
+                &mut backdrops,
+                &mut tile_segment_ranges,
+                &mut segments,
+                &mut segments_bump,
+                &mut segment_tile_counts,
+                &mut segment_tile_cursors,
+                (19, 19),
+            )
+            .run();
+
+        let tile_ix = 2 * 19 + 2;
+        let range = tile_segment_ranges[tile_ix];
+        let alpha = build_tile_alpha(
+            &segments[range.start as usize..range.end as usize],
+            backdrops[tile_ix],
+            FillRule::NonZero,
+        );
+
+        assert!(segments_bump[0].load(Ordering::Relaxed) >= 2);
+        assert_eq!(range.end - range.start, 2);
+        assert!(alpha[4 * 16] > 0);
+        assert_eq!(alpha[4 * 16 + 15], 0);
     }
 
     #[test]

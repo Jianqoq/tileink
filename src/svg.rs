@@ -1206,6 +1206,25 @@ mod tests {
     }
 
     #[test]
+    fn push_svg_renders_line_with_default_start_coordinates() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+                <path d="M 0 0 L 160 180" stroke="red" stroke-width="4"/>
+                <line x2="160" y2="180" stroke="green" stroke-width="4"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        for (x, y) in [(32, 36), (80, 90), (128, 144)] {
+            let px = renderer.image().rgba8_at(x, y);
+            assert!(
+                px[1] > px[0] && px[1] > 0,
+                "expected green line coverage at ({x}, {y}), got {px:?}"
+            );
+        }
+    }
+
+    #[test]
     fn push_svg_keeps_group_opacity_isolated() {
         let renderer = render(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96">

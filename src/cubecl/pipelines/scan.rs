@@ -637,7 +637,6 @@ fn scan_emit(
     imax = imin.max(imax);
 
     let data_offset = backdrop_data_offsets[path_i];
-    let seg_count = imax - imin;
     let mut i = imin;
     while i < imax {
         let z = (a * i as f32 + b).floor();
@@ -658,13 +657,8 @@ fn scan_emit(
                     xy1x,
                     xy1y,
                     is_down,
-                    is_positive_slope,
                     tile_x,
                     tile_y,
-                    i - imin,
-                    seg_count,
-                    a,
-                    b,
                     segment_p0x,
                     segment_p0y,
                     segment_p1x,
@@ -709,73 +703,147 @@ fn write_clipped_segment(
     line_x1: f32,
     line_y1: f32,
     is_down: bool,
-    is_positive_slope: bool,
     tile_x: i32,
     tile_y: i32,
-    seg_within_line: u32,
-    seg_count: u32,
-    a: f32,
-    b: f32,
     segment_p0x: &mut Array<f32>,
     segment_p0y: &mut Array<f32>,
     segment_p1x: &mut Array<f32>,
     segment_p1y: &mut Array<f32>,
     segment_y_edge: &mut Array<f32>,
 ) {
-    let mut xy0x = line_x0;
-    let mut xy0y = line_y0;
-    let mut xy1x = line_x1;
-    let mut xy1y = line_y1;
     let tile_size = f32::new(16.0_f32);
     let tile_min_x = tile_x as f32 * tile_size;
     let tile_min_y = tile_y as f32 * tile_size;
     let tile_max_x = tile_min_x + tile_size;
     let tile_max_y = tile_min_y + tile_size;
 
-    if seg_within_line > 0 {
-        let z_prev = (a * (seg_within_line as f32 - 1.0) + b).floor();
-        let z = (a * seg_within_line as f32 + b).floor();
-        if z == z_prev {
-            let mut xt = xy0x + (xy1x - xy0x) * (tile_min_y - xy0y) / (xy1y - xy0y);
-            xt = xt.clamp(tile_min_x + 0.001, tile_max_x);
-            xy0x = xt;
-            xy0y = tile_min_y;
-        } else {
-            let mut x_clip = tile_max_x;
-            if is_positive_slope {
-                x_clip = tile_min_x;
-            }
-            let mut yt = xy0y + (xy1y - xy0y) * (x_clip - xy0x) / (xy1x - xy0x);
-            yt = yt.clamp(tile_min_y + 0.001, tile_max_y);
-            xy0x = x_clip;
-            xy0y = yt;
+    let dx = line_x1 - line_x0;
+    let dy = line_y1 - line_y0;
+    let mut t0 = f32::new(0.0_f32);
+    let mut t1 = f32::new(1.0_f32);
+    let mut valid = true;
+
+    let mut p = -dx;
+    let mut q = line_x0 - tile_min_x;
+    if p == 0.0 {
+        if q < 0.0 {
+            valid = false;
         }
-    }
-    if seg_within_line < seg_count.saturating_sub(1) {
-        let z_next = (a * (seg_within_line as f32 + 1.0) + b).floor();
-        let z = (a * seg_within_line as f32 + b).floor();
-        if z == z_next {
-            let mut xt = xy0x + (xy1x - xy0x) * (tile_max_y - xy0y) / (xy1y - xy0y);
-            xt = xt.clamp(tile_min_x + 0.001, tile_max_x);
-            xy1x = xt;
-            xy1y = tile_max_y;
-        } else {
-            let mut x_clip = tile_min_x;
-            if is_positive_slope {
-                x_clip = tile_max_x;
+    } else {
+        let r = q / p;
+        if p < 0.0 {
+            if r > t1 {
+                valid = false;
+            } else if r > t0 {
+                t0 = r;
             }
-            let mut yt = xy0y + (xy1y - xy0y) * (x_clip - xy0x) / (xy1x - xy0x);
-            yt = yt.clamp(tile_min_y + 0.001, tile_max_y);
-            xy1x = x_clip;
-            xy1y = yt;
+        } else if r < t0 {
+            valid = false;
+        } else if r < t1 {
+            t1 = r;
         }
     }
 
+    p = dx;
+    q = tile_max_x - line_x0;
+    if p == 0.0 {
+        if q < 0.0 {
+            valid = false;
+        }
+    } else {
+        let r = q / p;
+        if p < 0.0 {
+            if r > t1 {
+                valid = false;
+            } else if r > t0 {
+                t0 = r;
+            }
+        } else if r < t0 {
+            valid = false;
+        } else if r < t1 {
+            t1 = r;
+        }
+    }
+
+    p = -dy;
+    q = line_y0 - tile_min_y;
+    if p == 0.0 {
+        if q < 0.0 {
+            valid = false;
+        }
+    } else {
+        let r = q / p;
+        if p < 0.0 {
+            if r > t1 {
+                valid = false;
+            } else if r > t0 {
+                t0 = r;
+            }
+        } else if r < t0 {
+            valid = false;
+        } else if r < t1 {
+            t1 = r;
+        }
+    }
+
+    p = dy;
+    q = tile_max_y - line_y0;
+    if p == 0.0 {
+        if q < 0.0 {
+            valid = false;
+        }
+    } else {
+        let r = q / p;
+        if p < 0.0 {
+            if r > t1 {
+                valid = false;
+            } else if r > t0 {
+                t0 = r;
+            }
+        } else if r < t0 {
+            valid = false;
+        } else if r < t1 {
+            t1 = r;
+        }
+    }
+
+    let mut xy0x = line_x0.clamp(tile_min_x, tile_max_x);
+    let mut xy0y = line_y0.clamp(tile_min_y, tile_max_y);
+    let mut xy1x = line_x1.clamp(tile_min_x, tile_max_x);
+    let mut xy1y = line_y1.clamp(tile_min_y, tile_max_y);
+    if valid {
+        xy0x = line_x0 + dx * t0;
+        xy0y = line_y0 + dy * t0;
+        xy1x = line_x0 + dx * t1;
+        xy1y = line_y0 + dy * t1;
+    }
+
     let mut y_edge = f32::new(1000000000.0_f32);
-    let mut p0x = xy0x - tile_min_x;
-    let mut p0y = xy0y - tile_min_y;
-    let mut p1x = xy1x - tile_min_x;
-    let mut p1y = xy1y - tile_min_y;
+    let mut p0x = (xy0x - tile_min_x).clamp(0.0, tile_size);
+    let mut p0y = (xy0y - tile_min_y).clamp(0.0, tile_size);
+    let mut p1x = (xy1x - tile_min_x).clamp(0.0, tile_size);
+    let mut p1y = (xy1y - tile_min_y).clamp(0.0, tile_size);
+    let boundary_epsilon = f32::new(0.0001_f32);
+    if p0x <= boundary_epsilon {
+        p0x = 0.0;
+    } else if tile_size - p0x <= boundary_epsilon {
+        p0x = tile_size;
+    }
+    if p0y <= boundary_epsilon {
+        p0y = 0.0;
+    } else if tile_size - p0y <= boundary_epsilon {
+        p0y = tile_size;
+    }
+    if p1x <= boundary_epsilon {
+        p1x = 0.0;
+    } else if tile_size - p1x <= boundary_epsilon {
+        p1x = tile_size;
+    }
+    if p1y <= boundary_epsilon {
+        p1y = 0.0;
+    } else if tile_size - p1y <= boundary_epsilon {
+        p1y = tile_size;
+    }
     let epsilon = f32::new(0.000001_f32);
 
     if p0x == 0.0 {

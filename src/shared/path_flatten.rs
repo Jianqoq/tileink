@@ -78,6 +78,11 @@ impl<'a> PathFlatten<'a> {
                 }
             }
         }
+        if let (Some(start_pt), Some(end_pt)) = (contour_start, last) {
+            if is_open_contour_close(start_pt, end_pt) {
+                push_line_segment(out, self.tile_cnt, self.path_id, end_pt, start_pt);
+            }
+        }
     }
 }
 
@@ -98,9 +103,28 @@ mod tests {
 
         PathFlatten::new(&path, 0.1, 0, &mut tile_cnt).flatten(&mut lines);
 
-        assert_eq!(lines.len(), 1);
+        assert_eq!(lines.len(), 2);
         assert_eq!(lines[0].p0, [1.0, 2.0]);
         assert_eq!(lines[0].p1, [5.0, 2.0]);
+        assert_eq!(lines[1].p0, [5.0, 2.0]);
+        assert_eq!(lines[1].p1, [1.0, 2.0]);
+    }
+
+    #[test]
+    fn final_open_contour_is_closed() {
+        let path = BezPath::from_vec(vec![
+            PathEl::MoveTo((0.0, 0.0).into()),
+            PathEl::LineTo((10.0, 0.0).into()),
+            PathEl::LineTo((10.0, 10.0).into()),
+        ]);
+        let mut tile_cnt = 0;
+        let mut lines = Vec::new();
+
+        PathFlatten::new(&path, 0.1, 0, &mut tile_cnt).flatten(&mut lines);
+
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[2].p0, [10.0, 10.0]);
+        assert_eq!(lines[2].p1, [0.0, 0.0]);
     }
 
     #[test]
@@ -121,7 +145,7 @@ mod tests {
     }
 
     #[test]
-    fn horizontal_line_reserves_segment_capacity() {
+    fn open_horizontal_line_closes_and_reserves_segment_capacity() {
         let path = BezPath::from_vec(vec![
             PathEl::MoveTo((0.0, 0.0).into()),
             PathEl::LineTo((100.0, 0.0).into()),
@@ -131,7 +155,9 @@ mod tests {
 
         PathFlatten::new(&path, 0.1, 0, &mut tile_cnt).flatten(&mut lines);
 
-        assert_eq!(lines.len(), 1);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[1].p0, [100.0, 0.0]);
+        assert_eq!(lines[1].p1, [0.0, 0.0]);
         assert!(tile_cnt >= 7);
     }
 
