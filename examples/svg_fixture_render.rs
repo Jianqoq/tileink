@@ -6,8 +6,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use peniko::Color;
-use tileink::{CpuRenderer, CubeWgpuRenderer, Scene};
+use peniko::{Color, kurbo::Affine};
+use tileink::{CpuRenderer, CubeWgpuRenderer, Scene, SvgOptions};
+
+const REFERENCE_IMAGE_WIDTH: u32 = 300;
 
 #[derive(Clone, Copy)]
 enum Backend {
@@ -144,12 +146,31 @@ fn load_scene(
     let data = fs::read(input)?;
     options.resources_dir = input.parent().map(Path::to_path_buf);
     let tree = usvg::Tree::from_data(&data, options)?;
-    let size = tree.size();
-    let width = size.width().ceil() as u32;
-    let height = size.height().ceil() as u32;
+    let size = scaled_reference_size(tree.size(), REFERENCE_IMAGE_WIDTH)?;
+    let width = size.0;
+    let height = size.1;
+    let scale_x = width as f64 / tree.size().width() as f64;
+    let scale_y = height as f64 / tree.size().height() as f64;
     let mut scene = Scene::new(width, height);
-    scene.push_svg(&tree)?;
+    scene.push_svg_with_options(
+        &tree,
+        SvgOptions {
+            transform: Affine::scale_non_uniform(scale_x, scale_y),
+            ..SvgOptions::default()
+        },
+    )?;
     Ok(scene)
+}
+
+fn scaled_reference_size(
+    size: usvg::Size,
+    target_width: u32,
+) -> Result<(u32, u32), Box<dyn std::error::Error>> {
+    let size = size
+        .to_int_size()
+        .scale_to_width(target_width)
+        .ok_or("SVG size must be positive")?;
+    Ok((size.width(), size.height()))
 }
 
 fn collect_svg_files(

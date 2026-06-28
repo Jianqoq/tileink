@@ -23,13 +23,17 @@ use crate::{
 #[derive(Clone, Copy, Debug)]
 pub struct SvgOptions {
     pub tolerance: f64,
+    pub transform: Affine,
 }
 
 const MAX_PATTERN_DEPTH: u8 = 16;
 
 impl Default for SvgOptions {
     fn default() -> Self {
-        Self { tolerance: 0.1 }
+        Self {
+            tolerance: 0.1,
+            transform: Affine::IDENTITY,
+        }
     }
 }
 
@@ -88,8 +92,8 @@ struct SvgBuilder {
 impl SvgBuilder {
     fn new(options: SvgOptions) -> Self {
         Self {
+            base_transform: options.transform,
             options,
-            base_transform: Affine::IDENTITY,
             pattern_depth: 0,
         }
     }
