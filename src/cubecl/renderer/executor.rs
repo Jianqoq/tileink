@@ -11,7 +11,7 @@ use crate::{
             filter::{
                 ComponentTransferTable, CompositeOperator, ConvolveEdgeMode, ConvolveMatrix,
                 DiffuseLighting, Filter, FilterInput, FilterPrimitive, FilterPrimitiveKind,
-                LightSource, MorphologyOperator,
+                LightSource, MorphologyOperator, SpecularLighting,
             },
             region::Region,
         },
@@ -47,6 +47,16 @@ struct MorphologyPass {
     radius_x: f32,
     radius_y: f32,
     operator: MorphologyOperator,
+}
+
+#[derive(Clone, Copy)]
+struct LightingDispatch {
+    output_kind: u32,
+    surface_scale: f32,
+    light_constant: f32,
+    specular_exponent: f32,
+    lighting_color: [f32; 3],
+    light_source: LightSource,
 }
 
 impl<R: Runtime> Renderer<R> {
@@ -257,6 +267,13 @@ impl<R: Runtime> Renderer<R> {
                 self.clear_buffer(source, 0);
                 self.copy_region(target, source, bounds);
                 self.diffuse_lighting_buffer(source, target, bounds, lighting);
+                self.release_scratch(source);
+            }
+            Filter::SpecularLighting(lighting) => {
+                let source = self.acquire_scratch();
+                self.clear_buffer(source, 0);
+                self.copy_region(target, source, bounds);
+                self.specular_lighting_buffer(source, target, bounds, lighting);
                 self.release_scratch(source);
             }
             Filter::Flood { .. } => self.apply_flood(
@@ -712,6 +729,50 @@ impl<R: Runtime> Renderer<R> {
         bounds: Bounds,
         lighting: &DiffuseLighting,
     ) {
+        self.lighting_buffer(
+            source,
+            target,
+            bounds,
+            LightingDispatch {
+                output_kind: 0,
+                surface_scale: lighting.surface_scale,
+                light_constant: lighting.diffuse_constant,
+                specular_exponent: 1.0,
+                lighting_color: lighting.lighting_color,
+                light_source: lighting.light_source,
+            },
+        );
+    }
+
+    fn specular_lighting_buffer(
+        &mut self,
+        source: CubeRenderTarget,
+        target: CubeRenderTarget,
+        bounds: Bounds,
+        lighting: &SpecularLighting,
+    ) {
+        self.lighting_buffer(
+            source,
+            target,
+            bounds,
+            LightingDispatch {
+                output_kind: 1,
+                surface_scale: lighting.surface_scale,
+                light_constant: lighting.specular_constant,
+                specular_exponent: lighting.specular_exponent,
+                lighting_color: lighting.lighting_color,
+                light_source: lighting.light_source,
+            },
+        );
+    }
+
+    fn lighting_buffer(
+        &mut self,
+        source: CubeRenderTarget,
+        target: CubeRenderTarget,
+        bounds: Bounds,
+        lighting: LightingDispatch,
+    ) {
         if source == target {
             return;
         }
@@ -719,28 +780,32 @@ impl<R: Runtime> Renderer<R> {
         let params = light_source_params(lighting.light_source);
         match (source, target) {
             (CubeRenderTarget::Main, CubeRenderTarget::Scratch(target_ix)) => {
-                FilterPipeline::diffuse_lighting_region(
+                FilterPipeline::lighting_region(
                     &self.client,
                     &self.target,
                     &mut self.scratch[target_ix],
                     self.size,
                     bounds,
+                    lighting.output_kind,
                     lighting.surface_scale,
-                    lighting.diffuse_constant,
+                    lighting.light_constant,
+                    lighting.specular_exponent,
                     lighting.lighting_color,
                     light_kind,
                     params,
                 )
             }
             (CubeRenderTarget::Scratch(source_ix), CubeRenderTarget::Main) => {
-                FilterPipeline::diffuse_lighting_region(
+                FilterPipeline::lighting_region(
                     &self.client,
                     &self.scratch[source_ix],
                     &mut self.target,
                     self.size,
                     bounds,
+                    lighting.output_kind,
                     lighting.surface_scale,
-                    lighting.diffuse_constant,
+                    lighting.light_constant,
+                    lighting.specular_exponent,
                     lighting.lighting_color,
                     light_kind,
                     params,
@@ -749,14 +814,16 @@ impl<R: Runtime> Renderer<R> {
             (CubeRenderTarget::Scratch(source_ix), CubeRenderTarget::Scratch(target_ix)) => {
                 let (source, target) =
                     scratch_source_target(&mut self.scratch, source_ix, target_ix);
-                FilterPipeline::diffuse_lighting_region(
+                FilterPipeline::lighting_region(
                     &self.client,
                     source,
                     target,
                     self.size,
                     bounds,
+                    lighting.output_kind,
                     lighting.surface_scale,
-                    lighting.diffuse_constant,
+                    lighting.light_constant,
+                    lighting.specular_exponent,
                     lighting.lighting_color,
                     light_kind,
                     params,
@@ -1587,6 +1654,7 @@ fn filter_scratch_extra(filter: &Filter) -> usize {
         Filter::Blur(radius) => usize::from(radius.max(0.0) > 0.0),
         Filter::ConvolveMatrix(_) => 1,
         Filter::DiffuseLighting(_) => 1,
+        Filter::SpecularLighting(_) => 1,
         Filter::Offset { .. } => 1,
         Filter::Morphology { .. } => 2,
         Filter::DropShadow { radius, .. } => 1 + usize::from(radius.max(0.0) > 0.0),
@@ -1712,6 +1780,9 @@ fn encode_color_filter(filter: &Filter) -> (u32, f32) {
         }
         Filter::DiffuseLighting(_) => {
             panic!("diffuse lighting is handled by a dedicated CubeCL pass")
+        }
+        Filter::SpecularLighting(_) => {
+            panic!("specular lighting is handled by a dedicated CubeCL pass")
         }
         Filter::Graph { .. } => panic!("filter graphs are handled by CubeCL graph execution"),
         Filter::Flood { .. } => panic!("flood is handled by the CubeCL brush fill pass"),

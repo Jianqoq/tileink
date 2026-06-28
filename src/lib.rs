@@ -23,6 +23,7 @@ pub use shared::{
         filter::{
             CompositeOperator, ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, Filter,
             FilterInput, FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator,
+            SpecularLighting,
         },
         region::Region,
     },

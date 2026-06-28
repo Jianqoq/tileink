@@ -638,6 +638,41 @@ fn filter_wgpu_applies_diffuse_lighting_when_enabled() {
 }
 
 #[test]
+fn filter_wgpu_applies_specular_lighting_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(1, 1);
+    scene.push_filter_layer(
+        Filter::SpecularLighting(SpecularLighting {
+            surface_scale: 0.0,
+            specular_constant: 0.5,
+            specular_exponent: 1.0,
+            lighting_color: [1.0, 0.5, 0.0],
+            light_source: LightSource::Point {
+                x: 0.5,
+                y: 0.5,
+                z: 1.0,
+            },
+        }),
+        Region::rect(Rect::new(0.0, 0.0, 1.0, 1.0), Radius::all(0.0)),
+    );
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 1.0, 1.0),
+        Color::BLACK,
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(1, 1, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+
+    assert_eq!(target[pixel_ix(0, 0, 1)], rgba8_pack([128, 64, 0, 128]));
+}
+
+#[test]
 fn filter_wgpu_floods_with_uploaded_brush_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;

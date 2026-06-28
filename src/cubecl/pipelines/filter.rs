@@ -376,14 +376,16 @@ impl FilterPipeline {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn diffuse_lighting_region<R: Runtime>(
+    pub(crate) fn lighting_region<R: Runtime>(
         client: &ComputeClient<R>,
         source: &CubeBuffer<u32>,
         target: &mut CubeBuffer<u32>,
         size: (u32, u32),
         bounds: Bounds,
+        output_kind: u32,
         surface_scale: f32,
-        diffuse_constant: f32,
+        light_constant: f32,
+        specular_exponent: f32,
         lighting_color: [f32; 3],
         light_kind: u32,
         light_params: [f32; 9],
@@ -391,7 +393,7 @@ impl FilterPipeline {
         let Some(region) = FilterRegion::new(size, bounds) else {
             return;
         };
-        filter_diffuse_lighting_region::launch::<R>(
+        filter_lighting_region::launch::<R>(
             client,
             cube_count(region.pixel_count),
             CubeDim::new_1d(FILTER_WORKGROUP_SIZE),
@@ -401,8 +403,10 @@ impl FilterPipeline {
             region.x0,
             region.y0,
             size.0,
+            output_kind,
             surface_scale,
-            diffuse_constant,
+            light_constant,
+            specular_exponent,
             lighting_color[0],
             lighting_color[1],
             lighting_color[2],
@@ -1156,15 +1160,17 @@ fn filter_convolve_matrix_region(
 
 #[cube(launch)]
 #[allow(clippy::too_many_arguments)]
-fn filter_diffuse_lighting_region(
+fn filter_lighting_region(
     pixel_count: u32,
     region_width: u32,
     region_height: u32,
     region_x0: u32,
     region_y0: u32,
     image_width: u32,
+    output_kind: u32,
     surface_scale: f32,
-    diffuse_constant: f32,
+    light_constant: f32,
+    specular_exponent: f32,
     light_r: f32,
     light_g: f32,
     light_b: f32,
@@ -1188,9 +1194,13 @@ fn filter_diffuse_lighting_region(
     let x = region_x0 + region_ix % region_width;
     let y = region_y0 + region_ix / region_width;
     let dst_ix = (y * image_width + x) as usize;
+    let mut no_light = u32::new(0);
+    if output_kind == 0 {
+        no_light = u32::new(0xff00_0000i64);
+    }
 
-    // Match SVG diffuse lighting semantics: source alpha is the surface height,
-    // and the primitive writes opaque lit color instead of preserving input RGB.
+    // Match SVG lighting semantics: source alpha is the surface height. Diffuse
+    // writes opaque lit RGB, while specular derives alpha from the highlight.
     let alpha = source_alpha_at(source, x, y, image_width);
     let z = alpha * surface_scale;
     let dx = alpha_gradient_x(
@@ -1235,7 +1245,7 @@ fn filter_diffuse_lighting_region(
     } else {
         let len = (lx * lx + ly * ly + lz * lz).sqrt();
         if len <= eps {
-            target[dst_ix] = u32::new(0xff00_0000i64);
+            target[dst_ix] = no_light;
             terminate!();
         }
         lx /= len;
@@ -1248,7 +1258,7 @@ fn filter_diffuse_lighting_region(
             let mut sz = p5 - p2;
             let slen = (sx * sx + sy * sy + sz * sz).sqrt();
             if slen <= eps {
-                target[dst_ix] = u32::new(0xff00_0000i64);
+                target[dst_ix] = no_light;
                 terminate!();
             }
             sx /= slen;
@@ -1256,20 +1266,42 @@ fn filter_diffuse_lighting_region(
             sz /= slen;
             let focus = (-(lx * sx + ly * sy + lz * sz)).max(0.0);
             if p7 >= 0.0 && focus < (p7 * f32::new(0.017_453_292_f32)).cos() {
-                target[dst_ix] = u32::new(0xff00_0000i64);
+                target[dst_ix] = no_light;
                 terminate!();
             }
             attenuation = focus.powf(p6.max(0.0));
         }
     }
 
-    let amount = diffuse_constant * attenuation * (nx * lx + ny * ly + nz * lz).max(0.0);
-    target[dst_ix] = pack_premul_rgba8(
-        (light_r * amount).clamp(0.0, 1.0),
-        (light_g * amount).clamp(0.0, 1.0),
-        (light_b * amount).clamp(0.0, 1.0),
-        1.0,
-    );
+    if output_kind == 0 {
+        let amount = light_constant * attenuation * (nx * lx + ny * ly + nz * lz).max(0.0);
+        target[dst_ix] = pack_premul_rgba8(
+            (light_r * amount).clamp(0.0, 1.0),
+            (light_g * amount).clamp(0.0, 1.0),
+            (light_b * amount).clamp(0.0, 1.0),
+            1.0,
+        );
+    } else {
+        let mut hx = lx;
+        let mut hy = ly;
+        let mut hz = lz + 1.0;
+        let hlen = (hx * hx + hy * hy + hz * hz).sqrt();
+        if hlen <= eps {
+            target[dst_ix] = no_light;
+            terminate!();
+        }
+        hx /= hlen;
+        hy /= hlen;
+        hz /= hlen;
+
+        let normal_dot_half = (nx * hx + ny * hy + nz * hz).max(0.0);
+        let amount =
+            light_constant * attenuation * normal_dot_half.powf(specular_exponent.max(0.0));
+        let r = (light_r * amount).clamp(0.0, 1.0);
+        let g = (light_g * amount).clamp(0.0, 1.0);
+        let b = (light_b * amount).clamp(0.0, 1.0);
+        target[dst_ix] = pack_premul_rgba8(r, g, b, r.max(g).max(b));
+    }
 }
 
 #[cube(launch)]

@@ -20,7 +20,7 @@ use crate::shared::image::{Image, rgba8_pack, unpack_rgba8};
 use crate::shared::layer::{
     filter::{
         CompositeOperator, ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, Filter, FilterInput,
-        FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator,
+        FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator, SpecularLighting,
     },
     region::Region,
 };

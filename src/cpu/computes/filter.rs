@@ -10,6 +10,7 @@ use crate::shared::{
             COMPONENT_TRANSFER_TABLE_SIZE, ComponentTransferTable, CompositeOperator,
             ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, Filter, FilterInput,
             FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator,
+            SpecularLighting,
         },
         region::Region,
     },
@@ -37,6 +38,7 @@ pub(crate) fn apply(image: &mut Image, filter: &Filter, bounds: Bounds) {
         }
         Filter::ConvolveMatrix(matrix) => apply_convolve_matrix(image, matrix),
         Filter::DiffuseLighting(lighting) => apply_diffuse_lighting(image, bounds, lighting),
+        Filter::SpecularLighting(lighting) => apply_specular_lighting(image, bounds, lighting),
         Filter::Flood { brush } => apply_flood(image, bounds, brush),
         Filter::Brightness(amount)
         | Filter::Contrast(amount)
@@ -481,6 +483,53 @@ fn diffuse_lighting_pixel(
         (lighting.lighting_color[2] * amount).clamp(0.0, 1.0),
         1.0,
     ])
+}
+
+fn apply_specular_lighting(image: &mut Image, bounds: Bounds, lighting: &SpecularLighting) {
+    if image.width == 0 || image.height == 0 {
+        return;
+    }
+
+    // SVG specular lighting uses the same alpha-derived normal map as diffuse
+    // lighting, but writes transparent black when no specular highlight exists.
+    let source = image.clone();
+    for y in 0..source.height {
+        for x in 0..source.width {
+            image.pixels[(y * image.width + x) as usize] =
+                specular_lighting_pixel(&source, bounds, x, y, lighting);
+        }
+    }
+}
+
+fn specular_lighting_pixel(
+    source: &Image,
+    bounds: Bounds,
+    x: u32,
+    y: u32,
+    lighting: &SpecularLighting,
+) -> u32 {
+    let alpha = alpha_at(source, x, y);
+    let z = alpha * lighting.surface_scale;
+    let normal = surface_normal(source, x, y, lighting.surface_scale);
+    let world_x = bounds.x0 as f32 + x as f32 + 0.5;
+    let world_y = bounds.y0 as f32 + y as f32 + 0.5;
+    let light = light_vector(lighting.light_source, world_x, world_y, z);
+    let Some((light, attenuation)) = light else {
+        return 0;
+    };
+    let Some(half) = normalize3([light[0], light[1], light[2] + 1.0]) else {
+        return 0;
+    };
+
+    let normal_dot_half =
+        (normal[0] * half[0] + normal[1] * half[1] + normal[2] * half[2]).max(0.0);
+    let amount = lighting.specular_constant
+        * attenuation
+        * normal_dot_half.powf(lighting.specular_exponent.max(0.0));
+    let r = (lighting.lighting_color[0] * amount).clamp(0.0, 1.0);
+    let g = (lighting.lighting_color[1] * amount).clamp(0.0, 1.0);
+    let b = (lighting.lighting_color[2] * amount).clamp(0.0, 1.0);
+    pack_premul_rgba8([r, g, b, r.max(g).max(b)])
 }
 
 fn surface_normal(source: &Image, x: u32, y: u32, surface_scale: f32) -> [f32; 3] {
@@ -1207,6 +1256,58 @@ mod tests {
         );
 
         assert_eq!(image.rgba8_at(0, 0), [0, 255, 0, 255]);
+    }
+
+    #[test]
+    fn specular_lighting_sets_alpha_to_max_component() {
+        let mut image = Image::new(1, 1, Color::from_rgb8(0, 0, 0));
+
+        apply(
+            &mut image,
+            &Filter::SpecularLighting(SpecularLighting {
+                surface_scale: 0.0,
+                specular_constant: 1.0,
+                specular_exponent: 1.0,
+                lighting_color: [0.5, 0.25, 0.0],
+                light_source: LightSource::Point {
+                    x: 10.5,
+                    y: 20.5,
+                    z: 1.0,
+                },
+            }),
+            Bounds::new(10, 20, 11, 21),
+        );
+
+        assert_eq!(image.pixels[0], pack_premul_rgba8([0.5, 0.25, 0.0, 0.5]));
+    }
+
+    #[test]
+    fn specular_lighting_uses_alpha_height_normals() {
+        let mut image = Image::new(3, 1, Color::TRANSPARENT);
+        image.pixels[0] = rgba8_pack([0, 0, 0, 0]);
+        image.pixels[1] = rgba8_pack([0, 0, 0, 128]);
+        image.pixels[2] = rgba8_pack([0, 0, 0, 255]);
+
+        apply(
+            &mut image,
+            &Filter::SpecularLighting(SpecularLighting {
+                surface_scale: 1.0,
+                specular_constant: 1.0,
+                specular_exponent: 1.0,
+                lighting_color: [1.0, 1.0, 1.0],
+                light_source: LightSource::Distant {
+                    azimuth: 0.0,
+                    elevation: 90.0,
+                },
+            }),
+            Bounds::canvas(3, 1),
+        );
+
+        let center_alpha = image.rgba8_at(1, 0)[3];
+        assert!(
+            center_alpha < 255 && center_alpha >= 180,
+            "expected alpha slope to reduce specular highlight, got {center_alpha}"
+        );
     }
 
     #[test]

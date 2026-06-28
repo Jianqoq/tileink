@@ -15,6 +15,7 @@ use crate::{
             COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE, ComponentTransferTable,
             CompositeOperator, ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, FilterInput,
             FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator,
+            SpecularLighting,
         },
     },
 };
@@ -540,9 +541,11 @@ fn svg_filter_primitive(
                 dy: offset.dy(),
             })),
         ),
-        usvg::filter::Kind::SpecularLighting(_) => {
-            return Err(SvgError::unsupported("feSpecularLighting"));
-        }
+        usvg::filter::Kind::SpecularLighting(lighting) => (
+            svg_filter_input(lighting.input(), results, "feSpecularLighting")?,
+            None,
+            FilterPrimitiveKind::Filter(Box::new(specular_lighting_to_filter(lighting))),
+        ),
         usvg::filter::Kind::Tile(_) => return Err(SvgError::unsupported("feTile")),
         usvg::filter::Kind::Turbulence(_) => return Err(SvgError::unsupported("feTurbulence")),
     };
@@ -628,6 +631,16 @@ fn diffuse_lighting_to_filter(lighting: &usvg::filter::DiffuseLighting) -> Filte
     Filter::DiffuseLighting(DiffuseLighting {
         surface_scale: lighting.surface_scale(),
         diffuse_constant: lighting.diffuse_constant(),
+        lighting_color: color_to_rgb(lighting.lighting_color()),
+        light_source: light_source(lighting.light_source()),
+    })
+}
+
+fn specular_lighting_to_filter(lighting: &usvg::filter::SpecularLighting) -> Filter {
+    Filter::SpecularLighting(SpecularLighting {
+        surface_scale: lighting.surface_scale(),
+        specular_constant: lighting.specular_constant(),
+        specular_exponent: lighting.specular_exponent(),
         lighting_color: color_to_rgb(lighting.lighting_color()),
         light_source: light_source(lighting.light_source()),
     })
@@ -1536,6 +1549,25 @@ mod tests {
             center[0].abs_diff(180) <= 1 && center[1] == 0 && center[2] == 0 && center[3] == 255,
             "expected red diffuse lighting at alpha slope center, got {center:?}"
         );
+    }
+
+    #[test]
+    fn push_svg_renders_fe_specular_lighting() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1">
+                <defs>
+                    <filter id="specular" x="0" y="0" width="1" height="1" filterUnits="userSpaceOnUse">
+                        <feSpecularLighting in="SourceAlpha" surfaceScale="0" specularConstant="0.5" specularExponent="1" lighting-color="#ff8000">
+                            <fePointLight x="0.5" y="0.5" z="1"/>
+                        </feSpecularLighting>
+                    </filter>
+                </defs>
+                <rect width="1" height="1" fill="#000000" filter="url(#specular)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(0, 0), [128, 64, 0, 128]);
     }
 
     #[test]

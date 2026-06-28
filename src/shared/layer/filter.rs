@@ -32,6 +32,7 @@ pub enum Filter {
     ComponentTransfer(Box<ComponentTransferTable>),
     ConvolveMatrix(ConvolveMatrix),
     DiffuseLighting(DiffuseLighting),
+    SpecularLighting(SpecularLighting),
     Flood {
         brush: Brush,
     },
@@ -122,6 +123,15 @@ pub enum ConvolveEdgeMode {
 pub struct DiffuseLighting {
     pub surface_scale: f32,
     pub diffuse_constant: f32,
+    pub lighting_color: [f32; 3],
+    pub light_source: LightSource,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SpecularLighting {
+    pub surface_scale: f32,
+    pub specular_constant: f32,
+    pub specular_exponent: f32,
     pub lighting_color: [f32; 3],
     pub light_source: LightSource,
 }
