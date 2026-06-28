@@ -173,6 +173,10 @@ pub(crate) fn capture_render_debug(
         output_dir: debug.output_dir.clone(),
         texts: vec![
             RenderDebugText {
+                name: "capture.svg".to_string(),
+                contents: capture_svg(scene),
+            },
+            RenderDebugText {
                 name: "tiles.json".to_string(),
                 contents: tiles_json(scene, &tiles),
             },
@@ -181,7 +185,10 @@ pub(crate) fn capture_render_debug(
                 contents: tiles_svg(scene, &tiles),
             },
         ],
-        images: Vec::new(),
+        images: vec![RenderDebugImage {
+            name: "final.png".to_string(),
+            image: final_image.clone(),
+        }],
         tiles,
         tile: None,
     };
@@ -543,6 +550,57 @@ fn write_rgba_rows_json(out: &mut String, rgba: &[[u8; 4]]) {
     out.push(']');
 }
 
+fn capture_svg(scene: &Scene) -> String {
+    let width = scene.width;
+    let height = scene.height;
+    let width_in_tiles = scene.width_in_tiles();
+    let height_in_tiles = scene.height_in_tiles();
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {} {}\" width=\"{}\" height=\"{}\">",
+        width, height, width, height
+    );
+    let _ = writeln!(
+        out,
+        "<image href=\"final.png\" x=\"0\" y=\"0\" width=\"{}\" height=\"{}\"/>",
+        width, height
+    );
+    out.push_str("<g stroke=\"#ef4444\" stroke-width=\"0.75\" fill=\"none\">\n");
+    for tile_x in 0..=width_in_tiles {
+        let x = (tile_x * TILE_SIZE).min(width);
+        let _ = writeln!(
+            out,
+            "<line x1=\"{}\" y1=\"0\" x2=\"{}\" y2=\"{}\"/>",
+            x, x, height
+        );
+    }
+    for tile_y in 0..=height_in_tiles {
+        let y = (tile_y * TILE_SIZE).min(height);
+        let _ = writeln!(
+            out,
+            "<line x1=\"0\" y1=\"{}\" x2=\"{}\" y2=\"{}\"/>",
+            y, width, y
+        );
+    }
+    out.push_str("</g>\n");
+    out.push_str("<g font-family=\"monospace\" font-size=\"6\" font-weight=\"700\" fill=\"#ef4444\" stroke=\"#ffffff\" stroke-width=\"0.75\" paint-order=\"stroke\">\n");
+    for tile_y in 0..height_in_tiles {
+        for tile_x in 0..width_in_tiles {
+            let tile_ix = tile_y * width_in_tiles + tile_x;
+            let x = tile_x * TILE_SIZE + 2;
+            let y = tile_y * TILE_SIZE + 7;
+            let _ = writeln!(
+                out,
+                "<text x=\"{}\" y=\"{}\"><title>tile {},{}</title>{}</text>",
+                x, y, tile_x, tile_y, tile_ix
+            );
+        }
+    }
+    out.push_str("</g>\n</svg>\n");
+    out
+}
+
 fn tiles_svg(scene: &Scene, tiles: &[DebugTileSummary]) -> String {
     let tile_px = 28;
     let width = scene.width_in_tiles() * tile_px + 1;
@@ -763,10 +821,19 @@ mod tests {
         assert_eq!(capture.output_dir, output_dir);
         assert_eq!(capture.tiles.len(), 4);
         assert!(capture.texts.iter().any(|text| text.name == "capture.json"));
+        assert!(capture.texts.iter().any(|text| text.name == "capture.svg"));
         assert!(capture.texts.iter().any(|text| text.name == "tiles.json"));
         assert!(capture.texts.iter().any(|text| text.name == "tiles.svg"));
         assert!(capture.texts.iter().any(|text| text.name == "tile.json"));
         assert!(capture.texts.iter().any(|text| text.name == "tile.svg"));
+        let capture_svg = capture
+            .texts
+            .iter()
+            .find(|text| text.name == "capture.svg")
+            .expect("capture svg");
+        assert!(capture_svg.contents.contains("href=\"final.png\""));
+        assert!(capture_svg.contents.contains("stroke=\"#ef4444\""));
+        assert!(capture_svg.contents.contains(">0</text>"));
         let tiles_svg = capture
             .texts
             .iter()
@@ -774,6 +841,7 @@ mod tests {
             .expect("overview svg");
         assert!(tiles_svg.contents.contains("scan:"));
         assert!(!tiles_svg.contents.contains(">path:"));
+        assert!(capture.images.iter().any(|image| image.name == "final.png"));
         assert!(
             capture
                 .images

@@ -39,11 +39,7 @@ pub fn save_image(image: &Image, path: impl AsRef<Path>) -> Result<(), Box<dyn s
     encoder.set_depth(png::BitDepth::Eight);
 
     let mut png_writer = encoder.write_header()?;
-    let mut rgba = Vec::with_capacity(image.pixels.len() * 4);
-    for pixel in &image.pixels {
-        rgba.extend_from_slice(&pixel.to_le_bytes());
-    }
-    png_writer.write_image_data(&rgba)?;
+    png_writer.write_image_data(&image.rgba8_bytes())?;
 
     Ok(())
 }

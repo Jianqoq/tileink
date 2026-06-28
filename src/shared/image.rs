@@ -20,6 +20,14 @@ impl Image {
     pub fn rgba8_at(&self, x: u32, y: u32) -> [u8; 4] {
         unpack_rgba8(self.pixels[(y * self.width + x) as usize])
     }
+
+    pub fn rgba8_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(self.pixels.len() * 4);
+        for pixel in &self.pixels {
+            bytes.extend_from_slice(&pixel.to_le_bytes());
+        }
+        bytes
+    }
 }
 
 pub(crate) fn rgba8_pack(rgba: [u8; 4]) -> u32 {
@@ -47,7 +55,7 @@ pub(crate) fn unpack_rgba8(px: u32) -> [u8; 4] {
 
 #[cfg(test)]
 mod tests {
-    use super::{Image, premul_color_to_rgba8_pack};
+    use super::{Image, premul_color_to_rgba8_pack, rgba8_pack};
     use peniko::Color;
 
     #[test]
@@ -57,5 +65,13 @@ mod tests {
 
         assert_eq!(image.pixels[0], premul_color_to_rgba8_pack(clear));
         assert_eq!(image.rgba8_at(0, 0), [128, 0, 0, 128]);
+    }
+
+    #[test]
+    fn rgba8_bytes_returns_pixels_in_rgba_order() {
+        let mut image = Image::new(2, 1, Color::TRANSPARENT);
+        image.pixels = vec![rgba8_pack([1, 2, 3, 4]), rgba8_pack([5, 6, 7, 8])];
+
+        assert_eq!(image.rgba8_bytes(), vec![1, 2, 3, 4, 5, 6, 7, 8]);
     }
 }
