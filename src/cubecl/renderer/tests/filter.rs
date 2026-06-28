@@ -958,6 +958,8 @@ fn filter_wgpu_drop_shadow_samples_pattern_brush_when_enabled() {
             pixels: vec![rgba8_pack([255, 0, 0, 255]), rgba8_pack([0, 0, 255, 255])],
         }),
         transform: IDENTITY_TRANSFORM,
+        extend: Extend::Repeat,
+        sampling: PatternSampling::Nearest,
         opacity: 255,
     });
     let mut scene = Scene::new(16, 48);

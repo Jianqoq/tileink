@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use peniko::{
-    Color, Compose, Gradient, Mix,
+    Color, Compose, Extend, Gradient, Mix,
     kurbo::{Affine, BezPath, Circle, Rect, Shape, Stroke},
 };
 
@@ -14,7 +14,7 @@ use crate::cubecl::types::{
 };
 use crate::render::Render;
 use crate::shared::bounds::Bounds;
-use crate::shared::brush::{Brush, IDENTITY_TRANSFORM, PatternBrush};
+use crate::shared::brush::{Brush, IDENTITY_TRANSFORM, PatternBrush, PatternSampling};
 use crate::shared::execution::ExecOp;
 use crate::shared::image::{Image, rgba8_pack, unpack_rgba8};
 use crate::shared::layer::{

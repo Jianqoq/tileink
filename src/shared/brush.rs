@@ -68,7 +68,17 @@ pub struct FourCornerGradient {
 pub struct PatternBrush {
     pub(crate) image: Arc<Image>,
     pub(crate) transform: [f32; 6],
+    pub(crate) extend: Extend,
+    pub(crate) sampling: PatternSampling,
     pub(crate) opacity: u8,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PatternSampling {
+    /// Point sampling for SVG patterns and explicit image-rendering speed/crisp hints.
+    Nearest,
+    /// Center-aligned bilinear sampling for default SVG raster image rendering.
+    Bilinear,
 }
 
 impl Brush {
@@ -315,10 +325,35 @@ pub(crate) fn estimate_sweep_ramp_size(
 impl PatternBrush {
     fn sample(&self, x: f32, y: f32) -> u32 {
         let [x, y] = transform_point(self.transform, x, y);
-        let local_x = repeat_coord(x.floor() as i32, self.image.width);
-        let local_y = repeat_coord(y.floor() as i32, self.image.height);
-        let pixel = self.image.pixels[(local_y * self.image.width + local_x) as usize];
+        let pixel = match self.sampling {
+            PatternSampling::Nearest => {
+                let local_x = extend_coord(x.floor() as i32, self.image.width, self.extend);
+                let local_y = extend_coord(y.floor() as i32, self.image.height, self.extend);
+                self.image.pixels[(local_y * self.image.width + local_x) as usize]
+            }
+            PatternSampling::Bilinear => {
+                let x = x - 0.5;
+                let y = y - 0.5;
+                let x0 = x.floor();
+                let y0 = y.floor();
+                let tx = x - x0;
+                let ty = y - y0;
+                let x0 = x0 as i32;
+                let y0 = y0 as i32;
+                let tl = self.pixel_at(x0, y0);
+                let tr = self.pixel_at(x0 + 1, y0);
+                let bl = self.pixel_at(x0, y0 + 1);
+                let br = self.pixel_at(x0 + 1, y0 + 1);
+                lerp_premul_u8(lerp_premul_u8(tl, tr, tx), lerp_premul_u8(bl, br, tx), ty)
+            }
+        };
         scale_premul_u8(pixel, self.opacity)
+    }
+
+    fn pixel_at(&self, x: i32, y: i32) -> u32 {
+        let local_x = extend_coord(x, self.image.width, self.extend);
+        let local_y = extend_coord(y, self.image.height, self.extend);
+        self.image.pixels[(local_y * self.image.width + local_x) as usize]
     }
 }
 
@@ -410,14 +445,7 @@ fn sample_ramp(ramp: &[u32], t: f32, extend: Extend) -> u32 {
         return ramp[left_ix];
     }
 
-    let left = unpack_premul_rgba8(ramp[left_ix]);
-    let right = unpack_premul_rgba8(ramp[right_ix]);
-    pack_premul_rgba8([
-        left[0] + (right[0] - left[0]) * frac,
-        left[1] + (right[1] - left[1]) * frac,
-        left[2] + (right[2] - left[2]) * frac,
-        left[3] + (right[3] - left[3]) * frac,
-    ])
+    lerp_premul_u8(ramp[left_ix], ramp[right_ix], frac)
 }
 
 #[inline]
@@ -437,8 +465,36 @@ fn premul_color_to_u32(color: PremulColor<Srgb>) -> u32 {
     premul_f32_to_u32(color.components)
 }
 
-fn repeat_coord(value: i32, size: u32) -> u32 {
-    value.rem_euclid(size as i32) as u32
+fn extend_coord(value: i32, size: u32, extend: Extend) -> u32 {
+    match extend {
+        Extend::Pad => value.clamp(0, size as i32 - 1) as u32,
+        Extend::Repeat => value.rem_euclid(size as i32) as u32,
+        Extend::Reflect => reflect_coord(value, size),
+    }
+}
+
+fn reflect_coord(value: i32, size: u32) -> u32 {
+    if size <= 1 {
+        return 0;
+    }
+    let period = size as i32 * 2;
+    let value = value.rem_euclid(period);
+    if value < size as i32 {
+        value as u32
+    } else {
+        (period - value - 1) as u32
+    }
+}
+
+fn lerp_premul_u8(a: u32, b: u32, t: f32) -> u32 {
+    let a = unpack_premul_rgba8(a);
+    let b = unpack_premul_rgba8(b);
+    pack_premul_rgba8([
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t,
+        a[3] + (b[3] - a[3]) * t,
+    ])
 }
 
 fn quantize_ramp_size(span: f32, stop_count: usize) -> usize {
@@ -456,6 +512,7 @@ fn quantize_ramp_size(span: f32, stop_count: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::shared::image::{rgba8_pack, unpack_rgba8};
     use peniko::{
         ColorStop, ColorStops, Gradient, GradientKind, LinearGradientPosition,
         color::{AlphaColor, ColorSpaceTag, HueDirection},
@@ -474,6 +531,43 @@ mod tests {
             interpolation_alpha_space: InterpolationAlphaSpace::Premultiplied,
             hue_direction: HueDirection::Shorter,
         }
+    }
+
+    fn two_pixel_pattern(extend: Extend, sampling: PatternSampling) -> PatternBrush {
+        PatternBrush {
+            image: Arc::new(Image {
+                width: 2,
+                height: 1,
+                pixels: vec![rgba8_pack([255, 0, 0, 255]), rgba8_pack([0, 0, 255, 255])],
+            }),
+            transform: IDENTITY_TRANSFORM,
+            extend,
+            sampling,
+            opacity: 255,
+        }
+    }
+
+    #[test]
+    fn pattern_bilinear_interpolates_premultiplied_pixels() {
+        let pattern = two_pixel_pattern(Extend::Pad, PatternSampling::Bilinear);
+
+        assert_eq!(unpack_rgba8(pattern.sample(1.0, 0.5)), [128, 0, 128, 255]);
+    }
+
+    #[test]
+    fn pattern_bilinear_respects_pad_extend() {
+        let pattern = two_pixel_pattern(Extend::Pad, PatternSampling::Bilinear);
+
+        assert_eq!(unpack_rgba8(pattern.sample(0.25, 0.5)), [255, 0, 0, 255]);
+        assert_eq!(unpack_rgba8(pattern.sample(1.75, 0.5)), [0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn pattern_nearest_keeps_repeat_extend() {
+        let pattern = two_pixel_pattern(Extend::Repeat, PatternSampling::Nearest);
+
+        assert_eq!(unpack_rgba8(pattern.sample(-0.1, 0.5)), [0, 0, 255, 255]);
+        assert_eq!(unpack_rgba8(pattern.sample(2.1, 0.5)), [255, 0, 0, 255]);
     }
 
     #[test]

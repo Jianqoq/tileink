@@ -182,6 +182,37 @@ fn fine_wgpu_samples_linear_gradient_brush_when_enabled() {
 }
 
 #[test]
+fn fine_wgpu_samples_bilinear_pattern_brush_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let brush = Brush::Pattern(PatternBrush {
+        image: Arc::new(Image {
+            width: 2,
+            height: 1,
+            pixels: vec![rgba8_pack([255, 0, 0, 255]), rgba8_pack([0, 0, 255, 255])],
+        }),
+        transform: [0.5, 0.0, 0.0, 0.5, 0.0, 0.0],
+        extend: Extend::Pad,
+        sampling: PatternSampling::Bilinear,
+        opacity: 255,
+    });
+    let mut scene = Scene::new(4, 2);
+    scene.push_rect(Rect::new(0.0, 0.0, 4.0, 2.0), brush, FillRule::NonZero);
+
+    let mut renderer = WgpuRenderer::new_default_device(4, 2, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let edge = unpack_rgba8(renderer.target.read(renderer.client())[6]);
+
+    assert_eq!(edge[3], 255);
+    assert!(
+        edge[0] > 0 && edge[2] > 0,
+        "expected smoothed pattern edge, got {edge:?}"
+    );
+}
+
+#[test]
 fn fine_wgpu_samples_radial_sweep_and_four_corner_brushes_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;

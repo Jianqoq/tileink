@@ -3,6 +3,7 @@ use ::cubecl::prelude::*;
 use crate::cubecl::brush::{
     GPU_BRUSH_FOUR_CORNER, GPU_BRUSH_LINEAR, GPU_BRUSH_PARAM_STRIDE, GPU_BRUSH_PATTERN,
     GPU_BRUSH_RADIAL, GPU_BRUSH_SWEEP, GPU_BRUSH_U32_STRIDE, GPU_EXTEND_REFLECT, GPU_EXTEND_REPEAT,
+    GPU_PATTERN_BILINEAR,
 };
 #[cube]
 pub(crate) fn sample_brush(
@@ -81,6 +82,8 @@ pub(crate) fn sample_brush(
             brush_data[data_base + 5],
             brush_data[data_base + 6],
             brush_data[data_base + 7],
+            extend,
+            brush_data[data_base + 8],
             brush_params,
             brush_payloads,
         );
@@ -198,6 +201,8 @@ fn sample_pattern(
     width: u32,
     height: u32,
     opacity: u32,
+    extend: u32,
+    sampling: u32,
     brush_params: &Array<f32>,
     brush_payloads: &Array<u32>,
 ) -> u32 {
@@ -205,15 +210,88 @@ fn sample_pattern(
     if payload_len > 0 && width > 0 && height > 0 {
         let tx = brush_params[base] * x + brush_params[base + 2] * y + brush_params[base + 4];
         let ty = brush_params[base + 1] * x + brush_params[base + 3] * y + brush_params[base + 5];
-        let local_x = repeat_coord_i32(tx.floor() as i32, width);
-        let local_y = repeat_coord_i32(ty.floor() as i32, height);
-        let local_ix = (local_y * width + local_x).min(payload_len - 1);
-        color = scale_premul_u8(
-            brush_payloads[(payload_offset + local_ix) as usize],
-            opacity,
-        );
+        if sampling == GPU_PATTERN_BILINEAR {
+            let sx = tx - 0.5;
+            let sy = ty - 0.5;
+            let x0f = sx.floor();
+            let y0f = sy.floor();
+            let fx = sx - x0f;
+            let fy = sy - y0f;
+            let x0 = x0f as i32;
+            let y0 = y0f as i32;
+            let tl = pattern_pixel(
+                payload_offset,
+                payload_len,
+                width,
+                height,
+                extend,
+                x0,
+                y0,
+                brush_payloads,
+            );
+            let tr = pattern_pixel(
+                payload_offset,
+                payload_len,
+                width,
+                height,
+                extend,
+                x0 + 1,
+                y0,
+                brush_payloads,
+            );
+            let bl = pattern_pixel(
+                payload_offset,
+                payload_len,
+                width,
+                height,
+                extend,
+                x0,
+                y0 + 1,
+                brush_payloads,
+            );
+            let br = pattern_pixel(
+                payload_offset,
+                payload_len,
+                width,
+                height,
+                extend,
+                x0 + 1,
+                y0 + 1,
+                brush_payloads,
+            );
+            color = lerp_premul_u8(lerp_premul_u8(tl, tr, fx), lerp_premul_u8(bl, br, fx), fy);
+        } else {
+            color = pattern_pixel(
+                payload_offset,
+                payload_len,
+                width,
+                height,
+                extend,
+                tx.floor() as i32,
+                ty.floor() as i32,
+                brush_payloads,
+            );
+        }
+        color = scale_premul_u8(color, opacity);
     }
     color
+}
+
+#[cube]
+fn pattern_pixel(
+    payload_offset: u32,
+    payload_len: u32,
+    width: u32,
+    height: u32,
+    extend: u32,
+    x: i32,
+    y: i32,
+    brush_payloads: &Array<u32>,
+) -> u32 {
+    let local_x = extend_coord_i32(x, width, extend);
+    let local_y = extend_coord_i32(y, height, extend);
+    let local_ix = (local_y * width + local_x).min(payload_len - 1);
+    brush_payloads[(payload_offset + local_ix) as usize]
 }
 
 #[cube]
@@ -271,6 +349,44 @@ fn repeat_coord_i32(value: i32, size: u32) -> u32 {
         out += size_i;
     }
     out as u32
+}
+
+#[cube]
+fn extend_coord_i32(value: i32, size: u32, extend: u32) -> u32 {
+    let max = size as i32 - 1;
+    let mut clamped = value;
+    if clamped < 0 {
+        clamped = 0;
+    }
+    if clamped > max {
+        clamped = max;
+    }
+    let mut out = clamped as u32;
+    if extend == GPU_EXTEND_REPEAT {
+        out = repeat_coord_i32(value, size);
+    } else if extend == GPU_EXTEND_REFLECT {
+        out = reflect_coord_i32(value, size);
+    }
+    out
+}
+
+#[cube]
+fn reflect_coord_i32(value: i32, size: u32) -> u32 {
+    let mut out = 0u32;
+    if size > 1 {
+        let size_i = size as i32;
+        let period = size_i * 2;
+        let mut coord = value % period;
+        if coord < 0 {
+            coord += period;
+        }
+        if coord < size_i {
+            out = coord as u32;
+        } else {
+            out = (period - coord - 1) as u32;
+        }
+    }
+    out
 }
 
 #[cube]

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error, fmt, sync::Arc};
+use std::{collections::HashMap, error::Error, fmt, io::Cursor, sync::Arc};
 
 use peniko::{
     Color, ColorStop, Compose, Extend, Gradient, Mix,
@@ -10,7 +10,8 @@ use crate::{
     Brush, CpuRenderer, FillRule, Filter, Radius, Region, Scene,
     shared::{
         bounds::Bounds,
-        brush::PatternBrush,
+        brush::{PatternBrush, PatternSampling},
+        image::{Image as RasterImage, rgba8_pack},
         layer::filter::{
             COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE, ComponentTransferTable,
             CompositeOperator, ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, FilterInput,
@@ -18,6 +19,7 @@ use crate::{
             SpecularLighting,
         },
         layer::mask::{Mask as LayerMask, MaskKind},
+        pixel::mul_div255,
     },
 };
 
@@ -28,6 +30,7 @@ pub struct SvgOptions {
 }
 
 const MAX_PATTERN_DEPTH: u8 = 16;
+const MAX_IMAGE_DEPTH: u8 = 16;
 
 impl Default for SvgOptions {
     fn default() -> Self {
@@ -88,6 +91,7 @@ struct SvgBuilder {
     options: SvgOptions,
     base_transform: Affine,
     pattern_depth: u8,
+    image_depth: u8,
 }
 
 impl SvgBuilder {
@@ -96,6 +100,7 @@ impl SvgBuilder {
             base_transform: options.transform,
             options,
             pattern_depth: 0,
+            image_depth: 0,
         }
     }
 
@@ -200,8 +205,94 @@ impl SvgBuilder {
             Node::Group(group) => self.push_group(scene, group),
             Node::Path(path) => self.push_path(scene, path),
             Node::Text(text) => self.push_group(scene, text.flattened()),
-            Node::Image(_) => Err(SvgError::unsupported("image")),
+            Node::Image(image) => self.push_image(scene, image),
         }
+    }
+
+    fn push_image(&self, scene: &mut Scene, image: &usvg::Image) -> Result<(), SvgError> {
+        if !image.is_visible() {
+            return Ok(());
+        }
+
+        let transform = self.base_transform * transform_to_affine(image.abs_transform());
+        let size = image.size();
+        let world_to_local = inverse_affine(transform, "image transform")?;
+        let raster = match image.kind() {
+            usvg::ImageKind::PNG(data) => decode_png_image(data)?,
+            usvg::ImageKind::JPEG(data) => {
+                decode_encoded_image(data, ::image::ImageFormat::Jpeg, "jpeg image")?
+            }
+            usvg::ImageKind::GIF(data) => {
+                decode_encoded_image(data, ::image::ImageFormat::Gif, "gif image")?
+            }
+            usvg::ImageKind::WEBP(data) => {
+                decode_encoded_image(data, ::image::ImageFormat::WebP, "webp image")?
+            }
+            usvg::ImageKind::SVG(tree) => {
+                let (width, height) = svg_image_raster_size(transform, size);
+                self.svg_image_to_raster(tree, width, height)?
+            }
+        };
+
+        let brush = Brush::Pattern(PatternBrush {
+            transform: affine_to_array(
+                Affine::scale_non_uniform(
+                    f64::from(raster.width) / f64::from(size.width()),
+                    f64::from(raster.height) / f64::from(size.height()),
+                ) * world_to_local,
+            ),
+            extend: Extend::Pad,
+            sampling: image_sampling(image.rendering_mode()),
+            opacity: 255,
+            image: Arc::new(raster),
+        });
+        scene.push_path(
+            rect_path(Rect::new(
+                0.0,
+                0.0,
+                size.width() as f64,
+                size.height() as f64,
+            )),
+            brush,
+            transform,
+            FillRule::NonZero,
+            self.options.tolerance,
+        );
+        Ok(())
+    }
+
+    fn svg_image_to_raster(
+        &self,
+        tree: &usvg::Tree,
+        width: u32,
+        height: u32,
+    ) -> Result<RasterImage, SvgError> {
+        if self.image_depth >= MAX_IMAGE_DEPTH {
+            return Err(SvgError::unsupported("recursive svg image"));
+        }
+
+        let size = tree.size();
+        // SVG images are vector content. Rasterizing them at their intrinsic size and then
+        // scaling the bitmap loses edge coverage when the image is enlarged by the outer SVG.
+        let transform = Affine::scale_non_uniform(
+            f64::from(width) / f64::from(size.width()),
+            f64::from(height) / f64::from(size.height()),
+        );
+        let mut scene = Scene::new(width, height);
+        SvgBuilder {
+            options: SvgOptions {
+                tolerance: self.options.tolerance,
+                transform,
+            },
+            base_transform: transform,
+            pattern_depth: self.pattern_depth,
+            image_depth: self.image_depth + 1,
+        }
+        .push_tree(&mut scene, tree)?;
+
+        let mut renderer = CpuRenderer::new(width, height, Color::TRANSPARENT);
+        renderer.render(&scene);
+        Ok(renderer.image().clone())
     }
 
     fn push_path(&self, scene: &mut Scene, path: &usvg::Path) -> Result<(), SvgError> {
@@ -433,6 +524,7 @@ impl SvgBuilder {
             options: self.options,
             base_transform: tile_transform,
             pattern_depth: self.pattern_depth + 1,
+            image_depth: self.image_depth,
         }
         .push_group(&mut tile_scene, pattern.root())?;
 
@@ -445,6 +537,8 @@ impl SvgBuilder {
         Ok(Brush::Pattern(PatternBrush {
             image: Arc::new(renderer.image().clone()),
             transform: affine_to_array(tile_transform * transform_to_affine(pattern_inverse)),
+            extend: Extend::Repeat,
+            sampling: PatternSampling::Nearest,
             opacity: opacity_to_u8(opacity),
         }))
     }
@@ -1031,6 +1125,93 @@ fn matrix_matches(values: &[f32], expected: &[f32; 20]) -> bool {
             .all(|(value, expected)| nearly_eq(*value, *expected))
 }
 
+fn decode_png_image(data: &[u8]) -> Result<RasterImage, SvgError> {
+    let mut decoder = png::Decoder::new(Cursor::new(data));
+    decoder.set_transformations(png::Transformations::normalize_to_color8());
+    let mut reader = decoder
+        .read_info()
+        .map_err(|err| SvgError::unsupported(format!("invalid PNG image: {err}")))?;
+    let mut bytes = vec![0; reader.output_buffer_size()];
+    let info = reader
+        .next_frame(&mut bytes)
+        .map_err(|err| SvgError::unsupported(format!("invalid PNG image: {err}")))?;
+    let bytes = &bytes[..info.buffer_size()];
+
+    let pixels = match info.color_type {
+        png::ColorType::Rgba => bytes
+            .chunks_exact(4)
+            .map(|px| premul_rgba8_pack(px[0], px[1], px[2], px[3]))
+            .collect(),
+        png::ColorType::Rgb => bytes
+            .chunks_exact(3)
+            .map(|px| premul_rgba8_pack(px[0], px[1], px[2], 255))
+            .collect(),
+        png::ColorType::Grayscale => bytes
+            .iter()
+            .map(|&gray| premul_rgba8_pack(gray, gray, gray, 255))
+            .collect(),
+        png::ColorType::GrayscaleAlpha => bytes
+            .chunks_exact(2)
+            .map(|px| premul_rgba8_pack(px[0], px[0], px[0], px[1]))
+            .collect(),
+        png::ColorType::Indexed => {
+            return Err(SvgError::unsupported("indexed PNG image"));
+        }
+    };
+
+    Ok(RasterImage {
+        width: info.width,
+        height: info.height,
+        pixels,
+    })
+}
+
+fn premul_rgba8_pack(r: u8, g: u8, b: u8, a: u8) -> u32 {
+    rgba8_pack([mul_div255(r, a), mul_div255(g, a), mul_div255(b, a), a])
+}
+
+fn decode_encoded_image(
+    data: &[u8],
+    format: ::image::ImageFormat,
+    feature: &str,
+) -> Result<RasterImage, SvgError> {
+    let image = ::image::load_from_memory_with_format(data, format)
+        .map_err(|err| SvgError::unsupported(format!("invalid {feature}: {err}")))?
+        .into_rgba8();
+    let (width, height) = image.dimensions();
+    let pixels = image
+        .pixels()
+        .map(|px| premul_rgba8_pack(px.0[0], px.0[1], px.0[2], px.0[3]))
+        .collect();
+    Ok(RasterImage {
+        width,
+        height,
+        pixels,
+    })
+}
+
+fn svg_image_raster_size(transform: Affine, size: usvg::Size) -> (u32, u32) {
+    let [xx, yx, xy, yy, _, _] = transform.as_coeffs();
+    let scale_x = xx.hypot(yx).max(f64::EPSILON);
+    let scale_y = xy.hypot(yy).max(f64::EPSILON);
+    (
+        (f64::from(size.width()) * scale_x).ceil().max(1.0) as u32,
+        (f64::from(size.height()) * scale_y).ceil().max(1.0) as u32,
+    )
+}
+
+fn image_sampling(rendering: usvg::ImageRendering) -> PatternSampling {
+    // SVG raster images are smooth by default; explicit speed/crisp/pixelated hints keep hard edges.
+    match rendering {
+        usvg::ImageRendering::OptimizeSpeed
+        | usvg::ImageRendering::CrispEdges
+        | usvg::ImageRendering::Pixelated => PatternSampling::Nearest,
+        usvg::ImageRendering::OptimizeQuality
+        | usvg::ImageRendering::Smooth
+        | usvg::ImageRendering::HighQuality => PatternSampling::Bilinear,
+    }
+}
+
 fn equal_std_dev(x: f32, y: f32, feature: &str) -> Result<f32, SvgError> {
     if nearly_eq(x, y) {
         Ok(x)
@@ -1172,7 +1353,7 @@ fn affine_to_array(transform: Affine) -> [f32; 6] {
     transform.as_coeffs().map(|value| value as f32)
 }
 
-fn inverse_affine_to_array(transform: Affine, feature: &str) -> Result<[f32; 6], SvgError> {
+fn inverse_affine(transform: Affine, feature: &str) -> Result<Affine, SvgError> {
     let determinant = transform.determinant();
     if !determinant.is_finite() || determinant.abs() <= f64::EPSILON {
         return Err(SvgError::unsupported(format!("non-invertible {feature}")));
@@ -1181,7 +1362,11 @@ fn inverse_affine_to_array(transform: Affine, feature: &str) -> Result<[f32; 6],
     if !inverse.as_coeffs().iter().all(|value| value.is_finite()) {
         return Err(SvgError::unsupported(format!("non-invertible {feature}")));
     }
-    Ok(affine_to_array(inverse))
+    Ok(inverse)
+}
+
+fn inverse_affine_to_array(transform: Affine, feature: &str) -> Result<[f32; 6], SvgError> {
+    inverse_affine(transform, feature).map(affine_to_array)
 }
 
 fn transform_region(region: Region, transform: Affine) -> Region {
@@ -1310,6 +1495,18 @@ mod tests {
                 .all(|(actual, expected)| actual.abs_diff(expected) <= tolerance),
             "actual {actual:?}, expected {expected:?}"
         );
+    }
+
+    const OPAQUE_RED_BLUE_PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAADklEQVR4nGP4z8AAQv8BD/kD/YURmXYAAAAASUVORK5CYII=";
+    const TRANSLUCENT_ORANGE_PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP438DQAAAGAQIADTyPKQAAAABJRU5ErkJggg==";
+
+    fn encoded_test_image(format: ::image::ImageFormat) -> Vec<u8> {
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        let image = ::image::RgbImage::from_raw(2, 1, vec![255, 0, 0, 0, 0, 255]).unwrap();
+        ::image::DynamicImage::ImageRgb8(image)
+            .write_to(&mut bytes, format)
+            .unwrap();
+        bytes.into_inner()
     }
 
     #[test]
@@ -1480,6 +1677,107 @@ mod tests {
             px[1].abs_diff(54) <= 1 && px[3].abs_diff(54) <= 1,
             "got {px:?}"
         );
+    }
+
+    #[test]
+    fn push_svg_renders_png_image_with_transform() {
+        let renderer = render(
+            &format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" width="4" height="2">
+                    <image href="data:image/png;base64,{OPAQUE_RED_BLUE_PNG}" width="4" height="2" preserveAspectRatio="none" image-rendering="optimizeSpeed"/>
+                </svg>"##
+            ),
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(1, 1), [255, 0, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(2, 1), [0, 0, 255, 255]);
+        assert_eq!(renderer.image().rgba8_at(3, 1), [0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn push_svg_smooths_raster_image_by_default() {
+        let renderer = render(
+            &format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" width="4" height="2">
+                    <image href="data:image/png;base64,{OPAQUE_RED_BLUE_PNG}" width="4" height="2" preserveAspectRatio="none"/>
+                </svg>"##
+            ),
+            Color::TRANSPARENT,
+        );
+
+        let edge = renderer.image().rgba8_at(2, 1);
+        assert_eq!(edge[3], 255);
+        assert!(
+            edge[0] > 0 && edge[2] > 0,
+            "expected smoothed red/blue edge, got {edge:?}"
+        );
+    }
+
+    #[test]
+    fn push_svg_uses_nearest_sampling_for_image_rendering_hint() {
+        let renderer = render(
+            &format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" width="4" height="2">
+                    <image href="data:image/png;base64,{OPAQUE_RED_BLUE_PNG}" width="4" height="2" preserveAspectRatio="none" style="image-rendering:pixelated"/>
+                </svg>"##
+            ),
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(1, 1), [255, 0, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(2, 1), [0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn push_svg_decodes_png_image_into_premultiplied_pixels() {
+        let renderer = render(
+            &format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1">
+                    <image href="data:image/png;base64,{TRANSLUCENT_ORANGE_PNG}" width="1" height="1"/>
+                </svg>"##
+            ),
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(0, 0), [128, 64, 0, 128]);
+    }
+
+    #[test]
+    fn push_svg_renders_embedded_svg_image() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="4" height="2">
+                <image href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='1'%3E%3Crect width='1' height='1' fill='%23ff0000'/%3E%3Crect x='1' width='1' height='1' fill='%230000ff'/%3E%3C/svg%3E"
+                       width="4" height="2" preserveAspectRatio="none"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(1, 1), [255, 0, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(3, 1), [0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn svg_image_raster_size_includes_outer_transform_scale() {
+        let size = usvg::Size::from_wh(100.0, 100.0).unwrap();
+
+        assert_eq!(svg_image_raster_size(Affine::scale(2.4), size), (240, 240));
+    }
+
+    #[test]
+    fn push_svg_decodes_common_raster_image_formats() {
+        for format in [
+            ::image::ImageFormat::Gif,
+            ::image::ImageFormat::Jpeg,
+            ::image::ImageFormat::WebP,
+        ] {
+            let raster = decode_encoded_image(&encoded_test_image(format), format, "test image")
+                .unwrap_or_else(|err| panic!("{format:?}: {err}"));
+
+            assert_eq!((raster.width, raster.height), (2, 1));
+            assert_eq!((raster.pixels[0] >> 24) as u8, 255);
+            assert_eq!((raster.pixels[1] >> 24) as u8, 255);
+        }
     }
 
     #[test]
