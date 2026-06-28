@@ -664,17 +664,21 @@ fn svg_filter_layer(
     let filter_bounds = transform_rect_to_bounds(filter_rect, region_transform)
         .intersect(Bounds::canvas(width, height));
     let mut primitives = Vec::new();
+    let mut source_regions = Vec::new();
     let mut results = HashMap::new();
     for primitive in filter.primitives() {
         let index = primitives.len();
-        primitives.push(svg_filter_primitive(
+        let (filter_primitive, source_region) = svg_filter_primitive(
             builder,
             primitive,
             &results,
+            &source_regions,
             region_transform,
             content_transform,
             filter_bounds,
-        )?);
+        )?;
+        primitives.push(filter_primitive);
+        source_regions.push(source_region);
         results.insert(primitive.result().to_string(), index);
     }
 
@@ -698,10 +702,11 @@ fn svg_filter_primitive(
     builder: &SvgBuilder,
     primitive: &usvg::filter::Primitive,
     results: &HashMap<String, usize>,
+    source_regions: &[Bounds],
     region_transform: Affine,
     content_transform: Affine,
     filter_bounds: Bounds,
-) -> Result<FilterPrimitive, SvgError> {
+) -> Result<(FilterPrimitive, Bounds), SvgError> {
     let primitive_rect = nonzero_rect_to_kurbo(primitive.rect());
     let region = transform_rect_to_bounds(primitive_rect, region_transform);
     let (input, input2, kind) = match primitive.kind() {
@@ -834,15 +839,43 @@ fn svg_filter_primitive(
             None,
             FilterPrimitiveKind::Filter(Box::new(specular_lighting_to_filter(lighting))),
         ),
-        usvg::filter::Kind::Tile(_) => return Err(SvgError::unsupported("feTile")),
+        usvg::filter::Kind::Tile(tile) => {
+            let input = svg_filter_input(tile.input(), results, "feTile")?;
+            (
+                input,
+                None,
+                FilterPrimitiveKind::Tile {
+                    source_region: svg_filter_input_source_region(
+                        input,
+                        source_regions,
+                        filter_bounds,
+                    ),
+                },
+            )
+        }
         usvg::filter::Kind::Turbulence(_) => return Err(SvgError::unsupported("feTurbulence")),
     };
-    Ok(FilterPrimitive {
+    let source_region = svg_filter_output_source_region(
+        primitive,
         input,
         input2,
+        &kind,
         region,
-        kind,
-    })
+        SvgFilterSourceContext {
+            source_regions,
+            filter_bounds,
+            region_transform,
+        },
+    );
+    Ok((
+        FilterPrimitive {
+            input,
+            input2,
+            region,
+            kind,
+        },
+        source_region,
+    ))
 }
 
 fn filter_to_primitive_kind(filter: Option<Filter>) -> FilterPrimitiveKind {
@@ -850,6 +883,134 @@ fn filter_to_primitive_kind(filter: Option<Filter>) -> FilterPrimitiveKind {
         Some(filter) => FilterPrimitiveKind::Filter(Box::new(filter)),
         None => FilterPrimitiveKind::Identity,
     }
+}
+
+#[derive(Clone, Copy)]
+struct SvgFilterSourceContext<'a> {
+    source_regions: &'a [Bounds],
+    filter_bounds: Bounds,
+    region_transform: Affine,
+}
+
+fn svg_filter_output_source_region(
+    primitive: &usvg::filter::Primitive,
+    input: FilterInput,
+    input2: Option<FilterInput>,
+    kind: &FilterPrimitiveKind,
+    region: Bounds,
+    ctx: SvgFilterSourceContext<'_>,
+) -> Bounds {
+    let region = region.intersect(ctx.filter_bounds);
+    match primitive.kind() {
+        usvg::filter::Kind::Flood(_) | usvg::filter::Kind::Image(_) => region,
+        usvg::filter::Kind::Offset(_) => {
+            svg_filter_input_source_region(input, ctx.source_regions, ctx.filter_bounds)
+                .intersect(region)
+        }
+        usvg::filter::Kind::GaussianBlur(blur) => {
+            let (radius_x, radius_y) = transform_filter_radii(
+                ctx.region_transform,
+                blur.std_dev_x().get(),
+                blur.std_dev_y().get(),
+            );
+            svg_filter_input_source_region(input, ctx.source_regions, ctx.filter_bounds)
+                .outset(blur_outset(radius_x.max(radius_y)))
+                .intersect(region)
+        }
+        usvg::filter::Kind::Morphology(morphology) => {
+            let input_region =
+                svg_filter_input_source_region(input, ctx.source_regions, ctx.filter_bounds);
+            let radius = match morphology.operator() {
+                usvg::filter::MorphologyOperator::Dilate => {
+                    transform_filter_radius_x(ctx.region_transform, morphology.radius_x().get())
+                        .max(transform_filter_radius_y(
+                            ctx.region_transform,
+                            morphology.radius_y().get(),
+                        ))
+                        .max(0.0)
+                        .ceil() as i32
+                }
+                usvg::filter::MorphologyOperator::Erode => 0,
+            };
+            input_region.outset(radius).intersect(region)
+        }
+        usvg::filter::Kind::Blend(_) => {
+            svg_filter_input_source_region(input, ctx.source_regions, ctx.filter_bounds)
+                .union(svg_filter_input_source_region(
+                    input2.expect("feBlend lowering produced no second input"),
+                    ctx.source_regions,
+                    ctx.filter_bounds,
+                ))
+                .intersect(region)
+        }
+        usvg::filter::Kind::Composite(composite) => {
+            let input_region =
+                svg_filter_input_source_region(input, ctx.source_regions, ctx.filter_bounds);
+            let input2_region = svg_filter_input_source_region(
+                input2.expect("feComposite lowering produced no second input"),
+                ctx.source_regions,
+                ctx.filter_bounds,
+            );
+            match composite.operator() {
+                usvg::filter::CompositeOperator::In => input_region.intersect(input2_region),
+                usvg::filter::CompositeOperator::Out => input_region,
+                _ => input_region.union(input2_region),
+            }
+            .intersect(region)
+        }
+        usvg::filter::Kind::Merge(_) => match kind {
+            FilterPrimitiveKind::Merge { inputs } => inputs
+                .iter()
+                .map(|input| {
+                    svg_filter_input_source_region(*input, ctx.source_regions, ctx.filter_bounds)
+                })
+                .fold(Bounds::new(0, 0, 0, 0), BoundsExt::union)
+                .intersect(region),
+            _ => region,
+        },
+        usvg::filter::Kind::Tile(_) => match kind {
+            FilterPrimitiveKind::Tile { source_region } if !source_region.is_empty() => region,
+            _ => Bounds::new(0, 0, 0, 0),
+        },
+        _ => svg_filter_input_source_region(input, ctx.source_regions, ctx.filter_bounds)
+            .intersect(region),
+    }
+}
+
+trait BoundsExt {
+    fn union(self, other: Bounds) -> Bounds;
+}
+
+impl BoundsExt for Bounds {
+    fn union(self, other: Bounds) -> Bounds {
+        if self.is_empty() {
+            return other;
+        }
+        if other.is_empty() {
+            return self;
+        }
+        Bounds::new(
+            self.x0.min(other.x0),
+            self.y0.min(other.y0),
+            self.x1.max(other.x1),
+            self.y1.max(other.y1),
+        )
+    }
+}
+
+fn svg_filter_input_source_region(
+    input: FilterInput,
+    source_regions: &[Bounds],
+    filter_bounds: Bounds,
+) -> Bounds {
+    match input {
+        FilterInput::SourceGraphic | FilterInput::SourceAlpha => filter_bounds,
+        FilterInput::Primitive(index) => source_regions[index],
+    }
+}
+
+fn blur_outset(radius: f32) -> i32 {
+    (radius.max(0.0) * 3.0).ceil() as i32
 }
 
 fn svg_filter_input(
@@ -2334,6 +2495,47 @@ mod tests {
 
         assert_eq!(renderer.image().rgba8_at(5, 5), [0, 0, 0, 0]);
         assert_eq!(renderer.image().rgba8_at(11, 7), [255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn push_svg_renders_fe_tile_from_unshifted_offset_source_region() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="12">
+                <defs>
+                    <filter id="tile" x="0" y="0" width="24" height="12" filterUnits="userSpaceOnUse">
+                        <feFlood flood-color="#00ff00" x="1" y="1" width="4" height="4"/>
+                        <feOffset dx="2" dy="1"/>
+                        <feTile x="0" y="0" width="12" height="8"/>
+                    </filter>
+                </defs>
+                <rect width="12" height="8" fill="#ff0000" filter="url(#tile)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(1, 1), [0, 0, 0, 0]);
+        assert_eq!(renderer.image().rgba8_at(3, 2), [0, 255, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(7, 6), [0, 255, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(13, 7), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn push_svg_fe_tile_with_empty_source_region_is_transparent() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="12" height="8">
+                <defs>
+                    <filter id="tile" x="2" y="2" width="8" height="4" filterUnits="userSpaceOnUse">
+                        <feFlood flood-color="#ff0000" x="20" y="20" width="2" height="2"/>
+                        <feOffset dx="1" dy="1"/>
+                        <feTile/>
+                    </filter>
+                </defs>
+                <rect x="2" y="2" width="8" height="4" fill="#00ff00" filter="url(#tile)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert!(renderer.image().pixels.iter().all(|px| *px == 0));
     }
 
     #[test]

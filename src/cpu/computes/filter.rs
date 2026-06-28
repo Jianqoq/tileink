@@ -10,7 +10,7 @@ use crate::shared::{
             COMPONENT_TRANSFER_TABLE_SIZE, ComponentTransferTable, CompositeOperator,
             ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, Filter, FilterInput,
             FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator,
-            SpecularLighting,
+            SpecularLighting, filter_offset_to_pixel_delta,
         },
         region::Region,
     },
@@ -52,7 +52,11 @@ pub(crate) fn apply(image: &mut Image, filter: &Filter, bounds: Bounds) {
                 *px = apply_color_filter_pixel(*px, filter, *amount);
             }
         }
-        Filter::Offset { dx, dy } => apply_offset(image, dx.round() as i32, dy.round() as i32),
+        Filter::Offset { dx, dy } => apply_offset(
+            image,
+            filter_offset_to_pixel_delta(*dx),
+            filter_offset_to_pixel_delta(*dy),
+        ),
         Filter::Morphology {
             radius_x,
             radius_y,
@@ -124,6 +128,10 @@ fn apply_graph_primitive(
             let input2 =
                 resolve_required_graph_input(primitive, source_graphic, source_alpha, outputs);
             composite_images(input, input2, bounds, region, *operator)
+        }
+        FilterPrimitiveKind::Tile { source_region } => {
+            let input = resolve_graph_input(primitive.input, source_graphic, source_alpha, outputs);
+            tile_image(input, bounds, region, *source_region)
         }
         FilterPrimitiveKind::Merge { inputs } => merge_images(
             inputs,
@@ -235,6 +243,30 @@ fn composite_images(
     for_each_region_pixel(bounds, region, input1.width, |ix| {
         image.pixels[ix] = composite_pixel(input1.pixels[ix], input2.pixels[ix], operator);
     });
+    image
+}
+
+fn tile_image(source: &Image, bounds: Bounds, region: Bounds, source_region: Bounds) -> Image {
+    let mut image = Image::new(source.width, source.height, peniko::Color::TRANSPARENT);
+    let source_region = source_region.intersect(bounds);
+    if region.is_empty() || source_region.is_empty() {
+        return image;
+    }
+
+    let tile_width = source_region.width() as i32;
+    let tile_height = source_region.height() as i32;
+    for y in region.y0..region.y1 {
+        let local_y = (y - bounds.y0) as u32;
+        let sy = source_region.y0 + (y - source_region.y0).rem_euclid(tile_height);
+        let source_y = (sy - bounds.y0) as u32;
+        for x in region.x0..region.x1 {
+            let local_x = (x - bounds.x0) as u32;
+            let sx = source_region.x0 + (x - source_region.x0).rem_euclid(tile_width);
+            let source_x = (sx - bounds.x0) as u32;
+            image.pixels[(local_y * source.width + local_x) as usize] =
+                source.pixels[(source_y * source.width + source_x) as usize];
+        }
+    }
     image
 }
 
@@ -1181,6 +1213,21 @@ mod tests {
     }
 
     #[test]
+    fn offset_half_pixel_keeps_center_edge_ownership() {
+        let mut image = Image::new(4, 1, Color::TRANSPARENT);
+        image.pixels[1] = rgba8_pack([255, 0, 0, 255]);
+
+        apply(
+            &mut image,
+            &Filter::Offset { dx: 1.5, dy: 0.0 },
+            Bounds::canvas(4, 1),
+        );
+
+        assert_eq!(image.rgba8_at(2, 0), [255, 0, 0, 255]);
+        assert_eq!(image.rgba8_at(3, 0), [0, 0, 0, 0]);
+    }
+
+    #[test]
     fn flood_replaces_filter_buffer_with_sampled_brush() {
         let mut image = Image::new(3, 2, Color::from_rgb8(255, 0, 0));
 
@@ -1445,6 +1492,59 @@ mod tests {
         assert_eq!(image.rgba8_at(1, 0), [0, 0, 255, 255]);
         assert_eq!(image.rgba8_at(2, 0), [0, 0, 0, 0]);
         assert_eq!(image.rgba8_at(0, 1), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn graph_tile_repeats_source_region_and_clips_output_region() {
+        let mut image = Image::new(6, 4, Color::TRANSPARENT);
+        image.pixels[(6 + 1) as usize] = rgba8_pack([255, 0, 0, 255]);
+        image.pixels[(6 + 2) as usize] = rgba8_pack([0, 255, 0, 255]);
+        image.pixels[(2 * 6 + 1) as usize] = rgba8_pack([0, 0, 255, 255]);
+        image.pixels[(2 * 6 + 2) as usize] = rgba8_pack([255, 255, 0, 255]);
+
+        apply(
+            &mut image,
+            &Filter::Graph {
+                primitives: vec![FilterPrimitive {
+                    input: FilterInput::SourceGraphic,
+                    input2: None,
+                    region: Bounds::new(0, 0, 6, 4),
+                    kind: FilterPrimitiveKind::Tile {
+                        source_region: Bounds::new(1, 1, 3, 3),
+                    },
+                }],
+                fixed_region: true,
+            },
+            Bounds::canvas(6, 4),
+        );
+
+        assert_eq!(image.rgba8_at(0, 0), [255, 255, 0, 255]);
+        assert_eq!(image.rgba8_at(1, 0), [0, 0, 255, 255]);
+        assert_eq!(image.rgba8_at(4, 1), [0, 255, 0, 255]);
+        assert_eq!(image.rgba8_at(5, 3), [255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn graph_tile_empty_source_region_outputs_transparent() {
+        let mut image = Image::new(3, 2, Color::from_rgb8(255, 0, 0));
+
+        apply(
+            &mut image,
+            &Filter::Graph {
+                primitives: vec![FilterPrimitive {
+                    input: FilterInput::SourceGraphic,
+                    input2: None,
+                    region: Bounds::canvas(3, 2),
+                    kind: FilterPrimitiveKind::Tile {
+                        source_region: Bounds::new(4, 4, 5, 5),
+                    },
+                }],
+                fixed_region: true,
+            },
+            Bounds::canvas(3, 2),
+        );
+
+        assert!(image.pixels.iter().all(|px| *px == 0));
     }
 
     #[test]

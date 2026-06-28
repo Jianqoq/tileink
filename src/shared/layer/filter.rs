@@ -95,6 +95,13 @@ pub enum FilterPrimitiveKind {
     Composite {
         operator: CompositeOperator,
     },
+    /// Repeats an input result over this primitive's region, matching SVG `feTile`.
+    ///
+    /// `source_region` is the tile cell in absolute pixel coordinates after
+    /// lowering prior primitive effects such as `feOffset`.
+    Tile {
+        source_region: Bounds,
+    },
     Merge {
         inputs: Vec<FilterInput>,
     },
@@ -114,6 +121,12 @@ pub enum CompositeOperator {
 pub enum MorphologyOperator {
     Erode,
     Dilate,
+}
+
+pub(crate) fn filter_offset_to_pixel_delta(delta: f32) -> i32 {
+    // Filter buffers are sampled at pixel centers. A positive N+0.5 offset moves
+    // the source edge onto the next pixel center, so that pixel still owns the edge.
+    (delta - 0.5).ceil() as i32
 }
 
 #[derive(Clone, Debug)]

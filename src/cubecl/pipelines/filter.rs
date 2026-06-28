@@ -92,6 +92,38 @@ impl FilterPipeline {
         );
     }
 
+    pub(crate) fn tile_region<R: Runtime>(
+        client: &ComputeClient<R>,
+        source: &CubeBuffer<u32>,
+        target: &mut CubeBuffer<u32>,
+        size: (u32, u32),
+        bounds: Bounds,
+        source_bounds: Bounds,
+    ) {
+        let Some(region) = FilterRegion::new(size, bounds) else {
+            return;
+        };
+        let Some(source_region) = FilterRegion::new(size, source_bounds) else {
+            return;
+        };
+        filter_tile_region::launch::<R>(
+            client,
+            cube_count(region.pixel_count),
+            CubeDim::new_1d(FILTER_WORKGROUP_SIZE),
+            region.pixel_count,
+            region.width,
+            region.x0,
+            region.y0,
+            size.0,
+            source_region.x0,
+            source_region.y0,
+            source_region.width,
+            source_region.height,
+            unsafe { source.arg() },
+            unsafe { target.arg() },
+        );
+    }
+
     pub(crate) fn source_alpha_region<R: Runtime>(
         client: &ComputeClient<R>,
         source: &CubeBuffer<u32>,
@@ -956,6 +988,31 @@ fn filter_copy_region(
     let y = region_y0 + region_ix / region_width;
     let ix = (y * image_width + x) as usize;
     target[ix] = source[ix];
+}
+
+#[cube(launch)]
+fn filter_tile_region(
+    pixel_count: u32,
+    region_width: u32,
+    region_x0: u32,
+    region_y0: u32,
+    image_width: u32,
+    source_x0: u32,
+    source_y0: u32,
+    source_width: u32,
+    source_height: u32,
+    source: &Array<u32>,
+    target: &mut Array<u32>,
+) {
+    let region_ix = ABSOLUTE_POS as u32;
+    if region_ix >= pixel_count {
+        terminate!();
+    }
+    let x = region_x0 + region_ix % region_width;
+    let y = region_y0 + region_ix / region_width;
+    let sx = source_x0 + (x + source_width - source_x0 % source_width) % source_width;
+    let sy = source_y0 + (y + source_height - source_y0 % source_height) % source_height;
+    target[(y * image_width + x) as usize] = source[(sy * image_width + sx) as usize];
 }
 
 #[cube(launch)]

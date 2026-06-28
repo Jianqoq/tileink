@@ -551,6 +551,59 @@ fn filter_wgpu_merges_filter_graph_inputs_when_enabled() {
 }
 
 #[test]
+fn filter_wgpu_tiles_filter_graph_input_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(6, 4);
+    scene.push_filter_layer(
+        Filter::Graph {
+            primitives: vec![FilterPrimitive {
+                input: FilterInput::SourceGraphic,
+                input2: None,
+                region: Bounds::new(0, 0, 6, 4),
+                kind: FilterPrimitiveKind::Tile {
+                    source_region: Bounds::new(1, 1, 3, 3),
+                },
+            }],
+            fixed_region: true,
+        },
+        Region::rect(Rect::new(0.0, 0.0, 6.0, 4.0), Radius::all(0.0)),
+    );
+    scene.push_rect(
+        Rect::new(1.0, 1.0, 2.0, 2.0),
+        Color::from_rgb8(255, 0, 0),
+        FillRule::NonZero,
+    );
+    scene.push_rect(
+        Rect::new(2.0, 1.0, 3.0, 2.0),
+        Color::from_rgb8(0, 255, 0),
+        FillRule::NonZero,
+    );
+    scene.push_rect(
+        Rect::new(1.0, 2.0, 2.0, 3.0),
+        Color::from_rgb8(0, 0, 255),
+        FillRule::NonZero,
+    );
+    scene.push_rect(
+        Rect::new(2.0, 2.0, 3.0, 3.0),
+        Color::from_rgb8(255, 255, 0),
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(6, 4, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+
+    assert_eq!(target[pixel_ix(0, 0, 6)], rgba8_pack([255, 255, 0, 255]));
+    assert_eq!(target[pixel_ix(1, 0, 6)], rgba8_pack([0, 0, 255, 255]));
+    assert_eq!(target[pixel_ix(4, 1, 6)], rgba8_pack([0, 255, 0, 255]));
+    assert_eq!(target[pixel_ix(5, 3, 6)], rgba8_pack([255, 0, 0, 255]));
+}
+
+#[test]
 fn filter_wgpu_morphology_dilates_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;

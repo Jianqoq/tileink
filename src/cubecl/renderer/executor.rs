@@ -11,7 +11,7 @@ use crate::{
             filter::{
                 ComponentTransferTable, CompositeOperator, ConvolveEdgeMode, ConvolveMatrix,
                 DiffuseLighting, Filter, FilterInput, FilterPrimitive, FilterPrimitiveKind,
-                LightSource, MorphologyOperator, SpecularLighting,
+                LightSource, MorphologyOperator, SpecularLighting, filter_offset_to_pixel_delta,
             },
             mask::MaskKind,
             region::Region,
@@ -406,8 +406,8 @@ impl<R: Runtime> Renderer<R> {
                 next_filter_brush_index(&mut filter_cursors.brush),
             ),
             Filter::Offset { dx, dy } => {
-                let dx = dx.round() as i32;
-                let dy = dy.round() as i32;
+                let dx = filter_offset_to_pixel_delta(*dx);
+                let dy = filter_offset_to_pixel_delta(*dy);
                 if dx != 0 || dy != 0 {
                     let temp = self.acquire_scratch();
                     self.clear_buffer(temp, 0);
@@ -588,6 +588,19 @@ impl<R: Runtime> Renderer<R> {
                 let output = self.acquire_scratch();
                 self.clear_buffer(output, 0);
                 self.composite_filter_inputs(input, input2, output, region, *operator);
+                output
+            }
+            FilterPrimitiveKind::Tile { source_region } => {
+                let input = self.resolve_filter_graph_input(
+                    source_graphic,
+                    primitive.input,
+                    outputs,
+                    source_alpha,
+                    bounds,
+                );
+                let output = self.acquire_scratch();
+                self.clear_buffer(output, 0);
+                self.tile_filter_input(input, output, region, *source_region);
                 output
             }
             FilterPrimitiveKind::Merge { inputs } => {
@@ -1120,6 +1133,40 @@ impl<R: Runtime> Renderer<R> {
                 let (target, source) =
                     scratch_target_and_source(&mut self.scratch, target_ix, source_ix);
                 FilterPipeline::source_over_region(&self.client, source, target, self.size, bounds);
+            }
+        }
+    }
+
+    fn tile_filter_input(
+        &mut self,
+        input: CubeRenderTarget,
+        target: CubeRenderTarget,
+        bounds: Bounds,
+        source_bounds: Bounds,
+    ) {
+        let CubeRenderTarget::Scratch(target_ix) = target else {
+            panic!("tile graph primitives must write to scratch output");
+        };
+        match input {
+            CubeRenderTarget::Main => FilterPipeline::tile_region(
+                &self.client,
+                &self.target,
+                &mut self.scratch[target_ix],
+                self.size,
+                bounds,
+                source_bounds,
+            ),
+            CubeRenderTarget::Scratch(source_ix) => {
+                let (target, source) =
+                    scratch_target_and_source(&mut self.scratch, target_ix, source_ix);
+                FilterPipeline::tile_region(
+                    &self.client,
+                    source,
+                    target,
+                    self.size,
+                    bounds,
+                    source_bounds,
+                );
             }
         }
     }
