@@ -40,6 +40,11 @@ pub enum Filter {
         dx: f32,
         dy: f32,
     },
+    Morphology {
+        radius_x: f32,
+        radius_y: f32,
+        operator: MorphologyOperator,
+    },
     Opacity(f32),
     Saturate(f32),
     Sepia(f32),
@@ -72,6 +77,7 @@ pub enum FilterPrimitiveKind {
     Filter(Box<Filter>),
     Blend { mode: Mix },
     Composite { operator: CompositeOperator },
+    Merge { inputs: Vec<FilterInput> },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -82,4 +88,10 @@ pub enum CompositeOperator {
     Atop,
     Xor,
     Arithmetic { k1: f32, k2: f32, k3: f32, k4: f32 },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MorphologyOperator {
+    Erode,
+    Dilate,
 }

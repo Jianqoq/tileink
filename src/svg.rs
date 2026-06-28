@@ -13,6 +13,7 @@ use crate::{
         layer::filter::{
             COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE, ComponentTransferTable,
             CompositeOperator, FilterInput, FilterPrimitive, FilterPrimitiveKind,
+            MorphologyOperator,
         },
     },
 };
@@ -412,8 +413,22 @@ fn svg_filter_primitive(
             })),
         ),
         usvg::filter::Kind::Image(_) => return Err(SvgError::unsupported("feImage")),
-        usvg::filter::Kind::Merge(_) => return Err(SvgError::unsupported("feMerge")),
-        usvg::filter::Kind::Morphology(_) => return Err(SvgError::unsupported("feMorphology")),
+        usvg::filter::Kind::Merge(merge) => (
+            FilterInput::SourceGraphic,
+            None,
+            FilterPrimitiveKind::Merge {
+                inputs: svg_filter_inputs(merge.inputs(), results, "feMerge")?,
+            },
+        ),
+        usvg::filter::Kind::Morphology(morphology) => (
+            svg_filter_input(morphology.input(), results, "feMorphology")?,
+            None,
+            FilterPrimitiveKind::Filter(Box::new(Filter::Morphology {
+                radius_x: morphology.radius_x().get(),
+                radius_y: morphology.radius_y().get(),
+                operator: morphology_operator(morphology.operator()),
+            })),
+        ),
         usvg::filter::Kind::Offset(offset) => (
             svg_filter_input(offset.input(), results, "feOffset")?,
             None,
@@ -459,6 +474,17 @@ fn svg_filter_input(
     }
 }
 
+fn svg_filter_inputs(
+    inputs: &[usvg::filter::Input],
+    results: &HashMap<String, usize>,
+    primitive: &str,
+) -> Result<Vec<FilterInput>, SvgError> {
+    inputs
+        .iter()
+        .map(|input| svg_filter_input(input, results, primitive))
+        .collect()
+}
+
 fn composite_operator(operator: usvg::filter::CompositeOperator) -> CompositeOperator {
     match operator {
         usvg::filter::CompositeOperator::Over => CompositeOperator::Over,
@@ -469,6 +495,13 @@ fn composite_operator(operator: usvg::filter::CompositeOperator) -> CompositeOpe
         usvg::filter::CompositeOperator::Arithmetic { k1, k2, k3, k4 } => {
             CompositeOperator::Arithmetic { k1, k2, k3, k4 }
         }
+    }
+}
+
+fn morphology_operator(operator: usvg::filter::MorphologyOperator) -> MorphologyOperator {
+    match operator {
+        usvg::filter::MorphologyOperator::Erode => MorphologyOperator::Erode,
+        usvg::filter::MorphologyOperator::Dilate => MorphologyOperator::Dilate,
     }
 }
 
@@ -1235,6 +1268,66 @@ mod tests {
     }
 
     #[test]
+    fn push_svg_renders_fe_merge_in_graph_order() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8">
+                <defs>
+                    <filter id="merge" x="0" y="0" width="8" height="8" filterUnits="userSpaceOnUse">
+                        <feFlood flood-color="#0000ff" result="blue"/>
+                        <feMerge x="0" y="0" width="4" height="8">
+                            <feMergeNode in="blue"/>
+                            <feMergeNode in="SourceGraphic"/>
+                        </feMerge>
+                    </filter>
+                </defs>
+                <rect width="8" height="8" fill="#ff0000" filter="url(#merge)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(2, 4), [255, 0, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(6, 4), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn push_svg_renders_fe_morphology_dilate() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8">
+                <defs>
+                    <filter id="dilate" x="0" y="0" width="8" height="8" filterUnits="userSpaceOnUse">
+                        <feMorphology operator="dilate" radius="1"/>
+                    </filter>
+                </defs>
+                <rect x="3" y="3" width="2" height="2" fill="#ff0000" filter="url(#dilate)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(2, 3), [255, 0, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(5, 4), [255, 0, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(0, 0), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn push_svg_renders_fe_morphology_erode() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8">
+                <defs>
+                    <filter id="erode" x="0" y="0" width="8" height="8" filterUnits="userSpaceOnUse">
+                        <feMorphology operator="erode" radius="1"/>
+                    </filter>
+                </defs>
+                <rect x="2" y="2" width="4" height="4" fill="#ff0000" filter="url(#erode)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(3, 3), [255, 0, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(2, 3), [0, 0, 0, 0]);
+        assert_eq!(renderer.image().rgba8_at(6, 3), [0, 0, 0, 0]);
+    }
+
+    #[test]
     fn push_svg_preserves_css_filter_function_order() {
         let renderer = render(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8">
@@ -1255,11 +1348,11 @@ mod tests {
         let tree = parse(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
                 <defs>
-                    <filter id="merge">
-                        <feMerge><feMergeNode in="SourceGraphic"/></feMerge>
+                    <filter id="turbulence">
+                        <feTurbulence baseFrequency="0.05"/>
                     </filter>
                 </defs>
-                <g filter="url(#merge)"><rect width="16" height="16" fill="#ff0000"/></g>
+                <g filter="url(#turbulence)"><rect width="16" height="16" fill="#ff0000"/></g>
             </svg>"##,
         );
         let mut scene = Scene::new(16, 16);
@@ -1270,7 +1363,7 @@ mod tests {
         );
 
         let err = scene.push_svg(&tree).unwrap_err();
-        assert_eq!(err.feature(), "feMerge");
+        assert_eq!(err.feature(), "feTurbulence");
 
         let mut renderer = CpuRenderer::new(16, 16, Color::TRANSPARENT);
         renderer.render(&scene);

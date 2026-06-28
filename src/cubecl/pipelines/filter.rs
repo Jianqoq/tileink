@@ -114,6 +114,30 @@ impl FilterPipeline {
         );
     }
 
+    pub(crate) fn source_over_region<R: Runtime>(
+        client: &ComputeClient<R>,
+        source: &CubeBuffer<u32>,
+        target: &mut CubeBuffer<u32>,
+        size: (u32, u32),
+        bounds: Bounds,
+    ) {
+        let Some(region) = FilterRegion::new(size, bounds) else {
+            return;
+        };
+        filter_source_over_region::launch::<R>(
+            client,
+            cube_count(region.pixel_count),
+            CubeDim::new_1d(FILTER_WORKGROUP_SIZE),
+            region.pixel_count,
+            region.width,
+            region.x0,
+            region.y0,
+            size.0,
+            unsafe { source.arg() },
+            unsafe { target.arg() },
+        );
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn blend_region<R: Runtime>(
         client: &ComputeClient<R>,
@@ -173,6 +197,38 @@ impl FilterPipeline {
             arithmetic[3],
             unsafe { input1.arg() },
             unsafe { input2.arg() },
+            unsafe { target.arg() },
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn morphology_axis_region<R: Runtime>(
+        client: &ComputeClient<R>,
+        source: &CubeBuffer<u32>,
+        target: &mut CubeBuffer<u32>,
+        size: (u32, u32),
+        bounds: Bounds,
+        radius: u32,
+        operator: u32,
+        axis: u32,
+    ) {
+        let Some(region) = FilterRegion::new(size, bounds) else {
+            return;
+        };
+        filter_morphology_axis_region::launch::<R>(
+            client,
+            cube_count(region.pixel_count),
+            CubeDim::new_1d(FILTER_WORKGROUP_SIZE),
+            region.pixel_count,
+            region.width,
+            region.x0,
+            region.y0,
+            size.0,
+            size.1,
+            radius,
+            operator,
+            axis,
+            unsafe { source.arg() },
             unsafe { target.arg() },
         );
     }
@@ -663,6 +719,26 @@ fn filter_source_alpha_region(
 }
 
 #[cube(launch)]
+fn filter_source_over_region(
+    pixel_count: u32,
+    region_width: u32,
+    region_x0: u32,
+    region_y0: u32,
+    image_width: u32,
+    source: &Array<u32>,
+    target: &mut Array<u32>,
+) {
+    let region_ix = ABSOLUTE_POS as u32;
+    if region_ix >= pixel_count {
+        terminate!();
+    }
+    let x = region_x0 + region_ix % region_width;
+    let y = region_y0 + region_ix / region_width;
+    let ix = (y * image_width + x) as usize;
+    target[ix] = blend_premul_u8(target[ix], source[ix], 3 << 8);
+}
+
+#[cube(launch)]
 fn filter_blend_region(
     pixel_count: u32,
     region_width: u32,
@@ -709,6 +785,99 @@ fn filter_composite_inputs_region(
     let y = region_y0 + region_ix / region_width;
     let ix = (y * image_width + x) as usize;
     target[ix] = composite_inputs_pixel(input1[ix], input2[ix], operator, k1, k2, k3, k4);
+}
+
+#[cube(launch)]
+fn filter_morphology_axis_region(
+    pixel_count: u32,
+    region_width: u32,
+    region_x0: u32,
+    region_y0: u32,
+    image_width: u32,
+    image_height: u32,
+    radius: u32,
+    operator: u32,
+    axis: u32,
+    source: &Array<u32>,
+    target: &mut Array<u32>,
+) {
+    let region_ix = ABSOLUTE_POS as u32;
+    if region_ix >= pixel_count {
+        terminate!();
+    }
+    let x = region_x0 + region_ix % region_width;
+    let y = region_y0 + region_ix / region_width;
+    let ix = (y * image_width + x) as usize;
+    let pos = if axis == 0 { x } else { y };
+    let line_len = if axis == 0 { image_width } else { image_height };
+
+    if operator == 0 && (pos < radius || pos + radius >= line_len) {
+        target[ix] = 0;
+        terminate!();
+    }
+
+    let mut out_r = 1.0;
+    let mut out_g = 1.0;
+    let mut out_b = 1.0;
+    let mut out_a = 1.0;
+    if operator == 1 {
+        out_r = 0.0;
+        out_g = 0.0;
+        out_b = 0.0;
+        out_a = 0.0;
+    }
+
+    let mut start = 0;
+    if pos > radius {
+        start = pos - radius;
+    }
+    let mut end = line_len - 1;
+    if pos + radius < end {
+        end = pos + radius;
+    }
+
+    let mut sample_pos = start;
+    while sample_pos <= end {
+        let sx = if axis == 0 { sample_pos } else { x };
+        let sy = if axis == 0 { y } else { sample_pos };
+        let sample = source[(sy * image_width + sx) as usize];
+        let alpha = (sample >> 24) & 255;
+        let sample_r = straight_channel(sample & 255, alpha);
+        let sample_g = straight_channel((sample >> 8) & 255, alpha);
+        let sample_b = straight_channel((sample >> 16) & 255, alpha);
+        let sample_a = alpha as f32 / 255.0;
+
+        if operator == 1 {
+            if sample_r > out_r {
+                out_r = sample_r;
+            }
+            if sample_g > out_g {
+                out_g = sample_g;
+            }
+            if sample_b > out_b {
+                out_b = sample_b;
+            }
+            if sample_a > out_a {
+                out_a = sample_a;
+            }
+        } else {
+            if sample_r < out_r {
+                out_r = sample_r;
+            }
+            if sample_g < out_g {
+                out_g = sample_g;
+            }
+            if sample_b < out_b {
+                out_b = sample_b;
+            }
+            if sample_a < out_a {
+                out_a = sample_a;
+            }
+        }
+        sample_pos += 1;
+    }
+
+    target[ix] = pack_premul_rgba8(out_r * out_a, out_g * out_a, out_b * out_a, out_a);
 }
 
 #[cube(launch)]
