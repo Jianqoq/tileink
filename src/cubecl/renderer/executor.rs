@@ -10,7 +10,7 @@ use crate::{
             Layer,
             filter::{
                 ComponentTransferTable, CompositeOperator, Filter, FilterInput, FilterPrimitive,
-                FilterPrimitiveKind,
+                FilterPrimitiveKind, MorphologyOperator,
             },
             region::Region,
         },
@@ -245,6 +245,24 @@ impl<R: Runtime> Renderer<R> {
                     self.release_scratch(temp);
                 }
             }
+            Filter::Morphology {
+                radius_x,
+                radius_y,
+                operator,
+            } => {
+                if (*radius_x).max(*radius_y).max(0.0) > 0.0 {
+                    let temp = self.acquire_scratch();
+                    let output = self.acquire_scratch();
+                    self.clear_buffer(temp, 0);
+                    self.clear_buffer(output, 0);
+                    self.morphology_buffer(
+                        target, temp, output, bounds, *radius_x, *radius_y, *operator,
+                    );
+                    self.copy_region(output, target, bounds);
+                    self.release_scratch(output);
+                    self.release_scratch(temp);
+                }
+            }
             Filter::DropShadow {
                 offset_x,
                 offset_y,
@@ -358,6 +376,21 @@ impl<R: Runtime> Renderer<R> {
                 let output = self.acquire_scratch();
                 self.clear_buffer(output, 0);
                 self.composite_filter_inputs(input, input2, output, region, *operator);
+                output
+            }
+            FilterPrimitiveKind::Merge { inputs } => {
+                let output = self.acquire_scratch();
+                self.clear_buffer(output, 0);
+                for input in inputs {
+                    let input = self.resolve_filter_graph_input(
+                        source_graphic,
+                        *input,
+                        outputs,
+                        source_alpha,
+                        bounds,
+                    );
+                    self.source_over_filter_input(input, output, region);
+                }
                 output
             }
         }
@@ -666,6 +699,31 @@ impl<R: Runtime> Renderer<R> {
         );
     }
 
+    fn source_over_filter_input(
+        &mut self,
+        input: CubeRenderTarget,
+        target: CubeRenderTarget,
+        bounds: Bounds,
+    ) {
+        let CubeRenderTarget::Scratch(target_ix) = target else {
+            panic!("merge graph primitives must write to scratch output");
+        };
+        match input {
+            CubeRenderTarget::Main => FilterPipeline::source_over_region(
+                &self.client,
+                &self.target,
+                &mut self.scratch[target_ix],
+                self.size,
+                bounds,
+            ),
+            CubeRenderTarget::Scratch(source_ix) => {
+                let (target, source) =
+                    scratch_target_and_source(&mut self.scratch, target_ix, source_ix);
+                FilterPipeline::source_over_region(&self.client, source, target, self.size, bounds);
+            }
+        }
+    }
+
     fn dual_input_filter(
         &mut self,
         input1: CubeRenderTarget,
@@ -751,6 +809,97 @@ impl<R: Runtime> Renderer<R> {
                     bounds,
                     dx,
                     dy,
+                )
+            }
+            (CubeRenderTarget::Main, CubeRenderTarget::Main) => unreachable!(),
+        }
+    }
+
+    fn morphology_buffer(
+        &mut self,
+        source: CubeRenderTarget,
+        temp: CubeRenderTarget,
+        target: CubeRenderTarget,
+        bounds: Bounds,
+        radius_x: f32,
+        radius_y: f32,
+        operator: MorphologyOperator,
+    ) {
+        let raw_radius_x = radius_x.max(0.0).ceil() as u32;
+        let raw_radius_y = radius_y.max(0.0).ceil() as u32;
+        if source == target
+            || source == temp
+            || temp == target
+            || (raw_radius_x == 0 && raw_radius_y == 0)
+        {
+            return;
+        }
+
+        if operator == MorphologyOperator::Erode
+            && (raw_radius_x.saturating_mul(2) >= self.size.0
+                || raw_radius_y.saturating_mul(2) >= self.size.1)
+        {
+            self.clear_buffer(target, 0);
+            return;
+        }
+
+        let radius_x = raw_radius_x.min(self.size.0.saturating_sub(1));
+        let radius_y = raw_radius_y.min(self.size.1.saturating_sub(1));
+        let operator = encode_morphology_operator(operator);
+        self.morphology_axis_buffer(source, temp, bounds, radius_x, operator, 0);
+        self.morphology_axis_buffer(temp, target, bounds, radius_y, operator, 1);
+    }
+
+    fn morphology_axis_buffer(
+        &mut self,
+        source: CubeRenderTarget,
+        target: CubeRenderTarget,
+        bounds: Bounds,
+        radius: u32,
+        operator: u32,
+        axis: u32,
+    ) {
+        if source == target {
+            return;
+        }
+
+        match (source, target) {
+            (CubeRenderTarget::Main, CubeRenderTarget::Scratch(target_ix)) => {
+                FilterPipeline::morphology_axis_region(
+                    &self.client,
+                    &self.target,
+                    &mut self.scratch[target_ix],
+                    self.size,
+                    bounds,
+                    radius,
+                    operator,
+                    axis,
+                )
+            }
+            (CubeRenderTarget::Scratch(source_ix), CubeRenderTarget::Main) => {
+                FilterPipeline::morphology_axis_region(
+                    &self.client,
+                    &self.scratch[source_ix],
+                    &mut self.target,
+                    self.size,
+                    bounds,
+                    radius,
+                    operator,
+                    axis,
+                )
+            }
+            (CubeRenderTarget::Scratch(source_ix), CubeRenderTarget::Scratch(target_ix)) => {
+                let (source, target) =
+                    scratch_source_target(&mut self.scratch, source_ix, target_ix);
+                FilterPipeline::morphology_axis_region(
+                    &self.client,
+                    source,
+                    target,
+                    self.size,
+                    bounds,
+                    radius,
+                    operator,
+                    axis,
                 )
             }
             (CubeRenderTarget::Main, CubeRenderTarget::Main) => unreachable!(),
@@ -1265,6 +1414,7 @@ fn filter_scratch_extra(filter: &Filter) -> usize {
         Filter::Graph { primitives, .. } => graph_scratch_extra(primitives),
         Filter::Blur(radius) => usize::from(radius.max(0.0) > 0.0),
         Filter::Offset { .. } => 1,
+        Filter::Morphology { .. } => 2,
         Filter::DropShadow { radius, .. } => 1 + usize::from(radius.max(0.0) > 0.0),
         _ => 0,
     }
@@ -1309,6 +1459,13 @@ fn encode_composite_operator(operator: CompositeOperator) -> u32 {
     }
 }
 
+fn encode_morphology_operator(operator: MorphologyOperator) -> u32 {
+    match operator {
+        MorphologyOperator::Erode => 0,
+        MorphologyOperator::Dilate => 1,
+    }
+}
+
 fn composite_arithmetic(operator: CompositeOperator) -> [f32; 4] {
     match operator {
         CompositeOperator::Arithmetic { k1, k2, k3, k4 } => [k1, k2, k3, k4],
@@ -1334,6 +1491,7 @@ fn encode_color_filter(filter: &Filter) -> (u32, f32) {
         Filter::Graph { .. } => panic!("filter graphs are handled by CubeCL graph execution"),
         Filter::Flood { .. } => panic!("flood is handled by the CubeCL brush fill pass"),
         Filter::Offset { .. } => panic!("offset is handled by a dedicated CubeCL pass"),
+        Filter::Morphology { .. } => panic!("morphology is handled by a dedicated CubeCL pass"),
         Filter::DropShadow { .. } => {
             panic!("drop-shadow is handled by the CubeCL shadow-mask passes")
         }
@@ -1363,6 +1521,14 @@ fn filter_outset(filter: &Filter) -> i32 {
         }
         Filter::Blur(radius) => blur_outset(*radius),
         Filter::Offset { dx, dy } => dx.abs().ceil().max(dy.abs().ceil()) as i32,
+        Filter::Morphology {
+            radius_x,
+            radius_y,
+            operator,
+        } => match operator {
+            MorphologyOperator::Erode => 0,
+            MorphologyOperator::Dilate => (*radius_x).max(*radius_y).max(0.0).ceil() as i32,
+        },
         Filter::DropShadow {
             radius,
             offset_x,

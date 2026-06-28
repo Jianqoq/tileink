@@ -20,7 +20,10 @@ pub use shared::{
     fill::FillRule,
     image::Image,
     layer::{
-        filter::{CompositeOperator, Filter, FilterInput, FilterPrimitive, FilterPrimitiveKind},
+        filter::{
+            CompositeOperator, Filter, FilterInput, FilterPrimitive, FilterPrimitiveKind,
+            MorphologyOperator,
+        },
         region::Region,
     },
     sdf::rect::{Radius, StrokeWidths},

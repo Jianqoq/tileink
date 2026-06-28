@@ -8,7 +8,7 @@ use crate::shared::{
         blend::{Blend, src_over_premul},
         filter::{
             COMPONENT_TRANSFER_TABLE_SIZE, ComponentTransferTable, CompositeOperator, Filter,
-            FilterInput, FilterPrimitive, FilterPrimitiveKind,
+            FilterInput, FilterPrimitive, FilterPrimitiveKind, MorphologyOperator,
         },
         region::Region,
     },
@@ -48,6 +48,11 @@ pub(crate) fn apply(image: &mut Image, filter: &Filter, bounds: Bounds) {
             }
         }
         Filter::Offset { dx, dy } => apply_offset(image, dx.round() as i32, dy.round() as i32),
+        Filter::Morphology {
+            radius_x,
+            radius_y,
+            operator,
+        } => apply_morphology(image, *radius_x, *radius_y, *operator),
         Filter::DropShadow {
             offset_x,
             offset_y,
@@ -103,6 +108,14 @@ fn apply_graph_primitive(
                 resolve_required_graph_input(primitive, source_graphic, source_alpha, outputs);
             composite_images(input, input2, bounds, region, *operator)
         }
+        FilterPrimitiveKind::Merge { inputs } => merge_images(
+            inputs,
+            source_graphic,
+            source_alpha,
+            outputs,
+            bounds,
+            region,
+        ),
     }
 }
 
@@ -190,6 +203,163 @@ fn composite_images(
         image.pixels[ix] = composite_pixel(input1.pixels[ix], input2.pixels[ix], operator);
     });
     image
+}
+
+fn merge_images(
+    inputs: &[FilterInput],
+    source_graphic: &Image,
+    source_alpha: &Image,
+    outputs: &[Image],
+    bounds: Bounds,
+    region: Bounds,
+) -> Image {
+    let mut image = Image::new(
+        source_graphic.width,
+        source_graphic.height,
+        peniko::Color::TRANSPARENT,
+    );
+    let blend = Blend::new(Mix::Normal, Compose::SrcOver);
+    for input in inputs {
+        let source = resolve_graph_input(*input, source_graphic, source_alpha, outputs);
+        for_each_region_pixel(bounds, region, source.width, |ix| {
+            image.pixels[ix] = blend.blend_pixel(source.pixels[ix], image.pixels[ix]);
+        });
+    }
+    image
+}
+
+fn apply_morphology(image: &mut Image, radius_x: f32, radius_y: f32, operator: MorphologyOperator) {
+    let radius_x = radius_x.max(0.0).ceil() as usize;
+    let radius_y = radius_y.max(0.0).ceil() as usize;
+    if radius_x == 0 && radius_y == 0 {
+        return;
+    }
+
+    let width = image.width as usize;
+    let height = image.height as usize;
+    if width == 0 || height == 0 {
+        return;
+    }
+
+    let source = image
+        .pixels
+        .iter()
+        .copied()
+        .map(straight_rgba8)
+        .collect::<Vec<_>>();
+    let mut temp = vec![[0.0; 4]; source.len()];
+    let mut out = vec![[0.0; 4]; source.len()];
+    morphology_axis(
+        &source,
+        &mut temp,
+        width,
+        height,
+        radius_x,
+        MorphologyAxis::X,
+        operator,
+    );
+    morphology_axis(
+        &temp,
+        &mut out,
+        width,
+        height,
+        radius_y,
+        MorphologyAxis::Y,
+        operator,
+    );
+    for (pixel, rgba) in image.pixels.iter_mut().zip(out) {
+        let alpha = rgba[3];
+        *pixel = pack_premul_rgba8([rgba[0] * alpha, rgba[1] * alpha, rgba[2] * alpha, alpha]);
+    }
+}
+
+#[derive(Clone, Copy)]
+enum MorphologyAxis {
+    X,
+    Y,
+}
+
+fn morphology_axis(
+    source: &[[f32; 4]],
+    target: &mut [[f32; 4]],
+    width: usize,
+    height: usize,
+    radius: usize,
+    axis: MorphologyAxis,
+    operator: MorphologyOperator,
+) {
+    let (line_count, line_len) = match axis {
+        MorphologyAxis::X => (height, width),
+        MorphologyAxis::Y => (width, height),
+    };
+    if line_len == 0 {
+        return;
+    }
+
+    let mut deques: [Vec<usize>; 4] = std::array::from_fn(|_| Vec::with_capacity(line_len));
+    let mut heads = [0usize; 4];
+    for line in 0..line_count {
+        for channel in 0..4 {
+            deques[channel].clear();
+            heads[channel] = 0;
+        }
+        let mut pushed_end = 0usize;
+        for pos in 0..line_len {
+            let end = pos.saturating_add(radius).min(line_len - 1);
+            while pushed_end <= end {
+                let sample = source[morphology_axis_index(line, pushed_end, width, axis)];
+                for channel in 0..4 {
+                    while deques[channel].len() > heads[channel] {
+                        let back = *deques[channel].last().unwrap();
+                        let back_value =
+                            source[morphology_axis_index(line, back, width, axis)][channel];
+                        if !morphology_replaces(sample[channel], back_value, operator) {
+                            break;
+                        }
+                        deques[channel].pop();
+                    }
+                    deques[channel].push(pushed_end);
+                }
+                pushed_end += 1;
+            }
+
+            let out_ix = morphology_axis_index(line, pos, width, axis);
+            if operator == MorphologyOperator::Erode
+                && (pos < radius || pos.saturating_add(radius) >= line_len)
+            {
+                target[out_ix] = [0.0; 4];
+                continue;
+            }
+
+            let start = pos.saturating_sub(radius);
+            let mut out = [0.0; 4];
+            for channel in 0..4 {
+                while heads[channel] < deques[channel].len()
+                    && deques[channel][heads[channel]] < start
+                {
+                    heads[channel] += 1;
+                }
+                out[channel] = source
+                    [morphology_axis_index(line, deques[channel][heads[channel]], width, axis)]
+                    [channel];
+            }
+            target[out_ix] = out;
+        }
+    }
+}
+
+fn morphology_axis_index(line: usize, pos: usize, width: usize, axis: MorphologyAxis) -> usize {
+    match axis {
+        MorphologyAxis::X => line * width + pos,
+        MorphologyAxis::Y => pos * width + line,
+    }
+}
+
+fn morphology_replaces(candidate: f32, current: f32, operator: MorphologyOperator) -> bool {
+    match operator {
+        MorphologyOperator::Erode => candidate <= current,
+        MorphologyOperator::Dilate => candidate >= current,
+    }
 }
 
 fn for_each_region_pixel(bounds: Bounds, region: Bounds, width: u32, mut f: impl FnMut(usize)) {
@@ -283,6 +453,14 @@ fn filter_outset(filter: &Filter) -> i32 {
         Filter::Graph { .. } => 0,
         Filter::Blur(radius) => blur_outset(*radius),
         Filter::Offset { dx, dy } => dx.abs().ceil().max(dy.abs().ceil()) as i32,
+        Filter::Morphology {
+            radius_x,
+            radius_y,
+            operator,
+        } => match operator {
+            MorphologyOperator::Erode => 0,
+            MorphologyOperator::Dilate => (*radius_x).max(*radius_y).max(0.0).ceil() as i32,
+        },
         Filter::DropShadow {
             radius,
             offset_x,
@@ -821,5 +999,112 @@ mod tests {
         );
 
         assert_eq!(image.rgba8_at(0, 0), [128, 0, 128, 255]);
+    }
+
+    #[test]
+    fn graph_merge_composites_inputs_in_order_and_clips_region() {
+        let mut image = Image::new(4, 2, Color::from_rgb8(255, 0, 0));
+        apply(
+            &mut image,
+            &Filter::Graph {
+                primitives: vec![
+                    FilterPrimitive {
+                        input: FilterInput::SourceGraphic,
+                        input2: None,
+                        region: Bounds::canvas(4, 2),
+                        kind: FilterPrimitiveKind::Filter(Box::new(Filter::Flood {
+                            brush: Brush::Solid(Color::from_rgb8(0, 0, 255)),
+                        })),
+                    },
+                    FilterPrimitive {
+                        input: FilterInput::SourceGraphic,
+                        input2: None,
+                        region: Bounds::new(0, 0, 2, 2),
+                        kind: FilterPrimitiveKind::Merge {
+                            inputs: vec![FilterInput::Primitive(0), FilterInput::SourceGraphic],
+                        },
+                    },
+                ],
+                fixed_region: true,
+            },
+            Bounds::canvas(4, 2),
+        );
+
+        assert_eq!(image.rgba8_at(0, 1), [255, 0, 0, 255]);
+        assert_eq!(image.rgba8_at(1, 1), [255, 0, 0, 255]);
+        assert_eq!(image.rgba8_at(2, 1), [0, 0, 0, 0]);
+        assert_eq!(image.rgba8_at(3, 1), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn morphology_dilate_expands_straight_rgba() {
+        let mut image = Image::new(3, 3, Color::TRANSPARENT);
+        image.pixels[(1 * 3 + 1) as usize] = rgba8_pack([128, 0, 0, 128]);
+
+        apply(
+            &mut image,
+            &Filter::Morphology {
+                radius_x: 1.0,
+                radius_y: 1.0,
+                operator: MorphologyOperator::Dilate,
+            },
+            Bounds::canvas(3, 3),
+        );
+
+        assert_eq!(image.rgba8_at(0, 0), [128, 0, 0, 128]);
+        assert_eq!(image.rgba8_at(1, 1), [128, 0, 0, 128]);
+        assert_eq!(image.rgba8_at(2, 2), [128, 0, 0, 128]);
+    }
+
+    #[test]
+    fn morphology_erode_treats_filter_buffer_edges_as_transparent() {
+        let mut image = Image::new(3, 3, Color::from_rgb8(255, 0, 0));
+
+        apply(
+            &mut image,
+            &Filter::Morphology {
+                radius_x: 1.0,
+                radius_y: 1.0,
+                operator: MorphologyOperator::Erode,
+            },
+            Bounds::canvas(3, 3),
+        );
+
+        assert_eq!(image.rgba8_at(1, 1), [255, 0, 0, 255]);
+        assert_eq!(image.rgba8_at(0, 1), [0, 0, 0, 0]);
+        assert_eq!(image.rgba8_at(1, 0), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn morphology_handles_radius_larger_than_image() {
+        let mut erode = Image::new(4, 3, Color::from_rgb8(255, 0, 0));
+        apply(
+            &mut erode,
+            &Filter::Morphology {
+                radius_x: 9999.0,
+                radius_y: 9999.0,
+                operator: MorphologyOperator::Erode,
+            },
+            Bounds::canvas(4, 3),
+        );
+        assert!(erode.pixels.iter().all(|pixel| *pixel == 0));
+
+        let mut dilate = Image::new(4, 3, Color::TRANSPARENT);
+        dilate.pixels[(1 * 4 + 2) as usize] = rgba8_pack([0, 128, 0, 128]);
+        apply(
+            &mut dilate,
+            &Filter::Morphology {
+                radius_x: 9999.0,
+                radius_y: 9999.0,
+                operator: MorphologyOperator::Dilate,
+            },
+            Bounds::canvas(4, 3),
+        );
+        assert!(
+            dilate
+                .pixels
+                .iter()
+                .all(|pixel| *pixel == rgba8_pack([0, 128, 0, 128]))
+        );
     }
 }
