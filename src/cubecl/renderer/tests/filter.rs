@@ -994,6 +994,57 @@ fn filter_wgpu_drop_shadow_samples_pattern_brush_when_enabled() {
 }
 
 #[test]
+fn filter_wgpu_graph_image_primitive_samples_brush_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let brush = Brush::Pattern(PatternBrush {
+        image: Arc::new(Image {
+            width: 2,
+            height: 1,
+            pixels: vec![rgba8_pack([0, 255, 0, 255]), rgba8_pack([0, 0, 255, 255])],
+        }),
+        transform: IDENTITY_TRANSFORM,
+        extend: Extend::Pad,
+        sampling: PatternSampling::Nearest,
+        opacity: 255,
+    });
+    let mut scene = Scene::new(4, 2);
+    scene.push_filter_layer(
+        Filter::Graph {
+            primitives: vec![FilterPrimitive {
+                input: FilterInput::SourceAlpha,
+                input2: None,
+                region: Bounds::new(0, 0, 2, 1),
+                kind: FilterPrimitiveKind::Image { brush },
+            }],
+            fixed_region: true,
+        },
+        Region::rect(Rect::new(0.0, 0.0, 4.0, 2.0), Radius::all(0.0)),
+    );
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 4.0, 2.0),
+        Color::from_rgb8(255, 0, 0),
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(4, 2, Color::TRANSPARENT);
+    renderer.render(&scene);
+    assert_eq!(
+        renderer.filter_brushes.payloads.read(renderer.client()),
+        vec![rgba8_pack([0, 255, 0, 255]), rgba8_pack([0, 0, 255, 255])]
+    );
+    let target = renderer.target.read(renderer.client());
+
+    assert_eq!(unpack_rgba8(target[0]), [0, 255, 0, 255]);
+    assert_eq!(unpack_rgba8(target[1]), [0, 0, 255, 255]);
+    assert_eq!(unpack_rgba8(target[2]), [0, 0, 0, 0]);
+    assert_eq!(unpack_rgba8(target[4]), [0, 0, 0, 0]);
+}
+
+#[test]
 fn filter_wgpu_drop_shadow_samples_radial_gradient_brush_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;

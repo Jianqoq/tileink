@@ -513,16 +513,35 @@ impl<R: Runtime> Renderer<R> {
         filter_cursors: &mut FilterCursors,
     ) -> CubeRenderTarget {
         let region = primitive.region.intersect(bounds);
-        let input = self.resolve_filter_graph_input(
-            source_graphic,
-            primitive.input,
-            outputs,
-            source_alpha,
-            bounds,
-        );
         match &primitive.kind {
-            FilterPrimitiveKind::Identity => self.copy_filter_graph_region(input, bounds, region),
+            FilterPrimitiveKind::Image { .. } => {
+                let output = self.acquire_scratch();
+                self.clear_buffer(output, 0);
+                self.apply_flood(
+                    output,
+                    region,
+                    next_filter_brush_index(&mut filter_cursors.brush),
+                );
+                output
+            }
+            FilterPrimitiveKind::Identity => {
+                let input = self.resolve_filter_graph_input(
+                    source_graphic,
+                    primitive.input,
+                    outputs,
+                    source_alpha,
+                    bounds,
+                );
+                self.copy_filter_graph_region(input, bounds, region)
+            }
             FilterPrimitiveKind::Filter(filter) => {
+                let input = self.resolve_filter_graph_input(
+                    source_graphic,
+                    primitive.input,
+                    outputs,
+                    source_alpha,
+                    bounds,
+                );
                 let temp = self.acquire_scratch();
                 self.clear_buffer(temp, 0);
                 self.copy_region(input, temp, bounds);
@@ -532,6 +551,13 @@ impl<R: Runtime> Renderer<R> {
                 output
             }
             FilterPrimitiveKind::Blend { mode } => {
+                let input = self.resolve_filter_graph_input(
+                    source_graphic,
+                    primitive.input,
+                    outputs,
+                    source_alpha,
+                    bounds,
+                );
                 let input2 = self.resolve_required_filter_graph_input(
                     source_graphic,
                     primitive,
@@ -545,6 +571,13 @@ impl<R: Runtime> Renderer<R> {
                 output
             }
             FilterPrimitiveKind::Composite { operator } => {
+                let input = self.resolve_filter_graph_input(
+                    source_graphic,
+                    primitive.input,
+                    outputs,
+                    source_alpha,
+                    bounds,
+                );
                 let input2 = self.resolve_required_filter_graph_input(
                     source_graphic,
                     primitive,

@@ -95,20 +95,32 @@ fn apply_graph_primitive(
     // Primitive subregions clip only the primitive output. Inputs still sample
     // from the full filter bounds, which is required for blur/offset chains.
     let region = primitive.region.intersect(bounds);
-    let input = resolve_graph_input(primitive.input, source_graphic, source_alpha, outputs);
     match &primitive.kind {
-        FilterPrimitiveKind::Identity => clipped_image(input, bounds, region),
+        FilterPrimitiveKind::Image { brush } => brush_image(
+            source_graphic.width,
+            source_graphic.height,
+            bounds,
+            region,
+            brush,
+        ),
+        FilterPrimitiveKind::Identity => {
+            let input = resolve_graph_input(primitive.input, source_graphic, source_alpha, outputs);
+            clipped_image(input, bounds, region)
+        }
         FilterPrimitiveKind::Filter(filter) => {
+            let input = resolve_graph_input(primitive.input, source_graphic, source_alpha, outputs);
             let mut image = input.clone();
             apply(&mut image, filter, bounds);
             clipped_image(&image, bounds, region)
         }
         FilterPrimitiveKind::Blend { mode } => {
+            let input = resolve_graph_input(primitive.input, source_graphic, source_alpha, outputs);
             let input2 =
                 resolve_required_graph_input(primitive, source_graphic, source_alpha, outputs);
             blend_images(input, input2, bounds, region, *mode)
         }
         FilterPrimitiveKind::Composite { operator } => {
+            let input = resolve_graph_input(primitive.input, source_graphic, source_alpha, outputs);
             let input2 =
                 resolve_required_graph_input(primitive, source_graphic, source_alpha, outputs);
             composite_images(input, input2, bounds, region, *operator)
@@ -164,6 +176,22 @@ fn source_alpha_image(source: &Image) -> Image {
 fn clipped_image(source: &Image, bounds: Bounds, region: Bounds) -> Image {
     let mut image = Image::new(source.width, source.height, peniko::Color::TRANSPARENT);
     copy_region_pixels(source, &mut image, bounds, region);
+    image
+}
+
+fn brush_image(width: u32, height: u32, bounds: Bounds, region: Bounds, brush: &Brush) -> Image {
+    let mut image = Image::new(width, height, peniko::Color::TRANSPARENT);
+    if region.is_empty() {
+        return image;
+    }
+    for y in region.y0..region.y1 {
+        let local_y = (y - bounds.y0) as u32;
+        for x in region.x0..region.x1 {
+            let local_x = (x - bounds.x0) as u32;
+            image.pixels[(local_y * width + local_x) as usize] =
+                brush.sample(x as f32 + 0.5, y as f32 + 0.5);
+        }
+    }
     image
 }
 
@@ -1106,12 +1134,15 @@ fn lum(c: [f32; 3]) -> f32 {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
+    use crate::shared::brush::{IDENTITY_TRANSFORM, PatternBrush, PatternSampling};
     use crate::shared::layer::filter::{
         COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE, CompositeOperator,
         FilterInput, FilterPrimitive, FilterPrimitiveKind,
     };
-    use peniko::{Color, Mix};
+    use peniko::{Color, Extend, Mix};
 
     #[test]
     fn drop_shadow_offsets_alpha_and_preserves_source() {
@@ -1379,6 +1410,41 @@ mod tests {
         assert_eq!(image.rgba8_at(1, 1), [0, 0, 0, 255]);
         assert_eq!(image.rgba8_at(2, 1), [0, 0, 255, 255]);
         assert_eq!(image.rgba8_at(3, 1), [0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn graph_image_primitive_samples_absolute_brush_and_clips_region() {
+        let mut image = Image::new(4, 2, Color::from_rgb8(255, 0, 0));
+        let brush = Brush::Pattern(PatternBrush {
+            image: Arc::new(Image {
+                width: 2,
+                height: 1,
+                pixels: vec![rgba8_pack([0, 255, 0, 255]), rgba8_pack([0, 0, 255, 255])],
+            }),
+            transform: IDENTITY_TRANSFORM,
+            extend: Extend::Pad,
+            sampling: PatternSampling::Nearest,
+            opacity: 255,
+        });
+
+        apply(
+            &mut image,
+            &Filter::Graph {
+                primitives: vec![FilterPrimitive {
+                    input: FilterInput::SourceAlpha,
+                    input2: None,
+                    region: Bounds::new(0, 0, 2, 1),
+                    kind: FilterPrimitiveKind::Image { brush },
+                }],
+                fixed_region: true,
+            },
+            Bounds::canvas(4, 2),
+        );
+
+        assert_eq!(image.rgba8_at(0, 0), [0, 255, 0, 255]);
+        assert_eq!(image.rgba8_at(1, 0), [0, 0, 255, 255]);
+        assert_eq!(image.rgba8_at(2, 0), [0, 0, 0, 0]);
+        assert_eq!(image.rgba8_at(0, 1), [0, 0, 0, 0]);
     }
 
     #[test]

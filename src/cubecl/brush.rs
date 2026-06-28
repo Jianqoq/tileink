@@ -214,8 +214,10 @@ fn collect_filter_brush(filter: &Filter, upload: &mut GpuBrushUpload) {
         }
         Filter::Graph { primitives, .. } => {
             for primitive in primitives {
-                if let FilterPrimitiveKind::Filter(filter) = &primitive.kind {
-                    collect_filter_brush(filter, upload);
+                match &primitive.kind {
+                    FilterPrimitiveKind::Filter(filter) => collect_filter_brush(filter, upload),
+                    FilterPrimitiveKind::Image { brush } => upload.push_brush(brush),
+                    _ => {}
                 }
             }
         }

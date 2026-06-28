@@ -81,9 +81,23 @@ pub enum FilterInput {
 pub enum FilterPrimitiveKind {
     Identity,
     Filter(Box<Filter>),
-    Blend { mode: Mix },
-    Composite { operator: CompositeOperator },
-    Merge { inputs: Vec<FilterInput> },
+    /// Produces an image without reading a graph input, matching SVG `feImage`.
+    ///
+    /// The brush is sampled in absolute scene coordinates and the primitive
+    /// region clips the output, so later graph primitives can consume it like
+    /// any other filter result.
+    Image {
+        brush: Brush,
+    },
+    Blend {
+        mode: Mix,
+    },
+    Composite {
+        operator: CompositeOperator,
+    },
+    Merge {
+        inputs: Vec<FilterInput>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

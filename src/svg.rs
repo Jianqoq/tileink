@@ -109,7 +109,21 @@ impl SvgBuilder {
     }
 
     fn push_group(&self, scene: &mut Scene, group: &usvg::Group) -> Result<(), SvgError> {
-        let filter_layers = svg_filter_layers(group.filters(), self.base_transform)?;
+        let filter_layers = if group.filters().is_empty() {
+            Vec::new()
+        } else {
+            let region_transform = self.base_transform * transform_to_affine(group.abs_transform());
+            let content_transform = region_transform
+                * inverse_affine(transform_to_affine(group.transform()), "filter transform")?;
+            svg_filter_layers(
+                self,
+                group.filters(),
+                region_transform,
+                content_transform,
+                scene.width,
+                scene.height,
+            )?
+        };
         let mask_layer = group
             .mask()
             .map(|mask| self.svg_mask_layer(scene.width, scene.height, mask))
@@ -542,6 +556,54 @@ impl SvgBuilder {
             opacity: opacity_to_u8(opacity),
         }))
     }
+
+    fn filter_image_to_brush(
+        &self,
+        image: &usvg::filter::Image,
+        filter_bounds: Bounds,
+        primitive_rect: Rect,
+        transform: Affine,
+    ) -> Result<Brush, SvgError> {
+        if self.image_depth >= MAX_IMAGE_DEPTH {
+            return Err(SvgError::unsupported("recursive feImage"));
+        }
+
+        let width = filter_bounds.width().max(1);
+        let height = filter_bounds.height().max(1);
+        let mut scene = Scene::new(width, height);
+        if !filter_bounds.is_empty() {
+            // usvg stores feImage children in primitive-subregion-local coordinates.
+            // Render them into the clipped filter buffer once, then reuse that
+            // raster as an absolute-coordinate graph input for CPU and CubeCL.
+            let local_transform =
+                Affine::translate((-f64::from(filter_bounds.x0), -f64::from(filter_bounds.y0)))
+                    * transform
+                    * Affine::translate((primitive_rect.x0, primitive_rect.y0));
+            SvgBuilder {
+                options: SvgOptions {
+                    tolerance: self.options.tolerance,
+                    transform: local_transform,
+                },
+                base_transform: local_transform,
+                pattern_depth: self.pattern_depth,
+                image_depth: self.image_depth + 1,
+            }
+            .push_group(&mut scene, image.root())?;
+        }
+
+        let mut renderer = CpuRenderer::new(width, height, Color::TRANSPARENT);
+        renderer.render(&scene);
+        Ok(Brush::Pattern(PatternBrush {
+            image: Arc::new(renderer.image().clone()),
+            transform: affine_to_array(Affine::translate((
+                -f64::from(filter_bounds.x0),
+                -f64::from(filter_bounds.y0),
+            ))),
+            extend: Extend::Pad,
+            sampling: PatternSampling::Nearest,
+            opacity: 255,
+        }))
+    }
 }
 
 struct SvgFilterLayer {
@@ -550,24 +612,52 @@ struct SvgFilterLayer {
 }
 
 fn svg_filter_layers(
+    builder: &SvgBuilder,
     filters: &[std::sync::Arc<usvg::filter::Filter>],
-    transform: Affine,
+    region_transform: Affine,
+    content_transform: Affine,
+    width: u32,
+    height: u32,
 ) -> Result<Vec<SvgFilterLayer>, SvgError> {
     filters
         .iter()
-        .filter_map(|filter| svg_filter_layer(filter.as_ref(), transform).transpose())
+        .filter_map(|filter| {
+            svg_filter_layer(
+                builder,
+                filter.as_ref(),
+                region_transform,
+                content_transform,
+                width,
+                height,
+            )
+            .transpose()
+        })
         .collect()
 }
 
 fn svg_filter_layer(
+    builder: &SvgBuilder,
     filter: &usvg::filter::Filter,
-    transform: Affine,
+    region_transform: Affine,
+    content_transform: Affine,
+    width: u32,
+    height: u32,
 ) -> Result<Option<SvgFilterLayer>, SvgError> {
+    let filter_rect = nonzero_rect_to_kurbo(filter.rect());
+    let filter_bounds = transform_rect_to_bounds(filter_rect, region_transform)
+        .intersect(Bounds::canvas(width, height));
     let mut primitives = Vec::new();
     let mut results = HashMap::new();
     for primitive in filter.primitives() {
         let index = primitives.len();
-        primitives.push(svg_filter_primitive(primitive, &results, transform)?);
+        primitives.push(svg_filter_primitive(
+            builder,
+            primitive,
+            &results,
+            region_transform,
+            content_transform,
+            filter_bounds,
+        )?);
         results.insert(primitive.result().to_string(), index);
     }
 
@@ -580,23 +670,30 @@ fn svg_filter_layer(
                 fixed_region: true,
             },
             region: transform_region(
-                Region::rect(nonzero_rect_to_kurbo(filter.rect()), Radius::all(0.0)),
-                transform,
+                Region::rect(filter_rect, Radius::all(0.0)),
+                region_transform,
             ),
         }))
     }
 }
 
 fn svg_filter_primitive(
+    builder: &SvgBuilder,
     primitive: &usvg::filter::Primitive,
     results: &HashMap<String, usize>,
-    transform: Affine,
+    region_transform: Affine,
+    content_transform: Affine,
+    filter_bounds: Bounds,
 ) -> Result<FilterPrimitive, SvgError> {
-    let region = transform_rect_to_bounds(nonzero_rect_to_kurbo(primitive.rect()), transform);
+    let primitive_rect = nonzero_rect_to_kurbo(primitive.rect());
+    let region = transform_rect_to_bounds(primitive_rect, region_transform);
     let (input, input2, kind) = match primitive.kind() {
         usvg::filter::Kind::GaussianBlur(blur) => {
-            let (radius_x, radius_y) =
-                transform_filter_radii(transform, blur.std_dev_x().get(), blur.std_dev_y().get());
+            let (radius_x, radius_y) = transform_filter_radii(
+                region_transform,
+                blur.std_dev_x().get(),
+                blur.std_dev_y().get(),
+            );
             let filter = Filter::Blur { radius_x, radius_y };
             (
                 svg_filter_input(blur.input(), results, "feGaussianBlur")?,
@@ -605,9 +702,10 @@ fn svg_filter_primitive(
             )
         }
         usvg::filter::Kind::DropShadow(shadow) => {
-            let (offset_x, offset_y) = transform_filter_vector(transform, shadow.dx(), shadow.dy());
+            let (offset_x, offset_y) =
+                transform_filter_vector(region_transform, shadow.dx(), shadow.dy());
             let (radius_x, radius_y) = transform_filter_radii(
-                transform,
+                region_transform,
                 shadow.std_dev_x().get(),
                 shadow.std_dev_y().get(),
             );
@@ -677,7 +775,18 @@ fn svg_filter_primitive(
                 brush: color_opacity_to_brush(flood.color(), flood.opacity().get()),
             })),
         ),
-        usvg::filter::Kind::Image(_) => return Err(SvgError::unsupported("feImage")),
+        usvg::filter::Kind::Image(image) => (
+            FilterInput::SourceGraphic,
+            None,
+            FilterPrimitiveKind::Image {
+                brush: builder.filter_image_to_brush(
+                    image,
+                    filter_bounds,
+                    primitive_rect,
+                    content_transform,
+                )?,
+            },
+        ),
         usvg::filter::Kind::Merge(merge) => (
             FilterInput::SourceGraphic,
             None,
@@ -689,13 +798,13 @@ fn svg_filter_primitive(
             svg_filter_input(morphology.input(), results, "feMorphology")?,
             None,
             FilterPrimitiveKind::Filter(Box::new(Filter::Morphology {
-                radius_x: transform_filter_radius_x(transform, morphology.radius_x().get()),
-                radius_y: transform_filter_radius_y(transform, morphology.radius_y().get()),
+                radius_x: transform_filter_radius_x(region_transform, morphology.radius_x().get()),
+                radius_y: transform_filter_radius_y(region_transform, morphology.radius_y().get()),
                 operator: morphology_operator(morphology.operator()),
             })),
         ),
         usvg::filter::Kind::Offset(offset) => {
-            let (dx, dy) = transform_filter_vector(transform, offset.dx(), offset.dy());
+            let (dx, dy) = transform_filter_vector(region_transform, offset.dx(), offset.dy());
             (
                 svg_filter_input(offset.input(), results, "feOffset")?,
                 None,
@@ -1648,6 +1757,67 @@ mod tests {
         );
 
         assert_eq!(renderer.image().rgba8_at(8, 8), [0, 128, 0, 255]);
+    }
+
+    #[test]
+    fn push_svg_renders_fe_image_href_with_primitive_xy() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+                <defs>
+                    <rect id="src" width="8" height="8" fill="#008000"/>
+                    <filter id="f" filterUnits="userSpaceOnUse" x="0" y="0" width="16" height="16">
+                        <feImage href="#src" x="4" y="4" width="8" height="8"/>
+                    </filter>
+                </defs>
+                <rect width="16" height="16" fill="#ff0000" filter="url(#f)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(6, 6), [0, 128, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(2, 2), [0, 0, 0, 0]);
+        assert_eq!(renderer.image().rgba8_at(13, 13), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn push_svg_fe_image_result_can_feed_composite() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="4">
+                <defs>
+                    <rect id="src" width="4" height="4" fill="#008000"/>
+                    <filter id="f" filterUnits="userSpaceOnUse" x="0" y="0" width="8" height="4">
+                        <feImage href="#src" x="0" y="0" width="4" height="4" result="img"/>
+                        <feComposite in="img" in2="SourceAlpha" operator="in"/>
+                    </filter>
+                </defs>
+                <rect x="2" width="4" height="4" fill="#ff0000" filter="url(#f)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(1, 2), [0, 0, 0, 0]);
+        assert_eq!(renderer.image().rgba8_at(2, 2), [0, 128, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(3, 2), [0, 128, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(4, 2), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn push_svg_fe_image_tracks_filtered_element_transform() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+                <defs>
+                    <rect id="src" width="16" height="16" fill="#008000"/>
+                    <filter id="f" filterUnits="userSpaceOnUse" x="0" y="0" width="16" height="16">
+                        <feImage href="#src"/>
+                    </filter>
+                </defs>
+                <rect width="16" height="16" fill="#ff0000" filter="url(#f)" transform="scale(0.5)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(6, 6), [0, 128, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(10, 6), [0, 0, 0, 0]);
     }
 
     #[test]
