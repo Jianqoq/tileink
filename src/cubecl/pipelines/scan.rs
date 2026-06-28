@@ -857,9 +857,11 @@ fn write_clipped_segment(
                 p1y = p0y;
             }
         } else if p0y == 0.0 {
-            // Top-left clipped crossings must keep their left-edge correction so the paired
-            // left-edge exit cancels coverage outside tiny clipped caps.
-            y_edge = p0y;
+            // Long edges passing exactly through top-left are owned by the top edge. Subpixel
+            // caps keep left-edge ownership to balance their paired left-edge exits.
+            if p1x <= 1.0 && p1y <= 1.0 {
+                y_edge = p0y;
+            }
             p0x = epsilon;
         } else {
             y_edge = p0y;

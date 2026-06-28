@@ -35,6 +35,14 @@ impl Image {
         bytes
     }
 
+    fn straight_rgba8_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(self.pixels.len() * 4);
+        for &pixel in &self.pixels {
+            bytes.extend_from_slice(&unpack_straight_rgba8(pixel));
+        }
+        bytes
+    }
+
     pub fn save(&self, path: impl AsRef<Path>) -> Result<(), ImageSaveError> {
         let path = path.as_ref();
         if let Some(parent) = path
@@ -51,7 +59,7 @@ impl Image {
         encoder.set_depth(png::BitDepth::Eight);
         encoder
             .write_header()?
-            .write_image_data(&self.rgba8_bytes())?;
+            .write_image_data(&self.straight_rgba8_bytes())?;
         Ok(())
     }
 }
@@ -115,6 +123,24 @@ pub(crate) fn unpack_rgba8(px: u32) -> [u8; 4] {
     ]
 }
 
+fn unpack_straight_rgba8(px: u32) -> [u8; 4] {
+    let [r, g, b, a] = unpack_rgba8(px);
+    if a == 0 {
+        [0, 0, 0, 0]
+    } else {
+        [
+            unpremultiply_u8(r, a),
+            unpremultiply_u8(g, a),
+            unpremultiply_u8(b, a),
+            a,
+        ]
+    }
+}
+
+fn unpremultiply_u8(channel: u8, alpha: u8) -> u8 {
+    ((u32::from(channel) * 255 + u32::from(alpha) / 2) / u32::from(alpha)).min(255) as u8
+}
+
 #[cfg(test)]
 mod tests {
     use std::{fs::File, io::BufReader, path::PathBuf};
@@ -142,7 +168,7 @@ mod tests {
     #[test]
     fn save_writes_rgba_png_to_path() {
         let mut image = Image::new(2, 1, Color::TRANSPARENT);
-        image.pixels = vec![rgba8_pack([1, 2, 3, 4]), rgba8_pack([5, 6, 7, 8])];
+        image.pixels = vec![rgba8_pack([64, 0, 0, 128]), rgba8_pack([0, 32, 64, 128])];
         let path = PathBuf::from("target/image-save-test/rgba.png");
 
         image.save(&path).unwrap();
@@ -154,6 +180,9 @@ mod tests {
 
         assert_eq!((info.width, info.height), (2, 1));
         assert_eq!(info.color_type, png::ColorType::Rgba);
-        assert_eq!(&data[..info.buffer_size()], &[1, 2, 3, 4, 5, 6, 7, 8]);
+        assert_eq!(
+            &data[..info.buffer_size()],
+            &[128, 0, 0, 128, 0, 64, 128, 128]
+        );
     }
 }

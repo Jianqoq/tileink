@@ -177,15 +177,16 @@ impl SvgBuilder {
         }
 
         let data = tiny_path_to_bez(path.data());
-        let transform = self.base_transform * transform_to_affine(path.abs_transform());
+        let path_transform = transform_to_affine(path.abs_transform());
+        let transform = self.base_transform * path_transform;
         match path.paint_order() {
             PaintOrder::FillAndStroke => {
-                self.push_fill(scene, path, &data, transform)?;
-                self.push_stroke(scene, path, &data, transform)?;
+                self.push_fill(scene, path, &data, path_transform, transform)?;
+                self.push_stroke(scene, path, &data, path_transform, transform)?;
             }
             PaintOrder::StrokeAndFill => {
-                self.push_stroke(scene, path, &data, transform)?;
-                self.push_fill(scene, path, &data, transform)?;
+                self.push_stroke(scene, path, &data, path_transform, transform)?;
+                self.push_fill(scene, path, &data, path_transform, transform)?;
             }
         }
         Ok(())
@@ -196,6 +197,7 @@ impl SvgBuilder {
         scene: &mut Scene,
         path: &usvg::Path,
         data: &BezPath,
+        path_transform: Affine,
         transform: Affine,
     ) -> Result<(), SvgError> {
         let Some(fill) = path.fill() else {
@@ -205,7 +207,7 @@ impl SvgBuilder {
             return Ok(());
         }
 
-        let brush = self.paint_to_brush(fill.paint(), fill.opacity().get())?;
+        let brush = self.paint_to_brush(fill.paint(), fill.opacity().get(), path_transform)?;
         scene.push_path(
             data.clone(),
             brush,
@@ -221,6 +223,7 @@ impl SvgBuilder {
         scene: &mut Scene,
         path: &usvg::Path,
         data: &BezPath,
+        path_transform: Affine,
         transform: Affine,
     ) -> Result<(), SvgError> {
         let Some(stroke) = path.stroke() else {
@@ -230,7 +233,7 @@ impl SvgBuilder {
             return Ok(());
         }
 
-        let brush = self.paint_to_brush(stroke.paint(), stroke.opacity().get())?;
+        let brush = self.paint_to_brush(stroke.paint(), stroke.opacity().get(), path_transform)?;
         let stroke_style = stroke_to_kurbo(stroke)?;
         scene.push_stroke(
             data.clone(),
@@ -313,7 +316,12 @@ impl SvgBuilder {
         Ok(())
     }
 
-    fn paint_to_brush(&self, paint: &Paint, opacity: f32) -> Result<Brush, SvgError> {
+    fn paint_to_brush(
+        &self,
+        paint: &Paint,
+        opacity: f32,
+        path_transform: Affine,
+    ) -> Result<Brush, SvgError> {
         match paint {
             Paint::Color(color) => Ok(color_opacity_to_brush(*color, opacity)),
             Paint::LinearGradient(source) => {
@@ -328,7 +336,8 @@ impl SvgBuilder {
                 let Brush::Linear(linear) = &mut brush else {
                     unreachable!();
                 };
-                linear.transform = self.paint_server_inverse_transform(source.transform())?;
+                linear.transform =
+                    self.paint_server_inverse_transform(source.transform(), path_transform)?;
                 Ok(brush)
             }
             Paint::RadialGradient(source) => {
@@ -345,7 +354,8 @@ impl SvgBuilder {
                 let Brush::Radial(radial) = &mut brush else {
                     unreachable!();
                 };
-                radial.transform = self.paint_server_inverse_transform(source.transform())?;
+                radial.transform =
+                    self.paint_server_inverse_transform(source.transform(), path_transform)?;
                 Ok(brush)
             }
             Paint::Pattern(pattern) => self.pattern_to_brush(pattern, opacity),
@@ -355,11 +365,13 @@ impl SvgBuilder {
     fn paint_server_inverse_transform(
         &self,
         transform: usvg::Transform,
+        path_transform: Affine,
     ) -> Result<[f32; 6], SvgError> {
-        // usvg lowers paint-server units into SVG user space. Scene transforms are applied to
-        // geometry before brush sampling, so fold the scene base transform into the inverse.
+        // usvg lowers paint-server units into the path's user space. Geometry is transformed
+        // into scene coordinates before brush sampling, so fold both path and scene transforms
+        // into the inverse.
         inverse_affine_to_array(
-            self.base_transform * transform_to_affine(transform),
+            self.base_transform * path_transform * transform_to_affine(transform),
             "gradientTransform",
         )
     }
@@ -1361,6 +1373,43 @@ mod tests {
             "after x2 should clamp to black, not reflect from the rect href: {end:?}"
         );
         assert_eq!(renderer.image().rgba8_at(270, 150)[3], 0);
+    }
+
+    #[test]
+    fn push_svg_applies_path_transform_to_linear_gradient_paint_server() {
+        let renderer = render_with_options(
+            r##"<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                <linearGradient id="g" gradientTransform="rotate(30)">
+                    <stop offset="0" stop-color="white"/>
+                    <stop offset="1" stop-color="black"/>
+                </linearGradient>
+                <rect x="100" y="40" width="110" height="110"
+                      fill="url(#g)" transform="skewX(-30)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+            SvgOptions {
+                transform: Affine::scale(1.5),
+                ..Default::default()
+            },
+            300,
+            300,
+        );
+
+        let upper = renderer.image().rgba8_at(120, 90);
+        let lower = renderer.image().rgba8_at(150, 150);
+        let right = renderer.image().rgba8_at(210, 90);
+        assert!(
+            (180..230).contains(&upper[0]) && upper[3] == 255,
+            "upper gradient sample should be light after skew+rotate: {upper:?}"
+        );
+        assert!(
+            (40..100).contains(&lower[0]) && lower[3] == 255,
+            "lower gradient sample should be dark after skew+rotate: {lower:?}"
+        );
+        assert!(
+            right[0] < 120 && right[3] == 255,
+            "right edge should not stay too light when path transform is applied: {right:?}"
+        );
     }
 
     #[test]
