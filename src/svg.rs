@@ -780,28 +780,12 @@ fn svg_filter_layer(
     let filter_rect = nonzero_rect_to_kurbo(filter.rect());
     let filter_bounds = transform_rect_to_bounds(filter_rect, region_transform)
         .intersect(Bounds::canvas(width, height));
-    let value_transform = filter_axis_scale(region_transform);
-    let mut primitives = Vec::new();
-    let mut source_regions = Vec::new();
-    let mut results = HashMap::new();
+    let mut graph =
+        SvgFilterGraphBuilder::new(builder, region_transform, content_transform, filter_bounds);
     for primitive in filter.primitives() {
-        let index = primitives.len();
-        let (filter_primitive, source_region) = svg_filter_primitive(
-            primitive,
-            SvgFilterPrimitiveContext {
-                builder,
-                results: &results,
-                source_regions: &source_regions,
-                region_transform,
-                content_transform,
-                value_transform,
-                filter_bounds,
-            },
-        )?;
-        primitives.push(filter_primitive);
-        source_regions.push(source_region);
-        results.insert(primitive.result().to_string(), index);
+        graph.push_primitive(primitive)?;
     }
+    let primitives = graph.into_primitives();
 
     if primitives.is_empty() {
         Ok(None)
@@ -819,325 +803,350 @@ fn svg_filter_layer(
     }
 }
 
-struct SvgFilterPrimitiveContext<'a> {
+struct SvgFilterGraphBuilder<'a> {
     builder: &'a SvgBuilder,
-    results: &'a HashMap<String, usize>,
-    source_regions: &'a [Bounds],
     region_transform: Affine,
     content_transform: Affine,
     value_transform: Affine,
     filter_bounds: Bounds,
+    primitives: Vec<FilterPrimitive>,
+    source_regions: Vec<Bounds>,
+    results: HashMap<String, usize>,
 }
 
-fn svg_filter_primitive(
-    primitive: &usvg::filter::Primitive,
-    ctx: SvgFilterPrimitiveContext<'_>,
-) -> Result<(FilterPrimitive, Bounds), SvgError> {
-    let primitive_rect = nonzero_rect_to_kurbo(primitive.rect());
-    let region = transform_rect_to_bounds(primitive_rect, ctx.region_transform);
-    let (input, input2, kind) = match primitive.kind() {
-        usvg::filter::Kind::GaussianBlur(blur) => {
-            let (radius_x, radius_y) = transform_filter_radii(
-                ctx.value_transform,
-                blur.std_dev_x().get(),
-                blur.std_dev_y().get(),
-            );
-            let filter = Filter::Blur { radius_x, radius_y };
-            (
-                svg_filter_input(blur.input(), ctx.results, "feGaussianBlur")?,
-                None,
-                FilterPrimitiveKind::Filter(Box::new(filter)),
-            )
+struct LoweredSvgFilterPrimitive {
+    primitive: FilterPrimitive,
+    source_region: Bounds,
+}
+
+impl<'a> SvgFilterGraphBuilder<'a> {
+    fn new(
+        builder: &'a SvgBuilder,
+        region_transform: Affine,
+        content_transform: Affine,
+        filter_bounds: Bounds,
+    ) -> Self {
+        Self {
+            builder,
+            region_transform,
+            content_transform,
+            value_transform: filter_axis_scale(region_transform),
+            filter_bounds,
+            primitives: Vec::new(),
+            source_regions: Vec::new(),
+            results: HashMap::new(),
         }
-        usvg::filter::Kind::DropShadow(shadow) => {
-            let (offset_x, offset_y) =
-                transform_filter_vector(ctx.value_transform, shadow.dx(), shadow.dy());
-            let (radius_x, radius_y) = transform_filter_radii(
-                ctx.value_transform,
-                shadow.std_dev_x().get(),
-                shadow.std_dev_y().get(),
-            );
-            let filter = Filter::DropShadow {
-                offset_x,
-                offset_y,
-                radius: equal_std_dev(radius_x, radius_y, "anisotropic feDropShadow")?,
-                brush: color_opacity_to_brush(shadow.color(), shadow.opacity().get()),
-            };
-            (
-                svg_filter_input(shadow.input(), ctx.results, "feDropShadow")?,
-                None,
-                FilterPrimitiveKind::Filter(Box::new(filter)),
-            )
-        }
-        usvg::filter::Kind::ColorMatrix(matrix) => {
-            let kind = filter_to_primitive_kind(color_matrix_to_filter(matrix.kind())?);
-            (
-                svg_filter_input(matrix.input(), ctx.results, "feColorMatrix")?,
-                None,
-                kind,
-            )
-        }
-        usvg::filter::Kind::ComponentTransfer(transfer) => {
-            let kind = filter_to_primitive_kind(component_transfer_to_filter(transfer)?);
-            (
-                svg_filter_input(transfer.input(), ctx.results, "feComponentTransfer")?,
-                None,
-                kind,
-            )
-        }
-        usvg::filter::Kind::Blend(blend) => (
-            svg_filter_input(blend.input1(), ctx.results, "feBlend")?,
-            Some(svg_filter_input(blend.input2(), ctx.results, "feBlend")?),
-            FilterPrimitiveKind::Blend {
-                mode: blend_mode_to_mix(blend.mode()),
-            },
-        ),
-        usvg::filter::Kind::Composite(composite) => (
-            svg_filter_input(composite.input1(), ctx.results, "feComposite")?,
-            Some(svg_filter_input(
-                composite.input2(),
-                ctx.results,
-                "feComposite",
-            )?),
-            FilterPrimitiveKind::Composite {
-                operator: composite_operator(composite.operator()),
-            },
-        ),
-        usvg::filter::Kind::ConvolveMatrix(convolve) => (
-            svg_filter_input(convolve.input(), ctx.results, "feConvolveMatrix")?,
-            None,
-            FilterPrimitiveKind::Filter(Box::new(convolve_matrix_to_filter(convolve))),
-        ),
-        usvg::filter::Kind::DiffuseLighting(lighting) => (
-            svg_filter_input(lighting.input(), ctx.results, "feDiffuseLighting")?,
-            None,
-            FilterPrimitiveKind::Filter(Box::new(diffuse_lighting_to_filter(lighting))),
-        ),
-        usvg::filter::Kind::DisplacementMap(displacement) => (
-            svg_filter_input(displacement.input1(), ctx.results, "feDisplacementMap")?,
-            Some(svg_filter_input(
-                displacement.input2(),
-                ctx.results,
-                "feDisplacementMap",
-            )?),
-            FilterPrimitiveKind::DisplacementMap(displacement_map_to_filter(
-                displacement,
-                primitive.color_interpolation(),
-                ctx.value_transform,
-            )),
-        ),
-        usvg::filter::Kind::Flood(flood) => (
-            FilterInput::SourceGraphic,
-            None,
-            FilterPrimitiveKind::Filter(Box::new(Filter::Flood {
-                brush: color_opacity_to_brush(flood.color(), flood.opacity().get()),
-            })),
-        ),
-        usvg::filter::Kind::Image(image) => (
-            FilterInput::SourceGraphic,
-            None,
-            FilterPrimitiveKind::Image {
-                brush: ctx.builder.filter_image_to_brush(
-                    image,
-                    ctx.filter_bounds,
-                    primitive_rect,
-                    ctx.region_transform,
-                    ctx.content_transform,
-                )?,
-            },
-        ),
-        usvg::filter::Kind::Merge(merge) => (
-            FilterInput::SourceGraphic,
-            None,
-            FilterPrimitiveKind::Merge {
-                inputs: svg_filter_inputs(merge.inputs(), ctx.results, "feMerge")?,
-            },
-        ),
-        usvg::filter::Kind::Morphology(morphology) => (
-            svg_filter_input(morphology.input(), ctx.results, "feMorphology")?,
-            None,
-            FilterPrimitiveKind::Filter(Box::new(Filter::Morphology {
-                radius_x: transform_filter_radius_x(
-                    ctx.value_transform,
-                    morphology.radius_x().get(),
-                ),
-                radius_y: transform_filter_radius_y(
-                    ctx.value_transform,
-                    morphology.radius_y().get(),
-                ),
-                operator: morphology_operator(morphology.operator()),
-            })),
-        ),
-        usvg::filter::Kind::Offset(offset) => {
-            let (dx, dy) = transform_filter_vector(ctx.value_transform, offset.dx(), offset.dy());
-            (
-                svg_filter_input(offset.input(), ctx.results, "feOffset")?,
-                None,
-                FilterPrimitiveKind::Filter(Box::new(Filter::Offset { dx, dy })),
-            )
-        }
-        usvg::filter::Kind::SpecularLighting(lighting) => (
-            svg_filter_input(lighting.input(), ctx.results, "feSpecularLighting")?,
-            None,
-            FilterPrimitiveKind::Filter(Box::new(specular_lighting_to_filter(lighting))),
-        ),
-        usvg::filter::Kind::Tile(tile) => {
-            let input = svg_filter_input(tile.input(), ctx.results, "feTile")?;
-            (
-                input,
-                None,
-                FilterPrimitiveKind::Tile {
-                    source_region: svg_filter_input_source_region(
-                        input,
-                        ctx.source_regions,
-                        ctx.filter_bounds,
-                    ),
+    }
+
+    fn push_primitive(&mut self, primitive: &usvg::filter::Primitive) -> Result<(), SvgError> {
+        let index = self.primitives.len();
+        let lowered = self.lower_primitive(primitive)?;
+        self.primitives.push(lowered.primitive);
+        self.source_regions.push(lowered.source_region);
+        self.results.insert(primitive.result().to_string(), index);
+        Ok(())
+    }
+
+    fn into_primitives(self) -> Vec<FilterPrimitive> {
+        self.primitives
+    }
+
+    fn lower_primitive(
+        &self,
+        primitive: &usvg::filter::Primitive,
+    ) -> Result<LoweredSvgFilterPrimitive, SvgError> {
+        let primitive_rect = nonzero_rect_to_kurbo(primitive.rect());
+        let region = transform_rect_to_bounds(primitive_rect, self.region_transform);
+        let (input, input2, kind) = match primitive.kind() {
+            usvg::filter::Kind::GaussianBlur(blur) => {
+                let (radius_x, radius_y) = transform_filter_radii(
+                    self.value_transform,
+                    blur.std_dev_x().get(),
+                    blur.std_dev_y().get(),
+                );
+                let filter = Filter::Blur { radius_x, radius_y };
+                (
+                    self.input(blur.input(), "feGaussianBlur")?,
+                    None,
+                    FilterPrimitiveKind::Filter(Box::new(filter)),
+                )
+            }
+            usvg::filter::Kind::DropShadow(shadow) => {
+                let (offset_x, offset_y) =
+                    transform_filter_vector(self.value_transform, shadow.dx(), shadow.dy());
+                let (radius_x, radius_y) = transform_filter_radii(
+                    self.value_transform,
+                    shadow.std_dev_x().get(),
+                    shadow.std_dev_y().get(),
+                );
+                let filter = Filter::DropShadow {
+                    offset_x,
+                    offset_y,
+                    radius: equal_std_dev(radius_x, radius_y, "anisotropic feDropShadow")?,
+                    brush: color_opacity_to_brush(shadow.color(), shadow.opacity().get()),
+                };
+                (
+                    self.input(shadow.input(), "feDropShadow")?,
+                    None,
+                    FilterPrimitiveKind::Filter(Box::new(filter)),
+                )
+            }
+            usvg::filter::Kind::ColorMatrix(matrix) => {
+                let kind = filter_to_primitive_kind(color_matrix_to_filter(matrix.kind())?);
+                (self.input(matrix.input(), "feColorMatrix")?, None, kind)
+            }
+            usvg::filter::Kind::ComponentTransfer(transfer) => {
+                let kind = filter_to_primitive_kind(component_transfer_to_filter(transfer)?);
+                (
+                    self.input(transfer.input(), "feComponentTransfer")?,
+                    None,
+                    kind,
+                )
+            }
+            usvg::filter::Kind::Blend(blend) => (
+                self.input(blend.input1(), "feBlend")?,
+                Some(self.input(blend.input2(), "feBlend")?),
+                FilterPrimitiveKind::Blend {
+                    mode: blend_mode_to_mix(blend.mode()),
                 },
-            )
+            ),
+            usvg::filter::Kind::Composite(composite) => (
+                self.input(composite.input1(), "feComposite")?,
+                Some(self.input(composite.input2(), "feComposite")?),
+                FilterPrimitiveKind::Composite {
+                    operator: composite_operator(composite.operator()),
+                },
+            ),
+            usvg::filter::Kind::ConvolveMatrix(convolve) => (
+                self.input(convolve.input(), "feConvolveMatrix")?,
+                None,
+                FilterPrimitiveKind::Filter(Box::new(convolve_matrix_to_filter(convolve))),
+            ),
+            usvg::filter::Kind::DiffuseLighting(lighting) => (
+                self.input(lighting.input(), "feDiffuseLighting")?,
+                None,
+                FilterPrimitiveKind::Filter(Box::new(diffuse_lighting_to_filter(lighting))),
+            ),
+            usvg::filter::Kind::DisplacementMap(displacement) => (
+                self.input(displacement.input1(), "feDisplacementMap")?,
+                Some(self.input(displacement.input2(), "feDisplacementMap")?),
+                FilterPrimitiveKind::DisplacementMap(displacement_map_to_filter(
+                    displacement,
+                    primitive.color_interpolation(),
+                    self.value_transform,
+                )),
+            ),
+            usvg::filter::Kind::Flood(flood) => (
+                FilterInput::SourceGraphic,
+                None,
+                FilterPrimitiveKind::Filter(Box::new(Filter::Flood {
+                    brush: color_opacity_to_brush(flood.color(), flood.opacity().get()),
+                })),
+            ),
+            usvg::filter::Kind::Image(image) => (
+                FilterInput::SourceGraphic,
+                None,
+                FilterPrimitiveKind::Image {
+                    brush: self.builder.filter_image_to_brush(
+                        image,
+                        self.filter_bounds,
+                        primitive_rect,
+                        self.region_transform,
+                        self.content_transform,
+                    )?,
+                },
+            ),
+            usvg::filter::Kind::Merge(merge) => (
+                FilterInput::SourceGraphic,
+                None,
+                FilterPrimitiveKind::Merge {
+                    inputs: self.inputs(merge.inputs(), "feMerge")?,
+                },
+            ),
+            usvg::filter::Kind::Morphology(morphology) => (
+                self.input(morphology.input(), "feMorphology")?,
+                None,
+                FilterPrimitiveKind::Filter(Box::new(Filter::Morphology {
+                    radius_x: transform_filter_radius_x(
+                        self.value_transform,
+                        morphology.radius_x().get(),
+                    ),
+                    radius_y: transform_filter_radius_y(
+                        self.value_transform,
+                        morphology.radius_y().get(),
+                    ),
+                    operator: morphology_operator(morphology.operator()),
+                })),
+            ),
+            usvg::filter::Kind::Offset(offset) => {
+                let (dx, dy) =
+                    transform_filter_vector(self.value_transform, offset.dx(), offset.dy());
+                (
+                    self.input(offset.input(), "feOffset")?,
+                    None,
+                    FilterPrimitiveKind::Filter(Box::new(Filter::Offset { dx, dy })),
+                )
+            }
+            usvg::filter::Kind::SpecularLighting(lighting) => (
+                self.input(lighting.input(), "feSpecularLighting")?,
+                None,
+                FilterPrimitiveKind::Filter(Box::new(specular_lighting_to_filter(lighting))),
+            ),
+            usvg::filter::Kind::Tile(tile) => {
+                let input = self.input(tile.input(), "feTile")?;
+                (
+                    input,
+                    None,
+                    FilterPrimitiveKind::Tile {
+                        source_region: self.input_source_region(input),
+                    },
+                )
+            }
+            usvg::filter::Kind::Turbulence(turbulence) => (
+                FilterInput::SourceGraphic,
+                None,
+                FilterPrimitiveKind::Turbulence(turbulence_to_filter(
+                    turbulence,
+                    primitive.color_interpolation(),
+                    self.region_transform,
+                    self.filter_bounds,
+                )),
+            ),
+        };
+        let source_region = self.output_source_region(primitive, input, input2, &kind, region);
+        Ok(LoweredSvgFilterPrimitive {
+            primitive: FilterPrimitive {
+                input,
+                input2,
+                region,
+                kind,
+            },
+            source_region,
+        })
+    }
+
+    fn output_source_region(
+        &self,
+        primitive: &usvg::filter::Primitive,
+        input: FilterInput,
+        input2: Option<FilterInput>,
+        kind: &FilterPrimitiveKind,
+        region: Bounds,
+    ) -> Bounds {
+        let region = region.intersect(self.filter_bounds);
+        match primitive.kind() {
+            usvg::filter::Kind::Flood(_)
+            | usvg::filter::Kind::Image(_)
+            | usvg::filter::Kind::Turbulence(_) => region,
+            usvg::filter::Kind::Offset(_) => self.input_source_region(input).intersect(region),
+            usvg::filter::Kind::GaussianBlur(blur) => {
+                let (radius_x, radius_y) = transform_filter_radii(
+                    self.value_transform,
+                    blur.std_dev_x().get(),
+                    blur.std_dev_y().get(),
+                );
+                self.input_source_region(input)
+                    .outset(blur_outset(radius_x.max(radius_y)))
+                    .intersect(region)
+            }
+            usvg::filter::Kind::Morphology(morphology) => {
+                let radius = match morphology.operator() {
+                    usvg::filter::MorphologyOperator::Dilate => {
+                        transform_filter_radius_x(self.value_transform, morphology.radius_x().get())
+                            .max(transform_filter_radius_y(
+                                self.value_transform,
+                                morphology.radius_y().get(),
+                            ))
+                            .max(0.0)
+                            .ceil() as i32
+                    }
+                    usvg::filter::MorphologyOperator::Erode => 0,
+                };
+                self.input_source_region(input)
+                    .outset(radius)
+                    .intersect(region)
+            }
+            usvg::filter::Kind::Blend(_) => self
+                .input_source_region(input)
+                .union(self.input_source_region(
+                    input2.expect("feBlend lowering produced no second input"),
+                ))
+                .intersect(region),
+            usvg::filter::Kind::Composite(composite) => {
+                let input_region = self.input_source_region(input);
+                let input2_region = self.input_source_region(
+                    input2.expect("feComposite lowering produced no second input"),
+                );
+                match composite.operator() {
+                    usvg::filter::CompositeOperator::In => input_region.intersect(input2_region),
+                    usvg::filter::CompositeOperator::Out => input_region,
+                    _ => input_region.union(input2_region),
+                }
+                .intersect(region)
+            }
+            usvg::filter::Kind::DisplacementMap(displacement) => {
+                let (scale_x, scale_y) = transform_filter_radii(
+                    self.value_transform,
+                    displacement.scale(),
+                    displacement.scale(),
+                );
+                let source_outset = (scale_x.abs().max(scale_y.abs()) * 0.5).ceil() as i32;
+                self.input_source_region(input)
+                    .outset(source_outset)
+                    .intersect(region)
+            }
+            usvg::filter::Kind::Merge(_) => match kind {
+                FilterPrimitiveKind::Merge { inputs } => inputs
+                    .iter()
+                    .map(|input| self.input_source_region(*input))
+                    .fold(Bounds::new(0, 0, 0, 0), BoundsExt::union)
+                    .intersect(region),
+                _ => region,
+            },
+            usvg::filter::Kind::Tile(_) => match kind {
+                FilterPrimitiveKind::Tile { source_region } if !source_region.is_empty() => region,
+                _ => Bounds::new(0, 0, 0, 0),
+            },
+            _ => self.input_source_region(input).intersect(region),
         }
-        usvg::filter::Kind::Turbulence(turbulence) => (
-            FilterInput::SourceGraphic,
-            None,
-            FilterPrimitiveKind::Turbulence(turbulence_to_filter(
-                turbulence,
-                primitive.color_interpolation(),
-                ctx.region_transform,
-                ctx.filter_bounds,
-            )),
-        ),
-    };
-    let source_region = svg_filter_output_source_region(
-        primitive,
-        input,
-        input2,
-        &kind,
-        region,
-        SvgFilterSourceContext {
-            source_regions: ctx.source_regions,
-            filter_bounds: ctx.filter_bounds,
-            value_transform: ctx.value_transform,
-        },
-    );
-    Ok((
-        FilterPrimitive {
-            input,
-            input2,
-            region,
-            kind,
-        },
-        source_region,
-    ))
+    }
+
+    fn input_source_region(&self, input: FilterInput) -> Bounds {
+        match input {
+            FilterInput::SourceGraphic | FilterInput::SourceAlpha => self.filter_bounds,
+            FilterInput::Primitive(index) => self.source_regions[index],
+        }
+    }
+
+    fn input(&self, input: &usvg::filter::Input, primitive: &str) -> Result<FilterInput, SvgError> {
+        match input {
+            usvg::filter::Input::SourceGraphic => Ok(FilterInput::SourceGraphic),
+            usvg::filter::Input::SourceAlpha => Ok(FilterInput::SourceAlpha),
+            usvg::filter::Input::Reference(reference) => self
+                .results
+                .get(reference)
+                .copied()
+                .map(FilterInput::Primitive)
+                .ok_or_else(|| SvgError::unsupported(format!("{primitive} input graph"))),
+        }
+    }
+
+    fn inputs(
+        &self,
+        inputs: &[usvg::filter::Input],
+        primitive: &str,
+    ) -> Result<Vec<FilterInput>, SvgError> {
+        inputs
+            .iter()
+            .map(|input| self.input(input, primitive))
+            .collect()
+    }
 }
 
 fn filter_to_primitive_kind(filter: Option<Filter>) -> FilterPrimitiveKind {
     match filter {
         Some(filter) => FilterPrimitiveKind::Filter(Box::new(filter)),
         None => FilterPrimitiveKind::Identity,
-    }
-}
-
-#[derive(Clone, Copy)]
-struct SvgFilterSourceContext<'a> {
-    source_regions: &'a [Bounds],
-    filter_bounds: Bounds,
-    value_transform: Affine,
-}
-
-fn svg_filter_output_source_region(
-    primitive: &usvg::filter::Primitive,
-    input: FilterInput,
-    input2: Option<FilterInput>,
-    kind: &FilterPrimitiveKind,
-    region: Bounds,
-    ctx: SvgFilterSourceContext<'_>,
-) -> Bounds {
-    let region = region.intersect(ctx.filter_bounds);
-    match primitive.kind() {
-        usvg::filter::Kind::Flood(_)
-        | usvg::filter::Kind::Image(_)
-        | usvg::filter::Kind::Turbulence(_) => region,
-        usvg::filter::Kind::Offset(_) => {
-            svg_filter_input_source_region(input, ctx.source_regions, ctx.filter_bounds)
-                .intersect(region)
-        }
-        usvg::filter::Kind::GaussianBlur(blur) => {
-            let (radius_x, radius_y) = transform_filter_radii(
-                ctx.value_transform,
-                blur.std_dev_x().get(),
-                blur.std_dev_y().get(),
-            );
-            svg_filter_input_source_region(input, ctx.source_regions, ctx.filter_bounds)
-                .outset(blur_outset(radius_x.max(radius_y)))
-                .intersect(region)
-        }
-        usvg::filter::Kind::Morphology(morphology) => {
-            let input_region =
-                svg_filter_input_source_region(input, ctx.source_regions, ctx.filter_bounds);
-            let radius = match morphology.operator() {
-                usvg::filter::MorphologyOperator::Dilate => {
-                    transform_filter_radius_x(ctx.value_transform, morphology.radius_x().get())
-                        .max(transform_filter_radius_y(
-                            ctx.value_transform,
-                            morphology.radius_y().get(),
-                        ))
-                        .max(0.0)
-                        .ceil() as i32
-                }
-                usvg::filter::MorphologyOperator::Erode => 0,
-            };
-            input_region.outset(radius).intersect(region)
-        }
-        usvg::filter::Kind::Blend(_) => {
-            svg_filter_input_source_region(input, ctx.source_regions, ctx.filter_bounds)
-                .union(svg_filter_input_source_region(
-                    input2.expect("feBlend lowering produced no second input"),
-                    ctx.source_regions,
-                    ctx.filter_bounds,
-                ))
-                .intersect(region)
-        }
-        usvg::filter::Kind::Composite(composite) => {
-            let input_region =
-                svg_filter_input_source_region(input, ctx.source_regions, ctx.filter_bounds);
-            let input2_region = svg_filter_input_source_region(
-                input2.expect("feComposite lowering produced no second input"),
-                ctx.source_regions,
-                ctx.filter_bounds,
-            );
-            match composite.operator() {
-                usvg::filter::CompositeOperator::In => input_region.intersect(input2_region),
-                usvg::filter::CompositeOperator::Out => input_region,
-                _ => input_region.union(input2_region),
-            }
-            .intersect(region)
-        }
-        usvg::filter::Kind::DisplacementMap(displacement) => {
-            let (scale_x, scale_y) = transform_filter_radii(
-                ctx.value_transform,
-                displacement.scale(),
-                displacement.scale(),
-            );
-            let source_outset = (scale_x.abs().max(scale_y.abs()) * 0.5).ceil() as i32;
-            svg_filter_input_source_region(input, ctx.source_regions, ctx.filter_bounds)
-                .outset(source_outset)
-                .intersect(region)
-        }
-        usvg::filter::Kind::Merge(_) => match kind {
-            FilterPrimitiveKind::Merge { inputs } => inputs
-                .iter()
-                .map(|input| {
-                    svg_filter_input_source_region(*input, ctx.source_regions, ctx.filter_bounds)
-                })
-                .fold(Bounds::new(0, 0, 0, 0), BoundsExt::union)
-                .intersect(region),
-            _ => region,
-        },
-        usvg::filter::Kind::Tile(_) => match kind {
-            FilterPrimitiveKind::Tile { source_region } if !source_region.is_empty() => region,
-            _ => Bounds::new(0, 0, 0, 0),
-        },
-        _ => svg_filter_input_source_region(input, ctx.source_regions, ctx.filter_bounds)
-            .intersect(region),
     }
 }
 
@@ -1162,46 +1171,8 @@ impl BoundsExt for Bounds {
     }
 }
 
-fn svg_filter_input_source_region(
-    input: FilterInput,
-    source_regions: &[Bounds],
-    filter_bounds: Bounds,
-) -> Bounds {
-    match input {
-        FilterInput::SourceGraphic | FilterInput::SourceAlpha => filter_bounds,
-        FilterInput::Primitive(index) => source_regions[index],
-    }
-}
-
 fn blur_outset(radius: f32) -> i32 {
     (radius.max(0.0) * 3.0).ceil() as i32
-}
-
-fn svg_filter_input(
-    input: &usvg::filter::Input,
-    results: &HashMap<String, usize>,
-    primitive: &str,
-) -> Result<FilterInput, SvgError> {
-    match input {
-        usvg::filter::Input::SourceGraphic => Ok(FilterInput::SourceGraphic),
-        usvg::filter::Input::SourceAlpha => Ok(FilterInput::SourceAlpha),
-        usvg::filter::Input::Reference(reference) => results
-            .get(reference)
-            .copied()
-            .map(FilterInput::Primitive)
-            .ok_or_else(|| SvgError::unsupported(format!("{primitive} input graph"))),
-    }
-}
-
-fn svg_filter_inputs(
-    inputs: &[usvg::filter::Input],
-    results: &HashMap<String, usize>,
-    primitive: &str,
-) -> Result<Vec<FilterInput>, SvgError> {
-    inputs
-        .iter()
-        .map(|input| svg_filter_input(input, results, primitive))
-        .collect()
 }
 
 fn composite_operator(operator: usvg::filter::CompositeOperator) -> CompositeOperator {
