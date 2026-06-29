@@ -71,6 +71,20 @@ struct LightingDispatch {
     light_source: LightSource,
 }
 
+struct MaskedGroupLayer<'a> {
+    draw: usize,
+    outer_stack: std::ops::Range<usize>,
+    children: &'a [ExecOp],
+    opacity: Option<f32>,
+    composite: LayerComposite,
+}
+
+#[derive(Clone, Copy)]
+enum LayerComposite {
+    SrcOver,
+    Blend(BlendMode),
+}
+
 struct SavedRendererState {
     size: (u32, u32),
     surface_origin: (i32, i32),
@@ -299,65 +313,45 @@ impl<R: Runtime> Renderer<R> {
         filter_cursors: &mut FilterCursors,
     ) {
         match layer {
-            Layer::Isolate => {
-                let bounds =
-                    draw_bounds(scene, draw).intersect(Bounds::canvas(self.size.0, self.size.1));
-                if bounds.is_empty() {
-                    return;
-                }
-                let source = self.acquire_scratch();
-                self.clear_buffer(source, 0);
-                self.execute_ops(scene, plan, children, source, filter_cursors);
-
-                let mask = self.acquire_scratch();
-                self.clear_buffer(mask, 0);
-                self.build_layer_mask(mask, draw as u32, bounds);
-                self.composite_src_over_with_stack(target, source, Some(mask), bounds, outer_stack);
-                self.release_scratch(mask);
-                self.release_scratch(source);
-            }
-            Layer::Opacity(opacity) => {
-                let bounds =
-                    draw_bounds(scene, draw).intersect(Bounds::canvas(self.size.0, self.size.1));
-                if bounds.is_empty() {
-                    return;
-                }
-                let source = self.acquire_scratch();
-                self.clear_buffer(source, 0);
-                self.execute_ops(scene, plan, children, source, filter_cursors);
-                self.apply_color_filter(source, bounds, FILTER_OPACITY, opacity.opacity);
-
-                let mask = self.acquire_scratch();
-                self.clear_buffer(mask, 0);
-                self.build_layer_mask(mask, draw as u32, bounds);
-                self.composite_src_over_with_stack(target, source, Some(mask), bounds, outer_stack);
-                self.release_scratch(mask);
-                self.release_scratch(source);
-            }
-            Layer::Blend(blend) => {
-                let bounds =
-                    draw_bounds(scene, draw).intersect(Bounds::canvas(self.size.0, self.size.1));
-                if bounds.is_empty() {
-                    return;
-                }
-                let source = self.acquire_scratch();
-                self.clear_buffer(source, 0);
-                self.execute_ops(scene, plan, children, source, filter_cursors);
-
-                let mask = self.acquire_scratch();
-                self.clear_buffer(mask, 0);
-                self.build_layer_mask(mask, draw as u32, bounds);
-                self.composite_blend_with_stack(
-                    target,
-                    source,
-                    mask,
-                    bounds,
+            Layer::Isolate => self.execute_masked_group_layer(
+                scene,
+                plan,
+                MaskedGroupLayer {
+                    draw,
                     outer_stack,
-                    blend.mode,
-                );
-                self.release_scratch(mask);
-                self.release_scratch(source);
-            }
+                    children,
+                    opacity: None,
+                    composite: LayerComposite::SrcOver,
+                },
+                target,
+                filter_cursors,
+            ),
+            Layer::Opacity(opacity) => self.execute_masked_group_layer(
+                scene,
+                plan,
+                MaskedGroupLayer {
+                    draw,
+                    outer_stack,
+                    children,
+                    opacity: Some(opacity.opacity),
+                    composite: LayerComposite::SrcOver,
+                },
+                target,
+                filter_cursors,
+            ),
+            Layer::Blend(blend) => self.execute_masked_group_layer(
+                scene,
+                plan,
+                MaskedGroupLayer {
+                    draw,
+                    outer_stack,
+                    children,
+                    opacity: None,
+                    composite: LayerComposite::Blend(blend.mode),
+                },
+                target,
+                filter_cursors,
+            ),
             Layer::Filter {
                 filter,
                 sample_region,
@@ -417,6 +411,51 @@ impl<R: Runtime> Renderer<R> {
                 "CubeCL offscreen execution only accepts Opacity, Filter, and Backdrop layers"
             ),
         }
+    }
+
+    fn execute_masked_group_layer(
+        &mut self,
+        scene: &Scene,
+        plan: &ExecPlan,
+        group: MaskedGroupLayer<'_>,
+        target: CubeRenderTarget,
+        filter_cursors: &mut FilterCursors,
+    ) {
+        let bounds =
+            draw_bounds(scene, group.draw).intersect(Bounds::canvas(self.size.0, self.size.1));
+        if bounds.is_empty() {
+            return;
+        }
+
+        let source = self.acquire_scratch();
+        self.clear_buffer(source, 0);
+        self.execute_ops(scene, plan, group.children, source, filter_cursors);
+        if let Some(opacity) = group.opacity {
+            self.apply_color_filter(source, bounds, FILTER_OPACITY, opacity);
+        }
+
+        let mask = self.acquire_scratch();
+        self.clear_buffer(mask, 0);
+        self.build_layer_mask(mask, group.draw as u32, bounds);
+        match group.composite {
+            LayerComposite::SrcOver => self.composite_src_over_with_stack(
+                target,
+                source,
+                Some(mask),
+                bounds,
+                group.outer_stack,
+            ),
+            LayerComposite::Blend(mode) => self.composite_blend_with_stack(
+                target,
+                source,
+                mask,
+                bounds,
+                group.outer_stack,
+                mode,
+            ),
+        }
+        self.release_scratch(mask);
+        self.release_scratch(source);
     }
 
     #[allow(clippy::too_many_arguments)]

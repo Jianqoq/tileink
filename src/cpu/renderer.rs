@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use peniko::Color;
+use peniko::{BlendMode, Color};
 
 use crate::{
     cpu::{
@@ -55,6 +55,20 @@ struct OffscreenLayerRef<'a> {
     layer: &'a Layer,
     outer_stack: std::ops::Range<usize>,
     children: &'a [ExecOp],
+}
+
+struct MaskedGroupLayer<'a> {
+    draw: usize,
+    outer_stack: std::ops::Range<usize>,
+    children: &'a [ExecOp],
+    opacity: Option<f32>,
+    composite: LayerComposite,
+}
+
+#[derive(Clone, Copy)]
+enum LayerComposite {
+    SrcOver,
+    Blend(BlendMode),
 }
 
 impl Render for Renderer {
@@ -288,78 +302,56 @@ impl Renderer {
         buffers: &mut RasterBuffers,
     ) {
         match offscreen.layer {
-            Layer::Isolate => {
-                let bounds = draw_bounds(scene, offscreen.draw).intersect(target_bounds);
-                if bounds.is_empty() {
-                    return;
-                }
-                let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
-                self.execute_ops(scene, plan, offscreen.children, &mut image, bounds, buffers);
-
-                let mut mask = self.rasterize_layer_mask(scene, offscreen.draw, bounds, buffers);
-                self.apply_outer_clip_stack_to_mask(
-                    scene,
-                    plan,
-                    offscreen.outer_stack,
-                    bounds,
-                    &mut mask,
-                    buffers,
-                );
-                composite_src_over_masked_at(target, &image, &mask, bounds, target_bounds);
-            }
-            Layer::Opacity(opacity) => {
-                let bounds = draw_bounds(scene, offscreen.draw).intersect(target_bounds);
-                if bounds.is_empty() {
-                    return;
-                }
-                let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
-                self.execute_ops(scene, plan, offscreen.children, &mut image, bounds, buffers);
-
-                let mut mask = self.rasterize_layer_mask(scene, offscreen.draw, bounds, buffers);
-                apply_opacity_to_mask(&mut mask, opacity.opacity);
-                self.apply_outer_clip_stack_to_mask(
-                    scene,
-                    plan,
-                    offscreen.outer_stack,
-                    bounds,
-                    &mut mask,
-                    buffers,
-                );
-                composite_src_over_masked_at(target, &image, &mask, bounds, target_bounds);
-            }
-            Layer::Blend(blend) => {
-                let bounds = draw_bounds(scene, offscreen.draw).intersect(target_bounds);
-                if bounds.is_empty() {
-                    return;
-                }
-                let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
-                self.execute_ops(scene, plan, offscreen.children, &mut image, bounds, buffers);
-
-                let mut mask = self.rasterize_layer_mask(scene, offscreen.draw, bounds, buffers);
-                self.apply_outer_clip_stack_to_mask(
-                    scene,
-                    plan,
-                    offscreen.outer_stack,
-                    bounds,
-                    &mut mask,
-                    buffers,
-                );
-                composite_blend_masked_at(target, &image, &mask, bounds, target_bounds, blend.mode);
-            }
+            Layer::Isolate => self.execute_masked_group_layer(
+                scene,
+                plan,
+                MaskedGroupLayer {
+                    draw: offscreen.draw,
+                    outer_stack: offscreen.outer_stack,
+                    children: offscreen.children,
+                    opacity: None,
+                    composite: LayerComposite::SrcOver,
+                },
+                target,
+                target_bounds,
+                buffers,
+            ),
+            Layer::Opacity(opacity) => self.execute_masked_group_layer(
+                scene,
+                plan,
+                MaskedGroupLayer {
+                    draw: offscreen.draw,
+                    outer_stack: offscreen.outer_stack,
+                    children: offscreen.children,
+                    opacity: Some(opacity.opacity),
+                    composite: LayerComposite::SrcOver,
+                },
+                target,
+                target_bounds,
+                buffers,
+            ),
+            Layer::Blend(blend) => self.execute_masked_group_layer(
+                scene,
+                plan,
+                MaskedGroupLayer {
+                    draw: offscreen.draw,
+                    outer_stack: offscreen.outer_stack,
+                    children: offscreen.children,
+                    opacity: None,
+                    composite: LayerComposite::Blend(blend.mode),
+                },
+                target,
+                target_bounds,
+                buffers,
+            ),
             Layer::ClipSdf { sdf, bounds } => {
                 if bounds.intersect(target_bounds).is_empty() {
                     return;
                 }
-                let mut image = Image::new(
-                    target_bounds.width(),
-                    target_bounds.height(),
-                    Color::TRANSPARENT,
-                );
-                self.execute_ops(
+                let image = self.render_children_to_image(
                     scene,
                     plan,
                     offscreen.children,
-                    &mut image,
                     target_bounds,
                     buffers,
                 );
@@ -449,16 +441,10 @@ impl Renderer {
                     target_bounds,
                 );
 
-                let mut content = Image::new(
-                    target_bounds.width(),
-                    target_bounds.height(),
-                    Color::TRANSPARENT,
-                );
-                self.execute_ops(
+                let content = self.render_children_to_image(
                     scene,
                     plan,
                     offscreen.children,
-                    &mut content,
                     target_bounds,
                     buffers,
                 );
@@ -482,6 +468,56 @@ impl Renderer {
             }
             _ => unreachable!(),
         }
+    }
+
+    fn execute_masked_group_layer(
+        &mut self,
+        scene: &crate::scene::Scene,
+        plan: &ExecPlan,
+        group: MaskedGroupLayer<'_>,
+        target: &mut Image,
+        target_bounds: Bounds,
+        buffers: &mut RasterBuffers,
+    ) {
+        let bounds = draw_bounds(scene, group.draw).intersect(target_bounds);
+        if bounds.is_empty() {
+            return;
+        }
+
+        let image = self.render_children_to_image(scene, plan, group.children, bounds, buffers);
+        let mut mask = self.rasterize_layer_mask(scene, group.draw, bounds, buffers);
+        if let Some(opacity) = group.opacity {
+            apply_opacity_to_mask(&mut mask, opacity);
+        }
+        self.apply_outer_clip_stack_to_mask(
+            scene,
+            plan,
+            group.outer_stack,
+            bounds,
+            &mut mask,
+            buffers,
+        );
+        composite_masked_layer(
+            target,
+            &image,
+            &mask,
+            bounds,
+            target_bounds,
+            group.composite,
+        );
+    }
+
+    fn render_children_to_image(
+        &mut self,
+        scene: &crate::scene::Scene,
+        plan: &ExecPlan,
+        children: &[ExecOp],
+        bounds: Bounds,
+        buffers: &mut RasterBuffers,
+    ) -> Image {
+        let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
+        self.execute_ops(scene, plan, children, &mut image, bounds, buffers);
+        image
     }
 
     fn render_offscreen_surface(&mut self, surface: &mut OffscreenSurface) {
@@ -647,6 +683,24 @@ impl Renderer {
 fn draw_bounds(scene: &crate::scene::Scene, draw_ix: usize) -> Bounds {
     let bounds = scene.draw_records[draw_ix].pixel_bounds;
     Bounds::new(bounds.x0, bounds.y0, bounds.x1, bounds.y1)
+}
+
+fn composite_masked_layer(
+    target: &mut Image,
+    content: &Image,
+    mask: &Image,
+    content_bounds: Bounds,
+    target_bounds: Bounds,
+    composite: LayerComposite,
+) {
+    match composite {
+        LayerComposite::SrcOver => {
+            composite_src_over_masked_at(target, content, mask, content_bounds, target_bounds)
+        }
+        LayerComposite::Blend(mode) => {
+            composite_blend_masked_at(target, content, mask, content_bounds, target_bounds, mode)
+        }
+    }
 }
 
 fn run_scan_pipeline(
