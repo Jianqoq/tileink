@@ -32,6 +32,11 @@ name = "gpu_compare"
 harness = false
 required-features = ["bench-api"]
 
+[[bench]]
+name = "tiger_gpu_compare"
+harness = false
+required-features = ["bench-api"]
+
 [[example]]
 name = "cpu_backdrop_blur"
 path = "examples/cpu/backdrop_blur.rs"
