@@ -106,6 +106,7 @@ impl LocalSpace {
                 Sdf::CircleStroke(stroke)
             }
             Sdf::CandleStick(candle) => Sdf::CandleStick(candle.translated(dx as f32, dy as f32)),
+            Sdf::Line(line) => Sdf::Line(line.translated(dx as f32, dy as f32)),
         }
     }
 

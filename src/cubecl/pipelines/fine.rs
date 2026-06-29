@@ -15,8 +15,8 @@ use crate::cubecl::{
         CUBE_PTCL_BEGIN_BLEND, CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_BEGIN_OPACITY, CUBE_PTCL_COLOR,
         CUBE_PTCL_END, CUBE_PTCL_END_BLEND, CUBE_PTCL_END_CLIP, CUBE_PTCL_END_OPACITY,
         CUBE_PTCL_FILL, CUBE_PTCL_GLYPH, CUBE_PTCL_PATH_GLYPH, CUBE_PTCL_SDF, CUBE_SDF_CANDLESTICK,
-        CUBE_SDF_CIRCLE, CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_RECT, CUBE_SDF_RECT_STROKE,
-        CubeBufferLengths,
+        CUBE_SDF_CIRCLE, CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_LINE, CUBE_SDF_RECT,
+        CUBE_SDF_RECT_STROKE, CubeBufferLengths,
     },
 };
 
@@ -710,6 +710,17 @@ fn sdf_alpha_at(
             draw_sdf_r0[i],
             draw_sdf_r1[i],
         );
+    } else if kind == CUBE_SDF_LINE {
+        coverage = sdf_coverage_from_dist(line_sdf_distance(
+            x,
+            y,
+            draw_sdf_x0[i],
+            draw_sdf_y0[i],
+            draw_sdf_x1[i],
+            draw_sdf_y1[i],
+            draw_sdf_r0[i],
+            draw_sdf_r1[i],
+        ));
     }
 
     (coverage * 255.0 + 0.5) as u32
@@ -760,6 +771,58 @@ fn candlestick_sdf_coverage(
     ));
 
     wick.max(body)
+}
+
+#[cube]
+fn line_sdf_distance(
+    x: f32,
+    y: f32,
+    sx: f32,
+    sy: f32,
+    ex: f32,
+    ey: f32,
+    width: f32,
+    cap: f32,
+) -> f32 {
+    let half = width.max(0.0) * 0.5;
+    let dx = ex - sx;
+    let dy = ey - sy;
+    let len = (dx * dx + dy * dy).sqrt();
+    let mut dist = f32::new(1000000.0_f32);
+    if len <= f32::new(0.000001_f32) {
+        if cap >= 0.5 {
+            if cap > 1.5 {
+                dist = ((x - sx) * (x - sx) + (y - sy) * (y - sy)).sqrt() - half;
+            } else {
+                dist = local_line_rect_distance(0.0, 0.0, -half, half, half);
+            }
+        }
+    } else {
+        let ux = dx / len;
+        let uy = dy / len;
+        let px = x - sx;
+        let py = y - sy;
+        let axis = px * ux + py * uy;
+        let normal = -px * uy + py * ux;
+        if cap < 0.5 {
+            dist = local_line_rect_distance(axis, normal, 0.0, len, half);
+        } else if cap < 1.5 {
+            dist = local_line_rect_distance(axis, normal, -half, len + half, half);
+        } else {
+            let nearest = axis.clamp(0.0, len);
+            dist = ((axis - nearest) * (axis - nearest) + normal * normal).sqrt() - half;
+        }
+    }
+    dist
+}
+
+#[cube]
+fn local_line_rect_distance(axis: f32, normal: f32, x0: f32, x1: f32, half_height: f32) -> f32 {
+    let center = (x0 + x1) * 0.5;
+    let half_width = (x1 - x0) * 0.5;
+    let dx = (axis - center).abs() - half_width;
+    let dy = normal.abs() - half_height;
+    (dx.max(0.0) * dx.max(0.0) + dy.max(0.0) * dy.max(0.0)).sqrt() + dx.max(dy).min(0.0)
 }
 
 #[cube]

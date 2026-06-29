@@ -154,6 +154,38 @@ fn fine_wgpu_renders_candlestick_sdf_when_enabled() {
 }
 
 #[test]
+fn fine_wgpu_renders_line_sdf_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let red = Color::from_rgb8(220, 64, 72);
+    let mut scene = Scene::new(40, 36);
+    scene.push_line(
+        SdfLine::new(
+            Point::new(8.0, 16.5),
+            Point::new(24.0, 16.5),
+            1.0,
+            SdfLineCap::Butt,
+        ),
+        red,
+        FillRule::NonZero,
+    );
+
+    let mut renderer = WgpuRenderer::new_default_device(40, 36, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+    let red_px = premul_f32_to_u32(red.premultiply().components);
+
+    assert_eq!(target[16 * 40 + 8], red_px);
+    assert_eq!(target[16 * 40 + 23], red_px);
+    assert_eq!(target[16 * 40 + 7], 0);
+    assert_eq!(target[16 * 40 + 24], 0);
+    assert_eq!(target[15 * 40 + 16], 0);
+    assert_eq!(target[17 * 40 + 16], 0);
+}
+
+#[test]
 fn fine_wgpu_preserves_rect_sdf_subpixel_coverage_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;

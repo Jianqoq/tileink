@@ -5,7 +5,8 @@ use peniko::{
 
 use super::Renderer;
 use crate::{
-    CandleStick, FillRule, Radius, Scene, StrokeWidths, TextContext, TextLayoutOptions,
+    CandleStick, FillRule, Radius, Scene, SdfLine, SdfLineCap, StrokeWidths, TextContext,
+    TextLayoutOptions,
     shared::layer::{
         filter::Filter,
         mask::{Mask, MaskKind},
@@ -276,6 +277,56 @@ fn sdf_candlestick_renders_centered_one_pixel_wick_and_odd_body() {
     assert_eq!(renderer.image().rgba8_at(19, 12), [220, 64, 72, 255]);
     assert_eq!(renderer.image().rgba8_at(21, 12), [255, 255, 255, 255]);
     assert_eq!(renderer.image().rgba8_at(16, 29), [255, 255, 255, 255]);
+}
+
+#[test]
+fn sdf_line_renders_centered_one_pixel_butt_stroke() {
+    let red = Color::from_rgb8(220, 64, 72);
+    let mut scene = Scene::new(40, 36);
+    scene.push_line(
+        SdfLine::new(
+            Point::new(8.0, 16.5),
+            Point::new(24.0, 16.5),
+            1.0,
+            SdfLineCap::Butt,
+        ),
+        red,
+        FillRule::NonZero,
+    );
+
+    let mut renderer = Renderer::new(40, 36, Color::WHITE);
+    renderer.render(&scene);
+
+    assert_eq!(renderer.image().rgba8_at(8, 16), [220, 64, 72, 255]);
+    assert_eq!(renderer.image().rgba8_at(23, 16), [220, 64, 72, 255]);
+    assert_eq!(renderer.image().rgba8_at(7, 16), [255, 255, 255, 255]);
+    assert_eq!(renderer.image().rgba8_at(24, 16), [255, 255, 255, 255]);
+    assert_eq!(renderer.image().rgba8_at(16, 15), [255, 255, 255, 255]);
+    assert_eq!(renderer.image().rgba8_at(16, 17), [255, 255, 255, 255]);
+}
+
+#[test]
+fn sdf_line_square_cap_extends_by_half_width() {
+    let red = Color::from_rgb8(220, 64, 72);
+    let mut scene = Scene::new(40, 36);
+    scene.push_line(
+        SdfLine::new(
+            Point::new(8.0, 16.5),
+            Point::new(24.0, 16.5),
+            2.0,
+            SdfLineCap::Square,
+        ),
+        red,
+        FillRule::NonZero,
+    );
+
+    let mut renderer = Renderer::new(40, 36, Color::WHITE);
+    renderer.render(&scene);
+
+    assert_eq!(renderer.image().rgba8_at(7, 16), [220, 64, 72, 255]);
+    assert_eq!(renderer.image().rgba8_at(24, 16), [220, 64, 72, 255]);
+    assert_eq!(renderer.image().rgba8_at(6, 16), [255, 255, 255, 255]);
+    assert_eq!(renderer.image().rgba8_at(25, 16), [255, 255, 255, 255]);
 }
 
 #[test]

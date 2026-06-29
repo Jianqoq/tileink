@@ -141,6 +141,10 @@ name = "cpu_sepia"
 path = "examples/cpu/sepia.rs"
 
 [[example]]
+name = "cpu_sdf_line"
+path = "examples/cpu/sdf_line.rs"
+
+[[example]]
 name = "cpu_simple"
 path = "examples/cpu/simple.rs"
 
@@ -263,6 +267,10 @@ path = "examples/cubecl/saturate.rs"
 [[example]]
 name = "cubecl_sepia"
 path = "examples/cubecl/sepia.rs"
+
+[[example]]
+name = "cubecl_sdf_line"
+path = "examples/cubecl/sdf_line.rs"
 
 [[example]]
 name = "cubecl_simple"

@@ -43,6 +43,7 @@ pub use shared::{
     },
     sdf::{
         candlestick::CandleStick,
+        line::{Line as SdfLine, LineCap as SdfLineCap},
         rect::{Radius, StrokeWidths},
     },
 };

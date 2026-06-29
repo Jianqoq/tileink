@@ -21,7 +21,7 @@ use crate::cubecl::{
         CUBE_DRAW_PATH_GLYPH, CUBE_GLYPH_COLOR, CUBE_GLYPH_LINEAR_COLOR, CUBE_GLYPH_LINEAR_MASK,
         CUBE_GLYPH_LINEAR_SUBPIXEL_MASK, CUBE_GLYPH_MASK, CUBE_GLYPH_SUBPIXEL_MASK,
         CUBE_LAYER_BLEND, CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY, CUBE_SDF_CANDLESTICK,
-        CUBE_SDF_CIRCLE, CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_NONE, CUBE_SDF_RECT,
+        CUBE_SDF_CIRCLE, CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_LINE, CUBE_SDF_NONE, CUBE_SDF_RECT,
         CUBE_SDF_RECT_STROKE, CubeBufferLengths, CubeCumsumPlan, CubeScanChunk, CubeScanChunkRange,
         build_cumsum_plan_into, build_scan_chunks_into,
     },
@@ -230,6 +230,19 @@ impl DrawSdfUpload {
                             candle.body_top_y,
                         ],
                         [candle.body_bottom_y, candle.body_width as f32, 0.0, 0.0],
+                        [0.0; 4],
+                    );
+                }
+                Some(Sdf::Line(line)) => {
+                    self.push(
+                        CUBE_SDF_LINE,
+                        [
+                            line.start.x as f32,
+                            line.start.y as f32,
+                            line.end.x as f32,
+                            line.end.y as f32,
+                        ],
+                        [line.width, line.cap_value(), 0.0, 0.0],
                         [0.0; 4],
                     );
                 }

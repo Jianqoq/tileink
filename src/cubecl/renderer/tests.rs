@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use peniko::{
     Color, Compose, Extend, Gradient, Mix,
-    kurbo::{Affine, BezPath, Circle, Rect, Shape, Stroke},
+    kurbo::{Affine, BezPath, Circle, Point, Rect, Shape, Stroke},
 };
 
 use super::{CubeBufferLengths, CubeRenderTarget, WgpuRenderer};
@@ -28,7 +28,8 @@ use crate::shared::layer::{
 };
 use crate::shared::pixel::premul_f32_to_u32;
 use crate::{
-    CandleStick, CpuRenderer, FillRule, Radius, Scene, StrokeWidths, TextContext, TextLayoutOptions,
+    CandleStick, CpuRenderer, FillRule, Radius, Scene, SdfLine, SdfLineCap, StrokeWidths,
+    TextContext, TextLayoutOptions,
 };
 
 fn mixed_shape_scene() -> Scene {
