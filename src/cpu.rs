@@ -1,4 +1,5 @@
 pub(crate) mod computes;
+mod mask;
 mod pipelines;
 mod renderer;
 
