@@ -5,7 +5,7 @@ use peniko::{
 
 use super::Renderer;
 use crate::{
-    FillRule, Radius, Scene, StrokeWidths, TextContext, TextLayoutOptions,
+    CandleStick, FillRule, Radius, Scene, StrokeWidths, TextContext, TextLayoutOptions,
     shared::layer::{
         filter::Filter,
         mask::{Mask, MaskKind},
@@ -255,6 +255,27 @@ fn sdf_rect_stroke_renders_ring_without_filling_center() {
     assert_eq!(renderer.image().rgba8_at(16, 32), [255, 0, 0, 255]);
     assert_eq!(renderer.image().rgba8_at(32, 32), [255, 255, 255, 255]);
     assert_eq!(renderer.image().rgba8_at(8, 32), [255, 255, 255, 255]);
+}
+
+#[test]
+fn sdf_candlestick_renders_centered_one_pixel_wick_and_odd_body() {
+    let red = Color::from_rgb8(220, 64, 72);
+    let mut scene = Scene::new(40, 36);
+    scene.push_candlestick(
+        CandleStick::new(16.5, 4.0, 28.0, 10.0, 22.0, 7),
+        red,
+        FillRule::NonZero,
+    );
+
+    let mut renderer = Renderer::new(40, 36, Color::WHITE);
+    renderer.render(&scene);
+
+    assert_eq!(renderer.image().rgba8_at(16, 5), [220, 64, 72, 255]);
+    assert_eq!(renderer.image().rgba8_at(14, 5), [255, 255, 255, 255]);
+    assert_eq!(renderer.image().rgba8_at(13, 12), [220, 64, 72, 255]);
+    assert_eq!(renderer.image().rgba8_at(19, 12), [220, 64, 72, 255]);
+    assert_eq!(renderer.image().rgba8_at(21, 12), [255, 255, 255, 255]);
+    assert_eq!(renderer.image().rgba8_at(16, 29), [255, 255, 255, 255]);
 }
 
 #[test]

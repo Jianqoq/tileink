@@ -61,6 +61,10 @@ name = "cpu_brightness"
 path = "examples/cpu/brightness.rs"
 
 [[example]]
+name = "cpu_candlestick"
+path = "examples/cpu/candlestick.rs"
+
+[[example]]
 name = "cpu_clip"
 path = "examples/cpu/clip.rs"
 
@@ -179,6 +183,10 @@ path = "examples/cubecl/blur.rs"
 [[example]]
 name = "cubecl_brightness"
 path = "examples/cubecl/brightness.rs"
+
+[[example]]
+name = "cubecl_candlestick"
+path = "examples/cubecl/candlestick.rs"
 
 [[example]]
 name = "cubecl_clip"

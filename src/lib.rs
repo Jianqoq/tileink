@@ -41,7 +41,10 @@ pub use shared::{
         mask::{Mask, MaskKind},
         region::Region,
     },
-    sdf::rect::{Radius, StrokeWidths},
+    sdf::{
+        candlestick::CandleStick,
+        rect::{Radius, StrokeWidths},
+    },
 };
 pub use svg::{SvgError, SvgOptions};
 pub use text::{

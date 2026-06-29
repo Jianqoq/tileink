@@ -26,6 +26,7 @@ use crate::shared::{
     scan_line::line_scanned_tile_count,
     sdf::{
         Sdf,
+        candlestick::CandleStick as SdfCandleStick,
         circle::{Circle as SdfCircle, CircleStroke as SdfCircleStroke},
         rect::{Radius, Rect as SdfRect, RectStroke as SdfRectStroke, StrokeWidths},
     },
@@ -663,6 +664,19 @@ impl Scene {
             brush,
             rule,
         );
+    }
+
+    pub fn push_candlestick(
+        &mut self,
+        candle: SdfCandleStick,
+        brush: impl Into<Brush>,
+        rule: FillRule,
+    ) {
+        assert!(
+            SdfCandleStick::valid_body_width(candle.body_width),
+            "candlestick body width must be a positive odd number"
+        );
+        self.push_sdf_draw(Sdf::CandleStick(candle), candle.bounds(), brush, rule);
     }
 
     pub fn push_arc(&mut self, arc: Arc, brush: impl Into<Brush>, rule: FillRule, tolerance: f64) {
@@ -1753,6 +1767,36 @@ mod tests {
                 assert_eq!(circle.radius, 8.0);
             }
             sdf => panic!("expected circle SDF, got {sdf:?}"),
+        }
+    }
+
+    #[test]
+    fn push_candlestick_records_sdf_without_path_storage() {
+        let mut scene = test_scene();
+        scene.push_candlestick(
+            SdfCandleStick::new(16.5, 4.0, 28.0, 10.0, 22.0, 7),
+            Brush::Solid(rgb(255, 0, 0)),
+            FillRule::NonZero,
+        );
+
+        assert_eq!(scene.draw_records.len(), 1);
+        assert!(scene.path_records.is_empty());
+        assert!(scene.bd_records.is_empty());
+        assert_eq!(
+            scene.draw_records[0].pixel_bounds,
+            PixelBounds {
+                x0: 13,
+                y0: 4,
+                x1: 20,
+                y1: 28,
+            }
+        );
+        match scene.draw_records[0].sdf {
+            Some(Sdf::CandleStick(candle)) => {
+                assert_eq!(candle.center_x, 16.5);
+                assert_eq!(candle.body_width, 7);
+            }
+            sdf => panic!("expected candlestick SDF, got {sdf:?}"),
         }
     }
 

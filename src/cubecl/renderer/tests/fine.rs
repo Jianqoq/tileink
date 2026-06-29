@@ -127,6 +127,33 @@ fn fine_wgpu_renders_circle_stroke_sdf_when_enabled() {
 }
 
 #[test]
+fn fine_wgpu_renders_candlestick_sdf_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let red = Color::from_rgb8(220, 64, 72);
+    let mut scene = Scene::new(40, 36);
+    scene.push_candlestick(
+        CandleStick::new(16.5, 4.0, 28.0, 10.0, 22.0, 7),
+        red,
+        FillRule::NonZero,
+    );
+
+    let mut renderer = WgpuRenderer::new_default_device(40, 36, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+    let red_px = premul_f32_to_u32(red.premultiply().components);
+
+    assert_eq!(target[5 * 40 + 16], red_px);
+    assert_eq!(target[5 * 40 + 14], 0);
+    assert_eq!(target[12 * 40 + 13], red_px);
+    assert_eq!(target[12 * 40 + 19], red_px);
+    assert_eq!(target[12 * 40 + 21], 0);
+    assert_eq!(target[29 * 40 + 16], 0);
+}
+
+#[test]
 fn fine_wgpu_preserves_rect_sdf_subpixel_coverage_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;

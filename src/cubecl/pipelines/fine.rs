@@ -14,8 +14,9 @@ use crate::cubecl::{
         CUBE_GLYPH_LINEAR_SUBPIXEL_MASK, CUBE_GLYPH_MASK, CUBE_GLYPH_SUBPIXEL_MASK,
         CUBE_PTCL_BEGIN_BLEND, CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_BEGIN_OPACITY, CUBE_PTCL_COLOR,
         CUBE_PTCL_END, CUBE_PTCL_END_BLEND, CUBE_PTCL_END_CLIP, CUBE_PTCL_END_OPACITY,
-        CUBE_PTCL_FILL, CUBE_PTCL_GLYPH, CUBE_PTCL_PATH_GLYPH, CUBE_PTCL_SDF, CUBE_SDF_CIRCLE,
-        CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_RECT, CUBE_SDF_RECT_STROKE, CubeBufferLengths,
+        CUBE_PTCL_FILL, CUBE_PTCL_GLYPH, CUBE_PTCL_PATH_GLYPH, CUBE_PTCL_SDF, CUBE_SDF_CANDLESTICK,
+        CUBE_SDF_CIRCLE, CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_RECT, CUBE_SDF_RECT_STROKE,
+        CubeBufferLengths,
     },
 };
 
@@ -698,9 +699,67 @@ fn sdf_alpha_at(
             ));
         }
         coverage = (outer - inner).clamp(0.0, 1.0);
+    } else if kind == CUBE_SDF_CANDLESTICK {
+        coverage = candlestick_sdf_coverage(
+            x,
+            y,
+            draw_sdf_x0[i],
+            draw_sdf_y0[i],
+            draw_sdf_x1[i],
+            draw_sdf_y1[i],
+            draw_sdf_r0[i],
+            draw_sdf_r1[i],
+        );
     }
 
     (coverage * 255.0 + 0.5) as u32
+}
+
+#[cube]
+fn candlestick_sdf_coverage(
+    x: f32,
+    y: f32,
+    center_x: f32,
+    high_y: f32,
+    low_y: f32,
+    body_top_y: f32,
+    body_bottom_y: f32,
+    body_width: f32,
+) -> f32 {
+    let wick = sdf_coverage_from_dist(rect_sdf_distance(
+        x,
+        y,
+        center_x - 0.5,
+        high_y.min(low_y),
+        center_x + 0.5,
+        high_y.max(low_y),
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+    ));
+
+    let half_width = body_width.max(1.0) * 0.5;
+    let mut body_y0 = body_top_y.min(body_bottom_y);
+    let mut body_y1 = body_top_y.max(body_bottom_y);
+    if body_y0 == body_y1 {
+        body_y0 -= 0.5;
+        body_y1 += 0.5;
+    }
+    let body = sdf_coverage_from_dist(rect_sdf_distance(
+        x,
+        y,
+        center_x - half_width,
+        body_y0,
+        center_x + half_width,
+        body_y1,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+    ));
+
+    wick.max(body)
 }
 
 #[cube]

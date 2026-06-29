@@ -20,9 +20,9 @@ use crate::cubecl::{
         CUBE_DRAW_BLEND, CUBE_DRAW_BRUSH, CUBE_DRAW_CLIP, CUBE_DRAW_ISOLATE, CUBE_DRAW_OPACITY,
         CUBE_DRAW_PATH_GLYPH, CUBE_GLYPH_COLOR, CUBE_GLYPH_LINEAR_COLOR, CUBE_GLYPH_LINEAR_MASK,
         CUBE_GLYPH_LINEAR_SUBPIXEL_MASK, CUBE_GLYPH_MASK, CUBE_GLYPH_SUBPIXEL_MASK,
-        CUBE_LAYER_BLEND, CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY, CUBE_SDF_CIRCLE,
-        CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_NONE, CUBE_SDF_RECT, CUBE_SDF_RECT_STROKE,
-        CubeBufferLengths, CubeCumsumPlan, CubeScanChunk, CubeScanChunkRange,
+        CUBE_LAYER_BLEND, CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY, CUBE_SDF_CANDLESTICK,
+        CUBE_SDF_CIRCLE, CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_NONE, CUBE_SDF_RECT,
+        CUBE_SDF_RECT_STROKE, CubeBufferLengths, CubeCumsumPlan, CubeScanChunk, CubeScanChunkRange,
         build_cumsum_plan_into, build_scan_chunks_into,
     },
 };
@@ -218,6 +218,19 @@ impl DrawSdfUpload {
                         ],
                         [0.0; 4],
                         [stroke.half_width; 4],
+                    );
+                }
+                Some(Sdf::CandleStick(candle)) => {
+                    self.push(
+                        CUBE_SDF_CANDLESTICK,
+                        [
+                            candle.center_x,
+                            candle.high_y,
+                            candle.low_y,
+                            candle.body_top_y,
+                        ],
+                        [candle.body_bottom_y, candle.body_width as f32, 0.0, 0.0],
+                        [0.0; 4],
                     );
                 }
                 None => {

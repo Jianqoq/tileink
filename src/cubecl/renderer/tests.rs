@@ -27,7 +27,9 @@ use crate::shared::layer::{
     region::Region,
 };
 use crate::shared::pixel::premul_f32_to_u32;
-use crate::{CpuRenderer, FillRule, Radius, Scene, StrokeWidths, TextContext, TextLayoutOptions};
+use crate::{
+    CandleStick, CpuRenderer, FillRule, Radius, Scene, StrokeWidths, TextContext, TextLayoutOptions,
+};
 
 fn mixed_shape_scene() -> Scene {
     let mut scene = Scene::new(360, 260);
