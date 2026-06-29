@@ -449,6 +449,29 @@ pub(crate) fn src_over_premul_u8(dst: u32, src: u32) -> u32 {
 }
 
 #[cube]
+pub(crate) fn src_over_subpixel_mask_u8(dst: u32, src: u32, mask_rgb: u32, clip: u32) -> u32 {
+    let sa = src >> 24;
+    let mut out = dst;
+    if sa != 0 && clip != 0 {
+        let mr = combine_alpha(mask_rgb & 255, clip);
+        let mg = combine_alpha((mask_rgb >> 8) & 255, clip);
+        let mb = combine_alpha((mask_rgb >> 16) & 255, clip);
+        if mr != 0 || mg != 0 || mb != 0 {
+            let cr = mul_div255(sa, mr);
+            let cg = mul_div255(sa, mg);
+            let cb = mul_div255(sa, mb);
+            let ca = cr.max(cg).max(cb);
+            let r = mul_div255(src & 255, mr) + mul_div255(dst & 255, 255 - cr);
+            let g = mul_div255((src >> 8) & 255, mg) + mul_div255((dst >> 8) & 255, 255 - cg);
+            let b = mul_div255((src >> 16) & 255, mb) + mul_div255((dst >> 16) & 255, 255 - cb);
+            let a = ca + mul_div255((dst >> 24) & 255, 255 - ca);
+            out = r | (g << 8) | (b << 16) | (a << 24);
+        }
+    }
+    out
+}
+
+#[cube]
 pub(crate) fn blend_premul_u8(dst: u32, src: u32, mode: u32) -> u32 {
     let mix = mode & 255;
     let compose = (mode >> 8) & 255;

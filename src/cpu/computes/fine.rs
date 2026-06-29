@@ -10,7 +10,7 @@ use crate::{
         line_seg::LineSegment,
         pixel::{
             TileBuffer, coverage_f32_to_u8, pack_premul_rgba8, scale_premul_u8, src_over_premul_u8,
-            unpack_premul_rgba8,
+            src_over_subpixel_mask_u8, unpack_premul_rgba8,
         },
         sdf::Sdf,
     },
@@ -334,17 +334,18 @@ pub(crate) fn rasterize_glyphs_tile_buffer_into(
                     }
                     PreparedGlyphContent::SubpixelMask => {
                         let image_ix = (image_y * image.width as usize + image_x) * 3;
-                        let alpha = image.data[image_ix]
-                            .max(image.data[image_ix + 1])
-                            .max(image.data[image_ix + 2]);
-                        let alpha = combine_alpha(alpha, clip);
-                        if alpha == 0 {
-                            continue;
-                        }
-                        scale_premul_u8(
+                        let out = src_over_subpixel_mask_u8(
+                            tile[tile_ix],
                             brush.sample(global_x as f32 + 0.5, global_y as f32 + 0.5),
-                            alpha,
-                        )
+                            [
+                                image.data[image_ix],
+                                image.data[image_ix + 1],
+                                image.data[image_ix + 2],
+                            ],
+                            clip,
+                        );
+                        tile[tile_ix] = out;
+                        continue;
                     }
                 };
                 tile[tile_ix] = src_over_premul_u8(tile[tile_ix], src);
@@ -413,12 +414,19 @@ pub(crate) fn composite_blend_group_tile(
 mod tests {
     use peniko::Color;
 
-    use super::{build_tile_alpha, composite_color_tile_buffer_into, pixel_coverage};
-    use crate::shared::{
-        fill::FillRule,
-        image::rgba8_pack,
-        line_seg::LineSegment,
-        pixel::{TileBuffer, premul_f32_to_u32},
+    use super::{
+        build_tile_alpha, composite_color_tile_buffer_into, pixel_coverage,
+        rasterize_glyphs_tile_buffer_into,
+    };
+    use crate::{
+        shared::{
+            brush::Brush,
+            fill::FillRule,
+            image::{rgba8_pack, unpack_rgba8},
+            line_seg::LineSegment,
+            pixel::{TileBuffer, premul_f32_to_u32},
+        },
+        text::{PreparedGlyph, PreparedGlyphContent, PreparedGlyphImage, PreparedTextData},
     };
 
     #[test]
@@ -514,5 +522,38 @@ mod tests {
         composite_color_tile_buffer_into(&mut tile, color, &[255; 256]);
 
         assert_eq!(tile[0], rgba8_pack([57, 153, 109, 255]));
+    }
+
+    #[test]
+    fn rasterize_glyphs_preserves_subpixel_mask_channels() {
+        let text = PreparedTextData::from_test_parts(
+            vec![PreparedGlyph {
+                image: Some(0),
+                x: 0,
+                y: 0,
+            }],
+            Vec::new(),
+            vec![PreparedGlyphImage {
+                content: PreparedGlyphContent::SubpixelMask,
+                left: 0,
+                top: 0,
+                width: 1,
+                height: 1,
+                data: vec![255, 0, 0],
+            }],
+        );
+        let mut tile = [rgba8_pack([0, 0, 0, 255]); 256];
+
+        rasterize_glyphs_tile_buffer_into(
+            &mut tile,
+            0,
+            0,
+            &[0],
+            &Brush::Solid(Color::WHITE),
+            &text,
+            &[255; 256],
+        );
+
+        assert_eq!(unpack_rgba8(tile[0]), [255, 0, 0, 255]);
     }
 }

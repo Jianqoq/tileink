@@ -4,10 +4,14 @@ use std::{
 };
 
 use cosmic_text::{
-    Align, Attrs, Buffer, CacheKey, FontSystem, Metrics, Shaping, SwashCache, SwashContent,
+    Align, Attrs, Buffer, CacheKey, CacheKeyFlags, FontSystem, Metrics, Shaping, SwashContent,
     SwashImage,
 };
 use peniko::kurbo::Point;
+use swash::{
+    scale::{Render, ScaleContext, Source, StrikeWith},
+    zeno::{Angle, Format, Transform, Vector},
+};
 
 use crate::shared::bounds::Bounds;
 
@@ -59,15 +63,27 @@ impl<'a> TextLayoutOptions<'a> {
 
 pub struct TextContext {
     font_system: FontSystem,
-    swash_cache: SwashCache,
+    scale_context: ScaleContext,
+    image_cache: HashMap<RasterGlyphKey, Option<SwashImage>>,
+    raster_options: TextRasterOptions,
 }
 
 impl TextContext {
     pub fn new() -> Self {
         Self {
             font_system: FontSystem::new(),
-            swash_cache: SwashCache::new(),
+            scale_context: ScaleContext::new(),
+            image_cache: HashMap::new(),
+            raster_options: TextRasterOptions::default(),
         }
+    }
+
+    pub fn raster_options(&self) -> TextRasterOptions {
+        self.raster_options
+    }
+
+    pub fn set_raster_options(&mut self, options: TextRasterOptions) {
+        self.raster_options = options;
     }
 
     pub fn layout(&mut self, options: TextLayoutOptions<'_>) -> TextLayout {
@@ -101,9 +117,20 @@ impl TextContext {
     }
 
     pub(crate) fn glyph_image(&mut self, cache_key: CacheKey) -> Option<&SwashImage> {
-        self.swash_cache
-            .get_image(&mut self.font_system, cache_key)
-            .as_ref()
+        let key = RasterGlyphKey {
+            cache_key,
+            options: self.raster_options,
+        };
+        if !self.image_cache.contains_key(&key) {
+            let image = raster_glyph_image(
+                &mut self.font_system,
+                &mut self.scale_context,
+                cache_key,
+                self.raster_options,
+            );
+            self.image_cache.insert(key, image);
+        }
+        self.image_cache.get(&key).and_then(Option::as_ref)
     }
 
     fn raster_bounds(&mut self, glyphs: &[TextGlyph]) -> Bounds {
@@ -121,6 +148,98 @@ impl TextContext {
         }
         bounds
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum TextSubpixelMode {
+    None,
+    Rgb,
+    Bgr,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub struct TextRasterOptions {
+    pub subpixel_mode: TextSubpixelMode,
+}
+
+impl TextRasterOptions {
+    pub const fn new() -> Self {
+        Self {
+            subpixel_mode: TextSubpixelMode::Rgb,
+        }
+    }
+
+    pub const fn with_subpixel_mode(mut self, mode: TextSubpixelMode) -> Self {
+        self.subpixel_mode = mode;
+        self
+    }
+}
+
+impl Default for TextRasterOptions {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+struct RasterGlyphKey {
+    cache_key: CacheKey,
+    options: TextRasterOptions,
+}
+
+fn raster_glyph_image(
+    font_system: &mut FontSystem,
+    context: &mut ScaleContext,
+    cache_key: CacheKey,
+    options: TextRasterOptions,
+) -> Option<SwashImage> {
+    let font = font_system.get_font(cache_key.font_id, cache_key.font_weight)?;
+
+    let swash_font = font.as_swash();
+    let weight_tag = swash::Tag::from_be_bytes(*b"wght");
+    let variable_width = swash_font.variations().find_by_tag(weight_tag);
+
+    let mut scaler = context
+        .builder(swash_font)
+        .size(f32::from_bits(cache_key.font_size_bits))
+        .hint(!cache_key.flags.contains(CacheKeyFlags::DISABLE_HINTING));
+    if let Some(variation) = variable_width {
+        scaler = scaler.normalized_coords(swash_font.variations().normalized_coords([(
+            weight_tag,
+            f32::from(cache_key.font_weight.0).clamp(variation.min_value(), variation.max_value()),
+        )]));
+    }
+    let mut scaler = scaler.build();
+
+    let offset = if cache_key.flags.contains(CacheKeyFlags::PIXEL_FONT) {
+        Vector::new(
+            cache_key.x_bin.as_float().round(),
+            cache_key.y_bin.as_float().round(),
+        )
+    } else {
+        Vector::new(cache_key.x_bin.as_float(), cache_key.y_bin.as_float())
+    };
+
+    Render::new(&[
+        Source::ColorOutline(0),
+        Source::ColorBitmap(StrikeWith::BestFit),
+        Source::Outline,
+    ])
+    .format(match options.subpixel_mode {
+        TextSubpixelMode::None => Format::Alpha,
+        TextSubpixelMode::Rgb => Format::Subpixel,
+        TextSubpixelMode::Bgr => Format::subpixel_bgra(),
+    })
+    .offset(offset)
+    .transform(if cache_key.flags.contains(CacheKeyFlags::FAKE_ITALIC) {
+        Some(Transform::skew(
+            Angle::from_degrees(14.0),
+            Angle::from_degrees(0.0),
+        ))
+    } else {
+        None
+    })
+    .render(&mut scaler, cache_key.glyph_id)
 }
 
 impl Default for TextContext {
@@ -276,6 +395,21 @@ impl PreparedTextData {
     pub(crate) fn atlas_signature(&self) -> AtlasSignature {
         self.atlas_signature
     }
+
+    #[cfg(test)]
+    pub(crate) fn from_test_parts(
+        glyphs: Vec<PreparedGlyph>,
+        runs: Vec<TextRun>,
+        images: Vec<PreparedGlyphImage>,
+    ) -> Self {
+        Self {
+            runs,
+            glyphs,
+            images,
+            image_by_key: HashMap::new(),
+            atlas_signature: AtlasSignature::default(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -411,18 +545,36 @@ pub(crate) struct PreparedGlyphImage {
 
 impl PreparedGlyphImage {
     fn from_swash(image: &SwashImage) -> Self {
+        let content = match image.content {
+            SwashContent::Mask => PreparedGlyphContent::Mask,
+            SwashContent::Color => PreparedGlyphContent::Color,
+            SwashContent::SubpixelMask => PreparedGlyphContent::SubpixelMask,
+        };
         Self {
-            content: match image.content {
-                SwashContent::Mask => PreparedGlyphContent::Mask,
-                SwashContent::Color => PreparedGlyphContent::Color,
-                SwashContent::SubpixelMask => PreparedGlyphContent::SubpixelMask,
-            },
+            content,
             left: image.placement.left,
             top: image.placement.top,
             width: image.placement.width,
             height: image.placement.height,
-            data: image.data.clone(),
+            data: prepared_glyph_image_data(content, image),
         }
+    }
+}
+
+fn prepared_glyph_image_data(content: PreparedGlyphContent, image: &SwashImage) -> Vec<u8> {
+    if content != PreparedGlyphContent::SubpixelMask {
+        return image.data.clone();
+    }
+
+    let pixel_count = image.placement.width as usize * image.placement.height as usize;
+    if image.data.len() == pixel_count * 4 {
+        let mut data = Vec::with_capacity(pixel_count * 3);
+        for pixel in image.data.chunks_exact(4) {
+            data.extend_from_slice(&pixel[..3]);
+        }
+        data
+    } else {
+        image.data.clone()
     }
 }
 
@@ -575,5 +727,37 @@ mod tests {
         let b_data = PreparedTextData::new(&b_glyphs, &runs, &mut context);
 
         assert_ne!(a_data.atlas_signature(), b_data.atlas_signature());
+    }
+
+    #[test]
+    fn text_context_uses_subpixel_raster_by_default() {
+        let mut context = TextContext::new();
+        let layout = context.layout(TextLayoutOptions::new("H", 12.0));
+        let Some(glyph) = layout.glyphs.first() else {
+            return;
+        };
+        let Some(image) = context.glyph_image(glyph.cache_key) else {
+            return;
+        };
+
+        assert_eq!(image.content, SwashContent::SubpixelMask);
+    }
+
+    #[test]
+    fn prepared_glyph_image_stores_subpixel_masks_as_rgb_coverage() {
+        let mut image = SwashImage::new();
+        image.content = SwashContent::SubpixelMask;
+        image.placement = swash::zeno::Placement {
+            left: 0,
+            top: 0,
+            width: 2,
+            height: 1,
+        };
+        image.data = vec![1, 2, 3, 255, 4, 5, 6, 255];
+
+        let prepared = PreparedGlyphImage::from_swash(&image);
+
+        assert_eq!(prepared.content, PreparedGlyphContent::SubpixelMask);
+        assert_eq!(prepared.data, vec![1, 2, 3, 4, 5, 6]);
     }
 }

@@ -2582,6 +2582,7 @@ dependencies = [
  "peniko",
  "png 0.17.16",
  "rayon",
+ "swash",
  "usvg",
  "vello",
  "wgpu",

@@ -82,6 +82,44 @@ pub(crate) fn scale_premul_u8(src: u32, factor: u8) -> u32 {
     ])
 }
 
+pub(crate) fn src_over_subpixel_mask_u8(dst: u32, src: u32, mask: [u8; 3], clip: u8) -> u32 {
+    let sa = (src >> 24) as u8;
+    if sa == 0 || clip == 0 {
+        return dst;
+    }
+
+    let mr = mul_div255(mask[0], clip);
+    let mg = mul_div255(mask[1], clip);
+    let mb = mul_div255(mask[2], clip);
+    if mr == 0 && mg == 0 && mb == 0 {
+        return dst;
+    }
+
+    // LCD/subpixel glyph masks are channel coverage, not a single alpha mask.
+    // Keep channel-specific destination attenuation for sharp text on opaque
+    // surfaces, then store the maximum channel coverage as the representable
+    // premultiplied alpha for later layers.
+    let cr = mul_div255(sa, mr);
+    let cg = mul_div255(sa, mg);
+    let cb = mul_div255(sa, mb);
+    let ca = cr.max(cg).max(cb);
+
+    let sr = mul_div255((src & 0xff) as u8, mr);
+    let sg = mul_div255(((src >> 8) & 0xff) as u8, mg);
+    let sb = mul_div255(((src >> 16) & 0xff) as u8, mb);
+    let dr = (dst & 0xff) as u8;
+    let dg = ((dst >> 8) & 0xff) as u8;
+    let db = ((dst >> 16) & 0xff) as u8;
+    let da = ((dst >> 24) & 0xff) as u8;
+
+    rgba8_pack([
+        sr + mul_div255(dr, 255 - cr),
+        sg + mul_div255(dg, 255 - cg),
+        sb + mul_div255(db, 255 - cb),
+        ca + mul_div255(da, 255 - ca),
+    ])
+}
+
 pub(crate) fn src_over(dst: [f32; 4], src: [f32; 4]) -> [f32; 4] {
     [
         src[0] + dst[0] * (1.0 - src[3]),
@@ -89,4 +127,34 @@ pub(crate) fn src_over(dst: [f32; 4], src: [f32; 4]) -> [f32; 4] {
         src[2] + dst[2] * (1.0 - src[3]),
         src[3] + dst[3] * (1.0 - src[3]),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::shared::{
+        image::{rgba8_pack, unpack_rgba8},
+        pixel::src_over_subpixel_mask_u8,
+    };
+
+    #[test]
+    fn subpixel_mask_preserves_independent_channel_coverage_on_opaque_background() {
+        let dst = rgba8_pack([0, 0, 0, 255]);
+        let src = rgba8_pack([255, 255, 255, 255]);
+
+        assert_eq!(
+            unpack_rgba8(src_over_subpixel_mask_u8(dst, src, [255, 0, 0], 255)),
+            [255, 0, 0, 255]
+        );
+    }
+
+    #[test]
+    fn subpixel_mask_uses_channel_coverage_to_attenuate_destination() {
+        let dst = rgba8_pack([255, 255, 255, 255]);
+        let src = rgba8_pack([0, 0, 0, 255]);
+
+        assert_eq!(
+            unpack_rgba8(src_over_subpixel_mask_u8(dst, src, [255, 128, 0], 255)),
+            [0, 127, 255, 255]
+        );
+    }
 }

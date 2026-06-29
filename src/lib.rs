@@ -44,4 +44,4 @@ pub use shared::{
     sdf::rect::{Radius, StrokeWidths},
 };
 pub use svg::{SvgError, SvgOptions};
-pub use text::{TextContext, TextLayout, TextLayoutOptions};
+pub use text::{TextContext, TextLayout, TextLayoutOptions, TextRasterOptions, TextSubpixelMode};

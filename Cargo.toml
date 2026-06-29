@@ -13,6 +13,7 @@ rayon = "1.12.0"
 png = "0.17"
 image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "webp"] }
 cosmic-text = "0.19.0"
+swash = "0.2.6"
 
 [features]
 bench-api = []
