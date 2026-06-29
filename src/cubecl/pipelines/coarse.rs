@@ -7,7 +7,7 @@ use crate::cubecl::{
         CUBE_DRAW_OPACITY, CUBE_LAYER_BLEND, CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY,
         CUBE_PTCL_BEGIN_BLEND, CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_BEGIN_OPACITY, CUBE_PTCL_COLOR,
         CUBE_PTCL_END, CUBE_PTCL_END_BLEND, CUBE_PTCL_END_CLIP, CUBE_PTCL_END_OPACITY,
-        CUBE_PTCL_FILL, CUBE_PTCL_SDF, CUBE_SDF_NONE, CubeBufferLengths,
+        CUBE_PTCL_FILL, CUBE_PTCL_GLYPH, CUBE_PTCL_SDF, CUBE_SDF_NONE, CubeBufferLengths,
     },
 };
 
@@ -51,6 +51,7 @@ impl CoarsePipeline {
             batch.layer_stack_start,
             batch.layer_stack_end,
             unsafe { scene.draw_path_ids.arg() },
+            unsafe { scene.draw_glyph_run_ids.arg() },
             unsafe { scene.draw_tags.arg() },
             unsafe { scene.draw_pixel_x0.arg() },
             unsafe { scene.draw_pixel_y0.arg() },
@@ -120,6 +121,7 @@ impl CoarsePipeline {
             batch.layer_stack_end,
             lengths.coarse_ptcl_capacity as u32,
             unsafe { scene.draw_path_ids.arg() },
+            unsafe { scene.draw_glyph_run_ids.arg() },
             unsafe { scene.draw_tags.arg() },
             unsafe { scene.draw_fill_rules.arg() },
             unsafe { scene.draw_solid_color_fast_paths.arg() },
@@ -163,6 +165,7 @@ fn coarse_count(
     layer_stack_start: u32,
     layer_stack_end: u32,
     draw_path_ids: &Array<u32>,
+    draw_glyph_run_ids: &Array<u32>,
     draw_tags: &Array<u32>,
     draw_pixel_x0: &Array<i32>,
     draw_pixel_y0: &Array<i32>,
@@ -220,7 +223,9 @@ fn coarse_count(
         while draw_ix < draw_end {
             let draw_i = draw_ix as usize;
             let draw_tag = draw_tags[draw_i];
-            if draw_sdf_kinds[draw_i] != CUBE_SDF_NONE {
+            let bounded_draw =
+                draw_glyph_run_ids[draw_i] != invalid || draw_sdf_kinds[draw_i] != CUBE_SDF_NONE;
+            if bounded_draw {
                 if draw_tag == CUBE_DRAW_BRUSH
                     && draw_tile_hit(
                         draw_i,
@@ -404,6 +409,7 @@ fn coarse_emit(
     layer_stack_end: u32,
     ptcl_capacity: u32,
     draw_path_ids: &Array<u32>,
+    draw_glyph_run_ids: &Array<u32>,
     draw_tags: &Array<u32>,
     draw_fill_rules: &Array<u32>,
     draw_solid_color_fast_paths: &Array<u32>,
@@ -530,7 +536,26 @@ fn coarse_emit(
         if draw_ix < draw_end {
             let draw_i = draw_ix as usize;
             let draw_tag = draw_tags[draw_i];
-            if draw_sdf_kinds[draw_i] != CUBE_SDF_NONE {
+            if draw_glyph_run_ids[draw_i] != invalid {
+                if draw_tag == CUBE_DRAW_BRUSH
+                    && draw_tile_hit(
+                        draw_i,
+                        tile_x,
+                        tile_y,
+                        tiles_width,
+                        tiles_height,
+                        draw_pixel_x0,
+                        draw_pixel_y0,
+                        draw_pixel_x1,
+                        draw_pixel_y1,
+                    )
+                {
+                    valid = 1;
+                    ptcl_tag = u32::new(CUBE_PTCL_GLYPH as i64);
+                    ptcl_segment_start = draw_glyph_run_ids[draw_i];
+                    ptcl_color = draw_ix;
+                }
+            } else if draw_sdf_kinds[draw_i] != CUBE_SDF_NONE {
                 if draw_tag == CUBE_DRAW_BRUSH
                     && draw_tile_hit(
                         draw_i,

@@ -26,6 +26,7 @@ use crate::{
         line_seg::LineSegment,
         tile_seg_range::TileSegmentRange,
     },
+    text::{PreparedTextData, TextContext},
 };
 
 use super::{
@@ -68,6 +69,7 @@ pub struct Renderer<R: Runtime> {
     filter_paths: FilterPathBuffers,
     filter_transfers: FilterTransferBuffers,
     filter_turbulence: FilterTurbulenceBuffers,
+    text_data: Option<PreparedTextData>,
     target: CubeBuffer<u32>,
     scratch: Vec<CubeBuffer<u32>>,
     scratch_in_use: Vec<bool>,
@@ -88,7 +90,6 @@ impl<R: Runtime> Render for Renderer<R> {
     type ScanArgs<'a> = ();
     type CumsumArgs<'a> = ();
     type CoarseArgs<'a> = CoarseBatch;
-    type FineArgs<'a> = ();
     type ExecuteArgs<'a> = ();
 
     fn render(&mut self, scene: &Scene) {
@@ -121,19 +122,6 @@ impl<R: Runtime> Render for Renderer<R> {
             batch,
         );
     }
-
-    fn fine(&mut self, _: &Scene, _: Self::FineArgs<'_>) {
-        let config = self.fine_config();
-        FinePipeline::run(
-            &self.client,
-            &self.scene,
-            &self.scan,
-            &self.coarse,
-            self.draw_brushes.resources(),
-            &mut self.target,
-            config,
-        );
-    }
 }
 
 impl<R: Runtime> Renderer<R> {
@@ -152,6 +140,7 @@ impl<R: Runtime> Renderer<R> {
             filter_paths: FilterPathBuffers::new(&client),
             filter_transfers: FilterTransferBuffers::new(&client),
             filter_turbulence: FilterTurbulenceBuffers::new(&client),
+            text_data: None,
             target: CubeBuffer::new(&client, width as usize * height as usize),
             scratch: Vec::new(),
             scratch_in_use: Vec::new(),
@@ -173,6 +162,20 @@ impl<R: Runtime> Renderer<R> {
     /// buffers are uploaded once per scene, and every compute output has fixed
     /// capacity before any kernel is launched.
     fn prepare_scene(&mut self, scene: &Scene) {
+        self.text_data = None;
+        self.prepare_scene_resources(scene);
+    }
+
+    fn prepare_scene_with_text(&mut self, scene: &Scene, text_context: &mut TextContext) {
+        self.text_data = Some(PreparedTextData::new(
+            &scene.text_glyphs,
+            &scene.text_runs,
+            text_context,
+        ));
+        self.prepare_scene_resources(scene);
+    }
+
+    fn prepare_scene_resources(&mut self, scene: &Scene) {
         self.surface_sources.clear();
         self.surface_origin = (0, 0);
         self.resize(scene.width, scene.height);
@@ -200,8 +203,13 @@ impl<R: Runtime> Renderer<R> {
             .upload(&self.client, filter_transfer_upload);
         self.filter_turbulence
             .upload(&self.client, filter_turbulence_upload);
-        self.scene
-            .upload(&self.client, scene, &plan, &mut self.scene_upload);
+        self.scene.upload(
+            &self.client,
+            scene,
+            &plan,
+            self.text_data.as_ref(),
+            &mut self.scene_upload,
+        );
         self.scan.prepare_outputs(&self.client, lengths);
         self.coarse.prepare_outputs(&self.client, lengths);
         self.config.replace(
@@ -268,7 +276,6 @@ impl<R: Runtime> Renderer<R> {
         FineRenderConfig {
             lengths: self.lengths,
             size: self.size,
-            clear_color: self.clear_color,
             max_clip_depth: self.max_clip_depth,
             max_group_depth: self.max_group_depth,
         }
@@ -276,6 +283,17 @@ impl<R: Runtime> Renderer<R> {
 
     pub fn render(&mut self, scene: &Scene) {
         <Self as Render>::render(self, scene);
+    }
+
+    /// Renders text draws using the same [`TextContext`] that created their
+    /// [`TextLayout`](crate::TextLayout). The CubeCL backend uploads the
+    /// context's cached glyph images as a GPU atlas before coarse/fine run.
+    pub fn render_with_text(&mut self, scene: &Scene, text_context: &mut TextContext) {
+        self.prepare_scene_with_text(scene, text_context);
+        <Self as Render>::scan(self, scene, ());
+        <Self as Render>::cumsum(self, scene, ());
+        self.clear_target();
+        self.execute_prepared_plan(scene);
     }
 
     /// Renders a scene and returns backend-neutral debug data without writing files.
@@ -354,7 +372,7 @@ impl<R: Runtime> Renderer<R> {
                     layer_stack_end: 0,
                 },
             ),
-            CubePreparedStage::Fine => <Self as Render>::fine(self, scene, ()),
+            CubePreparedStage::Fine => self.fine_batch_to(CubeRenderTarget::Main),
         }
     }
 

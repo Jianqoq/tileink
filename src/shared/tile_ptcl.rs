@@ -30,10 +30,17 @@ pub struct TileSdfPtcl {
 }
 
 #[derive(Clone, Debug)]
+pub struct TileGlyphPtcl {
+    pub glyph_run_id: u32,
+    pub brush: Brush,
+}
+
+#[derive(Clone, Debug)]
 pub enum TilePtcl {
     End,
     Fill(TileFillPtcl),
     Sdf(TileSdfPtcl),
+    Glyph(TileGlyphPtcl),
     Color(TileColorPtcl),
     BeginClip(TileFillPtcl),
     EndClip,

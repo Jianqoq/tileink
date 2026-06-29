@@ -12,6 +12,7 @@ wide = "1.5.0"
 rayon = "1.12.0"
 png = "0.17"
 image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "webp"] }
+cosmic-text = "0.19.0"
 
 [features]
 bench-api = []
@@ -135,6 +136,10 @@ name = "cpu_stroke_circle"
 path = "examples/cpu/stroke_circle.rs"
 
 [[example]]
+name = "cpu_text"
+path = "examples/cpu/text.rs"
+
+[[example]]
 name = "cpu_svg_radial_gradient"
 path = "examples/cpu/svg_radial_gradient.rs"
 
@@ -241,6 +246,10 @@ path = "examples/cubecl/simple.rs"
 [[example]]
 name = "cubecl_stroke_circle"
 path = "examples/cubecl/stroke_circle.rs"
+
+[[example]]
+name = "cubecl_text"
+path = "examples/cubecl/text.rs"
 
 [[example]]
 name = "cubecl_svg_radial_gradient"

@@ -1,11 +1,11 @@
 use peniko::{
     Color, Compose, Mix,
-    kurbo::{Affine, Circle, Rect, RoundedRect, Shape, Stroke},
+    kurbo::{Affine, Circle, Point, Rect, RoundedRect, Shape, Stroke},
 };
 
 use super::Renderer;
 use crate::{
-    FillRule, Radius, Scene, StrokeWidths,
+    FillRule, Radius, Scene, StrokeWidths, TextContext, TextLayoutOptions,
     shared::layer::{
         filter::Filter,
         mask::{Mask, MaskKind},
@@ -36,6 +36,29 @@ fn assert_rgb_close(actual: [u8; 4], expected: [u8; 4], tolerance: u8) {
             "channel {channel} expected {expected:?}, got {actual:?}"
         );
     }
+}
+
+#[test]
+fn render_with_text_rasterizes_scene_text_layout() {
+    let mut text_context = TextContext::new();
+    let layout = text_context.layout(TextLayoutOptions::new("Text", 28.0));
+    if layout.is_empty() {
+        return;
+    }
+
+    let mut scene = Scene::new(128, 64);
+    scene.push_text_layout(&layout, Point::new(8.0, 32.0), Color::BLACK);
+
+    let mut renderer = Renderer::new(128, 64, Color::WHITE);
+    renderer.render_with_text(&scene, &mut text_context);
+
+    let has_text_pixel = (0..64).any(|y| {
+        (0..128).any(|x| {
+            let [r, g, b, a] = renderer.image().rgba8_at(x, y);
+            a == 255 && (r < 250 || g < 250 || b < 250)
+        })
+    });
+    assert!(has_text_pixel, "expected text to darken at least one pixel");
 }
 
 #[test]

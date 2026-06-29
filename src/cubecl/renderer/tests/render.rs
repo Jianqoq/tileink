@@ -1,6 +1,35 @@
 use super::*;
 
 #[test]
+fn render_wgpu_matches_cpu_for_text_layout_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut text_context = TextContext::new();
+    let layout = text_context.layout(TextLayoutOptions::new("GPU text", 28.0));
+    if layout.is_empty() {
+        return;
+    }
+
+    let mut scene = Scene::new(160, 64);
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 160.0, 64.0),
+        Color::WHITE,
+        FillRule::NonZero,
+    );
+    scene.push_text_layout(&layout, peniko::kurbo::Point::new(8.0, 36.0), Color::BLACK);
+
+    let mut cpu = CpuRenderer::new(160, 64, Color::WHITE);
+    cpu.render_with_text(&scene, &mut text_context);
+
+    let mut wgpu = WgpuRenderer::new_default_device(160, 64, Color::WHITE);
+    wgpu.render_with_text(&scene, &mut text_context);
+
+    assert_images_close(cpu.image(), &wgpu.image(), 1);
+}
+
+#[test]
 fn render_wgpu_matches_cpu_for_multi_tile_mixed_shapes_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;

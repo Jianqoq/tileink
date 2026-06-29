@@ -2,7 +2,8 @@ use crate::{
     cpu::computes::fine::{
         build_tile_alpha, combine_alpha, composite_blend_group_tile,
         composite_color_tile_buffer_into, composite_opacity_group_tile,
-        rasterize_sdf_tile_buffer_into, rasterize_tile_buffer_into,
+        rasterize_glyph_run_tile_buffer_into, rasterize_sdf_tile_buffer_into,
+        rasterize_tile_buffer_into,
     },
     shared::{
         bounds::{Bounds, PixelBounds},
@@ -12,6 +13,7 @@ use crate::{
         tile_ptcl::TilePtcl,
         tile_ptcl::TilePtclRange,
     },
+    text::PreparedTextData,
 };
 use rayon::prelude::*;
 
@@ -22,6 +24,7 @@ pub struct FineCpuPrepared<'a> {
     target: &'a mut Image,
     target_bounds: Bounds,
     tiles_size: (u32, u32),
+    text: Option<&'a PreparedTextData>,
 }
 
 impl<'a> FineCpuPrepared<'a> {
@@ -83,6 +86,7 @@ impl<'a> FineCpuPrepared<'a> {
                 range,
                 self.tile_ptcls,
                 self.segments,
+                self.text,
             );
             unsafe {
                 store_tile(
@@ -107,6 +111,7 @@ fn render_tile(
     range: TilePtclRange,
     tile_ptcls: &[TilePtcl],
     segments: &[LineSegment],
+    text: Option<&PreparedTextData>,
 ) {
     let mut clip_mask = [255u8; 256];
     let mut clip_stack = Vec::new();
@@ -135,6 +140,19 @@ fn render_tile(
                 rasterize_sdf_tile_buffer_into(
                     tile, tile_x, tile_y, &sdf.sdf, &sdf.brush, &clip_mask,
                 );
+            }
+            TilePtcl::Glyph(glyph) => {
+                if let Some(text) = text {
+                    rasterize_glyph_run_tile_buffer_into(
+                        tile,
+                        tile_x,
+                        tile_y,
+                        glyph.glyph_run_id,
+                        &glyph.brush,
+                        text,
+                        &clip_mask,
+                    );
+                }
             }
             TilePtcl::BeginClip(fill) => {
                 let segments =
@@ -311,6 +329,7 @@ impl FineCpuPipeline {
         Self
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn prepare<'a>(
         &self,
         tile_ptcl_ranges: &'a [TilePtclRange],
@@ -319,6 +338,7 @@ impl FineCpuPipeline {
         target: &'a mut Image,
         target_bounds: Bounds,
         tiles_size: (u32, u32),
+        text: Option<&'a PreparedTextData>,
     ) -> FineCpuPrepared<'a> {
         FineCpuPrepared {
             tile_ptcl_ranges,
@@ -327,6 +347,7 @@ impl FineCpuPipeline {
             target,
             target_bounds,
             tiles_size,
+            text,
         }
     }
 }
@@ -377,6 +398,7 @@ mod tests {
                 &mut image,
                 target_bounds,
                 tiles_size,
+                None,
             )
             .run();
 

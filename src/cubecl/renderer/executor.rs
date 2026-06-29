@@ -188,8 +188,13 @@ impl<R: Runtime> Renderer<R> {
             &self.client,
             FilterTurbulenceUpload::from_ops_and_filter(&plan.ops, parent_filter),
         );
-        self.scene
-            .upload(&self.client, scene, plan, &mut self.scene_upload);
+        self.scene.upload(
+            &self.client,
+            scene,
+            plan,
+            self.text_data.as_ref(),
+            &mut self.scene_upload,
+        );
         self.scan.prepare_outputs(&self.client, lengths);
         self.coarse.prepare_outputs(&self.client, lengths);
         saved

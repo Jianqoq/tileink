@@ -30,11 +30,14 @@ use crate::shared::{
         rect::{Radius, Rect as SdfRect, RectStroke as SdfRectStroke, StrokeWidths},
     },
 };
+use crate::text::{TextLayout, TextRun, layout_bounds_at_origin, scene_glyphs_at_origin};
 
 pub struct Scene {
     pub(crate) lines: Vec<Line>,
     pub(crate) path_records: Vec<PathRecord>,
     pub(crate) draw_records: Vec<DrawRecord>,
+    pub(crate) text_glyphs: Vec<crate::text::SceneGlyph>,
+    pub(crate) text_runs: Vec<TextRun>,
     pub(crate) bd_records: Vec<BackdropRecord>,
     pub(crate) command_lists: Vec<CommandList>,
     root_commands: CommandListId,
@@ -53,6 +56,8 @@ impl Scene {
             lines: Vec::new(),
             path_records: Vec::new(),
             draw_records: Vec::new(),
+            text_glyphs: Vec::new(),
+            text_runs: Vec::new(),
             bd_records: Vec::new(),
             command_lists: vec![CommandList::default()],
             root_commands: ROOT_COMMAND_LIST_ID,
@@ -108,6 +113,8 @@ impl Scene {
         let line_offset = self.lines.len() as u32;
         let path_offset = self.path_cnt;
         let draw_offset = self.draw_records.len();
+        let glyph_offset = self.text_glyphs.len() as u32;
+        let text_run_offset = self.text_runs.len() as u32;
         let backdrop_offset = self.backdrop_pool_capacity;
         let tile_offset = self.tile_cnt;
 
@@ -126,8 +133,17 @@ impl Scene {
             if let Some(path_id) = &mut draw.path_id {
                 *path_id = path_id.saturating_add(path_offset);
             }
+            if let Some(glyph_run_id) = &mut draw.glyph_run_id {
+                *glyph_run_id = glyph_run_id.saturating_add(text_run_offset);
+            }
         }
         self.draw_records.extend(other.draw_records);
+
+        for run in &mut other.text_runs {
+            run.glyph_start = run.glyph_start.saturating_add(glyph_offset);
+        }
+        self.text_glyphs.extend(other.text_glyphs);
+        self.text_runs.extend(other.text_runs);
 
         for record in &mut other.bd_records {
             record.path_id = record.path_id.saturating_add(path_offset);
@@ -211,6 +227,8 @@ impl Scene {
         let line_offset = self.lines.len() as u32;
         let path_offset = self.path_cnt;
         let draw_offset = self.draw_records.len();
+        let glyph_offset = self.text_glyphs.len() as u32;
+        let text_run_offset = self.text_runs.len() as u32;
         let backdrop_offset = self.backdrop_pool_capacity;
         let tile_offset = self.tile_cnt;
 
@@ -229,8 +247,17 @@ impl Scene {
             if let Some(path_id) = &mut draw.path_id {
                 *path_id = path_id.saturating_add(path_offset);
             }
+            if let Some(glyph_run_id) = &mut draw.glyph_run_id {
+                *glyph_run_id = glyph_run_id.saturating_add(text_run_offset);
+            }
         }
         self.draw_records.extend(other.draw_records);
+
+        for run in &mut other.text_runs {
+            run.glyph_start = run.glyph_start.saturating_add(glyph_offset);
+        }
+        self.text_glyphs.extend(other.text_glyphs);
+        self.text_runs.extend(other.text_runs);
 
         for record in &mut other.bd_records {
             record.path_id = record.path_id.saturating_add(path_offset);
@@ -666,6 +693,59 @@ impl Scene {
         self.push_path_inner(path, brush, transform, rule, tolerance, None);
     }
 
+    /// Adds a laid-out text run at `origin`.
+    ///
+    /// Text layout and glyph rasterization stay in [`TextContext`](crate::TextContext);
+    /// the scene stores only positioned glyph cache keys. This keeps cached UI text
+    /// reusable across renderers while leaving transform-heavy glyph quads for a
+    /// future atlas path instead of pretending bitmap glyphs support arbitrary affine
+    /// transforms here.
+    pub fn push_text_layout(
+        &mut self,
+        layout: &TextLayout,
+        origin: Point,
+        brush: impl Into<Brush>,
+    ) {
+        if layout.is_empty() {
+            return;
+        }
+
+        self.ensure_command_root();
+        let glyph_start = self.text_glyphs.len() as u32;
+        self.text_glyphs
+            .extend(scene_glyphs_at_origin(layout, origin));
+        let glyph_count = self.text_glyphs.len() as u32 - glyph_start;
+        if glyph_count == 0 {
+            return;
+        }
+
+        let run_id = self.text_runs.len() as u32;
+        self.text_runs.push(TextRun {
+            glyph_start,
+            glyph_count,
+        });
+        let bounds = layout_bounds_at_origin(layout, origin);
+        let draw_ix = self.draw_records.len();
+        self.draw_records.push(DrawRecord {
+            path_id: None,
+            glyph_run_id: Some(run_id),
+            sdf: None,
+            tag: DrawTag::Brush,
+            brush: brush.into(),
+            fill_rule: FillRule::NonZero,
+            pixel_bounds: PixelBounds {
+                x0: bounds.x0,
+                y0: bounds.y0,
+                x1: bounds.x1,
+                y1: bounds.y1,
+            },
+            solid_rect: false,
+        });
+        self.current_command_list_mut()
+            .commands
+            .push(Command::Draw(draw_ix));
+    }
+
     fn rounded_rect_path(rect: Rect, radius: Radius, tolerance: f64) -> BezPath {
         if radius.is_zero() {
             rect.to_path(tolerance)
@@ -750,6 +830,7 @@ impl Scene {
         let draw_ix = self.draw_records.len();
         self.draw_records.push(DrawRecord {
             path_id: Some(path_id),
+            glyph_run_id: None,
             sdf: None,
             tag: DrawTag::Brush,
             brush: brush.into(),
@@ -812,6 +893,7 @@ impl Scene {
         let draw_ix = self.draw_records.len();
         self.draw_records.push(DrawRecord {
             path_id: Some(path_id),
+            glyph_run_id: None,
             sdf: None,
             tag,
             brush: Brush::Solid(Color::TRANSPARENT),
@@ -845,6 +927,7 @@ impl Scene {
         let draw_ix = self.draw_records.len();
         self.draw_records.push(DrawRecord {
             path_id: None,
+            glyph_run_id: None,
             sdf: Some(sdf),
             tag: DrawTag::Brush,
             brush: brush.into(),
@@ -867,6 +950,8 @@ impl Scene {
         self.lines.clear();
         self.path_records.clear();
         self.draw_records.clear();
+        self.text_glyphs.clear();
+        self.text_runs.clear();
         self.bd_records.clear();
         self.command_lists.clear();
         self.command_lists.push(CommandList::default());

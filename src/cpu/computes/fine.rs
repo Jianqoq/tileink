@@ -14,6 +14,7 @@ use crate::{
         },
         sdf::Sdf,
     },
+    text::{PreparedGlyphContent, PreparedTextData},
 };
 
 const AREA_EPSILON: f32 = 1.0e-6;
@@ -250,6 +251,101 @@ pub(crate) fn rasterize_sdf_tile_buffer_into(
                 alpha,
             );
             tile[ix] = src_over_premul_u8(tile[ix], src);
+        }
+    }
+}
+
+pub(crate) fn rasterize_glyph_run_tile_buffer_into(
+    tile: &mut TileBuffer,
+    tile_x: u32,
+    tile_y: u32,
+    glyph_run_id: u32,
+    brush: &Brush,
+    text: &PreparedTextData,
+    clip_mask: &[u8; 256],
+) {
+    let base_x = (tile_x * TILE_SIZE) as i32;
+    let base_y = (tile_y * TILE_SIZE) as i32;
+    let tile_x1 = base_x + TILE_SIZE as i32;
+    let tile_y1 = base_y + TILE_SIZE as i32;
+
+    for glyph in text.run_glyphs(glyph_run_id) {
+        let Some(image_id) = glyph.image else {
+            continue;
+        };
+        let Some(image) = text.image(image_id) else {
+            continue;
+        };
+
+        let glyph_x0 = glyph.x + image.left;
+        let glyph_y0 = glyph.y - image.top;
+        let glyph_x1 = glyph_x0 + image.width as i32;
+        let glyph_y1 = glyph_y0 + image.height as i32;
+        let x0 = glyph_x0.max(base_x);
+        let y0 = glyph_y0.max(base_y);
+        let x1 = glyph_x1.min(tile_x1);
+        let y1 = glyph_y1.min(tile_y1);
+        if x0 >= x1 || y0 >= y1 {
+            continue;
+        }
+
+        for global_y in y0..y1 {
+            let local_y = (global_y - base_y) as usize;
+            let image_y = (global_y - glyph_y0) as usize;
+            for global_x in x0..x1 {
+                let local_x = (global_x - base_x) as usize;
+                let image_x = (global_x - glyph_x0) as usize;
+                let tile_ix = local_y * TILE_SIZE as usize + local_x;
+                let clip = clip_mask[tile_ix];
+                if clip == 0 {
+                    continue;
+                }
+
+                let src = match image.content {
+                    PreparedGlyphContent::Mask => {
+                        let image_ix = image_y * image.width as usize + image_x;
+                        let alpha = combine_alpha(image.data[image_ix], clip);
+                        if alpha == 0 {
+                            continue;
+                        }
+                        scale_premul_u8(
+                            brush.sample(global_x as f32 + 0.5, global_y as f32 + 0.5),
+                            alpha,
+                        )
+                    }
+                    PreparedGlyphContent::Color => {
+                        let image_ix = (image_y * image.width as usize + image_x) * 4;
+                        let a = image.data[image_ix + 3];
+                        if a == 0 {
+                            continue;
+                        }
+                        scale_premul_u8(
+                            crate::shared::image::rgba8_pack([
+                                crate::shared::pixel::mul_div255(image.data[image_ix], a),
+                                crate::shared::pixel::mul_div255(image.data[image_ix + 1], a),
+                                crate::shared::pixel::mul_div255(image.data[image_ix + 2], a),
+                                a,
+                            ]),
+                            clip,
+                        )
+                    }
+                    PreparedGlyphContent::SubpixelMask => {
+                        let image_ix = (image_y * image.width as usize + image_x) * 3;
+                        let alpha = image.data[image_ix]
+                            .max(image.data[image_ix + 1])
+                            .max(image.data[image_ix + 2]);
+                        let alpha = combine_alpha(alpha, clip);
+                        if alpha == 0 {
+                            continue;
+                        }
+                        scale_premul_u8(
+                            brush.sample(global_x as f32 + 0.5, global_y as f32 + 0.5),
+                            alpha,
+                        )
+                    }
+                };
+                tile[tile_ix] = src_over_premul_u8(tile[tile_ix], src);
+            }
         }
     }
 }

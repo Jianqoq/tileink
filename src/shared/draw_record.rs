@@ -19,6 +19,8 @@ pub enum DrawTag {
 pub struct DrawRecord {
     /// Path index in [`Scene`](crate::gpu::scene::Scene), or `None` for non-path draws.
     pub path_id: Option<u32>,
+    /// Text glyph run index, or `None` for non-text draws.
+    pub glyph_run_id: Option<u32>,
     /// Exact SDF geometry for simple primitives that do not need path scan/cumsum.
     pub sdf: Option<Sdf>,
     pub tag: DrawTag,

@@ -8,10 +8,11 @@ use crate::cubecl::{
     },
     renderer::{CoarseBuffers, ScanBuffers, SceneBuffers},
     types::{
-        CUBE_PTCL_BEGIN_BLEND, CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_BEGIN_OPACITY, CUBE_PTCL_COLOR,
-        CUBE_PTCL_END, CUBE_PTCL_END_BLEND, CUBE_PTCL_END_CLIP, CUBE_PTCL_END_OPACITY,
-        CUBE_PTCL_FILL, CUBE_PTCL_SDF, CUBE_SDF_CIRCLE, CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_RECT,
-        CUBE_SDF_RECT_STROKE, CubeBufferLengths,
+        CUBE_GLYPH_COLOR, CUBE_GLYPH_MASK, CUBE_PTCL_BEGIN_BLEND, CUBE_PTCL_BEGIN_CLIP,
+        CUBE_PTCL_BEGIN_OPACITY, CUBE_PTCL_COLOR, CUBE_PTCL_END, CUBE_PTCL_END_BLEND,
+        CUBE_PTCL_END_CLIP, CUBE_PTCL_END_OPACITY, CUBE_PTCL_FILL, CUBE_PTCL_GLYPH, CUBE_PTCL_SDF,
+        CUBE_SDF_CIRCLE, CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_RECT, CUBE_SDF_RECT_STROKE,
+        CubeBufferLengths,
     },
 };
 
@@ -21,7 +22,6 @@ const FINE_WORKGROUP_SIZE: u32 = 256;
 pub(crate) struct FineRenderConfig {
     pub(crate) lengths: CubeBufferLengths,
     pub(crate) size: (u32, u32),
-    pub(crate) clear_color: u32,
     pub(crate) max_clip_depth: usize,
     pub(crate) max_group_depth: usize,
 }
@@ -29,19 +29,6 @@ pub(crate) struct FineRenderConfig {
 pub(crate) struct FinePipeline;
 
 impl FinePipeline {
-    pub(crate) fn run<R: Runtime>(
-        client: &ComputeClient<R>,
-        scene: &SceneBuffers,
-        scan: &ScanBuffers,
-        coarse: &CoarseBuffers,
-        brushes: GpuBrushResources<'_>,
-        target: &mut CubeBuffer<u32>,
-        config: FineRenderConfig,
-    ) {
-        Self::clear(client, target, config.lengths, config.clear_color);
-        Self::render(client, scene, scan, coarse, brushes, target, config);
-    }
-
     pub(crate) fn clear<R: Runtime>(
         client: &ComputeClient<R>,
         target: &mut CubeBuffer<u32>,
@@ -112,6 +99,18 @@ impl FinePipeline {
             unsafe { scene.draw_sdf_stroke_right.arg() },
             unsafe { scene.draw_sdf_stroke_bottom.arg() },
             unsafe { scene.draw_sdf_stroke_left.arg() },
+            unsafe { scene.glyph_run_starts.arg() },
+            unsafe { scene.glyph_run_counts.arg() },
+            unsafe { scene.glyph_image_ids.arg() },
+            unsafe { scene.glyph_x.arg() },
+            unsafe { scene.glyph_y.arg() },
+            unsafe { scene.glyph_image_left.arg() },
+            unsafe { scene.glyph_image_top.arg() },
+            unsafe { scene.glyph_image_width.arg() },
+            unsafe { scene.glyph_image_height.arg() },
+            unsafe { scene.glyph_image_content.arg() },
+            unsafe { scene.glyph_image_data_offsets.arg() },
+            unsafe { scene.glyph_image_data.arg() },
             unsafe { scan.segment_p0x.arg() },
             unsafe { scan.segment_p0y.arg() },
             unsafe { scan.segment_p1x.arg() },
@@ -170,6 +169,18 @@ fn fine_render(
     draw_sdf_stroke_right: &Array<f32>,
     draw_sdf_stroke_bottom: &Array<f32>,
     draw_sdf_stroke_left: &Array<f32>,
+    glyph_run_starts: &Array<u32>,
+    glyph_run_counts: &Array<u32>,
+    glyph_image_ids: &Array<u32>,
+    glyph_x: &Array<i32>,
+    glyph_y: &Array<i32>,
+    glyph_image_left: &Array<i32>,
+    glyph_image_top: &Array<i32>,
+    glyph_image_width: &Array<u32>,
+    glyph_image_height: &Array<u32>,
+    glyph_image_content: &Array<u32>,
+    glyph_image_data_offsets: &Array<u32>,
+    glyph_image_data: &Array<u32>,
     segment_p0x: &Array<f32>,
     segment_p0y: &Array<f32>,
     segment_p1x: &Array<f32>,
@@ -260,6 +271,30 @@ fn fine_render(
                     );
                     pixel = src_over_premul_u8(pixel, scale_premul_u8(color, alpha));
                 }
+            } else if tag == CUBE_PTCL_GLYPH {
+                pixel = composite_glyph_run_at(
+                    pixel,
+                    ptcl_segment_starts[ptcl_i],
+                    ptcl_colors[ptcl_i],
+                    global_x,
+                    global_y,
+                    clip_mask,
+                    glyph_run_starts,
+                    glyph_run_counts,
+                    glyph_image_ids,
+                    glyph_x,
+                    glyph_y,
+                    glyph_image_left,
+                    glyph_image_top,
+                    glyph_image_width,
+                    glyph_image_height,
+                    glyph_image_content,
+                    glyph_image_data_offsets,
+                    glyph_image_data,
+                    brush_data,
+                    brush_params,
+                    brush_payloads,
+                );
             } else if tag == CUBE_PTCL_END_CLIP {
                 if clip_depth > 0 {
                     clip_depth -= 1;
@@ -345,6 +380,77 @@ fn fine_render(
     }
 
     target[target_ix as usize] = pixel;
+}
+
+#[cube]
+#[allow(clippy::too_many_arguments)]
+fn composite_glyph_run_at(
+    mut pixel: u32,
+    run_id: u32,
+    draw_ix: u32,
+    global_x: u32,
+    global_y: u32,
+    clip_mask: u32,
+    glyph_run_starts: &Array<u32>,
+    glyph_run_counts: &Array<u32>,
+    glyph_image_ids: &Array<u32>,
+    glyph_x: &Array<i32>,
+    glyph_y: &Array<i32>,
+    glyph_image_left: &Array<i32>,
+    glyph_image_top: &Array<i32>,
+    glyph_image_width: &Array<u32>,
+    glyph_image_height: &Array<u32>,
+    glyph_image_content: &Array<u32>,
+    glyph_image_data_offsets: &Array<u32>,
+    glyph_image_data: &Array<u32>,
+    brush_data: &Array<u32>,
+    brush_params: &Array<f32>,
+    brush_payloads: &Array<u32>,
+) -> u32 {
+    let invalid = u32::new(-1);
+    let mut glyph_ix = glyph_run_starts[run_id as usize];
+    let glyph_end = glyph_ix + glyph_run_counts[run_id as usize];
+    let px = global_x as i32;
+    let py = global_y as i32;
+
+    while glyph_ix < glyph_end {
+        let glyph_i = glyph_ix as usize;
+        let image_id = glyph_image_ids[glyph_i];
+        if image_id != invalid {
+            let image_i = image_id as usize;
+            let width = glyph_image_width[image_i];
+            let height = glyph_image_height[image_i];
+            let x0 = glyph_x[glyph_i] + glyph_image_left[image_i];
+            let y0 = glyph_y[glyph_i] - glyph_image_top[image_i];
+            let local_x = px - x0;
+            let local_y = py - y0;
+            if local_x >= 0 && local_y >= 0 && local_x < width as i32 && local_y < height as i32 {
+                let data_ix =
+                    glyph_image_data_offsets[image_i] + local_y as u32 * width + local_x as u32;
+                let content = glyph_image_content[image_i];
+                if content == CUBE_GLYPH_MASK {
+                    let alpha = combine_alpha(glyph_image_data[data_ix as usize], clip_mask);
+                    if alpha > 0 {
+                        let color = sample_brush(
+                            draw_ix,
+                            global_x as f32 + 0.5,
+                            global_y as f32 + 0.5,
+                            brush_data,
+                            brush_params,
+                            brush_payloads,
+                        );
+                        pixel = src_over_premul_u8(pixel, scale_premul_u8(color, alpha));
+                    }
+                } else if content == CUBE_GLYPH_COLOR {
+                    let color = scale_premul_u8(glyph_image_data[data_ix as usize], clip_mask);
+                    pixel = src_over_premul_u8(pixel, color);
+                }
+            }
+        }
+        glyph_ix += 1;
+    }
+
+    pixel
 }
 
 #[cube]

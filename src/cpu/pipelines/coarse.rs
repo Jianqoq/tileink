@@ -6,7 +6,7 @@ use crate::shared::{
     draw_record::{DrawRecord, DrawTag},
     execution::LayerStackEntry,
     pixel::opacity_f32_to_u8,
-    tile_ptcl::{TileColorPtcl, TileFillPtcl, TilePtcl, TilePtclRange, TileSdfPtcl},
+    tile_ptcl::{TileColorPtcl, TileFillPtcl, TileGlyphPtcl, TilePtcl, TilePtclRange, TileSdfPtcl},
     tile_seg_range::TileSegmentRange,
 };
 
@@ -156,6 +156,12 @@ impl<'a> CoarseCpuPrepared<'a> {
                         }
                         ptcls.push(TilePtcl::Sdf(TileSdfPtcl {
                             sdf: *sdf,
+                            brush: draw.brush.clone(),
+                        }));
+                    }
+                    DrawTileCoverage::Glyph { draw, glyph_run_id } => {
+                        ptcls.push(TilePtcl::Glyph(TileGlyphPtcl {
+                            glyph_run_id,
                             brush: draw.brush.clone(),
                         }));
                     }
@@ -325,6 +331,14 @@ impl<'a> CoarseCpuPrepared<'a> {
             return None;
         }
 
+        if let Some(glyph_run_id) = draw.glyph_run_id {
+            let bbox = draw.tile_bbox(tiles_size.0, tiles_size.1);
+            if tile_x >= bbox.x0 && tile_x < bbox.x1 && tile_y >= bbox.y0 && tile_y < bbox.y1 {
+                return Some(DrawTileCoverage::Glyph { draw, glyph_run_id });
+            }
+            return None;
+        }
+
         let (draw, backdrop, segment_range) = Self::layer_tile_coverage(
             draw_ix,
             tile_x,
@@ -353,12 +367,16 @@ enum DrawTileCoverage<'a> {
         draw: &'a DrawRecord,
         sdf: &'a crate::shared::sdf::Sdf,
     },
+    Glyph {
+        draw: &'a DrawRecord,
+        glyph_run_id: u32,
+    },
 }
 
 impl<'a> DrawTileCoverage<'a> {
     fn draw(&self) -> &'a DrawRecord {
         match self {
-            Self::Path { draw, .. } | Self::Sdf { draw, .. } => draw,
+            Self::Path { draw, .. } | Self::Sdf { draw, .. } | Self::Glyph { draw, .. } => draw,
         }
     }
 }
@@ -439,6 +457,7 @@ mod tests {
         let draw_records = [
             DrawRecord {
                 path_id: Some(0),
+                glyph_run_id: None,
                 sdf: None,
                 tag: DrawTag::Clip,
                 brush: Brush::Solid(Color::TRANSPARENT),
@@ -453,6 +472,7 @@ mod tests {
             },
             DrawRecord {
                 path_id: Some(1),
+                glyph_run_id: None,
                 sdf: None,
                 tag: DrawTag::Clip,
                 brush: Brush::Solid(Color::TRANSPARENT),
@@ -467,6 +487,7 @@ mod tests {
             },
             DrawRecord {
                 path_id: Some(2),
+                glyph_run_id: None,
                 sdf: None,
                 tag: DrawTag::Brush,
                 brush: Brush::Solid(Color::BLACK),
@@ -562,6 +583,7 @@ mod tests {
         let draw_records = [
             DrawRecord {
                 path_id: Some(0),
+                glyph_run_id: None,
                 sdf: None,
                 tag: DrawTag::Brush,
                 brush: Brush::Solid(Color::from_rgb8(255, 0, 0)),
@@ -576,6 +598,7 @@ mod tests {
             },
             DrawRecord {
                 path_id: Some(1),
+                glyph_run_id: None,
                 sdf: None,
                 tag: DrawTag::Brush,
                 brush: Brush::Solid(Color::from_rgb8(0, 0, 255)),

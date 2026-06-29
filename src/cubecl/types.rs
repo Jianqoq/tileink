@@ -26,6 +26,10 @@ pub(crate) const CUBE_PTCL_END_OPACITY: u32 = 6;
 pub(crate) const CUBE_PTCL_BEGIN_BLEND: u32 = 7;
 pub(crate) const CUBE_PTCL_END_BLEND: u32 = 8;
 pub(crate) const CUBE_PTCL_SDF: u32 = 9;
+pub(crate) const CUBE_PTCL_GLYPH: u32 = 10;
+
+pub(crate) const CUBE_GLYPH_MASK: u32 = 0;
+pub(crate) const CUBE_GLYPH_COLOR: u32 = 1;
 
 pub(crate) const CUBE_SDF_NONE: u32 = 0;
 pub(crate) const CUBE_SDF_RECT: u32 = 1;
@@ -114,7 +118,7 @@ fn coarse_ptcl_capacity(scene: &Scene, width_in_tiles: u32, height_in_tiles: u32
         .draw_records
         .iter()
         .filter(|draw| {
-            (draw.path_id.is_some() || draw.sdf.is_some())
+            (draw.path_id.is_some() || draw.sdf.is_some() || draw.glyph_run_id.is_some())
                 && matches!(draw.tag, DrawTag::Brush | DrawTag::Clip)
         })
         .map(|draw| draw.tile_bbox(width_in_tiles, height_in_tiles).tile_count() as usize)

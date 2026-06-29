@@ -22,6 +22,7 @@ use crate::{
         execution::{ExecOp, ExecPlan, LayerStackEntry},
         image::Image,
     },
+    text::{PreparedTextData, TextContext},
 };
 
 mod layers;
@@ -61,8 +62,6 @@ impl Render for Renderer {
         std::ops::Range<usize>,
     );
 
-    type FineArgs<'a> = (&'a mut Image, Bounds);
-
     type ExecuteArgs<'a> = &'a mut Image;
 
     fn render(&mut self, scene: &crate::scene::Scene) {
@@ -76,7 +75,7 @@ impl Render for Renderer {
         let plan = scene.compile(0);
         self.scan(scene, ());
         self.cumsum(scene, ());
-        self.execute_plan(scene, &plan, args);
+        self.execute_plan(scene, &plan, args, None);
     }
 
     fn scan(&mut self, scene: &crate::scene::Scene, _: Self::ScanArgs<'_>) {
@@ -101,11 +100,6 @@ impl Render for Renderer {
             &mut self.main,
         );
     }
-
-    fn fine(&mut self, scene: &crate::scene::Scene, target: Self::FineArgs<'_>) {
-        let (target, target_bounds) = target;
-        run_fine(&self.fine, scene, target, target_bounds, &self.main);
-    }
 }
 
 impl Renderer {
@@ -125,6 +119,21 @@ impl Renderer {
 
     pub fn render(&mut self, scene: &crate::scene::Scene) {
         <Self as Render>::render(self, scene);
+    }
+
+    /// Renders text draws using the same [`TextContext`] that created their
+    /// [`TextLayout`](crate::TextLayout). Cosmic glyph cache keys contain
+    /// FontSystem font ids, so using a different context can make those keys
+    /// refer to the wrong font.
+    pub fn render_with_text(
+        &mut self,
+        scene: &crate::scene::Scene,
+        text_context: &mut TextContext,
+    ) {
+        self.size = (scene.width, scene.height);
+        let mut image = Image::new(scene.width, scene.height, self.clear);
+        self.execute_with_text(scene, &mut image, text_context);
+        self.image = image;
     }
 
     /// Renders a scene and returns backend-neutral debug data without writing files.
@@ -181,7 +190,14 @@ impl Renderer {
             profile.coarse += start.elapsed();
 
             let start = std::time::Instant::now();
-            self.fine(scene, (&mut image, target_bounds));
+            run_fine(
+                &self.fine,
+                scene,
+                &mut image,
+                target_bounds,
+                &self.main,
+                None,
+            );
             profile.fine += start.elapsed();
         }
 
@@ -194,8 +210,29 @@ impl Renderer {
         &self.image
     }
 
-    fn execute_plan(&mut self, scene: &crate::scene::Scene, plan: &ExecPlan, target: &mut Image) {
+    fn execute_with_text(
+        &mut self,
+        scene: &crate::scene::Scene,
+        target: &mut Image,
+        text_context: &mut TextContext,
+    ) {
+        let plan = scene.compile(0);
+        self.scan(scene, ());
+        self.cumsum(scene, ());
+        self.execute_plan(scene, &plan, target, Some(text_context));
+    }
+
+    fn execute_plan(
+        &mut self,
+        scene: &crate::scene::Scene,
+        plan: &ExecPlan,
+        target: &mut Image,
+        mut text_context: Option<&mut TextContext>,
+    ) {
         let mut main = std::mem::take(&mut self.main);
+        let text_data = text_context
+            .as_deref_mut()
+            .map(|context| PreparedTextData::new(&scene.text_glyphs, &scene.text_runs, context));
         self.execute_ops(
             scene,
             plan,
@@ -203,10 +240,13 @@ impl Renderer {
             target,
             Bounds::canvas(scene.width, scene.height),
             &mut main,
+            text_data.as_ref(),
+            text_context,
         );
         self.main = main;
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn execute_ops(
         &mut self,
         scene: &crate::scene::Scene,
@@ -215,6 +255,8 @@ impl Renderer {
         target: &mut Image,
         root_bounds: Bounds,
         buffers: &mut RasterBuffers,
+        text_data: Option<&PreparedTextData>,
+        mut text_context: Option<&mut TextContext>,
     ) {
         for op in ops {
             match op {
@@ -227,6 +269,7 @@ impl Renderer {
                     target,
                     root_bounds,
                     buffers,
+                    text_data,
                 ),
                 ExecOp::BeginClip
                 | ExecOp::EndClip
@@ -251,6 +294,8 @@ impl Renderer {
                     target,
                     root_bounds,
                     buffers,
+                    text_data,
+                    text_context.as_deref_mut(),
                 ),
                 ExecOp::OffscreenMaskLayer {
                     layer,
@@ -269,6 +314,8 @@ impl Renderer {
                     target,
                     root_bounds,
                     buffers,
+                    text_data,
+                    text_context.as_deref_mut(),
                 ),
             }
         }
@@ -285,6 +332,7 @@ impl Renderer {
         target: &mut Image,
         target_bounds: Bounds,
         buffers: &mut RasterBuffers,
+        text_data: Option<&PreparedTextData>,
     ) {
         if start >= end {
             return;
@@ -300,7 +348,7 @@ impl Renderer {
             },
             buffers,
         );
-        run_fine(&self.fine, scene, target, target_bounds, buffers);
+        run_fine(&self.fine, scene, target, target_bounds, buffers, text_data);
     }
 }
 

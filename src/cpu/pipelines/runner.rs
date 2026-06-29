@@ -9,6 +9,7 @@ use crate::{
         },
     },
     shared::{bounds::Bounds, draw_record::DrawRecord, execution::LayerStackEntry, image::Image},
+    text::PreparedTextData,
 };
 
 pub(in crate::cpu) struct CoarseStage<'a> {
@@ -81,6 +82,7 @@ pub(in crate::cpu) fn run_fine(
     target: &mut Image,
     target_bounds: Bounds,
     buffers: &RasterBuffers,
+    text: Option<&PreparedTextData>,
 ) {
     fine.prepare(
         &buffers.tile_ptcl_ranges,
@@ -89,6 +91,7 @@ pub(in crate::cpu) fn run_fine(
         target,
         target_bounds,
         (scene.width_in_tiles(), scene.height_in_tiles()),
+        text,
     )
     .run();
 }

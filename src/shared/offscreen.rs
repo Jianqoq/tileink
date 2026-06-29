@@ -199,6 +199,13 @@ fn translated_scene_for_bounds(scene: &Scene, local: LocalSpace) -> Scene {
             draw
         })
         .collect();
+    translated.text_glyphs = scene
+        .text_glyphs
+        .iter()
+        .copied()
+        .map(|glyph| glyph.translated(-local.surface.x0, -local.surface.y0))
+        .collect();
+    translated.text_runs = scene.text_runs.clone();
     translated.bd_records = translated_backdrop_records(scene, &translated);
     translated.path_cnt = scene.path_cnt;
     translated.backdrop_pool_capacity = translated

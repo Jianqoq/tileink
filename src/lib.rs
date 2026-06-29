@@ -5,11 +5,16 @@ mod render;
 mod scene;
 mod shared;
 mod svg;
+mod text;
 
 pub const TILE_SIZE: u32 = 16;
 pub const TILE_SCALE: f32 = 1.0 / TILE_SIZE as f32;
 pub const BLOCK_SIZE: u32 = 16 * 16;
 
+pub use cosmic_text::{
+    Align as TextAlign, Attrs as TextAttrs, Family as TextFamily, Stretch as TextStretch,
+    Style as TextStyle, Weight as TextWeight,
+};
 pub use cpu::Renderer as CpuRenderer;
 #[cfg(feature = "bench-api")]
 pub use cubecl::CubePreparedStage;
@@ -39,3 +44,4 @@ pub use shared::{
     sdf::rect::{Radius, StrokeWidths},
 };
 pub use svg::{SvgError, SvgOptions};
+pub use text::{TextContext, TextLayout, TextLayoutOptions};

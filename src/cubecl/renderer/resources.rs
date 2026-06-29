@@ -5,10 +5,12 @@ use crate::{
         draw_record::{DrawRecord, DrawTag},
         execution::{ExecPlan, LayerStackEntry},
         fill::FillRule,
+        image::rgba8_pack,
         line::Line,
-        pixel::premul_f32_to_u32,
+        pixel::{mul_div255, premul_f32_to_u32},
         sdf::Sdf,
     },
+    text::{PreparedGlyphContent, PreparedTextData},
 };
 use ::cubecl::prelude::Runtime;
 
@@ -16,9 +18,9 @@ use crate::cubecl::{
     buffer::CubeBuffer,
     types::{
         CUBE_DRAW_BLEND, CUBE_DRAW_BRUSH, CUBE_DRAW_CLIP, CUBE_DRAW_ISOLATE, CUBE_DRAW_OPACITY,
-        CUBE_LAYER_BLEND, CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY, CUBE_SDF_CIRCLE,
-        CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_NONE, CUBE_SDF_RECT, CUBE_SDF_RECT_STROKE,
-        CubeBufferLengths, CubeCumsumPlan, CubeScanChunk, CubeScanChunkRange,
+        CUBE_GLYPH_COLOR, CUBE_GLYPH_MASK, CUBE_LAYER_BLEND, CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY,
+        CUBE_SDF_CIRCLE, CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_NONE, CUBE_SDF_RECT,
+        CUBE_SDF_RECT_STROKE, CubeBufferLengths, CubeCumsumPlan, CubeScanChunk, CubeScanChunkRange,
         build_cumsum_plan_into, build_scan_chunks_into,
     },
 };
@@ -39,6 +41,96 @@ struct DrawSdfUpload {
     stroke_right: Vec<f32>,
     stroke_bottom: Vec<f32>,
     stroke_left: Vec<f32>,
+}
+
+#[derive(Default)]
+struct TextUpload {
+    run_starts: Vec<u32>,
+    run_counts: Vec<u32>,
+    glyph_image_ids: Vec<u32>,
+    glyph_x: Vec<i32>,
+    glyph_y: Vec<i32>,
+    image_left: Vec<i32>,
+    image_top: Vec<i32>,
+    image_width: Vec<u32>,
+    image_height: Vec<u32>,
+    image_content: Vec<u32>,
+    image_data_offsets: Vec<u32>,
+    image_data: Vec<u32>,
+}
+
+impl TextUpload {
+    fn refill(&mut self, scene: &Scene, text: Option<&PreparedTextData>) {
+        self.clear();
+        let Some(text) = text else {
+            return;
+        };
+
+        self.run_starts
+            .extend(scene.text_runs.iter().map(|run| run.glyph_start));
+        self.run_counts
+            .extend(scene.text_runs.iter().map(|run| run.glyph_count));
+        self.glyph_image_ids.reserve(scene.text_glyphs.len());
+        self.glyph_x.reserve(scene.text_glyphs.len());
+        self.glyph_y.reserve(scene.text_glyphs.len());
+        for glyph in &scene.text_glyphs {
+            self.glyph_image_ids.push(
+                text.image_id_for_cache_key(glyph.cache_key)
+                    .unwrap_or(u32::MAX),
+            );
+            self.glyph_x.push(glyph.x);
+            self.glyph_y.push(glyph.y);
+        }
+
+        for image in text.images() {
+            self.image_left.push(image.left);
+            self.image_top.push(image.top);
+            self.image_width.push(image.width);
+            self.image_height.push(image.height);
+            self.image_data_offsets.push(self.image_data.len() as u32);
+            match image.content {
+                PreparedGlyphContent::Mask => {
+                    self.image_content.push(CUBE_GLYPH_MASK);
+                    self.image_data
+                        .extend(image.data.iter().map(|&alpha| alpha as u32));
+                }
+                PreparedGlyphContent::Color => {
+                    self.image_content.push(CUBE_GLYPH_COLOR);
+                    for pixel in image.data.chunks_exact(4) {
+                        let a = pixel[3];
+                        self.image_data.push(rgba8_pack([
+                            mul_div255(pixel[0], a),
+                            mul_div255(pixel[1], a),
+                            mul_div255(pixel[2], a),
+                            a,
+                        ]));
+                    }
+                }
+                PreparedGlyphContent::SubpixelMask => {
+                    self.image_content.push(CUBE_GLYPH_MASK);
+                    for pixel in image.data.chunks_exact(3) {
+                        self.image_data
+                            .push(pixel[0].max(pixel[1]).max(pixel[2]) as u32);
+                    }
+                }
+            }
+        }
+    }
+
+    fn clear(&mut self) {
+        self.run_starts.clear();
+        self.run_counts.clear();
+        self.glyph_image_ids.clear();
+        self.glyph_x.clear();
+        self.glyph_y.clear();
+        self.image_left.clear();
+        self.image_top.clear();
+        self.image_width.clear();
+        self.image_height.clear();
+        self.image_content.clear();
+        self.image_data_offsets.clear();
+        self.image_data.clear();
+    }
 }
 
 impl DrawSdfUpload {
@@ -165,6 +257,7 @@ pub(super) struct SceneUploadStaging {
     i32s: Vec<i32>,
     f32s: Vec<f32>,
     sdf: DrawSdfUpload,
+    text: TextUpload,
     scan_chunks: Vec<CubeScanChunk>,
     scan_chunk_ranges: Vec<CubeScanChunkRange>,
     cumsum_plan: CubeCumsumPlan,
@@ -216,6 +309,7 @@ pub(crate) struct SceneBuffers {
     pub(crate) line_p1x: CubeBuffer<f32>,
     pub(crate) line_p1y: CubeBuffer<f32>,
     pub(crate) draw_path_ids: CubeBuffer<u32>,
+    pub(crate) draw_glyph_run_ids: CubeBuffer<u32>,
     pub(crate) draw_tags: CubeBuffer<u32>,
     pub(crate) draw_fill_rules: CubeBuffer<u32>,
     pub(crate) draw_solid_rects: CubeBuffer<u32>,
@@ -259,6 +353,18 @@ pub(crate) struct SceneBuffers {
     pub(crate) plan_layer_stack_tags: CubeBuffer<u32>,
     pub(crate) plan_layer_stack_draws: CubeBuffer<u32>,
     pub(crate) plan_layer_stack_payloads: CubeBuffer<u32>,
+    pub(crate) glyph_run_starts: CubeBuffer<u32>,
+    pub(crate) glyph_run_counts: CubeBuffer<u32>,
+    pub(crate) glyph_image_ids: CubeBuffer<u32>,
+    pub(crate) glyph_x: CubeBuffer<i32>,
+    pub(crate) glyph_y: CubeBuffer<i32>,
+    pub(crate) glyph_image_left: CubeBuffer<i32>,
+    pub(crate) glyph_image_top: CubeBuffer<i32>,
+    pub(crate) glyph_image_width: CubeBuffer<u32>,
+    pub(crate) glyph_image_height: CubeBuffer<u32>,
+    pub(crate) glyph_image_content: CubeBuffer<u32>,
+    pub(crate) glyph_image_data_offsets: CubeBuffer<u32>,
+    pub(crate) glyph_image_data: CubeBuffer<u32>,
 }
 
 impl SceneBuffers {
@@ -270,6 +376,7 @@ impl SceneBuffers {
             line_p1x: CubeBuffer::new(client, 0),
             line_p1y: CubeBuffer::new(client, 0),
             draw_path_ids: CubeBuffer::new(client, 0),
+            draw_glyph_run_ids: CubeBuffer::new(client, 0),
             draw_tags: CubeBuffer::new(client, 0),
             draw_fill_rules: CubeBuffer::new(client, 0),
             draw_solid_rects: CubeBuffer::new(client, 0),
@@ -313,6 +420,18 @@ impl SceneBuffers {
             plan_layer_stack_tags: CubeBuffer::new(client, 0),
             plan_layer_stack_draws: CubeBuffer::new(client, 0),
             plan_layer_stack_payloads: CubeBuffer::new(client, 0),
+            glyph_run_starts: CubeBuffer::new(client, 0),
+            glyph_run_counts: CubeBuffer::new(client, 0),
+            glyph_image_ids: CubeBuffer::new(client, 0),
+            glyph_x: CubeBuffer::new(client, 0),
+            glyph_y: CubeBuffer::new(client, 0),
+            glyph_image_left: CubeBuffer::new(client, 0),
+            glyph_image_top: CubeBuffer::new(client, 0),
+            glyph_image_width: CubeBuffer::new(client, 0),
+            glyph_image_height: CubeBuffer::new(client, 0),
+            glyph_image_content: CubeBuffer::new(client, 0),
+            glyph_image_data_offsets: CubeBuffer::new(client, 0),
+            glyph_image_data: CubeBuffer::new(client, 0),
         }
     }
 
@@ -321,6 +440,7 @@ impl SceneBuffers {
         client: &::cubecl::client::ComputeClient<R>,
         scene: &Scene,
         plan: &ExecPlan,
+        text: Option<&PreparedTextData>,
         staging: &mut SceneUploadStaging,
     ) {
         build_scan_chunks_into(
@@ -330,9 +450,10 @@ impl SceneBuffers {
         );
         build_cumsum_plan_into(scene, &mut staging.cumsum_plan);
         self.upload_lines(client, &scene.lines, staging);
-        self.upload_draws(client, &scene.draw_records, staging);
+        self.upload_draws(client, &scene.draw_records, text.is_some(), staging);
         self.upload_backdrops(client, &scene.bd_records, staging);
         self.upload_plan_layer_stack(client, &plan.layer_stack_data, staging);
+        self.upload_text(client, scene, text, staging);
 
         upload_mapped_u32(
             client,
@@ -470,6 +591,7 @@ impl SceneBuffers {
         &mut self,
         client: &::cubecl::client::ComputeClient<R>,
         draws: &[DrawRecord],
+        text_enabled: bool,
         staging: &mut SceneUploadStaging,
     ) {
         upload_mapped_u32(
@@ -478,6 +600,19 @@ impl SceneBuffers {
             &mut staging.u32s,
             draws,
             |draw| draw.path_id.unwrap_or(u32::MAX),
+        );
+        upload_mapped_u32(
+            client,
+            &mut self.draw_glyph_run_ids,
+            &mut staging.u32s,
+            draws,
+            |draw| {
+                if text_enabled {
+                    draw.glyph_run_id.unwrap_or(u32::MAX)
+                } else {
+                    u32::MAX
+                }
+            },
         );
         upload_mapped_u32(
             client,
@@ -574,6 +709,38 @@ impl SceneBuffers {
             .replace(client, &staging.sdf.stroke_bottom);
         self.draw_sdf_stroke_left
             .replace(client, &staging.sdf.stroke_left);
+    }
+
+    fn upload_text<R: Runtime>(
+        &mut self,
+        client: &::cubecl::client::ComputeClient<R>,
+        scene: &Scene,
+        text: Option<&PreparedTextData>,
+        staging: &mut SceneUploadStaging,
+    ) {
+        staging.text.refill(scene, text);
+        self.glyph_run_starts
+            .replace(client, &staging.text.run_starts);
+        self.glyph_run_counts
+            .replace(client, &staging.text.run_counts);
+        self.glyph_image_ids
+            .replace(client, &staging.text.glyph_image_ids);
+        self.glyph_x.replace(client, &staging.text.glyph_x);
+        self.glyph_y.replace(client, &staging.text.glyph_y);
+        self.glyph_image_left
+            .replace(client, &staging.text.image_left);
+        self.glyph_image_top
+            .replace(client, &staging.text.image_top);
+        self.glyph_image_width
+            .replace(client, &staging.text.image_width);
+        self.glyph_image_height
+            .replace(client, &staging.text.image_height);
+        self.glyph_image_content
+            .replace(client, &staging.text.image_content);
+        self.glyph_image_data_offsets
+            .replace(client, &staging.text.image_data_offsets);
+        self.glyph_image_data
+            .replace(client, &staging.text.image_data);
     }
 
     fn upload_backdrops<R: Runtime>(

@@ -17,6 +17,7 @@ use crate::{
         image::Image,
         layer::{Layer, filter::Filter, mask::Mask, region::Region},
     },
+    text::{PreparedTextData, TextContext},
 };
 
 use super::Renderer;
@@ -64,6 +65,7 @@ enum LayerComposite {
 }
 
 impl Renderer {
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn execute_offscreen_layer(
         &mut self,
         scene: &crate::scene::Scene,
@@ -72,6 +74,8 @@ impl Renderer {
         target: &mut Image,
         target_bounds: Bounds,
         buffers: &mut RasterBuffers,
+        text_data: Option<&PreparedTextData>,
+        text_context: Option<&mut TextContext>,
     ) {
         match offscreen.layer {
             Layer::Isolate => self.execute_masked_group_layer(
@@ -87,6 +91,8 @@ impl Renderer {
                 target,
                 target_bounds,
                 buffers,
+                text_data,
+                text_context,
             ),
             Layer::Opacity(opacity) => self.execute_masked_group_layer(
                 scene,
@@ -101,6 +107,8 @@ impl Renderer {
                 target,
                 target_bounds,
                 buffers,
+                text_data,
+                text_context,
             ),
             Layer::Blend(blend) => self.execute_masked_group_layer(
                 scene,
@@ -115,6 +123,8 @@ impl Renderer {
                 target,
                 target_bounds,
                 buffers,
+                text_data,
+                text_context,
             ),
             Layer::ClipSdf { sdf, bounds } => {
                 if bounds.intersect(target_bounds).is_empty() {
@@ -126,6 +136,8 @@ impl Renderer {
                     offscreen.children,
                     target_bounds,
                     buffers,
+                    text_data,
+                    text_context,
                 );
 
                 let mut mask = rasterize_sdf_mask(sdf, *bounds, target_bounds);
@@ -154,6 +166,8 @@ impl Renderer {
                 target,
                 target_bounds,
                 buffers,
+                text_data,
+                text_context,
             ),
             Layer::Backdrop {
                 filter,
@@ -170,11 +184,14 @@ impl Renderer {
                 target,
                 target_bounds,
                 buffers,
+                text_data,
+                text_context,
             ),
             _ => unreachable!(),
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn execute_filter_layer(
         &mut self,
         scene: &crate::scene::Scene,
@@ -183,6 +200,8 @@ impl Renderer {
         target: &mut Image,
         target_bounds: Bounds,
         buffers: &mut RasterBuffers,
+        _text_data: Option<&PreparedTextData>,
+        text_context: Option<&mut TextContext>,
     ) {
         let Some(filter_bounds) =
             self.filter
@@ -192,7 +211,7 @@ impl Renderer {
         };
 
         let mut surface = OffscreenSurface::new(scene, plan, layer.children, filter_bounds.surface);
-        self.render_offscreen_surface(&mut surface);
+        self.render_offscreen_surface(&mut surface, text_context);
         self.filter
             .prepare(&mut surface.image, layer.filter, filter_bounds.surface)
             .run();
@@ -214,6 +233,7 @@ impl Renderer {
         composite_src_over_masked_at(target, &output, &mask, filter_bounds.output, target_bounds);
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn execute_backdrop_layer(
         &mut self,
         scene: &crate::scene::Scene,
@@ -222,6 +242,8 @@ impl Renderer {
         target: &mut Image,
         target_bounds: Bounds,
         buffers: &mut RasterBuffers,
+        text_data: Option<&PreparedTextData>,
+        text_context: Option<&mut TextContext>,
     ) {
         let bounds = self.filter.filtered_region_bounds(
             layer.filter,
@@ -248,8 +270,15 @@ impl Renderer {
         );
         composite_src_over_masked_at(target, &backdrop, &backdrop_mask, bounds, target_bounds);
 
-        let content =
-            self.render_children_to_image(scene, plan, layer.children, target_bounds, buffers);
+        let content = self.render_children_to_image(
+            scene,
+            plan,
+            layer.children,
+            target_bounds,
+            buffers,
+            text_data,
+            text_context,
+        );
         let mut content_mask =
             Image::new(target_bounds.width(), target_bounds.height(), Color::WHITE);
         self.apply_outer_clip_stack_to_mask(
@@ -269,6 +298,7 @@ impl Renderer {
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn execute_masked_group_layer(
         &mut self,
         scene: &crate::scene::Scene,
@@ -277,13 +307,23 @@ impl Renderer {
         target: &mut Image,
         target_bounds: Bounds,
         buffers: &mut RasterBuffers,
+        text_data: Option<&PreparedTextData>,
+        text_context: Option<&mut TextContext>,
     ) {
         let bounds = draw_bounds(scene, group.draw).intersect(target_bounds);
         if bounds.is_empty() {
             return;
         }
 
-        let image = self.render_children_to_image(scene, plan, group.children, bounds, buffers);
+        let image = self.render_children_to_image(
+            scene,
+            plan,
+            group.children,
+            bounds,
+            buffers,
+            text_data,
+            text_context,
+        );
         let mut mask = rasterize_layer_mask(scene, group.draw, bounds, buffers);
         if let Some(opacity) = group.opacity {
             apply_opacity_to_mask(&mut mask, opacity);
@@ -306,6 +346,7 @@ impl Renderer {
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn render_children_to_image(
         &mut self,
         scene: &crate::scene::Scene,
@@ -313,15 +354,37 @@ impl Renderer {
         children: &[ExecOp],
         bounds: Bounds,
         buffers: &mut RasterBuffers,
+        text_data: Option<&PreparedTextData>,
+        text_context: Option<&mut TextContext>,
     ) -> Image {
         let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
-        self.execute_ops(scene, plan, children, &mut image, bounds, buffers);
+        self.execute_ops(
+            scene,
+            plan,
+            children,
+            &mut image,
+            bounds,
+            buffers,
+            text_data,
+            text_context,
+        );
         image
     }
 
-    fn render_offscreen_surface(&mut self, surface: &mut OffscreenSurface) {
+    fn render_offscreen_surface(
+        &mut self,
+        surface: &mut OffscreenSurface,
+        mut text_context: Option<&mut TextContext>,
+    ) {
         run_scan(&self.scan, &surface.scene, &mut surface.buffers);
         run_cumsum(&self.cumsum, &surface.scene, &mut surface.buffers);
+        let text_data = text_context.as_deref_mut().map(|context| {
+            PreparedTextData::new(
+                &surface.scene.text_glyphs,
+                &surface.scene.text_runs,
+                context,
+            )
+        });
         self.execute_ops(
             &surface.scene,
             &surface.plan,
@@ -329,9 +392,12 @@ impl Renderer {
             &mut surface.image,
             Bounds::canvas(surface.bounds.width(), surface.bounds.height()),
             &mut surface.buffers,
+            text_data.as_ref(),
+            text_context,
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn execute_mask_layer(
         &mut self,
         scene: &crate::scene::Scene,
@@ -340,16 +406,32 @@ impl Renderer {
         target: &mut Image,
         target_bounds: Bounds,
         buffers: &mut RasterBuffers,
+        text_data: Option<&PreparedTextData>,
+        mut text_context: Option<&mut TextContext>,
     ) {
         let bounds = region_bounds(&mask_layer.layer.region).intersect(target_bounds);
         if bounds.is_empty() {
             return;
         }
 
-        let content =
-            self.render_children_to_image(scene, plan, mask_layer.content, bounds, buffers);
-        let mask_source =
-            self.render_children_to_image(scene, plan, mask_layer.mask, bounds, buffers);
+        let content = self.render_children_to_image(
+            scene,
+            plan,
+            mask_layer.content,
+            bounds,
+            buffers,
+            text_data,
+            text_context.as_deref_mut(),
+        );
+        let mask_source = self.render_children_to_image(
+            scene,
+            plan,
+            mask_layer.mask,
+            bounds,
+            buffers,
+            text_data,
+            text_context,
+        );
         let mut mask = svg_mask_coverage(&mask_source, mask_layer.layer.kind);
         let region_mask = rasterize_region_mask(&mask_layer.layer.region, bounds);
         intersect_alpha_mask(&mut mask, &region_mask);
