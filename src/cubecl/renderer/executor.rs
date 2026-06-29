@@ -71,6 +71,13 @@ struct LightingDispatch {
     light_source: LightSource,
 }
 
+struct OffscreenLayerRef<'a> {
+    draw: usize,
+    layer: &'a Layer,
+    outer_stack: std::ops::Range<usize>,
+    children: &'a [ExecOp],
+}
+
 struct MaskedGroupLayer<'a> {
     draw: usize,
     outer_stack: std::ops::Range<usize>,
@@ -84,6 +91,20 @@ struct MaskLayerRef<'a> {
     outer_stack: std::ops::Range<usize>,
     content: &'a [ExecOp],
     mask: &'a [ExecOp],
+}
+
+struct FilterLayerRef<'a> {
+    filter: &'a Filter,
+    sample_region: &'a Region,
+    outer_stack: std::ops::Range<usize>,
+    children: &'a [ExecOp],
+}
+
+struct BackdropLayerRef<'a> {
+    filter: &'a Filter,
+    sample_region: &'a Region,
+    outer_stack: std::ops::Range<usize>,
+    children: &'a [ExecOp],
 }
 
 #[derive(Clone, Copy)]
@@ -261,10 +282,12 @@ impl<R: Runtime> Renderer<R> {
                 } => self.execute_offscreen_layer(
                     scene,
                     plan,
-                    *draw,
-                    layer,
-                    outer_stack.clone(),
-                    children,
+                    OffscreenLayerRef {
+                        draw: *draw,
+                        layer,
+                        outer_stack: outer_stack.clone(),
+                        children,
+                    },
                     target,
                     filter_cursors,
                 ),
@@ -309,26 +332,22 @@ impl<R: Runtime> Renderer<R> {
         self.fine_batch_to(target);
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn execute_offscreen_layer(
         &mut self,
         scene: &Scene,
         plan: &ExecPlan,
-        draw: usize,
-        layer: &Layer,
-        outer_stack: std::ops::Range<usize>,
-        children: &[ExecOp],
+        offscreen: OffscreenLayerRef<'_>,
         target: CubeRenderTarget,
         filter_cursors: &mut FilterCursors,
     ) {
-        match layer {
+        match offscreen.layer {
             Layer::Isolate => self.execute_masked_group_layer(
                 scene,
                 plan,
                 MaskedGroupLayer {
-                    draw,
-                    outer_stack,
-                    children,
+                    draw: offscreen.draw,
+                    outer_stack: offscreen.outer_stack,
+                    children: offscreen.children,
                     opacity: None,
                     composite: LayerComposite::SrcOver,
                 },
@@ -339,9 +358,9 @@ impl<R: Runtime> Renderer<R> {
                 scene,
                 plan,
                 MaskedGroupLayer {
-                    draw,
-                    outer_stack,
-                    children,
+                    draw: offscreen.draw,
+                    outer_stack: offscreen.outer_stack,
+                    children: offscreen.children,
                     opacity: Some(opacity.opacity),
                     composite: LayerComposite::SrcOver,
                 },
@@ -352,9 +371,9 @@ impl<R: Runtime> Renderer<R> {
                 scene,
                 plan,
                 MaskedGroupLayer {
-                    draw,
-                    outer_stack,
-                    children,
+                    draw: offscreen.draw,
+                    outer_stack: offscreen.outer_stack,
+                    children: offscreen.children,
                     opacity: None,
                     composite: LayerComposite::Blend(blend.mode),
                 },
@@ -367,50 +386,30 @@ impl<R: Runtime> Renderer<R> {
             } => self.execute_filter_layer_with_local_surface(
                 scene,
                 plan,
-                filter,
-                sample_region,
-                outer_stack,
-                children,
+                FilterLayerRef {
+                    filter,
+                    sample_region,
+                    outer_stack: offscreen.outer_stack,
+                    children: offscreen.children,
+                },
                 target,
                 filter_cursors,
             ),
             Layer::Backdrop {
                 filter,
                 sample_region,
-            } => {
-                let bounds = filter_model::filtered_region_bounds(
+            } => self.execute_backdrop_layer(
+                scene,
+                plan,
+                BackdropLayerRef {
                     filter,
                     sample_region,
-                    Bounds::canvas(self.size.0, self.size.1),
-                );
-                let path_index = filter_cursors.next_path_index(sample_region);
-                let backdrop = self.acquire_scratch();
-                self.clear_buffer(backdrop, 0);
-                self.copy_region(target, backdrop, bounds);
-                self.apply_filter(backdrop, bounds, filter, filter_cursors);
-                let mask = self.acquire_scratch();
-                self.clear_buffer(mask, 0);
-                self.build_region_mask(mask, sample_region, path_index, bounds);
-                self.composite_src_over_with_stack(
-                    target,
-                    backdrop,
-                    Some(mask),
-                    bounds,
-                    outer_stack.clone(),
-                );
-                self.release_scratch(mask);
-                self.release_scratch(backdrop);
-
-                let content = self.render_ops_to_scratch(scene, plan, children, filter_cursors);
-                self.composite_src_over_with_stack(
-                    target,
-                    content,
-                    None,
-                    Bounds::canvas(self.size.0, self.size.1),
-                    outer_stack,
-                );
-                self.release_scratch(content);
-            }
+                    outer_stack: offscreen.outer_stack,
+                    children: offscreen.children,
+                },
+                target,
+                filter_cursors,
+            ),
             Layer::ClipSdf { .. } => {
                 panic!("CubeCL ClipSdf layers are not implemented; use the CPU renderer")
             }
@@ -476,35 +475,31 @@ impl<R: Runtime> Renderer<R> {
         target
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn execute_filter_layer_with_local_surface(
         &mut self,
         scene: &Scene,
         plan: &ExecPlan,
-        filter: &Filter,
-        sample_region: &Region,
-        outer_stack: std::ops::Range<usize>,
-        children: &[ExecOp],
+        layer: FilterLayerRef<'_>,
         target: CubeRenderTarget,
         filter_cursors: &mut FilterCursors,
     ) {
         let target_bounds = Bounds::canvas(self.size.0, self.size.1);
         let Some(filter_bounds) =
-            filter_model::filter_surface_bounds(filter, sample_region, target_bounds)
+            filter_model::filter_surface_bounds(layer.filter, layer.sample_region, target_bounds)
         else {
-            filter_cursors.advance_filter_layer(sample_region, children, filter);
+            filter_cursors.advance_filter_layer(layer.sample_region, layer.children, layer.filter);
             return;
         };
 
-        filter_cursors.advance_filter_layer(sample_region, children, filter);
+        filter_cursors.advance_filter_layer(layer.sample_region, layer.children, layer.filter);
         let local = local_offscreen_scene(
             scene,
             plan,
-            children,
+            layer.children,
             filter_bounds.surface,
             line_scanned_tile_count,
         );
-        let local_filter = local_filter(filter, filter_bounds.surface);
+        let local_filter = local_filter(layer.filter, filter_bounds.surface);
         let local_bounds = Bounds::canvas(
             filter_bounds.surface.width(),
             filter_bounds.surface.height(),
@@ -556,9 +551,51 @@ impl<R: Runtime> Renderer<R> {
             ),
             (filter_bounds.surface.x0, filter_bounds.surface.y0),
             filter_bounds.output,
-            outer_stack,
+            layer.outer_stack,
         );
         self.surface_sources.push(source_buffer);
+    }
+
+    fn execute_backdrop_layer(
+        &mut self,
+        scene: &Scene,
+        plan: &ExecPlan,
+        layer: BackdropLayerRef<'_>,
+        target: CubeRenderTarget,
+        filter_cursors: &mut FilterCursors,
+    ) {
+        let bounds = filter_model::filtered_region_bounds(
+            layer.filter,
+            layer.sample_region,
+            Bounds::canvas(self.size.0, self.size.1),
+        );
+        let path_index = filter_cursors.next_path_index(layer.sample_region);
+        let backdrop = self.acquire_scratch();
+        self.clear_buffer(backdrop, 0);
+        self.copy_region(target, backdrop, bounds);
+        self.apply_filter(backdrop, bounds, layer.filter, filter_cursors);
+        let mask = self.acquire_scratch();
+        self.clear_buffer(mask, 0);
+        self.build_region_mask(mask, layer.sample_region, path_index, bounds);
+        self.composite_src_over_with_stack(
+            target,
+            backdrop,
+            Some(mask),
+            bounds,
+            layer.outer_stack.clone(),
+        );
+        self.release_scratch(mask);
+        self.release_scratch(backdrop);
+
+        let content = self.render_ops_to_scratch(scene, plan, layer.children, filter_cursors);
+        self.composite_src_over_with_stack(
+            target,
+            content,
+            None,
+            Bounds::canvas(self.size.0, self.size.1),
+            layer.outer_stack,
+        );
+        self.release_scratch(content);
     }
 
     fn execute_mask_layer(

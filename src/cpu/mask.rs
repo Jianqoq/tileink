@@ -4,7 +4,10 @@ use peniko::{
 };
 
 use crate::{
-    cpu::computes::fine::combine_alpha,
+    cpu::{
+        buffers::RasterBuffers,
+        computes::fine::{build_tile_alpha, combine_alpha},
+    },
     shared::{
         bounds::Bounds,
         image::{Image, rgba8_pack},
@@ -148,6 +151,70 @@ pub(super) fn rasterize_sdf_mask(sdf: &Sdf, sdf_bounds: Bounds, bounds: Bounds) 
         }
     }
 
+    image
+}
+
+pub(super) fn rasterize_layer_mask(
+    scene: &crate::scene::Scene,
+    draw_ix: usize,
+    bounds: Bounds,
+    buffers: &RasterBuffers,
+) -> Image {
+    let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
+    let draw = &scene.draw_records[draw_ix];
+    let Some(path_id) = draw.path_id else {
+        return image;
+    };
+    let backdrop_record = &scene.bd_records[path_id as usize];
+    let bbox = draw.tile_bbox(scene.width_in_tiles(), scene.height_in_tiles());
+    let stride = backdrop_record.tile_x1 - backdrop_record.tile_x0;
+    if stride == 0 {
+        return image;
+    }
+
+    for tile_y in bbox.y0..bbox.y1 {
+        for tile_x in bbox.x0..bbox.x1 {
+            let local_x = tile_x - backdrop_record.tile_x0;
+            let local_y = tile_y - backdrop_record.tile_y0;
+            let local_ix = (local_y * stride + local_x) as usize;
+            let backdrop_ix = backdrop_record.data_offset as usize + local_ix;
+            let segment_range = buffers.tile_segment_ranges[backdrop_ix];
+            let backdrop = buffers.backdrops[backdrop_ix];
+            if segment_range.start == segment_range.end && backdrop == 0 {
+                continue;
+            }
+
+            let alpha = build_tile_alpha(
+                &buffers.segments[segment_range.start as usize..segment_range.end as usize],
+                backdrop,
+                draw.fill_rule,
+            );
+            let base_x = (tile_x * crate::TILE_SIZE) as i32;
+            let base_y = (tile_y * crate::TILE_SIZE) as i32;
+            let clip_x0 = base_x.max(bounds.x0);
+            let clip_y0 = base_y.max(bounds.y0);
+            let clip_x1 = (base_x + crate::TILE_SIZE as i32).min(bounds.x1);
+            let clip_y1 = (base_y + crate::TILE_SIZE as i32).min(bounds.y1);
+            if clip_x0 >= clip_x1 || clip_y0 >= clip_y1 {
+                continue;
+            }
+
+            for global_y in clip_y0..clip_y1 {
+                let row_start = ((global_y - base_y) as u32 * crate::TILE_SIZE) as usize;
+                for global_x in clip_x0..clip_x1 {
+                    let tile_ix = row_start + (global_x - base_x) as usize;
+                    let a = alpha[tile_ix];
+                    if a == 0 {
+                        continue;
+                    }
+                    let local_x = (global_x - bounds.x0) as u32;
+                    let local_y = (global_y - bounds.y0) as u32;
+                    let ix = (local_y * image.width + local_x) as usize;
+                    image.pixels[ix] = rgba8_pack([a, a, a, a]);
+                }
+            }
+        }
+    }
     image
 }
 

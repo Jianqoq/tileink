@@ -6,10 +6,9 @@ use crate::{
     cpu::{
         buffers::RasterBuffers,
         computes::blend::{composite_blend_masked_at, composite_src_over_masked_at},
-        computes::fine::build_tile_alpha,
         mask::{
-            apply_opacity_to_mask, copy_image_region, intersect_alpha_mask, rasterize_region_mask,
-            rasterize_sdf_mask, region_bounds, svg_mask_coverage,
+            apply_opacity_to_mask, copy_image_region, intersect_alpha_mask, rasterize_layer_mask,
+            rasterize_region_mask, rasterize_sdf_mask, region_bounds, svg_mask_coverage,
         },
         offscreen::OffscreenSurface,
         pipelines::{
@@ -23,8 +22,8 @@ use crate::{
         bounds::Bounds,
         draw_record::DrawRecord,
         execution::{ExecOp, ExecPlan, LayerStackEntry},
-        image::{Image, rgba8_pack},
-        layer::{Layer, mask::Mask},
+        image::Image,
+        layer::{Layer, filter::Filter, mask::Mask, region::Region},
     },
 };
 
@@ -62,6 +61,20 @@ struct MaskLayerRef<'a> {
     outer_stack: std::ops::Range<usize>,
     content: &'a [ExecOp],
     mask: &'a [ExecOp],
+}
+
+struct FilterLayerRef<'a> {
+    filter: &'a Filter,
+    sample_region: &'a Region,
+    outer_stack: std::ops::Range<usize>,
+    children: &'a [ExecOp],
+}
+
+struct BackdropLayerRef<'a> {
+    filter: &'a Filter,
+    sample_region: &'a Region,
+    outer_stack: std::ops::Range<usize>,
+    children: &'a [ExecOp],
 }
 
 struct MaskedGroupLayer<'a> {
@@ -379,104 +392,131 @@ impl Renderer {
             Layer::Filter {
                 filter,
                 sample_region,
-            } => {
-                let Some(filter_bounds) =
-                    self.filter
-                        .surface_bounds(filter, sample_region, target_bounds)
-                else {
-                    return;
-                };
-
-                let mut surface =
-                    OffscreenSurface::new(scene, plan, offscreen.children, filter_bounds.surface);
-                self.render_offscreen_surface(&mut surface);
-                self.filter
-                    .prepare(&mut surface.image, filter, filter_bounds.surface)
-                    .run();
-
-                let output =
-                    copy_image_region(&surface.image, filter_bounds.output, filter_bounds.surface);
-                let mut mask = Image::new(
-                    filter_bounds.output.width(),
-                    filter_bounds.output.height(),
-                    Color::WHITE,
-                );
-                self.apply_outer_clip_stack_to_mask(
-                    scene,
-                    plan,
-                    offscreen.outer_stack,
-                    filter_bounds.output,
-                    &mut mask,
-                    buffers,
-                );
-                composite_src_over_masked_at(
-                    target,
-                    &output,
-                    &mask,
-                    filter_bounds.output,
-                    target_bounds,
-                );
-            }
+            } => self.execute_filter_layer(
+                scene,
+                plan,
+                FilterLayerRef {
+                    filter,
+                    sample_region,
+                    outer_stack: offscreen.outer_stack,
+                    children: offscreen.children,
+                },
+                target,
+                target_bounds,
+                buffers,
+            ),
             Layer::Backdrop {
                 filter,
                 sample_region,
-            } => {
-                let bounds = self.filter.filtered_region_bounds(
+            } => self.execute_backdrop_layer(
+                scene,
+                plan,
+                BackdropLayerRef {
                     filter,
                     sample_region,
-                    Bounds::canvas(scene.width, scene.height),
-                );
-                if bounds.is_empty() {
-                    return;
-                }
-
-                let mut backdrop = copy_image_region(target, bounds, target_bounds);
-                self.filter.prepare(&mut backdrop, filter, bounds).run();
-
-                let mut backdrop_mask = rasterize_region_mask(sample_region, bounds);
-                self.apply_outer_clip_stack_to_mask(
-                    scene,
-                    plan,
-                    offscreen.outer_stack.clone(),
-                    bounds,
-                    &mut backdrop_mask,
-                    buffers,
-                );
-                composite_src_over_masked_at(
-                    target,
-                    &backdrop,
-                    &backdrop_mask,
-                    bounds,
-                    target_bounds,
-                );
-
-                let content = self.render_children_to_image(
-                    scene,
-                    plan,
-                    offscreen.children,
-                    target_bounds,
-                    buffers,
-                );
-                let mut content_mask =
-                    Image::new(target_bounds.width(), target_bounds.height(), Color::WHITE);
-                self.apply_outer_clip_stack_to_mask(
-                    scene,
-                    plan,
-                    offscreen.outer_stack,
-                    target_bounds,
-                    &mut content_mask,
-                    buffers,
-                );
-                composite_src_over_masked_at(
-                    target,
-                    &content,
-                    &content_mask,
-                    target_bounds,
-                    target_bounds,
-                );
-            }
+                    outer_stack: offscreen.outer_stack,
+                    children: offscreen.children,
+                },
+                target,
+                target_bounds,
+                buffers,
+            ),
             _ => unreachable!(),
         }
+    }
+
+    fn execute_filter_layer(
+        &mut self,
+        scene: &crate::scene::Scene,
+        plan: &ExecPlan,
+        layer: FilterLayerRef<'_>,
+        target: &mut Image,
+        target_bounds: Bounds,
+        buffers: &mut RasterBuffers,
+    ) {
+        let Some(filter_bounds) =
+            self.filter
+                .surface_bounds(layer.filter, layer.sample_region, target_bounds)
+        else {
+            return;
+        };
+
+        let mut surface = OffscreenSurface::new(scene, plan, layer.children, filter_bounds.surface);
+        self.render_offscreen_surface(&mut surface);
+        self.filter
+            .prepare(&mut surface.image, layer.filter, filter_bounds.surface)
+            .run();
+
+        let output = copy_image_region(&surface.image, filter_bounds.output, filter_bounds.surface);
+        let mut mask = Image::new(
+            filter_bounds.output.width(),
+            filter_bounds.output.height(),
+            Color::WHITE,
+        );
+        self.apply_outer_clip_stack_to_mask(
+            scene,
+            plan,
+            layer.outer_stack,
+            filter_bounds.output,
+            &mut mask,
+            buffers,
+        );
+        composite_src_over_masked_at(target, &output, &mask, filter_bounds.output, target_bounds);
+    }
+
+    fn execute_backdrop_layer(
+        &mut self,
+        scene: &crate::scene::Scene,
+        plan: &ExecPlan,
+        layer: BackdropLayerRef<'_>,
+        target: &mut Image,
+        target_bounds: Bounds,
+        buffers: &mut RasterBuffers,
+    ) {
+        let bounds = self.filter.filtered_region_bounds(
+            layer.filter,
+            layer.sample_region,
+            Bounds::canvas(scene.width, scene.height),
+        );
+        if bounds.is_empty() {
+            return;
+        }
+
+        let mut backdrop = copy_image_region(target, bounds, target_bounds);
+        self.filter
+            .prepare(&mut backdrop, layer.filter, bounds)
+            .run();
+
+        let mut backdrop_mask = rasterize_region_mask(layer.sample_region, bounds);
+        self.apply_outer_clip_stack_to_mask(
+            scene,
+            plan,
+            layer.outer_stack.clone(),
+            bounds,
+            &mut backdrop_mask,
+            buffers,
+        );
+        composite_src_over_masked_at(target, &backdrop, &backdrop_mask, bounds, target_bounds);
+
+        let content =
+            self.render_children_to_image(scene, plan, layer.children, target_bounds, buffers);
+        let mut content_mask =
+            Image::new(target_bounds.width(), target_bounds.height(), Color::WHITE);
+        self.apply_outer_clip_stack_to_mask(
+            scene,
+            plan,
+            layer.outer_stack,
+            target_bounds,
+            &mut content_mask,
+            buffers,
+        );
+        composite_src_over_masked_at(
+            target,
+            &content,
+            &content_mask,
+            target_bounds,
+            target_bounds,
+        );
     }
 
     fn execute_masked_group_layer(
@@ -494,7 +534,7 @@ impl Renderer {
         }
 
         let image = self.render_children_to_image(scene, plan, group.children, bounds, buffers);
-        let mut mask = self.rasterize_layer_mask(scene, group.draw, bounds, buffers);
+        let mut mask = rasterize_layer_mask(scene, group.draw, bounds, buffers);
         if let Some(opacity) = group.opacity {
             apply_opacity_to_mask(&mut mask, opacity);
         }
@@ -614,74 +654,9 @@ impl Renderer {
             let LayerStackEntry::Clip { draw } = *entry else {
                 continue;
             };
-            let clip = self.rasterize_layer_mask(scene, draw as usize, bounds, buffers);
+            let clip = rasterize_layer_mask(scene, draw as usize, bounds, buffers);
             intersect_alpha_mask(mask, &clip);
         }
-    }
-
-    fn rasterize_layer_mask(
-        &self,
-        scene: &crate::scene::Scene,
-        draw_ix: usize,
-        bounds: Bounds,
-        buffers: &RasterBuffers,
-    ) -> Image {
-        let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
-        let draw = &scene.draw_records[draw_ix];
-        let Some(path_id) = draw.path_id else {
-            return image;
-        };
-        let backdrop_record = &scene.bd_records[path_id as usize];
-        let bbox = draw.tile_bbox(scene.width_in_tiles(), scene.height_in_tiles());
-        let stride = backdrop_record.tile_x1 - backdrop_record.tile_x0;
-        if stride == 0 {
-            return image;
-        }
-
-        for tile_y in bbox.y0..bbox.y1 {
-            for tile_x in bbox.x0..bbox.x1 {
-                let local_x = tile_x - backdrop_record.tile_x0;
-                let local_y = tile_y - backdrop_record.tile_y0;
-                let local_ix = (local_y * stride + local_x) as usize;
-                let backdrop_ix = backdrop_record.data_offset as usize + local_ix;
-                let segment_range = buffers.tile_segment_ranges[backdrop_ix];
-                let backdrop = buffers.backdrops[backdrop_ix];
-                if segment_range.start == segment_range.end && backdrop == 0 {
-                    continue;
-                }
-
-                let alpha = build_tile_alpha(
-                    &buffers.segments[segment_range.start as usize..segment_range.end as usize],
-                    backdrop,
-                    draw.fill_rule,
-                );
-                let base_x = (tile_x * crate::TILE_SIZE) as i32;
-                let base_y = (tile_y * crate::TILE_SIZE) as i32;
-                let clip_x0 = base_x.max(bounds.x0);
-                let clip_y0 = base_y.max(bounds.y0);
-                let clip_x1 = (base_x + crate::TILE_SIZE as i32).min(bounds.x1);
-                let clip_y1 = (base_y + crate::TILE_SIZE as i32).min(bounds.y1);
-                if clip_x0 >= clip_x1 || clip_y0 >= clip_y1 {
-                    continue;
-                }
-
-                for global_y in clip_y0..clip_y1 {
-                    let row_start = ((global_y - base_y) as u32 * crate::TILE_SIZE) as usize;
-                    for global_x in clip_x0..clip_x1 {
-                        let tile_ix = row_start + (global_x - base_x) as usize;
-                        let a = alpha[tile_ix];
-                        if a == 0 {
-                            continue;
-                        }
-                        let local_x = (global_x - bounds.x0) as u32;
-                        let local_y = (global_y - bounds.y0) as u32;
-                        let ix = (local_y * image.width + local_x) as usize;
-                        image.pixels[ix] = rgba8_pack([a, a, a, a]);
-                    }
-                }
-            }
-        }
-        image
     }
 }
 
