@@ -1,10 +1,17 @@
-use std::path::{Path, PathBuf};
+// This helper module is compiled into each example binary; every example uses
+// a different subset of the shared scene/render utilities.
+#![allow(dead_code)]
+
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use peniko::{
     Color,
     kurbo::{Affine, BezPath, Circle, Rect, Shape, Stroke},
 };
-use tileink::{CpuRenderer, CubeWgpuRenderer, FillRule, Image, Radius, Region, Scene};
+use tileink::{CpuRenderer, CubeWgpuRenderer, FillRule, Image, Radius, Region, Scene, SvgOptions};
 
 pub fn example_output(name: &str) -> PathBuf {
     backend_output("cpu", name)
@@ -20,6 +27,53 @@ fn backend_output(backend: &str, name: &str) -> PathBuf {
         .join(backend)
         .join("out")
         .join(format!("{name}.png"))
+}
+
+pub fn example_asset(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("examples")
+        .join(name)
+}
+
+pub fn load_svg_scene(
+    input: impl AsRef<Path>,
+    target_width: u32,
+) -> Result<(Scene, u32, u32), Box<dyn std::error::Error>> {
+    let input = input.as_ref();
+    let data = fs::read(input)?;
+    let mut options = usvg::Options {
+        resources_dir: input.parent().map(Path::to_path_buf),
+        ..usvg::Options::default()
+    };
+    load_svg_fonts(&mut options);
+
+    let tree = usvg::Tree::from_data(&data, &options)?;
+    let size = tree
+        .size()
+        .to_int_size()
+        .scale_to_width(target_width)
+        .ok_or("SVG size must be positive")?;
+    let width = size.width();
+    let height = size.height();
+    let scale_x = width as f64 / tree.size().width() as f64;
+    let scale_y = height as f64 / tree.size().height() as f64;
+    let mut scene = Scene::new(width, height);
+    scene.push_svg_with_options(
+        &tree,
+        SvgOptions {
+            transform: Affine::scale_non_uniform(scale_x, scale_y),
+            ..SvgOptions::default()
+        },
+    )?;
+    Ok((scene, width, height))
+}
+
+fn load_svg_fonts(options: &mut usvg::Options<'_>) {
+    let fonts_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("src")
+        .join("svg")
+        .join("fonts");
+    options.fontdb_mut().load_fonts_dir(fonts_dir);
 }
 
 pub fn save_image(image: &Image, path: impl AsRef<Path>) -> Result<(), Box<dyn std::error::Error>> {

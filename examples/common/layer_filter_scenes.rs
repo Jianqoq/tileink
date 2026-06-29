@@ -1,3 +1,7 @@
+// Shared scenes are compiled into multiple examples; each example selects one
+// scene and leaves the others unused in that binary.
+#![allow(dead_code)]
+
 use peniko::{
     Color,
     kurbo::{Circle, Rect, Shape, Stroke},
