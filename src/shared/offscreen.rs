@@ -1,4 +1,4 @@
-use peniko::kurbo::Affine;
+use peniko::kurbo::{Affine, Rect};
 
 use crate::{
     scene::Scene,
@@ -9,7 +9,7 @@ use crate::{
         execution::{ExecOp, ExecPlan},
         layer::{
             Layer,
-            filter::{Filter, FilterPrimitive, FilterPrimitiveKind},
+            filter::{Filter, FilterPrimitive, FilterPrimitiveKind, Turbulence},
             mask::Mask,
             region::Region,
         },
@@ -24,6 +24,139 @@ pub(crate) struct LocalOffscreenScene {
     pub(crate) children: Vec<ExecOp>,
 }
 
+// Offscreen rendering reuses the main scene data, but filter kernels and scratch
+// images run in a local surface whose origin may be outside the canvas. Keeping the
+// coordinate conversion in one type makes it clear which values move into local
+// space and which values, such as fixed filter regions, stay in buffer space.
+#[derive(Clone, Copy)]
+struct LocalSpace {
+    surface: Bounds,
+}
+
+impl LocalSpace {
+    fn new(surface: Bounds) -> Self {
+        Self { surface }
+    }
+
+    fn line(self, line: Line) -> Line {
+        let dx = -self.surface.x0 as f32;
+        let dy = -self.surface.y0 as f32;
+        Line {
+            path_id: line.path_id,
+            _pad: line._pad,
+            p0: [line.p0[0] + dx, line.p0[1] + dy],
+            p1: [line.p1[0] + dx, line.p1[1] + dy],
+        }
+    }
+
+    fn pixel_bounds(self, bounds: PixelBounds) -> PixelBounds {
+        PixelBounds {
+            x0: bounds.x0 - self.surface.x0,
+            y0: bounds.y0 - self.surface.y0,
+            x1: bounds.x1 - self.surface.x0,
+            y1: bounds.y1 - self.surface.y0,
+        }
+    }
+
+    fn bounds(self, bounds: Bounds) -> Bounds {
+        Bounds::new(
+            bounds.x0 - self.surface.x0,
+            bounds.y0 - self.surface.y0,
+            bounds.x1 - self.surface.x0,
+            bounds.y1 - self.surface.y0,
+        )
+    }
+
+    fn rect(self, rect: Rect) -> Rect {
+        let dx = f64::from(self.surface.x0);
+        let dy = f64::from(self.surface.y0);
+        Rect::new(rect.x0 - dx, rect.y0 - dy, rect.x1 - dx, rect.y1 - dy)
+    }
+
+    fn transform(self, transform: Affine) -> Affine {
+        Affine::translate((-f64::from(self.surface.x0), -f64::from(self.surface.y0))) * transform
+    }
+
+    fn sdf(self, sdf: Sdf) -> Sdf {
+        let dx = f64::from(self.surface.x0);
+        let dy = f64::from(self.surface.y0);
+        match sdf {
+            Sdf::Rect(mut rect) => {
+                rect.start.x -= dx;
+                rect.start.y -= dy;
+                rect.end.x -= dx;
+                rect.end.y -= dy;
+                Sdf::Rect(rect)
+            }
+            Sdf::RectStroke(mut stroke) => {
+                stroke.rect.start.x -= dx;
+                stroke.rect.start.y -= dy;
+                stroke.rect.end.x -= dx;
+                stroke.rect.end.y -= dy;
+                Sdf::RectStroke(stroke)
+            }
+            Sdf::Circle(mut circle) => {
+                circle.center.x -= dx;
+                circle.center.y -= dy;
+                Sdf::Circle(circle)
+            }
+            Sdf::CircleStroke(mut stroke) => {
+                stroke.circle.center.x -= dx;
+                stroke.circle.center.y -= dy;
+                Sdf::CircleStroke(stroke)
+            }
+        }
+    }
+
+    fn brush(self, brush: Brush) -> Brush {
+        let ox = self.surface.x0 as f32;
+        let oy = self.surface.y0 as f32;
+        match brush {
+            Brush::Solid(_) => brush,
+            Brush::Linear(mut gradient) => {
+                gradient.transform = self.brush_transform(gradient.transform);
+                Brush::Linear(gradient)
+            }
+            Brush::Radial(mut gradient) => {
+                gradient.transform = self.brush_transform(gradient.transform);
+                Brush::Radial(gradient)
+            }
+            Brush::Sweep(mut gradient) => {
+                gradient.center[0] -= ox;
+                gradient.center[1] -= oy;
+                Brush::Sweep(gradient)
+            }
+            Brush::FourCorner(mut gradient) => {
+                gradient.bounds[0] -= ox;
+                gradient.bounds[1] -= oy;
+                gradient.bounds[2] -= ox;
+                gradient.bounds[3] -= oy;
+                Brush::FourCorner(gradient)
+            }
+            Brush::Pattern(mut pattern) => {
+                pattern.transform = self.brush_transform(pattern.transform);
+                Brush::Pattern(pattern)
+            }
+        }
+    }
+
+    fn brush_transform(self, transform: [f32; 6]) -> [f32; 6] {
+        let [a, b, c, d, e, f] = transform;
+        let ox = self.surface.x0 as f32;
+        let oy = self.surface.y0 as f32;
+        [a, b, c, d, a * ox + c * oy + e, b * ox + d * oy + f]
+    }
+
+    fn turbulence(self, turbulence: Turbulence) -> FilterPrimitiveKind {
+        let mut turbulence = turbulence;
+        turbulence.transform_x -= self.surface.x0 as f32;
+        turbulence.transform_y -= self.surface.y0 as f32;
+        turbulence.tile_x -= self.surface.x0 as f32;
+        turbulence.tile_y -= self.surface.y0 as f32;
+        FilterPrimitiveKind::Turbulence(turbulence)
+    }
+}
+
 pub(crate) fn local_offscreen_scene(
     scene: &Scene,
     plan: &ExecPlan,
@@ -31,9 +164,10 @@ pub(crate) fn local_offscreen_scene(
     bounds: Bounds,
     line_scanned_tile_count: impl Fn(Line, TileBbox, (u32, u32)) -> u32,
 ) -> LocalOffscreenScene {
-    let local_children = translate_exec_ops_to_local(children, bounds);
+    let local = LocalSpace::new(bounds);
+    let local_children = translate_exec_ops_to_local(children, local);
     LocalOffscreenScene {
-        scene: translated_scene_for_bounds(scene, bounds, line_scanned_tile_count),
+        scene: translated_scene_for_bounds(scene, local, line_scanned_tile_count),
         plan: ExecPlan {
             ops: local_children.clone(),
             layer_stack_data: plan.layer_stack_data.clone(),
@@ -43,26 +177,20 @@ pub(crate) fn local_offscreen_scene(
 }
 
 pub(crate) fn local_filter(filter: &Filter, bounds: Bounds) -> Filter {
-    translate_filter_to_local(filter, bounds)
+    translate_filter_to_local(filter, LocalSpace::new(bounds))
 }
 
 fn translated_scene_for_bounds(
     scene: &Scene,
-    bounds: Bounds,
+    local: LocalSpace,
     line_scanned_tile_count: impl Fn(Line, TileBbox, (u32, u32)) -> u32,
 ) -> Scene {
-    let dx = -bounds.x0 as f32;
-    let dy = -bounds.y0 as f32;
-    let mut translated = Scene::new(bounds.width(), bounds.height());
+    let mut translated = Scene::new(local.surface.width(), local.surface.height());
     translated.lines = scene
         .lines
         .iter()
-        .map(|line| Line {
-            path_id: line.path_id,
-            _pad: line._pad,
-            p0: [line.p0[0] + dx, line.p0[1] + dy],
-            p1: [line.p1[0] + dx, line.p1[1] + dy],
-        })
+        .copied()
+        .map(|line| local.line(line))
         .collect();
     translated.path_records = scene.path_records.clone();
     translated.draw_records = scene
@@ -70,9 +198,9 @@ fn translated_scene_for_bounds(
         .iter()
         .map(|draw| {
             let mut draw = draw.clone();
-            draw.pixel_bounds = shift_pixel_bounds(draw.pixel_bounds, -bounds.x0, -bounds.y0);
-            draw.sdf = draw.sdf.map(|sdf| translate_sdf_to_local(sdf, bounds));
-            draw.brush = translate_brush_to_local(draw.brush, bounds);
+            draw.pixel_bounds = local.pixel_bounds(draw.pixel_bounds);
+            draw.sdf = draw.sdf.map(|sdf| local.sdf(sdf));
+            draw.brush = local.brush(draw.brush);
             draw
         })
         .collect();
@@ -209,7 +337,7 @@ fn translated_path_segment_capacity(
         .sum()
 }
 
-fn translate_exec_ops_to_local(ops: &[ExecOp], bounds: Bounds) -> Vec<ExecOp> {
+fn translate_exec_ops_to_local(ops: &[ExecOp], local: LocalSpace) -> Vec<ExecOp> {
     ops.iter()
         .map(|op| match op {
             ExecOp::DrawBatch { draws, layer_stack } => ExecOp::DrawBatch {
@@ -229,9 +357,9 @@ fn translate_exec_ops_to_local(ops: &[ExecOp], bounds: Bounds) -> Vec<ExecOp> {
                 children,
             } => ExecOp::OffscreenLayer {
                 draw: *draw,
-                layer: translate_layer_to_local(layer, bounds),
+                layer: translate_layer_to_local(layer, local),
                 outer_stack: outer_stack.clone(),
-                children: translate_exec_ops_to_local(children, bounds),
+                children: translate_exec_ops_to_local(children, local),
             },
             ExecOp::OffscreenMaskLayer {
                 layer,
@@ -239,50 +367,50 @@ fn translate_exec_ops_to_local(ops: &[ExecOp], bounds: Bounds) -> Vec<ExecOp> {
                 content,
                 mask,
             } => ExecOp::OffscreenMaskLayer {
-                layer: translate_mask_to_local(layer, bounds),
+                layer: translate_mask_to_local(layer, local),
                 outer_stack: outer_stack.clone(),
-                content: translate_exec_ops_to_local(content, bounds),
-                mask: translate_exec_ops_to_local(mask, bounds),
+                content: translate_exec_ops_to_local(content, local),
+                mask: translate_exec_ops_to_local(mask, local),
             },
         })
         .collect()
 }
 
-fn translate_layer_to_local(layer: &Layer, bounds: Bounds) -> Layer {
+fn translate_layer_to_local(layer: &Layer, local: LocalSpace) -> Layer {
     match layer {
         Layer::Clip | Layer::Isolate | Layer::Opacity(_) | Layer::Blend(_) => layer.clone(),
         Layer::ClipSdf {
             sdf,
             bounds: sdf_bounds,
         } => Layer::ClipSdf {
-            sdf: translate_sdf_to_local(*sdf, bounds),
-            bounds: shift_bounds(*sdf_bounds, -bounds.x0, -bounds.y0),
+            sdf: local.sdf(*sdf),
+            bounds: local.bounds(*sdf_bounds),
         },
         Layer::Filter {
             filter,
             sample_region,
         } => Layer::Filter {
-            filter: translate_filter_to_local(filter, bounds),
-            sample_region: translate_region_to_local(sample_region, bounds),
+            filter: translate_filter_to_local(filter, local),
+            sample_region: translate_region_to_local(sample_region, local),
         },
         Layer::Backdrop {
             filter,
             sample_region,
         } => Layer::Backdrop {
-            filter: translate_filter_to_local(filter, bounds),
-            sample_region: translate_region_to_local(sample_region, bounds),
+            filter: translate_filter_to_local(filter, local),
+            sample_region: translate_region_to_local(sample_region, local),
         },
     }
 }
 
-fn translate_mask_to_local(mask: &Mask, bounds: Bounds) -> Mask {
+fn translate_mask_to_local(mask: &Mask, local: LocalSpace) -> Mask {
     Mask {
-        region: translate_region_to_local(&mask.region, bounds),
+        region: translate_region_to_local(&mask.region, local),
         kind: mask.kind,
     }
 }
 
-fn translate_filter_to_local(filter: &Filter, bounds: Bounds) -> Filter {
+fn translate_filter_to_local(filter: &Filter, local: LocalSpace) -> Filter {
     match filter {
         Filter::Chain {
             filters,
@@ -290,7 +418,7 @@ fn translate_filter_to_local(filter: &Filter, bounds: Bounds) -> Filter {
         } => Filter::Chain {
             filters: filters
                 .iter()
-                .map(|filter| translate_filter_to_local(filter, bounds))
+                .map(|filter| translate_filter_to_local(filter, local))
                 .collect(),
             fixed_region: *fixed_region,
         },
@@ -303,14 +431,14 @@ fn translate_filter_to_local(filter: &Filter, bounds: Bounds) -> Filter {
                 .map(|primitive| FilterPrimitive {
                     input: primitive.input,
                     input2: primitive.input2,
-                    region: shift_bounds(primitive.region, -bounds.x0, -bounds.y0),
-                    kind: translate_primitive_kind_to_local(&primitive.kind, bounds),
+                    region: local.bounds(primitive.region),
+                    kind: translate_primitive_kind_to_local(&primitive.kind, local),
                 })
                 .collect(),
             fixed_region: *fixed_region,
         },
         Filter::Flood { brush } => Filter::Flood {
-            brush: translate_brush_to_local(brush.clone(), bounds),
+            brush: local.brush(brush.clone()),
         },
         Filter::DropShadow {
             offset_x,
@@ -321,7 +449,7 @@ fn translate_filter_to_local(filter: &Filter, bounds: Bounds) -> Filter {
             offset_x: *offset_x,
             offset_y: *offset_y,
             radius: *radius,
-            brush: translate_brush_to_local(brush.clone(), bounds),
+            brush: local.brush(brush.clone()),
         },
         _ => filter.clone(),
     }
@@ -329,135 +457,78 @@ fn translate_filter_to_local(filter: &Filter, bounds: Bounds) -> Filter {
 
 fn translate_primitive_kind_to_local(
     kind: &FilterPrimitiveKind,
-    bounds: Bounds,
+    local: LocalSpace,
 ) -> FilterPrimitiveKind {
     match kind {
         FilterPrimitiveKind::Filter(filter) => {
-            FilterPrimitiveKind::Filter(Box::new(translate_filter_to_local(filter, bounds)))
+            FilterPrimitiveKind::Filter(Box::new(translate_filter_to_local(filter, local)))
         }
         FilterPrimitiveKind::Image { brush } => FilterPrimitiveKind::Image {
-            brush: translate_brush_to_local(brush.clone(), bounds),
+            brush: local.brush(brush.clone()),
         },
         FilterPrimitiveKind::Tile { source_region } => FilterPrimitiveKind::Tile {
-            source_region: shift_bounds(*source_region, -bounds.x0, -bounds.y0),
+            source_region: local.bounds(*source_region),
         },
-        FilterPrimitiveKind::Turbulence(turbulence) => {
-            let mut turbulence = *turbulence;
-            turbulence.transform_x -= bounds.x0 as f32;
-            turbulence.transform_y -= bounds.y0 as f32;
-            turbulence.tile_x -= bounds.x0 as f32;
-            turbulence.tile_y -= bounds.y0 as f32;
-            FilterPrimitiveKind::Turbulence(turbulence)
-        }
+        FilterPrimitiveKind::Turbulence(turbulence) => local.turbulence(*turbulence),
         _ => kind.clone(),
     }
 }
 
-fn translate_region_to_local(region: &Region, bounds: Bounds) -> Region {
+fn translate_region_to_local(region: &Region, local: LocalSpace) -> Region {
     match region {
-        Region::Rect { rect, radius } => Region::rect(
-            peniko::kurbo::Rect::new(
-                rect.x0 - f64::from(bounds.x0),
-                rect.y0 - f64::from(bounds.y0),
-                rect.x1 - f64::from(bounds.x0),
-                rect.y1 - f64::from(bounds.y0),
-            ),
-            *radius,
-        ),
+        Region::Rect { rect, radius } => Region::rect(local.rect(*rect), *radius),
         Region::Path {
             path,
             transform,
             tolerance,
-        } => Region::path(
-            path.clone(),
-            Affine::translate((-f64::from(bounds.x0), -f64::from(bounds.y0))) * *transform,
-            *tolerance,
-        ),
+        } => Region::path(path.clone(), local.transform(*transform), *tolerance),
     }
 }
 
-fn translate_sdf_to_local(sdf: Sdf, bounds: Bounds) -> Sdf {
-    let dx = f64::from(bounds.x0);
-    let dy = f64::from(bounds.y0);
-    match sdf {
-        Sdf::Rect(mut rect) => {
-            rect.start.x -= dx;
-            rect.start.y -= dy;
-            rect.end.x -= dx;
-            rect.end.y -= dy;
-            Sdf::Rect(rect)
-        }
-        Sdf::RectStroke(mut stroke) => {
-            stroke.rect.start.x -= dx;
-            stroke.rect.start.y -= dy;
-            stroke.rect.end.x -= dx;
-            stroke.rect.end.y -= dy;
-            Sdf::RectStroke(stroke)
-        }
-        Sdf::Circle(mut circle) => {
-            circle.center.x -= dx;
-            circle.center.y -= dy;
-            Sdf::Circle(circle)
-        }
-        Sdf::CircleStroke(mut stroke) => {
-            stroke.circle.center.x -= dx;
-            stroke.circle.center.y -= dy;
-            Sdf::CircleStroke(stroke)
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn local_space_shifts_geometry_to_surface_origin() {
+        let local = LocalSpace::new(Bounds::new(10, 20, 30, 40));
+
+        let line = local.line(Line {
+            path_id: 3,
+            _pad: 0.0,
+            p0: [12.0, 23.0],
+            p1: [18.0, 31.0],
+        });
+        assert_eq!(line.path_id, 3);
+        assert_eq!(line.p0, [2.0, 3.0]);
+        assert_eq!(line.p1, [8.0, 11.0]);
+        assert_eq!(
+            local.pixel_bounds(PixelBounds {
+                x0: 11,
+                y0: 22,
+                x1: 29,
+                y1: 39,
+            }),
+            PixelBounds {
+                x0: 1,
+                y0: 2,
+                x1: 19,
+                y1: 19,
+            }
+        );
+        assert_eq!(
+            local.bounds(Bounds::new(12, 24, 25, 36)),
+            Bounds::new(2, 4, 15, 16)
+        );
     }
-}
 
-fn translate_brush_to_local(brush: Brush, bounds: Bounds) -> Brush {
-    let ox = bounds.x0 as f32;
-    let oy = bounds.y0 as f32;
-    match brush {
-        Brush::Solid(_) => brush,
-        Brush::Linear(mut gradient) => {
-            gradient.transform = pretranslate_brush_transform(gradient.transform, ox, oy);
-            Brush::Linear(gradient)
-        }
-        Brush::Radial(mut gradient) => {
-            gradient.transform = pretranslate_brush_transform(gradient.transform, ox, oy);
-            Brush::Radial(gradient)
-        }
-        Brush::Sweep(mut gradient) => {
-            gradient.center[0] -= ox;
-            gradient.center[1] -= oy;
-            Brush::Sweep(gradient)
-        }
-        Brush::FourCorner(mut gradient) => {
-            gradient.bounds[0] -= ox;
-            gradient.bounds[1] -= oy;
-            gradient.bounds[2] -= ox;
-            gradient.bounds[3] -= oy;
-            Brush::FourCorner(gradient)
-        }
-        Brush::Pattern(mut pattern) => {
-            pattern.transform = pretranslate_brush_transform(pattern.transform, ox, oy);
-            Brush::Pattern(pattern)
-        }
+    #[test]
+    fn local_space_keeps_brush_sampling_in_world_space() {
+        let local = LocalSpace::new(Bounds::new(10, 20, 30, 40));
+
+        assert_eq!(
+            local.brush_transform([2.0, 3.0, 5.0, 7.0, 11.0, 13.0]),
+            [2.0, 3.0, 5.0, 7.0, 131.0, 183.0]
+        );
     }
-}
-
-fn pretranslate_brush_transform(transform: [f32; 6], ox: f32, oy: f32) -> [f32; 6] {
-    let [a, b, c, d, e, f] = transform;
-    [a, b, c, d, a * ox + c * oy + e, b * ox + d * oy + f]
-}
-
-fn shift_pixel_bounds(bounds: PixelBounds, dx: i32, dy: i32) -> PixelBounds {
-    PixelBounds {
-        x0: bounds.x0 + dx,
-        y0: bounds.y0 + dy,
-        x1: bounds.x1 + dx,
-        y1: bounds.y1 + dy,
-    }
-}
-
-fn shift_bounds(bounds: Bounds, dx: i32, dy: i32) -> Bounds {
-    Bounds::new(
-        bounds.x0 + dx,
-        bounds.y0 + dy,
-        bounds.x1 + dx,
-        bounds.y1 + dy,
-    )
 }
