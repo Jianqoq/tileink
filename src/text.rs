@@ -726,6 +726,46 @@ mod tests {
     }
 
     #[test]
+    fn layout_handles_emoji_sequences_without_panicking() {
+        let mut context = TextContext::new();
+        let layout = context.layout(TextLayoutOptions::new("Emoji 😀 👍🏽 👨‍👩‍👧‍👦 🇺🇸", 32.0));
+        if layout.glyphs.is_empty() {
+            return;
+        }
+
+        assert!(!layout.bounds().is_empty());
+    }
+
+    #[test]
+    fn prepared_text_keeps_color_emoji_glyphs_when_font_supports_them() {
+        let mut context = TextContext::new();
+        let layout = context.layout(TextLayoutOptions::new("😀", 64.0));
+        if layout.is_empty() {
+            return;
+        }
+
+        let glyphs: Vec<_> = scene_glyphs_at_origin(&layout, Point::new(0.0, 0.0)).collect();
+        let runs = [TextRun {
+            glyph_start: 0,
+            glyph_count: glyphs.len() as u32,
+        }];
+        let prepared = PreparedTextData::new(&glyphs, &runs, &mut context);
+        let Some(image) = prepared
+            .images()
+            .iter()
+            .find(|image| image.content == PreparedGlyphContent::Color)
+        else {
+            return;
+        };
+
+        assert_eq!(
+            image.data.len(),
+            image.width as usize * image.height as usize * 4
+        );
+        assert!(image.data.chunks_exact(4).any(|px| px[3] != 0));
+    }
+
+    #[test]
     fn prepared_text_signature_changes_with_glyph_images() {
         let mut context = TextContext::new();
         let a = context.layout(TextLayoutOptions::new("A", 20.0));

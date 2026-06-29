@@ -62,6 +62,32 @@ fn render_with_text_rasterizes_scene_text_layout() {
 }
 
 #[test]
+fn render_with_text_rasterizes_emoji_or_fallback_glyphs() {
+    let mut text_context = TextContext::new();
+    let layout = text_context.layout(TextLayoutOptions::new("Emoji 😀 👍🏽", 32.0));
+    if layout.is_empty() {
+        return;
+    }
+
+    let mut scene = Scene::new(192, 64);
+    scene.push_text_layout(&layout, Point::new(8.0, 42.0), Color::BLACK);
+
+    let mut renderer = Renderer::new(192, 64, Color::WHITE);
+    renderer.render_with_text(&scene, &mut text_context);
+
+    let has_non_background_pixel = (0..64).any(|y| {
+        (0..192).any(|x| {
+            let [r, g, b, a] = renderer.image().rgba8_at(x, y);
+            a == 255 && [r, g, b] != [255, 255, 255]
+        })
+    });
+    assert!(
+        has_non_background_pixel,
+        "expected emoji text or fallback glyphs to render"
+    );
+}
+
+#[test]
 fn rounded_rect_top_right_keeps_inside_filled() {
     let renderer = render_single_rounded_rect();
 

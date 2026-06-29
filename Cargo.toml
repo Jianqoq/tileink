@@ -77,6 +77,10 @@ name = "cpu_drop_shadow"
 path = "examples/cpu/drop_shadow.rs"
 
 [[example]]
+name = "cpu_emoji"
+path = "examples/cpu/emoji.rs"
+
+[[example]]
 name = "cpu_even_odd"
 path = "examples/cpu/even_odd.rs"
 
@@ -187,6 +191,10 @@ path = "examples/cubecl/contrast.rs"
 [[example]]
 name = "cubecl_drop_shadow"
 path = "examples/cubecl/drop_shadow.rs"
+
+[[example]]
+name = "cubecl_emoji"
+path = "examples/cubecl/emoji.rs"
 
 [[example]]
 name = "cubecl_even_odd"
