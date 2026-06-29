@@ -8,6 +8,12 @@ pub const COMPONENT_TRANSFER_TABLE_SIZE: usize = 256;
 pub const COMPONENT_TRANSFER_CHANNELS: usize = 4;
 pub const COMPONENT_TRANSFER_TABLE_LEN: usize =
     COMPONENT_TRANSFER_TABLE_SIZE * COMPONENT_TRANSFER_CHANNELS;
+pub const TURBULENCE_LATTICE_SIZE: usize = 256;
+pub const TURBULENCE_TABLE_LEN: usize = TURBULENCE_LATTICE_SIZE * 2 + 2;
+pub const TURBULENCE_CHANNELS: usize = 4;
+pub const TURBULENCE_GRADIENT_COMPONENTS: usize = 2;
+pub const TURBULENCE_GRADIENT_LEN: usize =
+    TURBULENCE_CHANNELS * TURBULENCE_TABLE_LEN * TURBULENCE_GRADIENT_COMPONENTS;
 /// Fixed RGBA lookup table for SVG `feComponentTransfer`.
 ///
 /// Each channel owns 256 u32 entries in R, G, B, A order. Values are stored as
@@ -103,6 +109,8 @@ pub enum FilterPrimitiveKind {
     Tile {
         source_region: Bounds,
     },
+    /// Generates an RGBA noise image without reading graph inputs, matching SVG `feTurbulence`.
+    Turbulence(Turbulence),
     Merge {
         inputs: Vec<FilterInput>,
     },
@@ -122,6 +130,106 @@ pub enum CompositeOperator {
 pub enum MorphologyOperator {
     Erode,
     Dilate,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Turbulence {
+    pub base_frequency_x: f32,
+    pub base_frequency_y: f32,
+    pub num_octaves: u32,
+    pub seed: i32,
+    pub stitch_tiles: bool,
+    pub kind: TurbulenceKind,
+    pub linear_rgb: bool,
+    pub transform_x: f32,
+    pub transform_y: f32,
+    pub scale_x: f32,
+    pub scale_y: f32,
+    pub tile_x: f32,
+    pub tile_y: f32,
+    pub tile_width: f32,
+    pub tile_height: f32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TurbulenceKind {
+    Turbulence,
+    FractalNoise,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct TurbulenceLattice {
+    pub(crate) selectors: [u32; TURBULENCE_TABLE_LEN],
+    pub(crate) gradients: Vec<f32>,
+}
+
+pub(crate) fn turbulence_lattice(seed: i32) -> TurbulenceLattice {
+    const RAND_M: i64 = 2_147_483_647;
+    const RAND_A: i64 = 16_807;
+    const RAND_Q: i64 = 127_773;
+    const RAND_R: i64 = 2_836;
+
+    fn setup_seed(seed: i32) -> i64 {
+        let mut seed = i64::from(seed);
+        if seed <= 0 {
+            seed = -(seed % (RAND_M - 1)) + 1;
+        }
+        seed.min(RAND_M - 1)
+    }
+
+    fn next_random(seed: &mut i64) -> i64 {
+        let result = RAND_A * (*seed % RAND_Q) - RAND_R * (*seed / RAND_Q);
+        *seed = if result <= 0 { result + RAND_M } else { result };
+        *seed
+    }
+
+    let mut seed = setup_seed(seed);
+    let mut selectors = [0; TURBULENCE_TABLE_LEN];
+    let mut gradients = vec![0.0; TURBULENCE_GRADIENT_LEN];
+    for channel in 0..TURBULENCE_CHANNELS {
+        for (i, selector) in selectors
+            .iter_mut()
+            .take(TURBULENCE_LATTICE_SIZE)
+            .enumerate()
+        {
+            *selector = i as u32;
+            let gx = (next_random(&mut seed) % (TURBULENCE_LATTICE_SIZE * 2) as i64) as f32
+                - TURBULENCE_LATTICE_SIZE as f32;
+            let gy = (next_random(&mut seed) % (TURBULENCE_LATTICE_SIZE * 2) as i64) as f32
+                - TURBULENCE_LATTICE_SIZE as f32;
+            let len = (gx * gx + gy * gy).sqrt();
+            let base = turbulence_gradient_index(channel, i);
+            if len > f32::EPSILON {
+                gradients[base] = gx / len;
+                gradients[base + 1] = gy / len;
+            }
+        }
+    }
+
+    for i in (1..TURBULENCE_LATTICE_SIZE).rev() {
+        let j = (next_random(&mut seed) % TURBULENCE_LATTICE_SIZE as i64) as usize;
+        selectors.swap(i, j);
+    }
+
+    for i in 0..(TURBULENCE_LATTICE_SIZE + 2) {
+        selectors[TURBULENCE_LATTICE_SIZE + i] = selectors[i];
+        for channel in 0..TURBULENCE_CHANNELS {
+            let dst = turbulence_gradient_index(channel, TURBULENCE_LATTICE_SIZE + i);
+            let src = turbulence_gradient_index(channel, i);
+            gradients[dst] = gradients[src];
+            gradients[dst + 1] = gradients[src + 1];
+        }
+    }
+
+    TurbulenceLattice {
+        selectors,
+        gradients,
+    }
+}
+
+#[inline]
+pub(crate) fn turbulence_gradient_index(channel: usize, selector: usize) -> usize {
+    (channel * TURBULENCE_TABLE_LEN + selector) * TURBULENCE_GRADIENT_COMPONENTS
 }
 
 pub(crate) fn filter_offset_to_pixel_delta(delta: f32) -> i32 {
@@ -224,6 +332,7 @@ fn primitive_dependency_outset(primitive: &FilterPrimitive) -> i32 {
         | FilterPrimitiveKind::Composite { .. }
         | FilterPrimitiveKind::Image { .. }
         | FilterPrimitiveKind::Merge { .. } => 0,
+        FilterPrimitiveKind::Turbulence(_) => 0,
     }
 }
 

@@ -21,6 +21,7 @@ use crate::shared::layer::{
     filter::{
         CompositeOperator, ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, Filter, FilterInput,
         FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator, SpecularLighting,
+        Turbulence, TurbulenceKind,
     },
     mask::{Mask, MaskKind},
     region::Region,

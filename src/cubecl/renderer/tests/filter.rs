@@ -19,6 +19,26 @@ fn component_transfer_test_table() -> Box<crate::shared::layer::filter::Componen
     table
 }
 
+fn test_turbulence(kind: TurbulenceKind, seed: i32, num_octaves: u32) -> Turbulence {
+    Turbulence {
+        base_frequency_x: 0.07,
+        base_frequency_y: 0.11,
+        num_octaves,
+        seed,
+        stitch_tiles: false,
+        kind,
+        linear_rgb: false,
+        transform_x: 0.0,
+        transform_y: 0.0,
+        scale_x: 1.0,
+        scale_y: 1.0,
+        tile_x: 0.0,
+        tile_y: 0.0,
+        tile_width: 32.0,
+        tile_height: 24.0,
+    }
+}
+
 #[test]
 fn filter_wgpu_applies_color_filter_to_offscreen_children_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
@@ -1177,6 +1197,86 @@ fn filter_wgpu_graph_image_primitive_samples_brush_when_enabled() {
     assert_eq!(unpack_rgba8(target[1]), [0, 0, 255, 255]);
     assert_eq!(unpack_rgba8(target[2]), [0, 0, 0, 0]);
     assert_eq!(unpack_rgba8(target[4]), [0, 0, 0, 0]);
+}
+
+#[test]
+fn filter_wgpu_graph_turbulence_matches_cpu_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(32, 24);
+    scene.push_filter_layer(
+        Filter::Graph {
+            primitives: vec![FilterPrimitive {
+                input: FilterInput::SourceGraphic,
+                input2: None,
+                region: Bounds::new(6, 5, 28, 20),
+                kind: FilterPrimitiveKind::Turbulence(Turbulence {
+                    stitch_tiles: true,
+                    linear_rgb: true,
+                    ..test_turbulence(TurbulenceKind::FractalNoise, -20, 4)
+                }),
+            }],
+            fixed_region: true,
+        },
+        Region::rect(Rect::new(4.0, 3.0, 30.0, 22.0), Radius::all(0.0)),
+    );
+    scene.push_rect(
+        Rect::new(4.0, 3.0, 30.0, 22.0),
+        Color::from_rgb8(255, 0, 0),
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+
+    let mut cpu = CpuRenderer::new(32, 24, Color::TRANSPARENT);
+    cpu.render(&scene);
+    let mut wgpu = WgpuRenderer::new_default_device(32, 24, Color::TRANSPARENT);
+    wgpu.render(&scene);
+
+    assert_images_close(cpu.image(), &wgpu.image(), 1);
+}
+
+#[test]
+fn filter_wgpu_graph_turbulence_uses_surface_origin_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(80, 24);
+    scene.push_filter_layer(
+        Filter::Graph {
+            primitives: vec![FilterPrimitive {
+                input: FilterInput::SourceGraphic,
+                input2: None,
+                region: Bounds::new(40, 4, 72, 20),
+                kind: FilterPrimitiveKind::Turbulence(Turbulence {
+                    base_frequency_x: 0.09,
+                    base_frequency_y: 0.13,
+                    tile_x: 40.0,
+                    tile_y: 4.0,
+                    tile_width: 32.0,
+                    tile_height: 16.0,
+                    ..test_turbulence(TurbulenceKind::Turbulence, 5, 3)
+                }),
+            }],
+            fixed_region: true,
+        },
+        Region::rect(Rect::new(40.0, 4.0, 72.0, 20.0), Radius::all(0.0)),
+    );
+    scene.push_rect(
+        Rect::new(40.0, 4.0, 72.0, 20.0),
+        Color::from_rgb8(255, 0, 0),
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+
+    let mut cpu = CpuRenderer::new(80, 24, Color::TRANSPARENT);
+    cpu.render(&scene);
+    let mut wgpu = WgpuRenderer::new_default_device(80, 24, Color::TRANSPARENT);
+    wgpu.render(&scene);
+
+    assert_images_close(cpu.image(), &wgpu.image(), 1);
 }
 
 #[test]

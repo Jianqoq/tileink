@@ -13,7 +13,8 @@ use crate::{
                 self as filter_model, ComponentTransferTable, CompositeOperator, ConvolveEdgeMode,
                 ConvolveMatrix, DiffuseLighting, Filter, FilterInput, FilterPrimitive,
                 FilterPrimitiveKind, LightSource, MorphologyOperator, SpecularLighting,
-                filter_offset_to_pixel_delta,
+                TURBULENCE_GRADIENT_LEN, TURBULENCE_TABLE_LEN, Turbulence, TurbulenceKind,
+                filter_offset_to_pixel_delta, turbulence_lattice,
             },
             mask::MaskKind,
             region::Region,
@@ -49,6 +50,7 @@ struct FilterCursors {
     convolve: usize,
     path: usize,
     transfer: usize,
+    turbulence: usize,
 }
 
 #[derive(Clone, Copy)]
@@ -84,6 +86,7 @@ struct SavedRendererState {
     filter_convolves: FilterConvolveBuffers,
     filter_paths: FilterPathBuffers,
     filter_transfers: FilterTransferBuffers,
+    filter_turbulence: FilterTurbulenceBuffers,
     scratch: Vec<CubeBuffer<u32>>,
     scratch_in_use: Vec<bool>,
 }
@@ -147,6 +150,10 @@ impl<R: Runtime> Renderer<R> {
                 &mut self.filter_transfers,
                 FilterTransferBuffers::new(&self.client),
             ),
+            filter_turbulence: std::mem::replace(
+                &mut self.filter_turbulence,
+                FilterTurbulenceBuffers::new(&self.client),
+            ),
             scratch: std::mem::take(&mut self.scratch),
             scratch_in_use: std::mem::take(&mut self.scratch_in_use),
         };
@@ -175,6 +182,10 @@ impl<R: Runtime> Renderer<R> {
             &self.client,
             FilterTransferUpload::from_ops_and_filter(&plan.ops, parent_filter),
         );
+        self.filter_turbulence.upload(
+            &self.client,
+            FilterTurbulenceUpload::from_ops_and_filter(&plan.ops, parent_filter),
+        );
         self.scene
             .upload(&self.client, scene, plan, &mut self.scene_upload);
         self.scan.prepare_outputs(&self.client, lengths);
@@ -197,6 +208,7 @@ impl<R: Runtime> Renderer<R> {
         self.filter_convolves = saved.filter_convolves;
         self.filter_paths = saved.filter_paths;
         self.filter_transfers = saved.filter_transfers;
+        self.filter_turbulence = saved.filter_turbulence;
         self.scratch = saved.scratch;
         self.scratch_in_use = saved.scratch_in_use;
     }
@@ -811,6 +823,17 @@ impl<R: Runtime> Renderer<R> {
                 self.tile_filter_input(input, output, region, *source_region);
                 output
             }
+            FilterPrimitiveKind::Turbulence(turbulence) => {
+                let output = self.acquire_scratch();
+                self.clear_buffer(output, 0);
+                self.apply_turbulence(
+                    output,
+                    region,
+                    turbulence,
+                    next_filter_turbulence_index(&mut filter_cursors.turbulence),
+                );
+                output
+            }
             FilterPrimitiveKind::Merge { inputs } => {
                 let output = self.acquire_scratch();
                 self.clear_buffer(output, 0);
@@ -1238,6 +1261,66 @@ impl<R: Runtime> Renderer<R> {
                     brushes,
                 )
             }
+        }
+    }
+
+    fn apply_turbulence(
+        &mut self,
+        target: CubeRenderTarget,
+        bounds: Bounds,
+        turbulence: &Turbulence,
+        table_index: u32,
+    ) {
+        let kind = encode_turbulence_kind(turbulence.kind);
+        let stitch_tiles = u32::from(turbulence.stitch_tiles);
+        let linear_rgb = u32::from(turbulence.linear_rgb);
+        match target {
+            CubeRenderTarget::Main => FilterPipeline::turbulence_region(
+                &self.client,
+                &mut self.target,
+                self.size,
+                bounds,
+                turbulence.base_frequency_x,
+                turbulence.base_frequency_y,
+                turbulence.num_octaves,
+                stitch_tiles,
+                kind,
+                linear_rgb,
+                table_index,
+                turbulence.transform_x,
+                turbulence.transform_y,
+                turbulence.scale_x,
+                turbulence.scale_y,
+                turbulence.tile_x,
+                turbulence.tile_y,
+                turbulence.tile_width,
+                turbulence.tile_height,
+                &self.filter_turbulence.selectors,
+                &self.filter_turbulence.gradients,
+            ),
+            CubeRenderTarget::Scratch(ix) => FilterPipeline::turbulence_region(
+                &self.client,
+                &mut self.scratch[ix],
+                self.size,
+                bounds,
+                turbulence.base_frequency_x,
+                turbulence.base_frequency_y,
+                turbulence.num_octaves,
+                stitch_tiles,
+                kind,
+                linear_rgb,
+                table_index,
+                turbulence.transform_x,
+                turbulence.transform_y,
+                turbulence.scale_x,
+                turbulence.scale_y,
+                turbulence.tile_x,
+                turbulence.tile_y,
+                turbulence.tile_width,
+                turbulence.tile_height,
+                &self.filter_turbulence.selectors,
+                &self.filter_turbulence.gradients,
+            ),
         }
     }
 
@@ -2339,6 +2422,13 @@ fn encode_morphology_operator(operator: MorphologyOperator) -> u32 {
     }
 }
 
+fn encode_turbulence_kind(kind: TurbulenceKind) -> u32 {
+    match kind {
+        TurbulenceKind::Turbulence => 0,
+        TurbulenceKind::FractalNoise => 1,
+    }
+}
+
 fn encode_convolve_edge_mode(edge_mode: ConvolveEdgeMode) -> u32 {
     match edge_mode {
         ConvolveEdgeMode::None => 0,
@@ -2444,6 +2534,12 @@ fn next_filter_convolve_offset(matrix: &ConvolveMatrix, cursor: &mut usize) -> u
     offset
 }
 
+fn next_filter_turbulence_index(cursor: &mut usize) -> u32 {
+    let index = *cursor as u32;
+    *cursor += 1;
+    index
+}
+
 fn next_filter_path_index(region: &Region, cursor: &mut usize) -> Option<u32> {
     if matches!(region, Region::Path { .. }) {
         let index = *cursor as u32;
@@ -2516,6 +2612,9 @@ fn advance_filter_cursors_for_filter(filter: &Filter, cursors: &mut FilterCursor
                     FilterPrimitiveKind::Image { .. } => {
                         next_filter_brush_index(&mut cursors.brush);
                     }
+                    FilterPrimitiveKind::Turbulence(_) => {
+                        next_filter_turbulence_index(&mut cursors.turbulence);
+                    }
                     _ => {}
                 }
             }
@@ -2535,6 +2634,11 @@ fn advance_filter_cursors_for_filter(filter: &Filter, cursors: &mut FilterCursor
 
 pub(super) struct FilterTransferBuffers {
     pub(crate) tables: CubeBuffer<u32>,
+}
+
+pub(super) struct FilterTurbulenceBuffers {
+    pub(crate) selectors: CubeBuffer<u32>,
+    pub(crate) gradients: CubeBuffer<f32>,
 }
 
 pub(super) struct FilterConvolveBuffers {
@@ -2597,9 +2701,33 @@ impl FilterTransferBuffers {
     }
 }
 
+impl FilterTurbulenceBuffers {
+    pub(super) fn new<R: Runtime>(client: &::cubecl::client::ComputeClient<R>) -> Self {
+        Self {
+            selectors: CubeBuffer::new(client, 0),
+            gradients: CubeBuffer::new(client, 0),
+        }
+    }
+
+    pub(super) fn upload<R: Runtime>(
+        &mut self,
+        client: &::cubecl::client::ComputeClient<R>,
+        upload: FilterTurbulenceUpload,
+    ) {
+        self.selectors.replace(client, &upload.selectors);
+        self.gradients.replace(client, &upload.gradients);
+    }
+}
+
 #[derive(Default)]
 pub(super) struct FilterTransferUpload {
     tables: Vec<u32>,
+}
+
+#[derive(Default)]
+pub(super) struct FilterTurbulenceUpload {
+    selectors: Vec<u32>,
+    gradients: Vec<f32>,
 }
 
 impl FilterTransferUpload {
@@ -2618,6 +2746,29 @@ impl FilterTransferUpload {
 
     fn push_table(&mut self, table: &ComponentTransferTable) {
         self.tables.extend_from_slice(table);
+    }
+}
+
+impl FilterTurbulenceUpload {
+    pub(super) fn from_plan(plan: &ExecPlan) -> Self {
+        let mut upload = Self::default();
+        collect_filter_turbulence_for_ops(&plan.ops, &mut upload);
+        upload
+    }
+
+    fn from_ops_and_filter(ops: &[ExecOp], filter: &Filter) -> Self {
+        let mut upload = Self::default();
+        collect_filter_turbulence_for_ops(ops, &mut upload);
+        collect_filter_turbulence(filter, &mut upload);
+        upload
+    }
+
+    fn push_turbulence(&mut self, turbulence: &Turbulence) {
+        let lattice = turbulence_lattice(turbulence.seed);
+        debug_assert_eq!(lattice.selectors.len(), TURBULENCE_TABLE_LEN);
+        debug_assert_eq!(lattice.gradients.len(), TURBULENCE_GRADIENT_LEN);
+        self.selectors.extend_from_slice(&lattice.selectors);
+        self.gradients.extend_from_slice(&lattice.gradients);
     }
 }
 
@@ -2788,6 +2939,31 @@ fn collect_filter_transfers_for_ops(ops: &[ExecOp], upload: &mut FilterTransferU
     }
 }
 
+fn collect_filter_turbulence_for_ops(ops: &[ExecOp], upload: &mut FilterTurbulenceUpload) {
+    for op in ops {
+        match op {
+            ExecOp::OffscreenLayer {
+                layer, children, ..
+            } => match layer {
+                Layer::Filter { filter, .. } => {
+                    collect_filter_turbulence_for_ops(children, upload);
+                    collect_filter_turbulence(filter, upload);
+                }
+                Layer::Backdrop { filter, .. } => {
+                    collect_filter_turbulence(filter, upload);
+                    collect_filter_turbulence_for_ops(children, upload);
+                }
+                _ => collect_filter_turbulence_for_ops(children, upload),
+            },
+            ExecOp::OffscreenMaskLayer { content, mask, .. } => {
+                collect_filter_turbulence_for_ops(content, upload);
+                collect_filter_turbulence_for_ops(mask, upload);
+            }
+            _ => {}
+        }
+    }
+}
+
 fn collect_filter_convolves_for_ops(ops: &[ExecOp], upload: &mut FilterConvolveUpload) {
     for op in ops {
         match op {
@@ -2847,6 +3023,30 @@ fn collect_filter_transfer(filter: &Filter, upload: &mut FilterTransferUpload) {
             }
         }
         Filter::ComponentTransfer(table) => upload.push_table(table),
+        _ => {}
+    }
+}
+
+fn collect_filter_turbulence(filter: &Filter, upload: &mut FilterTurbulenceUpload) {
+    match filter {
+        Filter::Chain { filters, .. } => {
+            for filter in filters {
+                collect_filter_turbulence(filter, upload);
+            }
+        }
+        Filter::Graph { primitives, .. } => {
+            for primitive in primitives {
+                match &primitive.kind {
+                    FilterPrimitiveKind::Filter(filter) => {
+                        collect_filter_turbulence(filter, upload)
+                    }
+                    FilterPrimitiveKind::Turbulence(turbulence) => {
+                        upload.push_turbulence(turbulence)
+                    }
+                    _ => {}
+                }
+            }
+        }
         _ => {}
     }
 }

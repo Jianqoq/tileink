@@ -341,6 +341,14 @@ fn translate_primitive_kind_to_local(
         FilterPrimitiveKind::Tile { source_region } => FilterPrimitiveKind::Tile {
             source_region: shift_bounds(*source_region, -bounds.x0, -bounds.y0),
         },
+        FilterPrimitiveKind::Turbulence(turbulence) => {
+            let mut turbulence = *turbulence;
+            turbulence.transform_x -= bounds.x0 as f32;
+            turbulence.transform_y -= bounds.y0 as f32;
+            turbulence.tile_x -= bounds.x0 as f32;
+            turbulence.tile_y -= bounds.y0 as f32;
+            FilterPrimitiveKind::Turbulence(turbulence)
+        }
         _ => kind.clone(),
     }
 }

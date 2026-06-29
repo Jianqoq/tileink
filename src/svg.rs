@@ -16,7 +16,7 @@ use crate::{
             COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE, ComponentTransferTable,
             CompositeOperator, ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, FilterInput,
             FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator,
-            SpecularLighting,
+            SpecularLighting, Turbulence, TurbulenceKind,
         },
         layer::mask::{Mask as LayerMask, MaskKind},
         pixel::mul_div255,
@@ -868,7 +868,16 @@ fn svg_filter_primitive(
                 },
             )
         }
-        usvg::filter::Kind::Turbulence(_) => return Err(SvgError::unsupported("feTurbulence")),
+        usvg::filter::Kind::Turbulence(turbulence) => (
+            FilterInput::SourceGraphic,
+            None,
+            FilterPrimitiveKind::Turbulence(turbulence_to_filter(
+                turbulence,
+                primitive.color_interpolation(),
+                ctx.region_transform,
+                ctx.filter_bounds,
+            )),
+        ),
     };
     let source_region = svg_filter_output_source_region(
         primitive,
@@ -917,7 +926,9 @@ fn svg_filter_output_source_region(
 ) -> Bounds {
     let region = region.intersect(ctx.filter_bounds);
     match primitive.kind() {
-        usvg::filter::Kind::Flood(_) | usvg::filter::Kind::Image(_) => region,
+        usvg::filter::Kind::Flood(_)
+        | usvg::filter::Kind::Image(_)
+        | usvg::filter::Kind::Turbulence(_) => region,
         usvg::filter::Kind::Offset(_) => {
             svg_filter_input_source_region(input, ctx.source_regions, ctx.filter_bounds)
                 .intersect(region)
@@ -1108,6 +1119,39 @@ fn specular_lighting_to_filter(lighting: &usvg::filter::SpecularLighting) -> Fil
         lighting_color: color_to_rgb(lighting.lighting_color()),
         light_source: light_source(lighting.light_source()),
     })
+}
+
+fn turbulence_to_filter(
+    turbulence: &usvg::filter::Turbulence,
+    color_interpolation: usvg::filter::ColorInterpolation,
+    transform: Affine,
+    filter_bounds: Bounds,
+) -> Turbulence {
+    let [a, b, c, d, e, f] = transform.as_coeffs();
+    Turbulence {
+        base_frequency_x: turbulence.base_frequency_x().get(),
+        base_frequency_y: turbulence.base_frequency_y().get(),
+        num_octaves: turbulence.num_octaves(),
+        seed: turbulence.seed(),
+        stitch_tiles: turbulence.stitch_tiles(),
+        kind: turbulence_kind(turbulence.kind()),
+        linear_rgb: color_interpolation == usvg::filter::ColorInterpolation::LinearRGB,
+        transform_x: e as f32,
+        transform_y: f as f32,
+        scale_x: a.hypot(c) as f32,
+        scale_y: b.hypot(d) as f32,
+        tile_x: filter_bounds.x0 as f32,
+        tile_y: filter_bounds.y0 as f32,
+        tile_width: filter_bounds.width() as f32,
+        tile_height: filter_bounds.height() as f32,
+    }
+}
+
+fn turbulence_kind(kind: usvg::filter::TurbulenceKind) -> TurbulenceKind {
+    match kind {
+        usvg::filter::TurbulenceKind::Turbulence => TurbulenceKind::Turbulence,
+        usvg::filter::TurbulenceKind::FractalNoise => TurbulenceKind::FractalNoise,
+    }
 }
 
 fn light_source(source: usvg::filter::LightSource) -> LightSource {
@@ -2918,15 +2962,76 @@ mod tests {
     }
 
     #[test]
+    fn push_svg_renders_fe_turbulence_in_primitive_region() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+                <defs>
+                    <filter id="noise" filterUnits="userSpaceOnUse" x="0" y="0" width="16" height="16">
+                        <feTurbulence x="4" y="4" width="8" height="8" baseFrequency="0.2" seed="3"/>
+                    </filter>
+                </defs>
+                <rect width="16" height="16" fill="#ff0000" filter="url(#noise)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        let mut covered = 0;
+        for y in 4..12 {
+            for x in 4..12 {
+                covered += usize::from(renderer.image().rgba8_at(x, y)[3] > 0);
+            }
+        }
+        assert!(covered > 0);
+        assert_eq!(renderer.image().rgba8_at(2, 2), [0, 0, 0, 0]);
+        assert_eq!(renderer.image().rgba8_at(13, 13), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn push_svg_fe_turbulence_respects_color_interpolation_filters() {
+        let default_linear = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+                <defs>
+                    <filter id="noise" filterUnits="userSpaceOnUse" x="0" y="0" width="16" height="16">
+                        <feTurbulence baseFrequency="0.18" seed="4"/>
+                    </filter>
+                </defs>
+                <rect width="16" height="16" fill="#ff0000" filter="url(#noise)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+        let explicit_srgb = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+                <defs>
+                    <filter id="noise" filterUnits="userSpaceOnUse" x="0" y="0" width="16" height="16"
+                            color-interpolation-filters="sRGB">
+                        <feTurbulence baseFrequency="0.18" seed="4"/>
+                    </filter>
+                </defs>
+                <rect width="16" height="16" fill="#ff0000" filter="url(#noise)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_ne!(
+            default_linear.image().rgba8_at(8, 8),
+            explicit_srgb.image().rgba8_at(8, 8)
+        );
+        assert_eq!(
+            default_linear.image().rgba8_at(8, 8)[3],
+            explicit_srgb.image().rgba8_at(8, 8)[3]
+        );
+    }
+
+    #[test]
     fn push_svg_unsupported_features_do_not_modify_scene() {
         let tree = parse(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
                 <defs>
-                    <filter id="turbulence">
-                        <feTurbulence baseFrequency="0.05"/>
+                    <filter id="unsupported">
+                        <feDisplacementMap scale="2"/>
                     </filter>
                 </defs>
-                <g filter="url(#turbulence)"><rect width="16" height="16" fill="#ff0000"/></g>
+                <g filter="url(#unsupported)"><rect width="16" height="16" fill="#ff0000"/></g>
             </svg>"##,
         );
         let mut scene = Scene::new(16, 16);
@@ -2937,7 +3042,7 @@ mod tests {
         );
 
         let err = scene.push_svg(&tree).unwrap_err();
-        assert_eq!(err.feature(), "feTurbulence");
+        assert_eq!(err.feature(), "feDisplacementMap");
 
         let mut renderer = CpuRenderer::new(16, 16, Color::TRANSPARENT);
         renderer.render(&scene);
