@@ -3,13 +3,16 @@ use peniko::Color;
 
 mod executor;
 mod resources;
+mod scratch;
+mod target;
 use executor::{
     FilterConvolveBuffers, FilterConvolveUpload, FilterPathBuffers, FilterPathUpload,
     FilterTransferBuffers, FilterTransferUpload, FilterTurbulenceBuffers, FilterTurbulenceUpload,
-    plan_stack_depths, required_scratch_count,
 };
 use resources::SceneUploadStaging;
 pub(crate) use resources::{CoarseBuffers, ScanBuffers, SceneBuffers};
+use scratch::{plan_stack_depths, required_scratch_count};
+use target::CubeRenderTarget;
 
 use crate::{
     debug::{DebugScanBuffers, RenderDebugCapture, RenderOptions, capture_render_debug},
@@ -66,12 +69,6 @@ pub struct Renderer<R: Runtime> {
     scratch_in_use: Vec<bool>,
     surface_sources: Vec<CubeBuffer<u32>>,
     surface_origin: (i32, i32),
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum CubeRenderTarget {
-    Main,
-    Scratch(usize),
 }
 
 #[cfg(feature = "bench-api")]
