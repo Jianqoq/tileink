@@ -1,4 +1,4 @@
-use peniko::{Mix, kurbo::Shape};
+use peniko::{Color, Mix, kurbo::Shape};
 
 use crate::shared::bounds::Bounds;
 use crate::shared::brush::Brush;
@@ -32,9 +32,19 @@ pub enum Filter {
         primitives: Vec<FilterPrimitive>,
         fixed_region: bool,
     },
+    /// Custom single-region liquid-glass backdrop filter.
+    ///
+    /// The effect samples the already-rendered backdrop, applies an internal
+    /// blurred backdrop copy, then refracts/tints/highlights pixels from the
+    /// filter region edge. It is designed for `Scene::push_backdrop_layer`;
+    /// normal source filters fall back to the filter surface bounds as the
+    /// glass shape because no backdrop region is available there.
+    LiquidGlass(LiquidGlass),
     Blur {
-        radius_x: f32,
-        radius_y: f32,
+        /// Gaussian standard deviation in pixels on the X axis.
+        std_dev_x: f32,
+        /// Gaussian standard deviation in pixels on the Y axis.
+        std_dev_y: f32,
     },
     Brightness(f32),
     Contrast(f32),
@@ -64,7 +74,8 @@ pub enum Filter {
     DropShadow {
         offset_x: f32,
         offset_y: f32,
-        radius: f32,
+        /// Gaussian standard deviation in pixels for the shadow alpha blur.
+        std_dev: f32,
         brush: Brush,
     },
 }
@@ -120,6 +131,114 @@ pub enum FilterPrimitiveKind {
     Merge {
         inputs: Vec<FilterInput>,
     },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LiquidGlass {
+    /// Gaussian standard deviation in pixels for the backdrop blur copy.
+    pub blur_std_dev: f32,
+    pub blur_edge: bool,
+    pub tint: Color,
+    pub refraction_thickness: f32,
+    pub refraction_factor: f32,
+    pub refraction_strength: f32,
+    pub refraction_dispersion: f32,
+    pub fresnel_range: f32,
+    pub fresnel_hardness: f32,
+    pub fresnel_factor: f32,
+    pub glare_range: f32,
+    pub glare_hardness: f32,
+    pub glare_convergence: f32,
+    pub glare_opposite_factor: f32,
+    pub glare_factor: f32,
+    pub glare_angle: f32,
+}
+
+impl Default for LiquidGlass {
+    fn default() -> Self {
+        Self {
+            blur_std_dev: 1.0,
+            blur_edge: true,
+            tint: Color::from_rgba8(255, 255, 255, 0),
+            refraction_thickness: 20.0,
+            refraction_factor: 1.4,
+            refraction_strength: 18.0,
+            refraction_dispersion: 7.0,
+            fresnel_range: 30.0,
+            fresnel_hardness: 20.0,
+            fresnel_factor: 20.0,
+            glare_range: 30.0,
+            glare_hardness: 20.0,
+            glare_convergence: 50.0,
+            glare_opposite_factor: 80.0,
+            glare_factor: 90.0,
+            glare_angle: -45.0_f32.to_radians(),
+        }
+    }
+}
+
+impl LiquidGlass {
+    pub(crate) fn sample_outset(self) -> i32 {
+        let dispersion_scale = 1.0 + self.refraction_dispersion.abs() * 0.02;
+        blur_outset(self.blur_std_dev)
+            + (self.refraction_strength.max(0.0) * dispersion_scale)
+                .ceil()
+                .max(0.0) as i32
+            + 2
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct LiquidGlassRegion {
+    pub(crate) x0: f32,
+    pub(crate) y0: f32,
+    pub(crate) x1: f32,
+    pub(crate) y1: f32,
+    pub(crate) radius_top_left: f32,
+    pub(crate) radius_top_right: f32,
+    pub(crate) radius_bottom_left: f32,
+    pub(crate) radius_bottom_right: f32,
+}
+
+impl LiquidGlassRegion {
+    fn from_bounds(bounds: Bounds) -> Self {
+        Self {
+            x0: bounds.x0 as f32,
+            y0: bounds.y0 as f32,
+            x1: bounds.x1 as f32,
+            y1: bounds.y1 as f32,
+            radius_top_left: 0.0,
+            radius_top_right: 0.0,
+            radius_bottom_left: 0.0,
+            radius_bottom_right: 0.0,
+        }
+    }
+}
+
+pub(crate) fn liquid_glass_region(
+    region: Option<&crate::shared::layer::region::Region>,
+    fallback_bounds: Bounds,
+) -> LiquidGlassRegion {
+    match region {
+        Some(crate::shared::layer::region::Region::Rect { rect, radius }) => {
+            let x0 = rect.x0.min(rect.x1) as f32;
+            let y0 = rect.y0.min(rect.y1) as f32;
+            let x1 = rect.x0.max(rect.x1) as f32;
+            let y1 = rect.y0.max(rect.y1) as f32;
+            LiquidGlassRegion {
+                x0,
+                y0,
+                x1,
+                y1,
+                radius_top_left: radius.top_left,
+                radius_top_right: radius.top_right,
+                radius_bottom_left: radius.bottom_left,
+                radius_bottom_right: radius.bottom_right,
+            }
+        }
+        Some(region) => LiquidGlassRegion::from_bounds(region_bounds(region)),
+        None => LiquidGlassRegion::from_bounds(fallback_bounds),
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -312,7 +431,11 @@ fn filter_outset(filter: &Filter) -> i32 {
             }
         }
         Filter::Graph { .. } => 0,
-        Filter::Blur { radius_x, radius_y } => blur_outset(radius_x.max(*radius_y)),
+        Filter::LiquidGlass(glass) => glass.sample_outset(),
+        Filter::Blur {
+            std_dev_x,
+            std_dev_y,
+        } => blur_outset(std_dev_x.max(*std_dev_y)),
         Filter::Offset { dx, dy } => dx.abs().ceil().max(dy.abs().ceil()) as i32,
         Filter::Morphology {
             radius_x,
@@ -323,11 +446,11 @@ fn filter_outset(filter: &Filter) -> i32 {
             MorphologyOperator::Dilate => (*radius_x).max(*radius_y).max(0.0).ceil() as i32,
         },
         Filter::DropShadow {
-            radius,
+            std_dev,
             offset_x,
             offset_y,
             ..
-        } => blur_outset(*radius) + offset_x.abs().ceil().max(offset_y.abs().ceil()) as i32,
+        } => blur_outset(*std_dev) + offset_x.abs().ceil().max(offset_y.abs().ceil()) as i32,
         _ => 0,
     }
 }
@@ -393,8 +516,8 @@ fn rect_bounds(rect: peniko::kurbo::Rect) -> Bounds {
     )
 }
 
-fn blur_outset(radius: f32) -> i32 {
-    (radius.max(0.0) * 3.0).ceil() as i32
+fn blur_outset(std_dev: f32) -> i32 {
+    (std_dev.max(0.0) * 3.0).ceil() as i32
 }
 
 #[derive(Clone, Debug)]

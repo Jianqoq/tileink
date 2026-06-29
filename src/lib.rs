@@ -35,8 +35,8 @@ pub use shared::{
     layer::{
         filter::{
             CompositeOperator, ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, Filter,
-            FilterInput, FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator,
-            SpecularLighting,
+            FilterInput, FilterPrimitive, FilterPrimitiveKind, LightSource, LiquidGlass,
+            MorphologyOperator, SpecularLighting,
         },
         mask::{Mask, MaskKind},
         region::Region,

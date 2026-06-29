@@ -11,25 +11,41 @@ use crate::shared::{
             ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, DisplacementMap, Filter,
             FilterInput, FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator,
             SpecularLighting, TURBULENCE_LATTICE_SIZE, TURBULENCE_TABLE_LEN, Turbulence,
-            TurbulenceKind, filter_offset_to_pixel_delta, turbulence_gradient_index,
-            turbulence_lattice,
+            TurbulenceKind, filter_offset_to_pixel_delta, liquid_glass_region,
+            turbulence_gradient_index, turbulence_lattice,
         },
+        region::Region,
     },
     pixel::{pack_premul_rgba8, unpack_premul_rgba8},
 };
 
 mod graph;
+mod liquid_glass;
 mod turbulence;
 
 pub(crate) fn apply(image: &mut Image, filter: &Filter, bounds: Bounds) {
+    apply_with_region(image, filter, bounds, None);
+}
+
+pub(crate) fn apply_backdrop(image: &mut Image, filter: &Filter, bounds: Bounds, region: &Region) {
+    apply_with_region(image, filter, bounds, Some(region));
+}
+
+fn apply_with_region(image: &mut Image, filter: &Filter, bounds: Bounds, region: Option<&Region>) {
     match filter {
         Filter::Chain { filters, .. } => {
             for filter in filters {
-                apply(image, filter, bounds);
+                apply_with_region(image, filter, bounds, region);
             }
         }
         Filter::Graph { primitives, .. } => graph::apply(image, primitives, bounds),
-        Filter::Blur { radius_x, radius_y } => apply_gaussian_blur(image, *radius_x, *radius_y),
+        Filter::LiquidGlass(glass) => {
+            liquid_glass::apply(image, bounds, *glass, liquid_glass_region(region, bounds))
+        }
+        Filter::Blur {
+            std_dev_x,
+            std_dev_y,
+        } => apply_gaussian_blur(image, *std_dev_x, *std_dev_y),
         Filter::ColorMatrix(matrix) => {
             for px in &mut image.pixels {
                 *px = apply_color_matrix_pixel(*px, *matrix);
@@ -69,9 +85,9 @@ pub(crate) fn apply(image: &mut Image, filter: &Filter, bounds: Bounds) {
         Filter::DropShadow {
             offset_x,
             offset_y,
-            radius,
+            std_dev,
             brush,
-        } => apply_drop_shadow(image, bounds, *offset_x, *offset_y, *radius, brush),
+        } => apply_drop_shadow(image, bounds, *offset_x, *offset_y, *std_dev, brush),
     }
 }
 
@@ -751,22 +767,22 @@ fn apply_offset(image: &mut Image, dx: i32, dy: i32) {
     }
 }
 
-fn apply_gaussian_blur(image: &mut Image, radius_x: f32, radius_y: f32) {
-    let radius_x = radius_x.max(0.0);
-    let radius_y = radius_y.max(0.0);
-    if (radius_x <= 0.0 && radius_y <= 0.0) || image.width == 0 || image.height == 0 {
+fn apply_gaussian_blur(image: &mut Image, std_dev_x: f32, std_dev_y: f32) {
+    let std_dev_x = std_dev_x.max(0.0);
+    let std_dev_y = std_dev_y.max(0.0);
+    if (std_dev_x <= 0.0 && std_dev_y <= 0.0) || image.width == 0 || image.height == 0 {
         return;
     }
     // SVG feGaussianBlur has independent X/Y standard deviations; a zero axis
     // is intentionally skipped so `stdDeviation="5 0"` stays horizontal-only.
-    if radius_x > 0.0 {
-        let kernel = gaussian_kernel(radius_x);
+    if std_dev_x > 0.0 {
+        let kernel = gaussian_kernel(std_dev_x);
         if kernel.len() > 1 {
             image.pixels = blur_pass(image, &kernel, Axis::Horizontal);
         }
     }
-    if radius_y > 0.0 {
-        let kernel = gaussian_kernel(radius_y);
+    if std_dev_y > 0.0 {
+        let kernel = gaussian_kernel(std_dev_y);
         if kernel.len() > 1 {
             image.pixels = blur_pass(image, &kernel, Axis::Vertical);
         }
@@ -778,7 +794,7 @@ fn apply_drop_shadow(
     bounds: Bounds,
     offset_x: f32,
     offset_y: f32,
-    radius: f32,
+    std_dev: f32,
     brush: &crate::shared::brush::Brush,
 ) {
     // Drop-shadow is a filter over the source alpha: offset the alpha mask,
@@ -801,7 +817,7 @@ fn apply_drop_shadow(
         }
     }
 
-    apply_gaussian_blur(&mut mask, radius, radius);
+    apply_gaussian_blur(&mut mask, std_dev, std_dev);
     for y in 0..image.height {
         for x in 0..image.width {
             let ix = (y * image.width + x) as usize;
@@ -826,9 +842,9 @@ enum Axis {
     Vertical,
 }
 
-fn gaussian_kernel(radius: f32) -> Vec<f32> {
-    let half_width = blur_outset(radius).max(1);
-    let sigma = radius.max(0.0001);
+fn gaussian_kernel(std_dev: f32) -> Vec<f32> {
+    let half_width = blur_outset(std_dev).max(1);
+    let sigma = std_dev.max(0.0001);
     let two_sigma_sq = 2.0 * sigma * sigma;
     let mut kernel = Vec::with_capacity((half_width * 2 + 1) as usize);
     let mut sum = 0.0;
@@ -877,8 +893,8 @@ fn blur_pass(image: &Image, kernel: &[f32], axis: Axis) -> Vec<u32> {
     out
 }
 
-fn blur_outset(radius: f32) -> i32 {
-    (radius.max(0.0) * 3.0).ceil() as i32
+fn blur_outset(std_dev: f32) -> i32 {
+    (std_dev.max(0.0) * 3.0).ceil() as i32
 }
 
 fn lerp(a: f32, b: f32, t: f32) -> f32 {
@@ -941,7 +957,7 @@ mod tests {
             &Filter::DropShadow {
                 offset_x: 2.0,
                 offset_y: 1.0,
-                radius: 0.0,
+                std_dev: 0.0,
                 brush: crate::shared::brush::Brush::Solid(Color::BLACK),
             },
             Bounds::canvas(8, 8),
@@ -1048,8 +1064,8 @@ mod tests {
         apply(
             &mut image,
             &Filter::Blur {
-                radius_x: 1.0,
-                radius_y: 0.0,
+                std_dev_x: 1.0,
+                std_dev_y: 0.0,
             },
             Bounds::canvas(3, 3),
         );

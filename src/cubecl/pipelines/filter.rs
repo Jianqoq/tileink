@@ -14,7 +14,10 @@ use crate::{
             CUBE_DRAW_PATH_GLYPH, CUBE_LAYER_BLEND, CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY,
         },
     },
-    shared::bounds::Bounds,
+    shared::{
+        bounds::Bounds,
+        layer::filter::{LiquidGlass, LiquidGlassRegion},
+    },
 };
 
 const FILTER_WORKGROUP_SIZE: u32 = 256;
@@ -512,6 +515,63 @@ impl FilterPipeline {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub(crate) fn liquid_glass_region<R: Runtime>(
+        client: &ComputeClient<R>,
+        source: &CubeBuffer<u32>,
+        blurred: &CubeBuffer<u32>,
+        target: &mut CubeBuffer<u32>,
+        size: (u32, u32),
+        bounds: Bounds,
+        glass: LiquidGlass,
+        region: LiquidGlassRegion,
+    ) {
+        let Some(dispatch) = FilterRegion::new(size, bounds) else {
+            return;
+        };
+        let [tint_r, tint_g, tint_b, tint_a] = glass.tint.premultiply().components;
+        kernels::filter_liquid_glass_region::launch::<R>(
+            client,
+            cube_count(dispatch.pixel_count),
+            CubeDim::new_1d(FILTER_WORKGROUP_SIZE),
+            dispatch.pixel_count,
+            dispatch.width,
+            dispatch.x0,
+            dispatch.y0,
+            size.0,
+            size.1,
+            region.x0,
+            region.y0,
+            region.x1,
+            region.y1,
+            region.radius_top_left,
+            region.radius_top_right,
+            region.radius_bottom_left,
+            region.radius_bottom_right,
+            u32::from(glass.blur_edge),
+            tint_r,
+            tint_g,
+            tint_b,
+            tint_a,
+            glass.refraction_thickness,
+            glass.refraction_factor,
+            glass.refraction_strength,
+            glass.refraction_dispersion,
+            glass.fresnel_range,
+            glass.fresnel_hardness,
+            glass.fresnel_factor,
+            glass.glare_range,
+            glass.glare_hardness,
+            glass.glare_convergence,
+            glass.glare_opposite_factor,
+            glass.glare_factor,
+            glass.glare_angle,
+            unsafe { source.arg() },
+            unsafe { blurred.arg() },
+            unsafe { target.arg() },
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn convolve_matrix_region<R: Runtime>(
         client: &ComputeClient<R>,
         source: &CubeBuffer<u32>,
@@ -1002,7 +1062,7 @@ impl FilterPipeline {
         target: &mut CubeBuffer<u32>,
         size: (u32, u32),
         bounds: Bounds,
-        radius: f32,
+        std_dev: f32,
         axis: u32,
     ) {
         let Some(region) = FilterRegion::new(size, bounds) else {
@@ -1018,7 +1078,7 @@ impl FilterPipeline {
             region.x0,
             region.y0,
             size.0,
-            radius,
+            std_dev,
             axis,
             unsafe { source.arg() },
             unsafe { target.arg() },

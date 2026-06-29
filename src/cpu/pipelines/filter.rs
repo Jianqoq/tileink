@@ -16,11 +16,16 @@ pub struct FilterCpuPrepared<'a> {
     image: &'a mut Image,
     filter: &'a Filter,
     bounds: Bounds,
+    backdrop_region: Option<&'a Region>,
 }
 
 impl<'a> FilterCpuPrepared<'a> {
     pub fn run(&mut self) {
-        filter_compute::apply(self.image, self.filter, self.bounds);
+        if let Some(region) = self.backdrop_region {
+            filter_compute::apply_backdrop(self.image, self.filter, self.bounds, region);
+        } else {
+            filter_compute::apply(self.image, self.filter, self.bounds);
+        }
     }
 }
 
@@ -39,6 +44,22 @@ impl FilterCpuPipeline {
             image,
             filter,
             bounds,
+            backdrop_region: None,
+        }
+    }
+
+    pub fn prepare_backdrop<'a>(
+        &self,
+        image: &'a mut Image,
+        filter: &'a Filter,
+        bounds: Bounds,
+        region: &'a Region,
+    ) -> FilterCpuPrepared<'a> {
+        FilterCpuPrepared {
+            image,
+            filter,
+            bounds,
+            backdrop_region: Some(region),
         }
     }
 

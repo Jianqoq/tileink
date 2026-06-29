@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Filter::DropShadow {
             offset_x: 26.0,
             offset_y: 24.0,
-            radius: 12.0,
+            std_dev: 12.0,
             brush: Brush::from_gradient(&shadow),
         },
         common::canvas_region(640, 360),

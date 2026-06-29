@@ -6,7 +6,7 @@ use peniko::{
     Color,
     kurbo::{Circle, Rect, Shape, Stroke},
 };
-use tileink::{FillRule, Filter, Radius, Region, Scene};
+use tileink::{FillRule, Filter, LiquidGlass, Radius, Region, Scene};
 
 use crate::common::{fill_circle, fill_rect, stroke_circle, stroke_rect};
 
@@ -59,8 +59,8 @@ pub fn filter_clip_opacity_scene() -> Scene {
     );
     scene.push_filter_layer(
         Filter::Blur {
-            radius_x: 10.0,
-            radius_y: 10.0,
+            std_dev_x: 10.0,
+            std_dev_y: 10.0,
         },
         Region::rect(clip, Radius::all(54.0)),
     );
@@ -108,8 +108,8 @@ pub fn clip_filter_scene() -> Scene {
     );
     scene.push_filter_layer(
         Filter::Blur {
-            radius_x: 14.0,
-            radius_y: 14.0,
+            std_dev_x: 14.0,
+            std_dev_y: 14.0,
         },
         Region::path(clip.to_path(0.1), Default::default(), 0.1),
     );
@@ -174,8 +174,8 @@ pub fn backdrop_blur_scene() -> Scene {
     let panel = Rect::new(142.0, 112.0, 578.0, 308.0);
     scene.push_backdrop_layer(
         Filter::Blur {
-            radius_x: 18.0,
-            radius_y: 18.0,
+            std_dev_x: 18.0,
+            std_dev_y: 18.0,
         },
         Region::rect(panel, Radius::all(34.0)),
     );
@@ -228,17 +228,12 @@ pub fn liquid_glass_scene() -> Scene {
 
     let panel = Rect::new(126.0, 104.0, 594.0, 316.0);
     scene.push_backdrop_layer(
-        Filter::Blur {
-            radius_x: 9.0,
-            radius_y: 9.0,
-        },
+        Filter::LiquidGlass(LiquidGlass {
+            blur_std_dev: 1.0,
+            tint: Color::from_rgba8(255, 255, 255, 0),
+            ..LiquidGlass::default()
+        }),
         Region::rect(panel, Radius::all(42.0)),
-    );
-    fill_rect(
-        &mut scene,
-        panel,
-        Radius::all(42.0),
-        Color::from_rgba8(255, 255, 255, 112),
     );
     scene.pop_layer();
     stroke_rect(

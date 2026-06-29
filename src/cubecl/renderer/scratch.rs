@@ -134,13 +134,17 @@ pub(super) fn filter_scratch_extra(filter: &Filter) -> usize {
             filters.iter().map(filter_scratch_extra).max().unwrap_or(0)
         }
         Filter::Graph { primitives, .. } => graph_scratch_extra(primitives),
-        Filter::Blur { radius_x, radius_y } => usize::from(radius_x.max(*radius_y) > 0.0),
+        Filter::LiquidGlass(glass) => 2 + usize::from(glass.blur_std_dev > 0.0),
+        Filter::Blur {
+            std_dev_x,
+            std_dev_y,
+        } => usize::from(std_dev_x.max(*std_dev_y) > 0.0),
         Filter::ConvolveMatrix(_) => 1,
         Filter::DiffuseLighting(_) => 1,
         Filter::SpecularLighting(_) => 1,
         Filter::Offset { .. } => 1,
         Filter::Morphology { .. } => 2,
-        Filter::DropShadow { radius, .. } => 1 + usize::from(radius.max(0.0) > 0.0),
+        Filter::DropShadow { std_dev, .. } => 1 + usize::from(std_dev.max(0.0) > 0.0),
         _ => 0,
     }
 }

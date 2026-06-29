@@ -17,8 +17,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     scene.push_filter_layer(
         Filter::Blur {
-            radius_x: 28.0,
-            radius_y: 28.0,
+            std_dev_x: 28.0,
+            std_dev_y: 28.0,
         },
         common::canvas_region(1920, 1080),
     );

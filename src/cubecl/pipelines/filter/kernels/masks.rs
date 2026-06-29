@@ -197,7 +197,7 @@ pub(super) fn filter_blur_region(
     region_x0: u32,
     region_y0: u32,
     image_width: u32,
-    radius: f32,
+    std_dev: f32,
     axis: u32,
     source: &Array<u32>,
     target: &mut Array<u32>,
@@ -207,17 +207,17 @@ pub(super) fn filter_blur_region(
         terminate!();
     }
 
-    let radius = radius.max(0.0);
+    let std_dev = std_dev.max(0.0);
     let x = region_x0 + region_ix % region_width;
     let y = region_y0 + region_ix / region_width;
     let dst_ix = (y * image_width + x) as usize;
-    if radius <= 0.0 {
+    if std_dev <= 0.0 {
         target[dst_ix] = source[dst_ix];
         terminate!();
     }
 
-    let half_width = (radius * 3.0).ceil().max(1.0) as i32;
-    let sigma = radius.max(0.0001);
+    let half_width = (std_dev * 3.0).ceil().max(1.0) as i32;
+    let sigma = std_dev.max(0.0001);
     let two_sigma_sq = 2.0 * sigma * sigma;
     let region_x1 = (region_x0 + region_width) as i32;
     let region_y1 = (region_y0 + region_height) as i32;

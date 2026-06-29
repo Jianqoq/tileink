@@ -432,12 +432,12 @@ fn translate_filter_to_local(filter: &Filter, local: LocalSpace) -> Filter {
         Filter::DropShadow {
             offset_x,
             offset_y,
-            radius,
+            std_dev,
             brush,
         } => Filter::DropShadow {
             offset_x: *offset_x,
             offset_y: *offset_y,
-            radius: *radius,
+            std_dev: *std_dev,
             brush: local.brush(brush.clone()),
         },
         _ => filter.clone(),

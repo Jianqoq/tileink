@@ -862,12 +862,15 @@ impl<'a> SvgFilterGraphBuilder<'a> {
         let region = transform_rect_to_bounds(primitive_rect, self.region_transform);
         let (input, input2, kind) = match primitive.kind() {
             usvg::filter::Kind::GaussianBlur(blur) => {
-                let (radius_x, radius_y) = transform_filter_radii(
+                let (std_dev_x, std_dev_y) = transform_filter_radii(
                     self.value_transform,
                     blur.std_dev_x().get(),
                     blur.std_dev_y().get(),
                 );
-                let filter = Filter::Blur { radius_x, radius_y };
+                let filter = Filter::Blur {
+                    std_dev_x,
+                    std_dev_y,
+                };
                 (
                     self.input(blur.input(), "feGaussianBlur")?,
                     None,
@@ -877,7 +880,7 @@ impl<'a> SvgFilterGraphBuilder<'a> {
             usvg::filter::Kind::DropShadow(shadow) => {
                 let (offset_x, offset_y) =
                     transform_filter_vector(self.value_transform, shadow.dx(), shadow.dy());
-                let (radius_x, radius_y) = transform_filter_radii(
+                let (std_dev_x, std_dev_y) = transform_filter_radii(
                     self.value_transform,
                     shadow.std_dev_x().get(),
                     shadow.std_dev_y().get(),
@@ -885,7 +888,7 @@ impl<'a> SvgFilterGraphBuilder<'a> {
                 let filter = Filter::DropShadow {
                     offset_x,
                     offset_y,
-                    radius: equal_std_dev(radius_x, radius_y, "anisotropic feDropShadow")?,
+                    std_dev: equal_std_dev(std_dev_x, std_dev_y, "anisotropic feDropShadow")?,
                     brush: color_opacity_to_brush(shadow.color(), shadow.opacity().get()),
                 };
                 (
@@ -1043,13 +1046,13 @@ impl<'a> SvgFilterGraphBuilder<'a> {
             | usvg::filter::Kind::Turbulence(_) => region,
             usvg::filter::Kind::Offset(_) => self.input_source_region(input).intersect(region),
             usvg::filter::Kind::GaussianBlur(blur) => {
-                let (radius_x, radius_y) = transform_filter_radii(
+                let (std_dev_x, std_dev_y) = transform_filter_radii(
                     self.value_transform,
                     blur.std_dev_x().get(),
                     blur.std_dev_y().get(),
                 );
                 self.input_source_region(input)
-                    .outset(blur_outset(radius_x.max(radius_y)))
+                    .outset(blur_outset(std_dev_x.max(std_dev_y)))
                     .intersect(region)
             }
             usvg::filter::Kind::Morphology(morphology) => {
@@ -1174,8 +1177,8 @@ impl BoundsExt for Bounds {
     }
 }
 
-fn blur_outset(radius: f32) -> i32 {
-    (radius.max(0.0) * 3.0).ceil() as i32
+fn blur_outset(std_dev: f32) -> i32 {
+    (std_dev.max(0.0) * 3.0).ceil() as i32
 }
 
 fn composite_operator(operator: usvg::filter::CompositeOperator) -> CompositeOperator {

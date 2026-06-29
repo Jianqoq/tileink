@@ -13,6 +13,7 @@ use crate::{
                 ConvolveMatrix, DiffuseLighting, DisplacementMap, Filter, FilterInput,
                 FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator,
                 SpecularLighting, Turbulence, TurbulenceKind, filter_offset_to_pixel_delta,
+                liquid_glass_region,
             },
             mask::{Mask, MaskKind},
             region::Region,
@@ -321,19 +322,36 @@ impl<R: Runtime> Renderer<R> {
         filter: &Filter,
         filter_cursors: &mut FilterCursors,
     ) {
+        self.apply_filter_with_region(target, bounds, filter, None, filter_cursors);
+    }
+
+    fn apply_filter_with_region(
+        &mut self,
+        target: CubeRenderTarget,
+        bounds: Bounds,
+        filter: &Filter,
+        region: Option<&Region>,
+        filter_cursors: &mut FilterCursors,
+    ) {
         match filter {
             Filter::Chain { filters, .. } => {
                 for filter in filters {
-                    self.apply_filter(target, bounds, filter, filter_cursors);
+                    self.apply_filter_with_region(target, bounds, filter, region, filter_cursors);
                 }
             }
             Filter::Graph { primitives, .. } => {
                 self.apply_filter_graph(target, bounds, primitives, filter_cursors);
             }
-            Filter::Blur { radius_x, radius_y } => {
-                if radius_x.max(*radius_y).max(0.0) > 0.0 {
+            Filter::LiquidGlass(glass) => {
+                self.apply_liquid_glass(target, bounds, *glass, liquid_glass_region(region, bounds))
+            }
+            Filter::Blur {
+                std_dev_x,
+                std_dev_y,
+            } => {
+                if std_dev_x.max(*std_dev_y).max(0.0) > 0.0 {
                     let temp = self.acquire_scratch();
-                    self.blur_buffer(target, temp, bounds, *radius_x, *radius_y);
+                    self.blur_buffer(target, temp, bounds, *std_dev_x, *std_dev_y);
                     self.release_scratch(temp);
                 }
             }
@@ -413,14 +431,14 @@ impl<R: Runtime> Renderer<R> {
             Filter::DropShadow {
                 offset_x,
                 offset_y,
-                radius,
+                std_dev,
                 ..
             } => self.apply_drop_shadow(
                 target,
                 bounds,
                 *offset_x,
                 *offset_y,
-                *radius,
+                *std_dev,
                 filter_cursors.next_brush_index(),
             ),
             _ => {
@@ -1439,27 +1457,27 @@ impl<R: Runtime> Renderer<R> {
         target: CubeRenderTarget,
         temp: CubeRenderTarget,
         bounds: Bounds,
-        radius_x: f32,
-        radius_y: f32,
+        std_dev_x: f32,
+        std_dev_y: f32,
     ) {
-        let radius_x = radius_x.max(0.0);
-        let radius_y = radius_y.max(0.0);
-        if radius_x <= 0.0 && radius_y <= 0.0 {
+        let std_dev_x = std_dev_x.max(0.0);
+        let std_dev_y = std_dev_y.max(0.0);
+        if std_dev_x <= 0.0 && std_dev_y <= 0.0 {
             return;
         }
         // Keep SVG's independent X/Y blur semantics: single-axis blur writes
         // into scratch first, then copies the completed pass back to target.
-        match (radius_x > 0.0, radius_y > 0.0) {
+        match (std_dev_x > 0.0, std_dev_y > 0.0) {
             (true, true) => {
-                self.blur_pass(target, temp, bounds, radius_x, 0);
-                self.blur_pass(temp, target, bounds, radius_y, 1);
+                self.blur_pass(target, temp, bounds, std_dev_x, 0);
+                self.blur_pass(temp, target, bounds, std_dev_y, 1);
             }
             (true, false) => {
-                self.blur_pass(target, temp, bounds, radius_x, 0);
+                self.blur_pass(target, temp, bounds, std_dev_x, 0);
                 self.copy_region(temp, target, bounds);
             }
             (false, true) => {
-                self.blur_pass(target, temp, bounds, radius_y, 1);
+                self.blur_pass(target, temp, bounds, std_dev_y, 1);
                 self.copy_region(temp, target, bounds);
             }
             (false, false) => {}
@@ -1471,7 +1489,7 @@ impl<R: Runtime> Renderer<R> {
         source: CubeRenderTarget,
         target: CubeRenderTarget,
         bounds: Bounds,
-        radius: f32,
+        std_dev: f32,
         axis: u32,
     ) {
         if source == target {
@@ -1485,7 +1503,7 @@ impl<R: Runtime> Renderer<R> {
                     &mut self.scratch[target_ix],
                     self.size,
                     bounds,
-                    radius,
+                    std_dev,
                     axis,
                 )
             }
@@ -1496,7 +1514,7 @@ impl<R: Runtime> Renderer<R> {
                     &mut self.target,
                     self.size,
                     bounds,
-                    radius,
+                    std_dev,
                     axis,
                 )
             }
@@ -1509,11 +1527,93 @@ impl<R: Runtime> Renderer<R> {
                     target,
                     self.size,
                     bounds,
-                    radius,
+                    std_dev,
                     axis,
                 )
             }
             (CubeRenderTarget::Main, CubeRenderTarget::Main) => unreachable!(),
+        }
+    }
+
+    fn apply_liquid_glass(
+        &mut self,
+        target: CubeRenderTarget,
+        bounds: Bounds,
+        glass: crate::shared::layer::filter::LiquidGlass,
+        region: crate::shared::layer::filter::LiquidGlassRegion,
+    ) {
+        let source = self.acquire_scratch();
+        let blurred = self.acquire_scratch();
+        self.clear_buffer(source, 0);
+        self.clear_buffer(blurred, 0);
+        self.copy_region(target, source, bounds);
+        self.copy_region(target, blurred, bounds);
+
+        if glass.blur_std_dev > 0.0 {
+            let temp = self.acquire_scratch();
+            self.clear_buffer(temp, 0);
+            self.blur_buffer(
+                blurred,
+                temp,
+                bounds,
+                glass.blur_std_dev,
+                glass.blur_std_dev,
+            );
+            self.release_scratch(temp);
+        }
+
+        self.liquid_glass_buffer(source, blurred, target, bounds, glass, region);
+        self.release_scratch(blurred);
+        self.release_scratch(source);
+    }
+
+    fn liquid_glass_buffer(
+        &mut self,
+        source: CubeRenderTarget,
+        blurred: CubeRenderTarget,
+        target: CubeRenderTarget,
+        bounds: Bounds,
+        glass: crate::shared::layer::filter::LiquidGlass,
+        region: crate::shared::layer::filter::LiquidGlassRegion,
+    ) {
+        match (source, blurred, target) {
+            (
+                CubeRenderTarget::Scratch(source_ix),
+                CubeRenderTarget::Scratch(blurred_ix),
+                CubeRenderTarget::Main,
+            ) => FilterPipeline::liquid_glass_region(
+                &self.client,
+                &self.scratch[source_ix],
+                &self.scratch[blurred_ix],
+                &mut self.target,
+                self.size,
+                bounds,
+                glass,
+                region,
+            ),
+            (
+                CubeRenderTarget::Scratch(source_ix),
+                CubeRenderTarget::Scratch(blurred_ix),
+                CubeRenderTarget::Scratch(target_ix),
+            ) => {
+                let (target, source, blurred) = scratch_target_and_two_sources(
+                    &mut self.scratch,
+                    target_ix,
+                    source_ix,
+                    blurred_ix,
+                );
+                FilterPipeline::liquid_glass_region(
+                    &self.client,
+                    source,
+                    blurred,
+                    target,
+                    self.size,
+                    bounds,
+                    glass,
+                    region,
+                );
+            }
+            _ => panic!("CubeCL liquid glass requires scratch source buffers"),
         }
     }
 
@@ -1523,7 +1623,7 @@ impl<R: Runtime> Renderer<R> {
         bounds: Bounds,
         offset_x: f32,
         offset_y: f32,
-        radius: f32,
+        std_dev: f32,
         brush_index: u32,
     ) {
         let shadow = self.acquire_scratch();
@@ -1536,9 +1636,9 @@ impl<R: Runtime> Renderer<R> {
             offset_y.round() as i32,
         );
 
-        if radius.max(0.0) > 0.0 {
+        if std_dev.max(0.0) > 0.0 {
             let temp = self.acquire_scratch();
-            self.blur_buffer(shadow, temp, bounds, radius, radius);
+            self.blur_buffer(shadow, temp, bounds, std_dev, std_dev);
             self.release_scratch(temp);
         }
 
@@ -2151,6 +2251,7 @@ fn encode_color_filter(filter: &Filter) -> (u32, f32) {
             panic!("specular lighting is handled by a dedicated CubeCL pass")
         }
         Filter::Graph { .. } => panic!("filter graphs are handled by CubeCL graph execution"),
+        Filter::LiquidGlass(_) => panic!("liquid glass is handled by a dedicated CubeCL pass"),
         Filter::Flood { .. } => panic!("flood is handled by the CubeCL brush fill pass"),
         Filter::Offset { .. } => panic!("offset is handled by a dedicated CubeCL pass"),
         Filter::Morphology { .. } => panic!("morphology is handled by a dedicated CubeCL pass"),

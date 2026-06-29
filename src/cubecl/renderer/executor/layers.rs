@@ -278,7 +278,13 @@ impl<R: Runtime> Renderer<R> {
         let backdrop = self.acquire_scratch();
         self.clear_buffer(backdrop, 0);
         self.copy_region(target, backdrop, bounds);
-        self.apply_filter(backdrop, bounds, layer.filter, filter_cursors);
+        self.apply_filter_with_region(
+            backdrop,
+            bounds,
+            layer.filter,
+            Some(layer.sample_region),
+            filter_cursors,
+        );
         let mask = self.acquire_scratch();
         self.clear_buffer(mask, 0);
         self.build_region_mask(mask, layer.sample_region, path_index, bounds);

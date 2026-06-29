@@ -5,8 +5,8 @@ use peniko::{
 
 use super::Renderer;
 use crate::{
-    CandleStick, FillRule, Radius, Scene, SdfLine, SdfLineCap, StrokeWidths, TextContext,
-    TextLayoutOptions,
+    CandleStick, FillRule, LiquidGlass, Radius, Scene, SdfLine, SdfLineCap, StrokeWidths,
+    TextContext, TextLayoutOptions,
     shared::layer::{
         filter::Filter,
         mask::{Mask, MaskKind},
@@ -431,8 +431,8 @@ fn outer_clip_does_not_clip_filter_source_before_blur() {
     scene.push_clip_layer(clip.clone(), Affine::IDENTITY, FillRule::NonZero, 0.1);
     scene.push_filter_layer(
         Filter::Blur {
-            radius_x: 8.0,
-            radius_y: 8.0,
+            std_dev_x: 8.0,
+            std_dev_y: 8.0,
         },
         Region::Path {
             path: clip,
@@ -463,8 +463,8 @@ fn filter_blur_outputs_expanded_bounds() {
     let sample_rect = Rect::new(32.0, 32.0, 64.0, 64.0);
     scene.push_filter_layer(
         Filter::Blur {
-            radius_x: 4.0,
-            radius_y: 4.0,
+            std_dev_x: 4.0,
+            std_dev_y: 4.0,
         },
         Region::rect(sample_rect, Radius::all(0.0)),
     );
@@ -544,6 +544,45 @@ fn backdrop_filter_samples_existing_target() {
 
     assert_eq!(renderer.image().rgba8_at(12, 8), [0, 255, 255, 255]);
     assert_eq!(renderer.image().rgba8_at(4, 8), [255, 0, 0, 255]);
+}
+
+#[test]
+fn backdrop_liquid_glass_refracts_rect_edge_without_moving_center() {
+    let mut scene = Scene::new(64, 32);
+    for x in 0..64 {
+        let v = (x * 4) as u8;
+        scene.push_rect(
+            Rect::new(f64::from(x), 0.0, f64::from(x + 1), 32.0),
+            Color::from_rgb8(v, v, v),
+            FillRule::NonZero,
+        );
+    }
+
+    scene.push_backdrop_layer(
+        Filter::LiquidGlass(LiquidGlass {
+            blur_std_dev: 0.0,
+            tint: Color::TRANSPARENT,
+            refraction_thickness: 8.0,
+            refraction_strength: 6.0,
+            refraction_dispersion: 0.0,
+            fresnel_factor: 0.0,
+            glare_factor: 0.0,
+            ..LiquidGlass::default()
+        }),
+        Region::rect(Rect::new(16.0, 4.0, 48.0, 28.0), Radius::all(6.0)),
+    );
+    scene.pop_layer();
+
+    let mut renderer = Renderer::new(64, 32, Color::TRANSPARENT);
+    renderer.render(&scene);
+
+    assert_eq!(renderer.image().rgba8_at(8, 16), [32, 32, 32, 255]);
+    assert_rgb_close(renderer.image().rgba8_at(32, 16), [128, 128, 128, 255], 1);
+    let edge = renderer.image().rgba8_at(17, 16);
+    assert!(
+        edge[0] > 68,
+        "expected left glass edge to sample farther into the gradient, got {edge:?}"
+    );
 }
 
 #[test]

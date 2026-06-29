@@ -305,8 +305,8 @@ fn filter_wgpu_blur_outputs_expanded_bounds_when_enabled() {
     let sample_rect = Rect::new(32.0, 32.0, 64.0, 64.0);
     scene.push_filter_layer(
         Filter::Blur {
-            radius_x: 4.0,
-            radius_y: 4.0,
+            std_dev_x: 4.0,
+            std_dev_y: 4.0,
         },
         Region::rect(sample_rect, Radius::all(0.0)),
     );
@@ -336,8 +336,8 @@ fn filter_wgpu_applies_anisotropic_blur_when_enabled() {
     let mut scene = Scene::new(3, 3);
     scene.push_filter_layer(
         Filter::Blur {
-            radius_x: 1.0,
-            radius_y: 0.0,
+            std_dev_x: 1.0,
+            std_dev_y: 0.0,
         },
         Region::rect(Rect::new(0.0, 0.0, 3.0, 3.0), Radius::all(0.0)),
     );
@@ -369,7 +369,7 @@ fn filter_wgpu_drop_shadow_offsets_alpha_and_preserves_source_when_enabled() {
         Filter::DropShadow {
             offset_x: 2.0,
             offset_y: 1.0,
-            radius: 0.0,
+            std_dev: 0.0,
             brush: Brush::Solid(Color::BLACK),
         },
         Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::all(0.0)),
@@ -434,13 +434,13 @@ fn filter_wgpu_uploads_drop_shadow_brushes_inside_chain_when_enabled() {
                 Filter::DropShadow {
                     offset_x: 1.0,
                     offset_y: 0.0,
-                    radius: 0.0,
+                    std_dev: 0.0,
                     brush: Brush::Solid(Color::BLACK),
                 },
                 Filter::DropShadow {
                     offset_x: 0.0,
                     offset_y: 1.0,
-                    radius: 0.0,
+                    std_dev: 0.0,
                     brush: Brush::Solid(Color::from_rgb8(255, 0, 0)),
                 },
             ],
@@ -1032,7 +1032,7 @@ fn filter_wgpu_drop_shadow_blurs_offset_alpha_when_enabled() {
         Filter::DropShadow {
             offset_x: 0.0,
             offset_y: 8.0,
-            radius: 2.0,
+            std_dev: 2.0,
             brush: Brush::Solid(Color::BLACK),
         },
         Region::rect(Rect::new(0.0, 0.0, 32.0, 32.0), Radius::all(0.0)),
@@ -1073,7 +1073,7 @@ fn filter_wgpu_drop_shadow_samples_linear_gradient_brush_when_enabled() {
         Filter::DropShadow {
             offset_x: 0.0,
             offset_y: 16.0,
-            radius: 0.0,
+            std_dev: 0.0,
             brush: Brush::from_gradient(&shadow),
         },
         Region::rect(Rect::new(0.0, 0.0, 32.0, 48.0), Radius::all(0.0)),
@@ -1132,7 +1132,7 @@ fn filter_wgpu_drop_shadow_samples_pattern_brush_when_enabled() {
         Filter::DropShadow {
             offset_x: 0.0,
             offset_y: 16.0,
-            radius: 0.0,
+            std_dev: 0.0,
             brush: pattern,
         },
         Region::rect(Rect::new(0.0, 0.0, 16.0, 48.0), Radius::all(0.0)),
@@ -1351,7 +1351,7 @@ fn filter_wgpu_drop_shadow_samples_radial_gradient_brush_when_enabled() {
         Filter::DropShadow {
             offset_x: 0.0,
             offset_y: 16.0,
-            radius: 0.0,
+            std_dev: 0.0,
             brush: Brush::from_gradient(&shadow),
         },
         Region::rect(Rect::new(0.0, 0.0, 32.0, 48.0), Radius::all(0.0)),
