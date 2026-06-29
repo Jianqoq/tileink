@@ -378,7 +378,25 @@ impl SvgBuilder {
         }
 
         let brush = self.paint_to_brush(stroke.paint(), stroke.opacity().get(), path_transform)?;
-        let stroke_style = stroke_to_kurbo(stroke)?;
+        if stroke.linejoin() == usvg::LineJoin::MiterClip {
+            // kurbo does not expose SVG 2 miter-clip joins. Build the SVG stroke outline with
+            // tiny-skia/usvg semantics, then render that outline through the normal path pipeline.
+            if let Some(outline) = path
+                .data()
+                .stroke(&stroke.to_tiny_skia(), resolution_scale(transform))
+            {
+                scene.push_path(
+                    tiny_path_to_bez(&outline),
+                    brush,
+                    transform,
+                    FillRule::NonZero,
+                    self.options.tolerance,
+                );
+            }
+            return Ok(());
+        }
+
+        let stroke_style = stroke_to_kurbo(stroke);
         scene.push_stroke(
             data.clone(),
             stroke_style,
@@ -1692,6 +1710,16 @@ fn svg_image_raster_size(transform: Affine, size: usvg::Size) -> (u32, u32) {
     )
 }
 
+fn resolution_scale(transform: Affine) -> f32 {
+    let [xx, yx, xy, yy, _, _] = transform.as_coeffs();
+    let scale = xx.hypot(yx).max(xy.hypot(yy));
+    if scale.is_finite() && scale > 0.0 {
+        scale as f32
+    } else {
+        1.0
+    }
+}
+
 fn image_sampling(rendering: usvg::ImageRendering) -> PatternSampling {
     // SVG raster images are smooth by default; explicit speed/crisp/pixelated hints keep hard edges.
     match rendering {
@@ -1766,17 +1794,13 @@ fn gradient_stops(stops: &[usvg::Stop], opacity: f32) -> Vec<ColorStop> {
         .collect()
 }
 
-fn stroke_to_kurbo(stroke: &usvg::Stroke) -> Result<Stroke, SvgError> {
-    if stroke.linejoin() == usvg::LineJoin::MiterClip {
-        return Err(SvgError::unsupported("stroke-linejoin=miter-clip"));
-    }
-
+fn stroke_to_kurbo(stroke: &usvg::Stroke) -> Stroke {
     let mut out = Stroke::new(stroke.width().get() as f64)
         .with_join(match stroke.linejoin() {
             usvg::LineJoin::Miter => Join::Miter,
             usvg::LineJoin::Round => Join::Round,
             usvg::LineJoin::Bevel => Join::Bevel,
-            usvg::LineJoin::MiterClip => unreachable!(),
+            usvg::LineJoin::MiterClip => unreachable!("handled by tiny-skia stroke outline"),
         })
         .with_miter_limit(stroke.miterlimit().get() as f64)
         .with_caps(match stroke.linecap() {
@@ -1791,7 +1815,7 @@ fn stroke_to_kurbo(stroke: &usvg::Stroke) -> Result<Stroke, SvgError> {
             dasharray.iter().map(|dash| *dash as f64),
         );
     }
-    Ok(out)
+    out
 }
 
 fn spread_method(method: SpreadMethod) -> Extend {
@@ -2036,6 +2060,33 @@ mod tests {
 
         assert_eq!(renderer.image().rgba8_at(12, 12), [255, 0, 0, 255]);
         assert_eq!(renderer.image().rgba8_at(4, 12), [0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn push_svg_renders_stroke_linejoin_miter_clip() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32">
+                <path d="M4 26 L16 6 L28 26" fill="none" stroke="#008000"
+                      stroke-width="8" stroke-linejoin="miter-clip" stroke-miterlimit="1.5"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+        let bevel = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32">
+                <path d="M4 26 L16 6 L28 26" fill="none" stroke="#008000"
+                      stroke-width="8" stroke-linejoin="bevel" stroke-miterlimit="1.5"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        let image = renderer.image();
+        let covered = (0..image.height)
+            .flat_map(|y| (0..image.width).map(move |x| image.rgba8_at(x, y)))
+            .filter(|px| px[1] > 0 && px[3] > 0)
+            .count();
+        assert!(covered > 100, "covered pixels: {covered}");
+        assert_ne!(image.pixels, bevel.image().pixels);
+        assert_eq!(renderer.image().rgba8_at(16, 0), [0, 0, 0, 0]);
     }
 
     #[test]
@@ -3277,8 +3328,13 @@ mod tests {
     fn push_svg_unsupported_features_do_not_modify_scene() {
         let tree = parse(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
-                <path d="M2 2 L14 2 L2 14" fill="none" stroke="#ff0000"
-                      stroke-width="3" stroke-linejoin="miter-clip"/>
+                <defs>
+                    <linearGradient id="g">
+                        <stop offset="0" stop-color="#ff0000"/>
+                        <stop offset="1" stop-color="#00ff00"/>
+                    </linearGradient>
+                </defs>
+                <rect width="16" height="16" fill="url(#g)"/>
             </svg>"##,
         );
         let mut scene = Scene::new(16, 16);
@@ -3288,8 +3344,16 @@ mod tests {
             FillRule::NonZero,
         );
 
-        let err = scene.push_svg(&tree).unwrap_err();
-        assert_eq!(err.feature(), "stroke-linejoin=miter-clip");
+        let err = scene
+            .push_svg_with_options(
+                &tree,
+                SvgOptions {
+                    transform: Affine::scale_non_uniform(0.0, 1.0),
+                    ..SvgOptions::default()
+                },
+            )
+            .unwrap_err();
+        assert_eq!(err.feature(), "non-invertible gradientTransform");
 
         let mut renderer = CpuRenderer::new(16, 16, Color::TRANSPARENT);
         renderer.render(&scene);
