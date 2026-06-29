@@ -2,7 +2,6 @@ use ::cubecl::prelude::Runtime;
 use peniko::{BlendMode, Compose, Mix, kurbo::Shape};
 
 use crate::{
-    cpu::line_scanned_tile_count,
     scene::Scene,
     shared::{
         bounds::Bounds,

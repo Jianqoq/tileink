@@ -12,6 +12,7 @@ pub(crate) mod offscreen;
 pub(crate) mod path;
 pub(crate) mod path_flatten;
 pub(crate) mod pixel;
+pub(crate) mod scan_line;
 pub(crate) mod sdf;
 pub(crate) mod tile_ptcl;
 pub(crate) mod tile_seg_range;

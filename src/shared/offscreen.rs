@@ -162,12 +162,11 @@ pub(crate) fn local_offscreen_scene(
     plan: &ExecPlan,
     children: &[ExecOp],
     bounds: Bounds,
-    line_scanned_tile_count: impl Fn(Line, TileBbox, (u32, u32)) -> u32,
 ) -> LocalOffscreenScene {
     let local = LocalSpace::new(bounds);
     let local_children = translate_exec_ops_to_local(children, local);
     LocalOffscreenScene {
-        scene: translated_scene_for_bounds(scene, local, line_scanned_tile_count),
+        scene: translated_scene_for_bounds(scene, local),
         plan: ExecPlan {
             ops: local_children.clone(),
             layer_stack_data: plan.layer_stack_data.clone(),
@@ -180,11 +179,7 @@ pub(crate) fn local_filter(filter: &Filter, bounds: Bounds) -> Filter {
     translate_filter_to_local(filter, LocalSpace::new(bounds))
 }
 
-fn translated_scene_for_bounds(
-    scene: &Scene,
-    local: LocalSpace,
-    line_scanned_tile_count: impl Fn(Line, TileBbox, (u32, u32)) -> u32,
-) -> Scene {
+fn translated_scene_for_bounds(scene: &Scene, local: LocalSpace) -> Scene {
     let mut translated = Scene::new(local.surface.width(), local.surface.height());
     translated.lines = scene
         .lines
@@ -204,8 +199,7 @@ fn translated_scene_for_bounds(
             draw
         })
         .collect();
-    translated.bd_records =
-        translated_backdrop_records(scene, &translated, line_scanned_tile_count);
+    translated.bd_records = translated_backdrop_records(scene, &translated);
     translated.path_cnt = scene.path_cnt;
     translated.backdrop_pool_capacity = translated
         .bd_records
@@ -220,11 +214,7 @@ fn translated_scene_for_bounds(
     translated
 }
 
-fn translated_backdrop_records(
-    scene: &Scene,
-    translated: &Scene,
-    line_scanned_tile_count: impl Fn(Line, TileBbox, (u32, u32)) -> u32,
-) -> Vec<BackdropRecord> {
+fn translated_backdrop_records(scene: &Scene, translated: &Scene) -> Vec<BackdropRecord> {
     let mut path_bounds: Vec<Option<PixelBounds>> = vec![None; translated.path_records.len()];
     for draw in &translated.draw_records {
         if let Some(path_id) = draw.path_id
@@ -252,12 +242,7 @@ fn translated_backdrop_records(
                 .unwrap_or_else(|| translated_path_pixel_bounds(translated, path_id));
             let tile_bbox = pixel_bounds.tile_bbox(width_in_tiles, height_in_tiles);
             let data_len = tile_bbox.tile_count();
-            let segment_capacity = translated_path_segment_capacity(
-                translated,
-                path_id,
-                tile_bbox,
-                &line_scanned_tile_count,
-            );
+            let segment_capacity = translated_path_segment_capacity(translated, path_id, tile_bbox);
             let translated_record = BackdropRecord {
                 path_id: record.path_id,
                 data_offset,
@@ -314,12 +299,7 @@ fn empty_pixel_bounds() -> PixelBounds {
     }
 }
 
-fn translated_path_segment_capacity(
-    scene: &Scene,
-    path_id: usize,
-    tile_bbox: TileBbox,
-    line_scanned_tile_count: &impl Fn(Line, TileBbox, (u32, u32)) -> u32,
-) -> u32 {
+fn translated_path_segment_capacity(scene: &Scene, path_id: usize, tile_bbox: TileBbox) -> u32 {
     let Some(record) = scene.path_records.get(path_id) else {
         return 0;
     };
@@ -328,7 +308,7 @@ fn translated_path_segment_capacity(
     lines
         .iter()
         .map(|line| {
-            line_scanned_tile_count(
+            crate::shared::scan_line::line_scanned_tile_count(
                 *line,
                 tile_bbox,
                 (scene.width_in_tiles(), scene.height_in_tiles()),

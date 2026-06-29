@@ -231,15 +231,9 @@ impl FilterPathUpload {
 
         let start = self.p0x.len() as u32;
         let path = *transform * path;
-        let mut tile_count = 0;
         let mut lines = Vec::new();
-        PathFlatten::new(
-            &path,
-            *tolerance as f32,
-            self.range_starts.len() as u32,
-            &mut tile_count,
-        )
-        .flatten(&mut lines);
+        PathFlatten::new(&path, *tolerance as f32, self.range_starts.len() as u32)
+            .flatten(&mut lines);
         self.p0x.extend(
             lines
                 .iter()

@@ -203,13 +203,7 @@ impl<R: Runtime> Renderer<R> {
         };
 
         filter_cursors.advance_filter_layer(layer.sample_region, layer.children, layer.filter);
-        let local = local_offscreen_scene(
-            scene,
-            plan,
-            layer.children,
-            filter_bounds.surface,
-            line_scanned_tile_count,
-        );
+        let local = local_offscreen_scene(scene, plan, layer.children, filter_bounds.surface);
         let local_filter = local_filter(layer.filter, filter_bounds.surface);
         let local_bounds = Bounds::canvas(
             filter_bounds.surface.width(),

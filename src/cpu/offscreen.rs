@@ -1,7 +1,7 @@
 use peniko::Color;
 
 use crate::{
-    cpu::{buffers::RasterBuffers, pipelines::scan::line_scanned_tile_count},
+    cpu::buffers::RasterBuffers,
     shared::{
         bounds::Bounds,
         execution::{ExecOp, ExecPlan},
@@ -26,7 +26,7 @@ impl OffscreenSurface {
         children: &[ExecOp],
         bounds: Bounds,
     ) -> Self {
-        let local = local_offscreen_scene(scene, plan, children, bounds, line_scanned_tile_count);
+        let local = local_offscreen_scene(scene, plan, children, bounds);
         Self {
             bounds,
             image: Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT),

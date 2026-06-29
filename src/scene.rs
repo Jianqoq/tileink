@@ -23,6 +23,7 @@ use crate::shared::{
     line::Line,
     path::PathRecord,
     path_flatten::PathFlatten,
+    scan_line::line_scanned_tile_count,
     sdf::{
         Sdf,
         circle::{Circle as SdfCircle, CircleStroke as SdfCircleStroke},
@@ -716,10 +717,8 @@ impl Scene {
         let line_start = self.lines.len() as u32;
         let path_id = self.path_cnt;
         self.path_cnt += 1;
-        let mut local_tile_cnt = 0;
         let path = Self::transform_path(path, transform);
-        PathFlatten::new(&path, tolerance as f32, path_id, &mut local_tile_cnt)
-            .flatten(&mut self.lines);
+        PathFlatten::new(&path, tolerance as f32, path_id).flatten(&mut self.lines);
         let line_count = self.lines.len() as u32 - line_start;
         self.path_records.push(PathRecord {
             path_id,
@@ -740,6 +739,8 @@ impl Scene {
         let tile_stride = tile_bbox.tile_stride();
         let tile_height = tile_bbox.tile_height();
         let backdrop_len = tile_stride * tile_height;
+        let local_tile_cnt =
+            self.segment_capacity_for_path_lines(line_start, line_count, tile_bbox);
 
         let backdrop_offset = self.backdrop_pool_capacity;
         self.backdrop_pool_capacity += backdrop_len;
@@ -785,10 +786,8 @@ impl Scene {
         let line_start = self.lines.len() as u32;
         let path_id = self.path_cnt;
         self.path_cnt += 1;
-        let mut local_tile_cnt = 0;
         let path = Self::transform_path(path, transform);
-        PathFlatten::new(&path, tolerance as f32, path_id, &mut local_tile_cnt)
-            .flatten(&mut self.lines);
+        PathFlatten::new(&path, tolerance as f32, path_id).flatten(&mut self.lines);
         let line_count = self.lines.len() as u32 - line_start;
         self.path_records.push(PathRecord {
             path_id,
@@ -802,6 +801,8 @@ impl Scene {
         let tile_stride = tile_bbox.tile_stride();
         let tile_height = tile_bbox.tile_height();
         let backdrop_len = tile_stride * tile_height;
+        let local_tile_cnt =
+            self.segment_capacity_for_path_lines(line_start, line_count, tile_bbox);
 
         let backdrop_offset = self.backdrop_pool_capacity;
         self.backdrop_pool_capacity += backdrop_len;
@@ -884,6 +885,20 @@ impl Scene {
 
     pub(crate) fn height_in_tiles(&self) -> u32 {
         self.height.div_ceil(crate::TILE_SIZE)
+    }
+
+    fn segment_capacity_for_path_lines(
+        &self,
+        line_start: u32,
+        line_count: u32,
+        tile_bbox: crate::shared::bounds::TileBbox,
+    ) -> u32 {
+        let tiles_size = (self.width_in_tiles(), self.height_in_tiles());
+        self.lines[line_start as usize..(line_start + line_count) as usize]
+            .iter()
+            .fold(0u32, |capacity, &line| {
+                capacity.saturating_add(line_scanned_tile_count(line, tile_bbox, tiles_size))
+            })
     }
 
     pub(crate) fn compile(&self, list_id: CommandListId) -> ExecPlan {
@@ -1799,6 +1814,46 @@ mod tests {
                 point[0] >= 8.0 && point[0] <= 18.0 && point[1] >= 4.0 && point[1] <= 14.0
             })
         }));
+    }
+
+    #[test]
+    fn push_path_reserves_segment_capacity_from_scan_tile_count() {
+        let mut path = BezPath::new();
+        path.move_to((8.0, 8.0));
+        path.line_to((9.0, 12.0));
+
+        let mut scene = test_scene();
+        scene.push_path(
+            path,
+            Brush::Solid(rgb(255, 0, 0)),
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.25,
+        );
+
+        let record = scene.bd_records[0];
+        let tile_bbox = crate::shared::bounds::TileBbox {
+            x0: record.tile_x0,
+            y0: record.tile_y0,
+            x1: record.tile_x1,
+            y1: record.tile_y1,
+        };
+        let expected = scene
+            .lines
+            .iter()
+            .map(|&line| {
+                line_scanned_tile_count(
+                    line,
+                    tile_bbox,
+                    (scene.width_in_tiles(), scene.height_in_tiles()),
+                )
+            })
+            .sum::<u32>();
+
+        assert_eq!(record.segment_capacity, expected);
+        assert_eq!(scene.tile_cnt, expected);
+        assert!(expected > 0);
+        assert!(expected < 20);
     }
 
     #[test]

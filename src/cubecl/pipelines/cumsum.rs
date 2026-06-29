@@ -33,6 +33,12 @@ impl CumsumPipeline {
         );
 
         let row_count = lengths.cumsum_row_count as u32;
+        // If every backdrop row fits in one chunk, the per-chunk prefix above is
+        // already the full row prefix. There is no inter-chunk carry to compute.
+        if row_count == chunk_count {
+            return;
+        }
+
         if row_count > 0 {
             cumsum_chunk_offsets::launch::<R>(
                 client,
