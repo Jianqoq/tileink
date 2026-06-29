@@ -2,10 +2,12 @@ use ::cubecl::prelude::Runtime;
 use peniko::Color;
 
 mod executor;
+mod filter_cursors;
+mod filter_resources;
 mod resources;
 mod scratch;
 mod target;
-use executor::{
+use filter_resources::{
     FilterConvolveBuffers, FilterConvolveUpload, FilterPathBuffers, FilterPathUpload,
     FilterTransferBuffers, FilterTransferUpload, FilterTurbulenceBuffers, FilterTurbulenceUpload,
 };
