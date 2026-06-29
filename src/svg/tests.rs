@@ -1,4 +1,3 @@
-
 use peniko::Color;
 
 use super::*;
