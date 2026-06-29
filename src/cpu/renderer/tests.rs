@@ -88,6 +88,39 @@ fn render_with_text_rasterizes_emoji_or_fallback_glyphs() {
 }
 
 #[test]
+fn render_path_text_rasterizes_vector_outlines_without_text_atlas() {
+    let mut text_context = TextContext::new();
+    let layout = text_context.layout(TextLayoutOptions::new("Path", 40.0));
+    if layout.is_empty() {
+        return;
+    }
+
+    let mut scene = Scene::new(160, 72);
+    scene.push_text_layout_as_path(
+        &mut text_context,
+        &layout,
+        Point::new(8.0, 52.0),
+        Color::BLACK,
+        Affine::IDENTITY,
+        0.1,
+    );
+
+    let mut renderer = Renderer::new(160, 72, Color::WHITE);
+    renderer.render(&scene);
+
+    let has_text_pixel = (0..72).any(|y| {
+        (0..160).any(|x| {
+            let [r, g, b, a] = renderer.image().rgba8_at(x, y);
+            a == 255 && (r < 250 || g < 250 || b < 250)
+        })
+    });
+    assert!(
+        has_text_pixel,
+        "expected outline text to darken at least one pixel"
+    );
+}
+
+#[test]
 fn rounded_rect_top_right_keeps_inside_filled() {
     let renderer = render_single_rounded_rect();
 

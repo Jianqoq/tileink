@@ -191,6 +191,21 @@ impl<'a> CoarseCpuPrepared<'a> {
                         }));
                     }
                 },
+                DrawTag::PathGlyph => {
+                    if let DrawTileCoverage::Path {
+                        draw,
+                        backdrop,
+                        segment_range,
+                    } = coverage
+                    {
+                        output.ptcls.push(TilePtcl::PathGlyph(TileFillPtcl {
+                            backdrop,
+                            fill_rule: draw.fill_rule,
+                            segment_range,
+                            brush: draw.brush.clone(),
+                        }));
+                    }
+                }
                 DrawTag::Clip => {
                     if let DrawTileCoverage::Path {
                         draw,

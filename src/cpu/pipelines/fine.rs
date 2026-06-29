@@ -2,8 +2,8 @@ use crate::{
     cpu::computes::fine::{
         build_tile_alpha, combine_alpha, composite_blend_group_tile,
         composite_color_tile_buffer_into, composite_opacity_group_tile,
-        rasterize_glyphs_tile_buffer_into, rasterize_sdf_tile_buffer_into,
-        rasterize_tile_buffer_into,
+        rasterize_glyphs_tile_buffer_into, rasterize_path_glyph_tile_buffer_into,
+        rasterize_sdf_tile_buffer_into, rasterize_tile_buffer_into,
     },
     shared::{
         bounds::{Bounds, PixelBounds},
@@ -131,6 +131,20 @@ fn render_tile(
                 let segments = &resources.segments
                     [fill.segment_range.start as usize..fill.segment_range.end as usize];
                 rasterize_tile_buffer_into(
+                    tile,
+                    tile_x,
+                    tile_y,
+                    segments,
+                    fill.backdrop,
+                    fill.fill_rule,
+                    &fill.brush,
+                    &clip_mask,
+                );
+            }
+            TilePtcl::PathGlyph(fill) => {
+                let segments = &resources.segments
+                    [fill.segment_range.start as usize..fill.segment_range.end as usize];
+                rasterize_path_glyph_tile_buffer_into(
                     tile,
                     tile_x,
                     tile_y,

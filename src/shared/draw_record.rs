@@ -8,6 +8,8 @@ use crate::shared::{
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DrawTag {
     Brush,
+    /// Vector glyph outlines: path geometry with text coverage compositing.
+    PathGlyph,
     Clip,
     Isolate,
     Opacity,

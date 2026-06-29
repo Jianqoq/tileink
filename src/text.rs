@@ -4,13 +4,13 @@ use std::{
 };
 
 use cosmic_text::{
-    Align, Attrs, Buffer, CacheKey, CacheKeyFlags, FontSystem, Metrics, Shaping, SwashContent,
-    SwashImage,
+    Align, Attrs, Buffer, CacheKey, CacheKeyFlags, FontSystem, Metrics, Shaping, SubpixelBin,
+    SwashContent, SwashImage,
 };
-use peniko::kurbo::Point;
+use peniko::kurbo::{BezPath, Point};
 use swash::{
     scale::{Render, ScaleContext, Source, StrikeWith},
-    zeno::{Angle, Format, Transform, Vector},
+    zeno::{Angle, Command as SwashPathCommand, Format, PathData, Transform, Vector},
 };
 
 use crate::shared::bounds::Bounds;
@@ -65,6 +65,7 @@ pub struct TextContext {
     font_system: FontSystem,
     scale_context: ScaleContext,
     image_cache: HashMap<RasterGlyphKey, Option<SwashImage>>,
+    outline_cache: HashMap<CacheKey, Option<BezPath>>,
     raster_options: TextRasterOptions,
 }
 
@@ -74,6 +75,7 @@ impl TextContext {
             font_system: FontSystem::new(),
             scale_context: ScaleContext::new(),
             image_cache: HashMap::new(),
+            outline_cache: HashMap::new(),
             raster_options: TextRasterOptions::default(),
         }
     }
@@ -102,11 +104,16 @@ impl TextContext {
             );
             for run in buffer.layout_runs() {
                 for glyph in run.glyphs {
+                    let outline_origin = Point::new(
+                        (glyph.x + glyph.font_size * glyph.x_offset) as f64,
+                        (run.line_y + glyph.y - glyph.font_size * glyph.y_offset) as f64,
+                    );
                     let physical = glyph.physical((0.0, run.line_y), 1.0);
                     glyphs.push(TextGlyph {
                         cache_key: physical.cache_key,
                         x: physical.x,
                         y: physical.y,
+                        outline_origin,
                     });
                 }
             }
@@ -131,6 +138,39 @@ impl TextContext {
             self.image_cache.insert(key, image);
         }
         self.image_cache.get(&key).and_then(Option::as_ref)
+    }
+
+    /// Builds a vector path for every scalable glyph in `layout`.
+    ///
+    /// The layout still comes from cosmic-text, so shaping, font fallback, and
+    /// ligatures are preserved. Glyphs that exist only as bitmap strikes have no
+    /// outline and are skipped; render those through
+    /// [`crate::Scene::push_text_layout`] instead of outline text.
+    pub fn layout_outline_path(&mut self, layout: &TextLayout, origin: Point) -> BezPath {
+        let mut path = BezPath::new();
+        for glyph in layout.glyphs() {
+            let Some(outline) = self.glyph_outline_path(glyph.cache_key) else {
+                continue;
+            };
+            append_outline_path(
+                &mut path,
+                outline,
+                Point::new(
+                    origin.x + glyph.outline_origin.x,
+                    origin.y + glyph.outline_origin.y,
+                ),
+            );
+        }
+        path
+    }
+
+    pub(crate) fn glyph_outline_path(&mut self, cache_key: CacheKey) -> Option<&BezPath> {
+        let key = outline_cache_key(cache_key);
+        if !self.outline_cache.contains_key(&key) {
+            let outline = outline_glyph_path(&mut self.font_system, &mut self.scale_context, key);
+            self.outline_cache.insert(key, outline);
+        }
+        self.outline_cache.get(&key).and_then(Option::as_ref)
     }
 
     fn raster_bounds(&mut self, glyphs: &[TextGlyph]) -> Bounds {
@@ -200,12 +240,20 @@ struct RasterGlyphKey {
     subpixel_mode: TextSubpixelMode,
 }
 
-fn raster_glyph_image(
+fn outline_cache_key(cache_key: CacheKey) -> CacheKey {
+    CacheKey {
+        x_bin: SubpixelBin::Zero,
+        y_bin: SubpixelBin::Zero,
+        ..cache_key
+    }
+}
+
+fn with_glyph_scaler<R>(
     font_system: &mut FontSystem,
     context: &mut ScaleContext,
     cache_key: CacheKey,
-    subpixel_mode: TextSubpixelMode,
-) -> Option<SwashImage> {
+    f: impl FnOnce(&mut swash::scale::Scaler<'_>) -> R,
+) -> Option<R> {
     let font = font_system.get_font(cache_key.font_id, cache_key.font_weight)?;
 
     let swash_font = font.as_swash();
@@ -223,7 +271,22 @@ fn raster_glyph_image(
         )]));
     }
     let mut scaler = scaler.build();
+    Some(f(&mut scaler))
+}
 
+fn fake_italic_transform(cache_key: CacheKey) -> Option<Transform> {
+    cache_key
+        .flags
+        .contains(CacheKeyFlags::FAKE_ITALIC)
+        .then(|| Transform::skew(Angle::from_degrees(14.0), Angle::from_degrees(0.0)))
+}
+
+fn raster_glyph_image(
+    font_system: &mut FontSystem,
+    context: &mut ScaleContext,
+    cache_key: CacheKey,
+    subpixel_mode: TextSubpixelMode,
+) -> Option<SwashImage> {
     let offset = if cache_key.flags.contains(CacheKeyFlags::PIXEL_FONT) {
         Vector::new(
             cache_key.x_bin.as_float().round(),
@@ -233,26 +296,76 @@ fn raster_glyph_image(
         Vector::new(cache_key.x_bin.as_float(), cache_key.y_bin.as_float())
     };
 
-    Render::new(&[
-        Source::ColorOutline(0),
-        Source::ColorBitmap(StrikeWith::BestFit),
-        Source::Outline,
-    ])
-    .format(match subpixel_mode {
-        TextSubpixelMode::None => Format::Alpha,
-        TextSubpixelMode::Rgb => Format::Subpixel,
-        TextSubpixelMode::Bgr => Format::subpixel_bgra(),
+    with_glyph_scaler(font_system, context, cache_key, |scaler| {
+        Render::new(&[
+            Source::ColorOutline(0),
+            Source::ColorBitmap(StrikeWith::BestFit),
+            Source::Outline,
+        ])
+        .format(match subpixel_mode {
+            TextSubpixelMode::None => Format::Alpha,
+            TextSubpixelMode::Rgb => Format::Subpixel,
+            TextSubpixelMode::Bgr => Format::subpixel_bgra(),
+        })
+        .offset(offset)
+        .transform(fake_italic_transform(cache_key))
+        .render(scaler, cache_key.glyph_id)
     })
-    .offset(offset)
-    .transform(if cache_key.flags.contains(CacheKeyFlags::FAKE_ITALIC) {
-        Some(Transform::skew(
-            Angle::from_degrees(14.0),
-            Angle::from_degrees(0.0),
-        ))
-    } else {
-        None
+    .flatten()
+}
+
+fn outline_glyph_path(
+    font_system: &mut FontSystem,
+    context: &mut ScaleContext,
+    cache_key: CacheKey,
+) -> Option<BezPath> {
+    with_glyph_scaler(font_system, context, cache_key, |scaler| {
+        let mut outline = scaler
+            .scale_outline(cache_key.glyph_id)
+            .or_else(|| scaler.scale_color_outline(cache_key.glyph_id))?;
+        if let Some(transform) = fake_italic_transform(cache_key) {
+            outline.transform(&transform);
+        }
+
+        let mut path = BezPath::new();
+        for command in outline.path().commands() {
+            push_swash_command(&mut path, command, Point::ORIGIN);
+        }
+        Some(path)
     })
-    .render(&mut scaler, cache_key.glyph_id)
+    .flatten()
+}
+
+fn append_outline_path(path: &mut BezPath, outline: &BezPath, origin: Point) {
+    for element in outline.elements() {
+        match *element {
+            peniko::kurbo::PathEl::MoveTo(p) => path.move_to((origin.x + p.x, origin.y + p.y)),
+            peniko::kurbo::PathEl::LineTo(p) => path.line_to((origin.x + p.x, origin.y + p.y)),
+            peniko::kurbo::PathEl::QuadTo(p0, p1) => path.quad_to(
+                (origin.x + p0.x, origin.y + p0.y),
+                (origin.x + p1.x, origin.y + p1.y),
+            ),
+            peniko::kurbo::PathEl::CurveTo(p0, p1, p2) => path.curve_to(
+                (origin.x + p0.x, origin.y + p0.y),
+                (origin.x + p1.x, origin.y + p1.y),
+                (origin.x + p2.x, origin.y + p2.y),
+            ),
+            peniko::kurbo::PathEl::ClosePath => path.close_path(),
+        }
+    }
+}
+
+fn push_swash_command(path: &mut BezPath, command: SwashPathCommand, origin: Point) {
+    let p = |p: Vector| (origin.x + p.x as f64, origin.y - p.y as f64);
+    match command {
+        SwashPathCommand::MoveTo(to) => path.move_to(p(to)),
+        SwashPathCommand::LineTo(to) => path.line_to(p(to)),
+        SwashPathCommand::QuadTo(control, to) => path.quad_to(p(control), p(to)),
+        SwashPathCommand::CurveTo(control0, control1, to) => {
+            path.curve_to(p(control0), p(control1), p(to));
+        }
+        SwashPathCommand::Close => path.close_path(),
+    }
 }
 
 impl Default for TextContext {
@@ -286,6 +399,7 @@ pub(crate) struct TextGlyph {
     cache_key: CacheKey,
     x: i32,
     y: i32,
+    outline_origin: Point,
 }
 
 impl TextGlyph {
@@ -667,6 +781,12 @@ fn glyph_image_bounds(
 mod tests {
     use super::*;
     use cosmic_text::Weight;
+    use peniko::{
+        Color,
+        kurbo::{Affine, Shape},
+    };
+
+    use crate::{Scene, shared::draw_record::DrawTag};
 
     #[test]
     fn layout_produces_positioned_glyphs_when_a_font_is_available() {
@@ -710,6 +830,25 @@ mod tests {
     }
 
     #[test]
+    fn layout_options_pass_hinting_flags_to_glyph_keys() {
+        let mut context = TextContext::new();
+        let layout = context.layout(
+            TextLayoutOptions::new("A", 20.0)
+                .with_attrs(Attrs::new().cache_key_flags(CacheKeyFlags::DISABLE_HINTING)),
+        );
+        if layout.glyphs.is_empty() {
+            return;
+        }
+
+        assert!(
+            layout.glyphs[0]
+                .cache_key
+                .flags
+                .contains(CacheKeyFlags::DISABLE_HINTING)
+        );
+    }
+
+    #[test]
     fn layout_options_pass_alignment_to_cosmic_buffer() {
         let mut context = TextContext::new();
         let left = context.layout(TextLayoutOptions::new("A", 20.0).with_size(Some(200.0), None));
@@ -734,6 +873,46 @@ mod tests {
         }
 
         assert!(!layout.bounds().is_empty());
+    }
+
+    #[test]
+    fn layout_outline_path_extracts_scalable_glyph_paths() {
+        let mut context = TextContext::new();
+        let layout = context.layout(TextLayoutOptions::new("Outline", 42.0));
+        if layout.is_empty() {
+            return;
+        }
+
+        let path = context.layout_outline_path(&layout, Point::new(8.0, 48.0));
+
+        assert!(!path.is_empty());
+        assert!(path.bounding_box().width() > 1.0);
+        assert!(path.bounding_box().height() > 1.0);
+    }
+
+    #[test]
+    fn scene_path_text_uses_path_draws_not_glyph_atlas() {
+        let mut context = TextContext::new();
+        let layout = context.layout(TextLayoutOptions::new("Path", 36.0));
+        if layout.is_empty() {
+            return;
+        }
+
+        let mut scene = Scene::new(180, 80);
+        scene.push_text_layout_as_path(
+            &mut context,
+            &layout,
+            Point::new(8.0, 52.0),
+            Color::BLACK,
+            Affine::IDENTITY,
+            0.1,
+        );
+
+        assert!(!scene.path_records.is_empty());
+        assert!(scene.text_glyphs.is_empty());
+        assert!(scene.text_runs.is_empty());
+        assert!(scene.draw_records.iter().any(|draw| draw.path_id.is_some()));
+        assert_eq!(scene.draw_records[0].tag, DrawTag::PathGlyph);
     }
 
     #[test]

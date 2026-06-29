@@ -18,6 +18,7 @@ pub(crate) const CUBE_DRAW_CLIP: u32 = 1;
 pub(crate) const CUBE_DRAW_OPACITY: u32 = 2;
 pub(crate) const CUBE_DRAW_BLEND: u32 = 3;
 pub(crate) const CUBE_DRAW_ISOLATE: u32 = 4;
+pub(crate) const CUBE_DRAW_PATH_GLYPH: u32 = 5;
 
 pub(crate) const CUBE_LAYER_CLIP: u32 = 0;
 pub(crate) const CUBE_LAYER_OPACITY: u32 = 1;
@@ -34,6 +35,7 @@ pub(crate) const CUBE_PTCL_BEGIN_BLEND: u32 = 7;
 pub(crate) const CUBE_PTCL_END_BLEND: u32 = 8;
 pub(crate) const CUBE_PTCL_SDF: u32 = 9;
 pub(crate) const CUBE_PTCL_GLYPH: u32 = 10;
+pub(crate) const CUBE_PTCL_PATH_GLYPH: u32 = 11;
 
 pub(crate) const CUBE_GLYPH_MASK: u32 = 0;
 pub(crate) const CUBE_GLYPH_COLOR: u32 = 1;
@@ -187,7 +189,10 @@ fn coarse_ptcl_capacity(scene: &Scene, width_in_tiles: u32, height_in_tiles: u32
         .iter()
         .filter(|draw| {
             (draw.path_id.is_some() || draw.sdf.is_some() || draw.glyph_run_id.is_some())
-                && matches!(draw.tag, DrawTag::Brush | DrawTag::Clip)
+                && matches!(
+                    draw.tag,
+                    DrawTag::Brush | DrawTag::PathGlyph | DrawTag::Clip
+                )
         })
         .map(|draw| draw.tile_bbox(width_in_tiles, height_in_tiles).tile_count() as usize)
         .sum::<usize>();

@@ -39,13 +39,21 @@ pub struct TileGlyphPtcl {
 pub enum TilePtcl {
     End,
     Fill(TileFillPtcl),
+    /// Path alpha produced from glyph outlines; fine applies text coverage gamma.
+    PathGlyph(TileFillPtcl),
     Sdf(TileSdfPtcl),
     Glyph(TileGlyphPtcl),
     Color(TileColorPtcl),
     BeginClip(TileFillPtcl),
     EndClip,
-    BeginOpacity { opacity: u8, fill: TileFillPtcl },
+    BeginOpacity {
+        opacity: u8,
+        fill: TileFillPtcl,
+    },
     EndOpacity,
-    BeginBlend { mode: BlendMode, fill: TileFillPtcl },
+    BeginBlend {
+        mode: BlendMode,
+        fill: TileFillPtcl,
+    },
     EndBlend,
 }

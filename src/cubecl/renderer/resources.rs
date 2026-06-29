@@ -18,7 +18,7 @@ use crate::cubecl::{
     buffer::CubeBuffer,
     types::{
         CUBE_DRAW_BLEND, CUBE_DRAW_BRUSH, CUBE_DRAW_CLIP, CUBE_DRAW_ISOLATE, CUBE_DRAW_OPACITY,
-        CUBE_GLYPH_COLOR, CUBE_GLYPH_LINEAR_COLOR, CUBE_GLYPH_LINEAR_MASK,
+        CUBE_DRAW_PATH_GLYPH, CUBE_GLYPH_COLOR, CUBE_GLYPH_LINEAR_COLOR, CUBE_GLYPH_LINEAR_MASK,
         CUBE_GLYPH_LINEAR_SUBPIXEL_MASK, CUBE_GLYPH_MASK, CUBE_GLYPH_SUBPIXEL_MASK,
         CUBE_LAYER_BLEND, CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY, CUBE_SDF_CIRCLE,
         CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_NONE, CUBE_SDF_RECT, CUBE_SDF_RECT_STROKE,
@@ -650,6 +650,7 @@ impl SceneBuffers {
             draws,
             |draw| match draw.tag {
                 DrawTag::Brush => CUBE_DRAW_BRUSH,
+                DrawTag::PathGlyph => CUBE_DRAW_PATH_GLYPH,
                 DrawTag::Clip => CUBE_DRAW_CLIP,
                 DrawTag::Isolate => CUBE_DRAW_ISOLATE,
                 DrawTag::Opacity => CUBE_DRAW_OPACITY,

@@ -117,6 +117,10 @@ name = "cpu_opacity"
 path = "examples/cpu/opacity.rs"
 
 [[example]]
+name = "cpu_path_text"
+path = "examples/cpu/path_text.rs"
+
+[[example]]
 name = "cpu_rounded_rect"
 path = "examples/cpu/rounded_rect.rs"
 
@@ -231,6 +235,10 @@ path = "examples/cubecl/liquid_glass.rs"
 [[example]]
 name = "cubecl_opacity"
 path = "examples/cubecl/opacity.rs"
+
+[[example]]
+name = "cubecl_path_text"
+path = "examples/cubecl/path_text.rs"
 
 [[example]]
 name = "cubecl_rounded_rect"

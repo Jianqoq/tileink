@@ -436,6 +436,9 @@ fn filter_draw_backdrop_ix(
     if draw_tag == CUBE_DRAW_BRUSH {
         valid_draw = true;
     }
+    if draw_tag == CUBE_DRAW_PATH_GLYPH {
+        valid_draw = true;
+    }
     if draw_tag == CUBE_DRAW_CLIP {
         valid_draw = true;
     }

@@ -59,6 +59,42 @@ fn render_wgpu_matches_cpu_for_emoji_text_when_enabled() {
 }
 
 #[test]
+fn render_wgpu_matches_cpu_for_path_text_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut text_context = TextContext::new();
+    let layout = text_context.layout(TextLayoutOptions::new("Path text", 40.0));
+    if layout.is_empty() {
+        return;
+    }
+
+    let mut scene = Scene::new(220, 80);
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 220.0, 80.0),
+        Color::WHITE,
+        FillRule::NonZero,
+    );
+    scene.push_text_layout_as_path(
+        &mut text_context,
+        &layout,
+        peniko::kurbo::Point::new(8.0, 56.0),
+        Color::BLACK,
+        Affine::IDENTITY,
+        0.1,
+    );
+
+    let mut cpu = CpuRenderer::new(220, 80, Color::WHITE);
+    cpu.render(&scene);
+
+    let mut wgpu = WgpuRenderer::new_default_device(220, 80, Color::WHITE);
+    wgpu.render(&scene);
+
+    assert_images_close(cpu.image(), &wgpu.image(), 1);
+}
+
+#[test]
 fn render_wgpu_matches_cpu_for_multi_tile_mixed_shapes_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;

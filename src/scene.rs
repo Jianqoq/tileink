@@ -30,7 +30,9 @@ use crate::shared::{
         rect::{Radius, Rect as SdfRect, RectStroke as SdfRectStroke, StrokeWidths},
     },
 };
-use crate::text::{TextLayout, TextRun, layout_bounds_at_origin, scene_glyphs_at_origin};
+use crate::text::{
+    TextContext, TextLayout, TextRun, layout_bounds_at_origin, scene_glyphs_at_origin,
+};
 
 pub struct Scene {
     pub(crate) lines: Vec<Line>,
@@ -48,6 +50,11 @@ pub struct Scene {
     pub(crate) tile_cnt: u32,
     pub(crate) width: u32,
     pub(crate) height: u32,
+}
+
+struct PathPushOptions {
+    bounds_override: Option<Bounds>,
+    tag: DrawTag,
 }
 
 impl Scene {
@@ -746,6 +753,44 @@ impl Scene {
             .push(Command::Draw(draw_ix));
     }
 
+    /// Adds a laid-out text run as vector outlines.
+    ///
+    /// Cosmic-text still owns shaping, fallback, and ligatures; this method asks
+    /// `text_context` for each scalable swash outline and appends the outlines as
+    /// path geometry tagged with text compositing semantics. Glyphs backed only
+    /// by bitmap strikes do not have a vector outline, so keep
+    /// [`push_text_layout`](Self::push_text_layout) for small hinted text and
+    /// bitmap/color emoji.
+    pub fn push_text_layout_as_path(
+        &mut self,
+        text_context: &mut TextContext,
+        layout: &TextLayout,
+        origin: Point,
+        brush: impl Into<Brush>,
+        transform: Affine,
+        tolerance: f64,
+    ) {
+        if layout.glyphs().is_empty() {
+            return;
+        }
+
+        let path = text_context.layout_outline_path(layout, origin);
+        if path.is_empty() {
+            return;
+        }
+        self.push_path_inner_with_tag(
+            path,
+            brush,
+            transform,
+            FillRule::NonZero,
+            tolerance,
+            PathPushOptions {
+                bounds_override: None,
+                tag: DrawTag::PathGlyph,
+            },
+        );
+    }
+
     fn rounded_rect_path(rect: Rect, radius: Radius, tolerance: f64) -> BezPath {
         if radius.is_zero() {
             rect.to_path(tolerance)
@@ -793,6 +838,28 @@ impl Scene {
         tolerance: f64,
         bounds_override: Option<Bounds>,
     ) -> usize {
+        self.push_path_inner_with_tag(
+            path,
+            brush,
+            transform,
+            rule,
+            tolerance,
+            PathPushOptions {
+                bounds_override,
+                tag: DrawTag::Brush,
+            },
+        )
+    }
+
+    fn push_path_inner_with_tag(
+        &mut self,
+        path: BezPath,
+        brush: impl Into<Brush>,
+        transform: Affine,
+        rule: FillRule,
+        tolerance: f64,
+        options: PathPushOptions,
+    ) -> usize {
         self.ensure_command_root();
         let line_start = self.lines.len() as u32;
         let path_id = self.path_cnt;
@@ -806,7 +873,7 @@ impl Scene {
             line_start,
             _pad: 0,
         });
-        let pixel_bounds = match bounds_override {
+        let pixel_bounds = match options.bounds_override {
             Some(bounds) => PixelBounds {
                 x0: bounds.x0,
                 y0: bounds.y0,
@@ -832,7 +899,7 @@ impl Scene {
             path_id: Some(path_id),
             glyph_run_id: None,
             sdf: None,
-            tag: DrawTag::Brush,
+            tag: options.tag,
             brush: brush.into(),
             fill_rule: rule,
             pixel_bounds,

@@ -197,6 +197,39 @@ pub(crate) fn rasterize_tile_buffer_into(
     brush: &Brush,
     clip_mask: &[u8; 256],
 ) {
+    rasterize_path_tile_buffer_into(
+        tile, tile_x, tile_y, segments, backdrop, fill_rule, brush, clip_mask, false,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn rasterize_path_glyph_tile_buffer_into(
+    tile: &mut TileBuffer,
+    tile_x: u32,
+    tile_y: u32,
+    segments: &[LineSegment],
+    backdrop: i32,
+    fill_rule: FillRule,
+    brush: &Brush,
+    clip_mask: &[u8; 256],
+) {
+    rasterize_path_tile_buffer_into(
+        tile, tile_x, tile_y, segments, backdrop, fill_rule, brush, clip_mask, true,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn rasterize_path_tile_buffer_into(
+    tile: &mut TileBuffer,
+    tile_x: u32,
+    tile_y: u32,
+    segments: &[LineSegment],
+    backdrop: i32,
+    fill_rule: FillRule,
+    brush: &Brush,
+    clip_mask: &[u8; 256],
+    linear_text_coverage: bool,
+) {
     let base_x = tile_x * TILE_SIZE;
     let base_y = tile_y * TILE_SIZE;
     let tile_alpha = build_tile_alpha(segments, backdrop, fill_rule);
@@ -208,11 +241,12 @@ pub(crate) fn rasterize_tile_buffer_into(
             if alpha == 0 {
                 continue;
             }
-            let src = scale_premul_u8(
-                brush.sample((base_x + x as u32) as f32 + 0.5, (base_y + y) as f32 + 0.5),
-                alpha,
-            );
-            tile[ix] = src_over_premul_u8(tile[ix], src);
+            let color = brush.sample((base_x + x as u32) as f32 + 0.5, (base_y + y) as f32 + 0.5);
+            tile[ix] = if linear_text_coverage {
+                src_over_mask_linear_auto_u8(tile[ix], color, alpha)
+            } else {
+                src_over_premul_u8(tile[ix], scale_premul_u8(color, alpha))
+            };
         }
     }
 }
@@ -439,7 +473,8 @@ mod tests {
 
     use super::{
         build_tile_alpha, composite_color_tile_buffer_into, pixel_coverage,
-        rasterize_glyphs_tile_buffer_into,
+        rasterize_glyphs_tile_buffer_into, rasterize_path_glyph_tile_buffer_into,
+        rasterize_tile_buffer_into,
     };
     use crate::{
         shared::{
@@ -447,7 +482,7 @@ mod tests {
             fill::FillRule,
             image::{rgba8_pack, unpack_rgba8},
             line_seg::LineSegment,
-            pixel::{TileBuffer, premul_f32_to_u32},
+            pixel::{TileBuffer, premul_f32_to_u32, src_over_mask_linear_auto_u8},
         },
         text::{
             PreparedGlyph, PreparedGlyphContent, PreparedGlyphImage, PreparedTextData,
@@ -548,6 +583,46 @@ mod tests {
         composite_color_tile_buffer_into(&mut tile, color, &[255; 256]);
 
         assert_eq!(tile[0], rgba8_pack([57, 153, 109, 255]));
+    }
+
+    #[test]
+    fn path_glyph_rasterization_uses_text_coverage_compositing() {
+        let clip_mask = [128; 256];
+        let mut normal_path = [rgba8_pack([255, 255, 255, 255]); 256];
+        let mut path_glyph = normal_path;
+        let brush = Brush::Solid(Color::BLACK);
+
+        rasterize_tile_buffer_into(
+            &mut normal_path,
+            0,
+            0,
+            &[],
+            1,
+            FillRule::NonZero,
+            &brush,
+            &clip_mask,
+        );
+        rasterize_path_glyph_tile_buffer_into(
+            &mut path_glyph,
+            0,
+            0,
+            &[],
+            1,
+            FillRule::NonZero,
+            &brush,
+            &clip_mask,
+        );
+
+        let normal = unpack_rgba8(normal_path[0]);
+        let glyph = unpack_rgba8(path_glyph[0]);
+        let expected = unpack_rgba8(src_over_mask_linear_auto_u8(
+            rgba8_pack([255, 255, 255, 255]),
+            rgba8_pack([0, 0, 0, 255]),
+            128,
+        ));
+        assert_ne!(glyph, normal);
+        assert_eq!(glyph, expected);
+        assert_eq!(glyph[3], 255);
     }
 
     #[test]

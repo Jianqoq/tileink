@@ -14,8 +14,8 @@ use crate::cubecl::{
         CUBE_GLYPH_LINEAR_SUBPIXEL_MASK, CUBE_GLYPH_MASK, CUBE_GLYPH_SUBPIXEL_MASK,
         CUBE_PTCL_BEGIN_BLEND, CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_BEGIN_OPACITY, CUBE_PTCL_COLOR,
         CUBE_PTCL_END, CUBE_PTCL_END_BLEND, CUBE_PTCL_END_CLIP, CUBE_PTCL_END_OPACITY,
-        CUBE_PTCL_FILL, CUBE_PTCL_GLYPH, CUBE_PTCL_SDF, CUBE_SDF_CIRCLE, CUBE_SDF_CIRCLE_STROKE,
-        CUBE_SDF_RECT, CUBE_SDF_RECT_STROKE, CubeBufferLengths,
+        CUBE_PTCL_FILL, CUBE_PTCL_GLYPH, CUBE_PTCL_PATH_GLYPH, CUBE_PTCL_SDF, CUBE_SDF_CIRCLE,
+        CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_RECT, CUBE_SDF_RECT_STROKE, CubeBufferLengths,
     },
 };
 
@@ -327,6 +327,7 @@ fn fine_render(
                     }
                 }
             } else if tag == CUBE_PTCL_FILL
+                || tag == CUBE_PTCL_PATH_GLYPH
                 || tag == CUBE_PTCL_BEGIN_CLIP
                 || tag == CUBE_PTCL_BEGIN_OPACITY
                 || tag == CUBE_PTCL_BEGIN_BLEND
@@ -372,8 +373,11 @@ fn fine_render(
                         brush_params,
                         brush_payloads,
                     );
-                    let src = scale_premul_u8(color, alpha);
-                    pixel = src_over_premul_u8(pixel, src);
+                    if tag == CUBE_PTCL_PATH_GLYPH {
+                        pixel = src_over_mask_linear_auto_u8(pixel, color, alpha);
+                    } else {
+                        pixel = src_over_premul_u8(pixel, scale_premul_u8(color, alpha));
+                    }
                 }
             }
             ptcl_ix += 1;

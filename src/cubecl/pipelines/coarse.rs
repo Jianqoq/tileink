@@ -4,10 +4,11 @@ use crate::cubecl::{
     renderer::{CoarseBuffers, ScanBuffers, SceneBuffers},
     types::{
         COARSE_CHUNK_SIZE, CUBE_DRAW_BLEND, CUBE_DRAW_BRUSH, CUBE_DRAW_CLIP, CUBE_DRAW_ISOLATE,
-        CUBE_DRAW_OPACITY, CUBE_LAYER_BLEND, CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY,
-        CUBE_PTCL_BEGIN_BLEND, CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_BEGIN_OPACITY, CUBE_PTCL_COLOR,
-        CUBE_PTCL_END, CUBE_PTCL_END_BLEND, CUBE_PTCL_END_CLIP, CUBE_PTCL_END_OPACITY,
-        CUBE_PTCL_FILL, CUBE_PTCL_GLYPH, CUBE_PTCL_SDF, CUBE_SDF_NONE, CubeBufferLengths,
+        CUBE_DRAW_OPACITY, CUBE_DRAW_PATH_GLYPH, CUBE_LAYER_BLEND, CUBE_LAYER_CLIP,
+        CUBE_LAYER_OPACITY, CUBE_PTCL_BEGIN_BLEND, CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_BEGIN_OPACITY,
+        CUBE_PTCL_COLOR, CUBE_PTCL_END, CUBE_PTCL_END_BLEND, CUBE_PTCL_END_CLIP,
+        CUBE_PTCL_END_OPACITY, CUBE_PTCL_FILL, CUBE_PTCL_GLYPH, CUBE_PTCL_PATH_GLYPH,
+        CUBE_PTCL_SDF, CUBE_SDF_NONE, CubeBufferLengths,
     },
 };
 
@@ -363,7 +364,9 @@ fn coarse_count(
                 );
                 if backdrop_ix != invalid {
                     let i = backdrop_ix as usize;
-                    if (draw_tag == CUBE_DRAW_BRUSH || draw_tag == CUBE_DRAW_CLIP)
+                    if (draw_tag == CUBE_DRAW_BRUSH
+                        || draw_tag == CUBE_DRAW_PATH_GLYPH
+                        || draw_tag == CUBE_DRAW_CLIP)
                         && (segment_starts[i] != segment_ends[i] || backdrops[i].load() != 0)
                     {
                         count += 1;
@@ -749,11 +752,15 @@ fn coarse_emit(
                     let segment_start = segment_starts[backdrop_i];
                     let segment_end = segment_ends[backdrop_i];
                     let backdrop = backdrops[backdrop_i].load();
-                    if (draw_tag == CUBE_DRAW_BRUSH || draw_tag == CUBE_DRAW_CLIP)
+                    if (draw_tag == CUBE_DRAW_BRUSH
+                        || draw_tag == CUBE_DRAW_PATH_GLYPH
+                        || draw_tag == CUBE_DRAW_CLIP)
                         && (segment_start != segment_end || backdrop != 0)
                     {
                         if draw_tag == CUBE_DRAW_CLIP {
                             ptcl_tag = u32::new(CUBE_PTCL_BEGIN_CLIP as i64);
+                        } else if draw_tag == CUBE_DRAW_PATH_GLYPH {
+                            ptcl_tag = u32::new(CUBE_PTCL_PATH_GLYPH as i64);
                         } else {
                             let solid_color_fast_path = draw_solid_color_fast_paths[draw_i] == 1;
                             let empty_segment_range = segment_start == segment_end;
@@ -768,7 +775,7 @@ fn coarse_emit(
                         ptcl_segment_end = segment_end;
                         if ptcl_tag == CUBE_PTCL_COLOR {
                             ptcl_color = draw_brush_colors[draw_i];
-                        } else if draw_tag == CUBE_DRAW_BRUSH {
+                        } else if draw_tag == CUBE_DRAW_BRUSH || draw_tag == CUBE_DRAW_PATH_GLYPH {
                             ptcl_color = draw_ix;
                         }
                     }
@@ -1158,6 +1165,7 @@ fn draw_backdrop_ix(
 
     if path_id != invalid
         && (draw_tag == CUBE_DRAW_BRUSH
+            || draw_tag == CUBE_DRAW_PATH_GLYPH
             || draw_tag == CUBE_DRAW_CLIP
             || draw_tag == CUBE_DRAW_OPACITY
             || draw_tag == CUBE_DRAW_BLEND
