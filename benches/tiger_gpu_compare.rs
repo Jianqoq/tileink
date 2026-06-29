@@ -7,9 +7,15 @@ use std::{
 };
 
 use common::{VelloWgpuContext, sync_cubecl, vello_renderer};
-use criterion::{Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{
+    BenchmarkGroup, Criterion, Throughput, black_box, criterion_group, criterion_main,
+    measurement::WallTime,
+};
+use cubecl::prelude::Runtime;
 use peniko::kurbo::Affine as TileAffine;
-use tileink::{CubePreparedStage, CubeWgpuRenderer, Scene, SvgOptions};
+#[cfg(feature = "cuda")]
+use tileink::CubeCudaRenderer;
+use tileink::{CubePreparedStage, CubeRenderer, CubeWgpuRenderer, Scene, SvgOptions};
 use usvg::{Node, Paint, PaintOrder, tiny_skia_path::PathSegment};
 use vello::{
     kurbo::{Affine, BezPath, Cap, Join, Stroke},
@@ -274,11 +280,32 @@ fn fill_rule(rule: usvg::FillRule) -> Fill {
     }
 }
 
-fn run_cubecl_prepared(renderer: &mut CubeWgpuRenderer, scene: &Scene) {
+fn run_cubecl_prepared<R: Runtime>(renderer: &mut CubeRenderer<R>, scene: &Scene) {
     renderer.run_prepared_stage_for_bench(scene, CubePreparedStage::Scan);
     renderer.run_prepared_stage_for_bench(scene, CubePreparedStage::Cumsum);
     renderer.run_prepared_stage_for_bench(scene, CubePreparedStage::Coarse);
     renderer.run_prepared_stage_for_bench(scene, CubePreparedStage::Fine);
+}
+
+fn bench_wgpu_stage(
+    group: &mut BenchmarkGroup<'_, WallTime>,
+    scene: &Scene,
+    width: u32,
+    height: u32,
+    name: &'static str,
+    warm: impl FnOnce(&mut CubeWgpuRenderer),
+    mut run: impl FnMut(&mut CubeWgpuRenderer),
+) {
+    let mut renderer = CubeWgpuRenderer::new_default_device(width, height, Color::TRANSPARENT);
+    renderer.prepare_scene_for_bench(scene);
+    warm(&mut renderer);
+    sync_cubecl(&renderer);
+    group.bench_function(name, |b| {
+        b.iter(|| {
+            run(black_box(&mut renderer));
+            sync_cubecl(&renderer);
+        });
+    });
 }
 
 fn tiger_gpu_compare(c: &mut Criterion) {
@@ -292,6 +319,15 @@ fn tiger_gpu_compare(c: &mut Criterion) {
     cubecl_renderer.prepare_scene_for_bench(&tileink_scene);
     run_cubecl_prepared(&mut cubecl_renderer, &tileink_scene);
     sync_cubecl(&cubecl_renderer);
+
+    #[cfg(feature = "cuda")]
+    let mut cuda_renderer = {
+        let mut renderer = CubeCudaRenderer::new_default_device(width, height, Color::TRANSPARENT);
+        renderer.prepare_scene_for_bench(&tileink_scene);
+        run_cubecl_prepared(&mut renderer, &tileink_scene);
+        sync_cubecl(&renderer);
+        renderer
+    };
 
     let vello_context = VelloWgpuContext::new(width, height, "tiger_vello_compare");
     let mut vello_renderer = vello_renderer(&vello_context.device);
@@ -322,8 +358,77 @@ fn tiger_gpu_compare(c: &mut Criterion) {
         });
     });
 
+    bench_wgpu_stage(
+        &mut group,
+        &tileink_scene,
+        width,
+        height,
+        "cubecl_gpu_stage_scan",
+        |renderer| renderer.run_prepared_stage_for_bench(&tileink_scene, CubePreparedStage::Scan),
+        |renderer| renderer.run_prepared_stage_for_bench(&tileink_scene, CubePreparedStage::Scan),
+    );
+
+    bench_wgpu_stage(
+        &mut group,
+        &tileink_scene,
+        width,
+        height,
+        "cubecl_gpu_stage_cumsum",
+        |renderer| {
+            renderer.run_prepared_stage_for_bench(&tileink_scene, CubePreparedStage::Scan);
+            renderer.run_prepared_stage_for_bench(&tileink_scene, CubePreparedStage::Cumsum);
+        },
+        |renderer| renderer.run_prepared_stage_for_bench(&tileink_scene, CubePreparedStage::Cumsum),
+    );
+
+    bench_wgpu_stage(
+        &mut group,
+        &tileink_scene,
+        width,
+        height,
+        "cubecl_gpu_stage_coarse",
+        |renderer| {
+            renderer.run_prepared_stage_for_bench(&tileink_scene, CubePreparedStage::Scan);
+            renderer.run_prepared_stage_for_bench(&tileink_scene, CubePreparedStage::Cumsum);
+            renderer.run_prepared_stage_for_bench(&tileink_scene, CubePreparedStage::Coarse);
+        },
+        |renderer| renderer.run_prepared_stage_for_bench(&tileink_scene, CubePreparedStage::Coarse),
+    );
+
+    bench_wgpu_stage(
+        &mut group,
+        &tileink_scene,
+        width,
+        height,
+        "cubecl_gpu_stage_fine",
+        |renderer| {
+            renderer.run_prepared_stage_for_bench(&tileink_scene, CubePreparedStage::Scan);
+            renderer.run_prepared_stage_for_bench(&tileink_scene, CubePreparedStage::Cumsum);
+            renderer.run_prepared_stage_for_bench(&tileink_scene, CubePreparedStage::Coarse);
+            renderer.run_prepared_stage_for_bench(&tileink_scene, CubePreparedStage::Fine);
+        },
+        |renderer| renderer.run_prepared_stage_for_bench(&tileink_scene, CubePreparedStage::Fine),
+    );
+
     group.bench_function("cubecl_gpu_with_prepare", |b| {
         let mut renderer = CubeWgpuRenderer::new_default_device(width, height, Color::TRANSPARENT);
+        b.iter(|| {
+            renderer.render(black_box(&tileink_scene));
+            sync_cubecl(&renderer);
+        });
+    });
+
+    #[cfg(feature = "cuda")]
+    group.bench_function("cubecl_cuda_prepared", |b| {
+        b.iter(|| {
+            run_cubecl_prepared(black_box(&mut cuda_renderer), black_box(&tileink_scene));
+            sync_cubecl(&cuda_renderer);
+        });
+    });
+
+    #[cfg(feature = "cuda")]
+    group.bench_function("cubecl_cuda_with_prepare", |b| {
+        let mut renderer = CubeCudaRenderer::new_default_device(width, height, Color::TRANSPARENT);
         b.iter(|| {
             renderer.render(black_box(&tileink_scene));
             sync_cubecl(&renderer);

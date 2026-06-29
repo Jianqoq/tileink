@@ -41,6 +41,8 @@ use super::{
 };
 
 pub type WgpuRenderer = Renderer<::cubecl::wgpu::WgpuRuntime>;
+#[cfg(feature = "cuda")]
+pub type CudaRenderer = Renderer<::cubecl::cuda::CudaRuntime>;
 
 /// CubeCL renderer resource owner.
 ///
@@ -403,6 +405,13 @@ impl<R: Runtime> Renderer<R> {
 }
 
 impl WgpuRenderer {
+    pub fn new_default_device(width: u32, height: u32, clear: Color) -> Self {
+        Self::new(&Default::default(), width, height, clear)
+    }
+}
+
+#[cfg(feature = "cuda")]
+impl CudaRenderer {
     pub fn new_default_device(width: u32, height: u32, clear: Color) -> Self {
         Self::new(&Default::default(), width, height, clear)
     }

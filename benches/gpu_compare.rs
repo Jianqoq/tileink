@@ -5,7 +5,8 @@ use common::{
     prepared_cubecl_renderer, sync_cubecl, vello_renderer,
 };
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
-use tileink::{CubePreparedStage, CubeWgpuRenderer, Scene};
+use cubecl::prelude::Runtime;
+use tileink::{CubePreparedStage, CubeRenderer, CubeWgpuRenderer, Scene};
 
 fn build_vello_scene(path_count: usize, dense: bool) -> vello::Scene {
     let mut scene = vello::Scene::new();
@@ -21,7 +22,7 @@ fn build_vello_scene(path_count: usize, dense: bool) -> vello::Scene {
     scene
 }
 
-fn run_cubecl_prepared(renderer: &mut CubeWgpuRenderer, scene: &Scene) {
+fn run_cubecl_prepared<R: Runtime>(renderer: &mut CubeRenderer<R>, scene: &Scene) {
     renderer.run_prepared_stage_for_bench(scene, CubePreparedStage::Scan);
     renderer.run_prepared_stage_for_bench(scene, CubePreparedStage::Cumsum);
     renderer.run_prepared_stage_for_bench(scene, CubePreparedStage::Coarse);

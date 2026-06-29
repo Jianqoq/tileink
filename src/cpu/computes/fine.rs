@@ -337,7 +337,6 @@ mod tests {
             point0: (4.0, 0.0),
             point1: (12.0, 16.0),
             y_edge: 1.0e9,
-            ..LineSegment::default()
         };
 
         assert_eq!(pixel_coverage(&[segment], 0, FillRule::NonZero, 0, 4), 0);
@@ -350,7 +349,6 @@ mod tests {
             point0: (0.75, 16.0),
             point1: (0.75, 0.0),
             y_edge: 1.0e9,
-            ..LineSegment::default()
         };
 
         assert_eq!(pixel_coverage(&[segment], 0, FillRule::NonZero, 0, 2), 64);
@@ -362,7 +360,6 @@ mod tests {
             point0: (4.0, 0.0),
             point1: (12.0, 16.0),
             y_edge: 1.0e9,
-            ..LineSegment::default()
         };
 
         let alpha = build_tile_alpha(&[segment], 0, FillRule::NonZero);
@@ -377,25 +374,21 @@ mod tests {
                 point0: (4.0, 0.0),
                 point1: (12.0, 16.0),
                 y_edge: 1.0e9,
-                ..LineSegment::default()
             },
             LineSegment {
                 point0: (15.0, 2.0),
                 point1: (1.0, 14.0),
                 y_edge: 1.0e9,
-                ..LineSegment::default()
             },
             LineSegment {
                 point0: (-2.0, 7.0),
                 point1: (18.0, 9.0),
                 y_edge: 1.0e9,
-                ..LineSegment::default()
             },
             LineSegment {
                 point0: (6.0, 0.0),
                 point1: (6.0, 16.0),
                 y_edge: 1.0e9,
-                ..LineSegment::default()
             },
         ];
 

@@ -15,6 +15,7 @@ image = { version = "0.25", default-features = false, features = ["gif", "jpeg",
 
 [features]
 bench-api = []
+cuda = ["cubecl/cuda"]
 
 [dev-dependencies]
 criterion = "0.5"

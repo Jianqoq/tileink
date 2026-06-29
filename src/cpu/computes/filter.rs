@@ -955,7 +955,7 @@ mod tests {
     #[test]
     fn offset_shifts_pixels_and_clears_uncovered_area() {
         let mut image = Image::new(4, 4, Color::TRANSPARENT);
-        image.pixels[(1 * 4 + 1) as usize] = rgba8_pack([255, 0, 0, 255]);
+        image.pixels[5] = rgba8_pack([255, 0, 0, 255]);
 
         apply(
             &mut image,
@@ -1158,7 +1158,7 @@ mod tests {
 
         let center_alpha = image.rgba8_at(1, 0)[3];
         assert!(
-            center_alpha < 255 && center_alpha >= 180,
+            (180..255).contains(&center_alpha),
             "expected alpha slope to reduce specular highlight, got {center_alpha}"
         );
     }
@@ -1537,7 +1537,7 @@ mod tests {
     #[test]
     fn morphology_dilate_expands_straight_rgba() {
         let mut image = Image::new(3, 3, Color::TRANSPARENT);
-        image.pixels[(1 * 3 + 1) as usize] = rgba8_pack([128, 0, 0, 128]);
+        image.pixels[4] = rgba8_pack([128, 0, 0, 128]);
 
         apply(
             &mut image,
@@ -1588,7 +1588,7 @@ mod tests {
         assert!(erode.pixels.iter().all(|pixel| *pixel == 0));
 
         let mut dilate = Image::new(4, 3, Color::TRANSPARENT);
-        dilate.pixels[(1 * 4 + 2) as usize] = rgba8_pack([0, 128, 0, 128]);
+        dilate.pixels[6] = rgba8_pack([0, 128, 0, 128]);
         apply(
             &mut dilate,
             &Filter::Morphology {

@@ -38,7 +38,7 @@ fn render_tree_with_options(
     height: u32,
 ) -> CpuRenderer {
     let mut scene = Scene::new(width, height);
-    scene.push_svg_with_options(&tree, options).unwrap();
+    scene.push_svg_with_options(tree, options).unwrap();
     let mut renderer = CpuRenderer::new(scene.width, scene.height, clear);
     renderer.render(&scene);
     renderer

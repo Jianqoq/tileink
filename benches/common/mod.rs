@@ -3,11 +3,12 @@
 
 use std::num::NonZeroUsize;
 
+use cubecl::prelude::Runtime;
 use peniko::{
     Color,
     kurbo::{Circle, Rect},
 };
-use tileink::{CubeWgpuRenderer, FillRule, Scene};
+use tileink::{CubeRenderer, CubeWgpuRenderer, FillRule, Scene};
 
 pub const WIDTH: u32 = 1280;
 pub const HEIGHT: u32 = 720;
@@ -60,7 +61,7 @@ pub fn prepared_cubecl_renderer(scene: &Scene) -> CubeWgpuRenderer {
     renderer
 }
 
-pub fn sync_cubecl(renderer: &CubeWgpuRenderer) {
+pub fn sync_cubecl<R: Runtime>(renderer: &CubeRenderer<R>) {
     // CubeCL launches asynchronously; sync measures GPU completion without target readback.
     cubecl_common::future::block_on(renderer.client_for_bench().sync())
         .expect("CubeCL sync failed");
