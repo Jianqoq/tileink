@@ -1,6 +1,13 @@
 use bytemuck::{Pod, Zeroable};
 
-use crate::{scene::Scene, shared::draw_record::DrawTag};
+use crate::{
+    scene::Scene,
+    shared::{
+        bounds::{Bounds, PixelBounds, TileBbox},
+        draw_record::DrawTag,
+    },
+    text::PreparedTextData,
+};
 
 pub(crate) const SCAN_CHUNK_SIZE: u32 = 256;
 pub(crate) const CUMSUM_CHUNK_SIZE: u32 = 256;
@@ -56,6 +63,7 @@ pub(crate) struct CubeBufferLengths {
     pub cumsum_row_count: usize,
     pub coarse_chunk_count: usize,
     pub coarse_ptcl_capacity: usize,
+    pub coarse_glyph_capacity: usize,
     pub tiles_width: usize,
     pub tiles_height: usize,
     pub tile_count: usize,
@@ -64,11 +72,17 @@ pub(crate) struct CubeBufferLengths {
 
 impl CubeBufferLengths {
     pub(crate) fn from_scene(scene: &Scene) -> Self {
+        Self::from_scene_with_text(scene, None)
+    }
+
+    pub(crate) fn from_scene_with_text(scene: &Scene, text: Option<&PreparedTextData>) -> Self {
         let tiles_width = scene.width_in_tiles() as usize;
         let tiles_height = scene.height_in_tiles() as usize;
         let tile_count = tiles_width * tiles_height;
         let coarse_ptcl_capacity =
             coarse_ptcl_capacity(scene, tiles_width as u32, tiles_height as u32);
+        let coarse_glyph_capacity =
+            coarse_glyph_capacity(scene, text, tiles_width as u32, tiles_height as u32);
         Self {
             line_count: scene.lines.len(),
             path_count: scene.path_records.len(),
@@ -105,12 +119,62 @@ impl CubeBufferLengths {
                 .sum(),
             coarse_chunk_count: tile_count.div_ceil(COARSE_CHUNK_SIZE as usize),
             coarse_ptcl_capacity,
+            coarse_glyph_capacity,
             tiles_width,
             tiles_height,
             tile_count,
             image_pixels: scene.width as usize * scene.height as usize,
         }
     }
+}
+
+fn coarse_glyph_capacity(
+    scene: &Scene,
+    text: Option<&PreparedTextData>,
+    width_in_tiles: u32,
+    height_in_tiles: u32,
+) -> usize {
+    let Some(text) = text else {
+        return 0;
+    };
+
+    scene
+        .draw_records
+        .iter()
+        .filter(|draw| matches!(draw.tag, DrawTag::Brush))
+        .filter_map(|draw| draw.glyph_run_id.map(|run_id| (draw, run_id)))
+        .map(|(draw, run_id)| {
+            let draw_bbox = draw.tile_bbox(width_in_tiles, height_in_tiles);
+            text.run_glyph_indices(run_id)
+                .filter_map(|glyph_id| {
+                    let glyph_bbox = bounds_tile_bbox(
+                        text.glyph_bounds(glyph_id)?,
+                        width_in_tiles,
+                        height_in_tiles,
+                    );
+                    Some(tile_bbox_intersection_count(draw_bbox, glyph_bbox))
+                })
+                .sum::<usize>()
+        })
+        .sum()
+}
+
+fn bounds_tile_bbox(bounds: Bounds, width_in_tiles: u32, height_in_tiles: u32) -> TileBbox {
+    PixelBounds {
+        x0: bounds.x0,
+        y0: bounds.y0,
+        x1: bounds.x1,
+        y1: bounds.y1,
+    }
+    .tile_bbox(width_in_tiles, height_in_tiles)
+}
+
+fn tile_bbox_intersection_count(a: TileBbox, b: TileBbox) -> usize {
+    let x0 = a.x0.max(b.x0);
+    let y0 = a.y0.max(b.y0);
+    let x1 = a.x1.min(b.x1);
+    let y1 = a.y1.min(b.y1);
+    x1.saturating_sub(x0) as usize * y1.saturating_sub(y0) as usize
 }
 
 fn coarse_ptcl_capacity(scene: &Scene, width_in_tiles: u32, height_in_tiles: u32) -> usize {
@@ -219,6 +283,43 @@ pub(crate) fn build_scan_chunks(scene: &Scene) -> (Vec<CubeScanChunk>, Vec<CubeS
     let mut ranges = Vec::with_capacity(scene.path_records.len());
     build_scan_chunks_into(scene, &mut chunks, &mut ranges);
     (chunks, ranges)
+}
+
+#[cfg(test)]
+mod text_length_tests {
+    use peniko::{Color, kurbo::Point};
+
+    use super::CubeBufferLengths;
+    use crate::{Scene, TextContext, TextLayoutOptions, text::PreparedTextData};
+
+    #[test]
+    fn text_lengths_count_only_tiles_intersecting_glyph_bounds() {
+        let mut context = TextContext::new();
+        let layout = context.layout(TextLayoutOptions::new("MMMMMMMM", 24.0));
+        if layout.is_empty() {
+            return;
+        }
+
+        let mut scene = Scene::new(160, 64);
+        scene.push_text_layout(&layout, Point::new(2.0, 32.0), Color::WHITE);
+        let text = PreparedTextData::new(&scene.text_glyphs, &scene.text_runs, &mut context);
+        let lengths = CubeBufferLengths::from_scene_with_text(&scene, Some(&text));
+
+        let expected = text
+            .run_glyph_indices(0)
+            .filter_map(|glyph_id| {
+                let bounds = text.glyph_bounds(glyph_id)?;
+                Some(super::bounds_tile_bbox(
+                    bounds,
+                    scene.width_in_tiles(),
+                    scene.height_in_tiles(),
+                ))
+            })
+            .map(|bbox| bbox.tile_count() as usize)
+            .sum::<usize>();
+
+        assert_eq!(lengths.coarse_glyph_capacity, expected);
+    }
 }
 
 pub(crate) fn build_scan_chunks_into(

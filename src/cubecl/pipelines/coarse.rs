@@ -52,6 +52,15 @@ impl CoarsePipeline {
             batch.layer_stack_end,
             unsafe { scene.draw_path_ids.arg() },
             unsafe { scene.draw_glyph_run_ids.arg() },
+            unsafe { scene.glyph_run_starts.arg() },
+            unsafe { scene.glyph_run_counts.arg() },
+            unsafe { scene.glyph_image_ids.arg() },
+            unsafe { scene.glyph_x.arg() },
+            unsafe { scene.glyph_y.arg() },
+            unsafe { scene.glyph_image_left.arg() },
+            unsafe { scene.glyph_image_top.arg() },
+            unsafe { scene.glyph_image_width.arg() },
+            unsafe { scene.glyph_image_height.arg() },
             unsafe { scene.draw_tags.arg() },
             unsafe { scene.draw_pixel_x0.arg() },
             unsafe { scene.draw_pixel_y0.arg() },
@@ -69,6 +78,7 @@ impl CoarsePipeline {
             unsafe { scene.plan_layer_stack_tags.arg() },
             unsafe { scene.plan_layer_stack_draws.arg() },
             unsafe { coarse.tile_ptcl_counts.arg() },
+            unsafe { coarse.tile_glyph_counts.arg() },
         );
 
         coarse_prefix_chunks::launch::<R>(
@@ -103,6 +113,38 @@ impl CoarsePipeline {
             unsafe { coarse.tile_ptcl_range_ends.arg() },
         );
 
+        coarse_prefix_chunks::launch::<R>(
+            client,
+            CubeCount::Static(chunk_count, 1, 1),
+            CubeDim::new_1d(COARSE_CHUNK_SIZE),
+            COARSE_CHUNK_SIZE as usize,
+            tile_count,
+            unsafe { coarse.tile_glyph_counts.arg() },
+            unsafe { coarse.tile_glyph_range_starts.arg() },
+            unsafe { coarse.tile_glyph_range_ends.arg() },
+            unsafe { coarse.glyph_chunk_totals.arg() },
+        );
+
+        coarse_chunk_offsets::launch::<R>(
+            client,
+            CubeCount::Static(1, 1, 1),
+            CubeDim::new_1d(1),
+            chunk_count,
+            unsafe { coarse.glyph_chunk_totals.arg() },
+            unsafe { coarse.glyph_chunk_offsets.arg() },
+        );
+
+        coarse_apply_chunk_offsets::launch::<R>(
+            client,
+            CubeCount::Static(chunk_count, 1, 1),
+            CubeDim::new_1d(COARSE_CHUNK_SIZE),
+            COARSE_CHUNK_SIZE as usize,
+            tile_count,
+            unsafe { coarse.glyph_chunk_offsets.arg() },
+            unsafe { coarse.tile_glyph_range_starts.arg() },
+            unsafe { coarse.tile_glyph_range_ends.arg() },
+        );
+
         if batch.draw_start >= batch.draw_end || lengths.coarse_ptcl_capacity == 0 {
             return;
         }
@@ -120,8 +162,18 @@ impl CoarsePipeline {
             batch.layer_stack_start,
             batch.layer_stack_end,
             lengths.coarse_ptcl_capacity as u32,
+            lengths.coarse_glyph_capacity as u32,
             unsafe { scene.draw_path_ids.arg() },
             unsafe { scene.draw_glyph_run_ids.arg() },
+            unsafe { scene.glyph_run_starts.arg() },
+            unsafe { scene.glyph_run_counts.arg() },
+            unsafe { scene.glyph_image_ids.arg() },
+            unsafe { scene.glyph_x.arg() },
+            unsafe { scene.glyph_y.arg() },
+            unsafe { scene.glyph_image_left.arg() },
+            unsafe { scene.glyph_image_top.arg() },
+            unsafe { scene.glyph_image_width.arg() },
+            unsafe { scene.glyph_image_height.arg() },
             unsafe { scene.draw_tags.arg() },
             unsafe { scene.draw_fill_rules.arg() },
             unsafe { scene.draw_solid_color_fast_paths.arg() },
@@ -141,6 +193,8 @@ impl CoarsePipeline {
             unsafe { scan.tile_segment_range_ends.arg() },
             unsafe { coarse.tile_ptcl_range_starts.arg() },
             unsafe { coarse.tile_ptcl_range_ends.arg() },
+            unsafe { coarse.tile_glyph_range_starts.arg() },
+            unsafe { coarse.tile_glyph_range_ends.arg() },
             unsafe { scene.plan_layer_stack_tags.arg() },
             unsafe { scene.plan_layer_stack_draws.arg() },
             unsafe { scene.plan_layer_stack_payloads.arg() },
@@ -150,6 +204,7 @@ impl CoarsePipeline {
             unsafe { coarse.ptcl_segment_starts.arg() },
             unsafe { coarse.ptcl_segment_ends.arg() },
             unsafe { coarse.ptcl_colors.arg() },
+            unsafe { coarse.glyph_indices.arg() },
         );
     }
 }
@@ -166,6 +221,15 @@ fn coarse_count(
     layer_stack_end: u32,
     draw_path_ids: &Array<u32>,
     draw_glyph_run_ids: &Array<u32>,
+    glyph_run_starts: &Array<u32>,
+    glyph_run_counts: &Array<u32>,
+    glyph_image_ids: &Array<u32>,
+    glyph_x: &Array<i32>,
+    glyph_y: &Array<i32>,
+    glyph_image_left: &Array<i32>,
+    glyph_image_top: &Array<i32>,
+    glyph_image_width: &Array<u32>,
+    glyph_image_height: &Array<u32>,
     draw_tags: &Array<u32>,
     draw_pixel_x0: &Array<i32>,
     draw_pixel_y0: &Array<i32>,
@@ -183,6 +247,7 @@ fn coarse_count(
     layer_stack_tags: &Array<u32>,
     layer_stack_draws: &Array<u32>,
     tile_ptcl_counts: &mut Array<u32>,
+    tile_glyph_counts: &mut Array<u32>,
 ) {
     let tile_ix = CUBE_POS as u32;
     if tile_ix >= tile_count {
@@ -218,14 +283,50 @@ fn coarse_count(
     );
     let mut count = 0u32;
 
+    if UNIT_POS == 0 {
+        tile_glyph_counts[tile_ix as usize] = 0;
+    }
+
     if wrapper_count != invalid {
         let mut draw_ix = draw_start + UNIT_POS;
+        let mut glyph_count = 0u32;
         while draw_ix < draw_end {
             let draw_i = draw_ix as usize;
             let draw_tag = draw_tags[draw_i];
-            let bounded_draw =
-                draw_glyph_run_ids[draw_i] != invalid || draw_sdf_kinds[draw_i] != CUBE_SDF_NONE;
-            if bounded_draw {
+            if draw_glyph_run_ids[draw_i] != invalid {
+                if draw_tag == CUBE_DRAW_BRUSH
+                    && draw_tile_hit(
+                        draw_i,
+                        tile_x,
+                        tile_y,
+                        tiles_width,
+                        tiles_height,
+                        draw_pixel_x0,
+                        draw_pixel_y0,
+                        draw_pixel_x1,
+                        draw_pixel_y1,
+                    )
+                {
+                    let tile_glyphs = count_tile_glyphs_for_run(
+                        draw_glyph_run_ids[draw_i],
+                        tile_x,
+                        tile_y,
+                        glyph_run_starts,
+                        glyph_run_counts,
+                        glyph_image_ids,
+                        glyph_x,
+                        glyph_y,
+                        glyph_image_left,
+                        glyph_image_top,
+                        glyph_image_width,
+                        glyph_image_height,
+                    );
+                    if tile_glyphs > 0 {
+                        count += 1;
+                        glyph_count += tile_glyphs;
+                    }
+                }
+            } else if draw_sdf_kinds[draw_i] != CUBE_SDF_NONE {
                 if draw_tag == CUBE_DRAW_BRUSH
                     && draw_tile_hit(
                         draw_i,
@@ -270,6 +371,23 @@ fn coarse_count(
                 }
             }
             draw_ix += workgroup_size as u32;
+        }
+        let glyph_plane_total = plane_sum(glyph_count);
+        let mut glyph_plane_totals = SharedMemory::<u32>::new(workgroup_size);
+        if UNIT_POS_PLANE == 0 {
+            glyph_plane_totals[PLANE_POS as usize] = glyph_plane_total;
+        }
+        sync_cube();
+
+        if UNIT_POS == 0 {
+            let plane_count = CUBE_DIM.div_ceil(PLANE_DIM);
+            let mut tile_glyph_count = 0u32;
+            let mut plane_ix = 0u32;
+            while plane_ix < plane_count {
+                tile_glyph_count += glyph_plane_totals[plane_ix as usize];
+                plane_ix += 1;
+            }
+            tile_glyph_counts[tile_ix as usize] = tile_glyph_count;
         }
     }
 
@@ -408,8 +526,18 @@ fn coarse_emit(
     layer_stack_start: u32,
     layer_stack_end: u32,
     ptcl_capacity: u32,
+    glyph_capacity: u32,
     draw_path_ids: &Array<u32>,
     draw_glyph_run_ids: &Array<u32>,
+    glyph_run_starts: &Array<u32>,
+    glyph_run_counts: &Array<u32>,
+    glyph_image_ids: &Array<u32>,
+    glyph_x: &Array<i32>,
+    glyph_y: &Array<i32>,
+    glyph_image_left: &Array<i32>,
+    glyph_image_top: &Array<i32>,
+    glyph_image_width: &Array<u32>,
+    glyph_image_height: &Array<u32>,
     draw_tags: &Array<u32>,
     draw_fill_rules: &Array<u32>,
     draw_solid_color_fast_paths: &Array<u32>,
@@ -429,6 +557,8 @@ fn coarse_emit(
     segment_ends: &Array<u32>,
     tile_ptcl_range_starts: &Array<u32>,
     tile_ptcl_range_ends: &Array<u32>,
+    tile_glyph_range_starts: &Array<u32>,
+    tile_glyph_range_ends: &Array<u32>,
     layer_stack_tags: &Array<u32>,
     layer_stack_draws: &Array<u32>,
     layer_stack_payloads: &Array<u32>,
@@ -438,6 +568,7 @@ fn coarse_emit(
     ptcl_segment_starts: &mut Array<u32>,
     ptcl_segment_ends: &mut Array<u32>,
     ptcl_colors: &mut Array<u32>,
+    glyph_indices: &mut Array<u32>,
 ) {
     let tile_ix = CUBE_POS as u32;
     if tile_ix >= tile_count {
@@ -450,6 +581,8 @@ fn coarse_emit(
     let mut cursor = tile_ptcl_range_starts[tile_ix as usize];
     let start = cursor;
     let range_end = tile_ptcl_range_ends[tile_ix as usize];
+    let mut glyph_cursor = tile_glyph_range_starts[tile_ix as usize];
+    let glyph_range_end = tile_glyph_range_ends[tile_ix as usize];
     if start >= range_end {
         terminate!();
     }
@@ -522,10 +655,12 @@ fn coarse_emit(
     sync_cube();
 
     let mut plane_totals = SharedMemory::<u32>::new(workgroup_size);
+    let mut glyph_plane_totals = SharedMemory::<u32>::new(workgroup_size);
     let mut chunk_start = draw_start;
     while chunk_start < draw_end {
         let draw_ix = chunk_start + UNIT_POS;
         let mut valid = 0u32;
+        let mut glyph_count = 0u32;
         let mut ptcl_tag = u32::new(CUBE_PTCL_FILL as i64);
         let mut ptcl_backdrop = i32::new(0);
         let mut ptcl_fill_rule = 0u32;
@@ -550,10 +685,25 @@ fn coarse_emit(
                         draw_pixel_y1,
                     )
                 {
-                    valid = 1;
-                    ptcl_tag = u32::new(CUBE_PTCL_GLYPH as i64);
-                    ptcl_segment_start = draw_glyph_run_ids[draw_i];
-                    ptcl_color = draw_ix;
+                    glyph_count = count_tile_glyphs_for_run(
+                        draw_glyph_run_ids[draw_i],
+                        tile_x,
+                        tile_y,
+                        glyph_run_starts,
+                        glyph_run_counts,
+                        glyph_image_ids,
+                        glyph_x,
+                        glyph_y,
+                        glyph_image_left,
+                        glyph_image_top,
+                        glyph_image_width,
+                        glyph_image_height,
+                    );
+                    if glyph_count > 0 {
+                        valid = 1;
+                        ptcl_tag = u32::new(CUBE_PTCL_GLYPH as i64);
+                        ptcl_color = draw_ix;
+                    }
                 }
             } else if draw_sdf_kinds[draw_i] != CUBE_SDF_NONE {
                 if draw_tag == CUBE_DRAW_BRUSH
@@ -643,17 +793,59 @@ fn coarse_emit(
         let particle_offset = plane_offset + in_plane_exclusive;
         sync_cube();
 
+        let glyph_in_plane_exclusive = plane_exclusive_sum(glyph_count);
+        let glyph_plane_total = plane_sum(glyph_count);
+        if UNIT_POS_PLANE == 0 {
+            glyph_plane_totals[PLANE_POS as usize] = glyph_plane_total;
+        }
+        sync_cube();
+
+        let mut glyph_plane_offset = 0u32;
+        let mut glyph_plane_ix = 0u32;
+        while glyph_plane_ix < PLANE_POS {
+            glyph_plane_offset += glyph_plane_totals[glyph_plane_ix as usize];
+            glyph_plane_ix += 1;
+        }
+        let glyph_offset = glyph_plane_offset + glyph_in_plane_exclusive;
+        sync_cube();
+
         if UNIT_POS == 0 {
             let plane_count = CUBE_DIM.div_ceil(PLANE_DIM);
             let mut emitted = 0u32;
+            let mut emitted_glyphs = 0u32;
             let mut plane_ix = 0u32;
             while plane_ix < plane_count {
                 emitted += plane_totals[plane_ix as usize];
+                emitted_glyphs += glyph_plane_totals[plane_ix as usize];
                 plane_ix += 1;
             }
             plane_totals[0] = emitted;
+            glyph_plane_totals[0] = emitted_glyphs;
         }
         if valid == 1 {
+            if ptcl_tag == CUBE_PTCL_GLYPH {
+                ptcl_segment_start = glyph_cursor + glyph_offset;
+                ptcl_segment_end = ptcl_segment_start + glyph_count;
+                if ptcl_segment_end <= glyph_range_end {
+                    store_tile_glyphs_for_run(
+                        ptcl_segment_start,
+                        glyph_capacity,
+                        draw_glyph_run_ids[draw_ix as usize],
+                        tile_x,
+                        tile_y,
+                        glyph_run_starts,
+                        glyph_run_counts,
+                        glyph_image_ids,
+                        glyph_x,
+                        glyph_y,
+                        glyph_image_left,
+                        glyph_image_top,
+                        glyph_image_width,
+                        glyph_image_height,
+                        glyph_indices,
+                    );
+                }
+            }
             store_particle(
                 cursor + particle_offset,
                 ptcl_capacity,
@@ -673,7 +865,9 @@ fn coarse_emit(
         }
         sync_cube();
         let emitted = plane_totals[0];
+        let emitted_glyphs = glyph_plane_totals[0];
         cursor += emitted;
+        glyph_cursor += emitted_glyphs;
         sync_cube();
         chunk_start += workgroup_size as u32;
     }
@@ -1009,6 +1203,127 @@ fn draw_tile_hit(
     let draw_x1 = pixel_tile_max(draw_pixel_x1[draw_i], tiles_width);
     let draw_y1 = pixel_tile_max(draw_pixel_y1[draw_i], tiles_height);
     tile_x >= draw_x0 && tile_x < draw_x1 && tile_y >= draw_y0 && tile_y < draw_y1
+}
+
+#[cube]
+#[allow(clippy::too_many_arguments)]
+fn count_tile_glyphs_for_run(
+    run_id: u32,
+    tile_x: u32,
+    tile_y: u32,
+    glyph_run_starts: &Array<u32>,
+    glyph_run_counts: &Array<u32>,
+    glyph_image_ids: &Array<u32>,
+    glyph_x: &Array<i32>,
+    glyph_y: &Array<i32>,
+    glyph_image_left: &Array<i32>,
+    glyph_image_top: &Array<i32>,
+    glyph_image_width: &Array<u32>,
+    glyph_image_height: &Array<u32>,
+) -> u32 {
+    let mut count = 0u32;
+    let mut glyph_ix = glyph_run_starts[run_id as usize];
+    let glyph_end = glyph_ix + glyph_run_counts[run_id as usize];
+    while glyph_ix < glyph_end {
+        if glyph_hits_tile(
+            glyph_ix,
+            tile_x,
+            tile_y,
+            glyph_image_ids,
+            glyph_x,
+            glyph_y,
+            glyph_image_left,
+            glyph_image_top,
+            glyph_image_width,
+            glyph_image_height,
+        ) {
+            count += 1;
+        }
+        glyph_ix += 1;
+    }
+    count
+}
+
+#[cube]
+#[allow(clippy::too_many_arguments)]
+fn store_tile_glyphs_for_run(
+    dst_start: u32,
+    glyph_capacity: u32,
+    run_id: u32,
+    tile_x: u32,
+    tile_y: u32,
+    glyph_run_starts: &Array<u32>,
+    glyph_run_counts: &Array<u32>,
+    glyph_image_ids: &Array<u32>,
+    glyph_x: &Array<i32>,
+    glyph_y: &Array<i32>,
+    glyph_image_left: &Array<i32>,
+    glyph_image_top: &Array<i32>,
+    glyph_image_width: &Array<u32>,
+    glyph_image_height: &Array<u32>,
+    glyph_indices: &mut Array<u32>,
+) {
+    let mut count = 0u32;
+    let mut glyph_ix = glyph_run_starts[run_id as usize];
+    let glyph_end = glyph_ix + glyph_run_counts[run_id as usize];
+    while glyph_ix < glyph_end {
+        if glyph_hits_tile(
+            glyph_ix,
+            tile_x,
+            tile_y,
+            glyph_image_ids,
+            glyph_x,
+            glyph_y,
+            glyph_image_left,
+            glyph_image_top,
+            glyph_image_width,
+            glyph_image_height,
+        ) {
+            let dst = dst_start + count;
+            if dst < glyph_capacity {
+                glyph_indices[dst as usize] = glyph_ix;
+            }
+            count += 1;
+        }
+        glyph_ix += 1;
+    }
+}
+
+#[cube]
+#[allow(clippy::too_many_arguments)]
+fn glyph_hits_tile(
+    glyph_ix: u32,
+    tile_x: u32,
+    tile_y: u32,
+    glyph_image_ids: &Array<u32>,
+    glyph_x: &Array<i32>,
+    glyph_y: &Array<i32>,
+    glyph_image_left: &Array<i32>,
+    glyph_image_top: &Array<i32>,
+    glyph_image_width: &Array<u32>,
+    glyph_image_height: &Array<u32>,
+) -> bool {
+    let invalid = u32::new(-1);
+    let glyph_i = glyph_ix as usize;
+    let image_id = glyph_image_ids[glyph_i];
+    let mut hit = false;
+    if image_id != invalid {
+        let image_i = image_id as usize;
+        let width = glyph_image_width[image_i];
+        let height = glyph_image_height[image_i];
+        if width > 0 && height > 0 {
+            let x0 = glyph_x[glyph_i] + glyph_image_left[image_i];
+            let y0 = glyph_y[glyph_i] - glyph_image_top[image_i];
+            let x1 = x0 + width as i32;
+            let y1 = y0 + height as i32;
+            let tile_x0 = (tile_x * 16) as i32;
+            let tile_y0 = (tile_y * 16) as i32;
+            let tile_x1 = tile_x0 + 16;
+            let tile_y1 = tile_y0 + 16;
+            hit = x0 < tile_x1 && x1 > tile_x0 && y0 < tile_y1 && y1 > tile_y0;
+        }
+    }
+    hit
 }
 
 #[cube]

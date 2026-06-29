@@ -179,7 +179,7 @@ impl<R: Runtime> Renderer<R> {
         self.surface_sources.clear();
         self.surface_origin = (0, 0);
         self.resize(scene.width, scene.height);
-        let lengths = CubeBufferLengths::from_scene(scene);
+        let lengths = CubeBufferLengths::from_scene_with_text(scene, self.text_data.as_ref());
         let plan = scene.compile(ROOT_COMMAND_LIST_ID);
         let (max_clip_depth, max_group_depth) = plan_stack_depths(&plan);
         let scratch_count = required_scratch_count(&plan);

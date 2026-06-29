@@ -99,8 +99,7 @@ impl FinePipeline {
             unsafe { scene.draw_sdf_stroke_right.arg() },
             unsafe { scene.draw_sdf_stroke_bottom.arg() },
             unsafe { scene.draw_sdf_stroke_left.arg() },
-            unsafe { scene.glyph_run_starts.arg() },
-            unsafe { scene.glyph_run_counts.arg() },
+            unsafe { coarse.glyph_indices.arg() },
             unsafe { scene.glyph_image_ids.arg() },
             unsafe { scene.glyph_x.arg() },
             unsafe { scene.glyph_y.arg() },
@@ -169,8 +168,7 @@ fn fine_render(
     draw_sdf_stroke_right: &Array<f32>,
     draw_sdf_stroke_bottom: &Array<f32>,
     draw_sdf_stroke_left: &Array<f32>,
-    glyph_run_starts: &Array<u32>,
-    glyph_run_counts: &Array<u32>,
+    glyph_indices: &Array<u32>,
     glyph_image_ids: &Array<u32>,
     glyph_x: &Array<i32>,
     glyph_y: &Array<i32>,
@@ -272,15 +270,15 @@ fn fine_render(
                     pixel = src_over_premul_u8(pixel, scale_premul_u8(color, alpha));
                 }
             } else if tag == CUBE_PTCL_GLYPH {
-                pixel = composite_glyph_run_at(
+                pixel = composite_glyphs_at(
                     pixel,
                     ptcl_segment_starts[ptcl_i],
+                    ptcl_segment_ends[ptcl_i],
                     ptcl_colors[ptcl_i],
                     global_x,
                     global_y,
                     clip_mask,
-                    glyph_run_starts,
-                    glyph_run_counts,
+                    glyph_indices,
                     glyph_image_ids,
                     glyph_x,
                     glyph_y,
@@ -384,15 +382,15 @@ fn fine_render(
 
 #[cube]
 #[allow(clippy::too_many_arguments)]
-fn composite_glyph_run_at(
+fn composite_glyphs_at(
     mut pixel: u32,
-    run_id: u32,
+    glyph_start: u32,
+    glyph_end: u32,
     draw_ix: u32,
     global_x: u32,
     global_y: u32,
     clip_mask: u32,
-    glyph_run_starts: &Array<u32>,
-    glyph_run_counts: &Array<u32>,
+    glyph_indices: &Array<u32>,
     glyph_image_ids: &Array<u32>,
     glyph_x: &Array<i32>,
     glyph_y: &Array<i32>,
@@ -408,13 +406,12 @@ fn composite_glyph_run_at(
     brush_payloads: &Array<u32>,
 ) -> u32 {
     let invalid = u32::new(-1);
-    let mut glyph_ix = glyph_run_starts[run_id as usize];
-    let glyph_end = glyph_ix + glyph_run_counts[run_id as usize];
+    let mut glyph_list_ix = glyph_start;
     let px = global_x as i32;
     let py = global_y as i32;
 
-    while glyph_ix < glyph_end {
-        let glyph_i = glyph_ix as usize;
+    while glyph_list_ix < glyph_end {
+        let glyph_i = glyph_indices[glyph_list_ix as usize] as usize;
         let image_id = glyph_image_ids[glyph_i];
         if image_id != invalid {
             let image_i = image_id as usize;
@@ -447,7 +444,7 @@ fn composite_glyph_run_at(
                 }
             }
         }
-        glyph_ix += 1;
+        glyph_list_ix += 1;
     }
 
     pixel

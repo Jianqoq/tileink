@@ -31,7 +31,7 @@ pub struct TileSdfPtcl {
 
 #[derive(Clone, Debug)]
 pub struct TileGlyphPtcl {
-    pub glyph_run_id: u32,
+    pub glyph_range: Range<u32>,
     pub brush: Brush,
 }
 

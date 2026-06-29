@@ -17,6 +17,7 @@ pub(in crate::cpu) struct CoarseStage<'a> {
     pub(in crate::cpu) draw_range: Range<usize>,
     pub(in crate::cpu) layer_stack_data: &'a [LayerStackEntry],
     pub(in crate::cpu) layer_stack_range: Range<usize>,
+    pub(in crate::cpu) text: Option<&'a PreparedTextData>,
 }
 
 pub(in crate::cpu) fn run_scan(
@@ -71,7 +72,9 @@ pub(in crate::cpu) fn run_coarse(
             &buffers.tile_segment_ranges,
             &mut buffers.tile_ptcl_ranges,
             &mut buffers.tile_ptcls,
+            &mut buffers.tile_glyphs,
             (scene.width_in_tiles(), scene.height_in_tiles()),
+            stage.text,
         )
         .run();
 }
@@ -87,6 +90,7 @@ pub(in crate::cpu) fn run_fine(
     fine.prepare(
         &buffers.tile_ptcl_ranges,
         &buffers.tile_ptcls,
+        &buffers.tile_glyphs,
         &buffers.segments,
         target,
         target_bounds,

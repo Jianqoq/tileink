@@ -12,6 +12,7 @@ pub(in crate::cpu) struct RasterBuffers {
     pub(in crate::cpu) backdrops: Vec<i32>,
     pub(in crate::cpu) tile_segment_ranges: Vec<TileSegmentRange>,
     pub(in crate::cpu) segments: Vec<LineSegment>,
+    pub(in crate::cpu) tile_glyphs: Vec<u32>,
     pub(in crate::cpu) segments_bump: Vec<AtomicU32>,
     pub(in crate::cpu) segment_tile_counts: Vec<u32>,
     pub(in crate::cpu) segment_tile_cursors: Vec<AtomicU32>,
@@ -24,6 +25,7 @@ impl RasterBuffers {
         self.backdrops.clear();
         self.tile_segment_ranges.clear();
         self.segments.clear();
+        self.tile_glyphs.clear();
         self.segment_tile_counts.clear();
         self.segment_tile_cursors.clear();
         self.segments_bump.clear();

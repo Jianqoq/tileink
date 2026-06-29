@@ -10,7 +10,7 @@ use crate::{
         pixel::{mul_div255, premul_f32_to_u32},
         sdf::Sdf,
     },
-    text::{PreparedGlyphContent, PreparedTextData},
+    text::{AtlasSignature, PreparedGlyphContent, PreparedTextData},
 };
 use ::cubecl::prelude::Runtime;
 
@@ -57,10 +57,17 @@ struct TextUpload {
     image_content: Vec<u32>,
     image_data_offsets: Vec<u32>,
     image_data: Vec<u32>,
+    atlas_signature: AtlasSignature,
+    atlas_dirty: bool,
 }
 
 impl TextUpload {
-    fn refill(&mut self, scene: &Scene, text: Option<&PreparedTextData>) {
+    fn refill(
+        &mut self,
+        scene: &Scene,
+        text: Option<&PreparedTextData>,
+        current_atlas_signature: AtlasSignature,
+    ) {
         self.clear();
         let Some(text) = text else {
             return;
@@ -82,6 +89,13 @@ impl TextUpload {
             self.glyph_y.push(glyph.y);
         }
 
+        let atlas_signature = text.atlas_signature();
+        if atlas_signature == current_atlas_signature {
+            return;
+        }
+
+        self.atlas_dirty = true;
+        self.atlas_signature = atlas_signature;
         for image in text.images() {
             self.image_left.push(image.left);
             self.image_top.push(image.top);
@@ -130,6 +144,8 @@ impl TextUpload {
         self.image_content.clear();
         self.image_data_offsets.clear();
         self.image_data.clear();
+        self.atlas_signature = AtlasSignature::default();
+        self.atlas_dirty = false;
     }
 }
 
@@ -365,6 +381,7 @@ pub(crate) struct SceneBuffers {
     pub(crate) glyph_image_content: CubeBuffer<u32>,
     pub(crate) glyph_image_data_offsets: CubeBuffer<u32>,
     pub(crate) glyph_image_data: CubeBuffer<u32>,
+    glyph_atlas_signature: AtlasSignature,
 }
 
 impl SceneBuffers {
@@ -432,6 +449,7 @@ impl SceneBuffers {
             glyph_image_content: CubeBuffer::new(client, 0),
             glyph_image_data_offsets: CubeBuffer::new(client, 0),
             glyph_image_data: CubeBuffer::new(client, 0),
+            glyph_atlas_signature: AtlasSignature::default(),
         }
     }
 
@@ -718,7 +736,7 @@ impl SceneBuffers {
         text: Option<&PreparedTextData>,
         staging: &mut SceneUploadStaging,
     ) {
-        staging.text.refill(scene, text);
+        staging.text.refill(scene, text, self.glyph_atlas_signature);
         self.glyph_run_starts
             .replace(client, &staging.text.run_starts);
         self.glyph_run_counts
@@ -727,20 +745,25 @@ impl SceneBuffers {
             .replace(client, &staging.text.glyph_image_ids);
         self.glyph_x.replace(client, &staging.text.glyph_x);
         self.glyph_y.replace(client, &staging.text.glyph_y);
+        if !staging.text.atlas_dirty {
+            return;
+        }
+
+        self.glyph_atlas_signature = staging.text.atlas_signature;
         self.glyph_image_left
-            .replace(client, &staging.text.image_left);
+            .replace_growing(client, &staging.text.image_left);
         self.glyph_image_top
-            .replace(client, &staging.text.image_top);
+            .replace_growing(client, &staging.text.image_top);
         self.glyph_image_width
-            .replace(client, &staging.text.image_width);
+            .replace_growing(client, &staging.text.image_width);
         self.glyph_image_height
-            .replace(client, &staging.text.image_height);
+            .replace_growing(client, &staging.text.image_height);
         self.glyph_image_content
-            .replace(client, &staging.text.image_content);
+            .replace_growing(client, &staging.text.image_content);
         self.glyph_image_data_offsets
-            .replace(client, &staging.text.image_data_offsets);
+            .replace_growing(client, &staging.text.image_data_offsets);
         self.glyph_image_data
-            .replace(client, &staging.text.image_data);
+            .replace_growing(client, &staging.text.image_data);
     }
 
     fn upload_backdrops<R: Runtime>(
@@ -887,14 +910,22 @@ pub(crate) struct CoarseBuffers {
     pub(crate) tile_ptcl_range_starts: CubeBuffer<u32>,
     pub(crate) tile_ptcl_range_ends: CubeBuffer<u32>,
     pub(crate) tile_ptcl_counts: CubeBuffer<u32>,
+    pub(crate) tile_glyph_range_starts: CubeBuffer<u32>,
+    pub(crate) tile_glyph_range_ends: CubeBuffer<u32>,
+    pub(crate) tile_glyph_counts: CubeBuffer<u32>,
     pub(crate) chunk_totals: CubeBuffer<u32>,
     pub(crate) chunk_offsets: CubeBuffer<u32>,
+    pub(crate) glyph_chunk_totals: CubeBuffer<u32>,
+    pub(crate) glyph_chunk_offsets: CubeBuffer<u32>,
     pub(crate) ptcl_tags: CubeBuffer<u32>,
     pub(crate) ptcl_backdrops: CubeBuffer<i32>,
     pub(crate) ptcl_fill_rules: CubeBuffer<u32>,
     pub(crate) ptcl_segment_starts: CubeBuffer<u32>,
     pub(crate) ptcl_segment_ends: CubeBuffer<u32>,
     pub(crate) ptcl_colors: CubeBuffer<u32>,
+    // Coarse stores per-tile glyph ids here; glyph particles point at ranges
+    // in this buffer so fine does not scan whole text runs per pixel.
+    pub(crate) glyph_indices: CubeBuffer<u32>,
 }
 
 impl CoarseBuffers {
@@ -903,14 +934,20 @@ impl CoarseBuffers {
             tile_ptcl_range_starts: CubeBuffer::new(client, 0),
             tile_ptcl_range_ends: CubeBuffer::new(client, 0),
             tile_ptcl_counts: CubeBuffer::new(client, 0),
+            tile_glyph_range_starts: CubeBuffer::new(client, 0),
+            tile_glyph_range_ends: CubeBuffer::new(client, 0),
+            tile_glyph_counts: CubeBuffer::new(client, 0),
             chunk_totals: CubeBuffer::new(client, 0),
             chunk_offsets: CubeBuffer::new(client, 0),
+            glyph_chunk_totals: CubeBuffer::new(client, 0),
+            glyph_chunk_offsets: CubeBuffer::new(client, 0),
             ptcl_tags: CubeBuffer::new(client, 0),
             ptcl_backdrops: CubeBuffer::new(client, 0),
             ptcl_fill_rules: CubeBuffer::new(client, 0),
             ptcl_segment_starts: CubeBuffer::new(client, 0),
             ptcl_segment_ends: CubeBuffer::new(client, 0),
             ptcl_colors: CubeBuffer::new(client, 0),
+            glyph_indices: CubeBuffer::new(client, 0),
         }
     }
 
@@ -925,9 +962,19 @@ impl CoarseBuffers {
             .resize_uninit(client, lengths.tile_count);
         self.tile_ptcl_counts
             .resize_uninit(client, lengths.tile_count);
+        self.tile_glyph_range_starts
+            .resize_uninit(client, lengths.tile_count);
+        self.tile_glyph_range_ends
+            .resize_uninit(client, lengths.tile_count);
+        self.tile_glyph_counts
+            .resize_uninit(client, lengths.tile_count);
         self.chunk_totals
             .resize_uninit(client, lengths.coarse_chunk_count);
         self.chunk_offsets
+            .resize_uninit(client, lengths.coarse_chunk_count);
+        self.glyph_chunk_totals
+            .resize_uninit(client, lengths.coarse_chunk_count);
+        self.glyph_chunk_offsets
             .resize_uninit(client, lengths.coarse_chunk_count);
         self.ptcl_tags
             .resize_uninit(client, lengths.coarse_ptcl_capacity);
@@ -941,5 +988,37 @@ impl CoarseBuffers {
             .resize_uninit(client, lengths.coarse_ptcl_capacity);
         self.ptcl_colors
             .resize_uninit(client, lengths.coarse_ptcl_capacity);
+        self.glyph_indices
+            .resize_uninit(client, lengths.coarse_glyph_capacity);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use peniko::{Color, kurbo::Point};
+
+    use super::{AtlasSignature, TextUpload};
+    use crate::{Scene, TextContext, TextLayoutOptions, text::PreparedTextData};
+
+    #[test]
+    fn text_upload_marks_atlas_dirty_only_when_signature_changes() {
+        let mut context = TextContext::new();
+        let layout = context.layout(TextLayoutOptions::new("Cache", 20.0));
+        if layout.is_empty() {
+            return;
+        }
+
+        let mut scene = Scene::new(160, 64);
+        scene.push_text_layout(&layout, Point::new(8.0, 36.0), Color::BLACK);
+        let text = PreparedTextData::new(&scene.text_glyphs, &scene.text_runs, &mut context);
+
+        let mut upload = TextUpload::default();
+        upload.refill(&scene, Some(&text), AtlasSignature::default());
+        assert!(upload.atlas_dirty);
+
+        let signature = upload.atlas_signature;
+        upload.refill(&scene, Some(&text), signature);
+        assert!(!upload.atlas_dirty);
+        assert!(upload.image_data.is_empty());
     }
 }

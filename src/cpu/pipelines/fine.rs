@@ -2,7 +2,7 @@ use crate::{
     cpu::computes::fine::{
         build_tile_alpha, combine_alpha, composite_blend_group_tile,
         composite_color_tile_buffer_into, composite_opacity_group_tile,
-        rasterize_glyph_run_tile_buffer_into, rasterize_sdf_tile_buffer_into,
+        rasterize_glyphs_tile_buffer_into, rasterize_sdf_tile_buffer_into,
         rasterize_tile_buffer_into,
     },
     shared::{
@@ -20,6 +20,7 @@ use rayon::prelude::*;
 pub struct FineCpuPrepared<'a> {
     tile_ptcl_ranges: &'a [TilePtclRange],
     tile_ptcls: &'a [TilePtcl],
+    tile_glyphs: &'a [u32],
     segments: &'a [LineSegment],
     target: &'a mut Image,
     target_bounds: Bounds,
@@ -52,6 +53,12 @@ impl<'a> FineCpuPrepared<'a> {
         let image_len = self.target.pixels.len();
         let target_bounds = self.target_bounds;
         let tile_count = tile_bbox.tile_count() as usize;
+        let resources = FineTileResources {
+            tile_ptcls: self.tile_ptcls,
+            tile_glyphs: self.tile_glyphs,
+            segments: self.segments,
+            text: self.text,
+        };
 
         (0..tile_count).into_par_iter().for_each(|tile_offset| {
             let tile_x = tile_bbox.x0 + tile_offset as u32 % tile_bbox.tile_stride();
@@ -79,15 +86,7 @@ impl<'a> FineCpuPrepared<'a> {
                     base_y,
                 )
             };
-            render_tile(
-                &mut tile,
-                tile_x,
-                tile_y,
-                range,
-                self.tile_ptcls,
-                self.segments,
-                self.text,
-            );
+            render_tile(&mut tile, tile_x, tile_y, range, resources);
             unsafe {
                 store_tile(
                     pixels,
@@ -104,27 +103,33 @@ impl<'a> FineCpuPrepared<'a> {
     }
 }
 
+#[derive(Clone, Copy)]
+struct FineTileResources<'a> {
+    tile_ptcls: &'a [TilePtcl],
+    tile_glyphs: &'a [u32],
+    segments: &'a [LineSegment],
+    text: Option<&'a PreparedTextData>,
+}
+
 fn render_tile(
     tile: &mut TileBuffer,
     tile_x: u32,
     tile_y: u32,
     range: TilePtclRange,
-    tile_ptcls: &[TilePtcl],
-    segments: &[LineSegment],
-    text: Option<&PreparedTextData>,
+    resources: FineTileResources<'_>,
 ) {
     let mut clip_mask = [255u8; 256];
     let mut clip_stack = Vec::new();
     let mut group_stack = Vec::new();
-    for ptcl in &tile_ptcls[range.start as usize..range.end as usize] {
+    for ptcl in &resources.tile_ptcls[range.start as usize..range.end as usize] {
         match ptcl {
             TilePtcl::End => break,
             TilePtcl::Color(color) => {
                 composite_color_tile_buffer_into(tile, color.color, &clip_mask);
             }
             TilePtcl::Fill(fill) => {
-                let segments =
-                    &segments[fill.segment_range.start as usize..fill.segment_range.end as usize];
+                let segments = &resources.segments
+                    [fill.segment_range.start as usize..fill.segment_range.end as usize];
                 rasterize_tile_buffer_into(
                     tile,
                     tile_x,
@@ -142,12 +147,14 @@ fn render_tile(
                 );
             }
             TilePtcl::Glyph(glyph) => {
-                if let Some(text) = text {
-                    rasterize_glyph_run_tile_buffer_into(
+                if let Some(text) = resources.text {
+                    let glyph_ids = &resources.tile_glyphs
+                        [glyph.glyph_range.start as usize..glyph.glyph_range.end as usize];
+                    rasterize_glyphs_tile_buffer_into(
                         tile,
                         tile_x,
                         tile_y,
-                        glyph.glyph_run_id,
+                        glyph_ids,
                         &glyph.brush,
                         text,
                         &clip_mask,
@@ -155,8 +162,8 @@ fn render_tile(
                 }
             }
             TilePtcl::BeginClip(fill) => {
-                let segments =
-                    &segments[fill.segment_range.start as usize..fill.segment_range.end as usize];
+                let segments = &resources.segments
+                    [fill.segment_range.start as usize..fill.segment_range.end as usize];
                 let alpha = build_tile_alpha(segments, fill.backdrop, fill.fill_rule);
                 clip_stack.push(clip_mask);
                 for (dst, src) in clip_mask.iter_mut().zip(alpha) {
@@ -169,8 +176,8 @@ fn render_tile(
                 }
             }
             TilePtcl::BeginOpacity { opacity, fill } => {
-                let segments =
-                    &segments[fill.segment_range.start as usize..fill.segment_range.end as usize];
+                let segments = &resources.segments
+                    [fill.segment_range.start as usize..fill.segment_range.end as usize];
                 group_stack.push(GroupFrame::Opacity {
                     parent: *tile,
                     parent_clip_mask: clip_mask,
@@ -198,8 +205,8 @@ fn render_tile(
                 }
             }
             TilePtcl::BeginBlend { mode, fill } => {
-                let segments =
-                    &segments[fill.segment_range.start as usize..fill.segment_range.end as usize];
+                let segments = &resources.segments
+                    [fill.segment_range.start as usize..fill.segment_range.end as usize];
                 group_stack.push(GroupFrame::Blend {
                     parent: *tile,
                     parent_clip_mask: clip_mask,
@@ -334,6 +341,7 @@ impl FineCpuPipeline {
         &self,
         tile_ptcl_ranges: &'a [TilePtclRange],
         tile_ptcls: &'a [TilePtcl],
+        tile_glyphs: &'a [u32],
         segments: &'a [LineSegment],
         target: &'a mut Image,
         target_bounds: Bounds,
@@ -343,6 +351,7 @@ impl FineCpuPipeline {
         FineCpuPrepared {
             tile_ptcl_ranges,
             tile_ptcls,
+            tile_glyphs,
             segments,
             target,
             target_bounds,
@@ -394,6 +403,7 @@ mod tests {
             .prepare(
                 &tile_ptcl_ranges,
                 &tile_ptcls,
+                &[],
                 &[],
                 &mut image,
                 target_bounds,

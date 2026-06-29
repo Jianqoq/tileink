@@ -255,11 +255,11 @@ pub(crate) fn rasterize_sdf_tile_buffer_into(
     }
 }
 
-pub(crate) fn rasterize_glyph_run_tile_buffer_into(
+pub(crate) fn rasterize_glyphs_tile_buffer_into(
     tile: &mut TileBuffer,
     tile_x: u32,
     tile_y: u32,
-    glyph_run_id: u32,
+    glyph_ids: &[u32],
     brush: &Brush,
     text: &PreparedTextData,
     clip_mask: &[u8; 256],
@@ -269,7 +269,10 @@ pub(crate) fn rasterize_glyph_run_tile_buffer_into(
     let tile_x1 = base_x + TILE_SIZE as i32;
     let tile_y1 = base_y + TILE_SIZE as i32;
 
-    for glyph in text.run_glyphs(glyph_run_id) {
+    for &glyph_id in glyph_ids {
+        let Some(glyph) = text.glyph(glyph_id) else {
+            continue;
+        };
         let Some(image_id) = glyph.image else {
             continue;
         };

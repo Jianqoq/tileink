@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    hash::{Hash, Hasher},
+};
 
 use cosmic_text::{
     Align, Attrs, Buffer, CacheKey, FontSystem, Metrics, Shaping, SwashCache, SwashContent,
@@ -201,6 +204,7 @@ pub(crate) struct PreparedTextData {
     glyphs: Vec<PreparedGlyph>,
     images: Vec<PreparedGlyphImage>,
     image_by_key: HashMap<CacheKey, u32>,
+    atlas_signature: AtlasSignature,
 }
 
 impl PreparedTextData {
@@ -208,6 +212,8 @@ impl PreparedTextData {
         let mut image_by_key = HashMap::new();
         let mut images = Vec::new();
         let mut prepared_glyphs = Vec::with_capacity(glyphs.len());
+        let mut atlas_hasher = StableAtlasHasher::new();
+        let mut atlas_len = 0u32;
 
         for glyph in glyphs {
             let image = if let Some(&image) = image_by_key.get(&glyph.cache_key) {
@@ -216,6 +222,8 @@ impl PreparedTextData {
                 let image_ix = images.len() as u32;
                 images.push(PreparedGlyphImage::from_swash(image));
                 image_by_key.insert(glyph.cache_key, image_ix);
+                glyph.cache_key.hash(&mut atlas_hasher);
+                atlas_len += 1;
                 Some(image_ix)
             } else {
                 None
@@ -232,16 +240,25 @@ impl PreparedTextData {
             glyphs: prepared_glyphs,
             images,
             image_by_key,
+            atlas_signature: AtlasSignature::from_hash(atlas_len, atlas_hasher.finish128()),
         }
     }
 
-    pub(crate) fn run_glyphs(&self, run_id: u32) -> &[PreparedGlyph] {
+    pub(crate) fn run_glyph_indices(&self, run_id: u32) -> std::ops::Range<u32> {
         let Some(run) = self.runs.get(run_id as usize) else {
-            return &[];
+            return 0..0;
         };
-        let start = run.glyph_start as usize;
-        let end = start.saturating_add(run.glyph_count as usize);
-        self.glyphs.get(start..end).unwrap_or(&[])
+        run.glyph_start..run.glyph_start.saturating_add(run.glyph_count)
+    }
+
+    pub(crate) fn glyph(&self, glyph_id: u32) -> Option<&PreparedGlyph> {
+        self.glyphs.get(glyph_id as usize)
+    }
+
+    pub(crate) fn glyph_bounds(&self, glyph_id: u32) -> Option<Bounds> {
+        let glyph = self.glyph(glyph_id)?;
+        let image = self.image(glyph.image?)?;
+        Some(glyph.bounds(image))
     }
 
     pub(crate) fn image(&self, image_id: u32) -> Option<&PreparedGlyphImage> {
@@ -255,6 +272,116 @@ impl PreparedTextData {
     pub(crate) fn images(&self) -> &[PreparedGlyphImage] {
         &self.images
     }
+
+    pub(crate) fn atlas_signature(&self) -> AtlasSignature {
+        self.atlas_signature
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct AtlasSignature {
+    len: u32,
+    hash0: u64,
+    hash1: u64,
+}
+
+impl AtlasSignature {
+    fn from_hash(len: u32, hash: (u64, u64)) -> Self {
+        if len == 0 {
+            Self::default()
+        } else {
+            Self {
+                len,
+                hash0: hash.0,
+                hash1: hash.1,
+            }
+        }
+    }
+}
+
+struct StableAtlasHasher {
+    a: u64,
+    b: u64,
+}
+
+impl StableAtlasHasher {
+    fn new() -> Self {
+        Self {
+            a: 0xcbf2_9ce4_8422_2325,
+            b: 0x9e37_79b9_7f4a_7c15,
+        }
+    }
+
+    fn finish128(self) -> (u64, u64) {
+        (avalanche64(self.a), avalanche64(self.b))
+    }
+
+    fn mix_byte(&mut self, byte: u8) {
+        self.a ^= byte as u64;
+        self.a = self.a.wrapping_mul(0x0000_0100_0000_01b3);
+        self.b ^= (byte as u64).wrapping_add(0x9e37_79b9_7f4a_7c15);
+        self.b = self.b.rotate_left(27).wrapping_mul(0x3c79_ac49_2ba7_b653);
+    }
+}
+
+impl Hasher for StableAtlasHasher {
+    fn finish(&self) -> u64 {
+        avalanche64(self.a ^ self.b)
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.mix_byte(byte);
+        }
+    }
+
+    fn write_u8(&mut self, i: u8) {
+        self.write(&i.to_le_bytes());
+    }
+
+    fn write_u16(&mut self, i: u16) {
+        self.write(&i.to_le_bytes());
+    }
+
+    fn write_u32(&mut self, i: u32) {
+        self.write(&i.to_le_bytes());
+    }
+
+    fn write_u64(&mut self, i: u64) {
+        self.write(&i.to_le_bytes());
+    }
+
+    fn write_usize(&mut self, i: usize) {
+        self.write(&(i as u64).to_le_bytes());
+    }
+
+    fn write_i8(&mut self, i: i8) {
+        self.write_u8(i as u8);
+    }
+
+    fn write_i16(&mut self, i: i16) {
+        self.write_u16(i as u16);
+    }
+
+    fn write_i32(&mut self, i: i32) {
+        self.write_u32(i as u32);
+    }
+
+    fn write_i64(&mut self, i: i64) {
+        self.write_u64(i as u64);
+    }
+
+    fn write_isize(&mut self, i: isize) {
+        self.write_usize(i as usize);
+    }
+}
+
+fn avalanche64(mut value: u64) -> u64 {
+    value ^= value >> 33;
+    value = value.wrapping_mul(0xff51_afd7_ed55_8ccd);
+    value ^= value >> 33;
+    value = value.wrapping_mul(0xc4ce_b9fe_1a85_ec53);
+    value ^ (value >> 33)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -262,6 +389,14 @@ pub(crate) struct PreparedGlyph {
     pub(crate) image: Option<u32>,
     pub(crate) x: i32,
     pub(crate) y: i32,
+}
+
+impl PreparedGlyph {
+    fn bounds(&self, image: &PreparedGlyphImage) -> Bounds {
+        let x0 = self.x + image.left;
+        let y0 = self.y - image.top;
+        Bounds::new(x0, y0, x0 + image.width as i32, y0 + image.height as i32)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -419,5 +554,26 @@ mod tests {
         }
 
         assert!(center.glyphs[0].x > left.glyphs[0].x);
+    }
+
+    #[test]
+    fn prepared_text_signature_changes_with_glyph_images() {
+        let mut context = TextContext::new();
+        let a = context.layout(TextLayoutOptions::new("A", 20.0));
+        let b = context.layout(TextLayoutOptions::new("B", 20.0));
+        if a.is_empty() || b.is_empty() {
+            return;
+        }
+
+        let a_glyphs: Vec<_> = scene_glyphs_at_origin(&a, Point::new(0.0, 0.0)).collect();
+        let b_glyphs: Vec<_> = scene_glyphs_at_origin(&b, Point::new(0.0, 0.0)).collect();
+        let runs = [TextRun {
+            glyph_start: 0,
+            glyph_count: 1,
+        }];
+        let a_data = PreparedTextData::new(&a_glyphs, &runs, &mut context);
+        let b_data = PreparedTextData::new(&b_glyphs, &runs, &mut context);
+
+        assert_ne!(a_data.atlas_signature(), b_data.atlas_signature());
     }
 }

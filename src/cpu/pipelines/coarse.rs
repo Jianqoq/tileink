@@ -1,13 +1,18 @@
 use rayon::prelude::*;
 
-use crate::shared::{
-    bd_record::BackdropRecord,
-    bounds::Bounds,
-    draw_record::{DrawRecord, DrawTag},
-    execution::LayerStackEntry,
-    pixel::opacity_f32_to_u8,
-    tile_ptcl::{TileColorPtcl, TileFillPtcl, TileGlyphPtcl, TilePtcl, TilePtclRange, TileSdfPtcl},
-    tile_seg_range::TileSegmentRange,
+use crate::{
+    shared::{
+        bd_record::BackdropRecord,
+        bounds::Bounds,
+        draw_record::{DrawRecord, DrawTag},
+        execution::LayerStackEntry,
+        pixel::opacity_f32_to_u8,
+        tile_ptcl::{
+            TileColorPtcl, TileFillPtcl, TileGlyphPtcl, TilePtcl, TilePtclRange, TileSdfPtcl,
+        },
+        tile_seg_range::TileSegmentRange,
+    },
+    text::PreparedTextData,
 };
 
 pub struct CoarseCpuPrepared<'a> {
@@ -22,7 +27,9 @@ pub struct CoarseCpuPrepared<'a> {
     tile_segment_ranges: &'a [TileSegmentRange],
     tile_ptcl_ranges: &'a mut Vec<TilePtclRange>,
     tile_ptcls: &'a mut Vec<TilePtcl>,
+    tile_glyphs: &'a mut Vec<u32>,
     tiles_size: (u32, u32),
+    text: Option<&'a PreparedTextData>,
 }
 
 impl<'a> CoarseCpuPrepared<'a> {
@@ -52,6 +59,7 @@ impl<'a> CoarseCpuPrepared<'a> {
                     self.backdrop_records,
                     self.backdrops,
                     self.tile_segment_ranges,
+                    self.text,
                 )
             })
             .collect::<Vec<_>>();
@@ -60,11 +68,23 @@ impl<'a> CoarseCpuPrepared<'a> {
         self.tile_ptcl_ranges
             .resize(tile_count, TilePtclRange::default());
         self.tile_ptcls.clear();
+        self.tile_glyphs.clear();
 
-        for (tile_ix, ptcls) in per_tile.into_iter().enumerate() {
+        for (tile_ix, output) in per_tile.into_iter().enumerate() {
             let start = self.tile_ptcls.len() as u32;
-            if !ptcls.is_empty() {
-                self.tile_ptcls.extend(ptcls);
+            if !output.ptcls.is_empty() {
+                // Glyph runs can span many tiles; store only this tile's glyph ids
+                // so fine does not rescan the whole run for every covered pixel.
+                let glyph_start = self.tile_glyphs.len() as u32;
+                self.tile_glyphs.extend(output.glyphs);
+                self.tile_ptcls
+                    .extend(output.ptcls.into_iter().map(|mut ptcl| {
+                        if let TilePtcl::Glyph(glyph) = &mut ptcl {
+                            glyph.glyph_range = glyph_start + glyph.glyph_range.start
+                                ..glyph_start + glyph.glyph_range.end;
+                        }
+                        ptcl
+                    }));
                 self.tile_ptcls.push(TilePtcl::End);
             }
             let end = self.tile_ptcls.len() as u32;
@@ -82,10 +102,11 @@ impl<'a> CoarseCpuPrepared<'a> {
         backdrop_records: &[BackdropRecord],
         backdrops: &[i32],
         tile_segment_ranges: &[TileSegmentRange],
-    ) -> Vec<TilePtcl> {
+        text: Option<&PreparedTextData>,
+    ) -> TileCoarseOutput {
         let tile_x = tile_ix as u32 % tiles_size.0;
         let tile_y = tile_ix as u32 / tiles_size.0;
-        let mut ptcls = Vec::new();
+        let mut output = TileCoarseOutput::default();
         let mut emitted_wrappers = Vec::new();
 
         for draw_ix in draw_range {
@@ -98,13 +119,14 @@ impl<'a> CoarseCpuPrepared<'a> {
                 backdrops,
                 tile_segment_ranges,
                 tiles_size,
+                text,
             ) else {
                 continue;
             };
             let draw = coverage.draw();
 
             if !Self::ensure_batch_wrappers(
-                &mut ptcls,
+                &mut output.ptcls,
                 &mut emitted_wrappers,
                 tile_x,
                 tile_y,
@@ -129,14 +151,14 @@ impl<'a> CoarseCpuPrepared<'a> {
                             && draw.solid_rect
                             && segment_range.start == segment_range.end
                         {
-                            ptcls.push(TilePtcl::Color(TileColorPtcl {
+                            output.ptcls.push(TilePtcl::Color(TileColorPtcl {
                                 color: crate::shared::pixel::premul_f32_to_u32(
                                     color.premultiply().components,
                                 ),
                             }));
                             continue;
                         }
-                        ptcls.push(TilePtcl::Fill(TileFillPtcl {
+                        output.ptcls.push(TilePtcl::Fill(TileFillPtcl {
                             backdrop,
                             fill_rule: draw.fill_rule,
                             segment_range,
@@ -147,21 +169,24 @@ impl<'a> CoarseCpuPrepared<'a> {
                         if let Some(color) = draw.brush.solid_color()
                             && sdf.tile_is_solid(tile_bounds(tile_x, tile_y))
                         {
-                            ptcls.push(TilePtcl::Color(TileColorPtcl {
+                            output.ptcls.push(TilePtcl::Color(TileColorPtcl {
                                 color: crate::shared::pixel::premul_f32_to_u32(
                                     color.premultiply().components,
                                 ),
                             }));
                             continue;
                         }
-                        ptcls.push(TilePtcl::Sdf(TileSdfPtcl {
+                        output.ptcls.push(TilePtcl::Sdf(TileSdfPtcl {
                             sdf: *sdf,
                             brush: draw.brush.clone(),
                         }));
                     }
-                    DrawTileCoverage::Glyph { draw, glyph_run_id } => {
-                        ptcls.push(TilePtcl::Glyph(TileGlyphPtcl {
-                            glyph_run_id,
+                    DrawTileCoverage::Glyph { draw, glyphs } => {
+                        let start = output.glyphs.len() as u32;
+                        output.glyphs.extend(glyphs);
+                        let end = output.glyphs.len() as u32;
+                        output.ptcls.push(TilePtcl::Glyph(TileGlyphPtcl {
+                            glyph_range: start..end,
                             brush: draw.brush.clone(),
                         }));
                     }
@@ -173,7 +198,7 @@ impl<'a> CoarseCpuPrepared<'a> {
                         segment_range,
                     } = coverage
                     {
-                        ptcls.push(TilePtcl::BeginClip(TileFillPtcl {
+                        output.ptcls.push(TilePtcl::BeginClip(TileFillPtcl {
                             backdrop,
                             fill_rule: draw.fill_rule,
                             segment_range,
@@ -186,13 +211,13 @@ impl<'a> CoarseCpuPrepared<'a> {
         }
 
         for wrapper in emitted_wrappers.iter().rev() {
-            ptcls.push(match wrapper {
+            output.ptcls.push(match wrapper {
                 LayerStackEntry::Clip { .. } => TilePtcl::EndClip,
                 LayerStackEntry::Opacity { .. } => TilePtcl::EndOpacity,
                 LayerStackEntry::Blend { .. } => TilePtcl::EndBlend,
             });
         }
-        ptcls
+        output
     }
 
     /// Emits the once-per-tile wrapper particles for the current batch.
@@ -321,6 +346,7 @@ impl<'a> CoarseCpuPrepared<'a> {
         backdrops: &[i32],
         tile_segment_ranges: &[TileSegmentRange],
         tiles_size: (u32, u32),
+        text: Option<&PreparedTextData>,
     ) -> Option<DrawTileCoverage<'b>> {
         let draw = &draw_records[draw_ix];
         if let Some(sdf) = &draw.sdf {
@@ -334,7 +360,11 @@ impl<'a> CoarseCpuPrepared<'a> {
         if let Some(glyph_run_id) = draw.glyph_run_id {
             let bbox = draw.tile_bbox(tiles_size.0, tiles_size.1);
             if tile_x >= bbox.x0 && tile_x < bbox.x1 && tile_y >= bbox.y0 && tile_y < bbox.y1 {
-                return Some(DrawTileCoverage::Glyph { draw, glyph_run_id });
+                let text = text?;
+                let glyphs = glyphs_for_tile(text, glyph_run_id, tile_x, tile_y);
+                if !glyphs.is_empty() {
+                    return Some(DrawTileCoverage::Glyph { draw, glyphs });
+                }
             }
             return None;
         }
@@ -357,6 +387,12 @@ impl<'a> CoarseCpuPrepared<'a> {
     }
 }
 
+#[derive(Default)]
+struct TileCoarseOutput {
+    ptcls: Vec<TilePtcl>,
+    glyphs: Vec<u32>,
+}
+
 enum DrawTileCoverage<'a> {
     Path {
         draw: &'a DrawRecord,
@@ -369,7 +405,7 @@ enum DrawTileCoverage<'a> {
     },
     Glyph {
         draw: &'a DrawRecord,
-        glyph_run_id: u32,
+        glyphs: Vec<u32>,
     },
 }
 
@@ -390,6 +426,25 @@ fn tile_bounds(tile_x: u32, tile_y: u32) -> Bounds {
         x0 + crate::TILE_SIZE as i32,
         y0 + crate::TILE_SIZE as i32,
     )
+}
+
+fn glyphs_for_tile(
+    text: &PreparedTextData,
+    glyph_run_id: u32,
+    tile_x: u32,
+    tile_y: u32,
+) -> Vec<u32> {
+    let tile_bounds = tile_bounds(tile_x, tile_y);
+    text.run_glyph_indices(glyph_run_id)
+        .filter(|&glyph_id| {
+            text.glyph_bounds(glyph_id)
+                .is_some_and(|glyph_bounds| bounds_intersect(glyph_bounds, tile_bounds))
+        })
+        .collect()
+}
+
+fn bounds_intersect(a: Bounds, b: Bounds) -> bool {
+    a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0
 }
 
 pub struct CoarseCpuPipeline;
@@ -415,7 +470,9 @@ impl CoarseCpuPipeline {
         tile_segment_ranges: &'a [TileSegmentRange],
         tile_ptcl_ranges: &'a mut Vec<TilePtclRange>,
         tile_ptcls: &'a mut Vec<TilePtcl>,
+        tile_glyphs: &'a mut Vec<u32>,
         tiles_size: (u32, u32),
+        text: Option<&'a PreparedTextData>,
     ) -> CoarseCpuPrepared<'a> {
         CoarseCpuPrepared {
             draw_records,
@@ -427,7 +484,9 @@ impl CoarseCpuPipeline {
             tile_segment_ranges,
             tile_ptcl_ranges,
             tile_ptcls,
+            tile_glyphs,
             tiles_size,
+            text,
         }
     }
 }
@@ -435,17 +494,22 @@ impl CoarseCpuPipeline {
 #[cfg(test)]
 mod tests {
     use peniko::Color;
+    use peniko::kurbo::Point;
 
     use super::CoarseCpuPipeline;
-    use crate::shared::{
-        bd_record::BackdropRecord,
-        bounds::PixelBounds,
-        brush::Brush,
-        draw_record::{DrawRecord, DrawTag},
-        execution::LayerStackEntry,
-        fill::FillRule,
-        tile_ptcl::TilePtcl,
-        tile_seg_range::TileSegmentRange,
+    use crate::{
+        Scene,
+        shared::{
+            bd_record::BackdropRecord,
+            bounds::{Bounds, PixelBounds},
+            brush::Brush,
+            draw_record::{DrawRecord, DrawTag},
+            execution::LayerStackEntry,
+            fill::FillRule,
+            tile_ptcl::TilePtcl,
+            tile_seg_range::TileSegmentRange,
+        },
+        text::{PreparedTextData, TextContext, TextLayoutOptions},
     };
 
     fn solid_color_u32(color: Color) -> u32 {
@@ -547,6 +611,7 @@ mod tests {
         ];
         let mut tile_ptcl_ranges = Vec::new();
         let mut tile_ptcls = Vec::new();
+        let mut tile_glyphs = Vec::new();
         let layer_stack_data = [
             LayerStackEntry::Clip { draw: 0 },
             LayerStackEntry::Clip { draw: 1 },
@@ -563,7 +628,9 @@ mod tests {
                 &tile_segment_ranges,
                 &mut tile_ptcl_ranges,
                 &mut tile_ptcls,
+                &mut tile_glyphs,
                 (1, 1),
+                None,
             )
             .run();
 
@@ -576,6 +643,82 @@ mod tests {
         assert!(matches!(tile_ptcls[3], TilePtcl::EndClip));
         assert!(matches!(tile_ptcls[4], TilePtcl::EndClip));
         assert!(matches!(tile_ptcls[5], TilePtcl::End));
+    }
+
+    #[test]
+    fn run_builds_per_tile_glyph_lists() {
+        let mut context = TextContext::new();
+        let layout = context.layout(TextLayoutOptions::new("MMMMMMMM", 24.0));
+        if layout.is_empty() {
+            return;
+        }
+
+        let mut scene = Scene::new(160, 64);
+        scene.push_text_layout(&layout, Point::new(2.0, 32.0), Color::WHITE);
+        let text = PreparedTextData::new(&scene.text_glyphs, &scene.text_runs, &mut context);
+        if scene.draw_records.is_empty() {
+            return;
+        }
+
+        let mut tile_ptcl_ranges = Vec::new();
+        let mut tile_ptcls = Vec::new();
+        let mut tile_glyphs = Vec::new();
+        let tiles_size = (scene.width_in_tiles(), scene.height_in_tiles());
+
+        CoarseCpuPipeline::new()
+            .prepare(
+                &scene.draw_records,
+                0..scene.draw_records.len(),
+                &[],
+                0..0,
+                &[],
+                &[],
+                &[],
+                &mut tile_ptcl_ranges,
+                &mut tile_ptcls,
+                &mut tile_glyphs,
+                tiles_size,
+                Some(&text),
+            )
+            .run();
+
+        for tile_y in 0..tiles_size.1 {
+            for tile_x in 0..tiles_size.0 {
+                let tile_ix = (tile_y * tiles_size.0 + tile_x) as usize;
+                let tile_bounds = Bounds::new(
+                    (tile_x * crate::TILE_SIZE) as i32,
+                    (tile_y * crate::TILE_SIZE) as i32,
+                    ((tile_x + 1) * crate::TILE_SIZE) as i32,
+                    ((tile_y + 1) * crate::TILE_SIZE) as i32,
+                );
+                let expected = text
+                    .run_glyph_indices(0)
+                    .filter(|&glyph_id| {
+                        text.glyph_bounds(glyph_id).is_some_and(|glyph_bounds| {
+                            glyph_bounds.x0 < tile_bounds.x1
+                                && glyph_bounds.x1 > tile_bounds.x0
+                                && glyph_bounds.y0 < tile_bounds.y1
+                                && glyph_bounds.y1 > tile_bounds.y0
+                        })
+                    })
+                    .collect::<Vec<_>>();
+
+                let range = tile_ptcl_ranges[tile_ix];
+                let actual = tile_ptcls[range.start as usize..range.end as usize]
+                    .iter()
+                    .find_map(|ptcl| match ptcl {
+                        TilePtcl::Glyph(glyph) => Some(
+                            tile_glyphs
+                                [glyph.glyph_range.start as usize..glyph.glyph_range.end as usize]
+                                .to_vec(),
+                        ),
+                        _ => None,
+                    })
+                    .unwrap_or_default();
+
+                assert_eq!(actual, expected, "tile {tile_x},{tile_y}");
+            }
+        }
     }
 
     #[test]
@@ -642,6 +785,7 @@ mod tests {
         let tile_segment_ranges = [TileSegmentRange::default(); 3];
         let mut tile_ptcl_ranges = Vec::new();
         let mut tile_ptcls = Vec::new();
+        let mut tile_glyphs = Vec::new();
 
         CoarseCpuPipeline::new()
             .prepare(
@@ -654,7 +798,9 @@ mod tests {
                 &tile_segment_ranges,
                 &mut tile_ptcl_ranges,
                 &mut tile_ptcls,
+                &mut tile_glyphs,
                 (2, 1),
+                None,
             )
             .run();
 

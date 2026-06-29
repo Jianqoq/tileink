@@ -60,6 +60,7 @@ impl Render for Renderer {
         std::ops::Range<usize>,
         &'a [LayerStackEntry],
         std::ops::Range<usize>,
+        Option<&'a PreparedTextData>,
     );
 
     type ExecuteArgs<'a> = &'a mut Image;
@@ -87,7 +88,7 @@ impl Render for Renderer {
     }
 
     fn coarse(&mut self, scene: &crate::scene::Scene, args: Self::CoarseArgs<'_>) {
-        let (draw_records, draw_range, layer_stack_data, layer_stack_range) = args;
+        let (draw_records, draw_range, layer_stack_data, layer_stack_range, text) = args;
         run_coarse(
             &self.coarse,
             scene,
@@ -96,6 +97,7 @@ impl Render for Renderer {
                 draw_range,
                 layer_stack_data,
                 layer_stack_range,
+                text,
             },
             &mut self.main,
         );
@@ -185,6 +187,7 @@ impl Renderer {
                     draws.start..draws.end,
                     &plan.layer_stack_data,
                     layer_stack.clone(),
+                    None,
                 ),
             );
             profile.coarse += start.elapsed();
@@ -345,6 +348,7 @@ impl Renderer {
                 draw_range: start..end,
                 layer_stack_data: &plan.layer_stack_data,
                 layer_stack_range: layer_stack,
+                text: text_data,
             },
             buffers,
         );
