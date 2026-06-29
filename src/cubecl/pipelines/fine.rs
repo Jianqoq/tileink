@@ -4,16 +4,18 @@ use crate::cubecl::{
     brush::GpuBrushResources,
     buffer::CubeBuffer,
     pipelines::common::{
-        blend_premul_u8, combine_alpha, sample_brush, scale_premul_u8, src_over_premul_u8,
+        blend_premul_u8, combine_alpha, sample_brush, scale_premul_u8,
+        src_over_mask_linear_auto_u8, src_over_premul_u8, src_over_subpixel_mask_linear_auto_u8,
         src_over_subpixel_mask_u8,
     },
     renderer::{CoarseBuffers, ScanBuffers, SceneBuffers},
     types::{
-        CUBE_GLYPH_COLOR, CUBE_GLYPH_MASK, CUBE_GLYPH_SUBPIXEL_MASK, CUBE_PTCL_BEGIN_BLEND,
-        CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_BEGIN_OPACITY, CUBE_PTCL_COLOR, CUBE_PTCL_END,
-        CUBE_PTCL_END_BLEND, CUBE_PTCL_END_CLIP, CUBE_PTCL_END_OPACITY, CUBE_PTCL_FILL,
-        CUBE_PTCL_GLYPH, CUBE_PTCL_SDF, CUBE_SDF_CIRCLE, CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_RECT,
-        CUBE_SDF_RECT_STROKE, CubeBufferLengths,
+        CUBE_GLYPH_COLOR, CUBE_GLYPH_LINEAR_COLOR, CUBE_GLYPH_LINEAR_MASK,
+        CUBE_GLYPH_LINEAR_SUBPIXEL_MASK, CUBE_GLYPH_MASK, CUBE_GLYPH_SUBPIXEL_MASK,
+        CUBE_PTCL_BEGIN_BLEND, CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_BEGIN_OPACITY, CUBE_PTCL_COLOR,
+        CUBE_PTCL_END, CUBE_PTCL_END_BLEND, CUBE_PTCL_END_CLIP, CUBE_PTCL_END_OPACITY,
+        CUBE_PTCL_FILL, CUBE_PTCL_GLYPH, CUBE_PTCL_SDF, CUBE_SDF_CIRCLE, CUBE_SDF_CIRCLE_STROKE,
+        CUBE_SDF_RECT, CUBE_SDF_RECT_STROKE, CubeBufferLengths,
     },
 };
 
@@ -439,9 +441,25 @@ fn composite_glyphs_at(
                         );
                         pixel = src_over_premul_u8(pixel, scale_premul_u8(color, alpha));
                     }
+                } else if content == CUBE_GLYPH_LINEAR_MASK {
+                    let alpha = combine_alpha(glyph_image_data[data_ix as usize], clip_mask);
+                    if alpha > 0 {
+                        let color = sample_brush(
+                            draw_ix,
+                            global_x as f32 + 0.5,
+                            global_y as f32 + 0.5,
+                            brush_data,
+                            brush_params,
+                            brush_payloads,
+                        );
+                        pixel = src_over_mask_linear_auto_u8(pixel, color, alpha);
+                    }
                 } else if content == CUBE_GLYPH_COLOR {
                     let color = scale_premul_u8(glyph_image_data[data_ix as usize], clip_mask);
                     pixel = src_over_premul_u8(pixel, color);
+                } else if content == CUBE_GLYPH_LINEAR_COLOR {
+                    let color = glyph_image_data[data_ix as usize];
+                    pixel = src_over_mask_linear_auto_u8(pixel, color, clip_mask);
                 } else if content == CUBE_GLYPH_SUBPIXEL_MASK {
                     let color = sample_brush(
                         draw_ix,
@@ -452,6 +470,21 @@ fn composite_glyphs_at(
                         brush_payloads,
                     );
                     pixel = src_over_subpixel_mask_u8(
+                        pixel,
+                        color,
+                        glyph_image_data[data_ix as usize],
+                        clip_mask,
+                    );
+                } else if content == CUBE_GLYPH_LINEAR_SUBPIXEL_MASK {
+                    let color = sample_brush(
+                        draw_ix,
+                        global_x as f32 + 0.5,
+                        global_y as f32 + 0.5,
+                        brush_data,
+                        brush_params,
+                        brush_payloads,
+                    );
+                    pixel = src_over_subpixel_mask_linear_auto_u8(
                         pixel,
                         color,
                         glyph_image_data[data_ix as usize],

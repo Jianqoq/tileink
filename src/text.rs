@@ -119,14 +119,14 @@ impl TextContext {
     pub(crate) fn glyph_image(&mut self, cache_key: CacheKey) -> Option<&SwashImage> {
         let key = RasterGlyphKey {
             cache_key,
-            options: self.raster_options,
+            subpixel_mode: self.raster_options.subpixel_mode,
         };
         if !self.image_cache.contains_key(&key) {
             let image = raster_glyph_image(
                 &mut self.font_system,
                 &mut self.scale_context,
                 cache_key,
-                self.raster_options,
+                self.raster_options.subpixel_mode,
             );
             self.image_cache.insert(key, image);
         }
@@ -158,19 +158,32 @@ pub enum TextSubpixelMode {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum TextCompositeMode {
+    Srgb,
+    Linear,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct TextRasterOptions {
     pub subpixel_mode: TextSubpixelMode,
+    pub composite_mode: TextCompositeMode,
 }
 
 impl TextRasterOptions {
     pub const fn new() -> Self {
         Self {
             subpixel_mode: TextSubpixelMode::Rgb,
+            composite_mode: TextCompositeMode::Linear,
         }
     }
 
     pub const fn with_subpixel_mode(mut self, mode: TextSubpixelMode) -> Self {
         self.subpixel_mode = mode;
+        self
+    }
+
+    pub const fn with_composite_mode(mut self, mode: TextCompositeMode) -> Self {
+        self.composite_mode = mode;
         self
     }
 }
@@ -184,14 +197,14 @@ impl Default for TextRasterOptions {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 struct RasterGlyphKey {
     cache_key: CacheKey,
-    options: TextRasterOptions,
+    subpixel_mode: TextSubpixelMode,
 }
 
 fn raster_glyph_image(
     font_system: &mut FontSystem,
     context: &mut ScaleContext,
     cache_key: CacheKey,
-    options: TextRasterOptions,
+    subpixel_mode: TextSubpixelMode,
 ) -> Option<SwashImage> {
     let font = font_system.get_font(cache_key.font_id, cache_key.font_weight)?;
 
@@ -225,7 +238,7 @@ fn raster_glyph_image(
         Source::ColorBitmap(StrikeWith::BestFit),
         Source::Outline,
     ])
-    .format(match options.subpixel_mode {
+    .format(match subpixel_mode {
         TextSubpixelMode::None => Format::Alpha,
         TextSubpixelMode::Rgb => Format::Subpixel,
         TextSubpixelMode::Bgr => Format::subpixel_bgra(),
@@ -333,15 +346,17 @@ impl PreparedTextData {
         let mut prepared_glyphs = Vec::with_capacity(glyphs.len());
         let mut atlas_hasher = StableAtlasHasher::new();
         let mut atlas_len = 0u32;
+        let composite_mode = context.raster_options().composite_mode;
 
         for glyph in glyphs {
             let image = if let Some(&image) = image_by_key.get(&glyph.cache_key) {
                 Some(image)
             } else if let Some(image) = context.glyph_image(glyph.cache_key) {
                 let image_ix = images.len() as u32;
-                images.push(PreparedGlyphImage::from_swash(image));
+                images.push(PreparedGlyphImage::from_swash(image, composite_mode));
                 image_by_key.insert(glyph.cache_key, image_ix);
                 glyph.cache_key.hash(&mut atlas_hasher);
+                composite_mode.hash(&mut atlas_hasher);
                 atlas_len += 1;
                 Some(image_ix)
             } else {
@@ -536,6 +551,7 @@ impl PreparedGlyph {
 #[derive(Clone, Debug)]
 pub(crate) struct PreparedGlyphImage {
     pub(crate) content: PreparedGlyphContent,
+    pub(crate) composite_mode: TextCompositeMode,
     pub(crate) left: i32,
     pub(crate) top: i32,
     pub(crate) width: u32,
@@ -544,7 +560,7 @@ pub(crate) struct PreparedGlyphImage {
 }
 
 impl PreparedGlyphImage {
-    fn from_swash(image: &SwashImage) -> Self {
+    fn from_swash(image: &SwashImage, composite_mode: TextCompositeMode) -> Self {
         let content = match image.content {
             SwashContent::Mask => PreparedGlyphContent::Mask,
             SwashContent::Color => PreparedGlyphContent::Color,
@@ -552,6 +568,7 @@ impl PreparedGlyphImage {
         };
         Self {
             content,
+            composite_mode,
             left: image.placement.left,
             top: image.placement.top,
             width: image.placement.width,
@@ -730,6 +747,31 @@ mod tests {
     }
 
     #[test]
+    fn prepared_text_signature_changes_with_composite_mode() {
+        let mut context = TextContext::new();
+        let layout = context.layout(TextLayoutOptions::new("A", 20.0));
+        if layout.is_empty() {
+            return;
+        }
+
+        let glyphs: Vec<_> = scene_glyphs_at_origin(&layout, Point::new(0.0, 0.0)).collect();
+        let runs = [TextRun {
+            glyph_start: 0,
+            glyph_count: 1,
+        }];
+        context.set_raster_options(
+            TextRasterOptions::new().with_composite_mode(TextCompositeMode::Linear),
+        );
+        let linear = PreparedTextData::new(&glyphs, &runs, &mut context);
+        context.set_raster_options(
+            TextRasterOptions::new().with_composite_mode(TextCompositeMode::Srgb),
+        );
+        let srgb = PreparedTextData::new(&glyphs, &runs, &mut context);
+
+        assert_ne!(linear.atlas_signature(), srgb.atlas_signature());
+    }
+
+    #[test]
     fn text_context_uses_subpixel_raster_by_default() {
         let mut context = TextContext::new();
         let layout = context.layout(TextLayoutOptions::new("H", 12.0));
@@ -755,9 +797,18 @@ mod tests {
         };
         image.data = vec![1, 2, 3, 255, 4, 5, 6, 255];
 
-        let prepared = PreparedGlyphImage::from_swash(&image);
+        let prepared = PreparedGlyphImage::from_swash(&image, TextCompositeMode::Linear);
 
         assert_eq!(prepared.content, PreparedGlyphContent::SubpixelMask);
+        assert_eq!(prepared.composite_mode, TextCompositeMode::Linear);
         assert_eq!(prepared.data, vec![1, 2, 3, 4, 5, 6]);
+    }
+
+    #[test]
+    fn text_raster_options_use_linear_compositing_by_default() {
+        assert_eq!(
+            TextRasterOptions::default().composite_mode,
+            TextCompositeMode::Linear
+        );
     }
 }

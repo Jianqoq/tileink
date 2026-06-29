@@ -38,6 +38,9 @@ pub(crate) const CUBE_PTCL_GLYPH: u32 = 10;
 pub(crate) const CUBE_GLYPH_MASK: u32 = 0;
 pub(crate) const CUBE_GLYPH_COLOR: u32 = 1;
 pub(crate) const CUBE_GLYPH_SUBPIXEL_MASK: u32 = 2;
+pub(crate) const CUBE_GLYPH_LINEAR_MASK: u32 = 3;
+pub(crate) const CUBE_GLYPH_LINEAR_COLOR: u32 = 4;
+pub(crate) const CUBE_GLYPH_LINEAR_SUBPIXEL_MASK: u32 = 5;
 
 pub(crate) const CUBE_SDF_NONE: u32 = 0;
 pub(crate) const CUBE_SDF_RECT: u32 = 1;

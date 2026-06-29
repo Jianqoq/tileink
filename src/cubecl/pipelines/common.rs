@@ -5,6 +5,9 @@ use crate::cubecl::brush::{
     GPU_BRUSH_RADIAL, GPU_BRUSH_SWEEP, GPU_BRUSH_U32_STRIDE, GPU_EXTEND_REFLECT, GPU_EXTEND_REPEAT,
     GPU_PATTERN_BILINEAR,
 };
+
+const TEXT_DARK_ON_LIGHT_COVERAGE_BOOST: f32 = 0.6;
+
 #[cube]
 pub(crate) fn sample_brush(
     brush_index: u32,
@@ -467,6 +470,163 @@ pub(crate) fn src_over_subpixel_mask_u8(dst: u32, src: u32, mask_rgb: u32, clip:
             let a = ca + mul_div255((dst >> 24) & 255, 255 - ca);
             out = r | (g << 8) | (b << 16) | (a << 24);
         }
+    }
+    out
+}
+
+#[cube]
+pub(crate) fn src_over_mask_linear_u8(dst: u32, src: u32, coverage: u32) -> u32 {
+    let mut out = dst;
+    if (src >> 24) != 0 && coverage != 0 {
+        let coverage_f = coverage as f32 * (1.0 / 255.0);
+        let src_a = ((src >> 24) & 255) as f32 * (1.0 / 255.0);
+        let dst_a = ((dst >> 24) & 255) as f32 * (1.0 / 255.0);
+        let src_r = linear_premul_from_srgb8(src & 255, src_a);
+        let src_g = linear_premul_from_srgb8((src >> 8) & 255, src_a);
+        let src_b = linear_premul_from_srgb8((src >> 16) & 255, src_a);
+        let dst_r = linear_premul_from_srgb8(dst & 255, dst_a);
+        let dst_g = linear_premul_from_srgb8((dst >> 8) & 255, dst_a);
+        let dst_b = linear_premul_from_srgb8((dst >> 16) & 255, dst_a);
+        let out_src_a = src_a * coverage_f;
+        let out_a = out_src_a + dst_a * (1.0 - out_src_a);
+        out = pack_linear_premul_to_srgb8(
+            src_r * coverage_f + dst_r * (1.0 - out_src_a),
+            src_g * coverage_f + dst_g * (1.0 - out_src_a),
+            src_b * coverage_f + dst_b * (1.0 - out_src_a),
+            out_a,
+        );
+    }
+    out
+}
+
+#[cube]
+pub(crate) fn src_over_mask_linear_auto_u8(dst: u32, src: u32, coverage: u32) -> u32 {
+    src_over_mask_linear_u8(dst, src, auto_text_coverage(dst, src, coverage))
+}
+
+#[cube]
+pub(crate) fn src_over_subpixel_mask_linear_u8(
+    dst: u32,
+    src: u32,
+    mask_rgb: u32,
+    clip: u32,
+) -> u32 {
+    let mut out = dst;
+    if (src >> 24) != 0 && clip != 0 {
+        let mr = combine_alpha(mask_rgb & 255, clip) as f32 * (1.0 / 255.0);
+        let mg = combine_alpha((mask_rgb >> 8) & 255, clip) as f32 * (1.0 / 255.0);
+        let mb = combine_alpha((mask_rgb >> 16) & 255, clip) as f32 * (1.0 / 255.0);
+        if mr != 0.0 || mg != 0.0 || mb != 0.0 {
+            let src_a = ((src >> 24) & 255) as f32 * (1.0 / 255.0);
+            let dst_a = ((dst >> 24) & 255) as f32 * (1.0 / 255.0);
+            let src_r = linear_premul_from_srgb8(src & 255, src_a);
+            let src_g = linear_premul_from_srgb8((src >> 8) & 255, src_a);
+            let src_b = linear_premul_from_srgb8((src >> 16) & 255, src_a);
+            let dst_r = linear_premul_from_srgb8(dst & 255, dst_a);
+            let dst_g = linear_premul_from_srgb8((dst >> 8) & 255, dst_a);
+            let dst_b = linear_premul_from_srgb8((dst >> 16) & 255, dst_a);
+            let cr = src_a * mr;
+            let cg = src_a * mg;
+            let cb = src_a * mb;
+            let ca = cr.max(cg).max(cb);
+            let out_a = ca + dst_a * (1.0 - ca);
+            out = pack_linear_premul_to_srgb8(
+                src_r * mr + dst_r * (1.0 - cr),
+                src_g * mg + dst_g * (1.0 - cg),
+                src_b * mb + dst_b * (1.0 - cb),
+                out_a,
+            );
+        }
+    }
+    out
+}
+
+#[cube]
+pub(crate) fn src_over_subpixel_mask_linear_auto_u8(
+    dst: u32,
+    src: u32,
+    mask_rgb: u32,
+    clip: u32,
+) -> u32 {
+    let r = auto_text_coverage(dst, src, combine_alpha(mask_rgb & 255, clip));
+    let g = auto_text_coverage(dst, src, combine_alpha((mask_rgb >> 8) & 255, clip));
+    let b = auto_text_coverage(dst, src, combine_alpha((mask_rgb >> 16) & 255, clip));
+    src_over_subpixel_mask_linear_u8(dst, src, r | (g << 8) | (b << 16), 255)
+}
+
+#[cube]
+fn auto_text_coverage(dst: u32, src: u32, coverage: u32) -> u32 {
+    let mut out = coverage;
+    if coverage != 0 && coverage != 255 {
+        let src_luma = linear_luminance_from_srgb8(src);
+        let dst_luma = linear_luminance_from_srgb8(dst);
+        if src_luma < dst_luma {
+            let contrast = (dst_luma - src_luma).clamp(0.0, 1.0);
+            let exponent = 1.0
+                - f32::new(TEXT_DARK_ON_LIGHT_COVERAGE_BOOST) * contrast * dst_luma.clamp(0.0, 1.0);
+            out = ((coverage as f32 * (1.0 / 255.0)).powf(exponent) * 255.0 + 0.5) as u32;
+        }
+    }
+    out
+}
+
+#[cube]
+fn linear_luminance_from_srgb8(px: u32) -> f32 {
+    let alpha = ((px >> 24) & 255) as f32 * (1.0 / 255.0);
+    let mut out = 0.0;
+    if alpha > 0.0 {
+        let r = srgb_to_linear(((px & 255) as f32 * (1.0 / 255.0)) / alpha);
+        let g = srgb_to_linear((((px >> 8) & 255) as f32 * (1.0 / 255.0)) / alpha);
+        let b = srgb_to_linear((((px >> 16) & 255) as f32 * (1.0 / 255.0)) / alpha);
+        out = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    }
+    out
+}
+
+#[cube]
+fn linear_premul_from_srgb8(value: u32, alpha: f32) -> f32 {
+    let mut out = 0.0;
+    if alpha > 0.0 {
+        out = srgb_to_linear((value as f32 * (1.0 / 255.0)) / alpha) * alpha;
+    }
+    out
+}
+
+#[cube]
+fn pack_linear_premul_to_srgb8(r: f32, g: f32, b: f32, a: f32) -> u32 {
+    let mut out = 0u32;
+    if a > 0.0 {
+        let alpha = a.clamp(0.0, 1.0);
+        let pr = linear_premul_channel_to_srgb8(r, alpha);
+        let pg = linear_premul_channel_to_srgb8(g, alpha);
+        let pb = linear_premul_channel_to_srgb8(b, alpha);
+        let pa = (alpha * 255.0 + 0.5) as u32;
+        out = pr | (pg << 8) | (pb << 16) | (pa << 24);
+    }
+    out
+}
+
+#[cube]
+fn linear_premul_channel_to_srgb8(value: f32, alpha: f32) -> u32 {
+    (linear_to_srgb((value / alpha).clamp(0.0, 1.0)) * alpha * 255.0 + 0.5) as u32
+}
+
+#[cube]
+fn srgb_to_linear(value: f32) -> f32 {
+    let v = value.clamp(0.0, 1.0);
+    let mut out = v / 12.92;
+    if v > 0.04045 {
+        out = ((v + 0.055) / 1.055).powf(2.4);
+    }
+    out
+}
+
+#[cube]
+fn linear_to_srgb(value: f32) -> f32 {
+    let v = value.clamp(0.0, 1.0);
+    let mut out = v * 12.92;
+    if v > 0.003_130_8 {
+        out = 1.055 * v.powf(1.0 / 2.4) - 0.055;
     }
     out
 }

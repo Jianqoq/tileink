@@ -9,12 +9,13 @@ use crate::{
         layer::blend::Blend,
         line_seg::LineSegment,
         pixel::{
-            TileBuffer, coverage_f32_to_u8, pack_premul_rgba8, scale_premul_u8, src_over_premul_u8,
-            src_over_subpixel_mask_u8, unpack_premul_rgba8,
+            TileBuffer, coverage_f32_to_u8, pack_premul_rgba8, scale_premul_u8,
+            src_over_mask_linear_auto_u8, src_over_premul_u8,
+            src_over_subpixel_mask_linear_auto_u8, src_over_subpixel_mask_u8, unpack_premul_rgba8,
         },
         sdf::Sdf,
     },
-    text::{PreparedGlyphContent, PreparedTextData},
+    text::{PreparedGlyphContent, PreparedTextData, TextCompositeMode},
 };
 
 const AREA_EPSILON: f32 = 1.0e-6;
@@ -311,10 +312,16 @@ pub(crate) fn rasterize_glyphs_tile_buffer_into(
                         if alpha == 0 {
                             continue;
                         }
-                        scale_premul_u8(
-                            brush.sample(global_x as f32 + 0.5, global_y as f32 + 0.5),
-                            alpha,
-                        )
+                        let color = brush.sample(global_x as f32 + 0.5, global_y as f32 + 0.5);
+                        match image.composite_mode {
+                            TextCompositeMode::Linear => {
+                                tile[tile_ix] =
+                                    src_over_mask_linear_auto_u8(tile[tile_ix], color, alpha);
+                                continue;
+                            }
+                            TextCompositeMode::Srgb => {}
+                        }
+                        scale_premul_u8(color, alpha)
                     }
                     PreparedGlyphContent::Color => {
                         let image_ix = (image_y * image.width as usize + image_x) * 4;
@@ -322,7 +329,7 @@ pub(crate) fn rasterize_glyphs_tile_buffer_into(
                         if a == 0 {
                             continue;
                         }
-                        scale_premul_u8(
+                        let src = scale_premul_u8(
                             crate::shared::image::rgba8_pack([
                                 crate::shared::pixel::mul_div255(image.data[image_ix], a),
                                 crate::shared::pixel::mul_div255(image.data[image_ix + 1], a),
@@ -330,20 +337,36 @@ pub(crate) fn rasterize_glyphs_tile_buffer_into(
                                 a,
                             ]),
                             clip,
-                        )
+                        );
+                        match image.composite_mode {
+                            TextCompositeMode::Linear => {
+                                tile[tile_ix] =
+                                    src_over_mask_linear_auto_u8(tile[tile_ix], src, clip);
+                                continue;
+                            }
+                            TextCompositeMode::Srgb => {}
+                        }
+                        src
                     }
                     PreparedGlyphContent::SubpixelMask => {
                         let image_ix = (image_y * image.width as usize + image_x) * 3;
-                        let out = src_over_subpixel_mask_u8(
-                            tile[tile_ix],
-                            brush.sample(global_x as f32 + 0.5, global_y as f32 + 0.5),
-                            [
-                                image.data[image_ix],
-                                image.data[image_ix + 1],
-                                image.data[image_ix + 2],
-                            ],
-                            clip,
-                        );
+                        let mask = [
+                            image.data[image_ix],
+                            image.data[image_ix + 1],
+                            image.data[image_ix + 2],
+                        ];
+                        let color = brush.sample(global_x as f32 + 0.5, global_y as f32 + 0.5);
+                        let out = match image.composite_mode {
+                            TextCompositeMode::Srgb => {
+                                src_over_subpixel_mask_u8(tile[tile_ix], color, mask, clip)
+                            }
+                            TextCompositeMode::Linear => src_over_subpixel_mask_linear_auto_u8(
+                                tile[tile_ix],
+                                color,
+                                mask,
+                                clip,
+                            ),
+                        };
                         tile[tile_ix] = out;
                         continue;
                     }
@@ -426,7 +449,10 @@ mod tests {
             line_seg::LineSegment,
             pixel::{TileBuffer, premul_f32_to_u32},
         },
-        text::{PreparedGlyph, PreparedGlyphContent, PreparedGlyphImage, PreparedTextData},
+        text::{
+            PreparedGlyph, PreparedGlyphContent, PreparedGlyphImage, PreparedTextData,
+            TextCompositeMode,
+        },
     };
 
     #[test]
@@ -535,6 +561,7 @@ mod tests {
             Vec::new(),
             vec![PreparedGlyphImage {
                 content: PreparedGlyphContent::SubpixelMask,
+                composite_mode: TextCompositeMode::Linear,
                 left: 0,
                 top: 0,
                 width: 1,
