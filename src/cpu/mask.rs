@@ -49,6 +49,14 @@ pub(super) fn apply_opacity_to_mask(mask: &mut Image, opacity: f32) {
     }
 }
 
+pub(super) fn intersect_alpha_mask(mask: &mut Image, clip: &Image) {
+    assert_eq!((mask.width, mask.height), (clip.width, clip.height));
+    for (dst, &src) in mask.pixels.iter_mut().zip(&clip.pixels) {
+        let alpha = combine_alpha(((*dst >> 24) & 0xff) as u8, ((src >> 24) & 0xff) as u8);
+        *dst = rgba8_pack([alpha, alpha, alpha, alpha]);
+    }
+}
+
 pub(super) fn copy_image_region(source: &Image, bounds: Bounds, source_bounds: Bounds) -> Image {
     let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
     for y in 0..image.height {
@@ -215,5 +223,23 @@ mod tests {
 
         assert_eq!(unpack_rgba8(mask.pixels[8]), [255, 255, 255, 255]);
         assert_eq!(unpack_rgba8(mask.pixels[7]), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn intersect_alpha_mask_combines_mask_coverage() {
+        let mut mask = Image {
+            width: 1,
+            height: 1,
+            pixels: vec![rgba8_pack([128, 128, 128, 128])],
+        };
+        let clip = Image {
+            width: 1,
+            height: 1,
+            pixels: vec![rgba8_pack([64, 64, 64, 64])],
+        };
+
+        intersect_alpha_mask(&mut mask, &clip);
+
+        assert_eq!(unpack_rgba8(mask.pixels[0]), [32, 32, 32, 32]);
     }
 }

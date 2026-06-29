@@ -15,7 +15,7 @@ use crate::{
                 FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator,
                 SpecularLighting, Turbulence, TurbulenceKind, filter_offset_to_pixel_delta,
             },
-            mask::MaskKind,
+            mask::{Mask, MaskKind},
             region::Region,
         },
         offscreen::{local_filter, local_offscreen_scene},
@@ -77,6 +77,13 @@ struct MaskedGroupLayer<'a> {
     children: &'a [ExecOp],
     opacity: Option<f32>,
     composite: LayerComposite,
+}
+
+struct MaskLayerRef<'a> {
+    layer: &'a Mask,
+    outer_stack: std::ops::Range<usize>,
+    content: &'a [ExecOp],
+    mask: &'a [ExecOp],
 }
 
 #[derive(Clone, Copy)]
@@ -269,10 +276,12 @@ impl<R: Runtime> Renderer<R> {
                 } => self.execute_mask_layer(
                     scene,
                     plan,
-                    layer,
-                    outer_stack.clone(),
-                    content,
-                    mask,
+                    MaskLayerRef {
+                        layer,
+                        outer_stack: outer_stack.clone(),
+                        content,
+                        mask,
+                    },
                     target,
                     filter_cursors,
                 ),
@@ -392,9 +401,7 @@ impl<R: Runtime> Renderer<R> {
                 self.release_scratch(mask);
                 self.release_scratch(backdrop);
 
-                let content = self.acquire_scratch();
-                self.clear_buffer(content, 0);
-                self.execute_ops(scene, plan, children, content, filter_cursors);
+                let content = self.render_ops_to_scratch(scene, plan, children, filter_cursors);
                 self.composite_src_over_with_stack(
                     target,
                     content,
@@ -427,9 +434,7 @@ impl<R: Runtime> Renderer<R> {
             return;
         }
 
-        let source = self.acquire_scratch();
-        self.clear_buffer(source, 0);
-        self.execute_ops(scene, plan, group.children, source, filter_cursors);
+        let source = self.render_ops_to_scratch(scene, plan, group.children, filter_cursors);
         if let Some(opacity) = group.opacity {
             self.apply_color_filter(source, bounds, FILTER_OPACITY, opacity);
         }
@@ -456,6 +461,19 @@ impl<R: Runtime> Renderer<R> {
         }
         self.release_scratch(mask);
         self.release_scratch(source);
+    }
+
+    fn render_ops_to_scratch(
+        &mut self,
+        scene: &Scene,
+        plan: &ExecPlan,
+        ops: &[ExecOp],
+        filter_cursors: &mut FilterCursors,
+    ) -> CubeRenderTarget {
+        let target = self.acquire_scratch();
+        self.clear_buffer(target, 0);
+        self.execute_ops(scene, plan, ops, target, filter_cursors);
+        target
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -543,45 +561,42 @@ impl<R: Runtime> Renderer<R> {
         self.surface_sources.push(source_buffer);
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn execute_mask_layer(
         &mut self,
         scene: &Scene,
         plan: &ExecPlan,
-        layer: &crate::shared::layer::mask::Mask,
-        outer_stack: std::ops::Range<usize>,
-        content_ops: &[ExecOp],
-        mask_ops: &[ExecOp],
+        mask_layer: MaskLayerRef<'_>,
         target: CubeRenderTarget,
         filter_cursors: &mut FilterCursors,
     ) {
-        let bounds =
-            region_bounds(&layer.region).intersect(Bounds::canvas(self.size.0, self.size.1));
+        let bounds = region_bounds(&mask_layer.layer.region)
+            .intersect(Bounds::canvas(self.size.0, self.size.1));
         if bounds.is_empty() {
             return;
         }
-        let path_index = filter_cursors.next_path_index(&layer.region);
+        let path_index = filter_cursors.next_path_index(&mask_layer.layer.region);
 
-        let content = self.acquire_scratch();
-        self.clear_buffer(content, 0);
-        self.execute_ops(scene, plan, content_ops, content, filter_cursors);
-
-        let mask_source = self.acquire_scratch();
-        self.clear_buffer(mask_source, 0);
-        self.execute_ops(scene, plan, mask_ops, mask_source, filter_cursors);
+        let content = self.render_ops_to_scratch(scene, plan, mask_layer.content, filter_cursors);
+        let mask_source = self.render_ops_to_scratch(scene, plan, mask_layer.mask, filter_cursors);
 
         let mask = self.acquire_scratch();
         self.clear_buffer(mask, 0);
-        self.svg_mask_coverage(mask_source, mask, bounds, layer.kind);
+        self.svg_mask_coverage(mask_source, mask, bounds, mask_layer.layer.kind);
         self.release_scratch(mask_source);
 
         let region_mask = self.acquire_scratch();
         self.clear_buffer(region_mask, 0);
-        self.build_region_mask(region_mask, &layer.region, path_index, bounds);
+        self.build_region_mask(region_mask, &mask_layer.layer.region, path_index, bounds);
         self.apply_region_mask(region_mask, mask, bounds);
         self.release_scratch(region_mask);
 
-        self.composite_src_over_with_stack(target, content, Some(mask), bounds, outer_stack);
+        self.composite_src_over_with_stack(
+            target,
+            content,
+            Some(mask),
+            bounds,
+            mask_layer.outer_stack,
+        );
         self.release_scratch(mask);
         self.release_scratch(content);
     }

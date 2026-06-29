@@ -6,10 +6,10 @@ use crate::{
     cpu::{
         buffers::RasterBuffers,
         computes::blend::{composite_blend_masked_at, composite_src_over_masked_at},
-        computes::fine::{build_tile_alpha, combine_alpha},
+        computes::fine::build_tile_alpha,
         mask::{
-            apply_opacity_to_mask, copy_image_region, rasterize_region_mask, rasterize_sdf_mask,
-            region_bounds, svg_mask_coverage,
+            apply_opacity_to_mask, copy_image_region, intersect_alpha_mask, rasterize_region_mask,
+            rasterize_sdf_mask, region_bounds, svg_mask_coverage,
         },
         offscreen::OffscreenSurface,
         pipelines::{
@@ -24,7 +24,7 @@ use crate::{
         draw_record::DrawRecord,
         execution::{ExecOp, ExecPlan, LayerStackEntry},
         image::{Image, rgba8_pack},
-        layer::Layer,
+        layer::{Layer, mask::Mask},
     },
 };
 
@@ -55,6 +55,13 @@ struct OffscreenLayerRef<'a> {
     layer: &'a Layer,
     outer_stack: std::ops::Range<usize>,
     children: &'a [ExecOp],
+}
+
+struct MaskLayerRef<'a> {
+    layer: &'a Mask,
+    outer_stack: std::ops::Range<usize>,
+    content: &'a [ExecOp],
+    mask: &'a [ExecOp],
 }
 
 struct MaskedGroupLayer<'a> {
@@ -280,10 +287,12 @@ impl Renderer {
                 } => self.execute_mask_layer(
                     scene,
                     plan,
-                    layer,
-                    outer_stack.clone(),
-                    content,
-                    mask,
+                    MaskLayerRef {
+                        layer,
+                        outer_stack: outer_stack.clone(),
+                        content,
+                        mask,
+                    },
                     target,
                     root_bounds,
                     buffers,
@@ -533,36 +542,35 @@ impl Renderer {
         );
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn execute_mask_layer(
         &mut self,
         scene: &crate::scene::Scene,
         plan: &ExecPlan,
-        layer: &crate::shared::layer::mask::Mask,
-        outer_stack: std::ops::Range<usize>,
-        content_ops: &[ExecOp],
-        mask_ops: &[ExecOp],
+        mask_layer: MaskLayerRef<'_>,
         target: &mut Image,
         target_bounds: Bounds,
         buffers: &mut RasterBuffers,
     ) {
-        let bounds = region_bounds(&layer.region).intersect(target_bounds);
+        let bounds = region_bounds(&mask_layer.layer.region).intersect(target_bounds);
         if bounds.is_empty() {
             return;
         }
 
-        let mut content = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
-        self.execute_ops(scene, plan, content_ops, &mut content, bounds, buffers);
-
-        let mut mask_source = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
-        self.execute_ops(scene, plan, mask_ops, &mut mask_source, bounds, buffers);
-        let mut mask = svg_mask_coverage(&mask_source, layer.kind);
-        let region_mask = rasterize_region_mask(&layer.region, bounds);
-        for (dst, src) in mask.pixels.iter_mut().zip(region_mask.pixels) {
-            let alpha = combine_alpha(((*dst >> 24) & 0xff) as u8, ((src >> 24) & 0xff) as u8);
-            *dst = rgba8_pack([alpha, alpha, alpha, alpha]);
-        }
-        self.apply_outer_clip_stack_to_mask(scene, plan, outer_stack, bounds, &mut mask, buffers);
+        let content =
+            self.render_children_to_image(scene, plan, mask_layer.content, bounds, buffers);
+        let mask_source =
+            self.render_children_to_image(scene, plan, mask_layer.mask, bounds, buffers);
+        let mut mask = svg_mask_coverage(&mask_source, mask_layer.layer.kind);
+        let region_mask = rasterize_region_mask(&mask_layer.layer.region, bounds);
+        intersect_alpha_mask(&mut mask, &region_mask);
+        self.apply_outer_clip_stack_to_mask(
+            scene,
+            plan,
+            mask_layer.outer_stack,
+            bounds,
+            &mut mask,
+            buffers,
+        );
         composite_src_over_masked_at(target, &content, &mask, bounds, target_bounds);
     }
 
@@ -607,10 +615,7 @@ impl Renderer {
                 continue;
             };
             let clip = self.rasterize_layer_mask(scene, draw as usize, bounds, buffers);
-            for (dst, src) in mask.pixels.iter_mut().zip(clip.pixels) {
-                let alpha = combine_alpha(((*dst >> 24) & 0xff) as u8, ((src >> 24) & 0xff) as u8);
-                *dst = rgba8_pack([alpha, alpha, alpha, alpha]);
-            }
+            intersect_alpha_mask(mask, &clip);
         }
     }
 
