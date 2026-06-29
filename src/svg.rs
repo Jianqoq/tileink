@@ -94,6 +94,12 @@ struct SvgBuilder {
     image_depth: u8,
 }
 
+enum ClipPathLowering {
+    Empty,
+    Fused { path: BezPath, rule: FillRule },
+    Mask,
+}
+
 impl SvgBuilder {
     fn new(options: SvgOptions) -> Self {
         Self {
@@ -394,46 +400,138 @@ impl SvgBuilder {
             pushed += self.push_clip_path_layers(scene, parent)?;
         }
 
-        let (path, rule) = self.single_clip_path(clip)?;
-        scene.push_clip_layer(
-            path,
-            self.base_transform * transform_to_affine(clip.transform()),
-            rule,
-            self.options.tolerance,
-        );
+        match self.clip_path_lowering(clip) {
+            ClipPathLowering::Empty => scene.push_mask_layer(
+                Scene::new(scene.width, scene.height),
+                LayerMask {
+                    region: Region::rect(Rect::ZERO, Radius::all(0.0)),
+                    kind: MaskKind::Alpha,
+                },
+            ),
+            ClipPathLowering::Fused { path, rule } => scene.push_clip_layer(
+                path,
+                self.base_transform * transform_to_affine(clip.transform()),
+                rule,
+                self.options.tolerance,
+            ),
+            ClipPathLowering::Mask => {
+                let (mask_scene, mask) =
+                    self.svg_clip_path_mask_layer(scene.width, scene.height, clip)?;
+                scene.push_mask_layer(mask_scene, mask);
+            }
+        }
         Ok(pushed + 1)
     }
 
-    fn single_clip_path(&self, clip: &usvg::ClipPath) -> Result<(BezPath, FillRule), SvgError> {
-        let mut paths = Vec::new();
-        self.collect_clip_paths(clip.root(), &mut paths)?;
-        match paths.len() {
-            0 => Err(SvgError::unsupported("empty clipPath")),
-            1 => Ok(paths.pop().unwrap()),
-            _ => Err(SvgError::unsupported(
-                "clipPath with multiple drawable children",
-            )),
+    fn svg_clip_path_mask_layer(
+        &self,
+        width: u32,
+        height: u32,
+        clip: &usvg::ClipPath,
+    ) -> Result<(Scene, LayerMask), SvgError> {
+        let mut mask_scene = Scene::new(width, height);
+        self.push_clip_path_mask_group(
+            &mut mask_scene,
+            clip.root(),
+            self.base_transform * transform_to_affine(clip.transform()),
+        )?;
+        Ok((
+            mask_scene,
+            LayerMask {
+                // Complex clipPath lowering must not crop group contents before filters run.
+                // The alpha mask applies the actual clip shape after isolated content rendering.
+                region: Region::rect(
+                    Rect::new(0.0, 0.0, f64::from(width), f64::from(height)),
+                    Radius::all(0.0),
+                ),
+                kind: MaskKind::Alpha,
+            },
+        ))
+    }
+
+    fn push_clip_path_mask_group(
+        &self,
+        scene: &mut Scene,
+        group: &usvg::Group,
+        transform: Affine,
+    ) -> Result<(), SvgError> {
+        let transform = transform * transform_to_affine(group.transform());
+        let mut pushed_layers = 0;
+        if let Some(clip) = group.clip_path() {
+            pushed_layers += SvgBuilder {
+                options: self.options,
+                base_transform: transform,
+                pattern_depth: self.pattern_depth,
+                image_depth: self.image_depth,
+            }
+            .push_clip_path_layers(scene, clip)?;
+        }
+
+        for child in group.children() {
+            self.push_clip_path_mask_node(scene, child, transform)?;
+        }
+
+        for _ in 0..pushed_layers {
+            scene.pop_layer();
+        }
+        Ok(())
+    }
+
+    fn push_clip_path_mask_node(
+        &self,
+        scene: &mut Scene,
+        node: &Node,
+        transform: Affine,
+    ) -> Result<(), SvgError> {
+        match node {
+            Node::Group(group) => self.push_clip_path_mask_group(scene, group, transform),
+            Node::Path(path) => {
+                if path.is_visible()
+                    && let Some(fill) = path.fill()
+                {
+                    scene.push_path(
+                        tiny_path_to_bez(path.data()),
+                        Brush::Solid(Color::BLACK),
+                        transform,
+                        fill_rule(fill.rule()),
+                        self.options.tolerance,
+                    );
+                }
+                Ok(())
+            }
+            Node::Text(text) => self.push_clip_path_mask_group(scene, text.flattened(), transform),
+            Node::Image(_) => Ok(()),
         }
     }
 
-    fn collect_clip_paths(
+    fn clip_path_lowering(&self, clip: &usvg::ClipPath) -> ClipPathLowering {
+        let mut paths = Vec::new();
+        let mut needs_mask = false;
+        self.collect_clip_path_candidates(clip.root(), &mut paths, &mut needs_mask);
+        if paths.is_empty() && !needs_mask {
+            ClipPathLowering::Empty
+        } else if !needs_mask && paths.len() == 1 {
+            let (path, rule) = paths.pop().unwrap();
+            ClipPathLowering::Fused { path, rule }
+        } else {
+            ClipPathLowering::Mask
+        }
+    }
+
+    fn collect_clip_path_candidates(
         &self,
         group: &usvg::Group,
         paths: &mut Vec<(BezPath, FillRule)>,
-    ) -> Result<(), SvgError> {
-        if group.mask().is_some() {
-            return Err(SvgError::unsupported("mask inside clipPath"));
-        }
-        if !group.filters().is_empty() {
-            return Err(SvgError::unsupported("filter inside clipPath"));
-        }
+        needs_mask: &mut bool,
+    ) {
         if group.clip_path().is_some() {
-            return Err(SvgError::unsupported("nested clipPath content clip"));
+            *needs_mask = true;
+            return;
         }
 
         for child in group.children() {
             match child {
-                Node::Group(group) => self.collect_clip_paths(group, paths)?,
+                Node::Group(group) => self.collect_clip_path_candidates(group, paths, needs_mask),
                 Node::Path(path) => {
                     if path.is_visible() {
                         let rule = path
@@ -447,11 +545,12 @@ impl SvgBuilder {
                         ));
                     }
                 }
-                Node::Text(text) => self.collect_clip_paths(text.flattened(), paths)?,
-                Node::Image(_) => return Err(SvgError::unsupported("image inside clipPath")),
+                Node::Text(text) => {
+                    self.collect_clip_path_candidates(text.flattened(), paths, needs_mask)
+                }
+                Node::Image(_) => {}
             }
         }
-        Ok(())
     }
 
     fn paint_to_brush(
@@ -2003,6 +2102,84 @@ mod tests {
             [0, 0, 0, 0],
             "top-clipped circle edge must not fill the whole right edge tile"
         );
+    }
+
+    #[test]
+    fn push_svg_renders_clip_path_with_multiple_children() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="8">
+                <defs>
+                    <clipPath id="clip">
+                        <rect x="0" y="0" width="4" height="8"/>
+                        <rect x="12" y="0" width="4" height="8"/>
+                    </clipPath>
+                </defs>
+                <rect width="16" height="8" fill="#ff0000" clip-path="url(#clip)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(2, 4), [255, 0, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(8, 4), [0, 0, 0, 0]);
+        assert_eq!(renderer.image().rgba8_at(14, 4), [255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn push_svg_renders_clip_path_child_with_nested_clip() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="8">
+                <defs>
+                    <clipPath id="inner">
+                        <rect x="4" y="0" width="8" height="8"/>
+                    </clipPath>
+                    <clipPath id="outer">
+                        <rect width="16" height="8" clip-path="url(#inner)"/>
+                    </clipPath>
+                </defs>
+                <rect width="16" height="8" fill="#ff0000" clip-path="url(#outer)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(2, 4), [0, 0, 0, 0]);
+        assert_eq!(renderer.image().rgba8_at(8, 4), [255, 0, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(14, 4), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn push_svg_applies_child_transform_to_nested_clip_path() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="8">
+                <defs>
+                    <clipPath id="inner">
+                        <rect x="4" y="0" width="4" height="8"/>
+                    </clipPath>
+                    <clipPath id="outer">
+                        <rect width="16" height="8" transform="translate(4 0)" clip-path="url(#inner)"/>
+                    </clipPath>
+                </defs>
+                <rect width="16" height="8" fill="#ff0000" clip-path="url(#outer)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(6, 4), [0, 0, 0, 0]);
+        assert_eq!(renderer.image().rgba8_at(10, 4), [255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn push_svg_empty_clip_path_clips_everything() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="8">
+                <defs>
+                    <clipPath id="clip"/>
+                </defs>
+                <rect width="16" height="8" fill="#ff0000" clip-path="url(#clip)"/>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(8, 4), [0, 0, 0, 0]);
     }
 
     #[test]
