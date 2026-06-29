@@ -1,39 +1,30 @@
-use std::{
-    sync::atomic::{AtomicU32, Ordering},
-    time::Duration,
-};
+use std::time::Duration;
 
 use peniko::Color;
 
 use crate::{
     cpu::{
+        buffers::RasterBuffers,
         computes::blend::{composite_blend_masked_at, composite_src_over_masked_at},
         computes::fine::{build_tile_alpha, combine_alpha},
         mask::{
             apply_opacity_to_mask, copy_image_region, rasterize_region_mask, rasterize_sdf_mask,
             region_bounds, svg_mask_coverage,
         },
+        offscreen::OffscreenSurface,
         pipelines::{
-            coarse::CoarseCpuPipeline,
-            cumsum::CumsumCpuPipeline,
-            filter::FilterCpuPipeline,
-            fine::FineCpuPipeline,
-            scan::{ScanCpuPipeline, line_scanned_tile_count},
+            coarse::CoarseCpuPipeline, cumsum::CumsumCpuPipeline, filter::FilterCpuPipeline,
+            fine::FineCpuPipeline, scan::ScanCpuPipeline,
         },
     },
     debug::{DebugScanBuffers, RenderDebugCapture, RenderOptions, capture_render_debug},
     render::Render,
     shared::{
-        bd_record::BackdropRecord,
         bounds::Bounds,
         draw_record::DrawRecord,
         execution::{ExecOp, ExecPlan, LayerStackEntry},
         image::{Image, rgba8_pack},
         layer::Layer,
-        line_seg::LineSegment,
-        offscreen::local_offscreen_scene,
-        tile_ptcl::{TilePtcl, TilePtclRange},
-        tile_seg_range::TileSegmentRange,
     },
 };
 
@@ -48,58 +39,6 @@ pub struct Renderer {
     size: (u32, u32),
 
     main: RasterBuffers,
-}
-
-#[derive(Default)]
-struct RasterBuffers {
-    backdrops: Vec<i32>,
-    tile_segment_ranges: Vec<TileSegmentRange>,
-    segments: Vec<LineSegment>,
-    segments_bump: Vec<AtomicU32>,
-    segment_tile_counts: Vec<u32>,
-    segment_tile_cursors: Vec<AtomicU32>,
-    tile_ptcl_ranges: Vec<TilePtclRange>,
-    tile_ptcls: Vec<TilePtcl>,
-}
-
-struct OffscreenSurface {
-    bounds: Bounds,
-    image: Image,
-    scene: crate::scene::Scene,
-    plan: ExecPlan,
-    children: Vec<ExecOp>,
-    buffers: RasterBuffers,
-}
-
-impl RasterBuffers {
-    fn clear_scan_outputs(&mut self) {
-        self.backdrops.clear();
-        self.tile_segment_ranges.clear();
-        self.segments.clear();
-        self.segment_tile_counts.clear();
-        self.segment_tile_cursors.clear();
-        self.segments_bump.clear();
-        self.tile_ptcl_ranges.clear();
-        self.tile_ptcls.clear();
-    }
-
-    fn resize_scan_outputs(&mut self, scene: &crate::scene::Scene, last_bd_record: BackdropRecord) {
-        let backdrop_len = last_bd_record.data_offset as usize + last_bd_record.data_len as usize;
-        let segment_len =
-            last_bd_record.segment_start as usize + last_bd_record.segment_capacity as usize;
-        self.backdrops.resize(backdrop_len, 0);
-        self.tile_segment_ranges
-            .resize(backdrop_len, TileSegmentRange::default());
-        self.segments.resize(segment_len, LineSegment::default());
-        self.segment_tile_counts.resize(backdrop_len, 0);
-        self.segment_tile_cursors
-            .resize_with(backdrop_len, || AtomicU32::new(0));
-        self.segments_bump
-            .resize_with(scene.bd_records.len(), || AtomicU32::new(0));
-        for bump in &self.segments_bump {
-            bump.store(0, Ordering::Relaxed);
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -702,25 +641,6 @@ impl Renderer {
             }
         }
         image
-    }
-}
-
-impl OffscreenSurface {
-    fn new(
-        scene: &crate::scene::Scene,
-        plan: &ExecPlan,
-        children: &[ExecOp],
-        bounds: Bounds,
-    ) -> Self {
-        let local = local_offscreen_scene(scene, plan, children, bounds, line_scanned_tile_count);
-        Self {
-            bounds,
-            image: Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT),
-            scene: local.scene,
-            plan: local.plan,
-            children: local.children,
-            buffers: RasterBuffers::default(),
-        }
     }
 }
 
