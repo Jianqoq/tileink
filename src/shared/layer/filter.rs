@@ -102,6 +102,12 @@ pub enum FilterPrimitiveKind {
     Composite {
         operator: CompositeOperator,
     },
+    /// Samples the first input at offsets derived from the second input's color channels.
+    ///
+    /// The displacement map reads unpremultiplied channel values; RGB channels
+    /// are converted back to linear values when the SVG primitive uses the
+    /// default `color-interpolation-filters="linearRGB"` space.
+    DisplacementMap(DisplacementMap),
     /// Repeats an input result over this primitive's region, matching SVG `feTile`.
     ///
     /// `source_region` is the tile cell in absolute pixel coordinates after
@@ -130,6 +136,23 @@ pub enum CompositeOperator {
 pub enum MorphologyOperator {
     Erode,
     Dilate,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DisplacementMap {
+    pub scale_x: f32,
+    pub scale_y: f32,
+    pub x_channel: ColorChannel,
+    pub y_channel: ColorChannel,
+    pub linear_rgb: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ColorChannel {
+    R,
+    G,
+    B,
+    A,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -324,6 +347,9 @@ fn graph_dependency_outset(primitives: &[FilterPrimitive]) -> i32 {
 fn primitive_dependency_outset(primitive: &FilterPrimitive) -> i32 {
     match &primitive.kind {
         FilterPrimitiveKind::Filter(filter) => filter_dependency_outset(filter),
+        FilterPrimitiveKind::DisplacementMap(map) => {
+            (map.scale_x.abs().max(map.scale_y.abs()) * 0.5).ceil() as i32
+        }
         FilterPrimitiveKind::Tile { source_region } => {
             bounds_distance(primitive.region, *source_region)
         }

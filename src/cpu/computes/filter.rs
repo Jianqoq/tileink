@@ -7,9 +7,9 @@ use crate::shared::{
     layer::{
         blend::{Blend, src_over_premul},
         filter::{
-            COMPONENT_TRANSFER_TABLE_SIZE, ComponentTransferTable, CompositeOperator,
-            ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, Filter, FilterInput,
-            FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator,
+            COMPONENT_TRANSFER_TABLE_SIZE, ColorChannel, ComponentTransferTable, CompositeOperator,
+            ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, DisplacementMap, Filter,
+            FilterInput, FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator,
             SpecularLighting, TURBULENCE_LATTICE_SIZE, TURBULENCE_TABLE_LEN, Turbulence,
             TurbulenceKind, filter_offset_to_pixel_delta, turbulence_gradient_index,
             turbulence_lattice,
@@ -129,6 +129,12 @@ fn apply_graph_primitive(
             let input2 =
                 resolve_required_graph_input(primitive, source_graphic, source_alpha, outputs);
             composite_images(input, input2, bounds, region, *operator)
+        }
+        FilterPrimitiveKind::DisplacementMap(displacement) => {
+            let input = resolve_graph_input(primitive.input, source_graphic, source_alpha, outputs);
+            let input2 =
+                resolve_required_graph_input(primitive, source_graphic, source_alpha, outputs);
+            displacement_map_image(input, input2, bounds, region, displacement)
         }
         FilterPrimitiveKind::Tile { source_region } => {
             let input = resolve_graph_input(primitive.input, source_graphic, source_alpha, outputs);
@@ -371,6 +377,14 @@ fn linear_rgb_to_srgb(value: f32) -> f32 {
     }
 }
 
+fn srgb_to_linear(value: f32) -> f32 {
+    if value <= 0.040_45 {
+        value / 12.92
+    } else {
+        ((value + 0.055) / 1.055).powf(2.4)
+    }
+}
+
 #[derive(Clone, Copy)]
 struct TurbulenceStitch {
     frequency_x: f32,
@@ -505,6 +519,57 @@ fn merge_images(
         });
     }
     image
+}
+
+fn displacement_map_image(
+    source: &Image,
+    map: &Image,
+    bounds: Bounds,
+    region: Bounds,
+    displacement: &DisplacementMap,
+) -> Image {
+    let mut image = Image::new(source.width, source.height, peniko::Color::TRANSPARENT);
+    if region.is_empty() {
+        return image;
+    }
+
+    let width = source.width as i32;
+    let height = source.height as i32;
+    for y in region.y0..region.y1 {
+        let local_y = y - bounds.y0;
+        for x in region.x0..region.x1 {
+            let local_x = x - bounds.x0;
+            let ix = (local_y as u32 * source.width + local_x as u32) as usize;
+            let dx =
+                displacement_channel(map.pixels[ix], displacement.x_channel, displacement) - 0.5;
+            let dy =
+                displacement_channel(map.pixels[ix], displacement.y_channel, displacement) - 0.5;
+            let sx = (local_x as f32 + dx * displacement.scale_x).round() as i32;
+            let sy = (local_y as f32 + dy * displacement.scale_y).round() as i32;
+            if sx >= 0 && sx < width && sy >= 0 && sy < height {
+                image.pixels[ix] = source.pixels[(sy as u32 * source.width + sx as u32) as usize];
+            }
+        }
+    }
+    image
+}
+
+fn displacement_channel(px: u32, channel: ColorChannel, displacement: &DisplacementMap) -> f32 {
+    let rgba = straight_rgba8(px);
+    match channel {
+        ColorChannel::R => displacement_rgb_channel(rgba[0], displacement.linear_rgb),
+        ColorChannel::G => displacement_rgb_channel(rgba[1], displacement.linear_rgb),
+        ColorChannel::B => displacement_rgb_channel(rgba[2], displacement.linear_rgb),
+        ColorChannel::A => rgba[3],
+    }
+}
+
+fn displacement_rgb_channel(value: f32, linear_rgb: bool) -> f32 {
+    if linear_rgb {
+        srgb_to_linear(value)
+    } else {
+        value
+    }
 }
 
 fn apply_morphology(image: &mut Image, radius_x: f32, radius_y: f32, operator: MorphologyOperator) {
@@ -1345,6 +1410,16 @@ mod tests {
         }
     }
 
+    fn test_displacement_map(x_channel: ColorChannel, y_channel: ColorChannel) -> DisplacementMap {
+        DisplacementMap {
+            scale_x: 2.0,
+            scale_y: 0.0,
+            x_channel,
+            y_channel,
+            linear_rgb: false,
+        }
+    }
+
     #[test]
     fn drop_shadow_offsets_alpha_and_preserves_source() {
         let mut image = Image::new(8, 8, Color::TRANSPARENT);
@@ -1743,6 +1818,82 @@ mod tests {
 
         assert_eq!(turbulence.rgba8_at(0, 0), [0, 0, 0, 0]);
         assert_eq!(fractal.rgba8_at(0, 0), [64, 64, 64, 128]);
+    }
+
+    #[test]
+    fn graph_displacement_map_offsets_source_by_channel_value() {
+        let mut image = Image {
+            width: 4,
+            height: 1,
+            pixels: vec![
+                rgba8_pack([10, 0, 0, 255]),
+                rgba8_pack([20, 0, 0, 255]),
+                rgba8_pack([40, 0, 0, 255]),
+                rgba8_pack([80, 0, 0, 255]),
+            ],
+        };
+        apply(
+            &mut image,
+            &Filter::Graph {
+                primitives: vec![FilterPrimitive {
+                    input: FilterInput::SourceGraphic,
+                    input2: Some(FilterInput::SourceGraphic),
+                    region: Bounds::new(0, 0, 4, 1),
+                    kind: FilterPrimitiveKind::DisplacementMap(test_displacement_map(
+                        ColorChannel::A,
+                        ColorChannel::A,
+                    )),
+                }],
+                fixed_region: true,
+            },
+            Bounds::new(0, 0, 4, 1),
+        );
+        assert_eq!(image.rgba8_at(0, 0), [20, 0, 0, 255]);
+        assert_eq!(image.rgba8_at(1, 0), [40, 0, 0, 255]);
+        assert_eq!(image.rgba8_at(2, 0), [80, 0, 0, 255]);
+        assert_eq!(image.rgba8_at(3, 0), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn graph_displacement_map_reads_rgb_map_channels_unpremultiplied() {
+        let mut image = Image {
+            width: 3,
+            height: 1,
+            pixels: vec![
+                rgba8_pack([10, 0, 0, 255]),
+                rgba8_pack([20, 0, 0, 255]),
+                rgba8_pack([40, 0, 0, 255]),
+            ],
+        };
+        apply(
+            &mut image,
+            &Filter::Graph {
+                primitives: vec![
+                    FilterPrimitive {
+                        input: FilterInput::SourceGraphic,
+                        input2: None,
+                        region: Bounds::new(0, 0, 3, 1),
+                        kind: FilterPrimitiveKind::Filter(Box::new(Filter::Flood {
+                            brush: Brush::Solid(Color::from_rgba8(255, 0, 0, 128)),
+                        })),
+                    },
+                    FilterPrimitive {
+                        input: FilterInput::SourceGraphic,
+                        input2: Some(FilterInput::Primitive(0)),
+                        region: Bounds::new(0, 0, 3, 1),
+                        kind: FilterPrimitiveKind::DisplacementMap(test_displacement_map(
+                            ColorChannel::R,
+                            ColorChannel::A,
+                        )),
+                    },
+                ],
+                fixed_region: true,
+            },
+            Bounds::new(0, 0, 3, 1),
+        );
+        assert_eq!(image.rgba8_at(0, 0), [20, 0, 0, 255]);
+        assert_eq!(image.rgba8_at(1, 0), [40, 0, 0, 255]);
+        assert_eq!(image.rgba8_at(2, 0), [0, 0, 0, 0]);
     }
 
     #[test]

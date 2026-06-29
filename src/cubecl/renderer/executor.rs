@@ -10,11 +10,11 @@ use crate::{
         layer::{
             Layer,
             filter::{
-                self as filter_model, ComponentTransferTable, CompositeOperator, ConvolveEdgeMode,
-                ConvolveMatrix, DiffuseLighting, Filter, FilterInput, FilterPrimitive,
-                FilterPrimitiveKind, LightSource, MorphologyOperator, SpecularLighting,
-                TURBULENCE_GRADIENT_LEN, TURBULENCE_TABLE_LEN, Turbulence, TurbulenceKind,
-                filter_offset_to_pixel_delta, turbulence_lattice,
+                self as filter_model, ColorChannel, ComponentTransferTable, CompositeOperator,
+                ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, DisplacementMap, Filter,
+                FilterInput, FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator,
+                SpecularLighting, TURBULENCE_GRADIENT_LEN, TURBULENCE_TABLE_LEN, Turbulence,
+                TurbulenceKind, filter_offset_to_pixel_delta, turbulence_lattice,
             },
             mask::MaskKind,
             region::Region,
@@ -810,6 +810,26 @@ impl<R: Runtime> Renderer<R> {
                 self.composite_filter_inputs(input, input2, output, region, *operator);
                 output
             }
+            FilterPrimitiveKind::DisplacementMap(displacement) => {
+                let input = self.resolve_filter_graph_input(
+                    source_graphic,
+                    primitive.input,
+                    outputs,
+                    source_alpha,
+                    bounds,
+                );
+                let input2 = self.resolve_required_filter_graph_input(
+                    source_graphic,
+                    primitive,
+                    outputs,
+                    source_alpha,
+                    bounds,
+                );
+                let output = self.acquire_scratch();
+                self.clear_buffer(output, 0);
+                self.displacement_map_filter_inputs(input, input2, output, region, displacement);
+                output
+            }
             FilterPrimitiveKind::Tile { source_region } => {
                 let input = self.resolve_filter_graph_input(
                     source_graphic,
@@ -1401,6 +1421,33 @@ impl<R: Runtime> Renderer<R> {
                     bounds,
                     operator_code,
                     arithmetic,
+                )
+            },
+        );
+    }
+
+    fn displacement_map_filter_inputs(
+        &mut self,
+        input1: CubeRenderTarget,
+        input2: CubeRenderTarget,
+        target: CubeRenderTarget,
+        bounds: Bounds,
+        displacement: &DisplacementMap,
+    ) {
+        let size = self.size;
+        let x_channel = encode_color_channel(displacement.x_channel);
+        let y_channel = encode_color_channel(displacement.y_channel);
+        let linear_rgb = u32::from(displacement.linear_rgb);
+        let scale_x = displacement.scale_x;
+        let scale_y = displacement.scale_y;
+        self.dual_input_filter(
+            input1,
+            input2,
+            target,
+            move |client, input1, input2, target| {
+                FilterPipeline::displacement_map_region(
+                    client, input1, input2, target, size, bounds, scale_x, scale_y, x_channel,
+                    y_channel, linear_rgb,
                 )
             },
         );
@@ -2426,6 +2473,15 @@ fn encode_turbulence_kind(kind: TurbulenceKind) -> u32 {
     match kind {
         TurbulenceKind::Turbulence => 0,
         TurbulenceKind::FractalNoise => 1,
+    }
+}
+
+fn encode_color_channel(channel: ColorChannel) -> u32 {
+    match channel {
+        ColorChannel::R => 0,
+        ColorChannel::G => 1,
+        ColorChannel::B => 2,
+        ColorChannel::A => 3,
     }
 }
 

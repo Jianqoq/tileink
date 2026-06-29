@@ -39,6 +39,16 @@ fn test_turbulence(kind: TurbulenceKind, seed: i32, num_octaves: u32) -> Turbule
     }
 }
 
+fn test_displacement_map(x_channel: ColorChannel, y_channel: ColorChannel) -> DisplacementMap {
+    DisplacementMap {
+        scale_x: 4.0,
+        scale_y: 0.0,
+        x_channel,
+        y_channel,
+        linear_rgb: false,
+    }
+}
+
 #[test]
 fn filter_wgpu_applies_color_filter_to_offscreen_children_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
@@ -1274,6 +1284,55 @@ fn filter_wgpu_graph_turbulence_uses_surface_origin_when_enabled() {
     let mut cpu = CpuRenderer::new(80, 24, Color::TRANSPARENT);
     cpu.render(&scene);
     let mut wgpu = WgpuRenderer::new_default_device(80, 24, Color::TRANSPARENT);
+    wgpu.render(&scene);
+
+    assert_images_close(cpu.image(), &wgpu.image(), 1);
+}
+
+#[test]
+fn filter_wgpu_graph_displacement_map_matches_cpu_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(8, 2);
+    scene.push_filter_layer(
+        Filter::Graph {
+            primitives: vec![
+                FilterPrimitive {
+                    input: FilterInput::SourceGraphic,
+                    input2: None,
+                    region: Bounds::new(0, 0, 8, 2),
+                    kind: FilterPrimitiveKind::Filter(Box::new(Filter::Flood {
+                        brush: Brush::Solid(Color::from_rgba8(255, 0, 0, 128)),
+                    })),
+                },
+                FilterPrimitive {
+                    input: FilterInput::SourceGraphic,
+                    input2: Some(FilterInput::Primitive(0)),
+                    region: Bounds::new(0, 0, 8, 2),
+                    kind: FilterPrimitiveKind::DisplacementMap(test_displacement_map(
+                        ColorChannel::R,
+                        ColorChannel::A,
+                    )),
+                },
+            ],
+            fixed_region: true,
+        },
+        Region::rect(Rect::new(0.0, 0.0, 8.0, 2.0), Radius::all(0.0)),
+    );
+    for x in 0..8 {
+        scene.push_rect(
+            Rect::new(x as f64, 0.0, x as f64 + 1.0, 2.0),
+            Color::from_rgb8((x as u8 + 1) * 20, 0, 0),
+            FillRule::NonZero,
+        );
+    }
+    scene.pop_layer();
+
+    let mut cpu = CpuRenderer::new(8, 2, Color::TRANSPARENT);
+    cpu.render(&scene);
+    let mut wgpu = WgpuRenderer::new_default_device(8, 2, Color::TRANSPARENT);
     wgpu.render(&scene);
 
     assert_images_close(cpu.image(), &wgpu.image(), 1);

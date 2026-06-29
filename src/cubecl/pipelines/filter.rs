@@ -289,6 +289,44 @@ impl FilterPipeline {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub(crate) fn displacement_map_region<R: Runtime>(
+        client: &ComputeClient<R>,
+        input1: &CubeBuffer<u32>,
+        input2: &CubeBuffer<u32>,
+        target: &mut CubeBuffer<u32>,
+        size: (u32, u32),
+        bounds: Bounds,
+        scale_x: f32,
+        scale_y: f32,
+        x_channel: u32,
+        y_channel: u32,
+        linear_rgb: u32,
+    ) {
+        let Some(region) = FilterRegion::new(size, bounds) else {
+            return;
+        };
+        filter_displacement_map_region::launch::<R>(
+            client,
+            cube_count(region.pixel_count),
+            CubeDim::new_1d(FILTER_WORKGROUP_SIZE),
+            region.pixel_count,
+            region.width,
+            region.x0,
+            region.y0,
+            size.0,
+            size.1,
+            scale_x,
+            scale_y,
+            x_channel,
+            y_channel,
+            linear_rgb,
+            unsafe { input1.arg() },
+            unsafe { input2.arg() },
+            unsafe { target.arg() },
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn morphology_axis_region<R: Runtime>(
         client: &ComputeClient<R>,
         source: &CubeBuffer<u32>,
@@ -1292,6 +1330,43 @@ fn filter_composite_inputs_region(
 }
 
 #[cube(launch)]
+#[allow(clippy::too_many_arguments)]
+fn filter_displacement_map_region(
+    pixel_count: u32,
+    region_width: u32,
+    region_x0: u32,
+    region_y0: u32,
+    image_width: u32,
+    image_height: u32,
+    scale_x: f32,
+    scale_y: f32,
+    x_channel: u32,
+    y_channel: u32,
+    linear_rgb: u32,
+    input1: &Array<u32>,
+    input2: &Array<u32>,
+    target: &mut Array<u32>,
+) {
+    let region_ix = ABSOLUTE_POS as u32;
+    if region_ix >= pixel_count {
+        terminate!();
+    }
+    let x = region_x0 + region_ix % region_width;
+    let y = region_y0 + region_ix / region_width;
+    let ix = (y * image_width + x) as usize;
+    let map = input2[ix];
+    let dx = filter_displacement_channel(map, x_channel, linear_rgb) - 0.5;
+    let dy = filter_displacement_channel(map, y_channel, linear_rgb) - 0.5;
+    let sx = (x as f32 + dx * scale_x).round() as i32;
+    let sy = (y as f32 + dy * scale_y).round() as i32;
+    let mut out = 0u32;
+    if sx >= 0 && sx < image_width as i32 && sy >= 0 && sy < image_height as i32 {
+        out = input1[(sy as u32 * image_width + sx as u32) as usize];
+    }
+    target[ix] = out;
+}
+
+#[cube(launch)]
 fn filter_morphology_axis_region(
     pixel_count: u32,
     region_width: u32,
@@ -1778,6 +1853,15 @@ fn filter_linear_rgb_to_srgb(value: f32) -> f32 {
     let mut out = value * f32::new(12.92_f32);
     if value > f32::new(0.003_130_8_f32) {
         out = f32::new(1.055_f32) * value.powf(f32::new(1.0_f32 / 2.4_f32)) - f32::new(0.055_f32);
+    }
+    out
+}
+
+#[cube]
+fn filter_srgb_to_linear(value: f32) -> f32 {
+    let mut out = value / f32::new(12.92_f32);
+    if value > f32::new(0.040_45_f32) {
+        out = ((value + f32::new(0.055_f32)) / f32::new(1.055_f32)).powf(f32::new(2.4_f32));
     }
     out
 }
@@ -3467,6 +3551,25 @@ fn straight_channel(premul: u32, alpha: u32) -> f32 {
         out = premul as f32 / alpha as f32;
     }
     out
+}
+
+#[cube]
+fn filter_displacement_channel(px: u32, channel: u32, linear_rgb: u32) -> f32 {
+    let alpha = (px >> 24) & 255;
+    let mut value = alpha as f32 / 255.0;
+    if channel != 3 {
+        let mut premul = px & 255;
+        if channel == 1 {
+            premul = (px >> 8) & 255;
+        } else if channel == 2 {
+            premul = (px >> 16) & 255;
+        }
+        value = straight_channel(premul, alpha);
+        if linear_rgb != 0 {
+            value = filter_srgb_to_linear(value);
+        }
+    }
+    value
 }
 
 #[cube]

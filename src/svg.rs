@@ -13,10 +13,10 @@ use crate::{
         brush::{PatternBrush, PatternSampling},
         image::{Image as RasterImage, rgba8_pack},
         layer::filter::{
-            COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE, ComponentTransferTable,
-            CompositeOperator, ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, FilterInput,
-            FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator,
-            SpecularLighting, Turbulence, TurbulenceKind,
+            COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE, ColorChannel,
+            ComponentTransferTable, CompositeOperator, ConvolveEdgeMode, ConvolveMatrix,
+            DiffuseLighting, DisplacementMap, FilterInput, FilterPrimitive, FilterPrimitiveKind,
+            LightSource, MorphologyOperator, SpecularLighting, Turbulence, TurbulenceKind,
         },
         layer::mask::{Mask as LayerMask, MaskKind},
         pixel::mul_div255,
@@ -796,9 +796,19 @@ fn svg_filter_primitive(
             None,
             FilterPrimitiveKind::Filter(Box::new(diffuse_lighting_to_filter(lighting))),
         ),
-        usvg::filter::Kind::DisplacementMap(_) => {
-            return Err(SvgError::unsupported("feDisplacementMap"));
-        }
+        usvg::filter::Kind::DisplacementMap(displacement) => (
+            svg_filter_input(displacement.input1(), ctx.results, "feDisplacementMap")?,
+            Some(svg_filter_input(
+                displacement.input2(),
+                ctx.results,
+                "feDisplacementMap",
+            )?),
+            FilterPrimitiveKind::DisplacementMap(displacement_map_to_filter(
+                displacement,
+                primitive.color_interpolation(),
+                ctx.value_transform,
+            )),
+        ),
         usvg::filter::Kind::Flood(flood) => (
             FilterInput::SourceGraphic,
             None,
@@ -984,6 +994,17 @@ fn svg_filter_output_source_region(
             }
             .intersect(region)
         }
+        usvg::filter::Kind::DisplacementMap(displacement) => {
+            let (scale_x, scale_y) = transform_filter_radii(
+                ctx.value_transform,
+                displacement.scale(),
+                displacement.scale(),
+            );
+            let source_outset = (scale_x.abs().max(scale_y.abs()) * 0.5).ceil() as i32;
+            svg_filter_input_source_region(input, ctx.source_regions, ctx.filter_bounds)
+                .outset(source_outset)
+                .intersect(region)
+        }
         usvg::filter::Kind::Merge(_) => match kind {
             FilterPrimitiveKind::Merge { inputs } => inputs
                 .iter()
@@ -1144,6 +1165,31 @@ fn turbulence_to_filter(
         tile_y: filter_bounds.y0 as f32,
         tile_width: filter_bounds.width() as f32,
         tile_height: filter_bounds.height() as f32,
+    }
+}
+
+fn displacement_map_to_filter(
+    displacement: &usvg::filter::DisplacementMap,
+    color_interpolation: usvg::filter::ColorInterpolation,
+    transform: Affine,
+) -> DisplacementMap {
+    let (scale_x, scale_y) =
+        transform_filter_radii(transform, displacement.scale(), displacement.scale());
+    DisplacementMap {
+        scale_x,
+        scale_y,
+        x_channel: color_channel(displacement.x_channel_selector()),
+        y_channel: color_channel(displacement.y_channel_selector()),
+        linear_rgb: color_interpolation == usvg::filter::ColorInterpolation::LinearRGB,
+    }
+}
+
+fn color_channel(channel: usvg::filter::ColorChannel) -> ColorChannel {
+    match channel {
+        usvg::filter::ColorChannel::R => ColorChannel::R,
+        usvg::filter::ColorChannel::G => ColorChannel::G,
+        usvg::filter::ColorChannel::B => ColorChannel::B,
+        usvg::filter::ColorChannel::A => ColorChannel::A,
     }
 }
 
@@ -3023,15 +3069,39 @@ mod tests {
     }
 
     #[test]
+    fn push_svg_renders_fe_displacement_map() {
+        let renderer = render(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="4" height="1">
+                <defs>
+                    <filter id="displace" x="0" y="0" width="4" height="1"
+                            filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+                        <feFlood flood-color="rgb(255,128,0)" flood-opacity="0.5" result="map"/>
+                        <feDisplacementMap in="SourceGraphic" in2="map" scale="2"
+                                           xChannelSelector="R" yChannelSelector="G"/>
+                    </filter>
+                </defs>
+                <g filter="url(#displace)">
+                    <rect x="0" width="1" height="1" fill="#ff0000"/>
+                    <rect x="1" width="1" height="1" fill="#00ff00"/>
+                    <rect x="2" width="1" height="1" fill="#0000ff"/>
+                    <rect x="3" width="1" height="1" fill="#ffff00"/>
+                </g>
+            </svg>"##,
+            Color::TRANSPARENT,
+        );
+
+        assert_eq!(renderer.image().rgba8_at(0, 0), [0, 255, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(1, 0), [0, 0, 255, 255]);
+        assert_eq!(renderer.image().rgba8_at(2, 0), [255, 255, 0, 255]);
+        assert_eq!(renderer.image().rgba8_at(3, 0), [0, 0, 0, 0]);
+    }
+
+    #[test]
     fn push_svg_unsupported_features_do_not_modify_scene() {
         let tree = parse(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
-                <defs>
-                    <filter id="unsupported">
-                        <feDisplacementMap scale="2"/>
-                    </filter>
-                </defs>
-                <g filter="url(#unsupported)"><rect width="16" height="16" fill="#ff0000"/></g>
+                <path d="M2 2 L14 2 L2 14" fill="none" stroke="#ff0000"
+                      stroke-width="3" stroke-linejoin="miter-clip"/>
             </svg>"##,
         );
         let mut scene = Scene::new(16, 16);
@@ -3042,7 +3112,7 @@ mod tests {
         );
 
         let err = scene.push_svg(&tree).unwrap_err();
-        assert_eq!(err.feature(), "feDisplacementMap");
+        assert_eq!(err.feature(), "stroke-linejoin=miter-clip");
 
         let mut renderer = CpuRenderer::new(16, 16, Color::TRANSPARENT);
         renderer.render(&scene);

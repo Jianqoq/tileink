@@ -19,9 +19,9 @@ use crate::shared::execution::ExecOp;
 use crate::shared::image::{Image, rgba8_pack, unpack_rgba8};
 use crate::shared::layer::{
     filter::{
-        CompositeOperator, ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, Filter, FilterInput,
-        FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator, SpecularLighting,
-        Turbulence, TurbulenceKind,
+        ColorChannel, CompositeOperator, ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting,
+        DisplacementMap, Filter, FilterInput, FilterPrimitive, FilterPrimitiveKind, LightSource,
+        MorphologyOperator, SpecularLighting, Turbulence, TurbulenceKind,
     },
     mask::{Mask, MaskKind},
     region::Region,
