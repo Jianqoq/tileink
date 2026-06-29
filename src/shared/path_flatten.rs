@@ -1,8 +1,6 @@
-use peniko::kurbo::{BezPath, PathEl, Point};
+use peniko::kurbo::{BezPath, PathEl, Point, flatten};
 
 use crate::{TILE_SIZE, shared::line::Line};
-
-const MAX_FLATTEN_DEPTH: u32 = 20;
 
 pub struct PathFlatten<'a> {
     path: &'a BezPath,
@@ -24,60 +22,34 @@ impl<'a> PathFlatten<'a> {
     pub fn flatten(&mut self, out: &mut Vec<Line>) {
         let mut contour_start: Option<Point> = None;
         let mut last: Option<Point> = None;
-        for el in self.path.elements() {
-            match el {
-                PathEl::MoveTo(point) => {
-                    if let (Some(start_pt), Some(end_pt)) = (contour_start, last)
-                        && is_open_contour_close(start_pt, end_pt)
-                    {
-                        push_line_segment(out, self.tile_cnt, self.path_id, end_pt, start_pt);
-                    }
-                    contour_start = Some(*point);
-                    last = Some(*point);
+        // Kurbo's flatten uses a curve-aware subdivision estimate, so it keeps
+        // the same tolerance contract without over-splitting long SVG curves.
+        flatten(self.path.iter(), self.tolerance as f64, |el| match el {
+            PathEl::MoveTo(point) => {
+                if let (Some(start_pt), Some(end_pt)) = (contour_start, last)
+                    && is_open_contour_close(start_pt, end_pt)
+                {
+                    push_line_segment(out, self.tile_cnt, self.path_id, end_pt, start_pt);
                 }
-                PathEl::LineTo(point) => {
-                    if let Some(p0) = last {
-                        push_line_segment(out, self.tile_cnt, self.path_id, p0, *point);
-                    }
-                    last = Some(*point);
+                contour_start = Some(point);
+                last = Some(point);
+            }
+            PathEl::LineTo(point) => {
+                if let Some(p0) = last {
+                    push_line_segment(out, self.tile_cnt, self.path_id, p0, point);
                 }
-                PathEl::QuadTo(p1, p2) => {
-                    if let Some(p0) = last {
-                        push_quad_segment(
-                            out,
-                            self.tile_cnt,
-                            self.tolerance,
-                            self.path_id,
-                            p0,
-                            *p1,
-                            *p2,
-                        );
-                    }
-                    last = Some(*p2);
-                }
-                PathEl::CurveTo(p1, p2, p3) => {
-                    if let Some(p0) = last {
-                        push_cubic_segment(
-                            out,
-                            self.tile_cnt,
-                            self.tolerance,
-                            self.path_id,
-                            p0,
-                            *p1,
-                            *p2,
-                            *p3,
-                        );
-                    }
-                    last = Some(*p3);
-                }
-                PathEl::ClosePath => {
-                    if let (Some(end_pt), Some(start_pt)) = (last, contour_start) {
-                        push_line_segment(out, self.tile_cnt, self.path_id, end_pt, start_pt);
-                        last = Some(start_pt);
-                    }
+                last = Some(point);
+            }
+            PathEl::ClosePath => {
+                if let (Some(end_pt), Some(start_pt)) = (last, contour_start) {
+                    push_line_segment(out, self.tile_cnt, self.path_id, end_pt, start_pt);
+                    last = Some(start_pt);
                 }
             }
-        }
+            PathEl::QuadTo(..) | PathEl::CurveTo(..) => {
+                unreachable!("kurbo::flatten only emits move, line, and close elements")
+            }
+        });
         if let (Some(start_pt), Some(end_pt)) = (contour_start, last)
             && is_open_contour_close(start_pt, end_pt)
         {
@@ -200,42 +172,6 @@ fn push_line_segment(
     push_flat_line(out, tile_count, path_id, p0, p1);
 }
 
-fn push_quad_segment(
-    out: &mut Vec<Line>,
-    tile_count: &mut u32,
-    tolerance: f32,
-    path_id: u32,
-    p0: Point,
-    p1: Point,
-    p2: Point,
-) {
-    flatten_quad(out, tile_count, tolerance as f64, path_id, p0, p1, p2, 0);
-}
-
-#[allow(clippy::too_many_arguments)]
-fn push_cubic_segment(
-    out: &mut Vec<Line>,
-    tile_count: &mut u32,
-    tolerance: f32,
-    path_id: u32,
-    p0: Point,
-    p1: Point,
-    p2: Point,
-    p3: Point,
-) {
-    flatten_cubic(
-        out,
-        tile_count,
-        tolerance as f64,
-        path_id,
-        p0,
-        p1,
-        p2,
-        p3,
-        0,
-    );
-}
-
 fn push_flat_line(out: &mut Vec<Line>, tile_count: &mut u32, path_id: u32, p0: Point, p1: Point) {
     if !is_non_degenerate_line(p0, p1) {
         return;
@@ -248,111 +184,6 @@ fn push_flat_line(out: &mut Vec<Line>, tile_count: &mut u32, path_id: u32, p0: P
     };
     *tile_count = tile_count.saturating_add(tile_cover_upper_bound_for_line(&line));
     out.push(line);
-}
-
-#[allow(clippy::too_many_arguments)]
-fn flatten_quad(
-    out: &mut Vec<Line>,
-    tile_count: &mut u32,
-    tolerance: f64,
-    path_id: u32,
-    p0: Point,
-    p1: Point,
-    p2: Point,
-    depth: u32,
-) {
-    if depth >= MAX_FLATTEN_DEPTH || point_line_distance(p1, p0, p2) <= tolerance {
-        push_flat_line(out, tile_count, path_id, p0, p2);
-        return;
-    }
-
-    let p01 = midpoint(p0, p1);
-    let p12 = midpoint(p1, p2);
-    let p012 = midpoint(p01, p12);
-
-    flatten_quad(
-        out,
-        tile_count,
-        tolerance,
-        path_id,
-        p0,
-        p01,
-        p012,
-        depth + 1,
-    );
-    flatten_quad(
-        out,
-        tile_count,
-        tolerance,
-        path_id,
-        p012,
-        p12,
-        p2,
-        depth + 1,
-    );
-}
-
-#[allow(clippy::too_many_arguments)]
-fn flatten_cubic(
-    out: &mut Vec<Line>,
-    tile_count: &mut u32,
-    tolerance: f64,
-    path_id: u32,
-    p0: Point,
-    p1: Point,
-    p2: Point,
-    p3: Point,
-    depth: u32,
-) {
-    let flatness = point_line_distance(p1, p0, p3).max(point_line_distance(p2, p0, p3));
-    if depth >= MAX_FLATTEN_DEPTH || flatness <= tolerance {
-        push_flat_line(out, tile_count, path_id, p0, p3);
-        return;
-    }
-
-    let p01 = midpoint(p0, p1);
-    let p12 = midpoint(p1, p2);
-    let p23 = midpoint(p2, p3);
-    let p012 = midpoint(p01, p12);
-    let p123 = midpoint(p12, p23);
-    let p0123 = midpoint(p012, p123);
-
-    flatten_cubic(
-        out,
-        tile_count,
-        tolerance,
-        path_id,
-        p0,
-        p01,
-        p012,
-        p0123,
-        depth + 1,
-    );
-    flatten_cubic(
-        out,
-        tile_count,
-        tolerance,
-        path_id,
-        p0123,
-        p123,
-        p23,
-        p3,
-        depth + 1,
-    );
-}
-
-fn midpoint(a: Point, b: Point) -> Point {
-    Point::new((a.x + b.x) * 0.5, (a.y + b.y) * 0.5)
-}
-
-fn point_line_distance(p: Point, a: Point, b: Point) -> f64 {
-    let dx = b.x - a.x;
-    let dy = b.y - a.y;
-    let len = dx.hypot(dy);
-    if len <= 1.0e-12 {
-        return (p.x - a.x).hypot(p.y - a.y);
-    }
-    ((p.x - a.x) * dy - (p.y - a.y) * dx).abs() / len
 }
 
 fn is_non_degenerate_line(p0: Point, p1: Point) -> bool {
