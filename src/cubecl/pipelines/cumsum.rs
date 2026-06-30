@@ -1,6 +1,7 @@
 use ::cubecl::prelude::*;
 
 use crate::cubecl::{
+    profile::profile_launch,
     renderer::{ScanBuffers, SceneBuffers},
     types::{CUMSUM_CHUNK_SIZE, CubeBufferLengths},
 };
@@ -21,16 +22,18 @@ impl CumsumPipeline {
             return;
         }
 
-        cumsum_prefix_chunks::launch::<R>(
-            client,
-            CubeCount::Static(chunk_count, 1, 1),
-            CubeDim::new_1d(CUMSUM_CHUNK_SIZE),
-            CUMSUM_CHUNK_SIZE as usize,
-            unsafe { scene.cumsum_chunk_backdrop_offsets.arg() },
-            unsafe { scene.cumsum_chunk_lens.arg() },
-            unsafe { scan.backdrops.arg() },
-            unsafe { scan.cumsum_chunk_totals.arg() },
-        );
+        profile_launch(client, "cumsum_prefix_chunks", || {
+            cumsum_prefix_chunks::launch::<R>(
+                client,
+                CubeCount::Static(chunk_count, 1, 1),
+                CubeDim::new_1d(CUMSUM_CHUNK_SIZE),
+                CUMSUM_CHUNK_SIZE as usize,
+                unsafe { scene.cumsum_chunk_backdrop_offsets.arg() },
+                unsafe { scene.cumsum_chunk_lens.arg() },
+                unsafe { scan.backdrops.arg() },
+                unsafe { scan.cumsum_chunk_totals.arg() },
+            );
+        });
 
         let row_count = lengths.cumsum_row_count as u32;
         // If every backdrop row fits in one chunk, the per-chunk prefix above is
@@ -40,27 +43,31 @@ impl CumsumPipeline {
         }
 
         if row_count > 0 {
-            cumsum_chunk_offsets::launch::<R>(
-                client,
-                cube_count(row_count),
-                CubeDim::new_1d(WORKGROUP_SIZE),
-                row_count,
-                unsafe { scene.cumsum_row_chunk_starts.arg() },
-                unsafe { scene.cumsum_row_chunk_ends.arg() },
-                unsafe { scan.cumsum_chunk_totals.arg() },
-                unsafe { scan.cumsum_chunk_offsets.arg() },
-            );
+            profile_launch(client, "cumsum_chunk_offsets", || {
+                cumsum_chunk_offsets::launch::<R>(
+                    client,
+                    cube_count(row_count),
+                    CubeDim::new_1d(WORKGROUP_SIZE),
+                    row_count,
+                    unsafe { scene.cumsum_row_chunk_starts.arg() },
+                    unsafe { scene.cumsum_row_chunk_ends.arg() },
+                    unsafe { scan.cumsum_chunk_totals.arg() },
+                    unsafe { scan.cumsum_chunk_offsets.arg() },
+                );
+            });
         }
 
-        cumsum_apply_chunk_offsets::launch::<R>(
-            client,
-            CubeCount::Static(chunk_count, 1, 1),
-            CubeDim::new_1d(CUMSUM_CHUNK_SIZE),
-            unsafe { scene.cumsum_chunk_backdrop_offsets.arg() },
-            unsafe { scene.cumsum_chunk_lens.arg() },
-            unsafe { scan.cumsum_chunk_offsets.arg() },
-            unsafe { scan.backdrops.arg() },
-        );
+        profile_launch(client, "cumsum_apply_chunk_offsets", || {
+            cumsum_apply_chunk_offsets::launch::<R>(
+                client,
+                CubeCount::Static(chunk_count, 1, 1),
+                CubeDim::new_1d(CUMSUM_CHUNK_SIZE),
+                unsafe { scene.cumsum_chunk_backdrop_offsets.arg() },
+                unsafe { scene.cumsum_chunk_lens.arg() },
+                unsafe { scan.cumsum_chunk_offsets.arg() },
+                unsafe { scan.backdrops.arg() },
+            );
+        });
     }
 }
 

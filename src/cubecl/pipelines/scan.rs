@@ -1,6 +1,7 @@
 use ::cubecl::prelude::*;
 
 use crate::cubecl::{
+    profile::profile_launch,
     renderer::{ScanBuffers, SceneBuffers},
     types::{CubeBufferLengths, SCAN_CHUNK_SIZE},
 };
@@ -26,114 +27,126 @@ impl ScanPipeline {
         let clear_len = backdrop_len.max(path_count).max(scan_chunk_count);
 
         if clear_len > 0 {
-            scan_clear::launch::<R>(
-                client,
-                cube_count(clear_len),
-                CubeDim::new_1d(WORKGROUP_SIZE),
-                clear_len,
-                backdrop_len,
-                path_count,
-                scan_chunk_count,
-                unsafe { scan.backdrops.arg() },
-                unsafe { scan.tile_segment_range_starts.arg() },
-                unsafe { scan.tile_segment_range_ends.arg() },
-                unsafe { scan.segment_tile_counts.arg() },
-                unsafe { scan.segment_tile_cursors.arg() },
-                unsafe { scan.segment_bumps.arg() },
-                unsafe { scan.chunk_totals.arg() },
-                unsafe { scan.chunk_offsets.arg() },
-            );
+            profile_launch(client, "scan_clear", || {
+                scan_clear::launch::<R>(
+                    client,
+                    cube_count(clear_len),
+                    CubeDim::new_1d(WORKGROUP_SIZE),
+                    clear_len,
+                    backdrop_len,
+                    path_count,
+                    scan_chunk_count,
+                    unsafe { scan.backdrops.arg() },
+                    unsafe { scan.tile_segment_range_starts.arg() },
+                    unsafe { scan.tile_segment_range_ends.arg() },
+                    unsafe { scan.segment_tile_counts.arg() },
+                    unsafe { scan.segment_tile_cursors.arg() },
+                    unsafe { scan.segment_bumps.arg() },
+                    unsafe { scan.chunk_totals.arg() },
+                    unsafe { scan.chunk_offsets.arg() },
+                );
+            });
         }
 
         if line_count > 0 {
-            scan_count::launch::<R>(
-                client,
-                cube_count(line_count),
-                CubeDim::new_1d(WORKGROUP_SIZE),
-                line_count,
-                unsafe { scene.line_path_ids.arg() },
-                unsafe { scene.line_p0x.arg() },
-                unsafe { scene.line_p0y.arg() },
-                unsafe { scene.line_p1x.arg() },
-                unsafe { scene.line_p1y.arg() },
-                unsafe { scene.backdrop_data_offsets.arg() },
-                unsafe { scene.backdrop_tile_x0.arg() },
-                unsafe { scene.backdrop_tile_y0.arg() },
-                unsafe { scene.backdrop_tile_x1.arg() },
-                unsafe { scene.backdrop_tile_y1.arg() },
-                unsafe { scan.backdrops.arg() },
-                unsafe { scan.segment_tile_counts.arg() },
-            );
+            profile_launch(client, "scan_count", || {
+                scan_count::launch::<R>(
+                    client,
+                    cube_count(line_count),
+                    CubeDim::new_1d(WORKGROUP_SIZE),
+                    line_count,
+                    unsafe { scene.line_path_ids.arg() },
+                    unsafe { scene.line_p0x.arg() },
+                    unsafe { scene.line_p0y.arg() },
+                    unsafe { scene.line_p1x.arg() },
+                    unsafe { scene.line_p1y.arg() },
+                    unsafe { scene.backdrop_data_offsets.arg() },
+                    unsafe { scene.backdrop_tile_x0.arg() },
+                    unsafe { scene.backdrop_tile_y0.arg() },
+                    unsafe { scene.backdrop_tile_x1.arg() },
+                    unsafe { scene.backdrop_tile_y1.arg() },
+                    unsafe { scan.backdrops.arg() },
+                    unsafe { scan.segment_tile_counts.arg() },
+                );
+            });
         }
 
         if scan_chunk_count > 0 {
-            scan_prefix_chunks::launch::<R>(
-                client,
-                CubeCount::Static(scan_chunk_count, 1, 1),
-                CubeDim::new_1d(SCAN_CHUNK_SIZE),
-                SCAN_CHUNK_SIZE as usize,
-                unsafe { scene.scan_chunk_backdrop_offsets.arg() },
-                unsafe { scene.scan_chunk_lens.arg() },
-                unsafe { scan.segment_tile_counts.arg() },
-                unsafe { scan.tile_segment_range_starts.arg() },
-                unsafe { scan.tile_segment_range_ends.arg() },
-                unsafe { scan.chunk_totals.arg() },
-            );
+            profile_launch(client, "scan_prefix_chunks", || {
+                scan_prefix_chunks::launch::<R>(
+                    client,
+                    CubeCount::Static(scan_chunk_count, 1, 1),
+                    CubeDim::new_1d(SCAN_CHUNK_SIZE),
+                    SCAN_CHUNK_SIZE as usize,
+                    unsafe { scene.scan_chunk_backdrop_offsets.arg() },
+                    unsafe { scene.scan_chunk_lens.arg() },
+                    unsafe { scan.segment_tile_counts.arg() },
+                    unsafe { scan.tile_segment_range_starts.arg() },
+                    unsafe { scan.tile_segment_range_ends.arg() },
+                    unsafe { scan.chunk_totals.arg() },
+                );
+            });
         }
 
         if path_count > 0 {
-            scan_chunk_offsets::launch::<R>(
-                client,
-                cube_count(path_count),
-                CubeDim::new_1d(WORKGROUP_SIZE),
-                path_count,
-                unsafe { scene.backdrop_segment_starts.arg() },
-                unsafe { scene.scan_chunk_range_starts.arg() },
-                unsafe { scene.scan_chunk_range_ends.arg() },
-                unsafe { scan.chunk_totals.arg() },
-                unsafe { scan.chunk_offsets.arg() },
-                unsafe { scan.segment_bumps.arg() },
-            );
+            profile_launch(client, "scan_chunk_offsets", || {
+                scan_chunk_offsets::launch::<R>(
+                    client,
+                    cube_count(path_count),
+                    CubeDim::new_1d(WORKGROUP_SIZE),
+                    path_count,
+                    unsafe { scene.backdrop_segment_starts.arg() },
+                    unsafe { scene.scan_chunk_range_starts.arg() },
+                    unsafe { scene.scan_chunk_range_ends.arg() },
+                    unsafe { scan.chunk_totals.arg() },
+                    unsafe { scan.chunk_offsets.arg() },
+                    unsafe { scan.segment_bumps.arg() },
+                );
+            });
         }
 
         if scan_chunk_count > 0 {
-            scan_apply_chunk_offsets::launch::<R>(
-                client,
-                CubeCount::Static(scan_chunk_count, 1, 1),
-                CubeDim::new_1d(SCAN_CHUNK_SIZE),
-                unsafe { scene.scan_chunk_backdrop_offsets.arg() },
-                unsafe { scene.scan_chunk_lens.arg() },
-                unsafe { scan.chunk_offsets.arg() },
-                unsafe { scan.tile_segment_range_starts.arg() },
-                unsafe { scan.tile_segment_range_ends.arg() },
-                unsafe { scan.segment_tile_cursors.arg() },
-            );
+            profile_launch(client, "scan_apply_chunk_offsets", || {
+                scan_apply_chunk_offsets::launch::<R>(
+                    client,
+                    CubeCount::Static(scan_chunk_count, 1, 1),
+                    CubeDim::new_1d(SCAN_CHUNK_SIZE),
+                    unsafe { scene.scan_chunk_backdrop_offsets.arg() },
+                    unsafe { scene.scan_chunk_lens.arg() },
+                    unsafe { scan.chunk_offsets.arg() },
+                    unsafe { scan.tile_segment_range_starts.arg() },
+                    unsafe { scan.tile_segment_range_ends.arg() },
+                    unsafe { scan.segment_tile_cursors.arg() },
+                );
+            });
         }
 
         if line_count > 0 && segment_capacity > 0 {
-            scan_emit::launch::<R>(
-                client,
-                cube_count(line_count),
-                CubeDim::new_1d(WORKGROUP_SIZE),
-                line_count,
-                segment_capacity,
-                unsafe { scene.line_path_ids.arg() },
-                unsafe { scene.line_p0x.arg() },
-                unsafe { scene.line_p0y.arg() },
-                unsafe { scene.line_p1x.arg() },
-                unsafe { scene.line_p1y.arg() },
-                unsafe { scene.backdrop_data_offsets.arg() },
-                unsafe { scene.backdrop_tile_x0.arg() },
-                unsafe { scene.backdrop_tile_y0.arg() },
-                unsafe { scene.backdrop_tile_x1.arg() },
-                unsafe { scene.backdrop_tile_y1.arg() },
-                unsafe { scan.segment_tile_cursors.arg() },
-                unsafe { scan.segment_p0x.arg() },
-                unsafe { scan.segment_p0y.arg() },
-                unsafe { scan.segment_p1x.arg() },
-                unsafe { scan.segment_p1y.arg() },
-                unsafe { scan.segment_y_edge.arg() },
-            );
+            profile_launch(client, "scan_emit", || {
+                scan_emit::launch::<R>(
+                    client,
+                    cube_count(line_count),
+                    CubeDim::new_1d(WORKGROUP_SIZE),
+                    line_count,
+                    segment_capacity,
+                    unsafe { scene.line_path_ids.arg() },
+                    unsafe { scene.line_p0x.arg() },
+                    unsafe { scene.line_p0y.arg() },
+                    unsafe { scene.line_p1x.arg() },
+                    unsafe { scene.line_p1y.arg() },
+                    unsafe { scene.backdrop_data_offsets.arg() },
+                    unsafe { scene.backdrop_tile_x0.arg() },
+                    unsafe { scene.backdrop_tile_y0.arg() },
+                    unsafe { scene.backdrop_tile_x1.arg() },
+                    unsafe { scene.backdrop_tile_y1.arg() },
+                    unsafe { scan.segment_tile_cursors.arg() },
+                    unsafe { scan.segment_p0x.arg() },
+                    unsafe { scan.segment_p0y.arg() },
+                    unsafe { scan.segment_p1x.arg() },
+                    unsafe { scan.segment_p1y.arg() },
+                    unsafe { scan.segment_y_edge.arg() },
+                );
+            });
         }
     }
 }

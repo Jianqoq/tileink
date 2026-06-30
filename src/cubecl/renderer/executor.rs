@@ -23,18 +23,18 @@ use crate::{
     },
 };
 
+#[cfg(feature = "profile")]
+use crate::cubecl::profile::{finish_profile_scope, start_profile_scope};
 use crate::cubecl::{
     brush::{GpuBrushBuffers, GpuBrushUpload},
     buffer::CubeBuffer,
     pipelines::{
-        cumsum::CumsumPipeline,
         filter::{
             FILTER_BRIGHTNESS, FILTER_CONTRAST, FILTER_GRAYSCALE, FILTER_HUE_ROTATE, FILTER_INVERT,
             FILTER_OPACITY, FILTER_SATURATE, FILTER_SEPIA, FilterPipeline, SVG_MASK_ALPHA,
             SVG_MASK_LUMINANCE,
         },
         fine::FinePipeline,
-        scan::ScanPipeline,
     },
     renderer::{CoarseBuffers, ScanBuffers, SceneBuffers},
     types::CubeBufferLengths,
@@ -123,6 +123,8 @@ impl<R: Runtime> Renderer<R> {
         scratch_count: usize,
         surface_origin: (i32, i32),
     ) -> SavedRendererState {
+        #[cfg(feature = "profile")]
+        let timer = start_profile_scope("prepare_scene");
         let saved = SavedRendererState {
             size: self.size,
             surface_origin: self.surface_origin,
@@ -198,6 +200,8 @@ impl<R: Runtime> Renderer<R> {
         );
         self.scan.prepare_outputs(&self.client, lengths);
         self.coarse.prepare_outputs(&self.client, lengths);
+        #[cfg(feature = "profile")]
+        finish_profile_scope(&self.client, timer);
         saved
     }
 

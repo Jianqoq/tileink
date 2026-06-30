@@ -7,6 +7,10 @@ mod filter_resources;
 mod resources;
 mod scratch;
 mod target;
+#[cfg(feature = "profile")]
+use super::profile::{
+    RenderProfile, RenderProfiler, finish_profile_scope, start_profile_scope, sync_client,
+};
 use filter_resources::{
     FilterConvolveBuffers, FilterConvolveUpload, FilterPathBuffers, FilterPathUpload,
     FilterTransferBuffers, FilterTransferUpload, FilterTurbulenceBuffers, FilterTurbulenceUpload,
@@ -75,6 +79,8 @@ pub struct Renderer<R: Runtime> {
     scratch_in_use: Vec<bool>,
     surface_sources: Vec<CubeBuffer<u32>>,
     surface_origin: (i32, i32),
+    #[cfg(feature = "profile")]
+    profiler: RenderProfiler,
 }
 
 #[cfg(feature = "bench-api")]
@@ -105,14 +111,28 @@ impl<R: Runtime> Render for Renderer<R> {
     }
 
     fn scan(&mut self, _: &Scene, _: Self::ScanArgs<'_>) {
-        ScanPipeline::run(&self.client, &self.scene, &mut self.scan, self.lengths);
+        self.run_scan_pipeline();
     }
 
     fn cumsum(&mut self, _: &Scene, _: Self::CumsumArgs<'_>) {
-        CumsumPipeline::run(&self.client, &self.scene, &mut self.scan, self.lengths);
+        self.run_cumsum_pipeline();
     }
 
     fn coarse(&mut self, _: &Scene, batch: Self::CoarseArgs<'_>) {
+        self.run_coarse_pipeline(batch);
+    }
+}
+
+impl<R: Runtime> Renderer<R> {
+    fn run_scan_pipeline(&mut self) {
+        ScanPipeline::run(&self.client, &self.scene, &mut self.scan, self.lengths);
+    }
+
+    fn run_cumsum_pipeline(&mut self) {
+        CumsumPipeline::run(&self.client, &self.scene, &mut self.scan, self.lengths);
+    }
+
+    fn run_coarse_pipeline(&mut self, batch: CoarseBatch) {
         CoarsePipeline::run(
             &self.client,
             &self.scene,
@@ -122,9 +142,7 @@ impl<R: Runtime> Render for Renderer<R> {
             batch,
         );
     }
-}
 
-impl<R: Runtime> Renderer<R> {
     pub fn new(device: &R::Device, width: u32, height: u32, clear: Color) -> Self {
         let client = R::client(device);
         let clear_color = premul_color_to_rgba8_pack(clear);
@@ -146,6 +164,8 @@ impl<R: Runtime> Renderer<R> {
             scratch_in_use: Vec::new(),
             surface_sources: Vec::new(),
             surface_origin: (0, 0),
+            #[cfg(feature = "profile")]
+            profiler: RenderProfiler::default(),
             client,
             clear_color,
             size: (width, height),
@@ -162,17 +182,25 @@ impl<R: Runtime> Renderer<R> {
     /// buffers are uploaded once per scene, and every compute output has fixed
     /// capacity before any kernel is launched.
     fn prepare_scene(&mut self, scene: &Scene) {
+        #[cfg(feature = "profile")]
+        let timer = start_profile_scope("prepare_scene");
         self.text_data = None;
         self.prepare_scene_resources(scene);
+        #[cfg(feature = "profile")]
+        finish_profile_scope(&self.client, timer);
     }
 
     fn prepare_scene_with_text(&mut self, scene: &Scene, text_context: &mut TextContext) {
+        #[cfg(feature = "profile")]
+        let timer = start_profile_scope("prepare_scene");
         self.text_data = Some(PreparedTextData::new(
             &scene.text_glyphs,
             &scene.text_runs,
             text_context,
         ));
         self.prepare_scene_resources(scene);
+        #[cfg(feature = "profile")]
+        finish_profile_scope(&self.client, timer);
     }
 
     fn prepare_scene_resources(&mut self, scene: &Scene) {
@@ -240,12 +268,7 @@ impl<R: Runtime> Renderer<R> {
     }
 
     fn clear_target(&mut self) {
-        FinePipeline::clear(
-            &self.client,
-            &mut self.target,
-            self.lengths,
-            self.clear_color,
-        );
+        self.clear_buffer(CubeRenderTarget::Main, self.clear_color);
     }
 
     fn fine_batch_to(&mut self, target: CubeRenderTarget) {
@@ -374,6 +397,31 @@ impl<R: Runtime> Renderer<R> {
             ),
             CubePreparedStage::Fine => self.fine_batch_to(CubeRenderTarget::Main),
         }
+    }
+
+    #[cfg(feature = "profile")]
+    /// Starts collecting stage timings for subsequent renderer work.
+    ///
+    /// The profiler synchronizes the GPU before starting so earlier queued work
+    /// is not charged to this profile. Call [`Self::end_profile`] after the
+    /// render or prepared-stage sequence you want to measure.
+    pub fn start_profile(&mut self) {
+        sync_client(&self.client);
+        self.profiler.start();
+    }
+
+    #[cfg(feature = "profile")]
+    /// Stops profiling, synchronizes pending GPU work, and returns the captured timings.
+    pub fn end_profile(&mut self) -> &RenderProfile {
+        sync_client(&self.client);
+        self.profiler.end();
+        self.profiler.profile()
+    }
+
+    #[cfg(feature = "profile")]
+    /// Returns the most recently completed or currently active profile.
+    pub fn profile(&self) -> &RenderProfile {
+        self.profiler.profile()
     }
 
     fn resize(&mut self, width: u32, height: u32) {

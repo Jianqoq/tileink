@@ -1,5 +1,67 @@
 use super::*;
 
+#[cfg(feature = "profile")]
+#[test]
+fn render_wgpu_records_profile_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let scene = mixed_shape_scene();
+    let mut renderer = WgpuRenderer::new_default_device(360, 260, Color::WHITE);
+    renderer.start_profile();
+    renderer.render(&scene);
+    let profile = renderer.end_profile();
+    let launches = profile
+        .summary()
+        .into_iter()
+        .map(|entry| entry.name)
+        .collect::<Vec<_>>();
+
+    assert!(profile.wall_time() > std::time::Duration::ZERO);
+    assert!(profile.attributed_time() > std::time::Duration::ZERO);
+    assert!(profile.kernel_time() > std::time::Duration::ZERO);
+    for launch in [
+        "prepare_scene",
+        "scan_clear",
+        "scan_count",
+        "scan_prefix_chunks",
+        "scan_chunk_offsets",
+        "scan_apply_chunk_offsets",
+        "scan_emit",
+        "cumsum_prefix_chunks",
+        "fine_clear",
+        "coarse_count",
+        "coarse_ptcl_prefix_chunks",
+        "coarse_ptcl_chunk_offsets",
+        "coarse_ptcl_apply_chunk_offsets",
+        "coarse_glyph_prefix_chunks",
+        "coarse_glyph_chunk_offsets",
+        "coarse_glyph_apply_chunk_offsets",
+        "coarse_emit",
+        "fine_render",
+    ] {
+        assert!(
+            launches.contains(&launch),
+            "missing profile launch {launch}"
+        );
+    }
+    assert!(
+        profile
+            .entries()
+            .iter()
+            .any(|entry| entry.name == "fine_render" && entry.kernel_duration.is_some()),
+        "expected fine_render to have kernel-only timing"
+    );
+    assert!(
+        profile
+            .entries()
+            .iter()
+            .any(|entry| entry.name == "prepare_scene" && entry.kernel_duration.is_none()),
+        "prepare_scene should remain a CPU-side event"
+    );
+}
+
 #[test]
 fn render_wgpu_matches_cpu_for_text_layout_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {

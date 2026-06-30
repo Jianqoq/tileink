@@ -1,6 +1,7 @@
 use ::cubecl::prelude::*;
 
 use crate::cubecl::{
+    profile::profile_launch,
     renderer::{CoarseBuffers, ScanBuffers, SceneBuffers},
     types::{
         COARSE_CHUNK_SIZE, CUBE_DRAW_BLEND, CUBE_DRAW_BRUSH, CUBE_DRAW_CLIP, CUBE_DRAW_ISOLATE,
@@ -39,174 +40,190 @@ impl CoarsePipeline {
             return;
         }
 
-        coarse_count::launch::<R>(
-            client,
-            CubeCount::Static(tile_count, 1, 1),
-            CubeDim::new_1d(TILE_WORKGROUP_SIZE),
-            TILE_WORKGROUP_SIZE as usize,
-            tile_count,
-            lengths.tiles_width as u32,
-            lengths.tiles_height as u32,
-            batch.draw_start,
-            batch.draw_end,
-            batch.layer_stack_start,
-            batch.layer_stack_end,
-            unsafe { scene.draw_path_ids.arg() },
-            unsafe { scene.draw_glyph_run_ids.arg() },
-            unsafe { scene.glyph_run_starts.arg() },
-            unsafe { scene.glyph_run_counts.arg() },
-            unsafe { scene.glyph_image_ids.arg() },
-            unsafe { scene.glyph_x.arg() },
-            unsafe { scene.glyph_y.arg() },
-            unsafe { scene.glyph_image_left.arg() },
-            unsafe { scene.glyph_image_top.arg() },
-            unsafe { scene.glyph_image_width.arg() },
-            unsafe { scene.glyph_image_height.arg() },
-            unsafe { scene.draw_tags.arg() },
-            unsafe { scene.draw_pixel_x0.arg() },
-            unsafe { scene.draw_pixel_y0.arg() },
-            unsafe { scene.draw_pixel_x1.arg() },
-            unsafe { scene.draw_pixel_y1.arg() },
-            unsafe { scene.draw_sdf_kinds.arg() },
-            unsafe { scene.backdrop_data_offsets.arg() },
-            unsafe { scene.backdrop_tile_x0.arg() },
-            unsafe { scene.backdrop_tile_y0.arg() },
-            unsafe { scene.backdrop_tile_x1.arg() },
-            unsafe { scene.backdrop_tile_y1.arg() },
-            unsafe { scan.backdrops.arg() },
-            unsafe { scan.tile_segment_range_starts.arg() },
-            unsafe { scan.tile_segment_range_ends.arg() },
-            unsafe { scene.plan_layer_stack_tags.arg() },
-            unsafe { scene.plan_layer_stack_draws.arg() },
-            unsafe { coarse.tile_ptcl_counts.arg() },
-            unsafe { coarse.tile_glyph_counts.arg() },
-        );
+        profile_launch(client, "coarse_count", || {
+            coarse_count::launch::<R>(
+                client,
+                CubeCount::Static(tile_count, 1, 1),
+                CubeDim::new_1d(TILE_WORKGROUP_SIZE),
+                TILE_WORKGROUP_SIZE as usize,
+                tile_count,
+                lengths.tiles_width as u32,
+                lengths.tiles_height as u32,
+                batch.draw_start,
+                batch.draw_end,
+                batch.layer_stack_start,
+                batch.layer_stack_end,
+                unsafe { scene.draw_path_ids.arg() },
+                unsafe { scene.draw_glyph_run_ids.arg() },
+                unsafe { scene.glyph_run_starts.arg() },
+                unsafe { scene.glyph_run_counts.arg() },
+                unsafe { scene.glyph_image_ids.arg() },
+                unsafe { scene.glyph_x.arg() },
+                unsafe { scene.glyph_y.arg() },
+                unsafe { scene.glyph_image_left.arg() },
+                unsafe { scene.glyph_image_top.arg() },
+                unsafe { scene.glyph_image_width.arg() },
+                unsafe { scene.glyph_image_height.arg() },
+                unsafe { scene.draw_tags.arg() },
+                unsafe { scene.draw_pixel_x0.arg() },
+                unsafe { scene.draw_pixel_y0.arg() },
+                unsafe { scene.draw_pixel_x1.arg() },
+                unsafe { scene.draw_pixel_y1.arg() },
+                unsafe { scene.draw_sdf_kinds.arg() },
+                unsafe { scene.backdrop_data_offsets.arg() },
+                unsafe { scene.backdrop_tile_x0.arg() },
+                unsafe { scene.backdrop_tile_y0.arg() },
+                unsafe { scene.backdrop_tile_x1.arg() },
+                unsafe { scene.backdrop_tile_y1.arg() },
+                unsafe { scan.backdrops.arg() },
+                unsafe { scan.tile_segment_range_starts.arg() },
+                unsafe { scan.tile_segment_range_ends.arg() },
+                unsafe { scene.plan_layer_stack_tags.arg() },
+                unsafe { scene.plan_layer_stack_draws.arg() },
+                unsafe { coarse.tile_ptcl_counts.arg() },
+                unsafe { coarse.tile_glyph_counts.arg() },
+            );
+        });
 
-        coarse_prefix_chunks::launch::<R>(
-            client,
-            CubeCount::Static(chunk_count, 1, 1),
-            CubeDim::new_1d(COARSE_CHUNK_SIZE),
-            COARSE_CHUNK_SIZE as usize,
-            tile_count,
-            unsafe { coarse.tile_ptcl_counts.arg() },
-            unsafe { coarse.tile_ptcl_range_starts.arg() },
-            unsafe { coarse.tile_ptcl_range_ends.arg() },
-            unsafe { coarse.chunk_totals.arg() },
-        );
+        profile_launch(client, "coarse_ptcl_prefix_chunks", || {
+            coarse_prefix_chunks::launch::<R>(
+                client,
+                CubeCount::Static(chunk_count, 1, 1),
+                CubeDim::new_1d(COARSE_CHUNK_SIZE),
+                COARSE_CHUNK_SIZE as usize,
+                tile_count,
+                unsafe { coarse.tile_ptcl_counts.arg() },
+                unsafe { coarse.tile_ptcl_range_starts.arg() },
+                unsafe { coarse.tile_ptcl_range_ends.arg() },
+                unsafe { coarse.chunk_totals.arg() },
+            );
+        });
 
-        coarse_chunk_offsets::launch::<R>(
-            client,
-            CubeCount::Static(1, 1, 1),
-            CubeDim::new_1d(1),
-            chunk_count,
-            unsafe { coarse.chunk_totals.arg() },
-            unsafe { coarse.chunk_offsets.arg() },
-        );
+        profile_launch(client, "coarse_ptcl_chunk_offsets", || {
+            coarse_chunk_offsets::launch::<R>(
+                client,
+                CubeCount::Static(1, 1, 1),
+                CubeDim::new_1d(1),
+                chunk_count,
+                unsafe { coarse.chunk_totals.arg() },
+                unsafe { coarse.chunk_offsets.arg() },
+            );
+        });
 
-        coarse_apply_chunk_offsets::launch::<R>(
-            client,
-            CubeCount::Static(chunk_count, 1, 1),
-            CubeDim::new_1d(COARSE_CHUNK_SIZE),
-            COARSE_CHUNK_SIZE as usize,
-            tile_count,
-            unsafe { coarse.chunk_offsets.arg() },
-            unsafe { coarse.tile_ptcl_range_starts.arg() },
-            unsafe { coarse.tile_ptcl_range_ends.arg() },
-        );
+        profile_launch(client, "coarse_ptcl_apply_chunk_offsets", || {
+            coarse_apply_chunk_offsets::launch::<R>(
+                client,
+                CubeCount::Static(chunk_count, 1, 1),
+                CubeDim::new_1d(COARSE_CHUNK_SIZE),
+                COARSE_CHUNK_SIZE as usize,
+                tile_count,
+                unsafe { coarse.chunk_offsets.arg() },
+                unsafe { coarse.tile_ptcl_range_starts.arg() },
+                unsafe { coarse.tile_ptcl_range_ends.arg() },
+            );
+        });
 
-        coarse_prefix_chunks::launch::<R>(
-            client,
-            CubeCount::Static(chunk_count, 1, 1),
-            CubeDim::new_1d(COARSE_CHUNK_SIZE),
-            COARSE_CHUNK_SIZE as usize,
-            tile_count,
-            unsafe { coarse.tile_glyph_counts.arg() },
-            unsafe { coarse.tile_glyph_range_starts.arg() },
-            unsafe { coarse.tile_glyph_range_ends.arg() },
-            unsafe { coarse.glyph_chunk_totals.arg() },
-        );
+        profile_launch(client, "coarse_glyph_prefix_chunks", || {
+            coarse_prefix_chunks::launch::<R>(
+                client,
+                CubeCount::Static(chunk_count, 1, 1),
+                CubeDim::new_1d(COARSE_CHUNK_SIZE),
+                COARSE_CHUNK_SIZE as usize,
+                tile_count,
+                unsafe { coarse.tile_glyph_counts.arg() },
+                unsafe { coarse.tile_glyph_range_starts.arg() },
+                unsafe { coarse.tile_glyph_range_ends.arg() },
+                unsafe { coarse.glyph_chunk_totals.arg() },
+            );
+        });
 
-        coarse_chunk_offsets::launch::<R>(
-            client,
-            CubeCount::Static(1, 1, 1),
-            CubeDim::new_1d(1),
-            chunk_count,
-            unsafe { coarse.glyph_chunk_totals.arg() },
-            unsafe { coarse.glyph_chunk_offsets.arg() },
-        );
+        profile_launch(client, "coarse_glyph_chunk_offsets", || {
+            coarse_chunk_offsets::launch::<R>(
+                client,
+                CubeCount::Static(1, 1, 1),
+                CubeDim::new_1d(1),
+                chunk_count,
+                unsafe { coarse.glyph_chunk_totals.arg() },
+                unsafe { coarse.glyph_chunk_offsets.arg() },
+            );
+        });
 
-        coarse_apply_chunk_offsets::launch::<R>(
-            client,
-            CubeCount::Static(chunk_count, 1, 1),
-            CubeDim::new_1d(COARSE_CHUNK_SIZE),
-            COARSE_CHUNK_SIZE as usize,
-            tile_count,
-            unsafe { coarse.glyph_chunk_offsets.arg() },
-            unsafe { coarse.tile_glyph_range_starts.arg() },
-            unsafe { coarse.tile_glyph_range_ends.arg() },
-        );
+        profile_launch(client, "coarse_glyph_apply_chunk_offsets", || {
+            coarse_apply_chunk_offsets::launch::<R>(
+                client,
+                CubeCount::Static(chunk_count, 1, 1),
+                CubeDim::new_1d(COARSE_CHUNK_SIZE),
+                COARSE_CHUNK_SIZE as usize,
+                tile_count,
+                unsafe { coarse.glyph_chunk_offsets.arg() },
+                unsafe { coarse.tile_glyph_range_starts.arg() },
+                unsafe { coarse.tile_glyph_range_ends.arg() },
+            );
+        });
 
         if batch.draw_start >= batch.draw_end || lengths.coarse_ptcl_capacity == 0 {
             return;
         }
 
-        coarse_emit::launch::<R>(
-            client,
-            CubeCount::Static(tile_count, 1, 1),
-            CubeDim::new_1d(TILE_WORKGROUP_SIZE),
-            TILE_WORKGROUP_SIZE as usize,
-            tile_count,
-            lengths.tiles_width as u32,
-            lengths.tiles_height as u32,
-            batch.draw_start,
-            batch.draw_end,
-            batch.layer_stack_start,
-            batch.layer_stack_end,
-            lengths.coarse_ptcl_capacity as u32,
-            lengths.coarse_glyph_capacity as u32,
-            unsafe { scene.draw_path_ids.arg() },
-            unsafe { scene.draw_glyph_run_ids.arg() },
-            unsafe { scene.glyph_run_starts.arg() },
-            unsafe { scene.glyph_run_counts.arg() },
-            unsafe { scene.glyph_image_ids.arg() },
-            unsafe { scene.glyph_x.arg() },
-            unsafe { scene.glyph_y.arg() },
-            unsafe { scene.glyph_image_left.arg() },
-            unsafe { scene.glyph_image_top.arg() },
-            unsafe { scene.glyph_image_width.arg() },
-            unsafe { scene.glyph_image_height.arg() },
-            unsafe { scene.draw_tags.arg() },
-            unsafe { scene.draw_fill_rules.arg() },
-            unsafe { scene.draw_solid_color_fast_paths.arg() },
-            unsafe { scene.draw_brush_colors.arg() },
-            unsafe { scene.draw_pixel_x0.arg() },
-            unsafe { scene.draw_pixel_y0.arg() },
-            unsafe { scene.draw_pixel_x1.arg() },
-            unsafe { scene.draw_pixel_y1.arg() },
-            unsafe { scene.draw_sdf_kinds.arg() },
-            unsafe { scene.backdrop_data_offsets.arg() },
-            unsafe { scene.backdrop_tile_x0.arg() },
-            unsafe { scene.backdrop_tile_y0.arg() },
-            unsafe { scene.backdrop_tile_x1.arg() },
-            unsafe { scene.backdrop_tile_y1.arg() },
-            unsafe { scan.backdrops.arg() },
-            unsafe { scan.tile_segment_range_starts.arg() },
-            unsafe { scan.tile_segment_range_ends.arg() },
-            unsafe { coarse.tile_ptcl_range_starts.arg() },
-            unsafe { coarse.tile_ptcl_range_ends.arg() },
-            unsafe { coarse.tile_glyph_range_starts.arg() },
-            unsafe { coarse.tile_glyph_range_ends.arg() },
-            unsafe { scene.plan_layer_stack_tags.arg() },
-            unsafe { scene.plan_layer_stack_draws.arg() },
-            unsafe { scene.plan_layer_stack_payloads.arg() },
-            unsafe { coarse.ptcl_tags.arg() },
-            unsafe { coarse.ptcl_backdrops.arg() },
-            unsafe { coarse.ptcl_fill_rules.arg() },
-            unsafe { coarse.ptcl_segment_starts.arg() },
-            unsafe { coarse.ptcl_segment_ends.arg() },
-            unsafe { coarse.ptcl_colors.arg() },
-            unsafe { coarse.glyph_indices.arg() },
-        );
+        profile_launch(client, "coarse_emit", || {
+            coarse_emit::launch::<R>(
+                client,
+                CubeCount::Static(tile_count, 1, 1),
+                CubeDim::new_1d(TILE_WORKGROUP_SIZE),
+                TILE_WORKGROUP_SIZE as usize,
+                tile_count,
+                lengths.tiles_width as u32,
+                lengths.tiles_height as u32,
+                batch.draw_start,
+                batch.draw_end,
+                batch.layer_stack_start,
+                batch.layer_stack_end,
+                lengths.coarse_ptcl_capacity as u32,
+                lengths.coarse_glyph_capacity as u32,
+                unsafe { scene.draw_path_ids.arg() },
+                unsafe { scene.draw_glyph_run_ids.arg() },
+                unsafe { scene.glyph_run_starts.arg() },
+                unsafe { scene.glyph_run_counts.arg() },
+                unsafe { scene.glyph_image_ids.arg() },
+                unsafe { scene.glyph_x.arg() },
+                unsafe { scene.glyph_y.arg() },
+                unsafe { scene.glyph_image_left.arg() },
+                unsafe { scene.glyph_image_top.arg() },
+                unsafe { scene.glyph_image_width.arg() },
+                unsafe { scene.glyph_image_height.arg() },
+                unsafe { scene.draw_tags.arg() },
+                unsafe { scene.draw_fill_rules.arg() },
+                unsafe { scene.draw_solid_color_fast_paths.arg() },
+                unsafe { scene.draw_brush_colors.arg() },
+                unsafe { scene.draw_pixel_x0.arg() },
+                unsafe { scene.draw_pixel_y0.arg() },
+                unsafe { scene.draw_pixel_x1.arg() },
+                unsafe { scene.draw_pixel_y1.arg() },
+                unsafe { scene.draw_sdf_kinds.arg() },
+                unsafe { scene.backdrop_data_offsets.arg() },
+                unsafe { scene.backdrop_tile_x0.arg() },
+                unsafe { scene.backdrop_tile_y0.arg() },
+                unsafe { scene.backdrop_tile_x1.arg() },
+                unsafe { scene.backdrop_tile_y1.arg() },
+                unsafe { scan.backdrops.arg() },
+                unsafe { scan.tile_segment_range_starts.arg() },
+                unsafe { scan.tile_segment_range_ends.arg() },
+                unsafe { coarse.tile_ptcl_range_starts.arg() },
+                unsafe { coarse.tile_ptcl_range_ends.arg() },
+                unsafe { coarse.tile_glyph_range_starts.arg() },
+                unsafe { coarse.tile_glyph_range_ends.arg() },
+                unsafe { scene.plan_layer_stack_tags.arg() },
+                unsafe { scene.plan_layer_stack_draws.arg() },
+                unsafe { scene.plan_layer_stack_payloads.arg() },
+                unsafe { coarse.ptcl_tags.arg() },
+                unsafe { coarse.ptcl_backdrops.arg() },
+                unsafe { coarse.ptcl_fill_rules.arg() },
+                unsafe { coarse.ptcl_segment_starts.arg() },
+                unsafe { coarse.ptcl_segment_ends.arg() },
+                unsafe { coarse.ptcl_colors.arg() },
+                unsafe { coarse.glyph_indices.arg() },
+            );
+        });
     }
 }
 

@@ -224,8 +224,8 @@ impl<R: Runtime> Renderer<R> {
         let source = CubeRenderTarget::Scratch(0);
         self.scratch_in_use[0] = true;
         self.clear_buffer(source, 0);
-        ScanPipeline::run(&self.client, &self.scene, &mut self.scan, self.lengths);
-        CumsumPipeline::run(&self.client, &self.scene, &mut self.scan, self.lengths);
+        self.run_scan_pipeline();
+        self.run_cumsum_pipeline();
         let mut local_filter_cursors = FilterCursors::default();
         self.execute_ops(
             &local.scene,
