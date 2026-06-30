@@ -7,9 +7,29 @@ use tileink::{
     FillRule, Scene, TextAttrs, TextCacheKeyFlags, TextContext, TextLayoutOptions, TextWeight,
 };
 
-pub const WIDTH: u32 = 780;
-pub const HEIGHT: u32 = 400;
+const DESIGN_WIDTH: u32 = 780;
+const DESIGN_HEIGHT: u32 = 400;
+
+pub const WIDTH: u32 = crate::common::EXAMPLE_WIDTH;
+pub const HEIGHT: u32 = crate::common::EXAMPLE_HEIGHT;
 pub const CLEAR: Color = Color::from_rgb8(248, 250, 252);
+
+fn offset() -> (f64, f64) {
+    (
+        (WIDTH as f64 - DESIGN_WIDTH as f64) * 0.5,
+        (HEIGHT as f64 - DESIGN_HEIGHT as f64) * 0.5,
+    )
+}
+
+fn point(x: f64, y: f64) -> Point {
+    let (dx, dy) = offset();
+    Point::new(x + dx, y + dy)
+}
+
+fn point_tuple(x: f64, y: f64) -> (f64, f64) {
+    let p = point(x, y);
+    (p.x, p.y)
+}
 
 pub fn scene(context: &mut TextContext) -> Scene {
     let mut scene = Scene::new(WIDTH, HEIGHT);
@@ -25,7 +45,7 @@ pub fn scene(context: &mut TextContext) -> Scene {
         context,
         "Bitmap text: swash raster, hinted, subpixel",
         16.0,
-        Point::new(28.0, 36.0),
+        point(28.0, 36.0),
         Color::from_rgb8(15, 23, 42),
         TextAttrs::new().weight(TextWeight::SEMIBOLD),
     );
@@ -35,23 +55,18 @@ pub fn scene(context: &mut TextContext) -> Scene {
         context,
         "Hamburgefonts 12px",
         12.0,
-        Point::new(28.0, 82.0),
+        point(28.0, 82.0),
         Color::BLACK,
         TextAttrs::new(),
     );
-    push_label(
-        &mut scene,
-        context,
-        "bitmap raster",
-        Point::new(220.0, 82.0),
-    );
+    push_label(&mut scene, context, "bitmap raster", point(220.0, 82.0));
 
     push_path_text(
         &mut scene,
         context,
         "Hamburgefonts 12px",
         12.0,
-        Point::new(28.0, 124.0),
+        point(28.0, 124.0),
         Color::BLACK,
         TextAttrs::new(),
         Affine::IDENTITY,
@@ -60,7 +75,7 @@ pub fn scene(context: &mut TextContext) -> Scene {
         &mut scene,
         context,
         "path outline, hinting on",
-        Point::new(220.0, 124.0),
+        point(220.0, 124.0),
     );
 
     push_path_text(
@@ -68,7 +83,7 @@ pub fn scene(context: &mut TextContext) -> Scene {
         context,
         "Hamburgefonts 12px",
         12.0,
-        Point::new(28.0, 166.0),
+        point(28.0, 166.0),
         Color::BLACK,
         TextAttrs::new().cache_key_flags(TextCacheKeyFlags::DISABLE_HINTING),
         Affine::IDENTITY,
@@ -77,10 +92,10 @@ pub fn scene(context: &mut TextContext) -> Scene {
         &mut scene,
         context,
         "path outline, hinting off",
-        Point::new(220.0, 166.0),
+        point(220.0, 166.0),
     );
 
-    let gradient = Gradient::new_linear((24.0, 205.0), (610.0, 205.0))
+    let gradient = Gradient::new_linear(point_tuple(24.0, 205.0), point_tuple(610.0, 205.0))
         .with_extend(Extend::Pad)
         .with_stops([css::CRIMSON, css::ORANGE, css::DODGER_BLUE]);
     push_path_text(
@@ -88,10 +103,10 @@ pub fn scene(context: &mut TextContext) -> Scene {
         context,
         "VECTOR PATH",
         62.0,
-        Point::new(28.0, 252.0),
+        point(28.0, 252.0),
         &gradient,
         TextAttrs::new().weight(TextWeight::BOLD),
-        Affine::rotate_about(-5.0_f64.to_radians(), (330.0, 226.0)),
+        Affine::rotate_about(-5.0_f64.to_radians(), point_tuple(330.0, 226.0)),
     );
 
     push_path_text(
@@ -99,10 +114,10 @@ pub fn scene(context: &mut TextContext) -> Scene {
         context,
         "Affine transform + gradient brush",
         25.0,
-        Point::new(30.0, 362.0),
+        point(30.0, 362.0),
         Color::from_rgb8(15, 118, 110),
         TextAttrs::new().weight(TextWeight::SEMIBOLD),
-        Affine::rotate_about(4.0_f64.to_radians(), (240.0, 352.0)),
+        Affine::rotate_about(4.0_f64.to_radians(), point_tuple(240.0, 352.0)),
     );
 
     scene

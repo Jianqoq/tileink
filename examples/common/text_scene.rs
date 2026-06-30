@@ -1,8 +1,8 @@
 use peniko::{Color, kurbo::Point};
 use tileink::{Scene, TextAlign, TextContext, TextLayoutOptions};
 
-pub const WIDTH: u32 = 280;
-pub const HEIGHT: u32 = 88;
+pub const WIDTH: u32 = crate::common::EXAMPLE_WIDTH;
+pub const HEIGHT: u32 = crate::common::EXAMPLE_HEIGHT;
 
 pub struct TextCase {
     pub name: &'static str,

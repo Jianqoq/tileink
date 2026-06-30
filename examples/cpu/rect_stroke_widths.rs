@@ -59,7 +59,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         FillRule::NonZero,
     );
 
-    let mut renderer = CpuRenderer::new(480, 320, Color::from_rgb8(255, 255, 255));
+    let scene = scene.scaled_to_fit(common::EXAMPLE_WIDTH, common::EXAMPLE_HEIGHT);
+    let mut renderer = CpuRenderer::new(
+        common::EXAMPLE_WIDTH,
+        common::EXAMPLE_HEIGHT,
+        Color::from_rgb8(255, 255, 255),
+    );
     renderer.render(&scene);
 
     let out = common::example_output("rect_stroke_widths");

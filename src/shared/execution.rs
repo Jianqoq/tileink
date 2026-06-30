@@ -14,11 +14,12 @@ pub(crate) enum LayerStackEntry {
     Blend { draw: u32, mode: BlendMode },
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct CommandList {
     pub commands: Vec<Command>,
 }
 
+#[derive(Clone)]
 pub(crate) enum Command {
     Draw(usize),
     Layer {

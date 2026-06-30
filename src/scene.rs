@@ -42,6 +42,7 @@ use crate::text::{
     TextContext, TextLayout, TextRun, layout_bounds_at_origin, scene_glyphs_at_origin,
 };
 
+#[derive(Clone)]
 pub struct Scene {
     pub(crate) lines: Vec<Line>,
     pub(crate) path_records: Vec<PathRecord>,
@@ -64,6 +65,8 @@ struct PathPushOptions {
     bounds_override: Option<Bounds>,
     tag: DrawTag,
 }
+
+mod scale;
 
 impl Scene {
     pub fn new(width: u32, height: u32) -> Self {
@@ -1154,6 +1157,103 @@ impl Scene {
             .commands
             .push(Command::Draw(draw_ix));
         draw_ix
+    }
+
+    fn rebuild_backdrop_records(&mut self) {
+        let mut path_bounds: Vec<Option<PixelBounds>> = vec![None; self.path_records.len()];
+        for draw in &self.draw_records {
+            if let Some(path_id) = draw.path_id
+                && let Some(slot) = path_bounds.get_mut(path_id as usize)
+            {
+                *slot = Some(match *slot {
+                    Some(bounds) => bounds.union(draw.pixel_bounds),
+                    None => draw.pixel_bounds,
+                });
+            }
+        }
+
+        let mut data_offset = 0;
+        let mut segment_start = 0;
+        let width_in_tiles = self.width_in_tiles();
+        let height_in_tiles = self.height_in_tiles();
+        let mut records = Vec::with_capacity(self.bd_records.len());
+        for record in &self.bd_records {
+            let path_id = record.path_id as usize;
+            let pixel_bounds = path_bounds
+                .get(path_id)
+                .and_then(|bounds| *bounds)
+                .unwrap_or_else(|| self.path_pixel_bounds(path_id));
+            let tile_bbox = pixel_bounds.tile_bbox(width_in_tiles, height_in_tiles);
+            let data_len = tile_bbox.tile_count();
+            let segment_capacity = self.path_segment_capacity(path_id, tile_bbox);
+            records.push(BackdropRecord {
+                path_id: record.path_id,
+                data_offset,
+                data_len,
+                tile_x0: tile_bbox.x0,
+                tile_y0: tile_bbox.y0,
+                tile_x1: tile_bbox.x1,
+                tile_y1: tile_bbox.y1,
+                segment_start,
+                segment_capacity,
+                segment_count: 0,
+            });
+            data_offset += data_len;
+            segment_start += segment_capacity;
+        }
+
+        self.bd_records = records;
+        self.backdrop_pool_capacity = data_offset;
+        self.tile_cnt = segment_start;
+    }
+
+    fn path_pixel_bounds(&self, path_id: usize) -> PixelBounds {
+        let Some(record) = self.path_records.get(path_id) else {
+            return PixelBounds {
+                x0: 0,
+                y0: 0,
+                x1: 0,
+                y1: 0,
+            };
+        };
+        let lines = &self.lines
+            [record.line_start as usize..(record.line_start + record.line_count) as usize];
+        if lines.is_empty() {
+            return PixelBounds {
+                x0: 0,
+                y0: 0,
+                x1: 0,
+                y1: 0,
+            };
+        }
+
+        let mut x0 = f32::INFINITY;
+        let mut y0 = f32::INFINITY;
+        let mut x1 = f32::NEG_INFINITY;
+        let mut y1 = f32::NEG_INFINITY;
+        for line in lines {
+            x0 = x0.min(line.p0[0]).min(line.p1[0]);
+            y0 = y0.min(line.p0[1]).min(line.p1[1]);
+            x1 = x1.max(line.p0[0]).max(line.p1[0]);
+            y1 = y1.max(line.p0[1]).max(line.p1[1]);
+        }
+        PixelBounds {
+            x0: x0.floor() as i32,
+            y0: y0.floor() as i32,
+            x1: x1.ceil() as i32,
+            y1: y1.ceil() as i32,
+        }
+    }
+
+    fn path_segment_capacity(
+        &self,
+        path_id: usize,
+        tile_bbox: crate::shared::bounds::TileBbox,
+    ) -> u32 {
+        let Some(record) = self.path_records.get(path_id) else {
+            return 0;
+        };
+        self.segment_capacity_for_path_lines(record.line_start, record.line_count, tile_bbox)
     }
 
     pub fn reset(&mut self) {

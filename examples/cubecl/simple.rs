@@ -47,8 +47,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         0.1,
     );
 
-    let mut renderer =
-        CubeWgpuRenderer::new_default_device(360, 260, Color::from_rgb8(255, 255, 255));
+    let scene = scene.scaled_to_fit(common::EXAMPLE_WIDTH, common::EXAMPLE_HEIGHT);
+    let mut renderer = CubeWgpuRenderer::new_default_device(
+        common::EXAMPLE_WIDTH,
+        common::EXAMPLE_HEIGHT,
+        Color::from_rgb8(255, 255, 255),
+    );
     renderer.render(&scene);
 
     let out = common::cubecl_example_output("simple");

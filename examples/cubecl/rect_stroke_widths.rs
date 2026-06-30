@@ -59,8 +59,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         FillRule::NonZero,
     );
 
-    let mut renderer =
-        CubeWgpuRenderer::new_default_device(480, 320, Color::from_rgb8(255, 255, 255));
+    let scene = scene.scaled_to_fit(common::EXAMPLE_WIDTH, common::EXAMPLE_HEIGHT);
+    let mut renderer = CubeWgpuRenderer::new_default_device(
+        common::EXAMPLE_WIDTH,
+        common::EXAMPLE_HEIGHT,
+        Color::from_rgb8(255, 255, 255),
+    );
     renderer.render(&scene);
 
     let out = common::cubecl_example_output("rect_stroke_widths");

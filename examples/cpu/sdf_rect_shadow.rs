@@ -7,8 +7,10 @@ use peniko::Color;
 use tileink::CpuRenderer;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let (scene, width, height) = sdf_rect_shadow_scene::sdf_rect_shadow_scene();
-    let mut renderer = CpuRenderer::new(width, height, Color::WHITE);
+    let (scene, _, _) = sdf_rect_shadow_scene::sdf_rect_shadow_scene();
+    let scene = scene.scaled_to_fit(common::EXAMPLE_WIDTH, common::EXAMPLE_HEIGHT);
+    let mut renderer =
+        CpuRenderer::new(common::EXAMPLE_WIDTH, common::EXAMPLE_HEIGHT, Color::WHITE);
     renderer.render(&scene);
 
     let out = common::example_output("sdf_rect_shadow");
