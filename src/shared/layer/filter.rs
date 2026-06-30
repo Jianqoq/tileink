@@ -157,6 +157,34 @@ impl FilterPrimitiveKind {
     }
 }
 
+pub(crate) const LIQUID_GLASS_BLUR_STD_DEV_SCALE: f32 = 1.0 / 3.0;
+pub(crate) const LIQUID_GLASS_CHROMATIC_R: f32 = 0.98;
+pub(crate) const LIQUID_GLASS_CHROMATIC_G: f32 = 1.0;
+pub(crate) const LIQUID_GLASS_CHROMATIC_B: f32 = 1.02;
+pub(crate) const LIQUID_GLASS_PI: f32 = std::f32::consts::PI;
+pub(crate) const LIQUID_GLASS_REFRACTION_PIXEL_SCALE: f32 = std::f32::consts::SQRT_2 * 50.0;
+pub(crate) const LIQUID_GLASS_NORMAL_LENGTH_SCALE: f32 = std::f32::consts::SQRT_2 * 1000.0;
+pub(crate) const LIQUID_GLASS_ACTIVE_DISTANCE_NORM: f32 = 0.005;
+pub(crate) const LIQUID_GLASS_EDGE_BLEND_START: f32 = -0.001;
+pub(crate) const LIQUID_GLASS_EDGE_BLEND_END: f32 = 0.001;
+pub(crate) const LIQUID_GLASS_TINT_MIX: f32 = 0.8;
+pub(crate) const LIQUID_GLASS_TINT_BASE_MIX: f32 = 0.5;
+pub(crate) const LIQUID_GLASS_FRESNEL_LIGHTNESS_GAIN: f32 = 20.0;
+pub(crate) const LIQUID_GLASS_FRESNEL_MIX_SCALE: f32 = 0.7;
+pub(crate) const LIQUID_GLASS_GLARE_LIGHTNESS_GAIN: f32 = 150.0;
+pub(crate) const LIQUID_GLASS_GLARE_CHROMA_GAIN: f32 = 30.0;
+pub(crate) const LIQUID_GLASS_GLARE_SIDE_SCALE: f32 = 1.2;
+pub(crate) const LIQUID_GLASS_GLARE_POWER_BASE: f32 = 0.1;
+pub(crate) const LIQUID_GLASS_GLARE_POWER_SCALE: f32 = 2.0;
+pub(crate) const LIQUID_GLASS_GEOMETRY_DISTANCE_SCALE: f32 = 1500.0;
+pub(crate) const LIQUID_GLASS_GEOMETRY_RANGE_SCALE: f32 = 500.0;
+pub(crate) const LIQUID_GLASS_EPSILON: f32 = 1e-6;
+pub(crate) const LIQUID_GLASS_D65_X: f32 = 0.9504559;
+pub(crate) const LIQUID_GLASS_D65_Y: f32 = 1.0;
+pub(crate) const LIQUID_GLASS_D65_Z: f32 = 1.0890578;
+pub(crate) const LIQUID_GLASS_D65_WHITE: [f32; 3] =
+    [LIQUID_GLASS_D65_X, LIQUID_GLASS_D65_Y, LIQUID_GLASS_D65_Z];
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RectLiquidGlass {
     /// Effect controls follow liquid-glass-studio's public UI values. Percent-like
@@ -205,8 +233,8 @@ impl Default for RectLiquidGlass {
 
 impl RectLiquidGlass {
     pub(crate) fn sample_outset(self) -> i32 {
-        let refraction = (std::f32::consts::SQRT_2 * 50.0).ceil() as i32;
-        blur_outset(self.blur_radius as f32 / 3.0) + refraction + 2
+        let refraction = LIQUID_GLASS_REFRACTION_PIXEL_SCALE.ceil() as i32;
+        blur_outset(self.blur_radius as f32 * LIQUID_GLASS_BLUR_STD_DEV_SCALE) + refraction + 2
     }
 }
 

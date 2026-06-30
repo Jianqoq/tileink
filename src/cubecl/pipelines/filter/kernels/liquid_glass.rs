@@ -1,13 +1,3 @@
-const LIQUID_GLASS_CHROMATIC_R: f32 = 0.98;
-const LIQUID_GLASS_CHROMATIC_G: f32 = 1.0;
-const LIQUID_GLASS_CHROMATIC_B: f32 = 1.02;
-const LIQUID_GLASS_PI: f32 = std::f32::consts::PI;
-const LIQUID_GLASS_REFRACTION_SCALE: f32 = std::f32::consts::SQRT_2 * 50.0;
-const LIQUID_GLASS_NORMAL_LENGTH_SCALE: f32 = std::f32::consts::SQRT_2 * 1000.0;
-const LIQUID_GLASS_D65_X: f32 = 0.9504559;
-const LIQUID_GLASS_D65_Y: f32 = 1.0;
-const LIQUID_GLASS_D65_Z: f32 = 1.0890578;
-
 #[cube(launch)]
 #[allow(clippy::too_many_arguments)]
 pub(super) fn filter_liquid_glass_region(
@@ -71,7 +61,7 @@ pub(super) fn filter_liquid_glass_region(
     let base = source[ix];
     let surface_height = image_height.max(1) as f32;
     let distance_norm = distance / surface_height;
-    if distance_norm >= 0.005 {
+    if distance_norm >= LIQUID_GLASS_ACTIVE_DISTANCE_NORM {
         target[ix] = base;
         terminate!();
     }
@@ -102,7 +92,7 @@ pub(super) fn filter_liquid_glass_region(
     );
     let inside_distance = -distance;
     let edge = liquid_glass_edge(inside_distance, refraction_thickness, refraction_factor);
-    let mut blur_mix = inside_distance / refraction_thickness.max(0.000_001);
+    let mut blur_mix = inside_distance / refraction_thickness.max(LIQUID_GLASS_EPSILON);
     if blur_edge == 1 {
         blur_mix = 1.0;
     }
@@ -143,13 +133,13 @@ pub(super) fn filter_liquid_glass_region(
     );
 
     if edge <= 0.0 {
-        r = liquid_glass_mix(r, tint_r, tint_a * 0.8);
-        g = liquid_glass_mix(g, tint_g, tint_a * 0.8);
-        b = liquid_glass_mix(b, tint_b, tint_a * 0.8);
-        a = liquid_glass_mix(a, 1.0, tint_a * 0.8);
+        r = liquid_glass_mix(r, tint_r, tint_a * LIQUID_GLASS_TINT_MIX);
+        g = liquid_glass_mix(g, tint_g, tint_a * LIQUID_GLASS_TINT_MIX);
+        b = liquid_glass_mix(b, tint_b, tint_a * LIQUID_GLASS_TINT_MIX);
+        a = liquid_glass_mix(a, 1.0, tint_a * LIQUID_GLASS_TINT_MIX);
     } else {
-        let offset_x = -nx * edge * LIQUID_GLASS_REFRACTION_SCALE;
-        let offset_y = -ny * edge * LIQUID_GLASS_REFRACTION_SCALE;
+        let offset_x = -nx * edge * LIQUID_GLASS_REFRACTION_PIXEL_SCALE;
+        let offset_y = -ny * edge * LIQUID_GLASS_REFRACTION_PIXEL_SCALE;
         r = liquid_glass_dispersion_channel(
             source,
             blurred,
@@ -203,20 +193,20 @@ pub(super) fn filter_liquid_glass_region(
         let blurred_r = r;
         let blurred_g = g;
         let blurred_b = b;
-        r = liquid_glass_mix(r, tint_r, tint_a * 0.8);
-        g = liquid_glass_mix(g, tint_g, tint_a * 0.8);
-        b = liquid_glass_mix(b, tint_b, tint_a * 0.8);
-        a = liquid_glass_mix(a, 1.0, tint_a * 0.8);
+        r = liquid_glass_mix(r, tint_r, tint_a * LIQUID_GLASS_TINT_MIX);
+        g = liquid_glass_mix(g, tint_g, tint_a * LIQUID_GLASS_TINT_MIX);
+        b = liquid_glass_mix(b, tint_b, tint_a * LIQUID_GLASS_TINT_MIX);
+        a = liquid_glass_mix(a, 1.0, tint_a * LIQUID_GLASS_TINT_MIX);
 
         let fresnel = liquid_glass_fresnel(distance, fresnel_range, fresnel_hardness);
-        let fresnel_base_r = liquid_glass_mix(1.0, tint_r, tint_a * 0.5);
-        let fresnel_base_g = liquid_glass_mix(1.0, tint_g, tint_a * 0.5);
-        let fresnel_base_b = liquid_glass_mix(1.0, tint_b, tint_a * 0.5);
+        let fresnel_base_r = liquid_glass_mix(1.0, tint_r, tint_a * LIQUID_GLASS_TINT_BASE_MIX);
+        let fresnel_base_g = liquid_glass_mix(1.0, tint_g, tint_a * LIQUID_GLASS_TINT_BASE_MIX);
+        let fresnel_base_b = liquid_glass_mix(1.0, tint_b, tint_a * LIQUID_GLASS_TINT_BASE_MIX);
         let mut fresnel_l = liquid_glass_srgb_to_lch_l(fresnel_base_r, fresnel_base_g, fresnel_base_b);
         let fresnel_c = liquid_glass_srgb_to_lch_c(fresnel_base_r, fresnel_base_g, fresnel_base_b);
         let fresnel_h = liquid_glass_srgb_to_lch_h(fresnel_base_r, fresnel_base_g, fresnel_base_b);
-        fresnel_l = (fresnel_l + 20.0 * fresnel * fresnel_factor).clamp(0.0, 100.0);
-        let fresnel_mix = fresnel * fresnel_factor * 0.7 * normal_len;
+        fresnel_l = (fresnel_l + LIQUID_GLASS_FRESNEL_LIGHTNESS_GAIN * fresnel * fresnel_factor).clamp(0.0, 100.0);
+        let fresnel_mix = fresnel * fresnel_factor * LIQUID_GLASS_FRESNEL_MIX_SCALE * normal_len;
         r = liquid_glass_mix(r, liquid_glass_lch_to_srgb_r(fresnel_l, fresnel_c, fresnel_h), fresnel_mix);
         g = liquid_glass_mix(g, liquid_glass_lch_to_srgb_g(fresnel_l, fresnel_c, fresnel_h), fresnel_mix);
         b = liquid_glass_mix(b, liquid_glass_lch_to_srgb_b(fresnel_l, fresnel_c, fresnel_h), fresnel_mix);
@@ -231,14 +221,14 @@ pub(super) fn filter_liquid_glass_region(
             glare_factor,
             glare_angle,
         );
-        let glare_base_r = liquid_glass_mix(blurred_r, tint_r, tint_a * 0.5);
-        let glare_base_g = liquid_glass_mix(blurred_g, tint_g, tint_a * 0.5);
-        let glare_base_b = liquid_glass_mix(blurred_b, tint_b, tint_a * 0.5);
+        let glare_base_r = liquid_glass_mix(blurred_r, tint_r, tint_a * LIQUID_GLASS_TINT_BASE_MIX);
+        let glare_base_g = liquid_glass_mix(blurred_g, tint_g, tint_a * LIQUID_GLASS_TINT_BASE_MIX);
+        let glare_base_b = liquid_glass_mix(blurred_b, tint_b, tint_a * LIQUID_GLASS_TINT_BASE_MIX);
         let mut glare_l = liquid_glass_srgb_to_lch_l(glare_base_r, glare_base_g, glare_base_b);
         let mut glare_c = liquid_glass_srgb_to_lch_c(glare_base_r, glare_base_g, glare_base_b);
         let glare_h = liquid_glass_srgb_to_lch_h(glare_base_r, glare_base_g, glare_base_b);
-        glare_l = (glare_l + 150.0 * glare_angle_factor * glare_geo).clamp(0.0, 120.0);
-        glare_c += 30.0 * glare_angle_factor * glare_geo;
+        glare_l = (glare_l + LIQUID_GLASS_GLARE_LIGHTNESS_GAIN * glare_angle_factor * glare_geo).clamp(0.0, 120.0);
+        glare_c += LIQUID_GLASS_GLARE_CHROMA_GAIN * glare_angle_factor * glare_geo;
         let glare_mix = glare_angle_factor * glare_geo * normal_len;
         r = liquid_glass_mix(r, liquid_glass_lch_to_srgb_r(glare_l, glare_c, glare_h), glare_mix);
         g = liquid_glass_mix(g, liquid_glass_lch_to_srgb_g(glare_l, glare_c, glare_h), glare_mix);
@@ -246,7 +236,7 @@ pub(super) fn filter_liquid_glass_region(
         a = liquid_glass_mix(a, 1.0, glare_mix);
     }
 
-    let edge_mix = liquid_glass_smoothstep(-0.001, 0.001, distance_norm);
+    let edge_mix = liquid_glass_smoothstep(LIQUID_GLASS_EDGE_BLEND_START, LIQUID_GLASS_EDGE_BLEND_END, distance_norm);
     r = liquid_glass_mix(r, liquid_glass_pixel_straight_channel(base, 0), edge_mix);
     g = liquid_glass_mix(g, liquid_glass_pixel_straight_channel(base, 1), edge_mix);
     b = liquid_glass_mix(b, liquid_glass_pixel_straight_channel(base, 2), edge_mix);
@@ -256,7 +246,7 @@ pub(super) fn filter_liquid_glass_region(
 
 #[cube]
 fn liquid_glass_edge(inside_distance: f32, refraction_thickness: f32, refraction_factor: f32) -> f32 {
-    let thickness = refraction_thickness.max(0.000_001);
+    let thickness = refraction_thickness.max(LIQUID_GLASS_EPSILON);
     let mut out = 0.0;
     if inside_distance < thickness {
         let ratio = 1.0 - inside_distance / thickness;
@@ -269,19 +259,20 @@ fn liquid_glass_edge(inside_distance: f32, refraction_thickness: f32, refraction
 
 #[cube]
 fn liquid_glass_fresnel(distance: f32, fresnel_range: f32, fresnel_hardness: f32) -> f32 {
-    (1.0 + distance / 1500.0 * (500.0 / fresnel_range.max(0.000_001)).powf(2.0) + fresnel_hardness)
+    (1.0 + distance / LIQUID_GLASS_GEOMETRY_DISTANCE_SCALE * (LIQUID_GLASS_GEOMETRY_RANGE_SCALE / fresnel_range.max(LIQUID_GLASS_EPSILON)).powf(2.0) + fresnel_hardness)
         .powf(5.0)
         .clamp(0.0, 1.0)
 }
 
 #[cube]
 fn liquid_glass_glare_geometry(distance: f32, glare_range: f32, glare_hardness: f32) -> f32 {
-    (1.0 + distance / 1500.0 * (500.0 / glare_range.max(0.000_001)).powf(2.0) + glare_hardness)
+    (1.0 + distance / LIQUID_GLASS_GEOMETRY_DISTANCE_SCALE * (LIQUID_GLASS_GEOMETRY_RANGE_SCALE / glare_range.max(LIQUID_GLASS_EPSILON)).powf(2.0) + glare_hardness)
         .powf(5.0)
         .clamp(0.0, 1.0)
 }
 
 #[cube]
+#[allow(clippy::useless_conversion)]
 fn liquid_glass_glare_angle(
     nx: f32,
     ny: f32,
@@ -291,14 +282,17 @@ fn liquid_glass_glare_angle(
     glare_angle: f32,
 ) -> f32 {
     let angle = (liquid_glass_vec2_angle(nx, ny) - LIQUID_GLASS_PI * 0.25 + glare_angle) * 2.0;
-    let mut side = 1.2;
-    if (angle > LIQUID_GLASS_PI * 1.5 && angle < LIQUID_GLASS_PI * 3.5)
+    let side = if (angle > LIQUID_GLASS_PI * 1.5 && angle < LIQUID_GLASS_PI * 3.5)
         || angle < -LIQUID_GLASS_PI * 0.5
     {
-        side = 1.2 * glare_opposite_factor;
-    }
+        LIQUID_GLASS_GLARE_SIDE_SCALE * glare_opposite_factor
+    } else {
+        // CubeCL needs this branch expanded to a shader value; plain clippy sees
+        // the conversion before macro expansion and flags it as redundant.
+        LIQUID_GLASS_GLARE_SIDE_SCALE.into()
+    };
     ((0.5 + angle.sin() * 0.5) * side * glare_factor)
-        .powf(0.1 + glare_convergence * 2.0)
+        .powf(LIQUID_GLASS_GLARE_POWER_BASE + glare_convergence * LIQUID_GLASS_GLARE_POWER_SCALE)
         .clamp(0.0, 1.0)
 }
 
@@ -388,7 +382,7 @@ fn liquid_glass_pixel_straight_channel(px: u32, channel: u32) -> f32 {
         value = (px >> 24) & 255;
     }
     let mut out = value as f32 / 255.0;
-    if channel != 3 && a > 0.000_001 {
+    if channel != 3 && a > LIQUID_GLASS_EPSILON {
         out /= a;
     }
     out
@@ -479,7 +473,7 @@ fn liquid_glass_normal_x(
     );
     let len = (dx * dx + dy * dy).sqrt();
     let mut out = 0.0;
-    if len > 0.000_001 {
+    if len > LIQUID_GLASS_EPSILON {
         out = dx / len;
     }
     out
@@ -548,7 +542,7 @@ fn liquid_glass_normal_y(
     );
     let len = (dx * dx + dy * dy).sqrt();
     let mut out = f32::new(-1.0_f32);
-    if len > 0.000_001 {
+    if len > LIQUID_GLASS_EPSILON {
         out = dy / len;
     }
     out

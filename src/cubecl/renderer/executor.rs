@@ -1559,8 +1559,10 @@ impl<R: Runtime> Renderer<R> {
                 blurred,
                 temp,
                 bounds,
-                glass.blur_radius as f32 / 3.0,
-                glass.blur_radius as f32 / 3.0,
+                glass.blur_radius as f32
+                    * crate::shared::layer::filter::LIQUID_GLASS_BLUR_STD_DEV_SCALE,
+                glass.blur_radius as f32
+                    * crate::shared::layer::filter::LIQUID_GLASS_BLUR_STD_DEV_SCALE,
             );
             self.release_scratch(temp);
         }
