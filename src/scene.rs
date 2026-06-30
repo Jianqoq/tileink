@@ -26,9 +26,12 @@ use crate::shared::{
     scan_line::line_scanned_tile_count,
     sdf::{
         Sdf,
+        arc::{Arc as SdfArc, ArcShadow as SdfArcShadow},
         candlestick::CandleStick as SdfCandleStick,
-        circle::{Circle as SdfCircle, CircleStroke as SdfCircleStroke},
-        line::Line as SdfLine,
+        circle::{
+            Circle as SdfCircle, CircleShadow as SdfCircleShadow, CircleStroke as SdfCircleStroke,
+        },
+        line::{Line as SdfLine, LineShadow as SdfLineShadow},
         rect::{
             Radius, Rect as SdfRect, RectShadow as SdfRectShadow, RectShadowOptions,
             RectStroke as SdfRectStroke, StrokeWidths,
@@ -719,6 +722,55 @@ impl Scene {
         );
     }
 
+    pub fn push_circle_shadow(
+        &mut self,
+        circle: Circle,
+        options: RectShadowOptions,
+        brush: impl Into<Brush>,
+        rule: FillRule,
+    ) {
+        let Some(options) = options.normalized() else {
+            return;
+        };
+        let shadow = SdfCircleShadow {
+            circle: SdfCircle {
+                center: circle.center,
+                radius: circle.radius as f32,
+            },
+            options,
+        };
+        self.push_sdf_draw(Sdf::CircleShadow(shadow), shadow.bounds(), brush, rule);
+    }
+
+    /// Adds a circular stroked arc as SDF geometry.
+    ///
+    /// This is separate from [`push_arc`](Self::push_arc), which preserves the
+    /// existing path-backed kurbo arc semantics. Use this method when the arc is
+    /// a stroke-like primitive and should avoid path flattening.
+    pub fn push_sdf_arc(&mut self, arc: SdfArc, brush: impl Into<Brush>, rule: FillRule) {
+        if arc.is_empty() {
+            return;
+        }
+        self.push_sdf_draw(Sdf::Arc(arc), arc.bounds(), brush, rule);
+    }
+
+    pub fn push_arc_shadow(
+        &mut self,
+        arc: SdfArc,
+        options: RectShadowOptions,
+        brush: impl Into<Brush>,
+        rule: FillRule,
+    ) {
+        if arc.is_empty() {
+            return;
+        }
+        let Some(options) = options.normalized() else {
+            return;
+        };
+        let shadow = SdfArcShadow { arc, options };
+        self.push_sdf_draw(Sdf::ArcShadow(shadow), shadow.bounds(), brush, rule);
+    }
+
     pub fn push_candlestick(
         &mut self,
         candle: SdfCandleStick,
@@ -737,6 +789,23 @@ impl Scene {
             return;
         }
         self.push_sdf_draw(Sdf::Line(line), line.bounds(), brush, rule);
+    }
+
+    pub fn push_line_shadow(
+        &mut self,
+        line: SdfLine,
+        options: RectShadowOptions,
+        brush: impl Into<Brush>,
+        rule: FillRule,
+    ) {
+        if line.is_empty() {
+            return;
+        }
+        let Some(options) = options.normalized() else {
+            return;
+        };
+        let shadow = SdfLineShadow { line, options };
+        self.push_sdf_draw(Sdf::LineShadow(shadow), shadow.bounds(), brush, rule);
     }
 
     pub fn push_arc(&mut self, arc: Arc, brush: impl Into<Brush>, rule: FillRule, tolerance: f64) {

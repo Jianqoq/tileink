@@ -149,6 +149,10 @@ name = "cpu_sdf_rect_shadow"
 path = "examples/cpu/sdf_rect_shadow.rs"
 
 [[example]]
+name = "cpu_sdf_shape_shadows"
+path = "examples/cpu/sdf_shape_shadows.rs"
+
+[[example]]
 name = "cpu_simple"
 path = "examples/cpu/simple.rs"
 
@@ -279,6 +283,10 @@ path = "examples/cubecl/sdf_line.rs"
 [[example]]
 name = "cubecl_sdf_rect_shadow"
 path = "examples/cubecl/sdf_rect_shadow.rs"
+
+[[example]]
+name = "cubecl_sdf_shape_shadows"
+path = "examples/cubecl/sdf_shape_shadows.rs"
 
 [[example]]
 name = "cubecl_simple"

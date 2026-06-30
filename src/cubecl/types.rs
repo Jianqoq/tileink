@@ -52,6 +52,10 @@ pub(crate) const CUBE_SDF_CIRCLE_STROKE: u32 = 4;
 pub(crate) const CUBE_SDF_CANDLESTICK: u32 = 5;
 pub(crate) const CUBE_SDF_LINE: u32 = 6;
 pub(crate) const CUBE_SDF_RECT_SHADOW: u32 = 7;
+pub(crate) const CUBE_SDF_ARC: u32 = 8;
+pub(crate) const CUBE_SDF_ARC_SHADOW: u32 = 9;
+pub(crate) const CUBE_SDF_CIRCLE_SHADOW: u32 = 10;
+pub(crate) const CUBE_SDF_LINE_SHADOW: u32 = 11;
 
 /// Scene-derived fixed capacities for CubeCL buffers.
 ///

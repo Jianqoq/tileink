@@ -1,7 +1,12 @@
 use peniko::kurbo::Point;
 
-use super::{SOLID_DIST, coverage_from_dist};
+use super::{
+    SOLID_DIST, coverage_from_dist,
+    shadow::{ShadowOptions, shadow_alpha_from_distance, shadow_bounds},
+};
 use crate::{TILE_SIZE, shared::bounds::Bounds};
+
+pub type RectShadowOptions = ShadowOptions;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -110,37 +115,6 @@ pub struct Rect {
     pub start: Point,
     pub end: Point,
     pub radius: Radius,
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct RectShadowOptions {
-    pub offset_x: f32,
-    pub offset_y: f32,
-    /// Exponential falloff distance in pixels. Four expand lengths cover more
-    /// than 98% of the visible soft shadow while keeping tile bounds finite.
-    pub expand: f32,
-    pub intensity: f32,
-}
-
-impl RectShadowOptions {
-    pub fn new(offset_x: f32, offset_y: f32, expand: f32, intensity: f32) -> Self {
-        Self {
-            offset_x,
-            offset_y,
-            expand,
-            intensity,
-        }
-    }
-
-    pub(crate) fn normalized(self) -> Option<Self> {
-        let intensity = self.intensity.clamp(0.0, 1.0);
-        (intensity > 0.0).then_some(Self {
-            expand: self.expand.max(0.0),
-            intensity,
-            ..self
-        })
-    }
 }
 
 #[repr(C)]
@@ -401,13 +375,15 @@ impl Rect {
 impl RectShadow {
     pub(crate) fn bounds(&self) -> Bounds {
         let (x0, y0, x1, y1) = self.rect.axis_bounds();
-        let outset = self.options.expand * 4.0 + 1.0;
-        Bounds {
-            x0: (x0 + f64::from(self.options.offset_x) - f64::from(outset)).floor() as i32,
-            y0: (y0 + f64::from(self.options.offset_y) - f64::from(outset)).floor() as i32,
-            x1: (x1 + f64::from(self.options.offset_x) + f64::from(outset)).ceil() as i32,
-            y1: (y1 + f64::from(self.options.offset_y) + f64::from(outset)).ceil() as i32,
-        }
+        shadow_bounds(
+            Bounds::new(
+                x0.floor() as i32,
+                y0.floor() as i32,
+                x1.ceil() as i32,
+                y1.ceil() as i32,
+            ),
+            self.options,
+        )
     }
 
     pub(crate) fn tile_is_solid(&self, _: Bounds) -> bool {
@@ -423,7 +399,6 @@ impl RectShadow {
         let Some(options) = self.options.normalized() else {
             return;
         };
-        let intensity = options.intensity;
 
         for y_px in pixel_bounds.y0..pixel_bounds.y1 {
             let py = y_px as f32 + 0.5 - options.offset_y;
@@ -431,12 +406,8 @@ impl RectShadow {
             for x_px in pixel_bounds.x0..pixel_bounds.x1 {
                 let px = x_px as f32 + 0.5 - options.offset_x;
                 let dist = self.rect.signed_distance(px, py);
-                let alpha = if options.expand <= 0.0 {
-                    coverage_from_dist(dist) * intensity
-                } else {
-                    (-dist.max(0.0) / options.expand).exp() * intensity
-                };
-                area[row + (x_px - tile_bounds.x0) as usize] = alpha.clamp(0.0, 1.0);
+                area[row + (x_px - tile_bounds.x0) as usize] =
+                    shadow_alpha_from_distance(dist, options);
             }
         }
     }

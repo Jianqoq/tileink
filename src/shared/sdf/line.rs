@@ -1,6 +1,9 @@
 use peniko::kurbo::Point;
 
-use super::coverage_from_dist;
+use super::{
+    coverage_from_dist,
+    shadow::{ShadowOptions, shadow_alpha_from_distance, shadow_bounds},
+};
 use crate::{TILE_SIZE, shared::bounds::Bounds};
 
 const LINE_EPSILON: f32 = 1.0e-6;
@@ -119,7 +122,7 @@ impl Line {
         }
     }
 
-    fn signed_distance(self, x: f32, y: f32) -> f32 {
+    pub(crate) fn signed_distance(self, x: f32, y: f32) -> f32 {
         let half = self.width * 0.5;
         let sx = self.start.x as f32;
         let sy = self.start.y as f32;
@@ -153,12 +156,61 @@ impl Line {
     }
 }
 
-fn local_rect_distance(axis: f32, normal: f32, x0: f32, x1: f32, half_height: f32) -> f32 {
+pub(crate) fn local_rect_distance(
+    axis: f32,
+    normal: f32,
+    x0: f32,
+    x1: f32,
+    half_height: f32,
+) -> f32 {
     let center = (x0 + x1) * 0.5;
     let half_width = (x1 - x0) * 0.5;
     let dx = (axis - center).abs() - half_width;
     let dy = normal.abs() - half_height;
     dx.max(0.0).hypot(dy.max(0.0)) + dx.max(dy).min(0.0)
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct LineShadow {
+    pub line: Line,
+    pub options: ShadowOptions,
+}
+
+impl LineShadow {
+    pub(crate) fn bounds(self) -> Bounds {
+        shadow_bounds(self.line.bounds(), self.options)
+    }
+
+    pub(crate) fn translated(mut self, dx: f32, dy: f32) -> Self {
+        self.line = self.line.translated(dx, dy);
+        self
+    }
+
+    pub(crate) fn tile_is_solid(self, _: Bounds) -> bool {
+        false
+    }
+
+    pub(crate) fn fine_area(
+        self,
+        area: &mut [f32; (TILE_SIZE * TILE_SIZE) as usize],
+        tile_bounds: Bounds,
+        pixel_bounds: Bounds,
+    ) {
+        let Some(options) = self.options.normalized() else {
+            return;
+        };
+
+        for y_px in pixel_bounds.y0..pixel_bounds.y1 {
+            let py = y_px as f32 + 0.5 - options.offset_y;
+            let row = (y_px - tile_bounds.y0) as usize * TILE_SIZE as usize;
+            for x_px in pixel_bounds.x0..pixel_bounds.x1 {
+                let px = x_px as f32 + 0.5 - options.offset_x;
+                area[row + (x_px - tile_bounds.x0) as usize] =
+                    shadow_alpha_from_distance(self.line.signed_distance(px, py), options);
+            }
+        }
+    }
 }
 
 #[cfg(test)]

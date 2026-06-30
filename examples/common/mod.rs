@@ -13,6 +13,9 @@ use peniko::{
 };
 use tileink::{CpuRenderer, CubeWgpuRenderer, FillRule, Image, Radius, Region, Scene, SvgOptions};
 
+pub const EXAMPLE_WIDTH: u32 = 1920;
+pub const EXAMPLE_HEIGHT: u32 = 1080;
+
 pub fn example_output(name: &str) -> PathBuf {
     backend_output("cpu", name)
 }
@@ -81,6 +84,17 @@ pub fn save_image(image: &Image, path: impl AsRef<Path>) -> Result<(), Box<dyn s
     Ok(())
 }
 
+pub fn save_example_image(
+    image: &Image,
+    path: impl AsRef<Path>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if image.width == EXAMPLE_WIDTH && image.height == EXAMPLE_HEIGHT {
+        return save_image(image, path);
+    }
+    fit_image_to_example_size(image).save(path)?;
+    Ok(())
+}
+
 pub fn render_to_png(
     name: &str,
     scene: &Scene,
@@ -91,7 +105,7 @@ pub fn render_to_png(
     let mut renderer = CpuRenderer::new(width, height, clear);
     renderer.render(scene);
     let out = example_output(name);
-    save_image(renderer.image(), &out)?;
+    save_example_image(renderer.image(), &out)?;
     println!("Wrote {}", out.display());
     Ok(())
 }
@@ -107,9 +121,71 @@ pub fn render_to_png_cubecl(
     renderer.render(scene);
     let image = renderer.image();
     let out = cubecl_example_output(name);
-    save_image(&image, &out)?;
+    save_example_image(&image, &out)?;
     println!("Wrote {}", out.display());
     Ok(())
+}
+
+fn fit_image_to_example_size(image: &Image) -> Image {
+    if image.width == 0 || image.height == 0 {
+        return Image::new(EXAMPLE_WIDTH, EXAMPLE_HEIGHT, Color::TRANSPARENT);
+    }
+
+    let scale = (EXAMPLE_WIDTH as f32 / image.width as f32)
+        .min(EXAMPLE_HEIGHT as f32 / image.height as f32);
+    let scaled_width = ((image.width as f32 * scale).round() as u32).clamp(1, EXAMPLE_WIDTH);
+    let scaled_height = ((image.height as f32 * scale).round() as u32).clamp(1, EXAMPLE_HEIGHT);
+    let offset_x = (EXAMPLE_WIDTH - scaled_width) / 2;
+    let offset_y = (EXAMPLE_HEIGHT - scaled_height) / 2;
+    let fill = image.pixels.first().copied().unwrap_or(0);
+    let mut output = Image {
+        width: EXAMPLE_WIDTH,
+        height: EXAMPLE_HEIGHT,
+        pixels: vec![fill; (EXAMPLE_WIDTH * EXAMPLE_HEIGHT) as usize],
+    };
+
+    for y in 0..scaled_height {
+        let sy = ((y as f32 + 0.5) / scale - 0.5).clamp(0.0, image.height as f32 - 1.0);
+        let y0 = sy.floor() as u32;
+        let y1 = (y0 + 1).min(image.height - 1);
+        let ty = sy - y0 as f32;
+        for x in 0..scaled_width {
+            let sx = ((x as f32 + 0.5) / scale - 0.5).clamp(0.0, image.width as f32 - 1.0);
+            let x0 = sx.floor() as u32;
+            let x1 = (x0 + 1).min(image.width - 1);
+            let tx = sx - x0 as f32;
+            let pixel = bilinear_pixel(
+                image.pixels[(y0 * image.width + x0) as usize],
+                image.pixels[(y0 * image.width + x1) as usize],
+                image.pixels[(y1 * image.width + x0) as usize],
+                image.pixels[(y1 * image.width + x1) as usize],
+                tx,
+                ty,
+            );
+            output.pixels[((offset_y + y) * EXAMPLE_WIDTH + offset_x + x) as usize] = pixel;
+        }
+    }
+
+    output
+}
+
+fn bilinear_pixel(p00: u32, p10: u32, p01: u32, p11: u32, tx: f32, ty: f32) -> u32 {
+    let [r00, g00, b00, a00] = p00.to_le_bytes();
+    let [r10, g10, b10, a10] = p10.to_le_bytes();
+    let [r01, g01, b01, a01] = p01.to_le_bytes();
+    let [r11, g11, b11, a11] = p11.to_le_bytes();
+    u32::from_le_bytes([
+        bilinear_channel(r00, r10, r01, r11, tx, ty),
+        bilinear_channel(g00, g10, g01, g11, tx, ty),
+        bilinear_channel(b00, b10, b01, b11, tx, ty),
+        bilinear_channel(a00, a10, a01, a11, tx, ty),
+    ])
+}
+
+fn bilinear_channel(c00: u8, c10: u8, c01: u8, c11: u8, tx: f32, ty: f32) -> u8 {
+    let top = c00 as f32 + (c10 as f32 - c00 as f32) * tx;
+    let bottom = c01 as f32 + (c11 as f32 - c01 as f32) * tx;
+    (top + (bottom - top) * ty + 0.5).clamp(0.0, 255.0) as u8
 }
 
 pub fn rect_path(rect: Rect, radius: Radius) -> BezPath {

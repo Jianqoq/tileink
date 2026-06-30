@@ -42,9 +42,11 @@ pub use shared::{
         region::Region,
     },
     sdf::{
+        arc::Arc as SdfArc,
         candlestick::CandleStick,
         line::{Line as SdfLine, LineCap as SdfLineCap},
         rect::{Radius, RectShadowOptions, StrokeWidths},
+        shadow::ShadowOptions,
     },
 };
 pub use svg::{SvgError, SvgOptions};

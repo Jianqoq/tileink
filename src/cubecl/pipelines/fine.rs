@@ -14,8 +14,9 @@ use crate::cubecl::{
         CUBE_GLYPH_LINEAR_SUBPIXEL_MASK, CUBE_GLYPH_MASK, CUBE_GLYPH_SUBPIXEL_MASK,
         CUBE_PTCL_BEGIN_BLEND, CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_BEGIN_OPACITY, CUBE_PTCL_COLOR,
         CUBE_PTCL_END, CUBE_PTCL_END_BLEND, CUBE_PTCL_END_CLIP, CUBE_PTCL_END_OPACITY,
-        CUBE_PTCL_FILL, CUBE_PTCL_GLYPH, CUBE_PTCL_PATH_GLYPH, CUBE_PTCL_SDF, CUBE_SDF_CANDLESTICK,
-        CUBE_SDF_CIRCLE, CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_LINE, CUBE_SDF_RECT,
+        CUBE_PTCL_FILL, CUBE_PTCL_GLYPH, CUBE_PTCL_PATH_GLYPH, CUBE_PTCL_SDF, CUBE_SDF_ARC,
+        CUBE_SDF_ARC_SHADOW, CUBE_SDF_CANDLESTICK, CUBE_SDF_CIRCLE, CUBE_SDF_CIRCLE_SHADOW,
+        CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_LINE, CUBE_SDF_LINE_SHADOW, CUBE_SDF_RECT,
         CUBE_SDF_RECT_SHADOW, CUBE_SDF_RECT_STROKE, CubeBufferLengths,
     },
 };
@@ -732,6 +733,46 @@ fn sdf_alpha_at(
             ));
         }
         coverage = (outer - inner).clamp(0.0, 1.0);
+    } else if kind == CUBE_SDF_CIRCLE_SHADOW {
+        coverage = shadow_sdf_coverage_from_dist(
+            circle_sdf_distance(
+                x - draw_sdf_shadow_offset_x[i],
+                y - draw_sdf_shadow_offset_y[i],
+                draw_sdf_x0[i],
+                draw_sdf_y0[i],
+                draw_sdf_x1[i],
+            ),
+            draw_sdf_shadow_expand[i],
+            draw_sdf_shadow_intensity[i],
+        );
+    } else if kind == CUBE_SDF_ARC {
+        coverage = sdf_coverage_from_dist(arc_sdf_distance(
+            x,
+            y,
+            draw_sdf_x0[i],
+            draw_sdf_y0[i],
+            draw_sdf_x1[i],
+            draw_sdf_y1[i],
+            draw_sdf_r0[i],
+            draw_sdf_r1[i],
+            draw_sdf_r2[i],
+        ));
+    } else if kind == CUBE_SDF_ARC_SHADOW {
+        coverage = shadow_sdf_coverage_from_dist(
+            arc_sdf_distance(
+                x - draw_sdf_shadow_offset_x[i],
+                y - draw_sdf_shadow_offset_y[i],
+                draw_sdf_x0[i],
+                draw_sdf_y0[i],
+                draw_sdf_x1[i],
+                draw_sdf_y1[i],
+                draw_sdf_r0[i],
+                draw_sdf_r1[i],
+                draw_sdf_r2[i],
+            ),
+            draw_sdf_shadow_expand[i],
+            draw_sdf_shadow_intensity[i],
+        );
     } else if kind == CUBE_SDF_CANDLESTICK {
         coverage = candlestick_sdf_coverage(
             x,
@@ -754,6 +795,21 @@ fn sdf_alpha_at(
             draw_sdf_r0[i],
             draw_sdf_r1[i],
         ));
+    } else if kind == CUBE_SDF_LINE_SHADOW {
+        coverage = shadow_sdf_coverage_from_dist(
+            line_sdf_distance(
+                x - draw_sdf_shadow_offset_x[i],
+                y - draw_sdf_shadow_offset_y[i],
+                draw_sdf_x0[i],
+                draw_sdf_y0[i],
+                draw_sdf_x1[i],
+                draw_sdf_y1[i],
+                draw_sdf_r0[i],
+                draw_sdf_r1[i],
+            ),
+            draw_sdf_shadow_expand[i],
+            draw_sdf_shadow_intensity[i],
+        );
     }
 
     (coverage * 255.0 + 0.5) as u32
@@ -777,7 +833,6 @@ fn rect_shadow_sdf_coverage(
     expand: f32,
     intensity: f32,
 ) -> f32 {
-    let intensity = intensity.clamp(0.0, 1.0);
     let dist = rect_sdf_distance(
         x - offset_x,
         y - offset_y,
@@ -790,11 +845,7 @@ fn rect_shadow_sdf_coverage(
         bottom_left,
         bottom_right,
     );
-    let mut coverage = sdf_coverage_from_dist(dist) * intensity;
-    if expand > 0.0 {
-        coverage = (-dist.max(0.0) / expand).exp() * intensity;
-    }
-    coverage.clamp(0.0, 1.0)
+    shadow_sdf_coverage_from_dist(dist, expand, intensity)
 }
 
 #[cube]
@@ -888,6 +939,180 @@ fn line_sdf_distance(
 }
 
 #[cube]
+#[allow(clippy::too_many_arguments)]
+fn arc_sdf_distance(
+    x: f32,
+    y: f32,
+    cx: f32,
+    cy: f32,
+    radius_raw: f32,
+    width_raw: f32,
+    start_angle: f32,
+    sweep_angle: f32,
+    cap: f32,
+) -> f32 {
+    let radius = radius_raw.max(0.0);
+    let width = width_raw.max(0.0);
+    let mut dist = f32::new(1000000.0_f32);
+    if radius > f32::new(0.000001_f32)
+        && width > f32::new(0.000001_f32)
+        && sweep_angle.abs() > f32::new(0.000001_f32)
+    {
+        let vx = x - cx;
+        let vy = y - cy;
+        let len = (vx * vx + vy * vy).sqrt();
+        let half = width * 0.5;
+        if sweep_angle.abs() >= f32::new(6.283_085_3_f32) {
+            dist = (len - radius).abs() - half;
+        } else {
+            let body = arc_butt_sdf_distance(vx, vy, len, radius, half, start_angle, sweep_angle);
+            dist = body;
+            if cap > 1.5 {
+                dist = dist
+                    .min(arc_endpoint_distance(vx, vy, radius, start_angle) - half)
+                    .min(arc_endpoint_distance(vx, vy, radius, start_angle + sweep_angle) - half);
+            } else if cap >= 0.5 {
+                dist = dist
+                    .min(arc_square_cap_distance(
+                        vx,
+                        vy,
+                        radius,
+                        start_angle,
+                        sweep_angle,
+                        -half,
+                        0.0,
+                        half,
+                    ))
+                    .min(arc_square_cap_distance(
+                        vx,
+                        vy,
+                        radius,
+                        start_angle + sweep_angle,
+                        sweep_angle,
+                        0.0,
+                        half,
+                        half,
+                    ));
+            }
+        }
+    }
+    dist
+}
+
+#[cube]
+fn arc_butt_sdf_distance(
+    vx: f32,
+    vy: f32,
+    len: f32,
+    radius: f32,
+    half: f32,
+    start_angle: f32,
+    sweep_angle: f32,
+) -> f32 {
+    if len <= f32::new(0.000001_f32) {
+        arc_endpoint_distance(vx, vy, radius, start_angle).min(arc_endpoint_distance(
+            vx,
+            vy,
+            radius,
+            start_angle + sweep_angle,
+        )) - half
+    } else {
+        let angle = vy.atan2(vx);
+        let radial = (len - radius).abs() - half;
+        if arc_angle_in_sweep(angle, start_angle, sweep_angle) {
+            radial
+        } else {
+            arc_cap_segment_distance(vx, vy, radius, start_angle, half).min(
+                arc_cap_segment_distance(vx, vy, radius, start_angle + sweep_angle, half),
+            )
+        }
+    }
+}
+
+#[cube]
+fn arc_angle_in_sweep(angle: f32, start_angle: f32, sweep_angle: f32) -> bool {
+    let tau = f32::new(6.283_185_5_f32);
+    let eps = f32::new(0.000001_f32);
+    if sweep_angle >= 0.0 {
+        rem_euclid_f32(angle - start_angle, tau) <= sweep_angle + eps
+    } else {
+        rem_euclid_f32(start_angle - angle, tau) <= -sweep_angle + eps
+    }
+}
+
+#[cube]
+fn arc_endpoint_distance(vx: f32, vy: f32, radius: f32, angle: f32) -> f32 {
+    let ex = radius * angle.cos();
+    let ey = radius * angle.sin();
+    ((vx - ex) * (vx - ex) + (vy - ey) * (vy - ey)).sqrt()
+}
+
+#[cube]
+fn arc_cap_segment_distance(vx: f32, vy: f32, radius: f32, angle: f32, half: f32) -> f32 {
+    let inner_radius = (radius - half).max(0.0);
+    let outer_radius = radius + half;
+    let co = angle.cos();
+    let si = angle.sin();
+    distance_to_segment(
+        vx,
+        vy,
+        inner_radius * co,
+        inner_radius * si,
+        outer_radius * co,
+        outer_radius * si,
+    )
+}
+
+#[cube]
+#[allow(clippy::too_many_arguments)]
+fn arc_square_cap_distance(
+    vx: f32,
+    vy: f32,
+    radius: f32,
+    angle: f32,
+    sweep_angle: f32,
+    x0: f32,
+    x1: f32,
+    half: f32,
+) -> f32 {
+    let mut dir = 1.0;
+    if sweep_angle < 0.0 {
+        dir = -1.0;
+    }
+    let co = angle.cos();
+    let si = angle.sin();
+    let ex = radius * co;
+    let ey = radius * si;
+    let tangent_x = -si * dir;
+    let tangent_y = co * dir;
+    let px = vx - ex;
+    let py = vy - ey;
+    let local_x = px * tangent_x + py * tangent_y;
+    let local_y = -px * tangent_y + py * tangent_x;
+    local_line_rect_distance(local_x, local_y, x0, x1, half)
+}
+
+#[cube]
+fn distance_to_segment(px: f32, py: f32, ax: f32, ay: f32, bx: f32, by: f32) -> f32 {
+    let dx = bx - ax;
+    let dy = by - ay;
+    let len2 = dx * dx + dy * dy;
+    let mut dist = ((px - ax) * (px - ax) + (py - ay) * (py - ay)).sqrt();
+    if len2 > f32::new(0.000001_f32) {
+        let t = (((px - ax) * dx + (py - ay) * dy) / len2).clamp(0.0, 1.0);
+        let nx = ax + dx * t;
+        let ny = ay + dy * t;
+        dist = ((px - nx) * (px - nx) + (py - ny) * (py - ny)).sqrt();
+    }
+    dist
+}
+
+#[cube]
+fn rem_euclid_f32(value: f32, modulus: f32) -> f32 {
+    value - (value / modulus).floor() * modulus
+}
+
+#[cube]
 fn local_line_rect_distance(axis: f32, normal: f32, x0: f32, x1: f32, half_height: f32) -> f32 {
     let center = (x0 + x1) * 0.5;
     let half_width = (x1 - x0) * 0.5;
@@ -899,6 +1124,16 @@ fn local_line_rect_distance(axis: f32, normal: f32, x0: f32, x1: f32, half_heigh
 #[cube]
 fn sdf_coverage_from_dist(dist: f32) -> f32 {
     (f32::new(0.5_f32) - dist).clamp(0.0, 1.0)
+}
+
+#[cube]
+fn shadow_sdf_coverage_from_dist(dist: f32, expand: f32, intensity: f32) -> f32 {
+    let intensity = intensity.clamp(0.0, 1.0);
+    let mut coverage = sdf_coverage_from_dist(dist) * intensity;
+    if expand > 0.0 {
+        coverage = (-dist.max(0.0) / expand).exp() * intensity;
+    }
+    coverage.clamp(0.0, 1.0)
 }
 
 #[cube]

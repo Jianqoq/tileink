@@ -167,6 +167,61 @@ fn render_wgpu_matches_cpu_for_sdf_rect_shadow_when_enabled() {
 }
 
 #[test]
+fn render_wgpu_matches_cpu_for_sdf_shape_shadows_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(128, 96);
+    scene.push_circle_shadow(
+        Circle::new((28.0, 28.0), 10.0),
+        RectShadowOptions::new(5.0, 4.0, 5.0, 0.4),
+        Color::BLACK,
+        FillRule::NonZero,
+    );
+    scene.push_circle(
+        Circle::new((28.0, 28.0), 10.0),
+        Color::from_rgb8(0, 128, 255),
+        FillRule::NonZero,
+    );
+    let arc = SdfArc::new(
+        Point::new(70.0, 34.0),
+        14.0,
+        0.0,
+        std::f32::consts::FRAC_PI_2,
+        4.0,
+        SdfLineCap::Round,
+    );
+    scene.push_arc_shadow(
+        arc,
+        RectShadowOptions::new(4.0, 5.0, 4.0, 0.45),
+        Color::BLACK,
+        FillRule::NonZero,
+    );
+    scene.push_sdf_arc(arc, Color::from_rgb8(220, 64, 72), FillRule::NonZero);
+    let line = SdfLine::new(
+        Point::new(18.0, 70.5),
+        Point::new(92.0, 70.5),
+        2.0,
+        SdfLineCap::Square,
+    );
+    scene.push_line_shadow(
+        line,
+        RectShadowOptions::new(3.0, 5.0, 4.0, 0.45),
+        Color::BLACK,
+        FillRule::NonZero,
+    );
+    scene.push_line(line, Color::from_rgb8(34, 197, 94), FillRule::NonZero);
+
+    let mut cpu = CpuRenderer::new(128, 96, Color::WHITE);
+    cpu.render(&scene);
+    let mut wgpu = WgpuRenderer::new_default_device(128, 96, Color::WHITE);
+    wgpu.render(&scene);
+
+    assert_images_close(cpu.image(), &wgpu.image(), 1);
+}
+
+#[test]
 fn render_wgpu_debug_capture_reads_back_scan_and_final_image_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;

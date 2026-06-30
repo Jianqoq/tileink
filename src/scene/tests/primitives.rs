@@ -160,6 +160,84 @@ fn push_line_records_sdf_without_path_storage() {
 }
 
 #[test]
+fn push_sdf_arc_records_sdf_without_path_storage() {
+    let mut scene = test_scene();
+    scene.push_sdf_arc(
+        SdfArc::new(
+            Point::new(32.0, 32.0),
+            12.0,
+            0.0,
+            std::f32::consts::FRAC_PI_2,
+            4.0,
+            crate::shared::sdf::line::LineCap::Round,
+        ),
+        Brush::Solid(rgb(255, 0, 0)),
+        FillRule::NonZero,
+    );
+
+    assert_eq!(scene.draw_records.len(), 1);
+    assert!(scene.path_records.is_empty());
+    assert!(scene.bd_records.is_empty());
+    match scene.draw_records[0].sdf {
+        Some(Sdf::Arc(arc)) => {
+            assert_eq!(arc.center, Point::new(32.0, 32.0));
+            assert_eq!(arc.radius, 12.0);
+            assert_eq!(arc.width, 4.0);
+        }
+        sdf => panic!("expected arc SDF, got {sdf:?}"),
+    }
+}
+
+#[test]
+fn push_shape_shadows_record_sdf_without_path_storage() {
+    let mut scene = test_scene();
+    let options = RectShadowOptions::new(2.0, 3.0, 4.0, 0.5);
+    scene.push_circle_shadow(
+        Circle::new((20.0, 20.0), 8.0),
+        options,
+        Brush::Solid(rgb(0, 0, 0)),
+        FillRule::NonZero,
+    );
+    scene.push_arc_shadow(
+        SdfArc::new(
+            Point::new(32.0, 32.0),
+            10.0,
+            0.0,
+            std::f32::consts::FRAC_PI_2,
+            3.0,
+            crate::shared::sdf::line::LineCap::Round,
+        ),
+        options,
+        Brush::Solid(rgb(0, 0, 0)),
+        FillRule::NonZero,
+    );
+    scene.push_line_shadow(
+        SdfLine::new(
+            Point::new(8.0, 12.0),
+            Point::new(28.0, 12.0),
+            2.0,
+            crate::shared::sdf::line::LineCap::Butt,
+        ),
+        options,
+        Brush::Solid(rgb(0, 0, 0)),
+        FillRule::NonZero,
+    );
+
+    assert_eq!(scene.draw_records.len(), 3);
+    assert!(scene.path_records.is_empty());
+    assert!(scene.bd_records.is_empty());
+    assert!(matches!(
+        scene.draw_records[0].sdf,
+        Some(Sdf::CircleShadow(_))
+    ));
+    assert!(matches!(scene.draw_records[1].sdf, Some(Sdf::ArcShadow(_))));
+    assert!(matches!(
+        scene.draw_records[2].sdf,
+        Some(Sdf::LineShadow(_))
+    ));
+}
+
+#[test]
 fn push_rect_stroke_records_sdf_without_path_storage() {
     let mut scene = test_scene();
     scene.push_rect_stroke(

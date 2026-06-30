@@ -196,6 +196,37 @@ fn fine_wgpu_renders_line_sdf_when_enabled() {
 }
 
 #[test]
+fn fine_wgpu_renders_arc_sdf_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let red = Color::from_rgb8(220, 64, 72);
+    let mut scene = Scene::new(64, 64);
+    scene.push_sdf_arc(
+        SdfArc::new(
+            Point::new(32.0, 32.0),
+            12.0,
+            0.0,
+            std::f32::consts::FRAC_PI_2,
+            4.0,
+            SdfLineCap::Round,
+        ),
+        red,
+        FillRule::NonZero,
+    );
+
+    let mut renderer = WgpuRenderer::new_default_device(64, 64, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+    let red_px = premul_f32_to_u32(red.premultiply().components);
+
+    assert_eq!(target[40 * 64 + 40], red_px);
+    assert_eq!(target[32 * 64 + 24], 0);
+    assert_eq!(target[24 * 64 + 32], 0);
+}
+
+#[test]
 fn fine_wgpu_preserves_rect_sdf_subpixel_coverage_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;

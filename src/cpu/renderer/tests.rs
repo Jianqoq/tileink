@@ -5,8 +5,8 @@ use peniko::{
 
 use super::Renderer;
 use crate::{
-    CandleStick, FillRule, Radius, RectLiquidGlass, RectShadowOptions, Scene, SdfLine, SdfLineCap,
-    StrokeWidths, TextContext, TextLayoutOptions,
+    CandleStick, FillRule, Radius, RectLiquidGlass, RectShadowOptions, Scene, SdfArc, SdfLine,
+    SdfLineCap, StrokeWidths, TextContext, TextLayoutOptions,
     shared::layer::{
         filter::Filter,
         mask::{Mask, MaskKind},
@@ -366,6 +366,65 @@ fn sdf_line_square_cap_extends_by_half_width() {
 }
 
 #[test]
+fn sdf_line_shadow_renders_soft_offset_shadow_as_separate_draw() {
+    let red = Color::from_rgb8(220, 64, 72);
+    let mut scene = Scene::new(48, 36);
+    let line = SdfLine::new(
+        Point::new(8.0, 16.5),
+        Point::new(24.0, 16.5),
+        1.0,
+        SdfLineCap::Butt,
+    );
+    scene.push_line_shadow(
+        line,
+        RectShadowOptions::new(0.0, 4.0, 4.0, 0.5),
+        Color::BLACK,
+        FillRule::NonZero,
+    );
+    scene.push_line(line, red, FillRule::NonZero);
+
+    let mut renderer = Renderer::new(48, 36, Color::WHITE);
+    renderer.render(&scene);
+
+    assert_eq!(renderer.image().rgba8_at(16, 16), [220, 64, 72, 255]);
+    let near_shadow = renderer.image().rgba8_at(16, 21);
+    assert!(
+        near_shadow[0] < 245,
+        "expected line shadow below line, got {near_shadow:?}"
+    );
+    let far_shadow = renderer.image().rgba8_at(16, 32);
+    assert!(
+        far_shadow[0] > 245,
+        "expected shadow falloff to approach background, got {far_shadow:?}"
+    );
+}
+
+#[test]
+fn sdf_circle_shadow_renders_soft_offset_shadow_as_separate_draw() {
+    let blue = Color::from_rgb8(0, 128, 255);
+    let mut scene = Scene::new(72, 56);
+    let circle = Circle::new((32.0, 28.0), 10.0);
+    scene.push_circle_shadow(
+        circle,
+        RectShadowOptions::new(4.0, 4.0, 4.0, 0.5),
+        Color::BLACK,
+        FillRule::NonZero,
+    );
+    scene.push_circle(circle, blue, FillRule::NonZero);
+
+    let mut renderer = Renderer::new(72, 56, Color::WHITE);
+    renderer.render(&scene);
+
+    assert_eq!(renderer.image().rgba8_at(32, 28), [0, 128, 255, 255]);
+    let near_shadow = renderer.image().rgba8_at(47, 32);
+    assert!(
+        near_shadow[0] < 245,
+        "expected circle shadow outside circle, got {near_shadow:?}"
+    );
+    assert_eq!(renderer.image().rgba8_at(64, 32), [255, 255, 255, 255]);
+}
+
+#[test]
 fn sdf_rect_stroke_supports_per_side_widths() {
     let mut scene = Scene::new(64, 64);
     scene.push_rect_stroke_widths(
@@ -408,6 +467,63 @@ fn sdf_circle_stroke_renders_ring_without_filling_center() {
     assert_eq!(renderer.image().rgba8_at(18, 32), [0, 128, 255, 255]);
     assert_eq!(renderer.image().rgba8_at(32, 32), [255, 255, 255, 255]);
     assert_eq!(renderer.image().rgba8_at(10, 32), [255, 255, 255, 255]);
+}
+
+#[test]
+fn sdf_arc_renders_stroked_quarter_arc_without_flattening() {
+    let red = Color::from_rgb8(220, 64, 72);
+    let mut scene = Scene::new(64, 64);
+    scene.push_sdf_arc(
+        SdfArc::new(
+            Point::new(32.0, 32.0),
+            12.0,
+            0.0,
+            std::f32::consts::FRAC_PI_2,
+            4.0,
+            SdfLineCap::Round,
+        ),
+        red,
+        FillRule::NonZero,
+    );
+
+    let mut renderer = Renderer::new(64, 64, Color::WHITE);
+    renderer.render(&scene);
+
+    assert_eq!(renderer.image().rgba8_at(40, 40), [220, 64, 72, 255]);
+    assert_eq!(renderer.image().rgba8_at(24, 32), [255, 255, 255, 255]);
+    assert_eq!(renderer.image().rgba8_at(32, 24), [255, 255, 255, 255]);
+}
+
+#[test]
+fn sdf_arc_shadow_renders_soft_offset_shadow_as_separate_draw() {
+    let red = Color::from_rgb8(220, 64, 72);
+    let mut scene = Scene::new(72, 64);
+    let arc = SdfArc::new(
+        Point::new(32.0, 28.0),
+        12.0,
+        0.0,
+        std::f32::consts::FRAC_PI_2,
+        4.0,
+        SdfLineCap::Round,
+    );
+    scene.push_arc_shadow(
+        arc,
+        RectShadowOptions::new(4.0, 4.0, 4.0, 0.5),
+        Color::BLACK,
+        FillRule::NonZero,
+    );
+    scene.push_sdf_arc(arc, red, FillRule::NonZero);
+
+    let mut renderer = Renderer::new(72, 64, Color::WHITE);
+    renderer.render(&scene);
+
+    assert_eq!(renderer.image().rgba8_at(40, 36), [220, 64, 72, 255]);
+    let near_shadow = renderer.image().rgba8_at(48, 40);
+    assert!(
+        near_shadow[0] < 245,
+        "expected arc shadow near offset arc, got {near_shadow:?}"
+    );
+    assert_eq!(renderer.image().rgba8_at(64, 12), [255, 255, 255, 255]);
 }
 
 #[test]

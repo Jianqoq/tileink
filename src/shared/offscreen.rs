@@ -112,8 +112,12 @@ impl LocalSpace {
                 stroke.circle.center.y -= dy;
                 Sdf::CircleStroke(stroke)
             }
+            Sdf::CircleShadow(shadow) => Sdf::CircleShadow(shadow.translated(dx as f32, dy as f32)),
+            Sdf::Arc(arc) => Sdf::Arc(arc.translated(dx as f32, dy as f32)),
+            Sdf::ArcShadow(shadow) => Sdf::ArcShadow(shadow.translated(dx as f32, dy as f32)),
             Sdf::CandleStick(candle) => Sdf::CandleStick(candle.translated(dx as f32, dy as f32)),
             Sdf::Line(line) => Sdf::Line(line.translated(dx as f32, dy as f32)),
+            Sdf::LineShadow(shadow) => Sdf::LineShadow(shadow.translated(dx as f32, dy as f32)),
         }
     }
 

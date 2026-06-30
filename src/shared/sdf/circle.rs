@@ -1,6 +1,9 @@
 use peniko::kurbo::Point;
 
-use super::coverage_from_dist;
+use super::{
+    coverage_from_dist,
+    shadow::{ShadowOptions, shadow_alpha_from_distance, shadow_bounds},
+};
 use crate::{TILE_SIZE, shared::bounds::Bounds};
 
 #[repr(C)]
@@ -11,6 +14,21 @@ pub struct Circle {
 }
 
 impl Circle {
+    pub(crate) fn bounds(self) -> Bounds {
+        Bounds::new(
+            (self.center.x as f32 - self.radius).floor() as i32,
+            (self.center.y as f32 - self.radius).floor() as i32,
+            (self.center.x as f32 + self.radius).ceil() as i32,
+            (self.center.y as f32 + self.radius).ceil() as i32,
+        )
+    }
+
+    pub(crate) fn translated(mut self, dx: f32, dy: f32) -> Self {
+        self.center.x -= f64::from(dx);
+        self.center.y -= f64::from(dy);
+        self
+    }
+
     pub(crate) fn tile_is_solid(&self, bounds: Bounds) -> bool {
         if bounds.x0 >= bounds.x1 || bounds.y0 >= bounds.y1 {
             return false;
@@ -82,6 +100,55 @@ impl Circle {
                     let dist = (dx * dx + dy2).sqrt() - r;
                     area[ix] = coverage_from_dist(dist);
                 }
+            }
+        }
+    }
+
+    pub(crate) fn signed_distance(self, x: f32, y: f32) -> f32 {
+        let dx = x - self.center.x as f32;
+        let dy = y - self.center.y as f32;
+        dx.hypot(dy) - self.radius
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct CircleShadow {
+    pub circle: Circle,
+    pub options: ShadowOptions,
+}
+
+impl CircleShadow {
+    pub(crate) fn bounds(self) -> Bounds {
+        shadow_bounds(self.circle.bounds(), self.options)
+    }
+
+    pub(crate) fn translated(mut self, dx: f32, dy: f32) -> Self {
+        self.circle = self.circle.translated(dx, dy);
+        self
+    }
+
+    pub(crate) fn tile_is_solid(self, _: Bounds) -> bool {
+        false
+    }
+
+    pub(crate) fn fine_area(
+        self,
+        area: &mut [f32; (TILE_SIZE * TILE_SIZE) as usize],
+        tile_bounds: Bounds,
+        pixel_bounds: Bounds,
+    ) {
+        let Some(options) = self.options.normalized() else {
+            return;
+        };
+
+        for y_px in pixel_bounds.y0..pixel_bounds.y1 {
+            let py = y_px as f32 + 0.5 - options.offset_y;
+            let row = (y_px - tile_bounds.y0) as usize * TILE_SIZE as usize;
+            for x_px in pixel_bounds.x0..pixel_bounds.x1 {
+                let px = x_px as f32 + 0.5 - options.offset_x;
+                area[row + (x_px - tile_bounds.x0) as usize] =
+                    shadow_alpha_from_distance(self.circle.signed_distance(px, py), options);
             }
         }
     }

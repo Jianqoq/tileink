@@ -20,10 +20,11 @@ use crate::cubecl::{
         CUBE_DRAW_BLEND, CUBE_DRAW_BRUSH, CUBE_DRAW_CLIP, CUBE_DRAW_ISOLATE, CUBE_DRAW_OPACITY,
         CUBE_DRAW_PATH_GLYPH, CUBE_GLYPH_COLOR, CUBE_GLYPH_LINEAR_COLOR, CUBE_GLYPH_LINEAR_MASK,
         CUBE_GLYPH_LINEAR_SUBPIXEL_MASK, CUBE_GLYPH_MASK, CUBE_GLYPH_SUBPIXEL_MASK,
-        CUBE_LAYER_BLEND, CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY, CUBE_SDF_CANDLESTICK,
-        CUBE_SDF_CIRCLE, CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_LINE, CUBE_SDF_NONE, CUBE_SDF_RECT,
-        CUBE_SDF_RECT_SHADOW, CUBE_SDF_RECT_STROKE, CubeBufferLengths, CubeCumsumPlan,
-        CubeScanChunk, CubeScanChunkRange, build_cumsum_plan_into, build_scan_chunks_into,
+        CUBE_LAYER_BLEND, CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY, CUBE_SDF_ARC, CUBE_SDF_ARC_SHADOW,
+        CUBE_SDF_CANDLESTICK, CUBE_SDF_CIRCLE, CUBE_SDF_CIRCLE_SHADOW, CUBE_SDF_CIRCLE_STROKE,
+        CUBE_SDF_LINE, CUBE_SDF_LINE_SHADOW, CUBE_SDF_NONE, CUBE_SDF_RECT, CUBE_SDF_RECT_SHADOW,
+        CUBE_SDF_RECT_STROKE, CubeBufferLengths, CubeCumsumPlan, CubeScanChunk, CubeScanChunkRange,
+        build_cumsum_plan_into, build_scan_chunks_into,
     },
 };
 
@@ -248,6 +249,63 @@ impl DrawSdfUpload {
                         [0.0; 4],
                     );
                 }
+                Some(Sdf::CircleShadow(shadow)) => {
+                    self.push(
+                        CUBE_SDF_CIRCLE_SHADOW,
+                        [
+                            shadow.circle.center.x as f32,
+                            shadow.circle.center.y as f32,
+                            shadow.circle.radius,
+                            0.0,
+                        ],
+                        [0.0; 4],
+                        [0.0; 4],
+                        [
+                            shadow.options.offset_x,
+                            shadow.options.offset_y,
+                            shadow.options.expand,
+                            shadow.options.intensity,
+                        ],
+                    );
+                }
+                Some(Sdf::Arc(arc)) => {
+                    self.push(
+                        CUBE_SDF_ARC,
+                        [
+                            arc.center.x as f32,
+                            arc.center.y as f32,
+                            arc.radius,
+                            arc.width,
+                        ],
+                        [arc.start_angle, arc.sweep_angle, arc.cap_value(), 0.0],
+                        [0.0; 4],
+                        [0.0; 4],
+                    );
+                }
+                Some(Sdf::ArcShadow(shadow)) => {
+                    self.push(
+                        CUBE_SDF_ARC_SHADOW,
+                        [
+                            shadow.arc.center.x as f32,
+                            shadow.arc.center.y as f32,
+                            shadow.arc.radius,
+                            shadow.arc.width,
+                        ],
+                        [
+                            shadow.arc.start_angle,
+                            shadow.arc.sweep_angle,
+                            shadow.arc.cap_value(),
+                            0.0,
+                        ],
+                        [0.0; 4],
+                        [
+                            shadow.options.offset_x,
+                            shadow.options.offset_y,
+                            shadow.options.expand,
+                            shadow.options.intensity,
+                        ],
+                    );
+                }
                 Some(Sdf::CandleStick(candle)) => {
                     self.push(
                         CUBE_SDF_CANDLESTICK,
@@ -274,6 +332,25 @@ impl DrawSdfUpload {
                         [line.width, line.cap_value(), 0.0, 0.0],
                         [0.0; 4],
                         [0.0; 4],
+                    );
+                }
+                Some(Sdf::LineShadow(shadow)) => {
+                    self.push(
+                        CUBE_SDF_LINE_SHADOW,
+                        [
+                            shadow.line.start.x as f32,
+                            shadow.line.start.y as f32,
+                            shadow.line.end.x as f32,
+                            shadow.line.end.y as f32,
+                        ],
+                        [shadow.line.width, shadow.line.cap_value(), 0.0, 0.0],
+                        [0.0; 4],
+                        [
+                            shadow.options.offset_x,
+                            shadow.options.offset_y,
+                            shadow.options.expand,
+                            shadow.options.intensity,
+                        ],
                     );
                 }
                 None => {
