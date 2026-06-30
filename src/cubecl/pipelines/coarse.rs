@@ -6,9 +6,9 @@ use crate::cubecl::{
         COARSE_CHUNK_SIZE, CUBE_DRAW_BLEND, CUBE_DRAW_BRUSH, CUBE_DRAW_CLIP, CUBE_DRAW_ISOLATE,
         CUBE_DRAW_OPACITY, CUBE_DRAW_PATH_GLYPH, CUBE_LAYER_BLEND, CUBE_LAYER_CLIP,
         CUBE_LAYER_OPACITY, CUBE_PTCL_BEGIN_BLEND, CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_BEGIN_OPACITY,
-        CUBE_PTCL_COLOR, CUBE_PTCL_END, CUBE_PTCL_END_BLEND, CUBE_PTCL_END_CLIP,
-        CUBE_PTCL_END_OPACITY, CUBE_PTCL_FILL, CUBE_PTCL_GLYPH, CUBE_PTCL_PATH_GLYPH,
-        CUBE_PTCL_SDF, CUBE_SDF_NONE, CubeBufferLengths,
+        CUBE_PTCL_BEGIN_SDF_CLIP, CUBE_PTCL_COLOR, CUBE_PTCL_END, CUBE_PTCL_END_BLEND,
+        CUBE_PTCL_END_CLIP, CUBE_PTCL_END_OPACITY, CUBE_PTCL_FILL, CUBE_PTCL_GLYPH,
+        CUBE_PTCL_PATH_GLYPH, CUBE_PTCL_SDF, CUBE_SDF_NONE, CubeBufferLengths,
     },
 };
 
@@ -273,6 +273,7 @@ fn coarse_count(
         draw_pixel_y0,
         draw_pixel_x1,
         draw_pixel_y1,
+        draw_sdf_kinds,
         backdrop_data_offsets,
         backdrop_tile_x0,
         backdrop_tile_y0,
@@ -605,6 +606,7 @@ fn coarse_emit(
         draw_pixel_y0,
         draw_pixel_x1,
         draw_pixel_y1,
+        draw_sdf_kinds,
         backdrop_data_offsets,
         backdrop_tile_x0,
         backdrop_tile_y0,
@@ -638,6 +640,7 @@ fn coarse_emit(
             draw_pixel_y0,
             draw_pixel_x1,
             draw_pixel_y1,
+            draw_sdf_kinds,
             backdrop_data_offsets,
             backdrop_tile_x0,
             backdrop_tile_y0,
@@ -928,6 +931,7 @@ fn active_stack_count(
     draw_pixel_y0: &Array<i32>,
     draw_pixel_x1: &Array<i32>,
     draw_pixel_y1: &Array<i32>,
+    draw_sdf_kinds: &Array<u32>,
     backdrop_data_offsets: &Array<u32>,
     backdrop_tile_x0: &Array<u32>,
     backdrop_tile_y0: &Array<u32>,
@@ -951,34 +955,54 @@ fn active_stack_count(
             {
                 valid = 0;
             } else {
-                let backdrop_ix = draw_backdrop_ix(
-                    layer_stack_draws[stack_i],
-                    tile_x,
-                    tile_y,
-                    tiles_width,
-                    tiles_height,
-                    draw_path_ids,
-                    draw_tags,
-                    draw_pixel_x0,
-                    draw_pixel_y0,
-                    draw_pixel_x1,
-                    draw_pixel_y1,
-                    backdrop_data_offsets,
-                    backdrop_tile_x0,
-                    backdrop_tile_y0,
-                    backdrop_tile_x1,
-                    backdrop_tile_y1,
-                );
-                if backdrop_ix == invalid {
-                    valid = 0;
+                let draw_ix = layer_stack_draws[stack_i];
+                let draw_i = draw_ix as usize;
+                if draw_sdf_kinds[draw_i] != CUBE_SDF_NONE {
+                    if draw_tile_hit(
+                        draw_i,
+                        tile_x,
+                        tile_y,
+                        tiles_width,
+                        tiles_height,
+                        draw_pixel_x0,
+                        draw_pixel_y0,
+                        draw_pixel_x1,
+                        draw_pixel_y1,
+                    ) {
+                        count += 1;
+                    } else {
+                        valid = 0;
+                    }
                 } else {
-                    let backdrop_i = backdrop_ix as usize;
-                    if segment_starts[backdrop_i] == segment_ends[backdrop_i]
-                        && backdrops[backdrop_i].load() == 0
-                    {
+                    let backdrop_ix = draw_backdrop_ix(
+                        draw_ix,
+                        tile_x,
+                        tile_y,
+                        tiles_width,
+                        tiles_height,
+                        draw_path_ids,
+                        draw_tags,
+                        draw_pixel_x0,
+                        draw_pixel_y0,
+                        draw_pixel_x1,
+                        draw_pixel_y1,
+                        backdrop_data_offsets,
+                        backdrop_tile_x0,
+                        backdrop_tile_y0,
+                        backdrop_tile_x1,
+                        backdrop_tile_y1,
+                    );
+                    if backdrop_ix == invalid {
                         valid = 0;
                     } else {
-                        count += 1;
+                        let backdrop_i = backdrop_ix as usize;
+                        if segment_starts[backdrop_i] == segment_ends[backdrop_i]
+                            && backdrops[backdrop_i].load() == 0
+                        {
+                            valid = 0;
+                        } else {
+                            count += 1;
+                        }
                     }
                 }
             }
@@ -1013,6 +1037,7 @@ fn emit_active_stack_begins(
     draw_pixel_y0: &Array<i32>,
     draw_pixel_x1: &Array<i32>,
     draw_pixel_y1: &Array<i32>,
+    draw_sdf_kinds: &Array<u32>,
     backdrop_data_offsets: &Array<u32>,
     backdrop_tile_x0: &Array<u32>,
     backdrop_tile_y0: &Array<u32>,
@@ -1039,41 +1064,16 @@ fn emit_active_stack_begins(
             || layer_tag == CUBE_LAYER_BLEND
         {
             let draw_ix = layer_stack_draws[stack_i];
-            let backdrop_ix = draw_backdrop_ix(
-                draw_ix,
-                tile_x,
-                tile_y,
-                tiles_width,
-                tiles_height,
-                draw_path_ids,
-                draw_tags,
-                draw_pixel_x0,
-                draw_pixel_y0,
-                draw_pixel_x1,
-                draw_pixel_y1,
-                backdrop_data_offsets,
-                backdrop_tile_x0,
-                backdrop_tile_y0,
-                backdrop_tile_x1,
-                backdrop_tile_y1,
-            );
-            if backdrop_ix != invalid {
-                let backdrop_i = backdrop_ix as usize;
-                let mut ptcl_tag = u32::new(CUBE_PTCL_BEGIN_CLIP as i64);
-                if layer_tag == CUBE_LAYER_OPACITY {
-                    ptcl_tag = u32::new(CUBE_PTCL_BEGIN_OPACITY as i64);
-                } else if layer_tag == CUBE_LAYER_BLEND {
-                    ptcl_tag = u32::new(CUBE_PTCL_BEGIN_BLEND as i64);
-                }
+            if layer_tag == CUBE_LAYER_CLIP && draw_sdf_kinds[draw_ix as usize] != CUBE_SDF_NONE {
                 store_particle(
                     dst,
                     ptcl_capacity,
-                    ptcl_tag,
-                    backdrops[backdrop_i].load(),
-                    draw_fill_rules[draw_ix as usize],
-                    segment_starts[backdrop_i],
-                    segment_ends[backdrop_i],
-                    layer_stack_payloads[stack_i],
+                    u32::new(CUBE_PTCL_BEGIN_SDF_CLIP as i64),
+                    0,
+                    0,
+                    0,
+                    0,
+                    draw_ix,
                     ptcl_tags,
                     ptcl_backdrops,
                     ptcl_fill_rules,
@@ -1082,6 +1082,51 @@ fn emit_active_stack_begins(
                     ptcl_colors,
                 );
                 dst += 1;
+            } else {
+                let backdrop_ix = draw_backdrop_ix(
+                    draw_ix,
+                    tile_x,
+                    tile_y,
+                    tiles_width,
+                    tiles_height,
+                    draw_path_ids,
+                    draw_tags,
+                    draw_pixel_x0,
+                    draw_pixel_y0,
+                    draw_pixel_x1,
+                    draw_pixel_y1,
+                    backdrop_data_offsets,
+                    backdrop_tile_x0,
+                    backdrop_tile_y0,
+                    backdrop_tile_x1,
+                    backdrop_tile_y1,
+                );
+                if backdrop_ix != invalid {
+                    let backdrop_i = backdrop_ix as usize;
+                    let mut ptcl_tag = u32::new(CUBE_PTCL_BEGIN_CLIP as i64);
+                    if layer_tag == CUBE_LAYER_OPACITY {
+                        ptcl_tag = u32::new(CUBE_PTCL_BEGIN_OPACITY as i64);
+                    } else if layer_tag == CUBE_LAYER_BLEND {
+                        ptcl_tag = u32::new(CUBE_PTCL_BEGIN_BLEND as i64);
+                    }
+                    store_particle(
+                        dst,
+                        ptcl_capacity,
+                        ptcl_tag,
+                        backdrops[backdrop_i].load(),
+                        draw_fill_rules[draw_ix as usize],
+                        segment_starts[backdrop_i],
+                        segment_ends[backdrop_i],
+                        layer_stack_payloads[stack_i],
+                        ptcl_tags,
+                        ptcl_backdrops,
+                        ptcl_fill_rules,
+                        ptcl_segment_starts,
+                        ptcl_segment_ends,
+                        ptcl_colors,
+                    );
+                    dst += 1;
+                }
             }
         }
         stack_ix += 1;

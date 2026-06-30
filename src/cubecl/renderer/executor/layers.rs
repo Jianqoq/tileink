@@ -22,13 +22,6 @@ struct MaskedGroupLayer<'a> {
     composite: LayerComposite,
 }
 
-struct SdfClipLayer<'a> {
-    sdf: Sdf,
-    bounds: Bounds,
-    outer_stack: std::ops::Range<usize>,
-    children: &'a [ExecOp],
-}
-
 struct FilterLayerRef<'a> {
     filter: &'a Filter,
     sample_region: &'a Region,
@@ -128,18 +121,7 @@ impl<R: Runtime> Renderer<R> {
                 target,
                 filter_cursors,
             ),
-            Layer::ClipSdf { sdf, bounds } => self.execute_sdf_clip_layer(
-                scene,
-                plan,
-                SdfClipLayer {
-                    sdf: *sdf,
-                    bounds: *bounds,
-                    outer_stack: offscreen.outer_stack,
-                    children: offscreen.children,
-                },
-                target,
-                filter_cursors,
-            ),
+            Layer::ClipSdf { .. } => unreachable!("ClipSdf layers are fused into analytic clips"),
             _ => panic!(
                 "CubeCL offscreen execution only accepts isolate, opacity, blend, filter, backdrop, and SDF clip layers"
             ),
@@ -185,30 +167,6 @@ impl<R: Runtime> Renderer<R> {
                 mode,
             ),
         }
-        self.release_scratch(mask);
-        self.release_scratch(source);
-    }
-
-    fn execute_sdf_clip_layer(
-        &mut self,
-        scene: &Scene,
-        plan: &ExecPlan,
-        layer: SdfClipLayer<'_>,
-        target: CubeRenderTarget,
-        filter_cursors: &mut FilterCursors,
-    ) {
-        let bounds = layer
-            .bounds
-            .intersect(Bounds::canvas(self.size.0, self.size.1));
-        if bounds.is_empty() {
-            return;
-        }
-
-        let source = self.render_ops_to_scratch(scene, plan, layer.children, filter_cursors);
-        let mask = self.acquire_scratch();
-        self.clear_buffer(mask, 0);
-        self.build_sdf_mask(mask, layer.sdf, bounds);
-        self.composite_src_over_with_stack(target, source, Some(mask), bounds, layer.outer_stack);
         self.release_scratch(mask);
         self.release_scratch(source);
     }

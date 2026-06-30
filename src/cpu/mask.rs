@@ -60,6 +60,62 @@ pub(super) fn intersect_alpha_mask(mask: &mut Image, clip: &Image) {
     }
 }
 
+pub(super) fn intersect_sdf_alpha_mask(
+    mask: &mut Image,
+    sdf: &Sdf,
+    sdf_bounds: Bounds,
+    bounds: Bounds,
+) {
+    let paint_bounds = sdf_bounds.intersect(bounds);
+    if paint_bounds.is_empty() {
+        for px in &mut mask.pixels {
+            *px = 0;
+        }
+        return;
+    }
+
+    clear_mask_outside_bounds(mask, bounds, paint_bounds);
+    let tile_x0 = paint_bounds.x0.div_euclid(crate::TILE_SIZE as i32);
+    let tile_y0 = paint_bounds.y0.div_euclid(crate::TILE_SIZE as i32);
+    let tile_x1 =
+        (paint_bounds.x1 + crate::TILE_SIZE as i32 - 1).div_euclid(crate::TILE_SIZE as i32);
+    let tile_y1 =
+        (paint_bounds.y1 + crate::TILE_SIZE as i32 - 1).div_euclid(crate::TILE_SIZE as i32);
+
+    for tile_y in tile_y0..tile_y1 {
+        for tile_x in tile_x0..tile_x1 {
+            let tile_bounds = Bounds::new(
+                tile_x * crate::TILE_SIZE as i32,
+                tile_y * crate::TILE_SIZE as i32,
+                (tile_x + 1) * crate::TILE_SIZE as i32,
+                (tile_y + 1) * crate::TILE_SIZE as i32,
+            );
+            let pixel_bounds = tile_bounds.intersect(paint_bounds);
+            if pixel_bounds.is_empty() {
+                continue;
+            }
+
+            let mut area = [0.0; crate::BLOCK_SIZE as usize];
+            sdf.fine_area(&mut area, tile_bounds, pixel_bounds);
+            for global_y in pixel_bounds.y0..pixel_bounds.y1 {
+                let local_y = (global_y - tile_bounds.y0) as usize;
+                let image_y = (global_y - bounds.y0) as u32;
+                for global_x in pixel_bounds.x0..pixel_bounds.x1 {
+                    let local_x = (global_x - tile_bounds.x0) as usize;
+                    let image_x = (global_x - bounds.x0) as u32;
+                    let image_ix = (image_y * mask.width + image_x) as usize;
+                    let area_ix = local_y * crate::TILE_SIZE as usize + local_x;
+                    let alpha = combine_alpha(
+                        ((mask.pixels[image_ix] >> 24) & 0xff) as u8,
+                        coverage_f32_to_u8(area[area_ix]),
+                    );
+                    mask.pixels[image_ix] = rgba8_pack([alpha, alpha, alpha, alpha]);
+                }
+            }
+        }
+    }
+}
+
 pub(super) fn copy_image_region(source: &Image, bounds: Bounds, source_bounds: Bounds) -> Image {
     let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
     for y in 0..image.height {
@@ -77,6 +133,22 @@ pub(super) fn copy_image_region(source: &Image, bounds: Bounds, source_bounds: B
         }
     }
     image
+}
+
+fn clear_mask_outside_bounds(mask: &mut Image, bounds: Bounds, keep: Bounds) {
+    for y in 0..mask.height {
+        let global_y = bounds.y0 + y as i32;
+        for x in 0..mask.width {
+            let global_x = bounds.x0 + x as i32;
+            if global_x < keep.x0
+                || global_x >= keep.x1
+                || global_y < keep.y0
+                || global_y >= keep.y1
+            {
+                mask.pixels[(y * mask.width + x) as usize] = 0;
+            }
+        }
+    }
 }
 
 pub(super) fn rasterize_region_mask(region: &Region, bounds: Bounds) -> Image {

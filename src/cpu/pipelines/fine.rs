@@ -9,7 +9,8 @@ use crate::{
         bounds::{Bounds, PixelBounds},
         image::Image,
         line_seg::LineSegment,
-        pixel::TileBuffer,
+        pixel::{TileBuffer, coverage_f32_to_u8},
+        sdf::Sdf,
         tile_ptcl::TilePtcl,
         tile_ptcl::TilePtclRange,
     },
@@ -184,6 +185,13 @@ fn render_tile(
                     *dst = combine_alpha(*dst, src);
                 }
             }
+            TilePtcl::BeginSdfClip(sdf) => {
+                let alpha = build_sdf_tile_alpha(tile_x, tile_y, &sdf.sdf);
+                clip_stack.push(clip_mask);
+                for (dst, src) in clip_mask.iter_mut().zip(alpha) {
+                    *dst = combine_alpha(*dst, src);
+                }
+            }
             TilePtcl::EndClip => {
                 if let Some(previous) = clip_stack.pop() {
                     clip_mask = previous;
@@ -249,6 +257,25 @@ fn render_tile(
             }
         }
     }
+}
+
+fn build_sdf_tile_alpha(tile_x: u32, tile_y: u32, sdf: &Sdf) -> [u8; 256] {
+    let base_x = (tile_x * crate::TILE_SIZE) as i32;
+    let base_y = (tile_y * crate::TILE_SIZE) as i32;
+    let tile_bounds = Bounds::new(
+        base_x,
+        base_y,
+        base_x + crate::TILE_SIZE as i32,
+        base_y + crate::TILE_SIZE as i32,
+    );
+    let mut area = [0.0; crate::BLOCK_SIZE as usize];
+    sdf.fine_area(&mut area, tile_bounds, tile_bounds);
+
+    let mut alpha = [0; 256];
+    for (dst, src) in alpha.iter_mut().zip(area) {
+        *dst = coverage_f32_to_u8(src);
+    }
+    alpha
 }
 
 fn tile_target_bounds(

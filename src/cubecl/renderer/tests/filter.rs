@@ -264,6 +264,35 @@ fn filter_wgpu_applies_outer_clip_stack_to_offscreen_output_when_enabled() {
 }
 
 #[test]
+fn filter_wgpu_applies_outer_sdf_clip_stack_to_offscreen_output_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(16, 16);
+    scene.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, 8.0, 16.0), crate::Radius::ZERO);
+    scene.push_filter_layer(
+        Filter::Invert(1.0),
+        Region::rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::ZERO),
+    );
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(255, 0, 0),
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+
+    assert_eq!(target[8 * 16 + 4], rgba8_pack([0, 255, 255, 255]));
+    assert_eq!(target[8 * 16 + 12], 0);
+}
+
+#[test]
 fn filter_wgpu_applies_outer_opacity_stack_to_offscreen_output_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;

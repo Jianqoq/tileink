@@ -91,7 +91,7 @@ fn max_scratch_for_ops(ops: &[ExecOp], held: usize) -> usize {
                 children,
                 ..
             } => match layer {
-                Layer::Isolate | Layer::Opacity(_) | Layer::Blend(_) | Layer::ClipSdf { .. } => {
+                Layer::Isolate | Layer::Opacity(_) | Layer::Blend(_) => {
                     let source_held = held + 1;
                     max_count = max_count.max(source_held + 1);
                     max_count = max_count.max(max_scratch_for_ops(children, source_held));
@@ -174,7 +174,7 @@ mod tests {
     use super::required_scratch_count;
 
     #[test]
-    fn sdf_clip_layer_requires_source_and_mask_scratch() {
+    fn sdf_clip_layer_uses_fused_clip_stack_without_scratch() {
         let mut scene = Scene::new(32, 32);
         scene.push_clip_sdf_rect_layer(Rect::new(4.0, 4.0, 28.0, 28.0), Radius::all(4.0));
         scene.push_rect(
@@ -187,6 +187,6 @@ mod tests {
 
         let plan = scene.compile(ROOT_COMMAND_LIST_ID);
 
-        assert_eq!(required_scratch_count(&plan), 2);
+        assert_eq!(required_scratch_count(&plan), 0);
     }
 }

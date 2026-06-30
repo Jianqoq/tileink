@@ -12,12 +12,13 @@ use crate::cubecl::{
     types::{
         CUBE_GLYPH_COLOR, CUBE_GLYPH_LINEAR_COLOR, CUBE_GLYPH_LINEAR_MASK,
         CUBE_GLYPH_LINEAR_SUBPIXEL_MASK, CUBE_GLYPH_MASK, CUBE_GLYPH_SUBPIXEL_MASK,
-        CUBE_PTCL_BEGIN_BLEND, CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_BEGIN_OPACITY, CUBE_PTCL_COLOR,
-        CUBE_PTCL_END, CUBE_PTCL_END_BLEND, CUBE_PTCL_END_CLIP, CUBE_PTCL_END_OPACITY,
-        CUBE_PTCL_FILL, CUBE_PTCL_GLYPH, CUBE_PTCL_PATH_GLYPH, CUBE_PTCL_SDF, CUBE_SDF_ARC,
-        CUBE_SDF_ARC_SHADOW, CUBE_SDF_CANDLESTICK, CUBE_SDF_CIRCLE, CUBE_SDF_CIRCLE_SHADOW,
-        CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_LINE, CUBE_SDF_LINE_SHADOW, CUBE_SDF_RECT,
-        CUBE_SDF_RECT_SHADOW, CUBE_SDF_RECT_STROKE, CubeBufferLengths,
+        CUBE_PTCL_BEGIN_BLEND, CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_BEGIN_OPACITY,
+        CUBE_PTCL_BEGIN_SDF_CLIP, CUBE_PTCL_COLOR, CUBE_PTCL_END, CUBE_PTCL_END_BLEND,
+        CUBE_PTCL_END_CLIP, CUBE_PTCL_END_OPACITY, CUBE_PTCL_FILL, CUBE_PTCL_GLYPH,
+        CUBE_PTCL_PATH_GLYPH, CUBE_PTCL_SDF, CUBE_SDF_ARC, CUBE_SDF_ARC_SHADOW,
+        CUBE_SDF_CANDLESTICK, CUBE_SDF_CIRCLE, CUBE_SDF_CIRCLE_SHADOW, CUBE_SDF_CIRCLE_STROKE,
+        CUBE_SDF_LINE, CUBE_SDF_LINE_SHADOW, CUBE_SDF_RECT, CUBE_SDF_RECT_SHADOW,
+        CUBE_SDF_RECT_STROKE, CubeBufferLengths,
     },
 };
 
@@ -320,6 +321,36 @@ fn fine_render(
                 } else {
                     clip_mask = 255;
                 }
+            } else if tag == CUBE_PTCL_BEGIN_SDF_CLIP {
+                let draw_ix = ptcl_colors[ptcl_i];
+                let alpha = sdf_alpha_at(
+                    draw_ix,
+                    global_x as f32 + 0.5,
+                    global_y as f32 + 0.5,
+                    draw_sdf_kinds,
+                    draw_sdf_x0,
+                    draw_sdf_y0,
+                    draw_sdf_x1,
+                    draw_sdf_y1,
+                    draw_sdf_r0,
+                    draw_sdf_r1,
+                    draw_sdf_r2,
+                    draw_sdf_r3,
+                    draw_sdf_stroke_top,
+                    draw_sdf_stroke_right,
+                    draw_sdf_stroke_bottom,
+                    draw_sdf_stroke_left,
+                    draw_sdf_shadow_offset_x,
+                    draw_sdf_shadow_offset_y,
+                    draw_sdf_shadow_expand,
+                    draw_sdf_shadow_intensity,
+                );
+                if clip_depth < clip_stack_capacity as u32 {
+                    let stack_ix = (clip_depth * workgroup_size as u32 + UNIT_POS) as usize;
+                    clip_stack[stack_ix] = clip_mask;
+                    clip_depth += 1;
+                }
+                clip_mask = combine_alpha(clip_mask, alpha);
             } else if tag == CUBE_PTCL_END_OPACITY || tag == CUBE_PTCL_END_BLEND {
                 if group_depth > 0 {
                     group_depth -= 1;

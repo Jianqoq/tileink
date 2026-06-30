@@ -45,6 +45,7 @@ pub enum TilePtcl {
     Glyph(TileGlyphPtcl),
     Color(TileColorPtcl),
     BeginClip(TileFillPtcl),
+    BeginSdfClip(TileSdfPtcl),
     EndClip,
     BeginOpacity {
         opacity: u8,

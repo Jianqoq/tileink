@@ -282,6 +282,55 @@ fn coarse_wgpu_wraps_draw_batch_with_active_clip_stack_when_enabled() {
 }
 
 #[test]
+fn coarse_wgpu_wraps_draw_batch_with_active_sdf_clip_stack_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let red = Color::from_rgb8(255, 0, 0);
+    let mut scene = Scene::new(16, 16);
+    scene.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, 8.0, 16.0), crate::Radius::ZERO);
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
+        red,
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+
+    let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+    renderer.prepare_scene(&scene);
+
+    let plan = renderer.plan.as_ref().unwrap();
+    let ExecOp::DrawBatch { draws, layer_stack } = &plan.ops[1] else {
+        panic!("expected SDF-clipped draw batch");
+    };
+    let draws = draws.clone();
+    let layer_stack = layer_stack.clone();
+    renderer.coarse_batch(
+        &scene,
+        draws.start as u32,
+        draws.end as u32,
+        layer_stack.start as u32,
+        layer_stack.end as u32,
+    );
+
+    assert_eq!(
+        renderer.coarse.ptcl_tags.read(renderer.client()),
+        vec![
+            CUBE_PTCL_BEGIN_SDF_CLIP,
+            CUBE_PTCL_SDF,
+            CUBE_PTCL_END_CLIP,
+            CUBE_PTCL_END
+        ]
+    );
+    assert_eq!(
+        renderer.coarse.ptcl_colors.read(renderer.client()),
+        vec![0, 1, 0, 0]
+    );
+}
+
+#[test]
 fn coarse_wgpu_wraps_draw_batch_with_opacity_and_blend_stack_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;

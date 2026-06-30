@@ -149,6 +149,10 @@ name = "cpu_sdf_clip"
 path = "examples/cpu/sdf_clip.rs"
 
 [[example]]
+name = "cpu_sdf_nested_clip_blur"
+path = "examples/cpu/sdf_nested_clip_blur.rs"
+
+[[example]]
 name = "cpu_sdf_rect_shadow"
 path = "examples/cpu/sdf_rect_shadow.rs"
 
@@ -287,6 +291,10 @@ path = "examples/cubecl/sdf_line.rs"
 [[example]]
 name = "cubecl_sdf_clip"
 path = "examples/cubecl/sdf_clip.rs"
+
+[[example]]
+name = "cubecl_sdf_nested_clip_blur"
+path = "examples/cubecl/sdf_nested_clip_blur.rs"
 
 [[example]]
 name = "cubecl_sdf_rect_shadow"

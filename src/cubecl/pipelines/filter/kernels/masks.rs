@@ -16,6 +16,23 @@ pub(super) fn filter_layer_mask_region(
     draw_pixel_y0: &Array<i32>,
     draw_pixel_x1: &Array<i32>,
     draw_pixel_y1: &Array<i32>,
+    draw_sdf_kinds: &Array<u32>,
+    draw_sdf_x0: &Array<f32>,
+    draw_sdf_y0: &Array<f32>,
+    draw_sdf_x1: &Array<f32>,
+    draw_sdf_y1: &Array<f32>,
+    draw_sdf_r0: &Array<f32>,
+    draw_sdf_r1: &Array<f32>,
+    draw_sdf_r2: &Array<f32>,
+    draw_sdf_r3: &Array<f32>,
+    draw_sdf_stroke_top: &Array<f32>,
+    draw_sdf_stroke_right: &Array<f32>,
+    draw_sdf_stroke_bottom: &Array<f32>,
+    draw_sdf_stroke_left: &Array<f32>,
+    draw_sdf_shadow_offset_x: &Array<f32>,
+    draw_sdf_shadow_offset_y: &Array<f32>,
+    draw_sdf_shadow_expand: &Array<f32>,
+    draw_sdf_shadow_intensity: &Array<f32>,
     backdrop_data_offsets: &Array<u32>,
     backdrop_tile_x0: &Array<u32>,
     backdrop_tile_y0: &Array<u32>,
@@ -57,6 +74,23 @@ pub(super) fn filter_layer_mask_region(
         draw_pixel_y0,
         draw_pixel_x1,
         draw_pixel_y1,
+        draw_sdf_kinds,
+        draw_sdf_x0,
+        draw_sdf_y0,
+        draw_sdf_x1,
+        draw_sdf_y1,
+        draw_sdf_r0,
+        draw_sdf_r1,
+        draw_sdf_r2,
+        draw_sdf_r3,
+        draw_sdf_stroke_top,
+        draw_sdf_stroke_right,
+        draw_sdf_stroke_bottom,
+        draw_sdf_stroke_left,
+        draw_sdf_shadow_offset_x,
+        draw_sdf_shadow_offset_y,
+        draw_sdf_shadow_expand,
+        draw_sdf_shadow_intensity,
         backdrop_data_offsets,
         backdrop_tile_x0,
         backdrop_tile_y0,
@@ -115,65 +149,6 @@ pub(super) fn filter_rect_mask_region(
         radius_bottom_right,
     );
     let alpha = ((0.5 - dist).clamp(0.0, 1.0) * 255.0 + 0.5) as u32;
-    let ix = (y * image_width + x) as usize;
-    target[ix] = alpha | (alpha << 8) | (alpha << 16) | (alpha << 24);
-}
-
-#[cube(launch)]
-#[allow(clippy::too_many_arguments)]
-pub(super) fn filter_sdf_mask_region(
-    pixel_count: u32,
-    region_width: u32,
-    region_x0: u32,
-    region_y0: u32,
-    image_width: u32,
-    kind: u32,
-    x0: f32,
-    y0: f32,
-    x1: f32,
-    y1: f32,
-    r0: f32,
-    r1: f32,
-    r2: f32,
-    r3: f32,
-    stroke_top: f32,
-    stroke_right: f32,
-    stroke_bottom: f32,
-    stroke_left: f32,
-    shadow_offset_x: f32,
-    shadow_offset_y: f32,
-    shadow_expand: f32,
-    shadow_intensity: f32,
-    target: &mut Array<u32>,
-) {
-    let region_ix = ABSOLUTE_POS as u32;
-    if region_ix >= pixel_count {
-        terminate!();
-    }
-
-    let x = region_x0 + region_ix % region_width;
-    let y = region_y0 + region_ix / region_width;
-    let alpha = gpu_sdf_alpha_from_encoded(
-        kind,
-        x as f32 + 0.5,
-        y as f32 + 0.5,
-        x0,
-        y0,
-        x1,
-        y1,
-        r0,
-        r1,
-        r2,
-        r3,
-        stroke_top,
-        stroke_right,
-        stroke_bottom,
-        stroke_left,
-        shadow_offset_x,
-        shadow_offset_y,
-        shadow_expand,
-        shadow_intensity,
-    );
     let ix = (y * image_width + x) as usize;
     target[ix] = alpha | (alpha << 8) | (alpha << 16) | (alpha << 24);
 }
@@ -394,6 +369,9 @@ pub(super) fn filter_composite_drop_shadow_region(
 
 #[cube]
 #[allow(clippy::too_many_arguments)]
+// Keep the SDF bounds checks nested. The CubeCL wgpu path has had incorrect
+// shader output from combined runtime boolean expressions in this file.
+#[allow(clippy::collapsible_if)]
 fn layer_stack_alpha_at(
     draw_ix: u32,
     tile_x: u32,
@@ -409,6 +387,23 @@ fn layer_stack_alpha_at(
     draw_pixel_y0: &Array<i32>,
     draw_pixel_x1: &Array<i32>,
     draw_pixel_y1: &Array<i32>,
+    draw_sdf_kinds: &Array<u32>,
+    draw_sdf_x0: &Array<f32>,
+    draw_sdf_y0: &Array<f32>,
+    draw_sdf_x1: &Array<f32>,
+    draw_sdf_y1: &Array<f32>,
+    draw_sdf_r0: &Array<f32>,
+    draw_sdf_r1: &Array<f32>,
+    draw_sdf_r2: &Array<f32>,
+    draw_sdf_r3: &Array<f32>,
+    draw_sdf_stroke_top: &Array<f32>,
+    draw_sdf_stroke_right: &Array<f32>,
+    draw_sdf_stroke_bottom: &Array<f32>,
+    draw_sdf_stroke_left: &Array<f32>,
+    draw_sdf_shadow_offset_x: &Array<f32>,
+    draw_sdf_shadow_offset_y: &Array<f32>,
+    draw_sdf_shadow_expand: &Array<f32>,
+    draw_sdf_shadow_intensity: &Array<f32>,
     backdrop_data_offsets: &Array<u32>,
     backdrop_tile_x0: &Array<u32>,
     backdrop_tile_y0: &Array<u32>,
@@ -424,40 +419,75 @@ fn layer_stack_alpha_at(
     segment_y_edge: &Array<f32>,
 ) -> u32 {
     let invalid = u32::new(-1);
-    let backdrop_ix = filter_draw_backdrop_ix(
-        draw_ix,
-        tile_x,
-        tile_y,
-        tiles_width,
-        tiles_height,
-        draw_path_ids,
-        draw_tags,
-        draw_pixel_x0,
-        draw_pixel_y0,
-        draw_pixel_x1,
-        draw_pixel_y1,
-        backdrop_data_offsets,
-        backdrop_tile_x0,
-        backdrop_tile_y0,
-        backdrop_tile_x1,
-        backdrop_tile_y1,
-    );
+    let draw_i = draw_ix as usize;
     let mut alpha = 0u32;
-    if backdrop_ix != invalid {
-        let i = backdrop_ix as usize;
-        alpha = filter_fill_alpha_at(
-            backdrops[i].load(),
-            draw_fill_rules[draw_ix as usize],
-            segment_starts[i],
-            segment_ends[i],
-            local_x,
-            local_y,
-            segment_p0x,
-            segment_p0y,
-            segment_p1x,
-            segment_p1y,
-            segment_y_edge,
+    if draw_sdf_kinds[draw_i] != CUBE_SDF_NONE {
+        let global_x = (tile_x * 16 + local_x) as i32;
+        let global_y = (tile_y * 16 + local_y) as i32;
+        if global_x >= draw_pixel_x0[draw_i] {
+            if global_x < draw_pixel_x1[draw_i] {
+                if global_y >= draw_pixel_y0[draw_i] {
+                    if global_y < draw_pixel_y1[draw_i] {
+                        alpha = gpu_sdf_alpha_from_encoded(
+                            draw_sdf_kinds[draw_i],
+                            global_x as f32 + 0.5,
+                            global_y as f32 + 0.5,
+                            draw_sdf_x0[draw_i],
+                            draw_sdf_y0[draw_i],
+                            draw_sdf_x1[draw_i],
+                            draw_sdf_y1[draw_i],
+                            draw_sdf_r0[draw_i],
+                            draw_sdf_r1[draw_i],
+                            draw_sdf_r2[draw_i],
+                            draw_sdf_r3[draw_i],
+                            draw_sdf_stroke_top[draw_i],
+                            draw_sdf_stroke_right[draw_i],
+                            draw_sdf_stroke_bottom[draw_i],
+                            draw_sdf_stroke_left[draw_i],
+                            draw_sdf_shadow_offset_x[draw_i],
+                            draw_sdf_shadow_offset_y[draw_i],
+                            draw_sdf_shadow_expand[draw_i],
+                            draw_sdf_shadow_intensity[draw_i],
+                        );
+                    }
+                }
+            }
+        }
+    } else {
+        let backdrop_ix = filter_draw_backdrop_ix(
+            draw_ix,
+            tile_x,
+            tile_y,
+            tiles_width,
+            tiles_height,
+            draw_path_ids,
+            draw_tags,
+            draw_pixel_x0,
+            draw_pixel_y0,
+            draw_pixel_x1,
+            draw_pixel_y1,
+            backdrop_data_offsets,
+            backdrop_tile_x0,
+            backdrop_tile_y0,
+            backdrop_tile_x1,
+            backdrop_tile_y1,
         );
+        if backdrop_ix != invalid {
+            let i = backdrop_ix as usize;
+            alpha = filter_fill_alpha_at(
+                backdrops[i].load(),
+                draw_fill_rules[draw_ix as usize],
+                segment_starts[i],
+                segment_ends[i],
+                local_x,
+                local_y,
+                segment_p0x,
+                segment_p0y,
+                segment_p1x,
+                segment_p1y,
+                segment_y_edge,
+            );
+        }
     }
     alpha
 }

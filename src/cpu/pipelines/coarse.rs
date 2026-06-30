@@ -272,7 +272,7 @@ impl<'a> CoarseCpuPrepared<'a> {
                 | LayerStackEntry::Opacity { draw, .. }
                 | LayerStackEntry::Blend { draw, .. } => draw,
             };
-            let Some((draw, backdrop, segment_range)) = Self::layer_tile_coverage(
+            let Some(coverage) = Self::layer_tile_coverage(
                 draw_ix as usize,
                 tile_x,
                 tile_y,
@@ -285,25 +285,63 @@ impl<'a> CoarseCpuPrepared<'a> {
                 return false;
             };
 
-            pending.push((
-                *entry,
-                TileFillPtcl {
+            let ptcl = match (*entry, coverage) {
+                (
+                    LayerStackEntry::Clip { .. },
+                    LayerTileCoverage::Path {
+                        draw,
+                        backdrop,
+                        segment_range,
+                    },
+                )
+                | (
+                    LayerStackEntry::Opacity { .. } | LayerStackEntry::Blend { .. },
+                    LayerTileCoverage::Path {
+                        draw,
+                        backdrop,
+                        segment_range,
+                    },
+                ) => LayerCoveragePtcl::Path(TileFillPtcl {
                     backdrop,
                     fill_rule: draw.fill_rule,
                     segment_range,
                     brush: draw.brush.clone(),
-                },
-            ));
+                }),
+                (LayerStackEntry::Clip { .. }, LayerTileCoverage::Sdf { draw, sdf }) => {
+                    LayerCoveragePtcl::Sdf(TileSdfPtcl {
+                        sdf: *sdf,
+                        brush: draw.brush.clone(),
+                    })
+                }
+                (
+                    LayerStackEntry::Opacity { .. } | LayerStackEntry::Blend { .. },
+                    LayerTileCoverage::Sdf { .. },
+                ) => return false,
+            };
+            pending.push((*entry, ptcl));
         }
 
-        for (entry, fill) in pending {
-            ptcls.push(match entry {
-                LayerStackEntry::Clip { .. } => TilePtcl::BeginClip(fill),
-                LayerStackEntry::Opacity { opacity, .. } => TilePtcl::BeginOpacity {
-                    opacity: opacity_f32_to_u8(opacity),
-                    fill,
-                },
-                LayerStackEntry::Blend { mode, .. } => TilePtcl::BeginBlend { mode, fill },
+        for (entry, ptcl) in pending {
+            ptcls.push(match (entry, ptcl) {
+                (LayerStackEntry::Clip { .. }, LayerCoveragePtcl::Path(fill)) => {
+                    TilePtcl::BeginClip(fill)
+                }
+                (LayerStackEntry::Clip { .. }, LayerCoveragePtcl::Sdf(sdf)) => {
+                    TilePtcl::BeginSdfClip(sdf)
+                }
+                (LayerStackEntry::Opacity { opacity, .. }, LayerCoveragePtcl::Path(fill)) => {
+                    TilePtcl::BeginOpacity {
+                        opacity: opacity_f32_to_u8(opacity),
+                        fill,
+                    }
+                }
+                (LayerStackEntry::Blend { mode, .. }, LayerCoveragePtcl::Path(fill)) => {
+                    TilePtcl::BeginBlend { mode, fill }
+                }
+                (
+                    LayerStackEntry::Opacity { .. } | LayerStackEntry::Blend { .. },
+                    LayerCoveragePtcl::Sdf(_),
+                ) => unreachable!("opacity and blend layer masks are path-backed"),
             });
             emitted_wrappers.push(entry);
         }
@@ -320,8 +358,17 @@ impl<'a> CoarseCpuPrepared<'a> {
         backdrops: &[i32],
         tile_segment_ranges: &[TileSegmentRange],
         tiles_size: (u32, u32),
-    ) -> Option<(&'b DrawRecord, i32, std::ops::Range<u32>)> {
+    ) -> Option<LayerTileCoverage<'b>> {
         let draw = &draw_records[draw_ix];
+        if let Some(sdf) = &draw.sdf {
+            let bbox = draw.tile_bbox(tiles_size.0, tiles_size.1);
+            return (tile_x >= bbox.x0
+                && tile_x < bbox.x1
+                && tile_y >= bbox.y0
+                && tile_y < bbox.y1)
+                .then_some(LayerTileCoverage::Sdf { draw, sdf });
+        }
+
         let path_id = draw.path_id?;
         let bbox = draw.tile_bbox(tiles_size.0, tiles_size.1);
         if tile_x < bbox.x0 || tile_x >= bbox.x1 || tile_y < bbox.y0 || tile_y >= bbox.y1 {
@@ -348,7 +395,11 @@ impl<'a> CoarseCpuPrepared<'a> {
         if segment_range.start == segment_range.end && backdrop == 0 {
             return None;
         }
-        Some((draw, backdrop, segment_range.start..segment_range.end))
+        Some(LayerTileCoverage::Path {
+            draw,
+            backdrop,
+            segment_range: segment_range.start..segment_range.end,
+        })
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -384,7 +435,11 @@ impl<'a> CoarseCpuPrepared<'a> {
             return None;
         }
 
-        let (draw, backdrop, segment_range) = Self::layer_tile_coverage(
+        let LayerTileCoverage::Path {
+            draw,
+            backdrop,
+            segment_range,
+        } = Self::layer_tile_coverage(
             draw_ix,
             tile_x,
             tile_y,
@@ -393,7 +448,10 @@ impl<'a> CoarseCpuPrepared<'a> {
             backdrops,
             tile_segment_ranges,
             tiles_size,
-        )?;
+        )?
+        else {
+            return None;
+        };
         Some(DrawTileCoverage::Path {
             draw,
             backdrop,
@@ -406,6 +464,23 @@ impl<'a> CoarseCpuPrepared<'a> {
 struct TileCoarseOutput {
     ptcls: Vec<TilePtcl>,
     glyphs: Vec<u32>,
+}
+
+enum LayerCoveragePtcl {
+    Path(TileFillPtcl),
+    Sdf(TileSdfPtcl),
+}
+
+enum LayerTileCoverage<'a> {
+    Path {
+        draw: &'a DrawRecord,
+        backdrop: i32,
+        segment_range: std::ops::Range<u32>,
+    },
+    Sdf {
+        draw: &'a DrawRecord,
+        sdf: &'a crate::shared::sdf::Sdf,
+    },
 }
 
 enum DrawTileCoverage<'a> {

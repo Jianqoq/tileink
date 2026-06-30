@@ -262,6 +262,30 @@ fn sdf_rounded_rect_clip_masks_corners() {
 }
 
 #[test]
+fn outer_sdf_clip_applies_to_filter_output_analytically() {
+    let mut scene = Scene::new(16, 16);
+    scene.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, 8.0, 16.0), Radius::ZERO);
+    scene.push_filter_layer(
+        Filter::Invert(1.0),
+        Region::rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::ZERO),
+    );
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(255, 0, 0),
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+    scene.pop_layer();
+
+    let mut renderer = Renderer::new(16, 16, Color::TRANSPARENT);
+    renderer.render(&scene);
+
+    assert_eq!(renderer.image().rgba8_at(4, 8), [0, 255, 255, 255]);
+    assert_eq!(renderer.image().rgba8_at(12, 8), [0, 0, 0, 0]);
+}
+
+#[test]
 fn sdf_rect_stroke_renders_ring_without_filling_center() {
     let mut scene = Scene::new(64, 64);
     scene.push_rect_stroke(

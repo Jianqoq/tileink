@@ -36,6 +36,7 @@ pub(crate) const CUBE_PTCL_END_BLEND: u32 = 8;
 pub(crate) const CUBE_PTCL_SDF: u32 = 9;
 pub(crate) const CUBE_PTCL_GLYPH: u32 = 10;
 pub(crate) const CUBE_PTCL_PATH_GLYPH: u32 = 11;
+pub(crate) const CUBE_PTCL_BEGIN_SDF_CLIP: u32 = 12;
 
 pub(crate) const CUBE_GLYPH_MASK: u32 = 0;
 pub(crate) const CUBE_GLYPH_COLOR: u32 = 1;
@@ -219,11 +220,14 @@ fn coarse_ptcl_capacity(scene: &Scene, width_in_tiles: u32, height_in_tiles: u32
         .draw_records
         .iter()
         .filter(|draw| {
-            draw.path_id.is_some()
+            let clip_needs_end =
+                matches!(draw.tag, DrawTag::Clip) && (draw.path_id.is_some() || draw.sdf.is_some());
+            let path_group_needs_end = draw.path_id.is_some()
                 && matches!(
                     draw.tag,
-                    DrawTag::Clip | DrawTag::Opacity | DrawTag::Blend | DrawTag::Isolate
-                )
+                    DrawTag::Opacity | DrawTag::Blend | DrawTag::Isolate
+                );
+            clip_needs_end || path_group_needs_end
         })
         .map(|draw| draw.tile_bbox(width_in_tiles, height_in_tiles).tile_count() as usize)
         .sum::<usize>();

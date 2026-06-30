@@ -8,9 +8,9 @@ use peniko::{
 use super::{CubeBufferLengths, CubeRenderTarget, WgpuRenderer};
 use crate::cubecl::pipelines::coarse::{CoarseBatch, TILE_WORKGROUP_SIZE};
 use crate::cubecl::types::{
-    CUBE_PTCL_BEGIN_BLEND, CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_BEGIN_OPACITY, CUBE_PTCL_END,
-    CUBE_PTCL_END_BLEND, CUBE_PTCL_END_CLIP, CUBE_PTCL_END_OPACITY, CUBE_PTCL_FILL, CUBE_PTCL_SDF,
-    CUMSUM_CHUNK_SIZE,
+    CUBE_PTCL_BEGIN_BLEND, CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_BEGIN_OPACITY, CUBE_PTCL_BEGIN_SDF_CLIP,
+    CUBE_PTCL_END, CUBE_PTCL_END_BLEND, CUBE_PTCL_END_CLIP, CUBE_PTCL_END_OPACITY, CUBE_PTCL_FILL,
+    CUBE_PTCL_SDF, CUMSUM_CHUNK_SIZE,
 };
 use crate::render::Render;
 use crate::shared::bounds::Bounds;

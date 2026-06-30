@@ -5,8 +5,9 @@ use crate::{
         buffers::RasterBuffers,
         computes::blend::{composite_blend_masked_at, composite_src_over_masked_at},
         mask::{
-            apply_opacity_to_mask, copy_image_region, intersect_alpha_mask, rasterize_layer_mask,
-            rasterize_region_mask, rasterize_sdf_mask, region_bounds, svg_mask_coverage,
+            apply_opacity_to_mask, copy_image_region, intersect_alpha_mask,
+            intersect_sdf_alpha_mask, rasterize_layer_mask, rasterize_region_mask, region_bounds,
+            svg_mask_coverage,
         },
         offscreen::OffscreenSurface,
         pipelines::runner::{run_cumsum, run_scan},
@@ -126,31 +127,7 @@ impl Renderer {
                 text_data,
                 text_context,
             ),
-            Layer::ClipSdf { sdf, bounds } => {
-                if bounds.intersect(target_bounds).is_empty() {
-                    return;
-                }
-                let image = self.render_children_to_image(
-                    scene,
-                    plan,
-                    offscreen.children,
-                    target_bounds,
-                    buffers,
-                    text_data,
-                    text_context,
-                );
-
-                let mut mask = rasterize_sdf_mask(sdf, *bounds, target_bounds);
-                self.apply_outer_clip_stack_to_mask(
-                    scene,
-                    plan,
-                    offscreen.outer_stack,
-                    target_bounds,
-                    &mut mask,
-                    buffers,
-                );
-                composite_src_over_masked_at(target, &image, &mask, target_bounds, target_bounds);
-            }
+            Layer::ClipSdf { .. } => unreachable!("ClipSdf layers are fused into analytic clips"),
             Layer::Filter {
                 filter,
                 sample_region,
@@ -465,8 +442,22 @@ impl Renderer {
             let LayerStackEntry::Clip { draw } = *entry else {
                 continue;
             };
-            let clip = rasterize_layer_mask(scene, draw as usize, bounds, buffers);
-            intersect_alpha_mask(mask, &clip);
+            let draw_ix = draw as usize;
+            let draw = &scene.draw_records[draw_ix];
+            if let Some(sdf) = &draw.sdf {
+                // Offscreen results already need a destination mask; apply the
+                // SDF analytically to that mask instead of allocating a clip mask.
+                let sdf_bounds = Bounds::new(
+                    draw.pixel_bounds.x0,
+                    draw.pixel_bounds.y0,
+                    draw.pixel_bounds.x1,
+                    draw.pixel_bounds.y1,
+                );
+                intersect_sdf_alpha_mask(mask, sdf, sdf_bounds, bounds);
+            } else {
+                let clip = rasterize_layer_mask(scene, draw_ix, bounds, buffers);
+                intersect_alpha_mask(mask, &clip);
+            }
         }
     }
 }

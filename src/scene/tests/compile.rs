@@ -207,7 +207,7 @@ fn compile_keeps_opacity_group_alive_across_nested_batches() {
 }
 
 #[test]
-fn compile_keeps_sdf_clip_as_sdf_offscreen_layer() {
+fn compile_fuses_sdf_clip_into_layer_stack() {
     let mut scene = test_scene();
     scene.push_clip_sdf_rect_layer(Rect::new(4.0, 4.0, 32.0, 32.0), Radius::all(6.0));
     scene.push_path(
@@ -220,37 +220,35 @@ fn compile_keeps_sdf_clip_as_sdf_offscreen_layer() {
     scene.pop_layer();
 
     let plan = scene.compile(ROOT_COMMAND_LIST_ID);
-    assert_eq!(scene.draw_records.len(), 1);
-    assert_eq!(plan.ops.len(), 1, "{:#?}", plan.ops);
+    assert_eq!(scene.draw_records.len(), 2);
+    match &scene.draw_records[0].sdf {
+        Some(Sdf::Rect(rect)) => assert_eq!(rect.radius.top_left, 6.0),
+        sdf => panic!("expected hidden SDF clip draw, got {sdf:#?}"),
+    }
+    assert_eq!(plan.ops.len(), 3, "{:#?}", plan.ops);
     match &plan.ops[0] {
-        ExecOp::OffscreenLayer {
-            draw,
-            layer:
-                Layer::ClipSdf {
-                    sdf: Sdf::Rect(rect),
-                    bounds,
-                },
-            outer_stack,
-            children,
-        } => {
-            assert_eq!(*draw, 0);
-            assert_eq!(rect.radius.top_left, 6.0);
-            assert_eq!(*bounds, Bounds::new(4, 4, 32, 32));
-            assert!(outer_stack.is_empty());
-            match children.as_slice() {
-                [ExecOp::DrawBatch { draws, layer_stack }] => {
-                    assert_eq!(draws.clone(), 0..1);
-                    assert!(layer_stack.is_empty());
-                }
-                ops => panic!("expected one child draw batch, got {ops:#?}"),
-            }
+        ExecOp::BeginClip => {}
+        op => panic!("expected BeginClip, got {op:#?}"),
+    }
+    match &plan.ops[1] {
+        ExecOp::DrawBatch { draws, layer_stack } => {
+            assert_eq!(draws.clone(), 1..2);
+            assert_layer_stack(
+                &plan,
+                layer_stack.clone(),
+                &[LayerStackEntry::Clip { draw: 0 }],
+            );
         }
-        op => panic!("expected ClipSdf offscreen layer, got {op:#?}"),
+        op => panic!("expected clipped DrawBatch, got {op:#?}"),
+    }
+    match &plan.ops[2] {
+        ExecOp::EndClip => {}
+        op => panic!("expected EndClip, got {op:#?}"),
     }
 }
 
 #[test]
-fn compile_keeps_generic_sdf_clip_without_path_storage() {
+fn compile_fuses_generic_sdf_clip_without_path_storage() {
     let mut scene = test_scene();
     scene.push_clip_sdf_layer(Sdf::Line(SdfLine::new(
         Point::new(8.0, 24.0),
@@ -269,19 +267,25 @@ fn compile_keeps_generic_sdf_clip_without_path_storage() {
     let plan = scene.compile(ROOT_COMMAND_LIST_ID);
     assert!(scene.path_records.is_empty());
     assert!(scene.bd_records.is_empty());
-    match &plan.ops[0] {
-        ExecOp::OffscreenLayer {
-            layer:
-                Layer::ClipSdf {
-                    sdf: Sdf::Line(line),
-                    bounds,
-                },
-            ..
-        } => {
-            assert_eq!(line.width, 6.0);
-            assert_eq!(*bounds, Bounds::new(5, 21, 43, 27));
+    match &scene.draw_records[0].sdf {
+        Some(Sdf::Line(line)) => assert_eq!(line.width, 6.0),
+        sdf => panic!("expected hidden line SDF clip draw, got {sdf:#?}"),
+    }
+    assert_eq!(scene.draw_records[0].pixel_bounds.x0, 5);
+    assert_eq!(scene.draw_records[0].pixel_bounds.y0, 21);
+    assert_eq!(scene.draw_records[0].pixel_bounds.x1, 43);
+    assert_eq!(scene.draw_records[0].pixel_bounds.y1, 27);
+    assert_eq!(plan.ops.len(), 3, "{:#?}", plan.ops);
+    match &plan.ops[1] {
+        ExecOp::DrawBatch { draws, layer_stack } => {
+            assert_eq!(draws.clone(), 1..2);
+            assert_layer_stack(
+                &plan,
+                layer_stack.clone(),
+                &[LayerStackEntry::Clip { draw: 0 }],
+            );
         }
-        op => panic!("expected generic SDF clip layer, got {op:#?}"),
+        op => panic!("expected clipped DrawBatch, got {op:#?}"),
     }
 }
 

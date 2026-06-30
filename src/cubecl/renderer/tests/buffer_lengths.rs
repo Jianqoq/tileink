@@ -71,3 +71,24 @@ fn buffer_lengths_count_sdf_draw_tiles_without_path_storage() {
     assert_eq!(lengths.draw_count, 1);
     assert_eq!(lengths.coarse_ptcl_capacity, 18);
 }
+
+#[test]
+fn buffer_lengths_count_sdf_clip_end_particles_without_path_storage() {
+    let mut scene = Scene::new(64, 48);
+    scene.push_clip_sdf_rect_layer(Rect::new(8.0, 8.0, 40.0, 32.0), crate::Radius::ZERO);
+    scene.push_rect(
+        Rect::new(8.0, 8.0, 40.0, 32.0),
+        crate::Radius::ZERO,
+        Color::BLACK,
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+
+    let lengths = CubeBufferLengths::from_scene(&scene);
+    assert_eq!(lengths.line_count, 0);
+    assert_eq!(lengths.path_count, 0);
+    assert_eq!(lengths.backdrop_record_count, 0);
+    assert_eq!(lengths.segment_capacity, 0);
+    assert_eq!(lengths.draw_count, 2);
+    assert_eq!(lengths.coarse_ptcl_capacity, 30);
+}

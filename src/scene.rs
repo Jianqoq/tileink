@@ -358,11 +358,16 @@ impl Scene {
     /// SDF bounds, so future SDF primitives automatically work as clip layers.
     pub fn push_clip_sdf_layer(&mut self, sdf: Sdf) {
         self.ensure_command_root();
-        let layer = Layer::ClipSdf {
-            bounds: sdf.bounds(),
+        let bounds = sdf.bounds();
+        let draw = self.push_sdf_record(
             sdf,
-        };
-        self.push_layer_command(0, layer, LayerKind::ClipSdf);
+            Brush::Solid(Color::TRANSPARENT),
+            FillRule::NonZero,
+            DrawTag::Clip,
+            false,
+        );
+        let layer = Layer::ClipSdf { bounds, sdf };
+        self.push_layer_command(draw, layer, LayerKind::ClipSdf);
     }
 
     /// Starts an isolated source-over group.
@@ -1017,6 +1022,17 @@ impl Scene {
     }
 
     fn push_sdf_draw(&mut self, sdf: Sdf, brush: impl Into<Brush>, rule: FillRule) -> usize {
+        self.push_sdf_record(sdf, brush.into(), rule, DrawTag::Brush, true)
+    }
+
+    fn push_sdf_record(
+        &mut self,
+        sdf: Sdf,
+        brush: Brush,
+        rule: FillRule,
+        tag: DrawTag,
+        emit_draw_command: bool,
+    ) -> usize {
         self.ensure_command_root();
         let bounds = sdf.bounds();
         let draw_ix = self.draw_records.len();
@@ -1024,8 +1040,8 @@ impl Scene {
             path_id: None,
             glyph_run_id: None,
             sdf: Some(sdf),
-            tag: DrawTag::Brush,
-            brush: brush.into(),
+            tag,
+            brush,
             fill_rule: rule,
             pixel_bounds: PixelBounds {
                 x0: bounds.x0,
@@ -1035,9 +1051,11 @@ impl Scene {
             },
             solid_rect: false,
         });
-        self.current_command_list_mut()
-            .commands
-            .push(Command::Draw(draw_ix));
+        if emit_draw_command {
+            self.current_command_list_mut()
+                .commands
+                .push(Command::Draw(draw_ix));
+        }
         draw_ix
     }
 
@@ -1238,7 +1256,10 @@ impl Scene {
                     flush_batch(&mut pending_batch, ops, plan, layer_stack);
                     if self.can_fuse(layer, *children) {
                         match layer {
-                            Layer::Clip => {
+                            Layer::Clip | Layer::ClipSdf { .. } => {
+                                // SDF clips stay analytic by using their hidden
+                                // draw record as the same layer-stack entry as
+                                // path clips, instead of materializing a mask.
                                 ops.push(ExecOp::BeginClip);
                                 layer_stack.push(LayerStackEntry::Clip { draw: *draw as u32 });
                                 self.compile_into(*children, ops, plan, layer_stack);
@@ -1329,6 +1350,7 @@ impl Scene {
     fn can_fuse(&self, layer: &Layer, children: CommandListId) -> bool {
         match layer {
             Layer::Clip => true,
+            Layer::ClipSdf { .. } => true,
             // Group opacity and blend must wrap the composited child subtree.
             // If a child opens its own offscreen layer, keeping the group fused
             // would apply it to separate fragments before they are combined.
@@ -1346,8 +1368,10 @@ impl Scene {
                 Command::Layer {
                     layer, children, ..
                 } => {
-                    !matches!(layer, Layer::Clip | Layer::Opacity(_) | Layer::Blend(_))
-                        || self.command_list_contains_offscreen(*children)
+                    !matches!(
+                        layer,
+                        Layer::Clip | Layer::ClipSdf { .. } | Layer::Opacity(_) | Layer::Blend(_)
+                    ) || self.command_list_contains_offscreen(*children)
                 }
                 Command::MaskLayer { .. } => true,
             })
