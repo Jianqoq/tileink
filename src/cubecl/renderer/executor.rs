@@ -20,6 +20,7 @@ use crate::{
         },
         offscreen::{local_filter, local_offscreen_scene},
         pixel::opacity_f32_to_u8,
+        sdf::Sdf,
     },
 };
 
@@ -37,6 +38,7 @@ use crate::cubecl::{
         scan::ScanPipeline,
     },
     renderer::{CoarseBuffers, ScanBuffers, SceneBuffers},
+    sdf::encode_sdf,
     types::CubeBufferLengths,
 };
 
@@ -2077,6 +2079,19 @@ impl<R: Runtime> Renderer<R> {
             self.size,
             bounds,
             draw,
+        );
+    }
+
+    pub(crate) fn build_sdf_mask(&mut self, target: CubeRenderTarget, sdf: Sdf, bounds: Bounds) {
+        let CubeRenderTarget::Scratch(target_ix) = target else {
+            panic!("CubeCL SDF masks must be rendered into preallocated scratch");
+        };
+        FilterPipeline::rasterize_sdf_mask(
+            &self.client,
+            &mut self.scratch[target_ix],
+            self.size,
+            bounds,
+            encode_sdf(sdf),
         );
     }
 

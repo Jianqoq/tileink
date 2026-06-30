@@ -65,11 +65,8 @@ pub fn scene(context: &mut TextContext) -> Scene {
         &mut scene,
         context,
         "Hamburgefonts 12px",
-        12.0,
-        point(28.0, 124.0),
         Color::BLACK,
-        TextAttrs::new(),
-        Affine::IDENTITY,
+        PathTextOptions::new(12.0, point(28.0, 124.0)),
     );
     push_label(
         &mut scene,
@@ -82,11 +79,9 @@ pub fn scene(context: &mut TextContext) -> Scene {
         &mut scene,
         context,
         "Hamburgefonts 12px",
-        12.0,
-        point(28.0, 166.0),
         Color::BLACK,
-        TextAttrs::new().cache_key_flags(TextCacheKeyFlags::DISABLE_HINTING),
-        Affine::IDENTITY,
+        PathTextOptions::new(12.0, point(28.0, 166.0))
+            .with_attrs(TextAttrs::new().cache_key_flags(TextCacheKeyFlags::DISABLE_HINTING)),
     );
     push_label(
         &mut scene,
@@ -102,22 +97,26 @@ pub fn scene(context: &mut TextContext) -> Scene {
         &mut scene,
         context,
         "VECTOR PATH",
-        62.0,
-        point(28.0, 252.0),
         &gradient,
-        TextAttrs::new().weight(TextWeight::BOLD),
-        Affine::rotate_about(-5.0_f64.to_radians(), point_tuple(330.0, 226.0)),
+        PathTextOptions::new(62.0, point(28.0, 252.0))
+            .with_attrs(TextAttrs::new().weight(TextWeight::BOLD))
+            .with_transform(Affine::rotate_about(
+                -5.0_f64.to_radians(),
+                point_tuple(330.0, 226.0),
+            )),
     );
 
     push_path_text(
         &mut scene,
         context,
         "Affine transform + gradient brush",
-        25.0,
-        point(30.0, 362.0),
         Color::from_rgb8(15, 118, 110),
-        TextAttrs::new().weight(TextWeight::SEMIBOLD),
-        Affine::rotate_about(4.0_f64.to_radians(), point_tuple(240.0, 352.0)),
+        PathTextOptions::new(25.0, point(30.0, 362.0))
+            .with_attrs(TextAttrs::new().weight(TextWeight::SEMIBOLD))
+            .with_transform(Affine::rotate_about(
+                4.0_f64.to_radians(),
+                point_tuple(240.0, 352.0),
+            )),
     );
 
     scene
@@ -148,16 +147,49 @@ fn push_bitmap(
     scene.push_text_layout(&layout, origin, color);
 }
 
+struct PathTextOptions<'a> {
+    font_size: f32,
+    origin: Point,
+    attrs: TextAttrs<'a>,
+    transform: Affine,
+}
+
+impl<'a> PathTextOptions<'a> {
+    fn new(font_size: f32, origin: Point) -> Self {
+        Self {
+            font_size,
+            origin,
+            attrs: TextAttrs::new(),
+            transform: Affine::IDENTITY,
+        }
+    }
+
+    fn with_attrs(mut self, attrs: TextAttrs<'a>) -> Self {
+        self.attrs = attrs;
+        self
+    }
+
+    fn with_transform(mut self, transform: Affine) -> Self {
+        self.transform = transform;
+        self
+    }
+}
+
 fn push_path_text(
     scene: &mut Scene,
     context: &mut TextContext,
     text: &str,
-    font_size: f32,
-    origin: Point,
     brush: impl Into<tileink::Brush>,
-    attrs: TextAttrs<'_>,
-    transform: Affine,
+    options: PathTextOptions<'_>,
 ) {
-    let layout = context.layout(TextLayoutOptions::new(text, font_size).with_attrs(attrs));
-    scene.push_text_layout_as_path(context, &layout, origin, brush, transform, 0.1);
+    let layout =
+        context.layout(TextLayoutOptions::new(text, options.font_size).with_attrs(options.attrs));
+    scene.push_text_layout_as_path(
+        context,
+        &layout,
+        options.origin,
+        brush,
+        options.transform,
+        0.1,
+    );
 }

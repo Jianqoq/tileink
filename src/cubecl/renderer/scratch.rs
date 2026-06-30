@@ -91,7 +91,7 @@ fn max_scratch_for_ops(ops: &[ExecOp], held: usize) -> usize {
                 children,
                 ..
             } => match layer {
-                Layer::Isolate | Layer::Opacity(_) | Layer::Blend(_) => {
+                Layer::Isolate | Layer::Opacity(_) | Layer::Blend(_) | Layer::ClipSdf { .. } => {
                     let source_held = held + 1;
                     max_count = max_count.max(source_held + 1);
                     max_count = max_count.max(max_scratch_for_ops(children, source_held));
@@ -163,4 +163,30 @@ fn graph_scratch_extra(primitives: &[FilterPrimitive]) -> usize {
         .max()
         .unwrap_or(0);
     primitives.len() + usize::from(source_alpha) + unary_temp
+}
+
+#[cfg(test)]
+mod tests {
+    use peniko::{Color, kurbo::Rect};
+
+    use crate::{FillRule, Radius, Scene, shared::execution::ROOT_COMMAND_LIST_ID};
+
+    use super::required_scratch_count;
+
+    #[test]
+    fn sdf_clip_layer_requires_source_and_mask_scratch() {
+        let mut scene = Scene::new(32, 32);
+        scene.push_clip_sdf_rect_layer(Rect::new(4.0, 4.0, 28.0, 28.0), Radius::all(4.0));
+        scene.push_rect(
+            Rect::new(0.0, 0.0, 32.0, 32.0),
+            Radius::ZERO,
+            Color::WHITE,
+            FillRule::NonZero,
+        );
+        scene.pop_layer();
+
+        let plan = scene.compile(ROOT_COMMAND_LIST_ID);
+
+        assert_eq!(required_scratch_count(&plan), 2);
+    }
 }

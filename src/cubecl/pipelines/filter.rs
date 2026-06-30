@@ -9,9 +9,13 @@ use crate::{
             src_over_premul_u8,
         },
         renderer::{ScanBuffers, SceneBuffers},
+        sdf::EncodedSdf,
         types::{
             CUBE_DRAW_BLEND, CUBE_DRAW_BRUSH, CUBE_DRAW_CLIP, CUBE_DRAW_ISOLATE, CUBE_DRAW_OPACITY,
             CUBE_DRAW_PATH_GLYPH, CUBE_LAYER_BLEND, CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY,
+            CUBE_SDF_ARC, CUBE_SDF_ARC_SHADOW, CUBE_SDF_CANDLESTICK, CUBE_SDF_CIRCLE,
+            CUBE_SDF_CIRCLE_SHADOW, CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_LINE, CUBE_SDF_LINE_SHADOW,
+            CUBE_SDF_RECT, CUBE_SDF_RECT_SHADOW, CUBE_SDF_RECT_STROKE,
         },
     },
     shared::{
@@ -1033,6 +1037,46 @@ impl FilterPipeline {
             radius.1,
             radius.2,
             radius.3,
+            unsafe { target.arg() },
+        );
+    }
+
+    pub(crate) fn rasterize_sdf_mask<R: Runtime>(
+        client: &ComputeClient<R>,
+        target: &mut CubeBuffer<u32>,
+        size: (u32, u32),
+        bounds: Bounds,
+        sdf: EncodedSdf,
+    ) {
+        let Some(region) = FilterRegion::new(size, bounds) else {
+            return;
+        };
+        kernels::filter_sdf_mask_region::launch::<R>(
+            client,
+            cube_count(region.pixel_count),
+            CubeDim::new_1d(FILTER_WORKGROUP_SIZE),
+            region.pixel_count,
+            region.width,
+            region.x0,
+            region.y0,
+            size.0,
+            sdf.kind,
+            sdf.coords[0],
+            sdf.coords[1],
+            sdf.coords[2],
+            sdf.coords[3],
+            sdf.radii[0],
+            sdf.radii[1],
+            sdf.radii[2],
+            sdf.radii[3],
+            sdf.stroke[0],
+            sdf.stroke[1],
+            sdf.stroke[2],
+            sdf.stroke[3],
+            sdf.shadow[0],
+            sdf.shadow[1],
+            sdf.shadow[2],
+            sdf.shadow[3],
             unsafe { target.arg() },
         );
     }

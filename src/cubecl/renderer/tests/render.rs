@@ -222,6 +222,32 @@ fn render_wgpu_matches_cpu_for_sdf_shape_shadows_when_enabled() {
 }
 
 #[test]
+fn render_wgpu_matches_cpu_for_sdf_clip_layer_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(96, 72);
+    scene.push_clip_sdf_rect_layer(Rect::new(16.0, 12.0, 80.0, 60.0), Radius::all(14.0));
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 96.0, 72.0),
+        Radius::ZERO,
+        Color::from_rgb8(34, 197, 94),
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+
+    let mut cpu = CpuRenderer::new(96, 72, Color::TRANSPARENT);
+    cpu.render(&scene);
+    let mut wgpu = WgpuRenderer::new_default_device(96, 72, Color::TRANSPARENT);
+    wgpu.render(&scene);
+
+    assert_eq!(wgpu.image().rgba8_at(8, 8), [0, 0, 0, 0]);
+    assert_eq!(wgpu.image().rgba8_at(48, 36), [34, 197, 94, 255]);
+    assert_images_close(cpu.image(), &wgpu.image(), 1);
+}
+
+#[test]
 fn render_wgpu_debug_capture_reads_back_scan_and_final_image_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;

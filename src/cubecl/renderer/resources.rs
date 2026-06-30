@@ -8,7 +8,6 @@ use crate::{
         image::rgba8_pack,
         line::Line,
         pixel::{mul_div255, premul_f32_to_u32},
-        sdf::Sdf,
     },
     text::{AtlasSignature, PreparedGlyphContent, PreparedTextData, TextCompositeMode},
 };
@@ -16,15 +15,13 @@ use ::cubecl::prelude::Runtime;
 
 use crate::cubecl::{
     buffer::CubeBuffer,
+    sdf::{EncodedSdf, encode_sdf},
     types::{
         CUBE_DRAW_BLEND, CUBE_DRAW_BRUSH, CUBE_DRAW_CLIP, CUBE_DRAW_ISOLATE, CUBE_DRAW_OPACITY,
         CUBE_DRAW_PATH_GLYPH, CUBE_GLYPH_COLOR, CUBE_GLYPH_LINEAR_COLOR, CUBE_GLYPH_LINEAR_MASK,
         CUBE_GLYPH_LINEAR_SUBPIXEL_MASK, CUBE_GLYPH_MASK, CUBE_GLYPH_SUBPIXEL_MASK,
-        CUBE_LAYER_BLEND, CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY, CUBE_SDF_ARC, CUBE_SDF_ARC_SHADOW,
-        CUBE_SDF_CANDLESTICK, CUBE_SDF_CIRCLE, CUBE_SDF_CIRCLE_SHADOW, CUBE_SDF_CIRCLE_STROKE,
-        CUBE_SDF_LINE, CUBE_SDF_LINE_SHADOW, CUBE_SDF_NONE, CUBE_SDF_RECT, CUBE_SDF_RECT_SHADOW,
-        CUBE_SDF_RECT_STROKE, CubeBufferLengths, CubeCumsumPlan, CubeScanChunk, CubeScanChunkRange,
-        build_cumsum_plan_into, build_scan_chunks_into,
+        CUBE_LAYER_BLEND, CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY, CubeBufferLengths, CubeCumsumPlan,
+        CubeScanChunk, CubeScanChunkRange, build_cumsum_plan_into, build_scan_chunks_into,
     },
 };
 
@@ -169,194 +166,8 @@ impl DrawSdfUpload {
     fn refill(&mut self, draws: &[DrawRecord]) {
         self.clear_and_reserve(draws.len());
         for draw in draws {
-            match draw.sdf {
-                Some(Sdf::Rect(rect)) => {
-                    let (x0, y0, x1, y1) = rect.axis_bounds();
-                    self.push(
-                        CUBE_SDF_RECT,
-                        [x0 as f32, y0 as f32, x1 as f32, y1 as f32],
-                        [
-                            rect.radius.top_left,
-                            rect.radius.top_right,
-                            rect.radius.bottom_left,
-                            rect.radius.bottom_right,
-                        ],
-                        [0.0; 4],
-                        [0.0; 4],
-                    );
-                }
-                Some(Sdf::RectStroke(stroke)) => {
-                    let (x0, y0, x1, y1) = stroke.rect.axis_bounds();
-                    let half = stroke.widths.half();
-                    self.push(
-                        CUBE_SDF_RECT_STROKE,
-                        [x0 as f32, y0 as f32, x1 as f32, y1 as f32],
-                        [
-                            stroke.rect.radius.top_left,
-                            stroke.rect.radius.top_right,
-                            stroke.rect.radius.bottom_left,
-                            stroke.rect.radius.bottom_right,
-                        ],
-                        [half.top, half.right, half.bottom, half.left],
-                        [0.0; 4],
-                    );
-                }
-                Some(Sdf::RectShadow(shadow)) => {
-                    let (x0, y0, x1, y1) = shadow.rect.axis_bounds();
-                    self.push(
-                        CUBE_SDF_RECT_SHADOW,
-                        [x0 as f32, y0 as f32, x1 as f32, y1 as f32],
-                        [
-                            shadow.rect.radius.top_left,
-                            shadow.rect.radius.top_right,
-                            shadow.rect.radius.bottom_left,
-                            shadow.rect.radius.bottom_right,
-                        ],
-                        [0.0; 4],
-                        [
-                            shadow.options.offset_x,
-                            shadow.options.offset_y,
-                            shadow.options.expand,
-                            shadow.options.intensity,
-                        ],
-                    );
-                }
-                Some(Sdf::Circle(circle)) => {
-                    self.push(
-                        CUBE_SDF_CIRCLE,
-                        [
-                            circle.center.x as f32,
-                            circle.center.y as f32,
-                            circle.radius,
-                            0.0,
-                        ],
-                        [0.0; 4],
-                        [0.0; 4],
-                        [0.0; 4],
-                    );
-                }
-                Some(Sdf::CircleStroke(stroke)) => {
-                    self.push(
-                        CUBE_SDF_CIRCLE_STROKE,
-                        [
-                            stroke.circle.center.x as f32,
-                            stroke.circle.center.y as f32,
-                            stroke.circle.radius,
-                            0.0,
-                        ],
-                        [0.0; 4],
-                        [stroke.half_width; 4],
-                        [0.0; 4],
-                    );
-                }
-                Some(Sdf::CircleShadow(shadow)) => {
-                    self.push(
-                        CUBE_SDF_CIRCLE_SHADOW,
-                        [
-                            shadow.circle.center.x as f32,
-                            shadow.circle.center.y as f32,
-                            shadow.circle.radius,
-                            0.0,
-                        ],
-                        [0.0; 4],
-                        [0.0; 4],
-                        [
-                            shadow.options.offset_x,
-                            shadow.options.offset_y,
-                            shadow.options.expand,
-                            shadow.options.intensity,
-                        ],
-                    );
-                }
-                Some(Sdf::Arc(arc)) => {
-                    self.push(
-                        CUBE_SDF_ARC,
-                        [
-                            arc.center.x as f32,
-                            arc.center.y as f32,
-                            arc.radius,
-                            arc.width,
-                        ],
-                        [arc.start_angle, arc.sweep_angle, arc.cap_value(), 0.0],
-                        [0.0; 4],
-                        [0.0; 4],
-                    );
-                }
-                Some(Sdf::ArcShadow(shadow)) => {
-                    self.push(
-                        CUBE_SDF_ARC_SHADOW,
-                        [
-                            shadow.arc.center.x as f32,
-                            shadow.arc.center.y as f32,
-                            shadow.arc.radius,
-                            shadow.arc.width,
-                        ],
-                        [
-                            shadow.arc.start_angle,
-                            shadow.arc.sweep_angle,
-                            shadow.arc.cap_value(),
-                            0.0,
-                        ],
-                        [0.0; 4],
-                        [
-                            shadow.options.offset_x,
-                            shadow.options.offset_y,
-                            shadow.options.expand,
-                            shadow.options.intensity,
-                        ],
-                    );
-                }
-                Some(Sdf::CandleStick(candle)) => {
-                    self.push(
-                        CUBE_SDF_CANDLESTICK,
-                        [
-                            candle.center_x,
-                            candle.high_y,
-                            candle.low_y,
-                            candle.body_top_y,
-                        ],
-                        [candle.body_bottom_y, candle.body_width as f32, 0.0, 0.0],
-                        [0.0; 4],
-                        [0.0; 4],
-                    );
-                }
-                Some(Sdf::Line(line)) => {
-                    self.push(
-                        CUBE_SDF_LINE,
-                        [
-                            line.start.x as f32,
-                            line.start.y as f32,
-                            line.end.x as f32,
-                            line.end.y as f32,
-                        ],
-                        [line.width, line.cap_value(), 0.0, 0.0],
-                        [0.0; 4],
-                        [0.0; 4],
-                    );
-                }
-                Some(Sdf::LineShadow(shadow)) => {
-                    self.push(
-                        CUBE_SDF_LINE_SHADOW,
-                        [
-                            shadow.line.start.x as f32,
-                            shadow.line.start.y as f32,
-                            shadow.line.end.x as f32,
-                            shadow.line.end.y as f32,
-                        ],
-                        [shadow.line.width, shadow.line.cap_value(), 0.0, 0.0],
-                        [0.0; 4],
-                        [
-                            shadow.options.offset_x,
-                            shadow.options.offset_y,
-                            shadow.options.expand,
-                            shadow.options.intensity,
-                        ],
-                    );
-                }
-                None => {
-                    self.push(CUBE_SDF_NONE, [0.0; 4], [0.0; 4], [0.0; 4], [0.0; 4]);
-                }
-            }
+            let sdf = draw.sdf.map(encode_sdf).unwrap_or(EncodedSdf::NONE);
+            self.push(sdf.kind, sdf.coords, sdf.radii, sdf.stroke, sdf.shadow);
         }
     }
 
