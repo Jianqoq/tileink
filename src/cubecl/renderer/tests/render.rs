@@ -18,8 +18,6 @@ fn render_wgpu_records_profile_when_enabled() {
         .map(|entry| entry.name)
         .collect::<Vec<_>>();
 
-    assert!(profile.wall_time() > std::time::Duration::ZERO);
-    assert!(profile.attributed_time() > std::time::Duration::ZERO);
     assert!(profile.kernel_time() > std::time::Duration::ZERO);
     assert!(profile.memory_used_bytes() > 0);
     assert!(profile.memory_allocated_bytes() >= profile.memory_used_bytes());
@@ -93,6 +91,9 @@ fn render_wgpu_records_profile_when_enabled() {
     assert_eq!(report.iterations(), 1);
     let report = report.to_string();
     assert!(report.contains("kernel us"));
+    assert!(report.contains("kernel %"));
+    assert!(!report.contains("wall us"));
+    assert!(!report.contains("event %"));
     assert!(report.contains("memory"));
     assert!(report.contains("gpu"));
 }

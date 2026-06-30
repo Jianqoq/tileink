@@ -1,23 +1,20 @@
 use ::cubecl::{client::ComputeClient, prelude::Runtime};
 #[cfg(feature = "profile")]
-use std::{
-    cell::RefCell,
-    fmt,
-    rc::Rc,
-    time::{Duration, Instant},
-};
+use std::{cell::RefCell, fmt, rc::Rc, time::Duration};
 
 #[cfg(feature = "profile")]
 use comfy_table::{Cell, CellAlignment, ContentArrangement, Table, presets::UTF8_FULL_CONDENSED};
 #[cfg(feature = "profile")]
 use cubecl_common::profile::TimingMethod;
 
+/// One profiler event.
+///
+/// Renderer profiles are kernel-only: CPU wall time is not recorded, so
+/// CPU-side scopes use `kernel_duration: None` and appear as labels only.
 #[cfg(feature = "profile")]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RenderProfileEntry {
     pub name: &'static str,
-    /// CPU-observed wall time for the profiled event, including profiling overhead.
-    pub duration: Duration,
     /// GPU timestamp duration for kernel launches. Non-kernel CPU events, and
     /// runtimes without device timestamps, leave this empty.
     pub kernel_duration: Option<Duration>,
@@ -27,13 +24,9 @@ pub struct RenderProfileEntry {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RenderProfileEventSummary {
     pub name: &'static str,
-    /// Aggregated CPU-observed wall time.
-    pub duration: Duration,
     /// Aggregated GPU timestamp duration when available.
     pub kernel_duration: Option<Duration>,
-    pub percent_of_attributed: f64,
     pub percent_of_kernel: f64,
-    pub percent_of_wall: f64,
 }
 
 #[cfg(feature = "profile")]
@@ -76,7 +69,6 @@ pub struct RenderProfileMemoryEntry {
 pub struct RenderProfile {
     entries: Vec<RenderProfileEntry>,
     memory_entries: Vec<RenderProfileMemoryEntry>,
-    wall_time: Duration,
 }
 
 #[cfg(feature = "profile")]
@@ -92,23 +84,6 @@ impl RenderProfile {
     /// or memory owned by the caller's input scene.
     pub fn memory_entries(&self) -> &[RenderProfileMemoryEntry] {
         &self.memory_entries
-    }
-
-    pub fn wall_time(&self) -> Duration {
-        self.wall_time
-    }
-
-    pub fn attributed_time(&self) -> Duration {
-        self.entries
-            .iter()
-            .map(|entry| entry.duration)
-            .sum::<Duration>()
-    }
-
-    pub fn unattributed_time(&self) -> Duration {
-        self.wall_time
-            .checked_sub(self.attributed_time())
-            .unwrap_or(Duration::ZERO)
     }
 
     pub fn kernel_time(&self) -> Duration {
@@ -151,7 +126,6 @@ impl RenderProfile {
     }
 
     pub fn summary(&self) -> Vec<RenderProfileEventSummary> {
-        let attributed = self.attributed_time();
         let kernel = self.kernel_time();
         let mut summaries = Vec::<RenderProfileEventSummary>::new();
         for entry in &self.entries {
@@ -159,27 +133,21 @@ impl RenderProfile {
                 .iter_mut()
                 .find(|summary| summary.name == entry.name)
             {
-                summary.duration += entry.duration;
                 summary.kernel_duration =
                     merge_optional_duration(summary.kernel_duration, entry.kernel_duration);
             } else {
                 summaries.push(RenderProfileEventSummary {
                     name: entry.name,
-                    duration: entry.duration,
                     kernel_duration: entry.kernel_duration,
-                    percent_of_attributed: 0.0,
                     percent_of_kernel: 0.0,
-                    percent_of_wall: 0.0,
                 });
             }
         }
         for summary in &mut summaries {
-            summary.percent_of_attributed = percent(summary.duration, attributed);
             summary.percent_of_kernel = summary
                 .kernel_duration
                 .map(|duration| percent(duration, kernel))
                 .unwrap_or(0.0);
-            summary.percent_of_wall = percent(summary.duration, self.wall_time);
         }
         summaries
     }
@@ -206,7 +174,6 @@ impl RenderProfileReport {
     pub fn push(&mut self, profile: &RenderProfile) {
         self.iterations += 1;
         self.profile.entries.extend_from_slice(profile.entries());
-        self.profile.wall_time += profile.wall_time();
         self.profile.memory_entries = profile.memory_entries().to_vec();
     }
 
@@ -253,10 +220,7 @@ fn format_timing_table(profile: &RenderProfile, iterations: usize) -> String {
     table.set_header(vec![
         Cell::new("event"),
         right_cell("kernel us"),
-        right_cell("wall us"),
         right_cell("kernel %"),
-        right_cell("event %"),
-        right_cell("wall %"),
     ]);
     for summary in profile.summary() {
         table.add_row(vec![
@@ -267,34 +231,15 @@ fn format_timing_table(profile: &RenderProfile, iterations: usize) -> String {
                     .map(|duration| format!("{:.3}", avg_micros(duration, iterations)))
                     .unwrap_or_else(|| "-".to_string()),
             ),
-            right_cell(format!("{:.3}", avg_micros(summary.duration, iterations))),
             right_cell(format!("{:.2}%", summary.percent_of_kernel)),
-            right_cell(format!("{:.2}%", summary.percent_of_attributed)),
-            right_cell(format!("{:.2}%", summary.percent_of_wall)),
         ]);
     }
 
-    let unattributed = profile.unattributed_time();
-    if unattributed > Duration::ZERO {
-        table.add_row(vec![
-            Cell::new("unattributed"),
-            right_cell(""),
-            right_cell(format!("{:.3}", avg_micros(unattributed, iterations))),
-            right_cell(""),
-            right_cell(""),
-            right_cell(format!("{:.2}%", percent(unattributed, profile.wall_time))),
-        ]);
-    }
+    let kernel_time = profile.kernel_time();
     table.add_row(vec![
         Cell::new("total"),
-        right_cell(format!(
-            "{:.3}",
-            avg_micros(profile.kernel_time(), iterations)
-        )),
-        right_cell(format!("{:.3}", avg_micros(profile.wall_time, iterations))),
-        right_cell(""),
-        right_cell(""),
-        right_cell("100.00%"),
+        right_cell(format!("{:.3}", avg_micros(kernel_time, iterations))),
+        right_cell(format!("{:.2}%", percent(kernel_time, kernel_time))),
     ]);
     table.to_string()
 }
@@ -356,9 +301,7 @@ fn right_cell(value: impl ToString) -> Cell {
 #[derive(Debug, Default)]
 struct ProfileState {
     entries: Vec<RenderProfileEntry>,
-    wall_time: Duration,
     active: bool,
-    render_start: Option<Instant>,
 }
 
 #[cfg(feature = "profile")]
@@ -389,9 +332,7 @@ impl RenderProfiler {
         {
             let mut state = self.state.borrow_mut();
             state.entries.clear();
-            state.wall_time = Duration::ZERO;
             state.active = true;
-            state.render_start = Some(Instant::now());
         }
         self.profile = RenderProfile::default();
         ACTIVE_PROFILER.with(|active| {
@@ -402,14 +343,10 @@ impl RenderProfiler {
     pub(crate) fn end(&mut self) {
         self.profile = {
             let mut state = self.state.borrow_mut();
-            if let Some(start) = state.render_start.take() {
-                state.wall_time = start.elapsed();
-            }
             state.active = false;
             RenderProfile {
                 entries: state.entries.clone(),
                 memory_entries: Vec::new(),
-                wall_time: state.wall_time,
             }
         };
         let state = Rc::clone(&self.state);
@@ -434,30 +371,25 @@ impl RenderProfiler {
 }
 
 #[cfg(feature = "profile")]
-pub(crate) struct RenderProfileTimer {
+pub(crate) struct RenderProfileScope {
     profiler: Rc<RefCell<ProfileState>>,
     name: &'static str,
-    start: Instant,
 }
 
 #[cfg(feature = "profile")]
-pub(crate) fn start_profile_scope(name: &'static str) -> Option<RenderProfileTimer> {
+pub(crate) fn start_profile_scope(name: &'static str) -> Option<RenderProfileScope> {
     let profiler = ACTIVE_PROFILER.with(|active| active.borrow().clone())?;
     let active = profiler.borrow().active;
     if !active {
         return None;
     }
-    Some(RenderProfileTimer {
-        profiler,
-        name,
-        start: Instant::now(),
-    })
+    Some(RenderProfileScope { profiler, name })
 }
 
 #[cfg(feature = "profile")]
 pub(crate) fn finish_profile_scope<R: Runtime>(
     client: &ComputeClient<R>,
-    timer: Option<RenderProfileTimer>,
+    timer: Option<RenderProfileScope>,
 ) {
     let Some(timer) = timer else {
         return;
@@ -469,7 +401,6 @@ pub(crate) fn finish_profile_scope<R: Runtime>(
         .entries
         .push(RenderProfileEntry {
             name: timer.name,
-            duration: timer.start.elapsed(),
             kernel_duration: None,
         });
 }
@@ -498,7 +429,6 @@ pub(crate) fn profile_scope<R: Runtime>(
         return;
     }
 
-    let wall_start = Instant::now();
     let (_, profile) = client
         .profile(work, name)
         .expect("CubeCL profile launch failed");
@@ -509,7 +439,6 @@ pub(crate) fn profile_scope<R: Runtime>(
     };
     profiler.borrow_mut().entries.push(RenderProfileEntry {
         name,
-        duration: wall_start.elapsed(),
         kernel_duration,
     });
 }
