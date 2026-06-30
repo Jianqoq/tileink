@@ -43,3 +43,4 @@ After each feature or bug fix:
    - `cargo clippy --release`
 6. If it is svg related change, run svg full tests to make sure there is no regression
 7. In svg, resvg reference png are not 100% correct, small pixels difference is acceptable, ask developer to confirm before consider the change failed.
+8. Every change related to rendering, must run full svg tests and examples, if there are diff in pngs, make sure the change make sense and reviewed by human

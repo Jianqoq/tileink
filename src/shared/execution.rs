@@ -3,6 +3,8 @@ use std::ops::Range;
 use peniko::BlendMode;
 
 use crate::shared::layer::{Layer, mask::Mask};
+#[cfg(feature = "profile")]
+use crate::shared::memory::MemoryUsage;
 
 pub(crate) type CommandListId = usize;
 pub(crate) const ROOT_COMMAND_LIST_ID: CommandListId = 0;
@@ -72,4 +74,35 @@ pub(crate) enum ExecOp {
         content: Vec<ExecOp>,
         mask: Vec<ExecOp>,
     },
+}
+
+#[cfg(feature = "profile")]
+impl ExecPlan {
+    pub(crate) fn memory_usage(&self) -> MemoryUsage {
+        MemoryUsage::sum([
+            exec_ops_memory_usage(&self.ops),
+            MemoryUsage::vec(&self.layer_stack_data),
+        ])
+    }
+}
+
+#[cfg(feature = "profile")]
+fn exec_ops_memory_usage(ops: &Vec<ExecOp>) -> MemoryUsage {
+    MemoryUsage::sum([
+        MemoryUsage::vec(ops),
+        MemoryUsage::sum(ops.iter().map(ExecOp::nested_memory_usage)),
+    ])
+}
+
+#[cfg(feature = "profile")]
+impl ExecOp {
+    fn nested_memory_usage(&self) -> MemoryUsage {
+        match self {
+            Self::OffscreenLayer { children, .. } => exec_ops_memory_usage(children),
+            Self::OffscreenMaskLayer { content, mask, .. } => {
+                MemoryUsage::sum([exec_ops_memory_usage(content), exec_ops_memory_usage(mask)])
+            }
+            _ => MemoryUsage::default(),
+        }
+    }
 }

@@ -3,6 +3,9 @@ use std::marker::PhantomData;
 use ::cubecl::{prelude::Runtime, server::Handle};
 use bytemuck::Pod;
 
+#[cfg(feature = "profile")]
+use crate::shared::memory::MemoryUsage;
+
 /// Typed owner for a CubeCL contiguous buffer handle.
 ///
 /// CubeCL owns the actual storage and reuses allocations through its runtime
@@ -103,6 +106,11 @@ impl<T: Pod> CubeBuffer<T> {
     pub(crate) fn read<R: Runtime>(&self, client: &::cubecl::client::ComputeClient<R>) -> Vec<T> {
         let bytes = client.read_one_unchecked(self.handle.clone());
         bytemuck::cast_slice(&bytes[..bytes_for::<T>(self.len)]).to_vec()
+    }
+
+    #[cfg(feature = "profile")]
+    pub(crate) fn memory_usage(&self) -> MemoryUsage {
+        MemoryUsage::new(bytes_for::<T>(self.len), self.capacity_bytes)
     }
 
     fn capacity(&self) -> usize {

@@ -16,6 +16,9 @@ use crate::{
     },
 };
 
+#[cfg(feature = "profile")]
+use crate::shared::memory::MemoryUsage;
+
 pub(super) struct FilterTransferBuffers {
     pub(crate) tables: CubeBuffer<u32>,
 }
@@ -42,6 +45,11 @@ impl FilterConvolveBuffers {
         upload: FilterConvolveUpload,
     ) {
         self.kernels.replace(client, &upload.kernels);
+    }
+
+    #[cfg(feature = "profile")]
+    pub(super) fn memory_usage(&self) -> MemoryUsage {
+        self.kernels.memory_usage()
     }
 }
 
@@ -83,6 +91,11 @@ impl FilterTransferBuffers {
     ) {
         self.tables.replace(client, &upload.tables);
     }
+
+    #[cfg(feature = "profile")]
+    pub(super) fn memory_usage(&self) -> MemoryUsage {
+        self.tables.memory_usage()
+    }
 }
 
 impl FilterTurbulenceBuffers {
@@ -100,6 +113,11 @@ impl FilterTurbulenceBuffers {
     ) {
         self.selectors.replace(client, &upload.selectors);
         self.gradients.replace(client, &upload.gradients);
+    }
+
+    #[cfg(feature = "profile")]
+    pub(super) fn memory_usage(&self) -> MemoryUsage {
+        MemoryUsage::sum([self.selectors.memory_usage(), self.gradients.memory_usage()])
     }
 }
 
@@ -199,6 +217,18 @@ impl FilterPathBuffers {
             p1x: &self.p1x,
             p1y: &self.p1y,
         }
+    }
+
+    #[cfg(feature = "profile")]
+    pub(super) fn memory_usage(&self) -> MemoryUsage {
+        MemoryUsage::sum([
+            self.range_starts.memory_usage(),
+            self.range_ends.memory_usage(),
+            self.p0x.memory_usage(),
+            self.p0y.memory_usage(),
+            self.p1x.memory_usage(),
+            self.p1y.memory_usage(),
+        ])
     }
 }
 

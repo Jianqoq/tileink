@@ -8,6 +8,7 @@ pub(crate) mod image;
 pub(crate) mod layer;
 pub(crate) mod line;
 pub(crate) mod line_seg;
+pub(crate) mod memory;
 pub(crate) mod offscreen;
 pub(crate) mod path;
 pub(crate) mod path_flatten;

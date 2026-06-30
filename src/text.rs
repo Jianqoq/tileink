@@ -14,6 +14,8 @@ use swash::{
 };
 
 use crate::shared::bounds::Bounds;
+#[cfg(feature = "profile")]
+use crate::shared::memory::MemoryUsage;
 
 #[derive(Clone, Debug)]
 pub struct TextLayoutOptions<'a> {
@@ -523,6 +525,21 @@ impl PreparedTextData {
 
     pub(crate) fn atlas_signature(&self) -> AtlasSignature {
         self.atlas_signature
+    }
+
+    #[cfg(feature = "profile")]
+    pub(crate) fn memory_usage(&self) -> MemoryUsage {
+        MemoryUsage::sum([
+            MemoryUsage::vec(&self.runs),
+            MemoryUsage::vec(&self.glyphs),
+            MemoryUsage::vec(&self.images),
+            MemoryUsage::hash_map(&self.image_by_key),
+            MemoryUsage::sum(
+                self.images
+                    .iter()
+                    .map(|image| MemoryUsage::vec(&image.data)),
+            ),
+        ])
     }
 
     #[cfg(test)]

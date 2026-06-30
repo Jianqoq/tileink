@@ -24,6 +24,8 @@ use crate::cubecl::{
         CubeScanChunk, CubeScanChunkRange, build_cumsum_plan_into, build_scan_chunks_into,
     },
 };
+#[cfg(feature = "profile")]
+use crate::shared::memory::MemoryUsage;
 
 use super::executor::encode_layer_payload;
 #[derive(Default)]
@@ -160,6 +162,24 @@ impl TextUpload {
         self.atlas_signature = AtlasSignature::default();
         self.atlas_dirty = false;
     }
+
+    #[cfg(feature = "profile")]
+    fn memory_usage(&self) -> MemoryUsage {
+        MemoryUsage::sum([
+            MemoryUsage::vec(&self.run_starts),
+            MemoryUsage::vec(&self.run_counts),
+            MemoryUsage::vec(&self.glyph_image_ids),
+            MemoryUsage::vec(&self.glyph_x),
+            MemoryUsage::vec(&self.glyph_y),
+            MemoryUsage::vec(&self.image_left),
+            MemoryUsage::vec(&self.image_top),
+            MemoryUsage::vec(&self.image_width),
+            MemoryUsage::vec(&self.image_height),
+            MemoryUsage::vec(&self.image_content),
+            MemoryUsage::vec(&self.image_data_offsets),
+            MemoryUsage::vec(&self.image_data),
+        ])
+    }
 }
 
 impl DrawSdfUpload {
@@ -239,6 +259,29 @@ impl DrawSdfUpload {
         self.shadow_expand.push(shadow[2]);
         self.shadow_intensity.push(shadow[3]);
     }
+
+    #[cfg(feature = "profile")]
+    fn memory_usage(&self) -> MemoryUsage {
+        MemoryUsage::sum([
+            MemoryUsage::vec(&self.kinds),
+            MemoryUsage::vec(&self.x0),
+            MemoryUsage::vec(&self.y0),
+            MemoryUsage::vec(&self.x1),
+            MemoryUsage::vec(&self.y1),
+            MemoryUsage::vec(&self.r0),
+            MemoryUsage::vec(&self.r1),
+            MemoryUsage::vec(&self.r2),
+            MemoryUsage::vec(&self.r3),
+            MemoryUsage::vec(&self.stroke_top),
+            MemoryUsage::vec(&self.stroke_right),
+            MemoryUsage::vec(&self.stroke_bottom),
+            MemoryUsage::vec(&self.stroke_left),
+            MemoryUsage::vec(&self.shadow_offset_x),
+            MemoryUsage::vec(&self.shadow_offset_y),
+            MemoryUsage::vec(&self.shadow_expand),
+            MemoryUsage::vec(&self.shadow_intensity),
+        ])
+    }
 }
 
 /// Reusable CPU-side staging for columnar scene uploads.
@@ -256,6 +299,25 @@ pub(super) struct SceneUploadStaging {
     scan_chunks: Vec<CubeScanChunk>,
     scan_chunk_ranges: Vec<CubeScanChunkRange>,
     cumsum_plan: CubeCumsumPlan,
+}
+
+impl SceneUploadStaging {
+    #[cfg(feature = "profile")]
+    pub(super) fn memory_usage(&self) -> MemoryUsage {
+        MemoryUsage::sum([
+            MemoryUsage::vec(&self.u32s),
+            MemoryUsage::vec(&self.i32s),
+            MemoryUsage::vec(&self.f32s),
+            self.sdf.memory_usage(),
+            self.text.memory_usage(),
+            MemoryUsage::vec(&self.scan_chunks),
+            MemoryUsage::vec(&self.scan_chunk_ranges),
+            MemoryUsage::vec(&self.cumsum_plan.chunk_backdrop_offsets),
+            MemoryUsage::vec(&self.cumsum_plan.chunk_lens),
+            MemoryUsage::vec(&self.cumsum_plan.row_chunk_starts),
+            MemoryUsage::vec(&self.cumsum_plan.row_chunk_ends),
+        ])
+    }
 }
 
 fn upload_mapped_u32<R: Runtime, T>(
@@ -438,6 +500,78 @@ impl SceneBuffers {
             glyph_image_data: CubeBuffer::new(client, 0),
             glyph_atlas_signature: AtlasSignature::default(),
         }
+    }
+
+    #[cfg(feature = "profile")]
+    pub(super) fn memory_usage(&self) -> MemoryUsage {
+        MemoryUsage::sum([
+            self.line_path_ids.memory_usage(),
+            self.line_p0x.memory_usage(),
+            self.line_p0y.memory_usage(),
+            self.line_p1x.memory_usage(),
+            self.line_p1y.memory_usage(),
+            self.draw_path_ids.memory_usage(),
+            self.draw_glyph_run_ids.memory_usage(),
+            self.draw_tags.memory_usage(),
+            self.draw_fill_rules.memory_usage(),
+            self.draw_solid_rects.memory_usage(),
+            self.draw_solid_color_fast_paths.memory_usage(),
+            self.draw_brush_colors.memory_usage(),
+            self.draw_pixel_x0.memory_usage(),
+            self.draw_pixel_y0.memory_usage(),
+            self.draw_pixel_x1.memory_usage(),
+            self.draw_pixel_y1.memory_usage(),
+            self.draw_sdf_kinds.memory_usage(),
+            self.draw_sdf_x0.memory_usage(),
+            self.draw_sdf_y0.memory_usage(),
+            self.draw_sdf_x1.memory_usage(),
+            self.draw_sdf_y1.memory_usage(),
+            self.draw_sdf_r0.memory_usage(),
+            self.draw_sdf_r1.memory_usage(),
+            self.draw_sdf_r2.memory_usage(),
+            self.draw_sdf_r3.memory_usage(),
+            self.draw_sdf_stroke_top.memory_usage(),
+            self.draw_sdf_stroke_right.memory_usage(),
+            self.draw_sdf_stroke_bottom.memory_usage(),
+            self.draw_sdf_stroke_left.memory_usage(),
+            self.draw_sdf_shadow_offset_x.memory_usage(),
+            self.draw_sdf_shadow_offset_y.memory_usage(),
+            self.draw_sdf_shadow_expand.memory_usage(),
+            self.draw_sdf_shadow_intensity.memory_usage(),
+            self.backdrop_data_offsets.memory_usage(),
+            self.backdrop_data_lens.memory_usage(),
+            self.backdrop_tile_x0.memory_usage(),
+            self.backdrop_tile_y0.memory_usage(),
+            self.backdrop_tile_x1.memory_usage(),
+            self.backdrop_tile_y1.memory_usage(),
+            self.backdrop_segment_starts.memory_usage(),
+            self.backdrop_segment_capacities.memory_usage(),
+            self.scan_chunk_path_ids.memory_usage(),
+            self.scan_chunk_backdrop_offsets.memory_usage(),
+            self.scan_chunk_segment_starts.memory_usage(),
+            self.scan_chunk_lens.memory_usage(),
+            self.scan_chunk_range_starts.memory_usage(),
+            self.scan_chunk_range_ends.memory_usage(),
+            self.cumsum_chunk_backdrop_offsets.memory_usage(),
+            self.cumsum_chunk_lens.memory_usage(),
+            self.cumsum_row_chunk_starts.memory_usage(),
+            self.cumsum_row_chunk_ends.memory_usage(),
+            self.plan_layer_stack_tags.memory_usage(),
+            self.plan_layer_stack_draws.memory_usage(),
+            self.plan_layer_stack_payloads.memory_usage(),
+            self.glyph_run_starts.memory_usage(),
+            self.glyph_run_counts.memory_usage(),
+            self.glyph_image_ids.memory_usage(),
+            self.glyph_x.memory_usage(),
+            self.glyph_y.memory_usage(),
+            self.glyph_image_left.memory_usage(),
+            self.glyph_image_top.memory_usage(),
+            self.glyph_image_width.memory_usage(),
+            self.glyph_image_height.memory_usage(),
+            self.glyph_image_content.memory_usage(),
+            self.glyph_image_data_offsets.memory_usage(),
+            self.glyph_image_data.memory_usage(),
+        ])
     }
 
     pub(super) fn upload<R: Runtime>(
@@ -866,6 +1000,27 @@ impl ScanBuffers {
         }
     }
 
+    #[cfg(feature = "profile")]
+    pub(super) fn memory_usage(&self) -> MemoryUsage {
+        MemoryUsage::sum([
+            self.backdrops.memory_usage(),
+            self.tile_segment_range_starts.memory_usage(),
+            self.tile_segment_range_ends.memory_usage(),
+            self.segment_p0x.memory_usage(),
+            self.segment_p0y.memory_usage(),
+            self.segment_p1x.memory_usage(),
+            self.segment_p1y.memory_usage(),
+            self.segment_y_edge.memory_usage(),
+            self.segment_tile_counts.memory_usage(),
+            self.segment_tile_cursors.memory_usage(),
+            self.segment_bumps.memory_usage(),
+            self.chunk_totals.memory_usage(),
+            self.chunk_offsets.memory_usage(),
+            self.cumsum_chunk_totals.memory_usage(),
+            self.cumsum_chunk_offsets.memory_usage(),
+        ])
+    }
+
     pub(super) fn prepare_outputs<R: Runtime>(
         &mut self,
         client: &::cubecl::client::ComputeClient<R>,
@@ -945,6 +1100,29 @@ impl CoarseBuffers {
             ptcl_colors: CubeBuffer::new(client, 0),
             glyph_indices: CubeBuffer::new(client, 0),
         }
+    }
+
+    #[cfg(feature = "profile")]
+    pub(super) fn memory_usage(&self) -> MemoryUsage {
+        MemoryUsage::sum([
+            self.tile_ptcl_range_starts.memory_usage(),
+            self.tile_ptcl_range_ends.memory_usage(),
+            self.tile_ptcl_counts.memory_usage(),
+            self.tile_glyph_range_starts.memory_usage(),
+            self.tile_glyph_range_ends.memory_usage(),
+            self.tile_glyph_counts.memory_usage(),
+            self.chunk_totals.memory_usage(),
+            self.chunk_offsets.memory_usage(),
+            self.glyph_chunk_totals.memory_usage(),
+            self.glyph_chunk_offsets.memory_usage(),
+            self.ptcl_tags.memory_usage(),
+            self.ptcl_backdrops.memory_usage(),
+            self.ptcl_fill_rules.memory_usage(),
+            self.ptcl_segment_starts.memory_usage(),
+            self.ptcl_segment_ends.memory_usage(),
+            self.ptcl_colors.memory_usage(),
+            self.glyph_indices.memory_usage(),
+        ])
     }
 
     pub(super) fn prepare_outputs<R: Runtime>(

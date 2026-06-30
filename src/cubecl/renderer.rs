@@ -9,7 +9,8 @@ mod scratch;
 mod target;
 #[cfg(feature = "profile")]
 use super::profile::{
-    RenderProfile, RenderProfiler, finish_profile_scope, start_profile_scope, sync_client,
+    RenderProfile, RenderProfileMemoryEntry, RenderProfileMemorySpace, RenderProfiler,
+    finish_profile_scope, start_profile_scope, sync_client,
 };
 use filter_resources::{
     FilterConvolveBuffers, FilterConvolveUpload, FilterPathBuffers, FilterPathUpload,
@@ -44,6 +45,8 @@ use super::{
     },
     types::{CubeBufferLengths, CubeSceneConfig},
 };
+#[cfg(feature = "profile")]
+use crate::shared::memory::MemoryUsage;
 
 pub type WgpuRenderer = Renderer<::cubecl::wgpu::WgpuRuntime>;
 #[cfg(feature = "cuda")]
@@ -411,10 +414,12 @@ impl<R: Runtime> Renderer<R> {
     }
 
     #[cfg(feature = "profile")]
-    /// Stops profiling, synchronizes pending GPU work, and returns the captured timings.
+    /// Stops profiling, synchronizes pending GPU work, and returns timings plus memory usage.
     pub fn end_profile(&mut self) -> &RenderProfile {
         sync_client(&self.client);
         self.profiler.end();
+        let memory_entries = self.memory_profile_entries();
+        self.profiler.set_memory_entries(memory_entries);
         self.profiler.profile()
     }
 
@@ -422,6 +427,143 @@ impl<R: Runtime> Renderer<R> {
     /// Returns the most recently completed or currently active profile.
     pub fn profile(&self) -> &RenderProfile {
         self.profiler.profile()
+    }
+
+    #[cfg(feature = "profile")]
+    fn memory_profile_entries(&self) -> Vec<RenderProfileMemoryEntry> {
+        let mut entries = Vec::with_capacity(17);
+        Self::push_memory_entry(
+            &mut entries,
+            RenderProfileMemorySpace::Gpu,
+            "config",
+            self.config.memory_usage(),
+        );
+        Self::push_memory_entry(
+            &mut entries,
+            RenderProfileMemorySpace::Gpu,
+            "scene",
+            self.scene.memory_usage(),
+        );
+        Self::push_memory_entry(
+            &mut entries,
+            RenderProfileMemorySpace::Gpu,
+            "scan",
+            self.scan.memory_usage(),
+        );
+        Self::push_memory_entry(
+            &mut entries,
+            RenderProfileMemorySpace::Gpu,
+            "coarse",
+            self.coarse.memory_usage(),
+        );
+        Self::push_memory_entry(
+            &mut entries,
+            RenderProfileMemorySpace::Gpu,
+            "draw_brushes",
+            self.draw_brushes.memory_usage(),
+        );
+        Self::push_memory_entry(
+            &mut entries,
+            RenderProfileMemorySpace::Gpu,
+            "filter_brushes",
+            self.filter_brushes.memory_usage(),
+        );
+        Self::push_memory_entry(
+            &mut entries,
+            RenderProfileMemorySpace::Gpu,
+            "filter_convolves",
+            self.filter_convolves.memory_usage(),
+        );
+        Self::push_memory_entry(
+            &mut entries,
+            RenderProfileMemorySpace::Gpu,
+            "filter_paths",
+            self.filter_paths.memory_usage(),
+        );
+        Self::push_memory_entry(
+            &mut entries,
+            RenderProfileMemorySpace::Gpu,
+            "filter_transfers",
+            self.filter_transfers.memory_usage(),
+        );
+        Self::push_memory_entry(
+            &mut entries,
+            RenderProfileMemorySpace::Gpu,
+            "filter_turbulence",
+            self.filter_turbulence.memory_usage(),
+        );
+        Self::push_memory_entry(
+            &mut entries,
+            RenderProfileMemorySpace::Gpu,
+            "target",
+            self.target.memory_usage(),
+        );
+        Self::push_memory_entry(
+            &mut entries,
+            RenderProfileMemorySpace::Gpu,
+            "scratch",
+            MemoryUsage::sum(self.scratch.iter().map(|buffer| buffer.memory_usage())),
+        );
+        Self::push_memory_entry(
+            &mut entries,
+            RenderProfileMemorySpace::Gpu,
+            "surface_sources",
+            MemoryUsage::sum(
+                self.surface_sources
+                    .iter()
+                    .map(|buffer| buffer.memory_usage()),
+            ),
+        );
+        Self::push_memory_entry(
+            &mut entries,
+            RenderProfileMemorySpace::Cpu,
+            "scene_upload",
+            self.scene_upload.memory_usage(),
+        );
+        Self::push_memory_entry(
+            &mut entries,
+            RenderProfileMemorySpace::Cpu,
+            "exec_plan",
+            self.plan
+                .as_ref()
+                .map(ExecPlan::memory_usage)
+                .unwrap_or_default(),
+        );
+        Self::push_memory_entry(
+            &mut entries,
+            RenderProfileMemorySpace::Cpu,
+            "prepared_text",
+            self.text_data
+                .as_ref()
+                .map(PreparedTextData::memory_usage)
+                .unwrap_or_default(),
+        );
+        Self::push_memory_entry(
+            &mut entries,
+            RenderProfileMemorySpace::Cpu,
+            "renderer_vectors",
+            MemoryUsage::sum([
+                MemoryUsage::vec(&self.scratch),
+                MemoryUsage::vec(&self.scratch_in_use),
+                MemoryUsage::vec(&self.surface_sources),
+            ]),
+        );
+        entries
+    }
+
+    #[cfg(feature = "profile")]
+    fn push_memory_entry(
+        entries: &mut Vec<RenderProfileMemoryEntry>,
+        space: RenderProfileMemorySpace,
+        name: &'static str,
+        usage: MemoryUsage,
+    ) {
+        entries.push(RenderProfileMemoryEntry {
+            space,
+            name,
+            used_bytes: usage.used_bytes,
+            allocated_bytes: usage.allocated_bytes,
+        });
     }
 
     fn resize(&mut self, width: u32, height: u32) {

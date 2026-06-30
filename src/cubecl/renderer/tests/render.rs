@@ -21,6 +21,33 @@ fn render_wgpu_records_profile_when_enabled() {
     assert!(profile.wall_time() > std::time::Duration::ZERO);
     assert!(profile.attributed_time() > std::time::Duration::ZERO);
     assert!(profile.kernel_time() > std::time::Duration::ZERO);
+    assert!(profile.memory_used_bytes() > 0);
+    assert!(profile.memory_allocated_bytes() >= profile.memory_used_bytes());
+    assert!(
+        profile.memory_allocated_bytes_in(crate::RenderProfileMemorySpace::Gpu) > 0,
+        "expected GPU memory snapshot"
+    );
+    assert!(
+        profile.memory_allocated_bytes_in(crate::RenderProfileMemorySpace::Cpu) > 0,
+        "expected CPU memory snapshot"
+    );
+    assert!(
+        profile
+            .memory_entries()
+            .iter()
+            .all(|entry| entry.allocated_bytes >= entry.used_bytes)
+    );
+    let memory_groups = profile
+        .memory_entries()
+        .iter()
+        .map(|entry| entry.name)
+        .collect::<Vec<_>>();
+    for group in ["scene", "scan", "coarse", "target"] {
+        assert!(
+            memory_groups.contains(&group),
+            "missing profile memory group {group}"
+        );
+    }
     for launch in [
         "prepare_scene",
         "scan_clear",
@@ -60,6 +87,14 @@ fn render_wgpu_records_profile_when_enabled() {
             .any(|entry| entry.name == "prepare_scene" && entry.kernel_duration.is_none()),
         "prepare_scene should remain a CPU-side event"
     );
+
+    let mut report = crate::RenderProfileReport::new();
+    report.push(profile);
+    assert_eq!(report.iterations(), 1);
+    let report = report.to_string();
+    assert!(report.contains("kernel us"));
+    assert!(report.contains("memory"));
+    assert!(report.contains("gpu"));
 }
 
 #[test]

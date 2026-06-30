@@ -7,7 +7,10 @@ mod sdf;
 mod types;
 
 #[cfg(feature = "profile")]
-pub use profile::{RenderProfile, RenderProfileEntry, RenderProfileEventSummary};
+pub use profile::{
+    RenderProfile, RenderProfileEntry, RenderProfileEventSummary, RenderProfileMemoryEntry,
+    RenderProfileMemorySpace, RenderProfileReport,
+};
 #[cfg(feature = "bench-api")]
 pub use renderer::CubePreparedStage;
 #[cfg(feature = "cuda")]

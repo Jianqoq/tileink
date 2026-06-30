@@ -14,6 +14,9 @@ use crate::{
     },
 };
 
+#[cfg(feature = "profile")]
+use crate::shared::memory::MemoryUsage;
+
 use super::buffer::CubeBuffer;
 
 pub(crate) const GPU_BRUSH_U32_STRIDE: usize = 9;
@@ -69,6 +72,15 @@ impl GpuBrushBuffers {
             params: &self.params,
             payloads: &self.payloads,
         }
+    }
+
+    #[cfg(feature = "profile")]
+    pub(crate) fn memory_usage(&self) -> MemoryUsage {
+        MemoryUsage::sum([
+            self.data.memory_usage(),
+            self.params.memory_usage(),
+            self.payloads.memory_usage(),
+        ])
     }
 }
 
