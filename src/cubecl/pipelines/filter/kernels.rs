@@ -7,4 +7,5 @@ include!("kernels/liquid_glass.rs");
 include!("kernels/turbulence.rs");
 include!("kernels/convolution_lighting.rs");
 include!("kernels/compositing.rs");
+include!("../sdf_kernels.rs");
 include!("kernels/masks.rs");

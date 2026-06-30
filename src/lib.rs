@@ -42,10 +42,17 @@ pub use shared::{
         region::Region,
     },
     sdf::{
-        arc::Arc as SdfArc,
+        Sdf,
+        arc::{Arc as SdfArc, ArcShadow as SdfArcShadow},
         candlestick::CandleStick,
-        line::{Line as SdfLine, LineCap as SdfLineCap},
-        rect::{Radius, RectShadowOptions, StrokeWidths},
+        circle::{
+            Circle as SdfCircle, CircleShadow as SdfCircleShadow, CircleStroke as SdfCircleStroke,
+        },
+        line::{Line as SdfLine, LineCap as SdfLineCap, LineShadow as SdfLineShadow},
+        rect::{
+            Radius, Rect as SdfRect, RectShadow as SdfRectShadow, RectShadowOptions,
+            RectStroke as SdfRectStroke, StrokeWidths,
+        },
         shadow::ShadowOptions,
     },
 };

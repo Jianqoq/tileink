@@ -146,6 +146,24 @@ impl FineRect {
 }
 
 impl Rect {
+    pub(crate) fn bounds(&self) -> Bounds {
+        let (x0, y0, x1, y1) = self.axis_bounds();
+        Bounds::new(
+            x0.floor() as i32,
+            y0.floor() as i32,
+            x1.ceil() as i32,
+            y1.ceil() as i32,
+        )
+    }
+
+    pub(crate) fn translated(mut self, dx: f32, dy: f32) -> Self {
+        self.start.x -= f64::from(dx);
+        self.start.y -= f64::from(dy);
+        self.end.x -= f64::from(dx);
+        self.end.y -= f64::from(dy);
+        self
+    }
+
     pub(crate) fn axis_bounds(&self) -> (f64, f64, f64, f64) {
         (
             self.start.x.min(self.end.x),
@@ -386,6 +404,11 @@ impl RectShadow {
         )
     }
 
+    pub(crate) fn translated(mut self, dx: f32, dy: f32) -> Self {
+        self.rect = self.rect.translated(dx, dy);
+        self
+    }
+
     pub(crate) fn tile_is_solid(&self, _: Bounds) -> bool {
         false
     }
@@ -423,6 +446,15 @@ pub struct RectStroke {
 }
 
 impl RectStroke {
+    pub(crate) fn bounds(&self) -> Bounds {
+        self.outer_rect().bounds()
+    }
+
+    pub(crate) fn translated(mut self, dx: f32, dy: f32) -> Self {
+        self.rect = self.rect.translated(dx, dy);
+        self
+    }
+
     pub(crate) fn tile_is_solid(&self, _: Bounds) -> bool {
         false
     }

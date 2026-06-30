@@ -250,6 +250,42 @@ fn compile_keeps_sdf_clip_as_sdf_offscreen_layer() {
 }
 
 #[test]
+fn compile_keeps_generic_sdf_clip_without_path_storage() {
+    let mut scene = test_scene();
+    scene.push_clip_sdf_layer(Sdf::Line(SdfLine::new(
+        Point::new(8.0, 24.0),
+        Point::new(40.0, 24.0),
+        6.0,
+        crate::shared::sdf::line::LineCap::Round,
+    )));
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 48.0, 48.0),
+        Radius::ZERO,
+        Brush::Solid(rgb(255, 0, 0)),
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+
+    let plan = scene.compile(ROOT_COMMAND_LIST_ID);
+    assert!(scene.path_records.is_empty());
+    assert!(scene.bd_records.is_empty());
+    match &plan.ops[0] {
+        ExecOp::OffscreenLayer {
+            layer:
+                Layer::ClipSdf {
+                    sdf: Sdf::Line(line),
+                    bounds,
+                },
+            ..
+        } => {
+            assert_eq!(line.width, 6.0);
+            assert_eq!(*bounds, Bounds::new(5, 21, 43, 27));
+        }
+        op => panic!("expected generic SDF clip layer, got {op:#?}"),
+    }
+}
+
+#[test]
 fn compile_keeps_opacity_with_offscreen_child_isolated() {
     let mut scene = test_scene();
     scene.push_opacity_layer(rect_path(0.0, 0.0, 48.0, 48.0), Affine::IDENTITY, 0.0, 0.5);

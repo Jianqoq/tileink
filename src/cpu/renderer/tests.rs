@@ -198,6 +198,25 @@ fn sdf_rect_clip_masks_child_fill() {
 }
 
 #[test]
+fn sdf_circle_clip_masks_child_fill() {
+    let mut scene = Scene::new(96, 96);
+    scene.push_clip_sdf_circle_layer(Circle::new((48.0, 48.0), 24.0));
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 96.0, 96.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(37, 99, 235),
+        FillRule::NonZero,
+    );
+    scene.pop_layer();
+
+    let mut renderer = Renderer::new(96, 96, Color::WHITE);
+    renderer.render(&scene);
+
+    assert_eq!(renderer.image().rgba8_at(48, 48), [37, 99, 235, 255]);
+    assert_eq!(renderer.image().rgba8_at(12, 48), [255, 255, 255, 255]);
+}
+
+#[test]
 fn sdf_rect_clip_keeps_subpixel_edge_coverage() {
     let mut scene = Scene::new(48, 48);
     scene.push_clip_sdf_rect_layer(Rect::new(16.25, 8.0, 32.25, 40.0), Radius::ZERO);

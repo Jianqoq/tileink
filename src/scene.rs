@@ -63,7 +63,15 @@ pub struct Scene {
 
 struct PathPushOptions {
     bounds_override: Option<Bounds>,
+    brush: Brush,
+    emit_draw_command: bool,
     tag: DrawTag,
+}
+
+#[derive(Clone, Copy)]
+enum SceneAppendMode {
+    MergeRoot,
+    AppendAsCommandList,
 }
 
 mod scale;
@@ -111,10 +119,41 @@ impl Scene {
         &mut self.command_lists[id]
     }
 
+    fn push_child_command_list(&mut self) -> CommandListId {
+        let children = self.command_lists.len();
+        self.command_lists.push(CommandList::default());
+        children
+    }
+
+    fn push_layer_command(&mut self, draw: usize, layer: Layer, kind: LayerKind) {
+        let children = self.push_child_command_list();
+        self.current_command_list_mut()
+            .commands
+            .push(Command::Layer {
+                draw,
+                layer,
+                children,
+            });
+        self.command_stack.push(children);
+        self.layer_stack.push(kind);
+    }
+
+    fn push_mask_command(&mut self, layer: Mask, mask_commands: CommandListId) {
+        let content = self.push_child_command_list();
+        self.current_command_list_mut()
+            .commands
+            .push(Command::MaskLayer {
+                layer,
+                content,
+                mask: mask_commands,
+            });
+        self.command_stack.push(content);
+        self.layer_stack.push(LayerKind::Mask);
+    }
+
     pub fn merge(&mut self, mut other: Scene) {
         self.ensure_command_root();
         other.ensure_command_root();
-
         assert!(
             self.width == other.width && self.height == other.height,
             "scene merge requires matching dimensions"
@@ -128,6 +167,61 @@ impl Scene {
             "cannot merge a scene with unclosed layers"
         );
 
+        self.append_scene(other, SceneAppendMode::MergeRoot);
+    }
+
+    fn append_scene(&mut self, mut other: Scene, mode: SceneAppendMode) -> Option<CommandListId> {
+        self.ensure_command_root();
+        other.ensure_command_root();
+        assert!(
+            self.width == other.width && self.height == other.height,
+            "scene append requires matching dimensions"
+        );
+        assert!(
+            other.command_stack.len() == 1 && other.layer_stack.is_empty(),
+            "cannot append a scene with unclosed layers"
+        );
+
+        let draw_offset = self.append_scene_data(&mut other);
+        let command_list_offset = self.command_lists.len();
+        let root_commands = other.root_commands;
+        match mode {
+            SceneAppendMode::MergeRoot => {
+                let child_list_offset = command_list_offset.saturating_sub(1);
+                let mut remapped_root_commands =
+                    Vec::with_capacity(other.command_lists[root_commands].commands.len());
+                for command in other.command_lists[root_commands].commands.drain(..) {
+                    remapped_root_commands.push(Self::remap_command(
+                        command,
+                        draw_offset,
+                        child_list_offset,
+                    ));
+                }
+
+                for (list_ix, mut list) in other.command_lists.into_iter().enumerate() {
+                    if list_ix == root_commands {
+                        continue;
+                    }
+                    Self::remap_command_list(&mut list, draw_offset, child_list_offset);
+                    self.command_lists.push(list);
+                }
+
+                self.command_lists[self.root_commands]
+                    .commands
+                    .extend(remapped_root_commands);
+                None
+            }
+            SceneAppendMode::AppendAsCommandList => {
+                for mut list in other.command_lists {
+                    Self::remap_command_list(&mut list, draw_offset, command_list_offset);
+                    self.command_lists.push(list);
+                }
+                Some(command_list_offset + root_commands)
+            }
+        }
+    }
+
+    fn append_scene_data(&mut self, other: &mut Scene) -> usize {
         let line_offset = self.lines.len() as u32;
         let path_offset = self.path_cnt;
         let draw_offset = self.draw_records.len();
@@ -139,13 +233,13 @@ impl Scene {
         for line in &mut other.lines {
             line.path_id = line.path_id.saturating_add(path_offset);
         }
-        self.lines.extend(other.lines);
+        self.lines.append(&mut other.lines);
 
         for record in &mut other.path_records {
             record.path_id = record.path_id.saturating_add(path_offset);
             record.line_start = record.line_start.saturating_add(line_offset);
         }
-        self.path_records.extend(other.path_records);
+        self.path_records.append(&mut other.path_records);
 
         for draw in &mut other.draw_records {
             if let Some(path_id) = &mut draw.path_id {
@@ -155,54 +249,38 @@ impl Scene {
                 *glyph_run_id = glyph_run_id.saturating_add(text_run_offset);
             }
         }
-        self.draw_records.extend(other.draw_records);
+        self.draw_records.append(&mut other.draw_records);
 
         for run in &mut other.text_runs {
             run.glyph_start = run.glyph_start.saturating_add(glyph_offset);
         }
-        self.text_glyphs.extend(other.text_glyphs);
-        self.text_runs.extend(other.text_runs);
+        self.text_glyphs.append(&mut other.text_glyphs);
+        self.text_runs.append(&mut other.text_runs);
 
         for record in &mut other.bd_records {
             record.path_id = record.path_id.saturating_add(path_offset);
             record.data_offset = record.data_offset.saturating_add(backdrop_offset);
             record.segment_start = record.segment_start.saturating_add(tile_offset);
         }
-        self.bd_records.extend(other.bd_records);
+        self.bd_records.append(&mut other.bd_records);
 
-        let command_list_offset = self.command_lists.len();
-        let mut remapped_root_commands =
-            Vec::with_capacity(other.command_lists[other.root_commands].commands.len());
-        for command in other.command_lists[other.root_commands].commands.drain(..) {
-            remapped_root_commands.push(Self::remap_command(
-                command,
-                draw_offset,
-                command_list_offset.saturating_sub(1),
-            ));
-        }
-
-        for (list_ix, mut list) in other.command_lists.into_iter().enumerate() {
-            if list_ix == other.root_commands {
-                continue;
-            }
-            for command in &mut list.commands {
-                *command = Self::remap_command(
-                    std::mem::replace(command, Command::Draw(0)),
-                    draw_offset,
-                    command_list_offset.saturating_sub(1),
-                );
-            }
-            self.command_lists.push(list);
-        }
-
-        self.command_lists[self.root_commands]
-            .commands
-            .extend(remapped_root_commands);
         self.path_cnt = self.path_cnt.saturating_add(other.path_cnt);
         self.backdrop_pool_capacity = self
             .backdrop_pool_capacity
             .saturating_add(other.backdrop_pool_capacity);
         self.tile_cnt = self.tile_cnt.saturating_add(other.tile_cnt);
+
+        draw_offset
+    }
+
+    fn remap_command_list(list: &mut CommandList, draw_offset: usize, child_list_offset: usize) {
+        for command in &mut list.commands {
+            *command = Self::remap_command(
+                std::mem::replace(command, Command::Draw(0)),
+                draw_offset,
+                child_list_offset,
+            );
+        }
     }
 
     fn remap_command(command: Command, draw_offset: usize, child_list_offset: usize) -> Command {
@@ -229,83 +307,9 @@ impl Scene {
         }
     }
 
-    fn append_scene_as_command_list(&mut self, mut other: Scene) -> CommandListId {
-        self.ensure_command_root();
-        other.ensure_command_root();
-
-        assert!(
-            self.width == other.width && self.height == other.height,
-            "scene append requires matching dimensions"
-        );
-        assert!(
-            other.command_stack.len() == 1 && other.layer_stack.is_empty(),
-            "cannot append a scene with unclosed layers"
-        );
-
-        let line_offset = self.lines.len() as u32;
-        let path_offset = self.path_cnt;
-        let draw_offset = self.draw_records.len();
-        let glyph_offset = self.text_glyphs.len() as u32;
-        let text_run_offset = self.text_runs.len() as u32;
-        let backdrop_offset = self.backdrop_pool_capacity;
-        let tile_offset = self.tile_cnt;
-
-        for line in &mut other.lines {
-            line.path_id = line.path_id.saturating_add(path_offset);
-        }
-        self.lines.extend(other.lines);
-
-        for record in &mut other.path_records {
-            record.path_id = record.path_id.saturating_add(path_offset);
-            record.line_start = record.line_start.saturating_add(line_offset);
-        }
-        self.path_records.extend(other.path_records);
-
-        for draw in &mut other.draw_records {
-            if let Some(path_id) = &mut draw.path_id {
-                *path_id = path_id.saturating_add(path_offset);
-            }
-            if let Some(glyph_run_id) = &mut draw.glyph_run_id {
-                *glyph_run_id = glyph_run_id.saturating_add(text_run_offset);
-            }
-        }
-        self.draw_records.extend(other.draw_records);
-
-        for run in &mut other.text_runs {
-            run.glyph_start = run.glyph_start.saturating_add(glyph_offset);
-        }
-        self.text_glyphs.extend(other.text_glyphs);
-        self.text_runs.extend(other.text_runs);
-
-        for record in &mut other.bd_records {
-            record.path_id = record.path_id.saturating_add(path_offset);
-            record.data_offset = record.data_offset.saturating_add(backdrop_offset);
-            record.segment_start = record.segment_start.saturating_add(tile_offset);
-        }
-        self.bd_records.extend(other.bd_records);
-
-        let command_list_offset = self.command_lists.len();
-        let root_commands = other.root_commands;
-        let path_cnt = other.path_cnt;
-        let backdrop_pool_capacity = other.backdrop_pool_capacity;
-        let tile_cnt = other.tile_cnt;
-        for mut list in other.command_lists {
-            for command in &mut list.commands {
-                *command = Self::remap_command(
-                    std::mem::replace(command, Command::Draw(0)),
-                    draw_offset,
-                    command_list_offset,
-                );
-            }
-            self.command_lists.push(list);
-        }
-
-        self.path_cnt = self.path_cnt.saturating_add(path_cnt);
-        self.backdrop_pool_capacity = self
-            .backdrop_pool_capacity
-            .saturating_add(backdrop_pool_capacity);
-        self.tile_cnt = self.tile_cnt.saturating_add(tile_cnt);
-        command_list_offset + root_commands
+    fn append_scene_as_command_list(&mut self, other: Scene) -> CommandListId {
+        self.append_scene(other, SceneAppendMode::AppendAsCommandList)
+            .expect("append mode returns a command list id")
     }
 
     pub fn push_clip_layer(
@@ -316,19 +320,8 @@ impl Scene {
         tolerance: f64,
     ) {
         self.ensure_command_root();
-        let draw = self.push_layer_path(DrawTag::Clip, path.clone(), transform, rule, tolerance);
-        let layer = Layer::Clip;
-        let children = self.command_lists.len();
-        self.command_lists.push(CommandList::default());
-        self.current_command_list_mut()
-            .commands
-            .push(Command::Layer {
-                draw,
-                layer,
-                children,
-            });
-        self.command_stack.push(children);
-        self.layer_stack.push(LayerKind::Clip);
+        let draw = self.push_layer_path(DrawTag::Clip, path, transform, rule, tolerance);
+        self.push_layer_command(draw, Layer::Clip, LayerKind::Clip);
     }
 
     /// Adds a rounded/sharp rectangle clip that is rasterized directly from an SDF.
@@ -336,26 +329,40 @@ impl Scene {
     /// This avoids flattening simple rounded clips into path segments while keeping
     /// the SDF geometry as the source of truth until render time.
     pub fn push_clip_sdf_rect_layer(&mut self, rect: Rect, radius: Radius) {
+        self.push_clip_sdf_layer(Sdf::Rect(SdfRect {
+            start: Point::new(rect.x0, rect.y0),
+            end: Point::new(rect.x1, rect.y1),
+            radius,
+        }));
+    }
+
+    pub fn push_clip_sdf_circle_layer(&mut self, circle: Circle) {
+        self.push_clip_sdf_layer(Sdf::Circle(SdfCircle {
+            center: circle.center,
+            radius: circle.radius as f32,
+        }));
+    }
+
+    pub fn push_clip_sdf_arc_layer(&mut self, arc: SdfArc) {
+        self.push_clip_sdf_layer(Sdf::Arc(arc));
+    }
+
+    pub fn push_clip_sdf_line_layer(&mut self, line: SdfLine) {
+        self.push_clip_sdf_layer(Sdf::Line(line));
+    }
+
+    /// Adds a clip layer backed by exact SDF geometry.
+    ///
+    /// Unlike path clips, SDF clips do not allocate path records, scan backdrops,
+    /// or per-tile segments. The renderer rasterizes the mask directly from the
+    /// SDF bounds, so future SDF primitives automatically work as clip layers.
+    pub fn push_clip_sdf_layer(&mut self, sdf: Sdf) {
         self.ensure_command_root();
         let layer = Layer::ClipSdf {
-            sdf: Sdf::Rect(SdfRect {
-                start: Point::new(rect.x0, rect.y0),
-                end: Point::new(rect.x1, rect.y1),
-                radius,
-            }),
-            bounds: Self::rect_bounds(rect),
+            bounds: sdf.bounds(),
+            sdf,
         };
-        let children = self.command_lists.len();
-        self.command_lists.push(CommandList::default());
-        self.current_command_list_mut()
-            .commands
-            .push(Command::Layer {
-                draw: 0,
-                layer,
-                children,
-            });
-        self.command_stack.push(children);
-        self.layer_stack.push(LayerKind::ClipSdf);
+        self.push_layer_command(0, layer, LayerKind::ClipSdf);
     }
 
     /// Starts an isolated source-over group.
@@ -368,22 +375,12 @@ impl Scene {
         self.ensure_command_root();
         let draw = self.push_layer_path(
             DrawTag::Isolate,
-            path.clone(),
+            path,
             transform,
             FillRule::NonZero,
             tolerance,
         );
-        let children = self.command_lists.len();
-        self.command_lists.push(CommandList::default());
-        self.current_command_list_mut()
-            .commands
-            .push(Command::Layer {
-                draw,
-                layer: Layer::Isolate,
-                children,
-            });
-        self.command_stack.push(children);
-        self.layer_stack.push(LayerKind::Isolate);
+        self.push_layer_command(draw, Layer::Isolate, LayerKind::Isolate);
     }
 
     pub fn push_opacity_layer(
@@ -396,23 +393,13 @@ impl Scene {
         self.ensure_command_root();
         let draw = self.push_layer_path(
             DrawTag::Opacity,
-            path.clone(),
+            path,
             transform,
             FillRule::NonZero,
             tolerance,
         );
         let layer = Layer::Opacity(Opacity { opacity });
-        let children = self.command_lists.len();
-        self.command_lists.push(CommandList::default());
-        self.current_command_list_mut()
-            .commands
-            .push(Command::Layer {
-                draw,
-                layer,
-                children,
-            });
-        self.command_stack.push(children);
-        self.layer_stack.push(LayerKind::Opacity);
+        self.push_layer_command(draw, layer, LayerKind::Opacity);
     }
 
     pub(crate) fn push_blend_layer_inner(
@@ -425,23 +412,13 @@ impl Scene {
         self.ensure_command_root();
         let draw = self.push_layer_path(
             DrawTag::Blend,
-            path.clone(),
+            path,
             transform,
             FillRule::NonZero,
             tolerance,
         );
         let layer = Layer::Blend(Blend { mode: blend.mode });
-        let children = self.command_lists.len();
-        self.command_lists.push(CommandList::default());
-        self.current_command_list_mut()
-            .commands
-            .push(Command::Layer {
-                draw,
-                layer,
-                children,
-            });
-        self.command_stack.push(children);
-        self.layer_stack.push(LayerKind::Blend);
+        self.push_layer_command(draw, layer, LayerKind::Blend);
     }
 
     pub fn push_blend_layer(
@@ -463,17 +440,7 @@ impl Scene {
     pub fn push_mask_layer(&mut self, mask_scene: Scene, mask: Mask) {
         self.ensure_command_root();
         let mask_commands = self.append_scene_as_command_list(mask_scene);
-        let content = self.command_lists.len();
-        self.command_lists.push(CommandList::default());
-        self.current_command_list_mut()
-            .commands
-            .push(Command::MaskLayer {
-                layer: mask,
-                content,
-                mask: mask_commands,
-            });
-        self.command_stack.push(content);
-        self.layer_stack.push(LayerKind::Mask);
+        self.push_mask_command(mask, mask_commands);
     }
 
     /// Adds an offscreen filter group sampled from `sample_region`.
@@ -487,20 +454,14 @@ impl Scene {
             !filter.contains_rect_liquid_glass(),
             "RectLiquidGlass is a rounded-rectangle backdrop effect; use push_backdrop_layer with Region::Rect"
         );
-        let children = self.command_lists.len();
-        self.command_lists.push(CommandList::default());
-        self.current_command_list_mut()
-            .commands
-            .push(Command::Layer {
-                draw: 0,
-                layer: Layer::Filter {
-                    filter,
-                    sample_region,
-                },
-                children,
-            });
-        self.command_stack.push(children);
-        self.layer_stack.push(LayerKind::Filter);
+        self.push_layer_command(
+            0,
+            Layer::Filter {
+                filter,
+                sample_region,
+            },
+            LayerKind::Filter,
+        );
     }
 
     /// Adds a backdrop filter group sampled from the already-rendered target.
@@ -516,20 +477,14 @@ impl Scene {
                 "RectLiquidGlass requires Region::Rect because it uses rounded-rectangle SDF normals"
             );
         }
-        let children = self.command_lists.len();
-        self.command_lists.push(CommandList::default());
-        self.current_command_list_mut()
-            .commands
-            .push(Command::Layer {
-                draw: 0,
-                layer: Layer::Backdrop {
-                    filter,
-                    sample_region,
-                },
-                children,
-            });
-        self.command_stack.push(children);
-        self.layer_stack.push(LayerKind::Backdrop);
+        self.push_layer_command(
+            0,
+            Layer::Backdrop {
+                filter,
+                sample_region,
+            },
+            LayerKind::Backdrop,
+        );
     }
 
     pub fn pop_layer(&mut self) -> Option<LayerKind> {
@@ -559,7 +514,6 @@ impl Scene {
                 end: Point::new(rect.x1, rect.y1),
                 radius,
             }),
-            Self::rect_bounds(rect),
             brush,
             rule,
         );
@@ -619,7 +573,6 @@ impl Scene {
                 },
                 widths,
             }),
-            Self::rect_bounds_outsets(rect, widths),
             brush,
             rule,
         );
@@ -650,46 +603,16 @@ impl Scene {
             },
             options,
         };
-        self.push_sdf_draw(Sdf::RectShadow(shadow), shadow.bounds(), brush, rule);
-    }
-
-    fn rect_bounds(rect: Rect) -> Bounds {
-        Bounds {
-            x0: rect.x0.min(rect.x1).floor() as i32,
-            y0: rect.y0.min(rect.y1).floor() as i32,
-            x1: rect.x0.max(rect.x1).ceil() as i32,
-            y1: rect.y0.max(rect.y1).ceil() as i32,
-        }
-    }
-
-    fn rect_bounds_outset(rect: Rect, outset: f64) -> Bounds {
-        Bounds {
-            x0: (rect.x0.min(rect.x1) - outset).floor() as i32,
-            y0: (rect.y0.min(rect.y1) - outset).floor() as i32,
-            x1: (rect.x0.max(rect.x1) + outset).ceil() as i32,
-            y1: (rect.y0.max(rect.y1) + outset).ceil() as i32,
-        }
-    }
-
-    fn rect_bounds_outsets(rect: Rect, widths: StrokeWidths) -> Bounds {
-        let half = widths.half();
-        Bounds {
-            x0: (rect.x0.min(rect.x1) - f64::from(half.left)).floor() as i32,
-            y0: (rect.y0.min(rect.y1) - f64::from(half.top)).floor() as i32,
-            x1: (rect.x0.max(rect.x1) + f64::from(half.right)).ceil() as i32,
-            y1: (rect.y0.max(rect.y1) + f64::from(half.bottom)).ceil() as i32,
-        }
+        self.push_sdf_draw(Sdf::RectShadow(shadow), brush, rule);
     }
 
     /// Adds a filled circle as exact SDF geometry instead of flattening it to path segments.
     pub fn push_circle(&mut self, circle: Circle, brush: impl Into<Brush>, rule: FillRule) {
-        let rect = circle.bounding_box();
         self.push_sdf_draw(
             Sdf::Circle(SdfCircle {
                 center: circle.center,
                 radius: circle.radius as f32,
             }),
-            Self::rect_bounds(rect),
             brush,
             rule,
         );
@@ -719,7 +642,6 @@ impl Scene {
                 },
                 half_width,
             }),
-            Self::rect_bounds_outset(circle.bounding_box(), f64::from(half_width)),
             brush,
             rule,
         );
@@ -742,7 +664,7 @@ impl Scene {
             },
             options,
         };
-        self.push_sdf_draw(Sdf::CircleShadow(shadow), shadow.bounds(), brush, rule);
+        self.push_sdf_draw(Sdf::CircleShadow(shadow), brush, rule);
     }
 
     /// Adds a circular stroked arc as SDF geometry.
@@ -754,7 +676,7 @@ impl Scene {
         if arc.is_empty() {
             return;
         }
-        self.push_sdf_draw(Sdf::Arc(arc), arc.bounds(), brush, rule);
+        self.push_sdf_draw(Sdf::Arc(arc), brush, rule);
     }
 
     pub fn push_arc_shadow(
@@ -771,7 +693,7 @@ impl Scene {
             return;
         };
         let shadow = SdfArcShadow { arc, options };
-        self.push_sdf_draw(Sdf::ArcShadow(shadow), shadow.bounds(), brush, rule);
+        self.push_sdf_draw(Sdf::ArcShadow(shadow), brush, rule);
     }
 
     pub fn push_candlestick(
@@ -784,14 +706,14 @@ impl Scene {
             SdfCandleStick::valid_body_width(candle.body_width),
             "candlestick body width must be a positive odd number"
         );
-        self.push_sdf_draw(Sdf::CandleStick(candle), candle.bounds(), brush, rule);
+        self.push_sdf_draw(Sdf::CandleStick(candle), brush, rule);
     }
 
     pub fn push_line(&mut self, line: SdfLine, brush: impl Into<Brush>, rule: FillRule) {
         if line.is_empty() {
             return;
         }
-        self.push_sdf_draw(Sdf::Line(line), line.bounds(), brush, rule);
+        self.push_sdf_draw(Sdf::Line(line), brush, rule);
     }
 
     pub fn push_line_shadow(
@@ -808,7 +730,7 @@ impl Scene {
             return;
         };
         let shadow = SdfLineShadow { line, options };
-        self.push_sdf_draw(Sdf::LineShadow(shadow), shadow.bounds(), brush, rule);
+        self.push_sdf_draw(Sdf::LineShadow(shadow), brush, rule);
     }
 
     pub fn push_arc(&mut self, arc: Arc, brush: impl Into<Brush>, rule: FillRule, tolerance: f64) {
@@ -926,12 +848,13 @@ impl Scene {
         }
         self.push_path_inner_with_tag(
             path,
-            brush,
             transform,
             FillRule::NonZero,
             tolerance,
             PathPushOptions {
                 bounds_override: None,
+                brush: brush.into(),
+                emit_draw_command: true,
                 tag: DrawTag::PathGlyph,
             },
         );
@@ -986,12 +909,13 @@ impl Scene {
     ) -> usize {
         self.push_path_inner_with_tag(
             path,
-            brush,
             transform,
             rule,
             tolerance,
             PathPushOptions {
                 bounds_override,
+                brush: brush.into(),
+                emit_draw_command: true,
                 tag: DrawTag::Brush,
             },
         )
@@ -1000,7 +924,6 @@ impl Scene {
     fn push_path_inner_with_tag(
         &mut self,
         path: BezPath,
-        brush: impl Into<Brush>,
         transform: Affine,
         rule: FillRule,
         tolerance: f64,
@@ -1046,14 +969,16 @@ impl Scene {
             glyph_run_id: None,
             sdf: None,
             tag: options.tag,
-            brush: brush.into(),
+            brush: options.brush,
             fill_rule: rule,
             pixel_bounds,
             solid_rect: false,
         });
-        self.current_command_list_mut()
-            .commands
-            .push(Command::Draw(draw_ix));
+        if options.emit_draw_command {
+            self.current_command_list_mut()
+                .commands
+                .push(Command::Draw(draw_ix));
+        }
         self.bd_records.push(BackdropRecord {
             path_id,
             data_offset: backdrop_offset,
@@ -1077,66 +1002,23 @@ impl Scene {
         rule: FillRule,
         tolerance: f64,
     ) -> usize {
-        let line_start = self.lines.len() as u32;
-        let path_id = self.path_cnt;
-        self.path_cnt += 1;
-        let path = Self::transform_path(path, transform);
-        PathFlatten::new(&path, tolerance as f32, path_id).flatten(&mut self.lines);
-        let line_count = self.lines.len() as u32 - line_start;
-        self.path_records.push(PathRecord {
-            path_id,
-            line_count,
-            line_start,
-            _pad: 0,
-        });
-
-        let pixel_bounds = Self::pixel_bounds_for_transformed_path(&path);
-        let tile_bbox = pixel_bounds.tile_bbox(self.width_in_tiles(), self.height_in_tiles());
-        let tile_stride = tile_bbox.tile_stride();
-        let tile_height = tile_bbox.tile_height();
-        let backdrop_len = tile_stride * tile_height;
-        let local_tile_cnt =
-            self.segment_capacity_for_path_lines(line_start, line_count, tile_bbox);
-
-        let backdrop_offset = self.backdrop_pool_capacity;
-        self.backdrop_pool_capacity += backdrop_len;
-        let segment_start = self.tile_cnt;
-        self.tile_cnt += local_tile_cnt;
-
-        let draw_ix = self.draw_records.len();
-        self.draw_records.push(DrawRecord {
-            path_id: Some(path_id),
-            glyph_run_id: None,
-            sdf: None,
-            tag,
-            brush: Brush::Solid(Color::TRANSPARENT),
-            fill_rule: rule,
-            pixel_bounds,
-            solid_rect: false,
-        });
-        self.bd_records.push(BackdropRecord {
-            path_id,
-            data_offset: backdrop_offset,
-            data_len: backdrop_len,
-            tile_x0: tile_bbox.x0,
-            tile_y0: tile_bbox.y0,
-            tile_x1: tile_bbox.x1,
-            tile_y1: tile_bbox.y1,
-            segment_start,
-            segment_capacity: local_tile_cnt,
-            segment_count: 0,
-        });
-        draw_ix
+        self.push_path_inner_with_tag(
+            path,
+            transform,
+            rule,
+            tolerance,
+            PathPushOptions {
+                bounds_override: None,
+                brush: Brush::Solid(Color::TRANSPARENT),
+                emit_draw_command: false,
+                tag,
+            },
+        )
     }
 
-    fn push_sdf_draw(
-        &mut self,
-        sdf: Sdf,
-        bounds: Bounds,
-        brush: impl Into<Brush>,
-        rule: FillRule,
-    ) -> usize {
+    fn push_sdf_draw(&mut self, sdf: Sdf, brush: impl Into<Brush>, rule: FillRule) -> usize {
         self.ensure_command_root();
+        let bounds = sdf.bounds();
         let draw_ix = self.draw_records.len();
         self.draw_records.push(DrawRecord {
             path_id: None,

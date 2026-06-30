@@ -78,47 +78,7 @@ impl LocalSpace {
     }
 
     fn sdf(self, sdf: Sdf) -> Sdf {
-        let dx = f64::from(self.surface.x0);
-        let dy = f64::from(self.surface.y0);
-        match sdf {
-            Sdf::Rect(mut rect) => {
-                rect.start.x -= dx;
-                rect.start.y -= dy;
-                rect.end.x -= dx;
-                rect.end.y -= dy;
-                Sdf::Rect(rect)
-            }
-            Sdf::RectStroke(mut stroke) => {
-                stroke.rect.start.x -= dx;
-                stroke.rect.start.y -= dy;
-                stroke.rect.end.x -= dx;
-                stroke.rect.end.y -= dy;
-                Sdf::RectStroke(stroke)
-            }
-            Sdf::RectShadow(mut shadow) => {
-                shadow.rect.start.x -= dx;
-                shadow.rect.start.y -= dy;
-                shadow.rect.end.x -= dx;
-                shadow.rect.end.y -= dy;
-                Sdf::RectShadow(shadow)
-            }
-            Sdf::Circle(mut circle) => {
-                circle.center.x -= dx;
-                circle.center.y -= dy;
-                Sdf::Circle(circle)
-            }
-            Sdf::CircleStroke(mut stroke) => {
-                stroke.circle.center.x -= dx;
-                stroke.circle.center.y -= dy;
-                Sdf::CircleStroke(stroke)
-            }
-            Sdf::CircleShadow(shadow) => Sdf::CircleShadow(shadow.translated(dx as f32, dy as f32)),
-            Sdf::Arc(arc) => Sdf::Arc(arc.translated(dx as f32, dy as f32)),
-            Sdf::ArcShadow(shadow) => Sdf::ArcShadow(shadow.translated(dx as f32, dy as f32)),
-            Sdf::CandleStick(candle) => Sdf::CandleStick(candle.translated(dx as f32, dy as f32)),
-            Sdf::Line(line) => Sdf::Line(line.translated(dx as f32, dy as f32)),
-            Sdf::LineShadow(shadow) => Sdf::LineShadow(shadow.translated(dx as f32, dy as f32)),
-        }
+        sdf.translated(self.surface.x0 as f32, self.surface.y0 as f32)
     }
 
     fn brush(self, brush: Brush) -> Brush {

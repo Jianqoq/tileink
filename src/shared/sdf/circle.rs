@@ -162,6 +162,19 @@ pub struct CircleStroke {
 }
 
 impl CircleStroke {
+    pub(crate) fn bounds(self) -> Bounds {
+        Circle {
+            center: self.circle.center,
+            radius: self.circle.radius + self.half_width.max(0.0),
+        }
+        .bounds()
+    }
+
+    pub(crate) fn translated(mut self, dx: f32, dy: f32) -> Self {
+        self.circle = self.circle.translated(dx, dy);
+        self
+    }
+
     pub(crate) fn tile_is_solid(&self, _: Bounds) -> bool {
         false
     }
