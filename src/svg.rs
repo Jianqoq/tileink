@@ -212,7 +212,7 @@ impl SvgBuilder {
             mask_scene,
             LayerMask {
                 region: transform_region(
-                    Region::rect(nonzero_rect_to_kurbo(mask.rect()), Radius::all(0.0)),
+                    Region::rect(nonzero_rect_to_kurbo(mask.rect()), Radius::ZERO),
                     self.base_transform,
                 ),
                 kind: match mask.kind() {
@@ -425,7 +425,7 @@ impl SvgBuilder {
             ClipPathLowering::Empty => scene.push_mask_layer(
                 Scene::new(scene.width, scene.height),
                 LayerMask {
-                    region: Region::rect(Rect::ZERO, Radius::all(0.0)),
+                    region: Region::rect(Rect::ZERO, Radius::ZERO),
                     kind: MaskKind::Alpha,
                 },
             ),
@@ -463,7 +463,7 @@ impl SvgBuilder {
                 // The alpha mask applies the actual clip shape after isolated content rendering.
                 region: Region::rect(
                     Rect::new(0.0, 0.0, f64::from(width), f64::from(height)),
-                    Radius::all(0.0),
+                    Radius::ZERO,
                 ),
                 kind: MaskKind::Alpha,
             },
@@ -798,10 +798,7 @@ fn svg_filter_layer(
                 primitives,
                 fixed_region: true,
             },
-            region: transform_region(
-                Region::rect(filter_rect, Radius::all(0.0)),
-                region_transform,
-            ),
+            region: transform_region(Region::rect(filter_rect, Radius::ZERO), region_transform),
         }))
     }
 }

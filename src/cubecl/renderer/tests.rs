@@ -21,26 +21,28 @@ use crate::shared::layer::{
     filter::{
         ColorChannel, CompositeOperator, ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting,
         DisplacementMap, Filter, FilterInput, FilterPrimitive, FilterPrimitiveKind, LightSource,
-        LiquidGlass, MorphologyOperator, SpecularLighting, Turbulence, TurbulenceKind,
+        MorphologyOperator, RectLiquidGlass, SpecularLighting, Turbulence, TurbulenceKind,
     },
     mask::{Mask, MaskKind},
     region::Region,
 };
 use crate::shared::pixel::premul_f32_to_u32;
 use crate::{
-    CandleStick, CpuRenderer, FillRule, Radius, Scene, SdfLine, SdfLineCap, StrokeWidths,
-    TextContext, TextLayoutOptions,
+    CandleStick, CpuRenderer, FillRule, Radius, RectShadowOptions, Scene, SdfLine, SdfLineCap,
+    StrokeWidths, TextContext, TextLayoutOptions,
 };
 
 fn mixed_shape_scene() -> Scene {
     let mut scene = Scene::new(360, 260);
     scene.push_rect(
         Rect::new(0.0, 0.0, 360.0, 260.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(248, 249, 251),
         FillRule::NonZero,
     );
     scene.push_rect(
         Rect::new(42.0, 38.0, 178.0, 128.0),
+        crate::Radius::ZERO,
         Color::from_rgba8(37, 143, 93, 230),
         FillRule::NonZero,
     );

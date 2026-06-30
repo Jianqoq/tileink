@@ -12,17 +12,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 360.0, 260.0),
-        Radius::all(0.0),
+        Radius::ZERO,
         Color::from_rgb8(248, 249, 251),
     );
     common::fill_rect(
         &mut scene,
         Rect::new(52.0, 56.0, 210.0, 204.0),
-        Radius::all(0.0),
+        Radius::ZERO,
         Color::from_rgb8(226, 232, 240),
     );
     scene.push_opacity_layer(
-        common::rect_path(Rect::new(0.0, 0.0, 360.0, 260.0), Radius::all(0.0)),
+        common::rect_path(Rect::new(0.0, 0.0, 360.0, 260.0), Radius::ZERO),
         Affine::IDENTITY,
         0.1,
         0.45,
@@ -30,7 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     common::fill_rect(
         &mut scene,
         Rect::new(92.0, 76.0, 264.0, 168.0),
-        Radius::all(0.0),
+        Radius::ZERO,
         Color::from_rgb8(37, 99, 235),
     );
     common::fill_circle(
@@ -42,7 +42,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     common::fill_rect(
         &mut scene,
         Rect::new(232.0, 42.0, 308.0, 94.0),
-        Radius::all(0.0),
+        Radius::ZERO,
         Color::from_rgb8(22, 163, 74),
     );
     common::render_to_png("opacity", &scene, 360, 260, Color::WHITE)

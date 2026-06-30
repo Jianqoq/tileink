@@ -54,6 +54,7 @@ fn buffer_lengths_count_sdf_draw_tiles_without_path_storage() {
     let mut scene = Scene::new(64, 48);
     scene.push_rect(
         Rect::new(8.0, 8.0, 40.0, 32.0),
+        crate::Radius::ZERO,
         Color::BLACK,
         FillRule::NonZero,
     );

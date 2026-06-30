@@ -160,6 +160,6 @@ pub fn stroke_circle(scene: &mut Scene, circle: Circle, stroke: Stroke, color: C
 pub fn canvas_region(width: u32, height: u32) -> Region {
     Region::rect(
         Rect::new(0.0, 0.0, width as f64, height as f64),
-        Radius::all(0.0),
+        Radius::ZERO,
     )
 }

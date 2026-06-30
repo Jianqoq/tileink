@@ -58,10 +58,11 @@ fn filter_wgpu_applies_color_filter_to_offscreen_children_when_enabled() {
     let mut scene = Scene::new(16, 16);
     scene.push_filter_layer(
         Filter::Invert(1.0),
-        Region::rect(Rect::new(0.0, 0.0, 8.0, 16.0), Radius::all(0.0)),
+        Region::rect(Rect::new(0.0, 0.0, 8.0, 16.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
         FillRule::NonZero,
     );
@@ -84,9 +85,19 @@ fn filter_wgpu_isolates_opacity_layer_with_offscreen_child_when_enabled() {
     let mut scene = Scene::new(16, 16);
     let full = Rect::new(0.0, 0.0, 16.0, 16.0);
     scene.push_opacity_layer(full.to_path(0.0), Affine::IDENTITY, 0.0, 0.5);
-    scene.push_rect(full, Color::from_rgb8(0, 128, 0), FillRule::NonZero);
-    scene.push_filter_layer(Filter::Opacity(1.0), Region::rect(full, Radius::all(0.0)));
-    scene.push_rect(full, Color::from_rgb8(0, 0, 255), FillRule::NonZero);
+    scene.push_rect(
+        full,
+        crate::Radius::ZERO,
+        Color::from_rgb8(0, 128, 0),
+        FillRule::NonZero,
+    );
+    scene.push_filter_layer(Filter::Opacity(1.0), Region::rect(full, Radius::ZERO));
+    scene.push_rect(
+        full,
+        crate::Radius::ZERO,
+        Color::from_rgb8(0, 0, 255),
+        FillRule::NonZero,
+    );
     scene.pop_layer();
     scene.pop_layer();
 
@@ -105,7 +116,12 @@ fn filter_wgpu_isolates_blend_layer_with_offscreen_child_when_enabled() {
 
     let mut scene = Scene::new(16, 16);
     let full = Rect::new(0.0, 0.0, 16.0, 16.0);
-    scene.push_rect(full, Color::from_rgb8(128, 128, 128), FillRule::NonZero);
+    scene.push_rect(
+        full,
+        crate::Radius::ZERO,
+        Color::from_rgb8(128, 128, 128),
+        FillRule::NonZero,
+    );
     scene.push_blend_layer(
         Rect::new(0.0, 0.0, 8.0, 16.0).to_path(0.0),
         Affine::IDENTITY,
@@ -113,9 +129,19 @@ fn filter_wgpu_isolates_blend_layer_with_offscreen_child_when_enabled() {
         Mix::Multiply,
         Compose::SrcOver,
     );
-    scene.push_rect(full, Color::from_rgb8(255, 0, 0), FillRule::NonZero);
-    scene.push_filter_layer(Filter::Opacity(1.0), Region::rect(full, Radius::all(0.0)));
-    scene.push_rect(full, Color::from_rgb8(0, 255, 0), FillRule::NonZero);
+    scene.push_rect(
+        full,
+        crate::Radius::ZERO,
+        Color::from_rgb8(255, 0, 0),
+        FillRule::NonZero,
+    );
+    scene.push_filter_layer(Filter::Opacity(1.0), Region::rect(full, Radius::ZERO));
+    scene.push_rect(
+        full,
+        crate::Radius::ZERO,
+        Color::from_rgb8(0, 255, 0),
+        FillRule::NonZero,
+    );
     scene.pop_layer();
     scene.pop_layer();
 
@@ -135,7 +161,12 @@ fn filter_wgpu_isolates_plain_isolate_layer_when_enabled() {
 
     let mut scene = Scene::new(16, 16);
     let full = Rect::new(0.0, 0.0, 16.0, 16.0);
-    scene.push_rect(full, Color::from_rgb8(128, 128, 128), FillRule::NonZero);
+    scene.push_rect(
+        full,
+        crate::Radius::ZERO,
+        Color::from_rgb8(128, 128, 128),
+        FillRule::NonZero,
+    );
     scene.push_isolate_layer(full.to_path(0.0), Affine::IDENTITY, 0.0);
     scene.push_blend_layer(
         full.to_path(0.0),
@@ -144,7 +175,12 @@ fn filter_wgpu_isolates_plain_isolate_layer_when_enabled() {
         Mix::Multiply,
         Compose::SrcOver,
     );
-    scene.push_rect(full, Color::from_rgb8(255, 0, 0), FillRule::NonZero);
+    scene.push_rect(
+        full,
+        crate::Radius::ZERO,
+        Color::from_rgb8(255, 0, 0),
+        FillRule::NonZero,
+    );
     scene.pop_layer();
     scene.pop_layer();
 
@@ -164,6 +200,7 @@ fn filter_wgpu_applies_mask_layer_when_enabled() {
     let mut mask_scene = Scene::new(16, 16);
     mask_scene.push_rect(
         Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
         Color::from_rgba8(255, 255, 255, 128),
         FillRule::NonZero,
     );
@@ -172,12 +209,13 @@ fn filter_wgpu_applies_mask_layer_when_enabled() {
     scene.push_mask_layer(
         mask_scene,
         Mask {
-            region: Region::rect(Rect::new(0.0, 0.0, 8.0, 16.0), Radius::all(0.0)),
+            region: Region::rect(Rect::new(0.0, 0.0, 8.0, 16.0), Radius::ZERO),
             kind: MaskKind::Alpha,
         },
     );
     scene.push_rect(
         Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
         FillRule::NonZero,
     );
@@ -206,10 +244,11 @@ fn filter_wgpu_applies_outer_clip_stack_to_offscreen_output_when_enabled() {
     );
     scene.push_filter_layer(
         Filter::Invert(1.0),
-        Region::rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::all(0.0)),
+        Region::rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
         FillRule::NonZero,
     );
@@ -239,10 +278,11 @@ fn filter_wgpu_applies_outer_opacity_stack_to_offscreen_output_when_enabled() {
     );
     scene.push_filter_layer(
         Filter::Invert(1.0),
-        Region::rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::all(0.0)),
+        Region::rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
         FillRule::NonZero,
     );
@@ -264,7 +304,12 @@ fn filter_wgpu_applies_outer_blend_stack_to_offscreen_output_when_enabled() {
 
     let blue = Color::from_rgb8(0, 0, 255);
     let mut scene = Scene::new(16, 16);
-    scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), blue, FillRule::NonZero);
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
+        blue,
+        FillRule::NonZero,
+    );
     scene.push_blend_layer(
         Rect::new(0.0, 0.0, 8.0, 16.0).to_path(0.0),
         Affine::IDENTITY,
@@ -274,10 +319,11 @@ fn filter_wgpu_applies_outer_blend_stack_to_offscreen_output_when_enabled() {
     );
     scene.push_filter_layer(
         Filter::Opacity(1.0),
-        Region::rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::all(0.0)),
+        Region::rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
         FillRule::NonZero,
     );
@@ -308,9 +354,14 @@ fn filter_wgpu_blur_outputs_expanded_bounds_when_enabled() {
             std_dev_x: 4.0,
             std_dev_y: 4.0,
         },
-        Region::rect(sample_rect, Radius::all(0.0)),
+        Region::rect(sample_rect, Radius::ZERO),
     );
-    scene.push_rect(sample_rect, Color::from_rgb8(255, 0, 0), FillRule::NonZero);
+    scene.push_rect(
+        sample_rect,
+        crate::Radius::ZERO,
+        Color::from_rgb8(255, 0, 0),
+        FillRule::NonZero,
+    );
     scene.pop_layer();
 
     let mut renderer = WgpuRenderer::new_default_device(96, 96, Color::WHITE);
@@ -339,10 +390,11 @@ fn filter_wgpu_applies_anisotropic_blur_when_enabled() {
             std_dev_x: 1.0,
             std_dev_y: 0.0,
         },
-        Region::rect(Rect::new(0.0, 0.0, 3.0, 3.0), Radius::all(0.0)),
+        Region::rect(Rect::new(0.0, 0.0, 3.0, 3.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(1.0, 1.0, 2.0, 2.0),
+        crate::Radius::ZERO,
         Color::WHITE,
         FillRule::NonZero,
     );
@@ -372,10 +424,11 @@ fn filter_wgpu_drop_shadow_offsets_alpha_and_preserves_source_when_enabled() {
             std_dev: 0.0,
             brush: Brush::Solid(Color::BLACK),
         },
-        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::all(0.0)),
+        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(2.0, 2.0, 3.0, 3.0),
+        crate::Radius::ZERO,
         Color::WHITE,
         FillRule::NonZero,
     );
@@ -402,10 +455,11 @@ fn filter_wgpu_applies_filter_chain_in_order_when_enabled() {
             filters: vec![Filter::Brightness(2.0), Filter::Invert(1.0)],
             fixed_region: false,
         },
-        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::all(0.0)),
+        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(0.0, 0.0, 8.0, 8.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(32, 32, 32),
         FillRule::NonZero,
     );
@@ -446,10 +500,11 @@ fn filter_wgpu_uploads_drop_shadow_brushes_inside_chain_when_enabled() {
             ],
             fixed_region: true,
         },
-        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::all(0.0)),
+        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(2.0, 2.0, 3.0, 3.0),
+        crate::Radius::ZERO,
         Color::WHITE,
         FillRule::NonZero,
     );
@@ -512,10 +567,11 @@ fn filter_wgpu_executes_filter_graph_when_enabled() {
             ],
             fixed_region: true,
         },
-        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::all(0.0)),
+        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(0.0, 0.0, 8.0, 8.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
         FillRule::NonZero,
     );
@@ -563,10 +619,11 @@ fn filter_wgpu_merges_filter_graph_inputs_when_enabled() {
             ],
             fixed_region: true,
         },
-        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::all(0.0)),
+        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(0.0, 0.0, 8.0, 8.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
         FillRule::NonZero,
     );
@@ -599,25 +656,29 @@ fn filter_wgpu_tiles_filter_graph_input_when_enabled() {
             }],
             fixed_region: true,
         },
-        Region::rect(Rect::new(0.0, 0.0, 6.0, 4.0), Radius::all(0.0)),
+        Region::rect(Rect::new(0.0, 0.0, 6.0, 4.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(1.0, 1.0, 2.0, 2.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
         FillRule::NonZero,
     );
     scene.push_rect(
         Rect::new(2.0, 1.0, 3.0, 2.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(0, 255, 0),
         FillRule::NonZero,
     );
     scene.push_rect(
         Rect::new(1.0, 2.0, 2.0, 3.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(0, 0, 255),
         FillRule::NonZero,
     );
     scene.push_rect(
         Rect::new(2.0, 2.0, 3.0, 3.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(255, 255, 0),
         FillRule::NonZero,
     );
@@ -646,10 +707,11 @@ fn filter_wgpu_morphology_dilates_when_enabled() {
             radius_y: 1.0,
             operator: MorphologyOperator::Dilate,
         },
-        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::all(0.0)),
+        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(3.0, 3.0, 4.0, 4.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
         FillRule::NonZero,
     );
@@ -677,10 +739,11 @@ fn filter_wgpu_morphology_huge_erode_clears_when_enabled() {
             radius_y: 9999.0,
             operator: MorphologyOperator::Erode,
         },
-        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::all(0.0)),
+        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(0.0, 0.0, 8.0, 8.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
         FillRule::NonZero,
     );
@@ -702,10 +765,11 @@ fn filter_wgpu_offsets_filter_buffer_when_enabled() {
     let mut scene = Scene::new(8, 8);
     scene.push_filter_layer(
         Filter::Offset { dx: 2.0, dy: 1.0 },
-        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::all(0.0)),
+        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(1.0, 1.0, 2.0, 2.0),
+        crate::Radius::ZERO,
         Color::WHITE,
         FillRule::NonZero,
     );
@@ -729,9 +793,14 @@ fn filter_wgpu_offset_preserves_source_outside_canvas_when_enabled() {
     let source = Rect::new(-16.0, 0.0, 0.0, 16.0);
     scene.push_filter_layer(
         Filter::Offset { dx: 16.0, dy: 0.0 },
-        Region::rect(source, Radius::all(0.0)),
+        Region::rect(source, Radius::ZERO),
     );
-    scene.push_rect(source, Color::from_rgb8(255, 0, 0), FillRule::NonZero);
+    scene.push_rect(
+        source,
+        crate::Radius::ZERO,
+        Color::from_rgb8(255, 0, 0),
+        FillRule::NonZero,
+    );
     scene.pop_layer();
 
     let mut renderer = WgpuRenderer::new_default_device(48, 16, Color::TRANSPARENT);
@@ -753,9 +822,14 @@ fn filter_wgpu_offset_with_huge_source_keeps_visible_dependency_window_when_enab
     let source = Rect::new(-100_000.0, 0.0, 100_000.0, 16.0);
     scene.push_filter_layer(
         Filter::Offset { dx: 20.0, dy: 0.0 },
-        Region::rect(source, Radius::all(0.0)),
+        Region::rect(source, Radius::ZERO),
     );
-    scene.push_rect(source, Color::from_rgb8(0, 128, 0), FillRule::NonZero);
+    scene.push_rect(
+        source,
+        crate::Radius::ZERO,
+        Color::from_rgb8(0, 128, 0),
+        FillRule::NonZero,
+    );
     scene.pop_layer();
 
     let mut renderer = WgpuRenderer::new_default_device(64, 16, Color::TRANSPARENT);
@@ -778,10 +852,11 @@ fn filter_wgpu_applies_color_matrix_when_enabled() {
             0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
             0.0, 1.0, 0.0,
         ]),
-        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::all(0.0)),
+        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(0.0, 0.0, 8.0, 8.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
         FillRule::NonZero,
     );
@@ -805,10 +880,11 @@ fn filter_wgpu_applies_component_transfer_when_enabled() {
     let mut scene = Scene::new(8, 8);
     scene.push_filter_layer(
         Filter::ComponentTransfer(component_transfer_test_table()),
-        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::all(0.0)),
+        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(0.0, 0.0, 8.0, 8.0),
+        crate::Radius::ZERO,
         Color::from_rgba8(255, 128, 0, 128),
         FillRule::NonZero,
     );
@@ -842,20 +918,23 @@ fn filter_wgpu_applies_convolve_matrix_when_enabled() {
             edge_mode: ConvolveEdgeMode::Duplicate,
             preserve_alpha: false,
         }),
-        Region::rect(Rect::new(0.0, 0.0, 3.0, 1.0), Radius::all(0.0)),
+        Region::rect(Rect::new(0.0, 0.0, 3.0, 1.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(0.0, 0.0, 1.0, 1.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(10, 0, 0),
         FillRule::NonZero,
     );
     scene.push_rect(
         Rect::new(1.0, 0.0, 2.0, 1.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(20, 0, 0),
         FillRule::NonZero,
     );
     scene.push_rect(
         Rect::new(2.0, 0.0, 3.0, 1.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(40, 0, 0),
         FillRule::NonZero,
     );
@@ -887,20 +966,23 @@ fn filter_wgpu_applies_diffuse_lighting_when_enabled() {
                 elevation: 0.0,
             },
         }),
-        Region::rect(Rect::new(0.0, 0.0, 3.0, 1.0), Radius::all(0.0)),
+        Region::rect(Rect::new(0.0, 0.0, 3.0, 1.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(0.0, 0.0, 1.0, 1.0),
+        crate::Radius::ZERO,
         Color::from_rgba8(0, 0, 0, 0),
         FillRule::NonZero,
     );
     scene.push_rect(
         Rect::new(1.0, 0.0, 2.0, 1.0),
+        crate::Radius::ZERO,
         Color::from_rgba8(0, 0, 0, 128),
         FillRule::NonZero,
     );
     scene.push_rect(
         Rect::new(2.0, 0.0, 3.0, 1.0),
+        crate::Radius::ZERO,
         Color::BLACK,
         FillRule::NonZero,
     );
@@ -935,10 +1017,11 @@ fn filter_wgpu_point_light_uses_world_coords_for_translated_filter_surface_when_
                 z: 1.0,
             },
         }),
-        Region::rect(Rect::new(40.0, 0.0, 60.0, 8.0), Radius::all(0.0)),
+        Region::rect(Rect::new(40.0, 0.0, 60.0, 8.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(40.0, 0.0, 60.0, 8.0),
+        crate::Radius::ZERO,
         Color::BLACK,
         FillRule::NonZero,
     );
@@ -971,10 +1054,11 @@ fn filter_wgpu_applies_specular_lighting_when_enabled() {
                 z: 1.0,
             },
         }),
-        Region::rect(Rect::new(0.0, 0.0, 1.0, 1.0), Radius::all(0.0)),
+        Region::rect(Rect::new(0.0, 0.0, 1.0, 1.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(0.0, 0.0, 1.0, 1.0),
+        crate::Radius::ZERO,
         Color::BLACK,
         FillRule::NonZero,
     );
@@ -998,10 +1082,11 @@ fn filter_wgpu_floods_with_uploaded_brush_when_enabled() {
         Filter::Flood {
             brush: Brush::Solid(Color::from_rgba8(0, 255, 0, 128)),
         },
-        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::all(0.0)),
+        Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(0.0, 0.0, 1.0, 1.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
         FillRule::NonZero,
     );
@@ -1035,10 +1120,11 @@ fn filter_wgpu_drop_shadow_blurs_offset_alpha_when_enabled() {
             std_dev: 2.0,
             brush: Brush::Solid(Color::BLACK),
         },
-        Region::rect(Rect::new(0.0, 0.0, 32.0, 32.0), Radius::all(0.0)),
+        Region::rect(Rect::new(0.0, 0.0, 32.0, 32.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(8.0, 8.0, 16.0, 16.0),
+        crate::Radius::ZERO,
         Color::WHITE,
         FillRule::NonZero,
     );
@@ -1076,10 +1162,11 @@ fn filter_wgpu_drop_shadow_samples_linear_gradient_brush_when_enabled() {
             std_dev: 0.0,
             brush: Brush::from_gradient(&shadow),
         },
-        Region::rect(Rect::new(0.0, 0.0, 32.0, 48.0), Radius::all(0.0)),
+        Region::rect(Rect::new(0.0, 0.0, 32.0, 48.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(0.0, 0.0, 32.0, 16.0),
+        crate::Radius::ZERO,
         Color::WHITE,
         FillRule::NonZero,
     );
@@ -1135,10 +1222,11 @@ fn filter_wgpu_drop_shadow_samples_pattern_brush_when_enabled() {
             std_dev: 0.0,
             brush: pattern,
         },
-        Region::rect(Rect::new(0.0, 0.0, 16.0, 48.0), Radius::all(0.0)),
+        Region::rect(Rect::new(0.0, 0.0, 16.0, 48.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
         Color::WHITE,
         FillRule::NonZero,
     );
@@ -1186,10 +1274,11 @@ fn filter_wgpu_graph_image_primitive_samples_brush_when_enabled() {
             }],
             fixed_region: true,
         },
-        Region::rect(Rect::new(0.0, 0.0, 4.0, 2.0), Radius::all(0.0)),
+        Region::rect(Rect::new(0.0, 0.0, 4.0, 2.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(0.0, 0.0, 4.0, 2.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
         FillRule::NonZero,
     );
@@ -1230,10 +1319,11 @@ fn filter_wgpu_graph_turbulence_matches_cpu_when_enabled() {
             }],
             fixed_region: true,
         },
-        Region::rect(Rect::new(4.0, 3.0, 30.0, 22.0), Radius::all(0.0)),
+        Region::rect(Rect::new(4.0, 3.0, 30.0, 22.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(4.0, 3.0, 30.0, 22.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
         FillRule::NonZero,
     );
@@ -1272,10 +1362,11 @@ fn filter_wgpu_graph_turbulence_uses_surface_origin_when_enabled() {
             }],
             fixed_region: true,
         },
-        Region::rect(Rect::new(40.0, 4.0, 72.0, 20.0), Radius::all(0.0)),
+        Region::rect(Rect::new(40.0, 4.0, 72.0, 20.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(40.0, 4.0, 72.0, 20.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
         FillRule::NonZero,
     );
@@ -1319,11 +1410,12 @@ fn filter_wgpu_graph_displacement_map_matches_cpu_when_enabled() {
             ],
             fixed_region: true,
         },
-        Region::rect(Rect::new(0.0, 0.0, 8.0, 2.0), Radius::all(0.0)),
+        Region::rect(Rect::new(0.0, 0.0, 8.0, 2.0), Radius::ZERO),
     );
     for x in 0..8 {
         scene.push_rect(
             Rect::new(x as f64, 0.0, x as f64 + 1.0, 2.0),
+            crate::Radius::ZERO,
             Color::from_rgb8((x as u8 + 1) * 20, 0, 0),
             FillRule::NonZero,
         );
@@ -1354,10 +1446,11 @@ fn filter_wgpu_drop_shadow_samples_radial_gradient_brush_when_enabled() {
             std_dev: 0.0,
             brush: Brush::from_gradient(&shadow),
         },
-        Region::rect(Rect::new(0.0, 0.0, 32.0, 48.0), Radius::all(0.0)),
+        Region::rect(Rect::new(0.0, 0.0, 32.0, 48.0), Radius::ZERO),
     );
     scene.push_rect(
         Rect::new(0.0, 0.0, 32.0, 16.0),
+        crate::Radius::ZERO,
         Color::WHITE,
         FillRule::NonZero,
     );

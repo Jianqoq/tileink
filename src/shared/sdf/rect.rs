@@ -13,7 +13,9 @@ pub struct Radius {
 }
 
 impl Radius {
-    pub fn all(radius: f32) -> Self {
+    pub const ZERO: Self = Self::all(0.0);
+
+    pub const fn all(radius: f32) -> Self {
         Self {
             top_left: radius,
             top_right: radius,
@@ -108,6 +110,44 @@ pub struct Rect {
     pub start: Point,
     pub end: Point,
     pub radius: Radius,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RectShadowOptions {
+    pub offset_x: f32,
+    pub offset_y: f32,
+    /// Exponential falloff distance in pixels. Four expand lengths cover more
+    /// than 98% of the visible soft shadow while keeping tile bounds finite.
+    pub expand: f32,
+    pub intensity: f32,
+}
+
+impl RectShadowOptions {
+    pub fn new(offset_x: f32, offset_y: f32, expand: f32, intensity: f32) -> Self {
+        Self {
+            offset_x,
+            offset_y,
+            expand,
+            intensity,
+        }
+    }
+
+    pub(crate) fn normalized(self) -> Option<Self> {
+        let intensity = self.intensity.clamp(0.0, 1.0);
+        (intensity > 0.0).then_some(Self {
+            expand: self.expand.max(0.0),
+            intensity,
+            ..self
+        })
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct RectShadow {
+    pub rect: Rect,
+    pub options: RectShadowOptions,
 }
 
 #[derive(Clone, Copy)]
@@ -353,6 +393,50 @@ impl Rect {
                 } else {
                     area[ix] = coverage_from_dist(self.signed_distance(px, py));
                 }
+            }
+        }
+    }
+}
+
+impl RectShadow {
+    pub(crate) fn bounds(&self) -> Bounds {
+        let (x0, y0, x1, y1) = self.rect.axis_bounds();
+        let outset = self.options.expand * 4.0 + 1.0;
+        Bounds {
+            x0: (x0 + f64::from(self.options.offset_x) - f64::from(outset)).floor() as i32,
+            y0: (y0 + f64::from(self.options.offset_y) - f64::from(outset)).floor() as i32,
+            x1: (x1 + f64::from(self.options.offset_x) + f64::from(outset)).ceil() as i32,
+            y1: (y1 + f64::from(self.options.offset_y) + f64::from(outset)).ceil() as i32,
+        }
+    }
+
+    pub(crate) fn tile_is_solid(&self, _: Bounds) -> bool {
+        false
+    }
+
+    pub(crate) fn fine_area(
+        &self,
+        area: &mut [f32; (TILE_SIZE * TILE_SIZE) as usize],
+        tile_bounds: Bounds,
+        pixel_bounds: Bounds,
+    ) {
+        let Some(options) = self.options.normalized() else {
+            return;
+        };
+        let intensity = options.intensity;
+
+        for y_px in pixel_bounds.y0..pixel_bounds.y1 {
+            let py = y_px as f32 + 0.5 - options.offset_y;
+            let row = (y_px - tile_bounds.y0) as usize * TILE_SIZE as usize;
+            for x_px in pixel_bounds.x0..pixel_bounds.x1 {
+                let px = x_px as f32 + 0.5 - options.offset_x;
+                let dist = self.rect.signed_distance(px, py);
+                let alpha = if options.expand <= 0.0 {
+                    coverage_from_dist(dist) * intensity
+                } else {
+                    (-dist.max(0.0) / options.expand).exp() * intensity
+                };
+                area[row + (x_px - tile_bounds.x0) as usize] = alpha.clamp(0.0, 1.0);
             }
         }
     }

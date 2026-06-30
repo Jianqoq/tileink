@@ -6,7 +6,7 @@ use peniko::{
     Color,
     kurbo::{Circle, Rect, Shape, Stroke},
 };
-use tileink::{FillRule, Filter, LiquidGlass, Radius, Region, Scene};
+use tileink::{FillRule, Filter, Radius, RectLiquidGlass, Region, Scene};
 
 use crate::common::{fill_circle, fill_rect, stroke_circle, stroke_rect};
 
@@ -18,7 +18,7 @@ fn background(scene: &mut Scene) {
     fill_rect(
         scene,
         Rect::new(0.0, 0.0, f64::from(WIDTH), f64::from(HEIGHT)),
-        Radius::all(0.0),
+        Radius::ZERO,
         Color::from_rgb8(245, 247, 250),
     );
 
@@ -228,10 +228,10 @@ pub fn liquid_glass_scene() -> Scene {
 
     let panel = Rect::new(126.0, 104.0, 594.0, 316.0);
     scene.push_backdrop_layer(
-        Filter::LiquidGlass(LiquidGlass {
-            blur_std_dev: 1.0,
+        Filter::RectLiquidGlass(RectLiquidGlass {
+            blur_radius: 1,
             tint: Color::from_rgba8(255, 255, 255, 0),
-            ..LiquidGlass::default()
+            ..RectLiquidGlass::default()
         }),
         Region::rect(panel, Radius::all(42.0)),
     );

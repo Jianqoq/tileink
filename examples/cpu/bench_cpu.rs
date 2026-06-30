@@ -10,6 +10,7 @@ fn build_scene(width: u32, height: u32) -> Scene {
     let mut scene = Scene::new(width, height);
     scene.push_rect(
         Rect::new(0.0, 0.0, width as f64, height as f64),
+        tileink::Radius::ZERO,
         Color::from_rgb8(248, 249, 251),
         FillRule::NonZero,
     );

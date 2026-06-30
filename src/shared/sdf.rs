@@ -2,7 +2,7 @@ use crate::shared::sdf::{
     candlestick::CandleStick,
     circle::{Circle, CircleStroke},
     line::Line,
-    rect::{Rect, RectStroke},
+    rect::{Rect, RectShadow, RectStroke},
 };
 use crate::{TILE_SIZE, shared::bounds::Bounds};
 
@@ -23,6 +23,7 @@ pub(super) fn coverage_from_dist(dist: f32) -> f32 {
 pub enum Sdf {
     Rect(Rect),
     RectStroke(RectStroke),
+    RectShadow(RectShadow),
     Circle(Circle),
     CircleStroke(CircleStroke),
     CandleStick(CandleStick),
@@ -34,6 +35,7 @@ impl Sdf {
         match self {
             Self::Rect(rect) => rect.tile_is_solid(bounds),
             Self::RectStroke(stroke) => stroke.tile_is_solid(bounds),
+            Self::RectShadow(shadow) => shadow.tile_is_solid(bounds),
             Self::Circle(circle) => circle.tile_is_solid(bounds),
             Self::CircleStroke(stroke) => stroke.tile_is_solid(bounds),
             Self::CandleStick(candle) => candle.tile_is_solid(bounds),
@@ -50,6 +52,7 @@ impl Sdf {
         match self {
             Self::Rect(rect) => rect.fine_area(area, tile_bounds, pixel_bounds),
             Self::RectStroke(stroke) => stroke.fine_area(area, tile_bounds, pixel_bounds),
+            Self::RectShadow(shadow) => shadow.fine_area(area, tile_bounds, pixel_bounds),
             Self::Circle(circle) => circle.fine_area(area, tile_bounds, pixel_bounds),
             Self::CircleStroke(stroke) => stroke.fine_area(area, tile_bounds, pixel_bounds),
             Self::CandleStick(candle) => candle.fine_area(area, tile_bounds, pixel_bounds),

@@ -1357,6 +1357,7 @@ fn push_svg_unsupported_features_do_not_modify_scene() {
     let mut scene = Scene::new(16, 16);
     scene.push_rect(
         Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(0, 0, 255),
         FillRule::NonZero,
     );

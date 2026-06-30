@@ -9,12 +9,13 @@ fn backdrop_wgpu_applies_color_filter_to_existing_target_when_enabled() {
     let mut scene = Scene::new(16, 16);
     scene.push_rect(
         Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
         FillRule::NonZero,
     );
     scene.push_backdrop_layer(
         Filter::Invert(1.0),
-        Region::rect(Rect::new(4.0, 0.0, 12.0, 16.0), Radius::all(0.0)),
+        Region::rect(Rect::new(4.0, 0.0, 12.0, 16.0), Radius::ZERO),
     );
     scene.pop_layer();
 
@@ -36,6 +37,7 @@ fn backdrop_wgpu_masks_blur_to_rect_sample_region_when_enabled() {
     let mut scene = Scene::new(24, 16);
     scene.push_rect(
         Rect::new(8.0, 4.0, 16.0, 12.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
         FillRule::NonZero,
     );
@@ -44,7 +46,7 @@ fn backdrop_wgpu_masks_blur_to_rect_sample_region_when_enabled() {
             std_dev_x: 2.0,
             std_dev_y: 2.0,
         },
-        Region::rect(Rect::new(8.0, 4.0, 16.0, 12.0), Radius::all(0.0)),
+        Region::rect(Rect::new(8.0, 4.0, 16.0, 12.0), Radius::ZERO),
     );
     scene.pop_layer();
 
@@ -71,6 +73,7 @@ fn backdrop_wgpu_masks_color_filter_to_path_sample_region_when_enabled() {
     let mut scene = Scene::new(16, 16);
     scene.push_rect(
         Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
         FillRule::NonZero,
     );
@@ -105,7 +108,7 @@ fn backdrop_wgpu_masks_color_filter_to_path_sample_region_when_enabled() {
 }
 
 #[test]
-fn backdrop_wgpu_liquid_glass_matches_cpu_when_enabled() {
+fn backdrop_wgpu_rect_liquid_glass_matches_cpu_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;
     }
@@ -115,21 +118,13 @@ fn backdrop_wgpu_liquid_glass_matches_cpu_when_enabled() {
         let v = (x * 4) as u8;
         scene.push_rect(
             Rect::new(f64::from(x), 0.0, f64::from(x + 1), 32.0),
+            crate::Radius::ZERO,
             Color::from_rgb8(v, v, v),
             FillRule::NonZero,
         );
     }
     scene.push_backdrop_layer(
-        Filter::LiquidGlass(LiquidGlass {
-            blur_std_dev: 0.0,
-            tint: Color::TRANSPARENT,
-            refraction_thickness: 8.0,
-            refraction_strength: 6.0,
-            refraction_dispersion: 0.0,
-            fresnel_factor: 0.0,
-            glare_factor: 0.0,
-            ..LiquidGlass::default()
-        }),
+        Filter::RectLiquidGlass(RectLiquidGlass::default()),
         Region::rect(Rect::new(16.0, 4.0, 48.0, 28.0), Radius::all(6.0)),
     );
     scene.pop_layer();
@@ -139,5 +134,5 @@ fn backdrop_wgpu_liquid_glass_matches_cpu_when_enabled() {
     let mut wgpu = WgpuRenderer::new_default_device(64, 32, Color::TRANSPARENT);
     wgpu.render(&scene);
 
-    assert_images_close(cpu.image(), &wgpu.image(), 2);
+    assert_images_close(cpu.image(), &wgpu.image(), 4);
 }

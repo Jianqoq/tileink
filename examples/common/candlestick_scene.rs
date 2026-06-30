@@ -8,11 +8,13 @@ pub fn candlestick_scene() -> (Scene, u32, u32) {
 
     scene.push_rect(
         Rect::new(0.0, 0.0, width as f64, height as f64),
+        tileink::Radius::ZERO,
         Color::from_rgb8(248, 249, 251),
         FillRule::NonZero,
     );
     scene.push_rect(
         Rect::new(36.0, 32.0, 484.0, 284.0),
+        tileink::Radius::ZERO,
         Color::from_rgb8(255, 255, 255),
         FillRule::NonZero,
     );
@@ -20,6 +22,7 @@ pub fn candlestick_scene() -> (Scene, u32, u32) {
     for y in [72.0, 112.0, 152.0, 192.0, 232.0] {
         scene.push_rect(
             Rect::new(36.0, y, 484.0, y + 1.0),
+            tileink::Radius::ZERO,
             Color::from_rgb8(228, 233, 240),
             FillRule::NonZero,
         );

@@ -27,7 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 520.0, 280.0),
-        Radius::all(0.0),
+        Radius::ZERO,
         Color::from_rgb8(248, 249, 251),
     );
     scene.push_path(
@@ -40,7 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     common::stroke_rect(
         &mut scene,
         Rect::new(60.5, 60.5, 220.5, 220.5),
-        Radius::all(0.0),
+        Radius::ZERO,
         Stroke::new(3.0),
         Color::from_rgb8(15, 23, 42),
     );
@@ -54,7 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     common::stroke_rect(
         &mut scene,
         Rect::new(300.5, 60.5, 460.5, 220.5),
-        Radius::all(0.0),
+        Radius::ZERO,
         Stroke::new(3.0),
         Color::from_rgb8(15, 23, 42),
     );

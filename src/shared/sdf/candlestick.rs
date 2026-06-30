@@ -91,7 +91,7 @@ impl CandleStick {
                 f64::from(self.center_x + 0.5),
                 f64::from(self.high_y.max(self.low_y)),
             ),
-            radius: Radius::all(0.0),
+            radius: Radius::ZERO,
         }
     }
 
@@ -100,7 +100,7 @@ impl CandleStick {
         Rect {
             start: Point::new(f64::from(x0), f64::from(y0)),
             end: Point::new(f64::from(x1), f64::from(y1)),
-            radius: Radius::all(0.0),
+            radius: Radius::ZERO,
         }
     }
 

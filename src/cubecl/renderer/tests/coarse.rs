@@ -9,8 +9,18 @@ fn coarse_wgpu_emits_sdf_particles_for_rects_when_enabled() {
     let red = Color::from_rgb8(255, 0, 0);
     let blue = Color::from_rgb8(0, 0, 255);
     let mut scene = Scene::new(32, 16);
-    scene.push_rect(Rect::new(0.0, 0.0, 32.0, 16.0), red, FillRule::NonZero);
-    scene.push_rect(Rect::new(16.0, 0.0, 32.0, 16.0), blue, FillRule::NonZero);
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 32.0, 16.0),
+        crate::Radius::ZERO,
+        red,
+        FillRule::NonZero,
+    );
+    scene.push_rect(
+        Rect::new(16.0, 0.0, 32.0, 16.0),
+        crate::Radius::ZERO,
+        blue,
+        FillRule::NonZero,
+    );
 
     let mut renderer = WgpuRenderer::new_default_device(32, 16, Color::TRANSPARENT);
     renderer.prepare_scene(&scene);
@@ -72,7 +82,12 @@ fn coarse_wgpu_keeps_particle_order_across_workgroup_draw_chunks_when_enabled() 
         .collect::<Vec<_>>();
     let mut scene = Scene::new(16, 16);
     for color in &colors {
-        scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), *color, FillRule::NonZero);
+        scene.push_rect(
+            Rect::new(0.0, 0.0, 16.0, 16.0),
+            crate::Radius::ZERO,
+            *color,
+            FillRule::NonZero,
+        );
     }
 
     let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
@@ -224,7 +239,12 @@ fn coarse_wgpu_wraps_draw_batch_with_active_clip_stack_when_enabled() {
         FillRule::NonZero,
         0.0,
     );
-    scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), red, FillRule::NonZero);
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
+        red,
+        FillRule::NonZero,
+    );
     scene.pop_layer();
 
     let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
@@ -282,7 +302,12 @@ fn coarse_wgpu_wraps_draw_batch_with_opacity_and_blend_stack_when_enabled() {
         Mix::Multiply,
         Compose::SrcOver,
     );
-    scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), red, FillRule::NonZero);
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
+        red,
+        FillRule::NonZero,
+    );
     scene.pop_layer();
     scene.pop_layer();
 

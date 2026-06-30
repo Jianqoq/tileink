@@ -29,7 +29,10 @@ use crate::shared::{
         candlestick::CandleStick as SdfCandleStick,
         circle::{Circle as SdfCircle, CircleStroke as SdfCircleStroke},
         line::Line as SdfLine,
-        rect::{Radius, Rect as SdfRect, RectStroke as SdfRectStroke, StrokeWidths},
+        rect::{
+            Radius, Rect as SdfRect, RectShadow as SdfRectShadow, RectShadowOptions,
+            RectStroke as SdfRectStroke, StrokeWidths,
+        },
     },
 };
 use crate::text::{
@@ -474,6 +477,10 @@ impl Scene {
     /// the original geometry.
     pub fn push_filter_layer(&mut self, filter: Filter, sample_region: Region) {
         self.ensure_command_root();
+        assert!(
+            !filter.contains_rect_liquid_glass(),
+            "RectLiquidGlass is a rounded-rectangle backdrop effect; use push_backdrop_layer with Region::Rect"
+        );
         let children = self.command_lists.len();
         self.command_lists.push(CommandList::default());
         self.current_command_list_mut()
@@ -497,6 +504,12 @@ impl Scene {
     /// children normally on top.
     pub fn push_backdrop_layer(&mut self, filter: Filter, sample_region: Region) {
         self.ensure_command_root();
+        if filter.contains_rect_liquid_glass() {
+            assert!(
+                matches!(sample_region, Region::Rect { .. }),
+                "RectLiquidGlass requires Region::Rect because it uses rounded-rectangle SDF normals"
+            );
+        }
         let children = self.command_lists.len();
         self.command_lists.push(CommandList::default());
         self.current_command_list_mut()
@@ -522,12 +535,23 @@ impl Scene {
         Some(layer_kind)
     }
 
-    pub fn push_rect(&mut self, rect: Rect, brush: impl Into<Brush>, rule: FillRule) {
+    /// Adds a filled rectangle as SDF geometry with independent corner radii.
+    ///
+    /// This keeps rounded rectangles on the SDF path instead of flattening them
+    /// to path segments, matching the SDF shadow/stroke APIs and preserving
+    /// subpixel edge ownership in both CPU and CubeCL renderers.
+    pub fn push_rect(
+        &mut self,
+        rect: Rect,
+        radius: Radius,
+        brush: impl Into<Brush>,
+        rule: FillRule,
+    ) {
         self.push_sdf_draw(
             Sdf::Rect(SdfRect {
                 start: Point::new(rect.x0, rect.y0),
                 end: Point::new(rect.x1, rect.y1),
-                radius: Radius::all(0.0),
+                radius,
             }),
             Self::rect_bounds(rect),
             brush,
@@ -593,6 +617,34 @@ impl Scene {
             brush,
             rule,
         );
+    }
+
+    /// Adds a soft SDF shadow for a rounded rectangle.
+    ///
+    /// This is intentionally a separate draw instead of a hidden side effect of
+    /// `push_rect`: shadow order matters under clips, blend layers, filters, and
+    /// overlapping content. Push the shadow before the rectangle when it should
+    /// sit behind the rectangle.
+    pub fn push_rect_shadow(
+        &mut self,
+        rect: Rect,
+        radius: Radius,
+        options: RectShadowOptions,
+        brush: impl Into<Brush>,
+        rule: FillRule,
+    ) {
+        let Some(options) = options.normalized() else {
+            return;
+        };
+        let shadow = SdfRectShadow {
+            rect: SdfRect {
+                start: Point::new(rect.x0, rect.y0),
+                end: Point::new(rect.x1, rect.y1),
+                radius,
+            },
+            options,
+        };
+        self.push_sdf_draw(Sdf::RectShadow(shadow), shadow.bounds(), brush, rule);
     }
 
     fn rect_bounds(rect: Rect) -> Bounds {
@@ -1540,7 +1592,7 @@ mod tests {
         scene.push_opacity_layer(rect_path(0.0, 0.0, 48.0, 48.0), Affine::IDENTITY, 0.0, 0.5);
         scene.push_filter_layer(
             Filter::Opacity(1.0),
-            Region::rect(Rect::new(0.0, 0.0, 48.0, 48.0), Radius::all(0.0)),
+            Region::rect(Rect::new(0.0, 0.0, 48.0, 48.0), Radius::ZERO),
         );
         scene.push_path(
             rect_path(8.0, 8.0, 40.0, 40.0),
@@ -1588,7 +1640,7 @@ mod tests {
         );
         scene.push_filter_layer(
             Filter::Opacity(1.0),
-            Region::rect(Rect::new(0.0, 0.0, 48.0, 48.0), Radius::all(0.0)),
+            Region::rect(Rect::new(0.0, 0.0, 48.0, 48.0), Radius::ZERO),
         );
         scene.push_path(
             rect_path(8.0, 8.0, 40.0, 40.0),
@@ -1666,18 +1718,20 @@ mod tests {
         let mut mask_scene = test_scene();
         mask_scene.push_rect(
             Rect::new(0.0, 0.0, 32.0, 64.0),
+            crate::Radius::ZERO,
             Brush::Solid(rgb(255, 255, 255)),
             FillRule::NonZero,
         );
         scene.push_mask_layer(
             mask_scene,
             Mask {
-                region: Region::rect(Rect::new(0.0, 0.0, 64.0, 64.0), Radius::all(0.0)),
+                region: Region::rect(Rect::new(0.0, 0.0, 64.0, 64.0), Radius::ZERO),
                 kind: MaskKind::Alpha,
             },
         );
         scene.push_rect(
             Rect::new(0.0, 0.0, 64.0, 64.0),
+            crate::Radius::ZERO,
             Brush::Solid(rgb(255, 0, 0)),
             FillRule::NonZero,
         );
@@ -1718,6 +1772,7 @@ mod tests {
         let mut scene = test_scene();
         scene.push_rect(
             Rect::new(2.0, 3.0, 18.0, 19.0),
+            crate::Radius::ZERO,
             Brush::Solid(rgb(255, 0, 0)),
             FillRule::NonZero,
         );
@@ -1742,6 +1797,37 @@ mod tests {
             Some(Sdf::Rect(rect)) => {
                 assert_eq!(rect.axis_bounds(), (2.0, 3.0, 18.0, 19.0));
                 assert!(rect.radius.is_zero());
+            }
+            sdf => panic!("expected rect SDF, got {sdf:?}"),
+        }
+    }
+
+    #[test]
+    fn push_rect_records_sdf_rect_with_independent_radii() {
+        let mut scene = test_scene();
+        let radius = Radius {
+            top_left: 3.0,
+            top_right: 9.0,
+            bottom_left: 15.0,
+            bottom_right: 21.0,
+        };
+        scene.push_rect(
+            Rect::new(4.0, 5.0, 40.0, 41.0),
+            radius,
+            Brush::Solid(rgb(255, 0, 0)),
+            FillRule::NonZero,
+        );
+
+        assert_eq!(scene.draw_records.len(), 1);
+        assert!(scene.path_records.is_empty());
+        assert!(scene.bd_records.is_empty());
+        match scene.draw_records[0].sdf {
+            Some(Sdf::Rect(rect)) => {
+                assert_eq!(rect.axis_bounds(), (4.0, 5.0, 40.0, 41.0));
+                assert_eq!(rect.radius.top_left, 3.0);
+                assert_eq!(rect.radius.top_right, 9.0);
+                assert_eq!(rect.radius.bottom_left, 15.0);
+                assert_eq!(rect.radius.bottom_right, 21.0);
             }
             sdf => panic!("expected rect SDF, got {sdf:?}"),
         }
@@ -1952,7 +2038,7 @@ mod tests {
         let mut scene = test_scene();
         scene.push_rect_stroke(
             Rect::new(10.0, 12.0, 30.0, 36.0),
-            Radius::all(0.0),
+            Radius::ZERO,
             Stroke::new(0.0),
             Brush::Solid(rgb(255, 0, 0)),
             FillRule::NonZero,
@@ -2116,5 +2202,25 @@ mod tests {
                 point[0] >= 12.0 && point[0] <= 22.0 && point[1] >= 6.0 && point[1] <= 16.0
             })
         }));
+    }
+
+    #[test]
+    #[should_panic(expected = "RectLiquidGlass is a rounded-rectangle backdrop effect")]
+    fn push_filter_layer_rejects_rect_liquid_glass() {
+        let mut scene = test_scene();
+        scene.push_filter_layer(
+            Filter::RectLiquidGlass(crate::RectLiquidGlass::default()),
+            Region::rect(Rect::new(0.0, 0.0, 20.0, 20.0), Radius::all(4.0)),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "RectLiquidGlass requires Region::Rect")]
+    fn push_backdrop_layer_rejects_rect_liquid_glass_path_region() {
+        let mut scene = test_scene();
+        scene.push_backdrop_layer(
+            Filter::RectLiquidGlass(crate::RectLiquidGlass::default()),
+            Region::path(rect_path(0.0, 0.0, 20.0, 20.0), Affine::IDENTITY, 0.1),
+        );
     }
 }

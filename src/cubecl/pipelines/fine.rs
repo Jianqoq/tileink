@@ -16,7 +16,7 @@ use crate::cubecl::{
         CUBE_PTCL_END, CUBE_PTCL_END_BLEND, CUBE_PTCL_END_CLIP, CUBE_PTCL_END_OPACITY,
         CUBE_PTCL_FILL, CUBE_PTCL_GLYPH, CUBE_PTCL_PATH_GLYPH, CUBE_PTCL_SDF, CUBE_SDF_CANDLESTICK,
         CUBE_SDF_CIRCLE, CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_LINE, CUBE_SDF_RECT,
-        CUBE_SDF_RECT_STROKE, CubeBufferLengths,
+        CUBE_SDF_RECT_SHADOW, CUBE_SDF_RECT_STROKE, CubeBufferLengths,
     },
 };
 
@@ -103,6 +103,10 @@ impl FinePipeline {
             unsafe { scene.draw_sdf_stroke_right.arg() },
             unsafe { scene.draw_sdf_stroke_bottom.arg() },
             unsafe { scene.draw_sdf_stroke_left.arg() },
+            unsafe { scene.draw_sdf_shadow_offset_x.arg() },
+            unsafe { scene.draw_sdf_shadow_offset_y.arg() },
+            unsafe { scene.draw_sdf_shadow_expand.arg() },
+            unsafe { scene.draw_sdf_shadow_intensity.arg() },
             unsafe { coarse.glyph_indices.arg() },
             unsafe { scene.glyph_image_ids.arg() },
             unsafe { scene.glyph_x.arg() },
@@ -172,6 +176,10 @@ fn fine_render(
     draw_sdf_stroke_right: &Array<f32>,
     draw_sdf_stroke_bottom: &Array<f32>,
     draw_sdf_stroke_left: &Array<f32>,
+    draw_sdf_shadow_offset_x: &Array<f32>,
+    draw_sdf_shadow_offset_y: &Array<f32>,
+    draw_sdf_shadow_expand: &Array<f32>,
+    draw_sdf_shadow_intensity: &Array<f32>,
     glyph_indices: &Array<u32>,
     glyph_image_ids: &Array<u32>,
     glyph_x: &Array<i32>,
@@ -259,6 +267,10 @@ fn fine_render(
                         draw_sdf_stroke_right,
                         draw_sdf_stroke_bottom,
                         draw_sdf_stroke_left,
+                        draw_sdf_shadow_offset_x,
+                        draw_sdf_shadow_offset_y,
+                        draw_sdf_shadow_expand,
+                        draw_sdf_shadow_intensity,
                     ),
                     clip_mask,
                 );
@@ -611,6 +623,10 @@ fn sdf_alpha_at(
     draw_sdf_stroke_right: &Array<f32>,
     draw_sdf_stroke_bottom: &Array<f32>,
     draw_sdf_stroke_left: &Array<f32>,
+    draw_sdf_shadow_offset_x: &Array<f32>,
+    draw_sdf_shadow_offset_y: &Array<f32>,
+    draw_sdf_shadow_expand: &Array<f32>,
+    draw_sdf_shadow_intensity: &Array<f32>,
 ) -> u32 {
     let i = draw_ix as usize;
     let kind = draw_sdf_kinds[i];
@@ -670,6 +686,23 @@ fn sdf_alpha_at(
             ));
         }
         coverage = (outer - inner).clamp(0.0, 1.0);
+    } else if kind == CUBE_SDF_RECT_SHADOW {
+        coverage = rect_shadow_sdf_coverage(
+            x,
+            y,
+            draw_sdf_x0[i],
+            draw_sdf_y0[i],
+            draw_sdf_x1[i],
+            draw_sdf_y1[i],
+            draw_sdf_r0[i],
+            draw_sdf_r1[i],
+            draw_sdf_r2[i],
+            draw_sdf_r3[i],
+            draw_sdf_shadow_offset_x[i],
+            draw_sdf_shadow_offset_y[i],
+            draw_sdf_shadow_expand[i],
+            draw_sdf_shadow_intensity[i],
+        );
     } else if kind == CUBE_SDF_CIRCLE {
         coverage = sdf_coverage_from_dist(circle_sdf_distance(
             x,
@@ -724,6 +757,44 @@ fn sdf_alpha_at(
     }
 
     (coverage * 255.0 + 0.5) as u32
+}
+
+#[cube]
+#[allow(clippy::too_many_arguments)]
+fn rect_shadow_sdf_coverage(
+    x: f32,
+    y: f32,
+    x0: f32,
+    y0: f32,
+    x1: f32,
+    y1: f32,
+    top_left: f32,
+    top_right: f32,
+    bottom_left: f32,
+    bottom_right: f32,
+    offset_x: f32,
+    offset_y: f32,
+    expand: f32,
+    intensity: f32,
+) -> f32 {
+    let intensity = intensity.clamp(0.0, 1.0);
+    let dist = rect_sdf_distance(
+        x - offset_x,
+        y - offset_y,
+        x0,
+        y0,
+        x1,
+        y1,
+        top_left,
+        top_right,
+        bottom_left,
+        bottom_right,
+    );
+    let mut coverage = sdf_coverage_from_dist(dist) * intensity;
+    if expand > 0.0 {
+        coverage = (-dist.max(0.0) / expand).exp() * intensity;
+    }
+    coverage.clamp(0.0, 1.0)
 }
 
 #[cube]

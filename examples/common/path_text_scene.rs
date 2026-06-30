@@ -15,6 +15,7 @@ pub fn scene(context: &mut TextContext) -> Scene {
     let mut scene = Scene::new(WIDTH, HEIGHT);
     scene.push_rect(
         Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),
+        tileink::Radius::ZERO,
         CLEAR,
         FillRule::NonZero,
     );

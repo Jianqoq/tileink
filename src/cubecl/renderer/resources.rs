@@ -22,8 +22,8 @@ use crate::cubecl::{
         CUBE_GLYPH_LINEAR_SUBPIXEL_MASK, CUBE_GLYPH_MASK, CUBE_GLYPH_SUBPIXEL_MASK,
         CUBE_LAYER_BLEND, CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY, CUBE_SDF_CANDLESTICK,
         CUBE_SDF_CIRCLE, CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_LINE, CUBE_SDF_NONE, CUBE_SDF_RECT,
-        CUBE_SDF_RECT_STROKE, CubeBufferLengths, CubeCumsumPlan, CubeScanChunk, CubeScanChunkRange,
-        build_cumsum_plan_into, build_scan_chunks_into,
+        CUBE_SDF_RECT_SHADOW, CUBE_SDF_RECT_STROKE, CubeBufferLengths, CubeCumsumPlan,
+        CubeScanChunk, CubeScanChunkRange, build_cumsum_plan_into, build_scan_chunks_into,
     },
 };
 
@@ -43,6 +43,10 @@ struct DrawSdfUpload {
     stroke_right: Vec<f32>,
     stroke_bottom: Vec<f32>,
     stroke_left: Vec<f32>,
+    shadow_offset_x: Vec<f32>,
+    shadow_offset_y: Vec<f32>,
+    shadow_expand: Vec<f32>,
+    shadow_intensity: Vec<f32>,
 }
 
 #[derive(Default)]
@@ -177,6 +181,7 @@ impl DrawSdfUpload {
                             rect.radius.bottom_right,
                         ],
                         [0.0; 4],
+                        [0.0; 4],
                     );
                 }
                 Some(Sdf::RectStroke(stroke)) => {
@@ -192,6 +197,27 @@ impl DrawSdfUpload {
                             stroke.rect.radius.bottom_right,
                         ],
                         [half.top, half.right, half.bottom, half.left],
+                        [0.0; 4],
+                    );
+                }
+                Some(Sdf::RectShadow(shadow)) => {
+                    let (x0, y0, x1, y1) = shadow.rect.axis_bounds();
+                    self.push(
+                        CUBE_SDF_RECT_SHADOW,
+                        [x0 as f32, y0 as f32, x1 as f32, y1 as f32],
+                        [
+                            shadow.rect.radius.top_left,
+                            shadow.rect.radius.top_right,
+                            shadow.rect.radius.bottom_left,
+                            shadow.rect.radius.bottom_right,
+                        ],
+                        [0.0; 4],
+                        [
+                            shadow.options.offset_x,
+                            shadow.options.offset_y,
+                            shadow.options.expand,
+                            shadow.options.intensity,
+                        ],
                     );
                 }
                 Some(Sdf::Circle(circle)) => {
@@ -203,6 +229,7 @@ impl DrawSdfUpload {
                             circle.radius,
                             0.0,
                         ],
+                        [0.0; 4],
                         [0.0; 4],
                         [0.0; 4],
                     );
@@ -218,6 +245,7 @@ impl DrawSdfUpload {
                         ],
                         [0.0; 4],
                         [stroke.half_width; 4],
+                        [0.0; 4],
                     );
                 }
                 Some(Sdf::CandleStick(candle)) => {
@@ -230,6 +258,7 @@ impl DrawSdfUpload {
                             candle.body_top_y,
                         ],
                         [candle.body_bottom_y, candle.body_width as f32, 0.0, 0.0],
+                        [0.0; 4],
                         [0.0; 4],
                     );
                 }
@@ -244,10 +273,11 @@ impl DrawSdfUpload {
                         ],
                         [line.width, line.cap_value(), 0.0, 0.0],
                         [0.0; 4],
+                        [0.0; 4],
                     );
                 }
                 None => {
-                    self.push(CUBE_SDF_NONE, [0.0; 4], [0.0; 4], [0.0; 4]);
+                    self.push(CUBE_SDF_NONE, [0.0; 4], [0.0; 4], [0.0; 4], [0.0; 4]);
                 }
             }
         }
@@ -267,6 +297,10 @@ impl DrawSdfUpload {
         self.stroke_right.clear();
         self.stroke_bottom.clear();
         self.stroke_left.clear();
+        self.shadow_offset_x.clear();
+        self.shadow_offset_y.clear();
+        self.shadow_expand.clear();
+        self.shadow_intensity.clear();
         self.kinds.reserve(len);
         self.x0.reserve(len);
         self.y0.reserve(len);
@@ -280,9 +314,20 @@ impl DrawSdfUpload {
         self.stroke_right.reserve(len);
         self.stroke_bottom.reserve(len);
         self.stroke_left.reserve(len);
+        self.shadow_offset_x.reserve(len);
+        self.shadow_offset_y.reserve(len);
+        self.shadow_expand.reserve(len);
+        self.shadow_intensity.reserve(len);
     }
 
-    fn push(&mut self, kind: u32, xy: [f32; 4], radii: [f32; 4], stroke_widths: [f32; 4]) {
+    fn push(
+        &mut self,
+        kind: u32,
+        xy: [f32; 4],
+        radii: [f32; 4],
+        stroke_widths: [f32; 4],
+        shadow: [f32; 4],
+    ) {
         self.kinds.push(kind);
         self.x0.push(xy[0]);
         self.y0.push(xy[1]);
@@ -296,6 +341,10 @@ impl DrawSdfUpload {
         self.stroke_right.push(stroke_widths[1]);
         self.stroke_bottom.push(stroke_widths[2]);
         self.stroke_left.push(stroke_widths[3]);
+        self.shadow_offset_x.push(shadow[0]);
+        self.shadow_offset_y.push(shadow[1]);
+        self.shadow_expand.push(shadow[2]);
+        self.shadow_intensity.push(shadow[3]);
     }
 }
 
@@ -385,6 +434,10 @@ pub(crate) struct SceneBuffers {
     pub(crate) draw_sdf_stroke_right: CubeBuffer<f32>,
     pub(crate) draw_sdf_stroke_bottom: CubeBuffer<f32>,
     pub(crate) draw_sdf_stroke_left: CubeBuffer<f32>,
+    pub(crate) draw_sdf_shadow_offset_x: CubeBuffer<f32>,
+    pub(crate) draw_sdf_shadow_offset_y: CubeBuffer<f32>,
+    pub(crate) draw_sdf_shadow_expand: CubeBuffer<f32>,
+    pub(crate) draw_sdf_shadow_intensity: CubeBuffer<f32>,
     pub(crate) backdrop_data_offsets: CubeBuffer<u32>,
     pub(crate) backdrop_data_lens: CubeBuffer<u32>,
     pub(crate) backdrop_tile_x0: CubeBuffer<u32>,
@@ -453,6 +506,10 @@ impl SceneBuffers {
             draw_sdf_stroke_right: CubeBuffer::new(client, 0),
             draw_sdf_stroke_bottom: CubeBuffer::new(client, 0),
             draw_sdf_stroke_left: CubeBuffer::new(client, 0),
+            draw_sdf_shadow_offset_x: CubeBuffer::new(client, 0),
+            draw_sdf_shadow_offset_y: CubeBuffer::new(client, 0),
+            draw_sdf_shadow_expand: CubeBuffer::new(client, 0),
+            draw_sdf_shadow_intensity: CubeBuffer::new(client, 0),
             backdrop_data_offsets: CubeBuffer::new(client, 0),
             backdrop_data_lens: CubeBuffer::new(client, 0),
             backdrop_tile_x0: CubeBuffer::new(client, 0),
@@ -765,6 +822,14 @@ impl SceneBuffers {
             .replace(client, &staging.sdf.stroke_bottom);
         self.draw_sdf_stroke_left
             .replace(client, &staging.sdf.stroke_left);
+        self.draw_sdf_shadow_offset_x
+            .replace(client, &staging.sdf.shadow_offset_x);
+        self.draw_sdf_shadow_offset_y
+            .replace(client, &staging.sdf.shadow_offset_y);
+        self.draw_sdf_shadow_expand
+            .replace(client, &staging.sdf.shadow_expand);
+        self.draw_sdf_shadow_intensity
+            .replace(client, &staging.sdf.shadow_intensity);
     }
 
     fn upload_text<R: Runtime>(

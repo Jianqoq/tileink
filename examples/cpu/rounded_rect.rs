@@ -9,7 +9,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 480.0, 320.0),
-        Radius::all(0.0),
+        Radius::ZERO,
         Color::from_rgb8(248, 249, 251),
     );
     common::fill_rect(

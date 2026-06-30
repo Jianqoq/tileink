@@ -95,6 +95,13 @@ impl LocalSpace {
                 stroke.rect.end.y -= dy;
                 Sdf::RectStroke(stroke)
             }
+            Sdf::RectShadow(mut shadow) => {
+                shadow.rect.start.x -= dx;
+                shadow.rect.start.y -= dy;
+                shadow.rect.end.x -= dx;
+                shadow.rect.end.y -= dy;
+                Sdf::RectShadow(shadow)
+            }
             Sdf::Circle(mut circle) => {
                 circle.center.x -= dx;
                 circle.center.y -= dy;

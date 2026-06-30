@@ -32,14 +32,16 @@ pub enum Filter {
         primitives: Vec<FilterPrimitive>,
         fixed_region: bool,
     },
-    /// Custom single-region liquid-glass backdrop filter.
+    /// Custom rounded-rectangle liquid-glass backdrop filter.
     ///
     /// The effect samples the already-rendered backdrop, applies an internal
     /// blurred backdrop copy, then refracts/tints/highlights pixels from the
-    /// filter region edge. It is designed for `Scene::push_backdrop_layer`;
-    /// normal source filters fall back to the filter surface bounds as the
-    /// glass shape because no backdrop region is available there.
-    LiquidGlass(LiquidGlass),
+    /// rectangular filter region edge. It is designed for
+    /// `Scene::push_backdrop_layer` with `Region::Rect`; path regions are
+    /// rejected because the refraction model depends on rounded-rectangle SDF
+    /// normals. Shadow is intentionally not part of this filter; draw a
+    /// separate SDF rectangle shadow before the backdrop layer when needed.
+    RectLiquidGlass(RectLiquidGlass),
     Blur {
         /// Gaussian standard deviation in pixels on the X axis.
         std_dev_x: f32,
@@ -78,6 +80,19 @@ pub enum Filter {
         std_dev: f32,
         brush: Brush,
     },
+}
+
+impl Filter {
+    pub(crate) fn contains_rect_liquid_glass(&self) -> bool {
+        match self {
+            Self::RectLiquidGlass(_) => true,
+            Self::Chain { filters, .. } => filters.iter().any(Self::contains_rect_liquid_glass),
+            Self::Graph { primitives, .. } => primitives
+                .iter()
+                .any(|primitive| primitive.kind.contains_rect_liquid_glass()),
+            _ => false,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -133,15 +148,27 @@ pub enum FilterPrimitiveKind {
     },
 }
 
+impl FilterPrimitiveKind {
+    fn contains_rect_liquid_glass(&self) -> bool {
+        match self {
+            Self::Filter(filter) => filter.contains_rect_liquid_glass(),
+            _ => false,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct LiquidGlass {
-    /// Gaussian standard deviation in pixels for the backdrop blur copy.
-    pub blur_std_dev: f32,
+pub struct RectLiquidGlass {
+    /// Effect controls follow liquid-glass-studio's public UI values. Percent-like
+    /// controls such as `fresnel_factor` and `glare_hardness` stay in 0..100 here
+    /// and are normalized only at the CPU/GPU pass boundary.
+    /// Reference blur kernel radius in pixels. Internally this maps to
+    /// Gaussian `std_dev = blur_radius / 3`, matching liquid-glass-studio.
+    pub blur_radius: u32,
     pub blur_edge: bool,
     pub tint: Color,
     pub refraction_thickness: f32,
     pub refraction_factor: f32,
-    pub refraction_strength: f32,
     pub refraction_dispersion: f32,
     pub fresnel_range: f32,
     pub fresnel_hardness: f32,
@@ -154,15 +181,14 @@ pub struct LiquidGlass {
     pub glare_angle: f32,
 }
 
-impl Default for LiquidGlass {
+impl Default for RectLiquidGlass {
     fn default() -> Self {
         Self {
-            blur_std_dev: 1.0,
+            blur_radius: 1,
             blur_edge: true,
             tint: Color::from_rgba8(255, 255, 255, 0),
             refraction_thickness: 20.0,
             refraction_factor: 1.4,
-            refraction_strength: 18.0,
             refraction_dispersion: 7.0,
             fresnel_range: 30.0,
             fresnel_hardness: 20.0,
@@ -177,19 +203,15 @@ impl Default for LiquidGlass {
     }
 }
 
-impl LiquidGlass {
+impl RectLiquidGlass {
     pub(crate) fn sample_outset(self) -> i32 {
-        let dispersion_scale = 1.0 + self.refraction_dispersion.abs() * 0.02;
-        blur_outset(self.blur_std_dev)
-            + (self.refraction_strength.max(0.0) * dispersion_scale)
-                .ceil()
-                .max(0.0) as i32
-            + 2
+        let refraction = (std::f32::consts::SQRT_2 * 50.0).ceil() as i32;
+        blur_outset(self.blur_radius as f32 / 3.0) + refraction + 2
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct LiquidGlassRegion {
+pub(crate) struct RectLiquidGlassRegion {
     pub(crate) x0: f32,
     pub(crate) y0: f32,
     pub(crate) x1: f32,
@@ -200,7 +222,7 @@ pub(crate) struct LiquidGlassRegion {
     pub(crate) radius_bottom_right: f32,
 }
 
-impl LiquidGlassRegion {
+impl RectLiquidGlassRegion {
     fn from_bounds(bounds: Bounds) -> Self {
         Self {
             x0: bounds.x0 as f32,
@@ -215,17 +237,17 @@ impl LiquidGlassRegion {
     }
 }
 
-pub(crate) fn liquid_glass_region(
+pub(crate) fn rect_liquid_glass_region(
     region: Option<&crate::shared::layer::region::Region>,
     fallback_bounds: Bounds,
-) -> LiquidGlassRegion {
+) -> RectLiquidGlassRegion {
     match region {
         Some(crate::shared::layer::region::Region::Rect { rect, radius }) => {
             let x0 = rect.x0.min(rect.x1) as f32;
             let y0 = rect.y0.min(rect.y1) as f32;
             let x1 = rect.x0.max(rect.x1) as f32;
             let y1 = rect.y0.max(rect.y1) as f32;
-            LiquidGlassRegion {
+            RectLiquidGlassRegion {
                 x0,
                 y0,
                 x1,
@@ -236,8 +258,12 @@ pub(crate) fn liquid_glass_region(
                 radius_bottom_right: radius.bottom_right,
             }
         }
-        Some(region) => LiquidGlassRegion::from_bounds(region_bounds(region)),
-        None => LiquidGlassRegion::from_bounds(fallback_bounds),
+        Some(crate::shared::layer::region::Region::Path { .. }) => {
+            panic!(
+                "RectLiquidGlass requires Region::Rect because it uses rounded-rectangle SDF normals"
+            )
+        }
+        None => RectLiquidGlassRegion::from_bounds(fallback_bounds),
     }
 }
 
@@ -431,7 +457,7 @@ fn filter_outset(filter: &Filter) -> i32 {
             }
         }
         Filter::Graph { .. } => 0,
-        Filter::LiquidGlass(glass) => glass.sample_outset(),
+        Filter::RectLiquidGlass(glass) => glass.sample_outset(),
         Filter::Blur {
             std_dev_x,
             std_dev_y,

@@ -42,6 +42,7 @@ pub fn build_tileink_scene(path_count: usize, dense: bool) -> Scene {
     let mut scene = Scene::new(WIDTH, HEIGHT);
     scene.push_rect(
         Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),
+        tileink::Radius::ZERO,
         Color::WHITE,
         FillRule::NonZero,
     );

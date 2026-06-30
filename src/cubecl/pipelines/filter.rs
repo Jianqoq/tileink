@@ -16,7 +16,7 @@ use crate::{
     },
     shared::{
         bounds::Bounds,
-        layer::filter::{LiquidGlass, LiquidGlassRegion},
+        layer::filter::{RectLiquidGlass, RectLiquidGlassRegion},
     },
 };
 
@@ -515,20 +515,22 @@ impl FilterPipeline {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn liquid_glass_region<R: Runtime>(
+    pub(crate) fn rect_liquid_glass_region<R: Runtime>(
         client: &ComputeClient<R>,
         source: &CubeBuffer<u32>,
         blurred: &CubeBuffer<u32>,
         target: &mut CubeBuffer<u32>,
         size: (u32, u32),
         bounds: Bounds,
-        glass: LiquidGlass,
-        region: LiquidGlassRegion,
+        glass: RectLiquidGlass,
+        region: RectLiquidGlassRegion,
     ) {
         let Some(dispatch) = FilterRegion::new(size, bounds) else {
             return;
         };
-        let [tint_r, tint_g, tint_b, tint_a] = glass.tint.premultiply().components;
+        // liquid-glass-studio treats tint as straight RGBA. Premultiplying here
+        // turns transparent white into black and breaks Fresnel/glare tinting.
+        let [tint_r, tint_g, tint_b, tint_a] = glass.tint.components;
         kernels::filter_liquid_glass_region::launch::<R>(
             client,
             cube_count(dispatch.pixel_count),
@@ -554,16 +556,15 @@ impl FilterPipeline {
             tint_a,
             glass.refraction_thickness,
             glass.refraction_factor,
-            glass.refraction_strength,
             glass.refraction_dispersion,
             glass.fresnel_range,
-            glass.fresnel_hardness,
-            glass.fresnel_factor,
+            glass.fresnel_hardness * 0.01,
+            glass.fresnel_factor * 0.01,
             glass.glare_range,
-            glass.glare_hardness,
-            glass.glare_convergence,
-            glass.glare_opposite_factor,
-            glass.glare_factor,
+            glass.glare_hardness * 0.01,
+            glass.glare_convergence * 0.01,
+            glass.glare_opposite_factor * 0.01,
+            glass.glare_factor * 0.01,
             glass.glare_angle,
             unsafe { source.arg() },
             unsafe { blurred.arg() },

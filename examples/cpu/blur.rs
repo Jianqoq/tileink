@@ -12,7 +12,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 1920.0, 1080.0),
-        Radius::all(0.0),
+        Radius::ZERO,
         Color::from_rgb8(248, 249, 251),
     );
     scene.push_filter_layer(
@@ -30,7 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     common::fill_rect(
         &mut scene,
         Rect::new(800.0, 360.0, 1240.0, 700.0),
-        Radius::all(0.0),
+        Radius::ZERO,
         Color::from_rgba8(220, 38, 38, 210),
     );
     scene.pop_layer();

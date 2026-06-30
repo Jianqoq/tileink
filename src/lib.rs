@@ -35,8 +35,8 @@ pub use shared::{
     layer::{
         filter::{
             CompositeOperator, ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, Filter,
-            FilterInput, FilterPrimitive, FilterPrimitiveKind, LightSource, LiquidGlass,
-            MorphologyOperator, SpecularLighting,
+            FilterInput, FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator,
+            RectLiquidGlass, SpecularLighting,
         },
         mask::{Mask, MaskKind},
         region::Region,
@@ -44,7 +44,7 @@ pub use shared::{
     sdf::{
         candlestick::CandleStick,
         line::{Line as SdfLine, LineCap as SdfLineCap},
-        rect::{Radius, StrokeWidths},
+        rect::{Radius, RectShadowOptions, StrokeWidths},
     },
 };
 pub use svg::{SvgError, SvgOptions};

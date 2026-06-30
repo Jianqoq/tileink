@@ -284,7 +284,7 @@ mod tests {
     #[test]
     fn rasterize_region_mask_clips_to_requested_bounds() {
         let mask = rasterize_region_mask(
-            &Region::rect(Rect::new(8.0, 0.0, 16.0, 16.0), Radius::all(0.0)),
+            &Region::rect(Rect::new(8.0, 0.0, 16.0, 16.0), Radius::ZERO),
             Bounds::new(0, 0, 16, 16),
         );
 

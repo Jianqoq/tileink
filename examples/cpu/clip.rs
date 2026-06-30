@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 360.0, 260.0),
-        Radius::all(0.0),
+        Radius::ZERO,
         Color::from_rgb8(248, 249, 251),
     );
     common::stroke_circle(
@@ -47,7 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     common::fill_rect(
         &mut scene,
         Rect::new(64.0, 56.0, 330.0, 204.0),
-        Radius::all(0.0),
+        Radius::ZERO,
         Color::from_rgba8(14, 165, 233, 235),
     );
     scene.pop_layer();

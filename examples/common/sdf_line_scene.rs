@@ -11,6 +11,7 @@ pub fn sdf_line_scene() -> (Scene, u32, u32) {
 
     scene.push_rect(
         Rect::new(0.0, 0.0, width as f64, height as f64),
+        tileink::Radius::ZERO,
         Color::from_rgb8(248, 249, 251),
         FillRule::NonZero,
     );

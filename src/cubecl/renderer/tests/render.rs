@@ -15,6 +15,7 @@ fn render_wgpu_matches_cpu_for_text_layout_when_enabled() {
     let mut scene = Scene::new(160, 64);
     scene.push_rect(
         Rect::new(0.0, 0.0, 160.0, 64.0),
+        crate::Radius::ZERO,
         Color::WHITE,
         FillRule::NonZero,
     );
@@ -44,6 +45,7 @@ fn render_wgpu_matches_cpu_for_emoji_text_when_enabled() {
     let mut scene = Scene::new(192, 64);
     scene.push_rect(
         Rect::new(0.0, 0.0, 192.0, 64.0),
+        crate::Radius::ZERO,
         Color::WHITE,
         FillRule::NonZero,
     );
@@ -73,6 +75,7 @@ fn render_wgpu_matches_cpu_for_path_text_when_enabled() {
     let mut scene = Scene::new(220, 80);
     scene.push_rect(
         Rect::new(0.0, 0.0, 220.0, 80.0),
+        crate::Radius::ZERO,
         Color::WHITE,
         FillRule::NonZero,
     );
@@ -132,6 +135,35 @@ fn render_wgpu_matches_cpu_for_scaled_stroked_frame_when_enabled() {
     wgpu.render(&scene);
 
     assert_images_close(cpu.image(), &wgpu.image(), 0);
+}
+
+#[test]
+fn render_wgpu_matches_cpu_for_sdf_rect_shadow_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(96, 72);
+    scene.push_rect_shadow(
+        Rect::new(20.0, 16.0, 56.0, 44.0),
+        Radius::all(8.0),
+        RectShadowOptions::new(6.0, 5.0, 6.0, 0.45),
+        Color::BLACK,
+        FillRule::NonZero,
+    );
+    scene.push_rect(
+        Rect::new(20.0, 16.0, 56.0, 44.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(230, 90, 80),
+        FillRule::NonZero,
+    );
+
+    let mut cpu = CpuRenderer::new(96, 72, Color::WHITE);
+    cpu.render(&scene);
+    let mut wgpu = WgpuRenderer::new_default_device(96, 72, Color::WHITE);
+    wgpu.render(&scene);
+
+    assert_images_close(cpu.image(), &wgpu.image(), 1);
 }
 
 #[test]

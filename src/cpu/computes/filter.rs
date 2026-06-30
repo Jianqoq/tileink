@@ -11,7 +11,7 @@ use crate::shared::{
             ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, DisplacementMap, Filter,
             FilterInput, FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator,
             SpecularLighting, TURBULENCE_LATTICE_SIZE, TURBULENCE_TABLE_LEN, Turbulence,
-            TurbulenceKind, filter_offset_to_pixel_delta, liquid_glass_region,
+            TurbulenceKind, filter_offset_to_pixel_delta, rect_liquid_glass_region,
             turbulence_gradient_index, turbulence_lattice,
         },
         region::Region,
@@ -24,24 +24,40 @@ mod liquid_glass;
 mod turbulence;
 
 pub(crate) fn apply(image: &mut Image, filter: &Filter, bounds: Bounds) {
-    apply_with_region(image, filter, bounds, None);
+    apply_with_region(image, filter, bounds, (image.width, image.height), None);
 }
 
-pub(crate) fn apply_backdrop(image: &mut Image, filter: &Filter, bounds: Bounds, region: &Region) {
-    apply_with_region(image, filter, bounds, Some(region));
+pub(crate) fn apply_backdrop(
+    image: &mut Image,
+    filter: &Filter,
+    bounds: Bounds,
+    surface_size: (u32, u32),
+    region: &Region,
+) {
+    apply_with_region(image, filter, bounds, surface_size, Some(region));
 }
 
-fn apply_with_region(image: &mut Image, filter: &Filter, bounds: Bounds, region: Option<&Region>) {
+fn apply_with_region(
+    image: &mut Image,
+    filter: &Filter,
+    bounds: Bounds,
+    surface_size: (u32, u32),
+    region: Option<&Region>,
+) {
     match filter {
         Filter::Chain { filters, .. } => {
             for filter in filters {
-                apply_with_region(image, filter, bounds, region);
+                apply_with_region(image, filter, bounds, surface_size, region);
             }
         }
         Filter::Graph { primitives, .. } => graph::apply(image, primitives, bounds),
-        Filter::LiquidGlass(glass) => {
-            liquid_glass::apply(image, bounds, *glass, liquid_glass_region(region, bounds))
-        }
+        Filter::RectLiquidGlass(glass) => liquid_glass::apply(
+            image,
+            bounds,
+            surface_size,
+            *glass,
+            rect_liquid_glass_region(region, bounds),
+        ),
         Filter::Blur {
             std_dev_x,
             std_dev_y,

@@ -134,7 +134,7 @@ pub(super) fn filter_scratch_extra(filter: &Filter) -> usize {
             filters.iter().map(filter_scratch_extra).max().unwrap_or(0)
         }
         Filter::Graph { primitives, .. } => graph_scratch_extra(primitives),
-        Filter::LiquidGlass(glass) => 2 + usize::from(glass.blur_std_dev > 0.0),
+        Filter::RectLiquidGlass(glass) => 2 + usize::from(glass.blur_radius > 0),
         Filter::Blur {
             std_dev_x,
             std_dev_y,

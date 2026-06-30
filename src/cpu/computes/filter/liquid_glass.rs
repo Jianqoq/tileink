@@ -1,19 +1,22 @@
 use crate::shared::{
     bounds::Bounds,
     image::Image,
-    layer::filter::{LiquidGlass, LiquidGlassRegion},
+    layer::filter::{RectLiquidGlass, RectLiquidGlassRegion},
     pixel::{pack_premul_rgba8, unpack_premul_rgba8},
 };
 
 const CHROMATIC_R: f32 = 0.98;
 const CHROMATIC_G: f32 = 1.0;
 const CHROMATIC_B: f32 = 1.02;
+const REFRACTION_PIXEL_SCALE: f32 = std::f32::consts::SQRT_2 * 50.0;
+const D65_WHITE: [f32; 3] = [0.9504559, 1.0, 1.0890578];
 
 pub(super) fn apply(
     image: &mut Image,
     bounds: Bounds,
-    glass: LiquidGlass,
-    region: LiquidGlassRegion,
+    surface_size: (u32, u32),
+    glass: RectLiquidGlass,
+    region: RectLiquidGlassRegion,
 ) {
     if image.width == 0 || image.height == 0 {
         return;
@@ -21,96 +24,123 @@ pub(super) fn apply(
 
     let source = image.clone();
     let mut blurred = source.clone();
-    super::apply_gaussian_blur(&mut blurred, glass.blur_std_dev, glass.blur_std_dev);
+    super::apply_gaussian_blur(
+        &mut blurred,
+        glass.blur_radius as f32 / 3.0,
+        glass.blur_radius as f32 / 3.0,
+    );
 
-    let tint = glass.tint.premultiply().components;
+    let surface_height = surface_size.1.max(1) as f32;
+    let normal_len = std::f32::consts::SQRT_2 * 1000.0 / surface_height;
+    let tint = glass.tint.components;
     for y in 0..image.height {
         let world_y = bounds.y0 as f32 + y as f32 + 0.5;
         for x in 0..image.width {
             let world_x = bounds.x0 as f32 + x as f32 + 0.5;
             let distance = round_rect_distance(world_x, world_y, region);
-            let ix = (y * image.width + x) as usize;
+            let distance_norm = distance / surface_height;
+            let base = sample_straight_at(&source, x, y);
+            let mut out = base;
 
-            // The backdrop layer applies the exact region mask after filtering.
-            // We still write sensible outside pixels so standalone LiquidGlass
-            // filters remain deterministic when no backdrop mask is present.
-            if distance >= 0.5 {
-                image.pixels[ix] = source.pixels[ix];
-                continue;
+            if distance_norm < 0.005 {
+                let inside_distance = -distance;
+                let edge = glass_edge(glass, inside_distance);
+                if edge <= 0.0 {
+                    out = sample_straight_bilinear(&blurred, x as f32, y as f32);
+                    out = mix_straight(out, [tint[0], tint[1], tint[2], 1.0], tint[3] * 0.8);
+                } else {
+                    let edge_h = inside_distance / glass.refraction_thickness.max(1e-6);
+                    let blur_mix = if glass.blur_edge { 1.0 } else { edge_h };
+                    let normal = round_rect_unit_normal(world_x, world_y, region);
+                    let offset = [
+                        -normal[0] * edge * REFRACTION_PIXEL_SCALE,
+                        -normal[1] * edge * REFRACTION_PIXEL_SCALE,
+                    ];
+                    out = dispersion_sample(
+                        &source, &blurred, x as f32, y as f32, offset, blur_mix, glass,
+                    );
+                    let refracted = out;
+                    out = mix_straight(out, [tint[0], tint[1], tint[2], 1.0], tint[3] * 0.8);
+
+                    let fresnel = fresnel_factor(glass, distance);
+                    let mut fresnel_tint = srgb_to_lch(mix_rgb(
+                        [1.0; 3],
+                        [tint[0], tint[1], tint[2]],
+                        tint[3] * 0.5,
+                    ));
+                    fresnel_tint[0] = (fresnel_tint[0]
+                        + 20.0 * fresnel * percent(glass.fresnel_factor))
+                    .clamp(0.0, 100.0);
+                    let fresnel_color = lch_to_srgb(fresnel_tint);
+                    out = mix_straight(
+                        out,
+                        [fresnel_color[0], fresnel_color[1], fresnel_color[2], 1.0],
+                        fresnel * percent(glass.fresnel_factor) * 0.7 * normal_len,
+                    );
+
+                    let glare_geo = glare_geometry(glass, distance);
+                    let glare_angle = (vec2_angle(normal) - std::f32::consts::FRAC_PI_4
+                        + glass.glare_angle)
+                        * 2.0;
+                    let far_side = (glare_angle > std::f32::consts::PI * 1.5
+                        && glare_angle < std::f32::consts::PI * 3.5)
+                        || glare_angle < -std::f32::consts::FRAC_PI_2;
+                    let side = if far_side {
+                        1.2 * percent(glass.glare_opposite_factor)
+                    } else {
+                        1.2
+                    };
+                    let glare_angle_factor =
+                        ((0.5 + glare_angle.sin() * 0.5) * side * percent(glass.glare_factor))
+                            .powf(0.1 + percent(glass.glare_convergence) * 2.0)
+                            .clamp(0.0, 1.0);
+                    let mut glare_tint = srgb_to_lch(mix_rgb(
+                        [refracted[0], refracted[1], refracted[2]],
+                        [tint[0], tint[1], tint[2]],
+                        tint[3] * 0.5,
+                    ));
+                    glare_tint[0] =
+                        (glare_tint[0] + 150.0 * glare_angle_factor * glare_geo).clamp(0.0, 120.0);
+                    glare_tint[1] += 30.0 * glare_angle_factor * glare_geo;
+                    let glare_color = lch_to_srgb(glare_tint);
+                    out = mix_straight(
+                        out,
+                        [glare_color[0], glare_color[1], glare_color[2], 1.0],
+                        glare_angle_factor * glare_geo * normal_len,
+                    );
+                }
             }
 
-            let normal = round_rect_normal(world_x, world_y, region);
-            let inside_distance = (-distance).max(0.0);
-            let edge = glass_edge(glass, inside_distance);
-            let edge_mix = if glass.blur_edge {
-                1.0
-            } else {
-                (inside_distance / glass.refraction_thickness.max(1e-6)).clamp(0.0, 1.0)
-            };
-            let offset = [
-                -normal[0] * edge * glass.refraction_strength.max(0.0),
-                -normal[1] * edge * glass.refraction_strength.max(0.0),
-            ];
-
-            let mut out = dispersion_sample(
-                &source, &blurred, x as f32, y as f32, offset, edge_mix, glass,
-            );
-            out = mix_premul(out, tint, tint[3] * 0.8);
-
-            let fresnel = fresnel_factor(glass, distance);
-            out = mix_premul(
-                out,
-                [1.0, 1.0, 1.0, 1.0],
-                fresnel * glass.fresnel_factor * 0.007,
-            );
-
-            let glare = glare_factor(glass, distance, normal);
-            out = mix_premul(out, [1.0, 1.0, 1.0, 1.0], glare);
-            out[3] = out[3].max(source_alpha_at(&source, x, y));
-            image.pixels[ix] = pack_premul_rgba8(out);
+            let edge_mix = smoothstep(-0.001, 0.001, distance_norm);
+            out = mix_straight(out, base, edge_mix);
+            image.pixels[(y * image.width + x) as usize] = pack_straight_rgba8(out);
         }
     }
 }
 
-fn glass_edge(glass: LiquidGlass, inside_distance: f32) -> f32 {
-    let thickness = glass.refraction_thickness.max(1e-6);
-    if inside_distance >= thickness {
-        return 0.0;
-    }
-    let ratio = 1.0 - inside_distance / thickness;
+fn glass_edge(glass: RectLiquidGlass, inside_distance: f32) -> f32 {
+    let ratio = 1.0 - inside_distance / glass.refraction_thickness.max(1e-6);
     let theta_i = safe_asin(ratio.powi(2));
-    let theta_t = safe_asin((theta_i.sin() / glass.refraction_factor.max(1.0)).clamp(-1.0, 1.0));
-    (-((theta_t - theta_i).tan())).max(0.0)
+    let theta_t = safe_asin(theta_i.sin() / glass.refraction_factor.max(1.0));
+    let mut edge = -((theta_t - theta_i).tan());
+    if inside_distance >= glass.refraction_thickness {
+        edge = 0.0;
+    }
+    edge.max(0.0)
 }
 
-fn fresnel_factor(glass: LiquidGlass, distance: f32) -> f32 {
-    let range = glass.fresnel_range.max(1e-6);
-    (1.0 + distance / 1500.0 * (500.0 / range).powi(2) + glass.fresnel_hardness * 0.01)
-        .max(0.0)
-        .powi(5)
-        .clamp(0.0, 1.0)
+fn fresnel_factor(glass: RectLiquidGlass, distance: f32) -> f32 {
+    (1.0 + distance / 1500.0 * (500.0 / glass.fresnel_range.max(1e-6)).powi(2)
+        + percent(glass.fresnel_hardness))
+    .powi(5)
+    .clamp(0.0, 1.0)
 }
 
-fn glare_factor(glass: LiquidGlass, distance: f32, normal: [f32; 2]) -> f32 {
-    let range = glass.glare_range.max(1e-6);
-    let geometry =
-        (1.0 + distance / 1500.0 * (500.0 / range).powi(2) + glass.glare_hardness * 0.01)
-            .max(0.0)
-            .powi(5)
-            .clamp(0.0, 1.0);
-    let angle = (normal[1].atan2(normal[0]) - std::f32::consts::FRAC_PI_4 + glass.glare_angle)
-        .rem_euclid(std::f32::consts::TAU)
-        * 2.0;
-    let far_side = angle > std::f32::consts::PI * 1.5 || angle < -std::f32::consts::PI * 0.5;
-    let side = if far_side {
-        1.2 * glass.glare_opposite_factor * 0.01
-    } else {
-        1.2
-    };
-    let angular = ((0.5 + angle.sin() * 0.5) * side * glass.glare_factor * 0.01)
-        .clamp(0.0, 1.0)
-        .powf(0.1 + glass.glare_convergence * 0.02);
-    angular * geometry
+fn glare_geometry(glass: RectLiquidGlass, distance: f32) -> f32 {
+    (1.0 + distance / 1500.0 * (500.0 / glass.glare_range.max(1e-6)).powi(2)
+        + percent(glass.glare_hardness))
+    .powi(5)
+    .clamp(0.0, 1.0)
 }
 
 fn dispersion_sample(
@@ -120,43 +150,73 @@ fn dispersion_sample(
     y: f32,
     offset: [f32; 2],
     blur_mix: f32,
-    glass: LiquidGlass,
+    glass: RectLiquidGlass,
 ) -> [f32; 4] {
-    let sampler = DispersionSampler {
+    let r = dispersion_channel(
         source,
         blurred,
+        x,
+        y,
         offset,
+        CHROMATIC_R,
+        0,
         blur_mix,
         glass,
-    };
-    let r = sampler.channel(x, y, CHROMATIC_R, 0);
-    let g = sampler.channel(x, y, CHROMATIC_G, 1);
-    let b = sampler.channel(x, y, CHROMATIC_B, 2);
-    let alpha = sample_premul_bilinear(source, x + offset[0], y + offset[1])[3]
-        .max(sample_premul_bilinear(blurred, x + offset[0], y + offset[1])[3]);
-    [r.min(alpha), g.min(alpha), b.min(alpha), alpha]
+    );
+    let g = dispersion_channel(
+        source,
+        blurred,
+        x,
+        y,
+        offset,
+        CHROMATIC_G,
+        1,
+        blur_mix,
+        glass,
+    );
+    let b = dispersion_channel(
+        source,
+        blurred,
+        x,
+        y,
+        offset,
+        CHROMATIC_B,
+        2,
+        blur_mix,
+        glass,
+    );
+    let alpha = sample_straight_bilinear(source, x + offset[0], y + offset[1])[3]
+        .max(sample_straight_bilinear(blurred, x + offset[0], y + offset[1])[3]);
+    [r, g, b, alpha]
 }
 
-struct DispersionSampler<'a> {
-    source: &'a Image,
-    blurred: &'a Image,
+#[allow(clippy::too_many_arguments)]
+fn dispersion_channel(
+    source: &Image,
+    blurred: &Image,
+    x: f32,
+    y: f32,
     offset: [f32; 2],
+    chromatic: f32,
+    channel: usize,
     blur_mix: f32,
-    glass: LiquidGlass,
+    glass: RectLiquidGlass,
+) -> f32 {
+    let factor = 1.0 - (chromatic - 1.0) * glass.refraction_dispersion;
+    let sx = x + offset[0] * factor;
+    let sy = y + offset[1] * factor;
+    let src = sample_straight_bilinear(source, sx, sy)[channel];
+    let blur = sample_straight_bilinear(blurred, sx, sy)[channel];
+    src + (blur - src) * blur_mix
 }
 
-impl DispersionSampler<'_> {
-    fn channel(&self, x: f32, y: f32, chromatic: f32, channel: usize) -> f32 {
-        let factor = 1.0 - (chromatic - 1.0) * self.glass.refraction_dispersion;
-        let sx = x + self.offset[0] * factor;
-        let sy = y + self.offset[1] * factor;
-        let src = sample_premul_bilinear(self.source, sx, sy)[channel];
-        let blur = sample_premul_bilinear(self.blurred, sx, sy)[channel];
-        src + (blur - src) * self.blur_mix.clamp(0.0, 1.0)
-    }
+fn sample_straight_at(image: &Image, x: u32, y: u32) -> [f32; 4] {
+    premul_to_straight(unpack_premul_rgba8(
+        image.pixels[(y * image.width + x) as usize],
+    ))
 }
 
-fn sample_premul_bilinear(image: &Image, x: f32, y: f32) -> [f32; 4] {
+fn sample_straight_bilinear(image: &Image, x: f32, y: f32) -> [f32; 4] {
     let sx = x.clamp(0.0, image.width.saturating_sub(1) as f32);
     let sy = y.clamp(0.0, image.height.saturating_sub(1) as f32);
     let x0 = sx.floor() as u32;
@@ -169,17 +229,33 @@ fn sample_premul_bilinear(image: &Image, x: f32, y: f32) -> [f32; 4] {
     let tr = unpack_premul_rgba8(image.pixels[(y0 * image.width + x1) as usize]);
     let bl = unpack_premul_rgba8(image.pixels[(y1 * image.width + x0) as usize]);
     let br = unpack_premul_rgba8(image.pixels[(y1 * image.width + x1) as usize]);
-    let top = mix_premul(tl, tr, tx);
-    let bottom = mix_premul(bl, br, tx);
-    mix_premul(top, bottom, ty)
+    premul_to_straight(mix_premul(
+        mix_premul(tl, tr, tx),
+        mix_premul(bl, br, tx),
+        ty,
+    ))
 }
 
-fn source_alpha_at(source: &Image, x: u32, y: u32) -> f32 {
-    ((source.pixels[(y * source.width + x) as usize] >> 24) & 255) as f32 / 255.0
+fn premul_to_straight(mut rgba: [f32; 4]) -> [f32; 4] {
+    if rgba[3] > 1e-6 {
+        rgba[0] /= rgba[3];
+        rgba[1] /= rgba[3];
+        rgba[2] /= rgba[3];
+    }
+    rgba
 }
 
-fn mix_premul(a: [f32; 4], b: [f32; 4], t: f32) -> [f32; 4] {
-    let t = t.clamp(0.0, 1.0);
+fn pack_straight_rgba8(rgba: [f32; 4]) -> u32 {
+    let a = rgba[3].clamp(0.0, 1.0);
+    pack_premul_rgba8([
+        rgba[0].clamp(0.0, 1.0) * a,
+        rgba[1].clamp(0.0, 1.0) * a,
+        rgba[2].clamp(0.0, 1.0) * a,
+        a,
+    ])
+}
+
+fn mix_straight(a: [f32; 4], b: [f32; 4], t: f32) -> [f32; 4] {
     [
         a[0] + (b[0] - a[0]) * t,
         a[1] + (b[1] - a[1]) * t,
@@ -188,19 +264,38 @@ fn mix_premul(a: [f32; 4], b: [f32; 4], t: f32) -> [f32; 4] {
     ]
 }
 
-fn round_rect_normal(x: f32, y: f32, region: LiquidGlassRegion) -> [f32; 2] {
-    let eps = 0.5;
-    let dx = round_rect_distance(x + eps, y, region) - round_rect_distance(x - eps, y, region);
-    let dy = round_rect_distance(x, y + eps, region) - round_rect_distance(x, y - eps, region);
+fn mix_rgb(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
+    [
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t,
+    ]
+}
+
+fn mix_premul(a: [f32; 4], b: [f32; 4], t: f32) -> [f32; 4] {
+    [
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t,
+        a[3] + (b[3] - a[3]) * t,
+    ]
+}
+
+fn round_rect_unit_normal(x: f32, y: f32, region: RectLiquidGlassRegion) -> [f32; 2] {
+    let eps = 1.0;
+    let dx = (round_rect_distance(x + eps, y, region) - round_rect_distance(x - eps, y, region))
+        / (2.0 * eps);
+    let dy = (round_rect_distance(x, y + eps, region) - round_rect_distance(x, y - eps, region))
+        / (2.0 * eps);
     let len = (dx * dx + dy * dy).sqrt();
-    if len <= f32::EPSILON {
+    if len <= 1e-6 {
         [0.0, -1.0]
     } else {
         [dx / len, dy / len]
     }
 }
 
-fn round_rect_distance(x: f32, y: f32, region: LiquidGlassRegion) -> f32 {
+fn round_rect_distance(x: f32, y: f32, region: RectLiquidGlassRegion) -> f32 {
     let cx = (region.x0 + region.x1) * 0.5;
     let cy = (region.y0 + region.y1) * 0.5;
     let hx = ((region.x1 - region.x0) * 0.5).max(0.0);
@@ -220,7 +315,7 @@ fn round_rect_distance(x: f32, y: f32, region: LiquidGlassRegion) -> f32 {
     qx.max(qy).min(0.0) + qx.max(0.0).hypot(qy.max(0.0)) - radius
 }
 
-fn corner_radius(px: f32, py: f32, region: LiquidGlassRegion) -> f32 {
+fn corner_radius(px: f32, py: f32, region: RectLiquidGlassRegion) -> f32 {
     if px >= 0.0 {
         if py <= 0.0 {
             region.radius_top_right
@@ -232,6 +327,110 @@ fn corner_radius(px: f32, py: f32, region: LiquidGlassRegion) -> f32 {
     } else {
         region.radius_bottom_left
     }
+}
+
+fn srgb_to_lch(srgb: [f32; 3]) -> [f32; 3] {
+    let lab = xyz_to_lab(rgb_to_xyz([
+        uncompand_srgb(srgb[0]),
+        uncompand_srgb(srgb[1]),
+        uncompand_srgb(srgb[2]),
+    ]));
+    [
+        lab[0],
+        (lab[1] * lab[1] + lab[2] * lab[2]).sqrt(),
+        lab[2].atan2(lab[1]).to_degrees(),
+    ]
+}
+
+fn lch_to_srgb(lch: [f32; 3]) -> [f32; 3] {
+    let hue = lch[2].to_radians();
+    let lab = [lch[0], lch[1] * hue.cos(), lch[1] * hue.sin()];
+    xyz_to_srgb(lab_to_xyz(lab))
+}
+
+fn rgb_to_xyz(rgb: [f32; 3]) -> [f32; 3] {
+    [
+        rgb[0] * 0.4124 + rgb[1] * 0.3576 + rgb[2] * 0.1805,
+        rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722,
+        rgb[0] * 0.0193 + rgb[1] * 0.1192 + rgb[2] * 0.9505,
+    ]
+}
+
+fn xyz_to_srgb(xyz: [f32; 3]) -> [f32; 3] {
+    [
+        compand_rgb(xyz[0] * 3.2406255 + xyz[1] * -1.537208 + xyz[2] * -0.4986286),
+        compand_rgb(xyz[0] * -0.9689307 + xyz[1] * 1.8757561 + xyz[2] * 0.0415175),
+        compand_rgb(xyz[0] * 0.0557101 + xyz[1] * -0.2040211 + xyz[2] * 1.0569959),
+    ]
+}
+
+fn xyz_to_lab(xyz: [f32; 3]) -> [f32; 3] {
+    let x = xyz_to_lab_f(xyz[0] / D65_WHITE[0]);
+    let y = xyz_to_lab_f(xyz[1] / D65_WHITE[1]);
+    let z = xyz_to_lab_f(xyz[2] / D65_WHITE[2]);
+    [116.0 * y - 16.0, 500.0 * (x - y), 200.0 * (y - z)]
+}
+
+fn lab_to_xyz(lab: [f32; 3]) -> [f32; 3] {
+    let w = (lab[0] + 16.0) / 116.0;
+    [
+        D65_WHITE[0] * lab_to_xyz_f(w + lab[1] / 500.0),
+        D65_WHITE[1] * lab_to_xyz_f(w),
+        D65_WHITE[2] * lab_to_xyz_f(w - lab[2] / 200.0),
+    ]
+}
+
+fn xyz_to_lab_f(x: f32) -> f32 {
+    if x > 0.008_856_452 {
+        x.powf(1.0 / 3.0)
+    } else {
+        7.787037 * x + 0.13793103
+    }
+}
+
+fn lab_to_xyz_f(x: f32) -> f32 {
+    if x > 0.206897 {
+        x * x * x
+    } else {
+        0.12841855 * (x - 0.13793103)
+    }
+}
+
+fn uncompand_srgb(a: f32) -> f32 {
+    if a > 0.04045 {
+        ((a + 0.055) / 1.055).powf(2.4)
+    } else {
+        a / 12.92
+    }
+}
+
+fn compand_rgb(a: f32) -> f32 {
+    if a <= 0.0031308 {
+        12.92 * a
+    } else {
+        1.055 * a.max(0.0).powf(1.0 / 2.4) - 0.055
+    }
+}
+
+fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
+    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+fn vec2_angle(v: [f32; 2]) -> f32 {
+    if v[0].hypot(v[1]) < 1e-8 {
+        return 0.0;
+    }
+    let angle = v[1].atan2(v[0]);
+    if angle < 0.0 {
+        angle + std::f32::consts::TAU
+    } else {
+        angle
+    }
+}
+
+fn percent(value: f32) -> f32 {
+    value * 0.01
 }
 
 fn safe_asin(value: f32) -> f32 {

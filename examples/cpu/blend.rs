@@ -12,18 +12,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 640.0, 360.0),
-        Radius::all(0.0),
+        Radius::ZERO,
         Color::from_rgb8(248, 249, 251),
     );
     common::fill_rect(
         &mut scene,
         Rect::new(150.0, 80.0, 360.0, 280.0),
-        Radius::all(0.0),
+        Radius::ZERO,
         Color::from_rgb8(37, 99, 235),
     );
 
     scene.push_blend_layer(
-        common::rect_path(Rect::new(0.0, 0.0, 640.0, 360.0), Radius::all(0.0)),
+        common::rect_path(Rect::new(0.0, 0.0, 640.0, 360.0), Radius::ZERO),
         Affine::IDENTITY,
         0.1,
         Mix::Multiply,
@@ -32,7 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     common::fill_rect(
         &mut scene,
         Rect::new(280.0, 120.0, 500.0, 300.0),
-        Radius::all(0.0),
+        Radius::ZERO,
         Color::from_rgb8(220, 38, 38),
     );
     scene.pop_layer();

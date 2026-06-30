@@ -256,7 +256,13 @@ impl Renderer {
 
         let mut backdrop = copy_image_region(target, bounds, target_bounds);
         self.filter
-            .prepare_backdrop(&mut backdrop, layer.filter, bounds, layer.sample_region)
+            .prepare_backdrop(
+                &mut backdrop,
+                layer.filter,
+                bounds,
+                (target_bounds.width(), target_bounds.height()),
+                layer.sample_region,
+            )
             .run();
 
         let mut backdrop_mask = rasterize_region_mask(layer.sample_region, bounds);

@@ -13,7 +13,7 @@ use crate::{
                 ConvolveMatrix, DiffuseLighting, DisplacementMap, Filter, FilterInput,
                 FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator,
                 SpecularLighting, Turbulence, TurbulenceKind, filter_offset_to_pixel_delta,
-                liquid_glass_region,
+                rect_liquid_glass_region,
             },
             mask::{Mask, MaskKind},
             region::Region,
@@ -342,9 +342,12 @@ impl<R: Runtime> Renderer<R> {
             Filter::Graph { primitives, .. } => {
                 self.apply_filter_graph(target, bounds, primitives, filter_cursors);
             }
-            Filter::LiquidGlass(glass) => {
-                self.apply_liquid_glass(target, bounds, *glass, liquid_glass_region(region, bounds))
-            }
+            Filter::RectLiquidGlass(glass) => self.apply_liquid_glass(
+                target,
+                bounds,
+                *glass,
+                rect_liquid_glass_region(region, bounds),
+            ),
             Filter::Blur {
                 std_dev_x,
                 std_dev_y,
@@ -1539,25 +1542,25 @@ impl<R: Runtime> Renderer<R> {
         &mut self,
         target: CubeRenderTarget,
         bounds: Bounds,
-        glass: crate::shared::layer::filter::LiquidGlass,
-        region: crate::shared::layer::filter::LiquidGlassRegion,
+        glass: crate::shared::layer::filter::RectLiquidGlass,
+        region: crate::shared::layer::filter::RectLiquidGlassRegion,
     ) {
         let source = self.acquire_scratch();
         let blurred = self.acquire_scratch();
         self.clear_buffer(source, 0);
         self.clear_buffer(blurred, 0);
         self.copy_region(target, source, bounds);
-        self.copy_region(target, blurred, bounds);
+        self.copy_region(source, blurred, bounds);
 
-        if glass.blur_std_dev > 0.0 {
+        if glass.blur_radius > 0 {
             let temp = self.acquire_scratch();
             self.clear_buffer(temp, 0);
             self.blur_buffer(
                 blurred,
                 temp,
                 bounds,
-                glass.blur_std_dev,
-                glass.blur_std_dev,
+                glass.blur_radius as f32 / 3.0,
+                glass.blur_radius as f32 / 3.0,
             );
             self.release_scratch(temp);
         }
@@ -1573,15 +1576,15 @@ impl<R: Runtime> Renderer<R> {
         blurred: CubeRenderTarget,
         target: CubeRenderTarget,
         bounds: Bounds,
-        glass: crate::shared::layer::filter::LiquidGlass,
-        region: crate::shared::layer::filter::LiquidGlassRegion,
+        glass: crate::shared::layer::filter::RectLiquidGlass,
+        region: crate::shared::layer::filter::RectLiquidGlassRegion,
     ) {
         match (source, blurred, target) {
             (
                 CubeRenderTarget::Scratch(source_ix),
                 CubeRenderTarget::Scratch(blurred_ix),
                 CubeRenderTarget::Main,
-            ) => FilterPipeline::liquid_glass_region(
+            ) => FilterPipeline::rect_liquid_glass_region(
                 &self.client,
                 &self.scratch[source_ix],
                 &self.scratch[blurred_ix],
@@ -1602,7 +1605,7 @@ impl<R: Runtime> Renderer<R> {
                     source_ix,
                     blurred_ix,
                 );
-                FilterPipeline::liquid_glass_region(
+                FilterPipeline::rect_liquid_glass_region(
                     &self.client,
                     source,
                     blurred,
@@ -2251,7 +2254,7 @@ fn encode_color_filter(filter: &Filter) -> (u32, f32) {
             panic!("specular lighting is handled by a dedicated CubeCL pass")
         }
         Filter::Graph { .. } => panic!("filter graphs are handled by CubeCL graph execution"),
-        Filter::LiquidGlass(_) => panic!("liquid glass is handled by a dedicated CubeCL pass"),
+        Filter::RectLiquidGlass(_) => panic!("liquid glass is handled by a dedicated CubeCL pass"),
         Filter::Flood { .. } => panic!("flood is handled by the CubeCL brush fill pass"),
         Filter::Offset { .. } => panic!("offset is handled by a dedicated CubeCL pass"),
         Filter::Morphology { .. } => panic!("morphology is handled by a dedicated CubeCL pass"),
