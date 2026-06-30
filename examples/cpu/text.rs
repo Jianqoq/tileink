@@ -14,7 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut renderer = CpuRenderer::new(text_scene::WIDTH, text_scene::HEIGHT, case.background);
         renderer.render_with_text(&scene, &mut text_context);
         let out = common::example_output(case.name);
-        common::save_image(renderer.image(), &out)?;
+        common::save_example_image(renderer.image(), &out)?;
         println!("Wrote {}", out.display());
     }
 

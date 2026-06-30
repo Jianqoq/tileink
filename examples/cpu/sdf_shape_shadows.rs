@@ -14,4 +14,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out = common::example_output("sdf_shape_shadows");
     common::save_example_image(renderer.image(), &out)?;
     println!("Wrote {}", out.display());
-    O
+    Ok(())
+}

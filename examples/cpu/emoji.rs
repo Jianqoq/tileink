@@ -14,7 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     renderer.render_with_text(&scene, &mut text_context);
 
     let out = common::example_output("emoji");
-    common::save_image(renderer.image(), &out)?;
+    common::save_example_image(renderer.image(), &out)?;
     println!("Wrote {}", out.display());
     Ok(())
 }

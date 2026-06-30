@@ -31,7 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     renderer.render(&scene);
 
     let out = common::example_output("stroke_circle");
-    common::save_image(renderer.image(), &out)?;
+    common::save_example_image(renderer.image(), &out)?;
     println!("Wrote {}", out.display());
 
     Ok(())

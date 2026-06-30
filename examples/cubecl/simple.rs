@@ -53,7 +53,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let out = common::cubecl_example_output("simple");
     let image = renderer.image();
-    common::save_image(&image, &out)?;
+    common::save_example_image(&image, &out)?;
     println!("Wrote {}", out.display());
 
     Ok(())

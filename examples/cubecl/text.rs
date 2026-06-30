@@ -19,7 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         renderer.render_with_text(&scene, &mut text_context);
         let image = renderer.image();
         let out = common::cubecl_example_output(case.name);
-        common::save_image(&image, &out)?;
+        common::save_example_image(&image, &out)?;
         println!("Wrote {}", out.display());
     }
 

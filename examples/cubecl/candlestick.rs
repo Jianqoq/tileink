@@ -13,7 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let image = renderer.image();
     let out = common::cubecl_example_output("candlestick");
-    common::save_image(&image, &out)?;
+    common::save_example_image(&image, &out)?;
     println!("Wrote {}", out.display());
     Ok(())
 }
