@@ -2,7 +2,11 @@ use std::ops::Range;
 
 use peniko::BlendMode;
 
-use crate::shared::{brush::Brush, fill::FillRule, sdf::Sdf};
+use crate::shared::{
+    brush::Brush,
+    fill::FillRule,
+    sdf::{Sdf, SdfShadow},
+};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct TilePtclRange {
@@ -30,6 +34,12 @@ pub struct TileSdfPtcl {
 }
 
 #[derive(Clone, Debug)]
+pub struct TileSdfShadowPtcl {
+    pub sdf_shadow: SdfShadow,
+    pub brush: Brush,
+}
+
+#[derive(Clone, Debug)]
 pub struct TileGlyphPtcl {
     pub glyph_range: Range<u32>,
     pub brush: Brush,
@@ -42,6 +52,7 @@ pub enum TilePtcl {
     /// Path alpha produced from glyph outlines; fine applies text coverage gamma.
     PathGlyph(TileFillPtcl),
     Sdf(TileSdfPtcl),
+    SdfShadow(TileSdfShadowPtcl),
     Glyph(TileGlyphPtcl),
     Color(TileColorPtcl),
     BeginClip(TileFillPtcl),

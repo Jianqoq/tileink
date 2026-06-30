@@ -9,6 +9,7 @@ use crate::{
         pixel::opacity_f32_to_u8,
         tile_ptcl::{
             TileColorPtcl, TileFillPtcl, TileGlyphPtcl, TilePtcl, TilePtclRange, TileSdfPtcl,
+            TileSdfShadowPtcl,
         },
         tile_seg_range::TileSegmentRange,
     },
@@ -178,6 +179,12 @@ impl<'a> CoarseCpuPrepared<'a> {
                         }
                         output.ptcls.push(TilePtcl::Sdf(TileSdfPtcl {
                             sdf: *sdf,
+                            brush: draw.brush.clone(),
+                        }));
+                    }
+                    DrawTileCoverage::SdfShadow { draw, sdf_shadow } => {
+                        output.ptcls.push(TilePtcl::SdfShadow(TileSdfShadowPtcl {
+                            sdf_shadow: *sdf_shadow,
                             brush: draw.brush.clone(),
                         }));
                     }
@@ -368,6 +375,9 @@ impl<'a> CoarseCpuPrepared<'a> {
                 && tile_y < bbox.y1)
                 .then_some(LayerTileCoverage::Sdf { draw, sdf });
         }
+        if draw.sdf_shadow.is_some() {
+            return None;
+        }
 
         let path_id = draw.path_id?;
         let bbox = draw.tile_bbox(tiles_size.0, tiles_size.1);
@@ -419,6 +429,13 @@ impl<'a> CoarseCpuPrepared<'a> {
             let bbox = draw.tile_bbox(tiles_size.0, tiles_size.1);
             if tile_x >= bbox.x0 && tile_x < bbox.x1 && tile_y >= bbox.y0 && tile_y < bbox.y1 {
                 return Some(DrawTileCoverage::Sdf { draw, sdf });
+            }
+            return None;
+        }
+        if let Some(sdf_shadow) = &draw.sdf_shadow {
+            let bbox = draw.tile_bbox(tiles_size.0, tiles_size.1);
+            if tile_x >= bbox.x0 && tile_x < bbox.x1 && tile_y >= bbox.y0 && tile_y < bbox.y1 {
+                return Some(DrawTileCoverage::SdfShadow { draw, sdf_shadow });
             }
             return None;
         }
@@ -493,6 +510,10 @@ enum DrawTileCoverage<'a> {
         draw: &'a DrawRecord,
         sdf: &'a crate::shared::sdf::Sdf,
     },
+    SdfShadow {
+        draw: &'a DrawRecord,
+        sdf_shadow: &'a crate::shared::sdf::SdfShadow,
+    },
     Glyph {
         draw: &'a DrawRecord,
         glyphs: Vec<u32>,
@@ -502,7 +523,10 @@ enum DrawTileCoverage<'a> {
 impl<'a> DrawTileCoverage<'a> {
     fn draw(&self) -> &'a DrawRecord {
         match self {
-            Self::Path { draw, .. } | Self::Sdf { draw, .. } | Self::Glyph { draw, .. } => draw,
+            Self::Path { draw, .. }
+            | Self::Sdf { draw, .. }
+            | Self::SdfShadow { draw, .. }
+            | Self::Glyph { draw, .. } => draw,
         }
     }
 }
@@ -613,6 +637,7 @@ mod tests {
                 path_id: Some(0),
                 glyph_run_id: None,
                 sdf: None,
+                sdf_shadow: None,
                 tag: DrawTag::Clip,
                 brush: Brush::Solid(Color::TRANSPARENT),
                 fill_rule: FillRule::NonZero,
@@ -628,6 +653,7 @@ mod tests {
                 path_id: Some(1),
                 glyph_run_id: None,
                 sdf: None,
+                sdf_shadow: None,
                 tag: DrawTag::Clip,
                 brush: Brush::Solid(Color::TRANSPARENT),
                 fill_rule: FillRule::NonZero,
@@ -643,6 +669,7 @@ mod tests {
                 path_id: Some(2),
                 glyph_run_id: None,
                 sdf: None,
+                sdf_shadow: None,
                 tag: DrawTag::Brush,
                 brush: Brush::Solid(Color::BLACK),
                 fill_rule: FillRule::NonZero,
@@ -818,6 +845,7 @@ mod tests {
                 path_id: Some(0),
                 glyph_run_id: None,
                 sdf: None,
+                sdf_shadow: None,
                 tag: DrawTag::Brush,
                 brush: Brush::Solid(Color::from_rgb8(255, 0, 0)),
                 fill_rule: FillRule::NonZero,
@@ -833,6 +861,7 @@ mod tests {
                 path_id: Some(1),
                 glyph_run_id: None,
                 sdf: None,
+                sdf_shadow: None,
                 tag: DrawTag::Brush,
                 brush: Brush::Solid(Color::from_rgb8(0, 0, 255)),
                 fill_rule: FillRule::NonZero,

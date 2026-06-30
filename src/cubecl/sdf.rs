@@ -4,7 +4,7 @@ use crate::{
         CUBE_SDF_CIRCLE_SHADOW, CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_LINE, CUBE_SDF_LINE_SHADOW,
         CUBE_SDF_NONE, CUBE_SDF_RECT, CUBE_SDF_RECT_SHADOW, CUBE_SDF_RECT_STROKE,
     },
-    shared::sdf::Sdf,
+    shared::sdf::{Sdf, SdfShadow},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -58,26 +58,6 @@ pub(crate) fn encode_sdf(sdf: Sdf) -> EncodedSdf {
                 ..EncodedSdf::NONE
             }
         }
-        Sdf::RectShadow(shadow) => {
-            let (x0, y0, x1, y1) = shadow.rect.axis_bounds();
-            EncodedSdf {
-                kind: CUBE_SDF_RECT_SHADOW,
-                coords: [x0 as f32, y0 as f32, x1 as f32, y1 as f32],
-                radii: [
-                    shadow.rect.radius.top_left,
-                    shadow.rect.radius.top_right,
-                    shadow.rect.radius.bottom_left,
-                    shadow.rect.radius.bottom_right,
-                ],
-                shadow: [
-                    shadow.options.offset_x,
-                    shadow.options.offset_y,
-                    shadow.options.expand,
-                    shadow.options.intensity,
-                ],
-                ..EncodedSdf::NONE
-            }
-        }
         Sdf::Circle(circle) => EncodedSdf {
             kind: CUBE_SDF_CIRCLE,
             coords: [
@@ -99,22 +79,6 @@ pub(crate) fn encode_sdf(sdf: Sdf) -> EncodedSdf {
             stroke: [stroke.half_width; 4],
             ..EncodedSdf::NONE
         },
-        Sdf::CircleShadow(shadow) => EncodedSdf {
-            kind: CUBE_SDF_CIRCLE_SHADOW,
-            coords: [
-                shadow.circle.center.x as f32,
-                shadow.circle.center.y as f32,
-                shadow.circle.radius,
-                0.0,
-            ],
-            shadow: [
-                shadow.options.offset_x,
-                shadow.options.offset_y,
-                shadow.options.expand,
-                shadow.options.intensity,
-            ],
-            ..EncodedSdf::NONE
-        },
         Sdf::Arc(arc) => EncodedSdf {
             kind: CUBE_SDF_ARC,
             coords: [
@@ -124,28 +88,6 @@ pub(crate) fn encode_sdf(sdf: Sdf) -> EncodedSdf {
                 arc.width,
             ],
             radii: [arc.start_angle, arc.sweep_angle, arc.cap_value(), 0.0],
-            ..EncodedSdf::NONE
-        },
-        Sdf::ArcShadow(shadow) => EncodedSdf {
-            kind: CUBE_SDF_ARC_SHADOW,
-            coords: [
-                shadow.arc.center.x as f32,
-                shadow.arc.center.y as f32,
-                shadow.arc.radius,
-                shadow.arc.width,
-            ],
-            radii: [
-                shadow.arc.start_angle,
-                shadow.arc.sweep_angle,
-                shadow.arc.cap_value(),
-                0.0,
-            ],
-            shadow: [
-                shadow.options.offset_x,
-                shadow.options.offset_y,
-                shadow.options.expand,
-                shadow.options.intensity,
-            ],
             ..EncodedSdf::NONE
         },
         Sdf::CandleStick(candle) => EncodedSdf {
@@ -170,7 +112,70 @@ pub(crate) fn encode_sdf(sdf: Sdf) -> EncodedSdf {
             radii: [line.width, line.cap_value(), 0.0, 0.0],
             ..EncodedSdf::NONE
         },
-        Sdf::LineShadow(shadow) => EncodedSdf {
+    }
+}
+
+pub(crate) fn encode_sdf_shadow(sdf_shadow: SdfShadow) -> EncodedSdf {
+    match sdf_shadow {
+        SdfShadow::Rect(shadow) => {
+            let (x0, y0, x1, y1) = shadow.rect.axis_bounds();
+            EncodedSdf {
+                kind: CUBE_SDF_RECT_SHADOW,
+                coords: [x0 as f32, y0 as f32, x1 as f32, y1 as f32],
+                radii: [
+                    shadow.rect.radius.top_left,
+                    shadow.rect.radius.top_right,
+                    shadow.rect.radius.bottom_left,
+                    shadow.rect.radius.bottom_right,
+                ],
+                shadow: [
+                    shadow.options.offset_x,
+                    shadow.options.offset_y,
+                    shadow.options.expand,
+                    shadow.options.intensity,
+                ],
+                ..EncodedSdf::NONE
+            }
+        }
+        SdfShadow::Circle(shadow) => EncodedSdf {
+            kind: CUBE_SDF_CIRCLE_SHADOW,
+            coords: [
+                shadow.circle.center.x as f32,
+                shadow.circle.center.y as f32,
+                shadow.circle.radius,
+                0.0,
+            ],
+            shadow: [
+                shadow.options.offset_x,
+                shadow.options.offset_y,
+                shadow.options.expand,
+                shadow.options.intensity,
+            ],
+            ..EncodedSdf::NONE
+        },
+        SdfShadow::Arc(shadow) => EncodedSdf {
+            kind: CUBE_SDF_ARC_SHADOW,
+            coords: [
+                shadow.arc.center.x as f32,
+                shadow.arc.center.y as f32,
+                shadow.arc.radius,
+                shadow.arc.width,
+            ],
+            radii: [
+                shadow.arc.start_angle,
+                shadow.arc.sweep_angle,
+                shadow.arc.cap_value(),
+                0.0,
+            ],
+            shadow: [
+                shadow.options.offset_x,
+                shadow.options.offset_y,
+                shadow.options.expand,
+                shadow.options.intensity,
+            ],
+            ..EncodedSdf::NONE
+        },
+        SdfShadow::Line(shadow) => EncodedSdf {
             kind: CUBE_SDF_LINE_SHADOW,
             coords: [
                 shadow.line.start.x as f32,

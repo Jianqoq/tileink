@@ -2,7 +2,7 @@ use crate::shared::{
     bounds::{PixelBounds, TileBbox},
     brush::Brush,
     fill::FillRule,
-    sdf::Sdf,
+    sdf::{Sdf, SdfShadow},
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -25,6 +25,8 @@ pub struct DrawRecord {
     pub glyph_run_id: Option<u32>,
     /// Exact SDF geometry for simple primitives that do not need path scan/cumsum.
     pub sdf: Option<Sdf>,
+    /// Soft SDF shadow geometry. It is draw-only and must never be used for clips.
+    pub sdf_shadow: Option<SdfShadow>,
     pub tag: DrawTag,
     pub brush: Brush,
     pub fill_rule: FillRule,
@@ -36,6 +38,10 @@ pub struct DrawRecord {
 impl DrawRecord {
     pub fn tile_bbox(&self, width_in_tiles: u32, height_in_tiles: u32) -> TileBbox {
         self.pixel_bounds.tile_bbox(width_in_tiles, height_in_tiles)
+    }
+
+    pub(crate) fn has_analytic_geometry(&self) -> bool {
+        self.sdf.is_some() || self.sdf_shadow.is_some()
     }
 
     // pub fn covers_tile(&self, tile_x: u32, tile_y: u32, width: u32, height: u32) -> bool {

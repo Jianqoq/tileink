@@ -189,7 +189,7 @@ fn push_sdf_arc_records_sdf_without_path_storage() {
 }
 
 #[test]
-fn push_shape_shadows_record_sdf_without_path_storage() {
+fn push_shape_shadows_record_sdf_shadow_without_path_storage() {
     let mut scene = test_scene();
     let options = RectShadowOptions::new(2.0, 3.0, 4.0, 0.5);
     scene.push_circle_shadow(
@@ -226,14 +226,18 @@ fn push_shape_shadows_record_sdf_without_path_storage() {
     assert_eq!(scene.draw_records.len(), 3);
     assert!(scene.path_records.is_empty());
     assert!(scene.bd_records.is_empty());
+    assert!(scene.draw_records.iter().all(|draw| draw.sdf.is_none()));
     assert!(matches!(
-        scene.draw_records[0].sdf,
-        Some(Sdf::CircleShadow(_))
+        scene.draw_records[0].sdf_shadow,
+        Some(SdfShadow::Circle(_))
     ));
-    assert!(matches!(scene.draw_records[1].sdf, Some(Sdf::ArcShadow(_))));
     assert!(matches!(
-        scene.draw_records[2].sdf,
-        Some(Sdf::LineShadow(_))
+        scene.draw_records[1].sdf_shadow,
+        Some(SdfShadow::Arc(_))
+    ));
+    assert!(matches!(
+        scene.draw_records[2].sdf_shadow,
+        Some(SdfShadow::Line(_))
     ));
 }
 
@@ -381,4 +385,5 @@ fn push_dashed_circle_stroke_uses_path_storage() {
     assert_eq!(scene.bd_records.len(), 1);
     assert!(scene.draw_records[0].path_id.is_some());
     assert!(scene.draw_records[0].sdf.is_none());
+    assert!(scene.draw_records[0].sdf_shadow.is_none());
 }

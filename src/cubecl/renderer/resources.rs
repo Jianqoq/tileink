@@ -15,7 +15,7 @@ use ::cubecl::prelude::Runtime;
 
 use crate::cubecl::{
     buffer::CubeBuffer,
-    sdf::{EncodedSdf, encode_sdf},
+    sdf::{EncodedSdf, encode_sdf, encode_sdf_shadow},
     types::{
         CUBE_DRAW_BLEND, CUBE_DRAW_BRUSH, CUBE_DRAW_CLIP, CUBE_DRAW_ISOLATE, CUBE_DRAW_OPACITY,
         CUBE_DRAW_PATH_GLYPH, CUBE_GLYPH_COLOR, CUBE_GLYPH_LINEAR_COLOR, CUBE_GLYPH_LINEAR_MASK,
@@ -166,7 +166,12 @@ impl DrawSdfUpload {
     fn refill(&mut self, draws: &[DrawRecord]) {
         self.clear_and_reserve(draws.len());
         for draw in draws {
-            let sdf = draw.sdf.map(encode_sdf).unwrap_or(EncodedSdf::NONE);
+            let sdf = match (draw.sdf, draw.sdf_shadow) {
+                (Some(sdf), None) => encode_sdf(sdf),
+                (None, Some(sdf_shadow)) => encode_sdf_shadow(sdf_shadow),
+                (None, None) => EncodedSdf::NONE,
+                (Some(_), Some(_)) => unreachable!("draw cannot store both SDF and SDF shadow"),
+            };
             self.push(sdf.kind, sdf.coords, sdf.radii, sdf.stroke, sdf.shadow);
         }
     }

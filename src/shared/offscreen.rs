@@ -14,7 +14,7 @@ use crate::{
             region::Region,
         },
         line::Line,
-        sdf::Sdf,
+        sdf::{Sdf, SdfShadow},
     },
 };
 
@@ -79,6 +79,10 @@ impl LocalSpace {
 
     fn sdf(self, sdf: Sdf) -> Sdf {
         sdf.translated(self.surface.x0 as f32, self.surface.y0 as f32)
+    }
+
+    fn sdf_shadow(self, sdf_shadow: SdfShadow) -> SdfShadow {
+        sdf_shadow.translated(self.surface.x0 as f32, self.surface.y0 as f32)
     }
 
     fn brush(self, brush: Brush) -> Brush {
@@ -168,6 +172,9 @@ fn translated_scene_for_bounds(scene: &Scene, local: LocalSpace) -> Scene {
             let mut draw = draw.clone();
             draw.pixel_bounds = local.pixel_bounds(draw.pixel_bounds);
             draw.sdf = draw.sdf.map(|sdf| local.sdf(sdf));
+            draw.sdf_shadow = draw
+                .sdf_shadow
+                .map(|sdf_shadow| local.sdf_shadow(sdf_shadow));
             draw.brush = local.brush(draw.brush);
             draw
         })

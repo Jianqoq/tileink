@@ -3,7 +3,8 @@ use crate::{
         build_tile_alpha, combine_alpha, composite_blend_group_tile,
         composite_color_tile_buffer_into, composite_opacity_group_tile,
         rasterize_glyphs_tile_buffer_into, rasterize_path_glyph_tile_buffer_into,
-        rasterize_sdf_tile_buffer_into, rasterize_tile_buffer_into,
+        rasterize_sdf_shadow_tile_buffer_into, rasterize_sdf_tile_buffer_into,
+        rasterize_tile_buffer_into,
     },
     shared::{
         bounds::{Bounds, PixelBounds},
@@ -159,6 +160,16 @@ fn render_tile(
             TilePtcl::Sdf(sdf) => {
                 rasterize_sdf_tile_buffer_into(
                     tile, tile_x, tile_y, &sdf.sdf, &sdf.brush, &clip_mask,
+                );
+            }
+            TilePtcl::SdfShadow(sdf_shadow) => {
+                rasterize_sdf_shadow_tile_buffer_into(
+                    tile,
+                    tile_x,
+                    tile_y,
+                    &sdf_shadow.sdf_shadow,
+                    &sdf_shadow.brush,
+                    &clip_mask,
                 );
             }
             TilePtcl::Glyph(glyph) => {

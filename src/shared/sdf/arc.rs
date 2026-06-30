@@ -268,10 +268,6 @@ impl ArcShadow {
         self
     }
 
-    pub(crate) fn tile_is_solid(self, _: Bounds) -> bool {
-        false
-    }
-
     pub(crate) fn fine_area(
         self,
         area: &mut [f32; (TILE_SIZE * TILE_SIZE) as usize],

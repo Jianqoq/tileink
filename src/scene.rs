@@ -25,7 +25,7 @@ use crate::shared::{
     path_flatten::PathFlatten,
     scan_line::line_scanned_tile_count,
     sdf::{
-        Sdf,
+        Sdf, SdfShadow,
         arc::{Arc as SdfArc, ArcShadow as SdfArcShadow},
         candlestick::CandleStick as SdfCandleStick,
         circle::{
@@ -608,7 +608,7 @@ impl Scene {
             },
             options,
         };
-        self.push_sdf_draw(Sdf::RectShadow(shadow), brush, rule);
+        self.push_sdf_shadow_draw(SdfShadow::Rect(shadow), brush, rule);
     }
 
     /// Adds a filled circle as exact SDF geometry instead of flattening it to path segments.
@@ -669,7 +669,7 @@ impl Scene {
             },
             options,
         };
-        self.push_sdf_draw(Sdf::CircleShadow(shadow), brush, rule);
+        self.push_sdf_shadow_draw(SdfShadow::Circle(shadow), brush, rule);
     }
 
     /// Adds a circular stroked arc as SDF geometry.
@@ -698,7 +698,7 @@ impl Scene {
             return;
         };
         let shadow = SdfArcShadow { arc, options };
-        self.push_sdf_draw(Sdf::ArcShadow(shadow), brush, rule);
+        self.push_sdf_shadow_draw(SdfShadow::Arc(shadow), brush, rule);
     }
 
     pub fn push_candlestick(
@@ -735,7 +735,7 @@ impl Scene {
             return;
         };
         let shadow = SdfLineShadow { line, options };
-        self.push_sdf_draw(Sdf::LineShadow(shadow), brush, rule);
+        self.push_sdf_shadow_draw(SdfShadow::Line(shadow), brush, rule);
     }
 
     pub fn push_arc(&mut self, arc: Arc, brush: impl Into<Brush>, rule: FillRule, tolerance: f64) {
@@ -810,6 +810,7 @@ impl Scene {
             path_id: None,
             glyph_run_id: Some(run_id),
             sdf: None,
+            sdf_shadow: None,
             tag: DrawTag::Brush,
             brush: brush.into(),
             fill_rule: FillRule::NonZero,
@@ -973,6 +974,7 @@ impl Scene {
             path_id: Some(path_id),
             glyph_run_id: None,
             sdf: None,
+            sdf_shadow: None,
             tag: options.tag,
             brush: options.brush,
             fill_rule: rule,
@@ -1025,6 +1027,15 @@ impl Scene {
         self.push_sdf_record(sdf, brush.into(), rule, DrawTag::Brush, true)
     }
 
+    fn push_sdf_shadow_draw(
+        &mut self,
+        sdf_shadow: SdfShadow,
+        brush: impl Into<Brush>,
+        rule: FillRule,
+    ) -> usize {
+        self.push_sdf_shadow_record(sdf_shadow, brush.into(), rule, DrawTag::Brush, true)
+    }
+
     fn push_sdf_record(
         &mut self,
         sdf: Sdf,
@@ -1040,6 +1051,42 @@ impl Scene {
             path_id: None,
             glyph_run_id: None,
             sdf: Some(sdf),
+            sdf_shadow: None,
+            tag,
+            brush,
+            fill_rule: rule,
+            pixel_bounds: PixelBounds {
+                x0: bounds.x0,
+                y0: bounds.y0,
+                x1: bounds.x1,
+                y1: bounds.y1,
+            },
+            solid_rect: false,
+        });
+        if emit_draw_command {
+            self.current_command_list_mut()
+                .commands
+                .push(Command::Draw(draw_ix));
+        }
+        draw_ix
+    }
+
+    fn push_sdf_shadow_record(
+        &mut self,
+        sdf_shadow: SdfShadow,
+        brush: Brush,
+        rule: FillRule,
+        tag: DrawTag,
+        emit_draw_command: bool,
+    ) -> usize {
+        self.ensure_command_root();
+        let bounds = sdf_shadow.bounds();
+        let draw_ix = self.draw_records.len();
+        self.draw_records.push(DrawRecord {
+            path_id: None,
+            glyph_run_id: None,
+            sdf: None,
+            sdf_shadow: Some(sdf_shadow),
             tag,
             brush,
             fill_rule: rule,

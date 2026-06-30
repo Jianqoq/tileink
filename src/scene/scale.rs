@@ -11,7 +11,7 @@ use crate::shared::{
         region::Region,
     },
     sdf::{
-        Sdf,
+        Sdf, SdfShadow,
         candlestick::CandleStick as SdfCandleStick,
         rect::{Radius, Rect as SdfRect, RectShadowOptions, StrokeWidths},
     },
@@ -114,11 +114,6 @@ impl SceneScale {
                 stroke.widths = self.stroke_widths(stroke.widths);
                 Sdf::RectStroke(stroke)
             }
-            Sdf::RectShadow(mut shadow) => {
-                shadow.rect = self.sdf_rect(shadow.rect);
-                shadow.options = self.shadow_options(shadow.options);
-                Sdf::RectShadow(shadow)
-            }
             Sdf::Circle(mut circle) => {
                 circle.center = self.point(circle.center);
                 circle.radius = self.scalar_f32(circle.radius);
@@ -130,25 +125,11 @@ impl SceneScale {
                 stroke.half_width = self.scalar_f32(stroke.half_width);
                 Sdf::CircleStroke(stroke)
             }
-            Sdf::CircleShadow(mut shadow) => {
-                shadow.circle.center = self.point(shadow.circle.center);
-                shadow.circle.radius = self.scalar_f32(shadow.circle.radius);
-                shadow.options = self.shadow_options(shadow.options);
-                Sdf::CircleShadow(shadow)
-            }
             Sdf::Arc(mut arc) => {
                 arc.center = self.point(arc.center);
                 arc.radius = self.scalar_f32(arc.radius);
                 arc.width = self.scalar_f32(arc.width);
                 Sdf::Arc(arc)
-            }
-            Sdf::ArcShadow(mut shadow) => {
-                shadow.arc = match self.sdf(Sdf::Arc(shadow.arc)) {
-                    Sdf::Arc(arc) => arc,
-                    _ => unreachable!(),
-                };
-                shadow.options = self.shadow_options(shadow.options);
-                Sdf::ArcShadow(shadow)
             }
             Sdf::CandleStick(candle) => Sdf::CandleStick(self.candlestick(candle)),
             Sdf::Line(mut line) => {
@@ -157,13 +138,37 @@ impl SceneScale {
                 line.width = self.scalar_f32(line.width);
                 Sdf::Line(line)
             }
-            Sdf::LineShadow(mut shadow) => {
+        }
+    }
+
+    fn sdf_shadow(self, shadow: SdfShadow) -> SdfShadow {
+        match shadow {
+            SdfShadow::Rect(mut shadow) => {
+                shadow.rect = self.sdf_rect(shadow.rect);
+                shadow.options = self.shadow_options(shadow.options);
+                SdfShadow::Rect(shadow)
+            }
+            SdfShadow::Circle(mut shadow) => {
+                shadow.circle.center = self.point(shadow.circle.center);
+                shadow.circle.radius = self.scalar_f32(shadow.circle.radius);
+                shadow.options = self.shadow_options(shadow.options);
+                SdfShadow::Circle(shadow)
+            }
+            SdfShadow::Arc(mut shadow) => {
+                shadow.arc = match self.sdf(Sdf::Arc(shadow.arc)) {
+                    Sdf::Arc(arc) => arc,
+                    _ => unreachable!(),
+                };
+                shadow.options = self.shadow_options(shadow.options);
+                SdfShadow::Arc(shadow)
+            }
+            SdfShadow::Line(mut shadow) => {
                 shadow.line = match self.sdf(Sdf::Line(shadow.line)) {
                     Sdf::Line(line) => line,
                     _ => unreachable!(),
                 };
                 shadow.options = self.shadow_options(shadow.options);
-                Sdf::LineShadow(shadow)
+                SdfShadow::Line(shadow)
             }
         }
     }
@@ -441,6 +446,9 @@ impl Scene {
         for draw in &mut self.draw_records {
             draw.pixel_bounds = transform.pixel_bounds(draw.pixel_bounds);
             draw.sdf = draw.sdf.map(|sdf| transform.sdf(sdf));
+            draw.sdf_shadow = draw
+                .sdf_shadow
+                .map(|sdf_shadow| transform.sdf_shadow(sdf_shadow));
             transform.brush(&mut draw.brush);
         }
 

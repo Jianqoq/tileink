@@ -196,7 +196,7 @@ fn coarse_ptcl_capacity(scene: &Scene, width_in_tiles: u32, height_in_tiles: u32
         .draw_records
         .iter()
         .filter(|draw| {
-            (draw.path_id.is_some() || draw.sdf.is_some() || draw.glyph_run_id.is_some())
+            (draw.path_id.is_some() || draw.has_analytic_geometry() || draw.glyph_run_id.is_some())
                 && matches!(
                     draw.tag,
                     DrawTag::Brush | DrawTag::PathGlyph | DrawTag::Clip

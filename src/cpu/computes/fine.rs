@@ -13,7 +13,7 @@ use crate::{
             src_over_mask_linear_auto_u8, src_over_premul_u8,
             src_over_subpixel_mask_linear_auto_u8, src_over_subpixel_mask_u8, unpack_premul_rgba8,
         },
-        sdf::Sdf,
+        sdf::{Sdf, SdfShadow},
     },
     text::{PreparedGlyphContent, PreparedTextData, TextCompositeMode},
 };
@@ -259,6 +259,32 @@ pub(crate) fn rasterize_sdf_tile_buffer_into(
     brush: &Brush,
     clip_mask: &[u8; 256],
 ) {
+    rasterize_sdf_area_tile_buffer_into(tile, tile_x, tile_y, brush, clip_mask, |area, bounds| {
+        sdf.fine_area(area, bounds, bounds);
+    });
+}
+
+pub(crate) fn rasterize_sdf_shadow_tile_buffer_into(
+    tile: &mut TileBuffer,
+    tile_x: u32,
+    tile_y: u32,
+    sdf_shadow: &SdfShadow,
+    brush: &Brush,
+    clip_mask: &[u8; 256],
+) {
+    rasterize_sdf_area_tile_buffer_into(tile, tile_x, tile_y, brush, clip_mask, |area, bounds| {
+        sdf_shadow.fine_area(area, bounds, bounds);
+    });
+}
+
+fn rasterize_sdf_area_tile_buffer_into(
+    tile: &mut TileBuffer,
+    tile_x: u32,
+    tile_y: u32,
+    brush: &Brush,
+    clip_mask: &[u8; 256],
+    fine_area: impl FnOnce(&mut [f32; crate::BLOCK_SIZE as usize], Bounds),
+) {
     let base_x = (tile_x * TILE_SIZE) as i32;
     let base_y = (tile_y * TILE_SIZE) as i32;
     let tile_bounds = Bounds::new(
@@ -268,7 +294,7 @@ pub(crate) fn rasterize_sdf_tile_buffer_into(
         base_y + TILE_SIZE as i32,
     );
     let mut area = [0.0; crate::BLOCK_SIZE as usize];
-    sdf.fine_area(&mut area, tile_bounds, tile_bounds);
+    fine_area(&mut area, tile_bounds);
 
     for y in 0..TILE_SIZE {
         let row_start = (y * TILE_SIZE) as usize;

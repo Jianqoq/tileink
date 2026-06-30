@@ -44,7 +44,7 @@ pub use shared::{
         region::Region,
     },
     sdf::{
-        Sdf,
+        Sdf, SdfShadow,
         arc::{Arc as SdfArc, ArcShadow as SdfArcShadow},
         candlestick::CandleStick,
         circle::{
