@@ -20,6 +20,8 @@ pub use cpu::Renderer as CpuRenderer;
 pub use cubecl::CubePreparedStage;
 #[cfg(feature = "cuda")]
 pub use cubecl::CudaRenderer as CubeCudaRenderer;
+#[cfg(feature = "wgpu")]
+pub use cubecl::WgpuTextureBlitError as CubeWgpuTextureBlitError;
 #[cfg(feature = "profile")]
 pub use cubecl::{
     RenderProfile, RenderProfileEntry, RenderProfileEventSummary, RenderProfileMemoryEntry,

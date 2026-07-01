@@ -15,4 +15,6 @@ pub use profile::{
 pub use renderer::CubePreparedStage;
 #[cfg(feature = "cuda")]
 pub use renderer::CudaRenderer;
+#[cfg(feature = "wgpu")]
+pub use renderer::WgpuTextureBlitError;
 pub use renderer::{Renderer, WgpuRenderer};

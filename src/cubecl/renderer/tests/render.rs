@@ -410,6 +410,113 @@ fn render_wgpu_debug_capture_reads_back_scan_and_final_image_when_enabled() {
     assert_eq!(tile.final_rgba[0], renderer.image().rgba8_at(80, 160));
 }
 
+#[cfg(feature = "wgpu")]
+#[test]
+fn render_wgpu_blits_target_to_wgpu_texture_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let width = 8;
+    let height = 4;
+    let mut scene = Scene::new(width, height);
+    scene.push_rect(
+        Rect::new(0.0, 0.0, width as f64, height as f64),
+        Radius::ZERO,
+        Color::from_rgba8(25, 150, 220, 192),
+        FillRule::NonZero,
+    );
+
+    let setup = ::cubecl::wgpu::init_setup::<::cubecl::wgpu::AutoGraphicsApi>(
+        &::cubecl::wgpu::WgpuDevice::DefaultDevice,
+        ::cubecl::wgpu::RuntimeOptions::default(),
+    );
+    let device = setup.device.clone();
+    let queue = setup.queue.clone();
+    let cube_device = ::cubecl::wgpu::init_device(setup, ::cubecl::wgpu::RuntimeOptions::default());
+    let mut renderer = WgpuRenderer::new(&cube_device, width, height, Color::TRANSPARENT);
+
+    let dst = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("tileink test target texture blit dst"),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+
+    renderer
+        .render_to_wgpu_texture(&scene, &device, &queue, &dst)
+        .expect("blit target to wgpu texture");
+
+    assert_eq!(
+        read_wgpu_texture(&device, &queue, &dst, width, height),
+        renderer.image().rgba8_bytes()
+    );
+}
+
+#[cfg(feature = "wgpu")]
+fn read_wgpu_texture(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    texture: &wgpu::Texture,
+    width: u32,
+    height: u32,
+) -> Vec<u8> {
+    let row_bytes = width as wgpu::BufferAddress * 4;
+    let padded_row_bytes =
+        row_bytes.next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as wgpu::BufferAddress);
+    let readback = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("tileink test texture readback"),
+        size: padded_row_bytes * height as wgpu::BufferAddress,
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("tileink test texture readback"),
+    });
+    encoder.copy_texture_to_buffer(
+        texture.as_image_copy(),
+        wgpu::TexelCopyBufferInfo {
+            buffer: &readback,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: (height > 1).then_some(padded_row_bytes as u32),
+                rows_per_image: None,
+            },
+        },
+        wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+    );
+    queue.submit([encoder.finish()]);
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    readback
+        .slice(..)
+        .map_async(wgpu::MapMode::Read, move |result| tx.send(result).unwrap());
+    device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+    rx.recv().unwrap().unwrap();
+
+    let view = readback.slice(..).get_mapped_range();
+    let mut tight = Vec::with_capacity((row_bytes * height as u64) as usize);
+    for row in 0..height as usize {
+        let start = row * padded_row_bytes as usize;
+        tight.extend_from_slice(&view[start..start + row_bytes as usize]);
+    }
+    drop(view);
+    readback.unmap();
+    tight
+}
+
 #[test]
 fn render_wgpu_fills_top_clipped_path_between_edge_tiles_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {

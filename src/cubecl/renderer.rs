@@ -100,6 +100,70 @@ pub enum CubePreparedStage {
     Fine,
 }
 
+#[cfg(feature = "wgpu")]
+#[derive(Debug)]
+pub enum WgpuTextureBlitError {
+    DestinationTooSmall {
+        required_width: u32,
+        required_height: u32,
+        actual_width: u32,
+        actual_height: u32,
+    },
+    DestinationUsageMissing(wgpu::TextureUsages),
+    UnsupportedDestination {
+        format: wgpu::TextureFormat,
+        dimension: wgpu::TextureDimension,
+        sample_count: u32,
+    },
+    SourceTooSmall {
+        required: wgpu::BufferAddress,
+        available: wgpu::BufferAddress,
+    },
+    SourceUnavailable(::cubecl::server::ServerError),
+}
+
+#[cfg(feature = "wgpu")]
+impl std::fmt::Display for WgpuTextureBlitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DestinationTooSmall {
+                required_width,
+                required_height,
+                actual_width,
+                actual_height,
+            } => write!(
+                f,
+                "destination texture is {actual_width}x{actual_height}, but {required_width}x{required_height} is required"
+            ),
+            Self::DestinationUsageMissing(usage) => write!(
+                f,
+                "destination texture usage {usage:?} is missing wgpu::TextureUsages::COPY_DST"
+            ),
+            Self::UnsupportedDestination {
+                format,
+                dimension,
+                sample_count,
+            } => write!(
+                f,
+                "unsupported destination texture format {format:?}, dimension {dimension:?}, sample_count {sample_count}; expected single-sample 2D Rgba8Unorm or Rgba8UnormSrgb"
+            ),
+            Self::SourceTooSmall {
+                required,
+                available,
+            } => write!(
+                f,
+                "CubeCL target resource has {available} bytes, but {required} bytes are required"
+            ),
+            Self::SourceUnavailable(err) => {
+                write!(f, "CubeCL target resource is unavailable: {err}")
+            }
+        }
+    }
+}
+
+#[cfg(feature = "wgpu")]
+impl std::error::Error for WgpuTextureBlitError {}
+
 impl<R: Runtime> Render for Renderer<R> {
     type ScanArgs<'a> = ();
     type CumsumArgs<'a> = ();
@@ -662,6 +726,176 @@ impl WgpuRenderer {
     pub fn new_default_device(width: u32, height: u32, clear: Color) -> Self {
         Self::new(&Default::default(), width, height, clear)
     }
+
+    #[cfg(feature = "wgpu")]
+    pub fn target_rgba8_byte_len(&self) -> wgpu::BufferAddress {
+        self.size.0 as wgpu::BufferAddress
+            * self.size.1 as wgpu::BufferAddress
+            * std::mem::size_of::<u32>() as wgpu::BufferAddress
+    }
+
+    #[cfg(feature = "wgpu")]
+    /// Copies the rendered target into a caller-owned wgpu texture without CPU readback.
+    ///
+    /// This is the GPU-resident output path for integrations that already own a
+    /// wgpu texture. The destination texture must be a single-sample 2D
+    /// `Rgba8Unorm` or `Rgba8UnormSrgb` texture created from the same wgpu
+    /// device/queue used to initialize this renderer, and must include
+    /// `wgpu::TextureUsages::COPY_DST`.
+    pub fn blit_target_to_wgpu_texture(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        dst: &wgpu::Texture,
+    ) -> Result<(), WgpuTextureBlitError> {
+        self.validate_wgpu_texture_destination(dst)?;
+        let copy_size = self.target_rgba8_byte_len();
+        if copy_size == 0 {
+            return Ok(());
+        }
+
+        let source = self
+            .client
+            .get_resource(self.target.handle())
+            .map_err(WgpuTextureBlitError::SourceUnavailable)?;
+        let source = source.resource();
+        if source.size < copy_size {
+            return Err(WgpuTextureBlitError::SourceTooSmall {
+                required: copy_size,
+                available: source.size,
+            });
+        }
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("tileink CubeCL target texture blit"),
+        });
+        let source = self.texture_source_buffer(device, &mut encoder, source);
+        encoder.copy_buffer_to_texture(
+            wgpu::TexelCopyBufferInfo {
+                buffer: &source.buffer,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: source.offset,
+                    bytes_per_row: source.bytes_per_row,
+                    rows_per_image: None,
+                },
+            },
+            dst.as_image_copy(),
+            self.target_texture_extent(),
+        );
+        queue.submit([encoder.finish()]);
+        Ok(())
+    }
+
+    #[cfg(feature = "wgpu")]
+    /// Renders the scene, then blits the premultiplied RGBA8 target into `dst`.
+    pub fn render_to_wgpu_texture(
+        &mut self,
+        scene: &Scene,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        dst: &wgpu::Texture,
+    ) -> Result<(), WgpuTextureBlitError> {
+        self.render(scene);
+        self.blit_target_to_wgpu_texture(device, queue, dst)
+    }
+
+    #[cfg(feature = "wgpu")]
+    fn validate_wgpu_texture_destination(
+        &self,
+        dst: &wgpu::Texture,
+    ) -> Result<(), WgpuTextureBlitError> {
+        if dst.width() < self.size.0 || dst.height() < self.size.1 {
+            return Err(WgpuTextureBlitError::DestinationTooSmall {
+                required_width: self.size.0,
+                required_height: self.size.1,
+                actual_width: dst.width(),
+                actual_height: dst.height(),
+            });
+        }
+        if !dst.usage().contains(wgpu::TextureUsages::COPY_DST) {
+            return Err(WgpuTextureBlitError::DestinationUsageMissing(dst.usage()));
+        }
+        if !matches!(
+            dst.format(),
+            wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Rgba8UnormSrgb
+        ) || dst.dimension() != wgpu::TextureDimension::D2
+            || dst.sample_count() != 1
+        {
+            return Err(WgpuTextureBlitError::UnsupportedDestination {
+                format: dst.format(),
+                dimension: dst.dimension(),
+                sample_count: dst.sample_count(),
+            });
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "wgpu")]
+    fn texture_source_buffer(
+        &self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        source: &::cubecl::wgpu::WgpuResource,
+    ) -> WgpuTextureCopySource {
+        let row_bytes = self.target_row_bytes();
+        let row_alignment = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as wgpu::BufferAddress;
+        let height = self.size.1 as wgpu::BufferAddress;
+        if self.size.1 <= 1 || row_bytes % row_alignment == 0 {
+            return WgpuTextureCopySource {
+                buffer: source.buffer.clone(),
+                offset: source.offset,
+                bytes_per_row: (self.size.1 > 1).then_some(row_bytes as u32),
+            };
+        }
+
+        let padded_row_bytes = align_to(row_bytes, row_alignment);
+        let padded = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("tileink padded CubeCL target texture blit"),
+            size: padded_row_bytes * height,
+            usage: wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        for row in 0..height {
+            encoder.copy_buffer_to_buffer(
+                &source.buffer,
+                source.offset + row * row_bytes,
+                &padded,
+                row * padded_row_bytes,
+                row_bytes,
+            );
+        }
+        WgpuTextureCopySource {
+            buffer: padded,
+            offset: 0,
+            bytes_per_row: Some(padded_row_bytes as u32),
+        }
+    }
+
+    #[cfg(feature = "wgpu")]
+    fn target_row_bytes(&self) -> wgpu::BufferAddress {
+        self.size.0 as wgpu::BufferAddress * std::mem::size_of::<u32>() as wgpu::BufferAddress
+    }
+
+    #[cfg(feature = "wgpu")]
+    fn target_texture_extent(&self) -> wgpu::Extent3d {
+        wgpu::Extent3d {
+            width: self.size.0,
+            height: self.size.1,
+            depth_or_array_layers: 1,
+        }
+    }
+}
+
+#[cfg(feature = "wgpu")]
+struct WgpuTextureCopySource {
+    buffer: wgpu::Buffer,
+    offset: wgpu::BufferAddress,
+    bytes_per_row: Option<u32>,
+}
+
+#[cfg(feature = "wgpu")]
+fn align_to(value: wgpu::BufferAddress, alignment: wgpu::BufferAddress) -> wgpu::BufferAddress {
+    value.next_multiple_of(alignment)
 }
 
 #[cfg(feature = "cuda")]
