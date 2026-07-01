@@ -46,6 +46,7 @@ pub use shared::{
         mask::{Mask, MaskKind},
         region::Region,
     },
+    pixel::TextCoverageParams,
     sdf::{
         Sdf, SdfShadow,
         arc::{Arc as SdfArc, ArcShadow as SdfArcShadow},

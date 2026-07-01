@@ -10,11 +10,31 @@ use crate::cubecl::brush::{
 // compositing. DirectWrite reference output showed that dark text needs a
 // non-monotonic boost across light backgrounds, while light text only needs
 // reduction on nearly black backgrounds where blooming makes it look heavy.
-const TEXT_DARK_ON_LIGHT_COVERAGE_STRENGTH: f32 = 0.75;
-const TEXT_DARK_ON_LIGHT_LUMA_BASE: f32 = 1.45;
-const TEXT_DARK_ON_LIGHT_LUMA_TAPER: f32 = 0.70;
-const TEXT_LIGHT_ON_DARK_COVERAGE_REDUCTION: f32 = 0.15;
-const TEXT_LIGHT_ON_DARK_BLACK_LUMA_LIMIT: f32 = 0.02;
+// Saturated colored text needs extra channel-aware adjustment because luma
+// contrast underestimates color-edge weight compared with DirectWrite.
+const TEXT_DARK_ON_LIGHT_COVERAGE_STRENGTH: f32 = 0.95;
+const TEXT_DARK_ON_LIGHT_LUMA_BASE: f32 = 1.572_846_5;
+const TEXT_DARK_ON_LIGHT_LUMA_TAPER: f32 = 1.15;
+const TEXT_DARK_ON_LIGHT_CHROMA_BOOST: f32 = 0.365_655_8;
+const TEXT_SOURCE_CHROMA_COVERAGE_BOOST: f32 = 0.0;
+const TEXT_SOURCE_CHROMA_COVERAGE_CONTRAST_LIMIT: f32 = 0.231_008_04;
+const TEXT_LIGHT_ON_DARK_COVERAGE_REDUCTION: f32 = 0.206_628_05;
+const TEXT_LIGHT_ON_DARK_BLACK_LUMA_LIMIT: f32 = 0.028_754_03;
+const TEXT_LIGHT_ON_DARK_CHROMA_REDUCTION: f32 = 0.114_799_53;
+const TEXT_LIGHT_ON_DARK_HIGH_LUMA_CHROMA_REDUCTION: f32 = 0.449_235_4;
+const TEXT_LIGHT_ON_DARK_HIGH_LUMA_THRESHOLD: f32 = 0.261_297_02;
+const TEXT_LIGHT_ON_COLORED_DARK_CHROMA_REDUCTION: f32 = 0.487_289_64;
+const TEXT_LIGHT_ON_COLORED_DARK_LUMA_LIMIT: f32 = 0.115_199_71;
+const TEXT_ALPHA_MASK_CHROMA_SCALE: f32 = 1.356_680_2;
+const TEXT_SUBPIXEL_MASK_CHROMA_SCALE: f32 = 0.948_365_9;
+const TEXT_ALPHA_MASK_APPARENT_AXIS_STRENGTH: f32 = 1.036_124;
+const TEXT_ALPHA_MASK_APPARENT_AXIS_LUMA_LIMIT: f32 = 0.688_732_8;
+const TEXT_SUBPIXEL_MASK_APPARENT_AXIS_STRENGTH: f32 = 1.447_765;
+const TEXT_SUBPIXEL_MASK_APPARENT_AXIS_LUMA_LIMIT: f32 = 0.168_284_2;
+const TEXT_ALPHA_MASK_LOW_LUMA_CHROMA_REDUCTION: f32 = 0.413_020_64;
+const TEXT_ALPHA_MASK_LOW_LUMA_CONTRAST_LIMIT: f32 = 0.101_238_72;
+const TEXT_SUBPIXEL_MASK_LOW_LUMA_CHROMA_REDUCTION: f32 = 0.0;
+const TEXT_SUBPIXEL_MASK_LOW_LUMA_CONTRAST_LIMIT: f32 = 0.063_855_61;
 
 pub(crate) const DRAW_FLAG_TAG_MASK: u32 = 0b0000_0111;
 pub(crate) const DRAW_FLAG_FILL_RULE_EVEN_ODD: u32 = 1 << 3;
@@ -564,7 +584,20 @@ pub(crate) fn src_over_mask_linear_u8(dst: u32, src: u32, coverage: u32) -> u32 
 
 #[cube]
 pub(crate) fn src_over_mask_linear_auto_u8(dst: u32, src: u32, coverage: u32) -> u32 {
-    src_over_mask_linear_u8(dst, src, auto_text_coverage(dst, src, coverage))
+    let coverage = auto_text_coverage(
+        dst,
+        src,
+        coverage,
+        f32::new(TEXT_ALPHA_MASK_CHROMA_SCALE),
+        f32::new(TEXT_ALPHA_MASK_LOW_LUMA_CHROMA_REDUCTION)
+            * (f32::new(TEXT_ALPHA_MASK_CHROMA_SCALE) - f32::new(TEXT_SUBPIXEL_MASK_CHROMA_SCALE))
+                .max(0.0),
+        f32::new(TEXT_ALPHA_MASK_LOW_LUMA_CONTRAST_LIMIT),
+        f32::new(TEXT_ALPHA_MASK_APPARENT_AXIS_STRENGTH),
+        f32::new(TEXT_ALPHA_MASK_APPARENT_AXIS_LUMA_LIMIT),
+        false,
+    );
+    src_over_mask_linear_u8(dst, src, coverage)
 }
 
 #[cube]
@@ -611,51 +644,395 @@ pub(crate) fn src_over_subpixel_mask_linear_auto_u8(
     mask_rgb: u32,
     clip: u32,
 ) -> u32 {
-    let r = auto_text_coverage(dst, src, combine_alpha(mask_rgb & 255, clip));
-    let g = auto_text_coverage(dst, src, combine_alpha((mask_rgb >> 8) & 255, clip));
-    let b = auto_text_coverage(dst, src, combine_alpha((mask_rgb >> 16) & 255, clip));
-    src_over_subpixel_mask_linear_u8(dst, src, r | (g << 8) | (b << 16), 255)
+    let chroma_scale = f32::new(TEXT_SUBPIXEL_MASK_CHROMA_SCALE);
+    let low_luma_chroma_reduction = f32::new(TEXT_SUBPIXEL_MASK_LOW_LUMA_CHROMA_REDUCTION);
+    let low_luma_contrast_limit = f32::new(TEXT_SUBPIXEL_MASK_LOW_LUMA_CONTRAST_LIMIT);
+    let r = auto_text_coverage(
+        dst,
+        src,
+        combine_alpha(mask_rgb & 255, clip),
+        chroma_scale,
+        low_luma_chroma_reduction,
+        low_luma_contrast_limit,
+        0.0,
+        f32::new(TEXT_SUBPIXEL_MASK_APPARENT_AXIS_LUMA_LIMIT),
+        true,
+    );
+    let g = auto_text_coverage(
+        dst,
+        src,
+        combine_alpha((mask_rgb >> 8) & 255, clip),
+        chroma_scale,
+        low_luma_chroma_reduction,
+        low_luma_contrast_limit,
+        0.0,
+        f32::new(TEXT_SUBPIXEL_MASK_APPARENT_AXIS_LUMA_LIMIT),
+        true,
+    );
+    let b = auto_text_coverage(
+        dst,
+        src,
+        combine_alpha((mask_rgb >> 16) & 255, clip),
+        chroma_scale,
+        low_luma_chroma_reduction,
+        low_luma_contrast_limit,
+        0.0,
+        f32::new(TEXT_SUBPIXEL_MASK_APPARENT_AXIS_LUMA_LIMIT),
+        true,
+    );
+    let compensated = r | (g << 8) | (b << 16);
+    let corrected = subpixel_axis_corrected_mask(
+        dst,
+        src,
+        compensated,
+        f32::new(TEXT_SUBPIXEL_MASK_APPARENT_AXIS_STRENGTH),
+        f32::new(TEXT_SUBPIXEL_MASK_APPARENT_AXIS_LUMA_LIMIT),
+    );
+    src_over_subpixel_mask_linear_u8(dst, src, corrected, 255)
 }
 
 #[cube]
-fn auto_text_coverage(dst: u32, src: u32, coverage: u32) -> u32 {
+fn auto_text_coverage(
+    dst: u32,
+    src: u32,
+    coverage: u32,
+    chroma_scale: f32,
+    low_luma_chroma_reduction: f32,
+    low_luma_contrast_limit: f32,
+    apparent_axis_strength: f32,
+    apparent_axis_luma_limit: f32,
+    destination_chroma_boost: bool,
+) -> u32 {
     let mut out = coverage;
     if coverage != 0 && coverage != 255 {
-        let src_luma = linear_luminance_from_srgb8(src);
-        let dst_luma = linear_luminance_from_srgb8(dst);
+        let src_alpha = ((src >> 24) & 255) as f32 * (1.0 / 255.0);
+        let dst_alpha = ((dst >> 24) & 255) as f32 * (1.0 / 255.0);
+        let mut src_sr = 0.0;
+        let mut src_sg = 0.0;
+        let mut src_sb = 0.0;
+        let mut dst_sr = 0.0;
+        let mut dst_sg = 0.0;
+        let mut dst_sb = 0.0;
+        let mut src_r = 0.0;
+        let mut src_g = 0.0;
+        let mut src_b = 0.0;
+        let mut dst_r = 0.0;
+        let mut dst_g = 0.0;
+        let mut dst_b = 0.0;
+        if src_alpha > 0.0 {
+            let inv_alpha = 1.0 / (src_alpha * 255.0);
+            src_sr = ((src & 255) as f32 * inv_alpha).clamp(0.0, 1.0);
+            src_sg = (((src >> 8) & 255) as f32 * inv_alpha).clamp(0.0, 1.0);
+            src_sb = (((src >> 16) & 255) as f32 * inv_alpha).clamp(0.0, 1.0);
+            src_r = srgb_to_linear(src_sr);
+            src_g = srgb_to_linear(src_sg);
+            src_b = srgb_to_linear(src_sb);
+        }
+        if dst_alpha > 0.0 {
+            let inv_alpha = 1.0 / (dst_alpha * 255.0);
+            dst_sr = ((dst & 255) as f32 * inv_alpha).clamp(0.0, 1.0);
+            dst_sg = (((dst >> 8) & 255) as f32 * inv_alpha).clamp(0.0, 1.0);
+            dst_sb = (((dst >> 16) & 255) as f32 * inv_alpha).clamp(0.0, 1.0);
+            dst_r = srgb_to_linear(dst_sr);
+            dst_g = srgb_to_linear(dst_sg);
+            dst_b = srgb_to_linear(dst_sb);
+        }
+
+        let src_luma = 0.2126 * src_r + 0.7152 * src_g + 0.0722 * src_b;
+        let dst_luma = 0.2126 * dst_r + 0.7152 * dst_g + 0.0722 * dst_b;
+        let src_perceptual_luma = 0.2126 * src_sr + 0.7152 * src_sg + 0.0722 * src_sb;
+        let dst_perceptual_luma = 0.2126 * dst_sr + 0.7152 * dst_sg + 0.0722 * dst_sb;
+        let src_max = src_r.max(src_g).max(src_b);
+        let src_min = src_r.min(src_g).min(src_b);
+        let dst_max = dst_r.max(dst_g).max(dst_b);
+        let dst_min = dst_r.min(dst_g).min(dst_b);
+        let src_chroma = (src_max - src_min).clamp(0.0, 1.0);
+        let dst_chroma = (dst_max - dst_min).clamp(0.0, 1.0);
+        let channel_contrast = (src_r - dst_r)
+            .abs()
+            .max((src_g - dst_g).abs())
+            .max((src_b - dst_b).abs());
+        let luma_contrast = (src_luma - dst_luma).abs();
+        let mut low_luma_contrast = 0.0;
+        if low_luma_contrast_limit > 0.0 {
+            low_luma_contrast = ((low_luma_contrast_limit - luma_contrast)
+                / low_luma_contrast_limit)
+                .clamp(0.0, 1.0);
+        }
+        low_luma_contrast = low_luma_contrast * low_luma_contrast;
+        let mut perceptual_light_on_dark_gate = 0.0;
+        if src_perceptual_luma >= dst_perceptual_luma {
+            perceptual_light_on_dark_gate = 1.0;
+        }
+        let low_luma_chroma_suppression = low_luma_chroma_reduction
+            * low_luma_contrast
+            * perceptual_light_on_dark_gate
+            * channel_contrast
+            * ((src_chroma + dst_chroma) * 0.5).clamp(0.0, 1.0);
+        let src_chroma_dominance = ((src_chroma - dst_chroma) * 2.0).clamp(0.0, 1.0);
+        let mut source_chroma_contrast_gate = 0.0;
+        if f32::new(TEXT_SOURCE_CHROMA_COVERAGE_CONTRAST_LIMIT) > 0.0 {
+            source_chroma_contrast_gate = ((f32::new(TEXT_SOURCE_CHROMA_COVERAGE_CONTRAST_LIMIT)
+                - luma_contrast)
+                / f32::new(TEXT_SOURCE_CHROMA_COVERAGE_CONTRAST_LIMIT))
+            .clamp(0.0, 1.0);
+        }
+        let source_chroma_coverage_boost = f32::new(TEXT_SOURCE_CHROMA_COVERAGE_BOOST)
+            * source_chroma_contrast_gate
+            * src_chroma_dominance
+            * src_chroma
+            * channel_contrast;
         if src_luma < dst_luma {
             let contrast = (dst_luma - src_luma).clamp(0.0, 1.0);
+            let hidden_chroma_contrast = (channel_contrast - contrast).max(0.0);
+            let dst_chroma_dominance = ((dst_chroma - src_chroma) * 2.0).clamp(0.0, 1.0);
+            let mut dark_on_light_chroma = src_chroma;
+            if destination_chroma_boost {
+                dark_on_light_chroma = dark_on_light_chroma.max(dst_chroma * (1.0 - src_max));
+            }
             let curve = (contrast
                 * (f32::new(TEXT_DARK_ON_LIGHT_LUMA_BASE)
-                    - f32::new(TEXT_DARK_ON_LIGHT_LUMA_TAPER) * dst_luma))
+                    - f32::new(TEXT_DARK_ON_LIGHT_LUMA_TAPER) * dst_luma)
+                + f32::new(TEXT_DARK_ON_LIGHT_CHROMA_BOOST)
+                    * chroma_scale
+                    * hidden_chroma_contrast
+                    * dark_on_light_chroma)
                 .clamp(0.0, 1.0);
-            let exponent = 1.0 - f32::new(TEXT_DARK_ON_LIGHT_COVERAGE_STRENGTH) * curve;
-            out = ((coverage as f32 * (1.0 / 255.0)).powf(exponent) * 255.0 + 0.5) as u32;
+            let exponent = (1.0
+                - f32::new(TEXT_DARK_ON_LIGHT_COVERAGE_STRENGTH) * curve
+                - source_chroma_coverage_boost
+                + low_luma_chroma_suppression * dst_chroma_dominance)
+                .max(0.03);
+            let compensated = (coverage as f32 * (1.0 / 255.0)).powf(exponent);
+            out = apparent_axis_corrected_coverage(
+                compensated,
+                src_r,
+                src_g,
+                src_b,
+                dst_r,
+                dst_g,
+                dst_b,
+                src_sr,
+                src_sg,
+                src_sb,
+                dst_sr,
+                dst_sg,
+                dst_sb,
+                src_chroma,
+                dst_chroma,
+                (src_perceptual_luma - dst_perceptual_luma).abs(),
+                apparent_axis_strength,
+                apparent_axis_luma_limit,
+            );
         } else {
             let contrast = (src_luma - dst_luma).clamp(0.0, 1.0);
             let black_surface = ((f32::new(TEXT_LIGHT_ON_DARK_BLACK_LUMA_LIMIT) - dst_luma)
                 / f32::new(TEXT_LIGHT_ON_DARK_BLACK_LUMA_LIMIT))
             .clamp(0.0, 1.0);
+            let mut high_luma_chroma = 0.0;
+            if src_max > 0.0 {
+                high_luma_chroma = src_chroma
+                    * (src_luma / src_max - f32::new(TEXT_LIGHT_ON_DARK_HIGH_LUMA_THRESHOLD))
+                        .max(0.0);
+            }
+            let colored_dark_surface = ((f32::new(TEXT_LIGHT_ON_COLORED_DARK_LUMA_LIMIT)
+                - dst_luma)
+                / f32::new(TEXT_LIGHT_ON_COLORED_DARK_LUMA_LIMIT))
+            .clamp(0.0, 1.0)
+                * (dst_chroma * 4.0).clamp(0.0, 1.0);
+            let alpha_mask_chroma_excess =
+                (chroma_scale - f32::new(TEXT_SUBPIXEL_MASK_CHROMA_SCALE)).max(0.0);
             let exponent = 1.0
-                + f32::new(TEXT_LIGHT_ON_DARK_COVERAGE_REDUCTION)
-                    * contrast
-                    * src_luma
-                    * black_surface;
-            out = ((coverage as f32 * (1.0 / 255.0)).powf(exponent) * 255.0 + 0.5) as u32;
+                + black_surface
+                    * (f32::new(TEXT_LIGHT_ON_DARK_COVERAGE_REDUCTION) * contrast * src_luma
+                        + f32::new(TEXT_LIGHT_ON_DARK_CHROMA_REDUCTION)
+                            * chroma_scale
+                            * src_chroma
+                            * src_max
+                        + f32::new(TEXT_LIGHT_ON_DARK_HIGH_LUMA_CHROMA_REDUCTION)
+                            * chroma_scale
+                            * high_luma_chroma)
+                + f32::new(TEXT_LIGHT_ON_COLORED_DARK_CHROMA_REDUCTION)
+                    * alpha_mask_chroma_excess
+                    * colored_dark_surface
+                    * src_chroma
+                    * channel_contrast
+                + low_luma_chroma_suppression
+                - source_chroma_coverage_boost * (1.0 - black_surface);
+            let exponent = exponent.max(0.03);
+            let compensated = (coverage as f32 * (1.0 / 255.0)).powf(exponent);
+            out = apparent_axis_corrected_coverage(
+                compensated,
+                src_r,
+                src_g,
+                src_b,
+                dst_r,
+                dst_g,
+                dst_b,
+                src_sr,
+                src_sg,
+                src_sb,
+                dst_sr,
+                dst_sg,
+                dst_sb,
+                src_chroma,
+                dst_chroma,
+                (src_perceptual_luma - dst_perceptual_luma).abs(),
+                apparent_axis_strength,
+                apparent_axis_luma_limit,
+            );
         }
     }
     out
 }
 
 #[cube]
-fn linear_luminance_from_srgb8(px: u32) -> f32 {
-    let alpha = ((px >> 24) & 255) as f32 * (1.0 / 255.0);
-    let mut out = 0.0;
-    if alpha > 0.0 {
-        let r = srgb_to_linear(((px & 255) as f32 * (1.0 / 255.0)) / alpha);
-        let g = srgb_to_linear((((px >> 8) & 255) as f32 * (1.0 / 255.0)) / alpha);
-        let b = srgb_to_linear((((px >> 16) & 255) as f32 * (1.0 / 255.0)) / alpha);
-        out = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+fn apparent_axis_corrected_coverage(
+    coverage: f32,
+    src_r: f32,
+    src_g: f32,
+    src_b: f32,
+    dst_r: f32,
+    dst_g: f32,
+    dst_b: f32,
+    src_sr: f32,
+    src_sg: f32,
+    src_sb: f32,
+    dst_sr: f32,
+    dst_sg: f32,
+    dst_sb: f32,
+    src_chroma: f32,
+    dst_chroma: f32,
+    perceptual_luma_contrast: f32,
+    strength: f32,
+    luma_limit: f32,
+) -> u32 {
+    let mut out = (coverage.clamp(0.0, 1.0) * 255.0 + 0.5) as u32;
+    if strength > 0.0 && luma_limit > 0.0 {
+        let luma_gate = ((luma_limit - perceptual_luma_contrast) / luma_limit).clamp(0.0, 1.0);
+        let chroma_gate = src_chroma.max(dst_chroma).clamp(0.0, 1.0);
+        if luma_gate > 0.0 && chroma_gate > 0.0 {
+            let axis_r = src_sr - dst_sr;
+            let axis_g = src_sg - dst_sg;
+            let axis_b = src_sb - dst_sb;
+            let denom = axis_r * axis_r + axis_g * axis_g + axis_b * axis_b;
+            if denom > f32::new(0.000001_f32) {
+                let coverage = coverage.clamp(0.0, 1.0);
+                let mixed_lr = dst_r + (src_r - dst_r) * coverage;
+                let mixed_lg = dst_g + (src_g - dst_g) * coverage;
+                let mixed_lb = dst_b + (src_b - dst_b) * coverage;
+                let mixed_r = linear_to_srgb(mixed_lr);
+                let mixed_g = linear_to_srgb(mixed_lg);
+                let mixed_b = linear_to_srgb(mixed_lb);
+                let projection = (((mixed_r - dst_sr) * axis_r
+                    + (mixed_g - dst_sg) * axis_g
+                    + (mixed_b - dst_sb) * axis_b)
+                    / denom)
+                    .clamp(0.0, 1.0);
+                let derivative = ((axis_r * linear_to_srgb_derivative(mixed_lr) * (src_r - dst_r)
+                    + axis_g * linear_to_srgb_derivative(mixed_lg) * (src_g - dst_g)
+                    + axis_b * linear_to_srgb_derivative(mixed_lb) * (src_b - dst_b))
+                    / denom)
+                    .max(0.0);
+                let mut correction = 0.0;
+                if derivative > f32::new(0.0001_f32) {
+                    correction = (strength * luma_gate * chroma_gate).clamp(0.0, 1.0)
+                        * (coverage - projection)
+                        / derivative.clamp(0.2, 5.0);
+                }
+                if !(correction < 0.0 && perceptual_luma_contrast < luma_limit * 0.05) {
+                    out = ((coverage + correction).clamp(0.0, 1.0) * 255.0 + 0.5) as u32;
+                }
+            }
+        }
+    }
+    out
+}
+
+#[cube]
+fn subpixel_axis_corrected_mask(
+    dst: u32,
+    src: u32,
+    mask_rgb: u32,
+    strength: f32,
+    luma_limit: f32,
+) -> u32 {
+    let mut out = mask_rgb;
+    if strength > 0.0 && luma_limit > 0.0 {
+        let src_alpha = ((src >> 24) & 255) as f32 * (1.0 / 255.0);
+        let dst_alpha = ((dst >> 24) & 255) as f32 * (1.0 / 255.0);
+        let mut src_sr = 0.0;
+        let mut src_sg = 0.0;
+        let mut src_sb = 0.0;
+        let mut dst_sr = 0.0;
+        let mut dst_sg = 0.0;
+        let mut dst_sb = 0.0;
+        if src_alpha > 0.0 {
+            let inv_alpha = 1.0 / (src_alpha * 255.0);
+            src_sr = ((src & 255) as f32 * inv_alpha).clamp(0.0, 1.0);
+            src_sg = (((src >> 8) & 255) as f32 * inv_alpha).clamp(0.0, 1.0);
+            src_sb = (((src >> 16) & 255) as f32 * inv_alpha).clamp(0.0, 1.0);
+        }
+        if dst_alpha > 0.0 {
+            let inv_alpha = 1.0 / (dst_alpha * 255.0);
+            dst_sr = ((dst & 255) as f32 * inv_alpha).clamp(0.0, 1.0);
+            dst_sg = (((dst >> 8) & 255) as f32 * inv_alpha).clamp(0.0, 1.0);
+            dst_sb = (((dst >> 16) & 255) as f32 * inv_alpha).clamp(0.0, 1.0);
+        }
+        let src_r = srgb_to_linear(src_sr);
+        let src_g = srgb_to_linear(src_sg);
+        let src_b = srgb_to_linear(src_sb);
+        let dst_r = srgb_to_linear(dst_sr);
+        let dst_g = srgb_to_linear(dst_sg);
+        let dst_b = srgb_to_linear(dst_sb);
+        let src_max = src_r.max(src_g).max(src_b);
+        let src_min = src_r.min(src_g).min(src_b);
+        let dst_max = dst_r.max(dst_g).max(dst_b);
+        let dst_min = dst_r.min(dst_g).min(dst_b);
+        let chroma_gate = (src_max - src_min).max(dst_max - dst_min).clamp(0.0, 1.0);
+        let src_luma = 0.2126 * src_sr + 0.7152 * src_sg + 0.0722 * src_sb;
+        let dst_luma = 0.2126 * dst_sr + 0.7152 * dst_sg + 0.0722 * dst_sb;
+        let luma_gate = ((luma_limit - (src_luma - dst_luma).abs()) / luma_limit).clamp(0.0, 1.0);
+        if luma_gate > 0.0 && chroma_gate > 0.0 {
+            let axis_r = src_sr - dst_sr;
+            let axis_g = src_sg - dst_sg;
+            let axis_b = src_sb - dst_sb;
+            let denom = axis_r * axis_r + axis_g * axis_g + axis_b * axis_b;
+            if denom > f32::new(0.000001_f32) {
+                let rendered = src_over_subpixel_mask_linear_u8(dst, src, mask_rgb, 255);
+                let rendered_alpha = ((rendered >> 24) & 255) as f32 * (1.0 / 255.0);
+                let mut px_r = 0.0;
+                let mut px_g = 0.0;
+                let mut px_b = 0.0;
+                if rendered_alpha > 0.0 {
+                    let inv_alpha = 1.0 / (rendered_alpha * 255.0);
+                    px_r = ((rendered & 255) as f32 * inv_alpha).clamp(0.0, 1.0);
+                    px_g = (((rendered >> 8) & 255) as f32 * inv_alpha).clamp(0.0, 1.0);
+                    px_b = (((rendered >> 16) & 255) as f32 * inv_alpha).clamp(0.0, 1.0);
+                }
+                let projected = (((px_r - dst_sr) * axis_r
+                    + (px_g - dst_sg) * axis_g
+                    + (px_b - dst_sb) * axis_b)
+                    / denom)
+                    .clamp(0.0, 1.0);
+                let target = ((mask_rgb & 255) + ((mask_rgb >> 8) & 255) + ((mask_rgb >> 16) & 255))
+                    as f32
+                    * (1.0 / 765.0);
+                let correction = strength * luma_gate * chroma_gate * (target - projected).max(0.0);
+                let r = (((mask_rgb & 255) as f32 * (1.0 / 255.0) + correction).clamp(0.0, 1.0)
+                    * 255.0
+                    + 0.5) as u32;
+                let g = ((((mask_rgb >> 8) & 255) as f32 * (1.0 / 255.0) + correction)
+                    .clamp(0.0, 1.0)
+                    * 255.0
+                    + 0.5) as u32;
+                let b = ((((mask_rgb >> 16) & 255) as f32 * (1.0 / 255.0) + correction)
+                    .clamp(0.0, 1.0)
+                    * 255.0
+                    + 0.5) as u32;
+                out = r | (g << 8) | (b << 16);
+            }
+        }
     }
     out
 }
@@ -704,6 +1081,16 @@ fn linear_to_srgb(value: f32) -> f32 {
     let mut out = v * 12.92;
     if v > 0.003_130_8 {
         out = 1.055 * v.powf(1.0 / 2.4) - 0.055;
+    }
+    out
+}
+
+#[cube]
+fn linear_to_srgb_derivative(value: f32) -> f32 {
+    let v = value.clamp(0.0, 1.0);
+    let mut out = 12.92;
+    if v > 0.003_130_8 {
+        out = (1.055 / 2.4) * v.powf(1.0 / 2.4 - 1.0);
     }
     out
 }

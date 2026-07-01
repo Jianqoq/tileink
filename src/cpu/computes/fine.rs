@@ -9,9 +9,11 @@ use crate::{
         layer::blend::Blend,
         line_seg::LineSegment,
         pixel::{
-            TileBuffer, coverage_f32_to_u8, pack_premul_rgba8, scale_premul_u8,
-            src_over_mask_linear_auto_u8, src_over_premul_u8,
-            src_over_subpixel_mask_linear_auto_u8, src_over_subpixel_mask_u8, unpack_premul_rgba8,
+            TextCoverageParams, TileBuffer, coverage_f32_to_u8, pack_premul_rgba8, scale_premul_u8,
+            src_over_mask_linear_auto_u8, src_over_mask_linear_auto_with_params_u8,
+            src_over_premul_u8, src_over_subpixel_mask_linear_auto_u8,
+            src_over_subpixel_mask_linear_auto_with_params_u8, src_over_subpixel_mask_u8,
+            unpack_premul_rgba8,
         },
         sdf::{Sdf, SdfShadow},
     },
@@ -375,8 +377,12 @@ pub(crate) fn rasterize_glyphs_tile_buffer_into(
                         let color = brush.sample(global_x as f32 + 0.5, global_y as f32 + 0.5);
                         match image.composite_mode {
                             TextCompositeMode::Linear => {
-                                tile[tile_ix] =
-                                    src_over_mask_linear_auto_u8(tile[tile_ix], color, alpha);
+                                tile[tile_ix] = src_over_mask_linear_auto_with_params_u8(
+                                    tile[tile_ix],
+                                    color,
+                                    alpha,
+                                    image.coverage_params,
+                                );
                                 continue;
                             }
                             TextCompositeMode::Srgb => {}
@@ -400,8 +406,12 @@ pub(crate) fn rasterize_glyphs_tile_buffer_into(
                         );
                         match image.composite_mode {
                             TextCompositeMode::Linear => {
-                                tile[tile_ix] =
-                                    src_over_mask_linear_auto_u8(tile[tile_ix], src, clip);
+                                tile[tile_ix] = src_over_mask_linear_auto_with_params_u8(
+                                    tile[tile_ix],
+                                    src,
+                                    clip,
+                                    image.coverage_params,
+                                );
                                 continue;
                             }
                             TextCompositeMode::Srgb => {}
@@ -420,12 +430,24 @@ pub(crate) fn rasterize_glyphs_tile_buffer_into(
                             TextCompositeMode::Srgb => {
                                 src_over_subpixel_mask_u8(tile[tile_ix], color, mask, clip)
                             }
-                            TextCompositeMode::Linear => src_over_subpixel_mask_linear_auto_u8(
-                                tile[tile_ix],
-                                color,
-                                mask,
-                                clip,
-                            ),
+                            TextCompositeMode::Linear => {
+                                if image.coverage_params == TextCoverageParams::DEFAULT {
+                                    src_over_subpixel_mask_linear_auto_u8(
+                                        tile[tile_ix],
+                                        color,
+                                        mask,
+                                        clip,
+                                    )
+                                } else {
+                                    src_over_subpixel_mask_linear_auto_with_params_u8(
+                                        tile[tile_ix],
+                                        color,
+                                        mask,
+                                        clip,
+                                        image.coverage_params,
+                                    )
+                                }
+                            }
                         };
                         tile[tile_ix] = out;
                         continue;
@@ -503,6 +525,7 @@ mod tests {
         rasterize_tile_buffer_into,
     };
     use crate::{
+        TextCoverageParams,
         shared::{
             brush::Brush,
             fill::FillRule,
@@ -663,6 +686,7 @@ mod tests {
             vec![PreparedGlyphImage {
                 content: PreparedGlyphContent::SubpixelMask,
                 composite_mode: TextCompositeMode::Linear,
+                coverage_params: TextCoverageParams::DEFAULT,
                 left: 0,
                 top: 0,
                 width: 1,

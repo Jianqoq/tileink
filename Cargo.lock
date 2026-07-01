@@ -2589,6 +2589,7 @@ dependencies = [
  "criterion",
  "cubecl",
  "cubecl-common",
+ "fontdb",
  "image",
  "peniko",
  "png 0.17.16",

@@ -10,12 +10,12 @@ use cosmic_text::{
 use peniko::kurbo::{BezPath, Point};
 use swash::{
     scale::{Render, ScaleContext, Source, StrikeWith},
-    zeno::{Angle, Command as SwashPathCommand, Format, PathData, Transform, Vector},
+    zeno::{Angle, Command as SwashPathCommand, Format, PathData, Placement, Transform, Vector},
 };
 
-use crate::shared::bounds::Bounds;
 #[cfg(feature = "profile")]
 use crate::shared::memory::MemoryUsage;
+use crate::shared::{bounds::Bounds, pixel::TextCoverageParams};
 
 const LCD_FILTER_WEIGHTS: [u16; 5] = [1, 8, 238, 8, 1];
 const LCD_FILTER_DENOM: u16 = 256;
@@ -69,7 +69,7 @@ impl<'a> TextLayoutOptions<'a> {
 pub struct TextContext {
     font_system: FontSystem,
     scale_context: ScaleContext,
-    image_cache: HashMap<RasterGlyphKey, Option<SwashImage>>,
+    image_cache: HashMap<RasterGlyphKey, Option<GlyphRasterImage>>,
     outline_cache: HashMap<CacheKey, Option<BezPath>>,
     raster_options: TextRasterOptions,
 }
@@ -128,18 +128,14 @@ impl TextContext {
         TextLayout { glyphs, bounds }
     }
 
-    pub(crate) fn glyph_image(&mut self, cache_key: CacheKey) -> Option<&SwashImage> {
+    pub(crate) fn glyph_image(&mut self, cache_key: CacheKey) -> Option<&GlyphRasterImage> {
         let key = RasterGlyphKey {
             cache_key,
             subpixel_mode: self.raster_options.subpixel_mode,
+            embolden_bits: self.raster_options.mask_embolden().to_bits(),
         };
         if !self.image_cache.contains_key(&key) {
-            let image = raster_glyph_image(
-                &mut self.font_system,
-                &mut self.scale_context,
-                cache_key,
-                self.raster_options.subpixel_mode,
-            );
+            let image = self.raster_glyph_image(cache_key);
             self.image_cache.insert(key, image);
         }
         self.image_cache.get(&key).and_then(Option::as_ref)
@@ -193,6 +189,17 @@ impl TextContext {
         }
         bounds
     }
+
+    fn raster_glyph_image(&mut self, cache_key: CacheKey) -> Option<GlyphRasterImage> {
+        raster_glyph_image(
+            &mut self.font_system,
+            &mut self.scale_context,
+            cache_key,
+            self.raster_options.subpixel_mode,
+            self.raster_options.mask_embolden(),
+        )
+        .map(GlyphRasterImage::from_swash)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
@@ -212,6 +219,13 @@ pub enum TextCompositeMode {
 pub struct TextRasterOptions {
     pub subpixel_mode: TextSubpixelMode,
     pub composite_mode: TextCompositeMode,
+    /// Contrast-dependent text coverage parameters.
+    ///
+    /// The CPU renderer consumes this at runtime, which lets the quality
+    /// harness search candidates without recompiling. CubeCL kernels currently
+    /// use matching compiled constants, so tuned values still need to be copied
+    /// there after the search selects a winner.
+    pub coverage_params: TextCoverageParams,
 }
 
 impl TextRasterOptions {
@@ -219,6 +233,7 @@ impl TextRasterOptions {
         Self {
             subpixel_mode: TextSubpixelMode::Rgb,
             composite_mode: TextCompositeMode::Linear,
+            coverage_params: TextCoverageParams::DEFAULT,
         }
     }
 
@@ -230,6 +245,21 @@ impl TextRasterOptions {
     pub const fn with_composite_mode(mut self, mode: TextCompositeMode) -> Self {
         self.composite_mode = mode;
         self
+    }
+
+    /// Overrides CPU text coverage compensation parameters for quality tuning.
+    pub const fn with_coverage_params(mut self, params: TextCoverageParams) -> Self {
+        self.coverage_params = params;
+        self
+    }
+
+    pub(crate) const fn mask_embolden(self) -> f32 {
+        match self.subpixel_mode {
+            TextSubpixelMode::None => self.coverage_params.alpha_mask_embolden,
+            TextSubpixelMode::Rgb | TextSubpixelMode::Bgr => {
+                self.coverage_params.subpixel_mask_embolden
+            }
+        }
     }
 }
 
@@ -243,6 +273,44 @@ impl Default for TextRasterOptions {
 struct RasterGlyphKey {
     cache_key: CacheKey,
     subpixel_mode: TextSubpixelMode,
+    embolden_bits: u32,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct GlyphRasterImage {
+    content: SwashContent,
+    placement: Placement,
+    data: Vec<u8>,
+    // Swash returns raw 1/3px LCD samples. Tests can also inject a prefiltered
+    // image to verify the atlas builder does not run the FIR filter twice.
+    subpixel_samples: SubpixelMaskSamples,
+}
+
+impl GlyphRasterImage {
+    fn from_swash(image: SwashImage) -> Self {
+        Self {
+            content: image.content,
+            placement: image.placement,
+            data: image.data,
+            subpixel_samples: SubpixelMaskSamples::Raw,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn prefiltered_subpixel_mask(placement: Placement, data: Vec<u8>) -> Self {
+        Self {
+            content: SwashContent::SubpixelMask,
+            placement,
+            data,
+            subpixel_samples: SubpixelMaskSamples::Prefiltered,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SubpixelMaskSamples {
+    Raw,
+    Prefiltered,
 }
 
 fn outline_cache_key(cache_key: CacheKey) -> CacheKey {
@@ -291,6 +359,29 @@ fn raster_glyph_image(
     context: &mut ScaleContext,
     cache_key: CacheKey,
     subpixel_mode: TextSubpixelMode,
+    embolden: f32,
+) -> Option<SwashImage> {
+    raster_glyph_image_with_sources(
+        font_system,
+        context,
+        cache_key,
+        subpixel_mode,
+        embolden,
+        &[
+            Source::ColorOutline(0),
+            Source::ColorBitmap(StrikeWith::BestFit),
+            Source::Outline,
+        ],
+    )
+}
+
+fn raster_glyph_image_with_sources(
+    font_system: &mut FontSystem,
+    context: &mut ScaleContext,
+    cache_key: CacheKey,
+    subpixel_mode: TextSubpixelMode,
+    embolden: f32,
+    sources: &[Source],
 ) -> Option<SwashImage> {
     let offset = if cache_key.flags.contains(CacheKeyFlags::PIXEL_FONT) {
         Vector::new(
@@ -302,19 +393,16 @@ fn raster_glyph_image(
     };
 
     with_glyph_scaler(font_system, context, cache_key, |scaler| {
-        Render::new(&[
-            Source::ColorOutline(0),
-            Source::ColorBitmap(StrikeWith::BestFit),
-            Source::Outline,
-        ])
-        .format(match subpixel_mode {
-            TextSubpixelMode::None => Format::Alpha,
-            TextSubpixelMode::Rgb => Format::Subpixel,
-            TextSubpixelMode::Bgr => Format::subpixel_bgra(),
-        })
-        .offset(offset)
-        .transform(fake_italic_transform(cache_key))
-        .render(scaler, cache_key.glyph_id)
+        Render::new(sources)
+            .format(match subpixel_mode {
+                TextSubpixelMode::None => Format::Alpha,
+                TextSubpixelMode::Rgb => Format::Subpixel,
+                TextSubpixelMode::Bgr => Format::subpixel_bgra(),
+            })
+            .embolden(embolden.max(0.0))
+            .offset(offset)
+            .transform(fake_italic_transform(cache_key))
+            .render(scaler, cache_key.glyph_id)
     })
     .flatten()
 }
@@ -413,7 +501,7 @@ impl TextGlyph {
         SceneGlyph { cache_key, x, y }
     }
 
-    fn image_bounds(self, image: &SwashImage) -> Bounds {
+    fn image_bounds(self, image: &GlyphRasterImage) -> Bounds {
         glyph_image_bounds(
             self.x,
             self.y,
@@ -472,7 +560,7 @@ impl PreparedTextData {
                 Some(image)
             } else if let Some(image) = context.glyph_image(glyph.cache_key) {
                 let image_ix = images.len() as u32;
-                images.push(PreparedGlyphImage::from_swash(image, raster_options));
+                images.push(PreparedGlyphImage::from_raster(image, raster_options));
                 image_by_key.insert(glyph.cache_key, image_ix);
                 glyph.cache_key.hash(&mut atlas_hasher);
                 raster_options.hash(&mut atlas_hasher);
@@ -686,6 +774,7 @@ impl PreparedGlyph {
 pub(crate) struct PreparedGlyphImage {
     pub(crate) content: PreparedGlyphContent,
     pub(crate) composite_mode: TextCompositeMode,
+    pub(crate) coverage_params: TextCoverageParams,
     pub(crate) left: i32,
     pub(crate) top: i32,
     pub(crate) width: u32,
@@ -694,7 +783,7 @@ pub(crate) struct PreparedGlyphImage {
 }
 
 impl PreparedGlyphImage {
-    fn from_swash(image: &SwashImage, raster_options: TextRasterOptions) -> Self {
+    fn from_raster(image: &GlyphRasterImage, raster_options: TextRasterOptions) -> Self {
         let content = match image.content {
             SwashContent::Mask => PreparedGlyphContent::Mask,
             SwashContent::Color => PreparedGlyphContent::Color,
@@ -704,12 +793,18 @@ impl PreparedGlyphImage {
         Self {
             content,
             composite_mode: raster_options.composite_mode,
+            coverage_params: raster_options.coverage_params,
             left: pixels.left,
             top: image.placement.top,
             width: pixels.width,
             height: image.placement.height,
             data: pixels.data,
         }
+    }
+
+    #[cfg(test)]
+    fn from_swash(image: &SwashImage, raster_options: TextRasterOptions) -> Self {
+        Self::from_raster(&GlyphRasterImage::from_swash(image.clone()), raster_options)
     }
 }
 
@@ -721,7 +816,7 @@ struct PreparedGlyphPixels {
 
 fn prepared_glyph_image_data(
     content: PreparedGlyphContent,
-    image: &SwashImage,
+    image: &GlyphRasterImage,
     subpixel_mode: TextSubpixelMode,
 ) -> PreparedGlyphPixels {
     if content != PreparedGlyphContent::SubpixelMask {
@@ -757,9 +852,16 @@ fn prepared_glyph_image_data(
         };
     }
 
-    // Zeno gives raw 1/3px channel samples. DirectWrite-style LCD text applies a
-    // small symmetric FIR in subpixel order; doing it here keeps CPU and GPU
-    // renderers consuming identical atlas data.
+    if image.subpixel_samples == SubpixelMaskSamples::Prefiltered {
+        return PreparedGlyphPixels {
+            left: image.placement.left,
+            width: image.placement.width,
+            data,
+        };
+    }
+
+    // Zeno gives raw 1/3px channel samples. A small symmetric FIR in subpixel
+    // order keeps CPU and GPU renderers consuming identical LCD atlas data.
     PreparedGlyphPixels {
         left: image.placement.left,
         width: image.placement.width,
@@ -873,7 +975,7 @@ fn glyph_image_bounds(
     y: i32,
     placement_left: i32,
     placement_top: i32,
-    image: &SwashImage,
+    image: &GlyphRasterImage,
 ) -> Bounds {
     let left = x + placement_left;
     let top = y - placement_top;
@@ -1159,6 +1261,27 @@ mod tests {
         assert_eq!(prepared.left, 0);
         assert_eq!(prepared.width, 1);
         assert_eq!(prepared.data, vec![237, 8, 1]);
+    }
+
+    #[test]
+    fn prepared_glyph_image_keeps_prefiltered_subpixel_masks() {
+        let image = GlyphRasterImage::prefiltered_subpixel_mask(
+            Placement {
+                left: 0,
+                top: 0,
+                width: 1,
+                height: 1,
+            },
+            vec![255, 0, 0],
+        );
+
+        let prepared = PreparedGlyphImage::from_raster(
+            &image,
+            TextRasterOptions::new().with_subpixel_mode(TextSubpixelMode::Rgb),
+        );
+
+        assert_eq!(prepared.content, PreparedGlyphContent::SubpixelMask);
+        assert_eq!(prepared.data, vec![255, 0, 0]);
     }
 
     #[test]
