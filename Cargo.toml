@@ -39,8 +39,10 @@ wgpu = ["dep:wgpu"]
 [dev-dependencies]
 criterion = "0.5"
 cubecl-common = "0.10.0"
+pollster = "0.4"
 vello = { path = "C:\\Users\\JianJian Li\\vello\\vello", default-features = true }
 wgpu = "29.0.3"
+winit = "0.30"
 
 [[bench]]
 name = "cubecl_dense_compare"
@@ -210,6 +212,11 @@ required-features = ["directwrite-reference"]
 name = "cubecl_profile_tiger"
 path = "examples/cubecl_profile_tiger.rs"
 required-features = ["profile"]
+
+[[example]]
+name = "winit_svg_tiger"
+path = "examples/winit_svg_tiger.rs"
+required-features = ["wgpu"]
 
 [[example]]
 name = "cubecl_backdrop_blur"

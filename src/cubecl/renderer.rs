@@ -840,7 +840,7 @@ impl WgpuRenderer {
         let row_bytes = self.target_row_bytes();
         let row_alignment = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as wgpu::BufferAddress;
         let height = self.size.1 as wgpu::BufferAddress;
-        if self.size.1 <= 1 || row_bytes % row_alignment == 0 {
+        if self.size.1 <= 1 || row_bytes.is_multiple_of(row_alignment) {
             return WgpuTextureCopySource {
                 buffer: source.buffer.clone(),
                 offset: source.offset,
