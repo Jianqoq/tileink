@@ -8,6 +8,13 @@ use crate::cubecl::brush::{
 
 const TEXT_DARK_ON_LIGHT_COVERAGE_BOOST: f32 = 0.6;
 
+pub(crate) const DRAW_FLAG_TAG_MASK: u32 = 0b0000_0111;
+pub(crate) const DRAW_FLAG_FILL_RULE_EVEN_ODD: u32 = 1 << 3;
+pub(crate) const DRAW_FLAG_SOLID_RECT: u32 = 1 << 4;
+pub(crate) const DRAW_FLAG_SOLID_COLOR_FAST_PATH: u32 = 1 << 5;
+pub(crate) const DRAW_FLAG_HAS_SDF: u32 = 1 << 6;
+pub(crate) const DRAW_FLAG_HAS_GLYPH: u32 = 1 << 7;
+
 #[cube]
 pub(crate) fn packed_u8_at(words: &Array<u32>, ix: u32) -> u32 {
     let word = words[(ix / 4) as usize];
@@ -24,6 +31,36 @@ pub(crate) fn store_packed_atomic_u8(words: &mut Array<Atomic<u32>>, ix: u32, va
     if value != 0 {
         words[word_ix].fetch_or((value & 255) << shift);
     }
+}
+
+#[cube]
+pub(crate) fn draw_flags_at(draw_flags: &Array<u32>, draw_ix: u32) -> u32 {
+    packed_u8_at(draw_flags, draw_ix)
+}
+
+#[cube]
+pub(crate) fn draw_tag_at(draw_flags: &Array<u32>, draw_ix: u32) -> u32 {
+    draw_flags_at(draw_flags, draw_ix) & DRAW_FLAG_TAG_MASK
+}
+
+#[cube]
+pub(crate) fn draw_fill_rule_at(draw_flags: &Array<u32>, draw_ix: u32) -> u32 {
+    (draw_flags_at(draw_flags, draw_ix) & DRAW_FLAG_FILL_RULE_EVEN_ODD) >> 3
+}
+
+#[cube]
+pub(crate) fn draw_has_sdf_at(draw_flags: &Array<u32>, draw_ix: u32) -> bool {
+    (draw_flags_at(draw_flags, draw_ix) & DRAW_FLAG_HAS_SDF) != 0
+}
+
+#[cube]
+pub(crate) fn draw_has_glyph_at(draw_flags: &Array<u32>, draw_ix: u32) -> bool {
+    (draw_flags_at(draw_flags, draw_ix) & DRAW_FLAG_HAS_GLYPH) != 0
+}
+
+#[cube]
+pub(crate) fn draw_solid_color_fast_path_at(draw_flags: &Array<u32>, draw_ix: u32) -> bool {
+    (draw_flags_at(draw_flags, draw_ix) & DRAW_FLAG_SOLID_COLOR_FAST_PATH) != 0
 }
 
 #[cube]

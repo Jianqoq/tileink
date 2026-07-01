@@ -1,4 +1,7 @@
 use super::*;
+use crate::cubecl::pipelines::common::{
+    DRAW_FLAG_HAS_SDF, DRAW_FLAG_SOLID_COLOR_FAST_PATH, DRAW_FLAG_SOLID_RECT,
+};
 
 fn assert_ptcl_tags(renderer: &WgpuRenderer, expected: &[u32]) {
     let words = renderer.coarse.ptcl_tags.read(renderer.client());
@@ -32,17 +35,13 @@ fn coarse_wgpu_emits_sdf_particles_for_rects_when_enabled() {
 
     let mut renderer = WgpuRenderer::new_default_device(32, 16, Color::TRANSPARENT);
     renderer.prepare_scene(&scene);
-    assert_eq!(
-        renderer.scene.draw_solid_rects.read(renderer.client()),
-        vec![0, 0]
-    );
-    assert_eq!(
-        renderer
-            .scene
-            .draw_solid_color_fast_paths
-            .read(renderer.client()),
-        vec![0, 0]
-    );
+    let draw_flags = renderer.scene.draw_flags.read(renderer.client());
+    let draw_flags = [draw_flags[0] & 255, (draw_flags[0] >> 8) & 255];
+    for flags in draw_flags {
+        assert_eq!(flags & DRAW_FLAG_SOLID_RECT, 0);
+        assert_eq!(flags & DRAW_FLAG_SOLID_COLOR_FAST_PATH, 0);
+        assert_ne!(flags & DRAW_FLAG_HAS_SDF, 0);
+    }
     run_default_coarse_stage(&mut renderer, &scene);
 
     assert_eq!(

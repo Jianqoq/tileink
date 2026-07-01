@@ -1,7 +1,10 @@
 use ::cubecl::prelude::*;
 
 use crate::cubecl::{
-    pipelines::common::{packed_u8_at, store_packed_atomic_u8},
+    pipelines::common::{
+        draw_fill_rule_at, draw_has_glyph_at, draw_has_sdf_at, draw_solid_color_fast_path_at,
+        draw_tag_at, store_packed_atomic_u8,
+    },
     profile::profile_launch,
     renderer::{CoarseBuffers, ScanBuffers, SceneBuffers},
     types::{
@@ -65,12 +68,11 @@ impl CoarsePipeline {
                 unsafe { scene.glyph_image_top.arg() },
                 unsafe { scene.glyph_image_width.arg() },
                 unsafe { scene.glyph_image_height.arg() },
-                unsafe { scene.draw_tags.arg() },
+                unsafe { scene.draw_flags.arg() },
                 unsafe { scene.draw_pixel_x0.arg() },
                 unsafe { scene.draw_pixel_y0.arg() },
                 unsafe { scene.draw_pixel_x1.arg() },
                 unsafe { scene.draw_pixel_y1.arg() },
-                unsafe { scene.draw_sdf_refs.arg() },
                 unsafe { scene.backdrop_data_offsets.arg() },
                 unsafe { scene.backdrop_tile_x0.arg() },
                 unsafe { scene.backdrop_tile_y0.arg() },
@@ -192,15 +194,12 @@ impl CoarsePipeline {
                 unsafe { scene.glyph_image_top.arg() },
                 unsafe { scene.glyph_image_width.arg() },
                 unsafe { scene.glyph_image_height.arg() },
-                unsafe { scene.draw_tags.arg() },
-                unsafe { scene.draw_fill_rules.arg() },
-                unsafe { scene.draw_solid_color_fast_paths.arg() },
+                unsafe { scene.draw_flags.arg() },
                 unsafe { scene.draw_brush_colors.arg() },
                 unsafe { scene.draw_pixel_x0.arg() },
                 unsafe { scene.draw_pixel_y0.arg() },
                 unsafe { scene.draw_pixel_x1.arg() },
                 unsafe { scene.draw_pixel_y1.arg() },
-                unsafe { scene.draw_sdf_refs.arg() },
                 unsafe { scene.backdrop_data_offsets.arg() },
                 unsafe { scene.backdrop_tile_x0.arg() },
                 unsafe { scene.backdrop_tile_y0.arg() },
@@ -249,12 +248,11 @@ fn coarse_count(
     glyph_image_top: &Array<i32>,
     glyph_image_width: &Array<u32>,
     glyph_image_height: &Array<u32>,
-    draw_tags: &Array<u32>,
+    draw_flags: &Array<u32>,
     draw_pixel_x0: &Array<i32>,
     draw_pixel_y0: &Array<i32>,
     draw_pixel_x1: &Array<i32>,
     draw_pixel_y1: &Array<i32>,
-    draw_sdf_refs: &Array<u32>,
     backdrop_data_offsets: &Array<u32>,
     backdrop_tile_x0: &Array<u32>,
     backdrop_tile_y0: &Array<u32>,
@@ -286,12 +284,11 @@ fn coarse_count(
         layer_stack_tags,
         layer_stack_draws,
         draw_path_ids,
-        draw_tags,
+        draw_flags,
         draw_pixel_x0,
         draw_pixel_y0,
         draw_pixel_x1,
         draw_pixel_y1,
-        draw_sdf_refs,
         backdrop_data_offsets,
         backdrop_tile_x0,
         backdrop_tile_y0,
@@ -312,8 +309,8 @@ fn coarse_count(
         let mut glyph_count = 0u32;
         while draw_ix < draw_end {
             let draw_i = draw_ix as usize;
-            let draw_tag = packed_u8_at(draw_tags, draw_ix);
-            if draw_glyph_run_ids[draw_i] != invalid {
+            let draw_tag = draw_tag_at(draw_flags, draw_ix);
+            if draw_has_glyph_at(draw_flags, draw_ix) {
                 if draw_tag == CUBE_DRAW_BRUSH
                     && draw_tile_hit(
                         draw_i,
@@ -346,7 +343,7 @@ fn coarse_count(
                         glyph_count += tile_glyphs;
                     }
                 }
-            } else if draw_sdf_refs[draw_i] != invalid {
+            } else if draw_has_sdf_at(draw_flags, draw_ix) {
                 if draw_tag == CUBE_DRAW_BRUSH
                     && draw_tile_hit(
                         draw_i,
@@ -370,7 +367,7 @@ fn coarse_count(
                     tiles_width,
                     tiles_height,
                     draw_path_ids,
-                    draw_tags,
+                    draw_flags,
                     draw_pixel_x0,
                     draw_pixel_y0,
                     draw_pixel_x1,
@@ -560,15 +557,12 @@ fn coarse_emit(
     glyph_image_top: &Array<i32>,
     glyph_image_width: &Array<u32>,
     glyph_image_height: &Array<u32>,
-    draw_tags: &Array<u32>,
-    draw_fill_rules: &Array<u32>,
-    draw_solid_color_fast_paths: &Array<u32>,
+    draw_flags: &Array<u32>,
     draw_brush_colors: &Array<u32>,
     draw_pixel_x0: &Array<i32>,
     draw_pixel_y0: &Array<i32>,
     draw_pixel_x1: &Array<i32>,
     draw_pixel_y1: &Array<i32>,
-    draw_sdf_refs: &Array<u32>,
     backdrop_data_offsets: &Array<u32>,
     backdrop_tile_x0: &Array<u32>,
     backdrop_tile_y0: &Array<u32>,
@@ -619,12 +613,11 @@ fn coarse_emit(
         layer_stack_tags,
         layer_stack_draws,
         draw_path_ids,
-        draw_tags,
+        draw_flags,
         draw_pixel_x0,
         draw_pixel_y0,
         draw_pixel_x1,
         draw_pixel_y1,
-        draw_sdf_refs,
         backdrop_data_offsets,
         backdrop_tile_x0,
         backdrop_tile_y0,
@@ -652,13 +645,11 @@ fn coarse_emit(
             layer_stack_draws,
             layer_stack_payloads,
             draw_path_ids,
-            draw_tags,
-            draw_fill_rules,
+            draw_flags,
             draw_pixel_x0,
             draw_pixel_y0,
             draw_pixel_x1,
             draw_pixel_y1,
-            draw_sdf_refs,
             backdrop_data_offsets,
             backdrop_tile_x0,
             backdrop_tile_y0,
@@ -694,8 +685,8 @@ fn coarse_emit(
 
         if draw_ix < draw_end {
             let draw_i = draw_ix as usize;
-            let draw_tag = packed_u8_at(draw_tags, draw_ix);
-            if draw_glyph_run_ids[draw_i] != invalid {
+            let draw_tag = draw_tag_at(draw_flags, draw_ix);
+            if draw_has_glyph_at(draw_flags, draw_ix) {
                 if draw_tag == CUBE_DRAW_BRUSH
                     && draw_tile_hit(
                         draw_i,
@@ -729,7 +720,7 @@ fn coarse_emit(
                         ptcl_color = draw_ix;
                     }
                 }
-            } else if draw_sdf_refs[draw_i] != invalid {
+            } else if draw_has_sdf_at(draw_flags, draw_ix) {
                 if draw_tag == CUBE_DRAW_BRUSH
                     && draw_tile_hit(
                         draw_i,
@@ -756,7 +747,7 @@ fn coarse_emit(
                     tiles_width,
                     tiles_height,
                     draw_path_ids,
-                    draw_tags,
+                    draw_flags,
                     draw_pixel_x0,
                     draw_pixel_y0,
                     draw_pixel_x1,
@@ -783,7 +774,8 @@ fn coarse_emit(
                         } else if draw_tag == CUBE_DRAW_PATH_GLYPH {
                             ptcl_tag = u32::new(CUBE_PTCL_PATH_GLYPH as i64);
                         } else {
-                            let solid_color_fast_path = draw_solid_color_fast_paths[draw_i] == 1;
+                            let solid_color_fast_path =
+                                draw_solid_color_fast_path_at(draw_flags, draw_ix);
                             let empty_segment_range = segment_start == segment_end;
                             if solid_color_fast_path && empty_segment_range {
                                 ptcl_tag = u32::new(CUBE_PTCL_COLOR as i64);
@@ -791,7 +783,7 @@ fn coarse_emit(
                         }
                         valid = 1;
                         ptcl_backdrop = backdrop;
-                        ptcl_fill_rule = draw_fill_rules[draw_i];
+                        ptcl_fill_rule = draw_fill_rule_at(draw_flags, draw_ix);
                         ptcl_segment_start = segment_start;
                         ptcl_segment_end = segment_end;
                         if ptcl_tag == CUBE_PTCL_COLOR {
@@ -944,12 +936,11 @@ fn active_stack_count(
     layer_stack_tags: &Array<u32>,
     layer_stack_draws: &Array<u32>,
     draw_path_ids: &Array<u32>,
-    draw_tags: &Array<u32>,
+    draw_flags: &Array<u32>,
     draw_pixel_x0: &Array<i32>,
     draw_pixel_y0: &Array<i32>,
     draw_pixel_x1: &Array<i32>,
     draw_pixel_y1: &Array<i32>,
-    draw_sdf_refs: &Array<u32>,
     backdrop_data_offsets: &Array<u32>,
     backdrop_tile_x0: &Array<u32>,
     backdrop_tile_y0: &Array<u32>,
@@ -975,7 +966,7 @@ fn active_stack_count(
             } else {
                 let draw_ix = layer_stack_draws[stack_i];
                 let draw_i = draw_ix as usize;
-                if draw_sdf_refs[draw_i] != invalid {
+                if draw_has_sdf_at(draw_flags, draw_ix) {
                     if draw_tile_hit(
                         draw_i,
                         tile_x,
@@ -999,7 +990,7 @@ fn active_stack_count(
                         tiles_width,
                         tiles_height,
                         draw_path_ids,
-                        draw_tags,
+                        draw_flags,
                         draw_pixel_x0,
                         draw_pixel_y0,
                         draw_pixel_x1,
@@ -1049,13 +1040,11 @@ fn emit_active_stack_begins(
     layer_stack_draws: &Array<u32>,
     layer_stack_payloads: &Array<u32>,
     draw_path_ids: &Array<u32>,
-    draw_tags: &Array<u32>,
-    draw_fill_rules: &Array<u32>,
+    draw_flags: &Array<u32>,
     draw_pixel_x0: &Array<i32>,
     draw_pixel_y0: &Array<i32>,
     draw_pixel_x1: &Array<i32>,
     draw_pixel_y1: &Array<i32>,
-    draw_sdf_refs: &Array<u32>,
     backdrop_data_offsets: &Array<u32>,
     backdrop_tile_x0: &Array<u32>,
     backdrop_tile_y0: &Array<u32>,
@@ -1082,7 +1071,7 @@ fn emit_active_stack_begins(
             || layer_tag == CUBE_LAYER_BLEND
         {
             let draw_ix = layer_stack_draws[stack_i];
-            if layer_tag == CUBE_LAYER_CLIP && draw_sdf_refs[draw_ix as usize] != invalid {
+            if layer_tag == CUBE_LAYER_CLIP && draw_has_sdf_at(draw_flags, draw_ix) {
                 store_particle(
                     dst,
                     ptcl_capacity,
@@ -1108,7 +1097,7 @@ fn emit_active_stack_begins(
                     tiles_width,
                     tiles_height,
                     draw_path_ids,
-                    draw_tags,
+                    draw_flags,
                     draw_pixel_x0,
                     draw_pixel_y0,
                     draw_pixel_x1,
@@ -1132,7 +1121,7 @@ fn emit_active_stack_begins(
                         ptcl_capacity,
                         ptcl_tag,
                         backdrops[backdrop_i].load(),
-                        draw_fill_rules[draw_ix as usize],
+                        draw_fill_rule_at(draw_flags, draw_ix),
                         segment_starts[backdrop_i],
                         segment_ends[backdrop_i],
                         layer_stack_payloads[stack_i],
@@ -1209,7 +1198,7 @@ fn draw_backdrop_ix(
     tiles_width: u32,
     tiles_height: u32,
     draw_path_ids: &Array<u32>,
-    draw_tags: &Array<u32>,
+    draw_flags: &Array<u32>,
     draw_pixel_x0: &Array<i32>,
     draw_pixel_y0: &Array<i32>,
     draw_pixel_x1: &Array<i32>,
@@ -1223,7 +1212,7 @@ fn draw_backdrop_ix(
     let invalid = u32::new(-1);
     let draw_i = draw_ix as usize;
     let path_id = draw_path_ids[draw_i];
-    let draw_tag = packed_u8_at(draw_tags, draw_ix);
+    let draw_tag = draw_tag_at(draw_flags, draw_ix);
     let mut result = invalid;
 
     if path_id != invalid

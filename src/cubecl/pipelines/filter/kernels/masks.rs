@@ -10,8 +10,7 @@ pub(super) fn filter_layer_mask_region(
     tiles_height: u32,
     draw_ix: u32,
     draw_path_ids: &Array<u32>,
-    draw_tags: &Array<u32>,
-    draw_fill_rules: &Array<u32>,
+    draw_flags: &Array<u32>,
     draw_pixel_x0: &Array<i32>,
     draw_pixel_y0: &Array<i32>,
     draw_pixel_x1: &Array<i32>,
@@ -69,8 +68,7 @@ pub(super) fn filter_layer_mask_region(
         tiles_width,
         tiles_height,
         draw_path_ids,
-        draw_tags,
-        draw_fill_rules,
+        draw_flags,
         draw_pixel_x0,
         draw_pixel_y0,
         draw_pixel_x1,
@@ -383,8 +381,7 @@ fn layer_stack_alpha_at(
     tiles_width: u32,
     tiles_height: u32,
     draw_path_ids: &Array<u32>,
-    draw_tags: &Array<u32>,
-    draw_fill_rules: &Array<u32>,
+    draw_flags: &Array<u32>,
     draw_pixel_x0: &Array<i32>,
     draw_pixel_y0: &Array<i32>,
     draw_pixel_x1: &Array<i32>,
@@ -466,7 +463,7 @@ fn layer_stack_alpha_at(
             tiles_width,
             tiles_height,
             draw_path_ids,
-            draw_tags,
+            draw_flags,
             draw_pixel_x0,
             draw_pixel_y0,
             draw_pixel_x1,
@@ -481,7 +478,7 @@ fn layer_stack_alpha_at(
             let i = backdrop_ix as usize;
             alpha = filter_fill_alpha_at(
                 backdrops[i].load(),
-                draw_fill_rules[draw_ix as usize],
+                draw_fill_rule_at(draw_flags, draw_ix),
                 segment_starts[i],
                 segment_ends[i],
                 local_x,
@@ -509,7 +506,7 @@ fn filter_draw_backdrop_ix(
     tiles_width: u32,
     tiles_height: u32,
     draw_path_ids: &Array<u32>,
-    draw_tags: &Array<u32>,
+    draw_flags: &Array<u32>,
     draw_pixel_x0: &Array<i32>,
     draw_pixel_y0: &Array<i32>,
     draw_pixel_x1: &Array<i32>,
@@ -523,7 +520,7 @@ fn filter_draw_backdrop_ix(
     let invalid = u32::new(-1);
     let draw_i = draw_ix as usize;
     let path_id = draw_path_ids[draw_i];
-    let draw_tag = packed_u8_at(draw_tags, draw_ix);
+    let draw_tag = draw_tag_at(draw_flags, draw_ix);
     let mut result = invalid;
 
     let mut valid_draw = false;

@@ -15,6 +15,10 @@ use ::cubecl::prelude::Runtime;
 
 use crate::cubecl::{
     buffer::CubeBuffer,
+    pipelines::common::{
+        DRAW_FLAG_FILL_RULE_EVEN_ODD, DRAW_FLAG_HAS_GLYPH, DRAW_FLAG_HAS_SDF,
+        DRAW_FLAG_SOLID_COLOR_FAST_PATH, DRAW_FLAG_SOLID_RECT,
+    },
     sdf::{encode_sdf, encode_sdf_shadow},
     types::{
         CUBE_DRAW_BLEND, CUBE_DRAW_BRUSH, CUBE_DRAW_CLIP, CUBE_DRAW_ISOLATE, CUBE_DRAW_OPACITY,
@@ -407,6 +411,37 @@ fn upload_mapped_f32<R: Runtime, T>(
     buffer.replace(client, scratch);
 }
 
+fn draw_tag_byte(draw: &DrawRecord) -> u32 {
+    match draw.tag {
+        DrawTag::Brush => CUBE_DRAW_BRUSH,
+        DrawTag::PathGlyph => CUBE_DRAW_PATH_GLYPH,
+        DrawTag::Clip => CUBE_DRAW_CLIP,
+        DrawTag::Isolate => CUBE_DRAW_ISOLATE,
+        DrawTag::Opacity => CUBE_DRAW_OPACITY,
+        DrawTag::Blend => CUBE_DRAW_BLEND,
+    }
+}
+
+fn draw_flags_byte(draw: &DrawRecord, text_enabled: bool) -> u32 {
+    let mut flags = draw_tag_byte(draw);
+    if draw.fill_rule == FillRule::EvenOdd {
+        flags |= DRAW_FLAG_FILL_RULE_EVEN_ODD;
+    }
+    if draw.solid_rect {
+        flags |= DRAW_FLAG_SOLID_RECT;
+        if draw.brush.solid_color().is_some() {
+            flags |= DRAW_FLAG_SOLID_COLOR_FAST_PATH;
+        }
+    }
+    if draw.sdf.is_some() || draw.sdf_shadow.is_some() {
+        flags |= DRAW_FLAG_HAS_SDF;
+    }
+    if text_enabled && draw.glyph_run_id.is_some() {
+        flags |= DRAW_FLAG_HAS_GLYPH;
+    }
+    flags
+}
+
 pub(crate) struct SceneBuffers {
     pub(crate) line_path_ids: CubeBuffer<u32>,
     pub(crate) line_p0x: CubeBuffer<f32>,
@@ -415,10 +450,19 @@ pub(crate) struct SceneBuffers {
     pub(crate) line_p1y: CubeBuffer<f32>,
     pub(crate) draw_path_ids: CubeBuffer<u32>,
     pub(crate) draw_glyph_run_ids: CubeBuffer<u32>,
-    pub(crate) draw_tags: CubeBuffer<u32>,
-    pub(crate) draw_fill_rules: CubeBuffer<u32>,
-    pub(crate) draw_solid_rects: CubeBuffer<u32>,
-    pub(crate) draw_solid_color_fast_paths: CubeBuffer<u32>,
+    /// Packed per-draw byte:
+    ///
+    /// - bits 0..=2: draw tag
+    /// - bit 3: even-odd fill rule
+    /// - bit 4: solid rectangle
+    /// - bit 5: solid color full-tile fast path
+    /// - bit 6: draw has an SDF payload
+    /// - bit 7: draw has a glyph run
+    ///
+    /// CubeCL's wgpu backend does not expose `u8` storage, so four bytes are
+    /// packed into one `u32` word. Kernels must read this through the helpers in
+    /// `pipelines::common` instead of indexing the buffer directly.
+    pub(crate) draw_flags: CubeBuffer<u32>,
     pub(crate) draw_brush_colors: CubeBuffer<u32>,
     pub(crate) draw_pixel_x0: CubeBuffer<i32>,
     pub(crate) draw_pixel_y0: CubeBuffer<i32>,
@@ -493,10 +537,7 @@ impl SceneBuffers {
             line_p1y: CubeBuffer::new(client, 0),
             draw_path_ids: CubeBuffer::new(client, 0),
             draw_glyph_run_ids: CubeBuffer::new(client, 0),
-            draw_tags: CubeBuffer::new(client, 0),
-            draw_fill_rules: CubeBuffer::new(client, 0),
-            draw_solid_rects: CubeBuffer::new(client, 0),
-            draw_solid_color_fast_paths: CubeBuffer::new(client, 0),
+            draw_flags: CubeBuffer::new(client, 0),
             draw_brush_colors: CubeBuffer::new(client, 0),
             draw_pixel_x0: CubeBuffer::new(client, 0),
             draw_pixel_y0: CubeBuffer::new(client, 0),
@@ -567,10 +608,7 @@ impl SceneBuffers {
             self.line_p1y.memory_usage(),
             self.draw_path_ids.memory_usage(),
             self.draw_glyph_run_ids.memory_usage(),
-            self.draw_tags.memory_usage(),
-            self.draw_fill_rules.memory_usage(),
-            self.draw_solid_rects.memory_usage(),
-            self.draw_solid_color_fast_paths.memory_usage(),
+            self.draw_flags.memory_usage(),
             self.draw_brush_colors.memory_usage(),
             self.draw_pixel_x0.memory_usage(),
             self.draw_pixel_y0.memory_usage(),
@@ -811,41 +849,10 @@ impl SceneBuffers {
         );
         upload_packed_u8(
             client,
-            &mut self.draw_tags,
+            &mut self.draw_flags,
             &mut staging.u32s,
             draws,
-            |draw| match draw.tag {
-                DrawTag::Brush => CUBE_DRAW_BRUSH,
-                DrawTag::PathGlyph => CUBE_DRAW_PATH_GLYPH,
-                DrawTag::Clip => CUBE_DRAW_CLIP,
-                DrawTag::Isolate => CUBE_DRAW_ISOLATE,
-                DrawTag::Opacity => CUBE_DRAW_OPACITY,
-                DrawTag::Blend => CUBE_DRAW_BLEND,
-            },
-        );
-        upload_mapped_u32(
-            client,
-            &mut self.draw_fill_rules,
-            &mut staging.u32s,
-            draws,
-            |draw| match draw.fill_rule {
-                FillRule::NonZero => 0,
-                FillRule::EvenOdd => 1,
-            },
-        );
-        upload_mapped_u32(
-            client,
-            &mut self.draw_solid_rects,
-            &mut staging.u32s,
-            draws,
-            |draw| u32::from(draw.solid_rect),
-        );
-        upload_mapped_u32(
-            client,
-            &mut self.draw_solid_color_fast_paths,
-            &mut staging.u32s,
-            draws,
-            |draw| u32::from(draw.solid_rect && draw.brush.solid_color().is_some()),
+            |draw| draw_flags_byte(draw, text_enabled),
         );
         upload_mapped_u32(
             client,
@@ -1227,8 +1234,23 @@ impl CoarseBuffers {
 mod tests {
     use peniko::{Color, kurbo::Point};
 
-    use super::{AtlasSignature, TextUpload, pack_mapped_u8s};
-    use crate::{Scene, TextContext, TextLayoutOptions, text::PreparedTextData};
+    use super::{AtlasSignature, TextUpload, draw_flags_byte, pack_mapped_u8s};
+    use crate::{
+        FillRule, Radius, Scene, TextContext, TextLayoutOptions,
+        cubecl::{
+            pipelines::common::{
+                DRAW_FLAG_FILL_RULE_EVEN_ODD, DRAW_FLAG_HAS_GLYPH, DRAW_FLAG_HAS_SDF,
+                DRAW_FLAG_SOLID_COLOR_FAST_PATH, DRAW_FLAG_SOLID_RECT, DRAW_FLAG_TAG_MASK,
+            },
+            types::CUBE_DRAW_BRUSH,
+        },
+        shared::{
+            bounds::PixelBounds,
+            brush::Brush,
+            draw_record::{DrawRecord, DrawTag},
+        },
+        text::PreparedTextData,
+    };
 
     #[test]
     fn pack_mapped_u8s_stores_four_tags_per_word() {
@@ -1236,6 +1258,50 @@ mod tests {
         let mut scratch = Vec::new();
         pack_mapped_u8s(&mut scratch, &tags, |tag| *tag);
         assert_eq!(scratch, vec![0x0403_0201, 0x0000_0005]);
+    }
+
+    #[test]
+    fn draw_flags_byte_packs_draw_tag_and_boolean_fields() {
+        let draw = DrawRecord {
+            path_id: Some(0),
+            glyph_run_id: Some(7),
+            sdf: None,
+            sdf_shadow: None,
+            tag: DrawTag::Brush,
+            brush: Brush::Solid(Color::BLACK),
+            fill_rule: FillRule::EvenOdd,
+            pixel_bounds: PixelBounds {
+                x0: 0,
+                y0: 0,
+                x1: 16,
+                y1: 16,
+            },
+            solid_rect: true,
+        };
+        let flags = draw_flags_byte(&draw, true);
+
+        assert_eq!(flags & DRAW_FLAG_TAG_MASK, CUBE_DRAW_BRUSH);
+        assert_ne!(flags & DRAW_FLAG_FILL_RULE_EVEN_ODD, 0);
+        assert_ne!(flags & DRAW_FLAG_SOLID_RECT, 0);
+        assert_ne!(flags & DRAW_FLAG_SOLID_COLOR_FAST_PATH, 0);
+        assert_ne!(flags & DRAW_FLAG_HAS_GLYPH, 0);
+        assert_eq!(flags & DRAW_FLAG_HAS_SDF, 0);
+        assert_eq!(
+            draw_flags_byte(&draw, false) & DRAW_FLAG_HAS_GLYPH,
+            0,
+            "glyph payload is only valid when text upload is enabled"
+        );
+
+        let mut scene = Scene::new(16, 16);
+        scene.push_rect(
+            peniko::kurbo::Rect::new(0.0, 0.0, 16.0, 16.0),
+            Radius::ZERO,
+            Color::WHITE,
+            FillRule::NonZero,
+        );
+        let flags = draw_flags_byte(&scene.draw_records[0], false);
+        assert_ne!(flags & DRAW_FLAG_HAS_SDF, 0);
+        assert_eq!(flags & DRAW_FLAG_SOLID_RECT, 0);
     }
 
     #[test]
