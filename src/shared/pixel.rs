@@ -3,14 +3,15 @@ use crate::{BLOCK_SIZE, shared::image::rgba8_pack};
 pub type TileBuffer = [u32; BLOCK_SIZE as usize];
 
 pub(crate) const MASK_OPAQUE: u8 = 255;
-// Linear-light compositing makes dark glyph edges on light backgrounds look too
-// pale at small sizes. The curve is intentionally weaker on pure white than on
-// nearby light grays because DirectWrite reference output showed the previous
-// monotonic boost over-weighted white backgrounds while still under-weighting
-// light-gray ones.
+// Text uses small contrast-dependent coverage curves on top of linear-light
+// compositing. DirectWrite reference output showed that dark text needs a
+// non-monotonic boost across light backgrounds, while light text only needs
+// reduction on nearly black backgrounds where blooming makes it look heavy.
 const TEXT_DARK_ON_LIGHT_COVERAGE_STRENGTH: f32 = 0.75;
 const TEXT_DARK_ON_LIGHT_LUMA_BASE: f32 = 1.45;
 const TEXT_DARK_ON_LIGHT_LUMA_TAPER: f32 = 0.70;
+const TEXT_LIGHT_ON_DARK_COVERAGE_REDUCTION: f32 = 0.15;
+const TEXT_LIGHT_ON_DARK_BLACK_LUMA_LIMIT: f32 = 0.02;
 
 #[inline]
 pub(crate) fn coverage_f32_to_u8(v: f32) -> u8 {
@@ -208,15 +209,22 @@ fn auto_text_coverage(dst: u32, src: u32, coverage: u8) -> u8 {
 
     let src_luma = linear_luminance_from_srgb8(src);
     let dst_luma = linear_luminance_from_srgb8(dst);
-    if src_luma >= dst_luma {
-        return coverage;
+    if src_luma < dst_luma {
+        let contrast = (dst_luma - src_luma).clamp(0.0, 1.0);
+        let curve = (contrast
+            * (TEXT_DARK_ON_LIGHT_LUMA_BASE - TEXT_DARK_ON_LIGHT_LUMA_TAPER * dst_luma))
+            .clamp(0.0, 1.0);
+        let exponent = 1.0 - TEXT_DARK_ON_LIGHT_COVERAGE_STRENGTH * curve;
+        let compensated = (coverage as f32 * (1.0 / 255.0)).powf(exponent);
+        return (compensated * 255.0 + 0.5) as u8;
     }
 
-    let contrast = (dst_luma - src_luma).clamp(0.0, 1.0);
-    let curve = (contrast
-        * (TEXT_DARK_ON_LIGHT_LUMA_BASE - TEXT_DARK_ON_LIGHT_LUMA_TAPER * dst_luma))
+    let contrast = (src_luma - dst_luma).clamp(0.0, 1.0);
+    let black_surface = ((TEXT_LIGHT_ON_DARK_BLACK_LUMA_LIMIT - dst_luma)
+        / TEXT_LIGHT_ON_DARK_BLACK_LUMA_LIMIT)
         .clamp(0.0, 1.0);
-    let exponent = 1.0 - TEXT_DARK_ON_LIGHT_COVERAGE_STRENGTH * curve;
+    let exponent =
+        1.0 + TEXT_LIGHT_ON_DARK_COVERAGE_REDUCTION * contrast * src_luma * black_surface;
     let compensated = (coverage as f32 * (1.0 / 255.0)).powf(exponent);
     (compensated * 255.0 + 0.5) as u8
 }
@@ -383,13 +391,13 @@ mod tests {
     }
 
     #[test]
-    fn auto_linear_mask_keeps_light_text_on_dark_background_exact() {
+    fn auto_linear_mask_reduces_light_text_on_dark_background() {
         let dst = rgba8_pack([0, 0, 0, 255]);
         let src = rgba8_pack([255, 255, 255, 255]);
 
         assert_eq!(
             unpack_rgba8(src_over_mask_linear_auto_u8(dst, src, 128)),
-            [188, 188, 188, 255]
+            [179, 179, 179, 255]
         );
     }
 

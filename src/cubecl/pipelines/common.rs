@@ -6,14 +6,15 @@ use crate::cubecl::brush::{
     GPU_PATTERN_BILINEAR,
 };
 
-// Linear-light compositing makes dark glyph edges on light backgrounds look too
-// pale at small sizes. The curve is intentionally weaker on pure white than on
-// nearby light grays because DirectWrite reference output showed the previous
-// monotonic boost over-weighted white backgrounds while still under-weighting
-// light-gray ones.
+// Text uses small contrast-dependent coverage curves on top of linear-light
+// compositing. DirectWrite reference output showed that dark text needs a
+// non-monotonic boost across light backgrounds, while light text only needs
+// reduction on nearly black backgrounds where blooming makes it look heavy.
 const TEXT_DARK_ON_LIGHT_COVERAGE_STRENGTH: f32 = 0.75;
 const TEXT_DARK_ON_LIGHT_LUMA_BASE: f32 = 1.45;
 const TEXT_DARK_ON_LIGHT_LUMA_TAPER: f32 = 0.70;
+const TEXT_LIGHT_ON_DARK_COVERAGE_REDUCTION: f32 = 0.15;
+const TEXT_LIGHT_ON_DARK_BLACK_LUMA_LIMIT: f32 = 0.02;
 
 pub(crate) const DRAW_FLAG_TAG_MASK: u32 = 0b0000_0111;
 pub(crate) const DRAW_FLAG_FILL_RULE_EVEN_ODD: u32 = 1 << 3;
@@ -629,6 +630,17 @@ fn auto_text_coverage(dst: u32, src: u32, coverage: u32) -> u32 {
                     - f32::new(TEXT_DARK_ON_LIGHT_LUMA_TAPER) * dst_luma))
                 .clamp(0.0, 1.0);
             let exponent = 1.0 - f32::new(TEXT_DARK_ON_LIGHT_COVERAGE_STRENGTH) * curve;
+            out = ((coverage as f32 * (1.0 / 255.0)).powf(exponent) * 255.0 + 0.5) as u32;
+        } else {
+            let contrast = (src_luma - dst_luma).clamp(0.0, 1.0);
+            let black_surface = ((f32::new(TEXT_LIGHT_ON_DARK_BLACK_LUMA_LIMIT) - dst_luma)
+                / f32::new(TEXT_LIGHT_ON_DARK_BLACK_LUMA_LIMIT))
+            .clamp(0.0, 1.0);
+            let exponent = 1.0
+                + f32::new(TEXT_LIGHT_ON_DARK_COVERAGE_REDUCTION)
+                    * contrast
+                    * src_luma
+                    * black_surface;
             out = ((coverage as f32 * (1.0 / 255.0)).powf(exponent) * 255.0 + 0.5) as u32;
         }
     }

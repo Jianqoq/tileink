@@ -17,6 +17,9 @@ use crate::shared::bounds::Bounds;
 #[cfg(feature = "profile")]
 use crate::shared::memory::MemoryUsage;
 
+const LCD_FILTER_WEIGHTS: [u16; 5] = [1, 8, 238, 8, 1];
+const LCD_FILTER_DENOM: u16 = 256;
+
 #[derive(Clone, Debug)]
 pub struct TextLayoutOptions<'a> {
     pub text: &'a str,
@@ -462,17 +465,17 @@ impl PreparedTextData {
         let mut prepared_glyphs = Vec::with_capacity(glyphs.len());
         let mut atlas_hasher = StableAtlasHasher::new();
         let mut atlas_len = 0u32;
-        let composite_mode = context.raster_options().composite_mode;
+        let raster_options = context.raster_options();
 
         for glyph in glyphs {
             let image = if let Some(&image) = image_by_key.get(&glyph.cache_key) {
                 Some(image)
             } else if let Some(image) = context.glyph_image(glyph.cache_key) {
                 let image_ix = images.len() as u32;
-                images.push(PreparedGlyphImage::from_swash(image, composite_mode));
+                images.push(PreparedGlyphImage::from_swash(image, raster_options));
                 image_by_key.insert(glyph.cache_key, image_ix);
                 glyph.cache_key.hash(&mut atlas_hasher);
-                composite_mode.hash(&mut atlas_hasher);
+                raster_options.hash(&mut atlas_hasher);
                 atlas_len += 1;
                 Some(image_ix)
             } else {
@@ -691,38 +694,126 @@ pub(crate) struct PreparedGlyphImage {
 }
 
 impl PreparedGlyphImage {
-    fn from_swash(image: &SwashImage, composite_mode: TextCompositeMode) -> Self {
+    fn from_swash(image: &SwashImage, raster_options: TextRasterOptions) -> Self {
         let content = match image.content {
             SwashContent::Mask => PreparedGlyphContent::Mask,
             SwashContent::Color => PreparedGlyphContent::Color,
             SwashContent::SubpixelMask => PreparedGlyphContent::SubpixelMask,
         };
+        let pixels = prepared_glyph_image_data(content, image, raster_options.subpixel_mode);
         Self {
             content,
-            composite_mode,
-            left: image.placement.left,
+            composite_mode: raster_options.composite_mode,
+            left: pixels.left,
             top: image.placement.top,
-            width: image.placement.width,
+            width: pixels.width,
             height: image.placement.height,
-            data: prepared_glyph_image_data(content, image),
+            data: pixels.data,
         }
     }
 }
 
-fn prepared_glyph_image_data(content: PreparedGlyphContent, image: &SwashImage) -> Vec<u8> {
+struct PreparedGlyphPixels {
+    left: i32,
+    width: u32,
+    data: Vec<u8>,
+}
+
+fn prepared_glyph_image_data(
+    content: PreparedGlyphContent,
+    image: &SwashImage,
+    subpixel_mode: TextSubpixelMode,
+) -> PreparedGlyphPixels {
     if content != PreparedGlyphContent::SubpixelMask {
-        return image.data.clone();
+        return PreparedGlyphPixels {
+            left: image.placement.left,
+            width: image.placement.width,
+            data: image.data.clone(),
+        };
     }
 
     let pixel_count = image.placement.width as usize * image.placement.height as usize;
-    if image.data.len() == pixel_count * 4 {
+    let data = if image.data.len() == pixel_count * 4 {
         let mut data = Vec::with_capacity(pixel_count * 3);
         for pixel in image.data.chunks_exact(4) {
             data.extend_from_slice(&pixel[..3]);
         }
         data
-    } else {
+    } else if image.data.len() == pixel_count * 3 {
         image.data.clone()
+    } else {
+        return PreparedGlyphPixels {
+            left: image.placement.left,
+            width: image.placement.width,
+            data: image.data.clone(),
+        };
+    };
+
+    if image.placement.width == 0 || image.placement.height == 0 {
+        return PreparedGlyphPixels {
+            left: image.placement.left,
+            width: image.placement.width,
+            data,
+        };
+    }
+
+    // Zeno gives raw 1/3px channel samples. DirectWrite-style LCD text applies a
+    // small symmetric FIR in subpixel order; doing it here keeps CPU and GPU
+    // renderers consuming identical atlas data.
+    PreparedGlyphPixels {
+        left: image.placement.left,
+        width: image.placement.width,
+        data: filter_subpixel_mask(
+            &data,
+            image.placement.width,
+            image.placement.height,
+            subpixel_mode,
+        ),
+    }
+}
+
+fn filter_subpixel_mask(
+    data: &[u8],
+    width: u32,
+    height: u32,
+    subpixel_mode: TextSubpixelMode,
+) -> Vec<u8> {
+    let width = width as usize;
+    let height = height as usize;
+    let out_width = width;
+    let mut out = vec![0; out_width * height * 3];
+
+    for y in 0..height {
+        let row = &data[y * width * 3..(y + 1) * width * 3];
+        for out_x in 0..out_width {
+            let source_x = out_x as isize;
+            for spatial_channel in 0..3 {
+                let center = source_x * 3 + spatial_channel as isize;
+                let mut value = 0u16;
+                for (tap, &weight) in LCD_FILTER_WEIGHTS.iter().enumerate() {
+                    let source_ix = center + tap as isize - 2;
+                    if source_ix >= 0 && source_ix < row.len() as isize {
+                        let source_x = source_ix as usize / 3;
+                        let source_channel = source_ix as usize % 3;
+                        let logical_channel =
+                            spatial_to_logical_subpixel_channel(subpixel_mode, source_channel);
+                        value += u16::from(row[source_x * 3 + logical_channel]) * weight;
+                    }
+                }
+                let logical_channel =
+                    spatial_to_logical_subpixel_channel(subpixel_mode, spatial_channel);
+                out[(y * out_width + out_x) * 3 + logical_channel] =
+                    ((value + LCD_FILTER_DENOM / 2) / LCD_FILTER_DENOM) as u8;
+            }
+        }
+    }
+    out
+}
+
+fn spatial_to_logical_subpixel_channel(mode: TextSubpixelMode, channel: usize) -> usize {
+    match mode {
+        TextSubpixelMode::None | TextSubpixelMode::Rgb => channel,
+        TextSubpixelMode::Bgr => 2 - channel,
     }
 }
 
@@ -1008,6 +1099,29 @@ mod tests {
     }
 
     #[test]
+    fn prepared_text_signature_changes_with_subpixel_mode() {
+        let mut context = TextContext::new();
+        let layout = context.layout(TextLayoutOptions::new("A", 20.0));
+        if layout.is_empty() {
+            return;
+        }
+
+        let glyphs: Vec<_> = scene_glyphs_at_origin(&layout, Point::new(0.0, 0.0)).collect();
+        let runs = [TextRun {
+            glyph_start: 0,
+            glyph_count: 1,
+        }];
+        context
+            .set_raster_options(TextRasterOptions::new().with_subpixel_mode(TextSubpixelMode::Rgb));
+        let rgb = PreparedTextData::new(&glyphs, &runs, &mut context);
+        context
+            .set_raster_options(TextRasterOptions::new().with_subpixel_mode(TextSubpixelMode::Bgr));
+        let bgr = PreparedTextData::new(&glyphs, &runs, &mut context);
+
+        assert_ne!(rgb.atlas_signature(), bgr.atlas_signature());
+    }
+
+    #[test]
     fn text_context_uses_subpixel_raster_by_default() {
         let mut context = TextContext::new();
         let layout = context.layout(TextLayoutOptions::new("H", 12.0));
@@ -1022,22 +1136,29 @@ mod tests {
     }
 
     #[test]
-    fn prepared_glyph_image_stores_subpixel_masks_as_rgb_coverage() {
+    fn prepared_glyph_image_filters_subpixel_masks_in_spatial_channel_order() {
         let mut image = SwashImage::new();
         image.content = SwashContent::SubpixelMask;
         image.placement = swash::zeno::Placement {
             left: 0,
             top: 0,
-            width: 2,
+            width: 1,
             height: 1,
         };
-        image.data = vec![1, 2, 3, 255, 4, 5, 6, 255];
+        image.data = vec![255, 0, 0, 255];
 
-        let prepared = PreparedGlyphImage::from_swash(&image, TextCompositeMode::Linear);
+        let prepared = PreparedGlyphImage::from_swash(
+            &image,
+            TextRasterOptions::new()
+                .with_subpixel_mode(TextSubpixelMode::Rgb)
+                .with_composite_mode(TextCompositeMode::Linear),
+        );
 
         assert_eq!(prepared.content, PreparedGlyphContent::SubpixelMask);
         assert_eq!(prepared.composite_mode, TextCompositeMode::Linear);
-        assert_eq!(prepared.data, vec![1, 2, 3, 4, 5, 6]);
+        assert_eq!(prepared.left, 0);
+        assert_eq!(prepared.width, 1);
+        assert_eq!(prepared.data, vec![237, 8, 1]);
     }
 
     #[test]
