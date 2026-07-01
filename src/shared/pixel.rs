@@ -3,7 +3,9 @@ use crate::{BLOCK_SIZE, shared::image::rgba8_pack};
 pub type TileBuffer = [u32; BLOCK_SIZE as usize];
 
 pub(crate) const MASK_OPAQUE: u8 = 255;
-const TEXT_DARK_ON_LIGHT_COVERAGE_BOOST: f32 = 0.6;
+// Linear-light compositing makes dark glyph edges on light backgrounds look too
+// pale at small sizes; this remaps glyph coverage only for that contrast case.
+const TEXT_DARK_ON_LIGHT_COVERAGE_BOOST: f32 = 0.75;
 
 #[inline]
 pub(crate) fn coverage_f32_to_u8(v: f32) -> u8 {
@@ -352,7 +354,7 @@ mod tests {
 
         assert_eq!(
             unpack_rgba8(src_over_mask_linear_auto_u8(dst, src, 128)),
-            [134, 134, 134, 255]
+            [110, 110, 110, 255]
         );
     }
 
@@ -379,7 +381,7 @@ mod tests {
                 [128, 0, 255],
                 255
             )),
-            [134, 255, 0, 255]
+            [110, 255, 0, 255]
         );
     }
 }

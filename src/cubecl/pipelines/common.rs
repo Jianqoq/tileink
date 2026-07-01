@@ -6,7 +6,9 @@ use crate::cubecl::brush::{
     GPU_PATTERN_BILINEAR,
 };
 
-const TEXT_DARK_ON_LIGHT_COVERAGE_BOOST: f32 = 0.6;
+// Linear-light compositing makes dark glyph edges on light backgrounds look too
+// pale at small sizes; this remaps glyph coverage only for that contrast case.
+const TEXT_DARK_ON_LIGHT_COVERAGE_BOOST: f32 = 0.75;
 
 pub(crate) const DRAW_FLAG_TAG_MASK: u32 = 0b0000_0111;
 pub(crate) const DRAW_FLAG_FILL_RULE_EVEN_ODD: u32 = 1 << 3;
