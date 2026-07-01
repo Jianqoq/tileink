@@ -15,7 +15,7 @@ use ::cubecl::prelude::Runtime;
 
 use crate::cubecl::{
     buffer::CubeBuffer,
-    sdf::{EncodedSdf, encode_sdf, encode_sdf_shadow},
+    sdf::{encode_sdf, encode_sdf_shadow},
     types::{
         CUBE_DRAW_BLEND, CUBE_DRAW_BRUSH, CUBE_DRAW_CLIP, CUBE_DRAW_ISOLATE, CUBE_DRAW_OPACITY,
         CUBE_DRAW_PATH_GLYPH, CUBE_GLYPH_COLOR, CUBE_GLYPH_LINEAR_COLOR, CUBE_GLYPH_LINEAR_MASK,
@@ -28,8 +28,19 @@ use crate::cubecl::{
 use crate::shared::memory::MemoryUsage;
 
 use super::executor::encode_layer_payload;
+
+const INVALID_SDF_REF: u32 = u32::MAX;
+
+/// CPU staging for GPU SDF draws.
+///
+/// Draw records are dense, but SDF records are usually sparse in SVG-heavy
+/// scenes. `refs` keeps one draw-to-SDF index per draw while the encoded SDF
+/// columns only store real SDF payloads. This keeps draw indexing stable for
+/// kernels and removes the old cost of uploading 17 empty SDF columns for every
+/// non-SDF draw.
 #[derive(Default)]
 struct DrawSdfUpload {
+    refs: Vec<u32>,
     kinds: Vec<u32>,
     x0: Vec<f32>,
     y0: Vec<f32>,
@@ -184,19 +195,29 @@ impl TextUpload {
 
 impl DrawSdfUpload {
     fn refill(&mut self, draws: &[DrawRecord]) {
-        self.clear_and_reserve(draws.len());
+        let sdf_count = draws
+            .iter()
+            .filter(|draw| draw.sdf.is_some() || draw.sdf_shadow.is_some())
+            .count();
+        self.clear_and_reserve(draws.len(), sdf_count);
         for draw in draws {
             let sdf = match (draw.sdf, draw.sdf_shadow) {
-                (Some(sdf), None) => encode_sdf(sdf),
-                (None, Some(sdf_shadow)) => encode_sdf_shadow(sdf_shadow),
-                (None, None) => EncodedSdf::NONE,
+                (Some(sdf), None) => Some(encode_sdf(sdf)),
+                (None, Some(sdf_shadow)) => Some(encode_sdf_shadow(sdf_shadow)),
+                (None, None) => None,
                 (Some(_), Some(_)) => unreachable!("draw cannot store both SDF and SDF shadow"),
             };
-            self.push(sdf.kind, sdf.coords, sdf.radii, sdf.stroke, sdf.shadow);
+            if let Some(sdf) = sdf {
+                self.refs.push(self.kinds.len() as u32);
+                self.push(sdf.kind, sdf.coords, sdf.radii, sdf.stroke, sdf.shadow);
+            } else {
+                self.refs.push(INVALID_SDF_REF);
+            }
         }
     }
 
-    fn clear_and_reserve(&mut self, len: usize) {
+    fn clear_and_reserve(&mut self, draw_count: usize, sdf_count: usize) {
+        self.refs.clear();
         self.kinds.clear();
         self.x0.clear();
         self.y0.clear();
@@ -214,23 +235,24 @@ impl DrawSdfUpload {
         self.shadow_offset_y.clear();
         self.shadow_expand.clear();
         self.shadow_intensity.clear();
-        self.kinds.reserve(len);
-        self.x0.reserve(len);
-        self.y0.reserve(len);
-        self.x1.reserve(len);
-        self.y1.reserve(len);
-        self.r0.reserve(len);
-        self.r1.reserve(len);
-        self.r2.reserve(len);
-        self.r3.reserve(len);
-        self.stroke_top.reserve(len);
-        self.stroke_right.reserve(len);
-        self.stroke_bottom.reserve(len);
-        self.stroke_left.reserve(len);
-        self.shadow_offset_x.reserve(len);
-        self.shadow_offset_y.reserve(len);
-        self.shadow_expand.reserve(len);
-        self.shadow_intensity.reserve(len);
+        self.refs.reserve(draw_count);
+        self.kinds.reserve(sdf_count);
+        self.x0.reserve(sdf_count);
+        self.y0.reserve(sdf_count);
+        self.x1.reserve(sdf_count);
+        self.y1.reserve(sdf_count);
+        self.r0.reserve(sdf_count);
+        self.r1.reserve(sdf_count);
+        self.r2.reserve(sdf_count);
+        self.r3.reserve(sdf_count);
+        self.stroke_top.reserve(sdf_count);
+        self.stroke_right.reserve(sdf_count);
+        self.stroke_bottom.reserve(sdf_count);
+        self.stroke_left.reserve(sdf_count);
+        self.shadow_offset_x.reserve(sdf_count);
+        self.shadow_offset_y.reserve(sdf_count);
+        self.shadow_expand.reserve(sdf_count);
+        self.shadow_intensity.reserve(sdf_count);
     }
 
     fn push(
@@ -263,6 +285,7 @@ impl DrawSdfUpload {
     #[cfg(feature = "profile")]
     fn memory_usage(&self) -> MemoryUsage {
         MemoryUsage::sum([
+            MemoryUsage::vec(&self.refs),
             MemoryUsage::vec(&self.kinds),
             MemoryUsage::vec(&self.x0),
             MemoryUsage::vec(&self.y0),
@@ -401,23 +424,29 @@ pub(crate) struct SceneBuffers {
     pub(crate) draw_pixel_y0: CubeBuffer<i32>,
     pub(crate) draw_pixel_x1: CubeBuffer<i32>,
     pub(crate) draw_pixel_y1: CubeBuffer<i32>,
-    pub(crate) draw_sdf_kinds: CubeBuffer<u32>,
-    pub(crate) draw_sdf_x0: CubeBuffer<f32>,
-    pub(crate) draw_sdf_y0: CubeBuffer<f32>,
-    pub(crate) draw_sdf_x1: CubeBuffer<f32>,
-    pub(crate) draw_sdf_y1: CubeBuffer<f32>,
-    pub(crate) draw_sdf_r0: CubeBuffer<f32>,
-    pub(crate) draw_sdf_r1: CubeBuffer<f32>,
-    pub(crate) draw_sdf_r2: CubeBuffer<f32>,
-    pub(crate) draw_sdf_r3: CubeBuffer<f32>,
-    pub(crate) draw_sdf_stroke_top: CubeBuffer<f32>,
-    pub(crate) draw_sdf_stroke_right: CubeBuffer<f32>,
-    pub(crate) draw_sdf_stroke_bottom: CubeBuffer<f32>,
-    pub(crate) draw_sdf_stroke_left: CubeBuffer<f32>,
-    pub(crate) draw_sdf_shadow_offset_x: CubeBuffer<f32>,
-    pub(crate) draw_sdf_shadow_offset_y: CubeBuffer<f32>,
-    pub(crate) draw_sdf_shadow_expand: CubeBuffer<f32>,
-    pub(crate) draw_sdf_shadow_intensity: CubeBuffer<f32>,
+    /// Draw-to-SDF indirection. `u32::MAX` means the draw has no SDF payload.
+    ///
+    /// Kernels still receive draw indices from particles and layer stacks, so
+    /// this compact reference buffer preserves those contracts while the large
+    /// SDF parameter columns are sized by `sdf_count` instead of `draw_count`.
+    pub(crate) draw_sdf_refs: CubeBuffer<u32>,
+    pub(crate) sdf_kinds: CubeBuffer<u32>,
+    pub(crate) sdf_x0: CubeBuffer<f32>,
+    pub(crate) sdf_y0: CubeBuffer<f32>,
+    pub(crate) sdf_x1: CubeBuffer<f32>,
+    pub(crate) sdf_y1: CubeBuffer<f32>,
+    pub(crate) sdf_r0: CubeBuffer<f32>,
+    pub(crate) sdf_r1: CubeBuffer<f32>,
+    pub(crate) sdf_r2: CubeBuffer<f32>,
+    pub(crate) sdf_r3: CubeBuffer<f32>,
+    pub(crate) sdf_stroke_top: CubeBuffer<f32>,
+    pub(crate) sdf_stroke_right: CubeBuffer<f32>,
+    pub(crate) sdf_stroke_bottom: CubeBuffer<f32>,
+    pub(crate) sdf_stroke_left: CubeBuffer<f32>,
+    pub(crate) sdf_shadow_offset_x: CubeBuffer<f32>,
+    pub(crate) sdf_shadow_offset_y: CubeBuffer<f32>,
+    pub(crate) sdf_shadow_expand: CubeBuffer<f32>,
+    pub(crate) sdf_shadow_intensity: CubeBuffer<f32>,
     pub(crate) backdrop_data_offsets: CubeBuffer<u32>,
     pub(crate) backdrop_data_lens: CubeBuffer<u32>,
     pub(crate) backdrop_tile_x0: CubeBuffer<u32>,
@@ -473,23 +502,24 @@ impl SceneBuffers {
             draw_pixel_y0: CubeBuffer::new(client, 0),
             draw_pixel_x1: CubeBuffer::new(client, 0),
             draw_pixel_y1: CubeBuffer::new(client, 0),
-            draw_sdf_kinds: CubeBuffer::new(client, 0),
-            draw_sdf_x0: CubeBuffer::new(client, 0),
-            draw_sdf_y0: CubeBuffer::new(client, 0),
-            draw_sdf_x1: CubeBuffer::new(client, 0),
-            draw_sdf_y1: CubeBuffer::new(client, 0),
-            draw_sdf_r0: CubeBuffer::new(client, 0),
-            draw_sdf_r1: CubeBuffer::new(client, 0),
-            draw_sdf_r2: CubeBuffer::new(client, 0),
-            draw_sdf_r3: CubeBuffer::new(client, 0),
-            draw_sdf_stroke_top: CubeBuffer::new(client, 0),
-            draw_sdf_stroke_right: CubeBuffer::new(client, 0),
-            draw_sdf_stroke_bottom: CubeBuffer::new(client, 0),
-            draw_sdf_stroke_left: CubeBuffer::new(client, 0),
-            draw_sdf_shadow_offset_x: CubeBuffer::new(client, 0),
-            draw_sdf_shadow_offset_y: CubeBuffer::new(client, 0),
-            draw_sdf_shadow_expand: CubeBuffer::new(client, 0),
-            draw_sdf_shadow_intensity: CubeBuffer::new(client, 0),
+            draw_sdf_refs: CubeBuffer::new(client, 0),
+            sdf_kinds: CubeBuffer::new(client, 0),
+            sdf_x0: CubeBuffer::new(client, 0),
+            sdf_y0: CubeBuffer::new(client, 0),
+            sdf_x1: CubeBuffer::new(client, 0),
+            sdf_y1: CubeBuffer::new(client, 0),
+            sdf_r0: CubeBuffer::new(client, 0),
+            sdf_r1: CubeBuffer::new(client, 0),
+            sdf_r2: CubeBuffer::new(client, 0),
+            sdf_r3: CubeBuffer::new(client, 0),
+            sdf_stroke_top: CubeBuffer::new(client, 0),
+            sdf_stroke_right: CubeBuffer::new(client, 0),
+            sdf_stroke_bottom: CubeBuffer::new(client, 0),
+            sdf_stroke_left: CubeBuffer::new(client, 0),
+            sdf_shadow_offset_x: CubeBuffer::new(client, 0),
+            sdf_shadow_offset_y: CubeBuffer::new(client, 0),
+            sdf_shadow_expand: CubeBuffer::new(client, 0),
+            sdf_shadow_intensity: CubeBuffer::new(client, 0),
             backdrop_data_offsets: CubeBuffer::new(client, 0),
             backdrop_data_lens: CubeBuffer::new(client, 0),
             backdrop_tile_x0: CubeBuffer::new(client, 0),
@@ -546,23 +576,24 @@ impl SceneBuffers {
             self.draw_pixel_y0.memory_usage(),
             self.draw_pixel_x1.memory_usage(),
             self.draw_pixel_y1.memory_usage(),
-            self.draw_sdf_kinds.memory_usage(),
-            self.draw_sdf_x0.memory_usage(),
-            self.draw_sdf_y0.memory_usage(),
-            self.draw_sdf_x1.memory_usage(),
-            self.draw_sdf_y1.memory_usage(),
-            self.draw_sdf_r0.memory_usage(),
-            self.draw_sdf_r1.memory_usage(),
-            self.draw_sdf_r2.memory_usage(),
-            self.draw_sdf_r3.memory_usage(),
-            self.draw_sdf_stroke_top.memory_usage(),
-            self.draw_sdf_stroke_right.memory_usage(),
-            self.draw_sdf_stroke_bottom.memory_usage(),
-            self.draw_sdf_stroke_left.memory_usage(),
-            self.draw_sdf_shadow_offset_x.memory_usage(),
-            self.draw_sdf_shadow_offset_y.memory_usage(),
-            self.draw_sdf_shadow_expand.memory_usage(),
-            self.draw_sdf_shadow_intensity.memory_usage(),
+            self.draw_sdf_refs.memory_usage(),
+            self.sdf_kinds.memory_usage(),
+            self.sdf_x0.memory_usage(),
+            self.sdf_y0.memory_usage(),
+            self.sdf_x1.memory_usage(),
+            self.sdf_y1.memory_usage(),
+            self.sdf_r0.memory_usage(),
+            self.sdf_r1.memory_usage(),
+            self.sdf_r2.memory_usage(),
+            self.sdf_r3.memory_usage(),
+            self.sdf_stroke_top.memory_usage(),
+            self.sdf_stroke_right.memory_usage(),
+            self.sdf_stroke_bottom.memory_usage(),
+            self.sdf_stroke_left.memory_usage(),
+            self.sdf_shadow_offset_x.memory_usage(),
+            self.sdf_shadow_offset_y.memory_usage(),
+            self.sdf_shadow_expand.memory_usage(),
+            self.sdf_shadow_intensity.memory_usage(),
             self.backdrop_data_offsets.memory_usage(),
             self.backdrop_data_lens.memory_usage(),
             self.backdrop_tile_x0.memory_usage(),
@@ -857,30 +888,30 @@ impl SceneBuffers {
             |draw| draw.pixel_bounds.y1,
         );
         staging.sdf.refill(draws);
-        self.draw_sdf_kinds.replace(client, &staging.sdf.kinds);
-        self.draw_sdf_x0.replace(client, &staging.sdf.x0);
-        self.draw_sdf_y0.replace(client, &staging.sdf.y0);
-        self.draw_sdf_x1.replace(client, &staging.sdf.x1);
-        self.draw_sdf_y1.replace(client, &staging.sdf.y1);
-        self.draw_sdf_r0.replace(client, &staging.sdf.r0);
-        self.draw_sdf_r1.replace(client, &staging.sdf.r1);
-        self.draw_sdf_r2.replace(client, &staging.sdf.r2);
-        self.draw_sdf_r3.replace(client, &staging.sdf.r3);
-        self.draw_sdf_stroke_top
-            .replace(client, &staging.sdf.stroke_top);
-        self.draw_sdf_stroke_right
+        self.draw_sdf_refs.replace(client, &staging.sdf.refs);
+        self.sdf_kinds.replace(client, &staging.sdf.kinds);
+        self.sdf_x0.replace(client, &staging.sdf.x0);
+        self.sdf_y0.replace(client, &staging.sdf.y0);
+        self.sdf_x1.replace(client, &staging.sdf.x1);
+        self.sdf_y1.replace(client, &staging.sdf.y1);
+        self.sdf_r0.replace(client, &staging.sdf.r0);
+        self.sdf_r1.replace(client, &staging.sdf.r1);
+        self.sdf_r2.replace(client, &staging.sdf.r2);
+        self.sdf_r3.replace(client, &staging.sdf.r3);
+        self.sdf_stroke_top.replace(client, &staging.sdf.stroke_top);
+        self.sdf_stroke_right
             .replace(client, &staging.sdf.stroke_right);
-        self.draw_sdf_stroke_bottom
+        self.sdf_stroke_bottom
             .replace(client, &staging.sdf.stroke_bottom);
-        self.draw_sdf_stroke_left
+        self.sdf_stroke_left
             .replace(client, &staging.sdf.stroke_left);
-        self.draw_sdf_shadow_offset_x
+        self.sdf_shadow_offset_x
             .replace(client, &staging.sdf.shadow_offset_x);
-        self.draw_sdf_shadow_offset_y
+        self.sdf_shadow_offset_y
             .replace(client, &staging.sdf.shadow_offset_y);
-        self.draw_sdf_shadow_expand
+        self.sdf_shadow_expand
             .replace(client, &staging.sdf.shadow_expand);
-        self.draw_sdf_shadow_intensity
+        self.sdf_shadow_intensity
             .replace(client, &staging.sdf.shadow_intensity);
     }
 

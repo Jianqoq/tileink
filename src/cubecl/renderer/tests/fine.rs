@@ -52,6 +52,39 @@ fn fine_wgpu_renders_circle_sdf_when_enabled() {
 }
 
 #[test]
+fn fine_wgpu_uses_sparse_sdf_ref_when_path_draw_precedes_sdf_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let red = Color::from_rgb8(255, 0, 0);
+    let blue = Color::from_rgb8(0, 96, 255);
+    let mut scene = Scene::new(48, 32);
+    scene.push_path(
+        Rect::new(0.0, 0.0, 4.0, 4.0).to_path(0.0),
+        red,
+        Affine::IDENTITY,
+        FillRule::NonZero,
+        0.0,
+    );
+    scene.push_circle(Circle::new((24.0, 16.0), 8.0), blue, FillRule::NonZero);
+
+    let mut renderer = WgpuRenderer::new_default_device(48, 32, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+
+    assert_eq!(
+        target[2 * 48 + 2],
+        premul_f32_to_u32(red.premultiply().components)
+    );
+    assert_eq!(
+        target[16 * 48 + 24],
+        premul_f32_to_u32(blue.premultiply().components)
+    );
+    assert_eq!(target[16 * 48 + 8], 0);
+}
+
+#[test]
 fn fine_wgpu_renders_rect_stroke_sdf_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;

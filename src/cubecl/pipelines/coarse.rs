@@ -10,7 +10,7 @@ use crate::cubecl::{
         CUBE_LAYER_OPACITY, CUBE_PTCL_BEGIN_BLEND, CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_BEGIN_OPACITY,
         CUBE_PTCL_BEGIN_SDF_CLIP, CUBE_PTCL_COLOR, CUBE_PTCL_END, CUBE_PTCL_END_BLEND,
         CUBE_PTCL_END_CLIP, CUBE_PTCL_END_OPACITY, CUBE_PTCL_FILL, CUBE_PTCL_GLYPH,
-        CUBE_PTCL_PATH_GLYPH, CUBE_PTCL_SDF, CUBE_SDF_NONE, CubeBufferLengths,
+        CUBE_PTCL_PATH_GLYPH, CUBE_PTCL_SDF, CubeBufferLengths,
     },
 };
 
@@ -70,7 +70,7 @@ impl CoarsePipeline {
                 unsafe { scene.draw_pixel_y0.arg() },
                 unsafe { scene.draw_pixel_x1.arg() },
                 unsafe { scene.draw_pixel_y1.arg() },
-                unsafe { scene.draw_sdf_kinds.arg() },
+                unsafe { scene.draw_sdf_refs.arg() },
                 unsafe { scene.backdrop_data_offsets.arg() },
                 unsafe { scene.backdrop_tile_x0.arg() },
                 unsafe { scene.backdrop_tile_y0.arg() },
@@ -200,7 +200,7 @@ impl CoarsePipeline {
                 unsafe { scene.draw_pixel_y0.arg() },
                 unsafe { scene.draw_pixel_x1.arg() },
                 unsafe { scene.draw_pixel_y1.arg() },
-                unsafe { scene.draw_sdf_kinds.arg() },
+                unsafe { scene.draw_sdf_refs.arg() },
                 unsafe { scene.backdrop_data_offsets.arg() },
                 unsafe { scene.backdrop_tile_x0.arg() },
                 unsafe { scene.backdrop_tile_y0.arg() },
@@ -254,7 +254,7 @@ fn coarse_count(
     draw_pixel_y0: &Array<i32>,
     draw_pixel_x1: &Array<i32>,
     draw_pixel_y1: &Array<i32>,
-    draw_sdf_kinds: &Array<u32>,
+    draw_sdf_refs: &Array<u32>,
     backdrop_data_offsets: &Array<u32>,
     backdrop_tile_x0: &Array<u32>,
     backdrop_tile_y0: &Array<u32>,
@@ -291,7 +291,7 @@ fn coarse_count(
         draw_pixel_y0,
         draw_pixel_x1,
         draw_pixel_y1,
-        draw_sdf_kinds,
+        draw_sdf_refs,
         backdrop_data_offsets,
         backdrop_tile_x0,
         backdrop_tile_y0,
@@ -346,7 +346,7 @@ fn coarse_count(
                         glyph_count += tile_glyphs;
                     }
                 }
-            } else if draw_sdf_kinds[draw_i] != CUBE_SDF_NONE {
+            } else if draw_sdf_refs[draw_i] != invalid {
                 if draw_tag == CUBE_DRAW_BRUSH
                     && draw_tile_hit(
                         draw_i,
@@ -568,7 +568,7 @@ fn coarse_emit(
     draw_pixel_y0: &Array<i32>,
     draw_pixel_x1: &Array<i32>,
     draw_pixel_y1: &Array<i32>,
-    draw_sdf_kinds: &Array<u32>,
+    draw_sdf_refs: &Array<u32>,
     backdrop_data_offsets: &Array<u32>,
     backdrop_tile_x0: &Array<u32>,
     backdrop_tile_y0: &Array<u32>,
@@ -624,7 +624,7 @@ fn coarse_emit(
         draw_pixel_y0,
         draw_pixel_x1,
         draw_pixel_y1,
-        draw_sdf_kinds,
+        draw_sdf_refs,
         backdrop_data_offsets,
         backdrop_tile_x0,
         backdrop_tile_y0,
@@ -658,7 +658,7 @@ fn coarse_emit(
             draw_pixel_y0,
             draw_pixel_x1,
             draw_pixel_y1,
-            draw_sdf_kinds,
+            draw_sdf_refs,
             backdrop_data_offsets,
             backdrop_tile_x0,
             backdrop_tile_y0,
@@ -729,7 +729,7 @@ fn coarse_emit(
                         ptcl_color = draw_ix;
                     }
                 }
-            } else if draw_sdf_kinds[draw_i] != CUBE_SDF_NONE {
+            } else if draw_sdf_refs[draw_i] != invalid {
                 if draw_tag == CUBE_DRAW_BRUSH
                     && draw_tile_hit(
                         draw_i,
@@ -949,7 +949,7 @@ fn active_stack_count(
     draw_pixel_y0: &Array<i32>,
     draw_pixel_x1: &Array<i32>,
     draw_pixel_y1: &Array<i32>,
-    draw_sdf_kinds: &Array<u32>,
+    draw_sdf_refs: &Array<u32>,
     backdrop_data_offsets: &Array<u32>,
     backdrop_tile_x0: &Array<u32>,
     backdrop_tile_y0: &Array<u32>,
@@ -975,7 +975,7 @@ fn active_stack_count(
             } else {
                 let draw_ix = layer_stack_draws[stack_i];
                 let draw_i = draw_ix as usize;
-                if draw_sdf_kinds[draw_i] != CUBE_SDF_NONE {
+                if draw_sdf_refs[draw_i] != invalid {
                     if draw_tile_hit(
                         draw_i,
                         tile_x,
@@ -1055,7 +1055,7 @@ fn emit_active_stack_begins(
     draw_pixel_y0: &Array<i32>,
     draw_pixel_x1: &Array<i32>,
     draw_pixel_y1: &Array<i32>,
-    draw_sdf_kinds: &Array<u32>,
+    draw_sdf_refs: &Array<u32>,
     backdrop_data_offsets: &Array<u32>,
     backdrop_tile_x0: &Array<u32>,
     backdrop_tile_y0: &Array<u32>,
@@ -1082,7 +1082,7 @@ fn emit_active_stack_begins(
             || layer_tag == CUBE_LAYER_BLEND
         {
             let draw_ix = layer_stack_draws[stack_i];
-            if layer_tag == CUBE_LAYER_CLIP && draw_sdf_kinds[draw_ix as usize] != CUBE_SDF_NONE {
+            if layer_tag == CUBE_LAYER_CLIP && draw_sdf_refs[draw_ix as usize] != invalid {
                 store_particle(
                     dst,
                     ptcl_capacity,
