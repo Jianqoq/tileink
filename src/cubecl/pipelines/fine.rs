@@ -23,7 +23,15 @@ use crate::cubecl::{
     },
 };
 
-const FINE_WORKGROUP_SIZE: u32 = 256;
+pub(crate) const FINE_WORKGROUP_SIZE: u32 = 256;
+/// Per-lane register stack depth before fine spills layer state to global memory.
+///
+/// Clip stores one mask per depth, so four local slots keep the common path
+/// cheap. Opacity/blend stores five u32 fields per depth, so it uses a smaller
+/// register stack to avoid turning reduced shared memory into register pressure.
+pub(crate) const FINE_LOCAL_CLIP_DEPTH: usize = 4;
+pub(crate) const FINE_LOCAL_GROUP_DEPTH: usize = 2;
+pub(crate) const FINE_GROUP_SPILL_FIELDS: usize = 5;
 
 include!("sdf_kernels.rs");
 
@@ -33,6 +41,12 @@ pub(crate) struct FineRenderConfig {
     pub(crate) size: (u32, u32),
     pub(crate) max_clip_depth: usize,
     pub(crate) max_group_depth: usize,
+}
+
+pub(crate) struct FineOutputBuffers<'a> {
+    pub(crate) target: &'a mut CubeBuffer<u32>,
+    pub(crate) clip_spills: &'a mut CubeBuffer<u32>,
+    pub(crate) group_spills: &'a mut CubeBuffer<u32>,
 }
 
 pub(crate) struct FinePipeline;
@@ -67,7 +81,7 @@ impl FinePipeline {
         scan: &ScanBuffers,
         coarse: &CoarseBuffers,
         brushes: GpuBrushResources<'_>,
-        target: &mut CubeBuffer<u32>,
+        output: FineOutputBuffers<'_>,
         config: FineRenderConfig,
     ) {
         let lengths = config.lengths;
@@ -82,8 +96,12 @@ impl FinePipeline {
                 CubeCount::Static(tile_count, 1, 1),
                 CubeDim::new_1d(FINE_WORKGROUP_SIZE),
                 FINE_WORKGROUP_SIZE as usize,
-                config.max_clip_depth.max(1),
-                config.max_group_depth.max(1),
+                config.max_clip_depth > 0,
+                config.max_group_depth > 0,
+                config.max_clip_depth.saturating_sub(FINE_LOCAL_CLIP_DEPTH),
+                config
+                    .max_group_depth
+                    .saturating_sub(FINE_LOCAL_GROUP_DEPTH),
                 tile_count,
                 lengths.tiles_width as u32,
                 lengths.tiles_height as u32,
@@ -135,7 +153,9 @@ impl FinePipeline {
                 unsafe { brushes.data.arg() },
                 unsafe { brushes.params.arg() },
                 unsafe { brushes.payloads.arg() },
-                unsafe { target.arg() },
+                unsafe { output.target.arg() },
+                unsafe { output.clip_spills.arg() },
+                unsafe { output.group_spills.arg() },
             );
         });
     }
@@ -157,8 +177,10 @@ fn fine_clear(image_pixels: u32, clear_color: u32, target: &mut Array<u32>) {
 #[cube(launch)]
 fn fine_render(
     #[comptime] workgroup_size: usize,
-    #[comptime] clip_stack_capacity: usize,
-    #[comptime] group_stack_capacity: usize,
+    #[comptime] use_clip_stack: bool,
+    #[comptime] use_group_stack: bool,
+    #[comptime] clip_spill_depth: usize,
+    #[comptime] group_spill_depth: usize,
     tile_count: u32,
     tiles_width: u32,
     tiles_height: u32,
@@ -211,6 +233,8 @@ fn fine_render(
     brush_params: &Array<f32>,
     brush_payloads: &Array<u32>,
     target: &mut Array<u32>,
+    clip_spills: &mut Array<u32>,
+    group_spills: &mut Array<u32>,
 ) {
     let tile_ix = CUBE_POS as u32;
     if tile_ix >= tile_count {
@@ -241,12 +265,20 @@ fn fine_render(
     let mut clip_mask = 255u32;
     let mut clip_depth = 0u32;
     let mut group_depth = 0u32;
-    let mut clip_stack = SharedMemory::<u32>::new(workgroup_size * clip_stack_capacity);
-    let mut group_kinds = SharedMemory::<u32>::new(workgroup_size * group_stack_capacity);
-    let mut group_parent_pixels = SharedMemory::<u32>::new(workgroup_size * group_stack_capacity);
-    let mut group_parent_clips = SharedMemory::<u32>::new(workgroup_size * group_stack_capacity);
-    let mut group_layer_alphas = SharedMemory::<u32>::new(workgroup_size * group_stack_capacity);
-    let mut group_payloads = SharedMemory::<u32>::new(workgroup_size * group_stack_capacity);
+    let mut clip_stack0 = 0u32;
+    let mut clip_stack1 = 0u32;
+    let mut clip_stack2 = 0u32;
+    let mut clip_stack3 = 0u32;
+    let mut group0_kind = 0u32;
+    let mut group0_parent_pixel = 0u32;
+    let mut group0_parent_clip = 0u32;
+    let mut group0_layer_alpha = 0u32;
+    let mut group0_payload = 0u32;
+    let mut group1_kind = 0u32;
+    let mut group1_parent_pixel = 0u32;
+    let mut group1_parent_clip = 0u32;
+    let mut group1_layer_alpha = 0u32;
+    let mut group1_payload = 0u32;
     let mut ptcl_ix = tile_range_starts[tile_ix as usize];
     let range_end = tile_range_ends[tile_ix as usize];
 
@@ -321,15 +353,30 @@ fn fine_render(
                     brush_params,
                     brush_payloads,
                 );
-            } else if tag == CUBE_PTCL_END_CLIP {
+            } else if use_clip_stack && tag == CUBE_PTCL_END_CLIP {
                 if clip_depth > 0 {
                     clip_depth -= 1;
-                    let stack_ix = (clip_depth * workgroup_size as u32 + UNIT_POS) as usize;
-                    clip_mask = clip_stack[stack_ix];
+                    if clip_depth == 0 {
+                        clip_mask = clip_stack0;
+                    } else if clip_depth == 1 {
+                        clip_mask = clip_stack1;
+                    } else if clip_depth == 2 {
+                        clip_mask = clip_stack2;
+                    } else if clip_depth == 3 {
+                        clip_mask = clip_stack3;
+                    } else {
+                        let spill_depth_ix = clip_depth - FINE_LOCAL_CLIP_DEPTH as u32;
+                        if spill_depth_ix < clip_spill_depth as u32 {
+                            let stack_ix = ((tile_ix * clip_spill_depth as u32 + spill_depth_ix)
+                                * workgroup_size as u32
+                                + UNIT_POS) as usize;
+                            clip_mask = clip_spills[stack_ix];
+                        }
+                    }
                 } else {
                     clip_mask = 255;
                 }
-            } else if tag == CUBE_PTCL_BEGIN_SDF_CLIP {
+            } else if use_clip_stack && tag == CUBE_PTCL_BEGIN_SDF_CLIP {
                 let draw_ix = ptcl_colors[ptcl_i];
                 let alpha = sdf_alpha_at(
                     draw_ix,
@@ -354,21 +401,65 @@ fn fine_render(
                     sdf_shadow_expand,
                     sdf_shadow_intensity,
                 );
-                if clip_depth < clip_stack_capacity as u32 {
-                    let stack_ix = (clip_depth * workgroup_size as u32 + UNIT_POS) as usize;
-                    clip_stack[stack_ix] = clip_mask;
+                if clip_depth == 0 {
+                    clip_stack0 = clip_mask;
                     clip_depth += 1;
+                } else if clip_depth == 1 {
+                    clip_stack1 = clip_mask;
+                    clip_depth += 1;
+                } else if clip_depth == 2 {
+                    clip_stack2 = clip_mask;
+                    clip_depth += 1;
+                } else if clip_depth == 3 {
+                    clip_stack3 = clip_mask;
+                    clip_depth += 1;
+                } else {
+                    let spill_depth_ix = clip_depth - FINE_LOCAL_CLIP_DEPTH as u32;
+                    if spill_depth_ix < clip_spill_depth as u32 {
+                        let stack_ix = ((tile_ix * clip_spill_depth as u32 + spill_depth_ix)
+                            * workgroup_size as u32
+                            + UNIT_POS) as usize;
+                        clip_spills[stack_ix] = clip_mask;
+                        clip_depth += 1;
+                    }
                 }
                 clip_mask = combine_alpha(clip_mask, alpha);
-            } else if tag == CUBE_PTCL_END_OPACITY || tag == CUBE_PTCL_END_BLEND {
+            } else if use_group_stack
+                && (tag == CUBE_PTCL_END_OPACITY || tag == CUBE_PTCL_END_BLEND)
+            {
                 if group_depth > 0 {
                     group_depth -= 1;
-                    let stack_ix = (group_depth * workgroup_size as u32 + UNIT_POS) as usize;
-                    let parent = group_parent_pixels[stack_ix];
-                    let parent_clip = group_parent_clips[stack_ix];
-                    let layer_alpha = group_layer_alphas[stack_ix];
-                    let payload = group_payloads[stack_ix];
-                    let group_kind = group_kinds[stack_ix];
+                    let mut parent = 0u32;
+                    let mut parent_clip = 0u32;
+                    let mut layer_alpha = 0u32;
+                    let mut payload = 0u32;
+                    let mut group_kind = 0u32;
+                    if group_depth == 0 {
+                        parent = group0_parent_pixel;
+                        parent_clip = group0_parent_clip;
+                        layer_alpha = group0_layer_alpha;
+                        payload = group0_payload;
+                        group_kind = group0_kind;
+                    } else if group_depth == 1 {
+                        parent = group1_parent_pixel;
+                        parent_clip = group1_parent_clip;
+                        layer_alpha = group1_layer_alpha;
+                        payload = group1_payload;
+                        group_kind = group1_kind;
+                    } else {
+                        let spill_depth_ix = group_depth - FINE_LOCAL_GROUP_DEPTH as u32;
+                        if spill_depth_ix < group_spill_depth as u32 {
+                            let stack_ix = (((tile_ix * group_spill_depth as u32 + spill_depth_ix)
+                                * workgroup_size as u32
+                                + UNIT_POS) as usize)
+                                * FINE_GROUP_SPILL_FIELDS;
+                            group_kind = group_spills[stack_ix];
+                            parent = group_spills[stack_ix + 1];
+                            parent_clip = group_spills[stack_ix + 2];
+                            layer_alpha = group_spills[stack_ix + 3];
+                            payload = group_spills[stack_ix + 4];
+                        }
+                    }
                     let mut alpha = combine_alpha(layer_alpha, parent_clip);
                     if group_kind == CUBE_PTCL_BEGIN_OPACITY {
                         alpha = combine_alpha(alpha, payload);
@@ -384,9 +475,9 @@ fn fine_render(
                 }
             } else if tag == CUBE_PTCL_FILL
                 || tag == CUBE_PTCL_PATH_GLYPH
-                || tag == CUBE_PTCL_BEGIN_CLIP
-                || tag == CUBE_PTCL_BEGIN_OPACITY
-                || tag == CUBE_PTCL_BEGIN_BLEND
+                || (use_clip_stack && tag == CUBE_PTCL_BEGIN_CLIP)
+                || (use_group_stack && tag == CUBE_PTCL_BEGIN_OPACITY)
+                || (use_group_stack && tag == CUBE_PTCL_BEGIN_BLEND)
             {
                 let alpha = fill_alpha_at(
                     ptcl_backdrops[ptcl_i],
@@ -402,20 +493,63 @@ fn fine_render(
                     segment_y_edge,
                 );
                 if tag == CUBE_PTCL_BEGIN_CLIP {
-                    if clip_depth < clip_stack_capacity as u32 {
-                        let stack_ix = (clip_depth * workgroup_size as u32 + UNIT_POS) as usize;
-                        clip_stack[stack_ix] = clip_mask;
+                    if clip_depth == 0 {
+                        clip_stack0 = clip_mask;
                         clip_depth += 1;
+                    } else if clip_depth == 1 {
+                        clip_stack1 = clip_mask;
+                        clip_depth += 1;
+                    } else if clip_depth == 2 {
+                        clip_stack2 = clip_mask;
+                        clip_depth += 1;
+                    } else if clip_depth == 3 {
+                        clip_stack3 = clip_mask;
+                        clip_depth += 1;
+                    } else {
+                        let spill_depth_ix = clip_depth - FINE_LOCAL_CLIP_DEPTH as u32;
+                        if spill_depth_ix < clip_spill_depth as u32 {
+                            let stack_ix = ((tile_ix * clip_spill_depth as u32 + spill_depth_ix)
+                                * workgroup_size as u32
+                                + UNIT_POS) as usize;
+                            clip_spills[stack_ix] = clip_mask;
+                            clip_depth += 1;
+                        }
                     }
                     clip_mask = combine_alpha(clip_mask, alpha);
-                } else if tag == CUBE_PTCL_BEGIN_OPACITY || tag == CUBE_PTCL_BEGIN_BLEND {
-                    if group_depth < group_stack_capacity as u32 {
-                        let stack_ix = (group_depth * workgroup_size as u32 + UNIT_POS) as usize;
-                        group_kinds[stack_ix] = tag;
-                        group_parent_pixels[stack_ix] = pixel;
-                        group_parent_clips[stack_ix] = clip_mask;
-                        group_layer_alphas[stack_ix] = alpha;
-                        group_payloads[stack_ix] = ptcl_colors[ptcl_i];
+                } else if use_group_stack
+                    && (tag == CUBE_PTCL_BEGIN_OPACITY || tag == CUBE_PTCL_BEGIN_BLEND)
+                {
+                    let mut pushed_group = false;
+                    if group_depth == 0 {
+                        group0_kind = tag;
+                        group0_parent_pixel = pixel;
+                        group0_parent_clip = clip_mask;
+                        group0_layer_alpha = alpha;
+                        group0_payload = ptcl_colors[ptcl_i];
+                        pushed_group = true;
+                    } else if group_depth == 1 {
+                        group1_kind = tag;
+                        group1_parent_pixel = pixel;
+                        group1_parent_clip = clip_mask;
+                        group1_layer_alpha = alpha;
+                        group1_payload = ptcl_colors[ptcl_i];
+                        pushed_group = true;
+                    } else {
+                        let spill_depth_ix = group_depth - FINE_LOCAL_GROUP_DEPTH as u32;
+                        if spill_depth_ix < group_spill_depth as u32 {
+                            let stack_ix = (((tile_ix * group_spill_depth as u32 + spill_depth_ix)
+                                * workgroup_size as u32
+                                + UNIT_POS) as usize)
+                                * FINE_GROUP_SPILL_FIELDS;
+                            group_spills[stack_ix] = tag;
+                            group_spills[stack_ix + 1] = pixel;
+                            group_spills[stack_ix + 2] = clip_mask;
+                            group_spills[stack_ix + 3] = alpha;
+                            group_spills[stack_ix + 4] = ptcl_colors[ptcl_i];
+                            pushed_group = true;
+                        }
+                    }
+                    if pushed_group {
                         group_depth += 1;
                         pixel = 0;
                     }

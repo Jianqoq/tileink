@@ -634,6 +634,90 @@ fn fine_wgpu_intersects_nested_clip_layers_when_enabled() {
 }
 
 #[test]
+fn fine_wgpu_spills_deep_clip_stack_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let red = Color::from_rgb8(255, 0, 0);
+    let depth = crate::cubecl::pipelines::fine::FINE_LOCAL_CLIP_DEPTH + 2;
+    let mut scene = Scene::new(16, 16);
+    for inset in 0..depth {
+        let inset = inset as f64;
+        scene.push_clip_layer(
+            Rect::new(inset, 0.0, 16.0 - inset, 16.0).to_path(0.0),
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.0,
+        );
+    }
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
+        red,
+        FillRule::NonZero,
+    );
+    for _ in 0..depth {
+        scene.pop_layer();
+    }
+
+    let mut renderer = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+    let red_px = premul_f32_to_u32(red.premultiply().components);
+
+    assert_eq!(target[8 * 16 + 4], 0);
+    assert_eq!(target[8 * 16 + 8], red_px);
+    assert_eq!(target[8 * 16 + 12], 0);
+}
+
+#[test]
+fn fine_wgpu_spills_deep_opacity_blend_stack_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let full = Rect::new(0.0, 0.0, 16.0, 16.0);
+    let depth = crate::cubecl::pipelines::fine::FINE_LOCAL_GROUP_DEPTH + 2;
+    let mut scene = Scene::new(16, 16);
+    scene.push_rect(
+        full,
+        crate::Radius::ZERO,
+        Color::from_rgb8(0, 0, 255),
+        FillRule::NonZero,
+    );
+    for i in 0..depth {
+        if i % 2 == 0 {
+            scene.push_opacity_layer(full.to_path(0.0), Affine::IDENTITY, 0.0, 0.75);
+        } else {
+            scene.push_blend_layer(
+                full.to_path(0.0),
+                Affine::IDENTITY,
+                0.0,
+                Mix::Multiply,
+                Compose::SrcOver,
+            );
+        }
+    }
+    scene.push_rect(
+        full,
+        crate::Radius::ZERO,
+        Color::from_rgb8(255, 0, 0),
+        FillRule::NonZero,
+    );
+    for _ in 0..depth {
+        scene.pop_layer();
+    }
+
+    let mut cpu = CpuRenderer::new(16, 16, Color::TRANSPARENT);
+    cpu.render(&scene);
+    let mut wgpu = WgpuRenderer::new_default_device(16, 16, Color::TRANSPARENT);
+    wgpu.render(&scene);
+
+    assert_images_close(&cpu.image(), &wgpu.image(), 1);
+}
+
+#[test]
 fn fine_wgpu_uses_premultiplied_clear_color_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;

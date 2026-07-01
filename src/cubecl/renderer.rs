@@ -40,7 +40,10 @@ use super::{
     pipelines::{
         coarse::{CoarseBatch, CoarsePipeline},
         cumsum::CumsumPipeline,
-        fine::{FinePipeline, FineRenderConfig},
+        fine::{
+            FINE_GROUP_SPILL_FIELDS, FINE_LOCAL_CLIP_DEPTH, FINE_LOCAL_GROUP_DEPTH,
+            FineOutputBuffers, FinePipeline, FineRenderConfig,
+        },
         scan::ScanPipeline,
     },
     types::{CubeBufferLengths, CubeSceneConfig},
@@ -78,6 +81,8 @@ pub struct Renderer<R: Runtime> {
     filter_turbulence: FilterTurbulenceBuffers,
     text_data: Option<PreparedTextData>,
     target: CubeBuffer<u32>,
+    fine_clip_spills: CubeBuffer<u32>,
+    fine_group_spills: CubeBuffer<u32>,
     scratch: Vec<CubeBuffer<u32>>,
     scratch_in_use: Vec<bool>,
     surface_sources: Vec<CubeBuffer<u32>>,
@@ -163,6 +168,8 @@ impl<R: Runtime> Renderer<R> {
             filter_turbulence: FilterTurbulenceBuffers::new(&client),
             text_data: None,
             target: CubeBuffer::new(&client, width as usize * height as usize),
+            fine_clip_spills: CubeBuffer::new(&client, 0),
+            fine_group_spills: CubeBuffer::new(&client, 0),
             scratch: Vec::new(),
             scratch_in_use: Vec::new(),
             surface_sources: Vec::new(),
@@ -223,6 +230,7 @@ impl<R: Runtime> Renderer<R> {
         self.lengths = lengths;
         self.max_clip_depth = max_clip_depth;
         self.max_group_depth = max_group_depth;
+        self.prepare_fine_stack_spills(lengths, max_clip_depth, max_group_depth);
         self.prepare_scratch_buffers(scratch_count);
         self.draw_brushes.upload(&self.client, draw_brush_upload);
         self.filter_brushes
@@ -283,7 +291,11 @@ impl<R: Runtime> Renderer<R> {
                 &self.scan,
                 &self.coarse,
                 self.draw_brushes.resources(),
-                &mut self.target,
+                FineOutputBuffers {
+                    target: &mut self.target,
+                    clip_spills: &mut self.fine_clip_spills,
+                    group_spills: &mut self.fine_group_spills,
+                },
                 config,
             ),
             CubeRenderTarget::Scratch(ix) => FinePipeline::render(
@@ -292,7 +304,11 @@ impl<R: Runtime> Renderer<R> {
                 &self.scan,
                 &self.coarse,
                 self.draw_brushes.resources(),
-                &mut self.scratch[ix],
+                FineOutputBuffers {
+                    target: &mut self.scratch[ix],
+                    clip_spills: &mut self.fine_clip_spills,
+                    group_spills: &mut self.fine_group_spills,
+                },
                 config,
             ),
         }
@@ -501,6 +517,15 @@ impl<R: Runtime> Renderer<R> {
         Self::push_memory_entry(
             &mut entries,
             RenderProfileMemorySpace::Gpu,
+            "fine_stack_spills",
+            MemoryUsage::sum([
+                self.fine_clip_spills.memory_usage(),
+                self.fine_group_spills.memory_usage(),
+            ]),
+        );
+        Self::push_memory_entry(
+            &mut entries,
+            RenderProfileMemorySpace::Gpu,
             "scratch",
             MemoryUsage::sum(self.scratch.iter().map(|buffer| buffer.memory_usage())),
         );
@@ -586,6 +611,27 @@ impl<R: Runtime> Renderer<R> {
         }
         self.scratch_in_use.clear();
         self.scratch_in_use.resize(self.scratch.len(), false);
+    }
+
+    fn prepare_fine_stack_spills(
+        &mut self,
+        lengths: CubeBufferLengths,
+        max_clip_depth: usize,
+        max_group_depth: usize,
+    ) {
+        // Fine keeps the common shallow stack in per-lane registers. These
+        // buffers preserve unbounded scene semantics for unusually deep layer
+        // nesting without paying shared-memory cost in the common case.
+        let lane_count =
+            lengths.tile_count * crate::cubecl::pipelines::fine::FINE_WORKGROUP_SIZE as usize;
+        let clip_spill_depth = max_clip_depth.saturating_sub(FINE_LOCAL_CLIP_DEPTH);
+        let group_spill_depth = max_group_depth.saturating_sub(FINE_LOCAL_GROUP_DEPTH);
+        self.fine_clip_spills
+            .resize_uninit(&self.client, lane_count * clip_spill_depth);
+        self.fine_group_spills.resize_uninit(
+            &self.client,
+            lane_count * group_spill_depth * FINE_GROUP_SPILL_FIELDS,
+        );
     }
 
     /// Reads the rendered target back into a CPU image.

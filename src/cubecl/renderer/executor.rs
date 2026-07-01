@@ -90,6 +90,8 @@ struct SavedRendererState {
     filter_paths: FilterPathBuffers,
     filter_transfers: FilterTransferBuffers,
     filter_turbulence: FilterTurbulenceBuffers,
+    fine_clip_spills: CubeBuffer<u32>,
+    fine_group_spills: CubeBuffer<u32>,
     scratch: Vec<CubeBuffer<u32>>,
     scratch_in_use: Vec<bool>,
 }
@@ -159,6 +161,14 @@ impl<R: Runtime> Renderer<R> {
                 &mut self.filter_turbulence,
                 FilterTurbulenceBuffers::new(&self.client),
             ),
+            fine_clip_spills: std::mem::replace(
+                &mut self.fine_clip_spills,
+                CubeBuffer::new(&self.client, 0),
+            ),
+            fine_group_spills: std::mem::replace(
+                &mut self.fine_group_spills,
+                CubeBuffer::new(&self.client, 0),
+            ),
             scratch: std::mem::take(&mut self.scratch),
             scratch_in_use: std::mem::take(&mut self.scratch_in_use),
         };
@@ -170,6 +180,7 @@ impl<R: Runtime> Renderer<R> {
         self.lengths = lengths;
         self.max_clip_depth = max_clip_depth;
         self.max_group_depth = max_group_depth;
+        self.prepare_fine_stack_spills(lengths, max_clip_depth, max_group_depth);
         self.prepare_scratch_buffers(scratch_count.max(1));
         self.draw_brushes
             .upload(&self.client, GpuBrushUpload::from_scene_draws(scene));
@@ -221,6 +232,8 @@ impl<R: Runtime> Renderer<R> {
         self.filter_paths = saved.filter_paths;
         self.filter_transfers = saved.filter_transfers;
         self.filter_turbulence = saved.filter_turbulence;
+        self.fine_clip_spills = saved.fine_clip_spills;
+        self.fine_group_spills = saved.fine_group_spills;
         self.scratch = saved.scratch;
         self.scratch_in_use = saved.scratch_in_use;
     }
