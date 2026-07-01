@@ -5,10 +5,12 @@ use peniko::{Color, kurbo::Rect};
 use tileink::{CubeWgpuRenderer, FillRule, Radius, Scene, StrokeWidths};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut scene = Scene::new(480, 320);
+    let width = 480;
+    let height = 320;
+    let mut scene = Scene::new(width, height);
 
     scene.push_rect(
-        Rect::new(0.0, 0.0, 480.0, 320.0),
+        Rect::new(0.0, 0.0, width as f64, height as f64),
         tileink::Radius::ZERO,
         Color::from_rgb8(248, 249, 251),
         FillRule::NonZero,
@@ -59,12 +61,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         FillRule::NonZero,
     );
 
-    let scene = scene.scaled_to_fit(common::EXAMPLE_WIDTH, common::EXAMPLE_HEIGHT);
-    let mut renderer = CubeWgpuRenderer::new_default_device(
-        common::EXAMPLE_WIDTH,
-        common::EXAMPLE_HEIGHT,
-        Color::from_rgb8(255, 255, 255),
-    );
+    let mut renderer =
+        CubeWgpuRenderer::new_default_device(width, height, Color::from_rgb8(255, 255, 255));
     renderer.render(&scene);
 
     let out = common::cubecl_example_output("rect_stroke_widths");

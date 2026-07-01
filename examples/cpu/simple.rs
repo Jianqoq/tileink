@@ -8,10 +8,12 @@ use peniko::{
 use tileink::{CpuRenderer, FillRule, Scene};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut scene = Scene::new(360, 260);
+    let width = 360;
+    let height = 260;
+    let mut scene = Scene::new(width, height);
 
     scene.push_rect(
-        Rect::new(0.0, 0.0, 360.0, 260.0),
+        Rect::new(0.0, 0.0, width as f64, height as f64),
         tileink::Radius::ZERO,
         Color::from_rgb8(248, 249, 251),
         FillRule::NonZero,
@@ -47,12 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         0.1,
     );
 
-    let scene = scene.scaled_to_fit(common::EXAMPLE_WIDTH, common::EXAMPLE_HEIGHT);
-    let mut renderer = CpuRenderer::new(
-        common::EXAMPLE_WIDTH,
-        common::EXAMPLE_HEIGHT,
-        Color::from_rgb8(255, 255, 255),
-    );
+    let mut renderer = CpuRenderer::new(width, height, Color::from_rgb8(255, 255, 255));
     renderer.render(&scene);
 
     let out = common::example_output("simple");

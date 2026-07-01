@@ -7,13 +7,8 @@ use peniko::Color;
 use tileink::CubeWgpuRenderer;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let (scene, _, _) = candlestick_scene::candlestick_scene();
-    let scene = scene.scaled_to_fit(common::EXAMPLE_WIDTH, common::EXAMPLE_HEIGHT);
-    let mut renderer = CubeWgpuRenderer::new_default_device(
-        common::EXAMPLE_WIDTH,
-        common::EXAMPLE_HEIGHT,
-        Color::WHITE,
-    );
+    let (scene, width, height) = candlestick_scene::candlestick_scene();
+    let mut renderer = CubeWgpuRenderer::new_default_device(width, height, Color::WHITE);
     renderer.render(&scene);
 
     let image = renderer.image();

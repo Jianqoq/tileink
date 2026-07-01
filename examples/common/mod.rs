@@ -98,10 +98,8 @@ pub fn render_to_png(
     height: u32,
     clear: Color,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let _ = (width, height);
-    let scene = scene.clone().scaled_to_fit(EXAMPLE_WIDTH, EXAMPLE_HEIGHT);
-    let mut renderer = CpuRenderer::new(EXAMPLE_WIDTH, EXAMPLE_HEIGHT, clear);
-    renderer.render(&scene);
+    let mut renderer = CpuRenderer::new(width, height, clear);
+    renderer.render(scene);
     let out = example_output(name);
     save_example_image(renderer.image(), &out)?;
     println!("Wrote {}", out.display());
@@ -115,10 +113,8 @@ pub fn render_to_png_cubecl(
     height: u32,
     clear: Color,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let _ = (width, height);
-    let scene = scene.clone().scaled_to_fit(EXAMPLE_WIDTH, EXAMPLE_HEIGHT);
-    let mut renderer = CubeWgpuRenderer::new_default_device(EXAMPLE_WIDTH, EXAMPLE_HEIGHT, clear);
-    renderer.render(&scene);
+    let mut renderer = CubeWgpuRenderer::new_default_device(width, height, clear);
+    renderer.render(scene);
     let image = renderer.image();
     let out = cubecl_example_output(name);
     save_example_image(&image, &out)?;

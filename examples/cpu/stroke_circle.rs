@@ -27,9 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         0.1,
     );
 
-    let scene = scene.scaled_to_fit(common::EXAMPLE_WIDTH, common::EXAMPLE_HEIGHT);
-    let mut renderer =
-        CpuRenderer::new(common::EXAMPLE_WIDTH, common::EXAMPLE_HEIGHT, Color::WHITE);
+    let mut renderer = CpuRenderer::new(width, height, Color::WHITE);
     renderer.render(&scene);
 
     let out = common::example_output("stroke_circle");

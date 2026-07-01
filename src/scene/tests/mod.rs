@@ -28,4 +28,3 @@ mod compile;
 mod filters;
 mod paths;
 mod primitives;
-mod scale;
