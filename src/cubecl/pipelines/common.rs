@@ -9,6 +9,24 @@ use crate::cubecl::brush::{
 const TEXT_DARK_ON_LIGHT_COVERAGE_BOOST: f32 = 0.6;
 
 #[cube]
+pub(crate) fn packed_u8_at(words: &Array<u32>, ix: u32) -> u32 {
+    let word = words[(ix / 4) as usize];
+    let shift = (ix % 4) * 8;
+    (word >> shift) & 255
+}
+
+#[cube]
+pub(crate) fn store_packed_atomic_u8(words: &mut Array<Atomic<u32>>, ix: u32, value: u32) {
+    let shift = (ix % 4) * 8;
+    let mask = 255u32 << shift;
+    let word_ix = (ix / 4) as usize;
+    words[word_ix].fetch_and(u32::new(-1) - mask);
+    if value != 0 {
+        words[word_ix].fetch_or((value & 255) << shift);
+    }
+}
+
+#[cube]
 pub(crate) fn sample_brush(
     brush_index: u32,
     x: f32,

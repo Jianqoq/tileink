@@ -1,6 +1,7 @@
 use ::cubecl::prelude::*;
 
 use crate::cubecl::{
+    pipelines::common::{packed_u8_at, store_packed_atomic_u8},
     profile::profile_launch,
     renderer::{CoarseBuffers, ScanBuffers, SceneBuffers},
     types::{
@@ -311,7 +312,7 @@ fn coarse_count(
         let mut glyph_count = 0u32;
         while draw_ix < draw_end {
             let draw_i = draw_ix as usize;
-            let draw_tag = draw_tags[draw_i];
+            let draw_tag = packed_u8_at(draw_tags, draw_ix);
             if draw_glyph_run_ids[draw_i] != invalid {
                 if draw_tag == CUBE_DRAW_BRUSH
                     && draw_tile_hit(
@@ -583,7 +584,7 @@ fn coarse_emit(
     layer_stack_tags: &Array<u32>,
     layer_stack_draws: &Array<u32>,
     layer_stack_payloads: &Array<u32>,
-    ptcl_tags: &mut Array<u32>,
+    ptcl_tags: &mut Array<Atomic<u32>>,
     ptcl_backdrops: &mut Array<i32>,
     ptcl_fill_rules: &mut Array<u32>,
     ptcl_segment_starts: &mut Array<u32>,
@@ -693,7 +694,7 @@ fn coarse_emit(
 
         if draw_ix < draw_end {
             let draw_i = draw_ix as usize;
-            let draw_tag = draw_tags[draw_i];
+            let draw_tag = packed_u8_at(draw_tags, draw_ix);
             if draw_glyph_run_ids[draw_i] != invalid {
                 if draw_tag == CUBE_DRAW_BRUSH
                     && draw_tile_hit(
@@ -1063,7 +1064,7 @@ fn emit_active_stack_begins(
     backdrops: &Array<Atomic<i32>>,
     segment_starts: &Array<u32>,
     segment_ends: &Array<u32>,
-    ptcl_tags: &mut Array<u32>,
+    ptcl_tags: &mut Array<Atomic<u32>>,
     ptcl_backdrops: &mut Array<i32>,
     ptcl_fill_rules: &mut Array<u32>,
     ptcl_segment_starts: &mut Array<u32>,
@@ -1157,7 +1158,7 @@ fn emit_active_stack_ends(
     layer_stack_start: u32,
     layer_stack_end: u32,
     layer_stack_tags: &Array<u32>,
-    ptcl_tags: &mut Array<u32>,
+    ptcl_tags: &mut Array<Atomic<u32>>,
     ptcl_backdrops: &mut Array<i32>,
     ptcl_fill_rules: &mut Array<u32>,
     ptcl_segment_starts: &mut Array<u32>,
@@ -1222,7 +1223,7 @@ fn draw_backdrop_ix(
     let invalid = u32::new(-1);
     let draw_i = draw_ix as usize;
     let path_id = draw_path_ids[draw_i];
-    let draw_tag = draw_tags[draw_i];
+    let draw_tag = packed_u8_at(draw_tags, draw_ix);
     let mut result = invalid;
 
     if path_id != invalid
@@ -1424,7 +1425,7 @@ fn store_particle(
     segment_start: u32,
     segment_end: u32,
     color: u32,
-    ptcl_tags: &mut Array<u32>,
+    ptcl_tags: &mut Array<Atomic<u32>>,
     ptcl_backdrops: &mut Array<i32>,
     ptcl_fill_rules: &mut Array<u32>,
     ptcl_segment_starts: &mut Array<u32>,
@@ -1432,12 +1433,41 @@ fn store_particle(
     ptcl_colors: &mut Array<u32>,
 ) {
     if dst < capacity {
-        let i = dst as usize;
-        ptcl_tags[i] = tag;
-        ptcl_backdrops[i] = backdrop;
-        ptcl_fill_rules[i] = fill_rule;
-        ptcl_segment_starts[i] = segment_start;
-        ptcl_segment_ends[i] = segment_end;
-        ptcl_colors[i] = color;
+        store_packed_atomic_u8(ptcl_tags, dst, tag);
+        store_particle_payload(
+            dst,
+            backdrop,
+            fill_rule,
+            segment_start,
+            segment_end,
+            color,
+            ptcl_backdrops,
+            ptcl_fill_rules,
+            ptcl_segment_starts,
+            ptcl_segment_ends,
+            ptcl_colors,
+        );
     }
+}
+
+#[cube]
+fn store_particle_payload(
+    dst: u32,
+    backdrop: i32,
+    fill_rule: u32,
+    segment_start: u32,
+    segment_end: u32,
+    color: u32,
+    ptcl_backdrops: &mut Array<i32>,
+    ptcl_fill_rules: &mut Array<u32>,
+    ptcl_segment_starts: &mut Array<u32>,
+    ptcl_segment_ends: &mut Array<u32>,
+    ptcl_colors: &mut Array<u32>,
+) {
+    let i = dst as usize;
+    ptcl_backdrops[i] = backdrop;
+    ptcl_fill_rules[i] = fill_rule;
+    ptcl_segment_starts[i] = segment_start;
+    ptcl_segment_ends[i] = segment_end;
+    ptcl_colors[i] = color;
 }

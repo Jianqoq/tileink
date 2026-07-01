@@ -320,6 +320,31 @@ impl SceneUploadStaging {
     }
 }
 
+fn packed_u8_len(len: usize) -> usize {
+    len.div_ceil(4)
+}
+
+fn pack_mapped_u8s<T>(scratch: &mut Vec<u32>, items: &[T], mut map: impl FnMut(&T) -> u32) {
+    scratch.clear();
+    scratch.resize(packed_u8_len(items.len()), 0);
+    for (i, item) in items.iter().enumerate() {
+        let tag = map(item);
+        debug_assert!(tag <= u8::MAX as u32);
+        scratch[i / 4] |= (tag & 255) << ((i as u32 & 3) * 8);
+    }
+}
+
+fn upload_packed_u8<R: Runtime, T>(
+    client: &::cubecl::client::ComputeClient<R>,
+    buffer: &mut CubeBuffer<u32>,
+    scratch: &mut Vec<u32>,
+    items: &[T],
+    map: impl FnMut(&T) -> u32,
+) {
+    pack_mapped_u8s(scratch, items, map);
+    buffer.replace(client, scratch);
+}
+
 fn upload_mapped_u32<R: Runtime, T>(
     client: &::cubecl::client::ComputeClient<R>,
     buffer: &mut CubeBuffer<u32>,
@@ -753,7 +778,7 @@ impl SceneBuffers {
                 }
             },
         );
-        upload_mapped_u32(
+        upload_packed_u8(
             client,
             &mut self.draw_tags,
             &mut staging.u32s,
@@ -1150,8 +1175,8 @@ impl CoarseBuffers {
             .resize_uninit(client, lengths.coarse_chunk_count);
         self.glyph_chunk_offsets
             .resize_uninit(client, lengths.coarse_chunk_count);
-        self.ptcl_tags
-            .resize_uninit(client, lengths.coarse_ptcl_capacity);
+        let tag_words = packed_u8_len(lengths.coarse_ptcl_capacity);
+        self.ptcl_tags.resize_uninit(client, tag_words);
         self.ptcl_backdrops
             .resize_uninit(client, lengths.coarse_ptcl_capacity);
         self.ptcl_fill_rules
@@ -1171,8 +1196,16 @@ impl CoarseBuffers {
 mod tests {
     use peniko::{Color, kurbo::Point};
 
-    use super::{AtlasSignature, TextUpload};
+    use super::{AtlasSignature, TextUpload, pack_mapped_u8s};
     use crate::{Scene, TextContext, TextLayoutOptions, text::PreparedTextData};
+
+    #[test]
+    fn pack_mapped_u8s_stores_four_tags_per_word() {
+        let tags = [1, 2, 3, 4, 5];
+        let mut scratch = Vec::new();
+        pack_mapped_u8s(&mut scratch, &tags, |tag| *tag);
+        assert_eq!(scratch, vec![0x0403_0201, 0x0000_0005]);
+    }
 
     #[test]
     fn text_upload_marks_atlas_dirty_only_when_signature_changes() {

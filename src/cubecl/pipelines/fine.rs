@@ -4,7 +4,7 @@ use crate::cubecl::{
     brush::GpuBrushResources,
     buffer::CubeBuffer,
     pipelines::common::{
-        blend_premul_u8, combine_alpha, sample_brush, scale_premul_u8,
+        blend_premul_u8, combine_alpha, packed_u8_at, sample_brush, scale_premul_u8,
         src_over_mask_linear_auto_u8, src_over_premul_u8, src_over_subpixel_mask_linear_auto_u8,
         src_over_subpixel_mask_u8,
     },
@@ -250,7 +250,7 @@ fn fine_render(
 
     while ptcl_ix < range_end {
         let ptcl_i = ptcl_ix as usize;
-        let tag = ptcl_tags[ptcl_i];
+        let tag = packed_u8_at(ptcl_tags, ptcl_ix);
         if tag == CUBE_PTCL_END {
             ptcl_ix = range_end;
         } else {

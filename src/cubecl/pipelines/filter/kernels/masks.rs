@@ -518,7 +518,7 @@ fn filter_draw_backdrop_ix(
     let invalid = u32::new(-1);
     let draw_i = draw_ix as usize;
     let path_id = draw_path_ids[draw_i];
-    let draw_tag = draw_tags[draw_i];
+    let draw_tag = packed_u8_at(draw_tags, draw_ix);
     let mut result = invalid;
 
     let mut valid_draw = false;

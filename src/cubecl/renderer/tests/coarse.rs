@@ -1,5 +1,13 @@
 use super::*;
 
+fn assert_ptcl_tags(renderer: &WgpuRenderer, expected: &[u32]) {
+    let words = renderer.coarse.ptcl_tags.read(renderer.client());
+    let tags = (0..expected.len())
+        .map(|i| (words[i / 4] >> ((i % 4) * 8)) & 255)
+        .collect::<Vec<_>>();
+    assert_eq!(tags, expected);
+}
+
 #[test]
 fn coarse_wgpu_emits_sdf_particles_for_rects_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
@@ -48,15 +56,15 @@ fn coarse_wgpu_emits_sdf_particles_for_rects_when_enabled() {
         renderer.coarse.tile_ptcl_range_ends.read(renderer.client()),
         vec![2, 5]
     );
-    assert_eq!(
-        renderer.coarse.ptcl_tags.read(renderer.client()),
-        vec![
+    assert_ptcl_tags(
+        &renderer,
+        &[
             CUBE_PTCL_SDF,
             CUBE_PTCL_END,
             CUBE_PTCL_SDF,
             CUBE_PTCL_SDF,
-            CUBE_PTCL_END
-        ]
+            CUBE_PTCL_END,
+        ],
     );
     assert_eq!(
         renderer.coarse.ptcl_colors.read(renderer.client()),
@@ -125,10 +133,7 @@ fn coarse_wgpu_keeps_particle_order_across_workgroup_draw_chunks_when_enabled() 
         renderer.coarse.tile_ptcl_range_ends.read(renderer.client()),
         vec![draw_count as u32 + 1]
     );
-    assert_eq!(
-        renderer.coarse.ptcl_tags.read(renderer.client()),
-        expected_tags
-    );
+    assert_ptcl_tags(&renderer, &expected_tags);
     assert_eq!(
         renderer.coarse.ptcl_colors.read(renderer.client()),
         expected_colors
@@ -172,10 +177,7 @@ fn coarse_wgpu_keeps_segment_ranges_for_fill_particles_when_enabled() {
         renderer.coarse.tile_ptcl_range_ends.read(renderer.client()),
         vec![2]
     );
-    assert_eq!(
-        renderer.coarse.ptcl_tags.read(renderer.client()),
-        vec![CUBE_PTCL_FILL, CUBE_PTCL_END]
-    );
+    assert_ptcl_tags(&renderer, &[CUBE_PTCL_FILL, CUBE_PTCL_END]);
     assert_eq!(
         renderer.coarse.ptcl_segment_starts.read(renderer.client()),
         vec![2, 0]
@@ -215,10 +217,7 @@ fn coarse_wgpu_emits_clip_particles_when_enabled() {
     renderer.scan.tile_segment_range_ends.replace(&client, &[0]);
     run_default_coarse_stage(&mut renderer, &scene);
 
-    assert_eq!(
-        renderer.coarse.ptcl_tags.read(renderer.client()),
-        vec![CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_END, 0]
-    );
+    assert_ptcl_tags(&renderer, &[CUBE_PTCL_BEGIN_CLIP, CUBE_PTCL_END, 0]);
     assert_eq!(
         renderer.coarse.ptcl_backdrops.read(renderer.client()),
         vec![1, 0, 0]
@@ -266,14 +265,14 @@ fn coarse_wgpu_wraps_draw_batch_with_active_clip_stack_when_enabled() {
         layer_stack.end as u32,
     );
 
-    assert_eq!(
-        renderer.coarse.ptcl_tags.read(renderer.client()),
-        vec![
+    assert_ptcl_tags(
+        &renderer,
+        &[
             CUBE_PTCL_BEGIN_CLIP,
             CUBE_PTCL_SDF,
             CUBE_PTCL_END_CLIP,
-            CUBE_PTCL_END
-        ]
+            CUBE_PTCL_END,
+        ],
     );
     assert_eq!(
         renderer.coarse.ptcl_colors.read(renderer.client()),
@@ -315,14 +314,14 @@ fn coarse_wgpu_wraps_draw_batch_with_active_sdf_clip_stack_when_enabled() {
         layer_stack.end as u32,
     );
 
-    assert_eq!(
-        renderer.coarse.ptcl_tags.read(renderer.client()),
-        vec![
+    assert_ptcl_tags(
+        &renderer,
+        &[
             CUBE_PTCL_BEGIN_SDF_CLIP,
             CUBE_PTCL_SDF,
             CUBE_PTCL_END_CLIP,
-            CUBE_PTCL_END
-        ]
+            CUBE_PTCL_END,
+        ],
     );
     assert_eq!(
         renderer.coarse.ptcl_colors.read(renderer.client()),
@@ -386,16 +385,16 @@ fn coarse_wgpu_wraps_draw_batch_with_opacity_and_blend_stack_when_enabled() {
         layer_stack.end as u32,
     );
 
-    assert_eq!(
-        renderer.coarse.ptcl_tags.read(renderer.client()),
-        vec![
+    assert_ptcl_tags(
+        &renderer,
+        &[
             CUBE_PTCL_BEGIN_OPACITY,
             CUBE_PTCL_BEGIN_BLEND,
             CUBE_PTCL_SDF,
             CUBE_PTCL_END_BLEND,
             CUBE_PTCL_END_OPACITY,
-            CUBE_PTCL_END
-        ]
+            CUBE_PTCL_END,
+        ],
     );
     assert_eq!(
         renderer.coarse.ptcl_colors.read(renderer.client()),

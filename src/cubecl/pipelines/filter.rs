@@ -5,8 +5,8 @@ use crate::{
         brush::GpuBrushResources,
         buffer::CubeBuffer,
         pipelines::common::{
-            blend_premul_u8, combine_alpha, pack_premul_rgba8, sample_brush, scale_premul_u8,
-            src_over_premul_u8,
+            blend_premul_u8, combine_alpha, pack_premul_rgba8, packed_u8_at, sample_brush,
+            scale_premul_u8, src_over_premul_u8,
         },
         profile::profile_launch,
         renderer::{ScanBuffers, SceneBuffers},
