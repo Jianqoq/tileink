@@ -4,8 +4,13 @@ pub type TileBuffer = [u32; BLOCK_SIZE as usize];
 
 pub(crate) const MASK_OPAQUE: u8 = 255;
 // Linear-light compositing makes dark glyph edges on light backgrounds look too
-// pale at small sizes; this remaps glyph coverage only for that contrast case.
-const TEXT_DARK_ON_LIGHT_COVERAGE_BOOST: f32 = 0.75;
+// pale at small sizes. The curve is intentionally weaker on pure white than on
+// nearby light grays because DirectWrite reference output showed the previous
+// monotonic boost over-weighted white backgrounds while still under-weighting
+// light-gray ones.
+const TEXT_DARK_ON_LIGHT_COVERAGE_STRENGTH: f32 = 0.75;
+const TEXT_DARK_ON_LIGHT_LUMA_BASE: f32 = 1.45;
+const TEXT_DARK_ON_LIGHT_LUMA_TAPER: f32 = 0.70;
 
 #[inline]
 pub(crate) fn coverage_f32_to_u8(v: f32) -> u8 {
@@ -208,7 +213,10 @@ fn auto_text_coverage(dst: u32, src: u32, coverage: u8) -> u8 {
     }
 
     let contrast = (dst_luma - src_luma).clamp(0.0, 1.0);
-    let exponent = 1.0 - TEXT_DARK_ON_LIGHT_COVERAGE_BOOST * contrast * dst_luma.clamp(0.0, 1.0);
+    let curve = (contrast
+        * (TEXT_DARK_ON_LIGHT_LUMA_BASE - TEXT_DARK_ON_LIGHT_LUMA_TAPER * dst_luma))
+        .clamp(0.0, 1.0);
+    let exponent = 1.0 - TEXT_DARK_ON_LIGHT_COVERAGE_STRENGTH * curve;
     let compensated = (coverage as f32 * (1.0 / 255.0)).powf(exponent);
     (compensated * 255.0 + 0.5) as u8
 }
@@ -354,7 +362,23 @@ mod tests {
 
         assert_eq!(
             unpack_rgba8(src_over_mask_linear_auto_u8(dst, src, 128)),
-            [110, 110, 110, 255]
+            [139, 139, 139, 255]
+        );
+    }
+
+    #[test]
+    fn auto_linear_mask_compensates_dark_text_more_on_light_gray_than_white_curve() {
+        let white = rgba8_pack([255, 255, 255, 255]);
+        let light_gray = rgba8_pack([224, 224, 224, 255]);
+        let src = rgba8_pack([0, 0, 0, 255]);
+
+        assert_eq!(
+            unpack_rgba8(src_over_mask_linear_auto_u8(light_gray, src, 128)),
+            [127, 127, 127, 255]
+        );
+        assert!(
+            (src_over_mask_linear_auto_u8(light_gray, src, 128) & 0xff)
+                < (src_over_mask_linear_auto_u8(white, src, 128) & 0xff)
         );
     }
 
@@ -381,7 +405,7 @@ mod tests {
                 [128, 0, 255],
                 255
             )),
-            [110, 255, 0, 255]
+            [139, 255, 0, 255]
         );
     }
 }

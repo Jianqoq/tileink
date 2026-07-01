@@ -7,8 +7,13 @@ use crate::cubecl::brush::{
 };
 
 // Linear-light compositing makes dark glyph edges on light backgrounds look too
-// pale at small sizes; this remaps glyph coverage only for that contrast case.
-const TEXT_DARK_ON_LIGHT_COVERAGE_BOOST: f32 = 0.75;
+// pale at small sizes. The curve is intentionally weaker on pure white than on
+// nearby light grays because DirectWrite reference output showed the previous
+// monotonic boost over-weighted white backgrounds while still under-weighting
+// light-gray ones.
+const TEXT_DARK_ON_LIGHT_COVERAGE_STRENGTH: f32 = 0.75;
+const TEXT_DARK_ON_LIGHT_LUMA_BASE: f32 = 1.45;
+const TEXT_DARK_ON_LIGHT_LUMA_TAPER: f32 = 0.70;
 
 pub(crate) const DRAW_FLAG_TAG_MASK: u32 = 0b0000_0111;
 pub(crate) const DRAW_FLAG_FILL_RULE_EVEN_ODD: u32 = 1 << 3;
@@ -619,8 +624,11 @@ fn auto_text_coverage(dst: u32, src: u32, coverage: u32) -> u32 {
         let dst_luma = linear_luminance_from_srgb8(dst);
         if src_luma < dst_luma {
             let contrast = (dst_luma - src_luma).clamp(0.0, 1.0);
-            let exponent = 1.0
-                - f32::new(TEXT_DARK_ON_LIGHT_COVERAGE_BOOST) * contrast * dst_luma.clamp(0.0, 1.0);
+            let curve = (contrast
+                * (f32::new(TEXT_DARK_ON_LIGHT_LUMA_BASE)
+                    - f32::new(TEXT_DARK_ON_LIGHT_LUMA_TAPER) * dst_luma))
+                .clamp(0.0, 1.0);
+            let exponent = 1.0 - f32::new(TEXT_DARK_ON_LIGHT_COVERAGE_STRENGTH) * curve;
             out = ((coverage as f32 * (1.0 / 255.0)).powf(exponent) * 255.0 + 0.5) as u32;
         }
     }

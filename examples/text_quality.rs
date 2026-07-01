@@ -5,6 +5,7 @@
 //! raster quality issues from normal layout overhang and baseline differences.
 
 use std::{
+    collections::BTreeMap,
     env, fs,
     path::{Path, PathBuf},
 };
@@ -272,6 +273,50 @@ struct DiffStats {
     reference_bbox: Option<Bounds>,
 }
 
+#[derive(Clone, Debug)]
+struct MetricRow {
+    backend: String,
+    font_size: String,
+    subpixel: String,
+    fg: String,
+    bg: String,
+    stats: DiffStats,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+struct SummaryKey {
+    backend: String,
+    font_size: String,
+    subpixel: String,
+    fg: String,
+    bg: String,
+}
+
+#[derive(Clone, Debug)]
+struct SummaryRow {
+    key: SummaryKey,
+    cases: usize,
+    avg_ink_ratio: f64,
+    avg_abs_ink_error: f64,
+    avg_mae_luma: f64,
+    avg_rmse_luma: f64,
+    avg_mae_rgb: f64,
+    max_rgb: u8,
+    avg_fringe_delta: f64,
+}
+
+#[derive(Default)]
+struct SummaryAccum {
+    cases: usize,
+    ink_ratio: f64,
+    abs_ink_error: f64,
+    mae_luma: f64,
+    rmse_luma: f64,
+    mae_rgb: f64,
+    max_rgb: u8,
+    fringe_delta: f64,
+}
+
 #[derive(Debug)]
 struct Options {
     backend: Backend,
@@ -301,6 +346,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut csv = String::from(
         "case,backend,font_size,subpixel,fg,bg,origin,tileink_ink,reference_ink,ink_ratio,mae_luma,rmse_luma,mae_rgb,max_rgb,fringe_delta,tileink_bbox,reference_bbox\n",
     );
+    let mut metrics = Vec::new();
     let backend_count = match options.backend {
         Backend::Both => 2,
         Backend::Cpu | Backend::Cubecl => 1,
@@ -309,6 +355,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut output_state = OutputState {
         diff_dir: &diff_dir,
         csv: &mut csv,
+        metrics: &mut metrics,
         contact_sheet: &mut contact_sheet,
     };
 
@@ -347,6 +394,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         options.out_dir.join("metrics.csv"),
         output_state.csv.as_str(),
     )?;
+    let summary = summarize_metrics(output_state.metrics);
+    fs::write(options.out_dir.join("summary.csv"), summary_csv(&summary))?;
     output_state
         .contact_sheet
         .save(&options.out_dir.join("contact_sheet.png"))?;
@@ -356,17 +405,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         options.out_dir.display()
     );
     println!("Metrics: {}", options.out_dir.join("metrics.csv").display());
+    println!("Summary: {}", options.out_dir.join("summary.csv").display());
     println!("Reference: {}", reference_dir.display());
     println!(
         "Contact sheet: {}",
         options.out_dir.join("contact_sheet.png").display()
     );
+    print_summary(&summary);
     Ok(())
 }
 
 struct OutputState<'a> {
     diff_dir: &'a Path,
     csv: &'a mut String,
+    metrics: &'a mut Vec<MetricRow>,
     contact_sheet: &'a mut ContactSheet,
 }
 
@@ -389,8 +441,105 @@ impl OutputState<'_> {
         diff.image
             .save(self.diff_dir.join(format!("{}_{}.png", backend, case.name)))?;
         append_metrics_csv(self.csv, case, backend, &diff.stats);
+        self.metrics.push(MetricRow {
+            backend: backend.to_string(),
+            font_size: format!("{:.1}", case.font_size),
+            subpixel: mode_name(case.subpixel).to_string(),
+            fg: color_name(case.foreground),
+            bg: color_name(case.background),
+            stats: diff.stats,
+        });
         self.contact_sheet.push(tileink, reference, &diff.image);
         Ok(())
+    }
+}
+
+fn summarize_metrics(rows: &[MetricRow]) -> Vec<SummaryRow> {
+    let mut groups = BTreeMap::<SummaryKey, SummaryAccum>::new();
+    for row in rows {
+        let key = SummaryKey {
+            backend: row.backend.clone(),
+            font_size: row.font_size.clone(),
+            subpixel: row.subpixel.clone(),
+            fg: row.fg.clone(),
+            bg: row.bg.clone(),
+        };
+        let accum = groups.entry(key).or_default();
+        accum.cases += 1;
+        accum.ink_ratio += row.stats.ink_ratio;
+        accum.abs_ink_error += (row.stats.ink_ratio - 1.0).abs();
+        accum.mae_luma += row.stats.mae_luma;
+        accum.rmse_luma += row.stats.rmse_luma;
+        accum.mae_rgb += row.stats.mae_rgb;
+        accum.max_rgb = accum.max_rgb.max(row.stats.max_rgb);
+        accum.fringe_delta += row.stats.fringe_delta;
+    }
+
+    groups
+        .into_iter()
+        .map(|(key, accum)| {
+            let cases = accum.cases as f64;
+            SummaryRow {
+                key,
+                cases: accum.cases,
+                avg_ink_ratio: accum.ink_ratio / cases,
+                avg_abs_ink_error: accum.abs_ink_error / cases,
+                avg_mae_luma: accum.mae_luma / cases,
+                avg_rmse_luma: accum.rmse_luma / cases,
+                avg_mae_rgb: accum.mae_rgb / cases,
+                max_rgb: accum.max_rgb,
+                avg_fringe_delta: accum.fringe_delta / cases,
+            }
+        })
+        .collect()
+}
+
+fn summary_csv(rows: &[SummaryRow]) -> String {
+    let mut csv = String::from(
+        "backend,font_size,subpixel,fg,bg,cases,avg_ink_ratio,avg_abs_ink_error,avg_mae_luma,avg_rmse_luma,avg_mae_rgb,max_rgb,avg_fringe_delta\n",
+    );
+    for row in rows {
+        csv.push_str(&format!(
+            "{},{},{},{},{},{},{:.6},{:.6},{:.8},{:.8},{:.8},{},{:.8}\n",
+            row.key.backend.as_str(),
+            row.key.font_size.as_str(),
+            row.key.subpixel.as_str(),
+            row.key.fg.as_str(),
+            row.key.bg.as_str(),
+            row.cases,
+            row.avg_ink_ratio,
+            row.avg_abs_ink_error,
+            row.avg_mae_luma,
+            row.avg_rmse_luma,
+            row.avg_mae_rgb,
+            row.max_rgb,
+            row.avg_fringe_delta,
+        ));
+    }
+    csv
+}
+
+fn print_summary(rows: &[SummaryRow]) {
+    let mut worst = rows.to_vec();
+    worst.sort_by(|a, b| {
+        b.avg_mae_luma
+            .partial_cmp(&a.avg_mae_luma)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    println!("Worst summary groups by mae_luma:");
+    for row in worst.iter().take(8) {
+        println!(
+            "  {backend:>5} {size:>4}px {subpixel:>4} {fg} on {bg}: ink={ink:.3} mae={mae:.5} rgb={rgb:.5} max={max}",
+            backend = row.key.backend.as_str(),
+            size = row.key.font_size.as_str(),
+            subpixel = row.key.subpixel.as_str(),
+            fg = row.key.fg.as_str(),
+            bg = row.key.bg.as_str(),
+            ink = row.avg_ink_ratio,
+            mae = row.avg_mae_luma,
+            rgb = row.avg_mae_rgb,
+            max = row.max_rgb,
+        );
     }
 }
 
@@ -818,4 +967,60 @@ fn origin_name(x: f32, y: f32) -> String {
 fn color_name(color: Color) -> String {
     let [r, g, b, a] = color_to_rgba8(color);
     format!("#{r:02x}{g:02x}{b:02x}{a:02x}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn metric_row(bg: &str, ink_ratio: f64, mae_luma: f64, max_rgb: u8) -> MetricRow {
+        MetricRow {
+            backend: "cpu".to_string(),
+            font_size: "12.0".to_string(),
+            subpixel: "rgb".to_string(),
+            fg: "#000000ff".to_string(),
+            bg: bg.to_string(),
+            stats: DiffStats {
+                ink_ratio,
+                mae_luma,
+                rmse_luma: mae_luma * 2.0,
+                mae_rgb: mae_luma * 0.5,
+                max_rgb,
+                fringe_delta: -0.1,
+                ..DiffStats::default()
+            },
+        }
+    }
+
+    #[test]
+    fn summarize_metrics_groups_and_averages_rows() {
+        let rows = [
+            metric_row("#ffffffff", 1.2, 0.01, 100),
+            metric_row("#ffffffff", 0.8, 0.03, 180),
+            metric_row("#e0e0e0ff", 0.9, 0.02, 90),
+        ];
+
+        let summary = summarize_metrics(&rows);
+        assert_eq!(summary.len(), 2);
+        let white = summary
+            .iter()
+            .find(|row| row.key.bg == "#ffffffff")
+            .expect("white summary row");
+        assert_eq!(white.cases, 2);
+        assert_eq!(white.avg_ink_ratio, 1.0);
+        assert!((white.avg_abs_ink_error - 0.2).abs() < f64::EPSILON);
+        assert!((white.avg_mae_luma - 0.02).abs() < f64::EPSILON);
+        assert!((white.avg_rmse_luma - 0.04).abs() < f64::EPSILON);
+        assert!((white.avg_mae_rgb - 0.01).abs() < f64::EPSILON);
+        assert_eq!(white.max_rgb, 180);
+    }
+
+    #[test]
+    fn summary_csv_uses_reference_neutral_metric_names() {
+        let summary = summarize_metrics(&[metric_row("#ffffffff", 1.0, 0.01, 100)]);
+        let csv = summary_csv(&summary);
+
+        assert!(csv.starts_with("backend,font_size,subpixel,fg,bg,cases,avg_ink_ratio"));
+        assert!(csv.contains("avg_abs_ink_error"));
+    }
 }
