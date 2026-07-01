@@ -520,13 +520,9 @@ pub(crate) struct SceneGlyph {
 }
 
 impl SceneGlyph {
-    pub(crate) fn translated(self, dx: i32, dy: i32) -> Self {
-        let (cache_key, x, y) = translated_cache_key(
-            self.cache_key,
-            self.x,
-            self.y,
-            Point::new(dx as f64, dy as f64),
-        );
+    pub(crate) fn translated(self, dx: f64, dy: f64) -> Self {
+        let (cache_key, x, y) =
+            translated_cache_key(self.cache_key, self.x, self.y, Point::new(dx, dy));
         Self { cache_key, x, y }
     }
 }

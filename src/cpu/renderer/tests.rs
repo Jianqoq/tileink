@@ -1,12 +1,12 @@
 use peniko::{
-    Color, Compose, Mix,
+    Color, Compose, Gradient, Mix,
     kurbo::{Affine, Circle, Point, Rect, RoundedRect, Shape, Stroke},
 };
 
 use super::Renderer;
 use crate::{
-    CandleStick, FillRule, Radius, RectLiquidGlass, RectShadowOptions, Scene, SdfArc, SdfLine,
-    SdfLineCap, StrokeWidths, TextContext, TextLayoutOptions,
+    Brush, CandleStick, FillRule, Radius, RectLiquidGlass, RectShadowOptions, Scene, SdfArc,
+    SdfLine, SdfLineCap, StrokeWidths, TextContext, TextLayoutOptions,
     shared::layer::{
         filter::Filter,
         mask::{Mask, MaskKind},
@@ -151,6 +151,105 @@ fn plain_rect_right_edge_keeps_inside_filled() {
 
     assert_eq!(renderer.image().rgba8_at(279, 60), [37, 99, 235, 255]);
     assert_eq!(renderer.image().rgba8_at(280, 60), [255, 255, 255, 255]);
+}
+
+#[test]
+fn append_places_path_scene_at_position() {
+    let mut child = Scene::new(16, 16);
+    child.push_path(
+        Rect::new(0.0, 0.0, 12.0, 12.0).to_path(0.0),
+        Color::from_rgb8(255, 0, 0),
+        Affine::IDENTITY,
+        FillRule::NonZero,
+        0.0,
+    );
+
+    let mut scene = Scene::new(40, 32);
+    scene.append(child, (17.0, 5.0));
+
+    let mut renderer = Renderer::new(40, 32, Color::WHITE);
+    renderer.render(&scene);
+
+    assert_eq!(renderer.image().rgba8_at(16, 5), [255, 255, 255, 255]);
+    assert_eq!(renderer.image().rgba8_at(17, 5), [255, 0, 0, 255]);
+    assert_eq!(renderer.image().rgba8_at(28, 16), [255, 0, 0, 255]);
+    assert_eq!(renderer.image().rgba8_at(29, 16), [255, 255, 255, 255]);
+}
+
+#[test]
+fn append_does_not_clip_to_child_scene_canvas() {
+    let mut child = Scene::new(16, 16);
+    child.push_rect(
+        Rect::new(8.0, 8.0, 24.0, 24.0),
+        Radius::ZERO,
+        Color::from_rgb8(0, 0, 255),
+        FillRule::NonZero,
+    );
+
+    let mut scene = Scene::new(40, 40);
+    scene.append(child, (10.0, 10.0));
+
+    let mut renderer = Renderer::new(40, 40, Color::WHITE);
+    renderer.render(&scene);
+
+    assert_eq!(renderer.image().rgba8_at(17, 18), [255, 255, 255, 255]);
+    assert_eq!(renderer.image().rgba8_at(18, 18), [0, 0, 255, 255]);
+    assert_eq!(renderer.image().rgba8_at(33, 33), [0, 0, 255, 255]);
+    assert_eq!(renderer.image().rgba8_at(34, 33), [255, 255, 255, 255]);
+}
+
+#[test]
+fn append_inside_open_layer_stays_inside_that_layer() {
+    let mut child = Scene::new(16, 16);
+    child.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 16.0),
+        Radius::ZERO,
+        Color::from_rgb8(255, 0, 0),
+        FillRule::NonZero,
+    );
+
+    let mut scene = Scene::new(40, 32);
+    scene.push_clip_layer(
+        Rect::new(0.0, 0.0, 20.0, 32.0).to_path(0.0),
+        Affine::IDENTITY,
+        FillRule::NonZero,
+        0.0,
+    );
+    scene.append(child, (10.0, 8.0));
+    scene.pop_layer();
+
+    let mut renderer = Renderer::new(40, 32, Color::WHITE);
+    renderer.render(&scene);
+
+    assert_eq!(renderer.image().rgba8_at(19, 10), [255, 0, 0, 255]);
+    assert_eq!(renderer.image().rgba8_at(20, 10), [255, 255, 255, 255]);
+}
+
+#[test]
+fn append_moves_linear_gradient_with_child_scene() {
+    let gradient = Gradient::new_linear((0.0, 0.0), (16.0, 0.0))
+        .with_stops([Color::from_rgb8(255, 0, 0), Color::from_rgb8(0, 0, 255)]);
+    let mut child = Scene::new(16, 4);
+    child.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 4.0),
+        Radius::ZERO,
+        Brush::from_gradient(&gradient),
+        FillRule::NonZero,
+    );
+
+    let mut scene = Scene::new(40, 4);
+    scene.append(child, (20.0, 0.0));
+
+    let mut renderer = Renderer::new(40, 4, Color::WHITE);
+    renderer.render(&scene);
+
+    let left = renderer.image().rgba8_at(21, 2);
+    let right = renderer.image().rgba8_at(35, 2);
+    assert!(left[0] > left[2], "left should stay red-biased: {left:?}");
+    assert!(
+        right[2] > right[0],
+        "right should stay blue-biased: {right:?}"
+    );
 }
 
 #[test]

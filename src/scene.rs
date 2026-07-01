@@ -17,7 +17,11 @@ use crate::shared::{
     },
     fill::FillRule,
     layer::{
-        Layer, LayerKind, blend::Blend, filter::Filter, mask::Mask, opacity::Opacity,
+        Layer, LayerKind,
+        blend::Blend,
+        filter::{Filter, FilterPrimitive, FilterPrimitiveKind, LightSource},
+        mask::Mask,
+        opacity::Opacity,
         region::Region,
     },
     line::Line,
@@ -70,8 +74,281 @@ struct PathPushOptions {
 
 #[derive(Clone, Copy)]
 enum SceneAppendMode {
-    MergeRoot,
+    MergeCurrent,
     AppendAsCommandList,
+}
+
+#[derive(Clone, Copy)]
+struct SceneOffset {
+    dx: f64,
+    dy: f64,
+}
+
+impl SceneOffset {
+    fn new(pos: Point) -> Self {
+        assert!(
+            pos.x.is_finite() && pos.y.is_finite(),
+            "scene append position must be finite"
+        );
+        Self {
+            dx: pos.x,
+            dy: pos.y,
+        }
+    }
+
+    fn is_zero(self) -> bool {
+        self.dx == 0.0 && self.dy == 0.0
+    }
+
+    fn line(self, line: &mut Line) {
+        let dx = self.dx as f32;
+        let dy = self.dy as f32;
+        line.p0[0] += dx;
+        line.p0[1] += dy;
+        line.p1[0] += dx;
+        line.p1[1] += dy;
+    }
+
+    fn pixel_bounds(self, bounds: PixelBounds) -> PixelBounds {
+        PixelBounds {
+            x0: (bounds.x0 as f64 + self.dx).floor() as i32,
+            y0: (bounds.y0 as f64 + self.dy).floor() as i32,
+            x1: (bounds.x1 as f64 + self.dx).ceil() as i32,
+            y1: (bounds.y1 as f64 + self.dy).ceil() as i32,
+        }
+    }
+
+    fn bounds(self, bounds: Bounds) -> Bounds {
+        Bounds::new(
+            (bounds.x0 as f64 + self.dx).floor() as i32,
+            (bounds.y0 as f64 + self.dy).floor() as i32,
+            (bounds.x1 as f64 + self.dx).ceil() as i32,
+            (bounds.y1 as f64 + self.dy).ceil() as i32,
+        )
+    }
+
+    fn rect(self, rect: Rect) -> Rect {
+        Rect::new(
+            rect.x0 + self.dx,
+            rect.y0 + self.dy,
+            rect.x1 + self.dx,
+            rect.y1 + self.dy,
+        )
+    }
+
+    fn transform(self, transform: Affine) -> Affine {
+        Affine::translate((self.dx, self.dy)) * transform
+    }
+
+    fn sdf(self, sdf: Sdf) -> Sdf {
+        // SDF::translated subtracts its arguments for offscreen local-space
+        // conversion. Appending moves local child geometry into parent space.
+        sdf.translated(-(self.dx as f32), -(self.dy as f32))
+    }
+
+    fn sdf_shadow(self, sdf_shadow: SdfShadow) -> SdfShadow {
+        sdf_shadow.translated(-(self.dx as f32), -(self.dy as f32))
+    }
+
+    fn brush(self, brush: Brush) -> Brush {
+        let dx = self.dx as f32;
+        let dy = self.dy as f32;
+        match brush {
+            Brush::Solid(_) => brush,
+            Brush::Linear(mut gradient) => {
+                gradient.transform = self.brush_transform(gradient.transform);
+                Brush::Linear(gradient)
+            }
+            Brush::Radial(mut gradient) => {
+                gradient.transform = self.brush_transform(gradient.transform);
+                Brush::Radial(gradient)
+            }
+            Brush::Sweep(mut gradient) => {
+                gradient.center[0] += dx;
+                gradient.center[1] += dy;
+                Brush::Sweep(gradient)
+            }
+            Brush::FourCorner(mut gradient) => {
+                gradient.bounds[0] += dx;
+                gradient.bounds[1] += dy;
+                gradient.bounds[2] += dx;
+                gradient.bounds[3] += dy;
+                Brush::FourCorner(gradient)
+            }
+            Brush::Pattern(mut pattern) => {
+                pattern.transform = self.brush_transform(pattern.transform);
+                Brush::Pattern(pattern)
+            }
+        }
+    }
+
+    fn brush_transform(self, transform: [f32; 6]) -> [f32; 6] {
+        let [a, b, c, d, e, f] = transform;
+        let dx = self.dx as f32;
+        let dy = self.dy as f32;
+        [a, b, c, d, e - a * dx - c * dy, f - b * dx - d * dy]
+    }
+
+    fn layer(self, layer: Layer) -> Layer {
+        match layer {
+            Layer::Clip | Layer::Isolate | Layer::Opacity(_) | Layer::Blend(_) => layer,
+            Layer::ClipSdf { sdf, bounds } => Layer::ClipSdf {
+                sdf: self.sdf(sdf),
+                bounds: self.bounds(bounds),
+            },
+            Layer::Filter {
+                filter,
+                sample_region,
+            } => Layer::Filter {
+                filter: self.filter(filter),
+                sample_region: self.region(sample_region),
+            },
+            Layer::Backdrop {
+                filter,
+                sample_region,
+            } => Layer::Backdrop {
+                filter: self.filter(filter),
+                sample_region: self.region(sample_region),
+            },
+        }
+    }
+
+    fn mask(self, mask: Mask) -> Mask {
+        Mask {
+            region: self.region(mask.region),
+            kind: mask.kind,
+        }
+    }
+
+    fn filter(self, filter: Filter) -> Filter {
+        match filter {
+            Filter::Chain {
+                filters,
+                fixed_region,
+            } => Filter::Chain {
+                filters: filters
+                    .into_iter()
+                    .map(|filter| self.filter(filter))
+                    .collect(),
+                fixed_region,
+            },
+            Filter::Graph {
+                primitives,
+                fixed_region,
+            } => Filter::Graph {
+                primitives: primitives
+                    .into_iter()
+                    .map(|primitive| FilterPrimitive {
+                        input: primitive.input,
+                        input2: primitive.input2,
+                        region: self.bounds(primitive.region),
+                        kind: self.primitive_kind(primitive.kind),
+                    })
+                    .collect(),
+                fixed_region,
+            },
+            Filter::Flood { brush } => Filter::Flood {
+                brush: self.brush(brush),
+            },
+            Filter::DropShadow {
+                offset_x,
+                offset_y,
+                std_dev,
+                brush,
+            } => Filter::DropShadow {
+                offset_x,
+                offset_y,
+                std_dev,
+                brush: self.brush(brush),
+            },
+            Filter::DiffuseLighting(mut lighting) => {
+                lighting.light_source = self.light_source(lighting.light_source);
+                Filter::DiffuseLighting(lighting)
+            }
+            Filter::SpecularLighting(mut lighting) => {
+                lighting.light_source = self.light_source(lighting.light_source);
+                Filter::SpecularLighting(lighting)
+            }
+            _ => filter,
+        }
+    }
+
+    fn light_source(self, source: LightSource) -> LightSource {
+        let dx = self.dx as f32;
+        let dy = self.dy as f32;
+        match source {
+            LightSource::Distant { .. } => source,
+            LightSource::Point { x, y, z } => LightSource::Point {
+                x: x + dx,
+                y: y + dy,
+                z,
+            },
+            LightSource::Spot {
+                x,
+                y,
+                z,
+                points_at_x,
+                points_at_y,
+                points_at_z,
+                specular_exponent,
+                limiting_cone_angle,
+            } => LightSource::Spot {
+                x: x + dx,
+                y: y + dy,
+                z,
+                points_at_x: points_at_x + dx,
+                points_at_y: points_at_y + dy,
+                points_at_z,
+                specular_exponent,
+                limiting_cone_angle,
+            },
+        }
+    }
+
+    fn primitive_kind(self, kind: FilterPrimitiveKind) -> FilterPrimitiveKind {
+        match kind {
+            FilterPrimitiveKind::Filter(filter) => {
+                FilterPrimitiveKind::Filter(Box::new(self.filter(*filter)))
+            }
+            FilterPrimitiveKind::Image { brush } => FilterPrimitiveKind::Image {
+                brush: self.brush(brush),
+            },
+            FilterPrimitiveKind::Tile { source_region } => FilterPrimitiveKind::Tile {
+                source_region: self.bounds(source_region),
+            },
+            FilterPrimitiveKind::Turbulence(mut turbulence) => {
+                turbulence.transform_x += self.dx as f32;
+                turbulence.transform_y += self.dy as f32;
+                turbulence.tile_x += self.dx as f32;
+                turbulence.tile_y += self.dy as f32;
+                FilterPrimitiveKind::Turbulence(turbulence)
+            }
+            _ => kind,
+        }
+    }
+
+    fn region(self, region: Region) -> Region {
+        match region {
+            Region::Rect { rect, radius } => Region::rect(self.rect(rect), radius),
+            Region::Path {
+                path,
+                transform,
+                tolerance,
+            } => Region::path(path, self.transform(transform), tolerance),
+        }
+    }
+
+    fn command(self, command: &mut Command) {
+        match command {
+            Command::Draw(_) => {}
+            Command::Layer { layer, .. } => {
+                *layer = self.layer(layer.clone());
+            }
+            Command::MaskLayer { layer, .. } => {
+                *layer = self.mask(layer.clone());
+            }
+        }
+    }
 }
 
 impl Scene {
@@ -149,42 +426,51 @@ impl Scene {
         self.layer_stack.push(LayerKind::Mask);
     }
 
-    pub fn merge(&mut self, mut other: Scene) {
+    /// Appends `other` with its local canvas origin placed at `pos`.
+    ///
+    /// Append translates the child scene's geometry, brushes, and layer/filter
+    /// regions into parent coordinates, then inserts its root commands into the
+    /// current command list. It deliberately does not add a child-canvas clip;
+    /// callers that need clipping can open a clip layer around the append.
+    pub fn append(&mut self, mut other: Scene, pos: impl Into<Point>) {
         self.ensure_command_root();
         other.ensure_command_root();
-        assert!(
-            self.width == other.width && self.height == other.height,
-            "scene merge requires matching dimensions"
-        );
-        assert!(
-            self.command_stack.len() == 1 && self.layer_stack.is_empty(),
-            "cannot merge into a scene with unclosed layers"
-        );
-        assert!(
-            other.command_stack.len() == 1 && other.layer_stack.is_empty(),
-            "cannot merge a scene with unclosed layers"
-        );
-
-        self.append_scene(other, SceneAppendMode::MergeRoot);
-    }
-
-    fn append_scene(&mut self, mut other: Scene, mode: SceneAppendMode) -> Option<CommandListId> {
-        self.ensure_command_root();
-        other.ensure_command_root();
-        assert!(
-            self.width == other.width && self.height == other.height,
-            "scene append requires matching dimensions"
-        );
         assert!(
             other.command_stack.len() == 1 && other.layer_stack.is_empty(),
             "cannot append a scene with unclosed layers"
         );
 
+        let offset = SceneOffset::new(pos.into());
+        self.append_scene_at(other, SceneAppendMode::MergeCurrent, offset);
+    }
+
+    fn append_scene_at(
+        &mut self,
+        mut other: Scene,
+        mode: SceneAppendMode,
+        offset: SceneOffset,
+    ) -> Option<CommandListId> {
+        self.ensure_command_root();
+        other.ensure_command_root();
+        assert!(
+            other.command_stack.len() == 1 && other.layer_stack.is_empty(),
+            "cannot append a scene with unclosed layers"
+        );
+
+        other.translate_for_append(offset, self.width, self.height);
+        self.append_scene_unchecked(other, mode)
+    }
+
+    fn append_scene_unchecked(
+        &mut self,
+        mut other: Scene,
+        mode: SceneAppendMode,
+    ) -> Option<CommandListId> {
         let draw_offset = self.append_scene_data(&mut other);
         let command_list_offset = self.command_lists.len();
         let root_commands = other.root_commands;
         match mode {
-            SceneAppendMode::MergeRoot => {
+            SceneAppendMode::MergeCurrent => {
                 let child_list_offset = command_list_offset.saturating_sub(1);
                 let mut remapped_root_commands =
                     Vec::with_capacity(other.command_lists[root_commands].commands.len());
@@ -204,7 +490,8 @@ impl Scene {
                     self.command_lists.push(list);
                 }
 
-                self.command_lists[self.root_commands]
+                let target_commands = self.current_command_list_id();
+                self.command_lists[target_commands]
                     .commands
                     .extend(remapped_root_commands);
                 None
@@ -217,6 +504,162 @@ impl Scene {
                 Some(command_list_offset + root_commands)
             }
         }
+    }
+
+    fn translate_for_append(&mut self, offset: SceneOffset, target_width: u32, target_height: u32) {
+        if !offset.is_zero() {
+            for line in &mut self.lines {
+                offset.line(line);
+            }
+            for draw in &mut self.draw_records {
+                Self::translate_draw_for_append(draw, offset);
+            }
+            for glyph in &mut self.text_glyphs {
+                *glyph = glyph.translated(offset.dx, offset.dy);
+            }
+            for list in &mut self.command_lists {
+                for command in &mut list.commands {
+                    offset.command(command);
+                }
+            }
+        }
+
+        self.rebuild_backdrop_records_for_canvas(target_width, target_height);
+    }
+
+    fn translate_draw_for_append(draw: &mut DrawRecord, offset: SceneOffset) {
+        if let Some(sdf) = draw.sdf {
+            let sdf = offset.sdf(sdf);
+            draw.sdf = Some(sdf);
+            draw.pixel_bounds = Self::pixel_bounds_from_bounds(sdf.bounds());
+        } else if let Some(sdf_shadow) = draw.sdf_shadow {
+            let sdf_shadow = offset.sdf_shadow(sdf_shadow);
+            draw.sdf_shadow = Some(sdf_shadow);
+            draw.pixel_bounds = Self::pixel_bounds_from_bounds(sdf_shadow.bounds());
+        } else {
+            draw.pixel_bounds = offset.pixel_bounds(draw.pixel_bounds);
+        }
+
+        let brush = std::mem::replace(&mut draw.brush, Brush::Solid(Color::TRANSPARENT));
+        draw.brush = offset.brush(brush);
+    }
+
+    fn pixel_bounds_from_bounds(bounds: Bounds) -> PixelBounds {
+        PixelBounds {
+            x0: bounds.x0,
+            y0: bounds.y0,
+            x1: bounds.x1,
+            y1: bounds.y1,
+        }
+    }
+
+    fn rebuild_backdrop_records_for_canvas(&mut self, width: u32, height: u32) {
+        let mut path_bounds: Vec<Option<PixelBounds>> = vec![None; self.path_records.len()];
+        for draw in &self.draw_records {
+            let Some(path_id) = draw.path_id else {
+                continue;
+            };
+            if let Some(slot) = path_bounds.get_mut(path_id as usize) {
+                *slot = Some(match *slot {
+                    Some(bounds) => bounds.union(draw.pixel_bounds),
+                    None => draw.pixel_bounds,
+                });
+            }
+        }
+
+        let width_in_tiles = width.div_ceil(crate::TILE_SIZE);
+        let height_in_tiles = height.div_ceil(crate::TILE_SIZE);
+        let mut records = Vec::with_capacity(self.path_records.len());
+        let mut data_offset = 0;
+        let mut segment_start = 0;
+        for (path_ix, record) in self.path_records.iter().enumerate() {
+            let pixel_bounds = path_bounds
+                .get(path_ix)
+                .and_then(|bounds| *bounds)
+                .unwrap_or_else(|| self.path_pixel_bounds(path_ix));
+            let tile_bbox = pixel_bounds.tile_bbox(width_in_tiles, height_in_tiles);
+            let data_len = tile_bbox.tile_count();
+            let segment_capacity = self.segment_capacity_for_path_record(
+                record,
+                tile_bbox,
+                width_in_tiles,
+                height_in_tiles,
+            );
+            records.push(BackdropRecord {
+                path_id: record.path_id,
+                data_offset,
+                data_len,
+                tile_x0: tile_bbox.x0,
+                tile_y0: tile_bbox.y0,
+                tile_x1: tile_bbox.x1,
+                tile_y1: tile_bbox.y1,
+                segment_start,
+                segment_capacity,
+                segment_count: 0,
+            });
+            data_offset += data_len;
+            segment_start += segment_capacity;
+        }
+
+        self.bd_records = records;
+        self.backdrop_pool_capacity = data_offset;
+        self.tile_cnt = segment_start;
+    }
+
+    fn path_pixel_bounds(&self, path_ix: usize) -> PixelBounds {
+        let Some(record) = self.path_records.get(path_ix) else {
+            return PixelBounds {
+                x0: 0,
+                y0: 0,
+                x1: 0,
+                y1: 0,
+            };
+        };
+        let lines = &self.lines
+            [record.line_start as usize..(record.line_start + record.line_count) as usize];
+        if lines.is_empty() {
+            return PixelBounds {
+                x0: 0,
+                y0: 0,
+                x1: 0,
+                y1: 0,
+            };
+        }
+
+        let mut x0 = f32::INFINITY;
+        let mut y0 = f32::INFINITY;
+        let mut x1 = f32::NEG_INFINITY;
+        let mut y1 = f32::NEG_INFINITY;
+        for line in lines {
+            x0 = x0.min(line.p0[0]).min(line.p1[0]);
+            y0 = y0.min(line.p0[1]).min(line.p1[1]);
+            x1 = x1.max(line.p0[0]).max(line.p1[0]);
+            y1 = y1.max(line.p0[1]).max(line.p1[1]);
+        }
+        PixelBounds {
+            x0: x0.floor() as i32,
+            y0: y0.floor() as i32,
+            x1: x1.ceil() as i32,
+            y1: y1.ceil() as i32,
+        }
+    }
+
+    fn segment_capacity_for_path_record(
+        &self,
+        record: &PathRecord,
+        tile_bbox: crate::shared::bounds::TileBbox,
+        width_in_tiles: u32,
+        height_in_tiles: u32,
+    ) -> u32 {
+        self.lines[record.line_start as usize..(record.line_start + record.line_count) as usize]
+            .iter()
+            .fold(0u32, |capacity, &line| {
+                capacity.saturating_add(line_scanned_tile_count(
+                    line,
+                    tile_bbox,
+                    (width_in_tiles, height_in_tiles),
+                ))
+            })
     }
 
     fn append_scene_data(&mut self, other: &mut Scene) -> usize {
@@ -306,8 +749,12 @@ impl Scene {
     }
 
     fn append_scene_as_command_list(&mut self, other: Scene) -> CommandListId {
-        self.append_scene(other, SceneAppendMode::AppendAsCommandList)
-            .expect("append mode returns a command list id")
+        self.append_scene_at(
+            other,
+            SceneAppendMode::AppendAsCommandList,
+            SceneOffset::new(Point::new(0.0, 0.0)),
+        )
+        .expect("append mode returns a command list id")
     }
 
     pub fn push_clip_layer(
