@@ -59,6 +59,11 @@ name = "tiger_gpu_compare"
 harness = false
 required-features = ["bench-api"]
 
+[[bench]]
+name = "wgpu_texture_blit"
+harness = false
+required-features = ["bench-api", "wgpu"]
+
 [[example]]
 name = "cpu_backdrop_blur"
 path = "examples/cpu/backdrop_blur.rs"
