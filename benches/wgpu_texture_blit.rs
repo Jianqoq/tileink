@@ -16,6 +16,7 @@ struct BenchContext {
     queue: wgpu::Queue,
     renderer: CubeWgpuRenderer,
     target: wgpu::Texture,
+    copy_source: wgpu::Buffer,
 }
 
 impl BenchContext {
@@ -43,11 +44,18 @@ impl BenchContext {
             usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
+        let copy_source = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("tileink 1080p pure wgpu copy source"),
+            size: (WIDTH * HEIGHT * 4) as wgpu::BufferAddress,
+            usage: wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
         Self {
             device,
             queue,
             renderer,
             target,
+            copy_source,
         }
     }
 
@@ -88,6 +96,53 @@ fn bench_wgpu_texture_blit(c: &mut Criterion) {
     let mut context = BenchContext::new();
     let mut group = c.benchmark_group("wgpu_texture_blit_1080p");
     group.throughput(Throughput::Bytes((WIDTH * HEIGHT * 4) as u64));
+
+    // These baseline cases explain how much of a synchronized blit measurement
+    // is fixed wgpu queue/poll latency rather than texture-copy bandwidth.
+    group.bench_function("poll_idle", |b| {
+        b.iter(|| {
+            context.sync();
+        });
+    });
+    group.bench_function("empty_submit_and_poll", |b| {
+        b.iter(|| {
+            let encoder = context
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("tileink empty submit benchmark"),
+                });
+            context.queue.submit([encoder.finish()]);
+            context.sync();
+        });
+    });
+    group.bench_function("wgpu_buffer_to_texture_copy", |b| {
+        b.iter(|| {
+            let mut encoder =
+                context
+                    .device
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("tileink pure wgpu buffer-to-texture copy benchmark"),
+                    });
+            encoder.copy_buffer_to_texture(
+                wgpu::TexelCopyBufferInfo {
+                    buffer: &context.copy_source,
+                    layout: wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(WIDTH * 4),
+                        rows_per_image: None,
+                    },
+                },
+                context.target.as_image_copy(),
+                wgpu::Extent3d {
+                    width: WIDTH,
+                    height: HEIGHT,
+                    depth_or_array_layers: 1,
+                },
+            );
+            context.queue.submit([encoder.finish()]);
+            context.sync();
+        });
+    });
 
     context.renderer.render(&scene);
     context.sync();

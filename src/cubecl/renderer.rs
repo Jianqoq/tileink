@@ -87,6 +87,9 @@ pub struct Renderer<R: Runtime> {
     scratch_in_use: Vec<bool>,
     surface_sources: Vec<CubeBuffer<u32>>,
     surface_origin: (i32, i32),
+    /// Avoids paying CubeCL scheduler/resource lookup cost on every wgpu texture blit.
+    #[cfg(feature = "wgpu")]
+    target_wgpu_resource_cache: std::cell::RefCell<Option<CachedWgpuTargetResource>>,
     #[cfg(feature = "profile")]
     profiler: RenderProfiler,
 }
@@ -238,6 +241,8 @@ impl<R: Runtime> Renderer<R> {
             scratch_in_use: Vec::new(),
             surface_sources: Vec::new(),
             surface_origin: (0, 0),
+            #[cfg(feature = "wgpu")]
+            target_wgpu_resource_cache: std::cell::RefCell::new(None),
             #[cfg(feature = "profile")]
             profiler: RenderProfiler::default(),
             client,
@@ -754,22 +759,33 @@ impl WgpuRenderer {
             return Ok(());
         }
 
-        let source = self
-            .client
-            .get_resource(self.target.handle())
-            .map_err(WgpuTextureBlitError::SourceUnavailable)?;
-        let source = source.resource();
-        if source.size < copy_size {
-            return Err(WgpuTextureBlitError::SourceTooSmall {
-                required: copy_size,
-                available: source.size,
-            });
-        }
-
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("tileink CubeCL target texture blit"),
         });
-        let source = self.texture_source_buffer(device, &mut encoder, source);
+        let source = {
+            let mut cache = self.target_wgpu_resource_cache.borrow_mut();
+            // The render target never shrinks its allocation; it only gets a new
+            // CubeCL handle when a larger copy size is required.
+            if cache
+                .as_ref()
+                .is_none_or(|cache| cache.resource.size < copy_size)
+            {
+                let source = self
+                    .client
+                    .get_resource(self.target.handle())
+                    .map_err(WgpuTextureBlitError::SourceUnavailable)?;
+                *cache = Some(CachedWgpuTargetResource::new(source.resource()));
+            }
+
+            let source = &cache.as_ref().expect("target wgpu resource cache").resource;
+            if source.size < copy_size {
+                return Err(WgpuTextureBlitError::SourceTooSmall {
+                    required: copy_size,
+                    available: source.size,
+                });
+            }
+            self.texture_source_buffer(device, &mut encoder, source)
+        };
         encoder.copy_buffer_to_texture(
             wgpu::TexelCopyBufferInfo {
                 buffer: &source.buffer,
@@ -891,6 +907,25 @@ struct WgpuTextureCopySource {
     buffer: wgpu::Buffer,
     offset: wgpu::BufferAddress,
     bytes_per_row: Option<u32>,
+}
+
+#[cfg(feature = "wgpu")]
+#[derive(Debug)]
+struct CachedWgpuTargetResource {
+    resource: ::cubecl::wgpu::WgpuResource,
+}
+
+#[cfg(feature = "wgpu")]
+impl CachedWgpuTargetResource {
+    fn new(resource: &::cubecl::wgpu::WgpuResource) -> Self {
+        Self {
+            resource: ::cubecl::wgpu::WgpuResource {
+                buffer: resource.buffer.clone(),
+                offset: resource.offset,
+                size: resource.size,
+            },
+        }
+    }
 }
 
 #[cfg(feature = "wgpu")]

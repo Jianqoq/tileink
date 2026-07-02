@@ -586,8 +586,50 @@ fn render_wgpu_blits_target_to_wgpu_texture_when_enabled() {
     let cube_device = ::cubecl::wgpu::init_device(setup, ::cubecl::wgpu::RuntimeOptions::default());
     let mut renderer = WgpuRenderer::new(&cube_device, width, height, Color::TRANSPARENT);
 
-    let dst = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("tileink test target texture blit dst"),
+    let dst = texture_blit_dst(
+        &device,
+        width,
+        height,
+        "tileink test target texture blit dst",
+    );
+
+    renderer
+        .render_to_wgpu_texture(&scene, &device, &queue, &dst)
+        .expect("blit target to wgpu texture");
+
+    assert_eq!(
+        read_wgpu_texture(&device, &queue, &dst, width, height),
+        renderer.image().rgba8_bytes()
+    );
+
+    // The first blit fills the target resource cache; growing the target must
+    // refresh it instead of reusing the old smaller wgpu buffer.
+    let mut large_scene = Scene::new(16, 4);
+    large_scene.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 4.0),
+        Radius::ZERO,
+        Color::from_rgba8(0, 255, 0, 255),
+    );
+    let large_dst = texture_blit_dst(&device, 16, 4, "tileink grown cached blit dst");
+    renderer
+        .render_to_wgpu_texture(&large_scene, &device, &queue, &large_dst)
+        .expect("grown target refreshes target resource cache");
+
+    assert_eq!(
+        read_wgpu_texture(&device, &queue, &large_dst, 16, 4),
+        renderer.image().rgba8_bytes()
+    );
+}
+
+#[cfg(feature = "wgpu")]
+fn texture_blit_dst(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+    label: &'static str,
+) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
         size: wgpu::Extent3d {
             width,
             height,
@@ -599,16 +641,7 @@ fn render_wgpu_blits_target_to_wgpu_texture_when_enabled() {
         format: wgpu::TextureFormat::Rgba8Unorm,
         usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC,
         view_formats: &[],
-    });
-
-    renderer
-        .render_to_wgpu_texture(&scene, &device, &queue, &dst)
-        .expect("blit target to wgpu texture");
-
-    assert_eq!(
-        read_wgpu_texture(&device, &queue, &dst, width, height),
-        renderer.image().rgba8_bytes()
-    );
+    })
 }
 
 #[cfg(feature = "wgpu")]
