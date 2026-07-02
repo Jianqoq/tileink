@@ -796,6 +796,12 @@ fn write_clipped_segment(
     let dy = line_y1 - line_y0;
     let mut t0 = f32::new(0.0_f32);
     let mut t1 = f32::new(1.0_f32);
+    let clip_left = u32::new(1);
+    let clip_right = u32::new(2);
+    let clip_top = u32::new(4);
+    let clip_bottom = u32::new(8);
+    let mut t0_clip = u32::new(0);
+    let mut t1_clip = u32::new(0);
     let mut valid = true;
 
     let mut p = -dx;
@@ -811,11 +817,17 @@ fn write_clipped_segment(
                 valid = false;
             } else if r > t0 {
                 t0 = r;
+                t0_clip = clip_left;
+            } else if r == t0 {
+                t0_clip |= clip_left;
             }
         } else if r < t0 {
             valid = false;
         } else if r < t1 {
             t1 = r;
+            t1_clip = clip_left;
+        } else if r == t1 {
+            t1_clip |= clip_left;
         }
     }
 
@@ -832,11 +844,17 @@ fn write_clipped_segment(
                 valid = false;
             } else if r > t0 {
                 t0 = r;
+                t0_clip = clip_right;
+            } else if r == t0 {
+                t0_clip |= clip_right;
             }
         } else if r < t0 {
             valid = false;
         } else if r < t1 {
             t1 = r;
+            t1_clip = clip_right;
+        } else if r == t1 {
+            t1_clip |= clip_right;
         }
     }
 
@@ -853,11 +871,17 @@ fn write_clipped_segment(
                 valid = false;
             } else if r > t0 {
                 t0 = r;
+                t0_clip = clip_top;
+            } else if r == t0 {
+                t0_clip |= clip_top;
             }
         } else if r < t0 {
             valid = false;
         } else if r < t1 {
             t1 = r;
+            t1_clip = clip_top;
+        } else if r == t1 {
+            t1_clip |= clip_top;
         }
     }
 
@@ -874,11 +898,17 @@ fn write_clipped_segment(
                 valid = false;
             } else if r > t0 {
                 t0 = r;
+                t0_clip = clip_bottom;
+            } else if r == t0 {
+                t0_clip |= clip_bottom;
             }
         } else if r < t0 {
             valid = false;
         } else if r < t1 {
             t1 = r;
+            t1_clip = clip_bottom;
+        } else if r == t1 {
+            t1_clip |= clip_bottom;
         }
     }
 
@@ -891,6 +921,30 @@ fn write_clipped_segment(
         xy0y = line_y0 + dy * t0;
         xy1x = line_x0 + dx * t1;
         xy1y = line_y0 + dy * t1;
+        if (t0_clip & clip_left) != 0 {
+            xy0x = tile_min_x;
+        }
+        if (t0_clip & clip_right) != 0 {
+            xy0x = tile_max_x;
+        }
+        if (t0_clip & clip_top) != 0 {
+            xy0y = tile_min_y;
+        }
+        if (t0_clip & clip_bottom) != 0 {
+            xy0y = tile_max_y;
+        }
+        if (t1_clip & clip_left) != 0 {
+            xy1x = tile_min_x;
+        }
+        if (t1_clip & clip_right) != 0 {
+            xy1x = tile_max_x;
+        }
+        if (t1_clip & clip_top) != 0 {
+            xy1y = tile_min_y;
+        }
+        if (t1_clip & clip_bottom) != 0 {
+            xy1y = tile_max_y;
+        }
     }
 
     let mut y_edge = f32::new(1000000000.0_f32);

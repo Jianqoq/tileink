@@ -382,16 +382,47 @@ fn clip_segment_to_tile(
     let delta = [p1[0] - p0[0], p1[1] - p0[1]];
     let mut t0 = 0.0;
     let mut t1 = 1.0;
+    let mut t0_clip = 0u8;
+    let mut t1_clip = 0u8;
 
-    if clip_range(-delta[0], p0[0] - tile_min[0], &mut t0, &mut t1)
-        && clip_range(delta[0], tile_max[0] - p0[0], &mut t0, &mut t1)
-        && clip_range(-delta[1], p0[1] - tile_min[1], &mut t0, &mut t1)
-        && clip_range(delta[1], tile_max[1] - p0[1], &mut t0, &mut t1)
-    {
-        return (
-            [p0[0] + delta[0] * t0, p0[1] + delta[1] * t0],
-            [p0[0] + delta[0] * t1, p0[1] + delta[1] * t1],
-        );
+    if clip_range(
+        -delta[0],
+        p0[0] - tile_min[0],
+        CLIP_LEFT,
+        &mut t0,
+        &mut t1,
+        &mut t0_clip,
+        &mut t1_clip,
+    ) && clip_range(
+        delta[0],
+        tile_max[0] - p0[0],
+        CLIP_RIGHT,
+        &mut t0,
+        &mut t1,
+        &mut t0_clip,
+        &mut t1_clip,
+    ) && clip_range(
+        -delta[1],
+        p0[1] - tile_min[1],
+        CLIP_TOP,
+        &mut t0,
+        &mut t1,
+        &mut t0_clip,
+        &mut t1_clip,
+    ) && clip_range(
+        delta[1],
+        tile_max[1] - p0[1],
+        CLIP_BOTTOM,
+        &mut t0,
+        &mut t1,
+        &mut t0_clip,
+        &mut t1_clip,
+    ) {
+        let mut clipped0 = [p0[0] + delta[0] * t0, p0[1] + delta[1] * t0];
+        let mut clipped1 = [p0[0] + delta[0] * t1, p0[1] + delta[1] * t1];
+        snap_clip_planes(&mut clipped0, t0_clip, tile_min, tile_max);
+        snap_clip_planes(&mut clipped1, t1_clip, tile_min, tile_max);
+        return (clipped0, clipped1);
     }
 
     (
@@ -406,7 +437,20 @@ fn clip_segment_to_tile(
     )
 }
 
-fn clip_range(p: f32, q: f32, t0: &mut f32, t1: &mut f32) -> bool {
+const CLIP_LEFT: u8 = 1 << 0;
+const CLIP_RIGHT: u8 = 1 << 1;
+const CLIP_TOP: u8 = 1 << 2;
+const CLIP_BOTTOM: u8 = 1 << 3;
+
+fn clip_range(
+    p: f32,
+    q: f32,
+    plane: u8,
+    t0: &mut f32,
+    t1: &mut f32,
+    t0_clip: &mut u8,
+    t1_clip: &mut u8,
+) -> bool {
     if p == 0.0 {
         return q >= 0.0;
     }
@@ -415,14 +459,39 @@ fn clip_range(p: f32, q: f32, t0: &mut f32, t1: &mut f32) -> bool {
         if r > *t1 {
             return false;
         }
-        *t0 = (*t0).max(r);
+        if r > *t0 {
+            *t0 = r;
+            *t0_clip = plane;
+        } else if r == *t0 {
+            *t0_clip |= plane;
+        }
     } else {
         if r < *t0 {
             return false;
         }
-        *t1 = (*t1).min(r);
+        if r < *t1 {
+            *t1 = r;
+            *t1_clip = plane;
+        } else if r == *t1 {
+            *t1_clip |= plane;
+        }
     }
     true
+}
+
+fn snap_clip_planes(point: &mut [f32; 2], planes: u8, tile_min: [f32; 2], tile_max: [f32; 2]) {
+    if planes & CLIP_LEFT != 0 {
+        point[0] = tile_min[0];
+    }
+    if planes & CLIP_RIGHT != 0 {
+        point[0] = tile_max[0];
+    }
+    if planes & CLIP_TOP != 0 {
+        point[1] = tile_min[1];
+    }
+    if planes & CLIP_BOTTOM != 0 {
+        point[1] = tile_max[1];
+    }
 }
 
 #[cfg(test)]

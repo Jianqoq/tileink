@@ -602,6 +602,81 @@ fn dashed_path_stroke_does_not_fill_whole_tiles_at_integer_edges() {
 }
 
 #[test]
+fn solid_crosshair_path_stroke_does_not_fill_tiles_below_horizontal_line() {
+    let chart_x = 645.0;
+    let chart_y = 104.0;
+    let chart_width = 1450.0;
+    let chart_height = 515.0;
+    let crosshair_x = 487.0;
+    let crosshair_y = 145.5;
+    let mut scene = Scene::new(2128, 651);
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 2128.0, 651.0),
+        Radius::ZERO,
+        Color::from_rgb8(248, 249, 251),
+    );
+    scene.push_rect(
+        Rect::new(
+            chart_x,
+            chart_y,
+            chart_x + chart_width,
+            chart_y + chart_height,
+        ),
+        Radius::ZERO,
+        Color::from_rgb8(244, 245, 247),
+    );
+
+    let transform = Affine::translate((chart_x, chart_y));
+    let stroke = Stroke::new(1.0);
+    let brush = Color::from_rgb8(0, 128, 255);
+    scene.push_stroke(
+        Line::new((crosshair_x, 0.0), (crosshair_x, chart_height)),
+        stroke.clone(),
+        brush,
+        transform,
+        FillRule::NonZero,
+        0.25,
+    );
+    scene.push_stroke(
+        Line::new((0.0, crosshair_y), (chart_width, crosshair_y)),
+        stroke,
+        brush,
+        transform,
+        FillRule::NonZero,
+        0.25,
+    );
+
+    let mut renderer = Renderer::new(2128, 651, Color::WHITE);
+    renderer.render(&scene);
+
+    let y0 = (chart_y + crosshair_y).floor() as u32;
+    let vx = (chart_x + crosshair_x).round() as u32;
+    for y in y0 + 2..y0 + crate::TILE_SIZE {
+        let mut max_blue_run = 0u32;
+        let mut blue_run = 0u32;
+        for x in chart_x as u32..(chart_x + chart_width) as u32 {
+            if x.abs_diff(vx) <= 1 {
+                blue_run = 0;
+                continue;
+            }
+
+            let [r, g, b, _] = renderer.image().rgba8_at(x, y);
+            if r < 16 && (96..=160).contains(&g) && b > 200 {
+                blue_run += 1;
+                max_blue_run = max_blue_run.max(blue_run);
+            } else {
+                blue_run = 0;
+            }
+        }
+
+        assert_eq!(
+            max_blue_run, 0,
+            "horizontal crosshair leaked blue pixels below the stroke at y={y}"
+        );
+    }
+}
+
+#[test]
 fn sdf_line_square_cap_extends_by_half_width() {
     let red = Color::from_rgb8(220, 64, 72);
     let mut scene = Scene::new(40, 36);

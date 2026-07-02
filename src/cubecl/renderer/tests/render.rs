@@ -1,5 +1,82 @@
 use super::*;
 
+fn solid_crosshair_scene(chart_width: f64) -> Scene {
+    let chart_x: f64 = 645.0;
+    let chart_y: f64 = 104.0;
+    let chart_height: f64 = 515.0;
+    let width = (chart_x + chart_width + 32.0).ceil() as u32;
+    let height = (chart_y + chart_height + 32.0).ceil() as u32;
+    let crosshair_x = 487.0_f64.min(chart_width - 1.0);
+    let crosshair_y = 145.5;
+
+    let mut scene = Scene::new(width, height);
+    scene.push_rect(
+        Rect::new(0.0, 0.0, width as f64, height as f64),
+        Radius::ZERO,
+        Color::from_rgb8(248, 249, 251),
+    );
+    scene.push_rect(
+        Rect::new(
+            chart_x,
+            chart_y,
+            chart_x + chart_width,
+            chart_y + chart_height,
+        ),
+        Radius::ZERO,
+        Color::from_rgb8(244, 245, 247),
+    );
+
+    let transform = Affine::translate((chart_x, chart_y));
+    let stroke = Stroke::new(1.0);
+    let brush = Color::from_rgb8(0, 128, 255);
+    scene.push_stroke(
+        peniko::kurbo::Line::new((crosshair_x, 0.0), (crosshair_x, chart_height)),
+        stroke.clone(),
+        brush,
+        transform,
+        FillRule::NonZero,
+        0.25,
+    );
+    scene.push_stroke(
+        peniko::kurbo::Line::new((0.0, crosshair_y), (chart_width, crosshair_y)),
+        stroke,
+        brush,
+        transform,
+        FillRule::NonZero,
+        0.25,
+    );
+    scene
+}
+
+fn assert_no_crosshair_tile_leak(image: &Image, chart_width: f64) {
+    let chart_x = 645u32;
+    let chart_y = 104u32;
+    let crosshair_x = chart_x + 487.0_f64.min(chart_width - 1.0).round() as u32;
+    let line_y = chart_y + 145;
+    for y in line_y + 2..line_y + crate::TILE_SIZE {
+        let mut blue_run = 0u32;
+        let mut max_blue_run = 0u32;
+        for x in chart_x..(chart_x as f64 + chart_width) as u32 {
+            if x.abs_diff(crosshair_x) <= 1 {
+                blue_run = 0;
+                continue;
+            }
+
+            let [r, g, b, _] = image.rgba8_at(x, y);
+            if r < 16 && (96..=160).contains(&g) && b > 200 {
+                blue_run += 1;
+                max_blue_run = max_blue_run.max(blue_run);
+            } else {
+                blue_run = 0;
+            }
+        }
+        assert_eq!(
+            max_blue_run, 0,
+            "crosshair leaked blue pixels below the horizontal stroke at y={y}"
+        );
+    }
+}
+
 #[cfg(feature = "profile")]
 #[test]
 fn render_wgpu_records_profile_when_enabled() {
@@ -429,6 +506,29 @@ fn render_wgpu_dashed_path_stroke_does_not_fill_whole_tiles_when_enabled() {
         );
     }
     assert!(dark_pixels > 0, "expected dashed path stroke to render");
+}
+
+#[test]
+fn render_wgpu_resize_width_keeps_solid_crosshair_thin_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let small = solid_crosshair_scene(652.0);
+    let large = solid_crosshair_scene(1450.0);
+
+    let mut resized = WgpuRenderer::new_default_device(small.width, small.height, Color::WHITE);
+    resized.render(&small);
+    resized.render(&large);
+    let resized_image = resized.image();
+
+    let mut fresh = WgpuRenderer::new_default_device(large.width, large.height, Color::WHITE);
+    fresh.render(&large);
+    let fresh_image = fresh.image();
+
+    assert_no_crosshair_tile_leak(&fresh_image, 1450.0);
+    assert_no_crosshair_tile_leak(&resized_image, 1450.0);
+    assert_images_close(&fresh_image, &resized_image, 0);
 }
 
 #[test]
