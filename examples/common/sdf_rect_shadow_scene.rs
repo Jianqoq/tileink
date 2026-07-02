@@ -2,7 +2,7 @@ use peniko::{
     Color,
     kurbo::{Point, Rect},
 };
-use tileink::{FillRule, Radius, RectShadowOptions, Scene, SdfLine, SdfLineCap};
+use tileink::{Radius, RectShadowOptions, Scene, SdfLine, SdfLineCap};
 
 pub fn sdf_rect_shadow_scene() -> (Scene, u32, u32) {
     let width = 560;
@@ -13,7 +13,6 @@ pub fn sdf_rect_shadow_scene() -> (Scene, u32, u32) {
         Rect::new(0.0, 0.0, width as f64, height as f64),
         tileink::Radius::ZERO,
         Color::from_rgb8(246, 248, 252),
-        FillRule::NonZero,
     );
 
     for x in (48..=512).step_by(32) {
@@ -25,7 +24,6 @@ pub fn sdf_rect_shadow_scene() -> (Scene, u32, u32) {
                 SdfLineCap::Butt,
             ),
             Color::from_rgba8(196, 204, 216, 110),
-            FillRule::NonZero,
         );
     }
     for y in (48..=304).step_by(32) {
@@ -37,7 +35,6 @@ pub fn sdf_rect_shadow_scene() -> (Scene, u32, u32) {
                 SdfLineCap::Butt,
             ),
             Color::from_rgba8(196, 204, 216, 110),
-            FillRule::NonZero,
         );
     }
 
@@ -54,20 +51,13 @@ pub fn sdf_rect_shadow_scene() -> (Scene, u32, u32) {
         radius,
         RectShadowOptions::new(18.0, 24.0, 18.0, 0.34),
         Color::BLACK,
-        FillRule::NonZero,
     );
-    scene.push_rect(
-        rect,
-        radius,
-        Color::from_rgb8(42, 117, 216),
-        FillRule::NonZero,
-    );
+    scene.push_rect(rect, radius, Color::from_rgb8(42, 117, 216));
     scene.push_rect_stroke(
         rect,
         radius,
         peniko::kurbo::Stroke::new(3.0),
         Color::from_rgba8(255, 255, 255, 210),
-        FillRule::NonZero,
     );
 
     (scene, width, height)

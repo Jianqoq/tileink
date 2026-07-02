@@ -3,9 +3,7 @@ use peniko::{
     color::palette::css,
     kurbo::{Affine, Point, Rect},
 };
-use tileink::{
-    FillRule, Scene, TextAttrs, TextCacheKeyFlags, TextContext, TextLayoutOptions, TextWeight,
-};
+use tileink::{Scene, TextAttrs, TextCacheKeyFlags, TextContext, TextLayoutOptions, TextWeight};
 
 const DESIGN_WIDTH: u32 = 780;
 const DESIGN_HEIGHT: u32 = 400;
@@ -37,7 +35,6 @@ pub fn scene(context: &mut TextContext) -> Scene {
         Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),
         tileink::Radius::ZERO,
         CLEAR,
-        FillRule::NonZero,
     );
 
     push_bitmap(

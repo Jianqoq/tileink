@@ -2,7 +2,7 @@ use peniko::{
     Color,
     kurbo::{Circle, Point, Rect, Stroke},
 };
-use tileink::{FillRule, Filter, Radius, Region, Scene, SdfLine, SdfLineCap};
+use tileink::{Filter, Radius, Region, Scene, SdfLine, SdfLineCap};
 
 use crate::common::{fill_circle, fill_rect, stroke_circle, stroke_rect};
 
@@ -27,7 +27,6 @@ pub fn sdf_nested_clip_blur_scene() -> (Scene, u32, u32) {
                 SdfLineCap::Butt,
             ),
             Color::from_rgba8(148, 163, 184, 80),
-            FillRule::NonZero,
         );
     }
     for y in (48..=408).step_by(48) {
@@ -39,7 +38,6 @@ pub fn sdf_nested_clip_blur_scene() -> (Scene, u32, u32) {
                 SdfLineCap::Butt,
             ),
             Color::from_rgba8(148, 163, 184, 80),
-            FillRule::NonZero,
         );
     }
 
@@ -98,7 +96,6 @@ pub fn sdf_nested_clip_blur_scene() -> (Scene, u32, u32) {
             SdfLineCap::Round,
         ),
         Color::from_rgba8(255, 255, 255, 200),
-        FillRule::NonZero,
     );
 
     scene.pop_layer();

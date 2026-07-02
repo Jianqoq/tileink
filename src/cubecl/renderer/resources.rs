@@ -2,12 +2,9 @@ use crate::{
     scene::Scene,
     shared::{
         bd_record::BackdropRecord,
-        draw_record::{DrawRecord, DrawTag},
         execution::{ExecPlan, LayerStackEntry},
-        fill::FillRule,
         image::rgba8_pack,
-        line::Line,
-        pixel::{mul_div255, premul_f32_to_u32},
+        pixel::mul_div255,
     },
     text::{AtlasSignature, PreparedGlyphContent, PreparedTextData, TextCompositeMode},
 };
@@ -15,14 +12,8 @@ use ::cubecl::prelude::Runtime;
 
 use crate::cubecl::{
     buffer::CubeBuffer,
-    pipelines::common::{
-        DRAW_FLAG_FILL_RULE_EVEN_ODD, DRAW_FLAG_HAS_GLYPH, DRAW_FLAG_HAS_SDF,
-        DRAW_FLAG_SOLID_COLOR_FAST_PATH, DRAW_FLAG_SOLID_RECT,
-    },
-    sdf::{encode_sdf, encode_sdf_shadow},
     types::{
-        CUBE_DRAW_BLEND, CUBE_DRAW_BRUSH, CUBE_DRAW_CLIP, CUBE_DRAW_ISOLATE, CUBE_DRAW_OPACITY,
-        CUBE_DRAW_PATH_GLYPH, CUBE_GLYPH_COLOR, CUBE_GLYPH_LINEAR_COLOR, CUBE_GLYPH_LINEAR_MASK,
+        CUBE_GLYPH_COLOR, CUBE_GLYPH_LINEAR_COLOR, CUBE_GLYPH_LINEAR_MASK,
         CUBE_GLYPH_LINEAR_SUBPIXEL_MASK, CUBE_GLYPH_MASK, CUBE_GLYPH_SUBPIXEL_MASK,
         CUBE_LAYER_BLEND, CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY, CubeBufferLengths, CubeCumsumPlan,
         CubeScanChunk, CubeScanChunkRange, build_cumsum_plan_into, build_scan_chunks_into,
@@ -32,37 +23,6 @@ use crate::cubecl::{
 use crate::shared::memory::MemoryUsage;
 
 use super::executor::encode_layer_payload;
-
-const INVALID_SDF_REF: u32 = u32::MAX;
-
-/// CPU staging for GPU SDF draws.
-///
-/// Draw records are dense, but SDF records are usually sparse in SVG-heavy
-/// scenes. `refs` keeps one draw-to-SDF index per draw while the encoded SDF
-/// columns only store real SDF payloads. This keeps draw indexing stable for
-/// kernels and removes the old cost of uploading 17 empty SDF columns for every
-/// non-SDF draw.
-#[derive(Default)]
-struct DrawSdfUpload {
-    refs: Vec<u32>,
-    kinds: Vec<u32>,
-    x0: Vec<f32>,
-    y0: Vec<f32>,
-    x1: Vec<f32>,
-    y1: Vec<f32>,
-    r0: Vec<f32>,
-    r1: Vec<f32>,
-    r2: Vec<f32>,
-    r3: Vec<f32>,
-    stroke_top: Vec<f32>,
-    stroke_right: Vec<f32>,
-    stroke_bottom: Vec<f32>,
-    stroke_left: Vec<f32>,
-    shadow_offset_x: Vec<f32>,
-    shadow_offset_y: Vec<f32>,
-    shadow_expand: Vec<f32>,
-    shadow_intensity: Vec<f32>,
-}
 
 #[derive(Default)]
 struct TextUpload {
@@ -95,19 +55,17 @@ impl TextUpload {
         };
 
         self.run_starts
-            .extend(scene.text_runs.iter().map(|run| run.glyph_start));
+            .extend_from_slice(&scene.columns.text_run_starts);
         self.run_counts
-            .extend(scene.text_runs.iter().map(|run| run.glyph_count));
+            .extend_from_slice(&scene.columns.text_run_counts);
         self.glyph_image_ids.reserve(scene.text_glyphs.len());
-        self.glyph_x.reserve(scene.text_glyphs.len());
-        self.glyph_y.reserve(scene.text_glyphs.len());
+        self.glyph_x.extend_from_slice(&scene.columns.glyph_x);
+        self.glyph_y.extend_from_slice(&scene.columns.glyph_y);
         for glyph in &scene.text_glyphs {
             self.glyph_image_ids.push(
                 text.image_id_for_cache_key(glyph.cache_key)
                     .unwrap_or(u32::MAX),
             );
-            self.glyph_x.push(glyph.x);
-            self.glyph_y.push(glyph.y);
         }
 
         let atlas_signature = text.atlas_signature();
@@ -197,120 +155,6 @@ impl TextUpload {
     }
 }
 
-impl DrawSdfUpload {
-    fn refill(&mut self, draws: &[DrawRecord]) {
-        let sdf_count = draws
-            .iter()
-            .filter(|draw| draw.sdf.is_some() || draw.sdf_shadow.is_some())
-            .count();
-        self.clear_and_reserve(draws.len(), sdf_count);
-        for draw in draws {
-            let sdf = match (draw.sdf, draw.sdf_shadow) {
-                (Some(sdf), None) => Some(encode_sdf(sdf)),
-                (None, Some(sdf_shadow)) => Some(encode_sdf_shadow(sdf_shadow)),
-                (None, None) => None,
-                (Some(_), Some(_)) => unreachable!("draw cannot store both SDF and SDF shadow"),
-            };
-            if let Some(sdf) = sdf {
-                self.refs.push(self.kinds.len() as u32);
-                self.push(sdf.kind, sdf.coords, sdf.radii, sdf.stroke, sdf.shadow);
-            } else {
-                self.refs.push(INVALID_SDF_REF);
-            }
-        }
-    }
-
-    fn clear_and_reserve(&mut self, draw_count: usize, sdf_count: usize) {
-        self.refs.clear();
-        self.kinds.clear();
-        self.x0.clear();
-        self.y0.clear();
-        self.x1.clear();
-        self.y1.clear();
-        self.r0.clear();
-        self.r1.clear();
-        self.r2.clear();
-        self.r3.clear();
-        self.stroke_top.clear();
-        self.stroke_right.clear();
-        self.stroke_bottom.clear();
-        self.stroke_left.clear();
-        self.shadow_offset_x.clear();
-        self.shadow_offset_y.clear();
-        self.shadow_expand.clear();
-        self.shadow_intensity.clear();
-        self.refs.reserve(draw_count);
-        self.kinds.reserve(sdf_count);
-        self.x0.reserve(sdf_count);
-        self.y0.reserve(sdf_count);
-        self.x1.reserve(sdf_count);
-        self.y1.reserve(sdf_count);
-        self.r0.reserve(sdf_count);
-        self.r1.reserve(sdf_count);
-        self.r2.reserve(sdf_count);
-        self.r3.reserve(sdf_count);
-        self.stroke_top.reserve(sdf_count);
-        self.stroke_right.reserve(sdf_count);
-        self.stroke_bottom.reserve(sdf_count);
-        self.stroke_left.reserve(sdf_count);
-        self.shadow_offset_x.reserve(sdf_count);
-        self.shadow_offset_y.reserve(sdf_count);
-        self.shadow_expand.reserve(sdf_count);
-        self.shadow_intensity.reserve(sdf_count);
-    }
-
-    fn push(
-        &mut self,
-        kind: u32,
-        xy: [f32; 4],
-        radii: [f32; 4],
-        stroke_widths: [f32; 4],
-        shadow: [f32; 4],
-    ) {
-        self.kinds.push(kind);
-        self.x0.push(xy[0]);
-        self.y0.push(xy[1]);
-        self.x1.push(xy[2]);
-        self.y1.push(xy[3]);
-        self.r0.push(radii[0]);
-        self.r1.push(radii[1]);
-        self.r2.push(radii[2]);
-        self.r3.push(radii[3]);
-        self.stroke_top.push(stroke_widths[0]);
-        self.stroke_right.push(stroke_widths[1]);
-        self.stroke_bottom.push(stroke_widths[2]);
-        self.stroke_left.push(stroke_widths[3]);
-        self.shadow_offset_x.push(shadow[0]);
-        self.shadow_offset_y.push(shadow[1]);
-        self.shadow_expand.push(shadow[2]);
-        self.shadow_intensity.push(shadow[3]);
-    }
-
-    #[cfg(feature = "profile")]
-    fn memory_usage(&self) -> MemoryUsage {
-        MemoryUsage::sum([
-            MemoryUsage::vec(&self.refs),
-            MemoryUsage::vec(&self.kinds),
-            MemoryUsage::vec(&self.x0),
-            MemoryUsage::vec(&self.y0),
-            MemoryUsage::vec(&self.x1),
-            MemoryUsage::vec(&self.y1),
-            MemoryUsage::vec(&self.r0),
-            MemoryUsage::vec(&self.r1),
-            MemoryUsage::vec(&self.r2),
-            MemoryUsage::vec(&self.r3),
-            MemoryUsage::vec(&self.stroke_top),
-            MemoryUsage::vec(&self.stroke_right),
-            MemoryUsage::vec(&self.stroke_bottom),
-            MemoryUsage::vec(&self.stroke_left),
-            MemoryUsage::vec(&self.shadow_offset_x),
-            MemoryUsage::vec(&self.shadow_offset_y),
-            MemoryUsage::vec(&self.shadow_expand),
-            MemoryUsage::vec(&self.shadow_intensity),
-        ])
-    }
-}
-
 /// Reusable CPU-side staging for columnar scene uploads.
 ///
 /// CubeCL 0.10 uploads immutable inputs by creating handles from slices, so
@@ -319,9 +163,6 @@ impl DrawSdfUpload {
 #[derive(Default)]
 pub(super) struct SceneUploadStaging {
     u32s: Vec<u32>,
-    i32s: Vec<i32>,
-    f32s: Vec<f32>,
-    sdf: DrawSdfUpload,
     text: TextUpload,
     scan_chunks: Vec<CubeScanChunk>,
     scan_chunk_ranges: Vec<CubeScanChunkRange>,
@@ -333,9 +174,6 @@ impl SceneUploadStaging {
     pub(super) fn memory_usage(&self) -> MemoryUsage {
         MemoryUsage::sum([
             MemoryUsage::vec(&self.u32s),
-            MemoryUsage::vec(&self.i32s),
-            MemoryUsage::vec(&self.f32s),
-            self.sdf.memory_usage(),
             self.text.memory_usage(),
             MemoryUsage::vec(&self.scan_chunks),
             MemoryUsage::vec(&self.scan_chunk_ranges),
@@ -345,31 +183,6 @@ impl SceneUploadStaging {
             MemoryUsage::vec(&self.cumsum_plan.row_chunk_ends),
         ])
     }
-}
-
-fn packed_u8_len(len: usize) -> usize {
-    len.div_ceil(4)
-}
-
-fn pack_mapped_u8s<T>(scratch: &mut Vec<u32>, items: &[T], mut map: impl FnMut(&T) -> u32) {
-    scratch.clear();
-    scratch.resize(packed_u8_len(items.len()), 0);
-    for (i, item) in items.iter().enumerate() {
-        let tag = map(item);
-        debug_assert!(tag <= u8::MAX as u32);
-        scratch[i / 4] |= (tag & 255) << ((i as u32 & 3) * 8);
-    }
-}
-
-fn upload_packed_u8<R: Runtime, T>(
-    client: &::cubecl::client::ComputeClient<R>,
-    buffer: &mut CubeBuffer<u32>,
-    scratch: &mut Vec<u32>,
-    items: &[T],
-    map: impl FnMut(&T) -> u32,
-) {
-    pack_mapped_u8s(scratch, items, map);
-    buffer.replace(client, scratch);
 }
 
 fn upload_mapped_u32<R: Runtime, T>(
@@ -385,61 +198,8 @@ fn upload_mapped_u32<R: Runtime, T>(
     buffer.replace(client, scratch);
 }
 
-fn upload_mapped_i32<R: Runtime, T>(
-    client: &::cubecl::client::ComputeClient<R>,
-    buffer: &mut CubeBuffer<i32>,
-    scratch: &mut Vec<i32>,
-    items: &[T],
-    map: impl FnMut(&T) -> i32,
-) {
-    scratch.clear();
-    scratch.reserve(items.len());
-    scratch.extend(items.iter().map(map));
-    buffer.replace(client, scratch);
-}
-
-fn upload_mapped_f32<R: Runtime, T>(
-    client: &::cubecl::client::ComputeClient<R>,
-    buffer: &mut CubeBuffer<f32>,
-    scratch: &mut Vec<f32>,
-    items: &[T],
-    map: impl FnMut(&T) -> f32,
-) {
-    scratch.clear();
-    scratch.reserve(items.len());
-    scratch.extend(items.iter().map(map));
-    buffer.replace(client, scratch);
-}
-
-fn draw_tag_byte(draw: &DrawRecord) -> u32 {
-    match draw.tag {
-        DrawTag::Brush => CUBE_DRAW_BRUSH,
-        DrawTag::PathGlyph => CUBE_DRAW_PATH_GLYPH,
-        DrawTag::Clip => CUBE_DRAW_CLIP,
-        DrawTag::Isolate => CUBE_DRAW_ISOLATE,
-        DrawTag::Opacity => CUBE_DRAW_OPACITY,
-        DrawTag::Blend => CUBE_DRAW_BLEND,
-    }
-}
-
-fn draw_flags_byte(draw: &DrawRecord, text_enabled: bool) -> u32 {
-    let mut flags = draw_tag_byte(draw);
-    if draw.fill_rule == FillRule::EvenOdd {
-        flags |= DRAW_FLAG_FILL_RULE_EVEN_ODD;
-    }
-    if draw.solid_rect {
-        flags |= DRAW_FLAG_SOLID_RECT;
-        if draw.brush.solid_color().is_some() {
-            flags |= DRAW_FLAG_SOLID_COLOR_FAST_PATH;
-        }
-    }
-    if draw.sdf.is_some() || draw.sdf_shadow.is_some() {
-        flags |= DRAW_FLAG_HAS_SDF;
-    }
-    if text_enabled && draw.glyph_run_id.is_some() {
-        flags |= DRAW_FLAG_HAS_GLYPH;
-    }
-    flags
+fn packed_u8_len(len: usize) -> usize {
+    len.div_ceil(4)
 }
 
 pub(crate) struct SceneBuffers {
@@ -452,7 +212,7 @@ pub(crate) struct SceneBuffers {
     pub(crate) path_flags: CubeBuffer<u32>,
     pub(crate) draw_path_ids: CubeBuffer<u32>,
     pub(crate) draw_glyph_run_ids: CubeBuffer<u32>,
-    /// Packed per-draw byte:
+    /// Per-draw flags, indexed by `draw_id`.
     ///
     /// - bits 0..=2: draw tag
     /// - bit 3: even-odd fill rule
@@ -460,10 +220,6 @@ pub(crate) struct SceneBuffers {
     /// - bit 5: solid color full-tile fast path
     /// - bit 6: draw has an SDF payload
     /// - bit 7: draw has a glyph run
-    ///
-    /// CubeCL's wgpu backend does not expose `u8` storage, so four bytes are
-    /// packed into one `u32` word. Kernels must read this through the helpers in
-    /// `pipelines::common` instead of indexing the buffer directly.
     pub(crate) draw_flags: CubeBuffer<u32>,
     pub(crate) draw_brush_colors: CubeBuffer<u32>,
     pub(crate) draw_pixel_x0: CubeBuffer<i32>,
@@ -686,9 +442,8 @@ impl SceneBuffers {
             &mut staging.scan_chunk_ranges,
         );
         build_cumsum_plan_into(scene, &mut staging.cumsum_plan);
-        self.upload_lines(client, &scene.lines, staging);
-        self.upload_paths(client, &scene.path_records, staging);
-        self.upload_draws(client, &scene.draw_records, text.is_some(), staging);
+        self.upload_path_geometry(client, scene);
+        self.upload_draws(client, scene, text.is_some());
         self.upload_backdrops(client, &scene.bd_records, staging);
         self.upload_plan_layer_stack(client, &plan.layer_stack_data, staging);
         self.upload_text(client, scene, text, staging);
@@ -782,164 +537,75 @@ impl SceneBuffers {
         );
     }
 
-    fn upload_lines<R: Runtime>(
+    fn upload_path_geometry<R: Runtime>(
         &mut self,
         client: &::cubecl::client::ComputeClient<R>,
-        lines: &[Line],
-        staging: &mut SceneUploadStaging,
+        scene: &Scene,
     ) {
-        upload_mapped_u32(
-            client,
-            &mut self.line_path_ids,
-            &mut staging.u32s,
-            lines,
-            |line| line.path_id,
-        );
-        upload_mapped_f32(
-            client,
-            &mut self.line_p0x,
-            &mut staging.f32s,
-            lines,
-            |line| line.p0[0],
-        );
-        upload_mapped_f32(
-            client,
-            &mut self.line_p0y,
-            &mut staging.f32s,
-            lines,
-            |line| line.p0[1],
-        );
-        upload_mapped_f32(
-            client,
-            &mut self.line_p1x,
-            &mut staging.f32s,
-            lines,
-            |line| line.p1[0],
-        );
-        upload_mapped_f32(
-            client,
-            &mut self.line_p1y,
-            &mut staging.f32s,
-            lines,
-            |line| line.p1[1],
-        );
-    }
-
-    fn upload_paths<R: Runtime>(
-        &mut self,
-        client: &::cubecl::client::ComputeClient<R>,
-        paths: &[crate::shared::path::PathRecord],
-        staging: &mut SceneUploadStaging,
-    ) {
-        upload_mapped_u32(
-            client,
-            &mut self.path_flags,
-            &mut staging.u32s,
-            paths,
-            |path| path.flags,
-        );
+        let columns = &scene.columns;
+        self.line_path_ids.replace(client, &columns.line_path_ids);
+        self.line_p0x.replace(client, &columns.line_p0x);
+        self.line_p0y.replace(client, &columns.line_p0y);
+        self.line_p1x.replace(client, &columns.line_p1x);
+        self.line_p1y.replace(client, &columns.line_p1y);
+        self.path_flags.replace(client, &columns.path_flags);
     }
 
     fn upload_draws<R: Runtime>(
         &mut self,
         client: &::cubecl::client::ComputeClient<R>,
-        draws: &[DrawRecord],
+        scene: &Scene,
         text_enabled: bool,
-        staging: &mut SceneUploadStaging,
     ) {
-        upload_mapped_u32(
+        let columns = &scene.columns;
+        self.draw_path_ids.replace(client, &columns.draw_path_ids);
+        self.draw_glyph_run_ids.replace(
             client,
-            &mut self.draw_path_ids,
-            &mut staging.u32s,
-            draws,
-            |draw| draw.path_id.unwrap_or(u32::MAX),
-        );
-        upload_mapped_u32(
-            client,
-            &mut self.draw_glyph_run_ids,
-            &mut staging.u32s,
-            draws,
-            |draw| {
-                if text_enabled {
-                    draw.glyph_run_id.unwrap_or(u32::MAX)
-                } else {
-                    u32::MAX
-                }
+            if text_enabled {
+                &columns.draw_glyph_run_ids
+            } else {
+                &columns.draw_glyph_run_ids_without_text
             },
         );
-        upload_packed_u8(
+        self.draw_flags.replace(
             client,
-            &mut self.draw_flags,
-            &mut staging.u32s,
-            draws,
-            |draw| draw_flags_byte(draw, text_enabled),
-        );
-        upload_mapped_u32(
-            client,
-            &mut self.draw_brush_colors,
-            &mut staging.u32s,
-            draws,
-            |draw| {
-                draw.brush
-                    .solid_color()
-                    .map(|color| premul_f32_to_u32(color.premultiply().components))
-                    .unwrap_or(0)
+            if text_enabled {
+                &columns.draw_flags
+            } else {
+                &columns.draw_flags_without_text
             },
         );
-        upload_mapped_i32(
-            client,
-            &mut self.draw_pixel_x0,
-            &mut staging.i32s,
-            draws,
-            |draw| draw.pixel_bounds.x0,
-        );
-        upload_mapped_i32(
-            client,
-            &mut self.draw_pixel_y0,
-            &mut staging.i32s,
-            draws,
-            |draw| draw.pixel_bounds.y0,
-        );
-        upload_mapped_i32(
-            client,
-            &mut self.draw_pixel_x1,
-            &mut staging.i32s,
-            draws,
-            |draw| draw.pixel_bounds.x1,
-        );
-        upload_mapped_i32(
-            client,
-            &mut self.draw_pixel_y1,
-            &mut staging.i32s,
-            draws,
-            |draw| draw.pixel_bounds.y1,
-        );
-        staging.sdf.refill(draws);
-        self.draw_sdf_refs.replace(client, &staging.sdf.refs);
-        self.sdf_kinds.replace(client, &staging.sdf.kinds);
-        self.sdf_x0.replace(client, &staging.sdf.x0);
-        self.sdf_y0.replace(client, &staging.sdf.y0);
-        self.sdf_x1.replace(client, &staging.sdf.x1);
-        self.sdf_y1.replace(client, &staging.sdf.y1);
-        self.sdf_r0.replace(client, &staging.sdf.r0);
-        self.sdf_r1.replace(client, &staging.sdf.r1);
-        self.sdf_r2.replace(client, &staging.sdf.r2);
-        self.sdf_r3.replace(client, &staging.sdf.r3);
-        self.sdf_stroke_top.replace(client, &staging.sdf.stroke_top);
+        self.draw_brush_colors
+            .replace(client, &columns.draw_brush_colors);
+        self.draw_pixel_x0.replace(client, &columns.draw_pixel_x0);
+        self.draw_pixel_y0.replace(client, &columns.draw_pixel_y0);
+        self.draw_pixel_x1.replace(client, &columns.draw_pixel_x1);
+        self.draw_pixel_y1.replace(client, &columns.draw_pixel_y1);
+        self.draw_sdf_refs.replace(client, &columns.sdf.refs);
+        self.sdf_kinds.replace(client, &columns.sdf.kinds);
+        self.sdf_x0.replace(client, &columns.sdf.x0);
+        self.sdf_y0.replace(client, &columns.sdf.y0);
+        self.sdf_x1.replace(client, &columns.sdf.x1);
+        self.sdf_y1.replace(client, &columns.sdf.y1);
+        self.sdf_r0.replace(client, &columns.sdf.r0);
+        self.sdf_r1.replace(client, &columns.sdf.r1);
+        self.sdf_r2.replace(client, &columns.sdf.r2);
+        self.sdf_r3.replace(client, &columns.sdf.r3);
+        self.sdf_stroke_top.replace(client, &columns.sdf.stroke_top);
         self.sdf_stroke_right
-            .replace(client, &staging.sdf.stroke_right);
+            .replace(client, &columns.sdf.stroke_right);
         self.sdf_stroke_bottom
-            .replace(client, &staging.sdf.stroke_bottom);
+            .replace(client, &columns.sdf.stroke_bottom);
         self.sdf_stroke_left
-            .replace(client, &staging.sdf.stroke_left);
+            .replace(client, &columns.sdf.stroke_left);
         self.sdf_shadow_offset_x
-            .replace(client, &staging.sdf.shadow_offset_x);
+            .replace(client, &columns.sdf.shadow_offset_x);
         self.sdf_shadow_offset_y
-            .replace(client, &staging.sdf.shadow_offset_y);
+            .replace(client, &columns.sdf.shadow_offset_y);
         self.sdf_shadow_expand
-            .replace(client, &staging.sdf.shadow_expand);
+            .replace(client, &columns.sdf.shadow_expand);
         self.sdf_shadow_intensity
-            .replace(client, &staging.sdf.shadow_intensity);
+            .replace(client, &columns.sdf.shadow_intensity);
     }
 
     fn upload_text<R: Runtime>(
@@ -1254,9 +920,10 @@ impl CoarseBuffers {
 mod tests {
     use peniko::{Color, kurbo::Point};
 
-    use super::{AtlasSignature, TextUpload, draw_flags_byte, pack_mapped_u8s};
+    use super::{AtlasSignature, TextUpload};
     use crate::{
         FillRule, Radius, Scene, TextContext, TextLayoutOptions,
+        cubecl::scene_columns::draw_flags_word,
         cubecl::{
             pipelines::common::{
                 DRAW_FLAG_FILL_RULE_EVEN_ODD, DRAW_FLAG_HAS_GLYPH, DRAW_FLAG_HAS_SDF,
@@ -1273,15 +940,7 @@ mod tests {
     };
 
     #[test]
-    fn pack_mapped_u8s_stores_four_tags_per_word() {
-        let tags = [1, 2, 3, 4, 5];
-        let mut scratch = Vec::new();
-        pack_mapped_u8s(&mut scratch, &tags, |tag| *tag);
-        assert_eq!(scratch, vec![0x0403_0201, 0x0000_0005]);
-    }
-
-    #[test]
-    fn draw_flags_byte_packs_draw_tag_and_boolean_fields() {
+    fn draw_flags_word_stores_draw_tag_and_boolean_fields() {
         let draw = DrawRecord {
             path_id: Some(0),
             glyph_run_id: Some(7),
@@ -1298,7 +957,7 @@ mod tests {
             },
             solid_rect: true,
         };
-        let flags = draw_flags_byte(&draw, true);
+        let flags = draw_flags_word(&draw, true);
 
         assert_eq!(flags & DRAW_FLAG_TAG_MASK, CUBE_DRAW_BRUSH);
         assert_ne!(flags & DRAW_FLAG_FILL_RULE_EVEN_ODD, 0);
@@ -1307,7 +966,7 @@ mod tests {
         assert_ne!(flags & DRAW_FLAG_HAS_GLYPH, 0);
         assert_eq!(flags & DRAW_FLAG_HAS_SDF, 0);
         assert_eq!(
-            draw_flags_byte(&draw, false) & DRAW_FLAG_HAS_GLYPH,
+            draw_flags_word(&draw, false) & DRAW_FLAG_HAS_GLYPH,
             0,
             "glyph payload is only valid when text upload is enabled"
         );
@@ -1317,9 +976,8 @@ mod tests {
             peniko::kurbo::Rect::new(0.0, 0.0, 16.0, 16.0),
             Radius::ZERO,
             Color::WHITE,
-            FillRule::NonZero,
         );
-        let flags = draw_flags_byte(&scene.draw_records[0], false);
+        let flags = draw_flags_word(&scene.draw_records[0], false);
         assert_ne!(flags & DRAW_FLAG_HAS_SDF, 0);
         assert_eq!(flags & DRAW_FLAG_SOLID_RECT, 0);
     }

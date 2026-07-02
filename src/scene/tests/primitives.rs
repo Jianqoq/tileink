@@ -1,4 +1,9 @@
 use super::*;
+use crate::{
+    TextLayoutOptions,
+    cubecl::scene_columns::GPU_BRUSH_U32_STRIDE,
+    shared::{image::premul_color_to_rgba8_pack, pixel::premul_f32_to_u32},
+};
 
 #[test]
 fn push_rect_records_sdf_rect_without_path_storage() {
@@ -7,7 +12,6 @@ fn push_rect_records_sdf_rect_without_path_storage() {
         Rect::new(2.0, 3.0, 18.0, 19.0),
         crate::Radius::ZERO,
         Brush::Solid(rgb(255, 0, 0)),
-        FillRule::NonZero,
     );
 
     assert_eq!(scene.draw_records.len(), 1);
@@ -48,7 +52,6 @@ fn push_rect_records_sdf_rect_with_independent_radii() {
         Rect::new(4.0, 5.0, 40.0, 41.0),
         radius,
         Brush::Solid(rgb(255, 0, 0)),
-        FillRule::NonZero,
     );
 
     assert_eq!(scene.draw_records.len(), 1);
@@ -69,11 +72,7 @@ fn push_rect_records_sdf_rect_with_independent_radii() {
 #[test]
 fn push_circle_records_sdf_circle_without_path_storage() {
     let mut scene = test_scene();
-    scene.push_circle(
-        Circle::new((16.0, 20.0), 8.0),
-        Brush::Solid(rgb(255, 0, 0)),
-        FillRule::NonZero,
-    );
+    scene.push_circle(Circle::new((16.0, 20.0), 8.0), Brush::Solid(rgb(255, 0, 0)));
 
     assert_eq!(scene.draw_records.len(), 1);
     assert!(scene.path_records.is_empty());
@@ -98,12 +97,136 @@ fn push_circle_records_sdf_circle_without_path_storage() {
 }
 
 #[test]
+fn draw_id_updates_specific_draw_color() {
+    let mut scene = test_scene();
+    let first = scene.push_rect(
+        Rect::new(2.0, 3.0, 18.0, 19.0),
+        crate::Radius::ZERO,
+        Brush::Solid(rgb(255, 0, 0)),
+    );
+    let second = scene.push_circle(Circle::new((32.0, 32.0), 8.0), Brush::Solid(rgb(0, 255, 0)));
+
+    assert_eq!(first.index(), 0);
+    assert_eq!(second.index(), 1);
+    assert_eq!(scene.draw_id_at(0), Some(first));
+    assert_eq!(scene.draw_id_at(1), Some(second));
+
+    assert!(scene.set_draw_color(first, rgb(8, 9, 10)));
+    assert_eq!(scene.draw_solid_color(first), Some(rgb(8, 9, 10)));
+    assert_eq!(scene.draw_solid_color(second), Some(rgb(0, 255, 0)));
+    assert_eq!(
+        scene.columns.draw_brush_colors[first.index()],
+        premul_f32_to_u32(rgb(8, 9, 10).premultiply().components)
+    );
+    assert_eq!(
+        scene.columns.draw_brushes.data[first.index() * GPU_BRUSH_U32_STRIDE + 4],
+        premul_color_to_rgba8_pack(rgb(8, 9, 10))
+    );
+    assert_eq!(
+        scene.columns.draw_brushes.data[second.index() * GPU_BRUSH_U32_STRIDE + 4],
+        premul_color_to_rgba8_pack(rgb(0, 255, 0))
+    );
+}
+
+#[test]
+fn draw_id_from_before_reset_is_rejected() {
+    let mut scene = test_scene();
+    let stale = scene.push_rect(
+        Rect::new(2.0, 3.0, 18.0, 19.0),
+        crate::Radius::ZERO,
+        Brush::Solid(rgb(255, 0, 0)),
+    );
+
+    scene.reset();
+    let current = scene.push_rect(
+        Rect::new(8.0, 9.0, 24.0, 25.0),
+        crate::Radius::ZERO,
+        Brush::Solid(rgb(0, 255, 0)),
+    );
+
+    assert_eq!(stale.index(), current.index());
+    assert_ne!(stale, current);
+    assert!(!scene.set_draw_color(stale, rgb(255, 255, 0)));
+    assert_eq!(scene.draw_solid_color(current), Some(rgb(0, 255, 0)));
+}
+
+#[test]
+fn no_op_sdf_primitive_returns_no_draw_id() {
+    let mut scene = test_scene();
+    let draw = scene.push_line(
+        SdfLine::new(
+            Point::new(8.0, 16.5),
+            Point::new(8.0, 16.5),
+            1.0,
+            crate::shared::sdf::line::LineCap::Butt,
+        ),
+        Brush::Solid(rgb(255, 0, 0)),
+    );
+
+    assert_eq!(draw, None);
+    assert!(scene.draw_records.is_empty());
+    assert!(scene.columns.draw_path_ids.is_empty());
+}
+
+#[test]
+fn scene_columns_rebuild_after_append() {
+    let mut parent = test_scene();
+    parent.push_rect(
+        Rect::new(2.0, 3.0, 18.0, 19.0),
+        crate::Radius::ZERO,
+        Brush::Solid(rgb(255, 0, 0)),
+    );
+
+    let mut child = test_scene();
+    child.push_circle(Circle::new((16.0, 16.0), 8.0), Brush::Solid(rgb(0, 255, 0)));
+    parent.append(child, Point::new(4.0, 5.0));
+
+    assert_eq!(
+        parent.columns.draw_path_ids.len(),
+        parent.draw_records.len()
+    );
+    assert_eq!(
+        parent.columns.draw_brush_colors.len(),
+        parent.draw_records.len()
+    );
+    assert_eq!(parent.columns.draw_flags.len(), parent.draw_records.len());
+    assert_eq!(
+        parent.columns.draw_flags_without_text.len(),
+        parent.draw_records.len()
+    );
+    assert_eq!(parent.columns.sdf.refs.len(), parent.draw_records.len());
+    assert_eq!(parent.columns.sdf.kinds.len(), 2);
+}
+
+#[test]
+fn scene_columns_track_text_runs_and_glyph_positions() {
+    let mut context = TextContext::new();
+    let layout = context.layout(TextLayoutOptions::new("Cache", 20.0));
+    if layout.is_empty() {
+        return;
+    }
+
+    let mut scene = test_scene();
+    let draw = scene
+        .push_text_layout(&layout, Point::new(8.0, 32.0), Brush::Solid(rgb(0, 0, 0)))
+        .expect("layout should produce a text draw");
+
+    assert_eq!(scene.columns.draw_glyph_run_ids[draw.index()], 0);
+    assert_eq!(scene.columns.text_run_starts, vec![0]);
+    assert_eq!(
+        scene.columns.text_run_counts,
+        vec![scene.text_glyphs.len() as u32]
+    );
+    assert_eq!(scene.columns.glyph_x.len(), scene.text_glyphs.len());
+    assert_eq!(scene.columns.glyph_y.len(), scene.text_glyphs.len());
+}
+
+#[test]
 fn push_candlestick_records_sdf_without_path_storage() {
     let mut scene = test_scene();
     scene.push_candlestick(
         SdfCandleStick::new(16.5, 4.0, 28.0, 10.0, 22.0, 7),
         Brush::Solid(rgb(255, 0, 0)),
-        FillRule::NonZero,
     );
 
     assert_eq!(scene.draw_records.len(), 1);
@@ -138,7 +261,6 @@ fn push_line_records_sdf_without_path_storage() {
             crate::shared::sdf::line::LineCap::Butt,
         ),
         Brush::Solid(rgb(255, 0, 0)),
-        FillRule::NonZero,
     );
 
     assert_eq!(scene.draw_records.len(), 1);
@@ -172,7 +294,6 @@ fn push_dash_line_records_sdf_without_path_storage() {
             3.0,
         ),
         Brush::Solid(rgb(255, 0, 0)),
-        FillRule::NonZero,
     );
 
     assert_eq!(scene.draw_records.len(), 1);
@@ -209,7 +330,6 @@ fn push_sdf_arc_records_sdf_without_path_storage() {
             crate::shared::sdf::line::LineCap::Round,
         ),
         Brush::Solid(rgb(255, 0, 0)),
-        FillRule::NonZero,
     );
 
     assert_eq!(scene.draw_records.len(), 1);
@@ -233,7 +353,6 @@ fn push_shape_shadows_record_sdf_shadow_without_path_storage() {
         Circle::new((20.0, 20.0), 8.0),
         options,
         Brush::Solid(rgb(0, 0, 0)),
-        FillRule::NonZero,
     );
     scene.push_arc_shadow(
         SdfArc::new(
@@ -246,7 +365,6 @@ fn push_shape_shadows_record_sdf_shadow_without_path_storage() {
         ),
         options,
         Brush::Solid(rgb(0, 0, 0)),
-        FillRule::NonZero,
     );
     scene.push_line_shadow(
         SdfLine::new(
@@ -257,7 +375,6 @@ fn push_shape_shadows_record_sdf_shadow_without_path_storage() {
         ),
         options,
         Brush::Solid(rgb(0, 0, 0)),
-        FillRule::NonZero,
     );
 
     assert_eq!(scene.draw_records.len(), 3);
@@ -286,7 +403,6 @@ fn push_rect_stroke_records_sdf_without_path_storage() {
         Radius::all(4.0),
         Stroke::new(6.0),
         Brush::Solid(rgb(255, 0, 0)),
-        FillRule::NonZero,
     );
 
     assert_eq!(scene.draw_records.len(), 1);
@@ -327,7 +443,6 @@ fn push_rect_stroke_widths_records_per_side_sdf_widths() {
         Radius::all(4.0),
         widths,
         Brush::Solid(rgb(255, 0, 0)),
-        FillRule::NonZero,
     );
 
     assert_eq!(scene.draw_records.len(), 1);
@@ -359,7 +474,6 @@ fn push_circle_stroke_records_sdf_without_path_storage() {
         Circle::new((24.0, 20.0), 10.0),
         Stroke::new(4.0),
         Brush::Solid(rgb(255, 0, 0)),
-        FillRule::NonZero,
     );
 
     assert_eq!(scene.draw_records.len(), 1);
@@ -393,13 +507,11 @@ fn push_sdf_stroke_with_zero_width_is_noop() {
         Radius::ZERO,
         Stroke::new(0.0),
         Brush::Solid(rgb(255, 0, 0)),
-        FillRule::NonZero,
     );
     scene.push_circle_stroke(
         Circle::new((24.0, 20.0), 10.0),
         Stroke::new(0.0),
         Brush::Solid(rgb(255, 0, 0)),
-        FillRule::NonZero,
     );
 
     assert!(scene.draw_records.is_empty());
@@ -414,7 +526,6 @@ fn push_dashed_circle_stroke_uses_path_storage() {
         Circle::new((24.0, 20.0), 10.0),
         Stroke::new(4.0).with_dashes(0.0, [4.0, 4.0]),
         Brush::Solid(rgb(255, 0, 0)),
-        FillRule::NonZero,
     );
 
     assert_eq!(scene.draw_records.len(), 1);

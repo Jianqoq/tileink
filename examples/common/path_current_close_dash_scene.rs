@@ -20,7 +20,6 @@ pub fn path_current_close_dash_scene() -> (Scene, u32, u32) {
         Rect::new(0.0, 0.0, width as f64, height as f64),
         Radius::ZERO,
         Color::from_rgb8(248, 249, 251),
-        FillRule::NonZero,
     );
     scene.push_rect(
         Rect::new(
@@ -31,7 +30,6 @@ pub fn path_current_close_dash_scene() -> (Scene, u32, u32) {
         ),
         Radius::ZERO,
         Color::from_rgb8(244, 245, 247),
-        FillRule::NonZero,
     );
 
     let chart_transform = Affine::translate((CHART_X, CHART_Y));

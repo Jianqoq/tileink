@@ -11,7 +11,6 @@ fn backdrop_wgpu_applies_color_filter_to_existing_target_when_enabled() {
         Rect::new(0.0, 0.0, 16.0, 16.0),
         crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
-        FillRule::NonZero,
     );
     scene.push_backdrop_layer(
         Filter::Invert(1.0),
@@ -39,7 +38,6 @@ fn backdrop_wgpu_masks_blur_to_rect_sample_region_when_enabled() {
         Rect::new(8.0, 4.0, 16.0, 12.0),
         crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
-        FillRule::NonZero,
     );
     scene.push_backdrop_layer(
         Filter::Blur {
@@ -75,7 +73,6 @@ fn backdrop_wgpu_masks_color_filter_to_path_sample_region_when_enabled() {
         Rect::new(0.0, 0.0, 16.0, 16.0),
         crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
-        FillRule::NonZero,
     );
     scene.push_backdrop_layer(
         Filter::Invert(1.0),
@@ -120,7 +117,6 @@ fn backdrop_wgpu_rect_liquid_glass_matches_cpu_when_enabled() {
             Rect::new(f64::from(x), 0.0, f64::from(x + 1), 32.0),
             crate::Radius::ZERO,
             Color::from_rgb8(v, v, v),
-            FillRule::NonZero,
         );
     }
     scene.push_backdrop_layer(

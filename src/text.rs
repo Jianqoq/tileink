@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     hash::{Hash, Hasher},
+    path::Path,
 };
 
 use cosmic_text::{
@@ -17,8 +18,7 @@ use swash::{
 use crate::shared::memory::MemoryUsage;
 use crate::shared::{bounds::Bounds, pixel::TextCoverageParams};
 
-const LCD_FILTER_WEIGHTS: [u16; 5] = [1, 8, 238, 8, 1];
-const LCD_FILTER_DENOM: u16 = 256;
+const FREETYPE_HARMONY_LCD_SHIFT: f32 = 21.0 / 64.0;
 
 #[derive(Clone, Debug)]
 pub struct TextLayoutOptions<'a> {
@@ -91,6 +91,16 @@ impl TextContext {
 
     pub fn set_raster_options(&mut self, options: TextRasterOptions) {
         self.raster_options = options;
+    }
+
+    /// Loads an additional font file into this context.
+    ///
+    /// Font database changes can alter the font ids embedded in glyph cache
+    /// keys, so cached raster images and outlines are discarded after loading.
+    pub fn load_font_file<P: AsRef<Path>>(&mut self, path: P) -> std::io::Result<()> {
+        self.font_system.db_mut().load_font_file(path)?;
+        self.clear_glyph_caches();
+        Ok(())
     }
 
     pub fn layout(&mut self, options: TextLayoutOptions<'_>) -> TextLayout {
@@ -200,6 +210,11 @@ impl TextContext {
         )
         .map(GlyphRasterImage::from_swash)
     }
+
+    fn clear_glyph_caches(&mut self) {
+        self.image_cache.clear();
+        self.outline_cache.clear();
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
@@ -281,9 +296,6 @@ pub(crate) struct GlyphRasterImage {
     content: SwashContent,
     placement: Placement,
     data: Vec<u8>,
-    // Swash returns raw 1/3px LCD samples. Tests can also inject a prefiltered
-    // image to verify the atlas builder does not run the FIR filter twice.
-    subpixel_samples: SubpixelMaskSamples,
 }
 
 impl GlyphRasterImage {
@@ -292,25 +304,17 @@ impl GlyphRasterImage {
             content: image.content,
             placement: image.placement,
             data: image.data,
-            subpixel_samples: SubpixelMaskSamples::Raw,
         }
     }
 
     #[cfg(test)]
-    pub(crate) fn prefiltered_subpixel_mask(placement: Placement, data: Vec<u8>) -> Self {
+    pub(crate) fn subpixel_mask(placement: Placement, data: Vec<u8>) -> Self {
         Self {
             content: SwashContent::SubpixelMask,
             placement,
             data,
-            subpixel_samples: SubpixelMaskSamples::Prefiltered,
         }
     }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum SubpixelMaskSamples {
-    Raw,
-    Prefiltered,
 }
 
 fn outline_cache_key(cache_key: CacheKey) -> CacheKey {
@@ -361,12 +365,42 @@ fn raster_glyph_image(
     subpixel_mode: TextSubpixelMode,
     embolden: f32,
 ) -> Option<SwashImage> {
+    let offset = raster_glyph_offset(cache_key);
+    if subpixel_mode != TextSubpixelMode::None
+        && let Some(image) = raster_glyph_image_with_sources(
+            font_system,
+            context,
+            cache_key,
+            Format::Alpha,
+            embolden,
+            offset,
+            &[
+                Source::ColorOutline(0),
+                Source::ColorBitmap(StrikeWith::BestFit),
+            ],
+        )
+    {
+        return Some(image);
+    }
+
+    if subpixel_mode != TextSubpixelMode::None {
+        return raster_harmony_lcd_glyph_image(
+            font_system,
+            context,
+            cache_key,
+            subpixel_mode,
+            embolden,
+            offset,
+        );
+    }
+
     raster_glyph_image_with_sources(
         font_system,
         context,
         cache_key,
-        subpixel_mode,
+        Format::Alpha,
         embolden,
+        offset,
         &[
             Source::ColorOutline(0),
             Source::ColorBitmap(StrikeWith::BestFit),
@@ -379,32 +413,127 @@ fn raster_glyph_image_with_sources(
     font_system: &mut FontSystem,
     context: &mut ScaleContext,
     cache_key: CacheKey,
-    subpixel_mode: TextSubpixelMode,
+    format: Format,
     embolden: f32,
+    offset: Vector,
     sources: &[Source],
 ) -> Option<SwashImage> {
-    let offset = if cache_key.flags.contains(CacheKeyFlags::PIXEL_FONT) {
-        Vector::new(
-            cache_key.x_bin.as_float().round(),
-            cache_key.y_bin.as_float().round(),
-        )
-    } else {
-        Vector::new(cache_key.x_bin.as_float(), cache_key.y_bin.as_float())
-    };
-
     with_glyph_scaler(font_system, context, cache_key, |scaler| {
         Render::new(sources)
-            .format(match subpixel_mode {
-                TextSubpixelMode::None => Format::Alpha,
-                TextSubpixelMode::Rgb => Format::Subpixel,
-                TextSubpixelMode::Bgr => Format::subpixel_bgra(),
-            })
+            .format(format)
             .embolden(embolden.max(0.0))
             .offset(offset)
             .transform(fake_italic_transform(cache_key))
             .render(scaler, cache_key.glyph_id)
     })
     .flatten()
+}
+
+fn raster_glyph_offset(cache_key: CacheKey) -> Vector {
+    if cache_key.flags.contains(CacheKeyFlags::PIXEL_FONT) {
+        Vector::new(
+            cache_key.x_bin.as_float().round(),
+            cache_key.y_bin.as_float().round(),
+        )
+    } else {
+        Vector::new(cache_key.x_bin.as_float(), cache_key.y_bin.as_float())
+    }
+}
+
+fn raster_harmony_lcd_glyph_image(
+    font_system: &mut FontSystem,
+    context: &mut ScaleContext,
+    cache_key: CacheKey,
+    subpixel_mode: TextSubpixelMode,
+    embolden: f32,
+    offset: Vector,
+) -> Option<SwashImage> {
+    let shifts = harmony_lcd_outline_shifts(subpixel_mode);
+    with_glyph_scaler(font_system, context, cache_key, |scaler| {
+        let render_channel = |scaler: &mut swash::scale::Scaler<'_>, shift: f32| {
+            Render::new(&[Source::Outline])
+                .format(Format::Alpha)
+                .embolden(embolden.max(0.0))
+                .offset(Vector::new(offset.x + shift, offset.y))
+                .transform(fake_italic_transform(cache_key))
+                .render(scaler, cache_key.glyph_id)
+        };
+
+        let red = render_channel(scaler, shifts[0])?;
+        let green = render_channel(scaler, shifts[1])?;
+        let blue = render_channel(scaler, shifts[2])?;
+        Some(merge_harmony_lcd_masks([red, green, blue]))
+    })
+    .flatten()
+}
+
+fn harmony_lcd_outline_shifts(mode: TextSubpixelMode) -> [f32; 3] {
+    match mode {
+        TextSubpixelMode::None => [0.0; 3],
+        // FreeType Harmony's default geometry is RGB subpixels at -21/64, 0,
+        // and +21/64 px. Each channel renders the outline shifted in the
+        // opposite direction so channel coverages stay integral and do not
+        // need ClearType-style FIR filtering.
+        TextSubpixelMode::Rgb => [FREETYPE_HARMONY_LCD_SHIFT, 0.0, -FREETYPE_HARMONY_LCD_SHIFT],
+        TextSubpixelMode::Bgr => [-FREETYPE_HARMONY_LCD_SHIFT, 0.0, FREETYPE_HARMONY_LCD_SHIFT],
+    }
+}
+
+fn merge_harmony_lcd_masks(channels: [SwashImage; 3]) -> SwashImage {
+    let left = channels
+        .iter()
+        .map(|image| image.placement.left)
+        .min()
+        .unwrap_or(0);
+    let right = channels
+        .iter()
+        .map(|image| image.placement.left + image.placement.width as i32)
+        .max()
+        .unwrap_or(left);
+    let top = channels
+        .iter()
+        .map(|image| image.placement.top)
+        .max()
+        .unwrap_or(0);
+    let bottom = channels
+        .iter()
+        .map(|image| image.placement.top - image.placement.height as i32)
+        .min()
+        .unwrap_or(top);
+    let width = (right - left).max(0) as u32;
+    let height = (top - bottom).max(0) as u32;
+    let mut data = vec![0; width as usize * height as usize * 3];
+
+    for (channel, image) in channels.iter().enumerate() {
+        if image.content != SwashContent::Mask {
+            continue;
+        }
+        let src_width = image.placement.width as usize;
+        let src_height = image.placement.height as usize;
+        if image.data.len() != src_width * src_height {
+            continue;
+        }
+        let dst_x = (image.placement.left - left) as usize;
+        let dst_y = (top - image.placement.top) as usize;
+        for y in 0..src_height {
+            for x in 0..src_width {
+                let dst_ix = ((dst_y + y) * width as usize + dst_x + x) * 3 + channel;
+                data[dst_ix] = image.data[y * src_width + x];
+            }
+        }
+    }
+
+    let mut image = SwashImage::new();
+    image.content = SwashContent::SubpixelMask;
+    image.source = Source::Outline;
+    image.placement = Placement {
+        left,
+        top,
+        width,
+        height,
+    };
+    image.data = data;
+    image
 }
 
 fn outline_glyph_path(
@@ -785,7 +914,7 @@ impl PreparedGlyphImage {
             SwashContent::Color => PreparedGlyphContent::Color,
             SwashContent::SubpixelMask => PreparedGlyphContent::SubpixelMask,
         };
-        let pixels = prepared_glyph_image_data(content, image, raster_options.subpixel_mode);
+        let pixels = prepared_glyph_image_data(content, image);
         Self {
             content,
             composite_mode: raster_options.composite_mode,
@@ -813,7 +942,6 @@ struct PreparedGlyphPixels {
 fn prepared_glyph_image_data(
     content: PreparedGlyphContent,
     image: &GlyphRasterImage,
-    subpixel_mode: TextSubpixelMode,
 ) -> PreparedGlyphPixels {
     if content != PreparedGlyphContent::SubpixelMask {
         return PreparedGlyphPixels {
@@ -848,70 +976,10 @@ fn prepared_glyph_image_data(
         };
     }
 
-    if image.subpixel_samples == SubpixelMaskSamples::Prefiltered {
-        return PreparedGlyphPixels {
-            left: image.placement.left,
-            width: image.placement.width,
-            data,
-        };
-    }
-
-    // Zeno gives raw 1/3px channel samples. A small symmetric FIR in subpixel
-    // order keeps CPU and GPU renderers consuming identical LCD atlas data.
     PreparedGlyphPixels {
         left: image.placement.left,
         width: image.placement.width,
-        data: filter_subpixel_mask(
-            &data,
-            image.placement.width,
-            image.placement.height,
-            subpixel_mode,
-        ),
-    }
-}
-
-fn filter_subpixel_mask(
-    data: &[u8],
-    width: u32,
-    height: u32,
-    subpixel_mode: TextSubpixelMode,
-) -> Vec<u8> {
-    let width = width as usize;
-    let height = height as usize;
-    let out_width = width;
-    let mut out = vec![0; out_width * height * 3];
-
-    for y in 0..height {
-        let row = &data[y * width * 3..(y + 1) * width * 3];
-        for out_x in 0..out_width {
-            let source_x = out_x as isize;
-            for spatial_channel in 0..3 {
-                let center = source_x * 3 + spatial_channel as isize;
-                let mut value = 0u16;
-                for (tap, &weight) in LCD_FILTER_WEIGHTS.iter().enumerate() {
-                    let source_ix = center + tap as isize - 2;
-                    if source_ix >= 0 && source_ix < row.len() as isize {
-                        let source_x = source_ix as usize / 3;
-                        let source_channel = source_ix as usize % 3;
-                        let logical_channel =
-                            spatial_to_logical_subpixel_channel(subpixel_mode, source_channel);
-                        value += u16::from(row[source_x * 3 + logical_channel]) * weight;
-                    }
-                }
-                let logical_channel =
-                    spatial_to_logical_subpixel_channel(subpixel_mode, spatial_channel);
-                out[(y * out_width + out_x) * 3 + logical_channel] =
-                    ((value + LCD_FILTER_DENOM / 2) / LCD_FILTER_DENOM) as u8;
-            }
-        }
-    }
-    out
-}
-
-fn spatial_to_logical_subpixel_channel(mode: TextSubpixelMode, channel: usize) -> usize {
-    match mode {
-        TextSubpixelMode::None | TextSubpixelMode::Rgb => channel,
-        TextSubpixelMode::Bgr => 2 - channel,
+        data,
     }
 }
 
@@ -986,7 +1054,7 @@ fn glyph_image_bounds(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cosmic_text::Weight;
+    use cosmic_text::{Family, Weight};
     use peniko::{
         Color,
         kurbo::{Affine, Shape},
@@ -1003,6 +1071,21 @@ mod tests {
         }
 
         assert!(!layout.bounds().is_empty());
+    }
+
+    #[test]
+    fn load_font_file_makes_font_available_to_layout() {
+        let mut context = TextContext::new();
+        let font_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("src/svg/fonts/NotoSans-Regular.ttf");
+
+        context.load_font_file(font_path).expect("load font file");
+        let layout = context.layout(
+            TextLayoutOptions::new("Noto", 20.0)
+                .with_attrs(Attrs::new().family(Family::Name("Noto Sans"))),
+        );
+
+        assert!(!layout.is_empty());
     }
 
     #[test]
@@ -1234,7 +1317,54 @@ mod tests {
     }
 
     #[test]
-    fn prepared_glyph_image_filters_subpixel_masks_in_spatial_channel_order() {
+    fn harmony_lcd_outline_shifts_follow_freetype_default_geometry() {
+        assert_eq!(
+            harmony_lcd_outline_shifts(TextSubpixelMode::Rgb),
+            [FREETYPE_HARMONY_LCD_SHIFT, 0.0, -FREETYPE_HARMONY_LCD_SHIFT]
+        );
+        assert_eq!(
+            harmony_lcd_outline_shifts(TextSubpixelMode::Bgr),
+            [-FREETYPE_HARMONY_LCD_SHIFT, 0.0, FREETYPE_HARMONY_LCD_SHIFT]
+        );
+    }
+
+    #[test]
+    fn harmony_lcd_merge_unions_shifted_channel_masks() {
+        let channel = |left, top, width, height, data| {
+            let mut image = SwashImage::new();
+            image.content = SwashContent::Mask;
+            image.placement = Placement {
+                left,
+                top,
+                width,
+                height,
+            };
+            image.data = data;
+            image
+        };
+
+        let merged = merge_harmony_lcd_masks([
+            channel(1, 3, 2, 1, vec![10, 11]),
+            channel(0, 2, 1, 2, vec![20, 21]),
+            channel(2, 4, 1, 1, vec![30]),
+        ]);
+
+        assert_eq!(merged.content, SwashContent::SubpixelMask);
+        assert_eq!(merged.placement.left, 0);
+        assert_eq!(merged.placement.top, 4);
+        assert_eq!(merged.placement.width, 3);
+        assert_eq!(merged.placement.height, 4);
+        let channel_at =
+            |row: usize, col: usize, channel: usize| merged.data[(row * 3 + col) * 3 + channel];
+        assert_eq!(channel_at(0, 2, 2), 30);
+        assert_eq!(channel_at(1, 1, 0), 10);
+        assert_eq!(channel_at(1, 2, 0), 11);
+        assert_eq!(channel_at(2, 0, 1), 20);
+        assert_eq!(channel_at(3, 0, 1), 21);
+    }
+
+    #[test]
+    fn prepared_glyph_image_keeps_harmony_subpixel_channels_without_filtering() {
         let mut image = SwashImage::new();
         image.content = SwashContent::SubpixelMask;
         image.placement = swash::zeno::Placement {
@@ -1256,12 +1386,12 @@ mod tests {
         assert_eq!(prepared.composite_mode, TextCompositeMode::Linear);
         assert_eq!(prepared.left, 0);
         assert_eq!(prepared.width, 1);
-        assert_eq!(prepared.data, vec![237, 8, 1]);
+        assert_eq!(prepared.data, vec![255, 0, 0]);
     }
 
     #[test]
-    fn prepared_glyph_image_keeps_prefiltered_subpixel_masks() {
-        let image = GlyphRasterImage::prefiltered_subpixel_mask(
+    fn prepared_glyph_image_keeps_three_byte_subpixel_masks() {
+        let image = GlyphRasterImage::subpixel_mask(
             Placement {
                 left: 0,
                 top: 0,

@@ -285,7 +285,6 @@ impl<R: Runtime> Renderer<R> {
         let plan = scene.compile(ROOT_COMMAND_LIST_ID);
         let (max_clip_depth, max_group_depth) = plan_stack_depths(&plan);
         let scratch_count = required_scratch_count(&plan);
-        let draw_brush_upload = GpuBrushUpload::from_scene_draws(scene);
         let filter_brush_upload = GpuBrushUpload::from_filter_plan(&plan.ops);
         let filter_convolve_upload = FilterConvolveUpload::from_plan(&plan);
         let filter_path_upload = FilterPathUpload::from_plan(&plan);
@@ -296,9 +295,10 @@ impl<R: Runtime> Renderer<R> {
         self.max_group_depth = max_group_depth;
         self.prepare_fine_stack_spills(lengths, max_clip_depth, max_group_depth);
         self.prepare_scratch_buffers(scratch_count);
-        self.draw_brushes.upload(&self.client, draw_brush_upload);
+        self.draw_brushes
+            .upload(&self.client, &scene.columns.draw_brushes);
         self.filter_brushes
-            .upload(&self.client, filter_brush_upload);
+            .upload(&self.client, &filter_brush_upload);
         self.filter_convolves
             .upload(&self.client, filter_convolve_upload);
         self.filter_paths.upload(&self.client, filter_path_upload);

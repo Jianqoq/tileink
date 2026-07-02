@@ -38,13 +38,11 @@ fn mixed_shape_scene() -> Scene {
         Rect::new(0.0, 0.0, 360.0, 260.0),
         crate::Radius::ZERO,
         Color::from_rgb8(248, 249, 251),
-        FillRule::NonZero,
     );
     scene.push_rect(
         Rect::new(42.0, 38.0, 178.0, 128.0),
         crate::Radius::ZERO,
         Color::from_rgba8(37, 143, 93, 230),
-        FillRule::NonZero,
     );
     scene.push_path(
         Circle::new((242.0, 86.0), 56.0).to_path(0.1),

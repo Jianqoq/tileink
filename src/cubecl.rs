@@ -3,6 +3,7 @@ mod buffer;
 mod pipelines;
 mod profile;
 mod renderer;
+pub(crate) mod scene_columns;
 mod sdf;
 mod types;
 

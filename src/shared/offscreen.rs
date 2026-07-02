@@ -199,6 +199,7 @@ fn translated_scene_for_bounds(scene: &Scene, local: LocalSpace) -> Scene {
         .last()
         .map(|record| record.segment_start + record.segment_capacity)
         .unwrap_or(0);
+    translated.rebuild_columns();
     translated
 }
 

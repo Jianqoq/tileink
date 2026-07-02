@@ -56,7 +56,6 @@ fn buffer_lengths_count_sdf_draw_tiles_without_path_storage() {
         Rect::new(8.0, 8.0, 40.0, 32.0),
         crate::Radius::ZERO,
         Color::BLACK,
-        FillRule::NonZero,
     );
     let lengths = CubeBufferLengths::from_scene(&scene);
 
@@ -80,7 +79,6 @@ fn buffer_lengths_count_sdf_clip_end_particles_without_path_storage() {
         Rect::new(8.0, 8.0, 40.0, 32.0),
         crate::Radius::ZERO,
         Color::BLACK,
-        FillRule::NonZero,
     );
     scene.pop_layer();
 

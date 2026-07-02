@@ -8,7 +8,7 @@ use peniko::{
     Color,
     kurbo::{Circle, Rect},
 };
-use tileink::{CubeRenderer, CubeWgpuRenderer, FillRule, Scene};
+use tileink::{CubeRenderer, CubeWgpuRenderer, Scene};
 
 pub const WIDTH: u32 = 1280;
 pub const HEIGHT: u32 = 720;
@@ -44,11 +44,10 @@ pub fn build_tileink_scene(path_count: usize, dense: bool) -> Scene {
         Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),
         tileink::Radius::ZERO,
         Color::WHITE,
-        FillRule::NonZero,
     );
 
     for i in 0..path_count {
-        scene.push_circle(circle_at(i, dense), color_at(i), FillRule::NonZero);
+        scene.push_circle(circle_at(i, dense), color_at(i));
     }
 
     scene

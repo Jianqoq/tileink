@@ -6,6 +6,7 @@ use peniko::{
     },
 };
 
+use crate::cubecl::scene_columns::SceneColumns;
 use crate::shared::{
     bd_record::BackdropRecord,
     bounds::{Bounds, PixelBounds},
@@ -46,6 +47,8 @@ use crate::text::{
     TextContext, TextLayout, TextRun, layout_bounds_at_origin, scene_glyphs_at_origin,
 };
 
+const SDF_RECORD_FILL_RULE: FillRule = FillRule::NonZero;
+
 #[derive(Clone)]
 pub struct Scene {
     pub(crate) lines: Vec<Line>,
@@ -55,6 +58,7 @@ pub struct Scene {
     pub(crate) text_runs: Vec<TextRun>,
     pub(crate) bd_records: Vec<BackdropRecord>,
     pub(crate) command_lists: Vec<CommandList>,
+    pub(crate) columns: SceneColumns,
     root_commands: CommandListId,
     command_stack: Vec<CommandListId>,
     layer_stack: Vec<LayerKind>,
@@ -63,6 +67,24 @@ pub struct Scene {
     pub(crate) tile_cnt: u32,
     pub(crate) width: u32,
     pub(crate) height: u32,
+    draw_generation: u32,
+}
+
+/// Opaque handle to a draw stored inside a [`Scene`].
+///
+/// `DrawId` is an O(1) index into the scene's draw table plus a generation
+/// check so handles from before [`Scene::reset`] cannot accidentally mutate a
+/// later draw with the same numeric index.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub struct DrawId {
+    index: u32,
+    generation: u32,
+}
+
+impl DrawId {
+    pub fn index(self) -> usize {
+        self.index as usize
+    }
 }
 
 struct PathPushOptions {
@@ -364,6 +386,7 @@ impl Scene {
             text_runs: Vec::new(),
             bd_records: Vec::new(),
             command_lists: vec![CommandList::default()],
+            columns: SceneColumns::default(),
             root_commands: ROOT_COMMAND_LIST_ID,
             command_stack: vec![ROOT_COMMAND_LIST_ID],
             layer_stack: Vec::new(),
@@ -372,7 +395,67 @@ impl Scene {
             tile_cnt: 0,
             width,
             height,
+            draw_generation: 0,
         }
+    }
+
+    pub fn draw_count(&self) -> usize {
+        self.draw_records.len()
+    }
+
+    pub fn draw_id_at(&self, index: usize) -> Option<DrawId> {
+        (index < self.draw_records.len()).then(|| self.draw_id_from_index(index))
+    }
+
+    pub fn draw_brush(&self, draw: DrawId) -> Option<&Brush> {
+        self.draw_index(draw)
+            .and_then(|index| self.draw_records.get(index))
+            .map(|draw| &draw.brush)
+    }
+
+    /// Replaces a draw's brush while keeping renderer upload columns coherent.
+    ///
+    /// The semantic draw record and the CubeCL-shaped CPU columns are updated
+    /// together. Arbitrary gradients and patterns may rewrite payload columns;
+    /// use [`set_draw_color`](Self::set_draw_color) for the O(1) solid-color
+    /// update path used by incremental UI rendering.
+    pub fn set_draw_brush(&mut self, draw: DrawId, brush: impl Into<Brush>) -> bool {
+        let Some(index) = self.draw_index(draw) else {
+            return false;
+        };
+        self.draw_records[index].brush = brush.into();
+        self.columns.rebuild_draw_brushes(&self.draw_records);
+        true
+    }
+
+    pub fn set_draw_color(&mut self, draw: DrawId, color: Color) -> bool {
+        let Some(index) = self.draw_index(draw) else {
+            return false;
+        };
+        self.draw_records[index].brush = Brush::Solid(color);
+        self.columns
+            .update_draw_solid_color(index, &self.draw_records[index]);
+        true
+    }
+
+    pub fn draw_solid_color(&self, draw: DrawId) -> Option<Color> {
+        self.draw_brush(draw).and_then(Brush::solid_color)
+    }
+
+    fn draw_id_from_index(&self, index: usize) -> DrawId {
+        debug_assert!(index < self.draw_records.len());
+        DrawId {
+            index: index as u32,
+            generation: self.draw_generation,
+        }
+    }
+
+    fn draw_index(&self, draw: DrawId) -> Option<usize> {
+        if draw.generation != self.draw_generation {
+            return None;
+        }
+        let index = draw.index as usize;
+        (index < self.draw_records.len()).then_some(index)
     }
 
     fn ensure_command_root(&mut self) {
@@ -714,6 +797,7 @@ impl Scene {
             .backdrop_pool_capacity
             .saturating_add(other.backdrop_pool_capacity);
         self.tile_cnt = self.tile_cnt.saturating_add(other.tile_cnt);
+        self.rebuild_columns();
 
         draw_offset
     }
@@ -808,13 +892,8 @@ impl Scene {
     pub fn push_clip_sdf_layer(&mut self, sdf: Sdf) {
         self.ensure_command_root();
         let bounds = sdf.bounds();
-        let draw = self.push_sdf_record(
-            sdf,
-            Brush::Solid(Color::TRANSPARENT),
-            FillRule::NonZero,
-            DrawTag::Clip,
-            false,
-        );
+        let draw =
+            self.push_sdf_record(sdf, Brush::Solid(Color::TRANSPARENT), DrawTag::Clip, false);
         let layer = Layer::ClipSdf { bounds, sdf };
         self.push_layer_command(draw, layer, LayerKind::ClipSdf);
     }
@@ -954,23 +1033,18 @@ impl Scene {
     ///
     /// This keeps rounded rectangles on the SDF path instead of flattening them
     /// to path segments, matching the SDF shadow/stroke APIs and preserving
-    /// subpixel edge ownership in both CPU and CubeCL renderers.
-    pub fn push_rect(
-        &mut self,
-        rect: Rect,
-        radius: Radius,
-        brush: impl Into<Brush>,
-        rule: FillRule,
-    ) {
-        self.push_sdf_draw(
+    /// subpixel edge ownership in both CPU and CubeCL renderers. SDF primitives
+    /// have inherent coverage; use path APIs when fill-rule semantics matter.
+    pub fn push_rect(&mut self, rect: Rect, radius: Radius, brush: impl Into<Brush>) -> DrawId {
+        let draw = self.push_sdf_draw(
             Sdf::Rect(SdfRect {
                 start: Point::new(rect.x0, rect.y0),
                 end: Point::new(rect.x1, rect.y1),
                 radius,
             }),
             brush,
-            rule,
         );
+        self.draw_id_from_index(draw)
     }
 
     pub fn push_rect_stroke(
@@ -979,18 +1053,17 @@ impl Scene {
         radius: Radius,
         stroke: Stroke,
         brush: impl Into<Brush>,
-        rule: FillRule,
-    ) {
+    ) -> Option<DrawId> {
         if stroke.width <= 0.0 {
-            return;
+            return None;
         }
         if !stroke.dash_pattern.is_empty() {
             let path = Self::rounded_rect_path(rect, radius, 0.1);
             let outline = kurbo_stroke(path, &stroke, &StrokeOpts::default(), 0.1);
-            self.push_path_inner_with_tag(
+            let draw = self.push_path_inner_with_tag(
                 outline,
                 Affine::IDENTITY,
-                rule,
+                FillRule::NonZero,
                 0.1,
                 PathPushOptions {
                     bounds_override: None,
@@ -1000,16 +1073,10 @@ impl Scene {
                     tag: DrawTag::Brush,
                 },
             );
-            return;
+            return Some(self.draw_id_from_index(draw));
         }
 
-        self.push_rect_stroke_widths(
-            rect,
-            radius,
-            StrokeWidths::all(stroke.width as f32),
-            brush,
-            rule,
-        );
+        self.push_rect_stroke_widths(rect, radius, StrokeWidths::all(stroke.width as f32), brush)
     }
 
     /// Adds a rectangle stroke with independent per-side widths as SDF geometry.
@@ -1023,14 +1090,13 @@ impl Scene {
         radius: Radius,
         widths: StrokeWidths,
         brush: impl Into<Brush>,
-        rule: FillRule,
-    ) {
+    ) -> Option<DrawId> {
         let widths = widths.clamped();
         if widths.is_empty() {
-            return;
+            return None;
         }
 
-        self.push_sdf_draw(
+        let draw = self.push_sdf_draw(
             Sdf::RectStroke(SdfRectStroke {
                 rect: SdfRect {
                     start: Point::new(rect.x0, rect.y0),
@@ -1040,8 +1106,8 @@ impl Scene {
                 widths,
             }),
             brush,
-            rule,
         );
+        Some(self.draw_id_from_index(draw))
     }
 
     /// Adds a soft SDF shadow for a rounded rectangle.
@@ -1056,11 +1122,8 @@ impl Scene {
         radius: Radius,
         options: RectShadowOptions,
         brush: impl Into<Brush>,
-        rule: FillRule,
-    ) {
-        let Some(options) = options.normalized() else {
-            return;
-        };
+    ) -> Option<DrawId> {
+        let options = options.normalized()?;
         let shadow = SdfRectShadow {
             rect: SdfRect {
                 start: Point::new(rect.x0, rect.y0),
@@ -1069,19 +1132,20 @@ impl Scene {
             },
             options,
         };
-        self.push_sdf_shadow_draw(SdfShadow::Rect(shadow), brush, rule);
+        let draw = self.push_sdf_shadow_draw(SdfShadow::Rect(shadow), brush);
+        Some(self.draw_id_from_index(draw))
     }
 
     /// Adds a filled circle as exact SDF geometry instead of flattening it to path segments.
-    pub fn push_circle(&mut self, circle: Circle, brush: impl Into<Brush>, rule: FillRule) {
-        self.push_sdf_draw(
+    pub fn push_circle(&mut self, circle: Circle, brush: impl Into<Brush>) -> DrawId {
+        let draw = self.push_sdf_draw(
             Sdf::Circle(SdfCircle {
                 center: circle.center,
                 radius: circle.radius as f32,
             }),
             brush,
-            rule,
         );
+        self.draw_id_from_index(draw)
     }
 
     pub fn push_circle_stroke(
@@ -1089,18 +1153,24 @@ impl Scene {
         circle: Circle,
         stroke: Stroke,
         brush: impl Into<Brush>,
-        rule: FillRule,
-    ) {
+    ) -> Option<DrawId> {
         if stroke.width <= 0.0 {
-            return;
+            return None;
         }
         if !stroke.dash_pattern.is_empty() {
-            self.push_stroke(circle, stroke, brush, Affine::IDENTITY, rule, 0.1);
-            return;
+            let draw = self.push_stroke(
+                circle,
+                stroke,
+                brush,
+                Affine::IDENTITY,
+                FillRule::NonZero,
+                0.1,
+            );
+            return Some(draw);
         }
 
         let half_width = (stroke.width * 0.5) as f32;
-        self.push_sdf_draw(
+        let draw = self.push_sdf_draw(
             Sdf::CircleStroke(SdfCircleStroke {
                 circle: SdfCircle {
                     center: circle.center,
@@ -1109,8 +1179,8 @@ impl Scene {
                 half_width,
             }),
             brush,
-            rule,
         );
+        Some(self.draw_id_from_index(draw))
     }
 
     pub fn push_circle_shadow(
@@ -1118,11 +1188,8 @@ impl Scene {
         circle: Circle,
         options: RectShadowOptions,
         brush: impl Into<Brush>,
-        rule: FillRule,
-    ) {
-        let Some(options) = options.normalized() else {
-            return;
-        };
+    ) -> Option<DrawId> {
+        let options = options.normalized()?;
         let shadow = SdfCircleShadow {
             circle: SdfCircle {
                 center: circle.center,
@@ -1130,7 +1197,8 @@ impl Scene {
             },
             options,
         };
-        self.push_sdf_shadow_draw(SdfShadow::Circle(shadow), brush, rule);
+        let draw = self.push_sdf_shadow_draw(SdfShadow::Circle(shadow), brush);
+        Some(self.draw_id_from_index(draw))
     }
 
     /// Adds a circular stroked arc as SDF geometry.
@@ -1138,11 +1206,12 @@ impl Scene {
     /// This is separate from [`push_arc`](Self::push_arc), which preserves the
     /// existing path-backed kurbo arc semantics. Use this method when the arc is
     /// a stroke-like primitive and should avoid path flattening.
-    pub fn push_sdf_arc(&mut self, arc: SdfArc, brush: impl Into<Brush>, rule: FillRule) {
+    pub fn push_sdf_arc(&mut self, arc: SdfArc, brush: impl Into<Brush>) -> Option<DrawId> {
         if arc.is_empty() {
-            return;
+            return None;
         }
-        self.push_sdf_draw(Sdf::Arc(arc), brush, rule);
+        let draw = self.push_sdf_draw(Sdf::Arc(arc), brush);
+        Some(self.draw_id_from_index(draw))
     }
 
     pub fn push_arc_shadow(
@@ -1150,43 +1219,39 @@ impl Scene {
         arc: SdfArc,
         options: RectShadowOptions,
         brush: impl Into<Brush>,
-        rule: FillRule,
-    ) {
+    ) -> Option<DrawId> {
         if arc.is_empty() {
-            return;
+            return None;
         }
-        let Some(options) = options.normalized() else {
-            return;
-        };
+        let options = options.normalized()?;
         let shadow = SdfArcShadow { arc, options };
-        self.push_sdf_shadow_draw(SdfShadow::Arc(shadow), brush, rule);
+        let draw = self.push_sdf_shadow_draw(SdfShadow::Arc(shadow), brush);
+        Some(self.draw_id_from_index(draw))
     }
 
-    pub fn push_candlestick(
-        &mut self,
-        candle: SdfCandleStick,
-        brush: impl Into<Brush>,
-        rule: FillRule,
-    ) {
+    pub fn push_candlestick(&mut self, candle: SdfCandleStick, brush: impl Into<Brush>) -> DrawId {
         assert!(
             SdfCandleStick::valid_body_width(candle.body_width),
             "candlestick body width must be a positive odd number"
         );
-        self.push_sdf_draw(Sdf::CandleStick(candle), brush, rule);
+        let draw = self.push_sdf_draw(Sdf::CandleStick(candle), brush);
+        self.draw_id_from_index(draw)
     }
 
-    pub fn push_line(&mut self, line: SdfLine, brush: impl Into<Brush>, rule: FillRule) {
+    pub fn push_line(&mut self, line: SdfLine, brush: impl Into<Brush>) -> Option<DrawId> {
         if line.is_empty() {
-            return;
+            return None;
         }
-        self.push_sdf_draw(Sdf::Line(line), brush, rule);
+        let draw = self.push_sdf_draw(Sdf::Line(line), brush);
+        Some(self.draw_id_from_index(draw))
     }
 
-    pub fn push_dash_line(&mut self, line: SdfDashLine, brush: impl Into<Brush>, rule: FillRule) {
+    pub fn push_dash_line(&mut self, line: SdfDashLine, brush: impl Into<Brush>) -> Option<DrawId> {
         if line.is_empty() {
-            return;
+            return None;
         }
-        self.push_sdf_draw(Sdf::DashLine(line), brush, rule);
+        let draw = self.push_sdf_draw(Sdf::DashLine(line), brush);
+        Some(self.draw_id_from_index(draw))
     }
 
     pub fn push_line_shadow(
@@ -1194,26 +1259,30 @@ impl Scene {
         line: SdfLine,
         options: RectShadowOptions,
         brush: impl Into<Brush>,
-        rule: FillRule,
-    ) {
+    ) -> Option<DrawId> {
         if line.is_empty() {
-            return;
+            return None;
         }
-        let Some(options) = options.normalized() else {
-            return;
-        };
+        let options = options.normalized()?;
         let shadow = SdfLineShadow { line, options };
-        self.push_sdf_shadow_draw(SdfShadow::Line(shadow), brush, rule);
+        let draw = self.push_sdf_shadow_draw(SdfShadow::Line(shadow), brush);
+        Some(self.draw_id_from_index(draw))
     }
 
-    pub fn push_arc(&mut self, arc: Arc, brush: impl Into<Brush>, rule: FillRule, tolerance: f64) {
+    pub fn push_arc(
+        &mut self,
+        arc: Arc,
+        brush: impl Into<Brush>,
+        rule: FillRule,
+        tolerance: f64,
+    ) -> DrawId {
         self.push_path(
             arc.to_path(tolerance),
             brush,
             Affine::IDENTITY,
             rule,
             tolerance,
-        );
+        )
     }
 
     pub fn push_stroke(
@@ -1224,10 +1293,10 @@ impl Scene {
         transform: Affine,
         rule: FillRule,
         tolerance: f64,
-    ) {
+    ) -> DrawId {
         let path = shape.to_path(tolerance);
         let outline = kurbo_stroke(path, &stroke, &StrokeOpts::default(), tolerance);
-        self.push_path_inner_with_tag(
+        let draw = self.push_path_inner_with_tag(
             outline,
             transform,
             rule,
@@ -1240,6 +1309,7 @@ impl Scene {
                 tag: DrawTag::Brush,
             },
         );
+        self.draw_id_from_index(draw)
     }
 
     pub fn push_path(
@@ -1249,8 +1319,9 @@ impl Scene {
         transform: Affine,
         rule: FillRule,
         tolerance: f64,
-    ) {
-        self.push_path_inner(path, brush, transform, rule, tolerance, None);
+    ) -> DrawId {
+        let draw = self.push_path_inner(path, brush, transform, rule, tolerance, None);
+        self.draw_id_from_index(draw)
     }
 
     /// Adds a laid-out text run at `origin`.
@@ -1265,9 +1336,9 @@ impl Scene {
         layout: &TextLayout,
         origin: Point,
         brush: impl Into<Brush>,
-    ) {
+    ) -> Option<DrawId> {
         if layout.is_empty() {
-            return;
+            return None;
         }
 
         self.ensure_command_root();
@@ -1276,17 +1347,20 @@ impl Scene {
             .extend(scene_glyphs_at_origin(layout, origin));
         let glyph_count = self.text_glyphs.len() as u32 - glyph_start;
         if glyph_count == 0 {
-            return;
+            return None;
         }
+        self.columns
+            .extend_text_glyphs(&self.text_glyphs[glyph_start as usize..]);
 
         let run_id = self.text_runs.len() as u32;
-        self.text_runs.push(TextRun {
+        let run = TextRun {
             glyph_start,
             glyph_count,
-        });
+        };
+        self.text_runs.push(run);
+        self.columns.push_text_run(run);
         let bounds = layout_bounds_at_origin(layout, origin);
-        let draw_ix = self.draw_records.len();
-        self.draw_records.push(DrawRecord {
+        let draw_ix = self.push_draw_record(DrawRecord {
             path_id: None,
             glyph_run_id: Some(run_id),
             sdf: None,
@@ -1305,6 +1379,7 @@ impl Scene {
         self.current_command_list_mut()
             .commands
             .push(Command::Draw(draw_ix));
+        Some(self.draw_id_from_index(draw_ix))
     }
 
     /// Adds a laid-out text run as vector outlines.
@@ -1323,16 +1398,16 @@ impl Scene {
         brush: impl Into<Brush>,
         transform: Affine,
         tolerance: f64,
-    ) {
+    ) -> Option<DrawId> {
         if layout.glyphs().is_empty() {
-            return;
+            return None;
         }
 
         let path = text_context.layout_outline_path(layout, origin);
         if path.is_empty() {
-            return;
+            return None;
         }
-        self.push_path_inner_with_tag(
+        let draw = self.push_path_inner_with_tag(
             path,
             transform,
             FillRule::NonZero,
@@ -1345,6 +1420,7 @@ impl Scene {
                 tag: DrawTag::PathGlyph,
             },
         );
+        Some(self.draw_id_from_index(draw))
     }
 
     fn rounded_rect_path(rect: Rect, radius: Radius, tolerance: f64) -> BezPath {
@@ -1449,12 +1525,16 @@ impl Scene {
         let path_flags = Self::path_flags(&path, options.keep_thin_stroke_horizontal_edges);
         PathFlatten::new(&path, tolerance as f32, path_id).flatten(&mut self.lines);
         let line_count = self.lines.len() as u32 - line_start;
-        self.path_records.push(PathRecord {
+        self.columns
+            .extend_lines(&self.lines[line_start as usize..self.lines.len()]);
+        let path_record = PathRecord {
             path_id,
             line_count,
             line_start,
             flags: path_flags,
-        });
+        };
+        self.path_records.push(path_record);
+        self.columns.push_path_record(path_record);
         let pixel_bounds = match options.bounds_override {
             Some(bounds) => PixelBounds {
                 x0: bounds.x0,
@@ -1476,8 +1556,7 @@ impl Scene {
         let segment_start = self.tile_cnt;
         self.tile_cnt += local_tile_cnt;
 
-        let draw_ix = self.draw_records.len();
-        self.draw_records.push(DrawRecord {
+        let draw_ix = self.push_draw_record(DrawRecord {
             path_id: Some(path_id),
             glyph_run_id: None,
             sdf: None,
@@ -1531,38 +1610,31 @@ impl Scene {
         )
     }
 
-    fn push_sdf_draw(&mut self, sdf: Sdf, brush: impl Into<Brush>, rule: FillRule) -> usize {
-        self.push_sdf_record(sdf, brush.into(), rule, DrawTag::Brush, true)
+    fn push_sdf_draw(&mut self, sdf: Sdf, brush: impl Into<Brush>) -> usize {
+        self.push_sdf_record(sdf, brush.into(), DrawTag::Brush, true)
     }
 
-    fn push_sdf_shadow_draw(
-        &mut self,
-        sdf_shadow: SdfShadow,
-        brush: impl Into<Brush>,
-        rule: FillRule,
-    ) -> usize {
-        self.push_sdf_shadow_record(sdf_shadow, brush.into(), rule, DrawTag::Brush, true)
+    fn push_sdf_shadow_draw(&mut self, sdf_shadow: SdfShadow, brush: impl Into<Brush>) -> usize {
+        self.push_sdf_shadow_record(sdf_shadow, brush.into(), DrawTag::Brush, true)
     }
 
     fn push_sdf_record(
         &mut self,
         sdf: Sdf,
         brush: Brush,
-        rule: FillRule,
         tag: DrawTag,
         emit_draw_command: bool,
     ) -> usize {
         self.ensure_command_root();
         let bounds = sdf.bounds();
-        let draw_ix = self.draw_records.len();
-        self.draw_records.push(DrawRecord {
+        let draw_ix = self.push_draw_record(DrawRecord {
             path_id: None,
             glyph_run_id: None,
             sdf: Some(sdf),
             sdf_shadow: None,
             tag,
             brush,
-            fill_rule: rule,
+            fill_rule: SDF_RECORD_FILL_RULE,
             pixel_bounds: PixelBounds {
                 x0: bounds.x0,
                 y0: bounds.y0,
@@ -1583,21 +1655,19 @@ impl Scene {
         &mut self,
         sdf_shadow: SdfShadow,
         brush: Brush,
-        rule: FillRule,
         tag: DrawTag,
         emit_draw_command: bool,
     ) -> usize {
         self.ensure_command_root();
         let bounds = sdf_shadow.bounds();
-        let draw_ix = self.draw_records.len();
-        self.draw_records.push(DrawRecord {
+        let draw_ix = self.push_draw_record(DrawRecord {
             path_id: None,
             glyph_run_id: None,
             sdf: None,
             sdf_shadow: Some(sdf_shadow),
             tag,
             brush,
-            fill_rule: rule,
+            fill_rule: SDF_RECORD_FILL_RULE,
             pixel_bounds: PixelBounds {
                 x0: bounds.x0,
                 y0: bounds.y0,
@@ -1627,9 +1697,28 @@ impl Scene {
         self.command_stack.clear();
         self.command_stack.push(self.root_commands);
         self.layer_stack.clear();
+        self.columns.clear();
         self.path_cnt = 0;
         self.backdrop_pool_capacity = 0;
         self.tile_cnt = 0;
+        self.draw_generation = self.draw_generation.wrapping_add(1);
+    }
+
+    fn push_draw_record(&mut self, draw: DrawRecord) -> usize {
+        let draw_ix = self.draw_records.len();
+        self.columns.push_draw(&draw);
+        self.draw_records.push(draw);
+        draw_ix
+    }
+
+    pub(crate) fn rebuild_columns(&mut self) {
+        self.columns.rebuild(
+            &self.lines,
+            &self.path_records,
+            &self.draw_records,
+            &self.text_runs,
+            &self.text_glyphs,
+        );
     }
 
     pub(crate) fn width_in_tiles(&self) -> u32 {

@@ -115,7 +115,6 @@ fn render_wgpu_matches_cpu_for_text_layout_when_enabled() {
         Rect::new(0.0, 0.0, 160.0, 64.0),
         crate::Radius::ZERO,
         Color::WHITE,
-        FillRule::NonZero,
     );
     scene.push_text_layout(&layout, peniko::kurbo::Point::new(8.0, 36.0), Color::BLACK);
 
@@ -145,7 +144,6 @@ fn render_wgpu_matches_cpu_for_emoji_text_when_enabled() {
         Rect::new(0.0, 0.0, 192.0, 64.0),
         crate::Radius::ZERO,
         Color::WHITE,
-        FillRule::NonZero,
     );
     scene.push_text_layout(&layout, peniko::kurbo::Point::new(8.0, 42.0), Color::BLACK);
 
@@ -175,7 +173,6 @@ fn render_wgpu_matches_cpu_for_path_text_when_enabled() {
         Rect::new(0.0, 0.0, 220.0, 80.0),
         crate::Radius::ZERO,
         Color::WHITE,
-        FillRule::NonZero,
     );
     scene.push_text_layout_as_path(
         &mut text_context,
@@ -247,13 +244,11 @@ fn render_wgpu_matches_cpu_for_sdf_rect_shadow_when_enabled() {
         Radius::all(8.0),
         RectShadowOptions::new(6.0, 5.0, 6.0, 0.45),
         Color::BLACK,
-        FillRule::NonZero,
     );
     scene.push_rect(
         Rect::new(20.0, 16.0, 56.0, 44.0),
         crate::Radius::ZERO,
         Color::from_rgb8(230, 90, 80),
-        FillRule::NonZero,
     );
 
     let mut cpu = CpuRenderer::new(96, 72, Color::WHITE);
@@ -275,12 +270,10 @@ fn render_wgpu_matches_cpu_for_sdf_shape_shadows_when_enabled() {
         Circle::new((28.0, 28.0), 10.0),
         RectShadowOptions::new(5.0, 4.0, 5.0, 0.4),
         Color::BLACK,
-        FillRule::NonZero,
     );
     scene.push_circle(
         Circle::new((28.0, 28.0), 10.0),
         Color::from_rgb8(0, 128, 255),
-        FillRule::NonZero,
     );
     let arc = SdfArc::new(
         Point::new(70.0, 34.0),
@@ -294,9 +287,8 @@ fn render_wgpu_matches_cpu_for_sdf_shape_shadows_when_enabled() {
         arc,
         RectShadowOptions::new(4.0, 5.0, 4.0, 0.45),
         Color::BLACK,
-        FillRule::NonZero,
     );
-    scene.push_sdf_arc(arc, Color::from_rgb8(220, 64, 72), FillRule::NonZero);
+    scene.push_sdf_arc(arc, Color::from_rgb8(220, 64, 72));
     let line = SdfLine::new(
         Point::new(18.0, 70.5),
         Point::new(92.0, 70.5),
@@ -307,9 +299,8 @@ fn render_wgpu_matches_cpu_for_sdf_shape_shadows_when_enabled() {
         line,
         RectShadowOptions::new(3.0, 5.0, 4.0, 0.45),
         Color::BLACK,
-        FillRule::NonZero,
     );
-    scene.push_line(line, Color::from_rgb8(34, 197, 94), FillRule::NonZero);
+    scene.push_line(line, Color::from_rgb8(34, 197, 94));
 
     let mut cpu = CpuRenderer::new(128, 96, Color::WHITE);
     cpu.render(&scene);
@@ -331,7 +322,6 @@ fn render_wgpu_matches_cpu_for_sdf_clip_layer_when_enabled() {
         Rect::new(0.0, 0.0, 96.0, 72.0),
         Radius::ZERO,
         Color::from_rgb8(34, 197, 94),
-        FillRule::NonZero,
     );
     scene.pop_layer();
 
@@ -363,7 +353,6 @@ fn render_wgpu_matches_cpu_for_sdf_clip_inside_opacity_when_enabled() {
         Rect::new(0.0, 0.0, 96.0, 72.0),
         Radius::ZERO,
         Color::from_rgb8(34, 197, 94),
-        FillRule::NonZero,
     );
     scene.pop_layer();
     scene.pop_layer();
@@ -396,7 +385,6 @@ fn render_wgpu_dashed_path_stroke_does_not_fill_whole_tiles_when_enabled() {
         Rect::new(0.0, 0.0, 1071.0, 651.0),
         Radius::ZERO,
         Color::from_rgb8(248, 249, 251),
-        FillRule::NonZero,
     );
     scene.push_rect(
         Rect::new(
@@ -407,7 +395,6 @@ fn render_wgpu_dashed_path_stroke_does_not_fill_whole_tiles_when_enabled() {
         ),
         Radius::ZERO,
         Color::from_rgb8(244, 245, 247),
-        FillRule::NonZero,
     );
     scene.push_stroke(
         peniko::kurbo::Line::new((0.0, close_y), (chart_width, close_y)).to_path(0.25),
@@ -488,7 +475,6 @@ fn render_wgpu_blits_target_to_wgpu_texture_when_enabled() {
         Rect::new(0.0, 0.0, width as f64, height as f64),
         Radius::ZERO,
         Color::from_rgba8(25, 150, 220, 192),
-        FillRule::NonZero,
     );
 
     let setup = ::cubecl::wgpu::init_setup::<::cubecl::wgpu::AutoGraphicsApi>(

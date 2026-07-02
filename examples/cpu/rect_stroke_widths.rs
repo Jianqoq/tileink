@@ -2,7 +2,7 @@
 mod common;
 
 use peniko::{Color, kurbo::Rect};
-use tileink::{CpuRenderer, FillRule, Radius, Scene, StrokeWidths};
+use tileink::{CpuRenderer, Radius, Scene, StrokeWidths};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let width = 480;
@@ -13,13 +13,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Rect::new(0.0, 0.0, width as f64, height as f64),
         tileink::Radius::ZERO,
         Color::from_rgb8(248, 249, 251),
-        FillRule::NonZero,
     );
     scene.push_rect(
         Rect::new(24.0, 24.0, 456.0, 296.0),
         tileink::Radius::ZERO,
         Color::from_rgb8(235, 239, 244),
-        FillRule::NonZero,
     );
 
     scene.push_rect_stroke_widths(
@@ -32,7 +30,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             left: 34.0,
         },
         Color::from_rgb8(220, 64, 72),
-        FillRule::NonZero,
     );
 
     scene.push_rect_stroke_widths(
@@ -45,7 +42,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             left: 12.0,
         },
         Color::from_rgb8(49, 112, 214),
-        FillRule::NonZero,
     );
 
     scene.push_rect_stroke_widths(
@@ -58,7 +54,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             left: 16.0,
         },
         Color::from_rgb8(28, 153, 104),
-        FillRule::NonZero,
     );
 
     let mut renderer = CpuRenderer::new(width, height, Color::from_rgb8(255, 255, 255));

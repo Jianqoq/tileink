@@ -3,7 +3,7 @@ use peniko::{
     color::palette::css,
     kurbo::{Point, Rect},
 };
-use tileink::{Brush, FillRule, Scene, TextAlign, TextContext, TextLayoutOptions};
+use tileink::{Brush, Scene, TextAlign, TextContext, TextLayoutOptions};
 
 const DESIGN_WIDTH: u32 = 460;
 const DESIGN_HEIGHT: u32 = 180;
@@ -26,7 +26,6 @@ pub fn scene(context: &mut TextContext) -> Scene {
         Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),
         tileink::Radius::ZERO,
         CLEAR,
-        FillRule::NonZero,
     );
 
     push_line(

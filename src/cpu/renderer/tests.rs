@@ -183,7 +183,6 @@ fn append_does_not_clip_to_child_scene_canvas() {
         Rect::new(8.0, 8.0, 24.0, 24.0),
         Radius::ZERO,
         Color::from_rgb8(0, 0, 255),
-        FillRule::NonZero,
     );
 
     let mut scene = Scene::new(40, 40);
@@ -205,7 +204,6 @@ fn append_inside_open_layer_stays_inside_that_layer() {
         Rect::new(0.0, 0.0, 16.0, 16.0),
         Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
-        FillRule::NonZero,
     );
 
     let mut scene = Scene::new(40, 32);
@@ -234,7 +232,6 @@ fn append_moves_linear_gradient_with_child_scene() {
         Rect::new(0.0, 0.0, 16.0, 4.0),
         Radius::ZERO,
         Brush::from_gradient(&gradient),
-        FillRule::NonZero,
     );
 
     let mut scene = Scene::new(40, 4);
@@ -285,7 +282,6 @@ fn sdf_rect_clip_masks_child_fill() {
         Rect::new(8.0, 8.0, 88.0, 88.0),
         crate::Radius::ZERO,
         Color::from_rgb8(37, 99, 235),
-        FillRule::NonZero,
     );
     scene.pop_layer();
 
@@ -304,7 +300,6 @@ fn sdf_circle_clip_masks_child_fill() {
         Rect::new(0.0, 0.0, 96.0, 96.0),
         crate::Radius::ZERO,
         Color::from_rgb8(37, 99, 235),
-        FillRule::NonZero,
     );
     scene.pop_layer();
 
@@ -323,7 +318,6 @@ fn sdf_rect_clip_keeps_subpixel_edge_coverage() {
         Rect::new(0.0, 0.0, 48.0, 48.0),
         crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
-        FillRule::NonZero,
     );
     scene.pop_layer();
 
@@ -349,7 +343,6 @@ fn sdf_rounded_rect_clip_masks_corners() {
         Rect::new(0.0, 0.0, 96.0, 96.0),
         crate::Radius::ZERO,
         Color::from_rgb8(37, 99, 235),
-        FillRule::NonZero,
     );
     scene.pop_layer();
 
@@ -372,7 +365,6 @@ fn outer_sdf_clip_applies_to_filter_output_analytically() {
         Rect::new(0.0, 0.0, 16.0, 16.0),
         crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
-        FillRule::NonZero,
     );
     scene.pop_layer();
     scene.pop_layer();
@@ -392,7 +384,6 @@ fn sdf_rect_stroke_renders_ring_without_filling_center() {
         Radius::ZERO,
         Stroke::new(6.0),
         Color::from_rgb8(255, 0, 0),
-        FillRule::NonZero,
     );
 
     let mut renderer = Renderer::new(64, 64, Color::WHITE);
@@ -407,11 +398,7 @@ fn sdf_rect_stroke_renders_ring_without_filling_center() {
 fn sdf_candlestick_renders_centered_one_pixel_wick_and_odd_body() {
     let red = Color::from_rgb8(220, 64, 72);
     let mut scene = Scene::new(40, 36);
-    scene.push_candlestick(
-        CandleStick::new(16.5, 4.0, 28.0, 10.0, 22.0, 7),
-        red,
-        FillRule::NonZero,
-    );
+    scene.push_candlestick(CandleStick::new(16.5, 4.0, 28.0, 10.0, 22.0, 7), red);
 
     let mut renderer = Renderer::new(40, 36, Color::WHITE);
     renderer.render(&scene);
@@ -432,13 +419,11 @@ fn sdf_rect_shadow_renders_soft_offset_shadow_as_separate_draw() {
         Radius::all(4.0),
         RectShadowOptions::new(4.0, 4.0, 4.0, 0.5),
         Color::BLACK,
-        FillRule::NonZero,
     );
     scene.push_rect(
         Rect::new(16.0, 12.0, 40.0, 36.0),
         crate::Radius::ZERO,
         Color::from_rgb8(220, 64, 72),
-        FillRule::NonZero,
     );
 
     let mut renderer = Renderer::new(72, 56, Color::WHITE);
@@ -469,7 +454,6 @@ fn sdf_line_renders_centered_one_pixel_butt_stroke() {
             SdfLineCap::Butt,
         ),
         red,
-        FillRule::NonZero,
     );
 
     let mut renderer = Renderer::new(40, 36, Color::WHITE);
@@ -497,7 +481,6 @@ fn sdf_dash_line_renders_dashes_and_gaps() {
             3.0,
         ),
         red,
-        FillRule::NonZero,
     );
 
     let mut renderer = Renderer::new(48, 36, Color::WHITE);
@@ -525,7 +508,6 @@ fn sdf_dash_line_with_zero_gap_renders_as_solid_line() {
             0.0,
         ),
         red,
-        FillRule::NonZero,
     );
 
     let mut renderer = Renderer::new(40, 36, Color::WHITE);
@@ -572,7 +554,6 @@ fn dashed_path_stroke_does_not_fill_whole_tiles_at_integer_edges() {
         Rect::new(0.0, 0.0, 1071.0, 651.0),
         Radius::ZERO,
         Color::from_rgb8(248, 249, 251),
-        FillRule::NonZero,
     );
     scene.push_rect(
         Rect::new(
@@ -583,7 +564,6 @@ fn dashed_path_stroke_does_not_fill_whole_tiles_at_integer_edges() {
         ),
         Radius::ZERO,
         Color::from_rgb8(244, 245, 247),
-        FillRule::NonZero,
     );
     scene.push_stroke(
         Line::new((0.0, close_y), (chart_width, close_y)).to_path(0.25),
@@ -633,7 +613,6 @@ fn sdf_line_square_cap_extends_by_half_width() {
             SdfLineCap::Square,
         ),
         red,
-        FillRule::NonZero,
     );
 
     let mut renderer = Renderer::new(40, 36, Color::WHITE);
@@ -659,9 +638,8 @@ fn sdf_line_shadow_renders_soft_offset_shadow_as_separate_draw() {
         line,
         RectShadowOptions::new(0.0, 4.0, 4.0, 0.5),
         Color::BLACK,
-        FillRule::NonZero,
     );
-    scene.push_line(line, red, FillRule::NonZero);
+    scene.push_line(line, red);
 
     let mut renderer = Renderer::new(48, 36, Color::WHITE);
     renderer.render(&scene);
@@ -688,9 +666,8 @@ fn sdf_circle_shadow_renders_soft_offset_shadow_as_separate_draw() {
         circle,
         RectShadowOptions::new(4.0, 4.0, 4.0, 0.5),
         Color::BLACK,
-        FillRule::NonZero,
     );
-    scene.push_circle(circle, blue, FillRule::NonZero);
+    scene.push_circle(circle, blue);
 
     let mut renderer = Renderer::new(72, 56, Color::WHITE);
     renderer.render(&scene);
@@ -717,7 +694,6 @@ fn sdf_rect_stroke_supports_per_side_widths() {
             left: 12.0,
         },
         Color::from_rgb8(255, 0, 0),
-        FillRule::NonZero,
     );
 
     let mut renderer = Renderer::new(64, 64, Color::WHITE);
@@ -738,7 +714,6 @@ fn sdf_circle_stroke_renders_ring_without_filling_center() {
         Circle::new((32.0, 32.0), 14.0),
         Stroke::new(6.0),
         Color::from_rgb8(0, 128, 255),
-        FillRule::NonZero,
     );
 
     let mut renderer = Renderer::new(64, 64, Color::WHITE);
@@ -763,7 +738,6 @@ fn sdf_arc_renders_stroked_quarter_arc_without_flattening() {
             SdfLineCap::Round,
         ),
         red,
-        FillRule::NonZero,
     );
 
     let mut renderer = Renderer::new(64, 64, Color::WHITE);
@@ -790,9 +764,8 @@ fn sdf_arc_shadow_renders_soft_offset_shadow_as_separate_draw() {
         arc,
         RectShadowOptions::new(4.0, 4.0, 4.0, 0.5),
         Color::BLACK,
-        FillRule::NonZero,
     );
-    scene.push_sdf_arc(arc, red, FillRule::NonZero);
+    scene.push_sdf_arc(arc, red);
 
     let mut renderer = Renderer::new(72, 64, Color::WHITE);
     renderer.render(&scene);
@@ -844,19 +817,9 @@ fn opacity_layer_isolates_offscreen_children() {
     let mut scene = Scene::new(16, 16);
     let full = Rect::new(0.0, 0.0, 16.0, 16.0);
     scene.push_opacity_layer(full.to_path(0.0), Affine::IDENTITY, 0.0, 0.5);
-    scene.push_rect(
-        full,
-        crate::Radius::ZERO,
-        Color::from_rgb8(0, 128, 0),
-        FillRule::NonZero,
-    );
+    scene.push_rect(full, crate::Radius::ZERO, Color::from_rgb8(0, 128, 0));
     scene.push_filter_layer(Filter::Opacity(1.0), Region::rect(full, Radius::ZERO));
-    scene.push_rect(
-        full,
-        crate::Radius::ZERO,
-        Color::from_rgb8(0, 0, 255),
-        FillRule::NonZero,
-    );
+    scene.push_rect(full, crate::Radius::ZERO, Color::from_rgb8(0, 0, 255));
     scene.pop_layer();
     scene.pop_layer();
 
@@ -938,12 +901,7 @@ fn filter_offset_preserves_source_outside_canvas() {
         Filter::Offset { dx: 16.0, dy: 0.0 },
         Region::rect(source, Radius::ZERO),
     );
-    scene.push_rect(
-        source,
-        crate::Radius::ZERO,
-        Color::from_rgb8(255, 0, 0),
-        FillRule::NonZero,
-    );
+    scene.push_rect(source, crate::Radius::ZERO, Color::from_rgb8(255, 0, 0));
     scene.pop_layer();
 
     let mut renderer = Renderer::new(48, 16, Color::TRANSPARENT);
@@ -962,12 +920,7 @@ fn filter_offset_with_huge_source_keeps_only_visible_dependency_window() {
         Filter::Offset { dx: 20.0, dy: 0.0 },
         Region::rect(source, Radius::ZERO),
     );
-    scene.push_rect(
-        source,
-        crate::Radius::ZERO,
-        Color::from_rgb8(0, 128, 0),
-        FillRule::NonZero,
-    );
+    scene.push_rect(source, crate::Radius::ZERO, Color::from_rgb8(0, 128, 0));
     scene.pop_layer();
 
     let mut renderer = Renderer::new(64, 16, Color::TRANSPARENT);
@@ -984,7 +937,6 @@ fn backdrop_filter_samples_existing_target() {
         Rect::new(0.0, 0.0, 48.0, 24.0),
         crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
-        FillRule::NonZero,
     );
     scene.push_backdrop_layer(
         Filter::Invert(1.0),
@@ -1008,7 +960,6 @@ fn backdrop_rect_liquid_glass_refracts_rect_edge_without_moving_center() {
             Rect::new(f64::from(x), 0.0, f64::from(x + 1), 32.0),
             crate::Radius::ZERO,
             Color::from_rgb8(v, v, v),
-            FillRule::NonZero,
         );
     }
 
@@ -1045,7 +996,6 @@ fn backdrop_rect_liquid_glass_does_not_shadow_outside_sample_region() {
         Rect::new(0.0, 0.0, 64.0, 40.0),
         crate::Radius::ZERO,
         Color::WHITE,
-        FillRule::NonZero,
     );
     scene.push_backdrop_layer(
         Filter::RectLiquidGlass(RectLiquidGlass {
@@ -1135,12 +1085,7 @@ fn blend_layer_composites_tile_group_through_layer_mask() {
 fn blend_layer_isolates_offscreen_children() {
     let mut scene = Scene::new(16, 16);
     let full = Rect::new(0.0, 0.0, 16.0, 16.0);
-    scene.push_rect(
-        full,
-        crate::Radius::ZERO,
-        Color::from_rgb8(128, 128, 128),
-        FillRule::NonZero,
-    );
+    scene.push_rect(full, crate::Radius::ZERO, Color::from_rgb8(128, 128, 128));
     scene.push_blend_layer(
         Rect::new(0.0, 0.0, 8.0, 16.0).to_path(0.0),
         Affine::IDENTITY,
@@ -1148,19 +1093,9 @@ fn blend_layer_isolates_offscreen_children() {
         Mix::Multiply,
         Compose::SrcOver,
     );
-    scene.push_rect(
-        full,
-        crate::Radius::ZERO,
-        Color::from_rgb8(255, 0, 0),
-        FillRule::NonZero,
-    );
+    scene.push_rect(full, crate::Radius::ZERO, Color::from_rgb8(255, 0, 0));
     scene.push_filter_layer(Filter::Opacity(1.0), Region::rect(full, Radius::ZERO));
-    scene.push_rect(
-        full,
-        crate::Radius::ZERO,
-        Color::from_rgb8(0, 255, 0),
-        FillRule::NonZero,
-    );
+    scene.push_rect(full, crate::Radius::ZERO, Color::from_rgb8(0, 255, 0));
     scene.pop_layer();
     scene.pop_layer();
 
@@ -1175,12 +1110,7 @@ fn blend_layer_isolates_offscreen_children() {
 fn isolate_layer_gives_child_blend_a_transparent_group_backdrop() {
     let mut scene = Scene::new(16, 16);
     let full = Rect::new(0.0, 0.0, 16.0, 16.0);
-    scene.push_rect(
-        full,
-        crate::Radius::ZERO,
-        Color::from_rgb8(128, 128, 128),
-        FillRule::NonZero,
-    );
+    scene.push_rect(full, crate::Radius::ZERO, Color::from_rgb8(128, 128, 128));
     scene.push_isolate_layer(full.to_path(0.0), Affine::IDENTITY, 0.0);
     scene.push_blend_layer(
         full.to_path(0.0),
@@ -1189,12 +1119,7 @@ fn isolate_layer_gives_child_blend_a_transparent_group_backdrop() {
         Mix::Multiply,
         Compose::SrcOver,
     );
-    scene.push_rect(
-        full,
-        crate::Radius::ZERO,
-        Color::from_rgb8(255, 0, 0),
-        FillRule::NonZero,
-    );
+    scene.push_rect(full, crate::Radius::ZERO, Color::from_rgb8(255, 0, 0));
     scene.pop_layer();
     scene.pop_layer();
 
@@ -1211,7 +1136,6 @@ fn mask_layer_applies_alpha_coverage_and_region() {
         Rect::new(0.0, 0.0, 16.0, 16.0),
         crate::Radius::ZERO,
         Color::from_rgba8(255, 255, 255, 128),
-        FillRule::NonZero,
     );
 
     let mut scene = Scene::new(16, 16);
@@ -1226,7 +1150,6 @@ fn mask_layer_applies_alpha_coverage_and_region() {
         Rect::new(0.0, 0.0, 16.0, 16.0),
         crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
-        FillRule::NonZero,
     );
     scene.pop_layer();
 
@@ -1244,7 +1167,6 @@ fn mask_layer_uses_luminance_by_default_semantics() {
         Rect::new(0.0, 0.0, 16.0, 16.0),
         crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
-        FillRule::NonZero,
     );
 
     let mut scene = Scene::new(16, 16);
@@ -1259,7 +1181,6 @@ fn mask_layer_uses_luminance_by_default_semantics() {
         Rect::new(0.0, 0.0, 16.0, 16.0),
         crate::Radius::ZERO,
         Color::from_rgb8(0, 255, 0),
-        FillRule::NonZero,
     );
     scene.pop_layer();
 

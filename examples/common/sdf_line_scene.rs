@@ -2,7 +2,7 @@ use peniko::{
     Color,
     kurbo::{Point, Rect},
 };
-use tileink::{FillRule, Scene, SdfLine, SdfLineCap};
+use tileink::{Scene, SdfLine, SdfLineCap};
 
 pub fn sdf_line_scene() -> (Scene, u32, u32) {
     let width = 520;
@@ -13,7 +13,6 @@ pub fn sdf_line_scene() -> (Scene, u32, u32) {
         Rect::new(0.0, 0.0, width as f64, height as f64),
         tileink::Radius::ZERO,
         Color::from_rgb8(248, 249, 251),
-        FillRule::NonZero,
     );
 
     for y in [72.0, 144.0, 216.0] {
@@ -25,7 +24,6 @@ pub fn sdf_line_scene() -> (Scene, u32, u32) {
                 SdfLineCap::Butt,
             ),
             Color::from_rgb8(222, 228, 236),
-            FillRule::NonZero,
         );
     }
 
@@ -43,7 +41,6 @@ pub fn sdf_line_scene() -> (Scene, u32, u32) {
             SdfLineCap::Butt,
         ),
         red,
-        FillRule::NonZero,
     );
     scene.push_line(
         SdfLine::new(
@@ -53,7 +50,6 @@ pub fn sdf_line_scene() -> (Scene, u32, u32) {
             SdfLineCap::Butt,
         ),
         blue,
-        FillRule::NonZero,
     );
     scene.push_line(
         SdfLine::new(
@@ -63,7 +59,6 @@ pub fn sdf_line_scene() -> (Scene, u32, u32) {
             SdfLineCap::Square,
         ),
         green,
-        FillRule::NonZero,
     );
     scene.push_line(
         SdfLine::new(
@@ -73,7 +68,6 @@ pub fn sdf_line_scene() -> (Scene, u32, u32) {
             SdfLineCap::Round,
         ),
         amber,
-        FillRule::NonZero,
     );
     scene.push_line(
         SdfLine::new(
@@ -83,7 +77,6 @@ pub fn sdf_line_scene() -> (Scene, u32, u32) {
             SdfLineCap::Round,
         ),
         violet,
-        FillRule::NonZero,
     );
 
     (scene, width, height)

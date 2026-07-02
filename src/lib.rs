@@ -33,7 +33,7 @@ pub use debug::{
     RenderDebugCapture, RenderDebugImage, RenderDebugOptions, RenderDebugText, RenderOptions,
     debug_capture_json,
 };
-pub use scene::Scene;
+pub use scene::{DrawId, Scene};
 pub use shared::{
     bounds::Bounds,
     brush::Brush,

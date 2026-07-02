@@ -63,7 +63,7 @@ pub(crate) fn store_packed_atomic_u8(words: &mut Array<Atomic<u32>>, ix: u32, va
 
 #[cube]
 pub(crate) fn draw_flags_at(draw_flags: &Array<u32>, draw_ix: u32) -> u32 {
-    packed_u8_at(draw_flags, draw_ix)
+    draw_flags[draw_ix as usize]
 }
 
 #[cube]

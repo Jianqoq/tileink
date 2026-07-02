@@ -183,11 +183,11 @@ impl<R: Runtime> Renderer<R> {
         self.prepare_fine_stack_spills(lengths, max_clip_depth, max_group_depth);
         self.prepare_scratch_buffers(scratch_count.max(1));
         self.draw_brushes
-            .upload(&self.client, GpuBrushUpload::from_scene_draws(scene));
-        self.filter_brushes.upload(
-            &self.client,
-            GpuBrushUpload::from_filter_ops_and_filter(&plan.ops, parent_filter),
-        );
+            .upload(&self.client, &scene.columns.draw_brushes);
+        let filter_brush_upload =
+            GpuBrushUpload::from_filter_ops_and_filter(&plan.ops, parent_filter);
+        self.filter_brushes
+            .upload(&self.client, &filter_brush_upload);
         self.filter_convolves.upload(
             &self.client,
             FilterConvolveUpload::from_ops_and_filter(&plan.ops, parent_filter),

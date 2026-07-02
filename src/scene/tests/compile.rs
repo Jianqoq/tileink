@@ -260,7 +260,6 @@ fn compile_fuses_generic_sdf_clip_without_path_storage() {
         Rect::new(0.0, 0.0, 48.0, 48.0),
         Radius::ZERO,
         Brush::Solid(rgb(255, 0, 0)),
-        FillRule::NonZero,
     );
     scene.pop_layer();
 
@@ -423,7 +422,6 @@ fn compile_keeps_mask_content_and_mask_isolated() {
         Rect::new(0.0, 0.0, 32.0, 64.0),
         crate::Radius::ZERO,
         Brush::Solid(rgb(255, 255, 255)),
-        FillRule::NonZero,
     );
     scene.push_mask_layer(
         mask_scene,
@@ -436,7 +434,6 @@ fn compile_keeps_mask_content_and_mask_isolated() {
         Rect::new(0.0, 0.0, 64.0, 64.0),
         crate::Radius::ZERO,
         Brush::Solid(rgb(255, 0, 0)),
-        FillRule::NonZero,
     );
     scene.pop_layer();
 

@@ -2,7 +2,7 @@ use peniko::{
     Color,
     kurbo::{Point, Rect},
 };
-use tileink::{FillRule, Radius, Scene, SdfDashLine, SdfLineCap};
+use tileink::{Radius, Scene, SdfDashLine, SdfLineCap};
 
 pub fn sdf_dash_line_scene() -> (Scene, u32, u32) {
     let width = 640;
@@ -13,7 +13,6 @@ pub fn sdf_dash_line_scene() -> (Scene, u32, u32) {
         Rect::new(0.0, 0.0, width as f64, height as f64),
         Radius::ZERO,
         Color::from_rgb8(248, 249, 251),
-        FillRule::NonZero,
     );
 
     for y in [72.0, 144.0, 216.0, 288.0] {
@@ -27,7 +26,6 @@ pub fn sdf_dash_line_scene() -> (Scene, u32, u32) {
                 8.0,
             ),
             Color::from_rgb8(226, 232, 240),
-            FillRule::NonZero,
         );
     }
 
@@ -41,7 +39,6 @@ pub fn sdf_dash_line_scene() -> (Scene, u32, u32) {
             8.0,
         ),
         Color::from_rgb8(220, 64, 72),
-        FillRule::NonZero,
     );
 
     scene.push_dash_line(
@@ -54,7 +51,6 @@ pub fn sdf_dash_line_scene() -> (Scene, u32, u32) {
             12.0,
         ),
         Color::from_rgb8(37, 99, 235),
-        FillRule::NonZero,
     );
 
     scene.push_dash_line(
@@ -68,7 +64,6 @@ pub fn sdf_dash_line_scene() -> (Scene, u32, u32) {
             9.0,
         ),
         Color::from_rgb8(22, 163, 74),
-        FillRule::NonZero,
     );
 
     scene.push_dash_line(
@@ -82,7 +77,6 @@ pub fn sdf_dash_line_scene() -> (Scene, u32, u32) {
             14.0,
         ),
         Color::from_rgb8(217, 119, 6),
-        FillRule::NonZero,
     );
 
     (scene, width, height)

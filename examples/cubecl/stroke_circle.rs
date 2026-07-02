@@ -16,7 +16,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         peniko::kurbo::Rect::new(0.0, 0.0, width as f64, height as f64),
         tileink::Radius::ZERO,
         Color::from_rgb8(250, 250, 248),
-        FillRule::NonZero,
     );
     scene.push_stroke(
         Circle::new((110.0, 90.0), 54.0),

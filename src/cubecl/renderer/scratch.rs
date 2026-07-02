@@ -169,7 +169,7 @@ fn graph_scratch_extra(primitives: &[FilterPrimitive]) -> usize {
 mod tests {
     use peniko::{Color, kurbo::Rect};
 
-    use crate::{FillRule, Radius, Scene, shared::execution::ROOT_COMMAND_LIST_ID};
+    use crate::{Radius, Scene, shared::execution::ROOT_COMMAND_LIST_ID};
 
     use super::required_scratch_count;
 
@@ -177,12 +177,7 @@ mod tests {
     fn sdf_clip_layer_uses_fused_clip_stack_without_scratch() {
         let mut scene = Scene::new(32, 32);
         scene.push_clip_sdf_rect_layer(Rect::new(4.0, 4.0, 28.0, 28.0), Radius::all(4.0));
-        scene.push_rect(
-            Rect::new(0.0, 0.0, 32.0, 32.0),
-            Radius::ZERO,
-            Color::WHITE,
-            FillRule::NonZero,
-        );
+        scene.push_rect(Rect::new(0.0, 0.0, 32.0, 32.0), Radius::ZERO, Color::WHITE);
         scene.pop_layer();
 
         let plan = scene.compile(ROOT_COMMAND_LIST_ID);

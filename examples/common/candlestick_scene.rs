@@ -1,5 +1,5 @@
 use peniko::{Color, kurbo::Rect};
-use tileink::{CandleStick, FillRule, Scene};
+use tileink::{CandleStick, Scene};
 
 pub fn candlestick_scene() -> (Scene, u32, u32) {
     let width = 520;
@@ -10,13 +10,11 @@ pub fn candlestick_scene() -> (Scene, u32, u32) {
         Rect::new(0.0, 0.0, width as f64, height as f64),
         tileink::Radius::ZERO,
         Color::from_rgb8(248, 249, 251),
-        FillRule::NonZero,
     );
     scene.push_rect(
         Rect::new(36.0, 32.0, 484.0, 284.0),
         tileink::Radius::ZERO,
         Color::from_rgb8(255, 255, 255),
-        FillRule::NonZero,
     );
 
     for y in [72.0, 112.0, 152.0, 192.0, 232.0] {
@@ -24,7 +22,6 @@ pub fn candlestick_scene() -> (Scene, u32, u32) {
             Rect::new(36.0, y, 484.0, y + 1.0),
             tileink::Radius::ZERO,
             Color::from_rgb8(228, 233, 240),
-            FillRule::NonZero,
         );
     }
 
@@ -53,7 +50,6 @@ pub fn candlestick_scene() -> (Scene, u32, u32) {
         scene.push_candlestick(
             CandleStick::new(center_x, high_y, low_y, open_y, close_y, 11),
             color,
-            FillRule::NonZero,
         );
     }
 

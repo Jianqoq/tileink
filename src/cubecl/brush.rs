@@ -1,16 +1,14 @@
 use ::cubecl::prelude::Runtime;
 use peniko::Extend;
 
-use crate::{
-    scene::Scene,
-    shared::{
-        brush::{Brush, PatternSampling},
-        execution::ExecOp,
-        image::premul_color_to_rgba8_pack,
-        layer::{
-            Layer,
-            filter::{Filter, FilterPrimitiveKind},
-        },
+use crate::shared::{
+    brush::{Brush, PatternSampling},
+    draw_record::DrawRecord,
+    execution::ExecOp,
+    image::premul_color_to_rgba8_pack,
+    layer::{
+        Layer,
+        filter::{Filter, FilterPrimitiveKind},
     },
 };
 
@@ -59,7 +57,7 @@ impl GpuBrushBuffers {
     pub(crate) fn upload<R: Runtime>(
         &mut self,
         client: &::cubecl::client::ComputeClient<R>,
-        upload: GpuBrushUpload,
+        upload: &GpuBrushUpload,
     ) {
         self.data.replace(client, &upload.data);
         self.params.replace(client, &upload.params);
@@ -84,17 +82,22 @@ impl GpuBrushBuffers {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct GpuBrushUpload {
-    data: Vec<u32>,
-    params: Vec<f32>,
-    payloads: Vec<u32>,
+    pub(crate) data: Vec<u32>,
+    pub(crate) params: Vec<f32>,
+    pub(crate) payloads: Vec<u32>,
 }
 
 impl GpuBrushUpload {
-    pub(crate) fn from_scene_draws(scene: &Scene) -> Self {
+    pub(crate) fn clear(&mut self) {
+        self.data.clear();
+        self.params.clear();
+        self.payloads.clear();
+    }
+    pub(crate) fn from_scene_draws_raw(draws: &[DrawRecord]) -> Self {
         let mut upload = Self::default();
-        for draw in &scene.draw_records {
+        for draw in draws {
             upload.push_brush(&draw.brush);
         }
         upload
@@ -113,7 +116,31 @@ impl GpuBrushUpload {
         upload
     }
 
-    fn push_brush(&mut self, brush: &Brush) {
+    pub(crate) fn push_brush(&mut self, brush: &Brush) {
+        let (data, params) = self.encode_brush(brush);
+        self.data.extend_from_slice(&data);
+        debug_assert_eq!(self.data.len() % GPU_BRUSH_U32_STRIDE, 0);
+        self.params.extend_from_slice(&params);
+    }
+
+    pub(crate) fn write_solid_color(&mut self, index: usize, color: peniko::Color) {
+        let data_offset = index * GPU_BRUSH_U32_STRIDE;
+        let params_offset = index * GPU_BRUSH_PARAM_STRIDE;
+        assert!(
+            data_offset + GPU_BRUSH_U32_STRIDE <= self.data.len()
+                && params_offset + GPU_BRUSH_PARAM_STRIDE <= self.params.len(),
+            "brush index out of range"
+        );
+        let brush = Brush::Solid(color);
+        let (data, params) = self.encode_brush(&brush);
+        self.data[data_offset..data_offset + GPU_BRUSH_U32_STRIDE].copy_from_slice(&data);
+        self.params[params_offset..params_offset + GPU_BRUSH_PARAM_STRIDE].copy_from_slice(&params);
+    }
+
+    fn encode_brush(
+        &mut self,
+        brush: &Brush,
+    ) -> ([u32; GPU_BRUSH_U32_STRIDE], [f32; GPU_BRUSH_PARAM_STRIDE]) {
         let mut params = [0.0; GPU_BRUSH_PARAM_STRIDE];
         let mut kind = GPU_BRUSH_SOLID;
         let mut extend = GPU_EXTEND_PAD;
@@ -177,19 +204,20 @@ impl GpuBrushUpload {
             }
         }
 
-        self.data.extend_from_slice(&[
-            kind,
-            extend,
-            payload_offset,
-            payload_len,
-            color,
-            image_width,
-            image_height,
-            opacity,
-            pattern_sampling,
-        ]);
-        debug_assert_eq!(self.data.len() % GPU_BRUSH_U32_STRIDE, 0);
-        self.params.extend_from_slice(&params);
+        (
+            [
+                kind,
+                extend,
+                payload_offset,
+                payload_len,
+                color,
+                image_width,
+                image_height,
+                opacity,
+                pattern_sampling,
+            ],
+            params,
+        )
     }
 
     fn push_payload(&mut self, payload: &[u32]) -> (u32, u32) {

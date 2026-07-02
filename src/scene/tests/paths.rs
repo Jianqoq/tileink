@@ -1,5 +1,28 @@
 use super::*;
 
+fn assert_path_geometry_columns_match_scene(scene: &Scene) {
+    assert_eq!(scene.columns.line_path_ids.len(), scene.lines.len());
+    assert_eq!(scene.columns.line_p0x.len(), scene.lines.len());
+    assert_eq!(scene.columns.line_p0y.len(), scene.lines.len());
+    assert_eq!(scene.columns.line_p1x.len(), scene.lines.len());
+    assert_eq!(scene.columns.line_p1y.len(), scene.lines.len());
+    assert_eq!(scene.columns.path_flags.len(), scene.path_cnt as usize);
+
+    for (index, line) in scene.lines.iter().enumerate() {
+        assert_eq!(scene.columns.line_path_ids[index], line.path_id);
+        assert_eq!(scene.columns.line_p0x[index], line.p0[0]);
+        assert_eq!(scene.columns.line_p0y[index], line.p0[1]);
+        assert_eq!(scene.columns.line_p1x[index], line.p1[0]);
+        assert_eq!(scene.columns.line_p1y[index], line.p1[1]);
+    }
+    for record in &scene.path_records {
+        assert_eq!(
+            scene.columns.path_flags[record.path_id as usize],
+            record.flags
+        );
+    }
+}
+
 #[test]
 fn push_arc_adds_draw_and_path_record() {
     let mut scene = test_scene();
@@ -64,6 +87,7 @@ fn push_path_flattens_transformed_geometry() {
             .into_iter()
             .all(|point| point[0] >= 8.0 && point[0] <= 18.0 && point[1] >= 4.0 && point[1] <= 14.0)
     }));
+    assert_path_geometry_columns_match_scene(&scene);
 }
 
 #[test]
@@ -130,5 +154,28 @@ fn push_layer_path_flattens_transformed_geometry() {
         [line.p0, line.p1].into_iter().all(|point| {
             point[0] >= 12.0 && point[0] <= 22.0 && point[1] >= 6.0 && point[1] <= 16.0
         })
+    }));
+    assert_path_geometry_columns_match_scene(&scene);
+}
+
+#[test]
+fn append_rebuilds_path_geometry_columns() {
+    let mut child = test_scene();
+    child.push_path(
+        rect_path(0.0, 0.0, 10.0, 10.0),
+        Brush::Solid(rgb(255, 0, 0)),
+        Affine::IDENTITY,
+        FillRule::NonZero,
+        0.25,
+    );
+
+    let mut scene = test_scene();
+    scene.append(child, Point::new(8.0, 4.0));
+
+    assert_path_geometry_columns_match_scene(&scene);
+    assert!(scene.lines.iter().all(|line| {
+        [line.p0, line.p1]
+            .into_iter()
+            .all(|point| point[0] >= 8.0 && point[0] <= 18.0 && point[1] >= 4.0 && point[1] <= 14.0)
     }));
 }
