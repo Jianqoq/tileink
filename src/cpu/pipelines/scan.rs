@@ -93,8 +93,24 @@ impl<'a> ScanCpuPrepared<'a> {
                             backdrop[(x_bump - bbox.x0 as i32) as usize] += plan.delta;
                         }
 
+                        // Stroke outlines keep horizontal boundary edges as fine segments; those
+                        // edges must not also emit coarse top-edge carry. Fill paths keep the
+                        // historical top-edge carry because their boundary horizontals are owned
+                        // by the coarse scan rule instead of fine segments.
+                        let needs_top_edge_carry = !plan.keep_horizontal_tile_edges
+                            || (plan.xy0[1] != plan.xy1[1]
+                                && ((plan.xy0[1] * crate::TILE_SCALE).floor()
+                                    < (plan.xy1[1] * crate::TILE_SCALE).floor()
+                                    || bbox.y1 > bbox.y0 + 1));
+                        let skip_initial_top_edge_carry = plan.keep_horizontal_tile_edges
+                            && bbox.y0 == 0
+                            && plan.xy1[0] < plan.xy0[0];
                         for_each_scanned_tile(&plan, bbox, self.tiles_size, |tile| {
-                            if tile.top_edge && tile.x + 1 < bbox.x1 as i32 {
+                            if needs_top_edge_carry
+                                && tile.top_edge
+                                && !(tile.initial_top_edge && skip_initial_top_edge_carry)
+                                && tile.x + 1 < bbox.x1 as i32
+                            {
                                 let x_bump = (tile.x + 1).max(bbox.x0 as i32);
                                 let bump_ix =
                                     ((tile.y - bbox.y0 as i32) * bbox.tile_stride() as i32 + x_bump
@@ -145,6 +161,7 @@ impl<'a> ScanCpuPrepared<'a> {
                             let segment = clip_line_to_tile(
                                 (plan.xy0, plan.xy1),
                                 plan.is_down,
+                                plan.keep_horizontal_tile_edges,
                                 tile.x,
                                 tile.y,
                             );
@@ -269,6 +286,7 @@ impl ScanCpuPipeline {
 fn clip_line_to_tile(
     line: ([f32; 2], [f32; 2]),
     is_down: bool,
+    keep_horizontal_tile_edges: bool,
     tile_x: i32,
     tile_y: i32,
 ) -> LineSegment {
@@ -303,10 +321,12 @@ fn clip_line_to_tile(
                 p1.1 = p0.1;
             }
         } else if p0.1 == 0.0 {
-            // A long edge that passes exactly through the tile's top-left corner is owned by
-            // the top edge. Only a subpixel cap needs left-edge ownership to balance a paired
-            // left-edge exit from the same stroked outline.
-            if p1.0 <= 1.0 && p1.1 <= 1.0 {
+            // Diagonal edges passing exactly through top-left are owned by the top edge.
+            // Stroke outlines keep horizontal top edges on tile boundaries so their paired
+            // bottom edges cannot fill every row below the stroke.
+            if (keep_horizontal_tile_edges && p1.1 == 0.0)
+                || (p1.0 <= 1.0 + TILE_BOUNDARY_EPSILON && p1.1 <= 1.0 + TILE_BOUNDARY_EPSILON)
+            {
                 y_edge = p0.1;
             }
             p0.0 = EPSILON;
@@ -315,6 +335,9 @@ fn clip_line_to_tile(
         }
     } else if p1.0 == 0.0 {
         if p1.1 == 0.0 {
+            if keep_horizontal_tile_edges && p0.1 == 0.0 {
+                y_edge = p1.1;
+            }
             p1.0 = EPSILON;
         } else {
             y_edge = p1.1;
@@ -408,6 +431,7 @@ mod tests {
 
     use super::{ScanCpuPipeline, ScanCpuPrepared};
     use crate::{
+        Scene,
         cpu::computes::cumsum::run_backdrop_cumsum,
         cpu::computes::fine::build_tile_alpha,
         shared::{
@@ -415,6 +439,10 @@ mod tests {
             line_seg::LineSegment, path::PathRecord, scan_line::plan_scan_line,
             tile_seg_range::TileSegmentRange,
         },
+    };
+    use peniko::{
+        Color,
+        kurbo::{Affine, Line as KurboLine, Shape, Stroke},
     };
 
     fn one_tile_backdrop_record(segment_capacity: u32) -> BackdropRecord {
@@ -496,7 +524,7 @@ mod tests {
         };
         let line = Line {
             path_id: 0,
-            _pad: 0.0,
+            flags: 0.0,
             p0: [4.0, 4.0],
             p1: [4.0, 4.0],
         };
@@ -508,7 +536,7 @@ mod tests {
     fn run_skips_zero_tile_backdrop_record() {
         let lines = [Line {
             path_id: 0,
-            _pad: 0.0,
+            flags: 0.0,
             p0: [0.0, 0.0],
             p1: [0.0, 16.0],
         }];
@@ -561,7 +589,7 @@ mod tests {
     fn run_adds_backdrop_delta_for_line_left_of_tile_bbox() {
         let lines = [Line {
             path_id: 0,
-            _pad: 0.0,
+            flags: 0.0,
             p0: [-4.0, 0.0],
             p1: [-4.0, 16.0],
         }];
@@ -607,7 +635,7 @@ mod tests {
     fn run_emits_segment_for_line_inside_tile() {
         let lines = [Line {
             path_id: 0,
-            _pad: 0.0,
+            flags: 0.0,
             p0: [4.0, 0.0],
             p1: [4.0, 16.0],
         }];
@@ -662,13 +690,13 @@ mod tests {
         let lines = [
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [4.0, 0.0],
                 p1: [20.0, 16.0],
             },
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [20.0, 0.0],
                 p1: [4.0, 16.0],
             },
@@ -749,13 +777,13 @@ mod tests {
         let lines = [
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [20.0, -8.0],
                 p1: [20.0, 40.0],
             },
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [100.0, 40.0],
                 p1: [100.0, -8.0],
             },
@@ -782,13 +810,13 @@ mod tests {
         let lines = [
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [32.0, -8.0],
                 p1: [32.0, 32.0],
             },
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [96.0, 32.0],
                 p1: [96.0, -8.0],
             },
@@ -805,7 +833,7 @@ mod tests {
 
         let line_on_top = Line {
             path_id: 0,
-            _pad: 0.0,
+            flags: 0.0,
             p0: [32.0, 0.0],
             p1: [32.0, 32.0],
         };
@@ -825,7 +853,7 @@ mod tests {
         };
         let line = Line {
             path_id: 0,
-            _pad: 0.0,
+            flags: 0.0,
             p0: [30.156_143, -6.175_184_2],
             p1: [30.0, 0.0],
         };
@@ -844,13 +872,13 @@ mod tests {
         let lines = [
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [159.862_64, -0.480_762],
                 p1: [19.862_64, 39.519_238],
             },
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [160.137_36, 0.480_762],
                 p1: [159.862_64, -0.480_762],
             },
@@ -872,25 +900,25 @@ mod tests {
         let lines = [
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [1.494_818_7, -1.328_727_7],
                 p1: [161.494_81, 178.671_28],
             },
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [161.494_81, 178.671_28],
                 p1: [158.505_19, 181.328_72],
             },
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [158.505_19, 181.328_72],
                 p1: [-1.494_818_7, 1.328_727_7],
             },
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [-1.494_818_7, 1.328_727_7],
                 p1: [1.494_818_7, -1.328_727_7],
             },
@@ -914,13 +942,13 @@ mod tests {
         let lines = [
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [32.0, 0.0],
                 p1: [32.0, 32.0],
             },
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [96.0, 32.0],
                 p1: [96.0, 0.0],
             },
@@ -933,29 +961,80 @@ mod tests {
     }
 
     #[test]
+    fn run_keeps_generated_horizontal_path_dash_backdrops_empty() {
+        let mut scene = Scene::new(1071, 651);
+        scene.push_stroke(
+            KurboLine::new((0.0, 216.5), (652.0, 216.5)).to_path(0.25),
+            Stroke::new(1.0).with_dashes(0.0, [1.0_f64, 2.0_f64]),
+            Color::BLACK,
+            Affine::translate((387.0, 104.0)),
+            FillRule::NonZero,
+            0.25,
+        );
+        let record = scene.bd_records[0];
+        let bbox = TileBbox {
+            x0: record.tile_x0,
+            y0: record.tile_y0,
+            x1: record.tile_x1,
+            y1: record.tile_y1,
+        };
+
+        let (record, mut backdrops, ranges, segments) =
+            scan_lines(&scene.lines, bbox, scene.tile_cnt);
+        run_backdrop_cumsum(&mut backdrops, &[record]);
+
+        let mut first_row_coverage = 0usize;
+        for tile_x in 0..bbox.tile_stride() {
+            let range = ranges[tile_x as usize];
+            let alpha = build_tile_alpha(
+                &segments[range.start as usize..range.end as usize],
+                backdrops[tile_x as usize],
+                FillRule::NonZero,
+            );
+            first_row_coverage += alpha[..crate::TILE_SIZE as usize]
+                .iter()
+                .filter(|&&value| value != 0)
+                .count();
+            for row in 1..crate::TILE_SIZE as usize {
+                let row_alpha =
+                    &alpha[row * crate::TILE_SIZE as usize..(row + 1) * crate::TILE_SIZE as usize];
+                assert!(
+                    row_alpha.iter().all(|&value| value == 0),
+                    "tile {} row {row} leaked below the 1px dash: {row_alpha:?}",
+                    bbox.x0 + tile_x
+                );
+            }
+        }
+        assert!(
+            first_row_coverage > 0,
+            "expected generated dash stroke to cover its top pixel row"
+        );
+    }
+
+    #[test]
     fn run_preserves_subtile_offsets_for_clipped_diagonal_stroke() {
         let lines = [
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [1.494_818_7, -1.328_727_7],
                 p1: [161.494_81, 178.671_28],
             },
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [161.494_81, 178.671_28],
                 p1: [158.505_19, 181.328_72],
             },
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [158.505_19, 181.328_72],
                 p1: [-1.494_818_7, 1.328_727_7],
             },
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [-1.494_818_7, 1.328_727_7],
                 p1: [1.494_818_7, -1.328_727_7],
             },
@@ -1018,25 +1097,25 @@ mod tests {
         let lines = [
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [0.560_557, -0.498_273],
                 p1: [240.560_56, 269.501_74],
             },
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [240.560_56, 269.501_74],
                 p1: [239.439_44, 270.498_26],
             },
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [239.439_44, 270.498_26],
                 p1: [-0.560_557, 0.498_273],
             },
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [-0.560_557, 0.498_273],
                 p1: [0.560_557, -0.498_273],
             },
@@ -1100,25 +1179,25 @@ mod tests {
         let lines = [
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [-90.0, 0.0],
                 p1: [90.0, 0.0],
             },
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [90.0, 0.0],
                 p1: [304.515_66, 180.0],
             },
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [304.515_66, 180.0],
                 p1: [124.515_66, 180.0],
             },
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [124.515_66, 180.0],
                 p1: [-90.0, 0.0],
             },
@@ -1181,13 +1260,13 @@ mod tests {
         let lines = [
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [-0.137_36, -0.480_762],
                 p1: [0.137_36, 0.480_762],
             },
             Line {
                 path_id: 0,
-                _pad: 0.0,
+                flags: 0.0,
                 p0: [0.137_36, 0.480_762],
                 p1: [-139.862_64, 40.480_762],
             },
@@ -1239,7 +1318,7 @@ mod tests {
     fn run_keeps_long_top_left_corner_crossing_on_top_edge() {
         let lines = [Line {
             path_id: 0,
-            _pad: 0.0,
+            flags: 0.0,
             p0: [15.0, 15.0],
             p1: [150.0, 150.0],
         }];

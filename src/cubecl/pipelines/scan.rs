@@ -60,6 +60,7 @@ impl ScanPipeline {
                     unsafe { scene.line_p0y.arg() },
                     unsafe { scene.line_p1x.arg() },
                     unsafe { scene.line_p1y.arg() },
+                    unsafe { scene.line_flags.arg() },
                     unsafe { scene.backdrop_data_offsets.arg() },
                     unsafe { scene.backdrop_tile_x0.arg() },
                     unsafe { scene.backdrop_tile_y0.arg() },
@@ -134,6 +135,7 @@ impl ScanPipeline {
                     unsafe { scene.line_p0y.arg() },
                     unsafe { scene.line_p1x.arg() },
                     unsafe { scene.line_p1y.arg() },
+                    unsafe { scene.line_flags.arg() },
                     unsafe { scene.backdrop_data_offsets.arg() },
                     unsafe { scene.backdrop_tile_x0.arg() },
                     unsafe { scene.backdrop_tile_y0.arg() },
@@ -199,6 +201,7 @@ fn scan_count(
     line_p0y: &Array<f32>,
     line_p1x: &Array<f32>,
     line_p1y: &Array<f32>,
+    line_flags: &Array<f32>,
     backdrop_data_offsets: &Array<u32>,
     backdrop_tile_x0: &Array<u32>,
     backdrop_tile_y0: &Array<u32>,
@@ -231,6 +234,7 @@ fn scan_count(
     let p0y = line_p0y[line_i];
     let p1x = line_p1x[line_i];
     let p1y = line_p1y[line_i];
+    let keep_horizontal_tile_edges = line_flags[line_i] >= 1.0;
     let is_down = p1y >= p0y;
     let mut xy0x = p0x;
     let mut xy0y = p0y;
@@ -252,9 +256,16 @@ fn scan_count(
     let count = count_x + span(s0y, s1y);
     let dx = (s1x - s0x).abs();
     let dy = s1y - s0y;
-    if dx + dy == 0.0 || (dy == 0.0 && s0y.floor() == s0y) {
+    if dx + dy == 0.0 || (dy == 0.0 && s0y.floor() == s0y && !keep_horizontal_tile_edges) {
         terminate!();
     }
+    // Stroke outlines keep horizontal boundary edges as fine segments; those
+    // edges must not also emit coarse top-edge carry. Fill paths keep the
+    // historical top-edge carry because their boundary horizontals are owned
+    // by the coarse scan rule instead of fine segments.
+    let line_needs_top_edge_carry = !keep_horizontal_tile_edges
+        || (s0y != s1y && (s0y.floor() < s1y.floor() || bbox_y1 > bbox_y0 + 1));
+    let skip_initial_top_edge_carry = keep_horizontal_tile_edges && bbox_y0 == 0 && xy1x < xy0x;
 
     let idxdy = 1.0 / (dx + dy);
     let mut a = dx * idxdy;
@@ -417,11 +428,17 @@ fn scan_count(
             && tile_x < bbox_x1 as i32
         {
             let mut top_edge = last_z == z;
+            let mut initial_top_edge = false;
             if i == imin {
-                top_edge =
+                initial_top_edge =
                     imin == 0 && (y0 - xy0y * tile_scale).abs() <= f32::new(DDA_TOP_EDGE_EPSILON);
+                top_edge = initial_top_edge;
             }
-            if top_edge && tile_x + 1 < bbox_x1 as i32 {
+            if line_needs_top_edge_carry
+                && top_edge
+                && !(initial_top_edge && skip_initial_top_edge_carry)
+                && tile_x + 1 < bbox_x1 as i32
+            {
                 let x_bump = (tile_x + 1).max(bbox_x0 as i32);
                 let bump_local = ((tile_y - bbox_y0 as i32) * bbox_stride as i32 + x_bump
                     - bbox_x0 as i32) as u32;
@@ -545,6 +562,7 @@ fn scan_emit(
     line_p0y: &Array<f32>,
     line_p1x: &Array<f32>,
     line_p1y: &Array<f32>,
+    line_flags: &Array<f32>,
     backdrop_data_offsets: &Array<u32>,
     backdrop_tile_x0: &Array<u32>,
     backdrop_tile_y0: &Array<u32>,
@@ -581,6 +599,7 @@ fn scan_emit(
     let p0y = line_p0y[line_i];
     let p1x = line_p1x[line_i];
     let p1y = line_p1y[line_i];
+    let keep_horizontal_tile_edges = line_flags[line_i] >= 1.0;
     let is_down = p1y >= p0y;
     let mut xy0x = p0x;
     let mut xy0y = p0y;
@@ -602,7 +621,7 @@ fn scan_emit(
     let count = count_x + span(s0y, s1y);
     let dx = (s1x - s0x).abs();
     let dy = s1y - s0y;
-    if dx + dy == 0.0 || (dy == 0.0 && s0y.floor() == s0y) {
+    if dx + dy == 0.0 || (dy == 0.0 && s0y.floor() == s0y && !keep_horizontal_tile_edges) {
         terminate!();
     }
 
@@ -711,6 +730,7 @@ fn scan_emit(
                     xy1x,
                     xy1y,
                     is_down,
+                    keep_horizontal_tile_edges,
                     tile_x,
                     tile_y,
                     segment_p0x,
@@ -757,6 +777,7 @@ fn write_clipped_segment(
     line_x1: f32,
     line_y1: f32,
     is_down: bool,
+    keep_horizontal_tile_edges: bool,
     tile_x: i32,
     tile_y: i32,
     segment_p0x: &mut Array<f32>,
@@ -911,9 +932,12 @@ fn write_clipped_segment(
                 p1y = p0y;
             }
         } else if p0y == 0.0 {
-            // Long edges passing exactly through top-left are owned by the top edge. Subpixel
-            // caps keep left-edge ownership to balance their paired left-edge exits.
-            if p1x <= 1.0 && p1y <= 1.0 {
+            // Diagonal edges passing exactly through top-left are owned by the top edge.
+            // Stroke outlines keep horizontal top edges on tile boundaries so their paired
+            // bottom edges cannot fill every row below the stroke.
+            if (keep_horizontal_tile_edges && p1y == 0.0)
+                || (p1x <= 1.0 + boundary_epsilon && p1y <= 1.0 + boundary_epsilon)
+            {
                 y_edge = p0y;
             }
             p0x = epsilon;
@@ -922,6 +946,9 @@ fn write_clipped_segment(
         }
     } else if p1x == 0.0 {
         if p1y == 0.0 {
+            if keep_horizontal_tile_edges && p0y == 0.0 {
+                y_edge = p1y;
+            }
             p1x = epsilon;
         } else {
             y_edge = p1y;

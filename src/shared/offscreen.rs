@@ -43,7 +43,7 @@ impl LocalSpace {
         let dy = -self.surface.y0 as f32;
         Line {
             path_id: line.path_id,
-            _pad: line._pad,
+            flags: line.flags,
             p0: [line.p0[0] + dx, line.p0[1] + dy],
             p1: [line.p1[0] + dx, line.p1[1] + dy],
         }
@@ -462,7 +462,7 @@ mod tests {
 
         let line = local.line(Line {
             path_id: 3,
-            _pad: 0.0,
+            flags: 0.0,
             p0: [12.0, 23.0],
             p1: [18.0, 31.0],
         });

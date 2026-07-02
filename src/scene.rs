@@ -24,7 +24,7 @@ use crate::shared::{
         opacity::Opacity,
         region::Region,
     },
-    line::Line,
+    line::{LINE_FLAG_KEEP_HORIZONTAL_TILE_EDGES, Line},
     path::PathRecord,
     path_flatten::PathFlatten,
     scan_line::line_scanned_tile_count,
@@ -69,8 +69,11 @@ struct PathPushOptions {
     bounds_override: Option<Bounds>,
     brush: Brush,
     emit_draw_command: bool,
+    keep_thin_stroke_horizontal_edges: bool,
     tag: DrawTag,
 }
+
+const THIN_STROKE_HORIZONTAL_EDGE_MAX_HEIGHT: f64 = 2.0;
 
 #[derive(Clone, Copy)]
 enum SceneAppendMode {
@@ -983,7 +986,19 @@ impl Scene {
         if !stroke.dash_pattern.is_empty() {
             let path = Self::rounded_rect_path(rect, radius, 0.1);
             let outline = kurbo_stroke(path, &stroke, &StrokeOpts::default(), 0.1);
-            self.push_path_inner(outline, brush, Affine::IDENTITY, rule, 0.1, None);
+            self.push_path_inner_with_tag(
+                outline,
+                Affine::IDENTITY,
+                rule,
+                0.1,
+                PathPushOptions {
+                    bounds_override: None,
+                    brush: brush.into(),
+                    emit_draw_command: true,
+                    keep_thin_stroke_horizontal_edges: true,
+                    tag: DrawTag::Brush,
+                },
+            );
             return;
         }
 
@@ -1211,7 +1226,19 @@ impl Scene {
     ) {
         let path = shape.to_path(tolerance);
         let outline = kurbo_stroke(path, &stroke, &StrokeOpts::default(), tolerance);
-        self.push_path_inner(outline, brush, transform, rule, tolerance, None);
+        self.push_path_inner_with_tag(
+            outline,
+            transform,
+            rule,
+            tolerance,
+            PathPushOptions {
+                bounds_override: None,
+                brush: brush.into(),
+                emit_draw_command: true,
+                keep_thin_stroke_horizontal_edges: true,
+                tag: DrawTag::Brush,
+            },
+        );
     }
 
     pub fn push_path(
@@ -1313,6 +1340,7 @@ impl Scene {
                 bounds_override: None,
                 brush: brush.into(),
                 emit_draw_command: true,
+                keep_thin_stroke_horizontal_edges: false,
                 tag: DrawTag::PathGlyph,
             },
         );
@@ -1356,6 +1384,23 @@ impl Scene {
         }
     }
 
+    fn path_line_flags(path: &BezPath, keep_thin_stroke_horizontal_edges: bool) -> f32 {
+        if !keep_thin_stroke_horizontal_edges {
+            return 0.0;
+        }
+
+        // Thin horizontal stroke outlines can place their top edge exactly on a tile
+        // boundary; keep that edge so its bottom edge cannot become a coarse tile fill.
+        let rect = path.bounding_box();
+        let width = rect.x1 - rect.x0;
+        let height = rect.y1 - rect.y0;
+        if height > 0.0 && height <= THIN_STROKE_HORIZONTAL_EDGE_MAX_HEIGHT && width > height {
+            LINE_FLAG_KEEP_HORIZONTAL_TILE_EDGES
+        } else {
+            0.0
+        }
+    }
+
     fn push_path_inner(
         &mut self,
         path: BezPath,
@@ -1374,6 +1419,7 @@ impl Scene {
                 bounds_override,
                 brush: brush.into(),
                 emit_draw_command: true,
+                keep_thin_stroke_horizontal_edges: false,
                 tag: DrawTag::Brush,
             },
         )
@@ -1392,7 +1438,10 @@ impl Scene {
         let path_id = self.path_cnt;
         self.path_cnt += 1;
         let path = Self::transform_path(path, transform);
-        PathFlatten::new(&path, tolerance as f32, path_id).flatten(&mut self.lines);
+        let line_flags = Self::path_line_flags(&path, options.keep_thin_stroke_horizontal_edges);
+        PathFlatten::new(&path, tolerance as f32, path_id)
+            .with_line_flags(line_flags)
+            .flatten(&mut self.lines);
         let line_count = self.lines.len() as u32 - line_start;
         self.path_records.push(PathRecord {
             path_id,
@@ -1470,6 +1519,7 @@ impl Scene {
                 bounds_override: None,
                 brush: Brush::Solid(Color::TRANSPARENT),
                 emit_draw_command: false,
+                keep_thin_stroke_horizontal_edges: false,
                 tag,
             },
         )

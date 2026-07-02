@@ -1,6 +1,6 @@
 use peniko::{
     Color, Compose, Gradient, Mix,
-    kurbo::{Affine, Circle, Point, Rect, RoundedRect, Shape, Stroke},
+    kurbo::{Affine, Circle, Line, Point, Rect, RoundedRect, Shape, Stroke},
 };
 
 use super::Renderer;
@@ -536,6 +536,89 @@ fn sdf_dash_line_with_zero_gap_renders_as_solid_line() {
     assert_eq!(renderer.image().rgba8_at(23, 16), [220, 64, 72, 255]);
     assert_eq!(renderer.image().rgba8_at(7, 16), [255, 255, 255, 255]);
     assert_eq!(renderer.image().rgba8_at(24, 16), [255, 255, 255, 255]);
+}
+
+#[test]
+fn solid_horizontal_path_stroke_at_tile_top_stays_thin() {
+    let mut scene = Scene::new(300, 300);
+    scene.push_stroke(
+        Line::new((20.2, 96.5), (180.5, 96.5)).to_path(0.25),
+        Stroke::new(1.0),
+        Color::from_rgb8(0, 128, 0),
+        Affine::scale(1.5),
+        FillRule::NonZero,
+        0.25,
+    );
+
+    let mut renderer = Renderer::new(300, 300, Color::TRANSPARENT);
+    renderer.render(&scene);
+
+    assert!(renderer.image().rgba8_at(48, 144)[3] > 0);
+    assert!(renderer.image().rgba8_at(48, 145)[3] > 0);
+    assert_eq!(renderer.image().rgba8_at(48, 146), [0, 0, 0, 0]);
+    assert_eq!(renderer.image().rgba8_at(260, 146), [0, 0, 0, 0]);
+    assert_eq!(renderer.image().rgba8_at(48, 159), [0, 0, 0, 0]);
+}
+
+#[test]
+fn dashed_path_stroke_does_not_fill_whole_tiles_at_integer_edges() {
+    let chart_x = 387.0;
+    let chart_y = 104.0;
+    let chart_width = 652.0;
+    let chart_height = 515.0;
+    let close_y = 216.5;
+    let mut scene = Scene::new(1071, 651);
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 1071.0, 651.0),
+        Radius::ZERO,
+        Color::from_rgb8(248, 249, 251),
+        FillRule::NonZero,
+    );
+    scene.push_rect(
+        Rect::new(
+            chart_x,
+            chart_y,
+            chart_x + chart_width,
+            chart_y + chart_height,
+        ),
+        Radius::ZERO,
+        Color::from_rgb8(244, 245, 247),
+        FillRule::NonZero,
+    );
+    scene.push_stroke(
+        Line::new((0.0, close_y), (chart_width, close_y)).to_path(0.25),
+        Stroke::new(1.0).with_dashes(0.0, [1.0_f64, 2.0_f64]),
+        Color::BLACK,
+        Affine::translate((chart_x, chart_y)),
+        FillRule::NonZero,
+        0.25,
+    );
+
+    let mut renderer = Renderer::new(1071, 651, Color::WHITE);
+    renderer.render(&scene);
+
+    let y0 = (chart_y + close_y).floor() as u32;
+    let mut dark_pixels = 0u32;
+    for y in y0..y0 + crate::TILE_SIZE {
+        let mut max_dark_run = 0u32;
+        let mut dark_run = 0u32;
+        for x in chart_x as u32..(chart_x + chart_width) as u32 {
+            let [r, g, b, _] = renderer.image().rgba8_at(x, y);
+            if r < 32 && g < 32 && b < 32 {
+                dark_pixels += 1;
+                dark_run += 1;
+                max_dark_run = max_dark_run.max(dark_run);
+            } else {
+                dark_run = 0;
+            }
+        }
+
+        assert!(
+            max_dark_run <= 2,
+            "expected 1px dash runs at y={y}, found dark run of {max_dark_run}px"
+        );
+    }
+    assert!(dark_pixels > 0, "expected dashed path stroke to render");
 }
 
 #[test]

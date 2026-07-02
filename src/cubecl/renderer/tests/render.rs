@@ -381,6 +381,70 @@ fn render_wgpu_matches_cpu_for_sdf_clip_inside_opacity_when_enabled() {
 }
 
 #[test]
+fn render_wgpu_dashed_path_stroke_does_not_fill_whole_tiles_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let chart_x = 387.0;
+    let chart_y = 104.0;
+    let chart_width = 652.0;
+    let chart_height = 515.0;
+    let close_y = 216.5;
+    let mut scene = Scene::new(1071, 651);
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 1071.0, 651.0),
+        Radius::ZERO,
+        Color::from_rgb8(248, 249, 251),
+        FillRule::NonZero,
+    );
+    scene.push_rect(
+        Rect::new(
+            chart_x,
+            chart_y,
+            chart_x + chart_width,
+            chart_y + chart_height,
+        ),
+        Radius::ZERO,
+        Color::from_rgb8(244, 245, 247),
+        FillRule::NonZero,
+    );
+    scene.push_stroke(
+        peniko::kurbo::Line::new((0.0, close_y), (chart_width, close_y)).to_path(0.25),
+        Stroke::new(1.0).with_dashes(0.0, [1.0_f64, 2.0_f64]),
+        Color::BLACK,
+        Affine::translate((chart_x, chart_y)),
+        FillRule::NonZero,
+        0.25,
+    );
+
+    let mut renderer = WgpuRenderer::new_default_device(1071, 651, Color::WHITE);
+    renderer.render(&scene);
+
+    let y0 = (chart_y + close_y).floor() as u32;
+    let mut dark_pixels = 0u32;
+    for y in y0..y0 + crate::TILE_SIZE {
+        let mut max_dark_run = 0u32;
+        let mut dark_run = 0u32;
+        for x in chart_x as u32..(chart_x + chart_width) as u32 {
+            let [r, g, b, _] = renderer.image().rgba8_at(x, y);
+            if r < 32 && g < 32 && b < 32 {
+                dark_pixels += 1;
+                dark_run += 1;
+                max_dark_run = max_dark_run.max(dark_run);
+            } else {
+                dark_run = 0;
+            }
+        }
+        assert!(
+            max_dark_run <= 2,
+            "expected 1px dash runs at y={y}, found dark run of {max_dark_run}px"
+        );
+    }
+    assert!(dark_pixels > 0, "expected dashed path stroke to render");
+}
+
+#[test]
 fn render_wgpu_debug_capture_reads_back_scan_and_final_image_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;

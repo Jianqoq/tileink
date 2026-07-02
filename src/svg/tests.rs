@@ -103,6 +103,14 @@ fn push_svg_renders_stroke_linejoin_miter_clip() {
         .count();
     assert!(covered > 100, "covered pixels: {covered}");
     assert_ne!(image.pixels, bevel.image().pixels);
+    let top_row_covered = (0..image.width)
+        .map(|x| image.rgba8_at(x, 0))
+        .filter(|px| px[1] > 0 && px[3] > 0)
+        .count();
+    assert!(
+        top_row_covered < image.width as usize * 3 / 4,
+        "miter-clip must not fill the whole top row: {top_row_covered}"
+    );
     assert_eq!(renderer.image().rgba8_at(16, 0), [0, 0, 0, 0]);
 }
 

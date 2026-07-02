@@ -1,6 +1,9 @@
 use crate::{
     TILE_SCALE,
-    shared::{bounds::TileBbox, line::Line},
+    shared::{
+        bounds::TileBbox,
+        line::{LINE_FLAG_KEEP_HORIZONTAL_TILE_EDGES, Line},
+    },
 };
 
 pub(crate) struct ScanLinePlan {
@@ -18,6 +21,7 @@ pub(crate) struct ScanLinePlan {
     pub(crate) ymin: i32,
     pub(crate) ymax: i32,
     pub(crate) top_clip_bump_x: Option<i32>,
+    pub(crate) keep_horizontal_tile_edges: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -26,6 +30,7 @@ pub(crate) struct ScannedTile {
     pub(crate) y: i32,
     pub(crate) global_ix: u32,
     pub(crate) top_edge: bool,
+    pub(crate) initial_top_edge: bool,
 }
 
 pub(crate) fn for_each_scanned_tile(
@@ -44,8 +49,11 @@ pub(crate) fn for_each_scanned_tile(
             continue;
         }
 
+        let initial_top_edge = i == plan.imin
+            && plan.imin == 0
+            && (plan.y0 - plan.xy0[1] * TILE_SCALE).abs() <= DDA_TOP_EDGE_EPSILON;
         let top_edge = if i == plan.imin {
-            plan.imin == 0 && (plan.y0 - plan.xy0[1] * TILE_SCALE).abs() <= DDA_TOP_EDGE_EPSILON
+            initial_top_edge
         } else {
             last_z == z
         };
@@ -54,6 +62,7 @@ pub(crate) fn for_each_scanned_tile(
             y,
             global_ix: y as u32 * tiles_size.0 + x as u32,
             top_edge,
+            initial_top_edge,
         });
         last_z = z;
     }
@@ -71,6 +80,7 @@ pub(crate) fn line_scanned_tile_count(line: Line, bbox: TileBbox, tiles_size: (u
 pub(crate) fn plan_scan_line(line: Line, bbox: TileBbox) -> Option<ScanLinePlan> {
     let p0 = line.p0;
     let p1 = line.p1;
+    let keep_horizontal_tile_edges = line.flags >= LINE_FLAG_KEEP_HORIZONTAL_TILE_EDGES;
     let is_down = p1[1] >= p0[1];
     let (xy0, xy1) = if is_down { (p0, p1) } else { (p1, p0) };
 
@@ -84,7 +94,7 @@ pub(crate) fn plan_scan_line(line: Line, bbox: TileBbox) -> Option<ScanLinePlan>
     if dx + dy == 0.0 {
         return None;
     }
-    if dy == 0.0 && s0.1.floor() == s0.1 {
+    if dy == 0.0 && s0.1.floor() == s0.1 && !keep_horizontal_tile_edges {
         return None;
     }
 
@@ -189,6 +199,7 @@ pub(crate) fn plan_scan_line(line: Line, bbox: TileBbox) -> Option<ScanLinePlan>
         ymin,
         ymax,
         top_clip_bump_x,
+        keep_horizontal_tile_edges,
     })
 }
 

@@ -102,3 +102,34 @@ fn scan_wgpu_emits_top_clipped_backdrop_bump_when_enabled() {
     assert_eq!(first_row[1], second_row[1]);
     assert_eq!(first_row[1].abs(), 1);
 }
+
+#[test]
+fn scan_wgpu_keeps_generated_horizontal_path_dash_backdrops_empty_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let mut scene = Scene::new(1071, 651);
+    scene.push_stroke(
+        peniko::kurbo::Line::new((0.0, 216.5), (652.0, 216.5)).to_path(0.25),
+        Stroke::new(1.0).with_dashes(0.0, [1.0_f64, 2.0_f64]),
+        Color::BLACK,
+        Affine::translate((387.0, 104.0)),
+        FillRule::NonZero,
+        0.25,
+    );
+    let record = scene.bd_records[0];
+    let stride = (record.tile_x1 - record.tile_x0) as usize;
+
+    let mut renderer = WgpuRenderer::new_default_device(1071, 651, Color::TRANSPARENT);
+    renderer.prepare_scene(&scene);
+    run_scan_stage(&mut renderer, &scene);
+
+    let backdrops = renderer.scan.backdrops.read(renderer.client());
+    let first_row = &backdrops[0..stride];
+
+    assert!(
+        first_row.iter().all(|&backdrop| backdrop == 0),
+        "expected dash cap top-edge bumps to cancel, got {first_row:?}"
+    );
+}

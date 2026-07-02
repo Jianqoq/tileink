@@ -448,6 +448,7 @@ pub(crate) struct SceneBuffers {
     pub(crate) line_p0y: CubeBuffer<f32>,
     pub(crate) line_p1x: CubeBuffer<f32>,
     pub(crate) line_p1y: CubeBuffer<f32>,
+    pub(crate) line_flags: CubeBuffer<f32>,
     pub(crate) draw_path_ids: CubeBuffer<u32>,
     pub(crate) draw_glyph_run_ids: CubeBuffer<u32>,
     /// Packed per-draw byte:
@@ -535,6 +536,7 @@ impl SceneBuffers {
             line_p0y: CubeBuffer::new(client, 0),
             line_p1x: CubeBuffer::new(client, 0),
             line_p1y: CubeBuffer::new(client, 0),
+            line_flags: CubeBuffer::new(client, 0),
             draw_path_ids: CubeBuffer::new(client, 0),
             draw_glyph_run_ids: CubeBuffer::new(client, 0),
             draw_flags: CubeBuffer::new(client, 0),
@@ -606,6 +608,7 @@ impl SceneBuffers {
             self.line_p0y.memory_usage(),
             self.line_p1x.memory_usage(),
             self.line_p1y.memory_usage(),
+            self.line_flags.memory_usage(),
             self.draw_path_ids.memory_usage(),
             self.draw_glyph_run_ids.memory_usage(),
             self.draw_flags.memory_usage(),
@@ -817,6 +820,13 @@ impl SceneBuffers {
             &mut staging.f32s,
             lines,
             |line| line.p1[1],
+        );
+        upload_mapped_f32(
+            client,
+            &mut self.line_flags,
+            &mut staging.f32s,
+            lines,
+            |line| line.flags,
         );
     }
 
