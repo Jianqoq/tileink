@@ -96,6 +96,7 @@ fn push_path_reserves_segment_capacity_from_scan_tile_count() {
                 line,
                 tile_bbox,
                 (scene.width_in_tiles(), scene.height_in_tiles()),
+                false,
             )
         })
         .sum::<u32>();

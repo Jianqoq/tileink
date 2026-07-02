@@ -9,7 +9,7 @@ use crate::{
         bounds::TileBbox,
         line::Line,
         line_seg::LineSegment,
-        path::PathRecord,
+        path::{PATH_FLAG_KEEP_HORIZONTAL_TILE_EDGES, PathRecord},
         scan_line::{TILE_BOUNDARY_EPSILON, for_each_scanned_tile, plan_scan_line},
         tile_seg_range::TileSegmentRange,
     },
@@ -79,9 +79,11 @@ impl<'a> ScanCpuPrepared<'a> {
                 let line_start = path_record.line_start as usize;
                 let line_end = line_start + path_record.line_count as usize;
                 let lines = &self.lines[line_start..line_end];
+                let keep_horizontal_tile_edges =
+                    path_record.flags & PATH_FLAG_KEEP_HORIZONTAL_TILE_EDGES != 0;
 
                 for &line in lines {
-                    if let Some(plan) = plan_scan_line(line, bbox) {
+                    if let Some(plan) = plan_scan_line(line, bbox, keep_horizontal_tile_edges) {
                         for y in plan.ymin..plan.ymax {
                             let base = ((y - bbox.y0 as i32) * bbox.tile_stride() as i32) as usize;
                             backdrop[base] += plan.delta;
@@ -156,7 +158,7 @@ impl<'a> ScanCpuPrepared<'a> {
                     unsafe { std::slice::from_raw_parts_mut(segments_ptr, self.segments.len()) };
 
                 for &line in lines {
-                    if let Some(plan) = plan_scan_line(line, bbox) {
+                    if let Some(plan) = plan_scan_line(line, bbox, keep_horizontal_tile_edges) {
                         for_each_scanned_tile(&plan, bbox, self.tiles_size, |tile| {
                             let segment = clip_line_to_tile(
                                 (plan.xy0, plan.xy1),
@@ -470,12 +472,26 @@ mod tests {
         Vec<TileSegmentRange>,
         Vec<LineSegment>,
     ) {
+        scan_lines_with_flags(lines, bbox, segment_capacity, 0)
+    }
+
+    fn scan_lines_with_flags(
+        lines: &[Line],
+        bbox: TileBbox,
+        segment_capacity: u32,
+        path_flags: u32,
+    ) -> (
+        BackdropRecord,
+        Vec<i32>,
+        Vec<TileSegmentRange>,
+        Vec<LineSegment>,
+    ) {
         let tile_count = bbox.tile_stride() * (bbox.y1 - bbox.y0);
         let path_records = [PathRecord {
             path_id: 0,
             line_count: lines.len() as u32,
             line_start: 0,
-            _pad: 0,
+            flags: path_flags,
         }];
         let backdrop_record = BackdropRecord {
             path_id: 0,
@@ -524,19 +540,19 @@ mod tests {
         };
         let line = Line {
             path_id: 0,
-            flags: 0.0,
+            _pad: 0.0,
             p0: [4.0, 4.0],
             p1: [4.0, 4.0],
         };
 
-        assert!(plan_scan_line(line, bbox).is_none());
+        assert!(plan_scan_line(line, bbox, false).is_none());
     }
 
     #[test]
     fn run_skips_zero_tile_backdrop_record() {
         let lines = [Line {
             path_id: 0,
-            flags: 0.0,
+            _pad: 0.0,
             p0: [0.0, 0.0],
             p1: [0.0, 16.0],
         }];
@@ -544,7 +560,7 @@ mod tests {
             path_id: 0,
             line_count: 1,
             line_start: 0,
-            _pad: 0,
+            flags: 0,
         }];
         let backdrop_records = [BackdropRecord {
             path_id: 0,
@@ -589,7 +605,7 @@ mod tests {
     fn run_adds_backdrop_delta_for_line_left_of_tile_bbox() {
         let lines = [Line {
             path_id: 0,
-            flags: 0.0,
+            _pad: 0.0,
             p0: [-4.0, 0.0],
             p1: [-4.0, 16.0],
         }];
@@ -597,7 +613,7 @@ mod tests {
             path_id: 0,
             line_count: 1,
             line_start: 0,
-            _pad: 0,
+            flags: 0,
         }];
         let backdrop_records = [one_tile_backdrop_record(1)];
         let mut backdrops = vec![0];
@@ -635,7 +651,7 @@ mod tests {
     fn run_emits_segment_for_line_inside_tile() {
         let lines = [Line {
             path_id: 0,
-            flags: 0.0,
+            _pad: 0.0,
             p0: [4.0, 0.0],
             p1: [4.0, 16.0],
         }];
@@ -643,7 +659,7 @@ mod tests {
             path_id: 0,
             line_count: 1,
             line_start: 0,
-            _pad: 0,
+            flags: 0,
         }];
         let backdrop_records = [one_tile_backdrop_record(1)];
         let mut backdrops = vec![0];
@@ -690,13 +706,13 @@ mod tests {
         let lines = [
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [4.0, 0.0],
                 p1: [20.0, 16.0],
             },
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [20.0, 0.0],
                 p1: [4.0, 16.0],
             },
@@ -705,7 +721,7 @@ mod tests {
             path_id: 0,
             line_count: 2,
             line_start: 0,
-            _pad: 0,
+            flags: 0,
         }];
         let backdrop_records = [BackdropRecord {
             path_id: 0,
@@ -777,13 +793,13 @@ mod tests {
         let lines = [
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [20.0, -8.0],
                 p1: [20.0, 40.0],
             },
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [100.0, 40.0],
                 p1: [100.0, -8.0],
             },
@@ -810,35 +826,41 @@ mod tests {
         let lines = [
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [32.0, -8.0],
                 p1: [32.0, 32.0],
             },
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [96.0, 32.0],
                 p1: [96.0, -8.0],
             },
         ];
 
         assert_eq!(
-            plan_scan_line(lines[0], bbox).unwrap().top_clip_bump_x,
+            plan_scan_line(lines[0], bbox, false)
+                .unwrap()
+                .top_clip_bump_x,
             Some(2)
         );
         assert_eq!(
-            plan_scan_line(lines[1], bbox).unwrap().top_clip_bump_x,
+            plan_scan_line(lines[1], bbox, false)
+                .unwrap()
+                .top_clip_bump_x,
             Some(6)
         );
 
         let line_on_top = Line {
             path_id: 0,
-            flags: 0.0,
+            _pad: 0.0,
             p0: [32.0, 0.0],
             p1: [32.0, 32.0],
         };
         assert_eq!(
-            plan_scan_line(line_on_top, bbox).unwrap().top_clip_bump_x,
+            plan_scan_line(line_on_top, bbox, false)
+                .unwrap()
+                .top_clip_bump_x,
             None
         );
     }
@@ -853,12 +875,15 @@ mod tests {
         };
         let line = Line {
             path_id: 0,
-            flags: 0.0,
+            _pad: 0.0,
             p0: [30.156_143, -6.175_184_2],
             p1: [30.0, 0.0],
         };
 
-        assert_eq!(plan_scan_line(line, bbox).unwrap().top_clip_bump_x, None);
+        assert_eq!(
+            plan_scan_line(line, bbox, false).unwrap().top_clip_bump_x,
+            None
+        );
     }
 
     #[test]
@@ -872,13 +897,13 @@ mod tests {
         let lines = [
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [159.862_64, -0.480_762],
                 p1: [19.862_64, 39.519_238],
             },
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [160.137_36, 0.480_762],
                 p1: [159.862_64, -0.480_762],
             },
@@ -900,25 +925,25 @@ mod tests {
         let lines = [
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [1.494_818_7, -1.328_727_7],
                 p1: [161.494_81, 178.671_28],
             },
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [161.494_81, 178.671_28],
                 p1: [158.505_19, 181.328_72],
             },
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [158.505_19, 181.328_72],
                 p1: [-1.494_818_7, 1.328_727_7],
             },
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [-1.494_818_7, 1.328_727_7],
                 p1: [1.494_818_7, -1.328_727_7],
             },
@@ -942,13 +967,13 @@ mod tests {
         let lines = [
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [32.0, 0.0],
                 p1: [32.0, 32.0],
             },
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [96.0, 32.0],
                 p1: [96.0, 0.0],
             },
@@ -979,8 +1004,12 @@ mod tests {
             y1: record.tile_y1,
         };
 
-        let (record, mut backdrops, ranges, segments) =
-            scan_lines(&scene.lines, bbox, scene.tile_cnt);
+        let (record, mut backdrops, ranges, segments) = scan_lines_with_flags(
+            &scene.lines,
+            bbox,
+            scene.tile_cnt,
+            scene.path_records[0].flags,
+        );
         run_backdrop_cumsum(&mut backdrops, &[record]);
 
         let mut first_row_coverage = 0usize;
@@ -1016,25 +1045,25 @@ mod tests {
         let lines = [
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [1.494_818_7, -1.328_727_7],
                 p1: [161.494_81, 178.671_28],
             },
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [161.494_81, 178.671_28],
                 p1: [158.505_19, 181.328_72],
             },
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [158.505_19, 181.328_72],
                 p1: [-1.494_818_7, 1.328_727_7],
             },
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [-1.494_818_7, 1.328_727_7],
                 p1: [1.494_818_7, -1.328_727_7],
             },
@@ -1043,7 +1072,7 @@ mod tests {
             path_id: 0,
             line_count: lines.len() as u32,
             line_start: 0,
-            _pad: 0,
+            flags: 0,
         }];
         let backdrop_records = [BackdropRecord {
             path_id: 0,
@@ -1097,25 +1126,25 @@ mod tests {
         let lines = [
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [0.560_557, -0.498_273],
                 p1: [240.560_56, 269.501_74],
             },
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [240.560_56, 269.501_74],
                 p1: [239.439_44, 270.498_26],
             },
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [239.439_44, 270.498_26],
                 p1: [-0.560_557, 0.498_273],
             },
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [-0.560_557, 0.498_273],
                 p1: [0.560_557, -0.498_273],
             },
@@ -1124,7 +1153,7 @@ mod tests {
             path_id: 0,
             line_count: lines.len() as u32,
             line_start: 0,
-            _pad: 0,
+            flags: 0,
         }];
         let backdrop_records = [BackdropRecord {
             path_id: 0,
@@ -1179,25 +1208,25 @@ mod tests {
         let lines = [
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [-90.0, 0.0],
                 p1: [90.0, 0.0],
             },
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [90.0, 0.0],
                 p1: [304.515_66, 180.0],
             },
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [304.515_66, 180.0],
                 p1: [124.515_66, 180.0],
             },
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [124.515_66, 180.0],
                 p1: [-90.0, 0.0],
             },
@@ -1206,7 +1235,7 @@ mod tests {
             path_id: 0,
             line_count: lines.len() as u32,
             line_start: 0,
-            _pad: 0,
+            flags: 0,
         }];
         let backdrop_records = [BackdropRecord {
             path_id: 0,
@@ -1260,13 +1289,13 @@ mod tests {
         let lines = [
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [-0.137_36, -0.480_762],
                 p1: [0.137_36, 0.480_762],
             },
             Line {
                 path_id: 0,
-                flags: 0.0,
+                _pad: 0.0,
                 p0: [0.137_36, 0.480_762],
                 p1: [-139.862_64, 40.480_762],
             },
@@ -1275,7 +1304,7 @@ mod tests {
             path_id: 0,
             line_count: lines.len() as u32,
             line_start: 0,
-            _pad: 0,
+            flags: 0,
         }];
         let backdrop_records = [one_tile_backdrop_record(16)];
         let mut backdrops = vec![0];
@@ -1318,7 +1347,7 @@ mod tests {
     fn run_keeps_long_top_left_corner_crossing_on_top_edge() {
         let lines = [Line {
             path_id: 0,
-            flags: 0.0,
+            _pad: 0.0,
             p0: [15.0, 15.0],
             p1: [150.0, 150.0],
         }];
@@ -1326,7 +1355,7 @@ mod tests {
             path_id: 0,
             line_count: 1,
             line_start: 0,
-            _pad: 0,
+            flags: 0,
         }];
         let backdrop_records = [BackdropRecord {
             path_id: 0,

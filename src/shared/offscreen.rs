@@ -14,6 +14,7 @@ use crate::{
             region::Region,
         },
         line::Line,
+        path::PATH_FLAG_KEEP_HORIZONTAL_TILE_EDGES,
         sdf::{Sdf, SdfShadow},
     },
 };
@@ -43,7 +44,7 @@ impl LocalSpace {
         let dy = -self.surface.y0 as f32;
         Line {
             path_id: line.path_id,
-            flags: line.flags,
+            _pad: line._pad,
             p0: [line.p0[0] + dx, line.p0[1] + dy],
             p1: [line.p1[0] + dx, line.p1[1] + dy],
         }
@@ -292,6 +293,7 @@ fn translated_path_segment_capacity(scene: &Scene, path_id: usize, tile_bbox: Ti
     };
     let lines =
         &scene.lines[record.line_start as usize..(record.line_start + record.line_count) as usize];
+    let keep_horizontal_tile_edges = record.flags & PATH_FLAG_KEEP_HORIZONTAL_TILE_EDGES != 0;
     lines
         .iter()
         .map(|line| {
@@ -299,6 +301,7 @@ fn translated_path_segment_capacity(scene: &Scene, path_id: usize, tile_bbox: Ti
                 *line,
                 tile_bbox,
                 (scene.width_in_tiles(), scene.height_in_tiles()),
+                keep_horizontal_tile_edges,
             )
         })
         .sum()
@@ -462,7 +465,7 @@ mod tests {
 
         let line = local.line(Line {
             path_id: 3,
-            flags: 0.0,
+            _pad: 0.0,
             p0: [12.0, 23.0],
             p1: [18.0, 31.0],
         });

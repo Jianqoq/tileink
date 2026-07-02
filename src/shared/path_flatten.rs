@@ -6,7 +6,6 @@ pub struct PathFlatten<'a> {
     path: &'a BezPath,
     tolerance: f32,
     path_id: u32,
-    line_flags: f32,
 }
 
 impl<'a> PathFlatten<'a> {
@@ -15,13 +14,7 @@ impl<'a> PathFlatten<'a> {
             path,
             tolerance,
             path_id,
-            line_flags: 0.0,
         }
-    }
-
-    pub fn with_line_flags(mut self, line_flags: f32) -> Self {
-        self.line_flags = line_flags;
-        self
     }
 
     pub fn flatten(&mut self, out: &mut Vec<Line>) {
@@ -34,20 +27,20 @@ impl<'a> PathFlatten<'a> {
                 if let (Some(start_pt), Some(end_pt)) = (contour_start, last)
                     && is_open_contour_close(start_pt, end_pt)
                 {
-                    push_line_segment(out, self.path_id, self.line_flags, end_pt, start_pt);
+                    push_line_segment(out, self.path_id, end_pt, start_pt);
                 }
                 contour_start = Some(point);
                 last = Some(point);
             }
             PathEl::LineTo(point) => {
                 if let Some(p0) = last {
-                    push_line_segment(out, self.path_id, self.line_flags, p0, point);
+                    push_line_segment(out, self.path_id, p0, point);
                 }
                 last = Some(point);
             }
             PathEl::ClosePath => {
                 if let (Some(end_pt), Some(start_pt)) = (last, contour_start) {
-                    push_line_segment(out, self.path_id, self.line_flags, end_pt, start_pt);
+                    push_line_segment(out, self.path_id, end_pt, start_pt);
                     last = Some(start_pt);
                 }
             }
@@ -58,7 +51,7 @@ impl<'a> PathFlatten<'a> {
         if let (Some(start_pt), Some(end_pt)) = (contour_start, last)
             && is_open_contour_close(start_pt, end_pt)
         {
-            push_line_segment(out, self.path_id, self.line_flags, end_pt, start_pt);
+            push_line_segment(out, self.path_id, end_pt, start_pt);
         }
     }
 }
@@ -158,20 +151,20 @@ fn is_open_contour_close(start: Point, end: Point) -> bool {
     dx * dx + dy * dy > 1.0e-6 * 1.0e-6
 }
 
-fn push_line_segment(out: &mut Vec<Line>, path_id: u32, flags: f32, p0: Point, p1: Point) {
+fn push_line_segment(out: &mut Vec<Line>, path_id: u32, p0: Point, p1: Point) {
     if !is_non_degenerate_line(p0, p1) {
         return;
     }
-    push_flat_line(out, path_id, flags, p0, p1);
+    push_flat_line(out, path_id, p0, p1);
 }
 
-fn push_flat_line(out: &mut Vec<Line>, path_id: u32, flags: f32, p0: Point, p1: Point) {
+fn push_flat_line(out: &mut Vec<Line>, path_id: u32, p0: Point, p1: Point) {
     if !is_non_degenerate_line(p0, p1) {
         return;
     }
     let line = Line {
         path_id,
-        flags,
+        _pad: 0.0,
         p0: [p0.x as f32, p0.y as f32],
         p1: [p1.x as f32, p1.y as f32],
     };

@@ -1,9 +1,6 @@
 use crate::{
     TILE_SCALE,
-    shared::{
-        bounds::TileBbox,
-        line::{LINE_FLAG_KEEP_HORIZONTAL_TILE_EDGES, Line},
-    },
+    shared::{bounds::TileBbox, line::Line},
 };
 
 pub(crate) struct ScanLinePlan {
@@ -68,8 +65,13 @@ pub(crate) fn for_each_scanned_tile(
     }
 }
 
-pub(crate) fn line_scanned_tile_count(line: Line, bbox: TileBbox, tiles_size: (u32, u32)) -> u32 {
-    let Some(plan) = plan_scan_line(line, bbox) else {
+pub(crate) fn line_scanned_tile_count(
+    line: Line,
+    bbox: TileBbox,
+    tiles_size: (u32, u32),
+    keep_horizontal_tile_edges: bool,
+) -> u32 {
+    let Some(plan) = plan_scan_line(line, bbox, keep_horizontal_tile_edges) else {
         return 0;
     };
     let mut count = 0;
@@ -77,10 +79,13 @@ pub(crate) fn line_scanned_tile_count(line: Line, bbox: TileBbox, tiles_size: (u
     count
 }
 
-pub(crate) fn plan_scan_line(line: Line, bbox: TileBbox) -> Option<ScanLinePlan> {
+pub(crate) fn plan_scan_line(
+    line: Line,
+    bbox: TileBbox,
+    keep_horizontal_tile_edges: bool,
+) -> Option<ScanLinePlan> {
     let p0 = line.p0;
     let p1 = line.p1;
-    let keep_horizontal_tile_edges = line.flags >= LINE_FLAG_KEEP_HORIZONTAL_TILE_EDGES;
     let is_down = p1[1] >= p0[1];
     let (xy0, xy1) = if is_down { (p0, p1) } else { (p1, p0) };
 
@@ -94,6 +99,9 @@ pub(crate) fn plan_scan_line(line: Line, bbox: TileBbox) -> Option<ScanLinePlan>
     if dx + dy == 0.0 {
         return None;
     }
+    // Filled paths normally ignore horizontal edges exactly on tile boundaries.
+    // Stroke-generated thin horizontal outlines opt in to keeping them so the
+    // paired opposite edge does not drive backdrop fill across complete tiles.
     if dy == 0.0 && s0.1.floor() == s0.1 && !keep_horizontal_tile_edges {
         return None;
     }

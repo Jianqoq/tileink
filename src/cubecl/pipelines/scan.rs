@@ -60,7 +60,7 @@ impl ScanPipeline {
                     unsafe { scene.line_p0y.arg() },
                     unsafe { scene.line_p1x.arg() },
                     unsafe { scene.line_p1y.arg() },
-                    unsafe { scene.line_flags.arg() },
+                    unsafe { scene.path_flags.arg() },
                     unsafe { scene.backdrop_data_offsets.arg() },
                     unsafe { scene.backdrop_tile_x0.arg() },
                     unsafe { scene.backdrop_tile_y0.arg() },
@@ -135,7 +135,7 @@ impl ScanPipeline {
                     unsafe { scene.line_p0y.arg() },
                     unsafe { scene.line_p1x.arg() },
                     unsafe { scene.line_p1y.arg() },
-                    unsafe { scene.line_flags.arg() },
+                    unsafe { scene.path_flags.arg() },
                     unsafe { scene.backdrop_data_offsets.arg() },
                     unsafe { scene.backdrop_tile_x0.arg() },
                     unsafe { scene.backdrop_tile_y0.arg() },
@@ -201,7 +201,7 @@ fn scan_count(
     line_p0y: &Array<f32>,
     line_p1x: &Array<f32>,
     line_p1y: &Array<f32>,
-    line_flags: &Array<f32>,
+    path_flags: &Array<u32>,
     backdrop_data_offsets: &Array<u32>,
     backdrop_tile_x0: &Array<u32>,
     backdrop_tile_y0: &Array<u32>,
@@ -230,11 +230,11 @@ fn scan_count(
         terminate!();
     }
 
+    let keep_horizontal_tile_edges = path_flags[path_i] >= 1;
     let p0x = line_p0x[line_i];
     let p0y = line_p0y[line_i];
     let p1x = line_p1x[line_i];
     let p1y = line_p1y[line_i];
-    let keep_horizontal_tile_edges = line_flags[line_i] >= 1.0;
     let is_down = p1y >= p0y;
     let mut xy0x = p0x;
     let mut xy0y = p0y;
@@ -562,7 +562,7 @@ fn scan_emit(
     line_p0y: &Array<f32>,
     line_p1x: &Array<f32>,
     line_p1y: &Array<f32>,
-    line_flags: &Array<f32>,
+    path_flags: &Array<u32>,
     backdrop_data_offsets: &Array<u32>,
     backdrop_tile_x0: &Array<u32>,
     backdrop_tile_y0: &Array<u32>,
@@ -595,11 +595,11 @@ fn scan_emit(
         terminate!();
     }
 
+    let keep_horizontal_tile_edges = path_flags[path_i] >= 1;
     let p0x = line_p0x[line_i];
     let p0y = line_p0y[line_i];
     let p1x = line_p1x[line_i];
     let p1y = line_p1y[line_i];
-    let keep_horizontal_tile_edges = line_flags[line_i] >= 1.0;
     let is_down = p1y >= p0y;
     let mut xy0x = p0x;
     let mut xy0y = p0y;

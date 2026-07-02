@@ -24,8 +24,8 @@ use crate::shared::{
         opacity::Opacity,
         region::Region,
     },
-    line::{LINE_FLAG_KEEP_HORIZONTAL_TILE_EDGES, Line},
-    path::PathRecord,
+    line::Line,
+    path::{PATH_FLAG_KEEP_HORIZONTAL_TILE_EDGES, PathRecord},
     path_flatten::PathFlatten,
     scan_line::line_scanned_tile_count,
     sdf::{
@@ -661,6 +661,7 @@ impl Scene {
                     line,
                     tile_bbox,
                     (width_in_tiles, height_in_tiles),
+                    record.flags & PATH_FLAG_KEEP_HORIZONTAL_TILE_EDGES != 0,
                 ))
             })
     }
@@ -1384,20 +1385,27 @@ impl Scene {
         }
     }
 
-    fn path_line_flags(path: &BezPath, keep_thin_stroke_horizontal_edges: bool) -> f32 {
+    fn path_flags(path: &BezPath, keep_thin_stroke_horizontal_edges: bool) -> u32 {
         if !keep_thin_stroke_horizontal_edges {
-            return 0.0;
+            return 0;
         }
 
-        // Thin horizontal stroke outlines can place their top edge exactly on a tile
-        // boundary; keep that edge so its bottom edge cannot become a coarse tile fill.
+        // `kurbo::stroke` turns a thin horizontal line into a narrow filled path.
+        // For ordinary fills, scan conversion skips horizontal edges that lie exactly on
+        // tile boundaries; that rule avoids double-counting shared fill boundaries.
+        //
+        // A thin horizontal stroke outline is different: its top edge can land on a tile
+        // boundary while the bottom edge remains in the tile. Dropping only the boundary
+        // edge leaves the backdrop scan unbalanced, so dashed strokes can become coarse
+        // tile-sized blocks. Mark the whole path because this is a fill-rule choice for
+        // the generated stroke outline, not an independent property of each line segment.
         let rect = path.bounding_box();
         let width = rect.x1 - rect.x0;
         let height = rect.y1 - rect.y0;
         if height > 0.0 && height <= THIN_STROKE_HORIZONTAL_EDGE_MAX_HEIGHT && width > height {
-            LINE_FLAG_KEEP_HORIZONTAL_TILE_EDGES
+            PATH_FLAG_KEEP_HORIZONTAL_TILE_EDGES
         } else {
-            0.0
+            0
         }
     }
 
@@ -1438,16 +1446,14 @@ impl Scene {
         let path_id = self.path_cnt;
         self.path_cnt += 1;
         let path = Self::transform_path(path, transform);
-        let line_flags = Self::path_line_flags(&path, options.keep_thin_stroke_horizontal_edges);
-        PathFlatten::new(&path, tolerance as f32, path_id)
-            .with_line_flags(line_flags)
-            .flatten(&mut self.lines);
+        let path_flags = Self::path_flags(&path, options.keep_thin_stroke_horizontal_edges);
+        PathFlatten::new(&path, tolerance as f32, path_id).flatten(&mut self.lines);
         let line_count = self.lines.len() as u32 - line_start;
         self.path_records.push(PathRecord {
             path_id,
             line_count,
             line_start,
-            _pad: 0,
+            flags: path_flags,
         });
         let pixel_bounds = match options.bounds_override {
             Some(bounds) => PixelBounds {
@@ -1463,7 +1469,7 @@ impl Scene {
         let tile_height = tile_bbox.tile_height();
         let backdrop_len = tile_stride * tile_height;
         let local_tile_cnt =
-            self.segment_capacity_for_path_lines(line_start, line_count, tile_bbox);
+            self.segment_capacity_for_path_lines(line_start, line_count, path_flags, tile_bbox);
 
         let backdrop_offset = self.backdrop_pool_capacity;
         self.backdrop_pool_capacity += backdrop_len;
@@ -1638,13 +1644,20 @@ impl Scene {
         &self,
         line_start: u32,
         line_count: u32,
+        path_flags: u32,
         tile_bbox: crate::shared::bounds::TileBbox,
     ) -> u32 {
         let tiles_size = (self.width_in_tiles(), self.height_in_tiles());
+        let keep_horizontal_tile_edges = path_flags & PATH_FLAG_KEEP_HORIZONTAL_TILE_EDGES != 0;
         self.lines[line_start as usize..(line_start + line_count) as usize]
             .iter()
             .fold(0u32, |capacity, &line| {
-                capacity.saturating_add(line_scanned_tile_count(line, tile_bbox, tiles_size))
+                capacity.saturating_add(line_scanned_tile_count(
+                    line,
+                    tile_bbox,
+                    tiles_size,
+                    keep_horizontal_tile_edges,
+                ))
             })
     }
 

@@ -448,7 +448,8 @@ pub(crate) struct SceneBuffers {
     pub(crate) line_p0y: CubeBuffer<f32>,
     pub(crate) line_p1x: CubeBuffer<f32>,
     pub(crate) line_p1y: CubeBuffer<f32>,
-    pub(crate) line_flags: CubeBuffer<f32>,
+    /// Per-path scan flags, indexed by `path_id`.
+    pub(crate) path_flags: CubeBuffer<u32>,
     pub(crate) draw_path_ids: CubeBuffer<u32>,
     pub(crate) draw_glyph_run_ids: CubeBuffer<u32>,
     /// Packed per-draw byte:
@@ -536,7 +537,7 @@ impl SceneBuffers {
             line_p0y: CubeBuffer::new(client, 0),
             line_p1x: CubeBuffer::new(client, 0),
             line_p1y: CubeBuffer::new(client, 0),
-            line_flags: CubeBuffer::new(client, 0),
+            path_flags: CubeBuffer::new(client, 0),
             draw_path_ids: CubeBuffer::new(client, 0),
             draw_glyph_run_ids: CubeBuffer::new(client, 0),
             draw_flags: CubeBuffer::new(client, 0),
@@ -608,7 +609,7 @@ impl SceneBuffers {
             self.line_p0y.memory_usage(),
             self.line_p1x.memory_usage(),
             self.line_p1y.memory_usage(),
-            self.line_flags.memory_usage(),
+            self.path_flags.memory_usage(),
             self.draw_path_ids.memory_usage(),
             self.draw_glyph_run_ids.memory_usage(),
             self.draw_flags.memory_usage(),
@@ -686,6 +687,7 @@ impl SceneBuffers {
         );
         build_cumsum_plan_into(scene, &mut staging.cumsum_plan);
         self.upload_lines(client, &scene.lines, staging);
+        self.upload_paths(client, &scene.path_records, staging);
         self.upload_draws(client, &scene.draw_records, text.is_some(), staging);
         self.upload_backdrops(client, &scene.bd_records, staging);
         self.upload_plan_layer_stack(client, &plan.layer_stack_data, staging);
@@ -821,12 +823,20 @@ impl SceneBuffers {
             lines,
             |line| line.p1[1],
         );
-        upload_mapped_f32(
+    }
+
+    fn upload_paths<R: Runtime>(
+        &mut self,
+        client: &::cubecl::client::ComputeClient<R>,
+        paths: &[crate::shared::path::PathRecord],
+        staging: &mut SceneUploadStaging,
+    ) {
+        upload_mapped_u32(
             client,
-            &mut self.line_flags,
-            &mut staging.f32s,
-            lines,
-            |line| line.flags,
+            &mut self.path_flags,
+            &mut staging.u32s,
+            paths,
+            |path| path.flags,
         );
     }
 
