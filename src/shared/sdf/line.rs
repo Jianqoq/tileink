@@ -25,6 +25,15 @@ pub struct Line {
     pub cap: LineCap,
 }
 
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DashLine {
+    pub line: Line,
+    pub dash_length: f32,
+    pub gap_length: f32,
+    pub dash_offset: f32,
+}
+
 impl Line {
     pub fn new(start: Point, end: Point, width: f32, cap: LineCap) -> Self {
         assert!(width > 0.0, "SDF line width must be positive");
@@ -152,6 +161,187 @@ impl Line {
                 let nearest = axis.clamp(0.0, len);
                 (axis - nearest).hypot(normal) - half
             }
+        }
+    }
+}
+
+impl DashLine {
+    pub fn new(
+        start: Point,
+        end: Point,
+        width: f32,
+        cap: LineCap,
+        dash_length: f32,
+        gap_length: f32,
+    ) -> Self {
+        Self::with_offset(start, end, width, cap, dash_length, gap_length, 0.0)
+    }
+
+    pub fn with_offset(
+        start: Point,
+        end: Point,
+        width: f32,
+        cap: LineCap,
+        dash_length: f32,
+        gap_length: f32,
+        dash_offset: f32,
+    ) -> Self {
+        assert!(dash_length > 0.0, "SDF dash length must be positive");
+        assert!(gap_length >= 0.0, "SDF dash gap must be non-negative");
+        Self {
+            line: Line::new(start, end, width, cap),
+            dash_length,
+            gap_length,
+            dash_offset,
+        }
+    }
+
+    pub(crate) fn is_empty(self) -> bool {
+        if self.line.is_empty() || self.dash_length <= 0.0 {
+            return true;
+        }
+        let Some(len) = self.line_len() else {
+            return false;
+        };
+        self.gap_length > LINE_EPSILON && !self.has_visible_dash(len)
+    }
+
+    pub(crate) fn bounds(self) -> Bounds {
+        if self.is_empty() {
+            Bounds::new(0, 0, 0, 0)
+        } else {
+            self.line.bounds()
+        }
+    }
+
+    pub(crate) fn translated(mut self, dx: f32, dy: f32) -> Self {
+        self.line = self.line.translated(dx, dy);
+        self
+    }
+
+    pub(crate) fn tile_is_solid(self, _: Bounds) -> bool {
+        false
+    }
+
+    pub(crate) fn fine_area(
+        self,
+        area: &mut [f32; (TILE_SIZE * TILE_SIZE) as usize],
+        tile_bounds: Bounds,
+        pixel_bounds: Bounds,
+    ) {
+        if self.is_empty() {
+            return;
+        }
+
+        for y_px in pixel_bounds.y0..pixel_bounds.y1 {
+            let py = y_px as f32 + 0.5;
+            let row = (y_px - tile_bounds.y0) as usize * TILE_SIZE as usize;
+            for x_px in pixel_bounds.x0..pixel_bounds.x1 {
+                let px = x_px as f32 + 0.5;
+                let ix = row + (x_px - tile_bounds.x0) as usize;
+                area[ix] = coverage_from_dist(self.signed_distance(px, py));
+            }
+        }
+    }
+
+    pub(crate) fn signed_distance(self, x: f32, y: f32) -> f32 {
+        if self.gap_length <= LINE_EPSILON {
+            return self.line.signed_distance(x, y);
+        }
+
+        let half = self.line.width * 0.5;
+        let Some((axis, normal, len)) = self.local_coords(x, y) else {
+            return self.line.signed_distance(x, y);
+        };
+
+        let cycle = self.cycle();
+        let offset = self.normalized_dash_offset(cycle);
+        let base = ((axis + offset) / cycle).floor() as i32;
+        let mut dist = f32::INFINITY;
+        for dash_ix in [base - 1, base, base + 1] {
+            dist = dist.min(self.dash_segment_distance(dash_ix, axis, normal, len, half));
+        }
+        dist
+    }
+
+    fn line_len(self) -> Option<f32> {
+        let dx = self.line.end.x as f32 - self.line.start.x as f32;
+        let dy = self.line.end.y as f32 - self.line.start.y as f32;
+        let len = dx.hypot(dy);
+        (len > LINE_EPSILON).then_some(len)
+    }
+
+    fn local_coords(self, x: f32, y: f32) -> Option<(f32, f32, f32)> {
+        let sx = self.line.start.x as f32;
+        let sy = self.line.start.y as f32;
+        let ex = self.line.end.x as f32;
+        let ey = self.line.end.y as f32;
+        let dx = ex - sx;
+        let dy = ey - sy;
+        let len = dx.hypot(dy);
+        if len <= LINE_EPSILON {
+            return None;
+        }
+        let ux = dx / len;
+        let uy = dy / len;
+        let px = x - sx;
+        let py = y - sy;
+        Some((px * ux + py * uy, -px * uy + py * ux, len))
+    }
+
+    fn cycle(self) -> f32 {
+        self.dash_length + self.gap_length
+    }
+
+    fn normalized_dash_offset(self, cycle: f32) -> f32 {
+        self.dash_offset.rem_euclid(cycle)
+    }
+
+    fn has_visible_dash(self, len: f32) -> bool {
+        let cycle = self.cycle();
+        let offset = self.normalized_dash_offset(cycle);
+        let first_ix = ((offset - self.dash_length) / cycle).floor() as i32 + 1;
+        (first_ix as f32 * cycle - offset) < len
+    }
+
+    fn dash_segment_distance(
+        self,
+        dash_ix: i32,
+        axis: f32,
+        normal: f32,
+        len: f32,
+        half: f32,
+    ) -> f32 {
+        let cycle = self.cycle();
+        let offset = self.normalized_dash_offset(cycle);
+        let start = dash_ix as f32 * cycle - offset;
+        let end = start + self.dash_length;
+        if end <= 0.0 || start >= len {
+            return f32::INFINITY;
+        }
+        let start = start.max(0.0);
+        let end = end.min(len);
+        if end <= start {
+            return f32::INFINITY;
+        }
+        line_segment_distance(axis, normal, start, end, half, self.line.cap)
+    }
+}
+
+fn line_segment_distance(
+    axis: f32,
+    normal: f32,
+    start: f32,
+    end: f32,
+    half: f32,
+    cap: LineCap,
+) -> f32 {
+    match cap {
+        LineCap::Butt => local_rect_distance(axis, normal, start, end, half),
+        LineCap::Square => local_rect_distance(axis, normal, start - half, end + half, half),
+        LineCap::Round => {
+            let nearest = axis.clamp(start, end);
+            (axis - nearest).hypot(normal) - half
         }
     }
 }

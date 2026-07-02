@@ -56,7 +56,10 @@ pub use shared::{
         circle::{
             Circle as SdfCircle, CircleShadow as SdfCircleShadow, CircleStroke as SdfCircleStroke,
         },
-        line::{Line as SdfLine, LineCap as SdfLineCap, LineShadow as SdfLineShadow},
+        line::{
+            DashLine as SdfDashLine, Line as SdfLine, LineCap as SdfLineCap,
+            LineShadow as SdfLineShadow,
+        },
         rect::{
             Radius, Rect as SdfRect, RectShadow as SdfRectShadow, RectShadowOptions,
             RectStroke as SdfRectStroke, StrokeWidths,

@@ -6,7 +6,7 @@ use peniko::{
 use super::Renderer;
 use crate::{
     Brush, CandleStick, FillRule, Radius, RectLiquidGlass, RectShadowOptions, Scene, SdfArc,
-    SdfLine, SdfLineCap, StrokeWidths, TextContext, TextLayoutOptions,
+    SdfDashLine, SdfLine, SdfLineCap, StrokeWidths, TextContext, TextLayoutOptions,
     shared::layer::{
         filter::Filter,
         mask::{Mask, MaskKind},
@@ -481,6 +481,61 @@ fn sdf_line_renders_centered_one_pixel_butt_stroke() {
     assert_eq!(renderer.image().rgba8_at(24, 16), [255, 255, 255, 255]);
     assert_eq!(renderer.image().rgba8_at(16, 15), [255, 255, 255, 255]);
     assert_eq!(renderer.image().rgba8_at(16, 17), [255, 255, 255, 255]);
+}
+
+#[test]
+fn sdf_dash_line_renders_dashes_and_gaps() {
+    let red = Color::from_rgb8(220, 64, 72);
+    let mut scene = Scene::new(48, 36);
+    scene.push_dash_line(
+        SdfDashLine::new(
+            Point::new(8.0, 16.5),
+            Point::new(32.0, 16.5),
+            1.0,
+            SdfLineCap::Butt,
+            4.0,
+            3.0,
+        ),
+        red,
+        FillRule::NonZero,
+    );
+
+    let mut renderer = Renderer::new(48, 36, Color::WHITE);
+    renderer.render(&scene);
+
+    assert_eq!(renderer.image().rgba8_at(8, 16), [220, 64, 72, 255]);
+    assert_eq!(renderer.image().rgba8_at(11, 16), [220, 64, 72, 255]);
+    assert_eq!(renderer.image().rgba8_at(12, 16), [255, 255, 255, 255]);
+    assert_eq!(renderer.image().rgba8_at(14, 16), [255, 255, 255, 255]);
+    assert_eq!(renderer.image().rgba8_at(15, 16), [220, 64, 72, 255]);
+    assert_eq!(renderer.image().rgba8_at(16, 15), [255, 255, 255, 255]);
+}
+
+#[test]
+fn sdf_dash_line_with_zero_gap_renders_as_solid_line() {
+    let red = Color::from_rgb8(220, 64, 72);
+    let mut scene = Scene::new(40, 36);
+    scene.push_dash_line(
+        SdfDashLine::new(
+            Point::new(8.0, 16.5),
+            Point::new(24.0, 16.5),
+            1.0,
+            SdfLineCap::Butt,
+            4.0,
+            0.0,
+        ),
+        red,
+        FillRule::NonZero,
+    );
+
+    let mut renderer = Renderer::new(40, 36, Color::WHITE);
+    renderer.render(&scene);
+
+    assert_eq!(renderer.image().rgba8_at(8, 16), [220, 64, 72, 255]);
+    assert_eq!(renderer.image().rgba8_at(12, 16), [220, 64, 72, 255]);
+    assert_eq!(renderer.image().rgba8_at(23, 16), [220, 64, 72, 255]);
+    assert_eq!(renderer.image().rgba8_at(7, 16), [255, 255, 255, 255]);
+    assert_eq!(renderer.image().rgba8_at(24, 16), [255, 255, 255, 255]);
 }
 
 #[test]

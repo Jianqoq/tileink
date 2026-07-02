@@ -229,6 +229,40 @@ fn fine_wgpu_renders_line_sdf_when_enabled() {
 }
 
 #[test]
+fn fine_wgpu_renders_dash_line_sdf_when_enabled() {
+    if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+
+    let red = Color::from_rgb8(220, 64, 72);
+    let mut scene = Scene::new(48, 36);
+    scene.push_dash_line(
+        SdfDashLine::new(
+            Point::new(8.0, 16.5),
+            Point::new(32.0, 16.5),
+            1.0,
+            SdfLineCap::Butt,
+            4.0,
+            3.0,
+        ),
+        red,
+        FillRule::NonZero,
+    );
+
+    let mut renderer = WgpuRenderer::new_default_device(48, 36, Color::TRANSPARENT);
+    renderer.render(&scene);
+    let target = renderer.target.read(renderer.client());
+    let red_px = premul_f32_to_u32(red.premultiply().components);
+
+    assert_eq!(target[16 * 48 + 8], red_px);
+    assert_eq!(target[16 * 48 + 11], red_px);
+    assert_eq!(target[16 * 48 + 12], 0);
+    assert_eq!(target[16 * 48 + 14], 0);
+    assert_eq!(target[16 * 48 + 15], red_px);
+    assert_eq!(target[15 * 48 + 16], 0);
+}
+
+#[test]
 fn fine_wgpu_renders_arc_sdf_when_enabled() {
     if std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() != Ok("1") {
         return;

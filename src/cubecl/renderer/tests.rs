@@ -28,8 +28,8 @@ use crate::shared::layer::{
 };
 use crate::shared::pixel::premul_f32_to_u32;
 use crate::{
-    CandleStick, CpuRenderer, FillRule, Radius, RectShadowOptions, Scene, SdfArc, SdfLine,
-    SdfLineCap, StrokeWidths, TextContext, TextLayoutOptions,
+    CandleStick, CpuRenderer, FillRule, Radius, RectShadowOptions, Scene, SdfArc, SdfDashLine,
+    SdfLine, SdfLineCap, StrokeWidths, TextContext, TextLayoutOptions,
 };
 
 fn mixed_shape_scene() -> Scene {

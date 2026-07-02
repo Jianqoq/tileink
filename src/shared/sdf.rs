@@ -2,7 +2,7 @@ use crate::shared::sdf::{
     arc::{Arc, ArcShadow},
     candlestick::CandleStick,
     circle::{Circle, CircleShadow, CircleStroke},
-    line::{Line, LineShadow},
+    line::{DashLine, Line, LineShadow},
     rect::{Rect, RectShadow, RectStroke},
 };
 use crate::{TILE_SIZE, shared::bounds::Bounds};
@@ -31,6 +31,7 @@ pub enum Sdf {
     Arc(Arc),
     CandleStick(CandleStick),
     Line(Line),
+    DashLine(DashLine),
 }
 
 #[repr(C)]
@@ -52,6 +53,7 @@ impl Sdf {
             Self::Arc(arc) => arc.bounds(),
             Self::CandleStick(candle) => candle.bounds(),
             Self::Line(line) => line.bounds(),
+            Self::DashLine(line) => line.bounds(),
         }
     }
 
@@ -64,6 +66,7 @@ impl Sdf {
             Self::Arc(arc) => Self::Arc(arc.translated(dx, dy)),
             Self::CandleStick(candle) => Self::CandleStick(candle.translated(dx, dy)),
             Self::Line(line) => Self::Line(line.translated(dx, dy)),
+            Self::DashLine(line) => Self::DashLine(line.translated(dx, dy)),
         }
     }
 
@@ -76,6 +79,7 @@ impl Sdf {
             Self::Arc(arc) => arc.tile_is_solid(bounds),
             Self::CandleStick(candle) => candle.tile_is_solid(bounds),
             Self::Line(line) => line.tile_is_solid(bounds),
+            Self::DashLine(line) => line.tile_is_solid(bounds),
         }
     }
 
@@ -93,6 +97,7 @@ impl Sdf {
             Self::Arc(arc) => arc.fine_area(area, tile_bounds, pixel_bounds),
             Self::CandleStick(candle) => candle.fine_area(area, tile_bounds, pixel_bounds),
             Self::Line(line) => line.fine_area(area, tile_bounds, pixel_bounds),
+            Self::DashLine(line) => line.fine_area(area, tile_bounds, pixel_bounds),
         }
     }
 }

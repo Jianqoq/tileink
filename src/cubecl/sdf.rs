@@ -1,8 +1,9 @@
 use crate::{
     cubecl::types::{
         CUBE_SDF_ARC, CUBE_SDF_ARC_SHADOW, CUBE_SDF_CANDLESTICK, CUBE_SDF_CIRCLE,
-        CUBE_SDF_CIRCLE_SHADOW, CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_LINE, CUBE_SDF_LINE_SHADOW,
-        CUBE_SDF_NONE, CUBE_SDF_RECT, CUBE_SDF_RECT_SHADOW, CUBE_SDF_RECT_STROKE,
+        CUBE_SDF_CIRCLE_SHADOW, CUBE_SDF_CIRCLE_STROKE, CUBE_SDF_DASH_LINE, CUBE_SDF_LINE,
+        CUBE_SDF_LINE_SHADOW, CUBE_SDF_NONE, CUBE_SDF_RECT, CUBE_SDF_RECT_SHADOW,
+        CUBE_SDF_RECT_STROKE,
     },
     shared::sdf::{Sdf, SdfShadow},
 };
@@ -110,6 +111,23 @@ pub(crate) fn encode_sdf(sdf: Sdf) -> EncodedSdf {
                 line.end.y as f32,
             ],
             radii: [line.width, line.cap_value(), 0.0, 0.0],
+            ..EncodedSdf::NONE
+        },
+        Sdf::DashLine(line) => EncodedSdf {
+            kind: CUBE_SDF_DASH_LINE,
+            coords: [
+                line.line.start.x as f32,
+                line.line.start.y as f32,
+                line.line.end.x as f32,
+                line.line.end.y as f32,
+            ],
+            radii: [
+                line.line.width,
+                line.line.cap_value(),
+                line.dash_length,
+                line.gap_length,
+            ],
+            stroke: [line.dash_offset, 0.0, 0.0, 0.0],
             ..EncodedSdf::NONE
         },
     }

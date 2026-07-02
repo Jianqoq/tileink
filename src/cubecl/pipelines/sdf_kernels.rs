@@ -128,6 +128,10 @@ fn gpu_sdf_alpha_from_encoded(
         coverage = gpu_sdf_coverage_from_dist(gpu_line_sdf_distance(
             x, y, x0, y0, x1, y1, r0, r1,
         ));
+    } else if kind == CUBE_SDF_DASH_LINE {
+        coverage = gpu_sdf_coverage_from_dist(gpu_dash_line_sdf_distance(
+            x, y, x0, y0, x1, y1, r0, r1, r2, r3, stroke_top,
+        ));
     } else if kind == CUBE_SDF_LINE_SHADOW {
         coverage = gpu_sdf_shadow_coverage_from_dist(
             gpu_line_sdf_distance(
@@ -145,6 +149,122 @@ fn gpu_sdf_alpha_from_encoded(
         );
     }
     (coverage * 255.0 + 0.5) as u32
+}
+
+#[cube]
+#[allow(clippy::too_many_arguments)]
+fn gpu_dash_line_sdf_distance(
+    x: f32,
+    y: f32,
+    sx: f32,
+    sy: f32,
+    ex: f32,
+    ey: f32,
+    width: f32,
+    cap: f32,
+    dash_length_raw: f32,
+    gap_length_raw: f32,
+    dash_offset: f32,
+) -> f32 {
+    let dash_length = dash_length_raw.max(0.0);
+    let gap_length = gap_length_raw.max(0.0);
+    let mut dist = gpu_line_sdf_distance(x, y, sx, sy, ex, ey, width, cap);
+    if dash_length > f32::new(0.000001_f32) && gap_length > f32::new(0.000001_f32) {
+        let half = width.max(0.0) * 0.5;
+        let dx = ex - sx;
+        let dy = ey - sy;
+        let len = (dx * dx + dy * dy).sqrt();
+        if len > f32::new(0.000001_f32) {
+            let ux = dx / len;
+            let uy = dy / len;
+            let px = x - sx;
+            let py = y - sy;
+            let axis = px * ux + py * uy;
+            let normal = -px * uy + py * ux;
+            let cycle = dash_length + gap_length;
+            let offset = gpu_rem_euclid_f32(dash_offset, cycle);
+            let base = ((axis + offset) / cycle).floor();
+            dist = gpu_dash_line_segment_distance(
+                axis,
+                normal,
+                len,
+                half,
+                cap,
+                dash_length,
+                cycle,
+                offset,
+                base - 1.0,
+            )
+            .min(gpu_dash_line_segment_distance(
+                axis,
+                normal,
+                len,
+                half,
+                cap,
+                dash_length,
+                cycle,
+                offset,
+                base,
+            ))
+            .min(gpu_dash_line_segment_distance(
+                axis,
+                normal,
+                len,
+                half,
+                cap,
+                dash_length,
+                cycle,
+                offset,
+                base + 1.0,
+            ));
+        }
+    }
+    dist
+}
+
+#[cube]
+#[allow(clippy::too_many_arguments)]
+fn gpu_dash_line_segment_distance(
+    axis: f32,
+    normal: f32,
+    len: f32,
+    half: f32,
+    cap: f32,
+    dash_length: f32,
+    cycle: f32,
+    offset: f32,
+    dash_ix: f32,
+) -> f32 {
+    let dash_start = dash_ix * cycle - offset;
+    let dash_end = dash_start + dash_length;
+    let mut dist = f32::new(1000000.0_f32);
+    if dash_end > 0.0 && dash_start < len {
+        let start = dash_start.max(0.0);
+        let end = dash_end.min(len);
+        if end > start {
+            dist = gpu_line_segment_sdf_distance(axis, normal, start, end, half, cap);
+        }
+    }
+    dist
+}
+
+#[cube]
+fn gpu_line_segment_sdf_distance(
+    axis: f32,
+    normal: f32,
+    start: f32,
+    end: f32,
+    half: f32,
+    cap: f32,
+) -> f32 {
+    let nearest = axis.clamp(start, end);
+    let mut dist = ((axis - nearest) * (axis - nearest) + normal * normal).sqrt() - half;
+    if cap < 0.5 {
+        dist = gpu_local_line_rect_distance(axis, normal, start, end, half);
+    } else if cap < 1.5 {
+        dist = gpu_local_line_rect_distance(axis, normal, start - half, end + half, half);
+    }
+    dist
 }
 
 #[cube]

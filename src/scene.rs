@@ -35,7 +35,7 @@ use crate::shared::{
         circle::{
             Circle as SdfCircle, CircleShadow as SdfCircleShadow, CircleStroke as SdfCircleStroke,
         },
-        line::{Line as SdfLine, LineShadow as SdfLineShadow},
+        line::{DashLine as SdfDashLine, Line as SdfLine, LineShadow as SdfLineShadow},
         rect::{
             Radius, Rect as SdfRect, RectShadow as SdfRectShadow, RectShadowOptions,
             RectStroke as SdfRectStroke, StrokeWidths,
@@ -1164,6 +1164,13 @@ impl Scene {
             return;
         }
         self.push_sdf_draw(Sdf::Line(line), brush, rule);
+    }
+
+    pub fn push_dash_line(&mut self, line: SdfDashLine, brush: impl Into<Brush>, rule: FillRule) {
+        if line.is_empty() {
+            return;
+        }
+        self.push_sdf_draw(Sdf::DashLine(line), brush, rule);
     }
 
     pub fn push_line_shadow(

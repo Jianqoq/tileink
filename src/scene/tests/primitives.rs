@@ -160,6 +160,43 @@ fn push_line_records_sdf_without_path_storage() {
 }
 
 #[test]
+fn push_dash_line_records_sdf_without_path_storage() {
+    let mut scene = test_scene();
+    scene.push_dash_line(
+        crate::SdfDashLine::new(
+            Point::new(8.0, 16.5),
+            Point::new(32.0, 16.5),
+            1.0,
+            crate::shared::sdf::line::LineCap::Butt,
+            4.0,
+            3.0,
+        ),
+        Brush::Solid(rgb(255, 0, 0)),
+        FillRule::NonZero,
+    );
+
+    assert_eq!(scene.draw_records.len(), 1);
+    assert!(scene.path_records.is_empty());
+    assert!(scene.bd_records.is_empty());
+    assert_eq!(
+        scene.draw_records[0].pixel_bounds,
+        PixelBounds {
+            x0: 7,
+            y0: 16,
+            x1: 33,
+            y1: 17,
+        }
+    );
+    match scene.draw_records[0].sdf {
+        Some(Sdf::DashLine(line)) => {
+            assert_eq!(line.dash_length, 4.0);
+            assert_eq!(line.gap_length, 3.0);
+        }
+        sdf => panic!("expected dash line SDF, got {sdf:?}"),
+    }
+}
+
+#[test]
 fn push_sdf_arc_records_sdf_without_path_storage() {
     let mut scene = test_scene();
     scene.push_sdf_arc(
