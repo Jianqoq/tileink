@@ -164,6 +164,10 @@ name = "cpu_sdf_line"
 path = "examples/cpu/sdf_line.rs"
 
 [[example]]
+name = "cpu_sdf_dash_line"
+path = "examples/cpu/sdf_dash_line.rs"
+
+[[example]]
 name = "cpu_sdf_clip"
 path = "examples/cpu/sdf_clip.rs"
 
@@ -321,6 +325,10 @@ path = "examples/cubecl/sepia.rs"
 [[example]]
 name = "cubecl_sdf_line"
 path = "examples/cubecl/sdf_line.rs"
+
+[[example]]
+name = "cubecl_sdf_dash_line"
+path = "examples/cubecl/sdf_dash_line.rs"
 
 [[example]]
 name = "cubecl_sdf_clip"
