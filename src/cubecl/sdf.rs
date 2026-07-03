@@ -99,7 +99,12 @@ pub(crate) fn encode_sdf(sdf: Sdf) -> EncodedSdf {
                 candle.low_y,
                 candle.body_top_y,
             ],
-            radii: [candle.body_bottom_y, candle.body_width as f32, 0.0, 0.0],
+            radii: [
+                candle.body_bottom_y,
+                candle.body_width as f32,
+                candle.wick_width as f32,
+                0.0,
+            ],
             ..EncodedSdf::NONE
         },
         Sdf::Line(line) => EncodedSdf {

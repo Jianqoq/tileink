@@ -311,7 +311,7 @@ fn scene_columns_track_text_runs_and_glyph_positions() {
 fn push_candlestick_records_sdf_without_path_storage() {
     let mut scene = test_scene();
     scene.push_candlestick(
-        SdfCandleStick::new(16.5, 4.0, 28.0, 10.0, 22.0, 7),
+        SdfCandleStick::new(16.5, 4.0, 28.0, 10.0, 22.0, 7, 1),
         Brush::Solid(rgb(255, 0, 0)),
     );
 
@@ -331,6 +331,35 @@ fn push_candlestick_records_sdf_without_path_storage() {
         Some(Sdf::CandleStick(candle)) => {
             assert_eq!(candle.center_x, 16.5);
             assert_eq!(candle.body_width, 7);
+            assert_eq!(candle.wick_width, 1);
+        }
+        sdf => panic!("expected candlestick SDF, got {sdf:?}"),
+    }
+}
+
+#[test]
+fn push_candlestick_accepts_even_body_and_custom_wick_width_without_path_storage() {
+    let mut scene = test_scene();
+    scene.push_candlestick(
+        SdfCandleStick::new(16.5, 4.0, 28.0, 10.0, 22.0, 8, 3),
+        Brush::Solid(rgb(255, 0, 0)),
+    );
+
+    assert_eq!(scene.draw_records.len(), 1);
+    assert!(scene.path_records.is_empty());
+    assert_eq!(
+        scene.draw_records[0].pixel_bounds,
+        PixelBounds {
+            x0: 12,
+            y0: 4,
+            x1: 21,
+            y1: 28,
+        }
+    );
+    match scene.draw_records[0].sdf {
+        Some(Sdf::CandleStick(candle)) => {
+            assert_eq!(candle.body_width, 8);
+            assert_eq!(candle.wick_width, 3);
         }
         sdf => panic!("expected candlestick SDF, got {sdf:?}"),
     }

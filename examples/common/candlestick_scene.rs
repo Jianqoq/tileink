@@ -48,7 +48,7 @@ pub fn candlestick_scene() -> (Scene, u32, u32) {
             Color::from_rgb8(220, 64, 72)
         };
         scene.push_candlestick(
-            CandleStick::new(center_x, high_y, low_y, open_y, close_y, 11),
+            CandleStick::new(center_x, high_y, low_y, open_y, close_y, 11, 1),
             color,
         );
     }

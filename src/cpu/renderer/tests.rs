@@ -395,10 +395,10 @@ fn sdf_rect_stroke_renders_ring_without_filling_center() {
 }
 
 #[test]
-fn sdf_candlestick_renders_centered_one_pixel_wick_and_odd_body() {
+fn sdf_candlestick_renders_centered_one_pixel_wick_and_body() {
     let red = Color::from_rgb8(220, 64, 72);
     let mut scene = Scene::new(40, 36);
-    scene.push_candlestick(CandleStick::new(16.5, 4.0, 28.0, 10.0, 22.0, 7), red);
+    scene.push_candlestick(CandleStick::new(16.5, 4.0, 28.0, 10.0, 22.0, 7, 1), red);
 
     let mut renderer = Renderer::new(40, 36, Color::WHITE);
     renderer.render(&scene);
@@ -409,6 +409,24 @@ fn sdf_candlestick_renders_centered_one_pixel_wick_and_odd_body() {
     assert_eq!(renderer.image().rgba8_at(19, 12), [220, 64, 72, 255]);
     assert_eq!(renderer.image().rgba8_at(21, 12), [255, 255, 255, 255]);
     assert_eq!(renderer.image().rgba8_at(16, 29), [255, 255, 255, 255]);
+}
+
+#[test]
+fn sdf_candlestick_accepts_even_body_width_with_custom_wick() {
+    let red = Color::from_rgb8(220, 64, 72);
+    let mut scene = Scene::new(40, 36);
+    scene.push_candlestick(CandleStick::new(16.5, 4.0, 28.0, 10.0, 22.0, 8, 3), red);
+
+    let mut renderer = Renderer::new(40, 36, Color::WHITE);
+    renderer.render(&scene);
+
+    assert_eq!(renderer.image().rgba8_at(15, 5), [220, 64, 72, 255]);
+    assert_eq!(renderer.image().rgba8_at(17, 5), [220, 64, 72, 255]);
+    assert_eq!(renderer.image().rgba8_at(14, 5), [255, 255, 255, 255]);
+    assert_eq!(renderer.image().rgba8_at(18, 5), [255, 255, 255, 255]);
+    assert_eq!(renderer.image().rgba8_at(13, 12), [220, 64, 72, 255]);
+    assert_eq!(renderer.image().rgba8_at(19, 12), [220, 64, 72, 255]);
+    assert_eq!(renderer.image().rgba8_at(21, 12), [255, 255, 255, 255]);
 }
 
 #[test]

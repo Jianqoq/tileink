@@ -1259,7 +1259,11 @@ impl Scene {
     pub fn push_candlestick(&mut self, candle: SdfCandleStick, brush: impl Into<Brush>) -> DrawId {
         assert!(
             SdfCandleStick::valid_body_width(candle.body_width),
-            "candlestick body width must be a positive odd number"
+            "candlestick body width must be positive"
+        );
+        assert!(
+            SdfCandleStick::valid_wick_width(candle.wick_width),
+            "candlestick wick width must be positive"
         );
         let draw = self.push_sdf_draw(Sdf::CandleStick(candle), brush);
         self.draw_id_from_index(draw)

@@ -123,7 +123,7 @@ fn gpu_sdf_alpha_from_encoded(
             shadow_intensity,
         );
     } else if kind == CUBE_SDF_CANDLESTICK {
-        coverage = gpu_candlestick_sdf_coverage(x, y, x0, y0, x1, y1, r0, r1);
+        coverage = gpu_candlestick_sdf_coverage(x, y, x0, y0, x1, y1, r0, r1, r2);
     } else if kind == CUBE_SDF_LINE {
         coverage = gpu_sdf_coverage_from_dist(gpu_line_sdf_distance(
             x, y, x0, y0, x1, y1, r0, r1,
@@ -268,6 +268,7 @@ fn gpu_line_segment_sdf_distance(
 }
 
 #[cube]
+#[allow(clippy::too_many_arguments)]
 fn gpu_candlestick_sdf_coverage(
     x: f32,
     y: f32,
@@ -277,13 +278,15 @@ fn gpu_candlestick_sdf_coverage(
     body_top_y: f32,
     body_bottom_y: f32,
     body_width: f32,
+    wick_width: f32,
 ) -> f32 {
+    let wick_half_width = wick_width.max(1.0) * 0.5;
     let wick = gpu_sdf_coverage_from_dist(gpu_rect_sdf_distance(
         x,
         y,
-        center_x - 0.5,
+        center_x - wick_half_width,
         high_y.min(low_y),
-        center_x + 0.5,
+        center_x + wick_half_width,
         high_y.max(low_y),
         0.0,
         0.0,
