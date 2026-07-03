@@ -216,10 +216,6 @@ name = "wgpu_batch"
 path = "examples/wgpu_batch.rs"
 
 [[example]]
-name = "wgpu_profile"
-path = "examples/wgpu_profile.rs"
-
-[[example]]
 name = "wgpu_backdrop_blur"
 path = "examples/wgpu/backdrop_blur.rs"
 
