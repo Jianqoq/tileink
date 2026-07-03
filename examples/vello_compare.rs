@@ -6,7 +6,7 @@ use std::{
 };
 
 use peniko::{Color, kurbo::Rect};
-use tileink::{CandleStick, Radius, Scene, WgpuRenderer};
+use tileink::{CandleStick, Radius, Scene, WgpuRenderProfileReport, WgpuRenderer};
 use vello::{
     AaConfig, AaSupport, RenderParams, Renderer as VelloRenderer, RendererOptions,
     Scene as VelloScene,
@@ -72,10 +72,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         force_fallback_adapter: false,
     }))?;
     let info = adapter.get_info();
+    let required_features = adapter.features()
+        & (wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
+            | wgpu::Features::TIMESTAMP_QUERY);
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: Some("tileink vello compare device"),
-        required_features: adapter.features()
-            & wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
+        required_features,
         required_limits: adapter.limits(),
         memory_hints: wgpu::MemoryHints::MemoryUsage,
         trace: wgpu::Trace::Off,
@@ -122,6 +124,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         &tileink_texture,
         config,
     )?;
+    let candles_tileink_profile = profile_tileink(
+        &mut tileink,
+        &device,
+        &queue,
+        &tileink_candles,
+        &tileink_texture,
+        config,
+    )?;
     let candles_vello = bench_vello(
         &mut vello,
         &device,
@@ -134,6 +144,14 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let (tileink_rects, vello_rects) = build_rect_scenes(config);
     let rects_tileink = bench_tileink(
+        &mut tileink,
+        &device,
+        &queue,
+        &tileink_rects,
+        &tileink_texture,
+        config,
+    )?;
+    let rects_tileink_profile = profile_tileink(
         &mut tileink,
         &device,
         &queue,
@@ -157,7 +175,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         candles_tileink,
         candles_vello,
     );
+    print_profile("tileink candlestick stages", &candles_tileink_profile);
     print_result("solid rects", config.rects, rects_tileink, rects_vello);
+    print_profile("tileink solid rect stages", &rects_tileink_profile);
     Ok(())
 }
 
@@ -249,6 +269,30 @@ fn bench_vello(
         samples.push(start.elapsed());
     }
     Ok(Stats::from_samples(&samples))
+}
+
+fn profile_tileink(
+    renderer: &mut WgpuRenderer,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    scene: &Scene,
+    texture: &wgpu::Texture,
+    config: Config,
+) -> Result<WgpuRenderProfileReport, Box<dyn Error>> {
+    for _ in 0..config.warmup {
+        renderer.render_to_wgpu_texture(scene, texture)?;
+        wait_for_gpu(device, queue)?;
+    }
+
+    let mut report = WgpuRenderProfileReport::new();
+    for _ in 0..config.frames {
+        renderer.start_profile();
+        renderer.render_to_wgpu_texture(scene, texture)?;
+        wait_for_gpu(device, queue)?;
+        let profile = renderer.end_profile().clone();
+        report.push(&profile);
+    }
+    Ok(report)
 }
 
 fn wait_for_gpu(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<(), Box<dyn Error>> {
@@ -398,4 +442,9 @@ fn print_result(name: &str, count: usize, tileink: Stats, vello: Stats) {
         "  ratio   {:>8.2}x vello/tileink\n",
         vello.avg_ms / tileink.avg_ms
     );
+}
+
+fn print_profile(name: &str, profile: &WgpuRenderProfileReport) {
+    println!("{name} ({} profiled frames)", profile.iterations());
+    println!("{profile}\n");
 }
