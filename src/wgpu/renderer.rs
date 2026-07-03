@@ -2592,7 +2592,43 @@ impl Renderer {
         self.upload_image_to_wgpu_texture(dst, self.cpu.image())
     }
 
+    pub fn render_with_text_to_wgpu_texture(
+        &mut self,
+        scene: &Scene,
+        text_context: &mut TextContext,
+        dst: &::wgpu::Texture,
+    ) -> Result<(), WgpuTextureRenderError> {
+        if self.render_native_with_text_to_wgpu_texture(scene, text_context, dst) {
+            return Ok(());
+        }
+        self.cpu.render_with_text(scene, text_context);
+        self.size = (scene.width, scene.height);
+        self.upload_image_to_wgpu_texture(dst, self.cpu.image())
+    }
+
     fn render_native_to_wgpu_texture(&mut self, scene: &Scene, dst: &::wgpu::Texture) -> bool {
+        self.render_native_to_wgpu_texture_with_prepare(scene, dst, |renderer, scene| {
+            renderer.prepare_scene(scene);
+        })
+    }
+
+    fn render_native_with_text_to_wgpu_texture(
+        &mut self,
+        scene: &Scene,
+        text_context: &mut TextContext,
+        dst: &::wgpu::Texture,
+    ) -> bool {
+        self.render_native_to_wgpu_texture_with_prepare(scene, dst, |renderer, scene| {
+            renderer.prepare_scene_with_text(scene, text_context);
+        })
+    }
+
+    fn render_native_to_wgpu_texture_with_prepare(
+        &mut self,
+        scene: &Scene,
+        dst: &::wgpu::Texture,
+        prepare: impl FnOnce(&mut Self, &Scene),
+    ) -> bool {
         if self
             .validate_wgpu_storage_texture_destination(dst, scene.width, scene.height)
             .is_err()
@@ -2600,7 +2636,7 @@ impl Renderer {
             return false;
         }
         self.root_target_view = Some(dst.create_view(&::wgpu::TextureViewDescriptor::default()));
-        self.prepare_scene(scene);
+        prepare(self, scene);
         let rendered = if let Some(fine) = &self.fine
             && self.root_target_view.as_ref().is_some_and(|target| {
                 fine.render_to_view(
@@ -4526,6 +4562,77 @@ mod tests {
             image.pixels.iter().any(|pixel| (pixel >> 24) != 0),
             "expected at least one text pixel"
         );
+    }
+
+    #[test]
+    fn wgpu_renderer_renders_text_directly_to_storage_texture_when_enabled() {
+        if !run_wgpu_tests() {
+            return;
+        }
+
+        let mut text_context = TextContext::new();
+        let layout = text_context.layout(TextLayoutOptions::new("Text", 28.0));
+        if layout.is_empty() {
+            return;
+        }
+        let mut scene = Scene::new(160, 64);
+        scene.push_rect(
+            Rect::new(0.0, 0.0, 160.0, 64.0),
+            crate::Radius::ZERO,
+            Color::from_rgb8(236, 238, 242),
+        );
+        scene.push_text_layout(
+            &layout,
+            peniko::kurbo::Point::new(8.0, 36.0),
+            Color::from_rgb8(18, 24, 36),
+        );
+
+        let mut renderer = Renderer::new_default_device(160, 64, Color::TRANSPARENT);
+        if !renderer
+            .device()
+            .features()
+            .contains(::wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
+        {
+            return;
+        }
+        let texture = renderer
+            .device()
+            .create_texture(&::wgpu::TextureDescriptor {
+                label: Some("tileink wgpu renderer direct text storage texture test"),
+                size: ::wgpu::Extent3d {
+                    width: 160,
+                    height: 64,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: ::wgpu::TextureDimension::D2,
+                format: ::wgpu::TextureFormat::Rgba8Unorm,
+                usage: ::wgpu::TextureUsages::STORAGE_BINDING | ::wgpu::TextureUsages::COPY_SRC,
+                view_formats: &[],
+            });
+
+        renderer
+            .render_with_text_to_wgpu_texture(&scene, &mut text_context, &texture)
+            .expect("render text directly to wgpu storage texture");
+        let bytes = read_texture_rgba8(renderer.device(), renderer.queue(), &texture, 160, 64);
+
+        let mut cpu = CpuRenderer::new(160, 64, Color::TRANSPARENT);
+        cpu.render_with_text(&scene, &mut text_context);
+        let expected = cpu.image();
+        for y in 0..64 {
+            for x in 0..160 {
+                let i = 4 * (y * 160 + x) as usize;
+                let actual = [bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]];
+                let expected = expected.rgba8_at(x, y);
+                for channel in 0..4 {
+                    assert!(
+                        actual[channel].abs_diff(expected[channel]) <= 2,
+                        "direct text texture mismatch at ({x}, {y}) channel {channel}: actual {actual:?}, expected {expected:?}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
