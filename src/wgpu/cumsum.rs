@@ -1,5 +1,6 @@
 use crate::shared::gpu_plan::{CUMSUM_CHUNK_SIZE, GpuBufferLengths};
 
+use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 use super::scene::{WgpuCumsumBindings, WgpuScanBuffers, WgpuSceneBuffers};
 
 const WORKGROUP_SIZE: u32 = 256;
@@ -81,6 +82,7 @@ impl WgpuCumsumPipeline {
         scan: &mut WgpuScanBuffers,
         lengths: GpuBufferLengths,
     ) {
+        let _profile_scope = start_cpu_scope("cumsum");
         let chunk_count = lengths.cumsum_chunk_count as u32;
         if chunk_count == 0 {
             return;
@@ -101,10 +103,12 @@ impl WgpuCumsumPipeline {
         let mut encoder = device.create_command_encoder(&::wgpu::CommandEncoderDescriptor {
             label: Some("tileink wgpu cumsum encoder"),
         });
+        let gpu_scope = start_gpu_scope(device, "cumsum");
+        let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
         {
             let mut pass = encoder.begin_compute_pass(&::wgpu::ComputePassDescriptor {
                 label: Some("tileink wgpu cumsum pass"),
-                timestamp_writes: None,
+                timestamp_writes,
             });
             pass.set_bind_group(0, &bind_group, &[]);
             pass.set_pipeline(&self.prefix_chunks);
@@ -118,6 +122,7 @@ impl WgpuCumsumPipeline {
                 pass.dispatch_workgroups(chunk_count, 1, 1);
             }
         }
+        finish_gpu_scope(&mut encoder, gpu_scope);
         queue.submit([encoder.finish()]);
     }
 

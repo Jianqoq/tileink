@@ -1,5 +1,6 @@
 use crate::shared::gpu_plan::{GpuBufferLengths, SCAN_CHUNK_SIZE};
 
+use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 use super::scene::{WgpuScanBindings, WgpuScanBuffers, WgpuSceneBuffers};
 
 const WORKGROUP_SIZE: u32 = 256;
@@ -85,6 +86,7 @@ impl WgpuScanPipeline {
         scan: &mut WgpuScanBuffers,
         lengths: GpuBufferLengths,
     ) {
+        let _profile_scope = start_cpu_scope("scan");
         let backdrop_len = lengths.backdrop_len as u32;
         let path_count = lengths.path_count as u32;
         let line_count = lengths.line_count as u32;
@@ -111,10 +113,12 @@ impl WgpuScanPipeline {
         let mut encoder = device.create_command_encoder(&::wgpu::CommandEncoderDescriptor {
             label: Some("tileink wgpu scan encoder"),
         });
+        let gpu_scope = start_gpu_scope(device, "scan");
+        let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
         {
             let mut pass = encoder.begin_compute_pass(&::wgpu::ComputePassDescriptor {
                 label: Some("tileink wgpu scan pass"),
-                timestamp_writes: None,
+                timestamp_writes,
             });
             pass.set_bind_group(0, &bind_group, &[]);
             if clear_len > 0 {
@@ -142,6 +146,7 @@ impl WgpuScanPipeline {
                 pass.dispatch_workgroups(line_count.div_ceil(WORKGROUP_SIZE), 1, 1);
             }
         }
+        finish_gpu_scope(&mut encoder, gpu_scope);
         queue.submit([encoder.finish()]);
     }
 

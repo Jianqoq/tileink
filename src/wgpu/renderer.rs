@@ -41,6 +41,7 @@ use super::filter_resources::{
     WgpuFilterTransferBuffers, WgpuFilterTurbulenceBuffers,
 };
 use super::fine::{WgpuFinePipeline, premul_clear_color};
+use super::profile::{WgpuRenderProfile, WgpuRenderProfiler, profile_cpu, start_cpu_scope};
 use super::scan::WgpuScanPipeline;
 use super::scene::{WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers, WgpuSceneUploadStaging};
 use super::target::WgpuTarget;
@@ -135,6 +136,7 @@ pub struct Renderer {
     scratch: Vec<WgpuTarget>,
     scratch_in_use: Vec<bool>,
     clear_color: u32,
+    profiler: WgpuRenderProfiler,
     size: (u32, u32),
     surface_origin: (i32, i32),
 }
@@ -174,7 +176,7 @@ impl Render for Renderer {
         if self.render_native(scene) {
             return;
         }
-        self.cpu.render(scene);
+        profile_cpu("cpu_fallback.render", || self.cpu.render(scene));
         self.upload_cpu_image();
     }
 
@@ -192,7 +194,9 @@ impl Render for Renderer {
                 self.lengths,
             );
         } else {
-            <CpuRenderer as Render>::scan(&mut self.cpu, scene, ());
+            profile_cpu("cpu_fallback.scan", || {
+                <CpuRenderer as Render>::scan(&mut self.cpu, scene, ())
+            });
         }
     }
 
@@ -206,7 +210,9 @@ impl Render for Renderer {
                 self.lengths,
             );
         } else {
-            <CpuRenderer as Render>::cumsum(&mut self.cpu, scene, ());
+            profile_cpu("cpu_fallback.cumsum", || {
+                <CpuRenderer as Render>::cumsum(&mut self.cpu, scene, ())
+            });
         }
     }
 
@@ -264,6 +270,7 @@ impl Renderer {
             scratch: Vec::new(),
             scratch_in_use: Vec::new(),
             clear_color: premul_clear_color(clear),
+            profiler: WgpuRenderProfiler::default(),
             size: (width, height),
             surface_origin: (0, 0),
         }
@@ -279,8 +286,9 @@ impl Renderer {
                 force_fallback_adapter: false,
             }))
             .expect("request default wgpu adapter");
-        let required_features =
-            adapter.features() & ::wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES;
+        let required_features = adapter.features()
+            & (::wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
+                | ::wgpu::Features::TIMESTAMP_QUERY);
         let (device, queue) =
             pollster::block_on(adapter.request_device(&::wgpu::DeviceDescriptor {
                 label: Some("tileink default wgpu device"),
@@ -296,6 +304,39 @@ impl Renderer {
 
     pub fn render(&mut self, scene: &Scene) {
         <Self as Render>::render(self, scene);
+    }
+
+    pub fn render_profiled(&mut self, scene: &Scene) -> WgpuRenderProfile {
+        self.start_profile();
+        self.render(scene);
+        self.end_profile().clone()
+    }
+
+    pub fn render_with_text_profiled(
+        &mut self,
+        scene: &Scene,
+        text_context: &mut TextContext,
+    ) -> WgpuRenderProfile {
+        self.start_profile();
+        self.render_with_text(scene, text_context);
+        self.end_profile().clone()
+    }
+
+    /// Starts collecting CPU stage timings and GPU pass timestamps.
+    ///
+    /// GPU durations require a device created with `wgpu::Features::TIMESTAMP_QUERY`.
+    /// `new_default_device` requests that feature when the adapter supports it.
+    pub fn start_profile(&mut self) {
+        self.profiler.start(&self.device);
+    }
+
+    /// Stops profiling, waits for pending timestamp readback, and returns the latest profile.
+    pub fn end_profile(&mut self) -> &WgpuRenderProfile {
+        self.profiler.end(&self.device, &self.queue)
+    }
+
+    pub fn profile(&self) -> &WgpuRenderProfile {
+        self.profiler.profile()
     }
 
     /// Updates the clear color without rebuilding device-owned pipelines, so one renderer can
@@ -336,55 +377,78 @@ impl Renderer {
     }
 
     fn prepare_scene(&mut self, scene: &Scene) {
+        let _profile_scope = start_cpu_scope("prepare");
         self.text_data = None;
         self.prepare_scene_resources(scene);
     }
 
     fn prepare_scene_with_text(&mut self, scene: &Scene, text_context: &mut TextContext) {
-        self.text_data = Some(PreparedTextData::new(
-            &scene.text_glyphs,
-            &scene.text_runs,
-            text_context,
-        ));
+        let _profile_scope = start_cpu_scope("prepare");
+        self.text_data = profile_cpu("prepare.text", || {
+            Some(PreparedTextData::new(
+                &scene.text_glyphs,
+                &scene.text_runs,
+                text_context,
+            ))
+        });
         self.prepare_scene_resources(scene);
     }
 
     fn prepare_scene_resources(&mut self, scene: &Scene) {
         self.size = (scene.width, scene.height);
         self.surface_origin = (0, 0);
-        if self.root_target_view.is_none() {
-            self.readback_target
-                .resize(&self.device, scene.width, scene.height);
-        }
-        let lengths = GpuBufferLengths::from_scene_with_text(scene, self.text_data.as_ref());
-        let plan = scene.compile(ROOT_COMMAND_LIST_ID);
-        let (max_clip_depth, max_group_depth) = plan_stack_depths(&plan);
-        self.scene_buffers.upload(
-            &self.device,
-            &self.queue,
-            scene,
-            &plan,
-            self.text_data.as_ref(),
-            &mut self.scene_upload,
-        );
-        self.scan.prepare_outputs(&self.device, lengths);
-        self.coarse.prepare_outputs(&self.device, lengths);
-        self.prepare_fine_stack_spills(lengths, max_clip_depth, max_group_depth);
-        self.prepare_scratch_buffers(required_scratch_count(&plan));
-        self.filter_transfers
-            .upload(&self.device, &self.queue, &plan);
-        self.filter_brushes.upload(&self.device, &self.queue, &plan);
-        self.filter_convolves
-            .upload(&self.device, &self.queue, &plan);
-        self.filter_turbulence
-            .upload(&self.device, &self.queue, &plan);
-        self.filter_paths.upload(&self.device, &self.queue, &plan);
-        self.config.upload(
-            &self.device,
-            &self.queue,
-            "tileink wgpu scene config",
-            &[GpuSceneConfig::new(scene, lengths, self.clear_color)],
-        );
+        profile_cpu("prepare.target", || {
+            if self.root_target_view.is_none() {
+                self.readback_target
+                    .resize(&self.device, scene.width, scene.height);
+            }
+        });
+        let lengths = profile_cpu("prepare.lengths", || {
+            GpuBufferLengths::from_scene_with_text(scene, self.text_data.as_ref())
+        });
+        let plan = profile_cpu("prepare.compile", || scene.compile(ROOT_COMMAND_LIST_ID));
+        let (max_clip_depth, max_group_depth) =
+            profile_cpu("prepare.stack_depths", || plan_stack_depths(&plan));
+        profile_cpu("prepare.upload_scene", || {
+            self.scene_buffers.upload(
+                &self.device,
+                &self.queue,
+                scene,
+                &plan,
+                self.text_data.as_ref(),
+                &mut self.scene_upload,
+            );
+        });
+        profile_cpu("prepare.scan_buffers", || {
+            self.scan.prepare_outputs(&self.device, lengths);
+        });
+        profile_cpu("prepare.coarse_buffers", || {
+            self.coarse.prepare_outputs(&self.device, lengths);
+        });
+        profile_cpu("prepare.fine_spills", || {
+            self.prepare_fine_stack_spills(lengths, max_clip_depth, max_group_depth);
+        });
+        profile_cpu("prepare.scratch", || {
+            self.prepare_scratch_buffers(required_scratch_count(&plan));
+        });
+        profile_cpu("prepare.filter_uploads", || {
+            self.filter_transfers
+                .upload(&self.device, &self.queue, &plan);
+            self.filter_brushes.upload(&self.device, &self.queue, &plan);
+            self.filter_convolves
+                .upload(&self.device, &self.queue, &plan);
+            self.filter_turbulence
+                .upload(&self.device, &self.queue, &plan);
+            self.filter_paths.upload(&self.device, &self.queue, &plan);
+        });
+        profile_cpu("prepare.config", || {
+            self.config.upload(
+                &self.device,
+                &self.queue,
+                "tileink wgpu scene config",
+                &[GpuSceneConfig::new(scene, lengths, self.clear_color)],
+            );
+        });
         self.lengths = lengths;
         self.max_clip_depth = max_clip_depth;
         self.max_group_depth = max_group_depth;
@@ -399,6 +463,7 @@ impl Renderer {
         scratch_count: usize,
         surface_origin: (i32, i32),
     ) -> SavedRendererState {
+        let _profile_scope = start_cpu_scope("prepare.local");
         let saved = SavedRendererState {
             lengths: self.lengths,
             plan: self.plan.take(),
@@ -454,57 +519,74 @@ impl Renderer {
             surface_origin: self.surface_origin,
         };
 
-        let lengths = GpuBufferLengths::from_scene_with_text(scene, self.text_data.as_ref());
-        let (max_clip_depth, max_group_depth) = plan_stack_depths(plan);
+        let lengths = profile_cpu("prepare.local.lengths", || {
+            GpuBufferLengths::from_scene_with_text(scene, self.text_data.as_ref())
+        });
+        let (max_clip_depth, max_group_depth) =
+            profile_cpu("prepare.local.stack_depths", || plan_stack_depths(plan));
         self.size = (scene.width, scene.height);
         self.surface_origin = surface_origin;
         self.lengths = lengths;
         self.max_clip_depth = max_clip_depth;
         self.max_group_depth = max_group_depth;
         self.plan = Some(plan.clone());
-        self.scene_buffers.upload(
-            &self.device,
-            &self.queue,
-            scene,
-            plan,
-            self.text_data.as_ref(),
-            &mut self.scene_upload,
-        );
-        self.scan.prepare_outputs(&self.device, lengths);
-        self.coarse.prepare_outputs(&self.device, lengths);
-        self.prepare_fine_stack_spills(lengths, max_clip_depth, max_group_depth);
-        self.prepare_scratch_buffers(scratch_count.max(1));
-        self.filter_transfers.upload_for_ops_and_filter(
-            &self.device,
-            &self.queue,
-            &plan.ops,
-            parent_filter,
-        );
-        self.filter_brushes.upload_for_ops_and_filter(
-            &self.device,
-            &self.queue,
-            &plan.ops,
-            parent_filter,
-        );
-        self.filter_convolves.upload_for_ops_and_filter(
-            &self.device,
-            &self.queue,
-            &plan.ops,
-            parent_filter,
-        );
-        self.filter_turbulence.upload_for_ops_and_filter(
-            &self.device,
-            &self.queue,
-            &plan.ops,
-            parent_filter,
-        );
-        self.filter_paths.upload(&self.device, &self.queue, plan);
-        self.config.upload(
-            &self.device,
-            &self.queue,
-            "tileink wgpu scene config",
-            &[GpuSceneConfig::new(scene, lengths, self.clear_color)],
-        );
+        profile_cpu("prepare.local.upload_scene", || {
+            self.scene_buffers.upload(
+                &self.device,
+                &self.queue,
+                scene,
+                plan,
+                self.text_data.as_ref(),
+                &mut self.scene_upload,
+            );
+        });
+        profile_cpu("prepare.local.scan_buffers", || {
+            self.scan.prepare_outputs(&self.device, lengths);
+        });
+        profile_cpu("prepare.local.coarse_buffers", || {
+            self.coarse.prepare_outputs(&self.device, lengths);
+        });
+        profile_cpu("prepare.local.fine_spills", || {
+            self.prepare_fine_stack_spills(lengths, max_clip_depth, max_group_depth);
+        });
+        profile_cpu("prepare.local.scratch", || {
+            self.prepare_scratch_buffers(scratch_count.max(1));
+        });
+        profile_cpu("prepare.local.filter_uploads", || {
+            self.filter_transfers.upload_for_ops_and_filter(
+                &self.device,
+                &self.queue,
+                &plan.ops,
+                parent_filter,
+            );
+            self.filter_brushes.upload_for_ops_and_filter(
+                &self.device,
+                &self.queue,
+                &plan.ops,
+                parent_filter,
+            );
+            self.filter_convolves.upload_for_ops_and_filter(
+                &self.device,
+                &self.queue,
+                &plan.ops,
+                parent_filter,
+            );
+            self.filter_turbulence.upload_for_ops_and_filter(
+                &self.device,
+                &self.queue,
+                &plan.ops,
+                parent_filter,
+            );
+            self.filter_paths.upload(&self.device, &self.queue, plan);
+        });
+        profile_cpu("prepare.local.config", || {
+            self.config.upload(
+                &self.device,
+                &self.queue,
+                "tileink wgpu scene config",
+                &[GpuSceneConfig::new(scene, lengths, self.clear_color)],
+            );
+        });
         saved
     }
 
@@ -886,8 +968,12 @@ impl Renderer {
         };
 
         filter_cursors.advance_filter_layer(sample_region, children, filter);
-        let local = local_offscreen_scene(scene, plan, children, filter_bounds.surface);
-        let local_filter = local_filter(filter, filter_bounds.surface);
+        let local = profile_cpu("prepare.local_scene", || {
+            local_offscreen_scene(scene, plan, children, filter_bounds.surface)
+        });
+        let local_filter = profile_cpu("prepare.local_filter", || {
+            local_filter(filter, filter_bounds.surface)
+        });
         let local_bounds = Bounds::canvas(
             filter_bounds.surface.width(),
             filter_bounds.surface.height(),
@@ -2384,7 +2470,9 @@ impl Renderer {
             self.size = (scene.width, scene.height);
             return;
         }
-        self.cpu.render_with_text(scene, text_context);
+        profile_cpu("cpu_fallback.render_text", || {
+            self.cpu.render_with_text(scene, text_context)
+        });
         self.upload_cpu_image();
     }
 
@@ -2569,7 +2657,7 @@ impl Renderer {
         if self.render_native_to_wgpu_texture(scene, dst) {
             return Ok(());
         }
-        self.cpu.render(scene);
+        profile_cpu("cpu_fallback.render", || self.cpu.render(scene));
         self.size = (scene.width, scene.height);
         self.upload_image_to_wgpu_texture(dst, self.cpu.image())
     }
@@ -2583,7 +2671,9 @@ impl Renderer {
         if self.render_native_with_text_to_wgpu_texture(scene, text_context, dst) {
             return Ok(());
         }
-        self.cpu.render_with_text(scene, text_context);
+        profile_cpu("cpu_fallback.render_text", || {
+            self.cpu.render_with_text(scene, text_context)
+        });
         self.size = (scene.width, scene.height);
         self.upload_image_to_wgpu_texture(dst, self.cpu.image())
     }
@@ -2630,6 +2720,7 @@ impl Renderer {
     }
 
     fn upload_cpu_image(&mut self) {
+        let _profile_scope = start_cpu_scope("cpu_fallback.upload");
         let image = self.cpu.image();
         self.size = (image.width, image.height);
         self.readback_target
@@ -2642,6 +2733,7 @@ impl Renderer {
         dst: &::wgpu::Texture,
         image: &Image,
     ) -> Result<(), WgpuTextureRenderError> {
+        let _profile_scope = start_cpu_scope("texture_upload");
         self.validate_wgpu_copy_texture_destination(dst, image.width, image.height)?;
         if image.pixels.is_empty() {
             return Ok(());
@@ -2862,6 +2954,46 @@ mod tests {
         let image = renderer.image();
         assert_eq!(image.rgba8_at(0, 0), [7, 8, 9, 255]);
         assert_eq!(image.rgba8_at(3, 3), [220, 64, 72, 255]);
+    }
+
+    #[test]
+    fn wgpu_renderer_profile_includes_cpu_prepare_and_gpu_stages() {
+        if !run_wgpu_tests() {
+            return;
+        }
+
+        let mut scene = Scene::new(16, 16);
+        scene.push_rect(
+            Rect::new(2.0, 2.0, 14.0, 14.0),
+            crate::Radius::ZERO,
+            Color::from_rgb8(30, 120, 220),
+        );
+        let mut renderer = Renderer::new_default_device(16, 16, Color::TRANSPARENT);
+
+        renderer.start_profile();
+        renderer.render(&scene);
+        let profile = renderer.end_profile().clone();
+
+        assert_eq!(renderer.image().rgba8_at(8, 8), [30, 120, 220, 255]);
+        assert!(profile.cpu_time() > std::time::Duration::ZERO);
+        assert_profile_has(&profile, "prepare");
+        assert_profile_has(&profile, "prepare.compile");
+        assert_profile_has(&profile, "scan");
+        assert_profile_has(&profile, "coarse");
+        assert_profile_has(&profile, "fine");
+        if renderer
+            .device()
+            .features()
+            .contains(::wgpu::Features::TIMESTAMP_QUERY)
+        {
+            assert!(
+                profile
+                    .entries()
+                    .iter()
+                    .any(|entry| entry.gpu_duration.is_some()),
+                "expected at least one GPU timestamp entry"
+            );
+        }
     }
 
     #[test]
@@ -4722,6 +4854,14 @@ mod tests {
                 }
             }
         }
+    }
+
+    fn assert_profile_has(profile: &crate::WgpuRenderProfile, name: &'static str) {
+        assert!(
+            profile.entries().iter().any(|entry| entry.name == name),
+            "profile missing {name}; entries: {:?}",
+            profile.entries()
+        );
     }
 
     fn read_render_target_u32(

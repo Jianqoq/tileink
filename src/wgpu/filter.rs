@@ -19,7 +19,10 @@ use crate::shared::{
     },
 };
 
-use super::scene::WgpuFilterBindings;
+use super::{
+    profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope},
+    scene::WgpuFilterBindings,
+};
 
 pub(crate) const FILTER_BRIGHTNESS: u32 = 1;
 pub(crate) const FILTER_CONTRAST: u32 = 2;
@@ -1607,6 +1610,7 @@ impl WgpuFilterPipeline {
         turbulence_tables: Option<&WgpuFilterTurbulenceBindings<'_>>,
         path_bindings: Option<&WgpuFilterPathBindings<'_>>,
     ) {
+        let _profile_scope = start_cpu_scope("filter");
         if config.pixel_count == 0 {
             return;
         }
@@ -1626,15 +1630,18 @@ impl WgpuFilterPipeline {
         let mut encoder = device.create_command_encoder(&::wgpu::CommandEncoderDescriptor {
             label: Some("tileink wgpu filter encoder"),
         });
+        let gpu_scope = start_gpu_scope(device, "filter");
+        let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
         {
             let mut pass = encoder.begin_compute_pass(&::wgpu::ComputePassDescriptor {
                 label: Some("tileink wgpu filter pass"),
-                timestamp_writes: None,
+                timestamp_writes,
             });
             pass.set_pipeline(pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
             pass.dispatch_workgroups(config.pixel_count.div_ceil(WORKGROUP_SIZE), 1, 1);
         }
+        finish_gpu_scope(&mut encoder, gpu_scope);
         queue.submit([encoder.finish()]);
     }
 

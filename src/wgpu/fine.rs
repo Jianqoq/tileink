@@ -4,6 +4,7 @@ use crate::shared::{gpu_plan::GpuBufferLengths, image::premul_color_to_rgba8_pac
 
 use super::{
     buffer::WgpuBuffer,
+    profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope},
     scene::{WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers, WgpuTileFineBindings},
     target::WgpuTarget,
 };
@@ -139,6 +140,7 @@ impl WgpuFinePipeline {
         clip_spill_depth: u32,
         group_spill_depth: u32,
     ) -> bool {
+        let _profile_scope = start_cpu_scope("fine");
         if lengths.tile_count == 0 {
             return true;
         }
@@ -169,15 +171,18 @@ impl WgpuFinePipeline {
         let mut encoder = device.create_command_encoder(&::wgpu::CommandEncoderDescriptor {
             label: Some("tileink wgpu tile fine encoder"),
         });
+        let gpu_scope = start_gpu_scope(device, "fine");
+        let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
         {
             let mut pass = encoder.begin_compute_pass(&::wgpu::ComputePassDescriptor {
                 label: Some("tileink wgpu tile fine pass"),
-                timestamp_writes: None,
+                timestamp_writes,
             });
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
             pass.dispatch_workgroups(lengths.tile_count as u32, 1, 1);
         }
+        finish_gpu_scope(&mut encoder, gpu_scope);
         queue.submit([encoder.finish()]);
         true
     }

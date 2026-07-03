@@ -11,7 +11,10 @@ pub const TILE_SIZE: u32 = 16;
 pub const TILE_SCALE: f32 = 1.0 / TILE_SIZE as f32;
 pub const BLOCK_SIZE: u32 = 16 * 16;
 
-pub use crate::wgpu::{Renderer, Renderer as WgpuRenderer, WgpuTextureRenderError};
+pub use crate::wgpu::{
+    Renderer, Renderer as WgpuRenderer, WgpuRenderProfile, WgpuRenderProfileEntry,
+    WgpuRenderProfileEventSummary, WgpuRenderProfileReport, WgpuTextureRenderError,
+};
 pub use cosmic_text::{
     Align as TextAlign, Attrs as TextAttrs, CacheKeyFlags as TextCacheKeyFlags,
     Family as TextFamily, Stretch as TextStretch, Style as TextStyle, Weight as TextWeight,

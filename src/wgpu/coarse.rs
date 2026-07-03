@@ -2,6 +2,7 @@
 
 use crate::shared::gpu_plan::{COARSE_CHUNK_SIZE, GpuBufferLengths};
 
+use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 use super::scene::{WgpuCoarseBindings, WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers};
 
 const WORKGROUP_SIZE: u32 = 256;
@@ -131,6 +132,7 @@ impl WgpuCoarsePipeline {
         lengths: GpuBufferLengths,
         batch: WgpuCoarseBatch,
     ) {
+        let _profile_scope = start_cpu_scope("coarse");
         let tile_count = lengths.tile_count as u32;
         let chunk_count = lengths.coarse_chunk_count as u32;
         if tile_count == 0 || chunk_count == 0 {
@@ -160,10 +162,12 @@ impl WgpuCoarsePipeline {
         let mut encoder = device.create_command_encoder(&::wgpu::CommandEncoderDescriptor {
             label: Some("tileink wgpu coarse encoder"),
         });
+        let gpu_scope = start_gpu_scope(device, "coarse");
+        let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
         {
             let mut pass = encoder.begin_compute_pass(&::wgpu::ComputePassDescriptor {
                 label: Some("tileink wgpu coarse pass"),
-                timestamp_writes: None,
+                timestamp_writes,
             });
             pass.set_bind_group(0, &bind_group, &[]);
             pass.set_pipeline(&self.count);
@@ -188,6 +192,7 @@ impl WgpuCoarsePipeline {
                 pass.dispatch_workgroups(tile_count, 1, 1);
             }
         }
+        finish_gpu_scope(&mut encoder, gpu_scope);
         queue.submit([encoder.finish()]);
     }
 
