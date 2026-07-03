@@ -20,6 +20,7 @@ use crate::{
 };
 
 use super::super::buffer::WgpuBuffer;
+use super::super::profile::profile_cpu;
 use super::WgpuSceneBuffers;
 
 #[derive(Default)]
@@ -179,24 +180,45 @@ impl WgpuSceneBuffers {
         text: Option<&PreparedTextData>,
         staging: &mut WgpuSceneUploadStaging,
     ) {
-        build_scan_chunks_into(
-            scene,
-            &mut staging.scan_chunks,
-            &mut staging.scan_chunk_ranges,
-        );
-        build_cumsum_plan_into(scene, &mut staging.cumsum_plan);
-        build_tile_draw_bins_into(
-            scene,
-            &mut staging.tile_draw_bins,
-            &mut staging.tile_draw_cursors,
-        );
-        self.upload_columns(device, queue, &scene.columns, text.is_some());
-        self.upload_backdrops(device, queue, &scene.bd_records, staging);
-        self.upload_plan_layer_stack(device, queue, &plan.layer_stack_data, staging);
-        self.upload_text(device, queue, scene, text, staging);
-        self.upload_scan_plan(device, queue, staging);
-        self.upload_cumsum_plan(device, queue, staging);
-        self.upload_tile_draw_bins(device, queue, staging);
+        // Keep scene upload profiling split between CPU-side plan construction and queue uploads.
+        profile_cpu("prepare.upload_scene.build_scan_chunks", || {
+            build_scan_chunks_into(
+                scene,
+                &mut staging.scan_chunks,
+                &mut staging.scan_chunk_ranges,
+            );
+        });
+        profile_cpu("prepare.upload_scene.build_cumsum_plan", || {
+            build_cumsum_plan_into(scene, &mut staging.cumsum_plan);
+        });
+        profile_cpu("prepare.upload_scene.build_tile_draw_bins", || {
+            build_tile_draw_bins_into(
+                scene,
+                &mut staging.tile_draw_bins,
+                &mut staging.tile_draw_cursors,
+            );
+        });
+        profile_cpu("prepare.upload_scene.upload_columns", || {
+            self.upload_columns(device, queue, &scene.columns, text.is_some());
+        });
+        profile_cpu("prepare.upload_scene.upload_backdrops", || {
+            self.upload_backdrops(device, queue, &scene.bd_records, staging);
+        });
+        profile_cpu("prepare.upload_scene.upload_layer_stack", || {
+            self.upload_plan_layer_stack(device, queue, &plan.layer_stack_data, staging);
+        });
+        profile_cpu("prepare.upload_scene.upload_text", || {
+            self.upload_text(device, queue, scene, text, staging);
+        });
+        profile_cpu("prepare.upload_scene.upload_scan_plan", || {
+            self.upload_scan_plan(device, queue, staging);
+        });
+        profile_cpu("prepare.upload_scene.upload_cumsum_plan", || {
+            self.upload_cumsum_plan(device, queue, staging);
+        });
+        profile_cpu("prepare.upload_scene.upload_tile_draw_bins", || {
+            self.upload_tile_draw_bins(device, queue, staging);
+        });
     }
 
     fn upload_columns(
@@ -206,225 +228,232 @@ impl WgpuSceneBuffers {
         columns: &SceneColumns,
         text_enabled: bool,
     ) {
-        self.line_path_ids.upload(
-            device,
-            queue,
-            "tileink wgpu scene line path ids",
-            &columns.line_path_ids,
-        );
-        self.line_p0x.upload(
-            device,
-            queue,
-            "tileink wgpu scene line p0x",
-            &columns.line_p0x,
-        );
-        self.line_p0y.upload(
-            device,
-            queue,
-            "tileink wgpu scene line p0y",
-            &columns.line_p0y,
-        );
-        self.line_p1x.upload(
-            device,
-            queue,
-            "tileink wgpu scene line p1x",
-            &columns.line_p1x,
-        );
-        self.line_p1y.upload(
-            device,
-            queue,
-            "tileink wgpu scene line p1y",
-            &columns.line_p1y,
-        );
-        self.path_flags.upload(
-            device,
-            queue,
-            "tileink wgpu scene path flags",
-            &columns.path_flags,
-        );
-        self.draw_path_ids.upload(
-            device,
-            queue,
-            "tileink wgpu scene draw path ids",
-            &columns.draw_path_ids,
-        );
-        self.draw_glyph_run_ids.upload(
-            device,
-            queue,
-            "tileink wgpu scene draw glyph run ids",
-            if text_enabled {
-                &columns.draw_glyph_run_ids
-            } else {
-                &columns.draw_glyph_run_ids_without_text
-            },
-        );
-        self.draw_glyph_run_ids_without_text.upload(
-            device,
-            queue,
-            "tileink wgpu scene draw glyph run ids without text",
-            &columns.draw_glyph_run_ids_without_text,
-        );
-        self.draw_flags.upload(
-            device,
-            queue,
-            "tileink wgpu scene draw flags",
-            if text_enabled {
-                &columns.draw_flags
-            } else {
-                &columns.draw_flags_without_text
-            },
-        );
-        self.draw_flags_without_text.upload(
-            device,
-            queue,
-            "tileink wgpu scene draw flags without text",
-            &columns.draw_flags_without_text,
-        );
-        self.draw_brush_colors.upload(
-            device,
-            queue,
-            "tileink wgpu scene draw brush colors",
-            &columns.draw_brush_colors,
-        );
-        self.draw_pixel_x0.upload(
-            device,
-            queue,
-            "tileink wgpu scene draw pixel x0",
-            &columns.draw_pixel_x0,
-        );
-        self.draw_pixel_y0.upload(
-            device,
-            queue,
-            "tileink wgpu scene draw pixel y0",
-            &columns.draw_pixel_y0,
-        );
-        self.draw_pixel_x1.upload(
-            device,
-            queue,
-            "tileink wgpu scene draw pixel x1",
-            &columns.draw_pixel_x1,
-        );
-        self.draw_pixel_y1.upload(
-            device,
-            queue,
-            "tileink wgpu scene draw pixel y1",
-            &columns.draw_pixel_y1,
-        );
-
-        let sdf = &columns.sdf;
-        self.sdf_refs
-            .upload(device, queue, "tileink wgpu scene sdf refs", &sdf.refs);
-        self.sdf_kinds
-            .upload(device, queue, "tileink wgpu scene sdf kinds", &sdf.kinds);
-        self.sdf_x0
-            .upload(device, queue, "tileink wgpu scene sdf x0", &sdf.x0);
-        self.sdf_y0
-            .upload(device, queue, "tileink wgpu scene sdf y0", &sdf.y0);
-        self.sdf_x1
-            .upload(device, queue, "tileink wgpu scene sdf x1", &sdf.x1);
-        self.sdf_y1
-            .upload(device, queue, "tileink wgpu scene sdf y1", &sdf.y1);
-        self.sdf_r0
-            .upload(device, queue, "tileink wgpu scene sdf r0", &sdf.r0);
-        self.sdf_r1
-            .upload(device, queue, "tileink wgpu scene sdf r1", &sdf.r1);
-        self.sdf_r2
-            .upload(device, queue, "tileink wgpu scene sdf r2", &sdf.r2);
-        self.sdf_r3
-            .upload(device, queue, "tileink wgpu scene sdf r3", &sdf.r3);
-        self.sdf_stroke_top.upload(
-            device,
-            queue,
-            "tileink wgpu scene sdf stroke top",
-            &sdf.stroke_top,
-        );
-        self.sdf_stroke_right.upload(
-            device,
-            queue,
-            "tileink wgpu scene sdf stroke right",
-            &sdf.stroke_right,
-        );
-        self.sdf_stroke_bottom.upload(
-            device,
-            queue,
-            "tileink wgpu scene sdf stroke bottom",
-            &sdf.stroke_bottom,
-        );
-        self.sdf_stroke_left.upload(
-            device,
-            queue,
-            "tileink wgpu scene sdf stroke left",
-            &sdf.stroke_left,
-        );
-        self.sdf_shadow_offset_x.upload(
-            device,
-            queue,
-            "tileink wgpu scene sdf shadow offset x",
-            &sdf.shadow_offset_x,
-        );
-        self.sdf_shadow_offset_y.upload(
-            device,
-            queue,
-            "tileink wgpu scene sdf shadow offset y",
-            &sdf.shadow_offset_y,
-        );
-        self.sdf_shadow_expand.upload(
-            device,
-            queue,
-            "tileink wgpu scene sdf shadow expand",
-            &sdf.shadow_expand,
-        );
-        self.sdf_shadow_intensity.upload(
-            device,
-            queue,
-            "tileink wgpu scene sdf shadow intensity",
-            &sdf.shadow_intensity,
-        );
-
-        let brushes = &columns.draw_brushes;
-        self.draw_brush_data.upload(
-            device,
-            queue,
-            "tileink wgpu scene draw brush data",
-            &brushes.data,
-        );
-        self.draw_brush_params.upload(
-            device,
-            queue,
-            "tileink wgpu scene draw brush params",
-            &brushes.params,
-        );
-        self.draw_brush_payloads.upload(
-            device,
-            queue,
-            "tileink wgpu scene draw brush payloads",
-            &brushes.payloads,
-        );
-
-        self.text_run_starts.upload(
-            device,
-            queue,
-            "tileink wgpu scene text run starts",
-            &columns.text_run_starts,
-        );
-        self.text_run_counts.upload(
-            device,
-            queue,
-            "tileink wgpu scene text run counts",
-            &columns.text_run_counts,
-        );
-        self.glyph_x.upload(
-            device,
-            queue,
-            "tileink wgpu scene glyph x",
-            &columns.glyph_x,
-        );
-        self.glyph_y.upload(
-            device,
-            queue,
-            "tileink wgpu scene glyph y",
-            &columns.glyph_y,
-        );
+        profile_cpu("prepare.upload_scene.columns.lines", || {
+            self.line_path_ids.upload(
+                device,
+                queue,
+                "tileink wgpu scene line path ids",
+                &columns.line_path_ids,
+            );
+            self.line_p0x.upload(
+                device,
+                queue,
+                "tileink wgpu scene line p0x",
+                &columns.line_p0x,
+            );
+            self.line_p0y.upload(
+                device,
+                queue,
+                "tileink wgpu scene line p0y",
+                &columns.line_p0y,
+            );
+            self.line_p1x.upload(
+                device,
+                queue,
+                "tileink wgpu scene line p1x",
+                &columns.line_p1x,
+            );
+            self.line_p1y.upload(
+                device,
+                queue,
+                "tileink wgpu scene line p1y",
+                &columns.line_p1y,
+            );
+            self.path_flags.upload(
+                device,
+                queue,
+                "tileink wgpu scene path flags",
+                &columns.path_flags,
+            );
+        });
+        profile_cpu("prepare.upload_scene.columns.draws", || {
+            self.draw_path_ids.upload(
+                device,
+                queue,
+                "tileink wgpu scene draw path ids",
+                &columns.draw_path_ids,
+            );
+            self.draw_glyph_run_ids.upload(
+                device,
+                queue,
+                "tileink wgpu scene draw glyph run ids",
+                if text_enabled {
+                    &columns.draw_glyph_run_ids
+                } else {
+                    &columns.draw_glyph_run_ids_without_text
+                },
+            );
+            self.draw_glyph_run_ids_without_text.upload(
+                device,
+                queue,
+                "tileink wgpu scene draw glyph run ids without text",
+                &columns.draw_glyph_run_ids_without_text,
+            );
+            self.draw_flags.upload(
+                device,
+                queue,
+                "tileink wgpu scene draw flags",
+                if text_enabled {
+                    &columns.draw_flags
+                } else {
+                    &columns.draw_flags_without_text
+                },
+            );
+            self.draw_flags_without_text.upload(
+                device,
+                queue,
+                "tileink wgpu scene draw flags without text",
+                &columns.draw_flags_without_text,
+            );
+            self.draw_brush_colors.upload(
+                device,
+                queue,
+                "tileink wgpu scene draw brush colors",
+                &columns.draw_brush_colors,
+            );
+            self.draw_pixel_x0.upload(
+                device,
+                queue,
+                "tileink wgpu scene draw pixel x0",
+                &columns.draw_pixel_x0,
+            );
+            self.draw_pixel_y0.upload(
+                device,
+                queue,
+                "tileink wgpu scene draw pixel y0",
+                &columns.draw_pixel_y0,
+            );
+            self.draw_pixel_x1.upload(
+                device,
+                queue,
+                "tileink wgpu scene draw pixel x1",
+                &columns.draw_pixel_x1,
+            );
+            self.draw_pixel_y1.upload(
+                device,
+                queue,
+                "tileink wgpu scene draw pixel y1",
+                &columns.draw_pixel_y1,
+            );
+        });
+        profile_cpu("prepare.upload_scene.columns.sdf", || {
+            let sdf = &columns.sdf;
+            self.sdf_refs
+                .upload(device, queue, "tileink wgpu scene sdf refs", &sdf.refs);
+            self.sdf_kinds
+                .upload(device, queue, "tileink wgpu scene sdf kinds", &sdf.kinds);
+            self.sdf_x0
+                .upload(device, queue, "tileink wgpu scene sdf x0", &sdf.x0);
+            self.sdf_y0
+                .upload(device, queue, "tileink wgpu scene sdf y0", &sdf.y0);
+            self.sdf_x1
+                .upload(device, queue, "tileink wgpu scene sdf x1", &sdf.x1);
+            self.sdf_y1
+                .upload(device, queue, "tileink wgpu scene sdf y1", &sdf.y1);
+            self.sdf_r0
+                .upload(device, queue, "tileink wgpu scene sdf r0", &sdf.r0);
+            self.sdf_r1
+                .upload(device, queue, "tileink wgpu scene sdf r1", &sdf.r1);
+            self.sdf_r2
+                .upload(device, queue, "tileink wgpu scene sdf r2", &sdf.r2);
+            self.sdf_r3
+                .upload(device, queue, "tileink wgpu scene sdf r3", &sdf.r3);
+            self.sdf_stroke_top.upload(
+                device,
+                queue,
+                "tileink wgpu scene sdf stroke top",
+                &sdf.stroke_top,
+            );
+            self.sdf_stroke_right.upload(
+                device,
+                queue,
+                "tileink wgpu scene sdf stroke right",
+                &sdf.stroke_right,
+            );
+            self.sdf_stroke_bottom.upload(
+                device,
+                queue,
+                "tileink wgpu scene sdf stroke bottom",
+                &sdf.stroke_bottom,
+            );
+            self.sdf_stroke_left.upload(
+                device,
+                queue,
+                "tileink wgpu scene sdf stroke left",
+                &sdf.stroke_left,
+            );
+            self.sdf_shadow_offset_x.upload(
+                device,
+                queue,
+                "tileink wgpu scene sdf shadow offset x",
+                &sdf.shadow_offset_x,
+            );
+            self.sdf_shadow_offset_y.upload(
+                device,
+                queue,
+                "tileink wgpu scene sdf shadow offset y",
+                &sdf.shadow_offset_y,
+            );
+            self.sdf_shadow_expand.upload(
+                device,
+                queue,
+                "tileink wgpu scene sdf shadow expand",
+                &sdf.shadow_expand,
+            );
+            self.sdf_shadow_intensity.upload(
+                device,
+                queue,
+                "tileink wgpu scene sdf shadow intensity",
+                &sdf.shadow_intensity,
+            );
+        });
+        profile_cpu("prepare.upload_scene.columns.brushes", || {
+            let brushes = &columns.draw_brushes;
+            self.draw_brush_data.upload(
+                device,
+                queue,
+                "tileink wgpu scene draw brush data",
+                &brushes.data,
+            );
+            self.draw_brush_params.upload(
+                device,
+                queue,
+                "tileink wgpu scene draw brush params",
+                &brushes.params,
+            );
+            self.draw_brush_payloads.upload(
+                device,
+                queue,
+                "tileink wgpu scene draw brush payloads",
+                &brushes.payloads,
+            );
+        });
+        profile_cpu("prepare.upload_scene.columns.text", || {
+            self.text_run_starts.upload(
+                device,
+                queue,
+                "tileink wgpu scene text run starts",
+                &columns.text_run_starts,
+            );
+            self.text_run_counts.upload(
+                device,
+                queue,
+                "tileink wgpu scene text run counts",
+                &columns.text_run_counts,
+            );
+            self.glyph_x.upload(
+                device,
+                queue,
+                "tileink wgpu scene glyph x",
+                &columns.glyph_x,
+            );
+            self.glyph_y.upload(
+                device,
+                queue,
+                "tileink wgpu scene glyph y",
+                &columns.glyph_y,
+            );
+        });
     }
 
     fn upload_backdrops(
@@ -560,84 +589,90 @@ impl WgpuSceneBuffers {
         text: Option<&PreparedTextData>,
         staging: &mut WgpuSceneUploadStaging,
     ) {
-        staging.text.refill(scene, text, self.glyph_atlas_signature);
-        self.text_run_starts.upload(
-            device,
-            queue,
-            "tileink wgpu scene text run starts",
-            &staging.text.run_starts,
-        );
-        self.text_run_counts.upload(
-            device,
-            queue,
-            "tileink wgpu scene text run counts",
-            &staging.text.run_counts,
-        );
-        self.glyph_image_ids.upload(
-            device,
-            queue,
-            "tileink wgpu scene glyph image ids",
-            &staging.text.glyph_image_ids,
-        );
-        self.glyph_x.upload(
-            device,
-            queue,
-            "tileink wgpu scene glyph x",
-            &staging.text.glyph_x,
-        );
-        self.glyph_y.upload(
-            device,
-            queue,
-            "tileink wgpu scene glyph y",
-            &staging.text.glyph_y,
-        );
+        profile_cpu("prepare.upload_scene.text.refill", || {
+            staging.text.refill(scene, text, self.glyph_atlas_signature);
+        });
+        profile_cpu("prepare.upload_scene.text.runs", || {
+            self.text_run_starts.upload(
+                device,
+                queue,
+                "tileink wgpu scene text run starts",
+                &staging.text.run_starts,
+            );
+            self.text_run_counts.upload(
+                device,
+                queue,
+                "tileink wgpu scene text run counts",
+                &staging.text.run_counts,
+            );
+            self.glyph_image_ids.upload(
+                device,
+                queue,
+                "tileink wgpu scene glyph image ids",
+                &staging.text.glyph_image_ids,
+            );
+            self.glyph_x.upload(
+                device,
+                queue,
+                "tileink wgpu scene glyph x",
+                &staging.text.glyph_x,
+            );
+            self.glyph_y.upload(
+                device,
+                queue,
+                "tileink wgpu scene glyph y",
+                &staging.text.glyph_y,
+            );
+        });
         if !staging.text.atlas_dirty {
             return;
         }
 
         self.glyph_atlas_signature = staging.text.atlas_signature;
-        self.glyph_image_left.upload(
-            device,
-            queue,
-            "tileink wgpu scene glyph image left",
-            &staging.text.image_left,
-        );
-        self.glyph_image_top.upload(
-            device,
-            queue,
-            "tileink wgpu scene glyph image top",
-            &staging.text.image_top,
-        );
-        self.glyph_image_width.upload(
-            device,
-            queue,
-            "tileink wgpu scene glyph image width",
-            &staging.text.image_width,
-        );
-        self.glyph_image_height.upload(
-            device,
-            queue,
-            "tileink wgpu scene glyph image height",
-            &staging.text.image_height,
-        );
-        self.glyph_image_content.upload(
-            device,
-            queue,
-            "tileink wgpu scene glyph image content",
-            &staging.text.image_content,
-        );
-        self.glyph_image_data_offsets.upload(
-            device,
-            queue,
-            "tileink wgpu scene glyph image data offsets",
-            &staging.text.image_data_offsets,
-        );
-        self.glyph_image_data.upload(
-            device,
-            queue,
-            "tileink wgpu scene glyph image data",
-            &staging.text.image_data,
-        );
+        profile_cpu("prepare.upload_scene.text.atlas", || {
+            self.glyph_image_left.upload(
+                device,
+                queue,
+                "tileink wgpu scene glyph image left",
+                &staging.text.image_left,
+            );
+            self.glyph_image_top.upload(
+                device,
+                queue,
+                "tileink wgpu scene glyph image top",
+                &staging.text.image_top,
+            );
+            self.glyph_image_width.upload(
+                device,
+                queue,
+                "tileink wgpu scene glyph image width",
+                &staging.text.image_width,
+            );
+            self.glyph_image_height.upload(
+                device,
+                queue,
+                "tileink wgpu scene glyph image height",
+                &staging.text.image_height,
+            );
+            self.glyph_image_content.upload(
+                device,
+                queue,
+                "tileink wgpu scene glyph image content",
+                &staging.text.image_content,
+            );
+            self.glyph_image_data_offsets.upload(
+                device,
+                queue,
+                "tileink wgpu scene glyph image data offsets",
+                &staging.text.image_data_offsets,
+            );
+            self.glyph_image_data.upload(
+                device,
+                queue,
+                "tileink wgpu scene glyph image data",
+                &staging.text.image_data,
+            );
+        });
     }
 
     fn upload_scan_plan(
