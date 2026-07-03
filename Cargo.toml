@@ -203,6 +203,10 @@ path = "examples/vello_compare.rs"
 required-features = ["vello-compare"]
 
 [[example]]
+name = "wgpu_batch"
+path = "examples/wgpu_batch.rs"
+
+[[example]]
 name = "wgpu_backdrop_blur"
 path = "examples/wgpu/backdrop_blur.rs"
 

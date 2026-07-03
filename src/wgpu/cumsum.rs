@@ -38,7 +38,9 @@ impl WgpuCumsumPipeline {
             });
         let shader = device.create_shader_module(::wgpu::ShaderModuleDescriptor {
             label: Some("tileink wgpu cumsum shader"),
-            source: ::wgpu::ShaderSource::Wgsl(include_str!("cumsum.wgsl").into()),
+            source: ::wgpu::ShaderSource::Wgsl(
+                include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_cumsum.wgsl")).into(),
+            ),
         });
         let pipeline_layout = device.create_pipeline_layout(&::wgpu::PipelineLayoutDescriptor {
             label: Some("tileink wgpu cumsum pipeline layout"),

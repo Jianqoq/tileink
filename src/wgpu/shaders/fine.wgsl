@@ -1,0 +1,8 @@
+#include "fine/header.wgsl"
+#include "shared/pixel.wgsl"
+#include "shared/blend.wgsl"
+#include "shared/brush.wgsl"
+#include "shared/sdf.wgsl"
+#include "fine/main.wgsl"
+#include "fine/text.wgsl"
+#include "fine/extra.wgsl"

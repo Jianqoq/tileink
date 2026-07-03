@@ -123,6 +123,10 @@ impl Renderer {
         <Self as Render>::render(self, scene);
     }
 
+    pub fn set_clear_color(&mut self, clear: Color) {
+        self.clear = clear;
+    }
+
     /// Renders text draws using the same [`TextContext`] that created their
     /// [`TextLayout`](crate::TextLayout). Cosmic glyph cache keys contain
     /// FontSystem font ids, so using a different context can make those keys

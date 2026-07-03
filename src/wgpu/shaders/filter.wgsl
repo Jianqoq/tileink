@@ -1,0 +1,8 @@
+#include "filter/header.wgsl"
+#include "shared/pixel.wgsl"
+#include "shared/blend.wgsl"
+#include "shared/brush.wgsl"
+#include "shared/sdf.wgsl"
+#include "filter/kernels.wgsl"
+#include "filter/stack.wgsl"
+#include "filter/effects.wgsl"

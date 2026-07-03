@@ -298,6 +298,13 @@ impl Renderer {
         <Self as Render>::render(self, scene);
     }
 
+    /// Updates the clear color without rebuilding device-owned pipelines, so one renderer can
+    /// render multiple scenes/examples in a single process.
+    pub fn set_clear_color(&mut self, clear: Color) {
+        self.clear_color = premul_clear_color(clear);
+        self.cpu.set_clear_color(clear);
+    }
+
     /// Renders only through native wgpu compute pipelines.
     ///
     /// This is useful for backend parity tests because `render` falls back to the
@@ -2831,6 +2838,30 @@ mod tests {
         assert!(renderer.scene_buffers.draw_flags_capacity() >= 8);
         assert_eq!(image.rgba8_at(3, 3), [220, 64, 72, 255]);
         assert_eq!(image.rgba8_at(0, 0), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn wgpu_renderer_reuses_pipelines_when_clear_changes() {
+        if !run_wgpu_tests() {
+            return;
+        }
+
+        let mut scene = Scene::new(8, 8);
+        scene.push_rect(
+            Rect::new(2.0, 2.0, 6.0, 6.0),
+            crate::Radius::ZERO,
+            Color::from_rgb8(220, 64, 72),
+        );
+        let mut renderer = Renderer::new_default_device(8, 8, Color::from_rgb8(10, 20, 30));
+
+        renderer.render(&scene);
+        assert_eq!(renderer.image().rgba8_at(0, 0), [10, 20, 30, 255]);
+
+        renderer.set_clear_color(Color::from_rgb8(7, 8, 9));
+        renderer.render(&scene);
+        let image = renderer.image();
+        assert_eq!(image.rgba8_at(0, 0), [7, 8, 9, 255]);
+        assert_eq!(image.rgba8_at(3, 3), [220, 64, 72, 255]);
     }
 
     #[test]

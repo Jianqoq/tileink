@@ -318,7 +318,9 @@ impl WgpuFilterPipeline {
             });
         let shader = device.create_shader_module(::wgpu::ShaderModuleDescriptor {
             label: Some("tileink wgpu filter shader"),
-            source: ::wgpu::ShaderSource::Wgsl(include_str!("filter.wgsl").into()),
+            source: ::wgpu::ShaderSource::Wgsl(
+                include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_filter.wgsl")).into(),
+            ),
         });
         let pipeline_layout = device.create_pipeline_layout(&::wgpu::PipelineLayoutDescriptor {
             label: Some("tileink wgpu filter pipeline layout"),

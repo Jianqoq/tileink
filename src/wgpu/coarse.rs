@@ -61,7 +61,9 @@ impl WgpuCoarsePipeline {
             });
         let shader = device.create_shader_module(::wgpu::ShaderModuleDescriptor {
             label: Some("tileink wgpu coarse shader"),
-            source: ::wgpu::ShaderSource::Wgsl(include_str!("coarse.wgsl").into()),
+            source: ::wgpu::ShaderSource::Wgsl(
+                include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_coarse.wgsl")).into(),
+            ),
         });
         let pipeline_layout = device.create_pipeline_layout(&::wgpu::PipelineLayoutDescriptor {
             label: Some("tileink wgpu coarse pipeline layout"),

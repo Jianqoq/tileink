@@ -8,14 +8,15 @@ use tileink::{TextContext, WgpuRenderer};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut text_context = TextContext::new();
+    let mut renderer = WgpuRenderer::new_default_device(
+        text_scene::WIDTH,
+        text_scene::HEIGHT,
+        text_scene::CASES[0].background,
+    );
 
     for case in &text_scene::CASES {
         let scene = text_scene::scene(&mut text_context, case);
-        let mut renderer = WgpuRenderer::new_default_device(
-            text_scene::WIDTH,
-            text_scene::HEIGHT,
-            case.background,
-        );
+        renderer.set_clear_color(case.background);
         renderer.render_with_text(&scene, &mut text_context);
         let image = renderer.image();
         let out = common::wgpu_example_output(case.name);

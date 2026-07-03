@@ -52,7 +52,9 @@ impl WgpuFinePipeline {
             });
         let shader = device.create_shader_module(::wgpu::ShaderModuleDescriptor {
             label: Some("tileink wgpu fine shader"),
-            source: ::wgpu::ShaderSource::Wgsl(include_str!("fine.wgsl").into()),
+            source: ::wgpu::ShaderSource::Wgsl(
+                include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_fine.wgsl")).into(),
+            ),
         });
         let pipeline_layout = device.create_pipeline_layout(&::wgpu::PipelineLayoutDescriptor {
             label: Some("tileink wgpu tile fine pipeline layout"),
