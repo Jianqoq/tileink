@@ -1701,7 +1701,8 @@ impl WgpuFilterPipeline {
         turbulence_tables: Option<&WgpuFilterTurbulenceBindings<'_>>,
         path_bindings: Option<&WgpuFilterPathBindings<'_>>,
     ) {
-        let _profile_scope = start_cpu_scope("filter");
+        let profile_name = self.profile_name_for_pipeline(pipeline, config);
+        let _profile_scope = start_cpu_scope(profile_name);
         if config.pixel_count == 0 {
             return;
         }
@@ -1721,11 +1722,11 @@ impl WgpuFilterPipeline {
         let mut encoder = device.create_command_encoder(&::wgpu::CommandEncoderDescriptor {
             label: Some("tileink wgpu filter encoder"),
         });
-        let gpu_scope = start_gpu_scope(device, "filter");
+        let gpu_scope = start_gpu_scope(device, profile_name);
         let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
         {
             let mut pass = encoder.begin_compute_pass(&::wgpu::ComputePassDescriptor {
-                label: Some("tileink wgpu filter pass"),
+                label: Some(profile_name),
                 timestamp_writes,
             });
             pass.set_pipeline(pipeline);
@@ -1734,6 +1735,90 @@ impl WgpuFilterPipeline {
         }
         finish_gpu_scope(&mut encoder, gpu_scope);
         queue.submit([encoder.finish()]);
+    }
+
+    fn profile_name_for_pipeline(
+        &self,
+        pipeline: &::wgpu::ComputePipeline,
+        config: &FilterConfig,
+    ) -> &'static str {
+        if std::ptr::eq(pipeline, &self.clear_region) {
+            "filter.clear"
+        } else if std::ptr::eq(pipeline, &self.copy_region) {
+            "filter.copy"
+        } else if std::ptr::eq(pipeline, &self.source_alpha_region) {
+            "filter.source_alpha"
+        } else if std::ptr::eq(pipeline, &self.source_over_region) {
+            "filter.source_over"
+        } else if std::ptr::eq(pipeline, &self.tile_region) {
+            "filter.tile"
+        } else if std::ptr::eq(pipeline, &self.offset_region) {
+            "filter.offset"
+        } else if std::ptr::eq(pipeline, &self.flood_region) {
+            "filter.flood"
+        } else if std::ptr::eq(pipeline, &self.drop_shadow_mask_region) {
+            "filter.drop_shadow.mask"
+        } else if std::ptr::eq(pipeline, &self.morphology_axis_region) {
+            if config.morphology_axis == 0 {
+                "filter.morphology.x"
+            } else {
+                "filter.morphology.y"
+            }
+        } else if std::ptr::eq(pipeline, &self.downsample_region) {
+            "filter.downsample"
+        } else if std::ptr::eq(pipeline, &self.upsample_region) {
+            "filter.upsample"
+        } else if std::ptr::eq(pipeline, &self.blur_region) {
+            if config.blur_axis == 0 {
+                "filter.blur.x"
+            } else {
+                "filter.blur.y"
+            }
+        } else if std::ptr::eq(pipeline, &self.svg_mask_coverage_region) {
+            "filter.mask.svg_coverage"
+        } else if std::ptr::eq(pipeline, &self.apply_region_mask) {
+            "filter.mask.apply"
+        } else if std::ptr::eq(pipeline, &self.color_filter_region) {
+            profile_name_for_color_filter(config.filter_kind)
+        } else if std::ptr::eq(pipeline, &self.color_matrix_region) {
+            "filter.color_matrix"
+        } else if std::ptr::eq(pipeline, &self.component_transfer_region) {
+            "filter.component_transfer"
+        } else if std::ptr::eq(pipeline, &self.convolve_matrix_region) {
+            "filter.convolve"
+        } else if std::ptr::eq(pipeline, &self.lighting_region) {
+            if config.lighting_output_kind == 0 {
+                "filter.lighting.diffuse"
+            } else {
+                "filter.lighting.specular"
+            }
+        } else if std::ptr::eq(pipeline, &self.liquid_glass_region) {
+            "filter.liquid_glass"
+        } else if std::ptr::eq(pipeline, &self.blend_region) {
+            "filter.blend"
+        } else if std::ptr::eq(pipeline, &self.composite_inputs_region) {
+            "filter.composite"
+        } else if std::ptr::eq(pipeline, &self.displacement_map_region) {
+            "filter.displacement"
+        } else if std::ptr::eq(pipeline, &self.turbulence_region) {
+            "filter.turbulence"
+        } else if std::ptr::eq(pipeline, &self.composite_drop_shadow_region) {
+            "filter.drop_shadow.composite"
+        } else if std::ptr::eq(pipeline, &self.layer_mask_region) {
+            "filter.mask.layer"
+        } else if std::ptr::eq(pipeline, &self.rect_mask_region) {
+            "filter.mask.rect"
+        } else if std::ptr::eq(pipeline, &self.path_mask_region) {
+            "filter.mask.path"
+        } else if std::ptr::eq(pipeline, &self.composite_stack_region) {
+            "filter.stack.src_over"
+        } else if std::ptr::eq(pipeline, &self.composite_blend_stack_region) {
+            "filter.stack.blend"
+        } else if std::ptr::eq(pipeline, &self.composite_surface_stack_region) {
+            "filter.stack.surface"
+        } else {
+            "filter"
+        }
     }
 
     fn create_bind_group(
@@ -1885,6 +1970,20 @@ pub(crate) fn encode_color_filter(filter: &Filter) -> Option<(u32, f32)> {
         Filter::Saturate(amount) => Some((FILTER_SATURATE, *amount)),
         Filter::Sepia(amount) => Some((FILTER_SEPIA, *amount)),
         _ => None,
+    }
+}
+
+fn profile_name_for_color_filter(filter_kind: u32) -> &'static str {
+    match filter_kind {
+        FILTER_BRIGHTNESS => "filter.brightness",
+        FILTER_CONTRAST => "filter.contrast",
+        FILTER_GRAYSCALE => "filter.grayscale",
+        FILTER_HUE_ROTATE => "filter.hue_rotate",
+        FILTER_INVERT => "filter.invert",
+        FILTER_OPACITY => "filter.opacity",
+        FILTER_SATURATE => "filter.saturate",
+        FILTER_SEPIA => "filter.sepia",
+        _ => "filter.color",
     }
 }
 

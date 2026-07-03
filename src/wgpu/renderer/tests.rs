@@ -1802,6 +1802,38 @@ fn wgpu_renderer_downsampled_blur_matches_cpu_approximation() {
 }
 
 #[test]
+fn wgpu_renderer_profiles_filter_dispatch_stages_when_enabled() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let sample = Rect::new(7.0, 5.0, 39.0, 27.0);
+    let mut scene = Scene::new(64, 40);
+    scene.push_filter_layer(
+        Filter::Blur {
+            std_dev_x: 4.0,
+            std_dev_y: 4.0,
+            sampling: BlurSampling::downsampled(3),
+        },
+        Region::rect(sample, crate::Radius::ZERO),
+    );
+    scene.push_rect(
+        Rect::new(10.0, 8.0, 24.0, 22.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(255, 0, 0),
+    );
+    scene.pop_layer();
+
+    let mut renderer = Renderer::new_default_device(64, 40, Color::TRANSPARENT);
+    let profile = renderer.render_profiled(&scene);
+
+    assert_profile_has(&profile, "filter.downsample");
+    assert_profile_has(&profile, "filter.blur.x");
+    assert_profile_has(&profile, "filter.blur.y");
+    assert_profile_has(&profile, "filter.upsample");
+}
+
+#[test]
 fn wgpu_renderer_applies_morphology_filter_to_offscreen_children_when_enabled() {
     if !run_wgpu_tests() {
         return;
