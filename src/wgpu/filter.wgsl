@@ -3,29 +3,29 @@ const DRAW_FLAG_TAG_MASK: u32 = 7u;
 const DRAW_FLAG_FILL_RULE_EVEN_ODD: u32 = 8u;
 const DRAW_FLAG_HAS_SDF: u32 = 64u;
 
-const CUBE_DRAW_BRUSH: u32 = 0u;
-const CUBE_DRAW_CLIP: u32 = 1u;
-const CUBE_DRAW_OPACITY: u32 = 2u;
-const CUBE_DRAW_BLEND: u32 = 3u;
-const CUBE_DRAW_ISOLATE: u32 = 4u;
-const CUBE_DRAW_PATH_GLYPH: u32 = 5u;
+const GPU_DRAW_BRUSH: u32 = 0u;
+const GPU_DRAW_CLIP: u32 = 1u;
+const GPU_DRAW_OPACITY: u32 = 2u;
+const GPU_DRAW_BLEND: u32 = 3u;
+const GPU_DRAW_ISOLATE: u32 = 4u;
+const GPU_DRAW_PATH_GLYPH: u32 = 5u;
 
-const CUBE_LAYER_CLIP: u32 = 0u;
-const CUBE_LAYER_OPACITY: u32 = 1u;
-const CUBE_LAYER_BLEND: u32 = 2u;
+const GPU_LAYER_CLIP: u32 = 0u;
+const GPU_LAYER_OPACITY: u32 = 1u;
+const GPU_LAYER_BLEND: u32 = 2u;
 
-const CUBE_SDF_RECT: u32 = 1u;
-const CUBE_SDF_CIRCLE: u32 = 2u;
-const CUBE_SDF_RECT_STROKE: u32 = 3u;
-const CUBE_SDF_CIRCLE_STROKE: u32 = 4u;
-const CUBE_SDF_CANDLESTICK: u32 = 5u;
-const CUBE_SDF_LINE: u32 = 6u;
-const CUBE_SDF_RECT_SHADOW: u32 = 7u;
-const CUBE_SDF_ARC: u32 = 8u;
-const CUBE_SDF_ARC_SHADOW: u32 = 9u;
-const CUBE_SDF_CIRCLE_SHADOW: u32 = 10u;
-const CUBE_SDF_LINE_SHADOW: u32 = 11u;
-const CUBE_SDF_DASH_LINE: u32 = 12u;
+const GPU_SDF_RECT: u32 = 1u;
+const GPU_SDF_CIRCLE: u32 = 2u;
+const GPU_SDF_RECT_STROKE: u32 = 3u;
+const GPU_SDF_CIRCLE_STROKE: u32 = 4u;
+const GPU_SDF_CANDLESTICK: u32 = 5u;
+const GPU_SDF_LINE: u32 = 6u;
+const GPU_SDF_RECT_SHADOW: u32 = 7u;
+const GPU_SDF_ARC: u32 = 8u;
+const GPU_SDF_ARC_SHADOW: u32 = 9u;
+const GPU_SDF_CIRCLE_SHADOW: u32 = 10u;
+const GPU_SDF_LINE_SHADOW: u32 = 11u;
+const GPU_SDF_DASH_LINE: u32 = 12u;
 
 const FILTER_BRIGHTNESS: u32 = 1u;
 const FILTER_CONTRAST: u32 = 2u;
@@ -997,9 +997,9 @@ fn composite_with_stack(dst: u32, source: u32, mask: u32, x: u32, y: u32, force_
         }
         let tag = layer_stack_tags[stack_ix];
         let alpha = layer_stack_alpha_at(layer_stack_draws[stack_ix], x, y);
-        if (tag == CUBE_LAYER_CLIP) {
+        if (tag == GPU_LAYER_CLIP) {
             clip_mask = combine_alpha(clip_mask, alpha);
-        } else if (tag == CUBE_LAYER_OPACITY || tag == CUBE_LAYER_BLEND) {
+        } else if (tag == GPU_LAYER_OPACITY || tag == GPU_LAYER_BLEND) {
             if (group_depth < FILTER_GROUP_STACK_CAPACITY) {
                 group_kinds[group_depth] = tag;
                 group_parent_pixels[group_depth] = pixel;
@@ -1037,10 +1037,10 @@ fn composite_with_stack(dst: u32, source: u32, mask: u32, x: u32, y: u32, force_
         let payload = group_payloads[group_depth];
         let group_kind = group_kinds[group_depth];
         var alpha = combine_alpha(layer_alpha, parent_clip);
-        if (group_kind == CUBE_LAYER_OPACITY) {
+        if (group_kind == GPU_LAYER_OPACITY) {
             alpha = combine_alpha(alpha, payload);
             pixel = src_over_premul_u8(parent, scale_premul_u8(pixel, alpha));
-        } else if (group_kind == CUBE_LAYER_BLEND) {
+        } else if (group_kind == GPU_LAYER_BLEND) {
             let src = scale_premul_u8(pixel, alpha);
             if ((src >> 24u) == 0u) {
                 pixel = parent;
@@ -1070,9 +1070,9 @@ fn composite_surface_with_stack(dst: u32, source: u32, x: u32, y: u32) -> u32 {
         }
         let tag = layer_stack_tags[stack_ix];
         let alpha = layer_stack_alpha_at(layer_stack_draws[stack_ix], x, y);
-        if (tag == CUBE_LAYER_CLIP) {
+        if (tag == GPU_LAYER_CLIP) {
             clip_mask = combine_alpha(clip_mask, alpha);
-        } else if (tag == CUBE_LAYER_OPACITY || tag == CUBE_LAYER_BLEND) {
+        } else if (tag == GPU_LAYER_OPACITY || tag == GPU_LAYER_BLEND) {
             if (group_depth < FILTER_GROUP_STACK_CAPACITY) {
                 group_kinds[group_depth] = tag;
                 group_parent_pixels[group_depth] = pixel;
@@ -1099,10 +1099,10 @@ fn composite_surface_with_stack(dst: u32, source: u32, x: u32, y: u32) -> u32 {
         let payload = group_payloads[group_depth];
         let group_kind = group_kinds[group_depth];
         var alpha = combine_alpha(layer_alpha, parent_clip);
-        if (group_kind == CUBE_LAYER_OPACITY) {
+        if (group_kind == GPU_LAYER_OPACITY) {
             alpha = combine_alpha(alpha, payload);
             pixel = src_over_premul_u8(parent, scale_premul_u8(pixel, alpha));
-        } else if (group_kind == CUBE_LAYER_BLEND) {
+        } else if (group_kind == GPU_LAYER_BLEND) {
             let src = scale_premul_u8(pixel, alpha);
             if ((src >> 24u) == 0u) {
                 pixel = parent;
@@ -1219,12 +1219,12 @@ fn draw_backdrop_ix(draw_ix: u32, tile_x: u32, tile_y: u32) -> u32 {
     var result = INVALID;
     if (
         path_id != INVALID &&
-        (draw_tag == CUBE_DRAW_BRUSH ||
-         draw_tag == CUBE_DRAW_PATH_GLYPH ||
-         draw_tag == CUBE_DRAW_CLIP ||
-         draw_tag == CUBE_DRAW_OPACITY ||
-         draw_tag == CUBE_DRAW_BLEND ||
-         draw_tag == CUBE_DRAW_ISOLATE)
+        (draw_tag == GPU_DRAW_BRUSH ||
+         draw_tag == GPU_DRAW_PATH_GLYPH ||
+         draw_tag == GPU_DRAW_CLIP ||
+         draw_tag == GPU_DRAW_OPACITY ||
+         draw_tag == GPU_DRAW_BLEND ||
+         draw_tag == GPU_DRAW_ISOLATE)
     ) {
         let draw_x0 = pixel_tile_min(draw_pixel_x0[draw_ix], config.tiles_width);
         let draw_y0 = pixel_tile_min(draw_pixel_y0[draw_ix], config.tiles_height);
@@ -3031,10 +3031,10 @@ fn sdf_coverage_from_encoded(sdf_ref: u32, x: f32, y: f32) -> f32 {
     let shadow_intensity = sdf_shadow_intensity[sdf_ref];
     let kind = sdf_kinds[sdf_ref];
 
-    if (kind == CUBE_SDF_RECT) {
+    if (kind == GPU_SDF_RECT) {
         return sdf_coverage_from_dist(rect_sdf_distance(x, y, x0, y0, x1, y1, r0, r1, r2, r3));
     }
-    if (kind == CUBE_SDF_RECT_STROKE) {
+    if (kind == GPU_SDF_RECT_STROKE) {
         let half_top = max(stroke_top, 0.0);
         let half_right = max(stroke_right, 0.0);
         let half_bottom = max(stroke_bottom, 0.0);
@@ -3074,7 +3074,7 @@ fn sdf_coverage_from_encoded(sdf_ref: u32, x: f32, y: f32) -> f32 {
         }
         return clamp(outer - inner, 0.0, 1.0);
     }
-    if (kind == CUBE_SDF_RECT_SHADOW) {
+    if (kind == GPU_SDF_RECT_SHADOW) {
         return sdf_shadow_coverage_from_dist(
             rect_sdf_distance(
                 x - shadow_offset_x,
@@ -3085,10 +3085,10 @@ fn sdf_coverage_from_encoded(sdf_ref: u32, x: f32, y: f32) -> f32 {
             shadow_intensity,
         );
     }
-    if (kind == CUBE_SDF_CIRCLE) {
+    if (kind == GPU_SDF_CIRCLE) {
         return sdf_coverage_from_dist(circle_sdf_distance(x, y, x0, y0, x1));
     }
-    if (kind == CUBE_SDF_CIRCLE_STROKE) {
+    if (kind == GPU_SDF_CIRCLE_STROKE) {
         let half = max(stroke_top, 0.0);
         let radius = max(x1, 0.0);
         let outer = sdf_coverage_from_dist(circle_sdf_distance(x, y, x0, y0, radius + half));
@@ -3098,33 +3098,33 @@ fn sdf_coverage_from_encoded(sdf_ref: u32, x: f32, y: f32) -> f32 {
         }
         return clamp(outer - inner, 0.0, 1.0);
     }
-    if (kind == CUBE_SDF_CIRCLE_SHADOW) {
+    if (kind == GPU_SDF_CIRCLE_SHADOW) {
         return sdf_shadow_coverage_from_dist(
             circle_sdf_distance(x - shadow_offset_x, y - shadow_offset_y, x0, y0, x1),
             shadow_expand,
             shadow_intensity,
         );
     }
-    if (kind == CUBE_SDF_ARC) {
+    if (kind == GPU_SDF_ARC) {
         return sdf_coverage_from_dist(arc_sdf_distance(x, y, x0, y0, x1, y1, r0, r1, r2));
     }
-    if (kind == CUBE_SDF_ARC_SHADOW) {
+    if (kind == GPU_SDF_ARC_SHADOW) {
         return sdf_shadow_coverage_from_dist(
             arc_sdf_distance(x - shadow_offset_x, y - shadow_offset_y, x0, y0, x1, y1, r0, r1, r2),
             shadow_expand,
             shadow_intensity,
         );
     }
-    if (kind == CUBE_SDF_CANDLESTICK) {
+    if (kind == GPU_SDF_CANDLESTICK) {
         return candlestick_sdf_coverage(x, y, x0, y0, x1, y1, r0, r1, r2);
     }
-    if (kind == CUBE_SDF_LINE) {
+    if (kind == GPU_SDF_LINE) {
         return sdf_coverage_from_dist(line_sdf_distance(x, y, x0, y0, x1, y1, r0, r1));
     }
-    if (kind == CUBE_SDF_DASH_LINE) {
+    if (kind == GPU_SDF_DASH_LINE) {
         return sdf_coverage_from_dist(dash_line_sdf_distance(x, y, x0, y0, x1, y1, r0, r1, r2, r3, stroke_top));
     }
-    if (kind == CUBE_SDF_LINE_SHADOW) {
+    if (kind == GPU_SDF_LINE_SHADOW) {
         return sdf_shadow_coverage_from_dist(
             line_sdf_distance(x - shadow_offset_x, y - shadow_offset_y, x0, y0, x1, y1, r0, r1),
             shadow_expand,

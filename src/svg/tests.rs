@@ -1,9 +1,7 @@
 use peniko::Color;
 
 use super::*;
-use crate::CpuRenderer;
-#[cfg(feature = "wgpu")]
-use crate::{CubeWgpuRenderer, WgpuRenderer};
+use crate::{CpuRenderer, WgpuRenderer};
 
 fn parse(svg: &str) -> usvg::Tree {
     usvg::Tree::from_str(svg, &usvg::Options::default()).unwrap()
@@ -56,13 +54,11 @@ fn assert_rgba_close(actual: [u8; 4], expected: [u8; 4], tolerance: u8) {
     );
 }
 
-#[cfg(feature = "wgpu")]
 fn run_wgpu_svg_tests() -> bool {
     std::env::var("TILEINK_RUN_WGPU_TESTS").as_deref() == Ok("1")
         || std::env::var("TILEINK_RUN_WGPU_SVG_TESTS").as_deref() == Ok("1")
 }
 
-#[cfg(feature = "wgpu")]
 fn assert_images_exact(
     expected: &crate::shared::image::Image,
     actual: &crate::shared::image::Image,
@@ -115,9 +111,8 @@ fn push_svg_renders_basic_fill_and_stroke() {
     assert_eq!(renderer.image().rgba8_at(4, 12), [0, 0, 255, 255]);
 }
 
-#[cfg(feature = "wgpu")]
 #[test]
-fn push_svg_native_wgpu_matches_cubecl_exact_when_enabled() {
+fn push_svg_native_wgpu_matches_cpu_exact_when_enabled() {
     if !run_wgpu_svg_tests() {
         return;
     }
@@ -132,9 +127,8 @@ fn push_svg_native_wgpu_matches_cubecl_exact_when_enabled() {
     let mut scene = Scene::new(32, 32);
     scene.push_svg(&tree).unwrap();
 
-    let mut cubecl = CubeWgpuRenderer::new_default_device(32, 32, Color::TRANSPARENT);
-    cubecl.render(&scene);
-    let cubecl_image = cubecl.image();
+    let mut cpu = CpuRenderer::new(32, 32, Color::TRANSPARENT);
+    cpu.render(&scene);
 
     let mut wgpu = WgpuRenderer::new_default_device(32, 32, Color::TRANSPARENT);
     assert!(
@@ -143,12 +137,11 @@ fn push_svg_native_wgpu_matches_cubecl_exact_when_enabled() {
     );
     let wgpu_image = wgpu.image();
 
-    assert_images_exact(&cubecl_image, &wgpu_image, "svg native wgpu vs cubecl");
+    assert_images_exact(cpu.image(), &wgpu_image, "svg native wgpu vs cpu");
 }
 
-#[cfg(feature = "wgpu")]
 #[test]
-fn push_svg_native_wgpu_matches_cubecl_for_path_text_fixture_when_enabled() {
+fn push_svg_native_wgpu_matches_cpu_for_path_text_fixture_when_enabled() {
     if !run_wgpu_svg_tests() {
         return;
     }
@@ -160,26 +153,23 @@ fn push_svg_native_wgpu_matches_cubecl_for_path_text_fixture_when_enabled() {
         "SVG text fixtures render as paths"
     );
 
-    let mut cubecl =
-        CubeWgpuRenderer::new_default_device(scene.width, scene.height, Color::TRANSPARENT);
+    let mut cpu = CpuRenderer::new(scene.width, scene.height, Color::TRANSPARENT);
     let mut wgpu = WgpuRenderer::new_default_device(scene.width, scene.height, Color::TRANSPARENT);
     for pass in 0..5 {
-        cubecl.render(&scene);
-        let cubecl_image = cubecl.image();
+        cpu.render(&scene);
         assert!(
             wgpu.render_native(&scene),
             "expected SVG path text fixture to render through native wgpu path"
         );
         let wgpu_image = wgpu.image();
         assert_images_exact(
-            &cubecl_image,
+            cpu.image(),
             &wgpu_image,
-            &format!("svg path text native wgpu vs cubecl pass {pass}"),
+            &format!("svg path text native wgpu vs cpu pass {pass}"),
         );
     }
 }
 
-#[cfg(feature = "wgpu")]
 fn svg_fixture_scene(relative: &str, target_width: u32) -> Scene {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("src/svg/tests")

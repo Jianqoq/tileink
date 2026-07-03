@@ -1,37 +1,22 @@
 mod cpu;
-mod cubecl;
 mod debug;
 mod render;
 mod scene;
 mod shared;
 mod svg;
 mod text;
-#[cfg(feature = "wgpu")]
 mod wgpu;
 
 pub const TILE_SIZE: u32 = 16;
 pub const TILE_SCALE: f32 = 1.0 / TILE_SIZE as f32;
 pub const BLOCK_SIZE: u32 = 16 * 16;
 
-#[cfg(feature = "wgpu")]
-pub use crate::wgpu::{Renderer as WgpuRenderer, WgpuTextureRenderError};
+pub use crate::wgpu::{Renderer, Renderer as WgpuRenderer, WgpuTextureRenderError};
 pub use cosmic_text::{
     Align as TextAlign, Attrs as TextAttrs, CacheKeyFlags as TextCacheKeyFlags,
     Family as TextFamily, Stretch as TextStretch, Style as TextStyle, Weight as TextWeight,
 };
 pub use cpu::Renderer as CpuRenderer;
-#[cfg(feature = "bench-api")]
-pub use cubecl::CubePreparedStage;
-#[cfg(feature = "cuda")]
-pub use cubecl::CudaRenderer as CubeCudaRenderer;
-#[cfg(feature = "wgpu")]
-pub use cubecl::WgpuTextureBlitError as CubeWgpuTextureBlitError;
-#[cfg(feature = "profile")]
-pub use cubecl::{
-    RenderProfile, RenderProfileEntry, RenderProfileEventSummary, RenderProfileMemoryEntry,
-    RenderProfileMemorySpace, RenderProfileReport,
-};
-pub use cubecl::{Renderer as CubeRenderer, WgpuRenderer as CubeWgpuRenderer};
 pub use debug::{
     DebugLineSegment, DebugTileDump, DebugTilePath, DebugTilePathSummary, DebugTileSummary,
     RenderDebugCapture, RenderDebugImage, RenderDebugOptions, RenderDebugText, RenderOptions,

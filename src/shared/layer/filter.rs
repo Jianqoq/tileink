@@ -17,7 +17,7 @@ pub const TURBULENCE_GRADIENT_LEN: usize =
 /// Fixed RGBA lookup table for SVG `feComponentTransfer`.
 ///
 /// Each channel owns 256 u32 entries in R, G, B, A order. Values are stored as
-/// 0..255 bytes so CPU and CubeCL can share the same quantized semantics.
+/// 0..255 bytes so CPU and wgpu can share the same quantized semantics.
 pub type ComponentTransferTable = [u32; COMPONENT_TRANSFER_TABLE_LEN];
 
 #[derive(Clone, Debug)]
@@ -161,7 +161,6 @@ pub(crate) const LIQUID_GLASS_BLUR_STD_DEV_SCALE: f32 = 1.0 / 3.0;
 pub(crate) const LIQUID_GLASS_CHROMATIC_R: f32 = 0.98;
 pub(crate) const LIQUID_GLASS_CHROMATIC_G: f32 = 1.0;
 pub(crate) const LIQUID_GLASS_CHROMATIC_B: f32 = 1.02;
-pub(crate) const LIQUID_GLASS_PI: f32 = std::f32::consts::PI;
 pub(crate) const LIQUID_GLASS_REFRACTION_PIXEL_SCALE: f32 = std::f32::consts::SQRT_2 * 50.0;
 pub(crate) const LIQUID_GLASS_NORMAL_LENGTH_SCALE: f32 = std::f32::consts::SQRT_2 * 1000.0;
 pub(crate) const LIQUID_GLASS_ACTIVE_DISTANCE_NORM: f32 = 0.005;

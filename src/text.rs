@@ -14,8 +14,6 @@ use swash::{
     zeno::{Angle, Command as SwashPathCommand, Format, PathData, Placement, Transform, Vector},
 };
 
-#[cfg(feature = "profile")]
-use crate::shared::memory::MemoryUsage;
 use crate::shared::{bounds::Bounds, pixel::TextCoverageParams};
 
 const FREETYPE_HARMONY_LCD_SHIFT: f32 = 21.0 / 64.0;
@@ -236,10 +234,8 @@ pub struct TextRasterOptions {
     pub composite_mode: TextCompositeMode,
     /// Contrast-dependent text coverage parameters.
     ///
-    /// The CPU renderer consumes this at runtime, which lets the quality
-    /// harness search candidates without recompiling. CubeCL kernels currently
-    /// use matching compiled constants, so tuned values still need to be copied
-    /// there after the search selects a winner.
+    /// The CPU and wgpu renderers consume this at runtime, which lets the
+    /// quality harness search candidates without recompiling.
     pub coverage_params: TextCoverageParams,
 }
 
@@ -741,21 +737,6 @@ impl PreparedTextData {
 
     pub(crate) fn atlas_signature(&self) -> AtlasSignature {
         self.atlas_signature
-    }
-
-    #[cfg(feature = "profile")]
-    pub(crate) fn memory_usage(&self) -> MemoryUsage {
-        MemoryUsage::sum([
-            MemoryUsage::vec(&self.runs),
-            MemoryUsage::vec(&self.glyphs),
-            MemoryUsage::vec(&self.images),
-            MemoryUsage::hash_map(&self.image_by_key),
-            MemoryUsage::sum(
-                self.images
-                    .iter()
-                    .map(|image| MemoryUsage::vec(&image.data)),
-            ),
-        ])
     }
 
     #[cfg(test)]

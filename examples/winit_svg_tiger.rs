@@ -1,12 +1,12 @@
-// Kept outside examples/cpu and examples/cubecl, and behind the wgpu feature,
-// so scripts/run_examples.ps1 only runs the headless image-producing examples.
+// Kept outside examples/cpu and examples/wgpu so scripts/run_examples.ps1 only
+// runs the headless image-producing examples.
 #[path = "common/mod.rs"]
 mod common;
 
 use std::{error::Error, sync::Arc};
 
 use peniko::Color;
-use tileink::{Scene, WgpuRenderer};
+use tileink::{Renderer, Scene};
 use winit::{
     application::ApplicationHandler,
     dpi::{LogicalSize, PhysicalSize},
@@ -113,7 +113,7 @@ struct State {
     surface: wgpu::Surface<'static>,
     config: wgpu::SurfaceConfiguration,
     device: wgpu::Device,
-    renderer: WgpuRenderer,
+    renderer: Renderer,
 }
 
 impl State {
@@ -147,7 +147,7 @@ impl State {
         let config = surface_config(&surface, &adapter, window_size)?;
         surface.configure(&device, &config);
 
-        let renderer = WgpuRenderer::new(&device, &queue, scene_width, scene_height, Color::WHITE);
+        let renderer = Renderer::new(&device, &queue, scene_width, scene_height, Color::WHITE);
         Ok(Self {
             window,
             surface,

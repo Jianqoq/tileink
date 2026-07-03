@@ -14,7 +14,7 @@ use std::{
 use peniko::{Color, kurbo::Point};
 use rayon::prelude::*;
 use tileink::{
-    CpuRenderer, CubeWgpuRenderer, Image, Scene, TextAttrs, TextCompositeMode, TextContext,
+    CpuRenderer, Image, Renderer, Scene, TextAttrs, TextCompositeMode, TextContext,
     TextCoverageParams, TextFamily, TextLayoutOptions, TextRasterOptions, TextSubpixelMode,
 };
 
@@ -213,7 +213,7 @@ const DEFAULT_FONT: &str = "Segoe UI";
 #[derive(Clone, Copy, Debug)]
 enum Backend {
     Cpu,
-    Cubecl,
+    Wgpu,
     Both,
 }
 
@@ -415,13 +415,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let tileink_dir = options.out_dir.join(match options.backend {
         Backend::Cpu => "tileink_cpu",
-        Backend::Cubecl => "tileink_cubecl",
+        Backend::Wgpu => "tileink_wgpu",
         Backend::Both => "tileink_cpu",
     });
-    let cubecl_dir = options.out_dir.join("tileink_cubecl");
+    let wgpu_dir = options.out_dir.join("tileink_wgpu");
     let reference_dir = options.out_dir.join("reference");
     let diff_dir = options.out_dir.join("diff");
-    for dir in [&tileink_dir, &cubecl_dir, &reference_dir, &diff_dir] {
+    for dir in [&tileink_dir, &wgpu_dir, &reference_dir, &diff_dir] {
         fs::create_dir_all(dir)?;
     }
 
@@ -431,7 +431,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut metrics = Vec::new();
     let backend_count = match options.backend {
         Backend::Both => 2,
-        Backend::Cpu | Backend::Cubecl => 1,
+        Backend::Cpu | Backend::Wgpu => 1,
     };
     let mut contact_sheet = ContactSheet::new(cases.len() * backend_count);
     let mut output_state = OutputState {
@@ -452,21 +452,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let diff = diff_images(&tileink, &reference, case.background);
                 output_state.write_case(&tileink, &reference, &diff, case, "cpu", &tileink_dir)?;
             }
-            Backend::Cubecl => {}
+            Backend::Wgpu => {}
         }
 
         match options.backend {
-            Backend::Cubecl | Backend::Both => {
-                let tileink = render_tileink(case, &options.font_family, Backend::Cubecl);
+            Backend::Wgpu | Backend::Both => {
+                let tileink = render_tileink(case, &options.font_family, Backend::Wgpu);
                 let diff = diff_images(&tileink, &reference, case.background);
-                output_state.write_case(
-                    &tileink,
-                    &reference,
-                    &diff,
-                    case,
-                    "cubecl",
-                    &cubecl_dir,
-                )?;
+                output_state.write_case(&tileink, &reference, &diff, case, "wgpu", &wgpu_dir)?;
             }
             Backend::Cpu => {}
         }
@@ -2533,8 +2526,8 @@ fn render_tileink_with_context(
             renderer.render_with_text(&scene, context);
             renderer.image().clone()
         }
-        Backend::Cubecl => {
-            let mut renderer = CubeWgpuRenderer::new_default_device(WIDTH, HEIGHT, case.background);
+        Backend::Wgpu => {
+            let mut renderer = Renderer::new_default_device(WIDTH, HEIGHT, case.background);
             renderer.render_with_text(&scene, context);
             renderer.image()
         }
@@ -3408,10 +3401,10 @@ impl Options {
                 "--backend" => {
                     backend = match args.next().as_deref() {
                         Some("cpu") => Backend::Cpu,
-                        Some("cubecl") => Backend::Cubecl,
+                        Some("wgpu") => Backend::Wgpu,
                         Some("both") => Backend::Both,
                         Some(value) => return Err(format!("unknown backend {value:?}").into()),
-                        None => return Err("--backend requires cpu, cubecl, or both".into()),
+                        None => return Err("--backend requires cpu, wgpu, or both".into()),
                     };
                 }
                 "--out" => {
@@ -3487,7 +3480,7 @@ impl Options {
                 }
                 "--help" | "-h" => {
                     println!(
-                        "Usage: cargo run --release --features directwrite-reference --example text_quality -- [--backend cpu|cubecl|both] [--out DIR] [--font FAMILY] [--full] [--color-sweep] [--tune-coverage] [--tune-iterations N] [--tune-seed N] [--tune-candidates CSV] [--tune-parallelism N] [--tune-color-groups N] [--tune-target-score SCORE] [--dump-case NAME] [--dump-coverage-results CSV]"
+                        "Usage: cargo run --release --features directwrite-reference --example text_quality -- [--backend cpu|wgpu|both] [--out DIR] [--font FAMILY] [--full] [--color-sweep] [--tune-coverage] [--tune-iterations N] [--tune-seed N] [--tune-candidates CSV] [--tune-parallelism N] [--tune-color-groups N] [--tune-target-score SCORE] [--dump-case NAME] [--dump-coverage-results CSV]"
                     );
                     std::process::exit(0);
                 }

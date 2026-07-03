@@ -7,9 +7,7 @@ use std::{
 };
 
 use peniko::{Color, kurbo::Affine};
-use tileink::{CpuRenderer, CubeWgpuRenderer, Scene, SvgOptions};
-#[cfg(feature = "wgpu")]
-use tileink::{Image, TextContext, WgpuRenderer};
+use tileink::{CpuRenderer, Scene, SvgOptions, WgpuRenderer};
 
 const REFERENCE_IMAGE_WIDTH: u32 = 300;
 
@@ -17,11 +15,7 @@ const REFERENCE_IMAGE_WIDTH: u32 = 300;
 enum Backend {
     Both,
     Cpu,
-    CubeCl,
-    #[cfg(feature = "wgpu")]
     Wgpu,
-    #[cfg(feature = "wgpu")]
-    CubeClWgpu,
 }
 
 impl Backend {
@@ -29,19 +23,9 @@ impl Backend {
         match value {
             "both" => Ok(Self::Both),
             "cpu" => Ok(Self::Cpu),
-            "cubecl" => Ok(Self::CubeCl),
-            #[cfg(feature = "wgpu")]
             "wgpu" => Ok(Self::Wgpu),
-            #[cfg(not(feature = "wgpu"))]
-            "wgpu" => Err("backend `wgpu` requires building with `--features wgpu`".to_string()),
-            #[cfg(feature = "wgpu")]
-            "cubecl-wgpu" => Ok(Self::CubeClWgpu),
-            #[cfg(not(feature = "wgpu"))]
-            "cubecl-wgpu" => {
-                Err("backend `cubecl-wgpu` requires building with `--features wgpu`".to_string())
-            }
             _ => Err(format!(
-                "unknown backend `{value}`, expected both, cpu, cubecl, wgpu, or cubecl-wgpu"
+                "unknown backend `{value}`, expected both, cpu, or wgpu"
             )),
         }
     }
@@ -50,37 +34,13 @@ impl Backend {
         matches!(self, Self::Both | Self::Cpu)
     }
 
-    fn renders_cubecl(self) -> bool {
-        match self {
-            Self::Both | Self::CubeCl => true,
-            #[cfg(feature = "wgpu")]
-            Self::CubeClWgpu => true,
-            _ => false,
-        }
-    }
-
-    #[cfg(feature = "wgpu")]
     fn renders_wgpu(self) -> bool {
-        matches!(self, Self::Wgpu | Self::CubeClWgpu)
-    }
-
-    #[cfg(feature = "wgpu")]
-    fn compares_cubecl_wgpu(self) -> bool {
-        matches!(self, Self::CubeClWgpu)
-    }
-
-    #[cfg(not(feature = "wgpu"))]
-    fn compares_cubecl_wgpu(self) -> bool {
-        false
+        matches!(self, Self::Both | Self::Wgpu)
     }
 }
 
 struct BatchRenderers {
     cpu: Option<CpuRenderer>,
-    cubecl: Option<CubeWgpuRenderer>,
-    #[cfg(feature = "wgpu")]
-    text_context: TextContext,
-    #[cfg(feature = "wgpu")]
     wgpu: Option<WgpuRenderer>,
 }
 
@@ -90,12 +50,6 @@ impl BatchRenderers {
             cpu: backend
                 .renders_cpu()
                 .then(|| CpuRenderer::new(1, 1, Color::TRANSPARENT)),
-            cubecl: backend
-                .renders_cubecl()
-                .then(|| CubeWgpuRenderer::new_default_device(1, 1, Color::TRANSPARENT)),
-            #[cfg(feature = "wgpu")]
-            text_context: TextContext::new(),
-            #[cfg(feature = "wgpu")]
             wgpu: backend
                 .renders_wgpu()
                 .then(|| WgpuRenderer::new_default_device(1, 1, Color::TRANSPARENT)),
@@ -117,23 +71,6 @@ impl BatchRenderers {
         Ok(())
     }
 
-    fn render_cubecl(
-        &mut self,
-        scene: &Scene,
-        input: &Path,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let Some(renderer) = &mut self.cubecl else {
-            return Ok(());
-        };
-        let output = output_path(input, "cubecl");
-        renderer.render(scene);
-        let image = renderer.image();
-        common::save_image(&image, &output)?;
-        println!("[cubecl] wrote {}", output.display());
-        Ok(())
-    }
-
-    #[cfg(feature = "wgpu")]
     fn render_wgpu(
         &mut self,
         scene: &Scene,
@@ -143,58 +80,10 @@ impl BatchRenderers {
             return Ok(());
         };
         let output = output_path(input, "wgpu");
-        if !renderer.render_native(scene) {
-            return Err(
-                format!("native wgpu renderer does not support {}", input.display()).into(),
-            );
-        }
+        renderer.render(scene);
         let image = renderer.image();
         common::save_image(&image, &output)?;
         println!("[wgpu] wrote {}", output.display());
-        Ok(())
-    }
-
-    #[cfg(not(feature = "wgpu"))]
-    fn render_wgpu(
-        &mut self,
-        _scene: &Scene,
-        _input: &Path,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        Ok(())
-    }
-
-    #[cfg(feature = "wgpu")]
-    fn compare_cubecl_wgpu(
-        &mut self,
-        scene: &Scene,
-        input: &Path,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let Some(cubecl) = &mut self.cubecl else {
-            return Ok(());
-        };
-        let Some(wgpu) = &mut self.wgpu else {
-            return Ok(());
-        };
-
-        cubecl.render_with_text(scene, &mut self.text_context);
-        let cubecl_image = cubecl.image();
-        if !wgpu.render_native_with_text(scene, &mut self.text_context) {
-            return Err(
-                format!("native wgpu renderer does not support {}", input.display()).into(),
-            );
-        }
-        let wgpu_image = wgpu.image();
-        assert_images_equal(&cubecl_image, &wgpu_image, input)?;
-        println!("[cubecl-wgpu] exact match {}", input.display());
-        Ok(())
-    }
-
-    #[cfg(not(feature = "wgpu"))]
-    fn compare_cubecl_wgpu(
-        &mut self,
-        _scene: &Scene,
-        _input: &Path,
-    ) -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
     }
 }
@@ -219,28 +108,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("[svg] {}", input.display());
         match load_scene(&input, &mut usvg_options) {
             Ok(scene) => {
-                if backend.compares_cubecl_wgpu() {
-                    if let Err(err) = renderers.compare_cubecl_wgpu(&scene, &input) {
-                        failures.push(format!("[cubecl-wgpu] {}: {err}", input.display()));
-                    }
-                } else {
-                    if let Err(err) = renderers.render_cpu(&scene, &input) {
-                        failures.push(format!("[cpu] {}: {err}", input.display()));
-                    }
-                    if let Err(err) = renderers.render_cubecl(&scene, &input) {
-                        failures.push(format!("[cubecl] {}: {err}", input.display()));
-                    }
-                    if let Err(err) = renderers.render_wgpu(&scene, &input) {
-                        failures.push(format!("[wgpu] {}: {err}", input.display()));
-                    }
+                if let Err(err) = renderers.render_cpu(&scene, &input) {
+                    failures.push(format!("[cpu] {}: {err}", input.display()));
+                }
+                if let Err(err) = renderers.render_wgpu(&scene, &input) {
+                    failures.push(format!("[wgpu] {}: {err}", input.display()));
                 }
             }
             Err(err) => {
-                if backend.compares_cubecl_wgpu() {
-                    println!("[scene] skipped {}: {err}", input.display());
-                } else {
-                    failures.push(format!("[scene] {}: {err}", input.display()));
-                }
+                failures.push(format!("[scene] {}: {err}", input.display()));
             }
         }
     }
@@ -260,7 +136,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn parse_args() -> Result<(PathBuf, Backend), Box<dyn std::error::Error>> {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
     if args.is_empty() {
-        return Err("usage: svg_fixture_render <folder> [both|cpu|cubecl|wgpu|cubecl-wgpu]".into());
+        return Err("usage: svg_fixture_render <folder> [both|cpu|wgpu]".into());
     }
 
     let root = PathBuf::from(&args[0]);
@@ -337,47 +213,6 @@ fn output_path(input: &Path, backend: &str) -> PathBuf {
         .and_then(|stem| stem.to_str())
         .unwrap_or("svg");
     input.with_file_name(format!("{stem}.{backend}.png"))
-}
-
-#[cfg(feature = "wgpu")]
-fn assert_images_equal(
-    cubecl: &Image,
-    wgpu: &Image,
-    input: &Path,
-) -> Result<(), Box<dyn std::error::Error>> {
-    if (cubecl.width, cubecl.height) != (wgpu.width, wgpu.height) {
-        return Err(format!(
-            "{} dimensions differ: cubecl {}x{}, wgpu {}x{}",
-            input.display(),
-            cubecl.width,
-            cubecl.height,
-            wgpu.width,
-            wgpu.height
-        )
-        .into());
-    }
-
-    let mut mismatch_count = 0usize;
-    let mut first_mismatch = None;
-    for (ix, (&cubecl_px, &wgpu_px)) in cubecl.pixels.iter().zip(&wgpu.pixels).enumerate() {
-        if cubecl_px != wgpu_px {
-            mismatch_count += 1;
-            if first_mismatch.is_none() {
-                let x = ix as u32 % cubecl.width;
-                let y = ix as u32 / cubecl.width;
-                first_mismatch = Some((x, y, cubecl.rgba8_at(x, y), wgpu.rgba8_at(x, y)));
-            }
-        }
-    }
-
-    if let Some((x, y, cubecl_rgba, wgpu_rgba)) = first_mismatch {
-        return Err(format!(
-            "{} has {mismatch_count} differing pixels; first at ({x}, {y}): cubecl {cubecl_rgba:?}, wgpu {wgpu_rgba:?}",
-            input.display()
-        )
-        .into());
-    }
-    Ok(())
 }
 
 fn load_svg_test_fonts(options: &mut usvg::Options<'_>) {

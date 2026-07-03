@@ -38,7 +38,7 @@ try {
         Where-Object { $_.kind -contains "example" } |
         Where-Object {
             $path = $_.src_path.Replace("/", "\")
-            $path -like "*\examples\cpu\*" -or $path -like "*\examples\cubecl\*"
+            $path -like "*\examples\cpu\*" -or $path -like "*\examples\wgpu\*"
         } |
         Where-Object { $skip -notcontains [IO.Path]::GetFileNameWithoutExtension($_.src_path) } |
         Sort-Object src_path
@@ -54,4 +54,4 @@ try {
     Pop-Location
 }
 
-Write-Host "All examples finished. Outputs are in examples/cpu/out and examples/cubecl/out."
+Write-Host "All examples finished. Outputs are in examples/cpu/out and examples/wgpu/out."

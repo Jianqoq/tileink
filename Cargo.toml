@@ -4,12 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-cubecl = { version = "0.10.0", default-features = false, features = ["std", "stdlib", "wgpu"] }
-cubecl-common = { version = "0.10.0", optional = true }
 peniko = "0.6.1"
 bytemuck = "1.25.0"
-wgpu = { version = "29.0.3", optional = true }
-pollster = { version = "0.4", optional = true }
+wgpu = "29.0.3"
+pollster = "0.4"
 usvg = "0.47.0"
 wide = "1.5.0"
 rayon = "1.12.0"
@@ -18,7 +16,6 @@ image = { version = "0.25", default-features = false, features = ["gif", "jpeg",
 cosmic-text = "0.19.0"
 fontdb = { version = "0.23", default-features = false }
 swash = "0.2.6"
-comfy-table = { version = "7.2.2", default-features = false, optional = true }
 windows = { version = "0.62.2", optional = true, features = [
     "Win32_Foundation",
     "Win32_Graphics_Direct2D",
@@ -31,44 +28,11 @@ windows = { version = "0.62.2", optional = true, features = [
 windows-numerics = { version = "0.3.1", optional = true }
 
 [features]
-bench-api = []
-cuda = ["cubecl/cuda"]
 directwrite-reference = ["dep:windows", "dep:windows-numerics"]
-profile = ["dep:comfy-table", "dep:cubecl-common"]
-wgpu = ["dep:wgpu", "dep:pollster"]
+wgpu = []
 
 [dev-dependencies]
-criterion = "0.5"
-cubecl-common = "0.10.0"
-pollster = "0.4"
-vello = { path = "C:\\Users\\JianJian Li\\vello\\vello", default-features = true }
-wgpu = "29.0.3"
 winit = "0.30"
-
-[[bench]]
-name = "cubecl_dense_compare"
-harness = false
-required-features = ["bench-api"]
-
-[[bench]]
-name = "gpu_compare"
-harness = false
-required-features = ["bench-api"]
-
-[[bench]]
-name = "tiger_gpu_compare"
-harness = false
-required-features = ["bench-api"]
-
-[[bench]]
-name = "wgpu_texture_blit"
-harness = false
-required-features = ["bench-api", "wgpu"]
-
-[[bench]]
-name = "wgpu_cubecl_compare"
-harness = false
-required-features = ["bench-api", "wgpu"]
 
 [[example]]
 name = "cpu_backdrop_blur"
@@ -228,159 +192,153 @@ path = "examples/text_quality.rs"
 required-features = ["directwrite-reference"]
 
 [[example]]
-name = "cubecl_profile_tiger"
-path = "examples/cubecl_profile_tiger.rs"
-required-features = ["profile"]
-
-[[example]]
 name = "winit_svg_tiger"
 path = "examples/winit_svg_tiger.rs"
-required-features = ["wgpu"]
 
 [[example]]
-name = "cubecl_backdrop_blur"
-path = "examples/cubecl/backdrop_blur.rs"
+name = "wgpu_backdrop_blur"
+path = "examples/wgpu/backdrop_blur.rs"
 
 [[example]]
-name = "cubecl_bench_cpu"
-path = "examples/cubecl/bench_cpu.rs"
+name = "wgpu_bench_cpu"
+path = "examples/wgpu/bench_cpu.rs"
 
 [[example]]
-name = "cubecl_blend"
-path = "examples/cubecl/blend.rs"
+name = "wgpu_blend"
+path = "examples/wgpu/blend.rs"
 
 [[example]]
-name = "cubecl_blur"
-path = "examples/cubecl/blur.rs"
+name = "wgpu_blur"
+path = "examples/wgpu/blur.rs"
 
 [[example]]
-name = "cubecl_brightness"
-path = "examples/cubecl/brightness.rs"
+name = "wgpu_brightness"
+path = "examples/wgpu/brightness.rs"
 
 [[example]]
-name = "cubecl_candlestick"
-path = "examples/cubecl/candlestick.rs"
+name = "wgpu_candlestick"
+path = "examples/wgpu/candlestick.rs"
 
 [[example]]
-name = "cubecl_clip"
-path = "examples/cubecl/clip.rs"
+name = "wgpu_clip"
+path = "examples/wgpu/clip.rs"
 
 [[example]]
-name = "cubecl_clip_filter"
-path = "examples/cubecl/clip_filter.rs"
+name = "wgpu_clip_filter"
+path = "examples/wgpu/clip_filter.rs"
 
 [[example]]
-name = "cubecl_contrast"
-path = "examples/cubecl/contrast.rs"
+name = "wgpu_contrast"
+path = "examples/wgpu/contrast.rs"
 
 [[example]]
-name = "cubecl_drop_shadow"
-path = "examples/cubecl/drop_shadow.rs"
+name = "wgpu_drop_shadow"
+path = "examples/wgpu/drop_shadow.rs"
 
 [[example]]
-name = "cubecl_emoji"
-path = "examples/cubecl/emoji.rs"
+name = "wgpu_emoji"
+path = "examples/wgpu/emoji.rs"
 
 [[example]]
-name = "cubecl_even_odd"
-path = "examples/cubecl/even_odd.rs"
+name = "wgpu_even_odd"
+path = "examples/wgpu/even_odd.rs"
 
 [[example]]
-name = "cubecl_filter_clip_opacity"
-path = "examples/cubecl/filter_clip_opacity.rs"
+name = "wgpu_filter_clip_opacity"
+path = "examples/wgpu/filter_clip_opacity.rs"
 
 [[example]]
-name = "cubecl_filter_opacity"
-path = "examples/cubecl/filter_opacity.rs"
+name = "wgpu_filter_opacity"
+path = "examples/wgpu/filter_opacity.rs"
 
 [[example]]
-name = "cubecl_gradients"
-path = "examples/cubecl/gradients.rs"
+name = "wgpu_gradients"
+path = "examples/wgpu/gradients.rs"
 
 [[example]]
-name = "cubecl_grayscale"
-path = "examples/cubecl/grayscale.rs"
+name = "wgpu_grayscale"
+path = "examples/wgpu/grayscale.rs"
 
 [[example]]
-name = "cubecl_hue_rotate"
-path = "examples/cubecl/hue_rotate.rs"
+name = "wgpu_hue_rotate"
+path = "examples/wgpu/hue_rotate.rs"
 
 [[example]]
-name = "cubecl_invert"
-path = "examples/cubecl/invert.rs"
+name = "wgpu_invert"
+path = "examples/wgpu/invert.rs"
 
 [[example]]
-name = "cubecl_liquid_glass"
-path = "examples/cubecl/liquid_glass.rs"
+name = "wgpu_liquid_glass"
+path = "examples/wgpu/liquid_glass.rs"
 
 [[example]]
-name = "cubecl_opacity"
-path = "examples/cubecl/opacity.rs"
+name = "wgpu_opacity"
+path = "examples/wgpu/opacity.rs"
 
 [[example]]
-name = "cubecl_path_text"
-path = "examples/cubecl/path_text.rs"
+name = "wgpu_path_current_close_dash"
+path = "examples/wgpu/path_current_close_dash.rs"
 
 [[example]]
-name = "cubecl_path_current_close_dash"
-path = "examples/cubecl/path_current_close_dash.rs"
+name = "wgpu_path_text"
+path = "examples/wgpu/path_text.rs"
 
 [[example]]
-name = "cubecl_rounded_rect"
-path = "examples/cubecl/rounded_rect.rs"
+name = "wgpu_rect_stroke_widths"
+path = "examples/wgpu/rect_stroke_widths.rs"
 
 [[example]]
-name = "cubecl_rect_stroke_widths"
-path = "examples/cubecl/rect_stroke_widths.rs"
+name = "wgpu_rounded_rect"
+path = "examples/wgpu/rounded_rect.rs"
 
 [[example]]
-name = "cubecl_saturate"
-path = "examples/cubecl/saturate.rs"
+name = "wgpu_saturate"
+path = "examples/wgpu/saturate.rs"
 
 [[example]]
-name = "cubecl_sepia"
-path = "examples/cubecl/sepia.rs"
+name = "wgpu_sdf_clip"
+path = "examples/wgpu/sdf_clip.rs"
 
 [[example]]
-name = "cubecl_sdf_line"
-path = "examples/cubecl/sdf_line.rs"
+name = "wgpu_sdf_dash_line"
+path = "examples/wgpu/sdf_dash_line.rs"
 
 [[example]]
-name = "cubecl_sdf_dash_line"
-path = "examples/cubecl/sdf_dash_line.rs"
+name = "wgpu_sdf_line"
+path = "examples/wgpu/sdf_line.rs"
 
 [[example]]
-name = "cubecl_sdf_clip"
-path = "examples/cubecl/sdf_clip.rs"
+name = "wgpu_sdf_nested_clip_blur"
+path = "examples/wgpu/sdf_nested_clip_blur.rs"
 
 [[example]]
-name = "cubecl_sdf_nested_clip_blur"
-path = "examples/cubecl/sdf_nested_clip_blur.rs"
+name = "wgpu_sdf_rect_shadow"
+path = "examples/wgpu/sdf_rect_shadow.rs"
 
 [[example]]
-name = "cubecl_sdf_rect_shadow"
-path = "examples/cubecl/sdf_rect_shadow.rs"
+name = "wgpu_sdf_shape_shadows"
+path = "examples/wgpu/sdf_shape_shadows.rs"
 
 [[example]]
-name = "cubecl_sdf_shape_shadows"
-path = "examples/cubecl/sdf_shape_shadows.rs"
+name = "wgpu_sepia"
+path = "examples/wgpu/sepia.rs"
 
 [[example]]
-name = "cubecl_simple"
-path = "examples/cubecl/simple.rs"
+name = "wgpu_simple"
+path = "examples/wgpu/simple.rs"
 
 [[example]]
-name = "cubecl_stroke_circle"
-path = "examples/cubecl/stroke_circle.rs"
+name = "wgpu_stroke_circle"
+path = "examples/wgpu/stroke_circle.rs"
 
 [[example]]
-name = "cubecl_text"
-path = "examples/cubecl/text.rs"
+name = "wgpu_svg_radial_gradient"
+path = "examples/wgpu/svg_radial_gradient.rs"
 
 [[example]]
-name = "cubecl_svg_radial_gradient"
-path = "examples/cubecl/svg_radial_gradient.rs"
+name = "wgpu_svg_tiger"
+path = "examples/wgpu/svg_tiger.rs"
 
 [[example]]
-name = "cubecl_svg_tiger"
-path = "examples/cubecl/svg_tiger.rs"
+name = "wgpu_text"
+path = "examples/wgpu/text.rs"

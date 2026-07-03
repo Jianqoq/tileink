@@ -8,9 +8,9 @@ use crate::{
             build_cumsum_plan_into, build_scan_chunks_into,
         },
         gpu_types::{
-            CUBE_GLYPH_COLOR, CUBE_GLYPH_LINEAR_COLOR, CUBE_GLYPH_LINEAR_MASK,
-            CUBE_GLYPH_LINEAR_SUBPIXEL_MASK, CUBE_GLYPH_MASK, CUBE_GLYPH_SUBPIXEL_MASK,
-            CUBE_LAYER_BLEND, CUBE_LAYER_CLIP, CUBE_LAYER_OPACITY,
+            GPU_GLYPH_COLOR, GPU_GLYPH_LINEAR_COLOR, GPU_GLYPH_LINEAR_MASK,
+            GPU_GLYPH_LINEAR_SUBPIXEL_MASK, GPU_GLYPH_MASK, GPU_GLYPH_SUBPIXEL_MASK,
+            GPU_LAYER_BLEND, GPU_LAYER_CLIP, GPU_LAYER_OPACITY,
         },
         image::rgba8_pack,
         pixel::{mul_div255, opacity_f32_to_u8},
@@ -90,16 +90,16 @@ impl TextUpload {
             match image.content {
                 PreparedGlyphContent::Mask => {
                     self.image_content.push(match image.composite_mode {
-                        TextCompositeMode::Srgb => CUBE_GLYPH_MASK,
-                        TextCompositeMode::Linear => CUBE_GLYPH_LINEAR_MASK,
+                        TextCompositeMode::Srgb => GPU_GLYPH_MASK,
+                        TextCompositeMode::Linear => GPU_GLYPH_LINEAR_MASK,
                     });
                     self.image_data
                         .extend(image.data.iter().map(|&alpha| alpha as u32));
                 }
                 PreparedGlyphContent::Color => {
                     self.image_content.push(match image.composite_mode {
-                        TextCompositeMode::Srgb => CUBE_GLYPH_COLOR,
-                        TextCompositeMode::Linear => CUBE_GLYPH_LINEAR_COLOR,
+                        TextCompositeMode::Srgb => GPU_GLYPH_COLOR,
+                        TextCompositeMode::Linear => GPU_GLYPH_LINEAR_COLOR,
                     });
                     for pixel in image.data.chunks_exact(4) {
                         let a = pixel[3];
@@ -113,8 +113,8 @@ impl TextUpload {
                 }
                 PreparedGlyphContent::SubpixelMask => {
                     self.image_content.push(match image.composite_mode {
-                        TextCompositeMode::Srgb => CUBE_GLYPH_SUBPIXEL_MASK,
-                        TextCompositeMode::Linear => CUBE_GLYPH_LINEAR_SUBPIXEL_MASK,
+                        TextCompositeMode::Srgb => GPU_GLYPH_SUBPIXEL_MASK,
+                        TextCompositeMode::Linear => GPU_GLYPH_LINEAR_SUBPIXEL_MASK,
                     });
                     for pixel in image.data.chunks_exact(3) {
                         self.image_data
@@ -719,9 +719,9 @@ impl WgpuSceneBuffers {
             &mut staging.u32s,
             layer_stack,
             |entry| match entry {
-                LayerStackEntry::Clip { .. } => CUBE_LAYER_CLIP,
-                LayerStackEntry::Opacity { .. } => CUBE_LAYER_OPACITY,
-                LayerStackEntry::Blend { .. } => CUBE_LAYER_BLEND,
+                LayerStackEntry::Clip { .. } => GPU_LAYER_CLIP,
+                LayerStackEntry::Opacity { .. } => GPU_LAYER_OPACITY,
+                LayerStackEntry::Blend { .. } => GPU_LAYER_BLEND,
             },
         );
         upload_mapped_u32(

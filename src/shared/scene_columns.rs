@@ -5,9 +5,9 @@ use crate::{
         gpu_brush::GpuBrushUpload,
         gpu_sdf::{encode_sdf, encode_sdf_shadow},
         gpu_types::{
-            CUBE_DRAW_BLEND, CUBE_DRAW_BRUSH, CUBE_DRAW_CLIP, CUBE_DRAW_ISOLATE, CUBE_DRAW_OPACITY,
-            CUBE_DRAW_PATH_GLYPH, DRAW_FLAG_FILL_RULE_EVEN_ODD, DRAW_FLAG_HAS_GLYPH,
-            DRAW_FLAG_HAS_SDF, DRAW_FLAG_SOLID_COLOR_FAST_PATH, DRAW_FLAG_SOLID_RECT,
+            DRAW_FLAG_FILL_RULE_EVEN_ODD, DRAW_FLAG_HAS_GLYPH, DRAW_FLAG_HAS_SDF,
+            DRAW_FLAG_SOLID_COLOR_FAST_PATH, DRAW_FLAG_SOLID_RECT, GPU_DRAW_BLEND, GPU_DRAW_BRUSH,
+            GPU_DRAW_CLIP, GPU_DRAW_ISOLATE, GPU_DRAW_OPACITY, GPU_DRAW_PATH_GLYPH,
         },
         line::Line,
         path::PathRecord,
@@ -26,7 +26,7 @@ const INVALID_REF: u32 = u32::MAX;
 /// The CPU renderer consumes the record form directly, while GPU backends need
 /// stable columnar data for uploads. Keeping this cache in `shared` prevents
 /// `Scene` from depending on any specific backend while preserving mutation-time
-/// updates for future wgpu and CubeCL upload paths.
+/// updates for wgpu upload paths.
 #[derive(Clone, Default)]
 pub(crate) struct SceneColumns {
     pub(crate) line_path_ids: Vec<u32>,
@@ -355,12 +355,12 @@ pub(crate) fn draw_flags_word(draw: &DrawRecord, text_enabled: bool) -> u32 {
 
 fn draw_tag_word(draw: &DrawRecord) -> u32 {
     match draw.tag {
-        DrawTag::Brush => CUBE_DRAW_BRUSH,
-        DrawTag::PathGlyph => CUBE_DRAW_PATH_GLYPH,
-        DrawTag::Clip => CUBE_DRAW_CLIP,
-        DrawTag::Isolate => CUBE_DRAW_ISOLATE,
-        DrawTag::Opacity => CUBE_DRAW_OPACITY,
-        DrawTag::Blend => CUBE_DRAW_BLEND,
+        DrawTag::Brush => GPU_DRAW_BRUSH,
+        DrawTag::PathGlyph => GPU_DRAW_PATH_GLYPH,
+        DrawTag::Clip => GPU_DRAW_CLIP,
+        DrawTag::Isolate => GPU_DRAW_ISOLATE,
+        DrawTag::Opacity => GPU_DRAW_OPACITY,
+        DrawTag::Blend => GPU_DRAW_BLEND,
     }
 }
 

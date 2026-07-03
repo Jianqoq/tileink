@@ -1,4 +1,4 @@
-//! Renderer-side tile debug capture shared by CPU, CubeCL, examples, and tests.
+//! Renderer-side tile debug capture shared by renderers, examples, and tests.
 //!
 //! The renderer owns collection because it has direct access to scan buffers and
 //! final pixels. Callers own persistence: `RenderDebugCapture` contains named

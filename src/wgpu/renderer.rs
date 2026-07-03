@@ -2837,6 +2837,9 @@ mod tests {
         },
     };
 
+    const GPU_PTCL_END: u32 = 0;
+    const GPU_PTCL_SDF: u32 = 9;
+
     #[test]
     fn wgpu_renderer_reads_uploaded_cpu_render_when_enabled() {
         if !run_wgpu_tests() {
@@ -3295,11 +3298,11 @@ mod tests {
         assert_eq!(
             read_ptcl_tags(&renderer, 5),
             vec![
-                crate::shared::gpu_types::CUBE_PTCL_SDF,
-                crate::shared::gpu_types::CUBE_PTCL_END,
-                crate::shared::gpu_types::CUBE_PTCL_SDF,
-                crate::shared::gpu_types::CUBE_PTCL_SDF,
-                crate::shared::gpu_types::CUBE_PTCL_END,
+                GPU_PTCL_SDF,
+                GPU_PTCL_END,
+                GPU_PTCL_SDF,
+                GPU_PTCL_SDF,
+                GPU_PTCL_END,
             ]
         );
         assert_eq!(

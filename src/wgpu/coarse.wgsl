@@ -61,28 +61,28 @@ struct CoarseConfig {
 @group(0) @binding(45) var<storage, read_write> glyph_indices: array<u32>;
 
 const INVALID: u32 = 0xffffffffu;
-const CUBE_DRAW_BRUSH: u32 = 0u;
-const CUBE_DRAW_CLIP: u32 = 1u;
-const CUBE_DRAW_OPACITY: u32 = 2u;
-const CUBE_DRAW_BLEND: u32 = 3u;
-const CUBE_DRAW_ISOLATE: u32 = 4u;
-const CUBE_DRAW_PATH_GLYPH: u32 = 5u;
-const CUBE_LAYER_CLIP: u32 = 0u;
-const CUBE_LAYER_OPACITY: u32 = 1u;
-const CUBE_LAYER_BLEND: u32 = 2u;
-const CUBE_PTCL_END: u32 = 0u;
-const CUBE_PTCL_FILL: u32 = 1u;
-const CUBE_PTCL_COLOR: u32 = 2u;
-const CUBE_PTCL_BEGIN_CLIP: u32 = 3u;
-const CUBE_PTCL_END_CLIP: u32 = 4u;
-const CUBE_PTCL_BEGIN_OPACITY: u32 = 5u;
-const CUBE_PTCL_END_OPACITY: u32 = 6u;
-const CUBE_PTCL_BEGIN_BLEND: u32 = 7u;
-const CUBE_PTCL_END_BLEND: u32 = 8u;
-const CUBE_PTCL_SDF: u32 = 9u;
-const CUBE_PTCL_GLYPH: u32 = 10u;
-const CUBE_PTCL_PATH_GLYPH: u32 = 11u;
-const CUBE_PTCL_BEGIN_SDF_CLIP: u32 = 12u;
+const GPU_DRAW_BRUSH: u32 = 0u;
+const GPU_DRAW_CLIP: u32 = 1u;
+const GPU_DRAW_OPACITY: u32 = 2u;
+const GPU_DRAW_BLEND: u32 = 3u;
+const GPU_DRAW_ISOLATE: u32 = 4u;
+const GPU_DRAW_PATH_GLYPH: u32 = 5u;
+const GPU_LAYER_CLIP: u32 = 0u;
+const GPU_LAYER_OPACITY: u32 = 1u;
+const GPU_LAYER_BLEND: u32 = 2u;
+const GPU_PTCL_END: u32 = 0u;
+const GPU_PTCL_FILL: u32 = 1u;
+const GPU_PTCL_COLOR: u32 = 2u;
+const GPU_PTCL_BEGIN_CLIP: u32 = 3u;
+const GPU_PTCL_END_CLIP: u32 = 4u;
+const GPU_PTCL_BEGIN_OPACITY: u32 = 5u;
+const GPU_PTCL_END_OPACITY: u32 = 6u;
+const GPU_PTCL_BEGIN_BLEND: u32 = 7u;
+const GPU_PTCL_END_BLEND: u32 = 8u;
+const GPU_PTCL_SDF: u32 = 9u;
+const GPU_PTCL_GLYPH: u32 = 10u;
+const GPU_PTCL_PATH_GLYPH: u32 = 11u;
+const GPU_PTCL_BEGIN_SDF_CLIP: u32 = 12u;
 const DRAW_FLAG_TAG_MASK: u32 = 7u;
 const DRAW_FLAG_FILL_RULE_EVEN_ODD: u32 = 8u;
 const DRAW_FLAG_SOLID_COLOR_FAST_PATH: u32 = 32u;
@@ -115,7 +115,7 @@ fn coarse_count(
             }
             let draw_tag = draw_tag_at(draw_ix);
             if (draw_has_glyph_at(draw_ix)) {
-                if (draw_tag == CUBE_DRAW_BRUSH && draw_tile_hit(draw_ix, tile_x, tile_y)) {
+                if (draw_tag == GPU_DRAW_BRUSH && draw_tile_hit(draw_ix, tile_x, tile_y)) {
                     let tile_glyphs = count_tile_glyphs_for_run(draw_glyph_run_ids[draw_ix], tile_x, tile_y);
                     if (tile_glyphs > 0u) {
                         count += 1u;
@@ -123,14 +123,14 @@ fn coarse_count(
                     }
                 }
             } else if (draw_has_sdf_at(draw_ix)) {
-                if (draw_tag == CUBE_DRAW_BRUSH && draw_tile_hit(draw_ix, tile_x, tile_y)) {
+                if (draw_tag == GPU_DRAW_BRUSH && draw_tile_hit(draw_ix, tile_x, tile_y)) {
                     count += 1u;
                 }
             } else {
                 let backdrop_ix = draw_backdrop_ix(draw_ix, tile_x, tile_y);
                 if (backdrop_ix != INVALID) {
                     if (
-                        (draw_tag == CUBE_DRAW_BRUSH || draw_tag == CUBE_DRAW_PATH_GLYPH || draw_tag == CUBE_DRAW_CLIP) &&
+                        (draw_tag == GPU_DRAW_BRUSH || draw_tag == GPU_DRAW_PATH_GLYPH || draw_tag == GPU_DRAW_CLIP) &&
                         (segment_starts[backdrop_ix] != segment_ends[backdrop_ix] || atomicLoad(&backdrops[backdrop_ix]) != 0i)
                     ) {
                         count += 1u;
@@ -328,7 +328,7 @@ fn coarse_emit(
 
         var valid = false;
         var glyph_count = 0u;
-        var ptcl_tag = CUBE_PTCL_FILL;
+        var ptcl_tag = GPU_PTCL_FILL;
         var ptcl_backdrop = 0i;
         var ptcl_fill_rule = 0u;
         var ptcl_segment_start = 0u;
@@ -337,18 +337,18 @@ fn coarse_emit(
         let draw_tag = draw_tag_at(draw_ix);
 
         if (draw_has_glyph_at(draw_ix)) {
-            if (draw_tag == CUBE_DRAW_BRUSH && draw_tile_hit(draw_ix, tile_x, tile_y)) {
+            if (draw_tag == GPU_DRAW_BRUSH && draw_tile_hit(draw_ix, tile_x, tile_y)) {
                 glyph_count = count_tile_glyphs_for_run(draw_glyph_run_ids[draw_ix], tile_x, tile_y);
                 if (glyph_count > 0u) {
                     valid = true;
-                    ptcl_tag = CUBE_PTCL_GLYPH;
+                    ptcl_tag = GPU_PTCL_GLYPH;
                     ptcl_color = draw_ix;
                 }
             }
         } else if (draw_has_sdf_at(draw_ix)) {
-            if (draw_tag == CUBE_DRAW_BRUSH && draw_tile_hit(draw_ix, tile_x, tile_y)) {
+            if (draw_tag == GPU_DRAW_BRUSH && draw_tile_hit(draw_ix, tile_x, tile_y)) {
                 valid = true;
-                ptcl_tag = CUBE_PTCL_SDF;
+                ptcl_tag = GPU_PTCL_SDF;
                 ptcl_segment_start = draw_ix;
                 ptcl_color = draw_ix;
             }
@@ -359,24 +359,24 @@ fn coarse_emit(
                 let segment_end = segment_ends[backdrop_ix];
                 let backdrop = atomicLoad(&backdrops[backdrop_ix]);
                 if (
-                    (draw_tag == CUBE_DRAW_BRUSH || draw_tag == CUBE_DRAW_PATH_GLYPH || draw_tag == CUBE_DRAW_CLIP) &&
+                    (draw_tag == GPU_DRAW_BRUSH || draw_tag == GPU_DRAW_PATH_GLYPH || draw_tag == GPU_DRAW_CLIP) &&
                     (segment_start != segment_end || backdrop != 0i)
                 ) {
-                    if (draw_tag == CUBE_DRAW_CLIP) {
-                        ptcl_tag = CUBE_PTCL_BEGIN_CLIP;
-                    } else if (draw_tag == CUBE_DRAW_PATH_GLYPH) {
-                        ptcl_tag = CUBE_PTCL_PATH_GLYPH;
+                    if (draw_tag == GPU_DRAW_CLIP) {
+                        ptcl_tag = GPU_PTCL_BEGIN_CLIP;
+                    } else if (draw_tag == GPU_DRAW_PATH_GLYPH) {
+                        ptcl_tag = GPU_PTCL_PATH_GLYPH;
                     } else if (draw_solid_color_fast_path_at(draw_ix) && segment_start == segment_end) {
-                        ptcl_tag = CUBE_PTCL_COLOR;
+                        ptcl_tag = GPU_PTCL_COLOR;
                     }
                     valid = true;
                     ptcl_backdrop = backdrop;
                     ptcl_fill_rule = draw_fill_rule_at(draw_ix);
                     ptcl_segment_start = segment_start;
                     ptcl_segment_end = segment_end;
-                    if (ptcl_tag == CUBE_PTCL_COLOR) {
+                    if (ptcl_tag == GPU_PTCL_COLOR) {
                         ptcl_color = draw_brush_colors[draw_ix];
-                    } else if (draw_tag == CUBE_DRAW_BRUSH || draw_tag == CUBE_DRAW_PATH_GLYPH) {
+                    } else if (draw_tag == GPU_DRAW_BRUSH || draw_tag == GPU_DRAW_PATH_GLYPH) {
                         ptcl_color = draw_ix;
                     }
                 }
@@ -384,7 +384,7 @@ fn coarse_emit(
         }
 
         if (valid) {
-            if (ptcl_tag == CUBE_PTCL_GLYPH) {
+            if (ptcl_tag == GPU_PTCL_GLYPH) {
                 ptcl_segment_start = glyph_cursor;
                 ptcl_segment_end = ptcl_segment_start + glyph_count;
                 if (ptcl_segment_end <= glyph_range_end) {
@@ -408,7 +408,7 @@ fn coarse_emit(
     }
 
     emit_active_stack_ends(cursor);
-    store_particle(cursor + wrapper_count, CUBE_PTCL_END, 0i, 0u, 0u, 0u, 0u);
+    store_particle(cursor + wrapper_count, GPU_PTCL_END, 0i, 0u, 0u, 0u, 0u);
 }
 
 fn active_stack_count(tile_x: u32, tile_y: u32) -> u32 {
@@ -421,7 +421,7 @@ fn active_stack_count(tile_x: u32, tile_y: u32) -> u32 {
         }
         if (valid) {
             let layer_tag = layer_stack_tags[stack_ix];
-            if (layer_tag != CUBE_LAYER_CLIP && layer_tag != CUBE_LAYER_OPACITY && layer_tag != CUBE_LAYER_BLEND) {
+            if (layer_tag != GPU_LAYER_CLIP && layer_tag != GPU_LAYER_OPACITY && layer_tag != GPU_LAYER_BLEND) {
                 valid = false;
             } else {
                 let draw_ix = layer_stack_draws[stack_ix];
@@ -459,19 +459,19 @@ fn emit_active_stack_begins(dst_start: u32, tile_x: u32, tile_y: u32) {
             break;
         }
         let layer_tag = layer_stack_tags[stack_ix];
-        if (layer_tag == CUBE_LAYER_CLIP || layer_tag == CUBE_LAYER_OPACITY || layer_tag == CUBE_LAYER_BLEND) {
+        if (layer_tag == GPU_LAYER_CLIP || layer_tag == GPU_LAYER_OPACITY || layer_tag == GPU_LAYER_BLEND) {
             let draw_ix = layer_stack_draws[stack_ix];
-            if (layer_tag == CUBE_LAYER_CLIP && draw_has_sdf_at(draw_ix)) {
-                store_particle(dst, CUBE_PTCL_BEGIN_SDF_CLIP, 0i, 0u, 0u, 0u, draw_ix);
+            if (layer_tag == GPU_LAYER_CLIP && draw_has_sdf_at(draw_ix)) {
+                store_particle(dst, GPU_PTCL_BEGIN_SDF_CLIP, 0i, 0u, 0u, 0u, draw_ix);
                 dst += 1u;
             } else {
                 let backdrop_ix = draw_backdrop_ix(draw_ix, tile_x, tile_y);
                 if (backdrop_ix != INVALID) {
-                    var ptcl_tag = CUBE_PTCL_BEGIN_CLIP;
-                    if (layer_tag == CUBE_LAYER_OPACITY) {
-                        ptcl_tag = CUBE_PTCL_BEGIN_OPACITY;
-                    } else if (layer_tag == CUBE_LAYER_BLEND) {
-                        ptcl_tag = CUBE_PTCL_BEGIN_BLEND;
+                    var ptcl_tag = GPU_PTCL_BEGIN_CLIP;
+                    if (layer_tag == GPU_LAYER_OPACITY) {
+                        ptcl_tag = GPU_PTCL_BEGIN_OPACITY;
+                    } else if (layer_tag == GPU_LAYER_BLEND) {
+                        ptcl_tag = GPU_PTCL_BEGIN_BLEND;
                     }
                     store_particle(
                         dst,
@@ -499,13 +499,13 @@ fn emit_active_stack_ends(dst_start: u32) {
         }
         stack_ix -= 1u;
         let layer_tag = layer_stack_tags[stack_ix];
-        var ptcl_tag = CUBE_PTCL_END_CLIP;
+        var ptcl_tag = GPU_PTCL_END_CLIP;
         var valid = true;
-        if (layer_tag == CUBE_LAYER_OPACITY) {
-            ptcl_tag = CUBE_PTCL_END_OPACITY;
-        } else if (layer_tag == CUBE_LAYER_BLEND) {
-            ptcl_tag = CUBE_PTCL_END_BLEND;
-        } else if (layer_tag != CUBE_LAYER_CLIP) {
+        if (layer_tag == GPU_LAYER_OPACITY) {
+            ptcl_tag = GPU_PTCL_END_OPACITY;
+        } else if (layer_tag == GPU_LAYER_BLEND) {
+            ptcl_tag = GPU_PTCL_END_BLEND;
+        } else if (layer_tag != GPU_LAYER_CLIP) {
             valid = false;
         }
         if (valid) {
@@ -521,12 +521,12 @@ fn draw_backdrop_ix(draw_ix: u32, tile_x: u32, tile_y: u32) -> u32 {
     var result = INVALID;
     if (
         path_id != INVALID &&
-        (draw_tag == CUBE_DRAW_BRUSH ||
-         draw_tag == CUBE_DRAW_PATH_GLYPH ||
-         draw_tag == CUBE_DRAW_CLIP ||
-         draw_tag == CUBE_DRAW_OPACITY ||
-         draw_tag == CUBE_DRAW_BLEND ||
-         draw_tag == CUBE_DRAW_ISOLATE)
+        (draw_tag == GPU_DRAW_BRUSH ||
+         draw_tag == GPU_DRAW_PATH_GLYPH ||
+         draw_tag == GPU_DRAW_CLIP ||
+         draw_tag == GPU_DRAW_OPACITY ||
+         draw_tag == GPU_DRAW_BLEND ||
+         draw_tag == GPU_DRAW_ISOLATE)
     ) {
         let draw_x0 = pixel_tile_min(draw_pixel_x0[draw_ix], config.tiles_width);
         let draw_y0 = pixel_tile_min(draw_pixel_y0[draw_ix], config.tiles_height);

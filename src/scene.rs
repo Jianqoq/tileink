@@ -415,7 +415,7 @@ impl Scene {
 
     /// Replaces a draw's brush while keeping renderer upload columns coherent.
     ///
-    /// The semantic draw record and the CubeCL-shaped CPU columns are updated
+    /// The semantic draw record and GPU upload columns are updated
     /// together. Arbitrary gradients and patterns may rewrite payload columns;
     /// use [`set_draw_color`](Self::set_draw_color) for the O(1) solid-color
     /// update path used by incremental UI rendering.
@@ -1060,7 +1060,7 @@ impl Scene {
     ///
     /// This keeps rounded rectangles on the SDF path instead of flattening them
     /// to path segments, matching the SDF shadow/stroke APIs and preserving
-    /// subpixel edge ownership in both CPU and CubeCL renderers. SDF primitives
+    /// subpixel edge ownership in both CPU and wgpu renderers. SDF primitives
     /// have inherent coverage; use path APIs when fill-rule semantics matter.
     pub fn push_rect(&mut self, rect: Rect, radius: Radius, brush: impl Into<Brush>) -> DrawId {
         let draw = self.push_sdf_draw(

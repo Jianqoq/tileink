@@ -27,7 +27,7 @@ pub(crate) const FINE_GROUP_SPILL_FIELDS: usize = 5;
 /// Scene-derived fixed capacities for GPU buffers.
 ///
 /// GPU compute stages cannot grow vectors while dispatching. This plan keeps
-/// allocation sizes explicit and shared by the CubeCL and native wgpu backends
+/// allocation sizes explicit and shared by native wgpu upload paths
 /// so both backends launch against the same buffer contract.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct GpuBufferLengths {

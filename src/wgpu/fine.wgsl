@@ -2,42 +2,41 @@ const DRAW_FLAG_SOLID_RECT: u32 = 16u;
 const DRAW_FLAG_HAS_SDF: u32 = 64u;
 const INVALID_REF: u32 = 4294967295u;
 
-const CUBE_SDF_RECT: u32 = 1u;
-const CUBE_SDF_CIRCLE: u32 = 2u;
-const CUBE_SDF_RECT_STROKE: u32 = 3u;
-const CUBE_SDF_CIRCLE_STROKE: u32 = 4u;
-const CUBE_SDF_CANDLESTICK: u32 = 5u;
-const CUBE_SDF_LINE: u32 = 6u;
-const CUBE_SDF_RECT_SHADOW: u32 = 7u;
-const CUBE_SDF_ARC: u32 = 8u;
-const CUBE_SDF_ARC_SHADOW: u32 = 9u;
-const CUBE_SDF_CIRCLE_SHADOW: u32 = 10u;
-const CUBE_SDF_LINE_SHADOW: u32 = 11u;
-const CUBE_SDF_DASH_LINE: u32 = 12u;
-const CUBE_PTCL_END: u32 = 0u;
-const CUBE_PTCL_FILL: u32 = 1u;
-const CUBE_PTCL_COLOR: u32 = 2u;
-const CUBE_PTCL_BEGIN_CLIP: u32 = 3u;
-const CUBE_PTCL_END_CLIP: u32 = 4u;
-const CUBE_PTCL_BEGIN_OPACITY: u32 = 5u;
-const CUBE_PTCL_END_OPACITY: u32 = 6u;
-const CUBE_PTCL_BEGIN_BLEND: u32 = 7u;
-const CUBE_PTCL_END_BLEND: u32 = 8u;
-const CUBE_PTCL_SDF: u32 = 9u;
-const CUBE_PTCL_GLYPH: u32 = 10u;
-const CUBE_PTCL_PATH_GLYPH: u32 = 11u;
-const CUBE_PTCL_BEGIN_SDF_CLIP: u32 = 12u;
-const CUBE_GLYPH_MASK: u32 = 0u;
-const CUBE_GLYPH_COLOR: u32 = 1u;
-const CUBE_GLYPH_SUBPIXEL_MASK: u32 = 2u;
-const CUBE_GLYPH_LINEAR_MASK: u32 = 3u;
-const CUBE_GLYPH_LINEAR_COLOR: u32 = 4u;
-const CUBE_GLYPH_LINEAR_SUBPIXEL_MASK: u32 = 5u;
+const GPU_SDF_RECT: u32 = 1u;
+const GPU_SDF_CIRCLE: u32 = 2u;
+const GPU_SDF_RECT_STROKE: u32 = 3u;
+const GPU_SDF_CIRCLE_STROKE: u32 = 4u;
+const GPU_SDF_CANDLESTICK: u32 = 5u;
+const GPU_SDF_LINE: u32 = 6u;
+const GPU_SDF_RECT_SHADOW: u32 = 7u;
+const GPU_SDF_ARC: u32 = 8u;
+const GPU_SDF_ARC_SHADOW: u32 = 9u;
+const GPU_SDF_CIRCLE_SHADOW: u32 = 10u;
+const GPU_SDF_LINE_SHADOW: u32 = 11u;
+const GPU_SDF_DASH_LINE: u32 = 12u;
+const GPU_PTCL_END: u32 = 0u;
+const GPU_PTCL_FILL: u32 = 1u;
+const GPU_PTCL_COLOR: u32 = 2u;
+const GPU_PTCL_BEGIN_CLIP: u32 = 3u;
+const GPU_PTCL_END_CLIP: u32 = 4u;
+const GPU_PTCL_BEGIN_OPACITY: u32 = 5u;
+const GPU_PTCL_END_OPACITY: u32 = 6u;
+const GPU_PTCL_BEGIN_BLEND: u32 = 7u;
+const GPU_PTCL_END_BLEND: u32 = 8u;
+const GPU_PTCL_SDF: u32 = 9u;
+const GPU_PTCL_GLYPH: u32 = 10u;
+const GPU_PTCL_PATH_GLYPH: u32 = 11u;
+const GPU_PTCL_BEGIN_SDF_CLIP: u32 = 12u;
+const GPU_GLYPH_MASK: u32 = 0u;
+const GPU_GLYPH_COLOR: u32 = 1u;
+const GPU_GLYPH_SUBPIXEL_MASK: u32 = 2u;
+const GPU_GLYPH_LINEAR_MASK: u32 = 3u;
+const GPU_GLYPH_LINEAR_COLOR: u32 = 4u;
+const GPU_GLYPH_LINEAR_SUBPIXEL_MASK: u32 = 5u;
 const FINE_LOCAL_CLIP_DEPTH: u32 = 4u;
 const FINE_LOCAL_GROUP_DEPTH: u32 = 2u;
 const FINE_GROUP_SPILL_FIELDS: u32 = 5u;
 const FINE_WORKGROUP_SIZE: u32 = 256u;
-const PATH_COVERAGE_FIXED_SCALE: i32 = 4096i;
 
 const GPU_BRUSH_U32_STRIDE: u32 = 9u;
 const GPU_BRUSH_PARAM_STRIDE: u32 = 12u;
@@ -252,14 +251,14 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
             break;
         }
         let tag = packed_u8_at(ptcl_ix);
-        if (tag == CUBE_PTCL_END) {
+        if (tag == GPU_PTCL_END) {
             break;
         }
 
-        if (tag == CUBE_PTCL_COLOR) {
+        if (tag == GPU_PTCL_COLOR) {
             let color = scale_premul_u8(ptcl_colors[ptcl_ix], clip_mask);
             pixel = src_over_premul_u8(pixel, color);
-        } else if (tag == CUBE_PTCL_SDF) {
+        } else if (tag == GPU_PTCL_SDF) {
             let draw_ix = ptcl_colors[ptcl_ix];
             let sdf_ref = draw_sdf_refs[draw_ix];
             if (sdf_ref != INVALID_REF) {
@@ -274,7 +273,7 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
                     pixel = src_over_premul_u8(pixel, scale_premul_u8(color, alpha));
                 }
             }
-        } else if (tag == CUBE_PTCL_GLYPH) {
+        } else if (tag == GPU_PTCL_GLYPH) {
             pixel = composite_glyphs_at(
                 pixel,
                 ptcl_segment_starts[ptcl_ix],
@@ -284,7 +283,7 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
                 global_y,
                 clip_mask,
             );
-        } else if (tag == CUBE_PTCL_END_CLIP) {
+        } else if (tag == GPU_PTCL_END_CLIP) {
             if (clip_depth > 0u) {
                 clip_depth -= 1u;
                 if (clip_depth == 0u) {
@@ -308,7 +307,7 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
             } else {
                 clip_mask = 255u;
             }
-        } else if (tag == CUBE_PTCL_BEGIN_SDF_CLIP) {
+        } else if (tag == GPU_PTCL_BEGIN_SDF_CLIP) {
             let draw_ix = ptcl_colors[ptcl_ix];
             var alpha = 0u;
             let sdf_ref = draw_sdf_refs[draw_ix];
@@ -330,7 +329,7 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
                 &clip_stack3,
             );
             clip_mask = combine_alpha(clip_mask, alpha);
-        } else if (tag == CUBE_PTCL_END_OPACITY || tag == CUBE_PTCL_END_BLEND) {
+        } else if (tag == GPU_PTCL_END_OPACITY || tag == GPU_PTCL_END_BLEND) {
             if (group_depth > 0u) {
                 group_depth -= 1u;
                 var parent = 0u;
@@ -365,10 +364,10 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
                         payload = group_spills[stack_ix + 4u];
                     }
                 }
-                if (group_kind == CUBE_PTCL_BEGIN_OPACITY) {
+                if (group_kind == GPU_PTCL_BEGIN_OPACITY) {
                     let alpha = combine_alpha(combine_alpha(layer_alpha, parent_clip), payload);
                     pixel = src_over_premul_u8(parent, scale_premul_u8(pixel, alpha));
-                } else if (group_kind == CUBE_PTCL_BEGIN_BLEND) {
+                } else if (group_kind == GPU_PTCL_BEGIN_BLEND) {
                     let alpha = combine_alpha(layer_alpha, parent_clip);
                     let src = scale_premul_u8(pixel, alpha);
                     if ((src >> 24u) == 0u) {
@@ -379,11 +378,11 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
                 }
             }
         } else if (
-            tag == CUBE_PTCL_FILL ||
-            tag == CUBE_PTCL_PATH_GLYPH ||
-            tag == CUBE_PTCL_BEGIN_CLIP ||
-            tag == CUBE_PTCL_BEGIN_OPACITY ||
-            tag == CUBE_PTCL_BEGIN_BLEND
+            tag == GPU_PTCL_FILL ||
+            tag == GPU_PTCL_PATH_GLYPH ||
+            tag == GPU_PTCL_BEGIN_CLIP ||
+            tag == GPU_PTCL_BEGIN_OPACITY ||
+            tag == GPU_PTCL_BEGIN_BLEND
         ) {
             let alpha = fill_alpha_at(
                 ptcl_backdrops[ptcl_ix],
@@ -393,7 +392,7 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
                 local_x,
                 local_y,
             );
-            if (tag == CUBE_PTCL_BEGIN_CLIP) {
+            if (tag == GPU_PTCL_BEGIN_CLIP) {
                 push_clip(
                     clip_mask,
                     tile_ix,
@@ -405,7 +404,7 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
                     &clip_stack3,
                 );
                 clip_mask = combine_alpha(clip_mask, alpha);
-            } else if (tag == CUBE_PTCL_BEGIN_OPACITY || tag == CUBE_PTCL_BEGIN_BLEND) {
+            } else if (tag == GPU_PTCL_BEGIN_OPACITY || tag == GPU_PTCL_BEGIN_BLEND) {
                 var pushed_group = false;
                 if (group_depth == 0u) {
                     group0_kind = tag;
@@ -446,7 +445,7 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
                 if (masked_alpha != 0u) {
                     let draw_ix = ptcl_colors[ptcl_ix];
                     let color = sample_brush(draw_ix, f32(global_x) + 0.5, f32(global_y) + 0.5);
-                    if (tag == CUBE_PTCL_PATH_GLYPH) {
+                    if (tag == GPU_PTCL_PATH_GLYPH) {
                         pixel = src_over_mask_linear_auto_u8(pixel, color, masked_alpha);
                     } else {
                         pixel = src_over_premul_u8(pixel, scale_premul_u8(color, masked_alpha));
@@ -496,26 +495,26 @@ fn composite_glyphs_at(
                 let data_ix = glyph_image_data_offsets[image_id] + u32(local_y) * width + u32(local_x);
                 let content = glyph_image_content[image_id];
                 let data = glyph_image_data[data_ix];
-                if (content == CUBE_GLYPH_MASK) {
+                if (content == GPU_GLYPH_MASK) {
                     let alpha = combine_alpha(data, clip_mask);
                     if (alpha != 0u) {
                         let color = sample_brush(draw_ix, f32(global_x) + 0.5, f32(global_y) + 0.5);
                         pixel = src_over_premul_u8(pixel, scale_premul_u8(color, alpha));
                     }
-                } else if (content == CUBE_GLYPH_LINEAR_MASK) {
+                } else if (content == GPU_GLYPH_LINEAR_MASK) {
                     let alpha = combine_alpha(data, clip_mask);
                     if (alpha != 0u) {
                         let color = sample_brush(draw_ix, f32(global_x) + 0.5, f32(global_y) + 0.5);
                         pixel = src_over_mask_linear_auto_u8(pixel, color, alpha);
                     }
-                } else if (content == CUBE_GLYPH_COLOR) {
+                } else if (content == GPU_GLYPH_COLOR) {
                     pixel = src_over_premul_u8(pixel, scale_premul_u8(data, clip_mask));
-                } else if (content == CUBE_GLYPH_LINEAR_COLOR) {
+                } else if (content == GPU_GLYPH_LINEAR_COLOR) {
                     pixel = src_over_mask_linear_auto_u8(pixel, data, clip_mask);
-                } else if (content == CUBE_GLYPH_SUBPIXEL_MASK) {
+                } else if (content == GPU_GLYPH_SUBPIXEL_MASK) {
                     let color = sample_brush(draw_ix, f32(global_x) + 0.5, f32(global_y) + 0.5);
                     pixel = src_over_subpixel_mask_u8(pixel, color, data, clip_mask);
-                } else if (content == CUBE_GLYPH_LINEAR_SUBPIXEL_MASK) {
+                } else if (content == GPU_GLYPH_LINEAR_SUBPIXEL_MASK) {
                     let color = sample_brush(draw_ix, f32(global_x) + 0.5, f32(global_y) + 0.5);
                     pixel = src_over_subpixel_mask_linear_auto_u8(pixel, color, data, clip_mask);
                 }
@@ -577,32 +576,46 @@ fn fill_alpha_at(
     x: u32,
     y: u32,
 ) -> u32 {
-    // Segment writes are atomically ordered by scan; fixed-point accumulation keeps path coverage deterministic.
-    var coverage = backdrop * PATH_COVERAGE_FIXED_SCALE;
+    // Mirrors the CPU row-sweep accumulation order so edge pixels quantize identically.
+    var base = f32(backdrop);
+    var running = 0.0;
+    var partial = 0.0;
     var segment_ix = segment_start;
     loop {
         if (segment_ix >= segment_end) {
             break;
         }
-        coverage += segment_coverage_fixed_at(
+        let parts = segment_row_parts(
             segment_p0x[segment_ix],
             segment_p0y[segment_ix],
             segment_p1x[segment_ix],
             segment_p1y[segment_ix],
             segment_y_edge[segment_ix],
-            x,
             y,
         );
+        let y_edge = parts.x;
+        let dy = parts.y;
+        let xmin = parts.z;
+        let xmax = parts.w;
+        base += y_edge;
+        if (dy != 0.0) {
+            let full_start = clamp(i32(ceil(xmax)), 0, 16);
+            if (full_start < 16 && i32(x) >= full_start) {
+                running += dy;
+            }
+            let partial_start = clamp(i32(floor(xmin)), 0, 16);
+            let partial_end = clamp(i32(ceil(xmax)), 0, 16);
+            if (i32(x) >= partial_start && i32(x) < partial_end) {
+                partial += segment_area_at(xmin, xmax, x) * dy;
+            }
+        }
         segment_ix += 1u;
     }
+    let coverage = base + running + partial;
     return coverage_to_alpha(coverage, fill_rule);
 }
 
-fn segment_coverage_fixed_at(p0x: f32, p0y: f32, p1x: f32, p1y: f32, y_edge: f32, x: u32, y: u32) -> i32 {
-    return i32(round(segment_coverage_at(p0x, p0y, p1x, p1y, y_edge, x, y) * f32(PATH_COVERAGE_FIXED_SCALE)));
-}
-
-fn segment_coverage_at(p0x: f32, p0y: f32, p1x: f32, p1y: f32, y_edge: f32, x: u32, y: u32) -> f32 {
+fn segment_row_parts(p0x: f32, p0y: f32, p1x: f32, p1y: f32, y_edge: f32, y: u32) -> vec4<f32> {
     let delta_x = p1x - p0x;
     let delta_y = p1y - p0y;
     let row_y = f32(y);
@@ -611,29 +624,33 @@ fn segment_coverage_at(p0x: f32, p0y: f32, p1x: f32, p1y: f32, y_edge: f32, x: u
     let y1 = clamp(local_y + delta_y, 0.0, 1.0);
     let dy = y0 - y1;
     let x_sign = signum_f32(delta_x);
-    var coverage = x_sign * clamp(row_y - y_edge + 1.0, 0.0, 1.0);
+    let row_edge = x_sign * clamp(row_y - y_edge + 1.0, 0.0, 1.0);
 
-    if (dy != 0.0) {
-        let recip = 1.0 / delta_y;
-        let t0 = (y0 - local_y) * recip;
-        let t1 = (y1 - local_y) * recip;
-        let sx0 = p0x + t0 * delta_x;
-        let sx1 = p0x + t1 * delta_x;
-        let pixel_x = f32(x);
-        let xmin = min(sx0, sx1) - pixel_x;
-        let xmax = max(sx0, sx1) - pixel_x;
-        var area = clamp(1.0 - xmin, 0.0, 1.0);
-        if (xmax - xmin > 0.000001) {
-            let a_min = min(xmin, 1.0) - 0.000001;
-            let b = min(xmax, 1.0);
-            let c = max(b, 0.0);
-            let d = max(a_min, 0.0);
-            area = (b + 0.5 * (d * d - c * c) - a_min) / (xmax - a_min);
-        }
-        coverage += area * dy;
+    if (dy == 0.0) {
+        return vec4<f32>(row_edge, dy, 0.0, 0.0);
     }
 
-    return coverage;
+    let recip = 1.0 / delta_y;
+    let t0 = (y0 - local_y) * recip;
+    let t1 = (y1 - local_y) * recip;
+    let sx0 = p0x + t0 * delta_x;
+    let sx1 = p0x + t1 * delta_x;
+    return vec4<f32>(row_edge, dy, min(sx0, sx1), max(sx0, sx1));
+}
+
+fn segment_area_at(xmin_abs: f32, xmax_abs: f32, x: u32) -> f32 {
+    let pixel_x = f32(x);
+    let xmin = xmin_abs - pixel_x;
+    let xmax = xmax_abs - pixel_x;
+    var area = clamp(1.0 - xmin, 0.0, 1.0);
+    if (xmax - xmin > 0.000001) {
+        let a_min = min(xmin, 1.0) - 0.000001;
+        let b = min(xmax, 1.0);
+        let c = max(b, 0.0);
+        let d = max(a_min, 0.0);
+        area = (b + 0.5 * (d * d - c * c) - a_min) / (xmax - a_min);
+    }
+    return area;
 }
 
 fn signum_f32(value: f32) -> f32 {
@@ -644,21 +661,12 @@ fn signum_f32(value: f32) -> f32 {
     return out;
 }
 
-fn coverage_to_alpha(value: i32, fill_rule: u32) -> u32 {
-    var alpha = min(abs(value), PATH_COVERAGE_FIXED_SCALE);
+fn coverage_to_alpha(value: f32, fill_rule: u32) -> u32 {
+    var alpha = min(abs(value), 1.0);
     if (fill_rule == 1u) {
-        let period = PATH_COVERAGE_FIXED_SCALE * 2i;
-        var rem = value % period;
-        if (rem < 0i) {
-            rem += period;
-        }
-        if (rem > PATH_COVERAGE_FIXED_SCALE) {
-            rem = period - rem;
-        }
-        alpha = rem;
+        alpha = abs(value - 2.0 * round(0.5 * value));
     }
-    let clamped = u32(min(alpha, PATH_COVERAGE_FIXED_SCALE));
-    return (clamped * 255u + u32(PATH_COVERAGE_FIXED_SCALE / 2i)) / u32(PATH_COVERAGE_FIXED_SCALE);
+    return coverage_to_u8(alpha);
 }
 
 fn rgba8_pack(r: u32, g: u32, b: u32, a: u32) -> u32 {
@@ -1921,10 +1929,10 @@ fn sdf_coverage_from_encoded(sdf_ref: u32, x: f32, y: f32) -> f32 {
     let shadow_intensity = sdf_shadow_intensity[sdf_ref];
     let kind = sdf_kinds[sdf_ref];
 
-    if (kind == CUBE_SDF_RECT) {
+    if (kind == GPU_SDF_RECT) {
         return sdf_coverage_from_dist(rect_sdf_distance(x, y, x0, y0, x1, y1, r0, r1, r2, r3));
     }
-    if (kind == CUBE_SDF_RECT_STROKE) {
+    if (kind == GPU_SDF_RECT_STROKE) {
         let half_top = max(stroke_top, 0.0);
         let half_right = max(stroke_right, 0.0);
         let half_bottom = max(stroke_bottom, 0.0);
@@ -1966,7 +1974,7 @@ fn sdf_coverage_from_encoded(sdf_ref: u32, x: f32, y: f32) -> f32 {
         }
         return clamp(outer - inner, 0.0, 1.0);
     }
-    if (kind == CUBE_SDF_RECT_SHADOW) {
+    if (kind == GPU_SDF_RECT_SHADOW) {
         return sdf_shadow_coverage_from_dist(
             rect_sdf_distance(
                 x - shadow_offset_x,
@@ -1984,10 +1992,10 @@ fn sdf_coverage_from_encoded(sdf_ref: u32, x: f32, y: f32) -> f32 {
             shadow_intensity,
         );
     }
-    if (kind == CUBE_SDF_CIRCLE) {
+    if (kind == GPU_SDF_CIRCLE) {
         return sdf_coverage_from_dist(circle_sdf_distance(x, y, x0, y0, x1));
     }
-    if (kind == CUBE_SDF_CIRCLE_STROKE) {
+    if (kind == GPU_SDF_CIRCLE_STROKE) {
         let half = max(stroke_top, 0.0);
         let radius = max(x1, 0.0);
         let outer = sdf_coverage_from_dist(circle_sdf_distance(x, y, x0, y0, radius + half));
@@ -1997,17 +2005,17 @@ fn sdf_coverage_from_encoded(sdf_ref: u32, x: f32, y: f32) -> f32 {
         }
         return clamp(outer - inner, 0.0, 1.0);
     }
-    if (kind == CUBE_SDF_CIRCLE_SHADOW) {
+    if (kind == GPU_SDF_CIRCLE_SHADOW) {
         return sdf_shadow_coverage_from_dist(
             circle_sdf_distance(x - shadow_offset_x, y - shadow_offset_y, x0, y0, x1),
             shadow_expand,
             shadow_intensity,
         );
     }
-    if (kind == CUBE_SDF_ARC) {
+    if (kind == GPU_SDF_ARC) {
         return sdf_coverage_from_dist(arc_sdf_distance(x, y, x0, y0, x1, y1, r0, r1, r2));
     }
-    if (kind == CUBE_SDF_ARC_SHADOW) {
+    if (kind == GPU_SDF_ARC_SHADOW) {
         return sdf_shadow_coverage_from_dist(
             arc_sdf_distance(
                 x - shadow_offset_x,
@@ -2024,16 +2032,16 @@ fn sdf_coverage_from_encoded(sdf_ref: u32, x: f32, y: f32) -> f32 {
             shadow_intensity,
         );
     }
-    if (kind == CUBE_SDF_CANDLESTICK) {
+    if (kind == GPU_SDF_CANDLESTICK) {
         return candlestick_sdf_coverage(x, y, x0, y0, x1, y1, r0, r1, r2);
     }
-    if (kind == CUBE_SDF_LINE) {
+    if (kind == GPU_SDF_LINE) {
         return sdf_coverage_from_dist(line_sdf_distance(x, y, x0, y0, x1, y1, r0, r1));
     }
-    if (kind == CUBE_SDF_DASH_LINE) {
+    if (kind == GPU_SDF_DASH_LINE) {
         return sdf_coverage_from_dist(dash_line_sdf_distance(x, y, x0, y0, x1, y1, r0, r1, r2, r3, stroke_top));
     }
-    if (kind == CUBE_SDF_LINE_SHADOW) {
+    if (kind == GPU_SDF_LINE_SHADOW) {
         return sdf_shadow_coverage_from_dist(
             line_sdf_distance(
                 x - shadow_offset_x,
