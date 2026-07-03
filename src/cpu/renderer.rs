@@ -65,29 +65,29 @@ impl Render for Renderer {
 
     type ExecuteArgs<'a> = &'a mut Image;
 
-    fn render(&mut self, scene: &crate::scene::Scene) {
+    fn render(&mut self, scene: &crate::canvas::Canvas) {
         self.size = (scene.width, scene.height);
         let mut image = Image::new(scene.width, scene.height, self.clear);
         self.execute(scene, &mut image);
         self.image = image;
     }
 
-    fn execute(&mut self, scene: &crate::scene::Scene, args: Self::ExecuteArgs<'_>) {
+    fn execute(&mut self, scene: &crate::canvas::Canvas, args: Self::ExecuteArgs<'_>) {
         let plan = scene.compile(0);
         self.scan(scene, ());
         self.cumsum(scene, ());
         self.execute_plan(scene, &plan, args, None);
     }
 
-    fn scan(&mut self, scene: &crate::scene::Scene, _: Self::ScanArgs<'_>) {
+    fn scan(&mut self, scene: &crate::canvas::Canvas, _: Self::ScanArgs<'_>) {
         run_scan(&self.scan, scene, &mut self.main);
     }
 
-    fn cumsum(&mut self, scene: &crate::scene::Scene, _: Self::CumsumArgs<'_>) {
+    fn cumsum(&mut self, scene: &crate::canvas::Canvas, _: Self::CumsumArgs<'_>) {
         run_cumsum(&self.cumsum, scene, &mut self.main);
     }
 
-    fn coarse(&mut self, scene: &crate::scene::Scene, args: Self::CoarseArgs<'_>) {
+    fn coarse(&mut self, scene: &crate::canvas::Canvas, args: Self::CoarseArgs<'_>) {
         let (draw_records, draw_range, layer_stack_data, layer_stack_range, text) = args;
         run_coarse(
             &self.coarse,
@@ -119,7 +119,7 @@ impl Renderer {
         }
     }
 
-    pub fn render(&mut self, scene: &crate::scene::Scene) {
+    pub fn render(&mut self, scene: &crate::canvas::Canvas) {
         <Self as Render>::render(self, scene);
     }
 
@@ -133,7 +133,7 @@ impl Renderer {
     /// refer to the wrong font.
     pub fn render_with_text(
         &mut self,
-        scene: &crate::scene::Scene,
+        scene: &crate::canvas::Canvas,
         text_context: &mut TextContext,
     ) {
         self.size = (scene.width, scene.height);
@@ -145,7 +145,7 @@ impl Renderer {
     /// Renders a scene and returns backend-neutral debug data without writing files.
     pub fn render_with_options(
         &mut self,
-        scene: &crate::scene::Scene,
+        scene: &crate::canvas::Canvas,
         options: &RenderOptions,
     ) -> RenderDebugCapture {
         self.render(scene);
@@ -162,7 +162,7 @@ impl Renderer {
         )
     }
 
-    pub fn render_profiled_flat(&mut self, scene: &crate::scene::Scene) -> RenderProfile {
+    pub fn render_profiled_flat(&mut self, scene: &crate::canvas::Canvas) -> RenderProfile {
         let total_start = std::time::Instant::now();
         let plan = scene.compile(0);
         let mut profile = RenderProfile::default();
@@ -219,7 +219,7 @@ impl Renderer {
 
     fn execute_with_text(
         &mut self,
-        scene: &crate::scene::Scene,
+        scene: &crate::canvas::Canvas,
         target: &mut Image,
         text_context: &mut TextContext,
     ) {
@@ -231,7 +231,7 @@ impl Renderer {
 
     fn execute_plan(
         &mut self,
-        scene: &crate::scene::Scene,
+        scene: &crate::canvas::Canvas,
         plan: &ExecPlan,
         target: &mut Image,
         mut text_context: Option<&mut TextContext>,
@@ -256,7 +256,7 @@ impl Renderer {
     #[allow(clippy::too_many_arguments)]
     fn execute_ops(
         &mut self,
-        scene: &crate::scene::Scene,
+        scene: &crate::canvas::Canvas,
         plan: &ExecPlan,
         ops: &[ExecOp],
         target: &mut Image,
@@ -331,7 +331,7 @@ impl Renderer {
     #[allow(clippy::too_many_arguments)]
     fn execute_draw_batch(
         &mut self,
-        scene: &crate::scene::Scene,
+        scene: &crate::canvas::Canvas,
         plan: &ExecPlan,
         start: usize,
         end: usize,

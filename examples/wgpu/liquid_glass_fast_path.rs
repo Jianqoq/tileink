@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use peniko::Color;
-use tileink::{Scene, WgpuRenderProfileReport, WgpuRenderer};
+use tileink::{Canvas, WgpuRenderProfileReport, WgpuRenderer};
 
 #[path = "../common/mod.rs"]
 mod common;
@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn render_scene(name: &str, scene: &Scene) -> Result<(), Box<dyn std::error::Error>> {
+fn render_scene(name: &str, scene: &Canvas) -> Result<(), Box<dyn std::error::Error>> {
     let mut renderer =
         WgpuRenderer::new_default_device(fast_path::WIDTH, fast_path::HEIGHT, Color::WHITE);
     renderer.render(scene);
@@ -49,7 +49,7 @@ fn render_scene(name: &str, scene: &Scene) -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
-fn profile_scene(name: &str, width: u32, height: u32, scene: &Scene) {
+fn profile_scene(name: &str, width: u32, height: u32, scene: &Canvas) {
     let mut renderer = WgpuRenderer::new_default_device(width, height, Color::WHITE);
     for _ in 0..WARMUP_FRAMES {
         renderer.render(scene);

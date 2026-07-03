@@ -5,20 +5,20 @@ use peniko::{
     Color,
     kurbo::{Circle, Rect},
 };
-use tileink::{BlurSampling, Filter, Radius, Region, Scene};
+use tileink::{BlurSampling, Filter, Radius, Region, Canvas};
 
 const WIDTH: u32 = 960;
 const HEIGHT: u32 = 540;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut scene = Scene::new(WIDTH, HEIGHT);
+    let mut scene = Canvas::new(WIDTH, HEIGHT);
     draw_background(&mut scene);
     draw_blur_panel(&mut scene, Rect::new(70.0, 92.0, 430.0, 448.0), 1);
     draw_blur_panel(&mut scene, Rect::new(530.0, 92.0, 890.0, 448.0), 4);
     common::render_to_png_wgpu("downsample_blur", &scene, WIDTH, HEIGHT, Color::WHITE)
 }
 
-fn draw_background(scene: &mut Scene) {
+fn draw_background(scene: &mut Canvas) {
     common::fill_rect(
         scene,
         Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),
@@ -46,7 +46,7 @@ fn draw_background(scene: &mut Scene) {
     draw_reference_shapes(scene, 530.0);
 }
 
-fn draw_reference_shapes(scene: &mut Scene, x0: f64) {
+fn draw_reference_shapes(scene: &mut Canvas, x0: f64) {
     common::fill_circle(
         scene,
         Circle::new((x0 + 158.0, 236.0), 112.0),
@@ -65,7 +65,7 @@ fn draw_reference_shapes(scene: &mut Scene, x0: f64) {
     );
 }
 
-fn draw_blur_panel(scene: &mut Scene, panel: Rect, downsample: u32) {
+fn draw_blur_panel(scene: &mut Canvas, panel: Rect, downsample: u32) {
     scene.push_backdrop_layer(
         Filter::Blur {
             std_dev_x: 28.0,

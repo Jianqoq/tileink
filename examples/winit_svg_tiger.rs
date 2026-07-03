@@ -6,7 +6,7 @@ mod common;
 use std::{error::Error, sync::Arc};
 
 use peniko::Color;
-use tileink::{Renderer, Scene};
+use tileink::{Renderer, Canvas};
 use winit::{
     application::ApplicationHandler,
     dpi::{LogicalSize, PhysicalSize},
@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 struct App {
-    scene: Scene,
+    scene: Canvas,
     scene_width: u32,
     scene_height: u32,
     state: Option<State>,
@@ -166,7 +166,7 @@ impl State {
         self.surface.configure(&self.device, &self.config);
     }
 
-    fn draw(&mut self, scene: &Scene) -> Result<(), Box<dyn Error>> {
+    fn draw(&mut self, scene: &Canvas) -> Result<(), Box<dyn Error>> {
         let frame = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(frame)
             | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,

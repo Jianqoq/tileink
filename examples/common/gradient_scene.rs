@@ -3,7 +3,7 @@ use peniko::{
     color::{AlphaColor, palette::css},
     kurbo::{Affine, BezPath, Circle, Rect},
 };
-use tileink::{Brush, FillRule, Radius, Scene};
+use tileink::{Brush, FillRule, Radius, Canvas};
 
 use crate::common::{fill_circle, fill_rect};
 
@@ -11,8 +11,8 @@ pub const WIDTH: u32 = 720;
 pub const HEIGHT: u32 = 520;
 pub const CLEAR: Color = Color::from_rgb8(245, 247, 250);
 
-pub fn scene() -> Scene {
-    let mut scene = Scene::new(WIDTH, HEIGHT);
+pub fn scene() -> Canvas {
+    let mut scene = Canvas::new(WIDTH, HEIGHT);
 
     let linear = Gradient::new_linear((36.0, 0.0), (324.0, 0.0))
         .with_extend(Extend::Pad)

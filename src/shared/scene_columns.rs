@@ -21,14 +21,14 @@ pub(crate) use crate::shared::gpu_brush::GPU_BRUSH_U32_STRIDE;
 
 const INVALID_REF: u32 = u32::MAX;
 
-/// CPU-side mirror of GPU upload columns derived from semantic scene records.
+/// CPU-side mirror of GPU upload columns derived from semantic canvas records.
 ///
 /// The CPU renderer consumes the record form directly, while GPU backends need
 /// stable columnar data for uploads. Keeping this cache in `shared` prevents
-/// `Scene` from depending on any specific backend while preserving mutation-time
+/// `Canvas` from depending on any specific backend while preserving mutation-time
 /// updates for wgpu upload paths.
 #[derive(Clone, Default)]
-pub(crate) struct SceneColumns {
+pub(crate) struct CanvasColumns {
     pub(crate) line_path_ids: Vec<u32>,
     pub(crate) line_p0x: Vec<f32>,
     pub(crate) line_p0y: Vec<f32>,
@@ -53,7 +53,7 @@ pub(crate) struct SceneColumns {
     pub(crate) glyph_y: Vec<i32>,
 }
 
-impl SceneColumns {
+impl CanvasColumns {
     pub(crate) fn clear(&mut self) {
         self.line_path_ids.clear();
         self.line_p0x.clear();

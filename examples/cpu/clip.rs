@@ -5,7 +5,7 @@ use peniko::{
     Color,
     kurbo::{Affine, BezPath, Circle, Rect, Shape, Stroke},
 };
-use tileink::{FillRule, Radius, Scene};
+use tileink::{FillRule, Radius, Canvas};
 
 fn complex_clip_path() -> BezPath {
     let mut path = BezPath::new();
@@ -20,7 +20,7 @@ fn complex_clip_path() -> BezPath {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut scene = Scene::new(360, 260);
+    let mut scene = Canvas::new(360, 260);
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 360.0, 260.0),

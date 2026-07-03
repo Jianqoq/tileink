@@ -13,7 +13,7 @@ use crate::{
 pub(in crate::cpu) struct OffscreenSurface {
     pub(in crate::cpu) bounds: Bounds,
     pub(in crate::cpu) image: Image,
-    pub(in crate::cpu) scene: crate::scene::Scene,
+    pub(in crate::cpu) scene: crate::canvas::Canvas,
     pub(in crate::cpu) plan: ExecPlan,
     pub(in crate::cpu) children: Vec<ExecOp>,
     pub(in crate::cpu) buffers: RasterBuffers,
@@ -21,7 +21,7 @@ pub(in crate::cpu) struct OffscreenSurface {
 
 impl OffscreenSurface {
     pub(in crate::cpu) fn new(
-        scene: &crate::scene::Scene,
+        scene: &crate::canvas::Canvas,
         plan: &ExecPlan,
         children: &[ExecOp],
         bounds: Bounds,

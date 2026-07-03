@@ -69,7 +69,7 @@ impl Renderer {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn execute_offscreen_layer(
         &mut self,
-        scene: &crate::scene::Scene,
+        scene: &crate::canvas::Canvas,
         plan: &ExecPlan,
         offscreen: OffscreenLayerRef<'_>,
         target: &mut Image,
@@ -171,7 +171,7 @@ impl Renderer {
     #[allow(clippy::too_many_arguments)]
     fn execute_filter_layer(
         &mut self,
-        scene: &crate::scene::Scene,
+        scene: &crate::canvas::Canvas,
         plan: &ExecPlan,
         layer: FilterLayerRef<'_>,
         target: &mut Image,
@@ -213,7 +213,7 @@ impl Renderer {
     #[allow(clippy::too_many_arguments)]
     fn execute_backdrop_layer(
         &mut self,
-        scene: &crate::scene::Scene,
+        scene: &crate::canvas::Canvas,
         plan: &ExecPlan,
         layer: BackdropLayerRef<'_>,
         target: &mut Image,
@@ -284,7 +284,7 @@ impl Renderer {
     #[allow(clippy::too_many_arguments)]
     fn execute_masked_group_layer(
         &mut self,
-        scene: &crate::scene::Scene,
+        scene: &crate::canvas::Canvas,
         plan: &ExecPlan,
         group: MaskedGroupLayer<'_>,
         target: &mut Image,
@@ -332,7 +332,7 @@ impl Renderer {
     #[allow(clippy::too_many_arguments)]
     fn render_children_to_image(
         &mut self,
-        scene: &crate::scene::Scene,
+        scene: &crate::canvas::Canvas,
         plan: &ExecPlan,
         children: &[ExecOp],
         bounds: Bounds,
@@ -383,7 +383,7 @@ impl Renderer {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn execute_mask_layer(
         &mut self,
-        scene: &crate::scene::Scene,
+        scene: &crate::canvas::Canvas,
         plan: &ExecPlan,
         mask_layer: MaskLayerRef<'_>,
         target: &mut Image,
@@ -431,7 +431,7 @@ impl Renderer {
 
     fn apply_outer_clip_stack_to_mask(
         &self,
-        scene: &crate::scene::Scene,
+        scene: &crate::canvas::Canvas,
         plan: &ExecPlan,
         outer_stack: std::ops::Range<usize>,
         bounds: Bounds,
@@ -462,7 +462,7 @@ impl Renderer {
     }
 }
 
-fn draw_bounds(scene: &crate::scene::Scene, draw_ix: usize) -> Bounds {
+fn draw_bounds(scene: &crate::canvas::Canvas, draw_ix: usize) -> Bounds {
     let bounds = scene.draw_records[draw_ix].pixel_bounds;
     Bounds::new(bounds.x0, bounds.y0, bounds.x1, bounds.y1)
 }

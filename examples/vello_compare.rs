@@ -6,7 +6,7 @@ use std::{
 };
 
 use peniko::{Color, kurbo::Rect};
-use tileink::{CandleStick, Radius, Scene, WgpuRenderProfileReport, WgpuRenderer};
+use tileink::{CandleStick, Radius, Canvas, WgpuRenderProfileReport, WgpuRenderer};
 use vello::{
     AaConfig, AaSupport, RenderParams, Renderer as VelloRenderer, RendererOptions,
     Scene as VelloScene,
@@ -230,7 +230,7 @@ fn bench_tileink(
     renderer: &mut WgpuRenderer,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-    scene: &Scene,
+    scene: &Canvas,
     texture: &wgpu::Texture,
     config: Config,
 ) -> Result<Stats, Box<dyn Error>> {
@@ -275,7 +275,7 @@ fn profile_tileink(
     renderer: &mut WgpuRenderer,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-    scene: &Scene,
+    scene: &Canvas,
     texture: &wgpu::Texture,
     config: Config,
 ) -> Result<WgpuRenderProfileReport, Box<dyn Error>> {
@@ -305,8 +305,8 @@ fn wait_for_gpu(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<(), Box<dy
     Ok(())
 }
 
-fn build_candlestick_scenes(config: Config) -> (Scene, VelloScene) {
-    let mut tileink_scene = Scene::new(config.width, config.height);
+fn build_candlestick_scenes(config: Config) -> (Canvas, VelloScene) {
+    let mut tileink_scene = Canvas::new(config.width, config.height);
     let mut vello_scene = VelloScene::new();
     tileink_scene.push_rect(
         Rect::new(0.0, 0.0, f64::from(config.width), f64::from(config.height)),
@@ -388,8 +388,8 @@ fn build_candlestick_scenes(config: Config) -> (Scene, VelloScene) {
     (tileink_scene, vello_scene)
 }
 
-fn build_rect_scenes(config: Config) -> (Scene, VelloScene) {
-    let mut tileink_scene = Scene::new(config.width, config.height);
+fn build_rect_scenes(config: Config) -> (Canvas, VelloScene) {
+    let mut tileink_scene = Canvas::new(config.width, config.height);
     let mut vello_scene = VelloScene::new();
     tileink_scene.push_rect(
         Rect::new(0.0, 0.0, f64::from(config.width), f64::from(config.height)),

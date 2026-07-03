@@ -502,7 +502,7 @@ mod tests {
 
     use super::{ScanCpuPipeline, ScanCpuPrepared};
     use crate::{
-        Scene,
+        Canvas,
         cpu::computes::cumsum::run_backdrop_cumsum,
         cpu::computes::fine::build_tile_alpha,
         shared::{
@@ -1056,7 +1056,7 @@ mod tests {
 
     #[test]
     fn run_keeps_generated_horizontal_path_dash_backdrops_empty() {
-        let mut scene = Scene::new(1071, 651);
+        let mut scene = Canvas::new(1071, 651);
         scene.push_stroke(
             KurboLine::new((0.0, 216.5), (652.0, 216.5)).to_path(0.25),
             Stroke::new(1.0).with_dashes(0.0, [1.0_f64, 2.0_f64]),

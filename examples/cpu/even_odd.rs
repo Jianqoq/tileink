@@ -5,7 +5,7 @@ use peniko::{
     Color,
     kurbo::{Affine, BezPath, Rect, Stroke},
 };
-use tileink::{FillRule, Radius, Scene};
+use tileink::{FillRule, Radius, Canvas};
 
 fn nested_rect_path(offset_x: f64) -> BezPath {
     let mut path = BezPath::new();
@@ -23,7 +23,7 @@ fn nested_rect_path(offset_x: f64) -> BezPath {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut scene = Scene::new(520, 280);
+    let mut scene = Canvas::new(520, 280);
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 520.0, 280.0),

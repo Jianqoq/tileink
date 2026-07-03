@@ -1,7 +1,7 @@
 use peniko::kurbo::{Affine, Rect};
 
 use crate::{
-    scene::Scene,
+    canvas::Canvas,
     shared::{
         bd_record::BackdropRecord,
         bounds::{Bounds, PixelBounds, TileBbox},
@@ -20,7 +20,7 @@ use crate::{
 };
 
 pub(crate) struct LocalOffscreenScene {
-    pub(crate) scene: Scene,
+    pub(crate) scene: Canvas,
     pub(crate) plan: ExecPlan,
     pub(crate) children: Vec<ExecOp>,
 }
@@ -136,7 +136,7 @@ impl LocalSpace {
 }
 
 pub(crate) fn local_offscreen_scene(
-    scene: &Scene,
+    scene: &Canvas,
     plan: &ExecPlan,
     children: &[ExecOp],
     bounds: Bounds,
@@ -157,8 +157,8 @@ pub(crate) fn local_filter(filter: &Filter, bounds: Bounds) -> Filter {
     translate_filter_to_local(filter, LocalSpace::new(bounds))
 }
 
-fn translated_scene_for_bounds(scene: &Scene, local: LocalSpace) -> Scene {
-    let mut translated = Scene::new(local.surface.width(), local.surface.height());
+fn translated_scene_for_bounds(scene: &Canvas, local: LocalSpace) -> Canvas {
+    let mut translated = Canvas::new(local.surface.width(), local.surface.height());
     translated.lines = scene
         .lines
         .iter()
@@ -203,7 +203,7 @@ fn translated_scene_for_bounds(scene: &Scene, local: LocalSpace) -> Scene {
     translated
 }
 
-fn translated_backdrop_records(scene: &Scene, translated: &Scene) -> Vec<BackdropRecord> {
+fn translated_backdrop_records(scene: &Canvas, translated: &Canvas) -> Vec<BackdropRecord> {
     let mut path_bounds: Vec<Option<PixelBounds>> = vec![None; translated.path_records.len()];
     for draw in &translated.draw_records {
         if let Some(path_id) = draw.path_id
@@ -251,7 +251,7 @@ fn translated_backdrop_records(scene: &Scene, translated: &Scene) -> Vec<Backdro
         .collect()
 }
 
-fn translated_path_pixel_bounds(scene: &Scene, path_id: usize) -> PixelBounds {
+fn translated_path_pixel_bounds(scene: &Canvas, path_id: usize) -> PixelBounds {
     let Some(record) = scene.path_records.get(path_id) else {
         return empty_pixel_bounds();
     };
@@ -288,7 +288,7 @@ fn empty_pixel_bounds() -> PixelBounds {
     }
 }
 
-fn translated_path_segment_capacity(scene: &Scene, path_id: usize, tile_bbox: TileBbox) -> u32 {
+fn translated_path_segment_capacity(scene: &Canvas, path_id: usize, tile_bbox: TileBbox) -> u32 {
     let Some(record) = scene.path_records.get(path_id) else {
         return 0;
     };

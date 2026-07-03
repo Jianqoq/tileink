@@ -2,12 +2,12 @@
 mod common;
 
 use peniko::{Color, kurbo::Rect};
-use tileink::{Radius, Scene, StrokeWidths, WgpuRenderer};
+use tileink::{Radius, Canvas, StrokeWidths, WgpuRenderer};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let width = 480;
     let height = 320;
-    let mut scene = Scene::new(width, height);
+    let mut scene = Canvas::new(width, height);
 
     scene.push_rect(
         Rect::new(0.0, 0.0, width as f64, height as f64),

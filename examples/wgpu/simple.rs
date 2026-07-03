@@ -5,12 +5,12 @@ use peniko::{
     Color,
     kurbo::{Affine, Circle, Rect, Shape, Stroke},
 };
-use tileink::{FillRule, Scene, WgpuRenderer};
+use tileink::{FillRule, Canvas, WgpuRenderer};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let width = 360;
     let height = 260;
-    let mut scene = Scene::new(width, height);
+    let mut scene = Canvas::new(width, height);
 
     scene.push_rect(
         Rect::new(0.0, 0.0, width as f64, height as f64),

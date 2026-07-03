@@ -14,7 +14,7 @@ use std::{
 use peniko::{Color, kurbo::Point};
 use rayon::prelude::*;
 use tileink::{
-    CpuRenderer, Image, Renderer, Scene, TextAttrs, TextCompositeMode, TextContext,
+    CpuRenderer, Image, Renderer, Canvas, TextAttrs, TextCompositeMode, TextContext,
     TextCoverageParams, TextFamily, TextLayoutOptions, TextRasterOptions, TextSubpixelMode,
 };
 
@@ -2510,7 +2510,7 @@ fn render_tileink_with_context(
             .with_size(Some(case.layout_width), None),
     );
     let bounds = layout.bounds();
-    let mut scene = Scene::new(WIDTH, HEIGHT);
+    let mut scene = Canvas::new(WIDTH, HEIGHT);
     scene.push_text_layout(
         &layout,
         Point::new(

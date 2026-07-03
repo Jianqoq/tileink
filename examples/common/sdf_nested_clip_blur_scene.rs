@@ -2,14 +2,14 @@ use peniko::{
     Color,
     kurbo::{Circle, Point, Rect, Stroke},
 };
-use tileink::{Filter, Radius, Region, Scene, SdfLine, SdfLineCap};
+use tileink::{Filter, Radius, Region, Canvas, SdfLine, SdfLineCap};
 
 use crate::common::{fill_circle, fill_rect, stroke_circle, stroke_rect};
 
-pub fn sdf_nested_clip_blur_scene() -> (Scene, u32, u32) {
+pub fn sdf_nested_clip_blur_scene() -> (Canvas, u32, u32) {
     let width = 760;
     let height = 460;
-    let mut scene = Scene::new(width, height);
+    let mut scene = Canvas::new(width, height);
 
     fill_rect(
         &mut scene,

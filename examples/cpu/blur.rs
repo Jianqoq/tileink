@@ -5,10 +5,10 @@ use peniko::{
     Color,
     kurbo::{Circle, Rect},
 };
-use tileink::{Filter, Radius, Scene};
+use tileink::{Filter, Radius, Canvas};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut scene = Scene::new(1920, 1080);
+    let mut scene = Canvas::new(1920, 1080);
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 1920.0, 1080.0),

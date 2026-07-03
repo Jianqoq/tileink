@@ -2,10 +2,10 @@
 mod common;
 
 use peniko::{Color, kurbo::Rect};
-use tileink::{Filter, Radius, Scene};
+use tileink::{Filter, Radius, Canvas};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut scene = Scene::new(640, 360);
+    let mut scene = Canvas::new(640, 360);
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 640.0, 360.0),

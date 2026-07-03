@@ -2,7 +2,7 @@ use peniko::{
     Color,
     kurbo::{Affine, Line, Rect, Shape, Stroke},
 };
-use tileink::{FillRule, Radius, Scene};
+use tileink::{FillRule, Radius, Canvas};
 
 pub const TOLERANCE: f64 = 0.25;
 pub const CHART_WIDTH: f64 = 652.0;
@@ -11,10 +11,10 @@ pub const CHART_X: f64 = 387.0;
 pub const CHART_Y: f64 = 104.0;
 pub const CLOSE_Y: f64 = 216.5;
 
-pub fn path_current_close_dash_scene() -> (Scene, u32, u32) {
+pub fn path_current_close_dash_scene() -> (Canvas, u32, u32) {
     let width = (CHART_X + CHART_WIDTH + 32.0).ceil() as u32;
     let height = (CHART_Y + CHART_HEIGHT + 32.0).ceil() as u32;
-    let mut scene = Scene::new(width, height);
+    let mut scene = Canvas::new(width, height);
 
     scene.push_rect(
         Rect::new(0.0, 0.0, width as f64, height as f64),
@@ -65,7 +65,7 @@ pub fn path_current_close_dash_scene() -> (Scene, u32, u32) {
 }
 
 fn push_path_stroke(
-    scene: &mut Scene,
+    scene: &mut Canvas,
     line: Line,
     stroke: Stroke,
     transform: Affine,

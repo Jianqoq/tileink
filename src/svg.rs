@@ -7,7 +7,7 @@ use peniko::{
 use usvg::{Node, Paint, PaintOrder, SpreadMethod, tiny_skia_path::PathSegment};
 
 use crate::{
-    Brush, CpuRenderer, FillRule, Filter, Radius, Region, Scene,
+    Brush, CpuRenderer, FillRule, Filter, Radius, Region, Canvas,
     shared::{
         bounds::Bounds,
         brush::{PatternBrush, PatternSampling},
@@ -69,7 +69,7 @@ impl fmt::Display for SvgError {
 
 impl Error for SvgError {}
 
-impl Scene {
+impl Canvas {
     /// Appends a parsed `usvg` tree by lowering the reduced SVG tree into Scene primitives.
     ///
     /// The conversion is transactional: unsupported SVG features return an error before this
@@ -83,7 +83,7 @@ impl Scene {
         tree: &usvg::Tree,
         options: SvgOptions,
     ) -> Result<(), SvgError> {
-        let mut svg_scene = Scene::new(self.width, self.height);
+        let mut svg_scene = Canvas::new(self.width, self.height);
         SvgBuilder::new(options).push_tree(&mut svg_scene, tree)?;
         self.append(&svg_scene, (0.0, 0.0));
         Ok(())
@@ -113,11 +113,11 @@ impl SvgBuilder {
         }
     }
 
-    fn push_tree(&self, scene: &mut Scene, tree: &usvg::Tree) -> Result<(), SvgError> {
+    fn push_tree(&self, scene: &mut Canvas, tree: &usvg::Tree) -> Result<(), SvgError> {
         self.push_group(scene, tree.root())
     }
 
-    fn push_group(&self, scene: &mut Scene, group: &usvg::Group) -> Result<(), SvgError> {
+    fn push_group(&self, scene: &mut Canvas, group: &usvg::Group) -> Result<(), SvgError> {
         let filter_layers = if group.filters().is_empty() {
             Vec::new()
         } else {
@@ -198,8 +198,8 @@ impl SvgBuilder {
         width: u32,
         height: u32,
         mask: &usvg::Mask,
-    ) -> Result<(Scene, LayerMask), SvgError> {
-        let mut mask_scene = Scene::new(width, height);
+    ) -> Result<(Canvas, LayerMask), SvgError> {
+        let mut mask_scene = Canvas::new(width, height);
         if let Some(parent) = mask.mask() {
             let (parent_scene, parent_mask) = self.svg_mask_layer(width, height, parent)?;
             mask_scene.push_mask_layer(parent_scene, parent_mask);
@@ -223,7 +223,7 @@ impl SvgBuilder {
         ))
     }
 
-    fn push_node(&self, scene: &mut Scene, node: &Node) -> Result<(), SvgError> {
+    fn push_node(&self, scene: &mut Canvas, node: &Node) -> Result<(), SvgError> {
         match node {
             Node::Group(group) => self.push_group(scene, group),
             Node::Path(path) => self.push_path(scene, path),
@@ -232,7 +232,7 @@ impl SvgBuilder {
         }
     }
 
-    fn push_image(&self, scene: &mut Scene, image: &usvg::Image) -> Result<(), SvgError> {
+    fn push_image(&self, scene: &mut Canvas, image: &usvg::Image) -> Result<(), SvgError> {
         if !image.is_visible() {
             return Ok(());
         }
@@ -301,7 +301,7 @@ impl SvgBuilder {
             f64::from(width) / f64::from(size.width()),
             f64::from(height) / f64::from(size.height()),
         );
-        let mut scene = Scene::new(width, height);
+        let mut scene = Canvas::new(width, height);
         SvgBuilder {
             options: SvgOptions {
                 tolerance: self.options.tolerance,
@@ -318,7 +318,7 @@ impl SvgBuilder {
         Ok(renderer.image().clone())
     }
 
-    fn push_path(&self, scene: &mut Scene, path: &usvg::Path) -> Result<(), SvgError> {
+    fn push_path(&self, scene: &mut Canvas, path: &usvg::Path) -> Result<(), SvgError> {
         if !path.is_visible() {
             return Ok(());
         }
@@ -341,7 +341,7 @@ impl SvgBuilder {
 
     fn push_fill(
         &self,
-        scene: &mut Scene,
+        scene: &mut Canvas,
         path: &usvg::Path,
         data: &BezPath,
         path_transform: Affine,
@@ -367,7 +367,7 @@ impl SvgBuilder {
 
     fn push_stroke(
         &self,
-        scene: &mut Scene,
+        scene: &mut Canvas,
         path: &usvg::Path,
         data: &BezPath,
         path_transform: Affine,
@@ -413,7 +413,7 @@ impl SvgBuilder {
 
     fn push_clip_path_layers(
         &self,
-        scene: &mut Scene,
+        scene: &mut Canvas,
         clip: &usvg::ClipPath,
     ) -> Result<usize, SvgError> {
         let mut pushed = 0;
@@ -423,7 +423,7 @@ impl SvgBuilder {
 
         match self.clip_path_lowering(clip) {
             ClipPathLowering::Empty => scene.push_mask_layer(
-                Scene::new(scene.width, scene.height),
+                Canvas::new(scene.width, scene.height),
                 LayerMask {
                     region: Region::rect(Rect::ZERO, Radius::ZERO),
                     kind: MaskKind::Alpha,
@@ -449,8 +449,8 @@ impl SvgBuilder {
         width: u32,
         height: u32,
         clip: &usvg::ClipPath,
-    ) -> Result<(Scene, LayerMask), SvgError> {
-        let mut mask_scene = Scene::new(width, height);
+    ) -> Result<(Canvas, LayerMask), SvgError> {
+        let mut mask_scene = Canvas::new(width, height);
         self.push_clip_path_mask_group(
             &mut mask_scene,
             clip.root(),
@@ -472,7 +472,7 @@ impl SvgBuilder {
 
     fn push_clip_path_mask_group(
         &self,
-        scene: &mut Scene,
+        scene: &mut Canvas,
         group: &usvg::Group,
         transform: Affine,
     ) -> Result<(), SvgError> {
@@ -500,7 +500,7 @@ impl SvgBuilder {
 
     fn push_clip_path_mask_node(
         &self,
-        scene: &mut Scene,
+        scene: &mut Canvas,
         node: &Node,
         transform: Affine,
     ) -> Result<(), SvgError> {
@@ -653,7 +653,7 @@ impl SvgBuilder {
                 f64::from(tile_height) / f64::from(height),
             ) * Affine::translate((-f64::from(rect.left()), -f64::from(rect.top())));
 
-        let mut tile_scene = Scene::new(tile_width, tile_height);
+        let mut tile_scene = Canvas::new(tile_width, tile_height);
         SvgBuilder {
             options: self.options,
             base_transform: tile_transform,
@@ -691,7 +691,7 @@ impl SvgBuilder {
 
         let width = filter_bounds.width().max(1);
         let height = filter_bounds.height().max(1);
-        let mut scene = Scene::new(width, height);
+        let mut scene = Canvas::new(width, height);
         if !filter_bounds.is_empty() {
             let buffer_origin =
                 Affine::translate((-f64::from(filter_bounds.x0), -f64::from(filter_bounds.y0)));

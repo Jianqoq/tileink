@@ -7,7 +7,7 @@ use std::{
 };
 
 use peniko::{Color, kurbo::Affine};
-use tileink::{CpuRenderer, Scene, SvgOptions, WgpuRenderer};
+use tileink::{CpuRenderer, Canvas, SvgOptions, WgpuRenderer};
 
 const REFERENCE_IMAGE_WIDTH: u32 = 300;
 
@@ -58,7 +58,7 @@ impl BatchRenderers {
 
     fn render_cpu(
         &mut self,
-        scene: &Scene,
+        scene: &Canvas,
         input: &Path,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let Some(renderer) = &mut self.cpu else {
@@ -73,7 +73,7 @@ impl BatchRenderers {
 
     fn render_wgpu(
         &mut self,
-        scene: &Scene,
+        scene: &Canvas,
         input: &Path,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let Some(renderer) = &mut self.wgpu else {
@@ -158,7 +158,7 @@ fn parse_args() -> Result<(PathBuf, Backend), Box<dyn std::error::Error>> {
 fn load_scene(
     input: &Path,
     options: &mut usvg::Options<'_>,
-) -> Result<Scene, Box<dyn std::error::Error>> {
+) -> Result<Canvas, Box<dyn std::error::Error>> {
     let data = fs::read(input)?;
     options.resources_dir = input.parent().map(Path::to_path_buf);
     let tree = usvg::Tree::from_data(&data, options)?;
@@ -167,7 +167,7 @@ fn load_scene(
     let height = size.1;
     let scale_x = width as f64 / tree.size().width() as f64;
     let scale_y = height as f64 / tree.size().height() as f64;
-    let mut scene = Scene::new(width, height);
+    let mut scene = Canvas::new(width, height);
     scene.push_svg_with_options(
         &tree,
         SvgOptions {

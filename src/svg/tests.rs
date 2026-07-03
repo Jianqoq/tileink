@@ -37,7 +37,7 @@ fn render_tree_with_options(
     width: u32,
     height: u32,
 ) -> CpuRenderer {
-    let mut scene = Scene::new(width, height);
+    let mut scene = Canvas::new(width, height);
     scene.push_svg_with_options(tree, options).unwrap();
     let mut renderer = CpuRenderer::new(scene.width, scene.height, clear);
     renderer.render(&scene);
@@ -124,7 +124,7 @@ fn push_svg_native_wgpu_matches_cpu_exact_when_enabled() {
                 <path d="M4 26 L28 26 L28 30 L4 30 Z" fill="#2060a0"/>
             </svg>"##,
     );
-    let mut scene = Scene::new(32, 32);
+    let mut scene = Canvas::new(32, 32);
     scene.push_svg(&tree).unwrap();
 
     let mut cpu = CpuRenderer::new(32, 32, Color::TRANSPARENT);
@@ -170,7 +170,7 @@ fn push_svg_native_wgpu_matches_cpu_for_path_text_fixture_when_enabled() {
     }
 }
 
-fn svg_fixture_scene(relative: &str, target_width: u32) -> Scene {
+fn svg_fixture_scene(relative: &str, target_width: u32) -> Canvas {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("src/svg/tests")
         .join(relative);
@@ -188,7 +188,7 @@ fn svg_fixture_scene(relative: &str, target_width: u32) -> Scene {
         .unwrap();
     let scale_x = size.width() as f64 / tree.size().width() as f64;
     let scale_y = size.height() as f64 / tree.size().height() as f64;
-    let mut scene = Scene::new(size.width(), size.height());
+    let mut scene = Canvas::new(size.width(), size.height());
     scene
         .push_svg_with_options(
             &tree,
@@ -1484,7 +1484,7 @@ fn push_svg_unsupported_features_do_not_modify_scene() {
                 <rect width="16" height="16" fill="url(#g)"/>
             </svg>"##,
     );
-    let mut scene = Scene::new(16, 16);
+    let mut scene = Canvas::new(16, 16);
     scene.push_rect(
         Rect::new(0.0, 0.0, 16.0, 16.0),
         crate::Radius::ZERO,

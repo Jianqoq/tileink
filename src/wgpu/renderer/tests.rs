@@ -6,7 +6,7 @@ use peniko::{
 use super::{Renderer, WgpuRenderTargetId};
 use crate::wgpu::commands::WgpuCommandBatch;
 use crate::{
-    FillRule, Scene, TextContext, TextLayoutOptions,
+    FillRule, Canvas, TextContext, TextLayoutOptions,
     cpu::Renderer as CpuRenderer,
     debug::{RenderDebugOptions, RenderOptions},
     render::Render,
@@ -36,7 +36,7 @@ fn wgpu_renderer_reads_uploaded_cpu_render_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(8, 8);
+    let mut scene = Canvas::new(8, 8);
     scene.push_path(
         Rect::new(2.0, 2.0, 6.0, 6.0).to_path(0.0),
         Color::from_rgb8(220, 64, 72),
@@ -67,7 +67,7 @@ fn wgpu_renderer_reuses_pipelines_when_clear_changes() {
         return;
     }
 
-    let mut scene = Scene::new(8, 8);
+    let mut scene = Canvas::new(8, 8);
     scene.push_rect(
         Rect::new(2.0, 2.0, 6.0, 6.0),
         crate::Radius::ZERO,
@@ -91,7 +91,7 @@ fn wgpu_renderer_profile_includes_cpu_prepare_and_gpu_stages() {
         return;
     }
 
-    let mut scene = Scene::new(16, 16);
+    let mut scene = Canvas::new(16, 16);
     scene.push_rect(
         Rect::new(2.0, 2.0, 14.0, 14.0),
         crate::Radius::ZERO,
@@ -131,7 +131,7 @@ fn wgpu_renderer_uploads_cpu_fallback_to_copy_texture_without_storage() {
         return;
     }
 
-    let mut scene = Scene::new(8, 8);
+    let mut scene = Canvas::new(8, 8);
     scene.push_path(
         Rect::new(0.0, 0.0, 8.0, 8.0).to_path(0.0),
         Color::from_rgb8(10, 20, 30),
@@ -171,7 +171,7 @@ fn wgpu_renderer_renders_tile_fine_directly_to_storage_texture_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(8, 8);
+    let mut scene = Canvas::new(8, 8);
     scene.push_path(
         Rect::new(0.0, 0.0, 8.0, 8.0).to_path(0.0),
         Color::from_rgb8(40, 100, 220),
@@ -221,7 +221,7 @@ fn wgpu_renderer_renders_tile_fine_to_storage_texture_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(8, 8);
+    let mut scene = Canvas::new(8, 8);
     scene.push_rect(
         Rect::new(0.0, 0.0, 8.0, 8.0),
         crate::Radius::ZERO,
@@ -266,7 +266,7 @@ fn wgpu_renderer_renders_offscreen_plan_directly_to_storage_texture() {
         return;
     }
 
-    let mut scene = Scene::new(16, 16);
+    let mut scene = Canvas::new(16, 16);
     scene.push_rect(
         Rect::new(0.0, 0.0, 16.0, 16.0),
         crate::Radius::ZERO,
@@ -329,7 +329,7 @@ fn wgpu_renderer_debug_capture_uses_native_scan_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(32, 32);
+    let mut scene = Canvas::new(32, 32);
     scene.push_path(
         Rect::new(4.0, 4.0, 20.0, 20.0).to_path(0.1),
         Color::from_rgb8(0, 128, 0),
@@ -361,7 +361,7 @@ fn wgpu_renderer_renders_sdf_primitives_in_fine_pass_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(16, 16);
+    let mut scene = Canvas::new(16, 16);
     scene.push_rect(
         Rect::new(2.0, 2.0, 14.0, 14.0),
         crate::Radius::ZERO,
@@ -385,7 +385,7 @@ fn wgpu_renderer_samples_gradient_brush_in_fine_pass_when_enabled() {
 
     let gradient = Gradient::new_linear((0.0, 0.0), (31.0, 0.0))
         .with_stops([Color::from_rgb8(255, 0, 0), Color::from_rgb8(0, 0, 255)]);
-    let mut scene = Scene::new(32, 16);
+    let mut scene = Canvas::new(32, 16);
     scene.push_rect(
         Rect::new(0.0, 0.0, 32.0, 16.0),
         crate::Radius::ZERO,
@@ -411,7 +411,7 @@ fn wgpu_scan_emits_segments_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(16, 16);
+    let mut scene = Canvas::new(16, 16);
     scene.push_path(
         Line::new((4.0, 0.0), (4.0, 16.0)).to_path(0.0),
         Color::BLACK,
@@ -472,7 +472,7 @@ fn wgpu_cumsum_scans_backdrop_rows_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(48, 32);
+    let mut scene = Canvas::new(48, 32);
     scene.push_path(
         Rect::new(0.0, 0.0, 48.0, 32.0).to_path(0.0),
         Color::BLACK,
@@ -512,7 +512,7 @@ fn wgpu_coarse_emits_sdf_particles_for_rects_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(32, 16);
+    let mut scene = Canvas::new(32, 16);
     scene.push_rect(
         Rect::new(0.0, 0.0, 32.0, 16.0),
         crate::Radius::ZERO,
@@ -573,7 +573,7 @@ fn wgpu_coarse_tile_draw_bins_respect_batch_range_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(32, 16);
+    let mut scene = Canvas::new(32, 16);
     scene.push_rect(
         Rect::new(0.0, 0.0, 32.0, 16.0),
         crate::Radius::ZERO,
@@ -627,7 +627,7 @@ fn wgpu_renderer_applies_path_clip_in_tile_fine_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(16, 16);
+    let mut scene = Canvas::new(16, 16);
     scene.push_clip_layer(
         Rect::new(0.0, 0.0, 8.0, 16.0).to_path(0.0),
         Affine::IDENTITY,
@@ -655,7 +655,7 @@ fn wgpu_renderer_applies_opacity_layer_in_tile_fine_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(16, 16);
+    let mut scene = Canvas::new(16, 16);
     scene.push_opacity_layer(
         Rect::new(0.0, 0.0, 16.0, 16.0).to_path(0.0),
         Affine::IDENTITY,
@@ -688,7 +688,7 @@ fn wgpu_renderer_applies_blend_layer_in_tile_fine_when_enabled() {
     }
 
     let full = Rect::new(0.0, 0.0, 16.0, 16.0);
-    let mut scene = Scene::new(16, 16);
+    let mut scene = Canvas::new(16, 16);
     scene.push_rect(full, crate::Radius::ZERO, Color::from_rgb8(200, 80, 40));
     scene.push_blend_layer(
         full.to_path(0.0),
@@ -714,7 +714,7 @@ fn wgpu_renderer_applies_color_filter_to_offscreen_children_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(16, 16);
+    let mut scene = Canvas::new(16, 16);
     scene.push_filter_layer(
         Filter::Invert(1.0),
         Region::rect(Rect::new(0.0, 0.0, 8.0, 16.0), crate::Radius::ZERO),
@@ -738,7 +738,7 @@ fn wgpu_renderer_applies_color_matrix_to_offscreen_children_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(16, 16);
+    let mut scene = Canvas::new(16, 16);
     scene.push_filter_layer(
         Filter::ColorMatrix([
             0.0, 0.0, 0.0, 0.0, 0.0, //
@@ -774,7 +774,7 @@ fn wgpu_renderer_applies_component_transfer_to_offscreen_children_when_enabled()
         table[3 * COMPONENT_TRANSFER_TABLE_SIZE + i] = i as u32;
     }
 
-    let mut scene = Scene::new(16, 16);
+    let mut scene = Canvas::new(16, 16);
     scene.push_filter_layer(
         Filter::ComponentTransfer(table),
         Region::rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO),
@@ -797,7 +797,7 @@ fn wgpu_renderer_applies_convolve_matrix_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(3, 1);
+    let mut scene = Canvas::new(3, 1);
     scene.push_filter_layer(
         Filter::ConvolveMatrix(ConvolveMatrix {
             columns: 3,
@@ -842,7 +842,7 @@ fn wgpu_renderer_applies_diffuse_lighting_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(3, 1);
+    let mut scene = Canvas::new(3, 1);
     scene.push_filter_layer(
         Filter::DiffuseLighting(DiffuseLighting {
             surface_scale: 1.0,
@@ -887,7 +887,7 @@ fn wgpu_renderer_applies_specular_lighting_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(1, 1);
+    let mut scene = Canvas::new(1, 1);
     scene.push_filter_layer(
         Filter::SpecularLighting(SpecularLighting {
             surface_scale: 0.0,
@@ -920,7 +920,7 @@ fn wgpu_renderer_executes_filter_graph_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(8, 8);
+    let mut scene = Canvas::new(8, 8);
     scene.push_filter_layer(
         Filter::Graph {
             primitives: vec![
@@ -980,7 +980,7 @@ fn wgpu_renderer_applies_filter_graph_displacement_map_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(8, 2);
+    let mut scene = Canvas::new(8, 2);
     scene.push_filter_layer(
         Filter::Graph {
             primitives: vec![
@@ -1031,7 +1031,7 @@ fn wgpu_renderer_generates_filter_graph_turbulence_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(32, 24);
+    let mut scene = Canvas::new(32, 24);
     scene.push_filter_layer(
         Filter::Graph {
             primitives: vec![FilterPrimitive {
@@ -1068,7 +1068,7 @@ fn wgpu_renderer_filter_graph_turbulence_uses_surface_origin_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(80, 24);
+    let mut scene = Canvas::new(80, 24);
     scene.push_filter_layer(
         Filter::Graph {
             primitives: vec![FilterPrimitive {
@@ -1120,7 +1120,7 @@ fn wgpu_renderer_rasterizes_path_region_mask_when_enabled() {
     triangle.line_to((4.0, 12.0));
     triangle.close_path();
     let region = Region::path(triangle, Affine::IDENTITY, 0.0);
-    let mut scene = Scene::new(16, 16);
+    let mut scene = Canvas::new(16, 16);
     scene.push_backdrop_layer(Filter::Invert(1.0), region.clone());
     scene.pop_layer();
 
@@ -1179,7 +1179,7 @@ fn wgpu_renderer_rasterizes_nonzero_path_region_mask_when_enabled() {
         path.close_path();
     }
     let region = Region::path(path, Affine::IDENTITY, 0.0);
-    let mut scene = Scene::new(16, 16);
+    let mut scene = Canvas::new(16, 16);
     scene.push_backdrop_layer(Filter::Invert(1.0), region.clone());
     scene.pop_layer();
 
@@ -1208,7 +1208,7 @@ fn wgpu_renderer_rect_liquid_glass_backdrop_matches_cpu_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(64, 32);
+    let mut scene = Canvas::new(64, 32);
     for x in 0..64 {
         let v = (x * 4) as u8;
         scene.push_rect(
@@ -1240,7 +1240,7 @@ fn wgpu_renderer_merges_filter_graph_inputs_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(8, 8);
+    let mut scene = Canvas::new(8, 8);
     scene.push_filter_layer(
         Filter::Graph {
             primitives: vec![
@@ -1284,7 +1284,7 @@ fn wgpu_renderer_tiles_filter_graph_input_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(6, 4);
+    let mut scene = Canvas::new(6, 4);
     scene.push_filter_layer(
         Filter::Graph {
             primitives: vec![FilterPrimitive {
@@ -1335,7 +1335,7 @@ fn wgpu_renderer_displaces_filter_graph_input_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(3, 1);
+    let mut scene = Canvas::new(3, 1);
     scene.push_filter_layer(
         Filter::Graph {
             primitives: vec![
@@ -1394,7 +1394,7 @@ fn wgpu_renderer_applies_solid_flood_filter_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(16, 16);
+    let mut scene = Canvas::new(16, 16);
     scene.push_filter_layer(
         Filter::Flood {
             brush: Brush::Solid(Color::from_rgba8(20, 40, 80, 128)),
@@ -1417,7 +1417,7 @@ fn wgpu_renderer_samples_gradient_flood_filter_when_enabled() {
 
     let gradient = Gradient::new_linear((0.0, 0.0), (15.0, 0.0))
         .with_stops([Color::from_rgb8(255, 0, 0), Color::from_rgb8(0, 0, 255)]);
-    let mut scene = Scene::new(16, 16);
+    let mut scene = Canvas::new(16, 16);
     scene.push_filter_layer(
         Filter::Flood {
             brush: Brush::from_gradient(&gradient),
@@ -1442,7 +1442,7 @@ fn wgpu_renderer_applies_solid_drop_shadow_filter_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(16, 16);
+    let mut scene = Canvas::new(16, 16);
     scene.push_filter_layer(
         Filter::DropShadow {
             offset_x: 2.0,
@@ -1473,7 +1473,7 @@ fn wgpu_renderer_samples_gradient_drop_shadow_filter_when_enabled() {
 
     let gradient = Gradient::new_linear((0.0, 0.0), (31.0, 0.0))
         .with_stops([Color::from_rgb8(255, 0, 0), Color::from_rgb8(0, 0, 255)]);
-    let mut scene = Scene::new(32, 32);
+    let mut scene = Canvas::new(32, 32);
     scene.push_filter_layer(
         Filter::DropShadow {
             offset_x: 0.0,
@@ -1511,7 +1511,7 @@ fn wgpu_renderer_isolates_opacity_layer_with_offscreen_child_when_enabled() {
     }
 
     let full = Rect::new(0.0, 0.0, 16.0, 16.0);
-    let mut scene = Scene::new(16, 16);
+    let mut scene = Canvas::new(16, 16);
     scene.push_opacity_layer(full.to_path(0.0), Affine::IDENTITY, 0.0, 0.5);
     scene.push_rect(full, crate::Radius::ZERO, Color::from_rgb8(0, 128, 0));
     scene.push_filter_layer(
@@ -1534,7 +1534,7 @@ fn wgpu_renderer_isolates_blend_layer_with_offscreen_child_when_enabled() {
     }
 
     let full = Rect::new(0.0, 0.0, 16.0, 16.0);
-    let mut scene = Scene::new(16, 16);
+    let mut scene = Canvas::new(16, 16);
     scene.push_rect(full, crate::Radius::ZERO, Color::from_rgb8(128, 128, 128));
     scene.push_blend_layer(
         Rect::new(0.0, 0.0, 8.0, 16.0).to_path(0.0),
@@ -1565,7 +1565,7 @@ fn wgpu_renderer_isolates_plain_layer_with_child_blend_when_enabled() {
     }
 
     let full = Rect::new(0.0, 0.0, 16.0, 16.0);
-    let mut scene = Scene::new(16, 16);
+    let mut scene = Canvas::new(16, 16);
     scene.push_rect(full, crate::Radius::ZERO, Color::from_rgb8(128, 128, 128));
     scene.push_isolate_layer(full.to_path(0.0), Affine::IDENTITY, 0.0);
     scene.push_blend_layer(
@@ -1590,14 +1590,14 @@ fn wgpu_renderer_applies_alpha_mask_layer_when_enabled() {
         return;
     }
 
-    let mut mask_scene = Scene::new(16, 16);
+    let mut mask_scene = Canvas::new(16, 16);
     mask_scene.push_rect(
         Rect::new(0.0, 0.0, 8.0, 16.0),
         crate::Radius::ZERO,
         Color::from_rgba8(255, 255, 255, 128),
     );
 
-    let mut scene = Scene::new(16, 16);
+    let mut scene = Canvas::new(16, 16);
     scene.push_mask_layer(
         mask_scene,
         Mask {
@@ -1624,7 +1624,7 @@ fn wgpu_renderer_applies_outer_clip_stack_to_offscreen_output_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(16, 16);
+    let mut scene = Canvas::new(16, 16);
     scene.push_clip_layer(
         Rect::new(0.0, 0.0, 8.0, 16.0).to_path(0.0),
         Affine::IDENTITY,
@@ -1655,7 +1655,7 @@ fn wgpu_renderer_applies_outer_sdf_clip_stack_to_offscreen_output_when_enabled()
         return;
     }
 
-    let mut scene = Scene::new(16, 16);
+    let mut scene = Canvas::new(16, 16);
     scene.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, 8.0, 16.0), crate::Radius::ZERO);
     scene.push_filter_layer(
         Filter::Invert(1.0),
@@ -1681,7 +1681,7 @@ fn wgpu_renderer_applies_backdrop_filter_to_existing_target_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(48, 24);
+    let mut scene = Canvas::new(48, 24);
     scene.push_rect(
         Rect::new(0.0, 0.0, 48.0, 24.0),
         crate::Radius::ZERO,
@@ -1705,7 +1705,7 @@ fn wgpu_renderer_renders_backdrop_layer_children_after_filter_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(32, 16);
+    let mut scene = Canvas::new(32, 16);
     scene.push_rect(
         Rect::new(0.0, 0.0, 32.0, 16.0),
         crate::Radius::ZERO,
@@ -1735,7 +1735,7 @@ fn wgpu_renderer_applies_offset_filter_to_offscreen_children_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(16, 16);
+    let mut scene = Canvas::new(16, 16);
     scene.push_filter_layer(
         Filter::Offset { dx: 2.0, dy: 1.0 },
         Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), crate::Radius::ZERO),
@@ -1761,7 +1761,7 @@ fn wgpu_renderer_blurs_offscreen_children_into_expanded_bounds_when_enabled() {
     }
 
     let sample = Rect::new(24.0, 8.0, 40.0, 24.0);
-    let mut scene = Scene::new(64, 32);
+    let mut scene = Canvas::new(64, 32);
     scene.push_filter_layer(
         Filter::Blur {
             std_dev_x: 2.0,
@@ -1790,7 +1790,7 @@ fn wgpu_renderer_downsampled_blur_matches_cpu_approximation() {
     }
 
     let sample = Rect::new(7.0, 5.0, 39.0, 27.0);
-    let mut scene = Scene::new(64, 40);
+    let mut scene = Canvas::new(64, 40);
     scene.push_filter_layer(
         Filter::Blur {
             std_dev_x: 4.0,
@@ -1824,7 +1824,7 @@ fn wgpu_renderer_shared_blur_matches_cpu_across_workgroup_edges() {
         return;
     }
 
-    let mut scene = Scene::new(73, 55);
+    let mut scene = Canvas::new(73, 55);
     scene.push_filter_layer(
         Filter::Blur {
             std_dev_x: 5.0,
@@ -1868,7 +1868,7 @@ fn wgpu_renderer_profiles_filter_dispatch_stages_when_enabled() {
     }
 
     let sample = Rect::new(7.0, 5.0, 39.0, 27.0);
-    let mut scene = Scene::new(64, 40);
+    let mut scene = Canvas::new(64, 40);
     scene.push_filter_layer(
         Filter::Blur {
             std_dev_x: 4.0,
@@ -1901,7 +1901,7 @@ fn wgpu_renderer_profiles_empty_stack_backdrop_with_direct_composite_when_enable
         return;
     }
 
-    let mut scene = Scene::new(64, 40);
+    let mut scene = Canvas::new(64, 40);
     for x in 0..64 {
         let v = (x * 3) as u8;
         scene.push_rect(
@@ -1938,7 +1938,7 @@ fn wgpu_renderer_profiles_empty_stack_liquid_glass_with_direct_composite_when_en
         return;
     }
 
-    let mut scene = Scene::new(64, 40);
+    let mut scene = Canvas::new(64, 40);
     for x in 0..64 {
         let v = (x * 3) as u8;
         scene.push_rect(
@@ -1977,7 +1977,7 @@ fn wgpu_renderer_profiles_simple_liquid_glass_without_materialized_upsample_when
         return;
     }
 
-    let mut scene = Scene::new(64, 40);
+    let mut scene = Canvas::new(64, 40);
     for x in 0..64 {
         let v = (x * 3) as u8;
         scene.push_rect(
@@ -2019,7 +2019,7 @@ fn wgpu_renderer_applies_morphology_filter_to_offscreen_children_when_enabled() 
         return;
     }
 
-    let mut scene = Scene::new(16, 16);
+    let mut scene = Canvas::new(16, 16);
     scene.push_filter_layer(
         Filter::Morphology {
             radius_x: 1.0,
@@ -2048,7 +2048,7 @@ fn wgpu_renderer_spills_deep_clip_stack_in_tile_fine_when_enabled() {
         return;
     }
 
-    let mut scene = Scene::new(32, 16);
+    let mut scene = Canvas::new(32, 16);
     let depth = crate::shared::gpu_plan::FINE_LOCAL_CLIP_DEPTH + 2;
     for ix in 0..depth {
         scene.push_clip_layer(
@@ -2082,7 +2082,7 @@ fn wgpu_renderer_spills_deep_opacity_stack_in_tile_fine_when_enabled() {
     }
 
     let full = Rect::new(0.0, 0.0, 16.0, 16.0);
-    let mut scene = Scene::new(16, 16);
+    let mut scene = Canvas::new(16, 16);
     let depth = crate::shared::gpu_plan::FINE_LOCAL_GROUP_DEPTH + 2;
     for _ in 0..depth {
         scene.push_opacity_layer(full.to_path(0.0), Affine::IDENTITY, 0.0, 0.5);
@@ -2111,7 +2111,7 @@ fn wgpu_renderer_draws_text_in_tile_fine_when_enabled() {
     if layout.is_empty() {
         return;
     }
-    let mut scene = Scene::new(160, 64);
+    let mut scene = Canvas::new(160, 64);
     scene.push_text_layout(&layout, peniko::kurbo::Point::new(8.0, 32.0), Color::BLACK);
     let mut renderer = Renderer::new_default_device(160, 64, Color::TRANSPARENT);
 
@@ -2135,7 +2135,7 @@ fn wgpu_renderer_renders_text_directly_to_storage_texture_when_enabled() {
     if layout.is_empty() {
         return;
     }
-    let mut scene = Scene::new(160, 64);
+    let mut scene = Canvas::new(160, 64);
     scene.push_rect(
         Rect::new(0.0, 0.0, 160.0, 64.0),
         crate::Radius::ZERO,
@@ -2206,7 +2206,7 @@ fn wgpu_renderer_matches_cpu_text_compositing_when_enabled() {
     if layout.is_empty() {
         return;
     }
-    let mut scene = Scene::new(160, 64);
+    let mut scene = Canvas::new(160, 64);
     scene.push_rect(
         Rect::new(0.0, 0.0, 160.0, 64.0),
         crate::Radius::ZERO,
@@ -2252,7 +2252,7 @@ fn test_turbulence(kind: TurbulenceKind, seed: i32, num_octaves: u32) -> Turbule
     }
 }
 
-fn render_native_wgpu(scene: &Scene) -> crate::shared::image::Image {
+fn render_native_wgpu(scene: &Canvas) -> crate::shared::image::Image {
     let mut renderer = Renderer::new_default_device(scene.width, scene.height, Color::TRANSPARENT);
     renderer.prepare_scene(scene);
     assert!(

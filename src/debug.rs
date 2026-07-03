@@ -13,7 +13,7 @@ use std::{
 use crate::{
     TILE_SIZE,
     cpu::computes::fine::build_tile_alpha,
-    scene::Scene,
+    canvas::Canvas,
     shared::{
         fill::FillRule,
         image::{Image, rgba8_pack},
@@ -155,7 +155,7 @@ pub(crate) struct DebugScanBuffers<'a> {
 
 pub(crate) fn capture_render_debug(
     backend: &str,
-    scene: &Scene,
+    scene: &Canvas,
     final_image: &Image,
     scan: DebugScanBuffers<'_>,
     options: &RenderOptions,
@@ -225,7 +225,7 @@ pub(crate) fn capture_render_debug(
     capture
 }
 
-fn capture_all_tiles(scene: &Scene, scan: &DebugScanBuffers<'_>) -> Vec<DebugTileSummary> {
+fn capture_all_tiles(scene: &Canvas, scan: &DebugScanBuffers<'_>) -> Vec<DebugTileSummary> {
     let mut tiles = Vec::with_capacity((scene.width_in_tiles() * scene.height_in_tiles()) as usize);
     for tile_y in 0..scene.height_in_tiles() {
         for tile_x in 0..scene.width_in_tiles() {
@@ -240,7 +240,7 @@ fn capture_all_tiles(scene: &Scene, scan: &DebugScanBuffers<'_>) -> Vec<DebugTil
 }
 
 fn capture_tile_detail(
-    scene: &Scene,
+    scene: &Canvas,
     final_image: &Image,
     scan: &DebugScanBuffers<'_>,
     tile_x: u32,
@@ -287,7 +287,7 @@ fn capture_tile_detail(
 }
 
 fn capture_tile_path_summaries(
-    scene: &Scene,
+    scene: &Canvas,
     scan: &DebugScanBuffers<'_>,
     tile_x: u32,
     tile_y: u32,
@@ -413,7 +413,7 @@ pub fn debug_capture_json(capture: &RenderDebugCapture) -> String {
     )
 }
 
-fn tiles_json(scene: &Scene, tiles: &[DebugTileSummary]) -> String {
+fn tiles_json(scene: &Canvas, tiles: &[DebugTileSummary]) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "{{");
     let _ = writeln!(out, "  \"width_in_tiles\": {},", scene.width_in_tiles());
@@ -550,7 +550,7 @@ fn write_rgba_rows_json(out: &mut String, rgba: &[[u8; 4]]) {
     out.push(']');
 }
 
-fn capture_svg(scene: &Scene) -> String {
+fn capture_svg(scene: &Canvas) -> String {
     let width = scene.width;
     let height = scene.height;
     let width_in_tiles = scene.width_in_tiles();
@@ -621,7 +621,7 @@ fn inset_grid_line(position: f32, limit: f32, stroke_width: f32) -> f32 {
     }
 }
 
-fn tiles_svg(scene: &Scene, tiles: &[DebugTileSummary]) -> String {
+fn tiles_svg(scene: &Canvas, tiles: &[DebugTileSummary]) -> String {
     let tile_px = 28;
     let width = scene.width_in_tiles() * tile_px + 1;
     let height = scene.height_in_tiles() * tile_px + 1;
@@ -817,11 +817,11 @@ mod tests {
     };
 
     use super::{RenderDebugOptions, RenderOptions};
-    use crate::{FillRule, Scene, cpu::Renderer};
+    use crate::{FillRule, Canvas, cpu::Renderer};
 
     #[test]
     fn cpu_render_with_options_captures_tile_debug_outputs() {
-        let mut scene = Scene::new(32, 32);
+        let mut scene = Canvas::new(32, 32);
         scene.push_path(
             Rect::new(4.0, 4.0, 20.0, 20.0).to_path(0.1),
             Color::from_rgb8(0, 128, 0),

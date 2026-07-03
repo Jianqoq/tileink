@@ -3,7 +3,7 @@ use peniko::{
     color::palette::css,
     kurbo::{Point, Rect},
 };
-use tileink::{Brush, Scene, TextAlign, TextContext, TextLayoutOptions};
+use tileink::{Brush, Canvas, TextAlign, TextContext, TextLayoutOptions};
 
 const DESIGN_WIDTH: u32 = 460;
 const DESIGN_HEIGHT: u32 = 180;
@@ -19,8 +19,8 @@ fn offset() -> (f64, f64) {
     )
 }
 
-pub fn scene(context: &mut TextContext) -> Scene {
-    let mut scene = Scene::new(WIDTH, HEIGHT);
+pub fn scene(context: &mut TextContext) -> Canvas {
+    let mut scene = Canvas::new(WIDTH, HEIGHT);
     let (dx, dy) = offset();
     scene.push_rect(
         Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),
@@ -62,7 +62,7 @@ pub fn scene(context: &mut TextContext) -> Scene {
 
 fn push_line(
     context: &mut TextContext,
-    scene: &mut Scene,
+    scene: &mut Canvas,
     text: &str,
     font_size: f32,
     baseline: f64,

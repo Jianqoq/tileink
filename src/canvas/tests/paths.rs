@@ -1,6 +1,6 @@
 use super::*;
 
-fn assert_path_geometry_columns_match_scene(scene: &Scene) {
+fn assert_path_geometry_columns_match_scene(scene: &Canvas) {
     assert_eq!(scene.columns.line_path_ids.len(), scene.lines.len());
     assert_eq!(scene.columns.line_p0x.len(), scene.lines.len());
     assert_eq!(scene.columns.line_p0y.len(), scene.lines.len());

@@ -24,7 +24,7 @@ pub(in crate::cpu) struct RasterBuffers {
 }
 
 impl RasterBuffers {
-    pub(in crate::cpu) fn rebuild_tile_draw_bins(&mut self, scene: &crate::scene::Scene) {
+    pub(in crate::cpu) fn rebuild_tile_draw_bins(&mut self, scene: &crate::canvas::Canvas) {
         build_tile_draw_bins_into(scene, &mut self.tile_draw_bins, &mut self.tile_draw_cursors);
     }
 
@@ -42,7 +42,7 @@ impl RasterBuffers {
 
     pub(in crate::cpu) fn resize_scan_outputs(
         &mut self,
-        scene: &crate::scene::Scene,
+        scene: &crate::canvas::Canvas,
         last_bd_record: BackdropRecord,
     ) {
         let backdrop_len = last_bd_record.data_offset as usize + last_bd_record.data_len as usize;

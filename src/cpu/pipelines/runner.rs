@@ -22,7 +22,7 @@ pub(in crate::cpu) struct CoarseStage<'a> {
 
 pub(in crate::cpu) fn run_scan(
     scan: &ScanCpuPipeline,
-    scene: &crate::scene::Scene,
+    scene: &crate::canvas::Canvas,
     buffers: &mut RasterBuffers,
 ) {
     buffers.rebuild_tile_draw_bins(scene);
@@ -48,7 +48,7 @@ pub(in crate::cpu) fn run_scan(
 
 pub(in crate::cpu) fn run_cumsum(
     cumsum: &CumsumCpuPipeline,
-    scene: &crate::scene::Scene,
+    scene: &crate::canvas::Canvas,
     buffers: &mut RasterBuffers,
 ) {
     cumsum
@@ -58,7 +58,7 @@ pub(in crate::cpu) fn run_cumsum(
 
 pub(in crate::cpu) fn run_coarse(
     coarse: &CoarseCpuPipeline,
-    scene: &crate::scene::Scene,
+    scene: &crate::canvas::Canvas,
     stage: CoarseStage<'_>,
     buffers: &mut RasterBuffers,
 ) {
@@ -83,7 +83,7 @@ pub(in crate::cpu) fn run_coarse(
 
 pub(in crate::cpu) fn run_fine(
     fine: &FineCpuPipeline,
-    scene: &crate::scene::Scene,
+    scene: &crate::canvas::Canvas,
     target: &mut Image,
     target_bounds: Bounds,
     buffers: &RasterBuffers,

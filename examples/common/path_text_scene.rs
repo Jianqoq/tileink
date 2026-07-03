@@ -3,7 +3,7 @@ use peniko::{
     color::palette::css,
     kurbo::{Affine, Point, Rect},
 };
-use tileink::{Scene, TextAttrs, TextCacheKeyFlags, TextContext, TextLayoutOptions, TextWeight};
+use tileink::{Canvas, TextAttrs, TextCacheKeyFlags, TextContext, TextLayoutOptions, TextWeight};
 
 const DESIGN_WIDTH: u32 = 780;
 const DESIGN_HEIGHT: u32 = 400;
@@ -29,8 +29,8 @@ fn point_tuple(x: f64, y: f64) -> (f64, f64) {
     (p.x, p.y)
 }
 
-pub fn scene(context: &mut TextContext) -> Scene {
-    let mut scene = Scene::new(WIDTH, HEIGHT);
+pub fn scene(context: &mut TextContext) -> Canvas {
+    let mut scene = Canvas::new(WIDTH, HEIGHT);
     scene.push_rect(
         Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),
         tileink::Radius::ZERO,
@@ -119,7 +119,7 @@ pub fn scene(context: &mut TextContext) -> Scene {
     scene
 }
 
-fn push_label(scene: &mut Scene, context: &mut TextContext, text: &str, origin: Point) {
+fn push_label(scene: &mut Canvas, context: &mut TextContext, text: &str, origin: Point) {
     push_bitmap(
         scene,
         context,
@@ -132,7 +132,7 @@ fn push_label(scene: &mut Scene, context: &mut TextContext, text: &str, origin: 
 }
 
 fn push_bitmap(
-    scene: &mut Scene,
+    scene: &mut Canvas,
     context: &mut TextContext,
     text: &str,
     font_size: f32,
@@ -173,7 +173,7 @@ impl<'a> PathTextOptions<'a> {
 }
 
 fn push_path_text(
-    scene: &mut Scene,
+    scene: &mut Canvas,
     context: &mut TextContext,
     text: &str,
     brush: impl Into<tileink::Brush>,

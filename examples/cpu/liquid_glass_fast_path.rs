@@ -1,5 +1,5 @@
 use peniko::Color;
-use tileink::{CpuRenderer, Scene};
+use tileink::{CpuRenderer, Canvas};
 
 #[path = "../common/mod.rs"]
 mod common;
@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn render_scene(name: &str, scene: &Scene) -> Result<(), Box<dyn std::error::Error>> {
+fn render_scene(name: &str, scene: &Canvas) -> Result<(), Box<dyn std::error::Error>> {
     let mut renderer = CpuRenderer::new(fast_path::WIDTH, fast_path::HEIGHT, Color::WHITE);
     renderer.render(scene);
     let out = common::example_output(name);

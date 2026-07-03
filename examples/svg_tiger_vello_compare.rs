@@ -10,7 +10,7 @@ use std::{
 };
 
 use peniko::{Color, kurbo::Affine};
-use tileink::{Scene, SvgOptions, WgpuRenderProfileReport, WgpuRenderer};
+use tileink::{Canvas, SvgOptions, WgpuRenderProfileReport, WgpuRenderer};
 use usvg::{Node, Paint, PaintOrder, tiny_skia_path::PathSegment};
 use vello::{
     AaConfig, AaSupport, RenderParams, Renderer as VelloRenderer, RendererOptions,
@@ -84,7 +84,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let scale_x = width as f64 / tree.size().width() as f64;
     let scale_y = height as f64 / tree.size().height() as f64;
 
-    let mut tileink_scene = Scene::new(width, height);
+    let mut tileink_scene = Canvas::new(width, height);
     tileink_scene.push_svg_with_options(
         &tree,
         SvgOptions {
@@ -379,7 +379,7 @@ fn bench_tileink(
     renderer: &mut WgpuRenderer,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-    scene: &Scene,
+    scene: &Canvas,
     texture: &wgpu::Texture,
     config: Config,
 ) -> Result<Stats, Box<dyn Error>> {
@@ -401,7 +401,7 @@ fn profile_tileink(
     renderer: &mut WgpuRenderer,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-    scene: &Scene,
+    scene: &Canvas,
     texture: &wgpu::Texture,
     config: Config,
 ) -> Result<WgpuRenderProfileReport, Box<dyn Error>> {

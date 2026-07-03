@@ -1,10 +1,10 @@
 use peniko::{Color, kurbo::Rect};
-use tileink::{CandleStick, Scene};
+use tileink::{CandleStick, Canvas};
 
-pub fn candlestick_scene() -> (Scene, u32, u32) {
+pub fn candlestick_scene() -> (Canvas, u32, u32) {
     let width = 520;
     let height = 320;
-    let mut scene = Scene::new(width, height);
+    let mut scene = Canvas::new(width, height);
 
     scene.push_rect(
         Rect::new(0.0, 0.0, width as f64, height as f64),

@@ -624,7 +624,7 @@ mod tests {
 
     use super::CoarseCpuPipeline;
     use crate::{
-        Scene,
+        Canvas,
         shared::{
             bd_record::BackdropRecord,
             bounds::{Bounds, PixelBounds},
@@ -792,7 +792,7 @@ mod tests {
             return;
         }
 
-        let mut scene = Scene::new(160, 64);
+        let mut scene = Canvas::new(160, 64);
         scene.push_text_layout(&layout, Point::new(2.0, 32.0), Color::WHITE);
         let text = PreparedTextData::new(&scene.text_glyphs, &scene.text_runs, &mut context);
         if scene.draw_records.is_empty() {

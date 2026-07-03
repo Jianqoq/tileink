@@ -227,7 +227,7 @@ pub(super) fn rasterize_sdf_mask(sdf: &Sdf, sdf_bounds: Bounds, bounds: Bounds) 
 }
 
 pub(super) fn rasterize_layer_mask(
-    scene: &crate::scene::Scene,
+    scene: &crate::canvas::Canvas,
     draw_ix: usize,
     bounds: Bounds,
     buffers: &RasterBuffers,

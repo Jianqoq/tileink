@@ -1,5 +1,5 @@
 use peniko::Color;
-use tileink::Scene;
+use tileink::Canvas;
 
 pub const WIDTH: u32 = 240;
 pub const HEIGHT: u32 = 140;
@@ -25,9 +25,9 @@ const SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="240" height
         stroke-width="12" stroke-linecap="round"/>
 </svg>"##;
 
-pub fn scene() -> Result<Scene, Box<dyn std::error::Error>> {
+pub fn scene() -> Result<Canvas, Box<dyn std::error::Error>> {
     let tree = usvg::Tree::from_str(SVG, &usvg::Options::default())?;
-    let mut scene = Scene::new(WIDTH, HEIGHT);
+    let mut scene = Canvas::new(WIDTH, HEIGHT);
     scene.push_svg(&tree)?;
     Ok(scene)
 }

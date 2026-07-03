@@ -104,7 +104,7 @@ fn parse_config() -> Result<Config, Box<dyn Error>> {
 
 fn bench(
     renderer: &mut WgpuRenderer,
-    scene: &tileink::Scene,
+    scene: &tileink::Canvas,
     texture: &wgpu::Texture,
     config: Config,
 ) -> Result<Stats, Box<dyn Error>> {
@@ -125,7 +125,7 @@ fn bench(
 
 fn profile(
     renderer: &mut WgpuRenderer,
-    scene: &tileink::Scene,
+    scene: &tileink::Canvas,
     texture: &wgpu::Texture,
     config: Config,
 ) -> Result<WgpuRenderProfileReport, Box<dyn Error>> {

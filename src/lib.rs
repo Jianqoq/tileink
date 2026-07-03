@@ -1,7 +1,7 @@
 mod cpu;
 mod debug;
 mod render;
-mod scene;
+mod canvas;
 mod shared;
 mod svg;
 mod text;
@@ -25,7 +25,7 @@ pub use debug::{
     RenderDebugCapture, RenderDebugImage, RenderDebugOptions, RenderDebugText, RenderOptions,
     debug_capture_json,
 };
-pub use scene::{DrawId, Scene};
+pub use canvas::{DrawId, Canvas};
 pub use shared::{
     bounds::Bounds,
     brush::Brush,

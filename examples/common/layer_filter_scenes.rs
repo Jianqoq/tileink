@@ -6,7 +6,7 @@ use peniko::{
     Color,
     kurbo::{Circle, Rect, Shape, Stroke},
 };
-use tileink::{FillRule, Filter, Radius, RectLiquidGlass, Region, Scene};
+use tileink::{FillRule, Filter, Radius, RectLiquidGlass, Region, Canvas};
 
 use crate::common::{fill_circle, fill_rect, stroke_circle, stroke_rect};
 
@@ -14,7 +14,7 @@ pub const WIDTH: u32 = 720;
 pub const HEIGHT: u32 = 420;
 pub const CLEAR: Color = Color::WHITE;
 
-fn background(scene: &mut Scene) {
+fn background(scene: &mut Canvas) {
     fill_rect(
         scene,
         Rect::new(0.0, 0.0, f64::from(WIDTH), f64::from(HEIGHT)),
@@ -46,8 +46,8 @@ fn background(scene: &mut Scene) {
     }
 }
 
-pub fn filter_clip_opacity_scene() -> Scene {
-    let mut scene = Scene::new(WIDTH, HEIGHT);
+pub fn filter_clip_opacity_scene() -> Canvas {
+    let mut scene = Canvas::new(WIDTH, HEIGHT);
     background(&mut scene);
 
     let clip = Rect::new(150.0, 82.0, 570.0, 338.0);
@@ -96,8 +96,8 @@ pub fn filter_clip_opacity_scene() -> Scene {
     scene
 }
 
-pub fn clip_filter_scene() -> Scene {
-    let mut scene = Scene::new(WIDTH, HEIGHT);
+pub fn clip_filter_scene() -> Canvas {
+    let mut scene = Canvas::new(WIDTH, HEIGHT);
     background(&mut scene);
 
     let clip = Circle::new((360.0, 210.0), 142.0);
@@ -143,8 +143,8 @@ pub fn clip_filter_scene() -> Scene {
     scene
 }
 
-pub fn backdrop_blur_scene() -> Scene {
-    let mut scene = Scene::new(WIDTH, HEIGHT);
+pub fn backdrop_blur_scene() -> Canvas {
+    let mut scene = Canvas::new(WIDTH, HEIGHT);
     background(&mut scene);
 
     for i in 0..18 {
@@ -200,8 +200,8 @@ pub fn backdrop_blur_scene() -> Scene {
     scene
 }
 
-pub fn liquid_glass_scene() -> Scene {
-    let mut scene = Scene::new(WIDTH, HEIGHT);
+pub fn liquid_glass_scene() -> Canvas {
+    let mut scene = Canvas::new(WIDTH, HEIGHT);
     background(&mut scene);
 
     for i in 0..20 {

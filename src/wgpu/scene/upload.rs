@@ -1,5 +1,5 @@
 use crate::{
-    scene::Scene,
+    canvas::Canvas,
     shared::{
         bd_record::BackdropRecord,
         execution::{ExecPlan, LayerStackEntry},
@@ -14,7 +14,7 @@ use crate::{
         },
         image::rgba8_pack,
         pixel::{mul_div255, opacity_f32_to_u8},
-        scene_columns::SceneColumns,
+        scene_columns::CanvasColumns,
     },
     text::{AtlasSignature, PreparedGlyphContent, PreparedTextData, TextCompositeMode},
 };
@@ -55,7 +55,7 @@ struct TextUpload {
 impl TextUpload {
     fn refill(
         &mut self,
-        scene: &Scene,
+        scene: &Canvas,
         text: Option<&PreparedTextData>,
         current_atlas_signature: AtlasSignature,
     ) {
@@ -175,7 +175,7 @@ impl WgpuSceneBuffers {
         &mut self,
         device: &::wgpu::Device,
         queue: &::wgpu::Queue,
-        scene: &Scene,
+        scene: &Canvas,
         plan: &ExecPlan,
         text: Option<&PreparedTextData>,
         staging: &mut WgpuSceneUploadStaging,
@@ -225,7 +225,7 @@ impl WgpuSceneBuffers {
         &mut self,
         device: &::wgpu::Device,
         queue: &::wgpu::Queue,
-        columns: &SceneColumns,
+        columns: &CanvasColumns,
         text_enabled: bool,
     ) {
         profile_cpu("prepare.upload_scene.columns.lines", || {
@@ -585,7 +585,7 @@ impl WgpuSceneBuffers {
         &mut self,
         device: &::wgpu::Device,
         queue: &::wgpu::Queue,
-        scene: &Scene,
+        scene: &Canvas,
         text: Option<&PreparedTextData>,
         staging: &mut WgpuSceneUploadStaging,
     ) {

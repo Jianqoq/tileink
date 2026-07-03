@@ -1041,7 +1041,7 @@ mod tests {
         kurbo::{Affine, Shape},
     };
 
-    use crate::{Scene, shared::draw_record::DrawTag};
+    use crate::{Canvas, shared::draw_record::DrawTag};
 
     #[test]
     fn layout_produces_positioned_glyphs_when_a_font_is_available() {
@@ -1168,7 +1168,7 @@ mod tests {
             return;
         }
 
-        let mut scene = Scene::new(180, 80);
+        let mut scene = Canvas::new(180, 80);
         scene.push_text_layout_as_path(
             &mut context,
             &layout,

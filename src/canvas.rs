@@ -28,7 +28,7 @@ use crate::shared::{
     path::{PATH_FLAG_KEEP_HORIZONTAL_TILE_EDGES, PathRecord},
     path_flatten::PathFlatten,
     scan_line::line_scanned_tile_count,
-    scene_columns::SceneColumns,
+    scene_columns::CanvasColumns,
     sdf::{
         Sdf, SdfShadow,
         arc::{Arc as SdfArc, ArcShadow as SdfArcShadow},
@@ -50,7 +50,7 @@ use crate::text::{
 const SDF_RECORD_FILL_RULE: FillRule = FillRule::NonZero;
 
 #[derive(Clone)]
-pub struct Scene {
+pub struct Canvas {
     pub(crate) lines: Vec<Line>,
     pub(crate) path_records: Vec<PathRecord>,
     pub(crate) draw_records: Vec<DrawRecord>,
@@ -58,7 +58,7 @@ pub struct Scene {
     pub(crate) text_runs: Vec<TextRun>,
     pub(crate) bd_records: Vec<BackdropRecord>,
     pub(crate) command_lists: Vec<CommandList>,
-    pub(crate) columns: SceneColumns,
+    pub(crate) columns: CanvasColumns,
     root_commands: CommandListId,
     command_stack: Vec<CommandListId>,
     layer_stack: Vec<LayerKind>,
@@ -376,7 +376,7 @@ impl SceneOffset {
     }
 }
 
-impl Scene {
+impl Canvas {
     pub fn new(width: u32, height: u32) -> Self {
         Self {
             lines: Vec::new(),
@@ -386,7 +386,7 @@ impl Scene {
             text_runs: Vec::new(),
             bd_records: Vec::new(),
             command_lists: vec![CommandList::default()],
-            columns: SceneColumns::default(),
+            columns: CanvasColumns::default(),
             root_commands: ROOT_COMMAND_LIST_ID,
             command_stack: vec![ROOT_COMMAND_LIST_ID],
             layer_stack: Vec::new(),
@@ -519,7 +519,7 @@ impl Scene {
     /// current command list. It deliberately does not add a child-canvas clip;
     /// callers that need clipping can open a clip layer around the append.
     /// The borrowed child scene is not mutated and remains reusable.
-    pub fn append(&mut self, other: &Scene, pos: impl Into<Point>) {
+    pub fn append(&mut self, other: &Canvas, pos: impl Into<Point>) {
         self.ensure_command_root();
         assert!(
             other.command_stack.len() == 1 && other.layer_stack.is_empty(),
@@ -532,7 +532,7 @@ impl Scene {
 
     fn append_scene_ref_unchecked(
         &mut self,
-        other: &Scene,
+        other: &Canvas,
         mode: SceneAppendMode,
         offset: SceneOffset,
     ) -> Option<CommandListId> {
@@ -672,7 +672,7 @@ impl Scene {
             })
     }
 
-    fn append_scene_data(&mut self, other: &Scene, offset: SceneOffset) -> usize {
+    fn append_scene_data(&mut self, other: &Canvas, offset: SceneOffset) -> usize {
         let line_offset = self.lines.len() as u32;
         let path_offset = self.path_cnt;
         let draw_offset = self.draw_records.len();
@@ -863,7 +863,7 @@ impl Scene {
         Self::remap_command(command, draw_offset, child_list_offset)
     }
 
-    fn append_scene_as_command_list(&mut self, other: &Scene) -> CommandListId {
+    fn append_scene_as_command_list(&mut self, other: &Canvas) -> CommandListId {
         self.append_scene_ref_unchecked(
             other,
             SceneAppendMode::AppendAsCommandList,
@@ -997,7 +997,7 @@ impl Scene {
     /// The mask source is rendered isolated, converted to either alpha or
     /// luminance coverage, clipped to `mask.region`, then applied to this
     /// layer's content before compositing through any outer clips.
-    pub fn push_mask_layer(&mut self, mask_scene: Scene, mask: Mask) {
+    pub fn push_mask_layer(&mut self, mask_scene: Canvas, mask: Mask) {
         self.ensure_command_root();
         let mask_commands = self.append_scene_as_command_list(&mask_scene);
         self.push_mask_command(mask, mask_commands);

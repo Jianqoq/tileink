@@ -3,8 +3,8 @@ use std::ops::Range;
 
 use peniko::kurbo::PathEl;
 
-fn test_scene() -> Scene {
-    Scene::new(64, 64)
+fn test_scene() -> Canvas {
+    Canvas::new(64, 64)
 }
 fn rect_path(x0: f64, y0: f64, x1: f64, y1: f64) -> BezPath {
     BezPath::from_vec(vec![

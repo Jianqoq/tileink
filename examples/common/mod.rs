@@ -11,7 +11,7 @@ use peniko::{
     Color,
     kurbo::{Affine, BezPath, Circle, Rect, Shape, Stroke},
 };
-use tileink::{CpuRenderer, FillRule, Image, Radius, Region, Scene, SvgOptions, WgpuRenderer};
+use tileink::{CpuRenderer, FillRule, Image, Radius, Region, Canvas, SvgOptions, WgpuRenderer};
 
 pub const EXAMPLE_WIDTH: u32 = 1920;
 pub const EXAMPLE_HEIGHT: u32 = 1080;
@@ -41,7 +41,7 @@ pub fn example_asset(name: &str) -> PathBuf {
 pub fn load_svg_scene(
     input: impl AsRef<Path>,
     target_width: u32,
-) -> Result<(Scene, u32, u32), Box<dyn std::error::Error>> {
+) -> Result<(Canvas, u32, u32), Box<dyn std::error::Error>> {
     let input = input.as_ref();
     let data = fs::read(input)?;
     let mut options = usvg::Options {
@@ -60,7 +60,7 @@ pub fn load_svg_scene(
     let height = size.height();
     let scale_x = width as f64 / tree.size().width() as f64;
     let scale_y = height as f64 / tree.size().height() as f64;
-    let mut scene = Scene::new(width, height);
+    let mut scene = Canvas::new(width, height);
     scene.push_svg_with_options(
         &tree,
         SvgOptions {
@@ -93,7 +93,7 @@ pub fn save_example_image(
 
 pub fn render_to_png(
     name: &str,
-    scene: &Scene,
+    scene: &Canvas,
     width: u32,
     height: u32,
     clear: Color,
@@ -108,7 +108,7 @@ pub fn render_to_png(
 
 pub fn render_to_png_wgpu(
     name: &str,
-    scene: &Scene,
+    scene: &Canvas,
     width: u32,
     height: u32,
     clear: Color,
@@ -145,7 +145,7 @@ pub fn rect_path(rect: Rect, radius: Radius) -> BezPath {
     .to_path(0.1)
 }
 
-pub fn fill_rect(scene: &mut Scene, rect: Rect, radius: Radius, brush: impl Into<tileink::Brush>) {
+pub fn fill_rect(scene: &mut Canvas, rect: Rect, radius: Radius, brush: impl Into<tileink::Brush>) {
     scene.push_path(
         rect_path(rect, radius),
         brush,
@@ -155,15 +155,15 @@ pub fn fill_rect(scene: &mut Scene, rect: Rect, radius: Radius, brush: impl Into
     );
 }
 
-pub fn stroke_rect(scene: &mut Scene, rect: Rect, radius: Radius, stroke: Stroke, color: Color) {
+pub fn stroke_rect(scene: &mut Canvas, rect: Rect, radius: Radius, stroke: Stroke, color: Color) {
     scene.push_rect_stroke(rect, radius, stroke, color);
 }
 
-pub fn fill_circle(scene: &mut Scene, circle: Circle, brush: impl Into<tileink::Brush>) {
+pub fn fill_circle(scene: &mut Canvas, circle: Circle, brush: impl Into<tileink::Brush>) {
     scene.push_circle(circle, brush);
 }
 
-pub fn stroke_circle(scene: &mut Scene, circle: Circle, stroke: Stroke, color: Color) {
+pub fn stroke_circle(scene: &mut Canvas, circle: Circle, stroke: Stroke, color: Color) {
     scene.push_circle_stroke(circle, stroke, color);
 }
 

@@ -4,7 +4,7 @@ use peniko::{
     Color,
     kurbo::{Circle, Rect, Stroke},
 };
-use tileink::{BlurSampling, Filter, Radius, RectLiquidGlass, Region, Scene};
+use tileink::{BlurSampling, Filter, Radius, RectLiquidGlass, Region, Canvas};
 
 use crate::common;
 
@@ -20,8 +20,8 @@ pub enum GlassMode {
     Blur,
 }
 
-pub fn mixed_scene() -> Scene {
-    let mut scene = Scene::new(WIDTH, HEIGHT);
+pub fn mixed_scene() -> Canvas {
+    let mut scene = Canvas::new(WIDTH, HEIGHT);
     background(&mut scene, WIDTH, HEIGHT);
 
     add_panel(
@@ -45,8 +45,8 @@ pub fn mixed_scene() -> Scene {
     scene
 }
 
-pub fn single_mode_scene(mode: GlassMode) -> Scene {
-    let mut scene = Scene::new(WIDTH, HEIGHT);
+pub fn single_mode_scene(mode: GlassMode) -> Canvas {
+    let mut scene = Canvas::new(WIDTH, HEIGHT);
     background(&mut scene, WIDTH, HEIGHT);
     add_panel(
         &mut scene,
@@ -57,8 +57,8 @@ pub fn single_mode_scene(mode: GlassMode) -> Scene {
     scene
 }
 
-pub fn profile_scene_for_mode(mode: GlassMode, panels: u32) -> Scene {
-    let mut scene = Scene::new(PROFILE_WIDTH, PROFILE_HEIGHT);
+pub fn profile_scene_for_mode(mode: GlassMode, panels: u32) -> Canvas {
+    let mut scene = Canvas::new(PROFILE_WIDTH, PROFILE_HEIGHT);
     background(&mut scene, PROFILE_WIDTH, PROFILE_HEIGHT);
     let columns = if panels <= 16 { 4 } else { 8 };
     let rows = panels.div_ceil(columns);
@@ -84,7 +84,7 @@ pub fn profile_scene_for_mode(mode: GlassMode, panels: u32) -> Scene {
     scene
 }
 
-fn background(scene: &mut Scene, width: u32, height: u32) {
+fn background(scene: &mut Canvas, width: u32, height: u32) {
     common::fill_rect(
         scene,
         Rect::new(0.0, 0.0, f64::from(width), f64::from(height)),
@@ -120,7 +120,7 @@ fn background(scene: &mut Scene, width: u32, height: u32) {
     }
 }
 
-fn add_panel(scene: &mut Scene, panel: Rect, radius: Radius, mode: GlassMode) {
+fn add_panel(scene: &mut Canvas, panel: Rect, radius: Radius, mode: GlassMode) {
     match mode {
         GlassMode::Default => scene.push_backdrop_layer(
             Filter::RectLiquidGlass(RectLiquidGlass {

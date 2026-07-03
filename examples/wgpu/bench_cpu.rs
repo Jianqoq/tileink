@@ -4,10 +4,10 @@ use peniko::{
     Color,
     kurbo::{Affine, Circle, Rect, Shape, Stroke},
 };
-use tileink::{FillRule, Scene, WgpuRenderer};
+use tileink::{FillRule, Canvas, WgpuRenderer};
 
-fn build_scene(width: u32, height: u32) -> Scene {
-    let mut scene = Scene::new(width, height);
+fn build_scene(width: u32, height: u32) -> Canvas {
+    let mut scene = Canvas::new(width, height);
     scene.push_rect(
         Rect::new(0.0, 0.0, width as f64, height as f64),
         tileink::Radius::ZERO,
