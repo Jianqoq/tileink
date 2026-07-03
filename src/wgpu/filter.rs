@@ -55,6 +55,10 @@ struct FilterConfig {
     downsample_filter: u32,
     upsample_filter: u32,
     downsample_pad: u32,
+    source_x0: u32,
+    source_y0: u32,
+    source_x1: u32,
+    source_y1: u32,
     layer_stack_start: u32,
     layer_stack_end: u32,
     draw_ix: u32,
@@ -161,6 +165,10 @@ impl Default for FilterConfig {
             downsample_filter: 0,
             upsample_filter: 0,
             downsample_pad: 0,
+            source_x0: 0,
+            source_y0: 0,
+            source_x1: 0,
+            source_y1: 0,
             layer_stack_start: 0,
             layer_stack_end: 0,
             draw_ix: 0,
@@ -265,6 +273,7 @@ pub(crate) struct WgpuFilterPipeline {
     morphology_axis_region: ::wgpu::ComputePipeline,
     downsample_region: ::wgpu::ComputePipeline,
     upsample_region: ::wgpu::ComputePipeline,
+    upsample_rect_composite_region: ::wgpu::ComputePipeline,
     blur_region: ::wgpu::ComputePipeline,
     svg_mask_coverage_region: ::wgpu::ComputePipeline,
     apply_region_mask: ::wgpu::ComputePipeline,
@@ -424,6 +433,12 @@ impl WgpuFilterPipeline {
                 &pipeline_layout,
                 &shader,
                 "filter_upsample_region",
+            ),
+            upsample_rect_composite_region: create_pipeline(
+                device,
+                &pipeline_layout,
+                &shader,
+                "filter_upsample_rect_composite_region",
             ),
             blur_region: create_pipeline(device, &pipeline_layout, &shader, "filter_blur_region"),
             svg_mask_coverage_region: create_pipeline(
@@ -1046,6 +1061,53 @@ impl WgpuFilterPipeline {
             target,
             None,
         );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn upsample_rect_composite_region(
+        &self,
+        device: &::wgpu::Device,
+        queue: &::wgpu::Queue,
+        source: &::wgpu::TextureView,
+        target: &::wgpu::TextureView,
+        size: (u32, u32),
+        lengths: GpuBufferLengths,
+        target_bounds: Bounds,
+        source_bounds: Bounds,
+        sampling: BlurSampling,
+        region: &Region,
+    ) -> bool {
+        let Region::Rect { rect, radius } = region else {
+            return false;
+        };
+        let Some(mut config) = config_for_bounds(size, lengths, target_bounds) else {
+            return true;
+        };
+        config.source_x0 = source_bounds.x0 as u32;
+        config.source_y0 = source_bounds.y0 as u32;
+        config.source_x1 = source_bounds.x1 as u32;
+        config.source_y1 = source_bounds.y1 as u32;
+        config.downsample = sampling.factor();
+        config.upsample_filter = encode_blur_upsample_filter(sampling.upsample_filter);
+        config.rect_x0 = rect.x0 as f32;
+        config.rect_y0 = rect.y0 as f32;
+        config.rect_x1 = rect.x1 as f32;
+        config.rect_y1 = rect.y1 as f32;
+        config.radius_top_left = radius.top_left;
+        config.radius_top_right = radius.top_right;
+        config.radius_bottom_left = radius.bottom_left;
+        config.radius_bottom_right = radius.bottom_right;
+        self.dispatch(
+            device,
+            queue,
+            &self.upsample_rect_composite_region,
+            &config,
+            source,
+            &self.dummy_texture_view,
+            target,
+            None,
+        );
+        true
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1842,6 +1904,8 @@ impl WgpuFilterPipeline {
             "filter.downsample"
         } else if std::ptr::eq(pipeline, &self.upsample_region) {
             "filter.upsample"
+        } else if std::ptr::eq(pipeline, &self.upsample_rect_composite_region) {
+            "filter.upsample.composite.rect"
         } else if std::ptr::eq(pipeline, &self.blur_region) {
             if config.blur_axis == 0 {
                 "filter.blur.x"

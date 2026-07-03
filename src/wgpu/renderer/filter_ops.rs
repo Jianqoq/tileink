@@ -641,6 +641,49 @@ impl Renderer {
         }
     }
 
+    pub(super) fn apply_downsampled_blur_rect_composite(
+        &mut self,
+        target: WgpuRenderTargetId,
+        bounds: Bounds,
+        std_dev_x: f32,
+        std_dev_y: f32,
+        sampling: filter_model::BlurSampling,
+        region: &crate::shared::layer::region::Region,
+    ) -> bool {
+        let std_dev_x = std_dev_x.max(0.0);
+        let std_dev_y = std_dev_y.max(0.0);
+        let factor = sampling.factor();
+        if factor <= 1 || std_dev_x <= 0.0 || std_dev_y <= 0.0 {
+            return false;
+        }
+        let Some(low_bounds) = downsampled_bounds(bounds, factor) else {
+            return false;
+        };
+        if low_bounds.width() >= bounds.width() && low_bounds.height() >= bounds.height() {
+            return false;
+        }
+        if !matches!(region, crate::shared::layer::region::Region::Rect { .. }) {
+            return false;
+        }
+
+        let Some(low) = self.acquire_scratch() else {
+            return false;
+        };
+        let Some(temp) = self.acquire_scratch() else {
+            self.release_scratch(low);
+            return false;
+        };
+        let ok = self.downsample_region_to_target(target, low, bounds, low_bounds, sampling)
+            && self.blur_region_to_target(low, temp, low_bounds, std_dev_x / factor as f32, 0)
+            && self.blur_region_to_target(temp, low, low_bounds, std_dev_y / factor as f32, 1)
+            && self.upsample_rect_composite_to_target(
+                low, target, bounds, low_bounds, sampling, region,
+            );
+        self.release_scratch(temp);
+        self.release_scratch(low);
+        ok
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn downsampled_blur_to_target(
         &self,
@@ -1155,6 +1198,32 @@ impl Renderer {
             sampling,
         );
         true
+    }
+
+    fn upsample_rect_composite_to_target(
+        &self,
+        source: WgpuRenderTargetId,
+        target: WgpuRenderTargetId,
+        target_bounds: Bounds,
+        source_bounds: Bounds,
+        sampling: filter_model::BlurSampling,
+        region: &crate::shared::layer::region::Region,
+    ) -> bool {
+        let Some(filter) = &self.filter else {
+            return false;
+        };
+        filter.upsample_rect_composite_region(
+            &self.device,
+            &self.queue,
+            self.render_target_view(source),
+            self.render_target_view(target),
+            self.size,
+            self.lengths,
+            target_bounds,
+            source_bounds,
+            sampling,
+            region,
+        )
     }
 
     fn morphology_axis_to_target(

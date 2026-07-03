@@ -248,6 +248,32 @@ fn filter_downsample_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     target_store_at(xy.x, xy.y, pack_premul_rgba8(avg.r, avg.g, avg.b, avg.a));
 }
 
+fn upsampled_source_pixel_at(
+    xy: vec2<u32>,
+    source_x0: u32,
+    source_y0: u32,
+    source_x1: u32,
+    source_y1: u32,
+) -> u32 {
+    let factor = f32(max(config.downsample, 1u));
+    let max_x = f32(source_x1 - 1u);
+    let max_y = f32(source_y1 - 1u);
+    let sample_x = clamp((f32(xy.x) + 0.5) / factor - 0.5, f32(source_x0), max_x);
+    let sample_y = clamp((f32(xy.y) + 0.5) / factor - 0.5, f32(source_y0), max_y);
+    let x0 = u32(floor(sample_x));
+    let y0 = u32(floor(sample_y));
+    let x1 = min(x0 + 1u, source_x1 - 1u);
+    let y1 = min(y0 + 1u, source_y1 - 1u);
+    let tx = sample_x - floor(sample_x);
+    let ty = sample_y - floor(sample_y);
+    if (config.upsample_filter == 0u) {
+        return source_pixel_at(u32(round(sample_x)), u32(round(sample_y)));
+    }
+    let top = lerp_premul_u8(source_pixel_at(x0, y0), source_pixel_at(x1, y0), tx);
+    let bottom = lerp_premul_u8(source_pixel_at(x0, y1), source_pixel_at(x1, y1), tx);
+    return lerp_premul_u8(top, bottom, ty);
+}
+
 @compute @workgroup_size(256)
 fn filter_upsample_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = gid.x;
@@ -264,24 +290,48 @@ fn filter_upsample_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
 
     let xy = xy_for_region_ix(region_ix);
-    let factor = f32(max(config.downsample, 1u));
-    let max_x = f32(source_x1 - 1u);
-    let max_y = f32(source_y1 - 1u);
-    let sample_x = clamp((f32(xy.x) + 0.5) / factor - 0.5, f32(source_x0), max_x);
-    let sample_y = clamp((f32(xy.y) + 0.5) / factor - 0.5, f32(source_y0), max_y);
-    let x0 = u32(floor(sample_x));
-    let y0 = u32(floor(sample_y));
-    let x1 = min(x0 + 1u, source_x1 - 1u);
-    let y1 = min(y0 + 1u, source_y1 - 1u);
-    let tx = sample_x - floor(sample_x);
-    let ty = sample_y - floor(sample_y);
-    if (config.upsample_filter == 0u) {
-        target_store_at(xy.x, xy.y, source_pixel_at(u32(round(sample_x)), u32(round(sample_y))));
+    target_store_at(xy.x, xy.y, upsampled_source_pixel_at(xy, source_x0, source_y0, source_x1, source_y1));
+}
+
+@compute @workgroup_size(256)
+fn filter_upsample_rect_composite_region(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let region_ix = gid.x;
+    if (region_ix >= config.pixel_count) {
         return;
     }
-    let top = lerp_premul_u8(source_pixel_at(x0, y0), source_pixel_at(x1, y0), tx);
-    let bottom = lerp_premul_u8(source_pixel_at(x0, y1), source_pixel_at(x1, y1), tx);
-    target_store_at(xy.x, xy.y, lerp_premul_u8(top, bottom, ty));
+
+    let source_x0 = config.source_x0;
+    let source_y0 = config.source_y0;
+    let source_x1 = config.source_x1;
+    let source_y1 = config.source_y1;
+    if (source_x0 >= source_x1 || source_y0 >= source_y1) {
+        return;
+    }
+
+    let xy = xy_for_region_ix(region_ix);
+    let dist = rect_sdf_distance(
+        f32(xy.x) + 0.5,
+        f32(xy.y) + 0.5,
+        config.rect_x0,
+        config.rect_y0,
+        config.rect_x1,
+        config.rect_y1,
+        config.radius_top_left,
+        config.radius_top_right,
+        config.radius_bottom_left,
+        config.radius_bottom_right,
+    );
+    let source_alpha = coverage_to_u8(sdf_coverage_from_dist(dist));
+    if (source_alpha == 0u) {
+        return;
+    }
+
+    let ix = target_ix_at(xy.x, xy.y);
+    let source = scale_premul_u8(
+        upsampled_source_pixel_at(xy, source_x0, source_y0, source_x1, source_y1),
+        source_alpha,
+    );
+    target_store_ix(ix, src_over_premul_u8(target_load_ix(ix), source));
 }
 
 @compute @workgroup_size(256)
@@ -306,25 +356,30 @@ fn filter_blur_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_y1 = i32(config.region_y0 + config.region_height);
     let base_x = i32(xy.x);
     let base_y = i32(xy.y);
-    var sum = 0.0;
-    var r = 0.0;
-    var g = 0.0;
-    var b = 0.0;
-    var a = 0.0;
-    var d = -half_width;
+
+    let center = source_pixel_ix(dst_ix);
+    var sum = 1.0;
+    var r = f32(center & 255u);
+    var g = f32((center >> 8u) & 255u);
+    var b = f32((center >> 16u) & 255u);
+    var a = f32((center >> 24u) & 255u);
+
+    var weight = exp(-1.0 / two_sigma_sq);
+    let weight_ratio_decay = exp(-2.0 / two_sigma_sq);
+    var weight_ratio = weight * weight_ratio_decay;
+    var d = 1i;
     loop {
         if (d > half_width) {
             break;
         }
-        let df = f32(d);
-        let weight = exp(-(df * df) / two_sigma_sq);
-        sum += weight;
-        var sample_x = base_x;
+        sum += 2.0 * weight;
+        var sample_x = base_x + d;
         var sample_y = base_y;
         if (config.blur_axis == 0u) {
-            sample_x += d;
+            sample_y = base_y;
         } else {
-            sample_y += d;
+            sample_x = base_x;
+            sample_y = base_y + d;
         }
         if (
             sample_x >= i32(config.region_x0) &&
@@ -338,6 +393,28 @@ fn filter_blur_region(@builtin(global_invocation_id) gid: vec3<u32>) {
             b += f32((px >> 16u) & 255u) * weight;
             a += f32((px >> 24u) & 255u) * weight;
         }
+
+        sample_x = base_x - d;
+        sample_y = base_y;
+        if (config.blur_axis != 0u) {
+            sample_x = base_x;
+            sample_y = base_y - d;
+        }
+        if (
+            sample_x >= i32(config.region_x0) &&
+            sample_x < region_x1 &&
+            sample_y >= i32(config.region_y0) &&
+            sample_y < region_y1
+        ) {
+            let px = source_pixel_at(u32(sample_x), u32(sample_y));
+            r += f32(px & 255u) * weight;
+            g += f32((px >> 8u) & 255u) * weight;
+            b += f32((px >> 16u) & 255u) * weight;
+            a += f32((px >> 24u) & 255u) * weight;
+        }
+
+        weight *= weight_ratio;
+        weight_ratio *= weight_ratio_decay;
         d += 1i;
     }
 

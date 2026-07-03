@@ -1053,6 +1053,24 @@ impl Renderer {
         }
         let path_index = filter_cursors.next_path_index(sample_region);
 
+        if outer_stack.is_empty()
+            && let Filter::Blur {
+                std_dev_x,
+                std_dev_y,
+                sampling,
+            } = filter
+            && self.apply_downsampled_blur_rect_composite(
+                target,
+                bounds,
+                *std_dev_x,
+                *std_dev_y,
+                *sampling,
+                sample_region,
+            )
+        {
+            return self.execute_ops(scene, plan, children, target, filter_cursors);
+        }
+
         let Some(backdrop) = self.acquire_scratch() else {
             return false;
         };
