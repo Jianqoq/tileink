@@ -20,18 +20,14 @@ use super::{
 };
 
 const WORKGROUP_SIZE: u32 = FINE_WORKGROUP_SIZE;
-const STORAGE_BINDING_COUNT: u32 = 28;
-const TILE_STORAGE_BINDING_COUNT: u32 = 54;
+const STORAGE_BINDING_COUNT: u32 = 27;
+const TILE_STORAGE_BINDING_COUNT: u32 = 53;
 
 pub(crate) struct WgpuFinePipeline {
     pipeline: ::wgpu::ComputePipeline,
     bind_group_layout: ::wgpu::BindGroupLayout,
-    texture_pipeline: ::wgpu::ComputePipeline,
-    texture_bind_group_layout: ::wgpu::BindGroupLayout,
     tile_pipeline: Option<::wgpu::ComputePipeline>,
     tile_bind_group_layout: Option<::wgpu::BindGroupLayout>,
-    tile_texture_pipeline: Option<::wgpu::ComputePipeline>,
-    tile_texture_bind_group_layout: Option<::wgpu::BindGroupLayout>,
     config: ::wgpu::Buffer,
 }
 
@@ -55,6 +51,12 @@ unsafe impl bytemuck::Pod for FineConfig {}
 
 impl WgpuFinePipeline {
     pub(crate) fn new(device: &::wgpu::Device) -> Option<Self> {
+        if !device
+            .features()
+            .contains(::wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
+        {
+            return None;
+        }
         if device.limits().max_storage_buffers_per_shader_stage < STORAGE_BINDING_COUNT {
             return None;
         }
@@ -81,82 +83,35 @@ impl WgpuFinePipeline {
             compilation_options: ::wgpu::PipelineCompilationOptions::default(),
             cache: None,
         });
-        let fine_texture_entries = fine_texture_layout_entries();
-        let texture_bind_group_layout =
-            device.create_bind_group_layout(&::wgpu::BindGroupLayoutDescriptor {
-                label: Some("tileink wgpu fine texture bind group layout"),
-                entries: &fine_texture_entries,
-            });
-        let texture_pipeline_layout =
-            device.create_pipeline_layout(&::wgpu::PipelineLayoutDescriptor {
-                label: Some("tileink wgpu fine texture pipeline layout"),
-                bind_group_layouts: &[Some(&texture_bind_group_layout)],
-                immediate_size: 0,
-            });
-        let texture_pipeline = device.create_compute_pipeline(&::wgpu::ComputePipelineDescriptor {
-            label: Some("tileink wgpu fine texture pipeline"),
-            layout: Some(&texture_pipeline_layout),
-            module: &shader,
-            entry_point: Some("fine_texture_main"),
-            compilation_options: ::wgpu::PipelineCompilationOptions::default(),
-            cache: None,
-        });
-        let (
-            tile_pipeline,
-            tile_bind_group_layout,
-            tile_texture_pipeline,
-            tile_texture_bind_group_layout,
-        ) = if device.limits().max_storage_buffers_per_shader_stage >= TILE_STORAGE_BINDING_COUNT {
-            let tile_bind_group_layout =
-                device.create_bind_group_layout(&::wgpu::BindGroupLayoutDescriptor {
-                    label: Some("tileink wgpu tile fine bind group layout"),
-                    entries: &tile_fine_layout_entries(),
-                });
-            let tile_pipeline_layout =
-                device.create_pipeline_layout(&::wgpu::PipelineLayoutDescriptor {
-                    label: Some("tileink wgpu tile fine pipeline layout"),
-                    bind_group_layouts: &[Some(&tile_bind_group_layout)],
-                    immediate_size: 0,
-                });
-            let tile_texture_entries = tile_fine_texture_layout_entries();
-            let tile_texture_bind_group_layout =
-                device.create_bind_group_layout(&::wgpu::BindGroupLayoutDescriptor {
-                    label: Some("tileink wgpu tile fine texture bind group layout"),
-                    entries: &tile_texture_entries,
-                });
-            let tile_texture_pipeline_layout =
-                device.create_pipeline_layout(&::wgpu::PipelineLayoutDescriptor {
-                    label: Some("tileink wgpu tile fine texture pipeline layout"),
-                    bind_group_layouts: &[Some(&tile_texture_bind_group_layout)],
-                    immediate_size: 0,
-                });
-            (
-                Some(
-                    device.create_compute_pipeline(&::wgpu::ComputePipelineDescriptor {
-                        label: Some("tileink wgpu tile fine pipeline"),
-                        layout: Some(&tile_pipeline_layout),
-                        module: &shader,
-                        entry_point: Some("fine_tile_main"),
-                        compilation_options: ::wgpu::PipelineCompilationOptions::default(),
-                        cache: None,
-                    }),
-                ),
-                Some(tile_bind_group_layout),
-                Some(
-                    device.create_compute_pipeline(&::wgpu::ComputePipelineDescriptor {
-                        label: Some("tileink wgpu tile fine texture pipeline"),
-                        layout: Some(&tile_texture_pipeline_layout),
-                        module: &shader,
-                        entry_point: Some("fine_tile_texture_main"),
-                        compilation_options: ::wgpu::PipelineCompilationOptions::default(),
-                        cache: None,
-                    }),
-                ),
-                Some(tile_texture_bind_group_layout),
-            )
-        } else {
-            (None, None, None, None)
-        };
+        let (tile_pipeline, tile_bind_group_layout) =
+            if device.limits().max_storage_buffers_per_shader_stage >= TILE_STORAGE_BINDING_COUNT {
+                let tile_bind_group_layout =
+                    device.create_bind_group_layout(&::wgpu::BindGroupLayoutDescriptor {
+                        label: Some("tileink wgpu tile fine bind group layout"),
+                        entries: &tile_fine_layout_entries(),
+                    });
+                let tile_pipeline_layout =
+                    device.create_pipeline_layout(&::wgpu::PipelineLayoutDescriptor {
+                        label: Some("tileink wgpu tile fine pipeline layout"),
+                        bind_group_layouts: &[Some(&tile_bind_group_layout)],
+                        immediate_size: 0,
+                    });
+                (
+                    Some(
+                        device.create_compute_pipeline(&::wgpu::ComputePipelineDescriptor {
+                            label: Some("tileink wgpu tile fine pipeline"),
+                            layout: Some(&tile_pipeline_layout),
+                            module: &shader,
+                            entry_point: Some("fine_tile_main"),
+                            compilation_options: ::wgpu::PipelineCompilationOptions::default(),
+                            cache: None,
+                        }),
+                    ),
+                    Some(tile_bind_group_layout),
+                )
+            } else {
+                (None, None)
+            };
         let config = device.create_buffer(&::wgpu::BufferDescriptor {
             label: Some("tileink wgpu fine config"),
             size: std::mem::size_of::<FineConfig>() as ::wgpu::BufferAddress,
@@ -166,12 +121,8 @@ impl WgpuFinePipeline {
         Some(Self {
             pipeline,
             bind_group_layout,
-            texture_pipeline,
-            texture_bind_group_layout,
             tile_pipeline,
             tile_bind_group_layout,
-            tile_texture_pipeline,
-            tile_texture_bind_group_layout,
             config,
         })
     }
@@ -189,10 +140,30 @@ impl WgpuFinePipeline {
             return false;
         }
 
-        let target_len = scene.width as ::wgpu::BufferAddress
-            * scene.height as ::wgpu::BufferAddress
-            * std::mem::size_of::<u32>() as ::wgpu::BufferAddress;
-        target.resize(device, target_len);
+        target.resize(device, scene.width, scene.height);
+        self.render_to_view(
+            device,
+            queue,
+            scene,
+            scene_buffers,
+            target.view(),
+            clear_color,
+        )
+    }
+
+    pub(crate) fn render_to_view(
+        &self,
+        device: &::wgpu::Device,
+        queue: &::wgpu::Queue,
+        scene: &Scene,
+        scene_buffers: &WgpuSceneBuffers,
+        target: &::wgpu::TextureView,
+        clear_color: u32,
+    ) -> bool {
+        if !Self::supports_scene(scene) {
+            return false;
+        }
+
         queue.write_buffer(
             &self.config,
             0,
@@ -216,7 +187,7 @@ impl WgpuFinePipeline {
         }
 
         let bindings = scene_buffers.fine_bindings();
-        let bind_group = self.create_bind_group(device, target, &bindings);
+        let bind_group = self.create_bind_group_for_view(device, target, &bindings);
         let mut encoder = device.create_command_encoder(&::wgpu::CommandEncoderDescriptor {
             label: Some("tileink wgpu fine encoder"),
         });
@@ -226,67 +197,6 @@ impl WgpuFinePipeline {
                 timestamp_writes: None,
             });
             pass.set_pipeline(&self.pipeline);
-            pass.set_bind_group(0, &bind_group, &[]);
-            pass.dispatch_workgroups(pixel_count.div_ceil(WORKGROUP_SIZE), 1, 1);
-        }
-        queue.submit([encoder.finish()]);
-        true
-    }
-
-    pub(crate) fn render_to_texture(
-        &self,
-        device: &::wgpu::Device,
-        queue: &::wgpu::Queue,
-        scene: &Scene,
-        scene_buffers: &WgpuSceneBuffers,
-        target: &mut WgpuTarget,
-        texture: &::wgpu::Texture,
-        clear_color: u32,
-    ) -> bool {
-        if !Self::supports_scene(scene) {
-            return false;
-        }
-
-        target.resize(
-            device,
-            scene.width as ::wgpu::BufferAddress
-                * scene.height as ::wgpu::BufferAddress
-                * std::mem::size_of::<u32>() as ::wgpu::BufferAddress,
-        );
-        queue.write_buffer(
-            &self.config,
-            0,
-            bytemuck::bytes_of(&FineConfig {
-                width: scene.width,
-                height: scene.height,
-                draw_count: scene.draw_records.len() as u32,
-                clear_color,
-                tile_count: 0,
-                tiles_width: 0,
-                tiles_height: 0,
-                load_target: 0,
-                clip_spill_depth: 0,
-                group_spill_depth: 0,
-            }),
-        );
-
-        let pixel_count = scene.width.saturating_mul(scene.height);
-        if pixel_count == 0 {
-            return true;
-        }
-
-        let view = texture.create_view(&::wgpu::TextureViewDescriptor::default());
-        let bindings = scene_buffers.fine_bindings();
-        let bind_group = self.create_texture_bind_group(device, target, &bindings, &view);
-        let mut encoder = device.create_command_encoder(&::wgpu::CommandEncoderDescriptor {
-            label: Some("tileink wgpu fine texture encoder"),
-        });
-        {
-            let mut pass = encoder.begin_compute_pass(&::wgpu::ComputePassDescriptor {
-                label: Some("tileink wgpu fine texture pass"),
-                timestamp_writes: None,
-            });
-            pass.set_pipeline(&self.texture_pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
             pass.dispatch_workgroups(pixel_count.div_ceil(WORKGROUP_SIZE), 1, 1);
         }
@@ -312,6 +222,45 @@ impl WgpuFinePipeline {
         clip_spill_depth: u32,
         group_spill_depth: u32,
     ) -> bool {
+        target.resize(device, width, height);
+        self.render_tiles_to_view(
+            device,
+            queue,
+            width,
+            height,
+            lengths,
+            scene_buffers,
+            scan,
+            coarse,
+            clip_spills,
+            group_spills,
+            target.view(),
+            clear_color,
+            load_target,
+            clip_spill_depth,
+            group_spill_depth,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn render_tiles_to_view(
+        &self,
+        device: &::wgpu::Device,
+        queue: &::wgpu::Queue,
+        width: u32,
+        height: u32,
+        lengths: GpuBufferLengths,
+        scene_buffers: &WgpuSceneBuffers,
+        scan: &WgpuScanBuffers,
+        coarse: &WgpuCoarseBuffers,
+        clip_spills: &WgpuBuffer,
+        group_spills: &WgpuBuffer,
+        target: &::wgpu::TextureView,
+        clear_color: u32,
+        load_target: bool,
+        clip_spill_depth: u32,
+        group_spill_depth: u32,
+    ) -> bool {
         let Some(tile_pipeline) = &self.tile_pipeline else {
             return false;
         };
@@ -322,9 +271,6 @@ impl WgpuFinePipeline {
             return true;
         }
 
-        let target_len = lengths.image_pixels as ::wgpu::BufferAddress
-            * std::mem::size_of::<u32>() as ::wgpu::BufferAddress;
-        target.resize(device, target_len);
         queue.write_buffer(
             &self.config,
             0,
@@ -344,88 +290,13 @@ impl WgpuFinePipeline {
 
         let bindings = scene_buffers.tile_fine_bindings(scan, coarse, clip_spills, group_spills);
         let bind_group =
-            self.create_tile_bind_group(device, target, tile_bind_group_layout, &bindings);
+            self.create_tile_bind_group_for_view(device, target, tile_bind_group_layout, &bindings);
         let mut encoder = device.create_command_encoder(&::wgpu::CommandEncoderDescriptor {
             label: Some("tileink wgpu tile fine encoder"),
         });
         {
             let mut pass = encoder.begin_compute_pass(&::wgpu::ComputePassDescriptor {
                 label: Some("tileink wgpu tile fine pass"),
-                timestamp_writes: None,
-            });
-            pass.set_pipeline(tile_pipeline);
-            pass.set_bind_group(0, &bind_group, &[]);
-            pass.dispatch_workgroups(lengths.tile_count as u32, 1, 1);
-        }
-        queue.submit([encoder.finish()]);
-        true
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn render_tiles_to_texture(
-        &self,
-        device: &::wgpu::Device,
-        queue: &::wgpu::Queue,
-        width: u32,
-        height: u32,
-        lengths: GpuBufferLengths,
-        scene_buffers: &WgpuSceneBuffers,
-        scan: &WgpuScanBuffers,
-        coarse: &WgpuCoarseBuffers,
-        clip_spills: &WgpuBuffer,
-        group_spills: &WgpuBuffer,
-        target: &mut WgpuTarget,
-        texture: &::wgpu::Texture,
-        clear_color: u32,
-        load_target: bool,
-        clip_spill_depth: u32,
-        group_spill_depth: u32,
-    ) -> bool {
-        let Some(tile_pipeline) = &self.tile_texture_pipeline else {
-            return false;
-        };
-        let Some(tile_bind_group_layout) = &self.tile_texture_bind_group_layout else {
-            return false;
-        };
-        if lengths.tile_count == 0 {
-            return true;
-        }
-
-        let target_len = lengths.image_pixels as ::wgpu::BufferAddress
-            * std::mem::size_of::<u32>() as ::wgpu::BufferAddress;
-        target.resize(device, target_len);
-        queue.write_buffer(
-            &self.config,
-            0,
-            bytemuck::bytes_of(&FineConfig {
-                width,
-                height,
-                draw_count: 0,
-                clear_color,
-                tile_count: lengths.tile_count as u32,
-                tiles_width: lengths.tiles_width as u32,
-                tiles_height: lengths.tiles_height as u32,
-                load_target: u32::from(load_target),
-                clip_spill_depth,
-                group_spill_depth,
-            }),
-        );
-
-        let view = texture.create_view(&::wgpu::TextureViewDescriptor::default());
-        let bindings = scene_buffers.tile_fine_bindings(scan, coarse, clip_spills, group_spills);
-        let bind_group = self.create_tile_texture_bind_group(
-            device,
-            target,
-            tile_bind_group_layout,
-            &bindings,
-            &view,
-        );
-        let mut encoder = device.create_command_encoder(&::wgpu::CommandEncoderDescriptor {
-            label: Some("tileink wgpu tile fine texture encoder"),
-        });
-        {
-            let mut pass = encoder.begin_compute_pass(&::wgpu::ComputePassDescriptor {
-                label: Some("tileink wgpu tile fine texture pass"),
                 timestamp_writes: None,
             });
             pass.set_pipeline(tile_pipeline);
@@ -464,10 +335,10 @@ impl WgpuFinePipeline {
         })
     }
 
-    fn create_bind_group(
+    fn create_bind_group_for_view(
         &self,
         device: &::wgpu::Device,
-        target: &WgpuTarget,
+        texture: &::wgpu::TextureView,
         bindings: &WgpuFineSceneBindings<'_>,
     ) -> ::wgpu::BindGroup {
         device.create_bind_group(&::wgpu::BindGroupDescriptor {
@@ -475,7 +346,7 @@ impl WgpuFinePipeline {
             layout: &self.bind_group_layout,
             entries: &[
                 buffer_binding(0, &self.config),
-                buffer_binding(1, target.buffer()),
+                texture_binding(1, texture),
                 buffer_binding(2, bindings.draw_flags),
                 buffer_binding(3, bindings.draw_brush_colors),
                 buffer_binding(4, bindings.draw_pixel_x0),
@@ -507,55 +378,10 @@ impl WgpuFinePipeline {
         })
     }
 
-    fn create_texture_bind_group(
+    fn create_tile_bind_group_for_view(
         &self,
         device: &::wgpu::Device,
-        target: &WgpuTarget,
-        bindings: &WgpuFineSceneBindings<'_>,
         texture: &::wgpu::TextureView,
-    ) -> ::wgpu::BindGroup {
-        device.create_bind_group(&::wgpu::BindGroupDescriptor {
-            label: Some("tileink wgpu fine texture bind group"),
-            layout: &self.texture_bind_group_layout,
-            entries: &[
-                buffer_binding(0, &self.config),
-                buffer_binding(1, target.buffer()),
-                buffer_binding(2, bindings.draw_flags),
-                buffer_binding(3, bindings.draw_brush_colors),
-                buffer_binding(4, bindings.draw_pixel_x0),
-                buffer_binding(5, bindings.draw_pixel_y0),
-                buffer_binding(6, bindings.draw_pixel_x1),
-                buffer_binding(7, bindings.draw_pixel_y1),
-                buffer_binding(8, bindings.sdf_refs),
-                buffer_binding(9, bindings.sdf_kinds),
-                buffer_binding(10, bindings.sdf_x0),
-                buffer_binding(11, bindings.sdf_y0),
-                buffer_binding(12, bindings.sdf_x1),
-                buffer_binding(13, bindings.sdf_y1),
-                buffer_binding(14, bindings.sdf_r0),
-                buffer_binding(15, bindings.sdf_r1),
-                buffer_binding(16, bindings.sdf_r2),
-                buffer_binding(17, bindings.sdf_r3),
-                buffer_binding(18, bindings.sdf_stroke_top),
-                buffer_binding(19, bindings.sdf_stroke_right),
-                buffer_binding(20, bindings.sdf_stroke_bottom),
-                buffer_binding(21, bindings.sdf_stroke_left),
-                buffer_binding(22, bindings.sdf_shadow_offset_x),
-                buffer_binding(23, bindings.sdf_shadow_offset_y),
-                buffer_binding(24, bindings.sdf_shadow_expand),
-                buffer_binding(25, bindings.sdf_shadow_intensity),
-                buffer_binding(26, bindings.brush_data),
-                buffer_binding(27, bindings.brush_params),
-                buffer_binding(28, bindings.brush_payloads),
-                texture_binding(55, texture),
-            ],
-        })
-    }
-
-    fn create_tile_bind_group(
-        &self,
-        device: &::wgpu::Device,
-        target: &WgpuTarget,
         layout: &::wgpu::BindGroupLayout,
         bindings: &WgpuTileFineBindings<'_>,
     ) -> ::wgpu::BindGroup {
@@ -565,7 +391,7 @@ impl WgpuFinePipeline {
             layout,
             entries: &[
                 buffer_binding(0, &self.config),
-                buffer_binding(1, target.buffer()),
+                texture_binding(1, texture),
                 buffer_binding(2, fine.draw_flags),
                 buffer_binding(3, fine.draw_brush_colors),
                 buffer_binding(4, fine.draw_pixel_x0),
@@ -619,79 +445,6 @@ impl WgpuFinePipeline {
                 buffer_binding(52, bindings.glyph_image_data),
                 buffer_binding(53, bindings.clip_spills),
                 buffer_binding(54, bindings.group_spills),
-            ],
-        })
-    }
-
-    fn create_tile_texture_bind_group(
-        &self,
-        device: &::wgpu::Device,
-        target: &WgpuTarget,
-        layout: &::wgpu::BindGroupLayout,
-        bindings: &WgpuTileFineBindings<'_>,
-        texture: &::wgpu::TextureView,
-    ) -> ::wgpu::BindGroup {
-        let fine = &bindings.fine;
-        device.create_bind_group(&::wgpu::BindGroupDescriptor {
-            label: Some("tileink wgpu tile fine texture bind group"),
-            layout,
-            entries: &[
-                buffer_binding(0, &self.config),
-                buffer_binding(1, target.buffer()),
-                buffer_binding(2, fine.draw_flags),
-                buffer_binding(3, fine.draw_brush_colors),
-                buffer_binding(4, fine.draw_pixel_x0),
-                buffer_binding(5, fine.draw_pixel_y0),
-                buffer_binding(6, fine.draw_pixel_x1),
-                buffer_binding(7, fine.draw_pixel_y1),
-                buffer_binding(8, fine.sdf_refs),
-                buffer_binding(9, fine.sdf_kinds),
-                buffer_binding(10, fine.sdf_x0),
-                buffer_binding(11, fine.sdf_y0),
-                buffer_binding(12, fine.sdf_x1),
-                buffer_binding(13, fine.sdf_y1),
-                buffer_binding(14, fine.sdf_r0),
-                buffer_binding(15, fine.sdf_r1),
-                buffer_binding(16, fine.sdf_r2),
-                buffer_binding(17, fine.sdf_r3),
-                buffer_binding(18, fine.sdf_stroke_top),
-                buffer_binding(19, fine.sdf_stroke_right),
-                buffer_binding(20, fine.sdf_stroke_bottom),
-                buffer_binding(21, fine.sdf_stroke_left),
-                buffer_binding(22, fine.sdf_shadow_offset_x),
-                buffer_binding(23, fine.sdf_shadow_offset_y),
-                buffer_binding(24, fine.sdf_shadow_expand),
-                buffer_binding(25, fine.sdf_shadow_intensity),
-                buffer_binding(26, fine.brush_data),
-                buffer_binding(27, fine.brush_params),
-                buffer_binding(28, fine.brush_payloads),
-                buffer_binding(29, bindings.tile_range_starts),
-                buffer_binding(30, bindings.tile_range_ends),
-                buffer_binding(31, bindings.ptcl_tags),
-                buffer_binding(32, bindings.ptcl_backdrops),
-                buffer_binding(33, bindings.ptcl_fill_rules),
-                buffer_binding(34, bindings.ptcl_segment_starts),
-                buffer_binding(35, bindings.ptcl_segment_ends),
-                buffer_binding(36, bindings.ptcl_colors),
-                buffer_binding(37, bindings.segment_p0x),
-                buffer_binding(38, bindings.segment_p0y),
-                buffer_binding(39, bindings.segment_p1x),
-                buffer_binding(40, bindings.segment_p1y),
-                buffer_binding(41, bindings.segment_y_edge),
-                buffer_binding(42, bindings.glyph_indices),
-                buffer_binding(43, bindings.glyph_image_ids),
-                buffer_binding(44, bindings.glyph_x),
-                buffer_binding(45, bindings.glyph_y),
-                buffer_binding(46, bindings.glyph_image_left),
-                buffer_binding(47, bindings.glyph_image_top),
-                buffer_binding(48, bindings.glyph_image_width),
-                buffer_binding(49, bindings.glyph_image_height),
-                buffer_binding(50, bindings.glyph_image_content),
-                buffer_binding(51, bindings.glyph_image_data_offsets),
-                buffer_binding(52, bindings.glyph_image_data),
-                buffer_binding(53, bindings.clip_spills),
-                buffer_binding(54, bindings.group_spills),
-                texture_binding(55, texture),
             ],
         })
     }
@@ -700,7 +453,7 @@ impl WgpuFinePipeline {
 fn fine_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 29] {
     [
         uniform_layout_entry(0),
-        storage_layout_entry(1, false),
+        storage_texture_layout_entry(1),
         storage_layout_entry(2, true),
         storage_layout_entry(3, true),
         storage_layout_entry(4, true),
@@ -731,16 +484,10 @@ fn fine_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 29] {
     ]
 }
 
-fn fine_texture_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
-    let mut entries = fine_layout_entries().to_vec();
-    entries.push(storage_texture_layout_entry(55));
-    entries
-}
-
 fn tile_fine_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 55] {
     [
         uniform_layout_entry(0),
-        storage_layout_entry(1, false),
+        storage_texture_layout_entry(1),
         storage_layout_entry(2, true),
         storage_layout_entry(3, true),
         storage_layout_entry(4, true),
@@ -797,12 +544,6 @@ fn tile_fine_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 55] {
     ]
 }
 
-fn tile_fine_texture_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
-    let mut entries = tile_fine_layout_entries().to_vec();
-    entries.push(storage_texture_layout_entry(55));
-    entries
-}
-
 fn uniform_layout_entry(binding: u32) -> ::wgpu::BindGroupLayoutEntry {
     ::wgpu::BindGroupLayoutEntry {
         binding,
@@ -821,7 +562,7 @@ fn storage_texture_layout_entry(binding: u32) -> ::wgpu::BindGroupLayoutEntry {
         binding,
         visibility: ::wgpu::ShaderStages::COMPUTE,
         ty: ::wgpu::BindingType::StorageTexture {
-            access: ::wgpu::StorageTextureAccess::WriteOnly,
+            access: ::wgpu::StorageTextureAccess::ReadWrite,
             format: ::wgpu::TextureFormat::Rgba8Unorm,
             view_dimension: ::wgpu::TextureViewDimension::D2,
         },

@@ -209,10 +209,10 @@ fn surface_config(
             capabilities.formats
         ))
     })?;
-    let usage = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST;
+    let usage = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::STORAGE_BINDING;
     if !capabilities.usages.contains(usage) {
         return Err(std::io::Error::other(format!(
-            "surface does not support COPY_DST usage; usages: {:?}",
+            "surface does not support STORAGE_BINDING usage; usages: {:?}",
             capabilities.usages
         ))
         .into());

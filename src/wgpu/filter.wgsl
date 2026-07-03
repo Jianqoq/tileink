@@ -177,9 +177,9 @@ struct FilterConfig {
 };
 
 @group(0) @binding(0) var<uniform> config: FilterConfig;
-@group(0) @binding(1) var<storage, read> source_pixels: array<u32>;
-@group(0) @binding(2) var<storage, read> aux_pixels: array<u32>;
-@group(0) @binding(3) var<storage, read_write> target_pixels: array<u32>;
+@group(0) @binding(1) var source_texture: texture_storage_2d<rgba8unorm, read>;
+@group(0) @binding(2) var aux_texture: texture_storage_2d<rgba8unorm, read>;
+@group(0) @binding(3) var target_texture: texture_storage_2d<rgba8unorm, read_write>;
 @group(0) @binding(4) var<storage, read> draw_path_ids: array<u32>;
 @group(0) @binding(5) var<storage, read> draw_flags: array<u32>;
 @group(0) @binding(6) var<storage, read> draw_pixel_x0: array<i32>;
@@ -240,7 +240,7 @@ fn filter_clear_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (region_ix >= config.pixel_count) {
         return;
     }
-    target_pixels[target_ix_for_region_ix(region_ix)] = config.clear_color;
+    target_store_ix(target_ix_for_region_ix(region_ix), config.clear_color);
 }
 
 @compute @workgroup_size(256)
@@ -250,7 +250,7 @@ fn filter_copy_region(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
     let ix = target_ix_for_region_ix(region_ix);
-    target_pixels[ix] = source_pixels[ix];
+    target_store_ix(ix, source_pixel_ix(ix));
 }
 
 @compute @workgroup_size(256)
@@ -260,7 +260,7 @@ fn filter_source_alpha_region(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
     let ix = target_ix_for_region_ix(region_ix);
-    target_pixels[ix] = source_pixels[ix] & 0xff000000u;
+    target_store_ix(ix, source_pixel_ix(ix) & 0xff000000u);
 }
 
 @compute @workgroup_size(256)
@@ -270,7 +270,7 @@ fn filter_source_over_region(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
     let ix = target_ix_for_region_ix(region_ix);
-    target_pixels[ix] = blend_premul_u8(target_pixels[ix], source_pixels[ix], 3u << 8u);
+    target_store_ix(ix, blend_premul_u8(target_load_ix(ix), source_pixel_ix(ix), 3u << 8u));
 }
 
 @compute @workgroup_size(256)
@@ -289,7 +289,7 @@ fn filter_tile_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
     let sx = source_x0 + (xy.x + source_width - (source_x0 % source_width)) % source_width;
     let sy = source_y0 + (xy.y + source_height - (source_y0 % source_height)) % source_height;
-    target_pixels[target_ix_at(xy.x, xy.y)] = source_pixels[target_ix_at(sx, sy)];
+    target_store_at(xy.x, xy.y, source_pixel_at(sx, sy));
 }
 
 @compute @workgroup_size(256)
@@ -310,9 +310,9 @@ fn filter_offset_region(@builtin(global_invocation_id) gid: vec3<u32>) {
         sy >= i32(config.region_y0) &&
         sy < region_y1
     ) {
-        pixel = source_pixels[target_ix_at(u32(sx), u32(sy))];
+        pixel = source_pixel_at(u32(sx), u32(sy));
     }
-    target_pixels[target_ix_at(xy.x, xy.y)] = pixel;
+    target_store_at(xy.x, xy.y, pixel);
 }
 
 @compute @workgroup_size(256)
@@ -322,7 +322,7 @@ fn filter_turbulence_region(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
     let xy = xy_for_region_ix(region_ix);
-    target_pixels[target_ix_at(xy.x, xy.y)] = filter_turbulence_pixel(f32(xy.x), f32(xy.y));
+    target_store_at(xy.x, xy.y, filter_turbulence_pixel(f32(xy.x), f32(xy.y)));
 }
 
 @compute @workgroup_size(256)
@@ -332,7 +332,7 @@ fn filter_flood_region(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
     let xy = xy_for_region_ix(region_ix);
-    target_pixels[target_ix_at(xy.x, xy.y)] = sample_brush(config.brush_index, f32(xy.x) + 0.5, f32(xy.y) + 0.5);
+    target_store_at(xy.x, xy.y, sample_brush(config.brush_index, f32(xy.x) + 0.5, f32(xy.y) + 0.5));
 }
 
 @compute @workgroup_size(256)
@@ -343,7 +343,7 @@ fn filter_drop_shadow_mask_region(@builtin(global_invocation_id) gid: vec3<u32>)
     }
 
     let xy = xy_for_region_ix(region_ix);
-    let alpha = source_pixels[target_ix_at(xy.x, xy.y)] >> 24u;
+    let alpha = source_pixel_at(xy.x, xy.y) >> 24u;
     if (alpha == 0u) {
         return;
     }
@@ -358,7 +358,7 @@ fn filter_drop_shadow_mask_region(@builtin(global_invocation_id) gid: vec3<u32>)
         ty >= i32(config.region_y0) &&
         ty < region_y1
     ) {
-        target_pixels[target_ix_at(u32(tx), u32(ty))] = gray_alpha(alpha);
+        target_store_at(u32(tx), u32(ty), gray_alpha(alpha));
     }
 }
 
@@ -377,7 +377,7 @@ fn filter_morphology_axis_region(@builtin(global_invocation_id) gid: vec3<u32>) 
     let line_len = select(config.height, config.width, axis == 0u);
 
     if (morph_operator == 0u && (pos < radius || pos + radius >= line_len)) {
-        target_pixels[ix] = 0u;
+        target_store_ix(ix, 0u);
         return;
     }
 
@@ -408,7 +408,7 @@ fn filter_morphology_axis_region(@builtin(global_invocation_id) gid: vec3<u32>) 
         }
         let sx = select(xy.x, sample_pos, axis == 0u);
         let sy = select(sample_pos, xy.y, axis == 0u);
-        let sample = source_pixels[target_ix_at(sx, sy)];
+        let sample = source_pixel_at(sx, sy);
         let alpha = (sample >> 24u) & 255u;
         let sample_r = straight_channel(sample & 255u, alpha);
         let sample_g = straight_channel((sample >> 8u) & 255u, alpha);
@@ -429,7 +429,7 @@ fn filter_morphology_axis_region(@builtin(global_invocation_id) gid: vec3<u32>) 
         sample_pos += 1u;
     }
 
-    target_pixels[ix] = pack_premul_rgba8(out_r * out_a, out_g * out_a, out_b * out_a, out_a);
+    target_store_ix(ix, pack_premul_rgba8(out_r * out_a, out_g * out_a, out_b * out_a, out_a));
 }
 
 @compute @workgroup_size(256)
@@ -443,7 +443,7 @@ fn filter_blur_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let xy = xy_for_region_ix(region_ix);
     let dst_ix = target_ix_at(xy.x, xy.y);
     if (std_dev <= 0.0) {
-        target_pixels[dst_ix] = source_pixels[dst_ix];
+        target_store_ix(dst_ix, source_pixel_ix(dst_ix));
         return;
     }
 
@@ -480,7 +480,7 @@ fn filter_blur_region(@builtin(global_invocation_id) gid: vec3<u32>) {
             sample_y >= i32(config.region_y0) &&
             sample_y < region_y1
         ) {
-            let px = source_pixels[target_ix_at(u32(sample_x), u32(sample_y))];
+            let px = source_pixel_at(u32(sample_x), u32(sample_y));
             r += f32(px & 255u) * weight;
             g += f32((px >> 8u) & 255u) * weight;
             b += f32((px >> 16u) & 255u) * weight;
@@ -493,7 +493,7 @@ fn filter_blur_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (sum > 0.0) {
         scale = 1.0 / (255.0 * sum);
     }
-    target_pixels[dst_ix] = pack_premul_rgba8(r * scale, g * scale, b * scale, a * scale);
+    target_store_ix(dst_ix, pack_premul_rgba8(r * scale, g * scale, b * scale, a * scale));
 }
 
 @compute @workgroup_size(256)
@@ -503,7 +503,7 @@ fn filter_svg_mask_coverage_region(@builtin(global_invocation_id) gid: vec3<u32>
         return;
     }
     let ix = target_ix_for_region_ix(region_ix);
-    let px = source_pixels[ix];
+    let px = source_pixel_ix(ix);
     let a = px >> 24u;
     var mask_alpha = a;
     if (config.mask_kind == SVG_MASK_LUMINANCE) {
@@ -519,7 +519,7 @@ fn filter_svg_mask_coverage_region(@builtin(global_invocation_id) gid: vec3<u32>
         let straight_b = (b * 255u + safe_a / 2u) / safe_a;
         mask_alpha = ((2126u * straight_r + 7152u * straight_g + 722u * straight_b) * a + 1275000u) / 2550000u;
     }
-    target_pixels[ix] = gray_alpha(mask_alpha);
+    target_store_ix(ix, gray_alpha(mask_alpha));
 }
 
 @compute @workgroup_size(256)
@@ -529,8 +529,8 @@ fn filter_apply_region_mask(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
     let ix = target_ix_for_region_ix(region_ix);
-    let alpha = combine_alpha(target_pixels[ix] >> 24u, aux_pixels[ix] >> 24u);
-    target_pixels[ix] = gray_alpha(alpha);
+    let alpha = combine_alpha(target_load_ix(ix) >> 24u, aux_pixel_ix(ix) >> 24u);
+    target_store_ix(ix, gray_alpha(alpha));
 }
 
 @compute @workgroup_size(256)
@@ -540,7 +540,7 @@ fn filter_color_region(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
     let ix = target_ix_for_region_ix(region_ix);
-    target_pixels[ix] = apply_color_filter_pixel(target_pixels[ix], config.filter_kind, config.amount);
+    target_store_ix(ix, apply_color_filter_pixel(target_load_ix(ix), config.filter_kind, config.amount));
 }
 
 @compute @workgroup_size(256)
@@ -550,7 +550,7 @@ fn filter_color_matrix_region(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
     let ix = target_ix_for_region_ix(region_ix);
-    target_pixels[ix] = apply_color_matrix_pixel(target_pixels[ix]);
+    target_store_ix(ix, apply_color_matrix_pixel(target_load_ix(ix)));
 }
 
 @compute @workgroup_size(256)
@@ -560,7 +560,7 @@ fn filter_component_transfer_region(@builtin(global_invocation_id) gid: vec3<u32
         return;
     }
     let ix = target_ix_for_region_ix(region_ix);
-    target_pixels[ix] = apply_component_transfer_pixel(target_pixels[ix], config.table_index);
+    target_store_ix(ix, apply_component_transfer_pixel(target_load_ix(ix), config.table_index));
 }
 
 @compute @workgroup_size(256)
@@ -570,7 +570,7 @@ fn filter_blend_region(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
     let ix = target_ix_for_region_ix(region_ix);
-    target_pixels[ix] = blend_premul_u8(aux_pixels[ix], source_pixels[ix], config.blend_mode);
+    target_store_ix(ix, blend_premul_u8(aux_pixel_ix(ix), source_pixel_ix(ix), config.blend_mode));
 }
 
 @compute @workgroup_size(256)
@@ -580,15 +580,15 @@ fn filter_composite_inputs_region(@builtin(global_invocation_id) gid: vec3<u32>)
         return;
     }
     let ix = target_ix_for_region_ix(region_ix);
-    target_pixels[ix] = composite_inputs_pixel(
-        source_pixels[ix],
-        aux_pixels[ix],
+    target_store_ix(ix, composite_inputs_pixel(
+        source_pixel_ix(ix),
+        aux_pixel_ix(ix),
         config.filter_kind,
         config.matrix_bias.x,
         config.matrix_bias.y,
         config.matrix_bias.z,
         config.matrix_bias.w,
-    );
+    ));
 }
 
 @compute @workgroup_size(256)
@@ -599,16 +599,16 @@ fn filter_displacement_map_region(@builtin(global_invocation_id) gid: vec3<u32>)
     }
     let xy = xy_for_region_ix(region_ix);
     let ix = target_ix_at(xy.x, xy.y);
-    let map = aux_pixels[ix];
+    let map = aux_pixel_ix(ix);
     let dx = filter_displacement_channel(map, config.kernel_edge_mode, config.lighting_output_kind) - 0.5;
     let dy = filter_displacement_channel(map, config.kernel_preserve_alpha, config.lighting_output_kind) - 0.5;
     let sx = i32(round(f32(xy.x) + dx * config.amount));
     let sy = i32(round(f32(xy.y) + dy * config.rect_x0));
     var out = 0u;
     if (sx >= 0 && sx < i32(config.width) && sy >= 0 && sy < i32(config.height)) {
-        out = source_pixels[target_ix_at(u32(sx), u32(sy))];
+        out = source_pixel_at(u32(sx), u32(sy));
     }
-    target_pixels[ix] = out;
+    target_store_ix(ix, out);
 }
 
 @compute @workgroup_size(256)
@@ -621,7 +621,7 @@ fn filter_convolve_matrix_region(@builtin(global_invocation_id) gid: vec3<u32>) 
     let dst_ix = target_ix_at(xy.x, xy.y);
     let divisor = config.amount;
     if (config.kernel_columns == 0u || config.kernel_rows == 0u || divisor == 0.0) {
-        target_pixels[dst_ix] = source_pixels[dst_ix];
+        target_store_ix(dst_ix, source_pixel_ix(dst_ix));
         return;
     }
 
@@ -651,7 +651,7 @@ fn filter_convolve_matrix_region(@builtin(global_invocation_id) gid: vec3<u32>) 
             if (config.kernel_edge_mode == 1u) {
                 sx = clamp(sx, i32(config.region_x0), region_x1 - 1);
                 sy = clamp(sy, i32(config.region_y0), region_y1 - 1);
-                sample = source_pixels[target_ix_at(u32(sx), u32(sy))];
+                sample = source_pixel_at(u32(sx), u32(sy));
             } else if (config.kernel_edge_mode == 2u) {
                 while (sx < i32(config.region_x0)) {
                     sx = sx + i32(config.region_width);
@@ -665,14 +665,14 @@ fn filter_convolve_matrix_region(@builtin(global_invocation_id) gid: vec3<u32>) 
                 while (sy >= region_y1) {
                     sy = sy - i32(config.region_height);
                 }
-                sample = source_pixels[target_ix_at(u32(sx), u32(sy))];
+                sample = source_pixel_at(u32(sx), u32(sy));
             } else if (
                 sx >= i32(config.region_x0) &&
                 sx < region_x1 &&
                 sy >= i32(config.region_y0) &&
                 sy < region_y1
             ) {
-                sample = source_pixels[target_ix_at(u32(sx), u32(sy))];
+                sample = source_pixel_at(u32(sx), u32(sy));
             }
 
             let alpha = (sample >> 24u) & 255u;
@@ -685,7 +685,7 @@ fn filter_convolve_matrix_region(@builtin(global_invocation_id) gid: vec3<u32>) 
         ky += 1u;
     }
 
-    let base_alpha = f32((source_pixels[dst_ix] >> 24u) & 255u) / 255.0;
+    let base_alpha = f32((source_pixel_ix(dst_ix) >> 24u) & 255u) / 255.0;
     var alpha = clamp(out_a / divisor + config.rect_x0, 0.0, 1.0);
     if (config.kernel_preserve_alpha == 1u) {
         alpha = base_alpha;
@@ -693,7 +693,7 @@ fn filter_convolve_matrix_region(@builtin(global_invocation_id) gid: vec3<u32>) 
     let r = clamp(out_r / divisor + config.rect_x0, 0.0, 1.0);
     let g = clamp(out_g / divisor + config.rect_x0, 0.0, 1.0);
     let b = clamp(out_b / divisor + config.rect_x0, 0.0, 1.0);
-    target_pixels[dst_ix] = pack_premul_rgba8(r * alpha, g * alpha, b * alpha, alpha);
+    target_store_ix(dst_ix, pack_premul_rgba8(r * alpha, g * alpha, b * alpha, alpha));
 }
 
 @compute @workgroup_size(256)
@@ -735,7 +735,7 @@ fn filter_lighting_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     } else {
         let len = sqrt(lx * lx + ly * ly + lz * lz);
         if (len <= eps) {
-            target_pixels[dst_ix] = no_light;
+            target_store_ix(dst_ix, no_light);
             return;
         }
         lx = lx / len;
@@ -748,7 +748,7 @@ fn filter_lighting_region(@builtin(global_invocation_id) gid: vec3<u32>) {
             var sz = config.light_p5 - config.light_p2;
             let slen = sqrt(sx * sx + sy * sy + sz * sz);
             if (slen <= eps) {
-                target_pixels[dst_ix] = no_light;
+                target_store_ix(dst_ix, no_light);
                 return;
             }
             sx = sx / slen;
@@ -756,7 +756,7 @@ fn filter_lighting_region(@builtin(global_invocation_id) gid: vec3<u32>) {
             sz = sz / slen;
             let focus = max(-(lx * sx + ly * sy + lz * sz), 0.0);
             if (config.light_p7 >= 0.0 && focus < cos(config.light_p7 * 0.017453292)) {
-                target_pixels[dst_ix] = no_light;
+                target_store_ix(dst_ix, no_light);
                 return;
             }
             attenuation = pow(focus, max(config.light_p6, 0.0));
@@ -765,19 +765,19 @@ fn filter_lighting_region(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     if (config.lighting_output_kind == 0u) {
         let amount = config.light_constant * attenuation * max(nx * lx + ny * ly + nz * lz, 0.0);
-        target_pixels[dst_ix] = pack_premul_rgba8(
+        target_store_ix(dst_ix, pack_premul_rgba8(
             clamp(config.light_r * amount, 0.0, 1.0),
             clamp(config.light_g * amount, 0.0, 1.0),
             clamp(config.light_b * amount, 0.0, 1.0),
             1.0,
-        );
+        ));
     } else {
         var hx = lx;
         var hy = ly;
         var hz = lz + 1.0;
         let hlen = sqrt(hx * hx + hy * hy + hz * hz);
         if (hlen <= eps) {
-            target_pixels[dst_ix] = no_light;
+            target_store_ix(dst_ix, no_light);
             return;
         }
         hx = hx / hlen;
@@ -789,7 +789,7 @@ fn filter_lighting_region(@builtin(global_invocation_id) gid: vec3<u32>) {
         let r = clamp(config.light_r * amount, 0.0, 1.0);
         let g = clamp(config.light_g * amount, 0.0, 1.0);
         let b = clamp(config.light_b * amount, 0.0, 1.0);
-        target_pixels[dst_ix] = pack_premul_rgba8(r, g, b, max(max(r, g), b));
+        target_store_ix(dst_ix, pack_premul_rgba8(r, g, b, max(max(r, g), b)));
     }
 }
 
@@ -816,15 +816,15 @@ fn filter_liquid_glass_region(@builtin(global_invocation_id) gid: vec3<u32>) {
         config.radius_bottom_left,
         config.radius_bottom_right,
     );
-    let base = source_pixels[ix];
+    let base = source_pixel_ix(ix);
     let surface_height = f32(max(config.height, 1u));
     let distance_norm = distance / surface_height;
     if (distance_norm >= LIQUID_GLASS_ACTIVE_DISTANCE_NORM) {
-        target_pixels[ix] = base;
+        target_store_ix(ix, base);
         return;
     }
 
-    target_pixels[ix] = liquid_glass_pixel(
+    target_store_ix(ix, liquid_glass_pixel(
         base,
         world_x,
         world_y,
@@ -833,7 +833,7 @@ fn filter_liquid_glass_region(@builtin(global_invocation_id) gid: vec3<u32>) {
         distance,
         distance_norm,
         surface_height,
-    );
+    ));
 }
 
 @compute @workgroup_size(256)
@@ -845,10 +845,10 @@ fn filter_composite_drop_shadow_region(@builtin(global_invocation_id) gid: vec3<
 
     let xy = xy_for_region_ix(region_ix);
     let ix = target_ix_at(xy.x, xy.y);
-    let alpha = aux_pixels[ix] >> 24u;
+    let alpha = aux_pixel_ix(ix) >> 24u;
     let shadow_color = sample_brush(config.brush_index, f32(xy.x) + 0.5, f32(xy.y) + 0.5);
     let shadow = scale_premul_u8(shadow_color, alpha);
-    target_pixels[ix] = src_over_premul_u8(shadow, target_pixels[ix]);
+    target_store_ix(ix, src_over_premul_u8(shadow, target_load_ix(ix)));
 }
 
 @compute @workgroup_size(256)
@@ -859,7 +859,7 @@ fn filter_layer_mask_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
     let xy = xy_for_region_ix(region_ix);
     let alpha = layer_stack_alpha_at(config.draw_ix, xy.x, xy.y);
-    target_pixels[target_ix_at(xy.x, xy.y)] = gray_alpha(alpha);
+    target_store_at(xy.x, xy.y, gray_alpha(alpha));
 }
 
 @compute @workgroup_size(256)
@@ -881,7 +881,7 @@ fn filter_rect_mask_region(@builtin(global_invocation_id) gid: vec3<u32>) {
         config.radius_bottom_left,
         config.radius_bottom_right,
     );
-    target_pixels[target_ix_at(xy.x, xy.y)] = gray_alpha(coverage_to_u8(sdf_coverage_from_dist(dist)));
+    target_store_at(xy.x, xy.y, gray_alpha(coverage_to_u8(sdf_coverage_from_dist(dist))));
 }
 
 @compute @workgroup_size(256)
@@ -933,7 +933,7 @@ fn filter_path_mask_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (winding != 0i) {
         alpha = 255u;
     }
-    target_pixels[target_ix_at(xy.x, xy.y)] = gray_alpha(alpha);
+    target_store_at(xy.x, xy.y, gray_alpha(alpha));
 }
 
 @compute @workgroup_size(256)
@@ -944,7 +944,7 @@ fn filter_composite_stack_region(@builtin(global_invocation_id) gid: vec3<u32>) 
     }
     let xy = xy_for_region_ix(region_ix);
     let ix = target_ix_at(xy.x, xy.y);
-    target_pixels[ix] = composite_with_stack(target_pixels[ix], source_pixels[ix], aux_pixels[ix], xy.x, xy.y, false);
+    target_store_ix(ix, composite_with_stack(target_load_ix(ix), source_pixel_ix(ix), aux_pixel_ix(ix), xy.x, xy.y, false));
 }
 
 @compute @workgroup_size(256)
@@ -955,7 +955,7 @@ fn filter_composite_blend_stack_region(@builtin(global_invocation_id) gid: vec3<
     }
     let xy = xy_for_region_ix(region_ix);
     let ix = target_ix_at(xy.x, xy.y);
-    target_pixels[ix] = composite_with_stack(target_pixels[ix], source_pixels[ix], aux_pixels[ix], xy.x, xy.y, true);
+    target_store_ix(ix, composite_with_stack(target_load_ix(ix), source_pixel_ix(ix), aux_pixel_ix(ix), xy.x, xy.y, true));
 }
 
 @compute @workgroup_size(256)
@@ -976,9 +976,8 @@ fn filter_composite_surface_stack_region(@builtin(global_invocation_id) gid: vec
         return;
     }
 
-    let source_ix = u32(sy) * config.kernel_columns + u32(sx);
     let ix = target_ix_at(xy.x, xy.y);
-    target_pixels[ix] = composite_surface_with_stack(target_pixels[ix], source_pixels[source_ix], xy.x, xy.y);
+    target_store_ix(ix, composite_surface_with_stack(target_load_ix(ix), source_pixel_at(u32(sx), u32(sy)), xy.x, xy.y));
 }
 
 fn composite_with_stack(dst: u32, source: u32, mask: u32, x: u32, y: u32, force_blend: bool) -> u32 {
@@ -1130,6 +1129,46 @@ fn target_ix_for_region_ix(region_ix: u32) -> u32 {
 
 fn target_ix_at(x: u32, y: u32) -> u32 {
     return y * config.width + x;
+}
+
+fn xy_for_target_ix(ix: u32) -> vec2<u32> {
+    return vec2<u32>(ix % config.width, ix / config.width);
+}
+
+fn source_pixel_at(x: u32, y: u32) -> u32 {
+    return unorm_to_rgba8(textureLoad(source_texture, vec2<i32>(i32(x), i32(y))));
+}
+
+fn source_pixel_ix(ix: u32) -> u32 {
+    let xy = xy_for_target_ix(ix);
+    return source_pixel_at(xy.x, xy.y);
+}
+
+fn aux_pixel_at(x: u32, y: u32) -> u32 {
+    return unorm_to_rgba8(textureLoad(aux_texture, vec2<i32>(i32(x), i32(y))));
+}
+
+fn aux_pixel_ix(ix: u32) -> u32 {
+    let xy = xy_for_target_ix(ix);
+    return aux_pixel_at(xy.x, xy.y);
+}
+
+fn target_load_at(x: u32, y: u32) -> u32 {
+    return unorm_to_rgba8(textureLoad(target_texture, vec2<i32>(i32(x), i32(y))));
+}
+
+fn target_load_ix(ix: u32) -> u32 {
+    let xy = xy_for_target_ix(ix);
+    return target_load_at(xy.x, xy.y);
+}
+
+fn target_store_at(x: u32, y: u32, pixel: u32) {
+    textureStore(target_texture, vec2<i32>(i32(x), i32(y)), rgba8_to_unorm(pixel));
+}
+
+fn target_store_ix(ix: u32, pixel: u32) {
+    let xy = xy_for_target_ix(ix);
+    target_store_at(xy.x, xy.y, pixel);
 }
 
 fn gray_alpha(alpha: u32) -> u32 {
@@ -1437,6 +1476,24 @@ fn rgba8_pack(r: u32, g: u32, b: u32, a: u32) -> u32 {
     return r | (g << 8u) | (b << 16u) | (a << 24u);
 }
 
+fn unorm_to_rgba8(pixel: vec4<f32>) -> u32 {
+    return rgba8_pack(
+        u32(clamp(pixel.r * 255.0 + 0.5, 0.0, 255.0)),
+        u32(clamp(pixel.g * 255.0 + 0.5, 0.0, 255.0)),
+        u32(clamp(pixel.b * 255.0 + 0.5, 0.0, 255.0)),
+        u32(clamp(pixel.a * 255.0 + 0.5, 0.0, 255.0)),
+    );
+}
+
+fn rgba8_to_unorm(pixel: u32) -> vec4<f32> {
+    return vec4<f32>(
+        f32(pixel & 255u) * (1.0 / 255.0),
+        f32((pixel >> 8u) & 255u) * (1.0 / 255.0),
+        f32((pixel >> 16u) & 255u) * (1.0 / 255.0),
+        f32((pixel >> 24u) & 255u) * (1.0 / 255.0),
+    );
+}
+
 fn mul_div255(a: u32, b: u32) -> u32 {
     let t = a * b + 128u;
     return (t + (t >> 8u)) >> 8u;
@@ -1454,7 +1511,7 @@ fn straight_channel(premul: u32, alpha: u32) -> f32 {
 }
 
 fn source_alpha_at(x: u32, y: u32) -> f32 {
-    return f32((source_pixels[target_ix_at(x, y)] >> 24u) & 255u) / 255.0;
+    return f32((source_pixel_at(x, y) >> 24u) & 255u) / 255.0;
 }
 
 fn filter_displacement_channel(px: u32, channel: u32, linear_rgb: u32) -> f32 {
@@ -1864,11 +1921,10 @@ fn liquid_glass_sample_straight_channel(image_kind: u32, x: f32, y: f32, channel
 }
 
 fn liquid_glass_image_pixel(image_kind: u32, x: u32, y: u32) -> u32 {
-    let ix = target_ix_at(x, y);
     if (image_kind == 1u) {
-        return aux_pixels[ix];
+        return aux_pixel_at(x, y);
     }
-    return source_pixels[ix];
+    return source_pixel_at(x, y);
 }
 
 fn liquid_glass_pixel_straight_channel(px: u32, channel: u32) -> f32 {

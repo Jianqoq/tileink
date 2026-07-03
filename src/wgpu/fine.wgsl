@@ -88,7 +88,7 @@ struct FineConfig {
 };
 
 @group(0) @binding(0) var<uniform> config: FineConfig;
-@group(0) @binding(1) var<storage, read_write> target_pixels: array<u32>;
+@group(0) @binding(1) var target_texture: texture_storage_2d<rgba8unorm, read_write>;
 @group(0) @binding(2) var<storage, read> draw_flags: array<u32>;
 @group(0) @binding(3) var<storage, read> draw_brush_colors: array<u32>;
 @group(0) @binding(4) var<storage, read> draw_pixel_x0: array<i32>;
@@ -142,8 +142,6 @@ struct FineConfig {
 @group(0) @binding(52) var<storage, read> glyph_image_data: array<u32>;
 @group(0) @binding(53) var<storage, read_write> clip_spills: array<u32>;
 @group(0) @binding(54) var<storage, read_write> group_spills: array<u32>;
-@group(0) @binding(55) var target_texture: texture_storage_2d<rgba8unorm, write>;
-
 @compute @workgroup_size(256)
 fn fine_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let pixel_ix = gid.x;
@@ -152,20 +150,9 @@ fn fine_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
 
-    target_pixels[pixel_ix] = direct_pixel(pixel_ix);
-}
-
-@compute @workgroup_size(256)
-fn fine_texture_main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let pixel_ix = gid.x;
-    let pixel_count = config.width * config.height;
-    if (pixel_ix >= pixel_count) {
-        return;
-    }
-
     let px = pixel_ix % config.width;
     let py = pixel_ix / config.width;
-    textureStore(target_texture, vec2<i32>(i32(px), i32(py)), rgba8_to_unorm(direct_pixel(pixel_ix)));
+    target_store(px, py, direct_pixel(pixel_ix));
 }
 
 fn direct_pixel(pixel_ix: u32) -> u32 {
@@ -226,40 +213,7 @@ fn fine_tile_main(
         return;
     }
 
-    let target_ix = global_y * config.width + global_x;
-    target_pixels[target_ix] = tile_pixel(tile_ix, local_ix);
-}
-
-@compute @workgroup_size(256)
-fn fine_tile_texture_main(
-    @builtin(workgroup_id) workgroup_id: vec3<u32>,
-    @builtin(local_invocation_id) local_id: vec3<u32>,
-) {
-    let tile_ix = workgroup_id.x;
-    if (tile_ix >= config.tile_count) {
-        return;
-    }
-
-    let local_ix = local_id.x;
-    let local_x = local_ix % 16u;
-    let local_y = local_ix / 16u;
-    let tile_x = tile_ix % config.tiles_width;
-    let tile_y = tile_ix / config.tiles_width;
-    if (tile_y >= config.tiles_height) {
-        return;
-    }
-
-    let global_x = tile_x * 16u + local_x;
-    let global_y = tile_y * 16u + local_y;
-    if (global_x >= config.width || global_y >= config.height) {
-        return;
-    }
-
-    textureStore(
-        target_texture,
-        vec2<i32>(i32(global_x), i32(global_y)),
-        rgba8_to_unorm(tile_pixel(tile_ix, local_ix)),
-    );
+    target_store(global_x, global_y, tile_pixel(tile_ix, local_ix));
 }
 
 fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
@@ -269,10 +223,9 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
     let tile_y = tile_ix / config.tiles_width;
     let global_x = tile_x * 16u + local_x;
     let global_y = tile_y * 16u + local_y;
-    let target_ix = global_y * config.width + global_x;
     var pixel = config.clear_color;
     if (config.load_target != 0u) {
-        pixel = target_pixels[target_ix];
+        pixel = target_load(global_x, global_y);
     }
     var clip_mask = 255u;
     var clip_depth = 0u;
@@ -710,6 +663,23 @@ fn coverage_to_alpha(value: i32, fill_rule: u32) -> u32 {
 
 fn rgba8_pack(r: u32, g: u32, b: u32, a: u32) -> u32 {
     return r | (g << 8u) | (b << 16u) | (a << 24u);
+}
+
+fn target_load(x: u32, y: u32) -> u32 {
+    return unorm_to_rgba8(textureLoad(target_texture, vec2<i32>(i32(x), i32(y))));
+}
+
+fn target_store(x: u32, y: u32, pixel: u32) {
+    textureStore(target_texture, vec2<i32>(i32(x), i32(y)), rgba8_to_unorm(pixel));
+}
+
+fn unorm_to_rgba8(pixel: vec4<f32>) -> u32 {
+    return rgba8_pack(
+        u32(clamp(pixel.r * 255.0 + 0.5, 0.0, 255.0)),
+        u32(clamp(pixel.g * 255.0 + 0.5, 0.0, 255.0)),
+        u32(clamp(pixel.b * 255.0 + 0.5, 0.0, 255.0)),
+        u32(clamp(pixel.a * 255.0 + 0.5, 0.0, 255.0)),
+    );
 }
 
 fn rgba8_to_unorm(pixel: u32) -> vec4<f32> {

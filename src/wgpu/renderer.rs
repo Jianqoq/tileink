@@ -52,7 +52,7 @@ enum WgpuRenderTargetId {
 }
 
 #[derive(Debug)]
-pub enum WgpuTextureBlitError {
+pub enum WgpuTextureRenderError {
     DestinationTooSmall {
         required_width: u32,
         required_height: u32,
@@ -60,6 +60,7 @@ pub enum WgpuTextureBlitError {
         actual_height: u32,
     },
     DestinationUsageMissing(::wgpu::TextureUsages),
+    DestinationStorageUsageMissing(::wgpu::TextureUsages),
     UnsupportedDestination {
         format: ::wgpu::TextureFormat,
         dimension: ::wgpu::TextureDimension,
@@ -67,7 +68,7 @@ pub enum WgpuTextureBlitError {
     },
 }
 
-impl std::fmt::Display for WgpuTextureBlitError {
+impl std::fmt::Display for WgpuTextureRenderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::DestinationTooSmall {
@@ -83,6 +84,10 @@ impl std::fmt::Display for WgpuTextureBlitError {
                 f,
                 "destination texture usage {usage:?} is missing wgpu::TextureUsages::COPY_DST"
             ),
+            Self::DestinationStorageUsageMissing(usage) => write!(
+                f,
+                "destination texture usage {usage:?} is missing wgpu::TextureUsages::STORAGE_BINDING"
+            ),
             Self::UnsupportedDestination {
                 format,
                 dimension,
@@ -95,7 +100,7 @@ impl std::fmt::Display for WgpuTextureBlitError {
     }
 }
 
-impl std::error::Error for WgpuTextureBlitError {}
+impl std::error::Error for WgpuTextureRenderError {}
 
 /// Wgpu-owned renderer target and native compute pipelines.
 pub struct Renderer {
@@ -124,7 +129,9 @@ pub struct Renderer {
     filter_convolves: WgpuFilterConvolveBuffers,
     filter_turbulence: WgpuFilterTurbulenceBuffers,
     filter_paths: WgpuFilterPathBuffers,
-    target: WgpuTarget,
+    // Compatibility surface for render()/image(); render_to_wgpu_texture writes caller-owned textures directly.
+    readback_target: WgpuTarget,
+    root_target_view: Option<::wgpu::TextureView>,
     scratch: Vec<WgpuTarget>,
     scratch_in_use: Vec<bool>,
     clear_color: u32,
@@ -149,7 +156,8 @@ struct SavedRendererState {
     filter_convolves: WgpuFilterConvolveBuffers,
     filter_turbulence: WgpuFilterTurbulenceBuffers,
     filter_paths: WgpuFilterPathBuffers,
-    target: WgpuTarget,
+    readback_target: WgpuTarget,
+    root_target_view: Option<::wgpu::TextureView>,
     scratch: Vec<WgpuTarget>,
     scratch_in_use: Vec<bool>,
     size: (u32, u32),
@@ -225,7 +233,6 @@ impl Renderer {
         height: u32,
         clear: Color,
     ) -> Self {
-        let byte_len = rgba8_byte_len(width, height);
         Self {
             device: device.clone(),
             queue: queue.clone(),
@@ -252,7 +259,8 @@ impl Renderer {
             filter_convolves: WgpuFilterConvolveBuffers::new(device),
             filter_turbulence: WgpuFilterTurbulenceBuffers::new(device),
             filter_paths: WgpuFilterPathBuffers::new(device),
-            target: WgpuTarget::new(device, byte_len),
+            readback_target: WgpuTarget::new(device, width, height),
+            root_target_view: None,
             scratch: Vec::new(),
             scratch_in_use: Vec::new(),
             clear_color: premul_clear_color(clear),
@@ -271,10 +279,12 @@ impl Renderer {
                 force_fallback_adapter: false,
             }))
             .expect("request default wgpu adapter");
+        let required_features =
+            adapter.features() & ::wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES;
         let (device, queue) =
             pollster::block_on(adapter.request_device(&::wgpu::DeviceDescriptor {
                 label: Some("tileink default wgpu device"),
-                required_features: ::wgpu::Features::empty(),
+                required_features,
                 required_limits: adapter.limits(),
                 memory_hints: ::wgpu::MemoryHints::MemoryUsage,
                 trace: ::wgpu::Trace::Off,
@@ -317,7 +327,7 @@ impl Renderer {
                 &self.queue,
                 scene,
                 &self.scene_buffers,
-                &mut self.target,
+                &mut self.readback_target,
                 self.clear_color,
             )
         {
@@ -348,8 +358,10 @@ impl Renderer {
     fn prepare_scene_resources(&mut self, scene: &Scene) {
         self.size = (scene.width, scene.height);
         self.surface_origin = (0, 0);
-        self.target
-            .resize(&self.device, rgba8_byte_len(scene.width, scene.height));
+        if self.root_target_view.is_none() {
+            self.readback_target
+                .resize(&self.device, scene.width, scene.height);
+        }
         let lengths = GpuBufferLengths::from_scene_with_text(scene, self.text_data.as_ref());
         let plan = scene.compile(ROOT_COMMAND_LIST_ID);
         let (max_clip_depth, max_group_depth) = plan_stack_depths(&plan);
@@ -437,10 +449,11 @@ impl Renderer {
                 &mut self.filter_paths,
                 WgpuFilterPathBuffers::new(&self.device),
             ),
-            target: std::mem::replace(
-                &mut self.target,
-                WgpuTarget::new(&self.device, rgba8_byte_len(scene.width, scene.height)),
+            readback_target: std::mem::replace(
+                &mut self.readback_target,
+                WgpuTarget::new(&self.device, scene.width, scene.height),
             ),
+            root_target_view: std::mem::take(&mut self.root_target_view),
             scratch: std::mem::take(&mut self.scratch),
             scratch_in_use: std::mem::take(&mut self.scratch_in_use),
             size: self.size,
@@ -518,7 +531,8 @@ impl Renderer {
         self.filter_convolves = saved.filter_convolves;
         self.filter_turbulence = saved.filter_turbulence;
         self.filter_paths = saved.filter_paths;
-        self.target = saved.target;
+        self.readback_target = saved.readback_target;
+        self.root_target_view = saved.root_target_view;
         self.scratch = saved.scratch;
         self.scratch_in_use = saved.scratch_in_use;
         self.size = saved.size;
@@ -526,12 +540,12 @@ impl Renderer {
     }
 
     fn prepare_scratch_buffers(&mut self, count: usize) {
-        let byte_len = rgba8_byte_len(self.size.0, self.size.1);
         while self.scratch.len() < count {
-            self.scratch.push(WgpuTarget::new(&self.device, byte_len));
+            self.scratch
+                .push(WgpuTarget::new(&self.device, self.size.0, self.size.1));
         }
         for scratch in &mut self.scratch {
-            scratch.resize(&self.device, byte_len);
+            scratch.resize(&self.device, self.size.0, self.size.1);
         }
         self.scratch_in_use.clear();
         self.scratch_in_use.resize(self.scratch.len(), false);
@@ -680,27 +694,64 @@ impl Renderer {
         let Some(fine) = &self.fine else {
             return false;
         };
-        let target = match target {
-            WgpuRenderTargetId::Main => &mut self.target,
-            WgpuRenderTargetId::Scratch(ix) => &mut self.scratch[ix],
-        };
-        fine.render_tiles(
-            &self.device,
-            &self.queue,
-            self.size.0,
-            self.size.1,
-            self.lengths,
-            &self.scene_buffers,
-            &self.scan,
-            &self.coarse,
-            &self.fine_clip_spills,
-            &self.fine_group_spills,
-            target,
-            self.clear_color,
-            true,
-            self.max_clip_depth.saturating_sub(FINE_LOCAL_CLIP_DEPTH) as u32,
-            self.max_group_depth.saturating_sub(FINE_LOCAL_GROUP_DEPTH) as u32,
-        )
+        match target {
+            WgpuRenderTargetId::Main => {
+                if let Some(target) = &self.root_target_view {
+                    fine.render_tiles_to_view(
+                        &self.device,
+                        &self.queue,
+                        self.size.0,
+                        self.size.1,
+                        self.lengths,
+                        &self.scene_buffers,
+                        &self.scan,
+                        &self.coarse,
+                        &self.fine_clip_spills,
+                        &self.fine_group_spills,
+                        target,
+                        self.clear_color,
+                        true,
+                        self.max_clip_depth.saturating_sub(FINE_LOCAL_CLIP_DEPTH) as u32,
+                        self.max_group_depth.saturating_sub(FINE_LOCAL_GROUP_DEPTH) as u32,
+                    )
+                } else {
+                    fine.render_tiles(
+                        &self.device,
+                        &self.queue,
+                        self.size.0,
+                        self.size.1,
+                        self.lengths,
+                        &self.scene_buffers,
+                        &self.scan,
+                        &self.coarse,
+                        &self.fine_clip_spills,
+                        &self.fine_group_spills,
+                        &mut self.readback_target,
+                        self.clear_color,
+                        true,
+                        self.max_clip_depth.saturating_sub(FINE_LOCAL_CLIP_DEPTH) as u32,
+                        self.max_group_depth.saturating_sub(FINE_LOCAL_GROUP_DEPTH) as u32,
+                    )
+                }
+            }
+            WgpuRenderTargetId::Scratch(ix) => fine.render_tiles(
+                &self.device,
+                &self.queue,
+                self.size.0,
+                self.size.1,
+                self.lengths,
+                &self.scene_buffers,
+                &self.scan,
+                &self.coarse,
+                &self.fine_clip_spills,
+                &self.fine_group_spills,
+                &mut self.scratch[ix],
+                self.clear_color,
+                true,
+                self.max_clip_depth.saturating_sub(FINE_LOCAL_CLIP_DEPTH) as u32,
+                self.max_group_depth.saturating_sub(FINE_LOCAL_GROUP_DEPTH) as u32,
+            ),
+        }
     }
 
     fn execute_offscreen_layer(
@@ -1512,7 +1563,7 @@ impl Renderer {
         filter.clear_buffer(
             &self.device,
             &self.queue,
-            self.render_target_buffer(target),
+            self.render_target_view(target),
             self.size,
             self.lengths,
             color,
@@ -1527,7 +1578,7 @@ impl Renderer {
         filter.clear_region(
             &self.device,
             &self.queue,
-            self.render_target_buffer(target),
+            self.render_target_view(target),
             self.size,
             self.lengths,
             bounds,
@@ -1549,7 +1600,7 @@ impl Renderer {
         filter.flood_region(
             &self.device,
             &self.queue,
-            self.render_target_buffer(target),
+            self.render_target_view(target),
             self.size,
             self.lengths,
             bounds,
@@ -1618,8 +1669,8 @@ impl Renderer {
         filter.build_drop_shadow_mask(
             &self.device,
             &self.queue,
-            self.render_target_buffer(source),
-            self.render_target_buffer(target),
+            self.render_target_view(source),
+            self.render_target_view(target),
             self.size,
             self.lengths,
             bounds,
@@ -1641,8 +1692,8 @@ impl Renderer {
         filter.source_alpha_region(
             &self.device,
             &self.queue,
-            self.render_target_buffer(source),
-            self.render_target_buffer(target),
+            self.render_target_view(source),
+            self.render_target_view(target),
             self.size,
             self.lengths,
             bounds,
@@ -1662,8 +1713,8 @@ impl Renderer {
         filter.source_over_region(
             &self.device,
             &self.queue,
-            self.render_target_buffer(source),
-            self.render_target_buffer(target),
+            self.render_target_view(source),
+            self.render_target_view(target),
             self.size,
             self.lengths,
             bounds,
@@ -1685,9 +1736,9 @@ impl Renderer {
         filter.blend_region(
             &self.device,
             &self.queue,
-            self.render_target_buffer(input1),
-            self.render_target_buffer(input2),
-            self.render_target_buffer(target),
+            self.render_target_view(input1),
+            self.render_target_view(input2),
+            self.render_target_view(target),
             self.size,
             self.lengths,
             bounds,
@@ -1710,9 +1761,9 @@ impl Renderer {
         filter.composite_inputs_region(
             &self.device,
             &self.queue,
-            self.render_target_buffer(input1),
-            self.render_target_buffer(input2),
-            self.render_target_buffer(target),
+            self.render_target_view(input1),
+            self.render_target_view(input2),
+            self.render_target_view(target),
             self.size,
             self.lengths,
             bounds,
@@ -1735,9 +1786,9 @@ impl Renderer {
         filter.displacement_map_region(
             &self.device,
             &self.queue,
-            self.render_target_buffer(input1),
-            self.render_target_buffer(input2),
-            self.render_target_buffer(target),
+            self.render_target_view(input1),
+            self.render_target_view(input2),
+            self.render_target_view(target),
             self.size,
             self.lengths,
             bounds,
@@ -1760,7 +1811,7 @@ impl Renderer {
         filter.turbulence_region(
             &self.device,
             &self.queue,
-            self.render_target_buffer(target),
+            self.render_target_view(target),
             self.size,
             self.lengths,
             bounds,
@@ -1784,8 +1835,8 @@ impl Renderer {
         filter.tile_region(
             &self.device,
             &self.queue,
-            self.render_target_buffer(input),
-            self.render_target_buffer(target),
+            self.render_target_view(input),
+            self.render_target_view(target),
             self.size,
             self.lengths,
             bounds,
@@ -1808,8 +1859,8 @@ impl Renderer {
         filter.composite_drop_shadow(
             &self.device,
             &self.queue,
-            self.render_target_buffer(target),
-            self.render_target_buffer(shadow),
+            self.render_target_view(target),
+            self.render_target_view(shadow),
             self.size,
             self.lengths,
             bounds,
@@ -1829,7 +1880,7 @@ impl Renderer {
             filter.apply_color_matrix(
                 &self.device,
                 &self.queue,
-                self.render_target_buffer(target),
+                self.render_target_view(target),
                 self.size,
                 self.lengths,
                 bounds,
@@ -1848,7 +1899,7 @@ impl Renderer {
             filter.apply_component_transfer(
                 &self.device,
                 &self.queue,
-                self.render_target_buffer(target),
+                self.render_target_view(target),
                 self.size,
                 self.lengths,
                 bounds,
@@ -1872,8 +1923,8 @@ impl Renderer {
         filter.convolve_matrix_region(
             &self.device,
             &self.queue,
-            self.render_target_buffer(source),
-            self.render_target_buffer(target),
+            self.render_target_view(source),
+            self.render_target_view(target),
             self.size,
             self.lengths,
             bounds,
@@ -1897,8 +1948,8 @@ impl Renderer {
         filter.diffuse_lighting_region(
             &self.device,
             &self.queue,
-            self.render_target_buffer(source),
-            self.render_target_buffer(target),
+            self.render_target_view(source),
+            self.render_target_view(target),
             self.size,
             self.lengths,
             bounds,
@@ -1921,8 +1972,8 @@ impl Renderer {
         filter.specular_lighting_region(
             &self.device,
             &self.queue,
-            self.render_target_buffer(source),
-            self.render_target_buffer(target),
+            self.render_target_view(source),
+            self.render_target_view(target),
             self.size,
             self.lengths,
             bounds,
@@ -1985,9 +2036,9 @@ impl Renderer {
         filter.rect_liquid_glass_region(
             &self.device,
             &self.queue,
-            self.render_target_buffer(source),
-            self.render_target_buffer(blurred),
-            self.render_target_buffer(target),
+            self.render_target_view(source),
+            self.render_target_view(blurred),
+            self.render_target_view(target),
             self.size,
             self.lengths,
             bounds,
@@ -2011,8 +2062,8 @@ impl Renderer {
         filter.blur_region(
             &self.device,
             &self.queue,
-            self.render_target_buffer(source),
-            self.render_target_buffer(target),
+            self.render_target_view(source),
+            self.render_target_view(target),
             self.size,
             self.lengths,
             bounds,
@@ -2037,8 +2088,8 @@ impl Renderer {
         filter.morphology_axis_region(
             &self.device,
             &self.queue,
-            self.render_target_buffer(source),
-            self.render_target_buffer(target),
+            self.render_target_view(source),
+            self.render_target_view(target),
             self.size,
             self.lengths,
             bounds,
@@ -2063,8 +2114,8 @@ impl Renderer {
         filter.offset_region(
             &self.device,
             &self.queue,
-            self.render_target_buffer(source),
-            self.render_target_buffer(target),
+            self.render_target_view(source),
+            self.render_target_view(target),
             self.size,
             self.lengths,
             bounds,
@@ -2086,8 +2137,8 @@ impl Renderer {
         filter.copy_region(
             &self.device,
             &self.queue,
-            self.render_target_buffer(source),
-            self.render_target_buffer(target),
+            self.render_target_view(source),
+            self.render_target_view(target),
             self.size,
             self.lengths,
             bounds,
@@ -2106,7 +2157,7 @@ impl Renderer {
             filter.apply_color_filter(
                 &self.device,
                 &self.queue,
-                self.render_target_buffer(target),
+                self.render_target_view(target),
                 self.size,
                 self.lengths,
                 bounds,
@@ -2122,7 +2173,7 @@ impl Renderer {
             filter.build_layer_mask(
                 &self.device,
                 &self.queue,
-                self.render_target_buffer(target),
+                self.render_target_view(target),
                 self.size,
                 self.lengths,
                 &bindings,
@@ -2144,7 +2195,7 @@ impl Renderer {
             filter.build_region_mask(
                 &self.device,
                 &self.queue,
-                self.render_target_buffer(target),
+                self.render_target_view(target),
                 self.size,
                 self.lengths,
                 region,
@@ -2166,8 +2217,8 @@ impl Renderer {
             filter.svg_mask_coverage(
                 &self.device,
                 &self.queue,
-                self.render_target_buffer(source),
-                self.render_target_buffer(target),
+                self.render_target_view(source),
+                self.render_target_view(target),
                 self.size,
                 self.lengths,
                 bounds,
@@ -2186,8 +2237,8 @@ impl Renderer {
             filter.apply_region_mask(
                 &self.device,
                 &self.queue,
-                self.render_target_buffer(mask),
-                self.render_target_buffer(target),
+                self.render_target_view(mask),
+                self.render_target_view(target),
                 self.size,
                 self.lengths,
                 bounds,
@@ -2210,9 +2261,9 @@ impl Renderer {
         filter.composite_src_over_with_stack(
             &self.device,
             &self.queue,
-            self.render_target_buffer(target),
-            self.render_target_buffer(source),
-            mask.map(|mask| self.render_target_buffer(mask)),
+            self.render_target_view(target),
+            self.render_target_view(source),
+            mask.map(|mask| self.render_target_view(mask)),
             self.size,
             self.lengths,
             &bindings,
@@ -2238,9 +2289,9 @@ impl Renderer {
         filter.composite_blend_with_stack(
             &self.device,
             &self.queue,
-            self.render_target_buffer(target),
-            self.render_target_buffer(source),
-            self.render_target_buffer(mask),
+            self.render_target_view(target),
+            self.render_target_view(source),
+            self.render_target_view(mask),
             self.size,
             self.lengths,
             &bindings,
@@ -2267,8 +2318,8 @@ impl Renderer {
         filter.composite_src_over_surface_with_stack(
             &self.device,
             &self.queue,
-            self.render_target_buffer(target),
-            source.buffer(),
+            self.render_target_view(target),
+            source.view(),
             self.size,
             source_size,
             source_origin,
@@ -2297,10 +2348,13 @@ impl Renderer {
         self.scratch_in_use[ix] = false;
     }
 
-    fn render_target_buffer(&self, target: WgpuRenderTargetId) -> &::wgpu::Buffer {
+    fn render_target_view(&self, target: WgpuRenderTargetId) -> &::wgpu::TextureView {
         match target {
-            WgpuRenderTargetId::Main => self.target.buffer(),
-            WgpuRenderTargetId::Scratch(ix) => self.scratch[ix].buffer(),
+            WgpuRenderTargetId::Main => self
+                .root_target_view
+                .as_ref()
+                .unwrap_or(self.readback_target.view()),
+            WgpuRenderTargetId::Scratch(ix) => self.scratch[ix].view(),
         }
     }
 
@@ -2352,7 +2406,7 @@ impl Renderer {
                 &self.queue,
                 scene,
                 &self.scene_buffers,
-                &mut self.target,
+                &mut self.readback_target,
                 self.clear_color,
             ) {
             true
@@ -2456,9 +2510,12 @@ impl Renderer {
             };
         }
 
+        let row_bytes = self.target_row_bytes();
+        let padded_row_bytes =
+            row_bytes.next_multiple_of(::wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as u64);
         let readback = self.device.create_buffer(&::wgpu::BufferDescriptor {
             label: Some("tileink wgpu target readback"),
-            size: byte_len,
+            size: padded_row_bytes * self.size.1 as u64,
             usage: ::wgpu::BufferUsages::COPY_DST | ::wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
@@ -2467,7 +2524,18 @@ impl Renderer {
             .create_command_encoder(&::wgpu::CommandEncoderDescriptor {
                 label: Some("tileink wgpu target readback copy"),
             });
-        encoder.copy_buffer_to_buffer(self.target.buffer(), 0, &readback, 0, byte_len);
+        encoder.copy_texture_to_buffer(
+            self.readback_target.texture().as_image_copy(),
+            ::wgpu::TexelCopyBufferInfo {
+                buffer: &readback,
+                layout: ::wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(padded_row_bytes as u32),
+                    rows_per_image: None,
+                },
+            },
+            self.target_texture_extent(),
+        );
         self.queue.submit([encoder.finish()]);
 
         let (tx, rx) = mpsc::channel();
@@ -2485,8 +2553,10 @@ impl Renderer {
 
         let mapped = readback.slice(..).get_mapped_range();
         let mut pixels = Vec::with_capacity(self.size.0 as usize * self.size.1 as usize);
-        for pixel in mapped.chunks_exact(4) {
-            pixels.push(u32::from_le_bytes([pixel[0], pixel[1], pixel[2], pixel[3]]));
+        for row in 0..self.size.1 as usize {
+            let start = row * padded_row_bytes as usize;
+            let row = &mapped[start..start + row_bytes as usize];
+            pixels.extend_from_slice(bytemuck::cast_slice(row));
         }
         drop(mapped);
         readback.unmap();
@@ -2505,203 +2575,105 @@ impl Renderer {
         &self.queue
     }
 
-    pub fn target_buffer(&self) -> &::wgpu::Buffer {
-        self.target.buffer()
-    }
-
     pub fn target_rgba8_byte_len(&self) -> ::wgpu::BufferAddress {
         rgba8_byte_len(self.size.0, self.size.1)
-    }
-
-    /// Copies the rendered target into a caller-owned wgpu texture without CPU readback.
-    ///
-    /// The destination texture must belong to this renderer's wgpu device, be a
-    /// single-sample 2D `Rgba8Unorm` or `Rgba8UnormSrgb` texture, and include
-    /// `wgpu::TextureUsages::COPY_DST`.
-    pub fn blit_target_to_wgpu_texture(
-        &self,
-        dst: &::wgpu::Texture,
-    ) -> Result<(), WgpuTextureBlitError> {
-        self.validate_wgpu_texture_destination(dst)?;
-        let copy_size = self.target_rgba8_byte_len();
-        if copy_size == 0 {
-            return Ok(());
-        }
-
-        let mut encoder = self
-            .device
-            .create_command_encoder(&::wgpu::CommandEncoderDescriptor {
-                label: Some("tileink wgpu target texture blit"),
-            });
-        let source = self.texture_source_buffer(&mut encoder);
-        encoder.copy_buffer_to_texture(
-            ::wgpu::TexelCopyBufferInfo {
-                buffer: &source.buffer,
-                layout: ::wgpu::TexelCopyBufferLayout {
-                    offset: source.offset,
-                    bytes_per_row: source.bytes_per_row,
-                    rows_per_image: None,
-                },
-            },
-            dst.as_image_copy(),
-            self.target_texture_extent(),
-        );
-        self.queue.submit([encoder.finish()]);
-        Ok(())
     }
 
     pub fn render_to_wgpu_texture(
         &mut self,
         scene: &Scene,
         dst: &::wgpu::Texture,
-    ) -> Result<(), WgpuTextureBlitError> {
+    ) -> Result<(), WgpuTextureRenderError> {
         if self.render_native_to_wgpu_texture(scene, dst) {
             return Ok(());
         }
-        self.render(scene);
-        self.blit_target_to_wgpu_texture(dst)
+        self.cpu.render(scene);
+        self.size = (scene.width, scene.height);
+        self.upload_image_to_wgpu_texture(dst, self.cpu.image())
     }
 
     fn render_native_to_wgpu_texture(&mut self, scene: &Scene, dst: &::wgpu::Texture) -> bool {
-        if !self.can_write_storage_texture(dst, scene.width, scene.height) {
-            return false;
-        }
-        self.prepare_scene(scene);
-        if let Some(fine) = &self.fine
-            && fine.render_to_texture(
-                &self.device,
-                &self.queue,
-                scene,
-                &self.scene_buffers,
-                &mut self.target,
-                dst,
-                self.clear_color,
-            )
+        if self
+            .validate_wgpu_storage_texture_destination(dst, scene.width, scene.height)
+            .is_err()
         {
-            self.size = (scene.width, scene.height);
-            return true;
-        }
-        if self.render_prepared_tile_plan_to_texture(scene, dst) {
-            self.size = (scene.width, scene.height);
-            return true;
-        }
-        false
-    }
-
-    fn render_prepared_tile_plan_to_texture(
-        &mut self,
-        scene: &Scene,
-        dst: &::wgpu::Texture,
-    ) -> bool {
-        if self.fine.is_none() || self.coarse_pipeline.is_none() {
             return false;
         }
-        let Some(plan) = self.plan.clone() else {
-            return false;
+        self.root_target_view = Some(dst.create_view(&::wgpu::TextureViewDescriptor::default()));
+        self.prepare_scene(scene);
+        let rendered = if let Some(fine) = &self.fine
+            && self.root_target_view.as_ref().is_some_and(|target| {
+                fine.render_to_view(
+                    &self.device,
+                    &self.queue,
+                    scene,
+                    &self.scene_buffers,
+                    target,
+                    self.clear_color,
+                )
+            }) {
+            self.size = (scene.width, scene.height);
+            true
+        } else if self.render_prepared_tile_plan(scene) {
+            self.size = (scene.width, scene.height);
+            true
+        } else {
+            false
         };
-        if plan.ops.iter().any(|op| {
-            matches!(
-                op,
-                ExecOp::OffscreenLayer { .. } | ExecOp::OffscreenMaskLayer { .. }
-            )
-        }) {
-            return false;
-        }
-        let draw_batches = plan
-            .ops
-            .iter()
-            .filter_map(|op| {
-                let ExecOp::DrawBatch { draws, layer_stack } = op else {
-                    return None;
-                };
-                Some((draws.clone(), layer_stack.clone()))
-            })
-            .collect::<Vec<_>>();
-        if draw_batches.is_empty() {
-            return false;
-        }
-
-        <Self as Render>::scan(self, scene, ());
-        <Self as Render>::cumsum(self, scene, ());
-
-        for (batch_ix, (draws, layer_stack)) in draw_batches.iter().enumerate() {
-            self.coarse_batch(
-                scene,
-                draws.start as u32,
-                draws.end as u32,
-                layer_stack.start as u32,
-                layer_stack.end as u32,
-            );
-            let last_batch = batch_ix + 1 == draw_batches.len();
-            let rendered = self.fine.as_ref().is_some_and(|fine| {
-                if last_batch {
-                    fine.render_tiles_to_texture(
-                        &self.device,
-                        &self.queue,
-                        scene.width,
-                        scene.height,
-                        self.lengths,
-                        &self.scene_buffers,
-                        &self.scan,
-                        &self.coarse,
-                        &self.fine_clip_spills,
-                        &self.fine_group_spills,
-                        &mut self.target,
-                        dst,
-                        self.clear_color,
-                        batch_ix > 0,
-                        self.max_clip_depth.saturating_sub(FINE_LOCAL_CLIP_DEPTH) as u32,
-                        self.max_group_depth.saturating_sub(FINE_LOCAL_GROUP_DEPTH) as u32,
-                    )
-                } else {
-                    fine.render_tiles(
-                        &self.device,
-                        &self.queue,
-                        scene.width,
-                        scene.height,
-                        self.lengths,
-                        &self.scene_buffers,
-                        &self.scan,
-                        &self.coarse,
-                        &self.fine_clip_spills,
-                        &self.fine_group_spills,
-                        &mut self.target,
-                        self.clear_color,
-                        batch_ix > 0,
-                        self.max_clip_depth.saturating_sub(FINE_LOCAL_CLIP_DEPTH) as u32,
-                        self.max_group_depth.saturating_sub(FINE_LOCAL_GROUP_DEPTH) as u32,
-                    )
-                }
-            });
-            if !rendered {
-                return false;
-            }
-        }
-        true
+        self.root_target_view = None;
+        rendered
     }
 
     fn upload_cpu_image(&mut self) {
         let image = self.cpu.image();
         self.size = (image.width, image.height);
-        self.target
-            .resize(&self.device, rgba8_byte_len(image.width, image.height));
-        self.target.upload(&self.queue, image);
+        self.readback_target
+            .resize(&self.device, image.width, image.height);
+        self.readback_target.upload(&self.queue, image);
     }
 
-    fn validate_wgpu_texture_destination(
+    fn upload_image_to_wgpu_texture(
         &self,
         dst: &::wgpu::Texture,
-    ) -> Result<(), WgpuTextureBlitError> {
-        if dst.width() < self.size.0 || dst.height() < self.size.1 {
-            return Err(WgpuTextureBlitError::DestinationTooSmall {
-                required_width: self.size.0,
-                required_height: self.size.1,
+        image: &Image,
+    ) -> Result<(), WgpuTextureRenderError> {
+        self.validate_wgpu_copy_texture_destination(dst, image.width, image.height)?;
+        if image.pixels.is_empty() {
+            return Ok(());
+        }
+        self.queue.write_texture(
+            dst.as_image_copy(),
+            bytemuck::cast_slice(&image.pixels),
+            ::wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(image.width * std::mem::size_of::<u32>() as u32),
+                rows_per_image: Some(image.height),
+            },
+            ::wgpu::Extent3d {
+                width: image.width,
+                height: image.height,
+                depth_or_array_layers: 1,
+            },
+        );
+        Ok(())
+    }
+
+    fn validate_wgpu_copy_texture_destination(
+        &self,
+        dst: &::wgpu::Texture,
+        width: u32,
+        height: u32,
+    ) -> Result<(), WgpuTextureRenderError> {
+        if dst.width() < width || dst.height() < height {
+            return Err(WgpuTextureRenderError::DestinationTooSmall {
+                required_width: width,
+                required_height: height,
                 actual_width: dst.width(),
                 actual_height: dst.height(),
             });
         }
         if !dst.usage().contains(::wgpu::TextureUsages::COPY_DST) {
-            return Err(WgpuTextureBlitError::DestinationUsageMissing(dst.usage()));
+            return Err(WgpuTextureRenderError::DestinationUsageMissing(dst.usage()));
         }
         if !matches!(
             dst.format(),
@@ -2709,7 +2681,7 @@ impl Renderer {
         ) || dst.dimension() != ::wgpu::TextureDimension::D2
             || dst.sample_count() != 1
         {
-            return Err(WgpuTextureBlitError::UnsupportedDestination {
+            return Err(WgpuTextureRenderError::UnsupportedDestination {
                 format: dst.format(),
                 dimension: dst.dimension(),
                 sample_count: dst.sample_count(),
@@ -2718,48 +2690,36 @@ impl Renderer {
         Ok(())
     }
 
-    fn can_write_storage_texture(&self, dst: &::wgpu::Texture, width: u32, height: u32) -> bool {
-        dst.width() >= width
-            && dst.height() >= height
-            && dst.usage().contains(::wgpu::TextureUsages::STORAGE_BINDING)
-            && dst.format() == ::wgpu::TextureFormat::Rgba8Unorm
-            && dst.dimension() == ::wgpu::TextureDimension::D2
-            && dst.sample_count() == 1
-    }
-
-    fn texture_source_buffer(&self, encoder: &mut ::wgpu::CommandEncoder) -> WgpuTextureCopySource {
-        let row_bytes = self.target_row_bytes();
-        let row_alignment = ::wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as ::wgpu::BufferAddress;
-        let height = self.size.1 as ::wgpu::BufferAddress;
-        if self.size.1 <= 1 || row_bytes.is_multiple_of(row_alignment) {
-            return WgpuTextureCopySource {
-                buffer: self.target.buffer().clone(),
-                offset: 0,
-                bytes_per_row: (self.size.1 > 1).then_some(row_bytes as u32),
-            };
+    fn validate_wgpu_storage_texture_destination(
+        &self,
+        dst: &::wgpu::Texture,
+        width: u32,
+        height: u32,
+    ) -> Result<(), WgpuTextureRenderError> {
+        if dst.width() < width || dst.height() < height {
+            return Err(WgpuTextureRenderError::DestinationTooSmall {
+                required_width: width,
+                required_height: height,
+                actual_width: dst.width(),
+                actual_height: dst.height(),
+            });
         }
-
-        let padded_row_bytes = row_bytes.next_multiple_of(row_alignment);
-        let padded = self.device.create_buffer(&::wgpu::BufferDescriptor {
-            label: Some("tileink padded wgpu target texture blit"),
-            size: padded_row_bytes * height,
-            usage: ::wgpu::BufferUsages::COPY_SRC | ::wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        for row in 0..height {
-            encoder.copy_buffer_to_buffer(
-                self.target.buffer(),
-                row * row_bytes,
-                &padded,
-                row * padded_row_bytes,
-                row_bytes,
-            );
+        if !dst.usage().contains(::wgpu::TextureUsages::STORAGE_BINDING) {
+            return Err(WgpuTextureRenderError::DestinationStorageUsageMissing(
+                dst.usage(),
+            ));
         }
-        WgpuTextureCopySource {
-            buffer: padded,
-            offset: 0,
-            bytes_per_row: Some(padded_row_bytes as u32),
+        if dst.format() != ::wgpu::TextureFormat::Rgba8Unorm
+            || dst.dimension() != ::wgpu::TextureDimension::D2
+            || dst.sample_count() != 1
+        {
+            return Err(WgpuTextureRenderError::UnsupportedDestination {
+                format: dst.format(),
+                dimension: dst.dimension(),
+                sample_count: dst.sample_count(),
+            });
         }
+        Ok(())
     }
 
     fn target_row_bytes(&self) -> ::wgpu::BufferAddress {
@@ -2773,12 +2733,6 @@ impl Renderer {
             depth_or_array_layers: 1,
         }
     }
-}
-
-struct WgpuTextureCopySource {
-    buffer: ::wgpu::Buffer,
-    offset: ::wgpu::BufferAddress,
-    bytes_per_row: Option<u32>,
 }
 
 struct WgpuDebugScanReadback {
@@ -2819,14 +2773,12 @@ fn draw_bounds(scene: &Scene, draw_ix: usize) -> Bounds {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::mpsc;
-
     use peniko::{
         Color, Compose, Gradient, Mix,
         kurbo::{Affine, BezPath, Line, Rect, Shape},
     };
 
-    use super::{Renderer, WgpuRenderTargetId, WgpuTextureBlitError};
+    use super::{Renderer, WgpuRenderTargetId};
     use crate::{
         FillRule, Scene, TextContext, TextLayoutOptions,
         cpu::Renderer as CpuRenderer,
@@ -2881,7 +2833,7 @@ mod tests {
     }
 
     #[test]
-    fn wgpu_renderer_blits_to_texture_when_enabled() {
+    fn wgpu_renderer_uploads_cpu_fallback_to_copy_texture_without_storage() {
         if !run_wgpu_tests() {
             return;
         }
@@ -2935,6 +2887,13 @@ mod tests {
             0.0,
         );
         let mut renderer = Renderer::new_default_device(8, 8, Color::TRANSPARENT);
+        if !renderer
+            .device()
+            .features()
+            .contains(::wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
+        {
+            return;
+        }
         let texture = renderer
             .device()
             .create_texture(&::wgpu::TextureDescriptor {
@@ -2976,6 +2935,13 @@ mod tests {
             Color::from_rgb8(12, 34, 56),
         );
         let mut renderer = Renderer::new_default_device(8, 8, Color::TRANSPARENT);
+        if !renderer
+            .device()
+            .features()
+            .contains(::wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
+        {
+            return;
+        }
         let texture = renderer
             .device()
             .create_texture(&::wgpu::TextureDescriptor {
@@ -3002,12 +2968,17 @@ mod tests {
     }
 
     #[test]
-    fn wgpu_renderer_requires_copy_dst_when_offscreen_cannot_write_texture_directly() {
+    fn wgpu_renderer_renders_offscreen_plan_directly_to_storage_texture() {
         if !run_wgpu_tests() {
             return;
         }
 
         let mut scene = Scene::new(16, 16);
+        scene.push_rect(
+            Rect::new(0.0, 0.0, 16.0, 16.0),
+            crate::Radius::ZERO,
+            Color::from_rgb8(0, 255, 0),
+        );
         scene.push_filter_layer(
             Filter::Invert(1.0),
             Region::rect(Rect::new(0.0, 0.0, 8.0, 16.0), crate::Radius::ZERO),
@@ -3020,6 +2991,13 @@ mod tests {
         scene.pop_layer();
 
         let mut renderer = Renderer::new_default_device(16, 16, Color::TRANSPARENT);
+        if !renderer
+            .device()
+            .features()
+            .contains(::wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
+        {
+            return;
+        }
         let texture = renderer
             .device()
             .create_texture(&::wgpu::TextureDescriptor {
@@ -3037,16 +3015,18 @@ mod tests {
                 view_formats: &[],
             });
 
-        let err = renderer
+        renderer
             .render_to_wgpu_texture(&scene, &texture)
-            .expect_err("offscreen fallback without texture direct-write requires COPY_DST");
-        assert!(
-            matches!(
-                err,
-                WgpuTextureBlitError::DestinationUsageMissing(usage)
-                    if !usage.contains(::wgpu::TextureUsages::COPY_DST)
-            ),
-            "unexpected render_to_wgpu_texture error: {err:?}"
+            .expect("render offscreen plan directly to wgpu storage texture");
+        let bytes = read_texture_rgba8(renderer.device(), renderer.queue(), &texture, 16, 16);
+
+        assert_eq!(
+            &bytes[4 * (3 * 16 + 3)..4 * (3 * 16 + 4)],
+            &[0, 255, 255, 255]
+        );
+        assert_eq!(
+            &bytes[4 * (3 * 16 + 12)..4 * (3 * 16 + 13)],
+            &[0, 255, 0, 255]
         );
     }
 
@@ -4646,44 +4626,18 @@ mod tests {
         target: WgpuRenderTargetId,
         len: usize,
     ) -> Vec<u32> {
-        let byte_len = (len * std::mem::size_of::<u32>()) as ::wgpu::BufferAddress;
-        let readback = renderer.device().create_buffer(&::wgpu::BufferDescriptor {
-            label: Some("tileink wgpu render target test readback"),
-            size: byte_len,
-            usage: ::wgpu::BufferUsages::COPY_DST | ::wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
-        let mut encoder =
-            renderer
-                .device()
-                .create_command_encoder(&::wgpu::CommandEncoderDescriptor {
-                    label: Some("tileink wgpu render target test readback copy"),
-                });
-        encoder.copy_buffer_to_buffer(
-            renderer.render_target_buffer(target),
-            0,
-            &readback,
-            0,
-            byte_len,
+        let texture = match target {
+            WgpuRenderTargetId::Main => renderer.readback_target.texture(),
+            WgpuRenderTargetId::Scratch(ix) => renderer.scratch[ix].texture(),
+        };
+        let bytes = read_texture_rgba8(
+            renderer.device(),
+            renderer.queue(),
+            texture,
+            renderer.size.0,
+            renderer.size.1,
         );
-        renderer.queue().submit([encoder.finish()]);
-
-        let (tx, rx) = mpsc::channel();
-        readback
-            .slice(..)
-            .map_async(::wgpu::MapMode::Read, move |result| {
-                tx.send(result).unwrap()
-            });
-        renderer
-            .device()
-            .poll(::wgpu::PollType::wait_indefinitely())
-            .unwrap();
-        rx.recv().unwrap().unwrap();
-
-        let mapped = readback.slice(..).get_mapped_range();
-        let values = bytemuck::cast_slice(&mapped).to_vec();
-        drop(mapped);
-        readback.unmap();
+        let values = bytemuck::cast_slice(&bytes)[..len].to_vec();
         values
     }
 

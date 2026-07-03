@@ -9,4 +9,4 @@ mod scan;
 mod scene;
 mod target;
 
-pub use renderer::{Renderer, WgpuTextureBlitError};
+pub use renderer::{Renderer, WgpuTextureRenderError};
