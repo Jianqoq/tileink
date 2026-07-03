@@ -68,7 +68,7 @@ impl Renderer {
         match &primitive.kind {
             filter_model::FilterPrimitiveKind::Image { .. } => {
                 let output = self.acquire_scratch()?;
-                self.clear_render_target(output, 0);
+                self.clear_render_region(output, bounds, 0);
                 if self.flood_region_to_target(output, region, filter_cursors.next_brush_index()) {
                     Some(output)
                 } else {
@@ -95,7 +95,6 @@ impl Renderer {
                     bounds,
                 )?;
                 let temp = self.acquire_scratch()?;
-                self.clear_render_target(temp, 0);
                 if !self.copy_region_to_target(input, temp, bounds)
                     || !self.apply_filter(temp, bounds, filter, None, filter_cursors)
                 {
@@ -122,7 +121,7 @@ impl Renderer {
                     bounds,
                 )?;
                 let output = self.acquire_scratch()?;
-                self.clear_render_target(output, 0);
+                self.clear_render_region(output, bounds, 0);
                 if self.blend_filter_inputs(input, input2, output, region, *mode) {
                     Some(output)
                 } else {
@@ -146,7 +145,7 @@ impl Renderer {
                     bounds,
                 )?;
                 let output = self.acquire_scratch()?;
-                self.clear_render_target(output, 0);
+                self.clear_render_region(output, bounds, 0);
                 if self.composite_filter_inputs(input, input2, output, region, *operator) {
                     Some(output)
                 } else {
@@ -163,7 +162,7 @@ impl Renderer {
                     bounds,
                 )?;
                 let output = self.acquire_scratch()?;
-                self.clear_render_target(output, 0);
+                self.clear_render_region(output, bounds, 0);
                 if self.tile_filter_input(input, output, region, *source_region) {
                     Some(output)
                 } else {
@@ -173,7 +172,7 @@ impl Renderer {
             }
             filter_model::FilterPrimitiveKind::Merge { inputs } => {
                 let output = self.acquire_scratch()?;
-                self.clear_render_target(output, 0);
+                self.clear_render_region(output, bounds, 0);
                 for input in inputs {
                     let input = self.resolve_filter_graph_input(
                         source_graphic,
@@ -205,7 +204,7 @@ impl Renderer {
                     bounds,
                 )?;
                 let output = self.acquire_scratch()?;
-                self.clear_render_target(output, 0);
+                self.clear_render_region(output, bounds, 0);
                 if self.displacement_map_filter_inputs(input, input2, output, region, displacement)
                 {
                     Some(output)
@@ -216,7 +215,7 @@ impl Renderer {
             }
             filter_model::FilterPrimitiveKind::Turbulence(turbulence) => {
                 let output = self.acquire_scratch()?;
-                self.clear_render_target(output, 0);
+                self.clear_render_region(output, bounds, 0);
                 if self.turbulence_to_target(
                     output,
                     region,
@@ -265,7 +264,6 @@ impl Renderer {
                     return Some(target);
                 }
                 let alpha = self.acquire_scratch()?;
-                self.clear_render_target(alpha, 0);
                 if self.source_alpha_to_target(source_graphic, alpha, bounds) {
                     *source_alpha = Some(alpha);
                     Some(alpha)
@@ -284,7 +282,7 @@ impl Renderer {
         region: Bounds,
     ) -> Option<WgpuRenderTargetId> {
         let output = self.acquire_scratch()?;
-        self.clear_render_target(output, 0);
+        self.clear_render_region(output, bounds, 0);
         if self.copy_region_to_target(input, output, region.intersect(bounds)) {
             Some(output)
         } else {
@@ -323,7 +321,6 @@ impl Renderer {
                 let Some(temp) = self.acquire_scratch() else {
                     return false;
                 };
-                self.clear_render_target(temp, 0);
                 let ok = self.offset_region_to_target(target, temp, bounds, dx, dy)
                     && self.copy_region_to_target(temp, target, bounds);
                 self.release_scratch(temp);
@@ -348,7 +345,6 @@ impl Renderer {
                 let Some(temp) = self.acquire_scratch() else {
                     return false;
                 };
-                self.clear_render_target(temp, 0);
                 let ok =
                     self.convolve_matrix_to_target(target, temp, bounds, matrix, kernel_offset)
                         && self.copy_region_to_target(temp, target, bounds);
@@ -359,7 +355,6 @@ impl Renderer {
                 let Some(temp) = self.acquire_scratch() else {
                     return false;
                 };
-                self.clear_render_target(temp, 0);
                 let ok = self.diffuse_lighting_to_target(target, temp, bounds, lighting)
                     && self.copy_region_to_target(temp, target, bounds);
                 self.release_scratch(temp);
@@ -369,7 +364,6 @@ impl Renderer {
                 let Some(temp) = self.acquire_scratch() else {
                     return false;
                 };
-                self.clear_render_target(temp, 0);
                 let ok = self.specular_lighting_to_target(target, temp, bounds, lighting)
                     && self.copy_region_to_target(temp, target, bounds);
                 self.release_scratch(temp);
@@ -406,7 +400,7 @@ impl Renderer {
                     && (raw_radius_x.saturating_mul(2) >= self.size.0
                         || raw_radius_y.saturating_mul(2) >= self.size.1)
                 {
-                    return self.clear_render_target(target, 0);
+                    return self.clear_render_region(target, bounds, 0);
                 }
 
                 let Some(temp) = self.acquire_scratch() else {
@@ -510,7 +504,7 @@ impl Renderer {
         let Some(shadow) = self.acquire_scratch() else {
             return false;
         };
-        self.clear_render_target(shadow, 0);
+        self.clear_render_region(shadow, bounds, 0);
         if !self.build_drop_shadow_mask_to_target(
             target,
             shadow,
@@ -528,7 +522,6 @@ impl Renderer {
                 self.release_scratch(shadow);
                 return false;
             };
-            self.clear_render_target(temp, 0);
             let ok = self.blur_region_to_target(shadow, temp, bounds, std_dev, 0)
                 && self.blur_region_to_target(temp, shadow, bounds, std_dev, 1);
             self.release_scratch(temp);
@@ -577,7 +570,6 @@ impl Renderer {
         let Some(temp) = self.acquire_scratch() else {
             return false;
         };
-        self.clear_render_target(temp, 0);
         let ok = match (std_dev_x > 0.0, std_dev_y > 0.0) {
             (true, true) => {
                 self.blur_region_to_target(target, temp, bounds, std_dev_x, 0)
@@ -975,8 +967,6 @@ impl Renderer {
             self.release_scratch(source);
             return false;
         };
-        self.clear_render_target(source, 0);
-        self.clear_render_target(blurred, 0);
         let mut ok = self.copy_region_to_target(target, source, bounds);
 
         if ok && glass.blur_radius > 0 {
@@ -998,7 +988,6 @@ impl Renderer {
                     glass.blur_sampling,
                 )
             } else {
-                self.clear_render_target(temp, 0);
                 self.copy_region_to_target(source, blurred, bounds)
                     && self.blur_region_to_target(blurred, temp, bounds, std_dev, 0)
                     && self.blur_region_to_target(temp, blurred, bounds, std_dev, 1)

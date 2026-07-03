@@ -937,7 +937,6 @@ impl Renderer {
             self.release_scratch(source);
             return false;
         };
-        self.clear_render_target(mask, 0);
         self.build_layer_mask(mask, draw as u32, bounds);
         let ok = if let Some(mode) = blend {
             self.composite_blend_with_stack(target, source, mask, bounds, outer_stack, mode)
@@ -1057,7 +1056,6 @@ impl Renderer {
         let Some(backdrop) = self.acquire_scratch() else {
             return false;
         };
-        self.clear_render_target(backdrop, 0);
         if !self.copy_region_to_target(target, backdrop, bounds) {
             self.release_scratch(backdrop);
             return false;
@@ -1077,7 +1075,6 @@ impl Renderer {
             self.release_scratch(backdrop);
             return false;
         };
-        self.clear_render_target(mask, 0);
         let mask_ok = self.build_region_mask(mask, sample_region, path_index, bounds);
         if !mask_ok {
             self.release_scratch(mask);
@@ -1132,7 +1129,6 @@ impl Renderer {
             self.release_scratch(content_target);
             return false;
         };
-        self.clear_render_target(mask, 0);
         self.svg_mask_coverage(mask_source, mask, bounds, layer.kind);
         self.release_scratch(mask_source);
 
@@ -1141,7 +1137,6 @@ impl Renderer {
             self.release_scratch(content_target);
             return false;
         };
-        self.clear_render_target(region_mask, 0);
         let region_ok = self.build_region_mask(region_mask, &layer.region, path_index, bounds);
         if region_ok {
             self.apply_region_mask(region_mask, mask, bounds);
