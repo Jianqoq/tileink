@@ -41,6 +41,7 @@ const SHARED_BLUR_TILE_WIDTH: u32 = 16;
 const SHARED_BLUR_TILE_HEIGHT: u32 = 16;
 const SHARED_BLUR_MAX_RADIUS: u32 = 16;
 const STORAGE_BINDING_COUNT: u32 = 53;
+const FILTER_CONFIG_SLOTS: u64 = 256;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -304,6 +305,9 @@ pub(crate) struct WgpuFilterPipeline {
     composite_surface_stack_region: ::wgpu::ComputePipeline,
     bind_group_layout: ::wgpu::BindGroupLayout,
     config: ::wgpu::Buffer,
+    config_size: ::wgpu::BufferAddress,
+    config_stride: ::wgpu::BufferAddress,
+    config_slots: u64,
     _dummy_texture: ::wgpu::Texture,
     dummy_texture_view: ::wgpu::TextureView,
     dummy_read: ::wgpu::Buffer,
@@ -328,6 +332,17 @@ pub(crate) struct WgpuFilterPathBindings<'a> {
     pub(crate) p0y: &'a ::wgpu::Buffer,
     pub(crate) p1x: &'a ::wgpu::Buffer,
     pub(crate) p1y: &'a ::wgpu::Buffer,
+}
+
+pub(crate) struct WgpuFilterBatch<'a> {
+    pipeline: &'a WgpuFilterPipeline,
+    device: &'a ::wgpu::Device,
+    queue: &'a ::wgpu::Queue,
+    encoder: Option<::wgpu::CommandEncoder>,
+    // Each pass gets a stable uniform-buffer slot; the whole used range is uploaded once per batch.
+    config_bytes: Vec<u8>,
+    config_slot: u64,
+    has_work: bool,
 }
 
 impl WgpuFilterPipeline {
@@ -358,9 +373,15 @@ impl WgpuFilterPipeline {
             bind_group_layouts: &[Some(&bind_group_layout)],
             immediate_size: 0,
         });
+        let config_size = std::mem::size_of::<FilterConfig>() as ::wgpu::BufferAddress;
+        let config_stride = align_to(
+            config_size,
+            device.limits().min_uniform_buffer_offset_alignment as ::wgpu::BufferAddress,
+        );
+        let config_slots = FILTER_CONFIG_SLOTS;
         let config = device.create_buffer(&::wgpu::BufferDescriptor {
             label: Some("tileink wgpu filter config"),
-            size: std::mem::size_of::<FilterConfig>() as ::wgpu::BufferAddress,
+            size: config_stride * config_slots,
             usage: ::wgpu::BufferUsages::UNIFORM | ::wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -587,11 +608,30 @@ impl WgpuFilterPipeline {
             ),
             bind_group_layout,
             config,
+            config_size,
+            config_stride,
+            config_slots,
             _dummy_texture: dummy_texture,
             dummy_texture_view,
             dummy_read,
             dummy_read_write,
         })
+    }
+
+    pub(crate) fn begin_batch<'a>(
+        &'a self,
+        device: &'a ::wgpu::Device,
+        queue: &'a ::wgpu::Queue,
+    ) -> WgpuFilterBatch<'a> {
+        WgpuFilterBatch {
+            pipeline: self,
+            device,
+            queue,
+            encoder: Some(create_filter_encoder(device)),
+            config_bytes: Vec::with_capacity((self.config_stride * 8) as usize),
+            config_slot: 0,
+            has_work: false,
+        }
     }
 
     pub(crate) fn clear_buffer(
@@ -1013,121 +1053,6 @@ impl WgpuFilterPipeline {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn downsample_region(
-        &self,
-        device: &::wgpu::Device,
-        queue: &::wgpu::Queue,
-        source: &::wgpu::TextureView,
-        target: &::wgpu::TextureView,
-        size: (u32, u32),
-        lengths: GpuBufferLengths,
-        source_bounds: Bounds,
-        target_bounds: Bounds,
-        sampling: BlurSampling,
-    ) {
-        let Some(mut config) = config_for_bounds(size, lengths, target_bounds) else {
-            return;
-        };
-        config.rect_x0 = source_bounds.x0 as f32;
-        config.rect_y0 = source_bounds.y0 as f32;
-        config.rect_x1 = source_bounds.x1 as f32;
-        config.rect_y1 = source_bounds.y1 as f32;
-        config.downsample = sampling.factor();
-        config.downsample_filter = encode_blur_downsample_filter(sampling.downsample_filter);
-        self.dispatch(
-            device,
-            queue,
-            &self.downsample_region,
-            &config,
-            source,
-            &self.dummy_texture_view,
-            target,
-            None,
-        );
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn upsample_region(
-        &self,
-        device: &::wgpu::Device,
-        queue: &::wgpu::Queue,
-        source: &::wgpu::TextureView,
-        target: &::wgpu::TextureView,
-        size: (u32, u32),
-        lengths: GpuBufferLengths,
-        target_bounds: Bounds,
-        source_bounds: Bounds,
-        sampling: BlurSampling,
-    ) {
-        let Some(mut config) = config_for_bounds(size, lengths, target_bounds) else {
-            return;
-        };
-        config.rect_x0 = source_bounds.x0 as f32;
-        config.rect_y0 = source_bounds.y0 as f32;
-        config.rect_x1 = source_bounds.x1 as f32;
-        config.rect_y1 = source_bounds.y1 as f32;
-        config.downsample = sampling.factor();
-        config.upsample_filter = encode_blur_upsample_filter(sampling.upsample_filter);
-        self.dispatch(
-            device,
-            queue,
-            &self.upsample_region,
-            &config,
-            source,
-            &self.dummy_texture_view,
-            target,
-            None,
-        );
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn upsample_rect_composite_region(
-        &self,
-        device: &::wgpu::Device,
-        queue: &::wgpu::Queue,
-        source: &::wgpu::TextureView,
-        target: &::wgpu::TextureView,
-        size: (u32, u32),
-        lengths: GpuBufferLengths,
-        target_bounds: Bounds,
-        source_bounds: Bounds,
-        sampling: BlurSampling,
-        region: &Region,
-    ) -> bool {
-        let Region::Rect { rect, radius } = region else {
-            return false;
-        };
-        let Some(mut config) = config_for_bounds(size, lengths, target_bounds) else {
-            return true;
-        };
-        config.source_x0 = source_bounds.x0 as u32;
-        config.source_y0 = source_bounds.y0 as u32;
-        config.source_x1 = source_bounds.x1 as u32;
-        config.source_y1 = source_bounds.y1 as u32;
-        config.downsample = sampling.factor();
-        config.upsample_filter = encode_blur_upsample_filter(sampling.upsample_filter);
-        config.rect_x0 = rect.x0 as f32;
-        config.rect_y0 = rect.y0 as f32;
-        config.rect_x1 = rect.x1 as f32;
-        config.rect_y1 = rect.y1 as f32;
-        config.radius_top_left = radius.top_left;
-        config.radius_top_right = radius.top_right;
-        config.radius_bottom_left = radius.bottom_left;
-        config.radius_bottom_right = radius.bottom_right;
-        self.dispatch(
-            device,
-            queue,
-            &self.upsample_rect_composite_region,
-            &config,
-            source,
-            &self.dummy_texture_view,
-            target,
-            None,
-        );
-        true
-    }
-
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn blur_region(
         &self,
         device: &::wgpu::Device,
@@ -1429,44 +1354,6 @@ impl WgpuFilterPipeline {
             device,
             queue,
             &self.liquid_glass_region,
-            &config,
-            source,
-            blurred,
-            target,
-            None,
-        );
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn rect_liquid_glass_composite_region(
-        &self,
-        device: &::wgpu::Device,
-        queue: &::wgpu::Queue,
-        source: &::wgpu::TextureView,
-        blurred: &::wgpu::TextureView,
-        target: &::wgpu::TextureView,
-        size: (u32, u32),
-        lengths: GpuBufferLengths,
-        target_bounds: Bounds,
-        blurred_bounds: Bounds,
-        sampling: BlurSampling,
-        glass: RectLiquidGlass,
-        region: RectLiquidGlassRegion,
-    ) {
-        let Some(mut config) = config_for_bounds(size, lengths, target_bounds) else {
-            return;
-        };
-        configure_rect_liquid_glass(&mut config, glass, region);
-        config.source_x0 = blurred_bounds.x0 as u32;
-        config.source_y0 = blurred_bounds.y0 as u32;
-        config.source_x1 = blurred_bounds.x1 as u32;
-        config.source_y1 = blurred_bounds.y1 as u32;
-        config.downsample = sampling.factor();
-        config.upsample_filter = encode_blur_upsample_filter(sampling.upsample_filter);
-        self.dispatch(
-            device,
-            queue,
-            &self.liquid_glass_rect_composite_region,
             &config,
             source,
             blurred,
@@ -1872,14 +1759,10 @@ impl WgpuFilterPipeline {
         turbulence_tables: Option<&WgpuFilterTurbulenceBindings<'_>>,
         path_bindings: Option<&WgpuFilterPathBindings<'_>>,
     ) {
-        let profile_name = self.profile_name_for_pipeline(pipeline, config);
-        let _profile_scope = start_cpu_scope(profile_name);
-        if config.pixel_count == 0 {
-            return;
-        }
-        queue.write_buffer(&self.config, 0, bytemuck::bytes_of(config));
-        let bind_group = self.create_bind_group(
-            device,
+        let mut batch = self.begin_batch(device, queue);
+        batch.dispatch_with_extra(
+            pipeline,
+            config,
             source,
             aux,
             target,
@@ -1890,23 +1773,7 @@ impl WgpuFilterPipeline {
             turbulence_tables,
             path_bindings,
         );
-        let mut encoder = device.create_command_encoder(&::wgpu::CommandEncoderDescriptor {
-            label: Some("tileink wgpu filter encoder"),
-        });
-        let gpu_scope = start_gpu_scope(device, profile_name);
-        let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
-        {
-            let mut pass = encoder.begin_compute_pass(&::wgpu::ComputePassDescriptor {
-                label: Some(profile_name),
-                timestamp_writes,
-            });
-            pass.set_pipeline(pipeline);
-            pass.set_bind_group(0, &bind_group, &[]);
-            let workgroups = self.dispatch_workgroups_for_pipeline(pipeline, config);
-            pass.dispatch_workgroups(workgroups.0, workgroups.1, workgroups.2);
-        }
-        finish_gpu_scope(&mut encoder, gpu_scope);
-        queue.submit([encoder.finish()]);
+        batch.finish();
     }
 
     fn dispatch_workgroups_for_pipeline(
@@ -2024,6 +1891,7 @@ impl WgpuFilterPipeline {
     fn create_bind_group(
         &self,
         device: &::wgpu::Device,
+        config_offset: ::wgpu::BufferAddress,
         source: &::wgpu::TextureView,
         aux: &::wgpu::TextureView,
         target: &::wgpu::TextureView,
@@ -2097,7 +1965,7 @@ impl WgpuFilterPipeline {
             label: Some("tileink wgpu filter bind group"),
             layout: &self.bind_group_layout,
             entries: &[
-                bind_buffer(0, &self.config),
+                bind_config_buffer(0, &self.config, config_offset, self.config_size),
                 bind_texture(1, source),
                 bind_texture(2, aux),
                 bind_texture(3, target),
@@ -2156,6 +2024,319 @@ impl WgpuFilterPipeline {
                 bind_buffer(56, path_p1y),
             ],
         })
+    }
+}
+
+impl WgpuFilterBatch<'_> {
+    pub(crate) fn copy_region(
+        &mut self,
+        source: &::wgpu::TextureView,
+        target: &::wgpu::TextureView,
+        size: (u32, u32),
+        lengths: GpuBufferLengths,
+        bounds: Bounds,
+    ) {
+        let Some(config) = config_for_bounds(size, lengths, bounds) else {
+            return;
+        };
+        self.dispatch(
+            &self.pipeline.copy_region,
+            &config,
+            source,
+            &self.pipeline.dummy_texture_view,
+            target,
+            None,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn downsample_region(
+        &mut self,
+        source: &::wgpu::TextureView,
+        target: &::wgpu::TextureView,
+        size: (u32, u32),
+        lengths: GpuBufferLengths,
+        source_bounds: Bounds,
+        target_bounds: Bounds,
+        sampling: BlurSampling,
+    ) {
+        let Some(mut config) = config_for_bounds(size, lengths, target_bounds) else {
+            return;
+        };
+        config.rect_x0 = source_bounds.x0 as f32;
+        config.rect_y0 = source_bounds.y0 as f32;
+        config.rect_x1 = source_bounds.x1 as f32;
+        config.rect_y1 = source_bounds.y1 as f32;
+        config.downsample = sampling.factor();
+        config.downsample_filter = encode_blur_downsample_filter(sampling.downsample_filter);
+        self.dispatch(
+            &self.pipeline.downsample_region,
+            &config,
+            source,
+            &self.pipeline.dummy_texture_view,
+            target,
+            None,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn upsample_region(
+        &mut self,
+        source: &::wgpu::TextureView,
+        target: &::wgpu::TextureView,
+        size: (u32, u32),
+        lengths: GpuBufferLengths,
+        target_bounds: Bounds,
+        source_bounds: Bounds,
+        sampling: BlurSampling,
+    ) {
+        let Some(mut config) = config_for_bounds(size, lengths, target_bounds) else {
+            return;
+        };
+        config.rect_x0 = source_bounds.x0 as f32;
+        config.rect_y0 = source_bounds.y0 as f32;
+        config.rect_x1 = source_bounds.x1 as f32;
+        config.rect_y1 = source_bounds.y1 as f32;
+        config.downsample = sampling.factor();
+        config.upsample_filter = encode_blur_upsample_filter(sampling.upsample_filter);
+        self.dispatch(
+            &self.pipeline.upsample_region,
+            &config,
+            source,
+            &self.pipeline.dummy_texture_view,
+            target,
+            None,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn upsample_rect_composite_region(
+        &mut self,
+        source: &::wgpu::TextureView,
+        target: &::wgpu::TextureView,
+        size: (u32, u32),
+        lengths: GpuBufferLengths,
+        target_bounds: Bounds,
+        source_bounds: Bounds,
+        sampling: BlurSampling,
+        region: &Region,
+    ) -> bool {
+        let Region::Rect { rect, radius } = region else {
+            return false;
+        };
+        let Some(mut config) = config_for_bounds(size, lengths, target_bounds) else {
+            return true;
+        };
+        config.source_x0 = source_bounds.x0 as u32;
+        config.source_y0 = source_bounds.y0 as u32;
+        config.source_x1 = source_bounds.x1 as u32;
+        config.source_y1 = source_bounds.y1 as u32;
+        config.downsample = sampling.factor();
+        config.upsample_filter = encode_blur_upsample_filter(sampling.upsample_filter);
+        config.rect_x0 = rect.x0 as f32;
+        config.rect_y0 = rect.y0 as f32;
+        config.rect_x1 = rect.x1 as f32;
+        config.rect_y1 = rect.y1 as f32;
+        config.radius_top_left = radius.top_left;
+        config.radius_top_right = radius.top_right;
+        config.radius_bottom_left = radius.bottom_left;
+        config.radius_bottom_right = radius.bottom_right;
+        self.dispatch(
+            &self.pipeline.upsample_rect_composite_region,
+            &config,
+            source,
+            &self.pipeline.dummy_texture_view,
+            target,
+            None,
+        );
+        true
+    }
+
+    pub(crate) fn blur_region(
+        &mut self,
+        source: &::wgpu::TextureView,
+        target: &::wgpu::TextureView,
+        size: (u32, u32),
+        lengths: GpuBufferLengths,
+        bounds: Bounds,
+        std_dev: f32,
+        axis: u32,
+    ) {
+        let Some(mut config) = config_for_bounds(size, lengths, bounds) else {
+            return;
+        };
+        config.amount = std_dev;
+        config.blur_axis = axis;
+        let pipeline = if shared_blur_radius(std_dev).is_some() {
+            &self.pipeline.blur_shared_region
+        } else {
+            &self.pipeline.blur_region
+        };
+        self.dispatch(
+            pipeline,
+            &config,
+            source,
+            &self.pipeline.dummy_texture_view,
+            target,
+            None,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn rect_liquid_glass_composite_region(
+        &mut self,
+        source: &::wgpu::TextureView,
+        blurred: &::wgpu::TextureView,
+        target: &::wgpu::TextureView,
+        size: (u32, u32),
+        lengths: GpuBufferLengths,
+        target_bounds: Bounds,
+        blurred_bounds: Bounds,
+        sampling: BlurSampling,
+        glass: RectLiquidGlass,
+        region: RectLiquidGlassRegion,
+    ) {
+        let Some(mut config) = config_for_bounds(size, lengths, target_bounds) else {
+            return;
+        };
+        configure_rect_liquid_glass(&mut config, glass, region);
+        config.source_x0 = blurred_bounds.x0 as u32;
+        config.source_y0 = blurred_bounds.y0 as u32;
+        config.source_x1 = blurred_bounds.x1 as u32;
+        config.source_y1 = blurred_bounds.y1 as u32;
+        config.downsample = sampling.factor();
+        config.upsample_filter = encode_blur_upsample_filter(sampling.upsample_filter);
+        self.dispatch(
+            &self.pipeline.liquid_glass_rect_composite_region,
+            &config,
+            source,
+            blurred,
+            target,
+            None,
+        );
+    }
+
+    fn dispatch(
+        &mut self,
+        compute_pipeline: &::wgpu::ComputePipeline,
+        config: &FilterConfig,
+        source: &::wgpu::TextureView,
+        aux: &::wgpu::TextureView,
+        target: &::wgpu::TextureView,
+        bindings: Option<&WgpuFilterBindings<'_>>,
+    ) {
+        self.dispatch_with_extra(
+            compute_pipeline,
+            config,
+            source,
+            aux,
+            target,
+            bindings,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn dispatch_with_extra(
+        &mut self,
+        compute_pipeline: &::wgpu::ComputePipeline,
+        config: &FilterConfig,
+        source: &::wgpu::TextureView,
+        aux: &::wgpu::TextureView,
+        target: &::wgpu::TextureView,
+        bindings: Option<&WgpuFilterBindings<'_>>,
+        transfer_tables: Option<&::wgpu::Buffer>,
+        brushes: Option<&WgpuFilterBrushBindings<'_>>,
+        convolve_kernels: Option<&::wgpu::Buffer>,
+        turbulence_tables: Option<&WgpuFilterTurbulenceBindings<'_>>,
+        path_bindings: Option<&WgpuFilterPathBindings<'_>>,
+    ) {
+        let profile_name = self
+            .pipeline
+            .profile_name_for_pipeline(compute_pipeline, config);
+        let _profile_scope = start_cpu_scope(profile_name);
+        if config.pixel_count == 0 {
+            return;
+        }
+        if self.config_slot >= self.pipeline.config_slots {
+            self.submit_current();
+        }
+
+        let config_offset = self.config_slot * self.pipeline.config_stride;
+        self.config_slot += 1;
+        let config_start = config_offset as usize;
+        let config_end = config_start + self.pipeline.config_size as usize;
+        if self.config_bytes.len() < config_end {
+            self.config_bytes.resize(config_end, 0);
+        }
+        self.config_bytes[config_start..config_end].copy_from_slice(bytemuck::bytes_of(config));
+        let bind_group = self.pipeline.create_bind_group(
+            self.device,
+            config_offset,
+            source,
+            aux,
+            target,
+            bindings,
+            transfer_tables,
+            brushes,
+            convolve_kernels,
+            turbulence_tables,
+            path_bindings,
+        );
+
+        let encoder = self
+            .encoder
+            .as_mut()
+            .expect("filter batch encoder is recreated after every submit");
+        let gpu_scope = start_gpu_scope(self.device, profile_name);
+        let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
+        {
+            let mut pass = encoder.begin_compute_pass(&::wgpu::ComputePassDescriptor {
+                label: Some(profile_name),
+                timestamp_writes,
+            });
+            pass.set_pipeline(compute_pipeline);
+            pass.set_bind_group(0, &bind_group, &[]);
+            let workgroups = self
+                .pipeline
+                .dispatch_workgroups_for_pipeline(compute_pipeline, config);
+            pass.dispatch_workgroups(workgroups.0, workgroups.1, workgroups.2);
+        }
+        finish_gpu_scope(encoder, gpu_scope);
+        self.has_work = true;
+    }
+
+    fn submit_current(&mut self) {
+        if !self.has_work {
+            self.config_slot = 0;
+            self.config_bytes.clear();
+            return;
+        }
+        self.queue
+            .write_buffer(&self.pipeline.config, 0, &self.config_bytes);
+        let encoder = self
+            .encoder
+            .take()
+            .expect("filter batch encoder exists while submitting");
+        self.queue.submit([encoder.finish()]);
+        self.encoder = Some(create_filter_encoder(self.device));
+        self.config_slot = 0;
+        self.config_bytes.clear();
+        self.has_work = false;
+    }
+
+    pub(crate) fn finish(mut self) {
+        self.submit_current();
+    }
+}
+
+impl Drop for WgpuFilterBatch<'_> {
+    fn drop(&mut self) {
+        self.submit_current();
     }
 }
 
@@ -2379,6 +2560,22 @@ fn rect_bounds(rect: Rect) -> Bounds {
     )
 }
 
+fn create_filter_encoder(device: &::wgpu::Device) -> ::wgpu::CommandEncoder {
+    device.create_command_encoder(&::wgpu::CommandEncoderDescriptor {
+        label: Some("tileink wgpu filter encoder"),
+    })
+}
+
+fn align_to(
+    value: ::wgpu::BufferAddress,
+    alignment: ::wgpu::BufferAddress,
+) -> ::wgpu::BufferAddress {
+    if alignment <= 1 {
+        return value;
+    }
+    value.div_ceil(alignment) * alignment
+}
+
 fn create_pipeline(
     device: &::wgpu::Device,
     layout: &::wgpu::PipelineLayout,
@@ -2503,6 +2700,22 @@ fn bind_buffer(binding: u32, buffer: &::wgpu::Buffer) -> ::wgpu::BindGroupEntry<
     ::wgpu::BindGroupEntry {
         binding,
         resource: buffer.as_entire_binding(),
+    }
+}
+
+fn bind_config_buffer(
+    binding: u32,
+    buffer: &::wgpu::Buffer,
+    offset: ::wgpu::BufferAddress,
+    size: ::wgpu::BufferAddress,
+) -> ::wgpu::BindGroupEntry<'_> {
+    ::wgpu::BindGroupEntry {
+        binding,
+        resource: ::wgpu::BindingResource::Buffer(::wgpu::BufferBinding {
+            buffer,
+            offset,
+            size: ::wgpu::BufferSize::new(size),
+        }),
     }
 }
 

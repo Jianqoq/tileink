@@ -1,4 +1,7 @@
-use std::time::Duration;
+use std::{
+    sync::mpsc,
+    time::{Duration, Instant},
+};
 
 use peniko::{
     Color,
@@ -30,8 +33,10 @@ fn run_case(name: &str, scene: Scene) {
     let mut renderer = WgpuRenderer::new_default_device(WIDTH, HEIGHT, Color::WHITE);
     for _ in 0..WARMUP_FRAMES {
         renderer.render(&scene);
+        wait_for_gpu(&renderer);
     }
 
+    let render_wait_avg = bench_render_wait(&mut renderer, &scene);
     let mut report = WgpuRenderProfileReport::new();
     for _ in 0..PROFILE_FRAMES {
         renderer.start_profile();
@@ -41,6 +46,7 @@ fn run_case(name: &str, scene: Scene) {
     }
 
     println!("\n{name}");
+    println!("{:<34} {:>8.3} ms", "render.wait.avg", render_wait_avg);
     for summary in report.profile().summary() {
         if summary.name.starts_with("filter.") {
             let millis = summary
@@ -62,6 +68,29 @@ fn run_case(name: &str, scene: Scene) {
         "filter.total",
         filter_total.as_secs_f64() * 1_000.0 / report.iterations() as f64
     );
+}
+
+fn bench_render_wait(renderer: &mut WgpuRenderer, scene: &Scene) -> f64 {
+    let mut total = Duration::ZERO;
+    for _ in 0..PROFILE_FRAMES {
+        let start = Instant::now();
+        renderer.render(scene);
+        wait_for_gpu(renderer);
+        total += start.elapsed();
+    }
+    total.as_secs_f64() * 1_000.0 / PROFILE_FRAMES as f64
+}
+
+fn wait_for_gpu(renderer: &WgpuRenderer) {
+    let (tx, rx) = mpsc::channel();
+    renderer.queue().on_submitted_work_done(move || {
+        let _ = tx.send(());
+    });
+    renderer
+        .device()
+        .poll(::wgpu::PollType::wait_indefinitely())
+        .expect("poll wgpu device");
+    rx.recv().expect("receive wgpu completion");
 }
 
 fn blur_scene(panels: u32) -> Scene {

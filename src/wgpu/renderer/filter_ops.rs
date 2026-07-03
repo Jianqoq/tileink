@@ -673,12 +673,50 @@ impl Renderer {
             self.release_scratch(low);
             return false;
         };
-        let ok = self.downsample_region_to_target(target, low, bounds, low_bounds, sampling)
-            && self.blur_region_to_target(low, temp, low_bounds, std_dev_x / factor as f32, 0)
-            && self.blur_region_to_target(temp, low, low_bounds, std_dev_y / factor as f32, 1)
-            && self.upsample_rect_composite_to_target(
-                low, target, bounds, low_bounds, sampling, region,
+        let ok = if let Some(filter) = &self.filter {
+            let mut batch = filter.begin_batch(&self.device, &self.queue);
+            batch.downsample_region(
+                self.render_target_view(target),
+                self.render_target_view(low),
+                self.size,
+                self.lengths,
+                bounds,
+                low_bounds,
+                sampling,
             );
+            batch.blur_region(
+                self.render_target_view(low),
+                self.render_target_view(temp),
+                self.size,
+                self.lengths,
+                low_bounds,
+                std_dev_x / factor as f32,
+                0,
+            );
+            batch.blur_region(
+                self.render_target_view(temp),
+                self.render_target_view(low),
+                self.size,
+                self.lengths,
+                low_bounds,
+                std_dev_y / factor as f32,
+                1,
+            );
+            let ok = batch.upsample_rect_composite_region(
+                self.render_target_view(low),
+                self.render_target_view(target),
+                self.size,
+                self.lengths,
+                bounds,
+                low_bounds,
+                sampling,
+                region,
+            );
+            batch.finish();
+            ok
+        } else {
+            false
+        };
         self.release_scratch(temp);
         self.release_scratch(low);
         ok
@@ -745,28 +783,63 @@ impl Renderer {
             return false;
         };
 
+        let Some(filter) = &self.filter else {
+            self.release_scratch(temp);
+            self.release_scratch(low);
+            self.release_scratch(source);
+            return false;
+        };
         let factor = glass.blur_sampling.factor() as f32;
         let std_dev = glass.blur_radius as f32 * filter_model::LIQUID_GLASS_BLUR_STD_DEV_SCALE;
-        let ok = self.copy_region_to_target(target, source, bounds)
-            && self.downsample_region_to_target(
-                source,
-                low,
-                bounds,
-                low_bounds,
-                glass.blur_sampling,
-            )
-            && self.blur_region_to_target(low, temp, low_bounds, std_dev / factor, 0)
-            && self.blur_region_to_target(temp, low, low_bounds, std_dev / factor, 1)
-            && self.liquid_glass_rect_composite_to_target(
-                source,
-                low,
-                target,
-                bounds,
-                low_bounds,
-                glass.blur_sampling,
-                glass,
-                glass_region,
-            );
+        let mut batch = filter.begin_batch(&self.device, &self.queue);
+        batch.copy_region(
+            self.render_target_view(target),
+            self.render_target_view(source),
+            self.size,
+            self.lengths,
+            bounds,
+        );
+        batch.downsample_region(
+            self.render_target_view(source),
+            self.render_target_view(low),
+            self.size,
+            self.lengths,
+            bounds,
+            low_bounds,
+            glass.blur_sampling,
+        );
+        batch.blur_region(
+            self.render_target_view(low),
+            self.render_target_view(temp),
+            self.size,
+            self.lengths,
+            low_bounds,
+            std_dev / factor,
+            0,
+        );
+        batch.blur_region(
+            self.render_target_view(temp),
+            self.render_target_view(low),
+            self.size,
+            self.lengths,
+            low_bounds,
+            std_dev / factor,
+            1,
+        );
+        batch.rect_liquid_glass_composite_region(
+            self.render_target_view(source),
+            self.render_target_view(low),
+            self.render_target_view(target),
+            self.size,
+            self.lengths,
+            bounds,
+            low_bounds,
+            glass.blur_sampling,
+            glass,
+            glass_region,
+        );
+        batch.finish();
+        let ok = true;
 
         self.release_scratch(temp);
         self.release_scratch(low);
@@ -795,29 +868,72 @@ impl Renderer {
             return false;
         };
 
+        let Some(filter) = &self.filter else {
+            self.release_scratch(temp);
+            self.release_scratch(low);
+            self.release_scratch(source);
+            return false;
+        };
         let factor = glass.blur_sampling.factor() as f32;
         let std_dev = glass.blur_radius as f32 * filter_model::LIQUID_GLASS_BLUR_STD_DEV_SCALE;
-        let ok = self.copy_region_to_target(target, source, bounds)
-            && self.downsample_region_to_target(
-                source,
-                low,
-                bounds,
-                low_bounds,
-                glass.blur_sampling,
-            )
-            && self.blur_region_to_target(low, temp, low_bounds, std_dev / factor, 0)
-            && self.blur_region_to_target(temp, low, low_bounds, std_dev / factor, 1)
-            && self.upsample_region_to_target(low, temp, bounds, low_bounds, glass.blur_sampling)
-            && self.liquid_glass_rect_composite_to_target(
-                source,
-                temp,
-                target,
-                bounds,
-                bounds,
-                filter_model::BlurSampling::FULL_RES,
-                glass,
-                glass_region,
-            );
+        let mut batch = filter.begin_batch(&self.device, &self.queue);
+        batch.copy_region(
+            self.render_target_view(target),
+            self.render_target_view(source),
+            self.size,
+            self.lengths,
+            bounds,
+        );
+        batch.downsample_region(
+            self.render_target_view(source),
+            self.render_target_view(low),
+            self.size,
+            self.lengths,
+            bounds,
+            low_bounds,
+            glass.blur_sampling,
+        );
+        batch.blur_region(
+            self.render_target_view(low),
+            self.render_target_view(temp),
+            self.size,
+            self.lengths,
+            low_bounds,
+            std_dev / factor,
+            0,
+        );
+        batch.blur_region(
+            self.render_target_view(temp),
+            self.render_target_view(low),
+            self.size,
+            self.lengths,
+            low_bounds,
+            std_dev / factor,
+            1,
+        );
+        batch.upsample_region(
+            self.render_target_view(low),
+            self.render_target_view(temp),
+            self.size,
+            self.lengths,
+            bounds,
+            low_bounds,
+            glass.blur_sampling,
+        );
+        batch.rect_liquid_glass_composite_region(
+            self.render_target_view(source),
+            self.render_target_view(temp),
+            self.render_target_view(target),
+            self.size,
+            self.lengths,
+            bounds,
+            bounds,
+            filter_model::BlurSampling::FULL_RES,
+            glass,
+            glass_region,
+        );
+        batch.finish();
+        let ok = true;
 
         self.release_scratch(temp);
         self.release_scratch(low);
@@ -841,24 +957,81 @@ impl Renderer {
         let Some(low_bounds) = downsampled_bounds(bounds, factor) else {
             return false;
         };
+        let Some(filter) = &self.filter else {
+            return false;
+        };
         if low_bounds.width() >= bounds.width() && low_bounds.height() >= bounds.height() {
-            return if source == target {
-                self.blur_region_to_target(source, temp, bounds, std_dev_x, 0)
-                    && self.blur_region_to_target(temp, target, bounds, std_dev_y, 1)
-            } else {
-                self.copy_region_to_target(source, target, bounds)
-                    && self.blur_region_to_target(target, temp, bounds, std_dev_x, 0)
-                    && self.blur_region_to_target(temp, target, bounds, std_dev_y, 1)
-            };
+            let mut batch = filter.begin_batch(&self.device, &self.queue);
+            if source != target {
+                batch.copy_region(
+                    self.render_target_view(source),
+                    self.render_target_view(target),
+                    self.size,
+                    self.lengths,
+                    bounds,
+                );
+            }
+            batch.blur_region(
+                self.render_target_view(target),
+                self.render_target_view(temp),
+                self.size,
+                self.lengths,
+                bounds,
+                std_dev_x,
+                0,
+            );
+            batch.blur_region(
+                self.render_target_view(temp),
+                self.render_target_view(target),
+                self.size,
+                self.lengths,
+                bounds,
+                std_dev_y,
+                1,
+            );
+            batch.finish();
+            return true;
         }
 
-        // Low-resolution pixels live at their global downsampled coordinates in
-        // regular full-size scratch targets, so this path avoids per-filter
-        // texture allocation while still reducing blur pass work.
-        self.downsample_region_to_target(source, low, bounds, low_bounds, sampling)
-            && self.blur_region_to_target(low, temp, low_bounds, std_dev_x / factor as f32, 0)
-            && self.blur_region_to_target(temp, low, low_bounds, std_dev_y / factor as f32, 1)
-            && self.upsample_region_to_target(low, target, bounds, low_bounds, sampling)
+        let mut batch = filter.begin_batch(&self.device, &self.queue);
+        batch.downsample_region(
+            self.render_target_view(source),
+            self.render_target_view(low),
+            self.size,
+            self.lengths,
+            bounds,
+            low_bounds,
+            sampling,
+        );
+        batch.blur_region(
+            self.render_target_view(low),
+            self.render_target_view(temp),
+            self.size,
+            self.lengths,
+            low_bounds,
+            std_dev_x / factor as f32,
+            0,
+        );
+        batch.blur_region(
+            self.render_target_view(temp),
+            self.render_target_view(low),
+            self.size,
+            self.lengths,
+            low_bounds,
+            std_dev_y / factor as f32,
+            1,
+        );
+        batch.upsample_region(
+            self.render_target_view(low),
+            self.render_target_view(target),
+            self.size,
+            self.lengths,
+            bounds,
+            low_bounds,
+            sampling,
+        );
+        batch.finish();
+        true
     }
 
     fn build_drop_shadow_mask_to_target(
@@ -1266,37 +1439,6 @@ impl Renderer {
         true
     }
 
-    fn liquid_glass_rect_composite_to_target(
-        &self,
-        source: WgpuRenderTargetId,
-        blurred: WgpuRenderTargetId,
-        target: WgpuRenderTargetId,
-        bounds: Bounds,
-        blurred_bounds: Bounds,
-        sampling: filter_model::BlurSampling,
-        glass: filter_model::RectLiquidGlass,
-        region: filter_model::RectLiquidGlassRegion,
-    ) -> bool {
-        let Some(filter) = &self.filter else {
-            return false;
-        };
-        filter.rect_liquid_glass_composite_region(
-            &self.device,
-            &self.queue,
-            self.render_target_view(source),
-            self.render_target_view(blurred),
-            self.render_target_view(target),
-            self.size,
-            self.lengths,
-            bounds,
-            blurred_bounds,
-            sampling,
-            glass,
-            region,
-        );
-        true
-    }
-
     fn blur_region_to_target(
         &self,
         source: WgpuRenderTargetId,
@@ -1320,82 +1462,6 @@ impl Renderer {
             axis,
         );
         true
-    }
-
-    fn downsample_region_to_target(
-        &self,
-        source: WgpuRenderTargetId,
-        target: WgpuRenderTargetId,
-        source_bounds: Bounds,
-        target_bounds: Bounds,
-        sampling: filter_model::BlurSampling,
-    ) -> bool {
-        let Some(filter) = &self.filter else {
-            return false;
-        };
-        filter.downsample_region(
-            &self.device,
-            &self.queue,
-            self.render_target_view(source),
-            self.render_target_view(target),
-            self.size,
-            self.lengths,
-            source_bounds,
-            target_bounds,
-            sampling,
-        );
-        true
-    }
-
-    fn upsample_region_to_target(
-        &self,
-        source: WgpuRenderTargetId,
-        target: WgpuRenderTargetId,
-        target_bounds: Bounds,
-        source_bounds: Bounds,
-        sampling: filter_model::BlurSampling,
-    ) -> bool {
-        let Some(filter) = &self.filter else {
-            return false;
-        };
-        filter.upsample_region(
-            &self.device,
-            &self.queue,
-            self.render_target_view(source),
-            self.render_target_view(target),
-            self.size,
-            self.lengths,
-            target_bounds,
-            source_bounds,
-            sampling,
-        );
-        true
-    }
-
-    fn upsample_rect_composite_to_target(
-        &self,
-        source: WgpuRenderTargetId,
-        target: WgpuRenderTargetId,
-        target_bounds: Bounds,
-        source_bounds: Bounds,
-        sampling: filter_model::BlurSampling,
-        region: &crate::shared::layer::region::Region,
-    ) -> bool {
-        let Some(filter) = &self.filter else {
-            return false;
-        };
-        filter.upsample_rect_composite_region(
-            &self.device,
-            &self.queue,
-            self.render_target_view(source),
-            self.render_target_view(target),
-            self.size,
-            self.lengths,
-            target_bounds,
-            source_bounds,
-            sampling,
-            region,
-        )
     }
 
     fn morphology_axis_to_target(
