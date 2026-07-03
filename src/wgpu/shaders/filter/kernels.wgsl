@@ -197,6 +197,94 @@ fn filter_morphology_axis_region(@builtin(global_invocation_id) gid: vec3<u32>) 
 }
 
 @compute @workgroup_size(256)
+fn filter_downsample_region(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let region_ix = gid.x;
+    if (region_ix >= config.pixel_count) {
+        return;
+    }
+
+    let factor = max(config.downsample, 1u);
+    let xy = xy_for_region_ix(region_ix);
+    let source_x0 = u32(config.rect_x0);
+    let source_y0 = u32(config.rect_y0);
+    let source_x1 = u32(config.rect_x1);
+    let source_y1 = u32(config.rect_y1);
+    let cell_x0 = max(xy.x * factor, source_x0);
+    let cell_y0 = max(xy.y * factor, source_y0);
+    let cell_x1 = min((xy.x + 1u) * factor, source_x1);
+    let cell_y1 = min((xy.y + 1u) * factor, source_y1);
+    if (cell_x0 >= cell_x1 || cell_y0 >= cell_y1) {
+        target_store_at(xy.x, xy.y, 0u);
+        return;
+    }
+
+    if (config.downsample_filter == 0u) {
+        let sx = clamp((cell_x0 + cell_x1 - 1u) / 2u, source_x0, source_x1 - 1u);
+        let sy = clamp((cell_y0 + cell_y1 - 1u) / 2u, source_y0, source_y1 - 1u);
+        target_store_at(xy.x, xy.y, source_pixel_at(sx, sy));
+        return;
+    }
+
+    var acc = vec4<f32>(0.0);
+    var count = 0.0;
+    var sy = cell_y0;
+    loop {
+        if (sy >= cell_y1) {
+            break;
+        }
+        var sx = cell_x0;
+        loop {
+            if (sx >= cell_x1) {
+                break;
+            }
+            acc += rgba8_to_unorm(source_pixel_at(sx, sy));
+            count += 1.0;
+            sx += 1u;
+        }
+        sy += 1u;
+    }
+
+    let avg = acc / count;
+    target_store_at(xy.x, xy.y, pack_premul_rgba8(avg.r, avg.g, avg.b, avg.a));
+}
+
+@compute @workgroup_size(256)
+fn filter_upsample_region(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let region_ix = gid.x;
+    if (region_ix >= config.pixel_count) {
+        return;
+    }
+
+    let source_x0 = u32(config.rect_x0);
+    let source_y0 = u32(config.rect_y0);
+    let source_x1 = u32(config.rect_x1);
+    let source_y1 = u32(config.rect_y1);
+    if (source_x0 >= source_x1 || source_y0 >= source_y1) {
+        return;
+    }
+
+    let xy = xy_for_region_ix(region_ix);
+    let factor = f32(max(config.downsample, 1u));
+    let max_x = f32(source_x1 - 1u);
+    let max_y = f32(source_y1 - 1u);
+    let sample_x = clamp((f32(xy.x) + 0.5) / factor - 0.5, f32(source_x0), max_x);
+    let sample_y = clamp((f32(xy.y) + 0.5) / factor - 0.5, f32(source_y0), max_y);
+    let x0 = u32(floor(sample_x));
+    let y0 = u32(floor(sample_y));
+    let x1 = min(x0 + 1u, source_x1 - 1u);
+    let y1 = min(y0 + 1u, source_y1 - 1u);
+    let tx = sample_x - floor(sample_x);
+    let ty = sample_y - floor(sample_y);
+    if (config.upsample_filter == 0u) {
+        target_store_at(xy.x, xy.y, source_pixel_at(u32(round(sample_x)), u32(round(sample_y))));
+        return;
+    }
+    let top = lerp_premul_u8(source_pixel_at(x0, y0), source_pixel_at(x1, y0), tx);
+    let bottom = lerp_premul_u8(source_pixel_at(x0, y1), source_pixel_at(x1, y1), tx);
+    target_store_at(xy.x, xy.y, lerp_premul_u8(top, bottom, ty));
+}
+
+@compute @workgroup_size(256)
 fn filter_blur_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = gid.x;
     if (region_ix >= config.pixel_count) {
@@ -732,4 +820,3 @@ fn filter_composite_surface_stack_region(@builtin(global_invocation_id) gid: vec
     let ix = target_ix_at(xy.x, xy.y);
     target_store_ix(ix, composite_surface_with_stack(target_load_ix(ix), source_pixel_at(u32(sx), u32(sy)), xy.x, xy.y));
 }
-

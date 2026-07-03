@@ -931,6 +931,7 @@ fn outer_clip_does_not_clip_filter_source_before_blur() {
         Filter::Blur {
             std_dev_x: 8.0,
             std_dev_y: 8.0,
+            sampling: Default::default(),
         },
         Region::Path {
             path: clip,
@@ -963,6 +964,7 @@ fn filter_blur_outputs_expanded_bounds() {
         Filter::Blur {
             std_dev_x: 4.0,
             std_dev_y: 4.0,
+            sampling: Default::default(),
         },
         Region::rect(sample_rect, Radius::ZERO),
     );

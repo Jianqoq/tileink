@@ -332,34 +332,8 @@ impl Renderer {
             Filter::Blur {
                 std_dev_x,
                 std_dev_y,
-            } => {
-                let std_dev_x = std_dev_x.max(0.0);
-                let std_dev_y = std_dev_y.max(0.0);
-                if std_dev_x <= 0.0 && std_dev_y <= 0.0 {
-                    return true;
-                }
-                let Some(temp) = self.acquire_scratch() else {
-                    return false;
-                };
-                self.clear_render_target(temp, 0);
-                let ok = match (std_dev_x > 0.0, std_dev_y > 0.0) {
-                    (true, true) => {
-                        self.blur_region_to_target(target, temp, bounds, std_dev_x, 0)
-                            && self.blur_region_to_target(temp, target, bounds, std_dev_y, 1)
-                    }
-                    (true, false) => {
-                        self.blur_region_to_target(target, temp, bounds, std_dev_x, 0)
-                            && self.copy_region_to_target(temp, target, bounds)
-                    }
-                    (false, true) => {
-                        self.blur_region_to_target(target, temp, bounds, std_dev_y, 1)
-                            && self.copy_region_to_target(temp, target, bounds)
-                    }
-                    (false, false) => true,
-                };
-                self.release_scratch(temp);
-                ok
-            }
+                sampling,
+            } => self.apply_blur(target, bounds, *std_dev_x, *std_dev_y, *sampling),
             Filter::ColorMatrix(matrix) => {
                 self.apply_color_matrix_to_target(target, bounds, *matrix);
                 true
@@ -567,6 +541,96 @@ impl Renderer {
         let ok = self.composite_drop_shadow_to_target(target, shadow, bounds, brush_index);
         self.release_scratch(shadow);
         ok
+    }
+
+    fn apply_blur(
+        &mut self,
+        target: WgpuRenderTargetId,
+        bounds: Bounds,
+        std_dev_x: f32,
+        std_dev_y: f32,
+        sampling: filter_model::BlurSampling,
+    ) -> bool {
+        let std_dev_x = std_dev_x.max(0.0);
+        let std_dev_y = std_dev_y.max(0.0);
+        if std_dev_x <= 0.0 && std_dev_y <= 0.0 {
+            return true;
+        }
+
+        let factor = sampling.factor();
+        if factor > 1 && std_dev_x > 0.0 && std_dev_y > 0.0 {
+            let Some(low) = self.acquire_scratch() else {
+                return false;
+            };
+            let Some(temp) = self.acquire_scratch() else {
+                self.release_scratch(low);
+                return false;
+            };
+            let ok = self.downsampled_blur_to_target(
+                target, target, low, temp, bounds, std_dev_x, std_dev_y, sampling,
+            );
+            self.release_scratch(temp);
+            self.release_scratch(low);
+            return ok;
+        }
+
+        let Some(temp) = self.acquire_scratch() else {
+            return false;
+        };
+        self.clear_render_target(temp, 0);
+        let ok = match (std_dev_x > 0.0, std_dev_y > 0.0) {
+            (true, true) => {
+                self.blur_region_to_target(target, temp, bounds, std_dev_x, 0)
+                    && self.blur_region_to_target(temp, target, bounds, std_dev_y, 1)
+            }
+            (true, false) => {
+                self.blur_region_to_target(target, temp, bounds, std_dev_x, 0)
+                    && self.copy_region_to_target(temp, target, bounds)
+            }
+            (false, true) => {
+                self.blur_region_to_target(target, temp, bounds, std_dev_y, 1)
+                    && self.copy_region_to_target(temp, target, bounds)
+            }
+            (false, false) => true,
+        };
+        self.release_scratch(temp);
+        ok
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn downsampled_blur_to_target(
+        &self,
+        source: WgpuRenderTargetId,
+        target: WgpuRenderTargetId,
+        low: WgpuRenderTargetId,
+        temp: WgpuRenderTargetId,
+        bounds: Bounds,
+        std_dev_x: f32,
+        std_dev_y: f32,
+        sampling: filter_model::BlurSampling,
+    ) -> bool {
+        let factor = sampling.factor();
+        let Some(low_bounds) = downsampled_bounds(bounds, factor) else {
+            return false;
+        };
+        if low_bounds.width() >= bounds.width() && low_bounds.height() >= bounds.height() {
+            return if source == target {
+                self.blur_region_to_target(source, temp, bounds, std_dev_x, 0)
+                    && self.blur_region_to_target(temp, target, bounds, std_dev_y, 1)
+            } else {
+                self.copy_region_to_target(source, target, bounds)
+                    && self.blur_region_to_target(target, temp, bounds, std_dev_x, 0)
+                    && self.blur_region_to_target(temp, target, bounds, std_dev_y, 1)
+            };
+        }
+
+        // Low-resolution pixels live at their global downsampled coordinates in
+        // regular full-size scratch targets, so this path avoids per-filter
+        // texture allocation while still reducing blur pass work.
+        self.downsample_region_to_target(source, low, bounds, low_bounds, sampling)
+            && self.blur_region_to_target(low, temp, low_bounds, std_dev_x / factor as f32, 0)
+            && self.blur_region_to_target(temp, low, low_bounds, std_dev_y / factor as f32, 1)
+            && self.upsample_region_to_target(low, target, bounds, low_bounds, sampling)
     }
 
     fn build_drop_shadow_mask_to_target(
@@ -913,8 +977,7 @@ impl Renderer {
         };
         self.clear_render_target(source, 0);
         self.clear_render_target(blurred, 0);
-        let mut ok = self.copy_region_to_target(target, source, bounds)
-            && self.copy_region_to_target(source, blurred, bounds);
+        let mut ok = self.copy_region_to_target(target, source, bounds);
 
         if ok && glass.blur_radius > 0 {
             let Some(temp) = self.acquire_scratch() else {
@@ -922,11 +985,27 @@ impl Renderer {
                 self.release_scratch(source);
                 return false;
             };
-            self.clear_render_target(temp, 0);
             let std_dev = glass.blur_radius as f32 * filter_model::LIQUID_GLASS_BLUR_STD_DEV_SCALE;
-            ok = self.blur_region_to_target(blurred, temp, bounds, std_dev, 0)
-                && self.blur_region_to_target(temp, blurred, bounds, std_dev, 1);
+            ok = if glass.blur_sampling.factor() > 1 {
+                self.downsampled_blur_to_target(
+                    source,
+                    blurred,
+                    temp,
+                    blurred,
+                    bounds,
+                    std_dev,
+                    std_dev,
+                    glass.blur_sampling,
+                )
+            } else {
+                self.clear_render_target(temp, 0);
+                self.copy_region_to_target(source, blurred, bounds)
+                    && self.blur_region_to_target(blurred, temp, bounds, std_dev, 0)
+                    && self.blur_region_to_target(temp, blurred, bounds, std_dev, 1)
+            };
             self.release_scratch(temp);
+        } else if ok {
+            ok = self.copy_region_to_target(source, blurred, bounds);
         }
 
         ok = ok && self.liquid_glass_to_target(source, blurred, target, bounds, glass, region);
@@ -983,6 +1062,56 @@ impl Renderer {
             bounds,
             std_dev,
             axis,
+        );
+        true
+    }
+
+    fn downsample_region_to_target(
+        &self,
+        source: WgpuRenderTargetId,
+        target: WgpuRenderTargetId,
+        source_bounds: Bounds,
+        target_bounds: Bounds,
+        sampling: filter_model::BlurSampling,
+    ) -> bool {
+        let Some(filter) = &self.filter else {
+            return false;
+        };
+        filter.downsample_region(
+            &self.device,
+            &self.queue,
+            self.render_target_view(source),
+            self.render_target_view(target),
+            self.size,
+            self.lengths,
+            source_bounds,
+            target_bounds,
+            sampling,
+        );
+        true
+    }
+
+    fn upsample_region_to_target(
+        &self,
+        source: WgpuRenderTargetId,
+        target: WgpuRenderTargetId,
+        target_bounds: Bounds,
+        source_bounds: Bounds,
+        sampling: filter_model::BlurSampling,
+    ) -> bool {
+        let Some(filter) = &self.filter else {
+            return false;
+        };
+        filter.upsample_region(
+            &self.device,
+            &self.queue,
+            self.render_target_view(source),
+            self.render_target_view(target),
+            self.size,
+            self.lengths,
+            target_bounds,
+            source_bounds,
+            sampling,
         );
         true
     }
@@ -1080,4 +1209,19 @@ impl Renderer {
             );
         }
     }
+}
+
+fn downsampled_bounds(bounds: Bounds, downsample: u32) -> Option<Bounds> {
+    let downsample = downsample.max(1) as i32;
+    let bounds = Bounds::new(
+        bounds.x0.div_euclid(downsample),
+        bounds.y0.div_euclid(downsample),
+        div_ceil_i32(bounds.x1, downsample),
+        div_ceil_i32(bounds.y1, downsample),
+    );
+    (!bounds.is_empty()).then_some(bounds)
+}
+
+fn div_ceil_i32(value: i32, divisor: i32) -> i32 {
+    -((-value).div_euclid(divisor))
 }

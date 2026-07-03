@@ -7,12 +7,13 @@ use crate::shared::{
     layer::{
         blend::{Blend, src_over_premul},
         filter::{
-            COMPONENT_TRANSFER_TABLE_SIZE, ColorChannel, ComponentTransferTable, CompositeOperator,
-            ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, DisplacementMap, Filter,
-            FilterInput, FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator,
-            SpecularLighting, TURBULENCE_LATTICE_SIZE, TURBULENCE_TABLE_LEN, Turbulence,
-            TurbulenceKind, filter_offset_to_pixel_delta, rect_liquid_glass_region,
-            turbulence_gradient_index, turbulence_lattice,
+            BlurDownsampleFilter, BlurSampling, BlurUpsampleFilter, COMPONENT_TRANSFER_TABLE_SIZE,
+            ColorChannel, ComponentTransferTable, CompositeOperator, ConvolveEdgeMode,
+            ConvolveMatrix, DiffuseLighting, DisplacementMap, Filter, FilterInput, FilterPrimitive,
+            FilterPrimitiveKind, LightSource, MorphologyOperator, SpecularLighting,
+            TURBULENCE_LATTICE_SIZE, TURBULENCE_TABLE_LEN, Turbulence, TurbulenceKind,
+            filter_offset_to_pixel_delta, rect_liquid_glass_region, turbulence_gradient_index,
+            turbulence_lattice,
         },
         region::Region,
     },
@@ -61,7 +62,8 @@ fn apply_with_region(
         Filter::Blur {
             std_dev_x,
             std_dev_y,
-        } => apply_gaussian_blur(image, *std_dev_x, *std_dev_y),
+            sampling,
+        } => apply_gaussian_blur_with_sampling(image, *std_dev_x, *std_dev_y, *sampling, bounds),
         Filter::ColorMatrix(matrix) => {
             for px in &mut image.pixels {
                 *px = apply_color_matrix_pixel(*px, *matrix);
@@ -784,6 +786,60 @@ fn apply_offset(image: &mut Image, dx: i32, dy: i32) {
 }
 
 fn apply_gaussian_blur(image: &mut Image, std_dev_x: f32, std_dev_y: f32) {
+    apply_gaussian_blur_full_resolution(image, std_dev_x, std_dev_y);
+}
+
+fn apply_gaussian_blur_with_sampling(
+    image: &mut Image,
+    std_dev_x: f32,
+    std_dev_y: f32,
+    sampling: BlurSampling,
+    bounds: Bounds,
+) {
+    let std_dev_x = std_dev_x.max(0.0);
+    let std_dev_y = std_dev_y.max(0.0);
+    if (std_dev_x <= 0.0 && std_dev_y <= 0.0) || image.width == 0 || image.height == 0 {
+        return;
+    }
+
+    let factor = sampling.factor();
+    if factor == 1 || std_dev_x <= 0.0 || std_dev_y <= 0.0 {
+        apply_gaussian_blur_full_resolution(image, std_dev_x, std_dev_y);
+        return;
+    }
+
+    let Some(low_bounds) = downsampled_bounds(bounds, factor) else {
+        return;
+    };
+    if low_bounds.width() >= image.width && low_bounds.height() >= image.height {
+        apply_gaussian_blur_full_resolution(image, std_dev_x, std_dev_y);
+        return;
+    }
+
+    let mut low = downsample_image(
+        image,
+        bounds,
+        low_bounds,
+        factor,
+        sampling.downsample_filter,
+    );
+    apply_gaussian_blur_full_resolution(
+        &mut low,
+        std_dev_x / factor as f32,
+        std_dev_y / factor as f32,
+    );
+    *image = upsample_image(
+        &low,
+        bounds,
+        low_bounds,
+        factor,
+        sampling.upsample_filter,
+        image.width,
+        image.height,
+    );
+}
+
+fn apply_gaussian_blur_full_resolution(image: &mut Image, std_dev_x: f32, std_dev_y: f32) {
     let std_dev_x = std_dev_x.max(0.0);
     let std_dev_y = std_dev_y.max(0.0);
     if (std_dev_x <= 0.0 && std_dev_y <= 0.0) || image.width == 0 || image.height == 0 {
@@ -803,6 +859,137 @@ fn apply_gaussian_blur(image: &mut Image, std_dev_x: f32, std_dev_y: f32) {
             image.pixels = blur_pass(image, &kernel, Axis::Vertical);
         }
     }
+}
+
+fn downsampled_bounds(bounds: Bounds, factor: u32) -> Option<Bounds> {
+    let factor = factor.max(1) as i32;
+    let x0 = bounds.x0.div_euclid(factor);
+    let y0 = bounds.y0.div_euclid(factor);
+    let x1 = div_ceil_i32(bounds.x1, factor);
+    let y1 = div_ceil_i32(bounds.y1, factor);
+    let bounds = Bounds::new(x0, y0, x1, y1);
+    (!bounds.is_empty()).then_some(bounds)
+}
+
+fn div_ceil_i32(value: i32, divisor: i32) -> i32 {
+    -((-value).div_euclid(divisor))
+}
+
+fn downsample_image(
+    source: &Image,
+    bounds: Bounds,
+    low_bounds: Bounds,
+    factor: u32,
+    filter: BlurDownsampleFilter,
+) -> Image {
+    let mut low = Image::new(
+        low_bounds.width(),
+        low_bounds.height(),
+        peniko::Color::TRANSPARENT,
+    );
+    let factor = factor as i32;
+    for ly in 0..low.height {
+        let cell_y0 = ((low_bounds.y0 + ly as i32) * factor).max(bounds.y0);
+        let cell_y1 = ((low_bounds.y0 + ly as i32 + 1) * factor).min(bounds.y1);
+        for lx in 0..low.width {
+            let cell_x0 = ((low_bounds.x0 + lx as i32) * factor).max(bounds.x0);
+            let cell_x1 = ((low_bounds.x0 + lx as i32 + 1) * factor).min(bounds.x1);
+            low.pixels[(ly * low.width + lx) as usize] = match filter {
+                BlurDownsampleFilter::Nearest => {
+                    let sx = ((cell_x0 + cell_x1 - 1) / 2).clamp(bounds.x0, bounds.x1 - 1);
+                    let sy = ((cell_y0 + cell_y1 - 1) / 2).clamp(bounds.y0, bounds.y1 - 1);
+                    source.pixels[((sy - bounds.y0) as u32 * source.width + (sx - bounds.x0) as u32)
+                        as usize]
+                }
+                BlurDownsampleFilter::Box => {
+                    let mut acc = [0.0; 4];
+                    let mut count = 0.0;
+                    for sy in cell_y0..cell_y1 {
+                        for sx in cell_x0..cell_x1 {
+                            let ix = ((sy - bounds.y0) as u32 * source.width
+                                + (sx - bounds.x0) as u32)
+                                as usize;
+                            let px = unpack_premul_rgba8(source.pixels[ix]);
+                            for channel in 0..4 {
+                                acc[channel] += px[channel];
+                            }
+                            count += 1.0;
+                        }
+                    }
+                    if count > 0.0 {
+                        for channel in &mut acc {
+                            *channel /= count;
+                        }
+                    }
+                    pack_premul_rgba8(acc)
+                }
+            };
+        }
+    }
+    low
+}
+
+fn upsample_image(
+    low: &Image,
+    bounds: Bounds,
+    low_bounds: Bounds,
+    factor: u32,
+    filter: BlurUpsampleFilter,
+    width: u32,
+    height: u32,
+) -> Image {
+    let mut out = Image::new(width, height, peniko::Color::TRANSPARENT);
+    let factor = factor as f32;
+    for y in 0..height {
+        let low_y = (((bounds.y0 as f32 + y as f32 + 0.5) / factor - 0.5)
+            .clamp(low_bounds.y0 as f32, low_bounds.y1.saturating_sub(1) as f32))
+            - low_bounds.y0 as f32;
+        let y0 = low_y
+            .floor()
+            .clamp(0.0, low.height.saturating_sub(1) as f32) as u32;
+        let y1 = (y0 + 1).min(low.height.saturating_sub(1));
+        let ty = (low_y - low_y.floor()).clamp(0.0, 1.0);
+        for x in 0..width {
+            let low_x = (((bounds.x0 as f32 + x as f32 + 0.5) / factor - 0.5)
+                .clamp(low_bounds.x0 as f32, low_bounds.x1.saturating_sub(1) as f32))
+                - low_bounds.x0 as f32;
+            let x0 = low_x.floor().clamp(0.0, low.width.saturating_sub(1) as f32) as u32;
+            let x1 = (x0 + 1).min(low.width.saturating_sub(1));
+            let tx = (low_x - low_x.floor()).clamp(0.0, 1.0);
+            out.pixels[(y * width + x) as usize] = match filter {
+                BlurUpsampleFilter::Nearest => {
+                    let sx = low_x.round().clamp(0.0, low.width.saturating_sub(1) as f32) as u32;
+                    let sy = low_y
+                        .round()
+                        .clamp(0.0, low.height.saturating_sub(1) as f32)
+                        as u32;
+                    pixel_at(low, sx, sy)
+                }
+                BlurUpsampleFilter::Bilinear => {
+                    let top = lerp_premul_pixel(pixel_at(low, x0, y0), pixel_at(low, x1, y0), tx);
+                    let bottom =
+                        lerp_premul_pixel(pixel_at(low, x0, y1), pixel_at(low, x1, y1), tx);
+                    lerp_premul_pixel(top, bottom, ty)
+                }
+            };
+        }
+    }
+    out
+}
+
+fn pixel_at(image: &Image, x: u32, y: u32) -> u32 {
+    image.pixels[(y * image.width + x) as usize]
+}
+
+fn lerp_premul_pixel(a: u32, b: u32, t: f32) -> u32 {
+    let a = unpack_premul_rgba8(a);
+    let b = unpack_premul_rgba8(b);
+    pack_premul_rgba8([
+        lerp(a[0], b[0], t),
+        lerp(a[1], b[1], t),
+        lerp(a[2], b[2], t),
+        lerp(a[3], b[3], t),
+    ])
 }
 
 fn apply_drop_shadow(
@@ -1082,6 +1269,7 @@ mod tests {
             &Filter::Blur {
                 std_dev_x: 1.0,
                 std_dev_y: 0.0,
+                sampling: BlurSampling::downsampled(4),
             },
             Bounds::canvas(3, 3),
         );
@@ -1091,6 +1279,57 @@ mod tests {
         assert!(image.rgba8_at(2, 1)[3] > 0);
         assert_eq!(image.rgba8_at(1, 0), [0, 0, 0, 0]);
         assert_eq!(image.rgba8_at(1, 2), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn downsampled_blur_spreads_source_pixels() {
+        let mut image = Image::new(6, 6, Color::TRANSPARENT);
+        image.pixels[(2 * image.width + 2) as usize] = rgba8_pack([255, 255, 255, 255]);
+
+        apply(
+            &mut image,
+            &Filter::Blur {
+                std_dev_x: 2.0,
+                std_dev_y: 2.0,
+                sampling: BlurSampling::downsampled(2),
+            },
+            Bounds::canvas(6, 6),
+        );
+
+        assert!(image.rgba8_at(2, 2)[3] > 0);
+        assert!(image.rgba8_at(5, 5)[3] > 0);
+    }
+
+    #[test]
+    fn downsampled_blur_sampling_modes_change_reconstruction() {
+        let mut nearest = Image::new(8, 8, Color::TRANSPARENT);
+        nearest.pixels[(nearest.width + 1) as usize] = rgba8_pack([255, 255, 255, 255]);
+        let mut box_filtered = nearest.clone();
+
+        apply(
+            &mut nearest,
+            &Filter::Blur {
+                std_dev_x: 4.0,
+                std_dev_y: 4.0,
+                sampling: BlurSampling {
+                    factor: 4,
+                    downsample_filter: BlurDownsampleFilter::Nearest,
+                    upsample_filter: BlurUpsampleFilter::Nearest,
+                },
+            },
+            Bounds::canvas(8, 8),
+        );
+        apply(
+            &mut box_filtered,
+            &Filter::Blur {
+                std_dev_x: 4.0,
+                std_dev_y: 4.0,
+                sampling: BlurSampling::downsampled(4),
+            },
+            Bounds::canvas(8, 8),
+        );
+
+        assert!(nearest.rgba8_at(1, 1)[3] > box_filtered.rgba8_at(1, 1)[3]);
     }
 
     #[test]

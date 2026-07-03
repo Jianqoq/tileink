@@ -232,6 +232,10 @@ name = "wgpu_blur"
 path = "examples/wgpu/blur.rs"
 
 [[example]]
+name = "wgpu_downsample_blur"
+path = "examples/wgpu/downsample_blur.rs"
+
+[[example]]
 name = "wgpu_brightness"
 path = "examples/wgpu/brightness.rs"
 

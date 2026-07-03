@@ -56,6 +56,7 @@ pub fn sdf_nested_clip_blur_scene() -> (Scene, u32, u32) {
         Filter::Blur {
             std_dev_x: 12.0,
             std_dev_y: 12.0,
+            sampling: Default::default(),
         },
         Region::rect(rect_clip, rect_radius),
     );

@@ -47,6 +47,8 @@ pub enum Filter {
         std_dev_x: f32,
         /// Gaussian standard deviation in pixels on the Y axis.
         std_dev_y: f32,
+        /// Optional reduced-resolution sampling strategy for large blurs.
+        sampling: BlurSampling,
     },
     Brightness(f32),
     Contrast(f32),
@@ -184,6 +186,58 @@ pub(crate) const LIQUID_GLASS_D65_Z: f32 = 1.0890578;
 pub(crate) const LIQUID_GLASS_D65_WHITE: [f32; 3] =
     [LIQUID_GLASS_D65_X, LIQUID_GLASS_D65_Y, LIQUID_GLASS_D65_Z];
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BlurDownsampleFilter {
+    /// Sample one source pixel per low-resolution pixel. Fastest, lowest quality.
+    Nearest,
+    /// Average every covered source pixel in the low-resolution cell. This is
+    /// the default because it preserves energy before the Gaussian blur pass.
+    Box,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BlurUpsampleFilter {
+    /// Copy the nearest low-resolution pixel back to full resolution.
+    Nearest,
+    /// Bilinearly interpolate premultiplied RGBA. This is the default quality
+    /// choice for backdrop blur because it avoids block edges after upsample.
+    Bilinear,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BlurSampling {
+    /// `1` keeps full-resolution blur. Larger values downsample, blur at
+    /// reduced resolution, then upsample to the original filter bounds.
+    pub factor: u32,
+    pub downsample_filter: BlurDownsampleFilter,
+    pub upsample_filter: BlurUpsampleFilter,
+}
+
+impl BlurSampling {
+    pub const FULL_RES: Self = Self {
+        factor: 1,
+        downsample_filter: BlurDownsampleFilter::Box,
+        upsample_filter: BlurUpsampleFilter::Bilinear,
+    };
+
+    pub fn downsampled(factor: u32) -> Self {
+        Self {
+            factor,
+            ..Self::FULL_RES
+        }
+    }
+
+    pub(crate) fn factor(self) -> u32 {
+        self.factor.max(1)
+    }
+}
+
+impl Default for BlurSampling {
+    fn default() -> Self {
+        Self::FULL_RES
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RectLiquidGlass {
     /// Effect controls follow liquid-glass-studio's public UI values. Percent-like
@@ -192,6 +246,8 @@ pub struct RectLiquidGlass {
     /// Reference blur kernel radius in pixels. Internally this maps to
     /// Gaussian `std_dev = blur_radius / 3`, matching liquid-glass-studio.
     pub blur_radius: u32,
+    /// Sampling strategy for the internal blurred backdrop.
+    pub blur_sampling: BlurSampling,
     pub blur_edge: bool,
     pub tint: Color,
     pub refraction_thickness: f32,
@@ -212,6 +268,7 @@ impl Default for RectLiquidGlass {
     fn default() -> Self {
         Self {
             blur_radius: 1,
+            blur_sampling: BlurSampling::default(),
             blur_edge: true,
             tint: Color::from_rgba8(255, 255, 255, 0),
             refraction_thickness: 20.0,
@@ -488,6 +545,7 @@ fn filter_outset(filter: &Filter) -> i32 {
         Filter::Blur {
             std_dev_x,
             std_dev_y,
+            sampling: _,
         } => blur_outset(std_dev_x.max(*std_dev_y)),
         Filter::Offset { dx, dy } => dx.abs().ceil().max(dy.abs().ceil()) as i32,
         Filter::Morphology {

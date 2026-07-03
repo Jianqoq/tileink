@@ -432,7 +432,11 @@ pub(crate) fn filter_scratch_extra(filter: &Filter) -> usize {
         Filter::Blur {
             std_dev_x,
             std_dev_y,
-        } => usize::from(std_dev_x.max(*std_dev_y) > 0.0),
+            sampling,
+        } => {
+            usize::from(std_dev_x.max(*std_dev_y) > 0.0)
+                + usize::from(sampling.factor() > 1 && std_dev_x.max(*std_dev_y) > 0.0)
+        }
         Filter::ConvolveMatrix(_) => 1,
         Filter::DiffuseLighting(_) => 1,
         Filter::SpecularLighting(_) => 1,

@@ -33,9 +33,10 @@ pub use shared::{
     image::{Image, ImageSaveError},
     layer::{
         filter::{
-            CompositeOperator, ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, Filter,
-            FilterInput, FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator,
-            RectLiquidGlass, SpecularLighting,
+            BlurDownsampleFilter, BlurSampling, BlurUpsampleFilter, CompositeOperator,
+            ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, Filter, FilterInput,
+            FilterPrimitive, FilterPrimitiveKind, LightSource, MorphologyOperator, RectLiquidGlass,
+            SpecularLighting,
         },
         mask::{Mask, MaskKind},
         region::Region,

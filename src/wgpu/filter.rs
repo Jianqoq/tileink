@@ -10,9 +10,10 @@ use crate::shared::{
     gpu_plan::GpuBufferLengths,
     layer::{
         filter::{
-            ColorChannel, CompositeOperator, ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting,
-            DisplacementMap, Filter, LightSource, RectLiquidGlass, RectLiquidGlassRegion,
-            SpecularLighting, Turbulence, TurbulenceKind,
+            BlurDownsampleFilter, BlurSampling, BlurUpsampleFilter, ColorChannel,
+            CompositeOperator, ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, DisplacementMap,
+            Filter, LightSource, RectLiquidGlass, RectLiquidGlassRegion, SpecularLighting,
+            Turbulence, TurbulenceKind,
         },
         mask::MaskKind,
         region::Region,
@@ -50,6 +51,10 @@ struct FilterConfig {
     region_width: u32,
     region_height: u32,
     pixel_count: u32,
+    downsample: u32,
+    downsample_filter: u32,
+    upsample_filter: u32,
+    downsample_pad: u32,
     layer_stack_start: u32,
     layer_stack_end: u32,
     draw_ix: u32,
@@ -152,6 +157,10 @@ impl Default for FilterConfig {
             region_width: 0,
             region_height: 0,
             pixel_count: 0,
+            downsample: 1,
+            downsample_filter: 0,
+            upsample_filter: 0,
+            downsample_pad: 0,
             layer_stack_start: 0,
             layer_stack_end: 0,
             draw_ix: 0,
@@ -254,6 +263,8 @@ pub(crate) struct WgpuFilterPipeline {
     flood_region: ::wgpu::ComputePipeline,
     drop_shadow_mask_region: ::wgpu::ComputePipeline,
     morphology_axis_region: ::wgpu::ComputePipeline,
+    downsample_region: ::wgpu::ComputePipeline,
+    upsample_region: ::wgpu::ComputePipeline,
     blur_region: ::wgpu::ComputePipeline,
     svg_mask_coverage_region: ::wgpu::ComputePipeline,
     apply_region_mask: ::wgpu::ComputePipeline,
@@ -398,6 +409,18 @@ impl WgpuFilterPipeline {
                 &pipeline_layout,
                 &shader,
                 "filter_morphology_axis_region",
+            ),
+            downsample_region: create_pipeline(
+                device,
+                &pipeline_layout,
+                &shader,
+                "filter_downsample_region",
+            ),
+            upsample_region: create_pipeline(
+                device,
+                &pipeline_layout,
+                &shader,
+                "filter_upsample_region",
             ),
             blur_region: create_pipeline(device, &pipeline_layout, &shader, "filter_blur_region"),
             svg_mask_coverage_region: create_pipeline(
@@ -928,6 +951,74 @@ impl WgpuFilterPipeline {
             device,
             queue,
             &self.morphology_axis_region,
+            &config,
+            source,
+            &self.dummy_texture_view,
+            target,
+            None,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn downsample_region(
+        &self,
+        device: &::wgpu::Device,
+        queue: &::wgpu::Queue,
+        source: &::wgpu::TextureView,
+        target: &::wgpu::TextureView,
+        size: (u32, u32),
+        lengths: GpuBufferLengths,
+        source_bounds: Bounds,
+        target_bounds: Bounds,
+        sampling: BlurSampling,
+    ) {
+        let Some(mut config) = config_for_bounds(size, lengths, target_bounds) else {
+            return;
+        };
+        config.rect_x0 = source_bounds.x0 as f32;
+        config.rect_y0 = source_bounds.y0 as f32;
+        config.rect_x1 = source_bounds.x1 as f32;
+        config.rect_y1 = source_bounds.y1 as f32;
+        config.downsample = sampling.factor();
+        config.downsample_filter = encode_blur_downsample_filter(sampling.downsample_filter);
+        self.dispatch(
+            device,
+            queue,
+            &self.downsample_region,
+            &config,
+            source,
+            &self.dummy_texture_view,
+            target,
+            None,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn upsample_region(
+        &self,
+        device: &::wgpu::Device,
+        queue: &::wgpu::Queue,
+        source: &::wgpu::TextureView,
+        target: &::wgpu::TextureView,
+        size: (u32, u32),
+        lengths: GpuBufferLengths,
+        target_bounds: Bounds,
+        source_bounds: Bounds,
+        sampling: BlurSampling,
+    ) {
+        let Some(mut config) = config_for_bounds(size, lengths, target_bounds) else {
+            return;
+        };
+        config.rect_x0 = source_bounds.x0 as f32;
+        config.rect_y0 = source_bounds.y0 as f32;
+        config.rect_x1 = source_bounds.x1 as f32;
+        config.rect_y1 = source_bounds.y1 as f32;
+        config.downsample = sampling.factor();
+        config.upsample_filter = encode_blur_upsample_filter(sampling.upsample_filter);
+        self.dispatch(
+            device,
+            queue,
+            &self.upsample_region,
             &config,
             source,
             &self.dummy_texture_view,
@@ -1873,6 +1964,20 @@ fn encode_turbulence_kind(kind: TurbulenceKind) -> u32 {
     match kind {
         TurbulenceKind::Turbulence => 0,
         TurbulenceKind::FractalNoise => 1,
+    }
+}
+
+fn encode_blur_downsample_filter(filter: BlurDownsampleFilter) -> u32 {
+    match filter {
+        BlurDownsampleFilter::Nearest => 0,
+        BlurDownsampleFilter::Box => 1,
+    }
+}
+
+fn encode_blur_upsample_filter(filter: BlurUpsampleFilter) -> u32 {
+    match filter {
+        BlurUpsampleFilter::Nearest => 0,
+        BlurUpsampleFilter::Bilinear => 1,
     }
 }
 

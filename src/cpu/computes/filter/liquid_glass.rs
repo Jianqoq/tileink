@@ -29,10 +29,12 @@ pub(super) fn apply(
 
     let source = image.clone();
     let mut blurred = source.clone();
-    super::apply_gaussian_blur(
+    super::apply_gaussian_blur_with_sampling(
         &mut blurred,
         glass.blur_radius as f32 * LIQUID_GLASS_BLUR_STD_DEV_SCALE,
         glass.blur_radius as f32 * LIQUID_GLASS_BLUR_STD_DEV_SCALE,
+        glass.blur_sampling,
+        bounds,
     );
 
     let surface_height = surface_size.1.max(1) as f32;

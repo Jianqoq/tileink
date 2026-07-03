@@ -14,8 +14,8 @@ use crate::{
         brush::Brush,
         layer::{
             filter::{
-                COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE, ColorChannel,
-                CompositeOperator, ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting,
+                BlurSampling, COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE,
+                ColorChannel, CompositeOperator, ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting,
                 DisplacementMap, Filter, FilterInput, FilterPrimitive, FilterPrimitiveKind,
                 LightSource, MorphologyOperator, RectLiquidGlass, SpecularLighting, Turbulence,
                 TurbulenceKind,
@@ -1201,7 +1201,11 @@ fn wgpu_renderer_rect_liquid_glass_backdrop_matches_cpu_when_enabled() {
         );
     }
     scene.push_backdrop_layer(
-        Filter::RectLiquidGlass(RectLiquidGlass::default()),
+        Filter::RectLiquidGlass(RectLiquidGlass {
+            blur_radius: 6,
+            blur_sampling: BlurSampling::downsampled(2),
+            ..RectLiquidGlass::default()
+        }),
         Region::rect(Rect::new(16.0, 4.0, 48.0, 28.0), crate::Radius::all(6.0)),
     );
     scene.pop_layer();
@@ -1745,6 +1749,7 @@ fn wgpu_renderer_blurs_offscreen_children_into_expanded_bounds_when_enabled() {
         Filter::Blur {
             std_dev_x: 2.0,
             std_dev_y: 2.0,
+            sampling: Default::default(),
         },
         Region::rect(sample, crate::Radius::ZERO),
     );
@@ -1759,6 +1764,41 @@ fn wgpu_renderer_blurs_offscreen_children_into_expanded_bounds_when_enabled() {
         "expected blur outside source rect, got {expanded:?}"
     );
     assert_eq!(image.rgba8_at(12, 16), [0, 0, 0, 0]);
+}
+
+#[test]
+fn wgpu_renderer_downsampled_blur_matches_cpu_approximation() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let sample = Rect::new(7.0, 5.0, 39.0, 27.0);
+    let mut scene = Scene::new(64, 40);
+    scene.push_filter_layer(
+        Filter::Blur {
+            std_dev_x: 4.0,
+            std_dev_y: 4.0,
+            sampling: BlurSampling::downsampled(3),
+        },
+        Region::rect(sample, crate::Radius::ZERO),
+    );
+    scene.push_rect(
+        Rect::new(10.0, 8.0, 24.0, 22.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(255, 0, 0),
+    );
+    scene.push_rect(
+        Rect::new(22.0, 12.0, 36.0, 25.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(0, 80, 255),
+    );
+    scene.pop_layer();
+
+    let image = render_native_wgpu(&scene);
+    let mut cpu = CpuRenderer::new(64, 40, Color::TRANSPARENT);
+    cpu.render(&scene);
+
+    assert_images_near(&image, &cpu.image(), 16, "downsampled blur");
 }
 
 #[test]

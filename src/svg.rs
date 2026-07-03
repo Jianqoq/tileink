@@ -867,6 +867,7 @@ impl<'a> SvgFilterGraphBuilder<'a> {
                 let filter = Filter::Blur {
                     std_dev_x,
                     std_dev_y,
+                    sampling: Default::default(),
                 };
                 (
                     self.input(blur.input(), "feGaussianBlur")?,

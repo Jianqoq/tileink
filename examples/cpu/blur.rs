@@ -19,6 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Filter::Blur {
             std_dev_x: 28.0,
             std_dev_y: 28.0,
+            sampling: Default::default(),
         },
         common::canvas_region(1920, 1080),
     );

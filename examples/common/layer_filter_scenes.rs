@@ -61,6 +61,7 @@ pub fn filter_clip_opacity_scene() -> Scene {
         Filter::Blur {
             std_dev_x: 10.0,
             std_dev_y: 10.0,
+            sampling: Default::default(),
         },
         Region::rect(clip, Radius::all(54.0)),
     );
@@ -110,6 +111,7 @@ pub fn clip_filter_scene() -> Scene {
         Filter::Blur {
             std_dev_x: 14.0,
             std_dev_y: 14.0,
+            sampling: Default::default(),
         },
         Region::path(clip.to_path(0.1), Default::default(), 0.1),
     );
@@ -176,6 +178,7 @@ pub fn backdrop_blur_scene() -> Scene {
         Filter::Blur {
             std_dev_x: 18.0,
             std_dev_y: 18.0,
+            sampling: Default::default(),
         },
         Region::rect(panel, Radius::all(34.0)),
     );
