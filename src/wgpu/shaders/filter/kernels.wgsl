@@ -778,6 +778,22 @@ fn filter_path_mask_region(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 
 @compute @workgroup_size(256)
+fn filter_composite_direct_region(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let region_ix = gid.x;
+    if (region_ix >= config.pixel_count) {
+        return;
+    }
+    let xy = xy_for_region_ix(region_ix);
+    let ix = target_ix_at(xy.x, xy.y);
+    var source_alpha = 255u;
+    if (config.mask_enabled != 0u) {
+        source_alpha = combine_alpha(source_alpha, aux_pixel_ix(ix) >> 24u);
+    }
+    let source = scale_premul_u8(source_pixel_ix(ix), source_alpha);
+    target_store_ix(ix, src_over_premul_u8(target_load_ix(ix), source));
+}
+
+@compute @workgroup_size(256)
 fn filter_composite_stack_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = gid.x;
     if (region_ix >= config.pixel_count) {
@@ -797,6 +813,29 @@ fn filter_composite_blend_stack_region(@builtin(global_invocation_id) gid: vec3<
     let xy = xy_for_region_ix(region_ix);
     let ix = target_ix_at(xy.x, xy.y);
     target_store_ix(ix, composite_with_stack(target_load_ix(ix), source_pixel_ix(ix), aux_pixel_ix(ix), xy.x, xy.y, true));
+}
+
+@compute @workgroup_size(256)
+fn filter_composite_surface_direct_region(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let region_ix = gid.x;
+    if (region_ix >= config.pixel_count) {
+        return;
+    }
+    let xy = xy_for_region_ix(region_ix);
+    let sx = i32(xy.x) - config.offset_x;
+    let sy = i32(xy.y) - config.offset_y;
+    if (
+        sx < 0 ||
+        sy < 0 ||
+        sx >= i32(config.kernel_columns) ||
+        sy >= i32(config.kernel_rows)
+    ) {
+        return;
+    }
+
+    let ix = target_ix_at(xy.x, xy.y);
+    let source = source_pixel_at(u32(sx), u32(sy));
+    target_store_ix(ix, src_over_premul_u8(target_load_ix(ix), source));
 }
 
 @compute @workgroup_size(256)

@@ -1831,6 +1831,40 @@ fn wgpu_renderer_profiles_filter_dispatch_stages_when_enabled() {
     assert_profile_has(&profile, "filter.blur.x");
     assert_profile_has(&profile, "filter.blur.y");
     assert_profile_has(&profile, "filter.upsample");
+    assert_profile_has(&profile, "filter.composite.surface.direct");
+    assert_profile_missing(&profile, "filter.stack.surface");
+}
+
+#[test]
+fn wgpu_renderer_profiles_empty_stack_backdrop_with_direct_composite_when_enabled() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut scene = Scene::new(64, 40);
+    for x in 0..64 {
+        let v = (x * 3) as u8;
+        scene.push_rect(
+            Rect::new(f64::from(x), 0.0, f64::from(x + 1), 40.0),
+            crate::Radius::ZERO,
+            Color::from_rgb8(v, 90, 255u8.saturating_sub(v)),
+        );
+    }
+    scene.push_backdrop_layer(
+        Filter::Blur {
+            std_dev_x: 4.0,
+            std_dev_y: 4.0,
+            sampling: BlurSampling::downsampled(3),
+        },
+        Region::rect(Rect::new(12.0, 8.0, 52.0, 32.0), crate::Radius::all(6.0)),
+    );
+    scene.pop_layer();
+
+    let mut renderer = Renderer::new_default_device(64, 40, Color::TRANSPARENT);
+    let profile = renderer.render_profiled(&scene);
+
+    assert_profile_has(&profile, "filter.composite.direct");
+    assert_profile_missing(&profile, "filter.stack.src_over");
 }
 
 #[test]
@@ -2111,6 +2145,14 @@ fn assert_profile_has(profile: &crate::WgpuRenderProfile, name: &'static str) {
     assert!(
         profile.entries().iter().any(|entry| entry.name == name),
         "profile missing {name}; entries: {:?}",
+        profile.entries()
+    );
+}
+
+fn assert_profile_missing(profile: &crate::WgpuRenderProfile, name: &'static str) {
+    assert!(
+        !profile.entries().iter().any(|entry| entry.name == name),
+        "profile unexpectedly included {name}; entries: {:?}",
         profile.entries()
     );
 }

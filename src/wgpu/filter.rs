@@ -282,8 +282,10 @@ pub(crate) struct WgpuFilterPipeline {
     layer_mask_region: ::wgpu::ComputePipeline,
     rect_mask_region: ::wgpu::ComputePipeline,
     path_mask_region: ::wgpu::ComputePipeline,
+    composite_direct_region: ::wgpu::ComputePipeline,
     composite_stack_region: ::wgpu::ComputePipeline,
     composite_blend_stack_region: ::wgpu::ComputePipeline,
+    composite_surface_direct_region: ::wgpu::ComputePipeline,
     composite_surface_stack_region: ::wgpu::ComputePipeline,
     bind_group_layout: ::wgpu::BindGroupLayout,
     config: ::wgpu::Buffer,
@@ -514,6 +516,12 @@ impl WgpuFilterPipeline {
                 &shader,
                 "filter_path_mask_region",
             ),
+            composite_direct_region: create_pipeline(
+                device,
+                &pipeline_layout,
+                &shader,
+                "filter_composite_direct_region",
+            ),
             composite_stack_region: create_pipeline(
                 device,
                 &pipeline_layout,
@@ -525,6 +533,12 @@ impl WgpuFilterPipeline {
                 &pipeline_layout,
                 &shader,
                 "filter_composite_blend_stack_region",
+            ),
+            composite_surface_direct_region: create_pipeline(
+                device,
+                &pipeline_layout,
+                &shader,
+                "filter_composite_surface_direct_region",
             ),
             composite_surface_stack_region: create_pipeline(
                 device,
@@ -1556,15 +1570,22 @@ impl WgpuFilterPipeline {
         config.layer_stack_start = layer_stack.start as u32;
         config.layer_stack_end = layer_stack.end as u32;
         config.mask_enabled = u32::from(mask.is_some());
+        let needs_stack = !layer_stack.is_empty();
+        let pipeline = if needs_stack {
+            &self.composite_stack_region
+        } else {
+            &self.composite_direct_region
+        };
+        let bindings = if needs_stack { Some(bindings) } else { None };
         self.dispatch(
             device,
             queue,
-            &self.composite_stack_region,
+            pipeline,
             &config,
             source,
             mask.unwrap_or(&self.dummy_texture_view),
             target,
-            Some(bindings),
+            bindings,
         );
     }
 
@@ -1625,15 +1646,22 @@ impl WgpuFilterPipeline {
         config.offset_y = source_origin.1;
         config.kernel_columns = source_size.0;
         config.kernel_rows = source_size.1;
+        let needs_stack = !layer_stack.is_empty();
+        let pipeline = if needs_stack {
+            &self.composite_surface_stack_region
+        } else {
+            &self.composite_surface_direct_region
+        };
+        let bindings = if needs_stack { Some(bindings) } else { None };
         self.dispatch(
             device,
             queue,
-            &self.composite_surface_stack_region,
+            pipeline,
             &config,
             source,
             &self.dummy_texture_view,
             target,
-            Some(bindings),
+            bindings,
         );
     }
 
@@ -1810,10 +1838,14 @@ impl WgpuFilterPipeline {
             "filter.mask.rect"
         } else if std::ptr::eq(pipeline, &self.path_mask_region) {
             "filter.mask.path"
+        } else if std::ptr::eq(pipeline, &self.composite_direct_region) {
+            "filter.composite.direct"
         } else if std::ptr::eq(pipeline, &self.composite_stack_region) {
             "filter.stack.src_over"
         } else if std::ptr::eq(pipeline, &self.composite_blend_stack_region) {
             "filter.stack.blend"
+        } else if std::ptr::eq(pipeline, &self.composite_surface_direct_region) {
+            "filter.composite.surface.direct"
         } else if std::ptr::eq(pipeline, &self.composite_surface_stack_region) {
             "filter.stack.surface"
         } else {
