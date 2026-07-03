@@ -321,19 +321,6 @@ impl Renderer {
     }
 
     fn render_prepared_native(&mut self, scene: &Scene) -> bool {
-        if let Some(fine) = &self.fine
-            && fine.render(
-                &self.device,
-                &self.queue,
-                scene,
-                &self.scene_buffers,
-                &mut self.readback_target,
-                self.clear_color,
-            )
-        {
-            self.size = (scene.width, scene.height);
-            return true;
-        }
         if self.render_prepared_tile_plan(scene) {
             self.size = (scene.width, scene.height);
             return true;
@@ -2400,19 +2387,7 @@ impl Renderer {
         options: &RenderOptions,
     ) -> RenderDebugCapture {
         self.prepare_scene(scene);
-        let rendered_native = if let Some(fine) = &self.fine
-            && fine.render(
-                &self.device,
-                &self.queue,
-                scene,
-                &self.scene_buffers,
-                &mut self.readback_target,
-                self.clear_color,
-            ) {
-            true
-        } else {
-            self.render_prepared_tile_plan(scene)
-        };
+        let rendered_native = self.render_prepared_tile_plan(scene);
         if rendered_native {
             self.size = (scene.width, scene.height);
             let image = self.image();
@@ -2637,20 +2612,7 @@ impl Renderer {
         }
         self.root_target_view = Some(dst.create_view(&::wgpu::TextureViewDescriptor::default()));
         prepare(self, scene);
-        let rendered = if let Some(fine) = &self.fine
-            && self.root_target_view.as_ref().is_some_and(|target| {
-                fine.render_to_view(
-                    &self.device,
-                    &self.queue,
-                    scene,
-                    &self.scene_buffers,
-                    target,
-                    self.clear_color,
-                )
-            }) {
-            self.size = (scene.width, scene.height);
-            true
-        } else if self.render_prepared_tile_plan(scene) {
+        let rendered = if self.render_prepared_tile_plan(scene) {
             self.size = (scene.width, scene.height);
             true
         } else {
@@ -2962,7 +2924,7 @@ mod tests {
     }
 
     #[test]
-    fn wgpu_renderer_renders_direct_fine_to_storage_texture_when_enabled() {
+    fn wgpu_renderer_renders_tile_fine_to_storage_texture_when_enabled() {
         if !run_wgpu_tests() {
             return;
         }
@@ -2984,7 +2946,7 @@ mod tests {
         let texture = renderer
             .device()
             .create_texture(&::wgpu::TextureDescriptor {
-                label: Some("tileink wgpu renderer direct fine storage texture test"),
+                label: Some("tileink wgpu renderer tile fine storage texture test"),
                 size: ::wgpu::Extent3d {
                     width: 8,
                     height: 8,
@@ -3000,7 +2962,7 @@ mod tests {
 
         renderer
             .render_to_wgpu_texture(&scene, &texture)
-            .expect("render direct fine to wgpu storage texture");
+            .expect("render tile fine to wgpu storage texture");
         let bytes = read_texture_rgba8(renderer.device(), renderer.queue(), &texture, 8, 8);
 
         assert_eq!(&bytes[4 * (3 * 8 + 3)..4 * (3 * 8 + 4)], &[12, 34, 56, 255]);

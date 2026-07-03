@@ -1,5 +1,3 @@
-const DRAW_FLAG_SOLID_RECT: u32 = 16u;
-const DRAW_FLAG_HAS_SDF: u32 = 64u;
 const INVALID_REF: u32 = 4294967295u;
 
 const GPU_SDF_RECT: u32 = 1u;
@@ -76,7 +74,6 @@ const TEXT_SUBPIXEL_MASK_LOW_LUMA_CONTRAST_LIMIT: f32 = 0.06385561;
 struct FineConfig {
     width: u32,
     height: u32,
-    draw_count: u32,
     clear_color: u32,
     tile_count: u32,
     tiles_width: u32,
@@ -141,52 +138,6 @@ struct FineConfig {
 @group(0) @binding(52) var<storage, read> glyph_image_data: array<u32>;
 @group(0) @binding(53) var<storage, read_write> clip_spills: array<u32>;
 @group(0) @binding(54) var<storage, read_write> group_spills: array<u32>;
-@compute @workgroup_size(256)
-fn fine_main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let pixel_ix = gid.x;
-    let pixel_count = config.width * config.height;
-    if (pixel_ix >= pixel_count) {
-        return;
-    }
-
-    let px = pixel_ix % config.width;
-    let py = pixel_ix / config.width;
-    target_store(px, py, direct_pixel(pixel_ix));
-}
-
-fn direct_pixel(pixel_ix: u32) -> u32 {
-    let px = pixel_ix % config.width;
-    let py = pixel_ix / config.width;
-    let sample_x = f32(px) + 0.5;
-    let sample_y = f32(py) + 0.5;
-    let pixel_x = i32(px);
-    let pixel_y = i32(py);
-    var dst = config.clear_color;
-
-    for (var draw_ix = 0u; draw_ix < config.draw_count; draw_ix = draw_ix + 1u) {
-        if (pixel_x < draw_pixel_x0[draw_ix] || pixel_y < draw_pixel_y0[draw_ix] ||
-            pixel_x >= draw_pixel_x1[draw_ix] || pixel_y >= draw_pixel_y1[draw_ix]) {
-            continue;
-        }
-
-        var coverage = 0.0;
-        let flags = draw_flags[draw_ix];
-        let sdf_ref = draw_sdf_refs[draw_ix];
-        if ((flags & DRAW_FLAG_SOLID_RECT) != 0u) {
-            coverage = 1.0;
-        } else if ((flags & DRAW_FLAG_HAS_SDF) != 0u && sdf_ref != INVALID_REF) {
-            coverage = sdf_coverage_from_encoded(sdf_ref, sample_x, sample_y);
-        }
-        let alpha = coverage_to_u8(coverage);
-        if (alpha != 0u) {
-            let color = sample_brush(draw_ix, sample_x, sample_y);
-            dst = src_over_premul_u8(dst, scale_premul_u8(color, alpha));
-        }
-    }
-
-    return dst;
-}
-
 @compute @workgroup_size(256)
 fn fine_tile_main(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
