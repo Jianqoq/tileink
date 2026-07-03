@@ -283,6 +283,7 @@ pub(crate) struct WgpuFilterPipeline {
     rect_mask_region: ::wgpu::ComputePipeline,
     path_mask_region: ::wgpu::ComputePipeline,
     composite_direct_region: ::wgpu::ComputePipeline,
+    composite_rect_direct_region: ::wgpu::ComputePipeline,
     composite_stack_region: ::wgpu::ComputePipeline,
     composite_blend_stack_region: ::wgpu::ComputePipeline,
     composite_surface_direct_region: ::wgpu::ComputePipeline,
@@ -521,6 +522,12 @@ impl WgpuFilterPipeline {
                 &pipeline_layout,
                 &shader,
                 "filter_composite_direct_region",
+            ),
+            composite_rect_direct_region: create_pipeline(
+                device,
+                &pipeline_layout,
+                &shader,
+                "filter_composite_rect_direct_region",
             ),
             composite_stack_region: create_pipeline(
                 device,
@@ -1590,6 +1597,45 @@ impl WgpuFilterPipeline {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub(crate) fn composite_src_over_rect_mask_direct(
+        &self,
+        device: &::wgpu::Device,
+        queue: &::wgpu::Queue,
+        target: &::wgpu::TextureView,
+        source: &::wgpu::TextureView,
+        size: (u32, u32),
+        lengths: GpuBufferLengths,
+        bounds: Bounds,
+        region: &Region,
+    ) -> bool {
+        let Region::Rect { rect, radius } = region else {
+            return false;
+        };
+        let Some(mut config) = config_for_bounds(size, lengths, bounds) else {
+            return true;
+        };
+        config.rect_x0 = rect.x0 as f32;
+        config.rect_y0 = rect.y0 as f32;
+        config.rect_x1 = rect.x1 as f32;
+        config.rect_y1 = rect.y1 as f32;
+        config.radius_top_left = radius.top_left;
+        config.radius_top_right = radius.top_right;
+        config.radius_bottom_left = radius.bottom_left;
+        config.radius_bottom_right = radius.bottom_right;
+        self.dispatch(
+            device,
+            queue,
+            &self.composite_rect_direct_region,
+            &config,
+            source,
+            &self.dummy_texture_view,
+            target,
+            None,
+        );
+        true
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn composite_blend_with_stack(
         &self,
         device: &::wgpu::Device,
@@ -1840,6 +1886,8 @@ impl WgpuFilterPipeline {
             "filter.mask.path"
         } else if std::ptr::eq(pipeline, &self.composite_direct_region) {
             "filter.composite.direct"
+        } else if std::ptr::eq(pipeline, &self.composite_rect_direct_region) {
+            "filter.composite.rect_direct"
         } else if std::ptr::eq(pipeline, &self.composite_stack_region) {
             "filter.stack.src_over"
         } else if std::ptr::eq(pipeline, &self.composite_blend_stack_region) {

@@ -1056,40 +1056,59 @@ impl Renderer {
         let Some(backdrop) = self.acquire_scratch() else {
             return false;
         };
-        if !self.copy_region_to_target(target, backdrop, bounds) {
-            self.release_scratch(backdrop);
-            return false;
-        }
-        if !self.apply_filter(
-            backdrop,
-            bounds,
-            filter,
-            Some(sample_region),
-            filter_cursors,
-        ) {
-            self.release_scratch(backdrop);
-            return false;
-        }
-
-        let Some(mask) = self.acquire_scratch() else {
-            self.release_scratch(backdrop);
-            return false;
+        let filter_ok = match filter {
+            Filter::Blur {
+                std_dev_x,
+                std_dev_y,
+                sampling,
+            } => self.apply_blur_from_source(
+                target, backdrop, bounds, *std_dev_x, *std_dev_y, *sampling,
+            ),
+            _ => {
+                self.copy_region_to_target(target, backdrop, bounds)
+                    && self.apply_filter(
+                        backdrop,
+                        bounds,
+                        filter,
+                        Some(sample_region),
+                        filter_cursors,
+                    )
+            }
         };
-        let mask_ok = self.build_region_mask(mask, sample_region, path_index, bounds);
-        if !mask_ok {
-            self.release_scratch(mask);
+        if !filter_ok {
             self.release_scratch(backdrop);
             return false;
         }
 
-        let ok = self.composite_src_over_with_stack(
-            target,
-            backdrop,
-            Some(mask),
-            bounds,
-            outer_stack.clone(),
-        );
-        self.release_scratch(mask);
+        let ok = if outer_stack.is_empty() {
+            self.composite_src_over_rect_mask_direct(target, backdrop, bounds, sample_region)
+        } else {
+            false
+        };
+        let ok = if ok {
+            true
+        } else {
+            let Some(mask) = self.acquire_scratch() else {
+                self.release_scratch(backdrop);
+                return false;
+            };
+            let mask_ok = self.build_region_mask(mask, sample_region, path_index, bounds);
+            if !mask_ok {
+                self.release_scratch(mask);
+                self.release_scratch(backdrop);
+                return false;
+            }
+
+            let ok = self.composite_src_over_with_stack(
+                target,
+                backdrop,
+                Some(mask),
+                bounds,
+                outer_stack,
+            );
+            self.release_scratch(mask);
+            ok
+        };
         self.release_scratch(backdrop);
         ok && self.execute_ops(scene, plan, children, target, filter_cursors)
     }
@@ -1281,6 +1300,28 @@ impl Renderer {
             layer_stack,
         );
         true
+    }
+
+    fn composite_src_over_rect_mask_direct(
+        &self,
+        target: WgpuRenderTargetId,
+        source: WgpuRenderTargetId,
+        bounds: Bounds,
+        region: &crate::shared::layer::region::Region,
+    ) -> bool {
+        let Some(filter) = &self.filter else {
+            return false;
+        };
+        filter.composite_src_over_rect_mask_direct(
+            &self.device,
+            &self.queue,
+            self.render_target_view(target),
+            self.render_target_view(source),
+            self.size,
+            self.lengths,
+            bounds,
+            region,
+        )
     }
 
     fn composite_blend_with_stack(

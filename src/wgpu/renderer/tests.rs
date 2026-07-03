@@ -1863,7 +1863,10 @@ fn wgpu_renderer_profiles_empty_stack_backdrop_with_direct_composite_when_enable
     let mut renderer = Renderer::new_default_device(64, 40, Color::TRANSPARENT);
     let profile = renderer.render_profiled(&scene);
 
-    assert_profile_has(&profile, "filter.composite.direct");
+    assert_profile_has(&profile, "filter.composite.rect_direct");
+    assert_profile_missing(&profile, "filter.copy");
+    assert_profile_missing(&profile, "filter.mask.rect");
+    assert_profile_missing(&profile, "filter.composite.direct");
     assert_profile_missing(&profile, "filter.stack.src_over");
 }
 

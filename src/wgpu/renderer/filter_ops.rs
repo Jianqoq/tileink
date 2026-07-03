@@ -589,6 +589,58 @@ impl Renderer {
         ok
     }
 
+    pub(super) fn apply_blur_from_source(
+        &mut self,
+        source: WgpuRenderTargetId,
+        target: WgpuRenderTargetId,
+        bounds: Bounds,
+        std_dev_x: f32,
+        std_dev_y: f32,
+        sampling: filter_model::BlurSampling,
+    ) -> bool {
+        if source == target {
+            return self.apply_blur(target, bounds, std_dev_x, std_dev_y, sampling);
+        }
+
+        let std_dev_x = std_dev_x.max(0.0);
+        let std_dev_y = std_dev_y.max(0.0);
+        if std_dev_x <= 0.0 && std_dev_y <= 0.0 {
+            return self.copy_region_to_target(source, target, bounds);
+        }
+
+        let factor = sampling.factor();
+        if factor > 1 && std_dev_x > 0.0 && std_dev_y > 0.0 {
+            let Some(low) = self.acquire_scratch() else {
+                return false;
+            };
+            let Some(temp) = self.acquire_scratch() else {
+                self.release_scratch(low);
+                return false;
+            };
+            let ok = self.downsampled_blur_to_target(
+                source, target, low, temp, bounds, std_dev_x, std_dev_y, sampling,
+            );
+            self.release_scratch(temp);
+            self.release_scratch(low);
+            return ok;
+        }
+
+        match (std_dev_x > 0.0, std_dev_y > 0.0) {
+            (true, true) => {
+                let Some(temp) = self.acquire_scratch() else {
+                    return false;
+                };
+                let ok = self.blur_region_to_target(source, temp, bounds, std_dev_x, 0)
+                    && self.blur_region_to_target(temp, target, bounds, std_dev_y, 1);
+                self.release_scratch(temp);
+                ok
+            }
+            (true, false) => self.blur_region_to_target(source, target, bounds, std_dev_x, 0),
+            (false, true) => self.blur_region_to_target(source, target, bounds, std_dev_y, 1),
+            (false, false) => true,
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn downsampled_blur_to_target(
         &self,
