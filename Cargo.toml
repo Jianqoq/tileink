@@ -113,6 +113,10 @@ name = "cpu_liquid_glass"
 path = "examples/cpu/liquid_glass.rs"
 
 [[example]]
+name = "cpu_liquid_glass_fast_path"
+path = "examples/cpu/liquid_glass_fast_path.rs"
+
+[[example]]
 name = "cpu_opacity"
 path = "examples/cpu/opacity.rs"
 
@@ -294,6 +298,10 @@ path = "examples/wgpu/invert.rs"
 [[example]]
 name = "wgpu_liquid_glass"
 path = "examples/wgpu/liquid_glass.rs"
+
+[[example]]
+name = "wgpu_liquid_glass_fast_path"
+path = "examples/wgpu/liquid_glass_fast_path.rs"
 
 [[example]]
 name = "wgpu_opacity"
