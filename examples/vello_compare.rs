@@ -6,7 +6,7 @@ use std::{
 };
 
 use peniko::{Color, kurbo::Rect};
-use tileink::{CandleStick, Radius, Canvas, WgpuRenderProfileReport, WgpuRenderer};
+use tileink::{CandleStick, Canvas, Radius, WgpuRenderProfileReport, WgpuRenderer};
 use vello::{
     AaConfig, AaSupport, RenderParams, Renderer as VelloRenderer, RendererOptions,
     Scene as VelloScene,

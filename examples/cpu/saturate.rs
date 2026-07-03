@@ -2,7 +2,7 @@
 mod common;
 
 use peniko::{Color, kurbo::Rect};
-use tileink::{Filter, Radius, Canvas};
+use tileink::{Canvas, Filter, Radius};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut scene = Canvas::new(640, 360);

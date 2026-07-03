@@ -2,7 +2,7 @@ use peniko::{
     Color,
     kurbo::{Circle, Point, Rect, Stroke},
 };
-use tileink::{Radius, Canvas, SdfLine, SdfLineCap};
+use tileink::{Canvas, Radius, SdfLine, SdfLineCap};
 
 pub fn sdf_clip_scene() -> (Canvas, u32, u32) {
     let width = 640;

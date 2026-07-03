@@ -5,10 +5,10 @@ use std::sync::mpsc;
 use peniko::Color;
 
 use crate::{
+    canvas::Canvas,
     cpu::Renderer as CpuRenderer,
     debug::{DebugScanBuffers, RenderDebugCapture, RenderOptions, capture_render_debug},
     render::Render,
-    canvas::Canvas,
     shared::{
         bounds::Bounds,
         execution::{ExecOp, ExecPlan, ROOT_COMMAND_LIST_ID},

@@ -1,7 +1,7 @@
+mod canvas;
 mod cpu;
 mod debug;
 mod render;
-mod canvas;
 mod shared;
 mod svg;
 mod text;
@@ -15,6 +15,7 @@ pub use crate::wgpu::{
     Renderer, Renderer as WgpuRenderer, WgpuRenderProfile, WgpuRenderProfileEntry,
     WgpuRenderProfileEventSummary, WgpuRenderProfileReport, WgpuTextureRenderError,
 };
+pub use canvas::{Canvas, DrawId};
 pub use cosmic_text::{
     Align as TextAlign, Attrs as TextAttrs, CacheKeyFlags as TextCacheKeyFlags,
     Family as TextFamily, Stretch as TextStretch, Style as TextStyle, Weight as TextWeight,
@@ -25,10 +26,9 @@ pub use debug::{
     RenderDebugCapture, RenderDebugImage, RenderDebugOptions, RenderDebugText, RenderOptions,
     debug_capture_json,
 };
-pub use canvas::{DrawId, Canvas};
 pub use shared::{
     bounds::Bounds,
-    brush::Brush,
+    brush::{Brush, PatternBrush, PatternSampling},
     fill::FillRule,
     image::{Image, ImageSaveError},
     layer::{

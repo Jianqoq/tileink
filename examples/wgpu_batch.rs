@@ -36,7 +36,7 @@ use peniko::{
     color::palette::css,
     kurbo::{Affine, BezPath, Circle, Rect, Shape, Stroke},
 };
-use tileink::{Brush, FillRule, Filter, Radius, Canvas, StrokeWidths, TextContext, WgpuRenderer};
+use tileink::{Brush, Canvas, FillRule, Filter, Radius, StrokeWidths, TextContext, WgpuRenderer};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut batch = WgpuBatch::new();

@@ -5,7 +5,7 @@ use peniko::{
     Color,
     kurbo::{Affine, BezPath, Circle, Rect, Shape, Stroke},
 };
-use tileink::{FillRule, Radius, Canvas};
+use tileink::{Canvas, FillRule, Radius};
 
 fn complex_clip_path() -> BezPath {
     let mut path = BezPath::new();

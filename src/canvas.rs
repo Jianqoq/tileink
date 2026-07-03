@@ -1,3 +1,5 @@
+use std::sync::Arc as SharedArc;
+
 use peniko::{
     Color, Compose, Mix,
     kurbo::{
@@ -9,13 +11,14 @@ use peniko::{
 use crate::shared::{
     bd_record::BackdropRecord,
     bounds::{Bounds, PixelBounds},
-    brush::Brush,
+    brush::{Brush, PatternSampling},
     draw_record::{DrawRecord, DrawTag},
     execution::{
         Command, CommandList, CommandListId, ExecOp, ExecPlan, LayerStackEntry,
         ROOT_COMMAND_LIST_ID,
     },
     fill::FillRule,
+    image::Image,
     layer::{
         Layer, LayerKind,
         blend::Blend,
@@ -1072,6 +1075,26 @@ impl Canvas {
             brush,
         );
         self.draw_id_from_index(draw)
+    }
+
+    /// Adds an external image scaled into `rect`.
+    ///
+    /// The image is stored as a pattern brush, so CPU and wgpu renderers share
+    /// the same upload/sampling path used by SVG raster images. Empty images,
+    /// empty rectangles, and non-finite rectangles are ignored.
+    pub fn push_image(&mut self, rect: Rect, image: impl Into<SharedArc<Image>>) -> Option<DrawId> {
+        self.push_image_with_sampling(rect, image, PatternSampling::Bilinear)
+    }
+
+    /// Adds an external image scaled into `rect` with explicit sampling.
+    pub fn push_image_with_sampling(
+        &mut self,
+        rect: Rect,
+        image: impl Into<SharedArc<Image>>,
+        sampling: PatternSampling,
+    ) -> Option<DrawId> {
+        let brush = Brush::from_image_with_sampling(image, rect, sampling)?;
+        Some(self.push_rect(rect, Radius::ZERO, brush))
     }
 
     pub fn push_rect_stroke(

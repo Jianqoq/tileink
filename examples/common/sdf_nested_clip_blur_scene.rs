@@ -2,7 +2,7 @@ use peniko::{
     Color,
     kurbo::{Circle, Point, Rect, Stroke},
 };
-use tileink::{Filter, Radius, Region, Canvas, SdfLine, SdfLineCap};
+use tileink::{Canvas, Filter, Radius, Region, SdfLine, SdfLineCap};
 
 use crate::common::{fill_circle, fill_rect, stroke_circle, stroke_rect};
 

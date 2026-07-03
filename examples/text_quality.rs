@@ -14,7 +14,7 @@ use std::{
 use peniko::{Color, kurbo::Point};
 use rayon::prelude::*;
 use tileink::{
-    CpuRenderer, Image, Renderer, Canvas, TextAttrs, TextCompositeMode, TextContext,
+    Canvas, CpuRenderer, Image, Renderer, TextAttrs, TextCompositeMode, TextContext,
     TextCoverageParams, TextFamily, TextLayoutOptions, TextRasterOptions, TextSubpixelMode,
 };
 

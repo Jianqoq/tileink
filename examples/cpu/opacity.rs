@@ -5,7 +5,7 @@ use peniko::{
     Color,
     kurbo::{Affine, Circle, Rect},
 };
-use tileink::{Radius, Canvas};
+use tileink::{Canvas, Radius};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut scene = Canvas::new(360, 260);

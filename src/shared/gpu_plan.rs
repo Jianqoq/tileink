@@ -662,7 +662,7 @@ mod tests {
         CUMSUM_CHUNK_SIZE, GpuBufferLengths, SCAN_CHUNK_SIZE, build_cumsum_plan, build_scan_chunks,
         build_tile_draw_bins,
     };
-    use crate::{FillRule, Canvas};
+    use crate::{Canvas, FillRule};
 
     #[test]
     fn scan_chunks_cover_each_backdrop_record_in_fixed_size_tiles() {

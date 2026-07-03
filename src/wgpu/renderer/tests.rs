@@ -6,7 +6,7 @@ use peniko::{
 use super::{Renderer, WgpuRenderTargetId};
 use crate::wgpu::commands::WgpuCommandBatch;
 use crate::{
-    FillRule, Canvas, TextContext, TextLayoutOptions,
+    Canvas, FillRule, Image, PatternSampling, TextContext, TextLayoutOptions,
     cpu::Renderer as CpuRenderer,
     debug::{RenderDebugOptions, RenderOptions},
     render::Render,
@@ -59,6 +59,34 @@ fn wgpu_renderer_reads_uploaded_cpu_render_when_enabled() {
     assert!(renderer.scene_buffers.draw_flags_capacity() >= 8);
     assert_eq!(image.rgba8_at(3, 3), [220, 64, 72, 255]);
     assert_eq!(image.rgba8_at(0, 0), [0, 0, 0, 0]);
+}
+
+#[test]
+fn wgpu_renderer_push_image_samples_external_image_when_enabled() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut scene = Canvas::new(4, 2);
+    scene
+        .push_image_with_sampling(
+            Rect::new(0.0, 0.0, 4.0, 2.0),
+            Image::from_rgba8(
+                2,
+                1,
+                [
+                    255, 0, 0, 255, //
+                    0, 0, 255, 128,
+                ],
+            ),
+            PatternSampling::Nearest,
+        )
+        .expect("push image");
+
+    let image = render_native_wgpu(&scene);
+
+    assert_eq!(image.rgba8_at(1, 1), [255, 0, 0, 255]);
+    assert_eq!(image.rgba8_at(3, 1), [0, 0, 128, 128]);
 }
 
 #[test]

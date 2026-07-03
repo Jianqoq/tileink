@@ -6,7 +6,7 @@ use peniko::{
     Color,
     kurbo::{Circle, Rect, Shape, Stroke},
 };
-use tileink::{FillRule, Filter, Radius, RectLiquidGlass, Region, Canvas};
+use tileink::{Canvas, FillRule, Filter, Radius, RectLiquidGlass, Region};
 
 use crate::common::{fill_circle, fill_rect, stroke_circle, stroke_rect};
 

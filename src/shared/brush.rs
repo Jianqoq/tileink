@@ -82,6 +82,35 @@ pub enum PatternSampling {
 }
 
 impl Brush {
+    /// Creates an image brush that scales `image` into `rect` with bilinear sampling.
+    ///
+    /// Returns `None` for empty images, empty rectangles, or non-finite
+    /// rectangle coordinates. The brush uses pad extend, matching ordinary
+    /// image drawing semantics.
+    pub fn from_image(image: impl Into<Arc<Image>>, rect: kurbo::Rect) -> Option<Self> {
+        Self::from_image_with_sampling(image, rect, PatternSampling::Bilinear)
+    }
+
+    /// Creates an image brush that scales `image` into `rect` with explicit sampling.
+    pub fn from_image_with_sampling(
+        image: impl Into<Arc<Image>>,
+        rect: kurbo::Rect,
+        sampling: PatternSampling,
+    ) -> Option<Self> {
+        Self::from_image_with_options(image, rect, Extend::Pad, sampling, 255)
+    }
+
+    /// Creates an image brush with explicit extend, sampling, and opacity.
+    pub fn from_image_with_options(
+        image: impl Into<Arc<Image>>,
+        rect: kurbo::Rect,
+        extend: Extend,
+        sampling: PatternSampling,
+        opacity: u8,
+    ) -> Option<Self> {
+        PatternBrush::for_rect(image, rect, extend, sampling, opacity).map(Self::Pattern)
+    }
+
     pub fn from_gradient(gradient: &Gradient) -> Self {
         Self::from_gradient_with_ramp_size(gradient, estimate_gradient_ramp_size(gradient))
     }
@@ -323,6 +352,61 @@ pub(crate) fn estimate_sweep_ramp_size(
 }
 
 impl PatternBrush {
+    /// Creates a pattern brush with a caller-provided world-to-image transform.
+    ///
+    /// The transform maps scene coordinates to image pixel coordinates. Images
+    /// are rejected when either dimension is zero because both CPU and wgpu
+    /// samplers require at least one valid texel.
+    pub fn new(
+        image: impl Into<Arc<Image>>,
+        transform: [f32; 6],
+        extend: Extend,
+        sampling: PatternSampling,
+        opacity: u8,
+    ) -> Option<Self> {
+        let image = image.into();
+        (image.width > 0 && image.height > 0).then_some(Self {
+            image,
+            transform,
+            extend,
+            sampling,
+            opacity,
+        })
+    }
+
+    /// Creates a pattern brush that maps the image exactly into `rect`.
+    pub fn for_rect(
+        image: impl Into<Arc<Image>>,
+        rect: kurbo::Rect,
+        extend: Extend,
+        sampling: PatternSampling,
+        opacity: u8,
+    ) -> Option<Self> {
+        if !rect_is_valid_image_target(rect) {
+            return None;
+        }
+        let image = image.into();
+        if image.width == 0 || image.height == 0 {
+            return None;
+        }
+        let sx = image.width as f32 / rect.width() as f32;
+        let sy = image.height as f32 / rect.height() as f32;
+        Self::new(
+            image,
+            [
+                sx,
+                0.0,
+                0.0,
+                sy,
+                -(rect.x0 as f32) * sx,
+                -(rect.y0 as f32) * sy,
+            ],
+            extend,
+            sampling,
+            opacity,
+        )
+    }
+
     fn sample(&self, x: f32, y: f32) -> u32 {
         let [x, y] = transform_point(self.transform, x, y);
         let pixel = match self.sampling {
@@ -355,6 +439,15 @@ impl PatternBrush {
         let local_y = extend_coord(y, self.image.height, self.extend);
         self.image.pixels[(local_y * self.image.width + local_x) as usize]
     }
+}
+
+fn rect_is_valid_image_target(rect: kurbo::Rect) -> bool {
+    rect.x0.is_finite()
+        && rect.y0.is_finite()
+        && rect.x1.is_finite()
+        && rect.y1.is_finite()
+        && rect.width() > 0.0
+        && rect.height() > 0.0
 }
 
 pub(crate) const IDENTITY_TRANSFORM: [f32; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];

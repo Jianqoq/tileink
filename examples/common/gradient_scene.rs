@@ -3,7 +3,7 @@ use peniko::{
     color::{AlphaColor, palette::css},
     kurbo::{Affine, BezPath, Circle, Rect},
 };
-use tileink::{Brush, FillRule, Radius, Canvas};
+use tileink::{Brush, Canvas, FillRule, Radius};
 
 use crate::common::{fill_circle, fill_rect};
 

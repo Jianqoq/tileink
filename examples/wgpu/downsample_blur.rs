@@ -5,7 +5,7 @@ use peniko::{
     Color,
     kurbo::{Circle, Rect},
 };
-use tileink::{BlurSampling, Filter, Radius, Region, Canvas};
+use tileink::{BlurSampling, Canvas, Filter, Radius, Region};
 
 const WIDTH: u32 = 960;
 const HEIGHT: u32 = 540;

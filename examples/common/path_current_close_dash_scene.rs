@@ -2,7 +2,7 @@ use peniko::{
     Color,
     kurbo::{Affine, Line, Rect, Shape, Stroke},
 };
-use tileink::{FillRule, Radius, Canvas};
+use tileink::{Canvas, FillRule, Radius};
 
 pub const TOLERANCE: f64 = 0.25;
 pub const CHART_WIDTH: f64 = 652.0;

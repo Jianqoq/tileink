@@ -5,7 +5,7 @@ use peniko::{
     Color,
     kurbo::{Affine, BezPath, Rect, Stroke},
 };
-use tileink::{FillRule, Radius, Canvas};
+use tileink::{Canvas, FillRule, Radius};
 
 fn nested_rect_path(offset_x: f64) -> BezPath {
     let mut path = BezPath::new();

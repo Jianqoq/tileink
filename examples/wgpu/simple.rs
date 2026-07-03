@@ -5,7 +5,7 @@ use peniko::{
     Color,
     kurbo::{Affine, Circle, Rect, Shape, Stroke},
 };
-use tileink::{FillRule, Canvas, WgpuRenderer};
+use tileink::{Canvas, FillRule, WgpuRenderer};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let width = 360;

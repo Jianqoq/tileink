@@ -12,8 +12,8 @@ use std::{
 
 use crate::{
     TILE_SIZE,
-    cpu::computes::fine::build_tile_alpha,
     canvas::Canvas,
+    cpu::computes::fine::build_tile_alpha,
     shared::{
         fill::FillRule,
         image::{Image, rgba8_pack},
@@ -817,7 +817,7 @@ mod tests {
     };
 
     use super::{RenderDebugOptions, RenderOptions};
-    use crate::{FillRule, Canvas, cpu::Renderer};
+    use crate::{Canvas, FillRule, cpu::Renderer};
 
     #[test]
     fn cpu_render_with_options_captures_tile_debug_outputs() {

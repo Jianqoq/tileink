@@ -5,8 +5,9 @@ use peniko::{
 
 use super::Renderer;
 use crate::{
-    Brush, CandleStick, FillRule, Radius, RectLiquidGlass, RectShadowOptions, Canvas, SdfArc,
-    SdfDashLine, SdfLine, SdfLineCap, StrokeWidths, TextContext, TextLayoutOptions,
+    Brush, CandleStick, Canvas, FillRule, Image, PatternSampling, Radius, RectLiquidGlass,
+    RectShadowOptions, SdfArc, SdfDashLine, SdfLine, SdfLineCap, StrokeWidths, TextContext,
+    TextLayoutOptions,
     shared::layer::{
         filter::Filter,
         mask::{Mask, MaskKind},
@@ -119,6 +120,31 @@ fn render_path_text_rasterizes_vector_outlines_without_text_atlas() {
         has_text_pixel,
         "expected outline text to darken at least one pixel"
     );
+}
+
+#[test]
+fn render_push_image_samples_external_image() {
+    let mut scene = Canvas::new(4, 2);
+    scene
+        .push_image_with_sampling(
+            Rect::new(0.0, 0.0, 4.0, 2.0),
+            Image::from_rgba8(
+                2,
+                1,
+                [
+                    255, 0, 0, 255, //
+                    0, 0, 255, 128,
+                ],
+            ),
+            PatternSampling::Nearest,
+        )
+        .expect("push image");
+
+    let mut renderer = Renderer::new(4, 2, Color::TRANSPARENT);
+    renderer.render(&scene);
+
+    assert_eq!(renderer.image().rgba8_at(1, 1), [255, 0, 0, 255]);
+    assert_eq!(renderer.image().rgba8_at(3, 1), [0, 0, 128, 128]);
 }
 
 #[test]

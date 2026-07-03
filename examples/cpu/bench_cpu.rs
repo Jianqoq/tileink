@@ -4,7 +4,7 @@ use peniko::{
     Color,
     kurbo::{Affine, Circle, Rect, Shape, Stroke},
 };
-use tileink::{CpuRenderer, FillRule, Canvas};
+use tileink::{Canvas, CpuRenderer, FillRule};
 
 fn build_scene(width: u32, height: u32) -> Canvas {
     let mut scene = Canvas::new(width, height);

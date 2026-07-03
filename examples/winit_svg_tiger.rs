@@ -6,7 +6,7 @@ mod common;
 use std::{error::Error, sync::Arc};
 
 use peniko::Color;
-use tileink::{Renderer, Canvas};
+use tileink::{Canvas, Renderer};
 use winit::{
     application::ApplicationHandler,
     dpi::{LogicalSize, PhysicalSize},

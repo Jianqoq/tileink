@@ -7,7 +7,7 @@ use std::{
 };
 
 use peniko::{Color, kurbo::Affine};
-use tileink::{CpuRenderer, Canvas, SvgOptions, WgpuRenderer};
+use tileink::{Canvas, CpuRenderer, SvgOptions, WgpuRenderer};
 
 const REFERENCE_IMAGE_WIDTH: u32 = 300;
 

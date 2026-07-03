@@ -2,7 +2,7 @@
 mod common;
 
 use peniko::{Color, kurbo::Rect};
-use tileink::{CpuRenderer, Radius, Canvas, StrokeWidths};
+use tileink::{Canvas, CpuRenderer, Radius, StrokeWidths};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let width = 480;

@@ -5,7 +5,7 @@ use peniko::{
     Color,
     kurbo::{Affine, Circle, Stroke},
 };
-use tileink::{CpuRenderer, FillRule, Canvas};
+use tileink::{Canvas, CpuRenderer, FillRule};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let width = 220;

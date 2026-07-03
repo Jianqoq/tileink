@@ -2,7 +2,7 @@ use peniko::{
     Color,
     kurbo::{Circle, Point, Rect},
 };
-use tileink::{Radius, RectShadowOptions, Canvas, SdfArc, SdfLine, SdfLineCap, ShadowOptions};
+use tileink::{Canvas, Radius, RectShadowOptions, SdfArc, SdfLine, SdfLineCap, ShadowOptions};
 
 pub fn sdf_shape_shadows_scene() -> (Canvas, u32, u32) {
     let width = 640;

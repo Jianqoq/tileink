@@ -4,7 +4,7 @@ use peniko::{
     Color,
     kurbo::{Circle, Rect, Stroke},
 };
-use tileink::{BlurSampling, Filter, Radius, RectLiquidGlass, Region, Canvas};
+use tileink::{BlurSampling, Canvas, Filter, Radius, RectLiquidGlass, Region};
 
 use crate::common;
 

@@ -2,7 +2,7 @@ use peniko::{
     Color,
     kurbo::{Point, Rect},
 };
-use tileink::{Radius, Canvas, SdfDashLine, SdfLineCap};
+use tileink::{Canvas, Radius, SdfDashLine, SdfLineCap};
 
 pub fn sdf_dash_line_scene() -> (Canvas, u32, u32) {
     let width = 640;

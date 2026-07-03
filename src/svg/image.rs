@@ -5,8 +5,7 @@ use peniko::kurbo::Affine;
 use super::SvgError;
 use crate::shared::{
     brush::PatternSampling,
-    image::{Image as RasterImage, rgba8_pack},
-    pixel::mul_div255,
+    image::{Image as RasterImage, premul_rgba8_pack},
 };
 
 pub(super) fn decode_png_image(data: &[u8]) -> Result<RasterImage, SvgError> {
@@ -90,10 +89,6 @@ pub(super) fn image_sampling(rendering: usvg::ImageRendering) -> PatternSampling
         | usvg::ImageRendering::Smooth
         | usvg::ImageRendering::HighQuality => PatternSampling::Bilinear,
     }
-}
-
-fn premul_rgba8_pack(r: u8, g: u8, b: u8, a: u8) -> u32 {
-    rgba8_pack([mul_div255(r, a), mul_div255(g, a), mul_div255(b, a), a])
 }
 
 #[cfg(test)]

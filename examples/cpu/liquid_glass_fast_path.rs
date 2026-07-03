@@ -1,5 +1,5 @@
 use peniko::Color;
-use tileink::{CpuRenderer, Canvas};
+use tileink::{Canvas, CpuRenderer};
 
 #[path = "../common/mod.rs"]
 mod common;

@@ -11,7 +11,7 @@ use peniko::{
     Color,
     kurbo::{Affine, BezPath, Circle, Rect, Shape, Stroke},
 };
-use tileink::{CpuRenderer, FillRule, Image, Radius, Region, Canvas, SvgOptions, WgpuRenderer};
+use tileink::{Canvas, CpuRenderer, FillRule, Image, Radius, Region, SvgOptions, WgpuRenderer};
 
 pub const EXAMPLE_WIDTH: u32 = 1920;
 pub const EXAMPLE_HEIGHT: u32 = 1080;

@@ -7,7 +7,7 @@ use peniko::{
 use usvg::{Node, Paint, PaintOrder, SpreadMethod, tiny_skia_path::PathSegment};
 
 use crate::{
-    Brush, CpuRenderer, FillRule, Filter, Radius, Region, Canvas,
+    Brush, Canvas, CpuRenderer, FillRule, Filter, Radius, Region,
     shared::{
         bounds::Bounds,
         brush::{PatternBrush, PatternSampling},

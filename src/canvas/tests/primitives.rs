@@ -2,7 +2,8 @@ use super::*;
 use crate::{
     TextLayoutOptions,
     shared::{
-        image::premul_color_to_rgba8_pack, pixel::premul_f32_to_u32,
+        image::{Image, premul_color_to_rgba8_pack},
+        pixel::premul_f32_to_u32,
         scene_columns::GPU_BRUSH_U32_STRIDE,
     },
 };
@@ -69,6 +70,97 @@ fn push_rect_records_sdf_rect_with_independent_radii() {
         }
         sdf => panic!("expected rect SDF, got {sdf:?}"),
     }
+}
+
+#[test]
+fn push_image_records_pattern_rect_draw() {
+    let mut scene = test_scene();
+    let image = Image::from_rgba8(2, 1, [255, 0, 0, 255, 0, 0, 255, 255]);
+    let draw = scene
+        .push_image_with_sampling(
+            Rect::new(10.0, 20.0, 14.0, 22.0),
+            image,
+            PatternSampling::Nearest,
+        )
+        .expect("push image draw");
+
+    assert_eq!(draw.index(), 0);
+    assert_eq!(scene.draw_records.len(), 1);
+    assert!(scene.path_records.is_empty());
+    assert!(scene.bd_records.is_empty());
+    let record = &scene.draw_records[0];
+    assert_eq!(
+        record.pixel_bounds,
+        PixelBounds {
+            x0: 10,
+            y0: 20,
+            x1: 14,
+            y1: 22,
+        }
+    );
+    assert!(matches!(record.sdf, Some(Sdf::Rect(_))));
+    let Brush::Pattern(pattern) = &record.brush else {
+        panic!("expected image pattern brush");
+    };
+    assert_eq!((pattern.image.width, pattern.image.height), (2, 1));
+    assert_eq!(pattern.sampling, PatternSampling::Nearest);
+    assert_eq!(pattern.transform, [0.5, 0.0, 0.0, 0.5, -5.0, -10.0]);
+}
+
+#[test]
+fn append_translates_image_brush_without_mutating_child() {
+    let mut child = test_scene();
+    child
+        .push_image(
+            Rect::new(0.0, 0.0, 2.0, 1.0),
+            Image::from_rgba8(2, 1, [255, 0, 0, 255, 0, 0, 255, 255]),
+        )
+        .expect("push child image");
+    let Brush::Pattern(original_child_pattern) = &child.draw_records[0].brush else {
+        panic!("expected child image pattern brush");
+    };
+    let original_transform = original_child_pattern.transform;
+
+    let mut parent = test_scene();
+    parent.append(&child, Point::new(10.0, 20.0));
+
+    let Brush::Pattern(child_pattern) = &child.draw_records[0].brush else {
+        panic!("expected child image pattern brush");
+    };
+    assert_eq!(child_pattern.transform, original_transform);
+    let Brush::Pattern(parent_pattern) = &parent.draw_records[0].brush else {
+        panic!("expected parent image pattern brush");
+    };
+    assert_eq!(parent_pattern.transform, [1.0, 0.0, 0.0, 1.0, -10.0, -20.0]);
+    assert_eq!(
+        parent.draw_records[0].pixel_bounds,
+        PixelBounds {
+            x0: 10,
+            y0: 20,
+            x1: 12,
+            y1: 21,
+        }
+    );
+}
+
+#[test]
+fn push_image_rejects_empty_images_and_rects() {
+    let mut scene = test_scene();
+
+    assert!(
+        scene
+            .push_image(Rect::new(0.0, 0.0, 4.0, 4.0), Image::from_rgba8(0, 1, []),)
+            .is_none()
+    );
+    assert!(
+        scene
+            .push_image(
+                Rect::new(0.0, 0.0, 0.0, 4.0),
+                Image::from_rgba8(1, 1, [255, 0, 0, 255]),
+            )
+            .is_none()
+    );
+    assert!(scene.draw_records.is_empty());
 }
 
 #[test]

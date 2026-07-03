@@ -6,7 +6,11 @@ use std::{
 
 use peniko::Color;
 
-/// RGBA8 pixel buffer. Pixels are packed little-endian RGBA: red in the low byte.
+/// Premultiplied RGBA8 pixel buffer.
+///
+/// Pixels are packed little-endian RGBA with red in the low byte. RGB channels
+/// are stored premultiplied by alpha because renderers composite directly from
+/// this buffer.
 #[derive(Clone, Debug)]
 pub struct Image {
     pub width: u32,
@@ -19,7 +23,45 @@ impl Image {
         Self {
             width,
             height,
-            pixels: vec![premul_color_to_rgba8_pack(clear); (width * height) as usize],
+            pixels: vec![premul_color_to_rgba8_pack(clear); pixel_len(width, height)],
+        }
+    }
+
+    /// Builds an image from straight RGBA8 bytes in row-major order.
+    ///
+    /// External image decoders usually return straight-alpha RGBA. This
+    /// constructor converts those pixels into the renderer's premultiplied
+    /// storage format so the image can be used directly by pattern brushes and
+    /// `Canvas::push_image`.
+    pub fn from_rgba8(width: u32, height: u32, rgba: impl AsRef<[u8]>) -> Self {
+        let rgba = rgba.as_ref();
+        assert_eq!(
+            rgba.len(),
+            pixel_len(width, height) * 4,
+            "rgba byte length must be width * height * 4"
+        );
+        let pixels = rgba
+            .chunks_exact(4)
+            .map(|px| premul_rgba8_pack(px[0], px[1], px[2], px[3]))
+            .collect();
+        Self {
+            width,
+            height,
+            pixels,
+        }
+    }
+
+    /// Builds an image from already-premultiplied packed RGBA8 pixels.
+    pub fn from_premultiplied_rgba8(width: u32, height: u32, pixels: Vec<u32>) -> Self {
+        assert_eq!(
+            pixels.len(),
+            pixel_len(width, height),
+            "premultiplied pixel count must be width * height"
+        );
+        Self {
+            width,
+            height,
+            pixels,
         }
     }
 
@@ -114,6 +156,15 @@ pub(crate) fn premul_color_to_rgba8_pack(color: Color) -> u32 {
     ])
 }
 
+pub(crate) fn premul_rgba8_pack(r: u8, g: u8, b: u8, a: u8) -> u32 {
+    rgba8_pack([
+        crate::shared::pixel::mul_div255(r, a),
+        crate::shared::pixel::mul_div255(g, a),
+        crate::shared::pixel::mul_div255(b, a),
+        a,
+    ])
+}
+
 pub(crate) fn unpack_rgba8(px: u32) -> [u8; 4] {
     [
         (px & 0xff) as u8,
@@ -141,6 +192,12 @@ fn unpremultiply_u8(channel: u8, alpha: u8) -> u8 {
     ((u32::from(channel) * 255 + u32::from(alpha) / 2) / u32::from(alpha)).min(255) as u8
 }
 
+fn pixel_len(width: u32, height: u32) -> usize {
+    width
+        .checked_mul(height)
+        .expect("image dimensions overflow u32 pixel count") as usize
+}
+
 #[cfg(test)]
 mod tests {
     use std::{fs::File, io::BufReader, path::PathBuf};
@@ -163,6 +220,27 @@ mod tests {
         image.pixels = vec![rgba8_pack([1, 2, 3, 4]), rgba8_pack([5, 6, 7, 8])];
 
         assert_eq!(image.rgba8_bytes(), vec![1, 2, 3, 4, 5, 6, 7, 8]);
+    }
+
+    #[test]
+    fn from_rgba8_premultiplies_external_straight_alpha_pixels() {
+        let image = Image::from_rgba8(
+            2,
+            1,
+            [
+                255, 0, 0, 128, //
+                0, 128, 255, 64,
+            ],
+        );
+
+        assert_eq!(image.rgba8_at(0, 0), [128, 0, 0, 128]);
+        assert_eq!(image.rgba8_at(1, 0), [0, 32, 64, 64]);
+    }
+
+    #[test]
+    #[should_panic(expected = "rgba byte length must be width * height * 4")]
+    fn from_rgba8_rejects_wrong_byte_count() {
+        let _ = Image::from_rgba8(2, 1, [255, 0, 0, 255]);
     }
 
     #[test]
