@@ -1802,6 +1802,49 @@ fn wgpu_renderer_downsampled_blur_matches_cpu_approximation() {
 }
 
 #[test]
+fn wgpu_renderer_shared_blur_matches_cpu_across_workgroup_edges() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut scene = Scene::new(73, 55);
+    scene.push_filter_layer(
+        Filter::Blur {
+            std_dev_x: 5.0,
+            std_dev_y: 5.0,
+            sampling: BlurSampling::default(),
+        },
+        Region::rect(Rect::new(3.0, 4.0, 68.0, 51.0), crate::Radius::ZERO),
+    );
+    for x in (4..68).step_by(5) {
+        let color = if x % 2 == 0 {
+            Color::from_rgb8(255, 40, 80)
+        } else {
+            Color::from_rgb8(30, 140, 255)
+        };
+        scene.push_rect(
+            Rect::new(f64::from(x), 6.0, f64::from(x + 2), 49.0),
+            crate::Radius::ZERO,
+            color,
+        );
+    }
+    for y in (7..51).step_by(7) {
+        scene.push_rect(
+            Rect::new(5.0, f64::from(y), 66.0, f64::from(y + 2)),
+            crate::Radius::ZERO,
+            Color::from_rgba8(20, 220, 120, 180),
+        );
+    }
+    scene.pop_layer();
+
+    let image = render_native_wgpu(&scene);
+    let mut cpu = CpuRenderer::new(73, 55, Color::TRANSPARENT);
+    cpu.render(&scene);
+
+    assert_images_near(&image, &cpu.image(), 16, "shared blur workgroup edges");
+}
+
+#[test]
 fn wgpu_renderer_profiles_filter_dispatch_stages_when_enabled() {
     if !run_wgpu_tests() {
         return;

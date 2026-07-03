@@ -1,3 +1,9 @@
+const SHARED_BLUR_TILE_WIDTH: u32 = 16u;
+const SHARED_BLUR_TILE_HEIGHT: u32 = 16u;
+const SHARED_BLUR_MAX_RADIUS: u32 = 16u;
+const SHARED_BLUR_WORKGROUP_SIZE: u32 = SHARED_BLUR_TILE_WIDTH * SHARED_BLUR_TILE_HEIGHT;
+var<workgroup> shared_blur_pixels: array<u32, 768>;
+
 @compute @workgroup_size(256)
 fn filter_clear_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = gid.x;
@@ -334,21 +340,11 @@ fn filter_upsample_rect_composite_region(@builtin(global_invocation_id) gid: vec
     target_store_ix(ix, src_over_premul_u8(target_load_ix(ix), source));
 }
 
-@compute @workgroup_size(256)
-fn filter_blur_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
-    if (region_ix >= config.pixel_count) {
-        return;
-    }
+fn filter_blur_half_width(std_dev: f32) -> i32 {
+    return i32(max(ceil(std_dev * 3.0), 1.0));
+}
 
-    let std_dev = max(config.amount, 0.0);
-    let xy = xy_for_region_ix(region_ix);
-    let dst_ix = target_ix_at(xy.x, xy.y);
-    if (std_dev <= 0.0) {
-        target_store_ix(dst_ix, source_pixel_ix(dst_ix));
-        return;
-    }
-
+fn filter_blur_pixel_global(xy: vec2<u32>, dst_ix: u32, std_dev: f32) -> u32 {
     let half_width = i32(max(ceil(std_dev * 3.0), 1.0));
     let sigma = max(std_dev, 0.0001);
     let two_sigma_sq = 2.0 * sigma * sigma;
@@ -422,7 +418,165 @@ fn filter_blur_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (sum > 0.0) {
         scale = 1.0 / (255.0 * sum);
     }
-    target_store_ix(dst_ix, pack_premul_rgba8(r * scale, g * scale, b * scale, a * scale));
+    return pack_premul_rgba8(r * scale, g * scale, b * scale, a * scale);
+}
+
+fn filter_blur_pixel_shared(local_xy: vec2<u32>, half_width: i32, std_dev: f32) -> u32 {
+    let radius = u32(half_width);
+    let sigma = max(std_dev, 0.0001);
+    let two_sigma_sq = 2.0 * sigma * sigma;
+
+    var center_ix = (local_xy.y + radius) * SHARED_BLUR_TILE_WIDTH + local_xy.x;
+    if (config.blur_axis == 0u) {
+        let stride = SHARED_BLUR_TILE_WIDTH + 2u * radius;
+        center_ix = local_xy.y * stride + radius + local_xy.x;
+    }
+
+    let center = shared_blur_pixels[center_ix];
+    var sum = 1.0;
+    var r = f32(center & 255u);
+    var g = f32((center >> 8u) & 255u);
+    var b = f32((center >> 16u) & 255u);
+    var a = f32((center >> 24u) & 255u);
+
+    var weight = exp(-1.0 / two_sigma_sq);
+    let weight_ratio_decay = exp(-2.0 / two_sigma_sq);
+    var weight_ratio = weight * weight_ratio_decay;
+    var d = 1i;
+    loop {
+        if (d > half_width) {
+            break;
+        }
+        sum += 2.0 * weight;
+
+        var plus_ix = (local_xy.y + radius + u32(d)) * SHARED_BLUR_TILE_WIDTH + local_xy.x;
+        var minus_ix = (local_xy.y + radius - u32(d)) * SHARED_BLUR_TILE_WIDTH + local_xy.x;
+        if (config.blur_axis == 0u) {
+            let stride = SHARED_BLUR_TILE_WIDTH + 2u * radius;
+            plus_ix = local_xy.y * stride + radius + local_xy.x + u32(d);
+            minus_ix = local_xy.y * stride + radius + local_xy.x - u32(d);
+        }
+
+        let plus = shared_blur_pixels[plus_ix];
+        r += f32(plus & 255u) * weight;
+        g += f32((plus >> 8u) & 255u) * weight;
+        b += f32((plus >> 16u) & 255u) * weight;
+        a += f32((plus >> 24u) & 255u) * weight;
+
+        let minus = shared_blur_pixels[minus_ix];
+        r += f32(minus & 255u) * weight;
+        g += f32((minus >> 8u) & 255u) * weight;
+        b += f32((minus >> 16u) & 255u) * weight;
+        a += f32((minus >> 24u) & 255u) * weight;
+
+        weight *= weight_ratio;
+        weight_ratio *= weight_ratio_decay;
+        d += 1i;
+    }
+
+    var scale = 0.0;
+    if (sum > 0.0) {
+        scale = 1.0 / (255.0 * sum);
+    }
+    return pack_premul_rgba8(r * scale, g * scale, b * scale, a * scale);
+}
+
+@compute @workgroup_size(256)
+fn filter_blur_region(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let region_ix = gid.x;
+    if (region_ix >= config.pixel_count) {
+        return;
+    }
+
+    let std_dev = max(config.amount, 0.0);
+    let xy = xy_for_region_ix(region_ix);
+    let dst_ix = target_ix_at(xy.x, xy.y);
+    if (std_dev <= 0.0) {
+        target_store_ix(dst_ix, source_pixel_ix(dst_ix));
+        return;
+    }
+
+    target_store_ix(dst_ix, filter_blur_pixel_global(xy, dst_ix, std_dev));
+}
+
+@compute @workgroup_size(16, 16)
+fn filter_blur_shared_region(
+    @builtin(local_invocation_id) local_id: vec3<u32>,
+    @builtin(workgroup_id) workgroup_id: vec3<u32>,
+) {
+    let std_dev = max(config.amount, 0.0);
+    let tile_x0 = config.region_x0 + workgroup_id.x * SHARED_BLUR_TILE_WIDTH;
+    let tile_y0 = config.region_y0 + workgroup_id.y * SHARED_BLUR_TILE_HEIGHT;
+    let xy = vec2<u32>(tile_x0 + local_id.x, tile_y0 + local_id.y);
+    let in_region = xy.x < config.region_x0 + config.region_width &&
+        xy.y < config.region_y0 + config.region_height;
+
+    if (std_dev <= 0.0) {
+        if (in_region) {
+            let ix = target_ix_at(xy.x, xy.y);
+            target_store_ix(ix, source_pixel_ix(ix));
+        }
+        return;
+    }
+
+    let half_width = filter_blur_half_width(std_dev);
+    if (half_width > i32(SHARED_BLUR_MAX_RADIUS)) {
+        if (in_region) {
+            let ix = target_ix_at(xy.x, xy.y);
+            target_store_ix(ix, filter_blur_pixel_global(xy, ix, std_dev));
+        }
+        return;
+    }
+
+    let radius = u32(half_width);
+    let local_ix = local_id.y * SHARED_BLUR_TILE_WIDTH + local_id.x;
+    let region_x1 = i32(config.region_x0 + config.region_width);
+    let region_y1 = i32(config.region_y0 + config.region_height);
+    var sample_count = SHARED_BLUR_TILE_WIDTH * (SHARED_BLUR_TILE_HEIGHT + 2u * radius);
+    if (config.blur_axis == 0u) {
+        sample_count = (SHARED_BLUR_TILE_WIDTH + 2u * radius) * SHARED_BLUR_TILE_HEIGHT;
+    }
+
+    var load_ix = local_ix;
+    loop {
+        if (load_ix >= sample_count) {
+            break;
+        }
+
+        var sx = 0i;
+        var sy = 0i;
+        if (config.blur_axis == 0u) {
+            let stride = SHARED_BLUR_TILE_WIDTH + 2u * radius;
+            sx = i32(tile_x0 + load_ix % stride) - i32(radius);
+            sy = i32(tile_y0 + load_ix / stride);
+        } else {
+            sx = i32(tile_x0 + load_ix % SHARED_BLUR_TILE_WIDTH);
+            sy = i32(tile_y0 + load_ix / SHARED_BLUR_TILE_WIDTH) - i32(radius);
+        }
+
+        var pixel = 0u;
+        if (
+            sx >= i32(config.region_x0) &&
+            sx < region_x1 &&
+            sy >= i32(config.region_y0) &&
+            sy < region_y1
+        ) {
+            pixel = source_pixel_at(u32(sx), u32(sy));
+        }
+        shared_blur_pixels[load_ix] = pixel;
+        load_ix += SHARED_BLUR_WORKGROUP_SIZE;
+    }
+
+    workgroupBarrier();
+
+    if (!in_region) {
+        return;
+    }
+    target_store_at(
+        xy.x,
+        xy.y,
+        filter_blur_pixel_shared(vec2<u32>(local_id.x, local_id.y), half_width, std_dev),
+    );
 }
 
 @compute @workgroup_size(256)

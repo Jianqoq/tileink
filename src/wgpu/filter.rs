@@ -37,6 +37,9 @@ pub(crate) const SVG_MASK_ALPHA: u32 = 0;
 pub(crate) const SVG_MASK_LUMINANCE: u32 = 1;
 
 const WORKGROUP_SIZE: u32 = 256;
+const SHARED_BLUR_TILE_WIDTH: u32 = 16;
+const SHARED_BLUR_TILE_HEIGHT: u32 = 16;
+const SHARED_BLUR_MAX_RADIUS: u32 = 16;
 const STORAGE_BINDING_COUNT: u32 = 53;
 
 #[repr(C)]
@@ -275,6 +278,7 @@ pub(crate) struct WgpuFilterPipeline {
     upsample_region: ::wgpu::ComputePipeline,
     upsample_rect_composite_region: ::wgpu::ComputePipeline,
     blur_region: ::wgpu::ComputePipeline,
+    blur_shared_region: ::wgpu::ComputePipeline,
     svg_mask_coverage_region: ::wgpu::ComputePipeline,
     apply_region_mask: ::wgpu::ComputePipeline,
     color_filter_region: ::wgpu::ComputePipeline,
@@ -441,6 +445,12 @@ impl WgpuFilterPipeline {
                 "filter_upsample_rect_composite_region",
             ),
             blur_region: create_pipeline(device, &pipeline_layout, &shader, "filter_blur_region"),
+            blur_shared_region: create_pipeline(
+                device,
+                &pipeline_layout,
+                &shader,
+                "filter_blur_shared_region",
+            ),
             svg_mask_coverage_region: create_pipeline(
                 device,
                 &pipeline_layout,
@@ -1128,10 +1138,15 @@ impl WgpuFilterPipeline {
         };
         config.amount = std_dev;
         config.blur_axis = axis;
+        let pipeline = if shared_blur_radius(std_dev).is_some() {
+            &self.blur_shared_region
+        } else {
+            &self.blur_region
+        };
         self.dispatch(
             device,
             queue,
-            &self.blur_region,
+            pipeline,
             &config,
             source,
             &self.dummy_texture_view,
@@ -1867,10 +1882,27 @@ impl WgpuFilterPipeline {
             });
             pass.set_pipeline(pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
-            pass.dispatch_workgroups(config.pixel_count.div_ceil(WORKGROUP_SIZE), 1, 1);
+            let workgroups = self.dispatch_workgroups_for_pipeline(pipeline, config);
+            pass.dispatch_workgroups(workgroups.0, workgroups.1, workgroups.2);
         }
         finish_gpu_scope(&mut encoder, gpu_scope);
         queue.submit([encoder.finish()]);
+    }
+
+    fn dispatch_workgroups_for_pipeline(
+        &self,
+        pipeline: &::wgpu::ComputePipeline,
+        config: &FilterConfig,
+    ) -> (u32, u32, u32) {
+        if std::ptr::eq(pipeline, &self.blur_shared_region) {
+            (
+                config.region_width.div_ceil(SHARED_BLUR_TILE_WIDTH),
+                config.region_height.div_ceil(SHARED_BLUR_TILE_HEIGHT),
+                1,
+            )
+        } else {
+            (config.pixel_count.div_ceil(WORKGROUP_SIZE), 1, 1)
+        }
     }
 
     fn profile_name_for_pipeline(
@@ -1906,7 +1938,9 @@ impl WgpuFilterPipeline {
             "filter.upsample"
         } else if std::ptr::eq(pipeline, &self.upsample_rect_composite_region) {
             "filter.upsample.composite.rect"
-        } else if std::ptr::eq(pipeline, &self.blur_region) {
+        } else if std::ptr::eq(pipeline, &self.blur_region)
+            || std::ptr::eq(pipeline, &self.blur_shared_region)
+        {
             if config.blur_axis == 0 {
                 "filter.blur.x"
             } else {
@@ -2222,6 +2256,15 @@ fn encode_blur_upsample_filter(filter: BlurUpsampleFilter) -> u32 {
         BlurUpsampleFilter::Nearest => 0,
         BlurUpsampleFilter::Bilinear => 1,
     }
+}
+
+fn shared_blur_radius(std_dev: f32) -> Option<u32> {
+    let std_dev = std_dev.max(0.0);
+    if !std_dev.is_finite() || std_dev <= 0.0 {
+        return None;
+    }
+    let radius = (std_dev * 3.0).ceil().max(1.0) as u32;
+    (radius <= SHARED_BLUR_MAX_RADIUS).then_some(radius)
 }
 
 fn config_for_bounds(
