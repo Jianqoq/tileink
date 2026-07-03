@@ -193,6 +193,11 @@ name = "svg_tiger_bench"
 path = "examples/svg_tiger_bench.rs"
 
 [[example]]
+name = "svg_tiger_vello_compare"
+path = "examples/svg_tiger_vello_compare.rs"
+required-features = ["vello-compare"]
+
+[[example]]
 name = "text_quality"
 path = "examples/text_quality.rs"
 required-features = ["directwrite-reference"]
