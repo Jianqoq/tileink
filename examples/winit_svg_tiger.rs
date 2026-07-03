@@ -6,7 +6,7 @@ mod common;
 use std::{error::Error, sync::Arc};
 
 use peniko::Color;
-use tileink::{CubeWgpuRenderer, Scene};
+use tileink::{Scene, WgpuRenderer};
 use winit::{
     application::ApplicationHandler,
     dpi::{LogicalSize, PhysicalSize},
@@ -113,8 +113,7 @@ struct State {
     surface: wgpu::Surface<'static>,
     config: wgpu::SurfaceConfiguration,
     device: wgpu::Device,
-    queue: wgpu::Queue,
-    renderer: CubeWgpuRenderer,
+    renderer: WgpuRenderer,
 }
 
 impl State {
@@ -148,23 +147,12 @@ impl State {
         let config = surface_config(&surface, &adapter, window_size)?;
         surface.configure(&device, &config);
 
-        let cube_device = ::cubecl::wgpu::init_device(
-            ::cubecl::wgpu::WgpuSetup {
-                instance,
-                adapter: adapter.clone(),
-                device: device.clone(),
-                queue: queue.clone(),
-                backend: adapter.get_info().backend,
-            },
-            ::cubecl::wgpu::RuntimeOptions::default(),
-        );
-        let renderer = CubeWgpuRenderer::new(&cube_device, scene_width, scene_height, Color::WHITE);
+        let renderer = WgpuRenderer::new(&device, &queue, scene_width, scene_height, Color::WHITE);
         Ok(Self {
             window,
             surface,
             config,
             device,
-            queue,
             renderer,
         })
     }
@@ -195,7 +183,7 @@ impl State {
         };
 
         self.renderer
-            .render_to_wgpu_texture(scene, &self.device, &self.queue, &frame.texture)?;
+            .render_to_wgpu_texture(scene, &frame.texture)?;
         frame.present();
         Ok(())
     }

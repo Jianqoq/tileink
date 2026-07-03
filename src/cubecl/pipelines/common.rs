@@ -5,6 +5,12 @@ use crate::cubecl::brush::{
     GPU_BRUSH_RADIAL, GPU_BRUSH_SWEEP, GPU_BRUSH_U32_STRIDE, GPU_EXTEND_REFLECT, GPU_EXTEND_REPEAT,
     GPU_PATTERN_BILINEAR,
 };
+#[cfg(test)]
+pub(crate) use crate::shared::gpu_types::DRAW_FLAG_SOLID_RECT;
+pub(crate) use crate::shared::gpu_types::{
+    DRAW_FLAG_FILL_RULE_EVEN_ODD, DRAW_FLAG_HAS_GLYPH, DRAW_FLAG_HAS_SDF,
+    DRAW_FLAG_SOLID_COLOR_FAST_PATH, DRAW_FLAG_TAG_MASK,
+};
 
 // Text uses small contrast-dependent coverage curves on top of linear-light
 // compositing. DirectWrite reference output showed that dark text needs a
@@ -35,13 +41,6 @@ const TEXT_ALPHA_MASK_LOW_LUMA_CHROMA_REDUCTION: f32 = 0.413_020_64;
 const TEXT_ALPHA_MASK_LOW_LUMA_CONTRAST_LIMIT: f32 = 0.101_238_72;
 const TEXT_SUBPIXEL_MASK_LOW_LUMA_CHROMA_REDUCTION: f32 = 0.0;
 const TEXT_SUBPIXEL_MASK_LOW_LUMA_CONTRAST_LIMIT: f32 = 0.063_855_61;
-
-pub(crate) const DRAW_FLAG_TAG_MASK: u32 = 0b0000_0111;
-pub(crate) const DRAW_FLAG_FILL_RULE_EVEN_ODD: u32 = 1 << 3;
-pub(crate) const DRAW_FLAG_SOLID_RECT: u32 = 1 << 4;
-pub(crate) const DRAW_FLAG_SOLID_COLOR_FAST_PATH: u32 = 1 << 5;
-pub(crate) const DRAW_FLAG_HAS_SDF: u32 = 1 << 6;
-pub(crate) const DRAW_FLAG_HAS_GLYPH: u32 = 1 << 7;
 
 #[cube]
 pub(crate) fn packed_u8_at(words: &Array<u32>, ix: u32) -> u32 {

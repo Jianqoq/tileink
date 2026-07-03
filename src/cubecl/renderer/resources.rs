@@ -923,7 +923,6 @@ mod tests {
     use super::{AtlasSignature, TextUpload};
     use crate::{
         FillRule, Radius, Scene, TextContext, TextLayoutOptions,
-        cubecl::scene_columns::draw_flags_word,
         cubecl::{
             pipelines::common::{
                 DRAW_FLAG_FILL_RULE_EVEN_ODD, DRAW_FLAG_HAS_GLYPH, DRAW_FLAG_HAS_SDF,
@@ -935,6 +934,7 @@ mod tests {
             bounds::PixelBounds,
             brush::Brush,
             draw_record::{DrawRecord, DrawTag},
+            scene_columns::draw_flags_word,
         },
         text::PreparedTextData,
     };

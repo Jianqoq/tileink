@@ -2,7 +2,7 @@ param(
     [ValidateSet("all", "filters", "masking", "paint-servers", "painting", "shapes", "structure", "text")]
     [string]$Type = "all",
 
-    [ValidateSet("both", "cpu", "cubecl")]
+    [ValidateSet("both", "cpu", "cubecl", "wgpu", "cubecl-wgpu")]
     [string]$Backend = "both",
 
     [switch]$ContinueOnError
@@ -28,7 +28,11 @@ try {
 
     $oldErrorActionPreference = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
-    cargo build --release --example svg_fixture_render
+    if ($Backend -eq "wgpu" -or $Backend -eq "cubecl-wgpu") {
+        cargo build --release --features wgpu --example svg_fixture_render
+    } else {
+        cargo build --release --example svg_fixture_render
+    }
     $buildExit = $LASTEXITCODE
     $ErrorActionPreference = $oldErrorActionPreference
     if ($buildExit -ne 0) {

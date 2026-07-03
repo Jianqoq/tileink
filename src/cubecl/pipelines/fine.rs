@@ -32,6 +32,7 @@ pub(crate) const FINE_WORKGROUP_SIZE: u32 = 256;
 pub(crate) const FINE_LOCAL_CLIP_DEPTH: usize = 4;
 pub(crate) const FINE_LOCAL_GROUP_DEPTH: usize = 2;
 pub(crate) const FINE_GROUP_SPILL_FIELDS: usize = 5;
+const PATH_COVERAGE_FIXED_SCALE: i32 = 4096;
 
 include!("sdf_kernels.rs");
 
@@ -707,11 +708,12 @@ fn fill_alpha_at(
     segment_p1y: &Array<f32>,
     segment_y_edge: &Array<f32>,
 ) -> u32 {
-    let mut coverage = backdrop as f32;
+    // Segment writes are atomically ordered by scan; fixed-point accumulation keeps path coverage deterministic.
+    let mut coverage = backdrop * i32::new(PATH_COVERAGE_FIXED_SCALE as i64);
     let mut segment_ix = segment_start;
     while segment_ix < segment_end {
         let i = segment_ix as usize;
-        coverage += segment_coverage_at(
+        coverage += segment_coverage_fixed_at(
             segment_p0x[i],
             segment_p0y[i],
             segment_p1x[i],
@@ -723,6 +725,21 @@ fn fill_alpha_at(
         segment_ix += 1;
     }
     coverage_to_alpha(coverage, fill_rule)
+}
+
+#[cube]
+fn segment_coverage_fixed_at(
+    p0x: f32,
+    p0y: f32,
+    p1x: f32,
+    p1y: f32,
+    y_edge: f32,
+    x: u32,
+    y: u32,
+) -> i32 {
+    (segment_coverage_at(p0x, p0y, p1x, p1y, y_edge, x, y)
+        * f32::new(PATH_COVERAGE_FIXED_SCALE as f32))
+    .round() as i32
 }
 
 #[cube]
@@ -773,12 +790,22 @@ fn signum_f32(value: f32) -> f32 {
 }
 
 #[cube]
-fn coverage_to_alpha(value: f32, fill_rule: u32) -> u32 {
-    let mut alpha = value.abs().min(1.0);
+fn coverage_to_alpha(value: i32, fill_rule: u32) -> u32 {
+    let scale = i32::new(PATH_COVERAGE_FIXED_SCALE as i64);
+    let mut alpha = value.abs().min(scale);
     if fill_rule == 1 {
-        alpha = (value - f32::new(2.0_f32) * (f32::new(0.5_f32) * value).round()).abs();
+        let period = scale * 2;
+        let mut rem = value % period;
+        if rem < 0 {
+            rem += period;
+        }
+        if rem > scale {
+            rem = period - rem;
+        }
+        alpha = rem;
     }
-    (alpha.clamp(0.0, 1.0) * 255.0 + 0.5) as u32
+    let clamped = alpha.min(scale) as u32;
+    (clamped * 255 + (PATH_COVERAGE_FIXED_SCALE as u32 / 2)) / PATH_COVERAGE_FIXED_SCALE as u32
 }
 
 #[cube]

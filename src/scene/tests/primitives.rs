@@ -1,8 +1,10 @@
 use super::*;
 use crate::{
     TextLayoutOptions,
-    cubecl::scene_columns::GPU_BRUSH_U32_STRIDE,
-    shared::{image::premul_color_to_rgba8_pack, pixel::premul_f32_to_u32},
+    shared::{
+        image::premul_color_to_rgba8_pack, pixel::premul_f32_to_u32,
+        scene_columns::GPU_BRUSH_U32_STRIDE,
+    },
 };
 
 #[test]

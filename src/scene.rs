@@ -6,7 +6,6 @@ use peniko::{
     },
 };
 
-use crate::cubecl::scene_columns::SceneColumns;
 use crate::shared::{
     bd_record::BackdropRecord,
     bounds::{Bounds, PixelBounds},
@@ -29,6 +28,7 @@ use crate::shared::{
     path::{PATH_FLAG_KEEP_HORIZONTAL_TILE_EDGES, PathRecord},
     path_flatten::PathFlatten,
     scan_line::line_scanned_tile_count,
+    scene_columns::SceneColumns,
     sdf::{
         Sdf, SdfShadow,
         arc::{Arc as SdfArc, ArcShadow as SdfArcShadow},

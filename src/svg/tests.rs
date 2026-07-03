@@ -2,6 +2,8 @@ use peniko::Color;
 
 use super::*;
 use crate::CpuRenderer;
+#[cfg(feature = "wgpu")]
+use crate::{CubeWgpuRenderer, WgpuRenderer};
 
 fn parse(svg: &str) -> usvg::Tree {
     usvg::Tree::from_str(svg, &usvg::Options::default()).unwrap()
@@ -54,6 +56,40 @@ fn assert_rgba_close(actual: [u8; 4], expected: [u8; 4], tolerance: u8) {
     );
 }
 
+#[cfg(feature = "wgpu")]
+fn run_wgpu_svg_tests() -> bool {
+    std::env::var("TILEINK_RUN_WGPU_TESTS").as_deref() == Ok("1")
+        || std::env::var("TILEINK_RUN_WGPU_SVG_TESTS").as_deref() == Ok("1")
+}
+
+#[cfg(feature = "wgpu")]
+fn assert_images_exact(
+    expected: &crate::shared::image::Image,
+    actual: &crate::shared::image::Image,
+    context: &str,
+) {
+    assert_eq!(
+        (actual.width, actual.height),
+        (expected.width, expected.height)
+    );
+    let mut mismatch_count = 0usize;
+    let mut first_mismatch = None;
+    for (ix, (&expected_px, &actual_px)) in expected.pixels.iter().zip(&actual.pixels).enumerate() {
+        if expected_px != actual_px {
+            mismatch_count += 1;
+            if first_mismatch.is_none() {
+                let x = ix as u32 % expected.width;
+                let y = ix as u32 / expected.width;
+                first_mismatch = Some((x, y, expected.rgba8_at(x, y), actual.rgba8_at(x, y)));
+            }
+        }
+    }
+    assert_eq!(
+        mismatch_count, 0,
+        "{context} has {mismatch_count} pixel differences; first mismatch: {first_mismatch:?}"
+    );
+}
+
 const OPAQUE_RED_BLUE_PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAADklEQVR4nGP4z8AAQv8BD/kD/YURmXYAAAAASUVORK5CYII=";
 const TRANSLUCENT_ORANGE_PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP438DQAAAGAQIADTyPKQAAAABJRU5ErkJggg==";
 
@@ -77,6 +113,102 @@ fn push_svg_renders_basic_fill_and_stroke() {
 
     assert_eq!(renderer.image().rgba8_at(12, 12), [255, 0, 0, 255]);
     assert_eq!(renderer.image().rgba8_at(4, 12), [0, 0, 255, 255]);
+}
+
+#[cfg(feature = "wgpu")]
+#[test]
+fn push_svg_native_wgpu_matches_cubecl_exact_when_enabled() {
+    if !run_wgpu_svg_tests() {
+        return;
+    }
+
+    let tree = parse(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32">
+                <rect x="2" y="2" width="12" height="18" fill="#0a141e"/>
+                <rect x="14" y="6" width="10" height="10" fill="#dc4050"/>
+                <path d="M4 26 L28 26 L28 30 L4 30 Z" fill="#2060a0"/>
+            </svg>"##,
+    );
+    let mut scene = Scene::new(32, 32);
+    scene.push_svg(&tree).unwrap();
+
+    let mut cubecl = CubeWgpuRenderer::new_default_device(32, 32, Color::TRANSPARENT);
+    cubecl.render(&scene);
+    let cubecl_image = cubecl.image();
+
+    let mut wgpu = WgpuRenderer::new_default_device(32, 32, Color::TRANSPARENT);
+    assert!(
+        wgpu.render_native(&scene),
+        "expected SVG scene to render through native wgpu path"
+    );
+    let wgpu_image = wgpu.image();
+
+    assert_images_exact(&cubecl_image, &wgpu_image, "svg native wgpu vs cubecl");
+}
+
+#[cfg(feature = "wgpu")]
+#[test]
+fn push_svg_native_wgpu_matches_cubecl_for_path_text_fixture_when_enabled() {
+    if !run_wgpu_svg_tests() {
+        return;
+    }
+
+    let scene = svg_fixture_scene("text/textPath/writing-mode=tb.svg", 300);
+    assert_eq!(
+        scene.text_glyphs.len(),
+        0,
+        "SVG text fixtures render as paths"
+    );
+
+    let mut cubecl =
+        CubeWgpuRenderer::new_default_device(scene.width, scene.height, Color::TRANSPARENT);
+    let mut wgpu = WgpuRenderer::new_default_device(scene.width, scene.height, Color::TRANSPARENT);
+    for pass in 0..5 {
+        cubecl.render(&scene);
+        let cubecl_image = cubecl.image();
+        assert!(
+            wgpu.render_native(&scene),
+            "expected SVG path text fixture to render through native wgpu path"
+        );
+        let wgpu_image = wgpu.image();
+        assert_images_exact(
+            &cubecl_image,
+            &wgpu_image,
+            &format!("svg path text native wgpu vs cubecl pass {pass}"),
+        );
+    }
+}
+
+#[cfg(feature = "wgpu")]
+fn svg_fixture_scene(relative: &str, target_width: u32) -> Scene {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src/svg/tests")
+        .join(relative);
+    let data = std::fs::read(&path).unwrap();
+    let mut options = usvg::Options::default();
+    options
+        .fontdb_mut()
+        .load_fonts_dir(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/svg/fonts"));
+    options.resources_dir = path.parent().map(std::path::Path::to_path_buf);
+    let tree = usvg::Tree::from_data(&data, &options).unwrap();
+    let size = tree
+        .size()
+        .to_int_size()
+        .scale_to_width(target_width)
+        .unwrap();
+    let scale_x = size.width() as f64 / tree.size().width() as f64;
+    let scale_y = size.height() as f64 / tree.size().height() as f64;
+    let mut scene = Scene::new(size.width(), size.height());
+    scene
+        .push_svg_with_options(
+            &tree,
+            SvgOptions {
+                transform: peniko::kurbo::Affine::scale_non_uniform(scale_x, scale_y),
+                ..SvgOptions::default()
+            },
+        )
+        .unwrap();
+    scene
 }
 
 #[test]
