@@ -37,10 +37,10 @@ fn render_tree_with_options(
     width: u32,
     height: u32,
 ) -> CpuRenderer {
-    let mut scene = Canvas::new(width, height);
-    scene.push_svg_with_options(tree, options).unwrap();
-    let mut renderer = CpuRenderer::new(scene.width, scene.height, clear);
-    renderer.render(&scene);
+    let mut canvas = Canvas::new(width, height);
+    canvas.push_svg_with_options(tree, options).unwrap();
+    let mut renderer = CpuRenderer::new(canvas.width, canvas.height, clear);
+    renderer.render(&canvas);
     renderer
 }
 
@@ -124,16 +124,16 @@ fn push_svg_native_wgpu_matches_cpu_exact_when_enabled() {
                 <path d="M4 26 L28 26 L28 30 L4 30 Z" fill="#2060a0"/>
             </svg>"##,
     );
-    let mut scene = Canvas::new(32, 32);
-    scene.push_svg(&tree).unwrap();
+    let mut canvas = Canvas::new(32, 32);
+    canvas.push_svg(&tree).unwrap();
 
     let mut cpu = CpuRenderer::new(32, 32, Color::TRANSPARENT);
-    cpu.render(&scene);
+    cpu.render(&canvas);
 
     let mut wgpu = WgpuRenderer::new_default_device(32, 32, Color::TRANSPARENT);
     assert!(
-        wgpu.render_native(&scene),
-        "expected SVG scene to render through native wgpu path"
+        wgpu.render_native(&canvas),
+        "expected SVG canvas to render through native wgpu path"
     );
     let wgpu_image = wgpu.image();
 
@@ -146,19 +146,19 @@ fn push_svg_native_wgpu_matches_cpu_for_path_text_fixture_when_enabled() {
         return;
     }
 
-    let scene = svg_fixture_scene("text/textPath/writing-mode=tb.svg", 300);
+    let canvas = svg_fixture_scene("text/textPath/writing-mode=tb.svg", 300);
     assert_eq!(
-        scene.text_glyphs.len(),
+        canvas.text_glyphs.len(),
         0,
         "SVG text fixtures render as paths"
     );
 
-    let mut cpu = CpuRenderer::new(scene.width, scene.height, Color::TRANSPARENT);
-    let mut wgpu = WgpuRenderer::new_default_device(scene.width, scene.height, Color::TRANSPARENT);
+    let mut cpu = CpuRenderer::new(canvas.width, canvas.height, Color::TRANSPARENT);
+    let mut wgpu = WgpuRenderer::new_default_device(canvas.width, canvas.height, Color::TRANSPARENT);
     for pass in 0..5 {
-        cpu.render(&scene);
+        cpu.render(&canvas);
         assert!(
-            wgpu.render_native(&scene),
+            wgpu.render_native(&canvas),
             "expected SVG path text fixture to render through native wgpu path"
         );
         let wgpu_image = wgpu.image();
@@ -188,8 +188,8 @@ fn svg_fixture_scene(relative: &str, target_width: u32) -> Canvas {
         .unwrap();
     let scale_x = size.width() as f64 / tree.size().width() as f64;
     let scale_y = size.height() as f64 / tree.size().height() as f64;
-    let mut scene = Canvas::new(size.width(), size.height());
-    scene
+    let mut canvas = Canvas::new(size.width(), size.height());
+    canvas
         .push_svg_with_options(
             &tree,
             SvgOptions {
@@ -198,7 +198,7 @@ fn svg_fixture_scene(relative: &str, target_width: u32) -> Canvas {
             },
         )
         .unwrap();
-    scene
+    canvas
 }
 
 #[test]
@@ -754,7 +754,7 @@ fn push_svg_scales_linear_gradient_paint_with_svg_transform() {
     let end = renderer.image().rgba8_at(210, 150);
     assert!(
         left[0] > 245 && left[3] == 255,
-        "left side should stay near white after scene scaling: {left:?}"
+        "left side should stay near white after canvas scaling: {left:?}"
     );
     assert!(
         (40..120).contains(&middle[0]) && middle[3] == 255,
@@ -1484,14 +1484,14 @@ fn push_svg_unsupported_features_do_not_modify_scene() {
                 <rect width="16" height="16" fill="url(#g)"/>
             </svg>"##,
     );
-    let mut scene = Canvas::new(16, 16);
-    scene.push_rect(
+    let mut canvas = Canvas::new(16, 16);
+    canvas.push_rect(
         Rect::new(0.0, 0.0, 16.0, 16.0),
         crate::Radius::ZERO,
         Color::from_rgb8(0, 0, 255),
     );
 
-    let err = scene
+    let err = canvas
         .push_svg_with_options(
             &tree,
             SvgOptions {
@@ -1503,6 +1503,6 @@ fn push_svg_unsupported_features_do_not_modify_scene() {
     assert_eq!(err.feature(), "non-invertible gradientTransform");
 
     let mut renderer = CpuRenderer::new(16, 16, Color::TRANSPARENT);
-    renderer.render(&scene);
+    renderer.render(&canvas);
     assert_eq!(renderer.image().rgba8_at(8, 8), [0, 0, 255, 255]);
 }

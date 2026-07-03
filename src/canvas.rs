@@ -57,7 +57,7 @@ pub struct Canvas {
     pub(crate) lines: Vec<Line>,
     pub(crate) path_records: Vec<PathRecord>,
     pub(crate) draw_records: Vec<DrawRecord>,
-    pub(crate) text_glyphs: Vec<crate::text::SceneGlyph>,
+    pub(crate) text_glyphs: Vec<crate::text::CanvasGlyph>,
     pub(crate) text_runs: Vec<TextRun>,
     pub(crate) bd_records: Vec<BackdropRecord>,
     pub(crate) command_lists: Vec<CommandList>,
@@ -73,10 +73,10 @@ pub struct Canvas {
     draw_generation: u32,
 }
 
-/// Opaque handle to a draw stored inside a [`Scene`].
+/// Opaque handle to a draw stored inside a [`Canvas`].
 ///
-/// `DrawId` is an O(1) index into the scene's draw table plus a generation
-/// check so handles from before [`Scene::reset`] cannot accidentally mutate a
+/// `DrawId` is an O(1) index into the canvas's draw table plus a generation
+/// check so handles from before [`Canvas::reset`] cannot accidentally mutate a
 /// later draw with the same numeric index.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct DrawId {
@@ -116,7 +116,7 @@ impl SceneOffset {
     fn new(pos: Point) -> Self {
         assert!(
             pos.x.is_finite() && pos.y.is_finite(),
-            "scene append position must be finite"
+            "canvas append position must be finite"
         );
         Self {
             dx: pos.x,
@@ -517,16 +517,16 @@ impl Canvas {
 
     /// Appends `other` with its local canvas origin placed at `pos`.
     ///
-    /// Append translates the child scene's geometry, brushes, and layer/filter
+    /// Append translates the child canvas's geometry, brushes, and layer/filter
     /// regions into parent coordinates, then inserts its root commands into the
     /// current command list. It deliberately does not add a child-canvas clip;
     /// callers that need clipping can open a clip layer around the append.
-    /// The borrowed child scene is not mutated and remains reusable.
+    /// The borrowed child canvas is not mutated and remains reusable.
     pub fn append(&mut self, other: &Canvas, pos: impl Into<Point>) {
         self.ensure_command_root();
         assert!(
             other.command_stack.len() == 1 && other.layer_stack.is_empty(),
-            "cannot append a scene with unclosed layers"
+            "cannot append a canvas with unclosed layers"
         );
 
         let offset = SceneOffset::new(pos.into());
@@ -1381,7 +1381,7 @@ impl Canvas {
     /// Adds a laid-out text run at `origin`.
     ///
     /// Text layout and glyph rasterization stay in [`TextContext`](crate::TextContext);
-    /// the scene stores only positioned glyph cache keys. This keeps cached UI text
+    /// the canvas stores only positioned glyph cache keys. This keeps cached UI text
     /// reusable across renderers while leaving transform-heavy glyph quads for a
     /// future atlas path instead of pretending bitmap glyphs support arbitrary affine
     /// transforms here.

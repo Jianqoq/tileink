@@ -70,10 +70,10 @@ impl fmt::Display for SvgError {
 impl Error for SvgError {}
 
 impl Canvas {
-    /// Appends a parsed `usvg` tree by lowering the reduced SVG tree into Scene primitives.
+    /// Appends a parsed `usvg` tree by lowering the reduced SVG tree into Canvas primitives.
     ///
     /// The conversion is transactional: unsupported SVG features return an error before this
-    /// scene is modified. This prevents partial SVG output from looking like a successful render.
+    /// canvas is modified. This prevents partial SVG output from looking like a successful render.
     pub fn push_svg(&mut self, tree: &usvg::Tree) -> Result<(), SvgError> {
         self.push_svg_with_options(tree, SvgOptions::default())
     }
@@ -113,11 +113,11 @@ impl SvgBuilder {
         }
     }
 
-    fn push_tree(&self, scene: &mut Canvas, tree: &usvg::Tree) -> Result<(), SvgError> {
-        self.push_group(scene, tree.root())
+    fn push_tree(&self, canvas: &mut Canvas, tree: &usvg::Tree) -> Result<(), SvgError> {
+        self.push_group(canvas, tree.root())
     }
 
-    fn push_group(&self, scene: &mut Canvas, group: &usvg::Group) -> Result<(), SvgError> {
+    fn push_group(&self, canvas: &mut Canvas, group: &usvg::Group) -> Result<(), SvgError> {
         let filter_layers = if group.filters().is_empty() {
             Vec::new()
         } else {
@@ -129,18 +129,18 @@ impl SvgBuilder {
                 group.filters(),
                 region_transform,
                 content_transform,
-                scene.width,
-                scene.height,
+                canvas.width,
+                canvas.height,
             )?
         };
         let mask_layer = group
             .mask()
-            .map(|mask| self.svg_mask_layer(scene.width, scene.height, mask))
+            .map(|mask| self.svg_mask_layer(canvas.width, canvas.height, mask))
             .transpose()?;
 
         let mut pushed_layers = 0;
         if let Some(clip) = group.clip_path() {
-            pushed_layers += self.push_clip_path_layers(scene, clip)?;
+            pushed_layers += self.push_clip_path_layers(canvas, clip)?;
         }
 
         let layer_path = || {
@@ -152,11 +152,11 @@ impl SvgBuilder {
             && mask_layer.is_none()
             && filter_layers.is_empty()
         {
-            scene.push_isolate_layer(layer_path(), Affine::IDENTITY, self.options.tolerance);
+            canvas.push_isolate_layer(layer_path(), Affine::IDENTITY, self.options.tolerance);
             pushed_layers += 1;
         }
         if group.blend_mode() != usvg::BlendMode::Normal {
-            scene.push_blend_layer(
+            canvas.push_blend_layer(
                 layer_path(),
                 Affine::IDENTITY,
                 self.options.tolerance,
@@ -166,7 +166,7 @@ impl SvgBuilder {
             pushed_layers += 1;
         }
         if group.opacity().get() < 1.0 {
-            scene.push_opacity_layer(
+            canvas.push_opacity_layer(
                 layer_path(),
                 Affine::IDENTITY,
                 self.options.tolerance,
@@ -175,20 +175,20 @@ impl SvgBuilder {
             pushed_layers += 1;
         }
         if let Some((mask_scene, mask)) = mask_layer {
-            scene.push_mask_layer(mask_scene, mask);
+            canvas.push_mask_layer(mask_scene, mask);
             pushed_layers += 1;
         }
         for layer in filter_layers.into_iter().rev() {
-            scene.push_filter_layer(layer.filter, layer.region);
+            canvas.push_filter_layer(layer.filter, layer.region);
             pushed_layers += 1;
         }
 
         for child in group.children() {
-            self.push_node(scene, child)?;
+            self.push_node(canvas, child)?;
         }
 
         for _ in 0..pushed_layers {
-            scene.pop_layer();
+            canvas.pop_layer();
         }
         Ok(())
     }
@@ -223,16 +223,16 @@ impl SvgBuilder {
         ))
     }
 
-    fn push_node(&self, scene: &mut Canvas, node: &Node) -> Result<(), SvgError> {
+    fn push_node(&self, canvas: &mut Canvas, node: &Node) -> Result<(), SvgError> {
         match node {
-            Node::Group(group) => self.push_group(scene, group),
-            Node::Path(path) => self.push_path(scene, path),
-            Node::Text(text) => self.push_group(scene, text.flattened()),
-            Node::Image(image) => self.push_image(scene, image),
+            Node::Group(group) => self.push_group(canvas, group),
+            Node::Path(path) => self.push_path(canvas, path),
+            Node::Text(text) => self.push_group(canvas, text.flattened()),
+            Node::Image(image) => self.push_image(canvas, image),
         }
     }
 
-    fn push_image(&self, scene: &mut Canvas, image: &usvg::Image) -> Result<(), SvgError> {
+    fn push_image(&self, canvas: &mut Canvas, image: &usvg::Image) -> Result<(), SvgError> {
         if !image.is_visible() {
             return Ok(());
         }
@@ -269,7 +269,7 @@ impl SvgBuilder {
             opacity: 255,
             image: Arc::new(raster),
         });
-        scene.push_path(
+        canvas.push_path(
             rect_path(Rect::new(
                 0.0,
                 0.0,
@@ -301,7 +301,7 @@ impl SvgBuilder {
             f64::from(width) / f64::from(size.width()),
             f64::from(height) / f64::from(size.height()),
         );
-        let mut scene = Canvas::new(width, height);
+        let mut canvas = Canvas::new(width, height);
         SvgBuilder {
             options: SvgOptions {
                 tolerance: self.options.tolerance,
@@ -311,14 +311,14 @@ impl SvgBuilder {
             pattern_depth: self.pattern_depth,
             image_depth: self.image_depth + 1,
         }
-        .push_tree(&mut scene, tree)?;
+        .push_tree(&mut canvas, tree)?;
 
         let mut renderer = CpuRenderer::new(width, height, Color::TRANSPARENT);
-        renderer.render(&scene);
+        renderer.render(&canvas);
         Ok(renderer.image().clone())
     }
 
-    fn push_path(&self, scene: &mut Canvas, path: &usvg::Path) -> Result<(), SvgError> {
+    fn push_path(&self, canvas: &mut Canvas, path: &usvg::Path) -> Result<(), SvgError> {
         if !path.is_visible() {
             return Ok(());
         }
@@ -328,12 +328,12 @@ impl SvgBuilder {
         let transform = self.base_transform * path_transform;
         match path.paint_order() {
             PaintOrder::FillAndStroke => {
-                self.push_fill(scene, path, &data, path_transform, transform)?;
-                self.push_stroke(scene, path, &data, path_transform, transform)?;
+                self.push_fill(canvas, path, &data, path_transform, transform)?;
+                self.push_stroke(canvas, path, &data, path_transform, transform)?;
             }
             PaintOrder::StrokeAndFill => {
-                self.push_stroke(scene, path, &data, path_transform, transform)?;
-                self.push_fill(scene, path, &data, path_transform, transform)?;
+                self.push_stroke(canvas, path, &data, path_transform, transform)?;
+                self.push_fill(canvas, path, &data, path_transform, transform)?;
             }
         }
         Ok(())
@@ -341,7 +341,7 @@ impl SvgBuilder {
 
     fn push_fill(
         &self,
-        scene: &mut Canvas,
+        canvas: &mut Canvas,
         path: &usvg::Path,
         data: &BezPath,
         path_transform: Affine,
@@ -355,7 +355,7 @@ impl SvgBuilder {
         }
 
         let brush = self.paint_to_brush(fill.paint(), fill.opacity().get(), path_transform)?;
-        scene.push_path(
+        canvas.push_path(
             data.clone(),
             brush,
             transform,
@@ -367,7 +367,7 @@ impl SvgBuilder {
 
     fn push_stroke(
         &self,
-        scene: &mut Canvas,
+        canvas: &mut Canvas,
         path: &usvg::Path,
         data: &BezPath,
         path_transform: Affine,
@@ -388,7 +388,7 @@ impl SvgBuilder {
                 .data()
                 .stroke(&stroke.to_tiny_skia(), resolution_scale(transform))
             {
-                scene.push_path(
+                canvas.push_path(
                     tiny_path_to_bez(&outline),
                     brush,
                     transform,
@@ -400,7 +400,7 @@ impl SvgBuilder {
         }
 
         let stroke_style = stroke_to_kurbo(stroke);
-        scene.push_stroke(
+        canvas.push_stroke(
             data.clone(),
             stroke_style,
             brush,
@@ -413,23 +413,23 @@ impl SvgBuilder {
 
     fn push_clip_path_layers(
         &self,
-        scene: &mut Canvas,
+        canvas: &mut Canvas,
         clip: &usvg::ClipPath,
     ) -> Result<usize, SvgError> {
         let mut pushed = 0;
         if let Some(parent) = clip.clip_path() {
-            pushed += self.push_clip_path_layers(scene, parent)?;
+            pushed += self.push_clip_path_layers(canvas, parent)?;
         }
 
         match self.clip_path_lowering(clip) {
-            ClipPathLowering::Empty => scene.push_mask_layer(
-                Canvas::new(scene.width, scene.height),
+            ClipPathLowering::Empty => canvas.push_mask_layer(
+                Canvas::new(canvas.width, canvas.height),
                 LayerMask {
                     region: Region::rect(Rect::ZERO, Radius::ZERO),
                     kind: MaskKind::Alpha,
                 },
             ),
-            ClipPathLowering::Fused { path, rule } => scene.push_clip_layer(
+            ClipPathLowering::Fused { path, rule } => canvas.push_clip_layer(
                 path,
                 self.base_transform * transform_to_affine(clip.transform()),
                 rule,
@@ -437,8 +437,8 @@ impl SvgBuilder {
             ),
             ClipPathLowering::Mask => {
                 let (mask_scene, mask) =
-                    self.svg_clip_path_mask_layer(scene.width, scene.height, clip)?;
-                scene.push_mask_layer(mask_scene, mask);
+                    self.svg_clip_path_mask_layer(canvas.width, canvas.height, clip)?;
+                canvas.push_mask_layer(mask_scene, mask);
             }
         }
         Ok(pushed + 1)
@@ -472,7 +472,7 @@ impl SvgBuilder {
 
     fn push_clip_path_mask_group(
         &self,
-        scene: &mut Canvas,
+        canvas: &mut Canvas,
         group: &usvg::Group,
         transform: Affine,
     ) -> Result<(), SvgError> {
@@ -485,32 +485,32 @@ impl SvgBuilder {
                 pattern_depth: self.pattern_depth,
                 image_depth: self.image_depth,
             }
-            .push_clip_path_layers(scene, clip)?;
+            .push_clip_path_layers(canvas, clip)?;
         }
 
         for child in group.children() {
-            self.push_clip_path_mask_node(scene, child, transform)?;
+            self.push_clip_path_mask_node(canvas, child, transform)?;
         }
 
         for _ in 0..pushed_layers {
-            scene.pop_layer();
+            canvas.pop_layer();
         }
         Ok(())
     }
 
     fn push_clip_path_mask_node(
         &self,
-        scene: &mut Canvas,
+        canvas: &mut Canvas,
         node: &Node,
         transform: Affine,
     ) -> Result<(), SvgError> {
         match node {
-            Node::Group(group) => self.push_clip_path_mask_group(scene, group, transform),
+            Node::Group(group) => self.push_clip_path_mask_group(canvas, group, transform),
             Node::Path(path) => {
                 if path.is_visible()
                     && let Some(fill) = path.fill()
                 {
-                    scene.push_path(
+                    canvas.push_path(
                         tiny_path_to_bez(path.data()),
                         Brush::Solid(Color::BLACK),
                         transform,
@@ -520,7 +520,7 @@ impl SvgBuilder {
                 }
                 Ok(())
             }
-            Node::Text(text) => self.push_clip_path_mask_group(scene, text.flattened(), transform),
+            Node::Text(text) => self.push_clip_path_mask_group(canvas, text.flattened(), transform),
             Node::Image(_) => Ok(()),
         }
     }
@@ -626,7 +626,7 @@ impl SvgBuilder {
         path_transform: Affine,
     ) -> Result<[f32; 6], SvgError> {
         // usvg lowers paint-server units into the path's user space. Geometry is transformed
-        // into scene coordinates before brush sampling, so fold both path and scene transforms
+        // into canvas coordinates before brush sampling, so fold both path and canvas transforms
         // into the inverse.
         inverse_affine_to_array(
             self.base_transform * path_transform * transform_to_affine(transform),
@@ -691,14 +691,14 @@ impl SvgBuilder {
 
         let width = filter_bounds.width().max(1);
         let height = filter_bounds.height().max(1);
-        let mut scene = Canvas::new(width, height);
+        let mut canvas = Canvas::new(width, height);
         if !filter_bounds.is_empty() {
             let buffer_origin =
                 Affine::translate((-f64::from(filter_bounds.x0), -f64::from(filter_bounds.y0)));
             let local_transform = if fe_image_root_is_primitive_local_image(image.root()) {
                 // External raster/SVG feImage content is already laid out by usvg
                 // in primitive-subregion-local coordinates. The renderer filter
-                // buffer is axis-aligned in scene pixels, so we place that local
+                // buffer is axis-aligned in canvas pixels, so we place that local
                 // image at the transformed primitive bbox and keep only the
                 // filter-axis scale for child coordinates.
                 let primitive_bounds = transform_rect_to_bounds(primitive_rect, region_transform);
@@ -725,11 +725,11 @@ impl SvgBuilder {
                 pattern_depth: self.pattern_depth,
                 image_depth: self.image_depth + 1,
             }
-            .push_group(&mut scene, image.root())?;
+            .push_group(&mut canvas, image.root())?;
         }
 
         let mut renderer = CpuRenderer::new(width, height, Color::TRANSPARENT);
-        renderer.render(&scene);
+        renderer.render(&canvas);
         Ok(Brush::Pattern(PatternBrush {
             image: Arc::new(renderer.image().clone()),
             transform: affine_to_array(Affine::translate((
@@ -1793,7 +1793,7 @@ fn is_generated_image_group_id(id: &str) -> bool {
 fn filter_axis_scale(transform: Affine) -> Affine {
     let [a, b, c, d, _, _] = transform.as_coeffs();
     // Filter primitive values are applied in the axis-aligned filter buffer.
-    // Preserve scene scale, but do not let skew/rotation mix `dx` into `dy`.
+    // Preserve canvas scale, but do not let skew/rotation mix `dx` into `dy`.
     Affine::scale_non_uniform(a.hypot(c), b.hypot(d))
 }
 
@@ -1812,7 +1812,7 @@ fn transform_region(region: Region, transform: Affine) -> Region {
 }
 
 fn transform_filter_vector(transform: Affine, x: f32, y: f32) -> (f32, f32) {
-    // SVG filter lengths are in user space, while renderer filter kernels run in scene pixels.
+    // SVG filter lengths are in user space, while renderer filter kernels run in canvas pixels.
     let [a, b, c, d, _, _] = transform.as_coeffs();
     (
         (a * x as f64 + c * y as f64) as f32,

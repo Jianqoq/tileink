@@ -65,33 +65,33 @@ impl Render for Renderer {
 
     type ExecuteArgs<'a> = &'a mut Image;
 
-    fn render(&mut self, scene: &crate::canvas::Canvas) {
-        self.size = (scene.width, scene.height);
-        let mut image = Image::new(scene.width, scene.height, self.clear);
-        self.execute(scene, &mut image);
+    fn render(&mut self, canvas: &crate::canvas::Canvas) {
+        self.size = (canvas.width, canvas.height);
+        let mut image = Image::new(canvas.width, canvas.height, self.clear);
+        self.execute(canvas, &mut image);
         self.image = image;
     }
 
-    fn execute(&mut self, scene: &crate::canvas::Canvas, args: Self::ExecuteArgs<'_>) {
-        let plan = scene.compile(0);
-        self.scan(scene, ());
-        self.cumsum(scene, ());
-        self.execute_plan(scene, &plan, args, None);
+    fn execute(&mut self, canvas: &crate::canvas::Canvas, args: Self::ExecuteArgs<'_>) {
+        let plan = canvas.compile(0);
+        self.scan(canvas, ());
+        self.cumsum(canvas, ());
+        self.execute_plan(canvas, &plan, args, None);
     }
 
-    fn scan(&mut self, scene: &crate::canvas::Canvas, _: Self::ScanArgs<'_>) {
-        run_scan(&self.scan, scene, &mut self.main);
+    fn scan(&mut self, canvas: &crate::canvas::Canvas, _: Self::ScanArgs<'_>) {
+        run_scan(&self.scan, canvas, &mut self.main);
     }
 
-    fn cumsum(&mut self, scene: &crate::canvas::Canvas, _: Self::CumsumArgs<'_>) {
-        run_cumsum(&self.cumsum, scene, &mut self.main);
+    fn cumsum(&mut self, canvas: &crate::canvas::Canvas, _: Self::CumsumArgs<'_>) {
+        run_cumsum(&self.cumsum, canvas, &mut self.main);
     }
 
-    fn coarse(&mut self, scene: &crate::canvas::Canvas, args: Self::CoarseArgs<'_>) {
+    fn coarse(&mut self, canvas: &crate::canvas::Canvas, args: Self::CoarseArgs<'_>) {
         let (draw_records, draw_range, layer_stack_data, layer_stack_range, text) = args;
         run_coarse(
             &self.coarse,
-            scene,
+            canvas,
             CoarseStage {
                 draw_records,
                 draw_range,
@@ -119,8 +119,8 @@ impl Renderer {
         }
     }
 
-    pub fn render(&mut self, scene: &crate::canvas::Canvas) {
-        <Self as Render>::render(self, scene);
+    pub fn render(&mut self, canvas: &crate::canvas::Canvas) {
+        <Self as Render>::render(self, canvas);
     }
 
     pub fn set_clear_color(&mut self, clear: Color) {
@@ -133,25 +133,25 @@ impl Renderer {
     /// refer to the wrong font.
     pub fn render_with_text(
         &mut self,
-        scene: &crate::canvas::Canvas,
+        canvas: &crate::canvas::Canvas,
         text_context: &mut TextContext,
     ) {
-        self.size = (scene.width, scene.height);
-        let mut image = Image::new(scene.width, scene.height, self.clear);
-        self.execute_with_text(scene, &mut image, text_context);
+        self.size = (canvas.width, canvas.height);
+        let mut image = Image::new(canvas.width, canvas.height, self.clear);
+        self.execute_with_text(canvas, &mut image, text_context);
         self.image = image;
     }
 
-    /// Renders a scene and returns backend-neutral debug data without writing files.
+    /// Renders a canvas and returns backend-neutral debug data without writing files.
     pub fn render_with_options(
         &mut self,
-        scene: &crate::canvas::Canvas,
+        canvas: &crate::canvas::Canvas,
         options: &RenderOptions,
     ) -> RenderDebugCapture {
-        self.render(scene);
+        self.render(canvas);
         capture_render_debug(
             "cpu",
-            scene,
+            canvas,
             &self.image,
             DebugScanBuffers {
                 backdrops: &self.main.backdrops,
@@ -162,21 +162,21 @@ impl Renderer {
         )
     }
 
-    pub fn render_profiled_flat(&mut self, scene: &crate::canvas::Canvas) -> RenderProfile {
+    pub fn render_profiled_flat(&mut self, canvas: &crate::canvas::Canvas) -> RenderProfile {
         let total_start = std::time::Instant::now();
-        let plan = scene.compile(0);
+        let plan = canvas.compile(0);
         let mut profile = RenderProfile::default();
 
         let start = std::time::Instant::now();
-        self.scan(scene, ());
+        self.scan(canvas, ());
         profile.scan = start.elapsed();
 
         let start = std::time::Instant::now();
-        self.cumsum(scene, ());
+        self.cumsum(canvas, ());
         profile.cumsum = start.elapsed();
 
         let mut image = Image::new(self.size.0, self.size.1, self.clear);
-        let target_bounds = Bounds::canvas(scene.width, scene.height);
+        let target_bounds = Bounds::canvas(canvas.width, canvas.height);
 
         for op in &plan.ops {
             let ExecOp::DrawBatch { draws, layer_stack } = op else {
@@ -185,9 +185,9 @@ impl Renderer {
 
             let start = std::time::Instant::now();
             self.coarse(
-                scene,
+                canvas,
                 (
-                    &scene.draw_records,
+                    &canvas.draw_records,
                     draws.start..draws.end,
                     &plan.layer_stack_data,
                     layer_stack.clone(),
@@ -199,7 +199,7 @@ impl Renderer {
             let start = std::time::Instant::now();
             run_fine(
                 &self.fine,
-                scene,
+                canvas,
                 &mut image,
                 target_bounds,
                 &self.main,
@@ -219,19 +219,19 @@ impl Renderer {
 
     fn execute_with_text(
         &mut self,
-        scene: &crate::canvas::Canvas,
+        canvas: &crate::canvas::Canvas,
         target: &mut Image,
         text_context: &mut TextContext,
     ) {
-        let plan = scene.compile(0);
-        self.scan(scene, ());
-        self.cumsum(scene, ());
-        self.execute_plan(scene, &plan, target, Some(text_context));
+        let plan = canvas.compile(0);
+        self.scan(canvas, ());
+        self.cumsum(canvas, ());
+        self.execute_plan(canvas, &plan, target, Some(text_context));
     }
 
     fn execute_plan(
         &mut self,
-        scene: &crate::canvas::Canvas,
+        canvas: &crate::canvas::Canvas,
         plan: &ExecPlan,
         target: &mut Image,
         mut text_context: Option<&mut TextContext>,
@@ -239,13 +239,13 @@ impl Renderer {
         let mut main = std::mem::take(&mut self.main);
         let text_data = text_context
             .as_deref_mut()
-            .map(|context| PreparedTextData::new(&scene.text_glyphs, &scene.text_runs, context));
+            .map(|context| PreparedTextData::new(&canvas.text_glyphs, &canvas.text_runs, context));
         self.execute_ops(
-            scene,
+            canvas,
             plan,
             &plan.ops,
             target,
-            Bounds::canvas(scene.width, scene.height),
+            Bounds::canvas(canvas.width, canvas.height),
             &mut main,
             text_data.as_ref(),
             text_context,
@@ -256,7 +256,7 @@ impl Renderer {
     #[allow(clippy::too_many_arguments)]
     fn execute_ops(
         &mut self,
-        scene: &crate::canvas::Canvas,
+        canvas: &crate::canvas::Canvas,
         plan: &ExecPlan,
         ops: &[ExecOp],
         target: &mut Image,
@@ -268,7 +268,7 @@ impl Renderer {
         for op in ops {
             match op {
                 ExecOp::DrawBatch { draws, layer_stack } => self.execute_draw_batch(
-                    scene,
+                    canvas,
                     plan,
                     draws.start,
                     draws.end,
@@ -290,7 +290,7 @@ impl Renderer {
                     outer_stack,
                     children,
                 } => self.execute_offscreen_layer(
-                    scene,
+                    canvas,
                     plan,
                     OffscreenLayerRef {
                         draw: *draw,
@@ -310,7 +310,7 @@ impl Renderer {
                     content,
                     mask,
                 } => self.execute_mask_layer(
-                    scene,
+                    canvas,
                     plan,
                     MaskLayerRef {
                         layer,
@@ -331,7 +331,7 @@ impl Renderer {
     #[allow(clippy::too_many_arguments)]
     fn execute_draw_batch(
         &mut self,
-        scene: &crate::canvas::Canvas,
+        canvas: &crate::canvas::Canvas,
         plan: &ExecPlan,
         start: usize,
         end: usize,
@@ -346,9 +346,9 @@ impl Renderer {
         }
         run_coarse(
             &self.coarse,
-            scene,
+            canvas,
             CoarseStage {
-                draw_records: &scene.draw_records,
+                draw_records: &canvas.draw_records,
                 draw_range: start..end,
                 layer_stack_data: &plan.layer_stack_data,
                 layer_stack_range: layer_stack,
@@ -356,7 +356,7 @@ impl Renderer {
             },
             buffers,
         );
-        run_fine(&self.fine, scene, target, target_bounds, buffers, text_data);
+        run_fine(&self.fine, canvas, target, target_bounds, buffers, text_data);
     }
 }
 

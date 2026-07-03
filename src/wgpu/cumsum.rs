@@ -4,7 +4,7 @@ use super::commands::{
     WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
 };
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
-use super::scene::{WgpuCumsumBindings, WgpuScanBuffers, WgpuSceneBuffers};
+use super::canvas::{WgpuCumsumBindings, WgpuScanBuffers, WgpuSceneBuffers};
 
 const WORKGROUP_SIZE: u32 = 256;
 const STORAGE_BINDING_COUNT: u32 = 7;
@@ -87,19 +87,19 @@ impl WgpuCumsumPipeline {
         &self,
         device: &::wgpu::Device,
         queue: &::wgpu::Queue,
-        scene: &WgpuSceneBuffers,
+        canvas: &WgpuSceneBuffers,
         scan: &mut WgpuScanBuffers,
         lengths: GpuBufferLengths,
     ) {
         let mut commands = WgpuCommandBatch::new(device, queue, "tileink wgpu cumsum encoder");
-        self.run_in(&mut commands, scene, scan, lengths);
+        self.run_in(&mut commands, canvas, scan, lengths);
         commands.finish();
     }
 
     pub(crate) fn run_in(
         &self,
         commands: &mut WgpuCommandBatch,
-        scene: &WgpuSceneBuffers,
+        canvas: &WgpuSceneBuffers,
         scan: &mut WgpuScanBuffers,
         lengths: GpuBufferLengths,
     ) {
@@ -122,7 +122,7 @@ impl WgpuCumsumPipeline {
                 _pad2: 0,
             }),
         );
-        let bindings = scene.cumsum_bindings(scan);
+        let bindings = canvas.cumsum_bindings(scan);
         let bind_group = self.create_bind_group(commands.device(), &bindings, config_offset);
         let gpu_scope = start_gpu_scope(commands.device(), "cumsum");
         let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());

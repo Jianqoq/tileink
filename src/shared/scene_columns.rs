@@ -13,7 +13,7 @@ use crate::{
         path::PathRecord,
         pixel::premul_f32_to_u32,
     },
-    text::{SceneGlyph, TextRun},
+    text::{CanvasGlyph, TextRun},
 };
 
 #[cfg(test)]
@@ -85,7 +85,7 @@ impl CanvasColumns {
         paths: &[PathRecord],
         draws: &[DrawRecord],
         text_runs: &[TextRun],
-        text_glyphs: &[SceneGlyph],
+        text_glyphs: &[CanvasGlyph],
     ) {
         self.clear();
         let sdf_count = draws
@@ -166,7 +166,7 @@ impl CanvasColumns {
             .extend(runs.iter().map(|run| run.glyph_count));
     }
 
-    pub(crate) fn extend_text_glyphs(&mut self, glyphs: &[SceneGlyph]) {
+    pub(crate) fn extend_text_glyphs(&mut self, glyphs: &[CanvasGlyph]) {
         self.glyph_x.extend(glyphs.iter().map(|glyph| glyph.x));
         self.glyph_y.extend(glyphs.iter().map(|glyph| glyph.y));
     }

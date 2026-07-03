@@ -69,7 +69,7 @@ impl Renderer {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn execute_offscreen_layer(
         &mut self,
-        scene: &crate::canvas::Canvas,
+        canvas: &crate::canvas::Canvas,
         plan: &ExecPlan,
         offscreen: OffscreenLayerRef<'_>,
         target: &mut Image,
@@ -80,7 +80,7 @@ impl Renderer {
     ) {
         match offscreen.layer {
             Layer::Isolate => self.execute_masked_group_layer(
-                scene,
+                canvas,
                 plan,
                 MaskedGroupLayer {
                     draw: offscreen.draw,
@@ -96,7 +96,7 @@ impl Renderer {
                 text_context,
             ),
             Layer::Opacity(opacity) => self.execute_masked_group_layer(
-                scene,
+                canvas,
                 plan,
                 MaskedGroupLayer {
                     draw: offscreen.draw,
@@ -112,7 +112,7 @@ impl Renderer {
                 text_context,
             ),
             Layer::Blend(blend) => self.execute_masked_group_layer(
-                scene,
+                canvas,
                 plan,
                 MaskedGroupLayer {
                     draw: offscreen.draw,
@@ -132,7 +132,7 @@ impl Renderer {
                 filter,
                 sample_region,
             } => self.execute_filter_layer(
-                scene,
+                canvas,
                 plan,
                 FilterLayerRef {
                     filter,
@@ -150,7 +150,7 @@ impl Renderer {
                 filter,
                 sample_region,
             } => self.execute_backdrop_layer(
-                scene,
+                canvas,
                 plan,
                 BackdropLayerRef {
                     filter,
@@ -171,7 +171,7 @@ impl Renderer {
     #[allow(clippy::too_many_arguments)]
     fn execute_filter_layer(
         &mut self,
-        scene: &crate::canvas::Canvas,
+        canvas: &crate::canvas::Canvas,
         plan: &ExecPlan,
         layer: FilterLayerRef<'_>,
         target: &mut Image,
@@ -187,7 +187,7 @@ impl Renderer {
             return;
         };
 
-        let mut surface = OffscreenSurface::new(scene, plan, layer.children, filter_bounds.surface);
+        let mut surface = OffscreenSurface::new(canvas, plan, layer.children, filter_bounds.surface);
         self.render_offscreen_surface(&mut surface, text_context);
         self.filter
             .prepare(&mut surface.image, layer.filter, filter_bounds.surface)
@@ -200,7 +200,7 @@ impl Renderer {
             Color::WHITE,
         );
         self.apply_outer_clip_stack_to_mask(
-            scene,
+            canvas,
             plan,
             layer.outer_stack,
             filter_bounds.output,
@@ -213,7 +213,7 @@ impl Renderer {
     #[allow(clippy::too_many_arguments)]
     fn execute_backdrop_layer(
         &mut self,
-        scene: &crate::canvas::Canvas,
+        canvas: &crate::canvas::Canvas,
         plan: &ExecPlan,
         layer: BackdropLayerRef<'_>,
         target: &mut Image,
@@ -225,7 +225,7 @@ impl Renderer {
         let bounds = self.filter.filtered_region_bounds(
             layer.filter,
             layer.sample_region,
-            Bounds::canvas(scene.width, scene.height),
+            Bounds::canvas(canvas.width, canvas.height),
         );
         if bounds.is_empty() {
             return;
@@ -244,7 +244,7 @@ impl Renderer {
 
         let mut backdrop_mask = rasterize_region_mask(layer.sample_region, bounds);
         self.apply_outer_clip_stack_to_mask(
-            scene,
+            canvas,
             plan,
             layer.outer_stack.clone(),
             bounds,
@@ -254,7 +254,7 @@ impl Renderer {
         composite_src_over_masked_at(target, &backdrop, &backdrop_mask, bounds, target_bounds);
 
         let content = self.render_children_to_image(
-            scene,
+            canvas,
             plan,
             layer.children,
             target_bounds,
@@ -265,7 +265,7 @@ impl Renderer {
         let mut content_mask =
             Image::new(target_bounds.width(), target_bounds.height(), Color::WHITE);
         self.apply_outer_clip_stack_to_mask(
-            scene,
+            canvas,
             plan,
             layer.outer_stack,
             target_bounds,
@@ -284,7 +284,7 @@ impl Renderer {
     #[allow(clippy::too_many_arguments)]
     fn execute_masked_group_layer(
         &mut self,
-        scene: &crate::canvas::Canvas,
+        canvas: &crate::canvas::Canvas,
         plan: &ExecPlan,
         group: MaskedGroupLayer<'_>,
         target: &mut Image,
@@ -293,13 +293,13 @@ impl Renderer {
         text_data: Option<&PreparedTextData>,
         text_context: Option<&mut TextContext>,
     ) {
-        let bounds = draw_bounds(scene, group.draw).intersect(target_bounds);
+        let bounds = draw_bounds(canvas, group.draw).intersect(target_bounds);
         if bounds.is_empty() {
             return;
         }
 
         let image = self.render_children_to_image(
-            scene,
+            canvas,
             plan,
             group.children,
             bounds,
@@ -307,12 +307,12 @@ impl Renderer {
             text_data,
             text_context,
         );
-        let mut mask = rasterize_layer_mask(scene, group.draw, bounds, buffers);
+        let mut mask = rasterize_layer_mask(canvas, group.draw, bounds, buffers);
         if let Some(opacity) = group.opacity {
             apply_opacity_to_mask(&mut mask, opacity);
         }
         self.apply_outer_clip_stack_to_mask(
-            scene,
+            canvas,
             plan,
             group.outer_stack,
             bounds,
@@ -332,7 +332,7 @@ impl Renderer {
     #[allow(clippy::too_many_arguments)]
     fn render_children_to_image(
         &mut self,
-        scene: &crate::canvas::Canvas,
+        canvas: &crate::canvas::Canvas,
         plan: &ExecPlan,
         children: &[ExecOp],
         bounds: Bounds,
@@ -342,7 +342,7 @@ impl Renderer {
     ) -> Image {
         let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
         self.execute_ops(
-            scene,
+            canvas,
             plan,
             children,
             &mut image,
@@ -359,17 +359,17 @@ impl Renderer {
         surface: &mut OffscreenSurface,
         mut text_context: Option<&mut TextContext>,
     ) {
-        run_scan(&self.scan, &surface.scene, &mut surface.buffers);
-        run_cumsum(&self.cumsum, &surface.scene, &mut surface.buffers);
+        run_scan(&self.scan, &surface.canvas, &mut surface.buffers);
+        run_cumsum(&self.cumsum, &surface.canvas, &mut surface.buffers);
         let text_data = text_context.as_deref_mut().map(|context| {
             PreparedTextData::new(
-                &surface.scene.text_glyphs,
-                &surface.scene.text_runs,
+                &surface.canvas.text_glyphs,
+                &surface.canvas.text_runs,
                 context,
             )
         });
         self.execute_ops(
-            &surface.scene,
+            &surface.canvas,
             &surface.plan,
             &surface.children,
             &mut surface.image,
@@ -383,7 +383,7 @@ impl Renderer {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn execute_mask_layer(
         &mut self,
-        scene: &crate::canvas::Canvas,
+        canvas: &crate::canvas::Canvas,
         plan: &ExecPlan,
         mask_layer: MaskLayerRef<'_>,
         target: &mut Image,
@@ -398,7 +398,7 @@ impl Renderer {
         }
 
         let content = self.render_children_to_image(
-            scene,
+            canvas,
             plan,
             mask_layer.content,
             bounds,
@@ -407,7 +407,7 @@ impl Renderer {
             text_context.as_deref_mut(),
         );
         let mask_source = self.render_children_to_image(
-            scene,
+            canvas,
             plan,
             mask_layer.mask,
             bounds,
@@ -419,7 +419,7 @@ impl Renderer {
         let region_mask = rasterize_region_mask(&mask_layer.layer.region, bounds);
         intersect_alpha_mask(&mut mask, &region_mask);
         self.apply_outer_clip_stack_to_mask(
-            scene,
+            canvas,
             plan,
             mask_layer.outer_stack,
             bounds,
@@ -431,7 +431,7 @@ impl Renderer {
 
     fn apply_outer_clip_stack_to_mask(
         &self,
-        scene: &crate::canvas::Canvas,
+        canvas: &crate::canvas::Canvas,
         plan: &ExecPlan,
         outer_stack: std::ops::Range<usize>,
         bounds: Bounds,
@@ -443,7 +443,7 @@ impl Renderer {
                 continue;
             };
             let draw_ix = draw as usize;
-            let draw = &scene.draw_records[draw_ix];
+            let draw = &canvas.draw_records[draw_ix];
             if let Some(sdf) = &draw.sdf {
                 // Offscreen results already need a destination mask; apply the
                 // SDF analytically to that mask instead of allocating a clip mask.
@@ -455,15 +455,15 @@ impl Renderer {
                 );
                 intersect_sdf_alpha_mask(mask, sdf, sdf_bounds, bounds);
             } else {
-                let clip = rasterize_layer_mask(scene, draw_ix, bounds, buffers);
+                let clip = rasterize_layer_mask(canvas, draw_ix, bounds, buffers);
                 intersect_alpha_mask(mask, &clip);
             }
         }
     }
 }
 
-fn draw_bounds(scene: &crate::canvas::Canvas, draw_ix: usize) -> Bounds {
-    let bounds = scene.draw_records[draw_ix].pixel_bounds;
+fn draw_bounds(canvas: &crate::canvas::Canvas, draw_ix: usize) -> Bounds {
+    let bounds = canvas.draw_records[draw_ix].pixel_bounds;
     Bounds::new(bounds.x0, bounds.y0, bounds.x1, bounds.y1)
 }
 

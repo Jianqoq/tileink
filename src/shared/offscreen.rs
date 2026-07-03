@@ -19,13 +19,13 @@ use crate::{
     },
 };
 
-pub(crate) struct LocalOffscreenScene {
-    pub(crate) scene: Canvas,
+pub(crate) struct LocalOffscreenCanvas {
+    pub(crate) canvas: Canvas,
     pub(crate) plan: ExecPlan,
     pub(crate) children: Vec<ExecOp>,
 }
 
-// Offscreen rendering reuses the main scene data, but filter kernels and scratch
+// Offscreen rendering reuses the main canvas data, but filter kernels and scratch
 // images run in a local surface whose origin may be outside the canvas. Keeping the
 // coordinate conversion in one type makes it clear which values move into local
 // space and which values, such as fixed filter regions, stay in buffer space.
@@ -136,15 +136,15 @@ impl LocalSpace {
 }
 
 pub(crate) fn local_offscreen_scene(
-    scene: &Canvas,
+    canvas: &Canvas,
     plan: &ExecPlan,
     children: &[ExecOp],
     bounds: Bounds,
-) -> LocalOffscreenScene {
+) -> LocalOffscreenCanvas {
     let local = LocalSpace::new(bounds);
     let local_children = translate_exec_ops_to_local(children, local);
-    LocalOffscreenScene {
-        scene: translated_scene_for_bounds(scene, local),
+    LocalOffscreenCanvas {
+        canvas: translated_scene_for_bounds(canvas, local),
         plan: ExecPlan {
             ops: local_children.clone(),
             layer_stack_data: plan.layer_stack_data.clone(),
@@ -157,16 +157,16 @@ pub(crate) fn local_filter(filter: &Filter, bounds: Bounds) -> Filter {
     translate_filter_to_local(filter, LocalSpace::new(bounds))
 }
 
-fn translated_scene_for_bounds(scene: &Canvas, local: LocalSpace) -> Canvas {
+fn translated_scene_for_bounds(canvas: &Canvas, local: LocalSpace) -> Canvas {
     let mut translated = Canvas::new(local.surface.width(), local.surface.height());
-    translated.lines = scene
+    translated.lines = canvas
         .lines
         .iter()
         .copied()
         .map(|line| local.line(line))
         .collect();
-    translated.path_records = scene.path_records.clone();
-    translated.draw_records = scene
+    translated.path_records = canvas.path_records.clone();
+    translated.draw_records = canvas
         .draw_records
         .iter()
         .map(|draw| {
@@ -180,15 +180,15 @@ fn translated_scene_for_bounds(scene: &Canvas, local: LocalSpace) -> Canvas {
             draw
         })
         .collect();
-    translated.text_glyphs = scene
+    translated.text_glyphs = canvas
         .text_glyphs
         .iter()
         .copied()
         .map(|glyph| glyph.translated(-f64::from(local.surface.x0), -f64::from(local.surface.y0)))
         .collect();
-    translated.text_runs = scene.text_runs.clone();
-    translated.bd_records = translated_backdrop_records(scene, &translated);
-    translated.path_cnt = scene.path_cnt;
+    translated.text_runs = canvas.text_runs.clone();
+    translated.bd_records = translated_backdrop_records(canvas, &translated);
+    translated.path_cnt = canvas.path_cnt;
     translated.backdrop_pool_capacity = translated
         .bd_records
         .last()
@@ -203,7 +203,7 @@ fn translated_scene_for_bounds(scene: &Canvas, local: LocalSpace) -> Canvas {
     translated
 }
 
-fn translated_backdrop_records(scene: &Canvas, translated: &Canvas) -> Vec<BackdropRecord> {
+fn translated_backdrop_records(canvas: &Canvas, translated: &Canvas) -> Vec<BackdropRecord> {
     let mut path_bounds: Vec<Option<PixelBounds>> = vec![None; translated.path_records.len()];
     for draw in &translated.draw_records {
         if let Some(path_id) = draw.path_id
@@ -220,7 +220,7 @@ fn translated_backdrop_records(scene: &Canvas, translated: &Canvas) -> Vec<Backd
     let mut segment_start = 0;
     let width_in_tiles = translated.width_in_tiles();
     let height_in_tiles = translated.height_in_tiles();
-    scene
+    canvas
         .bd_records
         .iter()
         .map(|record| {
@@ -251,12 +251,12 @@ fn translated_backdrop_records(scene: &Canvas, translated: &Canvas) -> Vec<Backd
         .collect()
 }
 
-fn translated_path_pixel_bounds(scene: &Canvas, path_id: usize) -> PixelBounds {
-    let Some(record) = scene.path_records.get(path_id) else {
+fn translated_path_pixel_bounds(canvas: &Canvas, path_id: usize) -> PixelBounds {
+    let Some(record) = canvas.path_records.get(path_id) else {
         return empty_pixel_bounds();
     };
     let lines =
-        &scene.lines[record.line_start as usize..(record.line_start + record.line_count) as usize];
+        &canvas.lines[record.line_start as usize..(record.line_start + record.line_count) as usize];
     if lines.is_empty() {
         return empty_pixel_bounds();
     }
@@ -288,12 +288,12 @@ fn empty_pixel_bounds() -> PixelBounds {
     }
 }
 
-fn translated_path_segment_capacity(scene: &Canvas, path_id: usize, tile_bbox: TileBbox) -> u32 {
-    let Some(record) = scene.path_records.get(path_id) else {
+fn translated_path_segment_capacity(canvas: &Canvas, path_id: usize, tile_bbox: TileBbox) -> u32 {
+    let Some(record) = canvas.path_records.get(path_id) else {
         return 0;
     };
     let lines =
-        &scene.lines[record.line_start as usize..(record.line_start + record.line_count) as usize];
+        &canvas.lines[record.line_start as usize..(record.line_start + record.line_count) as usize];
     let keep_horizontal_tile_edges = record.flags & PATH_FLAG_KEEP_HORIZONTAL_TILE_EDGES != 0;
     lines
         .iter()
@@ -301,7 +301,7 @@ fn translated_path_segment_capacity(scene: &Canvas, path_id: usize, tile_bbox: T
             crate::shared::scan_line::line_scanned_tile_count(
                 *line,
                 tile_bbox,
-                (scene.width_in_tiles(), scene.height_in_tiles()),
+                (canvas.width_in_tiles(), canvas.height_in_tiles()),
                 keep_horizontal_tile_edges,
             )
         })

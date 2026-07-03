@@ -1,23 +1,23 @@
 use super::*;
 
-fn assert_path_geometry_columns_match_scene(scene: &Canvas) {
-    assert_eq!(scene.columns.line_path_ids.len(), scene.lines.len());
-    assert_eq!(scene.columns.line_p0x.len(), scene.lines.len());
-    assert_eq!(scene.columns.line_p0y.len(), scene.lines.len());
-    assert_eq!(scene.columns.line_p1x.len(), scene.lines.len());
-    assert_eq!(scene.columns.line_p1y.len(), scene.lines.len());
-    assert_eq!(scene.columns.path_flags.len(), scene.path_cnt as usize);
+fn assert_path_geometry_columns_match_scene(canvas: &Canvas) {
+    assert_eq!(canvas.columns.line_path_ids.len(), canvas.lines.len());
+    assert_eq!(canvas.columns.line_p0x.len(), canvas.lines.len());
+    assert_eq!(canvas.columns.line_p0y.len(), canvas.lines.len());
+    assert_eq!(canvas.columns.line_p1x.len(), canvas.lines.len());
+    assert_eq!(canvas.columns.line_p1y.len(), canvas.lines.len());
+    assert_eq!(canvas.columns.path_flags.len(), canvas.path_cnt as usize);
 
-    for (index, line) in scene.lines.iter().enumerate() {
-        assert_eq!(scene.columns.line_path_ids[index], line.path_id);
-        assert_eq!(scene.columns.line_p0x[index], line.p0[0]);
-        assert_eq!(scene.columns.line_p0y[index], line.p0[1]);
-        assert_eq!(scene.columns.line_p1x[index], line.p1[0]);
-        assert_eq!(scene.columns.line_p1y[index], line.p1[1]);
+    for (index, line) in canvas.lines.iter().enumerate() {
+        assert_eq!(canvas.columns.line_path_ids[index], line.path_id);
+        assert_eq!(canvas.columns.line_p0x[index], line.p0[0]);
+        assert_eq!(canvas.columns.line_p0y[index], line.p0[1]);
+        assert_eq!(canvas.columns.line_p1x[index], line.p1[0]);
+        assert_eq!(canvas.columns.line_p1y[index], line.p1[1]);
     }
-    for record in &scene.path_records {
+    for record in &canvas.path_records {
         assert_eq!(
-            scene.columns.path_flags[record.path_id as usize],
+            canvas.columns.path_flags[record.path_id as usize],
             record.flags
         );
     }
@@ -25,25 +25,25 @@ fn assert_path_geometry_columns_match_scene(scene: &Canvas) {
 
 #[test]
 fn push_arc_adds_draw_and_path_record() {
-    let mut scene = test_scene();
-    scene.push_arc(
+    let mut canvas = test_scene();
+    canvas.push_arc(
         Arc::new((16.0, 16.0), (8.0, 6.0), 0.0, std::f64::consts::PI, 0.0),
         Brush::Solid(rgb(0, 255, 0)),
         FillRule::NonZero,
         0.25,
     );
 
-    assert_eq!(scene.draw_records.len(), 1);
-    assert_eq!(scene.path_records.len(), 1);
-    assert_eq!(scene.bd_records.len(), 1);
-    assert_eq!(scene.draw_records[0].tag, DrawTag::Brush);
-    assert!(!scene.draw_records[0].solid_rect);
+    assert_eq!(canvas.draw_records.len(), 1);
+    assert_eq!(canvas.path_records.len(), 1);
+    assert_eq!(canvas.bd_records.len(), 1);
+    assert_eq!(canvas.draw_records[0].tag, DrawTag::Brush);
+    assert!(!canvas.draw_records[0].solid_rect);
 }
 
 #[test]
 fn push_stroke_expands_shape_to_fill_path() {
-    let mut scene = test_scene();
-    scene.push_stroke(
+    let mut canvas = test_scene();
+    canvas.push_stroke(
         Rect::new(10.0, 10.0, 20.0, 20.0),
         Stroke::new(4.0),
         Brush::Solid(rgb(255, 0, 0)),
@@ -52,20 +52,20 @@ fn push_stroke_expands_shape_to_fill_path() {
         0.1,
     );
 
-    assert_eq!(scene.draw_records.len(), 1);
-    let bounds = scene.draw_records[0].pixel_bounds;
+    assert_eq!(canvas.draw_records.len(), 1);
+    let bounds = canvas.draw_records[0].pixel_bounds;
     assert!(bounds.x0 <= 8);
     assert!(bounds.y0 <= 8);
     assert!(bounds.x1 >= 22);
     assert!(bounds.y1 >= 22);
-    assert_eq!(scene.draw_records[0].fill_rule, FillRule::NonZero);
-    assert!(!scene.draw_records[0].solid_rect);
+    assert_eq!(canvas.draw_records[0].fill_rule, FillRule::NonZero);
+    assert!(!canvas.draw_records[0].solid_rect);
 }
 
 #[test]
 fn push_path_flattens_transformed_geometry() {
-    let mut scene = test_scene();
-    scene.push_path(
+    let mut canvas = test_scene();
+    canvas.push_path(
         rect_path(0.0, 0.0, 10.0, 10.0),
         Brush::Solid(rgb(255, 0, 0)),
         Affine::translate((8.0, 4.0)),
@@ -74,7 +74,7 @@ fn push_path_flattens_transformed_geometry() {
     );
 
     assert_eq!(
-        scene.draw_records[0].pixel_bounds,
+        canvas.draw_records[0].pixel_bounds,
         PixelBounds {
             x0: 8,
             y0: 4,
@@ -82,12 +82,12 @@ fn push_path_flattens_transformed_geometry() {
             y1: 14,
         }
     );
-    assert!(scene.lines.iter().all(|line| {
+    assert!(canvas.lines.iter().all(|line| {
         [line.p0, line.p1]
             .into_iter()
             .all(|point| point[0] >= 8.0 && point[0] <= 18.0 && point[1] >= 4.0 && point[1] <= 14.0)
     }));
-    assert_path_geometry_columns_match_scene(&scene);
+    assert_path_geometry_columns_match_scene(&canvas);
 }
 
 #[test]
@@ -96,8 +96,8 @@ fn push_path_reserves_segment_capacity_from_scan_tile_count() {
     path.move_to((8.0, 8.0));
     path.line_to((9.0, 12.0));
 
-    let mut scene = test_scene();
-    scene.push_path(
+    let mut canvas = test_scene();
+    canvas.push_path(
         path,
         Brush::Solid(rgb(255, 0, 0)),
         Affine::IDENTITY,
@@ -105,36 +105,36 @@ fn push_path_reserves_segment_capacity_from_scan_tile_count() {
         0.25,
     );
 
-    let record = scene.bd_records[0];
+    let record = canvas.bd_records[0];
     let tile_bbox = crate::shared::bounds::TileBbox {
         x0: record.tile_x0,
         y0: record.tile_y0,
         x1: record.tile_x1,
         y1: record.tile_y1,
     };
-    let expected = scene
+    let expected = canvas
         .lines
         .iter()
         .map(|&line| {
             line_scanned_tile_count(
                 line,
                 tile_bbox,
-                (scene.width_in_tiles(), scene.height_in_tiles()),
+                (canvas.width_in_tiles(), canvas.height_in_tiles()),
                 false,
             )
         })
         .sum::<u32>();
 
     assert_eq!(record.segment_capacity, expected);
-    assert_eq!(scene.tile_cnt, expected);
+    assert_eq!(canvas.tile_cnt, expected);
     assert!(expected > 0);
     assert!(expected < 20);
 }
 
 #[test]
 fn push_layer_path_flattens_transformed_geometry() {
-    let mut scene = test_scene();
-    scene.push_clip_layer(
+    let mut canvas = test_scene();
+    canvas.push_clip_layer(
         rect_path(0.0, 0.0, 10.0, 10.0),
         Affine::translate((12.0, 6.0)),
         FillRule::NonZero,
@@ -142,7 +142,7 @@ fn push_layer_path_flattens_transformed_geometry() {
     );
 
     assert_eq!(
-        scene.draw_records[0].pixel_bounds,
+        canvas.draw_records[0].pixel_bounds,
         PixelBounds {
             x0: 12,
             y0: 6,
@@ -150,12 +150,12 @@ fn push_layer_path_flattens_transformed_geometry() {
             y1: 16,
         }
     );
-    assert!(scene.lines.iter().all(|line| {
+    assert!(canvas.lines.iter().all(|line| {
         [line.p0, line.p1].into_iter().all(|point| {
             point[0] >= 12.0 && point[0] <= 22.0 && point[1] >= 6.0 && point[1] <= 16.0
         })
     }));
-    assert_path_geometry_columns_match_scene(&scene);
+    assert_path_geometry_columns_match_scene(&canvas);
 }
 
 #[test]
@@ -169,11 +169,11 @@ fn append_rebuilds_path_geometry_columns() {
         0.25,
     );
 
-    let mut scene = test_scene();
-    scene.append(&child, Point::new(8.0, 4.0));
+    let mut canvas = test_scene();
+    canvas.append(&child, Point::new(8.0, 4.0));
 
-    assert_path_geometry_columns_match_scene(&scene);
-    assert!(scene.lines.iter().all(|line| {
+    assert_path_geometry_columns_match_scene(&canvas);
+    assert!(canvas.lines.iter().all(|line| {
         [line.p0, line.p1]
             .into_iter()
             .all(|point| point[0] >= 8.0 && point[0] <= 18.0 && point[1] >= 4.0 && point[1] <= 14.0)
@@ -193,9 +193,9 @@ fn append_rebuilds_path_geometry_columns_without_mutating_child() {
     let original_lines = child.lines.clone();
     let original_paths = child.path_records.clone();
 
-    let mut scene = test_scene();
-    scene.append(&child, Point::new(8.0, 4.0));
-    scene.append(&child, Point::new(20.0, 12.0));
+    let mut canvas = test_scene();
+    canvas.append(&child, Point::new(8.0, 4.0));
+    canvas.append(&child, Point::new(20.0, 12.0));
 
     assert_eq!(child.lines.len(), original_lines.len());
     for (actual, expected) in child.lines.iter().zip(&original_lines) {
@@ -210,10 +210,10 @@ fn append_rebuilds_path_geometry_columns_without_mutating_child() {
         assert_eq!(actual.line_count, expected.line_count);
         assert_eq!(actual.flags, expected.flags);
     }
-    assert_path_geometry_columns_match_scene(&scene);
-    assert_eq!(scene.path_records.len(), child.path_records.len() * 2);
-    assert_eq!(scene.bd_records.len(), scene.path_records.len());
-    assert!(scene.lines.iter().all(|line| {
+    assert_path_geometry_columns_match_scene(&canvas);
+    assert_eq!(canvas.path_records.len(), child.path_records.len() * 2);
+    assert_eq!(canvas.bd_records.len(), canvas.path_records.len());
+    assert!(canvas.lines.iter().all(|line| {
         [line.p0, line.p1].into_iter().all(|point| {
             (point[0] >= 8.0 && point[0] <= 30.0) && (point[1] >= 4.0 && point[1] <= 22.0)
         })

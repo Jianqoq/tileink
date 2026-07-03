@@ -24,8 +24,8 @@ pub(in crate::cpu) struct RasterBuffers {
 }
 
 impl RasterBuffers {
-    pub(in crate::cpu) fn rebuild_tile_draw_bins(&mut self, scene: &crate::canvas::Canvas) {
-        build_tile_draw_bins_into(scene, &mut self.tile_draw_bins, &mut self.tile_draw_cursors);
+    pub(in crate::cpu) fn rebuild_tile_draw_bins(&mut self, canvas: &crate::canvas::Canvas) {
+        build_tile_draw_bins_into(canvas, &mut self.tile_draw_bins, &mut self.tile_draw_cursors);
     }
 
     pub(in crate::cpu) fn clear_scan_outputs(&mut self) {
@@ -42,7 +42,7 @@ impl RasterBuffers {
 
     pub(in crate::cpu) fn resize_scan_outputs(
         &mut self,
-        scene: &crate::canvas::Canvas,
+        canvas: &crate::canvas::Canvas,
         last_bd_record: BackdropRecord,
     ) {
         let backdrop_len = last_bd_record.data_offset as usize + last_bd_record.data_len as usize;
@@ -56,7 +56,7 @@ impl RasterBuffers {
         self.segment_tile_cursors
             .resize_with(backdrop_len, || AtomicU32::new(0));
         self.segments_bump
-            .resize_with(scene.bd_records.len(), || AtomicU32::new(0));
+            .resize_with(canvas.bd_records.len(), || AtomicU32::new(0));
         for bump in &self.segments_bump {
             bump.store(0, Ordering::Relaxed);
         }

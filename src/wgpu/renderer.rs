@@ -14,7 +14,7 @@ use crate::{
         execution::{ExecOp, ExecPlan, ROOT_COMMAND_LIST_ID},
         gpu_plan::{
             FINE_GROUP_SPILL_FIELDS, FINE_LOCAL_CLIP_DEPTH, FINE_LOCAL_GROUP_DEPTH,
-            FINE_WORKGROUP_SIZE, GpuBufferLengths, GpuSceneConfig, filter_scratch_extra,
+            FINE_WORKGROUP_SIZE, GpuBufferLengths, GpuCanvasConfig, filter_scratch_extra,
             plan_stack_depths, required_scratch_count,
         },
         image::Image,
@@ -44,7 +44,7 @@ use super::filter_resources::{
 use super::fine::{WgpuFinePipeline, premul_clear_color};
 use super::profile::{WgpuRenderProfile, WgpuRenderProfiler, profile_cpu, start_cpu_scope};
 use super::scan::WgpuScanPipeline;
-use super::scene::{WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers, WgpuSceneUploadStaging};
+use super::canvas::{WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers, WgpuSceneUploadStaging};
 use super::target::WgpuTarget;
 
 mod filter_ops;
@@ -175,19 +175,19 @@ impl Render for Renderer {
     type CoarseArgs<'a> = WgpuCoarseBatch;
     type ExecuteArgs<'a> = ();
 
-    fn render(&mut self, scene: &Canvas) {
-        if self.render_native(scene) {
+    fn render(&mut self, canvas: &Canvas) {
+        if self.render_native(canvas) {
             return;
         }
-        profile_cpu("cpu_fallback.render", || self.cpu.render(scene));
+        profile_cpu("cpu_fallback.render", || self.cpu.render(canvas));
         self.upload_cpu_image();
     }
 
-    fn execute(&mut self, scene: &Canvas, _: Self::ExecuteArgs<'_>) {
-        self.render(scene);
+    fn execute(&mut self, canvas: &Canvas, _: Self::ExecuteArgs<'_>) {
+        self.render(canvas);
     }
 
-    fn scan(&mut self, scene: &Canvas, _: Self::ScanArgs<'_>) {
+    fn scan(&mut self, canvas: &Canvas, _: Self::ScanArgs<'_>) {
         if let Some(scan) = &self.scan_pipeline {
             scan.run(
                 &self.device,
@@ -198,12 +198,12 @@ impl Render for Renderer {
             );
         } else {
             profile_cpu("cpu_fallback.scan", || {
-                <CpuRenderer as Render>::scan(&mut self.cpu, scene, ())
+                <CpuRenderer as Render>::scan(&mut self.cpu, canvas, ())
             });
         }
     }
 
-    fn cumsum(&mut self, scene: &Canvas, _: Self::CumsumArgs<'_>) {
+    fn cumsum(&mut self, canvas: &Canvas, _: Self::CumsumArgs<'_>) {
         if let Some(cumsum) = &self.cumsum {
             cumsum.run(
                 &self.device,
@@ -214,7 +214,7 @@ impl Render for Renderer {
             );
         } else {
             profile_cpu("cpu_fallback.cumsum", || {
-                <CpuRenderer as Render>::cumsum(&mut self.cpu, scene, ())
+                <CpuRenderer as Render>::cumsum(&mut self.cpu, canvas, ())
             });
         }
     }
@@ -248,7 +248,7 @@ impl Renderer {
             cpu: CpuRenderer::new(width, height, clear),
             lengths: GpuBufferLengths::default(),
             plan: None,
-            config: WgpuBuffer::new(device, "tileink wgpu scene config"),
+            config: WgpuBuffer::new(device, "tileink wgpu canvas config"),
             scene_buffers: WgpuSceneBuffers::new(device),
             scene_upload: WgpuSceneUploadStaging::default(),
             scan: WgpuScanBuffers::new(device),
@@ -305,23 +305,23 @@ impl Renderer {
         Self::new(&device, &queue, width, height, clear)
     }
 
-    pub fn render(&mut self, scene: &Canvas) {
-        <Self as Render>::render(self, scene);
+    pub fn render(&mut self, canvas: &Canvas) {
+        <Self as Render>::render(self, canvas);
     }
 
-    pub fn render_profiled(&mut self, scene: &Canvas) -> WgpuRenderProfile {
+    pub fn render_profiled(&mut self, canvas: &Canvas) -> WgpuRenderProfile {
         self.start_profile();
-        self.render(scene);
+        self.render(canvas);
         self.end_profile().clone()
     }
 
     pub fn render_with_text_profiled(
         &mut self,
-        scene: &Canvas,
+        canvas: &Canvas,
         text_context: &mut TextContext,
     ) -> WgpuRenderProfile {
         self.start_profile();
-        self.render_with_text(scene, text_context);
+        self.render_with_text(canvas, text_context);
         self.end_profile().clone()
     }
 
@@ -352,10 +352,10 @@ impl Renderer {
     /// Renders only through native wgpu compute pipelines.
     ///
     /// This is useful for backend parity tests because `render` falls back to the
-    /// CPU renderer when a scene still needs unsupported native coverage.
-    pub fn render_native(&mut self, scene: &Canvas) -> bool {
-        self.prepare_scene(scene);
-        self.render_prepared_native(scene)
+    /// CPU renderer when a canvas still needs unsupported native coverage.
+    pub fn render_native(&mut self, canvas: &Canvas) -> bool {
+        self.prepare_scene(canvas);
+        self.render_prepared_native(canvas)
     }
 
     /// Renders text scenes only through native wgpu compute pipelines.
@@ -364,59 +364,59 @@ impl Renderer {
     /// native wgpu against another backend using exactly the same glyph atlas.
     pub fn render_native_with_text(
         &mut self,
-        scene: &Canvas,
+        canvas: &Canvas,
         text_context: &mut TextContext,
     ) -> bool {
-        self.prepare_scene_with_text(scene, text_context);
-        self.render_prepared_native(scene)
+        self.prepare_scene_with_text(canvas, text_context);
+        self.render_prepared_native(canvas)
     }
 
-    fn render_prepared_native(&mut self, scene: &Canvas) -> bool {
-        if self.render_prepared_tile_plan(scene) {
-            self.size = (scene.width, scene.height);
+    fn render_prepared_native(&mut self, canvas: &Canvas) -> bool {
+        if self.render_prepared_tile_plan(canvas) {
+            self.size = (canvas.width, canvas.height);
             return true;
         }
         false
     }
 
-    fn prepare_scene(&mut self, scene: &Canvas) {
+    fn prepare_scene(&mut self, canvas: &Canvas) {
         let _profile_scope = start_cpu_scope("prepare");
         self.text_data = None;
-        self.prepare_scene_resources(scene);
+        self.prepare_scene_resources(canvas);
     }
 
-    fn prepare_scene_with_text(&mut self, scene: &Canvas, text_context: &mut TextContext) {
+    fn prepare_scene_with_text(&mut self, canvas: &Canvas, text_context: &mut TextContext) {
         let _profile_scope = start_cpu_scope("prepare");
         self.text_data = profile_cpu("prepare.text", || {
             Some(PreparedTextData::new(
-                &scene.text_glyphs,
-                &scene.text_runs,
+                &canvas.text_glyphs,
+                &canvas.text_runs,
                 text_context,
             ))
         });
-        self.prepare_scene_resources(scene);
+        self.prepare_scene_resources(canvas);
     }
 
-    fn prepare_scene_resources(&mut self, scene: &Canvas) {
-        self.size = (scene.width, scene.height);
+    fn prepare_scene_resources(&mut self, canvas: &Canvas) {
+        self.size = (canvas.width, canvas.height);
         self.surface_origin = (0, 0);
         profile_cpu("prepare.target", || {
             if self.root_target_view.is_none() {
                 self.readback_target
-                    .resize(&self.device, scene.width, scene.height);
+                    .resize(&self.device, canvas.width, canvas.height);
             }
         });
         let lengths = profile_cpu("prepare.lengths", || {
-            GpuBufferLengths::from_scene_with_text(scene, self.text_data.as_ref())
+            GpuBufferLengths::from_scene_with_text(canvas, self.text_data.as_ref())
         });
-        let plan = profile_cpu("prepare.compile", || scene.compile(ROOT_COMMAND_LIST_ID));
+        let plan = profile_cpu("prepare.compile", || canvas.compile(ROOT_COMMAND_LIST_ID));
         let (max_clip_depth, max_group_depth) =
             profile_cpu("prepare.stack_depths", || plan_stack_depths(&plan));
         profile_cpu("prepare.upload_scene", || {
             self.scene_buffers.upload(
                 &self.device,
                 &self.queue,
-                scene,
+                canvas,
                 &plan,
                 self.text_data.as_ref(),
                 &mut self.scene_upload,
@@ -448,8 +448,8 @@ impl Renderer {
             self.config.upload(
                 &self.device,
                 &self.queue,
-                "tileink wgpu scene config",
-                &[GpuSceneConfig::new(scene, lengths, self.clear_color)],
+                "tileink wgpu canvas config",
+                &[GpuCanvasConfig::new(canvas, lengths, self.clear_color)],
             );
         });
         self.lengths = lengths;
@@ -460,7 +460,7 @@ impl Renderer {
 
     fn activate_local_scene_resources(
         &mut self,
-        scene: &Canvas,
+        canvas: &Canvas,
         plan: &ExecPlan,
         parent_filter: &Filter,
         scratch_count: usize,
@@ -472,7 +472,7 @@ impl Renderer {
             plan: self.plan.take(),
             config: std::mem::replace(
                 &mut self.config,
-                WgpuBuffer::new(&self.device, "tileink wgpu scene config"),
+                WgpuBuffer::new(&self.device, "tileink wgpu canvas config"),
             ),
             scene_buffers: std::mem::replace(
                 &mut self.scene_buffers,
@@ -513,7 +513,7 @@ impl Renderer {
             ),
             readback_target: std::mem::replace(
                 &mut self.readback_target,
-                WgpuTarget::new(&self.device, scene.width, scene.height),
+                WgpuTarget::new(&self.device, canvas.width, canvas.height),
             ),
             root_target_view: std::mem::take(&mut self.root_target_view),
             scratch: std::mem::take(&mut self.scratch),
@@ -523,11 +523,11 @@ impl Renderer {
         };
 
         let lengths = profile_cpu("prepare.local.lengths", || {
-            GpuBufferLengths::from_scene_with_text(scene, self.text_data.as_ref())
+            GpuBufferLengths::from_scene_with_text(canvas, self.text_data.as_ref())
         });
         let (max_clip_depth, max_group_depth) =
             profile_cpu("prepare.local.stack_depths", || plan_stack_depths(plan));
-        self.size = (scene.width, scene.height);
+        self.size = (canvas.width, canvas.height);
         self.surface_origin = surface_origin;
         self.lengths = lengths;
         self.max_clip_depth = max_clip_depth;
@@ -537,7 +537,7 @@ impl Renderer {
             self.scene_buffers.upload(
                 &self.device,
                 &self.queue,
-                scene,
+                canvas,
                 plan,
                 self.text_data.as_ref(),
                 &mut self.scene_upload,
@@ -586,8 +586,8 @@ impl Renderer {
             self.config.upload(
                 &self.device,
                 &self.queue,
-                "tileink wgpu scene config",
-                &[GpuSceneConfig::new(scene, lengths, self.clear_color)],
+                "tileink wgpu canvas config",
+                &[GpuCanvasConfig::new(canvas, lengths, self.clear_color)],
             );
         });
         saved
@@ -663,7 +663,7 @@ impl Renderer {
     #[cfg(test)]
     fn coarse_batch(
         &mut self,
-        scene: &Canvas,
+        canvas: &Canvas,
         draw_start: u32,
         draw_end: u32,
         layer_stack_start: u32,
@@ -671,7 +671,7 @@ impl Renderer {
     ) {
         <Self as Render>::coarse(
             self,
-            scene,
+            canvas,
             WgpuCoarseBatch {
                 draw_start,
                 draw_end,
@@ -681,7 +681,7 @@ impl Renderer {
         );
     }
 
-    fn render_prepared_tile_plan(&mut self, scene: &Canvas) -> bool {
+    fn render_prepared_tile_plan(&mut self, canvas: &Canvas) -> bool {
         if self.fine.is_none() || self.coarse_pipeline.is_none() || self.filter.is_none() {
             return false;
         }
@@ -690,14 +690,14 @@ impl Renderer {
         };
 
         let mut commands = WgpuCommandBatch::new(&self.device, &self.queue, "tileink wgpu frame");
-        if !self.scan_and_cumsum(&mut commands, scene) {
+        if !self.scan_and_cumsum(&mut commands, canvas) {
             return false;
         }
         self.clear_render_target(&mut commands, WgpuRenderTargetId::Main, self.clear_color);
         let mut filter_cursors = WgpuFilterCursors::default();
         let ok = self.execute_ops(
             &mut commands,
-            scene,
+            canvas,
             &plan,
             &plan.ops,
             WgpuRenderTargetId::Main,
@@ -710,7 +710,7 @@ impl Renderer {
     fn execute_ops(
         &mut self,
         commands: &mut WgpuCommandBatch,
-        scene: &Canvas,
+        canvas: &Canvas,
         plan: &ExecPlan,
         ops: &[ExecOp],
         target: WgpuRenderTargetId,
@@ -720,7 +720,7 @@ impl Renderer {
             let ok = match op {
                 ExecOp::DrawBatch { draws, layer_stack } => self.execute_draw_batch(
                     commands,
-                    scene,
+                    canvas,
                     draws.clone(),
                     layer_stack.clone(),
                     target,
@@ -738,7 +738,7 @@ impl Renderer {
                     children,
                 } => self.execute_offscreen_layer(
                     commands,
-                    scene,
+                    canvas,
                     plan,
                     *draw,
                     layer,
@@ -754,7 +754,7 @@ impl Renderer {
                     mask,
                 } => self.execute_mask_layer(
                     commands,
-                    scene,
+                    canvas,
                     plan,
                     layer,
                     outer_stack.clone(),
@@ -889,7 +889,7 @@ impl Renderer {
     fn execute_offscreen_layer(
         &mut self,
         commands: &mut WgpuCommandBatch,
-        scene: &Canvas,
+        canvas: &Canvas,
         plan: &ExecPlan,
         draw: usize,
         layer: &Layer,
@@ -901,7 +901,7 @@ impl Renderer {
         match layer {
             Layer::Isolate => self.execute_masked_group_layer(
                 commands,
-                scene,
+                canvas,
                 plan,
                 draw,
                 outer_stack,
@@ -913,7 +913,7 @@ impl Renderer {
             ),
             Layer::Opacity(opacity) => self.execute_masked_group_layer(
                 commands,
-                scene,
+                canvas,
                 plan,
                 draw,
                 outer_stack,
@@ -925,7 +925,7 @@ impl Renderer {
             ),
             Layer::Blend(blend) => self.execute_masked_group_layer(
                 commands,
-                scene,
+                canvas,
                 plan,
                 draw,
                 outer_stack,
@@ -940,7 +940,7 @@ impl Renderer {
                 sample_region,
             } => self.execute_filter_layer(
                 commands,
-                scene,
+                canvas,
                 plan,
                 filter,
                 sample_region,
@@ -954,7 +954,7 @@ impl Renderer {
                 sample_region,
             } => self.execute_backdrop_layer(
                 commands,
-                scene,
+                canvas,
                 plan,
                 filter,
                 sample_region,
@@ -972,7 +972,7 @@ impl Renderer {
     fn execute_masked_group_layer(
         &mut self,
         commands: &mut WgpuCommandBatch,
-        scene: &Canvas,
+        canvas: &Canvas,
         plan: &ExecPlan,
         draw: usize,
         outer_stack: std::ops::Range<usize>,
@@ -982,13 +982,13 @@ impl Renderer {
         target: WgpuRenderTargetId,
         filter_cursors: &mut WgpuFilterCursors,
     ) -> bool {
-        let bounds = draw_bounds(scene, draw).intersect(Bounds::canvas(self.size.0, self.size.1));
+        let bounds = draw_bounds(canvas, draw).intersect(Bounds::canvas(self.size.0, self.size.1));
         if bounds.is_empty() {
             return true;
         }
 
         let Some(source) =
-            self.render_ops_to_scratch(commands, scene, plan, children, filter_cursors)
+            self.render_ops_to_scratch(commands, canvas, plan, children, filter_cursors)
         else {
             return false;
         };
@@ -1030,7 +1030,7 @@ impl Renderer {
     fn execute_filter_layer(
         &mut self,
         commands: &mut WgpuCommandBatch,
-        scene: &Canvas,
+        canvas: &Canvas,
         plan: &ExecPlan,
         filter: &Filter,
         sample_region: &crate::shared::layer::region::Region,
@@ -1049,7 +1049,7 @@ impl Renderer {
 
         filter_cursors.advance_filter_layer(sample_region, children, filter);
         let local = profile_cpu("prepare.local_scene", || {
-            local_offscreen_scene(scene, plan, children, filter_bounds.surface)
+            local_offscreen_scene(canvas, plan, children, filter_bounds.surface)
         });
         let local_filter = profile_cpu("prepare.local_filter", || {
             local_filter(filter, filter_bounds.surface)
@@ -1065,7 +1065,7 @@ impl Renderer {
         let local_scratch_count =
             1 + required_scratch_count(&local.plan).max(filter_scratch_extra(&local_filter));
         let saved = self.activate_local_scene_resources(
-            &local.scene,
+            &local.canvas,
             &local.plan,
             &local_filter,
             local_scratch_count,
@@ -1075,14 +1075,14 @@ impl Renderer {
         let source = WgpuRenderTargetId::Scratch(0);
         self.scratch_in_use[0] = true;
         self.clear_render_target(commands, source, 0);
-        if !self.scan_and_cumsum(commands, &local.scene) {
+        if !self.scan_and_cumsum(commands, &local.canvas) {
             self.restore_root_scene_resources(saved);
             return false;
         }
         let mut local_filter_cursors = WgpuFilterCursors::default();
         let ok = self.execute_ops(
             commands,
-            &local.scene,
+            &local.canvas,
             &local.plan,
             &local.children,
             source,
@@ -1118,7 +1118,7 @@ impl Renderer {
     fn execute_backdrop_layer(
         &mut self,
         commands: &mut WgpuCommandBatch,
-        scene: &Canvas,
+        canvas: &Canvas,
         plan: &ExecPlan,
         filter: &Filter,
         sample_region: &crate::shared::layer::region::Region,
@@ -1154,7 +1154,7 @@ impl Renderer {
                 sample_region,
             )
         {
-            return self.execute_ops(commands, scene, plan, children, target, filter_cursors);
+            return self.execute_ops(commands, canvas, plan, children, target, filter_cursors);
         }
 
         if outer_stack.is_empty()
@@ -1167,7 +1167,7 @@ impl Renderer {
                 sample_region,
             )
         {
-            return self.execute_ops(commands, scene, plan, children, target, filter_cursors);
+            return self.execute_ops(commands, canvas, plan, children, target, filter_cursors);
         }
 
         let Some(backdrop) = self.acquire_scratch() else {
@@ -1235,14 +1235,14 @@ impl Renderer {
             ok
         };
         self.release_scratch(backdrop);
-        ok && self.execute_ops(commands, scene, plan, children, target, filter_cursors)
+        ok && self.execute_ops(commands, canvas, plan, children, target, filter_cursors)
     }
 
     #[allow(clippy::too_many_arguments)]
     fn execute_mask_layer(
         &mut self,
         commands: &mut WgpuCommandBatch,
-        scene: &Canvas,
+        canvas: &Canvas,
         plan: &ExecPlan,
         layer: &crate::shared::layer::mask::Mask,
         outer_stack: std::ops::Range<usize>,
@@ -1260,12 +1260,12 @@ impl Renderer {
         let path_index = filter_cursors.next_path_index(&layer.region);
 
         let Some(content_target) =
-            self.render_ops_to_scratch(commands, scene, plan, content, filter_cursors)
+            self.render_ops_to_scratch(commands, canvas, plan, content, filter_cursors)
         else {
             return false;
         };
         let Some(mask_source) =
-            self.render_ops_to_scratch(commands, scene, plan, mask_ops, filter_cursors)
+            self.render_ops_to_scratch(commands, canvas, plan, mask_ops, filter_cursors)
         else {
             self.release_scratch(content_target);
             return false;
@@ -1312,14 +1312,14 @@ impl Renderer {
     fn render_ops_to_scratch(
         &mut self,
         commands: &mut WgpuCommandBatch,
-        scene: &Canvas,
+        canvas: &Canvas,
         plan: &ExecPlan,
         ops: &[ExecOp],
         filter_cursors: &mut WgpuFilterCursors,
     ) -> Option<WgpuRenderTargetId> {
         let target = self.acquire_scratch()?;
         self.clear_render_target(commands, target, 0);
-        if self.execute_ops(commands, scene, plan, ops, target, filter_cursors) {
+        if self.execute_ops(commands, canvas, plan, ops, target, filter_cursors) {
             Some(target)
         } else {
             self.release_scratch(target);
@@ -1571,32 +1571,32 @@ impl Renderer {
         }
     }
 
-    pub fn render_with_text(&mut self, scene: &Canvas, text_context: &mut TextContext) {
-        self.prepare_scene_with_text(scene, text_context);
-        if self.render_prepared_tile_plan(scene) {
-            self.size = (scene.width, scene.height);
+    pub fn render_with_text(&mut self, canvas: &Canvas, text_context: &mut TextContext) {
+        self.prepare_scene_with_text(canvas, text_context);
+        if self.render_prepared_tile_plan(canvas) {
+            self.size = (canvas.width, canvas.height);
             return;
         }
         profile_cpu("cpu_fallback.render_text", || {
-            self.cpu.render_with_text(scene, text_context)
+            self.cpu.render_with_text(canvas, text_context)
         });
         self.upload_cpu_image();
     }
 
     pub fn render_with_options(
         &mut self,
-        scene: &Canvas,
+        canvas: &Canvas,
         options: &RenderOptions,
     ) -> RenderDebugCapture {
-        self.prepare_scene(scene);
-        let rendered_native = self.render_prepared_tile_plan(scene);
+        self.prepare_scene(canvas);
+        let rendered_native = self.render_prepared_tile_plan(canvas);
         if rendered_native {
-            self.size = (scene.width, scene.height);
+            self.size = (canvas.width, canvas.height);
             let image = self.image();
             let debug = self.read_debug_scan_buffers();
             return capture_render_debug(
                 "wgpu",
-                scene,
+                canvas,
                 &image,
                 DebugScanBuffers {
                     backdrops: &debug.backdrops,
@@ -1607,7 +1607,7 @@ impl Renderer {
             );
         }
 
-        let mut capture = self.cpu.render_with_options(scene, options);
+        let mut capture = self.cpu.render_with_options(canvas, options);
         capture.backend = "wgpu".to_string();
         self.upload_cpu_image();
         capture
@@ -1758,66 +1758,66 @@ impl Renderer {
 
     pub fn render_to_wgpu_texture(
         &mut self,
-        scene: &Canvas,
+        canvas: &Canvas,
         dst: &::wgpu::Texture,
     ) -> Result<(), WgpuTextureRenderError> {
-        if self.render_native_to_wgpu_texture(scene, dst) {
+        if self.render_native_to_wgpu_texture(canvas, dst) {
             return Ok(());
         }
-        profile_cpu("cpu_fallback.render", || self.cpu.render(scene));
-        self.size = (scene.width, scene.height);
+        profile_cpu("cpu_fallback.render", || self.cpu.render(canvas));
+        self.size = (canvas.width, canvas.height);
         self.upload_image_to_wgpu_texture(dst, self.cpu.image())
     }
 
     pub fn render_with_text_to_wgpu_texture(
         &mut self,
-        scene: &Canvas,
+        canvas: &Canvas,
         text_context: &mut TextContext,
         dst: &::wgpu::Texture,
     ) -> Result<(), WgpuTextureRenderError> {
-        if self.render_native_with_text_to_wgpu_texture(scene, text_context, dst) {
+        if self.render_native_with_text_to_wgpu_texture(canvas, text_context, dst) {
             return Ok(());
         }
         profile_cpu("cpu_fallback.render_text", || {
-            self.cpu.render_with_text(scene, text_context)
+            self.cpu.render_with_text(canvas, text_context)
         });
-        self.size = (scene.width, scene.height);
+        self.size = (canvas.width, canvas.height);
         self.upload_image_to_wgpu_texture(dst, self.cpu.image())
     }
 
-    fn render_native_to_wgpu_texture(&mut self, scene: &Canvas, dst: &::wgpu::Texture) -> bool {
-        self.render_native_to_wgpu_texture_with_prepare(scene, dst, |renderer, scene| {
-            renderer.prepare_scene(scene);
+    fn render_native_to_wgpu_texture(&mut self, canvas: &Canvas, dst: &::wgpu::Texture) -> bool {
+        self.render_native_to_wgpu_texture_with_prepare(canvas, dst, |renderer, canvas| {
+            renderer.prepare_scene(canvas);
         })
     }
 
     fn render_native_with_text_to_wgpu_texture(
         &mut self,
-        scene: &Canvas,
+        canvas: &Canvas,
         text_context: &mut TextContext,
         dst: &::wgpu::Texture,
     ) -> bool {
-        self.render_native_to_wgpu_texture_with_prepare(scene, dst, |renderer, scene| {
-            renderer.prepare_scene_with_text(scene, text_context);
+        self.render_native_to_wgpu_texture_with_prepare(canvas, dst, |renderer, canvas| {
+            renderer.prepare_scene_with_text(canvas, text_context);
         })
     }
 
     fn render_native_to_wgpu_texture_with_prepare(
         &mut self,
-        scene: &Canvas,
+        canvas: &Canvas,
         dst: &::wgpu::Texture,
         prepare: impl FnOnce(&mut Self, &Canvas),
     ) -> bool {
         if self
-            .validate_wgpu_storage_texture_destination(dst, scene.width, scene.height)
+            .validate_wgpu_storage_texture_destination(dst, canvas.width, canvas.height)
             .is_err()
         {
             return false;
         }
         self.root_target_view = Some(dst.create_view(&::wgpu::TextureViewDescriptor::default()));
-        prepare(self, scene);
-        let rendered = if self.render_prepared_tile_plan(scene) {
-            self.size = (scene.width, scene.height);
+        prepare(self, canvas);
+        let rendered = if self.render_prepared_tile_plan(canvas) {
+            self.size = (canvas.width, canvas.height);
             true
         } else {
             false
@@ -1970,8 +1970,8 @@ fn rect_liquid_glass_region(
     }
 }
 
-fn draw_bounds(scene: &Canvas, draw_ix: usize) -> Bounds {
-    let bounds = scene.draw_records[draw_ix].pixel_bounds;
+fn draw_bounds(canvas: &Canvas, draw_ix: usize) -> Bounds {
+    let bounds = canvas.draw_records[draw_ix].pixel_bounds;
     Bounds::new(bounds.x0, bounds.y0, bounds.x1, bounds.y1)
 }
 

@@ -227,18 +227,18 @@ pub(super) fn rasterize_sdf_mask(sdf: &Sdf, sdf_bounds: Bounds, bounds: Bounds) 
 }
 
 pub(super) fn rasterize_layer_mask(
-    scene: &crate::canvas::Canvas,
+    canvas: &crate::canvas::Canvas,
     draw_ix: usize,
     bounds: Bounds,
     buffers: &RasterBuffers,
 ) -> Image {
     let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
-    let draw = &scene.draw_records[draw_ix];
+    let draw = &canvas.draw_records[draw_ix];
     let Some(path_id) = draw.path_id else {
         return image;
     };
-    let backdrop_record = &scene.bd_records[path_id as usize];
-    let bbox = draw.tile_bbox(scene.width_in_tiles(), scene.height_in_tiles());
+    let backdrop_record = &canvas.bd_records[path_id as usize];
+    let bbox = draw.tile_bbox(canvas.width_in_tiles(), canvas.height_in_tiles());
     let stride = backdrop_record.tile_x1 - backdrop_record.tile_x0;
     if stride == 0 {
         return image;

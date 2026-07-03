@@ -19,7 +19,7 @@ pub enum DrawTag {
 /// One drawable path in document order (coarse iterates this list per tile).
 #[derive(Clone, Debug)]
 pub struct DrawRecord {
-    /// Path index in [`Scene`](crate::gpu::scene::Scene), or `None` for non-path draws.
+    /// Path index in [`Canvas`](crate::gpu::canvas::Canvas), or `None` for non-path draws.
     pub path_id: Option<u32>,
     /// Text glyph run index, or `None` for non-text draws.
     pub glyph_run_id: Option<u32>,

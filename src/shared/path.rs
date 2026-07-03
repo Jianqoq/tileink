@@ -1,4 +1,4 @@
-/// Per-path slice into the scene `path_data` byte stream.
+/// Per-path slice into the canvas `path_data` byte stream.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct PathRecord {

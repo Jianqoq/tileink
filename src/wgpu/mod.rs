@@ -8,7 +8,7 @@ mod fine;
 mod profile;
 mod renderer;
 mod scan;
-mod scene;
+mod canvas;
 mod target;
 
 pub use profile::{

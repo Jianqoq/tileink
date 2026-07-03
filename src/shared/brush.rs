@@ -354,7 +354,7 @@ pub(crate) fn estimate_sweep_ramp_size(
 impl PatternBrush {
     /// Creates a pattern brush with a caller-provided world-to-image transform.
     ///
-    /// The transform maps scene coordinates to image pixel coordinates. Images
+    /// The transform maps canvas coordinates to image pixel coordinates. Images
     /// are rejected when either dimension is zero because both CPU and wgpu
     /// samplers require at least one valid texel.
     pub fn new(

@@ -1056,8 +1056,8 @@ mod tests {
 
     #[test]
     fn run_keeps_generated_horizontal_path_dash_backdrops_empty() {
-        let mut scene = Canvas::new(1071, 651);
-        scene.push_stroke(
+        let mut canvas = Canvas::new(1071, 651);
+        canvas.push_stroke(
             KurboLine::new((0.0, 216.5), (652.0, 216.5)).to_path(0.25),
             Stroke::new(1.0).with_dashes(0.0, [1.0_f64, 2.0_f64]),
             Color::BLACK,
@@ -1065,7 +1065,7 @@ mod tests {
             FillRule::NonZero,
             0.25,
         );
-        let record = scene.bd_records[0];
+        let record = canvas.bd_records[0];
         let bbox = TileBbox {
             x0: record.tile_x0,
             y0: record.tile_y0,
@@ -1074,10 +1074,10 @@ mod tests {
         };
 
         let (record, mut backdrops, ranges, segments) = scan_lines_with_flags(
-            &scene.lines,
+            &canvas.lines,
             bbox,
-            scene.tile_cnt,
-            scene.path_records[0].flags,
+            canvas.tile_cnt,
+            canvas.path_records[0].flags,
         );
         run_backdrop_cumsum(&mut backdrops, &[record]);
 

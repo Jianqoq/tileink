@@ -16,8 +16,8 @@ use crate::{
 };
 
 fn render_single_rounded_rect() -> Renderer {
-    let mut scene = Canvas::new(320, 240);
-    scene.push_path(
+    let mut canvas = Canvas::new(320, 240);
+    canvas.push_path(
         RoundedRect::new(48.0, 48.0, 280.0, 200.0, (36.0, 36.0, 8.0, 8.0)).to_path(0.1),
         Color::from_rgb8(37, 99, 235),
         Affine::IDENTITY,
@@ -26,7 +26,7 @@ fn render_single_rounded_rect() -> Renderer {
     );
 
     let mut renderer = Renderer::new(320, 240, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
     renderer
 }
 
@@ -48,11 +48,11 @@ fn render_with_text_rasterizes_scene_text_layout() {
         return;
     }
 
-    let mut scene = Canvas::new(128, 64);
-    scene.push_text_layout(&layout, Point::new(8.0, 32.0), Color::BLACK);
+    let mut canvas = Canvas::new(128, 64);
+    canvas.push_text_layout(&layout, Point::new(8.0, 32.0), Color::BLACK);
 
     let mut renderer = Renderer::new(128, 64, Color::WHITE);
-    renderer.render_with_text(&scene, &mut text_context);
+    renderer.render_with_text(&canvas, &mut text_context);
 
     let has_text_pixel = (0..64).any(|y| {
         (0..128).any(|x| {
@@ -71,11 +71,11 @@ fn render_with_text_rasterizes_emoji_or_fallback_glyphs() {
         return;
     }
 
-    let mut scene = Canvas::new(192, 64);
-    scene.push_text_layout(&layout, Point::new(8.0, 42.0), Color::BLACK);
+    let mut canvas = Canvas::new(192, 64);
+    canvas.push_text_layout(&layout, Point::new(8.0, 42.0), Color::BLACK);
 
     let mut renderer = Renderer::new(192, 64, Color::WHITE);
-    renderer.render_with_text(&scene, &mut text_context);
+    renderer.render_with_text(&canvas, &mut text_context);
 
     let has_non_background_pixel = (0..64).any(|y| {
         (0..192).any(|x| {
@@ -97,8 +97,8 @@ fn render_path_text_rasterizes_vector_outlines_without_text_atlas() {
         return;
     }
 
-    let mut scene = Canvas::new(160, 72);
-    scene.push_text_layout_as_path(
+    let mut canvas = Canvas::new(160, 72);
+    canvas.push_text_layout_as_path(
         &mut text_context,
         &layout,
         Point::new(8.0, 52.0),
@@ -108,7 +108,7 @@ fn render_path_text_rasterizes_vector_outlines_without_text_atlas() {
     );
 
     let mut renderer = Renderer::new(160, 72, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     let has_text_pixel = (0..72).any(|y| {
         (0..160).any(|x| {
@@ -124,8 +124,8 @@ fn render_path_text_rasterizes_vector_outlines_without_text_atlas() {
 
 #[test]
 fn render_push_image_samples_external_image() {
-    let mut scene = Canvas::new(4, 2);
-    scene
+    let mut canvas = Canvas::new(4, 2);
+    canvas
         .push_image_with_sampling(
             Rect::new(0.0, 0.0, 4.0, 2.0),
             Image::from_rgba8(
@@ -141,7 +141,7 @@ fn render_push_image_samples_external_image() {
         .expect("push image");
 
     let mut renderer = Renderer::new(4, 2, Color::TRANSPARENT);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(1, 1), [255, 0, 0, 255]);
     assert_eq!(renderer.image().rgba8_at(3, 1), [0, 0, 128, 128]);
@@ -163,8 +163,8 @@ fn rounded_rect_top_right_keeps_outside_empty() {
 
 #[test]
 fn plain_rect_right_edge_keeps_inside_filled() {
-    let mut scene = Canvas::new(320, 240);
-    scene.push_path(
+    let mut canvas = Canvas::new(320, 240);
+    canvas.push_path(
         Rect::new(48.0, 48.0, 280.0, 200.0).to_path(0.0),
         Color::from_rgb8(37, 99, 235),
         Affine::IDENTITY,
@@ -173,7 +173,7 @@ fn plain_rect_right_edge_keeps_inside_filled() {
     );
 
     let mut renderer = Renderer::new(320, 240, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(279, 60), [37, 99, 235, 255]);
     assert_eq!(renderer.image().rgba8_at(280, 60), [255, 255, 255, 255]);
@@ -190,11 +190,11 @@ fn append_places_path_scene_at_position() {
         0.0,
     );
 
-    let mut scene = Canvas::new(40, 32);
-    scene.append(&child, (17.0, 5.0));
+    let mut canvas = Canvas::new(40, 32);
+    canvas.append(&child, (17.0, 5.0));
 
     let mut renderer = Renderer::new(40, 32, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(16, 5), [255, 255, 255, 255]);
     assert_eq!(renderer.image().rgba8_at(17, 5), [255, 0, 0, 255]);
@@ -211,11 +211,11 @@ fn append_does_not_clip_to_child_scene_canvas() {
         Color::from_rgb8(0, 0, 255),
     );
 
-    let mut scene = Canvas::new(40, 40);
-    scene.append(&child, (10.0, 10.0));
+    let mut canvas = Canvas::new(40, 40);
+    canvas.append(&child, (10.0, 10.0));
 
     let mut renderer = Renderer::new(40, 40, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(17, 18), [255, 255, 255, 255]);
     assert_eq!(renderer.image().rgba8_at(18, 18), [0, 0, 255, 255]);
@@ -232,18 +232,18 @@ fn append_inside_open_layer_stays_inside_that_layer() {
         Color::from_rgb8(255, 0, 0),
     );
 
-    let mut scene = Canvas::new(40, 32);
-    scene.push_clip_layer(
+    let mut canvas = Canvas::new(40, 32);
+    canvas.push_clip_layer(
         Rect::new(0.0, 0.0, 20.0, 32.0).to_path(0.0),
         Affine::IDENTITY,
         FillRule::NonZero,
         0.0,
     );
-    scene.append(&child, (10.0, 8.0));
-    scene.pop_layer();
+    canvas.append(&child, (10.0, 8.0));
+    canvas.pop_layer();
 
     let mut renderer = Renderer::new(40, 32, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(19, 10), [255, 0, 0, 255]);
     assert_eq!(renderer.image().rgba8_at(20, 10), [255, 255, 255, 255]);
@@ -260,11 +260,11 @@ fn append_moves_linear_gradient_with_child_scene() {
         Brush::from_gradient(&gradient),
     );
 
-    let mut scene = Canvas::new(40, 4);
-    scene.append(&child, (20.0, 0.0));
+    let mut canvas = Canvas::new(40, 4);
+    canvas.append(&child, (20.0, 0.0));
 
     let mut renderer = Renderer::new(40, 4, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     let left = renderer.image().rgba8_at(21, 2);
     let right = renderer.image().rgba8_at(35, 2);
@@ -277,24 +277,24 @@ fn append_moves_linear_gradient_with_child_scene() {
 
 #[test]
 fn clip_layer_masks_child_fill() {
-    let mut scene = Canvas::new(96, 96);
-    scene.push_clip_layer(
+    let mut canvas = Canvas::new(96, 96);
+    canvas.push_clip_layer(
         Rect::new(24.0, 24.0, 72.0, 72.0).to_path(0.0),
         Affine::IDENTITY,
         FillRule::NonZero,
         0.0,
     );
-    scene.push_path(
+    canvas.push_path(
         Rect::new(8.0, 8.0, 88.0, 88.0).to_path(0.0),
         Color::from_rgb8(37, 99, 235),
         Affine::IDENTITY,
         FillRule::NonZero,
         0.0,
     );
-    scene.pop_layer();
+    canvas.pop_layer();
 
     let mut renderer = Renderer::new(96, 96, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(48, 48), [37, 99, 235, 255]);
     assert_eq!(renderer.image().rgba8_at(12, 48), [255, 255, 255, 255]);
@@ -302,17 +302,17 @@ fn clip_layer_masks_child_fill() {
 
 #[test]
 fn sdf_rect_clip_masks_child_fill() {
-    let mut scene = Canvas::new(96, 96);
-    scene.push_clip_sdf_rect_layer(Rect::new(24.0, 24.0, 72.0, 72.0), Radius::ZERO);
-    scene.push_rect(
+    let mut canvas = Canvas::new(96, 96);
+    canvas.push_clip_sdf_rect_layer(Rect::new(24.0, 24.0, 72.0, 72.0), Radius::ZERO);
+    canvas.push_rect(
         Rect::new(8.0, 8.0, 88.0, 88.0),
         crate::Radius::ZERO,
         Color::from_rgb8(37, 99, 235),
     );
-    scene.pop_layer();
+    canvas.pop_layer();
 
     let mut renderer = Renderer::new(96, 96, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(48, 48), [37, 99, 235, 255]);
     assert_eq!(renderer.image().rgba8_at(12, 48), [255, 255, 255, 255]);
@@ -320,17 +320,17 @@ fn sdf_rect_clip_masks_child_fill() {
 
 #[test]
 fn sdf_circle_clip_masks_child_fill() {
-    let mut scene = Canvas::new(96, 96);
-    scene.push_clip_sdf_circle_layer(Circle::new((48.0, 48.0), 24.0));
-    scene.push_rect(
+    let mut canvas = Canvas::new(96, 96);
+    canvas.push_clip_sdf_circle_layer(Circle::new((48.0, 48.0), 24.0));
+    canvas.push_rect(
         Rect::new(0.0, 0.0, 96.0, 96.0),
         crate::Radius::ZERO,
         Color::from_rgb8(37, 99, 235),
     );
-    scene.pop_layer();
+    canvas.pop_layer();
 
     let mut renderer = Renderer::new(96, 96, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(48, 48), [37, 99, 235, 255]);
     assert_eq!(renderer.image().rgba8_at(12, 48), [255, 255, 255, 255]);
@@ -338,17 +338,17 @@ fn sdf_circle_clip_masks_child_fill() {
 
 #[test]
 fn sdf_rect_clip_keeps_subpixel_edge_coverage() {
-    let mut scene = Canvas::new(48, 48);
-    scene.push_clip_sdf_rect_layer(Rect::new(16.25, 8.0, 32.25, 40.0), Radius::ZERO);
-    scene.push_rect(
+    let mut canvas = Canvas::new(48, 48);
+    canvas.push_clip_sdf_rect_layer(Rect::new(16.25, 8.0, 32.25, 40.0), Radius::ZERO);
+    canvas.push_rect(
         Rect::new(0.0, 0.0, 48.0, 48.0),
         crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
     );
-    scene.pop_layer();
+    canvas.pop_layer();
 
     let mut renderer = Renderer::new(48, 48, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     let edge = renderer.image().rgba8_at(16, 24);
     assert_eq!(renderer.image().rgba8_at(15, 24), [255, 255, 255, 255]);
@@ -363,17 +363,17 @@ fn sdf_rect_clip_keeps_subpixel_edge_coverage() {
 
 #[test]
 fn sdf_rounded_rect_clip_masks_corners() {
-    let mut scene = Canvas::new(96, 96);
-    scene.push_clip_sdf_rect_layer(Rect::new(16.0, 16.0, 80.0, 80.0), Radius::all(16.0));
-    scene.push_rect(
+    let mut canvas = Canvas::new(96, 96);
+    canvas.push_clip_sdf_rect_layer(Rect::new(16.0, 16.0, 80.0, 80.0), Radius::all(16.0));
+    canvas.push_rect(
         Rect::new(0.0, 0.0, 96.0, 96.0),
         crate::Radius::ZERO,
         Color::from_rgb8(37, 99, 235),
     );
-    scene.pop_layer();
+    canvas.pop_layer();
 
     let mut renderer = Renderer::new(96, 96, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(48, 48), [37, 99, 235, 255]);
     assert_eq!(renderer.image().rgba8_at(17, 17), [255, 255, 255, 255]);
@@ -381,22 +381,22 @@ fn sdf_rounded_rect_clip_masks_corners() {
 
 #[test]
 fn outer_sdf_clip_applies_to_filter_output_analytically() {
-    let mut scene = Canvas::new(16, 16);
-    scene.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, 8.0, 16.0), Radius::ZERO);
-    scene.push_filter_layer(
+    let mut canvas = Canvas::new(16, 16);
+    canvas.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, 8.0, 16.0), Radius::ZERO);
+    canvas.push_filter_layer(
         Filter::Invert(1.0),
         Region::rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::ZERO),
     );
-    scene.push_rect(
+    canvas.push_rect(
         Rect::new(0.0, 0.0, 16.0, 16.0),
         crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
     );
-    scene.pop_layer();
-    scene.pop_layer();
+    canvas.pop_layer();
+    canvas.pop_layer();
 
     let mut renderer = Renderer::new(16, 16, Color::TRANSPARENT);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(4, 8), [0, 255, 255, 255]);
     assert_eq!(renderer.image().rgba8_at(12, 8), [0, 0, 0, 0]);
@@ -404,8 +404,8 @@ fn outer_sdf_clip_applies_to_filter_output_analytically() {
 
 #[test]
 fn sdf_rect_stroke_renders_ring_without_filling_center() {
-    let mut scene = Canvas::new(64, 64);
-    scene.push_rect_stroke(
+    let mut canvas = Canvas::new(64, 64);
+    canvas.push_rect_stroke(
         Rect::new(16.0, 16.0, 48.0, 48.0),
         Radius::ZERO,
         Stroke::new(6.0),
@@ -413,7 +413,7 @@ fn sdf_rect_stroke_renders_ring_without_filling_center() {
     );
 
     let mut renderer = Renderer::new(64, 64, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(16, 32), [255, 0, 0, 255]);
     assert_eq!(renderer.image().rgba8_at(32, 32), [255, 255, 255, 255]);
@@ -423,11 +423,11 @@ fn sdf_rect_stroke_renders_ring_without_filling_center() {
 #[test]
 fn sdf_candlestick_renders_centered_one_pixel_wick_and_body() {
     let red = Color::from_rgb8(220, 64, 72);
-    let mut scene = Canvas::new(40, 36);
-    scene.push_candlestick(CandleStick::new(16.5, 4.0, 28.0, 10.0, 22.0, 7, 1), red);
+    let mut canvas = Canvas::new(40, 36);
+    canvas.push_candlestick(CandleStick::new(16.5, 4.0, 28.0, 10.0, 22.0, 7, 1), red);
 
     let mut renderer = Renderer::new(40, 36, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(16, 5), [220, 64, 72, 255]);
     assert_eq!(renderer.image().rgba8_at(14, 5), [255, 255, 255, 255]);
@@ -440,11 +440,11 @@ fn sdf_candlestick_renders_centered_one_pixel_wick_and_body() {
 #[test]
 fn sdf_candlestick_accepts_even_body_width_with_custom_wick() {
     let red = Color::from_rgb8(220, 64, 72);
-    let mut scene = Canvas::new(40, 36);
-    scene.push_candlestick(CandleStick::new(16.5, 4.0, 28.0, 10.0, 22.0, 8, 3), red);
+    let mut canvas = Canvas::new(40, 36);
+    canvas.push_candlestick(CandleStick::new(16.5, 4.0, 28.0, 10.0, 22.0, 8, 3), red);
 
     let mut renderer = Renderer::new(40, 36, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(15, 5), [220, 64, 72, 255]);
     assert_eq!(renderer.image().rgba8_at(17, 5), [220, 64, 72, 255]);
@@ -457,21 +457,21 @@ fn sdf_candlestick_accepts_even_body_width_with_custom_wick() {
 
 #[test]
 fn sdf_rect_shadow_renders_soft_offset_shadow_as_separate_draw() {
-    let mut scene = Canvas::new(72, 56);
-    scene.push_rect_shadow(
+    let mut canvas = Canvas::new(72, 56);
+    canvas.push_rect_shadow(
         Rect::new(16.0, 12.0, 40.0, 36.0),
         Radius::all(4.0),
         RectShadowOptions::new(4.0, 4.0, 4.0, 0.5),
         Color::BLACK,
     );
-    scene.push_rect(
+    canvas.push_rect(
         Rect::new(16.0, 12.0, 40.0, 36.0),
         crate::Radius::ZERO,
         Color::from_rgb8(220, 64, 72),
     );
 
     let mut renderer = Renderer::new(72, 56, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(24, 24), [220, 64, 72, 255]);
     let near_shadow = renderer.image().rgba8_at(46, 28);
@@ -489,8 +489,8 @@ fn sdf_rect_shadow_renders_soft_offset_shadow_as_separate_draw() {
 #[test]
 fn sdf_line_renders_centered_one_pixel_butt_stroke() {
     let red = Color::from_rgb8(220, 64, 72);
-    let mut scene = Canvas::new(40, 36);
-    scene.push_line(
+    let mut canvas = Canvas::new(40, 36);
+    canvas.push_line(
         SdfLine::new(
             Point::new(8.0, 16.5),
             Point::new(24.0, 16.5),
@@ -501,7 +501,7 @@ fn sdf_line_renders_centered_one_pixel_butt_stroke() {
     );
 
     let mut renderer = Renderer::new(40, 36, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(8, 16), [220, 64, 72, 255]);
     assert_eq!(renderer.image().rgba8_at(23, 16), [220, 64, 72, 255]);
@@ -514,8 +514,8 @@ fn sdf_line_renders_centered_one_pixel_butt_stroke() {
 #[test]
 fn sdf_dash_line_renders_dashes_and_gaps() {
     let red = Color::from_rgb8(220, 64, 72);
-    let mut scene = Canvas::new(48, 36);
-    scene.push_dash_line(
+    let mut canvas = Canvas::new(48, 36);
+    canvas.push_dash_line(
         SdfDashLine::new(
             Point::new(8.0, 16.5),
             Point::new(32.0, 16.5),
@@ -528,7 +528,7 @@ fn sdf_dash_line_renders_dashes_and_gaps() {
     );
 
     let mut renderer = Renderer::new(48, 36, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(8, 16), [220, 64, 72, 255]);
     assert_eq!(renderer.image().rgba8_at(11, 16), [220, 64, 72, 255]);
@@ -541,8 +541,8 @@ fn sdf_dash_line_renders_dashes_and_gaps() {
 #[test]
 fn sdf_dash_line_with_zero_gap_renders_as_solid_line() {
     let red = Color::from_rgb8(220, 64, 72);
-    let mut scene = Canvas::new(40, 36);
-    scene.push_dash_line(
+    let mut canvas = Canvas::new(40, 36);
+    canvas.push_dash_line(
         SdfDashLine::new(
             Point::new(8.0, 16.5),
             Point::new(24.0, 16.5),
@@ -555,7 +555,7 @@ fn sdf_dash_line_with_zero_gap_renders_as_solid_line() {
     );
 
     let mut renderer = Renderer::new(40, 36, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(8, 16), [220, 64, 72, 255]);
     assert_eq!(renderer.image().rgba8_at(12, 16), [220, 64, 72, 255]);
@@ -566,8 +566,8 @@ fn sdf_dash_line_with_zero_gap_renders_as_solid_line() {
 
 #[test]
 fn solid_horizontal_path_stroke_at_tile_top_stays_thin() {
-    let mut scene = Canvas::new(300, 300);
-    scene.push_stroke(
+    let mut canvas = Canvas::new(300, 300);
+    canvas.push_stroke(
         Line::new((20.2, 96.5), (180.5, 96.5)).to_path(0.25),
         Stroke::new(1.0),
         Color::from_rgb8(0, 128, 0),
@@ -577,7 +577,7 @@ fn solid_horizontal_path_stroke_at_tile_top_stays_thin() {
     );
 
     let mut renderer = Renderer::new(300, 300, Color::TRANSPARENT);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert!(renderer.image().rgba8_at(48, 144)[3] > 0);
     assert!(renderer.image().rgba8_at(48, 145)[3] > 0);
@@ -593,13 +593,13 @@ fn dashed_path_stroke_does_not_fill_whole_tiles_at_integer_edges() {
     let chart_width = 652.0;
     let chart_height = 515.0;
     let close_y = 216.5;
-    let mut scene = Canvas::new(1071, 651);
-    scene.push_rect(
+    let mut canvas = Canvas::new(1071, 651);
+    canvas.push_rect(
         Rect::new(0.0, 0.0, 1071.0, 651.0),
         Radius::ZERO,
         Color::from_rgb8(248, 249, 251),
     );
-    scene.push_rect(
+    canvas.push_rect(
         Rect::new(
             chart_x,
             chart_y,
@@ -609,7 +609,7 @@ fn dashed_path_stroke_does_not_fill_whole_tiles_at_integer_edges() {
         Radius::ZERO,
         Color::from_rgb8(244, 245, 247),
     );
-    scene.push_stroke(
+    canvas.push_stroke(
         Line::new((0.0, close_y), (chart_width, close_y)).to_path(0.25),
         Stroke::new(1.0).with_dashes(0.0, [1.0_f64, 2.0_f64]),
         Color::BLACK,
@@ -619,7 +619,7 @@ fn dashed_path_stroke_does_not_fill_whole_tiles_at_integer_edges() {
     );
 
     let mut renderer = Renderer::new(1071, 651, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     let y0 = (chart_y + close_y).floor() as u32;
     let mut dark_pixels = 0u32;
@@ -653,13 +653,13 @@ fn solid_crosshair_path_stroke_does_not_fill_tiles_below_horizontal_line() {
     let chart_height = 515.0;
     let crosshair_x = 487.0;
     let crosshair_y = 145.5;
-    let mut scene = Canvas::new(2128, 651);
-    scene.push_rect(
+    let mut canvas = Canvas::new(2128, 651);
+    canvas.push_rect(
         Rect::new(0.0, 0.0, 2128.0, 651.0),
         Radius::ZERO,
         Color::from_rgb8(248, 249, 251),
     );
-    scene.push_rect(
+    canvas.push_rect(
         Rect::new(
             chart_x,
             chart_y,
@@ -673,7 +673,7 @@ fn solid_crosshair_path_stroke_does_not_fill_tiles_below_horizontal_line() {
     let transform = Affine::translate((chart_x, chart_y));
     let stroke = Stroke::new(1.0);
     let brush = Color::from_rgb8(0, 128, 255);
-    scene.push_stroke(
+    canvas.push_stroke(
         Line::new((crosshair_x, 0.0), (crosshair_x, chart_height)),
         stroke.clone(),
         brush,
@@ -681,7 +681,7 @@ fn solid_crosshair_path_stroke_does_not_fill_tiles_below_horizontal_line() {
         FillRule::NonZero,
         0.25,
     );
-    scene.push_stroke(
+    canvas.push_stroke(
         Line::new((0.0, crosshair_y), (chart_width, crosshair_y)),
         stroke,
         brush,
@@ -691,7 +691,7 @@ fn solid_crosshair_path_stroke_does_not_fill_tiles_below_horizontal_line() {
     );
 
     let mut renderer = Renderer::new(2128, 651, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     let y0 = (chart_y + crosshair_y).floor() as u32;
     let vx = (chart_x + crosshair_x).round() as u32;
@@ -723,8 +723,8 @@ fn solid_crosshair_path_stroke_does_not_fill_tiles_below_horizontal_line() {
 #[test]
 fn sdf_line_square_cap_extends_by_half_width() {
     let red = Color::from_rgb8(220, 64, 72);
-    let mut scene = Canvas::new(40, 36);
-    scene.push_line(
+    let mut canvas = Canvas::new(40, 36);
+    canvas.push_line(
         SdfLine::new(
             Point::new(8.0, 16.5),
             Point::new(24.0, 16.5),
@@ -735,7 +735,7 @@ fn sdf_line_square_cap_extends_by_half_width() {
     );
 
     let mut renderer = Renderer::new(40, 36, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(7, 16), [220, 64, 72, 255]);
     assert_eq!(renderer.image().rgba8_at(24, 16), [220, 64, 72, 255]);
@@ -746,22 +746,22 @@ fn sdf_line_square_cap_extends_by_half_width() {
 #[test]
 fn sdf_line_shadow_renders_soft_offset_shadow_as_separate_draw() {
     let red = Color::from_rgb8(220, 64, 72);
-    let mut scene = Canvas::new(48, 36);
+    let mut canvas = Canvas::new(48, 36);
     let line = SdfLine::new(
         Point::new(8.0, 16.5),
         Point::new(24.0, 16.5),
         1.0,
         SdfLineCap::Butt,
     );
-    scene.push_line_shadow(
+    canvas.push_line_shadow(
         line,
         RectShadowOptions::new(0.0, 4.0, 4.0, 0.5),
         Color::BLACK,
     );
-    scene.push_line(line, red);
+    canvas.push_line(line, red);
 
     let mut renderer = Renderer::new(48, 36, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(16, 16), [220, 64, 72, 255]);
     let near_shadow = renderer.image().rgba8_at(16, 21);
@@ -779,17 +779,17 @@ fn sdf_line_shadow_renders_soft_offset_shadow_as_separate_draw() {
 #[test]
 fn sdf_circle_shadow_renders_soft_offset_shadow_as_separate_draw() {
     let blue = Color::from_rgb8(0, 128, 255);
-    let mut scene = Canvas::new(72, 56);
+    let mut canvas = Canvas::new(72, 56);
     let circle = Circle::new((32.0, 28.0), 10.0);
-    scene.push_circle_shadow(
+    canvas.push_circle_shadow(
         circle,
         RectShadowOptions::new(4.0, 4.0, 4.0, 0.5),
         Color::BLACK,
     );
-    scene.push_circle(circle, blue);
+    canvas.push_circle(circle, blue);
 
     let mut renderer = Renderer::new(72, 56, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(32, 28), [0, 128, 255, 255]);
     let near_shadow = renderer.image().rgba8_at(47, 32);
@@ -802,8 +802,8 @@ fn sdf_circle_shadow_renders_soft_offset_shadow_as_separate_draw() {
 
 #[test]
 fn sdf_rect_stroke_supports_per_side_widths() {
-    let mut scene = Canvas::new(64, 64);
-    scene.push_rect_stroke_widths(
+    let mut canvas = Canvas::new(64, 64);
+    canvas.push_rect_stroke_widths(
         Rect::new(20.0, 20.0, 44.0, 44.0),
         Radius::ZERO,
         StrokeWidths {
@@ -816,7 +816,7 @@ fn sdf_rect_stroke_supports_per_side_widths() {
     );
 
     let mut renderer = Renderer::new(64, 64, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(16, 32), [255, 0, 0, 255]);
     assert_eq!(renderer.image().rgba8_at(46, 32), [255, 0, 0, 255]);
@@ -828,15 +828,15 @@ fn sdf_rect_stroke_supports_per_side_widths() {
 
 #[test]
 fn sdf_circle_stroke_renders_ring_without_filling_center() {
-    let mut scene = Canvas::new(64, 64);
-    scene.push_circle_stroke(
+    let mut canvas = Canvas::new(64, 64);
+    canvas.push_circle_stroke(
         Circle::new((32.0, 32.0), 14.0),
         Stroke::new(6.0),
         Color::from_rgb8(0, 128, 255),
     );
 
     let mut renderer = Renderer::new(64, 64, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(18, 32), [0, 128, 255, 255]);
     assert_eq!(renderer.image().rgba8_at(32, 32), [255, 255, 255, 255]);
@@ -846,8 +846,8 @@ fn sdf_circle_stroke_renders_ring_without_filling_center() {
 #[test]
 fn sdf_arc_renders_stroked_quarter_arc_without_flattening() {
     let red = Color::from_rgb8(220, 64, 72);
-    let mut scene = Canvas::new(64, 64);
-    scene.push_sdf_arc(
+    let mut canvas = Canvas::new(64, 64);
+    canvas.push_sdf_arc(
         SdfArc::new(
             Point::new(32.0, 32.0),
             12.0,
@@ -860,7 +860,7 @@ fn sdf_arc_renders_stroked_quarter_arc_without_flattening() {
     );
 
     let mut renderer = Renderer::new(64, 64, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(40, 40), [220, 64, 72, 255]);
     assert_eq!(renderer.image().rgba8_at(24, 32), [255, 255, 255, 255]);
@@ -870,7 +870,7 @@ fn sdf_arc_renders_stroked_quarter_arc_without_flattening() {
 #[test]
 fn sdf_arc_shadow_renders_soft_offset_shadow_as_separate_draw() {
     let red = Color::from_rgb8(220, 64, 72);
-    let mut scene = Canvas::new(72, 64);
+    let mut canvas = Canvas::new(72, 64);
     let arc = SdfArc::new(
         Point::new(32.0, 28.0),
         12.0,
@@ -879,15 +879,15 @@ fn sdf_arc_shadow_renders_soft_offset_shadow_as_separate_draw() {
         4.0,
         SdfLineCap::Round,
     );
-    scene.push_arc_shadow(
+    canvas.push_arc_shadow(
         arc,
         RectShadowOptions::new(4.0, 4.0, 4.0, 0.5),
         Color::BLACK,
     );
-    scene.push_sdf_arc(arc, red);
+    canvas.push_sdf_arc(arc, red);
 
     let mut renderer = Renderer::new(72, 64, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(40, 36), [220, 64, 72, 255]);
     let near_shadow = renderer.image().rgba8_at(48, 40);
@@ -900,31 +900,31 @@ fn sdf_arc_shadow_renders_soft_offset_shadow_as_separate_draw() {
 
 #[test]
 fn nested_clip_layers_intersect_child_fill() {
-    let mut scene = Canvas::new(96, 96);
-    scene.push_clip_layer(
+    let mut canvas = Canvas::new(96, 96);
+    canvas.push_clip_layer(
         Rect::new(16.0, 16.0, 80.0, 80.0).to_path(0.0),
         Affine::IDENTITY,
         FillRule::NonZero,
         0.0,
     );
-    scene.push_clip_layer(
+    canvas.push_clip_layer(
         Rect::new(40.0, 8.0, 88.0, 88.0).to_path(0.0),
         Affine::IDENTITY,
         FillRule::NonZero,
         0.0,
     );
-    scene.push_path(
+    canvas.push_path(
         Rect::new(0.0, 0.0, 96.0, 96.0).to_path(0.0),
         Color::from_rgb8(37, 99, 235),
         Affine::IDENTITY,
         FillRule::NonZero,
         0.0,
     );
-    scene.pop_layer();
-    scene.pop_layer();
+    canvas.pop_layer();
+    canvas.pop_layer();
 
     let mut renderer = Renderer::new(96, 96, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(48, 48), [37, 99, 235, 255]);
     assert_eq!(renderer.image().rgba8_at(24, 48), [255, 255, 255, 255]);
@@ -933,27 +933,27 @@ fn nested_clip_layers_intersect_child_fill() {
 
 #[test]
 fn opacity_layer_isolates_offscreen_children() {
-    let mut scene = Canvas::new(16, 16);
+    let mut canvas = Canvas::new(16, 16);
     let full = Rect::new(0.0, 0.0, 16.0, 16.0);
-    scene.push_opacity_layer(full.to_path(0.0), Affine::IDENTITY, 0.0, 0.5);
-    scene.push_rect(full, crate::Radius::ZERO, Color::from_rgb8(0, 128, 0));
-    scene.push_filter_layer(Filter::Opacity(1.0), Region::rect(full, Radius::ZERO));
-    scene.push_rect(full, crate::Radius::ZERO, Color::from_rgb8(0, 0, 255));
-    scene.pop_layer();
-    scene.pop_layer();
+    canvas.push_opacity_layer(full.to_path(0.0), Affine::IDENTITY, 0.0, 0.5);
+    canvas.push_rect(full, crate::Radius::ZERO, Color::from_rgb8(0, 128, 0));
+    canvas.push_filter_layer(Filter::Opacity(1.0), Region::rect(full, Radius::ZERO));
+    canvas.push_rect(full, crate::Radius::ZERO, Color::from_rgb8(0, 0, 255));
+    canvas.pop_layer();
+    canvas.pop_layer();
 
     let mut renderer = Renderer::new(16, 16, Color::TRANSPARENT);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(8, 8), [0, 0, 128, 128]);
 }
 
 #[test]
 fn outer_clip_does_not_clip_filter_source_before_blur() {
-    let mut scene = Canvas::new(96, 96);
+    let mut canvas = Canvas::new(96, 96);
     let clip = Circle::new((48.0, 48.0), 24.0).to_path(0.1);
-    scene.push_clip_layer(clip.clone(), Affine::IDENTITY, FillRule::NonZero, 0.1);
-    scene.push_filter_layer(
+    canvas.push_clip_layer(clip.clone(), Affine::IDENTITY, FillRule::NonZero, 0.1);
+    canvas.push_filter_layer(
         Filter::Blur {
             std_dev_x: 8.0,
             std_dev_y: 8.0,
@@ -965,18 +965,18 @@ fn outer_clip_does_not_clip_filter_source_before_blur() {
             tolerance: 0.1,
         },
     );
-    scene.push_path(
+    canvas.push_path(
         Rect::new(0.0, 0.0, 96.0, 96.0).to_path(0.0),
         Color::from_rgb8(255, 0, 0),
         Affine::IDENTITY,
         FillRule::NonZero,
         0.0,
     );
-    scene.pop_layer();
-    scene.pop_layer();
+    canvas.pop_layer();
+    canvas.pop_layer();
 
     let mut renderer = Renderer::new(96, 96, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(70, 48), [255, 0, 0, 255]);
     assert_eq!(renderer.image().rgba8_at(74, 48), [255, 255, 255, 255]);
@@ -984,9 +984,9 @@ fn outer_clip_does_not_clip_filter_source_before_blur() {
 
 #[test]
 fn filter_blur_outputs_expanded_bounds() {
-    let mut scene = Canvas::new(96, 96);
+    let mut canvas = Canvas::new(96, 96);
     let sample_rect = Rect::new(32.0, 32.0, 64.0, 64.0);
-    scene.push_filter_layer(
+    canvas.push_filter_layer(
         Filter::Blur {
             std_dev_x: 4.0,
             std_dev_y: 4.0,
@@ -994,17 +994,17 @@ fn filter_blur_outputs_expanded_bounds() {
         },
         Region::rect(sample_rect, Radius::ZERO),
     );
-    scene.push_path(
+    canvas.push_path(
         sample_rect.to_path(0.0),
         Color::from_rgb8(255, 0, 0),
         Affine::IDENTITY,
         FillRule::NonZero,
         0.0,
     );
-    scene.pop_layer();
+    canvas.pop_layer();
 
     let mut renderer = Renderer::new(96, 96, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     let expanded_px = renderer.image().rgba8_at(28, 48);
     assert_eq!(expanded_px[0], 255);
@@ -1016,17 +1016,17 @@ fn filter_blur_outputs_expanded_bounds() {
 
 #[test]
 fn filter_offset_preserves_source_outside_canvas() {
-    let mut scene = Canvas::new(48, 16);
+    let mut canvas = Canvas::new(48, 16);
     let source = Rect::new(-16.0, 0.0, 0.0, 16.0);
-    scene.push_filter_layer(
+    canvas.push_filter_layer(
         Filter::Offset { dx: 16.0, dy: 0.0 },
         Region::rect(source, Radius::ZERO),
     );
-    scene.push_rect(source, crate::Radius::ZERO, Color::from_rgb8(255, 0, 0));
-    scene.pop_layer();
+    canvas.push_rect(source, crate::Radius::ZERO, Color::from_rgb8(255, 0, 0));
+    canvas.pop_layer();
 
     let mut renderer = Renderer::new(48, 16, Color::TRANSPARENT);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(0, 8), [255, 0, 0, 255]);
     assert_eq!(renderer.image().rgba8_at(15, 8), [255, 0, 0, 255]);
@@ -1035,17 +1035,17 @@ fn filter_offset_preserves_source_outside_canvas() {
 
 #[test]
 fn filter_offset_with_huge_source_keeps_only_visible_dependency_window() {
-    let mut scene = Canvas::new(64, 16);
+    let mut canvas = Canvas::new(64, 16);
     let source = Rect::new(-100_000.0, 0.0, 100_000.0, 16.0);
-    scene.push_filter_layer(
+    canvas.push_filter_layer(
         Filter::Offset { dx: 20.0, dy: 0.0 },
         Region::rect(source, Radius::ZERO),
     );
-    scene.push_rect(source, crate::Radius::ZERO, Color::from_rgb8(0, 128, 0));
-    scene.pop_layer();
+    canvas.push_rect(source, crate::Radius::ZERO, Color::from_rgb8(0, 128, 0));
+    canvas.pop_layer();
 
     let mut renderer = Renderer::new(64, 16, Color::TRANSPARENT);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(0, 8), [0, 128, 0, 255]);
     assert_eq!(renderer.image().rgba8_at(63, 8), [0, 128, 0, 255]);
@@ -1053,20 +1053,20 @@ fn filter_offset_with_huge_source_keeps_only_visible_dependency_window() {
 
 #[test]
 fn backdrop_filter_samples_existing_target() {
-    let mut scene = Canvas::new(48, 24);
-    scene.push_rect(
+    let mut canvas = Canvas::new(48, 24);
+    canvas.push_rect(
         Rect::new(0.0, 0.0, 48.0, 24.0),
         crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
     );
-    scene.push_backdrop_layer(
+    canvas.push_backdrop_layer(
         Filter::Invert(1.0),
         Region::rect(Rect::new(8.0, 4.0, 32.0, 20.0), Radius::ZERO),
     );
-    scene.pop_layer();
+    canvas.pop_layer();
 
     let mut renderer = Renderer::new(48, 24, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(12, 8), [0, 255, 255, 255]);
     assert_eq!(renderer.image().rgba8_at(4, 8), [255, 0, 0, 255]);
@@ -1074,17 +1074,17 @@ fn backdrop_filter_samples_existing_target() {
 
 #[test]
 fn backdrop_rect_liquid_glass_refracts_rect_edge_without_moving_center() {
-    let mut scene = Canvas::new(64, 32);
+    let mut canvas = Canvas::new(64, 32);
     for x in 0..64 {
         let v = (x * 4) as u8;
-        scene.push_rect(
+        canvas.push_rect(
             Rect::new(f64::from(x), 0.0, f64::from(x + 1), 32.0),
             crate::Radius::ZERO,
             Color::from_rgb8(v, v, v),
         );
     }
 
-    scene.push_backdrop_layer(
+    canvas.push_backdrop_layer(
         Filter::RectLiquidGlass(RectLiquidGlass {
             blur_radius: 0,
             tint: Color::TRANSPARENT,
@@ -1096,10 +1096,10 @@ fn backdrop_rect_liquid_glass_refracts_rect_edge_without_moving_center() {
         }),
         Region::rect(Rect::new(16.0, 4.0, 48.0, 28.0), Radius::all(6.0)),
     );
-    scene.pop_layer();
+    canvas.pop_layer();
 
     let mut renderer = Renderer::new(64, 32, Color::TRANSPARENT);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(8, 16), [32, 32, 32, 255]);
     assert_rgb_close(renderer.image().rgba8_at(32, 16), [128, 128, 128, 255], 1);
@@ -1112,13 +1112,13 @@ fn backdrop_rect_liquid_glass_refracts_rect_edge_without_moving_center() {
 
 #[test]
 fn backdrop_rect_liquid_glass_does_not_shadow_outside_sample_region() {
-    let mut scene = Canvas::new(64, 40);
-    scene.push_rect(
+    let mut canvas = Canvas::new(64, 40);
+    canvas.push_rect(
         Rect::new(0.0, 0.0, 64.0, 40.0),
         crate::Radius::ZERO,
         Color::WHITE,
     );
-    scene.push_backdrop_layer(
+    canvas.push_backdrop_layer(
         Filter::RectLiquidGlass(RectLiquidGlass {
             blur_radius: 0,
             tint: Color::TRANSPARENT,
@@ -1129,10 +1129,10 @@ fn backdrop_rect_liquid_glass_does_not_shadow_outside_sample_region() {
         }),
         Region::rect(Rect::new(16.0, 8.0, 48.0, 24.0), Radius::all(4.0)),
     );
-    scene.pop_layer();
+    canvas.pop_layer();
 
     let mut renderer = Renderer::new(64, 40, Color::TRANSPARENT);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     let outside_region = renderer.image().rgba8_at(32, 30);
     assert_eq!(outside_region, [255, 255, 255, 255]);
@@ -1140,63 +1140,63 @@ fn backdrop_rect_liquid_glass_does_not_shadow_outside_sample_region() {
 
 #[test]
 fn opacity_layer_composites_children_as_isolated_group() {
-    let mut scene = Canvas::new(96, 96);
-    scene.push_opacity_layer(
+    let mut canvas = Canvas::new(96, 96);
+    canvas.push_opacity_layer(
         Rect::new(8.0, 8.0, 88.0, 88.0).to_path(0.0),
         Affine::IDENTITY,
         0.0,
         0.5,
     );
-    scene.push_path(
+    canvas.push_path(
         Rect::new(16.0, 16.0, 64.0, 64.0).to_path(0.0),
         Color::from_rgb8(255, 0, 0),
         Affine::IDENTITY,
         FillRule::NonZero,
         0.0,
     );
-    scene.push_path(
+    canvas.push_path(
         Rect::new(32.0, 32.0, 80.0, 80.0).to_path(0.0),
         Color::from_rgb8(255, 0, 0),
         Affine::IDENTITY,
         FillRule::NonZero,
         0.0,
     );
-    scene.pop_layer();
+    canvas.pop_layer();
 
     let mut renderer = Renderer::new(96, 96, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_rgb_close(renderer.image().rgba8_at(40, 40), [255, 128, 128, 255], 1);
 }
 
 #[test]
 fn blend_layer_composites_tile_group_through_layer_mask() {
-    let mut scene = Canvas::new(96, 96);
-    scene.push_path(
+    let mut canvas = Canvas::new(96, 96);
+    canvas.push_path(
         Rect::new(0.0, 0.0, 96.0, 96.0).to_path(0.0),
         Color::from_rgb8(128, 128, 128),
         Affine::IDENTITY,
         FillRule::NonZero,
         0.0,
     );
-    scene.push_blend_layer(
+    canvas.push_blend_layer(
         Rect::new(16.0, 16.0, 80.0, 80.0).to_path(0.0),
         Affine::IDENTITY,
         0.0,
         Mix::Multiply,
         Compose::SrcOver,
     );
-    scene.push_path(
+    canvas.push_path(
         Rect::new(0.0, 0.0, 96.0, 96.0).to_path(0.0),
         Color::from_rgb8(255, 0, 0),
         Affine::IDENTITY,
         FillRule::NonZero,
         0.0,
     );
-    scene.pop_layer();
+    canvas.pop_layer();
 
     let mut renderer = Renderer::new(96, 96, Color::WHITE);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_rgb_close(renderer.image().rgba8_at(40, 40), [128, 0, 0, 255], 1);
     assert_eq!(renderer.image().rgba8_at(8, 40), [128, 128, 128, 255]);
@@ -1204,24 +1204,24 @@ fn blend_layer_composites_tile_group_through_layer_mask() {
 
 #[test]
 fn blend_layer_isolates_offscreen_children() {
-    let mut scene = Canvas::new(16, 16);
+    let mut canvas = Canvas::new(16, 16);
     let full = Rect::new(0.0, 0.0, 16.0, 16.0);
-    scene.push_rect(full, crate::Radius::ZERO, Color::from_rgb8(128, 128, 128));
-    scene.push_blend_layer(
+    canvas.push_rect(full, crate::Radius::ZERO, Color::from_rgb8(128, 128, 128));
+    canvas.push_blend_layer(
         Rect::new(0.0, 0.0, 8.0, 16.0).to_path(0.0),
         Affine::IDENTITY,
         0.0,
         Mix::Multiply,
         Compose::SrcOver,
     );
-    scene.push_rect(full, crate::Radius::ZERO, Color::from_rgb8(255, 0, 0));
-    scene.push_filter_layer(Filter::Opacity(1.0), Region::rect(full, Radius::ZERO));
-    scene.push_rect(full, crate::Radius::ZERO, Color::from_rgb8(0, 255, 0));
-    scene.pop_layer();
-    scene.pop_layer();
+    canvas.push_rect(full, crate::Radius::ZERO, Color::from_rgb8(255, 0, 0));
+    canvas.push_filter_layer(Filter::Opacity(1.0), Region::rect(full, Radius::ZERO));
+    canvas.push_rect(full, crate::Radius::ZERO, Color::from_rgb8(0, 255, 0));
+    canvas.pop_layer();
+    canvas.pop_layer();
 
     let mut renderer = Renderer::new(16, 16, Color::TRANSPARENT);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_rgb_close(renderer.image().rgba8_at(4, 8), [0, 128, 0, 255], 1);
     assert_eq!(renderer.image().rgba8_at(12, 8), [128, 128, 128, 255]);
@@ -1229,23 +1229,23 @@ fn blend_layer_isolates_offscreen_children() {
 
 #[test]
 fn isolate_layer_gives_child_blend_a_transparent_group_backdrop() {
-    let mut scene = Canvas::new(16, 16);
+    let mut canvas = Canvas::new(16, 16);
     let full = Rect::new(0.0, 0.0, 16.0, 16.0);
-    scene.push_rect(full, crate::Radius::ZERO, Color::from_rgb8(128, 128, 128));
-    scene.push_isolate_layer(full.to_path(0.0), Affine::IDENTITY, 0.0);
-    scene.push_blend_layer(
+    canvas.push_rect(full, crate::Radius::ZERO, Color::from_rgb8(128, 128, 128));
+    canvas.push_isolate_layer(full.to_path(0.0), Affine::IDENTITY, 0.0);
+    canvas.push_blend_layer(
         full.to_path(0.0),
         Affine::IDENTITY,
         0.0,
         Mix::Multiply,
         Compose::SrcOver,
     );
-    scene.push_rect(full, crate::Radius::ZERO, Color::from_rgb8(255, 0, 0));
-    scene.pop_layer();
-    scene.pop_layer();
+    canvas.push_rect(full, crate::Radius::ZERO, Color::from_rgb8(255, 0, 0));
+    canvas.pop_layer();
+    canvas.pop_layer();
 
     let mut renderer = Renderer::new(16, 16, Color::TRANSPARENT);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(8, 8), [255, 0, 0, 255]);
 }
@@ -1259,23 +1259,23 @@ fn mask_layer_applies_alpha_coverage_and_region() {
         Color::from_rgba8(255, 255, 255, 128),
     );
 
-    let mut scene = Canvas::new(16, 16);
-    scene.push_mask_layer(
+    let mut canvas = Canvas::new(16, 16);
+    canvas.push_mask_layer(
         mask_scene,
         Mask {
             region: Region::rect(Rect::new(0.0, 0.0, 8.0, 16.0), Radius::ZERO),
             kind: MaskKind::Alpha,
         },
     );
-    scene.push_rect(
+    canvas.push_rect(
         Rect::new(0.0, 0.0, 16.0, 16.0),
         crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
     );
-    scene.pop_layer();
+    canvas.pop_layer();
 
     let mut renderer = Renderer::new(16, 16, Color::TRANSPARENT);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(4, 8), [128, 0, 0, 128]);
     assert_eq!(renderer.image().rgba8_at(12, 8), [0, 0, 0, 0]);
@@ -1290,23 +1290,23 @@ fn mask_layer_uses_luminance_by_default_semantics() {
         Color::from_rgb8(255, 0, 0),
     );
 
-    let mut scene = Canvas::new(16, 16);
-    scene.push_mask_layer(
+    let mut canvas = Canvas::new(16, 16);
+    canvas.push_mask_layer(
         mask_scene,
         Mask {
             region: Region::rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::ZERO),
             kind: MaskKind::Luminance,
         },
     );
-    scene.push_rect(
+    canvas.push_rect(
         Rect::new(0.0, 0.0, 16.0, 16.0),
         crate::Radius::ZERO,
         Color::from_rgb8(0, 255, 0),
     );
-    scene.pop_layer();
+    canvas.pop_layer();
 
     let mut renderer = Renderer::new(16, 16, Color::TRANSPARENT);
-    renderer.render(&scene);
+    renderer.render(&canvas);
 
     let px = renderer.image().rgba8_at(8, 8);
     assert!(

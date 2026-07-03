@@ -37,7 +37,7 @@ pub enum Filter {
     /// The effect samples the already-rendered backdrop, applies an internal
     /// blurred backdrop copy, then refracts/tints/highlights pixels from the
     /// rectangular filter region edge. It is designed for
-    /// `Scene::push_backdrop_layer` with `Region::Rect`; path regions are
+    /// `Canvas::push_backdrop_layer` with `Region::Rect`; path regions are
     /// rejected because the refraction model depends on rounded-rectangle SDF
     /// normals. Shadow is intentionally not part of this filter; draw a
     /// separate SDF rectangle shadow before the backdrop layer when needed.
@@ -118,7 +118,7 @@ pub enum FilterPrimitiveKind {
     Filter(Box<Filter>),
     /// Produces an image without reading a graph input, matching SVG `feImage`.
     ///
-    /// The brush is sampled in absolute scene coordinates and the primitive
+    /// The brush is sampled in absolute canvas coordinates and the primitive
     /// region clips the output, so later graph primitives can consume it like
     /// any other filter result.
     Image {

@@ -55,7 +55,7 @@ struct TextUpload {
 impl TextUpload {
     fn refill(
         &mut self,
-        scene: &Canvas,
+        canvas: &Canvas,
         text: Option<&PreparedTextData>,
         current_atlas_signature: AtlasSignature,
     ) {
@@ -65,13 +65,13 @@ impl TextUpload {
         };
 
         self.run_starts
-            .extend_from_slice(&scene.columns.text_run_starts);
+            .extend_from_slice(&canvas.columns.text_run_starts);
         self.run_counts
-            .extend_from_slice(&scene.columns.text_run_counts);
-        self.glyph_image_ids.reserve(scene.text_glyphs.len());
-        self.glyph_x.extend_from_slice(&scene.columns.glyph_x);
-        self.glyph_y.extend_from_slice(&scene.columns.glyph_y);
-        for glyph in &scene.text_glyphs {
+            .extend_from_slice(&canvas.columns.text_run_counts);
+        self.glyph_image_ids.reserve(canvas.text_glyphs.len());
+        self.glyph_x.extend_from_slice(&canvas.columns.glyph_x);
+        self.glyph_y.extend_from_slice(&canvas.columns.glyph_y);
+        for glyph in &canvas.text_glyphs {
             self.glyph_image_ids.push(
                 text.image_id_for_cache_key(glyph.cache_key)
                     .unwrap_or(u32::MAX),
@@ -175,40 +175,40 @@ impl WgpuSceneBuffers {
         &mut self,
         device: &::wgpu::Device,
         queue: &::wgpu::Queue,
-        scene: &Canvas,
+        canvas: &Canvas,
         plan: &ExecPlan,
         text: Option<&PreparedTextData>,
         staging: &mut WgpuSceneUploadStaging,
     ) {
-        // Keep scene upload profiling split between CPU-side plan construction and queue uploads.
+        // Keep canvas upload profiling split between CPU-side plan construction and queue uploads.
         profile_cpu("prepare.upload_scene.build_scan_chunks", || {
             build_scan_chunks_into(
-                scene,
+                canvas,
                 &mut staging.scan_chunks,
                 &mut staging.scan_chunk_ranges,
             );
         });
         profile_cpu("prepare.upload_scene.build_cumsum_plan", || {
-            build_cumsum_plan_into(scene, &mut staging.cumsum_plan);
+            build_cumsum_plan_into(canvas, &mut staging.cumsum_plan);
         });
         profile_cpu("prepare.upload_scene.build_tile_draw_bins", || {
             build_tile_draw_bins_into(
-                scene,
+                canvas,
                 &mut staging.tile_draw_bins,
                 &mut staging.tile_draw_cursors,
             );
         });
         profile_cpu("prepare.upload_scene.upload_columns", || {
-            self.upload_columns(device, queue, &scene.columns, text.is_some());
+            self.upload_columns(device, queue, &canvas.columns, text.is_some());
         });
         profile_cpu("prepare.upload_scene.upload_backdrops", || {
-            self.upload_backdrops(device, queue, &scene.bd_records, staging);
+            self.upload_backdrops(device, queue, &canvas.bd_records, staging);
         });
         profile_cpu("prepare.upload_scene.upload_layer_stack", || {
             self.upload_plan_layer_stack(device, queue, &plan.layer_stack_data, staging);
         });
         profile_cpu("prepare.upload_scene.upload_text", || {
-            self.upload_text(device, queue, scene, text, staging);
+            self.upload_text(device, queue, canvas, text, staging);
         });
         profile_cpu("prepare.upload_scene.upload_scan_plan", || {
             self.upload_scan_plan(device, queue, staging);
@@ -232,37 +232,37 @@ impl WgpuSceneBuffers {
             self.line_path_ids.upload(
                 device,
                 queue,
-                "tileink wgpu scene line path ids",
+                "tileink wgpu canvas line path ids",
                 &columns.line_path_ids,
             );
             self.line_p0x.upload(
                 device,
                 queue,
-                "tileink wgpu scene line p0x",
+                "tileink wgpu canvas line p0x",
                 &columns.line_p0x,
             );
             self.line_p0y.upload(
                 device,
                 queue,
-                "tileink wgpu scene line p0y",
+                "tileink wgpu canvas line p0y",
                 &columns.line_p0y,
             );
             self.line_p1x.upload(
                 device,
                 queue,
-                "tileink wgpu scene line p1x",
+                "tileink wgpu canvas line p1x",
                 &columns.line_p1x,
             );
             self.line_p1y.upload(
                 device,
                 queue,
-                "tileink wgpu scene line p1y",
+                "tileink wgpu canvas line p1y",
                 &columns.line_p1y,
             );
             self.path_flags.upload(
                 device,
                 queue,
-                "tileink wgpu scene path flags",
+                "tileink wgpu canvas path flags",
                 &columns.path_flags,
             );
         });
@@ -270,13 +270,13 @@ impl WgpuSceneBuffers {
             self.draw_path_ids.upload(
                 device,
                 queue,
-                "tileink wgpu scene draw path ids",
+                "tileink wgpu canvas draw path ids",
                 &columns.draw_path_ids,
             );
             self.draw_glyph_run_ids.upload(
                 device,
                 queue,
-                "tileink wgpu scene draw glyph run ids",
+                "tileink wgpu canvas draw glyph run ids",
                 if text_enabled {
                     &columns.draw_glyph_run_ids
                 } else {
@@ -286,13 +286,13 @@ impl WgpuSceneBuffers {
             self.draw_glyph_run_ids_without_text.upload(
                 device,
                 queue,
-                "tileink wgpu scene draw glyph run ids without text",
+                "tileink wgpu canvas draw glyph run ids without text",
                 &columns.draw_glyph_run_ids_without_text,
             );
             self.draw_flags.upload(
                 device,
                 queue,
-                "tileink wgpu scene draw flags",
+                "tileink wgpu canvas draw flags",
                 if text_enabled {
                     &columns.draw_flags
                 } else {
@@ -302,108 +302,108 @@ impl WgpuSceneBuffers {
             self.draw_flags_without_text.upload(
                 device,
                 queue,
-                "tileink wgpu scene draw flags without text",
+                "tileink wgpu canvas draw flags without text",
                 &columns.draw_flags_without_text,
             );
             self.draw_brush_colors.upload(
                 device,
                 queue,
-                "tileink wgpu scene draw brush colors",
+                "tileink wgpu canvas draw brush colors",
                 &columns.draw_brush_colors,
             );
             self.draw_pixel_x0.upload(
                 device,
                 queue,
-                "tileink wgpu scene draw pixel x0",
+                "tileink wgpu canvas draw pixel x0",
                 &columns.draw_pixel_x0,
             );
             self.draw_pixel_y0.upload(
                 device,
                 queue,
-                "tileink wgpu scene draw pixel y0",
+                "tileink wgpu canvas draw pixel y0",
                 &columns.draw_pixel_y0,
             );
             self.draw_pixel_x1.upload(
                 device,
                 queue,
-                "tileink wgpu scene draw pixel x1",
+                "tileink wgpu canvas draw pixel x1",
                 &columns.draw_pixel_x1,
             );
             self.draw_pixel_y1.upload(
                 device,
                 queue,
-                "tileink wgpu scene draw pixel y1",
+                "tileink wgpu canvas draw pixel y1",
                 &columns.draw_pixel_y1,
             );
         });
         profile_cpu("prepare.upload_scene.columns.sdf", || {
             let sdf = &columns.sdf;
             self.sdf_refs
-                .upload(device, queue, "tileink wgpu scene sdf refs", &sdf.refs);
+                .upload(device, queue, "tileink wgpu canvas sdf refs", &sdf.refs);
             self.sdf_kinds
-                .upload(device, queue, "tileink wgpu scene sdf kinds", &sdf.kinds);
+                .upload(device, queue, "tileink wgpu canvas sdf kinds", &sdf.kinds);
             self.sdf_x0
-                .upload(device, queue, "tileink wgpu scene sdf x0", &sdf.x0);
+                .upload(device, queue, "tileink wgpu canvas sdf x0", &sdf.x0);
             self.sdf_y0
-                .upload(device, queue, "tileink wgpu scene sdf y0", &sdf.y0);
+                .upload(device, queue, "tileink wgpu canvas sdf y0", &sdf.y0);
             self.sdf_x1
-                .upload(device, queue, "tileink wgpu scene sdf x1", &sdf.x1);
+                .upload(device, queue, "tileink wgpu canvas sdf x1", &sdf.x1);
             self.sdf_y1
-                .upload(device, queue, "tileink wgpu scene sdf y1", &sdf.y1);
+                .upload(device, queue, "tileink wgpu canvas sdf y1", &sdf.y1);
             self.sdf_r0
-                .upload(device, queue, "tileink wgpu scene sdf r0", &sdf.r0);
+                .upload(device, queue, "tileink wgpu canvas sdf r0", &sdf.r0);
             self.sdf_r1
-                .upload(device, queue, "tileink wgpu scene sdf r1", &sdf.r1);
+                .upload(device, queue, "tileink wgpu canvas sdf r1", &sdf.r1);
             self.sdf_r2
-                .upload(device, queue, "tileink wgpu scene sdf r2", &sdf.r2);
+                .upload(device, queue, "tileink wgpu canvas sdf r2", &sdf.r2);
             self.sdf_r3
-                .upload(device, queue, "tileink wgpu scene sdf r3", &sdf.r3);
+                .upload(device, queue, "tileink wgpu canvas sdf r3", &sdf.r3);
             self.sdf_stroke_top.upload(
                 device,
                 queue,
-                "tileink wgpu scene sdf stroke top",
+                "tileink wgpu canvas sdf stroke top",
                 &sdf.stroke_top,
             );
             self.sdf_stroke_right.upload(
                 device,
                 queue,
-                "tileink wgpu scene sdf stroke right",
+                "tileink wgpu canvas sdf stroke right",
                 &sdf.stroke_right,
             );
             self.sdf_stroke_bottom.upload(
                 device,
                 queue,
-                "tileink wgpu scene sdf stroke bottom",
+                "tileink wgpu canvas sdf stroke bottom",
                 &sdf.stroke_bottom,
             );
             self.sdf_stroke_left.upload(
                 device,
                 queue,
-                "tileink wgpu scene sdf stroke left",
+                "tileink wgpu canvas sdf stroke left",
                 &sdf.stroke_left,
             );
             self.sdf_shadow_offset_x.upload(
                 device,
                 queue,
-                "tileink wgpu scene sdf shadow offset x",
+                "tileink wgpu canvas sdf shadow offset x",
                 &sdf.shadow_offset_x,
             );
             self.sdf_shadow_offset_y.upload(
                 device,
                 queue,
-                "tileink wgpu scene sdf shadow offset y",
+                "tileink wgpu canvas sdf shadow offset y",
                 &sdf.shadow_offset_y,
             );
             self.sdf_shadow_expand.upload(
                 device,
                 queue,
-                "tileink wgpu scene sdf shadow expand",
+                "tileink wgpu canvas sdf shadow expand",
                 &sdf.shadow_expand,
             );
             self.sdf_shadow_intensity.upload(
                 device,
                 queue,
-                "tileink wgpu scene sdf shadow intensity",
+                "tileink wgpu canvas sdf shadow intensity",
                 &sdf.shadow_intensity,
             );
         });
@@ -412,19 +412,19 @@ impl WgpuSceneBuffers {
             self.draw_brush_data.upload(
                 device,
                 queue,
-                "tileink wgpu scene draw brush data",
+                "tileink wgpu canvas draw brush data",
                 &brushes.data,
             );
             self.draw_brush_params.upload(
                 device,
                 queue,
-                "tileink wgpu scene draw brush params",
+                "tileink wgpu canvas draw brush params",
                 &brushes.params,
             );
             self.draw_brush_payloads.upload(
                 device,
                 queue,
-                "tileink wgpu scene draw brush payloads",
+                "tileink wgpu canvas draw brush payloads",
                 &brushes.payloads,
             );
         });
@@ -432,25 +432,25 @@ impl WgpuSceneBuffers {
             self.text_run_starts.upload(
                 device,
                 queue,
-                "tileink wgpu scene text run starts",
+                "tileink wgpu canvas text run starts",
                 &columns.text_run_starts,
             );
             self.text_run_counts.upload(
                 device,
                 queue,
-                "tileink wgpu scene text run counts",
+                "tileink wgpu canvas text run counts",
                 &columns.text_run_counts,
             );
             self.glyph_x.upload(
                 device,
                 queue,
-                "tileink wgpu scene glyph x",
+                "tileink wgpu canvas glyph x",
                 &columns.glyph_x,
             );
             self.glyph_y.upload(
                 device,
                 queue,
-                "tileink wgpu scene glyph y",
+                "tileink wgpu canvas glyph y",
                 &columns.glyph_y,
             );
         });
@@ -467,7 +467,7 @@ impl WgpuSceneBuffers {
             device,
             queue,
             &mut self.backdrop_data_offsets,
-            "tileink wgpu scene backdrop data offsets",
+            "tileink wgpu canvas backdrop data offsets",
             &mut staging.u32s,
             records,
             |record| record.data_offset,
@@ -476,7 +476,7 @@ impl WgpuSceneBuffers {
             device,
             queue,
             &mut self.backdrop_data_lens,
-            "tileink wgpu scene backdrop data lens",
+            "tileink wgpu canvas backdrop data lens",
             &mut staging.u32s,
             records,
             |record| record.data_len,
@@ -485,7 +485,7 @@ impl WgpuSceneBuffers {
             device,
             queue,
             &mut self.backdrop_tile_x0,
-            "tileink wgpu scene backdrop tile x0",
+            "tileink wgpu canvas backdrop tile x0",
             &mut staging.u32s,
             records,
             |record| record.tile_x0,
@@ -494,7 +494,7 @@ impl WgpuSceneBuffers {
             device,
             queue,
             &mut self.backdrop_tile_y0,
-            "tileink wgpu scene backdrop tile y0",
+            "tileink wgpu canvas backdrop tile y0",
             &mut staging.u32s,
             records,
             |record| record.tile_y0,
@@ -503,7 +503,7 @@ impl WgpuSceneBuffers {
             device,
             queue,
             &mut self.backdrop_tile_x1,
-            "tileink wgpu scene backdrop tile x1",
+            "tileink wgpu canvas backdrop tile x1",
             &mut staging.u32s,
             records,
             |record| record.tile_x1,
@@ -512,7 +512,7 @@ impl WgpuSceneBuffers {
             device,
             queue,
             &mut self.backdrop_tile_y1,
-            "tileink wgpu scene backdrop tile y1",
+            "tileink wgpu canvas backdrop tile y1",
             &mut staging.u32s,
             records,
             |record| record.tile_y1,
@@ -521,7 +521,7 @@ impl WgpuSceneBuffers {
             device,
             queue,
             &mut self.backdrop_segment_starts,
-            "tileink wgpu scene backdrop segment starts",
+            "tileink wgpu canvas backdrop segment starts",
             &mut staging.u32s,
             records,
             |record| record.segment_start,
@@ -530,7 +530,7 @@ impl WgpuSceneBuffers {
             device,
             queue,
             &mut self.backdrop_segment_capacities,
-            "tileink wgpu scene backdrop segment capacities",
+            "tileink wgpu canvas backdrop segment capacities",
             &mut staging.u32s,
             records,
             |record| record.segment_capacity,
@@ -548,7 +548,7 @@ impl WgpuSceneBuffers {
             device,
             queue,
             &mut self.plan_layer_stack_tags,
-            "tileink wgpu scene plan layer stack tags",
+            "tileink wgpu canvas plan layer stack tags",
             &mut staging.u32s,
             layer_stack,
             |entry| match entry {
@@ -561,7 +561,7 @@ impl WgpuSceneBuffers {
             device,
             queue,
             &mut self.plan_layer_stack_draws,
-            "tileink wgpu scene plan layer stack draws",
+            "tileink wgpu canvas plan layer stack draws",
             &mut staging.u32s,
             layer_stack,
             |entry| match *entry {
@@ -574,7 +574,7 @@ impl WgpuSceneBuffers {
             device,
             queue,
             &mut self.plan_layer_stack_payloads,
-            "tileink wgpu scene plan layer stack payloads",
+            "tileink wgpu canvas plan layer stack payloads",
             &mut staging.u32s,
             layer_stack,
             |entry| encode_layer_payload(*entry),
@@ -585,42 +585,42 @@ impl WgpuSceneBuffers {
         &mut self,
         device: &::wgpu::Device,
         queue: &::wgpu::Queue,
-        scene: &Canvas,
+        canvas: &Canvas,
         text: Option<&PreparedTextData>,
         staging: &mut WgpuSceneUploadStaging,
     ) {
         profile_cpu("prepare.upload_scene.text.refill", || {
-            staging.text.refill(scene, text, self.glyph_atlas_signature);
+            staging.text.refill(canvas, text, self.glyph_atlas_signature);
         });
         profile_cpu("prepare.upload_scene.text.runs", || {
             self.text_run_starts.upload(
                 device,
                 queue,
-                "tileink wgpu scene text run starts",
+                "tileink wgpu canvas text run starts",
                 &staging.text.run_starts,
             );
             self.text_run_counts.upload(
                 device,
                 queue,
-                "tileink wgpu scene text run counts",
+                "tileink wgpu canvas text run counts",
                 &staging.text.run_counts,
             );
             self.glyph_image_ids.upload(
                 device,
                 queue,
-                "tileink wgpu scene glyph image ids",
+                "tileink wgpu canvas glyph image ids",
                 &staging.text.glyph_image_ids,
             );
             self.glyph_x.upload(
                 device,
                 queue,
-                "tileink wgpu scene glyph x",
+                "tileink wgpu canvas glyph x",
                 &staging.text.glyph_x,
             );
             self.glyph_y.upload(
                 device,
                 queue,
-                "tileink wgpu scene glyph y",
+                "tileink wgpu canvas glyph y",
                 &staging.text.glyph_y,
             );
         });
@@ -633,43 +633,43 @@ impl WgpuSceneBuffers {
             self.glyph_image_left.upload(
                 device,
                 queue,
-                "tileink wgpu scene glyph image left",
+                "tileink wgpu canvas glyph image left",
                 &staging.text.image_left,
             );
             self.glyph_image_top.upload(
                 device,
                 queue,
-                "tileink wgpu scene glyph image top",
+                "tileink wgpu canvas glyph image top",
                 &staging.text.image_top,
             );
             self.glyph_image_width.upload(
                 device,
                 queue,
-                "tileink wgpu scene glyph image width",
+                "tileink wgpu canvas glyph image width",
                 &staging.text.image_width,
             );
             self.glyph_image_height.upload(
                 device,
                 queue,
-                "tileink wgpu scene glyph image height",
+                "tileink wgpu canvas glyph image height",
                 &staging.text.image_height,
             );
             self.glyph_image_content.upload(
                 device,
                 queue,
-                "tileink wgpu scene glyph image content",
+                "tileink wgpu canvas glyph image content",
                 &staging.text.image_content,
             );
             self.glyph_image_data_offsets.upload(
                 device,
                 queue,
-                "tileink wgpu scene glyph image data offsets",
+                "tileink wgpu canvas glyph image data offsets",
                 &staging.text.image_data_offsets,
             );
             self.glyph_image_data.upload(
                 device,
                 queue,
-                "tileink wgpu scene glyph image data",
+                "tileink wgpu canvas glyph image data",
                 &staging.text.image_data,
             );
         });
@@ -685,7 +685,7 @@ impl WgpuSceneBuffers {
             device,
             queue,
             &mut self.scan_chunk_path_ids,
-            "tileink wgpu scene scan chunk path ids",
+            "tileink wgpu canvas scan chunk path ids",
             &mut staging.u32s,
             &staging.scan_chunks,
             |chunk| chunk.path_id,
@@ -694,7 +694,7 @@ impl WgpuSceneBuffers {
             device,
             queue,
             &mut self.scan_chunk_backdrop_offsets,
-            "tileink wgpu scene scan chunk backdrop offsets",
+            "tileink wgpu canvas scan chunk backdrop offsets",
             &mut staging.u32s,
             &staging.scan_chunks,
             |chunk| chunk.backdrop_offset,
@@ -703,7 +703,7 @@ impl WgpuSceneBuffers {
             device,
             queue,
             &mut self.scan_chunk_segment_starts,
-            "tileink wgpu scene scan chunk segment starts",
+            "tileink wgpu canvas scan chunk segment starts",
             &mut staging.u32s,
             &staging.scan_chunks,
             |chunk| chunk.segment_start,
@@ -712,7 +712,7 @@ impl WgpuSceneBuffers {
             device,
             queue,
             &mut self.scan_chunk_lens,
-            "tileink wgpu scene scan chunk lens",
+            "tileink wgpu canvas scan chunk lens",
             &mut staging.u32s,
             &staging.scan_chunks,
             |chunk| chunk.len,
@@ -721,7 +721,7 @@ impl WgpuSceneBuffers {
             device,
             queue,
             &mut self.scan_chunk_range_starts,
-            "tileink wgpu scene scan chunk range starts",
+            "tileink wgpu canvas scan chunk range starts",
             &mut staging.u32s,
             &staging.scan_chunk_ranges,
             |range| range.start,
@@ -730,7 +730,7 @@ impl WgpuSceneBuffers {
             device,
             queue,
             &mut self.scan_chunk_range_ends,
-            "tileink wgpu scene scan chunk range ends",
+            "tileink wgpu canvas scan chunk range ends",
             &mut staging.u32s,
             &staging.scan_chunk_ranges,
             |range| range.end,
@@ -746,25 +746,25 @@ impl WgpuSceneBuffers {
         self.cumsum_chunk_backdrop_offsets.upload(
             device,
             queue,
-            "tileink wgpu scene cumsum chunk backdrop offsets",
+            "tileink wgpu canvas cumsum chunk backdrop offsets",
             &staging.cumsum_plan.chunk_backdrop_offsets,
         );
         self.cumsum_chunk_lens.upload(
             device,
             queue,
-            "tileink wgpu scene cumsum chunk lens",
+            "tileink wgpu canvas cumsum chunk lens",
             &staging.cumsum_plan.chunk_lens,
         );
         self.cumsum_row_chunk_starts.upload(
             device,
             queue,
-            "tileink wgpu scene cumsum row chunk starts",
+            "tileink wgpu canvas cumsum row chunk starts",
             &staging.cumsum_plan.row_chunk_starts,
         );
         self.cumsum_row_chunk_ends.upload(
             device,
             queue,
-            "tileink wgpu scene cumsum row chunk ends",
+            "tileink wgpu canvas cumsum row chunk ends",
             &staging.cumsum_plan.row_chunk_ends,
         );
     }
@@ -779,19 +779,19 @@ impl WgpuSceneBuffers {
         self.tile_draw_range_starts.upload(
             device,
             queue,
-            "tileink wgpu scene tile draw range starts",
+            "tileink wgpu canvas tile draw range starts",
             &bins.range_starts,
         );
         self.tile_draw_range_ends.upload(
             device,
             queue,
-            "tileink wgpu scene tile draw range ends",
+            "tileink wgpu canvas tile draw range ends",
             &bins.range_ends,
         );
         self.tile_draw_indices.upload(
             device,
             queue,
-            "tileink wgpu scene tile draw indices",
+            "tileink wgpu canvas tile draw indices",
             &bins.draw_indices,
         );
     }

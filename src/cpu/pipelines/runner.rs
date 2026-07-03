@@ -22,43 +22,43 @@ pub(in crate::cpu) struct CoarseStage<'a> {
 
 pub(in crate::cpu) fn run_scan(
     scan: &ScanCpuPipeline,
-    scene: &crate::canvas::Canvas,
+    canvas: &crate::canvas::Canvas,
     buffers: &mut RasterBuffers,
 ) {
-    buffers.rebuild_tile_draw_bins(scene);
-    let Some(last_bd_record) = scene.bd_records.last().copied() else {
+    buffers.rebuild_tile_draw_bins(canvas);
+    let Some(last_bd_record) = canvas.bd_records.last().copied() else {
         buffers.clear_scan_outputs();
         return;
     };
-    buffers.resize_scan_outputs(scene, last_bd_record);
+    buffers.resize_scan_outputs(canvas, last_bd_record);
     scan.prepare(
-        &scene.lines,
-        &scene.path_records,
-        &scene.bd_records,
+        &canvas.lines,
+        &canvas.path_records,
+        &canvas.bd_records,
         &mut buffers.backdrops,
         &mut buffers.tile_segment_ranges,
         &mut buffers.segments,
         &mut buffers.segments_bump,
         &mut buffers.segment_tile_counts,
         &mut buffers.segment_tile_cursors,
-        (scene.width_in_tiles(), scene.height_in_tiles()),
+        (canvas.width_in_tiles(), canvas.height_in_tiles()),
     )
     .run();
 }
 
 pub(in crate::cpu) fn run_cumsum(
     cumsum: &CumsumCpuPipeline,
-    scene: &crate::canvas::Canvas,
+    canvas: &crate::canvas::Canvas,
     buffers: &mut RasterBuffers,
 ) {
     cumsum
-        .prepare(&mut buffers.backdrops, &scene.bd_records)
+        .prepare(&mut buffers.backdrops, &canvas.bd_records)
         .run();
 }
 
 pub(in crate::cpu) fn run_coarse(
     coarse: &CoarseCpuPipeline,
-    scene: &crate::canvas::Canvas,
+    canvas: &crate::canvas::Canvas,
     stage: CoarseStage<'_>,
     buffers: &mut RasterBuffers,
 ) {
@@ -69,13 +69,13 @@ pub(in crate::cpu) fn run_coarse(
             stage.layer_stack_data,
             stage.layer_stack_range,
             &buffers.tile_draw_bins,
-            &scene.bd_records,
+            &canvas.bd_records,
             &buffers.backdrops,
             &buffers.tile_segment_ranges,
             &mut buffers.tile_ptcl_ranges,
             &mut buffers.tile_ptcls,
             &mut buffers.tile_glyphs,
-            (scene.width_in_tiles(), scene.height_in_tiles()),
+            (canvas.width_in_tiles(), canvas.height_in_tiles()),
             stage.text,
         )
         .run();
@@ -83,7 +83,7 @@ pub(in crate::cpu) fn run_coarse(
 
 pub(in crate::cpu) fn run_fine(
     fine: &FineCpuPipeline,
-    scene: &crate::canvas::Canvas,
+    canvas: &crate::canvas::Canvas,
     target: &mut Image,
     target_bounds: Bounds,
     buffers: &RasterBuffers,
@@ -96,7 +96,7 @@ pub(in crate::cpu) fn run_fine(
         &buffers.segments,
         target,
         target_bounds,
-        (scene.width_in_tiles(), scene.height_in_tiles()),
+        (canvas.width_in_tiles(), canvas.height_in_tiles()),
         text,
     )
     .run();

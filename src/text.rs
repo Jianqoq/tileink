@@ -154,7 +154,7 @@ impl TextContext {
     /// The layout still comes from cosmic-text, so shaping, font fallback, and
     /// ligatures are preserved. Glyphs that exist only as bitmap strikes have no
     /// outline and are skipped; render those through
-    /// [`crate::Scene::push_text_layout`] instead of outline text.
+    /// [`crate::Canvas::push_text_layout`] instead of outline text.
     pub fn layout_outline_path(&mut self, layout: &TextLayout, origin: Point) -> BezPath {
         let mut path = BezPath::new();
         for glyph in layout.glyphs() {
@@ -621,9 +621,9 @@ pub(crate) struct TextGlyph {
 }
 
 impl TextGlyph {
-    fn at_origin(self, origin: Point) -> SceneGlyph {
+    fn at_origin(self, origin: Point) -> CanvasGlyph {
         let (cache_key, x, y) = translated_cache_key(self.cache_key, self.x, self.y, origin);
-        SceneGlyph { cache_key, x, y }
+        CanvasGlyph { cache_key, x, y }
     }
 
     fn image_bounds(self, image: &GlyphRasterImage) -> Bounds {
@@ -638,13 +638,13 @@ impl TextGlyph {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct SceneGlyph {
+pub(crate) struct CanvasGlyph {
     pub(crate) cache_key: CacheKey,
     pub(crate) x: i32,
     pub(crate) y: i32,
 }
 
-impl SceneGlyph {
+impl CanvasGlyph {
     pub(crate) fn translated(self, dx: f64, dy: f64) -> Self {
         let (cache_key, x, y) =
             translated_cache_key(self.cache_key, self.x, self.y, Point::new(dx, dy));
@@ -668,7 +668,7 @@ pub(crate) struct PreparedTextData {
 }
 
 impl PreparedTextData {
-    pub(crate) fn new(glyphs: &[SceneGlyph], runs: &[TextRun], context: &mut TextContext) -> Self {
+    pub(crate) fn new(glyphs: &[CanvasGlyph], runs: &[TextRun], context: &mut TextContext) -> Self {
         let mut image_by_key = HashMap::new();
         let mut images = Vec::new();
         let mut prepared_glyphs = Vec::with_capacity(glyphs.len());
@@ -974,7 +974,7 @@ pub(crate) enum PreparedGlyphContent {
 pub(crate) fn scene_glyphs_at_origin<'a>(
     layout: &'a TextLayout,
     origin: Point,
-) -> impl Iterator<Item = SceneGlyph> + 'a {
+) -> impl Iterator<Item = CanvasGlyph> + 'a {
     layout
         .glyphs()
         .iter()
@@ -987,7 +987,7 @@ pub(crate) fn layout_bounds_at_origin(layout: &TextLayout, origin: Point) -> Bou
         return layout.bounds;
     }
     // Fractional origins can change the subpixel cache bin and shift raster
-    // extents by one pixel, so the scene bounds are deliberately conservative.
+    // extents by one pixel, so the canvas bounds are deliberately conservative.
     Bounds::new(
         layout.bounds.x0 + origin.x.floor() as i32 - 1,
         layout.bounds.y0 + origin.y.floor() as i32 - 1,
@@ -1168,8 +1168,8 @@ mod tests {
             return;
         }
 
-        let mut scene = Canvas::new(180, 80);
-        scene.push_text_layout_as_path(
+        let mut canvas = Canvas::new(180, 80);
+        canvas.push_text_layout_as_path(
             &mut context,
             &layout,
             Point::new(8.0, 52.0),
@@ -1178,11 +1178,11 @@ mod tests {
             0.1,
         );
 
-        assert!(!scene.path_records.is_empty());
-        assert!(scene.text_glyphs.is_empty());
-        assert!(scene.text_runs.is_empty());
-        assert!(scene.draw_records.iter().any(|draw| draw.path_id.is_some()));
-        assert_eq!(scene.draw_records[0].tag, DrawTag::PathGlyph);
+        assert!(!canvas.path_records.is_empty());
+        assert!(canvas.text_glyphs.is_empty());
+        assert!(canvas.text_runs.is_empty());
+        assert!(canvas.draw_records.iter().any(|draw| draw.path_id.is_some()));
+        assert_eq!(canvas.draw_records[0].tag, DrawTag::PathGlyph);
     }
 
     #[test]

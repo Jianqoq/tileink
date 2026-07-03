@@ -8,7 +8,7 @@ use super::{
         WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
     },
     profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope},
-    scene::{WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers, WgpuTileFineBindings},
+    canvas::{WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers, WgpuTileFineBindings},
     target::WgpuTarget,
 };
 

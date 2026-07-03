@@ -792,23 +792,23 @@ mod tests {
             return;
         }
 
-        let mut scene = Canvas::new(160, 64);
-        scene.push_text_layout(&layout, Point::new(2.0, 32.0), Color::WHITE);
-        let text = PreparedTextData::new(&scene.text_glyphs, &scene.text_runs, &mut context);
-        if scene.draw_records.is_empty() {
+        let mut canvas = Canvas::new(160, 64);
+        canvas.push_text_layout(&layout, Point::new(2.0, 32.0), Color::WHITE);
+        let text = PreparedTextData::new(&canvas.text_glyphs, &canvas.text_runs, &mut context);
+        if canvas.draw_records.is_empty() {
             return;
         }
 
         let mut tile_ptcl_ranges = Vec::new();
         let mut tile_ptcls = Vec::new();
         let mut tile_glyphs = Vec::new();
-        let tiles_size = (scene.width_in_tiles(), scene.height_in_tiles());
-        let bins = tile_draw_bins(&scene.draw_records, tiles_size);
+        let tiles_size = (canvas.width_in_tiles(), canvas.height_in_tiles());
+        let bins = tile_draw_bins(&canvas.draw_records, tiles_size);
 
         CoarseCpuPipeline::new()
             .prepare(
-                &scene.draw_records,
-                0..scene.draw_records.len(),
+                &canvas.draw_records,
+                0..canvas.draw_records.len(),
                 &[],
                 0..0,
                 &bins,

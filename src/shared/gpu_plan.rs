@@ -24,7 +24,7 @@ pub(crate) const FINE_LOCAL_CLIP_DEPTH: usize = 4;
 pub(crate) const FINE_LOCAL_GROUP_DEPTH: usize = 2;
 pub(crate) const FINE_GROUP_SPILL_FIELDS: usize = 5;
 
-/// Scene-derived fixed capacities for GPU buffers.
+/// Canvas-derived fixed capacities for GPU buffers.
 ///
 /// GPU compute stages cannot grow vectors while dispatching. This plan keeps
 /// allocation sizes explicit and shared by native wgpu upload paths
@@ -50,31 +50,31 @@ pub(crate) struct GpuBufferLengths {
 }
 
 impl GpuBufferLengths {
-    pub(crate) fn from_scene(scene: &Canvas) -> Self {
-        Self::from_scene_with_text(scene, None)
+    pub(crate) fn from_scene(canvas: &Canvas) -> Self {
+        Self::from_scene_with_text(canvas, None)
     }
 
-    pub(crate) fn from_scene_with_text(scene: &Canvas, text: Option<&PreparedTextData>) -> Self {
-        let tiles_width = scene.width_in_tiles() as usize;
-        let tiles_height = scene.height_in_tiles() as usize;
+    pub(crate) fn from_scene_with_text(canvas: &Canvas, text: Option<&PreparedTextData>) -> Self {
+        let tiles_width = canvas.width_in_tiles() as usize;
+        let tiles_height = canvas.height_in_tiles() as usize;
         let tile_count = tiles_width * tiles_height;
         let coarse_ptcl_capacity =
-            coarse_ptcl_capacity(scene, tiles_width as u32, tiles_height as u32);
+            coarse_ptcl_capacity(canvas, tiles_width as u32, tiles_height as u32);
         let coarse_glyph_capacity =
-            coarse_glyph_capacity(scene, text, tiles_width as u32, tiles_height as u32);
+            coarse_glyph_capacity(canvas, text, tiles_width as u32, tiles_height as u32);
         Self {
-            line_count: scene.lines.len(),
-            path_count: scene.path_records.len(),
-            draw_count: scene.draw_records.len(),
-            backdrop_record_count: scene.bd_records.len(),
-            backdrop_len: scene.backdrop_pool_capacity as usize,
-            segment_capacity: scene.tile_cnt as usize,
-            scan_chunk_count: scene
+            line_count: canvas.lines.len(),
+            path_count: canvas.path_records.len(),
+            draw_count: canvas.draw_records.len(),
+            backdrop_record_count: canvas.bd_records.len(),
+            backdrop_len: canvas.backdrop_pool_capacity as usize,
+            segment_capacity: canvas.tile_cnt as usize,
+            scan_chunk_count: canvas
                 .bd_records
                 .iter()
                 .map(|record| record.data_len.div_ceil(SCAN_CHUNK_SIZE) as usize)
                 .sum(),
-            cumsum_chunk_count: scene
+            cumsum_chunk_count: canvas
                 .bd_records
                 .iter()
                 .map(|record| {
@@ -87,7 +87,7 @@ impl GpuBufferLengths {
                     }
                 })
                 .sum(),
-            cumsum_row_count: scene
+            cumsum_row_count: canvas
                 .bd_records
                 .iter()
                 .map(|record| {
@@ -102,7 +102,7 @@ impl GpuBufferLengths {
             tiles_width,
             tiles_height,
             tile_count,
-            image_pixels: scene.width as usize * scene.height as usize,
+            image_pixels: canvas.width as usize * canvas.height as usize,
         }
     }
 }
@@ -110,7 +110,7 @@ impl GpuBufferLengths {
 /// Per-tile draw references for native coarse binning.
 ///
 /// Coarse used to make every tile scan the whole draw table. These bins keep
-/// each tile's candidate draws in scene order so the GPU only filters local
+/// each tile's candidate draws in canvas order so the GPU only filters local
 /// candidates while preserving compositing order.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct TileDrawBins {
@@ -120,21 +120,21 @@ pub(crate) struct TileDrawBins {
 }
 
 #[cfg(test)]
-pub(crate) fn build_tile_draw_bins(scene: &Canvas) -> TileDrawBins {
+pub(crate) fn build_tile_draw_bins(canvas: &Canvas) -> TileDrawBins {
     let mut bins = TileDrawBins::default();
     let mut cursors = Vec::new();
-    build_tile_draw_bins_into(scene, &mut bins, &mut cursors);
+    build_tile_draw_bins_into(canvas, &mut bins, &mut cursors);
     bins
 }
 
 pub(crate) fn build_tile_draw_bins_into(
-    scene: &Canvas,
+    canvas: &Canvas,
     bins: &mut TileDrawBins,
     cursors: &mut Vec<u32>,
 ) {
     build_tile_draw_bins_for_draws_into(
-        &scene.draw_records,
-        (scene.width_in_tiles(), scene.height_in_tiles()),
+        &canvas.draw_records,
+        (canvas.width_in_tiles(), canvas.height_in_tiles()),
         bins,
         cursors,
     );
@@ -206,7 +206,7 @@ fn for_tile_in_bbox(mut bbox: TileBbox, width_in_tiles: u32, mut visit: impl FnM
 }
 
 fn coarse_glyph_capacity(
-    scene: &Canvas,
+    canvas: &Canvas,
     text: Option<&PreparedTextData>,
     width_in_tiles: u32,
     height_in_tiles: u32,
@@ -215,7 +215,7 @@ fn coarse_glyph_capacity(
         return 0;
     };
 
-    scene
+    canvas
         .draw_records
         .iter()
         .filter(|draw| matches!(draw.tag, DrawTag::Brush))
@@ -254,8 +254,8 @@ fn tile_bbox_intersection_count(a: TileBbox, b: TileBbox) -> usize {
     x1.saturating_sub(x0) as usize * y1.saturating_sub(y0) as usize
 }
 
-fn coarse_ptcl_capacity(scene: &Canvas, width_in_tiles: u32, height_in_tiles: u32) -> usize {
-    let draw_particles = scene
+fn coarse_ptcl_capacity(canvas: &Canvas, width_in_tiles: u32, height_in_tiles: u32) -> usize {
+    let draw_particles = canvas
         .draw_records
         .iter()
         .filter(|draw| {
@@ -267,7 +267,7 @@ fn coarse_ptcl_capacity(scene: &Canvas, width_in_tiles: u32, height_in_tiles: u3
         })
         .map(|draw| draw.tile_bbox(width_in_tiles, height_in_tiles).tile_count() as usize)
         .sum::<usize>();
-    let group_begin_particles = scene
+    let group_begin_particles = canvas
         .draw_records
         .iter()
         .filter(|draw| {
@@ -279,7 +279,7 @@ fn coarse_ptcl_capacity(scene: &Canvas, width_in_tiles: u32, height_in_tiles: u3
         })
         .map(|draw| draw.tile_bbox(width_in_tiles, height_in_tiles).tile_count() as usize)
         .sum::<usize>();
-    let layer_end_particles = scene
+    let layer_end_particles = canvas
         .draw_records
         .iter()
         .filter(|draw| {
@@ -465,7 +465,7 @@ fn graph_scratch_extra(primitives: &[FilterPrimitive]) -> usize {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Pod, Zeroable)]
-pub(crate) struct GpuSceneConfig {
+pub(crate) struct GpuCanvasConfig {
     pub width: u32,
     pub height: u32,
     pub tiles_width: u32,
@@ -484,13 +484,13 @@ pub(crate) struct GpuSceneConfig {
     pub clear_color: u32,
 }
 
-impl GpuSceneConfig {
-    pub(crate) fn new(scene: &Canvas, lengths: GpuBufferLengths, clear_color: u32) -> Self {
+impl GpuCanvasConfig {
+    pub(crate) fn new(canvas: &Canvas, lengths: GpuBufferLengths, clear_color: u32) -> Self {
         Self {
-            width: scene.width,
-            height: scene.height,
-            tiles_width: scene.width_in_tiles(),
-            tiles_height: scene.height_in_tiles(),
+            width: canvas.width,
+            height: canvas.height,
+            tiles_width: canvas.width_in_tiles(),
+            tiles_height: canvas.height_in_tiles(),
             line_count: lengths.line_count as u32,
             path_count: lengths.path_count as u32,
             draw_count: lengths.draw_count as u32,
@@ -524,24 +524,24 @@ pub(crate) struct GpuScanChunkRange {
 }
 
 #[cfg(test)]
-pub(crate) fn build_scan_chunks(scene: &Canvas) -> (Vec<GpuScanChunk>, Vec<GpuScanChunkRange>) {
-    let mut chunks = Vec::with_capacity(GpuBufferLengths::from_scene(scene).scan_chunk_count);
-    let mut ranges = Vec::with_capacity(scene.path_records.len());
-    build_scan_chunks_into(scene, &mut chunks, &mut ranges);
+pub(crate) fn build_scan_chunks(canvas: &Canvas) -> (Vec<GpuScanChunk>, Vec<GpuScanChunkRange>) {
+    let mut chunks = Vec::with_capacity(GpuBufferLengths::from_scene(canvas).scan_chunk_count);
+    let mut ranges = Vec::with_capacity(canvas.path_records.len());
+    build_scan_chunks_into(canvas, &mut chunks, &mut ranges);
     (chunks, ranges)
 }
 
 pub(crate) fn build_scan_chunks_into(
-    scene: &Canvas,
+    canvas: &Canvas,
     chunks: &mut Vec<GpuScanChunk>,
     ranges: &mut Vec<GpuScanChunkRange>,
 ) {
     chunks.clear();
-    chunks.reserve(GpuBufferLengths::from_scene(scene).scan_chunk_count);
+    chunks.reserve(GpuBufferLengths::from_scene(canvas).scan_chunk_count);
     ranges.clear();
-    ranges.resize(scene.path_records.len(), GpuScanChunkRange::default());
+    ranges.resize(canvas.path_records.len(), GpuScanChunkRange::default());
 
-    for record in &scene.bd_records {
+    for record in &canvas.bd_records {
         let range_start = chunks.len() as u32;
         let mut local = 0;
         while local < record.data_len {
@@ -572,14 +572,14 @@ pub(crate) struct GpuCumsumPlan {
 }
 
 #[cfg(test)]
-pub(crate) fn build_cumsum_plan(scene: &Canvas) -> GpuCumsumPlan {
+pub(crate) fn build_cumsum_plan(canvas: &Canvas) -> GpuCumsumPlan {
     let mut plan = GpuCumsumPlan::default();
-    build_cumsum_plan_into(scene, &mut plan);
+    build_cumsum_plan_into(canvas, &mut plan);
     plan
 }
 
-pub(crate) fn build_cumsum_plan_into(scene: &Canvas, plan: &mut GpuCumsumPlan) {
-    let lengths = GpuBufferLengths::from_scene(scene);
+pub(crate) fn build_cumsum_plan_into(canvas: &Canvas, plan: &mut GpuCumsumPlan) {
+    let lengths = GpuBufferLengths::from_scene(canvas);
     plan.chunk_backdrop_offsets.clear();
     plan.chunk_lens.clear();
     plan.row_chunk_starts.clear();
@@ -590,7 +590,7 @@ pub(crate) fn build_cumsum_plan_into(scene: &Canvas, plan: &mut GpuCumsumPlan) {
     plan.row_chunk_starts.reserve(lengths.cumsum_row_count);
     plan.row_chunk_ends.reserve(lengths.cumsum_row_count);
 
-    for record in &scene.bd_records {
+    for record in &canvas.bd_records {
         let stride = record.tile_x1.saturating_sub(record.tile_x0);
         let height = record.tile_y1.saturating_sub(record.tile_y0);
         if stride == 0 || height == 0 {
@@ -629,10 +629,10 @@ mod text_length_tests {
             return;
         }
 
-        let mut scene = Canvas::new(160, 64);
-        scene.push_text_layout(&layout, Point::new(2.0, 32.0), Color::WHITE);
-        let text = PreparedTextData::new(&scene.text_glyphs, &scene.text_runs, &mut context);
-        let lengths = GpuBufferLengths::from_scene_with_text(&scene, Some(&text));
+        let mut canvas = Canvas::new(160, 64);
+        canvas.push_text_layout(&layout, Point::new(2.0, 32.0), Color::WHITE);
+        let text = PreparedTextData::new(&canvas.text_glyphs, &canvas.text_runs, &mut context);
+        let lengths = GpuBufferLengths::from_scene_with_text(&canvas, Some(&text));
 
         let expected = text
             .run_glyph_indices(0)
@@ -640,8 +640,8 @@ mod text_length_tests {
                 let bounds = text.glyph_bounds(glyph_id)?;
                 Some(super::bounds_tile_bbox(
                     bounds,
-                    scene.width_in_tiles(),
-                    scene.height_in_tiles(),
+                    canvas.width_in_tiles(),
+                    canvas.height_in_tiles(),
                 ))
             })
             .map(|bbox| bbox.tile_count() as usize)
@@ -666,8 +666,8 @@ mod tests {
 
     #[test]
     fn scan_chunks_cover_each_backdrop_record_in_fixed_size_tiles() {
-        let mut scene = Canvas::new((SCAN_CHUNK_SIZE + 17) * crate::TILE_SIZE, crate::TILE_SIZE);
-        scene.push_path(
+        let mut canvas = Canvas::new((SCAN_CHUNK_SIZE + 17) * crate::TILE_SIZE, crate::TILE_SIZE);
+        canvas.push_path(
             Rect::new(
                 0.0,
                 0.0,
@@ -681,8 +681,8 @@ mod tests {
             0.0,
         );
 
-        let lengths = GpuBufferLengths::from_scene(&scene);
-        let (chunks, ranges) = build_scan_chunks(&scene);
+        let lengths = GpuBufferLengths::from_scene(&canvas);
+        let (chunks, ranges) = build_scan_chunks(&canvas);
 
         assert_eq!(lengths.scan_chunk_count, 2);
         assert_eq!(chunks.len(), 2);
@@ -697,8 +697,8 @@ mod tests {
     #[test]
     fn cumsum_plan_splits_each_backdrop_row_into_fixed_size_chunks() {
         let row_tiles = CUMSUM_CHUNK_SIZE + 17;
-        let mut scene = Canvas::new(row_tiles * crate::TILE_SIZE, crate::TILE_SIZE * 2);
-        scene.push_path(
+        let mut canvas = Canvas::new(row_tiles * crate::TILE_SIZE, crate::TILE_SIZE * 2);
+        canvas.push_path(
             Rect::new(
                 0.0,
                 0.0,
@@ -712,8 +712,8 @@ mod tests {
             0.0,
         );
 
-        let lengths = GpuBufferLengths::from_scene(&scene);
-        let plan = build_cumsum_plan(&scene);
+        let lengths = GpuBufferLengths::from_scene(&canvas);
+        let plan = build_cumsum_plan(&canvas);
 
         assert_eq!(lengths.cumsum_row_count, 2);
         assert_eq!(lengths.cumsum_chunk_count, 4);
@@ -736,24 +736,24 @@ mod tests {
 
     #[test]
     fn tile_draw_bins_keep_each_tiles_draws_in_scene_order() {
-        let mut scene = Canvas::new(crate::TILE_SIZE * 2, crate::TILE_SIZE);
-        scene.push_rect(
+        let mut canvas = Canvas::new(crate::TILE_SIZE * 2, crate::TILE_SIZE);
+        canvas.push_rect(
             Rect::new(0.0, 0.0, 32.0, 16.0),
             crate::Radius::ZERO,
             Color::BLACK,
         );
-        scene.push_rect(
+        canvas.push_rect(
             Rect::new(16.0, 0.0, 32.0, 16.0),
             crate::Radius::ZERO,
             Color::WHITE,
         );
-        scene.push_rect(
+        canvas.push_rect(
             Rect::new(40.0, 0.0, 48.0, 16.0),
             crate::Radius::ZERO,
             Color::BLACK,
         );
 
-        let bins = build_tile_draw_bins(&scene);
+        let bins = build_tile_draw_bins(&canvas);
 
         assert_eq!(bins.range_starts, vec![0, 1]);
         assert_eq!(bins.range_ends, vec![1, 3]);

@@ -155,7 +155,7 @@ pub(crate) struct DebugScanBuffers<'a> {
 
 pub(crate) fn capture_render_debug(
     backend: &str,
-    scene: &Canvas,
+    canvas: &Canvas,
     final_image: &Image,
     scan: DebugScanBuffers<'_>,
     options: &RenderOptions,
@@ -167,22 +167,22 @@ pub(crate) fn capture_render_debug(
         };
     };
 
-    let tiles = capture_all_tiles(scene, &scan);
+    let tiles = capture_all_tiles(canvas, &scan);
     let mut capture = RenderDebugCapture {
         backend: backend.to_string(),
         output_dir: debug.output_dir.clone(),
         texts: vec![
             RenderDebugText {
                 name: "capture.svg".to_string(),
-                contents: capture_svg(scene),
+                contents: capture_svg(canvas),
             },
             RenderDebugText {
                 name: "tiles.json".to_string(),
-                contents: tiles_json(scene, &tiles),
+                contents: tiles_json(canvas, &tiles),
             },
             RenderDebugText {
                 name: "tiles.svg".to_string(),
-                contents: tiles_svg(scene, &tiles),
+                contents: tiles_svg(canvas, &tiles),
             },
         ],
         images: vec![RenderDebugImage {
@@ -195,9 +195,9 @@ pub(crate) fn capture_render_debug(
 
     if let Some((tile_x, tile_y)) = debug
         .tile()
-        .filter(|&(x, y)| x < scene.width_in_tiles() && y < scene.height_in_tiles())
+        .filter(|&(x, y)| x < canvas.width_in_tiles() && y < canvas.height_in_tiles())
     {
-        let tile = capture_tile_detail(scene, final_image, &scan, tile_x, tile_y);
+        let tile = capture_tile_detail(canvas, final_image, &scan, tile_x, tile_y);
         capture.texts.push(RenderDebugText {
             name: "tile.json".to_string(),
             contents: tile_json(&tile),
@@ -225,14 +225,14 @@ pub(crate) fn capture_render_debug(
     capture
 }
 
-fn capture_all_tiles(scene: &Canvas, scan: &DebugScanBuffers<'_>) -> Vec<DebugTileSummary> {
-    let mut tiles = Vec::with_capacity((scene.width_in_tiles() * scene.height_in_tiles()) as usize);
-    for tile_y in 0..scene.height_in_tiles() {
-        for tile_x in 0..scene.width_in_tiles() {
+fn capture_all_tiles(canvas: &Canvas, scan: &DebugScanBuffers<'_>) -> Vec<DebugTileSummary> {
+    let mut tiles = Vec::with_capacity((canvas.width_in_tiles() * canvas.height_in_tiles()) as usize);
+    for tile_y in 0..canvas.height_in_tiles() {
+        for tile_x in 0..canvas.width_in_tiles() {
             tiles.push(DebugTileSummary {
                 tile_x,
                 tile_y,
-                paths: capture_tile_path_summaries(scene, scan, tile_x, tile_y),
+                paths: capture_tile_path_summaries(canvas, scan, tile_x, tile_y),
             });
         }
     }
@@ -240,14 +240,14 @@ fn capture_all_tiles(scene: &Canvas, scan: &DebugScanBuffers<'_>) -> Vec<DebugTi
 }
 
 fn capture_tile_detail(
-    scene: &Canvas,
+    canvas: &Canvas,
     final_image: &Image,
     scan: &DebugScanBuffers<'_>,
     tile_x: u32,
     tile_y: u32,
 ) -> DebugTileDump {
     let mut tile_alpha = vec![0; (TILE_SIZE * TILE_SIZE) as usize];
-    let paths = capture_tile_path_summaries(scene, scan, tile_x, tile_y)
+    let paths = capture_tile_path_summaries(canvas, scan, tile_x, tile_y)
         .into_iter()
         .map(|summary| {
             let segment_slice = scan
@@ -287,13 +287,13 @@ fn capture_tile_detail(
 }
 
 fn capture_tile_path_summaries(
-    scene: &Canvas,
+    canvas: &Canvas,
     scan: &DebugScanBuffers<'_>,
     tile_x: u32,
     tile_y: u32,
 ) -> Vec<DebugTilePathSummary> {
     let mut paths = Vec::new();
-    for record in &scene.bd_records {
+    for record in &canvas.bd_records {
         if tile_x < record.tile_x0
             || tile_x >= record.tile_x1
             || tile_y < record.tile_y0
@@ -318,12 +318,12 @@ fn capture_tile_path_summaries(
             continue;
         }
 
-        let draw_ix = scene
+        let draw_ix = canvas
             .draw_records
             .iter()
             .position(|draw| draw.path_id == Some(record.path_id));
         let fill_rule = draw_ix
-            .and_then(|ix| scene.draw_records.get(ix))
+            .and_then(|ix| canvas.draw_records.get(ix))
             .map(|draw| draw.fill_rule)
             .unwrap_or(FillRule::NonZero);
         paths.push(DebugTilePathSummary {
@@ -413,11 +413,11 @@ pub fn debug_capture_json(capture: &RenderDebugCapture) -> String {
     )
 }
 
-fn tiles_json(scene: &Canvas, tiles: &[DebugTileSummary]) -> String {
+fn tiles_json(canvas: &Canvas, tiles: &[DebugTileSummary]) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "{{");
-    let _ = writeln!(out, "  \"width_in_tiles\": {},", scene.width_in_tiles());
-    let _ = writeln!(out, "  \"height_in_tiles\": {},", scene.height_in_tiles());
+    let _ = writeln!(out, "  \"width_in_tiles\": {},", canvas.width_in_tiles());
+    let _ = writeln!(out, "  \"height_in_tiles\": {},", canvas.height_in_tiles());
     let _ = writeln!(out, "  \"tiles\": [");
     for (tile_ix, tile) in tiles.iter().enumerate() {
         let comma = if tile_ix + 1 == tiles.len() { "" } else { "," };
@@ -550,11 +550,11 @@ fn write_rgba_rows_json(out: &mut String, rgba: &[[u8; 4]]) {
     out.push(']');
 }
 
-fn capture_svg(scene: &Canvas) -> String {
-    let width = scene.width;
-    let height = scene.height;
-    let width_in_tiles = scene.width_in_tiles();
-    let height_in_tiles = scene.height_in_tiles();
+fn capture_svg(canvas: &Canvas) -> String {
+    let width = canvas.width;
+    let height = canvas.height;
+    let width_in_tiles = canvas.width_in_tiles();
+    let height_in_tiles = canvas.height_in_tiles();
     let mut out = String::new();
     let _ = writeln!(
         out,
@@ -621,10 +621,10 @@ fn inset_grid_line(position: f32, limit: f32, stroke_width: f32) -> f32 {
     }
 }
 
-fn tiles_svg(scene: &Canvas, tiles: &[DebugTileSummary]) -> String {
+fn tiles_svg(canvas: &Canvas, tiles: &[DebugTileSummary]) -> String {
     let tile_px = 28;
-    let width = scene.width_in_tiles() * tile_px + 1;
-    let height = scene.height_in_tiles() * tile_px + 1;
+    let width = canvas.width_in_tiles() * tile_px + 1;
+    let height = canvas.height_in_tiles() * tile_px + 1;
     let mut out = String::new();
     let _ = writeln!(
         out,
@@ -821,8 +821,8 @@ mod tests {
 
     #[test]
     fn cpu_render_with_options_captures_tile_debug_outputs() {
-        let mut scene = Canvas::new(32, 32);
-        scene.push_path(
+        let mut canvas = Canvas::new(32, 32);
+        canvas.push_path(
             Rect::new(4.0, 4.0, 20.0, 20.0).to_path(0.1),
             Color::from_rgb8(0, 128, 0),
             Affine::IDENTITY,
@@ -836,7 +836,7 @@ mod tests {
         };
         let mut renderer = Renderer::new(32, 32, Color::TRANSPARENT);
 
-        let capture = renderer.render_with_options(&scene, &options);
+        let capture = renderer.render_with_options(&canvas, &options);
 
         assert_eq!(capture.backend, "cpu");
         assert_eq!(capture.output_dir, output_dir);
