@@ -5,25 +5,29 @@ use crate::shared::{
     layer::filter::{self as filter_model, Filter},
 };
 
-use super::super::{filter::encode_color_filter, filter_resources::WgpuFilterCursors};
+use super::super::{
+    commands::WgpuCommandBatch, filter::encode_color_filter, filter_resources::WgpuFilterCursors,
+};
 use super::{Renderer, WgpuRenderTargetId, encode_morphology_operator, rect_liquid_glass_region};
 
 impl Renderer {
     pub(super) fn apply_filter_graph(
         &mut self,
+        commands: &mut WgpuCommandBatch,
         target: WgpuRenderTargetId,
         bounds: Bounds,
         primitives: &[filter_model::FilterPrimitive],
         filter_cursors: &mut WgpuFilterCursors,
     ) -> bool {
         if primitives.is_empty() {
-            return self.clear_render_region(target, bounds, 0);
+            return self.clear_render_region(commands, target, bounds, 0);
         }
 
         let mut source_alpha = None;
         let mut outputs = Vec::with_capacity(primitives.len());
         for primitive in primitives {
             let Some(output) = self.apply_filter_graph_primitive(
+                commands,
                 target,
                 bounds,
                 primitive,
@@ -43,8 +47,8 @@ impl Renderer {
         }
 
         let final_output = outputs[outputs.len() - 1];
-        let ok = self.clear_render_region(target, bounds, 0)
-            && self.copy_region_to_target(final_output, target, bounds);
+        let ok = self.clear_render_region(commands, target, bounds, 0)
+            && self.copy_region_to_target(commands, final_output, target, bounds);
         for output in outputs {
             self.release_scratch(output);
         }
@@ -57,6 +61,7 @@ impl Renderer {
     #[allow(clippy::too_many_arguments)]
     fn apply_filter_graph_primitive(
         &mut self,
+        commands: &mut WgpuCommandBatch,
         source_graphic: WgpuRenderTargetId,
         bounds: Bounds,
         primitive: &filter_model::FilterPrimitive,
@@ -68,8 +73,13 @@ impl Renderer {
         match &primitive.kind {
             filter_model::FilterPrimitiveKind::Image { .. } => {
                 let output = self.acquire_scratch()?;
-                self.clear_render_region(output, bounds, 0);
-                if self.flood_region_to_target(output, region, filter_cursors.next_brush_index()) {
+                self.clear_render_region(commands, output, bounds, 0);
+                if self.flood_region_to_target(
+                    commands,
+                    output,
+                    region,
+                    filter_cursors.next_brush_index(),
+                ) {
                     Some(output)
                 } else {
                     self.release_scratch(output);
@@ -78,16 +88,18 @@ impl Renderer {
             }
             filter_model::FilterPrimitiveKind::Identity => {
                 let input = self.resolve_filter_graph_input(
+                    commands,
                     source_graphic,
                     primitive.input,
                     outputs,
                     source_alpha,
                     bounds,
                 )?;
-                self.copy_filter_graph_region(input, bounds, region)
+                self.copy_filter_graph_region(commands, input, bounds, region)
             }
             filter_model::FilterPrimitiveKind::Filter(filter) => {
                 let input = self.resolve_filter_graph_input(
+                    commands,
                     source_graphic,
                     primitive.input,
                     outputs,
@@ -95,18 +107,19 @@ impl Renderer {
                     bounds,
                 )?;
                 let temp = self.acquire_scratch()?;
-                if !self.copy_region_to_target(input, temp, bounds)
-                    || !self.apply_filter(temp, bounds, filter, None, filter_cursors)
+                if !self.copy_region_to_target(commands, input, temp, bounds)
+                    || !self.apply_filter(commands, temp, bounds, filter, None, filter_cursors)
                 {
                     self.release_scratch(temp);
                     return None;
                 }
-                let output = self.copy_filter_graph_region(temp, bounds, region);
+                let output = self.copy_filter_graph_region(commands, temp, bounds, region);
                 self.release_scratch(temp);
                 output
             }
             filter_model::FilterPrimitiveKind::Blend { mode } => {
                 let input = self.resolve_filter_graph_input(
+                    commands,
                     source_graphic,
                     primitive.input,
                     outputs,
@@ -114,6 +127,7 @@ impl Renderer {
                     bounds,
                 )?;
                 let input2 = self.resolve_required_filter_graph_input(
+                    commands,
                     source_graphic,
                     primitive,
                     outputs,
@@ -121,8 +135,8 @@ impl Renderer {
                     bounds,
                 )?;
                 let output = self.acquire_scratch()?;
-                self.clear_render_region(output, bounds, 0);
-                if self.blend_filter_inputs(input, input2, output, region, *mode) {
+                self.clear_render_region(commands, output, bounds, 0);
+                if self.blend_filter_inputs(commands, input, input2, output, region, *mode) {
                     Some(output)
                 } else {
                     self.release_scratch(output);
@@ -131,6 +145,7 @@ impl Renderer {
             }
             filter_model::FilterPrimitiveKind::Composite { operator } => {
                 let input = self.resolve_filter_graph_input(
+                    commands,
                     source_graphic,
                     primitive.input,
                     outputs,
@@ -138,6 +153,7 @@ impl Renderer {
                     bounds,
                 )?;
                 let input2 = self.resolve_required_filter_graph_input(
+                    commands,
                     source_graphic,
                     primitive,
                     outputs,
@@ -145,8 +161,9 @@ impl Renderer {
                     bounds,
                 )?;
                 let output = self.acquire_scratch()?;
-                self.clear_render_region(output, bounds, 0);
-                if self.composite_filter_inputs(input, input2, output, region, *operator) {
+                self.clear_render_region(commands, output, bounds, 0);
+                if self.composite_filter_inputs(commands, input, input2, output, region, *operator)
+                {
                     Some(output)
                 } else {
                     self.release_scratch(output);
@@ -155,6 +172,7 @@ impl Renderer {
             }
             filter_model::FilterPrimitiveKind::Tile { source_region } => {
                 let input = self.resolve_filter_graph_input(
+                    commands,
                     source_graphic,
                     primitive.input,
                     outputs,
@@ -162,8 +180,8 @@ impl Renderer {
                     bounds,
                 )?;
                 let output = self.acquire_scratch()?;
-                self.clear_render_region(output, bounds, 0);
-                if self.tile_filter_input(input, output, region, *source_region) {
+                self.clear_render_region(commands, output, bounds, 0);
+                if self.tile_filter_input(commands, input, output, region, *source_region) {
                     Some(output)
                 } else {
                     self.release_scratch(output);
@@ -172,16 +190,17 @@ impl Renderer {
             }
             filter_model::FilterPrimitiveKind::Merge { inputs } => {
                 let output = self.acquire_scratch()?;
-                self.clear_render_region(output, bounds, 0);
+                self.clear_render_region(commands, output, bounds, 0);
                 for input in inputs {
                     let input = self.resolve_filter_graph_input(
+                        commands,
                         source_graphic,
                         *input,
                         outputs,
                         source_alpha,
                         bounds,
                     )?;
-                    if !self.source_over_filter_input(input, output, region) {
+                    if !self.source_over_filter_input(commands, input, output, region) {
                         self.release_scratch(output);
                         return None;
                     }
@@ -190,6 +209,7 @@ impl Renderer {
             }
             filter_model::FilterPrimitiveKind::DisplacementMap(displacement) => {
                 let input = self.resolve_filter_graph_input(
+                    commands,
                     source_graphic,
                     primitive.input,
                     outputs,
@@ -197,6 +217,7 @@ impl Renderer {
                     bounds,
                 )?;
                 let input2 = self.resolve_required_filter_graph_input(
+                    commands,
                     source_graphic,
                     primitive,
                     outputs,
@@ -204,9 +225,15 @@ impl Renderer {
                     bounds,
                 )?;
                 let output = self.acquire_scratch()?;
-                self.clear_render_region(output, bounds, 0);
-                if self.displacement_map_filter_inputs(input, input2, output, region, displacement)
-                {
+                self.clear_render_region(commands, output, bounds, 0);
+                if self.displacement_map_filter_inputs(
+                    commands,
+                    input,
+                    input2,
+                    output,
+                    region,
+                    displacement,
+                ) {
                     Some(output)
                 } else {
                     self.release_scratch(output);
@@ -215,8 +242,9 @@ impl Renderer {
             }
             filter_model::FilterPrimitiveKind::Turbulence(turbulence) => {
                 let output = self.acquire_scratch()?;
-                self.clear_render_region(output, bounds, 0);
+                self.clear_render_region(commands, output, bounds, 0);
                 if self.turbulence_to_target(
+                    commands,
                     output,
                     region,
                     turbulence,
@@ -233,6 +261,7 @@ impl Renderer {
 
     fn resolve_required_filter_graph_input(
         &mut self,
+        commands: &mut WgpuCommandBatch,
         source_graphic: WgpuRenderTargetId,
         primitive: &filter_model::FilterPrimitive,
         outputs: &[WgpuRenderTargetId],
@@ -240,6 +269,7 @@ impl Renderer {
         bounds: Bounds,
     ) -> Option<WgpuRenderTargetId> {
         self.resolve_filter_graph_input(
+            commands,
             source_graphic,
             primitive.input2?,
             outputs,
@@ -250,6 +280,7 @@ impl Renderer {
 
     fn resolve_filter_graph_input(
         &mut self,
+        commands: &mut WgpuCommandBatch,
         source_graphic: WgpuRenderTargetId,
         input: filter_model::FilterInput,
         outputs: &[WgpuRenderTargetId],
@@ -264,7 +295,7 @@ impl Renderer {
                     return Some(target);
                 }
                 let alpha = self.acquire_scratch()?;
-                if self.source_alpha_to_target(source_graphic, alpha, bounds) {
+                if self.source_alpha_to_target(commands, source_graphic, alpha, bounds) {
                     *source_alpha = Some(alpha);
                     Some(alpha)
                 } else {
@@ -277,13 +308,14 @@ impl Renderer {
 
     fn copy_filter_graph_region(
         &mut self,
+        commands: &mut WgpuCommandBatch,
         input: WgpuRenderTargetId,
         bounds: Bounds,
         region: Bounds,
     ) -> Option<WgpuRenderTargetId> {
         let output = self.acquire_scratch()?;
-        self.clear_render_region(output, bounds, 0);
-        if self.copy_region_to_target(input, output, region.intersect(bounds)) {
+        self.clear_render_region(commands, output, bounds, 0);
+        if self.copy_region_to_target(commands, input, output, region.intersect(bounds)) {
             Some(output)
         } else {
             self.release_scratch(output);
@@ -293,6 +325,7 @@ impl Renderer {
 
     pub(super) fn apply_filter(
         &mut self,
+        commands: &mut WgpuCommandBatch,
         target: WgpuRenderTargetId,
         bounds: Bounds,
         filter: &Filter,
@@ -301,16 +334,16 @@ impl Renderer {
     ) -> bool {
         match filter {
             Filter::Graph { primitives, .. } => {
-                self.apply_filter_graph(target, bounds, primitives, filter_cursors)
+                self.apply_filter_graph(commands, target, bounds, primitives, filter_cursors)
             }
-            Filter::Chain { filters, .. } => filters
-                .iter()
-                .all(|filter| self.apply_filter(target, bounds, filter, region, filter_cursors)),
+            Filter::Chain { filters, .. } => filters.iter().all(|filter| {
+                self.apply_filter(commands, target, bounds, filter, region, filter_cursors)
+            }),
             Filter::RectLiquidGlass(glass) => {
                 let Some(glass_region) = rect_liquid_glass_region(region, bounds) else {
                     return false;
                 };
-                self.apply_liquid_glass(target, bounds, *glass, glass_region)
+                self.apply_liquid_glass(commands, target, bounds, *glass, glass_region)
             }
             Filter::Offset { dx, dy } => {
                 let dx = filter_model::filter_offset_to_pixel_delta(*dx);
@@ -321,8 +354,8 @@ impl Renderer {
                 let Some(temp) = self.acquire_scratch() else {
                     return false;
                 };
-                let ok = self.offset_region_to_target(target, temp, bounds, dx, dy)
-                    && self.copy_region_to_target(temp, target, bounds);
+                let ok = self.offset_region_to_target(commands, target, temp, bounds, dx, dy)
+                    && self.copy_region_to_target(commands, temp, target, bounds);
                 self.release_scratch(temp);
                 ok
             }
@@ -330,14 +363,14 @@ impl Renderer {
                 std_dev_x,
                 std_dev_y,
                 sampling,
-            } => self.apply_blur(target, bounds, *std_dev_x, *std_dev_y, *sampling),
+            } => self.apply_blur(commands, target, bounds, *std_dev_x, *std_dev_y, *sampling),
             Filter::ColorMatrix(matrix) => {
-                self.apply_color_matrix_to_target(target, bounds, *matrix);
+                self.apply_color_matrix_to_target(commands, target, bounds, *matrix);
                 true
             }
             Filter::ComponentTransfer(_) => {
                 let table_index = filter_cursors.next_transfer_index();
-                self.apply_component_transfer_to_target(target, bounds, table_index);
+                self.apply_component_transfer_to_target(commands, target, bounds, table_index);
                 true
             }
             Filter::ConvolveMatrix(matrix) => {
@@ -345,9 +378,14 @@ impl Renderer {
                 let Some(temp) = self.acquire_scratch() else {
                     return false;
                 };
-                let ok =
-                    self.convolve_matrix_to_target(target, temp, bounds, matrix, kernel_offset)
-                        && self.copy_region_to_target(temp, target, bounds);
+                let ok = self.convolve_matrix_to_target(
+                    commands,
+                    target,
+                    temp,
+                    bounds,
+                    matrix,
+                    kernel_offset,
+                ) && self.copy_region_to_target(commands, temp, target, bounds);
                 self.release_scratch(temp);
                 ok
             }
@@ -355,8 +393,8 @@ impl Renderer {
                 let Some(temp) = self.acquire_scratch() else {
                     return false;
                 };
-                let ok = self.diffuse_lighting_to_target(target, temp, bounds, lighting)
-                    && self.copy_region_to_target(temp, target, bounds);
+                let ok = self.diffuse_lighting_to_target(commands, target, temp, bounds, lighting)
+                    && self.copy_region_to_target(commands, temp, target, bounds);
                 self.release_scratch(temp);
                 ok
             }
@@ -364,14 +402,14 @@ impl Renderer {
                 let Some(temp) = self.acquire_scratch() else {
                     return false;
                 };
-                let ok = self.specular_lighting_to_target(target, temp, bounds, lighting)
-                    && self.copy_region_to_target(temp, target, bounds);
+                let ok = self.specular_lighting_to_target(commands, target, temp, bounds, lighting)
+                    && self.copy_region_to_target(commands, temp, target, bounds);
                 self.release_scratch(temp);
                 ok
             }
             Filter::Flood { .. } => {
                 let brush_index = filter_cursors.next_brush_index();
-                self.flood_region_to_target(target, bounds, brush_index)
+                self.flood_region_to_target(commands, target, bounds, brush_index)
             }
             Filter::DropShadow {
                 offset_x,
@@ -379,6 +417,7 @@ impl Renderer {
                 std_dev,
                 ..
             } => self.apply_drop_shadow(
+                commands,
                 target,
                 bounds,
                 *offset_x,
@@ -400,7 +439,7 @@ impl Renderer {
                     && (raw_radius_x.saturating_mul(2) >= self.size.0
                         || raw_radius_y.saturating_mul(2) >= self.size.1)
                 {
-                    return self.clear_render_region(target, bounds, 0);
+                    return self.clear_render_region(commands, target, bounds, 0);
                 }
 
                 let Some(temp) = self.acquire_scratch() else {
@@ -410,15 +449,16 @@ impl Renderer {
                     self.release_scratch(temp);
                     return false;
                 };
-                self.clear_render_target(temp, 0);
-                self.clear_render_target(output, 0);
+                self.clear_render_target(commands, temp, 0);
+                self.clear_render_target(commands, output, 0);
                 let radius_x = raw_radius_x.min(self.size.0.saturating_sub(1));
                 let radius_y = raw_radius_y.min(self.size.1.saturating_sub(1));
                 let operator = encode_morphology_operator(*operator);
-                let ok = self
-                    .morphology_axis_to_target(target, temp, bounds, radius_x, operator, 0)
-                    && self.morphology_axis_to_target(temp, output, bounds, radius_y, operator, 1)
-                    && self.copy_region_to_target(output, target, bounds);
+                let ok = self.morphology_axis_to_target(
+                    commands, target, temp, bounds, radius_x, operator, 0,
+                ) && self.morphology_axis_to_target(
+                    commands, temp, output, bounds, radius_y, operator, 1,
+                ) && self.copy_region_to_target(commands, output, target, bounds);
                 self.release_scratch(output);
                 self.release_scratch(temp);
                 ok
@@ -427,19 +467,23 @@ impl Renderer {
                 let Some((filter_kind, amount)) = encode_color_filter(filter) else {
                     return false;
                 };
-                self.apply_color_filter_to_target(target, bounds, filter_kind, amount);
+                self.apply_color_filter_to_target(commands, target, bounds, filter_kind, amount);
                 true
             }
         }
     }
 
-    pub(super) fn clear_render_target(&self, target: WgpuRenderTargetId, color: u32) -> bool {
+    pub(super) fn clear_render_target(
+        &self,
+        commands: &mut WgpuCommandBatch,
+        target: WgpuRenderTargetId,
+        color: u32,
+    ) -> bool {
         let Some(filter) = &self.filter else {
             return false;
         };
         filter.clear_buffer(
-            &self.device,
-            &self.queue,
+            commands,
             self.render_target_view(target),
             self.size,
             self.lengths,
@@ -450,6 +494,7 @@ impl Renderer {
 
     pub(super) fn clear_render_region(
         &self,
+        commands: &mut WgpuCommandBatch,
         target: WgpuRenderTargetId,
         bounds: Bounds,
         color: u32,
@@ -458,8 +503,7 @@ impl Renderer {
             return false;
         };
         filter.clear_region(
-            &self.device,
-            &self.queue,
+            commands,
             self.render_target_view(target),
             self.size,
             self.lengths,
@@ -471,6 +515,7 @@ impl Renderer {
 
     fn flood_region_to_target(
         &self,
+        commands: &mut WgpuCommandBatch,
         target: WgpuRenderTargetId,
         bounds: Bounds,
         brush_index: u32,
@@ -480,8 +525,7 @@ impl Renderer {
         };
         let brushes = self.filter_brush_bindings();
         filter.flood_region(
-            &self.device,
-            &self.queue,
+            commands,
             self.render_target_view(target),
             self.size,
             self.lengths,
@@ -494,6 +538,7 @@ impl Renderer {
 
     fn apply_drop_shadow(
         &mut self,
+        commands: &mut WgpuCommandBatch,
         target: WgpuRenderTargetId,
         bounds: Bounds,
         offset_x: f32,
@@ -504,8 +549,9 @@ impl Renderer {
         let Some(shadow) = self.acquire_scratch() else {
             return false;
         };
-        self.clear_render_region(shadow, bounds, 0);
+        self.clear_render_region(commands, shadow, bounds, 0);
         if !self.build_drop_shadow_mask_to_target(
+            commands,
             target,
             shadow,
             bounds,
@@ -522,8 +568,8 @@ impl Renderer {
                 self.release_scratch(shadow);
                 return false;
             };
-            let ok = self.blur_region_to_target(shadow, temp, bounds, std_dev, 0)
-                && self.blur_region_to_target(temp, shadow, bounds, std_dev, 1);
+            let ok = self.blur_region_to_target(commands, shadow, temp, bounds, std_dev, 0)
+                && self.blur_region_to_target(commands, temp, shadow, bounds, std_dev, 1);
             self.release_scratch(temp);
             if !ok {
                 self.release_scratch(shadow);
@@ -531,13 +577,15 @@ impl Renderer {
             }
         }
 
-        let ok = self.composite_drop_shadow_to_target(target, shadow, bounds, brush_index);
+        let ok =
+            self.composite_drop_shadow_to_target(commands, target, shadow, bounds, brush_index);
         self.release_scratch(shadow);
         ok
     }
 
     fn apply_blur(
         &mut self,
+        commands: &mut WgpuCommandBatch,
         target: WgpuRenderTargetId,
         bounds: Bounds,
         std_dev_x: f32,
@@ -560,7 +608,7 @@ impl Renderer {
                 return false;
             };
             let ok = self.downsampled_blur_to_target(
-                target, target, low, temp, bounds, std_dev_x, std_dev_y, sampling,
+                commands, target, target, low, temp, bounds, std_dev_x, std_dev_y, sampling,
             );
             self.release_scratch(temp);
             self.release_scratch(low);
@@ -572,16 +620,16 @@ impl Renderer {
         };
         let ok = match (std_dev_x > 0.0, std_dev_y > 0.0) {
             (true, true) => {
-                self.blur_region_to_target(target, temp, bounds, std_dev_x, 0)
-                    && self.blur_region_to_target(temp, target, bounds, std_dev_y, 1)
+                self.blur_region_to_target(commands, target, temp, bounds, std_dev_x, 0)
+                    && self.blur_region_to_target(commands, temp, target, bounds, std_dev_y, 1)
             }
             (true, false) => {
-                self.blur_region_to_target(target, temp, bounds, std_dev_x, 0)
-                    && self.copy_region_to_target(temp, target, bounds)
+                self.blur_region_to_target(commands, target, temp, bounds, std_dev_x, 0)
+                    && self.copy_region_to_target(commands, temp, target, bounds)
             }
             (false, true) => {
-                self.blur_region_to_target(target, temp, bounds, std_dev_y, 1)
-                    && self.copy_region_to_target(temp, target, bounds)
+                self.blur_region_to_target(commands, target, temp, bounds, std_dev_y, 1)
+                    && self.copy_region_to_target(commands, temp, target, bounds)
             }
             (false, false) => true,
         };
@@ -591,6 +639,7 @@ impl Renderer {
 
     pub(super) fn apply_blur_from_source(
         &mut self,
+        commands: &mut WgpuCommandBatch,
         source: WgpuRenderTargetId,
         target: WgpuRenderTargetId,
         bounds: Bounds,
@@ -599,13 +648,13 @@ impl Renderer {
         sampling: filter_model::BlurSampling,
     ) -> bool {
         if source == target {
-            return self.apply_blur(target, bounds, std_dev_x, std_dev_y, sampling);
+            return self.apply_blur(commands, target, bounds, std_dev_x, std_dev_y, sampling);
         }
 
         let std_dev_x = std_dev_x.max(0.0);
         let std_dev_y = std_dev_y.max(0.0);
         if std_dev_x <= 0.0 && std_dev_y <= 0.0 {
-            return self.copy_region_to_target(source, target, bounds);
+            return self.copy_region_to_target(commands, source, target, bounds);
         }
 
         let factor = sampling.factor();
@@ -618,7 +667,7 @@ impl Renderer {
                 return false;
             };
             let ok = self.downsampled_blur_to_target(
-                source, target, low, temp, bounds, std_dev_x, std_dev_y, sampling,
+                commands, source, target, low, temp, bounds, std_dev_x, std_dev_y, sampling,
             );
             self.release_scratch(temp);
             self.release_scratch(low);
@@ -630,19 +679,24 @@ impl Renderer {
                 let Some(temp) = self.acquire_scratch() else {
                     return false;
                 };
-                let ok = self.blur_region_to_target(source, temp, bounds, std_dev_x, 0)
-                    && self.blur_region_to_target(temp, target, bounds, std_dev_y, 1);
+                let ok = self.blur_region_to_target(commands, source, temp, bounds, std_dev_x, 0)
+                    && self.blur_region_to_target(commands, temp, target, bounds, std_dev_y, 1);
                 self.release_scratch(temp);
                 ok
             }
-            (true, false) => self.blur_region_to_target(source, target, bounds, std_dev_x, 0),
-            (false, true) => self.blur_region_to_target(source, target, bounds, std_dev_y, 1),
+            (true, false) => {
+                self.blur_region_to_target(commands, source, target, bounds, std_dev_x, 0)
+            }
+            (false, true) => {
+                self.blur_region_to_target(commands, source, target, bounds, std_dev_y, 1)
+            }
             (false, false) => true,
         }
     }
 
     pub(super) fn apply_downsampled_blur_rect_composite(
         &mut self,
+        commands: &mut WgpuCommandBatch,
         target: WgpuRenderTargetId,
         bounds: Bounds,
         std_dev_x: f32,
@@ -674,8 +728,8 @@ impl Renderer {
             return false;
         };
         let ok = if let Some(filter) = &self.filter {
-            let mut batch = filter.begin_batch(&self.device, &self.queue);
-            batch.downsample_region(
+            filter.downsample_region(
+                commands,
                 self.render_target_view(target),
                 self.render_target_view(low),
                 self.size,
@@ -684,7 +738,8 @@ impl Renderer {
                 low_bounds,
                 sampling,
             );
-            batch.blur_region(
+            filter.blur_region(
+                commands,
                 self.render_target_view(low),
                 self.render_target_view(temp),
                 self.size,
@@ -693,7 +748,8 @@ impl Renderer {
                 std_dev_x / factor as f32,
                 0,
             );
-            batch.blur_region(
+            filter.blur_region(
+                commands,
                 self.render_target_view(temp),
                 self.render_target_view(low),
                 self.size,
@@ -702,7 +758,8 @@ impl Renderer {
                 std_dev_y / factor as f32,
                 1,
             );
-            let ok = batch.upsample_rect_composite_region(
+            filter.upsample_rect_composite_region(
+                commands,
                 self.render_target_view(low),
                 self.render_target_view(target),
                 self.size,
@@ -711,9 +768,7 @@ impl Renderer {
                 low_bounds,
                 sampling,
                 region,
-            );
-            batch.finish();
-            ok
+            )
         } else {
             false
         };
@@ -724,6 +779,7 @@ impl Renderer {
 
     pub(super) fn apply_downsampled_liquid_glass_rect_composite(
         &mut self,
+        commands: &mut WgpuCommandBatch,
         target: WgpuRenderTargetId,
         bounds: Bounds,
         glass: filter_model::RectLiquidGlass,
@@ -745,6 +801,7 @@ impl Renderer {
 
         if should_sample_downsampled_blur_in_liquid_glass(glass) {
             return self.apply_downsampled_liquid_glass_sampled_rect_composite(
+                commands,
                 target,
                 bounds,
                 low_bounds,
@@ -754,6 +811,7 @@ impl Renderer {
         }
 
         self.apply_downsampled_liquid_glass_materialized_rect_composite(
+            commands,
             target,
             bounds,
             low_bounds,
@@ -764,6 +822,7 @@ impl Renderer {
 
     fn apply_downsampled_liquid_glass_sampled_rect_composite(
         &mut self,
+        commands: &mut WgpuCommandBatch,
         target: WgpuRenderTargetId,
         bounds: Bounds,
         low_bounds: Bounds,
@@ -791,15 +850,16 @@ impl Renderer {
         };
         let factor = glass.blur_sampling.factor() as f32;
         let std_dev = glass.blur_radius as f32 * filter_model::LIQUID_GLASS_BLUR_STD_DEV_SCALE;
-        let mut batch = filter.begin_batch(&self.device, &self.queue);
-        batch.copy_region(
+        filter.copy_region(
+            commands,
             self.render_target_view(target),
             self.render_target_view(source),
             self.size,
             self.lengths,
             bounds,
         );
-        batch.downsample_region(
+        filter.downsample_region(
+            commands,
             self.render_target_view(source),
             self.render_target_view(low),
             self.size,
@@ -808,7 +868,8 @@ impl Renderer {
             low_bounds,
             glass.blur_sampling,
         );
-        batch.blur_region(
+        filter.blur_region(
+            commands,
             self.render_target_view(low),
             self.render_target_view(temp),
             self.size,
@@ -817,7 +878,8 @@ impl Renderer {
             std_dev / factor,
             0,
         );
-        batch.blur_region(
+        filter.blur_region(
+            commands,
             self.render_target_view(temp),
             self.render_target_view(low),
             self.size,
@@ -826,7 +888,8 @@ impl Renderer {
             std_dev / factor,
             1,
         );
-        batch.rect_liquid_glass_composite_region(
+        filter.rect_liquid_glass_composite_region(
+            commands,
             self.render_target_view(source),
             self.render_target_view(low),
             self.render_target_view(target),
@@ -838,7 +901,6 @@ impl Renderer {
             glass,
             glass_region,
         );
-        batch.finish();
         let ok = true;
 
         self.release_scratch(temp);
@@ -849,6 +911,7 @@ impl Renderer {
 
     fn apply_downsampled_liquid_glass_materialized_rect_composite(
         &mut self,
+        commands: &mut WgpuCommandBatch,
         target: WgpuRenderTargetId,
         bounds: Bounds,
         low_bounds: Bounds,
@@ -876,15 +939,16 @@ impl Renderer {
         };
         let factor = glass.blur_sampling.factor() as f32;
         let std_dev = glass.blur_radius as f32 * filter_model::LIQUID_GLASS_BLUR_STD_DEV_SCALE;
-        let mut batch = filter.begin_batch(&self.device, &self.queue);
-        batch.copy_region(
+        filter.copy_region(
+            commands,
             self.render_target_view(target),
             self.render_target_view(source),
             self.size,
             self.lengths,
             bounds,
         );
-        batch.downsample_region(
+        filter.downsample_region(
+            commands,
             self.render_target_view(source),
             self.render_target_view(low),
             self.size,
@@ -893,7 +957,8 @@ impl Renderer {
             low_bounds,
             glass.blur_sampling,
         );
-        batch.blur_region(
+        filter.blur_region(
+            commands,
             self.render_target_view(low),
             self.render_target_view(temp),
             self.size,
@@ -902,7 +967,8 @@ impl Renderer {
             std_dev / factor,
             0,
         );
-        batch.blur_region(
+        filter.blur_region(
+            commands,
             self.render_target_view(temp),
             self.render_target_view(low),
             self.size,
@@ -911,7 +977,8 @@ impl Renderer {
             std_dev / factor,
             1,
         );
-        batch.upsample_region(
+        filter.upsample_region(
+            commands,
             self.render_target_view(low),
             self.render_target_view(temp),
             self.size,
@@ -920,7 +987,8 @@ impl Renderer {
             low_bounds,
             glass.blur_sampling,
         );
-        batch.rect_liquid_glass_composite_region(
+        filter.rect_liquid_glass_composite_region(
+            commands,
             self.render_target_view(source),
             self.render_target_view(temp),
             self.render_target_view(target),
@@ -932,7 +1000,6 @@ impl Renderer {
             glass,
             glass_region,
         );
-        batch.finish();
         let ok = true;
 
         self.release_scratch(temp);
@@ -944,6 +1011,7 @@ impl Renderer {
     #[allow(clippy::too_many_arguments)]
     fn downsampled_blur_to_target(
         &self,
+        commands: &mut WgpuCommandBatch,
         source: WgpuRenderTargetId,
         target: WgpuRenderTargetId,
         low: WgpuRenderTargetId,
@@ -961,9 +1029,9 @@ impl Renderer {
             return false;
         };
         if low_bounds.width() >= bounds.width() && low_bounds.height() >= bounds.height() {
-            let mut batch = filter.begin_batch(&self.device, &self.queue);
             if source != target {
-                batch.copy_region(
+                filter.copy_region(
+                    commands,
                     self.render_target_view(source),
                     self.render_target_view(target),
                     self.size,
@@ -971,7 +1039,8 @@ impl Renderer {
                     bounds,
                 );
             }
-            batch.blur_region(
+            filter.blur_region(
+                commands,
                 self.render_target_view(target),
                 self.render_target_view(temp),
                 self.size,
@@ -980,7 +1049,8 @@ impl Renderer {
                 std_dev_x,
                 0,
             );
-            batch.blur_region(
+            filter.blur_region(
+                commands,
                 self.render_target_view(temp),
                 self.render_target_view(target),
                 self.size,
@@ -989,12 +1059,11 @@ impl Renderer {
                 std_dev_y,
                 1,
             );
-            batch.finish();
             return true;
         }
 
-        let mut batch = filter.begin_batch(&self.device, &self.queue);
-        batch.downsample_region(
+        filter.downsample_region(
+            commands,
             self.render_target_view(source),
             self.render_target_view(low),
             self.size,
@@ -1003,7 +1072,8 @@ impl Renderer {
             low_bounds,
             sampling,
         );
-        batch.blur_region(
+        filter.blur_region(
+            commands,
             self.render_target_view(low),
             self.render_target_view(temp),
             self.size,
@@ -1012,7 +1082,8 @@ impl Renderer {
             std_dev_x / factor as f32,
             0,
         );
-        batch.blur_region(
+        filter.blur_region(
+            commands,
             self.render_target_view(temp),
             self.render_target_view(low),
             self.size,
@@ -1021,7 +1092,8 @@ impl Renderer {
             std_dev_y / factor as f32,
             1,
         );
-        batch.upsample_region(
+        filter.upsample_region(
+            commands,
             self.render_target_view(low),
             self.render_target_view(target),
             self.size,
@@ -1030,12 +1102,12 @@ impl Renderer {
             low_bounds,
             sampling,
         );
-        batch.finish();
         true
     }
 
     fn build_drop_shadow_mask_to_target(
         &self,
+        commands: &mut WgpuCommandBatch,
         source: WgpuRenderTargetId,
         target: WgpuRenderTargetId,
         bounds: Bounds,
@@ -1046,8 +1118,7 @@ impl Renderer {
             return false;
         };
         filter.build_drop_shadow_mask(
-            &self.device,
-            &self.queue,
+            commands,
             self.render_target_view(source),
             self.render_target_view(target),
             self.size,
@@ -1061,6 +1132,7 @@ impl Renderer {
 
     fn source_alpha_to_target(
         &self,
+        commands: &mut WgpuCommandBatch,
         source: WgpuRenderTargetId,
         target: WgpuRenderTargetId,
         bounds: Bounds,
@@ -1069,8 +1141,7 @@ impl Renderer {
             return false;
         };
         filter.source_alpha_region(
-            &self.device,
-            &self.queue,
+            commands,
             self.render_target_view(source),
             self.render_target_view(target),
             self.size,
@@ -1082,6 +1153,7 @@ impl Renderer {
 
     fn source_over_filter_input(
         &self,
+        commands: &mut WgpuCommandBatch,
         source: WgpuRenderTargetId,
         target: WgpuRenderTargetId,
         bounds: Bounds,
@@ -1090,8 +1162,7 @@ impl Renderer {
             return false;
         };
         filter.source_over_region(
-            &self.device,
-            &self.queue,
+            commands,
             self.render_target_view(source),
             self.render_target_view(target),
             self.size,
@@ -1103,6 +1174,7 @@ impl Renderer {
 
     fn blend_filter_inputs(
         &self,
+        commands: &mut WgpuCommandBatch,
         input1: WgpuRenderTargetId,
         input2: WgpuRenderTargetId,
         target: WgpuRenderTargetId,
@@ -1113,8 +1185,7 @@ impl Renderer {
             return false;
         };
         filter.blend_region(
-            &self.device,
-            &self.queue,
+            commands,
             self.render_target_view(input1),
             self.render_target_view(input2),
             self.render_target_view(target),
@@ -1128,6 +1199,7 @@ impl Renderer {
 
     fn composite_filter_inputs(
         &self,
+        commands: &mut WgpuCommandBatch,
         input1: WgpuRenderTargetId,
         input2: WgpuRenderTargetId,
         target: WgpuRenderTargetId,
@@ -1138,8 +1210,7 @@ impl Renderer {
             return false;
         };
         filter.composite_inputs_region(
-            &self.device,
-            &self.queue,
+            commands,
             self.render_target_view(input1),
             self.render_target_view(input2),
             self.render_target_view(target),
@@ -1153,6 +1224,7 @@ impl Renderer {
 
     fn displacement_map_filter_inputs(
         &self,
+        commands: &mut WgpuCommandBatch,
         input1: WgpuRenderTargetId,
         input2: WgpuRenderTargetId,
         target: WgpuRenderTargetId,
@@ -1163,8 +1235,7 @@ impl Renderer {
             return false;
         };
         filter.displacement_map_region(
-            &self.device,
-            &self.queue,
+            commands,
             self.render_target_view(input1),
             self.render_target_view(input2),
             self.render_target_view(target),
@@ -1178,6 +1249,7 @@ impl Renderer {
 
     fn turbulence_to_target(
         &self,
+        commands: &mut WgpuCommandBatch,
         target: WgpuRenderTargetId,
         bounds: Bounds,
         turbulence: &filter_model::Turbulence,
@@ -1188,8 +1260,7 @@ impl Renderer {
         };
         let tables = self.filter_turbulence_bindings();
         filter.turbulence_region(
-            &self.device,
-            &self.queue,
+            commands,
             self.render_target_view(target),
             self.size,
             self.lengths,
@@ -1203,6 +1274,7 @@ impl Renderer {
 
     fn tile_filter_input(
         &self,
+        commands: &mut WgpuCommandBatch,
         input: WgpuRenderTargetId,
         target: WgpuRenderTargetId,
         bounds: Bounds,
@@ -1212,8 +1284,7 @@ impl Renderer {
             return false;
         };
         filter.tile_region(
-            &self.device,
-            &self.queue,
+            commands,
             self.render_target_view(input),
             self.render_target_view(target),
             self.size,
@@ -1226,6 +1297,7 @@ impl Renderer {
 
     fn composite_drop_shadow_to_target(
         &self,
+        commands: &mut WgpuCommandBatch,
         target: WgpuRenderTargetId,
         shadow: WgpuRenderTargetId,
         bounds: Bounds,
@@ -1236,8 +1308,7 @@ impl Renderer {
         };
         let brushes = self.filter_brush_bindings();
         filter.composite_drop_shadow(
-            &self.device,
-            &self.queue,
+            commands,
             self.render_target_view(target),
             self.render_target_view(shadow),
             self.size,
@@ -1251,14 +1322,14 @@ impl Renderer {
 
     fn apply_color_matrix_to_target(
         &self,
+        commands: &mut WgpuCommandBatch,
         target: WgpuRenderTargetId,
         bounds: Bounds,
         matrix: [f32; 20],
     ) {
         if let Some(filter) = &self.filter {
             filter.apply_color_matrix(
-                &self.device,
-                &self.queue,
+                commands,
                 self.render_target_view(target),
                 self.size,
                 self.lengths,
@@ -1270,14 +1341,14 @@ impl Renderer {
 
     fn apply_component_transfer_to_target(
         &self,
+        commands: &mut WgpuCommandBatch,
         target: WgpuRenderTargetId,
         bounds: Bounds,
         table_index: u32,
     ) {
         if let Some(filter) = &self.filter {
             filter.apply_component_transfer(
-                &self.device,
-                &self.queue,
+                commands,
                 self.render_target_view(target),
                 self.size,
                 self.lengths,
@@ -1290,6 +1361,7 @@ impl Renderer {
 
     fn convolve_matrix_to_target(
         &self,
+        commands: &mut WgpuCommandBatch,
         source: WgpuRenderTargetId,
         target: WgpuRenderTargetId,
         bounds: Bounds,
@@ -1300,8 +1372,7 @@ impl Renderer {
             return false;
         };
         filter.convolve_matrix_region(
-            &self.device,
-            &self.queue,
+            commands,
             self.render_target_view(source),
             self.render_target_view(target),
             self.size,
@@ -1316,6 +1387,7 @@ impl Renderer {
 
     fn diffuse_lighting_to_target(
         &self,
+        commands: &mut WgpuCommandBatch,
         source: WgpuRenderTargetId,
         target: WgpuRenderTargetId,
         bounds: Bounds,
@@ -1325,8 +1397,7 @@ impl Renderer {
             return false;
         };
         filter.diffuse_lighting_region(
-            &self.device,
-            &self.queue,
+            commands,
             self.render_target_view(source),
             self.render_target_view(target),
             self.size,
@@ -1340,6 +1411,7 @@ impl Renderer {
 
     fn specular_lighting_to_target(
         &self,
+        commands: &mut WgpuCommandBatch,
         source: WgpuRenderTargetId,
         target: WgpuRenderTargetId,
         bounds: Bounds,
@@ -1349,8 +1421,7 @@ impl Renderer {
             return false;
         };
         filter.specular_lighting_region(
-            &self.device,
-            &self.queue,
+            commands,
             self.render_target_view(source),
             self.render_target_view(target),
             self.size,
@@ -1364,6 +1435,7 @@ impl Renderer {
 
     fn apply_liquid_glass(
         &mut self,
+        commands: &mut WgpuCommandBatch,
         target: WgpuRenderTargetId,
         bounds: Bounds,
         glass: filter_model::RectLiquidGlass,
@@ -1376,7 +1448,7 @@ impl Renderer {
             self.release_scratch(source);
             return false;
         };
-        let mut ok = self.copy_region_to_target(target, source, bounds);
+        let mut ok = self.copy_region_to_target(commands, target, source, bounds);
 
         if ok && glass.blur_radius > 0 {
             let Some(temp) = self.acquire_scratch() else {
@@ -1387,6 +1459,7 @@ impl Renderer {
             let std_dev = glass.blur_radius as f32 * filter_model::LIQUID_GLASS_BLUR_STD_DEV_SCALE;
             ok = if glass.blur_sampling.factor() > 1 {
                 self.downsampled_blur_to_target(
+                    commands,
                     source,
                     blurred,
                     temp,
@@ -1397,16 +1470,18 @@ impl Renderer {
                     glass.blur_sampling,
                 )
             } else {
-                self.copy_region_to_target(source, blurred, bounds)
-                    && self.blur_region_to_target(blurred, temp, bounds, std_dev, 0)
-                    && self.blur_region_to_target(temp, blurred, bounds, std_dev, 1)
+                self.copy_region_to_target(commands, source, blurred, bounds)
+                    && self.blur_region_to_target(commands, blurred, temp, bounds, std_dev, 0)
+                    && self.blur_region_to_target(commands, temp, blurred, bounds, std_dev, 1)
             };
             self.release_scratch(temp);
         } else if ok {
-            ok = self.copy_region_to_target(source, blurred, bounds);
+            ok = self.copy_region_to_target(commands, source, blurred, bounds);
         }
 
-        ok = ok && self.liquid_glass_to_target(source, blurred, target, bounds, glass, region);
+        ok = ok
+            && self
+                .liquid_glass_to_target(commands, source, blurred, target, bounds, glass, region);
         self.release_scratch(blurred);
         self.release_scratch(source);
         ok
@@ -1414,6 +1489,7 @@ impl Renderer {
 
     fn liquid_glass_to_target(
         &self,
+        commands: &mut WgpuCommandBatch,
         source: WgpuRenderTargetId,
         blurred: WgpuRenderTargetId,
         target: WgpuRenderTargetId,
@@ -1425,8 +1501,7 @@ impl Renderer {
             return false;
         };
         filter.rect_liquid_glass_region(
-            &self.device,
-            &self.queue,
+            commands,
             self.render_target_view(source),
             self.render_target_view(blurred),
             self.render_target_view(target),
@@ -1441,6 +1516,7 @@ impl Renderer {
 
     fn blur_region_to_target(
         &self,
+        commands: &mut WgpuCommandBatch,
         source: WgpuRenderTargetId,
         target: WgpuRenderTargetId,
         bounds: Bounds,
@@ -1451,8 +1527,7 @@ impl Renderer {
             return false;
         };
         filter.blur_region(
-            &self.device,
-            &self.queue,
+            commands,
             self.render_target_view(source),
             self.render_target_view(target),
             self.size,
@@ -1466,6 +1541,7 @@ impl Renderer {
 
     fn morphology_axis_to_target(
         &self,
+        commands: &mut WgpuCommandBatch,
         source: WgpuRenderTargetId,
         target: WgpuRenderTargetId,
         bounds: Bounds,
@@ -1477,8 +1553,7 @@ impl Renderer {
             return false;
         };
         filter.morphology_axis_region(
-            &self.device,
-            &self.queue,
+            commands,
             self.render_target_view(source),
             self.render_target_view(target),
             self.size,
@@ -1493,6 +1568,7 @@ impl Renderer {
 
     fn offset_region_to_target(
         &self,
+        commands: &mut WgpuCommandBatch,
         source: WgpuRenderTargetId,
         target: WgpuRenderTargetId,
         bounds: Bounds,
@@ -1503,8 +1579,7 @@ impl Renderer {
             return false;
         };
         filter.offset_region(
-            &self.device,
-            &self.queue,
+            commands,
             self.render_target_view(source),
             self.render_target_view(target),
             self.size,
@@ -1518,6 +1593,7 @@ impl Renderer {
 
     pub(super) fn copy_region_to_target(
         &self,
+        commands: &mut WgpuCommandBatch,
         source: WgpuRenderTargetId,
         target: WgpuRenderTargetId,
         bounds: Bounds,
@@ -1526,8 +1602,7 @@ impl Renderer {
             return false;
         };
         filter.copy_region(
-            &self.device,
-            &self.queue,
+            commands,
             self.render_target_view(source),
             self.render_target_view(target),
             self.size,
@@ -1539,6 +1614,7 @@ impl Renderer {
 
     pub(super) fn apply_color_filter_to_target(
         &self,
+        commands: &mut WgpuCommandBatch,
         target: WgpuRenderTargetId,
         bounds: Bounds,
         filter_kind: u32,
@@ -1546,8 +1622,7 @@ impl Renderer {
     ) {
         if let Some(filter) = &self.filter {
             filter.apply_color_filter(
-                &self.device,
-                &self.queue,
+                commands,
                 self.render_target_view(target),
                 self.size,
                 self.lengths,

@@ -2,6 +2,9 @@
 
 use crate::shared::gpu_plan::{COARSE_CHUNK_SIZE, GpuBufferLengths};
 
+use super::commands::{
+    WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
+};
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 use super::scene::{WgpuCoarseBindings, WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers};
 
@@ -47,6 +50,8 @@ pub(crate) struct WgpuCoarsePipeline {
     emit: ::wgpu::ComputePipeline,
     bind_group_layout: ::wgpu::BindGroupLayout,
     config: ::wgpu::Buffer,
+    config_size: ::wgpu::BufferAddress,
+    config_stride: ::wgpu::BufferAddress,
 }
 
 impl WgpuCoarsePipeline {
@@ -71,9 +76,11 @@ impl WgpuCoarsePipeline {
             bind_group_layouts: &[Some(&bind_group_layout)],
             immediate_size: 0,
         });
+        let config_size = std::mem::size_of::<CoarseConfig>() as ::wgpu::BufferAddress;
+        let config_stride = aligned_uniform_stride(device, config_size);
         let config = device.create_buffer(&::wgpu::BufferDescriptor {
             label: Some("tileink wgpu coarse config"),
-            size: std::mem::size_of::<CoarseConfig>() as ::wgpu::BufferAddress,
+            size: uniform_slots_buffer_size(device, config_size),
             usage: ::wgpu::BufferUsages::UNIFORM | ::wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -119,6 +126,8 @@ impl WgpuCoarsePipeline {
             emit: create_pipeline(device, &pipeline_layout, &shader, "coarse_emit"),
             bind_group_layout,
             config,
+            config_size,
+            config_stride,
         })
     }
 
@@ -132,6 +141,20 @@ impl WgpuCoarsePipeline {
         lengths: GpuBufferLengths,
         batch: WgpuCoarseBatch,
     ) {
+        let mut commands = WgpuCommandBatch::new(device, queue, "tileink wgpu coarse encoder");
+        self.encode_in(&mut commands, scene, scan, coarse, lengths, batch);
+        commands.finish();
+    }
+
+    pub(crate) fn encode_in(
+        &self,
+        commands: &mut WgpuCommandBatch,
+        scene: &WgpuSceneBuffers,
+        scan: &WgpuScanBuffers,
+        coarse: &mut WgpuCoarseBuffers,
+        lengths: GpuBufferLengths,
+        batch: WgpuCoarseBatch,
+    ) {
         let _profile_scope = start_cpu_scope("coarse");
         let tile_count = lengths.tile_count as u32;
         let chunk_count = lengths.coarse_chunk_count as u32;
@@ -139,9 +162,12 @@ impl WgpuCoarsePipeline {
             return;
         }
 
-        queue.write_buffer(
+        let config_offset = commands.write_uniform_slot(
+            "coarse.config",
             &self.config,
-            0,
+            self.config_size,
+            self.config_stride,
+            WGPU_CONFIG_SLOTS,
             bytemuck::bytes_of(&CoarseConfig {
                 tile_count,
                 tiles_width: lengths.tiles_width as u32,
@@ -158,12 +184,10 @@ impl WgpuCoarsePipeline {
             }),
         );
         let bindings = scene.coarse_bindings(scan, coarse);
-        let bind_group = self.create_bind_group(device, &bindings);
-        let mut encoder = device.create_command_encoder(&::wgpu::CommandEncoderDescriptor {
-            label: Some("tileink wgpu coarse encoder"),
-        });
-        let gpu_scope = start_gpu_scope(device, "coarse");
+        let bind_group = self.create_bind_group(commands.device(), &bindings, config_offset);
+        let gpu_scope = start_gpu_scope(commands.device(), "coarse");
         let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
+        let encoder = commands.encoder();
         {
             let mut pass = encoder.begin_compute_pass(&::wgpu::ComputePassDescriptor {
                 label: Some("tileink wgpu coarse pass"),
@@ -192,20 +216,20 @@ impl WgpuCoarsePipeline {
                 pass.dispatch_workgroups(tile_count, 1, 1);
             }
         }
-        finish_gpu_scope(&mut encoder, gpu_scope);
-        queue.submit([encoder.finish()]);
+        finish_gpu_scope(encoder, gpu_scope);
     }
 
     fn create_bind_group(
         &self,
         device: &::wgpu::Device,
         bindings: &WgpuCoarseBindings<'_>,
+        config_offset: ::wgpu::BufferAddress,
     ) -> ::wgpu::BindGroup {
         device.create_bind_group(&::wgpu::BindGroupDescriptor {
             label: Some("tileink wgpu coarse bind group"),
             layout: &self.bind_group_layout,
             entries: &[
-                bind_buffer(0, &self.config),
+                bind_config_buffer(0, &self.config, config_offset, self.config_size),
                 bind_buffer(1, bindings.draw_path_ids),
                 bind_buffer(2, bindings.draw_glyph_run_ids),
                 bind_buffer(3, bindings.glyph_run_starts),
@@ -355,6 +379,22 @@ fn bind_buffer(binding: u32, buffer: &::wgpu::Buffer) -> ::wgpu::BindGroupEntry<
     ::wgpu::BindGroupEntry {
         binding,
         resource: buffer.as_entire_binding(),
+    }
+}
+
+fn bind_config_buffer(
+    binding: u32,
+    buffer: &::wgpu::Buffer,
+    offset: ::wgpu::BufferAddress,
+    size: ::wgpu::BufferAddress,
+) -> ::wgpu::BindGroupEntry<'_> {
+    ::wgpu::BindGroupEntry {
+        binding,
+        resource: ::wgpu::BindingResource::Buffer(::wgpu::BufferBinding {
+            buffer,
+            offset,
+            size: ::wgpu::BufferSize::new(size),
+        }),
     }
 }
 

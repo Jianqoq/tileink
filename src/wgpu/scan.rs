@@ -1,5 +1,8 @@
 use crate::shared::gpu_plan::{GpuBufferLengths, SCAN_CHUNK_SIZE};
 
+use super::commands::{
+    WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
+};
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 use super::scene::{WgpuScanBindings, WgpuScanBuffers, WgpuSceneBuffers};
 
@@ -31,6 +34,8 @@ pub(crate) struct WgpuScanPipeline {
     emit: ::wgpu::ComputePipeline,
     bind_group_layout: ::wgpu::BindGroupLayout,
     config: ::wgpu::Buffer,
+    config_size: ::wgpu::BufferAddress,
+    config_stride: ::wgpu::BufferAddress,
 }
 
 impl WgpuScanPipeline {
@@ -56,6 +61,8 @@ impl WgpuScanPipeline {
             immediate_size: 0,
         });
 
+        let config_size = std::mem::size_of::<ScanConfig>() as ::wgpu::BufferAddress;
+        let config_stride = aligned_uniform_stride(device, config_size);
         Some(Self {
             clear: create_pipeline(device, &pipeline_layout, &shader, "scan_clear"),
             count: create_pipeline(device, &pipeline_layout, &shader, "scan_count"),
@@ -71,10 +78,12 @@ impl WgpuScanPipeline {
             bind_group_layout,
             config: device.create_buffer(&::wgpu::BufferDescriptor {
                 label: Some("tileink wgpu scan config"),
-                size: std::mem::size_of::<ScanConfig>() as ::wgpu::BufferAddress,
+                size: uniform_slots_buffer_size(device, config_size),
                 usage: ::wgpu::BufferUsages::UNIFORM | ::wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             }),
+            config_size,
+            config_stride,
         })
     }
 
@@ -86,6 +95,18 @@ impl WgpuScanPipeline {
         scan: &mut WgpuScanBuffers,
         lengths: GpuBufferLengths,
     ) {
+        let mut commands = WgpuCommandBatch::new(device, queue, "tileink wgpu scan encoder");
+        self.run_in(&mut commands, scene, scan, lengths);
+        commands.finish();
+    }
+
+    pub(crate) fn run_in(
+        &self,
+        commands: &mut WgpuCommandBatch,
+        scene: &WgpuSceneBuffers,
+        scan: &mut WgpuScanBuffers,
+        lengths: GpuBufferLengths,
+    ) {
         let _profile_scope = start_cpu_scope("scan");
         let backdrop_len = lengths.backdrop_len as u32;
         let path_count = lengths.path_count as u32;
@@ -93,9 +114,12 @@ impl WgpuScanPipeline {
         let scan_chunk_count = lengths.scan_chunk_count as u32;
         let segment_capacity = lengths.segment_capacity as u32;
         let clear_len = backdrop_len.max(path_count).max(scan_chunk_count);
-        queue.write_buffer(
+        let config_offset = commands.write_uniform_slot(
+            "scan.config",
             &self.config,
-            0,
+            self.config_size,
+            self.config_stride,
+            WGPU_CONFIG_SLOTS,
             bytemuck::bytes_of(&ScanConfig {
                 clear_len,
                 backdrop_len,
@@ -109,12 +133,10 @@ impl WgpuScanPipeline {
         );
 
         let bindings = scene.scan_bindings(scan);
-        let bind_group = self.create_bind_group(device, &bindings);
-        let mut encoder = device.create_command_encoder(&::wgpu::CommandEncoderDescriptor {
-            label: Some("tileink wgpu scan encoder"),
-        });
-        let gpu_scope = start_gpu_scope(device, "scan");
+        let bind_group = self.create_bind_group(commands.device(), &bindings, config_offset);
+        let gpu_scope = start_gpu_scope(commands.device(), "scan");
         let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
+        let encoder = commands.encoder();
         {
             let mut pass = encoder.begin_compute_pass(&::wgpu::ComputePassDescriptor {
                 label: Some("tileink wgpu scan pass"),
@@ -146,20 +168,20 @@ impl WgpuScanPipeline {
                 pass.dispatch_workgroups(line_count.div_ceil(WORKGROUP_SIZE), 1, 1);
             }
         }
-        finish_gpu_scope(&mut encoder, gpu_scope);
-        queue.submit([encoder.finish()]);
+        finish_gpu_scope(encoder, gpu_scope);
     }
 
     fn create_bind_group(
         &self,
         device: &::wgpu::Device,
         bindings: &WgpuScanBindings<'_>,
+        config_offset: ::wgpu::BufferAddress,
     ) -> ::wgpu::BindGroup {
         device.create_bind_group(&::wgpu::BindGroupDescriptor {
             label: Some("tileink wgpu scan bind group"),
             layout: &self.bind_group_layout,
             entries: &[
-                bind_buffer(0, &self.config),
+                bind_config_buffer(0, &self.config, config_offset, self.config_size),
                 bind_buffer(1, bindings.line_path_ids),
                 bind_buffer(2, bindings.line_p0x),
                 bind_buffer(3, bindings.line_p0y),
@@ -271,6 +293,22 @@ fn bind_buffer(binding: u32, buffer: &::wgpu::Buffer) -> ::wgpu::BindGroupEntry<
     ::wgpu::BindGroupEntry {
         binding,
         resource: buffer.as_entire_binding(),
+    }
+}
+
+fn bind_config_buffer(
+    binding: u32,
+    buffer: &::wgpu::Buffer,
+    offset: ::wgpu::BufferAddress,
+    size: ::wgpu::BufferAddress,
+) -> ::wgpu::BindGroupEntry<'_> {
+    ::wgpu::BindGroupEntry {
+        binding,
+        resource: ::wgpu::BindingResource::Buffer(::wgpu::BufferBinding {
+            buffer,
+            offset,
+            size: ::wgpu::BufferSize::new(size),
+        }),
     }
 }
 

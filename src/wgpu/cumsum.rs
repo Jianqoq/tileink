@@ -1,5 +1,8 @@
 use crate::shared::gpu_plan::{CUMSUM_CHUNK_SIZE, GpuBufferLengths};
 
+use super::commands::{
+    WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
+};
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 use super::scene::{WgpuCumsumBindings, WgpuScanBuffers, WgpuSceneBuffers};
 
@@ -24,6 +27,8 @@ pub(crate) struct WgpuCumsumPipeline {
     apply_chunk_offsets: ::wgpu::ComputePipeline,
     bind_group_layout: ::wgpu::BindGroupLayout,
     config: ::wgpu::Buffer,
+    config_size: ::wgpu::BufferAddress,
+    config_stride: ::wgpu::BufferAddress,
 }
 
 impl WgpuCumsumPipeline {
@@ -58,9 +63,11 @@ impl WgpuCumsumPipeline {
             &shader,
             "cumsum_apply_chunk_offsets",
         );
+        let config_size = std::mem::size_of::<CumsumConfig>() as ::wgpu::BufferAddress;
+        let config_stride = aligned_uniform_stride(device, config_size);
         let config = device.create_buffer(&::wgpu::BufferDescriptor {
             label: Some("tileink wgpu cumsum config"),
-            size: std::mem::size_of::<CumsumConfig>() as ::wgpu::BufferAddress,
+            size: uniform_slots_buffer_size(device, config_size),
             usage: ::wgpu::BufferUsages::UNIFORM | ::wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -71,6 +78,8 @@ impl WgpuCumsumPipeline {
             apply_chunk_offsets,
             bind_group_layout,
             config,
+            config_size,
+            config_stride,
         })
     }
 
@@ -82,15 +91,30 @@ impl WgpuCumsumPipeline {
         scan: &mut WgpuScanBuffers,
         lengths: GpuBufferLengths,
     ) {
+        let mut commands = WgpuCommandBatch::new(device, queue, "tileink wgpu cumsum encoder");
+        self.run_in(&mut commands, scene, scan, lengths);
+        commands.finish();
+    }
+
+    pub(crate) fn run_in(
+        &self,
+        commands: &mut WgpuCommandBatch,
+        scene: &WgpuSceneBuffers,
+        scan: &mut WgpuScanBuffers,
+        lengths: GpuBufferLengths,
+    ) {
         let _profile_scope = start_cpu_scope("cumsum");
         let chunk_count = lengths.cumsum_chunk_count as u32;
         if chunk_count == 0 {
             return;
         }
 
-        queue.write_buffer(
+        let config_offset = commands.write_uniform_slot(
+            "cumsum.config",
             &self.config,
-            0,
+            self.config_size,
+            self.config_stride,
+            WGPU_CONFIG_SLOTS,
             bytemuck::bytes_of(&CumsumConfig {
                 row_count: lengths.cumsum_row_count as u32,
                 _pad0: 0,
@@ -99,12 +123,10 @@ impl WgpuCumsumPipeline {
             }),
         );
         let bindings = scene.cumsum_bindings(scan);
-        let bind_group = self.create_bind_group(device, &bindings);
-        let mut encoder = device.create_command_encoder(&::wgpu::CommandEncoderDescriptor {
-            label: Some("tileink wgpu cumsum encoder"),
-        });
-        let gpu_scope = start_gpu_scope(device, "cumsum");
+        let bind_group = self.create_bind_group(commands.device(), &bindings, config_offset);
+        let gpu_scope = start_gpu_scope(commands.device(), "cumsum");
         let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
+        let encoder = commands.encoder();
         {
             let mut pass = encoder.begin_compute_pass(&::wgpu::ComputePassDescriptor {
                 label: Some("tileink wgpu cumsum pass"),
@@ -122,20 +144,20 @@ impl WgpuCumsumPipeline {
                 pass.dispatch_workgroups(chunk_count, 1, 1);
             }
         }
-        finish_gpu_scope(&mut encoder, gpu_scope);
-        queue.submit([encoder.finish()]);
+        finish_gpu_scope(encoder, gpu_scope);
     }
 
     fn create_bind_group(
         &self,
         device: &::wgpu::Device,
         bindings: &WgpuCumsumBindings<'_>,
+        config_offset: ::wgpu::BufferAddress,
     ) -> ::wgpu::BindGroup {
         device.create_bind_group(&::wgpu::BindGroupDescriptor {
             label: Some("tileink wgpu cumsum bind group"),
             layout: &self.bind_group_layout,
             entries: &[
-                bind_buffer(0, &self.config),
+                bind_config_buffer(0, &self.config, config_offset, self.config_size),
                 bind_buffer(1, bindings.chunk_backdrop_offsets),
                 bind_buffer(2, bindings.chunk_lens),
                 bind_buffer(3, bindings.row_chunk_starts),
@@ -203,6 +225,22 @@ fn bind_buffer(binding: u32, buffer: &::wgpu::Buffer) -> ::wgpu::BindGroupEntry<
     ::wgpu::BindGroupEntry {
         binding,
         resource: buffer.as_entire_binding(),
+    }
+}
+
+fn bind_config_buffer(
+    binding: u32,
+    buffer: &::wgpu::Buffer,
+    offset: ::wgpu::BufferAddress,
+    size: ::wgpu::BufferAddress,
+) -> ::wgpu::BindGroupEntry<'_> {
+    ::wgpu::BindGroupEntry {
+        binding,
+        resource: ::wgpu::BindingResource::Buffer(::wgpu::BufferBinding {
+            buffer,
+            offset,
+            size: ::wgpu::BufferSize::new(size),
+        }),
     }
 }
 

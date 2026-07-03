@@ -1,5 +1,6 @@
 mod buffer;
 mod coarse;
+mod commands;
 mod cumsum;
 mod filter;
 mod filter_resources;

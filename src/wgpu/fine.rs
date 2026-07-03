@@ -4,6 +4,9 @@ use crate::shared::{gpu_plan::GpuBufferLengths, image::premul_color_to_rgba8_pac
 
 use super::{
     buffer::WgpuBuffer,
+    commands::{
+        WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
+    },
     profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope},
     scene::{WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers, WgpuTileFineBindings},
     target::WgpuTarget,
@@ -15,6 +18,8 @@ pub(crate) struct WgpuFinePipeline {
     pipeline: ::wgpu::ComputePipeline,
     bind_group_layout: ::wgpu::BindGroupLayout,
     config: ::wgpu::Buffer,
+    config_size: ::wgpu::BufferAddress,
+    config_stride: ::wgpu::BufferAddress,
 }
 
 #[repr(C)]
@@ -70,9 +75,11 @@ impl WgpuFinePipeline {
             compilation_options: ::wgpu::PipelineCompilationOptions::default(),
             cache: None,
         });
+        let config_size = std::mem::size_of::<FineConfig>() as ::wgpu::BufferAddress;
+        let config_stride = aligned_uniform_stride(device, config_size);
         let config = device.create_buffer(&::wgpu::BufferDescriptor {
             label: Some("tileink wgpu fine config"),
-            size: std::mem::size_of::<FineConfig>() as ::wgpu::BufferAddress,
+            size: uniform_slots_buffer_size(device, config_size),
             usage: ::wgpu::BufferUsages::UNIFORM | ::wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -80,13 +87,14 @@ impl WgpuFinePipeline {
             pipeline,
             bind_group_layout,
             config,
+            config_size,
+            config_stride,
         })
     }
 
-    pub(crate) fn render_tiles(
+    pub(crate) fn render_tiles_in(
         &self,
-        device: &::wgpu::Device,
-        queue: &::wgpu::Queue,
+        commands: &mut WgpuCommandBatch,
         width: u32,
         height: u32,
         lengths: GpuBufferLengths,
@@ -101,10 +109,9 @@ impl WgpuFinePipeline {
         clip_spill_depth: u32,
         group_spill_depth: u32,
     ) -> bool {
-        target.resize(device, width, height);
-        self.render_tiles_to_view(
-            device,
-            queue,
+        target.resize(commands.device(), width, height);
+        self.render_tiles_to_view_in(
+            commands,
             width,
             height,
             lengths,
@@ -122,10 +129,9 @@ impl WgpuFinePipeline {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn render_tiles_to_view(
+    pub(crate) fn render_tiles_to_view_in(
         &self,
-        device: &::wgpu::Device,
-        queue: &::wgpu::Queue,
+        commands: &mut WgpuCommandBatch,
         width: u32,
         height: u32,
         lengths: GpuBufferLengths,
@@ -145,9 +151,12 @@ impl WgpuFinePipeline {
             return true;
         }
 
-        queue.write_buffer(
+        let config_offset = commands.write_uniform_slot(
+            "fine.config",
             &self.config,
-            0,
+            self.config_size,
+            self.config_stride,
+            WGPU_CONFIG_SLOTS,
             bytemuck::bytes_of(&FineConfig {
                 width,
                 height,
@@ -163,16 +172,15 @@ impl WgpuFinePipeline {
 
         let bindings = scene_buffers.tile_fine_bindings(scan, coarse, clip_spills, group_spills);
         let bind_group = self.create_tile_bind_group_for_view(
-            device,
+            commands.device(),
             target,
             &self.bind_group_layout,
             &bindings,
+            config_offset,
         );
-        let mut encoder = device.create_command_encoder(&::wgpu::CommandEncoderDescriptor {
-            label: Some("tileink wgpu tile fine encoder"),
-        });
-        let gpu_scope = start_gpu_scope(device, "fine");
+        let gpu_scope = start_gpu_scope(commands.device(), "fine");
         let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
+        let encoder = commands.encoder();
         {
             let mut pass = encoder.begin_compute_pass(&::wgpu::ComputePassDescriptor {
                 label: Some("tileink wgpu tile fine pass"),
@@ -182,8 +190,7 @@ impl WgpuFinePipeline {
             pass.set_bind_group(0, &bind_group, &[]);
             pass.dispatch_workgroups(lengths.tile_count as u32, 1, 1);
         }
-        finish_gpu_scope(&mut encoder, gpu_scope);
-        queue.submit([encoder.finish()]);
+        finish_gpu_scope(encoder, gpu_scope);
         true
     }
 
@@ -193,13 +200,14 @@ impl WgpuFinePipeline {
         texture: &::wgpu::TextureView,
         layout: &::wgpu::BindGroupLayout,
         bindings: &WgpuTileFineBindings<'_>,
+        config_offset: ::wgpu::BufferAddress,
     ) -> ::wgpu::BindGroup {
         let fine = &bindings.fine;
         device.create_bind_group(&::wgpu::BindGroupDescriptor {
             label: Some("tileink wgpu tile fine bind group"),
             layout,
             entries: &[
-                buffer_binding(0, &self.config),
+                config_buffer_binding(0, &self.config, config_offset, self.config_size),
                 texture_binding(1, texture),
                 buffer_binding(2, fine.draw_flags),
                 buffer_binding(3, fine.draw_brush_colors),
@@ -362,6 +370,22 @@ fn buffer_binding(binding: u32, buffer: &::wgpu::Buffer) -> ::wgpu::BindGroupEnt
     ::wgpu::BindGroupEntry {
         binding,
         resource: buffer.as_entire_binding(),
+    }
+}
+
+fn config_buffer_binding(
+    binding: u32,
+    buffer: &::wgpu::Buffer,
+    offset: ::wgpu::BufferAddress,
+    size: ::wgpu::BufferAddress,
+) -> ::wgpu::BindGroupEntry<'_> {
+    ::wgpu::BindGroupEntry {
+        binding,
+        resource: ::wgpu::BindingResource::Buffer(::wgpu::BufferBinding {
+            buffer,
+            offset,
+            size: ::wgpu::BufferSize::new(size),
+        }),
     }
 }
 

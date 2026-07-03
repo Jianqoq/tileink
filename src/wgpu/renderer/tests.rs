@@ -4,6 +4,7 @@ use peniko::{
 };
 
 use super::{Renderer, WgpuRenderTargetId};
+use crate::wgpu::commands::WgpuCommandBatch;
 use crate::{
     FillRule, Scene, TextContext, TextLayoutOptions,
     cpu::Renderer as CpuRenderer,
@@ -1148,8 +1149,16 @@ fn wgpu_renderer_rasterizes_path_region_mask_when_enabled() {
     );
 
     let mask = renderer.acquire_scratch().expect("scratch mask");
-    renderer.clear_render_target(mask, 0);
-    assert!(renderer.build_region_mask(mask, &region, Some(0), Bounds::new(4, 4, 12, 12)));
+    let mut commands = WgpuCommandBatch::new(renderer.device(), renderer.queue(), "test mask");
+    renderer.clear_render_target(&mut commands, mask, 0);
+    assert!(renderer.build_region_mask(
+        &mut commands,
+        mask,
+        &region,
+        Some(0),
+        Bounds::new(4, 4, 12, 12)
+    ));
+    commands.finish();
 
     let pixels = read_render_target_u32(&renderer, mask, 16 * 16);
     assert_eq!(pixels[6 * 16 + 6], 0xffffffff);
@@ -1177,8 +1186,16 @@ fn wgpu_renderer_rasterizes_nonzero_path_region_mask_when_enabled() {
     let mut renderer = Renderer::new_default_device(16, 16, Color::TRANSPARENT);
     renderer.prepare_scene(&scene);
     let mask = renderer.acquire_scratch().expect("scratch mask");
-    renderer.clear_render_target(mask, 0);
-    assert!(renderer.build_region_mask(mask, &region, Some(0), Bounds::new(4, 4, 12, 12)));
+    let mut commands = WgpuCommandBatch::new(renderer.device(), renderer.queue(), "test mask");
+    renderer.clear_render_target(&mut commands, mask, 0);
+    assert!(renderer.build_region_mask(
+        &mut commands,
+        mask,
+        &region,
+        Some(0),
+        Bounds::new(4, 4, 12, 12)
+    ));
+    commands.finish();
 
     let pixels = read_render_target_u32(&renderer, mask, 16 * 16);
     assert_eq!(pixels[6 * 16 + 6], 0xffffffff);

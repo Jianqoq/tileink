@@ -31,6 +31,7 @@ use crate::{
 
 use super::buffer::WgpuBuffer;
 use super::coarse::{WgpuCoarseBatch, WgpuCoarsePipeline};
+use super::commands::WgpuCommandBatch;
 use super::cumsum::WgpuCumsumPipeline;
 use super::filter::{
     FILTER_OPACITY, WgpuFilterBrushBindings, WgpuFilterPathBindings, WgpuFilterPipeline,
@@ -650,6 +651,16 @@ impl Renderer {
         );
     }
 
+    fn scan_and_cumsum(&mut self, commands: &mut WgpuCommandBatch, _scene: &Scene) -> bool {
+        let (Some(scan), Some(cumsum)) = (&self.scan_pipeline, &self.cumsum) else {
+            return false;
+        };
+        scan.run_in(commands, &self.scene_buffers, &mut self.scan, self.lengths);
+        cumsum.run_in(commands, &self.scene_buffers, &mut self.scan, self.lengths);
+        true
+    }
+
+    #[cfg(test)]
     fn coarse_batch(
         &mut self,
         scene: &Scene,
@@ -678,21 +689,27 @@ impl Renderer {
             return false;
         };
 
-        <Self as Render>::scan(self, scene, ());
-        <Self as Render>::cumsum(self, scene, ());
-        self.clear_render_target(WgpuRenderTargetId::Main, self.clear_color);
+        let mut commands = WgpuCommandBatch::new(&self.device, &self.queue, "tileink wgpu frame");
+        if !self.scan_and_cumsum(&mut commands, scene) {
+            return false;
+        }
+        self.clear_render_target(&mut commands, WgpuRenderTargetId::Main, self.clear_color);
         let mut filter_cursors = WgpuFilterCursors::default();
-        self.execute_ops(
+        let ok = self.execute_ops(
+            &mut commands,
             scene,
             &plan,
             &plan.ops,
             WgpuRenderTargetId::Main,
             &mut filter_cursors,
-        )
+        );
+        commands.finish();
+        ok
     }
 
     fn execute_ops(
         &mut self,
+        commands: &mut WgpuCommandBatch,
         scene: &Scene,
         plan: &ExecPlan,
         ops: &[ExecOp],
@@ -701,9 +718,13 @@ impl Renderer {
     ) -> bool {
         for op in ops {
             let ok = match op {
-                ExecOp::DrawBatch { draws, layer_stack } => {
-                    self.execute_draw_batch(scene, draws.clone(), layer_stack.clone(), target)
-                }
+                ExecOp::DrawBatch { draws, layer_stack } => self.execute_draw_batch(
+                    commands,
+                    scene,
+                    draws.clone(),
+                    layer_stack.clone(),
+                    target,
+                ),
                 ExecOp::BeginClip
                 | ExecOp::EndClip
                 | ExecOp::BeginOpacity
@@ -716,6 +737,7 @@ impl Renderer {
                     outer_stack,
                     children,
                 } => self.execute_offscreen_layer(
+                    commands,
                     scene,
                     plan,
                     *draw,
@@ -731,6 +753,7 @@ impl Renderer {
                     content,
                     mask,
                 } => self.execute_mask_layer(
+                    commands,
                     scene,
                     plan,
                     layer,
@@ -750,7 +773,8 @@ impl Renderer {
 
     fn execute_draw_batch(
         &mut self,
-        scene: &Scene,
+        commands: &mut WgpuCommandBatch,
+        _scene: &Scene,
         draws: std::ops::Range<usize>,
         layer_stack: std::ops::Range<usize>,
         target: WgpuRenderTargetId,
@@ -758,26 +782,58 @@ impl Renderer {
         if draws.start >= draws.end {
             return true;
         }
-        self.coarse_batch(
-            scene,
+        self.coarse_and_fine_batch_to(
+            commands,
             draws.start as u32,
             draws.end as u32,
             layer_stack.start as u32,
             layer_stack.end as u32,
-        );
-        self.fine_batch_to(target)
+            target,
+        )
     }
 
-    fn fine_batch_to(&mut self, target: WgpuRenderTargetId) -> bool {
+    fn coarse_and_fine_batch_to(
+        &mut self,
+        commands: &mut WgpuCommandBatch,
+        draw_start: u32,
+        draw_end: u32,
+        layer_stack_start: u32,
+        layer_stack_end: u32,
+        target: WgpuRenderTargetId,
+    ) -> bool {
+        if self.coarse_pipeline.is_none() || self.fine.is_none() {
+            return false;
+        }
+        let batch = WgpuCoarseBatch {
+            draw_start,
+            draw_end,
+            layer_stack_start,
+            layer_stack_end,
+        };
+        self.coarse_pipeline.as_ref().unwrap().encode_in(
+            commands,
+            &self.scene_buffers,
+            &self.scan,
+            &mut self.coarse,
+            self.lengths,
+            batch,
+        );
+        self.fine_batch_to_in(commands, target)
+    }
+
+    fn fine_batch_to_in(
+        &mut self,
+        commands: &mut WgpuCommandBatch,
+        target: WgpuRenderTargetId,
+    ) -> bool {
         let Some(fine) = &self.fine else {
             return false;
         };
         match target {
             WgpuRenderTargetId::Main => {
                 if let Some(target) = &self.root_target_view {
-                    fine.render_tiles_to_view(
-                        &self.device,
-                        &self.queue,
+                    fine.render_tiles_to_view_in(
+                        commands,
                         self.size.0,
                         self.size.1,
                         self.lengths,
@@ -793,9 +849,8 @@ impl Renderer {
                         self.max_group_depth.saturating_sub(FINE_LOCAL_GROUP_DEPTH) as u32,
                     )
                 } else {
-                    fine.render_tiles(
-                        &self.device,
-                        &self.queue,
+                    fine.render_tiles_in(
+                        commands,
                         self.size.0,
                         self.size.1,
                         self.lengths,
@@ -812,9 +867,8 @@ impl Renderer {
                     )
                 }
             }
-            WgpuRenderTargetId::Scratch(ix) => fine.render_tiles(
-                &self.device,
-                &self.queue,
+            WgpuRenderTargetId::Scratch(ix) => fine.render_tiles_in(
+                commands,
                 self.size.0,
                 self.size.1,
                 self.lengths,
@@ -834,6 +888,7 @@ impl Renderer {
 
     fn execute_offscreen_layer(
         &mut self,
+        commands: &mut WgpuCommandBatch,
         scene: &Scene,
         plan: &ExecPlan,
         draw: usize,
@@ -845,6 +900,7 @@ impl Renderer {
     ) -> bool {
         match layer {
             Layer::Isolate => self.execute_masked_group_layer(
+                commands,
                 scene,
                 plan,
                 draw,
@@ -856,6 +912,7 @@ impl Renderer {
                 filter_cursors,
             ),
             Layer::Opacity(opacity) => self.execute_masked_group_layer(
+                commands,
                 scene,
                 plan,
                 draw,
@@ -867,6 +924,7 @@ impl Renderer {
                 filter_cursors,
             ),
             Layer::Blend(blend) => self.execute_masked_group_layer(
+                commands,
                 scene,
                 plan,
                 draw,
@@ -881,6 +939,7 @@ impl Renderer {
                 filter,
                 sample_region,
             } => self.execute_filter_layer(
+                commands,
                 scene,
                 plan,
                 filter,
@@ -894,6 +953,7 @@ impl Renderer {
                 filter,
                 sample_region,
             } => self.execute_backdrop_layer(
+                commands,
                 scene,
                 plan,
                 filter,
@@ -911,6 +971,7 @@ impl Renderer {
     #[allow(clippy::too_many_arguments)]
     fn execute_masked_group_layer(
         &mut self,
+        commands: &mut WgpuCommandBatch,
         scene: &Scene,
         plan: &ExecPlan,
         draw: usize,
@@ -926,22 +987,39 @@ impl Renderer {
             return true;
         }
 
-        let Some(source) = self.render_ops_to_scratch(scene, plan, children, filter_cursors) else {
+        let Some(source) =
+            self.render_ops_to_scratch(commands, scene, plan, children, filter_cursors)
+        else {
             return false;
         };
         if let Some(opacity) = opacity {
-            self.apply_color_filter_to_target(source, bounds, FILTER_OPACITY, opacity);
+            self.apply_color_filter_to_target(commands, source, bounds, FILTER_OPACITY, opacity);
         }
 
         let Some(mask) = self.acquire_scratch() else {
             self.release_scratch(source);
             return false;
         };
-        self.build_layer_mask(mask, draw as u32, bounds);
+        self.build_layer_mask(commands, mask, draw as u32, bounds);
         let ok = if let Some(mode) = blend {
-            self.composite_blend_with_stack(target, source, mask, bounds, outer_stack, mode)
+            self.composite_blend_with_stack(
+                commands,
+                target,
+                source,
+                mask,
+                bounds,
+                outer_stack,
+                mode,
+            )
         } else {
-            self.composite_src_over_with_stack(target, source, Some(mask), bounds, outer_stack)
+            self.composite_src_over_with_stack(
+                commands,
+                target,
+                source,
+                Some(mask),
+                bounds,
+                outer_stack,
+            )
         };
         self.release_scratch(mask);
         self.release_scratch(source);
@@ -951,6 +1029,7 @@ impl Renderer {
     #[allow(clippy::too_many_arguments)]
     fn execute_filter_layer(
         &mut self,
+        commands: &mut WgpuCommandBatch,
         scene: &Scene,
         plan: &ExecPlan,
         filter: &Filter,
@@ -995,17 +1074,21 @@ impl Renderer {
 
         let source = WgpuRenderTargetId::Scratch(0);
         self.scratch_in_use[0] = true;
-        self.clear_render_target(source, 0);
-        <Self as Render>::scan(self, &local.scene, ());
-        <Self as Render>::cumsum(self, &local.scene, ());
+        self.clear_render_target(commands, source, 0);
+        if !self.scan_and_cumsum(commands, &local.scene) {
+            self.restore_root_scene_resources(saved);
+            return false;
+        }
         let mut local_filter_cursors = WgpuFilterCursors::default();
         let ok = self.execute_ops(
+            commands,
             &local.scene,
             &local.plan,
             &local.children,
             source,
             &mut local_filter_cursors,
         ) && self.apply_filter(
+            commands,
             source,
             local_bounds,
             &local_filter,
@@ -1018,6 +1101,7 @@ impl Renderer {
         self.scratch_in_use.clear();
         self.restore_root_scene_resources(saved);
         ok && self.composite_surface_src_over_with_stack(
+            commands,
             target,
             &source_buffer,
             (
@@ -1033,6 +1117,7 @@ impl Renderer {
     #[allow(clippy::too_many_arguments)]
     fn execute_backdrop_layer(
         &mut self,
+        commands: &mut WgpuCommandBatch,
         scene: &Scene,
         plan: &ExecPlan,
         filter: &Filter,
@@ -1060,6 +1145,7 @@ impl Renderer {
                 sampling,
             } = filter
             && self.apply_downsampled_blur_rect_composite(
+                commands,
                 target,
                 bounds,
                 *std_dev_x,
@@ -1068,19 +1154,20 @@ impl Renderer {
                 sample_region,
             )
         {
-            return self.execute_ops(scene, plan, children, target, filter_cursors);
+            return self.execute_ops(commands, scene, plan, children, target, filter_cursors);
         }
 
         if outer_stack.is_empty()
             && let Filter::RectLiquidGlass(glass) = filter
             && self.apply_downsampled_liquid_glass_rect_composite(
+                commands,
                 target,
                 bounds,
                 *glass,
                 sample_region,
             )
         {
-            return self.execute_ops(scene, plan, children, target, filter_cursors);
+            return self.execute_ops(commands, scene, plan, children, target, filter_cursors);
         }
 
         let Some(backdrop) = self.acquire_scratch() else {
@@ -1092,11 +1179,12 @@ impl Renderer {
                 std_dev_y,
                 sampling,
             } => self.apply_blur_from_source(
-                target, backdrop, bounds, *std_dev_x, *std_dev_y, *sampling,
+                commands, target, backdrop, bounds, *std_dev_x, *std_dev_y, *sampling,
             ),
             _ => {
-                self.copy_region_to_target(target, backdrop, bounds)
+                self.copy_region_to_target(commands, target, backdrop, bounds)
                     && self.apply_filter(
+                        commands,
                         backdrop,
                         bounds,
                         filter,
@@ -1111,7 +1199,13 @@ impl Renderer {
         }
 
         let ok = if outer_stack.is_empty() {
-            self.composite_src_over_rect_mask_direct(target, backdrop, bounds, sample_region)
+            self.composite_src_over_rect_mask_direct(
+                commands,
+                target,
+                backdrop,
+                bounds,
+                sample_region,
+            )
         } else {
             false
         };
@@ -1122,7 +1216,7 @@ impl Renderer {
                 self.release_scratch(backdrop);
                 return false;
             };
-            let mask_ok = self.build_region_mask(mask, sample_region, path_index, bounds);
+            let mask_ok = self.build_region_mask(commands, mask, sample_region, path_index, bounds);
             if !mask_ok {
                 self.release_scratch(mask);
                 self.release_scratch(backdrop);
@@ -1130,6 +1224,7 @@ impl Renderer {
             }
 
             let ok = self.composite_src_over_with_stack(
+                commands,
                 target,
                 backdrop,
                 Some(mask),
@@ -1140,12 +1235,13 @@ impl Renderer {
             ok
         };
         self.release_scratch(backdrop);
-        ok && self.execute_ops(scene, plan, children, target, filter_cursors)
+        ok && self.execute_ops(commands, scene, plan, children, target, filter_cursors)
     }
 
     #[allow(clippy::too_many_arguments)]
     fn execute_mask_layer(
         &mut self,
+        commands: &mut WgpuCommandBatch,
         scene: &Scene,
         plan: &ExecPlan,
         layer: &crate::shared::layer::mask::Mask,
@@ -1163,11 +1259,13 @@ impl Renderer {
         }
         let path_index = filter_cursors.next_path_index(&layer.region);
 
-        let Some(content_target) = self.render_ops_to_scratch(scene, plan, content, filter_cursors)
+        let Some(content_target) =
+            self.render_ops_to_scratch(commands, scene, plan, content, filter_cursors)
         else {
             return false;
         };
-        let Some(mask_source) = self.render_ops_to_scratch(scene, plan, mask_ops, filter_cursors)
+        let Some(mask_source) =
+            self.render_ops_to_scratch(commands, scene, plan, mask_ops, filter_cursors)
         else {
             self.release_scratch(content_target);
             return false;
@@ -1178,7 +1276,7 @@ impl Renderer {
             self.release_scratch(content_target);
             return false;
         };
-        self.svg_mask_coverage(mask_source, mask, bounds, layer.kind);
+        self.svg_mask_coverage(commands, mask_source, mask, bounds, layer.kind);
         self.release_scratch(mask_source);
 
         let Some(region_mask) = self.acquire_scratch() else {
@@ -1186,9 +1284,10 @@ impl Renderer {
             self.release_scratch(content_target);
             return false;
         };
-        let region_ok = self.build_region_mask(region_mask, &layer.region, path_index, bounds);
+        let region_ok =
+            self.build_region_mask(commands, region_mask, &layer.region, path_index, bounds);
         if region_ok {
-            self.apply_region_mask(region_mask, mask, bounds);
+            self.apply_region_mask(commands, region_mask, mask, bounds);
         }
         self.release_scratch(region_mask);
         if !region_ok {
@@ -1198,6 +1297,7 @@ impl Renderer {
         }
 
         let ok = self.composite_src_over_with_stack(
+            commands,
             target,
             content_target,
             Some(mask),
@@ -1211,14 +1311,15 @@ impl Renderer {
 
     fn render_ops_to_scratch(
         &mut self,
+        commands: &mut WgpuCommandBatch,
         scene: &Scene,
         plan: &ExecPlan,
         ops: &[ExecOp],
         filter_cursors: &mut WgpuFilterCursors,
     ) -> Option<WgpuRenderTargetId> {
         let target = self.acquire_scratch()?;
-        self.clear_render_target(target, 0);
-        if self.execute_ops(scene, plan, ops, target, filter_cursors) {
+        self.clear_render_target(commands, target, 0);
+        if self.execute_ops(commands, scene, plan, ops, target, filter_cursors) {
             Some(target)
         } else {
             self.release_scratch(target);
@@ -1226,12 +1327,17 @@ impl Renderer {
         }
     }
 
-    fn build_layer_mask(&self, target: WgpuRenderTargetId, draw_ix: u32, bounds: Bounds) {
+    fn build_layer_mask(
+        &self,
+        commands: &mut WgpuCommandBatch,
+        target: WgpuRenderTargetId,
+        draw_ix: u32,
+        bounds: Bounds,
+    ) {
         if let Some(filter) = &self.filter {
             let bindings = self.scene_buffers.filter_bindings(&self.scan);
             filter.build_layer_mask(
-                &self.device,
-                &self.queue,
+                commands,
                 self.render_target_view(target),
                 self.size,
                 self.lengths,
@@ -1244,6 +1350,7 @@ impl Renderer {
 
     fn build_region_mask(
         &self,
+        commands: &mut WgpuCommandBatch,
         target: WgpuRenderTargetId,
         region: &crate::shared::layer::region::Region,
         path_index: Option<u32>,
@@ -1252,8 +1359,7 @@ impl Renderer {
         let paths = self.filter_path_bindings();
         self.filter.as_ref().is_some_and(|filter| {
             filter.build_region_mask(
-                &self.device,
-                &self.queue,
+                commands,
                 self.render_target_view(target),
                 self.size,
                 self.lengths,
@@ -1267,6 +1373,7 @@ impl Renderer {
 
     fn svg_mask_coverage(
         &self,
+        commands: &mut WgpuCommandBatch,
         source: WgpuRenderTargetId,
         target: WgpuRenderTargetId,
         bounds: Bounds,
@@ -1274,8 +1381,7 @@ impl Renderer {
     ) {
         if let Some(filter) = &self.filter {
             filter.svg_mask_coverage(
-                &self.device,
-                &self.queue,
+                commands,
                 self.render_target_view(source),
                 self.render_target_view(target),
                 self.size,
@@ -1288,14 +1394,14 @@ impl Renderer {
 
     fn apply_region_mask(
         &self,
+        commands: &mut WgpuCommandBatch,
         mask: WgpuRenderTargetId,
         target: WgpuRenderTargetId,
         bounds: Bounds,
     ) {
         if let Some(filter) = &self.filter {
             filter.apply_region_mask(
-                &self.device,
-                &self.queue,
+                commands,
                 self.render_target_view(mask),
                 self.render_target_view(target),
                 self.size,
@@ -1307,6 +1413,7 @@ impl Renderer {
 
     fn composite_src_over_with_stack(
         &self,
+        commands: &mut WgpuCommandBatch,
         target: WgpuRenderTargetId,
         source: WgpuRenderTargetId,
         mask: Option<WgpuRenderTargetId>,
@@ -1318,8 +1425,7 @@ impl Renderer {
         };
         let bindings = self.scene_buffers.filter_bindings(&self.scan);
         filter.composite_src_over_with_stack(
-            &self.device,
-            &self.queue,
+            commands,
             self.render_target_view(target),
             self.render_target_view(source),
             mask.map(|mask| self.render_target_view(mask)),
@@ -1334,6 +1440,7 @@ impl Renderer {
 
     fn composite_src_over_rect_mask_direct(
         &self,
+        commands: &mut WgpuCommandBatch,
         target: WgpuRenderTargetId,
         source: WgpuRenderTargetId,
         bounds: Bounds,
@@ -1343,8 +1450,7 @@ impl Renderer {
             return false;
         };
         filter.composite_src_over_rect_mask_direct(
-            &self.device,
-            &self.queue,
+            commands,
             self.render_target_view(target),
             self.render_target_view(source),
             self.size,
@@ -1356,6 +1462,7 @@ impl Renderer {
 
     fn composite_blend_with_stack(
         &self,
+        commands: &mut WgpuCommandBatch,
         target: WgpuRenderTargetId,
         source: WgpuRenderTargetId,
         mask: WgpuRenderTargetId,
@@ -1368,8 +1475,7 @@ impl Renderer {
         };
         let bindings = self.scene_buffers.filter_bindings(&self.scan);
         filter.composite_blend_with_stack(
-            &self.device,
-            &self.queue,
+            commands,
             self.render_target_view(target),
             self.render_target_view(source),
             self.render_target_view(mask),
@@ -1385,6 +1491,7 @@ impl Renderer {
 
     fn composite_surface_src_over_with_stack(
         &self,
+        commands: &mut WgpuCommandBatch,
         target: WgpuRenderTargetId,
         source: &WgpuTarget,
         source_size: (u32, u32),
@@ -1397,8 +1504,7 @@ impl Renderer {
         };
         let bindings = self.scene_buffers.filter_bindings(&self.scan);
         filter.composite_src_over_surface_with_stack(
-            &self.device,
-            &self.queue,
+            commands,
             self.render_target_view(target),
             source.view(),
             self.size,
