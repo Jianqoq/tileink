@@ -85,7 +85,7 @@ impl Scene {
     ) -> Result<(), SvgError> {
         let mut svg_scene = Scene::new(self.width, self.height);
         SvgBuilder::new(options).push_tree(&mut svg_scene, tree)?;
-        self.append(svg_scene, (0.0, 0.0));
+        self.append(&svg_scene, (0.0, 0.0));
         Ok(())
     }
 }

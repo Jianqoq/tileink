@@ -179,7 +179,7 @@ fn scene_columns_rebuild_after_append() {
 
     let mut child = test_scene();
     child.push_circle(Circle::new((16.0, 16.0), 8.0), Brush::Solid(rgb(0, 255, 0)));
-    parent.append(child, Point::new(4.0, 5.0));
+    parent.append(&child, Point::new(4.0, 5.0));
 
     assert_eq!(
         parent.columns.draw_path_ids.len(),
@@ -196,6 +196,92 @@ fn scene_columns_rebuild_after_append() {
     );
     assert_eq!(parent.columns.sdf.refs.len(), parent.draw_records.len());
     assert_eq!(parent.columns.sdf.kinds.len(), 2);
+}
+
+#[test]
+fn append_fast_path_translates_sdf_without_mutating_child() {
+    let mut child = test_scene();
+    child.push_rect(
+        Rect::new(1.0, 2.0, 5.0, 6.0),
+        crate::Radius::ZERO,
+        Brush::Solid(rgb(255, 0, 0)),
+    );
+    let original_child_draw = child.draw_records[0].clone();
+
+    let mut parent = test_scene();
+    parent.append(&child, Point::new(10.0, 20.0));
+    parent.append(&child, Point::new(30.0, 40.0));
+
+    assert_eq!(
+        child.draw_records[0].pixel_bounds,
+        original_child_draw.pixel_bounds
+    );
+    assert!(matches!(child.draw_records[0].sdf, Some(Sdf::Rect(_))));
+    assert!(matches!(original_child_draw.sdf, Some(Sdf::Rect(_))));
+    assert_eq!(parent.draw_records.len(), 2);
+    assert_eq!(
+        parent.draw_records[0].pixel_bounds,
+        PixelBounds {
+            x0: 11,
+            y0: 22,
+            x1: 15,
+            y1: 26,
+        }
+    );
+    assert_eq!(
+        parent.draw_records[1].pixel_bounds,
+        PixelBounds {
+            x0: 31,
+            y0: 42,
+            x1: 35,
+            y1: 46,
+        }
+    );
+    assert_eq!(parent.columns.draw_flags.len(), parent.draw_records.len());
+    assert_eq!(parent.columns.sdf.refs.len(), parent.draw_records.len());
+    assert_eq!(parent.columns.sdf.kinds.len(), parent.draw_records.len());
+}
+
+#[test]
+fn append_fast_path_offsets_text_runs_without_mutating_child() {
+    let mut context = TextContext::new();
+    let layout = context.layout(TextLayoutOptions::new("AA", 20.0));
+    if layout.is_empty() {
+        return;
+    }
+
+    let mut child = test_scene();
+    child
+        .push_text_layout(&layout, Point::new(0.0, 20.0), Brush::Solid(rgb(0, 0, 0)))
+        .expect("layout should produce a text draw");
+    let child_runs = child.text_runs.clone();
+    let child_glyphs = child.text_glyphs.clone();
+
+    let mut parent = test_scene();
+    parent.append(&child, Point::new(4.0, 8.0));
+    parent.append(&child, Point::new(40.0, 80.0));
+
+    assert_eq!(child.text_runs.len(), child_runs.len());
+    for (actual, expected) in child.text_runs.iter().zip(&child_runs) {
+        assert_eq!(actual.glyph_start, expected.glyph_start);
+        assert_eq!(actual.glyph_count, expected.glyph_count);
+    }
+    assert_eq!(child.text_glyphs.len(), child_glyphs.len());
+    for (actual, expected) in child.text_glyphs.iter().zip(&child_glyphs) {
+        assert_eq!(actual.x, expected.x);
+        assert_eq!(actual.y, expected.y);
+    }
+    assert_eq!(parent.text_runs.len(), 2);
+    assert_eq!(parent.text_runs[0].glyph_start, 0);
+    assert_eq!(parent.text_runs[1].glyph_start, child_glyphs.len() as u32);
+    assert_eq!(
+        parent.columns.text_run_starts,
+        vec![0, child_glyphs.len() as u32]
+    );
+    assert_eq!(parent.columns.glyph_x.len(), parent.text_glyphs.len());
+    assert_eq!(parent.columns.glyph_y.len(), parent.text_glyphs.len());
+    assert_eq!(parent.columns.draw_glyph_run_ids[0], 0);
+    assert_eq!(parent.columns.draw_glyph_run_ids[1], 1);
 }
 
 #[test]

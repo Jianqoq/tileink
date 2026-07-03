@@ -518,62 +518,54 @@ impl Scene {
     /// regions into parent coordinates, then inserts its root commands into the
     /// current command list. It deliberately does not add a child-canvas clip;
     /// callers that need clipping can open a clip layer around the append.
-    pub fn append(&mut self, mut other: Scene, pos: impl Into<Point>) {
+    /// The borrowed child scene is not mutated and remains reusable.
+    pub fn append(&mut self, other: &Scene, pos: impl Into<Point>) {
         self.ensure_command_root();
-        other.ensure_command_root();
         assert!(
             other.command_stack.len() == 1 && other.layer_stack.is_empty(),
             "cannot append a scene with unclosed layers"
         );
 
         let offset = SceneOffset::new(pos.into());
-        self.append_scene_at(other, SceneAppendMode::MergeCurrent, offset);
+        self.append_scene_ref_unchecked(other, SceneAppendMode::MergeCurrent, offset);
     }
 
-    fn append_scene_at(
+    fn append_scene_ref_unchecked(
         &mut self,
-        mut other: Scene,
+        other: &Scene,
         mode: SceneAppendMode,
         offset: SceneOffset,
     ) -> Option<CommandListId> {
-        self.ensure_command_root();
-        other.ensure_command_root();
-        assert!(
-            other.command_stack.len() == 1 && other.layer_stack.is_empty(),
-            "cannot append a scene with unclosed layers"
-        );
-
-        other.translate_for_append(offset, self.width, self.height);
-        self.append_scene_unchecked(other, mode)
-    }
-
-    fn append_scene_unchecked(
-        &mut self,
-        mut other: Scene,
-        mode: SceneAppendMode,
-    ) -> Option<CommandListId> {
-        let draw_offset = self.append_scene_data(&mut other);
+        let draw_offset = self.append_scene_data(other, offset);
         let command_list_offset = self.command_lists.len();
         let root_commands = other.root_commands;
         match mode {
             SceneAppendMode::MergeCurrent => {
                 let child_list_offset = command_list_offset.saturating_sub(1);
-                let mut remapped_root_commands =
-                    Vec::with_capacity(other.command_lists[root_commands].commands.len());
-                for command in other.command_lists[root_commands].commands.drain(..) {
-                    remapped_root_commands.push(Self::remap_command(
-                        command,
-                        draw_offset,
-                        child_list_offset,
-                    ));
-                }
+                let remapped_root_commands = other.command_lists[root_commands]
+                    .commands
+                    .iter()
+                    .map(|command| {
+                        Self::translated_remapped_command(
+                            command,
+                            draw_offset,
+                            child_list_offset,
+                            offset,
+                        )
+                    })
+                    .collect::<Vec<_>>();
 
-                for (list_ix, mut list) in other.command_lists.into_iter().enumerate() {
+                for (list_ix, list) in other.command_lists.iter().enumerate() {
                     if list_ix == root_commands {
                         continue;
                     }
-                    Self::remap_command_list(&mut list, draw_offset, child_list_offset);
-                    self.command_lists.push(list);
+                    self.command_lists
+                        .push(Self::translated_remapped_command_list(
+                            list,
+                            draw_offset,
+                            child_list_offset,
+                            offset,
+                        ));
                 }
 
                 let target_commands = self.current_command_list_id();
@@ -583,34 +575,18 @@ impl Scene {
                 None
             }
             SceneAppendMode::AppendAsCommandList => {
-                for mut list in other.command_lists {
-                    Self::remap_command_list(&mut list, draw_offset, command_list_offset);
-                    self.command_lists.push(list);
+                for list in &other.command_lists {
+                    self.command_lists
+                        .push(Self::translated_remapped_command_list(
+                            list,
+                            draw_offset,
+                            command_list_offset,
+                            offset,
+                        ));
                 }
                 Some(command_list_offset + root_commands)
             }
         }
-    }
-
-    fn translate_for_append(&mut self, offset: SceneOffset, target_width: u32, target_height: u32) {
-        if !offset.is_zero() {
-            for line in &mut self.lines {
-                offset.line(line);
-            }
-            for draw in &mut self.draw_records {
-                Self::translate_draw_for_append(draw, offset);
-            }
-            for glyph in &mut self.text_glyphs {
-                *glyph = glyph.translated(offset.dx, offset.dy);
-            }
-            for list in &mut self.command_lists {
-                for command in &mut list.commands {
-                    offset.command(command);
-                }
-            }
-        }
-
-        self.rebuild_backdrop_records_for_canvas(target_width, target_height);
     }
 
     fn translate_draw_for_append(draw: &mut DrawRecord, offset: SceneOffset) {
@@ -637,59 +613,6 @@ impl Scene {
             x1: bounds.x1,
             y1: bounds.y1,
         }
-    }
-
-    fn rebuild_backdrop_records_for_canvas(&mut self, width: u32, height: u32) {
-        let mut path_bounds: Vec<Option<PixelBounds>> = vec![None; self.path_records.len()];
-        for draw in &self.draw_records {
-            let Some(path_id) = draw.path_id else {
-                continue;
-            };
-            if let Some(slot) = path_bounds.get_mut(path_id as usize) {
-                *slot = Some(match *slot {
-                    Some(bounds) => bounds.union(draw.pixel_bounds),
-                    None => draw.pixel_bounds,
-                });
-            }
-        }
-
-        let width_in_tiles = width.div_ceil(crate::TILE_SIZE);
-        let height_in_tiles = height.div_ceil(crate::TILE_SIZE);
-        let mut records = Vec::with_capacity(self.path_records.len());
-        let mut data_offset = 0;
-        let mut segment_start = 0;
-        for (path_ix, record) in self.path_records.iter().enumerate() {
-            let pixel_bounds = path_bounds
-                .get(path_ix)
-                .and_then(|bounds| *bounds)
-                .unwrap_or_else(|| self.path_pixel_bounds(path_ix));
-            let tile_bbox = pixel_bounds.tile_bbox(width_in_tiles, height_in_tiles);
-            let data_len = tile_bbox.tile_count();
-            let segment_capacity = self.segment_capacity_for_path_record(
-                record,
-                tile_bbox,
-                width_in_tiles,
-                height_in_tiles,
-            );
-            records.push(BackdropRecord {
-                path_id: record.path_id,
-                data_offset,
-                data_len,
-                tile_x0: tile_bbox.x0,
-                tile_y0: tile_bbox.y0,
-                tile_x1: tile_bbox.x1,
-                tile_y1: tile_bbox.y1,
-                segment_start,
-                segment_capacity,
-                segment_count: 0,
-            });
-            data_offset += data_len;
-            segment_start += segment_capacity;
-        }
-
-        self.bd_records = records;
-        self.backdrop_pool_capacity = data_offset;
-        self.tile_cnt = segment_start;
     }
 
     fn path_pixel_bounds(&self, path_ix: usize) -> PixelBounds {
@@ -749,67 +672,136 @@ impl Scene {
             })
     }
 
-    fn append_scene_data(&mut self, other: &mut Scene) -> usize {
+    fn append_scene_data(&mut self, other: &Scene, offset: SceneOffset) -> usize {
         let line_offset = self.lines.len() as u32;
         let path_offset = self.path_cnt;
         let draw_offset = self.draw_records.len();
         let glyph_offset = self.text_glyphs.len() as u32;
         let text_run_offset = self.text_runs.len() as u32;
-        let backdrop_offset = self.backdrop_pool_capacity;
-        let tile_offset = self.tile_cnt;
+        let path_record_start = self.path_records.len();
+        let draw_start = self.draw_records.len();
 
-        for line in &mut other.lines {
+        self.lines.reserve(other.lines.len());
+        for &line in &other.lines {
+            let mut line = line;
             line.path_id = line.path_id.saturating_add(path_offset);
+            if !offset.is_zero() {
+                offset.line(&mut line);
+            }
+            self.columns.push_line(line);
+            self.lines.push(line);
         }
-        self.lines.append(&mut other.lines);
 
-        for record in &mut other.path_records {
+        self.path_records.reserve(other.path_records.len());
+        for &record in &other.path_records {
+            let mut record = record;
             record.path_id = record.path_id.saturating_add(path_offset);
             record.line_start = record.line_start.saturating_add(line_offset);
+            self.columns.push_path_record(record);
+            self.path_records.push(record);
         }
-        self.path_records.append(&mut other.path_records);
 
-        for draw in &mut other.draw_records {
+        self.draw_records.reserve(other.draw_records.len());
+        for draw in &other.draw_records {
+            let mut draw = draw.clone();
+            if !offset.is_zero() {
+                Self::translate_draw_for_append(&mut draw, offset);
+            }
             if let Some(path_id) = &mut draw.path_id {
                 *path_id = path_id.saturating_add(path_offset);
             }
             if let Some(glyph_run_id) = &mut draw.glyph_run_id {
                 *glyph_run_id = glyph_run_id.saturating_add(text_run_offset);
             }
+            self.columns.push_draw(&draw);
+            self.draw_records.push(draw);
         }
-        self.draw_records.append(&mut other.draw_records);
 
-        for run in &mut other.text_runs {
-            run.glyph_start = run.glyph_start.saturating_add(glyph_offset);
+        self.text_glyphs.reserve(other.text_glyphs.len());
+        for &glyph in &other.text_glyphs {
+            let glyph = if offset.is_zero() {
+                glyph
+            } else {
+                glyph.translated(offset.dx, offset.dy)
+            };
+            self.columns.glyph_x.push(glyph.x);
+            self.columns.glyph_y.push(glyph.y);
+            self.text_glyphs.push(glyph);
         }
-        self.text_glyphs.append(&mut other.text_glyphs);
-        self.text_runs.append(&mut other.text_runs);
 
-        for record in &mut other.bd_records {
-            record.path_id = record.path_id.saturating_add(path_offset);
-            record.data_offset = record.data_offset.saturating_add(backdrop_offset);
-            record.segment_start = record.segment_start.saturating_add(tile_offset);
+        self.text_runs.reserve(other.text_runs.len());
+        for &run in &other.text_runs {
+            let run = TextRun {
+                glyph_start: run.glyph_start.saturating_add(glyph_offset),
+                glyph_count: run.glyph_count,
+            };
+            self.columns.push_text_run(run);
+            self.text_runs.push(run);
         }
-        self.bd_records.append(&mut other.bd_records);
 
         self.path_cnt = self.path_cnt.saturating_add(other.path_cnt);
-        self.backdrop_pool_capacity = self
-            .backdrop_pool_capacity
-            .saturating_add(other.backdrop_pool_capacity);
-        self.tile_cnt = self.tile_cnt.saturating_add(other.tile_cnt);
-        self.rebuild_columns();
+        self.append_backdrop_records_for_paths(
+            path_record_start,
+            other.path_records.len(),
+            draw_start,
+            other.draw_records.len(),
+        );
 
         draw_offset
     }
 
-    fn remap_command_list(list: &mut CommandList, draw_offset: usize, child_list_offset: usize) {
-        for command in &mut list.commands {
-            *command = Self::remap_command(
-                std::mem::replace(command, Command::Draw(0)),
-                draw_offset,
-                child_list_offset,
-            );
+    fn append_backdrop_records_for_paths(
+        &mut self,
+        path_record_start: usize,
+        path_record_count: usize,
+        draw_start: usize,
+        draw_count: usize,
+    ) {
+        if path_record_count == 0 {
+            return;
         }
+
+        let width_in_tiles = self.width_in_tiles();
+        let height_in_tiles = self.height_in_tiles();
+        let mut data_offset = self.backdrop_pool_capacity;
+        let mut segment_start = self.tile_cnt;
+        let path_record_end = path_record_start + path_record_count;
+        let draw_end = draw_start + draw_count;
+
+        for path_ix in path_record_start..path_record_end {
+            let record = self.path_records[path_ix];
+            let pixel_bounds = self.draw_records[draw_start..draw_end]
+                .iter()
+                .filter(|draw| draw.path_id == Some(record.path_id))
+                .map(|draw| draw.pixel_bounds)
+                .reduce(PixelBounds::union)
+                .unwrap_or_else(|| self.path_pixel_bounds(path_ix));
+            let tile_bbox = pixel_bounds.tile_bbox(width_in_tiles, height_in_tiles);
+            let data_len = tile_bbox.tile_count();
+            let segment_capacity = self.segment_capacity_for_path_record(
+                &record,
+                tile_bbox,
+                width_in_tiles,
+                height_in_tiles,
+            );
+            self.bd_records.push(BackdropRecord {
+                path_id: record.path_id,
+                data_offset,
+                data_len,
+                tile_x0: tile_bbox.x0,
+                tile_y0: tile_bbox.y0,
+                tile_x1: tile_bbox.x1,
+                tile_y1: tile_bbox.y1,
+                segment_start,
+                segment_capacity,
+                segment_count: 0,
+            });
+            data_offset = data_offset.saturating_add(data_len);
+            segment_start = segment_start.saturating_add(segment_capacity);
+        }
+
+        self.backdrop_pool_capacity = data_offset;
+        self.tile_cnt = segment_start;
     }
 
     fn remap_command(command: Command, draw_offset: usize, child_list_offset: usize) -> Command {
@@ -836,8 +828,43 @@ impl Scene {
         }
     }
 
-    fn append_scene_as_command_list(&mut self, other: Scene) -> CommandListId {
-        self.append_scene_at(
+    fn translated_remapped_command_list(
+        list: &CommandList,
+        draw_offset: usize,
+        child_list_offset: usize,
+        offset: SceneOffset,
+    ) -> CommandList {
+        CommandList {
+            commands: list
+                .commands
+                .iter()
+                .map(|command| {
+                    Self::translated_remapped_command(
+                        command,
+                        draw_offset,
+                        child_list_offset,
+                        offset,
+                    )
+                })
+                .collect(),
+        }
+    }
+
+    fn translated_remapped_command(
+        command: &Command,
+        draw_offset: usize,
+        child_list_offset: usize,
+        offset: SceneOffset,
+    ) -> Command {
+        let mut command = command.clone();
+        if !offset.is_zero() {
+            offset.command(&mut command);
+        }
+        Self::remap_command(command, draw_offset, child_list_offset)
+    }
+
+    fn append_scene_as_command_list(&mut self, other: &Scene) -> CommandListId {
+        self.append_scene_ref_unchecked(
             other,
             SceneAppendMode::AppendAsCommandList,
             SceneOffset::new(Point::new(0.0, 0.0)),
@@ -972,7 +999,7 @@ impl Scene {
     /// layer's content before compositing through any outer clips.
     pub fn push_mask_layer(&mut self, mask_scene: Scene, mask: Mask) {
         self.ensure_command_root();
-        let mask_commands = self.append_scene_as_command_list(mask_scene);
+        let mask_commands = self.append_scene_as_command_list(&mask_scene);
         self.push_mask_command(mask, mask_commands);
     }
 

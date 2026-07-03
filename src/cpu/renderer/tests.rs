@@ -165,7 +165,7 @@ fn append_places_path_scene_at_position() {
     );
 
     let mut scene = Scene::new(40, 32);
-    scene.append(child, (17.0, 5.0));
+    scene.append(&child, (17.0, 5.0));
 
     let mut renderer = Renderer::new(40, 32, Color::WHITE);
     renderer.render(&scene);
@@ -186,7 +186,7 @@ fn append_does_not_clip_to_child_scene_canvas() {
     );
 
     let mut scene = Scene::new(40, 40);
-    scene.append(child, (10.0, 10.0));
+    scene.append(&child, (10.0, 10.0));
 
     let mut renderer = Renderer::new(40, 40, Color::WHITE);
     renderer.render(&scene);
@@ -213,7 +213,7 @@ fn append_inside_open_layer_stays_inside_that_layer() {
         FillRule::NonZero,
         0.0,
     );
-    scene.append(child, (10.0, 8.0));
+    scene.append(&child, (10.0, 8.0));
     scene.pop_layer();
 
     let mut renderer = Renderer::new(40, 32, Color::WHITE);
@@ -235,7 +235,7 @@ fn append_moves_linear_gradient_with_child_scene() {
     );
 
     let mut scene = Scene::new(40, 4);
-    scene.append(child, (20.0, 0.0));
+    scene.append(&child, (20.0, 0.0));
 
     let mut renderer = Renderer::new(40, 4, Color::WHITE);
     renderer.render(&scene);

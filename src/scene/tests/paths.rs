@@ -170,12 +170,52 @@ fn append_rebuilds_path_geometry_columns() {
     );
 
     let mut scene = test_scene();
-    scene.append(child, Point::new(8.0, 4.0));
+    scene.append(&child, Point::new(8.0, 4.0));
 
     assert_path_geometry_columns_match_scene(&scene);
     assert!(scene.lines.iter().all(|line| {
         [line.p0, line.p1]
             .into_iter()
             .all(|point| point[0] >= 8.0 && point[0] <= 18.0 && point[1] >= 4.0 && point[1] <= 14.0)
+    }));
+}
+
+#[test]
+fn append_rebuilds_path_geometry_columns_without_mutating_child() {
+    let mut child = test_scene();
+    child.push_path(
+        rect_path(0.0, 0.0, 10.0, 10.0),
+        Brush::Solid(rgb(255, 0, 0)),
+        Affine::IDENTITY,
+        FillRule::NonZero,
+        0.25,
+    );
+    let original_lines = child.lines.clone();
+    let original_paths = child.path_records.clone();
+
+    let mut scene = test_scene();
+    scene.append(&child, Point::new(8.0, 4.0));
+    scene.append(&child, Point::new(20.0, 12.0));
+
+    assert_eq!(child.lines.len(), original_lines.len());
+    for (actual, expected) in child.lines.iter().zip(&original_lines) {
+        assert_eq!(actual.path_id, expected.path_id);
+        assert_eq!(actual.p0, expected.p0);
+        assert_eq!(actual.p1, expected.p1);
+    }
+    assert_eq!(child.path_records.len(), original_paths.len());
+    for (actual, expected) in child.path_records.iter().zip(&original_paths) {
+        assert_eq!(actual.path_id, expected.path_id);
+        assert_eq!(actual.line_start, expected.line_start);
+        assert_eq!(actual.line_count, expected.line_count);
+        assert_eq!(actual.flags, expected.flags);
+    }
+    assert_path_geometry_columns_match_scene(&scene);
+    assert_eq!(scene.path_records.len(), child.path_records.len() * 2);
+    assert_eq!(scene.bd_records.len(), scene.path_records.len());
+    assert!(scene.lines.iter().all(|line| {
+        [line.p0, line.p1].into_iter().all(|point| {
+            (point[0] >= 8.0 && point[0] <= 30.0) && (point[1] >= 4.0 && point[1] <= 22.0)
+        })
     }));
 }
