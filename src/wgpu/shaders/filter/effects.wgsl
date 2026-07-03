@@ -350,8 +350,9 @@ fn liquid_glass_pixel(
     distance_norm: f32,
     surface_height: f32,
 ) -> u32 {
-    let nx = liquid_glass_normal_x(world_x, world_y);
-    let ny = liquid_glass_normal_y(world_x, world_y);
+    let normal = liquid_glass_normal(world_x, world_y);
+    let nx = normal.x;
+    let ny = normal.y;
     let inside_distance = -distance;
     let edge = liquid_glass_edge(
         inside_distance,
@@ -365,60 +366,86 @@ fn liquid_glass_pixel(
     blur_mix = clamp(blur_mix, 0.0, 1.0);
 
     let normal_len = LIQUID_GLASS_NORMAL_LENGTH_SCALE / surface_height;
-    var r = liquid_glass_sample_straight_channel(1u, pixel_x, pixel_y, 0u);
-    var g = liquid_glass_sample_straight_channel(1u, pixel_x, pixel_y, 1u);
-    var b = liquid_glass_sample_straight_channel(1u, pixel_x, pixel_y, 2u);
-    var a = liquid_glass_sample_straight_channel(1u, pixel_x, pixel_y, 3u);
+    let initial_blur = liquid_glass_sample_straight_rgba(1u, pixel_x, pixel_y);
+    var r = initial_blur.r;
+    var g = initial_blur.g;
+    var b = initial_blur.b;
+    var a = initial_blur.a;
+    let tint_mix = config.liquid_tint_a * LIQUID_GLASS_TINT_MIX;
+    let tint_base_mix = config.liquid_tint_a * LIQUID_GLASS_TINT_BASE_MIX;
 
     if (edge <= 0.0) {
-        r = lerp_f32(r, config.liquid_tint_r, config.liquid_tint_a * LIQUID_GLASS_TINT_MIX);
-        g = lerp_f32(g, config.liquid_tint_g, config.liquid_tint_a * LIQUID_GLASS_TINT_MIX);
-        b = lerp_f32(b, config.liquid_tint_b, config.liquid_tint_a * LIQUID_GLASS_TINT_MIX);
-        a = lerp_f32(a, 1.0, config.liquid_tint_a * LIQUID_GLASS_TINT_MIX);
+        if (tint_mix > 0.0) {
+            r = lerp_f32(r, config.liquid_tint_r, tint_mix);
+            g = lerp_f32(g, config.liquid_tint_g, tint_mix);
+            b = lerp_f32(b, config.liquid_tint_b, tint_mix);
+            a = lerp_f32(a, 1.0, tint_mix);
+        }
     } else {
         let offset_x = -nx * edge * LIQUID_GLASS_REFRACTION_PIXEL_SCALE;
         let offset_y = -ny * edge * LIQUID_GLASS_REFRACTION_PIXEL_SCALE;
-        r = liquid_glass_dispersion_channel(pixel_x, pixel_y, offset_x, offset_y, LIQUID_GLASS_CHROMATIC_R, 0u, blur_mix);
-        g = liquid_glass_dispersion_channel(pixel_x, pixel_y, offset_x, offset_y, LIQUID_GLASS_CHROMATIC_G, 1u, blur_mix);
-        b = liquid_glass_dispersion_channel(pixel_x, pixel_y, offset_x, offset_y, LIQUID_GLASS_CHROMATIC_B, 2u, blur_mix);
-        a = liquid_glass_sample_alpha(pixel_x + offset_x, pixel_y + offset_y);
+        if (abs(config.liquid_refraction_dispersion) <= LIQUID_GLASS_EPSILON) {
+            let sx = pixel_x + offset_x;
+            let sy = pixel_y + offset_y;
+            let src_rgba = liquid_glass_sample_straight_rgba(0u, sx, sy);
+            let blur_rgba = liquid_glass_sample_straight_rgba(1u, sx, sy);
+            r = lerp_f32(src_rgba.r, blur_rgba.r, blur_mix);
+            g = lerp_f32(src_rgba.g, blur_rgba.g, blur_mix);
+            b = lerp_f32(src_rgba.b, blur_rgba.b, blur_mix);
+            a = max(src_rgba.a, blur_rgba.a);
+        } else {
+            let sx = pixel_x + offset_x;
+            let sy = pixel_y + offset_y;
+            let src_rgba = liquid_glass_sample_straight_rgba(0u, sx, sy);
+            let blur_rgba = liquid_glass_sample_straight_rgba(1u, sx, sy);
+            r = liquid_glass_dispersion_channel(pixel_x, pixel_y, offset_x, offset_y, LIQUID_GLASS_CHROMATIC_R, 0u, blur_mix);
+            g = lerp_f32(src_rgba.g, blur_rgba.g, blur_mix);
+            b = liquid_glass_dispersion_channel(pixel_x, pixel_y, offset_x, offset_y, LIQUID_GLASS_CHROMATIC_B, 2u, blur_mix);
+            a = max(src_rgba.a, blur_rgba.a);
+        }
         let blurred_r = r;
         let blurred_g = g;
         let blurred_b = b;
-        r = lerp_f32(r, config.liquid_tint_r, config.liquid_tint_a * LIQUID_GLASS_TINT_MIX);
-        g = lerp_f32(g, config.liquid_tint_g, config.liquid_tint_a * LIQUID_GLASS_TINT_MIX);
-        b = lerp_f32(b, config.liquid_tint_b, config.liquid_tint_a * LIQUID_GLASS_TINT_MIX);
-        a = lerp_f32(a, 1.0, config.liquid_tint_a * LIQUID_GLASS_TINT_MIX);
+        if (tint_mix > 0.0) {
+            r = lerp_f32(r, config.liquid_tint_r, tint_mix);
+            g = lerp_f32(g, config.liquid_tint_g, tint_mix);
+            b = lerp_f32(b, config.liquid_tint_b, tint_mix);
+            a = lerp_f32(a, 1.0, tint_mix);
+        }
 
-        let fresnel = liquid_glass_fresnel(distance, config.liquid_fresnel_range, config.liquid_fresnel_hardness);
-        let fresnel_base_r = lerp_f32(1.0, config.liquid_tint_r, config.liquid_tint_a * LIQUID_GLASS_TINT_BASE_MIX);
-        let fresnel_base_g = lerp_f32(1.0, config.liquid_tint_g, config.liquid_tint_a * LIQUID_GLASS_TINT_BASE_MIX);
-        let fresnel_base_b = lerp_f32(1.0, config.liquid_tint_b, config.liquid_tint_a * LIQUID_GLASS_TINT_BASE_MIX);
-        var fresnel_l = liquid_glass_srgb_to_lch_l(fresnel_base_r, fresnel_base_g, fresnel_base_b);
-        let fresnel_c = liquid_glass_srgb_to_lch_c(fresnel_base_r, fresnel_base_g, fresnel_base_b);
-        let fresnel_h = liquid_glass_srgb_to_lch_h(fresnel_base_r, fresnel_base_g, fresnel_base_b);
-        fresnel_l = clamp(fresnel_l + LIQUID_GLASS_FRESNEL_LIGHTNESS_GAIN * fresnel * config.liquid_fresnel_factor, 0.0, 100.0);
-        let fresnel_mix = fresnel * config.liquid_fresnel_factor * LIQUID_GLASS_FRESNEL_MIX_SCALE * normal_len;
-        r = lerp_f32(r, liquid_glass_lch_to_srgb_r(fresnel_l, fresnel_c, fresnel_h), fresnel_mix);
-        g = lerp_f32(g, liquid_glass_lch_to_srgb_g(fresnel_l, fresnel_c, fresnel_h), fresnel_mix);
-        b = lerp_f32(b, liquid_glass_lch_to_srgb_b(fresnel_l, fresnel_c, fresnel_h), fresnel_mix);
-        a = lerp_f32(a, 1.0, fresnel_mix);
+        if (config.liquid_fresnel_factor > 0.0) {
+            let fresnel = liquid_glass_fresnel(distance, config.liquid_fresnel_range, config.liquid_fresnel_hardness);
+            let fresnel_base_r = lerp_f32(1.0, config.liquid_tint_r, tint_base_mix);
+            let fresnel_base_g = lerp_f32(1.0, config.liquid_tint_g, tint_base_mix);
+            let fresnel_base_b = lerp_f32(1.0, config.liquid_tint_b, tint_base_mix);
+            var fresnel_l = liquid_glass_srgb_to_lch_l(fresnel_base_r, fresnel_base_g, fresnel_base_b);
+            let fresnel_c = liquid_glass_srgb_to_lch_c(fresnel_base_r, fresnel_base_g, fresnel_base_b);
+            let fresnel_h = liquid_glass_srgb_to_lch_h(fresnel_base_r, fresnel_base_g, fresnel_base_b);
+            fresnel_l = clamp(fresnel_l + LIQUID_GLASS_FRESNEL_LIGHTNESS_GAIN * fresnel * config.liquid_fresnel_factor, 0.0, 100.0);
+            let fresnel_mix = fresnel * config.liquid_fresnel_factor * LIQUID_GLASS_FRESNEL_MIX_SCALE * normal_len;
+            r = lerp_f32(r, liquid_glass_lch_to_srgb_r(fresnel_l, fresnel_c, fresnel_h), fresnel_mix);
+            g = lerp_f32(g, liquid_glass_lch_to_srgb_g(fresnel_l, fresnel_c, fresnel_h), fresnel_mix);
+            b = lerp_f32(b, liquid_glass_lch_to_srgb_b(fresnel_l, fresnel_c, fresnel_h), fresnel_mix);
+            a = lerp_f32(a, 1.0, fresnel_mix);
+        }
 
-        let glare_geo = liquid_glass_glare_geometry(distance, config.liquid_glare_range, config.liquid_glare_hardness);
-        let glare_angle_factor = liquid_glass_glare_angle(nx, ny);
-        let glare_base_r = lerp_f32(blurred_r, config.liquid_tint_r, config.liquid_tint_a * LIQUID_GLASS_TINT_BASE_MIX);
-        let glare_base_g = lerp_f32(blurred_g, config.liquid_tint_g, config.liquid_tint_a * LIQUID_GLASS_TINT_BASE_MIX);
-        let glare_base_b = lerp_f32(blurred_b, config.liquid_tint_b, config.liquid_tint_a * LIQUID_GLASS_TINT_BASE_MIX);
-        var glare_l = liquid_glass_srgb_to_lch_l(glare_base_r, glare_base_g, glare_base_b);
-        var glare_c = liquid_glass_srgb_to_lch_c(glare_base_r, glare_base_g, glare_base_b);
-        let glare_h = liquid_glass_srgb_to_lch_h(glare_base_r, glare_base_g, glare_base_b);
-        glare_l = clamp(glare_l + LIQUID_GLASS_GLARE_LIGHTNESS_GAIN * glare_angle_factor * glare_geo, 0.0, 120.0);
-        glare_c += LIQUID_GLASS_GLARE_CHROMA_GAIN * glare_angle_factor * glare_geo;
-        let glare_mix = glare_angle_factor * glare_geo * normal_len;
-        r = lerp_f32(r, liquid_glass_lch_to_srgb_r(glare_l, glare_c, glare_h), glare_mix);
-        g = lerp_f32(g, liquid_glass_lch_to_srgb_g(glare_l, glare_c, glare_h), glare_mix);
-        b = lerp_f32(b, liquid_glass_lch_to_srgb_b(glare_l, glare_c, glare_h), glare_mix);
-        a = lerp_f32(a, 1.0, glare_mix);
+        if (config.liquid_glare_factor > 0.0) {
+            let glare_geo = liquid_glass_glare_geometry(distance, config.liquid_glare_range, config.liquid_glare_hardness);
+            let glare_angle_factor = liquid_glass_glare_angle(nx, ny);
+            let glare_base_r = lerp_f32(blurred_r, config.liquid_tint_r, tint_base_mix);
+            let glare_base_g = lerp_f32(blurred_g, config.liquid_tint_g, tint_base_mix);
+            let glare_base_b = lerp_f32(blurred_b, config.liquid_tint_b, tint_base_mix);
+            var glare_l = liquid_glass_srgb_to_lch_l(glare_base_r, glare_base_g, glare_base_b);
+            var glare_c = liquid_glass_srgb_to_lch_c(glare_base_r, glare_base_g, glare_base_b);
+            let glare_h = liquid_glass_srgb_to_lch_h(glare_base_r, glare_base_g, glare_base_b);
+            glare_l = clamp(glare_l + LIQUID_GLASS_GLARE_LIGHTNESS_GAIN * glare_angle_factor * glare_geo, 0.0, 120.0);
+            glare_c += LIQUID_GLASS_GLARE_CHROMA_GAIN * glare_angle_factor * glare_geo;
+            let glare_mix = glare_angle_factor * glare_geo * normal_len;
+            r = lerp_f32(r, liquid_glass_lch_to_srgb_r(glare_l, glare_c, glare_h), glare_mix);
+            g = lerp_f32(g, liquid_glass_lch_to_srgb_g(glare_l, glare_c, glare_h), glare_mix);
+            b = lerp_f32(b, liquid_glass_lch_to_srgb_b(glare_l, glare_c, glare_h), glare_mix);
+            a = lerp_f32(a, 1.0, glare_mix);
+        }
     }
 
     let edge_mix = liquid_glass_smoothstep(LIQUID_GLASS_EDGE_BLEND_START, LIQUID_GLASS_EDGE_BLEND_END, distance_norm);
@@ -520,6 +547,10 @@ fn liquid_glass_sample_alpha(x: f32, y: f32) -> f32 {
 }
 
 fn liquid_glass_sample_straight_channel(image_kind: u32, x: f32, y: f32, channel: u32) -> f32 {
+    if (image_kind == 1u && config.downsample > 1u) {
+        return liquid_glass_sample_downsampled_blur_straight_channel(x, y, channel);
+    }
+
     let sx = clamp(x, 0.0, f32(config.width - 1u));
     let sy = clamp(y, 0.0, f32(config.height - 1u));
     let x0 = u32(floor(sx));
@@ -535,6 +566,84 @@ fn liquid_glass_sample_straight_channel(image_kind: u32, x: f32, y: f32, channel
     return lerp_f32(lerp_f32(tl, tr, tx), lerp_f32(bl, br, tx), ty);
 }
 
+fn liquid_glass_sample_straight_rgba(image_kind: u32, x: f32, y: f32) -> vec4<f32> {
+    if (image_kind == 1u && config.downsample > 1u) {
+        return liquid_glass_sample_downsampled_blur_straight_rgba(x, y);
+    }
+
+    let sx = clamp(x, 0.0, f32(config.width - 1u));
+    let sy = clamp(y, 0.0, f32(config.height - 1u));
+    let x0 = u32(floor(sx));
+    let y0 = u32(floor(sy));
+    let x1 = min(x0 + 1u, config.width - 1u);
+    let y1 = min(y0 + 1u, config.height - 1u);
+    let tx = sx - f32(x0);
+    let ty = sy - f32(y0);
+    let tl = liquid_glass_pixel_straight_rgba(liquid_glass_image_pixel(image_kind, x0, y0));
+    let tr = liquid_glass_pixel_straight_rgba(liquid_glass_image_pixel(image_kind, x1, y0));
+    let bl = liquid_glass_pixel_straight_rgba(liquid_glass_image_pixel(image_kind, x0, y1));
+    let br = liquid_glass_pixel_straight_rgba(liquid_glass_image_pixel(image_kind, x1, y1));
+    return lerp_vec4(lerp_vec4(tl, tr, tx), lerp_vec4(bl, br, tx), ty);
+}
+
+fn liquid_glass_sample_downsampled_blur_straight_rgba(x: f32, y: f32) -> vec4<f32> {
+    if (config.source_x0 >= config.source_x1 || config.source_y0 >= config.source_y1) {
+        return vec4<f32>(0.0);
+    }
+    let sx = clamp(x, 0.0, f32(config.width - 1u));
+    let sy = clamp(y, 0.0, f32(config.height - 1u));
+    let x0 = u32(floor(sx));
+    let y0 = u32(floor(sy));
+    let x1 = min(x0 + 1u, config.width - 1u);
+    let y1 = min(y0 + 1u, config.height - 1u);
+    let tx = sx - f32(x0);
+    let ty = sy - f32(y0);
+    let tl = liquid_glass_pixel_straight_rgba(liquid_glass_downsampled_blur_pixel_at_full_res(x0, y0));
+    let tr = liquid_glass_pixel_straight_rgba(liquid_glass_downsampled_blur_pixel_at_full_res(x1, y0));
+    let bl = liquid_glass_pixel_straight_rgba(liquid_glass_downsampled_blur_pixel_at_full_res(x0, y1));
+    let br = liquid_glass_pixel_straight_rgba(liquid_glass_downsampled_blur_pixel_at_full_res(x1, y1));
+    return lerp_vec4(lerp_vec4(tl, tr, tx), lerp_vec4(bl, br, tx), ty);
+}
+
+fn liquid_glass_sample_downsampled_blur_straight_channel(x: f32, y: f32, channel: u32) -> f32 {
+    if (config.source_x0 >= config.source_x1 || config.source_y0 >= config.source_y1) {
+        return 0.0;
+    }
+    let sx = clamp(x, 0.0, f32(config.width - 1u));
+    let sy = clamp(y, 0.0, f32(config.height - 1u));
+    let x0 = u32(floor(sx));
+    let y0 = u32(floor(sy));
+    let x1 = min(x0 + 1u, config.width - 1u);
+    let y1 = min(y0 + 1u, config.height - 1u);
+    let tx = sx - f32(x0);
+    let ty = sy - f32(y0);
+    let tl = liquid_glass_pixel_straight_channel(liquid_glass_downsampled_blur_pixel_at_full_res(x0, y0), channel);
+    let tr = liquid_glass_pixel_straight_channel(liquid_glass_downsampled_blur_pixel_at_full_res(x1, y0), channel);
+    let bl = liquid_glass_pixel_straight_channel(liquid_glass_downsampled_blur_pixel_at_full_res(x0, y1), channel);
+    let br = liquid_glass_pixel_straight_channel(liquid_glass_downsampled_blur_pixel_at_full_res(x1, y1), channel);
+    return lerp_f32(lerp_f32(tl, tr, tx), lerp_f32(bl, br, tx), ty);
+}
+
+fn liquid_glass_downsampled_blur_pixel_at_full_res(x: u32, y: u32) -> u32 {
+    let factor = f32(max(config.downsample, 1u));
+    let max_x = f32(config.source_x1 - 1u);
+    let max_y = f32(config.source_y1 - 1u);
+    let sample_x = clamp((f32(x) + 0.5) / factor - 0.5, f32(config.source_x0), max_x);
+    let sample_y = clamp((f32(y) + 0.5) / factor - 0.5, f32(config.source_y0), max_y);
+    let x0 = u32(floor(sample_x));
+    let y0 = u32(floor(sample_y));
+    let x1 = min(x0 + 1u, config.source_x1 - 1u);
+    let y1 = min(y0 + 1u, config.source_y1 - 1u);
+    let tx = sample_x - floor(sample_x);
+    let ty = sample_y - floor(sample_y);
+    if (config.upsample_filter == 0u) {
+        return aux_pixel_at(u32(round(sample_x)), u32(round(sample_y)));
+    }
+    let top = lerp_premul_u8(aux_pixel_at(x0, y0), aux_pixel_at(x1, y0), tx);
+    let bottom = lerp_premul_u8(aux_pixel_at(x0, y1), aux_pixel_at(x1, y1), tx);
+    return lerp_premul_u8(top, bottom, ty);
+}
+
 fn liquid_glass_image_pixel(image_kind: u32, x: u32, y: u32) -> u32 {
     if (image_kind == 1u) {
         return aux_pixel_at(x, y);
@@ -542,21 +651,31 @@ fn liquid_glass_image_pixel(image_kind: u32, x: u32, y: u32) -> u32 {
     return source_pixel_at(x, y);
 }
 
-fn liquid_glass_pixel_straight_channel(px: u32, channel: u32) -> f32 {
+fn liquid_glass_pixel_straight_rgba(px: u32) -> vec4<f32> {
     let a = f32((px >> 24u) & 255u) / 255.0;
-    var value = px & 255u;
+    var r = f32(px & 255u) / 255.0;
+    var g = f32((px >> 8u) & 255u) / 255.0;
+    var b = f32((px >> 16u) & 255u) / 255.0;
+    if (a > LIQUID_GLASS_EPSILON) {
+        r = r / a;
+        g = g / a;
+        b = b / a;
+    }
+    return vec4<f32>(r, g, b, a);
+}
+
+fn liquid_glass_pixel_straight_channel(px: u32, channel: u32) -> f32 {
+    let rgba = liquid_glass_pixel_straight_rgba(px);
     if (channel == 1u) {
-        value = (px >> 8u) & 255u;
-    } else if (channel == 2u) {
-        value = (px >> 16u) & 255u;
-    } else if (channel == 3u) {
-        value = (px >> 24u) & 255u;
+        return rgba.g;
     }
-    var out = f32(value) / 255.0;
-    if (channel != 3u && a > LIQUID_GLASS_EPSILON) {
-        out = out / a;
+    if (channel == 2u) {
+        return rgba.b;
     }
-    return out;
+    if (channel == 3u) {
+        return rgba.a;
+    }
+    return rgba.r;
 }
 
 fn liquid_glass_pack_straight_rgba8(r: f32, g: f32, b: f32, a: f32) -> u32 {
@@ -574,32 +693,17 @@ fn liquid_glass_smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
     return t * t * (3.0 - 2.0 * t);
 }
 
-fn liquid_glass_normal_x(x: f32, y: f32) -> f32 {
+fn liquid_glass_normal(x: f32, y: f32) -> vec2<f32> {
     let eps = 1.0;
     let dx = liquid_glass_round_rect_distance(x + eps, y, config.rect_x0, config.rect_y0, config.rect_x1, config.rect_y1, config.radius_top_left, config.radius_top_right, config.radius_bottom_left, config.radius_bottom_right) -
         liquid_glass_round_rect_distance(x - eps, y, config.rect_x0, config.rect_y0, config.rect_x1, config.rect_y1, config.radius_top_left, config.radius_top_right, config.radius_bottom_left, config.radius_bottom_right);
     let dy = liquid_glass_round_rect_distance(x, y + eps, config.rect_x0, config.rect_y0, config.rect_x1, config.rect_y1, config.radius_top_left, config.radius_top_right, config.radius_bottom_left, config.radius_bottom_right) -
         liquid_glass_round_rect_distance(x, y - eps, config.rect_x0, config.rect_y0, config.rect_x1, config.rect_y1, config.radius_top_left, config.radius_top_right, config.radius_bottom_left, config.radius_bottom_right);
     let len = sqrt(dx * dx + dy * dy);
-    var out = 0.0;
     if (len > LIQUID_GLASS_EPSILON) {
-        out = dx / len;
+        return vec2<f32>(dx / len, dy / len);
     }
-    return out;
-}
-
-fn liquid_glass_normal_y(x: f32, y: f32) -> f32 {
-    let eps = 1.0;
-    let dx = liquid_glass_round_rect_distance(x + eps, y, config.rect_x0, config.rect_y0, config.rect_x1, config.rect_y1, config.radius_top_left, config.radius_top_right, config.radius_bottom_left, config.radius_bottom_right) -
-        liquid_glass_round_rect_distance(x - eps, y, config.rect_x0, config.rect_y0, config.rect_x1, config.rect_y1, config.radius_top_left, config.radius_top_right, config.radius_bottom_left, config.radius_bottom_right);
-    let dy = liquid_glass_round_rect_distance(x, y + eps, config.rect_x0, config.rect_y0, config.rect_x1, config.rect_y1, config.radius_top_left, config.radius_top_right, config.radius_bottom_left, config.radius_bottom_right) -
-        liquid_glass_round_rect_distance(x, y - eps, config.rect_x0, config.rect_y0, config.rect_x1, config.rect_y1, config.radius_top_left, config.radius_top_right, config.radius_bottom_left, config.radius_bottom_right);
-    let len = sqrt(dx * dx + dy * dy);
-    var out = -1.0;
-    if (len > LIQUID_GLASS_EPSILON) {
-        out = dy / len;
-    }
-    return out;
+    return vec2<f32>(0.0, -1.0);
 }
 
 fn liquid_glass_round_rect_distance(
@@ -911,6 +1015,10 @@ fn svg_lum3(r: f32, g: f32, b: f32) -> f32 {
 }
 
 fn lerp_f32(a: f32, b: f32, t: f32) -> f32 {
+    return a + (b - a) * t;
+}
+
+fn lerp_vec4(a: vec4<f32>, b: vec4<f32>, t: f32) -> vec4<f32> {
     return a + (b - a) * t;
 }
 

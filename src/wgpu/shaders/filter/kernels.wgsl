@@ -909,6 +909,66 @@ fn filter_liquid_glass_region(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 
 @compute @workgroup_size(256)
+fn filter_liquid_glass_rect_composite_region(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let region_ix = gid.x;
+    if (region_ix >= config.pixel_count) {
+        return;
+    }
+
+    let xy = xy_for_region_ix(region_ix);
+    let world_x = f32(xy.x) + 0.5;
+    let world_y = f32(xy.y) + 0.5;
+    let distance = liquid_glass_round_rect_distance(
+        world_x,
+        world_y,
+        config.rect_x0,
+        config.rect_y0,
+        config.rect_x1,
+        config.rect_y1,
+        config.radius_top_left,
+        config.radius_top_right,
+        config.radius_bottom_left,
+        config.radius_bottom_right,
+    );
+    let mask_distance = rect_sdf_distance(
+        world_x,
+        world_y,
+        config.rect_x0,
+        config.rect_y0,
+        config.rect_x1,
+        config.rect_y1,
+        config.radius_top_left,
+        config.radius_top_right,
+        config.radius_bottom_left,
+        config.radius_bottom_right,
+    );
+    let source_alpha = coverage_to_u8(sdf_coverage_from_dist(mask_distance));
+    if (source_alpha == 0u) {
+        return;
+    }
+
+    let ix = target_ix_at(xy.x, xy.y);
+    let base = source_pixel_ix(ix);
+    let surface_height = f32(max(config.height, 1u));
+    let distance_norm = distance / surface_height;
+    var source = base;
+    if (distance_norm < LIQUID_GLASS_ACTIVE_DISTANCE_NORM) {
+        source = liquid_glass_pixel(
+            base,
+            world_x,
+            world_y,
+            f32(xy.x),
+            f32(xy.y),
+            distance,
+            distance_norm,
+            surface_height,
+        );
+    }
+    source = scale_premul_u8(source, source_alpha);
+    target_store_ix(ix, src_over_premul_u8(target_load_ix(ix), source));
+}
+
+@compute @workgroup_size(256)
 fn filter_composite_drop_shadow_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = gid.x;
     if (region_ix >= config.pixel_count) {

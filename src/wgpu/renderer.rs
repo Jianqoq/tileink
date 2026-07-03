@@ -1071,6 +1071,18 @@ impl Renderer {
             return self.execute_ops(scene, plan, children, target, filter_cursors);
         }
 
+        if outer_stack.is_empty()
+            && let Filter::RectLiquidGlass(glass) = filter
+            && self.apply_downsampled_liquid_glass_rect_composite(
+                target,
+                bounds,
+                *glass,
+                sample_region,
+            )
+        {
+            return self.execute_ops(scene, plan, children, target, filter_cursors);
+        }
+
         let Some(backdrop) = self.acquire_scratch() else {
             return false;
         };

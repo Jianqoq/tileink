@@ -22,6 +22,8 @@ fn main() {
     run_case("blur panels=64", blur_scene(64));
     run_case("glass panels=16", glass_scene(16));
     run_case("glass panels=64", glass_scene(64));
+    run_case("simple glass panels=16", simple_glass_scene(16));
+    run_case("simple glass panels=64", simple_glass_scene(64));
 }
 
 fn run_case(name: &str, scene: Scene) {
@@ -92,6 +94,26 @@ fn glass_scene(panels: u32) -> Scene {
                 blur_radius: 16,
                 blur_sampling: BlurSampling::downsampled(4),
                 tint: Color::from_rgba8(255, 255, 255, 0),
+                ..RectLiquidGlass::default()
+            }),
+            Region::rect(panel, Radius::all(18.0)),
+        );
+        scene.pop_layer();
+    }
+    scene
+}
+
+fn simple_glass_scene(panels: u32) -> Scene {
+    let mut scene = background_scene();
+    for panel in panel_grid(panels) {
+        scene.push_backdrop_layer(
+            Filter::RectLiquidGlass(RectLiquidGlass {
+                blur_radius: 16,
+                blur_sampling: BlurSampling::downsampled(4),
+                tint: Color::from_rgba8(255, 255, 255, 0),
+                refraction_dispersion: 0.0,
+                fresnel_factor: 0.0,
+                glare_factor: 0.0,
                 ..RectLiquidGlass::default()
             }),
             Region::rect(panel, Radius::all(18.0)),

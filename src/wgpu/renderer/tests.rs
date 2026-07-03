@@ -1916,6 +1916,48 @@ fn wgpu_renderer_profiles_empty_stack_backdrop_with_direct_composite_when_enable
 }
 
 #[test]
+fn wgpu_renderer_profiles_empty_stack_liquid_glass_with_direct_composite_when_enabled() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut scene = Scene::new(64, 40);
+    for x in 0..64 {
+        let v = (x * 3) as u8;
+        scene.push_rect(
+            Rect::new(f64::from(x), 0.0, f64::from(x + 1), 40.0),
+            crate::Radius::ZERO,
+            Color::from_rgb8(v, 90, 255u8.saturating_sub(v)),
+        );
+    }
+    scene.push_backdrop_layer(
+        Filter::RectLiquidGlass(RectLiquidGlass {
+            blur_radius: 12,
+            blur_sampling: BlurSampling::downsampled(4),
+            refraction_dispersion: 0.0,
+            fresnel_factor: 0.0,
+            glare_factor: 0.0,
+            ..RectLiquidGlass::default()
+        }),
+        Region::rect(Rect::new(12.0, 8.0, 52.0, 32.0), crate::Radius::all(6.0)),
+    );
+    scene.pop_layer();
+
+    let mut renderer = Renderer::new_default_device(64, 40, Color::TRANSPARENT);
+    let profile = renderer.render_profiled(&scene);
+
+    assert_profile_has(&profile, "filter.copy");
+    assert_profile_has(&profile, "filter.downsample");
+    assert_profile_has(&profile, "filter.blur.x");
+    assert_profile_has(&profile, "filter.blur.y");
+    assert_profile_has(&profile, "filter.liquid_glass.composite.rect");
+    assert_profile_missing(&profile, "filter.upsample");
+    assert_profile_missing(&profile, "filter.liquid_glass");
+    assert_profile_missing(&profile, "filter.composite.rect_direct");
+    assert_profile_missing(&profile, "filter.stack.src_over");
+}
+
+#[test]
 fn wgpu_renderer_applies_morphology_filter_to_offscreen_children_when_enabled() {
     if !run_wgpu_tests() {
         return;

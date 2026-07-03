@@ -287,6 +287,7 @@ pub(crate) struct WgpuFilterPipeline {
     convolve_matrix_region: ::wgpu::ComputePipeline,
     lighting_region: ::wgpu::ComputePipeline,
     liquid_glass_region: ::wgpu::ComputePipeline,
+    liquid_glass_rect_composite_region: ::wgpu::ComputePipeline,
     blend_region: ::wgpu::ComputePipeline,
     composite_inputs_region: ::wgpu::ComputePipeline,
     displacement_map_region: ::wgpu::ComputePipeline,
@@ -498,6 +499,12 @@ impl WgpuFilterPipeline {
                 &pipeline_layout,
                 &shader,
                 "filter_liquid_glass_region",
+            ),
+            liquid_glass_rect_composite_region: create_pipeline(
+                device,
+                &pipeline_layout,
+                &shader,
+                "filter_liquid_glass_rect_composite_region",
             ),
             blend_region: create_pipeline(device, &pipeline_layout, &shader, "filter_blend_region"),
             composite_inputs_region: create_pipeline(
@@ -1417,36 +1424,49 @@ impl WgpuFilterPipeline {
         let Some(mut config) = config_for_bounds(size, lengths, bounds) else {
             return;
         };
-        let [tint_r, tint_g, tint_b, tint_a] = glass.tint.components;
-        config.rect_x0 = region.x0;
-        config.rect_y0 = region.y0;
-        config.rect_x1 = region.x1;
-        config.rect_y1 = region.y1;
-        config.radius_top_left = region.radius_top_left;
-        config.radius_top_right = region.radius_top_right;
-        config.radius_bottom_left = region.radius_bottom_left;
-        config.radius_bottom_right = region.radius_bottom_right;
-        config.mask_enabled = u32::from(glass.blur_edge);
-        config.liquid_tint_r = tint_r;
-        config.liquid_tint_g = tint_g;
-        config.liquid_tint_b = tint_b;
-        config.liquid_tint_a = tint_a;
-        config.liquid_refraction_thickness = glass.refraction_thickness;
-        config.liquid_refraction_factor = glass.refraction_factor;
-        config.liquid_refraction_dispersion = glass.refraction_dispersion;
-        config.liquid_fresnel_range = glass.fresnel_range;
-        config.liquid_fresnel_hardness = glass.fresnel_hardness * 0.01;
-        config.liquid_fresnel_factor = glass.fresnel_factor * 0.01;
-        config.liquid_glare_range = glass.glare_range;
-        config.liquid_glare_hardness = glass.glare_hardness * 0.01;
-        config.liquid_glare_convergence = glass.glare_convergence * 0.01;
-        config.liquid_glare_opposite_factor = glass.glare_opposite_factor * 0.01;
-        config.liquid_glare_factor = glass.glare_factor * 0.01;
-        config.liquid_glare_angle = glass.glare_angle;
+        configure_rect_liquid_glass(&mut config, glass, region);
         self.dispatch(
             device,
             queue,
             &self.liquid_glass_region,
+            &config,
+            source,
+            blurred,
+            target,
+            None,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn rect_liquid_glass_composite_region(
+        &self,
+        device: &::wgpu::Device,
+        queue: &::wgpu::Queue,
+        source: &::wgpu::TextureView,
+        blurred: &::wgpu::TextureView,
+        target: &::wgpu::TextureView,
+        size: (u32, u32),
+        lengths: GpuBufferLengths,
+        target_bounds: Bounds,
+        blurred_bounds: Bounds,
+        sampling: BlurSampling,
+        glass: RectLiquidGlass,
+        region: RectLiquidGlassRegion,
+    ) {
+        let Some(mut config) = config_for_bounds(size, lengths, target_bounds) else {
+            return;
+        };
+        configure_rect_liquid_glass(&mut config, glass, region);
+        config.source_x0 = blurred_bounds.x0 as u32;
+        config.source_y0 = blurred_bounds.y0 as u32;
+        config.source_x1 = blurred_bounds.x1 as u32;
+        config.source_y1 = blurred_bounds.y1 as u32;
+        config.downsample = sampling.factor();
+        config.upsample_filter = encode_blur_upsample_filter(sampling.upsample_filter);
+        self.dispatch(
+            device,
+            queue,
+            &self.liquid_glass_rect_composite_region,
             &config,
             source,
             blurred,
@@ -1966,6 +1986,8 @@ impl WgpuFilterPipeline {
             }
         } else if std::ptr::eq(pipeline, &self.liquid_glass_region) {
             "filter.liquid_glass"
+        } else if std::ptr::eq(pipeline, &self.liquid_glass_rect_composite_region) {
+            "filter.liquid_glass.composite.rect"
         } else if std::ptr::eq(pipeline, &self.blend_region) {
             "filter.blend"
         } else if std::ptr::eq(pipeline, &self.composite_inputs_region) {
@@ -2256,6 +2278,39 @@ fn encode_blur_upsample_filter(filter: BlurUpsampleFilter) -> u32 {
         BlurUpsampleFilter::Nearest => 0,
         BlurUpsampleFilter::Bilinear => 1,
     }
+}
+
+fn configure_rect_liquid_glass(
+    config: &mut FilterConfig,
+    glass: RectLiquidGlass,
+    region: RectLiquidGlassRegion,
+) {
+    let [tint_r, tint_g, tint_b, tint_a] = glass.tint.components;
+    config.rect_x0 = region.x0;
+    config.rect_y0 = region.y0;
+    config.rect_x1 = region.x1;
+    config.rect_y1 = region.y1;
+    config.radius_top_left = region.radius_top_left;
+    config.radius_top_right = region.radius_top_right;
+    config.radius_bottom_left = region.radius_bottom_left;
+    config.radius_bottom_right = region.radius_bottom_right;
+    config.mask_enabled = u32::from(glass.blur_edge);
+    config.liquid_tint_r = tint_r;
+    config.liquid_tint_g = tint_g;
+    config.liquid_tint_b = tint_b;
+    config.liquid_tint_a = tint_a;
+    config.liquid_refraction_thickness = glass.refraction_thickness;
+    config.liquid_refraction_factor = glass.refraction_factor;
+    config.liquid_refraction_dispersion = glass.refraction_dispersion;
+    config.liquid_fresnel_range = glass.fresnel_range;
+    config.liquid_fresnel_hardness = glass.fresnel_hardness * 0.01;
+    config.liquid_fresnel_factor = glass.fresnel_factor * 0.01;
+    config.liquid_glare_range = glass.glare_range;
+    config.liquid_glare_hardness = glass.glare_hardness * 0.01;
+    config.liquid_glare_convergence = glass.glare_convergence * 0.01;
+    config.liquid_glare_opposite_factor = glass.glare_opposite_factor * 0.01;
+    config.liquid_glare_factor = glass.glare_factor * 0.01;
+    config.liquid_glare_angle = glass.glare_angle;
 }
 
 fn shared_blur_radius(std_dev: f32) -> Option<u32> {

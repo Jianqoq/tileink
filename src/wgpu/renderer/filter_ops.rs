@@ -684,6 +684,72 @@ impl Renderer {
         ok
     }
 
+    pub(super) fn apply_downsampled_liquid_glass_rect_composite(
+        &mut self,
+        target: WgpuRenderTargetId,
+        bounds: Bounds,
+        glass: filter_model::RectLiquidGlass,
+        region: &crate::shared::layer::region::Region,
+    ) -> bool {
+        if glass.blur_radius == 0
+            || glass.blur_sampling.factor() <= 1
+            || glass.refraction_dispersion.abs() > f32::EPSILON
+            || glass.fresnel_factor > 0.0
+            || glass.glare_factor > 0.0
+        {
+            return false;
+        }
+        let Some(glass_region) = rect_liquid_glass_region(Some(region), bounds) else {
+            return false;
+        };
+        let factor = glass.blur_sampling.factor();
+        let Some(low_bounds) = downsampled_bounds(bounds, factor) else {
+            return false;
+        };
+        if low_bounds.width() >= bounds.width() && low_bounds.height() >= bounds.height() {
+            return false;
+        }
+
+        let Some(source) = self.acquire_scratch() else {
+            return false;
+        };
+        let Some(low) = self.acquire_scratch() else {
+            self.release_scratch(source);
+            return false;
+        };
+        let Some(temp) = self.acquire_scratch() else {
+            self.release_scratch(low);
+            self.release_scratch(source);
+            return false;
+        };
+
+        let std_dev = glass.blur_radius as f32 * filter_model::LIQUID_GLASS_BLUR_STD_DEV_SCALE;
+        let ok = self.copy_region_to_target(target, source, bounds)
+            && self.downsample_region_to_target(
+                source,
+                low,
+                bounds,
+                low_bounds,
+                glass.blur_sampling,
+            )
+            && self.blur_region_to_target(low, temp, low_bounds, std_dev / factor as f32, 0)
+            && self.blur_region_to_target(temp, low, low_bounds, std_dev / factor as f32, 1)
+            && self.liquid_glass_rect_composite_to_target(
+                source,
+                low,
+                target,
+                bounds,
+                low_bounds,
+                glass,
+                glass_region,
+            );
+
+        self.release_scratch(temp);
+        self.release_scratch(low);
+        self.release_scratch(source);
+        ok
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn downsampled_blur_to_target(
         &self,
@@ -1119,6 +1185,36 @@ impl Renderer {
             self.size,
             self.lengths,
             bounds,
+            glass,
+            region,
+        );
+        true
+    }
+
+    fn liquid_glass_rect_composite_to_target(
+        &self,
+        source: WgpuRenderTargetId,
+        blurred: WgpuRenderTargetId,
+        target: WgpuRenderTargetId,
+        bounds: Bounds,
+        blurred_bounds: Bounds,
+        glass: filter_model::RectLiquidGlass,
+        region: filter_model::RectLiquidGlassRegion,
+    ) -> bool {
+        let Some(filter) = &self.filter else {
+            return false;
+        };
+        filter.rect_liquid_glass_composite_region(
+            &self.device,
+            &self.queue,
+            self.render_target_view(source),
+            self.render_target_view(blurred),
+            self.render_target_view(target),
+            self.size,
+            self.lengths,
+            bounds,
+            blurred_bounds,
+            glass.blur_sampling,
             glass,
             region,
         );
