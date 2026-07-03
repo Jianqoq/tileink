@@ -90,6 +90,7 @@ const DRAW_FLAG_HAS_SDF: u32 = 64u;
 const DRAW_FLAG_HAS_GLYPH: u32 = 128u;
 
 var<workgroup> coarse_scratch: array<u32, 256>;
+var<workgroup> coarse_total: u32;
 
 @compute @workgroup_size(256)
 fn coarse_count(
@@ -97,10 +98,11 @@ fn coarse_count(
     @builtin(local_invocation_id) local_id: vec3<u32>,
 ) {
     let tile_ix = workgroup_id.x;
-    if (tile_ix >= config.tile_count || local_id.x != 0u) {
+    if (tile_ix >= config.tile_count) {
         return;
     }
 
+    let lane = local_id.x;
     let tile_x = tile_ix % config.tiles_width;
     let tile_y = tile_ix / config.tiles_width;
     let wrapper_count = active_stack_count(tile_x, tile_y);
@@ -108,7 +110,7 @@ fn coarse_count(
     var glyph_count = 0u;
 
     if (wrapper_count != INVALID) {
-        var draw_ix = config.draw_start;
+        var draw_ix = config.draw_start + lane;
         loop {
             if (draw_ix >= config.draw_end) {
                 break;
@@ -137,16 +139,71 @@ fn coarse_count(
                     }
                 }
             }
-            draw_ix += 1u;
+            draw_ix += 256u;
         }
     }
 
-    tile_glyph_counts[tile_ix] = glyph_count;
-    var stored_count = count;
-    if (count > 0u) {
-        stored_count = count + wrapper_count * 2u + 1u;
+    let tile_ptcl_count = workgroup_sum(count, lane);
+    let tile_glyph_count = workgroup_sum(glyph_count, lane);
+    if (lane == 0u) {
+        tile_glyph_counts[tile_ix] = tile_glyph_count;
+        var stored_count = tile_ptcl_count;
+        if (tile_ptcl_count > 0u) {
+            stored_count = tile_ptcl_count + wrapper_count * 2u + 1u;
+        }
+        tile_ptcl_counts[tile_ix] = stored_count;
     }
-    tile_ptcl_counts[tile_ix] = stored_count;
+}
+
+fn workgroup_sum(value: u32, lane: u32) -> u32 {
+    _ = workgroup_exclusive_prefix(value, lane);
+    return coarse_total;
+}
+
+// Coarse mirrors the CubeCL pass: every lane scans one draw in each 256-wide
+// chunk, then the prefix sum preserves draw-order offsets for emission.
+fn workgroup_exclusive_prefix(value: u32, lane: u32) -> u32 {
+    coarse_scratch[lane] = value;
+    workgroupBarrier();
+
+    var step = 1u;
+    loop {
+        if (step >= 256u) {
+            break;
+        }
+        let ix = (lane + 1u) * step * 2u - 1u;
+        if (ix < 256u) {
+            coarse_scratch[ix] += coarse_scratch[ix - step];
+        }
+        workgroupBarrier();
+        step *= 2u;
+    }
+
+    if (lane == 0u) {
+        coarse_total = coarse_scratch[255u];
+        coarse_scratch[255u] = 0u;
+    }
+    workgroupBarrier();
+
+    step = 128u;
+    loop {
+        if (step == 0u) {
+            break;
+        }
+        let ix = (lane + 1u) * step * 2u - 1u;
+        if (ix < 256u) {
+            let left = ix - step;
+            let previous_left = coarse_scratch[left];
+            coarse_scratch[left] = coarse_scratch[ix];
+            coarse_scratch[ix] += previous_left;
+        }
+        workgroupBarrier();
+        step /= 2u;
+    }
+
+    let offset = coarse_scratch[lane];
+    workgroupBarrier();
+    return offset;
 }
 
 @compute @workgroup_size(256)
@@ -298,10 +355,11 @@ fn coarse_emit(
     @builtin(local_invocation_id) local_id: vec3<u32>,
 ) {
     let tile_ix = workgroup_id.x;
-    if (tile_ix >= config.tile_count || local_id.x != 0u) {
+    if (tile_ix >= config.tile_count) {
         return;
     }
 
+    let lane = local_id.x;
     let tile_x = tile_ix % config.tiles_width;
     let tile_y = tile_ix / config.tiles_width;
     var cursor = tile_ptcl_range_starts[tile_ix];
@@ -317,15 +375,18 @@ fn coarse_emit(
         return;
     }
 
-    emit_active_stack_begins(cursor, tile_x, tile_y);
+    if (lane == 0u) {
+        emit_active_stack_begins(cursor, tile_x, tile_y);
+    }
     cursor += wrapper_count;
 
-    var draw_ix = config.draw_start;
+    var chunk_start = config.draw_start;
     loop {
-        if (draw_ix >= config.draw_end) {
+        if (chunk_start >= config.draw_end) {
             break;
         }
 
+        let draw_ix = chunk_start + lane;
         var valid = false;
         var glyph_count = 0u;
         var ptcl_tag = GPU_PTCL_FILL;
@@ -334,66 +395,72 @@ fn coarse_emit(
         var ptcl_segment_start = 0u;
         var ptcl_segment_end = 0u;
         var ptcl_color = 0u;
-        let draw_tag = draw_tag_at(draw_ix);
 
-        if (draw_has_glyph_at(draw_ix)) {
-            if (draw_tag == GPU_DRAW_BRUSH && draw_tile_hit(draw_ix, tile_x, tile_y)) {
-                glyph_count = count_tile_glyphs_for_run(draw_glyph_run_ids[draw_ix], tile_x, tile_y);
-                if (glyph_count > 0u) {
+        if (draw_ix < config.draw_end) {
+            let draw_tag = draw_tag_at(draw_ix);
+            if (draw_has_glyph_at(draw_ix)) {
+                if (draw_tag == GPU_DRAW_BRUSH && draw_tile_hit(draw_ix, tile_x, tile_y)) {
+                    glyph_count = count_tile_glyphs_for_run(draw_glyph_run_ids[draw_ix], tile_x, tile_y);
+                    if (glyph_count > 0u) {
+                        valid = true;
+                        ptcl_tag = GPU_PTCL_GLYPH;
+                        ptcl_color = draw_ix;
+                    }
+                }
+            } else if (draw_has_sdf_at(draw_ix)) {
+                if (draw_tag == GPU_DRAW_BRUSH && draw_tile_hit(draw_ix, tile_x, tile_y)) {
                     valid = true;
-                    ptcl_tag = GPU_PTCL_GLYPH;
+                    ptcl_tag = GPU_PTCL_SDF;
+                    ptcl_segment_start = draw_ix;
                     ptcl_color = draw_ix;
                 }
-            }
-        } else if (draw_has_sdf_at(draw_ix)) {
-            if (draw_tag == GPU_DRAW_BRUSH && draw_tile_hit(draw_ix, tile_x, tile_y)) {
-                valid = true;
-                ptcl_tag = GPU_PTCL_SDF;
-                ptcl_segment_start = draw_ix;
-                ptcl_color = draw_ix;
-            }
-        } else {
-            let backdrop_ix = draw_backdrop_ix(draw_ix, tile_x, tile_y);
-            if (backdrop_ix != INVALID) {
-                let segment_start = segment_starts[backdrop_ix];
-                let segment_end = segment_ends[backdrop_ix];
-                let backdrop = atomicLoad(&backdrops[backdrop_ix]);
-                if (
-                    (draw_tag == GPU_DRAW_BRUSH || draw_tag == GPU_DRAW_PATH_GLYPH || draw_tag == GPU_DRAW_CLIP) &&
-                    (segment_start != segment_end || backdrop != 0i)
-                ) {
-                    if (draw_tag == GPU_DRAW_CLIP) {
-                        ptcl_tag = GPU_PTCL_BEGIN_CLIP;
-                    } else if (draw_tag == GPU_DRAW_PATH_GLYPH) {
-                        ptcl_tag = GPU_PTCL_PATH_GLYPH;
-                    } else if (draw_solid_color_fast_path_at(draw_ix) && segment_start == segment_end) {
-                        ptcl_tag = GPU_PTCL_COLOR;
-                    }
-                    valid = true;
-                    ptcl_backdrop = backdrop;
-                    ptcl_fill_rule = draw_fill_rule_at(draw_ix);
-                    ptcl_segment_start = segment_start;
-                    ptcl_segment_end = segment_end;
-                    if (ptcl_tag == GPU_PTCL_COLOR) {
-                        ptcl_color = draw_brush_colors[draw_ix];
-                    } else if (draw_tag == GPU_DRAW_BRUSH || draw_tag == GPU_DRAW_PATH_GLYPH) {
-                        ptcl_color = draw_ix;
+            } else {
+                let backdrop_ix = draw_backdrop_ix(draw_ix, tile_x, tile_y);
+                if (backdrop_ix != INVALID) {
+                    let segment_start = segment_starts[backdrop_ix];
+                    let segment_end = segment_ends[backdrop_ix];
+                    let backdrop = atomicLoad(&backdrops[backdrop_ix]);
+                    if (
+                        (draw_tag == GPU_DRAW_BRUSH || draw_tag == GPU_DRAW_PATH_GLYPH || draw_tag == GPU_DRAW_CLIP) &&
+                        (segment_start != segment_end || backdrop != 0i)
+                    ) {
+                        if (draw_tag == GPU_DRAW_CLIP) {
+                            ptcl_tag = GPU_PTCL_BEGIN_CLIP;
+                        } else if (draw_tag == GPU_DRAW_PATH_GLYPH) {
+                            ptcl_tag = GPU_PTCL_PATH_GLYPH;
+                        } else if (draw_solid_color_fast_path_at(draw_ix) && segment_start == segment_end) {
+                            ptcl_tag = GPU_PTCL_COLOR;
+                        }
+                        valid = true;
+                        ptcl_backdrop = backdrop;
+                        ptcl_fill_rule = draw_fill_rule_at(draw_ix);
+                        ptcl_segment_start = segment_start;
+                        ptcl_segment_end = segment_end;
+                        if (ptcl_tag == GPU_PTCL_COLOR) {
+                            ptcl_color = draw_brush_colors[draw_ix];
+                        } else if (draw_tag == GPU_DRAW_BRUSH || draw_tag == GPU_DRAW_PATH_GLYPH) {
+                            ptcl_color = draw_ix;
+                        }
                     }
                 }
             }
         }
 
+        let valid_count = select(0u, 1u, valid);
+        let particle_offset = workgroup_exclusive_prefix(valid_count, lane);
+        let emitted = coarse_total;
+        let glyph_offset = workgroup_exclusive_prefix(glyph_count, lane);
+        let emitted_glyphs = coarse_total;
         if (valid) {
             if (ptcl_tag == GPU_PTCL_GLYPH) {
-                ptcl_segment_start = glyph_cursor;
+                ptcl_segment_start = glyph_cursor + glyph_offset;
                 ptcl_segment_end = ptcl_segment_start + glyph_count;
                 if (ptcl_segment_end <= glyph_range_end) {
                     store_tile_glyphs_for_run(ptcl_segment_start, draw_glyph_run_ids[draw_ix], tile_x, tile_y);
                 }
-                glyph_cursor += glyph_count;
             }
             store_particle(
-                cursor,
+                cursor + particle_offset,
                 ptcl_tag,
                 ptcl_backdrop,
                 ptcl_fill_rule,
@@ -401,14 +468,16 @@ fn coarse_emit(
                 ptcl_segment_end,
                 ptcl_color
             );
-            cursor += 1u;
         }
-
-        draw_ix += 1u;
+        cursor += emitted;
+        glyph_cursor += emitted_glyphs;
+        chunk_start += 256u;
     }
 
-    emit_active_stack_ends(cursor);
-    store_particle(cursor + wrapper_count, GPU_PTCL_END, 0i, 0u, 0u, 0u, 0u);
+    if (lane == 0u) {
+        emit_active_stack_ends(cursor);
+        store_particle(cursor + wrapper_count, GPU_PTCL_END, 0i, 0u, 0u, 0u, 0u);
+    }
 }
 
 fn active_stack_count(tile_x: u32, tile_y: u32) -> u32 {
