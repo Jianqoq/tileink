@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use crate::shared::{
     bd_record::BackdropRecord,
+    gpu_plan::{TileDrawBins, build_tile_draw_bins_into},
     line_seg::LineSegment,
     tile_ptcl::{TilePtcl, TilePtclRange},
     tile_seg_range::TileSegmentRange,
@@ -18,9 +19,15 @@ pub(in crate::cpu) struct RasterBuffers {
     pub(in crate::cpu) segment_tile_cursors: Vec<AtomicU32>,
     pub(in crate::cpu) tile_ptcl_ranges: Vec<TilePtclRange>,
     pub(in crate::cpu) tile_ptcls: Vec<TilePtcl>,
+    pub(in crate::cpu) tile_draw_bins: TileDrawBins,
+    tile_draw_cursors: Vec<u32>,
 }
 
 impl RasterBuffers {
+    pub(in crate::cpu) fn rebuild_tile_draw_bins(&mut self, scene: &crate::scene::Scene) {
+        build_tile_draw_bins_into(scene, &mut self.tile_draw_bins, &mut self.tile_draw_cursors);
+    }
+
     pub(in crate::cpu) fn clear_scan_outputs(&mut self) {
         self.backdrops.clear();
         self.tile_segment_ranges.clear();

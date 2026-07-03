@@ -25,6 +25,7 @@ pub(in crate::cpu) fn run_scan(
     scene: &crate::scene::Scene,
     buffers: &mut RasterBuffers,
 ) {
+    buffers.rebuild_tile_draw_bins(scene);
     let Some(last_bd_record) = scene.bd_records.last().copied() else {
         buffers.clear_scan_outputs();
         return;
@@ -67,6 +68,7 @@ pub(in crate::cpu) fn run_coarse(
             stage.draw_range,
             stage.layer_stack_data,
             stage.layer_stack_range,
+            &buffers.tile_draw_bins,
             &scene.bd_records,
             &buffers.backdrops,
             &buffers.tile_segment_ranges,

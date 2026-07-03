@@ -4,8 +4,8 @@ use crate::{
         bd_record::BackdropRecord,
         execution::{ExecPlan, LayerStackEntry},
         gpu_plan::{
-            GpuBufferLengths, GpuCumsumPlan, GpuScanChunk, GpuScanChunkRange,
-            build_cumsum_plan_into, build_scan_chunks_into,
+            GpuBufferLengths, GpuCumsumPlan, GpuScanChunk, GpuScanChunkRange, TileDrawBins,
+            build_cumsum_plan_into, build_scan_chunks_into, build_tile_draw_bins_into,
         },
         gpu_types::{
             GPU_GLYPH_COLOR, GPU_GLYPH_LINEAR_COLOR, GPU_GLYPH_LINEAR_MASK,
@@ -28,6 +28,8 @@ pub(crate) struct WgpuSceneUploadStaging {
     scan_chunks: Vec<GpuScanChunk>,
     scan_chunk_ranges: Vec<GpuScanChunkRange>,
     cumsum_plan: GpuCumsumPlan,
+    tile_draw_bins: TileDrawBins,
+    tile_draw_cursors: Vec<u32>,
 }
 
 #[derive(Default)]
@@ -223,6 +225,9 @@ pub(crate) struct WgpuSceneBuffers {
     cumsum_chunk_lens: WgpuBuffer,
     cumsum_row_chunk_starts: WgpuBuffer,
     cumsum_row_chunk_ends: WgpuBuffer,
+    tile_draw_range_starts: WgpuBuffer,
+    tile_draw_range_ends: WgpuBuffer,
+    tile_draw_indices: WgpuBuffer,
     plan_layer_stack_tags: WgpuBuffer,
     plan_layer_stack_draws: WgpuBuffer,
     plan_layer_stack_payloads: WgpuBuffer,
@@ -338,6 +343,15 @@ impl WgpuSceneBuffers {
                 device,
                 "tileink wgpu scene cumsum row chunk ends",
             ),
+            tile_draw_range_starts: WgpuBuffer::new(
+                device,
+                "tileink wgpu scene tile draw range starts",
+            ),
+            tile_draw_range_ends: WgpuBuffer::new(
+                device,
+                "tileink wgpu scene tile draw range ends",
+            ),
+            tile_draw_indices: WgpuBuffer::new(device, "tileink wgpu scene tile draw indices"),
             plan_layer_stack_tags: WgpuBuffer::new(
                 device,
                 "tileink wgpu scene plan layer stack tags",
@@ -387,12 +401,18 @@ impl WgpuSceneBuffers {
             &mut staging.scan_chunk_ranges,
         );
         build_cumsum_plan_into(scene, &mut staging.cumsum_plan);
+        build_tile_draw_bins_into(
+            scene,
+            &mut staging.tile_draw_bins,
+            &mut staging.tile_draw_cursors,
+        );
         self.upload_columns(device, queue, &scene.columns, text.is_some());
         self.upload_backdrops(device, queue, &scene.bd_records, staging);
         self.upload_plan_layer_stack(device, queue, &plan.layer_stack_data, staging);
         self.upload_text(device, queue, scene, text, staging);
         self.upload_scan_plan(device, queue, staging);
         self.upload_cumsum_plan(device, queue, staging);
+        self.upload_tile_draw_bins(device, queue, staging);
     }
 
     fn upload_columns(
@@ -930,6 +950,33 @@ impl WgpuSceneBuffers {
         );
     }
 
+    fn upload_tile_draw_bins(
+        &mut self,
+        device: &::wgpu::Device,
+        queue: &::wgpu::Queue,
+        staging: &WgpuSceneUploadStaging,
+    ) {
+        let bins = &staging.tile_draw_bins;
+        self.tile_draw_range_starts.upload(
+            device,
+            queue,
+            "tileink wgpu scene tile draw range starts",
+            &bins.range_starts,
+        );
+        self.tile_draw_range_ends.upload(
+            device,
+            queue,
+            "tileink wgpu scene tile draw range ends",
+            &bins.range_ends,
+        );
+        self.tile_draw_indices.upload(
+            device,
+            queue,
+            "tileink wgpu scene tile draw indices",
+            &bins.draw_indices,
+        );
+    }
+
     #[cfg(test)]
     pub(crate) fn draw_flags_capacity(&self) -> ::wgpu::BufferAddress {
         self.draw_flags.capacity()
@@ -1136,6 +1183,9 @@ impl WgpuSceneBuffers {
             layer_stack_tags: self.plan_layer_stack_tags.buffer(),
             layer_stack_draws: self.plan_layer_stack_draws.buffer(),
             layer_stack_payloads: self.plan_layer_stack_payloads.buffer(),
+            tile_draw_range_starts: self.tile_draw_range_starts.buffer(),
+            tile_draw_range_ends: self.tile_draw_range_ends.buffer(),
+            tile_draw_indices: self.tile_draw_indices.buffer(),
             tile_ptcl_counts: coarse.tile_ptcl_counts.buffer(),
             tile_ptcl_range_starts: coarse.tile_ptcl_range_starts.buffer(),
             tile_ptcl_range_ends: coarse.tile_ptcl_range_ends.buffer(),
@@ -1331,6 +1381,9 @@ pub(crate) struct WgpuCoarseBindings<'a> {
     pub(crate) layer_stack_tags: &'a ::wgpu::Buffer,
     pub(crate) layer_stack_draws: &'a ::wgpu::Buffer,
     pub(crate) layer_stack_payloads: &'a ::wgpu::Buffer,
+    pub(crate) tile_draw_range_starts: &'a ::wgpu::Buffer,
+    pub(crate) tile_draw_range_ends: &'a ::wgpu::Buffer,
+    pub(crate) tile_draw_indices: &'a ::wgpu::Buffer,
     pub(crate) tile_ptcl_counts: &'a ::wgpu::Buffer,
     pub(crate) tile_ptcl_range_starts: &'a ::wgpu::Buffer,
     pub(crate) tile_ptcl_range_ends: &'a ::wgpu::Buffer,

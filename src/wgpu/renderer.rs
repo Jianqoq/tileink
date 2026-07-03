@@ -3441,6 +3441,60 @@ mod tests {
     }
 
     #[test]
+    fn wgpu_coarse_tile_draw_bins_respect_batch_range_when_enabled() {
+        if !run_wgpu_tests() {
+            return;
+        }
+
+        let mut scene = Scene::new(32, 16);
+        scene.push_rect(
+            Rect::new(0.0, 0.0, 32.0, 16.0),
+            crate::Radius::ZERO,
+            Color::from_rgb8(255, 0, 0),
+        );
+        scene.push_rect(
+            Rect::new(0.0, 0.0, 32.0, 16.0),
+            crate::Radius::ZERO,
+            Color::from_rgb8(0, 0, 255),
+        );
+        let mut renderer = Renderer::new_default_device(32, 16, Color::TRANSPARENT);
+        if renderer.coarse_pipeline.is_none() {
+            return;
+        }
+
+        renderer.prepare_scene(&scene);
+        renderer.coarse_batch(&scene, 1, 2, 0, 0);
+
+        assert_eq!(
+            renderer.coarse.tile_ptcl_range_starts.read::<u32>(
+                renderer.device(),
+                renderer.queue(),
+                renderer.lengths.tile_count
+            ),
+            vec![0, 2]
+        );
+        assert_eq!(
+            renderer.coarse.tile_ptcl_range_ends.read::<u32>(
+                renderer.device(),
+                renderer.queue(),
+                renderer.lengths.tile_count
+            ),
+            vec![2, 4]
+        );
+        assert_eq!(
+            read_ptcl_tags(&renderer, 4),
+            vec![GPU_PTCL_SDF, GPU_PTCL_END, GPU_PTCL_SDF, GPU_PTCL_END]
+        );
+        assert_eq!(
+            renderer
+                .coarse
+                .ptcl_colors
+                .read::<u32>(renderer.device(), renderer.queue(), 4),
+            vec![1, 0, 1, 0]
+        );
+    }
+
+    #[test]
     fn wgpu_renderer_applies_path_clip_in_tile_fine_when_enabled() {
         if !run_wgpu_tests() {
             return;

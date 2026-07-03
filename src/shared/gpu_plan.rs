@@ -6,7 +6,7 @@ use crate::{
     scene::Scene,
     shared::{
         bounds::{Bounds, PixelBounds, TileBbox},
-        draw_record::DrawTag,
+        draw_record::{DrawRecord, DrawTag},
         execution::{ExecOp, ExecPlan, LayerStackEntry},
         layer::{
             Layer,
@@ -103,6 +103,104 @@ impl GpuBufferLengths {
             tiles_height,
             tile_count,
             image_pixels: scene.width as usize * scene.height as usize,
+        }
+    }
+}
+
+/// Per-tile draw references for native coarse binning.
+///
+/// Coarse used to make every tile scan the whole draw table. These bins keep
+/// each tile's candidate draws in scene order so the GPU only filters local
+/// candidates while preserving compositing order.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct TileDrawBins {
+    pub(crate) range_starts: Vec<u32>,
+    pub(crate) range_ends: Vec<u32>,
+    pub(crate) draw_indices: Vec<u32>,
+}
+
+#[cfg(test)]
+pub(crate) fn build_tile_draw_bins(scene: &Scene) -> TileDrawBins {
+    let mut bins = TileDrawBins::default();
+    let mut cursors = Vec::new();
+    build_tile_draw_bins_into(scene, &mut bins, &mut cursors);
+    bins
+}
+
+pub(crate) fn build_tile_draw_bins_into(
+    scene: &Scene,
+    bins: &mut TileDrawBins,
+    cursors: &mut Vec<u32>,
+) {
+    build_tile_draw_bins_for_draws_into(
+        &scene.draw_records,
+        (scene.width_in_tiles(), scene.height_in_tiles()),
+        bins,
+        cursors,
+    );
+}
+
+pub(crate) fn build_tile_draw_bins_for_draws_into(
+    draw_records: &[DrawRecord],
+    tiles_size: (u32, u32),
+    bins: &mut TileDrawBins,
+    cursors: &mut Vec<u32>,
+) {
+    let (width_in_tiles, height_in_tiles) = tiles_size;
+    let tile_count = width_in_tiles as usize * height_in_tiles as usize;
+
+    bins.range_starts.clear();
+    bins.range_starts.resize(tile_count, 0);
+    bins.range_ends.clear();
+    bins.range_ends.resize(tile_count, 0);
+    bins.draw_indices.clear();
+    cursors.clear();
+    cursors.resize(tile_count, 0);
+
+    for draw in draw_records {
+        for_tile_in_bbox(
+            draw.tile_bbox(width_in_tiles, height_in_tiles),
+            width_in_tiles,
+            |tile_ix| {
+                bins.range_ends[tile_ix] += 1;
+            },
+        );
+    }
+
+    let mut cursor = 0;
+    for (start, end) in bins.range_starts.iter_mut().zip(&mut bins.range_ends) {
+        *start = cursor;
+        cursor += *end;
+        *end = cursor;
+    }
+
+    bins.draw_indices.resize(cursor as usize, 0);
+    cursors.copy_from_slice(&bins.range_starts);
+
+    for (draw_ix, draw) in draw_records.iter().enumerate() {
+        for_tile_in_bbox(
+            draw.tile_bbox(width_in_tiles, height_in_tiles),
+            width_in_tiles,
+            |tile_ix| {
+                let dst = cursors[tile_ix] as usize;
+                bins.draw_indices[dst] = draw_ix as u32;
+                cursors[tile_ix] += 1;
+            },
+        );
+    }
+
+    debug_assert_eq!(cursors.as_slice(), bins.range_ends.as_slice());
+}
+
+fn for_tile_in_bbox(mut bbox: TileBbox, width_in_tiles: u32, mut visit: impl FnMut(usize)) {
+    bbox.x1 = bbox.x1.min(width_in_tiles);
+    if bbox.x0 >= bbox.x1 {
+        return;
+    }
+    for tile_y in bbox.y0..bbox.y1 {
+        let row_start = tile_y * width_in_tiles;
+        for tile_x in bbox.x0..bbox.x1 {
+            visit((row_start + tile_x) as usize);
         }
     }
 }
@@ -558,6 +656,7 @@ mod tests {
 
     use super::{
         CUMSUM_CHUNK_SIZE, GpuBufferLengths, SCAN_CHUNK_SIZE, build_cumsum_plan, build_scan_chunks,
+        build_tile_draw_bins,
     };
     use crate::{FillRule, Scene};
 
@@ -629,5 +728,31 @@ mod tests {
             plan.chunk_lens,
             vec![CUMSUM_CHUNK_SIZE, 17, CUMSUM_CHUNK_SIZE, 17]
         );
+    }
+
+    #[test]
+    fn tile_draw_bins_keep_each_tiles_draws_in_scene_order() {
+        let mut scene = Scene::new(crate::TILE_SIZE * 2, crate::TILE_SIZE);
+        scene.push_rect(
+            Rect::new(0.0, 0.0, 32.0, 16.0),
+            crate::Radius::ZERO,
+            Color::BLACK,
+        );
+        scene.push_rect(
+            Rect::new(16.0, 0.0, 32.0, 16.0),
+            crate::Radius::ZERO,
+            Color::WHITE,
+        );
+        scene.push_rect(
+            Rect::new(40.0, 0.0, 48.0, 16.0),
+            crate::Radius::ZERO,
+            Color::BLACK,
+        );
+
+        let bins = build_tile_draw_bins(&scene);
+
+        assert_eq!(bins.range_starts, vec![0, 1]);
+        assert_eq!(bins.range_ends, vec![1, 3]);
+        assert_eq!(bins.draw_indices, vec![0, 0, 1]);
     }
 }

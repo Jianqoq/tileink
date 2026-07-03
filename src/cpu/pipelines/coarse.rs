@@ -6,6 +6,7 @@ use crate::{
         bounds::Bounds,
         draw_record::{DrawRecord, DrawTag},
         execution::LayerStackEntry,
+        gpu_plan::TileDrawBins,
         pixel::opacity_f32_to_u8,
         tile_ptcl::{
             TileColorPtcl, TileFillPtcl, TileGlyphPtcl, TilePtcl, TilePtclRange, TileSdfPtcl,
@@ -20,6 +21,7 @@ pub struct CoarseCpuPrepared<'a> {
     draw_records: &'a [DrawRecord],
     draw_range: std::ops::Range<usize>,
     layer_stack_data: &'a [LayerStackEntry],
+    tile_draw_bins: &'a TileDrawBins,
     // This range selects the batch's active fused layer stack snapshot from
     // the execution-plan arena. It is nesting state, not a screen-space bound.
     layer_stack_range: std::ops::Range<usize>,
@@ -55,6 +57,7 @@ impl<'a> CoarseCpuPrepared<'a> {
                     tile_ix,
                     self.tiles_size,
                     self.draw_range.clone(),
+                    self.tile_draw_bins,
                     layer_stack,
                     self.draw_records,
                     self.backdrop_records,
@@ -98,6 +101,7 @@ impl<'a> CoarseCpuPrepared<'a> {
         tile_ix: usize,
         tiles_size: (u32, u32),
         draw_range: std::ops::Range<usize>,
+        tile_draw_bins: &TileDrawBins,
         layer_stack: &[LayerStackEntry],
         draw_records: &[DrawRecord],
         backdrop_records: &[BackdropRecord],
@@ -109,8 +113,14 @@ impl<'a> CoarseCpuPrepared<'a> {
         let tile_y = tile_ix as u32 / tiles_size.0;
         let mut output = TileCoarseOutput::default();
         let mut emitted_wrappers = Vec::new();
+        let draw_start = tile_draw_bins.range_starts[tile_ix] as usize;
+        let draw_end = tile_draw_bins.range_ends[tile_ix] as usize;
 
-        for draw_ix in draw_range {
+        for &draw_ix in &tile_draw_bins.draw_indices[draw_start..draw_end] {
+            let draw_ix = draw_ix as usize;
+            if draw_ix < draw_range.start || draw_ix >= draw_range.end {
+                continue;
+            }
             let Some(coverage) = Self::draw_tile_coverage(
                 draw_ix,
                 tile_x,
@@ -579,6 +589,7 @@ impl CoarseCpuPipeline {
         draw_range: std::ops::Range<usize>,
         layer_stack_data: &'a [LayerStackEntry],
         layer_stack_range: std::ops::Range<usize>,
+        tile_draw_bins: &'a TileDrawBins,
         backdrop_records: &'a [BackdropRecord],
         backdrops: &'a [i32],
         tile_segment_ranges: &'a [TileSegmentRange],
@@ -593,6 +604,7 @@ impl CoarseCpuPipeline {
             draw_range,
             layer_stack_data,
             layer_stack_range,
+            tile_draw_bins,
             backdrop_records,
             backdrops,
             tile_segment_ranges,
@@ -620,6 +632,7 @@ mod tests {
             draw_record::{DrawRecord, DrawTag},
             execution::LayerStackEntry,
             fill::FillRule,
+            gpu_plan::{TileDrawBins, build_tile_draw_bins_for_draws_into},
             tile_ptcl::TilePtcl,
             tile_seg_range::TileSegmentRange,
         },
@@ -628,6 +641,13 @@ mod tests {
 
     fn solid_color_u32(color: Color) -> u32 {
         crate::shared::pixel::premul_f32_to_u32(color.premultiply().components)
+    }
+
+    fn tile_draw_bins(draw_records: &[DrawRecord], tiles_size: (u32, u32)) -> TileDrawBins {
+        let mut bins = TileDrawBins::default();
+        let mut cursors = Vec::new();
+        build_tile_draw_bins_for_draws_into(draw_records, tiles_size, &mut bins, &mut cursors);
+        bins
     }
 
     #[test]
@@ -733,6 +753,7 @@ mod tests {
             LayerStackEntry::Clip { draw: 0 },
             LayerStackEntry::Clip { draw: 1 },
         ];
+        let bins = tile_draw_bins(&draw_records, (1, 1));
 
         CoarseCpuPipeline::new()
             .prepare(
@@ -740,6 +761,7 @@ mod tests {
                 2..3,
                 &layer_stack_data,
                 0..layer_stack_data.len(),
+                &bins,
                 &backdrop_records,
                 &backdrops,
                 &tile_segment_ranges,
@@ -781,6 +803,7 @@ mod tests {
         let mut tile_ptcls = Vec::new();
         let mut tile_glyphs = Vec::new();
         let tiles_size = (scene.width_in_tiles(), scene.height_in_tiles());
+        let bins = tile_draw_bins(&scene.draw_records, tiles_size);
 
         CoarseCpuPipeline::new()
             .prepare(
@@ -788,6 +811,7 @@ mod tests {
                 0..scene.draw_records.len(),
                 &[],
                 0..0,
+                &bins,
                 &[],
                 &[],
                 &[],
@@ -905,6 +929,7 @@ mod tests {
         let mut tile_ptcl_ranges = Vec::new();
         let mut tile_ptcls = Vec::new();
         let mut tile_glyphs = Vec::new();
+        let bins = tile_draw_bins(&draw_records, (2, 1));
 
         CoarseCpuPipeline::new()
             .prepare(
@@ -912,6 +937,7 @@ mod tests {
                 0..draw_records.len(),
                 &[],
                 0..0,
+                &bins,
                 &backdrop_records,
                 &backdrops,
                 &tile_segment_ranges,

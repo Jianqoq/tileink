@@ -59,6 +59,9 @@ struct CoarseConfig {
 @group(0) @binding(43) var<storage, read_write> ptcl_segment_ends: array<u32>;
 @group(0) @binding(44) var<storage, read_write> ptcl_colors: array<u32>;
 @group(0) @binding(45) var<storage, read_write> glyph_indices: array<u32>;
+@group(0) @binding(46) var<storage, read> tile_draw_range_starts: array<u32>;
+@group(0) @binding(47) var<storage, read> tile_draw_range_ends: array<u32>;
+@group(0) @binding(48) var<storage, read> tile_draw_indices: array<u32>;
 
 const INVALID: u32 = 0xffffffffu;
 const GPU_DRAW_BRUSH: u32 = 0u;
@@ -110,36 +113,41 @@ fn coarse_count(
     var glyph_count = 0u;
 
     if (wrapper_count != INVALID) {
-        var draw_ix = config.draw_start + lane;
+        let tile_draw_start = tile_draw_range_starts[tile_ix];
+        let tile_draw_end = tile_draw_range_ends[tile_ix];
+        var draw_ref_ix = tile_draw_start + lane;
         loop {
-            if (draw_ix >= config.draw_end) {
+            if (draw_ref_ix >= tile_draw_end) {
                 break;
             }
-            let draw_tag = draw_tag_at(draw_ix);
-            if (draw_has_glyph_at(draw_ix)) {
-                if (draw_tag == GPU_DRAW_BRUSH && draw_tile_hit(draw_ix, tile_x, tile_y)) {
-                    let tile_glyphs = count_tile_glyphs_for_run(draw_glyph_run_ids[draw_ix], tile_x, tile_y);
-                    if (tile_glyphs > 0u) {
-                        count += 1u;
-                        glyph_count += tile_glyphs;
+            let draw_ix = tile_draw_indices[draw_ref_ix];
+            if (draw_in_batch(draw_ix)) {
+                let draw_tag = draw_tag_at(draw_ix);
+                if (draw_has_glyph_at(draw_ix)) {
+                    if (draw_tag == GPU_DRAW_BRUSH) {
+                        let tile_glyphs = count_tile_glyphs_for_run(draw_glyph_run_ids[draw_ix], tile_x, tile_y);
+                        if (tile_glyphs > 0u) {
+                            count += 1u;
+                            glyph_count += tile_glyphs;
+                        }
                     }
-                }
-            } else if (draw_has_sdf_at(draw_ix)) {
-                if (draw_tag == GPU_DRAW_BRUSH && draw_tile_hit(draw_ix, tile_x, tile_y)) {
-                    count += 1u;
-                }
-            } else {
-                let backdrop_ix = draw_backdrop_ix(draw_ix, tile_x, tile_y);
-                if (backdrop_ix != INVALID) {
-                    if (
-                        (draw_tag == GPU_DRAW_BRUSH || draw_tag == GPU_DRAW_PATH_GLYPH || draw_tag == GPU_DRAW_CLIP) &&
-                        (segment_starts[backdrop_ix] != segment_ends[backdrop_ix] || atomicLoad(&backdrops[backdrop_ix]) != 0i)
-                    ) {
+                } else if (draw_has_sdf_at(draw_ix)) {
+                    if (draw_tag == GPU_DRAW_BRUSH) {
                         count += 1u;
+                    }
+                } else {
+                    let backdrop_ix = draw_backdrop_ix(draw_ix, tile_x, tile_y);
+                    if (backdrop_ix != INVALID) {
+                        if (
+                            (draw_tag == GPU_DRAW_BRUSH || draw_tag == GPU_DRAW_PATH_GLYPH || draw_tag == GPU_DRAW_CLIP) &&
+                            (segment_starts[backdrop_ix] != segment_ends[backdrop_ix] || atomicLoad(&backdrops[backdrop_ix]) != 0i)
+                        ) {
+                            count += 1u;
+                        }
                     }
                 }
             }
-            draw_ix += 256u;
+            draw_ref_ix += 256u;
         }
     }
 
@@ -160,8 +168,8 @@ fn workgroup_sum(value: u32, lane: u32) -> u32 {
     return coarse_total;
 }
 
-// Coarse mirrors the CubeCL pass: every lane scans one draw in each 256-wide
-// chunk, then the prefix sum preserves draw-order offsets for emission.
+// Each tile now scans its pre-binned draw references instead of the whole draw
+// table. The prefix sum still preserves draw-order offsets inside each tile.
 fn workgroup_exclusive_prefix(value: u32, lane: u32) -> u32 {
     coarse_scratch[lane] = value;
     workgroupBarrier();
@@ -380,13 +388,16 @@ fn coarse_emit(
     }
     cursor += wrapper_count;
 
-    var chunk_start = config.draw_start;
+    let tile_draw_start = tile_draw_range_starts[tile_ix];
+    let tile_draw_end = tile_draw_range_ends[tile_ix];
+    var chunk_start = tile_draw_start;
     loop {
-        if (chunk_start >= config.draw_end) {
+        if (chunk_start >= tile_draw_end) {
             break;
         }
 
-        let draw_ix = chunk_start + lane;
+        let draw_ref_ix = chunk_start + lane;
+        var draw_ix = INVALID;
         var valid = false;
         var glyph_count = 0u;
         var ptcl_tag = GPU_PTCL_FILL;
@@ -396,10 +407,14 @@ fn coarse_emit(
         var ptcl_segment_end = 0u;
         var ptcl_color = 0u;
 
-        if (draw_ix < config.draw_end) {
+        if (draw_ref_ix < tile_draw_end) {
+            draw_ix = tile_draw_indices[draw_ref_ix];
+        }
+
+        if (draw_in_batch(draw_ix)) {
             let draw_tag = draw_tag_at(draw_ix);
             if (draw_has_glyph_at(draw_ix)) {
-                if (draw_tag == GPU_DRAW_BRUSH && draw_tile_hit(draw_ix, tile_x, tile_y)) {
+                if (draw_tag == GPU_DRAW_BRUSH) {
                     glyph_count = count_tile_glyphs_for_run(draw_glyph_run_ids[draw_ix], tile_x, tile_y);
                     if (glyph_count > 0u) {
                         valid = true;
@@ -408,7 +423,7 @@ fn coarse_emit(
                     }
                 }
             } else if (draw_has_sdf_at(draw_ix)) {
-                if (draw_tag == GPU_DRAW_BRUSH && draw_tile_hit(draw_ix, tile_x, tile_y)) {
+                if (draw_tag == GPU_DRAW_BRUSH) {
                     valid = true;
                     ptcl_tag = GPU_PTCL_SDF;
                     ptcl_segment_start = draw_ix;
@@ -694,6 +709,10 @@ fn pixel_tile_max(value: i32, limit: u32) -> u32 {
         tile = min((u32(value) + 15u) / 16u, limit);
     }
     return tile;
+}
+
+fn draw_in_batch(draw_ix: u32) -> bool {
+    return draw_ix >= config.draw_start && draw_ix < config.draw_end;
 }
 
 fn draw_flags_at(draw_ix: u32) -> u32 {

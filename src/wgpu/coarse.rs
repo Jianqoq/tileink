@@ -6,7 +6,7 @@ use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 use super::scene::{WgpuCoarseBindings, WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers};
 
 const WORKGROUP_SIZE: u32 = 256;
-const STORAGE_BINDING_COUNT: u32 = 45;
+const STORAGE_BINDING_COUNT: u32 = 48;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct WgpuCoarseBatch {
@@ -251,6 +251,9 @@ impl WgpuCoarsePipeline {
                 bind_buffer(43, bindings.ptcl_segment_ends),
                 bind_buffer(44, bindings.ptcl_colors),
                 bind_buffer(45, bindings.glyph_indices),
+                bind_buffer(46, bindings.tile_draw_range_starts),
+                bind_buffer(47, bindings.tile_draw_range_ends),
+                bind_buffer(48, bindings.tile_draw_indices),
             ],
         })
     }
@@ -272,7 +275,7 @@ fn create_pipeline(
     })
 }
 
-fn coarse_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 46] {
+fn coarse_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 49] {
     [
         ::wgpu::BindGroupLayoutEntry {
             binding: 0,
@@ -329,6 +332,9 @@ fn coarse_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 46] {
         storage_entry(43, false),
         storage_entry(44, false),
         storage_entry(45, false),
+        storage_entry(46, true),
+        storage_entry(47, true),
+        storage_entry(48, true),
     ]
 }
 
