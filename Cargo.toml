@@ -189,6 +189,10 @@ name = "svg_fixture_render"
 path = "examples/svg_fixture_render.rs"
 
 [[example]]
+name = "svg_tiger_bench"
+path = "examples/svg_tiger_bench.rs"
+
+[[example]]
 name = "text_quality"
 path = "examples/text_quality.rs"
 required-features = ["directwrite-reference"]
