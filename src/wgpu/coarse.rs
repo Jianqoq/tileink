@@ -9,9 +9,9 @@ use super::commands::{
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 
 const WORKGROUP_SIZE: u32 = 256;
-const COUNT_STORAGE_BINDING_COUNT: u32 = 10;
+const COUNT_STORAGE_BINDING_COUNT: u32 = 8;
 const PREFIX_STORAGE_BINDING_COUNT: u32 = 2;
-const EMIT_STORAGE_BINDING_COUNT: u32 = 13;
+const EMIT_STORAGE_BINDING_COUNT: u32 = 9;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct WgpuCoarseBatch {
@@ -34,8 +34,8 @@ struct CoarseConfig {
     ptcl_capacity: u32,
     glyph_capacity: u32,
     chunk_count: u32,
-    _pad0: u32,
-    _pad1: u32,
+    text_run_count: u32,
+    text_glyph_count: u32,
 }
 
 unsafe impl bytemuck::Zeroable for CoarseConfig {}
@@ -233,8 +233,8 @@ impl WgpuCoarsePipeline {
                 ptcl_capacity: lengths.coarse_ptcl_capacity as u32,
                 glyph_capacity: lengths.coarse_glyph_capacity as u32,
                 chunk_count,
-                _pad0: 0,
-                _pad1: 0,
+                text_run_count: lengths.text_run_count as u32,
+                text_glyph_count: lengths.text_glyph_count as u32,
             }),
         );
         let bindings = canvas.coarse_bindings(scan, coarse);
@@ -292,14 +292,12 @@ impl WgpuCoarsePipeline {
             entries: &[
                 bind_config_buffer(0, &self.config, config_offset, self.config_size),
                 bind_buffer(1, bindings.draw_records),
-                bind_buffer(3, bindings.text_runs),
-                bind_buffer(5, bindings.glyphs),
-                bind_buffer(8, bindings.glyph_images),
+                bind_buffer(3, bindings.text_blob),
                 bind_buffer(18, bindings.path_records),
                 bind_buffer(19, bindings.backdrops),
                 bind_buffer(20, bindings.segment_ranges),
                 bind_buffer(22, bindings.layer_stack),
-                bind_buffer(25, bindings.tile_records),
+                bind_buffer(25, bindings.coarse_work),
                 bind_buffer(42, bindings.tile_draw_data),
             ],
         })
@@ -316,7 +314,7 @@ impl WgpuCoarsePipeline {
             layout: &self.prefix_bind_group_layout,
             entries: &[
                 bind_config_buffer(0, &self.config, config_offset, self.config_size),
-                bind_buffer(25, bindings.tile_records),
+                bind_buffer(25, bindings.coarse_work),
                 bind_buffer(31, bindings.chunk_records),
             ],
         })
@@ -334,17 +332,13 @@ impl WgpuCoarsePipeline {
             entries: &[
                 bind_config_buffer(0, &self.config, config_offset, self.config_size),
                 bind_buffer(1, bindings.draw_records),
-                bind_buffer(3, bindings.text_runs),
-                bind_buffer(5, bindings.glyphs),
-                bind_buffer(8, bindings.glyph_images),
+                bind_buffer(3, bindings.text_blob),
                 bind_buffer(13, bindings.brush_blob),
                 bind_buffer(18, bindings.path_records),
                 bind_buffer(19, bindings.backdrops),
                 bind_buffer(20, bindings.segment_ranges),
                 bind_buffer(22, bindings.layer_stack),
-                bind_buffer(25, bindings.tile_records),
-                bind_buffer(35, bindings.ptcl_records),
-                bind_buffer(41, bindings.glyph_indices),
+                bind_buffer(25, bindings.coarse_work),
                 bind_buffer(42, bindings.tile_draw_data),
             ],
         })
@@ -372,8 +366,6 @@ fn count_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         uniform_entry(0),
         storage_entry(1, true),
         storage_entry(3, true),
-        storage_entry(5, true),
-        storage_entry(8, true),
         storage_entry(18, true),
         storage_entry(19, false),
         storage_entry(20, true),
@@ -396,16 +388,12 @@ fn emit_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         uniform_entry(0),
         storage_entry(1, true),
         storage_entry(3, true),
-        storage_entry(5, true),
-        storage_entry(8, true),
         storage_entry(13, true),
         storage_entry(18, true),
         storage_entry(19, false),
         storage_entry(20, true),
         storage_entry(22, true),
         storage_entry(25, false),
-        storage_entry(35, false),
-        storage_entry(41, false),
         storage_entry(42, true),
     ]
 }
@@ -460,3 +448,43 @@ fn bind_config_buffer(
 }
 
 const _: () = assert!(COARSE_CHUNK_SIZE == WORKGROUP_SIZE);
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        COUNT_STORAGE_BINDING_COUNT, EMIT_STORAGE_BINDING_COUNT, PREFIX_STORAGE_BINDING_COUNT,
+        count_layout_entries, emit_layout_entries, prefix_layout_entries,
+    };
+
+    #[test]
+    fn coarse_pipeline_storage_bindings_match_split_layouts() {
+        assert_eq!(
+            storage_count(&count_layout_entries()),
+            COUNT_STORAGE_BINDING_COUNT
+        );
+        assert_eq!(
+            storage_count(&prefix_layout_entries()),
+            PREFIX_STORAGE_BINDING_COUNT
+        );
+        assert_eq!(
+            storage_count(&emit_layout_entries()),
+            EMIT_STORAGE_BINDING_COUNT
+        );
+        assert_eq!(COUNT_STORAGE_BINDING_COUNT, 8);
+        assert_eq!(EMIT_STORAGE_BINDING_COUNT, 9);
+    }
+
+    fn storage_count(entries: &[::wgpu::BindGroupLayoutEntry]) -> u32 {
+        entries.iter().filter(|entry| is_storage(entry)).count() as u32
+    }
+
+    fn is_storage(entry: &::wgpu::BindGroupLayoutEntry) -> bool {
+        matches!(
+            entry.ty,
+            ::wgpu::BindingType::Buffer {
+                ty: ::wgpu::BufferBindingType::Storage { .. },
+                ..
+            }
+        )
+    }
+}

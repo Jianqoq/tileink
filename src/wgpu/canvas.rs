@@ -36,6 +36,7 @@ pub(crate) struct WgpuSceneBuffers {
     text_runs: WgpuBuffer,
     glyphs: WgpuBuffer,
     glyph_images: WgpuBuffer,
+    coarse_text_blob: WgpuBuffer,
     glyph_image_data: WgpuBuffer,
     glyph_atlas_signature: AtlasSignature,
 }
@@ -90,6 +91,7 @@ impl WgpuSceneBuffers {
             text_runs: WgpuBuffer::new(device, "tileink wgpu canvas text runs"),
             glyphs: WgpuBuffer::new(device, "tileink wgpu canvas glyphs"),
             glyph_images: WgpuBuffer::new(device, "tileink wgpu canvas glyph images"),
+            coarse_text_blob: WgpuBuffer::new(device, "tileink wgpu canvas coarse text blob"),
             glyph_image_data: WgpuBuffer::new(device, "tileink wgpu canvas glyph image data"),
             glyph_atlas_signature: AtlasSignature::default(),
         }

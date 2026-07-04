@@ -82,6 +82,7 @@ struct FineConfig {
     load_target: u32,
     clip_spill_depth: u32,
     group_spill_depth: u32,
+    ptcl_capacity: u32,
 };
 
 @group(0) @binding(0) var<uniform> config: FineConfig;
@@ -142,10 +143,8 @@ struct PtclRecord {
 @group(0) @binding(8) var<storage, read> sdf_blob: array<u32>;
 @group(0) @binding(9) var<storage, read> sdf_shadow_blob: array<u32>;
 @group(0) @binding(26) var<storage, read> brush_blob: array<u32>;
-@group(0) @binding(29) var<storage, read> tile_records: array<TileCoarseRecord>;
-@group(0) @binding(31) var<storage, read> ptcl_records: array<PtclRecord>;
+@group(0) @binding(29) var<storage, read> coarse_work: array<u32>;
 @group(0) @binding(37) var<storage, read> segments: array<LineSegment>;
-@group(0) @binding(42) var<storage, read> glyph_indices: array<u32>;
 @group(0) @binding(43) var<storage, read> glyphs: array<GlyphRecord>;
 @group(0) @binding(46) var<storage, read> glyph_images: array<GlyphImageRecord>;
 @group(0) @binding(52) var<storage, read> glyph_image_data: array<u32>;
@@ -153,3 +152,48 @@ struct PtclRecord {
 @group(0) @binding(54) var<storage, read_write> group_spills: array<u32>;
 @group(0) @binding(55) var<storage, read> image_resource_metadata: array<u32>;
 @group(0) @binding(56) var<storage, read> image_resource_pixels: array<u32>;
+
+const TILE_COARSE_RECORD_WORDS: u32 = 6u;
+const PTCL_RECORD_WORDS: u32 = 6u;
+
+fn coarse_tile_base(tile_ix: u32) -> u32 {
+    return tile_ix * TILE_COARSE_RECORD_WORDS;
+}
+
+fn coarse_ptcl_base(ptcl_ix: u32) -> u32 {
+    return config.tile_count * TILE_COARSE_RECORD_WORDS + ptcl_ix * PTCL_RECORD_WORDS;
+}
+
+fn coarse_glyph_base(glyph_ix: u32) -> u32 {
+    return config.tile_count * TILE_COARSE_RECORD_WORDS +
+        config.ptcl_capacity * PTCL_RECORD_WORDS +
+        glyph_ix;
+}
+
+fn coarse_load_tile(tile_ix: u32) -> TileCoarseRecord {
+    let base = coarse_tile_base(tile_ix);
+    return TileCoarseRecord(
+        coarse_work[base],
+        coarse_work[base + 1u],
+        coarse_work[base + 2u],
+        coarse_work[base + 3u],
+        coarse_work[base + 4u],
+        coarse_work[base + 5u],
+    );
+}
+
+fn coarse_load_ptcl(ptcl_ix: u32) -> PtclRecord {
+    let base = coarse_ptcl_base(ptcl_ix);
+    return PtclRecord(
+        coarse_work[base],
+        bitcast<i32>(coarse_work[base + 1u]),
+        coarse_work[base + 2u],
+        coarse_work[base + 3u],
+        coarse_work[base + 4u],
+        coarse_work[base + 5u],
+    );
+}
+
+fn coarse_load_glyph(glyph_ix: u32) -> u32 {
+    return coarse_work[coarse_glyph_base(glyph_ix)];
+}

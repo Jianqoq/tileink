@@ -36,6 +36,7 @@ struct FineConfig {
     load_target: u32,
     clip_spill_depth: u32,
     group_spill_depth: u32,
+    ptcl_capacity: u32,
 }
 
 unsafe impl bytemuck::Zeroable for FineConfig {}
@@ -165,6 +166,7 @@ impl WgpuFinePipeline {
                 load_target: u32::from(load_target),
                 clip_spill_depth,
                 group_spill_depth,
+                ptcl_capacity: lengths.coarse_ptcl_capacity as u32,
             }),
         );
 
@@ -211,10 +213,8 @@ impl WgpuFinePipeline {
                 buffer_binding(8, fine.sdf_blob),
                 buffer_binding(9, fine.sdf_shadow_blob),
                 buffer_binding(26, fine.brush_blob),
-                buffer_binding(29, bindings.tile_records),
-                buffer_binding(31, bindings.ptcl_records),
+                buffer_binding(29, bindings.coarse_work),
                 buffer_binding(37, bindings.segments),
-                buffer_binding(42, bindings.glyph_indices),
                 buffer_binding(43, bindings.glyphs),
                 buffer_binding(46, bindings.glyph_images),
                 buffer_binding(52, bindings.glyph_image_data),
@@ -242,9 +242,7 @@ fn tile_fine_layout_entries(portable_textures: bool) -> Vec<::wgpu::BindGroupLay
         storage_layout_entry(9, true),
         storage_layout_entry(26, true),
         storage_layout_entry(29, true),
-        storage_layout_entry(31, true),
         storage_layout_entry(37, true),
-        storage_layout_entry(42, true),
         storage_layout_entry(43, true),
         storage_layout_entry(46, true),
         storage_layout_entry(52, true),
@@ -341,4 +339,27 @@ fn texture_binding(binding: u32, view: &::wgpu::TextureView) -> ::wgpu::BindGrou
 
 pub(crate) fn premul_clear_color(clear: peniko::Color) -> u32 {
     premul_color_to_rgba8_pack(clear)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{TILE_STORAGE_BINDING_COUNT, tile_fine_layout_entries};
+
+    #[test]
+    fn fine_pipeline_storage_bindings_match_layout_constant() {
+        let entries = tile_fine_layout_entries(false);
+        let storage_count = entries.iter().filter(|entry| is_storage(entry)).count() as u32;
+        assert_eq!(storage_count, TILE_STORAGE_BINDING_COUNT);
+        assert_eq!(TILE_STORAGE_BINDING_COUNT, 13);
+    }
+
+    fn is_storage(entry: &::wgpu::BindGroupLayoutEntry) -> bool {
+        matches!(
+            entry.ty,
+            ::wgpu::BindingType::Buffer {
+                ty: ::wgpu::BufferBindingType::Storage { .. },
+                ..
+            }
+        )
+    }
 }

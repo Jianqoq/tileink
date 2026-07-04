@@ -34,10 +34,8 @@ impl WgpuSceneBuffers {
     ) -> WgpuTileFineBindings<'a> {
         WgpuTileFineBindings {
             fine: self.fine_bindings(),
-            tile_records: coarse.tile_records.buffer(),
-            ptcl_records: coarse.ptcl_records.buffer(),
+            coarse_work: coarse.work.buffer(),
             segments: scan.segments.buffer(),
-            glyph_indices: coarse.glyph_indices.buffer(),
             glyphs: self.glyphs.buffer(),
             glyph_images: self.glyph_images.buffer(),
             glyph_image_data: self.glyph_image_data.buffer(),
@@ -103,19 +101,15 @@ impl WgpuSceneBuffers {
     ) -> WgpuCoarseBindings<'a> {
         WgpuCoarseBindings {
             draw_records: self.draw_records.buffer(),
-            text_runs: self.text_runs.buffer(),
-            glyphs: self.glyphs.buffer(),
-            glyph_images: self.glyph_images.buffer(),
+            text_blob: self.coarse_text_blob.buffer(),
             brush_blob: self.brush_blob.buffer(),
             path_records: self.path_records.buffer(),
             backdrops: scan.backdrops.buffer(),
             segment_ranges: scan.tile_segment_ranges.buffer(),
             layer_stack: self.plan_layer_stack.buffer(),
             tile_draw_data: self.tile_draw_data.buffer(),
-            tile_records: coarse.tile_records.buffer(),
+            coarse_work: coarse.work.buffer(),
             chunk_records: coarse.chunk_records.buffer(),
-            ptcl_records: coarse.ptcl_records.buffer(),
-            glyph_indices: coarse.glyph_indices.buffer(),
         }
     }
 }
@@ -131,10 +125,8 @@ pub(crate) struct WgpuFineSceneBindings<'a> {
 
 pub(crate) struct WgpuTileFineBindings<'a> {
     pub(crate) fine: WgpuFineSceneBindings<'a>,
-    pub(crate) tile_records: &'a ::wgpu::Buffer,
-    pub(crate) ptcl_records: &'a ::wgpu::Buffer,
+    pub(crate) coarse_work: &'a ::wgpu::Buffer,
     pub(crate) segments: &'a ::wgpu::Buffer,
-    pub(crate) glyph_indices: &'a ::wgpu::Buffer,
     pub(crate) glyphs: &'a ::wgpu::Buffer,
     pub(crate) glyph_images: &'a ::wgpu::Buffer,
     pub(crate) glyph_image_data: &'a ::wgpu::Buffer,
@@ -182,17 +174,13 @@ pub(crate) struct WgpuScanBindings<'a> {
 
 pub(crate) struct WgpuCoarseBindings<'a> {
     pub(crate) draw_records: &'a ::wgpu::Buffer,
-    pub(crate) text_runs: &'a ::wgpu::Buffer,
-    pub(crate) glyphs: &'a ::wgpu::Buffer,
-    pub(crate) glyph_images: &'a ::wgpu::Buffer,
+    pub(crate) text_blob: &'a ::wgpu::Buffer,
     pub(crate) brush_blob: &'a ::wgpu::Buffer,
     pub(crate) path_records: &'a ::wgpu::Buffer,
     pub(crate) backdrops: &'a ::wgpu::Buffer,
     pub(crate) segment_ranges: &'a ::wgpu::Buffer,
     pub(crate) layer_stack: &'a ::wgpu::Buffer,
     pub(crate) tile_draw_data: &'a ::wgpu::Buffer,
-    pub(crate) tile_records: &'a ::wgpu::Buffer,
+    pub(crate) coarse_work: &'a ::wgpu::Buffer,
     pub(crate) chunk_records: &'a ::wgpu::Buffer,
-    pub(crate) ptcl_records: &'a ::wgpu::Buffer,
-    pub(crate) glyph_indices: &'a ::wgpu::Buffer,
 }

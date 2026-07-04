@@ -14,7 +14,7 @@ use crate::{
     shared::{
         bounds::Bounds,
         brush::Brush,
-        gpu_coarse::{PtclRecord, TileCoarseRecord},
+        gpu_coarse::PtclRecord,
         layer::{
             filter::{
                 BlurSampling, COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE,
@@ -614,7 +614,7 @@ fn wgpu_coarse_emits_sdf_particles_for_rects_when_enabled() {
     renderer.prepare_scene(&canvas);
     renderer.coarse_batch(&canvas, 0, canvas.draw_records.len() as u32, 0, 0);
 
-    let tile_records = renderer.coarse.tile_records.read::<TileCoarseRecord>(
+    let tile_records = renderer.coarse.read_tile_records(
         renderer.device(),
         renderer.queue(),
         renderer.lengths.tile_count,
@@ -674,7 +674,7 @@ fn wgpu_coarse_tile_draw_bins_respect_batch_range_when_enabled() {
     renderer.prepare_scene(&canvas);
     renderer.coarse_batch(&canvas, 1, 2, 0, 0);
 
-    let tile_records = renderer.coarse.tile_records.read::<TileCoarseRecord>(
+    let tile_records = renderer.coarse.read_tile_records(
         renderer.device(),
         renderer.queue(),
         renderer.lengths.tile_count,
@@ -2417,10 +2417,12 @@ fn read_ptcl_colors(renderer: &Renderer, len: usize) -> Vec<u32> {
 }
 
 fn read_ptcl_records(renderer: &Renderer, len: usize) -> Vec<PtclRecord> {
-    renderer
-        .coarse
-        .ptcl_records
-        .read::<PtclRecord>(renderer.device(), renderer.queue(), len)
+    renderer.coarse.read_ptcl_records(
+        renderer.device(),
+        renderer.queue(),
+        renderer.lengths.tile_count,
+        len,
+    )
 }
 
 fn read_texture_rgba8(

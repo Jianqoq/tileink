@@ -24,9 +24,29 @@ pub(crate) struct GlyphImageRecord {
     pub(crate) data_offset: u32,
 }
 
+pub(crate) const GLYPH_RUN_RECORD_WORDS: usize = std::mem::size_of::<GlyphRunRecord>() / 4;
+pub(crate) const GLYPH_RECORD_WORDS: usize = std::mem::size_of::<GlyphRecord>() / 4;
+pub(crate) const GLYPH_IMAGE_RECORD_WORDS: usize = std::mem::size_of::<GlyphImageRecord>() / 4;
+
+pub(crate) fn text_blob_glyph_word_offset(run_count: usize) -> usize {
+    run_count * GLYPH_RUN_RECORD_WORDS
+}
+
+pub(crate) fn text_blob_image_word_offset(run_count: usize, glyph_count: usize) -> usize {
+    text_blob_glyph_word_offset(run_count) + glyph_count * GLYPH_RECORD_WORDS
+}
+
+pub(crate) fn text_blob_word_len(
+    run_count: usize,
+    glyph_count: usize,
+    image_count: usize,
+) -> usize {
+    text_blob_image_word_offset(run_count, glyph_count) + image_count * GLYPH_IMAGE_RECORD_WORDS
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{GlyphImageRecord, GlyphRecord, GlyphRunRecord};
+    use super::*;
 
     #[test]
     fn glyph_records_are_gpu_word_layouts() {
@@ -62,5 +82,15 @@ mod tests {
             bytemuck::cast_slice::<_, u32>(&[image]),
             &[(-6i32) as u32, 7, 8, 9, 10, 11]
         );
+    }
+
+    #[test]
+    fn text_blob_sections_are_tightly_packed_words() {
+        assert_eq!(GLYPH_RUN_RECORD_WORDS, 2);
+        assert_eq!(GLYPH_RECORD_WORDS, 3);
+        assert_eq!(GLYPH_IMAGE_RECORD_WORDS, 6);
+        assert_eq!(text_blob_glyph_word_offset(5), 10);
+        assert_eq!(text_blob_image_word_offset(5, 7), 31);
+        assert_eq!(text_blob_word_len(5, 7, 11), 97);
     }
 }

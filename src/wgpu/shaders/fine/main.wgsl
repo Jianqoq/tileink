@@ -55,13 +55,14 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
     var group1_layer_alpha = 0u;
     var group1_payload = 0u;
 
-    var ptcl_ix = tile_records[tile_ix].ptcl_start;
-    let range_end = tile_records[tile_ix].ptcl_end;
+    let tile = coarse_load_tile(tile_ix);
+    var ptcl_ix = tile.ptcl_start;
+    let range_end = tile.ptcl_end;
     loop {
         if (ptcl_ix >= range_end) {
             break;
         }
-        let ptcl = ptcl_records[ptcl_ix];
+        let ptcl = coarse_load_ptcl(ptcl_ix);
         let tag = ptcl.tag;
         if (tag == GPU_PTCL_END) {
             break;
@@ -281,7 +282,7 @@ fn composite_glyphs_at(
         if (glyph_list_ix >= glyph_end) {
             break;
         }
-        let glyph_i = glyph_indices[glyph_list_ix];
+        let glyph_i = coarse_load_glyph(glyph_list_ix);
         let glyph = glyphs[glyph_i];
         let image_id = glyph.image_id;
         if (image_id != INVALID_REF) {

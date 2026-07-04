@@ -44,11 +44,28 @@ pub(crate) struct PtclRecord {
     pub(crate) color: u32,
 }
 
+pub(crate) const TILE_COARSE_RECORD_WORDS: usize = std::mem::size_of::<TileCoarseRecord>() / 4;
+pub(crate) const PTCL_RECORD_WORDS: usize = std::mem::size_of::<PtclRecord>() / 4;
+
+pub(crate) fn coarse_work_ptcl_word_offset(tile_count: usize) -> usize {
+    tile_count * TILE_COARSE_RECORD_WORDS
+}
+
+pub(crate) fn coarse_work_glyph_word_offset(tile_count: usize, ptcl_capacity: usize) -> usize {
+    coarse_work_ptcl_word_offset(tile_count) + ptcl_capacity * PTCL_RECORD_WORDS
+}
+
+pub(crate) fn coarse_work_word_len(
+    tile_count: usize,
+    ptcl_capacity: usize,
+    glyph_capacity: usize,
+) -> usize {
+    coarse_work_glyph_word_offset(tile_count, ptcl_capacity) + glyph_capacity
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{
-        CoarseChunkRecord, LayerStackRecord, PtclRecord, TileCoarseRecord, TileDrawRecord,
-    };
+    use super::*;
 
     #[test]
     fn tile_coarse_record_is_gpu_word_layout() {
@@ -104,5 +121,14 @@ mod tests {
             bytemuck::cast_slice::<_, u32>(&[ptcl]),
             &[6, (-7i32) as u32, 8, 9, 10, 11]
         );
+    }
+
+    #[test]
+    fn coarse_work_sections_are_tightly_packed_words() {
+        assert_eq!(TILE_COARSE_RECORD_WORDS, 6);
+        assert_eq!(PTCL_RECORD_WORDS, 6);
+        assert_eq!(coarse_work_ptcl_word_offset(3), 18);
+        assert_eq!(coarse_work_glyph_word_offset(3, 5), 48);
+        assert_eq!(coarse_work_word_len(3, 5, 7), 55);
     }
 }

@@ -9,7 +9,7 @@ use crate::{
             GpuCumsumPlan, GpuScanChunk, GpuScanChunkRange, TileDrawBins, build_cumsum_plan_into,
             build_scan_chunks_into, build_tile_draw_bins_into,
         },
-        gpu_text::{GlyphImageRecord, GlyphRecord, GlyphRunRecord},
+        gpu_text::{GlyphImageRecord, GlyphRecord, GlyphRunRecord, text_blob_word_len},
         gpu_types::{
             GPU_GLYPH_COLOR, GPU_GLYPH_LINEAR_COLOR, GPU_GLYPH_LINEAR_MASK,
             GPU_GLYPH_LINEAR_SUBPIXEL_MASK, GPU_GLYPH_MASK, GPU_GLYPH_SUBPIXEL_MASK,
@@ -79,11 +79,7 @@ impl TextUpload {
         }
 
         let atlas_signature = text.atlas_signature();
-        if atlas_signature == current_atlas_signature {
-            return;
-        }
-
-        self.atlas_dirty = true;
+        self.atlas_dirty = atlas_signature != current_atlas_signature;
         self.atlas_signature = atlas_signature;
         for image in text.images() {
             let data_offset = self.image_data.len() as u32;
@@ -159,6 +155,30 @@ fn upload_mapped_u32<T>(
     scratch.reserve(items.len());
     scratch.extend(items.iter().map(map));
     buffer.upload(device, queue, label, scratch);
+}
+
+fn upload_coarse_text_blob(
+    device: &::wgpu::Device,
+    queue: &::wgpu::Queue,
+    buffer: &mut WgpuBuffer,
+    scratch: &mut Vec<u32>,
+    text: &TextUpload,
+) {
+    scratch.clear();
+    scratch.reserve(text_blob_word_len(
+        text.runs.len(),
+        text.glyphs.len(),
+        text.images.len(),
+    ));
+    scratch.extend_from_slice(bytemuck::cast_slice(&text.runs));
+    scratch.extend_from_slice(bytemuck::cast_slice(&text.glyphs));
+    scratch.extend_from_slice(bytemuck::cast_slice(&text.images));
+    buffer.upload(
+        device,
+        queue,
+        "tileink wgpu canvas coarse text blob",
+        scratch,
+    );
 }
 
 fn encode_layer_payload(entry: LayerStackEntry) -> u32 {
@@ -376,6 +396,13 @@ impl WgpuSceneBuffers {
                 queue,
                 "tileink wgpu canvas glyphs",
                 &staging.text.glyphs,
+            );
+            upload_coarse_text_blob(
+                device,
+                queue,
+                &mut self.coarse_text_blob,
+                &mut staging.u32s,
+                &staging.text,
             );
         });
         if text.is_none() {

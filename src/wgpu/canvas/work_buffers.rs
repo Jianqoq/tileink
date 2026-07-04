@@ -1,8 +1,14 @@
 use crate::shared::{
-    gpu_coarse::{CoarseChunkRecord, PtclRecord, TileCoarseRecord},
+    gpu_coarse::{CoarseChunkRecord, coarse_work_word_len},
     gpu_plan::GpuBufferLengths,
     line_seg::LineSegment,
     tile_seg_range::TileSegmentRange,
+};
+
+#[cfg(test)]
+use crate::shared::gpu_coarse::{
+    PTCL_RECORD_WORDS, PtclRecord, TILE_COARSE_RECORD_WORDS, TileCoarseRecord,
+    coarse_work_ptcl_word_offset,
 };
 
 use super::super::buffer::WgpuBuffer;
@@ -91,42 +97,77 @@ impl WgpuScanBuffers {
 }
 
 pub(crate) struct WgpuCoarseBuffers {
-    pub(crate) tile_records: WgpuBuffer,
+    pub(crate) work: WgpuBuffer,
     pub(crate) chunk_records: WgpuBuffer,
-    pub(crate) ptcl_records: WgpuBuffer,
-    pub(crate) glyph_indices: WgpuBuffer,
 }
 
 impl WgpuCoarseBuffers {
     pub(crate) fn new(device: &::wgpu::Device) -> Self {
         Self {
-            tile_records: WgpuBuffer::new(device, "tileink wgpu coarse tile records"),
+            work: WgpuBuffer::new(device, "tileink wgpu coarse work"),
             chunk_records: WgpuBuffer::new(device, "tileink wgpu coarse chunk records"),
-            ptcl_records: WgpuBuffer::new(device, "tileink wgpu coarse ptcl records"),
-            glyph_indices: WgpuBuffer::new(device, "tileink wgpu coarse glyph indices"),
         }
     }
 
     pub(crate) fn prepare_outputs(&mut self, device: &::wgpu::Device, lengths: GpuBufferLengths) {
-        self.tile_records.resize_uninit::<TileCoarseRecord>(
+        self.work.resize_uninit::<u32>(
             device,
-            "tileink wgpu coarse tile records",
-            lengths.tile_count,
+            "tileink wgpu coarse work",
+            coarse_work_word_len(
+                lengths.tile_count,
+                lengths.coarse_ptcl_capacity,
+                lengths.coarse_glyph_capacity,
+            ),
         );
         self.chunk_records.resize_uninit::<CoarseChunkRecord>(
             device,
             "tileink wgpu coarse chunk records",
             lengths.coarse_chunk_count,
         );
-        self.ptcl_records.resize_uninit::<PtclRecord>(
-            device,
-            "tileink wgpu coarse ptcl records",
-            lengths.coarse_ptcl_capacity,
-        );
-        self.glyph_indices.resize_uninit::<u32>(
-            device,
-            "tileink wgpu coarse glyph indices",
-            lengths.coarse_glyph_capacity,
-        );
+    }
+
+    #[cfg(test)]
+    pub(crate) fn read_tile_records(
+        &self,
+        device: &::wgpu::Device,
+        queue: &::wgpu::Queue,
+        tile_count: usize,
+    ) -> Vec<TileCoarseRecord> {
+        self.work
+            .read::<u32>(device, queue, tile_count * TILE_COARSE_RECORD_WORDS)
+            .chunks_exact(TILE_COARSE_RECORD_WORDS)
+            .map(|words| TileCoarseRecord {
+                ptcl_count: words[0],
+                ptcl_start: words[1],
+                ptcl_end: words[2],
+                glyph_count: words[3],
+                glyph_start: words[4],
+                glyph_end: words[5],
+            })
+            .collect()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn read_ptcl_records(
+        &self,
+        device: &::wgpu::Device,
+        queue: &::wgpu::Queue,
+        tile_count: usize,
+        len: usize,
+    ) -> Vec<PtclRecord> {
+        let offset = coarse_work_ptcl_word_offset(tile_count);
+        self.work
+            .read::<u32>(device, queue, offset + len * PTCL_RECORD_WORDS)
+            .chunks_exact(PTCL_RECORD_WORDS)
+            .skip(offset / PTCL_RECORD_WORDS)
+            .map(|words| PtclRecord {
+                tag: words[0],
+                backdrop: words[1] as i32,
+                fill_rule: words[2],
+                segment_start: words[3],
+                segment_end: words[4],
+                color: words[5],
+            })
+            .collect()
     }
 }

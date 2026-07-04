@@ -1,14 +1,13 @@
 #include "common.wgsl"
+#include "text_input.wgsl"
 
 @group(0) @binding(1) var<storage, read> draw_records: array<DrawRecord>;
-@group(0) @binding(3) var<storage, read> text_runs: array<GlyphRunRecord>;
-@group(0) @binding(5) var<storage, read> glyphs: array<GlyphRecord>;
-@group(0) @binding(8) var<storage, read> glyph_images: array<GlyphImageRecord>;
+@group(0) @binding(3) var<storage, read> text_blob: array<u32>;
 @group(0) @binding(18) var<storage, read> path_records: array<PathRecord>;
 @group(0) @binding(19) var<storage, read_write> backdrops: array<atomic<i32>>;
 @group(0) @binding(20) var<storage, read> segment_ranges: array<TileSegmentRange>;
 @group(0) @binding(22) var<storage, read> layer_stack: array<LayerStackRecord>;
-@group(0) @binding(25) var<storage, read_write> tile_records: array<TileCoarseRecord>;
+@group(0) @binding(25) var<storage, read_write> coarse_work: array<u32>;
 @group(0) @binding(42) var<storage, read> tile_draw_data: array<u32>;
 
 @compute @workgroup_size(256)
@@ -74,8 +73,7 @@ fn coarse_count(
         if (tile_ptcl_count > 0u) {
             stored_count = tile_ptcl_count + wrapper_count * 2u + 1u;
         }
-        tile_records[tile_ix].ptcl_count = stored_count;
-        tile_records[tile_ix].glyph_count = tile_glyph_count;
+        coarse_store_tile_counts(tile_ix, stored_count, tile_glyph_count);
     }
 }
 
@@ -165,7 +163,7 @@ fn draw_tile_hit(draw_ix: u32, tile_x: u32, tile_y: u32) -> bool {
 
 fn count_tile_glyphs_for_run(run_id: u32, tile_x: u32, tile_y: u32) -> u32 {
     var count = 0u;
-    let run = text_runs[run_id];
+    let run = text_run_at(run_id);
     var glyph_ix = run.glyph_start;
     let glyph_end = glyph_ix + run.glyph_count;
     loop {
@@ -181,12 +179,12 @@ fn count_tile_glyphs_for_run(run_id: u32, tile_x: u32, tile_y: u32) -> u32 {
 }
 
 fn glyph_hits_tile(glyph_ix: u32, tile_x: u32, tile_y: u32) -> bool {
-    let glyph = glyphs[glyph_ix];
+        let glyph = glyph_at(glyph_ix);
     let image_id = glyph.image_id;
     if (image_id == INVALID) {
         return false;
     }
-    let image = glyph_images[image_id];
+        let image = glyph_image_at(image_id);
     let width = image.width;
     let height = image.height;
     if (width == 0u || height == 0u) {

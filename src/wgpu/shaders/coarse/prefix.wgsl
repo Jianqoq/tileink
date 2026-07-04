@@ -1,6 +1,6 @@
 #include "common.wgsl"
 
-@group(0) @binding(25) var<storage, read_write> tile_records: array<TileCoarseRecord>;
+@group(0) @binding(25) var<storage, read_write> coarse_work: array<u32>;
 @group(0) @binding(31) var<storage, read_write> chunk_records: array<CoarseChunkRecord>;
 
 @compute @workgroup_size(256)
@@ -25,11 +25,7 @@ fn prefix_chunks(chunk_ix: u32, lane: u32, glyph: bool) {
     var count = 0u;
     if (lane < chunk_len) {
         let tile_ix = chunk_offset + lane;
-        if (glyph) {
-            count = tile_records[tile_ix].glyph_count;
-        } else {
-            count = tile_records[tile_ix].ptcl_count;
-        }
+        count = coarse_tile_count(tile_ix, glyph);
     }
     coarse_scratch[lane] = count;
     workgroupBarrier();
@@ -76,13 +72,7 @@ fn prefix_chunks(chunk_ix: u32, lane: u32, glyph: bool) {
     if (lane < chunk_len) {
         let tile_ix = chunk_offset + lane;
         let start = coarse_scratch[lane];
-        if (glyph) {
-            tile_records[tile_ix].glyph_start = start;
-            tile_records[tile_ix].glyph_end = start + count;
-        } else {
-            tile_records[tile_ix].ptcl_start = start;
-            tile_records[tile_ix].ptcl_end = start + count;
-        }
+        coarse_store_tile_range(tile_ix, glyph, start, start + count);
     }
 }
 
@@ -137,11 +127,9 @@ fn apply_chunk_offsets(chunk_ix: u32, lane: u32, glyph: bool) {
     }
     if (glyph) {
         let offset = chunk_records[chunk_ix].glyph_offset;
-        tile_records[tile_ix].glyph_start += offset;
-        tile_records[tile_ix].glyph_end += offset;
+        coarse_add_tile_range_offset(tile_ix, true, offset);
     } else {
         let offset = chunk_records[chunk_ix].ptcl_offset;
-        tile_records[tile_ix].ptcl_start += offset;
-        tile_records[tile_ix].ptcl_end += offset;
+        coarse_add_tile_range_offset(tile_ix, false, offset);
     }
 }

@@ -9,8 +9,8 @@ struct CoarseConfig {
     ptcl_capacity: u32,
     glyph_capacity: u32,
     chunk_count: u32,
-    _pad0: u32,
-    _pad1: u32,
+    text_run_count: u32,
+    text_glyph_count: u32,
 };
 
 @group(0) @binding(0) var<uniform> config: CoarseConfig;
@@ -120,6 +120,95 @@ const GPU_PTCL_SDF: u32 = 9u;
 const GPU_PTCL_GLYPH: u32 = 10u;
 const GPU_PTCL_PATH_GLYPH: u32 = 11u;
 const GPU_PTCL_BEGIN_SDF_CLIP: u32 = 12u;
+const GLYPH_RUN_RECORD_WORDS: u32 = 2u;
+const GLYPH_RECORD_WORDS: u32 = 3u;
+const GLYPH_IMAGE_RECORD_WORDS: u32 = 6u;
+const TILE_COARSE_RECORD_WORDS: u32 = 6u;
+const PTCL_RECORD_WORDS: u32 = 6u;
+
+fn coarse_tile_base(tile_ix: u32) -> u32 {
+    return tile_ix * TILE_COARSE_RECORD_WORDS;
+}
+
+fn coarse_ptcl_base(ptcl_ix: u32) -> u32 {
+    return config.tile_count * TILE_COARSE_RECORD_WORDS + ptcl_ix * PTCL_RECORD_WORDS;
+}
+
+fn coarse_glyph_base(glyph_ix: u32) -> u32 {
+    return config.tile_count * TILE_COARSE_RECORD_WORDS +
+        config.ptcl_capacity * PTCL_RECORD_WORDS +
+        glyph_ix;
+}
+
+fn coarse_load_tile(tile_ix: u32) -> TileCoarseRecord {
+    let base = coarse_tile_base(tile_ix);
+    return TileCoarseRecord(
+        coarse_work[base],
+        coarse_work[base + 1u],
+        coarse_work[base + 2u],
+        coarse_work[base + 3u],
+        coarse_work[base + 4u],
+        coarse_work[base + 5u],
+    );
+}
+
+fn coarse_store_tile_counts(tile_ix: u32, ptcl_count: u32, glyph_count: u32) {
+    let base = coarse_tile_base(tile_ix);
+    coarse_work[base] = ptcl_count;
+    coarse_work[base + 3u] = glyph_count;
+}
+
+fn coarse_tile_count(tile_ix: u32, glyph: bool) -> u32 {
+    let base = coarse_tile_base(tile_ix);
+    if (glyph) {
+        return coarse_work[base + 3u];
+    }
+    return coarse_work[base];
+}
+
+fn coarse_store_tile_range(tile_ix: u32, glyph: bool, start: u32, end: u32) {
+    let base = coarse_tile_base(tile_ix);
+    if (glyph) {
+        coarse_work[base + 4u] = start;
+        coarse_work[base + 5u] = end;
+    } else {
+        coarse_work[base + 1u] = start;
+        coarse_work[base + 2u] = end;
+    }
+}
+
+fn coarse_add_tile_range_offset(tile_ix: u32, glyph: bool, offset: u32) {
+    let base = coarse_tile_base(tile_ix);
+    if (glyph) {
+        coarse_work[base + 4u] += offset;
+        coarse_work[base + 5u] += offset;
+    } else {
+        coarse_work[base + 1u] += offset;
+        coarse_work[base + 2u] += offset;
+    }
+}
+
+fn coarse_store_ptcl(
+    ptcl_ix: u32,
+    tag: u32,
+    backdrop: i32,
+    fill_rule: u32,
+    segment_start: u32,
+    segment_end: u32,
+    color: u32,
+) {
+    let base = coarse_ptcl_base(ptcl_ix);
+    coarse_work[base] = tag;
+    coarse_work[base + 1u] = bitcast<u32>(backdrop);
+    coarse_work[base + 2u] = fill_rule;
+    coarse_work[base + 3u] = segment_start;
+    coarse_work[base + 4u] = segment_end;
+    coarse_work[base + 5u] = color;
+}
+
+fn coarse_store_glyph(glyph_ix: u32, source_glyph_ix: u32) {
+    coarse_work[coarse_glyph_base(glyph_ix)] = source_glyph_ix;
+}
 
 var<workgroup> coarse_scratch: array<u32, 256>;
 var<workgroup> coarse_total: u32;

@@ -1,17 +1,14 @@
 #include "common.wgsl"
+#include "text_input.wgsl"
 
 @group(0) @binding(1) var<storage, read> draw_records: array<DrawRecord>;
-@group(0) @binding(3) var<storage, read> text_runs: array<GlyphRunRecord>;
-@group(0) @binding(5) var<storage, read> glyphs: array<GlyphRecord>;
-@group(0) @binding(8) var<storage, read> glyph_images: array<GlyphImageRecord>;
+@group(0) @binding(3) var<storage, read> text_blob: array<u32>;
 @group(0) @binding(13) var<storage, read> brush_blob: array<u32>;
 @group(0) @binding(18) var<storage, read> path_records: array<PathRecord>;
 @group(0) @binding(19) var<storage, read_write> backdrops: array<atomic<i32>>;
 @group(0) @binding(20) var<storage, read> segment_ranges: array<TileSegmentRange>;
 @group(0) @binding(22) var<storage, read> layer_stack: array<LayerStackRecord>;
-@group(0) @binding(25) var<storage, read_write> tile_records: array<TileCoarseRecord>;
-@group(0) @binding(35) var<storage, read_write> ptcl_records: array<PtclRecord>;
-@group(0) @binding(41) var<storage, read_write> glyph_indices: array<u32>;
+@group(0) @binding(25) var<storage, read_write> coarse_work: array<u32>;
 @group(0) @binding(42) var<storage, read> tile_draw_data: array<u32>;
 
 @compute @workgroup_size(256)
@@ -27,7 +24,7 @@ fn coarse_emit(
     let lane = local_id.x;
     let tile_x = tile_ix % config.tiles_width;
     let tile_y = tile_ix / config.tiles_width;
-    let tile = tile_records[tile_ix];
+    let tile = coarse_load_tile(tile_ix);
     var cursor = tile.ptcl_start;
     let range_end = tile.ptcl_end;
     var glyph_cursor = tile.glyph_start;
@@ -305,7 +302,7 @@ fn draw_tile_hit(draw_ix: u32, tile_x: u32, tile_y: u32) -> bool {
 
 fn count_tile_glyphs_for_run(run_id: u32, tile_x: u32, tile_y: u32) -> u32 {
     var count = 0u;
-    let run = text_runs[run_id];
+    let run = text_run_at(run_id);
     var glyph_ix = run.glyph_start;
     let glyph_end = glyph_ix + run.glyph_count;
     loop {
@@ -322,7 +319,7 @@ fn count_tile_glyphs_for_run(run_id: u32, tile_x: u32, tile_y: u32) -> u32 {
 
 fn store_tile_glyphs_for_run(dst_start: u32, run_id: u32, tile_x: u32, tile_y: u32) {
     var count = 0u;
-    let run = text_runs[run_id];
+    let run = text_run_at(run_id);
     var glyph_ix = run.glyph_start;
     let glyph_end = glyph_ix + run.glyph_count;
     loop {
@@ -332,7 +329,7 @@ fn store_tile_glyphs_for_run(dst_start: u32, run_id: u32, tile_x: u32, tile_y: u
         if (glyph_hits_tile(glyph_ix, tile_x, tile_y)) {
             let dst = dst_start + count;
             if (dst < config.glyph_capacity) {
-                glyph_indices[dst] = glyph_ix;
+                coarse_store_glyph(dst, glyph_ix);
             }
             count += 1u;
         }
@@ -341,12 +338,12 @@ fn store_tile_glyphs_for_run(dst_start: u32, run_id: u32, tile_x: u32, tile_y: u
 }
 
 fn glyph_hits_tile(glyph_ix: u32, tile_x: u32, tile_y: u32) -> bool {
-    let glyph = glyphs[glyph_ix];
+    let glyph = glyph_at(glyph_ix);
     let image_id = glyph.image_id;
     if (image_id == INVALID) {
         return false;
     }
-    let image = glyph_images[image_id];
+        let image = glyph_image_at(image_id);
     let width = image.width;
     let height = image.height;
     if (width == 0u || height == 0u) {
@@ -411,11 +408,6 @@ fn draw_solid_color_at(draw_ix: u32) -> u32 {
 
 fn store_particle(dst: u32, tag: u32, backdrop: i32, fill_rule: u32, segment_start: u32, segment_end: u32, color: u32) {
     if (dst < config.ptcl_capacity) {
-        ptcl_records[dst].tag = tag;
-        ptcl_records[dst].backdrop = backdrop;
-        ptcl_records[dst].fill_rule = fill_rule;
-        ptcl_records[dst].segment_start = segment_start;
-        ptcl_records[dst].segment_end = segment_end;
-        ptcl_records[dst].color = color;
+        coarse_store_ptcl(dst, tag, backdrop, fill_rule, segment_start, segment_end, color);
     }
 }
