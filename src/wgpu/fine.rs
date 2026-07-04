@@ -37,6 +37,11 @@ struct FineConfig {
     clip_spill_depth: u32,
     group_spill_depth: u32,
     ptcl_capacity: u32,
+    paint_sdf_shadow_base: u32,
+    paint_brush_base: u32,
+    text_image_base: u32,
+    text_image_data_base: u32,
+    group_spill_base: u32,
 }
 
 unsafe impl bytemuck::Zeroable for FineConfig {}
@@ -100,8 +105,7 @@ impl WgpuFinePipeline {
         scene_buffers: &WgpuSceneBuffers,
         scan: &WgpuScanBuffers,
         coarse: &WgpuCoarseBuffers,
-        clip_spills: &WgpuBuffer,
-        group_spills: &WgpuBuffer,
+        fine_spills: &WgpuBuffer,
         target: &mut WgpuTarget,
         clear_color: u32,
         load_target: bool,
@@ -117,8 +121,7 @@ impl WgpuFinePipeline {
             scene_buffers,
             scan,
             coarse,
-            clip_spills,
-            group_spills,
+            fine_spills,
             target.view(),
             clear_color,
             load_target,
@@ -137,8 +140,7 @@ impl WgpuFinePipeline {
         scene_buffers: &WgpuSceneBuffers,
         scan: &WgpuScanBuffers,
         coarse: &WgpuCoarseBuffers,
-        clip_spills: &WgpuBuffer,
-        group_spills: &WgpuBuffer,
+        fine_spills: &WgpuBuffer,
         target: &::wgpu::TextureView,
         clear_color: u32,
         load_target: bool,
@@ -167,10 +169,18 @@ impl WgpuFinePipeline {
                 clip_spill_depth,
                 group_spill_depth,
                 ptcl_capacity: lengths.coarse_ptcl_capacity as u32,
+                paint_sdf_shadow_base: scene_buffers.fine_paint_sdf_shadow_base(),
+                paint_brush_base: scene_buffers.fine_paint_brush_base(),
+                text_image_base: scene_buffers.fine_text_image_base(),
+                text_image_data_base: scene_buffers.fine_text_image_data_base(),
+                group_spill_base: (lengths.tile_count
+                    * clip_spill_depth as usize
+                    * crate::shared::gpu_plan::FINE_WORKGROUP_SIZE as usize)
+                    as u32,
             }),
         );
 
-        let bindings = scene_buffers.tile_fine_bindings(scan, coarse, clip_spills, group_spills);
+        let bindings = scene_buffers.tile_fine_bindings(scan, coarse, fine_spills);
         let bind_group = self.create_tile_bind_group_for_view(
             commands.device(),
             target,
@@ -210,16 +220,11 @@ impl WgpuFinePipeline {
                 config_buffer_binding(0, &self.config, config_offset, self.config_size),
                 texture_binding(1, texture),
                 buffer_binding(2, fine.draw_records),
-                buffer_binding(8, fine.sdf_blob),
-                buffer_binding(9, fine.sdf_shadow_blob),
-                buffer_binding(26, fine.brush_blob),
+                buffer_binding(8, fine.paint_blob),
                 buffer_binding(29, bindings.coarse_work),
                 buffer_binding(37, bindings.segments),
-                buffer_binding(43, bindings.glyphs),
-                buffer_binding(46, bindings.glyph_images),
-                buffer_binding(52, bindings.glyph_image_data),
-                buffer_binding(53, bindings.clip_spills),
-                buffer_binding(54, bindings.group_spills),
+                buffer_binding(43, bindings.text_blob),
+                buffer_binding(53, bindings.spills),
                 buffer_binding(
                     fine_layout::IMAGE_RESOURCE_METADATA_BINDING,
                     fine.image_resource_metadata,
@@ -239,15 +244,10 @@ fn tile_fine_layout_entries(portable_textures: bool) -> Vec<::wgpu::BindGroupLay
         storage_texture_layout_entry(1, portable_textures),
         storage_layout_entry(2, true),
         storage_layout_entry(8, true),
-        storage_layout_entry(9, true),
-        storage_layout_entry(26, true),
         storage_layout_entry(29, true),
         storage_layout_entry(37, true),
         storage_layout_entry(43, true),
-        storage_layout_entry(46, true),
-        storage_layout_entry(52, true),
         storage_layout_entry(53, false),
-        storage_layout_entry(54, false),
         storage_layout_entry(fine_layout::IMAGE_RESOURCE_METADATA_BINDING, true),
         storage_layout_entry(fine_layout::IMAGE_RESOURCE_PIXELS_BINDING, true),
     ]
@@ -350,7 +350,7 @@ mod tests {
         let entries = tile_fine_layout_entries(false);
         let storage_count = entries.iter().filter(|entry| is_storage(entry)).count() as u32;
         assert_eq!(storage_count, TILE_STORAGE_BINDING_COUNT);
-        assert_eq!(TILE_STORAGE_BINDING_COUNT, 13);
+        assert_eq!(TILE_STORAGE_BINDING_COUNT, 8);
     }
 
     fn is_storage(entry: &::wgpu::BindGroupLayoutEntry) -> bool {

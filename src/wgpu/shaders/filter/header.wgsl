@@ -253,3 +253,13 @@ struct LayerStackRecord {
 @group(0) @binding(53) var<storage, read> image_resource_metadata: array<u32>;
 @group(0) @binding(54) var<storage, read> image_resource_pixels: array<u32>;
 
+fn brush_word(index: u32) -> u32 {
+    return brush_blob[index];
+}
+
+fn sdf_storage_word(index: u32, shadow_blob: bool) -> u32 {
+    if (shadow_blob) {
+        return sdf_shadow_blob[index];
+    }
+    return sdf_blob[index];
+}

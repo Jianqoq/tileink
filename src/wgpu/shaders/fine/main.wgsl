@@ -111,7 +111,7 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
                             (tile_ix * config.clip_spill_depth + spill_depth_ix) *
                             FINE_WORKGROUP_SIZE +
                             local_ix;
-                        clip_mask = clip_spills[stack_ix];
+                        clip_mask = spills[stack_ix];
                     }
                 }
             } else {
@@ -163,11 +163,12 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
                                 FINE_WORKGROUP_SIZE +
                                 local_ix) *
                             FINE_GROUP_SPILL_FIELDS;
-                        group_kind = group_spills[stack_ix];
-                        parent = group_spills[stack_ix + 1u];
-                        parent_clip = group_spills[stack_ix + 2u];
-                        layer_alpha = group_spills[stack_ix + 3u];
-                        payload = group_spills[stack_ix + 4u];
+                        let spill_base = config.group_spill_base + stack_ix;
+                        group_kind = spills[spill_base];
+                        parent = spills[spill_base + 1u];
+                        parent_clip = spills[spill_base + 2u];
+                        layer_alpha = spills[spill_base + 3u];
+                        payload = spills[spill_base + 4u];
                     }
                 }
                 if (group_kind == GPU_PTCL_BEGIN_OPACITY) {
@@ -234,11 +235,12 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
                                 FINE_WORKGROUP_SIZE +
                                 local_ix) *
                             FINE_GROUP_SPILL_FIELDS;
-                        group_spills[stack_ix] = tag;
-                        group_spills[stack_ix + 1u] = pixel;
-                        group_spills[stack_ix + 2u] = clip_mask;
-                        group_spills[stack_ix + 3u] = alpha;
-                        group_spills[stack_ix + 4u] = ptcl.color;
+                        let spill_base = config.group_spill_base + stack_ix;
+                        spills[spill_base] = tag;
+                        spills[spill_base + 1u] = pixel;
+                        spills[spill_base + 2u] = clip_mask;
+                        spills[spill_base + 3u] = alpha;
+                        spills[spill_base + 4u] = ptcl.color;
                         pushed_group = true;
                     }
                 }
@@ -283,10 +285,10 @@ fn composite_glyphs_at(
             break;
         }
         let glyph_i = coarse_load_glyph(glyph_list_ix);
-        let glyph = glyphs[glyph_i];
+        let glyph = glyph_at(glyph_i);
         let image_id = glyph.image_id;
         if (image_id != INVALID_REF) {
-            let image = glyph_images[image_id];
+            let image = glyph_image_at(image_id);
             let width = image.width;
             let height = image.height;
             let x0 = glyph.x + image.left;
@@ -296,7 +298,7 @@ fn composite_glyphs_at(
             if (local_x >= 0i && local_y >= 0i && local_x < i32(width) && local_y < i32(height)) {
                 let data_ix = image.data_offset + u32(local_y) * width + u32(local_x);
                 let content = image.content;
-                let data = glyph_image_data[data_ix];
+                let data = glyph_image_data_at(data_ix);
                 if (content == GPU_GLYPH_MASK) {
                     let alpha = combine_alpha(data, clip_mask);
                     if (alpha != 0u) {
@@ -356,7 +358,7 @@ fn push_clip(
             let stack_ix =
                 (tile_ix * config.clip_spill_depth + spill_depth_ix) * FINE_WORKGROUP_SIZE +
                 lane_ix;
-            clip_spills[stack_ix] = mask;
+            spills[stack_ix] = mask;
             *depth = d + 1u;
         }
     }

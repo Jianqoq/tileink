@@ -39,6 +39,8 @@ pub(crate) struct WgpuSceneUploadStaging {
     tile_draw_cursors: Vec<u32>,
     tile_draw_data: Vec<u32>,
     layer_stack: Vec<LayerStackRecord>,
+    paint_blob: Vec<u32>,
+    fine_text_blob: Vec<u32>,
 }
 
 #[derive(Default)]
@@ -182,6 +184,25 @@ fn upload_coarse_text_blob(
     );
 }
 
+fn upload_fine_text_blob(
+    device: &::wgpu::Device,
+    queue: &::wgpu::Queue,
+    buffer: &mut WgpuBuffer,
+    blob: &mut Vec<u32>,
+    text: &TextUpload,
+) -> (u32, u32) {
+    let image_base = text.glyphs.len() * std::mem::size_of::<GlyphRecord>() / 4;
+    let image_data_base =
+        image_base + text.images.len() * std::mem::size_of::<GlyphImageRecord>() / 4;
+    blob.clear();
+    blob.reserve(image_data_base + text.image_data.len());
+    blob.extend_from_slice(bytemuck::cast_slice(&text.glyphs));
+    blob.extend_from_slice(bytemuck::cast_slice(&text.images));
+    blob.extend_from_slice(&text.image_data);
+    buffer.upload(device, queue, "tileink wgpu canvas fine text blob", blob);
+    (image_base as u32, image_data_base as u32)
+}
+
 fn encode_layer_payload(entry: LayerStackEntry) -> u32 {
     match entry {
         LayerStackEntry::Clip { .. } => 0,
@@ -244,7 +265,7 @@ impl WgpuSceneBuffers {
             self.upload_draw_records(device, queue, &canvas.draw_records, text.is_some(), staging);
         });
         profile_cpu("prepare.upload_scene.upload_scene_records", || {
-            self.upload_scene_records(device, queue, canvas, image_resources);
+            self.upload_scene_records(device, queue, canvas, image_resources, staging);
         });
         profile_cpu("prepare.upload_scene.upload_layer_stack", || {
             self.upload_plan_layer_stack(device, queue, &plan.layer_stack_data, staging);
@@ -266,6 +287,7 @@ impl WgpuSceneBuffers {
         queue: &::wgpu::Queue,
         canvas: &Canvas,
         image_resources: Option<&GpuImageResourceUpload>,
+        staging: &mut WgpuSceneUploadStaging,
     ) {
         profile_cpu("prepare.upload_scene.records.geometry", || {
             self.lines
@@ -302,6 +324,24 @@ impl WgpuSceneBuffers {
                 queue,
                 "tileink wgpu canvas brush blob",
                 &brush_upload.blob,
+            );
+            self.fine_paint_sdf_shadow_base = canvas.sdf_blob.len() as u32;
+            self.fine_paint_brush_base =
+                (canvas.sdf_blob.len() + canvas.sdf_shadow_blob.len()) as u32;
+            staging.paint_blob.clear();
+            staging.paint_blob.reserve(
+                canvas.sdf_blob.len() + canvas.sdf_shadow_blob.len() + brush_upload.blob.len(),
+            );
+            staging.paint_blob.extend_from_slice(&canvas.sdf_blob);
+            staging
+                .paint_blob
+                .extend_from_slice(&canvas.sdf_shadow_blob);
+            staging.paint_blob.extend_from_slice(&brush_upload.blob);
+            self.fine_paint_blob.upload(
+                device,
+                queue,
+                "tileink wgpu canvas fine paint blob",
+                &staging.paint_blob,
             );
         });
     }
@@ -389,12 +429,6 @@ impl WgpuSceneBuffers {
                 "tileink wgpu canvas text runs",
                 &staging.text.runs,
             );
-            self.glyphs.upload(
-                device,
-                queue,
-                "tileink wgpu canvas glyphs",
-                &staging.text.glyphs,
-            );
             upload_coarse_text_blob(
                 device,
                 queue,
@@ -402,17 +436,18 @@ impl WgpuSceneBuffers {
                 &mut staging.u32s,
                 &staging.text,
             );
+            let (image_base, image_data_base) = upload_fine_text_blob(
+                device,
+                queue,
+                &mut self.fine_text_blob,
+                &mut staging.fine_text_blob,
+                &staging.text,
+            );
+            self.fine_text_image_base = image_base;
+            self.fine_text_image_data_base = image_data_base;
         });
         if text.is_none() {
             self.glyph_atlas_signature = AtlasSignature::default();
-            profile_cpu("prepare.upload_scene.text.empty_atlas", || {
-                self.glyph_images.upload(
-                    device,
-                    queue,
-                    "tileink wgpu canvas glyph images",
-                    &staging.text.images,
-                );
-            });
             return;
         }
         if !staging.text.atlas_dirty {
@@ -420,20 +455,6 @@ impl WgpuSceneBuffers {
         }
 
         self.glyph_atlas_signature = staging.text.atlas_signature;
-        profile_cpu("prepare.upload_scene.text.atlas", || {
-            self.glyph_images.upload(
-                device,
-                queue,
-                "tileink wgpu canvas glyph images",
-                &staging.text.images,
-            );
-            self.glyph_image_data.upload(
-                device,
-                queue,
-                "tileink wgpu canvas glyph image data",
-                &staging.text.image_data,
-            );
-        });
     }
 
     fn upload_scan_plan(

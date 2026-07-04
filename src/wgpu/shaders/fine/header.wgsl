@@ -83,6 +83,11 @@ struct FineConfig {
     clip_spill_depth: u32,
     group_spill_depth: u32,
     ptcl_capacity: u32,
+    paint_sdf_shadow_base: u32,
+    paint_brush_base: u32,
+    text_image_base: u32,
+    text_image_data_base: u32,
+    group_spill_base: u32,
 };
 
 @group(0) @binding(0) var<uniform> config: FineConfig;
@@ -140,21 +145,18 @@ struct PtclRecord {
     color: u32,
 };
 @group(0) @binding(2) var<storage, read> draw_records: array<DrawRecord>;
-@group(0) @binding(8) var<storage, read> sdf_blob: array<u32>;
-@group(0) @binding(9) var<storage, read> sdf_shadow_blob: array<u32>;
-@group(0) @binding(26) var<storage, read> brush_blob: array<u32>;
+@group(0) @binding(8) var<storage, read> paint_blob: array<u32>;
 @group(0) @binding(29) var<storage, read> coarse_work: array<u32>;
 @group(0) @binding(37) var<storage, read> segments: array<LineSegment>;
-@group(0) @binding(43) var<storage, read> glyphs: array<GlyphRecord>;
-@group(0) @binding(46) var<storage, read> glyph_images: array<GlyphImageRecord>;
-@group(0) @binding(52) var<storage, read> glyph_image_data: array<u32>;
-@group(0) @binding(53) var<storage, read_write> clip_spills: array<u32>;
-@group(0) @binding(54) var<storage, read_write> group_spills: array<u32>;
+@group(0) @binding(43) var<storage, read> text_blob: array<u32>;
+@group(0) @binding(53) var<storage, read_write> spills: array<u32>;
 @group(0) @binding(55) var<storage, read> image_resource_metadata: array<u32>;
 @group(0) @binding(56) var<storage, read> image_resource_pixels: array<u32>;
 
 const TILE_COARSE_RECORD_WORDS: u32 = 6u;
 const PTCL_RECORD_WORDS: u32 = 6u;
+const GLYPH_RECORD_WORDS: u32 = 3u;
+const GLYPH_IMAGE_RECORD_WORDS: u32 = 6u;
 
 fn coarse_tile_base(tile_ix: u32) -> u32 {
     return tile_ix * TILE_COARSE_RECORD_WORDS;
@@ -196,4 +198,40 @@ fn coarse_load_ptcl(ptcl_ix: u32) -> PtclRecord {
 
 fn coarse_load_glyph(glyph_ix: u32) -> u32 {
     return coarse_work[coarse_glyph_base(glyph_ix)];
+}
+
+fn glyph_at(glyph_ix: u32) -> GlyphRecord {
+    let base = glyph_ix * GLYPH_RECORD_WORDS;
+    return GlyphRecord(
+        text_blob[base],
+        bitcast<i32>(text_blob[base + 1u]),
+        bitcast<i32>(text_blob[base + 2u]),
+    );
+}
+
+fn glyph_image_at(image_ix: u32) -> GlyphImageRecord {
+    let base = config.text_image_base + image_ix * GLYPH_IMAGE_RECORD_WORDS;
+    return GlyphImageRecord(
+        bitcast<i32>(text_blob[base]),
+        bitcast<i32>(text_blob[base + 1u]),
+        text_blob[base + 2u],
+        text_blob[base + 3u],
+        text_blob[base + 4u],
+        text_blob[base + 5u],
+    );
+}
+
+fn glyph_image_data_at(data_ix: u32) -> u32 {
+    return text_blob[config.text_image_data_base + data_ix];
+}
+
+fn brush_word(index: u32) -> u32 {
+    return paint_blob[config.paint_brush_base + index];
+}
+
+fn sdf_storage_word(index: u32, shadow_blob: bool) -> u32 {
+    if (shadow_blob) {
+        return paint_blob[config.paint_sdf_shadow_base + index];
+    }
+    return paint_blob[index];
 }

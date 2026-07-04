@@ -161,10 +161,7 @@ fn sdf_coverage_from_blob(base: u32, shadow_blob: bool, x: f32, y: f32) -> f32 {
 }
 
 fn sdf_word(base: u32, index: u32, shadow_blob: bool) -> u32 {
-    if (shadow_blob) {
-        return sdf_shadow_blob[base + index];
-    }
-    return sdf_blob[base + index];
+    return sdf_storage_word(base + index, shadow_blob);
 }
 
 fn sdf_float(base: u32, index: u32, shadow_blob: bool) -> f32 {

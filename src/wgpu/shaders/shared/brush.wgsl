@@ -1,15 +1,15 @@
 fn brush_param(base: u32, index: u32) -> f32 {
-    return bitcast<f32>(brush_blob[base + index]);
+    return bitcast<f32>(brush_word(base + index));
 }
 
 fn sample_brush(brush_offset: u32, x: f32, y: f32) -> u32 {
     let data_base = brush_offset;
-    let kind = brush_blob[data_base];
-    let extend = brush_blob[data_base + 1u];
-    let payload_offset = data_base + brush_blob[data_base + 2u];
-    let payload_len = brush_blob[data_base + 3u];
+    let kind = brush_word(data_base);
+    let extend = brush_word(data_base + 1u);
+    let payload_offset = data_base + brush_word(data_base + 2u);
+    let payload_len = brush_word(data_base + 3u);
     let base = data_base + GPU_BRUSH_U32_STRIDE;
-    var color = brush_blob[data_base + 4u];
+    var color = brush_word(data_base + 4u);
 
     if (kind == GPU_BRUSH_LINEAR) {
         let tx = brush_param(base, 4u) * x + brush_param(base, 6u) * y + brush_param(base, 8u);
@@ -59,21 +59,21 @@ fn sample_brush(brush_offset: u32, x: f32, y: f32) -> u32 {
             base,
             payload_offset,
             payload_len,
-            brush_blob[data_base + 5u],
-            brush_blob[data_base + 6u],
-            brush_blob[data_base + 7u],
+            brush_word(data_base + 5u),
+            brush_word(data_base + 6u),
+            brush_word(data_base + 7u),
             extend,
-            brush_blob[data_base + 8u],
+            brush_word(data_base + 8u),
         );
     } else if (kind == GPU_BRUSH_PATTERN_RESOURCE) {
         color = sample_resource_pattern(
             x,
             y,
             base,
-            brush_blob[data_base + 2u],
-            brush_blob[data_base + 7u],
+            brush_word(data_base + 2u),
+            brush_word(data_base + 7u),
             extend,
-            brush_blob[data_base + 8u],
+            brush_word(data_base + 8u),
         );
     }
 
@@ -152,10 +152,10 @@ fn sample_four_corner(x: f32, y: f32, base: u32, payload_offset: u32) -> u32 {
     if (abs(height) > 0.00000011920929) {
         v = clamp((y - y0) / height, 0.0, 1.0);
     }
-    let tl = brush_blob[payload_offset];
-    let tr = brush_blob[payload_offset + 1u];
-    let br = brush_blob[payload_offset + 2u];
-    let bl = brush_blob[payload_offset + 3u];
+    let tl = brush_word(payload_offset);
+    let tr = brush_word(payload_offset + 1u);
+    let br = brush_word(payload_offset + 2u);
+    let bl = brush_word(payload_offset + 3u);
     let top = lerp_premul_u8(tl, tr, u);
     let bottom = lerp_premul_u8(bl, br, u);
     return lerp_premul_u8(top, bottom, v);
@@ -245,7 +245,7 @@ fn pattern_pixel(use_resource: bool, payload_offset: u32, payload_len: u32, widt
     if (use_resource) {
         return image_resource_pixels[payload_offset + local_ix];
     }
-    return brush_blob[payload_offset + local_ix];
+    return brush_word(payload_offset + local_ix);
 }
 
 fn sample_ramp(payload_offset: u32, payload_len: u32, t: f32, extend: u32) -> u32 {
@@ -256,8 +256,8 @@ fn sample_ramp(payload_offset: u32, payload_len: u32, t: f32, extend: u32) -> u3
         let left_ix = u32(floor(position));
         let right_ix = min(left_ix + 1u, last);
         let frac = position - f32(left_ix);
-        let left = brush_blob[payload_offset + left_ix];
-        let right = brush_blob[payload_offset + right_ix];
+        let left = brush_word(payload_offset + left_ix);
+        let right = brush_word(payload_offset + right_ix);
         if (frac <= 0.00000011920929 || left_ix == right_ix) {
             color = left;
         } else {

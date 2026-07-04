@@ -10,9 +10,7 @@ impl WgpuSceneBuffers {
     pub(crate) fn fine_bindings(&self) -> WgpuFineSceneBindings<'_> {
         WgpuFineSceneBindings {
             draw_records: self.draw_records.buffer(),
-            sdf_blob: self.sdf_blob.buffer(),
-            sdf_shadow_blob: self.sdf_shadow_blob.buffer(),
-            brush_blob: self.brush_blob.buffer(),
+            paint_blob: self.fine_paint_blob.buffer(),
             image_resource_metadata: self.image_resource_metadata.buffer(),
             image_resource_pixels: self.image_resource_pixels.buffer(),
         }
@@ -25,22 +23,34 @@ impl WgpuSceneBuffers {
         )
     }
 
+    pub(crate) fn fine_paint_sdf_shadow_base(&self) -> u32 {
+        self.fine_paint_sdf_shadow_base
+    }
+
+    pub(crate) fn fine_paint_brush_base(&self) -> u32 {
+        self.fine_paint_brush_base
+    }
+
+    pub(crate) fn fine_text_image_base(&self) -> u32 {
+        self.fine_text_image_base
+    }
+
+    pub(crate) fn fine_text_image_data_base(&self) -> u32 {
+        self.fine_text_image_data_base
+    }
+
     pub(crate) fn tile_fine_bindings<'a>(
         &'a self,
         scan: &'a WgpuScanBuffers,
         coarse: &'a WgpuCoarseBuffers,
-        clip_spills: &'a WgpuBuffer,
-        group_spills: &'a WgpuBuffer,
+        fine_spills: &'a WgpuBuffer,
     ) -> WgpuTileFineBindings<'a> {
         WgpuTileFineBindings {
             fine: self.fine_bindings(),
             coarse_work: coarse.work.buffer(),
             segments: scan.segments.buffer(),
-            glyphs: self.glyphs.buffer(),
-            glyph_images: self.glyph_images.buffer(),
-            glyph_image_data: self.glyph_image_data.buffer(),
-            clip_spills: clip_spills.buffer(),
-            group_spills: group_spills.buffer(),
+            text_blob: self.fine_text_blob.buffer(),
+            spills: fine_spills.buffer(),
         }
     }
 
@@ -115,9 +125,7 @@ impl WgpuSceneBuffers {
 
 pub(crate) struct WgpuFineSceneBindings<'a> {
     pub(crate) draw_records: &'a ::wgpu::Buffer,
-    pub(crate) sdf_blob: &'a ::wgpu::Buffer,
-    pub(crate) sdf_shadow_blob: &'a ::wgpu::Buffer,
-    pub(crate) brush_blob: &'a ::wgpu::Buffer,
+    pub(crate) paint_blob: &'a ::wgpu::Buffer,
     pub(crate) image_resource_metadata: &'a ::wgpu::Buffer,
     pub(crate) image_resource_pixels: &'a ::wgpu::Buffer,
 }
@@ -126,11 +134,8 @@ pub(crate) struct WgpuTileFineBindings<'a> {
     pub(crate) fine: WgpuFineSceneBindings<'a>,
     pub(crate) coarse_work: &'a ::wgpu::Buffer,
     pub(crate) segments: &'a ::wgpu::Buffer,
-    pub(crate) glyphs: &'a ::wgpu::Buffer,
-    pub(crate) glyph_images: &'a ::wgpu::Buffer,
-    pub(crate) glyph_image_data: &'a ::wgpu::Buffer,
-    pub(crate) clip_spills: &'a ::wgpu::Buffer,
-    pub(crate) group_spills: &'a ::wgpu::Buffer,
+    pub(crate) text_blob: &'a ::wgpu::Buffer,
+    pub(crate) spills: &'a ::wgpu::Buffer,
 }
 
 pub(crate) struct WgpuFilterBindings<'a> {

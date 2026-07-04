@@ -122,8 +122,7 @@ pub struct Renderer {
     coarse: WgpuCoarseBuffers,
     max_clip_depth: usize,
     max_group_depth: usize,
-    fine_clip_spills: WgpuBuffer,
-    fine_group_spills: WgpuBuffer,
+    fine_spills: WgpuBuffer,
     text_data: Option<PreparedTextData>,
     scan_pipeline: Option<WgpuScanPipeline>,
     cumsum: Option<WgpuCumsumPipeline>,
@@ -159,8 +158,7 @@ struct SavedRendererState {
     coarse: WgpuCoarseBuffers,
     max_clip_depth: usize,
     max_group_depth: usize,
-    fine_clip_spills: WgpuBuffer,
-    fine_group_spills: WgpuBuffer,
+    fine_spills: WgpuBuffer,
     filter_transfers: WgpuFilterTransferBuffers,
     filter_brushes: WgpuFilterBrushBuffers,
     filter_convolves: WgpuFilterConvolveBuffers,
@@ -260,8 +258,7 @@ impl Renderer {
             coarse: WgpuCoarseBuffers::new(device),
             max_clip_depth: 0,
             max_group_depth: 0,
-            fine_clip_spills: WgpuBuffer::new(device, "tileink wgpu fine clip spills"),
-            fine_group_spills: WgpuBuffer::new(device, "tileink wgpu fine group spills"),
+            fine_spills: WgpuBuffer::new(device, "tileink wgpu fine spills"),
             text_data: None,
             scan_pipeline: WgpuScanPipeline::new(device),
             cumsum: WgpuCumsumPipeline::new(device),
@@ -560,13 +557,9 @@ impl Renderer {
             coarse: std::mem::replace(&mut self.coarse, WgpuCoarseBuffers::new(&self.device)),
             max_clip_depth: self.max_clip_depth,
             max_group_depth: self.max_group_depth,
-            fine_clip_spills: std::mem::replace(
-                &mut self.fine_clip_spills,
-                WgpuBuffer::new(&self.device, "tileink wgpu fine clip spills"),
-            ),
-            fine_group_spills: std::mem::replace(
-                &mut self.fine_group_spills,
-                WgpuBuffer::new(&self.device, "tileink wgpu fine group spills"),
+            fine_spills: std::mem::replace(
+                &mut self.fine_spills,
+                WgpuBuffer::new(&self.device, "tileink wgpu fine spills"),
             ),
             filter_transfers: std::mem::replace(
                 &mut self.filter_transfers,
@@ -685,8 +678,7 @@ impl Renderer {
         self.coarse = saved.coarse;
         self.max_clip_depth = saved.max_clip_depth;
         self.max_group_depth = saved.max_group_depth;
-        self.fine_clip_spills = saved.fine_clip_spills;
-        self.fine_group_spills = saved.fine_group_spills;
+        self.fine_spills = saved.fine_spills;
         self.filter_transfers = saved.filter_transfers;
         self.filter_brushes = saved.filter_brushes;
         self.filter_convolves = saved.filter_convolves;
@@ -721,15 +713,11 @@ impl Renderer {
         let lane_count = lengths.tile_count * FINE_WORKGROUP_SIZE as usize;
         let clip_spill_depth = max_clip_depth.saturating_sub(FINE_LOCAL_CLIP_DEPTH);
         let group_spill_depth = max_group_depth.saturating_sub(FINE_LOCAL_GROUP_DEPTH);
-        self.fine_clip_spills.resize_uninit::<u32>(
+        self.fine_spills.resize_uninit::<u32>(
             &self.device,
-            "tileink wgpu fine clip spills",
-            lane_count * clip_spill_depth,
-        );
-        self.fine_group_spills.resize_uninit::<u32>(
-            &self.device,
-            "tileink wgpu fine group spills",
-            lane_count * group_spill_depth * FINE_GROUP_SPILL_FIELDS,
+            "tileink wgpu fine spills",
+            lane_count * clip_spill_depth
+                + lane_count * group_spill_depth * FINE_GROUP_SPILL_FIELDS,
         );
     }
 
@@ -922,8 +910,7 @@ impl Renderer {
                         &self.scene_buffers,
                         &self.scan,
                         &self.coarse,
-                        &self.fine_clip_spills,
-                        &self.fine_group_spills,
+                        &self.fine_spills,
                         target,
                         self.clear_color,
                         true,
@@ -939,8 +926,7 @@ impl Renderer {
                         &self.scene_buffers,
                         &self.scan,
                         &self.coarse,
-                        &self.fine_clip_spills,
-                        &self.fine_group_spills,
+                        &self.fine_spills,
                         &mut self.readback_target,
                         self.clear_color,
                         true,
@@ -957,8 +943,7 @@ impl Renderer {
                 &self.scene_buffers,
                 &self.scan,
                 &self.coarse,
-                &self.fine_clip_spills,
-                &self.fine_group_spills,
+                &self.fine_spills,
                 &mut self.scratch[ix],
                 self.clear_color,
                 true,
