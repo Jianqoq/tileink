@@ -1,25 +1,30 @@
 use super::*;
+use crate::shared::scene_columns::CanvasColumns;
 
-fn assert_path_geometry_columns_match_scene(canvas: &Canvas) {
-    assert_eq!(canvas.columns.line_path_ids.len(), canvas.lines.len());
-    assert_eq!(canvas.columns.line_p0x.len(), canvas.lines.len());
-    assert_eq!(canvas.columns.line_p0y.len(), canvas.lines.len());
-    assert_eq!(canvas.columns.line_p1x.len(), canvas.lines.len());
-    assert_eq!(canvas.columns.line_p1y.len(), canvas.lines.len());
-    assert_eq!(canvas.columns.path_flags.len(), canvas.path_cnt as usize);
+fn upload_columns_for(canvas: &Canvas) -> CanvasColumns {
+    let mut columns = CanvasColumns::default();
+    columns.rebuild(&canvas.lines, &canvas.path_records, &canvas.draw_records);
+    columns
+}
+
+fn assert_path_geometry_upload_columns_match_scene(canvas: &Canvas) {
+    let columns = upload_columns_for(canvas);
+    assert_eq!(columns.line_path_ids.len(), canvas.lines.len());
+    assert_eq!(columns.line_p0x.len(), canvas.lines.len());
+    assert_eq!(columns.line_p0y.len(), canvas.lines.len());
+    assert_eq!(columns.line_p1x.len(), canvas.lines.len());
+    assert_eq!(columns.line_p1y.len(), canvas.lines.len());
+    assert_eq!(columns.path_flags.len(), canvas.path_cnt as usize);
 
     for (index, line) in canvas.lines.iter().enumerate() {
-        assert_eq!(canvas.columns.line_path_ids[index], line.path_id);
-        assert_eq!(canvas.columns.line_p0x[index], line.p0[0]);
-        assert_eq!(canvas.columns.line_p0y[index], line.p0[1]);
-        assert_eq!(canvas.columns.line_p1x[index], line.p1[0]);
-        assert_eq!(canvas.columns.line_p1y[index], line.p1[1]);
+        assert_eq!(columns.line_path_ids[index], line.path_id);
+        assert_eq!(columns.line_p0x[index], line.p0[0]);
+        assert_eq!(columns.line_p0y[index], line.p0[1]);
+        assert_eq!(columns.line_p1x[index], line.p1[0]);
+        assert_eq!(columns.line_p1y[index], line.p1[1]);
     }
     for record in &canvas.path_records {
-        assert_eq!(
-            canvas.columns.path_flags[record.path_id as usize],
-            record.flags
-        );
+        assert_eq!(columns.path_flags[record.path_id as usize], record.flags);
     }
 }
 
@@ -87,7 +92,7 @@ fn push_path_flattens_transformed_geometry() {
             .into_iter()
             .all(|point| point[0] >= 8.0 && point[0] <= 18.0 && point[1] >= 4.0 && point[1] <= 14.0)
     }));
-    assert_path_geometry_columns_match_scene(&canvas);
+    assert_path_geometry_upload_columns_match_scene(&canvas);
 }
 
 #[test]
@@ -155,11 +160,11 @@ fn push_layer_path_flattens_transformed_geometry() {
             point[0] >= 12.0 && point[0] <= 22.0 && point[1] >= 6.0 && point[1] <= 16.0
         })
     }));
-    assert_path_geometry_columns_match_scene(&canvas);
+    assert_path_geometry_upload_columns_match_scene(&canvas);
 }
 
 #[test]
-fn append_rebuilds_path_geometry_columns() {
+fn append_preserves_path_geometry_for_upload_columns() {
     let mut child = test_scene();
     child.push_path(
         rect_path(0.0, 0.0, 10.0, 10.0),
@@ -172,7 +177,7 @@ fn append_rebuilds_path_geometry_columns() {
     let mut canvas = test_scene();
     canvas.append(&child, Point::new(8.0, 4.0));
 
-    assert_path_geometry_columns_match_scene(&canvas);
+    assert_path_geometry_upload_columns_match_scene(&canvas);
     assert!(canvas.lines.iter().all(|line| {
         [line.p0, line.p1]
             .into_iter()
@@ -181,7 +186,7 @@ fn append_rebuilds_path_geometry_columns() {
 }
 
 #[test]
-fn append_rebuilds_path_geometry_columns_without_mutating_child() {
+fn append_preserves_path_geometry_for_upload_columns_without_mutating_child() {
     let mut child = test_scene();
     child.push_path(
         rect_path(0.0, 0.0, 10.0, 10.0),
@@ -210,7 +215,7 @@ fn append_rebuilds_path_geometry_columns_without_mutating_child() {
         assert_eq!(actual.line_count, expected.line_count);
         assert_eq!(actual.flags, expected.flags);
     }
-    assert_path_geometry_columns_match_scene(&canvas);
+    assert_path_geometry_upload_columns_match_scene(&canvas);
     assert_eq!(canvas.path_records.len(), child.path_records.len() * 2);
     assert_eq!(canvas.bd_records.len(), canvas.path_records.len());
     assert!(canvas.lines.iter().all(|line| {

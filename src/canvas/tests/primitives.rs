@@ -3,10 +3,11 @@ use crate::{
     TextLayoutOptions,
     shared::{
         brush::PatternImage,
+        gpu_brush::{GPU_BRUSH_U32_STRIDE, GpuBrushUpload},
         image::{Image, premul_color_to_rgba8_pack},
         image_resource::ImageKey,
         pixel::premul_f32_to_u32,
-        scene_columns::GPU_BRUSH_U32_STRIDE,
+        scene_columns::CanvasColumns,
     },
 };
 
@@ -238,16 +239,19 @@ fn draw_id_updates_specific_draw_color() {
     assert!(canvas.set_draw_color(first, rgb(8, 9, 10)));
     assert_eq!(canvas.draw_solid_color(first), Some(rgb(8, 9, 10)));
     assert_eq!(canvas.draw_solid_color(second), Some(rgb(0, 255, 0)));
+    let mut columns = CanvasColumns::default();
+    columns.rebuild(&canvas.lines, &canvas.path_records, &canvas.draw_records);
+    let brushes = GpuBrushUpload::from_scene_draws(&canvas.draw_records, None);
     assert_eq!(
-        canvas.columns.draw_brush_colors[first.index()],
+        columns.draw_brush_colors[first.index()],
         premul_f32_to_u32(rgb(8, 9, 10).premultiply().components)
     );
     assert_eq!(
-        canvas.columns.draw_brushes.data[first.index() * GPU_BRUSH_U32_STRIDE + 4],
+        brushes.data[first.index() * GPU_BRUSH_U32_STRIDE + 4],
         premul_color_to_rgba8_pack(rgb(8, 9, 10))
     );
     assert_eq!(
-        canvas.columns.draw_brushes.data[second.index() * GPU_BRUSH_U32_STRIDE + 4],
+        brushes.data[second.index() * GPU_BRUSH_U32_STRIDE + 4],
         premul_color_to_rgba8_pack(rgb(0, 255, 0))
     );
 }
@@ -289,11 +293,10 @@ fn no_op_sdf_primitive_returns_no_draw_id() {
 
     assert_eq!(draw, None);
     assert!(canvas.draw_records.is_empty());
-    assert!(canvas.columns.draw_path_ids.is_empty());
 }
 
 #[test]
-fn scene_columns_rebuild_after_append() {
+fn upload_columns_rebuild_after_append() {
     let mut parent = test_scene();
     parent.push_rect(
         Rect::new(2.0, 3.0, 18.0, 19.0),
@@ -305,21 +308,18 @@ fn scene_columns_rebuild_after_append() {
     child.push_circle(Circle::new((16.0, 16.0), 8.0), Brush::Solid(rgb(0, 255, 0)));
     parent.append(&child, Point::new(4.0, 5.0));
 
+    let mut columns = CanvasColumns::default();
+    columns.rebuild(&parent.lines, &parent.path_records, &parent.draw_records);
+
+    assert_eq!(columns.draw_path_ids.len(), parent.draw_records.len());
+    assert_eq!(columns.draw_brush_colors.len(), parent.draw_records.len());
+    assert_eq!(columns.draw_flags.len(), parent.draw_records.len());
     assert_eq!(
-        parent.columns.draw_path_ids.len(),
+        columns.draw_flags_without_text.len(),
         parent.draw_records.len()
     );
-    assert_eq!(
-        parent.columns.draw_brush_colors.len(),
-        parent.draw_records.len()
-    );
-    assert_eq!(parent.columns.draw_flags.len(), parent.draw_records.len());
-    assert_eq!(
-        parent.columns.draw_flags_without_text.len(),
-        parent.draw_records.len()
-    );
-    assert_eq!(parent.columns.sdf.refs.len(), parent.draw_records.len());
-    assert_eq!(parent.columns.sdf.kinds.len(), 2);
+    assert_eq!(columns.sdf.refs.len(), parent.draw_records.len());
+    assert_eq!(columns.sdf.kinds.len(), 2);
 }
 
 #[test]
@@ -361,9 +361,6 @@ fn append_fast_path_translates_sdf_without_mutating_child() {
             y1: 46,
         }
     );
-    assert_eq!(parent.columns.draw_flags.len(), parent.draw_records.len());
-    assert_eq!(parent.columns.sdf.refs.len(), parent.draw_records.len());
-    assert_eq!(parent.columns.sdf.kinds.len(), parent.draw_records.len());
 }
 
 #[test]
@@ -399,18 +396,10 @@ fn append_fast_path_offsets_text_runs_without_mutating_child() {
     assert_eq!(parent.text_runs.len(), 2);
     assert_eq!(parent.text_runs[0].glyph_start, 0);
     assert_eq!(parent.text_runs[1].glyph_start, child_glyphs.len() as u32);
-    assert_eq!(
-        parent.columns.text_run_starts,
-        vec![0, child_glyphs.len() as u32]
-    );
-    assert_eq!(parent.columns.glyph_x.len(), parent.text_glyphs.len());
-    assert_eq!(parent.columns.glyph_y.len(), parent.text_glyphs.len());
-    assert_eq!(parent.columns.draw_glyph_run_ids[0], 0);
-    assert_eq!(parent.columns.draw_glyph_run_ids[1], 1);
 }
 
 #[test]
-fn scene_columns_track_text_runs_and_glyph_positions() {
+fn text_draw_tracks_run_and_glyph_positions() {
     let mut font_system = TextFontSystem::new();
     let mut context = TextContext::new();
     let layout = context.layout(&mut font_system, TextLayoutOptions::new("Cache", 20.0));
@@ -423,14 +412,12 @@ fn scene_columns_track_text_runs_and_glyph_positions() {
         .push_text_layout(&layout, Point::new(8.0, 32.0), Brush::Solid(rgb(0, 0, 0)))
         .expect("layout should produce a text draw");
 
-    assert_eq!(canvas.columns.draw_glyph_run_ids[draw.index()], 0);
-    assert_eq!(canvas.columns.text_run_starts, vec![0]);
+    assert_eq!(canvas.draw_records[draw.index()].glyph_run_id, Some(0));
+    assert_eq!(canvas.text_runs[0].glyph_start, 0);
     assert_eq!(
-        canvas.columns.text_run_counts,
-        vec![canvas.text_glyphs.len() as u32]
+        canvas.text_runs[0].glyph_count,
+        canvas.text_glyphs.len() as u32
     );
-    assert_eq!(canvas.columns.glyph_x.len(), canvas.text_glyphs.len());
-    assert_eq!(canvas.columns.glyph_y.len(), canvas.text_glyphs.len());
 }
 
 #[test]

@@ -27,16 +27,6 @@ pub(crate) struct GpuBrushUpload {
 }
 
 impl GpuBrushUpload {
-    pub(crate) fn clear(&mut self) {
-        self.data.clear();
-        self.params.clear();
-        self.payloads.clear();
-    }
-
-    pub(crate) fn from_scene_draws_raw(draws: &[DrawRecord]) -> Self {
-        Self::from_scene_draws(draws, None)
-    }
-
     pub(crate) fn from_scene_draws(
         draws: &[DrawRecord],
         image_resources: Option<&GpuImageResourceUpload>,
@@ -68,10 +58,6 @@ impl GpuBrushUpload {
         upload
     }
 
-    pub(crate) fn push_brush(&mut self, brush: &Brush) {
-        self.push_brush_with_resources(brush, None);
-    }
-
     pub(crate) fn push_brush_with_resources(
         &mut self,
         brush: &Brush,
@@ -81,20 +67,6 @@ impl GpuBrushUpload {
         self.data.extend_from_slice(&data);
         debug_assert_eq!(self.data.len() % GPU_BRUSH_U32_STRIDE, 0);
         self.params.extend_from_slice(&params);
-    }
-
-    pub(crate) fn write_solid_color(&mut self, index: usize, color: peniko::Color) {
-        let data_offset = index * GPU_BRUSH_U32_STRIDE;
-        let params_offset = index * GPU_BRUSH_PARAM_STRIDE;
-        assert!(
-            data_offset + GPU_BRUSH_U32_STRIDE <= self.data.len()
-                && params_offset + GPU_BRUSH_PARAM_STRIDE <= self.params.len(),
-            "brush index out of range"
-        );
-        let brush = Brush::Solid(color);
-        let (data, params) = self.encode_brush(&brush, None);
-        self.data[data_offset..data_offset + GPU_BRUSH_U32_STRIDE].copy_from_slice(&data);
-        self.params[params_offset..params_offset + GPU_BRUSH_PARAM_STRIDE].copy_from_slice(&params);
     }
 
     fn encode_brush(

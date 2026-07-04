@@ -1,32 +1,23 @@
-use crate::{
-    shared::{
-        draw_record::{DrawRecord, DrawTag},
-        fill::FillRule,
-        gpu_brush::GpuBrushUpload,
-        gpu_sdf::{encode_sdf, encode_sdf_shadow},
-        gpu_types::{
-            DRAW_FLAG_FILL_RULE_EVEN_ODD, DRAW_FLAG_HAS_GLYPH, DRAW_FLAG_HAS_SDF,
-            DRAW_FLAG_SOLID_COLOR_FAST_PATH, DRAW_FLAG_SOLID_RECT, GPU_DRAW_BLEND, GPU_DRAW_BRUSH,
-            GPU_DRAW_CLIP, GPU_DRAW_ISOLATE, GPU_DRAW_OPACITY, GPU_DRAW_PATH_GLYPH,
-        },
-        line::Line,
-        path::PathRecord,
-        pixel::premul_f32_to_u32,
+use crate::shared::{
+    draw_record::{DrawRecord, DrawTag},
+    fill::FillRule,
+    gpu_sdf::{encode_sdf, encode_sdf_shadow},
+    gpu_types::{
+        DRAW_FLAG_FILL_RULE_EVEN_ODD, DRAW_FLAG_HAS_GLYPH, DRAW_FLAG_HAS_SDF,
+        DRAW_FLAG_SOLID_COLOR_FAST_PATH, DRAW_FLAG_SOLID_RECT, GPU_DRAW_BLEND, GPU_DRAW_BRUSH,
+        GPU_DRAW_CLIP, GPU_DRAW_ISOLATE, GPU_DRAW_OPACITY, GPU_DRAW_PATH_GLYPH,
     },
-    text::{CanvasGlyph, TextRun},
+    line::Line,
+    path::PathRecord,
+    pixel::premul_f32_to_u32,
 };
-
-#[cfg(test)]
-pub(crate) use crate::shared::gpu_brush::GPU_BRUSH_U32_STRIDE;
 
 const INVALID_REF: u32 = u32::MAX;
 
-/// CPU-side mirror of GPU upload columns derived from semantic canvas records.
+/// GPU upload columns derived from semantic canvas records.
 ///
-/// The CPU renderer consumes the record form directly, while GPU backends need
-/// stable columnar data for uploads. Keeping this cache in `shared` prevents
-/// `Canvas` from depending on any specific backend while preserving mutation-time
-/// updates for wgpu upload paths.
+/// `Canvas` owns only the semantic record form. Wgpu rebuilds this staging data
+/// before upload so there is no second long-lived copy to keep coherent.
 #[derive(Clone, Default)]
 pub(crate) struct CanvasColumns {
     pub(crate) line_path_ids: Vec<u32>,
@@ -46,11 +37,6 @@ pub(crate) struct CanvasColumns {
     pub(crate) draw_pixel_x1: Vec<i32>,
     pub(crate) draw_pixel_y1: Vec<i32>,
     pub(crate) sdf: DrawSdfColumns,
-    pub(crate) draw_brushes: GpuBrushUpload,
-    pub(crate) text_run_starts: Vec<u32>,
-    pub(crate) text_run_counts: Vec<u32>,
-    pub(crate) glyph_x: Vec<i32>,
-    pub(crate) glyph_y: Vec<i32>,
 }
 
 impl CanvasColumns {
@@ -72,41 +58,20 @@ impl CanvasColumns {
         self.draw_pixel_x1.clear();
         self.draw_pixel_y1.clear();
         self.sdf.clear();
-        self.draw_brushes.clear();
-        self.text_run_starts.clear();
-        self.text_run_counts.clear();
-        self.glyph_x.clear();
-        self.glyph_y.clear();
     }
 
-    pub(crate) fn rebuild(
-        &mut self,
-        lines: &[Line],
-        paths: &[PathRecord],
-        draws: &[DrawRecord],
-        text_runs: &[TextRun],
-        text_glyphs: &[CanvasGlyph],
-    ) {
+    pub(crate) fn rebuild(&mut self, lines: &[Line], paths: &[PathRecord], draws: &[DrawRecord]) {
         self.clear();
         let sdf_count = draws
             .iter()
             .filter(|draw| draw.sdf.is_some() || draw.sdf_shadow.is_some())
             .count();
-        self.reserve(
-            lines.len(),
-            paths.len(),
-            draws.len(),
-            sdf_count,
-            text_runs.len(),
-            text_glyphs.len(),
-        );
+        self.reserve(lines.len(), paths.len(), draws.len(), sdf_count);
         self.extend_lines(lines);
         self.extend_paths(paths);
         for draw in draws {
             self.push_draw(draw);
         }
-        self.extend_text_runs(text_runs);
-        self.extend_text_glyphs(text_glyphs);
     }
 
     pub(crate) fn push_draw(&mut self, draw: &DrawRecord) {
@@ -123,7 +88,6 @@ impl CanvasColumns {
         self.draw_pixel_x1.push(draw.pixel_bounds.x1);
         self.draw_pixel_y1.push(draw.pixel_bounds.y1);
         self.sdf.push_draw(draw);
-        self.draw_brushes.push_brush(&draw.brush);
     }
 
     pub(crate) fn push_path_record(&mut self, path: PathRecord) {
@@ -154,52 +118,12 @@ impl CanvasColumns {
         }
     }
 
-    pub(crate) fn push_text_run(&mut self, run: TextRun) {
-        self.text_run_starts.push(run.glyph_start);
-        self.text_run_counts.push(run.glyph_count);
-    }
-
-    pub(crate) fn extend_text_runs(&mut self, runs: &[TextRun]) {
-        self.text_run_starts
-            .extend(runs.iter().map(|run| run.glyph_start));
-        self.text_run_counts
-            .extend(runs.iter().map(|run| run.glyph_count));
-    }
-
-    pub(crate) fn extend_text_glyphs(&mut self, glyphs: &[CanvasGlyph]) {
-        self.glyph_x.extend(glyphs.iter().map(|glyph| glyph.x));
-        self.glyph_y.extend(glyphs.iter().map(|glyph| glyph.y));
-    }
-
-    pub(crate) fn update_draw_solid_color(&mut self, index: usize, draw: &DrawRecord) {
-        self.draw_brush_colors[index] = solid_fast_color(draw);
-        self.draw_flags[index] = draw_flags_word(draw, true);
-        self.draw_flags_without_text[index] = draw_flags_word(draw, false);
-        self.draw_brushes.write_solid_color(
-            index,
-            draw.brush
-                .solid_color()
-                .expect("solid-color brush fast update requires a solid brush"),
-        );
-    }
-
-    pub(crate) fn rebuild_draw_brushes(&mut self, draws: &[DrawRecord]) {
-        self.draw_brushes = GpuBrushUpload::from_scene_draws_raw(draws);
-        for (index, draw) in draws.iter().enumerate() {
-            self.draw_brush_colors[index] = solid_fast_color(draw);
-            self.draw_flags[index] = draw_flags_word(draw, true);
-            self.draw_flags_without_text[index] = draw_flags_word(draw, false);
-        }
-    }
-
     fn reserve(
         &mut self,
         line_count: usize,
         path_count: usize,
         draw_count: usize,
         sdf_count: usize,
-        run_count: usize,
-        glyph_count: usize,
     ) {
         self.line_path_ids.reserve(line_count);
         self.line_p0x.reserve(line_count);
@@ -218,10 +142,6 @@ impl CanvasColumns {
         self.draw_pixel_x1.reserve(draw_count);
         self.draw_pixel_y1.reserve(draw_count);
         self.sdf.reserve_for_draws(draw_count, sdf_count);
-        self.text_run_starts.reserve(run_count);
-        self.text_run_counts.reserve(run_count);
-        self.glyph_x.reserve(glyph_count);
-        self.glyph_y.reserve(glyph_count);
     }
 }
 

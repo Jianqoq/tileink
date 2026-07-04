@@ -32,7 +32,6 @@ use crate::shared::{
     path::{PATH_FLAG_KEEP_HORIZONTAL_TILE_EDGES, PathRecord},
     path_flatten::PathFlatten,
     scan_line::line_scanned_tile_count,
-    scene_columns::CanvasColumns,
     sdf::{
         Sdf, SdfShadow,
         arc::{Arc as SdfArc, ArcShadow as SdfArcShadow},
@@ -61,7 +60,6 @@ pub struct Canvas {
     pub(crate) text_runs: Vec<TextRun>,
     pub(crate) bd_records: Vec<BackdropRecord>,
     pub(crate) command_lists: Vec<CommandList>,
-    pub(crate) columns: CanvasColumns,
     root_commands: CommandListId,
     command_stack: Vec<CommandListId>,
     layer_stack: Vec<LayerKind>,
@@ -389,7 +387,6 @@ impl Canvas {
             text_runs: Vec::new(),
             bd_records: Vec::new(),
             command_lists: vec![CommandList::default()],
-            columns: CanvasColumns::default(),
             root_commands: ROOT_COMMAND_LIST_ID,
             command_stack: vec![ROOT_COMMAND_LIST_ID],
             layer_stack: Vec::new(),
@@ -416,18 +413,15 @@ impl Canvas {
             .map(|draw| &draw.brush)
     }
 
-    /// Replaces a draw's brush while keeping renderer upload columns coherent.
+    /// Replaces a draw's brush in the semantic draw record.
     ///
-    /// The semantic draw record and GPU upload columns are updated
-    /// together. Arbitrary gradients and patterns may rewrite payload columns;
-    /// use [`set_draw_color`](Self::set_draw_color) for the O(1) solid-color
-    /// update path used by incremental UI rendering.
+    /// GPU upload data is derived from draw records during upload, so this
+    /// mutation only updates the scene source of truth.
     pub fn set_draw_brush(&mut self, draw: DrawId, brush: impl Into<Brush>) -> bool {
         let Some(index) = self.draw_index(draw) else {
             return false;
         };
         self.draw_records[index].brush = brush.into();
-        self.columns.rebuild_draw_brushes(&self.draw_records);
         true
     }
 
@@ -436,8 +430,6 @@ impl Canvas {
             return false;
         };
         self.draw_records[index].brush = Brush::Solid(color);
-        self.columns
-            .update_draw_solid_color(index, &self.draw_records[index]);
         true
     }
 
@@ -691,7 +683,6 @@ impl Canvas {
             if !offset.is_zero() {
                 offset.line(&mut line);
             }
-            self.columns.push_line(line);
             self.lines.push(line);
         }
 
@@ -700,7 +691,6 @@ impl Canvas {
             let mut record = record;
             record.path_id = record.path_id.saturating_add(path_offset);
             record.line_start = record.line_start.saturating_add(line_offset);
-            self.columns.push_path_record(record);
             self.path_records.push(record);
         }
 
@@ -716,7 +706,6 @@ impl Canvas {
             if let Some(glyph_run_id) = &mut draw.glyph_run_id {
                 *glyph_run_id = glyph_run_id.saturating_add(text_run_offset);
             }
-            self.columns.push_draw(&draw);
             self.draw_records.push(draw);
         }
 
@@ -727,8 +716,6 @@ impl Canvas {
             } else {
                 glyph.translated(offset.dx, offset.dy)
             };
-            self.columns.glyph_x.push(glyph.x);
-            self.columns.glyph_y.push(glyph.y);
             self.text_glyphs.push(glyph);
         }
 
@@ -738,7 +725,6 @@ impl Canvas {
                 glyph_start: run.glyph_start.saturating_add(glyph_offset),
                 glyph_count: run.glyph_count,
             };
-            self.columns.push_text_run(run);
             self.text_runs.push(run);
         }
 
@@ -1417,16 +1403,12 @@ impl Canvas {
         if glyph_count == 0 {
             return None;
         }
-        self.columns
-            .extend_text_glyphs(&self.text_glyphs[glyph_start as usize..]);
-
         let run_id = self.text_runs.len() as u32;
         let run = TextRun {
             glyph_start,
             glyph_count,
         };
         self.text_runs.push(run);
-        self.columns.push_text_run(run);
         let bounds = layout_bounds_at_origin(layout, origin);
         let draw_ix = self.push_draw_record(DrawRecord {
             path_id: None,
@@ -1595,8 +1577,6 @@ impl Canvas {
         let path_flags = Self::path_flags(&path, options.keep_thin_stroke_horizontal_edges);
         PathFlatten::new(&path, tolerance as f32, path_id).flatten(&mut self.lines);
         let line_count = self.lines.len() as u32 - line_start;
-        self.columns
-            .extend_lines(&self.lines[line_start as usize..self.lines.len()]);
         let path_record = PathRecord {
             path_id,
             line_count,
@@ -1604,7 +1584,6 @@ impl Canvas {
             flags: path_flags,
         };
         self.path_records.push(path_record);
-        self.columns.push_path_record(path_record);
         let pixel_bounds = match options.bounds_override {
             Some(bounds) => PixelBounds {
                 x0: bounds.x0,
@@ -1767,7 +1746,6 @@ impl Canvas {
         self.command_stack.clear();
         self.command_stack.push(self.root_commands);
         self.layer_stack.clear();
-        self.columns.clear();
         self.path_cnt = 0;
         self.backdrop_pool_capacity = 0;
         self.tile_cnt = 0;
@@ -1776,19 +1754,8 @@ impl Canvas {
 
     fn push_draw_record(&mut self, draw: DrawRecord) -> usize {
         let draw_ix = self.draw_records.len();
-        self.columns.push_draw(&draw);
         self.draw_records.push(draw);
         draw_ix
-    }
-
-    pub(crate) fn rebuild_columns(&mut self) {
-        self.columns.rebuild(
-            &self.lines,
-            &self.path_records,
-            &self.draw_records,
-            &self.text_runs,
-            &self.text_glyphs,
-        );
     }
 
     pub(crate) fn width_in_tiles(&self) -> u32 {

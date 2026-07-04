@@ -28,6 +28,7 @@ use super::WgpuSceneBuffers;
 #[derive(Default)]
 pub(crate) struct WgpuSceneUploadStaging {
     u32s: Vec<u32>,
+    columns: CanvasColumns,
     text: TextUpload,
     scan_chunks: Vec<GpuScanChunk>,
     scan_chunk_ranges: Vec<GpuScanChunkRange>,
@@ -67,12 +68,14 @@ impl TextUpload {
         };
 
         self.run_starts
-            .extend_from_slice(&canvas.columns.text_run_starts);
+            .extend(canvas.text_runs.iter().map(|run| run.glyph_start));
         self.run_counts
-            .extend_from_slice(&canvas.columns.text_run_counts);
+            .extend(canvas.text_runs.iter().map(|run| run.glyph_count));
         self.glyph_image_ids.reserve(canvas.text_glyphs.len());
-        self.glyph_x.extend_from_slice(&canvas.columns.glyph_x);
-        self.glyph_y.extend_from_slice(&canvas.columns.glyph_y);
+        self.glyph_x
+            .extend(canvas.text_glyphs.iter().map(|glyph| glyph.x));
+        self.glyph_y
+            .extend(canvas.text_glyphs.iter().map(|glyph| glyph.y));
         for glyph in &canvas.text_glyphs {
             self.glyph_image_ids.push(
                 text.image_id_for_cache_key(glyph.cache_key)
@@ -222,11 +225,16 @@ impl WgpuSceneBuffers {
                 &mut staging.tile_draw_cursors,
             );
         });
+        profile_cpu("prepare.upload_scene.build_columns", || {
+            staging
+                .columns
+                .rebuild(&canvas.lines, &canvas.path_records, &canvas.draw_records);
+        });
         profile_cpu("prepare.upload_scene.upload_columns", || {
             self.upload_columns(
                 device,
                 queue,
-                &canvas.columns,
+                &staging.columns,
                 &canvas.draw_records,
                 text.is_some(),
                 image_resources,
@@ -459,32 +467,6 @@ impl WgpuSceneBuffers {
                 queue,
                 "tileink wgpu canvas draw brush payloads",
                 &brushes.payloads,
-            );
-        });
-        profile_cpu("prepare.upload_scene.columns.text", || {
-            self.text_run_starts.upload(
-                device,
-                queue,
-                "tileink wgpu canvas text run starts",
-                &columns.text_run_starts,
-            );
-            self.text_run_counts.upload(
-                device,
-                queue,
-                "tileink wgpu canvas text run counts",
-                &columns.text_run_counts,
-            );
-            self.glyph_x.upload(
-                device,
-                queue,
-                "tileink wgpu canvas glyph x",
-                &columns.glyph_x,
-            );
-            self.glyph_y.upload(
-                device,
-                queue,
-                "tileink wgpu canvas glyph y",
-                &columns.glyph_y,
             );
         });
     }
