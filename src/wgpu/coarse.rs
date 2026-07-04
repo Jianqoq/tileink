@@ -9,7 +9,9 @@ use super::commands::{
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 
 const WORKGROUP_SIZE: u32 = 256;
-const STORAGE_BINDING_COUNT: u32 = 14;
+const COUNT_STORAGE_BINDING_COUNT: u32 = 10;
+const PREFIX_STORAGE_BINDING_COUNT: u32 = 2;
+const EMIT_STORAGE_BINDING_COUNT: u32 = 13;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct WgpuCoarseBatch {
@@ -48,7 +50,9 @@ pub(crate) struct WgpuCoarsePipeline {
     glyph_chunk_offsets: ::wgpu::ComputePipeline,
     glyph_apply_chunk_offsets: ::wgpu::ComputePipeline,
     emit: ::wgpu::ComputePipeline,
-    bind_group_layout: ::wgpu::BindGroupLayout,
+    count_bind_group_layout: ::wgpu::BindGroupLayout,
+    prefix_bind_group_layout: ::wgpu::BindGroupLayout,
+    emit_bind_group_layout: ::wgpu::BindGroupLayout,
     config: ::wgpu::Buffer,
     config_size: ::wgpu::BufferAddress,
     config_stride: ::wgpu::BufferAddress,
@@ -56,27 +60,69 @@ pub(crate) struct WgpuCoarsePipeline {
 
 impl WgpuCoarsePipeline {
     pub(crate) fn new(device: &::wgpu::Device) -> Option<Self> {
-        if device.limits().max_storage_buffers_per_shader_stage < STORAGE_BINDING_COUNT {
+        let max_storage = device.limits().max_storage_buffers_per_shader_stage;
+        if max_storage
+            < COUNT_STORAGE_BINDING_COUNT
+                .max(PREFIX_STORAGE_BINDING_COUNT)
+                .max(EMIT_STORAGE_BINDING_COUNT)
+        {
             return None;
         }
 
-        let layout_entries = coarse_layout_entries();
-        let bind_group_layout =
+        let count_layout_entries = count_layout_entries();
+        let prefix_layout_entries = prefix_layout_entries();
+        let emit_layout_entries = emit_layout_entries();
+        let count_bind_group_layout =
             device.create_bind_group_layout(&::wgpu::BindGroupLayoutDescriptor {
-                label: Some("tileink wgpu coarse bind group layout"),
-                entries: &layout_entries,
+                label: Some("tileink wgpu coarse count bind group layout"),
+                entries: &count_layout_entries,
             });
-        let shader = device.create_shader_module(::wgpu::ShaderModuleDescriptor {
-            label: Some("tileink wgpu coarse shader"),
+        let prefix_bind_group_layout =
+            device.create_bind_group_layout(&::wgpu::BindGroupLayoutDescriptor {
+                label: Some("tileink wgpu coarse prefix bind group layout"),
+                entries: &prefix_layout_entries,
+            });
+        let emit_bind_group_layout =
+            device.create_bind_group_layout(&::wgpu::BindGroupLayoutDescriptor {
+                label: Some("tileink wgpu coarse emit bind group layout"),
+                entries: &emit_layout_entries,
+            });
+        let count_shader = device.create_shader_module(::wgpu::ShaderModuleDescriptor {
+            label: Some("tileink wgpu coarse count shader"),
             source: ::wgpu::ShaderSource::Wgsl(
-                include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_coarse.wgsl")).into(),
+                include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_coarse_count.wgsl")).into(),
             ),
         });
-        let pipeline_layout = device.create_pipeline_layout(&::wgpu::PipelineLayoutDescriptor {
-            label: Some("tileink wgpu coarse pipeline layout"),
-            bind_group_layouts: &[Some(&bind_group_layout)],
-            immediate_size: 0,
+        let prefix_shader = device.create_shader_module(::wgpu::ShaderModuleDescriptor {
+            label: Some("tileink wgpu coarse prefix shader"),
+            source: ::wgpu::ShaderSource::Wgsl(
+                include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_coarse_prefix.wgsl")).into(),
+            ),
         });
+        let emit_shader = device.create_shader_module(::wgpu::ShaderModuleDescriptor {
+            label: Some("tileink wgpu coarse emit shader"),
+            source: ::wgpu::ShaderSource::Wgsl(
+                include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_coarse_emit.wgsl")).into(),
+            ),
+        });
+        let count_pipeline_layout =
+            device.create_pipeline_layout(&::wgpu::PipelineLayoutDescriptor {
+                label: Some("tileink wgpu coarse count pipeline layout"),
+                bind_group_layouts: &[Some(&count_bind_group_layout)],
+                immediate_size: 0,
+            });
+        let prefix_pipeline_layout =
+            device.create_pipeline_layout(&::wgpu::PipelineLayoutDescriptor {
+                label: Some("tileink wgpu coarse prefix pipeline layout"),
+                bind_group_layouts: &[Some(&prefix_bind_group_layout)],
+                immediate_size: 0,
+            });
+        let emit_pipeline_layout =
+            device.create_pipeline_layout(&::wgpu::PipelineLayoutDescriptor {
+                label: Some("tileink wgpu coarse emit pipeline layout"),
+                bind_group_layouts: &[Some(&emit_bind_group_layout)],
+                immediate_size: 0,
+            });
         let config_size = std::mem::size_of::<CoarseConfig>() as ::wgpu::BufferAddress;
         let config_stride = aligned_uniform_stride(device, config_size);
         let config = device.create_buffer(&::wgpu::BufferDescriptor {
@@ -87,45 +133,52 @@ impl WgpuCoarsePipeline {
         });
 
         Some(Self {
-            count: create_pipeline(device, &pipeline_layout, &shader, "coarse_count"),
+            count: create_pipeline(
+                device,
+                &count_pipeline_layout,
+                &count_shader,
+                "coarse_count",
+            ),
             ptcl_prefix_chunks: create_pipeline(
                 device,
-                &pipeline_layout,
-                &shader,
+                &prefix_pipeline_layout,
+                &prefix_shader,
                 "coarse_ptcl_prefix_chunks",
             ),
             ptcl_chunk_offsets: create_pipeline(
                 device,
-                &pipeline_layout,
-                &shader,
+                &prefix_pipeline_layout,
+                &prefix_shader,
                 "coarse_ptcl_chunk_offsets",
             ),
             ptcl_apply_chunk_offsets: create_pipeline(
                 device,
-                &pipeline_layout,
-                &shader,
+                &prefix_pipeline_layout,
+                &prefix_shader,
                 "coarse_ptcl_apply_chunk_offsets",
             ),
             glyph_prefix_chunks: create_pipeline(
                 device,
-                &pipeline_layout,
-                &shader,
+                &prefix_pipeline_layout,
+                &prefix_shader,
                 "coarse_glyph_prefix_chunks",
             ),
             glyph_chunk_offsets: create_pipeline(
                 device,
-                &pipeline_layout,
-                &shader,
+                &prefix_pipeline_layout,
+                &prefix_shader,
                 "coarse_glyph_chunk_offsets",
             ),
             glyph_apply_chunk_offsets: create_pipeline(
                 device,
-                &pipeline_layout,
-                &shader,
+                &prefix_pipeline_layout,
+                &prefix_shader,
                 "coarse_glyph_apply_chunk_offsets",
             ),
-            emit: create_pipeline(device, &pipeline_layout, &shader, "coarse_emit"),
-            bind_group_layout,
+            emit: create_pipeline(device, &emit_pipeline_layout, &emit_shader, "coarse_emit"),
+            count_bind_group_layout,
+            prefix_bind_group_layout,
+            emit_bind_group_layout,
             config,
             config_size,
             config_stride,
@@ -185,7 +238,12 @@ impl WgpuCoarsePipeline {
             }),
         );
         let bindings = canvas.coarse_bindings(scan, coarse);
-        let bind_group = self.create_bind_group(commands.device(), &bindings, config_offset);
+        let count_bind_group =
+            self.create_count_bind_group(commands.device(), &bindings, config_offset);
+        let prefix_bind_group =
+            self.create_prefix_bind_group(commands.device(), &bindings, config_offset);
+        let emit_bind_group =
+            self.create_emit_bind_group(commands.device(), &bindings, config_offset);
         let gpu_scope = start_gpu_scope(commands.device(), "coarse");
         let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
         let encoder = commands.encoder();
@@ -194,10 +252,11 @@ impl WgpuCoarsePipeline {
                 label: Some("tileink wgpu coarse pass"),
                 timestamp_writes,
             });
-            pass.set_bind_group(0, &bind_group, &[]);
+            pass.set_bind_group(0, &count_bind_group, &[]);
             pass.set_pipeline(&self.count);
             pass.dispatch_workgroups(tile_count, 1, 1);
 
+            pass.set_bind_group(0, &prefix_bind_group, &[]);
             pass.set_pipeline(&self.ptcl_prefix_chunks);
             pass.dispatch_workgroups(chunk_count, 1, 1);
             pass.set_pipeline(&self.ptcl_chunk_offsets);
@@ -213,6 +272,7 @@ impl WgpuCoarsePipeline {
             pass.dispatch_workgroups(chunk_count, 1, 1);
 
             if batch.draw_start < batch.draw_end && lengths.coarse_ptcl_capacity > 0 {
+                pass.set_bind_group(0, &emit_bind_group, &[]);
                 pass.set_pipeline(&self.emit);
                 pass.dispatch_workgroups(tile_count, 1, 1);
             }
@@ -220,15 +280,57 @@ impl WgpuCoarsePipeline {
         finish_gpu_scope(encoder, gpu_scope);
     }
 
-    fn create_bind_group(
+    fn create_count_bind_group(
         &self,
         device: &::wgpu::Device,
         bindings: &WgpuCoarseBindings<'_>,
         config_offset: ::wgpu::BufferAddress,
     ) -> ::wgpu::BindGroup {
         device.create_bind_group(&::wgpu::BindGroupDescriptor {
-            label: Some("tileink wgpu coarse bind group"),
-            layout: &self.bind_group_layout,
+            label: Some("tileink wgpu coarse count bind group"),
+            layout: &self.count_bind_group_layout,
+            entries: &[
+                bind_config_buffer(0, &self.config, config_offset, self.config_size),
+                bind_buffer(1, bindings.draw_records),
+                bind_buffer(3, bindings.text_runs),
+                bind_buffer(5, bindings.glyphs),
+                bind_buffer(8, bindings.glyph_images),
+                bind_buffer(18, bindings.path_records),
+                bind_buffer(19, bindings.backdrops),
+                bind_buffer(20, bindings.segment_ranges),
+                bind_buffer(22, bindings.layer_stack),
+                bind_buffer(25, bindings.tile_records),
+                bind_buffer(42, bindings.tile_draw_data),
+            ],
+        })
+    }
+
+    fn create_prefix_bind_group(
+        &self,
+        device: &::wgpu::Device,
+        bindings: &WgpuCoarseBindings<'_>,
+        config_offset: ::wgpu::BufferAddress,
+    ) -> ::wgpu::BindGroup {
+        device.create_bind_group(&::wgpu::BindGroupDescriptor {
+            label: Some("tileink wgpu coarse prefix bind group"),
+            layout: &self.prefix_bind_group_layout,
+            entries: &[
+                bind_config_buffer(0, &self.config, config_offset, self.config_size),
+                bind_buffer(25, bindings.tile_records),
+                bind_buffer(31, bindings.chunk_records),
+            ],
+        })
+    }
+
+    fn create_emit_bind_group(
+        &self,
+        device: &::wgpu::Device,
+        bindings: &WgpuCoarseBindings<'_>,
+        config_offset: ::wgpu::BufferAddress,
+    ) -> ::wgpu::BindGroup {
+        device.create_bind_group(&::wgpu::BindGroupDescriptor {
+            label: Some("tileink wgpu coarse emit bind group"),
+            layout: &self.emit_bind_group_layout,
             entries: &[
                 bind_config_buffer(0, &self.config, config_offset, self.config_size),
                 bind_buffer(1, bindings.draw_records),
@@ -241,7 +343,6 @@ impl WgpuCoarsePipeline {
                 bind_buffer(20, bindings.segment_ranges),
                 bind_buffer(22, bindings.layer_stack),
                 bind_buffer(25, bindings.tile_records),
-                bind_buffer(31, bindings.chunk_records),
                 bind_buffer(35, bindings.ptcl_records),
                 bind_buffer(41, bindings.glyph_indices),
                 bind_buffer(42, bindings.tile_draw_data),
@@ -266,18 +367,33 @@ fn create_pipeline(
     })
 }
 
-fn coarse_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
+fn count_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
     vec![
-        ::wgpu::BindGroupLayoutEntry {
-            binding: 0,
-            visibility: ::wgpu::ShaderStages::COMPUTE,
-            ty: ::wgpu::BindingType::Buffer {
-                ty: ::wgpu::BufferBindingType::Uniform,
-                has_dynamic_offset: false,
-                min_binding_size: None,
-            },
-            count: None,
-        },
+        uniform_entry(0),
+        storage_entry(1, true),
+        storage_entry(3, true),
+        storage_entry(5, true),
+        storage_entry(8, true),
+        storage_entry(18, true),
+        storage_entry(19, false),
+        storage_entry(20, true),
+        storage_entry(22, true),
+        storage_entry(25, false),
+        storage_entry(42, true),
+    ]
+}
+
+fn prefix_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
+    vec![
+        uniform_entry(0),
+        storage_entry(25, false),
+        storage_entry(31, false),
+    ]
+}
+
+fn emit_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
+    vec![
+        uniform_entry(0),
         storage_entry(1, true),
         storage_entry(3, true),
         storage_entry(5, true),
@@ -288,11 +404,23 @@ fn coarse_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         storage_entry(20, true),
         storage_entry(22, true),
         storage_entry(25, false),
-        storage_entry(31, false),
         storage_entry(35, false),
         storage_entry(41, false),
         storage_entry(42, true),
     ]
+}
+
+fn uniform_entry(binding: u32) -> ::wgpu::BindGroupLayoutEntry {
+    ::wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: ::wgpu::ShaderStages::COMPUTE,
+        ty: ::wgpu::BindingType::Buffer {
+            ty: ::wgpu::BufferBindingType::Uniform,
+            has_dynamic_offset: false,
+            min_binding_size: None,
+        },
+        count: None,
+    }
 }
 
 fn storage_entry(binding: u32, read_only: bool) -> ::wgpu::BindGroupLayoutEntry {

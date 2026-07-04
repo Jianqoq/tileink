@@ -3,10 +3,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const WGPU_SHADER_ENTRIES: [(&str, &str); 7] = [
+const WGPU_SHADER_ENTRIES: [(&str, &str); 9] = [
     ("scan.wgsl", "tileink_wgpu_scan.wgsl"),
     ("cumsum.wgsl", "tileink_wgpu_cumsum.wgsl"),
-    ("coarse.wgsl", "tileink_wgpu_coarse.wgsl"),
+    ("coarse/count.wgsl", "tileink_wgpu_coarse_count.wgsl"),
+    ("coarse/prefix.wgsl", "tileink_wgpu_coarse_prefix.wgsl"),
+    ("coarse/emit.wgsl", "tileink_wgpu_coarse_emit.wgsl"),
     ("fine.wgsl", "tileink_wgpu_fine.wgsl"),
     ("filter.wgsl", "tileink_wgpu_filter.wgsl"),
     ("fine_web.wgsl", "tileink_wgpu_fine_web.wgsl"),
