@@ -368,8 +368,9 @@ fn append_fast_path_translates_sdf_without_mutating_child() {
 
 #[test]
 fn append_fast_path_offsets_text_runs_without_mutating_child() {
+    let mut font_system = TextFontSystem::new();
     let mut context = TextContext::new();
-    let layout = context.layout(TextLayoutOptions::new("AA", 20.0));
+    let layout = context.layout(&mut font_system, TextLayoutOptions::new("AA", 20.0));
     if layout.is_empty() {
         return;
     }
@@ -410,8 +411,9 @@ fn append_fast_path_offsets_text_runs_without_mutating_child() {
 
 #[test]
 fn scene_columns_track_text_runs_and_glyph_positions() {
+    let mut font_system = TextFontSystem::new();
     let mut context = TextContext::new();
-    let layout = context.layout(TextLayoutOptions::new("Cache", 20.0));
+    let layout = context.layout(&mut font_system, TextLayoutOptions::new("Cache", 20.0));
     if layout.is_empty() {
         return;
     }

@@ -3,7 +3,10 @@ use peniko::{
     color::palette::css,
     kurbo::{Affine, Point, Rect},
 };
-use tileink::{Canvas, TextAttrs, TextCacheKeyFlags, TextContext, TextLayoutOptions, TextWeight};
+use tileink::{
+    Canvas, TextAttrs, TextCacheKeyFlags, TextContext, TextFontSystem, TextLayoutOptions,
+    TextWeight,
+};
 
 const DESIGN_WIDTH: u32 = 780;
 const DESIGN_HEIGHT: u32 = 400;
@@ -29,7 +32,7 @@ fn point_tuple(x: f64, y: f64) -> (f64, f64) {
     (p.x, p.y)
 }
 
-pub fn scene(context: &mut TextContext) -> Canvas {
+pub fn scene(font_system: &mut TextFontSystem, context: &mut TextContext) -> Canvas {
     let mut scene = Canvas::new(WIDTH, HEIGHT);
     scene.push_rect(
         Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),
@@ -39,6 +42,7 @@ pub fn scene(context: &mut TextContext) -> Canvas {
 
     push_bitmap(
         &mut scene,
+        font_system,
         context,
         "Bitmap text: swash raster, hinted, subpixel",
         16.0,
@@ -49,6 +53,7 @@ pub fn scene(context: &mut TextContext) -> Canvas {
 
     push_bitmap(
         &mut scene,
+        font_system,
         context,
         "Hamburgefonts 12px",
         12.0,
@@ -56,10 +61,17 @@ pub fn scene(context: &mut TextContext) -> Canvas {
         Color::BLACK,
         TextAttrs::new(),
     );
-    push_label(&mut scene, context, "bitmap raster", point(220.0, 82.0));
+    push_label(
+        &mut scene,
+        font_system,
+        context,
+        "bitmap raster",
+        point(220.0, 82.0),
+    );
 
     push_path_text(
         &mut scene,
+        font_system,
         context,
         "Hamburgefonts 12px",
         Color::BLACK,
@@ -67,6 +79,7 @@ pub fn scene(context: &mut TextContext) -> Canvas {
     );
     push_label(
         &mut scene,
+        font_system,
         context,
         "path outline, hinting on",
         point(220.0, 124.0),
@@ -74,6 +87,7 @@ pub fn scene(context: &mut TextContext) -> Canvas {
 
     push_path_text(
         &mut scene,
+        font_system,
         context,
         "Hamburgefonts 12px",
         Color::BLACK,
@@ -82,6 +96,7 @@ pub fn scene(context: &mut TextContext) -> Canvas {
     );
     push_label(
         &mut scene,
+        font_system,
         context,
         "path outline, hinting off",
         point(220.0, 166.0),
@@ -92,6 +107,7 @@ pub fn scene(context: &mut TextContext) -> Canvas {
         .with_stops([css::CRIMSON, css::ORANGE, css::DODGER_BLUE]);
     push_path_text(
         &mut scene,
+        font_system,
         context,
         "VECTOR PATH",
         &gradient,
@@ -105,6 +121,7 @@ pub fn scene(context: &mut TextContext) -> Canvas {
 
     push_path_text(
         &mut scene,
+        font_system,
         context,
         "Affine transform + gradient brush",
         Color::from_rgb8(15, 118, 110),
@@ -119,9 +136,16 @@ pub fn scene(context: &mut TextContext) -> Canvas {
     scene
 }
 
-fn push_label(scene: &mut Canvas, context: &mut TextContext, text: &str, origin: Point) {
+fn push_label(
+    scene: &mut Canvas,
+    font_system: &mut TextFontSystem,
+    context: &mut TextContext,
+    text: &str,
+    origin: Point,
+) {
     push_bitmap(
         scene,
+        font_system,
         context,
         text,
         11.0,
@@ -133,6 +157,7 @@ fn push_label(scene: &mut Canvas, context: &mut TextContext, text: &str, origin:
 
 fn push_bitmap(
     scene: &mut Canvas,
+    font_system: &mut TextFontSystem,
     context: &mut TextContext,
     text: &str,
     font_size: f32,
@@ -140,7 +165,10 @@ fn push_bitmap(
     color: Color,
     attrs: TextAttrs<'_>,
 ) {
-    let layout = context.layout(TextLayoutOptions::new(text, font_size).with_attrs(attrs));
+    let layout = context.layout(
+        font_system,
+        TextLayoutOptions::new(text, font_size).with_attrs(attrs),
+    );
     scene.push_text_layout(&layout, origin, color);
 }
 
@@ -174,15 +202,19 @@ impl<'a> PathTextOptions<'a> {
 
 fn push_path_text(
     scene: &mut Canvas,
+    font_system: &mut TextFontSystem,
     context: &mut TextContext,
     text: &str,
     brush: impl Into<tileink::Brush>,
     options: PathTextOptions<'_>,
 ) {
-    let layout =
-        context.layout(TextLayoutOptions::new(text, options.font_size).with_attrs(options.attrs));
+    let layout = context.layout(
+        font_system,
+        TextLayoutOptions::new(text, options.font_size).with_attrs(options.attrs),
+    );
     scene.push_text_layout_as_path(
         context,
+        font_system,
         &layout,
         options.origin,
         brush,

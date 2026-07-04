@@ -3,6 +3,7 @@ use std::{sync::Arc as SharedArc, time::Duration};
 use peniko::Color;
 
 use crate::{
+    TextFontSystem,
     cpu::{
         buffers::RasterBuffers,
         pipelines::{
@@ -146,18 +147,19 @@ impl Renderer {
         self.image_resources.get(key)
     }
 
-    /// Renders text draws using the same [`TextContext`] that created their
+    /// Renders text draws using the same font system that created their
     /// [`TextLayout`](crate::TextLayout). Cosmic glyph cache keys contain
-    /// FontSystem font ids, so using a different context can make those keys
-    /// refer to the wrong font.
+    /// font ids, so using a different font system can make those keys refer to
+    /// the wrong font.
     pub fn render_with_text(
         &mut self,
         canvas: &crate::canvas::Canvas,
+        font_system: &mut TextFontSystem,
         text_context: &mut TextContext,
     ) {
         self.size = (canvas.width, canvas.height);
         let mut image = Image::new(canvas.width, canvas.height, self.clear);
-        self.execute_with_text(canvas, &mut image, text_context);
+        self.execute_with_text(canvas, &mut image, font_system, text_context);
         self.image = image;
     }
 
@@ -241,12 +243,13 @@ impl Renderer {
         &mut self,
         canvas: &crate::canvas::Canvas,
         target: &mut Image,
+        font_system: &mut TextFontSystem,
         text_context: &mut TextContext,
     ) {
         let plan = canvas.compile(0);
         self.scan(canvas, ());
         self.cumsum(canvas, ());
-        self.execute_plan(canvas, &plan, target, Some(text_context));
+        self.execute_plan(canvas, &plan, target, Some((font_system, text_context)));
     }
 
     fn execute_plan(
@@ -254,12 +257,12 @@ impl Renderer {
         canvas: &crate::canvas::Canvas,
         plan: &ExecPlan,
         target: &mut Image,
-        mut text_context: Option<&mut TextContext>,
+        mut text_context: Option<(&mut TextFontSystem, &mut TextContext)>,
     ) {
         let mut main = std::mem::take(&mut self.main);
-        let text_data = text_context
-            .as_deref_mut()
-            .map(|context| PreparedTextData::new(&canvas.text_glyphs, &canvas.text_runs, context));
+        let text_data = text_context.as_mut().map(|(font_system, context)| {
+            PreparedTextData::new(&canvas.text_glyphs, &canvas.text_runs, font_system, context)
+        });
         self.execute_ops(
             canvas,
             plan,
@@ -283,7 +286,7 @@ impl Renderer {
         root_bounds: Bounds,
         buffers: &mut RasterBuffers,
         text_data: Option<&PreparedTextData>,
-        mut text_context: Option<&mut TextContext>,
+        mut text_context: Option<(&mut TextFontSystem, &mut TextContext)>,
     ) {
         for op in ops {
             match op {
@@ -322,7 +325,9 @@ impl Renderer {
                     root_bounds,
                     buffers,
                     text_data,
-                    text_context.as_deref_mut(),
+                    text_context
+                        .as_mut()
+                        .map(|(font_system, context)| (&mut **font_system, &mut **context)),
                 ),
                 ExecOp::OffscreenMaskLayer {
                     layer,
@@ -342,7 +347,9 @@ impl Renderer {
                     root_bounds,
                     buffers,
                     text_data,
-                    text_context.as_deref_mut(),
+                    text_context
+                        .as_mut()
+                        .map(|(font_system, context)| (&mut **font_system, &mut **context)),
                 ),
             }
         }

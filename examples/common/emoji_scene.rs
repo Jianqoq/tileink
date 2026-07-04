@@ -3,7 +3,7 @@ use peniko::{
     color::palette::css,
     kurbo::{Point, Rect},
 };
-use tileink::{Brush, Canvas, TextAlign, TextContext, TextLayoutOptions};
+use tileink::{Brush, Canvas, TextAlign, TextContext, TextFontSystem, TextLayoutOptions};
 
 const DESIGN_WIDTH: u32 = 460;
 const DESIGN_HEIGHT: u32 = 180;
@@ -19,7 +19,7 @@ fn offset() -> (f64, f64) {
     )
 }
 
-pub fn scene(context: &mut TextContext) -> Canvas {
+pub fn scene(font_system: &mut TextFontSystem, context: &mut TextContext) -> Canvas {
     let mut scene = Canvas::new(WIDTH, HEIGHT);
     let (dx, dy) = offset();
     scene.push_rect(
@@ -30,6 +30,7 @@ pub fn scene(context: &mut TextContext) -> Canvas {
 
     push_line(
         context,
+        font_system,
         &mut scene,
         "Emoji 😀 👍🏽 ✨",
         42.0,
@@ -41,6 +42,7 @@ pub fn scene(context: &mut TextContext) -> Canvas {
         .with_stops([css::MAGENTA, css::ORANGE, css::DODGER_BLUE]);
     push_line(
         context,
+        font_system,
         &mut scene,
         "Family 👨‍👩‍👧‍👦  Flag 🇺🇸",
         30.0,
@@ -50,6 +52,7 @@ pub fn scene(context: &mut TextContext) -> Canvas {
 
     push_line(
         context,
+        font_system,
         &mut scene,
         "Text fallback stays visible when color emoji is unavailable",
         16.0,
@@ -62,6 +65,7 @@ pub fn scene(context: &mut TextContext) -> Canvas {
 
 fn push_line(
     context: &mut TextContext,
+    font_system: &mut TextFontSystem,
     scene: &mut Canvas,
     text: &str,
     font_size: f32,
@@ -69,6 +73,7 @@ fn push_line(
     brush: impl Into<Brush>,
 ) {
     let layout = context.layout(
+        font_system,
         TextLayoutOptions::new(text, font_size)
             .with_size(Some(DESIGN_WIDTH as f32 - 32.0), None)
             .with_alignment(Some(TextAlign::Center)),

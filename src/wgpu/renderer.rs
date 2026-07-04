@@ -5,6 +5,7 @@ use std::sync::{Arc as SharedArc, mpsc};
 use peniko::Color;
 
 use crate::{
+    TextFontSystem,
     canvas::Canvas,
     cpu::Renderer as CpuRenderer,
     debug::{DebugScanBuffers, RenderDebugCapture, RenderOptions, capture_render_debug},
@@ -361,10 +362,11 @@ impl Renderer {
     pub fn render_with_text_profiled(
         &mut self,
         canvas: &Canvas,
+        font_system: &mut TextFontSystem,
         text_context: &mut TextContext,
     ) -> WgpuRenderProfile {
         self.start_profile();
-        self.render_with_text(canvas, text_context);
+        self.render_with_text(canvas, font_system, text_context);
         self.end_profile().clone()
     }
 
@@ -408,9 +410,10 @@ impl Renderer {
     pub fn render_native_with_text(
         &mut self,
         canvas: &Canvas,
+        font_system: &mut TextFontSystem,
         text_context: &mut TextContext,
     ) -> bool {
-        self.prepare_scene_with_text(canvas, text_context);
+        self.prepare_scene_with_text(canvas, font_system, text_context);
         self.render_prepared_native(canvas)
     }
 
@@ -428,12 +431,18 @@ impl Renderer {
         self.prepare_scene_resources(canvas);
     }
 
-    fn prepare_scene_with_text(&mut self, canvas: &Canvas, text_context: &mut TextContext) {
+    fn prepare_scene_with_text(
+        &mut self,
+        canvas: &Canvas,
+        font_system: &mut TextFontSystem,
+        text_context: &mut TextContext,
+    ) {
         let _profile_scope = start_cpu_scope("prepare");
         self.text_data = profile_cpu("prepare.text", || {
             Some(PreparedTextData::new(
                 &canvas.text_glyphs,
                 &canvas.text_runs,
+                font_system,
                 text_context,
             ))
         });
@@ -1643,14 +1652,19 @@ impl Renderer {
         }
     }
 
-    pub fn render_with_text(&mut self, canvas: &Canvas, text_context: &mut TextContext) {
-        self.prepare_scene_with_text(canvas, text_context);
+    pub fn render_with_text(
+        &mut self,
+        canvas: &Canvas,
+        font_system: &mut TextFontSystem,
+        text_context: &mut TextContext,
+    ) {
+        self.prepare_scene_with_text(canvas, font_system, text_context);
         if self.render_prepared_tile_plan(canvas) {
             self.size = (canvas.width, canvas.height);
             return;
         }
         profile_cpu("cpu_fallback.render_text", || {
-            self.cpu.render_with_text(canvas, text_context)
+            self.cpu.render_with_text(canvas, font_system, text_context)
         });
         self.upload_cpu_image();
     }
@@ -1844,14 +1858,15 @@ impl Renderer {
     pub fn render_with_text_to_wgpu_texture(
         &mut self,
         canvas: &Canvas,
+        font_system: &mut TextFontSystem,
         text_context: &mut TextContext,
         dst: &::wgpu::Texture,
     ) -> Result<(), WgpuTextureRenderError> {
-        if self.render_native_with_text_to_wgpu_texture(canvas, text_context, dst) {
+        if self.render_native_with_text_to_wgpu_texture(canvas, font_system, text_context, dst) {
             return Ok(());
         }
         profile_cpu("cpu_fallback.render_text", || {
-            self.cpu.render_with_text(canvas, text_context)
+            self.cpu.render_with_text(canvas, font_system, text_context)
         });
         self.size = (canvas.width, canvas.height);
         self.upload_image_to_wgpu_texture(dst, self.cpu.image())
@@ -1866,11 +1881,12 @@ impl Renderer {
     fn render_native_with_text_to_wgpu_texture(
         &mut self,
         canvas: &Canvas,
+        font_system: &mut TextFontSystem,
         text_context: &mut TextContext,
         dst: &::wgpu::Texture,
     ) -> bool {
         self.render_native_to_wgpu_texture_with_prepare(canvas, dst, |renderer, canvas| {
-            renderer.prepare_scene_with_text(canvas, text_context);
+            renderer.prepare_scene_with_text(canvas, font_system, text_context);
         })
     }
 

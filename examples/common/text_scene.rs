@@ -1,5 +1,5 @@
 use peniko::{Color, kurbo::Point};
-use tileink::{Canvas, TextAlign, TextContext, TextLayoutOptions};
+use tileink::{Canvas, TextAlign, TextContext, TextFontSystem, TextLayoutOptions};
 
 pub const WIDTH: u32 = crate::common::EXAMPLE_WIDTH;
 pub const HEIGHT: u32 = crate::common::EXAMPLE_HEIGHT;
@@ -50,10 +50,15 @@ pub const CASES: [TextCase; 6] = [
     },
 ];
 
-pub fn scene(context: &mut TextContext, case: &TextCase) -> Canvas {
+pub fn scene(
+    font_system: &mut TextFontSystem,
+    context: &mut TextContext,
+    case: &TextCase,
+) -> Canvas {
     let mut scene = Canvas::new(WIDTH, HEIGHT);
     let text = format!("Tileink text {}px", case.font_size as u32);
     let layout = context.layout(
+        font_system,
         TextLayoutOptions::new(&text, case.font_size)
             .with_size(Some(240.0), None)
             .with_alignment(Some(TextAlign::Center)),

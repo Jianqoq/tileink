@@ -36,7 +36,10 @@ use peniko::{
     color::palette::css,
     kurbo::{Affine, BezPath, Circle, Rect, Shape, Stroke},
 };
-use tileink::{Brush, Canvas, FillRule, Filter, Radius, StrokeWidths, TextContext, WgpuRenderer};
+use tileink::{
+    Brush, Canvas, FillRule, Filter, Radius, StrokeWidths, TextContext, TextFontSystem,
+    WgpuRenderer,
+};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut batch = WgpuBatch::new();
@@ -62,9 +65,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     batch.render("contrast", &contrast_scene(), Color::WHITE)?;
     batch.render("drop_shadow", &drop_shadow_scene(), Color::WHITE)?;
 
+    let mut font_system = TextFontSystem::new();
     let mut text_context = TextContext::new();
-    let scene = emoji_scene::scene(&mut text_context);
-    batch.render_with_text("emoji", &scene, &mut text_context, emoji_scene::CLEAR)?;
+    let scene = emoji_scene::scene(&mut font_system, &mut text_context);
+    batch.render_with_text(
+        "emoji",
+        &scene,
+        &mut font_system,
+        &mut text_context,
+        emoji_scene::CLEAR,
+    )?;
 
     batch.render("even_odd", &even_odd_scene(), Color::WHITE)?;
     batch.render(
@@ -87,10 +97,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (scene, _, _) = path_current_close_dash_scene::path_current_close_dash_scene();
     batch.render("path_current_close_dash", &scene, Color::WHITE)?;
 
-    let scene = path_text_scene::scene(&mut text_context);
+    let scene = path_text_scene::scene(&mut font_system, &mut text_context);
     batch.render_with_text(
         "path_text",
         &scene,
+        &mut font_system,
         &mut text_context,
         path_text_scene::CLEAR,
     )?;
@@ -136,8 +147,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     batch.render("svg_tiger", &scene, Color::TRANSPARENT)?;
 
     for case in &text_scene::CASES {
-        let scene = text_scene::scene(&mut text_context, case);
-        batch.render_with_text(case.name, &scene, &mut text_context, case.background)?;
+        let scene = text_scene::scene(&mut font_system, &mut text_context, case);
+        batch.render_with_text(
+            case.name,
+            &scene,
+            &mut font_system,
+            &mut text_context,
+            case.background,
+        )?;
     }
 
     Ok(())
@@ -168,11 +185,13 @@ impl WgpuBatch {
         &mut self,
         name: &str,
         scene: &Canvas,
+        font_system: &mut TextFontSystem,
         text_context: &mut TextContext,
         clear: Color,
     ) -> Result<(), Box<dyn Error>> {
         self.renderer.set_clear_color(clear);
-        self.renderer.render_with_text(scene, text_context);
+        self.renderer
+            .render_with_text(scene, font_system, text_context);
         self.save(name)
     }
 

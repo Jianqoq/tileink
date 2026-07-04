@@ -7,7 +7,7 @@ use super::Renderer;
 use crate::{
     Brush, CandleStick, Canvas, FillRule, Image, ImageKey, PatternSampling, Radius,
     RectLiquidGlass, RectShadowOptions, SdfArc, SdfDashLine, SdfLine, SdfLineCap, StrokeWidths,
-    TextContext, TextLayoutOptions,
+    TextContext, TextFontSystem, TextLayoutOptions,
     shared::layer::{
         filter::Filter,
         mask::{Mask, MaskKind},
@@ -42,8 +42,9 @@ fn assert_rgb_close(actual: [u8; 4], expected: [u8; 4], tolerance: u8) {
 
 #[test]
 fn render_with_text_rasterizes_scene_text_layout() {
+    let mut font_system = TextFontSystem::new();
     let mut text_context = TextContext::new();
-    let layout = text_context.layout(TextLayoutOptions::new("Text", 28.0));
+    let layout = text_context.layout(&mut font_system, TextLayoutOptions::new("Text", 28.0));
     if layout.is_empty() {
         return;
     }
@@ -52,7 +53,7 @@ fn render_with_text_rasterizes_scene_text_layout() {
     canvas.push_text_layout(&layout, Point::new(8.0, 32.0), Color::BLACK);
 
     let mut renderer = Renderer::new(128, 64, Color::WHITE);
-    renderer.render_with_text(&canvas, &mut text_context);
+    renderer.render_with_text(&canvas, &mut font_system, &mut text_context);
 
     let has_text_pixel = (0..64).any(|y| {
         (0..128).any(|x| {
@@ -65,8 +66,12 @@ fn render_with_text_rasterizes_scene_text_layout() {
 
 #[test]
 fn render_with_text_rasterizes_emoji_or_fallback_glyphs() {
+    let mut font_system = TextFontSystem::new();
     let mut text_context = TextContext::new();
-    let layout = text_context.layout(TextLayoutOptions::new("Emoji 😀 👍🏽", 32.0));
+    let layout = text_context.layout(
+        &mut font_system,
+        TextLayoutOptions::new("Emoji 😀 👍🏽", 32.0),
+    );
     if layout.is_empty() {
         return;
     }
@@ -75,7 +80,7 @@ fn render_with_text_rasterizes_emoji_or_fallback_glyphs() {
     canvas.push_text_layout(&layout, Point::new(8.0, 42.0), Color::BLACK);
 
     let mut renderer = Renderer::new(192, 64, Color::WHITE);
-    renderer.render_with_text(&canvas, &mut text_context);
+    renderer.render_with_text(&canvas, &mut font_system, &mut text_context);
 
     let has_non_background_pixel = (0..64).any(|y| {
         (0..192).any(|x| {
@@ -91,8 +96,9 @@ fn render_with_text_rasterizes_emoji_or_fallback_glyphs() {
 
 #[test]
 fn render_path_text_rasterizes_vector_outlines_without_text_atlas() {
+    let mut font_system = TextFontSystem::new();
     let mut text_context = TextContext::new();
-    let layout = text_context.layout(TextLayoutOptions::new("Path", 40.0));
+    let layout = text_context.layout(&mut font_system, TextLayoutOptions::new("Path", 40.0));
     if layout.is_empty() {
         return;
     }
@@ -100,6 +106,7 @@ fn render_path_text_rasterizes_vector_outlines_without_text_atlas() {
     let mut canvas = Canvas::new(160, 72);
     canvas.push_text_layout_as_path(
         &mut text_context,
+        &mut font_system,
         &layout,
         Point::new(8.0, 52.0),
         Color::BLACK,

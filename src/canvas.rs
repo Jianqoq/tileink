@@ -47,9 +47,8 @@ use crate::shared::{
         },
     },
 };
-use crate::text::{
-    TextContext, TextLayout, TextRun, layout_bounds_at_origin, scene_glyphs_at_origin,
-};
+use crate::text::{TextRun, layout_bounds_at_origin, scene_glyphs_at_origin};
+use crate::{TextContext, TextFontSystem, TextLayout};
 
 const SDF_RECORD_FILL_RULE: FillRule = FillRule::NonZero;
 
@@ -1459,9 +1458,11 @@ impl Canvas {
     /// by bitmap strikes do not have a vector outline, so keep
     /// [`push_text_layout`](Self::push_text_layout) for small hinted text and
     /// bitmap/color emoji.
+    #[allow(clippy::too_many_arguments)]
     pub fn push_text_layout_as_path(
         &mut self,
         text_context: &mut TextContext,
+        font_system: &mut TextFontSystem,
         layout: &TextLayout,
         origin: Point,
         brush: impl Into<Brush>,
@@ -1472,7 +1473,7 @@ impl Canvas {
             return None;
         }
 
-        let path = text_context.layout_outline_path(layout, origin);
+        let path = text_context.layout_outline_path(font_system, layout, origin);
         if path.is_empty() {
             return None;
         }

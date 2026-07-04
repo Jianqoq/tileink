@@ -1,6 +1,8 @@
 use std::path::Path;
 
-use cosmic_text::{Align, Attrs, CacheKeyFlags, Family, SwashContent, SwashImage, Weight};
+use cosmic_text::{
+    Align, Attrs, CacheKeyFlags, Family, FontSystem, SwashContent, SwashImage, Weight,
+};
 use peniko::{
     Color,
     kurbo::{Affine, Point, Shape},
@@ -19,8 +21,9 @@ use super::{
 
 #[test]
 fn layout_produces_positioned_glyphs_when_a_font_is_available() {
+    let mut font_system = FontSystem::new();
     let mut context = TextContext::new();
-    let layout = context.layout(TextLayoutOptions::new("Hello", 24.0));
+    let layout = context.layout(&mut font_system, TextLayoutOptions::new("Hello", 24.0));
     if layout.glyphs.is_empty() {
         return;
     }
@@ -30,12 +33,18 @@ fn layout_produces_positioned_glyphs_when_a_font_is_available() {
 
 #[test]
 fn load_font_file_makes_font_available_to_layout() {
+    let mut font_system = FontSystem::new();
     let mut context = TextContext::new();
     let font_path =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("src/svg/fonts/NotoSans-Regular.ttf");
 
-    context.load_font_file(font_path).expect("load font file");
+    font_system
+        .db_mut()
+        .load_font_file(font_path)
+        .expect("load font file");
+    context.clear_glyph_caches();
     let layout = context.layout(
+        &mut font_system,
         TextLayoutOptions::new("Noto", 20.0)
             .with_attrs(Attrs::new().family(Family::Name("Noto Sans"))),
     );
@@ -45,8 +54,9 @@ fn load_font_file_makes_font_available_to_layout() {
 
 #[test]
 fn scene_glyph_translation_recomputes_subpixel_cache_key() {
+    let mut font_system = FontSystem::new();
     let mut context = TextContext::new();
-    let layout = context.layout(TextLayoutOptions::new("A", 20.0));
+    let layout = context.layout(&mut font_system, TextLayoutOptions::new("A", 20.0));
     if layout.glyphs.is_empty() {
         return;
     }
@@ -62,9 +72,12 @@ fn scene_glyph_translation_recomputes_subpixel_cache_key() {
 
 #[test]
 fn layout_options_pass_cosmic_attrs_to_shaping() {
+    let mut font_system = FontSystem::new();
     let mut context = TextContext::new();
-    let layout = context
-        .layout(TextLayoutOptions::new("A", 20.0).with_attrs(Attrs::new().weight(Weight::BOLD)));
+    let layout = context.layout(
+        &mut font_system,
+        TextLayoutOptions::new("A", 20.0).with_attrs(Attrs::new().weight(Weight::BOLD)),
+    );
     if layout.glyphs.is_empty() {
         return;
     }
@@ -74,8 +87,10 @@ fn layout_options_pass_cosmic_attrs_to_shaping() {
 
 #[test]
 fn layout_options_pass_hinting_flags_to_glyph_keys() {
+    let mut font_system = FontSystem::new();
     let mut context = TextContext::new();
     let layout = context.layout(
+        &mut font_system,
         TextLayoutOptions::new("A", 20.0)
             .with_attrs(Attrs::new().cache_key_flags(CacheKeyFlags::DISABLE_HINTING)),
     );
@@ -93,9 +108,14 @@ fn layout_options_pass_hinting_flags_to_glyph_keys() {
 
 #[test]
 fn layout_options_pass_alignment_to_cosmic_buffer() {
+    let mut font_system = FontSystem::new();
     let mut context = TextContext::new();
-    let left = context.layout(TextLayoutOptions::new("A", 20.0).with_size(Some(200.0), None));
+    let left = context.layout(
+        &mut font_system,
+        TextLayoutOptions::new("A", 20.0).with_size(Some(200.0), None),
+    );
     let center = context.layout(
+        &mut font_system,
         TextLayoutOptions::new("A", 20.0)
             .with_size(Some(200.0), None)
             .with_alignment(Some(Align::Center)),
@@ -109,8 +129,12 @@ fn layout_options_pass_alignment_to_cosmic_buffer() {
 
 #[test]
 fn layout_handles_emoji_sequences_without_panicking() {
+    let mut font_system = FontSystem::new();
     let mut context = TextContext::new();
-    let layout = context.layout(TextLayoutOptions::new("Emoji 😀 👍🏽 👨‍👩‍👧‍👦 🇺🇸", 32.0));
+    let layout = context.layout(
+        &mut font_system,
+        TextLayoutOptions::new("Emoji 😀 👍🏽 👨‍👩‍👧‍👦 🇺🇸", 32.0),
+    );
     if layout.glyphs.is_empty() {
         return;
     }
@@ -120,13 +144,14 @@ fn layout_handles_emoji_sequences_without_panicking() {
 
 #[test]
 fn layout_outline_path_extracts_scalable_glyph_paths() {
+    let mut font_system = FontSystem::new();
     let mut context = TextContext::new();
-    let layout = context.layout(TextLayoutOptions::new("Outline", 42.0));
+    let layout = context.layout(&mut font_system, TextLayoutOptions::new("Outline", 42.0));
     if layout.is_empty() {
         return;
     }
 
-    let path = context.layout_outline_path(&layout, Point::new(8.0, 48.0));
+    let path = context.layout_outline_path(&mut font_system, &layout, Point::new(8.0, 48.0));
 
     assert!(!path.is_empty());
     assert!(path.bounding_box().width() > 1.0);
@@ -135,8 +160,9 @@ fn layout_outline_path_extracts_scalable_glyph_paths() {
 
 #[test]
 fn scene_path_text_uses_path_draws_not_glyph_atlas() {
+    let mut font_system = FontSystem::new();
     let mut context = TextContext::new();
-    let layout = context.layout(TextLayoutOptions::new("Path", 36.0));
+    let layout = context.layout(&mut font_system, TextLayoutOptions::new("Path", 36.0));
     if layout.is_empty() {
         return;
     }
@@ -144,6 +170,7 @@ fn scene_path_text_uses_path_draws_not_glyph_atlas() {
     let mut canvas = Canvas::new(180, 80);
     canvas.push_text_layout_as_path(
         &mut context,
+        &mut font_system,
         &layout,
         Point::new(8.0, 52.0),
         Color::BLACK,
@@ -165,8 +192,9 @@ fn scene_path_text_uses_path_draws_not_glyph_atlas() {
 
 #[test]
 fn prepared_text_keeps_color_emoji_glyphs_when_font_supports_them() {
+    let mut font_system = FontSystem::new();
     let mut context = TextContext::new();
-    let layout = context.layout(TextLayoutOptions::new("😀", 64.0));
+    let layout = context.layout(&mut font_system, TextLayoutOptions::new("😀", 64.0));
     if layout.is_empty() {
         return;
     }
@@ -176,7 +204,7 @@ fn prepared_text_keeps_color_emoji_glyphs_when_font_supports_them() {
         glyph_start: 0,
         glyph_count: glyphs.len() as u32,
     }];
-    let prepared = PreparedTextData::new(&glyphs, &runs, &mut context);
+    let prepared = PreparedTextData::new(&glyphs, &runs, &mut font_system, &mut context);
     let Some(image) = prepared
         .images()
         .iter()
@@ -194,9 +222,10 @@ fn prepared_text_keeps_color_emoji_glyphs_when_font_supports_them() {
 
 #[test]
 fn prepared_text_signature_changes_with_glyph_images() {
+    let mut font_system = FontSystem::new();
     let mut context = TextContext::new();
-    let a = context.layout(TextLayoutOptions::new("A", 20.0));
-    let b = context.layout(TextLayoutOptions::new("B", 20.0));
+    let a = context.layout(&mut font_system, TextLayoutOptions::new("A", 20.0));
+    let b = context.layout(&mut font_system, TextLayoutOptions::new("B", 20.0));
     if a.is_empty() || b.is_empty() {
         return;
     }
@@ -207,16 +236,17 @@ fn prepared_text_signature_changes_with_glyph_images() {
         glyph_start: 0,
         glyph_count: 1,
     }];
-    let a_data = PreparedTextData::new(&a_glyphs, &runs, &mut context);
-    let b_data = PreparedTextData::new(&b_glyphs, &runs, &mut context);
+    let a_data = PreparedTextData::new(&a_glyphs, &runs, &mut font_system, &mut context);
+    let b_data = PreparedTextData::new(&b_glyphs, &runs, &mut font_system, &mut context);
 
     assert_ne!(a_data.atlas_signature(), b_data.atlas_signature());
 }
 
 #[test]
 fn prepared_text_signature_changes_with_composite_mode() {
+    let mut font_system = FontSystem::new();
     let mut context = TextContext::new();
-    let layout = context.layout(TextLayoutOptions::new("A", 20.0));
+    let layout = context.layout(&mut font_system, TextLayoutOptions::new("A", 20.0));
     if layout.is_empty() {
         return;
     }
@@ -229,18 +259,19 @@ fn prepared_text_signature_changes_with_composite_mode() {
     context.set_raster_options(
         TextRasterOptions::new().with_composite_mode(TextCompositeMode::Linear),
     );
-    let linear = PreparedTextData::new(&glyphs, &runs, &mut context);
+    let linear = PreparedTextData::new(&glyphs, &runs, &mut font_system, &mut context);
     context
         .set_raster_options(TextRasterOptions::new().with_composite_mode(TextCompositeMode::Srgb));
-    let srgb = PreparedTextData::new(&glyphs, &runs, &mut context);
+    let srgb = PreparedTextData::new(&glyphs, &runs, &mut font_system, &mut context);
 
     assert_ne!(linear.atlas_signature(), srgb.atlas_signature());
 }
 
 #[test]
 fn prepared_text_signature_changes_with_subpixel_mode() {
+    let mut font_system = FontSystem::new();
     let mut context = TextContext::new();
-    let layout = context.layout(TextLayoutOptions::new("A", 20.0));
+    let layout = context.layout(&mut font_system, TextLayoutOptions::new("A", 20.0));
     if layout.is_empty() {
         return;
     }
@@ -251,21 +282,22 @@ fn prepared_text_signature_changes_with_subpixel_mode() {
         glyph_count: 1,
     }];
     context.set_raster_options(TextRasterOptions::new().with_subpixel_mode(TextSubpixelMode::Rgb));
-    let rgb = PreparedTextData::new(&glyphs, &runs, &mut context);
+    let rgb = PreparedTextData::new(&glyphs, &runs, &mut font_system, &mut context);
     context.set_raster_options(TextRasterOptions::new().with_subpixel_mode(TextSubpixelMode::Bgr));
-    let bgr = PreparedTextData::new(&glyphs, &runs, &mut context);
+    let bgr = PreparedTextData::new(&glyphs, &runs, &mut font_system, &mut context);
 
     assert_ne!(rgb.atlas_signature(), bgr.atlas_signature());
 }
 
 #[test]
 fn text_context_uses_subpixel_raster_by_default() {
+    let mut font_system = FontSystem::new();
     let mut context = TextContext::new();
-    let layout = context.layout(TextLayoutOptions::new("H", 12.0));
+    let layout = context.layout(&mut font_system, TextLayoutOptions::new("H", 12.0));
     let Some(glyph) = layout.glyphs.first() else {
         return;
     };
-    let Some(image) = context.glyph_image(glyph.cache_key) else {
+    let Some(image) = context.glyph_image(&mut font_system, glyph.cache_key) else {
         return;
     };
 

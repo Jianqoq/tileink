@@ -4,14 +4,15 @@ mod common;
 #[path = "../common/emoji_scene.rs"]
 mod emoji_scene;
 
-use tileink::{CpuRenderer, TextContext};
+use tileink::{CpuRenderer, TextContext, TextFontSystem};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut font_system = TextFontSystem::new();
     let mut text_context = TextContext::new();
-    let scene = emoji_scene::scene(&mut text_context);
+    let scene = emoji_scene::scene(&mut font_system, &mut text_context);
     let mut renderer =
         CpuRenderer::new(emoji_scene::WIDTH, emoji_scene::HEIGHT, emoji_scene::CLEAR);
-    renderer.render_with_text(&scene, &mut text_context);
+    renderer.render_with_text(&scene, &mut font_system, &mut text_context);
 
     let out = common::example_output("emoji");
     common::save_example_image(renderer.image(), &out)?;

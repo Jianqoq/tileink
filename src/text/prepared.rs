@@ -5,7 +5,7 @@ use std::{
 
 #[cfg(test)]
 use cosmic_text::SwashImage;
-use cosmic_text::{CacheKey, SwashContent};
+use cosmic_text::{CacheKey, FontSystem, SwashContent};
 
 use crate::shared::{bounds::Bounds, pixel::TextCoverageParams};
 
@@ -26,7 +26,12 @@ pub(crate) struct PreparedTextData {
 }
 
 impl PreparedTextData {
-    pub(crate) fn new(glyphs: &[CanvasGlyph], runs: &[TextRun], context: &mut TextContext) -> Self {
+    pub(crate) fn new(
+        glyphs: &[CanvasGlyph],
+        runs: &[TextRun],
+        font_system: &mut FontSystem,
+        context: &mut TextContext,
+    ) -> Self {
         let mut image_by_key = HashMap::new();
         let mut images = Vec::new();
         let mut prepared_glyphs = Vec::with_capacity(glyphs.len());
@@ -37,7 +42,7 @@ impl PreparedTextData {
         for glyph in glyphs {
             let image = if let Some(&image) = image_by_key.get(&glyph.cache_key) {
                 Some(image)
-            } else if let Some(image) = context.glyph_image(glyph.cache_key) {
+            } else if let Some(image) = context.glyph_image(font_system, glyph.cache_key) {
                 let image_ix = images.len() as u32;
                 images.push(PreparedGlyphImage::from_raster(image, raster_options));
                 image_by_key.insert(glyph.cache_key, image_ix);

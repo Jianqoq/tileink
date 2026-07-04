@@ -6,7 +6,8 @@ use peniko::{
 use super::{Renderer, WgpuRenderTargetId};
 use crate::wgpu::commands::WgpuCommandBatch;
 use crate::{
-    Canvas, FillRule, Image, ImageKey, PatternSampling, TextContext, TextLayoutOptions,
+    Canvas, FillRule, Image, ImageKey, PatternSampling, TextContext, TextFontSystem,
+    TextLayoutOptions,
     cpu::Renderer as CpuRenderer,
     debug::{RenderDebugOptions, RenderOptions},
     render::Render,
@@ -2194,8 +2195,9 @@ fn wgpu_renderer_draws_text_in_tile_fine_when_enabled() {
         return;
     }
 
+    let mut font_system = TextFontSystem::new();
     let mut text_context = TextContext::new();
-    let layout = text_context.layout(TextLayoutOptions::new("Text", 28.0));
+    let layout = text_context.layout(&mut font_system, TextLayoutOptions::new("Text", 28.0));
     if layout.is_empty() {
         return;
     }
@@ -2203,7 +2205,7 @@ fn wgpu_renderer_draws_text_in_tile_fine_when_enabled() {
     canvas.push_text_layout(&layout, peniko::kurbo::Point::new(8.0, 32.0), Color::BLACK);
     let mut renderer = Renderer::new_default_device(160, 64, Color::TRANSPARENT);
 
-    renderer.render_with_text(&canvas, &mut text_context);
+    renderer.render_with_text(&canvas, &mut font_system, &mut text_context);
     let image = renderer.image();
 
     assert!(
@@ -2218,8 +2220,9 @@ fn wgpu_renderer_renders_text_directly_to_storage_texture_when_enabled() {
         return;
     }
 
+    let mut font_system = TextFontSystem::new();
     let mut text_context = TextContext::new();
-    let layout = text_context.layout(TextLayoutOptions::new("Text", 28.0));
+    let layout = text_context.layout(&mut font_system, TextLayoutOptions::new("Text", 28.0));
     if layout.is_empty() {
         return;
     }
@@ -2261,12 +2264,12 @@ fn wgpu_renderer_renders_text_directly_to_storage_texture_when_enabled() {
         });
 
     renderer
-        .render_with_text_to_wgpu_texture(&canvas, &mut text_context, &texture)
+        .render_with_text_to_wgpu_texture(&canvas, &mut font_system, &mut text_context, &texture)
         .expect("render text directly to wgpu storage texture");
     let bytes = read_texture_rgba8(renderer.device(), renderer.queue(), &texture, 160, 64);
 
     let mut cpu = CpuRenderer::new(160, 64, Color::TRANSPARENT);
-    cpu.render_with_text(&canvas, &mut text_context);
+    cpu.render_with_text(&canvas, &mut font_system, &mut text_context);
     let expected = cpu.image();
     for y in 0..64 {
         for x in 0..160 {
@@ -2289,8 +2292,9 @@ fn wgpu_renderer_matches_cpu_text_compositing_when_enabled() {
         return;
     }
 
+    let mut font_system = TextFontSystem::new();
     let mut text_context = TextContext::new();
-    let layout = text_context.layout(TextLayoutOptions::new("Text", 28.0));
+    let layout = text_context.layout(&mut font_system, TextLayoutOptions::new("Text", 28.0));
     if layout.is_empty() {
         return;
     }
@@ -2307,11 +2311,11 @@ fn wgpu_renderer_matches_cpu_text_compositing_when_enabled() {
     );
 
     let mut renderer = Renderer::new_default_device(160, 64, Color::TRANSPARENT);
-    renderer.render_with_text(&canvas, &mut text_context);
+    renderer.render_with_text(&canvas, &mut font_system, &mut text_context);
     let wgpu_image = renderer.image();
 
     let mut cpu = CpuRenderer::new(160, 64, Color::TRANSPARENT);
-    cpu.render_with_text(&canvas, &mut text_context);
+    cpu.render_with_text(&canvas, &mut font_system, &mut text_context);
     assert_images_near(&wgpu_image, &cpu.image(), 2, "linear text compositing");
 }
 

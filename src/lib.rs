@@ -18,7 +18,8 @@ pub use crate::wgpu::{
 pub use canvas::{Canvas, DrawId};
 pub use cosmic_text::{
     Align as TextAlign, Attrs as TextAttrs, CacheKeyFlags as TextCacheKeyFlags,
-    Family as TextFamily, Stretch as TextStretch, Style as TextStyle, Weight as TextWeight,
+    Family as TextFamily, FontSystem as TextFontSystem, Stretch as TextStretch, Style as TextStyle,
+    Weight as TextWeight,
 };
 pub use cpu::Renderer as CpuRenderer;
 pub use debug::{

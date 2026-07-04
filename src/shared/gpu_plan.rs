@@ -619,19 +619,25 @@ mod text_length_tests {
     use peniko::{Color, kurbo::Point};
 
     use super::GpuBufferLengths;
-    use crate::{Canvas, TextContext, TextLayoutOptions, text::PreparedTextData};
+    use crate::{Canvas, TextContext, TextFontSystem, TextLayoutOptions, text::PreparedTextData};
 
     #[test]
     fn text_lengths_count_only_tiles_intersecting_glyph_bounds() {
+        let mut font_system = TextFontSystem::new();
         let mut context = TextContext::new();
-        let layout = context.layout(TextLayoutOptions::new("MMMMMMMM", 24.0));
+        let layout = context.layout(&mut font_system, TextLayoutOptions::new("MMMMMMMM", 24.0));
         if layout.is_empty() {
             return;
         }
 
         let mut canvas = Canvas::new(160, 64);
         canvas.push_text_layout(&layout, Point::new(2.0, 32.0), Color::WHITE);
-        let text = PreparedTextData::new(&canvas.text_glyphs, &canvas.text_runs, &mut context);
+        let text = PreparedTextData::new(
+            &canvas.text_glyphs,
+            &canvas.text_runs,
+            &mut font_system,
+            &mut context,
+        );
         let lengths = GpuBufferLengths::from_scene_with_text(&canvas, Some(&text));
 
         let expected = text

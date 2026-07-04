@@ -1,6 +1,7 @@
 use peniko::{BlendMode, Color};
 
 use crate::{
+    TextFontSystem,
     cpu::{
         buffers::RasterBuffers,
         computes::blend::{composite_blend_masked_at, composite_src_over_masked_at},
@@ -76,7 +77,7 @@ impl Renderer {
         target_bounds: Bounds,
         buffers: &mut RasterBuffers,
         text_data: Option<&PreparedTextData>,
-        text_context: Option<&mut TextContext>,
+        text_context: Option<(&mut TextFontSystem, &mut TextContext)>,
     ) {
         match offscreen.layer {
             Layer::Isolate => self.execute_masked_group_layer(
@@ -178,7 +179,7 @@ impl Renderer {
         target_bounds: Bounds,
         buffers: &mut RasterBuffers,
         _text_data: Option<&PreparedTextData>,
-        text_context: Option<&mut TextContext>,
+        text_context: Option<(&mut TextFontSystem, &mut TextContext)>,
     ) {
         let Some(filter_bounds) =
             self.filter
@@ -226,7 +227,7 @@ impl Renderer {
         target_bounds: Bounds,
         buffers: &mut RasterBuffers,
         text_data: Option<&PreparedTextData>,
-        text_context: Option<&mut TextContext>,
+        text_context: Option<(&mut TextFontSystem, &mut TextContext)>,
     ) {
         let bounds = self.filter.filtered_region_bounds(
             layer.filter,
@@ -298,7 +299,7 @@ impl Renderer {
         target_bounds: Bounds,
         buffers: &mut RasterBuffers,
         text_data: Option<&PreparedTextData>,
-        text_context: Option<&mut TextContext>,
+        text_context: Option<(&mut TextFontSystem, &mut TextContext)>,
     ) {
         let bounds = draw_bounds(canvas, group.draw).intersect(target_bounds);
         if bounds.is_empty() {
@@ -345,7 +346,7 @@ impl Renderer {
         bounds: Bounds,
         buffers: &mut RasterBuffers,
         text_data: Option<&PreparedTextData>,
-        text_context: Option<&mut TextContext>,
+        text_context: Option<(&mut TextFontSystem, &mut TextContext)>,
     ) -> Image {
         let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
         self.execute_ops(
@@ -364,14 +365,15 @@ impl Renderer {
     fn render_offscreen_surface(
         &mut self,
         surface: &mut OffscreenSurface,
-        mut text_context: Option<&mut TextContext>,
+        mut text_context: Option<(&mut TextFontSystem, &mut TextContext)>,
     ) {
         run_scan(&self.scan, &surface.canvas, &mut surface.buffers);
         run_cumsum(&self.cumsum, &surface.canvas, &mut surface.buffers);
-        let text_data = text_context.as_deref_mut().map(|context| {
+        let text_data = text_context.as_mut().map(|(font_system, context)| {
             PreparedTextData::new(
                 &surface.canvas.text_glyphs,
                 &surface.canvas.text_runs,
+                font_system,
                 context,
             )
         });
@@ -397,7 +399,7 @@ impl Renderer {
         target_bounds: Bounds,
         buffers: &mut RasterBuffers,
         text_data: Option<&PreparedTextData>,
-        mut text_context: Option<&mut TextContext>,
+        mut text_context: Option<(&mut TextFontSystem, &mut TextContext)>,
     ) {
         let bounds = region_bounds(&mask_layer.layer.region).intersect(target_bounds);
         if bounds.is_empty() {
@@ -411,7 +413,9 @@ impl Renderer {
             bounds,
             buffers,
             text_data,
-            text_context.as_deref_mut(),
+            text_context
+                .as_mut()
+                .map(|(font_system, context)| (&mut **font_system, &mut **context)),
         );
         let mask_source = self.render_children_to_image(
             canvas,
