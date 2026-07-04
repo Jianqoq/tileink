@@ -2281,7 +2281,8 @@ fn test_turbulence(kind: TurbulenceKind, seed: i32, num_octaves: u32) -> Turbule
 }
 
 fn render_native_wgpu(canvas: &Canvas) -> crate::shared::image::Image {
-    let mut renderer = Renderer::new_default_device(canvas.width, canvas.height, Color::TRANSPARENT);
+    let mut renderer =
+        Renderer::new_default_device(canvas.width, canvas.height, Color::TRANSPARENT);
     renderer.prepare_scene(canvas);
     assert!(
         renderer.render_prepared_tile_plan(canvas),

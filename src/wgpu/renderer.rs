@@ -30,6 +30,7 @@ use crate::{
 };
 
 use super::buffer::WgpuBuffer;
+use super::canvas::{WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers, WgpuSceneUploadStaging};
 use super::coarse::{WgpuCoarseBatch, WgpuCoarsePipeline};
 use super::commands::WgpuCommandBatch;
 use super::cumsum::WgpuCumsumPipeline;
@@ -44,7 +45,6 @@ use super::filter_resources::{
 use super::fine::{WgpuFinePipeline, premul_clear_color};
 use super::profile::{WgpuRenderProfile, WgpuRenderProfiler, profile_cpu, start_cpu_scope};
 use super::scan::WgpuScanPipeline;
-use super::canvas::{WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers, WgpuSceneUploadStaging};
 use super::target::WgpuTarget;
 
 mod filter_ops;

@@ -590,7 +590,9 @@ impl WgpuSceneBuffers {
         staging: &mut WgpuSceneUploadStaging,
     ) {
         profile_cpu("prepare.upload_scene.text.refill", || {
-            staging.text.refill(canvas, text, self.glyph_atlas_signature);
+            staging
+                .text
+                .refill(canvas, text, self.glyph_atlas_signature);
         });
         profile_cpu("prepare.upload_scene.text.runs", || {
             self.text_run_starts.upload(

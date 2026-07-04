@@ -25,7 +25,11 @@ pub(in crate::cpu) struct RasterBuffers {
 
 impl RasterBuffers {
     pub(in crate::cpu) fn rebuild_tile_draw_bins(&mut self, canvas: &crate::canvas::Canvas) {
-        build_tile_draw_bins_into(canvas, &mut self.tile_draw_bins, &mut self.tile_draw_cursors);
+        build_tile_draw_bins_into(
+            canvas,
+            &mut self.tile_draw_bins,
+            &mut self.tile_draw_cursors,
+        );
     }
 
     pub(in crate::cpu) fn clear_scan_outputs(&mut self) {

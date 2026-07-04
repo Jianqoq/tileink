@@ -4,11 +4,11 @@ use crate::shared::{gpu_plan::GpuBufferLengths, image::premul_color_to_rgba8_pac
 
 use super::{
     buffer::WgpuBuffer,
+    canvas::{WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers, WgpuTileFineBindings},
     commands::{
         WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
     },
     profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope},
-    canvas::{WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers, WgpuTileFineBindings},
     target::WgpuTarget,
 };
 

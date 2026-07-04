@@ -21,11 +21,11 @@ use crate::shared::{
 };
 
 use super::{
+    canvas::WgpuFilterBindings,
     commands::{
         WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
     },
     profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope},
-    canvas::WgpuFilterBindings,
 };
 
 pub(crate) const FILTER_BRIGHTNESS: u32 = 1;

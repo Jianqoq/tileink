@@ -356,7 +356,14 @@ impl Renderer {
             },
             buffers,
         );
-        run_fine(&self.fine, canvas, target, target_bounds, buffers, text_data);
+        run_fine(
+            &self.fine,
+            canvas,
+            target,
+            target_bounds,
+            buffers,
+            text_data,
+        );
     }
 }
 

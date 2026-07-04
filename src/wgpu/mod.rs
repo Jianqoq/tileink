@@ -1,4 +1,5 @@
 mod buffer;
+mod canvas;
 mod coarse;
 mod commands;
 mod cumsum;
@@ -8,7 +9,6 @@ mod fine;
 mod profile;
 mod renderer;
 mod scan;
-mod canvas;
 mod target;
 
 pub use profile::{

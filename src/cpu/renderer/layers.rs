@@ -187,7 +187,8 @@ impl Renderer {
             return;
         };
 
-        let mut surface = OffscreenSurface::new(canvas, plan, layer.children, filter_bounds.surface);
+        let mut surface =
+            OffscreenSurface::new(canvas, plan, layer.children, filter_bounds.surface);
         self.render_offscreen_surface(&mut surface, text_context);
         self.filter
             .prepare(&mut surface.image, layer.filter, filter_bounds.surface)

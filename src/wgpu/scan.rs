@@ -1,10 +1,10 @@
 use crate::shared::gpu_plan::{GpuBufferLengths, SCAN_CHUNK_SIZE};
 
+use super::canvas::{WgpuScanBindings, WgpuScanBuffers, WgpuSceneBuffers};
 use super::commands::{
     WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
 };
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
-use super::canvas::{WgpuScanBindings, WgpuScanBuffers, WgpuSceneBuffers};
 
 const WORKGROUP_SIZE: u32 = 256;
 const STORAGE_BINDING_COUNT: u32 = 29;

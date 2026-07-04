@@ -226,7 +226,8 @@ pub(crate) fn capture_render_debug(
 }
 
 fn capture_all_tiles(canvas: &Canvas, scan: &DebugScanBuffers<'_>) -> Vec<DebugTileSummary> {
-    let mut tiles = Vec::with_capacity((canvas.width_in_tiles() * canvas.height_in_tiles()) as usize);
+    let mut tiles =
+        Vec::with_capacity((canvas.width_in_tiles() * canvas.height_in_tiles()) as usize);
     for tile_y in 0..canvas.height_in_tiles() {
         for tile_x in 0..canvas.width_in_tiles() {
             tiles.push(DebugTileSummary {

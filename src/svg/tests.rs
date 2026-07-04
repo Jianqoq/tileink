@@ -154,7 +154,8 @@ fn push_svg_native_wgpu_matches_cpu_for_path_text_fixture_when_enabled() {
     );
 
     let mut cpu = CpuRenderer::new(canvas.width, canvas.height, Color::TRANSPARENT);
-    let mut wgpu = WgpuRenderer::new_default_device(canvas.width, canvas.height, Color::TRANSPARENT);
+    let mut wgpu =
+        WgpuRenderer::new_default_device(canvas.width, canvas.height, Color::TRANSPARENT);
     for pass in 0..5 {
         cpu.render(&canvas);
         assert!(
