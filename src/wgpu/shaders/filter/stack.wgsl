@@ -13,8 +13,9 @@ fn composite_with_stack(dst: u32, source: u32, mask: u32, x: u32, y: u32, force_
         if (stack_ix >= config.layer_stack_end) {
             break;
         }
-        let tag = layer_stack_tags[stack_ix];
-        let alpha = layer_stack_alpha_at(layer_stack_draws[stack_ix], x, y);
+        let layer = layer_stack[stack_ix];
+        let tag = layer.tag;
+        let alpha = layer_stack_alpha_at(layer.draw, x, y);
         if (tag == GPU_LAYER_CLIP) {
             clip_mask = combine_alpha(clip_mask, alpha);
         } else if (tag == GPU_LAYER_OPACITY || tag == GPU_LAYER_BLEND) {
@@ -23,7 +24,7 @@ fn composite_with_stack(dst: u32, source: u32, mask: u32, x: u32, y: u32, force_
                 group_parent_pixels[group_depth] = pixel;
                 group_parent_clips[group_depth] = clip_mask;
                 group_layer_alphas[group_depth] = alpha;
-                group_payloads[group_depth] = layer_stack_payloads[stack_ix];
+                group_payloads[group_depth] = layer.payload;
                 group_depth += 1u;
                 pixel = 0u;
             }
@@ -86,8 +87,9 @@ fn composite_surface_with_stack(dst: u32, source: u32, x: u32, y: u32) -> u32 {
         if (stack_ix >= config.layer_stack_end) {
             break;
         }
-        let tag = layer_stack_tags[stack_ix];
-        let alpha = layer_stack_alpha_at(layer_stack_draws[stack_ix], x, y);
+        let layer = layer_stack[stack_ix];
+        let tag = layer.tag;
+        let alpha = layer_stack_alpha_at(layer.draw, x, y);
         if (tag == GPU_LAYER_CLIP) {
             clip_mask = combine_alpha(clip_mask, alpha);
         } else if (tag == GPU_LAYER_OPACITY || tag == GPU_LAYER_BLEND) {
@@ -96,7 +98,7 @@ fn composite_surface_with_stack(dst: u32, source: u32, x: u32, y: u32) -> u32 {
                 group_parent_pixels[group_depth] = pixel;
                 group_parent_clips[group_depth] = clip_mask;
                 group_layer_alphas[group_depth] = alpha;
-                group_payloads[group_depth] = layer_stack_payloads[stack_ix];
+                group_payloads[group_depth] = layer.payload;
                 group_depth += 1u;
                 pixel = 0u;
             }

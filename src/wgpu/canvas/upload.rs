@@ -4,6 +4,7 @@ use crate::{
         draw_record::DrawRecord,
         execution::{ExecPlan, LayerStackEntry},
         gpu_brush::GpuBrushUpload,
+        gpu_coarse::LayerStackRecord,
         gpu_plan::{
             GpuCumsumPlan, GpuScanChunk, GpuScanChunkRange, TileDrawBins, build_cumsum_plan_into,
             build_scan_chunks_into, build_tile_draw_bins_into,
@@ -35,6 +36,7 @@ pub(crate) struct WgpuSceneUploadStaging {
     cumsum_plan: GpuCumsumPlan,
     tile_draw_bins: TileDrawBins,
     tile_draw_cursors: Vec<u32>,
+    layer_stack: Vec<LayerStackRecord>,
 }
 
 #[derive(Default)]
@@ -323,40 +325,28 @@ impl WgpuSceneBuffers {
         layer_stack: &[LayerStackEntry],
         staging: &mut WgpuSceneUploadStaging,
     ) {
-        upload_mapped_u32(
+        staging.layer_stack.clear();
+        staging.layer_stack.reserve(layer_stack.len());
+        staging
+            .layer_stack
+            .extend(layer_stack.iter().map(|entry| LayerStackRecord {
+                tag: match entry {
+                    LayerStackEntry::Clip { .. } => GPU_LAYER_CLIP,
+                    LayerStackEntry::Opacity { .. } => GPU_LAYER_OPACITY,
+                    LayerStackEntry::Blend { .. } => GPU_LAYER_BLEND,
+                },
+                draw: match *entry {
+                    LayerStackEntry::Clip { draw }
+                    | LayerStackEntry::Opacity { draw, .. }
+                    | LayerStackEntry::Blend { draw, .. } => draw,
+                },
+                payload: encode_layer_payload(*entry),
+            }));
+        self.plan_layer_stack.upload(
             device,
             queue,
-            &mut self.plan_layer_stack_tags,
-            "tileink wgpu canvas plan layer stack tags",
-            &mut staging.u32s,
-            layer_stack,
-            |entry| match entry {
-                LayerStackEntry::Clip { .. } => GPU_LAYER_CLIP,
-                LayerStackEntry::Opacity { .. } => GPU_LAYER_OPACITY,
-                LayerStackEntry::Blend { .. } => GPU_LAYER_BLEND,
-            },
-        );
-        upload_mapped_u32(
-            device,
-            queue,
-            &mut self.plan_layer_stack_draws,
-            "tileink wgpu canvas plan layer stack draws",
-            &mut staging.u32s,
-            layer_stack,
-            |entry| match *entry {
-                LayerStackEntry::Clip { draw }
-                | LayerStackEntry::Opacity { draw, .. }
-                | LayerStackEntry::Blend { draw, .. } => draw,
-            },
-        );
-        upload_mapped_u32(
-            device,
-            queue,
-            &mut self.plan_layer_stack_payloads,
-            "tileink wgpu canvas plan layer stack payloads",
-            &mut staging.u32s,
-            layer_stack,
-            |entry| encode_layer_payload(*entry),
+            "tileink wgpu canvas plan layer stack",
+            &staging.layer_stack,
         );
     }
 
@@ -521,17 +511,11 @@ impl WgpuSceneBuffers {
         staging: &WgpuSceneUploadStaging,
     ) {
         let bins = &staging.tile_draw_bins;
-        self.tile_draw_range_starts.upload(
+        self.tile_draw_records.upload(
             device,
             queue,
-            "tileink wgpu canvas tile draw range starts",
-            &bins.range_starts,
-        );
-        self.tile_draw_range_ends.upload(
-            device,
-            queue,
-            "tileink wgpu canvas tile draw range ends",
-            &bins.range_ends,
+            "tileink wgpu canvas tile draw records",
+            &bins.records,
         );
         self.tile_draw_indices.upload(
             device,

@@ -1839,9 +1839,7 @@ impl WgpuFilterPipeline {
             segment_starts: &self.dummy_read,
             segment_ends: &self.dummy_read,
             segments: &self.dummy_read,
-            layer_stack_tags: &self.dummy_read,
-            layer_stack_draws: &self.dummy_read,
-            layer_stack_payloads: &self.dummy_read,
+            layer_stack: &self.dummy_read,
         };
         let bindings = bindings.unwrap_or(&fallback);
         let brush_blob = brushes.map_or(&self.dummy_read, |brushes| brushes.blob);
@@ -1878,9 +1876,7 @@ impl WgpuFilterPipeline {
                 bind_buffer(30, bindings.segment_starts),
                 bind_buffer(31, bindings.segment_ends),
                 bind_buffer(32, bindings.segments),
-                bind_buffer(33, bindings.layer_stack_tags),
-                bind_buffer(34, bindings.layer_stack_draws),
-                bind_buffer(35, bindings.layer_stack_payloads),
+                bind_buffer(33, bindings.layer_stack),
                 bind_buffer(36, transfer_tables.unwrap_or(&self.dummy_read)),
                 bind_buffer(37, brush_blob),
                 bind_buffer(40, convolve_kernels),
@@ -2302,8 +2298,6 @@ fn filter_layout_entries(portable_textures: bool) -> Vec<::wgpu::BindGroupLayout
         storage_entry(31, true),
         storage_entry(32, true),
         storage_entry(33, true),
-        storage_entry(34, true),
-        storage_entry(35, true),
         storage_entry(36, true),
         storage_entry(37, true),
         storage_entry(40, true),

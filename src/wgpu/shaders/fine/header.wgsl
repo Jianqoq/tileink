@@ -130,17 +130,20 @@ struct TileCoarseRecord {
     glyph_start: u32,
     glyph_end: u32,
 };
+struct PtclRecord {
+    tag: u32,
+    backdrop: i32,
+    fill_rule: u32,
+    segment_start: u32,
+    segment_end: u32,
+    color: u32,
+};
 @group(0) @binding(2) var<storage, read> draw_records: array<DrawRecord>;
 @group(0) @binding(8) var<storage, read> sdf_blob: array<u32>;
 @group(0) @binding(9) var<storage, read> sdf_shadow_blob: array<u32>;
 @group(0) @binding(26) var<storage, read> brush_blob: array<u32>;
 @group(0) @binding(29) var<storage, read> tile_records: array<TileCoarseRecord>;
-@group(0) @binding(31) var<storage, read> ptcl_tags: array<u32>;
-@group(0) @binding(32) var<storage, read> ptcl_backdrops: array<i32>;
-@group(0) @binding(33) var<storage, read> ptcl_fill_rules: array<u32>;
-@group(0) @binding(34) var<storage, read> ptcl_segment_starts: array<u32>;
-@group(0) @binding(35) var<storage, read> ptcl_segment_ends: array<u32>;
-@group(0) @binding(36) var<storage, read> ptcl_colors: array<u32>;
+@group(0) @binding(31) var<storage, read> ptcl_records: array<PtclRecord>;
 @group(0) @binding(37) var<storage, read> segments: array<LineSegment>;
 @group(0) @binding(42) var<storage, read> glyph_indices: array<u32>;
 @group(0) @binding(43) var<storage, read> glyphs: array<GlyphRecord>;

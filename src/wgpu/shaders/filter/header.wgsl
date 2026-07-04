@@ -222,6 +222,11 @@ struct LineSegment {
     p1y: f32,
     y_edge: f32,
 };
+struct LayerStackRecord {
+    tag: u32,
+    draw: u32,
+    payload: u32,
+};
 @group(0) @binding(4) var<storage, read> draw_records: array<DrawRecord>;
 @group(0) @binding(10) var<storage, read> sdf_blob: array<u32>;
 @group(0) @binding(11) var<storage, read> sdf_shadow_blob: array<u32>;
@@ -230,9 +235,7 @@ struct LineSegment {
 @group(0) @binding(30) var<storage, read> segment_starts: array<u32>;
 @group(0) @binding(31) var<storage, read> segment_ends: array<u32>;
 @group(0) @binding(32) var<storage, read> segments: array<LineSegment>;
-@group(0) @binding(33) var<storage, read> layer_stack_tags: array<u32>;
-@group(0) @binding(34) var<storage, read> layer_stack_draws: array<u32>;
-@group(0) @binding(35) var<storage, read> layer_stack_payloads: array<u32>;
+@group(0) @binding(33) var<storage, read> layer_stack: array<LayerStackRecord>;
 @group(0) @binding(36) var<storage, read> transfer_tables: array<u32>;
 @group(0) @binding(37) var<storage, read> brush_blob: array<u32>;
 @group(0) @binding(40) var<storage, read> convolve_kernels: array<f32>;

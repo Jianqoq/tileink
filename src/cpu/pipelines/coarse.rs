@@ -124,8 +124,9 @@ impl<'a> CoarseCpuPrepared<'a> {
         let tile_y = tile_ix as u32 / tiles_size.0;
         let mut output = TileCoarseOutput::default();
         let mut emitted_wrappers = Vec::new();
-        let draw_start = tile_draw_bins.range_starts[tile_ix] as usize;
-        let draw_end = tile_draw_bins.range_ends[tile_ix] as usize;
+        let tile_draw_range = tile_draw_bins.records[tile_ix];
+        let draw_start = tile_draw_range.start as usize;
+        let draw_end = tile_draw_range.end as usize;
 
         for &draw_ix in &tile_draw_bins.draw_indices[draw_start..draw_end] {
             let draw_ix = draw_ix as usize;

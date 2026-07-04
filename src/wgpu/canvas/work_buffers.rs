@@ -1,12 +1,10 @@
 use crate::shared::{
-    gpu_coarse::TileCoarseRecord, gpu_plan::GpuBufferLengths, line_seg::LineSegment,
+    gpu_coarse::{PtclRecord, TileCoarseRecord},
+    gpu_plan::GpuBufferLengths,
+    line_seg::LineSegment,
 };
 
 use super::super::buffer::WgpuBuffer;
-
-fn packed_u8_len(len: usize) -> usize {
-    len.div_ceil(4)
-}
 
 pub(crate) struct WgpuScanBuffers {
     pub(crate) backdrops: WgpuBuffer,
@@ -110,12 +108,7 @@ pub(crate) struct WgpuCoarseBuffers {
     pub(crate) chunk_offsets: WgpuBuffer,
     pub(crate) glyph_chunk_totals: WgpuBuffer,
     pub(crate) glyph_chunk_offsets: WgpuBuffer,
-    pub(crate) ptcl_tags: WgpuBuffer,
-    pub(crate) ptcl_backdrops: WgpuBuffer,
-    pub(crate) ptcl_fill_rules: WgpuBuffer,
-    pub(crate) ptcl_segment_starts: WgpuBuffer,
-    pub(crate) ptcl_segment_ends: WgpuBuffer,
-    pub(crate) ptcl_colors: WgpuBuffer,
+    pub(crate) ptcl_records: WgpuBuffer,
     pub(crate) glyph_indices: WgpuBuffer,
 }
 
@@ -127,12 +120,7 @@ impl WgpuCoarseBuffers {
             chunk_offsets: WgpuBuffer::new(device, "tileink wgpu coarse chunk offsets"),
             glyph_chunk_totals: WgpuBuffer::new(device, "tileink wgpu coarse glyph chunk totals"),
             glyph_chunk_offsets: WgpuBuffer::new(device, "tileink wgpu coarse glyph chunk offsets"),
-            ptcl_tags: WgpuBuffer::new(device, "tileink wgpu coarse ptcl tags"),
-            ptcl_backdrops: WgpuBuffer::new(device, "tileink wgpu coarse ptcl backdrops"),
-            ptcl_fill_rules: WgpuBuffer::new(device, "tileink wgpu coarse ptcl fill rules"),
-            ptcl_segment_starts: WgpuBuffer::new(device, "tileink wgpu coarse ptcl segment starts"),
-            ptcl_segment_ends: WgpuBuffer::new(device, "tileink wgpu coarse ptcl segment ends"),
-            ptcl_colors: WgpuBuffer::new(device, "tileink wgpu coarse ptcl colors"),
+            ptcl_records: WgpuBuffer::new(device, "tileink wgpu coarse ptcl records"),
             glyph_indices: WgpuBuffer::new(device, "tileink wgpu coarse glyph indices"),
         }
     }
@@ -163,34 +151,9 @@ impl WgpuCoarseBuffers {
             "tileink wgpu coarse glyph chunk offsets",
             lengths.coarse_chunk_count,
         );
-        self.ptcl_tags.resize_uninit::<u32>(
+        self.ptcl_records.resize_uninit::<PtclRecord>(
             device,
-            "tileink wgpu coarse ptcl tags",
-            packed_u8_len(lengths.coarse_ptcl_capacity),
-        );
-        self.ptcl_backdrops.resize_uninit::<i32>(
-            device,
-            "tileink wgpu coarse ptcl backdrops",
-            lengths.coarse_ptcl_capacity,
-        );
-        self.ptcl_fill_rules.resize_uninit::<u32>(
-            device,
-            "tileink wgpu coarse ptcl fill rules",
-            lengths.coarse_ptcl_capacity,
-        );
-        self.ptcl_segment_starts.resize_uninit::<u32>(
-            device,
-            "tileink wgpu coarse ptcl segment starts",
-            lengths.coarse_ptcl_capacity,
-        );
-        self.ptcl_segment_ends.resize_uninit::<u32>(
-            device,
-            "tileink wgpu coarse ptcl segment ends",
-            lengths.coarse_ptcl_capacity,
-        );
-        self.ptcl_colors.resize_uninit::<u32>(
-            device,
-            "tileink wgpu coarse ptcl colors",
+            "tileink wgpu coarse ptcl records",
             lengths.coarse_ptcl_capacity,
         );
         self.glyph_indices.resize_uninit::<u32>(

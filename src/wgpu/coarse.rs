@@ -9,7 +9,7 @@ use super::commands::{
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 
 const WORKGROUP_SIZE: u32 = 256;
-const STORAGE_BINDING_COUNT: u32 = 26;
+const STORAGE_BINDING_COUNT: u32 = 19;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct WgpuCoarseBatch {
@@ -240,23 +240,15 @@ impl WgpuCoarsePipeline {
                 bind_buffer(19, bindings.backdrops),
                 bind_buffer(20, bindings.segment_starts),
                 bind_buffer(21, bindings.segment_ends),
-                bind_buffer(22, bindings.layer_stack_tags),
-                bind_buffer(23, bindings.layer_stack_draws),
-                bind_buffer(24, bindings.layer_stack_payloads),
+                bind_buffer(22, bindings.layer_stack),
                 bind_buffer(25, bindings.tile_records),
                 bind_buffer(31, bindings.chunk_totals),
                 bind_buffer(32, bindings.chunk_offsets),
                 bind_buffer(33, bindings.glyph_chunk_totals),
                 bind_buffer(34, bindings.glyph_chunk_offsets),
-                bind_buffer(35, bindings.ptcl_tags),
-                bind_buffer(36, bindings.ptcl_backdrops),
-                bind_buffer(37, bindings.ptcl_fill_rules),
-                bind_buffer(38, bindings.ptcl_segment_starts),
-                bind_buffer(39, bindings.ptcl_segment_ends),
-                bind_buffer(40, bindings.ptcl_colors),
+                bind_buffer(35, bindings.ptcl_records),
                 bind_buffer(41, bindings.glyph_indices),
-                bind_buffer(42, bindings.tile_draw_range_starts),
-                bind_buffer(43, bindings.tile_draw_range_ends),
+                bind_buffer(42, bindings.tile_draw_records),
                 bind_buffer(44, bindings.tile_draw_indices),
             ],
         })
@@ -301,22 +293,14 @@ fn coarse_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         storage_entry(20, true),
         storage_entry(21, true),
         storage_entry(22, true),
-        storage_entry(23, true),
-        storage_entry(24, true),
         storage_entry(25, false),
         storage_entry(31, false),
         storage_entry(32, false),
         storage_entry(33, false),
         storage_entry(34, false),
         storage_entry(35, false),
-        storage_entry(36, false),
-        storage_entry(37, false),
-        storage_entry(38, false),
-        storage_entry(39, false),
-        storage_entry(40, false),
         storage_entry(41, false),
         storage_entry(42, true),
-        storage_entry(43, true),
         storage_entry(44, true),
     ]
 }

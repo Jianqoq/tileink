@@ -8,6 +8,7 @@ use crate::{
         bounds::{Bounds, PixelBounds, TileBbox},
         draw_record::{DrawRecord, DrawTag},
         execution::{ExecOp, ExecPlan, LayerStackEntry},
+        gpu_coarse::TileDrawRecord,
         layer::{
             Layer,
             filter::{Filter, FilterInput, FilterPrimitive, FilterPrimitiveKind},
@@ -114,8 +115,7 @@ impl GpuBufferLengths {
 /// candidates while preserving compositing order.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct TileDrawBins {
-    pub(crate) range_starts: Vec<u32>,
-    pub(crate) range_ends: Vec<u32>,
+    pub(crate) records: Vec<TileDrawRecord>,
     pub(crate) draw_indices: Vec<u32>,
 }
 
@@ -149,10 +149,8 @@ pub(crate) fn build_tile_draw_bins_for_draws_into(
     let (width_in_tiles, height_in_tiles) = tiles_size;
     let tile_count = width_in_tiles as usize * height_in_tiles as usize;
 
-    bins.range_starts.clear();
-    bins.range_starts.resize(tile_count, 0);
-    bins.range_ends.clear();
-    bins.range_ends.resize(tile_count, 0);
+    bins.records.clear();
+    bins.records.resize(tile_count, TileDrawRecord::default());
     bins.draw_indices.clear();
     cursors.clear();
     cursors.resize(tile_count, 0);
@@ -162,20 +160,22 @@ pub(crate) fn build_tile_draw_bins_for_draws_into(
             draw.tile_bbox(width_in_tiles, height_in_tiles),
             width_in_tiles,
             |tile_ix| {
-                bins.range_ends[tile_ix] += 1;
+                bins.records[tile_ix].end += 1;
             },
         );
     }
 
     let mut cursor = 0;
-    for (start, end) in bins.range_starts.iter_mut().zip(&mut bins.range_ends) {
-        *start = cursor;
-        cursor += *end;
-        *end = cursor;
+    for record in &mut bins.records {
+        record.start = cursor;
+        cursor += record.end;
+        record.end = cursor;
     }
 
     bins.draw_indices.resize(cursor as usize, 0);
-    cursors.copy_from_slice(&bins.range_starts);
+    for (cursor, record) in cursors.iter_mut().zip(&bins.records) {
+        *cursor = record.start;
+    }
 
     for (draw_ix, draw) in draw_records.iter().enumerate() {
         for_tile_in_bbox(
@@ -189,7 +189,12 @@ pub(crate) fn build_tile_draw_bins_for_draws_into(
         );
     }
 
-    debug_assert_eq!(cursors.as_slice(), bins.range_ends.as_slice());
+    debug_assert!(
+        cursors
+            .iter()
+            .zip(&bins.records)
+            .all(|(cursor, record)| *cursor == record.end)
+    );
 }
 
 fn for_tile_in_bbox(mut bbox: TileBbox, width_in_tiles: u32, mut visit: impl FnMut(usize)) {
@@ -761,8 +766,20 @@ mod tests {
 
         let bins = build_tile_draw_bins(&canvas);
 
-        assert_eq!(bins.range_starts, vec![0, 1]);
-        assert_eq!(bins.range_ends, vec![1, 3]);
+        assert_eq!(
+            bins.records
+                .iter()
+                .map(|record| record.start)
+                .collect::<Vec<_>>(),
+            vec![0, 1]
+        );
+        assert_eq!(
+            bins.records
+                .iter()
+                .map(|record| record.end)
+                .collect::<Vec<_>>(),
+            vec![1, 3]
+        );
         assert_eq!(bins.draw_indices, vec![0, 0, 1]);
     }
 }

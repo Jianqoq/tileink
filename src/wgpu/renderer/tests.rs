@@ -14,7 +14,7 @@ use crate::{
     shared::{
         bounds::Bounds,
         brush::Brush,
-        gpu_coarse::TileCoarseRecord,
+        gpu_coarse::{PtclRecord, TileCoarseRecord},
         layer::{
             filter::{
                 BlurSampling, COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE,
@@ -649,11 +649,7 @@ fn wgpu_coarse_emits_sdf_particles_for_rects_when_enabled() {
         ]
     );
     assert_eq!(
-        renderer.coarse.ptcl_colors.read::<u32>(
-            renderer.device(),
-            renderer.queue(),
-            renderer.lengths.coarse_ptcl_capacity
-        ),
+        read_ptcl_colors(&renderer, renderer.lengths.coarse_ptcl_capacity),
         vec![0, 0, 0, 1, 0]
     );
 }
@@ -706,13 +702,7 @@ fn wgpu_coarse_tile_draw_bins_respect_batch_range_when_enabled() {
         read_ptcl_tags(&renderer, 4),
         vec![GPU_PTCL_SDF, GPU_PTCL_END, GPU_PTCL_SDF, GPU_PTCL_END]
     );
-    assert_eq!(
-        renderer
-            .coarse
-            .ptcl_colors
-            .read::<u32>(renderer.device(), renderer.queue(), 4),
-        vec![1, 0, 1, 0]
-    );
+    assert_eq!(read_ptcl_colors(&renderer, 4), vec![1, 0, 1, 0]);
 }
 
 #[test]
@@ -2418,14 +2408,24 @@ fn read_render_target_u32(renderer: &Renderer, target: WgpuRenderTargetId, len: 
 }
 
 fn read_ptcl_tags(renderer: &Renderer, len: usize) -> Vec<u32> {
-    let words =
-        renderer
-            .coarse
-            .ptcl_tags
-            .read::<u32>(renderer.device(), renderer.queue(), len.div_ceil(4));
-    (0..len)
-        .map(|i| (words[i / 4] >> ((i % 4) * 8)) & 255)
+    read_ptcl_records(renderer, len)
+        .into_iter()
+        .map(|record| record.tag)
         .collect()
+}
+
+fn read_ptcl_colors(renderer: &Renderer, len: usize) -> Vec<u32> {
+    read_ptcl_records(renderer, len)
+        .into_iter()
+        .map(|record| record.color)
+        .collect()
+}
+
+fn read_ptcl_records(renderer: &Renderer, len: usize) -> Vec<PtclRecord> {
+    renderer
+        .coarse
+        .ptcl_records
+        .read::<PtclRecord>(renderer.device(), renderer.queue(), len)
 }
 
 fn read_texture_rgba8(

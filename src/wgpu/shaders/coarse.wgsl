@@ -71,6 +71,23 @@ struct TileCoarseRecord {
     glyph_start: u32,
     glyph_end: u32,
 };
+struct LayerStackRecord {
+    tag: u32,
+    draw: u32,
+    payload: u32,
+};
+struct PtclRecord {
+    tag: u32,
+    backdrop: i32,
+    fill_rule: u32,
+    segment_start: u32,
+    segment_end: u32,
+    color: u32,
+};
+struct TileDrawRecord {
+    start: u32,
+    end: u32,
+};
 @group(0) @binding(1) var<storage, read> draw_records: array<DrawRecord>;
 @group(0) @binding(3) var<storage, read> text_runs: array<GlyphRunRecord>;
 @group(0) @binding(5) var<storage, read> glyphs: array<GlyphRecord>;
@@ -80,23 +97,15 @@ struct TileCoarseRecord {
 @group(0) @binding(19) var<storage, read_write> backdrops: array<atomic<i32>>;
 @group(0) @binding(20) var<storage, read> segment_starts: array<u32>;
 @group(0) @binding(21) var<storage, read> segment_ends: array<u32>;
-@group(0) @binding(22) var<storage, read> layer_stack_tags: array<u32>;
-@group(0) @binding(23) var<storage, read> layer_stack_draws: array<u32>;
-@group(0) @binding(24) var<storage, read> layer_stack_payloads: array<u32>;
+@group(0) @binding(22) var<storage, read> layer_stack: array<LayerStackRecord>;
 @group(0) @binding(25) var<storage, read_write> tile_records: array<TileCoarseRecord>;
 @group(0) @binding(31) var<storage, read_write> chunk_totals: array<u32>;
 @group(0) @binding(32) var<storage, read_write> chunk_offsets: array<u32>;
 @group(0) @binding(33) var<storage, read_write> glyph_chunk_totals: array<u32>;
 @group(0) @binding(34) var<storage, read_write> glyph_chunk_offsets: array<u32>;
-@group(0) @binding(35) var<storage, read_write> ptcl_tags: array<atomic<u32>>;
-@group(0) @binding(36) var<storage, read_write> ptcl_backdrops: array<i32>;
-@group(0) @binding(37) var<storage, read_write> ptcl_fill_rules: array<u32>;
-@group(0) @binding(38) var<storage, read_write> ptcl_segment_starts: array<u32>;
-@group(0) @binding(39) var<storage, read_write> ptcl_segment_ends: array<u32>;
-@group(0) @binding(40) var<storage, read_write> ptcl_colors: array<u32>;
+@group(0) @binding(35) var<storage, read_write> ptcl_records: array<PtclRecord>;
 @group(0) @binding(41) var<storage, read_write> glyph_indices: array<u32>;
-@group(0) @binding(42) var<storage, read> tile_draw_range_starts: array<u32>;
-@group(0) @binding(43) var<storage, read> tile_draw_range_ends: array<u32>;
+@group(0) @binding(42) var<storage, read> tile_draw_records: array<TileDrawRecord>;
 @group(0) @binding(44) var<storage, read> tile_draw_indices: array<u32>;
 
 const INVALID: u32 = 0xffffffffu;
@@ -146,8 +155,8 @@ fn coarse_count(
     var glyph_count = 0u;
 
     if (wrapper_count != INVALID) {
-        let tile_draw_start = tile_draw_range_starts[tile_ix];
-        let tile_draw_end = tile_draw_range_ends[tile_ix];
+        let tile_draw_start = tile_draw_records[tile_ix].start;
+        let tile_draw_end = tile_draw_records[tile_ix].end;
         var draw_ref_ix = tile_draw_start + lane;
         loop {
             if (draw_ref_ix >= tile_draw_end) {
@@ -422,8 +431,8 @@ fn coarse_emit(
     }
     cursor += wrapper_count;
 
-    let tile_draw_start = tile_draw_range_starts[tile_ix];
-    let tile_draw_end = tile_draw_range_ends[tile_ix];
+    let tile_draw_start = tile_draw_records[tile_ix].start;
+    let tile_draw_end = tile_draw_records[tile_ix].end;
     var chunk_start = tile_draw_start;
     loop {
         if (chunk_start >= tile_draw_end) {
@@ -538,11 +547,12 @@ fn active_stack_count(tile_x: u32, tile_y: u32) -> u32 {
             break;
         }
         if (valid) {
-            let layer_tag = layer_stack_tags[stack_ix];
+            let layer = layer_stack[stack_ix];
+            let layer_tag = layer.tag;
             if (layer_tag != GPU_LAYER_CLIP && layer_tag != GPU_LAYER_OPACITY && layer_tag != GPU_LAYER_BLEND) {
                 valid = false;
             } else {
-                let draw_ix = layer_stack_draws[stack_ix];
+                let draw_ix = layer.draw;
                 if (draw_has_sdf_at(draw_ix)) {
                     if (draw_tile_hit(draw_ix, tile_x, tile_y)) {
                         count += 1u;
@@ -576,9 +586,10 @@ fn emit_active_stack_begins(dst_start: u32, tile_x: u32, tile_y: u32) {
         if (stack_ix >= config.layer_stack_end) {
             break;
         }
-        let layer_tag = layer_stack_tags[stack_ix];
+        let layer = layer_stack[stack_ix];
+        let layer_tag = layer.tag;
         if (layer_tag == GPU_LAYER_CLIP || layer_tag == GPU_LAYER_OPACITY || layer_tag == GPU_LAYER_BLEND) {
-            let draw_ix = layer_stack_draws[stack_ix];
+            let draw_ix = layer.draw;
             if (layer_tag == GPU_LAYER_CLIP && draw_has_sdf_at(draw_ix)) {
                 store_particle(dst, GPU_PTCL_BEGIN_SDF_CLIP, 0i, 0u, 0u, 0u, draw_ix);
                 dst += 1u;
@@ -598,7 +609,7 @@ fn emit_active_stack_begins(dst_start: u32, tile_x: u32, tile_y: u32) {
                         draw_fill_rule_at(draw_ix),
                         segment_starts[backdrop_ix],
                         segment_ends[backdrop_ix],
-                        layer_stack_payloads[stack_ix]
+                        layer.payload
                     );
                     dst += 1u;
                 }
@@ -616,7 +627,7 @@ fn emit_active_stack_ends(dst_start: u32) {
             break;
         }
         stack_ix -= 1u;
-        let layer_tag = layer_stack_tags[stack_ix];
+        let layer_tag = layer_stack[stack_ix].tag;
         var ptcl_tag = GPU_PTCL_END_CLIP;
         var valid = true;
         if (layer_tag == GPU_LAYER_OPACITY) {
@@ -788,21 +799,11 @@ fn draw_solid_color_at(draw_ix: u32) -> u32 {
 
 fn store_particle(dst: u32, tag: u32, backdrop: i32, fill_rule: u32, segment_start: u32, segment_end: u32, color: u32) {
     if (dst < config.ptcl_capacity) {
-        store_packed_atomic_u8(dst, tag);
-        ptcl_backdrops[dst] = backdrop;
-        ptcl_fill_rules[dst] = fill_rule;
-        ptcl_segment_starts[dst] = segment_start;
-        ptcl_segment_ends[dst] = segment_end;
-        ptcl_colors[dst] = color;
-    }
-}
-
-fn store_packed_atomic_u8(ix: u32, value: u32) {
-    let shift = (ix % 4u) * 8u;
-    let mask = 255u << shift;
-    let word_ix = ix / 4u;
-    atomicAnd(&ptcl_tags[word_ix], 0xffffffffu - mask);
-    if (value != 0u) {
-        atomicOr(&ptcl_tags[word_ix], (value & 255u) << shift);
+        ptcl_records[dst].tag = tag;
+        ptcl_records[dst].backdrop = backdrop;
+        ptcl_records[dst].fill_rule = fill_rule;
+        ptcl_records[dst].segment_start = segment_start;
+        ptcl_records[dst].segment_end = segment_end;
+        ptcl_records[dst].color = color;
     }
 }

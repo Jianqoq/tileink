@@ -61,16 +61,17 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
         if (ptcl_ix >= range_end) {
             break;
         }
-        let tag = packed_u8_at(ptcl_ix);
+        let ptcl = ptcl_records[ptcl_ix];
+        let tag = ptcl.tag;
         if (tag == GPU_PTCL_END) {
             break;
         }
 
         if (tag == GPU_PTCL_COLOR) {
-            let color = scale_premul_u8(ptcl_colors[ptcl_ix], clip_mask);
+            let color = scale_premul_u8(ptcl.color, clip_mask);
             pixel = src_over_premul_u8(pixel, color);
         } else if (tag == GPU_PTCL_SDF) {
-            let draw_ix = ptcl_colors[ptcl_ix];
+            let draw_ix = ptcl.color;
             let coverage = sdf_coverage_from_draw(
                 draw_records[draw_ix],
                 f32(global_x) + 0.5,
@@ -84,9 +85,9 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
         } else if (tag == GPU_PTCL_GLYPH) {
             pixel = composite_glyphs_at(
                 pixel,
-                ptcl_segment_starts[ptcl_ix],
-                ptcl_segment_ends[ptcl_ix],
-                ptcl_colors[ptcl_ix],
+                ptcl.segment_start,
+                ptcl.segment_end,
+                ptcl.color,
                 global_x,
                 global_y,
                 clip_mask,
@@ -116,7 +117,7 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
                 clip_mask = 255u;
             }
         } else if (tag == GPU_PTCL_BEGIN_SDF_CLIP) {
-            let draw_ix = ptcl_colors[ptcl_ix];
+            let draw_ix = ptcl.color;
             let alpha = coverage_to_u8(sdf_coverage_from_draw(
                 draw_records[draw_ix],
                 f32(global_x) + 0.5,
@@ -189,10 +190,10 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
             tag == GPU_PTCL_BEGIN_BLEND
         ) {
             let alpha = fill_alpha_at(
-                ptcl_backdrops[ptcl_ix],
-                ptcl_fill_rules[ptcl_ix],
-                ptcl_segment_starts[ptcl_ix],
-                ptcl_segment_ends[ptcl_ix],
+                ptcl.backdrop,
+                ptcl.fill_rule,
+                ptcl.segment_start,
+                ptcl.segment_end,
                 local_x,
                 local_y,
             );
@@ -215,14 +216,14 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
                     group0_parent_pixel = pixel;
                     group0_parent_clip = clip_mask;
                     group0_layer_alpha = alpha;
-                    group0_payload = ptcl_colors[ptcl_ix];
+                    group0_payload = ptcl.color;
                     pushed_group = true;
                 } else if (group_depth == 1u) {
                     group1_kind = tag;
                     group1_parent_pixel = pixel;
                     group1_parent_clip = clip_mask;
                     group1_layer_alpha = alpha;
-                    group1_payload = ptcl_colors[ptcl_ix];
+                    group1_payload = ptcl.color;
                     pushed_group = true;
                 } else {
                     let spill_depth_ix = group_depth - FINE_LOCAL_GROUP_DEPTH;
@@ -236,7 +237,7 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
                         group_spills[stack_ix + 1u] = pixel;
                         group_spills[stack_ix + 2u] = clip_mask;
                         group_spills[stack_ix + 3u] = alpha;
-                        group_spills[stack_ix + 4u] = ptcl_colors[ptcl_ix];
+                        group_spills[stack_ix + 4u] = ptcl.color;
                         pushed_group = true;
                     }
                 }
@@ -247,7 +248,7 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
             } else {
                 let masked_alpha = combine_alpha(alpha, clip_mask);
                 if (masked_alpha != 0u) {
-                    let draw_ix = ptcl_colors[ptcl_ix];
+                    let draw_ix = ptcl.color;
                     let color = sample_brush(draw_records[draw_ix].brush_offset, f32(global_x) + 0.5, f32(global_y) + 0.5);
                     if (tag == GPU_PTCL_PATH_GLYPH) {
                         pixel = src_over_mask_linear_auto_u8(pixel, color, masked_alpha);
@@ -261,12 +262,6 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
     }
 
     return pixel;
-}
-
-fn packed_u8_at(ix: u32) -> u32 {
-    let word = ptcl_tags[ix / 4u];
-    let shift = (ix % 4u) * 8u;
-    return (word >> shift) & 255u;
 }
 
 fn composite_glyphs_at(
