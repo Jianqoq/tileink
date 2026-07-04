@@ -85,30 +85,26 @@ struct FineConfig {
 };
 
 @group(0) @binding(0) var<uniform> config: FineConfig;
-@group(0) @binding(2) var<storage, read> draw_flags: array<u32>;
-@group(0) @binding(3) var<storage, read> draw_brush_colors: array<u32>;
-@group(0) @binding(4) var<storage, read> draw_pixel_x0: array<i32>;
-@group(0) @binding(5) var<storage, read> draw_pixel_y0: array<i32>;
-@group(0) @binding(6) var<storage, read> draw_pixel_x1: array<i32>;
-@group(0) @binding(7) var<storage, read> draw_pixel_y1: array<i32>;
-@group(0) @binding(8) var<storage, read> draw_sdf_refs: array<u32>;
-@group(0) @binding(9) var<storage, read> sdf_kinds: array<u32>;
-@group(0) @binding(10) var<storage, read> sdf_x0: array<f32>;
-@group(0) @binding(11) var<storage, read> sdf_y0: array<f32>;
-@group(0) @binding(12) var<storage, read> sdf_x1: array<f32>;
-@group(0) @binding(13) var<storage, read> sdf_y1: array<f32>;
-@group(0) @binding(14) var<storage, read> sdf_r0: array<f32>;
-@group(0) @binding(15) var<storage, read> sdf_r1: array<f32>;
-@group(0) @binding(16) var<storage, read> sdf_r2: array<f32>;
-@group(0) @binding(17) var<storage, read> sdf_r3: array<f32>;
-@group(0) @binding(18) var<storage, read> sdf_stroke_top: array<f32>;
-@group(0) @binding(19) var<storage, read> sdf_stroke_right: array<f32>;
-@group(0) @binding(20) var<storage, read> sdf_stroke_bottom: array<f32>;
-@group(0) @binding(21) var<storage, read> sdf_stroke_left: array<f32>;
-@group(0) @binding(22) var<storage, read> sdf_shadow_offset_x: array<f32>;
-@group(0) @binding(23) var<storage, read> sdf_shadow_offset_y: array<f32>;
-@group(0) @binding(24) var<storage, read> sdf_shadow_expand: array<f32>;
-@group(0) @binding(25) var<storage, read> sdf_shadow_intensity: array<f32>;
+struct DrawRecord {
+    path_id: u32,
+    glyph_run_id: u32,
+    sdf_offset: u32,
+    sdf_len: u32,
+    sdf_shadow_offset: u32,
+    sdf_shadow_len: u32,
+    brush_offset: u32,
+    brush_len: u32,
+    tag: u32,
+    fill_rule: u32,
+    pixel_x0: i32,
+    pixel_y0: i32,
+    pixel_x1: i32,
+    pixel_y1: i32,
+    solid_rect: u32,
+};
+@group(0) @binding(2) var<storage, read> draw_records: array<DrawRecord>;
+@group(0) @binding(8) var<storage, read> sdf_blob: array<u32>;
+@group(0) @binding(9) var<storage, read> sdf_shadow_blob: array<u32>;
 @group(0) @binding(26) var<storage, read> brush_data: array<u32>;
 @group(0) @binding(27) var<storage, read> brush_params: array<f32>;
 @group(0) @binding(28) var<storage, read> brush_payloads: array<u32>;

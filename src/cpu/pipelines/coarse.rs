@@ -2,13 +2,13 @@ use rayon::prelude::*;
 
 use crate::{
     shared::{
-        bd_record::BackdropRecord,
         bounds::Bounds,
         brush::decode_encoded_brush,
         draw_record::{DrawRecord, DrawTag},
         execution::LayerStackEntry,
         gpu_plan::TileDrawBins,
         gpu_sdf::{decode_sdf, decode_sdf_shadow},
+        path::PathRecord,
         pixel::opacity_f32_to_u8,
         tile_ptcl::{
             TileColorPtcl, TileFillPtcl, TileGlyphPtcl, TilePtcl, TilePtclRange, TileSdfPtcl,
@@ -30,7 +30,7 @@ pub struct CoarseCpuPrepared<'a> {
     // This range selects the batch's active fused layer stack snapshot from
     // the execution-plan arena. It is nesting state, not a screen-space bound.
     layer_stack_range: std::ops::Range<usize>,
-    backdrop_records: &'a [BackdropRecord],
+    backdrop_records: &'a [PathRecord],
     backdrops: &'a [i32],
     tile_segment_ranges: &'a [TileSegmentRange],
     tile_ptcl_ranges: &'a mut Vec<TilePtclRange>,
@@ -115,7 +115,7 @@ impl<'a> CoarseCpuPrepared<'a> {
         brush_blob: &[u32],
         sdf_blob: &[u32],
         sdf_shadow_blob: &[u32],
-        backdrop_records: &[BackdropRecord],
+        backdrop_records: &[PathRecord],
         backdrops: &[i32],
         tile_segment_ranges: &[TileSegmentRange],
         text: Option<&PreparedTextData>,
@@ -296,7 +296,7 @@ impl<'a> CoarseCpuPrepared<'a> {
         brush_blob: &[u32],
         sdf_blob: &[u32],
         sdf_shadow_blob: &[u32],
-        backdrop_records: &[BackdropRecord],
+        backdrop_records: &[PathRecord],
         backdrops: &[i32],
         tile_segment_ranges: &[TileSegmentRange],
         tiles_size: (u32, u32),
@@ -410,7 +410,7 @@ impl<'a> CoarseCpuPrepared<'a> {
         draw_records: &'b [DrawRecord],
         sdf_blob: &[u32],
         _sdf_shadow_blob: &[u32],
-        backdrop_records: &[BackdropRecord],
+        backdrop_records: &[PathRecord],
         backdrops: &[i32],
         tile_segment_ranges: &[TileSegmentRange],
         tiles_size: (u32, u32),
@@ -469,7 +469,7 @@ impl<'a> CoarseCpuPrepared<'a> {
         draw_records: &'b [DrawRecord],
         sdf_blob: &[u32],
         sdf_shadow_blob: &[u32],
-        backdrop_records: &[BackdropRecord],
+        backdrop_records: &[PathRecord],
         backdrops: &[i32],
         tile_segment_ranges: &[TileSegmentRange],
         tiles_size: (u32, u32),
@@ -638,7 +638,7 @@ impl CoarseCpuPipeline {
         layer_stack_data: &'a [LayerStackEntry],
         layer_stack_range: std::ops::Range<usize>,
         tile_draw_bins: &'a TileDrawBins,
-        backdrop_records: &'a [BackdropRecord],
+        backdrop_records: &'a [PathRecord],
         backdrops: &'a [i32],
         tile_segment_ranges: &'a [TileSegmentRange],
         tile_ptcl_ranges: &'a mut Vec<TilePtclRange>,
@@ -677,13 +677,13 @@ mod tests {
     use crate::{
         Canvas, TextFontSystem,
         shared::{
-            bd_record::BackdropRecord,
             bounds::{Bounds, PixelBounds},
             brush::{Brush, push_encoded_brush},
             draw_record::{DrawRecord, DrawTag},
             execution::LayerStackEntry,
             fill::FillRule,
             gpu_plan::{TileDrawBins, build_tile_draw_bins_for_draws_into},
+            path::PathRecord,
             tile_ptcl::TilePtcl,
             tile_seg_range::TileSegmentRange,
         },
@@ -777,7 +777,7 @@ mod tests {
         ];
         let brush_blob = assign_brushes(&mut draw_records, &brushes);
         let backdrop_records = [
-            BackdropRecord {
+            PathRecord {
                 path_id: 0,
                 data_offset: 0,
                 data_len: 1,
@@ -788,8 +788,9 @@ mod tests {
                 segment_start: 0,
                 segment_capacity: 1,
                 segment_count: 0,
+                ..PathRecord::default()
             },
-            BackdropRecord {
+            PathRecord {
                 path_id: 1,
                 data_offset: 1,
                 data_len: 1,
@@ -800,8 +801,9 @@ mod tests {
                 segment_start: 1,
                 segment_capacity: 1,
                 segment_count: 0,
+                ..PathRecord::default()
             },
-            BackdropRecord {
+            PathRecord {
                 path_id: 2,
                 data_offset: 2,
                 data_len: 1,
@@ -812,6 +814,7 @@ mod tests {
                 segment_start: 2,
                 segment_capacity: 1,
                 segment_count: 0,
+                ..PathRecord::default()
             },
         ];
         let backdrops = [0, 0, 0];
@@ -996,7 +999,7 @@ mod tests {
         ];
         let brush_blob = assign_brushes(&mut draw_records, &brushes);
         let backdrop_records = [
-            BackdropRecord {
+            PathRecord {
                 path_id: 0,
                 data_offset: 0,
                 data_len: 2,
@@ -1007,8 +1010,9 @@ mod tests {
                 segment_start: 0,
                 segment_capacity: 0,
                 segment_count: 0,
+                ..PathRecord::default()
             },
-            BackdropRecord {
+            PathRecord {
                 path_id: 1,
                 data_offset: 2,
                 data_len: 1,
@@ -1019,6 +1023,7 @@ mod tests {
                 segment_start: 0,
                 segment_capacity: 0,
                 segment_count: 0,
+                ..PathRecord::default()
             },
         ];
         let backdrops = [1, 1, 1];

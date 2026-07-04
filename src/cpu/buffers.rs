@@ -1,7 +1,6 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use crate::shared::{
-    bd_record::BackdropRecord,
     gpu_plan::{TileDrawBins, build_tile_draw_bins_into},
     line_seg::LineSegment,
     tile_ptcl::{TilePtcl, TilePtclRange},
@@ -47,11 +46,12 @@ impl RasterBuffers {
     pub(in crate::cpu) fn resize_scan_outputs(
         &mut self,
         canvas: &crate::canvas::Canvas,
-        last_bd_record: BackdropRecord,
+        last_path_record: crate::shared::path::PathRecord,
     ) {
-        let backdrop_len = last_bd_record.data_offset as usize + last_bd_record.data_len as usize;
+        let backdrop_len =
+            last_path_record.data_offset as usize + last_path_record.data_len as usize;
         let segment_len =
-            last_bd_record.segment_start as usize + last_bd_record.segment_capacity as usize;
+            last_path_record.segment_start as usize + last_path_record.segment_capacity as usize;
         self.backdrops.resize(backdrop_len, 0);
         self.tile_segment_ranges
             .resize(backdrop_len, TileSegmentRange::default());
@@ -60,7 +60,7 @@ impl RasterBuffers {
         self.segment_tile_cursors
             .resize_with(backdrop_len, || AtomicU32::new(0));
         self.segments_bump
-            .resize_with(canvas.bd_records.len(), || AtomicU32::new(0));
+            .resize_with(canvas.path_records.len(), || AtomicU32::new(0));
         for bump in &self.segments_bump {
             bump.store(0, Ordering::Relaxed);
         }

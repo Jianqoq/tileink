@@ -6,8 +6,6 @@ use crate::{
         gpu_brush::{GPU_BRUSH_U32_STRIDE, GpuBrushUpload},
         image::{Image, premul_color_to_rgba8_pack},
         image_resource::ImageKey,
-        pixel::premul_f32_to_u32,
-        scene_columns::CanvasColumns,
     },
 };
 
@@ -36,7 +34,7 @@ fn push_rect_records_sdf_rect_without_path_storage() {
 
     assert_eq!(canvas.draw_records.len(), 1);
     assert!(canvas.path_records.is_empty());
-    assert!(canvas.bd_records.is_empty());
+    assert!(canvas.path_records.is_empty());
     let draw = &canvas.draw_records[0];
     assert_eq!(
         draw.pixel_bounds,
@@ -76,7 +74,7 @@ fn push_rect_records_sdf_rect_with_independent_radii() {
 
     assert_eq!(canvas.draw_records.len(), 1);
     assert!(canvas.path_records.is_empty());
-    assert!(canvas.bd_records.is_empty());
+    assert!(canvas.path_records.is_empty());
     match draw_sdf(&canvas, 0) {
         Some(Sdf::Rect(rect)) => {
             assert_eq!(rect.axis_bounds(), (4.0, 5.0, 40.0, 41.0));
@@ -104,7 +102,7 @@ fn push_image_records_pattern_rect_draw() {
     assert_eq!(draw.index(), 0);
     assert_eq!(canvas.draw_records.len(), 1);
     assert!(canvas.path_records.is_empty());
-    assert!(canvas.bd_records.is_empty());
+    assert!(canvas.path_records.is_empty());
     let record = &canvas.draw_records[0];
     assert_eq!(
         record.pixel_bounds,
@@ -215,7 +213,7 @@ fn push_circle_records_sdf_circle_without_path_storage() {
 
     assert_eq!(canvas.draw_records.len(), 1);
     assert!(canvas.path_records.is_empty());
-    assert!(canvas.bd_records.is_empty());
+    assert!(canvas.path_records.is_empty());
     let draw = &canvas.draw_records[0];
     assert_eq!(
         draw.pixel_bounds,
@@ -253,21 +251,8 @@ fn draw_id_updates_specific_draw_color() {
     assert!(canvas.set_draw_color(first, rgb(8, 9, 10)));
     assert_eq!(canvas.draw_solid_color(first), Some(rgb(8, 9, 10)));
     assert_eq!(canvas.draw_solid_color(second), Some(rgb(0, 255, 0)));
-    let mut columns = CanvasColumns::default();
-    columns.rebuild(
-        &canvas.lines,
-        &canvas.path_records,
-        &canvas.draw_records,
-        &canvas.brush_blob,
-        &canvas.sdf_blob,
-        &canvas.sdf_shadow_blob,
-    );
     let brushes =
         GpuBrushUpload::from_scene_brush_blob(&canvas.draw_records, &canvas.brush_blob, None);
-    assert_eq!(
-        columns.draw_brush_colors[first.index()],
-        premul_f32_to_u32(rgb(8, 9, 10).premultiply().components)
-    );
     assert_eq!(
         brushes.data[first.index() * GPU_BRUSH_U32_STRIDE + 4],
         premul_color_to_rgba8_pack(rgb(8, 9, 10))
@@ -318,7 +303,7 @@ fn no_op_sdf_primitive_returns_no_draw_id() {
 }
 
 #[test]
-fn upload_columns_rebuild_after_append() {
+fn scene_records_rebuild_after_append() {
     let mut parent = test_scene();
     parent.push_rect(
         Rect::new(2.0, 3.0, 18.0, 19.0),
@@ -330,25 +315,12 @@ fn upload_columns_rebuild_after_append() {
     child.push_circle(Circle::new((16.0, 16.0), 8.0), Brush::Solid(rgb(0, 255, 0)));
     parent.append(&child, Point::new(4.0, 5.0));
 
-    let mut columns = CanvasColumns::default();
-    columns.rebuild(
-        &parent.lines,
-        &parent.path_records,
-        &parent.draw_records,
-        &parent.brush_blob,
-        &parent.sdf_blob,
-        &parent.sdf_shadow_blob,
-    );
-
-    assert_eq!(columns.draw_path_ids.len(), parent.draw_records.len());
-    assert_eq!(columns.draw_brush_colors.len(), parent.draw_records.len());
-    assert_eq!(columns.draw_flags.len(), parent.draw_records.len());
+    assert!(parent.lines.is_empty());
+    assert!(parent.path_records.is_empty());
     assert_eq!(
-        columns.draw_flags_without_text.len(),
-        parent.draw_records.len()
+        parent.sdf_blob.len(),
+        2 * crate::shared::gpu_sdf::ENCODED_SDF_WORDS
     );
-    assert_eq!(columns.sdf.refs.len(), parent.draw_records.len());
-    assert_eq!(columns.sdf.kinds.len(), 2);
 }
 
 #[test]
@@ -459,7 +431,7 @@ fn push_candlestick_records_sdf_without_path_storage() {
 
     assert_eq!(canvas.draw_records.len(), 1);
     assert!(canvas.path_records.is_empty());
-    assert!(canvas.bd_records.is_empty());
+    assert!(canvas.path_records.is_empty());
     assert_eq!(
         canvas.draw_records[0].pixel_bounds,
         PixelBounds {
@@ -522,7 +494,7 @@ fn push_line_records_sdf_without_path_storage() {
 
     assert_eq!(canvas.draw_records.len(), 1);
     assert!(canvas.path_records.is_empty());
-    assert!(canvas.bd_records.is_empty());
+    assert!(canvas.path_records.is_empty());
     assert_eq!(
         canvas.draw_records[0].pixel_bounds,
         PixelBounds {
@@ -555,7 +527,7 @@ fn push_dash_line_records_sdf_without_path_storage() {
 
     assert_eq!(canvas.draw_records.len(), 1);
     assert!(canvas.path_records.is_empty());
-    assert!(canvas.bd_records.is_empty());
+    assert!(canvas.path_records.is_empty());
     assert_eq!(
         canvas.draw_records[0].pixel_bounds,
         PixelBounds {
@@ -591,7 +563,7 @@ fn push_sdf_arc_records_sdf_without_path_storage() {
 
     assert_eq!(canvas.draw_records.len(), 1);
     assert!(canvas.path_records.is_empty());
-    assert!(canvas.bd_records.is_empty());
+    assert!(canvas.path_records.is_empty());
     match draw_sdf(&canvas, 0) {
         Some(Sdf::Arc(arc)) => {
             assert_eq!(arc.center, Point::new(32.0, 32.0));
@@ -636,7 +608,7 @@ fn push_shape_shadows_record_sdf_shadow_without_path_storage() {
 
     assert_eq!(canvas.draw_records.len(), 3);
     assert!(canvas.path_records.is_empty());
-    assert!(canvas.bd_records.is_empty());
+    assert!(canvas.path_records.is_empty());
     assert!(
         canvas
             .draw_records
@@ -669,7 +641,7 @@ fn push_rect_stroke_records_sdf_without_path_storage() {
 
     assert_eq!(canvas.draw_records.len(), 1);
     assert!(canvas.path_records.is_empty());
-    assert!(canvas.bd_records.is_empty());
+    assert!(canvas.path_records.is_empty());
     let draw = &canvas.draw_records[0];
     assert_eq!(
         draw.pixel_bounds,
@@ -709,7 +681,7 @@ fn push_rect_stroke_widths_records_per_side_sdf_widths() {
 
     assert_eq!(canvas.draw_records.len(), 1);
     assert!(canvas.path_records.is_empty());
-    assert!(canvas.bd_records.is_empty());
+    assert!(canvas.path_records.is_empty());
     let draw = &canvas.draw_records[0];
     assert_eq!(
         draw.pixel_bounds,
@@ -740,7 +712,7 @@ fn push_circle_stroke_records_sdf_without_path_storage() {
 
     assert_eq!(canvas.draw_records.len(), 1);
     assert!(canvas.path_records.is_empty());
-    assert!(canvas.bd_records.is_empty());
+    assert!(canvas.path_records.is_empty());
     let draw = &canvas.draw_records[0];
     assert_eq!(
         draw.pixel_bounds,
@@ -778,7 +750,7 @@ fn push_sdf_stroke_with_zero_width_is_noop() {
 
     assert!(canvas.draw_records.is_empty());
     assert!(canvas.path_records.is_empty());
-    assert!(canvas.bd_records.is_empty());
+    assert!(canvas.path_records.is_empty());
 }
 
 #[test]
@@ -792,7 +764,7 @@ fn push_dashed_circle_stroke_uses_path_storage() {
 
     assert_eq!(canvas.draw_records.len(), 1);
     assert_eq!(canvas.path_records.len(), 1);
-    assert_eq!(canvas.bd_records.len(), 1);
+    assert_eq!(canvas.path_records.len(), 1);
     assert!(canvas.draw_records[0].path_id().is_some());
     assert!(canvas.draw_records[0].sdf_range().is_none());
     assert!(canvas.draw_records[0].sdf_shadow_range().is_none());

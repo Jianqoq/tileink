@@ -9,7 +9,7 @@ use super::commands::{
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 
 const WORKGROUP_SIZE: u32 = 256;
-const STORAGE_BINDING_COUNT: u32 = 48;
+const STORAGE_BINDING_COUNT: u32 = 38;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct WgpuCoarseBatch {
@@ -60,10 +60,11 @@ impl WgpuCoarsePipeline {
             return None;
         }
 
+        let layout_entries = coarse_layout_entries();
         let bind_group_layout =
             device.create_bind_group_layout(&::wgpu::BindGroupLayoutDescriptor {
                 label: Some("tileink wgpu coarse bind group layout"),
-                entries: &coarse_layout_entries(),
+                entries: &layout_entries,
             });
         let shader = device.create_shader_module(::wgpu::ShaderModuleDescriptor {
             label: Some("tileink wgpu coarse shader"),
@@ -230,8 +231,7 @@ impl WgpuCoarsePipeline {
             layout: &self.bind_group_layout,
             entries: &[
                 bind_config_buffer(0, &self.config, config_offset, self.config_size),
-                bind_buffer(1, bindings.draw_path_ids),
-                bind_buffer(2, bindings.draw_glyph_run_ids),
+                bind_buffer(1, bindings.draw_records),
                 bind_buffer(3, bindings.glyph_run_starts),
                 bind_buffer(4, bindings.glyph_run_counts),
                 bind_buffer(5, bindings.glyph_image_ids),
@@ -241,43 +241,34 @@ impl WgpuCoarsePipeline {
                 bind_buffer(9, bindings.glyph_image_top),
                 bind_buffer(10, bindings.glyph_image_width),
                 bind_buffer(11, bindings.glyph_image_height),
-                bind_buffer(12, bindings.draw_flags),
-                bind_buffer(13, bindings.draw_brush_colors),
-                bind_buffer(14, bindings.draw_pixel_x0),
-                bind_buffer(15, bindings.draw_pixel_y0),
-                bind_buffer(16, bindings.draw_pixel_x1),
-                bind_buffer(17, bindings.draw_pixel_y1),
-                bind_buffer(18, bindings.backdrop_data_offsets),
-                bind_buffer(19, bindings.backdrop_tile_x0),
-                bind_buffer(20, bindings.backdrop_tile_y0),
-                bind_buffer(21, bindings.backdrop_tile_x1),
-                bind_buffer(22, bindings.backdrop_tile_y1),
-                bind_buffer(23, bindings.backdrops),
-                bind_buffer(24, bindings.segment_starts),
-                bind_buffer(25, bindings.segment_ends),
-                bind_buffer(26, bindings.layer_stack_tags),
-                bind_buffer(27, bindings.layer_stack_draws),
-                bind_buffer(28, bindings.layer_stack_payloads),
-                bind_buffer(29, bindings.tile_ptcl_counts),
-                bind_buffer(30, bindings.tile_ptcl_range_starts),
-                bind_buffer(31, bindings.tile_ptcl_range_ends),
-                bind_buffer(32, bindings.tile_glyph_counts),
-                bind_buffer(33, bindings.tile_glyph_range_starts),
-                bind_buffer(34, bindings.tile_glyph_range_ends),
-                bind_buffer(35, bindings.chunk_totals),
-                bind_buffer(36, bindings.chunk_offsets),
-                bind_buffer(37, bindings.glyph_chunk_totals),
-                bind_buffer(38, bindings.glyph_chunk_offsets),
-                bind_buffer(39, bindings.ptcl_tags),
-                bind_buffer(40, bindings.ptcl_backdrops),
-                bind_buffer(41, bindings.ptcl_fill_rules),
-                bind_buffer(42, bindings.ptcl_segment_starts),
-                bind_buffer(43, bindings.ptcl_segment_ends),
-                bind_buffer(44, bindings.ptcl_colors),
-                bind_buffer(45, bindings.glyph_indices),
-                bind_buffer(46, bindings.tile_draw_range_starts),
-                bind_buffer(47, bindings.tile_draw_range_ends),
-                bind_buffer(48, bindings.tile_draw_indices),
+                bind_buffer(13, bindings.brush_data),
+                bind_buffer(18, bindings.path_records),
+                bind_buffer(19, bindings.backdrops),
+                bind_buffer(20, bindings.segment_starts),
+                bind_buffer(21, bindings.segment_ends),
+                bind_buffer(22, bindings.layer_stack_tags),
+                bind_buffer(23, bindings.layer_stack_draws),
+                bind_buffer(24, bindings.layer_stack_payloads),
+                bind_buffer(25, bindings.tile_ptcl_counts),
+                bind_buffer(26, bindings.tile_ptcl_range_starts),
+                bind_buffer(27, bindings.tile_ptcl_range_ends),
+                bind_buffer(28, bindings.tile_glyph_counts),
+                bind_buffer(29, bindings.tile_glyph_range_starts),
+                bind_buffer(30, bindings.tile_glyph_range_ends),
+                bind_buffer(31, bindings.chunk_totals),
+                bind_buffer(32, bindings.chunk_offsets),
+                bind_buffer(33, bindings.glyph_chunk_totals),
+                bind_buffer(34, bindings.glyph_chunk_offsets),
+                bind_buffer(35, bindings.ptcl_tags),
+                bind_buffer(36, bindings.ptcl_backdrops),
+                bind_buffer(37, bindings.ptcl_fill_rules),
+                bind_buffer(38, bindings.ptcl_segment_starts),
+                bind_buffer(39, bindings.ptcl_segment_ends),
+                bind_buffer(40, bindings.ptcl_colors),
+                bind_buffer(41, bindings.glyph_indices),
+                bind_buffer(42, bindings.tile_draw_range_starts),
+                bind_buffer(43, bindings.tile_draw_range_ends),
+                bind_buffer(44, bindings.tile_draw_indices),
             ],
         })
     }
@@ -299,8 +290,8 @@ fn create_pipeline(
     })
 }
 
-fn coarse_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 49] {
-    [
+fn coarse_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
+    vec![
         ::wgpu::BindGroupLayoutEntry {
             binding: 0,
             visibility: ::wgpu::ShaderStages::COMPUTE,
@@ -312,7 +303,6 @@ fn coarse_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 49] {
             count: None,
         },
         storage_entry(1, true),
-        storage_entry(2, true),
         storage_entry(3, true),
         storage_entry(4, true),
         storage_entry(5, true),
@@ -322,23 +312,18 @@ fn coarse_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 49] {
         storage_entry(9, true),
         storage_entry(10, true),
         storage_entry(11, true),
-        storage_entry(12, true),
         storage_entry(13, true),
-        storage_entry(14, true),
-        storage_entry(15, true),
-        storage_entry(16, true),
-        storage_entry(17, true),
         storage_entry(18, true),
-        storage_entry(19, true),
+        storage_entry(19, false),
         storage_entry(20, true),
         storage_entry(21, true),
         storage_entry(22, true),
-        storage_entry(23, false),
+        storage_entry(23, true),
         storage_entry(24, true),
-        storage_entry(25, true),
-        storage_entry(26, true),
-        storage_entry(27, true),
-        storage_entry(28, true),
+        storage_entry(25, false),
+        storage_entry(26, false),
+        storage_entry(27, false),
+        storage_entry(28, false),
         storage_entry(29, false),
         storage_entry(30, false),
         storage_entry(31, false),
@@ -352,13 +337,9 @@ fn coarse_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 49] {
         storage_entry(39, false),
         storage_entry(40, false),
         storage_entry(41, false),
-        storage_entry(42, false),
-        storage_entry(43, false),
-        storage_entry(44, false),
-        storage_entry(45, false),
-        storage_entry(46, true),
-        storage_entry(47, true),
-        storage_entry(48, true),
+        storage_entry(42, true),
+        storage_entry(43, true),
+        storage_entry(44, true),
     ]
 }
 

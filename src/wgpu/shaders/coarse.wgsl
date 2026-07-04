@@ -14,8 +14,39 @@ struct CoarseConfig {
 };
 
 @group(0) @binding(0) var<uniform> config: CoarseConfig;
-@group(0) @binding(1) var<storage, read> draw_path_ids: array<u32>;
-@group(0) @binding(2) var<storage, read> draw_glyph_run_ids: array<u32>;
+struct DrawRecord {
+    path_id: u32,
+    glyph_run_id: u32,
+    sdf_offset: u32,
+    sdf_len: u32,
+    sdf_shadow_offset: u32,
+    sdf_shadow_len: u32,
+    brush_offset: u32,
+    brush_len: u32,
+    tag: u32,
+    fill_rule: u32,
+    pixel_x0: i32,
+    pixel_y0: i32,
+    pixel_x1: i32,
+    pixel_y1: i32,
+    solid_rect: u32,
+};
+struct PathRecord {
+    path_id: u32,
+    line_count: u32,
+    line_start: u32,
+    flags: u32,
+    data_offset: u32,
+    data_len: u32,
+    tile_x0: u32,
+    tile_y0: u32,
+    tile_x1: u32,
+    tile_y1: u32,
+    segment_start: u32,
+    segment_capacity: u32,
+    segment_count: u32,
+};
+@group(0) @binding(1) var<storage, read> draw_records: array<DrawRecord>;
 @group(0) @binding(3) var<storage, read> glyph_run_starts: array<u32>;
 @group(0) @binding(4) var<storage, read> glyph_run_counts: array<u32>;
 @group(0) @binding(5) var<storage, read> glyph_image_ids: array<u32>;
@@ -25,43 +56,34 @@ struct CoarseConfig {
 @group(0) @binding(9) var<storage, read> glyph_image_top: array<i32>;
 @group(0) @binding(10) var<storage, read> glyph_image_width: array<u32>;
 @group(0) @binding(11) var<storage, read> glyph_image_height: array<u32>;
-@group(0) @binding(12) var<storage, read> draw_flags: array<u32>;
-@group(0) @binding(13) var<storage, read> draw_brush_colors: array<u32>;
-@group(0) @binding(14) var<storage, read> draw_pixel_x0: array<i32>;
-@group(0) @binding(15) var<storage, read> draw_pixel_y0: array<i32>;
-@group(0) @binding(16) var<storage, read> draw_pixel_x1: array<i32>;
-@group(0) @binding(17) var<storage, read> draw_pixel_y1: array<i32>;
-@group(0) @binding(18) var<storage, read> backdrop_data_offsets: array<u32>;
-@group(0) @binding(19) var<storage, read> backdrop_tile_x0: array<u32>;
-@group(0) @binding(20) var<storage, read> backdrop_tile_y0: array<u32>;
-@group(0) @binding(21) var<storage, read> backdrop_tile_x1: array<u32>;
-@group(0) @binding(22) var<storage, read> backdrop_tile_y1: array<u32>;
-@group(0) @binding(23) var<storage, read_write> backdrops: array<atomic<i32>>;
-@group(0) @binding(24) var<storage, read> segment_starts: array<u32>;
-@group(0) @binding(25) var<storage, read> segment_ends: array<u32>;
-@group(0) @binding(26) var<storage, read> layer_stack_tags: array<u32>;
-@group(0) @binding(27) var<storage, read> layer_stack_draws: array<u32>;
-@group(0) @binding(28) var<storage, read> layer_stack_payloads: array<u32>;
-@group(0) @binding(29) var<storage, read_write> tile_ptcl_counts: array<u32>;
-@group(0) @binding(30) var<storage, read_write> tile_ptcl_range_starts: array<u32>;
-@group(0) @binding(31) var<storage, read_write> tile_ptcl_range_ends: array<u32>;
-@group(0) @binding(32) var<storage, read_write> tile_glyph_counts: array<u32>;
-@group(0) @binding(33) var<storage, read_write> tile_glyph_range_starts: array<u32>;
-@group(0) @binding(34) var<storage, read_write> tile_glyph_range_ends: array<u32>;
-@group(0) @binding(35) var<storage, read_write> chunk_totals: array<u32>;
-@group(0) @binding(36) var<storage, read_write> chunk_offsets: array<u32>;
-@group(0) @binding(37) var<storage, read_write> glyph_chunk_totals: array<u32>;
-@group(0) @binding(38) var<storage, read_write> glyph_chunk_offsets: array<u32>;
-@group(0) @binding(39) var<storage, read_write> ptcl_tags: array<atomic<u32>>;
-@group(0) @binding(40) var<storage, read_write> ptcl_backdrops: array<i32>;
-@group(0) @binding(41) var<storage, read_write> ptcl_fill_rules: array<u32>;
-@group(0) @binding(42) var<storage, read_write> ptcl_segment_starts: array<u32>;
-@group(0) @binding(43) var<storage, read_write> ptcl_segment_ends: array<u32>;
-@group(0) @binding(44) var<storage, read_write> ptcl_colors: array<u32>;
-@group(0) @binding(45) var<storage, read_write> glyph_indices: array<u32>;
-@group(0) @binding(46) var<storage, read> tile_draw_range_starts: array<u32>;
-@group(0) @binding(47) var<storage, read> tile_draw_range_ends: array<u32>;
-@group(0) @binding(48) var<storage, read> tile_draw_indices: array<u32>;
+@group(0) @binding(13) var<storage, read> brush_data: array<u32>;
+@group(0) @binding(18) var<storage, read> path_records: array<PathRecord>;
+@group(0) @binding(19) var<storage, read_write> backdrops: array<atomic<i32>>;
+@group(0) @binding(20) var<storage, read> segment_starts: array<u32>;
+@group(0) @binding(21) var<storage, read> segment_ends: array<u32>;
+@group(0) @binding(22) var<storage, read> layer_stack_tags: array<u32>;
+@group(0) @binding(23) var<storage, read> layer_stack_draws: array<u32>;
+@group(0) @binding(24) var<storage, read> layer_stack_payloads: array<u32>;
+@group(0) @binding(25) var<storage, read_write> tile_ptcl_counts: array<u32>;
+@group(0) @binding(26) var<storage, read_write> tile_ptcl_range_starts: array<u32>;
+@group(0) @binding(27) var<storage, read_write> tile_ptcl_range_ends: array<u32>;
+@group(0) @binding(28) var<storage, read_write> tile_glyph_counts: array<u32>;
+@group(0) @binding(29) var<storage, read_write> tile_glyph_range_starts: array<u32>;
+@group(0) @binding(30) var<storage, read_write> tile_glyph_range_ends: array<u32>;
+@group(0) @binding(31) var<storage, read_write> chunk_totals: array<u32>;
+@group(0) @binding(32) var<storage, read_write> chunk_offsets: array<u32>;
+@group(0) @binding(33) var<storage, read_write> glyph_chunk_totals: array<u32>;
+@group(0) @binding(34) var<storage, read_write> glyph_chunk_offsets: array<u32>;
+@group(0) @binding(35) var<storage, read_write> ptcl_tags: array<atomic<u32>>;
+@group(0) @binding(36) var<storage, read_write> ptcl_backdrops: array<i32>;
+@group(0) @binding(37) var<storage, read_write> ptcl_fill_rules: array<u32>;
+@group(0) @binding(38) var<storage, read_write> ptcl_segment_starts: array<u32>;
+@group(0) @binding(39) var<storage, read_write> ptcl_segment_ends: array<u32>;
+@group(0) @binding(40) var<storage, read_write> ptcl_colors: array<u32>;
+@group(0) @binding(41) var<storage, read_write> glyph_indices: array<u32>;
+@group(0) @binding(42) var<storage, read> tile_draw_range_starts: array<u32>;
+@group(0) @binding(43) var<storage, read> tile_draw_range_ends: array<u32>;
+@group(0) @binding(44) var<storage, read> tile_draw_indices: array<u32>;
 
 const INVALID: u32 = 0xffffffffu;
 const GPU_DRAW_BRUSH: u32 = 0u;
@@ -70,6 +92,8 @@ const GPU_DRAW_OPACITY: u32 = 2u;
 const GPU_DRAW_BLEND: u32 = 3u;
 const GPU_DRAW_ISOLATE: u32 = 4u;
 const GPU_DRAW_PATH_GLYPH: u32 = 5u;
+const GPU_BRUSH_U32_STRIDE: u32 = 9u;
+const GPU_BRUSH_SOLID: u32 = 1u;
 const GPU_LAYER_CLIP: u32 = 0u;
 const GPU_LAYER_OPACITY: u32 = 1u;
 const GPU_LAYER_BLEND: u32 = 2u;
@@ -86,11 +110,6 @@ const GPU_PTCL_SDF: u32 = 9u;
 const GPU_PTCL_GLYPH: u32 = 10u;
 const GPU_PTCL_PATH_GLYPH: u32 = 11u;
 const GPU_PTCL_BEGIN_SDF_CLIP: u32 = 12u;
-const DRAW_FLAG_TAG_MASK: u32 = 7u;
-const DRAW_FLAG_FILL_RULE_EVEN_ODD: u32 = 8u;
-const DRAW_FLAG_SOLID_COLOR_FAST_PATH: u32 = 32u;
-const DRAW_FLAG_HAS_SDF: u32 = 64u;
-const DRAW_FLAG_HAS_GLYPH: u32 = 128u;
 
 var<workgroup> coarse_scratch: array<u32, 256>;
 var<workgroup> coarse_total: u32;
@@ -125,7 +144,7 @@ fn coarse_count(
                 let draw_tag = draw_tag_at(draw_ix);
                 if (draw_has_glyph_at(draw_ix)) {
                     if (draw_tag == GPU_DRAW_BRUSH) {
-                        let tile_glyphs = count_tile_glyphs_for_run(draw_glyph_run_ids[draw_ix], tile_x, tile_y);
+                        let tile_glyphs = count_tile_glyphs_for_run(draw_records[draw_ix].glyph_run_id, tile_x, tile_y);
                         if (tile_glyphs > 0u) {
                             count += 1u;
                             glyph_count += tile_glyphs;
@@ -415,7 +434,7 @@ fn coarse_emit(
             let draw_tag = draw_tag_at(draw_ix);
             if (draw_has_glyph_at(draw_ix)) {
                 if (draw_tag == GPU_DRAW_BRUSH) {
-                    glyph_count = count_tile_glyphs_for_run(draw_glyph_run_ids[draw_ix], tile_x, tile_y);
+                    glyph_count = count_tile_glyphs_for_run(draw_records[draw_ix].glyph_run_id, tile_x, tile_y);
                     if (glyph_count > 0u) {
                         valid = true;
                         ptcl_tag = GPU_PTCL_GLYPH;
@@ -452,7 +471,7 @@ fn coarse_emit(
                         ptcl_segment_start = segment_start;
                         ptcl_segment_end = segment_end;
                         if (ptcl_tag == GPU_PTCL_COLOR) {
-                            ptcl_color = draw_brush_colors[draw_ix];
+                            ptcl_color = draw_solid_color_at(draw_ix);
                         } else if (draw_tag == GPU_DRAW_BRUSH || draw_tag == GPU_DRAW_PATH_GLYPH) {
                             ptcl_color = draw_ix;
                         }
@@ -471,7 +490,7 @@ fn coarse_emit(
                 ptcl_segment_start = glyph_cursor + glyph_offset;
                 ptcl_segment_end = ptcl_segment_start + glyph_count;
                 if (ptcl_segment_end <= glyph_range_end) {
-                    store_tile_glyphs_for_run(ptcl_segment_start, draw_glyph_run_ids[draw_ix], tile_x, tile_y);
+                    store_tile_glyphs_for_run(ptcl_segment_start, draw_records[draw_ix].glyph_run_id, tile_x, tile_y);
                 }
             }
             store_particle(
@@ -600,7 +619,8 @@ fn emit_active_stack_ends(dst_start: u32) {
 }
 
 fn draw_backdrop_ix(draw_ix: u32, tile_x: u32, tile_y: u32) -> u32 {
-    let path_id = draw_path_ids[draw_ix];
+    let draw = draw_records[draw_ix];
+    let path_id = draw.path_id;
     let draw_tag = draw_tag_at(draw_ix);
     var result = INVALID;
     if (
@@ -612,19 +632,20 @@ fn draw_backdrop_ix(draw_ix: u32, tile_x: u32, tile_y: u32) -> u32 {
          draw_tag == GPU_DRAW_BLEND ||
          draw_tag == GPU_DRAW_ISOLATE)
     ) {
-        let draw_x0 = pixel_tile_min(draw_pixel_x0[draw_ix], config.tiles_width);
-        let draw_y0 = pixel_tile_min(draw_pixel_y0[draw_ix], config.tiles_height);
-        let draw_x1 = pixel_tile_max(draw_pixel_x1[draw_ix], config.tiles_width);
-        let draw_y1 = pixel_tile_max(draw_pixel_y1[draw_ix], config.tiles_height);
-        if (tile_x >= draw_x0 && tile_x < draw_x1 && tile_y >= draw_y0 && tile_y < draw_y1 && path_id < arrayLength(&backdrop_data_offsets)) {
-            let bx0 = backdrop_tile_x0[path_id];
-            let by0 = backdrop_tile_y0[path_id];
-            let bx1 = backdrop_tile_x1[path_id];
-            let by1 = backdrop_tile_y1[path_id];
+        let draw_x0 = pixel_tile_min(draw.pixel_x0, config.tiles_width);
+        let draw_y0 = pixel_tile_min(draw.pixel_y0, config.tiles_height);
+        let draw_x1 = pixel_tile_max(draw.pixel_x1, config.tiles_width);
+        let draw_y1 = pixel_tile_max(draw.pixel_y1, config.tiles_height);
+        if (tile_x >= draw_x0 && tile_x < draw_x1 && tile_y >= draw_y0 && tile_y < draw_y1 && path_id < arrayLength(&path_records)) {
+            let path = path_records[path_id];
+            let bx0 = path.tile_x0;
+            let by0 = path.tile_y0;
+            let bx1 = path.tile_x1;
+            let by1 = path.tile_y1;
             let stride = bx1 - bx0;
             if (stride > 0u && tile_x >= bx0 && tile_x < bx1 && tile_y >= by0 && tile_y < by1) {
                 let local_ix = (tile_y - by0) * stride + tile_x - bx0;
-                result = backdrop_data_offsets[path_id] + local_ix;
+                result = path.data_offset + local_ix;
             }
         }
     }
@@ -632,10 +653,11 @@ fn draw_backdrop_ix(draw_ix: u32, tile_x: u32, tile_y: u32) -> u32 {
 }
 
 fn draw_tile_hit(draw_ix: u32, tile_x: u32, tile_y: u32) -> bool {
-    let draw_x0 = pixel_tile_min(draw_pixel_x0[draw_ix], config.tiles_width);
-    let draw_y0 = pixel_tile_min(draw_pixel_y0[draw_ix], config.tiles_height);
-    let draw_x1 = pixel_tile_max(draw_pixel_x1[draw_ix], config.tiles_width);
-    let draw_y1 = pixel_tile_max(draw_pixel_y1[draw_ix], config.tiles_height);
+    let draw = draw_records[draw_ix];
+    let draw_x0 = pixel_tile_min(draw.pixel_x0, config.tiles_width);
+    let draw_y0 = pixel_tile_min(draw.pixel_y0, config.tiles_height);
+    let draw_x1 = pixel_tile_max(draw.pixel_x1, config.tiles_width);
+    let draw_y1 = pixel_tile_max(draw.pixel_y1, config.tiles_height);
     return tile_x >= draw_x0 && tile_x < draw_x1 && tile_y >= draw_y0 && tile_y < draw_y1;
 }
 
@@ -715,28 +737,32 @@ fn draw_in_batch(draw_ix: u32) -> bool {
     return draw_ix >= config.draw_start && draw_ix < config.draw_end;
 }
 
-fn draw_flags_at(draw_ix: u32) -> u32 {
-    return draw_flags[draw_ix];
-}
-
 fn draw_tag_at(draw_ix: u32) -> u32 {
-    return draw_flags_at(draw_ix) & DRAW_FLAG_TAG_MASK;
+    return draw_records[draw_ix].tag;
 }
 
 fn draw_fill_rule_at(draw_ix: u32) -> u32 {
-    return (draw_flags_at(draw_ix) & DRAW_FLAG_FILL_RULE_EVEN_ODD) >> 3u;
+    return draw_records[draw_ix].fill_rule;
 }
 
 fn draw_has_sdf_at(draw_ix: u32) -> bool {
-    return (draw_flags_at(draw_ix) & DRAW_FLAG_HAS_SDF) != 0u;
+    let draw = draw_records[draw_ix];
+    return draw.sdf_offset != INVALID || draw.sdf_shadow_offset != INVALID;
 }
 
 fn draw_has_glyph_at(draw_ix: u32) -> bool {
-    return (draw_flags_at(draw_ix) & DRAW_FLAG_HAS_GLYPH) != 0u;
+    return draw_records[draw_ix].glyph_run_id != INVALID;
 }
 
 fn draw_solid_color_fast_path_at(draw_ix: u32) -> bool {
-    return (draw_flags_at(draw_ix) & DRAW_FLAG_SOLID_COLOR_FAST_PATH) != 0u;
+    let brush_base = draw_ix * GPU_BRUSH_U32_STRIDE;
+    return draw_records[draw_ix].solid_rect != 0u &&
+        brush_data[brush_base] == GPU_BRUSH_SOLID &&
+        brush_data[brush_base + 4u] != 0u;
+}
+
+fn draw_solid_color_at(draw_ix: u32) -> u32 {
+    return brush_data[draw_ix * GPU_BRUSH_U32_STRIDE + 4u];
 }
 
 fn store_particle(dst: u32, tag: u32, backdrop: i32, fill_rule: u32, segment_start: u32, segment_end: u32, color: u32) {

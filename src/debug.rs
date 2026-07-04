@@ -294,7 +294,7 @@ fn capture_tile_path_summaries(
     tile_y: u32,
 ) -> Vec<DebugTilePathSummary> {
     let mut paths = Vec::new();
-    for record in &canvas.bd_records {
+    for record in &canvas.path_records {
         if tile_x < record.tile_x0
             || tile_x >= record.tile_x1
             || tile_y < record.tile_y0

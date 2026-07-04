@@ -66,16 +66,16 @@ impl GpuBufferLengths {
             line_count: canvas.lines.len(),
             path_count: canvas.path_records.len(),
             draw_count: canvas.draw_records.len(),
-            backdrop_record_count: canvas.bd_records.len(),
+            backdrop_record_count: canvas.path_records.len(),
             backdrop_len: canvas.backdrop_pool_capacity as usize,
             segment_capacity: canvas.tile_cnt as usize,
             scan_chunk_count: canvas
-                .bd_records
+                .path_records
                 .iter()
                 .map(|record| record.data_len.div_ceil(SCAN_CHUNK_SIZE) as usize)
                 .sum(),
             cumsum_chunk_count: canvas
-                .bd_records
+                .path_records
                 .iter()
                 .map(|record| {
                     let stride = record.tile_x1.saturating_sub(record.tile_x0);
@@ -88,7 +88,7 @@ impl GpuBufferLengths {
                 })
                 .sum(),
             cumsum_row_count: canvas
-                .bd_records
+                .path_records
                 .iter()
                 .map(|record| {
                     let stride = record.tile_x1.saturating_sub(record.tile_x0);
@@ -541,7 +541,7 @@ pub(crate) fn build_scan_chunks_into(
     ranges.clear();
     ranges.resize(canvas.path_records.len(), GpuScanChunkRange::default());
 
-    for record in &canvas.bd_records {
+    for record in &canvas.path_records {
         let range_start = chunks.len() as u32;
         let mut local = 0;
         while local < record.data_len {
@@ -590,7 +590,7 @@ pub(crate) fn build_cumsum_plan_into(canvas: &Canvas, plan: &mut GpuCumsumPlan) 
     plan.row_chunk_starts.reserve(lengths.cumsum_row_count);
     plan.row_chunk_ends.reserve(lengths.cumsum_row_count);
 
-    for record in &canvas.bd_records {
+    for record in &canvas.path_records {
         let stride = record.tile_x1.saturating_sub(record.tile_x0);
         let height = record.tile_y1.saturating_sub(record.tile_y0);
         if stride == 0 || height == 0 {

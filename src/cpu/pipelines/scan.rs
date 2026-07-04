@@ -5,7 +5,6 @@ use rayon::prelude::*;
 use crate::{
     TILE_SIZE,
     shared::{
-        bd_record::BackdropRecord,
         bounds::TileBbox,
         line::Line,
         line_seg::LineSegment,
@@ -21,7 +20,6 @@ pub struct ScanCpuPipeline {}
 pub struct ScanCpuPrepared<'a> {
     lines: &'a [Line],
     path_records: &'a [PathRecord],
-    backdrop_records: &'a [BackdropRecord],
     backdrops: &'a mut Vec<i32>, // [path_id][tile_y][tile_x]
     tile_segment_ranges: &'a mut Vec<TileSegmentRange>,
     segments: &'a mut Vec<LineSegment>,
@@ -37,20 +35,19 @@ impl<'a> ScanCpuPrepared<'a> {
         let ranges = self.tile_segment_ranges.as_mut_ptr() as usize;
         let segments = self.segments.as_mut_ptr() as usize;
         let segment_tile_counts = self.segment_tile_counts.as_mut_ptr() as *mut Vec<u32> as usize;
-        (0..self.backdrop_records.len())
+        (0..self.path_records.len())
             .into_par_iter()
             .for_each(|record_ix| {
-                let backdrop_record = &self.backdrop_records[record_ix];
-                let path_id = backdrop_record.path_id as usize;
-                let path_record = &self.path_records[path_id];
+                let path_record = &self.path_records[record_ix];
+                let path_id = path_record.path_id as usize;
                 let bbox = TileBbox {
-                    x0: backdrop_record.tile_x0,
-                    y0: backdrop_record.tile_y0,
-                    x1: backdrop_record.tile_x1,
-                    y1: backdrop_record.tile_y1,
+                    x0: path_record.tile_x0,
+                    y0: path_record.tile_y0,
+                    x1: path_record.tile_x1,
+                    y1: path_record.tile_y1,
                 };
-                let tile_count = backdrop_record.data_len as usize;
-                let data_offset = backdrop_record.data_offset as usize;
+                let tile_count = path_record.data_len as usize;
+                let data_offset = path_record.data_offset as usize;
                 if tile_count == 0 {
                     debug_assert_eq!(bbox.tile_count(), 0);
                     return;
@@ -121,11 +118,8 @@ impl<'a> ScanCpuPrepared<'a> {
                                 backdrop[bump_ix] += plan.delta;
                             }
 
-                            let local_ix = Self::local_tile_ix(
-                                backdrop_record,
-                                tile.global_ix,
-                                self.tiles_size.0,
-                            );
+                            let local_ix =
+                                Self::local_tile_ix(path_record, tile.global_ix, self.tiles_size.0);
                             let count = counts[local_ix];
                             counts[local_ix] = count + 1;
                         });
@@ -133,7 +127,7 @@ impl<'a> ScanCpuPrepared<'a> {
                 }
 
                 let cursors = &self.segment_tile_cursors[data_offset..data_offset + tile_count];
-                let mut next = backdrop_record.segment_start;
+                let mut next = path_record.segment_start;
                 for ((range, count), cursor) in ranges.iter_mut().zip(counts).zip(cursors) {
                     let count = *count;
                     range.start = next;
@@ -142,10 +136,10 @@ impl<'a> ScanCpuPrepared<'a> {
                     cursor.store(range.start, Ordering::Relaxed);
                 }
 
-                let segment_count = next - backdrop_record.segment_start;
+                let segment_count = next - path_record.segment_start;
                 self.segments_bump[path_id].store(segment_count, Ordering::Relaxed);
                 debug_assert!(
-                    segment_count <= backdrop_record.segment_capacity,
+                    segment_count <= path_record.segment_capacity,
                     "scan emitted more segments than reserved capacity"
                 );
 
@@ -167,16 +161,12 @@ impl<'a> ScanCpuPrepared<'a> {
                                 tile.x,
                                 tile.y,
                             );
-                            let local_ix = Self::local_tile_ix(
-                                backdrop_record,
-                                tile.global_ix,
-                                self.tiles_size.0,
-                            );
+                            let local_ix =
+                                Self::local_tile_ix(path_record, tile.global_ix, self.tiles_size.0);
                             let dst = cursors[local_ix].load(Ordering::Relaxed);
                             cursors[local_ix].store(dst + 1, Ordering::Relaxed);
                             debug_assert!(
-                                dst < backdrop_record.segment_start
-                                    + backdrop_record.segment_capacity
+                                dst < path_record.segment_start + path_record.segment_capacity
                             );
                             segments[dst as usize] = segment;
                         });
@@ -192,12 +182,12 @@ impl<'a> ScanCpuPrepared<'a> {
             });
     }
 
-    fn local_tile_ix(backdrop_record: &BackdropRecord, tile_id: u32, tiles_width: u32) -> usize {
+    fn local_tile_ix(path_record: &PathRecord, tile_id: u32, tiles_width: u32) -> usize {
         let tile_x = tile_id % tiles_width;
         let tile_y = tile_id / tiles_width;
-        let local_x = tile_x - backdrop_record.tile_x0;
-        let local_y = tile_y - backdrop_record.tile_y0;
-        let stride = backdrop_record.tile_x1 - backdrop_record.tile_x0;
+        let local_x = tile_x - path_record.tile_x0;
+        let local_y = tile_y - path_record.tile_y0;
+        let stride = path_record.tile_x1 - path_record.tile_x0;
         (local_y * stride + local_x) as usize
     }
 
@@ -261,7 +251,6 @@ impl ScanCpuPipeline {
         &self,
         lines: &'a [Line],
         path_records: &'a [PathRecord],
-        backdrop_records: &'a [BackdropRecord],
         backdrops: &'a mut Vec<i32>,
         tile_segment_ranges: &'a mut Vec<TileSegmentRange>,
         segments: &'a mut Vec<LineSegment>,
@@ -273,7 +262,6 @@ impl ScanCpuPipeline {
         ScanCpuPrepared {
             lines,
             path_records,
-            backdrop_records,
             tiles_size,
             backdrops,
             tile_segment_ranges,
@@ -506,9 +494,8 @@ mod tests {
         cpu::computes::cumsum::run_backdrop_cumsum,
         cpu::computes::fine::build_tile_alpha,
         shared::{
-            bd_record::BackdropRecord, bounds::TileBbox, fill::FillRule, line::Line,
-            line_seg::LineSegment, path::PathRecord, scan_line::plan_scan_line,
-            tile_seg_range::TileSegmentRange,
+            bounds::TileBbox, fill::FillRule, line::Line, line_seg::LineSegment, path::PathRecord,
+            scan_line::plan_scan_line, tile_seg_range::TileSegmentRange,
         },
     };
     use peniko::{
@@ -516,9 +503,12 @@ mod tests {
         kurbo::{Affine, Line as KurboLine, Shape, Stroke},
     };
 
-    fn one_tile_backdrop_record(segment_capacity: u32) -> BackdropRecord {
-        BackdropRecord {
+    fn one_tile_path_record(line_count: u32, segment_capacity: u32) -> PathRecord {
+        PathRecord {
             path_id: 0,
+            line_count,
+            line_start: 0,
+            flags: 0,
             data_offset: 0,
             data_len: 1,
             tile_x0: 0,
@@ -531,12 +521,36 @@ mod tests {
         }
     }
 
+    fn path_record_for_lines(
+        line_count: u32,
+        bbox: TileBbox,
+        segment_capacity: u32,
+        flags: u32,
+    ) -> PathRecord {
+        let tile_count = bbox.tile_stride() * (bbox.y1 - bbox.y0);
+        PathRecord {
+            path_id: 0,
+            line_count,
+            line_start: 0,
+            flags,
+            data_offset: 0,
+            data_len: tile_count,
+            tile_x0: bbox.x0,
+            tile_y0: bbox.y0,
+            tile_x1: bbox.x1,
+            tile_y1: bbox.y1,
+            segment_start: 0,
+            segment_capacity,
+            segment_count: 0,
+        }
+    }
+
     fn scan_lines(
         lines: &[Line],
         bbox: TileBbox,
         segment_capacity: u32,
     ) -> (
-        BackdropRecord,
+        PathRecord,
         Vec<i32>,
         Vec<TileSegmentRange>,
         Vec<LineSegment>,
@@ -550,30 +564,15 @@ mod tests {
         segment_capacity: u32,
         path_flags: u32,
     ) -> (
-        BackdropRecord,
+        PathRecord,
         Vec<i32>,
         Vec<TileSegmentRange>,
         Vec<LineSegment>,
     ) {
         let tile_count = bbox.tile_stride() * (bbox.y1 - bbox.y0);
-        let path_records = [PathRecord {
-            path_id: 0,
-            line_count: lines.len() as u32,
-            line_start: 0,
-            flags: path_flags,
-        }];
-        let backdrop_record = BackdropRecord {
-            path_id: 0,
-            data_offset: 0,
-            data_len: tile_count,
-            tile_x0: bbox.x0,
-            tile_y0: bbox.y0,
-            tile_x1: bbox.x1,
-            tile_y1: bbox.y1,
-            segment_start: 0,
-            segment_capacity,
-            segment_count: 0,
-        };
+        let backdrop_record =
+            path_record_for_lines(lines.len() as u32, bbox, segment_capacity, path_flags);
+        let path_records = [backdrop_record];
         let mut backdrops = vec![0; tile_count as usize];
         let mut tile_segment_ranges = vec![TileSegmentRange::default(); tile_count as usize];
         let mut segments = vec![LineSegment::default(); segment_capacity as usize];
@@ -585,7 +584,6 @@ mod tests {
             .prepare(
                 lines,
                 &path_records,
-                &[backdrop_record],
                 &mut backdrops,
                 &mut tile_segment_ranges,
                 &mut segments,
@@ -625,24 +623,17 @@ mod tests {
             p0: [0.0, 0.0],
             p1: [0.0, 16.0],
         }];
-        let path_records = [PathRecord {
-            path_id: 0,
-            line_count: 1,
-            line_start: 0,
-            flags: 0,
-        }];
-        let backdrop_records = [BackdropRecord {
-            path_id: 0,
-            data_offset: 0,
-            data_len: 0,
-            tile_x0: 0,
-            tile_y0: 0,
-            tile_x1: 0,
-            tile_y1: 0,
-            segment_start: 0,
-            segment_capacity: 0,
-            segment_count: 0,
-        }];
+        let path_records = [path_record_for_lines(
+            1,
+            TileBbox {
+                x0: 0,
+                y0: 0,
+                x1: 0,
+                y1: 0,
+            },
+            0,
+            0,
+        )];
         let mut backdrops = Vec::new();
         let mut tile_segment_ranges = Vec::new();
         let mut segments = Vec::new();
@@ -654,7 +645,6 @@ mod tests {
             .prepare(
                 &lines,
                 &path_records,
-                &backdrop_records,
                 &mut backdrops,
                 &mut tile_segment_ranges,
                 &mut segments,
@@ -678,13 +668,7 @@ mod tests {
             p0: [-4.0, 0.0],
             p1: [-4.0, 16.0],
         }];
-        let path_records = [PathRecord {
-            path_id: 0,
-            line_count: 1,
-            line_start: 0,
-            flags: 0,
-        }];
-        let backdrop_records = [one_tile_backdrop_record(1)];
+        let path_records = [one_tile_path_record(1, 1)];
         let mut backdrops = vec![0];
         let mut tile_segment_ranges = vec![TileSegmentRange::default(); 1];
         let mut segments = vec![LineSegment::default(); 1];
@@ -701,7 +685,6 @@ mod tests {
             .prepare(
                 &lines,
                 &path_records,
-                &backdrop_records,
                 &mut backdrops,
                 &mut tile_segment_ranges,
                 &mut segments,
@@ -724,13 +707,7 @@ mod tests {
             p0: [4.0, 0.0],
             p1: [4.0, 16.0],
         }];
-        let path_records = [PathRecord {
-            path_id: 0,
-            line_count: 1,
-            line_start: 0,
-            flags: 0,
-        }];
-        let backdrop_records = [one_tile_backdrop_record(1)];
+        let path_records = [one_tile_path_record(1, 1)];
         let mut backdrops = vec![0];
         let mut tile_segment_ranges = vec![TileSegmentRange::default(); 1];
         let mut segments = vec![LineSegment::default(); 1];
@@ -747,7 +724,6 @@ mod tests {
             .prepare(
                 &lines,
                 &path_records,
-                &backdrop_records,
                 &mut backdrops,
                 &mut tile_segment_ranges,
                 &mut segments,
@@ -786,24 +762,17 @@ mod tests {
                 p1: [4.0, 16.0],
             },
         ];
-        let path_records = [PathRecord {
-            path_id: 0,
-            line_count: 2,
-            line_start: 0,
-            flags: 0,
-        }];
-        let backdrop_records = [BackdropRecord {
-            path_id: 0,
-            data_offset: 0,
-            data_len: 2,
-            tile_x0: 0,
-            tile_y0: 0,
-            tile_x1: 2,
-            tile_y1: 1,
-            segment_start: 0,
-            segment_capacity: 4,
-            segment_count: 0,
-        }];
+        let path_records = [path_record_for_lines(
+            2,
+            TileBbox {
+                x0: 0,
+                y0: 0,
+                x1: 2,
+                y1: 1,
+            },
+            4,
+            0,
+        )];
         let mut backdrops = vec![0; 2];
         let mut tile_segment_ranges = vec![TileSegmentRange::default(); 2];
         let mut segments = vec![LineSegment::default(); 4];
@@ -820,7 +789,6 @@ mod tests {
             .prepare(
                 &lines,
                 &path_records,
-                &backdrop_records,
                 &mut backdrops,
                 &mut tile_segment_ranges,
                 &mut segments,
@@ -1065,7 +1033,7 @@ mod tests {
             FillRule::NonZero,
             0.25,
         );
-        let record = canvas.bd_records[0];
+        let record = canvas.path_records[0];
         let bbox = TileBbox {
             x0: record.tile_x0,
             y0: record.tile_y0,
@@ -1137,24 +1105,17 @@ mod tests {
                 p1: [1.494_818_7, -1.328_727_7],
             },
         ];
-        let path_records = [PathRecord {
-            path_id: 0,
-            line_count: lines.len() as u32,
-            line_start: 0,
-            flags: 0,
-        }];
-        let backdrop_records = [BackdropRecord {
-            path_id: 0,
-            data_offset: 0,
-            data_len: 12 * 12,
-            tile_x0: 0,
-            tile_y0: 0,
-            tile_x1: 12,
-            tile_y1: 12,
-            segment_start: 0,
-            segment_capacity: 256,
-            segment_count: 0,
-        }];
+        let path_records = [path_record_for_lines(
+            lines.len() as u32,
+            TileBbox {
+                x0: 0,
+                y0: 0,
+                x1: 12,
+                y1: 12,
+            },
+            256,
+            0,
+        )];
         let mut backdrops = vec![0; 12 * 12];
         let mut tile_segment_ranges = vec![TileSegmentRange::default(); 12 * 12];
         let mut segments = vec![LineSegment::default(); 256];
@@ -1166,7 +1127,6 @@ mod tests {
             .prepare(
                 &lines,
                 &path_records,
-                &backdrop_records,
                 &mut backdrops,
                 &mut tile_segment_ranges,
                 &mut segments,
@@ -1218,24 +1178,17 @@ mod tests {
                 p1: [0.560_557, -0.498_273],
             },
         ];
-        let path_records = [PathRecord {
-            path_id: 0,
-            line_count: lines.len() as u32,
-            line_start: 0,
-            flags: 0,
-        }];
-        let backdrop_records = [BackdropRecord {
-            path_id: 0,
-            data_offset: 0,
-            data_len: 19 * 19,
-            tile_x0: 0,
-            tile_y0: 0,
-            tile_x1: 19,
-            tile_y1: 19,
-            segment_start: 0,
-            segment_capacity: 512,
-            segment_count: 0,
-        }];
+        let path_records = [path_record_for_lines(
+            lines.len() as u32,
+            TileBbox {
+                x0: 0,
+                y0: 0,
+                x1: 19,
+                y1: 19,
+            },
+            512,
+            0,
+        )];
         let mut backdrops = vec![0; 19 * 19];
         let mut tile_segment_ranges = vec![TileSegmentRange::default(); 19 * 19];
         let mut segments = vec![LineSegment::default(); 512];
@@ -1247,7 +1200,6 @@ mod tests {
             .prepare(
                 &lines,
                 &path_records,
-                &backdrop_records,
                 &mut backdrops,
                 &mut tile_segment_ranges,
                 &mut segments,
@@ -1300,24 +1252,17 @@ mod tests {
                 p1: [-90.0, 0.0],
             },
         ];
-        let path_records = [PathRecord {
-            path_id: 0,
-            line_count: lines.len() as u32,
-            line_start: 0,
-            flags: 0,
-        }];
-        let backdrop_records = [BackdropRecord {
-            path_id: 0,
-            data_offset: 0,
-            data_len: 12 * 12,
-            tile_x0: 0,
-            tile_y0: 0,
-            tile_x1: 12,
-            tile_y1: 12,
-            segment_start: 0,
-            segment_capacity: 512,
-            segment_count: 0,
-        }];
+        let path_records = [path_record_for_lines(
+            lines.len() as u32,
+            TileBbox {
+                x0: 0,
+                y0: 0,
+                x1: 12,
+                y1: 12,
+            },
+            512,
+            0,
+        )];
         let mut backdrops = vec![0; 12 * 12];
         let mut tile_segment_ranges = vec![TileSegmentRange::default(); 12 * 12];
         let mut segments = vec![LineSegment::default(); 512];
@@ -1329,7 +1274,6 @@ mod tests {
             .prepare(
                 &lines,
                 &path_records,
-                &backdrop_records,
                 &mut backdrops,
                 &mut tile_segment_ranges,
                 &mut segments,
@@ -1339,7 +1283,7 @@ mod tests {
                 (12, 12),
             )
             .run();
-        run_backdrop_cumsum(&mut backdrops, &backdrop_records);
+        run_backdrop_cumsum(&mut backdrops, &path_records);
 
         let tile_ix = 4 * 12 + 10;
         let range = tile_segment_ranges[tile_ix];
@@ -1369,13 +1313,7 @@ mod tests {
                 p1: [-139.862_64, 40.480_762],
             },
         ];
-        let path_records = [PathRecord {
-            path_id: 0,
-            line_count: lines.len() as u32,
-            line_start: 0,
-            flags: 0,
-        }];
-        let backdrop_records = [one_tile_backdrop_record(16)];
+        let path_records = [one_tile_path_record(lines.len() as u32, 16)];
         let mut backdrops = vec![0];
         let mut tile_segment_ranges = vec![TileSegmentRange::default()];
         let mut segments = vec![LineSegment::default(); 16];
@@ -1387,7 +1325,6 @@ mod tests {
             .prepare(
                 &lines,
                 &path_records,
-                &backdrop_records,
                 &mut backdrops,
                 &mut tile_segment_ranges,
                 &mut segments,
@@ -1420,24 +1357,17 @@ mod tests {
             p0: [15.0, 15.0],
             p1: [150.0, 150.0],
         }];
-        let path_records = [PathRecord {
-            path_id: 0,
-            line_count: 1,
-            line_start: 0,
-            flags: 0,
-        }];
-        let backdrop_records = [BackdropRecord {
-            path_id: 0,
-            data_offset: 0,
-            data_len: 1,
-            tile_x0: 2,
-            tile_y0: 2,
-            tile_x1: 3,
-            tile_y1: 3,
-            segment_start: 0,
-            segment_capacity: 1,
-            segment_count: 0,
-        }];
+        let path_records = [path_record_for_lines(
+            1,
+            TileBbox {
+                x0: 2,
+                y0: 2,
+                x1: 3,
+                y1: 3,
+            },
+            1,
+            0,
+        )];
         let mut backdrops = vec![0];
         let mut tile_segment_ranges = vec![TileSegmentRange::default()];
         let mut segments = vec![LineSegment::default()];
@@ -1449,7 +1379,6 @@ mod tests {
             .prepare(
                 &lines,
                 &path_records,
-                &backdrop_records,
                 &mut backdrops,
                 &mut tile_segment_ranges,
                 &mut segments,

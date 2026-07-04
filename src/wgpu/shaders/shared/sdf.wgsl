@@ -1,21 +1,33 @@
-fn sdf_coverage_from_encoded(sdf_ref: u32, x: f32, y: f32) -> f32 {
-    let x0 = sdf_x0[sdf_ref];
-    let y0 = sdf_y0[sdf_ref];
-    let x1 = sdf_x1[sdf_ref];
-    let y1 = sdf_y1[sdf_ref];
-    let r0 = sdf_r0[sdf_ref];
-    let r1 = sdf_r1[sdf_ref];
-    let r2 = sdf_r2[sdf_ref];
-    let r3 = sdf_r3[sdf_ref];
-    let stroke_top = sdf_stroke_top[sdf_ref];
-    let stroke_right = sdf_stroke_right[sdf_ref];
-    let stroke_bottom = sdf_stroke_bottom[sdf_ref];
-    let stroke_left = sdf_stroke_left[sdf_ref];
-    let shadow_offset_x = sdf_shadow_offset_x[sdf_ref];
-    let shadow_offset_y = sdf_shadow_offset_y[sdf_ref];
-    let shadow_expand = sdf_shadow_expand[sdf_ref];
-    let shadow_intensity = sdf_shadow_intensity[sdf_ref];
-    let kind = sdf_kinds[sdf_ref];
+const SDF_NONE_REF: u32 = 0xffffffffu;
+
+fn sdf_coverage_from_draw(draw: DrawRecord, x: f32, y: f32) -> f32 {
+    if (draw.sdf_offset != SDF_NONE_REF) {
+        return sdf_coverage_from_blob(draw.sdf_offset, false, x, y);
+    }
+    if (draw.sdf_shadow_offset != SDF_NONE_REF) {
+        return sdf_coverage_from_blob(draw.sdf_shadow_offset, true, x, y);
+    }
+    return 0.0;
+}
+
+fn sdf_coverage_from_blob(base: u32, shadow_blob: bool, x: f32, y: f32) -> f32 {
+    let kind = sdf_word(base, 0u, shadow_blob);
+    let x0 = sdf_float(base, 1u, shadow_blob);
+    let y0 = sdf_float(base, 2u, shadow_blob);
+    let x1 = sdf_float(base, 3u, shadow_blob);
+    let y1 = sdf_float(base, 4u, shadow_blob);
+    let r0 = sdf_float(base, 5u, shadow_blob);
+    let r1 = sdf_float(base, 6u, shadow_blob);
+    let r2 = sdf_float(base, 7u, shadow_blob);
+    let r3 = sdf_float(base, 8u, shadow_blob);
+    let stroke_top = sdf_float(base, 9u, shadow_blob);
+    let stroke_right = sdf_float(base, 10u, shadow_blob);
+    let stroke_bottom = sdf_float(base, 11u, shadow_blob);
+    let stroke_left = sdf_float(base, 12u, shadow_blob);
+    let shadow_offset_x = sdf_float(base, 13u, shadow_blob);
+    let shadow_offset_y = sdf_float(base, 14u, shadow_blob);
+    let shadow_expand = sdf_float(base, 15u, shadow_blob);
+    let shadow_intensity = sdf_float(base, 16u, shadow_blob);
 
     if (kind == GPU_SDF_RECT) {
         return sdf_coverage_from_dist(rect_sdf_distance(x, y, x0, y0, x1, y1, r0, r1, r2, r3));
@@ -146,6 +158,17 @@ fn sdf_coverage_from_encoded(sdf_ref: u32, x: f32, y: f32) -> f32 {
         );
     }
     return 0.0;
+}
+
+fn sdf_word(base: u32, index: u32, shadow_blob: bool) -> u32 {
+    if (shadow_blob) {
+        return sdf_shadow_blob[base + index];
+    }
+    return sdf_blob[base + index];
+}
+
+fn sdf_float(base: u32, index: u32, shadow_blob: bool) -> f32 {
+    return bitcast<f32>(sdf_word(base, index, shadow_blob));
 }
 
 fn dash_line_sdf_distance(

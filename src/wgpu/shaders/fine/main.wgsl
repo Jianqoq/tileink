@@ -71,18 +71,15 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
             pixel = src_over_premul_u8(pixel, color);
         } else if (tag == GPU_PTCL_SDF) {
             let draw_ix = ptcl_colors[ptcl_ix];
-            let sdf_ref = draw_sdf_refs[draw_ix];
-            if (sdf_ref != INVALID_REF) {
-                let coverage = sdf_coverage_from_encoded(
-                    sdf_ref,
-                    f32(global_x) + 0.5,
-                    f32(global_y) + 0.5,
-                );
-                let alpha = combine_alpha(coverage_to_u8(coverage), clip_mask);
-                if (alpha != 0u) {
-                    let color = sample_brush(draw_ix, f32(global_x) + 0.5, f32(global_y) + 0.5);
-                    pixel = src_over_premul_u8(pixel, scale_premul_u8(color, alpha));
-                }
+            let coverage = sdf_coverage_from_draw(
+                draw_records[draw_ix],
+                f32(global_x) + 0.5,
+                f32(global_y) + 0.5,
+            );
+            let alpha = combine_alpha(coverage_to_u8(coverage), clip_mask);
+            if (alpha != 0u) {
+                let color = sample_brush(draw_ix, f32(global_x) + 0.5, f32(global_y) + 0.5);
+                pixel = src_over_premul_u8(pixel, scale_premul_u8(color, alpha));
             }
         } else if (tag == GPU_PTCL_GLYPH) {
             pixel = composite_glyphs_at(
@@ -120,15 +117,11 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
             }
         } else if (tag == GPU_PTCL_BEGIN_SDF_CLIP) {
             let draw_ix = ptcl_colors[ptcl_ix];
-            var alpha = 0u;
-            let sdf_ref = draw_sdf_refs[draw_ix];
-            if (sdf_ref != INVALID_REF) {
-                alpha = coverage_to_u8(sdf_coverage_from_encoded(
-                    sdf_ref,
-                    f32(global_x) + 0.5,
-                    f32(global_y) + 0.5,
-                ));
-            }
+            let alpha = coverage_to_u8(sdf_coverage_from_draw(
+                draw_records[draw_ix],
+                f32(global_x) + 0.5,
+                f32(global_y) + 0.5,
+            ));
             push_clip(
                 clip_mask,
                 tile_ix,

@@ -237,7 +237,7 @@ pub(super) fn rasterize_layer_mask(
     let Some(path_id) = draw.path_id() else {
         return image;
     };
-    let backdrop_record = &canvas.bd_records[path_id as usize];
+    let backdrop_record = &canvas.path_records[path_id as usize];
     let bbox = draw.tile_bbox(canvas.width_in_tiles(), canvas.height_in_tiles());
     let stride = backdrop_record.tile_x1 - backdrop_record.tile_x0;
     if stride == 0 {

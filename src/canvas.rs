@@ -9,7 +9,6 @@ use peniko::{
 };
 
 use crate::shared::{
-    bd_record::BackdropRecord,
     bounds::{Bounds, PixelBounds},
     brush::{Brush, PatternSampling, decode_encoded_brush, push_encoded_brush},
     draw_record::{DrawRecord, DrawTag},
@@ -62,7 +61,6 @@ pub struct Canvas {
     pub(crate) sdf_shadow_blob: Vec<u32>,
     pub(crate) text_glyphs: Vec<crate::text::CanvasGlyph>,
     pub(crate) text_runs: Vec<TextRun>,
-    pub(crate) bd_records: Vec<BackdropRecord>,
     pub(crate) command_lists: Vec<CommandList>,
     root_commands: CommandListId,
     command_stack: Vec<CommandListId>,
@@ -392,7 +390,6 @@ impl Canvas {
             sdf_shadow_blob: Vec::new(),
             text_glyphs: Vec::new(),
             text_runs: Vec::new(),
-            bd_records: Vec::new(),
             command_lists: vec![CommandList::default()],
             root_commands: ROOT_COMMAND_LIST_ID,
             command_stack: vec![ROOT_COMMAND_LIST_ID],
@@ -685,6 +682,15 @@ impl Canvas {
             let mut record = record;
             record.path_id = record.path_id.saturating_add(path_offset);
             record.line_start = record.line_start.saturating_add(line_offset);
+            record.data_offset = 0;
+            record.data_len = 0;
+            record.tile_x0 = 0;
+            record.tile_y0 = 0;
+            record.tile_x1 = 0;
+            record.tile_y1 = 0;
+            record.segment_start = 0;
+            record.segment_capacity = 0;
+            record.segment_count = 0;
             self.path_records.push(record);
         }
 
@@ -760,7 +766,7 @@ impl Canvas {
         }
 
         self.path_cnt = self.path_cnt.saturating_add(other.path_cnt);
-        self.append_backdrop_records_for_paths(
+        self.append_path_backdrops_for_paths(
             path_record_start,
             other.path_records.len(),
             draw_start,
@@ -770,7 +776,7 @@ impl Canvas {
         draw_offset
     }
 
-    fn append_backdrop_records_for_paths(
+    fn append_path_backdrops_for_paths(
         &mut self,
         path_record_start: usize,
         path_record_count: usize,
@@ -804,18 +810,16 @@ impl Canvas {
                 width_in_tiles,
                 height_in_tiles,
             );
-            self.bd_records.push(BackdropRecord {
-                path_id: record.path_id,
-                data_offset,
-                data_len,
-                tile_x0: tile_bbox.x0,
-                tile_y0: tile_bbox.y0,
-                tile_x1: tile_bbox.x1,
-                tile_y1: tile_bbox.y1,
-                segment_start,
-                segment_capacity,
-                segment_count: 0,
-            });
+            let record = &mut self.path_records[path_ix];
+            record.data_offset = data_offset;
+            record.data_len = data_len;
+            record.tile_x0 = tile_bbox.x0;
+            record.tile_y0 = tile_bbox.y0;
+            record.tile_x1 = tile_bbox.x1;
+            record.tile_y1 = tile_bbox.y1;
+            record.segment_start = segment_start;
+            record.segment_capacity = segment_capacity;
+            record.segment_count = 0;
             data_offset = data_offset.saturating_add(data_len);
             segment_start = segment_start.saturating_add(segment_capacity);
         }
@@ -1617,8 +1621,16 @@ impl Canvas {
             line_count,
             line_start,
             flags: path_flags,
+            data_offset: 0,
+            data_len: 0,
+            tile_x0: 0,
+            tile_y0: 0,
+            tile_x1: 0,
+            tile_y1: 0,
+            segment_start: 0,
+            segment_capacity: 0,
+            segment_count: 0,
         };
-        self.path_records.push(path_record);
         let pixel_bounds = match options.bounds_override {
             Some(bounds) => PixelBounds {
                 x0: bounds.x0,
@@ -1639,6 +1651,18 @@ impl Canvas {
         self.backdrop_pool_capacity += backdrop_len;
         let segment_start = self.tile_cnt;
         self.tile_cnt += local_tile_cnt;
+        self.path_records.push(PathRecord {
+            data_offset: backdrop_offset,
+            data_len: backdrop_len,
+            tile_x0: tile_bbox.x0,
+            tile_y0: tile_bbox.y0,
+            tile_x1: tile_bbox.x1,
+            tile_y1: tile_bbox.y1,
+            segment_start,
+            segment_capacity: local_tile_cnt,
+            segment_count: 0,
+            ..path_record
+        });
 
         let (brush_offset, brush_len) = self.push_brush(options.brush);
         let draw_ix = self.push_draw_record(DrawRecord {
@@ -1660,18 +1684,6 @@ impl Canvas {
                 .commands
                 .push(Command::Draw(draw_ix));
         }
-        self.bd_records.push(BackdropRecord {
-            path_id,
-            data_offset: backdrop_offset,
-            data_len: backdrop_len,
-            tile_x0: tile_bbox.x0,
-            tile_y0: tile_bbox.y0,
-            tile_x1: tile_bbox.x1,
-            tile_y1: tile_bbox.y1,
-            segment_start,
-            segment_capacity: local_tile_cnt,
-            segment_count: 0,
-        });
         draw_ix
     }
 
@@ -1791,7 +1803,6 @@ impl Canvas {
         self.sdf_shadow_blob.clear();
         self.text_glyphs.clear();
         self.text_runs.clear();
-        self.bd_records.clear();
         self.command_lists.clear();
         self.command_lists.push(CommandList::default());
         self.root_commands = ROOT_COMMAND_LIST_ID;

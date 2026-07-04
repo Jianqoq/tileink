@@ -1,7 +1,4 @@
 const INVALID: u32 = 0xffffffffu;
-const DRAW_FLAG_TAG_MASK: u32 = 7u;
-const DRAW_FLAG_FILL_RULE_EVEN_ODD: u32 = 8u;
-const DRAW_FLAG_HAS_SDF: u32 = 64u;
 
 const GPU_DRAW_BRUSH: u32 = 0u;
 const GPU_DRAW_CLIP: u32 = 1u;
@@ -186,59 +183,66 @@ struct FilterConfig {
 };
 
 @group(0) @binding(0) var<uniform> config: FilterConfig;
-@group(0) @binding(4) var<storage, read> draw_path_ids: array<u32>;
-@group(0) @binding(5) var<storage, read> draw_flags: array<u32>;
-@group(0) @binding(6) var<storage, read> draw_pixel_x0: array<i32>;
-@group(0) @binding(7) var<storage, read> draw_pixel_y0: array<i32>;
-@group(0) @binding(8) var<storage, read> draw_pixel_x1: array<i32>;
-@group(0) @binding(9) var<storage, read> draw_pixel_y1: array<i32>;
-@group(0) @binding(10) var<storage, read> draw_sdf_refs: array<u32>;
-@group(0) @binding(11) var<storage, read> sdf_kinds: array<u32>;
-@group(0) @binding(12) var<storage, read> sdf_x0: array<f32>;
-@group(0) @binding(13) var<storage, read> sdf_y0: array<f32>;
-@group(0) @binding(14) var<storage, read> sdf_x1: array<f32>;
-@group(0) @binding(15) var<storage, read> sdf_y1: array<f32>;
-@group(0) @binding(16) var<storage, read> sdf_r0: array<f32>;
-@group(0) @binding(17) var<storage, read> sdf_r1: array<f32>;
-@group(0) @binding(18) var<storage, read> sdf_r2: array<f32>;
-@group(0) @binding(19) var<storage, read> sdf_r3: array<f32>;
-@group(0) @binding(20) var<storage, read> sdf_stroke_top: array<f32>;
-@group(0) @binding(21) var<storage, read> sdf_stroke_right: array<f32>;
-@group(0) @binding(22) var<storage, read> sdf_stroke_bottom: array<f32>;
-@group(0) @binding(23) var<storage, read> sdf_stroke_left: array<f32>;
-@group(0) @binding(24) var<storage, read> sdf_shadow_offset_x: array<f32>;
-@group(0) @binding(25) var<storage, read> sdf_shadow_offset_y: array<f32>;
-@group(0) @binding(26) var<storage, read> sdf_shadow_expand: array<f32>;
-@group(0) @binding(27) var<storage, read> sdf_shadow_intensity: array<f32>;
-@group(0) @binding(28) var<storage, read> backdrop_data_offsets: array<u32>;
-@group(0) @binding(29) var<storage, read> backdrop_tile_x0: array<u32>;
-@group(0) @binding(30) var<storage, read> backdrop_tile_y0: array<u32>;
-@group(0) @binding(31) var<storage, read> backdrop_tile_x1: array<u32>;
-@group(0) @binding(32) var<storage, read> backdrop_tile_y1: array<u32>;
-@group(0) @binding(33) var<storage, read_write> backdrops: array<atomic<i32>>;
-@group(0) @binding(34) var<storage, read> segment_starts: array<u32>;
-@group(0) @binding(35) var<storage, read> segment_ends: array<u32>;
-@group(0) @binding(36) var<storage, read> segment_p0x: array<f32>;
-@group(0) @binding(37) var<storage, read> segment_p0y: array<f32>;
-@group(0) @binding(38) var<storage, read> segment_p1x: array<f32>;
-@group(0) @binding(39) var<storage, read> segment_p1y: array<f32>;
-@group(0) @binding(40) var<storage, read> segment_y_edge: array<f32>;
-@group(0) @binding(41) var<storage, read> layer_stack_tags: array<u32>;
-@group(0) @binding(42) var<storage, read> layer_stack_draws: array<u32>;
-@group(0) @binding(43) var<storage, read> layer_stack_payloads: array<u32>;
-@group(0) @binding(44) var<storage, read> transfer_tables: array<u32>;
-@group(0) @binding(45) var<storage, read> brush_data: array<u32>;
-@group(0) @binding(46) var<storage, read> brush_params: array<f32>;
-@group(0) @binding(47) var<storage, read> brush_payloads: array<u32>;
-@group(0) @binding(48) var<storage, read> convolve_kernels: array<f32>;
-@group(0) @binding(49) var<storage, read> turbulence_selectors: array<u32>;
-@group(0) @binding(50) var<storage, read> turbulence_gradients: array<f32>;
-@group(0) @binding(51) var<storage, read> path_range_starts: array<u32>;
-@group(0) @binding(52) var<storage, read> path_range_ends: array<u32>;
-@group(0) @binding(53) var<storage, read> path_p0x: array<i32>;
-@group(0) @binding(54) var<storage, read> path_p0y: array<i32>;
-@group(0) @binding(55) var<storage, read> path_p1x: array<i32>;
-@group(0) @binding(56) var<storage, read> path_p1y: array<i32>;
-@group(0) @binding(57) var<storage, read> image_resource_metadata: array<u32>;
-@group(0) @binding(58) var<storage, read> image_resource_pixels: array<u32>;
+struct DrawRecord {
+    path_id: u32,
+    glyph_run_id: u32,
+    sdf_offset: u32,
+    sdf_len: u32,
+    sdf_shadow_offset: u32,
+    sdf_shadow_len: u32,
+    brush_offset: u32,
+    brush_len: u32,
+    tag: u32,
+    fill_rule: u32,
+    pixel_x0: i32,
+    pixel_y0: i32,
+    pixel_x1: i32,
+    pixel_y1: i32,
+    solid_rect: u32,
+};
+struct PathRecord {
+    path_id: u32,
+    line_count: u32,
+    line_start: u32,
+    flags: u32,
+    data_offset: u32,
+    data_len: u32,
+    tile_x0: u32,
+    tile_y0: u32,
+    tile_x1: u32,
+    tile_y1: u32,
+    segment_start: u32,
+    segment_capacity: u32,
+    segment_count: u32,
+};
+@group(0) @binding(4) var<storage, read> draw_records: array<DrawRecord>;
+@group(0) @binding(10) var<storage, read> sdf_blob: array<u32>;
+@group(0) @binding(11) var<storage, read> sdf_shadow_blob: array<u32>;
+@group(0) @binding(28) var<storage, read> path_records: array<PathRecord>;
+@group(0) @binding(29) var<storage, read_write> backdrops: array<atomic<i32>>;
+@group(0) @binding(30) var<storage, read> segment_starts: array<u32>;
+@group(0) @binding(31) var<storage, read> segment_ends: array<u32>;
+@group(0) @binding(32) var<storage, read> segment_p0x: array<f32>;
+@group(0) @binding(33) var<storage, read> segment_p0y: array<f32>;
+@group(0) @binding(34) var<storage, read> segment_p1x: array<f32>;
+@group(0) @binding(35) var<storage, read> segment_p1y: array<f32>;
+@group(0) @binding(36) var<storage, read> segment_y_edge: array<f32>;
+@group(0) @binding(37) var<storage, read> layer_stack_tags: array<u32>;
+@group(0) @binding(38) var<storage, read> layer_stack_draws: array<u32>;
+@group(0) @binding(39) var<storage, read> layer_stack_payloads: array<u32>;
+@group(0) @binding(40) var<storage, read> transfer_tables: array<u32>;
+@group(0) @binding(41) var<storage, read> brush_data: array<u32>;
+@group(0) @binding(42) var<storage, read> brush_params: array<f32>;
+@group(0) @binding(43) var<storage, read> brush_payloads: array<u32>;
+@group(0) @binding(44) var<storage, read> convolve_kernels: array<f32>;
+@group(0) @binding(45) var<storage, read> turbulence_selectors: array<u32>;
+@group(0) @binding(46) var<storage, read> turbulence_gradients: array<f32>;
+@group(0) @binding(47) var<storage, read> path_range_starts: array<u32>;
+@group(0) @binding(48) var<storage, read> path_range_ends: array<u32>;
+@group(0) @binding(49) var<storage, read> path_p0x: array<i32>;
+@group(0) @binding(50) var<storage, read> path_p0y: array<i32>;
+@group(0) @binding(51) var<storage, read> path_p1x: array<i32>;
+@group(0) @binding(52) var<storage, read> path_p1y: array<i32>;
+@group(0) @binding(53) var<storage, read> image_resource_metadata: array<u32>;
+@group(0) @binding(54) var<storage, read> image_resource_pixels: array<u32>;
 

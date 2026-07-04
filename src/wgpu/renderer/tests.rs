@@ -57,7 +57,7 @@ fn wgpu_renderer_reads_uploaded_cpu_render_when_enabled() {
     renderer.render(&canvas);
     let image = renderer.image();
 
-    assert!(renderer.scene_buffers.draw_flags_capacity() >= 8);
+    assert!(renderer.scene_buffers.draw_records_capacity() >= 8);
     assert_eq!(image.rgba8_at(3, 3), [220, 64, 72, 255]);
     assert_eq!(image.rgba8_at(0, 0), [0, 0, 0, 0]);
 }

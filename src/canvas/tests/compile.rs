@@ -265,7 +265,7 @@ fn compile_fuses_generic_sdf_clip_without_path_storage() {
 
     let plan = canvas.compile(ROOT_COMMAND_LIST_ID);
     assert!(canvas.path_records.is_empty());
-    assert!(canvas.bd_records.is_empty());
+    assert!(canvas.path_records.is_empty());
     match canvas.draw_sdf(&canvas.draw_records[0]) {
         Some(Sdf::Line(line)) => assert_eq!(line.width, 6.0),
         sdf => panic!("expected hidden line SDF clip draw, got {sdf:#?}"),

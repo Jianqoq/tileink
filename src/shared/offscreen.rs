@@ -3,7 +3,6 @@ use peniko::kurbo::{Affine, Rect};
 use crate::{
     canvas::Canvas,
     shared::{
-        bd_record::BackdropRecord,
         bounds::{Bounds, PixelBounds, TileBbox},
         brush::{Brush, decode_encoded_brush, push_encoded_brush},
         draw_record::DrawRecord,
@@ -16,7 +15,7 @@ use crate::{
             region::Region,
         },
         line::Line,
-        path::PATH_FLAG_KEEP_HORIZONTAL_TILE_EDGES,
+        path::{PATH_FLAG_KEEP_HORIZONTAL_TILE_EDGES, PathRecord},
         sdf::{Sdf, SdfShadow},
     },
 };
@@ -215,24 +214,24 @@ fn translated_scene_for_bounds(canvas: &Canvas, local: LocalSpace) -> Canvas {
         .map(|glyph| glyph.translated(-f64::from(local.surface.x0), -f64::from(local.surface.y0)))
         .collect();
     translated.text_runs = canvas.text_runs.clone();
-    translated.bd_records = translated_backdrop_records(canvas, &translated);
+    rebuild_translated_path_backdrops(&mut translated);
     translated.path_cnt = canvas.path_cnt;
     translated.backdrop_pool_capacity = translated
-        .bd_records
+        .path_records
         .last()
         .map(|record| record.data_offset + record.data_len)
         .unwrap_or(0);
     translated.tile_cnt = translated
-        .bd_records
+        .path_records
         .last()
         .map(|record| record.segment_start + record.segment_capacity)
         .unwrap_or(0);
     translated
 }
 
-fn translated_backdrop_records(canvas: &Canvas, translated: &Canvas) -> Vec<BackdropRecord> {
-    let mut path_bounds: Vec<Option<PixelBounds>> = vec![None; translated.path_records.len()];
-    for draw in &translated.draw_records {
+fn rebuild_translated_path_backdrops(canvas: &mut Canvas) {
+    let mut path_bounds: Vec<Option<PixelBounds>> = vec![None; canvas.path_records.len()];
+    for draw in &canvas.draw_records {
         if let Some(path_id) = draw.path_id()
             && let Some(slot) = path_bounds.get_mut(path_id as usize)
         {
@@ -245,37 +244,32 @@ fn translated_backdrop_records(canvas: &Canvas, translated: &Canvas) -> Vec<Back
 
     let mut data_offset = 0;
     let mut segment_start = 0;
-    let width_in_tiles = translated.width_in_tiles();
-    let height_in_tiles = translated.height_in_tiles();
-    canvas
-        .bd_records
-        .iter()
-        .map(|record| {
-            let path_id = record.path_id as usize;
-            let pixel_bounds = path_bounds
-                .get(path_id)
-                .and_then(|bounds| *bounds)
-                .unwrap_or_else(|| translated_path_pixel_bounds(translated, path_id));
-            let tile_bbox = pixel_bounds.tile_bbox(width_in_tiles, height_in_tiles);
-            let data_len = tile_bbox.tile_count();
-            let segment_capacity = translated_path_segment_capacity(translated, path_id, tile_bbox);
-            let translated_record = BackdropRecord {
-                path_id: record.path_id,
-                data_offset,
-                data_len,
-                tile_x0: tile_bbox.x0,
-                tile_y0: tile_bbox.y0,
-                tile_x1: tile_bbox.x1,
-                tile_y1: tile_bbox.y1,
-                segment_start,
-                segment_capacity,
-                segment_count: 0,
-            };
-            data_offset += data_len;
-            segment_start += segment_capacity;
-            translated_record
-        })
-        .collect()
+    let width_in_tiles = canvas.width_in_tiles();
+    let height_in_tiles = canvas.height_in_tiles();
+    for path_id in 0..canvas.path_records.len() {
+        let pixel_bounds = path_bounds
+            .get(path_id)
+            .and_then(|bounds| *bounds)
+            .unwrap_or_else(|| translated_path_pixel_bounds(canvas, path_id));
+        let tile_bbox = pixel_bounds.tile_bbox(width_in_tiles, height_in_tiles);
+        let data_len = tile_bbox.tile_count();
+        let segment_capacity = translated_path_segment_capacity(canvas, path_id, tile_bbox);
+        let record = &mut canvas.path_records[path_id];
+        *record = PathRecord {
+            data_offset,
+            data_len,
+            tile_x0: tile_bbox.x0,
+            tile_y0: tile_bbox.y0,
+            tile_x1: tile_bbox.x1,
+            tile_y1: tile_bbox.y1,
+            segment_start,
+            segment_capacity,
+            segment_count: 0,
+            ..*record
+        };
+        data_offset += data_len;
+        segment_start += segment_capacity;
+    }
 }
 
 fn translated_path_pixel_bounds(canvas: &Canvas, path_id: usize) -> PixelBounds {

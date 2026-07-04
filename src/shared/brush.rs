@@ -318,26 +318,12 @@ pub(crate) fn push_encoded_brush(blob: &mut Vec<u32>, brush: &Brush) -> (u32, u3
     (offset, blob.len() as u32 - offset)
 }
 
-pub(crate) fn encoded_brush_data(
-    blob: &[u32],
-    offset: u32,
-    len: u32,
-) -> Option<&[u32; GPU_BRUSH_U32_STRIDE]> {
-    let record = encoded_brush_words(blob, offset, len)?;
-    record[..GPU_BRUSH_U32_STRIDE].try_into().ok()
-}
-
 pub(crate) fn encoded_brush_payload(blob: &[u32], offset: u32, len: u32) -> Option<&[u32]> {
     let record = encoded_brush_words(blob, offset, len)?;
     let data: &[u32; GPU_BRUSH_U32_STRIDE] = record[..GPU_BRUSH_U32_STRIDE].try_into().ok()?;
     let start = data[2] as usize;
     let end = start.checked_add(data[3] as usize)?;
     record.get(start..end)
-}
-
-pub(crate) fn encoded_brush_solid_color_u32(blob: &[u32], offset: u32, len: u32) -> Option<u32> {
-    let data = encoded_brush_data(blob, offset, len)?;
-    (data[0] == GPU_BRUSH_SOLID).then_some(data[4])
 }
 
 pub(crate) fn decode_encoded_brush(blob: &[u32], offset: u32, len: u32) -> Option<Brush> {

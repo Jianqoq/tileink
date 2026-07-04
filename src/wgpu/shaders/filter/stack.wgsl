@@ -196,20 +196,20 @@ fn gray_alpha(alpha: u32) -> u32 {
 fn layer_stack_alpha_at(draw_ix: u32, x: u32, y: u32) -> u32 {
     let draw_i = draw_ix;
     var alpha = 0u;
-    if (draw_i >= arrayLength(&draw_flags)) {
+    if (draw_i >= arrayLength(&draw_records)) {
         return alpha;
     }
     let global_x = i32(x);
     let global_y = i32(y);
-    let sdf_ix = draw_sdf_refs[draw_i];
-    if (sdf_ix != INVALID) {
+    let draw = draw_records[draw_i];
+    if (draw.sdf_offset != INVALID || draw.sdf_shadow_offset != INVALID) {
         if (
-            global_x >= draw_pixel_x0[draw_i] &&
-            global_x < draw_pixel_x1[draw_i] &&
-            global_y >= draw_pixel_y0[draw_i] &&
-            global_y < draw_pixel_y1[draw_i]
+            global_x >= draw.pixel_x0 &&
+            global_x < draw.pixel_x1 &&
+            global_y >= draw.pixel_y0 &&
+            global_y < draw.pixel_y1
         ) {
-            alpha = coverage_to_u8(sdf_coverage_from_encoded(sdf_ix, f32(x) + 0.5, f32(y) + 0.5));
+            alpha = coverage_to_u8(sdf_coverage_from_draw(draw, f32(x) + 0.5, f32(y) + 0.5));
         }
     } else {
         let tile_x = x / 16u;
@@ -232,7 +232,8 @@ fn layer_stack_alpha_at(draw_ix: u32, x: u32, y: u32) -> u32 {
 }
 
 fn draw_backdrop_ix(draw_ix: u32, tile_x: u32, tile_y: u32) -> u32 {
-    let path_id = draw_path_ids[draw_ix];
+    let draw = draw_records[draw_ix];
+    let path_id = draw.path_id;
     let draw_tag = draw_tag_at(draw_ix);
     var result = INVALID;
     if (
@@ -244,24 +245,25 @@ fn draw_backdrop_ix(draw_ix: u32, tile_x: u32, tile_y: u32) -> u32 {
          draw_tag == GPU_DRAW_BLEND ||
          draw_tag == GPU_DRAW_ISOLATE)
     ) {
-        let draw_x0 = pixel_tile_min(draw_pixel_x0[draw_ix], config.tiles_width);
-        let draw_y0 = pixel_tile_min(draw_pixel_y0[draw_ix], config.tiles_height);
-        let draw_x1 = pixel_tile_max(draw_pixel_x1[draw_ix], config.tiles_width);
-        let draw_y1 = pixel_tile_max(draw_pixel_y1[draw_ix], config.tiles_height);
+        let draw_x0 = pixel_tile_min(draw.pixel_x0, config.tiles_width);
+        let draw_y0 = pixel_tile_min(draw.pixel_y0, config.tiles_height);
+        let draw_x1 = pixel_tile_max(draw.pixel_x1, config.tiles_width);
+        let draw_y1 = pixel_tile_max(draw.pixel_y1, config.tiles_height);
         if (
             tile_x >= draw_x0 &&
             tile_x < draw_x1 &&
             tile_y >= draw_y0 &&
             tile_y < draw_y1 &&
-            path_id < arrayLength(&backdrop_data_offsets)
+            path_id < arrayLength(&path_records)
         ) {
-            let bx0 = backdrop_tile_x0[path_id];
-            let by0 = backdrop_tile_y0[path_id];
-            let bx1 = backdrop_tile_x1[path_id];
-            let by1 = backdrop_tile_y1[path_id];
+            let path = path_records[path_id];
+            let bx0 = path.tile_x0;
+            let by0 = path.tile_y0;
+            let bx1 = path.tile_x1;
+            let by1 = path.tile_y1;
             let stride = bx1 - bx0;
             if (stride > 0u && tile_x >= bx0 && tile_x < bx1 && tile_y >= by0 && tile_y < by1) {
-                result = backdrop_data_offsets[path_id] + (tile_y - by0) * stride + tile_x - bx0;
+                result = path.data_offset + (tile_y - by0) * stride + tile_x - bx0;
             }
         }
     }
@@ -285,11 +287,11 @@ fn pixel_tile_max(value: i32, limit: u32) -> u32 {
 }
 
 fn draw_tag_at(draw_ix: u32) -> u32 {
-    return draw_flags[draw_ix] & DRAW_FLAG_TAG_MASK;
+    return draw_records[draw_ix].tag;
 }
 
 fn draw_fill_rule_at(draw_ix: u32) -> u32 {
-    return (draw_flags[draw_ix] & DRAW_FLAG_FILL_RULE_EVEN_ODD) >> 3u;
+    return draw_records[draw_ix].fill_rule;
 }
 
 fn fill_alpha_at(backdrop: i32, fill_rule: u32, segment_start: u32, segment_end: u32, x: u32, y: u32) -> u32 {

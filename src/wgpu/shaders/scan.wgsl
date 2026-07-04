@@ -9,36 +9,49 @@ struct ScanConfig {
     _pad1: u32,
 };
 
+struct Line {
+    path_id: u32,
+    _pad: f32,
+    p0: vec2<f32>,
+    p1: vec2<f32>,
+};
+
+struct PathRecord {
+    path_id: u32,
+    line_count: u32,
+    line_start: u32,
+    flags: u32,
+    data_offset: u32,
+    data_len: u32,
+    tile_x0: u32,
+    tile_y0: u32,
+    tile_x1: u32,
+    tile_y1: u32,
+    segment_start: u32,
+    segment_capacity: u32,
+    segment_count: u32,
+};
+
 @group(0) @binding(0) var<uniform> config: ScanConfig;
-@group(0) @binding(1) var<storage, read> line_path_ids: array<u32>;
-@group(0) @binding(2) var<storage, read> line_p0x: array<f32>;
-@group(0) @binding(3) var<storage, read> line_p0y: array<f32>;
-@group(0) @binding(4) var<storage, read> line_p1x: array<f32>;
-@group(0) @binding(5) var<storage, read> line_p1y: array<f32>;
-@group(0) @binding(6) var<storage, read> path_flags: array<u32>;
-@group(0) @binding(7) var<storage, read> backdrop_data_offsets: array<u32>;
-@group(0) @binding(8) var<storage, read> backdrop_tile_x0: array<u32>;
-@group(0) @binding(9) var<storage, read> backdrop_tile_y0: array<u32>;
-@group(0) @binding(10) var<storage, read> backdrop_tile_x1: array<u32>;
-@group(0) @binding(11) var<storage, read> backdrop_tile_y1: array<u32>;
-@group(0) @binding(12) var<storage, read> scan_chunk_backdrop_offsets: array<u32>;
-@group(0) @binding(13) var<storage, read> scan_chunk_lens: array<u32>;
-@group(0) @binding(14) var<storage, read> scan_chunk_range_starts: array<u32>;
-@group(0) @binding(15) var<storage, read> scan_chunk_range_ends: array<u32>;
-@group(0) @binding(16) var<storage, read> backdrop_segment_starts: array<u32>;
-@group(0) @binding(17) var<storage, read_write> backdrops: array<atomic<i32>>;
-@group(0) @binding(18) var<storage, read_write> range_starts: array<u32>;
-@group(0) @binding(19) var<storage, read_write> range_ends: array<u32>;
-@group(0) @binding(20) var<storage, read_write> segment_tile_counts: array<atomic<u32>>;
-@group(0) @binding(21) var<storage, read_write> segment_tile_cursors: array<atomic<u32>>;
-@group(0) @binding(22) var<storage, read_write> segment_bumps: array<u32>;
-@group(0) @binding(23) var<storage, read_write> chunk_totals: array<u32>;
-@group(0) @binding(24) var<storage, read_write> chunk_offsets: array<u32>;
-@group(0) @binding(25) var<storage, read_write> segment_p0x: array<f32>;
-@group(0) @binding(26) var<storage, read_write> segment_p0y: array<f32>;
-@group(0) @binding(27) var<storage, read_write> segment_p1x: array<f32>;
-@group(0) @binding(28) var<storage, read_write> segment_p1y: array<f32>;
-@group(0) @binding(29) var<storage, read_write> segment_y_edge: array<f32>;
+@group(0) @binding(1) var<storage, read> lines: array<Line>;
+@group(0) @binding(2) var<storage, read> path_records: array<PathRecord>;
+@group(0) @binding(3) var<storage, read> scan_chunk_backdrop_offsets: array<u32>;
+@group(0) @binding(4) var<storage, read> scan_chunk_lens: array<u32>;
+@group(0) @binding(5) var<storage, read> scan_chunk_range_starts: array<u32>;
+@group(0) @binding(6) var<storage, read> scan_chunk_range_ends: array<u32>;
+@group(0) @binding(7) var<storage, read_write> backdrops: array<atomic<i32>>;
+@group(0) @binding(8) var<storage, read_write> range_starts: array<u32>;
+@group(0) @binding(9) var<storage, read_write> range_ends: array<u32>;
+@group(0) @binding(10) var<storage, read_write> segment_tile_counts: array<atomic<u32>>;
+@group(0) @binding(11) var<storage, read_write> segment_tile_cursors: array<atomic<u32>>;
+@group(0) @binding(12) var<storage, read_write> segment_bumps: array<u32>;
+@group(0) @binding(13) var<storage, read_write> chunk_totals: array<u32>;
+@group(0) @binding(14) var<storage, read_write> chunk_offsets: array<u32>;
+@group(0) @binding(15) var<storage, read_write> segment_p0x: array<f32>;
+@group(0) @binding(16) var<storage, read_write> segment_p0y: array<f32>;
+@group(0) @binding(17) var<storage, read_write> segment_p1x: array<f32>;
+@group(0) @binding(18) var<storage, read_write> segment_p1y: array<f32>;
+@group(0) @binding(19) var<storage, read_write> segment_y_edge: array<f32>;
 
 const DDA_TOP_EDGE_EPSILON: f32 = 1.0e-5;
 const TILE_BOUNDARY_EPSILON: f32 = 1.0e-4;
@@ -73,25 +86,27 @@ fn scan_count(@builtin(global_invocation_id) global_id: vec3<u32>) {
     if (line_ix >= config.line_count) {
         return;
     }
-    let path_id = line_path_ids[line_ix];
-    if (path_id >= arrayLength(&backdrop_data_offsets)) {
+    let line = lines[line_ix];
+    let path_id = line.path_id;
+    if (path_id >= arrayLength(&path_records)) {
         return;
     }
+    let path = path_records[path_id];
 
-    let bbox_x0 = backdrop_tile_x0[path_id];
-    let bbox_y0 = backdrop_tile_y0[path_id];
-    let bbox_x1 = backdrop_tile_x1[path_id];
-    let bbox_y1 = backdrop_tile_y1[path_id];
+    let bbox_x0 = path.tile_x0;
+    let bbox_y0 = path.tile_y0;
+    let bbox_x1 = path.tile_x1;
+    let bbox_y1 = path.tile_y1;
     let bbox_stride = bbox_x1 - bbox_x0;
     if (bbox_stride == 0u || bbox_y0 >= bbox_y1) {
         return;
     }
 
-    let keep_horizontal_tile_edges = path_flags[path_id] >= 1u;
-    let p0x = line_p0x[line_ix];
-    let p0y = line_p0y[line_ix];
-    let p1x = line_p1x[line_ix];
-    let p1y = line_p1y[line_ix];
+    let keep_horizontal_tile_edges = path.flags >= 1u;
+    let p0x = line.p0.x;
+    let p0y = line.p0.y;
+    let p1x = line.p1.x;
+    let p1y = line.p1.y;
     let is_down = p1y >= p0y;
     var xy0x = p0x;
     var xy0y = p0y;
@@ -240,7 +255,7 @@ fn scan_count(@builtin(global_invocation_id) global_id: vec3<u32>) {
         }
     }
 
-    let data_offset = backdrop_data_offsets[path_id];
+    let data_offset = path.data_offset;
     var y = ymin;
     loop {
         if (y >= ymax) {
@@ -363,7 +378,8 @@ fn scan_chunk_offsets(@builtin(global_invocation_id) global_id: vec3<u32>) {
     if (path_id >= config.path_count) {
         return;
     }
-    var next = backdrop_segment_starts[path_id];
+    let path = path_records[path_id];
+    var next = path.segment_start;
     var chunk_ix = scan_chunk_range_starts[path_id];
     let chunk_end = scan_chunk_range_ends[path_id];
     loop {
@@ -374,7 +390,7 @@ fn scan_chunk_offsets(@builtin(global_invocation_id) global_id: vec3<u32>) {
         next += chunk_totals[chunk_ix];
         chunk_ix += 1u;
     }
-    segment_bumps[path_id] = next - backdrop_segment_starts[path_id];
+    segment_bumps[path_id] = next - path.segment_start;
 }
 
 @compute @workgroup_size(256)
@@ -404,25 +420,27 @@ fn scan_emit(@builtin(global_invocation_id) global_id: vec3<u32>) {
     if (line_ix >= config.line_count) {
         return;
     }
-    let path_id = line_path_ids[line_ix];
-    if (path_id >= arrayLength(&backdrop_data_offsets)) {
+    let line = lines[line_ix];
+    let path_id = line.path_id;
+    if (path_id >= arrayLength(&path_records)) {
         return;
     }
+    let path = path_records[path_id];
 
-    let bbox_x0 = backdrop_tile_x0[path_id];
-    let bbox_y0 = backdrop_tile_y0[path_id];
-    let bbox_x1 = backdrop_tile_x1[path_id];
-    let bbox_y1 = backdrop_tile_y1[path_id];
+    let bbox_x0 = path.tile_x0;
+    let bbox_y0 = path.tile_y0;
+    let bbox_x1 = path.tile_x1;
+    let bbox_y1 = path.tile_y1;
     let bbox_stride = bbox_x1 - bbox_x0;
     if (bbox_stride == 0u || bbox_y0 >= bbox_y1) {
         return;
     }
 
-    let keep_horizontal_tile_edges = path_flags[path_id] >= 1u;
-    let p0x = line_p0x[line_ix];
-    let p0y = line_p0y[line_ix];
-    let p1x = line_p1x[line_ix];
-    let p1y = line_p1y[line_ix];
+    let keep_horizontal_tile_edges = path.flags >= 1u;
+    let p0x = line.p0.x;
+    let p0y = line.p0.y;
+    let p1x = line.p1.x;
+    let p1y = line.p1.y;
     let is_down = p1y >= p0y;
     var xy0x = p0x;
     var xy0y = p0y;
@@ -531,7 +549,7 @@ fn scan_emit(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
     imax = max(imin, imax);
 
-    let data_offset = backdrop_data_offsets[path_id];
+    let data_offset = path.data_offset;
     var i = imin;
     loop {
         if (i >= imax) {

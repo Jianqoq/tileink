@@ -50,10 +50,11 @@ impl WgpuFinePipeline {
             return None;
         }
 
+        let layout_entries = tile_fine_layout_entries(portable_textures);
         let bind_group_layout =
             device.create_bind_group_layout(&::wgpu::BindGroupLayoutDescriptor {
                 label: Some("tileink wgpu tile fine bind group layout"),
-                entries: &tile_fine_layout_entries(portable_textures),
+                entries: &layout_entries,
             });
         let shader = device.create_shader_module(::wgpu::ShaderModuleDescriptor {
             label: Some("tileink wgpu fine shader"),
@@ -206,30 +207,9 @@ impl WgpuFinePipeline {
             entries: &[
                 config_buffer_binding(0, &self.config, config_offset, self.config_size),
                 texture_binding(1, texture),
-                buffer_binding(2, fine.draw_flags),
-                buffer_binding(3, fine.draw_brush_colors),
-                buffer_binding(4, fine.draw_pixel_x0),
-                buffer_binding(5, fine.draw_pixel_y0),
-                buffer_binding(6, fine.draw_pixel_x1),
-                buffer_binding(7, fine.draw_pixel_y1),
-                buffer_binding(8, fine.sdf_refs),
-                buffer_binding(9, fine.sdf_kinds),
-                buffer_binding(10, fine.sdf_x0),
-                buffer_binding(11, fine.sdf_y0),
-                buffer_binding(12, fine.sdf_x1),
-                buffer_binding(13, fine.sdf_y1),
-                buffer_binding(14, fine.sdf_r0),
-                buffer_binding(15, fine.sdf_r1),
-                buffer_binding(16, fine.sdf_r2),
-                buffer_binding(17, fine.sdf_r3),
-                buffer_binding(18, fine.sdf_stroke_top),
-                buffer_binding(19, fine.sdf_stroke_right),
-                buffer_binding(20, fine.sdf_stroke_bottom),
-                buffer_binding(21, fine.sdf_stroke_left),
-                buffer_binding(22, fine.sdf_shadow_offset_x),
-                buffer_binding(23, fine.sdf_shadow_offset_y),
-                buffer_binding(24, fine.sdf_shadow_expand),
-                buffer_binding(25, fine.sdf_shadow_intensity),
+                buffer_binding(2, fine.draw_records),
+                buffer_binding(8, fine.sdf_blob),
+                buffer_binding(9, fine.sdf_shadow_blob),
                 buffer_binding(26, fine.brush_data),
                 buffer_binding(27, fine.brush_params),
                 buffer_binding(28, fine.brush_payloads),
@@ -272,36 +252,13 @@ impl WgpuFinePipeline {
     }
 }
 
-fn tile_fine_layout_entries(
-    portable_textures: bool,
-) -> [::wgpu::BindGroupLayoutEntry; fine_layout::LAYOUT_ENTRY_COUNT] {
-    [
+fn tile_fine_layout_entries(portable_textures: bool) -> Vec<::wgpu::BindGroupLayoutEntry> {
+    vec![
         uniform_layout_entry(0),
         storage_texture_layout_entry(1, portable_textures),
         storage_layout_entry(2, true),
-        storage_layout_entry(3, true),
-        storage_layout_entry(4, true),
-        storage_layout_entry(5, true),
-        storage_layout_entry(6, true),
-        storage_layout_entry(7, true),
         storage_layout_entry(8, true),
         storage_layout_entry(9, true),
-        storage_layout_entry(10, true),
-        storage_layout_entry(11, true),
-        storage_layout_entry(12, true),
-        storage_layout_entry(13, true),
-        storage_layout_entry(14, true),
-        storage_layout_entry(15, true),
-        storage_layout_entry(16, true),
-        storage_layout_entry(17, true),
-        storage_layout_entry(18, true),
-        storage_layout_entry(19, true),
-        storage_layout_entry(20, true),
-        storage_layout_entry(21, true),
-        storage_layout_entry(22, true),
-        storage_layout_entry(23, true),
-        storage_layout_entry(24, true),
-        storage_layout_entry(25, true),
         storage_layout_entry(26, true),
         storage_layout_entry(27, true),
         storage_layout_entry(28, true),

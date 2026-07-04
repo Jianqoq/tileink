@@ -29,15 +29,14 @@ pub(in crate::cpu) fn run_scan(
     buffers: &mut RasterBuffers,
 ) {
     buffers.rebuild_tile_draw_bins(canvas);
-    let Some(last_bd_record) = canvas.bd_records.last().copied() else {
+    let Some(last_path_record) = canvas.path_records.last().copied() else {
         buffers.clear_scan_outputs();
         return;
     };
-    buffers.resize_scan_outputs(canvas, last_bd_record);
+    buffers.resize_scan_outputs(canvas, last_path_record);
     scan.prepare(
         &canvas.lines,
         &canvas.path_records,
-        &canvas.bd_records,
         &mut buffers.backdrops,
         &mut buffers.tile_segment_ranges,
         &mut buffers.segments,
@@ -55,7 +54,7 @@ pub(in crate::cpu) fn run_cumsum(
     buffers: &mut RasterBuffers,
 ) {
     cumsum
-        .prepare(&mut buffers.backdrops, &canvas.bd_records)
+        .prepare(&mut buffers.backdrops, &canvas.path_records)
         .run();
 }
 
@@ -75,7 +74,7 @@ pub(in crate::cpu) fn run_coarse(
             stage.layer_stack_data,
             stage.layer_stack_range,
             &buffers.tile_draw_bins,
-            &canvas.bd_records,
+            &canvas.path_records,
             &buffers.backdrops,
             &buffers.tile_segment_ranges,
             &mut buffers.tile_ptcl_ranges,

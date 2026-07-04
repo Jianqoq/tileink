@@ -1,6 +1,6 @@
-use crate::shared::bd_record::BackdropRecord;
+use crate::shared::path::PathRecord;
 
-pub(crate) fn run_backdrop_cumsum(backdrops: &mut [i32], records: &[BackdropRecord]) {
+pub(crate) fn run_backdrop_cumsum(backdrops: &mut [i32], records: &[PathRecord]) {
     for record in records {
         let stride = (record.tile_x1 - record.tile_x0) as usize;
         let height = (record.tile_y1 - record.tile_y0) as usize;
@@ -27,18 +27,18 @@ pub(crate) fn run_backdrop_cumsum(backdrops: &mut [i32], records: &[BackdropReco
 #[cfg(test)]
 mod tests {
     use super::run_backdrop_cumsum;
-    use crate::shared::bd_record::BackdropRecord;
+    use crate::shared::path::PathRecord;
 
     #[test]
     fn scans_each_backdrop_row_independently() {
-        let record = BackdropRecord {
+        let record = PathRecord {
             data_offset: 0,
             data_len: 6,
             tile_x0: 10,
             tile_y0: 20,
             tile_x1: 13,
             tile_y1: 22,
-            ..BackdropRecord::default()
+            ..PathRecord::default()
         };
         let mut backdrops = vec![1, -1, 2, 3, 0, -2];
 
@@ -50,23 +50,23 @@ mod tests {
     #[test]
     fn respects_record_offsets() {
         let records = [
-            BackdropRecord {
+            PathRecord {
                 data_offset: 1,
                 data_len: 4,
                 tile_x0: 0,
                 tile_y0: 0,
                 tile_x1: 2,
                 tile_y1: 2,
-                ..BackdropRecord::default()
+                ..PathRecord::default()
             },
-            BackdropRecord {
+            PathRecord {
                 data_offset: 5,
                 data_len: 3,
                 tile_x0: 0,
                 tile_y0: 0,
                 tile_x1: 3,
                 tile_y1: 1,
-                ..BackdropRecord::default()
+                ..PathRecord::default()
             },
         ];
         let mut backdrops = vec![99, 1, 2, 3, 4, -1, 0, 2];
