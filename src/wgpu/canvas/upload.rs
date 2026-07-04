@@ -230,7 +230,7 @@ impl WgpuSceneBuffers {
                 &canvas.lines,
                 &canvas.path_records,
                 &canvas.draw_records,
-                &canvas.brushes,
+                &canvas.brush_blob,
                 &canvas.sdfs,
                 &canvas.sdf_shadows,
             );
@@ -240,7 +240,7 @@ impl WgpuSceneBuffers {
                 device,
                 queue,
                 &staging.columns,
-                &canvas.brushes,
+                canvas,
                 text.is_some(),
                 image_resources,
             );
@@ -270,7 +270,7 @@ impl WgpuSceneBuffers {
         device: &::wgpu::Device,
         queue: &::wgpu::Queue,
         columns: &CanvasColumns,
-        brushes: &[crate::shared::brush::Brush],
+        canvas: &Canvas,
         text_enabled: bool,
         image_resources: Option<&GpuImageResourceUpload>,
     ) {
@@ -454,7 +454,11 @@ impl WgpuSceneBuffers {
             );
         });
         profile_cpu("prepare.upload_scene.columns.brushes", || {
-            let brushes = GpuBrushUpload::from_scene_brushes(brushes, image_resources);
+            let brushes = GpuBrushUpload::from_scene_brush_blob(
+                &canvas.draw_records,
+                &canvas.brush_blob,
+                image_resources,
+            );
             self.draw_brush_data.upload(
                 device,
                 queue,

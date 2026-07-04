@@ -4,7 +4,7 @@ use crate::{
     shared::{
         bd_record::BackdropRecord,
         bounds::Bounds,
-        brush::Brush,
+        brush::decode_encoded_brush,
         draw_record::{DrawRecord, DrawTag},
         execution::LayerStackEntry,
         gpu_plan::TileDrawBins,
@@ -21,7 +21,7 @@ use crate::{
 
 pub struct CoarseCpuPrepared<'a> {
     draw_records: &'a [DrawRecord],
-    brushes: &'a [Brush],
+    brush_blob: &'a [u32],
     sdfs: &'a [Sdf],
     sdf_shadows: &'a [SdfShadow],
     draw_range: std::ops::Range<usize>,
@@ -65,7 +65,7 @@ impl<'a> CoarseCpuPrepared<'a> {
                     self.tile_draw_bins,
                     layer_stack,
                     self.draw_records,
-                    self.brushes,
+                    self.brush_blob,
                     self.sdfs,
                     self.sdf_shadows,
                     self.backdrop_records,
@@ -112,7 +112,7 @@ impl<'a> CoarseCpuPrepared<'a> {
         tile_draw_bins: &TileDrawBins,
         layer_stack: &[LayerStackEntry],
         draw_records: &[DrawRecord],
-        brushes: &[Brush],
+        brush_blob: &[u32],
         sdfs: &[Sdf],
         sdf_shadows: &[SdfShadow],
         backdrop_records: &[BackdropRecord],
@@ -148,7 +148,8 @@ impl<'a> CoarseCpuPrepared<'a> {
                 continue;
             };
             let draw = coverage.draw();
-            let Some(brush) = brushes.get(draw.brush_id as usize) else {
+            let Some(brush) = decode_encoded_brush(brush_blob, draw.brush_offset, draw.brush_len)
+            else {
                 continue;
             };
 
@@ -159,7 +160,7 @@ impl<'a> CoarseCpuPrepared<'a> {
                 tile_y,
                 layer_stack,
                 draw_records,
-                brushes,
+                brush_blob,
                 sdfs,
                 sdf_shadows,
                 backdrop_records,
@@ -292,7 +293,7 @@ impl<'a> CoarseCpuPrepared<'a> {
         tile_y: u32,
         layer_stack: &[LayerStackEntry],
         draw_records: &[DrawRecord],
-        brushes: &[Brush],
+        brush_blob: &[u32],
         sdfs: &[Sdf],
         sdf_shadows: &[SdfShadow],
         backdrop_records: &[BackdropRecord],
@@ -343,7 +344,9 @@ impl<'a> CoarseCpuPrepared<'a> {
                         segment_range,
                     },
                 ) => {
-                    let Some(brush) = brushes.get(draw.brush_id as usize) else {
+                    let Some(brush) =
+                        decode_encoded_brush(brush_blob, draw.brush_offset, draw.brush_len)
+                    else {
                         return false;
                     };
                     LayerCoveragePtcl::Path(TileFillPtcl {
@@ -354,7 +357,9 @@ impl<'a> CoarseCpuPrepared<'a> {
                     })
                 }
                 (LayerStackEntry::Clip { .. }, LayerTileCoverage::Sdf { draw, sdf }) => {
-                    let Some(brush) = brushes.get(draw.brush_id as usize) else {
+                    let Some(brush) =
+                        decode_encoded_brush(brush_blob, draw.brush_offset, draw.brush_len)
+                    else {
                         return false;
                     };
                     LayerCoveragePtcl::Sdf(TileSdfPtcl {
@@ -627,7 +632,7 @@ impl CoarseCpuPipeline {
     pub fn prepare<'a>(
         &self,
         draw_records: &'a [DrawRecord],
-        brushes: &'a [Brush],
+        brush_blob: &'a [u32],
         sdfs: &'a [Sdf],
         sdf_shadows: &'a [SdfShadow],
         draw_range: std::ops::Range<usize>,
@@ -645,7 +650,7 @@ impl CoarseCpuPipeline {
     ) -> CoarseCpuPrepared<'a> {
         CoarseCpuPrepared {
             draw_records,
-            brushes,
+            brush_blob,
             sdfs,
             sdf_shadows,
             draw_range,
@@ -675,7 +680,7 @@ mod tests {
         shared::{
             bd_record::BackdropRecord,
             bounds::{Bounds, PixelBounds},
-            brush::Brush,
+            brush::{Brush, push_encoded_brush},
             draw_record::{DrawRecord, DrawTag},
             execution::LayerStackEntry,
             fill::FillRule,
@@ -697,15 +702,24 @@ mod tests {
         bins
     }
 
+    fn assign_brushes(draw_records: &mut [DrawRecord], brushes: &[Brush]) -> Vec<u32> {
+        let mut blob = Vec::new();
+        for (draw, brush) in draw_records.iter_mut().zip(brushes) {
+            (draw.brush_offset, draw.brush_len) = push_encoded_brush(&mut blob, brush);
+        }
+        blob
+    }
+
     #[test]
     fn run_replays_clip_layers_in_user_nesting_order() {
-        let draw_records = [
+        let mut draw_records = [
             DrawRecord {
                 path_id: 0,
                 glyph_run_id: DrawRecord::NONE,
                 sdf_id: DrawRecord::NONE,
                 sdf_shadow_id: DrawRecord::NONE,
-                brush_id: 0,
+                brush_offset: DrawRecord::NONE,
+                brush_len: 0,
                 tag: DrawTag::Clip.into(),
                 fill_rule: FillRule::NonZero.into(),
                 pixel_bounds: PixelBounds {
@@ -721,7 +735,8 @@ mod tests {
                 glyph_run_id: DrawRecord::NONE,
                 sdf_id: DrawRecord::NONE,
                 sdf_shadow_id: DrawRecord::NONE,
-                brush_id: 1,
+                brush_offset: DrawRecord::NONE,
+                brush_len: 0,
                 tag: DrawTag::Clip.into(),
                 fill_rule: FillRule::NonZero.into(),
                 pixel_bounds: PixelBounds {
@@ -737,7 +752,8 @@ mod tests {
                 glyph_run_id: DrawRecord::NONE,
                 sdf_id: DrawRecord::NONE,
                 sdf_shadow_id: DrawRecord::NONE,
-                brush_id: 2,
+                brush_offset: DrawRecord::NONE,
+                brush_len: 0,
                 tag: DrawTag::Brush.into(),
                 fill_rule: FillRule::NonZero.into(),
                 pixel_bounds: PixelBounds {
@@ -754,6 +770,7 @@ mod tests {
             Brush::Solid(Color::TRANSPARENT),
             Brush::Solid(Color::BLACK),
         ];
+        let brush_blob = assign_brushes(&mut draw_records, &brushes);
         let backdrop_records = [
             BackdropRecord {
                 path_id: 0,
@@ -810,7 +827,7 @@ mod tests {
         CoarseCpuPipeline::new()
             .prepare(
                 &draw_records,
-                &brushes,
+                &brush_blob,
                 &[],
                 &[],
                 2..3,
@@ -869,7 +886,7 @@ mod tests {
         CoarseCpuPipeline::new()
             .prepare(
                 &canvas.draw_records,
-                &canvas.brushes,
+                &canvas.brush_blob,
                 &canvas.sdfs,
                 &canvas.sdf_shadows,
                 0..canvas.draw_records.len(),
@@ -928,13 +945,14 @@ mod tests {
 
     #[test]
     fn run_builds_each_tile_stream_independently_in_draw_order() {
-        let draw_records = [
+        let mut draw_records = [
             DrawRecord {
                 path_id: 0,
                 glyph_run_id: DrawRecord::NONE,
                 sdf_id: DrawRecord::NONE,
                 sdf_shadow_id: DrawRecord::NONE,
-                brush_id: 0,
+                brush_offset: DrawRecord::NONE,
+                brush_len: 0,
                 tag: DrawTag::Brush.into(),
                 fill_rule: FillRule::NonZero.into(),
                 pixel_bounds: PixelBounds {
@@ -950,7 +968,8 @@ mod tests {
                 glyph_run_id: DrawRecord::NONE,
                 sdf_id: DrawRecord::NONE,
                 sdf_shadow_id: DrawRecord::NONE,
-                brush_id: 1,
+                brush_offset: DrawRecord::NONE,
+                brush_len: 0,
                 tag: DrawTag::Brush.into(),
                 fill_rule: FillRule::NonZero.into(),
                 pixel_bounds: PixelBounds {
@@ -966,6 +985,7 @@ mod tests {
             Brush::Solid(Color::from_rgb8(255, 0, 0)),
             Brush::Solid(Color::from_rgb8(0, 0, 255)),
         ];
+        let brush_blob = assign_brushes(&mut draw_records, &brushes);
         let backdrop_records = [
             BackdropRecord {
                 path_id: 0,
@@ -1002,7 +1022,7 @@ mod tests {
         CoarseCpuPipeline::new()
             .prepare(
                 &draw_records,
-                &brushes,
+                &brush_blob,
                 &[],
                 &[],
                 0..draw_records.len(),

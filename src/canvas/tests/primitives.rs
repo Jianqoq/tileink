@@ -22,7 +22,7 @@ fn draw_sdf_shadow(canvas: &Canvas, index: usize) -> Option<SdfShadow> {
         .copied()
 }
 
-fn draw_brush(canvas: &Canvas, index: usize) -> &Brush {
+fn draw_brush(canvas: &Canvas, index: usize) -> Brush {
     canvas
         .draw_brush_for_record(&canvas.draw_records[index])
         .unwrap()
@@ -261,11 +261,12 @@ fn draw_id_updates_specific_draw_color() {
         &canvas.lines,
         &canvas.path_records,
         &canvas.draw_records,
-        &canvas.brushes,
+        &canvas.brush_blob,
         &canvas.sdfs,
         &canvas.sdf_shadows,
     );
-    let brushes = GpuBrushUpload::from_scene_brushes(&canvas.brushes, None);
+    let brushes =
+        GpuBrushUpload::from_scene_brush_blob(&canvas.draw_records, &canvas.brush_blob, None);
     assert_eq!(
         columns.draw_brush_colors[first.index()],
         premul_f32_to_u32(rgb(8, 9, 10).premultiply().components)
@@ -337,7 +338,7 @@ fn upload_columns_rebuild_after_append() {
         &parent.lines,
         &parent.path_records,
         &parent.draw_records,
-        &parent.brushes,
+        &parent.brush_blob,
         &parent.sdfs,
         &parent.sdf_shadows,
     );

@@ -59,8 +59,10 @@ pub struct DrawRecord {
     pub sdf_id: u32,
     /// Soft SDF shadow geometry index in `Canvas::sdf_shadows`, or `NONE` for non-shadow draws.
     pub sdf_shadow_id: u32,
-    /// Brush index in `Canvas::brushes`.
-    pub brush_id: u32,
+    /// Start word in `Canvas::brush_blob`, or `NONE` when the draw has no brush.
+    pub brush_offset: u32,
+    /// Brush record length in 32-bit words.
+    pub brush_len: u32,
     pub tag: DrawTagWord,
     pub fill_rule: FillRuleWord,
     pub pixel_bounds: PixelBounds,
@@ -89,6 +91,11 @@ impl DrawRecord {
 
     pub(crate) fn sdf_shadow_id(self) -> Option<u32> {
         (self.sdf_shadow_id != Self::NONE).then_some(self.sdf_shadow_id)
+    }
+
+    pub(crate) fn brush_range(self) -> Option<std::ops::Range<usize>> {
+        let end = self.brush_offset.checked_add(self.brush_len)?;
+        (self.brush_offset != Self::NONE).then_some(self.brush_offset as usize..end as usize)
     }
 
     pub(crate) fn has_analytic_geometry(&self) -> bool {
@@ -143,7 +150,7 @@ mod tests {
         assert_eq!(DrawRecord::NONE, u32::MAX);
         assert_eq!(size_of::<DrawTagWord>(), size_of::<u32>());
         assert_eq!(size_of::<FillRuleWord>(), size_of::<u32>());
-        assert_eq!(size_of::<DrawRecord>(), 48);
+        assert_eq!(size_of::<DrawRecord>(), 52);
         assert_eq!(align_of::<DrawRecord>(), align_of::<u32>());
     }
 }

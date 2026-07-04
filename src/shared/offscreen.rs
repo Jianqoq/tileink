@@ -5,7 +5,8 @@ use crate::{
     shared::{
         bd_record::BackdropRecord,
         bounds::{Bounds, PixelBounds, TileBbox},
-        brush::Brush,
+        brush::{Brush, decode_encoded_brush, push_encoded_brush},
+        draw_record::DrawRecord,
         execution::{ExecOp, ExecPlan},
         layer::{
             Layer,
@@ -172,14 +173,17 @@ fn translated_scene_for_bounds(canvas: &Canvas, local: LocalSpace) -> Canvas {
         .map(|draw| {
             let mut draw = *draw;
             draw.pixel_bounds = local.pixel_bounds(draw.pixel_bounds);
+            if let Some(brush) =
+                decode_encoded_brush(&canvas.brush_blob, draw.brush_offset, draw.brush_len)
+            {
+                (draw.brush_offset, draw.brush_len) =
+                    push_encoded_brush(&mut translated.brush_blob, &local.brush(brush));
+            } else {
+                draw.brush_offset = DrawRecord::NONE;
+                draw.brush_len = 0;
+            }
             draw
         })
-        .collect();
-    translated.brushes = canvas
-        .brushes
-        .iter()
-        .cloned()
-        .map(|brush| local.brush(brush))
         .collect();
     translated.sdfs = canvas
         .sdfs

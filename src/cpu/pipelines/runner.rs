@@ -68,7 +68,7 @@ pub(in crate::cpu) fn run_coarse(
     coarse
         .prepare(
             stage.draw_records,
-            &canvas.brushes,
+            &canvas.brush_blob,
             &canvas.sdfs,
             &canvas.sdf_shadows,
             stage.draw_range,

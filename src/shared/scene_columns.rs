@@ -1,5 +1,5 @@
 use crate::shared::{
-    brush::Brush,
+    brush::encoded_brush_solid_color_u32,
     draw_record::{DrawRecord, DrawTag},
     fill::FillRule,
     gpu_sdf::{encode_sdf, encode_sdf_shadow},
@@ -10,7 +10,6 @@ use crate::shared::{
     },
     line::Line,
     path::PathRecord,
-    pixel::premul_f32_to_u32,
     sdf::{Sdf, SdfShadow},
 };
 
@@ -67,7 +66,7 @@ impl CanvasColumns {
         lines: &[Line],
         paths: &[PathRecord],
         draws: &[DrawRecord],
-        brushes: &[Brush],
+        brush_blob: &[u32],
         sdfs: &[Sdf],
         sdf_shadows: &[SdfShadow],
     ) {
@@ -80,25 +79,26 @@ impl CanvasColumns {
         self.extend_lines(lines);
         self.extend_paths(paths);
         for draw in draws {
-            self.push_draw(draw, brushes, sdfs, sdf_shadows);
+            self.push_draw(draw, brush_blob, sdfs, sdf_shadows);
         }
     }
 
     pub(crate) fn push_draw(
         &mut self,
         draw: &DrawRecord,
-        brushes: &[Brush],
+        brush_blob: &[u32],
         sdfs: &[Sdf],
         sdf_shadows: &[SdfShadow],
     ) {
         self.draw_path_ids.push(draw.path_id);
         self.draw_glyph_run_ids.push(draw.glyph_run_id);
         self.draw_glyph_run_ids_without_text.push(INVALID_REF);
-        let brush = brushes.get(draw.brush_id as usize);
-        self.draw_flags.push(draw_flags_word(draw, brush, true));
+        let solid_color = solid_fast_color(draw, brush_blob);
+        self.draw_flags
+            .push(draw_flags_word(draw, solid_color.is_some(), true));
         self.draw_flags_without_text
-            .push(draw_flags_word(draw, brush, false));
-        self.draw_brush_colors.push(solid_fast_color(brush));
+            .push(draw_flags_word(draw, solid_color.is_some(), false));
+        self.draw_brush_colors.push(solid_color.unwrap_or(0));
         self.draw_pixel_x0.push(draw.pixel_bounds.x0);
         self.draw_pixel_y0.push(draw.pixel_bounds.y0);
         self.draw_pixel_x1.push(draw.pixel_bounds.x1);
@@ -272,14 +272,14 @@ impl DrawSdfColumns {
     }
 }
 
-pub(crate) fn draw_flags_word(draw: &DrawRecord, brush: Option<&Brush>, text_enabled: bool) -> u32 {
+pub(crate) fn draw_flags_word(draw: &DrawRecord, has_solid_brush: bool, text_enabled: bool) -> u32 {
     let mut flags = draw_tag_word(draw);
     if draw.fill_rule() == FillRule::EvenOdd {
         flags |= DRAW_FLAG_FILL_RULE_EVEN_ODD;
     }
     if draw.solid_rect() {
         flags |= DRAW_FLAG_SOLID_RECT;
-        if brush.and_then(Brush::solid_color).is_some() {
+        if has_solid_brush {
             flags |= DRAW_FLAG_SOLID_COLOR_FAST_PATH;
         }
     }
@@ -303,9 +303,6 @@ fn draw_tag_word(draw: &DrawRecord) -> u32 {
     }
 }
 
-fn solid_fast_color(brush: Option<&Brush>) -> u32 {
-    brush
-        .and_then(Brush::solid_color)
-        .map(|color| premul_f32_to_u32(color.premultiply().components))
-        .unwrap_or(0)
+fn solid_fast_color(draw: &DrawRecord, brush_blob: &[u32]) -> Option<u32> {
+    encoded_brush_solid_color_u32(brush_blob, draw.brush_offset, draw.brush_len)
 }
