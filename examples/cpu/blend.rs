@@ -1,5 +1,4 @@
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common;
 
 use peniko::{
     Color, Compose, Mix,
@@ -7,7 +6,7 @@ use peniko::{
 };
 use tileink::{Canvas, Radius};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut scene = Canvas::new(640, 360);
     common::fill_rect(
         &mut scene,

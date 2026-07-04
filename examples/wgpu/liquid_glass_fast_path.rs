@@ -3,8 +3,7 @@ use std::time::Duration;
 use peniko::Color;
 use tileink::{Canvas, WgpuRenderProfileReport, WgpuRenderer};
 
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common;
 
 #[path = "../common/liquid_glass_fast_path.rs"]
 mod fast_path;
@@ -12,7 +11,7 @@ mod fast_path;
 const WARMUP_FRAMES: usize = 8;
 const PROFILE_FRAMES: usize = 64;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     render_scene("liquid_glass_fast_path_mixed", &fast_path::mixed_scene())?;
     render_scene(
         "liquid_glass_fast_path_default",

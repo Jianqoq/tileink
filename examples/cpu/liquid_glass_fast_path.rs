@@ -1,13 +1,12 @@
 use peniko::Color;
 use tileink::{Canvas, CpuRenderer};
 
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common;
 
 #[path = "../common/liquid_glass_fast_path.rs"]
 mod fast_path;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     render_scene("liquid_glass_fast_path_mixed", &fast_path::mixed_scene())?;
     render_scene(
         "liquid_glass_fast_path_default",

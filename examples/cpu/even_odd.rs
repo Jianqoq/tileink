@@ -1,5 +1,4 @@
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common;
 
 use peniko::{
     Color,
@@ -22,7 +21,7 @@ fn nested_rect_path(offset_x: f64) -> BezPath {
     path
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut scene = Canvas::new(520, 280);
     common::fill_rect(
         &mut scene,

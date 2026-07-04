@@ -1,18 +1,16 @@
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common;
 #[path = "../common/path_current_close_dash_scene.rs"]
 mod path_current_close_dash_scene;
 
 use peniko::Color;
-use tileink::CpuRenderer;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let (scene, width, height) = path_current_close_dash_scene::path_current_close_dash_scene();
-    let mut renderer = CpuRenderer::new(width, height, Color::WHITE);
-    renderer.render(&scene);
-
-    let out = common::example_output("path_current_close_dash");
-    common::save_example_image(renderer.image(), &out)?;
-    println!("Wrote {}", out.display());
-    Ok(())
+    common::render_to_png(
+        "path_current_close_dash",
+        &scene,
+        width,
+        height,
+        Color::WHITE,
+    )
 }

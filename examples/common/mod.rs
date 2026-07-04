@@ -3,6 +3,8 @@
 #![allow(dead_code)]
 
 use std::{
+    cell::RefCell,
+    collections::HashMap,
     fs,
     path::{Path, PathBuf},
 };
@@ -15,6 +17,11 @@ use tileink::{Canvas, CpuRenderer, FillRule, Image, Radius, Region, SvgOptions, 
 
 pub const EXAMPLE_WIDTH: u32 = 1920;
 pub const EXAMPLE_HEIGHT: u32 = 1080;
+
+thread_local! {
+    static CPU_RENDERER: RefCell<Option<CpuRenderer>> = const { RefCell::new(None) };
+    static WGPU_RENDERERS: RefCell<HashMap<(u32, u32), WgpuRenderer>> = RefCell::new(HashMap::new());
+}
 
 pub fn example_output(name: &str) -> PathBuf {
     backend_output("cpu", name)
@@ -98,10 +105,14 @@ pub fn render_to_png(
     height: u32,
     clear: Color,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut renderer = CpuRenderer::new(width, height, clear);
-    renderer.render(scene);
     let out = example_output(name);
-    save_example_image(renderer.image(), &out)?;
+    CPU_RENDERER.with(|renderer| -> Result<(), Box<dyn std::error::Error>> {
+        let mut renderer = renderer.borrow_mut();
+        let renderer = renderer.get_or_insert_with(|| CpuRenderer::new(width, height, clear));
+        renderer.set_clear_color(clear);
+        renderer.render(scene);
+        save_example_image(renderer.image(), &out)
+    })?;
     println!("Wrote {}", out.display());
     Ok(())
 }
@@ -113,11 +124,16 @@ pub fn render_to_png_wgpu(
     height: u32,
     clear: Color,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut renderer = WgpuRenderer::new_default_device(width, height, clear);
-    renderer.render(scene);
-    let image = renderer.image();
     let out = wgpu_example_output(name);
-    save_example_image(&image, &out)?;
+    WGPU_RENDERERS.with(|renderers| -> Result<(), Box<dyn std::error::Error>> {
+        let mut renderers = renderers.borrow_mut();
+        let renderer = renderers
+            .entry((width, height))
+            .or_insert_with(|| WgpuRenderer::new_default_device(width, height, clear));
+        renderer.set_clear_color(clear);
+        renderer.render(scene);
+        save_example_image(&renderer.image(), &out)
+    })?;
     println!("Wrote {}", out.display());
     Ok(())
 }

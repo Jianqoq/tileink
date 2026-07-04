@@ -1,10 +1,9 @@
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common;
 
 #[path = "../common/svg_radial_gradient_scene.rs"]
 mod svg_radial_gradient_scene;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let scene = svg_radial_gradient_scene::scene()?;
     common::render_to_png(
         "svg_radial_gradient",

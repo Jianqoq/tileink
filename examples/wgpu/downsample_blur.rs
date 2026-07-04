@@ -1,5 +1,4 @@
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common;
 
 use peniko::{
     Color,
@@ -10,7 +9,7 @@ use tileink::{BlurSampling, Canvas, Filter, Radius, Region};
 const WIDTH: u32 = 960;
 const HEIGHT: u32 = 540;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut scene = Canvas::new(WIDTH, HEIGHT);
     draw_background(&mut scene);
     draw_blur_panel(&mut scene, Rect::new(70.0, 92.0, 430.0, 448.0), 1);

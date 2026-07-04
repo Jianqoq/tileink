@@ -1,13 +1,12 @@
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common;
 
 use peniko::{
     Color,
     kurbo::{Affine, Circle, Rect, Shape, Stroke},
 };
-use tileink::{Canvas, FillRule, WgpuRenderer};
+use tileink::{Canvas, FillRule};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let width = 360;
     let height = 260;
     let mut scene = Canvas::new(width, height);
@@ -47,14 +46,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         0.1,
     );
 
-    let mut renderer =
-        WgpuRenderer::new_default_device(width, height, Color::from_rgb8(255, 255, 255));
-    renderer.render(&scene);
-
-    let out = common::wgpu_example_output("simple");
-    let image = renderer.image();
-    common::save_example_image(&image, &out)?;
-    println!("Wrote {}", out.display());
-
-    Ok(())
+    common::render_to_png_wgpu(
+        "simple",
+        &scene,
+        width,
+        height,
+        Color::from_rgb8(255, 255, 255),
+    )
 }

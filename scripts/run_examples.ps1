@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
-$skip = @("bench_cpu")
+$examples = @("cpu_examples", "wgpu_examples")
 
 function Get-ExampleExecutable {
     param(
@@ -25,26 +25,14 @@ function Get-ExampleExecutable {
 Push-Location $repoRoot
 try {
     Write-Host "Building examples..."
-    cargo build --release --examples
+    foreach ($name in $examples) {
+        cargo build --release --example $name
+    }
 
     $metadata = cargo metadata --format-version 1 --no-deps | ConvertFrom-Json
     $examplesOutDir = Join-Path $metadata.target_directory "release\examples"
-    $package = $metadata.packages | Where-Object { $_.name -eq "tileink" } | Select-Object -First 1
-    if ($null -eq $package) {
-        throw "Package 'tileink' not found in cargo metadata"
-    }
 
-    $exampleTargets = $package.targets |
-        Where-Object { $_.kind -contains "example" } |
-        Where-Object {
-            $path = $_.src_path.Replace("/", "\")
-            $path -like "*\examples\cpu\*" -or $path -like "*\examples\wgpu\*"
-        } |
-        Where-Object { $skip -notcontains [IO.Path]::GetFileNameWithoutExtension($_.src_path) } |
-        Sort-Object src_path
-
-    foreach ($target in $exampleTargets) {
-        $name = $target.name
+    foreach ($name in $examples) {
         $exe = Get-ExampleExecutable -ExamplesOutDir $examplesOutDir -Name $name
 
         Write-Host "Running example: $name"

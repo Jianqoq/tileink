@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use peniko::{
     Color, Extend, Gradient,
     color::palette::css,

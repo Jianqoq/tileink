@@ -1,12 +1,11 @@
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common;
 
 #[path = "../common/text_scene.rs"]
 mod text_scene;
 
 use tileink::{TextContext, TextFontSystem, WgpuRenderer};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut font_system = TextFontSystem::new();
     let mut text_context = TextContext::new();
     let mut renderer = WgpuRenderer::new_default_device(

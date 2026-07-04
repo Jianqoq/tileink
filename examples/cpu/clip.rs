@@ -1,5 +1,4 @@
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common;
 
 use peniko::{
     Color,
@@ -19,7 +18,7 @@ fn complex_clip_path() -> BezPath {
     path
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut scene = Canvas::new(360, 260);
     common::fill_rect(
         &mut scene,

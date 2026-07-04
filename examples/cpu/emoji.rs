@@ -1,12 +1,11 @@
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common;
 
 #[path = "../common/emoji_scene.rs"]
 mod emoji_scene;
 
 use tileink::{CpuRenderer, TextContext, TextFontSystem};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut font_system = TextFontSystem::new();
     let mut text_context = TextContext::new();
     let scene = emoji_scene::scene(&mut font_system, &mut text_context);

@@ -1,10 +1,9 @@
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common;
 
 use peniko::{Color, kurbo::Rect};
-use tileink::{Canvas, Radius, StrokeWidths, WgpuRenderer};
+use tileink::{Canvas, Radius, StrokeWidths};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let width = 480;
     let height = 320;
     let mut scene = Canvas::new(width, height);
@@ -56,14 +55,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Color::from_rgb8(28, 153, 104),
     );
 
-    let mut renderer =
-        WgpuRenderer::new_default_device(width, height, Color::from_rgb8(255, 255, 255));
-    renderer.render(&scene);
-
-    let out = common::wgpu_example_output("rect_stroke_widths");
-    let image = renderer.image();
-    common::save_example_image(&image, &out)?;
-    println!("Wrote {}", out.display());
-
-    Ok(())
+    common::render_to_png_wgpu(
+        "rect_stroke_widths",
+        &scene,
+        width,
+        height,
+        Color::from_rgb8(255, 255, 255),
+    )
 }

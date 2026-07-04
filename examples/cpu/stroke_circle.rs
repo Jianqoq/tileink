@@ -1,13 +1,12 @@
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common;
 
 use peniko::{
     Color,
     kurbo::{Affine, Circle, Stroke},
 };
-use tileink::{Canvas, CpuRenderer, FillRule};
+use tileink::{Canvas, FillRule};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let width = 220;
     let height = 180;
     let mut scene = Canvas::new(width, height);
@@ -26,12 +25,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         0.1,
     );
 
-    let mut renderer = CpuRenderer::new(width, height, Color::WHITE);
-    renderer.render(&scene);
-
-    let out = common::example_output("stroke_circle");
-    common::save_example_image(renderer.image(), &out)?;
-    println!("Wrote {}", out.display());
-
-    Ok(())
+    common::render_to_png("stroke_circle", &scene, width, height, Color::WHITE)
 }

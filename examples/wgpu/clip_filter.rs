@@ -1,10 +1,7 @@
-#[path = "../common/mod.rs"]
-mod common;
+use crate::common;
+use crate::layer_filter_scenes as scenes;
 
-#[path = "../common/layer_filter_scenes.rs"]
-mod scenes;
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     common::render_to_png_wgpu(
         "clip_filter",
         &scenes::clip_filter_scene(),
