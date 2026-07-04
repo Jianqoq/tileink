@@ -44,12 +44,10 @@ pub(crate) fn combine_alpha(a: u8, b: u8) -> u8 {
 #[inline]
 #[cfg(test)]
 fn segment_coverage_at(segment: &LineSegment, x: u32, y: u32) -> f32 {
-    let p0 = segment.point0;
-    let p1 = segment.point1;
-    let delta_x = p1.0 - p0.0;
-    let delta_y = p1.1 - p0.1;
+    let delta_x = segment.p1x - segment.p0x;
+    let delta_y = segment.p1y - segment.p0y;
     let row_y = y as f32;
-    let local_y = p0.1 - row_y;
+    let local_y = segment.p0y - row_y;
     let y0 = local_y.clamp(0.0, 1.0);
     let y1 = (local_y + delta_y).clamp(0.0, 1.0);
     let dy = y0 - y1;
@@ -62,8 +60,8 @@ fn segment_coverage_at(segment: &LineSegment, x: u32, y: u32) -> f32 {
     let recip = 1.0 / delta_y;
     let t0 = (y0 - local_y) * recip;
     let t1 = (y1 - local_y) * recip;
-    let sx0 = p0.0 + t0 * delta_x;
-    let sx1 = p0.0 + t1 * delta_x;
+    let sx0 = segment.p0x + t0 * delta_x;
+    let sx1 = segment.p0x + t1 * delta_x;
     let pixel_x = x as f32;
     let xmin = sx0.min(sx1) - pixel_x;
     let xmax = sx0.max(sx1) - pixel_x;
@@ -80,12 +78,10 @@ fn segment_coverage_at(segment: &LineSegment, x: u32, y: u32) -> f32 {
 
 #[inline]
 fn segment_row_parts(segment: &LineSegment, y: u32) -> (f32, f32, f32, f32) {
-    let p0 = segment.point0;
-    let p1 = segment.point1;
-    let delta_x = p1.0 - p0.0;
-    let delta_y = p1.1 - p0.1;
+    let delta_x = segment.p1x - segment.p0x;
+    let delta_y = segment.p1y - segment.p0y;
     let row_y = y as f32;
-    let local_y = p0.1 - row_y;
+    let local_y = segment.p0y - row_y;
     let y0 = local_y.clamp(0.0, 1.0);
     let y1 = (local_y + delta_y).clamp(0.0, 1.0);
     let dy = y0 - y1;
@@ -98,8 +94,8 @@ fn segment_row_parts(segment: &LineSegment, y: u32) -> (f32, f32, f32, f32) {
     let recip = 1.0 / delta_y;
     let t0 = (y0 - local_y) * recip;
     let t1 = (y1 - local_y) * recip;
-    let sx0 = p0.0 + t0 * delta_x;
-    let sx1 = p0.0 + t1 * delta_x;
+    let sx0 = segment.p0x + t0 * delta_x;
+    let sx1 = segment.p0x + t1 * delta_x;
 
     (y_edge, dy, sx0.min(sx1), sx0.max(sx1))
 }
@@ -607,8 +603,10 @@ mod tests {
     #[test]
     fn pixel_coverage_consumes_segment_geometry() {
         let segment = LineSegment {
-            point0: (4.0, 0.0),
-            point1: (12.0, 16.0),
+            p0x: 4.0,
+            p0y: 0.0,
+            p1x: 12.0,
+            p1y: 16.0,
             y_edge: 1.0e9,
         };
 
@@ -619,8 +617,10 @@ mod tests {
     #[test]
     fn pixel_coverage_handles_vertical_edges_without_cancellation() {
         let segment = LineSegment {
-            point0: (0.75, 16.0),
-            point1: (0.75, 0.0),
+            p0x: 0.75,
+            p0y: 16.0,
+            p1x: 0.75,
+            p1y: 0.0,
             y_edge: 1.0e9,
         };
 
@@ -630,8 +630,10 @@ mod tests {
     #[test]
     fn build_tile_alpha_uses_segment_geometry() {
         let segment = LineSegment {
-            point0: (4.0, 0.0),
-            point1: (12.0, 16.0),
+            p0x: 4.0,
+            p0y: 0.0,
+            p1x: 12.0,
+            p1y: 16.0,
             y_edge: 1.0e9,
         };
 
@@ -644,23 +646,31 @@ mod tests {
     fn build_tile_alpha_matches_pixel_coverage_reference() {
         let segments = [
             LineSegment {
-                point0: (4.0, 0.0),
-                point1: (12.0, 16.0),
+                p0x: 4.0,
+                p0y: 0.0,
+                p1x: 12.0,
+                p1y: 16.0,
                 y_edge: 1.0e9,
             },
             LineSegment {
-                point0: (15.0, 2.0),
-                point1: (1.0, 14.0),
+                p0x: 15.0,
+                p0y: 2.0,
+                p1x: 1.0,
+                p1y: 14.0,
                 y_edge: 1.0e9,
             },
             LineSegment {
-                point0: (-2.0, 7.0),
-                point1: (18.0, 9.0),
+                p0x: -2.0,
+                p0y: 7.0,
+                p1x: 18.0,
+                p1y: 9.0,
                 y_edge: 1.0e9,
             },
             LineSegment {
-                point0: (6.0, 0.0),
-                point1: (6.0, 16.0),
+                p0x: 6.0,
+                p0y: 0.0,
+                p1x: 6.0,
+                p1y: 16.0,
                 y_edge: 1.0e9,
             },
         ];

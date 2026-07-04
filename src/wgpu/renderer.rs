@@ -1714,27 +1714,7 @@ impl Renderer {
             &self.queue,
             self.lengths.backdrop_len,
         );
-        let p0x = self.scan.segment_p0x.read::<f32>(
-            &self.device,
-            &self.queue,
-            self.lengths.segment_capacity,
-        );
-        let p0y = self.scan.segment_p0y.read::<f32>(
-            &self.device,
-            &self.queue,
-            self.lengths.segment_capacity,
-        );
-        let p1x = self.scan.segment_p1x.read::<f32>(
-            &self.device,
-            &self.queue,
-            self.lengths.segment_capacity,
-        );
-        let p1y = self.scan.segment_p1y.read::<f32>(
-            &self.device,
-            &self.queue,
-            self.lengths.segment_capacity,
-        );
-        let y_edge = self.scan.segment_y_edge.read::<f32>(
+        let segments = self.scan.segments.read::<LineSegment>(
             &self.device,
             &self.queue,
             self.lengths.segment_capacity,
@@ -1743,18 +1723,6 @@ impl Renderer {
             .into_iter()
             .zip(ends)
             .map(|(start, end)| TileSegmentRange { start, end })
-            .collect();
-        let segments = p0x
-            .into_iter()
-            .zip(p0y)
-            .zip(p1x)
-            .zip(p1y)
-            .zip(y_edge)
-            .map(|((((p0x, p0y), p1x), p1y), y_edge)| LineSegment {
-                point0: (p0x, p0y),
-                point1: (p1x, p1y),
-                y_edge,
-            })
             .collect();
         WgpuDebugScanReadback {
             backdrops,

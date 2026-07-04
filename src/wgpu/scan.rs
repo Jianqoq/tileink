@@ -196,11 +196,7 @@ impl WgpuScanPipeline {
                 bind_buffer(12, bindings.segment_bumps),
                 bind_buffer(13, bindings.chunk_totals),
                 bind_buffer(14, bindings.chunk_offsets),
-                bind_buffer(15, bindings.segment_p0x),
-                bind_buffer(16, bindings.segment_p0y),
-                bind_buffer(17, bindings.segment_p1x),
-                bind_buffer(18, bindings.segment_p1y),
-                bind_buffer(19, bindings.segment_y_edge),
+                bind_buffer(15, bindings.segments),
             ],
         })
     }
@@ -222,7 +218,7 @@ fn create_pipeline(
     })
 }
 
-fn scan_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 20] {
+fn scan_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 16] {
     [
         ::wgpu::BindGroupLayoutEntry {
             binding: 0,
@@ -249,10 +245,6 @@ fn scan_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 20] {
         storage_entry(13, false),
         storage_entry(14, false),
         storage_entry(15, false),
-        storage_entry(16, false),
-        storage_entry(17, false),
-        storage_entry(18, false),
-        storage_entry(19, false),
     ]
 }
 

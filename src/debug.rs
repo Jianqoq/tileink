@@ -260,8 +260,8 @@ fn capture_tile_detail(
             let segments = segment_slice
                 .iter()
                 .map(|segment| DebugLineSegment {
-                    point0: [segment.point0.0, segment.point0.1],
-                    point1: [segment.point1.0, segment.point1.1],
+                    point0: [segment.p0x, segment.p0y],
+                    point1: [segment.p1x, segment.p1y],
                     y_edge: segment.y_edge,
                 })
                 .collect();

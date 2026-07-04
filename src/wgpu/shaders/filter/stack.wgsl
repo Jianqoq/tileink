@@ -301,15 +301,8 @@ fn fill_alpha_at(backdrop: i32, fill_rule: u32, segment_start: u32, segment_end:
         if (segment_ix >= segment_end) {
             break;
         }
-        coverage += segment_coverage_at(
-            segment_p0x[segment_ix],
-            segment_p0y[segment_ix],
-            segment_p1x[segment_ix],
-            segment_p1y[segment_ix],
-            segment_y_edge[segment_ix],
-            x,
-            y,
-        );
+        let segment = segments[segment_ix];
+        coverage += segment_coverage_at(segment.p0x, segment.p0y, segment.p1x, segment.p1y, segment.y_edge, x, y);
         segment_ix += 1u;
     }
     return coverage_to_alpha(coverage, fill_rule);

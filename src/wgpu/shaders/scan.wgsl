@@ -32,6 +32,14 @@ struct PathRecord {
     segment_count: u32,
 };
 
+struct LineSegment {
+    p0x: f32,
+    p0y: f32,
+    p1x: f32,
+    p1y: f32,
+    y_edge: f32,
+};
+
 @group(0) @binding(0) var<uniform> config: ScanConfig;
 @group(0) @binding(1) var<storage, read> lines: array<Line>;
 @group(0) @binding(2) var<storage, read> path_records: array<PathRecord>;
@@ -47,11 +55,7 @@ struct PathRecord {
 @group(0) @binding(12) var<storage, read_write> segment_bumps: array<u32>;
 @group(0) @binding(13) var<storage, read_write> chunk_totals: array<u32>;
 @group(0) @binding(14) var<storage, read_write> chunk_offsets: array<u32>;
-@group(0) @binding(15) var<storage, read_write> segment_p0x: array<f32>;
-@group(0) @binding(16) var<storage, read_write> segment_p0y: array<f32>;
-@group(0) @binding(17) var<storage, read_write> segment_p1x: array<f32>;
-@group(0) @binding(18) var<storage, read_write> segment_p1y: array<f32>;
-@group(0) @binding(19) var<storage, read_write> segment_y_edge: array<f32>;
+@group(0) @binding(15) var<storage, read_write> segments: array<LineSegment>;
 
 const DDA_TOP_EDGE_EPSILON: f32 = 1.0e-5;
 const TILE_BOUNDARY_EPSILON: f32 = 1.0e-4;
@@ -852,9 +856,5 @@ fn write_clipped_segment(
         p1y = tmp_y;
     }
 
-    segment_p0x[dst] = p0x;
-    segment_p0y[dst] = p0y;
-    segment_p1x[dst] = p1x;
-    segment_p1y[dst] = p1y;
-    segment_y_edge[dst] = y_edge;
+    segments[dst] = LineSegment(p0x, p0y, p1x, p1y, y_edge);
 }

@@ -381,14 +381,8 @@ fn fill_alpha_at(
         if (segment_ix >= segment_end) {
             break;
         }
-        let parts = segment_row_parts(
-            segment_p0x[segment_ix],
-            segment_p0y[segment_ix],
-            segment_p1x[segment_ix],
-            segment_p1y[segment_ix],
-            segment_y_edge[segment_ix],
-            y,
-        );
+        let segment = segments[segment_ix];
+        let parts = segment_row_parts(segment.p0x, segment.p0y, segment.p1x, segment.p1y, segment.y_edge, y);
         let y_edge = parts.x;
         let dy = parts.y;
         let xmin = parts.z;

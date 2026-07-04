@@ -1,4 +1,4 @@
-use crate::shared::gpu_plan::GpuBufferLengths;
+use crate::shared::{gpu_plan::GpuBufferLengths, line_seg::LineSegment};
 
 use super::super::buffer::WgpuBuffer;
 
@@ -10,11 +10,7 @@ pub(crate) struct WgpuScanBuffers {
     pub(crate) backdrops: WgpuBuffer,
     pub(crate) tile_segment_range_starts: WgpuBuffer,
     pub(crate) tile_segment_range_ends: WgpuBuffer,
-    pub(crate) segment_p0x: WgpuBuffer,
-    pub(crate) segment_p0y: WgpuBuffer,
-    pub(crate) segment_p1x: WgpuBuffer,
-    pub(crate) segment_p1y: WgpuBuffer,
-    pub(crate) segment_y_edge: WgpuBuffer,
+    pub(crate) segments: WgpuBuffer,
     pub(crate) segment_tile_counts: WgpuBuffer,
     pub(crate) segment_tile_cursors: WgpuBuffer,
     pub(crate) segment_bumps: WgpuBuffer,
@@ -36,11 +32,7 @@ impl WgpuScanBuffers {
                 device,
                 "tileink wgpu scan tile segment range ends",
             ),
-            segment_p0x: WgpuBuffer::new(device, "tileink wgpu scan segment p0x"),
-            segment_p0y: WgpuBuffer::new(device, "tileink wgpu scan segment p0y"),
-            segment_p1x: WgpuBuffer::new(device, "tileink wgpu scan segment p1x"),
-            segment_p1y: WgpuBuffer::new(device, "tileink wgpu scan segment p1y"),
-            segment_y_edge: WgpuBuffer::new(device, "tileink wgpu scan segment y edge"),
+            segments: WgpuBuffer::new(device, "tileink wgpu scan segments"),
             segment_tile_counts: WgpuBuffer::new(device, "tileink wgpu scan segment tile counts"),
             segment_tile_cursors: WgpuBuffer::new(device, "tileink wgpu scan segment tile cursors"),
             segment_bumps: WgpuBuffer::new(device, "tileink wgpu scan segment bumps"),
@@ -67,29 +59,9 @@ impl WgpuScanBuffers {
             "tileink wgpu scan tile segment range ends",
             lengths.backdrop_len,
         );
-        self.segment_p0x.resize_uninit::<f32>(
+        self.segments.resize_uninit::<LineSegment>(
             device,
-            "tileink wgpu scan segment p0x",
-            lengths.segment_capacity,
-        );
-        self.segment_p0y.resize_uninit::<f32>(
-            device,
-            "tileink wgpu scan segment p0y",
-            lengths.segment_capacity,
-        );
-        self.segment_p1x.resize_uninit::<f32>(
-            device,
-            "tileink wgpu scan segment p1x",
-            lengths.segment_capacity,
-        );
-        self.segment_p1y.resize_uninit::<f32>(
-            device,
-            "tileink wgpu scan segment p1y",
-            lengths.segment_capacity,
-        );
-        self.segment_y_edge.resize_uninit::<f32>(
-            device,
-            "tileink wgpu scan segment y edge",
+            "tileink wgpu scan segments",
             lengths.segment_capacity,
         );
         self.segment_tile_counts.resize_uninit::<u32>(

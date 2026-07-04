@@ -344,8 +344,10 @@ fn clip_line_to_tile(
     }
 
     LineSegment {
-        point0: p0,
-        point1: p1,
+        p0x: p0.0,
+        p0y: p0.1,
+        p1x: p1.0,
+        p1y: p1.1,
         y_edge,
     }
 }
@@ -740,10 +742,10 @@ mod tests {
             tile_segment_ranges[0],
             TileSegmentRange { start: 0, end: 1 }
         );
-        assert!((segments[0].point0.0 - 4.0).abs() < 1e-3);
-        assert!((segments[0].point1.0 - 4.0).abs() < 1e-3);
-        assert!((segments[0].point0.1 - 0.0).abs() < 1e-6);
-        assert!((segments[0].point1.1 - 16.0).abs() < 1e-6);
+        assert!((segments[0].p0x - 4.0).abs() < 1e-3);
+        assert!((segments[0].p1x - 4.0).abs() < 1e-3);
+        assert!((segments[0].p0y - 0.0).abs() < 1e-6);
+        assert!((segments[0].p1y - 16.0).abs() < 1e-6);
     }
 
     #[test]
@@ -810,12 +812,12 @@ mod tests {
         assert!(
             segments[0..2]
                 .iter()
-                .all(|segment| { segment.point0.0 <= 16.0 && segment.point1.0 <= 16.0 })
+                .all(|segment| { segment.p0x <= 16.0 && segment.p1x <= 16.0 })
         );
         assert!(
             segments[2..4]
                 .iter()
-                .all(|segment| { segment.point0.0 >= 0.0 && segment.point1.0 >= 0.0 })
+                .all(|segment| { segment.p0x >= 0.0 && segment.p1x >= 0.0 })
         );
     }
 

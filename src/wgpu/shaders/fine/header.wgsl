@@ -102,6 +102,13 @@ struct DrawRecord {
     pixel_y1: i32,
     solid_rect: u32,
 };
+struct LineSegment {
+    p0x: f32,
+    p0y: f32,
+    p1x: f32,
+    p1y: f32,
+    y_edge: f32,
+};
 @group(0) @binding(2) var<storage, read> draw_records: array<DrawRecord>;
 @group(0) @binding(8) var<storage, read> sdf_blob: array<u32>;
 @group(0) @binding(9) var<storage, read> sdf_shadow_blob: array<u32>;
@@ -116,11 +123,7 @@ struct DrawRecord {
 @group(0) @binding(34) var<storage, read> ptcl_segment_starts: array<u32>;
 @group(0) @binding(35) var<storage, read> ptcl_segment_ends: array<u32>;
 @group(0) @binding(36) var<storage, read> ptcl_colors: array<u32>;
-@group(0) @binding(37) var<storage, read> segment_p0x: array<f32>;
-@group(0) @binding(38) var<storage, read> segment_p0y: array<f32>;
-@group(0) @binding(39) var<storage, read> segment_p1x: array<f32>;
-@group(0) @binding(40) var<storage, read> segment_p1y: array<f32>;
-@group(0) @binding(41) var<storage, read> segment_y_edge: array<f32>;
+@group(0) @binding(37) var<storage, read> segments: array<LineSegment>;
 @group(0) @binding(42) var<storage, read> glyph_indices: array<u32>;
 @group(0) @binding(43) var<storage, read> glyph_image_ids: array<u32>;
 @group(0) @binding(44) var<storage, read> glyph_x: array<i32>;

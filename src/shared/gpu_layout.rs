@@ -22,13 +22,13 @@ pub(crate) mod image_resource {
 }
 
 pub(crate) mod fine {
-    pub(crate) const STORAGE_BUFFER_COUNT: u32 = 34;
+    pub(crate) const STORAGE_BUFFER_COUNT: u32 = 30;
     pub(crate) const IMAGE_RESOURCE_METADATA_BINDING: u32 = 55;
     pub(crate) const IMAGE_RESOURCE_PIXELS_BINDING: u32 = 56;
 }
 
 pub(crate) mod filter {
-    pub(crate) const STORAGE_BUFFER_COUNT: u32 = 30;
+    pub(crate) const STORAGE_BUFFER_COUNT: u32 = 26;
     pub(crate) const IMAGE_RESOURCE_METADATA_BINDING: u32 = 53;
     pub(crate) const IMAGE_RESOURCE_PIXELS_BINDING: u32 = 54;
 }

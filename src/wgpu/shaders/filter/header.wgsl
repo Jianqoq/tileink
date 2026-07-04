@@ -215,6 +215,13 @@ struct PathRecord {
     segment_capacity: u32,
     segment_count: u32,
 };
+struct LineSegment {
+    p0x: f32,
+    p0y: f32,
+    p1x: f32,
+    p1y: f32,
+    y_edge: f32,
+};
 @group(0) @binding(4) var<storage, read> draw_records: array<DrawRecord>;
 @group(0) @binding(10) var<storage, read> sdf_blob: array<u32>;
 @group(0) @binding(11) var<storage, read> sdf_shadow_blob: array<u32>;
@@ -222,27 +229,23 @@ struct PathRecord {
 @group(0) @binding(29) var<storage, read_write> backdrops: array<atomic<i32>>;
 @group(0) @binding(30) var<storage, read> segment_starts: array<u32>;
 @group(0) @binding(31) var<storage, read> segment_ends: array<u32>;
-@group(0) @binding(32) var<storage, read> segment_p0x: array<f32>;
-@group(0) @binding(33) var<storage, read> segment_p0y: array<f32>;
-@group(0) @binding(34) var<storage, read> segment_p1x: array<f32>;
-@group(0) @binding(35) var<storage, read> segment_p1y: array<f32>;
-@group(0) @binding(36) var<storage, read> segment_y_edge: array<f32>;
-@group(0) @binding(37) var<storage, read> layer_stack_tags: array<u32>;
-@group(0) @binding(38) var<storage, read> layer_stack_draws: array<u32>;
-@group(0) @binding(39) var<storage, read> layer_stack_payloads: array<u32>;
-@group(0) @binding(40) var<storage, read> transfer_tables: array<u32>;
-@group(0) @binding(41) var<storage, read> brush_data: array<u32>;
-@group(0) @binding(42) var<storage, read> brush_params: array<f32>;
-@group(0) @binding(43) var<storage, read> brush_payloads: array<u32>;
-@group(0) @binding(44) var<storage, read> convolve_kernels: array<f32>;
-@group(0) @binding(45) var<storage, read> turbulence_selectors: array<u32>;
-@group(0) @binding(46) var<storage, read> turbulence_gradients: array<f32>;
-@group(0) @binding(47) var<storage, read> path_range_starts: array<u32>;
-@group(0) @binding(48) var<storage, read> path_range_ends: array<u32>;
-@group(0) @binding(49) var<storage, read> path_p0x: array<i32>;
-@group(0) @binding(50) var<storage, read> path_p0y: array<i32>;
-@group(0) @binding(51) var<storage, read> path_p1x: array<i32>;
-@group(0) @binding(52) var<storage, read> path_p1y: array<i32>;
+@group(0) @binding(32) var<storage, read> segments: array<LineSegment>;
+@group(0) @binding(33) var<storage, read> layer_stack_tags: array<u32>;
+@group(0) @binding(34) var<storage, read> layer_stack_draws: array<u32>;
+@group(0) @binding(35) var<storage, read> layer_stack_payloads: array<u32>;
+@group(0) @binding(36) var<storage, read> transfer_tables: array<u32>;
+@group(0) @binding(37) var<storage, read> brush_data: array<u32>;
+@group(0) @binding(38) var<storage, read> brush_params: array<f32>;
+@group(0) @binding(39) var<storage, read> brush_payloads: array<u32>;
+@group(0) @binding(40) var<storage, read> convolve_kernels: array<f32>;
+@group(0) @binding(41) var<storage, read> turbulence_selectors: array<u32>;
+@group(0) @binding(42) var<storage, read> turbulence_gradients: array<f32>;
+@group(0) @binding(43) var<storage, read> path_range_starts: array<u32>;
+@group(0) @binding(44) var<storage, read> path_range_ends: array<u32>;
+@group(0) @binding(45) var<storage, read> path_p0x: array<i32>;
+@group(0) @binding(46) var<storage, read> path_p0y: array<i32>;
+@group(0) @binding(47) var<storage, read> path_p1x: array<i32>;
+@group(0) @binding(48) var<storage, read> path_p1y: array<i32>;
 @group(0) @binding(53) var<storage, read> image_resource_metadata: array<u32>;
 @group(0) @binding(54) var<storage, read> image_resource_pixels: array<u32>;
 

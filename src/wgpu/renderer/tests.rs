@@ -536,23 +536,21 @@ fn wgpu_scan_emits_segments_when_enabled() {
         renderer.queue(),
         renderer.lengths.path_count,
     );
-    let p0x = renderer.scan.segment_p0x.read::<f32>(
-        renderer.device(),
-        renderer.queue(),
-        renderer.lengths.segment_capacity,
-    );
-    let p1y = renderer.scan.segment_p1y.read::<f32>(
-        renderer.device(),
-        renderer.queue(),
-        renderer.lengths.segment_capacity,
-    );
+    let segments = renderer
+        .scan
+        .segments
+        .read::<crate::shared::line_seg::LineSegment>(
+            renderer.device(),
+            renderer.queue(),
+            renderer.lengths.segment_capacity,
+        );
 
     assert_eq!(backdrops, vec![0]);
     assert_eq!(starts, vec![0]);
     assert_eq!(ends, vec![2]);
     assert_eq!(segment_bumps, vec![2]);
-    assert!((p0x[0] - 4.0).abs() < 1e-3);
-    assert!((p1y[0] - 16.0).abs() < 1e-6);
+    assert!((segments[0].p0x - 4.0).abs() < 1e-3);
+    assert!((segments[0].p1y - 16.0).abs() < 1e-6);
 }
 
 #[test]
