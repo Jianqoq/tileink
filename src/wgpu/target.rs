@@ -76,7 +76,8 @@ fn create_target_texture(
         format: ::wgpu::TextureFormat::Rgba8Unorm,
         usage: ::wgpu::TextureUsages::COPY_SRC
             | ::wgpu::TextureUsages::COPY_DST
-            | ::wgpu::TextureUsages::STORAGE_BINDING,
+            | ::wgpu::TextureUsages::STORAGE_BINDING
+            | ::wgpu::TextureUsages::TEXTURE_BINDING,
         view_formats: &[],
     });
     let view = texture.create_view(&::wgpu::TextureViewDescriptor::default());

@@ -154,7 +154,7 @@ fn xy_for_target_ix(ix: u32) -> vec2<u32> {
 }
 
 fn source_pixel_at(x: u32, y: u32) -> u32 {
-    return unorm_to_rgba8(textureLoad(source_texture, vec2<i32>(i32(x), i32(y))));
+    return filter_source_load(x, y);
 }
 
 fn source_pixel_ix(ix: u32) -> u32 {
@@ -163,7 +163,7 @@ fn source_pixel_ix(ix: u32) -> u32 {
 }
 
 fn aux_pixel_at(x: u32, y: u32) -> u32 {
-    return unorm_to_rgba8(textureLoad(aux_texture, vec2<i32>(i32(x), i32(y))));
+    return filter_aux_load(x, y);
 }
 
 fn aux_pixel_ix(ix: u32) -> u32 {
@@ -172,7 +172,7 @@ fn aux_pixel_ix(ix: u32) -> u32 {
 }
 
 fn target_load_at(x: u32, y: u32) -> u32 {
-    return unorm_to_rgba8(textureLoad(target_texture, vec2<i32>(i32(x), i32(y))));
+    return filter_target_load(x, y);
 }
 
 fn target_load_ix(ix: u32) -> u32 {
@@ -181,7 +181,7 @@ fn target_load_ix(ix: u32) -> u32 {
 }
 
 fn target_store_at(x: u32, y: u32, pixel: u32) {
-    textureStore(target_texture, vec2<i32>(i32(x), i32(y)), rgba8_to_unorm(pixel));
+    filter_target_store(x, y, pixel);
 }
 
 fn target_store_ix(ix: u32, pixel: u32) {

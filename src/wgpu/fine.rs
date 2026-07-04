@@ -43,12 +43,9 @@ unsafe impl bytemuck::Pod for FineConfig {}
 
 impl WgpuFinePipeline {
     pub(crate) fn new(device: &::wgpu::Device) -> Option<Self> {
-        if !device
+        let portable_textures = !device
             .features()
-            .contains(::wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
-        {
-            return None;
-        }
+            .contains(::wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES);
         if device.limits().max_storage_buffers_per_shader_stage < TILE_STORAGE_BINDING_COUNT {
             return None;
         }
@@ -56,13 +53,11 @@ impl WgpuFinePipeline {
         let bind_group_layout =
             device.create_bind_group_layout(&::wgpu::BindGroupLayoutDescriptor {
                 label: Some("tileink wgpu tile fine bind group layout"),
-                entries: &tile_fine_layout_entries(),
+                entries: &tile_fine_layout_entries(portable_textures),
             });
         let shader = device.create_shader_module(::wgpu::ShaderModuleDescriptor {
             label: Some("tileink wgpu fine shader"),
-            source: ::wgpu::ShaderSource::Wgsl(
-                include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_fine.wgsl")).into(),
-            ),
+            source: ::wgpu::ShaderSource::Wgsl(fine_shader_source(portable_textures).into()),
         });
         let pipeline_layout = device.create_pipeline_layout(&::wgpu::PipelineLayoutDescriptor {
             label: Some("tileink wgpu tile fine pipeline layout"),
@@ -277,10 +272,12 @@ impl WgpuFinePipeline {
     }
 }
 
-fn tile_fine_layout_entries() -> [::wgpu::BindGroupLayoutEntry; fine_layout::LAYOUT_ENTRY_COUNT] {
+fn tile_fine_layout_entries(
+    portable_textures: bool,
+) -> [::wgpu::BindGroupLayoutEntry; fine_layout::LAYOUT_ENTRY_COUNT] {
     [
         uniform_layout_entry(0),
-        storage_texture_layout_entry(1),
+        storage_texture_layout_entry(1, portable_textures),
         storage_layout_entry(2, true),
         storage_layout_entry(3, true),
         storage_layout_entry(4, true),
@@ -352,16 +349,31 @@ fn uniform_layout_entry(binding: u32) -> ::wgpu::BindGroupLayoutEntry {
     }
 }
 
-fn storage_texture_layout_entry(binding: u32) -> ::wgpu::BindGroupLayoutEntry {
+fn storage_texture_layout_entry(
+    binding: u32,
+    portable_textures: bool,
+) -> ::wgpu::BindGroupLayoutEntry {
     ::wgpu::BindGroupLayoutEntry {
         binding,
         visibility: ::wgpu::ShaderStages::COMPUTE,
         ty: ::wgpu::BindingType::StorageTexture {
-            access: ::wgpu::StorageTextureAccess::ReadWrite,
+            access: if portable_textures {
+                ::wgpu::StorageTextureAccess::WriteOnly
+            } else {
+                ::wgpu::StorageTextureAccess::ReadWrite
+            },
             format: ::wgpu::TextureFormat::Rgba8Unorm,
             view_dimension: ::wgpu::TextureViewDimension::D2,
         },
         count: None,
+    }
+}
+
+fn fine_shader_source(portable_textures: bool) -> &'static str {
+    if portable_textures {
+        include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_fine_web.wgsl"))
+    } else {
+        include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_fine.wgsl"))
     }
 }
 

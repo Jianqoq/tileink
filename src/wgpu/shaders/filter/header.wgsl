@@ -186,9 +186,6 @@ struct FilterConfig {
 };
 
 @group(0) @binding(0) var<uniform> config: FilterConfig;
-@group(0) @binding(1) var source_texture: texture_storage_2d<rgba8unorm, read>;
-@group(0) @binding(2) var aux_texture: texture_storage_2d<rgba8unorm, read>;
-@group(0) @binding(3) var target_texture: texture_storage_2d<rgba8unorm, read_write>;
 @group(0) @binding(4) var<storage, read> draw_path_ids: array<u32>;
 @group(0) @binding(5) var<storage, read> draw_flags: array<u32>;
 @group(0) @binding(6) var<storage, read> draw_pixel_x0: array<i32>;

@@ -85,7 +85,6 @@ struct FineConfig {
 };
 
 @group(0) @binding(0) var<uniform> config: FineConfig;
-@group(0) @binding(1) var target_texture: texture_storage_2d<rgba8unorm, read_write>;
 @group(0) @binding(2) var<storage, read> draw_flags: array<u32>;
 @group(0) @binding(3) var<storage, read> draw_brush_colors: array<u32>;
 @group(0) @binding(4) var<storage, read> draw_pixel_x0: array<i32>;

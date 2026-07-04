@@ -341,12 +341,9 @@ pub(crate) struct WgpuFilterPathBindings<'a> {
 
 impl WgpuFilterPipeline {
     pub(crate) fn new(device: &::wgpu::Device) -> Option<Self> {
-        if !device
+        let portable_textures = !device
             .features()
-            .contains(::wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
-        {
-            return None;
-        }
+            .contains(::wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES);
         if device.limits().max_storage_buffers_per_shader_stage < STORAGE_BINDING_COUNT {
             return None;
         }
@@ -354,13 +351,11 @@ impl WgpuFilterPipeline {
         let bind_group_layout =
             device.create_bind_group_layout(&::wgpu::BindGroupLayoutDescriptor {
                 label: Some("tileink wgpu filter bind group layout"),
-                entries: &filter_layout_entries(),
+                entries: &filter_layout_entries(portable_textures),
             });
         let shader = device.create_shader_module(::wgpu::ShaderModuleDescriptor {
             label: Some("tileink wgpu filter shader"),
-            source: ::wgpu::ShaderSource::Wgsl(
-                include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_filter.wgsl")).into(),
-            ),
+            source: ::wgpu::ShaderSource::Wgsl(filter_shader_source(portable_textures).into()),
         });
         let pipeline_layout = device.create_pipeline_layout(&::wgpu::PipelineLayoutDescriptor {
             label: Some("tileink wgpu filter pipeline layout"),
@@ -399,7 +394,7 @@ impl WgpuFilterPipeline {
             sample_count: 1,
             dimension: ::wgpu::TextureDimension::D2,
             format: ::wgpu::TextureFormat::Rgba8Unorm,
-            usage: ::wgpu::TextureUsages::STORAGE_BINDING,
+            usage: ::wgpu::TextureUsages::STORAGE_BINDING | ::wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
         let dummy_texture_view =
@@ -2353,12 +2348,14 @@ fn create_pipeline(
     })
 }
 
-fn filter_layout_entries() -> [::wgpu::BindGroupLayoutEntry; filter_layout::LAYOUT_ENTRY_COUNT] {
+fn filter_layout_entries(
+    portable_textures: bool,
+) -> [::wgpu::BindGroupLayoutEntry; filter_layout::LAYOUT_ENTRY_COUNT] {
     [
         uniform_entry(0),
-        storage_texture_entry(1, ::wgpu::StorageTextureAccess::ReadOnly),
-        storage_texture_entry(2, ::wgpu::StorageTextureAccess::ReadOnly),
-        storage_texture_entry(3, ::wgpu::StorageTextureAccess::ReadWrite),
+        read_texture_entry(1, portable_textures),
+        read_texture_entry(2, portable_textures),
+        write_texture_entry(3, portable_textures),
         storage_entry(4, true),
         storage_entry(5, true),
         storage_entry(6, true),
@@ -2456,6 +2453,46 @@ fn storage_texture_entry(
             view_dimension: ::wgpu::TextureViewDimension::D2,
         },
         count: None,
+    }
+}
+
+fn read_texture_entry(binding: u32, portable_textures: bool) -> ::wgpu::BindGroupLayoutEntry {
+    if portable_textures {
+        sampled_texture_entry(binding)
+    } else {
+        storage_texture_entry(binding, ::wgpu::StorageTextureAccess::ReadOnly)
+    }
+}
+
+fn write_texture_entry(binding: u32, portable_textures: bool) -> ::wgpu::BindGroupLayoutEntry {
+    storage_texture_entry(
+        binding,
+        if portable_textures {
+            ::wgpu::StorageTextureAccess::WriteOnly
+        } else {
+            ::wgpu::StorageTextureAccess::ReadWrite
+        },
+    )
+}
+
+fn sampled_texture_entry(binding: u32) -> ::wgpu::BindGroupLayoutEntry {
+    ::wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: ::wgpu::ShaderStages::COMPUTE,
+        ty: ::wgpu::BindingType::Texture {
+            sample_type: ::wgpu::TextureSampleType::Float { filterable: false },
+            view_dimension: ::wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
+    }
+}
+
+fn filter_shader_source(portable_textures: bool) -> &'static str {
+    if portable_textures {
+        include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_filter_web.wgsl"))
+    } else {
+        include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_filter.wgsl"))
     }
 }
 
