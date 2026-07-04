@@ -109,6 +109,19 @@ struct LineSegment {
     p1y: f32,
     y_edge: f32,
 };
+struct GlyphRecord {
+    image_id: u32,
+    x: i32,
+    y: i32,
+};
+struct GlyphImageRecord {
+    left: i32,
+    top: i32,
+    width: u32,
+    height: u32,
+    content: u32,
+    data_offset: u32,
+};
 @group(0) @binding(2) var<storage, read> draw_records: array<DrawRecord>;
 @group(0) @binding(8) var<storage, read> sdf_blob: array<u32>;
 @group(0) @binding(9) var<storage, read> sdf_shadow_blob: array<u32>;
@@ -123,15 +136,8 @@ struct LineSegment {
 @group(0) @binding(36) var<storage, read> ptcl_colors: array<u32>;
 @group(0) @binding(37) var<storage, read> segments: array<LineSegment>;
 @group(0) @binding(42) var<storage, read> glyph_indices: array<u32>;
-@group(0) @binding(43) var<storage, read> glyph_image_ids: array<u32>;
-@group(0) @binding(44) var<storage, read> glyph_x: array<i32>;
-@group(0) @binding(45) var<storage, read> glyph_y: array<i32>;
-@group(0) @binding(46) var<storage, read> glyph_image_left: array<i32>;
-@group(0) @binding(47) var<storage, read> glyph_image_top: array<i32>;
-@group(0) @binding(48) var<storage, read> glyph_image_width: array<u32>;
-@group(0) @binding(49) var<storage, read> glyph_image_height: array<u32>;
-@group(0) @binding(50) var<storage, read> glyph_image_content: array<u32>;
-@group(0) @binding(51) var<storage, read> glyph_image_data_offsets: array<u32>;
+@group(0) @binding(43) var<storage, read> glyphs: array<GlyphRecord>;
+@group(0) @binding(46) var<storage, read> glyph_images: array<GlyphImageRecord>;
 @group(0) @binding(52) var<storage, read> glyph_image_data: array<u32>;
 @group(0) @binding(53) var<storage, read_write> clip_spills: array<u32>;
 @group(0) @binding(54) var<storage, read_write> group_spills: array<u32>;

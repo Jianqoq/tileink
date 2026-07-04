@@ -46,16 +46,27 @@ struct PathRecord {
     segment_capacity: u32,
     segment_count: u32,
 };
+struct GlyphRunRecord {
+    glyph_start: u32,
+    glyph_count: u32,
+};
+struct GlyphRecord {
+    image_id: u32,
+    x: i32,
+    y: i32,
+};
+struct GlyphImageRecord {
+    left: i32,
+    top: i32,
+    width: u32,
+    height: u32,
+    content: u32,
+    data_offset: u32,
+};
 @group(0) @binding(1) var<storage, read> draw_records: array<DrawRecord>;
-@group(0) @binding(3) var<storage, read> glyph_run_starts: array<u32>;
-@group(0) @binding(4) var<storage, read> glyph_run_counts: array<u32>;
-@group(0) @binding(5) var<storage, read> glyph_image_ids: array<u32>;
-@group(0) @binding(6) var<storage, read> glyph_x: array<i32>;
-@group(0) @binding(7) var<storage, read> glyph_y: array<i32>;
-@group(0) @binding(8) var<storage, read> glyph_image_left: array<i32>;
-@group(0) @binding(9) var<storage, read> glyph_image_top: array<i32>;
-@group(0) @binding(10) var<storage, read> glyph_image_width: array<u32>;
-@group(0) @binding(11) var<storage, read> glyph_image_height: array<u32>;
+@group(0) @binding(3) var<storage, read> text_runs: array<GlyphRunRecord>;
+@group(0) @binding(5) var<storage, read> glyphs: array<GlyphRecord>;
+@group(0) @binding(8) var<storage, read> glyph_images: array<GlyphImageRecord>;
 @group(0) @binding(13) var<storage, read> brush_blob: array<u32>;
 @group(0) @binding(18) var<storage, read> path_records: array<PathRecord>;
 @group(0) @binding(19) var<storage, read_write> backdrops: array<atomic<i32>>;
@@ -663,8 +674,9 @@ fn draw_tile_hit(draw_ix: u32, tile_x: u32, tile_y: u32) -> bool {
 
 fn count_tile_glyphs_for_run(run_id: u32, tile_x: u32, tile_y: u32) -> u32 {
     var count = 0u;
-    var glyph_ix = glyph_run_starts[run_id];
-    let glyph_end = glyph_ix + glyph_run_counts[run_id];
+    let run = text_runs[run_id];
+    var glyph_ix = run.glyph_start;
+    let glyph_end = glyph_ix + run.glyph_count;
     loop {
         if (glyph_ix >= glyph_end) {
             break;
@@ -679,8 +691,9 @@ fn count_tile_glyphs_for_run(run_id: u32, tile_x: u32, tile_y: u32) -> u32 {
 
 fn store_tile_glyphs_for_run(dst_start: u32, run_id: u32, tile_x: u32, tile_y: u32) {
     var count = 0u;
-    var glyph_ix = glyph_run_starts[run_id];
-    let glyph_end = glyph_ix + glyph_run_counts[run_id];
+    let run = text_runs[run_id];
+    var glyph_ix = run.glyph_start;
+    let glyph_end = glyph_ix + run.glyph_count;
     loop {
         if (glyph_ix >= glyph_end) {
             break;
@@ -697,17 +710,19 @@ fn store_tile_glyphs_for_run(dst_start: u32, run_id: u32, tile_x: u32, tile_y: u
 }
 
 fn glyph_hits_tile(glyph_ix: u32, tile_x: u32, tile_y: u32) -> bool {
-    let image_id = glyph_image_ids[glyph_ix];
+    let glyph = glyphs[glyph_ix];
+    let image_id = glyph.image_id;
     if (image_id == INVALID) {
         return false;
     }
-    let width = glyph_image_width[image_id];
-    let height = glyph_image_height[image_id];
+    let image = glyph_images[image_id];
+    let width = image.width;
+    let height = image.height;
     if (width == 0u || height == 0u) {
         return false;
     }
-    let x0 = glyph_x[glyph_ix] + glyph_image_left[image_id];
-    let y0 = glyph_y[glyph_ix] - glyph_image_top[image_id];
+    let x0 = glyph.x + image.left;
+    let y0 = glyph.y - image.top;
     let x1 = x0 + i32(width);
     let y1 = y0 + i32(height);
     let tile_x0 = i32(tile_x * 16u);

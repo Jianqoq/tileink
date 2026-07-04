@@ -8,6 +8,7 @@ use crate::{
             GpuCumsumPlan, GpuScanChunk, GpuScanChunkRange, TileDrawBins, build_cumsum_plan_into,
             build_scan_chunks_into, build_tile_draw_bins_into,
         },
+        gpu_text::{GlyphImageRecord, GlyphRecord, GlyphRunRecord},
         gpu_types::{
             GPU_GLYPH_COLOR, GPU_GLYPH_LINEAR_COLOR, GPU_GLYPH_LINEAR_MASK,
             GPU_GLYPH_LINEAR_SUBPIXEL_MASK, GPU_GLYPH_MASK, GPU_GLYPH_SUBPIXEL_MASK,
@@ -38,17 +39,9 @@ pub(crate) struct WgpuSceneUploadStaging {
 
 #[derive(Default)]
 struct TextUpload {
-    run_starts: Vec<u32>,
-    run_counts: Vec<u32>,
-    glyph_image_ids: Vec<u32>,
-    glyph_x: Vec<i32>,
-    glyph_y: Vec<i32>,
-    image_left: Vec<i32>,
-    image_top: Vec<i32>,
-    image_width: Vec<u32>,
-    image_height: Vec<u32>,
-    image_content: Vec<u32>,
-    image_data_offsets: Vec<u32>,
+    runs: Vec<GlyphRunRecord>,
+    glyphs: Vec<GlyphRecord>,
+    images: Vec<GlyphImageRecord>,
     image_data: Vec<u32>,
     atlas_signature: AtlasSignature,
     atlas_dirty: bool,
@@ -66,20 +59,20 @@ impl TextUpload {
             return;
         };
 
-        self.run_starts
-            .extend(canvas.text_runs.iter().map(|run| run.glyph_start));
-        self.run_counts
-            .extend(canvas.text_runs.iter().map(|run| run.glyph_count));
-        self.glyph_image_ids.reserve(canvas.text_glyphs.len());
-        self.glyph_x
-            .extend(canvas.text_glyphs.iter().map(|glyph| glyph.x));
-        self.glyph_y
-            .extend(canvas.text_glyphs.iter().map(|glyph| glyph.y));
+        self.runs
+            .extend(canvas.text_runs.iter().map(|run| GlyphRunRecord {
+                glyph_start: run.glyph_start,
+                glyph_count: run.glyph_count,
+            }));
+        self.glyphs.reserve(canvas.text_glyphs.len());
         for glyph in &canvas.text_glyphs {
-            self.glyph_image_ids.push(
-                text.image_id_for_cache_key(glyph.cache_key)
+            self.glyphs.push(GlyphRecord {
+                image_id: text
+                    .image_id_for_cache_key(glyph.cache_key)
                     .unwrap_or(u32::MAX),
-            );
+                x: glyph.x,
+                y: glyph.y,
+            });
         }
 
         let atlas_signature = text.atlas_signature();
@@ -90,25 +83,22 @@ impl TextUpload {
         self.atlas_dirty = true;
         self.atlas_signature = atlas_signature;
         for image in text.images() {
-            self.image_left.push(image.left);
-            self.image_top.push(image.top);
-            self.image_width.push(image.width);
-            self.image_height.push(image.height);
-            self.image_data_offsets.push(self.image_data.len() as u32);
-            match image.content {
+            let data_offset = self.image_data.len() as u32;
+            let content = match image.content {
                 PreparedGlyphContent::Mask => {
-                    self.image_content.push(match image.composite_mode {
+                    let content = match image.composite_mode {
                         TextCompositeMode::Srgb => GPU_GLYPH_MASK,
                         TextCompositeMode::Linear => GPU_GLYPH_LINEAR_MASK,
-                    });
+                    };
                     self.image_data
                         .extend(image.data.iter().map(|&alpha| alpha as u32));
+                    content
                 }
                 PreparedGlyphContent::Color => {
-                    self.image_content.push(match image.composite_mode {
+                    let content = match image.composite_mode {
                         TextCompositeMode::Srgb => GPU_GLYPH_COLOR,
                         TextCompositeMode::Linear => GPU_GLYPH_LINEAR_COLOR,
-                    });
+                    };
                     for pixel in image.data.chunks_exact(4) {
                         let a = pixel[3];
                         self.image_data.push(rgba8_pack([
@@ -118,33 +108,35 @@ impl TextUpload {
                             a,
                         ]));
                     }
+                    content
                 }
                 PreparedGlyphContent::SubpixelMask => {
-                    self.image_content.push(match image.composite_mode {
+                    let content = match image.composite_mode {
                         TextCompositeMode::Srgb => GPU_GLYPH_SUBPIXEL_MASK,
                         TextCompositeMode::Linear => GPU_GLYPH_LINEAR_SUBPIXEL_MASK,
-                    });
+                    };
                     for pixel in image.data.chunks_exact(3) {
                         self.image_data
                             .push(rgba8_pack([pixel[0], pixel[1], pixel[2], 0]));
                     }
+                    content
                 }
-            }
+            };
+            self.images.push(GlyphImageRecord {
+                left: image.left,
+                top: image.top,
+                width: image.width,
+                height: image.height,
+                content,
+                data_offset,
+            });
         }
     }
 
     fn clear(&mut self) {
-        self.run_starts.clear();
-        self.run_counts.clear();
-        self.glyph_image_ids.clear();
-        self.glyph_x.clear();
-        self.glyph_y.clear();
-        self.image_left.clear();
-        self.image_top.clear();
-        self.image_width.clear();
-        self.image_height.clear();
-        self.image_content.clear();
-        self.image_data_offsets.clear();
+        self.runs.clear();
+        self.glyphs.clear();
+        self.images.clear();
         self.image_data.clear();
         self.atlas_signature = AtlasSignature::default();
         self.atlas_dirty = false;
@@ -382,78 +374,42 @@ impl WgpuSceneBuffers {
                 .refill(canvas, text, self.glyph_atlas_signature);
         });
         profile_cpu("prepare.upload_scene.text.runs", || {
-            self.text_run_starts.upload(
+            self.text_runs.upload(
                 device,
                 queue,
-                "tileink wgpu canvas text run starts",
-                &staging.text.run_starts,
+                "tileink wgpu canvas text runs",
+                &staging.text.runs,
             );
-            self.text_run_counts.upload(
+            self.glyphs.upload(
                 device,
                 queue,
-                "tileink wgpu canvas text run counts",
-                &staging.text.run_counts,
-            );
-            self.glyph_image_ids.upload(
-                device,
-                queue,
-                "tileink wgpu canvas glyph image ids",
-                &staging.text.glyph_image_ids,
-            );
-            self.glyph_x.upload(
-                device,
-                queue,
-                "tileink wgpu canvas glyph x",
-                &staging.text.glyph_x,
-            );
-            self.glyph_y.upload(
-                device,
-                queue,
-                "tileink wgpu canvas glyph y",
-                &staging.text.glyph_y,
+                "tileink wgpu canvas glyphs",
+                &staging.text.glyphs,
             );
         });
+        if text.is_none() {
+            self.glyph_atlas_signature = AtlasSignature::default();
+            profile_cpu("prepare.upload_scene.text.empty_atlas", || {
+                self.glyph_images.upload(
+                    device,
+                    queue,
+                    "tileink wgpu canvas glyph images",
+                    &staging.text.images,
+                );
+            });
+            return;
+        }
         if !staging.text.atlas_dirty {
             return;
         }
 
         self.glyph_atlas_signature = staging.text.atlas_signature;
         profile_cpu("prepare.upload_scene.text.atlas", || {
-            self.glyph_image_left.upload(
+            self.glyph_images.upload(
                 device,
                 queue,
-                "tileink wgpu canvas glyph image left",
-                &staging.text.image_left,
-            );
-            self.glyph_image_top.upload(
-                device,
-                queue,
-                "tileink wgpu canvas glyph image top",
-                &staging.text.image_top,
-            );
-            self.glyph_image_width.upload(
-                device,
-                queue,
-                "tileink wgpu canvas glyph image width",
-                &staging.text.image_width,
-            );
-            self.glyph_image_height.upload(
-                device,
-                queue,
-                "tileink wgpu canvas glyph image height",
-                &staging.text.image_height,
-            );
-            self.glyph_image_content.upload(
-                device,
-                queue,
-                "tileink wgpu canvas glyph image content",
-                &staging.text.image_content,
-            );
-            self.glyph_image_data_offsets.upload(
-                device,
-                queue,
-                "tileink wgpu canvas glyph image data offsets",
-                &staging.text.image_data_offsets,
+                "tileink wgpu canvas glyph images",
+                &staging.text.images,
             );
             self.glyph_image_data.upload(
                 device,

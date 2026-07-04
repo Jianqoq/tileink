@@ -287,17 +287,19 @@ fn composite_glyphs_at(
             break;
         }
         let glyph_i = glyph_indices[glyph_list_ix];
-        let image_id = glyph_image_ids[glyph_i];
+        let glyph = glyphs[glyph_i];
+        let image_id = glyph.image_id;
         if (image_id != INVALID_REF) {
-            let width = glyph_image_width[image_id];
-            let height = glyph_image_height[image_id];
-            let x0 = glyph_x[glyph_i] + glyph_image_left[image_id];
-            let y0 = glyph_y[glyph_i] - glyph_image_top[image_id];
+            let image = glyph_images[image_id];
+            let width = image.width;
+            let height = image.height;
+            let x0 = glyph.x + image.left;
+            let y0 = glyph.y - image.top;
             let local_x = px - x0;
             let local_y = py - y0;
             if (local_x >= 0i && local_y >= 0i && local_x < i32(width) && local_y < i32(height)) {
-                let data_ix = glyph_image_data_offsets[image_id] + u32(local_y) * width + u32(local_x);
-                let content = glyph_image_content[image_id];
+                let data_ix = image.data_offset + u32(local_y) * width + u32(local_x);
+                let content = image.content;
                 let data = glyph_image_data[data_ix];
                 if (content == GPU_GLYPH_MASK) {
                     let alpha = combine_alpha(data, clip_mask);
