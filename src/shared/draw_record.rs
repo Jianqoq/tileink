@@ -1,8 +1,6 @@
 use crate::shared::{
     bounds::{PixelBounds, TileBbox},
-    brush::Brush,
     fill::FillRule,
-    sdf::{Sdf, SdfShadow},
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -23,12 +21,13 @@ pub struct DrawRecord {
     pub path_id: Option<u32>,
     /// Text glyph run index, or `None` for non-text draws.
     pub glyph_run_id: Option<u32>,
-    /// Exact SDF geometry for simple primitives that do not need path scan/cumsum.
-    pub sdf: Option<Sdf>,
-    /// Soft SDF shadow geometry. It is draw-only and must never be used for clips.
-    pub sdf_shadow: Option<SdfShadow>,
+    /// Exact SDF geometry index in `Canvas::sdfs`, or `None` for non-SDF draws.
+    pub sdf_id: Option<u32>,
+    /// Soft SDF shadow geometry index in `Canvas::sdf_shadows`, or `None` for non-shadow draws.
+    pub sdf_shadow_id: Option<u32>,
+    /// Brush index in `Canvas::brushes`.
+    pub brush_id: u32,
     pub tag: DrawTag,
-    pub brush: Brush,
     pub fill_rule: FillRule,
     pub pixel_bounds: PixelBounds,
     /// CPU `FillRect` fast path: coarse emits `Color` only (no flatten/scan).
@@ -41,7 +40,7 @@ impl DrawRecord {
     }
 
     pub(crate) fn has_analytic_geometry(&self) -> bool {
-        self.sdf.is_some() || self.sdf_shadow.is_some()
+        self.sdf_id.is_some() || self.sdf_shadow_id.is_some()
     }
 
     // pub fn covers_tile(&self, tile_x: u32, tile_y: u32, width: u32, height: u32) -> bool {

@@ -283,8 +283,8 @@ fn coarse_ptcl_capacity(canvas: &Canvas, width_in_tiles: u32, height_in_tiles: u
         .draw_records
         .iter()
         .filter(|draw| {
-            let clip_needs_end =
-                matches!(draw.tag, DrawTag::Clip) && (draw.path_id.is_some() || draw.sdf.is_some());
+            let clip_needs_end = matches!(draw.tag, DrawTag::Clip)
+                && (draw.path_id.is_some() || draw.sdf_id.is_some());
             let path_group_needs_end = draw.path_id.is_some()
                 && matches!(
                     draw.tag,

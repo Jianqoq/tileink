@@ -9,7 +9,6 @@ pub(crate) use crate::shared::gpu_layout::brush::{
 
 use crate::shared::{
     brush::{Brush, PatternSampling},
-    draw_record::DrawRecord,
     execution::ExecOp,
     image::premul_color_to_rgba8_pack,
     image_resource::GpuImageResourceUpload,
@@ -27,13 +26,13 @@ pub(crate) struct GpuBrushUpload {
 }
 
 impl GpuBrushUpload {
-    pub(crate) fn from_scene_draws(
-        draws: &[DrawRecord],
+    pub(crate) fn from_scene_brushes(
+        brushes: &[Brush],
         image_resources: Option<&GpuImageResourceUpload>,
     ) -> Self {
         let mut upload = Self::default();
-        for draw in draws {
-            upload.push_brush_with_resources(&draw.brush, image_resources);
+        for brush in brushes {
+            upload.push_brush_with_resources(brush, image_resources);
         }
         upload
     }

@@ -3,7 +3,14 @@ use crate::shared::scene_columns::CanvasColumns;
 
 fn upload_columns_for(canvas: &Canvas) -> CanvasColumns {
     let mut columns = CanvasColumns::default();
-    columns.rebuild(&canvas.lines, &canvas.path_records, &canvas.draw_records);
+    columns.rebuild(
+        &canvas.lines,
+        &canvas.path_records,
+        &canvas.draw_records,
+        &canvas.brushes,
+        &canvas.sdfs,
+        &canvas.sdf_shadows,
+    );
     columns
 }
 
