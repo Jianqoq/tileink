@@ -10,6 +10,15 @@ pub(crate) struct TileCoarseRecord {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct CoarseChunkRecord {
+    pub(crate) ptcl_total: u32,
+    pub(crate) ptcl_offset: u32,
+    pub(crate) glyph_total: u32,
+    pub(crate) glyph_offset: u32,
+}
+
+#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct TileDrawRecord {
     pub(crate) start: u32,
@@ -37,7 +46,9 @@ pub(crate) struct PtclRecord {
 
 #[cfg(test)]
 mod tests {
-    use super::{LayerStackRecord, PtclRecord, TileCoarseRecord, TileDrawRecord};
+    use super::{
+        CoarseChunkRecord, LayerStackRecord, PtclRecord, TileCoarseRecord, TileDrawRecord,
+    };
 
     #[test]
     fn tile_coarse_record_is_gpu_word_layout() {
@@ -58,9 +69,18 @@ mod tests {
 
     #[test]
     fn coarse_record_structs_are_gpu_word_layouts() {
+        assert_eq!(std::mem::size_of::<CoarseChunkRecord>(), 16);
         assert_eq!(std::mem::size_of::<TileDrawRecord>(), 8);
         assert_eq!(std::mem::size_of::<LayerStackRecord>(), 12);
         assert_eq!(std::mem::size_of::<PtclRecord>(), 24);
+
+        let chunk = CoarseChunkRecord {
+            ptcl_total: 1,
+            ptcl_offset: 2,
+            glyph_total: 3,
+            glyph_offset: 4,
+        };
+        assert_eq!(bytemuck::cast_slice::<_, u32>(&[chunk]), &[1, 2, 3, 4]);
 
         let tile = TileDrawRecord { start: 1, end: 2 };
         assert_eq!(bytemuck::cast_slice::<_, u32>(&[tile]), &[1, 2]);

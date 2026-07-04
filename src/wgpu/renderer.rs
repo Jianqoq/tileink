@@ -1702,12 +1702,7 @@ impl Renderer {
             self.scan
                 .backdrops
                 .read::<i32>(&self.device, &self.queue, self.lengths.backdrop_len);
-        let starts = self.scan.tile_segment_range_starts.read::<u32>(
-            &self.device,
-            &self.queue,
-            self.lengths.backdrop_len,
-        );
-        let ends = self.scan.tile_segment_range_ends.read::<u32>(
+        let tile_segment_ranges = self.scan.tile_segment_ranges.read::<TileSegmentRange>(
             &self.device,
             &self.queue,
             self.lengths.backdrop_len,
@@ -1717,11 +1712,6 @@ impl Renderer {
             &self.queue,
             self.lengths.segment_capacity,
         );
-        let tile_segment_ranges = starts
-            .into_iter()
-            .zip(ends)
-            .map(|(start, end)| TileSegmentRange { start, end })
-            .collect();
         WgpuDebugScanReadback {
             backdrops,
             tile_segment_ranges,

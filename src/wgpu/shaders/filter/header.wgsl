@@ -222,6 +222,10 @@ struct LineSegment {
     p1y: f32,
     y_edge: f32,
 };
+struct TileSegmentRange {
+    start: u32,
+    end: u32,
+};
 struct LayerStackRecord {
     tag: u32,
     draw: u32,
@@ -232,8 +236,7 @@ struct LayerStackRecord {
 @group(0) @binding(11) var<storage, read> sdf_shadow_blob: array<u32>;
 @group(0) @binding(28) var<storage, read> path_records: array<PathRecord>;
 @group(0) @binding(29) var<storage, read_write> backdrops: array<atomic<i32>>;
-@group(0) @binding(30) var<storage, read> segment_starts: array<u32>;
-@group(0) @binding(31) var<storage, read> segment_ends: array<u32>;
+@group(0) @binding(30) var<storage, read> segment_ranges: array<TileSegmentRange>;
 @group(0) @binding(32) var<storage, read> segments: array<LineSegment>;
 @group(0) @binding(33) var<storage, read> layer_stack: array<LayerStackRecord>;
 @group(0) @binding(36) var<storage, read> transfer_tables: array<u32>;

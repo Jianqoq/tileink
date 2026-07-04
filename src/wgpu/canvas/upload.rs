@@ -36,6 +36,7 @@ pub(crate) struct WgpuSceneUploadStaging {
     cumsum_plan: GpuCumsumPlan,
     tile_draw_bins: TileDrawBins,
     tile_draw_cursors: Vec<u32>,
+    tile_draw_data: Vec<u32>,
     layer_stack: Vec<LayerStackRecord>,
 }
 
@@ -508,20 +509,19 @@ impl WgpuSceneBuffers {
         &mut self,
         device: &::wgpu::Device,
         queue: &::wgpu::Queue,
-        staging: &WgpuSceneUploadStaging,
+        staging: &mut WgpuSceneUploadStaging,
     ) {
         let bins = &staging.tile_draw_bins;
-        self.tile_draw_records.upload(
+        staging.tile_draw_data.clear();
+        staging
+            .tile_draw_data
+            .extend_from_slice(bytemuck::cast_slice(&bins.records));
+        staging.tile_draw_data.extend_from_slice(&bins.draw_indices);
+        self.tile_draw_data.upload(
             device,
             queue,
-            "tileink wgpu canvas tile draw records",
-            &bins.records,
-        );
-        self.tile_draw_indices.upload(
-            device,
-            queue,
-            "tileink wgpu canvas tile draw indices",
-            &bins.draw_indices,
+            "tileink wgpu canvas tile draw data",
+            &staging.tile_draw_data,
         );
     }
 }

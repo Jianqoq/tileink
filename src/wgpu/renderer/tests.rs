@@ -26,6 +26,7 @@ use crate::{
             mask::{Mask, MaskKind},
             region::Region,
         },
+        tile_seg_range::TileSegmentRange,
     },
 };
 
@@ -522,12 +523,7 @@ fn wgpu_scan_emits_segments_when_enabled() {
         renderer.queue(),
         renderer.lengths.backdrop_len,
     );
-    let starts = renderer.scan.tile_segment_range_starts.read::<u32>(
-        renderer.device(),
-        renderer.queue(),
-        renderer.lengths.backdrop_len,
-    );
-    let ends = renderer.scan.tile_segment_range_ends.read::<u32>(
+    let ranges = renderer.scan.tile_segment_ranges.read::<TileSegmentRange>(
         renderer.device(),
         renderer.queue(),
         renderer.lengths.backdrop_len,
@@ -547,8 +543,7 @@ fn wgpu_scan_emits_segments_when_enabled() {
         );
 
     assert_eq!(backdrops, vec![0]);
-    assert_eq!(starts, vec![0]);
-    assert_eq!(ends, vec![2]);
+    assert_eq!(ranges, vec![TileSegmentRange { start: 0, end: 2 }]);
     assert_eq!(segment_bumps, vec![2]);
     assert!((segments[0].p0x - 4.0).abs() < 1e-3);
     assert!((segments[0].p1y - 16.0).abs() < 1e-6);

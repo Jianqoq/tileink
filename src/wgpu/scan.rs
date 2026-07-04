@@ -7,7 +7,7 @@ use super::commands::{
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 
 const WORKGROUP_SIZE: u32 = 256;
-const STORAGE_BINDING_COUNT: u32 = 29;
+const STORAGE_BINDING_COUNT: u32 = 14;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -189,8 +189,7 @@ impl WgpuScanPipeline {
                 bind_buffer(5, bindings.scan_chunk_range_starts),
                 bind_buffer(6, bindings.scan_chunk_range_ends),
                 bind_buffer(7, bindings.backdrops),
-                bind_buffer(8, bindings.tile_segment_range_starts),
-                bind_buffer(9, bindings.tile_segment_range_ends),
+                bind_buffer(8, bindings.tile_segment_ranges),
                 bind_buffer(10, bindings.segment_tile_counts),
                 bind_buffer(11, bindings.segment_tile_cursors),
                 bind_buffer(12, bindings.segment_bumps),
@@ -218,7 +217,7 @@ fn create_pipeline(
     })
 }
 
-fn scan_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 16] {
+fn scan_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 15] {
     [
         ::wgpu::BindGroupLayoutEntry {
             binding: 0,
@@ -238,7 +237,6 @@ fn scan_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 16] {
         storage_entry(6, true),
         storage_entry(7, false),
         storage_entry(8, false),
-        storage_entry(9, false),
         storage_entry(10, false),
         storage_entry(11, false),
         storage_entry(12, false),

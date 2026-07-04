@@ -39,6 +39,10 @@ struct LineSegment {
     p1y: f32,
     y_edge: f32,
 };
+struct TileSegmentRange {
+    start: u32,
+    end: u32,
+};
 
 @group(0) @binding(0) var<uniform> config: ScanConfig;
 @group(0) @binding(1) var<storage, read> lines: array<Line>;
@@ -48,8 +52,7 @@ struct LineSegment {
 @group(0) @binding(5) var<storage, read> scan_chunk_range_starts: array<u32>;
 @group(0) @binding(6) var<storage, read> scan_chunk_range_ends: array<u32>;
 @group(0) @binding(7) var<storage, read_write> backdrops: array<atomic<i32>>;
-@group(0) @binding(8) var<storage, read_write> range_starts: array<u32>;
-@group(0) @binding(9) var<storage, read_write> range_ends: array<u32>;
+@group(0) @binding(8) var<storage, read_write> segment_ranges: array<TileSegmentRange>;
 @group(0) @binding(10) var<storage, read_write> segment_tile_counts: array<atomic<u32>>;
 @group(0) @binding(11) var<storage, read_write> segment_tile_cursors: array<atomic<u32>>;
 @group(0) @binding(12) var<storage, read_write> segment_bumps: array<u32>;
@@ -70,8 +73,8 @@ fn scan_clear(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
     if (ix < config.backdrop_len) {
         atomicStore(&backdrops[ix], 0i);
-        range_starts[ix] = 0u;
-        range_ends[ix] = 0u;
+        segment_ranges[ix].start = 0u;
+        segment_ranges[ix].end = 0u;
         atomicStore(&segment_tile_counts[ix], 0u);
         atomicStore(&segment_tile_cursors[ix], 0u);
     }
@@ -368,8 +371,8 @@ fn scan_prefix_chunks(
         let inclusive = scan_scratch[lane];
         let exclusive = inclusive - count;
         let ix = chunk_offset + lane;
-        range_starts[ix] = exclusive;
-        range_ends[ix] = inclusive;
+        segment_ranges[ix].start = exclusive;
+        segment_ranges[ix].end = inclusive;
     }
     if (lane + 1u == chunk_len) {
         chunk_totals[chunk_ix] = scan_scratch[lane];
@@ -411,10 +414,10 @@ fn scan_apply_chunk_offsets(
 
     let ix = scan_chunk_backdrop_offsets[chunk_ix] + lane;
     let base = chunk_offsets[chunk_ix];
-    let start = range_starts[ix] + base;
-    let end = range_ends[ix] + base;
-    range_starts[ix] = start;
-    range_ends[ix] = end;
+    let start = segment_ranges[ix].start + base;
+    let end = segment_ranges[ix].end + base;
+    segment_ranges[ix].start = start;
+    segment_ranges[ix].end = end;
     atomicStore(&segment_tile_cursors[ix], start);
 }
 

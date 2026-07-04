@@ -71,6 +71,12 @@ struct TileCoarseRecord {
     glyph_start: u32,
     glyph_end: u32,
 };
+struct CoarseChunkRecord {
+    ptcl_total: u32,
+    ptcl_offset: u32,
+    glyph_total: u32,
+    glyph_offset: u32,
+};
 struct LayerStackRecord {
     tag: u32,
     draw: u32,
@@ -84,7 +90,7 @@ struct PtclRecord {
     segment_end: u32,
     color: u32,
 };
-struct TileDrawRecord {
+struct TileSegmentRange {
     start: u32,
     end: u32,
 };
@@ -95,18 +101,13 @@ struct TileDrawRecord {
 @group(0) @binding(13) var<storage, read> brush_blob: array<u32>;
 @group(0) @binding(18) var<storage, read> path_records: array<PathRecord>;
 @group(0) @binding(19) var<storage, read_write> backdrops: array<atomic<i32>>;
-@group(0) @binding(20) var<storage, read> segment_starts: array<u32>;
-@group(0) @binding(21) var<storage, read> segment_ends: array<u32>;
+@group(0) @binding(20) var<storage, read> segment_ranges: array<TileSegmentRange>;
 @group(0) @binding(22) var<storage, read> layer_stack: array<LayerStackRecord>;
 @group(0) @binding(25) var<storage, read_write> tile_records: array<TileCoarseRecord>;
-@group(0) @binding(31) var<storage, read_write> chunk_totals: array<u32>;
-@group(0) @binding(32) var<storage, read_write> chunk_offsets: array<u32>;
-@group(0) @binding(33) var<storage, read_write> glyph_chunk_totals: array<u32>;
-@group(0) @binding(34) var<storage, read_write> glyph_chunk_offsets: array<u32>;
+@group(0) @binding(31) var<storage, read_write> chunk_records: array<CoarseChunkRecord>;
 @group(0) @binding(35) var<storage, read_write> ptcl_records: array<PtclRecord>;
 @group(0) @binding(41) var<storage, read_write> glyph_indices: array<u32>;
-@group(0) @binding(42) var<storage, read> tile_draw_records: array<TileDrawRecord>;
-@group(0) @binding(44) var<storage, read> tile_draw_indices: array<u32>;
+@group(0) @binding(42) var<storage, read> tile_draw_data: array<u32>;
 
 const INVALID: u32 = 0xffffffffu;
 const GPU_DRAW_BRUSH: u32 = 0u;
@@ -155,14 +156,14 @@ fn coarse_count(
     var glyph_count = 0u;
 
     if (wrapper_count != INVALID) {
-        let tile_draw_start = tile_draw_records[tile_ix].start;
-        let tile_draw_end = tile_draw_records[tile_ix].end;
+        let tile_draw_start = tile_draw_start_at(tile_ix);
+        let tile_draw_end = tile_draw_end_at(tile_ix);
         var draw_ref_ix = tile_draw_start + lane;
         loop {
             if (draw_ref_ix >= tile_draw_end) {
                 break;
             }
-            let draw_ix = tile_draw_indices[draw_ref_ix];
+            let draw_ix = tile_draw_index_at(draw_ref_ix);
             if (draw_in_batch(draw_ix)) {
                 let draw_tag = draw_tag_at(draw_ix);
                 if (draw_has_glyph_at(draw_ix)) {
@@ -182,7 +183,7 @@ fn coarse_count(
                     if (backdrop_ix != INVALID) {
                         if (
                             (draw_tag == GPU_DRAW_BRUSH || draw_tag == GPU_DRAW_PATH_GLYPH || draw_tag == GPU_DRAW_CLIP) &&
-                            (segment_starts[backdrop_ix] != segment_ends[backdrop_ix] || atomicLoad(&backdrops[backdrop_ix]) != 0i)
+                            (segment_ranges[backdrop_ix].start != segment_ranges[backdrop_ix].end || atomicLoad(&backdrops[backdrop_ix]) != 0i)
                         ) {
                             count += 1u;
                         }
@@ -302,9 +303,9 @@ fn prefix_chunks(chunk_ix: u32, lane: u32, glyph: bool) {
 
     if (lane == 0u) {
         if (glyph) {
-            glyph_chunk_totals[chunk_ix] = coarse_scratch[255u];
+            chunk_records[chunk_ix].glyph_total = coarse_scratch[255u];
         } else {
-            chunk_totals[chunk_ix] = coarse_scratch[255u];
+            chunk_records[chunk_ix].ptcl_total = coarse_scratch[255u];
         }
         coarse_scratch[255u] = 0u;
     }
@@ -347,8 +348,8 @@ fn coarse_ptcl_chunk_offsets() {
         if (chunk_ix >= config.chunk_count) {
             break;
         }
-        chunk_offsets[chunk_ix] = carry;
-        carry += chunk_totals[chunk_ix];
+        chunk_records[chunk_ix].ptcl_offset = carry;
+        carry += chunk_records[chunk_ix].ptcl_total;
         chunk_ix += 1u;
     }
 }
@@ -361,8 +362,8 @@ fn coarse_glyph_chunk_offsets() {
         if (chunk_ix >= config.chunk_count) {
             break;
         }
-        glyph_chunk_offsets[chunk_ix] = carry;
-        carry += glyph_chunk_totals[chunk_ix];
+        chunk_records[chunk_ix].glyph_offset = carry;
+        carry += chunk_records[chunk_ix].glyph_total;
         chunk_ix += 1u;
     }
 }
@@ -389,11 +390,11 @@ fn apply_chunk_offsets(chunk_ix: u32, lane: u32, glyph: bool) {
         return;
     }
     if (glyph) {
-        let offset = glyph_chunk_offsets[chunk_ix];
+        let offset = chunk_records[chunk_ix].glyph_offset;
         tile_records[tile_ix].glyph_start += offset;
         tile_records[tile_ix].glyph_end += offset;
     } else {
-        let offset = chunk_offsets[chunk_ix];
+        let offset = chunk_records[chunk_ix].ptcl_offset;
         tile_records[tile_ix].ptcl_start += offset;
         tile_records[tile_ix].ptcl_end += offset;
     }
@@ -431,8 +432,8 @@ fn coarse_emit(
     }
     cursor += wrapper_count;
 
-    let tile_draw_start = tile_draw_records[tile_ix].start;
-    let tile_draw_end = tile_draw_records[tile_ix].end;
+    let tile_draw_start = tile_draw_start_at(tile_ix);
+    let tile_draw_end = tile_draw_end_at(tile_ix);
     var chunk_start = tile_draw_start;
     loop {
         if (chunk_start >= tile_draw_end) {
@@ -451,7 +452,7 @@ fn coarse_emit(
         var ptcl_color = 0u;
 
         if (draw_ref_ix < tile_draw_end) {
-            draw_ix = tile_draw_indices[draw_ref_ix];
+            draw_ix = tile_draw_index_at(draw_ref_ix);
         }
 
         if (draw_in_batch(draw_ix)) {
@@ -475,8 +476,9 @@ fn coarse_emit(
             } else {
                 let backdrop_ix = draw_backdrop_ix(draw_ix, tile_x, tile_y);
                 if (backdrop_ix != INVALID) {
-                    let segment_start = segment_starts[backdrop_ix];
-                    let segment_end = segment_ends[backdrop_ix];
+                    let segment_range = segment_ranges[backdrop_ix];
+                    let segment_start = segment_range.start;
+                    let segment_end = segment_range.end;
                     let backdrop = atomicLoad(&backdrops[backdrop_ix]);
                     if (
                         (draw_tag == GPU_DRAW_BRUSH || draw_tag == GPU_DRAW_PATH_GLYPH || draw_tag == GPU_DRAW_CLIP) &&
@@ -563,7 +565,7 @@ fn active_stack_count(tile_x: u32, tile_y: u32) -> u32 {
                     let backdrop_ix = draw_backdrop_ix(draw_ix, tile_x, tile_y);
                     if (backdrop_ix == INVALID) {
                         valid = false;
-                    } else if (segment_starts[backdrop_ix] == segment_ends[backdrop_ix] && atomicLoad(&backdrops[backdrop_ix]) == 0i) {
+                    } else if (segment_ranges[backdrop_ix].start == segment_ranges[backdrop_ix].end && atomicLoad(&backdrops[backdrop_ix]) == 0i) {
                         valid = false;
                     } else {
                         count += 1u;
@@ -607,8 +609,8 @@ fn emit_active_stack_begins(dst_start: u32, tile_x: u32, tile_y: u32) {
                         ptcl_tag,
                         atomicLoad(&backdrops[backdrop_ix]),
                         draw_fill_rule_at(draw_ix),
-                        segment_starts[backdrop_ix],
-                        segment_ends[backdrop_ix],
+                        segment_ranges[backdrop_ix].start,
+                        segment_ranges[backdrop_ix].end,
                         layer.payload
                     );
                     dst += 1u;
@@ -765,6 +767,18 @@ fn pixel_tile_max(value: i32, limit: u32) -> u32 {
 
 fn draw_in_batch(draw_ix: u32) -> bool {
     return draw_ix >= config.draw_start && draw_ix < config.draw_end;
+}
+
+fn tile_draw_start_at(tile_ix: u32) -> u32 {
+    return tile_draw_data[tile_ix * 2u];
+}
+
+fn tile_draw_end_at(tile_ix: u32) -> u32 {
+    return tile_draw_data[tile_ix * 2u + 1u];
+}
+
+fn tile_draw_index_at(draw_ref_ix: u32) -> u32 {
+    return tile_draw_data[config.tile_count * 2u + draw_ref_ix];
 }
 
 fn draw_tag_at(draw_ix: u32) -> u32 {

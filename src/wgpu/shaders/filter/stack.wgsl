@@ -220,11 +220,12 @@ fn layer_stack_alpha_at(draw_ix: u32, x: u32, y: u32) -> u32 {
         let local_y = y - tile_y * 16u;
         let backdrop_ix = draw_backdrop_ix(draw_ix, tile_x, tile_y);
         if (backdrop_ix != INVALID) {
+            let segment_range = segment_ranges[backdrop_ix];
             alpha = fill_alpha_at(
                 atomicLoad(&backdrops[backdrop_ix]),
                 draw_fill_rule_at(draw_ix),
-                segment_starts[backdrop_ix],
-                segment_ends[backdrop_ix],
+                segment_range.start,
+                segment_range.end,
                 local_x,
                 local_y,
             );

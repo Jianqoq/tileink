@@ -1,15 +1,15 @@
 use crate::shared::{
-    gpu_coarse::{PtclRecord, TileCoarseRecord},
+    gpu_coarse::{CoarseChunkRecord, PtclRecord, TileCoarseRecord},
     gpu_plan::GpuBufferLengths,
     line_seg::LineSegment,
+    tile_seg_range::TileSegmentRange,
 };
 
 use super::super::buffer::WgpuBuffer;
 
 pub(crate) struct WgpuScanBuffers {
     pub(crate) backdrops: WgpuBuffer,
-    pub(crate) tile_segment_range_starts: WgpuBuffer,
-    pub(crate) tile_segment_range_ends: WgpuBuffer,
+    pub(crate) tile_segment_ranges: WgpuBuffer,
     pub(crate) segments: WgpuBuffer,
     pub(crate) segment_tile_counts: WgpuBuffer,
     pub(crate) segment_tile_cursors: WgpuBuffer,
@@ -24,14 +24,7 @@ impl WgpuScanBuffers {
     pub(crate) fn new(device: &::wgpu::Device) -> Self {
         Self {
             backdrops: WgpuBuffer::new(device, "tileink wgpu scan backdrops"),
-            tile_segment_range_starts: WgpuBuffer::new(
-                device,
-                "tileink wgpu scan tile segment range starts",
-            ),
-            tile_segment_range_ends: WgpuBuffer::new(
-                device,
-                "tileink wgpu scan tile segment range ends",
-            ),
+            tile_segment_ranges: WgpuBuffer::new(device, "tileink wgpu scan tile segment ranges"),
             segments: WgpuBuffer::new(device, "tileink wgpu scan segments"),
             segment_tile_counts: WgpuBuffer::new(device, "tileink wgpu scan segment tile counts"),
             segment_tile_cursors: WgpuBuffer::new(device, "tileink wgpu scan segment tile cursors"),
@@ -49,14 +42,9 @@ impl WgpuScanBuffers {
             "tileink wgpu scan backdrops",
             lengths.backdrop_len,
         );
-        self.tile_segment_range_starts.resize_uninit::<u32>(
+        self.tile_segment_ranges.resize_uninit::<TileSegmentRange>(
             device,
-            "tileink wgpu scan tile segment range starts",
-            lengths.backdrop_len,
-        );
-        self.tile_segment_range_ends.resize_uninit::<u32>(
-            device,
-            "tileink wgpu scan tile segment range ends",
+            "tileink wgpu scan tile segment ranges",
             lengths.backdrop_len,
         );
         self.segments.resize_uninit::<LineSegment>(
@@ -104,10 +92,7 @@ impl WgpuScanBuffers {
 
 pub(crate) struct WgpuCoarseBuffers {
     pub(crate) tile_records: WgpuBuffer,
-    pub(crate) chunk_totals: WgpuBuffer,
-    pub(crate) chunk_offsets: WgpuBuffer,
-    pub(crate) glyph_chunk_totals: WgpuBuffer,
-    pub(crate) glyph_chunk_offsets: WgpuBuffer,
+    pub(crate) chunk_records: WgpuBuffer,
     pub(crate) ptcl_records: WgpuBuffer,
     pub(crate) glyph_indices: WgpuBuffer,
 }
@@ -116,10 +101,7 @@ impl WgpuCoarseBuffers {
     pub(crate) fn new(device: &::wgpu::Device) -> Self {
         Self {
             tile_records: WgpuBuffer::new(device, "tileink wgpu coarse tile records"),
-            chunk_totals: WgpuBuffer::new(device, "tileink wgpu coarse chunk totals"),
-            chunk_offsets: WgpuBuffer::new(device, "tileink wgpu coarse chunk offsets"),
-            glyph_chunk_totals: WgpuBuffer::new(device, "tileink wgpu coarse glyph chunk totals"),
-            glyph_chunk_offsets: WgpuBuffer::new(device, "tileink wgpu coarse glyph chunk offsets"),
+            chunk_records: WgpuBuffer::new(device, "tileink wgpu coarse chunk records"),
             ptcl_records: WgpuBuffer::new(device, "tileink wgpu coarse ptcl records"),
             glyph_indices: WgpuBuffer::new(device, "tileink wgpu coarse glyph indices"),
         }
@@ -131,24 +113,9 @@ impl WgpuCoarseBuffers {
             "tileink wgpu coarse tile records",
             lengths.tile_count,
         );
-        self.chunk_totals.resize_uninit::<u32>(
+        self.chunk_records.resize_uninit::<CoarseChunkRecord>(
             device,
-            "tileink wgpu coarse chunk totals",
-            lengths.coarse_chunk_count,
-        );
-        self.chunk_offsets.resize_uninit::<u32>(
-            device,
-            "tileink wgpu coarse chunk offsets",
-            lengths.coarse_chunk_count,
-        );
-        self.glyph_chunk_totals.resize_uninit::<u32>(
-            device,
-            "tileink wgpu coarse glyph chunk totals",
-            lengths.coarse_chunk_count,
-        );
-        self.glyph_chunk_offsets.resize_uninit::<u32>(
-            device,
-            "tileink wgpu coarse glyph chunk offsets",
+            "tileink wgpu coarse chunk records",
             lengths.coarse_chunk_count,
         );
         self.ptcl_records.resize_uninit::<PtclRecord>(
