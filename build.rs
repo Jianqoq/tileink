@@ -3,8 +3,22 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const WGPU_SHADER_ENTRIES: [(&str, &str); 9] = [
-    ("scan.wgsl", "tileink_wgpu_scan.wgsl"),
+const WGPU_SHADER_ENTRIES: [(&str, &str); 14] = [
+    ("scan/clear.wgsl", "tileink_wgpu_scan_clear.wgsl"),
+    ("scan/count.wgsl", "tileink_wgpu_scan_count.wgsl"),
+    (
+        "scan/prefix_chunks.wgsl",
+        "tileink_wgpu_scan_prefix_chunks.wgsl",
+    ),
+    (
+        "scan/chunk_offsets.wgsl",
+        "tileink_wgpu_scan_chunk_offsets.wgsl",
+    ),
+    (
+        "scan/apply_chunk_offsets.wgsl",
+        "tileink_wgpu_scan_apply_chunk_offsets.wgsl",
+    ),
+    ("scan/emit.wgsl", "tileink_wgpu_scan_emit.wgsl"),
     ("cumsum.wgsl", "tileink_wgpu_cumsum.wgsl"),
     ("coarse/count.wgsl", "tileink_wgpu_coarse_count.wgsl"),
     ("coarse/prefix.wgsl", "tileink_wgpu_coarse_prefix.wgsl"),

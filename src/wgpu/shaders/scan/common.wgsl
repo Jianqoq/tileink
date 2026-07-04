@@ -1,0 +1,73 @@
+struct ScanConfig {
+    clear_len: u32,
+    backdrop_len: u32,
+    path_count: u32,
+    scan_chunk_count: u32,
+    line_count: u32,
+    segment_capacity: u32,
+    _pad0: u32,
+    _pad1: u32,
+};
+
+struct Line {
+    path_id: u32,
+    _pad: f32,
+    p0: vec2<f32>,
+    p1: vec2<f32>,
+};
+
+struct PathRecord {
+    path_id: u32,
+    line_count: u32,
+    line_start: u32,
+    flags: u32,
+    data_offset: u32,
+    data_len: u32,
+    tile_x0: u32,
+    tile_y0: u32,
+    tile_x1: u32,
+    tile_y1: u32,
+    segment_start: u32,
+    segment_capacity: u32,
+    segment_count: u32,
+};
+
+struct LineSegment {
+    p0x: f32,
+    p0y: f32,
+    p1x: f32,
+    p1y: f32,
+    y_edge: f32,
+};
+struct TileSegmentRange {
+    start: u32,
+    end: u32,
+};
+
+@group(0) @binding(0) var<uniform> config: ScanConfig;
+
+const DDA_TOP_EDGE_EPSILON: f32 = 1.0e-5;
+const TILE_BOUNDARY_EPSILON: f32 = 1.0e-4;
+
+fn span(a: f32, b: f32) -> u32 {
+    var hi = ceil(a);
+    if (b > a) {
+        hi = ceil(b);
+    }
+    var lo = floor(a);
+    if (b < a) {
+        lo = floor(b);
+    }
+    var value = hi - lo;
+    if (value < 1.0) {
+        value = 1.0;
+    }
+    return u32(value);
+}
+
+fn local_tile_ix(tile_x: i32, tile_y: i32, bbox_x0: u32, bbox_y0: u32, bbox_x1: u32) -> u32 {
+    let local_x = u32(tile_x) - bbox_x0;
+    let local_y = u32(tile_y) - bbox_y0;
+    return local_y * (bbox_x1 - bbox_x0) + local_x;
+}
+
