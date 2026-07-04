@@ -481,6 +481,8 @@ impl Renderer {
         });
         profile_cpu("prepare.coarse_buffers", || {
             self.coarse.prepare_outputs(&self.device, lengths);
+            self.coarse
+                .upload_tile_draw_bins(&self.queue, lengths, &mut self.scene_upload);
         });
         profile_cpu("prepare.fine_spills", || {
             self.prepare_fine_stack_spills(lengths, max_clip_depth, max_group_depth);
@@ -625,6 +627,8 @@ impl Renderer {
         });
         profile_cpu("prepare.local.coarse_buffers", || {
             self.coarse.prepare_outputs(&self.device, lengths);
+            self.coarse
+                .upload_tile_draw_bins(&self.queue, lengths, &mut self.scene_upload);
         });
         profile_cpu("prepare.local.fine_spills", || {
             self.prepare_fine_stack_spills(lengths, max_clip_depth, max_group_depth);

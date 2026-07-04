@@ -125,6 +125,7 @@ const GLYPH_RECORD_WORDS: u32 = 3u;
 const GLYPH_IMAGE_RECORD_WORDS: u32 = 6u;
 const TILE_COARSE_RECORD_WORDS: u32 = 6u;
 const PTCL_RECORD_WORDS: u32 = 6u;
+const TILE_DRAW_RECORD_WORDS: u32 = 2u;
 
 fn coarse_tile_base(tile_ix: u32) -> u32 {
     return tile_ix * TILE_COARSE_RECORD_WORDS;
@@ -138,6 +139,26 @@ fn coarse_glyph_base(glyph_ix: u32) -> u32 {
     return config.tile_count * TILE_COARSE_RECORD_WORDS +
         config.ptcl_capacity * PTCL_RECORD_WORDS +
         glyph_ix;
+}
+
+fn coarse_tile_draw_record_base(tile_ix: u32) -> u32 {
+    return coarse_glyph_base(config.glyph_capacity) + tile_ix * TILE_DRAW_RECORD_WORDS;
+}
+
+fn coarse_tile_draw_index_base() -> u32 {
+    return coarse_tile_draw_record_base(config.tile_count);
+}
+
+fn tile_draw_start_at(tile_ix: u32) -> u32 {
+    return coarse_work[coarse_tile_draw_record_base(tile_ix)];
+}
+
+fn tile_draw_end_at(tile_ix: u32) -> u32 {
+    return coarse_work[coarse_tile_draw_record_base(tile_ix) + 1u];
+}
+
+fn tile_draw_index_at(draw_ref_ix: u32) -> u32 {
+    return coarse_work[coarse_tile_draw_index_base() + draw_ref_ix];
 }
 
 fn coarse_load_tile(tile_ix: u32) -> TileCoarseRecord {

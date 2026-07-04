@@ -117,6 +117,7 @@ impl WgpuCoarseBuffers {
                 lengths.tile_count,
                 lengths.coarse_ptcl_capacity,
                 lengths.coarse_glyph_capacity,
+                lengths.tile_draw_index_count,
             ),
         );
         self.chunk_records.resize_uninit::<CoarseChunkRecord>(

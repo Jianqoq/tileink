@@ -107,7 +107,6 @@ impl WgpuSceneBuffers {
             backdrops: scan.backdrops.buffer(),
             segment_ranges: scan.tile_segment_ranges.buffer(),
             layer_stack: self.plan_layer_stack.buffer(),
-            tile_draw_data: self.tile_draw_data.buffer(),
             coarse_work: coarse.work.buffer(),
             chunk_records: coarse.chunk_records.buffer(),
         }
@@ -180,7 +179,6 @@ pub(crate) struct WgpuCoarseBindings<'a> {
     pub(crate) backdrops: &'a ::wgpu::Buffer,
     pub(crate) segment_ranges: &'a ::wgpu::Buffer,
     pub(crate) layer_stack: &'a ::wgpu::Buffer,
-    pub(crate) tile_draw_data: &'a ::wgpu::Buffer,
     pub(crate) coarse_work: &'a ::wgpu::Buffer,
     pub(crate) chunk_records: &'a ::wgpu::Buffer,
 }

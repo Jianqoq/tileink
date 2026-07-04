@@ -44,6 +44,7 @@ pub(crate) struct GpuBufferLengths {
     pub coarse_chunk_count: usize,
     pub coarse_ptcl_capacity: usize,
     pub coarse_glyph_capacity: usize,
+    pub tile_draw_index_count: usize,
     pub text_run_count: usize,
     pub text_glyph_count: usize,
     pub tiles_width: usize,
@@ -65,6 +66,8 @@ impl GpuBufferLengths {
             coarse_ptcl_capacity(canvas, tiles_width as u32, tiles_height as u32);
         let coarse_glyph_capacity =
             coarse_glyph_capacity(canvas, text, tiles_width as u32, tiles_height as u32);
+        let tile_draw_index_count =
+            tile_draw_index_count(canvas, tiles_width as u32, tiles_height as u32);
         Self {
             line_count: canvas.lines.len(),
             path_count: canvas.path_records.len(),
@@ -102,6 +105,7 @@ impl GpuBufferLengths {
             coarse_chunk_count: tile_count.div_ceil(COARSE_CHUNK_SIZE as usize),
             coarse_ptcl_capacity,
             coarse_glyph_capacity,
+            tile_draw_index_count,
             text_run_count: canvas.text_runs.len(),
             text_glyph_count: canvas.text_glyphs.len(),
             tiles_width,
@@ -242,6 +246,14 @@ fn coarse_glyph_capacity(
                 })
                 .sum::<usize>()
         })
+        .sum()
+}
+
+fn tile_draw_index_count(canvas: &Canvas, width_in_tiles: u32, height_in_tiles: u32) -> usize {
+    canvas
+        .draw_records
+        .iter()
+        .map(|draw| draw.tile_bbox(width_in_tiles, height_in_tiles).tile_count() as usize)
         .sum()
 }
 

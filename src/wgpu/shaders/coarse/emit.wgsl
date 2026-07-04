@@ -9,7 +9,6 @@
 @group(0) @binding(20) var<storage, read> segment_ranges: array<TileSegmentRange>;
 @group(0) @binding(22) var<storage, read> layer_stack: array<LayerStackRecord>;
 @group(0) @binding(25) var<storage, read_write> coarse_work: array<u32>;
-@group(0) @binding(42) var<storage, read> tile_draw_data: array<u32>;
 
 @compute @workgroup_size(256)
 fn coarse_emit(
@@ -362,18 +361,6 @@ fn glyph_hits_tile(glyph_ix: u32, tile_x: u32, tile_y: u32) -> bool {
 
 fn draw_in_batch(draw_ix: u32) -> bool {
     return draw_ix >= config.draw_start && draw_ix < config.draw_end;
-}
-
-fn tile_draw_start_at(tile_ix: u32) -> u32 {
-    return tile_draw_data[tile_ix * 2u];
-}
-
-fn tile_draw_end_at(tile_ix: u32) -> u32 {
-    return tile_draw_data[tile_ix * 2u + 1u];
-}
-
-fn tile_draw_index_at(draw_ref_ix: u32) -> u32 {
-    return tile_draw_data[config.tile_count * 2u + draw_ref_ix];
 }
 
 fn draw_tag_at(draw_ix: u32) -> u32 {

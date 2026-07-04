@@ -5,6 +5,7 @@ use crate::{
         execution::{ExecPlan, LayerStackEntry},
         gpu_brush::GpuBrushUpload,
         gpu_coarse::LayerStackRecord,
+        gpu_coarse::coarse_work_tile_draw_record_word_offset,
         gpu_plan::{
             GpuCumsumPlan, GpuScanChunk, GpuScanChunkRange, TileDrawBins, build_cumsum_plan_into,
             build_scan_chunks_into, build_tile_draw_bins_into,
@@ -24,7 +25,7 @@ use crate::{
 
 use super::super::buffer::WgpuBuffer;
 use super::super::profile::profile_cpu;
-use super::WgpuSceneBuffers;
+use super::{WgpuCoarseBuffers, WgpuSceneBuffers};
 
 #[derive(Default)]
 pub(crate) struct WgpuSceneUploadStaging {
@@ -256,9 +257,6 @@ impl WgpuSceneBuffers {
         });
         profile_cpu("prepare.upload_scene.upload_cumsum_plan", || {
             self.upload_cumsum_plan(device, queue, staging);
-        });
-        profile_cpu("prepare.upload_scene.upload_tile_draw_bins", || {
-            self.upload_tile_draw_bins(device, queue, staging);
         });
     }
 
@@ -531,11 +529,13 @@ impl WgpuSceneBuffers {
             &staging.cumsum_plan.row_chunk_ends,
         );
     }
+}
 
-    fn upload_tile_draw_bins(
-        &mut self,
-        device: &::wgpu::Device,
+impl WgpuCoarseBuffers {
+    pub(crate) fn upload_tile_draw_bins(
+        &self,
         queue: &::wgpu::Queue,
+        lengths: crate::shared::gpu_plan::GpuBufferLengths,
         staging: &mut WgpuSceneUploadStaging,
     ) {
         let bins = &staging.tile_draw_bins;
@@ -544,10 +544,14 @@ impl WgpuSceneBuffers {
             .tile_draw_data
             .extend_from_slice(bytemuck::cast_slice(&bins.records));
         staging.tile_draw_data.extend_from_slice(&bins.draw_indices);
-        self.tile_draw_data.upload(
-            device,
+        let word_offset = coarse_work_tile_draw_record_word_offset(
+            lengths.tile_count,
+            lengths.coarse_ptcl_capacity,
+            lengths.coarse_glyph_capacity,
+        );
+        self.work.write_at(
             queue,
-            "tileink wgpu canvas tile draw data",
+            (word_offset * std::mem::size_of::<u32>()) as ::wgpu::BufferAddress,
             &staging.tile_draw_data,
         );
     }

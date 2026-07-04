@@ -46,6 +46,7 @@ pub(crate) struct PtclRecord {
 
 pub(crate) const TILE_COARSE_RECORD_WORDS: usize = std::mem::size_of::<TileCoarseRecord>() / 4;
 pub(crate) const PTCL_RECORD_WORDS: usize = std::mem::size_of::<PtclRecord>() / 4;
+pub(crate) const TILE_DRAW_RECORD_WORDS: usize = std::mem::size_of::<TileDrawRecord>() / 4;
 
 pub(crate) fn coarse_work_ptcl_word_offset(tile_count: usize) -> usize {
     tile_count * TILE_COARSE_RECORD_WORDS
@@ -55,12 +56,31 @@ pub(crate) fn coarse_work_glyph_word_offset(tile_count: usize, ptcl_capacity: us
     coarse_work_ptcl_word_offset(tile_count) + ptcl_capacity * PTCL_RECORD_WORDS
 }
 
-pub(crate) fn coarse_work_word_len(
+pub(crate) fn coarse_work_tile_draw_record_word_offset(
     tile_count: usize,
     ptcl_capacity: usize,
     glyph_capacity: usize,
 ) -> usize {
     coarse_work_glyph_word_offset(tile_count, ptcl_capacity) + glyph_capacity
+}
+
+pub(crate) fn coarse_work_tile_draw_index_word_offset(
+    tile_count: usize,
+    ptcl_capacity: usize,
+    glyph_capacity: usize,
+) -> usize {
+    coarse_work_tile_draw_record_word_offset(tile_count, ptcl_capacity, glyph_capacity)
+        + tile_count * TILE_DRAW_RECORD_WORDS
+}
+
+pub(crate) fn coarse_work_word_len(
+    tile_count: usize,
+    ptcl_capacity: usize,
+    glyph_capacity: usize,
+    tile_draw_index_count: usize,
+) -> usize {
+    coarse_work_tile_draw_index_word_offset(tile_count, ptcl_capacity, glyph_capacity)
+        + tile_draw_index_count
 }
 
 #[cfg(test)]
@@ -127,8 +147,11 @@ mod tests {
     fn coarse_work_sections_are_tightly_packed_words() {
         assert_eq!(TILE_COARSE_RECORD_WORDS, 6);
         assert_eq!(PTCL_RECORD_WORDS, 6);
+        assert_eq!(TILE_DRAW_RECORD_WORDS, 2);
         assert_eq!(coarse_work_ptcl_word_offset(3), 18);
         assert_eq!(coarse_work_glyph_word_offset(3, 5), 48);
-        assert_eq!(coarse_work_word_len(3, 5, 7), 55);
+        assert_eq!(coarse_work_tile_draw_record_word_offset(3, 5, 7), 55);
+        assert_eq!(coarse_work_tile_draw_index_word_offset(3, 5, 7), 61);
+        assert_eq!(coarse_work_word_len(3, 5, 7, 11), 72);
     }
 }

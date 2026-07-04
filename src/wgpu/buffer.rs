@@ -44,6 +44,18 @@ impl WgpuBuffer {
         }
     }
 
+    pub(crate) fn write_at<T: Pod>(
+        &self,
+        queue: &::wgpu::Queue,
+        offset: ::wgpu::BufferAddress,
+        data: &[T],
+    ) {
+        let bytes = bytemuck::cast_slice(data);
+        if !bytes.is_empty() {
+            queue.write_buffer(&self.buffer, offset, bytes);
+        }
+    }
+
     pub(crate) fn buffer(&self) -> &::wgpu::Buffer {
         &self.buffer
     }

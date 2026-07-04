@@ -28,7 +28,6 @@ pub(crate) struct WgpuSceneBuffers {
     cumsum_chunk_lens: WgpuBuffer,
     cumsum_row_chunk_starts: WgpuBuffer,
     cumsum_row_chunk_ends: WgpuBuffer,
-    tile_draw_data: WgpuBuffer,
     plan_layer_stack: WgpuBuffer,
     brush_blob: WgpuBuffer,
     image_resource_metadata: WgpuBuffer,
@@ -80,7 +79,6 @@ impl WgpuSceneBuffers {
                 device,
                 "tileink wgpu canvas cumsum row chunk ends",
             ),
-            tile_draw_data: WgpuBuffer::new(device, "tileink wgpu canvas tile draw data"),
             plan_layer_stack: WgpuBuffer::new(device, "tileink wgpu canvas plan layer stack"),
             brush_blob: WgpuBuffer::new(device, "tileink wgpu canvas brush blob"),
             image_resource_metadata: WgpuBuffer::new(
