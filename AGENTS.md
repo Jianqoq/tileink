@@ -18,6 +18,7 @@
 - Everytime you finish the change, check if the existing code is well organized and maintenable and readable, refector when needed
 - Everytime you fix a bug or implement a new feature, document the code and mention why you make this change, mention if the fix/implementation did fix the real issue or just a temp solution
 - No minimal change, no need to capatible with old code, code must designed in long term develop perspective (maintainable, readable, organized, clear code logic)
+- one file can't contains too much code, split them
 
 ## Testing policy
 
