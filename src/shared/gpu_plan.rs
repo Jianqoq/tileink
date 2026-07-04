@@ -218,8 +218,8 @@ fn coarse_glyph_capacity(
     canvas
         .draw_records
         .iter()
-        .filter(|draw| matches!(draw.tag, DrawTag::Brush))
-        .filter_map(|draw| draw.glyph_run_id.map(|run_id| (draw, run_id)))
+        .filter(|draw| matches!(draw.tag(), DrawTag::Brush))
+        .filter_map(|draw| draw.glyph_run_id().map(|run_id| (draw, run_id)))
         .map(|(draw, run_id)| {
             let draw_bbox = draw.tile_bbox(width_in_tiles, height_in_tiles);
             text.run_glyph_indices(run_id)
@@ -259,9 +259,9 @@ fn coarse_ptcl_capacity(canvas: &Canvas, width_in_tiles: u32, height_in_tiles: u
         .draw_records
         .iter()
         .filter(|draw| {
-            (draw.path_id.is_some() || draw.has_analytic_geometry() || draw.glyph_run_id.is_some())
+            (draw.has_path() || draw.has_analytic_geometry() || draw.glyph_run_id().is_some())
                 && matches!(
-                    draw.tag,
+                    draw.tag(),
                     DrawTag::Brush | DrawTag::PathGlyph | DrawTag::Clip
                 )
         })
@@ -271,9 +271,9 @@ fn coarse_ptcl_capacity(canvas: &Canvas, width_in_tiles: u32, height_in_tiles: u
         .draw_records
         .iter()
         .filter(|draw| {
-            draw.path_id.is_some()
+            draw.has_path()
                 && matches!(
-                    draw.tag,
+                    draw.tag(),
                     DrawTag::Opacity | DrawTag::Blend | DrawTag::Isolate
                 )
         })
@@ -284,10 +284,10 @@ fn coarse_ptcl_capacity(canvas: &Canvas, width_in_tiles: u32, height_in_tiles: u
         .iter()
         .filter(|draw| {
             let clip_needs_end =
-                matches!(draw.tag, DrawTag::Clip) && (draw.path_id.is_some() || draw.sdf.is_some());
-            let path_group_needs_end = draw.path_id.is_some()
+                matches!(draw.tag(), DrawTag::Clip) && (draw.has_path() || draw.sdf_id().is_some());
+            let path_group_needs_end = draw.has_path()
                 && matches!(
-                    draw.tag,
+                    draw.tag(),
                     DrawTag::Opacity | DrawTag::Blend | DrawTag::Isolate
                 );
             clip_needs_end || path_group_needs_end

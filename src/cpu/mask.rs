@@ -234,7 +234,7 @@ pub(super) fn rasterize_layer_mask(
 ) -> Image {
     let mut image = Image::new(bounds.width(), bounds.height(), Color::TRANSPARENT);
     let draw = &canvas.draw_records[draw_ix];
-    let Some(path_id) = draw.path_id else {
+    let Some(path_id) = draw.path_id() else {
         return image;
     };
     let backdrop_record = &canvas.bd_records[path_id as usize];
@@ -259,7 +259,7 @@ pub(super) fn rasterize_layer_mask(
             let alpha = build_tile_alpha(
                 &buffers.segments[segment_range.start as usize..segment_range.end as usize],
                 backdrop,
-                draw.fill_rule,
+                draw.fill_rule(),
             );
             let base_x = (tile_x * crate::TILE_SIZE) as i32;
             let base_y = (tile_y * crate::TILE_SIZE) as i32;

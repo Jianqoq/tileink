@@ -3,7 +3,14 @@ use crate::shared::scene_columns::CanvasColumns;
 
 fn upload_columns_for(canvas: &Canvas) -> CanvasColumns {
     let mut columns = CanvasColumns::default();
-    columns.rebuild(&canvas.lines, &canvas.path_records, &canvas.draw_records);
+    columns.rebuild(
+        &canvas.lines,
+        &canvas.path_records,
+        &canvas.draw_records,
+        &canvas.brushes,
+        &canvas.sdfs,
+        &canvas.sdf_shadows,
+    );
     columns
 }
 
@@ -42,7 +49,7 @@ fn push_arc_adds_draw_and_path_record() {
     assert_eq!(canvas.path_records.len(), 1);
     assert_eq!(canvas.bd_records.len(), 1);
     assert_eq!(canvas.draw_records[0].tag, DrawTag::Brush);
-    assert!(!canvas.draw_records[0].solid_rect);
+    assert!(!canvas.draw_records[0].solid_rect());
 }
 
 #[test]
@@ -64,7 +71,7 @@ fn push_stroke_expands_shape_to_fill_path() {
     assert!(bounds.x1 >= 22);
     assert!(bounds.y1 >= 22);
     assert_eq!(canvas.draw_records[0].fill_rule, FillRule::NonZero);
-    assert!(!canvas.draw_records[0].solid_rect);
+    assert!(!canvas.draw_records[0].solid_rect());
 }
 
 #[test]

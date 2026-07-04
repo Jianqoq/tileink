@@ -1,4 +1,5 @@
 use crate::shared::{
+    brush::Brush,
     draw_record::{DrawRecord, DrawTag},
     fill::FillRule,
     gpu_sdf::{encode_sdf, encode_sdf_shadow},
@@ -10,9 +11,10 @@ use crate::shared::{
     line::Line,
     path::PathRecord,
     pixel::premul_f32_to_u32,
+    sdf::{Sdf, SdfShadow},
 };
 
-const INVALID_REF: u32 = u32::MAX;
+const INVALID_REF: u32 = DrawRecord::NONE;
 
 /// GPU upload columns derived from semantic canvas records.
 ///
@@ -60,34 +62,48 @@ impl CanvasColumns {
         self.sdf.clear();
     }
 
-    pub(crate) fn rebuild(&mut self, lines: &[Line], paths: &[PathRecord], draws: &[DrawRecord]) {
+    pub(crate) fn rebuild(
+        &mut self,
+        lines: &[Line],
+        paths: &[PathRecord],
+        draws: &[DrawRecord],
+        brushes: &[Brush],
+        sdfs: &[Sdf],
+        sdf_shadows: &[SdfShadow],
+    ) {
         self.clear();
         let sdf_count = draws
             .iter()
-            .filter(|draw| draw.sdf.is_some() || draw.sdf_shadow.is_some())
+            .filter(|draw| draw.has_analytic_geometry())
             .count();
         self.reserve(lines.len(), paths.len(), draws.len(), sdf_count);
         self.extend_lines(lines);
         self.extend_paths(paths);
         for draw in draws {
-            self.push_draw(draw);
+            self.push_draw(draw, brushes, sdfs, sdf_shadows);
         }
     }
 
-    pub(crate) fn push_draw(&mut self, draw: &DrawRecord) {
-        self.draw_path_ids.push(draw.path_id.unwrap_or(INVALID_REF));
-        self.draw_glyph_run_ids
-            .push(draw.glyph_run_id.unwrap_or(INVALID_REF));
+    pub(crate) fn push_draw(
+        &mut self,
+        draw: &DrawRecord,
+        brushes: &[Brush],
+        sdfs: &[Sdf],
+        sdf_shadows: &[SdfShadow],
+    ) {
+        self.draw_path_ids.push(draw.path_id);
+        self.draw_glyph_run_ids.push(draw.glyph_run_id);
         self.draw_glyph_run_ids_without_text.push(INVALID_REF);
-        self.draw_flags.push(draw_flags_word(draw, true));
+        let brush = brushes.get(draw.brush_id as usize);
+        self.draw_flags.push(draw_flags_word(draw, brush, true));
         self.draw_flags_without_text
-            .push(draw_flags_word(draw, false));
-        self.draw_brush_colors.push(solid_fast_color(draw));
+            .push(draw_flags_word(draw, brush, false));
+        self.draw_brush_colors.push(solid_fast_color(brush));
         self.draw_pixel_x0.push(draw.pixel_bounds.x0);
         self.draw_pixel_y0.push(draw.pixel_bounds.y0);
         self.draw_pixel_x1.push(draw.pixel_bounds.x1);
         self.draw_pixel_y1.push(draw.pixel_bounds.y1);
-        self.sdf.push_draw(draw);
+        self.sdf.push_draw(draw, sdfs, sdf_shadows);
     }
 
     pub(crate) fn push_path_record(&mut self, path: PathRecord) {
@@ -189,10 +205,13 @@ impl DrawSdfColumns {
         self.shadow_intensity.clear();
     }
 
-    fn push_draw(&mut self, draw: &DrawRecord) {
-        let sdf = match (draw.sdf, draw.sdf_shadow) {
-            (Some(sdf), None) => Some(encode_sdf(sdf)),
-            (None, Some(sdf_shadow)) => Some(encode_sdf_shadow(sdf_shadow)),
+    fn push_draw(&mut self, draw: &DrawRecord, sdfs: &[Sdf], sdf_shadows: &[SdfShadow]) {
+        let sdf = match (draw.sdf_id(), draw.sdf_shadow_id()) {
+            (Some(sdf_id), None) => sdfs.get(sdf_id as usize).copied().map(encode_sdf),
+            (None, Some(sdf_shadow_id)) => sdf_shadows
+                .get(sdf_shadow_id as usize)
+                .copied()
+                .map(encode_sdf_shadow),
             (None, None) => None,
             (Some(_), Some(_)) => unreachable!("draw cannot store both SDF and SDF shadow"),
         };
@@ -253,28 +272,28 @@ impl DrawSdfColumns {
     }
 }
 
-pub(crate) fn draw_flags_word(draw: &DrawRecord, text_enabled: bool) -> u32 {
+pub(crate) fn draw_flags_word(draw: &DrawRecord, brush: Option<&Brush>, text_enabled: bool) -> u32 {
     let mut flags = draw_tag_word(draw);
-    if draw.fill_rule == FillRule::EvenOdd {
+    if draw.fill_rule() == FillRule::EvenOdd {
         flags |= DRAW_FLAG_FILL_RULE_EVEN_ODD;
     }
-    if draw.solid_rect {
+    if draw.solid_rect() {
         flags |= DRAW_FLAG_SOLID_RECT;
-        if draw.brush.solid_color().is_some() {
+        if brush.and_then(Brush::solid_color).is_some() {
             flags |= DRAW_FLAG_SOLID_COLOR_FAST_PATH;
         }
     }
-    if draw.sdf.is_some() || draw.sdf_shadow.is_some() {
+    if draw.has_analytic_geometry() {
         flags |= DRAW_FLAG_HAS_SDF;
     }
-    if text_enabled && draw.glyph_run_id.is_some() {
+    if text_enabled && draw.glyph_run_id().is_some() {
         flags |= DRAW_FLAG_HAS_GLYPH;
     }
     flags
 }
 
 fn draw_tag_word(draw: &DrawRecord) -> u32 {
-    match draw.tag {
+    match draw.tag() {
         DrawTag::Brush => GPU_DRAW_BRUSH,
         DrawTag::PathGlyph => GPU_DRAW_PATH_GLYPH,
         DrawTag::Clip => GPU_DRAW_CLIP,
@@ -284,9 +303,9 @@ fn draw_tag_word(draw: &DrawRecord) -> u32 {
     }
 }
 
-fn solid_fast_color(draw: &DrawRecord) -> u32 {
-    draw.brush
-        .solid_color()
+fn solid_fast_color(brush: Option<&Brush>) -> u32 {
+    brush
+        .and_then(Brush::solid_color)
         .map(|color| premul_f32_to_u32(color.premultiply().components))
         .unwrap_or(0)
 }

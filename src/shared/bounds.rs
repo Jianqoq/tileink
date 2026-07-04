@@ -63,7 +63,8 @@ impl Bounds {
 }
 
 /// Pixel-space bounds of a transformed path.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct PixelBounds {
     pub x0: i32,
     pub y0: i32,

@@ -1,47 +1,125 @@
 use crate::shared::{
     bounds::{PixelBounds, TileBbox},
-    brush::Brush,
     fill::FillRule,
-    sdf::{Sdf, SdfShadow},
 };
 
+#[repr(u32)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DrawTag {
-    Brush,
+    Brush = 0,
     /// Vector glyph outlines: path geometry with text coverage compositing.
-    PathGlyph,
-    Clip,
-    Isolate,
-    Opacity,
-    Blend,
+    PathGlyph = 5,
+    Clip = 1,
+    Isolate = 4,
+    Opacity = 2,
+    Blend = 3,
+}
+
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct DrawTagWord(pub u32);
+
+impl From<DrawTag> for DrawTagWord {
+    fn from(tag: DrawTag) -> Self {
+        Self(tag as u32)
+    }
+}
+
+impl PartialEq<DrawTag> for DrawTagWord {
+    fn eq(&self, other: &DrawTag) -> bool {
+        self.0 == *other as u32
+    }
+}
+
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct FillRuleWord(pub u32);
+
+impl From<FillRule> for FillRuleWord {
+    fn from(rule: FillRule) -> Self {
+        Self(rule as u32)
+    }
+}
+
+impl PartialEq<FillRule> for FillRuleWord {
+    fn eq(&self, other: &FillRule) -> bool {
+        self.0 == *other as u32
+    }
 }
 
 /// One drawable path in document order (coarse iterates this list per tile).
-#[derive(Clone, Debug)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct DrawRecord {
-    /// Path index in [`Canvas`](crate::gpu::canvas::Canvas), or `None` for non-path draws.
-    pub path_id: Option<u32>,
-    /// Text glyph run index, or `None` for non-text draws.
-    pub glyph_run_id: Option<u32>,
-    /// Exact SDF geometry for simple primitives that do not need path scan/cumsum.
-    pub sdf: Option<Sdf>,
-    /// Soft SDF shadow geometry. It is draw-only and must never be used for clips.
-    pub sdf_shadow: Option<SdfShadow>,
-    pub tag: DrawTag,
-    pub brush: Brush,
-    pub fill_rule: FillRule,
+    /// Path index in [`Canvas`](crate::gpu::canvas::Canvas), or `NONE` for non-path draws.
+    pub path_id: u32,
+    /// Text glyph run index, or `NONE` for non-text draws.
+    pub glyph_run_id: u32,
+    /// Exact SDF geometry index in `Canvas::sdfs`, or `NONE` for non-SDF draws.
+    pub sdf_id: u32,
+    /// Soft SDF shadow geometry index in `Canvas::sdf_shadows`, or `NONE` for non-shadow draws.
+    pub sdf_shadow_id: u32,
+    /// Brush index in `Canvas::brushes`.
+    pub brush_id: u32,
+    pub tag: DrawTagWord,
+    pub fill_rule: FillRuleWord,
     pub pixel_bounds: PixelBounds,
     /// CPU `FillRect` fast path: coarse emits `Color` only (no flatten/scan).
-    pub solid_rect: bool,
+    pub solid_rect: u32,
 }
 
 impl DrawRecord {
+    pub const NONE: u32 = u32::MAX;
+
     pub fn tile_bbox(&self, width_in_tiles: u32, height_in_tiles: u32) -> TileBbox {
         self.pixel_bounds.tile_bbox(width_in_tiles, height_in_tiles)
     }
 
+    pub(crate) fn path_id(self) -> Option<u32> {
+        (self.path_id != Self::NONE).then_some(self.path_id)
+    }
+
+    pub(crate) fn glyph_run_id(self) -> Option<u32> {
+        (self.glyph_run_id != Self::NONE).then_some(self.glyph_run_id)
+    }
+
+    pub(crate) fn sdf_id(self) -> Option<u32> {
+        (self.sdf_id != Self::NONE).then_some(self.sdf_id)
+    }
+
+    pub(crate) fn sdf_shadow_id(self) -> Option<u32> {
+        (self.sdf_shadow_id != Self::NONE).then_some(self.sdf_shadow_id)
+    }
+
     pub(crate) fn has_analytic_geometry(&self) -> bool {
-        self.sdf.is_some() || self.sdf_shadow.is_some()
+        self.sdf_id != Self::NONE || self.sdf_shadow_id != Self::NONE
+    }
+
+    pub(crate) fn has_path(self) -> bool {
+        self.path_id != Self::NONE
+    }
+
+    pub(crate) fn solid_rect(self) -> bool {
+        self.solid_rect != 0
+    }
+
+    pub(crate) fn tag(self) -> DrawTag {
+        match self.tag.0 {
+            value if value == DrawTag::Brush as u32 => DrawTag::Brush,
+            value if value == DrawTag::PathGlyph as u32 => DrawTag::PathGlyph,
+            value if value == DrawTag::Clip as u32 => DrawTag::Clip,
+            value if value == DrawTag::Isolate as u32 => DrawTag::Isolate,
+            value if value == DrawTag::Opacity as u32 => DrawTag::Opacity,
+            value if value == DrawTag::Blend as u32 => DrawTag::Blend,
+            _ => DrawTag::Brush,
+        }
+    }
+
+    pub(crate) fn fill_rule(self) -> FillRule {
+        match self.fill_rule.0 {
+            value if value == FillRule::EvenOdd as u32 => FillRule::EvenOdd,
+            _ => FillRule::NonZero,
+        }
     }
 
     // pub fn covers_tile(&self, tile_x: u32, tile_y: u32, width: u32, height: u32) -> bool {
@@ -49,4 +127,23 @@ impl DrawRecord {
     //     let pb = self.pixel_bounds.intersect(tile_bounds);
     //     pb.x0 < pb.x1 && pb.y0 < pb.y1
     // }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::mem::{align_of, size_of};
+
+    use super::*;
+
+    #[test]
+    fn draw_record_is_gpu_buffer_layout() {
+        fn assert_pod<T: bytemuck::Pod>() {}
+
+        assert_pod::<DrawRecord>();
+        assert_eq!(DrawRecord::NONE, u32::MAX);
+        assert_eq!(size_of::<DrawTagWord>(), size_of::<u32>());
+        assert_eq!(size_of::<FillRuleWord>(), size_of::<u32>());
+        assert_eq!(size_of::<DrawRecord>(), 48);
+        assert_eq!(align_of::<DrawRecord>(), align_of::<u32>());
+    }
 }

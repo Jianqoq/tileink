@@ -4,10 +4,12 @@ use crate::{
     shared::{
         bd_record::BackdropRecord,
         bounds::Bounds,
+        brush::Brush,
         draw_record::{DrawRecord, DrawTag},
         execution::LayerStackEntry,
         gpu_plan::TileDrawBins,
         pixel::opacity_f32_to_u8,
+        sdf::{Sdf, SdfShadow},
         tile_ptcl::{
             TileColorPtcl, TileFillPtcl, TileGlyphPtcl, TilePtcl, TilePtclRange, TileSdfPtcl,
             TileSdfShadowPtcl,
@@ -19,6 +21,9 @@ use crate::{
 
 pub struct CoarseCpuPrepared<'a> {
     draw_records: &'a [DrawRecord],
+    brushes: &'a [Brush],
+    sdfs: &'a [Sdf],
+    sdf_shadows: &'a [SdfShadow],
     draw_range: std::ops::Range<usize>,
     layer_stack_data: &'a [LayerStackEntry],
     tile_draw_bins: &'a TileDrawBins,
@@ -60,6 +65,9 @@ impl<'a> CoarseCpuPrepared<'a> {
                     self.tile_draw_bins,
                     layer_stack,
                     self.draw_records,
+                    self.brushes,
+                    self.sdfs,
+                    self.sdf_shadows,
                     self.backdrop_records,
                     self.backdrops,
                     self.tile_segment_ranges,
@@ -104,6 +112,9 @@ impl<'a> CoarseCpuPrepared<'a> {
         tile_draw_bins: &TileDrawBins,
         layer_stack: &[LayerStackEntry],
         draw_records: &[DrawRecord],
+        brushes: &[Brush],
+        sdfs: &[Sdf],
+        sdf_shadows: &[SdfShadow],
         backdrop_records: &[BackdropRecord],
         backdrops: &[i32],
         tile_segment_ranges: &[TileSegmentRange],
@@ -126,6 +137,8 @@ impl<'a> CoarseCpuPrepared<'a> {
                 tile_x,
                 tile_y,
                 draw_records,
+                sdfs,
+                sdf_shadows,
                 backdrop_records,
                 backdrops,
                 tile_segment_ranges,
@@ -135,6 +148,9 @@ impl<'a> CoarseCpuPrepared<'a> {
                 continue;
             };
             let draw = coverage.draw();
+            let Some(brush) = brushes.get(draw.brush_id as usize) else {
+                continue;
+            };
 
             if !Self::ensure_batch_wrappers(
                 &mut output.ptcls,
@@ -143,6 +159,9 @@ impl<'a> CoarseCpuPrepared<'a> {
                 tile_y,
                 layer_stack,
                 draw_records,
+                brushes,
+                sdfs,
+                sdf_shadows,
                 backdrop_records,
                 backdrops,
                 tile_segment_ranges,
@@ -151,15 +170,15 @@ impl<'a> CoarseCpuPrepared<'a> {
                 continue;
             }
 
-            match draw.tag {
+            match draw.tag() {
                 DrawTag::Brush => match coverage {
                     DrawTileCoverage::Path {
                         draw,
                         backdrop,
                         segment_range,
                     } => {
-                        if let Some(color) = draw.brush.solid_color()
-                            && draw.solid_rect
+                        if let Some(color) = brush.solid_color()
+                            && draw.solid_rect()
                             && segment_range.start == segment_range.end
                         {
                             output.ptcls.push(TilePtcl::Color(TileColorPtcl {
@@ -171,13 +190,13 @@ impl<'a> CoarseCpuPrepared<'a> {
                         }
                         output.ptcls.push(TilePtcl::Fill(TileFillPtcl {
                             backdrop,
-                            fill_rule: draw.fill_rule,
+                            fill_rule: draw.fill_rule(),
                             segment_range,
-                            brush: draw.brush.clone(),
+                            brush: brush.clone(),
                         }));
                     }
-                    DrawTileCoverage::Sdf { draw, sdf } => {
-                        if let Some(color) = draw.brush.solid_color()
+                    DrawTileCoverage::Sdf { sdf, .. } => {
+                        if let Some(color) = brush.solid_color()
                             && sdf.tile_is_solid(tile_bounds(tile_x, tile_y))
                         {
                             output.ptcls.push(TilePtcl::Color(TileColorPtcl {
@@ -189,22 +208,22 @@ impl<'a> CoarseCpuPrepared<'a> {
                         }
                         output.ptcls.push(TilePtcl::Sdf(TileSdfPtcl {
                             sdf: *sdf,
-                            brush: draw.brush.clone(),
+                            brush: brush.clone(),
                         }));
                     }
-                    DrawTileCoverage::SdfShadow { draw, sdf_shadow } => {
+                    DrawTileCoverage::SdfShadow { sdf_shadow, .. } => {
                         output.ptcls.push(TilePtcl::SdfShadow(TileSdfShadowPtcl {
                             sdf_shadow: *sdf_shadow,
-                            brush: draw.brush.clone(),
+                            brush: brush.clone(),
                         }));
                     }
-                    DrawTileCoverage::Glyph { draw, glyphs } => {
+                    DrawTileCoverage::Glyph { glyphs, .. } => {
                         let start = output.glyphs.len() as u32;
                         output.glyphs.extend(glyphs);
                         let end = output.glyphs.len() as u32;
                         output.ptcls.push(TilePtcl::Glyph(TileGlyphPtcl {
                             glyph_range: start..end,
-                            brush: draw.brush.clone(),
+                            brush: brush.clone(),
                         }));
                     }
                 },
@@ -217,9 +236,9 @@ impl<'a> CoarseCpuPrepared<'a> {
                     {
                         output.ptcls.push(TilePtcl::PathGlyph(TileFillPtcl {
                             backdrop,
-                            fill_rule: draw.fill_rule,
+                            fill_rule: draw.fill_rule(),
                             segment_range,
-                            brush: draw.brush.clone(),
+                            brush: brush.clone(),
                         }));
                     }
                 }
@@ -232,9 +251,9 @@ impl<'a> CoarseCpuPrepared<'a> {
                     {
                         output.ptcls.push(TilePtcl::BeginClip(TileFillPtcl {
                             backdrop,
-                            fill_rule: draw.fill_rule,
+                            fill_rule: draw.fill_rule(),
                             segment_range,
-                            brush: draw.brush.clone(),
+                            brush: brush.clone(),
                         }));
                     }
                 }
@@ -273,6 +292,9 @@ impl<'a> CoarseCpuPrepared<'a> {
         tile_y: u32,
         layer_stack: &[LayerStackEntry],
         draw_records: &[DrawRecord],
+        brushes: &[Brush],
+        sdfs: &[Sdf],
+        sdf_shadows: &[SdfShadow],
         backdrop_records: &[BackdropRecord],
         backdrops: &[i32],
         tile_segment_ranges: &[TileSegmentRange],
@@ -294,6 +316,8 @@ impl<'a> CoarseCpuPrepared<'a> {
                 tile_x,
                 tile_y,
                 draw_records,
+                sdfs,
+                sdf_shadows,
                 backdrop_records,
                 backdrops,
                 tile_segment_ranges,
@@ -318,16 +342,24 @@ impl<'a> CoarseCpuPrepared<'a> {
                         backdrop,
                         segment_range,
                     },
-                ) => LayerCoveragePtcl::Path(TileFillPtcl {
-                    backdrop,
-                    fill_rule: draw.fill_rule,
-                    segment_range,
-                    brush: draw.brush.clone(),
-                }),
+                ) => {
+                    let Some(brush) = brushes.get(draw.brush_id as usize) else {
+                        return false;
+                    };
+                    LayerCoveragePtcl::Path(TileFillPtcl {
+                        backdrop,
+                        fill_rule: draw.fill_rule(),
+                        segment_range,
+                        brush: brush.clone(),
+                    })
+                }
                 (LayerStackEntry::Clip { .. }, LayerTileCoverage::Sdf { draw, sdf }) => {
+                    let Some(brush) = brushes.get(draw.brush_id as usize) else {
+                        return false;
+                    };
                     LayerCoveragePtcl::Sdf(TileSdfPtcl {
                         sdf: *sdf,
-                        brush: draw.brush.clone(),
+                        brush: brush.clone(),
                     })
                 }
                 (
@@ -371,13 +403,15 @@ impl<'a> CoarseCpuPrepared<'a> {
         tile_x: u32,
         tile_y: u32,
         draw_records: &'b [DrawRecord],
+        sdfs: &'b [Sdf],
+        _sdf_shadows: &[SdfShadow],
         backdrop_records: &[BackdropRecord],
         backdrops: &[i32],
         tile_segment_ranges: &[TileSegmentRange],
         tiles_size: (u32, u32),
     ) -> Option<LayerTileCoverage<'b>> {
         let draw = &draw_records[draw_ix];
-        if let Some(sdf) = &draw.sdf {
+        if let Some(sdf) = draw.sdf_id().and_then(|id| sdfs.get(id as usize)) {
             let bbox = draw.tile_bbox(tiles_size.0, tiles_size.1);
             return (tile_x >= bbox.x0
                 && tile_x < bbox.x1
@@ -385,11 +419,11 @@ impl<'a> CoarseCpuPrepared<'a> {
                 && tile_y < bbox.y1)
                 .then_some(LayerTileCoverage::Sdf { draw, sdf });
         }
-        if draw.sdf_shadow.is_some() {
+        if draw.sdf_shadow_id().is_some() {
             return None;
         }
 
-        let path_id = draw.path_id?;
+        let path_id = draw.path_id()?;
         let bbox = draw.tile_bbox(tiles_size.0, tiles_size.1);
         if tile_x < bbox.x0 || tile_x >= bbox.x1 || tile_y < bbox.y0 || tile_y >= bbox.y1 {
             return None;
@@ -428,6 +462,8 @@ impl<'a> CoarseCpuPrepared<'a> {
         tile_x: u32,
         tile_y: u32,
         draw_records: &'b [DrawRecord],
+        sdfs: &'b [Sdf],
+        sdf_shadows: &'b [SdfShadow],
         backdrop_records: &[BackdropRecord],
         backdrops: &[i32],
         tile_segment_ranges: &[TileSegmentRange],
@@ -435,14 +471,17 @@ impl<'a> CoarseCpuPrepared<'a> {
         text: Option<&PreparedTextData>,
     ) -> Option<DrawTileCoverage<'b>> {
         let draw = &draw_records[draw_ix];
-        if let Some(sdf) = &draw.sdf {
+        if let Some(sdf) = draw.sdf_id().and_then(|id| sdfs.get(id as usize)) {
             let bbox = draw.tile_bbox(tiles_size.0, tiles_size.1);
             if tile_x >= bbox.x0 && tile_x < bbox.x1 && tile_y >= bbox.y0 && tile_y < bbox.y1 {
                 return Some(DrawTileCoverage::Sdf { draw, sdf });
             }
             return None;
         }
-        if let Some(sdf_shadow) = &draw.sdf_shadow {
+        if let Some(sdf_shadow) = draw
+            .sdf_shadow_id()
+            .and_then(|id| sdf_shadows.get(id as usize))
+        {
             let bbox = draw.tile_bbox(tiles_size.0, tiles_size.1);
             if tile_x >= bbox.x0 && tile_x < bbox.x1 && tile_y >= bbox.y0 && tile_y < bbox.y1 {
                 return Some(DrawTileCoverage::SdfShadow { draw, sdf_shadow });
@@ -450,7 +489,7 @@ impl<'a> CoarseCpuPrepared<'a> {
             return None;
         }
 
-        if let Some(glyph_run_id) = draw.glyph_run_id {
+        if let Some(glyph_run_id) = draw.glyph_run_id() {
             let bbox = draw.tile_bbox(tiles_size.0, tiles_size.1);
             if tile_x >= bbox.x0 && tile_x < bbox.x1 && tile_y >= bbox.y0 && tile_y < bbox.y1 {
                 let text = text?;
@@ -471,6 +510,8 @@ impl<'a> CoarseCpuPrepared<'a> {
             tile_x,
             tile_y,
             draw_records,
+            sdfs,
+            sdf_shadows,
             backdrop_records,
             backdrops,
             tile_segment_ranges,
@@ -586,6 +627,9 @@ impl CoarseCpuPipeline {
     pub fn prepare<'a>(
         &self,
         draw_records: &'a [DrawRecord],
+        brushes: &'a [Brush],
+        sdfs: &'a [Sdf],
+        sdf_shadows: &'a [SdfShadow],
         draw_range: std::ops::Range<usize>,
         layer_stack_data: &'a [LayerStackEntry],
         layer_stack_range: std::ops::Range<usize>,
@@ -601,6 +645,9 @@ impl CoarseCpuPipeline {
     ) -> CoarseCpuPrepared<'a> {
         CoarseCpuPrepared {
             draw_records,
+            brushes,
+            sdfs,
+            sdf_shadows,
             draw_range,
             layer_stack_data,
             layer_stack_range,
@@ -654,53 +701,58 @@ mod tests {
     fn run_replays_clip_layers_in_user_nesting_order() {
         let draw_records = [
             DrawRecord {
-                path_id: Some(0),
-                glyph_run_id: None,
-                sdf: None,
-                sdf_shadow: None,
-                tag: DrawTag::Clip,
-                brush: Brush::Solid(Color::TRANSPARENT),
-                fill_rule: FillRule::NonZero,
+                path_id: 0,
+                glyph_run_id: DrawRecord::NONE,
+                sdf_id: DrawRecord::NONE,
+                sdf_shadow_id: DrawRecord::NONE,
+                brush_id: 0,
+                tag: DrawTag::Clip.into(),
+                fill_rule: FillRule::NonZero.into(),
                 pixel_bounds: PixelBounds {
                     x0: 0,
                     y0: 0,
                     x1: 16,
                     y1: 16,
                 },
-                solid_rect: false,
+                solid_rect: 0,
             },
             DrawRecord {
-                path_id: Some(1),
-                glyph_run_id: None,
-                sdf: None,
-                sdf_shadow: None,
-                tag: DrawTag::Clip,
-                brush: Brush::Solid(Color::TRANSPARENT),
-                fill_rule: FillRule::NonZero,
+                path_id: 1,
+                glyph_run_id: DrawRecord::NONE,
+                sdf_id: DrawRecord::NONE,
+                sdf_shadow_id: DrawRecord::NONE,
+                brush_id: 1,
+                tag: DrawTag::Clip.into(),
+                fill_rule: FillRule::NonZero.into(),
                 pixel_bounds: PixelBounds {
                     x0: 0,
                     y0: 0,
                     x1: 16,
                     y1: 16,
                 },
-                solid_rect: false,
+                solid_rect: 0,
             },
             DrawRecord {
-                path_id: Some(2),
-                glyph_run_id: None,
-                sdf: None,
-                sdf_shadow: None,
-                tag: DrawTag::Brush,
-                brush: Brush::Solid(Color::BLACK),
-                fill_rule: FillRule::NonZero,
+                path_id: 2,
+                glyph_run_id: DrawRecord::NONE,
+                sdf_id: DrawRecord::NONE,
+                sdf_shadow_id: DrawRecord::NONE,
+                brush_id: 2,
+                tag: DrawTag::Brush.into(),
+                fill_rule: FillRule::NonZero.into(),
                 pixel_bounds: PixelBounds {
                     x0: 0,
                     y0: 0,
                     x1: 16,
                     y1: 16,
                 },
-                solid_rect: false,
+                solid_rect: 0,
             },
+        ];
+        let brushes = [
+            Brush::Solid(Color::TRANSPARENT),
+            Brush::Solid(Color::TRANSPARENT),
+            Brush::Solid(Color::BLACK),
         ];
         let backdrop_records = [
             BackdropRecord {
@@ -758,6 +810,9 @@ mod tests {
         CoarseCpuPipeline::new()
             .prepare(
                 &draw_records,
+                &brushes,
+                &[],
+                &[],
                 2..3,
                 &layer_stack_data,
                 0..layer_stack_data.len(),
@@ -814,6 +869,9 @@ mod tests {
         CoarseCpuPipeline::new()
             .prepare(
                 &canvas.draw_records,
+                &canvas.brushes,
+                &canvas.sdfs,
+                &canvas.sdf_shadows,
                 0..canvas.draw_records.len(),
                 &[],
                 0..0,
@@ -872,37 +930,41 @@ mod tests {
     fn run_builds_each_tile_stream_independently_in_draw_order() {
         let draw_records = [
             DrawRecord {
-                path_id: Some(0),
-                glyph_run_id: None,
-                sdf: None,
-                sdf_shadow: None,
-                tag: DrawTag::Brush,
-                brush: Brush::Solid(Color::from_rgb8(255, 0, 0)),
-                fill_rule: FillRule::NonZero,
+                path_id: 0,
+                glyph_run_id: DrawRecord::NONE,
+                sdf_id: DrawRecord::NONE,
+                sdf_shadow_id: DrawRecord::NONE,
+                brush_id: 0,
+                tag: DrawTag::Brush.into(),
+                fill_rule: FillRule::NonZero.into(),
                 pixel_bounds: PixelBounds {
                     x0: 0,
                     y0: 0,
                     x1: 32,
                     y1: 16,
                 },
-                solid_rect: true,
+                solid_rect: 1,
             },
             DrawRecord {
-                path_id: Some(1),
-                glyph_run_id: None,
-                sdf: None,
-                sdf_shadow: None,
-                tag: DrawTag::Brush,
-                brush: Brush::Solid(Color::from_rgb8(0, 0, 255)),
-                fill_rule: FillRule::NonZero,
+                path_id: 1,
+                glyph_run_id: DrawRecord::NONE,
+                sdf_id: DrawRecord::NONE,
+                sdf_shadow_id: DrawRecord::NONE,
+                brush_id: 1,
+                tag: DrawTag::Brush.into(),
+                fill_rule: FillRule::NonZero.into(),
                 pixel_bounds: PixelBounds {
                     x0: 16,
                     y0: 0,
                     x1: 32,
                     y1: 16,
                 },
-                solid_rect: true,
+                solid_rect: 1,
             },
+        ];
+        let brushes = [
+            Brush::Solid(Color::from_rgb8(255, 0, 0)),
+            Brush::Solid(Color::from_rgb8(0, 0, 255)),
         ];
         let backdrop_records = [
             BackdropRecord {
@@ -940,6 +1002,9 @@ mod tests {
         CoarseCpuPipeline::new()
             .prepare(
                 &draw_records,
+                &brushes,
+                &[],
+                &[],
                 0..draw_records.len(),
                 &[],
                 0..0,

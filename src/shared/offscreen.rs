@@ -170,15 +170,28 @@ fn translated_scene_for_bounds(canvas: &Canvas, local: LocalSpace) -> Canvas {
         .draw_records
         .iter()
         .map(|draw| {
-            let mut draw = draw.clone();
+            let mut draw = *draw;
             draw.pixel_bounds = local.pixel_bounds(draw.pixel_bounds);
-            draw.sdf = draw.sdf.map(|sdf| local.sdf(sdf));
-            draw.sdf_shadow = draw
-                .sdf_shadow
-                .map(|sdf_shadow| local.sdf_shadow(sdf_shadow));
-            draw.brush = local.brush(draw.brush);
             draw
         })
+        .collect();
+    translated.brushes = canvas
+        .brushes
+        .iter()
+        .cloned()
+        .map(|brush| local.brush(brush))
+        .collect();
+    translated.sdfs = canvas
+        .sdfs
+        .iter()
+        .copied()
+        .map(|sdf| local.sdf(sdf))
+        .collect();
+    translated.sdf_shadows = canvas
+        .sdf_shadows
+        .iter()
+        .copied()
+        .map(|sdf_shadow| local.sdf_shadow(sdf_shadow))
         .collect();
     translated.text_glyphs = canvas
         .text_glyphs
@@ -205,7 +218,7 @@ fn translated_scene_for_bounds(canvas: &Canvas, local: LocalSpace) -> Canvas {
 fn translated_backdrop_records(canvas: &Canvas, translated: &Canvas) -> Vec<BackdropRecord> {
     let mut path_bounds: Vec<Option<PixelBounds>> = vec![None; translated.path_records.len()];
     for draw in &translated.draw_records {
-        if let Some(path_id) = draw.path_id
+        if let Some(path_id) = draw.path_id()
             && let Some(slot) = path_bounds.get_mut(path_id as usize)
         {
             *slot = Some(match *slot {

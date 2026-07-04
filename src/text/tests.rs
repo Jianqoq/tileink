@@ -181,12 +181,7 @@ fn scene_path_text_uses_path_draws_not_glyph_atlas() {
     assert!(!canvas.path_records.is_empty());
     assert!(canvas.text_glyphs.is_empty());
     assert!(canvas.text_runs.is_empty());
-    assert!(
-        canvas
-            .draw_records
-            .iter()
-            .any(|draw| draw.path_id.is_some())
-    );
+    assert!(canvas.draw_records.iter().any(|draw| draw.has_path()));
     assert_eq!(canvas.draw_records[0].tag, DrawTag::PathGlyph);
 }
 

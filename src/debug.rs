@@ -322,10 +322,10 @@ fn capture_tile_path_summaries(
         let draw_ix = canvas
             .draw_records
             .iter()
-            .position(|draw| draw.path_id == Some(record.path_id));
+            .position(|draw| draw.path_id == record.path_id);
         let fill_rule = draw_ix
             .and_then(|ix| canvas.draw_records.get(ix))
-            .map(|draw| draw.fill_rule)
+            .map(|draw| draw.fill_rule())
             .unwrap_or(FillRule::NonZero);
         paths.push(DebugTilePathSummary {
             draw_ix,

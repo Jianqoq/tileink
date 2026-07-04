@@ -455,7 +455,7 @@ impl Renderer {
             };
             let draw_ix = draw as usize;
             let draw = &canvas.draw_records[draw_ix];
-            if let Some(sdf) = &draw.sdf {
+            if let Some(sdf) = canvas.draw_sdf(draw) {
                 // Offscreen results already need a destination mask; apply the
                 // SDF analytically to that mask instead of allocating a clip mask.
                 let sdf_bounds = Bounds::new(

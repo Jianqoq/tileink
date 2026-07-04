@@ -56,6 +56,9 @@ pub struct Canvas {
     pub(crate) lines: Vec<Line>,
     pub(crate) path_records: Vec<PathRecord>,
     pub(crate) draw_records: Vec<DrawRecord>,
+    pub(crate) brushes: Vec<Brush>,
+    pub(crate) sdfs: Vec<Sdf>,
+    pub(crate) sdf_shadows: Vec<SdfShadow>,
     pub(crate) text_glyphs: Vec<crate::text::CanvasGlyph>,
     pub(crate) text_runs: Vec<TextRun>,
     pub(crate) bd_records: Vec<BackdropRecord>,
@@ -383,6 +386,9 @@ impl Canvas {
             lines: Vec::new(),
             path_records: Vec::new(),
             draw_records: Vec::new(),
+            brushes: Vec::new(),
+            sdfs: Vec::new(),
+            sdf_shadows: Vec::new(),
             text_glyphs: Vec::new(),
             text_runs: Vec::new(),
             bd_records: Vec::new(),
@@ -410,7 +416,7 @@ impl Canvas {
     pub fn draw_brush(&self, draw: DrawId) -> Option<&Brush> {
         self.draw_index(draw)
             .and_then(|index| self.draw_records.get(index))
-            .map(|draw| &draw.brush)
+            .and_then(|draw| self.draw_brush_for_record(draw))
     }
 
     /// Replaces a draw's brush in the semantic draw record.
@@ -421,16 +427,17 @@ impl Canvas {
         let Some(index) = self.draw_index(draw) else {
             return false;
         };
-        self.draw_records[index].brush = brush.into();
-        true
+        let brush_id = self.draw_records[index].brush_id as usize;
+        if let Some(slot) = self.brushes.get_mut(brush_id) {
+            *slot = brush.into();
+            true
+        } else {
+            false
+        }
     }
 
     pub fn set_draw_color(&mut self, draw: DrawId, color: Color) -> bool {
-        let Some(index) = self.draw_index(draw) else {
-            return false;
-        };
-        self.draw_records[index].brush = Brush::Solid(color);
-        true
+        self.set_draw_brush(draw, Brush::Solid(color))
     }
 
     pub fn draw_solid_color(&self, draw: DrawId) -> Option<Color> {
@@ -585,20 +592,9 @@ impl Canvas {
     }
 
     fn translate_draw_for_append(draw: &mut DrawRecord, offset: SceneOffset) {
-        if let Some(sdf) = draw.sdf {
-            let sdf = offset.sdf(sdf);
-            draw.sdf = Some(sdf);
-            draw.pixel_bounds = Self::pixel_bounds_from_bounds(sdf.bounds());
-        } else if let Some(sdf_shadow) = draw.sdf_shadow {
-            let sdf_shadow = offset.sdf_shadow(sdf_shadow);
-            draw.sdf_shadow = Some(sdf_shadow);
-            draw.pixel_bounds = Self::pixel_bounds_from_bounds(sdf_shadow.bounds());
-        } else {
+        if !draw.has_analytic_geometry() {
             draw.pixel_bounds = offset.pixel_bounds(draw.pixel_bounds);
         }
-
-        let brush = std::mem::replace(&mut draw.brush, Brush::Solid(Color::TRANSPARENT));
-        draw.brush = offset.brush(brush);
     }
 
     fn pixel_bounds_from_bounds(bounds: Bounds) -> PixelBounds {
@@ -671,6 +667,9 @@ impl Canvas {
         let line_offset = self.lines.len() as u32;
         let path_offset = self.path_cnt;
         let draw_offset = self.draw_records.len();
+        let brush_offset = self.brushes.len() as u32;
+        let sdf_offset = self.sdfs.len() as u32;
+        let sdf_shadow_offset = self.sdf_shadows.len() as u32;
         let glyph_offset = self.text_glyphs.len() as u32;
         let text_run_offset = self.text_runs.len() as u32;
         let path_record_start = self.path_records.len();
@@ -694,17 +693,55 @@ impl Canvas {
             self.path_records.push(record);
         }
 
+        self.brushes.reserve(other.brushes.len());
+        for brush in &other.brushes {
+            self.brushes.push(if offset.is_zero() {
+                brush.clone()
+            } else {
+                offset.brush(brush.clone())
+            });
+        }
+
+        self.sdfs.reserve(other.sdfs.len());
+        for &sdf in &other.sdfs {
+            self.sdfs.push(if offset.is_zero() {
+                sdf
+            } else {
+                offset.sdf(sdf)
+            });
+        }
+
+        self.sdf_shadows.reserve(other.sdf_shadows.len());
+        for &sdf_shadow in &other.sdf_shadows {
+            self.sdf_shadows.push(if offset.is_zero() {
+                sdf_shadow
+            } else {
+                offset.sdf_shadow(sdf_shadow)
+            });
+        }
+
         self.draw_records.reserve(other.draw_records.len());
         for draw in &other.draw_records {
-            let mut draw = draw.clone();
+            let mut draw = *draw;
+            if draw.path_id != DrawRecord::NONE {
+                draw.path_id = draw.path_id.saturating_add(path_offset);
+            }
+            if draw.glyph_run_id != DrawRecord::NONE {
+                draw.glyph_run_id = draw.glyph_run_id.saturating_add(text_run_offset);
+            }
+            draw.brush_id = draw.brush_id.saturating_add(brush_offset);
+            if draw.sdf_id != DrawRecord::NONE {
+                draw.sdf_id = draw.sdf_id.saturating_add(sdf_offset);
+                draw.pixel_bounds =
+                    Self::pixel_bounds_from_bounds(self.sdfs[draw.sdf_id as usize].bounds());
+            } else if draw.sdf_shadow_id != DrawRecord::NONE {
+                draw.sdf_shadow_id = draw.sdf_shadow_id.saturating_add(sdf_shadow_offset);
+                draw.pixel_bounds = Self::pixel_bounds_from_bounds(
+                    self.sdf_shadows[draw.sdf_shadow_id as usize].bounds(),
+                );
+            }
             if !offset.is_zero() {
                 Self::translate_draw_for_append(&mut draw, offset);
-            }
-            if let Some(path_id) = &mut draw.path_id {
-                *path_id = path_id.saturating_add(path_offset);
-            }
-            if let Some(glyph_run_id) = &mut draw.glyph_run_id {
-                *glyph_run_id = glyph_run_id.saturating_add(text_run_offset);
             }
             self.draw_records.push(draw);
         }
@@ -761,7 +798,7 @@ impl Canvas {
             let record = self.path_records[path_ix];
             let pixel_bounds = self.draw_records[draw_start..draw_end]
                 .iter()
-                .filter(|draw| draw.path_id == Some(record.path_id))
+                .filter(|draw| draw.path_id == record.path_id)
                 .map(|draw| draw.pixel_bounds)
                 .reduce(PixelBounds::union)
                 .unwrap_or_else(|| self.path_pixel_bounds(path_ix));
@@ -1410,21 +1447,22 @@ impl Canvas {
         };
         self.text_runs.push(run);
         let bounds = layout_bounds_at_origin(layout, origin);
+        let brush_id = self.push_brush(brush.into());
         let draw_ix = self.push_draw_record(DrawRecord {
-            path_id: None,
-            glyph_run_id: Some(run_id),
-            sdf: None,
-            sdf_shadow: None,
-            tag: DrawTag::Brush,
-            brush: brush.into(),
-            fill_rule: FillRule::NonZero,
+            path_id: DrawRecord::NONE,
+            glyph_run_id: run_id,
+            sdf_id: DrawRecord::NONE,
+            sdf_shadow_id: DrawRecord::NONE,
+            brush_id,
+            tag: DrawTag::Brush.into(),
+            fill_rule: FillRule::NonZero.into(),
             pixel_bounds: PixelBounds {
                 x0: bounds.x0,
                 y0: bounds.y0,
                 x1: bounds.x1,
                 y1: bounds.y1,
             },
-            solid_rect: false,
+            solid_rect: 0,
         });
         self.current_command_list_mut()
             .commands
@@ -1605,16 +1643,17 @@ impl Canvas {
         let segment_start = self.tile_cnt;
         self.tile_cnt += local_tile_cnt;
 
+        let brush_id = self.push_brush(options.brush);
         let draw_ix = self.push_draw_record(DrawRecord {
-            path_id: Some(path_id),
-            glyph_run_id: None,
-            sdf: None,
-            sdf_shadow: None,
-            tag: options.tag,
-            brush: options.brush,
-            fill_rule: rule,
+            path_id,
+            glyph_run_id: DrawRecord::NONE,
+            sdf_id: DrawRecord::NONE,
+            sdf_shadow_id: DrawRecord::NONE,
+            brush_id,
+            tag: options.tag.into(),
+            fill_rule: rule.into(),
             pixel_bounds,
-            solid_rect: false,
+            solid_rect: 0,
         });
         if options.emit_draw_command {
             self.current_command_list_mut()
@@ -1676,21 +1715,24 @@ impl Canvas {
     ) -> usize {
         self.ensure_command_root();
         let bounds = sdf.bounds();
+        let sdf_id = self.sdfs.len() as u32;
+        self.sdfs.push(sdf);
+        let brush_id = self.push_brush(brush);
         let draw_ix = self.push_draw_record(DrawRecord {
-            path_id: None,
-            glyph_run_id: None,
-            sdf: Some(sdf),
-            sdf_shadow: None,
-            tag,
-            brush,
-            fill_rule: SDF_RECORD_FILL_RULE,
+            path_id: DrawRecord::NONE,
+            glyph_run_id: DrawRecord::NONE,
+            sdf_id,
+            sdf_shadow_id: DrawRecord::NONE,
+            brush_id,
+            tag: tag.into(),
+            fill_rule: SDF_RECORD_FILL_RULE.into(),
             pixel_bounds: PixelBounds {
                 x0: bounds.x0,
                 y0: bounds.y0,
                 x1: bounds.x1,
                 y1: bounds.y1,
             },
-            solid_rect: false,
+            solid_rect: 0,
         });
         if emit_draw_command {
             self.current_command_list_mut()
@@ -1709,21 +1751,24 @@ impl Canvas {
     ) -> usize {
         self.ensure_command_root();
         let bounds = sdf_shadow.bounds();
+        let sdf_shadow_id = self.sdf_shadows.len() as u32;
+        self.sdf_shadows.push(sdf_shadow);
+        let brush_id = self.push_brush(brush);
         let draw_ix = self.push_draw_record(DrawRecord {
-            path_id: None,
-            glyph_run_id: None,
-            sdf: None,
-            sdf_shadow: Some(sdf_shadow),
-            tag,
-            brush,
-            fill_rule: SDF_RECORD_FILL_RULE,
+            path_id: DrawRecord::NONE,
+            glyph_run_id: DrawRecord::NONE,
+            sdf_id: DrawRecord::NONE,
+            sdf_shadow_id,
+            brush_id,
+            tag: tag.into(),
+            fill_rule: SDF_RECORD_FILL_RULE.into(),
             pixel_bounds: PixelBounds {
                 x0: bounds.x0,
                 y0: bounds.y0,
                 x1: bounds.x1,
                 y1: bounds.y1,
             },
-            solid_rect: false,
+            solid_rect: 0,
         });
         if emit_draw_command {
             self.current_command_list_mut()
@@ -1737,6 +1782,9 @@ impl Canvas {
         self.lines.clear();
         self.path_records.clear();
         self.draw_records.clear();
+        self.brushes.clear();
+        self.sdfs.clear();
+        self.sdf_shadows.clear();
         self.text_glyphs.clear();
         self.text_runs.clear();
         self.bd_records.clear();
@@ -1756,6 +1804,20 @@ impl Canvas {
         let draw_ix = self.draw_records.len();
         self.draw_records.push(draw);
         draw_ix
+    }
+
+    fn push_brush(&mut self, brush: Brush) -> u32 {
+        let id = self.brushes.len() as u32;
+        self.brushes.push(brush);
+        id
+    }
+
+    pub(crate) fn draw_brush_for_record(&self, draw: &DrawRecord) -> Option<&Brush> {
+        self.brushes.get(draw.brush_id as usize)
+    }
+
+    pub(crate) fn draw_sdf(&self, draw: &DrawRecord) -> Option<&Sdf> {
+        self.sdfs.get(draw.sdf_id()? as usize)
     }
 
     pub(crate) fn width_in_tiles(&self) -> u32 {

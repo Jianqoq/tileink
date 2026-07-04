@@ -221,7 +221,7 @@ fn compile_fuses_sdf_clip_into_layer_stack() {
 
     let plan = canvas.compile(ROOT_COMMAND_LIST_ID);
     assert_eq!(canvas.draw_records.len(), 2);
-    match &canvas.draw_records[0].sdf {
+    match canvas.draw_sdf(&canvas.draw_records[0]) {
         Some(Sdf::Rect(rect)) => assert_eq!(rect.radius.top_left, 6.0),
         sdf => panic!("expected hidden SDF clip draw, got {sdf:#?}"),
     }
@@ -266,7 +266,7 @@ fn compile_fuses_generic_sdf_clip_without_path_storage() {
     let plan = canvas.compile(ROOT_COMMAND_LIST_ID);
     assert!(canvas.path_records.is_empty());
     assert!(canvas.bd_records.is_empty());
-    match &canvas.draw_records[0].sdf {
+    match canvas.draw_sdf(&canvas.draw_records[0]) {
         Some(Sdf::Line(line)) => assert_eq!(line.width, 6.0),
         sdf => panic!("expected hidden line SDF clip draw, got {sdf:#?}"),
     }
