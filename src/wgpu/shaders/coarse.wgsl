@@ -63,6 +63,14 @@ struct GlyphImageRecord {
     content: u32,
     data_offset: u32,
 };
+struct TileCoarseRecord {
+    ptcl_count: u32,
+    ptcl_start: u32,
+    ptcl_end: u32,
+    glyph_count: u32,
+    glyph_start: u32,
+    glyph_end: u32,
+};
 @group(0) @binding(1) var<storage, read> draw_records: array<DrawRecord>;
 @group(0) @binding(3) var<storage, read> text_runs: array<GlyphRunRecord>;
 @group(0) @binding(5) var<storage, read> glyphs: array<GlyphRecord>;
@@ -75,12 +83,7 @@ struct GlyphImageRecord {
 @group(0) @binding(22) var<storage, read> layer_stack_tags: array<u32>;
 @group(0) @binding(23) var<storage, read> layer_stack_draws: array<u32>;
 @group(0) @binding(24) var<storage, read> layer_stack_payloads: array<u32>;
-@group(0) @binding(25) var<storage, read_write> tile_ptcl_counts: array<u32>;
-@group(0) @binding(26) var<storage, read_write> tile_ptcl_range_starts: array<u32>;
-@group(0) @binding(27) var<storage, read_write> tile_ptcl_range_ends: array<u32>;
-@group(0) @binding(28) var<storage, read_write> tile_glyph_counts: array<u32>;
-@group(0) @binding(29) var<storage, read_write> tile_glyph_range_starts: array<u32>;
-@group(0) @binding(30) var<storage, read_write> tile_glyph_range_ends: array<u32>;
+@group(0) @binding(25) var<storage, read_write> tile_records: array<TileCoarseRecord>;
 @group(0) @binding(31) var<storage, read_write> chunk_totals: array<u32>;
 @group(0) @binding(32) var<storage, read_write> chunk_offsets: array<u32>;
 @group(0) @binding(33) var<storage, read_write> glyph_chunk_totals: array<u32>;
@@ -184,12 +187,12 @@ fn coarse_count(
     let tile_ptcl_count = workgroup_sum(count, lane);
     let tile_glyph_count = workgroup_sum(glyph_count, lane);
     if (lane == 0u) {
-        tile_glyph_counts[tile_ix] = tile_glyph_count;
         var stored_count = tile_ptcl_count;
         if (tile_ptcl_count > 0u) {
             stored_count = tile_ptcl_count + wrapper_count * 2u + 1u;
         }
-        tile_ptcl_counts[tile_ix] = stored_count;
+        tile_records[tile_ix].ptcl_count = stored_count;
+        tile_records[tile_ix].glyph_count = tile_glyph_count;
     }
 }
 
@@ -267,9 +270,9 @@ fn prefix_chunks(chunk_ix: u32, lane: u32, glyph: bool) {
     if (lane < chunk_len) {
         let tile_ix = chunk_offset + lane;
         if (glyph) {
-            count = tile_glyph_counts[tile_ix];
+            count = tile_records[tile_ix].glyph_count;
         } else {
-            count = tile_ptcl_counts[tile_ix];
+            count = tile_records[tile_ix].ptcl_count;
         }
     }
     coarse_scratch[lane] = count;
@@ -318,11 +321,11 @@ fn prefix_chunks(chunk_ix: u32, lane: u32, glyph: bool) {
         let tile_ix = chunk_offset + lane;
         let start = coarse_scratch[lane];
         if (glyph) {
-            tile_glyph_range_starts[tile_ix] = start;
-            tile_glyph_range_ends[tile_ix] = start + count;
+            tile_records[tile_ix].glyph_start = start;
+            tile_records[tile_ix].glyph_end = start + count;
         } else {
-            tile_ptcl_range_starts[tile_ix] = start;
-            tile_ptcl_range_ends[tile_ix] = start + count;
+            tile_records[tile_ix].ptcl_start = start;
+            tile_records[tile_ix].ptcl_end = start + count;
         }
     }
 }
@@ -378,12 +381,12 @@ fn apply_chunk_offsets(chunk_ix: u32, lane: u32, glyph: bool) {
     }
     if (glyph) {
         let offset = glyph_chunk_offsets[chunk_ix];
-        tile_glyph_range_starts[tile_ix] += offset;
-        tile_glyph_range_ends[tile_ix] += offset;
+        tile_records[tile_ix].glyph_start += offset;
+        tile_records[tile_ix].glyph_end += offset;
     } else {
         let offset = chunk_offsets[chunk_ix];
-        tile_ptcl_range_starts[tile_ix] += offset;
-        tile_ptcl_range_ends[tile_ix] += offset;
+        tile_records[tile_ix].ptcl_start += offset;
+        tile_records[tile_ix].ptcl_end += offset;
     }
 }
 
@@ -400,10 +403,11 @@ fn coarse_emit(
     let lane = local_id.x;
     let tile_x = tile_ix % config.tiles_width;
     let tile_y = tile_ix / config.tiles_width;
-    var cursor = tile_ptcl_range_starts[tile_ix];
-    let range_end = tile_ptcl_range_ends[tile_ix];
-    var glyph_cursor = tile_glyph_range_starts[tile_ix];
-    let glyph_range_end = tile_glyph_range_ends[tile_ix];
+    let tile = tile_records[tile_ix];
+    var cursor = tile.ptcl_start;
+    let range_end = tile.ptcl_end;
+    var glyph_cursor = tile.glyph_start;
+    let glyph_range_end = tile.glyph_end;
     if (cursor >= range_end) {
         return;
     }

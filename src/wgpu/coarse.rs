@@ -9,7 +9,7 @@ use super::commands::{
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 
 const WORKGROUP_SIZE: u32 = 256;
-const STORAGE_BINDING_COUNT: u32 = 31;
+const STORAGE_BINDING_COUNT: u32 = 26;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct WgpuCoarseBatch {
@@ -243,12 +243,7 @@ impl WgpuCoarsePipeline {
                 bind_buffer(22, bindings.layer_stack_tags),
                 bind_buffer(23, bindings.layer_stack_draws),
                 bind_buffer(24, bindings.layer_stack_payloads),
-                bind_buffer(25, bindings.tile_ptcl_counts),
-                bind_buffer(26, bindings.tile_ptcl_range_starts),
-                bind_buffer(27, bindings.tile_ptcl_range_ends),
-                bind_buffer(28, bindings.tile_glyph_counts),
-                bind_buffer(29, bindings.tile_glyph_range_starts),
-                bind_buffer(30, bindings.tile_glyph_range_ends),
+                bind_buffer(25, bindings.tile_records),
                 bind_buffer(31, bindings.chunk_totals),
                 bind_buffer(32, bindings.chunk_offsets),
                 bind_buffer(33, bindings.glyph_chunk_totals),
@@ -309,11 +304,6 @@ fn coarse_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         storage_entry(23, true),
         storage_entry(24, true),
         storage_entry(25, false),
-        storage_entry(26, false),
-        storage_entry(27, false),
-        storage_entry(28, false),
-        storage_entry(29, false),
-        storage_entry(30, false),
         storage_entry(31, false),
         storage_entry(32, false),
         storage_entry(33, false),

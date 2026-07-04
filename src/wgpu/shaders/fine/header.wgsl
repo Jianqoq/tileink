@@ -122,12 +122,19 @@ struct GlyphImageRecord {
     content: u32,
     data_offset: u32,
 };
+struct TileCoarseRecord {
+    ptcl_count: u32,
+    ptcl_start: u32,
+    ptcl_end: u32,
+    glyph_count: u32,
+    glyph_start: u32,
+    glyph_end: u32,
+};
 @group(0) @binding(2) var<storage, read> draw_records: array<DrawRecord>;
 @group(0) @binding(8) var<storage, read> sdf_blob: array<u32>;
 @group(0) @binding(9) var<storage, read> sdf_shadow_blob: array<u32>;
 @group(0) @binding(26) var<storage, read> brush_blob: array<u32>;
-@group(0) @binding(29) var<storage, read> tile_range_starts: array<u32>;
-@group(0) @binding(30) var<storage, read> tile_range_ends: array<u32>;
+@group(0) @binding(29) var<storage, read> tile_records: array<TileCoarseRecord>;
 @group(0) @binding(31) var<storage, read> ptcl_tags: array<u32>;
 @group(0) @binding(32) var<storage, read> ptcl_backdrops: array<i32>;
 @group(0) @binding(33) var<storage, read> ptcl_fill_rules: array<u32>;

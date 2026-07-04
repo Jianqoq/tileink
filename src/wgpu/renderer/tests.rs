@@ -14,6 +14,7 @@ use crate::{
     shared::{
         bounds::Bounds,
         brush::Brush,
+        gpu_coarse::TileCoarseRecord,
         layer::{
             filter::{
                 BlurSampling, COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE,
@@ -618,20 +619,23 @@ fn wgpu_coarse_emits_sdf_particles_for_rects_when_enabled() {
     renderer.prepare_scene(&canvas);
     renderer.coarse_batch(&canvas, 0, canvas.draw_records.len() as u32, 0, 0);
 
+    let tile_records = renderer.coarse.tile_records.read::<TileCoarseRecord>(
+        renderer.device(),
+        renderer.queue(),
+        renderer.lengths.tile_count,
+    );
     assert_eq!(
-        renderer.coarse.tile_ptcl_range_starts.read::<u32>(
-            renderer.device(),
-            renderer.queue(),
-            renderer.lengths.tile_count
-        ),
+        tile_records
+            .iter()
+            .map(|record| record.ptcl_start)
+            .collect::<Vec<_>>(),
         vec![0, 2]
     );
     assert_eq!(
-        renderer.coarse.tile_ptcl_range_ends.read::<u32>(
-            renderer.device(),
-            renderer.queue(),
-            renderer.lengths.tile_count
-        ),
+        tile_records
+            .iter()
+            .map(|record| record.ptcl_end)
+            .collect::<Vec<_>>(),
         vec![2, 5]
     );
     assert_eq!(
@@ -679,20 +683,23 @@ fn wgpu_coarse_tile_draw_bins_respect_batch_range_when_enabled() {
     renderer.prepare_scene(&canvas);
     renderer.coarse_batch(&canvas, 1, 2, 0, 0);
 
+    let tile_records = renderer.coarse.tile_records.read::<TileCoarseRecord>(
+        renderer.device(),
+        renderer.queue(),
+        renderer.lengths.tile_count,
+    );
     assert_eq!(
-        renderer.coarse.tile_ptcl_range_starts.read::<u32>(
-            renderer.device(),
-            renderer.queue(),
-            renderer.lengths.tile_count
-        ),
+        tile_records
+            .iter()
+            .map(|record| record.ptcl_start)
+            .collect::<Vec<_>>(),
         vec![0, 2]
     );
     assert_eq!(
-        renderer.coarse.tile_ptcl_range_ends.read::<u32>(
-            renderer.device(),
-            renderer.queue(),
-            renderer.lengths.tile_count
-        ),
+        tile_records
+            .iter()
+            .map(|record| record.ptcl_end)
+            .collect::<Vec<_>>(),
         vec![2, 4]
     );
     assert_eq!(

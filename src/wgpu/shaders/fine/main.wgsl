@@ -55,8 +55,8 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> u32 {
     var group1_layer_alpha = 0u;
     var group1_payload = 0u;
 
-    var ptcl_ix = tile_range_starts[tile_ix];
-    let range_end = tile_range_ends[tile_ix];
+    var ptcl_ix = tile_records[tile_ix].ptcl_start;
+    let range_end = tile_records[tile_ix].ptcl_end;
     loop {
         if (ptcl_ix >= range_end) {
             break;

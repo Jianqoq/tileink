@@ -1,4 +1,6 @@
-use crate::shared::{gpu_plan::GpuBufferLengths, line_seg::LineSegment};
+use crate::shared::{
+    gpu_coarse::TileCoarseRecord, gpu_plan::GpuBufferLengths, line_seg::LineSegment,
+};
 
 use super::super::buffer::WgpuBuffer;
 
@@ -103,12 +105,7 @@ impl WgpuScanBuffers {
 }
 
 pub(crate) struct WgpuCoarseBuffers {
-    pub(crate) tile_ptcl_range_starts: WgpuBuffer,
-    pub(crate) tile_ptcl_range_ends: WgpuBuffer,
-    pub(crate) tile_ptcl_counts: WgpuBuffer,
-    pub(crate) tile_glyph_range_starts: WgpuBuffer,
-    pub(crate) tile_glyph_range_ends: WgpuBuffer,
-    pub(crate) tile_glyph_counts: WgpuBuffer,
+    pub(crate) tile_records: WgpuBuffer,
     pub(crate) chunk_totals: WgpuBuffer,
     pub(crate) chunk_offsets: WgpuBuffer,
     pub(crate) glyph_chunk_totals: WgpuBuffer,
@@ -125,24 +122,7 @@ pub(crate) struct WgpuCoarseBuffers {
 impl WgpuCoarseBuffers {
     pub(crate) fn new(device: &::wgpu::Device) -> Self {
         Self {
-            tile_ptcl_range_starts: WgpuBuffer::new(
-                device,
-                "tileink wgpu coarse tile ptcl range starts",
-            ),
-            tile_ptcl_range_ends: WgpuBuffer::new(
-                device,
-                "tileink wgpu coarse tile ptcl range ends",
-            ),
-            tile_ptcl_counts: WgpuBuffer::new(device, "tileink wgpu coarse tile ptcl counts"),
-            tile_glyph_range_starts: WgpuBuffer::new(
-                device,
-                "tileink wgpu coarse tile glyph range starts",
-            ),
-            tile_glyph_range_ends: WgpuBuffer::new(
-                device,
-                "tileink wgpu coarse tile glyph range ends",
-            ),
-            tile_glyph_counts: WgpuBuffer::new(device, "tileink wgpu coarse tile glyph counts"),
+            tile_records: WgpuBuffer::new(device, "tileink wgpu coarse tile records"),
             chunk_totals: WgpuBuffer::new(device, "tileink wgpu coarse chunk totals"),
             chunk_offsets: WgpuBuffer::new(device, "tileink wgpu coarse chunk offsets"),
             glyph_chunk_totals: WgpuBuffer::new(device, "tileink wgpu coarse glyph chunk totals"),
@@ -158,34 +138,9 @@ impl WgpuCoarseBuffers {
     }
 
     pub(crate) fn prepare_outputs(&mut self, device: &::wgpu::Device, lengths: GpuBufferLengths) {
-        self.tile_ptcl_range_starts.resize_uninit::<u32>(
+        self.tile_records.resize_uninit::<TileCoarseRecord>(
             device,
-            "tileink wgpu coarse tile ptcl range starts",
-            lengths.tile_count,
-        );
-        self.tile_ptcl_range_ends.resize_uninit::<u32>(
-            device,
-            "tileink wgpu coarse tile ptcl range ends",
-            lengths.tile_count,
-        );
-        self.tile_ptcl_counts.resize_uninit::<u32>(
-            device,
-            "tileink wgpu coarse tile ptcl counts",
-            lengths.tile_count,
-        );
-        self.tile_glyph_range_starts.resize_uninit::<u32>(
-            device,
-            "tileink wgpu coarse tile glyph range starts",
-            lengths.tile_count,
-        );
-        self.tile_glyph_range_ends.resize_uninit::<u32>(
-            device,
-            "tileink wgpu coarse tile glyph range ends",
-            lengths.tile_count,
-        );
-        self.tile_glyph_counts.resize_uninit::<u32>(
-            device,
-            "tileink wgpu coarse tile glyph counts",
+            "tileink wgpu coarse tile records",
             lengths.tile_count,
         );
         self.chunk_totals.resize_uninit::<u32>(
