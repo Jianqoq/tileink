@@ -44,7 +44,50 @@ const WORKGROUP_SIZE: u32 = 256;
 const SHARED_BLUR_TILE_WIDTH: u32 = 16;
 const SHARED_BLUR_TILE_HEIGHT: u32 = 16;
 const SHARED_BLUR_MAX_RADIUS: u32 = 16;
-const STORAGE_BINDING_COUNT: u32 = filter_layout::STORAGE_BUFFER_COUNT;
+const STORAGE_BINDING_COUNT: u32 = filter_layout::MAX_STORAGE_BUFFER_COUNT;
+
+const FILTER_RES_DRAW_RECORDS: u32 = 1 << 0;
+const FILTER_RES_SDF_BLOB: u32 = 1 << 1;
+const FILTER_RES_SDF_SHADOW_BLOB: u32 = 1 << 2;
+const FILTER_RES_PATH_RECORDS: u32 = 1 << 3;
+const FILTER_RES_BACKDROPS: u32 = 1 << 4;
+const FILTER_RES_SEGMENT_RANGES: u32 = 1 << 5;
+const FILTER_RES_SEGMENTS: u32 = 1 << 6;
+const FILTER_RES_LAYER_STACK: u32 = 1 << 7;
+const FILTER_RES_TRANSFER_TABLES: u32 = 1 << 8;
+const FILTER_RES_BRUSH_BLOB: u32 = 1 << 9;
+const FILTER_RES_CONVOLVE_KERNELS: u32 = 1 << 10;
+const FILTER_RES_TURBULENCE_SELECTORS: u32 = 1 << 11;
+const FILTER_RES_TURBULENCE_GRADIENTS: u32 = 1 << 12;
+const FILTER_RES_PATH_RANGE_STARTS: u32 = 1 << 13;
+const FILTER_RES_PATH_RANGE_ENDS: u32 = 1 << 14;
+const FILTER_RES_PATH_P0X: u32 = 1 << 15;
+const FILTER_RES_PATH_P0Y: u32 = 1 << 16;
+const FILTER_RES_PATH_P1X: u32 = 1 << 17;
+const FILTER_RES_PATH_P1Y: u32 = 1 << 18;
+const FILTER_RES_IMAGE_RESOURCE_METADATA: u32 = 1 << 19;
+const FILTER_RES_IMAGE_RESOURCE_PIXELS: u32 = 1 << 20;
+
+const FILTER_RES_SCENE_ALPHA: u32 = FILTER_RES_DRAW_RECORDS
+    | FILTER_RES_SDF_BLOB
+    | FILTER_RES_SDF_SHADOW_BLOB
+    | FILTER_RES_PATH_RECORDS
+    | FILTER_RES_BACKDROPS
+    | FILTER_RES_SEGMENT_RANGES
+    | FILTER_RES_SEGMENTS;
+const FILTER_RES_SCENE_STACK: u32 = FILTER_RES_SCENE_ALPHA | FILTER_RES_LAYER_STACK;
+const FILTER_RES_TRANSFER: u32 = FILTER_RES_TRANSFER_TABLES;
+const FILTER_RES_BRUSH: u32 =
+    FILTER_RES_BRUSH_BLOB | FILTER_RES_IMAGE_RESOURCE_METADATA | FILTER_RES_IMAGE_RESOURCE_PIXELS;
+const FILTER_RES_CONVOLVE: u32 = FILTER_RES_CONVOLVE_KERNELS;
+const FILTER_RES_TURBULENCE: u32 =
+    FILTER_RES_TURBULENCE_SELECTORS | FILTER_RES_TURBULENCE_GRADIENTS;
+const FILTER_RES_PATH_MASK: u32 = FILTER_RES_PATH_RANGE_STARTS
+    | FILTER_RES_PATH_RANGE_ENDS
+    | FILTER_RES_PATH_P0X
+    | FILTER_RES_PATH_P0Y
+    | FILTER_RES_PATH_P1X
+    | FILTER_RES_PATH_P1Y;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -269,44 +312,43 @@ impl Default for FilterConfig {
 }
 
 pub(crate) struct WgpuFilterPipeline {
-    clear_region: ::wgpu::ComputePipeline,
-    copy_region: ::wgpu::ComputePipeline,
-    source_alpha_region: ::wgpu::ComputePipeline,
-    source_over_region: ::wgpu::ComputePipeline,
-    tile_region: ::wgpu::ComputePipeline,
-    offset_region: ::wgpu::ComputePipeline,
-    flood_region: ::wgpu::ComputePipeline,
-    drop_shadow_mask_region: ::wgpu::ComputePipeline,
-    morphology_axis_region: ::wgpu::ComputePipeline,
-    downsample_region: ::wgpu::ComputePipeline,
-    upsample_region: ::wgpu::ComputePipeline,
-    upsample_rect_composite_region: ::wgpu::ComputePipeline,
-    blur_region: ::wgpu::ComputePipeline,
-    blur_shared_region: ::wgpu::ComputePipeline,
-    svg_mask_coverage_region: ::wgpu::ComputePipeline,
-    apply_region_mask: ::wgpu::ComputePipeline,
-    color_filter_region: ::wgpu::ComputePipeline,
-    color_matrix_region: ::wgpu::ComputePipeline,
-    component_transfer_region: ::wgpu::ComputePipeline,
-    convolve_matrix_region: ::wgpu::ComputePipeline,
-    lighting_region: ::wgpu::ComputePipeline,
-    liquid_glass_region: ::wgpu::ComputePipeline,
-    liquid_glass_rect_composite_region: ::wgpu::ComputePipeline,
-    blend_region: ::wgpu::ComputePipeline,
-    composite_inputs_region: ::wgpu::ComputePipeline,
-    displacement_map_region: ::wgpu::ComputePipeline,
-    turbulence_region: ::wgpu::ComputePipeline,
-    composite_drop_shadow_region: ::wgpu::ComputePipeline,
-    layer_mask_region: ::wgpu::ComputePipeline,
-    rect_mask_region: ::wgpu::ComputePipeline,
-    path_mask_region: ::wgpu::ComputePipeline,
-    composite_direct_region: ::wgpu::ComputePipeline,
-    composite_rect_direct_region: ::wgpu::ComputePipeline,
-    composite_stack_region: ::wgpu::ComputePipeline,
-    composite_blend_stack_region: ::wgpu::ComputePipeline,
-    composite_surface_direct_region: ::wgpu::ComputePipeline,
-    composite_surface_stack_region: ::wgpu::ComputePipeline,
-    bind_group_layout: ::wgpu::BindGroupLayout,
+    clear_region: FilterKernel,
+    copy_region: FilterKernel,
+    source_alpha_region: FilterKernel,
+    source_over_region: FilterKernel,
+    tile_region: FilterKernel,
+    offset_region: FilterKernel,
+    flood_region: FilterKernel,
+    drop_shadow_mask_region: FilterKernel,
+    morphology_axis_region: FilterKernel,
+    downsample_region: FilterKernel,
+    upsample_region: FilterKernel,
+    upsample_rect_composite_region: FilterKernel,
+    blur_region: FilterKernel,
+    blur_shared_region: FilterKernel,
+    svg_mask_coverage_region: FilterKernel,
+    apply_region_mask: FilterKernel,
+    color_filter_region: FilterKernel,
+    color_matrix_region: FilterKernel,
+    component_transfer_region: FilterKernel,
+    convolve_matrix_region: FilterKernel,
+    lighting_region: FilterKernel,
+    liquid_glass_region: FilterKernel,
+    liquid_glass_rect_composite_region: FilterKernel,
+    blend_region: FilterKernel,
+    composite_inputs_region: FilterKernel,
+    displacement_map_region: FilterKernel,
+    turbulence_region: FilterKernel,
+    composite_drop_shadow_region: FilterKernel,
+    layer_mask_region: FilterKernel,
+    rect_mask_region: FilterKernel,
+    path_mask_region: FilterKernel,
+    composite_direct_region: FilterKernel,
+    composite_rect_direct_region: FilterKernel,
+    composite_stack_region: FilterKernel,
+    composite_blend_stack_region: FilterKernel,
+    composite_surface_direct_region: FilterKernel,
+    composite_surface_stack_region: FilterKernel,
     config: ::wgpu::Buffer,
     config_size: ::wgpu::BufferAddress,
     config_stride: ::wgpu::BufferAddress,
@@ -315,6 +357,54 @@ pub(crate) struct WgpuFilterPipeline {
     dummy_texture_view: ::wgpu::TextureView,
     dummy_read: ::wgpu::Buffer,
     dummy_read_write: ::wgpu::Buffer,
+}
+
+struct FilterKernel {
+    pipeline: ::wgpu::ComputePipeline,
+    bind_group_layout: ::wgpu::BindGroupLayout,
+    resources: u32,
+    profile: FilterProfile,
+    shared_workgroups: bool,
+}
+
+#[derive(Clone, Copy)]
+enum FilterProfile {
+    Clear,
+    Copy,
+    SourceAlpha,
+    SourceOver,
+    Tile,
+    Offset,
+    Flood,
+    DropShadowMask,
+    MorphologyAxis,
+    Downsample,
+    Upsample,
+    UpsampleRectComposite,
+    Blur,
+    SvgMaskCoverage,
+    ApplyRegionMask,
+    ColorFilter,
+    ColorMatrix,
+    ComponentTransfer,
+    ConvolveMatrix,
+    Lighting,
+    LiquidGlass,
+    LiquidGlassRectComposite,
+    Blend,
+    CompositeInputs,
+    DisplacementMap,
+    Turbulence,
+    CompositeDropShadow,
+    LayerMask,
+    RectMask,
+    PathMask,
+    CompositeDirect,
+    CompositeRectDirect,
+    CompositeStack,
+    CompositeBlendStack,
+    CompositeSurfaceDirect,
+    CompositeSurfaceStack,
 }
 
 pub(crate) struct WgpuFilterBrushBindings<'a> {
@@ -348,20 +438,9 @@ impl WgpuFilterPipeline {
             return None;
         }
 
-        let layout_entries = filter_layout_entries(portable_textures);
-        let bind_group_layout =
-            device.create_bind_group_layout(&::wgpu::BindGroupLayoutDescriptor {
-                label: Some("tileink wgpu filter bind group layout"),
-                entries: &layout_entries,
-            });
         let shader = device.create_shader_module(::wgpu::ShaderModuleDescriptor {
             label: Some("tileink wgpu filter shader"),
             source: ::wgpu::ShaderSource::Wgsl(filter_shader_source(portable_textures).into()),
-        });
-        let pipeline_layout = device.create_pipeline_layout(&::wgpu::PipelineLayoutDescriptor {
-            label: Some("tileink wgpu filter pipeline layout"),
-            bind_group_layouts: &[Some(&bind_group_layout)],
-            immediate_size: 0,
         });
         let config_size = std::mem::size_of::<FilterConfig>() as ::wgpu::BufferAddress;
         let config_stride = aligned_uniform_stride(device, config_size);
@@ -401,199 +480,339 @@ impl WgpuFilterPipeline {
         let dummy_texture_view =
             dummy_texture.create_view(&::wgpu::TextureViewDescriptor::default());
         Some(Self {
-            clear_region: create_pipeline(device, &pipeline_layout, &shader, "filter_clear_region"),
-            copy_region: create_pipeline(device, &pipeline_layout, &shader, "filter_copy_region"),
-            source_alpha_region: create_pipeline(
+            clear_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
+                "filter_clear_region",
+                0,
+                FilterProfile::Clear,
+                false,
+            ),
+            copy_region: create_kernel(
+                device,
+                &shader,
+                portable_textures,
+                "filter_copy_region",
+                0,
+                FilterProfile::Copy,
+                false,
+            ),
+            source_alpha_region: create_kernel(
+                device,
+                &shader,
+                portable_textures,
                 "filter_source_alpha_region",
+                0,
+                FilterProfile::SourceAlpha,
+                false,
             ),
-            source_over_region: create_pipeline(
+            source_over_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
                 "filter_source_over_region",
+                0,
+                FilterProfile::SourceOver,
+                false,
             ),
-            tile_region: create_pipeline(device, &pipeline_layout, &shader, "filter_tile_region"),
-            offset_region: create_pipeline(
+            tile_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
+                "filter_tile_region",
+                0,
+                FilterProfile::Tile,
+                false,
+            ),
+            offset_region: create_kernel(
+                device,
+                &shader,
+                portable_textures,
                 "filter_offset_region",
+                0,
+                FilterProfile::Offset,
+                false,
             ),
-            flood_region: create_pipeline(device, &pipeline_layout, &shader, "filter_flood_region"),
-            drop_shadow_mask_region: create_pipeline(
+            flood_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
+                "filter_flood_region",
+                FILTER_RES_BRUSH,
+                FilterProfile::Flood,
+                false,
+            ),
+            drop_shadow_mask_region: create_kernel(
+                device,
+                &shader,
+                portable_textures,
                 "filter_drop_shadow_mask_region",
+                0,
+                FilterProfile::DropShadowMask,
+                false,
             ),
-            morphology_axis_region: create_pipeline(
+            morphology_axis_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
                 "filter_morphology_axis_region",
+                0,
+                FilterProfile::MorphologyAxis,
+                false,
             ),
-            downsample_region: create_pipeline(
+            downsample_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
                 "filter_downsample_region",
+                0,
+                FilterProfile::Downsample,
+                false,
             ),
-            upsample_region: create_pipeline(
+            upsample_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
                 "filter_upsample_region",
+                0,
+                FilterProfile::Upsample,
+                false,
             ),
-            upsample_rect_composite_region: create_pipeline(
+            upsample_rect_composite_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
                 "filter_upsample_rect_composite_region",
+                0,
+                FilterProfile::UpsampleRectComposite,
+                false,
             ),
-            blur_region: create_pipeline(device, &pipeline_layout, &shader, "filter_blur_region"),
-            blur_shared_region: create_pipeline(
+            blur_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
+                "filter_blur_region",
+                0,
+                FilterProfile::Blur,
+                false,
+            ),
+            blur_shared_region: create_kernel(
+                device,
+                &shader,
+                portable_textures,
                 "filter_blur_shared_region",
+                0,
+                FilterProfile::Blur,
+                true,
             ),
-            svg_mask_coverage_region: create_pipeline(
+            svg_mask_coverage_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
                 "filter_svg_mask_coverage_region",
+                0,
+                FilterProfile::SvgMaskCoverage,
+                false,
             ),
-            apply_region_mask: create_pipeline(
+            apply_region_mask: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
                 "filter_apply_region_mask",
+                0,
+                FilterProfile::ApplyRegionMask,
+                false,
             ),
-            color_filter_region: create_pipeline(
+            color_filter_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
                 "filter_color_region",
+                0,
+                FilterProfile::ColorFilter,
+                false,
             ),
-            color_matrix_region: create_pipeline(
+            color_matrix_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
                 "filter_color_matrix_region",
+                0,
+                FilterProfile::ColorMatrix,
+                false,
             ),
-            component_transfer_region: create_pipeline(
+            component_transfer_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
                 "filter_component_transfer_region",
+                FILTER_RES_TRANSFER,
+                FilterProfile::ComponentTransfer,
+                false,
             ),
-            convolve_matrix_region: create_pipeline(
+            convolve_matrix_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
                 "filter_convolve_matrix_region",
+                FILTER_RES_CONVOLVE,
+                FilterProfile::ConvolveMatrix,
+                false,
             ),
-            lighting_region: create_pipeline(
+            lighting_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
                 "filter_lighting_region",
+                0,
+                FilterProfile::Lighting,
+                false,
             ),
-            liquid_glass_region: create_pipeline(
+            liquid_glass_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
                 "filter_liquid_glass_region",
+                0,
+                FilterProfile::LiquidGlass,
+                false,
             ),
-            liquid_glass_rect_composite_region: create_pipeline(
+            liquid_glass_rect_composite_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
                 "filter_liquid_glass_rect_composite_region",
+                0,
+                FilterProfile::LiquidGlassRectComposite,
+                false,
             ),
-            blend_region: create_pipeline(device, &pipeline_layout, &shader, "filter_blend_region"),
-            composite_inputs_region: create_pipeline(
+            blend_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
+                "filter_blend_region",
+                0,
+                FilterProfile::Blend,
+                false,
+            ),
+            composite_inputs_region: create_kernel(
+                device,
+                &shader,
+                portable_textures,
                 "filter_composite_inputs_region",
+                0,
+                FilterProfile::CompositeInputs,
+                false,
             ),
-            displacement_map_region: create_pipeline(
+            displacement_map_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
                 "filter_displacement_map_region",
+                0,
+                FilterProfile::DisplacementMap,
+                false,
             ),
-            turbulence_region: create_pipeline(
+            turbulence_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
                 "filter_turbulence_region",
+                FILTER_RES_TURBULENCE,
+                FilterProfile::Turbulence,
+                false,
             ),
-            composite_drop_shadow_region: create_pipeline(
+            composite_drop_shadow_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
                 "filter_composite_drop_shadow_region",
+                FILTER_RES_BRUSH,
+                FilterProfile::CompositeDropShadow,
+                false,
             ),
-            layer_mask_region: create_pipeline(
+            layer_mask_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
                 "filter_layer_mask_region",
+                FILTER_RES_SCENE_ALPHA,
+                FilterProfile::LayerMask,
+                false,
             ),
-            rect_mask_region: create_pipeline(
+            rect_mask_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
                 "filter_rect_mask_region",
+                0,
+                FilterProfile::RectMask,
+                false,
             ),
-            path_mask_region: create_pipeline(
+            path_mask_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
                 "filter_path_mask_region",
+                FILTER_RES_PATH_MASK,
+                FilterProfile::PathMask,
+                false,
             ),
-            composite_direct_region: create_pipeline(
+            composite_direct_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
                 "filter_composite_direct_region",
+                0,
+                FilterProfile::CompositeDirect,
+                false,
             ),
-            composite_rect_direct_region: create_pipeline(
+            composite_rect_direct_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
                 "filter_composite_rect_direct_region",
+                0,
+                FilterProfile::CompositeRectDirect,
+                false,
             ),
-            composite_stack_region: create_pipeline(
+            composite_stack_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
                 "filter_composite_stack_region",
+                FILTER_RES_SCENE_STACK,
+                FilterProfile::CompositeStack,
+                false,
             ),
-            composite_blend_stack_region: create_pipeline(
+            composite_blend_stack_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
                 "filter_composite_blend_stack_region",
+                FILTER_RES_SCENE_STACK,
+                FilterProfile::CompositeBlendStack,
+                false,
             ),
-            composite_surface_direct_region: create_pipeline(
+            composite_surface_direct_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
                 "filter_composite_surface_direct_region",
+                0,
+                FilterProfile::CompositeSurfaceDirect,
+                false,
             ),
-            composite_surface_stack_region: create_pipeline(
+            composite_surface_stack_region: create_kernel(
                 device,
-                &pipeline_layout,
                 &shader,
+                portable_textures,
                 "filter_composite_surface_stack_region",
+                FILTER_RES_SCENE_STACK,
+                FilterProfile::CompositeSurfaceStack,
+                false,
             ),
-            bind_group_layout,
             config,
             config_size,
             config_stride,
@@ -1604,7 +1823,7 @@ impl WgpuFilterPipeline {
     fn dispatch(
         &self,
         commands: &mut WgpuCommandBatch,
-        pipeline: &::wgpu::ComputePipeline,
+        pipeline: &FilterKernel,
         config: &FilterConfig,
         source: &::wgpu::TextureView,
         aux: &::wgpu::TextureView,
@@ -1620,7 +1839,7 @@ impl WgpuFilterPipeline {
     fn dispatch_with_transfer(
         &self,
         commands: &mut WgpuCommandBatch,
-        pipeline: &::wgpu::ComputePipeline,
+        pipeline: &FilterKernel,
         config: &FilterConfig,
         source: &::wgpu::TextureView,
         aux: &::wgpu::TextureView,
@@ -1648,7 +1867,7 @@ impl WgpuFilterPipeline {
     fn dispatch_with_extra(
         &self,
         commands: &mut WgpuCommandBatch,
-        pipeline: &::wgpu::ComputePipeline,
+        pipeline: &FilterKernel,
         config: &FilterConfig,
         source: &::wgpu::TextureView,
         aux: &::wgpu::TextureView,
@@ -1675,6 +1894,7 @@ impl WgpuFilterPipeline {
             bytemuck::bytes_of(config),
         );
         let bind_group = self.create_bind_group(
+            pipeline,
             commands.device(),
             config_offset,
             source,
@@ -1696,7 +1916,7 @@ impl WgpuFilterPipeline {
                 label: Some(profile_name),
                 timestamp_writes,
             });
-            pass.set_pipeline(pipeline);
+            pass.set_pipeline(&pipeline.pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
             let workgroups = self.dispatch_workgroups_for_pipeline(pipeline, config);
             pass.dispatch_workgroups(workgroups.0, workgroups.1, workgroups.2);
@@ -1706,10 +1926,10 @@ impl WgpuFilterPipeline {
 
     fn dispatch_workgroups_for_pipeline(
         &self,
-        pipeline: &::wgpu::ComputePipeline,
+        pipeline: &FilterKernel,
         config: &FilterConfig,
     ) -> (u32, u32, u32) {
-        if std::ptr::eq(pipeline, &self.blur_shared_region) {
+        if pipeline.shared_workgroups {
             (
                 config.region_width.div_ceil(SHARED_BLUR_TILE_WIDTH),
                 config.region_height.div_ceil(SHARED_BLUR_TILE_HEIGHT),
@@ -1722,102 +1942,70 @@ impl WgpuFilterPipeline {
 
     fn profile_name_for_pipeline(
         &self,
-        pipeline: &::wgpu::ComputePipeline,
+        pipeline: &FilterKernel,
         config: &FilterConfig,
     ) -> &'static str {
-        if std::ptr::eq(pipeline, &self.clear_region) {
-            "filter.clear"
-        } else if std::ptr::eq(pipeline, &self.copy_region) {
-            "filter.copy"
-        } else if std::ptr::eq(pipeline, &self.source_alpha_region) {
-            "filter.source_alpha"
-        } else if std::ptr::eq(pipeline, &self.source_over_region) {
-            "filter.source_over"
-        } else if std::ptr::eq(pipeline, &self.tile_region) {
-            "filter.tile"
-        } else if std::ptr::eq(pipeline, &self.offset_region) {
-            "filter.offset"
-        } else if std::ptr::eq(pipeline, &self.flood_region) {
-            "filter.flood"
-        } else if std::ptr::eq(pipeline, &self.drop_shadow_mask_region) {
-            "filter.drop_shadow.mask"
-        } else if std::ptr::eq(pipeline, &self.morphology_axis_region) {
-            if config.morphology_axis == 0 {
-                "filter.morphology.x"
-            } else {
-                "filter.morphology.y"
+        match pipeline.profile {
+            FilterProfile::Clear => "filter.clear",
+            FilterProfile::Copy => "filter.copy",
+            FilterProfile::SourceAlpha => "filter.source_alpha",
+            FilterProfile::SourceOver => "filter.source_over",
+            FilterProfile::Tile => "filter.tile",
+            FilterProfile::Offset => "filter.offset",
+            FilterProfile::Flood => "filter.flood",
+            FilterProfile::DropShadowMask => "filter.drop_shadow.mask",
+            FilterProfile::MorphologyAxis => {
+                if config.morphology_axis == 0 {
+                    "filter.morphology.x"
+                } else {
+                    "filter.morphology.y"
+                }
             }
-        } else if std::ptr::eq(pipeline, &self.downsample_region) {
-            "filter.downsample"
-        } else if std::ptr::eq(pipeline, &self.upsample_region) {
-            "filter.upsample"
-        } else if std::ptr::eq(pipeline, &self.upsample_rect_composite_region) {
-            "filter.upsample.composite.rect"
-        } else if std::ptr::eq(pipeline, &self.blur_region)
-            || std::ptr::eq(pipeline, &self.blur_shared_region)
-        {
-            if config.blur_axis == 0 {
-                "filter.blur.x"
-            } else {
-                "filter.blur.y"
+            FilterProfile::Downsample => "filter.downsample",
+            FilterProfile::Upsample => "filter.upsample",
+            FilterProfile::UpsampleRectComposite => "filter.upsample.composite.rect",
+            FilterProfile::Blur => {
+                if config.blur_axis == 0 {
+                    "filter.blur.x"
+                } else {
+                    "filter.blur.y"
+                }
             }
-        } else if std::ptr::eq(pipeline, &self.svg_mask_coverage_region) {
-            "filter.mask.svg_coverage"
-        } else if std::ptr::eq(pipeline, &self.apply_region_mask) {
-            "filter.mask.apply"
-        } else if std::ptr::eq(pipeline, &self.color_filter_region) {
-            profile_name_for_color_filter(config.filter_kind)
-        } else if std::ptr::eq(pipeline, &self.color_matrix_region) {
-            "filter.color_matrix"
-        } else if std::ptr::eq(pipeline, &self.component_transfer_region) {
-            "filter.component_transfer"
-        } else if std::ptr::eq(pipeline, &self.convolve_matrix_region) {
-            "filter.convolve"
-        } else if std::ptr::eq(pipeline, &self.lighting_region) {
-            if config.lighting_output_kind == 0 {
-                "filter.lighting.diffuse"
-            } else {
-                "filter.lighting.specular"
+            FilterProfile::SvgMaskCoverage => "filter.mask.svg_coverage",
+            FilterProfile::ApplyRegionMask => "filter.mask.apply",
+            FilterProfile::ColorFilter => profile_name_for_color_filter(config.filter_kind),
+            FilterProfile::ColorMatrix => "filter.color_matrix",
+            FilterProfile::ComponentTransfer => "filter.component_transfer",
+            FilterProfile::ConvolveMatrix => "filter.convolve",
+            FilterProfile::Lighting => {
+                if config.lighting_output_kind == 0 {
+                    "filter.lighting.diffuse"
+                } else {
+                    "filter.lighting.specular"
+                }
             }
-        } else if std::ptr::eq(pipeline, &self.liquid_glass_region) {
-            "filter.liquid_glass"
-        } else if std::ptr::eq(pipeline, &self.liquid_glass_rect_composite_region) {
-            "filter.liquid_glass.composite.rect"
-        } else if std::ptr::eq(pipeline, &self.blend_region) {
-            "filter.blend"
-        } else if std::ptr::eq(pipeline, &self.composite_inputs_region) {
-            "filter.composite"
-        } else if std::ptr::eq(pipeline, &self.displacement_map_region) {
-            "filter.displacement"
-        } else if std::ptr::eq(pipeline, &self.turbulence_region) {
-            "filter.turbulence"
-        } else if std::ptr::eq(pipeline, &self.composite_drop_shadow_region) {
-            "filter.drop_shadow.composite"
-        } else if std::ptr::eq(pipeline, &self.layer_mask_region) {
-            "filter.mask.layer"
-        } else if std::ptr::eq(pipeline, &self.rect_mask_region) {
-            "filter.mask.rect"
-        } else if std::ptr::eq(pipeline, &self.path_mask_region) {
-            "filter.mask.path"
-        } else if std::ptr::eq(pipeline, &self.composite_direct_region) {
-            "filter.composite.direct"
-        } else if std::ptr::eq(pipeline, &self.composite_rect_direct_region) {
-            "filter.composite.rect_direct"
-        } else if std::ptr::eq(pipeline, &self.composite_stack_region) {
-            "filter.stack.src_over"
-        } else if std::ptr::eq(pipeline, &self.composite_blend_stack_region) {
-            "filter.stack.blend"
-        } else if std::ptr::eq(pipeline, &self.composite_surface_direct_region) {
-            "filter.composite.surface.direct"
-        } else if std::ptr::eq(pipeline, &self.composite_surface_stack_region) {
-            "filter.stack.surface"
-        } else {
-            "filter"
+            FilterProfile::LiquidGlass => "filter.liquid_glass",
+            FilterProfile::LiquidGlassRectComposite => "filter.liquid_glass.composite.rect",
+            FilterProfile::Blend => "filter.blend",
+            FilterProfile::CompositeInputs => "filter.composite",
+            FilterProfile::DisplacementMap => "filter.displacement",
+            FilterProfile::Turbulence => "filter.turbulence",
+            FilterProfile::CompositeDropShadow => "filter.drop_shadow.composite",
+            FilterProfile::LayerMask => "filter.mask.layer",
+            FilterProfile::RectMask => "filter.mask.rect",
+            FilterProfile::PathMask => "filter.mask.path",
+            FilterProfile::CompositeDirect => "filter.composite.direct",
+            FilterProfile::CompositeRectDirect => "filter.composite.rect_direct",
+            FilterProfile::CompositeStack => "filter.stack.src_over",
+            FilterProfile::CompositeBlendStack => "filter.stack.blend",
+            FilterProfile::CompositeSurfaceDirect => "filter.composite.surface.direct",
+            FilterProfile::CompositeSurfaceStack => "filter.stack.surface",
         }
     }
 
     fn create_bind_group(
         &self,
+        kernel: &FilterKernel,
         device: &::wgpu::Device,
         config_offset: ::wgpu::BufferAddress,
         source: &::wgpu::TextureView,
@@ -1859,42 +2047,163 @@ impl WgpuFilterPipeline {
         let path_p0y = path_bindings.map_or(&self.dummy_read, |bindings| bindings.p0y);
         let path_p1x = path_bindings.map_or(&self.dummy_read, |bindings| bindings.p1x);
         let path_p1y = path_bindings.map_or(&self.dummy_read, |bindings| bindings.p1y);
+        let mut entries = vec![
+            bind_config_buffer(0, &self.config, config_offset, self.config_size),
+            bind_texture(1, source),
+            bind_texture(2, aux),
+            bind_texture(3, target),
+        ];
+        push_buffer_if(
+            &mut entries,
+            kernel.resources,
+            FILTER_RES_DRAW_RECORDS,
+            4,
+            bindings.draw_records,
+        );
+        push_buffer_if(
+            &mut entries,
+            kernel.resources,
+            FILTER_RES_SDF_BLOB,
+            10,
+            bindings.sdf_blob,
+        );
+        push_buffer_if(
+            &mut entries,
+            kernel.resources,
+            FILTER_RES_SDF_SHADOW_BLOB,
+            11,
+            bindings.sdf_shadow_blob,
+        );
+        push_buffer_if(
+            &mut entries,
+            kernel.resources,
+            FILTER_RES_PATH_RECORDS,
+            28,
+            bindings.path_records,
+        );
+        push_buffer_if(
+            &mut entries,
+            kernel.resources,
+            FILTER_RES_BACKDROPS,
+            29,
+            bindings.backdrops,
+        );
+        push_buffer_if(
+            &mut entries,
+            kernel.resources,
+            FILTER_RES_SEGMENT_RANGES,
+            30,
+            bindings.segment_ranges,
+        );
+        push_buffer_if(
+            &mut entries,
+            kernel.resources,
+            FILTER_RES_SEGMENTS,
+            32,
+            bindings.segments,
+        );
+        push_buffer_if(
+            &mut entries,
+            kernel.resources,
+            FILTER_RES_LAYER_STACK,
+            33,
+            bindings.layer_stack,
+        );
+        push_buffer_if(
+            &mut entries,
+            kernel.resources,
+            FILTER_RES_TRANSFER_TABLES,
+            36,
+            transfer_tables.unwrap_or(&self.dummy_read),
+        );
+        push_buffer_if(
+            &mut entries,
+            kernel.resources,
+            FILTER_RES_BRUSH_BLOB,
+            37,
+            brush_blob,
+        );
+        push_buffer_if(
+            &mut entries,
+            kernel.resources,
+            FILTER_RES_CONVOLVE_KERNELS,
+            40,
+            convolve_kernels,
+        );
+        push_buffer_if(
+            &mut entries,
+            kernel.resources,
+            FILTER_RES_TURBULENCE_SELECTORS,
+            41,
+            turbulence_selectors,
+        );
+        push_buffer_if(
+            &mut entries,
+            kernel.resources,
+            FILTER_RES_TURBULENCE_GRADIENTS,
+            42,
+            turbulence_gradients,
+        );
+        push_buffer_if(
+            &mut entries,
+            kernel.resources,
+            FILTER_RES_PATH_RANGE_STARTS,
+            43,
+            path_range_starts,
+        );
+        push_buffer_if(
+            &mut entries,
+            kernel.resources,
+            FILTER_RES_PATH_RANGE_ENDS,
+            44,
+            path_range_ends,
+        );
+        push_buffer_if(
+            &mut entries,
+            kernel.resources,
+            FILTER_RES_PATH_P0X,
+            45,
+            path_p0x,
+        );
+        push_buffer_if(
+            &mut entries,
+            kernel.resources,
+            FILTER_RES_PATH_P0Y,
+            46,
+            path_p0y,
+        );
+        push_buffer_if(
+            &mut entries,
+            kernel.resources,
+            FILTER_RES_PATH_P1X,
+            47,
+            path_p1x,
+        );
+        push_buffer_if(
+            &mut entries,
+            kernel.resources,
+            FILTER_RES_PATH_P1Y,
+            48,
+            path_p1y,
+        );
+        push_buffer_if(
+            &mut entries,
+            kernel.resources,
+            FILTER_RES_IMAGE_RESOURCE_METADATA,
+            filter_layout::IMAGE_RESOURCE_METADATA_BINDING,
+            image_resource_metadata,
+        );
+        push_buffer_if(
+            &mut entries,
+            kernel.resources,
+            FILTER_RES_IMAGE_RESOURCE_PIXELS,
+            filter_layout::IMAGE_RESOURCE_PIXELS_BINDING,
+            image_resource_pixels,
+        );
         device.create_bind_group(&::wgpu::BindGroupDescriptor {
             label: Some("tileink wgpu filter bind group"),
-            layout: &self.bind_group_layout,
-            entries: &[
-                bind_config_buffer(0, &self.config, config_offset, self.config_size),
-                bind_texture(1, source),
-                bind_texture(2, aux),
-                bind_texture(3, target),
-                bind_buffer(4, bindings.draw_records),
-                bind_buffer(10, bindings.sdf_blob),
-                bind_buffer(11, bindings.sdf_shadow_blob),
-                bind_buffer(28, bindings.path_records),
-                bind_buffer(29, bindings.backdrops),
-                bind_buffer(30, bindings.segment_ranges),
-                bind_buffer(32, bindings.segments),
-                bind_buffer(33, bindings.layer_stack),
-                bind_buffer(36, transfer_tables.unwrap_or(&self.dummy_read)),
-                bind_buffer(37, brush_blob),
-                bind_buffer(40, convolve_kernels),
-                bind_buffer(41, turbulence_selectors),
-                bind_buffer(42, turbulence_gradients),
-                bind_buffer(43, path_range_starts),
-                bind_buffer(44, path_range_ends),
-                bind_buffer(45, path_p0x),
-                bind_buffer(46, path_p0y),
-                bind_buffer(47, path_p1x),
-                bind_buffer(48, path_p1y),
-                bind_buffer(
-                    filter_layout::IMAGE_RESOURCE_METADATA_BINDING,
-                    image_resource_metadata,
-                ),
-                bind_buffer(
-                    filter_layout::IMAGE_RESOURCE_PIXELS_BINDING,
-                    image_resource_pixels,
-                ),
-            ],
+            layout: &kernel.bind_group_layout,
+            entries: &entries,
         })
     }
 }
@@ -2265,50 +2574,145 @@ fn rect_bounds(rect: Rect) -> Bounds {
     )
 }
 
-fn create_pipeline(
+fn create_kernel(
     device: &::wgpu::Device,
-    layout: &::wgpu::PipelineLayout,
     shader: &::wgpu::ShaderModule,
+    portable_textures: bool,
     entry_point: &'static str,
-) -> ::wgpu::ComputePipeline {
-    device.create_compute_pipeline(&::wgpu::ComputePipelineDescriptor {
+    resources: u32,
+    profile: FilterProfile,
+    shared_workgroups: bool,
+) -> FilterKernel {
+    debug_assert!(filter_storage_binding_count(resources) <= STORAGE_BINDING_COUNT);
+    let layout_entries = filter_layout_entries(portable_textures, resources);
+    let bind_group_layout = device.create_bind_group_layout(&::wgpu::BindGroupLayoutDescriptor {
         label: Some(entry_point),
-        layout: Some(layout),
+        entries: &layout_entries,
+    });
+    let pipeline_layout = device.create_pipeline_layout(&::wgpu::PipelineLayoutDescriptor {
+        label: Some(entry_point),
+        bind_group_layouts: &[Some(&bind_group_layout)],
+        immediate_size: 0,
+    });
+    let pipeline = device.create_compute_pipeline(&::wgpu::ComputePipelineDescriptor {
+        label: Some(entry_point),
+        layout: Some(&pipeline_layout),
         module: shader,
         entry_point: Some(entry_point),
         compilation_options: ::wgpu::PipelineCompilationOptions::default(),
         cache: None,
-    })
+    });
+    FilterKernel {
+        pipeline,
+        bind_group_layout,
+        resources,
+        profile,
+        shared_workgroups,
+    }
 }
 
-fn filter_layout_entries(portable_textures: bool) -> Vec<::wgpu::BindGroupLayoutEntry> {
-    vec![
+fn filter_layout_entries(
+    portable_textures: bool,
+    resources: u32,
+) -> Vec<::wgpu::BindGroupLayoutEntry> {
+    let mut entries = vec![
         uniform_entry(0),
         read_texture_entry(1, portable_textures),
         read_texture_entry(2, portable_textures),
         write_texture_entry(3, portable_textures),
-        storage_entry(4, true),
-        storage_entry(10, true),
-        storage_entry(11, true),
-        storage_entry(28, true),
-        storage_entry(29, false),
-        storage_entry(30, true),
-        storage_entry(32, true),
-        storage_entry(33, true),
-        storage_entry(36, true),
-        storage_entry(37, true),
-        storage_entry(40, true),
-        storage_entry(41, true),
-        storage_entry(42, true),
-        storage_entry(43, true),
-        storage_entry(44, true),
-        storage_entry(45, true),
-        storage_entry(46, true),
-        storage_entry(47, true),
-        storage_entry(48, true),
-        storage_entry(filter_layout::IMAGE_RESOURCE_METADATA_BINDING, true),
-        storage_entry(filter_layout::IMAGE_RESOURCE_PIXELS_BINDING, true),
-    ]
+    ];
+    push_storage_entry_if(&mut entries, resources, FILTER_RES_DRAW_RECORDS, 4, true);
+    push_storage_entry_if(&mut entries, resources, FILTER_RES_SDF_BLOB, 10, true);
+    push_storage_entry_if(
+        &mut entries,
+        resources,
+        FILTER_RES_SDF_SHADOW_BLOB,
+        11,
+        true,
+    );
+    push_storage_entry_if(&mut entries, resources, FILTER_RES_PATH_RECORDS, 28, true);
+    push_storage_entry_if(&mut entries, resources, FILTER_RES_BACKDROPS, 29, false);
+    push_storage_entry_if(&mut entries, resources, FILTER_RES_SEGMENT_RANGES, 30, true);
+    push_storage_entry_if(&mut entries, resources, FILTER_RES_SEGMENTS, 32, true);
+    push_storage_entry_if(&mut entries, resources, FILTER_RES_LAYER_STACK, 33, true);
+    push_storage_entry_if(
+        &mut entries,
+        resources,
+        FILTER_RES_TRANSFER_TABLES,
+        36,
+        true,
+    );
+    push_storage_entry_if(&mut entries, resources, FILTER_RES_BRUSH_BLOB, 37, true);
+    push_storage_entry_if(
+        &mut entries,
+        resources,
+        FILTER_RES_CONVOLVE_KERNELS,
+        40,
+        true,
+    );
+    push_storage_entry_if(
+        &mut entries,
+        resources,
+        FILTER_RES_TURBULENCE_SELECTORS,
+        41,
+        true,
+    );
+    push_storage_entry_if(
+        &mut entries,
+        resources,
+        FILTER_RES_TURBULENCE_GRADIENTS,
+        42,
+        true,
+    );
+    push_storage_entry_if(
+        &mut entries,
+        resources,
+        FILTER_RES_PATH_RANGE_STARTS,
+        43,
+        true,
+    );
+    push_storage_entry_if(
+        &mut entries,
+        resources,
+        FILTER_RES_PATH_RANGE_ENDS,
+        44,
+        true,
+    );
+    push_storage_entry_if(&mut entries, resources, FILTER_RES_PATH_P0X, 45, true);
+    push_storage_entry_if(&mut entries, resources, FILTER_RES_PATH_P0Y, 46, true);
+    push_storage_entry_if(&mut entries, resources, FILTER_RES_PATH_P1X, 47, true);
+    push_storage_entry_if(&mut entries, resources, FILTER_RES_PATH_P1Y, 48, true);
+    push_storage_entry_if(
+        &mut entries,
+        resources,
+        FILTER_RES_IMAGE_RESOURCE_METADATA,
+        filter_layout::IMAGE_RESOURCE_METADATA_BINDING,
+        true,
+    );
+    push_storage_entry_if(
+        &mut entries,
+        resources,
+        FILTER_RES_IMAGE_RESOURCE_PIXELS,
+        filter_layout::IMAGE_RESOURCE_PIXELS_BINDING,
+        true,
+    );
+    entries
+}
+
+fn push_storage_entry_if(
+    entries: &mut Vec<::wgpu::BindGroupLayoutEntry>,
+    resources: u32,
+    flag: u32,
+    binding: u32,
+    read_only: bool,
+) {
+    if resources & flag != 0 {
+        entries.push(storage_entry(binding, read_only));
+    }
+}
+
+fn filter_storage_binding_count(resources: u32) -> u32 {
+    resources.count_ones()
 }
 
 fn uniform_entry(binding: u32) -> ::wgpu::BindGroupLayoutEntry {
@@ -2400,6 +2804,18 @@ fn bind_buffer(binding: u32, buffer: &::wgpu::Buffer) -> ::wgpu::BindGroupEntry<
     }
 }
 
+fn push_buffer_if<'a>(
+    entries: &mut Vec<::wgpu::BindGroupEntry<'a>>,
+    resources: u32,
+    flag: u32,
+    binding: u32,
+    buffer: &'a ::wgpu::Buffer,
+) {
+    if resources & flag != 0 {
+        entries.push(bind_buffer(binding, buffer));
+    }
+}
+
 fn bind_config_buffer(
     binding: u32,
     buffer: &::wgpu::Buffer,
@@ -2420,5 +2836,31 @@ fn bind_texture(binding: u32, view: &::wgpu::TextureView) -> ::wgpu::BindGroupEn
     ::wgpu::BindGroupEntry {
         binding,
         resource: ::wgpu::BindingResource::TextureView(view),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn filter_kernel_storage_resource_sets_fit_wgpu_limit() {
+        let resource_sets = [
+            0,
+            FILTER_RES_TRANSFER,
+            FILTER_RES_BRUSH,
+            FILTER_RES_CONVOLVE,
+            FILTER_RES_TURBULENCE,
+            FILTER_RES_PATH_MASK,
+            FILTER_RES_SCENE_ALPHA,
+            FILTER_RES_SCENE_STACK,
+        ];
+        for resources in resource_sets {
+            assert!(
+                filter_storage_binding_count(resources) <= STORAGE_BINDING_COUNT,
+                "filter resource set has too many storage bindings: {resources:#x}"
+            );
+        }
+        assert_eq!(filter_storage_binding_count(FILTER_RES_SCENE_STACK), 8);
     }
 }
