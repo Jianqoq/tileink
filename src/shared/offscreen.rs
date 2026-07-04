@@ -8,6 +8,7 @@ use crate::{
         brush::{Brush, decode_encoded_brush, push_encoded_brush},
         draw_record::DrawRecord,
         execution::{ExecOp, ExecPlan},
+        gpu_sdf::{decode_sdf, decode_sdf_shadow, push_encoded_sdf, push_encoded_sdf_shadow},
         layer::{
             Layer,
             filter::{Filter, FilterPrimitive, FilterPrimitiveKind, Turbulence},
@@ -182,20 +183,30 @@ fn translated_scene_for_bounds(canvas: &Canvas, local: LocalSpace) -> Canvas {
                 draw.brush_offset = DrawRecord::NONE;
                 draw.brush_len = 0;
             }
+            if let Some(sdf) = decode_sdf(&canvas.sdf_blob, draw.sdf_offset, draw.sdf_len) {
+                (draw.sdf_offset, draw.sdf_len) =
+                    push_encoded_sdf(&mut translated.sdf_blob, local.sdf(sdf));
+                draw.sdf_shadow_offset = DrawRecord::NONE;
+                draw.sdf_shadow_len = 0;
+            } else if let Some(sdf_shadow) = decode_sdf_shadow(
+                &canvas.sdf_shadow_blob,
+                draw.sdf_shadow_offset,
+                draw.sdf_shadow_len,
+            ) {
+                (draw.sdf_shadow_offset, draw.sdf_shadow_len) = push_encoded_sdf_shadow(
+                    &mut translated.sdf_shadow_blob,
+                    local.sdf_shadow(sdf_shadow),
+                );
+                draw.sdf_offset = DrawRecord::NONE;
+                draw.sdf_len = 0;
+            } else {
+                draw.sdf_offset = DrawRecord::NONE;
+                draw.sdf_len = 0;
+                draw.sdf_shadow_offset = DrawRecord::NONE;
+                draw.sdf_shadow_len = 0;
+            }
             draw
         })
-        .collect();
-    translated.sdfs = canvas
-        .sdfs
-        .iter()
-        .copied()
-        .map(|sdf| local.sdf(sdf))
-        .collect();
-    translated.sdf_shadows = canvas
-        .sdf_shadows
-        .iter()
-        .copied()
-        .map(|sdf_shadow| local.sdf_shadow(sdf_shadow))
         .collect();
     translated.text_glyphs = canvas
         .text_glyphs

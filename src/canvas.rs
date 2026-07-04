@@ -18,6 +18,7 @@ use crate::shared::{
         ROOT_COMMAND_LIST_ID,
     },
     fill::FillRule,
+    gpu_sdf::{decode_sdf, decode_sdf_shadow, push_encoded_sdf, push_encoded_sdf_shadow},
     image::Image,
     image_resource::ImageKey,
     layer::{
@@ -57,8 +58,8 @@ pub struct Canvas {
     pub(crate) path_records: Vec<PathRecord>,
     pub(crate) draw_records: Vec<DrawRecord>,
     pub(crate) brush_blob: Vec<u32>,
-    pub(crate) sdfs: Vec<Sdf>,
-    pub(crate) sdf_shadows: Vec<SdfShadow>,
+    pub(crate) sdf_blob: Vec<u32>,
+    pub(crate) sdf_shadow_blob: Vec<u32>,
     pub(crate) text_glyphs: Vec<crate::text::CanvasGlyph>,
     pub(crate) text_runs: Vec<TextRun>,
     pub(crate) bd_records: Vec<BackdropRecord>,
@@ -387,8 +388,8 @@ impl Canvas {
             path_records: Vec::new(),
             draw_records: Vec::new(),
             brush_blob: Vec::new(),
-            sdfs: Vec::new(),
-            sdf_shadows: Vec::new(),
+            sdf_blob: Vec::new(),
+            sdf_shadow_blob: Vec::new(),
             text_glyphs: Vec::new(),
             text_runs: Vec::new(),
             bd_records: Vec::new(),
@@ -664,8 +665,6 @@ impl Canvas {
         let line_offset = self.lines.len() as u32;
         let path_offset = self.path_cnt;
         let draw_offset = self.draw_records.len();
-        let sdf_offset = self.sdfs.len() as u32;
-        let sdf_shadow_offset = self.sdf_shadows.len() as u32;
         let glyph_offset = self.text_glyphs.len() as u32;
         let text_run_offset = self.text_runs.len() as u32;
         let path_record_start = self.path_records.len();
@@ -689,24 +688,6 @@ impl Canvas {
             self.path_records.push(record);
         }
 
-        self.sdfs.reserve(other.sdfs.len());
-        for &sdf in &other.sdfs {
-            self.sdfs.push(if offset.is_zero() {
-                sdf
-            } else {
-                offset.sdf(sdf)
-            });
-        }
-
-        self.sdf_shadows.reserve(other.sdf_shadows.len());
-        for &sdf_shadow in &other.sdf_shadows {
-            self.sdf_shadows.push(if offset.is_zero() {
-                sdf_shadow
-            } else {
-                offset.sdf_shadow(sdf_shadow)
-            });
-        }
-
         self.draw_records.reserve(other.draw_records.len());
         for draw in &other.draw_records {
             let mut draw = *draw;
@@ -727,15 +708,31 @@ impl Canvas {
                 draw.brush_offset = DrawRecord::NONE;
                 draw.brush_len = 0;
             }
-            if draw.sdf_id != DrawRecord::NONE {
-                draw.sdf_id = draw.sdf_id.saturating_add(sdf_offset);
-                draw.pixel_bounds =
-                    Self::pixel_bounds_from_bounds(self.sdfs[draw.sdf_id as usize].bounds());
-            } else if draw.sdf_shadow_id != DrawRecord::NONE {
-                draw.sdf_shadow_id = draw.sdf_shadow_id.saturating_add(sdf_shadow_offset);
-                draw.pixel_bounds = Self::pixel_bounds_from_bounds(
-                    self.sdf_shadows[draw.sdf_shadow_id as usize].bounds(),
-                );
+            if let Some(sdf) = other.draw_sdf(&draw) {
+                let sdf = if offset.is_zero() {
+                    sdf
+                } else {
+                    offset.sdf(sdf)
+                };
+                (draw.sdf_offset, draw.sdf_len) = self.push_sdf(sdf);
+                draw.sdf_shadow_offset = DrawRecord::NONE;
+                draw.sdf_shadow_len = 0;
+                draw.pixel_bounds = Self::pixel_bounds_from_bounds(sdf.bounds());
+            } else if let Some(sdf_shadow) = other.draw_sdf_shadow(&draw) {
+                let sdf_shadow = if offset.is_zero() {
+                    sdf_shadow
+                } else {
+                    offset.sdf_shadow(sdf_shadow)
+                };
+                (draw.sdf_shadow_offset, draw.sdf_shadow_len) = self.push_sdf_shadow(sdf_shadow);
+                draw.sdf_offset = DrawRecord::NONE;
+                draw.sdf_len = 0;
+                draw.pixel_bounds = Self::pixel_bounds_from_bounds(sdf_shadow.bounds());
+            } else {
+                draw.sdf_offset = DrawRecord::NONE;
+                draw.sdf_len = 0;
+                draw.sdf_shadow_offset = DrawRecord::NONE;
+                draw.sdf_shadow_len = 0;
             }
             if !offset.is_zero() {
                 Self::translate_draw_for_append(&mut draw, offset);
@@ -1448,8 +1445,10 @@ impl Canvas {
         let draw_ix = self.push_draw_record(DrawRecord {
             path_id: DrawRecord::NONE,
             glyph_run_id: run_id,
-            sdf_id: DrawRecord::NONE,
-            sdf_shadow_id: DrawRecord::NONE,
+            sdf_offset: DrawRecord::NONE,
+            sdf_len: 0,
+            sdf_shadow_offset: DrawRecord::NONE,
+            sdf_shadow_len: 0,
             brush_offset,
             brush_len,
             tag: DrawTag::Brush.into(),
@@ -1645,8 +1644,10 @@ impl Canvas {
         let draw_ix = self.push_draw_record(DrawRecord {
             path_id,
             glyph_run_id: DrawRecord::NONE,
-            sdf_id: DrawRecord::NONE,
-            sdf_shadow_id: DrawRecord::NONE,
+            sdf_offset: DrawRecord::NONE,
+            sdf_len: 0,
+            sdf_shadow_offset: DrawRecord::NONE,
+            sdf_shadow_len: 0,
             brush_offset,
             brush_len,
             tag: options.tag.into(),
@@ -1714,14 +1715,15 @@ impl Canvas {
     ) -> usize {
         self.ensure_command_root();
         let bounds = sdf.bounds();
-        let sdf_id = self.sdfs.len() as u32;
-        self.sdfs.push(sdf);
+        let (sdf_offset, sdf_len) = self.push_sdf(sdf);
         let (brush_offset, brush_len) = self.push_brush(brush);
         let draw_ix = self.push_draw_record(DrawRecord {
             path_id: DrawRecord::NONE,
             glyph_run_id: DrawRecord::NONE,
-            sdf_id,
-            sdf_shadow_id: DrawRecord::NONE,
+            sdf_offset,
+            sdf_len,
+            sdf_shadow_offset: DrawRecord::NONE,
+            sdf_shadow_len: 0,
             brush_offset,
             brush_len,
             tag: tag.into(),
@@ -1751,14 +1753,15 @@ impl Canvas {
     ) -> usize {
         self.ensure_command_root();
         let bounds = sdf_shadow.bounds();
-        let sdf_shadow_id = self.sdf_shadows.len() as u32;
-        self.sdf_shadows.push(sdf_shadow);
+        let (sdf_shadow_offset, sdf_shadow_len) = self.push_sdf_shadow(sdf_shadow);
         let (brush_offset, brush_len) = self.push_brush(brush);
         let draw_ix = self.push_draw_record(DrawRecord {
             path_id: DrawRecord::NONE,
             glyph_run_id: DrawRecord::NONE,
-            sdf_id: DrawRecord::NONE,
-            sdf_shadow_id,
+            sdf_offset: DrawRecord::NONE,
+            sdf_len: 0,
+            sdf_shadow_offset,
+            sdf_shadow_len,
             brush_offset,
             brush_len,
             tag: tag.into(),
@@ -1784,8 +1787,8 @@ impl Canvas {
         self.path_records.clear();
         self.draw_records.clear();
         self.brush_blob.clear();
-        self.sdfs.clear();
-        self.sdf_shadows.clear();
+        self.sdf_blob.clear();
+        self.sdf_shadow_blob.clear();
         self.text_glyphs.clear();
         self.text_runs.clear();
         self.bd_records.clear();
@@ -1811,12 +1814,28 @@ impl Canvas {
         push_encoded_brush(&mut self.brush_blob, &brush)
     }
 
+    fn push_sdf(&mut self, sdf: Sdf) -> (u32, u32) {
+        push_encoded_sdf(&mut self.sdf_blob, sdf)
+    }
+
+    fn push_sdf_shadow(&mut self, sdf_shadow: SdfShadow) -> (u32, u32) {
+        push_encoded_sdf_shadow(&mut self.sdf_shadow_blob, sdf_shadow)
+    }
+
     pub(crate) fn draw_brush_for_record(&self, draw: &DrawRecord) -> Option<Brush> {
         decode_encoded_brush(&self.brush_blob, draw.brush_offset, draw.brush_len)
     }
 
-    pub(crate) fn draw_sdf(&self, draw: &DrawRecord) -> Option<&Sdf> {
-        self.sdfs.get(draw.sdf_id()? as usize)
+    pub(crate) fn draw_sdf(&self, draw: &DrawRecord) -> Option<Sdf> {
+        decode_sdf(&self.sdf_blob, draw.sdf_offset, draw.sdf_len)
+    }
+
+    pub(crate) fn draw_sdf_shadow(&self, draw: &DrawRecord) -> Option<SdfShadow> {
+        decode_sdf_shadow(
+            &self.sdf_shadow_blob,
+            draw.sdf_shadow_offset,
+            draw.sdf_shadow_len,
+        )
     }
 
     pub(crate) fn width_in_tiles(&self) -> u32 {

@@ -12,14 +12,11 @@ use crate::{
 };
 
 fn draw_sdf(canvas: &Canvas, index: usize) -> Option<Sdf> {
-    canvas.draw_sdf(&canvas.draw_records[index]).copied()
+    canvas.draw_sdf(&canvas.draw_records[index])
 }
 
 fn draw_sdf_shadow(canvas: &Canvas, index: usize) -> Option<SdfShadow> {
-    canvas
-        .sdf_shadows
-        .get(canvas.draw_records[index].sdf_shadow_id()? as usize)
-        .copied()
+    canvas.draw_sdf_shadow(&canvas.draw_records[index])
 }
 
 fn draw_brush(canvas: &Canvas, index: usize) -> Brush {
@@ -53,7 +50,7 @@ fn push_rect_records_sdf_rect_without_path_storage() {
     assert_eq!(draw.tag, DrawTag::Brush);
     assert!(draw.path_id().is_none());
     assert!(!draw.solid_rect());
-    match canvas.draw_sdf(draw).copied() {
+    match canvas.draw_sdf(draw) {
         Some(Sdf::Rect(rect)) => {
             assert_eq!(rect.axis_bounds(), (2.0, 3.0, 18.0, 19.0));
             assert!(rect.radius.is_zero());
@@ -229,7 +226,7 @@ fn push_circle_records_sdf_circle_without_path_storage() {
             y1: 28,
         }
     );
-    match canvas.draw_sdf(draw).copied() {
+    match canvas.draw_sdf(draw) {
         Some(Sdf::Circle(circle)) => {
             assert_eq!(circle.center, Point::new(16.0, 20.0));
             assert_eq!(circle.radius, 8.0);
@@ -262,8 +259,8 @@ fn draw_id_updates_specific_draw_color() {
         &canvas.path_records,
         &canvas.draw_records,
         &canvas.brush_blob,
-        &canvas.sdfs,
-        &canvas.sdf_shadows,
+        &canvas.sdf_blob,
+        &canvas.sdf_shadow_blob,
     );
     let brushes =
         GpuBrushUpload::from_scene_brush_blob(&canvas.draw_records, &canvas.brush_blob, None);
@@ -339,8 +336,8 @@ fn upload_columns_rebuild_after_append() {
         &parent.path_records,
         &parent.draw_records,
         &parent.brush_blob,
-        &parent.sdfs,
-        &parent.sdf_shadows,
+        &parent.sdf_blob,
+        &parent.sdf_shadow_blob,
     );
 
     assert_eq!(columns.draw_path_ids.len(), parent.draw_records.len());
@@ -373,7 +370,7 @@ fn append_fast_path_translates_sdf_without_mutating_child() {
         original_child_draw.pixel_bounds
     );
     assert!(matches!(draw_sdf(&child, 0), Some(Sdf::Rect(_))));
-    assert!(original_child_draw.sdf_id().is_some());
+    assert!(original_child_draw.sdf_range().is_some());
     assert_eq!(parent.draw_records.len(), 2);
     assert_eq!(
         parent.draw_records[0].pixel_bounds,
@@ -644,7 +641,7 @@ fn push_shape_shadows_record_sdf_shadow_without_path_storage() {
         canvas
             .draw_records
             .iter()
-            .all(|draw| draw.sdf_id().is_none())
+            .all(|draw| draw.sdf_range().is_none())
     );
     assert!(matches!(
         draw_sdf_shadow(&canvas, 0),
@@ -684,7 +681,7 @@ fn push_rect_stroke_records_sdf_without_path_storage() {
         }
     );
     assert!(draw.path_id().is_none());
-    match canvas.draw_sdf(draw).copied() {
+    match canvas.draw_sdf(draw) {
         Some(Sdf::RectStroke(stroke)) => {
             assert_eq!(stroke.rect.axis_bounds(), (10.0, 12.0, 30.0, 36.0));
             assert_eq!(stroke.rect.radius.top_left, 4.0);
@@ -723,7 +720,7 @@ fn push_rect_stroke_widths_records_per_side_sdf_widths() {
             y1: 41,
         }
     );
-    match canvas.draw_sdf(draw).copied() {
+    match canvas.draw_sdf(draw) {
         Some(Sdf::RectStroke(stroke)) => {
             assert_eq!(stroke.rect.axis_bounds(), (10.0, 12.0, 30.0, 36.0));
             assert_eq!(stroke.widths, widths);
@@ -754,7 +751,7 @@ fn push_circle_stroke_records_sdf_without_path_storage() {
             y1: 32,
         }
     );
-    match canvas.draw_sdf(draw).copied() {
+    match canvas.draw_sdf(draw) {
         Some(Sdf::CircleStroke(stroke)) => {
             assert_eq!(stroke.circle.center, Point::new(24.0, 20.0));
             assert_eq!(stroke.circle.radius, 10.0);
@@ -797,6 +794,6 @@ fn push_dashed_circle_stroke_uses_path_storage() {
     assert_eq!(canvas.path_records.len(), 1);
     assert_eq!(canvas.bd_records.len(), 1);
     assert!(canvas.draw_records[0].path_id().is_some());
-    assert!(canvas.draw_records[0].sdf_id().is_none());
-    assert!(canvas.draw_records[0].sdf_shadow_id().is_none());
+    assert!(canvas.draw_records[0].sdf_range().is_none());
+    assert!(canvas.draw_records[0].sdf_shadow_range().is_none());
 }

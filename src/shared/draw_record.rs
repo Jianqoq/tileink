@@ -55,10 +55,14 @@ pub struct DrawRecord {
     pub path_id: u32,
     /// Text glyph run index, or `NONE` for non-text draws.
     pub glyph_run_id: u32,
-    /// Exact SDF geometry index in `Canvas::sdfs`, or `NONE` for non-SDF draws.
-    pub sdf_id: u32,
-    /// Soft SDF shadow geometry index in `Canvas::sdf_shadows`, or `NONE` for non-shadow draws.
-    pub sdf_shadow_id: u32,
+    /// Start word in `Canvas::sdf_blob`, or `NONE` for non-SDF draws.
+    pub sdf_offset: u32,
+    /// Exact SDF record length in 32-bit words.
+    pub sdf_len: u32,
+    /// Start word in `Canvas::sdf_shadow_blob`, or `NONE` for non-shadow draws.
+    pub sdf_shadow_offset: u32,
+    /// Soft SDF shadow record length in 32-bit words.
+    pub sdf_shadow_len: u32,
     /// Start word in `Canvas::brush_blob`, or `NONE` when the draw has no brush.
     pub brush_offset: u32,
     /// Brush record length in 32-bit words.
@@ -85,12 +89,15 @@ impl DrawRecord {
         (self.glyph_run_id != Self::NONE).then_some(self.glyph_run_id)
     }
 
-    pub(crate) fn sdf_id(self) -> Option<u32> {
-        (self.sdf_id != Self::NONE).then_some(self.sdf_id)
+    pub(crate) fn sdf_range(self) -> Option<std::ops::Range<usize>> {
+        let end = self.sdf_offset.checked_add(self.sdf_len)?;
+        (self.sdf_offset != Self::NONE).then_some(self.sdf_offset as usize..end as usize)
     }
 
-    pub(crate) fn sdf_shadow_id(self) -> Option<u32> {
-        (self.sdf_shadow_id != Self::NONE).then_some(self.sdf_shadow_id)
+    pub(crate) fn sdf_shadow_range(self) -> Option<std::ops::Range<usize>> {
+        let end = self.sdf_shadow_offset.checked_add(self.sdf_shadow_len)?;
+        (self.sdf_shadow_offset != Self::NONE)
+            .then_some(self.sdf_shadow_offset as usize..end as usize)
     }
 
     pub(crate) fn brush_range(self) -> Option<std::ops::Range<usize>> {
@@ -99,7 +106,7 @@ impl DrawRecord {
     }
 
     pub(crate) fn has_analytic_geometry(&self) -> bool {
-        self.sdf_id != Self::NONE || self.sdf_shadow_id != Self::NONE
+        self.sdf_offset != Self::NONE || self.sdf_shadow_offset != Self::NONE
     }
 
     pub(crate) fn has_path(self) -> bool {
@@ -150,7 +157,7 @@ mod tests {
         assert_eq!(DrawRecord::NONE, u32::MAX);
         assert_eq!(size_of::<DrawTagWord>(), size_of::<u32>());
         assert_eq!(size_of::<FillRuleWord>(), size_of::<u32>());
-        assert_eq!(size_of::<DrawRecord>(), 52);
+        assert_eq!(size_of::<DrawRecord>(), 60);
         assert_eq!(align_of::<DrawRecord>(), align_of::<u32>());
     }
 }

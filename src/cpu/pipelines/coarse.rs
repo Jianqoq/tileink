@@ -8,8 +8,8 @@ use crate::{
         draw_record::{DrawRecord, DrawTag},
         execution::LayerStackEntry,
         gpu_plan::TileDrawBins,
+        gpu_sdf::{decode_sdf, decode_sdf_shadow},
         pixel::opacity_f32_to_u8,
-        sdf::{Sdf, SdfShadow},
         tile_ptcl::{
             TileColorPtcl, TileFillPtcl, TileGlyphPtcl, TilePtcl, TilePtclRange, TileSdfPtcl,
             TileSdfShadowPtcl,
@@ -22,8 +22,8 @@ use crate::{
 pub struct CoarseCpuPrepared<'a> {
     draw_records: &'a [DrawRecord],
     brush_blob: &'a [u32],
-    sdfs: &'a [Sdf],
-    sdf_shadows: &'a [SdfShadow],
+    sdf_blob: &'a [u32],
+    sdf_shadow_blob: &'a [u32],
     draw_range: std::ops::Range<usize>,
     layer_stack_data: &'a [LayerStackEntry],
     tile_draw_bins: &'a TileDrawBins,
@@ -66,8 +66,8 @@ impl<'a> CoarseCpuPrepared<'a> {
                     layer_stack,
                     self.draw_records,
                     self.brush_blob,
-                    self.sdfs,
-                    self.sdf_shadows,
+                    self.sdf_blob,
+                    self.sdf_shadow_blob,
                     self.backdrop_records,
                     self.backdrops,
                     self.tile_segment_ranges,
@@ -113,8 +113,8 @@ impl<'a> CoarseCpuPrepared<'a> {
         layer_stack: &[LayerStackEntry],
         draw_records: &[DrawRecord],
         brush_blob: &[u32],
-        sdfs: &[Sdf],
-        sdf_shadows: &[SdfShadow],
+        sdf_blob: &[u32],
+        sdf_shadow_blob: &[u32],
         backdrop_records: &[BackdropRecord],
         backdrops: &[i32],
         tile_segment_ranges: &[TileSegmentRange],
@@ -137,8 +137,8 @@ impl<'a> CoarseCpuPrepared<'a> {
                 tile_x,
                 tile_y,
                 draw_records,
-                sdfs,
-                sdf_shadows,
+                sdf_blob,
+                sdf_shadow_blob,
                 backdrop_records,
                 backdrops,
                 tile_segment_ranges,
@@ -161,8 +161,8 @@ impl<'a> CoarseCpuPrepared<'a> {
                 layer_stack,
                 draw_records,
                 brush_blob,
-                sdfs,
-                sdf_shadows,
+                sdf_blob,
+                sdf_shadow_blob,
                 backdrop_records,
                 backdrops,
                 tile_segment_ranges,
@@ -208,13 +208,13 @@ impl<'a> CoarseCpuPrepared<'a> {
                             continue;
                         }
                         output.ptcls.push(TilePtcl::Sdf(TileSdfPtcl {
-                            sdf: *sdf,
+                            sdf,
                             brush: brush.clone(),
                         }));
                     }
                     DrawTileCoverage::SdfShadow { sdf_shadow, .. } => {
                         output.ptcls.push(TilePtcl::SdfShadow(TileSdfShadowPtcl {
-                            sdf_shadow: *sdf_shadow,
+                            sdf_shadow,
                             brush: brush.clone(),
                         }));
                     }
@@ -294,8 +294,8 @@ impl<'a> CoarseCpuPrepared<'a> {
         layer_stack: &[LayerStackEntry],
         draw_records: &[DrawRecord],
         brush_blob: &[u32],
-        sdfs: &[Sdf],
-        sdf_shadows: &[SdfShadow],
+        sdf_blob: &[u32],
+        sdf_shadow_blob: &[u32],
         backdrop_records: &[BackdropRecord],
         backdrops: &[i32],
         tile_segment_ranges: &[TileSegmentRange],
@@ -317,8 +317,8 @@ impl<'a> CoarseCpuPrepared<'a> {
                 tile_x,
                 tile_y,
                 draw_records,
-                sdfs,
-                sdf_shadows,
+                sdf_blob,
+                sdf_shadow_blob,
                 backdrop_records,
                 backdrops,
                 tile_segment_ranges,
@@ -363,7 +363,7 @@ impl<'a> CoarseCpuPrepared<'a> {
                         return false;
                     };
                     LayerCoveragePtcl::Sdf(TileSdfPtcl {
-                        sdf: *sdf,
+                        sdf,
                         brush: brush.clone(),
                     })
                 }
@@ -408,15 +408,15 @@ impl<'a> CoarseCpuPrepared<'a> {
         tile_x: u32,
         tile_y: u32,
         draw_records: &'b [DrawRecord],
-        sdfs: &'b [Sdf],
-        _sdf_shadows: &[SdfShadow],
+        sdf_blob: &[u32],
+        _sdf_shadow_blob: &[u32],
         backdrop_records: &[BackdropRecord],
         backdrops: &[i32],
         tile_segment_ranges: &[TileSegmentRange],
         tiles_size: (u32, u32),
     ) -> Option<LayerTileCoverage<'b>> {
         let draw = &draw_records[draw_ix];
-        if let Some(sdf) = draw.sdf_id().and_then(|id| sdfs.get(id as usize)) {
+        if let Some(sdf) = decode_sdf(sdf_blob, draw.sdf_offset, draw.sdf_len) {
             let bbox = draw.tile_bbox(tiles_size.0, tiles_size.1);
             return (tile_x >= bbox.x0
                 && tile_x < bbox.x1
@@ -424,7 +424,7 @@ impl<'a> CoarseCpuPrepared<'a> {
                 && tile_y < bbox.y1)
                 .then_some(LayerTileCoverage::Sdf { draw, sdf });
         }
-        if draw.sdf_shadow_id().is_some() {
+        if draw.sdf_shadow_range().is_some() {
             return None;
         }
 
@@ -467,8 +467,8 @@ impl<'a> CoarseCpuPrepared<'a> {
         tile_x: u32,
         tile_y: u32,
         draw_records: &'b [DrawRecord],
-        sdfs: &'b [Sdf],
-        sdf_shadows: &'b [SdfShadow],
+        sdf_blob: &[u32],
+        sdf_shadow_blob: &[u32],
         backdrop_records: &[BackdropRecord],
         backdrops: &[i32],
         tile_segment_ranges: &[TileSegmentRange],
@@ -476,16 +476,15 @@ impl<'a> CoarseCpuPrepared<'a> {
         text: Option<&PreparedTextData>,
     ) -> Option<DrawTileCoverage<'b>> {
         let draw = &draw_records[draw_ix];
-        if let Some(sdf) = draw.sdf_id().and_then(|id| sdfs.get(id as usize)) {
+        if let Some(sdf) = decode_sdf(sdf_blob, draw.sdf_offset, draw.sdf_len) {
             let bbox = draw.tile_bbox(tiles_size.0, tiles_size.1);
             if tile_x >= bbox.x0 && tile_x < bbox.x1 && tile_y >= bbox.y0 && tile_y < bbox.y1 {
                 return Some(DrawTileCoverage::Sdf { draw, sdf });
             }
             return None;
         }
-        if let Some(sdf_shadow) = draw
-            .sdf_shadow_id()
-            .and_then(|id| sdf_shadows.get(id as usize))
+        if let Some(sdf_shadow) =
+            decode_sdf_shadow(sdf_shadow_blob, draw.sdf_shadow_offset, draw.sdf_shadow_len)
         {
             let bbox = draw.tile_bbox(tiles_size.0, tiles_size.1);
             if tile_x >= bbox.x0 && tile_x < bbox.x1 && tile_y >= bbox.y0 && tile_y < bbox.y1 {
@@ -515,8 +514,8 @@ impl<'a> CoarseCpuPrepared<'a> {
             tile_x,
             tile_y,
             draw_records,
-            sdfs,
-            sdf_shadows,
+            sdf_blob,
+            sdf_shadow_blob,
             backdrop_records,
             backdrops,
             tile_segment_ranges,
@@ -552,7 +551,7 @@ enum LayerTileCoverage<'a> {
     },
     Sdf {
         draw: &'a DrawRecord,
-        sdf: &'a crate::shared::sdf::Sdf,
+        sdf: crate::shared::sdf::Sdf,
     },
 }
 
@@ -564,11 +563,11 @@ enum DrawTileCoverage<'a> {
     },
     Sdf {
         draw: &'a DrawRecord,
-        sdf: &'a crate::shared::sdf::Sdf,
+        sdf: crate::shared::sdf::Sdf,
     },
     SdfShadow {
         draw: &'a DrawRecord,
-        sdf_shadow: &'a crate::shared::sdf::SdfShadow,
+        sdf_shadow: crate::shared::sdf::SdfShadow,
     },
     Glyph {
         draw: &'a DrawRecord,
@@ -633,8 +632,8 @@ impl CoarseCpuPipeline {
         &self,
         draw_records: &'a [DrawRecord],
         brush_blob: &'a [u32],
-        sdfs: &'a [Sdf],
-        sdf_shadows: &'a [SdfShadow],
+        sdf_blob: &'a [u32],
+        sdf_shadow_blob: &'a [u32],
         draw_range: std::ops::Range<usize>,
         layer_stack_data: &'a [LayerStackEntry],
         layer_stack_range: std::ops::Range<usize>,
@@ -651,8 +650,8 @@ impl CoarseCpuPipeline {
         CoarseCpuPrepared {
             draw_records,
             brush_blob,
-            sdfs,
-            sdf_shadows,
+            sdf_blob,
+            sdf_shadow_blob,
             draw_range,
             layer_stack_data,
             layer_stack_range,
@@ -716,8 +715,10 @@ mod tests {
             DrawRecord {
                 path_id: 0,
                 glyph_run_id: DrawRecord::NONE,
-                sdf_id: DrawRecord::NONE,
-                sdf_shadow_id: DrawRecord::NONE,
+                sdf_offset: DrawRecord::NONE,
+                sdf_len: 0,
+                sdf_shadow_offset: DrawRecord::NONE,
+                sdf_shadow_len: 0,
                 brush_offset: DrawRecord::NONE,
                 brush_len: 0,
                 tag: DrawTag::Clip.into(),
@@ -733,8 +734,10 @@ mod tests {
             DrawRecord {
                 path_id: 1,
                 glyph_run_id: DrawRecord::NONE,
-                sdf_id: DrawRecord::NONE,
-                sdf_shadow_id: DrawRecord::NONE,
+                sdf_offset: DrawRecord::NONE,
+                sdf_len: 0,
+                sdf_shadow_offset: DrawRecord::NONE,
+                sdf_shadow_len: 0,
                 brush_offset: DrawRecord::NONE,
                 brush_len: 0,
                 tag: DrawTag::Clip.into(),
@@ -750,8 +753,10 @@ mod tests {
             DrawRecord {
                 path_id: 2,
                 glyph_run_id: DrawRecord::NONE,
-                sdf_id: DrawRecord::NONE,
-                sdf_shadow_id: DrawRecord::NONE,
+                sdf_offset: DrawRecord::NONE,
+                sdf_len: 0,
+                sdf_shadow_offset: DrawRecord::NONE,
+                sdf_shadow_len: 0,
                 brush_offset: DrawRecord::NONE,
                 brush_len: 0,
                 tag: DrawTag::Brush.into(),
@@ -887,8 +892,8 @@ mod tests {
             .prepare(
                 &canvas.draw_records,
                 &canvas.brush_blob,
-                &canvas.sdfs,
-                &canvas.sdf_shadows,
+                &canvas.sdf_blob,
+                &canvas.sdf_shadow_blob,
                 0..canvas.draw_records.len(),
                 &[],
                 0..0,
@@ -949,8 +954,10 @@ mod tests {
             DrawRecord {
                 path_id: 0,
                 glyph_run_id: DrawRecord::NONE,
-                sdf_id: DrawRecord::NONE,
-                sdf_shadow_id: DrawRecord::NONE,
+                sdf_offset: DrawRecord::NONE,
+                sdf_len: 0,
+                sdf_shadow_offset: DrawRecord::NONE,
+                sdf_shadow_len: 0,
                 brush_offset: DrawRecord::NONE,
                 brush_len: 0,
                 tag: DrawTag::Brush.into(),
@@ -966,8 +973,10 @@ mod tests {
             DrawRecord {
                 path_id: 1,
                 glyph_run_id: DrawRecord::NONE,
-                sdf_id: DrawRecord::NONE,
-                sdf_shadow_id: DrawRecord::NONE,
+                sdf_offset: DrawRecord::NONE,
+                sdf_len: 0,
+                sdf_shadow_offset: DrawRecord::NONE,
+                sdf_shadow_len: 0,
                 brush_offset: DrawRecord::NONE,
                 brush_len: 0,
                 tag: DrawTag::Brush.into(),

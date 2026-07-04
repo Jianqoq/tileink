@@ -2,7 +2,7 @@ use crate::shared::{
     brush::encoded_brush_solid_color_u32,
     draw_record::{DrawRecord, DrawTag},
     fill::FillRule,
-    gpu_sdf::{encode_sdf, encode_sdf_shadow},
+    gpu_sdf::encoded_sdf,
     gpu_types::{
         DRAW_FLAG_FILL_RULE_EVEN_ODD, DRAW_FLAG_HAS_GLYPH, DRAW_FLAG_HAS_SDF,
         DRAW_FLAG_SOLID_COLOR_FAST_PATH, DRAW_FLAG_SOLID_RECT, GPU_DRAW_BLEND, GPU_DRAW_BRUSH,
@@ -10,7 +10,6 @@ use crate::shared::{
     },
     line::Line,
     path::PathRecord,
-    sdf::{Sdf, SdfShadow},
 };
 
 const INVALID_REF: u32 = DrawRecord::NONE;
@@ -67,8 +66,8 @@ impl CanvasColumns {
         paths: &[PathRecord],
         draws: &[DrawRecord],
         brush_blob: &[u32],
-        sdfs: &[Sdf],
-        sdf_shadows: &[SdfShadow],
+        sdf_blob: &[u32],
+        sdf_shadow_blob: &[u32],
     ) {
         self.clear();
         let sdf_count = draws
@@ -79,7 +78,7 @@ impl CanvasColumns {
         self.extend_lines(lines);
         self.extend_paths(paths);
         for draw in draws {
-            self.push_draw(draw, brush_blob, sdfs, sdf_shadows);
+            self.push_draw(draw, brush_blob, sdf_blob, sdf_shadow_blob);
         }
     }
 
@@ -87,8 +86,8 @@ impl CanvasColumns {
         &mut self,
         draw: &DrawRecord,
         brush_blob: &[u32],
-        sdfs: &[Sdf],
-        sdf_shadows: &[SdfShadow],
+        sdf_blob: &[u32],
+        sdf_shadow_blob: &[u32],
     ) {
         self.draw_path_ids.push(draw.path_id);
         self.draw_glyph_run_ids.push(draw.glyph_run_id);
@@ -103,7 +102,7 @@ impl CanvasColumns {
         self.draw_pixel_y0.push(draw.pixel_bounds.y0);
         self.draw_pixel_x1.push(draw.pixel_bounds.x1);
         self.draw_pixel_y1.push(draw.pixel_bounds.y1);
-        self.sdf.push_draw(draw, sdfs, sdf_shadows);
+        self.sdf.push_draw(draw, sdf_blob, sdf_shadow_blob);
     }
 
     pub(crate) fn push_path_record(&mut self, path: PathRecord) {
@@ -205,13 +204,12 @@ impl DrawSdfColumns {
         self.shadow_intensity.clear();
     }
 
-    fn push_draw(&mut self, draw: &DrawRecord, sdfs: &[Sdf], sdf_shadows: &[SdfShadow]) {
-        let sdf = match (draw.sdf_id(), draw.sdf_shadow_id()) {
-            (Some(sdf_id), None) => sdfs.get(sdf_id as usize).copied().map(encode_sdf),
-            (None, Some(sdf_shadow_id)) => sdf_shadows
-                .get(sdf_shadow_id as usize)
-                .copied()
-                .map(encode_sdf_shadow),
+    fn push_draw(&mut self, draw: &DrawRecord, sdf_blob: &[u32], sdf_shadow_blob: &[u32]) {
+        let sdf = match (draw.sdf_range(), draw.sdf_shadow_range()) {
+            (Some(_), None) => encoded_sdf(sdf_blob, draw.sdf_offset, draw.sdf_len),
+            (None, Some(_)) => {
+                encoded_sdf(sdf_shadow_blob, draw.sdf_shadow_offset, draw.sdf_shadow_len)
+            }
             (None, None) => None,
             (Some(_), Some(_)) => unreachable!("draw cannot store both SDF and SDF shadow"),
         };

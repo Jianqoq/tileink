@@ -464,7 +464,7 @@ impl Renderer {
                     draw.pixel_bounds.x1,
                     draw.pixel_bounds.y1,
                 );
-                intersect_sdf_alpha_mask(mask, sdf, sdf_bounds, bounds);
+                intersect_sdf_alpha_mask(mask, &sdf, sdf_bounds, bounds);
             } else {
                 let clip = rasterize_layer_mask(canvas, draw_ix, bounds, buffers);
                 intersect_alpha_mask(mask, &clip);

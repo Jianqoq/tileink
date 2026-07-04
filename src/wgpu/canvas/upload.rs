@@ -231,8 +231,8 @@ impl WgpuSceneBuffers {
                 &canvas.path_records,
                 &canvas.draw_records,
                 &canvas.brush_blob,
-                &canvas.sdfs,
-                &canvas.sdf_shadows,
+                &canvas.sdf_blob,
+                &canvas.sdf_shadow_blob,
             );
         });
         profile_cpu("prepare.upload_scene.upload_columns", || {

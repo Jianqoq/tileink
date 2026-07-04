@@ -8,8 +8,8 @@ fn upload_columns_for(canvas: &Canvas) -> CanvasColumns {
         &canvas.path_records,
         &canvas.draw_records,
         &canvas.brush_blob,
-        &canvas.sdfs,
-        &canvas.sdf_shadows,
+        &canvas.sdf_blob,
+        &canvas.sdf_shadow_blob,
     );
     columns
 }
