@@ -174,6 +174,41 @@ fn render_push_image_key_samples_renderer_resource() {
 }
 
 #[test]
+fn render_push_image_key_stops_sampling_after_resource_remove() {
+    let key = ImageKey::new(8);
+    let mut canvas = Canvas::new(2, 1);
+    canvas
+        .push_image_key(Rect::new(0.0, 0.0, 2.0, 1.0), key, PatternSampling::Nearest)
+        .expect("push image resource");
+
+    let mut renderer = Renderer::new(2, 1, Color::TRANSPARENT);
+    assert!(renderer.insert_image(key, Image::from_rgba8(1, 1, [255, 0, 0, 255])));
+    renderer.render(&canvas);
+    assert_eq!(renderer.image().rgba8_at(0, 0), [255, 0, 0, 255]);
+
+    assert!(renderer.remove_image(key));
+    assert!(!renderer.remove_image(key));
+    renderer.render(&canvas);
+    assert_eq!(renderer.image().rgba8_at(0, 0), [0, 0, 0, 0]);
+}
+
+#[test]
+fn render_push_image_key_stops_sampling_after_resource_clear() {
+    let key = ImageKey::new(9);
+    let mut canvas = Canvas::new(2, 1);
+    canvas
+        .push_image_key(Rect::new(0.0, 0.0, 2.0, 1.0), key, PatternSampling::Nearest)
+        .expect("push image resource");
+
+    let mut renderer = Renderer::new(2, 1, Color::TRANSPARENT);
+    assert!(renderer.insert_image(key, Image::from_rgba8(1, 1, [255, 0, 0, 255])));
+    assert!(renderer.clear_images());
+    assert!(!renderer.clear_images());
+    renderer.render(&canvas);
+    assert_eq!(renderer.image().rgba8_at(0, 0), [0, 0, 0, 0]);
+}
+
+#[test]
 fn rounded_rect_top_right_keeps_inside_filled() {
     let renderer = render_single_rounded_rect();
 

@@ -7,6 +7,7 @@ use peniko::{
 
 use crate::shared::{
     bounds::Bounds,
+    gpu_layout::filter as filter_layout,
     gpu_plan::GpuBufferLengths,
     layer::{
         filter::{
@@ -43,7 +44,7 @@ const WORKGROUP_SIZE: u32 = 256;
 const SHARED_BLUR_TILE_WIDTH: u32 = 16;
 const SHARED_BLUR_TILE_HEIGHT: u32 = 16;
 const SHARED_BLUR_MAX_RADIUS: u32 = 16;
-const STORAGE_BINDING_COUNT: u32 = 55;
+const STORAGE_BINDING_COUNT: u32 = filter_layout::STORAGE_BUFFER_COUNT;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -1957,8 +1958,14 @@ impl WgpuFilterPipeline {
                 bind_buffer(54, path_p0y),
                 bind_buffer(55, path_p1x),
                 bind_buffer(56, path_p1y),
-                bind_buffer(57, image_resource_metadata),
-                bind_buffer(58, image_resource_pixels),
+                bind_buffer(
+                    filter_layout::IMAGE_RESOURCE_METADATA_BINDING,
+                    image_resource_metadata,
+                ),
+                bind_buffer(
+                    filter_layout::IMAGE_RESOURCE_PIXELS_BINDING,
+                    image_resource_pixels,
+                ),
             ],
         })
     }
@@ -2346,7 +2353,7 @@ fn create_pipeline(
     })
 }
 
-fn filter_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 59] {
+fn filter_layout_entries() -> [::wgpu::BindGroupLayoutEntry; filter_layout::LAYOUT_ENTRY_COUNT] {
     [
         uniform_entry(0),
         storage_texture_entry(1, ::wgpu::StorageTextureAccess::ReadOnly),
@@ -2405,8 +2412,8 @@ fn filter_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 59] {
         storage_entry(54, true),
         storage_entry(55, true),
         storage_entry(56, true),
-        storage_entry(57, true),
-        storage_entry(58, true),
+        storage_entry(filter_layout::IMAGE_RESOURCE_METADATA_BINDING, true),
+        storage_entry(filter_layout::IMAGE_RESOURCE_PIXELS_BINDING, true),
     ]
 }
 

@@ -1,5 +1,12 @@
 use peniko::Extend;
 
+pub(crate) use crate::shared::gpu_layout::brush::{
+    GPU_BRUSH_FOUR_CORNER, GPU_BRUSH_LINEAR, GPU_BRUSH_PARAM_STRIDE, GPU_BRUSH_PATTERN,
+    GPU_BRUSH_PATTERN_RESOURCE, GPU_BRUSH_RADIAL, GPU_BRUSH_SOLID, GPU_BRUSH_SWEEP,
+    GPU_BRUSH_U32_STRIDE, GPU_EXTEND_PAD, GPU_EXTEND_REFLECT, GPU_EXTEND_REPEAT,
+    GPU_PATTERN_BILINEAR, GPU_PATTERN_NEAREST,
+};
+
 use crate::shared::{
     brush::{Brush, PatternSampling},
     draw_record::DrawRecord,
@@ -11,23 +18,6 @@ use crate::shared::{
         filter::{Filter, FilterPrimitiveKind},
     },
 };
-
-pub(crate) const GPU_BRUSH_U32_STRIDE: usize = 9;
-pub(crate) const GPU_BRUSH_PARAM_STRIDE: usize = 12;
-pub(crate) const GPU_BRUSH_SOLID: u32 = 1;
-pub(crate) const GPU_BRUSH_LINEAR: u32 = 2;
-pub(crate) const GPU_BRUSH_RADIAL: u32 = 3;
-pub(crate) const GPU_BRUSH_SWEEP: u32 = 4;
-pub(crate) const GPU_BRUSH_FOUR_CORNER: u32 = 5;
-pub(crate) const GPU_BRUSH_PATTERN: u32 = 6;
-pub(crate) const GPU_BRUSH_PATTERN_RESOURCE: u32 = 7;
-
-pub(crate) const GPU_PATTERN_NEAREST: u32 = 0;
-pub(crate) const GPU_PATTERN_BILINEAR: u32 = 1;
-
-pub(crate) const GPU_EXTEND_PAD: u32 = 0;
-pub(crate) const GPU_EXTEND_REPEAT: u32 = 1;
-pub(crate) const GPU_EXTEND_REFLECT: u32 = 2;
 
 #[derive(Clone, Default)]
 pub(crate) struct GpuBrushUpload {

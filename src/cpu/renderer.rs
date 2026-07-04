@@ -134,6 +134,14 @@ impl Renderer {
         self.image_resources.insert(key, image)
     }
 
+    pub fn remove_image(&mut self, key: ImageKey) -> bool {
+        self.image_resources.remove(key)
+    }
+
+    pub fn clear_images(&mut self) -> bool {
+        self.image_resources.clear()
+    }
+
     pub fn image_resource(&self, key: ImageKey) -> Option<&Image> {
         self.image_resources.get(key)
     }

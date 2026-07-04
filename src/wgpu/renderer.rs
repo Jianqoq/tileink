@@ -326,6 +326,28 @@ impl Renderer {
         true
     }
 
+    pub fn remove_image(&mut self, key: ImageKey) -> bool {
+        let removed = self.image_resources.remove(key);
+        let cpu_removed = self.cpu.remove_image(key);
+        debug_assert_eq!(removed, cpu_removed);
+        if removed || cpu_removed {
+            self.image_resources_dirty = true;
+            return true;
+        }
+        false
+    }
+
+    pub fn clear_images(&mut self) -> bool {
+        let removed = self.image_resources.clear();
+        let cpu_removed = self.cpu.clear_images();
+        debug_assert_eq!(removed, cpu_removed);
+        if removed || cpu_removed {
+            self.image_resources_dirty = true;
+            return true;
+        }
+        false
+    }
+
     pub fn image_resource(&self, key: ImageKey) -> Option<&Image> {
         self.image_resources.get(key)
     }

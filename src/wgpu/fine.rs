@@ -1,6 +1,8 @@
 #![allow(clippy::too_many_arguments)]
 
-use crate::shared::{gpu_plan::GpuBufferLengths, image::premul_color_to_rgba8_pack};
+use crate::shared::{
+    gpu_layout::fine as fine_layout, gpu_plan::GpuBufferLengths, image::premul_color_to_rgba8_pack,
+};
 
 use super::{
     buffer::WgpuBuffer,
@@ -12,7 +14,7 @@ use super::{
     target::WgpuTarget,
 };
 
-const TILE_STORAGE_BINDING_COUNT: u32 = 55;
+const TILE_STORAGE_BINDING_COUNT: u32 = fine_layout::STORAGE_BUFFER_COUNT;
 
 pub(crate) struct WgpuFinePipeline {
     pipeline: ::wgpu::ComputePipeline,
@@ -262,14 +264,20 @@ impl WgpuFinePipeline {
                 buffer_binding(52, bindings.glyph_image_data),
                 buffer_binding(53, bindings.clip_spills),
                 buffer_binding(54, bindings.group_spills),
-                buffer_binding(55, fine.image_resource_metadata),
-                buffer_binding(56, fine.image_resource_pixels),
+                buffer_binding(
+                    fine_layout::IMAGE_RESOURCE_METADATA_BINDING,
+                    fine.image_resource_metadata,
+                ),
+                buffer_binding(
+                    fine_layout::IMAGE_RESOURCE_PIXELS_BINDING,
+                    fine.image_resource_pixels,
+                ),
             ],
         })
     }
 }
 
-fn tile_fine_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 57] {
+fn tile_fine_layout_entries() -> [::wgpu::BindGroupLayoutEntry; fine_layout::LAYOUT_ENTRY_COUNT] {
     [
         uniform_layout_entry(0),
         storage_texture_layout_entry(1),
@@ -326,8 +334,8 @@ fn tile_fine_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 57] {
         storage_layout_entry(52, true),
         storage_layout_entry(53, false),
         storage_layout_entry(54, false),
-        storage_layout_entry(55, true),
-        storage_layout_entry(56, true),
+        storage_layout_entry(fine_layout::IMAGE_RESOURCE_METADATA_BINDING, true),
+        storage_layout_entry(fine_layout::IMAGE_RESOURCE_PIXELS_BINDING, true),
     ]
 }
 

@@ -5,6 +5,7 @@ pub(crate) mod draw_record;
 pub(crate) mod execution;
 pub(crate) mod fill;
 pub(crate) mod gpu_brush;
+pub(crate) mod gpu_layout;
 pub(crate) mod gpu_plan;
 pub(crate) mod gpu_sdf;
 pub(crate) mod gpu_types;

@@ -125,6 +125,31 @@ fn wgpu_renderer_push_image_key_samples_resource_buffer_when_enabled() {
 }
 
 #[test]
+fn wgpu_renderer_push_image_key_stops_sampling_after_resource_remove_when_enabled() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let key = ImageKey::new(10);
+    let mut canvas = Canvas::new(2, 1);
+    canvas
+        .push_image_key(Rect::new(0.0, 0.0, 2.0, 1.0), key, PatternSampling::Nearest)
+        .expect("push image resource");
+
+    let mut renderer = Renderer::new_default_device(2, 1, Color::TRANSPARENT);
+    assert!(renderer.insert_image(key, Image::from_rgba8(1, 1, [255, 0, 0, 255])));
+    renderer.prepare_scene(&canvas);
+    assert!(renderer.render_prepared_tile_plan(&canvas));
+    assert_eq!(renderer.image().rgba8_at(0, 0), [255, 0, 0, 255]);
+
+    assert!(renderer.remove_image(key));
+    assert!(!renderer.remove_image(key));
+    renderer.prepare_scene(&canvas);
+    assert!(renderer.render_prepared_tile_plan(&canvas));
+    assert_eq!(renderer.image().rgba8_at(0, 0), [0, 0, 0, 0]);
+}
+
+#[test]
 fn wgpu_renderer_reuses_pipelines_when_clear_changes() {
     if !run_wgpu_tests() {
         return;
