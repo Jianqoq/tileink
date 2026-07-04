@@ -1,19 +1,23 @@
-fn sample_brush(brush_index: u32, x: f32, y: f32) -> u32 {
-    let data_base = brush_index * GPU_BRUSH_U32_STRIDE;
-    let kind = brush_data[data_base];
-    let extend = brush_data[data_base + 1u];
-    let payload_offset = brush_data[data_base + 2u];
-    let payload_len = brush_data[data_base + 3u];
-    let base = brush_index * GPU_BRUSH_PARAM_STRIDE;
-    var color = brush_data[data_base + 4u];
+fn brush_param(base: u32, index: u32) -> f32 {
+    return bitcast<f32>(brush_blob[base + index]);
+}
+
+fn sample_brush(brush_offset: u32, x: f32, y: f32) -> u32 {
+    let data_base = brush_offset;
+    let kind = brush_blob[data_base];
+    let extend = brush_blob[data_base + 1u];
+    let payload_offset = data_base + brush_blob[data_base + 2u];
+    let payload_len = brush_blob[data_base + 3u];
+    let base = data_base + GPU_BRUSH_U32_STRIDE;
+    var color = brush_blob[data_base + 4u];
 
     if (kind == GPU_BRUSH_LINEAR) {
-        let tx = brush_params[base + 4u] * x + brush_params[base + 6u] * y + brush_params[base + 8u];
-        let ty = brush_params[base + 5u] * x + brush_params[base + 7u] * y + brush_params[base + 9u];
-        let sx = brush_params[base];
-        let sy = brush_params[base + 1u];
-        let ex = brush_params[base + 2u];
-        let ey = brush_params[base + 3u];
+        let tx = brush_param(base, 4u) * x + brush_param(base, 6u) * y + brush_param(base, 8u);
+        let ty = brush_param(base, 5u) * x + brush_param(base, 7u) * y + brush_param(base, 9u);
+        let sx = brush_param(base, 0u);
+        let sy = brush_param(base, 1u);
+        let ex = brush_param(base, 2u);
+        let ey = brush_param(base, 3u);
         let dx = ex - sx;
         let dy = ey - sy;
         let denominator = dx * dx + dy * dy;
@@ -25,10 +29,10 @@ fn sample_brush(brush_index: u32, x: f32, y: f32) -> u32 {
     } else if (kind == GPU_BRUSH_RADIAL) {
         color = sample_radial(x, y, base, extend, payload_offset, payload_len);
     } else if (kind == GPU_BRUSH_SWEEP) {
-        let cx = brush_params[base];
-        let cy = brush_params[base + 1u];
-        let start_angle = brush_params[base + 2u];
-        let end_angle = brush_params[base + 3u];
+        let cx = brush_param(base, 0u);
+        let cy = brush_param(base, 1u);
+        let start_angle = brush_param(base, 2u);
+        let end_angle = brush_param(base, 3u);
         let span = end_angle - start_angle;
         var t = 0.0;
         if (abs(span) > 0.00000011920929) {
@@ -55,21 +59,21 @@ fn sample_brush(brush_index: u32, x: f32, y: f32) -> u32 {
             base,
             payload_offset,
             payload_len,
-            brush_data[data_base + 5u],
-            brush_data[data_base + 6u],
-            brush_data[data_base + 7u],
+            brush_blob[data_base + 5u],
+            brush_blob[data_base + 6u],
+            brush_blob[data_base + 7u],
             extend,
-            brush_data[data_base + 8u],
+            brush_blob[data_base + 8u],
         );
     } else if (kind == GPU_BRUSH_PATTERN_RESOURCE) {
         color = sample_resource_pattern(
             x,
             y,
             base,
-            payload_offset,
-            brush_data[data_base + 7u],
+            brush_blob[data_base + 2u],
+            brush_blob[data_base + 7u],
             extend,
-            brush_data[data_base + 8u],
+            brush_blob[data_base + 8u],
         );
     }
 
@@ -77,14 +81,14 @@ fn sample_brush(brush_index: u32, x: f32, y: f32) -> u32 {
 }
 
 fn sample_radial(x: f32, y: f32, base: u32, extend: u32, payload_offset: u32, payload_len: u32) -> u32 {
-    let tx = brush_params[base + 6u] * x + brush_params[base + 8u] * y + brush_params[base + 10u];
-    let ty = brush_params[base + 7u] * x + brush_params[base + 9u] * y + brush_params[base + 11u];
-    let sx = brush_params[base];
-    let sy = brush_params[base + 1u];
-    let ex = brush_params[base + 2u];
-    let ey = brush_params[base + 3u];
-    let start_radius = brush_params[base + 4u];
-    let end_radius = brush_params[base + 5u];
+    let tx = brush_param(base, 6u) * x + brush_param(base, 8u) * y + brush_param(base, 10u);
+    let ty = brush_param(base, 7u) * x + brush_param(base, 9u) * y + brush_param(base, 11u);
+    let sx = brush_param(base, 0u);
+    let sy = brush_param(base, 1u);
+    let ex = brush_param(base, 2u);
+    let ey = brush_param(base, 3u);
+    let start_radius = brush_param(base, 4u);
+    let end_radius = brush_param(base, 5u);
     let qx = tx - sx;
     let qy = ty - sy;
     let dcx = ex - sx;
@@ -134,10 +138,10 @@ fn sample_radial(x: f32, y: f32, base: u32, extend: u32, payload_offset: u32, pa
 }
 
 fn sample_four_corner(x: f32, y: f32, base: u32, payload_offset: u32) -> u32 {
-    let x0 = brush_params[base];
-    let y0 = brush_params[base + 1u];
-    let x1 = brush_params[base + 2u];
-    let y1 = brush_params[base + 3u];
+    let x0 = brush_param(base, 0u);
+    let y0 = brush_param(base, 1u);
+    let x1 = brush_param(base, 2u);
+    let y1 = brush_param(base, 3u);
     let width = x1 - x0;
     let height = y1 - y0;
     var u = 0.0;
@@ -148,10 +152,10 @@ fn sample_four_corner(x: f32, y: f32, base: u32, payload_offset: u32) -> u32 {
     if (abs(height) > 0.00000011920929) {
         v = clamp((y - y0) / height, 0.0, 1.0);
     }
-    let tl = brush_payloads[payload_offset];
-    let tr = brush_payloads[payload_offset + 1u];
-    let br = brush_payloads[payload_offset + 2u];
-    let bl = brush_payloads[payload_offset + 3u];
+    let tl = brush_blob[payload_offset];
+    let tr = brush_blob[payload_offset + 1u];
+    let br = brush_blob[payload_offset + 2u];
+    let bl = brush_blob[payload_offset + 3u];
     let top = lerp_premul_u8(tl, tr, u);
     let bottom = lerp_premul_u8(bl, br, u);
     return lerp_premul_u8(top, bottom, v);
@@ -171,8 +175,8 @@ fn sample_pattern(
 ) -> u32 {
     var color = 0u;
     if (payload_len > 0u && width > 0u && height > 0u) {
-        let tx = brush_params[base] * x + brush_params[base + 2u] * y + brush_params[base + 4u];
-        let ty = brush_params[base + 1u] * x + brush_params[base + 3u] * y + brush_params[base + 5u];
+        let tx = brush_param(base, 0u) * x + brush_param(base, 2u) * y + brush_param(base, 4u);
+        let ty = brush_param(base, 1u) * x + brush_param(base, 3u) * y + brush_param(base, 5u);
         color = sample_pattern_pixels(false, tx, ty, payload_offset, payload_len, width, height, opacity, extend, sampling);
     }
     return color;
@@ -194,8 +198,8 @@ fn sample_resource_pattern(
     let height = image_resource_metadata[metadata_base + 3u];
     var color = 0u;
     if (payload_len > 0u && width > 0u && height > 0u) {
-        let tx = (brush_params[base] * x + brush_params[base + 2u] * y + brush_params[base + 4u]) * f32(width);
-        let ty = (brush_params[base + 1u] * x + brush_params[base + 3u] * y + brush_params[base + 5u]) * f32(height);
+        let tx = (brush_param(base, 0u) * x + brush_param(base, 2u) * y + brush_param(base, 4u)) * f32(width);
+        let ty = (brush_param(base, 1u) * x + brush_param(base, 3u) * y + brush_param(base, 5u)) * f32(height);
         color = sample_pattern_pixels(true, tx, ty, payload_offset, payload_len, width, height, opacity, extend, sampling);
     }
     return color;
@@ -241,7 +245,7 @@ fn pattern_pixel(use_resource: bool, payload_offset: u32, payload_len: u32, widt
     if (use_resource) {
         return image_resource_pixels[payload_offset + local_ix];
     }
-    return brush_payloads[payload_offset + local_ix];
+    return brush_blob[payload_offset + local_ix];
 }
 
 fn sample_ramp(payload_offset: u32, payload_len: u32, t: f32, extend: u32) -> u32 {
@@ -252,8 +256,8 @@ fn sample_ramp(payload_offset: u32, payload_len: u32, t: f32, extend: u32) -> u3
         let left_ix = u32(floor(position));
         let right_ix = min(left_ix + 1u, last);
         let frac = position - f32(left_ix);
-        let left = brush_payloads[payload_offset + left_ix];
-        let right = brush_payloads[payload_offset + right_ix];
+        let left = brush_blob[payload_offset + left_ix];
+        let right = brush_blob[payload_offset + right_ix];
         if (frac <= 0.00000011920929 || left_ix == right_ix) {
             color = left;
         } else {

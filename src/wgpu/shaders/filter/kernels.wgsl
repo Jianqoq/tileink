@@ -102,7 +102,7 @@ fn filter_flood_region(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
     let xy = xy_for_region_ix(region_ix);
-    target_store_at(xy.x, xy.y, sample_brush(config.brush_index, f32(xy.x) + 0.5, f32(xy.y) + 0.5));
+    target_store_at(xy.x, xy.y, sample_brush(config.brush_offset, f32(xy.x) + 0.5, f32(xy.y) + 0.5));
 }
 
 @compute @workgroup_size(256)
@@ -978,7 +978,7 @@ fn filter_composite_drop_shadow_region(@builtin(global_invocation_id) gid: vec3<
     let xy = xy_for_region_ix(region_ix);
     let ix = target_ix_at(xy.x, xy.y);
     let alpha = aux_pixel_ix(ix) >> 24u;
-    let shadow_color = sample_brush(config.brush_index, f32(xy.x) + 0.5, f32(xy.y) + 0.5);
+    let shadow_color = sample_brush(config.brush_offset, f32(xy.x) + 0.5, f32(xy.y) + 0.5);
     let shadow = scale_premul_u8(shadow_color, alpha);
     target_store_ix(ix, src_over_premul_u8(shadow, target_load_ix(ix)));
 }
@@ -1178,3 +1178,4 @@ fn filter_composite_surface_stack_region(@builtin(global_invocation_id) gid: vec
     let ix = target_ix_at(xy.x, xy.y);
     target_store_ix(ix, composite_surface_with_stack(target_load_ix(ix), source_pixel_at(u32(sx), u32(sy)), xy.x, xy.y));
 }
+

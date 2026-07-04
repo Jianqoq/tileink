@@ -1,4 +1,5 @@
 use crate::shared::{
+    brush::encoded_brush_word_len,
     execution::{ExecOp, ExecPlan},
     gpu_brush::GpuBrushUpload,
     image_resource::GpuImageResourceUpload,
@@ -20,9 +21,7 @@ pub(super) struct WgpuFilterTransferBuffers {
 }
 
 pub(super) struct WgpuFilterBrushBuffers {
-    pub(super) data: WgpuBuffer,
-    pub(super) params: WgpuBuffer,
-    pub(super) payloads: WgpuBuffer,
+    pub(super) blob: WgpuBuffer,
 }
 
 pub(super) struct WgpuFilterConvolveBuffers {
@@ -89,9 +88,7 @@ impl WgpuFilterTransferBuffers {
 impl WgpuFilterBrushBuffers {
     pub(super) fn new(device: &::wgpu::Device) -> Self {
         Self {
-            data: WgpuBuffer::new(device, "tileink wgpu filter brush data"),
-            params: WgpuBuffer::new(device, "tileink wgpu filter brush params"),
-            payloads: WgpuBuffer::new(device, "tileink wgpu filter brush payloads"),
+            blob: WgpuBuffer::new(device, "tileink wgpu filter brush blob"),
         }
     }
 
@@ -125,23 +122,11 @@ impl WgpuFilterBrushBuffers {
         queue: &::wgpu::Queue,
         upload: GpuBrushUpload,
     ) {
-        self.data.upload(
+        self.blob.upload(
             device,
             queue,
-            "tileink wgpu filter brush data",
-            &upload.data,
-        );
-        self.params.upload(
-            device,
-            queue,
-            "tileink wgpu filter brush params",
-            &upload.params,
-        );
-        self.payloads.upload(
-            device,
-            queue,
-            "tileink wgpu filter brush payloads",
-            &upload.payloads,
+            "tileink wgpu filter brush blob",
+            &upload.blob,
         );
     }
 }
@@ -284,7 +269,7 @@ impl WgpuFilterPathBuffers {
 #[derive(Default)]
 pub(super) struct WgpuFilterCursors {
     transfer: usize,
-    brush: usize,
+    brush_offset: usize,
     convolve: usize,
     turbulence: usize,
     path: usize,
@@ -297,10 +282,10 @@ impl WgpuFilterCursors {
         index
     }
 
-    pub(super) fn next_brush_index(&mut self) -> u32 {
-        let index = self.brush as u32;
-        self.brush += 1;
-        index
+    pub(super) fn next_brush_offset(&mut self, brush: &crate::shared::brush::Brush) -> u32 {
+        let offset = self.brush_offset as u32;
+        self.brush_offset += encoded_brush_word_len(brush);
+        offset
     }
 
     pub(super) fn next_convolve_offset(&mut self, matrix: &ConvolveMatrix) -> u32 {
@@ -381,8 +366,8 @@ impl WgpuFilterCursors {
                 for primitive in primitives {
                     match &primitive.kind {
                         FilterPrimitiveKind::Filter(filter) => self.advance_filter(filter),
-                        FilterPrimitiveKind::Image { .. } => {
-                            self.next_brush_index();
+                        FilterPrimitiveKind::Image { brush } => {
+                            self.next_brush_offset(brush);
                         }
                         FilterPrimitiveKind::Turbulence(_) => {
                             self.next_turbulence_index();
@@ -397,8 +382,8 @@ impl WgpuFilterCursors {
             Filter::ConvolveMatrix(matrix) => {
                 self.next_convolve_offset(matrix);
             }
-            Filter::Flood { .. } | Filter::DropShadow { .. } => {
-                self.next_brush_index();
+            Filter::Flood { brush } | Filter::DropShadow { brush, .. } => {
+                self.next_brush_offset(brush);
             }
             _ => {}
         }

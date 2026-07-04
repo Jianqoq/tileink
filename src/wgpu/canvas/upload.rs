@@ -279,28 +279,16 @@ impl WgpuSceneBuffers {
             );
         });
         profile_cpu("prepare.upload_scene.blobs.brushes", || {
-            let brushes = GpuBrushUpload::from_scene_brush_blob(
+            let brush_upload = GpuBrushUpload::from_scene_brush_blob(
                 &canvas.draw_records,
                 &canvas.brush_blob,
                 image_resources,
             );
-            self.draw_brush_data.upload(
+            self.brush_blob.upload(
                 device,
                 queue,
-                "tileink wgpu canvas draw brush data",
-                &brushes.data,
-            );
-            self.draw_brush_params.upload(
-                device,
-                queue,
-                "tileink wgpu canvas draw brush params",
-                &brushes.params,
-            );
-            self.draw_brush_payloads.upload(
-                device,
-                queue,
-                "tileink wgpu canvas draw brush payloads",
-                &brushes.payloads,
+                "tileink wgpu canvas brush blob",
+                &brush_upload.blob,
             );
         });
     }

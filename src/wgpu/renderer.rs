@@ -1626,9 +1626,7 @@ impl Renderer {
     fn filter_brush_bindings(&self) -> WgpuFilterBrushBindings<'_> {
         let image_resources = self.scene_buffers.image_resource_bindings();
         WgpuFilterBrushBindings {
-            data: self.filter_brushes.data.buffer(),
-            params: self.filter_brushes.params.buffer(),
-            payloads: self.filter_brushes.payloads.buffer(),
+            blob: self.filter_brushes.blob.buffer(),
             image_resource_metadata: image_resources.0,
             image_resource_pixels: image_resources.1,
         }

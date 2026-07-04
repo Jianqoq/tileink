@@ -3,7 +3,6 @@ use crate::{
     TextLayoutOptions,
     shared::{
         brush::PatternImage,
-        gpu_brush::{GPU_BRUSH_U32_STRIDE, GpuBrushUpload},
         image::{Image, premul_color_to_rgba8_pack},
         image_resource::ImageKey,
     },
@@ -251,14 +250,14 @@ fn draw_id_updates_specific_draw_color() {
     assert!(canvas.set_draw_color(first, rgb(8, 9, 10)));
     assert_eq!(canvas.draw_solid_color(first), Some(rgb(8, 9, 10)));
     assert_eq!(canvas.draw_solid_color(second), Some(rgb(0, 255, 0)));
-    let brushes =
-        GpuBrushUpload::from_scene_brush_blob(&canvas.draw_records, &canvas.brush_blob, None);
+    let first_brush = canvas.draw_records[first.index()].brush_offset as usize;
+    let second_brush = canvas.draw_records[second.index()].brush_offset as usize;
     assert_eq!(
-        brushes.data[first.index() * GPU_BRUSH_U32_STRIDE + 4],
+        canvas.brush_blob[first_brush + 4],
         premul_color_to_rgba8_pack(rgb(8, 9, 10))
     );
     assert_eq!(
-        brushes.data[second.index() * GPU_BRUSH_U32_STRIDE + 4],
+        canvas.brush_blob[second_brush + 4],
         premul_color_to_rgba8_pack(rgb(0, 255, 0))
     );
 }

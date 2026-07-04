@@ -56,7 +56,7 @@ struct PathRecord {
 @group(0) @binding(9) var<storage, read> glyph_image_top: array<i32>;
 @group(0) @binding(10) var<storage, read> glyph_image_width: array<u32>;
 @group(0) @binding(11) var<storage, read> glyph_image_height: array<u32>;
-@group(0) @binding(13) var<storage, read> brush_data: array<u32>;
+@group(0) @binding(13) var<storage, read> brush_blob: array<u32>;
 @group(0) @binding(18) var<storage, read> path_records: array<PathRecord>;
 @group(0) @binding(19) var<storage, read_write> backdrops: array<atomic<i32>>;
 @group(0) @binding(20) var<storage, read> segment_starts: array<u32>;
@@ -755,14 +755,16 @@ fn draw_has_glyph_at(draw_ix: u32) -> bool {
 }
 
 fn draw_solid_color_fast_path_at(draw_ix: u32) -> bool {
-    let brush_base = draw_ix * GPU_BRUSH_U32_STRIDE;
+    let draw = draw_records[draw_ix];
+    let brush_base = draw.brush_offset;
     return draw_records[draw_ix].solid_rect != 0u &&
-        brush_data[brush_base] == GPU_BRUSH_SOLID &&
-        brush_data[brush_base + 4u] != 0u;
+        brush_base != INVALID &&
+        brush_blob[brush_base] == GPU_BRUSH_SOLID &&
+        brush_blob[brush_base + 4u] != 0u;
 }
 
 fn draw_solid_color_at(draw_ix: u32) -> u32 {
-    return brush_data[draw_ix * GPU_BRUSH_U32_STRIDE + 4u];
+    return brush_blob[draw_records[draw_ix].brush_offset + 4u];
 }
 
 fn store_particle(dst: u32, tag: u32, backdrop: i32, fill_rule: u32, segment_start: u32, segment_end: u32, color: u32) {

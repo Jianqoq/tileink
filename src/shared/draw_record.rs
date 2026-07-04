@@ -100,11 +100,6 @@ impl DrawRecord {
             .then_some(self.sdf_shadow_offset as usize..end as usize)
     }
 
-    pub(crate) fn brush_range(self) -> Option<std::ops::Range<usize>> {
-        let end = self.brush_offset.checked_add(self.brush_len)?;
-        (self.brush_offset != Self::NONE).then_some(self.brush_offset as usize..end as usize)
-    }
-
     pub(crate) fn has_analytic_geometry(&self) -> bool {
         self.sdf_offset != Self::NONE || self.sdf_shadow_offset != Self::NONE
     }

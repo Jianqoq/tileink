@@ -241,7 +241,7 @@ impl WgpuCoarsePipeline {
                 bind_buffer(9, bindings.glyph_image_top),
                 bind_buffer(10, bindings.glyph_image_width),
                 bind_buffer(11, bindings.glyph_image_height),
-                bind_buffer(13, bindings.brush_data),
+                bind_buffer(13, bindings.brush_blob),
                 bind_buffer(18, bindings.path_records),
                 bind_buffer(19, bindings.backdrops),
                 bind_buffer(20, bindings.segment_starts),

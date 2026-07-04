@@ -318,6 +318,21 @@ pub(crate) fn push_encoded_brush(blob: &mut Vec<u32>, brush: &Brush) -> (u32, u3
     (offset, blob.len() as u32 - offset)
 }
 
+pub(crate) fn encoded_brush_word_len(brush: &Brush) -> usize {
+    ENCODED_BRUSH_HEADER_WORDS
+        + match brush {
+            Brush::Solid(_) => 0,
+            Brush::Linear(gradient) => gradient.ramp.len(),
+            Brush::Radial(gradient) => gradient.ramp.len(),
+            Brush::Sweep(gradient) => gradient.ramp.len(),
+            Brush::FourCorner(gradient) => gradient.colors.len(),
+            Brush::Pattern(pattern) => match &pattern.image {
+                PatternImage::Inline(image) => image.pixels.len(),
+                PatternImage::Resource(_) => 2,
+            },
+        }
+}
+
 pub(crate) fn encoded_brush_payload(blob: &[u32], offset: u32, len: u32) -> Option<&[u32]> {
     let record = encoded_brush_words(blob, offset, len)?;
     let data: &[u32; GPU_BRUSH_U32_STRIDE] = record[..GPU_BRUSH_U32_STRIDE].try_into().ok()?;
@@ -659,13 +674,7 @@ impl PatternBrush {
         )
     }
 
-    pub(crate) fn inline_image(&self) -> Option<&Image> {
-        match &self.image {
-            PatternImage::Inline(image) => Some(image),
-            PatternImage::Resource(_) => None,
-        }
-    }
-
+    #[cfg(test)]
     pub(crate) fn image_key(&self) -> Option<ImageKey> {
         match self.image {
             PatternImage::Inline(_) => None,

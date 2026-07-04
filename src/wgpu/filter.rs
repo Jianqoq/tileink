@@ -75,7 +75,7 @@ struct FilterConfig {
     clear_color: u32,
     filter_kind: u32,
     table_index: u32,
-    brush_index: u32,
+    brush_offset: u32,
     offset_x: i32,
     offset_y: i32,
     morphology_radius: u32,
@@ -185,7 +185,7 @@ impl Default for FilterConfig {
             clear_color: 0,
             filter_kind: 0,
             table_index: 0,
-            brush_index: 0,
+            brush_offset: 0,
             offset_x: 0,
             offset_y: 0,
             morphology_radius: 0,
@@ -318,9 +318,7 @@ pub(crate) struct WgpuFilterPipeline {
 }
 
 pub(crate) struct WgpuFilterBrushBindings<'a> {
-    pub(crate) data: &'a ::wgpu::Buffer,
-    pub(crate) params: &'a ::wgpu::Buffer,
-    pub(crate) payloads: &'a ::wgpu::Buffer,
+    pub(crate) blob: &'a ::wgpu::Buffer,
     pub(crate) image_resource_metadata: &'a ::wgpu::Buffer,
     pub(crate) image_resource_pixels: &'a ::wgpu::Buffer,
 }
@@ -916,13 +914,13 @@ impl WgpuFilterPipeline {
         size: (u32, u32),
         lengths: GpuBufferLengths,
         bounds: Bounds,
-        brush_index: u32,
+        brush_offset: u32,
         brushes: &WgpuFilterBrushBindings<'_>,
     ) {
         let Some(mut config) = config_for_bounds(size, lengths, bounds) else {
             return;
         };
-        config.brush_index = brush_index;
+        config.brush_offset = brush_offset;
         self.dispatch_with_extra(
             commands,
             &self.flood_region,
@@ -1347,13 +1345,13 @@ impl WgpuFilterPipeline {
         size: (u32, u32),
         lengths: GpuBufferLengths,
         bounds: Bounds,
-        brush_index: u32,
+        brush_offset: u32,
         brushes: &WgpuFilterBrushBindings<'_>,
     ) {
         let Some(mut config) = config_for_bounds(size, lengths, bounds) else {
             return;
         };
-        config.brush_index = brush_index;
+        config.brush_offset = brush_offset;
         self.dispatch_with_extra(
             commands,
             &self.composite_drop_shadow_region,
@@ -1846,9 +1844,7 @@ impl WgpuFilterPipeline {
             layer_stack_payloads: &self.dummy_read,
         };
         let bindings = bindings.unwrap_or(&fallback);
-        let brush_data = brushes.map_or(&self.dummy_read, |brushes| brushes.data);
-        let brush_params = brushes.map_or(&self.dummy_read, |brushes| brushes.params);
-        let brush_payloads = brushes.map_or(&self.dummy_read, |brushes| brushes.payloads);
+        let brush_blob = brushes.map_or(&self.dummy_read, |brushes| brushes.blob);
         let image_resource_metadata =
             brushes.map_or(&self.dummy_read, |brushes| brushes.image_resource_metadata);
         let image_resource_pixels =
@@ -1886,9 +1882,7 @@ impl WgpuFilterPipeline {
                 bind_buffer(34, bindings.layer_stack_draws),
                 bind_buffer(35, bindings.layer_stack_payloads),
                 bind_buffer(36, transfer_tables.unwrap_or(&self.dummy_read)),
-                bind_buffer(37, brush_data),
-                bind_buffer(38, brush_params),
-                bind_buffer(39, brush_payloads),
+                bind_buffer(37, brush_blob),
                 bind_buffer(40, convolve_kernels),
                 bind_buffer(41, turbulence_selectors),
                 bind_buffer(42, turbulence_gradients),
@@ -2312,8 +2306,6 @@ fn filter_layout_entries(portable_textures: bool) -> Vec<::wgpu::BindGroupLayout
         storage_entry(35, true),
         storage_entry(36, true),
         storage_entry(37, true),
-        storage_entry(38, true),
-        storage_entry(39, true),
         storage_entry(40, true),
         storage_entry(41, true),
         storage_entry(42, true),

@@ -71,14 +71,14 @@ impl Renderer {
     ) -> Option<WgpuRenderTargetId> {
         let region = primitive.region.intersect(bounds);
         match &primitive.kind {
-            filter_model::FilterPrimitiveKind::Image { .. } => {
+            filter_model::FilterPrimitiveKind::Image { brush } => {
                 let output = self.acquire_scratch()?;
                 self.clear_render_region(commands, output, bounds, 0);
                 if self.flood_region_to_target(
                     commands,
                     output,
                     region,
-                    filter_cursors.next_brush_index(),
+                    filter_cursors.next_brush_offset(brush),
                 ) {
                     Some(output)
                 } else {
@@ -407,11 +407,12 @@ impl Renderer {
                 self.release_scratch(temp);
                 ok
             }
-            Filter::Flood { .. } => {
-                let brush_index = filter_cursors.next_brush_index();
-                self.flood_region_to_target(commands, target, bounds, brush_index)
+            Filter::Flood { brush } => {
+                let brush_offset = filter_cursors.next_brush_offset(brush);
+                self.flood_region_to_target(commands, target, bounds, brush_offset)
             }
             Filter::DropShadow {
+                brush,
                 offset_x,
                 offset_y,
                 std_dev,
@@ -423,7 +424,7 @@ impl Renderer {
                 *offset_x,
                 *offset_y,
                 *std_dev,
-                filter_cursors.next_brush_index(),
+                filter_cursors.next_brush_offset(brush),
             ),
             Filter::Morphology {
                 radius_x,
@@ -518,7 +519,7 @@ impl Renderer {
         commands: &mut WgpuCommandBatch,
         target: WgpuRenderTargetId,
         bounds: Bounds,
-        brush_index: u32,
+        brush_offset: u32,
     ) -> bool {
         let Some(filter) = &self.filter else {
             return false;
@@ -530,7 +531,7 @@ impl Renderer {
             self.size,
             self.lengths,
             bounds,
-            brush_index,
+            brush_offset,
             &brushes,
         );
         true
@@ -544,7 +545,7 @@ impl Renderer {
         offset_x: f32,
         offset_y: f32,
         std_dev: f32,
-        brush_index: u32,
+        brush_offset: u32,
     ) -> bool {
         let Some(shadow) = self.acquire_scratch() else {
             return false;
@@ -578,7 +579,7 @@ impl Renderer {
         }
 
         let ok =
-            self.composite_drop_shadow_to_target(commands, target, shadow, bounds, brush_index);
+            self.composite_drop_shadow_to_target(commands, target, shadow, bounds, brush_offset);
         self.release_scratch(shadow);
         ok
     }
@@ -1301,7 +1302,7 @@ impl Renderer {
         target: WgpuRenderTargetId,
         shadow: WgpuRenderTargetId,
         bounds: Bounds,
-        brush_index: u32,
+        brush_offset: u32,
     ) -> bool {
         let Some(filter) = &self.filter else {
             return false;
@@ -1314,7 +1315,7 @@ impl Renderer {
             self.size,
             self.lengths,
             bounds,
-            brush_index,
+            brush_offset,
             &brushes,
         );
         true

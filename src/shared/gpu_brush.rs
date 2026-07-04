@@ -1,18 +1,12 @@
-use peniko::Extend;
-
-pub(crate) use crate::shared::gpu_layout::brush::{
-    GPU_BRUSH_FOUR_CORNER, GPU_BRUSH_LINEAR, GPU_BRUSH_PARAM_STRIDE, GPU_BRUSH_PATTERN,
-    GPU_BRUSH_PATTERN_RESOURCE, GPU_BRUSH_RADIAL, GPU_BRUSH_SOLID, GPU_BRUSH_SWEEP,
-    GPU_BRUSH_U32_STRIDE, GPU_EXTEND_PAD, GPU_EXTEND_REFLECT, GPU_EXTEND_REPEAT,
-    GPU_PATTERN_BILINEAR, GPU_PATTERN_NEAREST,
+use crate::shared::gpu_layout::brush::{
+    GPU_BRUSH_PATTERN, GPU_BRUSH_PATTERN_RESOURCE, GPU_BRUSH_U32_STRIDE,
 };
 
 use crate::shared::{
-    brush::{Brush, PatternSampling, encoded_brush_payload},
+    brush::{Brush, ENCODED_BRUSH_HEADER_WORDS, push_encoded_brush},
     draw_record::DrawRecord,
     execution::ExecOp,
-    image::premul_color_to_rgba8_pack,
-    image_resource::GpuImageResourceUpload,
+    image_resource::{GpuImageResourceUpload, ImageKey},
     layer::{
         Layer,
         filter::{Filter, FilterPrimitiveKind},
@@ -21,9 +15,7 @@ use crate::shared::{
 
 #[derive(Clone, Default)]
 pub(crate) struct GpuBrushUpload {
-    pub(crate) data: Vec<u32>,
-    pub(crate) params: Vec<f32>,
-    pub(crate) payloads: Vec<u32>,
+    pub(crate) blob: Vec<u32>,
 }
 
 impl GpuBrushUpload {
@@ -32,9 +24,11 @@ impl GpuBrushUpload {
         brush_blob: &[u32],
         image_resources: Option<&GpuImageResourceUpload>,
     ) -> Self {
-        let mut upload = Self::default();
+        let mut upload = Self {
+            blob: brush_blob.to_vec(),
+        };
         for draw in draws {
-            upload.push_scene_brush(draw, brush_blob, image_resources);
+            upload.patch_scene_resource_brush(draw, image_resources);
         }
         upload
     }
@@ -63,177 +57,59 @@ impl GpuBrushUpload {
         &mut self,
         brush: &Brush,
         image_resources: Option<&GpuImageResourceUpload>,
-    ) {
-        let (data, params) = self.encode_brush(brush, image_resources);
-        self.data.extend_from_slice(&data);
-        debug_assert_eq!(self.data.len() % GPU_BRUSH_U32_STRIDE, 0);
-        self.params.extend_from_slice(&params);
+    ) -> u32 {
+        let offset = self.blob.len() as u32;
+        let (brush_offset, _) = push_encoded_brush(&mut self.blob, brush);
+        debug_assert_eq!(offset, brush_offset);
+        self.patch_resource_brush_at(offset, image_resources);
+        offset
     }
 
-    fn push_scene_brush(
+    fn patch_scene_resource_brush(
         &mut self,
         draw: &DrawRecord,
-        brush_blob: &[u32],
         image_resources: Option<&GpuImageResourceUpload>,
     ) {
-        let Some(record) = draw.brush_range().and_then(|range| brush_blob.get(range)) else {
-            self.push_transparent_brush();
+        if draw.brush_offset != DrawRecord::NONE {
+            self.patch_resource_brush_at(draw.brush_offset, image_resources);
+        }
+    }
+
+    fn patch_resource_brush_at(
+        &mut self,
+        brush_offset: u32,
+        image_resources: Option<&GpuImageResourceUpload>,
+    ) {
+        let base = brush_offset as usize;
+        if self.blob.get(base).copied() != Some(GPU_BRUSH_PATTERN_RESOURCE) {
+            return;
+        }
+        let Some(data) = self.blob.get(base..base + GPU_BRUSH_U32_STRIDE) else {
             return;
         };
-        if record.len() < GPU_BRUSH_U32_STRIDE + GPU_BRUSH_PARAM_STRIDE {
-            self.push_transparent_brush();
+        let payload_start = base + data[2] as usize;
+        let payload_len = data[3] as usize;
+        let Some(payload) = self.blob.get(payload_start..payload_start + payload_len) else {
+            self.clear_missing_resource_pattern(base);
+            return;
+        };
+        if payload.len() < 2 {
+            self.clear_missing_resource_pattern(base);
             return;
         }
-
-        let mut data = [0; GPU_BRUSH_U32_STRIDE];
-        data.copy_from_slice(&record[..GPU_BRUSH_U32_STRIDE]);
-        let params = record[GPU_BRUSH_U32_STRIDE..GPU_BRUSH_U32_STRIDE + GPU_BRUSH_PARAM_STRIDE]
-            .iter()
-            .map(|word| f32::from_bits(*word));
-        self.params.extend(params);
-
-        if data[0] == GPU_BRUSH_PATTERN_RESOURCE {
-            let payload =
-                encoded_brush_payload(brush_blob, draw.brush_offset, draw.brush_len).unwrap_or(&[]);
-            if payload.len() >= 2 {
-                let key = crate::shared::image_resource::ImageKey(
-                    payload[0] as u64 | ((payload[1] as u64) << 32),
-                );
-                if let Some(index) =
-                    image_resources.and_then(|resources| resources.image_index(key))
-                {
-                    data[2] = index;
-                    data[3] = 0;
-                    self.data.extend_from_slice(&data);
-                    return;
-                }
-            }
-            data[0] = GPU_BRUSH_PATTERN;
-            data[2] = 0;
-            data[3] = 0;
-            self.data.extend_from_slice(&data);
-            return;
+        let key = ImageKey(payload[0] as u64 | ((payload[1] as u64) << 32));
+        if let Some(index) = image_resources.and_then(|resources| resources.image_index(key)) {
+            self.blob[base + 2] = index;
+            self.blob[base + 3] = 0;
+        } else {
+            self.clear_missing_resource_pattern(base);
         }
-
-        if data[3] != 0 {
-            let payload =
-                encoded_brush_payload(brush_blob, draw.brush_offset, draw.brush_len).unwrap_or(&[]);
-            let (payload_offset, payload_len) = self.push_payload(payload);
-            data[2] = payload_offset;
-            data[3] = payload_len;
-        }
-        self.data.extend_from_slice(&data);
     }
 
-    fn push_transparent_brush(&mut self) {
-        let mut data = [0; GPU_BRUSH_U32_STRIDE];
-        data[0] = GPU_BRUSH_SOLID;
-        data[7] = 255;
-        self.data.extend_from_slice(&data);
-        self.params
-            .extend_from_slice(&[0.0; GPU_BRUSH_PARAM_STRIDE]);
-    }
-
-    fn encode_brush(
-        &mut self,
-        brush: &Brush,
-        image_resources: Option<&GpuImageResourceUpload>,
-    ) -> ([u32; GPU_BRUSH_U32_STRIDE], [f32; GPU_BRUSH_PARAM_STRIDE]) {
-        let mut params = [0.0; GPU_BRUSH_PARAM_STRIDE];
-        let mut kind = GPU_BRUSH_SOLID;
-        let mut extend = GPU_EXTEND_PAD;
-        let mut color = 0;
-        let mut image_width = 0;
-        let mut image_height = 0;
-        let mut opacity = 255;
-        let mut pattern_sampling = GPU_PATTERN_NEAREST;
-        let mut payload_offset = 0;
-        let mut payload_len = 0;
-
-        match brush {
-            Brush::Solid(value) => {
-                color = premul_color_to_rgba8_pack(*value);
-            }
-            Brush::Linear(gradient) => {
-                kind = GPU_BRUSH_LINEAR;
-                extend = encode_gpu_extend(gradient.extend);
-                params[0] = gradient.start[0];
-                params[1] = gradient.start[1];
-                params[2] = gradient.end[0];
-                params[3] = gradient.end[1];
-                params[4..10].copy_from_slice(&gradient.transform);
-                (payload_offset, payload_len) = self.push_payload(&gradient.ramp);
-            }
-            Brush::Radial(gradient) => {
-                kind = GPU_BRUSH_RADIAL;
-                extend = encode_gpu_extend(gradient.extend);
-                params[0] = gradient.start_center[0];
-                params[1] = gradient.start_center[1];
-                params[2] = gradient.end_center[0];
-                params[3] = gradient.end_center[1];
-                params[4] = gradient.start_radius;
-                params[5] = gradient.end_radius;
-                params[6..12].copy_from_slice(&gradient.transform);
-                (payload_offset, payload_len) = self.push_payload(&gradient.ramp);
-            }
-            Brush::Sweep(gradient) => {
-                kind = GPU_BRUSH_SWEEP;
-                extend = encode_gpu_extend(gradient.extend);
-                params[0] = gradient.center[0];
-                params[1] = gradient.center[1];
-                params[2] = gradient.start_angle;
-                params[3] = gradient.end_angle;
-                (payload_offset, payload_len) = self.push_payload(&gradient.ramp);
-            }
-            Brush::FourCorner(gradient) => {
-                kind = GPU_BRUSH_FOUR_CORNER;
-                params[0..4].copy_from_slice(&gradient.bounds);
-                (payload_offset, payload_len) = self.push_payload(&gradient.colors);
-            }
-            Brush::Pattern(pattern) => {
-                extend = encode_gpu_extend(pattern.extend);
-                params[0..6].copy_from_slice(&pattern.transform);
-                let (width, height) = pattern.image_size();
-                image_width = width;
-                image_height = height;
-                opacity = pattern.opacity as u32;
-                pattern_sampling = encode_gpu_pattern_sampling(pattern.sampling);
-                if let Some(key) = pattern.image_key() {
-                    if let Some(index) =
-                        image_resources.and_then(|resources| resources.image_index(key))
-                    {
-                        kind = GPU_BRUSH_PATTERN_RESOURCE;
-                        payload_offset = index;
-                    } else {
-                        kind = GPU_BRUSH_PATTERN;
-                    }
-                } else if let Some(image) = pattern.inline_image() {
-                    kind = GPU_BRUSH_PATTERN;
-                    (payload_offset, payload_len) = self.push_payload(&image.pixels);
-                }
-            }
-        }
-
-        (
-            [
-                kind,
-                extend,
-                payload_offset,
-                payload_len,
-                color,
-                image_width,
-                image_height,
-                opacity,
-                pattern_sampling,
-            ],
-            params,
-        )
-    }
-
-    fn push_payload(&mut self, payload: &[u32]) -> (u32, u32) {
-        let offset = self.payloads.len() as u32;
-        self.payloads.extend_from_slice(payload);
-        (offset, payload.len() as u32)
+    fn clear_missing_resource_pattern(&mut self, base: usize) {
+        self.blob[base] = GPU_BRUSH_PATTERN;
+        self.blob[base + 2] = ENCODED_BRUSH_HEADER_WORDS as u32;
+        self.blob[base + 3] = 0;
     }
 }
 
@@ -284,31 +160,18 @@ fn collect_filter_brush(
                         collect_filter_brush(filter, upload, image_resources)
                     }
                     FilterPrimitiveKind::Image { brush } => {
-                        upload.push_brush_with_resources(brush, image_resources)
+                        upload.push_brush_with_resources(brush, image_resources);
                     }
                     _ => {}
                 }
             }
         }
         Filter::DropShadow { brush, .. } => {
-            upload.push_brush_with_resources(brush, image_resources)
+            upload.push_brush_with_resources(brush, image_resources);
         }
-        Filter::Flood { brush } => upload.push_brush_with_resources(brush, image_resources),
+        Filter::Flood { brush } => {
+            upload.push_brush_with_resources(brush, image_resources);
+        }
         _ => {}
-    }
-}
-
-fn encode_gpu_extend(extend: Extend) -> u32 {
-    match extend {
-        Extend::Pad => GPU_EXTEND_PAD,
-        Extend::Repeat => GPU_EXTEND_REPEAT,
-        Extend::Reflect => GPU_EXTEND_REFLECT,
-    }
-}
-
-fn encode_gpu_pattern_sampling(sampling: PatternSampling) -> u32 {
-    match sampling {
-        PatternSampling::Nearest => GPU_PATTERN_NEAREST,
-        PatternSampling::Bilinear => GPU_PATTERN_BILINEAR,
     }
 }

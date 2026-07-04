@@ -101,7 +101,7 @@ struct FilterConfig {
     clear_color: u32,
     filter_kind: u32,
     table_index: u32,
-    brush_index: u32,
+    brush_offset: u32,
     offset_x: i32,
     offset_y: i32,
     morphology_radius: u32,
@@ -234,9 +234,7 @@ struct LineSegment {
 @group(0) @binding(34) var<storage, read> layer_stack_draws: array<u32>;
 @group(0) @binding(35) var<storage, read> layer_stack_payloads: array<u32>;
 @group(0) @binding(36) var<storage, read> transfer_tables: array<u32>;
-@group(0) @binding(37) var<storage, read> brush_data: array<u32>;
-@group(0) @binding(38) var<storage, read> brush_params: array<f32>;
-@group(0) @binding(39) var<storage, read> brush_payloads: array<u32>;
+@group(0) @binding(37) var<storage, read> brush_blob: array<u32>;
 @group(0) @binding(40) var<storage, read> convolve_kernels: array<f32>;
 @group(0) @binding(41) var<storage, read> turbulence_selectors: array<u32>;
 @group(0) @binding(42) var<storage, read> turbulence_gradients: array<f32>;
