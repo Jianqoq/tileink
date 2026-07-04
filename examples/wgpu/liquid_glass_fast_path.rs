@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{sync::mpsc, time::Duration};
 
 use peniko::Color;
 use tileink::{Canvas, WgpuRenderProfileReport, WgpuRenderer};
@@ -27,13 +27,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         fast_path::PROFILE_WIDTH,
         fast_path::PROFILE_HEIGHT,
         &fast_path::profile_scene_for_mode(fast_path::GlassMode::Default, 64),
-    );
+    )?;
     profile_scene(
         "simple liquid glass panels=64",
         fast_path::PROFILE_WIDTH,
         fast_path::PROFILE_HEIGHT,
         &fast_path::profile_scene_for_mode(fast_path::GlassMode::Simple, 64),
-    );
+    )?;
     Ok(())
 }
 
@@ -48,17 +48,26 @@ fn render_scene(name: &str, scene: &Canvas) -> Result<(), Box<dyn std::error::Er
     Ok(())
 }
 
-fn profile_scene(name: &str, width: u32, height: u32, scene: &Canvas) {
+fn profile_scene(
+    name: &str,
+    width: u32,
+    height: u32,
+    scene: &Canvas,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut renderer = WgpuRenderer::new_default_device(width, height, Color::WHITE);
     for _ in 0..WARMUP_FRAMES {
         renderer.render(scene);
+        wait_for_gpu(renderer.device(), renderer.queue())?;
     }
 
     let mut report = WgpuRenderProfileReport::new();
     for _ in 0..PROFILE_FRAMES {
         renderer.start_profile();
         renderer.render(scene);
-        let profile = renderer.end_profile().clone();
+        let _ = renderer.end_profile();
+        // End the CPU profile before waiting; the wait only exists to make async GPU timestamps ready.
+        wait_for_gpu(renderer.device(), renderer.queue())?;
+        let profile = renderer.poll_profile().clone();
         report.push(&profile);
     }
 
@@ -84,4 +93,18 @@ fn profile_scene(name: &str, width: u32, height: u32, scene: &Canvas) {
         "filter.total",
         filter_total.as_secs_f64() * 1_000.0 / report.iterations() as f64
     );
+    Ok(())
+}
+
+fn wait_for_gpu(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (tx, rx) = mpsc::channel();
+    queue.on_submitted_work_done(move || {
+        let _ = tx.send(());
+    });
+    device.poll(wgpu::PollType::wait_indefinitely())?;
+    rx.recv()?;
+    Ok(())
 }

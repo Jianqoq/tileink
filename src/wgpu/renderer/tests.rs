@@ -206,6 +206,11 @@ fn wgpu_renderer_profile_includes_cpu_prepare_and_gpu_stages() {
         .features()
         .contains(::wgpu::Features::TIMESTAMP_QUERY)
     {
+        renderer
+            .device()
+            .poll(::wgpu::PollType::wait_indefinitely())
+            .expect("poll wgpu device for async profile readback");
+        let profile = renderer.poll_profile().clone();
         assert!(
             profile
                 .entries()

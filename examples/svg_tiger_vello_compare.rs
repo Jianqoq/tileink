@@ -413,8 +413,10 @@ fn profile_tileink(
     for _ in 0..config.frames {
         renderer.start_profile();
         renderer.render_to_wgpu_texture(scene, texture)?;
+        let _ = renderer.end_profile();
+        // End the CPU profile before waiting; the wait only exists to make async GPU timestamps ready.
         wait_for_gpu(device, queue)?;
-        let profile = renderer.end_profile().clone();
+        let profile = renderer.poll_profile().clone();
         report.push(&profile);
     }
     Ok(report)

@@ -2,7 +2,7 @@ use std::{
     cell::RefCell,
     fmt,
     rc::Rc,
-    sync::mpsc,
+    sync::mpsc::{self, TryRecvError},
     time::{Duration, Instant},
 };
 
@@ -130,6 +130,7 @@ impl fmt::Display for WgpuRenderProfileReport {
 pub(crate) struct WgpuRenderProfiler {
     state: Rc<RefCell<ProfileState>>,
     profile: WgpuRenderProfile,
+    pending_readbacks: Vec<PendingGpuReadback>,
 }
 
 impl Default for WgpuRenderProfiler {
@@ -137,13 +138,15 @@ impl Default for WgpuRenderProfiler {
         Self {
             state: Rc::new(RefCell::new(ProfileState::default())),
             profile: WgpuRenderProfile::default(),
+            pending_readbacks: Vec::new(),
         }
     }
 }
 
 impl WgpuRenderProfiler {
     pub(crate) fn start(&mut self, device: &::wgpu::Device) {
-        let _ = device.poll(::wgpu::PollType::wait_indefinitely());
+        self.poll_ready(device);
+        self.pending_readbacks.clear();
         {
             let mut state = self.state.borrow_mut();
             state.entries.clear();
@@ -162,7 +165,7 @@ impl WgpuRenderProfiler {
         device: &::wgpu::Device,
         queue: &::wgpu::Queue,
     ) -> &WgpuRenderProfile {
-        let (mut entries, pending_gpu, cpu_total) = {
+        let (entries, pending_gpu, cpu_total) = {
             let mut state = self.state.borrow_mut();
             state.active = false;
             let cpu_total = state
@@ -177,8 +180,13 @@ impl WgpuRenderProfiler {
             )
         };
 
-        entries.extend(resolve_gpu_timers(device, queue, pending_gpu));
+        self.pending_readbacks.extend(
+            pending_gpu
+                .into_iter()
+                .map(|timer| PendingGpuReadback::map(timer, queue.get_timestamp_period())),
+        );
         self.profile = WgpuRenderProfile { entries, cpu_total };
+        self.poll_ready(device);
 
         let state = Rc::clone(&self.state);
         ACTIVE_PROFILER.with(|active| {
@@ -192,6 +200,28 @@ impl WgpuRenderProfiler {
         });
 
         &self.profile
+    }
+
+    pub(crate) fn poll_ready(&mut self, device: &::wgpu::Device) -> &WgpuRenderProfile {
+        let _ = device.poll(::wgpu::PollType::Poll);
+        let mut ix = 0;
+        while ix < self.pending_readbacks.len() {
+            match self.pending_readbacks[ix].try_resolve() {
+                PendingGpuReadbackState::Ready(entry) => {
+                    self.profile.entries.push(entry);
+                    self.pending_readbacks.swap_remove(ix);
+                }
+                PendingGpuReadbackState::Pending => ix += 1,
+                PendingGpuReadbackState::Failed => {
+                    self.pending_readbacks.swap_remove(ix);
+                }
+            }
+        }
+        &self.profile
+    }
+
+    pub(crate) fn has_pending_readbacks(&self) -> bool {
+        !self.pending_readbacks.is_empty()
     }
 
     pub(crate) fn profile(&self) -> &WgpuRenderProfile {
@@ -340,46 +370,58 @@ pub(crate) fn finish_gpu_scope(
     });
 }
 
-fn resolve_gpu_timers(
-    device: &::wgpu::Device,
-    queue: &::wgpu::Queue,
-    timers: Vec<WgpuGpuProfileScope>,
-) -> Vec<WgpuRenderProfileEntry> {
-    if timers.is_empty() {
-        return Vec::new();
+#[derive(Debug)]
+struct PendingGpuReadback {
+    timer: WgpuGpuProfileScope,
+    rx: mpsc::Receiver<Result<(), ::wgpu::BufferAsyncError>>,
+    timestamp_period: f32,
+}
+
+#[derive(Debug)]
+enum PendingGpuReadbackState {
+    Ready(WgpuRenderProfileEntry),
+    Pending,
+    Failed,
+}
+
+impl PendingGpuReadback {
+    fn map(timer: WgpuGpuProfileScope, timestamp_period: f32) -> Self {
+        let (tx, rx) = mpsc::channel();
+        timer
+            .readback_buffer
+            .slice(..)
+            .map_async(::wgpu::MapMode::Read, move |result| {
+                let _ = tx.send(result);
+            });
+        Self {
+            timer,
+            rx,
+            timestamp_period,
+        }
     }
-    let _ = device.poll(::wgpu::PollType::wait_indefinitely());
-    timers
-        .into_iter()
-        .map(|timer| {
-            let (tx, rx) = mpsc::channel();
-            timer
-                .readback_buffer
-                .slice(..)
-                .map_async(::wgpu::MapMode::Read, move |result| {
-                    tx.send(result).unwrap()
-                });
-            device
-                .poll(::wgpu::PollType::wait_indefinitely())
-                .expect("poll wgpu device for profile timestamp readback");
-            rx.recv()
-                .expect("receive profile timestamp map result")
-                .expect("map profile timestamp readback buffer");
 
-            let mapped = timer.readback_buffer.slice(..).get_mapped_range();
-            let values: &[u64] = bytemuck::cast_slice(&mapped);
-            let ticks = values[1].saturating_sub(values[0]);
-            let nanos = ticks as f64 * queue.get_timestamp_period() as f64;
-            drop(mapped);
-            timer.readback_buffer.unmap();
+    fn try_resolve(&self) -> PendingGpuReadbackState {
+        match self.rx.try_recv() {
+            Ok(Ok(())) => PendingGpuReadbackState::Ready(self.entry_from_mapped_buffer()),
+            Ok(Err(_)) | Err(TryRecvError::Disconnected) => PendingGpuReadbackState::Failed,
+            Err(TryRecvError::Empty) => PendingGpuReadbackState::Pending,
+        }
+    }
 
-            WgpuRenderProfileEntry {
-                name: timer.name,
-                cpu_duration: None,
-                gpu_duration: Some(Duration::from_nanos(nanos.round() as u64)),
-            }
-        })
-        .collect()
+    fn entry_from_mapped_buffer(&self) -> WgpuRenderProfileEntry {
+        let mapped = self.timer.readback_buffer.slice(..).get_mapped_range();
+        let values: &[u64] = bytemuck::cast_slice(&mapped);
+        let ticks = values[1].saturating_sub(values[0]);
+        let nanos = ticks as f64 * self.timestamp_period as f64;
+        drop(mapped);
+        self.timer.readback_buffer.unmap();
+
+        WgpuRenderProfileEntry {
+            name: self.timer.name,
+            cpu_duration: None,
+            gpu_duration: Some(Duration::from_nanos(nanos.round() as u64)),
+        }
+    }
 }
 
 fn format_profile_table(profile: &WgpuRenderProfile, iterations: usize) -> String {

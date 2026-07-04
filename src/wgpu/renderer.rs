@@ -371,13 +371,27 @@ impl Renderer {
     ///
     /// GPU durations require a device created with `wgpu::Features::TIMESTAMP_QUERY`.
     /// `new_default_device` requests that feature when the adapter supports it.
+    /// Any unresolved GPU timestamp readbacks from the previous profile are discarded so stale
+    /// async results cannot be attached to the wrong frame.
     pub fn start_profile(&mut self) {
         self.profiler.start(&self.device);
     }
 
-    /// Stops profiling, waits for pending timestamp readback, and returns the latest profile.
+    /// Stops profiling, starts async timestamp readback, and returns the latest CPU profile.
+    ///
+    /// GPU timestamp entries are merged by `poll_profile` after the device has made the mapped
+    /// readback buffers available. This keeps `end_profile` off the GPU completion path.
     pub fn end_profile(&mut self) -> &WgpuRenderProfile {
         self.profiler.end(&self.device, &self.queue)
+    }
+
+    /// Polls pending async GPU timestamp readbacks without blocking and returns the latest profile.
+    pub fn poll_profile(&mut self) -> &WgpuRenderProfile {
+        self.profiler.poll_ready(&self.device)
+    }
+
+    pub fn has_pending_profile_readbacks(&self) -> bool {
+        self.profiler.has_pending_readbacks()
     }
 
     pub fn profile(&self) -> &WgpuRenderProfile {
