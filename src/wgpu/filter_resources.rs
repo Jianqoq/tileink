@@ -1,6 +1,7 @@
 use crate::shared::{
     execution::{ExecOp, ExecPlan},
     gpu_brush::GpuBrushUpload,
+    image_resource::GpuImageResourceUpload,
     layer::{
         Layer,
         filter::{
@@ -99,8 +100,9 @@ impl WgpuFilterBrushBuffers {
         device: &::wgpu::Device,
         queue: &::wgpu::Queue,
         plan: &ExecPlan,
+        image_resources: Option<&GpuImageResourceUpload>,
     ) {
-        let upload = GpuBrushUpload::from_filter_plan(&plan.ops);
+        let upload = GpuBrushUpload::from_filter_plan_with_resources(&plan.ops, image_resources);
         self.upload_brushes(device, queue, upload);
     }
 
@@ -110,8 +112,10 @@ impl WgpuFilterBrushBuffers {
         queue: &::wgpu::Queue,
         ops: &[ExecOp],
         filter: &Filter,
+        image_resources: Option<&GpuImageResourceUpload>,
     ) {
-        let upload = GpuBrushUpload::from_filter_ops_and_filter(ops, filter);
+        let upload =
+            GpuBrushUpload::from_filter_ops_and_filter_with_resources(ops, filter, image_resources);
         self.upload_brushes(device, queue, upload);
     }
 

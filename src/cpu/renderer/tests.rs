@@ -5,9 +5,9 @@ use peniko::{
 
 use super::Renderer;
 use crate::{
-    Brush, CandleStick, Canvas, FillRule, Image, PatternSampling, Radius, RectLiquidGlass,
-    RectShadowOptions, SdfArc, SdfDashLine, SdfLine, SdfLineCap, StrokeWidths, TextContext,
-    TextLayoutOptions,
+    Brush, CandleStick, Canvas, FillRule, Image, ImageKey, PatternSampling, Radius,
+    RectLiquidGlass, RectShadowOptions, SdfArc, SdfDashLine, SdfLine, SdfLineCap, StrokeWidths,
+    TextContext, TextLayoutOptions,
     shared::layer::{
         filter::Filter,
         mask::{Mask, MaskKind},
@@ -141,6 +141,32 @@ fn render_push_image_samples_external_image() {
         .expect("push image");
 
     let mut renderer = Renderer::new(4, 2, Color::TRANSPARENT);
+    renderer.render(&canvas);
+
+    assert_eq!(renderer.image().rgba8_at(1, 1), [255, 0, 0, 255]);
+    assert_eq!(renderer.image().rgba8_at(3, 1), [0, 0, 128, 128]);
+}
+
+#[test]
+fn render_push_image_key_samples_renderer_resource() {
+    let key = ImageKey::new(7);
+    let mut canvas = Canvas::new(4, 2);
+    canvas
+        .push_image_key(Rect::new(0.0, 0.0, 4.0, 2.0), key, PatternSampling::Nearest)
+        .expect("push image resource");
+
+    let mut renderer = Renderer::new(4, 2, Color::TRANSPARENT);
+    assert!(renderer.insert_image(
+        key,
+        Image::from_rgba8(
+            2,
+            1,
+            [
+                255, 0, 0, 255, //
+                0, 0, 255, 128,
+            ],
+        )
+    ));
     renderer.render(&canvas);
 
     assert_eq!(renderer.image().rgba8_at(1, 1), [255, 0, 0, 255]);

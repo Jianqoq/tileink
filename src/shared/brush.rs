@@ -8,6 +8,7 @@ use peniko::{
 
 use crate::shared::{
     image::Image,
+    image_resource::{ImageKey, ImageResourceStore},
     pixel::{pack_premul_rgba8, premul_f32_to_u32, scale_premul_u8, unpack_premul_rgba8},
 };
 
@@ -66,11 +67,17 @@ pub struct FourCornerGradient {
 
 #[derive(Clone, Debug)]
 pub struct PatternBrush {
-    pub(crate) image: Arc<Image>,
+    pub(crate) image: PatternImage,
     pub(crate) transform: [f32; 6],
     pub(crate) extend: Extend,
     pub(crate) sampling: PatternSampling,
     pub(crate) opacity: u8,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum PatternImage {
+    Inline(Arc<Image>),
+    Resource(ImageKey),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -109,6 +116,26 @@ impl Brush {
         opacity: u8,
     ) -> Option<Self> {
         PatternBrush::for_rect(image, rect, extend, sampling, opacity).map(Self::Pattern)
+    }
+
+    /// Creates an image brush from a renderer-owned image resource key with explicit sampling.
+    pub fn from_image_key(
+        key: ImageKey,
+        rect: kurbo::Rect,
+        sampling: PatternSampling,
+    ) -> Option<Self> {
+        Self::from_image_key_with_options(key, rect, Extend::Pad, sampling, 255)
+    }
+
+    /// Creates a renderer-resource image brush with explicit extend, sampling, and opacity.
+    pub fn from_image_key_with_options(
+        key: ImageKey,
+        rect: kurbo::Rect,
+        extend: Extend,
+        sampling: PatternSampling,
+        opacity: u8,
+    ) -> Option<Self> {
+        PatternBrush::for_rect_resource(key, rect, extend, sampling, opacity).map(Self::Pattern)
     }
 
     pub fn from_gradient(gradient: &Gradient) -> Self {
@@ -168,7 +195,12 @@ impl Brush {
     }
 
     #[inline]
-    pub(crate) fn sample(&self, x: f32, y: f32) -> u32 {
+    pub(crate) fn sample_with_resources(
+        &self,
+        x: f32,
+        y: f32,
+        image_resources: Option<&ImageResourceStore>,
+    ) -> u32 {
         match self {
             Self::Solid(color) => premul_f32_to_u32(color.premultiply().components),
             Self::Linear(gradient) => {
@@ -180,7 +212,7 @@ impl Brush {
                 .unwrap_or(0),
             Self::Sweep(gradient) => sample_ramp(&gradient.ramp, gradient.t(x, y), gradient.extend),
             Self::FourCorner(gradient) => gradient.sample(x, y),
-            Self::Pattern(pattern) => pattern.sample(x, y),
+            Self::Pattern(pattern) => pattern.sample_with_resources(x, y, image_resources),
         }
     }
 }
@@ -366,7 +398,26 @@ impl PatternBrush {
     ) -> Option<Self> {
         let image = image.into();
         (image.width > 0 && image.height > 0).then_some(Self {
-            image,
+            image: PatternImage::Inline(image),
+            transform,
+            extend,
+            sampling,
+            opacity,
+        })
+    }
+
+    /// Creates a renderer-resource pattern brush with a caller-provided
+    /// world-to-normalized-image transform. The renderer resolves the real image
+    /// dimensions at rasterization/upload time.
+    pub fn new_resource(
+        key: ImageKey,
+        transform: [f32; 6],
+        extend: Extend,
+        sampling: PatternSampling,
+        opacity: u8,
+    ) -> Option<Self> {
+        Some(Self {
+            image: PatternImage::Resource(key),
             transform,
             extend,
             sampling,
@@ -407,13 +458,81 @@ impl PatternBrush {
         )
     }
 
-    fn sample(&self, x: f32, y: f32) -> u32 {
-        let [x, y] = transform_point(self.transform, x, y);
+    /// Creates a renderer-resource pattern brush that maps the image exactly into `rect`.
+    pub fn for_rect_resource(
+        key: ImageKey,
+        rect: kurbo::Rect,
+        extend: Extend,
+        sampling: PatternSampling,
+        opacity: u8,
+    ) -> Option<Self> {
+        if !rect_is_valid_image_target(rect) {
+            return None;
+        }
+        let sx = 1.0 / rect.width() as f32;
+        let sy = 1.0 / rect.height() as f32;
+        Self::new_resource(
+            key,
+            [
+                sx,
+                0.0,
+                0.0,
+                sy,
+                -(rect.x0 as f32) * sx,
+                -(rect.y0 as f32) * sy,
+            ],
+            extend,
+            sampling,
+            opacity,
+        )
+    }
+
+    pub(crate) fn inline_image(&self) -> Option<&Image> {
+        match &self.image {
+            PatternImage::Inline(image) => Some(image),
+            PatternImage::Resource(_) => None,
+        }
+    }
+
+    pub(crate) fn image_key(&self) -> Option<ImageKey> {
+        match self.image {
+            PatternImage::Inline(_) => None,
+            PatternImage::Resource(key) => Some(key),
+        }
+    }
+
+    pub(crate) fn image_size(&self) -> (u32, u32) {
+        match &self.image {
+            PatternImage::Inline(image) => (image.width, image.height),
+            PatternImage::Resource(_) => (0, 0),
+        }
+    }
+
+    fn sample_with_resources(
+        &self,
+        x: f32,
+        y: f32,
+        image_resources: Option<&ImageResourceStore>,
+    ) -> u32 {
+        let (image, normalized) = match &self.image {
+            PatternImage::Inline(image) => (image.as_ref(), false),
+            PatternImage::Resource(key) => {
+                let Some(image) = image_resources.and_then(|resources| resources.get(*key)) else {
+                    return 0;
+                };
+                (image, true)
+            }
+        };
+        let [mut x, mut y] = transform_point(self.transform, x, y);
+        if normalized {
+            x *= image.width as f32;
+            y *= image.height as f32;
+        }
         let pixel = match self.sampling {
             PatternSampling::Nearest => {
-                let local_x = extend_coord(x.floor() as i32, self.image.width, self.extend);
-                let local_y = extend_coord(y.floor() as i32, self.image.height, self.extend);
-                self.image.pixels[(local_y * self.image.width + local_x) as usize]
+                let local_x = extend_coord(x.floor() as i32, image.width, self.extend);
+                let local_y = extend_coord(y.floor() as i32, image.height, self.extend);
+                image.pixels[(local_y * image.width + local_x) as usize]
             }
             PatternSampling::Bilinear => {
                 let x = x - 0.5;
@@ -424,20 +543,20 @@ impl PatternBrush {
                 let ty = y - y0;
                 let x0 = x0 as i32;
                 let y0 = y0 as i32;
-                let tl = self.pixel_at(x0, y0);
-                let tr = self.pixel_at(x0 + 1, y0);
-                let bl = self.pixel_at(x0, y0 + 1);
-                let br = self.pixel_at(x0 + 1, y0 + 1);
+                let tl = self.pixel_at(image, x0, y0);
+                let tr = self.pixel_at(image, x0 + 1, y0);
+                let bl = self.pixel_at(image, x0, y0 + 1);
+                let br = self.pixel_at(image, x0 + 1, y0 + 1);
                 lerp_premul_u8(lerp_premul_u8(tl, tr, tx), lerp_premul_u8(bl, br, tx), ty)
             }
         };
         scale_premul_u8(pixel, self.opacity)
     }
 
-    fn pixel_at(&self, x: i32, y: i32) -> u32 {
-        let local_x = extend_coord(x, self.image.width, self.extend);
-        let local_y = extend_coord(y, self.image.height, self.extend);
-        self.image.pixels[(local_y * self.image.width + local_x) as usize]
+    fn pixel_at(&self, image: &Image, x: i32, y: i32) -> u32 {
+        let local_x = extend_coord(x, image.width, self.extend);
+        let local_y = extend_coord(y, image.height, self.extend);
+        image.pixels[(local_y * image.width + local_x) as usize]
     }
 }
 
@@ -628,11 +747,11 @@ mod tests {
 
     fn two_pixel_pattern(extend: Extend, sampling: PatternSampling) -> PatternBrush {
         PatternBrush {
-            image: Arc::new(Image {
+            image: PatternImage::Inline(Arc::new(Image {
                 width: 2,
                 height: 1,
                 pixels: vec![rgba8_pack([255, 0, 0, 255]), rgba8_pack([0, 0, 255, 255])],
-            }),
+            })),
             transform: IDENTITY_TRANSFORM,
             extend,
             sampling,
@@ -644,23 +763,38 @@ mod tests {
     fn pattern_bilinear_interpolates_premultiplied_pixels() {
         let pattern = two_pixel_pattern(Extend::Pad, PatternSampling::Bilinear);
 
-        assert_eq!(unpack_rgba8(pattern.sample(1.0, 0.5)), [128, 0, 128, 255]);
+        assert_eq!(
+            unpack_rgba8(pattern.sample_with_resources(1.0, 0.5, None)),
+            [128, 0, 128, 255]
+        );
     }
 
     #[test]
     fn pattern_bilinear_respects_pad_extend() {
         let pattern = two_pixel_pattern(Extend::Pad, PatternSampling::Bilinear);
 
-        assert_eq!(unpack_rgba8(pattern.sample(0.25, 0.5)), [255, 0, 0, 255]);
-        assert_eq!(unpack_rgba8(pattern.sample(1.75, 0.5)), [0, 0, 255, 255]);
+        assert_eq!(
+            unpack_rgba8(pattern.sample_with_resources(0.25, 0.5, None)),
+            [255, 0, 0, 255]
+        );
+        assert_eq!(
+            unpack_rgba8(pattern.sample_with_resources(1.75, 0.5, None)),
+            [0, 0, 255, 255]
+        );
     }
 
     #[test]
     fn pattern_nearest_keeps_repeat_extend() {
         let pattern = two_pixel_pattern(Extend::Repeat, PatternSampling::Nearest);
 
-        assert_eq!(unpack_rgba8(pattern.sample(-0.1, 0.5)), [0, 0, 255, 255]);
-        assert_eq!(unpack_rgba8(pattern.sample(2.1, 0.5)), [255, 0, 0, 255]);
+        assert_eq!(
+            unpack_rgba8(pattern.sample_with_resources(-0.1, 0.5, None)),
+            [0, 0, 255, 255]
+        );
+        assert_eq!(
+            unpack_rgba8(pattern.sample_with_resources(2.1, 0.5, None)),
+            [255, 0, 0, 255]
+        );
     }
 
     #[test]

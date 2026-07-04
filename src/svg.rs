@@ -10,7 +10,7 @@ use crate::{
     Brush, Canvas, CpuRenderer, FillRule, Filter, Radius, Region,
     shared::{
         bounds::Bounds,
-        brush::{PatternBrush, PatternSampling},
+        brush::{PatternBrush, PatternImage, PatternSampling},
         image::Image as RasterImage,
         layer::filter::{
             COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE, ColorChannel,
@@ -267,7 +267,7 @@ impl SvgBuilder {
             extend: Extend::Pad,
             sampling: image_sampling(image.rendering_mode()),
             opacity: 255,
-            image: Arc::new(raster),
+            image: PatternImage::Inline(Arc::new(raster)),
         });
         canvas.push_path(
             rect_path(Rect::new(
@@ -669,7 +669,7 @@ impl SvgBuilder {
             return Err(SvgError::unsupported("non-invertible patternTransform"));
         };
         Ok(Brush::Pattern(PatternBrush {
-            image: Arc::new(renderer.image().clone()),
+            image: PatternImage::Inline(Arc::new(renderer.image().clone())),
             transform: affine_to_array(tile_transform * transform_to_affine(pattern_inverse)),
             extend: Extend::Repeat,
             sampling: PatternSampling::Nearest,
@@ -731,7 +731,7 @@ impl SvgBuilder {
         let mut renderer = CpuRenderer::new(width, height, Color::TRANSPARENT);
         renderer.render(&canvas);
         Ok(Brush::Pattern(PatternBrush {
-            image: Arc::new(renderer.image().clone()),
+            image: PatternImage::Inline(Arc::new(renderer.image().clone())),
             transform: affine_to_array(Affine::translate((
                 -f64::from(filter_bounds.x0),
                 -f64::from(filter_bounds.y0),

@@ -1,13 +1,24 @@
 use super::*;
 
-pub(super) fn apply(image: &mut Image, primitives: &[FilterPrimitive], bounds: Bounds) {
+pub(super) fn apply(
+    image: &mut Image,
+    primitives: &[FilterPrimitive],
+    bounds: Bounds,
+    image_resources: Option<&ImageResourceStore>,
+) {
     let source_graphic = image.clone();
     let source_alpha = source_alpha_image(&source_graphic);
     let mut outputs = Vec::with_capacity(primitives.len());
 
     for primitive in primitives {
-        let output =
-            apply_graph_primitive(primitive, bounds, &source_graphic, &source_alpha, &outputs);
+        let output = apply_graph_primitive(
+            primitive,
+            bounds,
+            &source_graphic,
+            &source_alpha,
+            &outputs,
+            image_resources,
+        );
         outputs.push(output);
     }
 
@@ -24,6 +35,7 @@ fn apply_graph_primitive(
     source_graphic: &Image,
     source_alpha: &Image,
     outputs: &[Image],
+    image_resources: Option<&ImageResourceStore>,
 ) -> Image {
     // Primitive subregions clip only the primitive output. Inputs still sample
     // from the full filter bounds, which is required for blur/offset chains.
@@ -35,6 +47,7 @@ fn apply_graph_primitive(
             bounds,
             region,
             brush,
+            image_resources,
         ),
         FilterPrimitiveKind::Identity => {
             let input = resolve_graph_input(primitive.input, source_graphic, source_alpha, outputs);
@@ -43,7 +56,7 @@ fn apply_graph_primitive(
         FilterPrimitiveKind::Filter(filter) => {
             let input = resolve_graph_input(primitive.input, source_graphic, source_alpha, outputs);
             let mut image = input.clone();
-            super::apply(&mut image, filter, bounds);
+            super::apply_with_resources(&mut image, filter, bounds, image_resources);
             clipped_image(&image, bounds, region)
         }
         FilterPrimitiveKind::Blend { mode } => {
@@ -129,7 +142,14 @@ fn clipped_image(source: &Image, bounds: Bounds, region: Bounds) -> Image {
     image
 }
 
-fn brush_image(width: u32, height: u32, bounds: Bounds, region: Bounds, brush: &Brush) -> Image {
+fn brush_image(
+    width: u32,
+    height: u32,
+    bounds: Bounds,
+    region: Bounds,
+    brush: &Brush,
+    image_resources: Option<&ImageResourceStore>,
+) -> Image {
     let mut image = Image::new(width, height, peniko::Color::TRANSPARENT);
     if region.is_empty() {
         return image;
@@ -139,7 +159,7 @@ fn brush_image(width: u32, height: u32, bounds: Bounds, region: Bounds, brush: &
         for x in region.x0..region.x1 {
             let local_x = (x - bounds.x0) as u32;
             image.pixels[(local_y * width + local_x) as usize] =
-                brush.sample(x as f32 + 0.5, y as f32 + 0.5);
+                brush.sample_with_resources(x as f32 + 0.5, y as f32 + 0.5, image_resources);
         }
     }
     image

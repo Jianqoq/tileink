@@ -6,7 +6,7 @@ use peniko::{
 use super::{Renderer, WgpuRenderTargetId};
 use crate::wgpu::commands::WgpuCommandBatch;
 use crate::{
-    Canvas, FillRule, Image, PatternSampling, TextContext, TextLayoutOptions,
+    Canvas, FillRule, Image, ImageKey, PatternSampling, TextContext, TextLayoutOptions,
     cpu::Renderer as CpuRenderer,
     debug::{RenderDebugOptions, RenderOptions},
     render::Render,
@@ -84,6 +84,41 @@ fn wgpu_renderer_push_image_samples_external_image_when_enabled() {
         .expect("push image");
 
     let image = render_native_wgpu(&canvas);
+
+    assert_eq!(image.rgba8_at(1, 1), [255, 0, 0, 255]);
+    assert_eq!(image.rgba8_at(3, 1), [0, 0, 128, 128]);
+}
+
+#[test]
+fn wgpu_renderer_push_image_key_samples_resource_buffer_when_enabled() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let key = ImageKey::new(9);
+    let mut canvas = Canvas::new(4, 2);
+    canvas
+        .push_image_key(Rect::new(0.0, 0.0, 4.0, 2.0), key, PatternSampling::Nearest)
+        .expect("push image resource");
+
+    let mut renderer = Renderer::new_default_device(4, 2, Color::TRANSPARENT);
+    assert!(renderer.insert_image(
+        key,
+        Image::from_rgba8(
+            2,
+            1,
+            [
+                255, 0, 0, 255, //
+                0, 0, 255, 128,
+            ],
+        )
+    ));
+    renderer.prepare_scene(&canvas);
+    assert!(
+        renderer.render_prepared_tile_plan(&canvas),
+        "expected canvas to render through native wgpu path"
+    );
+    let image = renderer.image();
 
     assert_eq!(image.rgba8_at(1, 1), [255, 0, 0, 255]);
     assert_eq!(image.rgba8_at(3, 1), [0, 0, 128, 128]);

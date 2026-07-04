@@ -61,6 +61,16 @@ fn sample_brush(brush_index: u32, x: f32, y: f32) -> u32 {
             extend,
             brush_data[data_base + 8u],
         );
+    } else if (kind == GPU_BRUSH_PATTERN_RESOURCE) {
+        color = sample_resource_pattern(
+            x,
+            y,
+            base,
+            payload_offset,
+            brush_data[data_base + 7u],
+            extend,
+            brush_data[data_base + 8u],
+        );
     }
 
     return color;
@@ -163,32 +173,74 @@ fn sample_pattern(
     if (payload_len > 0u && width > 0u && height > 0u) {
         let tx = brush_params[base] * x + brush_params[base + 2u] * y + brush_params[base + 4u];
         let ty = brush_params[base + 1u] * x + brush_params[base + 3u] * y + brush_params[base + 5u];
-        if (sampling == GPU_PATTERN_BILINEAR) {
-            let sx = tx - 0.5;
-            let sy = ty - 0.5;
-            let x0f = floor(sx);
-            let y0f = floor(sy);
-            let fx = sx - x0f;
-            let fy = sy - y0f;
-            let x0 = i32(x0f);
-            let y0 = i32(y0f);
-            let tl = pattern_pixel(payload_offset, payload_len, width, height, extend, x0, y0);
-            let tr = pattern_pixel(payload_offset, payload_len, width, height, extend, x0 + 1, y0);
-            let bl = pattern_pixel(payload_offset, payload_len, width, height, extend, x0, y0 + 1);
-            let br = pattern_pixel(payload_offset, payload_len, width, height, extend, x0 + 1, y0 + 1);
-            color = lerp_premul_u8(lerp_premul_u8(tl, tr, fx), lerp_premul_u8(bl, br, fx), fy);
-        } else {
-            color = pattern_pixel(payload_offset, payload_len, width, height, extend, i32(floor(tx)), i32(floor(ty)));
-        }
-        color = scale_premul_u8(color, opacity);
+        color = sample_pattern_pixels(false, tx, ty, payload_offset, payload_len, width, height, opacity, extend, sampling);
     }
     return color;
 }
 
-fn pattern_pixel(payload_offset: u32, payload_len: u32, width: u32, height: u32, extend: u32, x: i32, y: i32) -> u32 {
+fn sample_resource_pattern(
+    x: f32,
+    y: f32,
+    base: u32,
+    resource_index: u32,
+    opacity: u32,
+    extend: u32,
+    sampling: u32,
+) -> u32 {
+    let metadata_base = resource_index * 4u;
+    let payload_offset = image_resource_metadata[metadata_base];
+    let payload_len = image_resource_metadata[metadata_base + 1u];
+    let width = image_resource_metadata[metadata_base + 2u];
+    let height = image_resource_metadata[metadata_base + 3u];
+    var color = 0u;
+    if (payload_len > 0u && width > 0u && height > 0u) {
+        let tx = (brush_params[base] * x + brush_params[base + 2u] * y + brush_params[base + 4u]) * f32(width);
+        let ty = (brush_params[base + 1u] * x + brush_params[base + 3u] * y + brush_params[base + 5u]) * f32(height);
+        color = sample_pattern_pixels(true, tx, ty, payload_offset, payload_len, width, height, opacity, extend, sampling);
+    }
+    return color;
+}
+
+fn sample_pattern_pixels(
+    use_resource: bool,
+    tx: f32,
+    ty: f32,
+    payload_offset: u32,
+    payload_len: u32,
+    width: u32,
+    height: u32,
+    opacity: u32,
+    extend: u32,
+    sampling: u32,
+) -> u32 {
+    var color = 0u;
+    if (sampling == GPU_PATTERN_BILINEAR) {
+        let sx = tx - 0.5;
+        let sy = ty - 0.5;
+        let x0f = floor(sx);
+        let y0f = floor(sy);
+        let fx = sx - x0f;
+        let fy = sy - y0f;
+        let x0 = i32(x0f);
+        let y0 = i32(y0f);
+        let tl = pattern_pixel(use_resource, payload_offset, payload_len, width, height, extend, x0, y0);
+        let tr = pattern_pixel(use_resource, payload_offset, payload_len, width, height, extend, x0 + 1, y0);
+        let bl = pattern_pixel(use_resource, payload_offset, payload_len, width, height, extend, x0, y0 + 1);
+        let br = pattern_pixel(use_resource, payload_offset, payload_len, width, height, extend, x0 + 1, y0 + 1);
+        color = lerp_premul_u8(lerp_premul_u8(tl, tr, fx), lerp_premul_u8(bl, br, fx), fy);
+    } else {
+        color = pattern_pixel(use_resource, payload_offset, payload_len, width, height, extend, i32(floor(tx)), i32(floor(ty)));
+    }
+    return scale_premul_u8(color, opacity);
+}
+
+fn pattern_pixel(use_resource: bool, payload_offset: u32, payload_len: u32, width: u32, height: u32, extend: u32, x: i32, y: i32) -> u32 {
     let local_x = extend_coord_i32(x, width, extend);
     let local_y = extend_coord_i32(y, height, extend);
     let local_ix = min(local_y * width + local_x, payload_len - 1u);
+    if (use_resource) {
+        return image_resource_pixels[payload_offset + local_ix];
+    }
     return brush_payloads[payload_offset + local_ix];
 }
 
@@ -270,4 +322,3 @@ fn reflect_coord_i32(value: i32, size: u32) -> u32 {
     }
     return out;
 }
-

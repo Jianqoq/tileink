@@ -2,7 +2,9 @@ use super::*;
 use crate::{
     TextLayoutOptions,
     shared::{
+        brush::PatternImage,
         image::{Image, premul_color_to_rgba8_pack},
+        image_resource::ImageKey,
         pixel::premul_f32_to_u32,
         scene_columns::GPU_BRUSH_U32_STRIDE,
     },
@@ -102,9 +104,37 @@ fn push_image_records_pattern_rect_draw() {
     let Brush::Pattern(pattern) = &record.brush else {
         panic!("expected image pattern brush");
     };
-    assert_eq!((pattern.image.width, pattern.image.height), (2, 1));
+    let PatternImage::Inline(image) = &pattern.image else {
+        panic!("expected inline image pattern");
+    };
+    assert_eq!((image.width, image.height), (2, 1));
     assert_eq!(pattern.sampling, PatternSampling::Nearest);
     assert_eq!(pattern.transform, [0.5, 0.0, 0.0, 0.5, -5.0, -10.0]);
+}
+
+#[test]
+fn push_image_key_records_resource_pattern_rect_draw() {
+    let mut canvas = test_scene();
+    let key = ImageKey::new(42);
+    let draw = canvas
+        .push_image_key(
+            Rect::new(10.0, 20.0, 14.0, 22.0),
+            key,
+            PatternSampling::Nearest,
+        )
+        .expect("push image resource draw");
+
+    assert_eq!(draw.index(), 0);
+    assert_eq!(canvas.draw_records.len(), 1);
+    assert!(canvas.path_records.is_empty());
+    let record = &canvas.draw_records[0];
+    assert!(matches!(record.sdf, Some(Sdf::Rect(_))));
+    let Brush::Pattern(pattern) = &record.brush else {
+        panic!("expected image resource pattern brush");
+    };
+    assert_eq!(pattern.image_key(), Some(key));
+    assert_eq!(pattern.sampling, PatternSampling::Nearest);
+    assert_eq!(pattern.transform, [0.25, 0.0, 0.0, 0.5, -2.5, -10.0]);
 }
 
 #[test]

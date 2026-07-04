@@ -9,6 +9,7 @@ pub(crate) mod gpu_plan;
 pub(crate) mod gpu_sdf;
 pub(crate) mod gpu_types;
 pub(crate) mod image;
+pub(crate) mod image_resource;
 pub(crate) mod layer;
 pub(crate) mod line;
 pub(crate) mod line_seg;

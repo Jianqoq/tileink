@@ -191,7 +191,12 @@ impl Renderer {
             OffscreenSurface::new(canvas, plan, layer.children, filter_bounds.surface);
         self.render_offscreen_surface(&mut surface, text_context);
         self.filter
-            .prepare(&mut surface.image, layer.filter, filter_bounds.surface)
+            .prepare(
+                &mut surface.image,
+                layer.filter,
+                filter_bounds.surface,
+                Some(&self.image_resources),
+            )
             .run();
 
         let output = copy_image_region(&surface.image, filter_bounds.output, filter_bounds.surface);
@@ -240,6 +245,7 @@ impl Renderer {
                 bounds,
                 (target_bounds.width(), target_bounds.height()),
                 layer.sample_region,
+                Some(&self.image_resources),
             )
             .run();
 

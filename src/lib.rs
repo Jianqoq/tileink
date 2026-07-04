@@ -31,6 +31,7 @@ pub use shared::{
     brush::{Brush, PatternBrush, PatternSampling},
     fill::FillRule,
     image::{Image, ImageSaveError},
+    image_resource::ImageKey,
     layer::{
         filter::{
             BlurDownsampleFilter, BlurSampling, BlurUpsampleFilter, CompositeOperator,

@@ -1,6 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
-use std::sync::mpsc;
+use std::sync::{Arc as SharedArc, mpsc};
 
 use peniko::Color;
 
@@ -18,6 +18,7 @@ use crate::{
             plan_stack_depths, required_scratch_count,
         },
         image::Image,
+        image_resource::{GpuImageResourceUpload, ImageKey, ImageResourceStore},
         layer::{
             Layer,
             filter::{self as filter_model, Filter},
@@ -130,6 +131,9 @@ pub struct Renderer {
     filter: Option<WgpuFilterPipeline>,
     filter_transfers: WgpuFilterTransferBuffers,
     filter_brushes: WgpuFilterBrushBuffers,
+    image_resources: ImageResourceStore,
+    image_resource_upload: GpuImageResourceUpload,
+    image_resources_dirty: bool,
     filter_convolves: WgpuFilterConvolveBuffers,
     filter_turbulence: WgpuFilterTurbulenceBuffers,
     filter_paths: WgpuFilterPathBuffers,
@@ -265,6 +269,9 @@ impl Renderer {
             filter: WgpuFilterPipeline::new(device),
             filter_transfers: WgpuFilterTransferBuffers::new(device),
             filter_brushes: WgpuFilterBrushBuffers::new(device),
+            image_resources: ImageResourceStore::default(),
+            image_resource_upload: GpuImageResourceUpload::default(),
+            image_resources_dirty: true,
             filter_convolves: WgpuFilterConvolveBuffers::new(device),
             filter_turbulence: WgpuFilterTurbulenceBuffers::new(device),
             filter_paths: WgpuFilterPathBuffers::new(device),
@@ -307,6 +314,20 @@ impl Renderer {
 
     pub fn render(&mut self, canvas: &Canvas) {
         <Self as Render>::render(self, canvas);
+    }
+
+    pub fn insert_image(&mut self, key: ImageKey, image: impl Into<SharedArc<Image>>) -> bool {
+        let image = image.into();
+        if !self.image_resources.insert(key, image.clone()) {
+            return false;
+        }
+        self.cpu.insert_image(key, image);
+        self.image_resources_dirty = true;
+        true
+    }
+
+    pub fn image_resource(&self, key: ImageKey) -> Option<&Image> {
+        self.image_resources.get(key)
     }
 
     pub fn render_profiled(&mut self, canvas: &Canvas) -> WgpuRenderProfile {
@@ -413,12 +434,14 @@ impl Renderer {
         let (max_clip_depth, max_group_depth) =
             profile_cpu("prepare.stack_depths", || plan_stack_depths(&plan));
         profile_cpu("prepare.upload_scene", || {
+            self.prepare_image_resource_buffers(false);
             self.scene_buffers.upload(
                 &self.device,
                 &self.queue,
                 canvas,
                 &plan,
                 self.text_data.as_ref(),
+                Some(&self.image_resource_upload),
                 &mut self.scene_upload,
             );
         });
@@ -437,7 +460,12 @@ impl Renderer {
         profile_cpu("prepare.filter_uploads", || {
             self.filter_transfers
                 .upload(&self.device, &self.queue, &plan);
-            self.filter_brushes.upload(&self.device, &self.queue, &plan);
+            self.filter_brushes.upload(
+                &self.device,
+                &self.queue,
+                &plan,
+                Some(&self.image_resource_upload),
+            );
             self.filter_convolves
                 .upload(&self.device, &self.queue, &plan);
             self.filter_turbulence
@@ -456,6 +484,22 @@ impl Renderer {
         self.max_clip_depth = max_clip_depth;
         self.max_group_depth = max_group_depth;
         self.plan = Some(plan);
+    }
+
+    fn prepare_image_resource_buffers(&mut self, force_upload: bool) {
+        let mut upload = force_upload;
+        if self.image_resources_dirty {
+            self.image_resource_upload = self.image_resources.upload();
+            self.image_resources_dirty = false;
+            upload = true;
+        }
+        if upload {
+            self.scene_buffers.upload_image_resources(
+                &self.device,
+                &self.queue,
+                &self.image_resource_upload,
+            );
+        }
     }
 
     fn activate_local_scene_resources(
@@ -534,12 +578,14 @@ impl Renderer {
         self.max_group_depth = max_group_depth;
         self.plan = Some(plan.clone());
         profile_cpu("prepare.local.upload_scene", || {
+            self.prepare_image_resource_buffers(true);
             self.scene_buffers.upload(
                 &self.device,
                 &self.queue,
                 canvas,
                 plan,
                 self.text_data.as_ref(),
+                Some(&self.image_resource_upload),
                 &mut self.scene_upload,
             );
         });
@@ -567,6 +613,7 @@ impl Renderer {
                 &self.queue,
                 &plan.ops,
                 parent_filter,
+                Some(&self.image_resource_upload),
             );
             self.filter_convolves.upload_for_ops_and_filter(
                 &self.device,
@@ -1546,10 +1593,13 @@ impl Renderer {
     }
 
     fn filter_brush_bindings(&self) -> WgpuFilterBrushBindings<'_> {
+        let image_resources = self.scene_buffers.image_resource_bindings();
         WgpuFilterBrushBindings {
             data: self.filter_brushes.data.buffer(),
             params: self.filter_brushes.params.buffer(),
             payloads: self.filter_brushes.payloads.buffer(),
+            image_resource_metadata: image_resources.0,
+            image_resource_pixels: image_resources.1,
         }
     }
 

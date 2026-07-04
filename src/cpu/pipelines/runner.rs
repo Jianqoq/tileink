@@ -8,7 +8,10 @@ use crate::{
             scan::ScanCpuPipeline,
         },
     },
-    shared::{bounds::Bounds, draw_record::DrawRecord, execution::LayerStackEntry, image::Image},
+    shared::{
+        bounds::Bounds, draw_record::DrawRecord, execution::LayerStackEntry, image::Image,
+        image_resource::ImageResourceStore,
+    },
     text::PreparedTextData,
 };
 
@@ -88,6 +91,7 @@ pub(in crate::cpu) fn run_fine(
     target_bounds: Bounds,
     buffers: &RasterBuffers,
     text: Option<&PreparedTextData>,
+    image_resources: Option<&ImageResourceStore>,
 ) {
     fine.prepare(
         &buffers.tile_ptcl_ranges,
@@ -98,6 +102,7 @@ pub(in crate::cpu) fn run_fine(
         target_bounds,
         (canvas.width_in_tiles(), canvas.height_in_tiles()),
         text,
+        image_resources,
     )
     .run();
 }

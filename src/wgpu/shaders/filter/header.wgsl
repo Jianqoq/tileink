@@ -46,6 +46,7 @@ const GPU_BRUSH_RADIAL: u32 = 3u;
 const GPU_BRUSH_SWEEP: u32 = 4u;
 const GPU_BRUSH_FOUR_CORNER: u32 = 5u;
 const GPU_BRUSH_PATTERN: u32 = 6u;
+const GPU_BRUSH_PATTERN_RESOURCE: u32 = 7u;
 const GPU_PATTERN_BILINEAR: u32 = 1u;
 const GPU_EXTEND_REPEAT: u32 = 1u;
 const GPU_EXTEND_REFLECT: u32 = 2u;
@@ -241,4 +242,6 @@ struct FilterConfig {
 @group(0) @binding(54) var<storage, read> path_p0y: array<i32>;
 @group(0) @binding(55) var<storage, read> path_p1x: array<i32>;
 @group(0) @binding(56) var<storage, read> path_p1y: array<i32>;
+@group(0) @binding(57) var<storage, read> image_resource_metadata: array<u32>;
+@group(0) @binding(58) var<storage, read> image_resource_pixels: array<u32>;
 

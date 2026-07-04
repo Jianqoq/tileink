@@ -4,6 +4,7 @@ use crate::shared::{
     bounds::Bounds,
     brush::Brush,
     image::{Image, rgba8_pack, unpack_rgba8},
+    image_resource::ImageResourceStore,
     layer::{
         blend::{Blend, src_over_premul},
         filter::{
@@ -24,18 +25,43 @@ mod graph;
 mod liquid_glass;
 mod turbulence;
 
-pub(crate) fn apply(image: &mut Image, filter: &Filter, bounds: Bounds) {
-    apply_with_region(image, filter, bounds, (image.width, image.height), None);
+#[cfg(test)]
+fn apply(image: &mut Image, filter: &Filter, bounds: Bounds) {
+    apply_with_resources(image, filter, bounds, None);
 }
 
-pub(crate) fn apply_backdrop(
+pub(crate) fn apply_with_resources(
+    image: &mut Image,
+    filter: &Filter,
+    bounds: Bounds,
+    image_resources: Option<&ImageResourceStore>,
+) {
+    apply_with_region(
+        image,
+        filter,
+        bounds,
+        (image.width, image.height),
+        None,
+        image_resources,
+    );
+}
+
+pub(crate) fn apply_backdrop_with_resources(
     image: &mut Image,
     filter: &Filter,
     bounds: Bounds,
     surface_size: (u32, u32),
     region: &Region,
+    image_resources: Option<&ImageResourceStore>,
 ) {
-    apply_with_region(image, filter, bounds, surface_size, Some(region));
+    apply_with_region(
+        image,
+        filter,
+        bounds,
+        surface_size,
+        Some(region),
+        image_resources,
+    );
 }
 
 fn apply_with_region(
@@ -44,14 +70,17 @@ fn apply_with_region(
     bounds: Bounds,
     surface_size: (u32, u32),
     region: Option<&Region>,
+    image_resources: Option<&ImageResourceStore>,
 ) {
     match filter {
         Filter::Chain { filters, .. } => {
             for filter in filters {
-                apply_with_region(image, filter, bounds, surface_size, region);
+                apply_with_region(image, filter, bounds, surface_size, region, image_resources);
             }
         }
-        Filter::Graph { primitives, .. } => graph::apply(image, primitives, bounds),
+        Filter::Graph { primitives, .. } => {
+            graph::apply(image, primitives, bounds, image_resources)
+        }
         Filter::RectLiquidGlass(glass) => liquid_glass::apply(
             image,
             bounds,
@@ -77,7 +106,7 @@ fn apply_with_region(
         Filter::ConvolveMatrix(matrix) => apply_convolve_matrix(image, matrix),
         Filter::DiffuseLighting(lighting) => apply_diffuse_lighting(image, bounds, lighting),
         Filter::SpecularLighting(lighting) => apply_specular_lighting(image, bounds, lighting),
-        Filter::Flood { brush } => apply_flood(image, bounds, brush),
+        Filter::Flood { brush } => apply_flood(image, bounds, brush, image_resources),
         Filter::Brightness(amount)
         | Filter::Contrast(amount)
         | Filter::Grayscale(amount)
@@ -105,7 +134,15 @@ fn apply_with_region(
             offset_y,
             std_dev,
             brush,
-        } => apply_drop_shadow(image, bounds, *offset_x, *offset_y, *std_dev, brush),
+        } => apply_drop_shadow(
+            image,
+            bounds,
+            *offset_x,
+            *offset_y,
+            *std_dev,
+            brush,
+            image_resources,
+        ),
     }
 }
 
@@ -754,12 +791,18 @@ fn straight_channel_index(premul: u32, alpha: u32) -> usize {
     index as usize
 }
 
-fn apply_flood(image: &mut Image, bounds: Bounds, brush: &Brush) {
+fn apply_flood(
+    image: &mut Image,
+    bounds: Bounds,
+    brush: &Brush,
+    image_resources: Option<&ImageResourceStore>,
+) {
     for y in 0..image.height {
         for x in 0..image.width {
-            image.pixels[(y * image.width + x) as usize] = brush.sample(
+            image.pixels[(y * image.width + x) as usize] = brush.sample_with_resources(
                 bounds.x0 as f32 + x as f32 + 0.5,
                 bounds.y0 as f32 + y as f32 + 0.5,
+                image_resources,
             );
         }
     }
@@ -999,6 +1042,7 @@ fn apply_drop_shadow(
     offset_y: f32,
     std_dev: f32,
     brush: &crate::shared::brush::Brush,
+    image_resources: Option<&ImageResourceStore>,
 ) {
     // Drop-shadow is a filter over the source alpha: offset the alpha mask,
     // blur it, color it, then composite the original source back on top.
@@ -1025,9 +1069,10 @@ fn apply_drop_shadow(
         for x in 0..image.width {
             let ix = (y * image.width + x) as usize;
             let alpha = f32::from(mask.rgba8_at(x, y)[3]) / 255.0;
-            let mut shadow = unpack_premul_rgba8(brush.sample(
+            let mut shadow = unpack_premul_rgba8(brush.sample_with_resources(
                 bounds.x0 as f32 + x as f32 + 0.5,
                 bounds.y0 as f32 + y as f32 + 0.5,
+                image_resources,
             ));
             shadow[0] *= alpha;
             shadow[1] *= alpha;
@@ -1113,7 +1158,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::shared::brush::{IDENTITY_TRANSFORM, PatternBrush, PatternSampling};
+    use crate::shared::brush::{IDENTITY_TRANSFORM, PatternBrush, PatternImage, PatternSampling};
     use crate::shared::layer::filter::{
         COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE, CompositeOperator,
         FilterInput, FilterPrimitive, FilterPrimitiveKind,
@@ -1489,11 +1534,11 @@ mod tests {
     fn graph_image_primitive_samples_absolute_brush_and_clips_region() {
         let mut image = Image::new(4, 2, Color::from_rgb8(255, 0, 0));
         let brush = Brush::Pattern(PatternBrush {
-            image: Arc::new(Image {
+            image: PatternImage::Inline(Arc::new(Image {
                 width: 2,
                 height: 1,
                 pixels: vec![rgba8_pack([0, 255, 0, 255]), rgba8_pack([0, 0, 255, 255])],
-            }),
+            })),
             transform: IDENTITY_TRANSFORM,
             extend: Extend::Pad,
             sampling: PatternSampling::Nearest,

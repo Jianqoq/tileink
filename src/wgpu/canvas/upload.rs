@@ -3,6 +3,7 @@ use crate::{
     shared::{
         bd_record::BackdropRecord,
         execution::{ExecPlan, LayerStackEntry},
+        gpu_brush::GpuBrushUpload,
         gpu_plan::{
             GpuCumsumPlan, GpuScanChunk, GpuScanChunkRange, TileDrawBins, build_cumsum_plan_into,
             build_scan_chunks_into, build_tile_draw_bins_into,
@@ -13,6 +14,7 @@ use crate::{
             GPU_LAYER_BLEND, GPU_LAYER_CLIP, GPU_LAYER_OPACITY,
         },
         image::rgba8_pack,
+        image_resource::GpuImageResourceUpload,
         pixel::{mul_div255, opacity_f32_to_u8},
         scene_columns::CanvasColumns,
     },
@@ -171,6 +173,27 @@ fn encode_layer_payload(entry: LayerStackEntry) -> u32 {
 }
 
 impl WgpuSceneBuffers {
+    pub(crate) fn upload_image_resources(
+        &mut self,
+        device: &::wgpu::Device,
+        queue: &::wgpu::Queue,
+        upload: &GpuImageResourceUpload,
+    ) {
+        self.image_resource_metadata.upload(
+            device,
+            queue,
+            "tileink wgpu image resource metadata",
+            &upload.metadata,
+        );
+        self.image_resource_pixels.upload(
+            device,
+            queue,
+            "tileink wgpu image resource pixels",
+            &upload.pixels,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn upload(
         &mut self,
         device: &::wgpu::Device,
@@ -178,6 +201,7 @@ impl WgpuSceneBuffers {
         canvas: &Canvas,
         plan: &ExecPlan,
         text: Option<&PreparedTextData>,
+        image_resources: Option<&GpuImageResourceUpload>,
         staging: &mut WgpuSceneUploadStaging,
     ) {
         // Keep canvas upload profiling split between CPU-side plan construction and queue uploads.
@@ -199,7 +223,14 @@ impl WgpuSceneBuffers {
             );
         });
         profile_cpu("prepare.upload_scene.upload_columns", || {
-            self.upload_columns(device, queue, &canvas.columns, text.is_some());
+            self.upload_columns(
+                device,
+                queue,
+                &canvas.columns,
+                &canvas.draw_records,
+                text.is_some(),
+                image_resources,
+            );
         });
         profile_cpu("prepare.upload_scene.upload_backdrops", || {
             self.upload_backdrops(device, queue, &canvas.bd_records, staging);
@@ -226,7 +257,9 @@ impl WgpuSceneBuffers {
         device: &::wgpu::Device,
         queue: &::wgpu::Queue,
         columns: &CanvasColumns,
+        draw_records: &[crate::shared::draw_record::DrawRecord],
         text_enabled: bool,
+        image_resources: Option<&GpuImageResourceUpload>,
     ) {
         profile_cpu("prepare.upload_scene.columns.lines", || {
             self.line_path_ids.upload(
@@ -408,7 +441,7 @@ impl WgpuSceneBuffers {
             );
         });
         profile_cpu("prepare.upload_scene.columns.brushes", || {
-            let brushes = &columns.draw_brushes;
+            let brushes = GpuBrushUpload::from_scene_draws(draw_records, image_resources);
             self.draw_brush_data.upload(
                 device,
                 queue,

@@ -6,6 +6,7 @@ use crate::{
         bounds::Bounds,
         brush::Brush,
         fill::FillRule,
+        image_resource::ImageResourceStore,
         layer::blend::Blend,
         line_seg::LineSegment,
         pixel::{
@@ -198,9 +199,19 @@ pub(crate) fn rasterize_tile_buffer_into(
     fill_rule: FillRule,
     brush: &Brush,
     clip_mask: &[u8; 256],
+    image_resources: Option<&ImageResourceStore>,
 ) {
     rasterize_path_tile_buffer_into(
-        tile, tile_x, tile_y, segments, backdrop, fill_rule, brush, clip_mask, false,
+        tile,
+        tile_x,
+        tile_y,
+        segments,
+        backdrop,
+        fill_rule,
+        brush,
+        clip_mask,
+        image_resources,
+        false,
     );
 }
 
@@ -214,9 +225,19 @@ pub(crate) fn rasterize_path_glyph_tile_buffer_into(
     fill_rule: FillRule,
     brush: &Brush,
     clip_mask: &[u8; 256],
+    image_resources: Option<&ImageResourceStore>,
 ) {
     rasterize_path_tile_buffer_into(
-        tile, tile_x, tile_y, segments, backdrop, fill_rule, brush, clip_mask, true,
+        tile,
+        tile_x,
+        tile_y,
+        segments,
+        backdrop,
+        fill_rule,
+        brush,
+        clip_mask,
+        image_resources,
+        true,
     );
 }
 
@@ -230,6 +251,7 @@ fn rasterize_path_tile_buffer_into(
     fill_rule: FillRule,
     brush: &Brush,
     clip_mask: &[u8; 256],
+    image_resources: Option<&ImageResourceStore>,
     linear_text_coverage: bool,
 ) {
     let base_x = tile_x * TILE_SIZE;
@@ -243,7 +265,11 @@ fn rasterize_path_tile_buffer_into(
             if alpha == 0 {
                 continue;
             }
-            let color = brush.sample((base_x + x as u32) as f32 + 0.5, (base_y + y) as f32 + 0.5);
+            let color = brush.sample_with_resources(
+                (base_x + x as u32) as f32 + 0.5,
+                (base_y + y) as f32 + 0.5,
+                image_resources,
+            );
             tile[ix] = if linear_text_coverage {
                 src_over_mask_linear_auto_u8(tile[ix], color, alpha)
             } else {
@@ -260,10 +286,19 @@ pub(crate) fn rasterize_sdf_tile_buffer_into(
     sdf: &Sdf,
     brush: &Brush,
     clip_mask: &[u8; 256],
+    image_resources: Option<&ImageResourceStore>,
 ) {
-    rasterize_sdf_area_tile_buffer_into(tile, tile_x, tile_y, brush, clip_mask, |area, bounds| {
-        sdf.fine_area(area, bounds, bounds);
-    });
+    rasterize_sdf_area_tile_buffer_into(
+        tile,
+        tile_x,
+        tile_y,
+        brush,
+        clip_mask,
+        image_resources,
+        |area, bounds| {
+            sdf.fine_area(area, bounds, bounds);
+        },
+    );
 }
 
 pub(crate) fn rasterize_sdf_shadow_tile_buffer_into(
@@ -273,10 +308,19 @@ pub(crate) fn rasterize_sdf_shadow_tile_buffer_into(
     sdf_shadow: &SdfShadow,
     brush: &Brush,
     clip_mask: &[u8; 256],
+    image_resources: Option<&ImageResourceStore>,
 ) {
-    rasterize_sdf_area_tile_buffer_into(tile, tile_x, tile_y, brush, clip_mask, |area, bounds| {
-        sdf_shadow.fine_area(area, bounds, bounds);
-    });
+    rasterize_sdf_area_tile_buffer_into(
+        tile,
+        tile_x,
+        tile_y,
+        brush,
+        clip_mask,
+        image_resources,
+        |area, bounds| {
+            sdf_shadow.fine_area(area, bounds, bounds);
+        },
+    );
 }
 
 fn rasterize_sdf_area_tile_buffer_into(
@@ -285,6 +329,7 @@ fn rasterize_sdf_area_tile_buffer_into(
     tile_y: u32,
     brush: &Brush,
     clip_mask: &[u8; 256],
+    image_resources: Option<&ImageResourceStore>,
     fine_area: impl FnOnce(&mut [f32; crate::BLOCK_SIZE as usize], Bounds),
 ) {
     let base_x = (tile_x * TILE_SIZE) as i32;
@@ -307,9 +352,10 @@ fn rasterize_sdf_area_tile_buffer_into(
                 continue;
             }
             let src = scale_premul_u8(
-                brush.sample(
+                brush.sample_with_resources(
                     (base_x + x as i32) as f32 + 0.5,
                     (base_y + y as i32) as f32 + 0.5,
+                    image_resources,
                 ),
                 alpha,
             );
@@ -318,6 +364,7 @@ fn rasterize_sdf_area_tile_buffer_into(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn rasterize_glyphs_tile_buffer_into(
     tile: &mut TileBuffer,
     tile_x: u32,
@@ -326,6 +373,7 @@ pub(crate) fn rasterize_glyphs_tile_buffer_into(
     brush: &Brush,
     text: &PreparedTextData,
     clip_mask: &[u8; 256],
+    image_resources: Option<&ImageResourceStore>,
 ) {
     let base_x = (tile_x * TILE_SIZE) as i32;
     let base_y = (tile_y * TILE_SIZE) as i32;
@@ -374,7 +422,11 @@ pub(crate) fn rasterize_glyphs_tile_buffer_into(
                         if alpha == 0 {
                             continue;
                         }
-                        let color = brush.sample(global_x as f32 + 0.5, global_y as f32 + 0.5);
+                        let color = brush.sample_with_resources(
+                            global_x as f32 + 0.5,
+                            global_y as f32 + 0.5,
+                            image_resources,
+                        );
                         match image.composite_mode {
                             TextCompositeMode::Linear => {
                                 tile[tile_ix] = src_over_mask_linear_auto_with_params_u8(
@@ -425,7 +477,11 @@ pub(crate) fn rasterize_glyphs_tile_buffer_into(
                             image.data[image_ix + 1],
                             image.data[image_ix + 2],
                         ];
-                        let color = brush.sample(global_x as f32 + 0.5, global_y as f32 + 0.5);
+                        let color = brush.sample_with_resources(
+                            global_x as f32 + 0.5,
+                            global_y as f32 + 0.5,
+                            image_resources,
+                        );
                         let out = match image.composite_mode {
                             TextCompositeMode::Srgb => {
                                 src_over_subpixel_mask_u8(tile[tile_ix], color, mask, clip)
@@ -650,6 +706,7 @@ mod tests {
             FillRule::NonZero,
             &brush,
             &clip_mask,
+            None,
         );
         rasterize_path_glyph_tile_buffer_into(
             &mut path_glyph,
@@ -660,6 +717,7 @@ mod tests {
             FillRule::NonZero,
             &brush,
             &clip_mask,
+            None,
         );
 
         let normal = unpack_rgba8(normal_path[0]);
@@ -704,6 +762,7 @@ mod tests {
             &Brush::Solid(Color::WHITE),
             &text,
             &[255; 256],
+            None,
         );
 
         assert_eq!(unpack_rgba8(tile[0]), [255, 0, 0, 255]);

@@ -43,7 +43,7 @@ const WORKGROUP_SIZE: u32 = 256;
 const SHARED_BLUR_TILE_WIDTH: u32 = 16;
 const SHARED_BLUR_TILE_HEIGHT: u32 = 16;
 const SHARED_BLUR_MAX_RADIUS: u32 = 16;
-const STORAGE_BINDING_COUNT: u32 = 53;
+const STORAGE_BINDING_COUNT: u32 = 55;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -320,6 +320,8 @@ pub(crate) struct WgpuFilterBrushBindings<'a> {
     pub(crate) data: &'a ::wgpu::Buffer,
     pub(crate) params: &'a ::wgpu::Buffer,
     pub(crate) payloads: &'a ::wgpu::Buffer,
+    pub(crate) image_resource_metadata: &'a ::wgpu::Buffer,
+    pub(crate) image_resource_pixels: &'a ::wgpu::Buffer,
 }
 
 pub(crate) struct WgpuFilterTurbulenceBindings<'a> {
@@ -1877,6 +1879,10 @@ impl WgpuFilterPipeline {
         let brush_data = brushes.map_or(&self.dummy_read, |brushes| brushes.data);
         let brush_params = brushes.map_or(&self.dummy_read, |brushes| brushes.params);
         let brush_payloads = brushes.map_or(&self.dummy_read, |brushes| brushes.payloads);
+        let image_resource_metadata =
+            brushes.map_or(&self.dummy_read, |brushes| brushes.image_resource_metadata);
+        let image_resource_pixels =
+            brushes.map_or(&self.dummy_read, |brushes| brushes.image_resource_pixels);
         let convolve_kernels = convolve_kernels.unwrap_or(&self.dummy_read);
         let turbulence_selectors =
             turbulence_tables.map_or(&self.dummy_read, |tables| tables.selectors);
@@ -1951,6 +1957,8 @@ impl WgpuFilterPipeline {
                 bind_buffer(54, path_p0y),
                 bind_buffer(55, path_p1x),
                 bind_buffer(56, path_p1y),
+                bind_buffer(57, image_resource_metadata),
+                bind_buffer(58, image_resource_pixels),
             ],
         })
     }
@@ -2338,7 +2346,7 @@ fn create_pipeline(
     })
 }
 
-fn filter_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 57] {
+fn filter_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 59] {
     [
         uniform_entry(0),
         storage_texture_entry(1, ::wgpu::StorageTextureAccess::ReadOnly),
@@ -2397,6 +2405,8 @@ fn filter_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 57] {
         storage_entry(54, true),
         storage_entry(55, true),
         storage_entry(56, true),
+        storage_entry(57, true),
+        storage_entry(58, true),
     ]
 }
 

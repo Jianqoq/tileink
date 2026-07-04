@@ -9,6 +9,7 @@ use crate::{
     shared::{
         bounds::{Bounds, PixelBounds},
         image::Image,
+        image_resource::ImageResourceStore,
         line_seg::LineSegment,
         pixel::{TileBuffer, coverage_f32_to_u8},
         sdf::Sdf,
@@ -28,6 +29,7 @@ pub struct FineCpuPrepared<'a> {
     target_bounds: Bounds,
     tiles_size: (u32, u32),
     text: Option<&'a PreparedTextData>,
+    image_resources: Option<&'a ImageResourceStore>,
 }
 
 impl<'a> FineCpuPrepared<'a> {
@@ -60,6 +62,7 @@ impl<'a> FineCpuPrepared<'a> {
             tile_glyphs: self.tile_glyphs,
             segments: self.segments,
             text: self.text,
+            image_resources: self.image_resources,
         };
 
         (0..tile_count).into_par_iter().for_each(|tile_offset| {
@@ -111,6 +114,7 @@ struct FineTileResources<'a> {
     tile_glyphs: &'a [u32],
     segments: &'a [LineSegment],
     text: Option<&'a PreparedTextData>,
+    image_resources: Option<&'a ImageResourceStore>,
 }
 
 fn render_tile(
@@ -141,6 +145,7 @@ fn render_tile(
                     fill.fill_rule,
                     &fill.brush,
                     &clip_mask,
+                    resources.image_resources,
                 );
             }
             TilePtcl::PathGlyph(fill) => {
@@ -155,11 +160,18 @@ fn render_tile(
                     fill.fill_rule,
                     &fill.brush,
                     &clip_mask,
+                    resources.image_resources,
                 );
             }
             TilePtcl::Sdf(sdf) => {
                 rasterize_sdf_tile_buffer_into(
-                    tile, tile_x, tile_y, &sdf.sdf, &sdf.brush, &clip_mask,
+                    tile,
+                    tile_x,
+                    tile_y,
+                    &sdf.sdf,
+                    &sdf.brush,
+                    &clip_mask,
+                    resources.image_resources,
                 );
             }
             TilePtcl::SdfShadow(sdf_shadow) => {
@@ -170,6 +182,7 @@ fn render_tile(
                     &sdf_shadow.sdf_shadow,
                     &sdf_shadow.brush,
                     &clip_mask,
+                    resources.image_resources,
                 );
             }
             TilePtcl::Glyph(glyph) => {
@@ -184,6 +197,7 @@ fn render_tile(
                         &glyph.brush,
                         text,
                         &clip_mask,
+                        resources.image_resources,
                     );
                 }
             }
@@ -399,6 +413,7 @@ impl FineCpuPipeline {
         target_bounds: Bounds,
         tiles_size: (u32, u32),
         text: Option<&'a PreparedTextData>,
+        image_resources: Option<&'a ImageResourceStore>,
     ) -> FineCpuPrepared<'a> {
         FineCpuPrepared {
             tile_ptcl_ranges,
@@ -409,6 +424,7 @@ impl FineCpuPipeline {
             target_bounds,
             tiles_size,
             text,
+            image_resources,
         }
     }
 }
@@ -460,6 +476,7 @@ mod tests {
                 &mut image,
                 target_bounds,
                 tiles_size,
+                None,
                 None,
             )
             .run();

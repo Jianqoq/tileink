@@ -36,7 +36,16 @@ impl WgpuSceneBuffers {
             brush_data: self.draw_brush_data.buffer(),
             brush_params: self.draw_brush_params.buffer(),
             brush_payloads: self.draw_brush_payloads.buffer(),
+            image_resource_metadata: self.image_resource_metadata.buffer(),
+            image_resource_pixels: self.image_resource_pixels.buffer(),
         }
+    }
+
+    pub(crate) fn image_resource_bindings(&self) -> (&::wgpu::Buffer, &::wgpu::Buffer) {
+        (
+            self.image_resource_metadata.buffer(),
+            self.image_resource_pixels.buffer(),
+        )
     }
 
     pub(crate) fn tile_fine_bindings<'a>(
@@ -260,6 +269,8 @@ pub(crate) struct WgpuFineSceneBindings<'a> {
     pub(crate) brush_data: &'a ::wgpu::Buffer,
     pub(crate) brush_params: &'a ::wgpu::Buffer,
     pub(crate) brush_payloads: &'a ::wgpu::Buffer,
+    pub(crate) image_resource_metadata: &'a ::wgpu::Buffer,
+    pub(crate) image_resource_pixels: &'a ::wgpu::Buffer,
 }
 
 pub(crate) struct WgpuTileFineBindings<'a> {

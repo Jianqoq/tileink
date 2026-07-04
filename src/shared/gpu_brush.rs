@@ -5,6 +5,7 @@ use crate::shared::{
     draw_record::DrawRecord,
     execution::ExecOp,
     image::premul_color_to_rgba8_pack,
+    image_resource::GpuImageResourceUpload,
     layer::{
         Layer,
         filter::{Filter, FilterPrimitiveKind},
@@ -19,6 +20,7 @@ pub(crate) const GPU_BRUSH_RADIAL: u32 = 3;
 pub(crate) const GPU_BRUSH_SWEEP: u32 = 4;
 pub(crate) const GPU_BRUSH_FOUR_CORNER: u32 = 5;
 pub(crate) const GPU_BRUSH_PATTERN: u32 = 6;
+pub(crate) const GPU_BRUSH_PATTERN_RESOURCE: u32 = 7;
 
 pub(crate) const GPU_PATTERN_NEAREST: u32 = 0;
 pub(crate) const GPU_PATTERN_BILINEAR: u32 = 1;
@@ -42,28 +44,50 @@ impl GpuBrushUpload {
     }
 
     pub(crate) fn from_scene_draws_raw(draws: &[DrawRecord]) -> Self {
+        Self::from_scene_draws(draws, None)
+    }
+
+    pub(crate) fn from_scene_draws(
+        draws: &[DrawRecord],
+        image_resources: Option<&GpuImageResourceUpload>,
+    ) -> Self {
         let mut upload = Self::default();
         for draw in draws {
-            upload.push_brush(&draw.brush);
+            upload.push_brush_with_resources(&draw.brush, image_resources);
         }
         upload
     }
 
-    pub(crate) fn from_filter_plan(ops: &[ExecOp]) -> Self {
+    pub(crate) fn from_filter_plan_with_resources(
+        ops: &[ExecOp],
+        image_resources: Option<&GpuImageResourceUpload>,
+    ) -> Self {
         let mut upload = Self::default();
-        collect_filter_brushes_for_ops(ops, &mut upload);
+        collect_filter_brushes_for_ops(ops, &mut upload, image_resources);
         upload
     }
 
-    pub(crate) fn from_filter_ops_and_filter(ops: &[ExecOp], filter: &Filter) -> Self {
+    pub(crate) fn from_filter_ops_and_filter_with_resources(
+        ops: &[ExecOp],
+        filter: &Filter,
+        image_resources: Option<&GpuImageResourceUpload>,
+    ) -> Self {
         let mut upload = Self::default();
-        collect_filter_brushes_for_ops(ops, &mut upload);
-        collect_filter_brush(filter, &mut upload);
+        collect_filter_brushes_for_ops(ops, &mut upload, image_resources);
+        collect_filter_brush(filter, &mut upload, image_resources);
         upload
     }
 
     pub(crate) fn push_brush(&mut self, brush: &Brush) {
-        let (data, params) = self.encode_brush(brush);
+        self.push_brush_with_resources(brush, None);
+    }
+
+    pub(crate) fn push_brush_with_resources(
+        &mut self,
+        brush: &Brush,
+        image_resources: Option<&GpuImageResourceUpload>,
+    ) {
+        let (data, params) = self.encode_brush(brush, image_resources);
         self.data.extend_from_slice(&data);
         debug_assert_eq!(self.data.len() % GPU_BRUSH_U32_STRIDE, 0);
         self.params.extend_from_slice(&params);
@@ -78,7 +102,7 @@ impl GpuBrushUpload {
             "brush index out of range"
         );
         let brush = Brush::Solid(color);
-        let (data, params) = self.encode_brush(&brush);
+        let (data, params) = self.encode_brush(&brush, None);
         self.data[data_offset..data_offset + GPU_BRUSH_U32_STRIDE].copy_from_slice(&data);
         self.params[params_offset..params_offset + GPU_BRUSH_PARAM_STRIDE].copy_from_slice(&params);
     }
@@ -86,6 +110,7 @@ impl GpuBrushUpload {
     fn encode_brush(
         &mut self,
         brush: &Brush,
+        image_resources: Option<&GpuImageResourceUpload>,
     ) -> ([u32; GPU_BRUSH_U32_STRIDE], [f32; GPU_BRUSH_PARAM_STRIDE]) {
         let mut params = [0.0; GPU_BRUSH_PARAM_STRIDE];
         let mut kind = GPU_BRUSH_SOLID;
@@ -139,14 +164,26 @@ impl GpuBrushUpload {
                 (payload_offset, payload_len) = self.push_payload(&gradient.colors);
             }
             Brush::Pattern(pattern) => {
-                kind = GPU_BRUSH_PATTERN;
                 extend = encode_gpu_extend(pattern.extend);
                 params[0..6].copy_from_slice(&pattern.transform);
-                image_width = pattern.image.width;
-                image_height = pattern.image.height;
+                let (width, height) = pattern.image_size();
+                image_width = width;
+                image_height = height;
                 opacity = pattern.opacity as u32;
                 pattern_sampling = encode_gpu_pattern_sampling(pattern.sampling);
-                (payload_offset, payload_len) = self.push_payload(&pattern.image.pixels);
+                if let Some(key) = pattern.image_key() {
+                    if let Some(index) =
+                        image_resources.and_then(|resources| resources.image_index(key))
+                    {
+                        kind = GPU_BRUSH_PATTERN_RESOURCE;
+                        payload_offset = index;
+                    } else {
+                        kind = GPU_BRUSH_PATTERN;
+                    }
+                } else if let Some(image) = pattern.inline_image() {
+                    kind = GPU_BRUSH_PATTERN;
+                    (payload_offset, payload_len) = self.push_payload(&image.pixels);
+                }
             }
         }
 
@@ -173,49 +210,63 @@ impl GpuBrushUpload {
     }
 }
 
-fn collect_filter_brushes_for_ops(ops: &[ExecOp], upload: &mut GpuBrushUpload) {
+fn collect_filter_brushes_for_ops(
+    ops: &[ExecOp],
+    upload: &mut GpuBrushUpload,
+    image_resources: Option<&GpuImageResourceUpload>,
+) {
     for op in ops {
         match op {
             ExecOp::OffscreenLayer {
                 layer, children, ..
             } => match layer {
                 Layer::Filter { filter, .. } => {
-                    collect_filter_brushes_for_ops(children, upload);
-                    collect_filter_brush(filter, upload);
+                    collect_filter_brushes_for_ops(children, upload, image_resources);
+                    collect_filter_brush(filter, upload, image_resources);
                 }
                 Layer::Backdrop { filter, .. } => {
-                    collect_filter_brush(filter, upload);
-                    collect_filter_brushes_for_ops(children, upload);
+                    collect_filter_brush(filter, upload, image_resources);
+                    collect_filter_brushes_for_ops(children, upload, image_resources);
                 }
-                _ => collect_filter_brushes_for_ops(children, upload),
+                _ => collect_filter_brushes_for_ops(children, upload, image_resources),
             },
             ExecOp::OffscreenMaskLayer { content, mask, .. } => {
-                collect_filter_brushes_for_ops(content, upload);
-                collect_filter_brushes_for_ops(mask, upload);
+                collect_filter_brushes_for_ops(content, upload, image_resources);
+                collect_filter_brushes_for_ops(mask, upload, image_resources);
             }
             _ => {}
         }
     }
 }
 
-fn collect_filter_brush(filter: &Filter, upload: &mut GpuBrushUpload) {
+fn collect_filter_brush(
+    filter: &Filter,
+    upload: &mut GpuBrushUpload,
+    image_resources: Option<&GpuImageResourceUpload>,
+) {
     match filter {
         Filter::Chain { filters, .. } => {
             for filter in filters {
-                collect_filter_brush(filter, upload);
+                collect_filter_brush(filter, upload, image_resources);
             }
         }
         Filter::Graph { primitives, .. } => {
             for primitive in primitives {
                 match &primitive.kind {
-                    FilterPrimitiveKind::Filter(filter) => collect_filter_brush(filter, upload),
-                    FilterPrimitiveKind::Image { brush } => upload.push_brush(brush),
+                    FilterPrimitiveKind::Filter(filter) => {
+                        collect_filter_brush(filter, upload, image_resources)
+                    }
+                    FilterPrimitiveKind::Image { brush } => {
+                        upload.push_brush_with_resources(brush, image_resources)
+                    }
                     _ => {}
                 }
             }
         }
-        Filter::DropShadow { brush, .. } => upload.push_brush(brush),
-        Filter::Flood { brush } => upload.push_brush(brush),
+        Filter::DropShadow { brush, .. } => {
+            upload.push_brush_with_resources(brush, image_resources)
+        }
+        Filter::Flood { brush } => upload.push_brush_with_resources(brush, image_resources),
         _ => {}
     }
 }

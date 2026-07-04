@@ -19,6 +19,7 @@ use crate::shared::{
     },
     fill::FillRule,
     image::Image,
+    image_resource::ImageKey,
     layer::{
         Layer, LayerKind,
         blend::Blend,
@@ -1094,6 +1095,20 @@ impl Canvas {
         sampling: PatternSampling,
     ) -> Option<DrawId> {
         let brush = Brush::from_image_with_sampling(image, rect, sampling)?;
+        Some(self.push_rect(rect, Radius::ZERO, brush))
+    }
+
+    /// Adds a renderer-owned image resource scaled into `rect` with explicit sampling.
+    ///
+    /// The scene only stores `key`; CPU and wgpu renderers resolve the image
+    /// through their resource tables at render time.
+    pub fn push_image_key(
+        &mut self,
+        rect: Rect,
+        key: ImageKey,
+        sampling: PatternSampling,
+    ) -> Option<DrawId> {
+        let brush = Brush::from_image_key(key, rect, sampling)?;
         Some(self.push_rect(rect, Radius::ZERO, brush))
     }
 

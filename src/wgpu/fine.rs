@@ -12,7 +12,7 @@ use super::{
     target::WgpuTarget,
 };
 
-const TILE_STORAGE_BINDING_COUNT: u32 = 53;
+const TILE_STORAGE_BINDING_COUNT: u32 = 55;
 
 pub(crate) struct WgpuFinePipeline {
     pipeline: ::wgpu::ComputePipeline,
@@ -262,12 +262,14 @@ impl WgpuFinePipeline {
                 buffer_binding(52, bindings.glyph_image_data),
                 buffer_binding(53, bindings.clip_spills),
                 buffer_binding(54, bindings.group_spills),
+                buffer_binding(55, fine.image_resource_metadata),
+                buffer_binding(56, fine.image_resource_pixels),
             ],
         })
     }
 }
 
-fn tile_fine_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 55] {
+fn tile_fine_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 57] {
     [
         uniform_layout_entry(0),
         storage_texture_layout_entry(1),
@@ -324,6 +326,8 @@ fn tile_fine_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 55] {
         storage_layout_entry(52, true),
         storage_layout_entry(53, false),
         storage_layout_entry(54, false),
+        storage_layout_entry(55, true),
+        storage_layout_entry(56, true),
     ]
 }
 

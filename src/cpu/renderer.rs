@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{sync::Arc as SharedArc, time::Duration};
 
 use peniko::Color;
 
@@ -21,6 +21,7 @@ use crate::{
         draw_record::DrawRecord,
         execution::{ExecOp, ExecPlan, LayerStackEntry},
         image::Image,
+        image_resource::{ImageKey, ImageResourceStore},
     },
     text::{PreparedTextData, TextContext},
 };
@@ -36,6 +37,7 @@ pub struct Renderer {
     coarse: CoarseCpuPipeline,
     fine: FineCpuPipeline,
     filter: FilterCpuPipeline,
+    image_resources: ImageResourceStore,
     size: (u32, u32),
 
     main: RasterBuffers,
@@ -114,6 +116,7 @@ impl Renderer {
             coarse: CoarseCpuPipeline::new(),
             fine: FineCpuPipeline::new(),
             filter: FilterCpuPipeline::new(),
+            image_resources: ImageResourceStore::default(),
             size: (width, height),
             main: RasterBuffers::default(),
         }
@@ -125,6 +128,14 @@ impl Renderer {
 
     pub fn set_clear_color(&mut self, clear: Color) {
         self.clear = clear;
+    }
+
+    pub fn insert_image(&mut self, key: ImageKey, image: impl Into<SharedArc<Image>>) -> bool {
+        self.image_resources.insert(key, image)
+    }
+
+    pub fn image_resource(&self, key: ImageKey) -> Option<&Image> {
+        self.image_resources.get(key)
     }
 
     /// Renders text draws using the same [`TextContext`] that created their
@@ -204,6 +215,7 @@ impl Renderer {
                 target_bounds,
                 &self.main,
                 None,
+                Some(&self.image_resources),
             );
             profile.fine += start.elapsed();
         }
@@ -363,6 +375,7 @@ impl Renderer {
             target_bounds,
             buffers,
             text_data,
+            Some(&self.image_resources),
         );
     }
 }
