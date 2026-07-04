@@ -21,7 +21,7 @@ impl WgpuBuffer {
         data: &[T],
     ) {
         let bytes = bytemuck::cast_slice(data);
-        let capacity = (bytes.len() as ::wgpu::BufferAddress).max(4);
+        let capacity = required_storage_capacity::<T>(data.len());
         if capacity > self.capacity {
             self.buffer = create_buffer(device, label, capacity.next_power_of_two());
             self.capacity = capacity.next_power_of_two();
@@ -37,7 +37,7 @@ impl WgpuBuffer {
         label: &'static str,
         len: usize,
     ) {
-        let capacity = ((len * std::mem::size_of::<T>()) as ::wgpu::BufferAddress).max(4);
+        let capacity = required_storage_capacity::<T>(len);
         if capacity > self.capacity {
             self.buffer = create_buffer(device, label, capacity.next_power_of_two());
             self.capacity = capacity.next_power_of_two();
@@ -105,4 +105,26 @@ fn create_buffer(
             | ::wgpu::BufferUsages::COPY_SRC,
         mapped_at_creation: false,
     })
+}
+
+fn required_storage_capacity<T: Pod>(len: usize) -> ::wgpu::BufferAddress {
+    ((len * std::mem::size_of::<T>()) as ::wgpu::BufferAddress)
+        .max(std::mem::size_of::<T>() as ::wgpu::BufferAddress)
+        .max(4)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::shared::path::PathRecord;
+
+    use super::required_storage_capacity;
+
+    #[test]
+    fn empty_typed_storage_buffer_keeps_one_element_stride() {
+        assert_eq!(
+            required_storage_capacity::<PathRecord>(0),
+            std::mem::size_of::<PathRecord>() as u64
+        );
+        assert_eq!(required_storage_capacity::<u32>(0), 4);
+    }
 }

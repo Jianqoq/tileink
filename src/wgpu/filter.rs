@@ -339,6 +339,8 @@ pub(crate) struct WgpuFilterPathBindings<'a> {
     pub(crate) p1y: &'a ::wgpu::Buffer,
 }
 
+const DUMMY_STORAGE_BUFFER_SIZE: ::wgpu::BufferAddress = 256;
+
 impl WgpuFilterPipeline {
     pub(crate) fn new(device: &::wgpu::Device) -> Option<Self> {
         let portable_textures = !device
@@ -374,13 +376,13 @@ impl WgpuFilterPipeline {
         });
         let dummy_read = device.create_buffer(&::wgpu::BufferDescriptor {
             label: Some("tileink wgpu filter read dummy buffer"),
-            size: 4,
+            size: DUMMY_STORAGE_BUFFER_SIZE,
             usage: ::wgpu::BufferUsages::STORAGE,
             mapped_at_creation: false,
         });
         let dummy_read_write = device.create_buffer(&::wgpu::BufferDescriptor {
             label: Some("tileink wgpu filter read-write dummy buffer"),
-            size: 4,
+            size: DUMMY_STORAGE_BUFFER_SIZE,
             usage: ::wgpu::BufferUsages::STORAGE,
             mapped_at_creation: false,
         });
