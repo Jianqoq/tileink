@@ -759,10 +759,16 @@ impl Renderer {
                 std_dev_y / factor as f32,
                 1,
             );
+            let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+                self.release_scratch(temp);
+                self.release_scratch(low);
+                return false;
+            };
             filter.upsample_rect_composite_region(
                 commands,
                 self.render_target_view(low),
                 self.render_target_view(target),
+                target_read,
                 self.size,
                 self.lengths,
                 bounds,
@@ -889,11 +895,18 @@ impl Renderer {
             std_dev / factor,
             1,
         );
+        let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+            self.release_scratch(temp);
+            self.release_scratch(low);
+            self.release_scratch(source);
+            return false;
+        };
         filter.rect_liquid_glass_composite_region(
             commands,
             self.render_target_view(source),
             self.render_target_view(low),
             self.render_target_view(target),
+            target_read,
             self.size,
             self.lengths,
             bounds,
@@ -988,11 +1001,18 @@ impl Renderer {
             low_bounds,
             glass.blur_sampling,
         );
+        let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+            self.release_scratch(temp);
+            self.release_scratch(low);
+            self.release_scratch(source);
+            return false;
+        };
         filter.rect_liquid_glass_composite_region(
             commands,
             self.render_target_view(source),
             self.render_target_view(temp),
             self.render_target_view(target),
+            target_read,
             self.size,
             self.lengths,
             bounds,
@@ -1162,10 +1182,14 @@ impl Renderer {
         let Some(filter) = &self.filter else {
             return false;
         };
+        let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+            return false;
+        };
         filter.source_over_region(
             commands,
             self.render_target_view(source),
             self.render_target_view(target),
+            target_read,
             self.size,
             self.lengths,
             bounds,
@@ -1185,11 +1209,15 @@ impl Renderer {
         let Some(filter) = &self.filter else {
             return false;
         };
+        let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+            return false;
+        };
         filter.blend_region(
             commands,
             self.render_target_view(input1),
             self.render_target_view(input2),
             self.render_target_view(target),
+            target_read,
             self.size,
             self.lengths,
             bounds,
@@ -1308,9 +1336,13 @@ impl Renderer {
             return false;
         };
         let brushes = self.filter_brush_bindings();
+        let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+            return false;
+        };
         filter.composite_drop_shadow(
             commands,
             self.render_target_view(target),
+            target_read,
             self.render_target_view(shadow),
             self.size,
             self.lengths,
@@ -1329,9 +1361,13 @@ impl Renderer {
         matrix: [f32; 20],
     ) {
         if let Some(filter) = &self.filter {
+            let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+                return;
+            };
             filter.apply_color_matrix(
                 commands,
                 self.render_target_view(target),
+                target_read,
                 self.size,
                 self.lengths,
                 bounds,
@@ -1348,9 +1384,13 @@ impl Renderer {
         table_index: u32,
     ) {
         if let Some(filter) = &self.filter {
+            let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+                return;
+            };
             filter.apply_component_transfer(
                 commands,
                 self.render_target_view(target),
+                target_read,
                 self.size,
                 self.lengths,
                 bounds,
@@ -1622,9 +1662,13 @@ impl Renderer {
         amount: f32,
     ) {
         if let Some(filter) = &self.filter {
+            let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+                return;
+            };
             filter.apply_color_filter(
                 commands,
                 self.render_target_view(target),
+                target_read,
                 self.size,
                 self.lengths,
                 bounds,

@@ -54,7 +54,7 @@ fn wgpu_renderer_reads_uploaded_cpu_render_when_enabled() {
         FillRule::NonZero,
         0.0,
     );
-    let mut renderer = Renderer::new_default_device(8, 8, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(8, 8, Color::TRANSPARENT);
 
     renderer.render(&canvas);
     let image = renderer.image();
@@ -104,7 +104,7 @@ fn wgpu_renderer_push_image_key_samples_resource_buffer_when_enabled() {
         .push_image_key(Rect::new(0.0, 0.0, 4.0, 2.0), key, PatternSampling::Nearest)
         .expect("push image resource");
 
-    let mut renderer = Renderer::new_default_device(4, 2, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(4, 2, Color::TRANSPARENT);
     assert!(renderer.insert_image(
         key,
         Image::from_rgba8(
@@ -139,7 +139,7 @@ fn wgpu_renderer_push_image_key_stops_sampling_after_resource_remove_when_enable
         .push_image_key(Rect::new(0.0, 0.0, 2.0, 1.0), key, PatternSampling::Nearest)
         .expect("push image resource");
 
-    let mut renderer = Renderer::new_default_device(2, 1, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(2, 1, Color::TRANSPARENT);
     assert!(renderer.insert_image(key, Image::from_rgba8(1, 1, [255, 0, 0, 255])));
     renderer.prepare_scene(&canvas);
     assert!(renderer.render_prepared_tile_plan(&canvas));
@@ -164,7 +164,7 @@ fn wgpu_renderer_reuses_pipelines_when_clear_changes() {
         crate::Radius::ZERO,
         Color::from_rgb8(220, 64, 72),
     );
-    let mut renderer = Renderer::new_default_device(8, 8, Color::from_rgb8(10, 20, 30));
+    let mut renderer = new_test_renderer(8, 8, Color::from_rgb8(10, 20, 30));
 
     renderer.render(&canvas);
     assert_eq!(renderer.image().rgba8_at(0, 0), [10, 20, 30, 255]);
@@ -188,7 +188,7 @@ fn wgpu_renderer_profile_includes_cpu_prepare_and_gpu_stages() {
         crate::Radius::ZERO,
         Color::from_rgb8(30, 120, 220),
     );
-    let mut renderer = Renderer::new_default_device(16, 16, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(16, 16, Color::TRANSPARENT);
 
     renderer.start_profile();
     renderer.render(&canvas);
@@ -235,7 +235,7 @@ fn wgpu_renderer_uploads_cpu_fallback_to_copy_texture_without_storage() {
         FillRule::NonZero,
         0.0,
     );
-    let mut renderer = Renderer::new_default_device(8, 8, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(8, 8, Color::TRANSPARENT);
     let texture = renderer
         .device()
         .create_texture(&::wgpu::TextureDescriptor {
@@ -275,7 +275,7 @@ fn wgpu_renderer_renders_tile_fine_directly_to_storage_texture_when_enabled() {
         FillRule::NonZero,
         0.0,
     );
-    let mut renderer = Renderer::new_default_device(8, 8, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(8, 8, Color::TRANSPARENT);
     if !renderer
         .device()
         .features()
@@ -323,7 +323,7 @@ fn wgpu_renderer_renders_tile_fine_to_storage_texture_when_enabled() {
         crate::Radius::ZERO,
         Color::from_rgb8(12, 34, 56),
     );
-    let mut renderer = Renderer::new_default_device(8, 8, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(8, 8, Color::TRANSPARENT);
     if !renderer
         .device()
         .features()
@@ -421,7 +421,7 @@ fn wgpu_renderer_renders_offscreen_plan_directly_to_storage_texture() {
     );
     canvas.pop_layer();
 
-    let mut renderer = Renderer::new_default_device(16, 16, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(16, 16, Color::TRANSPARENT);
     if !renderer
         .device()
         .features()
@@ -478,7 +478,7 @@ fn wgpu_renderer_debug_capture_uses_native_scan_when_enabled() {
     let options = RenderOptions {
         debug: Some(RenderDebugOptions::new("target/wgpu-debug-capture-test").with_tile((0, 0))),
     };
-    let mut renderer = Renderer::new_default_device(32, 32, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(32, 32, Color::TRANSPARENT);
 
     let capture = renderer.render_with_options(&canvas, &options);
 
@@ -505,7 +505,7 @@ fn wgpu_renderer_renders_sdf_primitives_in_fine_pass_when_enabled() {
         crate::Radius::ZERO,
         Color::from_rgb8(30, 120, 220),
     );
-    let mut renderer = Renderer::new_default_device(16, 16, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(16, 16, Color::TRANSPARENT);
     assert!(renderer.fine.is_some());
 
     renderer.render(&canvas);
@@ -529,7 +529,7 @@ fn wgpu_renderer_samples_gradient_brush_in_fine_pass_when_enabled() {
         crate::Radius::ZERO,
         &gradient,
     );
-    let mut renderer = Renderer::new_default_device(32, 16, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(32, 16, Color::TRANSPARENT);
     assert!(renderer.fine.is_some());
 
     renderer.render(&canvas);
@@ -557,7 +557,7 @@ fn wgpu_scan_emits_segments_when_enabled() {
         FillRule::NonZero,
         0.0,
     );
-    let mut renderer = Renderer::new_default_device(16, 16, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(16, 16, Color::TRANSPARENT);
     if renderer.scan_pipeline.is_none() {
         return;
     }
@@ -610,7 +610,7 @@ fn wgpu_cumsum_scans_backdrop_rows_when_enabled() {
         FillRule::NonZero,
         0.0,
     );
-    let mut renderer = Renderer::new_default_device(48, 32, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(48, 32, Color::TRANSPARENT);
     if renderer.cumsum.is_none() {
         return;
     }
@@ -653,7 +653,7 @@ fn wgpu_coarse_emits_sdf_particles_for_rects_when_enabled() {
         crate::Radius::ZERO,
         Color::from_rgb8(0, 0, 255),
     );
-    let mut renderer = Renderer::new_default_device(32, 16, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(32, 16, Color::TRANSPARENT);
     if renderer.coarse_pipeline.is_none() {
         return;
     }
@@ -713,7 +713,7 @@ fn wgpu_coarse_tile_draw_bins_respect_batch_range_when_enabled() {
         crate::Radius::ZERO,
         Color::from_rgb8(0, 0, 255),
     );
-    let mut renderer = Renderer::new_default_device(32, 16, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(32, 16, Color::TRANSPARENT);
     if renderer.coarse_pipeline.is_none() {
         return;
     }
@@ -805,7 +805,7 @@ fn wgpu_renderer_applies_path_clip_in_tile_fine_when_enabled() {
         Color::from_rgb8(255, 0, 0),
     );
     canvas.pop_layer();
-    let mut renderer = Renderer::new_default_device(16, 16, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(16, 16, Color::TRANSPARENT);
 
     renderer.render(&canvas);
     let image = renderer.image();
@@ -833,7 +833,7 @@ fn wgpu_renderer_applies_opacity_layer_in_tile_fine_when_enabled() {
         Color::from_rgb8(255, 0, 0),
     );
     canvas.pop_layer();
-    let mut renderer = Renderer::new_default_device(16, 16, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(16, 16, Color::TRANSPARENT);
 
     renderer.render(&canvas);
     let pixel = renderer.image().rgba8_at(8, 8);
@@ -865,7 +865,7 @@ fn wgpu_renderer_applies_blend_layer_in_tile_fine_when_enabled() {
     canvas.push_rect(full, crate::Radius::ZERO, Color::from_rgb8(64, 200, 180));
     canvas.pop_layer();
 
-    let mut renderer = Renderer::new_default_device(16, 16, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(16, 16, Color::TRANSPARENT);
     renderer.render(&canvas);
 
     let mut cpu = CpuRenderer::new(16, 16, Color::TRANSPARENT);
@@ -1289,7 +1289,7 @@ fn wgpu_renderer_rasterizes_path_region_mask_when_enabled() {
     canvas.push_backdrop_layer(Filter::Invert(1.0), region.clone());
     canvas.pop_layer();
 
-    let mut renderer = Renderer::new_default_device(16, 16, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(16, 16, Color::TRANSPARENT);
     renderer.prepare_scene(&canvas);
     assert_eq!(
         renderer
@@ -1348,7 +1348,7 @@ fn wgpu_renderer_rasterizes_nonzero_path_region_mask_when_enabled() {
     canvas.push_backdrop_layer(Filter::Invert(1.0), region.clone());
     canvas.pop_layer();
 
-    let mut renderer = Renderer::new_default_device(16, 16, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(16, 16, Color::TRANSPARENT);
     renderer.prepare_scene(&canvas);
     let mask = renderer.acquire_scratch().expect("scratch mask");
     let mut commands = WgpuCommandBatch::new(renderer.device(), renderer.queue(), "test mask");
@@ -2049,7 +2049,7 @@ fn wgpu_renderer_profiles_filter_dispatch_stages_when_enabled() {
     );
     canvas.pop_layer();
 
-    let mut renderer = Renderer::new_default_device(64, 40, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(64, 40, Color::TRANSPARENT);
     let profile = renderer.render_profiled(&canvas);
 
     assert_profile_has(&profile, "filter.downsample");
@@ -2085,7 +2085,7 @@ fn wgpu_renderer_profiles_empty_stack_backdrop_with_direct_composite_when_enable
     );
     canvas.pop_layer();
 
-    let mut renderer = Renderer::new_default_device(64, 40, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(64, 40, Color::TRANSPARENT);
     let profile = renderer.render_profiled(&canvas);
 
     assert_profile_has(&profile, "filter.upsample.composite.rect");
@@ -2122,7 +2122,7 @@ fn wgpu_renderer_profiles_empty_stack_liquid_glass_with_direct_composite_when_en
     );
     canvas.pop_layer();
 
-    let mut renderer = Renderer::new_default_device(64, 40, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(64, 40, Color::TRANSPARENT);
     let profile = renderer.render_profiled(&canvas);
 
     assert_profile_has(&profile, "filter.copy");
@@ -2164,7 +2164,7 @@ fn wgpu_renderer_profiles_simple_liquid_glass_without_materialized_upsample_when
     );
     canvas.pop_layer();
 
-    let mut renderer = Renderer::new_default_device(64, 40, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(64, 40, Color::TRANSPARENT);
     let profile = renderer.render_profiled(&canvas);
 
     assert_profile_has(&profile, "filter.copy");
@@ -2232,7 +2232,7 @@ fn wgpu_renderer_spills_deep_clip_stack_in_tile_fine_when_enabled() {
         canvas.pop_layer();
     }
 
-    let mut renderer = Renderer::new_default_device(32, 16, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(32, 16, Color::TRANSPARENT);
     renderer.render(&canvas);
 
     let mut cpu = CpuRenderer::new(32, 16, Color::TRANSPARENT);
@@ -2257,7 +2257,7 @@ fn wgpu_renderer_spills_deep_opacity_stack_in_tile_fine_when_enabled() {
         canvas.pop_layer();
     }
 
-    let mut renderer = Renderer::new_default_device(16, 16, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(16, 16, Color::TRANSPARENT);
     renderer.render(&canvas);
 
     let mut cpu = CpuRenderer::new(16, 16, Color::TRANSPARENT);
@@ -2279,7 +2279,7 @@ fn wgpu_renderer_draws_text_in_tile_fine_when_enabled() {
     }
     let mut canvas = Canvas::new(160, 64);
     canvas.push_text_layout(&layout, peniko::kurbo::Point::new(8.0, 32.0), Color::BLACK);
-    let mut renderer = Renderer::new_default_device(160, 64, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(160, 64, Color::TRANSPARENT);
 
     renderer.render_with_text(&canvas, &mut font_system, &mut text_context);
     let image = renderer.image();
@@ -2314,7 +2314,7 @@ fn wgpu_renderer_renders_text_directly_to_storage_texture_when_enabled() {
         Color::from_rgb8(18, 24, 36),
     );
 
-    let mut renderer = Renderer::new_default_device(160, 64, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(160, 64, Color::TRANSPARENT);
     if !renderer
         .device()
         .features()
@@ -2386,7 +2386,7 @@ fn wgpu_renderer_matches_cpu_text_compositing_when_enabled() {
         Color::from_rgb8(18, 24, 36),
     );
 
-    let mut renderer = Renderer::new_default_device(160, 64, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(160, 64, Color::TRANSPARENT);
     renderer.render_with_text(&canvas, &mut font_system, &mut text_context);
     let wgpu_image = renderer.image();
 
@@ -2398,6 +2398,16 @@ fn wgpu_renderer_matches_cpu_text_compositing_when_enabled() {
 fn run_wgpu_tests() -> bool {
     std::env::var("TILEINK_RUN_WGPU_TESTS").as_deref() == Ok("1")
         || std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() == Ok("1")
+}
+
+fn new_test_renderer(width: u32, height: u32, clear: Color) -> Renderer {
+    if std::env::var("TILEINK_WGPU_MODE").as_deref() != Ok("portable") {
+        return Renderer::new_default_device(width, height, clear);
+    }
+    let Some((device, queue)) = portable_wgpu_device() else {
+        return Renderer::new_default_device(width, height, clear);
+    };
+    Renderer::new(&device, &queue, width, height, clear)
 }
 
 fn portable_wgpu_device() -> Option<(::wgpu::Device, ::wgpu::Queue)> {

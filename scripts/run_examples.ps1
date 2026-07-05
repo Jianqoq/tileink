@@ -1,3 +1,8 @@
+param(
+    [ValidateSet("native", "portable", "both")]
+    [string]$WgpuMode = "both"
+)
+
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
@@ -32,11 +37,36 @@ try {
     $metadata = cargo metadata --format-version 1 --no-deps | ConvertFrom-Json
     $examplesOutDir = Join-Path $metadata.target_directory "release\examples"
 
-    foreach ($name in $examples) {
-        $exe = Get-ExampleExecutable -ExamplesOutDir $examplesOutDir -Name $name
+    $cpuExe = Get-ExampleExecutable -ExamplesOutDir $examplesOutDir -Name "cpu_examples"
+    Write-Host "Running example: cpu_examples"
+    & $cpuExe
 
-        Write-Host "Running example: $name"
-        & $exe
+    $wgpuExe = Get-ExampleExecutable -ExamplesOutDir $examplesOutDir -Name "wgpu_examples"
+    $oldMode = $env:TILEINK_WGPU_MODE
+    $oldComparePortable = $env:TILEINK_WGPU_COMPARE_PORTABLE
+    try {
+        if ($WgpuMode -eq "native") {
+            $env:TILEINK_WGPU_MODE = "native"
+            Remove-Item Env:\TILEINK_WGPU_COMPARE_PORTABLE -ErrorAction SilentlyContinue
+            Write-Host "Running example: wgpu_examples [native]"
+            & $wgpuExe
+        } else {
+            $env:TILEINK_WGPU_MODE = "native"
+            $env:TILEINK_WGPU_COMPARE_PORTABLE = "1"
+            Write-Host "Running example: wgpu_examples [native + portable pixel compare]"
+            & $wgpuExe
+        }
+    } finally {
+        if ($null -eq $oldMode) {
+            Remove-Item Env:\TILEINK_WGPU_MODE -ErrorAction SilentlyContinue
+        } else {
+            $env:TILEINK_WGPU_MODE = $oldMode
+        }
+        if ($null -eq $oldComparePortable) {
+            Remove-Item Env:\TILEINK_WGPU_COMPARE_PORTABLE -ErrorAction SilentlyContinue
+        } else {
+            $env:TILEINK_WGPU_COMPARE_PORTABLE = $oldComparePortable
+        }
     }
 } finally {
     Pop-Location

@@ -141,6 +141,7 @@ pub struct Renderer {
     readback_target: WgpuTarget,
     fine_portable_source: WgpuTarget,
     fine_portable_target: WgpuTarget,
+    filter_target_snapshot: WgpuTarget,
     root_target_texture: Option<::wgpu::Texture>,
     root_target_view: Option<::wgpu::TextureView>,
     scratch: Vec<WgpuTarget>,
@@ -170,6 +171,7 @@ struct SavedRendererState {
     readback_target: WgpuTarget,
     fine_portable_source: WgpuTarget,
     fine_portable_target: WgpuTarget,
+    filter_target_snapshot: WgpuTarget,
     root_target_texture: Option<::wgpu::Texture>,
     root_target_view: Option<::wgpu::TextureView>,
     scratch: Vec<WgpuTarget>,
@@ -282,6 +284,7 @@ impl Renderer {
             readback_target: WgpuTarget::new(device, width, height),
             fine_portable_source: WgpuTarget::new(device, width, height),
             fine_portable_target: WgpuTarget::new(device, width, height),
+            filter_target_snapshot: WgpuTarget::new(device, width, height),
             root_target_texture: None,
             root_target_view: None,
             scratch: Vec::new(),
@@ -620,6 +623,10 @@ impl Renderer {
                 &mut self.fine_portable_target,
                 WgpuTarget::new(&self.device, canvas.width, canvas.height),
             ),
+            filter_target_snapshot: std::mem::replace(
+                &mut self.filter_target_snapshot,
+                WgpuTarget::new(&self.device, canvas.width, canvas.height),
+            ),
             root_target_texture: std::mem::take(&mut self.root_target_texture),
             root_target_view: std::mem::take(&mut self.root_target_view),
             scratch: std::mem::take(&mut self.scratch),
@@ -723,6 +730,7 @@ impl Renderer {
         self.readback_target = saved.readback_target;
         self.fine_portable_source = saved.fine_portable_source;
         self.fine_portable_target = saved.fine_portable_target;
+        self.filter_target_snapshot = saved.filter_target_snapshot;
         self.root_target_texture = saved.root_target_texture;
         self.root_target_view = saved.root_target_view;
         self.scratch = saved.scratch;
@@ -739,6 +747,8 @@ impl Renderer {
         for scratch in &mut self.scratch {
             scratch.resize(&self.device, self.size.0, self.size.1);
         }
+        self.filter_target_snapshot
+            .resize(&self.device, self.size.0, self.size.1);
         self.scratch_in_use.clear();
         self.scratch_in_use.resize(self.scratch.len(), false);
     }
@@ -1557,10 +1567,14 @@ impl Renderer {
         bounds: Bounds,
     ) {
         if let Some(filter) = &self.filter {
+            let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+                return;
+            };
             filter.apply_region_mask(
                 commands,
                 self.render_target_view(mask),
                 self.render_target_view(target),
+                target_read,
                 self.size,
                 self.lengths,
                 bounds,
@@ -1581,9 +1595,13 @@ impl Renderer {
             return false;
         };
         let bindings = self.scene_buffers.filter_bindings(&self.scan);
+        let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+            return false;
+        };
         filter.composite_src_over_with_stack(
             commands,
             self.render_target_view(target),
+            target_read,
             self.render_target_view(source),
             mask.map(|mask| self.render_target_view(mask)),
             self.size,
@@ -1606,9 +1624,13 @@ impl Renderer {
         let Some(filter) = &self.filter else {
             return false;
         };
+        let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+            return false;
+        };
         filter.composite_src_over_rect_mask_direct(
             commands,
             self.render_target_view(target),
+            target_read,
             self.render_target_view(source),
             self.size,
             self.lengths,
@@ -1631,9 +1653,13 @@ impl Renderer {
             return false;
         };
         let bindings = self.scene_buffers.filter_bindings(&self.scan);
+        let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+            return false;
+        };
         filter.composite_blend_with_stack(
             commands,
             self.render_target_view(target),
+            target_read,
             self.render_target_view(source),
             self.render_target_view(mask),
             self.size,
@@ -1660,9 +1686,13 @@ impl Renderer {
             return false;
         };
         let bindings = self.scene_buffers.filter_bindings(&self.scan);
+        let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+            return false;
+        };
         filter.composite_src_over_surface_with_stack(
             commands,
             self.render_target_view(target),
+            target_read,
             source.view(),
             self.size,
             source_size,
@@ -1711,6 +1741,20 @@ impl Renderer {
             ),
             WgpuRenderTargetId::Scratch(ix) => Some(self.scratch.get(ix)?.texture()),
         }
+    }
+
+    fn snapshot_filter_target(
+        &self,
+        commands: &mut WgpuCommandBatch,
+        target: WgpuRenderTargetId,
+    ) -> Option<&::wgpu::TextureView> {
+        copy_texture(
+            commands.encoder(),
+            self.render_target_texture(target)?,
+            self.filter_target_snapshot.texture(),
+            self.size,
+        );
+        Some(self.filter_target_snapshot.view())
     }
 
     fn filter_brush_bindings(&self) -> WgpuFilterBrushBindings<'_> {

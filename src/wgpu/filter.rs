@@ -365,6 +365,7 @@ struct FilterKernel {
     resources: u32,
     profile: FilterProfile,
     shared_workgroups: bool,
+    portable_textures: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -917,6 +918,7 @@ impl WgpuFilterPipeline {
         commands: &mut WgpuCommandBatch,
         source: &::wgpu::TextureView,
         target: &::wgpu::TextureView,
+        target_read: &::wgpu::TextureView,
         size: (u32, u32),
         lengths: GpuBufferLengths,
         bounds: Bounds,
@@ -924,7 +926,7 @@ impl WgpuFilterPipeline {
         let Some(config) = config_for_bounds(size, lengths, bounds) else {
             return;
         };
-        self.dispatch(
+        self.dispatch_with_target_read(
             commands,
             &self.source_over_region,
             &config,
@@ -932,6 +934,7 @@ impl WgpuFilterPipeline {
             &self.dummy_texture_view,
             target,
             None,
+            Some(target_read),
         );
     }
 
@@ -1000,6 +1003,7 @@ impl WgpuFilterPipeline {
         input1: &::wgpu::TextureView,
         input2: &::wgpu::TextureView,
         target: &::wgpu::TextureView,
+        target_read: &::wgpu::TextureView,
         size: (u32, u32),
         lengths: GpuBufferLengths,
         bounds: Bounds,
@@ -1009,7 +1013,7 @@ impl WgpuFilterPipeline {
             return;
         };
         config.blend_mode = encode_blend_mode(BlendMode::new(mode, Compose::SrcOver));
-        self.dispatch(
+        self.dispatch_with_target_read(
             commands,
             &self.blend_region,
             &config,
@@ -1017,6 +1021,7 @@ impl WgpuFilterPipeline {
             input2,
             target,
             None,
+            Some(target_read),
         );
     }
 
@@ -1277,6 +1282,7 @@ impl WgpuFilterPipeline {
         commands: &mut WgpuCommandBatch,
         mask: &::wgpu::TextureView,
         target: &::wgpu::TextureView,
+        target_read: &::wgpu::TextureView,
         size: (u32, u32),
         lengths: GpuBufferLengths,
         bounds: Bounds,
@@ -1284,7 +1290,7 @@ impl WgpuFilterPipeline {
         let Some(config) = config_for_bounds(size, lengths, bounds) else {
             return;
         };
-        self.dispatch(
+        self.dispatch_with_target_read(
             commands,
             &self.apply_region_mask,
             &config,
@@ -1292,6 +1298,7 @@ impl WgpuFilterPipeline {
             mask,
             target,
             None,
+            Some(target_read),
         );
     }
 
@@ -1299,6 +1306,7 @@ impl WgpuFilterPipeline {
         &self,
         commands: &mut WgpuCommandBatch,
         target: &::wgpu::TextureView,
+        target_read: &::wgpu::TextureView,
         size: (u32, u32),
         lengths: GpuBufferLengths,
         bounds: Bounds,
@@ -1310,7 +1318,7 @@ impl WgpuFilterPipeline {
         };
         config.filter_kind = filter_kind;
         config.amount = amount;
-        self.dispatch(
+        self.dispatch_with_target_read(
             commands,
             &self.color_filter_region,
             &config,
@@ -1318,6 +1326,7 @@ impl WgpuFilterPipeline {
             &self.dummy_texture_view,
             target,
             None,
+            Some(target_read),
         );
     }
 
@@ -1326,6 +1335,7 @@ impl WgpuFilterPipeline {
         &self,
         commands: &mut WgpuCommandBatch,
         target: &::wgpu::TextureView,
+        target_read: &::wgpu::TextureView,
         size: (u32, u32),
         lengths: GpuBufferLengths,
         bounds: Bounds,
@@ -1339,7 +1349,7 @@ impl WgpuFilterPipeline {
         config.matrix_b = [matrix[10], matrix[11], matrix[12], matrix[13]];
         config.matrix_a = [matrix[15], matrix[16], matrix[17], matrix[18]];
         config.matrix_bias = [matrix[4], matrix[9], matrix[14], matrix[19]];
-        self.dispatch(
+        self.dispatch_with_target_read(
             commands,
             &self.color_matrix_region,
             &config,
@@ -1347,6 +1357,7 @@ impl WgpuFilterPipeline {
             &self.dummy_texture_view,
             target,
             None,
+            Some(target_read),
         );
     }
 
@@ -1355,6 +1366,7 @@ impl WgpuFilterPipeline {
         &self,
         commands: &mut WgpuCommandBatch,
         target: &::wgpu::TextureView,
+        target_read: &::wgpu::TextureView,
         size: (u32, u32),
         lengths: GpuBufferLengths,
         bounds: Bounds,
@@ -1365,13 +1377,14 @@ impl WgpuFilterPipeline {
             return;
         };
         config.table_index = table_index;
-        self.dispatch_with_transfer(
+        self.dispatch_with_transfer_target_read(
             commands,
             &self.component_transfer_region,
             &config,
             &self.dummy_texture_view,
             &self.dummy_texture_view,
             target,
+            Some(target_read),
             None,
             Some(transfer_tables),
         );
@@ -1560,6 +1573,7 @@ impl WgpuFilterPipeline {
         &self,
         commands: &mut WgpuCommandBatch,
         target: &::wgpu::TextureView,
+        target_read: &::wgpu::TextureView,
         shadow_mask: &::wgpu::TextureView,
         size: (u32, u32),
         lengths: GpuBufferLengths,
@@ -1571,13 +1585,14 @@ impl WgpuFilterPipeline {
             return;
         };
         config.brush_offset = brush_offset;
-        self.dispatch_with_extra(
+        self.dispatch_with_extra_target_read(
             commands,
             &self.composite_drop_shadow_region,
             &config,
             &self.dummy_texture_view,
             shadow_mask,
             target,
+            Some(target_read),
             None,
             None,
             Some(brushes),
@@ -1679,6 +1694,7 @@ impl WgpuFilterPipeline {
         &self,
         commands: &mut WgpuCommandBatch,
         target: &::wgpu::TextureView,
+        target_read: &::wgpu::TextureView,
         source: &::wgpu::TextureView,
         mask: Option<&::wgpu::TextureView>,
         size: (u32, u32),
@@ -1700,7 +1716,7 @@ impl WgpuFilterPipeline {
             &self.composite_direct_region
         };
         let bindings = if needs_stack { Some(bindings) } else { None };
-        self.dispatch(
+        self.dispatch_with_target_read(
             commands,
             pipeline,
             &config,
@@ -1708,6 +1724,7 @@ impl WgpuFilterPipeline {
             mask.unwrap_or(&self.dummy_texture_view),
             target,
             bindings,
+            Some(target_read),
         );
     }
 
@@ -1716,6 +1733,7 @@ impl WgpuFilterPipeline {
         &self,
         commands: &mut WgpuCommandBatch,
         target: &::wgpu::TextureView,
+        target_read: &::wgpu::TextureView,
         source: &::wgpu::TextureView,
         size: (u32, u32),
         lengths: GpuBufferLengths,
@@ -1736,7 +1754,7 @@ impl WgpuFilterPipeline {
         config.radius_top_right = radius.top_right;
         config.radius_bottom_left = radius.bottom_left;
         config.radius_bottom_right = radius.bottom_right;
-        self.dispatch(
+        self.dispatch_with_target_read(
             commands,
             &self.composite_rect_direct_region,
             &config,
@@ -1744,6 +1762,7 @@ impl WgpuFilterPipeline {
             &self.dummy_texture_view,
             target,
             None,
+            Some(target_read),
         );
         true
     }
@@ -1753,6 +1772,7 @@ impl WgpuFilterPipeline {
         &self,
         commands: &mut WgpuCommandBatch,
         target: &::wgpu::TextureView,
+        target_read: &::wgpu::TextureView,
         source: &::wgpu::TextureView,
         mask: &::wgpu::TextureView,
         size: (u32, u32),
@@ -1768,7 +1788,7 @@ impl WgpuFilterPipeline {
         config.layer_stack_start = layer_stack.start as u32;
         config.layer_stack_end = layer_stack.end as u32;
         config.blend_mode = encode_blend_mode(mode);
-        self.dispatch(
+        self.dispatch_with_target_read(
             commands,
             &self.composite_blend_stack_region,
             &config,
@@ -1776,6 +1796,7 @@ impl WgpuFilterPipeline {
             mask,
             target,
             Some(bindings),
+            Some(target_read),
         );
     }
 
@@ -1784,6 +1805,7 @@ impl WgpuFilterPipeline {
         &self,
         commands: &mut WgpuCommandBatch,
         target: &::wgpu::TextureView,
+        target_read: &::wgpu::TextureView,
         source: &::wgpu::TextureView,
         target_size: (u32, u32),
         source_size: (u32, u32),
@@ -1809,7 +1831,7 @@ impl WgpuFilterPipeline {
             &self.composite_surface_direct_region
         };
         let bindings = if needs_stack { Some(bindings) } else { None };
-        self.dispatch(
+        self.dispatch_with_target_read(
             commands,
             pipeline,
             &config,
@@ -1817,6 +1839,7 @@ impl WgpuFilterPipeline {
             &self.dummy_texture_view,
             target,
             bindings,
+            Some(target_read),
         );
     }
 
@@ -1830,13 +1853,14 @@ impl WgpuFilterPipeline {
         target: &::wgpu::TextureView,
         bindings: Option<&WgpuFilterBindings<'_>>,
     ) {
-        self.dispatch_with_extra(
-            commands, pipeline, config, source, aux, target, bindings, None, None, None, None, None,
+        self.dispatch_with_extra_target_read(
+            commands, pipeline, config, source, aux, target, None, bindings, None, None, None,
+            None, None,
         );
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn dispatch_with_transfer(
+    fn dispatch_with_target_read(
         &self,
         commands: &mut WgpuCommandBatch,
         pipeline: &FilterKernel,
@@ -1845,15 +1869,46 @@ impl WgpuFilterPipeline {
         aux: &::wgpu::TextureView,
         target: &::wgpu::TextureView,
         bindings: Option<&WgpuFilterBindings<'_>>,
-        transfer_tables: Option<&::wgpu::Buffer>,
+        target_read: Option<&::wgpu::TextureView>,
     ) {
-        self.dispatch_with_extra(
+        self.dispatch_with_extra_target_read(
             commands,
             pipeline,
             config,
             source,
             aux,
             target,
+            target_read,
+            bindings,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn dispatch_with_transfer_target_read(
+        &self,
+        commands: &mut WgpuCommandBatch,
+        pipeline: &FilterKernel,
+        config: &FilterConfig,
+        source: &::wgpu::TextureView,
+        aux: &::wgpu::TextureView,
+        target: &::wgpu::TextureView,
+        target_read: Option<&::wgpu::TextureView>,
+        bindings: Option<&WgpuFilterBindings<'_>>,
+        transfer_tables: Option<&::wgpu::Buffer>,
+    ) {
+        self.dispatch_with_extra_target_read(
+            commands,
+            pipeline,
+            config,
+            source,
+            aux,
+            target,
+            target_read,
             bindings,
             transfer_tables,
             None,
@@ -1872,6 +1927,40 @@ impl WgpuFilterPipeline {
         source: &::wgpu::TextureView,
         aux: &::wgpu::TextureView,
         target: &::wgpu::TextureView,
+        bindings: Option<&WgpuFilterBindings<'_>>,
+        transfer_tables: Option<&::wgpu::Buffer>,
+        brushes: Option<&WgpuFilterBrushBindings<'_>>,
+        convolve_kernels: Option<&::wgpu::Buffer>,
+        turbulence_tables: Option<&WgpuFilterTurbulenceBindings<'_>>,
+        path_bindings: Option<&WgpuFilterPathBindings<'_>>,
+    ) {
+        self.dispatch_with_extra_target_read(
+            commands,
+            pipeline,
+            config,
+            source,
+            aux,
+            target,
+            None,
+            bindings,
+            transfer_tables,
+            brushes,
+            convolve_kernels,
+            turbulence_tables,
+            path_bindings,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn dispatch_with_extra_target_read(
+        &self,
+        commands: &mut WgpuCommandBatch,
+        pipeline: &FilterKernel,
+        config: &FilterConfig,
+        source: &::wgpu::TextureView,
+        aux: &::wgpu::TextureView,
+        target: &::wgpu::TextureView,
+        target_read: Option<&::wgpu::TextureView>,
         bindings: Option<&WgpuFilterBindings<'_>>,
         transfer_tables: Option<&::wgpu::Buffer>,
         brushes: Option<&WgpuFilterBrushBindings<'_>>,
@@ -1900,6 +1989,7 @@ impl WgpuFilterPipeline {
             source,
             aux,
             target,
+            target_read,
             bindings,
             transfer_tables,
             brushes,
@@ -2011,6 +2101,7 @@ impl WgpuFilterPipeline {
         source: &::wgpu::TextureView,
         aux: &::wgpu::TextureView,
         target: &::wgpu::TextureView,
+        target_read: Option<&::wgpu::TextureView>,
         bindings: Option<&WgpuFilterBindings<'_>>,
         transfer_tables: Option<&::wgpu::Buffer>,
         brushes: Option<&WgpuFilterBrushBindings<'_>>,
@@ -2053,6 +2144,12 @@ impl WgpuFilterPipeline {
             bind_texture(2, aux),
             bind_texture(3, target),
         ];
+        if kernel.portable_textures {
+            entries.push(bind_texture(
+                55,
+                target_read.unwrap_or(&self.dummy_texture_view),
+            ));
+        }
         push_buffer_if(
             &mut entries,
             kernel.resources,
@@ -2279,6 +2376,7 @@ impl WgpuFilterPipeline {
         commands: &mut WgpuCommandBatch,
         source: &::wgpu::TextureView,
         target: &::wgpu::TextureView,
+        target_read: &::wgpu::TextureView,
         size: (u32, u32),
         lengths: GpuBufferLengths,
         target_bounds: Bounds,
@@ -2306,7 +2404,7 @@ impl WgpuFilterPipeline {
         config.radius_top_right = radius.top_right;
         config.radius_bottom_left = radius.bottom_left;
         config.radius_bottom_right = radius.bottom_right;
-        self.dispatch(
+        self.dispatch_with_target_read(
             commands,
             &self.upsample_rect_composite_region,
             &config,
@@ -2314,6 +2412,7 @@ impl WgpuFilterPipeline {
             &self.dummy_texture_view,
             target,
             None,
+            Some(target_read),
         );
         true
     }
@@ -2325,6 +2424,7 @@ impl WgpuFilterPipeline {
         source: &::wgpu::TextureView,
         blurred: &::wgpu::TextureView,
         target: &::wgpu::TextureView,
+        target_read: &::wgpu::TextureView,
         size: (u32, u32),
         lengths: GpuBufferLengths,
         target_bounds: Bounds,
@@ -2343,7 +2443,7 @@ impl WgpuFilterPipeline {
         config.source_y1 = blurred_bounds.y1 as u32;
         config.downsample = sampling.factor();
         config.upsample_filter = encode_blur_upsample_filter(sampling.upsample_filter);
-        self.dispatch(
+        self.dispatch_with_target_read(
             commands,
             &self.liquid_glass_rect_composite_region,
             &config,
@@ -2351,6 +2451,7 @@ impl WgpuFilterPipeline {
             blurred,
             target,
             None,
+            Some(target_read),
         );
     }
 }
@@ -2608,6 +2709,7 @@ fn create_kernel(
         resources,
         profile,
         shared_workgroups,
+        portable_textures,
     }
 }
 
@@ -2621,6 +2723,9 @@ fn filter_layout_entries(
         read_texture_entry(2, portable_textures),
         write_texture_entry(3, portable_textures),
     ];
+    if portable_textures {
+        entries.push(sampled_texture_entry(55));
+    }
     push_storage_entry_if(&mut entries, resources, FILTER_RES_DRAW_RECORDS, 4, true);
     push_storage_entry_if(&mut entries, resources, FILTER_RES_SDF_BLOB, 10, true);
     push_storage_entry_if(

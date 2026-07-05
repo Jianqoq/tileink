@@ -1,7 +1,7 @@
 use std::{sync::mpsc, time::Duration};
 
 use peniko::Color;
-use tileink::{Canvas, WgpuRenderProfileReport, WgpuRenderer};
+use tileink::{Canvas, WgpuRenderProfileReport};
 
 use crate::common;
 
@@ -38,14 +38,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn render_scene(name: &str, scene: &Canvas) -> Result<(), Box<dyn std::error::Error>> {
-    let mut renderer =
-        WgpuRenderer::new_default_device(fast_path::WIDTH, fast_path::HEIGHT, Color::WHITE);
-    renderer.render(scene);
-    let image = renderer.image();
-    let out = common::wgpu_example_output(name);
-    common::save_example_image(&image, &out)?;
-    println!("Wrote {}", out.display());
-    Ok(())
+    common::render_to_png_wgpu(
+        name,
+        scene,
+        fast_path::WIDTH,
+        fast_path::HEIGHT,
+        Color::WHITE,
+    )
 }
 
 fn profile_scene(
@@ -54,7 +53,7 @@ fn profile_scene(
     height: u32,
     scene: &Canvas,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut renderer = WgpuRenderer::new_default_device(width, height, Color::WHITE);
+    let mut renderer = common::new_wgpu_renderer(width, height, Color::WHITE);
     for _ in 0..WARMUP_FRAMES {
         renderer.render(scene);
         wait_for_gpu(renderer.device(), renderer.queue())?;

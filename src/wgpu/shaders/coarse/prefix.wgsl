@@ -342,6 +342,44 @@ fn coarse_emit_chunk_particle_offsets(
     }
 }
 
+@compute @workgroup_size(256)
+fn coarse_tile_counts_from_emit_chunks(
+    @builtin(workgroup_id) workgroup_id: vec3<u32>,
+    @builtin(local_invocation_id) local_id: vec3<u32>,
+) {
+    let tile_ix = workgroup_id.x * 256u + local_id.x;
+    if (tile_ix >= config.tile_count) {
+        return;
+    }
+    let chunk_count = tile_emit_chunk_count_at(tile_ix);
+    let chunk_offset = tile_emit_chunk_offset_at(tile_ix);
+    var local_chunk = 0u;
+    var ptcl_count = 0u;
+    var glyph_count = 0u;
+    loop {
+        if (local_chunk >= chunk_count) {
+            break;
+        }
+        let chunk = emit_chunk_at(chunk_offset + local_chunk);
+        ptcl_count += chunk.ptcl_count;
+        glyph_count += chunk.glyph_count;
+        local_chunk += 1u;
+    }
+
+    if (ptcl_count > 0u) {
+        let tile_x = tile_ix % config.tiles_width;
+        let tile_y = tile_ix / config.tiles_width;
+        let wrapper_count = active_stack_count(tile_x, tile_y);
+        if (wrapper_count != INVALID) {
+            ptcl_count += wrapper_count * 2u + 1u;
+        } else {
+            ptcl_count = 0u;
+            glyph_count = 0u;
+        }
+    }
+    coarse_store_tile_counts(tile_ix, ptcl_count, glyph_count);
+}
+
 fn active_stack_count(tile_x: u32, tile_y: u32) -> u32 {
     var count = 0u;
     var valid = true;

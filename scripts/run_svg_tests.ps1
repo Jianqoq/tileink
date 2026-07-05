@@ -5,6 +5,9 @@ param(
     [ValidateSet("both", "cpu", "wgpu")]
     [string]$Backend = "both",
 
+    [ValidateSet("native", "portable", "both")]
+    [string]$WgpuMode = "both",
+
     [switch]$ContinueOnError
 )
 
@@ -46,18 +49,36 @@ try {
 
     $failures = New-Object System.Collections.Generic.List[string]
 
+    $renderJobs = New-Object System.Collections.Generic.List[object]
+    if ($Backend -eq "both" -or $Backend -eq "cpu") {
+        $renderJobs.Add([pscustomobject]@{ Backend = "cpu"; WgpuMode = "native"; Label = "cpu"; ComparePortable = $false })
+    }
+    if ($Backend -eq "both" -or $Backend -eq "wgpu") {
+        if ($WgpuMode -eq "native") {
+            $renderJobs.Add([pscustomobject]@{ Backend = "wgpu"; WgpuMode = "native"; Label = "wgpu"; ComparePortable = $false })
+        } else {
+            $renderJobs.Add([pscustomobject]@{ Backend = "wgpu"; WgpuMode = "native"; Label = "wgpu-portable-compare"; ComparePortable = $true })
+        }
+    }
+
     foreach ($dir in $typeDirs) {
-        Write-Host "[$Backend] $($dir.FullName)"
-        $oldErrorActionPreference = $ErrorActionPreference
-        $ErrorActionPreference = "Continue"
-        & $example $dir.FullName $Backend
-        $renderExit = $LASTEXITCODE
-        $ErrorActionPreference = $oldErrorActionPreference
-        if ($renderExit -ne 0) {
-            $message = "[$Backend] $($dir.FullName)"
-            $failures.Add($message)
-            if (-not $ContinueOnError) {
-                throw "SVG render failed: $message"
+        foreach ($job in $renderJobs) {
+            Write-Host "[$($job.Label)] $($dir.FullName)"
+            $oldErrorActionPreference = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            if ($job.ComparePortable) {
+                & $example $dir.FullName $job.Backend --compare-wgpu-portable
+            } else {
+                & $example $dir.FullName $job.Backend --wgpu-mode $job.WgpuMode
+            }
+            $renderExit = $LASTEXITCODE
+            $ErrorActionPreference = $oldErrorActionPreference
+            if ($renderExit -ne 0) {
+                $message = "[$($job.Label)] $($dir.FullName)"
+                $failures.Add($message)
+                if (-not $ContinueOnError) {
+                    throw "SVG render failed: $message"
+                }
             }
         }
     }

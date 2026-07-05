@@ -58,6 +58,7 @@ pub(crate) struct WgpuCoarsePipeline {
     emit_fill_refs: ::wgpu::ComputePipeline,
     emit_chunk_particle_counts: ::wgpu::ComputePipeline,
     emit_chunk_particle_offsets: ::wgpu::ComputePipeline,
+    tile_counts_from_emit_chunks: ::wgpu::ComputePipeline,
     emit: Option<::wgpu::ComputePipeline>,
     emit_web: Option<::wgpu::ComputePipeline>,
     count_bind_group_layout: ::wgpu::BindGroupLayout,
@@ -237,6 +238,12 @@ impl WgpuCoarsePipeline {
                 &prefix_shader,
                 "coarse_emit_chunk_particle_offsets",
             ),
+            tile_counts_from_emit_chunks: create_pipeline(
+                device,
+                &prefix_pipeline_layout,
+                &prefix_shader,
+                "coarse_tile_counts_from_emit_chunks",
+            ),
             emit: (!portable_emit).then(|| {
                 create_pipeline(device, &emit_pipeline_layout, &emit_shader, "coarse_emit")
             }),
@@ -319,58 +326,7 @@ impl WgpuCoarsePipeline {
             self.create_prefix_bind_group(commands.device(), &bindings, config_offset);
         let emit_bind_group =
             self.create_emit_bind_group(commands.device(), &bindings, config_offset);
-        let gpu_scope = start_gpu_scope(commands.device(), "coarse");
-        let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
         if self.portable_emit && profile_coarse_passes() {
-            dispatch_profiled(
-                commands,
-                "coarse.count",
-                &count_bind_group,
-                &self.count,
-                tile_count,
-            );
-            dispatch_profiled(
-                commands,
-                "coarse.ptcl_prefix_chunks",
-                &prefix_bind_group,
-                &self.ptcl_prefix_chunks,
-                chunk_count,
-            );
-            dispatch_profiled(
-                commands,
-                "coarse.ptcl_chunk_offsets",
-                &prefix_bind_group,
-                &self.ptcl_chunk_offsets,
-                1,
-            );
-            dispatch_profiled(
-                commands,
-                "coarse.ptcl_apply_chunk_offsets",
-                &prefix_bind_group,
-                &self.ptcl_apply_chunk_offsets,
-                chunk_count,
-            );
-            dispatch_profiled(
-                commands,
-                "coarse.glyph_prefix_chunks",
-                &prefix_bind_group,
-                &self.glyph_prefix_chunks,
-                chunk_count,
-            );
-            dispatch_profiled(
-                commands,
-                "coarse.glyph_chunk_offsets",
-                &prefix_bind_group,
-                &self.glyph_chunk_offsets,
-                1,
-            );
-            dispatch_profiled(
-                commands,
-                "coarse.glyph_apply_chunk_offsets",
-                &prefix_bind_group,
-                &self.glyph_apply_chunk_offsets,
-                chunk_count,
-            );
             if batch.draw_start < batch.draw_end && lengths.coarse_ptcl_capacity > 0 {
                 let emit_chunk_count = lengths.tile_draw_chunk_count as u32;
                 if emit_chunk_count > 0 {
@@ -418,6 +374,55 @@ impl WgpuCoarsePipeline {
                     );
                     dispatch_profiled(
                         commands,
+                        "coarse.tile_counts_from_emit_chunks",
+                        &prefix_bind_group,
+                        &self.tile_counts_from_emit_chunks,
+                        chunk_count,
+                    );
+                    dispatch_profiled(
+                        commands,
+                        "coarse.ptcl_prefix_chunks",
+                        &prefix_bind_group,
+                        &self.ptcl_prefix_chunks,
+                        chunk_count,
+                    );
+                    dispatch_profiled(
+                        commands,
+                        "coarse.ptcl_chunk_offsets",
+                        &prefix_bind_group,
+                        &self.ptcl_chunk_offsets,
+                        1,
+                    );
+                    dispatch_profiled(
+                        commands,
+                        "coarse.ptcl_apply_chunk_offsets",
+                        &prefix_bind_group,
+                        &self.ptcl_apply_chunk_offsets,
+                        chunk_count,
+                    );
+                    dispatch_profiled(
+                        commands,
+                        "coarse.glyph_prefix_chunks",
+                        &prefix_bind_group,
+                        &self.glyph_prefix_chunks,
+                        chunk_count,
+                    );
+                    dispatch_profiled(
+                        commands,
+                        "coarse.glyph_chunk_offsets",
+                        &prefix_bind_group,
+                        &self.glyph_chunk_offsets,
+                        1,
+                    );
+                    dispatch_profiled(
+                        commands,
+                        "coarse.glyph_apply_chunk_offsets",
+                        &prefix_bind_group,
+                        &self.glyph_apply_chunk_offsets,
+                        chunk_count,
+                    );
+                    dispatch_profiled(
+                        commands,
                         "coarse.emit_chunk_particle_offsets",
                         &prefix_bind_group,
                         &self.emit_chunk_particle_offsets,
@@ -434,56 +439,91 @@ impl WgpuCoarsePipeline {
             }
             return;
         }
+        let gpu_scope = start_gpu_scope(commands.device(), "coarse");
+        let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
         let encoder = commands.encoder();
         {
             let mut pass = encoder.begin_compute_pass(&::wgpu::ComputePassDescriptor {
                 label: Some("tileink wgpu coarse pass"),
                 timestamp_writes,
             });
-            pass.set_bind_group(0, &count_bind_group, &[]);
-            pass.set_pipeline(&self.count);
-            pass.dispatch_workgroups(tile_count, 1, 1);
 
-            pass.set_bind_group(0, &prefix_bind_group, &[]);
-            pass.set_pipeline(&self.ptcl_prefix_chunks);
-            pass.dispatch_workgroups(chunk_count, 1, 1);
-            pass.set_pipeline(&self.ptcl_chunk_offsets);
-            pass.dispatch_workgroups(1, 1, 1);
-            pass.set_pipeline(&self.ptcl_apply_chunk_offsets);
-            pass.dispatch_workgroups(chunk_count, 1, 1);
+            if self.portable_emit {
+                let emit_chunk_count = lengths.tile_draw_chunk_count as u32;
+                if batch.draw_start < batch.draw_end
+                    && lengths.coarse_ptcl_capacity > 0
+                    && emit_chunk_count > 0
+                {
+                    pass.set_bind_group(0, &prefix_bind_group, &[]);
+                    pass.set_pipeline(&self.emit_chunk_counts);
+                    pass.dispatch_workgroups(chunk_count, 1, 1);
+                    pass.set_pipeline(&self.emit_prefix_chunks);
+                    pass.dispatch_workgroups(chunk_count, 1, 1);
+                    pass.set_pipeline(&self.emit_chunk_offsets);
+                    pass.dispatch_workgroups(1, 1, 1);
+                    pass.set_pipeline(&self.emit_apply_chunk_offsets);
+                    pass.dispatch_workgroups(chunk_count, 1, 1);
+                    pass.set_pipeline(&self.emit_fill_refs);
+                    pass.dispatch_workgroups(chunk_count, 1, 1);
+                    pass.set_pipeline(&self.emit_chunk_particle_counts);
+                    pass.dispatch_workgroups(emit_chunk_count, 1, 1);
+                    pass.set_pipeline(&self.tile_counts_from_emit_chunks);
+                    pass.dispatch_workgroups(chunk_count, 1, 1);
+                    pass.set_pipeline(&self.ptcl_prefix_chunks);
+                    pass.dispatch_workgroups(chunk_count, 1, 1);
+                    pass.set_pipeline(&self.ptcl_chunk_offsets);
+                    pass.dispatch_workgroups(1, 1, 1);
+                    pass.set_pipeline(&self.ptcl_apply_chunk_offsets);
+                    pass.dispatch_workgroups(chunk_count, 1, 1);
+                    pass.set_pipeline(&self.glyph_prefix_chunks);
+                    pass.dispatch_workgroups(chunk_count, 1, 1);
+                    pass.set_pipeline(&self.glyph_chunk_offsets);
+                    pass.dispatch_workgroups(1, 1, 1);
+                    pass.set_pipeline(&self.glyph_apply_chunk_offsets);
+                    pass.dispatch_workgroups(chunk_count, 1, 1);
+                    pass.set_pipeline(&self.emit_chunk_particle_offsets);
+                    pass.dispatch_workgroups(chunk_count, 1, 1);
 
-            pass.set_pipeline(&self.glyph_prefix_chunks);
-            pass.dispatch_workgroups(chunk_count, 1, 1);
-            pass.set_pipeline(&self.glyph_chunk_offsets);
-            pass.dispatch_workgroups(1, 1, 1);
-            pass.set_pipeline(&self.glyph_apply_chunk_offsets);
-            pass.dispatch_workgroups(chunk_count, 1, 1);
-
-            if batch.draw_start < batch.draw_end && lengths.coarse_ptcl_capacity > 0 {
-                if self.portable_emit {
-                    let emit_chunk_count = lengths.tile_draw_chunk_count as u32;
-                    if emit_chunk_count > 0 {
-                        pass.set_bind_group(0, &prefix_bind_group, &[]);
-                        pass.set_pipeline(&self.emit_chunk_counts);
-                        pass.dispatch_workgroups(chunk_count, 1, 1);
-                        pass.set_pipeline(&self.emit_prefix_chunks);
-                        pass.dispatch_workgroups(chunk_count, 1, 1);
-                        pass.set_pipeline(&self.emit_chunk_offsets);
-                        pass.dispatch_workgroups(1, 1, 1);
-                        pass.set_pipeline(&self.emit_apply_chunk_offsets);
-                        pass.dispatch_workgroups(chunk_count, 1, 1);
-                        pass.set_pipeline(&self.emit_fill_refs);
-                        pass.dispatch_workgroups(chunk_count, 1, 1);
-                        pass.set_pipeline(&self.emit_chunk_particle_counts);
-                        pass.dispatch_workgroups(emit_chunk_count, 1, 1);
-                        pass.set_pipeline(&self.emit_chunk_particle_offsets);
-                        pass.dispatch_workgroups(chunk_count, 1, 1);
-
-                        pass.set_bind_group(0, &emit_bind_group, &[]);
-                        pass.set_pipeline(self.emit_web.as_ref().unwrap());
-                        pass.dispatch_workgroups(emit_chunk_count, 1, 1);
-                    }
+                    pass.set_bind_group(0, &emit_bind_group, &[]);
+                    pass.set_pipeline(self.emit_web.as_ref().unwrap());
+                    pass.dispatch_workgroups(emit_chunk_count, 1, 1);
                 } else {
+                    pass.set_bind_group(0, &count_bind_group, &[]);
+                    pass.set_pipeline(&self.count);
+                    pass.dispatch_workgroups(tile_count, 1, 1);
+                    pass.set_bind_group(0, &prefix_bind_group, &[]);
+                    pass.set_pipeline(&self.ptcl_prefix_chunks);
+                    pass.dispatch_workgroups(chunk_count, 1, 1);
+                    pass.set_pipeline(&self.ptcl_chunk_offsets);
+                    pass.dispatch_workgroups(1, 1, 1);
+                    pass.set_pipeline(&self.ptcl_apply_chunk_offsets);
+                    pass.dispatch_workgroups(chunk_count, 1, 1);
+                    pass.set_pipeline(&self.glyph_prefix_chunks);
+                    pass.dispatch_workgroups(chunk_count, 1, 1);
+                    pass.set_pipeline(&self.glyph_chunk_offsets);
+                    pass.dispatch_workgroups(1, 1, 1);
+                    pass.set_pipeline(&self.glyph_apply_chunk_offsets);
+                    pass.dispatch_workgroups(chunk_count, 1, 1);
+                }
+            } else {
+                pass.set_bind_group(0, &count_bind_group, &[]);
+                pass.set_pipeline(&self.count);
+                pass.dispatch_workgroups(tile_count, 1, 1);
+                pass.set_bind_group(0, &prefix_bind_group, &[]);
+                pass.set_pipeline(&self.ptcl_prefix_chunks);
+                pass.dispatch_workgroups(chunk_count, 1, 1);
+                pass.set_pipeline(&self.ptcl_chunk_offsets);
+                pass.dispatch_workgroups(1, 1, 1);
+                pass.set_pipeline(&self.ptcl_apply_chunk_offsets);
+                pass.dispatch_workgroups(chunk_count, 1, 1);
+                pass.set_pipeline(&self.glyph_prefix_chunks);
+                pass.dispatch_workgroups(chunk_count, 1, 1);
+                pass.set_pipeline(&self.glyph_chunk_offsets);
+                pass.dispatch_workgroups(1, 1, 1);
+                pass.set_pipeline(&self.glyph_apply_chunk_offsets);
+                pass.dispatch_workgroups(chunk_count, 1, 1);
+
+                if batch.draw_start < batch.draw_end && lengths.coarse_ptcl_capacity > 0 {
                     pass.set_bind_group(0, &emit_bind_group, &[]);
                     pass.set_pipeline(self.emit.as_ref().unwrap());
                     pass.dispatch_workgroups(tile_count, 1, 1);
