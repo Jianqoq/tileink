@@ -58,8 +58,8 @@ pub(crate) struct WgpuCoarsePipeline {
     emit_fill_refs: ::wgpu::ComputePipeline,
     emit_chunk_particle_counts: ::wgpu::ComputePipeline,
     emit_chunk_particle_offsets: ::wgpu::ComputePipeline,
-    emit: ::wgpu::ComputePipeline,
-    emit_web: ::wgpu::ComputePipeline,
+    emit: Option<::wgpu::ComputePipeline>,
+    emit_web: Option<::wgpu::ComputePipeline>,
     count_bind_group_layout: ::wgpu::BindGroupLayout,
     prefix_bind_group_layout: ::wgpu::BindGroupLayout,
     emit_bind_group_layout: ::wgpu::BindGroupLayout,
@@ -113,21 +113,17 @@ impl WgpuCoarsePipeline {
                 include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_coarse_prefix.wgsl")).into(),
             ),
         });
+        let emit_shader_source = if portable_emit {
+            include_str!(concat!(
+                env!("OUT_DIR"),
+                "/tileink_wgpu_coarse_emit_web.wgsl"
+            ))
+        } else {
+            include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_coarse_emit.wgsl"))
+        };
         let emit_shader = device.create_shader_module(::wgpu::ShaderModuleDescriptor {
             label: Some("tileink wgpu coarse emit shader"),
-            source: ::wgpu::ShaderSource::Wgsl(
-                include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_coarse_emit.wgsl")).into(),
-            ),
-        });
-        let emit_web_shader = device.create_shader_module(::wgpu::ShaderModuleDescriptor {
-            label: Some("tileink wgpu coarse web emit shader"),
-            source: ::wgpu::ShaderSource::Wgsl(
-                include_str!(concat!(
-                    env!("OUT_DIR"),
-                    "/tileink_wgpu_coarse_emit_web.wgsl"
-                ))
-                .into(),
-            ),
+            source: ::wgpu::ShaderSource::Wgsl(emit_shader_source.into()),
         });
         let count_pipeline_layout =
             device.create_pipeline_layout(&::wgpu::PipelineLayoutDescriptor {
@@ -241,13 +237,12 @@ impl WgpuCoarsePipeline {
                 &prefix_shader,
                 "coarse_emit_chunk_particle_offsets",
             ),
-            emit: create_pipeline(device, &emit_pipeline_layout, &emit_shader, "coarse_emit"),
-            emit_web: create_pipeline(
-                device,
-                &emit_pipeline_layout,
-                &emit_web_shader,
-                "coarse_emit",
-            ),
+            emit: (!portable_emit).then(|| {
+                create_pipeline(device, &emit_pipeline_layout, &emit_shader, "coarse_emit")
+            }),
+            emit_web: portable_emit.then(|| {
+                create_pipeline(device, &emit_pipeline_layout, &emit_shader, "coarse_emit")
+            }),
             count_bind_group_layout,
             prefix_bind_group_layout,
             emit_bind_group_layout,
@@ -326,6 +321,119 @@ impl WgpuCoarsePipeline {
             self.create_emit_bind_group(commands.device(), &bindings, config_offset);
         let gpu_scope = start_gpu_scope(commands.device(), "coarse");
         let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
+        if self.portable_emit && profile_coarse_passes() {
+            dispatch_profiled(
+                commands,
+                "coarse.count",
+                &count_bind_group,
+                &self.count,
+                tile_count,
+            );
+            dispatch_profiled(
+                commands,
+                "coarse.ptcl_prefix_chunks",
+                &prefix_bind_group,
+                &self.ptcl_prefix_chunks,
+                chunk_count,
+            );
+            dispatch_profiled(
+                commands,
+                "coarse.ptcl_chunk_offsets",
+                &prefix_bind_group,
+                &self.ptcl_chunk_offsets,
+                1,
+            );
+            dispatch_profiled(
+                commands,
+                "coarse.ptcl_apply_chunk_offsets",
+                &prefix_bind_group,
+                &self.ptcl_apply_chunk_offsets,
+                chunk_count,
+            );
+            dispatch_profiled(
+                commands,
+                "coarse.glyph_prefix_chunks",
+                &prefix_bind_group,
+                &self.glyph_prefix_chunks,
+                chunk_count,
+            );
+            dispatch_profiled(
+                commands,
+                "coarse.glyph_chunk_offsets",
+                &prefix_bind_group,
+                &self.glyph_chunk_offsets,
+                1,
+            );
+            dispatch_profiled(
+                commands,
+                "coarse.glyph_apply_chunk_offsets",
+                &prefix_bind_group,
+                &self.glyph_apply_chunk_offsets,
+                chunk_count,
+            );
+            if batch.draw_start < batch.draw_end && lengths.coarse_ptcl_capacity > 0 {
+                let emit_chunk_count = lengths.tile_draw_chunk_count as u32;
+                if emit_chunk_count > 0 {
+                    dispatch_profiled(
+                        commands,
+                        "coarse.emit_chunk_counts",
+                        &prefix_bind_group,
+                        &self.emit_chunk_counts,
+                        chunk_count,
+                    );
+                    dispatch_profiled(
+                        commands,
+                        "coarse.emit_prefix_chunks",
+                        &prefix_bind_group,
+                        &self.emit_prefix_chunks,
+                        chunk_count,
+                    );
+                    dispatch_profiled(
+                        commands,
+                        "coarse.emit_chunk_offsets",
+                        &prefix_bind_group,
+                        &self.emit_chunk_offsets,
+                        1,
+                    );
+                    dispatch_profiled(
+                        commands,
+                        "coarse.emit_apply_chunk_offsets",
+                        &prefix_bind_group,
+                        &self.emit_apply_chunk_offsets,
+                        chunk_count,
+                    );
+                    dispatch_profiled(
+                        commands,
+                        "coarse.emit_fill_refs",
+                        &prefix_bind_group,
+                        &self.emit_fill_refs,
+                        chunk_count,
+                    );
+                    dispatch_profiled(
+                        commands,
+                        "coarse.emit_chunk_particle_counts",
+                        &prefix_bind_group,
+                        &self.emit_chunk_particle_counts,
+                        emit_chunk_count,
+                    );
+                    dispatch_profiled(
+                        commands,
+                        "coarse.emit_chunk_particle_offsets",
+                        &prefix_bind_group,
+                        &self.emit_chunk_particle_offsets,
+                        chunk_count,
+                    );
+                    dispatch_profiled(
+                        commands,
+                        "coarse.emit_web",
+                        &emit_bind_group,
+                        self.emit_web.as_ref().unwrap(),
+                        emit_chunk_count,
+                    );
+                }
+            }
+            return;
+        }
         let encoder = commands.encoder();
         {
             let mut pass = encoder.begin_compute_pass(&::wgpu::ComputePassDescriptor {
@@ -372,12 +480,12 @@ impl WgpuCoarsePipeline {
                         pass.dispatch_workgroups(chunk_count, 1, 1);
 
                         pass.set_bind_group(0, &emit_bind_group, &[]);
-                        pass.set_pipeline(&self.emit_web);
+                        pass.set_pipeline(self.emit_web.as_ref().unwrap());
                         pass.dispatch_workgroups(emit_chunk_count, 1, 1);
                     }
                 } else {
                     pass.set_bind_group(0, &emit_bind_group, &[]);
-                    pass.set_pipeline(&self.emit);
+                    pass.set_pipeline(self.emit.as_ref().unwrap());
                     pass.dispatch_workgroups(tile_count, 1, 1);
                 }
             }
@@ -452,6 +560,32 @@ impl WgpuCoarsePipeline {
             ],
         })
     }
+}
+
+fn profile_coarse_passes() -> bool {
+    std::env::var("TILEINK_PROFILE_COARSE_PASSES").as_deref() == Ok("1")
+}
+
+fn dispatch_profiled(
+    commands: &mut WgpuCommandBatch,
+    name: &'static str,
+    bind_group: &::wgpu::BindGroup,
+    pipeline: &::wgpu::ComputePipeline,
+    workgroups: u32,
+) {
+    let gpu_scope = start_gpu_scope(commands.device(), name);
+    let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
+    let encoder = commands.encoder();
+    {
+        let mut pass = encoder.begin_compute_pass(&::wgpu::ComputePassDescriptor {
+            label: Some(name),
+            timestamp_writes,
+        });
+        pass.set_bind_group(0, bind_group, &[]);
+        pass.set_pipeline(pipeline);
+        pass.dispatch_workgroups(workgroups, 1, 1);
+    }
+    finish_gpu_scope(encoder, gpu_scope);
 }
 
 fn create_pipeline(
