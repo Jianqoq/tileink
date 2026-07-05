@@ -17,8 +17,7 @@ pub(crate) struct ScanLinePlan {
     pub(crate) imax: u32,
     pub(crate) ymin: i32,
     pub(crate) ymax: i32,
-    pub(crate) top_clip_bump_x: Option<i32>,
-    pub(crate) keep_horizontal_tile_edges: bool,
+    pub(crate) count: u32,
 }
 
 #[derive(Clone, Copy)]
@@ -27,7 +26,8 @@ pub(crate) struct ScannedTile {
     pub(crate) y: i32,
     pub(crate) global_ix: u32,
     pub(crate) top_edge: bool,
-    pub(crate) initial_top_edge: bool,
+    pub(crate) sub_ix: u32,
+    pub(crate) z: f32,
 }
 
 pub(crate) fn for_each_scanned_tile(
@@ -46,11 +46,8 @@ pub(crate) fn for_each_scanned_tile(
             continue;
         }
 
-        let initial_top_edge = i == plan.imin
-            && plan.imin == 0
-            && (plan.y0 - plan.xy0[1] * TILE_SCALE).abs() <= SCAN_EPSILON;
-        let top_edge = if i == plan.imin {
-            initial_top_edge
+        let top_edge = if i == 0 {
+            (plan.y0 - plan.xy0[1] * TILE_SCALE).abs() <= SCAN_EPSILON
         } else {
             last_z == z
         };
@@ -59,19 +56,15 @@ pub(crate) fn for_each_scanned_tile(
             y,
             global_ix: y as u32 * tiles_size.0 + x as u32,
             top_edge,
-            initial_top_edge,
+            sub_ix: i,
+            z,
         });
         last_z = z;
     }
 }
 
-pub(crate) fn line_scanned_tile_count(
-    line: Line,
-    bbox: TileBbox,
-    tiles_size: (u32, u32),
-    keep_horizontal_tile_edges: bool,
-) -> u32 {
-    let Some(plan) = plan_scan_line(line, bbox, keep_horizontal_tile_edges) else {
+pub(crate) fn line_scanned_tile_count(line: Line, bbox: TileBbox, tiles_size: (u32, u32)) -> u32 {
+    let Some(plan) = plan_scan_line(line, bbox) else {
         return 0;
     };
     let mut count = 0;
@@ -79,11 +72,7 @@ pub(crate) fn line_scanned_tile_count(
     count
 }
 
-pub(crate) fn plan_scan_line(
-    line: Line,
-    bbox: TileBbox,
-    keep_horizontal_tile_edges: bool,
-) -> Option<ScanLinePlan> {
+pub(crate) fn plan_scan_line(line: Line, bbox: TileBbox) -> Option<ScanLinePlan> {
     let p0 = line.p0;
     let p1 = line.p1;
     let is_down = p1[1] >= p0[1];
@@ -99,10 +88,7 @@ pub(crate) fn plan_scan_line(
     if dx + dy == 0.0 {
         return None;
     }
-    // Filled paths normally ignore horizontal edges exactly on tile boundaries.
-    // Stroke-generated thin horizontal outlines opt in to keeping them so the
-    // paired opposite edge does not drive backdrop fill across complete tiles.
-    if dy == 0.0 && s0.1.floor() == s0.1 && !keep_horizontal_tile_edges {
+    if dy == 0.0 && s0.1.floor() == s0.1 {
         return None;
     }
 
@@ -122,7 +108,14 @@ pub(crate) fn plan_scan_line(
     let x0 = xt0 * sign + if is_positive_slope { 0.0 } else { -1.0 };
 
     let xmin = s0.0.min(s1.0);
-    if s0.1 >= bbox.y1 as f32 || s1.1 < bbox.y0 as f32 || xmin >= bbox.x1 as f32 {
+    // Match Vello path_count: a segment whose upper endpoint only touches the
+    // clipped top tile boundary is outside the scanned tile range. This epsilon
+    // is intentionally much smaller than tile snapping epsilon so genuine
+    // near-boundary geometry still contributes backdrop.
+    if s0.1 >= bbox.y1 as f32
+        || s1.1 <= bbox.y0 as f32 + TOP_TOUCH_EPSILON
+        || xmin >= bbox.x1 as f32
+    {
         return None;
     }
 
@@ -146,9 +139,9 @@ pub(crate) fn plan_scan_line(
     let delta = if is_down { -1 } else { 1 };
     let mut ymin = 0i32;
     let mut ymax = 0i32;
-    if s0.0.max(s1.0) <= bbox.x0 as f32 {
-        ymin = s0.1.ceil() as i32;
-        ymax = s1.1.ceil() as i32;
+    if s0.0.max(s1.0) < bbox.x0 as f32 {
+        ymin = ceil_tile_boundary_y(s0.1);
+        ymax = ceil_tile_boundary_y(s1.1);
         imax = imin;
     } else {
         let fudge = if is_positive_slope { 0.0 } else { 1.0 };
@@ -160,13 +153,13 @@ pub(crate) fn plan_scan_line(
             let ynext = (y0 + f - (a * f + b).floor() + 1.0) as i32;
             if is_positive_slope {
                 if f as u32 > imin {
-                    ymin = (y0 + if y0 == s0.1 { 0.0 } else { 1.0 }) as i32;
+                    ymin = (y0 + if is_tile_boundary_y(s0.1) { 0.0 } else { 1.0 }) as i32;
                     ymax = ynext;
                     imin = f as u32;
                 }
             } else if (f as u32) < imax {
                 ymin = ynext;
-                ymax = s1.1.ceil() as i32;
+                ymax = ceil_tile_boundary_y(s1.1);
                 imax = f as u32;
             }
         }
@@ -185,12 +178,6 @@ pub(crate) fn plan_scan_line(
     imax = imin.max(imax);
     ymin = ymin.max(bbox.y0 as i32);
     ymax = ymax.min(bbox.y1 as i32);
-    if ymin == bbox.y0 as i32 && ymax > ymin && is_top_left_corner_clip(s0, s1, bbox) {
-        // The top-left clip corner is owned by the top edge. Keep the first
-        // row as segment coverage so a stroke cap cannot become full-tile fill.
-        ymin += 1;
-    }
-    let top_clip_bump_x = top_clip_backdrop_bump_x(s0, s1, bbox);
 
     Some(ScanLinePlan {
         xy0,
@@ -206,44 +193,8 @@ pub(crate) fn plan_scan_line(
         imax,
         ymin,
         ymax,
-        top_clip_bump_x,
-        keep_horizontal_tile_edges,
+        count,
     })
-}
-
-fn top_clip_backdrop_bump_x(s0: (f32, f32), s1: (f32, f32), bbox: TileBbox) -> Option<i32> {
-    let top_y = bbox.y0 as f32;
-    if s0.1 >= top_y - SCAN_EPSILON || s1.1 <= top_y + SCAN_EPSILON {
-        return None;
-    }
-
-    let top_x = s0.0 + (s1.0 - s0.0) * ((top_y - s0.1) / (s1.1 - s0.1));
-    if top_x < bbox.x0 as f32 - SCAN_EPSILON || top_x >= bbox.x1 as f32 {
-        return None;
-    }
-
-    // A line clipped by the backdrop's top boundary did not have an original
-    // DDA top-edge event. The clipped boundary contributes only to tiles whose
-    // left edge is at or to the right of the crossing; exact tile-boundary
-    // crossings therefore stay on that boundary instead of advancing one tile.
-    if top_x - bbox.x0 as f32 <= SCAN_EPSILON {
-        Some(bbox.x0 as i32 + 1)
-    } else {
-        Some((top_x - SCAN_EPSILON).ceil() as i32)
-    }
-}
-
-fn is_top_left_corner_clip(s0: (f32, f32), s1: (f32, f32), bbox: TileBbox) -> bool {
-    if s0.1 >= bbox.y0 as f32 || s1.1 <= bbox.y0 as f32 || s0.0 == s1.0 {
-        return false;
-    }
-
-    let left_x = bbox.x0 as f32;
-    let top_y = bbox.y0 as f32;
-    let top_x = s0.0 + (s1.0 - s0.0) * ((top_y - s0.1) / (s1.1 - s0.1));
-    let left_y = s0.1 + (s1.1 - s0.1) * ((left_x - s0.0) / (s1.0 - s0.0));
-
-    (top_x - left_x).abs() <= SCAN_EPSILON && (left_y - top_y).abs() <= SCAN_EPSILON
 }
 
 fn span(a: f32, b: f32) -> u32 {
@@ -252,7 +203,20 @@ fn span(a: f32, b: f32) -> u32 {
     (hi - lo).max(1.0) as u32
 }
 
+fn is_tile_boundary_y(value: f32) -> bool {
+    (value - value.floor()).abs() <= TOP_TOUCH_EPSILON
+}
+
+fn ceil_tile_boundary_y(value: f32) -> i32 {
+    if is_tile_boundary_y(value) {
+        value.floor() as i32
+    } else {
+        value.ceil() as i32
+    }
+}
+
 // Shared by DDA top-edge detection, top-clipped backdrop bumps, and tile-boundary
 // segment snapping. This only absorbs arithmetic noise around an exact tile
 // boundary; wider tolerances can create false backdrop carry for nearby geometry.
 pub(crate) const SCAN_EPSILON: f32 = 1.0e-6;
+pub(crate) const TOP_TOUCH_EPSILON: f32 = 1.0e-12;

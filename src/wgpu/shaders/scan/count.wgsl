@@ -27,7 +27,6 @@ fn scan_count(@builtin(global_invocation_id) global_id: vec3<u32>) {
         return;
     }
 
-    let keep_horizontal_tile_edges = path.flags >= 1u;
     let p0x = line.p0.x;
     let p0y = line.p0.y;
     let p1x = line.p1.x;
@@ -53,13 +52,9 @@ fn scan_count(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let count = count_x + span(s0y, s1y);
     let dx = abs(s1x - s0x);
     let dy = s1y - s0y;
-    if (dx + dy == 0.0 || (dy == 0.0 && floor(s0y) == s0y && !keep_horizontal_tile_edges)) {
+    if (dx + dy == 0.0 || (dy == 0.0 && floor(s0y) == s0y)) {
         return;
     }
-
-    let line_needs_top_edge_carry = !keep_horizontal_tile_edges ||
-        (s0y != s1y && (floor(s0y) < floor(s1y) || bbox_y1 > bbox_y0 + 1u));
-    let skip_initial_top_edge_carry = keep_horizontal_tile_edges && bbox_y0 == 0u && xy1x < xy0x;
 
     let idxdy = 1.0 / (dx + dy);
     var a = dx * idxdy;
@@ -89,7 +84,7 @@ fn scan_count(@builtin(global_invocation_id) global_id: vec3<u32>) {
         x0 = xt0 * sign;
     }
     let xmin = min(s0x, s1x);
-    if (s0y >= f32(bbox_y1) || s1y < f32(bbox_y0) || xmin >= f32(bbox_x1)) {
+    if (s0y >= f32(bbox_y1) || s1y <= f32(bbox_y0) + TOP_TOUCH_EPSILON || xmin >= f32(bbox_x1)) {
         return;
     }
 
@@ -116,9 +111,9 @@ fn scan_count(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
     var ymin = 0i;
     var ymax = 0i;
-    if (max(s0x, s1x) <= f32(bbox_x0)) {
-        ymin = i32(ceil(s0y));
-        ymax = i32(ceil(s1y));
+    if (max(s0x, s1x) < f32(bbox_x0)) {
+        ymin = ceil_tile_boundary_y(s0y);
+        ymax = ceil_tile_boundary_y(s1y);
         imax = imin;
     } else {
         var fudge = 1.0;
@@ -134,7 +129,7 @@ fn scan_count(@builtin(global_invocation_id) global_id: vec3<u32>) {
             if (is_positive_slope) {
                 if (u32(f) > imin) {
                     var ystart = y0 + 1.0;
-                    if (y0 == s0y) {
+                    if (is_tile_boundary_y(s0y)) {
                         ystart = y0;
                     }
                     ymin = i32(ystart);
@@ -143,7 +138,7 @@ fn scan_count(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 }
             } else if (u32(f) < imax) {
                 ymin = ynext;
-                ymax = i32(ceil(s1y));
+                ymax = ceil_tile_boundary_y(s1y);
                 imax = u32(f);
             }
         }
@@ -162,24 +157,6 @@ fn scan_count(@builtin(global_invocation_id) global_id: vec3<u32>) {
     imax = max(imin, imax);
     ymin = max(ymin, i32(bbox_y0));
     ymax = min(ymax, i32(bbox_y1));
-    if (ymin == i32(bbox_y0) && ymax > ymin && s0y < f32(bbox_y0) && s1y > f32(bbox_y0)) {
-        let dx_left = s1x - s0x;
-        if (dx_left != 0.0) {
-            let left_x = f32(bbox_x0);
-            let top_y = f32(bbox_y0);
-            let top_x = s0x + (s1x - s0x) * ((top_y - s0y) / (s1y - s0y));
-            let left_y = s0y + (s1y - s0y) * ((left_x - s0x) / dx_left);
-            if (
-                top_x - left_x >= -SCAN_EPSILON &&
-                top_x - left_x <= SCAN_EPSILON &&
-                left_y - top_y >= -SCAN_EPSILON &&
-                left_y - top_y <= SCAN_EPSILON
-            ) {
-                ymin += 1i;
-            }
-        }
-    }
-
     let data_offset = path.data_offset;
     var y = ymin;
     loop {
@@ -190,25 +167,6 @@ fn scan_count(@builtin(global_invocation_id) global_id: vec3<u32>) {
         atomicAdd(&backdrops[data_offset + local], delta);
         y += 1i;
     }
-    if (
-        imin < imax &&
-        s0y < f32(bbox_y0) - SCAN_EPSILON &&
-        s1y > f32(bbox_y0) + SCAN_EPSILON
-    ) {
-        let top_y = f32(bbox_y0);
-        let top_x = s0x + (s1x - s0x) * ((top_y - s0y) / (s1y - s0y));
-        if (top_x >= f32(bbox_x0) - SCAN_EPSILON && top_x < f32(bbox_x1)) {
-            var x_bump = i32(ceil(top_x - SCAN_EPSILON));
-            if (top_x - f32(bbox_x0) <= SCAN_EPSILON) {
-                x_bump = i32(bbox_x0) + 1i;
-            }
-            if (x_bump >= i32(bbox_x0) && x_bump < i32(bbox_x1)) {
-                let bump_local = u32(x_bump - i32(bbox_x0));
-                atomicAdd(&backdrops[data_offset + bump_local], delta);
-            }
-        }
-    }
-
     var last_z = floor(a * (f32(imin) - 1.0) + b);
     var i = imin;
     loop {
@@ -225,17 +183,10 @@ fn scan_count(@builtin(global_invocation_id) global_id: vec3<u32>) {
             tile_x < i32(bbox_x1)
         ) {
             var top_edge = last_z == z;
-            var initial_top_edge = false;
-            if (i == imin) {
-                initial_top_edge = imin == 0u && abs(y0 - xy0y * tile_scale) <= SCAN_EPSILON;
-                top_edge = initial_top_edge;
+            if (i == 0u) {
+                top_edge = abs(y0 - xy0y * tile_scale) <= SCAN_EPSILON;
             }
-            if (
-                line_needs_top_edge_carry &&
-                top_edge &&
-                !(initial_top_edge && skip_initial_top_edge_carry) &&
-                tile_x + 1i < i32(bbox_x1)
-            ) {
+            if (top_edge && tile_x + 1i < i32(bbox_x1)) {
                 let x_bump = max(tile_x + 1i, i32(bbox_x0));
                 let bump_local = u32(
                     (tile_y - i32(bbox_y0)) * i32(bbox_stride) + x_bump - i32(bbox_x0)

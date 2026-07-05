@@ -304,6 +304,46 @@ fn push_svg_renders_top_clipped_circle_without_double_top_backdrop() {
 }
 
 #[test]
+fn push_svg_renders_missing_cx_cy_ellipse_top_boundary_like_vello() {
+    let renderer = render_with_options(
+        r##"<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                <ellipse cx="0" cy="0" rx="80" ry="60" fill="red"/>
+                <ellipse rx="80" ry="60" fill="green"/>
+                <rect x="1" y="1" width="198" height="198" fill="none" stroke="black"/>
+            </svg>"##,
+        Color::TRANSPARENT,
+        SvgOptions {
+            transform: peniko::kurbo::Affine::scale(1.5),
+            ..SvgOptions::default()
+        },
+        300,
+        300,
+    );
+    let image = renderer.image();
+
+    let top_inside = image.rgba8_at(16, 0);
+    assert!(
+        top_inside[1] > 0 && top_inside[3] > 0,
+        "top row inside the default-center ellipse must receive backdrop, got {top_inside:?}"
+    );
+    let right_edge = image.rgba8_at(120, 0);
+    assert_eq!(
+        right_edge[1], 0,
+        "ellipse right edge must not carry green fill past Vello's top-row coverage, got {right_edge:?}"
+    );
+    let left_inside = image.rgba8_at(0, 89);
+    assert!(
+        left_inside[1] > 0 && left_inside[3] > 0,
+        "left column inside the default-center ellipse must receive backdrop, got {left_inside:?}"
+    );
+    let bottom_edge = image.rgba8_at(0, 90);
+    assert_eq!(
+        bottom_edge[1], 0,
+        "ellipse bottom edge must not carry green fill past Vello's coverage, got {bottom_edge:?}"
+    );
+}
+
+#[test]
 fn push_svg_renders_clip_path_with_multiple_children() {
     let renderer = render(
         r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="8">

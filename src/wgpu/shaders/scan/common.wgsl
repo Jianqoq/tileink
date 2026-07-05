@@ -50,6 +50,12 @@ struct TileSegmentRange {
 // segment snapping. This only absorbs arithmetic noise around an exact tile
 // boundary; wider tolerances can create false backdrop carry for nearby geometry.
 const SCAN_EPSILON: f32 = 1.0e-6;
+const TOP_TOUCH_EPSILON: f32 = 1.0e-12;
+
+// DDA-derived top/bottom clips are nudged into the tile before y_edge handling.
+// This is not a comparison tolerance: at global pixel coordinates, a 1e-6 offset can
+// round back to the boundary in f32 and be misclassified as a left-edge crossing.
+const TILE_CLIP_NUDGE: f32 = 1.0e-3;
 
 fn span(a: f32, b: f32) -> u32 {
     var hi = ceil(a);
@@ -65,6 +71,17 @@ fn span(a: f32, b: f32) -> u32 {
         value = 1.0;
     }
     return u32(value);
+}
+
+fn is_tile_boundary_y(value: f32) -> bool {
+    return abs(value - floor(value)) <= TOP_TOUCH_EPSILON;
+}
+
+fn ceil_tile_boundary_y(value: f32) -> i32 {
+    if (is_tile_boundary_y(value)) {
+        return i32(floor(value));
+    }
+    return i32(ceil(value));
 }
 
 fn local_tile_ix(tile_x: i32, tile_y: i32, bbox_x0: u32, bbox_y0: u32, bbox_x1: u32) -> u32 {

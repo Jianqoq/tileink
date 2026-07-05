@@ -15,7 +15,7 @@ use crate::{
             region::Region,
         },
         line::Line,
-        path::{PATH_FLAG_KEEP_HORIZONTAL_TILE_EDGES, PathRecord},
+        path::PathRecord,
         sdf::{Sdf, SdfShadow},
     },
 };
@@ -315,7 +315,6 @@ fn translated_path_segment_capacity(canvas: &Canvas, path_id: usize, tile_bbox: 
     };
     let lines =
         &canvas.lines[record.line_start as usize..(record.line_start + record.line_count) as usize];
-    let keep_horizontal_tile_edges = record.flags & PATH_FLAG_KEEP_HORIZONTAL_TILE_EDGES != 0;
     lines
         .iter()
         .map(|line| {
@@ -323,7 +322,6 @@ fn translated_path_segment_capacity(canvas: &Canvas, path_id: usize, tile_bbox: 
                 *line,
                 tile_bbox,
                 (canvas.width_in_tiles(), canvas.height_in_tiles()),
-                keep_horizontal_tile_edges,
             )
         })
         .sum()

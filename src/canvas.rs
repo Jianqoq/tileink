@@ -29,7 +29,7 @@ use crate::shared::{
         region::Region,
     },
     line::Line,
-    path::{PATH_FLAG_KEEP_HORIZONTAL_TILE_EDGES, PathRecord},
+    path::PathRecord,
     path_flatten::PathFlatten,
     scan_line::line_scanned_tile_count,
     sdf::{
@@ -94,11 +94,8 @@ struct PathPushOptions {
     bounds_override: Option<Bounds>,
     brush: Brush,
     emit_draw_command: bool,
-    keep_thin_stroke_horizontal_edges: bool,
     tag: DrawTag,
 }
-
-const THIN_STROKE_HORIZONTAL_EDGE_MAX_HEIGHT: f64 = 2.0;
 
 #[derive(Clone, Copy)]
 enum SceneAppendMode {
@@ -653,7 +650,6 @@ impl Canvas {
                     line,
                     tile_bbox,
                     (width_in_tiles, height_in_tiles),
-                    record.flags & PATH_FLAG_KEEP_HORIZONTAL_TILE_EDGES != 0,
                 ))
             })
     }
@@ -1154,7 +1150,6 @@ impl Canvas {
                     bounds_override: None,
                     brush: brush.into(),
                     emit_draw_command: true,
-                    keep_thin_stroke_horizontal_edges: true,
                     tag: DrawTag::Brush,
                 },
             );
@@ -1394,7 +1389,6 @@ impl Canvas {
                 bounds_override: None,
                 brush: brush.into(),
                 emit_draw_command: true,
-                keep_thin_stroke_horizontal_edges: true,
                 tag: DrawTag::Brush,
             },
         );
@@ -1507,7 +1501,6 @@ impl Canvas {
                 bounds_override: None,
                 brush: brush.into(),
                 emit_draw_command: true,
-                keep_thin_stroke_horizontal_edges: false,
                 tag: DrawTag::PathGlyph,
             },
         );
@@ -1552,30 +1545,6 @@ impl Canvas {
         }
     }
 
-    fn path_flags(path: &BezPath, keep_thin_stroke_horizontal_edges: bool) -> u32 {
-        if !keep_thin_stroke_horizontal_edges {
-            return 0;
-        }
-
-        // `kurbo::stroke` turns a thin horizontal line into a narrow filled path.
-        // For ordinary fills, scan conversion skips horizontal edges that lie exactly on
-        // tile boundaries; that rule avoids double-counting shared fill boundaries.
-        //
-        // A thin horizontal stroke outline is different: its top edge can land on a tile
-        // boundary while the bottom edge remains in the tile. Dropping only the boundary
-        // edge leaves the backdrop scan unbalanced, so dashed strokes can become coarse
-        // tile-sized blocks. Mark the whole path because this is a fill-rule choice for
-        // the generated stroke outline, not an independent property of each line segment.
-        let rect = path.bounding_box();
-        let width = rect.x1 - rect.x0;
-        let height = rect.y1 - rect.y0;
-        if height > 0.0 && height <= THIN_STROKE_HORIZONTAL_EDGE_MAX_HEIGHT && width > height {
-            PATH_FLAG_KEEP_HORIZONTAL_TILE_EDGES
-        } else {
-            0
-        }
-    }
-
     fn push_path_inner(
         &mut self,
         path: BezPath,
@@ -1594,7 +1563,6 @@ impl Canvas {
                 bounds_override,
                 brush: brush.into(),
                 emit_draw_command: true,
-                keep_thin_stroke_horizontal_edges: false,
                 tag: DrawTag::Brush,
             },
         )
@@ -1613,14 +1581,22 @@ impl Canvas {
         let path_id = self.path_cnt;
         self.path_cnt += 1;
         let path = Self::transform_path(path, transform);
-        let path_flags = Self::path_flags(&path, options.keep_thin_stroke_horizontal_edges);
         PathFlatten::new(&path, tolerance as f32, path_id).flatten(&mut self.lines);
         let line_count = self.lines.len() as u32 - line_start;
+        let pixel_bounds = match options.bounds_override {
+            Some(bounds) => PixelBounds {
+                x0: bounds.x0,
+                y0: bounds.y0,
+                x1: bounds.x1,
+                y1: bounds.y1,
+            },
+            None => Self::pixel_bounds_for_transformed_path(&path),
+        };
         let path_record = PathRecord {
             path_id,
             line_count,
             line_start,
-            flags: path_flags,
+            flags: 0,
             data_offset: 0,
             data_len: 0,
             tile_x0: 0,
@@ -1631,21 +1607,12 @@ impl Canvas {
             segment_capacity: 0,
             segment_count: 0,
         };
-        let pixel_bounds = match options.bounds_override {
-            Some(bounds) => PixelBounds {
-                x0: bounds.x0,
-                y0: bounds.y0,
-                x1: bounds.x1,
-                y1: bounds.y1,
-            },
-            None => Self::pixel_bounds_for_transformed_path(&path),
-        };
         let tile_bbox = pixel_bounds.tile_bbox(self.width_in_tiles(), self.height_in_tiles());
         let tile_stride = tile_bbox.tile_stride();
         let tile_height = tile_bbox.tile_height();
         let backdrop_len = tile_stride * tile_height;
         let local_tile_cnt =
-            self.segment_capacity_for_path_lines(line_start, line_count, path_flags, tile_bbox);
+            self.segment_capacity_for_path_lines(line_start, line_count, tile_bbox);
 
         let backdrop_offset = self.backdrop_pool_capacity;
         self.backdrop_pool_capacity += backdrop_len;
@@ -1704,7 +1671,6 @@ impl Canvas {
                 bounds_override: None,
                 brush: Brush::Solid(Color::TRANSPARENT),
                 emit_draw_command: false,
-                keep_thin_stroke_horizontal_edges: false,
                 tag,
             },
         )
@@ -1861,20 +1827,13 @@ impl Canvas {
         &self,
         line_start: u32,
         line_count: u32,
-        path_flags: u32,
         tile_bbox: crate::shared::bounds::TileBbox,
     ) -> u32 {
         let tiles_size = (self.width_in_tiles(), self.height_in_tiles());
-        let keep_horizontal_tile_edges = path_flags & PATH_FLAG_KEEP_HORIZONTAL_TILE_EDGES != 0;
         self.lines[line_start as usize..(line_start + line_count) as usize]
             .iter()
             .fold(0u32, |capacity, &line| {
-                capacity.saturating_add(line_scanned_tile_count(
-                    line,
-                    tile_bbox,
-                    tiles_size,
-                    keep_horizontal_tile_edges,
-                ))
+                capacity.saturating_add(line_scanned_tile_count(line, tile_bbox, tiles_size))
             })
     }
 
