@@ -22,6 +22,7 @@ struct Config {
     frames: usize,
     candles: usize,
     rects: usize,
+    portable: bool,
 }
 
 impl Default for Config {
@@ -33,6 +34,7 @@ impl Default for Config {
             frames: 30,
             candles: 10_000,
             rects: 20_000,
+            portable: false,
         }
     }
 }
@@ -72,9 +74,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         force_fallback_adapter: false,
     }))?;
     let info = adapter.get_info();
-    let required_features = adapter.features()
-        & (wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
-            | wgpu::Features::TIMESTAMP_QUERY);
+    let required_features = if config.portable {
+        adapter.features() & wgpu::Features::TIMESTAMP_QUERY
+    } else {
+        adapter.features()
+            & (wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
+                | wgpu::Features::TIMESTAMP_QUERY)
+    };
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: Some("tileink vello compare device"),
         required_features,
@@ -85,8 +91,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     }))?;
 
     println!(
-        "adapter: {} ({:?}), {}x{}, warmup {}, frames {}",
-        info.name, info.backend, config.width, config.height, config.warmup, config.frames
+        "adapter: {} ({:?}), {}x{}, warmup {}, frames {}, portable {}",
+        info.name,
+        info.backend,
+        config.width,
+        config.height,
+        config.warmup,
+        config.frames,
+        config.portable
     );
     println!("timing: CPU submit + GPU completion, no readback\n");
 
@@ -197,6 +209,7 @@ fn parse_config() -> Result<Config, Box<dyn Error>> {
             "--frames" => config.frames = value.parse()?,
             "--candles" => config.candles = value.parse()?,
             "--rects" => config.rects = value.parse()?,
+            "--portable" => config.portable = parse_bool(value)?,
             _ => return Err(format!("unknown argument {flag}").into()),
         }
         i += 2;
@@ -205,6 +218,14 @@ fn parse_config() -> Result<Config, Box<dyn Error>> {
         return Err("--frames must be positive".into());
     }
     Ok(config)
+}
+
+fn parse_bool(value: &str) -> Result<bool, Box<dyn Error>> {
+    match value {
+        "1" | "true" | "yes" | "on" => Ok(true),
+        "0" | "false" | "no" | "off" => Ok(false),
+        _ => Err(format!("invalid bool value {value:?}").into()),
+    }
 }
 
 fn output_texture(device: &wgpu::Device, width: u32, height: u32, label: &str) -> wgpu::Texture {

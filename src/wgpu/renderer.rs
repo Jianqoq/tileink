@@ -939,7 +939,6 @@ impl Renderer {
             return false;
         };
         if fine.uses_portable_textures() {
-            println!("Using portable fine pipeline for target");
             return self.fine_portable_batch_to_in(commands, target);
         }
         match target {

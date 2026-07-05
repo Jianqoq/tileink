@@ -19,14 +19,14 @@ pub(crate) struct CoarseChunkRecord {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct TileEmitChunkRecord {
     pub(crate) count: u32,
     pub(crate) offset: u32,
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct EmitChunkRecord {
     pub(crate) tile: u32,
     pub(crate) local_chunk: u32,
