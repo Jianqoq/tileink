@@ -9,7 +9,7 @@ use crate::{
         line::Line,
         line_seg::LineSegment,
         path::{PATH_FLAG_KEEP_HORIZONTAL_TILE_EDGES, PathRecord},
-        scan_line::{TILE_BOUNDARY_EPSILON, for_each_scanned_tile, plan_scan_line},
+        scan_line::{SCAN_EPSILON, for_each_scanned_tile, plan_scan_line},
         tile_seg_range::TileSegmentRange,
     },
 };
@@ -298,16 +298,14 @@ fn clip_line_to_tile(
         clamp_tile_coord(xy1[0] - tile_xy[0]),
         clamp_tile_coord(xy1[1] - tile_xy[1]),
     );
-    const EPSILON: f32 = 1e-6;
-
     if p0.0 == 0.0 {
         if p1.0 == 0.0 {
-            p0.0 = EPSILON;
+            p0.0 = SCAN_EPSILON;
             if p0.1 == 0.0 {
-                p1.0 = EPSILON;
+                p1.0 = SCAN_EPSILON;
                 p1.1 = TILE_SIZE as f32;
             } else {
-                p1.0 = 2.0 * EPSILON;
+                p1.0 = 2.0 * SCAN_EPSILON;
                 p1.1 = p0.1;
             }
         } else if p0.1 == 0.0 {
@@ -315,11 +313,11 @@ fn clip_line_to_tile(
             // Stroke outlines keep horizontal top edges on tile boundaries so their paired
             // bottom edges cannot fill every row below the stroke.
             if (keep_horizontal_tile_edges && p1.1 == 0.0)
-                || (p1.0 <= 1.0 + TILE_BOUNDARY_EPSILON && p1.1 <= 1.0 + TILE_BOUNDARY_EPSILON)
+                || (p1.0 <= 1.0 + SCAN_EPSILON && p1.1 <= 1.0 + SCAN_EPSILON)
             {
                 y_edge = p0.1;
             }
-            p0.0 = EPSILON;
+            p0.0 = SCAN_EPSILON;
         } else {
             y_edge = p0.1;
         }
@@ -328,16 +326,16 @@ fn clip_line_to_tile(
             if keep_horizontal_tile_edges && p0.1 == 0.0 {
                 y_edge = p1.1;
             }
-            p1.0 = EPSILON;
+            p1.0 = SCAN_EPSILON;
         } else {
             y_edge = p1.1;
         }
     }
     if p0.0 == p0.0.floor() && p0.0 != 0.0 {
-        p0.0 -= EPSILON;
+        p0.0 -= SCAN_EPSILON;
     }
     if p1.0 == p1.0.floor() && p1.0 != 0.0 {
-        p1.0 -= EPSILON;
+        p1.0 -= SCAN_EPSILON;
     }
     if !is_down {
         std::mem::swap(&mut p0, &mut p1);
@@ -354,9 +352,9 @@ fn clip_line_to_tile(
 
 fn clamp_tile_coord(value: f32) -> f32 {
     let value = value.clamp(0.0, TILE_SIZE as f32);
-    if value <= TILE_BOUNDARY_EPSILON {
+    if value <= SCAN_EPSILON {
         0.0
-    } else if TILE_SIZE as f32 - value <= TILE_BOUNDARY_EPSILON {
+    } else if TILE_SIZE as f32 - value <= SCAN_EPSILON {
         TILE_SIZE as f32
     } else {
         value
@@ -496,8 +494,13 @@ mod tests {
         cpu::computes::cumsum::run_backdrop_cumsum,
         cpu::computes::fine::build_tile_alpha,
         shared::{
-            bounds::TileBbox, fill::FillRule, line::Line, line_seg::LineSegment, path::PathRecord,
-            scan_line::plan_scan_line, tile_seg_range::TileSegmentRange,
+            bounds::TileBbox,
+            fill::FillRule,
+            line::Line,
+            line_seg::LineSegment,
+            path::PathRecord,
+            scan_line::{for_each_scanned_tile, plan_scan_line},
+            tile_seg_range::TileSegmentRange,
         },
     };
     use peniko::{
@@ -923,6 +926,38 @@ mod tests {
             plan_scan_line(line, bbox, false).unwrap().top_clip_bump_x,
             None
         );
+    }
+
+    #[test]
+    fn scan_line_initial_top_edge_requires_actual_tile_boundary() {
+        let bbox = TileBbox {
+            x0: 51,
+            y0: 30,
+            x1: 53,
+            y1: 31,
+        };
+        let p0 = [832.75, 484.75];
+        let first_tile = |p1| {
+            let plan = plan_scan_line(
+                Line {
+                    path_id: 0,
+                    _pad: 0.0,
+                    p0,
+                    p1,
+                },
+                bbox,
+                false,
+            )
+            .unwrap();
+            let mut tiles = Vec::new();
+            for_each_scanned_tile(&plan, bbox, (64, 64), |tile| {
+                tiles.push((tile.x, tile.y, tile.top_edge, tile.initial_top_edge));
+            });
+            tiles[0]
+        };
+
+        assert_eq!(first_tile([826.0, 480.0]), (51, 30, true, true));
+        assert_eq!(first_tile([826.0, 480.000_03]), (51, 30, false, false));
     }
 
     #[test]

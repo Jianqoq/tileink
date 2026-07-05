@@ -48,7 +48,7 @@ pub(crate) fn for_each_scanned_tile(
 
         let initial_top_edge = i == plan.imin
             && plan.imin == 0
-            && (plan.y0 - plan.xy0[1] * TILE_SCALE).abs() <= DDA_TOP_EDGE_EPSILON;
+            && (plan.y0 - plan.xy0[1] * TILE_SCALE).abs() <= SCAN_EPSILON;
         let top_edge = if i == plan.imin {
             initial_top_edge
         } else {
@@ -213,12 +213,12 @@ pub(crate) fn plan_scan_line(
 
 fn top_clip_backdrop_bump_x(s0: (f32, f32), s1: (f32, f32), bbox: TileBbox) -> Option<i32> {
     let top_y = bbox.y0 as f32;
-    if s0.1 >= top_y - TILE_BOUNDARY_EPSILON || s1.1 <= top_y + TILE_BOUNDARY_EPSILON {
+    if s0.1 >= top_y - SCAN_EPSILON || s1.1 <= top_y + SCAN_EPSILON {
         return None;
     }
 
     let top_x = s0.0 + (s1.0 - s0.0) * ((top_y - s0.1) / (s1.1 - s0.1));
-    if top_x < bbox.x0 as f32 - TILE_BOUNDARY_EPSILON || top_x >= bbox.x1 as f32 {
+    if top_x < bbox.x0 as f32 - SCAN_EPSILON || top_x >= bbox.x1 as f32 {
         return None;
     }
 
@@ -226,10 +226,10 @@ fn top_clip_backdrop_bump_x(s0: (f32, f32), s1: (f32, f32), bbox: TileBbox) -> O
     // DDA top-edge event. The clipped boundary contributes only to tiles whose
     // left edge is at or to the right of the crossing; exact tile-boundary
     // crossings therefore stay on that boundary instead of advancing one tile.
-    if top_x - bbox.x0 as f32 <= TILE_BOUNDARY_EPSILON {
+    if top_x - bbox.x0 as f32 <= SCAN_EPSILON {
         Some(bbox.x0 as i32 + 1)
     } else {
-        Some((top_x - TILE_BOUNDARY_EPSILON).ceil() as i32)
+        Some((top_x - SCAN_EPSILON).ceil() as i32)
     }
 }
 
@@ -243,8 +243,7 @@ fn is_top_left_corner_clip(s0: (f32, f32), s1: (f32, f32), bbox: TileBbox) -> bo
     let top_x = s0.0 + (s1.0 - s0.0) * ((top_y - s0.1) / (s1.1 - s0.1));
     let left_y = s0.1 + (s1.1 - s0.1) * ((left_x - s0.0) / (s1.0 - s0.0));
 
-    (top_x - left_x).abs() <= TILE_BOUNDARY_EPSILON
-        && (left_y - top_y).abs() <= TILE_BOUNDARY_EPSILON
+    (top_x - left_x).abs() <= SCAN_EPSILON && (left_y - top_y).abs() <= SCAN_EPSILON
 }
 
 fn span(a: f32, b: f32) -> u32 {
@@ -253,5 +252,7 @@ fn span(a: f32, b: f32) -> u32 {
     (hi - lo).max(1.0) as u32
 }
 
-const DDA_TOP_EDGE_EPSILON: f32 = 1.0e-5;
-pub(crate) const TILE_BOUNDARY_EPSILON: f32 = 1.0e-4;
+// Shared by DDA top-edge detection, top-clipped backdrop bumps, and tile-boundary
+// segment snapping. This only absorbs arithmetic noise around an exact tile
+// boundary; wider tolerances can create false backdrop carry for nearby geometry.
+pub(crate) const SCAN_EPSILON: f32 = 1.0e-6;

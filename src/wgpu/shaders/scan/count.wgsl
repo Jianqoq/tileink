@@ -170,10 +170,10 @@ fn scan_count(@builtin(global_invocation_id) global_id: vec3<u32>) {
             let top_x = s0x + (s1x - s0x) * ((top_y - s0y) / (s1y - s0y));
             let left_y = s0y + (s1y - s0y) * ((left_x - s0x) / dx_left);
             if (
-                top_x - left_x >= -TILE_BOUNDARY_EPSILON &&
-                top_x - left_x <= TILE_BOUNDARY_EPSILON &&
-                left_y - top_y >= -TILE_BOUNDARY_EPSILON &&
-                left_y - top_y <= TILE_BOUNDARY_EPSILON
+                top_x - left_x >= -SCAN_EPSILON &&
+                top_x - left_x <= SCAN_EPSILON &&
+                left_y - top_y >= -SCAN_EPSILON &&
+                left_y - top_y <= SCAN_EPSILON
             ) {
                 ymin += 1i;
             }
@@ -192,14 +192,14 @@ fn scan_count(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
     if (
         imin < imax &&
-        s0y < f32(bbox_y0) - TILE_BOUNDARY_EPSILON &&
-        s1y > f32(bbox_y0) + TILE_BOUNDARY_EPSILON
+        s0y < f32(bbox_y0) - SCAN_EPSILON &&
+        s1y > f32(bbox_y0) + SCAN_EPSILON
     ) {
         let top_y = f32(bbox_y0);
         let top_x = s0x + (s1x - s0x) * ((top_y - s0y) / (s1y - s0y));
-        if (top_x >= f32(bbox_x0) - TILE_BOUNDARY_EPSILON && top_x < f32(bbox_x1)) {
-            var x_bump = i32(ceil(top_x - TILE_BOUNDARY_EPSILON));
-            if (top_x - f32(bbox_x0) <= TILE_BOUNDARY_EPSILON) {
+        if (top_x >= f32(bbox_x0) - SCAN_EPSILON && top_x < f32(bbox_x1)) {
+            var x_bump = i32(ceil(top_x - SCAN_EPSILON));
+            if (top_x - f32(bbox_x0) <= SCAN_EPSILON) {
                 x_bump = i32(bbox_x0) + 1i;
             }
             if (x_bump >= i32(bbox_x0) && x_bump < i32(bbox_x1)) {
@@ -227,7 +227,7 @@ fn scan_count(@builtin(global_invocation_id) global_id: vec3<u32>) {
             var top_edge = last_z == z;
             var initial_top_edge = false;
             if (i == imin) {
-                initial_top_edge = imin == 0u && abs(y0 - xy0y * tile_scale) <= DDA_TOP_EDGE_EPSILON;
+                initial_top_edge = imin == 0u && abs(y0 - xy0y * tile_scale) <= SCAN_EPSILON;
                 top_edge = initial_top_edge;
             }
             if (
@@ -250,4 +250,3 @@ fn scan_count(@builtin(global_invocation_id) global_id: vec3<u32>) {
         i += 1u;
     }
 }
-

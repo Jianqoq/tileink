@@ -433,8 +433,8 @@ fn segment_area_at(xmin_abs: f32, xmax_abs: f32, x: u32) -> f32 {
     let xmin = xmin_abs - pixel_x;
     let xmax = xmax_abs - pixel_x;
     var area = clamp(1.0 - xmin, 0.0, 1.0);
-    if (xmax - xmin > 0.000001) {
-        let a_min = min(xmin, 1.0) - 0.000001;
+    if (xmax - xmin > FINE_AREA_EPSILON) {
+        let a_min = min(xmin, 1.0) - FINE_AREA_EPSILON;
         let b = min(xmax, 1.0);
         let c = max(b, 0.0);
         let d = max(a_min, 0.0);

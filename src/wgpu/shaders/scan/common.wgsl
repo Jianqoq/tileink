@@ -46,8 +46,10 @@ struct TileSegmentRange {
 
 @group(0) @binding(0) var<uniform> config: ScanConfig;
 
-const DDA_TOP_EDGE_EPSILON: f32 = 1.0e-5;
-const TILE_BOUNDARY_EPSILON: f32 = 1.0e-4;
+// Shared by DDA top-edge detection, top-clipped backdrop bumps, and tile-boundary
+// segment snapping. This only absorbs arithmetic noise around an exact tile
+// boundary; wider tolerances can create false backdrop carry for nearby geometry.
+const SCAN_EPSILON: f32 = 1.0e-6;
 
 fn span(a: f32, b: f32) -> u32 {
     var hi = ceil(a);
@@ -70,4 +72,3 @@ fn local_tile_ix(tile_x: i32, tile_y: i32, bbox_x0: u32, bbox_y0: u32, bbox_x1: 
     let local_y = u32(tile_y) - bbox_y0;
     return local_y * (bbox_x1 - bbox_x0) + local_x;
 }
-

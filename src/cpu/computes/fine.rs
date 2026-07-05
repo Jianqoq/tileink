@@ -21,7 +21,7 @@ use crate::{
     text::{PreparedGlyphContent, PreparedTextData, TextCompositeMode},
 };
 
-const AREA_EPSILON: f32 = 1.0e-6;
+const FINE_AREA_EPSILON: f32 = 1.0e-6;
 
 #[inline]
 fn apply_rule(value: f32, fill_rule: FillRule) -> f32 {
@@ -65,10 +65,10 @@ fn segment_coverage_at(segment: &LineSegment, x: u32, y: u32) -> f32 {
     let pixel_x = x as f32;
     let xmin = sx0.min(sx1) - pixel_x;
     let xmax = sx0.max(sx1) - pixel_x;
-    if xmax - xmin <= AREA_EPSILON {
+    if xmax - xmin <= FINE_AREA_EPSILON {
         return y_edge + (1.0 - xmin).clamp(0.0, 1.0) * dy;
     }
-    let a_min = xmin.min(1.0) - AREA_EPSILON;
+    let a_min = xmin.min(1.0) - FINE_AREA_EPSILON;
     let b = xmax.min(1.0);
     let c = b.max(0.0);
     let d = a_min.max(0.0);
@@ -105,10 +105,10 @@ fn segment_area_at(xmin: f32, xmax: f32, x: u32) -> f32 {
     let pixel_x = x as f32;
     let xmin = xmin - pixel_x;
     let xmax = xmax - pixel_x;
-    if xmax - xmin <= AREA_EPSILON {
+    if xmax - xmin <= FINE_AREA_EPSILON {
         return (1.0 - xmin).clamp(0.0, 1.0);
     }
-    let a_min = xmin.min(1.0) - AREA_EPSILON;
+    let a_min = xmin.min(1.0) - FINE_AREA_EPSILON;
     let b = xmax.min(1.0);
     let c = b.max(0.0);
     let d = a_min.max(0.0);

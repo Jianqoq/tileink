@@ -352,47 +352,45 @@ fn write_clipped_segment(
     var p0y = clamp(xy0y - tile_min_y, 0.0, tile_size);
     var p1x = clamp(xy1x - tile_min_x, 0.0, tile_size);
     var p1y = clamp(xy1y - tile_min_y, 0.0, tile_size);
-    let boundary_epsilon = TILE_BOUNDARY_EPSILON;
-    if (p0x <= boundary_epsilon) {
+    if (p0x <= SCAN_EPSILON) {
         p0x = 0.0;
-    } else if (tile_size - p0x <= boundary_epsilon) {
+    } else if (tile_size - p0x <= SCAN_EPSILON) {
         p0x = tile_size;
     }
-    if (p0y <= boundary_epsilon) {
+    if (p0y <= SCAN_EPSILON) {
         p0y = 0.0;
-    } else if (tile_size - p0y <= boundary_epsilon) {
+    } else if (tile_size - p0y <= SCAN_EPSILON) {
         p0y = tile_size;
     }
-    if (p1x <= boundary_epsilon) {
+    if (p1x <= SCAN_EPSILON) {
         p1x = 0.0;
-    } else if (tile_size - p1x <= boundary_epsilon) {
+    } else if (tile_size - p1x <= SCAN_EPSILON) {
         p1x = tile_size;
     }
-    if (p1y <= boundary_epsilon) {
+    if (p1y <= SCAN_EPSILON) {
         p1y = 0.0;
-    } else if (tile_size - p1y <= boundary_epsilon) {
+    } else if (tile_size - p1y <= SCAN_EPSILON) {
         p1y = tile_size;
     }
-    let epsilon = 0.000001;
 
     if (p0x == 0.0) {
         if (p1x == 0.0) {
-            p0x = epsilon;
+            p0x = SCAN_EPSILON;
             if (p0y == 0.0) {
-                p1x = epsilon;
+                p1x = SCAN_EPSILON;
                 p1y = tile_size;
             } else {
-                p1x = 2.0 * epsilon;
+                p1x = 2.0 * SCAN_EPSILON;
                 p1y = p0y;
             }
         } else if (p0y == 0.0) {
             if (
                 (keep_horizontal_tile_edges && p1y == 0.0) ||
-                (p1x <= 1.0 + boundary_epsilon && p1y <= 1.0 + boundary_epsilon)
+                (p1x <= 1.0 + SCAN_EPSILON && p1y <= 1.0 + SCAN_EPSILON)
             ) {
                 y_edge = p0y;
             }
-            p0x = epsilon;
+            p0x = SCAN_EPSILON;
         } else {
             y_edge = p0y;
         }
@@ -401,16 +399,16 @@ fn write_clipped_segment(
             if (keep_horizontal_tile_edges && p0y == 0.0) {
                 y_edge = p1y;
             }
-            p1x = epsilon;
+            p1x = SCAN_EPSILON;
         } else {
             y_edge = p1y;
         }
     }
     if (floor(p0x) == p0x && p0x != 0.0) {
-        p0x -= epsilon;
+        p0x -= SCAN_EPSILON;
     }
     if (floor(p1x) == p1x && p1x != 0.0) {
-        p1x -= epsilon;
+        p1x -= SCAN_EPSILON;
     }
     if (!is_down) {
         let tmp_x = p0x;
