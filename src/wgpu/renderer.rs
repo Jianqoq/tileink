@@ -139,6 +139,9 @@ pub struct Renderer {
     filter_paths: WgpuFilterPathBuffers,
     // Compatibility surface for render()/image(); render_to_wgpu_texture writes caller-owned textures directly.
     readback_target: WgpuTarget,
+    fine_portable_source: WgpuTarget,
+    fine_portable_target: WgpuTarget,
+    root_target_texture: Option<::wgpu::Texture>,
     root_target_view: Option<::wgpu::TextureView>,
     scratch: Vec<WgpuTarget>,
     scratch_in_use: Vec<bool>,
@@ -165,6 +168,9 @@ struct SavedRendererState {
     filter_turbulence: WgpuFilterTurbulenceBuffers,
     filter_paths: WgpuFilterPathBuffers,
     readback_target: WgpuTarget,
+    fine_portable_source: WgpuTarget,
+    fine_portable_target: WgpuTarget,
+    root_target_texture: Option<::wgpu::Texture>,
     root_target_view: Option<::wgpu::TextureView>,
     scratch: Vec<WgpuTarget>,
     scratch_in_use: Vec<bool>,
@@ -274,6 +280,9 @@ impl Renderer {
             filter_turbulence: WgpuFilterTurbulenceBuffers::new(device),
             filter_paths: WgpuFilterPathBuffers::new(device),
             readback_target: WgpuTarget::new(device, width, height),
+            fine_portable_source: WgpuTarget::new(device, width, height),
+            fine_portable_target: WgpuTarget::new(device, width, height),
+            root_target_texture: None,
             root_target_view: None,
             scratch: Vec::new(),
             scratch_in_use: Vec::new(),
@@ -468,6 +477,10 @@ impl Renderer {
                 self.readback_target
                     .resize(&self.device, canvas.width, canvas.height);
             }
+            self.fine_portable_source
+                .resize(&self.device, canvas.width, canvas.height);
+            self.fine_portable_target
+                .resize(&self.device, canvas.width, canvas.height);
         });
         let lengths = profile_cpu("prepare.lengths", || {
             GpuBufferLengths::from_scene_with_text(canvas, self.text_data.as_ref())
@@ -599,6 +612,15 @@ impl Renderer {
                 &mut self.readback_target,
                 WgpuTarget::new(&self.device, canvas.width, canvas.height),
             ),
+            fine_portable_source: std::mem::replace(
+                &mut self.fine_portable_source,
+                WgpuTarget::new(&self.device, canvas.width, canvas.height),
+            ),
+            fine_portable_target: std::mem::replace(
+                &mut self.fine_portable_target,
+                WgpuTarget::new(&self.device, canvas.width, canvas.height),
+            ),
+            root_target_texture: std::mem::take(&mut self.root_target_texture),
             root_target_view: std::mem::take(&mut self.root_target_view),
             scratch: std::mem::take(&mut self.scratch),
             scratch_in_use: std::mem::take(&mut self.scratch_in_use),
@@ -699,6 +721,9 @@ impl Renderer {
         self.filter_turbulence = saved.filter_turbulence;
         self.filter_paths = saved.filter_paths;
         self.readback_target = saved.readback_target;
+        self.fine_portable_source = saved.fine_portable_source;
+        self.fine_portable_target = saved.fine_portable_target;
+        self.root_target_texture = saved.root_target_texture;
         self.root_target_view = saved.root_target_view;
         self.scratch = saved.scratch;
         self.scratch_in_use = saved.scratch_in_use;
@@ -913,6 +938,10 @@ impl Renderer {
         let Some(fine) = &self.fine else {
             return false;
         };
+        if fine.uses_portable_textures() {
+            println!("Using portable fine pipeline for target");
+            return self.fine_portable_batch_to_in(commands, target);
+        }
         match target {
             WgpuRenderTargetId::Main => {
                 if let Some(target) = &self.root_target_view {
@@ -965,6 +994,54 @@ impl Renderer {
                 self.max_group_depth.saturating_sub(FINE_LOCAL_GROUP_DEPTH) as u32,
             ),
         }
+    }
+
+    fn fine_portable_batch_to_in(
+        &mut self,
+        commands: &mut WgpuCommandBatch,
+        target: WgpuRenderTargetId,
+    ) -> bool {
+        let Some(fine) = &self.fine else {
+            return false;
+        };
+        let Some(target_texture) = self.render_target_texture(target).cloned() else {
+            return false;
+        };
+        self.fine_portable_source
+            .resize(commands.device(), self.size.0, self.size.1);
+        self.fine_portable_target
+            .resize(commands.device(), self.size.0, self.size.1);
+        copy_texture(
+            commands.encoder(),
+            &target_texture,
+            self.fine_portable_source.texture(),
+            self.size,
+        );
+        let ok = fine.render_tiles_to_views_in(
+            commands,
+            self.size.0,
+            self.size.1,
+            self.lengths,
+            &self.scene_buffers,
+            &self.scan,
+            &self.coarse,
+            &self.fine_spills,
+            self.fine_portable_source.view(),
+            self.fine_portable_target.view(),
+            self.clear_color,
+            true,
+            self.max_clip_depth.saturating_sub(FINE_LOCAL_CLIP_DEPTH) as u32,
+            self.max_group_depth.saturating_sub(FINE_LOCAL_GROUP_DEPTH) as u32,
+        );
+        if ok {
+            copy_texture(
+                commands.encoder(),
+                self.fine_portable_target.texture(),
+                &target_texture,
+                self.size,
+            );
+        }
+        ok
     }
 
     fn execute_offscreen_layer(
@@ -1626,6 +1703,17 @@ impl Renderer {
         }
     }
 
+    fn render_target_texture(&self, target: WgpuRenderTargetId) -> Option<&::wgpu::Texture> {
+        match target {
+            WgpuRenderTargetId::Main => Some(
+                self.root_target_texture
+                    .as_ref()
+                    .unwrap_or(self.readback_target.texture()),
+            ),
+            WgpuRenderTargetId::Scratch(ix) => Some(self.scratch.get(ix)?.texture()),
+        }
+    }
+
     fn filter_brush_bindings(&self) -> WgpuFilterBrushBindings<'_> {
         let image_resources = self.scene_buffers.image_resource_bindings();
         WgpuFilterBrushBindings {
@@ -1861,6 +1949,7 @@ impl Renderer {
         {
             return false;
         }
+        self.root_target_texture = Some(dst.clone());
         self.root_target_view = Some(dst.create_view(&::wgpu::TextureViewDescriptor::default()));
         prepare(self, canvas);
         let rendered = if self.render_prepared_tile_plan(canvas) {
@@ -1870,6 +1959,7 @@ impl Renderer {
             false
         };
         self.root_target_view = None;
+        self.root_target_texture = None;
         rendered
     }
 
@@ -1960,6 +2050,16 @@ impl Renderer {
                 dst.usage(),
             ));
         }
+        if self
+            .fine
+            .as_ref()
+            .is_some_and(WgpuFinePipeline::uses_portable_textures)
+            && !dst
+                .usage()
+                .contains(::wgpu::TextureUsages::COPY_SRC | ::wgpu::TextureUsages::COPY_DST)
+        {
+            return Err(WgpuTextureRenderError::DestinationUsageMissing(dst.usage()));
+        }
         if dst.format() != ::wgpu::TextureFormat::Rgba8Unorm
             || dst.dimension() != ::wgpu::TextureDimension::D2
             || dst.sample_count() != 1
@@ -1996,6 +2096,23 @@ fn rgba8_byte_len(width: u32, height: u32) -> ::wgpu::BufferAddress {
     width as ::wgpu::BufferAddress
         * height as ::wgpu::BufferAddress
         * std::mem::size_of::<u32>() as ::wgpu::BufferAddress
+}
+
+fn copy_texture(
+    encoder: &mut ::wgpu::CommandEncoder,
+    source: &::wgpu::Texture,
+    target: &::wgpu::Texture,
+    size: (u32, u32),
+) {
+    encoder.copy_texture_to_texture(
+        source.as_image_copy(),
+        target.as_image_copy(),
+        ::wgpu::Extent3d {
+            width: size.0.max(1),
+            height: size.1.max(1),
+            depth_or_array_layers: 1,
+        },
+    );
 }
 
 fn encode_morphology_operator(operator: filter_model::MorphologyOperator) -> u32 {

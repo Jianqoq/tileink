@@ -358,6 +358,48 @@ fn wgpu_renderer_renders_tile_fine_to_storage_texture_when_enabled() {
 }
 
 #[test]
+fn wgpu_renderer_portable_fine_preserves_previous_batches_when_enabled() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let Some((device, queue)) = portable_wgpu_device() else {
+        return;
+    };
+    let mut canvas = Canvas::new(16, 16);
+    canvas.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(255, 0, 0),
+    );
+    canvas.push_rect(
+        Rect::new(8.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(0, 0, 255),
+    );
+    let mut renderer = Renderer::new(&device, &queue, 16, 16, Color::TRANSPARENT);
+    assert!(
+        renderer
+            .fine
+            .as_ref()
+            .is_some_and(|fine| fine.uses_portable_textures())
+    );
+
+    renderer.prepare_scene(&canvas);
+    let mut commands =
+        WgpuCommandBatch::new(renderer.device(), renderer.queue(), "portable fine batches");
+    assert!(renderer.scan_and_cumsum(&mut commands, &canvas));
+    assert!(renderer.clear_render_target(&mut commands, WgpuRenderTargetId::Main, 0));
+    assert!(renderer.coarse_and_fine_batch_to(&mut commands, 0, 1, 0, 0, WgpuRenderTargetId::Main));
+    assert!(renderer.coarse_and_fine_batch_to(&mut commands, 1, 2, 0, 0, WgpuRenderTargetId::Main));
+    commands.finish();
+
+    let image = renderer.image();
+    assert_eq!(image.rgba8_at(4, 8), [255, 0, 0, 255]);
+    assert_eq!(image.rgba8_at(12, 8), [0, 0, 255, 255]);
+}
+
+#[test]
 fn wgpu_renderer_renders_offscreen_plan_directly_to_storage_texture() {
     if !run_wgpu_tests() {
         return;
@@ -2357,6 +2399,25 @@ fn wgpu_renderer_matches_cpu_text_compositing_when_enabled() {
 fn run_wgpu_tests() -> bool {
     std::env::var("TILEINK_RUN_WGPU_TESTS").as_deref() == Ok("1")
         || std::env::var("TILEINK_RUN_CUBECL_WGPU_TESTS").as_deref() == Ok("1")
+}
+
+fn portable_wgpu_device() -> Option<(::wgpu::Device, ::wgpu::Queue)> {
+    let instance = ::wgpu::Instance::new(::wgpu::InstanceDescriptor::new_without_display_handle());
+    let adapter = pollster::block_on(instance.request_adapter(&::wgpu::RequestAdapterOptions {
+        power_preference: ::wgpu::PowerPreference::HighPerformance,
+        compatible_surface: None,
+        force_fallback_adapter: false,
+    }))
+    .ok()?;
+    pollster::block_on(adapter.request_device(&::wgpu::DeviceDescriptor {
+        label: Some("tileink portable wgpu test device"),
+        required_features: ::wgpu::Features::empty(),
+        required_limits: adapter.limits(),
+        memory_hints: ::wgpu::MemoryHints::Performance,
+        trace: ::wgpu::Trace::Off,
+        experimental_features: ::wgpu::ExperimentalFeatures::disabled(),
+    }))
+    .ok()
 }
 
 fn test_turbulence(kind: TurbulenceKind, seed: i32, num_octaves: u32) -> Turbulence {

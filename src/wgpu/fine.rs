@@ -22,6 +22,7 @@ pub(crate) struct WgpuFinePipeline {
     config: ::wgpu::Buffer,
     config_size: ::wgpu::BufferAddress,
     config_stride: ::wgpu::BufferAddress,
+    portable_textures: bool,
 }
 
 #[repr(C)]
@@ -93,7 +94,12 @@ impl WgpuFinePipeline {
             config,
             config_size,
             config_stride,
+            portable_textures,
         })
+    }
+
+    pub(crate) fn uses_portable_textures(&self) -> bool {
+        self.portable_textures
     }
 
     pub(crate) fn render_tiles_in(
@@ -147,6 +153,42 @@ impl WgpuFinePipeline {
         clip_spill_depth: u32,
         group_spill_depth: u32,
     ) -> bool {
+        self.render_tiles_to_views_in(
+            commands,
+            width,
+            height,
+            lengths,
+            scene_buffers,
+            scan,
+            coarse,
+            fine_spills,
+            target,
+            target,
+            clear_color,
+            load_target,
+            clip_spill_depth,
+            group_spill_depth,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn render_tiles_to_views_in(
+        &self,
+        commands: &mut WgpuCommandBatch,
+        width: u32,
+        height: u32,
+        lengths: GpuBufferLengths,
+        scene_buffers: &WgpuSceneBuffers,
+        scan: &WgpuScanBuffers,
+        coarse: &WgpuCoarseBuffers,
+        fine_spills: &WgpuBuffer,
+        source: &::wgpu::TextureView,
+        target: &::wgpu::TextureView,
+        clear_color: u32,
+        load_target: bool,
+        clip_spill_depth: u32,
+        group_spill_depth: u32,
+    ) -> bool {
         let _profile_scope = start_cpu_scope("fine");
         if lengths.tile_count == 0 {
             return true;
@@ -183,6 +225,7 @@ impl WgpuFinePipeline {
         let bindings = scene_buffers.tile_fine_bindings(scan, coarse, fine_spills);
         let bind_group = self.create_tile_bind_group_for_view(
             commands.device(),
+            source,
             target,
             &self.bind_group_layout,
             &bindings,
@@ -207,41 +250,47 @@ impl WgpuFinePipeline {
     fn create_tile_bind_group_for_view(
         &self,
         device: &::wgpu::Device,
-        texture: &::wgpu::TextureView,
+        source: &::wgpu::TextureView,
+        target: &::wgpu::TextureView,
         layout: &::wgpu::BindGroupLayout,
         bindings: &WgpuTileFineBindings<'_>,
         config_offset: ::wgpu::BufferAddress,
     ) -> ::wgpu::BindGroup {
         let fine = &bindings.fine;
+        let texture_entries = if self.portable_textures {
+            vec![texture_binding(1, source), texture_binding(54, target)]
+        } else {
+            vec![texture_binding(1, target)]
+        };
+        let mut entries = vec![
+            config_buffer_binding(0, &self.config, config_offset, self.config_size),
+            buffer_binding(2, fine.draw_records),
+            buffer_binding(8, fine.paint_blob),
+            buffer_binding(29, bindings.coarse_work),
+            buffer_binding(37, bindings.segments),
+            buffer_binding(43, bindings.text_blob),
+            buffer_binding(53, bindings.spills),
+            buffer_binding(
+                fine_layout::IMAGE_RESOURCE_METADATA_BINDING,
+                fine.image_resource_metadata,
+            ),
+            buffer_binding(
+                fine_layout::IMAGE_RESOURCE_PIXELS_BINDING,
+                fine.image_resource_pixels,
+            ),
+        ];
+        entries.extend(texture_entries);
         device.create_bind_group(&::wgpu::BindGroupDescriptor {
             label: Some("tileink wgpu tile fine bind group"),
             layout,
-            entries: &[
-                config_buffer_binding(0, &self.config, config_offset, self.config_size),
-                texture_binding(1, texture),
-                buffer_binding(2, fine.draw_records),
-                buffer_binding(8, fine.paint_blob),
-                buffer_binding(29, bindings.coarse_work),
-                buffer_binding(37, bindings.segments),
-                buffer_binding(43, bindings.text_blob),
-                buffer_binding(53, bindings.spills),
-                buffer_binding(
-                    fine_layout::IMAGE_RESOURCE_METADATA_BINDING,
-                    fine.image_resource_metadata,
-                ),
-                buffer_binding(
-                    fine_layout::IMAGE_RESOURCE_PIXELS_BINDING,
-                    fine.image_resource_pixels,
-                ),
-            ],
+            entries: &entries,
         })
     }
 }
 
 fn tile_fine_layout_entries(portable_textures: bool) -> Vec<::wgpu::BindGroupLayoutEntry> {
-    vec![
+    let mut entries = vec![
         uniform_layout_entry(0),
-        storage_texture_layout_entry(1, portable_textures),
         storage_layout_entry(2, true),
         storage_layout_entry(8, true),
         storage_layout_entry(29, true),
@@ -250,7 +299,20 @@ fn tile_fine_layout_entries(portable_textures: bool) -> Vec<::wgpu::BindGroupLay
         storage_layout_entry(53, false),
         storage_layout_entry(fine_layout::IMAGE_RESOURCE_METADATA_BINDING, true),
         storage_layout_entry(fine_layout::IMAGE_RESOURCE_PIXELS_BINDING, true),
-    ]
+    ];
+    if portable_textures {
+        entries.push(sampled_texture_layout_entry(1));
+        entries.push(storage_texture_layout_entry(
+            54,
+            ::wgpu::StorageTextureAccess::WriteOnly,
+        ));
+    } else {
+        entries.push(storage_texture_layout_entry(
+            1,
+            ::wgpu::StorageTextureAccess::ReadWrite,
+        ));
+    }
+    entries
 }
 
 fn uniform_layout_entry(binding: u32) -> ::wgpu::BindGroupLayoutEntry {
@@ -266,19 +328,28 @@ fn uniform_layout_entry(binding: u32) -> ::wgpu::BindGroupLayoutEntry {
     }
 }
 
+fn sampled_texture_layout_entry(binding: u32) -> ::wgpu::BindGroupLayoutEntry {
+    ::wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: ::wgpu::ShaderStages::COMPUTE,
+        ty: ::wgpu::BindingType::Texture {
+            sample_type: ::wgpu::TextureSampleType::Float { filterable: false },
+            view_dimension: ::wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
+    }
+}
+
 fn storage_texture_layout_entry(
     binding: u32,
-    portable_textures: bool,
+    access: ::wgpu::StorageTextureAccess,
 ) -> ::wgpu::BindGroupLayoutEntry {
     ::wgpu::BindGroupLayoutEntry {
         binding,
         visibility: ::wgpu::ShaderStages::COMPUTE,
         ty: ::wgpu::BindingType::StorageTexture {
-            access: if portable_textures {
-                ::wgpu::StorageTextureAccess::WriteOnly
-            } else {
-                ::wgpu::StorageTextureAccess::ReadWrite
-            },
+            access,
             format: ::wgpu::TextureFormat::Rgba8Unorm,
             view_dimension: ::wgpu::TextureViewDimension::D2,
         },
