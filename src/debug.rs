@@ -10,14 +10,17 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use peniko::Color;
+
 use crate::{
     TILE_SIZE,
     canvas::Canvas,
     cpu::computes::fine::build_tile_alpha,
     shared::{
         fill::FillRule,
-        image::{Image, rgba8_pack},
+        image::{Image, premul_color_to_rgba8_pack, rgba8_pack},
         line_seg::LineSegment,
+        pixel::src_over_premul_u8,
         tile_seg_range::TileSegmentRange,
     },
 };
@@ -37,6 +40,7 @@ pub struct RenderOptions {
 pub struct RenderDebugOptions {
     output_dir: PathBuf,
     tile: Option<(u32, u32)>,
+    tile_overlay: Option<TileOverlayOptions>,
 }
 
 impl RenderDebugOptions {
@@ -61,11 +65,21 @@ impl RenderDebugOptions {
         Ok(Self {
             output_dir,
             tile: None,
+            tile_overlay: None,
         })
     }
 
     pub fn with_tile(mut self, tile: (u32, u32)) -> Self {
         self.tile = Some(tile);
+        self
+    }
+
+    /// Adds a pixel-aligned tile grid image named `final_tiles.png` to the debug capture.
+    pub fn with_tile_overlay(mut self, grid_color: Color, text_color: Color) -> Self {
+        self.tile_overlay = Some(TileOverlayOptions {
+            grid_color,
+            text_color,
+        });
         self
     }
 
@@ -76,6 +90,21 @@ impl RenderDebugOptions {
     pub fn tile(&self) -> Option<(u32, u32)> {
         self.tile
     }
+
+    pub fn tile_overlay(&self) -> Option<TileOverlayOptions> {
+        self.tile_overlay
+    }
+}
+
+/// Pixel overlay settings for render debug captures.
+///
+/// The renderer writes this as a separate final-image copy so normal render
+/// output remains unchanged while tile coordinates stay directly comparable to
+/// the captured pixels.
+#[derive(Clone, Copy, Debug)]
+pub struct TileOverlayOptions {
+    pub grid_color: Color,
+    pub text_color: Color,
 }
 
 /// Backend-neutral data captured by renderers without performing file IO.
@@ -168,6 +197,16 @@ pub(crate) fn capture_render_debug(
     };
 
     let tiles = capture_all_tiles(canvas, &scan);
+    let mut images = vec![RenderDebugImage {
+        name: "final.png".to_string(),
+        image: final_image.clone(),
+    }];
+    if let Some(tile_overlay) = debug.tile_overlay() {
+        images.push(RenderDebugImage {
+            name: "final_tiles.png".to_string(),
+            image: tile_overlay_image(final_image, canvas, tile_overlay),
+        });
+    }
     let mut capture = RenderDebugCapture {
         backend: backend.to_string(),
         output_dir: debug.output_dir.clone(),
@@ -185,10 +224,7 @@ pub(crate) fn capture_render_debug(
                 contents: tiles_svg(canvas, &tiles),
             },
         ],
-        images: vec![RenderDebugImage {
-            name: "final.png".to_string(),
-            image: final_image.clone(),
-        }],
+        images,
         tiles,
         tile: None,
     };
@@ -385,6 +421,113 @@ fn tile_final_rgba(final_image: &Image, tile_x: u32, tile_y: u32) -> Vec<[u8; 4]
         }
     }
     rgba
+}
+
+fn tile_overlay_image(final_image: &Image, canvas: &Canvas, options: TileOverlayOptions) -> Image {
+    let mut image = final_image.clone();
+    let grid_color = premul_color_to_rgba8_pack(options.grid_color);
+    let text_color = premul_color_to_rgba8_pack(options.text_color);
+
+    draw_tile_grid(
+        &mut image,
+        canvas.width_in_tiles(),
+        canvas.height_in_tiles(),
+        grid_color,
+    );
+    draw_tile_labels(
+        &mut image,
+        canvas.width_in_tiles(),
+        canvas.height_in_tiles(),
+        text_color,
+    );
+    image
+}
+
+fn draw_tile_grid(image: &mut Image, width_in_tiles: u32, height_in_tiles: u32, color: u32) {
+    if image.width == 0 || image.height == 0 || color >> 24 == 0 {
+        return;
+    }
+
+    for tile_x in 0..=width_in_tiles {
+        let x = (tile_x * TILE_SIZE).min(image.width - 1);
+        for y in 0..image.height {
+            draw_overlay_pixel(image, x, y, color);
+        }
+    }
+    for tile_y in 0..=height_in_tiles {
+        let y = (tile_y * TILE_SIZE).min(image.height - 1);
+        for x in 0..image.width {
+            draw_overlay_pixel(image, x, y, color);
+        }
+    }
+}
+
+fn draw_tile_labels(image: &mut Image, width_in_tiles: u32, height_in_tiles: u32, color: u32) {
+    if image.width == 0 || image.height == 0 || color >> 24 == 0 {
+        return;
+    }
+
+    for tile_y in 0..height_in_tiles {
+        for tile_x in 0..width_in_tiles {
+            let x = tile_x * TILE_SIZE + 1;
+            let y = tile_y * TILE_SIZE + 1;
+            draw_pixel_text(image, x, y, &tile_x.to_string(), color);
+            draw_pixel_text(
+                image,
+                x,
+                y + PIXEL_LABEL_LINE_HEIGHT,
+                &tile_y.to_string(),
+                color,
+            );
+        }
+    }
+}
+
+fn draw_pixel_text(image: &mut Image, mut x: u32, y: u32, text: &str, color: u32) {
+    for ch in text.chars() {
+        draw_pixel_glyph(image, x, y, ch, color);
+        x += PIXEL_GLYPH_WIDTH + 1;
+    }
+}
+
+fn draw_pixel_glyph(image: &mut Image, x0: u32, y0: u32, ch: char, color: u32) {
+    let Some(rows) = pixel_glyph_rows(ch) else {
+        return;
+    };
+
+    for (row, bits) in rows.into_iter().enumerate() {
+        for col in 0..PIXEL_GLYPH_WIDTH {
+            if bits & (1 << (PIXEL_GLYPH_WIDTH - 1 - col)) != 0 {
+                draw_overlay_pixel(image, x0 + col, y0 + row as u32, color);
+            }
+        }
+    }
+}
+
+fn draw_overlay_pixel(image: &mut Image, x: u32, y: u32, color: u32) {
+    if x < image.width && y < image.height {
+        let ix = (y * image.width + x) as usize;
+        image.pixels[ix] = src_over_premul_u8(image.pixels[ix], color);
+    }
+}
+
+const PIXEL_GLYPH_WIDTH: u32 = 3;
+const PIXEL_LABEL_LINE_HEIGHT: u32 = 7;
+
+fn pixel_glyph_rows(ch: char) -> Option<[u8; 5]> {
+    match ch {
+        '0' => Some([0b111, 0b101, 0b101, 0b101, 0b111]),
+        '1' => Some([0b010, 0b110, 0b010, 0b010, 0b111]),
+        '2' => Some([0b111, 0b001, 0b111, 0b100, 0b111]),
+        '3' => Some([0b111, 0b001, 0b111, 0b001, 0b111]),
+        '4' => Some([0b101, 0b101, 0b111, 0b001, 0b001]),
+        '5' => Some([0b111, 0b100, 0b111, 0b001, 0b111]),
+        '6' => Some([0b111, 0b100, 0b111, 0b101, 0b111]),
+        '7' => Some([0b111, 0b001, 0b001, 0b001, 0b001]),
+        '8' => Some([0b111, 0b101, 0b111, 0b101, 0b111]),
+        '9' => Some([0b111, 0b101, 0b111, 0b001, 0b111]),
+        _ => None,
+    }
 }
 
 pub fn debug_capture_json(capture: &RenderDebugCapture) -> String {
@@ -597,14 +740,14 @@ fn capture_svg(canvas: &Canvas) -> String {
     out.push_str("<g font-family=\"monospace\" font-size=\"6\" font-weight=\"700\" fill=\"#ef4444\" stroke=\"#ffffff\" stroke-width=\"0.75\" paint-order=\"stroke\">\n");
     for tile_y in 0..height_in_tiles {
         for tile_x in 0..width_in_tiles {
-            let tile_ix = tile_y * width_in_tiles + tile_x;
             let x = tile_x * TILE_SIZE + 2;
             let y = tile_y * TILE_SIZE + 7;
             let _ = writeln!(
                 out,
                 "<text x=\"{}\" y=\"{}\"><title>tile {},{}</title>{}</text>",
-                x, y, tile_x, tile_y, tile_ix
+                x, y, tile_x, tile_y, tile_x
             );
+            let _ = writeln!(out, "<text x=\"{}\" y=\"{}\">{}</text>", x, y + 7, tile_y);
         }
     }
     out.push_str("</g>\n</svg>\n");
@@ -833,7 +976,14 @@ mod tests {
 
         let output_dir = PathBuf::from("target/debug-capture-test");
         let options = RenderOptions {
-            debug: Some(RenderDebugOptions::new(&output_dir).with_tile((0, 0))),
+            debug: Some(
+                RenderDebugOptions::new(&output_dir)
+                    .with_tile((0, 0))
+                    .with_tile_overlay(
+                        Color::from_rgba8(255, 0, 0, 255),
+                        Color::from_rgba8(0, 0, 255, 255),
+                    ),
+            ),
         };
         let mut renderer = Renderer::new(32, 32, Color::TRANSPARENT);
 
@@ -867,7 +1017,13 @@ mod tests {
                 .contents
                 .contains("x1=\"0\" y1=\"32\" x2=\"32\"")
         );
-        assert!(capture_svg.contents.contains(">0</text>"));
+        assert!(
+            capture_svg
+                .contents
+                .contains("<title>tile 0,0</title>0</text>")
+        );
+        assert!(capture_svg.contents.contains("y=\"14\">0</text>"));
+        assert!(!capture_svg.contents.contains(">0,0</text>"));
         let tiles_svg = capture
             .texts
             .iter()
@@ -876,6 +1032,14 @@ mod tests {
         assert!(tiles_svg.contents.contains("scan:"));
         assert!(!tiles_svg.contents.contains(">path:"));
         assert!(capture.images.iter().any(|image| image.name == "final.png"));
+        let final_tiles = capture
+            .images
+            .iter()
+            .find(|image| image.name == "final_tiles.png")
+            .expect("tile overlay image");
+        assert_eq!(final_tiles.image.rgba8_at(16, 8), [255, 0, 0, 255]);
+        assert_eq!(final_tiles.image.rgba8_at(1, 1), [0, 0, 255, 255]);
+        assert_eq!(final_tiles.image.rgba8_at(1, 8), [0, 0, 255, 255]);
         assert!(
             capture
                 .images

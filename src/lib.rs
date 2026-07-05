@@ -25,7 +25,7 @@ pub use cpu::Renderer as CpuRenderer;
 pub use debug::{
     DebugLineSegment, DebugTileDump, DebugTilePath, DebugTilePathSummary, DebugTileSummary,
     RenderDebugCapture, RenderDebugImage, RenderDebugOptions, RenderDebugText, RenderOptions,
-    debug_capture_json,
+    TileOverlayOptions, debug_capture_json,
 };
 pub use shared::{
     bounds::Bounds,
