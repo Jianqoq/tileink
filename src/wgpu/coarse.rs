@@ -59,16 +59,21 @@ pub(crate) struct WgpuCoarsePipeline {
     emit_chunk_particle_counts: ::wgpu::ComputePipeline,
     emit_chunk_particle_offsets: ::wgpu::ComputePipeline,
     emit: ::wgpu::ComputePipeline,
+    emit_web: ::wgpu::ComputePipeline,
     count_bind_group_layout: ::wgpu::BindGroupLayout,
     prefix_bind_group_layout: ::wgpu::BindGroupLayout,
     emit_bind_group_layout: ::wgpu::BindGroupLayout,
     config: ::wgpu::Buffer,
     config_size: ::wgpu::BufferAddress,
     config_stride: ::wgpu::BufferAddress,
+    portable_emit: bool,
 }
 
 impl WgpuCoarsePipeline {
     pub(crate) fn new(device: &::wgpu::Device) -> Option<Self> {
+        let portable_emit = !device
+            .features()
+            .contains(::wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES);
         let max_storage = device.limits().max_storage_buffers_per_shader_stage;
         if max_storage
             < COUNT_STORAGE_BINDING_COUNT
@@ -112,6 +117,16 @@ impl WgpuCoarsePipeline {
             label: Some("tileink wgpu coarse emit shader"),
             source: ::wgpu::ShaderSource::Wgsl(
                 include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_coarse_emit.wgsl")).into(),
+            ),
+        });
+        let emit_web_shader = device.create_shader_module(::wgpu::ShaderModuleDescriptor {
+            label: Some("tileink wgpu coarse web emit shader"),
+            source: ::wgpu::ShaderSource::Wgsl(
+                include_str!(concat!(
+                    env!("OUT_DIR"),
+                    "/tileink_wgpu_coarse_emit_web.wgsl"
+                ))
+                .into(),
             ),
         });
         let count_pipeline_layout =
@@ -227,13 +242,25 @@ impl WgpuCoarsePipeline {
                 "coarse_emit_chunk_particle_offsets",
             ),
             emit: create_pipeline(device, &emit_pipeline_layout, &emit_shader, "coarse_emit"),
+            emit_web: create_pipeline(
+                device,
+                &emit_pipeline_layout,
+                &emit_web_shader,
+                "coarse_emit",
+            ),
             count_bind_group_layout,
             prefix_bind_group_layout,
             emit_bind_group_layout,
             config,
             config_size,
             config_stride,
+            portable_emit,
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn uses_portable_emit(&self) -> bool {
+        self.portable_emit
     }
 
     pub(crate) fn run(
@@ -324,29 +351,35 @@ impl WgpuCoarsePipeline {
             pass.set_pipeline(&self.glyph_apply_chunk_offsets);
             pass.dispatch_workgroups(chunk_count, 1, 1);
 
-            if batch.draw_start < batch.draw_end
-                && lengths.coarse_ptcl_capacity > 0
-                && lengths.tile_draw_chunk_count > 0
-            {
-                let emit_chunk_count = lengths.tile_draw_chunk_count as u32;
-                pass.set_pipeline(&self.emit_chunk_counts);
-                pass.dispatch_workgroups(chunk_count, 1, 1);
-                pass.set_pipeline(&self.emit_prefix_chunks);
-                pass.dispatch_workgroups(chunk_count, 1, 1);
-                pass.set_pipeline(&self.emit_chunk_offsets);
-                pass.dispatch_workgroups(1, 1, 1);
-                pass.set_pipeline(&self.emit_apply_chunk_offsets);
-                pass.dispatch_workgroups(chunk_count, 1, 1);
-                pass.set_pipeline(&self.emit_fill_refs);
-                pass.dispatch_workgroups(chunk_count, 1, 1);
-                pass.set_pipeline(&self.emit_chunk_particle_counts);
-                pass.dispatch_workgroups(emit_chunk_count, 1, 1);
-                pass.set_pipeline(&self.emit_chunk_particle_offsets);
-                pass.dispatch_workgroups(chunk_count, 1, 1);
+            if batch.draw_start < batch.draw_end && lengths.coarse_ptcl_capacity > 0 {
+                if self.portable_emit {
+                    let emit_chunk_count = lengths.tile_draw_chunk_count as u32;
+                    if emit_chunk_count > 0 {
+                        pass.set_bind_group(0, &prefix_bind_group, &[]);
+                        pass.set_pipeline(&self.emit_chunk_counts);
+                        pass.dispatch_workgroups(chunk_count, 1, 1);
+                        pass.set_pipeline(&self.emit_prefix_chunks);
+                        pass.dispatch_workgroups(chunk_count, 1, 1);
+                        pass.set_pipeline(&self.emit_chunk_offsets);
+                        pass.dispatch_workgroups(1, 1, 1);
+                        pass.set_pipeline(&self.emit_apply_chunk_offsets);
+                        pass.dispatch_workgroups(chunk_count, 1, 1);
+                        pass.set_pipeline(&self.emit_fill_refs);
+                        pass.dispatch_workgroups(chunk_count, 1, 1);
+                        pass.set_pipeline(&self.emit_chunk_particle_counts);
+                        pass.dispatch_workgroups(emit_chunk_count, 1, 1);
+                        pass.set_pipeline(&self.emit_chunk_particle_offsets);
+                        pass.dispatch_workgroups(chunk_count, 1, 1);
 
-                pass.set_bind_group(0, &emit_bind_group, &[]);
-                pass.set_pipeline(&self.emit);
-                pass.dispatch_workgroups(emit_chunk_count, 1, 1);
+                        pass.set_bind_group(0, &emit_bind_group, &[]);
+                        pass.set_pipeline(&self.emit_web);
+                        pass.dispatch_workgroups(emit_chunk_count, 1, 1);
+                    }
+                } else {
+                    pass.set_bind_group(0, &emit_bind_group, &[]);
+                    pass.set_pipeline(&self.emit);
+                    pass.dispatch_workgroups(tile_count, 1, 1);
+                }
             }
         }
         finish_gpu_scope(encoder, gpu_scope);
