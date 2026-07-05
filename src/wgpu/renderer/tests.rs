@@ -15,6 +15,7 @@ use crate::{
         bounds::Bounds,
         brush::Brush,
         gpu_coarse::PtclRecord,
+        gpu_plan::COARSE_CHUNK_SIZE,
         layer::{
             filter::{
                 BlurSampling, COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE,
@@ -652,6 +653,45 @@ fn wgpu_coarse_emits_sdf_particles_for_rects_when_enabled() {
         read_ptcl_colors(&renderer, renderer.lengths.coarse_ptcl_capacity),
         vec![0, 0, 0, 1, 0]
     );
+}
+
+#[test]
+fn wgpu_coarse_emits_all_compact_tile_chunks_when_enabled() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut canvas = Canvas::new(16, 16);
+    for _ in 0..(COARSE_CHUNK_SIZE + 1) {
+        canvas.push_rect(
+            Rect::new(0.0, 0.0, 16.0, 16.0),
+            crate::Radius::ZERO,
+            Color::from_rgb8(255, 0, 0),
+        );
+    }
+    let mut renderer = Renderer::new_default_device(16, 16, Color::TRANSPARENT);
+    if renderer.coarse_pipeline.is_none() {
+        return;
+    }
+
+    renderer.prepare_scene(&canvas);
+    assert_eq!(renderer.lengths.tile_draw_chunk_count, 2);
+    renderer.coarse_batch(&canvas, 0, canvas.draw_records.len() as u32, 0, 0);
+
+    let tile_records = renderer.coarse.read_tile_records(
+        renderer.device(),
+        renderer.queue(),
+        renderer.lengths.tile_count,
+    );
+    assert_eq!(tile_records[0].ptcl_start, 0);
+    assert_eq!(tile_records[0].ptcl_end, COARSE_CHUNK_SIZE + 2);
+
+    let tags = read_ptcl_tags(&renderer, (COARSE_CHUNK_SIZE + 2) as usize);
+    assert_eq!(
+        tags[..COARSE_CHUNK_SIZE as usize + 1],
+        vec![GPU_PTCL_SDF; COARSE_CHUNK_SIZE as usize + 1]
+    );
+    assert_eq!(tags[COARSE_CHUNK_SIZE as usize + 1], GPU_PTCL_END);
 }
 
 #[test]

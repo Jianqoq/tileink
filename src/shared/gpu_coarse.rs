@@ -19,6 +19,24 @@ pub(crate) struct CoarseChunkRecord {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct TileEmitChunkRecord {
+    pub(crate) count: u32,
+    pub(crate) offset: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct EmitChunkRecord {
+    pub(crate) tile: u32,
+    pub(crate) local_chunk: u32,
+    pub(crate) ptcl_count: u32,
+    pub(crate) ptcl_offset: u32,
+    pub(crate) glyph_count: u32,
+    pub(crate) glyph_offset: u32,
+}
+
+#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct TileDrawRecord {
     pub(crate) start: u32,
@@ -47,6 +65,9 @@ pub(crate) struct PtclRecord {
 pub(crate) const TILE_COARSE_RECORD_WORDS: usize = std::mem::size_of::<TileCoarseRecord>() / 4;
 pub(crate) const PTCL_RECORD_WORDS: usize = std::mem::size_of::<PtclRecord>() / 4;
 pub(crate) const TILE_DRAW_RECORD_WORDS: usize = std::mem::size_of::<TileDrawRecord>() / 4;
+pub(crate) const TILE_EMIT_CHUNK_RECORD_WORDS: usize =
+    std::mem::size_of::<TileEmitChunkRecord>() / 4;
+pub(crate) const EMIT_CHUNK_RECORD_WORDS: usize = std::mem::size_of::<EmitChunkRecord>() / 4;
 
 pub(crate) fn coarse_work_ptcl_word_offset(tile_count: usize) -> usize {
     tile_count * TILE_COARSE_RECORD_WORDS
@@ -73,7 +94,7 @@ pub(crate) fn coarse_work_tile_draw_index_word_offset(
         + tile_count * TILE_DRAW_RECORD_WORDS
 }
 
-pub(crate) fn coarse_work_word_len(
+pub(crate) fn coarse_work_tile_emit_chunk_record_word_offset(
     tile_count: usize,
     ptcl_capacity: usize,
     glyph_capacity: usize,
@@ -81,6 +102,35 @@ pub(crate) fn coarse_work_word_len(
 ) -> usize {
     coarse_work_tile_draw_index_word_offset(tile_count, ptcl_capacity, glyph_capacity)
         + tile_draw_index_count
+}
+
+pub(crate) fn coarse_work_emit_chunk_record_word_offset(
+    tile_count: usize,
+    ptcl_capacity: usize,
+    glyph_capacity: usize,
+    tile_draw_index_count: usize,
+) -> usize {
+    coarse_work_tile_emit_chunk_record_word_offset(
+        tile_count,
+        ptcl_capacity,
+        glyph_capacity,
+        tile_draw_index_count,
+    ) + tile_count * TILE_EMIT_CHUNK_RECORD_WORDS
+}
+
+pub(crate) fn coarse_work_word_len(
+    tile_count: usize,
+    ptcl_capacity: usize,
+    glyph_capacity: usize,
+    tile_draw_index_count: usize,
+    tile_draw_chunk_count: usize,
+) -> usize {
+    coarse_work_emit_chunk_record_word_offset(
+        tile_count,
+        ptcl_capacity,
+        glyph_capacity,
+        tile_draw_index_count,
+    ) + tile_draw_chunk_count * EMIT_CHUNK_RECORD_WORDS
 }
 
 #[cfg(test)]
@@ -107,6 +157,8 @@ mod tests {
     #[test]
     fn coarse_record_structs_are_gpu_word_layouts() {
         assert_eq!(std::mem::size_of::<CoarseChunkRecord>(), 16);
+        assert_eq!(std::mem::size_of::<TileEmitChunkRecord>(), 8);
+        assert_eq!(std::mem::size_of::<EmitChunkRecord>(), 24);
         assert_eq!(std::mem::size_of::<TileDrawRecord>(), 8);
         assert_eq!(std::mem::size_of::<LayerStackRecord>(), 12);
         assert_eq!(std::mem::size_of::<PtclRecord>(), 24);
@@ -121,6 +173,25 @@ mod tests {
 
         let tile = TileDrawRecord { start: 1, end: 2 };
         assert_eq!(bytemuck::cast_slice::<_, u32>(&[tile]), &[1, 2]);
+
+        let tile_emit_chunk = TileEmitChunkRecord {
+            count: 5,
+            offset: 6,
+        };
+        assert_eq!(bytemuck::cast_slice::<_, u32>(&[tile_emit_chunk]), &[5, 6]);
+
+        let emit_chunk = EmitChunkRecord {
+            tile: 7,
+            local_chunk: 8,
+            ptcl_count: 9,
+            ptcl_offset: 10,
+            glyph_count: 11,
+            glyph_offset: 12,
+        };
+        assert_eq!(
+            bytemuck::cast_slice::<_, u32>(&[emit_chunk]),
+            &[7, 8, 9, 10, 11, 12]
+        );
 
         let layer = LayerStackRecord {
             tag: 3,
@@ -148,10 +219,17 @@ mod tests {
         assert_eq!(TILE_COARSE_RECORD_WORDS, 6);
         assert_eq!(PTCL_RECORD_WORDS, 6);
         assert_eq!(TILE_DRAW_RECORD_WORDS, 2);
+        assert_eq!(TILE_EMIT_CHUNK_RECORD_WORDS, 2);
+        assert_eq!(EMIT_CHUNK_RECORD_WORDS, 6);
         assert_eq!(coarse_work_ptcl_word_offset(3), 18);
         assert_eq!(coarse_work_glyph_word_offset(3, 5), 48);
         assert_eq!(coarse_work_tile_draw_record_word_offset(3, 5, 7), 55);
         assert_eq!(coarse_work_tile_draw_index_word_offset(3, 5, 7), 61);
-        assert_eq!(coarse_work_word_len(3, 5, 7, 11), 72);
+        assert_eq!(
+            coarse_work_tile_emit_chunk_record_word_offset(3, 5, 7, 11),
+            72
+        );
+        assert_eq!(coarse_work_emit_chunk_record_word_offset(3, 5, 7, 11), 78);
+        assert_eq!(coarse_work_word_len(3, 5, 7, 11, 13), 156);
     }
 }

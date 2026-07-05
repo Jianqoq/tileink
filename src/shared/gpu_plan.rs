@@ -45,6 +45,7 @@ pub(crate) struct GpuBufferLengths {
     pub coarse_ptcl_capacity: usize,
     pub coarse_glyph_capacity: usize,
     pub tile_draw_index_count: usize,
+    pub tile_draw_chunk_count: usize,
     pub text_run_count: usize,
     pub text_glyph_count: usize,
     pub tiles_width: usize,
@@ -68,6 +69,8 @@ impl GpuBufferLengths {
             coarse_glyph_capacity(canvas, text, tiles_width as u32, tiles_height as u32);
         let tile_draw_index_count =
             tile_draw_index_count(canvas, tiles_width as u32, tiles_height as u32);
+        let tile_draw_chunk_count =
+            tile_draw_chunk_count(canvas, tiles_width as u32, tiles_height as u32);
         Self {
             line_count: canvas.lines.len(),
             path_count: canvas.path_records.len(),
@@ -106,6 +109,7 @@ impl GpuBufferLengths {
             coarse_ptcl_capacity,
             coarse_glyph_capacity,
             tile_draw_index_count,
+            tile_draw_chunk_count,
             text_run_count: canvas.text_runs.len(),
             text_glyph_count: canvas.text_glyphs.len(),
             tiles_width,
@@ -254,6 +258,22 @@ fn tile_draw_index_count(canvas: &Canvas, width_in_tiles: u32, height_in_tiles: 
         .draw_records
         .iter()
         .map(|draw| draw.tile_bbox(width_in_tiles, height_in_tiles).tile_count() as usize)
+        .sum()
+}
+
+fn tile_draw_chunk_count(canvas: &Canvas, width_in_tiles: u32, height_in_tiles: u32) -> usize {
+    let tile_count = width_in_tiles as usize * height_in_tiles as usize;
+    let mut counts = vec![0usize; tile_count];
+    for draw in &canvas.draw_records {
+        for_tile_in_bbox(
+            draw.tile_bbox(width_in_tiles, height_in_tiles),
+            width_in_tiles,
+            |tile_ix| counts[tile_ix] += 1,
+        );
+    }
+    counts
+        .into_iter()
+        .map(|count| count.div_ceil(COARSE_CHUNK_SIZE as usize))
         .sum()
 }
 
@@ -686,8 +706,8 @@ mod tests {
     };
 
     use super::{
-        CUMSUM_CHUNK_SIZE, GpuBufferLengths, SCAN_CHUNK_SIZE, build_cumsum_plan, build_scan_chunks,
-        build_tile_draw_bins,
+        COARSE_CHUNK_SIZE, CUMSUM_CHUNK_SIZE, GpuBufferLengths, SCAN_CHUNK_SIZE, build_cumsum_plan,
+        build_scan_chunks, build_tile_draw_bins,
     };
     use crate::{Canvas, FillRule};
 
@@ -797,5 +817,30 @@ mod tests {
             vec![1, 3]
         );
         assert_eq!(bins.draw_indices, vec![0, 0, 1]);
+    }
+
+    #[test]
+    fn tile_draw_chunk_count_sums_per_tile_draw_chunks() {
+        let mut canvas = Canvas::new(crate::TILE_SIZE * 2, crate::TILE_SIZE);
+        for _ in 0..=COARSE_CHUNK_SIZE {
+            canvas.push_rect(
+                Rect::new(0.0, 0.0, 16.0, 16.0),
+                crate::Radius::ZERO,
+                Color::BLACK,
+            );
+        }
+        canvas.push_rect(
+            Rect::new(16.0, 0.0, 32.0, 16.0),
+            crate::Radius::ZERO,
+            Color::WHITE,
+        );
+
+        let lengths = GpuBufferLengths::from_scene(&canvas);
+
+        assert_eq!(
+            lengths.tile_draw_index_count,
+            COARSE_CHUNK_SIZE as usize + 2
+        );
+        assert_eq!(lengths.tile_draw_chunk_count, 3);
     }
 }

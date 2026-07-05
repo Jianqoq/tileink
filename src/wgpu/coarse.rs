@@ -10,7 +10,7 @@ use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 
 const WORKGROUP_SIZE: u32 = 256;
 const COUNT_STORAGE_BINDING_COUNT: u32 = 7;
-const PREFIX_STORAGE_BINDING_COUNT: u32 = 2;
+const PREFIX_STORAGE_BINDING_COUNT: u32 = 8;
 const EMIT_STORAGE_BINDING_COUNT: u32 = 8;
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -36,6 +36,8 @@ struct CoarseConfig {
     chunk_count: u32,
     text_run_count: u32,
     text_glyph_count: u32,
+    tile_draw_index_count: u32,
+    emit_chunk_capacity: u32,
 }
 
 unsafe impl bytemuck::Zeroable for CoarseConfig {}
@@ -49,6 +51,13 @@ pub(crate) struct WgpuCoarsePipeline {
     glyph_prefix_chunks: ::wgpu::ComputePipeline,
     glyph_chunk_offsets: ::wgpu::ComputePipeline,
     glyph_apply_chunk_offsets: ::wgpu::ComputePipeline,
+    emit_chunk_counts: ::wgpu::ComputePipeline,
+    emit_prefix_chunks: ::wgpu::ComputePipeline,
+    emit_chunk_offsets: ::wgpu::ComputePipeline,
+    emit_apply_chunk_offsets: ::wgpu::ComputePipeline,
+    emit_fill_refs: ::wgpu::ComputePipeline,
+    emit_chunk_particle_counts: ::wgpu::ComputePipeline,
+    emit_chunk_particle_offsets: ::wgpu::ComputePipeline,
     emit: ::wgpu::ComputePipeline,
     count_bind_group_layout: ::wgpu::BindGroupLayout,
     prefix_bind_group_layout: ::wgpu::BindGroupLayout,
@@ -175,6 +184,48 @@ impl WgpuCoarsePipeline {
                 &prefix_shader,
                 "coarse_glyph_apply_chunk_offsets",
             ),
+            emit_chunk_counts: create_pipeline(
+                device,
+                &prefix_pipeline_layout,
+                &prefix_shader,
+                "coarse_emit_chunk_counts",
+            ),
+            emit_prefix_chunks: create_pipeline(
+                device,
+                &prefix_pipeline_layout,
+                &prefix_shader,
+                "coarse_emit_prefix_chunks",
+            ),
+            emit_chunk_offsets: create_pipeline(
+                device,
+                &prefix_pipeline_layout,
+                &prefix_shader,
+                "coarse_emit_chunk_offsets",
+            ),
+            emit_apply_chunk_offsets: create_pipeline(
+                device,
+                &prefix_pipeline_layout,
+                &prefix_shader,
+                "coarse_emit_apply_chunk_offsets",
+            ),
+            emit_fill_refs: create_pipeline(
+                device,
+                &prefix_pipeline_layout,
+                &prefix_shader,
+                "coarse_emit_fill_refs",
+            ),
+            emit_chunk_particle_counts: create_pipeline(
+                device,
+                &prefix_pipeline_layout,
+                &prefix_shader,
+                "coarse_emit_chunk_particle_counts",
+            ),
+            emit_chunk_particle_offsets: create_pipeline(
+                device,
+                &prefix_pipeline_layout,
+                &prefix_shader,
+                "coarse_emit_chunk_particle_offsets",
+            ),
             emit: create_pipeline(device, &emit_pipeline_layout, &emit_shader, "coarse_emit"),
             count_bind_group_layout,
             prefix_bind_group_layout,
@@ -235,6 +286,8 @@ impl WgpuCoarsePipeline {
                 chunk_count,
                 text_run_count: lengths.text_run_count as u32,
                 text_glyph_count: lengths.text_glyph_count as u32,
+                tile_draw_index_count: lengths.tile_draw_index_count as u32,
+                emit_chunk_capacity: lengths.tile_draw_chunk_count as u32,
             }),
         );
         let bindings = canvas.coarse_bindings(scan, coarse);
@@ -271,10 +324,29 @@ impl WgpuCoarsePipeline {
             pass.set_pipeline(&self.glyph_apply_chunk_offsets);
             pass.dispatch_workgroups(chunk_count, 1, 1);
 
-            if batch.draw_start < batch.draw_end && lengths.coarse_ptcl_capacity > 0 {
+            if batch.draw_start < batch.draw_end
+                && lengths.coarse_ptcl_capacity > 0
+                && lengths.tile_draw_chunk_count > 0
+            {
+                let emit_chunk_count = lengths.tile_draw_chunk_count as u32;
+                pass.set_pipeline(&self.emit_chunk_counts);
+                pass.dispatch_workgroups(chunk_count, 1, 1);
+                pass.set_pipeline(&self.emit_prefix_chunks);
+                pass.dispatch_workgroups(chunk_count, 1, 1);
+                pass.set_pipeline(&self.emit_chunk_offsets);
+                pass.dispatch_workgroups(1, 1, 1);
+                pass.set_pipeline(&self.emit_apply_chunk_offsets);
+                pass.dispatch_workgroups(chunk_count, 1, 1);
+                pass.set_pipeline(&self.emit_fill_refs);
+                pass.dispatch_workgroups(chunk_count, 1, 1);
+                pass.set_pipeline(&self.emit_chunk_particle_counts);
+                pass.dispatch_workgroups(emit_chunk_count, 1, 1);
+                pass.set_pipeline(&self.emit_chunk_particle_offsets);
+                pass.dispatch_workgroups(chunk_count, 1, 1);
+
                 pass.set_bind_group(0, &emit_bind_group, &[]);
                 pass.set_pipeline(&self.emit);
-                pass.dispatch_workgroups(tile_count, 1, 1);
+                pass.dispatch_workgroups(emit_chunk_count, 1, 1);
             }
         }
         finish_gpu_scope(encoder, gpu_scope);
@@ -313,6 +385,12 @@ impl WgpuCoarsePipeline {
             layout: &self.prefix_bind_group_layout,
             entries: &[
                 bind_config_buffer(0, &self.config, config_offset, self.config_size),
+                bind_buffer(1, bindings.draw_records),
+                bind_buffer(3, bindings.text_blob),
+                bind_buffer(18, bindings.path_records),
+                bind_buffer(19, bindings.backdrops),
+                bind_buffer(20, bindings.segment_ranges),
+                bind_buffer(22, bindings.layer_stack),
                 bind_buffer(25, bindings.coarse_work),
                 bind_buffer(31, bindings.chunk_records),
             ],
@@ -375,6 +453,12 @@ fn count_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
 fn prefix_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
     vec![
         uniform_entry(0),
+        storage_entry(1, true),
+        storage_entry(3, true),
+        storage_entry(18, true),
+        storage_entry(19, false),
+        storage_entry(20, true),
+        storage_entry(22, true),
         storage_entry(25, false),
         storage_entry(31, false),
     ]
@@ -467,6 +551,7 @@ mod tests {
             EMIT_STORAGE_BINDING_COUNT
         );
         assert_eq!(COUNT_STORAGE_BINDING_COUNT, 7);
+        assert_eq!(PREFIX_STORAGE_BINDING_COUNT, 8);
         assert_eq!(EMIT_STORAGE_BINDING_COUNT, 8);
     }
 
