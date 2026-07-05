@@ -565,12 +565,6 @@ impl WgpuCoarseBuffers {
             .tile_draw_data
             .extend_from_slice(bytemuck::cast_slice(&bins.records));
         staging.tile_draw_data.extend_from_slice(&bins.draw_indices);
-        staging
-            .tile_draw_data
-            .extend_from_slice(bytemuck::cast_slice(&bins.tile_emit_chunks));
-        staging
-            .tile_draw_data
-            .extend_from_slice(bytemuck::cast_slice(&bins.emit_chunks));
         let word_offset = coarse_work_tile_draw_record_word_offset(
             lengths.tile_count,
             lengths.coarse_ptcl_capacity,

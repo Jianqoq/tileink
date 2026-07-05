@@ -51,6 +51,11 @@ pub(crate) struct WgpuCoarsePipeline {
     glyph_prefix_chunks: ::wgpu::ComputePipeline,
     glyph_chunk_offsets: ::wgpu::ComputePipeline,
     glyph_apply_chunk_offsets: ::wgpu::ComputePipeline,
+    emit_chunk_counts: ::wgpu::ComputePipeline,
+    emit_prefix_chunks: ::wgpu::ComputePipeline,
+    emit_chunk_offsets: ::wgpu::ComputePipeline,
+    emit_apply_chunk_offsets: ::wgpu::ComputePipeline,
+    emit_fill_refs: ::wgpu::ComputePipeline,
     emit_chunk_particle_counts: ::wgpu::ComputePipeline,
     emit_chunk_particle_offsets: ::wgpu::ComputePipeline,
     emit: ::wgpu::ComputePipeline,
@@ -194,6 +199,36 @@ impl WgpuCoarsePipeline {
                 &prefix_shader,
                 "coarse_glyph_apply_chunk_offsets",
             ),
+            emit_chunk_counts: create_pipeline(
+                device,
+                &prefix_pipeline_layout,
+                &prefix_shader,
+                "coarse_emit_chunk_counts",
+            ),
+            emit_prefix_chunks: create_pipeline(
+                device,
+                &prefix_pipeline_layout,
+                &prefix_shader,
+                "coarse_emit_prefix_chunks",
+            ),
+            emit_chunk_offsets: create_pipeline(
+                device,
+                &prefix_pipeline_layout,
+                &prefix_shader,
+                "coarse_emit_chunk_offsets",
+            ),
+            emit_apply_chunk_offsets: create_pipeline(
+                device,
+                &prefix_pipeline_layout,
+                &prefix_shader,
+                "coarse_emit_apply_chunk_offsets",
+            ),
+            emit_fill_refs: create_pipeline(
+                device,
+                &prefix_pipeline_layout,
+                &prefix_shader,
+                "coarse_emit_fill_refs",
+            ),
             emit_chunk_particle_counts: create_pipeline(
                 device,
                 &prefix_pipeline_layout,
@@ -321,6 +356,16 @@ impl WgpuCoarsePipeline {
                     let emit_chunk_count = lengths.tile_draw_chunk_count as u32;
                     if emit_chunk_count > 0 {
                         pass.set_bind_group(0, &prefix_bind_group, &[]);
+                        pass.set_pipeline(&self.emit_chunk_counts);
+                        pass.dispatch_workgroups(chunk_count, 1, 1);
+                        pass.set_pipeline(&self.emit_prefix_chunks);
+                        pass.dispatch_workgroups(chunk_count, 1, 1);
+                        pass.set_pipeline(&self.emit_chunk_offsets);
+                        pass.dispatch_workgroups(1, 1, 1);
+                        pass.set_pipeline(&self.emit_apply_chunk_offsets);
+                        pass.dispatch_workgroups(chunk_count, 1, 1);
+                        pass.set_pipeline(&self.emit_fill_refs);
+                        pass.dispatch_workgroups(chunk_count, 1, 1);
                         pass.set_pipeline(&self.emit_chunk_particle_counts);
                         pass.dispatch_workgroups(emit_chunk_count, 1, 1);
                         pass.set_pipeline(&self.emit_chunk_particle_offsets);

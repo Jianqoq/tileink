@@ -197,6 +197,14 @@ fn tile_emit_chunk_offset_at(tile_ix: u32) -> u32 {
     return coarse_work[tile_emit_chunk_record_base(tile_ix) + 1u];
 }
 
+fn store_tile_emit_chunk_count(tile_ix: u32, count: u32) {
+    coarse_work[tile_emit_chunk_record_base(tile_ix)] = count;
+}
+
+fn store_tile_emit_chunk_offset(tile_ix: u32, offset: u32) {
+    coarse_work[tile_emit_chunk_record_base(tile_ix) + 1u] = offset;
+}
+
 fn emit_chunk_record_base(ref_ix: u32) -> u32 {
     return coarse_emit_chunk_record_base() + ref_ix * EMIT_CHUNK_RECORD_WORDS;
 }
@@ -211,6 +219,12 @@ fn emit_chunk_at(ref_ix: u32) -> EmitChunkRecord {
         coarse_work[base + 4u],
         coarse_work[base + 5u],
     );
+}
+
+fn store_emit_chunk_ref(ref_ix: u32, tile_ix: u32, local_chunk: u32) {
+    let base = emit_chunk_record_base(ref_ix);
+    coarse_work[base] = tile_ix;
+    coarse_work[base + 1u] = local_chunk;
 }
 
 fn store_emit_chunk_counts(ref_ix: u32, ptcl_count: u32, glyph_count: u32) {

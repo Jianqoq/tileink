@@ -8,7 +8,7 @@ use crate::{
         bounds::{Bounds, PixelBounds, TileBbox},
         draw_record::{DrawRecord, DrawTag},
         execution::{ExecOp, ExecPlan, LayerStackEntry},
-        gpu_coarse::{EmitChunkRecord, TileDrawRecord, TileEmitChunkRecord},
+        gpu_coarse::TileDrawRecord,
         layer::{
             Layer,
             filter::{Filter, FilterInput, FilterPrimitive, FilterPrimitiveKind},
@@ -129,8 +129,6 @@ impl GpuBufferLengths {
 pub(crate) struct TileDrawBins {
     pub(crate) records: Vec<TileDrawRecord>,
     pub(crate) draw_indices: Vec<u32>,
-    pub(crate) tile_emit_chunks: Vec<TileEmitChunkRecord>,
-    pub(crate) emit_chunks: Vec<EmitChunkRecord>,
 }
 
 #[cfg(test)]
@@ -166,10 +164,6 @@ pub(crate) fn build_tile_draw_bins_for_draws_into(
     bins.records.clear();
     bins.records.resize(tile_count, TileDrawRecord::default());
     bins.draw_indices.clear();
-    bins.tile_emit_chunks.clear();
-    bins.tile_emit_chunks
-        .resize(tile_count, TileEmitChunkRecord::default());
-    bins.emit_chunks.clear();
     cursors.clear();
     cursors.resize(tile_count, 0);
 
@@ -193,25 +187,6 @@ pub(crate) fn build_tile_draw_bins_for_draws_into(
     bins.draw_indices.resize(cursor as usize, 0);
     for (cursor, record) in cursors.iter_mut().zip(&bins.records) {
         *cursor = record.start;
-    }
-
-    let mut emit_chunk_offset = 0;
-    for (tile_ix, (tile_emit, record)) in bins
-        .tile_emit_chunks
-        .iter_mut()
-        .zip(&bins.records)
-        .enumerate()
-    {
-        let chunk_count = (record.end - record.start).div_ceil(COARSE_CHUNK_SIZE);
-        tile_emit.count = chunk_count;
-        tile_emit.offset = emit_chunk_offset;
-        bins.emit_chunks
-            .extend((0..chunk_count).map(|local_chunk| EmitChunkRecord {
-                tile: tile_ix as u32,
-                local_chunk,
-                ..EmitChunkRecord::default()
-            }));
-        emit_chunk_offset += chunk_count;
     }
 
     for (draw_ix, draw) in draw_records.iter().enumerate() {
@@ -842,20 +817,6 @@ mod tests {
             vec![1, 3]
         );
         assert_eq!(bins.draw_indices, vec![0, 0, 1]);
-        assert_eq!(
-            bins.tile_emit_chunks
-                .iter()
-                .map(|record| (record.count, record.offset))
-                .collect::<Vec<_>>(),
-            vec![(1, 0), (1, 1)]
-        );
-        assert_eq!(
-            bins.emit_chunks
-                .iter()
-                .map(|record| (record.tile, record.local_chunk))
-                .collect::<Vec<_>>(),
-            vec![(0, 0), (1, 0)]
-        );
     }
 
     #[test]
@@ -875,26 +836,11 @@ mod tests {
         );
 
         let lengths = GpuBufferLengths::from_scene(&canvas);
-        let bins = build_tile_draw_bins(&canvas);
 
         assert_eq!(
             lengths.tile_draw_index_count,
             COARSE_CHUNK_SIZE as usize + 2
         );
         assert_eq!(lengths.tile_draw_chunk_count, 3);
-        assert_eq!(
-            bins.tile_emit_chunks
-                .iter()
-                .map(|record| (record.count, record.offset))
-                .collect::<Vec<_>>(),
-            vec![(2, 0), (1, 2)]
-        );
-        assert_eq!(
-            bins.emit_chunks
-                .iter()
-                .map(|record| (record.tile, record.local_chunk))
-                .collect::<Vec<_>>(),
-            vec![(0, 0), (0, 1), (1, 0)]
-        );
     }
 }
