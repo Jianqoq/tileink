@@ -19,6 +19,7 @@ use crate::{
     render::Render,
     shared::{
         bounds::Bounds,
+        cpu_time::CpuInstant,
         draw_record::DrawRecord,
         execution::{ExecOp, ExecPlan, LayerStackEntry},
         image::Image,
@@ -184,15 +185,15 @@ impl Renderer {
     }
 
     pub fn render_profiled_flat(&mut self, canvas: &crate::canvas::Canvas) -> RenderProfile {
-        let total_start = std::time::Instant::now();
+        let total_start = CpuInstant::now();
         let plan = canvas.compile(0);
         let mut profile = RenderProfile::default();
 
-        let start = std::time::Instant::now();
+        let start = CpuInstant::now();
         self.scan(canvas, ());
         profile.scan = start.elapsed();
 
-        let start = std::time::Instant::now();
+        let start = CpuInstant::now();
         self.cumsum(canvas, ());
         profile.cumsum = start.elapsed();
 
@@ -204,7 +205,7 @@ impl Renderer {
                 panic!("render_profiled_flat only supports scenes without layers");
             };
 
-            let start = std::time::Instant::now();
+            let start = CpuInstant::now();
             self.coarse(
                 canvas,
                 (
@@ -217,7 +218,7 @@ impl Renderer {
             );
             profile.coarse += start.elapsed();
 
-            let start = std::time::Instant::now();
+            let start = CpuInstant::now();
             run_fine(
                 &self.fine,
                 canvas,

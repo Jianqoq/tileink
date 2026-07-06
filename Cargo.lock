@@ -2277,6 +2277,7 @@ dependencies = [
  "swash",
  "usvg",
  "vello",
+ "web-sys",
  "wgpu 30.0.0",
  "wide",
  "windows",

@@ -1,9 +1,10 @@
+use crate::shared::cpu_time::CpuInstant;
 use std::{
     cell::RefCell,
     fmt,
     rc::Rc,
     sync::mpsc::{self, TryRecvError},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -151,7 +152,7 @@ impl WgpuRenderProfiler {
             let mut state = self.state.borrow_mut();
             state.entries.clear();
             state.pending_gpu.clear();
-            state.started = Some(Instant::now());
+            state.started = Some(CpuInstant::now());
             state.active = true;
         }
         self.profile = WgpuRenderProfile::default();
@@ -233,7 +234,7 @@ impl WgpuRenderProfiler {
 struct ProfileState {
     entries: Vec<WgpuRenderProfileEntry>,
     pending_gpu: Vec<WgpuGpuProfileScope>,
-    started: Option<Instant>,
+    started: Option<CpuInstant>,
     active: bool,
 }
 
@@ -244,7 +245,7 @@ thread_local! {
 pub(crate) struct WgpuCpuProfileScope {
     state: Rc<RefCell<ProfileState>>,
     name: &'static str,
-    started: Instant,
+    started: CpuInstant,
 }
 
 impl Drop for WgpuCpuProfileScope {
@@ -268,7 +269,7 @@ pub(crate) fn start_cpu_scope(name: &'static str) -> Option<WgpuCpuProfileScope>
     Some(WgpuCpuProfileScope {
         state,
         name,
-        started: Instant::now(),
+        started: CpuInstant::now(),
     })
 }
 
