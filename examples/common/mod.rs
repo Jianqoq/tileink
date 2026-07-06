@@ -216,6 +216,7 @@ fn new_wgpu_renderer_for_mode(
         power_preference: wgpu::PowerPreference::HighPerformance,
         compatible_surface: None,
         force_fallback_adapter: false,
+        apply_limit_buckets: false,
     }))
     .expect("request portable wgpu adapter");
     let required_features = adapter.features() & wgpu::Features::TIMESTAMP_QUERY;

@@ -96,7 +96,10 @@ impl WgpuBuffer {
         device.poll(::wgpu::PollType::wait_indefinitely()).unwrap();
         rx.recv().unwrap().unwrap();
 
-        let mapped = readback.slice(..).get_mapped_range();
+        let mapped = readback
+            .slice(..)
+            .get_mapped_range()
+            .expect("read mapped wgpu readback buffer");
         let values = bytemuck::cast_slice(&mapped).to_vec();
         drop(mapped);
         readback.unmap();

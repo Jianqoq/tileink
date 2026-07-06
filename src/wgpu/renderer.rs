@@ -304,6 +304,7 @@ impl Renderer {
                 power_preference: ::wgpu::PowerPreference::HighPerformance,
                 compatible_surface: None,
                 force_fallback_adapter: false,
+                apply_limit_buckets: false,
             }))
             .expect("request default wgpu adapter");
         let required_features = adapter.features()
@@ -1904,7 +1905,10 @@ impl Renderer {
             .expect("receive target readback map result")
             .expect("map wgpu target readback buffer");
 
-        let mapped = readback.slice(..).get_mapped_range();
+        let mapped = readback
+            .slice(..)
+            .get_mapped_range()
+            .expect("read mapped wgpu target readback buffer");
         let mut pixels = Vec::with_capacity(self.size.0 as usize * self.size.1 as usize);
         for row in 0..self.size.1 as usize {
             let start = row * padded_row_bytes as usize;

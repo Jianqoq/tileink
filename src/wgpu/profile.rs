@@ -409,7 +409,12 @@ impl PendingGpuReadback {
     }
 
     fn entry_from_mapped_buffer(&self) -> WgpuRenderProfileEntry {
-        let mapped = self.timer.readback_buffer.slice(..).get_mapped_range();
+        let mapped = self
+            .timer
+            .readback_buffer
+            .slice(..)
+            .get_mapped_range()
+            .expect("read mapped wgpu profile timer buffer");
         let values: &[u64] = bytemuck::cast_slice(&mapped);
         let ticks = values[1].saturating_sub(values[0]);
         let nanos = ticks as f64 * self.timestamp_period as f64;

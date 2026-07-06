@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 peniko = "0.6.1"
 bytemuck = "1.25.0"
-wgpu = "29.0.3"
+wgpu = "30.0.0"
 pollster = "0.4"
 usvg = "0.47.0"
 wide = "1.5.0"

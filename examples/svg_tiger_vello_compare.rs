@@ -99,6 +99,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         power_preference: wgpu::PowerPreference::HighPerformance,
         compatible_surface: None,
         force_fallback_adapter: false,
+        apply_limit_buckets: false,
     }))?;
     let info = adapter.get_info();
     let required_features = adapter.features()

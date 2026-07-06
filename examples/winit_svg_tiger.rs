@@ -128,6 +128,7 @@ impl State {
             power_preference: wgpu::PowerPreference::HighPerformance,
             compatible_surface: Some(&surface),
             force_fallback_adapter: false,
+            apply_limit_buckets: false,
         }))?;
         let limits = adapter.limits();
         let (device, queue) = pollster::block_on(
@@ -184,7 +185,7 @@ impl State {
 
         self.renderer
             .render_to_wgpu_texture(scene, &frame.texture)?;
-        frame.present();
+        self.renderer.queue().present(frame);
         Ok(())
     }
 }
@@ -220,6 +221,7 @@ fn surface_config(
     Ok(wgpu::SurfaceConfiguration {
         usage,
         format,
+        color_space: wgpu::SurfaceColorSpace::Auto,
         width,
         height,
         present_mode: capabilities

@@ -146,6 +146,33 @@ impl Brush {
         PatternBrush::for_rect_resource(key, rect, extend, sampling, opacity).map(Self::Pattern)
     }
 
+    /// Draws an image at 1:1 canvas pixels starting at `origin`.
+    ///
+    /// Larger images are clipped by the filled shape. Smaller images are not
+    /// upscaled. Aspect ratio is preserved because no scaling is applied.
+    pub fn from_image_natural(
+        image: impl Into<Arc<Image>>,
+        origin: [f32; 2],
+        extend: Extend,
+        sampling: PatternSampling,
+        opacity: u8,
+    ) -> Option<Self> {
+        PatternBrush::for_origin(image, origin, extend, sampling, opacity).map(Self::Pattern)
+    }
+
+    /// Draws a renderer-owned image at 1:1 canvas pixels starting at `origin`.
+    pub fn from_image_key_natural(
+        key: ImageKey,
+        origin: [f32; 2],
+        image_size: (u32, u32),
+        extend: Extend,
+        sampling: PatternSampling,
+        opacity: u8,
+    ) -> Option<Self> {
+        PatternBrush::for_origin_resource(key, origin, image_size, extend, sampling, opacity)
+            .map(Self::Pattern)
+    }
+
     pub fn from_gradient(gradient: &Gradient) -> Self {
         Self::from_gradient_with_ramp_size(gradient, estimate_gradient_ramp_size(gradient))
     }
@@ -674,6 +701,52 @@ impl PatternBrush {
         )
     }
 
+    /// Creates a pattern brush that maps image pixels 1:1 to canvas coordinates.
+    pub fn for_origin(
+        image: impl Into<Arc<Image>>,
+        origin: [f32; 2],
+        extend: Extend,
+        sampling: PatternSampling,
+        opacity: u8,
+    ) -> Option<Self> {
+        let image = image.into();
+        if image.width == 0 || image.height == 0 {
+            return None;
+        }
+        Self::new(
+            image,
+            [1.0, 0.0, 0.0, 1.0, -origin[0], -origin[1]],
+            extend,
+            sampling,
+            opacity,
+        )
+    }
+
+    /// Creates a renderer-resource pattern brush that maps image pixels 1:1 to canvas
+    /// coordinates.
+    pub fn for_origin_resource(
+        key: ImageKey,
+        origin: [f32; 2],
+        image_size: (u32, u32),
+        extend: Extend,
+        sampling: PatternSampling,
+        opacity: u8,
+    ) -> Option<Self> {
+        let (width, height) = image_size;
+        if width == 0 || height == 0 {
+            return None;
+        }
+        let sx = 1.0 / width as f32;
+        let sy = 1.0 / height as f32;
+        Self::new_resource(
+            key,
+            [sx, 0.0, 0.0, sy, -origin[0] * sx, -origin[1] * sy],
+            extend,
+            sampling,
+            opacity,
+        )
+    }
+
     #[cfg(test)]
     pub(crate) fn image_key(&self) -> Option<ImageKey> {
         match self.image {
@@ -1130,5 +1203,30 @@ mod tests {
         assert_eq!(resource.extend, Extend::Reflect);
         assert_eq!(resource.sampling, PatternSampling::Bilinear);
         assert_eq!(resource.opacity, 200);
+    }
+
+    #[test]
+    fn natural_pattern_maps_canvas_pixels_one_to_one() {
+        let image = Arc::new(Image {
+            width: 2,
+            height: 1,
+            pixels: vec![rgba8_pack([255, 0, 0, 255]), rgba8_pack([0, 255, 0, 255])],
+        });
+        let pattern = PatternBrush::for_origin(
+            image,
+            [10.0, 20.0],
+            Extend::Pad,
+            PatternSampling::Nearest,
+            255,
+        )
+        .unwrap();
+        assert_eq!(
+            unpack_rgba8(pattern.sample_with_resources(10.0, 20.0, None)),
+            [255, 0, 0, 255]
+        );
+        assert_eq!(
+            unpack_rgba8(pattern.sample_with_resources(11.0, 20.0, None)),
+            [0, 255, 0, 255]
+        );
     }
 }

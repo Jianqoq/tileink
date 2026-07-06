@@ -2416,6 +2416,7 @@ fn portable_wgpu_device() -> Option<(::wgpu::Device, ::wgpu::Queue)> {
         power_preference: ::wgpu::PowerPreference::HighPerformance,
         compatible_surface: None,
         force_fallback_adapter: false,
+        apply_limit_buckets: false,
     }))
     .ok()?;
     pollster::block_on(adapter.request_device(&::wgpu::DeviceDescriptor {
@@ -2585,7 +2586,10 @@ fn read_texture_rgba8(
     device.poll(::wgpu::PollType::wait_indefinitely()).unwrap();
     rx.recv().unwrap().unwrap();
 
-    let view = readback.slice(..).get_mapped_range();
+    let view = readback
+        .slice(..)
+        .get_mapped_range()
+        .expect("read mapped wgpu test readback buffer");
     let mut tight = Vec::with_capacity((row_bytes * height as u64) as usize);
     for row in 0..height as usize {
         let start = row * padded_row_bytes as usize;
