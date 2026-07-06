@@ -11,7 +11,7 @@ use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 const WORKGROUP_SIZE: u32 = 256;
 const COUNT_STORAGE_BINDING_COUNT: u32 = 7;
 const PREFIX_STORAGE_BINDING_COUNT: u32 = 8;
-const EMIT_STORAGE_BINDING_COUNT: u32 = 8;
+const EMIT_STORAGE_BINDING_COUNT: u32 = 9;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct WgpuCoarseBatch {
@@ -592,6 +592,7 @@ impl WgpuCoarsePipeline {
                 bind_buffer(1, bindings.draw_records),
                 bind_buffer(3, bindings.text_blob),
                 bind_buffer(13, bindings.brush_blob),
+                bind_buffer(14, bindings.sdf_blob),
                 bind_buffer(18, bindings.path_records),
                 bind_buffer(19, bindings.backdrops),
                 bind_buffer(20, bindings.segment_ranges),
@@ -677,6 +678,7 @@ fn emit_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         storage_entry(1, true),
         storage_entry(3, true),
         storage_entry(13, true),
+        storage_entry(14, true),
         storage_entry(18, true),
         storage_entry(19, false),
         storage_entry(20, true),
@@ -759,7 +761,7 @@ mod tests {
         );
         assert_eq!(COUNT_STORAGE_BINDING_COUNT, 7);
         assert_eq!(PREFIX_STORAGE_BINDING_COUNT, 8);
-        assert_eq!(EMIT_STORAGE_BINDING_COUNT, 8);
+        assert_eq!(EMIT_STORAGE_BINDING_COUNT, 9);
     }
 
     fn storage_count(entries: &[::wgpu::BindGroupLayoutEntry]) -> u32 {

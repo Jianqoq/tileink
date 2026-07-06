@@ -4,6 +4,7 @@
 @group(0) @binding(1) var<storage, read> draw_records: array<DrawRecord>;
 @group(0) @binding(3) var<storage, read> text_blob: array<u32>;
 @group(0) @binding(13) var<storage, read> brush_blob: array<u32>;
+@group(0) @binding(14) var<storage, read> sdf_blob: array<u32>;
 @group(0) @binding(18) var<storage, read> path_records: array<PathRecord>;
 @group(0) @binding(19) var<storage, read_write> backdrops: array<atomic<i32>>;
 @group(0) @binding(20) var<storage, read> segment_ranges: array<TileSegmentRange>;
@@ -79,9 +80,15 @@ fn coarse_emit(
             } else if (draw_has_sdf_at(draw_ix)) {
                 if (draw_tag == GPU_DRAW_BRUSH) {
                     valid = true;
-                    ptcl_tag = GPU_PTCL_SDF;
-                    ptcl_segment_start = draw_ix;
-                    ptcl_color = draw_ix;
+                    let solid_color = draw_sdf_full_tile_solid_color_at(draw_ix, tile_x, tile_y);
+                    if (solid_color != 0u) {
+                        ptcl_tag = GPU_PTCL_COLOR;
+                        ptcl_color = solid_color;
+                    } else {
+                        ptcl_tag = GPU_PTCL_SDF;
+                        ptcl_segment_start = draw_ix;
+                        ptcl_color = draw_ix;
+                    }
                 }
             } else {
                 let backdrop_ix = draw_backdrop_ix(draw_ix, tile_x, tile_y);
@@ -381,16 +388,99 @@ fn draw_has_glyph_at(draw_ix: u32) -> bool {
 }
 
 fn draw_solid_color_fast_path_at(draw_ix: u32) -> bool {
-    let draw = draw_records[draw_ix];
-    let brush_base = draw.brush_offset;
-    return draw_records[draw_ix].solid_rect != 0u &&
-        brush_base != INVALID &&
+    return draw_records[draw_ix].solid_rect != 0u && draw_has_nontransparent_solid_brush_at(draw_ix);
+}
+
+fn draw_has_nontransparent_solid_brush_at(draw_ix: u32) -> bool {
+    let brush_base = draw_records[draw_ix].brush_offset;
+    return brush_base != INVALID &&
         brush_blob[brush_base] == GPU_BRUSH_SOLID &&
         brush_blob[brush_base + 4u] != 0u;
 }
 
 fn draw_solid_color_at(draw_ix: u32) -> u32 {
     return brush_blob[draw_records[draw_ix].brush_offset + 4u];
+}
+
+fn draw_sdf_full_tile_solid_color_at(draw_ix: u32, tile_x: u32, tile_y: u32) -> u32 {
+    let draw = draw_records[draw_ix];
+    var color = 0u;
+    if (
+        draw_has_nontransparent_solid_brush_at(draw_ix) &&
+        draw.sdf_offset != INVALID &&
+        draw.sdf_shadow_offset == INVALID &&
+        draw.sdf_len >= 9u &&
+        sdf_blob[draw.sdf_offset] == GPU_SDF_RECT &&
+        sdf_rect_fully_covers_tile(draw.sdf_offset, tile_x, tile_y)
+    ) {
+        color = draw_solid_color_at(draw_ix);
+    }
+    return color;
+}
+
+fn sdf_rect_fully_covers_tile(sdf_base: u32, tile_x: u32, tile_y: u32) -> bool {
+    let x0 = sdf_float_at(sdf_base, 1u);
+    let y0 = sdf_float_at(sdf_base, 2u);
+    let x1 = sdf_float_at(sdf_base, 3u);
+    let y1 = sdf_float_at(sdf_base, 4u);
+    let r0 = sdf_float_at(sdf_base, 5u);
+    let r1 = sdf_float_at(sdf_base, 6u);
+    let r2 = sdf_float_at(sdf_base, 7u);
+    let r3 = sdf_float_at(sdf_base, 8u);
+    let tile_min = vec2<f32>(f32(tile_x * 16u), f32(tile_y * 16u)) + vec2<f32>(0.5);
+    let tile_max = tile_min + vec2<f32>(15.0);
+    let d0 = rect_sdf_distance(tile_min.x, tile_min.y, x0, y0, x1, y1, r0, r1, r2, r3);
+    let d1 = rect_sdf_distance(tile_max.x, tile_min.y, x0, y0, x1, y1, r0, r1, r2, r3);
+    let d2 = rect_sdf_distance(tile_min.x, tile_max.y, x0, y0, x1, y1, r0, r1, r2, r3);
+    let d3 = rect_sdf_distance(tile_max.x, tile_max.y, x0, y0, x1, y1, r0, r1, r2, r3);
+    return max(max(d0, d1), max(d2, d3)) <= FULL_TILE_SDF_SOLID_DISTANCE;
+}
+
+fn sdf_float_at(sdf_base: u32, index: u32) -> f32 {
+    return bitcast<f32>(sdf_blob[sdf_base + index]);
+}
+
+fn rect_sdf_distance(
+    x: f32,
+    y: f32,
+    x0_raw: f32,
+    y0_raw: f32,
+    x1_raw: f32,
+    y1_raw: f32,
+    top_left: f32,
+    top_right: f32,
+    bottom_left: f32,
+    bottom_right: f32,
+) -> f32 {
+    let x0 = min(x0_raw, x1_raw);
+    let y0 = min(y0_raw, y1_raw);
+    let x1 = max(x0_raw, x1_raw);
+    let y1 = max(y0_raw, y1_raw);
+    let cx = (x0 + x1) * 0.5;
+    let cy = (y0 + y1) * 0.5;
+    let hx = (x1 - x0) * 0.5;
+    let hy = (y1 - y0) * 0.5;
+    let px = x - cx;
+    let py = y - cy;
+    var radius = top_left;
+    if (px >= 0.0) {
+        if (py <= 0.0) {
+            radius = top_right;
+        } else {
+            radius = bottom_right;
+        }
+    } else if (py > 0.0) {
+        radius = bottom_left;
+    }
+    let r = max(min(min(radius, hx), hy), 0.0);
+    let ax = abs(px);
+    let ay = abs(py);
+    let qx = ax - hx + r;
+    let qy = ay - hy + r;
+    let dx = select(qx, ax - hx, r <= 0.0);
+    let dy = select(qy, ay - hy, r <= 0.0);
+    let outside = sqrt(max(dx, 0.0) * max(dx, 0.0) + max(dy, 0.0) * max(dy, 0.0));
+    return outside + min(max(dx, dy), 0.0) - select(r, 0.0, r <= 0.0);
 }
 
 fn store_particle(dst: u32, tag: u32, backdrop: i32, fill_rule: u32, segment_start: u32, segment_end: u32, color: u32) {

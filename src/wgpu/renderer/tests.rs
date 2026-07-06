@@ -31,6 +31,7 @@ use crate::{
 };
 
 const GPU_PTCL_END: u32 = 0;
+const GPU_PTCL_COLOR: u32 = 2;
 const GPU_PTCL_SDF: u32 = 9;
 
 #[test]
@@ -769,6 +770,56 @@ fn wgpu_coarse_tile_draw_bins_respect_batch_range_when_enabled() {
         vec![GPU_PTCL_SDF, GPU_PTCL_END, GPU_PTCL_SDF, GPU_PTCL_END]
     );
     assert_eq!(read_ptcl_colors(&renderer, 4), vec![1, 0, 1, 0]);
+}
+
+#[test]
+fn wgpu_coarse_emits_deep_inside_sdf_rect_tiles_as_solid_color_when_enabled() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut canvas = Canvas::new(64, 64);
+    canvas.push_rect(
+        Rect::new(0.0, 0.0, 64.0, 64.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(255, 0, 0),
+    );
+    let mut renderer = new_test_renderer(64, 64, Color::TRANSPARENT);
+    if renderer.coarse_pipeline.is_none() {
+        return;
+    }
+
+    renderer.prepare_scene(&canvas);
+    renderer.coarse_batch(&canvas, 0, canvas.draw_records.len() as u32, 0, 0);
+
+    let tags = read_ptcl_tags(&renderer, renderer.lengths.coarse_ptcl_capacity);
+    assert_eq!(tags[0], GPU_PTCL_SDF);
+    assert_eq!(tags[10], GPU_PTCL_COLOR);
+}
+
+#[test]
+fn wgpu_coarse_emits_deep_inside_rounded_sdf_rect_tiles_as_solid_color_when_enabled() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut canvas = Canvas::new(96, 96);
+    canvas.push_rect(
+        Rect::new(0.0, 0.0, 96.0, 96.0),
+        crate::Radius::all(32.0),
+        Color::from_rgb8(255, 0, 0),
+    );
+    let mut renderer = new_test_renderer(96, 96, Color::TRANSPARENT);
+    if renderer.coarse_pipeline.is_none() {
+        return;
+    }
+
+    renderer.prepare_scene(&canvas);
+    renderer.coarse_batch(&canvas, 0, canvas.draw_records.len() as u32, 0, 0);
+
+    let tags = read_ptcl_tags(&renderer, renderer.lengths.coarse_ptcl_capacity);
+    assert_eq!(tags[0], GPU_PTCL_SDF);
+    assert_eq!(tags[42], GPU_PTCL_COLOR);
 }
 
 #[test]
