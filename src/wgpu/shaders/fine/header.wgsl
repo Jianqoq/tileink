@@ -39,6 +39,7 @@ const FINE_AREA_EPSILON: f32 = 1.0e-6;
 
 const GPU_BRUSH_U32_STRIDE: u32 = 9u;
 const GPU_BRUSH_PARAM_STRIDE: u32 = 12u;
+const GPU_BRUSH_SOLID: u32 = 1u;
 const GPU_BRUSH_LINEAR: u32 = 2u;
 const GPU_BRUSH_RADIAL: u32 = 3u;
 const GPU_BRUSH_SWEEP: u32 = 4u;

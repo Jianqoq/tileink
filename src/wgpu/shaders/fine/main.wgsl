@@ -71,29 +71,44 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> vec4<f32> {
         }
 
         if (tag == GPU_PTCL_COLOR) {
-            pixel = src_over_premul_unorm(pixel, scale_premul_u8_to_unorm(ptcl.color, clip_mask));
+            if (clip_mask != 0u) {
+                if (clip_mask == 255u && premul_u8_is_opaque(ptcl.color)) {
+                    pixel = rgba8_to_unorm(ptcl.color);
+                } else {
+                    pixel = src_over_premul_unorm(pixel, scale_premul_u8_to_unorm(ptcl.color, clip_mask));
+                }
+            }
         } else if (tag == GPU_PTCL_SDF) {
-            let draw_ix = ptcl.color;
-            let coverage = sdf_coverage_from_draw(
-                draw_records[draw_ix],
-                f32(global_x) + 0.5,
-                f32(global_y) + 0.5,
-            );
-            let alpha = combine_alpha(coverage_to_u8(coverage), clip_mask);
-            if (alpha != 0u) {
-                let color = sample_brush(draw_records[draw_ix].brush_offset, f32(global_x) + 0.5, f32(global_y) + 0.5);
-                pixel = src_over_premul_unorm(pixel, scale_premul_u8_to_unorm(color, alpha));
+            if (clip_mask != 0u) {
+                let draw_ix = ptcl.color;
+                let draw = draw_records[draw_ix];
+                let coverage = sdf_coverage_from_draw(
+                    draw,
+                    f32(global_x) + 0.5,
+                    f32(global_y) + 0.5,
+                );
+                let alpha = combine_alpha(coverage_to_u8(coverage), clip_mask);
+                if (alpha != 0u) {
+                    let color = sample_draw_brush(draw.brush_offset, f32(global_x) + 0.5, f32(global_y) + 0.5);
+                    if (alpha == 255u && premul_u8_is_opaque(color)) {
+                        pixel = rgba8_to_unorm(color);
+                    } else {
+                        pixel = src_over_premul_unorm(pixel, scale_premul_u8_to_unorm(color, alpha));
+                    }
+                }
             }
         } else if (tag == GPU_PTCL_GLYPH) {
-            pixel = composite_glyphs_at(
-                pixel,
-                ptcl.segment_start,
-                ptcl.segment_end,
-                ptcl.color,
-                global_x,
-                global_y,
-                clip_mask,
-            );
+            if (clip_mask != 0u) {
+                pixel = composite_glyphs_at(
+                    pixel,
+                    ptcl.segment_start,
+                    ptcl.segment_end,
+                    ptcl.color,
+                    global_x,
+                    global_y,
+                    clip_mask,
+                );
+            }
         } else if (tag == GPU_PTCL_END_CLIP) {
             if (clip_depth > 0u) {
                 clip_depth -= 1u;
@@ -120,13 +135,17 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> vec4<f32> {
             }
         } else if (tag == GPU_PTCL_BEGIN_SDF_CLIP) {
             let draw_ix = ptcl.color;
-            let alpha = coverage_to_u8(sdf_coverage_from_draw(
-                draw_records[draw_ix],
-                f32(global_x) + 0.5,
-                f32(global_y) + 0.5,
-            ));
+            let parent_clip = clip_mask;
+            var alpha = 0u;
+            if (parent_clip != 0u) {
+                alpha = coverage_to_u8(sdf_coverage_from_draw(
+                    draw_records[draw_ix],
+                    f32(global_x) + 0.5,
+                    f32(global_y) + 0.5,
+                ));
+            }
             push_clip(
-                clip_mask,
+                parent_clip,
                 tile_ix,
                 local_ix,
                 &clip_depth,
@@ -135,7 +154,7 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> vec4<f32> {
                 &clip_stack2,
                 &clip_stack3,
             );
-            clip_mask = combine_alpha(clip_mask, alpha);
+            clip_mask = combine_alpha(parent_clip, alpha);
         } else if (tag == GPU_PTCL_END_OPACITY || tag == GPU_PTCL_END_BLEND) {
             if (group_depth > 0u) {
                 group_depth -= 1u;
@@ -253,9 +272,12 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> vec4<f32> {
                 let masked_alpha = combine_alpha(alpha, clip_mask);
                 if (masked_alpha != 0u) {
                     let draw_ix = ptcl.color;
-                    let color = sample_brush(draw_records[draw_ix].brush_offset, f32(global_x) + 0.5, f32(global_y) + 0.5);
+                    let draw = draw_records[draw_ix];
+                    let color = sample_draw_brush(draw.brush_offset, f32(global_x) + 0.5, f32(global_y) + 0.5);
                     if (tag == GPU_PTCL_PATH_GLYPH) {
                         pixel = rgba8_to_unorm(src_over_mask_linear_auto_u8(unorm_to_rgba8(pixel), color, masked_alpha));
+                    } else if (masked_alpha == 255u && premul_u8_is_opaque(color)) {
+                        pixel = rgba8_to_unorm(color);
                     } else {
                         pixel = src_over_premul_unorm(pixel, scale_premul_u8_to_unorm(color, masked_alpha));
                     }
@@ -266,6 +288,17 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> vec4<f32> {
     }
 
     return pixel;
+}
+
+fn premul_u8_is_opaque(pixel: u32) -> bool {
+    return (pixel >> 24u) == 255u;
+}
+
+fn sample_draw_brush(brush_offset: u32, x: f32, y: f32) -> u32 {
+    if (brush_word(brush_offset) == GPU_BRUSH_SOLID) {
+        return brush_word(brush_offset + 4u);
+    }
+    return sample_brush(brush_offset, x, y);
 }
 
 fn composite_glyphs_at(
@@ -279,6 +312,7 @@ fn composite_glyphs_at(
 ) -> vec4<f32> {
     var pixel = start_pixel;
     var glyph_list_ix = glyph_start;
+    let brush_offset = draw_records[draw_ix].brush_offset;
     let px = i32(global_x);
     let py = i32(global_y);
     loop {
@@ -303,13 +337,13 @@ fn composite_glyphs_at(
                 if (content == GPU_GLYPH_MASK) {
                     let alpha = combine_alpha(data, clip_mask);
                     if (alpha != 0u) {
-                        let color = sample_brush(draw_records[draw_ix].brush_offset, f32(global_x) + 0.5, f32(global_y) + 0.5);
+                        let color = sample_draw_brush(brush_offset, f32(global_x) + 0.5, f32(global_y) + 0.5);
                         pixel = src_over_premul_unorm(pixel, scale_premul_u8_to_unorm(color, alpha));
                     }
                 } else if (content == GPU_GLYPH_LINEAR_MASK) {
                     let alpha = combine_alpha(data, clip_mask);
                     if (alpha != 0u) {
-                        let color = sample_brush(draw_records[draw_ix].brush_offset, f32(global_x) + 0.5, f32(global_y) + 0.5);
+                        let color = sample_draw_brush(brush_offset, f32(global_x) + 0.5, f32(global_y) + 0.5);
                         pixel = rgba8_to_unorm(src_over_mask_linear_auto_u8(unorm_to_rgba8(pixel), color, alpha));
                     }
                 } else if (content == GPU_GLYPH_COLOR) {
@@ -317,10 +351,10 @@ fn composite_glyphs_at(
                 } else if (content == GPU_GLYPH_LINEAR_COLOR) {
                     pixel = rgba8_to_unorm(src_over_mask_linear_auto_u8(unorm_to_rgba8(pixel), data, clip_mask));
                 } else if (content == GPU_GLYPH_SUBPIXEL_MASK) {
-                    let color = sample_brush(draw_records[draw_ix].brush_offset, f32(global_x) + 0.5, f32(global_y) + 0.5);
+                    let color = sample_draw_brush(brush_offset, f32(global_x) + 0.5, f32(global_y) + 0.5);
                     pixel = rgba8_to_unorm(src_over_subpixel_mask_u8(unorm_to_rgba8(pixel), color, data, clip_mask));
                 } else if (content == GPU_GLYPH_LINEAR_SUBPIXEL_MASK) {
-                    let color = sample_brush(draw_records[draw_ix].brush_offset, f32(global_x) + 0.5, f32(global_y) + 0.5);
+                    let color = sample_draw_brush(brush_offset, f32(global_x) + 0.5, f32(global_y) + 0.5);
                     pixel = rgba8_to_unorm(src_over_subpixel_mask_linear_auto_u8(unorm_to_rgba8(pixel), color, data, clip_mask));
                 }
             }

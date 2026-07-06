@@ -406,68 +406,85 @@ fn draw_sdf_full_tile_solid_color_at(draw_ix: u32, tile_x: u32, tile_y: u32) -> 
 }
 
 fn sdf_rect_fully_covers_tile(sdf_base: u32, tile_x: u32, tile_y: u32) -> bool {
-    let x0 = sdf_float_at(sdf_base, 1u);
-    let y0 = sdf_float_at(sdf_base, 2u);
-    let x1 = sdf_float_at(sdf_base, 3u);
-    let y1 = sdf_float_at(sdf_base, 4u);
-    let r0 = sdf_float_at(sdf_base, 5u);
-    let r1 = sdf_float_at(sdf_base, 6u);
-    let r2 = sdf_float_at(sdf_base, 7u);
-    let r3 = sdf_float_at(sdf_base, 8u);
+    // Conservative full-coverage test: pixel centers must stay inside the rect eroded by the
+    // coverage ramp, and rounded corners use squared distances so coarse avoids sqrt work.
+    let rect_min = vec2<f32>(
+        min(sdf_float_at(sdf_base, 1u), sdf_float_at(sdf_base, 3u)),
+        min(sdf_float_at(sdf_base, 2u), sdf_float_at(sdf_base, 4u)),
+    );
+    let rect_max = vec2<f32>(
+        max(sdf_float_at(sdf_base, 1u), sdf_float_at(sdf_base, 3u)),
+        max(sdf_float_at(sdf_base, 2u), sdf_float_at(sdf_base, 4u)),
+    );
     let tile_min = vec2<f32>(f32(tile_x * 16u), f32(tile_y * 16u)) + vec2<f32>(0.5);
     let tile_max = tile_min + vec2<f32>(15.0);
-    let d0 = rect_sdf_distance(tile_min.x, tile_min.y, x0, y0, x1, y1, r0, r1, r2, r3);
-    let d1 = rect_sdf_distance(tile_max.x, tile_min.y, x0, y0, x1, y1, r0, r1, r2, r3);
-    let d2 = rect_sdf_distance(tile_min.x, tile_max.y, x0, y0, x1, y1, r0, r1, r2, r3);
-    let d3 = rect_sdf_distance(tile_max.x, tile_max.y, x0, y0, x1, y1, r0, r1, r2, r3);
-    return max(max(d0, d1), max(d2, d3)) <= FULL_TILE_SDF_SOLID_DISTANCE;
+    let rect_size = rect_max - rect_min;
+    let min_size = vec2<f32>(15.0 + 2.0 * FULL_TILE_SDF_SOLID_INSET);
+    let inset = vec2<f32>(FULL_TILE_SDF_SOLID_INSET);
+    var covers =
+        all(rect_size >= min_size) &&
+        all(tile_min >= rect_min + inset) &&
+        all(tile_max <= rect_max - inset);
+    if (covers) {
+        let radius_limit = min(rect_size.x, rect_size.y) * 0.5;
+        let radii = min(max(vec4<f32>(
+            sdf_float_at(sdf_base, 5u),
+            sdf_float_at(sdf_base, 6u),
+            sdf_float_at(sdf_base, 7u),
+            sdf_float_at(sdf_base, 8u),
+        ), vec4<f32>(0.0)), vec4<f32>(radius_limit));
+        if (any(radii > vec4<f32>(0.0))) {
+            covers = rounded_rect_corners_fully_cover_tile(rect_min, rect_max, tile_min, tile_max, radii);
+        }
+    }
+    return covers;
 }
 
 fn sdf_float_at(sdf_base: u32, index: u32) -> f32 {
     return bitcast<f32>(sdf_blob[sdf_base + index]);
 }
 
-fn rect_sdf_distance(
-    x: f32,
-    y: f32,
-    x0_raw: f32,
-    y0_raw: f32,
-    x1_raw: f32,
-    y1_raw: f32,
-    top_left: f32,
-    top_right: f32,
-    bottom_left: f32,
-    bottom_right: f32,
-) -> f32 {
-    let x0 = min(x0_raw, x1_raw);
-    let y0 = min(y0_raw, y1_raw);
-    let x1 = max(x0_raw, x1_raw);
-    let y1 = max(y0_raw, y1_raw);
-    let cx = (x0 + x1) * 0.5;
-    let cy = (y0 + y1) * 0.5;
-    let hx = (x1 - x0) * 0.5;
-    let hy = (y1 - y0) * 0.5;
-    let px = x - cx;
-    let py = y - cy;
-    var radius = top_left;
-    if (px >= 0.0) {
-        if (py <= 0.0) {
-            radius = top_right;
-        } else {
-            radius = bottom_right;
-        }
-    } else if (py > 0.0) {
-        radius = bottom_left;
-    }
-    let r = max(min(min(radius, hx), hy), 0.0);
-    let ax = abs(px);
-    let ay = abs(py);
-    let qx = ax - hx + r;
-    let qy = ay - hy + r;
-    let dx = select(qx, ax - hx, r <= 0.0);
-    let dy = select(qy, ay - hy, r <= 0.0);
-    let outside = sqrt(max(dx, 0.0) * max(dx, 0.0) + max(dy, 0.0) * max(dy, 0.0));
-    return outside + min(max(dx, dy), 0.0) - select(r, 0.0, r <= 0.0);
+fn rounded_rect_corners_fully_cover_tile(
+    rect_min: vec2<f32>,
+    rect_max: vec2<f32>,
+    tile_min: vec2<f32>,
+    tile_max: vec2<f32>,
+    radii: vec4<f32>,
+) -> bool {
+    let top_left = rounded_rect_corner_fully_covers(
+        tile_min,
+        rect_min,
+        rect_min + vec2<f32>(radii.x),
+        radii.x,
+    );
+    let top_right = rounded_rect_corner_fully_covers(
+        vec2<f32>(tile_max.x, tile_min.y),
+        vec2<f32>(rect_max.x, rect_min.y),
+        vec2<f32>(rect_max.x - radii.y, rect_min.y + radii.y),
+        radii.y,
+    );
+    let bottom_left = rounded_rect_corner_fully_covers(
+        vec2<f32>(tile_min.x, tile_max.y),
+        vec2<f32>(rect_min.x, rect_max.y),
+        vec2<f32>(rect_min.x + radii.z, rect_max.y - radii.z),
+        radii.z,
+    );
+    let bottom_right = rounded_rect_corner_fully_covers(
+        tile_max,
+        rect_max,
+        rect_max - vec2<f32>(radii.w),
+        radii.w,
+    );
+    return top_left && top_right && bottom_left && bottom_right;
+}
+
+fn rounded_rect_corner_fully_covers(point: vec2<f32>, corner: vec2<f32>, center: vec2<f32>, radius: f32) -> bool {
+    let in_corner_square = radius > 0.0 &&
+        abs(point.x - corner.x) < radius &&
+        abs(point.y - corner.y) < radius;
+    let inner_radius = radius - FULL_TILE_SDF_SOLID_INSET;
+    let delta = point - center;
+    return !in_corner_square || (inner_radius > 0.0 && dot(delta, delta) <= inner_radius * inner_radius);
 }
 
 fn store_particle(dst: u32, tag: u32, backdrop: i32, fill_rule: u32, segment_start: u32, segment_end: u32, color: u32) {
