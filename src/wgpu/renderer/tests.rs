@@ -256,6 +256,7 @@ fn wgpu_renderer_uploads_cpu_fallback_to_copy_texture_without_storage() {
     renderer
         .render_to_wgpu_texture(&canvas, &texture)
         .expect("render to wgpu texture");
+    assert!(!renderer.last_frame_used_native_gpu());
     let bytes = read_texture_rgba8(renderer.device(), renderer.queue(), &texture, 8, 8);
 
     assert_eq!(&bytes[4 * (3 * 8 + 3)..4 * (3 * 8 + 4)], &[10, 20, 30, 255]);

@@ -148,6 +148,7 @@ pub struct Renderer {
     scratch_in_use: Vec<bool>,
     clear_color: u32,
     profiler: WgpuRenderProfiler,
+    last_frame_used_native: bool,
     size: (u32, u32),
     surface_origin: (i32, i32),
 }
@@ -291,6 +292,7 @@ impl Renderer {
             scratch_in_use: Vec::new(),
             clear_color: premul_clear_color(clear),
             profiler: WgpuRenderProfiler::default(),
+            last_frame_used_native: true,
             size: (width, height),
             surface_origin: (0, 0),
         }
@@ -409,6 +411,11 @@ impl Renderer {
 
     pub fn profile(&self) -> &WgpuRenderProfile {
         self.profiler.profile()
+    }
+
+    /// Whether the last `render*_to_wgpu_texture` call used native wgpu compute.
+    pub fn last_frame_used_native_gpu(&self) -> bool {
+        self.last_frame_used_native
     }
 
     /// Updates the clear color without rebuilding device-owned pipelines, so one renderer can
@@ -1942,8 +1949,10 @@ impl Renderer {
         dst: &::wgpu::Texture,
     ) -> Result<(), WgpuTextureRenderError> {
         if self.render_native_to_wgpu_texture(canvas, dst) {
+            self.last_frame_used_native = true;
             return Ok(());
         }
+        self.last_frame_used_native = false;
         profile_cpu("cpu_fallback.render", || self.cpu.render(canvas));
         self.size = (canvas.width, canvas.height);
         self.upload_image_to_wgpu_texture(dst, self.cpu.image())
@@ -1957,8 +1966,10 @@ impl Renderer {
         dst: &::wgpu::Texture,
     ) -> Result<(), WgpuTextureRenderError> {
         if self.render_native_with_text_to_wgpu_texture(canvas, font_system, text_context, dst) {
+            self.last_frame_used_native = true;
             return Ok(());
         }
+        self.last_frame_used_native = false;
         profile_cpu("cpu_fallback.render_text", || {
             self.cpu.render_with_text(canvas, font_system, text_context)
         });
