@@ -82,11 +82,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     );
     println!(
         "{}x{}, warmup {}, frames {}, portable {}",
-        config.width,
-        config.height,
-        config.warmup,
-        config.frames,
-        config.portable
+        config.width, config.height, config.warmup, config.frames, config.portable
     );
     println!("timing: CPU submit + GPU completion, no readback\n");
 
@@ -257,14 +253,23 @@ fn init_tileink_gpu(
 
 fn init_vello_gpu(
     config: Config,
-) -> Result<(vello_wgpu::Device, vello_wgpu::Queue, vello_wgpu::AdapterInfo), Box<dyn Error>> {
+) -> Result<
+    (
+        vello_wgpu::Device,
+        vello_wgpu::Queue,
+        vello_wgpu::AdapterInfo,
+    ),
+    Box<dyn Error>,
+> {
     let instance =
         vello_wgpu::Instance::new(vello_wgpu::InstanceDescriptor::new_without_display_handle());
-    let adapter = pollster::block_on(instance.request_adapter(&vello_wgpu::RequestAdapterOptions {
-        power_preference: vello_wgpu::PowerPreference::HighPerformance,
-        compatible_surface: None,
-        force_fallback_adapter: false,
-    }))?;
+    let adapter = pollster::block_on(instance.request_adapter(
+        &vello_wgpu::RequestAdapterOptions {
+            power_preference: vello_wgpu::PowerPreference::HighPerformance,
+            compatible_surface: None,
+            force_fallback_adapter: false,
+        },
+    ))?;
     let info = adapter.get_info();
     let required_features = if config.portable {
         adapter.features() & vello_wgpu::Features::TIMESTAMP_QUERY
@@ -273,14 +278,15 @@ fn init_vello_gpu(
             & (vello_wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
                 | vello_wgpu::Features::TIMESTAMP_QUERY)
     };
-    let (device, queue) = pollster::block_on(adapter.request_device(&vello_wgpu::DeviceDescriptor {
-        label: Some("vello compare device"),
-        required_features,
-        required_limits: adapter.limits(),
-        memory_hints: vello_wgpu::MemoryHints::MemoryUsage,
-        trace: vello_wgpu::Trace::Off,
-        experimental_features: vello_wgpu::ExperimentalFeatures::disabled(),
-    }))?;
+    let (device, queue) =
+        pollster::block_on(adapter.request_device(&vello_wgpu::DeviceDescriptor {
+            label: Some("vello compare device"),
+            required_features,
+            required_limits: adapter.limits(),
+            memory_hints: vello_wgpu::MemoryHints::MemoryUsage,
+            trace: vello_wgpu::Trace::Off,
+            experimental_features: vello_wgpu::ExperimentalFeatures::disabled(),
+        }))?;
     Ok((device, queue, info))
 }
 

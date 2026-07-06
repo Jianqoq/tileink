@@ -98,7 +98,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (tileink_device, tileink_queue, tileink_info) = init_tileink_gpu()?;
     let (vello_device, vello_queue, vello_info) = init_vello_gpu()?;
 
-    let tileink_texture = tileink_output_texture(&tileink_device, width, height, "tileink tiger output");
+    let tileink_texture =
+        tileink_output_texture(&tileink_device, width, height, "tileink tiger output");
     let vello_texture = vello_output_texture(&vello_device, width, height, "vello tiger output");
     let vello_view = vello_texture.create_view(&vello_wgpu::TextureViewDescriptor::default());
     let mut tileink = WgpuRenderer::new(
@@ -397,27 +398,36 @@ fn init_tileink_gpu() -> Result<(wgpu::Device, wgpu::Queue, wgpu::AdapterInfo), 
     Ok((device, queue, info))
 }
 
-fn init_vello_gpu(
-) -> Result<(vello_wgpu::Device, vello_wgpu::Queue, vello_wgpu::AdapterInfo), Box<dyn Error>> {
+fn init_vello_gpu() -> Result<
+    (
+        vello_wgpu::Device,
+        vello_wgpu::Queue,
+        vello_wgpu::AdapterInfo,
+    ),
+    Box<dyn Error>,
+> {
     let instance =
         vello_wgpu::Instance::new(vello_wgpu::InstanceDescriptor::new_without_display_handle());
-    let adapter = pollster::block_on(instance.request_adapter(&vello_wgpu::RequestAdapterOptions {
-        power_preference: vello_wgpu::PowerPreference::HighPerformance,
-        compatible_surface: None,
-        force_fallback_adapter: false,
-    }))?;
+    let adapter = pollster::block_on(instance.request_adapter(
+        &vello_wgpu::RequestAdapterOptions {
+            power_preference: vello_wgpu::PowerPreference::HighPerformance,
+            compatible_surface: None,
+            force_fallback_adapter: false,
+        },
+    ))?;
     let info = adapter.get_info();
     let required_features = adapter.features()
         & (vello_wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
             | vello_wgpu::Features::TIMESTAMP_QUERY);
-    let (device, queue) = pollster::block_on(adapter.request_device(&vello_wgpu::DeviceDescriptor {
-        label: Some("vello tiger compare device"),
-        required_features,
-        required_limits: adapter.limits(),
-        memory_hints: vello_wgpu::MemoryHints::MemoryUsage,
-        trace: vello_wgpu::Trace::Off,
-        experimental_features: vello_wgpu::ExperimentalFeatures::disabled(),
-    }))?;
+    let (device, queue) =
+        pollster::block_on(adapter.request_device(&vello_wgpu::DeviceDescriptor {
+            label: Some("vello tiger compare device"),
+            required_features,
+            required_limits: adapter.limits(),
+            memory_hints: vello_wgpu::MemoryHints::MemoryUsage,
+            trace: vello_wgpu::Trace::Off,
+            experimental_features: vello_wgpu::ExperimentalFeatures::disabled(),
+        }))?;
     Ok((device, queue, info))
 }
 

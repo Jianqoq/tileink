@@ -326,116 +326,29 @@ impl WgpuCoarsePipeline {
             self.create_prefix_bind_group(commands.device(), &bindings, config_offset);
         let emit_bind_group =
             self.create_emit_bind_group(commands.device(), &bindings, config_offset);
-        if self.portable_emit && profile_coarse_passes() {
-            if batch.draw_start < batch.draw_end && lengths.coarse_ptcl_capacity > 0 {
-                let emit_chunk_count = lengths.tile_draw_chunk_count as u32;
-                if emit_chunk_count > 0 {
-                    dispatch_profiled(
-                        commands,
-                        "coarse.emit_chunk_counts",
-                        &prefix_bind_group,
-                        &self.emit_chunk_counts,
-                        chunk_count,
-                    );
-                    dispatch_profiled(
-                        commands,
-                        "coarse.emit_prefix_chunks",
-                        &prefix_bind_group,
-                        &self.emit_prefix_chunks,
-                        chunk_count,
-                    );
-                    dispatch_profiled(
-                        commands,
-                        "coarse.emit_chunk_offsets",
-                        &prefix_bind_group,
-                        &self.emit_chunk_offsets,
-                        1,
-                    );
-                    dispatch_profiled(
-                        commands,
-                        "coarse.emit_apply_chunk_offsets",
-                        &prefix_bind_group,
-                        &self.emit_apply_chunk_offsets,
-                        chunk_count,
-                    );
-                    dispatch_profiled(
-                        commands,
-                        "coarse.emit_fill_refs",
-                        &prefix_bind_group,
-                        &self.emit_fill_refs,
-                        chunk_count,
-                    );
-                    dispatch_profiled(
-                        commands,
-                        "coarse.emit_chunk_particle_counts",
-                        &prefix_bind_group,
-                        &self.emit_chunk_particle_counts,
-                        emit_chunk_count,
-                    );
-                    dispatch_profiled(
-                        commands,
-                        "coarse.tile_counts_from_emit_chunks",
-                        &prefix_bind_group,
-                        &self.tile_counts_from_emit_chunks,
-                        chunk_count,
-                    );
-                    dispatch_profiled(
-                        commands,
-                        "coarse.ptcl_prefix_chunks",
-                        &prefix_bind_group,
-                        &self.ptcl_prefix_chunks,
-                        chunk_count,
-                    );
-                    dispatch_profiled(
-                        commands,
-                        "coarse.ptcl_chunk_offsets",
-                        &prefix_bind_group,
-                        &self.ptcl_chunk_offsets,
-                        1,
-                    );
-                    dispatch_profiled(
-                        commands,
-                        "coarse.ptcl_apply_chunk_offsets",
-                        &prefix_bind_group,
-                        &self.ptcl_apply_chunk_offsets,
-                        chunk_count,
-                    );
-                    dispatch_profiled(
-                        commands,
-                        "coarse.glyph_prefix_chunks",
-                        &prefix_bind_group,
-                        &self.glyph_prefix_chunks,
-                        chunk_count,
-                    );
-                    dispatch_profiled(
-                        commands,
-                        "coarse.glyph_chunk_offsets",
-                        &prefix_bind_group,
-                        &self.glyph_chunk_offsets,
-                        1,
-                    );
-                    dispatch_profiled(
-                        commands,
-                        "coarse.glyph_apply_chunk_offsets",
-                        &prefix_bind_group,
-                        &self.glyph_apply_chunk_offsets,
-                        chunk_count,
-                    );
-                    dispatch_profiled(
-                        commands,
-                        "coarse.emit_chunk_particle_offsets",
-                        &prefix_bind_group,
-                        &self.emit_chunk_particle_offsets,
-                        chunk_count,
-                    );
-                    dispatch_profiled(
-                        commands,
-                        "coarse.emit_web",
-                        &emit_bind_group,
-                        self.emit_web.as_ref().unwrap(),
-                        emit_chunk_count,
-                    );
-                }
+        if profile_coarse_passes() {
+            if self.portable_emit {
+                self.encode_profiled_portable(
+                    commands,
+                    &count_bind_group,
+                    &prefix_bind_group,
+                    &emit_bind_group,
+                    lengths,
+                    batch,
+                    tile_count,
+                    chunk_count,
+                );
+            } else {
+                self.encode_profiled_native(
+                    commands,
+                    &count_bind_group,
+                    &prefix_bind_group,
+                    &emit_bind_group,
+                    lengths,
+                    batch,
+                    tile_count,
+                    chunk_count,
+                );
             }
             return;
         }
@@ -533,6 +446,178 @@ impl WgpuCoarsePipeline {
         finish_gpu_scope(encoder, gpu_scope);
     }
 
+    fn encode_profiled_native(
+        &self,
+        commands: &mut WgpuCommandBatch,
+        count_bind_group: &::wgpu::BindGroup,
+        prefix_bind_group: &::wgpu::BindGroup,
+        emit_bind_group: &::wgpu::BindGroup,
+        lengths: GpuBufferLengths,
+        batch: WgpuCoarseBatch,
+        tile_count: u32,
+        chunk_count: u32,
+    ) {
+        dispatch_profiled(
+            commands,
+            "coarse.count",
+            count_bind_group,
+            &self.count,
+            tile_count,
+        );
+        self.encode_profiled_tile_offsets(commands, prefix_bind_group, chunk_count);
+        if batch.draw_start < batch.draw_end && lengths.coarse_ptcl_capacity > 0 {
+            dispatch_profiled(
+                commands,
+                "coarse.emit",
+                emit_bind_group,
+                self.emit.as_ref().unwrap(),
+                tile_count,
+            );
+        }
+    }
+
+    fn encode_profiled_portable(
+        &self,
+        commands: &mut WgpuCommandBatch,
+        count_bind_group: &::wgpu::BindGroup,
+        prefix_bind_group: &::wgpu::BindGroup,
+        emit_bind_group: &::wgpu::BindGroup,
+        lengths: GpuBufferLengths,
+        batch: WgpuCoarseBatch,
+        tile_count: u32,
+        chunk_count: u32,
+    ) {
+        let emit_chunk_count = lengths.tile_draw_chunk_count as u32;
+        if batch.draw_start < batch.draw_end
+            && lengths.coarse_ptcl_capacity > 0
+            && emit_chunk_count > 0
+        {
+            dispatch_profiled(
+                commands,
+                "coarse.emit_chunk_counts",
+                prefix_bind_group,
+                &self.emit_chunk_counts,
+                chunk_count,
+            );
+            dispatch_profiled(
+                commands,
+                "coarse.emit_prefix_chunks",
+                prefix_bind_group,
+                &self.emit_prefix_chunks,
+                chunk_count,
+            );
+            dispatch_profiled(
+                commands,
+                "coarse.emit_chunk_offsets",
+                prefix_bind_group,
+                &self.emit_chunk_offsets,
+                1,
+            );
+            dispatch_profiled(
+                commands,
+                "coarse.emit_apply_chunk_offsets",
+                prefix_bind_group,
+                &self.emit_apply_chunk_offsets,
+                chunk_count,
+            );
+            dispatch_profiled(
+                commands,
+                "coarse.emit_fill_refs",
+                prefix_bind_group,
+                &self.emit_fill_refs,
+                chunk_count,
+            );
+            dispatch_profiled(
+                commands,
+                "coarse.emit_chunk_particle_counts",
+                prefix_bind_group,
+                &self.emit_chunk_particle_counts,
+                emit_chunk_count,
+            );
+            dispatch_profiled(
+                commands,
+                "coarse.tile_counts_from_emit_chunks",
+                prefix_bind_group,
+                &self.tile_counts_from_emit_chunks,
+                chunk_count,
+            );
+            self.encode_profiled_tile_offsets(commands, prefix_bind_group, chunk_count);
+            dispatch_profiled(
+                commands,
+                "coarse.emit_chunk_particle_offsets",
+                prefix_bind_group,
+                &self.emit_chunk_particle_offsets,
+                chunk_count,
+            );
+            dispatch_profiled(
+                commands,
+                "coarse.emit_web",
+                emit_bind_group,
+                self.emit_web.as_ref().unwrap(),
+                emit_chunk_count,
+            );
+        } else {
+            dispatch_profiled(
+                commands,
+                "coarse.count",
+                count_bind_group,
+                &self.count,
+                tile_count,
+            );
+            self.encode_profiled_tile_offsets(commands, prefix_bind_group, chunk_count);
+        }
+    }
+
+    fn encode_profiled_tile_offsets(
+        &self,
+        commands: &mut WgpuCommandBatch,
+        prefix_bind_group: &::wgpu::BindGroup,
+        chunk_count: u32,
+    ) {
+        dispatch_profiled(
+            commands,
+            "coarse.ptcl_prefix_chunks",
+            prefix_bind_group,
+            &self.ptcl_prefix_chunks,
+            chunk_count,
+        );
+        dispatch_profiled(
+            commands,
+            "coarse.ptcl_chunk_offsets",
+            prefix_bind_group,
+            &self.ptcl_chunk_offsets,
+            1,
+        );
+        dispatch_profiled(
+            commands,
+            "coarse.ptcl_apply_chunk_offsets",
+            prefix_bind_group,
+            &self.ptcl_apply_chunk_offsets,
+            chunk_count,
+        );
+        dispatch_profiled(
+            commands,
+            "coarse.glyph_prefix_chunks",
+            prefix_bind_group,
+            &self.glyph_prefix_chunks,
+            chunk_count,
+        );
+        dispatch_profiled(
+            commands,
+            "coarse.glyph_chunk_offsets",
+            prefix_bind_group,
+            &self.glyph_chunk_offsets,
+            1,
+        );
+        dispatch_profiled(
+            commands,
+            "coarse.glyph_apply_chunk_offsets",
+            prefix_bind_group,
+            &self.glyph_apply_chunk_offsets,
+            chunk_count,
+        );
+    }
+
     fn create_count_bind_group(
         &self,
         device: &::wgpu::Device,
@@ -604,7 +689,15 @@ impl WgpuCoarsePipeline {
 }
 
 fn profile_coarse_passes() -> bool {
-    std::env::var("TILEINK_PROFILE_COARSE_PASSES").as_deref() == Ok("1")
+    profile_coarse_passes_value(
+        std::env::var("TILEINK_PROFILE_COARSE_PASSES")
+            .ok()
+            .as_deref(),
+    )
+}
+
+fn profile_coarse_passes_value(value: Option<&str>) -> bool {
+    value == Some("1")
 }
 
 fn dispatch_profiled(
@@ -743,6 +836,7 @@ mod tests {
     use super::{
         COUNT_STORAGE_BINDING_COUNT, EMIT_STORAGE_BINDING_COUNT, PREFIX_STORAGE_BINDING_COUNT,
         count_layout_entries, emit_layout_entries, prefix_layout_entries,
+        profile_coarse_passes_value,
     };
 
     #[test]
@@ -762,6 +856,14 @@ mod tests {
         assert_eq!(COUNT_STORAGE_BINDING_COUNT, 7);
         assert_eq!(PREFIX_STORAGE_BINDING_COUNT, 8);
         assert_eq!(EMIT_STORAGE_BINDING_COUNT, 9);
+    }
+
+    #[test]
+    fn profile_coarse_passes_only_accepts_one() {
+        assert!(profile_coarse_passes_value(Some("1")));
+        assert!(!profile_coarse_passes_value(None));
+        assert!(!profile_coarse_passes_value(Some("true")));
+        assert!(!profile_coarse_passes_value(Some("0")));
     }
 
     fn storage_count(entries: &[::wgpu::BindGroupLayoutEntry]) -> u32 {
