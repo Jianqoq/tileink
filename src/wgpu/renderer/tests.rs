@@ -545,6 +545,29 @@ fn wgpu_renderer_samples_gradient_brush_in_fine_pass_when_enabled() {
 }
 
 #[test]
+fn wgpu_renderer_accumulates_many_translucent_fine_particles_when_enabled() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut canvas = Canvas::new(16, 16);
+    for ix in 0u8..16 {
+        let alpha = 24 + ix * 5;
+        canvas.push_rect(
+            Rect::new(0.0, 0.0, 16.0, 16.0),
+            crate::Radius::ZERO,
+            Color::from_rgba8(12 + ix * 3, 80, 220u8.saturating_sub(ix * 4), alpha),
+        );
+    }
+
+    let image = render_native_wgpu(&canvas);
+    let mut cpu = CpuRenderer::new(16, 16, Color::TRANSPARENT);
+    cpu.render(&canvas);
+
+    assert_images_near(&image, &cpu.image(), 3, "f32 fine particle accumulation");
+}
+
+#[test]
 fn wgpu_scan_emits_segments_when_enabled() {
     if !run_wgpu_tests() {
         return;

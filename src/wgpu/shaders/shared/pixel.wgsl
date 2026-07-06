@@ -71,6 +71,19 @@ fn scale_premul_u8(src: u32, factor: u32) -> u32 {
     );
 }
 
+fn scale_premul_u8_to_unorm(src: u32, factor: u32) -> vec4<f32> {
+    if (factor == 0u || ((src >> 24u) & 255u) == 0u) {
+        return vec4<f32>(0.0);
+    }
+    let scale = f32(factor) * (1.0 / 65025.0);
+    return vec4<f32>(
+        f32(src & 255u) * scale,
+        f32((src >> 8u) & 255u) * scale,
+        f32((src >> 16u) & 255u) * scale,
+        f32((src >> 24u) & 255u) * scale,
+    );
+}
+
 fn src_over_premul_u8(dst: u32, src: u32) -> u32 {
     let sa = (src >> 24u) & 255u;
     if (sa == 0u) {
@@ -86,6 +99,17 @@ fn src_over_premul_u8(dst: u32, src: u32) -> u32 {
         ((src >> 16u) & 255u) + mul_div255((dst >> 16u) & 255u, inv),
         sa + mul_div255((dst >> 24u) & 255u, inv),
     );
+}
+
+fn src_over_premul_unorm(dst: vec4<f32>, src: vec4<f32>) -> vec4<f32> {
+    let sa = src.a;
+    if (sa <= 0.0) {
+        return dst;
+    }
+    if (sa >= 1.0) {
+        return src;
+    }
+    return src + dst * (1.0 - sa);
 }
 
 fn pack_premul_rgba8(r: f32, g: f32, b: f32, a: f32) -> u32 {
