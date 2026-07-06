@@ -20,6 +20,7 @@ use vello::{
         Stroke as VelloStroke,
     },
     peniko::{Color as VelloColor, Fill as VelloFill},
+    wgpu as vello_wgpu,
 };
 
 #[derive(Clone, Copy)]
@@ -94,32 +95,21 @@ fn main() -> Result<(), Box<dyn Error>> {
     )?;
     let (vello_scene, vello_path_count) = build_vello_scene(&tree, scale_x, scale_y)?;
 
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::HighPerformance,
-        compatible_surface: None,
-        force_fallback_adapter: false,
-        apply_limit_buckets: false,
-    }))?;
-    let info = adapter.get_info();
-    let required_features = adapter.features()
-        & (wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
-            | wgpu::Features::TIMESTAMP_QUERY);
-    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        label: Some("tileink tiger vello compare device"),
-        required_features,
-        required_limits: adapter.limits(),
-        memory_hints: wgpu::MemoryHints::MemoryUsage,
-        trace: wgpu::Trace::Off,
-        experimental_features: wgpu::ExperimentalFeatures::disabled(),
-    }))?;
+    let (tileink_device, tileink_queue, tileink_info) = init_tileink_gpu()?;
+    let (vello_device, vello_queue, vello_info) = init_vello_gpu()?;
 
-    let tileink_texture = output_texture(&device, width, height, "tileink tiger output");
-    let vello_texture = output_texture(&device, width, height, "vello tiger output");
-    let vello_view = vello_texture.create_view(&wgpu::TextureViewDescriptor::default());
-    let mut tileink = WgpuRenderer::new(&device, &queue, width, height, Color::TRANSPARENT);
+    let tileink_texture = tileink_output_texture(&tileink_device, width, height, "tileink tiger output");
+    let vello_texture = vello_output_texture(&vello_device, width, height, "vello tiger output");
+    let vello_view = vello_texture.create_view(&vello_wgpu::TextureViewDescriptor::default());
+    let mut tileink = WgpuRenderer::new(
+        &tileink_device,
+        &tileink_queue,
+        width,
+        height,
+        Color::TRANSPARENT,
+    );
     let mut vello = VelloRenderer::new(
-        &device,
+        &vello_device,
         RendererOptions {
             antialiasing_support: AaSupport::area_only(),
             ..RendererOptions::default()
@@ -133,8 +123,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
 
     println!(
-        "svg tiger compare: {}x{}, {} vello paths, adapter: {} ({:?})",
-        width, height, vello_path_count, info.name, info.backend
+        "svg tiger compare: {}x{}, {} vello paths",
+        width, height, vello_path_count
+    );
+    println!(
+        "tileink adapter: {} ({:?})",
+        tileink_info.name, tileink_info.backend
+    );
+    println!(
+        "vello adapter:   {} ({:?})",
+        vello_info.name, vello_info.backend
     );
     println!(
         "timing: CPU submit + GPU completion, warmup {}, frames {}, no target readback\n",
@@ -143,24 +141,24 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let tileink_stats = bench_tileink(
         &mut tileink,
-        &device,
-        &queue,
+        &tileink_device,
+        &tileink_queue,
         &tileink_scene,
         &tileink_texture,
         config,
     )?;
     let tileink_profile = profile_tileink(
         &mut tileink,
-        &device,
-        &queue,
+        &tileink_device,
+        &tileink_queue,
         &tileink_scene,
         &tileink_texture,
         config,
     )?;
     let vello_stats = bench_vello(
         &mut vello,
-        &device,
-        &queue,
+        &vello_device,
+        &vello_queue,
         &vello_scene,
         &vello_view,
         &vello_params,
@@ -376,6 +374,101 @@ fn vello_path(path: &usvg::tiny_skia_path::Path) -> VelloBezPath {
     out
 }
 
+fn init_tileink_gpu() -> Result<(wgpu::Device, wgpu::Queue, wgpu::AdapterInfo), Box<dyn Error>> {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::HighPerformance,
+        compatible_surface: None,
+        force_fallback_adapter: false,
+        apply_limit_buckets: false,
+    }))?;
+    let info = adapter.get_info();
+    let required_features = adapter.features()
+        & (wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
+            | wgpu::Features::TIMESTAMP_QUERY);
+    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+        label: Some("tileink tiger vello compare device"),
+        required_features,
+        required_limits: adapter.limits(),
+        memory_hints: wgpu::MemoryHints::MemoryUsage,
+        trace: wgpu::Trace::Off,
+        experimental_features: wgpu::ExperimentalFeatures::disabled(),
+    }))?;
+    Ok((device, queue, info))
+}
+
+fn init_vello_gpu(
+) -> Result<(vello_wgpu::Device, vello_wgpu::Queue, vello_wgpu::AdapterInfo), Box<dyn Error>> {
+    let instance =
+        vello_wgpu::Instance::new(vello_wgpu::InstanceDescriptor::new_without_display_handle());
+    let adapter = pollster::block_on(instance.request_adapter(&vello_wgpu::RequestAdapterOptions {
+        power_preference: vello_wgpu::PowerPreference::HighPerformance,
+        compatible_surface: None,
+        force_fallback_adapter: false,
+    }))?;
+    let info = adapter.get_info();
+    let required_features = adapter.features()
+        & (vello_wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
+            | vello_wgpu::Features::TIMESTAMP_QUERY);
+    let (device, queue) = pollster::block_on(adapter.request_device(&vello_wgpu::DeviceDescriptor {
+        label: Some("vello tiger compare device"),
+        required_features,
+        required_limits: adapter.limits(),
+        memory_hints: vello_wgpu::MemoryHints::MemoryUsage,
+        trace: vello_wgpu::Trace::Off,
+        experimental_features: vello_wgpu::ExperimentalFeatures::disabled(),
+    }))?;
+    Ok((device, queue, info))
+}
+
+fn tileink_output_texture(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+    label: &str,
+) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::STORAGE_BINDING
+            | wgpu::TextureUsages::COPY_SRC
+            | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    })
+}
+
+fn vello_output_texture(
+    device: &vello_wgpu::Device,
+    width: u32,
+    height: u32,
+    label: &str,
+) -> vello_wgpu::Texture {
+    device.create_texture(&vello_wgpu::TextureDescriptor {
+        label: Some(label),
+        size: vello_wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: vello_wgpu::TextureDimension::D2,
+        format: vello_wgpu::TextureFormat::Rgba8Unorm,
+        usage: vello_wgpu::TextureUsages::STORAGE_BINDING
+            | vello_wgpu::TextureUsages::COPY_SRC
+            | vello_wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    })
+}
+
 fn bench_tileink(
     renderer: &mut WgpuRenderer,
     device: &wgpu::Device,
@@ -425,22 +518,22 @@ fn profile_tileink(
 
 fn bench_vello(
     renderer: &mut VelloRenderer,
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
+    device: &vello_wgpu::Device,
+    queue: &vello_wgpu::Queue,
     scene: &VelloScene,
-    texture: &wgpu::TextureView,
+    texture: &vello_wgpu::TextureView,
     params: &RenderParams,
     config: Config,
 ) -> Result<Stats, Box<dyn Error>> {
     for _ in 0..config.warmup {
         renderer.render_to_texture(device, queue, scene, texture, params)?;
-        wait_for_gpu(device, queue)?;
+        wait_for_vello_gpu(device, queue)?;
     }
     let mut samples = Vec::with_capacity(config.frames);
     for _ in 0..config.frames {
         let start = Instant::now();
         renderer.render_to_texture(device, queue, scene, texture, params)?;
-        wait_for_gpu(device, queue)?;
+        wait_for_vello_gpu(device, queue)?;
         samples.push(start.elapsed());
     }
     Ok(Stats::from_samples(&samples))
@@ -456,23 +549,17 @@ fn wait_for_gpu(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<(), Box<dy
     Ok(())
 }
 
-fn output_texture(device: &wgpu::Device, width: u32, height: u32, label: &str) -> wgpu::Texture {
-    device.create_texture(&wgpu::TextureDescriptor {
-        label: Some(label),
-        size: wgpu::Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Rgba8Unorm,
-        usage: wgpu::TextureUsages::STORAGE_BINDING
-            | wgpu::TextureUsages::COPY_SRC
-            | wgpu::TextureUsages::COPY_DST,
-        view_formats: &[],
-    })
+fn wait_for_vello_gpu(
+    device: &vello_wgpu::Device,
+    queue: &vello_wgpu::Queue,
+) -> Result<(), Box<dyn Error>> {
+    let (tx, rx) = mpsc::channel();
+    queue.on_submitted_work_done(move || {
+        let _ = tx.send(());
+    });
+    device.poll(vello_wgpu::PollType::wait_indefinitely())?;
+    rx.recv()?;
+    Ok(())
 }
 
 fn print_result(name: &str, stats: Stats) {
