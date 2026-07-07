@@ -160,6 +160,7 @@ pub(crate) fn local_filter(filter: &Filter, bounds: Bounds) -> Filter {
 
 fn translated_scene_for_bounds(canvas: &Canvas, local: LocalSpace) -> Canvas {
     let mut translated = Canvas::new(local.surface.width(), local.surface.height(), 1.0);
+    translated.scene_images.extend_from(&canvas.scene_images);
     translated.lines = canvas
         .lines
         .iter()
@@ -478,6 +479,7 @@ fn translate_region_to_local(region: &Region, local: LocalSpace) -> Region {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::shared::{image::Image, image_resource::ImageKey};
 
     #[test]
     fn local_space_shifts_geometry_to_surface_origin() {
@@ -520,5 +522,24 @@ mod tests {
             local.brush_transform([2.0, 3.0, 5.0, 7.0, 11.0, 13.0]),
             [2.0, 3.0, 5.0, 7.0, 131.0, 183.0]
         );
+    }
+
+    #[test]
+    fn translated_scene_preserves_scene_image_resources() {
+        let key = ImageKey::new(42);
+        let mut canvas = Canvas::new(8, 8, 1.0);
+        assert!(canvas.scene_images.insert(
+            key,
+            Image::from_rgba8(1, 1, [255, 0, 0, 255])
+        ));
+
+        let translated =
+            translated_scene_for_bounds(&canvas, LocalSpace::new(Bounds::new(2, 2, 6, 6)));
+
+        let image = translated
+            .scene_image_resources()
+            .get(key)
+            .expect("translated scene should keep scene image resources");
+        assert_eq!(image.rgba8_at(0, 0), [255, 0, 0, 255]);
     }
 }
