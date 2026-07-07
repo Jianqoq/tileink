@@ -39,6 +39,25 @@ impl TextGlyph {
         CanvasGlyph { cache_key, x, y }
     }
 
+    fn at_scaled_origin(self, origin: Point, scale: f32) -> CanvasGlyph {
+        if scale == 1.0 {
+            return self.at_origin(origin);
+        }
+
+        let font_size = f32::from_bits(self.cache_key.font_size_bits) * scale;
+        let x = (self.x as f32 + self.cache_key.x_bin.as_float() + origin.x as f32) * scale;
+        let y = (self.y as f32 + self.cache_key.y_bin.as_float() + origin.y as f32) * scale;
+        let (cache_key, x, y) = CacheKey::new(
+            self.cache_key.font_id,
+            self.cache_key.glyph_id,
+            font_size,
+            (x, y),
+            self.cache_key.font_weight,
+            self.cache_key.flags,
+        );
+        CanvasGlyph { cache_key, x, y }
+    }
+
     pub(crate) fn image_bounds(self, image: &GlyphRasterImage) -> Bounds {
         glyph_image_bounds(
             self.x,
@@ -71,6 +90,7 @@ pub(crate) struct TextRun {
     pub(crate) glyph_count: u32,
 }
 
+#[cfg(test)]
 pub(crate) fn scene_glyphs_at_origin<'a>(
     layout: &'a TextLayout,
     origin: Point,
@@ -80,6 +100,18 @@ pub(crate) fn scene_glyphs_at_origin<'a>(
         .iter()
         .copied()
         .map(move |glyph| glyph.at_origin(origin))
+}
+
+pub(crate) fn scene_glyphs_at_scaled_origin<'a>(
+    layout: &'a TextLayout,
+    origin: Point,
+    scale: f32,
+) -> impl Iterator<Item = CanvasGlyph> + 'a {
+    layout
+        .glyphs()
+        .iter()
+        .copied()
+        .map(move |glyph| glyph.at_scaled_origin(origin, scale))
 }
 
 pub(crate) fn layout_bounds_at_origin(layout: &TextLayout, origin: Point) -> Bounds {
@@ -93,6 +125,25 @@ pub(crate) fn layout_bounds_at_origin(layout: &TextLayout, origin: Point) -> Bou
         layout.bounds.y0 + origin.y.floor() as i32 - 1,
         layout.bounds.x1 + origin.x.ceil() as i32 + 1,
         layout.bounds.y1 + origin.y.ceil() as i32 + 1,
+    )
+}
+
+pub(crate) fn layout_bounds_at_scaled_origin(
+    layout: &TextLayout,
+    origin: Point,
+    scale: f32,
+) -> Bounds {
+    let bounds = layout_bounds_at_origin(layout, origin);
+    if bounds.is_empty() || scale == 1.0 {
+        return bounds;
+    }
+
+    let pad = scale.ceil() as i32 + 2;
+    Bounds::new(
+        (bounds.x0 as f32 * scale).floor() as i32 - pad,
+        (bounds.y0 as f32 * scale).floor() as i32 - pad,
+        (bounds.x1 as f32 * scale).ceil() as i32 + pad,
+        (bounds.y1 as f32 * scale).ceil() as i32 + pad,
     )
 }
 

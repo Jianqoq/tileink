@@ -46,7 +46,7 @@ use crate::shared::{
         },
     },
 };
-use crate::text::{TextRun, layout_bounds_at_origin, scene_glyphs_at_origin};
+use crate::text::{TextRun, layout_bounds_at_scaled_origin, scene_glyphs_at_scaled_origin};
 use crate::{TextContext, TextFontSystem, TextLayout};
 
 const SDF_RECORD_FILL_RULE: FillRule = FillRule::NonZero;
@@ -1822,8 +1822,11 @@ impl Canvas {
 
         self.ensure_command_root();
         let glyph_start = self.text_glyphs.len() as u32;
-        self.text_glyphs
-            .extend(scene_glyphs_at_origin(layout, origin));
+        self.text_glyphs.extend(scene_glyphs_at_scaled_origin(
+            layout,
+            origin,
+            self.scale_factor,
+        ));
         let glyph_count = self.text_glyphs.len() as u32 - glyph_start;
         if glyph_count == 0 {
             return None;
@@ -1834,7 +1837,7 @@ impl Canvas {
             glyph_count,
         };
         self.text_runs.push(run);
-        let bounds = layout_bounds_at_origin(layout, origin);
+        let bounds = layout_bounds_at_scaled_origin(layout, origin, self.scale_factor);
         let (brush_offset, brush_len) = self.push_brush(brush.into());
         let draw_ix = self.push_draw_record(DrawRecord {
             path_id: DrawRecord::NONE,

@@ -485,6 +485,26 @@ fn text_draw_tracks_run_and_glyph_positions() {
 }
 
 #[test]
+fn push_text_layout_scales_glyph_cache_keys_to_physical_size() {
+    let mut font_system = TextFontSystem::new();
+    let mut context = TextContext::new();
+    let layout = context.layout(&mut font_system, TextLayoutOptions::new("Scale", 20.0));
+    if layout.is_empty() {
+        return;
+    }
+
+    let mut canvas = Canvas::new(128, 64, 2.0);
+    canvas
+        .push_text_layout(&layout, Point::new(4.0, 12.0), Brush::Solid(rgb(0, 0, 0)))
+        .expect("layout should produce a text draw");
+
+    assert!(!canvas.text_glyphs.is_empty());
+    let glyph = canvas.text_glyphs[0];
+    assert_eq!(f32::from_bits(glyph.cache_key.font_size_bits), 40.0);
+    assert!(glyph.x >= 8);
+}
+
+#[test]
 fn push_candlestick_records_sdf_without_path_storage() {
     let mut canvas = test_scene();
     canvas.push_candlestick(
