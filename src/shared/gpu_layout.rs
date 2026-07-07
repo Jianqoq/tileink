@@ -17,20 +17,19 @@ pub(crate) mod brush {
     pub(crate) const GPU_EXTEND_REFLECT: u32 = 2;
 }
 
-pub(crate) mod image_resource {
-    pub(crate) const GPU_IMAGE_RESOURCE_METADATA_STRIDE: usize = 4;
-}
-
 pub(crate) mod fine {
-    pub(crate) const STORAGE_BUFFER_COUNT: u32 = 8;
-    pub(crate) const IMAGE_RESOURCE_METADATA_BINDING: u32 = 55;
-    pub(crate) const IMAGE_RESOURCE_PIXELS_BINDING: u32 = 56;
+    pub(crate) const STORAGE_BUFFER_COUNT: u32 = 6;
+    pub(crate) const IMAGE_RESOURCE_ATLAS_BINDING: u32 = 8;
+    pub(crate) const IMAGE_RESOURCE_SAMPLER_BINDING: u32 = 9;
 }
 
 pub(crate) mod filter {
     pub(crate) const MAX_STORAGE_BUFFER_COUNT: u32 = 8;
-    pub(crate) const IMAGE_RESOURCE_METADATA_BINDING: u32 = 53;
-    pub(crate) const IMAGE_RESOURCE_PIXELS_BINDING: u32 = 54;
+    pub(crate) const SOURCE_SAMPLE_TEXTURE_BINDING: u32 = 49;
+    pub(crate) const AUX_SAMPLE_TEXTURE_BINDING: u32 = 50;
+    pub(crate) const LINEAR_SAMPLER_BINDING: u32 = 51;
+    pub(crate) const IMAGE_RESOURCE_ATLAS_BINDING: u32 = 56;
+    pub(crate) const IMAGE_RESOURCE_SAMPLER_BINDING: u32 = 57;
 }
 
 #[cfg(test)]
@@ -75,25 +74,40 @@ mod tests {
 
     #[test]
     fn image_resource_shader_bindings_match_rust_layout() {
-        assert_wgsl_binding(
-            FINE_HEADER,
-            fine::IMAGE_RESOURCE_METADATA_BINDING,
-            "image_resource_metadata",
-        );
-        assert_wgsl_binding(
-            FINE_HEADER,
-            fine::IMAGE_RESOURCE_PIXELS_BINDING,
-            "image_resource_pixels",
-        );
-        assert_wgsl_binding(
+        assert_wgsl_texture_binding(
             FILTER_HEADER,
-            filter::IMAGE_RESOURCE_METADATA_BINDING,
-            "image_resource_metadata",
+            filter::SOURCE_SAMPLE_TEXTURE_BINDING,
+            "filter_source_sample_texture",
         );
-        assert_wgsl_binding(
+        assert_wgsl_texture_binding(
             FILTER_HEADER,
-            filter::IMAGE_RESOURCE_PIXELS_BINDING,
-            "image_resource_pixels",
+            filter::AUX_SAMPLE_TEXTURE_BINDING,
+            "filter_aux_sample_texture",
+        );
+        assert_wgsl_sampler_binding(
+            FILTER_HEADER,
+            filter::LINEAR_SAMPLER_BINDING,
+            "filter_linear_sampler",
+        );
+        assert_wgsl_texture_binding(
+            FINE_HEADER,
+            fine::IMAGE_RESOURCE_ATLAS_BINDING,
+            "image_resource_atlas",
+        );
+        assert_wgsl_sampler_binding(
+            FINE_HEADER,
+            fine::IMAGE_RESOURCE_SAMPLER_BINDING,
+            "image_resource_sampler",
+        );
+        assert_wgsl_texture_binding(
+            FILTER_HEADER,
+            filter::IMAGE_RESOURCE_ATLAS_BINDING,
+            "image_resource_atlas",
+        );
+        assert_wgsl_sampler_binding(
+            FILTER_HEADER,
+            filter::IMAGE_RESOURCE_SAMPLER_BINDING,
+            "image_resource_sampler",
         );
     }
 
@@ -102,8 +116,13 @@ mod tests {
         assert!(source.contains(&needle), "missing WGSL constant `{needle}`");
     }
 
-    fn assert_wgsl_binding(source: &str, binding: u32, name: &str) {
-        let needle = format!("@group(0) @binding({binding}) var<storage, read> {name}:");
+    fn assert_wgsl_texture_binding(source: &str, binding: u32, name: &str) {
+        let needle = format!("@group(0) @binding({binding}) var {name}: texture_2d<f32>;");
+        assert!(source.contains(&needle), "missing WGSL binding `{needle}`");
+    }
+
+    fn assert_wgsl_sampler_binding(source: &str, binding: u32, name: &str) {
+        let needle = format!("@group(0) @binding({binding}) var {name}: sampler;");
         assert!(source.contains(&needle), "missing WGSL binding `{needle}`");
     }
 }

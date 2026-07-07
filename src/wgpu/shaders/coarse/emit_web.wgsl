@@ -2,14 +2,14 @@
 #include "text_input.wgsl"
 
 @group(0) @binding(1) var<storage, read> draw_records: array<DrawRecord>;
-@group(0) @binding(3) var<storage, read> text_blob: array<u32>;
-@group(0) @binding(13) var<storage, read> brush_blob: array<u32>;
-@group(0) @binding(14) var<storage, read> sdf_blob: array<u32>;
-@group(0) @binding(18) var<storage, read> path_records: array<PathRecord>;
-@group(0) @binding(19) var<storage, read_write> backdrops: array<atomic<i32>>;
-@group(0) @binding(20) var<storage, read> segment_ranges: array<TileSegmentRange>;
-@group(0) @binding(22) var<storage, read> layer_stack: array<LayerStackRecord>;
-@group(0) @binding(25) var<storage, read_write> coarse_work: array<u32>;
+@group(0) @binding(2) var<storage, read> text_blob: array<u32>;
+@group(0) @binding(3) var<storage, read> brush_blob: array<u32>;
+@group(0) @binding(4) var<storage, read> sdf_blob: array<u32>;
+@group(0) @binding(5) var<storage, read> path_records: array<PathRecord>;
+@group(0) @binding(6) var<storage, read_write> backdrops: array<atomic<i32>>;
+@group(0) @binding(7) var<storage, read> segment_ranges: array<TileSegmentRange>;
+@group(0) @binding(8) var<storage, read> layer_stack: array<LayerStackRecord>;
+@group(0) @binding(9) var<storage, read_write> coarse_work: array<u32>;
 
 @compute @workgroup_size(256)
 fn coarse_emit(

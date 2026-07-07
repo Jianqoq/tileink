@@ -1,11 +1,11 @@
 #include "common.wgsl"
 
-@group(0) @binding(2) var<storage, read> path_records: array<PathRecord>;
-@group(0) @binding(5) var<storage, read> scan_chunk_range_starts: array<u32>;
-@group(0) @binding(6) var<storage, read> scan_chunk_range_ends: array<u32>;
-@group(0) @binding(12) var<storage, read_write> segment_bumps: array<u32>;
-@group(0) @binding(13) var<storage, read_write> chunk_totals: array<u32>;
-@group(0) @binding(14) var<storage, read_write> chunk_offsets: array<u32>;
+@group(0) @binding(1) var<storage, read> path_records: array<PathRecord>;
+@group(0) @binding(2) var<storage, read> scan_chunk_range_starts: array<u32>;
+@group(0) @binding(3) var<storage, read> scan_chunk_range_ends: array<u32>;
+@group(0) @binding(4) var<storage, read_write> segment_bumps: array<u32>;
+@group(0) @binding(5) var<storage, read_write> chunk_totals: array<u32>;
+@group(0) @binding(6) var<storage, read_write> chunk_offsets: array<u32>;
 
 @compute @workgroup_size(256)
 fn scan_chunk_offsets(@builtin(global_invocation_id) global_id: vec3<u32>) {

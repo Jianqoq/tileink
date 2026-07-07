@@ -9,7 +9,7 @@ use crate::{
     shared::{
         bounds::{Bounds, PixelBounds},
         image::Image,
-        image_resource::ImageResourceStore,
+        image_resource::ImageResourceResolver,
         line_seg::LineSegment,
         pixel::{TileBuffer, coverage_f32_to_u8},
         sdf::Sdf,
@@ -29,7 +29,7 @@ pub struct FineCpuPrepared<'a> {
     target_bounds: Bounds,
     tiles_size: (u32, u32),
     text: Option<&'a PreparedTextData>,
-    image_resources: Option<&'a ImageResourceStore>,
+    image_resources: ImageResourceResolver<'a>,
 }
 
 impl<'a> FineCpuPrepared<'a> {
@@ -114,7 +114,7 @@ struct FineTileResources<'a> {
     tile_glyphs: &'a [u32],
     segments: &'a [LineSegment],
     text: Option<&'a PreparedTextData>,
-    image_resources: Option<&'a ImageResourceStore>,
+    image_resources: ImageResourceResolver<'a>,
 }
 
 fn render_tile(
@@ -413,7 +413,7 @@ impl FineCpuPipeline {
         target_bounds: Bounds,
         tiles_size: (u32, u32),
         text: Option<&'a PreparedTextData>,
-        image_resources: Option<&'a ImageResourceStore>,
+        image_resources: impl Into<ImageResourceResolver<'a>>,
     ) -> FineCpuPrepared<'a> {
         FineCpuPrepared {
             tile_ptcl_ranges,
@@ -424,7 +424,7 @@ impl FineCpuPipeline {
             target_bounds,
             tiles_size,
             text,
-            image_resources,
+            image_resources: image_resources.into(),
         }
     }
 }

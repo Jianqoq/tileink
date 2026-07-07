@@ -6,7 +6,7 @@ use crate::shared::{
     brush::{Brush, ENCODED_BRUSH_HEADER_WORDS, push_encoded_brush},
     draw_record::DrawRecord,
     execution::ExecOp,
-    image_resource::{GpuImageResourceUpload, ImageKey},
+    image_resource::{AtlasRect, GpuImageResourceUpload, ImageResourceId},
     layer::{
         Layer,
         filter::{Filter, FilterPrimitiveKind},
@@ -93,14 +93,24 @@ impl GpuBrushUpload {
             self.clear_missing_resource_pattern(base);
             return;
         };
-        if payload.len() < 2 {
+        if payload.len() < 3 {
             self.clear_missing_resource_pattern(base);
             return;
         }
-        let key = ImageKey(payload[0] as u64 | ((payload[1] as u64) << 32));
-        if let Some(index) = image_resources.and_then(|resources| resources.image_index(key)) {
-            self.blob[base + 2] = index;
-            self.blob[base + 3] = 0;
+        let id = ImageResourceId::decode(payload[0], payload[1], payload[2]);
+        if let Some(rect) = image_resources.and_then(|resources| resources.image_rect(id)) {
+            self.patch_atlas_resource_pattern(base, rect);
+        } else {
+            self.clear_missing_resource_pattern(base);
+        }
+    }
+
+    fn patch_atlas_resource_pattern(&mut self, base: usize, rect: AtlasRect) {
+        if rect.width > 0 && rect.height > 0 {
+            self.blob[base + 2] = rect.x;
+            self.blob[base + 3] = rect.y;
+            self.blob[base + 5] = rect.width;
+            self.blob[base + 6] = rect.height;
         } else {
             self.clear_missing_resource_pattern(base);
         }
@@ -110,6 +120,8 @@ impl GpuBrushUpload {
         self.blob[base] = GPU_BRUSH_PATTERN;
         self.blob[base + 2] = ENCODED_BRUSH_HEADER_WORDS as u32;
         self.blob[base + 3] = 0;
+        self.blob[base + 5] = 0;
+        self.blob[base + 6] = 0;
     }
 }
 

@@ -2,8 +2,8 @@
 
 @group(0) @binding(1) var<storage, read> lines: array<Line>;
 @group(0) @binding(2) var<storage, read> path_records: array<PathRecord>;
-@group(0) @binding(11) var<storage, read_write> segment_tile_cursors: array<atomic<u32>>;
-@group(0) @binding(15) var<storage, read_write> segments: array<LineSegment>;
+@group(0) @binding(3) var<storage, read_write> segment_tile_cursors: array<atomic<u32>>;
+@group(0) @binding(4) var<storage, read_write> segments: array<LineSegment>;
 
 @compute @workgroup_size(256)
 fn scan_emit(@builtin(global_invocation_id) global_id: vec3<u32>) {

@@ -513,7 +513,7 @@ impl Renderer {
         let (max_clip_depth, max_group_depth) =
             profile_cpu("prepare.stack_depths", || plan_stack_depths(&plan));
         profile_cpu("prepare.upload_scene", || {
-            self.prepare_image_resource_buffers(false);
+            self.prepare_image_resource_buffers(canvas.scene_image_resources(), false);
             self.scene_buffers.upload(
                 &self.device,
                 &self.queue,
@@ -567,14 +567,17 @@ impl Renderer {
         self.plan = Some(plan);
     }
 
-    fn prepare_image_resource_buffers(&mut self, force_upload: bool) {
-        let mut upload = force_upload;
-        if self.image_resources_dirty {
-            self.image_resource_upload = self.image_resources.upload();
-            self.image_resources_dirty = false;
-            upload = true;
-        }
-        if upload {
+    fn prepare_image_resource_buffers(
+        &mut self,
+        scene_resources: &ImageResourceStore,
+        force_upload: bool,
+    ) {
+        self.image_resource_upload = self.image_resources.upload_merged(
+            scene_resources,
+            self.device.limits().max_texture_dimension_2d,
+        );
+        self.image_resources_dirty = false;
+        if force_upload || !self.image_resource_upload.atlas_pixels.is_empty() {
             self.scene_buffers.upload_image_resources(
                 &self.device,
                 &self.queue,
@@ -688,7 +691,7 @@ impl Renderer {
         self.max_group_depth = max_group_depth;
         self.plan = Some(plan.clone());
         profile_cpu("prepare.local.upload_scene", || {
-            self.prepare_image_resource_buffers(true);
+            self.prepare_image_resource_buffers(canvas.scene_image_resources(), true);
             self.scene_buffers.upload(
                 &self.device,
                 &self.queue,
@@ -1812,8 +1815,8 @@ impl Renderer {
         let image_resources = self.scene_buffers.image_resource_bindings();
         WgpuFilterBrushBindings {
             blob: self.filter_brushes.blob.buffer(),
-            image_resource_metadata: image_resources.0,
-            image_resource_pixels: image_resources.1,
+            image_resource_atlas: image_resources.atlas,
+            image_resource_sampler: image_resources.sampler,
         }
     }
 

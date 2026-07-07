@@ -25,7 +25,7 @@ use crate::{
 
 use super::super::buffer::WgpuBuffer;
 use super::super::profile::profile_cpu;
-use super::{WgpuCoarseBuffers, WgpuSceneBuffers};
+use super::{WgpuCoarseBuffers, WgpuSceneBuffers, create_image_resource_atlas_texture};
 
 #[derive(Default)]
 pub(crate) struct WgpuSceneUploadStaging {
@@ -218,18 +218,37 @@ impl WgpuSceneBuffers {
         queue: &::wgpu::Queue,
         upload: &GpuImageResourceUpload,
     ) {
-        self.image_resource_metadata.upload(
-            device,
-            queue,
-            "tileink wgpu image resource metadata",
-            &upload.metadata,
+        let atlas_width = upload.atlas_width.max(1);
+        let atlas_height = upload.atlas_height.max(1);
+        let atlas_capacity = grow_image_resource_atlas_capacity(
+            self.image_resource_atlas_size,
+            (atlas_width, atlas_height),
+            device.limits().max_texture_dimension_2d,
         );
-        self.image_resource_pixels.upload(
-            device,
-            queue,
-            "tileink wgpu image resource pixels",
-            &upload.pixels,
-        );
+        if self.image_resource_atlas_size != atlas_capacity {
+            self.image_resource_atlas =
+                create_image_resource_atlas_texture(device, atlas_capacity.0, atlas_capacity.1);
+            self.image_resource_atlas_view = self
+                .image_resource_atlas
+                .create_view(&::wgpu::TextureViewDescriptor::default());
+            self.image_resource_atlas_size = atlas_capacity;
+        }
+        if !upload.atlas_pixels.is_empty() {
+            queue.write_texture(
+                self.image_resource_atlas.as_image_copy(),
+                bytemuck::cast_slice(&upload.atlas_pixels),
+                ::wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(atlas_width * std::mem::size_of::<u32>() as u32),
+                    rows_per_image: Some(atlas_height),
+                },
+                ::wgpu::Extent3d {
+                    width: atlas_width,
+                    height: atlas_height,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -548,6 +567,73 @@ impl WgpuSceneBuffers {
             queue,
             "tileink wgpu canvas cumsum row chunk ends",
             &staging.cumsum_plan.row_chunk_ends,
+        );
+    }
+}
+
+fn grow_image_resource_atlas_capacity(
+    current: (u32, u32),
+    required: (u32, u32),
+    max_dimension: u32,
+) -> (u32, u32) {
+    (
+        grow_image_resource_atlas_axis(current.0, required.0, max_dimension),
+        grow_image_resource_atlas_axis(current.1, required.1, max_dimension),
+    )
+}
+
+fn grow_image_resource_atlas_axis(current: u32, required: u32, max_dimension: u32) -> u32 {
+    let required = required.max(1);
+    let max_dimension = max_dimension.max(1);
+    let mut capacity = current.max(1).min(max_dimension);
+    while capacity < required {
+        let doubled = capacity.saturating_mul(2).min(max_dimension);
+        if doubled <= capacity {
+            capacity = required.min(max_dimension);
+            break;
+        }
+        capacity = doubled;
+    }
+    capacity
+}
+
+#[cfg(test)]
+mod tests {
+    use super::grow_image_resource_atlas_capacity;
+
+    #[test]
+    fn image_resource_atlas_capacity_reuses_existing_texture_when_it_fits() {
+        assert_eq!(
+            grow_image_resource_atlas_capacity((256, 128), (128, 64), 4096),
+            (256, 128)
+        );
+        assert_eq!(
+            grow_image_resource_atlas_capacity((256, 128), (256, 128), 4096),
+            (256, 128)
+        );
+    }
+
+    #[test]
+    fn image_resource_atlas_capacity_grows_by_doubling_until_required_size_fits() {
+        assert_eq!(
+            grow_image_resource_atlas_capacity((256, 128), (257, 129), 4096),
+            (512, 256)
+        );
+        assert_eq!(
+            grow_image_resource_atlas_capacity((256, 128), (900, 129), 4096),
+            (1024, 256)
+        );
+    }
+
+    #[test]
+    fn image_resource_atlas_capacity_respects_device_limit() {
+        assert_eq!(
+            grow_image_resource_atlas_capacity((4096, 4096), (5000, 5000), 6000),
+            (6000, 6000)
+        );
+        assert_eq!(
+            grow_image_resource_atlas_capacity((1, 1), (0, 0), 4096),
+            (1, 1)
         );
     }
 }

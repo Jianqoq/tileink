@@ -133,7 +133,7 @@ fn render_path_text_rasterizes_vector_outlines_without_text_atlas() {
 fn render_push_image_samples_external_image() {
     let mut canvas = Canvas::new(4, 2, 1.0);
     canvas
-        .push_image_with_sampling(
+        .push_image(
             Rect::new(0.0, 0.0, 4.0, 2.0),
             Image::from_rgba8(
                 2,
@@ -143,6 +143,7 @@ fn render_push_image_samples_external_image() {
                     0, 0, 255, 128,
                 ],
             ),
+            peniko::Extend::Pad,
             PatternSampling::Nearest,
         )
         .expect("push image");
@@ -159,7 +160,12 @@ fn render_push_image_key_samples_renderer_resource() {
     let key = ImageKey::new(7);
     let mut canvas = Canvas::new(4, 2, 1.0);
     canvas
-        .push_image_key(Rect::new(0.0, 0.0, 4.0, 2.0), key, PatternSampling::Nearest)
+        .push_image_key(
+            Rect::new(0.0, 0.0, 4.0, 2.0),
+            key,
+            peniko::Extend::Pad,
+            PatternSampling::Nearest,
+        )
         .expect("push image resource");
 
     let mut renderer = Renderer::new(4, 2, Color::TRANSPARENT);
@@ -185,7 +191,12 @@ fn render_push_image_key_stops_sampling_after_resource_remove() {
     let key = ImageKey::new(8);
     let mut canvas = Canvas::new(2, 1, 1.0);
     canvas
-        .push_image_key(Rect::new(0.0, 0.0, 2.0, 1.0), key, PatternSampling::Nearest)
+        .push_image_key(
+            Rect::new(0.0, 0.0, 2.0, 1.0),
+            key,
+            peniko::Extend::Pad,
+            PatternSampling::Nearest,
+        )
         .expect("push image resource");
 
     let mut renderer = Renderer::new(2, 1, Color::TRANSPARENT);
@@ -204,7 +215,12 @@ fn render_push_image_key_stops_sampling_after_resource_clear() {
     let key = ImageKey::new(9);
     let mut canvas = Canvas::new(2, 1, 1.0);
     canvas
-        .push_image_key(Rect::new(0.0, 0.0, 2.0, 1.0), key, PatternSampling::Nearest)
+        .push_image_key(
+            Rect::new(0.0, 0.0, 2.0, 1.0),
+            key,
+            peniko::Extend::Pad,
+            PatternSampling::Nearest,
+        )
         .expect("push image resource");
 
     let mut renderer = Renderer::new(2, 1, Color::TRANSPARENT);

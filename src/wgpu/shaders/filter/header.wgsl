@@ -250,8 +250,11 @@ struct LayerStackRecord {
 @group(0) @binding(46) var<storage, read> path_p0y: array<i32>;
 @group(0) @binding(47) var<storage, read> path_p1x: array<i32>;
 @group(0) @binding(48) var<storage, read> path_p1y: array<i32>;
-@group(0) @binding(53) var<storage, read> image_resource_metadata: array<u32>;
-@group(0) @binding(54) var<storage, read> image_resource_pixels: array<u32>;
+@group(0) @binding(49) var filter_source_sample_texture: texture_2d<f32>;
+@group(0) @binding(50) var filter_aux_sample_texture: texture_2d<f32>;
+@group(0) @binding(51) var filter_linear_sampler: sampler;
+@group(0) @binding(56) var image_resource_atlas: texture_2d<f32>;
+@group(0) @binding(57) var image_resource_sampler: sampler;
 
 fn brush_word(index: u32) -> u32 {
     return brush_blob[index];

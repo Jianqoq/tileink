@@ -4,7 +4,7 @@ pub(super) fn apply(
     image: &mut Image,
     primitives: &[FilterPrimitive],
     bounds: Bounds,
-    image_resources: Option<&ImageResourceStore>,
+    image_resources: ImageResourceResolver<'_>,
 ) {
     let source_graphic = image.clone();
     let source_alpha = source_alpha_image(&source_graphic);
@@ -35,7 +35,7 @@ fn apply_graph_primitive(
     source_graphic: &Image,
     source_alpha: &Image,
     outputs: &[Image],
-    image_resources: Option<&ImageResourceStore>,
+    image_resources: ImageResourceResolver<'_>,
 ) -> Image {
     // Primitive subregions clip only the primitive output. Inputs still sample
     // from the full filter bounds, which is required for blur/offset chains.
@@ -148,7 +148,7 @@ fn brush_image(
     bounds: Bounds,
     region: Bounds,
     brush: &Brush,
-    image_resources: Option<&ImageResourceStore>,
+    image_resources: ImageResourceResolver<'_>,
 ) -> Image {
     let mut image = Image::new(width, height, peniko::Color::TRANSPARENT);
     if region.is_empty() {

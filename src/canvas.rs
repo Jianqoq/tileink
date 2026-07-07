@@ -1,7 +1,7 @@
 use std::sync::Arc as SharedArc;
 
 use peniko::{
-    Color, Compose, Mix,
+    Color, Compose, Extend, Mix,
     kurbo::{
         Affine, Arc, BezPath, Circle, Point, Rect, Shape, Stroke, StrokeOpts,
         stroke as kurbo_stroke,
@@ -19,7 +19,7 @@ use crate::shared::{
     fill::FillRule,
     gpu_sdf::{decode_sdf, decode_sdf_shadow, push_encoded_sdf, push_encoded_sdf_shadow},
     image::Image,
-    image_resource::ImageKey,
+    image_resource::{ImageKey, ImageResourceStore},
     layer::{
         Layer, LayerKind,
         blend::Blend,
@@ -61,6 +61,7 @@ pub struct Canvas {
     pub(crate) sdf_shadow_blob: Vec<u32>,
     pub(crate) text_glyphs: Vec<crate::text::CanvasGlyph>,
     pub(crate) text_runs: Vec<TextRun>,
+    pub(crate) scene_images: ImageResourceStore,
     pub(crate) command_lists: Vec<CommandList>,
     root_commands: CommandListId,
     command_stack: Vec<CommandListId>,
@@ -128,6 +129,15 @@ fn scaled_positive_u32(value: u32, scale: f32) -> u32 {
         .round()
         .max(1.0)
         .min(u32::MAX as f32) as u32
+}
+
+fn image_rect_is_valid(rect: Rect) -> bool {
+    rect.x0.is_finite()
+        && rect.y0.is_finite()
+        && rect.x1.is_finite()
+        && rect.y1.is_finite()
+        && rect.width() > 0.0
+        && rect.height() > 0.0
 }
 
 #[derive(Clone, Copy)]
@@ -421,6 +431,7 @@ impl Canvas {
             sdf_shadow_blob: Vec::new(),
             text_glyphs: Vec::new(),
             text_runs: Vec::new(),
+            scene_images: ImageResourceStore::default(),
             command_lists: vec![CommandList::default()],
             root_commands: ROOT_COMMAND_LIST_ID,
             command_stack: vec![ROOT_COMMAND_LIST_ID],
@@ -1046,6 +1057,8 @@ impl Canvas {
         let path_record_start = self.path_records.len();
         let draw_start = self.draw_records.len();
 
+        self.scene_images.extend_from(&other.scene_images);
+
         self.lines.reserve(other.lines.len());
         for &line in &other.lines {
             let mut line = line;
@@ -1490,27 +1503,31 @@ impl Canvas {
         self.draw_id_from_index(draw)
     }
 
-    /// Adds an external image scaled into `rect`.
+    /// Adds an external image scaled into `rect` with explicit extend and sampling.
     ///
     /// The image is stored as a pattern brush, so CPU and wgpu renderers share
     /// the same upload/sampling path used by SVG raster images. Empty images,
     /// empty rectangles, and non-finite rectangles are ignored.
-    pub fn push_image(&mut self, rect: Rect, image: impl Into<SharedArc<Image>>) -> Option<DrawId> {
-        self.push_image_with_sampling(rect, image, PatternSampling::Bilinear)
-    }
-
-    /// Adds an external image scaled into `rect` with explicit sampling.
-    pub fn push_image_with_sampling(
+    pub fn push_image(
         &mut self,
         rect: Rect,
         image: impl Into<SharedArc<Image>>,
+        extend: Extend,
         sampling: PatternSampling,
     ) -> Option<DrawId> {
-        let brush = Brush::from_image_with_sampling(image, rect, sampling)?;
+        if !image_rect_is_valid(rect) {
+            return None;
+        }
+        let image = image.into();
+        if image.width == 0 || image.height == 0 {
+            return None;
+        }
+        let key = self.register_scene_image(image)?;
+        let brush = Brush::from_scene_image_key_with_options(key, rect, extend, sampling, 255)?;
         Some(self.push_rect(rect, Radius::ZERO, brush))
     }
 
-    /// Adds a renderer-owned image resource scaled into `rect` with explicit sampling.
+    /// Adds a renderer-owned image resource scaled into `rect` with explicit extend and sampling.
     ///
     /// The scene only stores `key`; CPU and wgpu renderers resolve the image
     /// through their resource tables at render time.
@@ -1518,10 +1535,27 @@ impl Canvas {
         &mut self,
         rect: Rect,
         key: ImageKey,
+        extend: Extend,
         sampling: PatternSampling,
     ) -> Option<DrawId> {
-        let brush = Brush::from_image_key(key, rect, sampling)?;
+        let brush = Brush::from_image_key_with_options(key, rect, extend, sampling, 255)?;
         Some(self.push_rect(rect, Radius::ZERO, brush))
+    }
+
+    pub(crate) fn register_scene_image(
+        &mut self,
+        image: impl Into<SharedArc<Image>>,
+    ) -> Option<ImageKey> {
+        let image = image.into();
+        let key = ImageKey::new(SharedArc::as_ptr(&image) as usize as u64);
+        if self.scene_images.get(key).is_some() {
+            return Some(key);
+        }
+        self.scene_images.insert(key, image).then_some(key)
+    }
+
+    pub(crate) fn scene_image_resources(&self) -> &ImageResourceStore {
+        &self.scene_images
     }
 
     pub fn push_rect_stroke(
@@ -2202,6 +2236,7 @@ impl Canvas {
         self.sdf_shadow_blob.clear();
         self.text_glyphs.clear();
         self.text_runs.clear();
+        self.scene_images.clear();
         self.command_lists.clear();
         self.command_lists.push(CommandList::default());
         self.root_commands = ROOT_COMMAND_LIST_ID;

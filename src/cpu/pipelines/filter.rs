@@ -3,7 +3,7 @@ use crate::{
     shared::{
         bounds::Bounds,
         image::Image,
-        image_resource::ImageResourceStore,
+        image_resource::ImageResourceResolver,
         layer::{
             filter::{self as filter_model, Filter, FilterSurfaceBounds},
             region::Region,
@@ -19,7 +19,7 @@ pub struct FilterCpuPrepared<'a> {
     bounds: Bounds,
     surface_size: (u32, u32),
     backdrop_region: Option<&'a Region>,
-    image_resources: Option<&'a ImageResourceStore>,
+    image_resources: ImageResourceResolver<'a>,
 }
 
 impl<'a> FilterCpuPrepared<'a> {
@@ -54,7 +54,7 @@ impl FilterCpuPipeline {
         image: &'a mut Image,
         filter: &'a Filter,
         bounds: Bounds,
-        image_resources: Option<&'a ImageResourceStore>,
+        image_resources: impl Into<ImageResourceResolver<'a>>,
     ) -> FilterCpuPrepared<'a> {
         let surface_size = (image.width, image.height);
         FilterCpuPrepared {
@@ -63,7 +63,7 @@ impl FilterCpuPipeline {
             bounds,
             surface_size,
             backdrop_region: None,
-            image_resources,
+            image_resources: image_resources.into(),
         }
     }
 
@@ -74,7 +74,7 @@ impl FilterCpuPipeline {
         bounds: Bounds,
         surface_size: (u32, u32),
         region: &'a Region,
-        image_resources: Option<&'a ImageResourceStore>,
+        image_resources: impl Into<ImageResourceResolver<'a>>,
     ) -> FilterCpuPrepared<'a> {
         FilterCpuPrepared {
             image,
@@ -82,7 +82,7 @@ impl FilterCpuPipeline {
             bounds,
             surface_size,
             backdrop_region: Some(region),
-            image_resources,
+            image_resources: image_resources.into(),
         }
     }
 

@@ -1,10 +1,10 @@
 #include "common.wgsl"
 
-@group(0) @binding(3) var<storage, read> scan_chunk_backdrop_offsets: array<u32>;
-@group(0) @binding(4) var<storage, read> scan_chunk_lens: array<u32>;
-@group(0) @binding(8) var<storage, read_write> segment_ranges: array<TileSegmentRange>;
-@group(0) @binding(10) var<storage, read_write> segment_tile_counts: array<atomic<u32>>;
-@group(0) @binding(13) var<storage, read_write> chunk_totals: array<u32>;
+@group(0) @binding(1) var<storage, read> scan_chunk_backdrop_offsets: array<u32>;
+@group(0) @binding(2) var<storage, read> scan_chunk_lens: array<u32>;
+@group(0) @binding(3) var<storage, read_write> segment_ranges: array<TileSegmentRange>;
+@group(0) @binding(4) var<storage, read_write> segment_tile_counts: array<atomic<u32>>;
+@group(0) @binding(5) var<storage, read_write> chunk_totals: array<u32>;
 
 var<workgroup> scan_scratch: array<u32, 256>;
 

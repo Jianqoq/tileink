@@ -10,7 +10,7 @@ use crate::{
     },
     shared::{
         bounds::Bounds, draw_record::DrawRecord, execution::LayerStackEntry, image::Image,
-        image_resource::ImageResourceStore,
+        image_resource::ImageResourceResolver,
     },
     text::PreparedTextData,
 };
@@ -86,14 +86,14 @@ pub(in crate::cpu) fn run_coarse(
         .run();
 }
 
-pub(in crate::cpu) fn run_fine(
+pub(in crate::cpu) fn run_fine<'a>(
     fine: &FineCpuPipeline,
-    canvas: &crate::canvas::Canvas,
-    target: &mut Image,
+    canvas: &'a crate::canvas::Canvas,
+    target: &'a mut Image,
     target_bounds: Bounds,
-    buffers: &RasterBuffers,
-    text: Option<&PreparedTextData>,
-    image_resources: Option<&ImageResourceStore>,
+    buffers: &'a RasterBuffers,
+    text: Option<&'a PreparedTextData>,
+    image_resources: impl Into<ImageResourceResolver<'a>>,
 ) {
     fine.prepare(
         &buffers.tile_ptcl_ranges,

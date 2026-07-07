@@ -580,12 +580,12 @@ impl WgpuCoarsePipeline {
             entries: &[
                 bind_config_buffer(0, &self.config, config_offset, self.config_size),
                 bind_buffer(1, bindings.draw_records),
-                bind_buffer(3, bindings.text_blob),
-                bind_buffer(18, bindings.path_records),
-                bind_buffer(19, bindings.backdrops),
-                bind_buffer(20, bindings.segment_ranges),
-                bind_buffer(22, bindings.layer_stack),
-                bind_buffer(25, bindings.coarse_work),
+                bind_buffer(2, bindings.text_blob),
+                bind_buffer(3, bindings.path_records),
+                bind_buffer(4, bindings.backdrops),
+                bind_buffer(5, bindings.segment_ranges),
+                bind_buffer(6, bindings.layer_stack),
+                bind_buffer(7, bindings.coarse_work),
             ],
         })
     }
@@ -602,13 +602,13 @@ impl WgpuCoarsePipeline {
             entries: &[
                 bind_config_buffer(0, &self.config, config_offset, self.config_size),
                 bind_buffer(1, bindings.draw_records),
-                bind_buffer(3, bindings.text_blob),
-                bind_buffer(18, bindings.path_records),
-                bind_buffer(19, bindings.backdrops),
-                bind_buffer(20, bindings.segment_ranges),
-                bind_buffer(22, bindings.layer_stack),
-                bind_buffer(25, bindings.coarse_work),
-                bind_buffer(31, bindings.chunk_records),
+                bind_buffer(2, bindings.text_blob),
+                bind_buffer(3, bindings.path_records),
+                bind_buffer(4, bindings.backdrops),
+                bind_buffer(5, bindings.segment_ranges),
+                bind_buffer(6, bindings.layer_stack),
+                bind_buffer(7, bindings.coarse_work),
+                bind_buffer(8, bindings.chunk_records),
             ],
         })
     }
@@ -625,14 +625,14 @@ impl WgpuCoarsePipeline {
             entries: &[
                 bind_config_buffer(0, &self.config, config_offset, self.config_size),
                 bind_buffer(1, bindings.draw_records),
-                bind_buffer(3, bindings.text_blob),
-                bind_buffer(13, bindings.brush_blob),
-                bind_buffer(14, bindings.sdf_blob),
-                bind_buffer(18, bindings.path_records),
-                bind_buffer(19, bindings.backdrops),
-                bind_buffer(20, bindings.segment_ranges),
-                bind_buffer(22, bindings.layer_stack),
-                bind_buffer(25, bindings.coarse_work),
+                bind_buffer(2, bindings.text_blob),
+                bind_buffer(3, bindings.brush_blob),
+                bind_buffer(4, bindings.sdf_blob),
+                bind_buffer(5, bindings.path_records),
+                bind_buffer(6, bindings.backdrops),
+                bind_buffer(7, bindings.segment_ranges),
+                bind_buffer(8, bindings.layer_stack),
+                bind_buffer(9, bindings.coarse_work),
             ],
         })
     }
@@ -702,12 +702,12 @@ fn count_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
     vec![
         uniform_entry(0),
         storage_entry(1, true),
+        storage_entry(2, true),
         storage_entry(3, true),
-        storage_entry(18, true),
-        storage_entry(19, false),
-        storage_entry(20, true),
-        storage_entry(22, true),
-        storage_entry(25, false),
+        storage_entry(4, false),
+        storage_entry(5, true),
+        storage_entry(6, true),
+        storage_entry(7, false),
     ]
 }
 
@@ -715,13 +715,13 @@ fn prefix_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
     vec![
         uniform_entry(0),
         storage_entry(1, true),
+        storage_entry(2, true),
         storage_entry(3, true),
-        storage_entry(18, true),
-        storage_entry(19, false),
-        storage_entry(20, true),
-        storage_entry(22, true),
-        storage_entry(25, false),
-        storage_entry(31, false),
+        storage_entry(4, false),
+        storage_entry(5, true),
+        storage_entry(6, true),
+        storage_entry(7, false),
+        storage_entry(8, false),
     ]
 }
 
@@ -729,14 +729,14 @@ fn emit_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
     vec![
         uniform_entry(0),
         storage_entry(1, true),
+        storage_entry(2, true),
         storage_entry(3, true),
-        storage_entry(13, true),
-        storage_entry(14, true),
-        storage_entry(18, true),
-        storage_entry(19, false),
-        storage_entry(20, true),
-        storage_entry(22, true),
-        storage_entry(25, false),
+        storage_entry(4, true),
+        storage_entry(5, true),
+        storage_entry(6, false),
+        storage_entry(7, true),
+        storage_entry(8, true),
+        storage_entry(9, false),
     ]
 }
 
@@ -819,11 +819,28 @@ mod tests {
     }
 
     #[test]
+    fn coarse_layout_entries_are_contiguous() {
+        for entries in [
+            count_layout_entries(),
+            prefix_layout_entries(),
+            emit_layout_entries(),
+        ] {
+            assert_contiguous_bindings(&entries);
+        }
+    }
+
+    #[test]
     fn profile_coarse_passes_only_accepts_one() {
         assert!(profile_coarse_passes_value(Some("1")));
         assert!(!profile_coarse_passes_value(None));
         assert!(!profile_coarse_passes_value(Some("true")));
         assert!(!profile_coarse_passes_value(Some("0")));
+    }
+
+    fn assert_contiguous_bindings(entries: &[::wgpu::BindGroupLayoutEntry]) {
+        for (expected, entry) in entries.iter().enumerate() {
+            assert_eq!(entry.binding, expected as u32);
+        }
     }
 
     fn storage_count(entries: &[::wgpu::BindGroupLayoutEntry]) -> u32 {

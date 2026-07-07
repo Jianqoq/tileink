@@ -547,23 +547,17 @@ fn liquid_glass_sample_alpha(x: f32, y: f32) -> f32 {
 }
 
 fn liquid_glass_sample_straight_channel(image_kind: u32, x: f32, y: f32, channel: u32) -> f32 {
-    if (image_kind == 1u && config.downsample > 1u) {
-        return liquid_glass_sample_downsampled_blur_straight_channel(x, y, channel);
+    let rgba = liquid_glass_sample_straight_rgba(image_kind, x, y);
+    if (channel == 1u) {
+        return rgba.g;
     }
-
-    let sx = clamp(x, 0.0, f32(config.width - 1u));
-    let sy = clamp(y, 0.0, f32(config.height - 1u));
-    let x0 = u32(floor(sx));
-    let y0 = u32(floor(sy));
-    let x1 = min(x0 + 1u, config.width - 1u);
-    let y1 = min(y0 + 1u, config.height - 1u);
-    let tx = sx - f32(x0);
-    let ty = sy - f32(y0);
-    let tl = liquid_glass_pixel_straight_channel(liquid_glass_image_pixel(image_kind, x0, y0), channel);
-    let tr = liquid_glass_pixel_straight_channel(liquid_glass_image_pixel(image_kind, x1, y0), channel);
-    let bl = liquid_glass_pixel_straight_channel(liquid_glass_image_pixel(image_kind, x0, y1), channel);
-    let br = liquid_glass_pixel_straight_channel(liquid_glass_image_pixel(image_kind, x1, y1), channel);
-    return lerp_f32(lerp_f32(tl, tr, tx), lerp_f32(bl, br, tx), ty);
+    if (channel == 2u) {
+        return rgba.b;
+    }
+    if (channel == 3u) {
+        return rgba.a;
+    }
+    return rgba.r;
 }
 
 fn liquid_glass_sample_straight_rgba(image_kind: u32, x: f32, y: f32) -> vec4<f32> {
@@ -573,17 +567,10 @@ fn liquid_glass_sample_straight_rgba(image_kind: u32, x: f32, y: f32) -> vec4<f3
 
     let sx = clamp(x, 0.0, f32(config.width - 1u));
     let sy = clamp(y, 0.0, f32(config.height - 1u));
-    let x0 = u32(floor(sx));
-    let y0 = u32(floor(sy));
-    let x1 = min(x0 + 1u, config.width - 1u);
-    let y1 = min(y0 + 1u, config.height - 1u);
-    let tx = sx - f32(x0);
-    let ty = sy - f32(y0);
-    let tl = liquid_glass_pixel_straight_rgba(liquid_glass_image_pixel(image_kind, x0, y0));
-    let tr = liquid_glass_pixel_straight_rgba(liquid_glass_image_pixel(image_kind, x1, y0));
-    let bl = liquid_glass_pixel_straight_rgba(liquid_glass_image_pixel(image_kind, x0, y1));
-    let br = liquid_glass_pixel_straight_rgba(liquid_glass_image_pixel(image_kind, x1, y1));
-    return lerp_vec4(lerp_vec4(tl, tr, tx), lerp_vec4(bl, br, tx), ty);
+    if (image_kind == 1u) {
+        return liquid_glass_premul_to_straight_rgba(filter_aux_sample_premul(sx, sy));
+    }
+    return liquid_glass_premul_to_straight_rgba(filter_source_sample_premul(sx, sy));
 }
 
 fn liquid_glass_sample_downsampled_blur_straight_rgba(x: f32, y: f32) -> vec4<f32> {
@@ -592,56 +579,33 @@ fn liquid_glass_sample_downsampled_blur_straight_rgba(x: f32, y: f32) -> vec4<f3
     }
     let sx = clamp(x, 0.0, f32(config.width - 1u));
     let sy = clamp(y, 0.0, f32(config.height - 1u));
-    let x0 = u32(floor(sx));
-    let y0 = u32(floor(sy));
-    let x1 = min(x0 + 1u, config.width - 1u);
-    let y1 = min(y0 + 1u, config.height - 1u);
-    let tx = sx - f32(x0);
-    let ty = sy - f32(y0);
-    let tl = liquid_glass_pixel_straight_rgba(liquid_glass_downsampled_blur_pixel_at_full_res(x0, y0));
-    let tr = liquid_glass_pixel_straight_rgba(liquid_glass_downsampled_blur_pixel_at_full_res(x1, y0));
-    let bl = liquid_glass_pixel_straight_rgba(liquid_glass_downsampled_blur_pixel_at_full_res(x0, y1));
-    let br = liquid_glass_pixel_straight_rgba(liquid_glass_downsampled_blur_pixel_at_full_res(x1, y1));
-    return lerp_vec4(lerp_vec4(tl, tr, tx), lerp_vec4(bl, br, tx), ty);
+    return liquid_glass_downsampled_blur_straight_rgba_at_full_res(sx, sy);
 }
 
 fn liquid_glass_sample_downsampled_blur_straight_channel(x: f32, y: f32, channel: u32) -> f32 {
-    if (config.source_x0 >= config.source_x1 || config.source_y0 >= config.source_y1) {
-        return 0.0;
+    let rgba = liquid_glass_sample_downsampled_blur_straight_rgba(x, y);
+    if (channel == 1u) {
+        return rgba.g;
     }
-    let sx = clamp(x, 0.0, f32(config.width - 1u));
-    let sy = clamp(y, 0.0, f32(config.height - 1u));
-    let x0 = u32(floor(sx));
-    let y0 = u32(floor(sy));
-    let x1 = min(x0 + 1u, config.width - 1u);
-    let y1 = min(y0 + 1u, config.height - 1u);
-    let tx = sx - f32(x0);
-    let ty = sy - f32(y0);
-    let tl = liquid_glass_pixel_straight_channel(liquid_glass_downsampled_blur_pixel_at_full_res(x0, y0), channel);
-    let tr = liquid_glass_pixel_straight_channel(liquid_glass_downsampled_blur_pixel_at_full_res(x1, y0), channel);
-    let bl = liquid_glass_pixel_straight_channel(liquid_glass_downsampled_blur_pixel_at_full_res(x0, y1), channel);
-    let br = liquid_glass_pixel_straight_channel(liquid_glass_downsampled_blur_pixel_at_full_res(x1, y1), channel);
-    return lerp_f32(lerp_f32(tl, tr, tx), lerp_f32(bl, br, tx), ty);
+    if (channel == 2u) {
+        return rgba.b;
+    }
+    if (channel == 3u) {
+        return rgba.a;
+    }
+    return rgba.r;
 }
 
-fn liquid_glass_downsampled_blur_pixel_at_full_res(x: u32, y: u32) -> u32 {
+fn liquid_glass_downsampled_blur_straight_rgba_at_full_res(x: f32, y: f32) -> vec4<f32> {
     let factor = f32(max(config.downsample, 1u));
     let max_x = f32(config.source_x1 - 1u);
     let max_y = f32(config.source_y1 - 1u);
-    let sample_x = clamp((f32(x) + 0.5) / factor - 0.5, f32(config.source_x0), max_x);
-    let sample_y = clamp((f32(y) + 0.5) / factor - 0.5, f32(config.source_y0), max_y);
-    let x0 = u32(floor(sample_x));
-    let y0 = u32(floor(sample_y));
-    let x1 = min(x0 + 1u, config.source_x1 - 1u);
-    let y1 = min(y0 + 1u, config.source_y1 - 1u);
-    let tx = sample_x - floor(sample_x);
-    let ty = sample_y - floor(sample_y);
+    let sample_x = clamp((x + 0.5) / factor - 0.5, f32(config.source_x0), max_x);
+    let sample_y = clamp((y + 0.5) / factor - 0.5, f32(config.source_y0), max_y);
     if (config.upsample_filter == 0u) {
-        return aux_pixel_at(u32(round(sample_x)), u32(round(sample_y)));
+        return liquid_glass_pixel_straight_rgba(aux_pixel_at(u32(round(sample_x)), u32(round(sample_y))));
     }
-    let top = lerp_premul_u8(aux_pixel_at(x0, y0), aux_pixel_at(x1, y0), tx);
-    let bottom = lerp_premul_u8(aux_pixel_at(x0, y1), aux_pixel_at(x1, y1), tx);
-    return lerp_premul_u8(top, bottom, ty);
+    return liquid_glass_premul_to_straight_rgba(filter_aux_sample_premul(sample_x, sample_y));
 }
 
 fn liquid_glass_image_pixel(image_kind: u32, x: u32, y: u32) -> u32 {
@@ -662,6 +626,16 @@ fn liquid_glass_pixel_straight_rgba(px: u32) -> vec4<f32> {
         b = b / a;
     }
     return vec4<f32>(r, g, b, a);
+}
+
+fn liquid_glass_premul_to_straight_rgba(premul: vec4<f32>) -> vec4<f32> {
+    var rgba = premul;
+    if (rgba.a > LIQUID_GLASS_EPSILON) {
+        rgba.r = rgba.r / rgba.a;
+        rgba.g = rgba.g / rgba.a;
+        rgba.b = rgba.b / rgba.a;
+    }
+    return rgba;
 }
 
 fn liquid_glass_pixel_straight_channel(px: u32, channel: u32) -> f32 {

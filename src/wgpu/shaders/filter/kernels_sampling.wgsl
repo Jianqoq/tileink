@@ -131,18 +131,11 @@ fn upsampled_source_pixel_at(
     let max_y = f32(source_y1 - 1u);
     let sample_x = clamp((f32(xy.x) + 0.5) / factor - 0.5, f32(source_x0), max_x);
     let sample_y = clamp((f32(xy.y) + 0.5) / factor - 0.5, f32(source_y0), max_y);
-    let x0 = u32(floor(sample_x));
-    let y0 = u32(floor(sample_y));
-    let x1 = min(x0 + 1u, source_x1 - 1u);
-    let y1 = min(y0 + 1u, source_y1 - 1u);
-    let tx = sample_x - floor(sample_x);
-    let ty = sample_y - floor(sample_y);
     if (config.upsample_filter == 0u) {
         return source_pixel_at(u32(round(sample_x)), u32(round(sample_y)));
     }
-    let top = lerp_premul_u8(source_pixel_at(x0, y0), source_pixel_at(x1, y0), tx);
-    let bottom = lerp_premul_u8(source_pixel_at(x0, y1), source_pixel_at(x1, y1), tx);
-    return lerp_premul_u8(top, bottom, ty);
+    let sample = filter_source_sample_premul(sample_x, sample_y);
+    return pack_premul_rgba8(sample.r, sample.g, sample.b, sample.a);
 }
 
 @compute @workgroup_size(256)

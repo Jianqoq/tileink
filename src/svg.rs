@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error, fmt, sync::Arc};
+use std::{collections::HashMap, error::Error, fmt};
 
 use peniko::{
     Color, ColorStop, Compose, Extend, Gradient, Mix,
@@ -10,8 +10,9 @@ use crate::{
     Brush, Canvas, CpuRenderer, FillRule, Filter, Radius, Region,
     shared::{
         bounds::Bounds,
-        brush::{PatternBrush, PatternImage, PatternSampling},
+        brush::{PatternBrush, PatternSampling},
         image::Image as RasterImage,
+        image_resource::ImageResourceId,
         layer::filter::{
             COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE, ColorChannel,
             ComponentTransferTable, CompositeOperator, ConvolveEdgeMode, ConvolveMatrix,
@@ -126,6 +127,7 @@ impl SvgBuilder {
                 * inverse_affine(transform_to_affine(group.transform()), "filter transform")?;
             svg_filter_layers(
                 self,
+                canvas,
                 group.filters(),
                 region_transform,
                 content_transform,
@@ -266,18 +268,24 @@ impl SvgBuilder {
             }
         };
 
-        let brush = Brush::Pattern(PatternBrush {
-            transform: affine_to_array(
+        let Some(image_key) = canvas.register_scene_image(raster) else {
+            return Ok(());
+        };
+        let Some(pattern) = PatternBrush::new_resource(
+            ImageResourceId::scene(image_key),
+            affine_to_array(
                 Affine::scale_non_uniform(
-                    f64::from(raster.width) / f64::from(size.width()),
-                    f64::from(raster.height) / f64::from(size.height()),
+                    1.0 / f64::from(size.width()),
+                    1.0 / f64::from(size.height()),
                 ) * world_to_local,
             ),
-            extend: Extend::Pad,
-            sampling: image_sampling(image.rendering_mode()),
-            opacity: 255,
-            image: PatternImage::Inline(Arc::new(raster)),
-        });
+            Extend::Pad,
+            image_sampling(image.rendering_mode()),
+            255,
+        ) else {
+            return Ok(());
+        };
+        let brush = Brush::Pattern(pattern);
         canvas.push_path(
             rect_path(Rect::new(
                 0.0,
@@ -363,7 +371,8 @@ impl SvgBuilder {
             return Ok(());
         }
 
-        let brush = self.paint_to_brush(fill.paint(), fill.opacity().get(), path_transform)?;
+        let brush =
+            self.paint_to_brush(canvas, fill.paint(), fill.opacity().get(), path_transform)?;
         canvas.push_path(
             data.clone(),
             brush,
@@ -389,7 +398,12 @@ impl SvgBuilder {
             return Ok(());
         }
 
-        let brush = self.paint_to_brush(stroke.paint(), stroke.opacity().get(), path_transform)?;
+        let brush = self.paint_to_brush(
+            canvas,
+            stroke.paint(),
+            stroke.opacity().get(),
+            path_transform,
+        )?;
         if stroke.linejoin() == usvg::LineJoin::MiterClip {
             // kurbo does not expose SVG 2 miter-clip joins. Build the SVG stroke outline with
             // tiny-skia/usvg semantics, then render that outline through the normal path pipeline.
@@ -594,6 +608,7 @@ impl SvgBuilder {
 
     fn paint_to_brush(
         &self,
+        canvas: &mut Canvas,
         paint: &Paint,
         opacity: f32,
         path_transform: Affine,
@@ -634,7 +649,7 @@ impl SvgBuilder {
                     self.paint_server_inverse_transform(source.transform(), path_transform)?;
                 Ok(brush)
             }
-            Paint::Pattern(pattern) => self.pattern_to_brush(pattern, opacity),
+            Paint::Pattern(pattern) => self.pattern_to_brush(canvas, pattern, opacity),
         }
     }
 
@@ -652,7 +667,12 @@ impl SvgBuilder {
         )
     }
 
-    fn pattern_to_brush(&self, pattern: &usvg::Pattern, opacity: f32) -> Result<Brush, SvgError> {
+    fn pattern_to_brush(
+        &self,
+        canvas: &mut Canvas,
+        pattern: &usvg::Pattern,
+        opacity: f32,
+    ) -> Result<Brush, SvgError> {
         if self.pattern_depth >= MAX_PATTERN_DEPTH {
             return Err(SvgError::unsupported("recursive pattern paint"));
         }
@@ -686,17 +706,30 @@ impl SvgBuilder {
         let Some(pattern_inverse) = pattern.transform().invert() else {
             return Err(SvgError::unsupported("non-invertible patternTransform"));
         };
-        Ok(Brush::Pattern(PatternBrush {
-            image: PatternImage::Inline(Arc::new(renderer.image().clone())),
-            transform: affine_to_array(tile_transform * transform_to_affine(pattern_inverse)),
-            extend: Extend::Repeat,
-            sampling: PatternSampling::Nearest,
-            opacity: opacity_to_u8(opacity),
-        }))
+        let Some(image_key) = canvas.register_scene_image(renderer.image().clone()) else {
+            return Err(SvgError::unsupported("empty pattern image"));
+        };
+        let Some(pattern) = PatternBrush::new_resource(
+            ImageResourceId::scene(image_key),
+            affine_to_array(
+                Affine::scale_non_uniform(
+                    1.0 / f64::from(tile_width),
+                    1.0 / f64::from(tile_height),
+                ) * tile_transform
+                    * transform_to_affine(pattern_inverse),
+            ),
+            Extend::Repeat,
+            PatternSampling::Nearest,
+            opacity_to_u8(opacity),
+        ) else {
+            return Err(SvgError::unsupported("empty pattern image"));
+        };
+        Ok(Brush::Pattern(pattern))
     }
 
     fn filter_image_to_brush(
         &self,
+        canvas: &mut Canvas,
         image: &usvg::filter::Image,
         filter_bounds: Bounds,
         primitive_rect: Rect,
@@ -709,7 +742,7 @@ impl SvgBuilder {
 
         let width = filter_bounds.width().max(1);
         let height = filter_bounds.height().max(1);
-        let mut canvas = Canvas::new(width, height, 1.0);
+        let mut filter_canvas = Canvas::new(width, height, 1.0);
         if !filter_bounds.is_empty() {
             let buffer_origin =
                 Affine::translate((-f64::from(filter_bounds.x0), -f64::from(filter_bounds.y0)));
@@ -743,21 +776,30 @@ impl SvgBuilder {
                 pattern_depth: self.pattern_depth,
                 image_depth: self.image_depth + 1,
             }
-            .push_group(&mut canvas, image.root())?;
+            .push_group(&mut filter_canvas, image.root())?;
         }
 
         let mut renderer = CpuRenderer::new(width, height, Color::TRANSPARENT);
-        renderer.render(&canvas);
-        Ok(Brush::Pattern(PatternBrush {
-            image: PatternImage::Inline(Arc::new(renderer.image().clone())),
-            transform: affine_to_array(Affine::translate((
-                -f64::from(filter_bounds.x0),
-                -f64::from(filter_bounds.y0),
-            ))),
-            extend: Extend::Pad,
-            sampling: PatternSampling::Nearest,
-            opacity: 255,
-        }))
+        renderer.render(&filter_canvas);
+        let Some(image_key) = canvas.register_scene_image(renderer.image().clone()) else {
+            return Err(SvgError::unsupported("empty feImage"));
+        };
+        let Some(pattern) = PatternBrush::new_resource(
+            ImageResourceId::scene(image_key),
+            affine_to_array(
+                Affine::scale_non_uniform(1.0 / f64::from(width), 1.0 / f64::from(height))
+                    * Affine::translate((
+                        -f64::from(filter_bounds.x0),
+                        -f64::from(filter_bounds.y0),
+                    )),
+            ),
+            Extend::Pad,
+            PatternSampling::Nearest,
+            255,
+        ) else {
+            return Err(SvgError::unsupported("empty feImage"));
+        };
+        Ok(Brush::Pattern(pattern))
     }
 }
 
@@ -768,6 +810,7 @@ struct SvgFilterLayer {
 
 fn svg_filter_layers(
     builder: &SvgBuilder,
+    canvas: &mut Canvas,
     filters: &[std::sync::Arc<usvg::filter::Filter>],
     region_transform: Affine,
     content_transform: Affine,
@@ -779,6 +822,7 @@ fn svg_filter_layers(
         .filter_map(|filter| {
             svg_filter_layer(
                 builder,
+                canvas,
                 filter.as_ref(),
                 region_transform,
                 content_transform,
@@ -792,6 +836,7 @@ fn svg_filter_layers(
 
 fn svg_filter_layer(
     builder: &SvgBuilder,
+    canvas: &mut Canvas,
     filter: &usvg::filter::Filter,
     region_transform: Affine,
     content_transform: Affine,
@@ -801,8 +846,13 @@ fn svg_filter_layer(
     let filter_rect = nonzero_rect_to_kurbo(filter.rect());
     let filter_bounds = transform_rect_to_bounds(filter_rect, region_transform)
         .intersect(Bounds::canvas(width, height));
-    let mut graph =
-        SvgFilterGraphBuilder::new(builder, region_transform, content_transform, filter_bounds);
+    let mut graph = SvgFilterGraphBuilder::new(
+        builder,
+        canvas,
+        region_transform,
+        content_transform,
+        filter_bounds,
+    );
     for primitive in filter.primitives() {
         graph.push_primitive(primitive)?;
     }
@@ -823,6 +873,7 @@ fn svg_filter_layer(
 
 struct SvgFilterGraphBuilder<'a> {
     builder: &'a SvgBuilder,
+    canvas: &'a mut Canvas,
     region_transform: Affine,
     content_transform: Affine,
     value_transform: Affine,
@@ -840,12 +891,14 @@ struct LoweredSvgFilterPrimitive {
 impl<'a> SvgFilterGraphBuilder<'a> {
     fn new(
         builder: &'a SvgBuilder,
+        canvas: &'a mut Canvas,
         region_transform: Affine,
         content_transform: Affine,
         filter_bounds: Bounds,
     ) -> Self {
         Self {
             builder,
+            canvas,
             region_transform,
             content_transform,
             value_transform: filter_axis_scale(region_transform),
@@ -870,7 +923,7 @@ impl<'a> SvgFilterGraphBuilder<'a> {
     }
 
     fn lower_primitive(
-        &self,
+        &mut self,
         primitive: &usvg::filter::Primitive,
     ) -> Result<LoweredSvgFilterPrimitive, SvgError> {
         let primitive_rect = nonzero_rect_to_kurbo(primitive.rect());
@@ -970,6 +1023,7 @@ impl<'a> SvgFilterGraphBuilder<'a> {
                 None,
                 FilterPrimitiveKind::Image {
                     brush: self.builder.filter_image_to_brush(
+                        self.canvas,
                         image,
                         self.filter_bounds,
                         primitive_rect,

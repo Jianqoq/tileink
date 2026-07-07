@@ -11,16 +11,16 @@ impl WgpuSceneBuffers {
         WgpuFineSceneBindings {
             draw_records: self.draw_records.buffer(),
             paint_blob: self.fine_paint_blob.buffer(),
-            image_resource_metadata: self.image_resource_metadata.buffer(),
-            image_resource_pixels: self.image_resource_pixels.buffer(),
+            image_resource_atlas: &self.image_resource_atlas_view,
+            image_resource_sampler: &self.image_resource_sampler,
         }
     }
 
-    pub(crate) fn image_resource_bindings(&self) -> (&::wgpu::Buffer, &::wgpu::Buffer) {
-        (
-            self.image_resource_metadata.buffer(),
-            self.image_resource_pixels.buffer(),
-        )
+    pub(crate) fn image_resource_bindings(&self) -> WgpuImageResourceBindings<'_> {
+        WgpuImageResourceBindings {
+            atlas: &self.image_resource_atlas_view,
+            sampler: &self.image_resource_sampler,
+        }
     }
 
     pub(crate) fn fine_paint_sdf_shadow_base(&self) -> u32 {
@@ -127,8 +127,13 @@ impl WgpuSceneBuffers {
 pub(crate) struct WgpuFineSceneBindings<'a> {
     pub(crate) draw_records: &'a ::wgpu::Buffer,
     pub(crate) paint_blob: &'a ::wgpu::Buffer,
-    pub(crate) image_resource_metadata: &'a ::wgpu::Buffer,
-    pub(crate) image_resource_pixels: &'a ::wgpu::Buffer,
+    pub(crate) image_resource_atlas: &'a ::wgpu::TextureView,
+    pub(crate) image_resource_sampler: &'a ::wgpu::Sampler,
+}
+
+pub(crate) struct WgpuImageResourceBindings<'a> {
+    pub(crate) atlas: &'a ::wgpu::TextureView,
+    pub(crate) sampler: &'a ::wgpu::Sampler,
 }
 
 pub(crate) struct WgpuTileFineBindings<'a> {

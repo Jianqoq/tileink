@@ -251,13 +251,13 @@ impl WgpuScanPipeline {
             layout: &self.clear_bind_group_layout,
             entries: &[
                 bind_config_buffer(0, &self.config, config_offset, self.config_size),
-                bind_buffer(7, bindings.backdrops),
-                bind_buffer(8, bindings.tile_segment_ranges),
-                bind_buffer(10, bindings.segment_tile_counts),
-                bind_buffer(11, bindings.segment_tile_cursors),
-                bind_buffer(12, bindings.segment_bumps),
-                bind_buffer(13, bindings.chunk_totals),
-                bind_buffer(14, bindings.chunk_offsets),
+                bind_buffer(1, bindings.backdrops),
+                bind_buffer(2, bindings.tile_segment_ranges),
+                bind_buffer(3, bindings.segment_tile_counts),
+                bind_buffer(4, bindings.segment_tile_cursors),
+                bind_buffer(5, bindings.segment_bumps),
+                bind_buffer(6, bindings.chunk_totals),
+                bind_buffer(7, bindings.chunk_offsets),
             ],
         })
     }
@@ -275,8 +275,8 @@ impl WgpuScanPipeline {
                 bind_config_buffer(0, &self.config, config_offset, self.config_size),
                 bind_buffer(1, bindings.lines),
                 bind_buffer(2, bindings.path_records),
-                bind_buffer(7, bindings.backdrops),
-                bind_buffer(10, bindings.segment_tile_counts),
+                bind_buffer(3, bindings.backdrops),
+                bind_buffer(4, bindings.segment_tile_counts),
             ],
         })
     }
@@ -292,11 +292,11 @@ impl WgpuScanPipeline {
             layout: &self.prefix_bind_group_layout,
             entries: &[
                 bind_config_buffer(0, &self.config, config_offset, self.config_size),
-                bind_buffer(3, bindings.scan_chunk_backdrop_offsets),
-                bind_buffer(4, bindings.scan_chunk_lens),
-                bind_buffer(8, bindings.tile_segment_ranges),
-                bind_buffer(10, bindings.segment_tile_counts),
-                bind_buffer(13, bindings.chunk_totals),
+                bind_buffer(1, bindings.scan_chunk_backdrop_offsets),
+                bind_buffer(2, bindings.scan_chunk_lens),
+                bind_buffer(3, bindings.tile_segment_ranges),
+                bind_buffer(4, bindings.segment_tile_counts),
+                bind_buffer(5, bindings.chunk_totals),
             ],
         })
     }
@@ -312,12 +312,12 @@ impl WgpuScanPipeline {
             layout: &self.chunk_offsets_bind_group_layout,
             entries: &[
                 bind_config_buffer(0, &self.config, config_offset, self.config_size),
-                bind_buffer(2, bindings.path_records),
-                bind_buffer(5, bindings.scan_chunk_range_starts),
-                bind_buffer(6, bindings.scan_chunk_range_ends),
-                bind_buffer(12, bindings.segment_bumps),
-                bind_buffer(13, bindings.chunk_totals),
-                bind_buffer(14, bindings.chunk_offsets),
+                bind_buffer(1, bindings.path_records),
+                bind_buffer(2, bindings.scan_chunk_range_starts),
+                bind_buffer(3, bindings.scan_chunk_range_ends),
+                bind_buffer(4, bindings.segment_bumps),
+                bind_buffer(5, bindings.chunk_totals),
+                bind_buffer(6, bindings.chunk_offsets),
             ],
         })
     }
@@ -333,11 +333,11 @@ impl WgpuScanPipeline {
             layout: &self.apply_chunk_offsets_bind_group_layout,
             entries: &[
                 bind_config_buffer(0, &self.config, config_offset, self.config_size),
-                bind_buffer(3, bindings.scan_chunk_backdrop_offsets),
-                bind_buffer(4, bindings.scan_chunk_lens),
-                bind_buffer(8, bindings.tile_segment_ranges),
-                bind_buffer(11, bindings.segment_tile_cursors),
-                bind_buffer(14, bindings.chunk_offsets),
+                bind_buffer(1, bindings.scan_chunk_backdrop_offsets),
+                bind_buffer(2, bindings.scan_chunk_lens),
+                bind_buffer(3, bindings.tile_segment_ranges),
+                bind_buffer(4, bindings.segment_tile_cursors),
+                bind_buffer(5, bindings.chunk_offsets),
             ],
         })
     }
@@ -355,8 +355,8 @@ impl WgpuScanPipeline {
                 bind_config_buffer(0, &self.config, config_offset, self.config_size),
                 bind_buffer(1, bindings.lines),
                 bind_buffer(2, bindings.path_records),
-                bind_buffer(11, bindings.segment_tile_cursors),
-                bind_buffer(15, bindings.segments),
+                bind_buffer(3, bindings.segment_tile_cursors),
+                bind_buffer(4, bindings.segments),
             ],
         })
     }
@@ -396,13 +396,13 @@ fn create_kernel(
 fn clear_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
     vec![
         uniform_entry(0),
+        storage_entry(1, false),
+        storage_entry(2, false),
+        storage_entry(3, false),
+        storage_entry(4, false),
+        storage_entry(5, false),
+        storage_entry(6, false),
         storage_entry(7, false),
-        storage_entry(8, false),
-        storage_entry(10, false),
-        storage_entry(11, false),
-        storage_entry(12, false),
-        storage_entry(13, false),
-        storage_entry(14, false),
     ]
 }
 
@@ -411,42 +411,42 @@ fn count_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         uniform_entry(0),
         storage_entry(1, true),
         storage_entry(2, true),
-        storage_entry(7, false),
-        storage_entry(10, false),
+        storage_entry(3, false),
+        storage_entry(4, false),
     ]
 }
 
 fn prefix_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
     vec![
         uniform_entry(0),
-        storage_entry(3, true),
-        storage_entry(4, true),
-        storage_entry(8, false),
-        storage_entry(10, false),
-        storage_entry(13, false),
+        storage_entry(1, true),
+        storage_entry(2, true),
+        storage_entry(3, false),
+        storage_entry(4, false),
+        storage_entry(5, false),
     ]
 }
 
 fn chunk_offsets_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
     vec![
         uniform_entry(0),
+        storage_entry(1, true),
         storage_entry(2, true),
-        storage_entry(5, true),
-        storage_entry(6, true),
-        storage_entry(12, false),
-        storage_entry(13, false),
-        storage_entry(14, false),
+        storage_entry(3, true),
+        storage_entry(4, false),
+        storage_entry(5, false),
+        storage_entry(6, false),
     ]
 }
 
 fn apply_chunk_offsets_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
     vec![
         uniform_entry(0),
-        storage_entry(3, true),
-        storage_entry(4, true),
-        storage_entry(8, false),
-        storage_entry(11, false),
-        storage_entry(14, false),
+        storage_entry(1, true),
+        storage_entry(2, true),
+        storage_entry(3, false),
+        storage_entry(4, false),
+        storage_entry(5, false),
     ]
 }
 
@@ -455,8 +455,8 @@ fn emit_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         uniform_entry(0),
         storage_entry(1, true),
         storage_entry(2, true),
-        storage_entry(11, false),
-        storage_entry(15, false),
+        storage_entry(3, false),
+        storage_entry(4, false),
     ]
 }
 
@@ -554,6 +554,26 @@ mod tests {
             assert!(actual <= max_storage_binding_count(), "{name}");
         }
         assert_eq!(max_storage_binding_count(), CLEAR_STORAGE_BINDING_COUNT);
+    }
+
+    #[test]
+    fn scan_layout_entries_are_contiguous() {
+        for entries in [
+            clear_layout_entries(),
+            count_layout_entries(),
+            prefix_layout_entries(),
+            chunk_offsets_layout_entries(),
+            apply_chunk_offsets_layout_entries(),
+            emit_layout_entries(),
+        ] {
+            assert_contiguous_bindings(&entries);
+        }
+    }
+
+    fn assert_contiguous_bindings(entries: &[::wgpu::BindGroupLayoutEntry]) {
+        for (expected, entry) in entries.iter().enumerate() {
+            assert_eq!(entry.binding, expected as u32);
+        }
     }
 
     fn is_storage(entry: &::wgpu::BindGroupLayoutEntry) -> bool {
