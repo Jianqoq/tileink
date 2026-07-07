@@ -2,8 +2,8 @@
 
 @group(0) @binding(1) var<storage, read> lines: array<Line>;
 @group(0) @binding(2) var<storage, read> path_records: array<PathRecord>;
-@group(0) @binding(7) var<storage, read_write> backdrops: array<atomic<i32>>;
-@group(0) @binding(10) var<storage, read_write> segment_tile_counts: array<atomic<u32>>;
+@group(0) @binding(3) var<storage, read_write> backdrops: array<atomic<i32>>;
+@group(0) @binding(4) var<storage, read_write> segment_tile_counts: array<atomic<u32>>;
 
 @compute @workgroup_size(256)
 fn scan_count(@builtin(global_invocation_id) global_id: vec3<u32>) {
