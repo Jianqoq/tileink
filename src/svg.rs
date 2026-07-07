@@ -268,7 +268,7 @@ impl SvgBuilder {
             }
         };
 
-        let Some(image_key) = canvas.insert_scene_image(raster) else {
+        let Some(image_key) = canvas.register_scene_image(raster) else {
             return Ok(());
         };
         let Some(pattern) = PatternBrush::new_resource(
@@ -706,7 +706,7 @@ impl SvgBuilder {
         let Some(pattern_inverse) = pattern.transform().invert() else {
             return Err(SvgError::unsupported("non-invertible patternTransform"));
         };
-        let Some(image_key) = canvas.insert_scene_image(renderer.image().clone()) else {
+        let Some(image_key) = canvas.register_scene_image(renderer.image().clone()) else {
             return Err(SvgError::unsupported("empty pattern image"));
         };
         let Some(pattern) = PatternBrush::new_resource(
@@ -781,7 +781,7 @@ impl SvgBuilder {
 
         let mut renderer = CpuRenderer::new(width, height, Color::TRANSPARENT);
         renderer.render(&filter_canvas);
-        let Some(image_key) = canvas.insert_scene_image(renderer.image().clone()) else {
+        let Some(image_key) = canvas.register_scene_image(renderer.image().clone()) else {
             return Err(SvgError::unsupported("empty feImage"));
         };
         let Some(pattern) = PatternBrush::new_resource(

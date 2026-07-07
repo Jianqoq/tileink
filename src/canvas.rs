@@ -1,7 +1,4 @@
-use std::sync::{
-    Arc as SharedArc,
-    atomic::{AtomicU64, Ordering},
-};
+use std::sync::Arc as SharedArc;
 
 use peniko::{
     Color, Compose, Mix,
@@ -10,7 +7,6 @@ use peniko::{
         stroke as kurbo_stroke,
     },
 };
-use rustc_hash::FxHashMap;
 
 use crate::shared::{
     bounds::{Bounds, PixelBounds},
@@ -54,7 +50,6 @@ use crate::text::{TextRun, layout_bounds_at_scaled_origin, scene_glyphs_at_scale
 use crate::{TextContext, TextFontSystem, TextLayout};
 
 const SDF_RECORD_FILL_RULE: FillRule = FillRule::NonZero;
-static SCENE_IMAGE_KEY_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone)]
 pub struct Canvas {
@@ -67,7 +62,6 @@ pub struct Canvas {
     pub(crate) text_glyphs: Vec<crate::text::CanvasGlyph>,
     pub(crate) text_runs: Vec<TextRun>,
     pub(crate) scene_images: ImageResourceStore,
-    scene_image_keys: FxHashMap<usize, ImageKey>,
     pub(crate) command_lists: Vec<CommandList>,
     root_commands: CommandListId,
     command_stack: Vec<CommandListId>,
@@ -438,7 +432,6 @@ impl Canvas {
             text_glyphs: Vec::new(),
             text_runs: Vec::new(),
             scene_images: ImageResourceStore::default(),
-            scene_image_keys: FxHashMap::default(),
             command_lists: vec![CommandList::default()],
             root_commands: ROOT_COMMAND_LIST_ID,
             command_stack: vec![ROOT_COMMAND_LIST_ID],
@@ -1065,7 +1058,6 @@ impl Canvas {
         let draw_start = self.draw_records.len();
 
         self.scene_images.extend_from(&other.scene_images);
-        self.scene_image_keys.extend(other.scene_image_keys.clone());
 
         self.lines.reserve(other.lines.len());
         for &line in &other.lines {
@@ -1534,7 +1526,7 @@ impl Canvas {
         if image.width == 0 || image.height == 0 {
             return None;
         }
-        let key = self.insert_scene_image(image)?;
+        let key = self.register_scene_image(image)?;
         let brush = Brush::from_scene_image_key_with_options(
             key,
             rect,
@@ -1559,22 +1551,16 @@ impl Canvas {
         Some(self.push_rect(rect, Radius::ZERO, brush))
     }
 
-    pub(crate) fn insert_scene_image(
+    pub(crate) fn register_scene_image(
         &mut self,
         image: impl Into<SharedArc<Image>>,
     ) -> Option<ImageKey> {
         let image = image.into();
-        let identity = SharedArc::as_ptr(&image) as usize;
-        if let Some(&key) = self.scene_image_keys.get(&identity) {
+        let key = ImageKey::new(SharedArc::as_ptr(&image) as usize as u64);
+        if self.scene_images.get(key).is_some() {
             return Some(key);
         }
-        let key = ImageKey::new(SCENE_IMAGE_KEY_COUNTER.fetch_add(1, Ordering::Relaxed));
-        if self.scene_images.insert(key, image) {
-            self.scene_image_keys.insert(identity, key);
-            Some(key)
-        } else {
-            None
-        }
+        self.scene_images.insert(key, image).then_some(key)
     }
 
     pub(crate) fn scene_image_resources(&self) -> &ImageResourceStore {
@@ -2260,7 +2246,6 @@ impl Canvas {
         self.text_glyphs.clear();
         self.text_runs.clear();
         self.scene_images.clear();
-        self.scene_image_keys.clear();
         self.command_lists.clear();
         self.command_lists.push(CommandList::default());
         self.root_commands = ROOT_COMMAND_LIST_ID;
