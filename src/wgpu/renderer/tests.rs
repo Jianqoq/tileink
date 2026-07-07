@@ -83,6 +83,7 @@ fn wgpu_renderer_push_image_samples_external_image_when_enabled() {
                     0, 0, 255, 128,
                 ],
             ),
+            Extend::Pad,
             PatternSampling::Nearest,
         )
         .expect("push image");
@@ -102,7 +103,12 @@ fn wgpu_renderer_push_image_key_samples_resource_buffer_when_enabled() {
     let key = ImageKey::new(9);
     let mut canvas = Canvas::new(4, 2, 1.0);
     canvas
-        .push_image_key(Rect::new(0.0, 0.0, 4.0, 2.0), key, PatternSampling::Nearest)
+        .push_image_key(
+            Rect::new(0.0, 0.0, 4.0, 2.0),
+            key,
+            Extend::Pad,
+            PatternSampling::Nearest,
+        )
         .expect("push image resource");
 
     let mut renderer = new_test_renderer(4, 2, Color::TRANSPARENT);
@@ -140,6 +146,7 @@ fn wgpu_renderer_push_image_key_bilinear_uses_resource_atlas() {
         .push_image_key(
             Rect::new(0.0, 0.0, 2.0, 1.0),
             key,
+            Extend::Pad,
             PatternSampling::Bilinear,
         )
         .expect("push image resource");
@@ -279,7 +286,12 @@ fn wgpu_renderer_push_image_key_stops_sampling_after_resource_remove_when_enable
     let key = ImageKey::new(10);
     let mut canvas = Canvas::new(2, 1, 1.0);
     canvas
-        .push_image_key(Rect::new(0.0, 0.0, 2.0, 1.0), key, PatternSampling::Nearest)
+        .push_image_key(
+            Rect::new(0.0, 0.0, 2.0, 1.0),
+            key,
+            Extend::Pad,
+            PatternSampling::Nearest,
+        )
         .expect("push image resource");
 
     let mut renderer = new_test_renderer(2, 1, Color::TRANSPARENT);

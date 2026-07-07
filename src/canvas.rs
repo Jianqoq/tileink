@@ -1,7 +1,7 @@
 use std::sync::Arc as SharedArc;
 
 use peniko::{
-    Color, Compose, Mix,
+    Color, Compose, Extend, Mix,
     kurbo::{
         Affine, Arc, BezPath, Circle, Point, Rect, Shape, Stroke, StrokeOpts,
         stroke as kurbo_stroke,
@@ -1503,7 +1503,7 @@ impl Canvas {
         self.draw_id_from_index(draw)
     }
 
-    /// Adds an external image scaled into `rect` with explicit sampling.
+    /// Adds an external image scaled into `rect` with explicit extend and sampling.
     ///
     /// The image is stored as a pattern brush, so CPU and wgpu renderers share
     /// the same upload/sampling path used by SVG raster images. Empty images,
@@ -1512,6 +1512,7 @@ impl Canvas {
         &mut self,
         rect: Rect,
         image: impl Into<SharedArc<Image>>,
+        extend: Extend,
         sampling: PatternSampling,
     ) -> Option<DrawId> {
         if !image_rect_is_valid(rect) {
@@ -1522,17 +1523,11 @@ impl Canvas {
             return None;
         }
         let key = self.register_scene_image(image)?;
-        let brush = Brush::from_scene_image_key_with_options(
-            key,
-            rect,
-            peniko::Extend::Pad,
-            sampling,
-            255,
-        )?;
+        let brush = Brush::from_scene_image_key_with_options(key, rect, extend, sampling, 255)?;
         Some(self.push_rect(rect, Radius::ZERO, brush))
     }
 
-    /// Adds a renderer-owned image resource scaled into `rect` with explicit sampling.
+    /// Adds a renderer-owned image resource scaled into `rect` with explicit extend and sampling.
     ///
     /// The scene only stores `key`; CPU and wgpu renderers resolve the image
     /// through their resource tables at render time.
@@ -1540,9 +1535,10 @@ impl Canvas {
         &mut self,
         rect: Rect,
         key: ImageKey,
+        extend: Extend,
         sampling: PatternSampling,
     ) -> Option<DrawId> {
-        let brush = Brush::from_image_key(key, rect, sampling)?;
+        let brush = Brush::from_image_key_with_options(key, rect, extend, sampling, 255)?;
         Some(self.push_rect(rect, Radius::ZERO, brush))
     }
 

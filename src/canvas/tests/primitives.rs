@@ -132,6 +132,7 @@ fn push_image_records_pattern_rect_draw() {
         .push_image(
             Rect::new(10.0, 20.0, 14.0, 22.0),
             image,
+            Extend::Repeat,
             PatternSampling::Nearest,
         )
         .expect("push image draw");
@@ -163,6 +164,7 @@ fn push_image_records_pattern_rect_draw() {
         .expect("scene image resource");
     assert_eq!((image.width, image.height), (2, 1));
     assert_eq!(pattern.sampling, PatternSampling::Nearest);
+    assert_eq!(pattern.extend, Extend::Repeat);
     assert_eq!(pattern.transform, [0.25, 0.0, 0.0, 0.5, -2.5, -10.0]);
 }
 
@@ -175,6 +177,7 @@ fn push_image_reuses_scene_resource_for_same_arc() {
         .push_image(
             Rect::new(0.0, 0.0, 2.0, 1.0),
             Arc::clone(&image),
+            Extend::Pad,
             PatternSampling::Bilinear,
         )
         .expect("first image draw");
@@ -182,6 +185,7 @@ fn push_image_reuses_scene_resource_for_same_arc() {
         .push_image(
             Rect::new(2.0, 0.0, 4.0, 1.0),
             Arc::clone(&image),
+            Extend::Pad,
             PatternSampling::Bilinear,
         )
         .expect("second image draw");
@@ -202,6 +206,7 @@ fn new_keeps_image_brush_sampling_in_logical_coordinates() {
         .push_image(
             Rect::new(10.0, 20.0, 14.0, 22.0),
             Image::from_rgba8(2, 1, [255, 0, 0, 255, 0, 0, 255, 255]),
+            Extend::Pad,
             PatternSampling::Nearest,
         )
         .expect("push image draw");
@@ -229,6 +234,7 @@ fn push_image_key_records_resource_pattern_rect_draw() {
         .push_image_key(
             Rect::new(10.0, 20.0, 14.0, 22.0),
             key,
+            Extend::Reflect,
             PatternSampling::Nearest,
         )
         .expect("push image resource draw");
@@ -243,6 +249,7 @@ fn push_image_key_records_resource_pattern_rect_draw() {
     };
     assert_eq!(pattern.image_key(), Some(key));
     assert_eq!(pattern.sampling, PatternSampling::Nearest);
+    assert_eq!(pattern.extend, Extend::Reflect);
     assert_eq!(pattern.transform, [0.25, 0.0, 0.0, 0.5, -2.5, -10.0]);
 }
 
@@ -253,6 +260,7 @@ fn append_translates_image_brush_without_mutating_child() {
         .push_image(
             Rect::new(0.0, 0.0, 2.0, 1.0),
             Image::from_rgba8(2, 1, [255, 0, 0, 255, 0, 0, 255, 255]),
+            Extend::Pad,
             PatternSampling::Bilinear,
         )
         .expect("push child image");
@@ -292,6 +300,7 @@ fn push_image_rejects_empty_images_and_rects() {
             .push_image(
                 Rect::new(0.0, 0.0, 4.0, 4.0),
                 Image::from_rgba8(0, 1, []),
+                Extend::Pad,
                 PatternSampling::Bilinear,
             )
             .is_none()
@@ -301,6 +310,7 @@ fn push_image_rejects_empty_images_and_rects() {
             .push_image(
                 Rect::new(0.0, 0.0, 0.0, 4.0),
                 Image::from_rgba8(1, 1, [255, 0, 0, 255]),
+                Extend::Pad,
                 PatternSampling::Bilinear,
             )
             .is_none()

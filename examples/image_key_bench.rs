@@ -5,7 +5,7 @@ use std::{
 };
 
 use peniko::{
-    Color,
+    Color, Extend,
     kurbo::{Affine, Rect, Shape},
 };
 use tileink::{
@@ -203,10 +203,10 @@ fn build_scene(config: Config, case: CaseKind, image_key: ImageKey, image: Arc<I
                     scene.push_rect(rect, Radius::ZERO, color);
                 }
                 CaseKind::ImageKey(sampling) => {
-                    let _ = scene.push_image_key(rect, image_key, sampling);
+                    let _ = scene.push_image_key(rect, image_key, Extend::Pad, sampling);
                 }
                 CaseKind::SceneImage(sampling) => {
-                    let _ = scene.push_image(rect, Arc::clone(&image), sampling);
+                    let _ = scene.push_image(rect, Arc::clone(&image), Extend::Pad, sampling);
                 }
             }
         }
