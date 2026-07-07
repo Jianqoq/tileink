@@ -23,7 +23,109 @@ fn fine_tile_main(
         return;
     }
 
-    target_store_unorm(global_x, global_y, tile_pixel(tile_ix, local_ix));
+    let kind = fine_tile_kind_at(tile_ix);
+    var pixel = vec4<f32>(0.0);
+    if (kind == FINE_TILE_KIND_EMPTY_OR_CLEAR) {
+        pixel = fine_initial_pixel(global_x, global_y);
+    } else if (kind == FINE_TILE_KIND_COLOR_ONLY_NO_STACK) {
+        pixel = color_only_no_stack_tile_pixel(tile_ix, local_ix);
+    } else if (
+        kind == FINE_TILE_KIND_PURE_SDF_SOLID_NO_STACK ||
+        kind == FINE_TILE_KIND_MIXED_ANALYTIC_SOLID_NO_STACK
+    ) {
+        pixel = analytic_solid_no_stack_tile_pixel(tile_ix, local_ix);
+    } else {
+        pixel = tile_pixel(tile_ix, local_ix);
+    }
+    target_store_unorm(global_x, global_y, pixel);
+}
+
+fn fine_initial_pixel(global_x: u32, global_y: u32) -> vec4<f32> {
+    var pixel = rgba8_to_unorm(config.clear_color);
+    if (config.load_target != 0u) {
+        pixel = target_load_unorm(global_x, global_y);
+    }
+    return pixel;
+}
+
+fn color_only_no_stack_tile_pixel(tile_ix: u32, local_ix: u32) -> vec4<f32> {
+    let tile_x = tile_ix % config.tiles_width;
+    let tile_y = tile_ix / config.tiles_width;
+    let global_x = tile_x * 16u + local_ix % 16u;
+    let global_y = tile_y * 16u + local_ix / 16u;
+    var pixel = fine_initial_pixel(global_x, global_y);
+
+    let tile = coarse_load_tile(tile_ix);
+    var ptcl_ix = tile.ptcl_start;
+    loop {
+        if (ptcl_ix >= tile.ptcl_end) {
+            break;
+        }
+        let ptcl = coarse_load_ptcl(ptcl_ix);
+        let tag = ptcl.tag;
+        if (tag == GPU_PTCL_END) {
+            break;
+        }
+        if (tag != GPU_PTCL_COLOR) {
+            return tile_pixel(tile_ix, local_ix);
+        }
+        if (premul_u8_is_opaque(ptcl.color)) {
+            pixel = rgba8_to_unorm(ptcl.color);
+        } else {
+            pixel = src_over_premul_unorm(pixel, rgba8_to_unorm(ptcl.color));
+        }
+        ptcl_ix += 1u;
+    }
+    return pixel;
+}
+
+fn analytic_solid_no_stack_tile_pixel(tile_ix: u32, local_ix: u32) -> vec4<f32> {
+    let tile_x = tile_ix % config.tiles_width;
+    let tile_y = tile_ix / config.tiles_width;
+    let global_x = tile_x * 16u + local_ix % 16u;
+    let global_y = tile_y * 16u + local_ix / 16u;
+    let sample_x = f32(global_x) + 0.5;
+    let sample_y = f32(global_y) + 0.5;
+    var pixel = fine_initial_pixel(global_x, global_y);
+
+    let tile = coarse_load_tile(tile_ix);
+    var ptcl_ix = tile.ptcl_start;
+    loop {
+        if (ptcl_ix >= tile.ptcl_end) {
+            break;
+        }
+        let ptcl = coarse_load_ptcl(ptcl_ix);
+        let tag = ptcl.tag;
+        if (tag == GPU_PTCL_END) {
+            break;
+        }
+        if (tag == GPU_PTCL_COLOR) {
+            if (premul_u8_is_opaque(ptcl.color)) {
+                pixel = rgba8_to_unorm(ptcl.color);
+            } else {
+                pixel = src_over_premul_unorm(pixel, rgba8_to_unorm(ptcl.color));
+            }
+        } else if (tag == GPU_PTCL_SDF) {
+            let draw = draw_records[ptcl.color];
+            var coverage = 0.0;
+            if (pixel_in_draw_bounds(draw, global_x, global_y)) {
+                coverage = supported_sdf_coverage_from_draw(draw, sample_x, sample_y);
+            }
+            let alpha = coverage_to_u8(coverage);
+            if (alpha != 0u) {
+                let color = brush_word(draw.brush_offset + 4u);
+                if (alpha == 255u && premul_u8_is_opaque(color)) {
+                    pixel = rgba8_to_unorm(color);
+                } else {
+                    pixel = src_over_premul_unorm(pixel, scale_premul_u8_to_unorm(color, alpha));
+                }
+            }
+        } else {
+            return tile_pixel(tile_ix, local_ix);
+        }
+        ptcl_ix += 1u;
+    }
+    return pixel;
 }
 
 fn tile_pixel(tile_ix: u32, local_ix: u32) -> vec4<f32> {
@@ -299,6 +401,35 @@ fn sample_draw_brush(brush_offset: u32, x: f32, y: f32) -> u32 {
         return brush_word(brush_offset + 4u);
     }
     return sample_brush(brush_offset, x, y);
+}
+
+fn pixel_in_draw_bounds(draw: DrawRecord, global_x: u32, global_y: u32) -> bool {
+    let px = i32(global_x);
+    let py = i32(global_y);
+    return px >= draw.pixel_x0 && py >= draw.pixel_y0 && px < draw.pixel_x1 && py < draw.pixel_y1;
+}
+
+fn supported_sdf_coverage_from_draw(draw: DrawRecord, x: f32, y: f32) -> f32 {
+    let base = draw.sdf_offset;
+    if (base == SDF_NONE_REF) {
+        return sdf_coverage_from_draw(draw, x, y);
+    }
+    let kind = sdf_word(base, 0u, false);
+    let x0 = sdf_float(base, 1u, false);
+    let y0 = sdf_float(base, 2u, false);
+    let x1 = sdf_float(base, 3u, false);
+    let y1 = sdf_float(base, 4u, false);
+    let r0 = sdf_float(base, 5u, false);
+    let r1 = sdf_float(base, 6u, false);
+    let r2 = sdf_float(base, 7u, false);
+    let r3 = sdf_float(base, 8u, false);
+    if (kind == GPU_SDF_RECT) {
+        return sdf_coverage_from_dist(rect_sdf_distance(x, y, x0, y0, x1, y1, r0, r1, r2, r3));
+    }
+    if (kind == GPU_SDF_CANDLESTICK) {
+        return candlestick_sdf_coverage(x, y, x0, y0, x1, y1, r0, r1, r2);
+    }
+    return sdf_coverage_from_draw(draw, x, y);
 }
 
 fn composite_glyphs_at(

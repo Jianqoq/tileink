@@ -184,13 +184,19 @@ fn coarse_emit_bins(
     var glyph_cursor = tile.glyph_start;
     let glyph_range_end = tile.glyph_end;
     if (cursor >= range_end) {
+        store_fine_tile_kind(tile_ix, FINE_TILE_KIND_EMPTY_OR_CLEAR);
         return;
     }
 
     let wrapper_count = active_stack_count(tile_x, tile_y);
     if (wrapper_count == INVALID) {
+        store_fine_tile_kind(tile_ix, FINE_TILE_KIND_FULL_INTERPRETER);
         return;
     }
+
+    var saw_color = false;
+    var saw_sdf = false;
+    var saw_other = wrapper_count != 0u;
 
     emit_active_stack_begins(cursor, tile_x, tile_y);
     cursor += wrapper_count;
@@ -270,6 +276,13 @@ fn coarse_emit_bins(
         }
 
         if (valid) {
+            if (ptcl_tag == GPU_PTCL_COLOR) {
+                saw_color = true;
+            } else if (ptcl_tag == GPU_PTCL_SDF && draw_solid_supported_sdf_at(draw_ix)) {
+                saw_sdf = true;
+            } else {
+                saw_other = true;
+            }
             if (ptcl_tag == GPU_PTCL_GLYPH) {
                 ptcl_segment_start = glyph_cursor;
                 ptcl_segment_end = ptcl_segment_start + glyph_count;
@@ -296,6 +309,7 @@ fn coarse_emit_bins(
 
     emit_active_stack_ends(cursor);
     store_particle(cursor + wrapper_count, GPU_PTCL_END, 0i, 0u, 0u, 0u, 0u);
+    store_fine_tile_kind(tile_ix, classify_fine_tile_kind(saw_color, saw_sdf, saw_other));
 }
 
 fn active_stack_count(tile_x: u32, tile_y: u32) -> u32 {
@@ -530,6 +544,36 @@ fn draw_has_glyph_at(draw_ix: u32) -> bool {
 
 fn draw_solid_color_fast_path_at(draw_ix: u32) -> bool {
     return draw_records[draw_ix].solid_rect != 0u && draw_has_nontransparent_solid_brush_at(draw_ix);
+}
+
+fn classify_fine_tile_kind(saw_color: bool, saw_sdf: bool, saw_other: bool) -> u32 {
+    if (saw_other) {
+        return FINE_TILE_KIND_FULL_INTERPRETER;
+    }
+    if (saw_sdf && saw_color) {
+        return FINE_TILE_KIND_MIXED_ANALYTIC_SOLID_NO_STACK;
+    }
+    if (saw_sdf) {
+        return FINE_TILE_KIND_PURE_SDF_SOLID_NO_STACK;
+    }
+    if (saw_color) {
+        return FINE_TILE_KIND_COLOR_ONLY_NO_STACK;
+    }
+    return FINE_TILE_KIND_EMPTY_OR_CLEAR;
+}
+
+fn draw_solid_supported_sdf_at(draw_ix: u32) -> bool {
+    let draw = draw_records[draw_ix];
+    if (
+        !draw_has_nontransparent_solid_brush_at(draw_ix) ||
+        draw.sdf_offset == INVALID ||
+        draw.sdf_shadow_offset != INVALID ||
+        draw.sdf_len == 0u
+    ) {
+        return false;
+    }
+    let kind = sdf_blob[draw.sdf_offset];
+    return kind == GPU_SDF_RECT || kind == GPU_SDF_CANDLESTICK;
 }
 
 fn draw_has_nontransparent_solid_brush_at(draw_ix: u32) -> bool {

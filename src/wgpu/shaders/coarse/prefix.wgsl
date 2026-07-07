@@ -378,6 +378,10 @@ fn coarse_tile_counts_from_emit_chunks(
         }
     }
     coarse_store_tile_counts(tile_ix, ptcl_count, glyph_count);
+    store_fine_tile_kind(
+        tile_ix,
+        select(FINE_TILE_KIND_EMPTY_OR_CLEAR, FINE_TILE_KIND_FULL_INTERPRETER, ptcl_count > 0u),
+    );
 }
 
 fn active_stack_count(tile_x: u32, tile_y: u32) -> u32 {

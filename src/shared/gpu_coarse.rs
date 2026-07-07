@@ -43,6 +43,32 @@ pub(crate) struct TileDrawRecord {
     pub(crate) end: u32,
 }
 
+#[cfg(test)]
+#[repr(u32)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FineTileKind {
+    FullInterpreter = 0,
+    EmptyOrClear = 1,
+    ColorOnlyNoStack = 2,
+    PureSdfSolidNoStack = 3,
+    MixedAnalyticSolidNoStack = 4,
+    AnalyticWithStack = 5,
+}
+
+#[cfg(test)]
+impl FineTileKind {
+    pub(crate) fn from_word(word: u32) -> Self {
+        match word {
+            1 => Self::EmptyOrClear,
+            2 => Self::ColorOnlyNoStack,
+            3 => Self::PureSdfSolidNoStack,
+            4 => Self::MixedAnalyticSolidNoStack,
+            5 => Self::AnalyticWithStack,
+            _ => Self::FullInterpreter,
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct LayerStackRecord {
@@ -68,6 +94,7 @@ pub(crate) const TILE_DRAW_RECORD_WORDS: usize = std::mem::size_of::<TileDrawRec
 pub(crate) const TILE_EMIT_CHUNK_RECORD_WORDS: usize =
     std::mem::size_of::<TileEmitChunkRecord>() / 4;
 pub(crate) const EMIT_CHUNK_RECORD_WORDS: usize = std::mem::size_of::<EmitChunkRecord>() / 4;
+pub(crate) const FINE_TILE_KIND_WORDS: usize = 1;
 
 pub(crate) fn coarse_work_ptcl_word_offset(tile_count: usize) -> usize {
     tile_count * TILE_COARSE_RECORD_WORDS
@@ -119,6 +146,22 @@ pub(crate) fn coarse_work_emit_chunk_record_word_offset(
 }
 
 pub(crate) fn coarse_work_word_len(
+    tile_count: usize,
+    ptcl_capacity: usize,
+    glyph_capacity: usize,
+    tile_draw_index_count: usize,
+    tile_draw_chunk_count: usize,
+) -> usize {
+    coarse_work_fine_tile_kind_word_offset(
+        tile_count,
+        ptcl_capacity,
+        glyph_capacity,
+        tile_draw_index_count,
+        tile_draw_chunk_count,
+    ) + tile_count * FINE_TILE_KIND_WORDS
+}
+
+pub(crate) fn coarse_work_fine_tile_kind_word_offset(
     tile_count: usize,
     ptcl_capacity: usize,
     glyph_capacity: usize,
@@ -221,6 +264,7 @@ mod tests {
         assert_eq!(TILE_DRAW_RECORD_WORDS, 2);
         assert_eq!(TILE_EMIT_CHUNK_RECORD_WORDS, 2);
         assert_eq!(EMIT_CHUNK_RECORD_WORDS, 6);
+        assert_eq!(FINE_TILE_KIND_WORDS, 1);
         assert_eq!(coarse_work_ptcl_word_offset(3), 18);
         assert_eq!(coarse_work_glyph_word_offset(3, 5), 48);
         assert_eq!(coarse_work_tile_draw_record_word_offset(3, 5, 7), 55);
@@ -230,6 +274,7 @@ mod tests {
             72
         );
         assert_eq!(coarse_work_emit_chunk_record_word_offset(3, 5, 7, 11), 78);
-        assert_eq!(coarse_work_word_len(3, 5, 7, 11, 13), 156);
+        assert_eq!(coarse_work_fine_tile_kind_word_offset(3, 5, 7, 11, 13), 156);
+        assert_eq!(coarse_work_word_len(3, 5, 7, 11, 13), 159);
     }
 }

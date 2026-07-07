@@ -7,8 +7,8 @@ use crate::shared::{
 
 #[cfg(test)]
 use crate::shared::gpu_coarse::{
-    PTCL_RECORD_WORDS, PtclRecord, TILE_COARSE_RECORD_WORDS, TileCoarseRecord,
-    coarse_work_ptcl_word_offset,
+    FineTileKind, PTCL_RECORD_WORDS, PtclRecord, TILE_COARSE_RECORD_WORDS, TileCoarseRecord,
+    coarse_work_fine_tile_kind_word_offset, coarse_work_ptcl_word_offset,
 };
 
 use super::super::buffer::WgpuBuffer;
@@ -170,6 +170,28 @@ impl WgpuCoarseBuffers {
                 segment_end: words[4],
                 color: words[5],
             })
+            .collect()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn read_fine_tile_kinds(
+        &self,
+        device: &::wgpu::Device,
+        queue: &::wgpu::Queue,
+        lengths: GpuBufferLengths,
+    ) -> Vec<FineTileKind> {
+        let offset = coarse_work_fine_tile_kind_word_offset(
+            lengths.tile_count,
+            lengths.coarse_ptcl_capacity,
+            lengths.coarse_glyph_capacity,
+            lengths.tile_draw_index_count,
+            lengths.tile_draw_chunk_count,
+        );
+        self.work
+            .read::<u32>(device, queue, offset + lengths.tile_count)
+            .into_iter()
+            .skip(offset)
+            .map(FineTileKind::from_word)
             .collect()
     }
 }

@@ -1,7 +1,8 @@
 #![allow(clippy::too_many_arguments)]
 
 use crate::shared::{
-    gpu_layout::fine as fine_layout, gpu_plan::GpuBufferLengths, image::premul_color_to_rgba8_pack,
+    gpu_coarse::coarse_work_fine_tile_kind_word_offset, gpu_layout::fine as fine_layout,
+    gpu_plan::GpuBufferLengths, image::premul_color_to_rgba8_pack,
 };
 
 use super::{
@@ -43,6 +44,7 @@ struct FineConfig {
     text_image_base: u32,
     text_image_data_base: u32,
     group_spill_base: u32,
+    fine_tile_kind_base: u32,
 }
 
 unsafe impl bytemuck::Zeroable for FineConfig {}
@@ -219,6 +221,13 @@ impl WgpuFinePipeline {
                     * clip_spill_depth as usize
                     * crate::shared::gpu_plan::FINE_WORKGROUP_SIZE as usize)
                     as u32,
+                fine_tile_kind_base: coarse_work_fine_tile_kind_word_offset(
+                    lengths.tile_count,
+                    lengths.coarse_ptcl_capacity,
+                    lengths.coarse_glyph_capacity,
+                    lengths.tile_draw_index_count,
+                    lengths.tile_draw_chunk_count,
+                ) as u32,
             }),
         );
 

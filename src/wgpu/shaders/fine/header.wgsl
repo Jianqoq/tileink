@@ -90,6 +90,7 @@ struct FineConfig {
     text_image_base: u32,
     text_image_data_base: u32,
     group_spill_base: u32,
+    fine_tile_kind_base: u32,
 };
 
 @group(0) @binding(0) var<uniform> config: FineConfig;
@@ -159,6 +160,12 @@ const TILE_COARSE_RECORD_WORDS: u32 = 6u;
 const PTCL_RECORD_WORDS: u32 = 6u;
 const GLYPH_RECORD_WORDS: u32 = 3u;
 const GLYPH_IMAGE_RECORD_WORDS: u32 = 6u;
+const FINE_TILE_KIND_FULL_INTERPRETER: u32 = 0u;
+const FINE_TILE_KIND_EMPTY_OR_CLEAR: u32 = 1u;
+const FINE_TILE_KIND_COLOR_ONLY_NO_STACK: u32 = 2u;
+const FINE_TILE_KIND_PURE_SDF_SOLID_NO_STACK: u32 = 3u;
+const FINE_TILE_KIND_MIXED_ANALYTIC_SOLID_NO_STACK: u32 = 4u;
+const FINE_TILE_KIND_ANALYTIC_WITH_STACK: u32 = 5u;
 
 fn coarse_tile_base(tile_ix: u32) -> u32 {
     return tile_ix * TILE_COARSE_RECORD_WORDS;
@@ -200,6 +207,10 @@ fn coarse_load_ptcl(ptcl_ix: u32) -> PtclRecord {
 
 fn coarse_load_glyph(glyph_ix: u32) -> u32 {
     return coarse_work[coarse_glyph_base(glyph_ix)];
+}
+
+fn fine_tile_kind_at(tile_ix: u32) -> u32 {
+    return coarse_work[config.fine_tile_kind_base + tile_ix];
 }
 
 fn glyph_at(glyph_ix: u32) -> GlyphRecord {

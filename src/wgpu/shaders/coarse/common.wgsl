@@ -135,6 +135,7 @@ const GPU_PTCL_GLYPH: u32 = 10u;
 const GPU_PTCL_PATH_GLYPH: u32 = 11u;
 const GPU_PTCL_BEGIN_SDF_CLIP: u32 = 12u;
 const GPU_SDF_RECT: u32 = 1u;
+const GPU_SDF_CANDLESTICK: u32 = 5u;
 const FULL_TILE_SDF_SOLID_INSET: f32 = 0.75;
 const GLYPH_RUN_RECORD_WORDS: u32 = 2u;
 const GLYPH_RECORD_WORDS: u32 = 3u;
@@ -144,6 +145,12 @@ const PTCL_RECORD_WORDS: u32 = 6u;
 const TILE_DRAW_RECORD_WORDS: u32 = 2u;
 const TILE_EMIT_CHUNK_RECORD_WORDS: u32 = 2u;
 const EMIT_CHUNK_RECORD_WORDS: u32 = 6u;
+const FINE_TILE_KIND_FULL_INTERPRETER: u32 = 0u;
+const FINE_TILE_KIND_EMPTY_OR_CLEAR: u32 = 1u;
+const FINE_TILE_KIND_COLOR_ONLY_NO_STACK: u32 = 2u;
+const FINE_TILE_KIND_PURE_SDF_SOLID_NO_STACK: u32 = 3u;
+const FINE_TILE_KIND_MIXED_ANALYTIC_SOLID_NO_STACK: u32 = 4u;
+const FINE_TILE_KIND_ANALYTIC_WITH_STACK: u32 = 5u;
 
 fn coarse_tile_base(tile_ix: u32) -> u32 {
     return tile_ix * TILE_COARSE_RECORD_WORDS;
@@ -173,6 +180,14 @@ fn coarse_tile_emit_chunk_record_base() -> u32 {
 
 fn coarse_emit_chunk_record_base() -> u32 {
     return coarse_tile_emit_chunk_record_base() + config.tile_count * TILE_EMIT_CHUNK_RECORD_WORDS;
+}
+
+fn coarse_fine_tile_kind_base() -> u32 {
+    return coarse_emit_chunk_record_base() + config.emit_chunk_capacity * EMIT_CHUNK_RECORD_WORDS;
+}
+
+fn store_fine_tile_kind(tile_ix: u32, kind: u32) {
+    coarse_work[coarse_fine_tile_kind_base() + tile_ix] = kind;
 }
 
 fn tile_draw_start_at(tile_ix: u32) -> u32 {

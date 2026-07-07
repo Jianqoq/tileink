@@ -73,6 +73,10 @@ fn coarse_count(
             stored_count = tile_ptcl_count + wrapper_count * 2u + 1u;
         }
         coarse_store_tile_counts(tile_ix, stored_count, tile_glyph_count);
+        store_fine_tile_kind(
+            tile_ix,
+            select(FINE_TILE_KIND_EMPTY_OR_CLEAR, FINE_TILE_KIND_FULL_INTERPRETER, stored_count > 0u),
+        );
     }
 }
 
@@ -144,6 +148,10 @@ fn coarse_count_bins(
         stored_count = count + wrapper_count * 2u + 1u;
     }
     coarse_store_tile_counts(tile_ix, stored_count, glyph_count);
+    store_fine_tile_kind(
+        tile_ix,
+        select(FINE_TILE_KIND_EMPTY_OR_CLEAR, FINE_TILE_KIND_FULL_INTERPRETER, stored_count > 0u),
+    );
 }
 
 fn active_stack_count(tile_x: u32, tile_y: u32) -> u32 {
