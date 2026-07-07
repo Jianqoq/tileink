@@ -17,19 +17,22 @@ const WARMUP_FRAMES: usize = 8;
 const PROFILE_FRAMES: usize = 64;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    profile_scene("small full-res blur std_dev=1", &blur_scene(1.0))?;
+    profile_scene("small full-res blur std_dev=2", &blur_scene(2.0))?;
+    profile_scene("small full-res blur std_dev=5", &blur_scene(5.0))?;
     profile_scene("large full-res blur", &large_blur_scene())?;
     profile_scene("full-res liquid glass", &liquid_glass_scene(false))?;
     profile_scene("downsampled liquid glass", &liquid_glass_scene(true))?;
     Ok(())
 }
 
-fn large_blur_scene() -> Canvas {
+fn blur_scene(std_dev: f32) -> Canvas {
     let mut scene = Canvas::new(WIDTH, HEIGHT, 1.0);
     background(&mut scene);
     scene.push_filter_layer(
         Filter::Blur {
-            std_dev_x: 28.0,
-            std_dev_y: 28.0,
+            std_dev_x: std_dev,
+            std_dev_y: std_dev,
             sampling: BlurSampling::FULL_RES,
         },
         common::canvas_region(WIDTH, HEIGHT),
@@ -47,6 +50,10 @@ fn large_blur_scene() -> Canvas {
     );
     scene.pop_layer();
     scene
+}
+
+fn large_blur_scene() -> Canvas {
+    blur_scene(28.0)
 }
 
 fn liquid_glass_scene(downsampled: bool) -> Canvas {
