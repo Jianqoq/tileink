@@ -37,9 +37,9 @@ fn render_tree_with_options(
     width: u32,
     height: u32,
 ) -> CpuRenderer {
-    let mut canvas = Canvas::new(width, height);
+    let mut canvas = Canvas::new(width, height, 1.0);
     canvas.push_svg_with_options(tree, options).unwrap();
-    let mut renderer = CpuRenderer::new(canvas.width, canvas.height, clear);
+    let mut renderer = CpuRenderer::new(canvas.physical_width(), canvas.physical_height(), clear);
     renderer.render(&canvas);
     renderer
 }
@@ -124,7 +124,7 @@ fn push_svg_native_wgpu_matches_cpu_exact_when_enabled() {
                 <path d="M4 26 L28 26 L28 30 L4 30 Z" fill="#2060a0"/>
             </svg>"##,
     );
-    let mut canvas = Canvas::new(32, 32);
+    let mut canvas = Canvas::new(32, 32, 1.0);
     canvas.push_svg(&tree).unwrap();
 
     let mut cpu = CpuRenderer::new(32, 32, Color::TRANSPARENT);
@@ -153,9 +153,16 @@ fn push_svg_native_wgpu_matches_cpu_for_path_text_fixture_when_enabled() {
         "SVG text fixtures render as paths"
     );
 
-    let mut cpu = CpuRenderer::new(canvas.width, canvas.height, Color::TRANSPARENT);
-    let mut wgpu =
-        WgpuRenderer::new_default_device(canvas.width, canvas.height, Color::TRANSPARENT);
+    let mut cpu = CpuRenderer::new(
+        canvas.physical_width(),
+        canvas.physical_height(),
+        Color::TRANSPARENT,
+    );
+    let mut wgpu = WgpuRenderer::new_default_device(
+        canvas.physical_width(),
+        canvas.physical_height(),
+        Color::TRANSPARENT,
+    );
     for pass in 0..5 {
         cpu.render(&canvas);
         assert!(
@@ -189,7 +196,7 @@ fn svg_fixture_scene(relative: &str, target_width: u32) -> Canvas {
         .unwrap();
     let scale_x = size.width() as f64 / tree.size().width() as f64;
     let scale_y = size.height() as f64 / tree.size().height() as f64;
-    let mut canvas = Canvas::new(size.width(), size.height());
+    let mut canvas = Canvas::new(size.width(), size.height(), 1.0);
     canvas
         .push_svg_with_options(
             &tree,
@@ -1525,7 +1532,7 @@ fn push_svg_unsupported_features_do_not_modify_scene() {
                 <rect width="16" height="16" fill="url(#g)"/>
             </svg>"##,
     );
-    let mut canvas = Canvas::new(16, 16);
+    let mut canvas = Canvas::new(16, 16, 1.0);
     canvas.push_rect(
         Rect::new(0.0, 0.0, 16.0, 16.0),
         crate::Radius::ZERO,

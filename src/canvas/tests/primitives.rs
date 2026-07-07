@@ -87,6 +87,44 @@ fn push_rect_records_sdf_rect_with_independent_radii() {
 }
 
 #[test]
+fn new_stores_logical_size_and_scales_sdf_rects() {
+    let mut canvas = Canvas::new(21, 11, 1.5);
+    assert_eq!(canvas.physical_size(), (32, 17));
+    assert_eq!(canvas.scale_factor(), 1.5);
+
+    canvas.push_rect(
+        Rect::new(2.0, 3.0, 10.0, 11.0),
+        Radius {
+            top_left: 1.0,
+            top_right: 2.0,
+            bottom_left: 3.0,
+            bottom_right: 4.0,
+        },
+        Brush::Solid(rgb(255, 0, 0)),
+    );
+
+    assert_eq!(
+        canvas.draw_records[0].pixel_bounds,
+        PixelBounds {
+            x0: 3,
+            y0: 4,
+            x1: 15,
+            y1: 17,
+        }
+    );
+    match draw_sdf(&canvas, 0) {
+        Some(Sdf::Rect(rect)) => {
+            assert_eq!(rect.axis_bounds(), (3.0, 4.5, 15.0, 16.5));
+            assert_eq!(rect.radius.top_left, 1.5);
+            assert_eq!(rect.radius.top_right, 3.0);
+            assert_eq!(rect.radius.bottom_left, 4.5);
+            assert_eq!(rect.radius.bottom_right, 6.0);
+        }
+        sdf => panic!("expected scaled rect SDF, got {sdf:?}"),
+    }
+}
+
+#[test]
 fn push_image_records_pattern_rect_draw() {
     let mut canvas = test_scene();
     let image = Image::from_rgba8(2, 1, [255, 0, 0, 255, 0, 0, 255, 255]);
@@ -122,6 +160,32 @@ fn push_image_records_pattern_rect_draw() {
     assert_eq!((image.width, image.height), (2, 1));
     assert_eq!(pattern.sampling, PatternSampling::Nearest);
     assert_eq!(pattern.transform, [0.5, 0.0, 0.0, 0.5, -5.0, -10.0]);
+}
+
+#[test]
+fn new_keeps_image_brush_sampling_in_logical_coordinates() {
+    let mut canvas = Canvas::new(64, 64, 2.0);
+    canvas
+        .push_image_with_sampling(
+            Rect::new(10.0, 20.0, 14.0, 22.0),
+            Image::from_rgba8(2, 1, [255, 0, 0, 255, 0, 0, 255, 255]),
+            PatternSampling::Nearest,
+        )
+        .expect("push image draw");
+
+    assert_eq!(
+        canvas.draw_records[0].pixel_bounds,
+        PixelBounds {
+            x0: 20,
+            y0: 40,
+            x1: 28,
+            y1: 44,
+        }
+    );
+    let Brush::Pattern(pattern) = draw_brush(&canvas, 0) else {
+        panic!("expected image pattern brush");
+    };
+    assert_eq!(pattern.transform, [0.25, 0.0, 0.0, 0.25, -5.0, -10.0]);
 }
 
 #[test]

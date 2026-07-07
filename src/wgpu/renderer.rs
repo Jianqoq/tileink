@@ -454,7 +454,7 @@ impl Renderer {
 
     fn render_prepared_native(&mut self, canvas: &Canvas) -> bool {
         if self.render_prepared_tile_plan(canvas) {
-            self.size = (canvas.width, canvas.height);
+            self.size = (canvas.physical_width(), canvas.physical_height());
             return true;
         }
         false
@@ -485,17 +485,26 @@ impl Renderer {
     }
 
     fn prepare_scene_resources(&mut self, canvas: &Canvas) {
-        self.size = (canvas.width, canvas.height);
+        self.size = (canvas.physical_width(), canvas.physical_height());
         self.surface_origin = (0, 0);
         profile_cpu("prepare.target", || {
             if self.root_target_view.is_none() {
-                self.readback_target
-                    .resize(&self.device, canvas.width, canvas.height);
+                self.readback_target.resize(
+                    &self.device,
+                    canvas.physical_width(),
+                    canvas.physical_height(),
+                );
             }
-            self.fine_portable_source
-                .resize(&self.device, canvas.width, canvas.height);
-            self.fine_portable_target
-                .resize(&self.device, canvas.width, canvas.height);
+            self.fine_portable_source.resize(
+                &self.device,
+                canvas.physical_width(),
+                canvas.physical_height(),
+            );
+            self.fine_portable_target.resize(
+                &self.device,
+                canvas.physical_width(),
+                canvas.physical_height(),
+            );
         });
         let lengths = profile_cpu("prepare.lengths", || {
             GpuBufferLengths::from_scene_with_text(canvas, self.text_data.as_ref())
@@ -629,19 +638,35 @@ impl Renderer {
             ),
             readback_target: std::mem::replace(
                 &mut self.readback_target,
-                WgpuTarget::new(&self.device, canvas.width, canvas.height),
+                WgpuTarget::new(
+                    &self.device,
+                    canvas.physical_width(),
+                    canvas.physical_height(),
+                ),
             ),
             fine_portable_source: std::mem::replace(
                 &mut self.fine_portable_source,
-                WgpuTarget::new(&self.device, canvas.width, canvas.height),
+                WgpuTarget::new(
+                    &self.device,
+                    canvas.physical_width(),
+                    canvas.physical_height(),
+                ),
             ),
             fine_portable_target: std::mem::replace(
                 &mut self.fine_portable_target,
-                WgpuTarget::new(&self.device, canvas.width, canvas.height),
+                WgpuTarget::new(
+                    &self.device,
+                    canvas.physical_width(),
+                    canvas.physical_height(),
+                ),
             ),
             filter_target_snapshot: std::mem::replace(
                 &mut self.filter_target_snapshot,
-                WgpuTarget::new(&self.device, canvas.width, canvas.height),
+                WgpuTarget::new(
+                    &self.device,
+                    canvas.physical_width(),
+                    canvas.physical_height(),
+                ),
             ),
             root_target_texture: std::mem::take(&mut self.root_target_texture),
             root_target_view: std::mem::take(&mut self.root_target_view),
@@ -656,7 +681,7 @@ impl Renderer {
         });
         let (max_clip_depth, max_group_depth) =
             profile_cpu("prepare.local.stack_depths", || plan_stack_depths(plan));
-        self.size = (canvas.width, canvas.height);
+        self.size = (canvas.physical_width(), canvas.physical_height());
         self.surface_origin = surface_origin;
         self.lengths = lengths;
         self.max_clip_depth = max_clip_depth;
@@ -1818,7 +1843,7 @@ impl Renderer {
     ) {
         self.prepare_scene_with_text(canvas, font_system, text_context);
         if self.render_prepared_tile_plan(canvas) {
-            self.size = (canvas.width, canvas.height);
+            self.size = (canvas.physical_width(), canvas.physical_height());
             return;
         }
         profile_cpu("cpu_fallback.render_text", || {
@@ -1835,7 +1860,7 @@ impl Renderer {
         self.prepare_scene(canvas);
         let rendered_native = self.render_prepared_tile_plan(canvas);
         if rendered_native {
-            self.size = (canvas.width, canvas.height);
+            self.size = (canvas.physical_width(), canvas.physical_height());
             let image = self.image();
             let debug = self.read_debug_scan_buffers();
             return capture_render_debug(
@@ -1972,7 +1997,7 @@ impl Renderer {
         }
         self.last_frame_used_native = false;
         profile_cpu("cpu_fallback.render", || self.cpu.render(canvas));
-        self.size = (canvas.width, canvas.height);
+        self.size = (canvas.physical_width(), canvas.physical_height());
         self.upload_image_to_wgpu_texture(dst, self.cpu.image())
     }
 
@@ -1991,7 +2016,7 @@ impl Renderer {
         profile_cpu("cpu_fallback.render_text", || {
             self.cpu.render_with_text(canvas, font_system, text_context)
         });
-        self.size = (canvas.width, canvas.height);
+        self.size = (canvas.physical_width(), canvas.physical_height());
         self.upload_image_to_wgpu_texture(dst, self.cpu.image())
     }
 
@@ -2020,7 +2045,11 @@ impl Renderer {
         prepare: impl FnOnce(&mut Self, &Canvas),
     ) -> bool {
         if self
-            .validate_wgpu_storage_texture_destination(dst, canvas.width, canvas.height)
+            .validate_wgpu_storage_texture_destination(
+                dst,
+                canvas.physical_width(),
+                canvas.physical_height(),
+            )
             .is_err()
         {
             return false;
@@ -2029,7 +2058,7 @@ impl Renderer {
         self.root_target_view = Some(dst.create_view(&::wgpu::TextureViewDescriptor::default()));
         prepare(self, canvas);
         let rendered = if self.render_prepared_tile_plan(canvas) {
-            self.size = (canvas.width, canvas.height);
+            self.size = (canvas.physical_width(), canvas.physical_height());
             true
         } else {
             false

@@ -78,6 +78,33 @@ fn push_path_flattens_transformed_geometry() {
 }
 
 #[test]
+fn new_scales_path_geometry_before_flattening() {
+    let mut canvas = Canvas::new(64, 64, 2.0);
+    canvas.push_path(
+        rect_path(0.0, 0.0, 10.0, 10.0),
+        Brush::Solid(rgb(255, 0, 0)),
+        Affine::translate((8.0, 4.0)),
+        FillRule::NonZero,
+        0.25,
+    );
+
+    assert_eq!(
+        canvas.draw_records[0].pixel_bounds,
+        PixelBounds {
+            x0: 16,
+            y0: 8,
+            x1: 36,
+            y1: 28,
+        }
+    );
+    assert!(canvas.lines.iter().all(|line| {
+        [line.p0, line.p1].into_iter().all(|point| {
+            point[0] >= 16.0 && point[0] <= 36.0 && point[1] >= 8.0 && point[1] <= 28.0
+        })
+    }));
+}
+
+#[test]
 fn push_path_reserves_segment_capacity_from_scan_tile_count() {
     let mut path = BezPath::new();
     path.move_to((8.0, 8.0));

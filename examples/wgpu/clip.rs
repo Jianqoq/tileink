@@ -19,7 +19,7 @@ fn complex_clip_path() -> BezPath {
 }
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let mut scene = Canvas::new(360, 260);
+    let mut scene = Canvas::new(360, 260, 1.0);
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 360.0, 260.0),

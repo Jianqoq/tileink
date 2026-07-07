@@ -6,7 +6,7 @@ use tileink::{Canvas, Radius, StrokeWidths};
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let width = 480;
     let height = 320;
-    let mut scene = Canvas::new(width, height);
+    let mut scene = Canvas::new(width, height, 1.0);
 
     scene.push_rect(
         Rect::new(0.0, 0.0, width as f64, height as f64),

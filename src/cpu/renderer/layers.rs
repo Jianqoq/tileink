@@ -232,7 +232,7 @@ impl Renderer {
         let bounds = self.filter.filtered_region_bounds(
             layer.filter,
             layer.sample_region,
-            Bounds::canvas(canvas.width, canvas.height),
+            Bounds::canvas(canvas.physical_width(), canvas.physical_height()),
         );
         if bounds.is_empty() {
             return;

@@ -8,7 +8,7 @@ use peniko::{
 use tileink::{Brush, Canvas, Filter, Radius};
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let mut scene = Canvas::new(640, 360);
+    let mut scene = Canvas::new(640, 360, 1.0);
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 640.0, 360.0),

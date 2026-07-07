@@ -7,7 +7,7 @@ use peniko::{
 use tileink::{Canvas, CpuRenderer, FillRule};
 
 fn build_scene(width: u32, height: u32) -> Canvas {
-    let mut scene = Canvas::new(width, height);
+    let mut scene = Canvas::new(width, height, 1.0);
     scene.push_rect(
         Rect::new(0.0, 0.0, width as f64, height as f64),
         tileink::Radius::ZERO,

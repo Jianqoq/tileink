@@ -9,7 +9,7 @@ use tileink::{Canvas, FillRule};
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let width = 360;
     let height = 260;
-    let mut scene = Canvas::new(width, height);
+    let mut scene = Canvas::new(width, height, 1.0);
 
     scene.push_rect(
         Rect::new(0.0, 0.0, width as f64, height as f64),

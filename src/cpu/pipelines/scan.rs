@@ -888,7 +888,7 @@ mod tests {
 
     #[test]
     fn run_keeps_generated_horizontal_path_dash_backdrops_empty() {
-        let mut canvas = Canvas::new(1071, 651);
+        let mut canvas = Canvas::new(1071, 651, 1.0);
         canvas.push_stroke(
             KurboLine::new((0.0, 216.5), (652.0, 216.5)).to_path(0.25),
             Stroke::new(1.0).with_dashes(0.0, [1.0_f64, 2.0_f64]),
@@ -948,7 +948,7 @@ mod tests {
         let transform = Affine::translate((331.0, 124.0))
             * Affine::scale_non_uniform(0.957_777_777_777_777_7, 0.597_777_777_777_777_7)
             * Affine::new([1.765_646_3, 0.0, 0.0, 1.765_646_3, 324.907_16, 255.009_42]);
-        let mut canvas = Canvas::new(1248, 628);
+        let mut canvas = Canvas::new(1248, 628, 1.0);
         canvas.push_stroke(
             path,
             Stroke::new(0.1),

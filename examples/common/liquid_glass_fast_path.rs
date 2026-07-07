@@ -21,7 +21,7 @@ pub enum GlassMode {
 }
 
 pub fn mixed_scene() -> Canvas {
-    let mut scene = Canvas::new(WIDTH, HEIGHT);
+    let mut scene = Canvas::new(WIDTH, HEIGHT, 1.0);
     background(&mut scene, WIDTH, HEIGHT);
 
     add_panel(
@@ -46,7 +46,7 @@ pub fn mixed_scene() -> Canvas {
 }
 
 pub fn single_mode_scene(mode: GlassMode) -> Canvas {
-    let mut scene = Canvas::new(WIDTH, HEIGHT);
+    let mut scene = Canvas::new(WIDTH, HEIGHT, 1.0);
     background(&mut scene, WIDTH, HEIGHT);
     add_panel(
         &mut scene,
@@ -58,7 +58,7 @@ pub fn single_mode_scene(mode: GlassMode) -> Canvas {
 }
 
 pub fn profile_scene_for_mode(mode: GlassMode, panels: u32) -> Canvas {
-    let mut scene = Canvas::new(PROFILE_WIDTH, PROFILE_HEIGHT);
+    let mut scene = Canvas::new(PROFILE_WIDTH, PROFILE_HEIGHT, 1.0);
     background(&mut scene, PROFILE_WIDTH, PROFILE_HEIGHT);
     let columns = if panels <= 16 { 4 } else { 8 };
     let rows = panels.div_ceil(columns);

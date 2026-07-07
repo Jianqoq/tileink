@@ -2510,7 +2510,7 @@ fn render_tileink_with_context(
             .with_size(Some(case.layout_width), None),
     );
     let bounds = layout.bounds();
-    let mut scene = Canvas::new(WIDTH, HEIGHT);
+    let mut scene = Canvas::new(WIDTH, HEIGHT, 1.0);
     scene.push_text_layout(
         &layout,
         Point::new(

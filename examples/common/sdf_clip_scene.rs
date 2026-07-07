@@ -7,7 +7,7 @@ use tileink::{Canvas, Radius, SdfLine, SdfLineCap};
 pub fn sdf_clip_scene() -> (Canvas, u32, u32) {
     let width = 640;
     let height = 360;
-    let mut scene = Canvas::new(width, height);
+    let mut scene = Canvas::new(width, height, 1.0);
 
     scene.push_rect(
         Rect::new(0.0, 0.0, width as f64, height as f64),

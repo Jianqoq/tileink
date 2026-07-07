@@ -159,7 +159,7 @@ pub(crate) fn local_filter(filter: &Filter, bounds: Bounds) -> Filter {
 }
 
 fn translated_scene_for_bounds(canvas: &Canvas, local: LocalSpace) -> Canvas {
-    let mut translated = Canvas::new(local.surface.width(), local.surface.height());
+    let mut translated = Canvas::new(local.surface.width(), local.surface.height(), 1.0);
     translated.lines = canvas
         .lines
         .iter()

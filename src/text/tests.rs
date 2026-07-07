@@ -167,7 +167,7 @@ fn scene_path_text_uses_path_draws_not_glyph_atlas() {
         return;
     }
 
-    let mut canvas = Canvas::new(180, 80);
+    let mut canvas = Canvas::new(180, 80, 1.0);
     canvas.push_text_layout_as_path(
         &mut context,
         &mut font_system,

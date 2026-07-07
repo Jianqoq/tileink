@@ -68,8 +68,9 @@ pub struct Canvas {
     pub(crate) path_cnt: u32,
     pub(crate) backdrop_pool_capacity: u32,
     pub(crate) tile_cnt: u32,
-    pub(crate) width: u32,
-    pub(crate) height: u32,
+    pub(crate) logical_width: u32,
+    pub(crate) logical_height: u32,
+    pub(crate) scale_factor: f32,
     draw_generation: u32,
 }
 
@@ -95,6 +96,38 @@ struct PathPushOptions {
     brush: Brush,
     emit_draw_command: bool,
     tag: DrawTag,
+}
+
+fn valid_scale_factor(scale_factor: f32) -> f32 {
+    assert!(
+        scale_factor.is_finite() && scale_factor > 0.0,
+        "canvas scale factor must be finite and positive"
+    );
+    scale_factor
+}
+
+fn scaled_canvas_extent(value: u32, scale: f32) -> u32 {
+    ((value as f64) * f64::from(scale))
+        .ceil()
+        .clamp(0.0, u32::MAX as f64) as u32
+}
+
+fn scale_brush_transform(transform: [f32; 6], scale: f32) -> [f32; 6] {
+    [
+        transform[0] * scale,
+        transform[1] * scale,
+        transform[2] * scale,
+        transform[3] * scale,
+        transform[4],
+        transform[5],
+    ]
+}
+
+fn scaled_positive_u32(value: u32, scale: f32) -> u32 {
+    ((value as f32) * scale)
+        .round()
+        .max(1.0)
+        .min(u32::MAX as f32) as u32
 }
 
 #[derive(Clone, Copy)]
@@ -377,7 +410,8 @@ impl SceneOffset {
 }
 
 impl Canvas {
-    pub fn new(width: u32, height: u32) -> Self {
+    pub fn new(logical_width: u32, logical_height: u32, scale_factor: f32) -> Self {
+        let scale = valid_scale_factor(scale_factor);
         Self {
             lines: Vec::new(),
             path_records: Vec::new(),
@@ -394,9 +428,354 @@ impl Canvas {
             path_cnt: 0,
             backdrop_pool_capacity: 0,
             tile_cnt: 0,
-            width,
-            height,
+            logical_width,
+            logical_height,
+            scale_factor: scale,
             draw_generation: 0,
+        }
+    }
+
+    pub fn scale_factor(&self) -> f32 {
+        self.scale_factor
+    }
+
+    pub fn physical_size(&self) -> (u32, u32) {
+        (self.physical_width(), self.physical_height())
+    }
+
+    pub fn logical_size(&self) -> (u32, u32) {
+        (self.logical_width, self.logical_height)
+    }
+
+    pub fn physical_width(&self) -> u32 {
+        scaled_canvas_extent(self.logical_width, self.scale_factor)
+    }
+
+    pub fn physical_height(&self) -> u32 {
+        scaled_canvas_extent(self.logical_height, self.scale_factor)
+    }
+
+    fn scale_f64(&self) -> f64 {
+        f64::from(self.scale_factor)
+    }
+
+    fn scale_f32(&self) -> f32 {
+        self.scale_factor
+    }
+
+    fn device_transform(&self) -> Affine {
+        Affine::scale(self.scale_f64())
+    }
+
+    fn device_tolerance(&self, tolerance: f64) -> f64 {
+        tolerance * self.scale_f64()
+    }
+
+    fn physical_point(&self, point: Point) -> Point {
+        Point::new(point.x * self.scale_f64(), point.y * self.scale_f64())
+    }
+
+    fn physical_rect(&self, rect: Rect) -> Rect {
+        let scale = self.scale_f64();
+        Rect::new(
+            rect.x0 * scale,
+            rect.y0 * scale,
+            rect.x1 * scale,
+            rect.y1 * scale,
+        )
+    }
+
+    fn physical_bounds(&self, bounds: Bounds) -> Bounds {
+        let scale = self.scale_f32();
+        Bounds::new(
+            (bounds.x0 as f32 * scale).floor() as i32,
+            (bounds.y0 as f32 * scale).floor() as i32,
+            (bounds.x1 as f32 * scale).ceil() as i32,
+            (bounds.y1 as f32 * scale).ceil() as i32,
+        )
+    }
+
+    fn physical_radius(&self, radius: Radius) -> Radius {
+        let scale = self.scale_f32();
+        Radius {
+            top_left: radius.top_left * scale,
+            top_right: radius.top_right * scale,
+            bottom_left: radius.bottom_left * scale,
+            bottom_right: radius.bottom_right * scale,
+        }
+    }
+
+    fn physical_stroke_widths(&self, widths: StrokeWidths) -> StrokeWidths {
+        let scale = self.scale_f32();
+        StrokeWidths {
+            top: widths.top * scale,
+            right: widths.right * scale,
+            bottom: widths.bottom * scale,
+            left: widths.left * scale,
+        }
+    }
+
+    fn physical_shadow_options(&self, options: RectShadowOptions) -> RectShadowOptions {
+        let scale = self.scale_f32();
+        RectShadowOptions {
+            offset_x: options.offset_x * scale,
+            offset_y: options.offset_y * scale,
+            expand: options.expand * scale,
+            intensity: options.intensity,
+        }
+    }
+
+    fn physical_filter(&self, filter: Filter) -> Filter {
+        let scale = self.scale_f32();
+        match filter {
+            Filter::Chain {
+                filters,
+                fixed_region,
+            } => Filter::Chain {
+                filters: filters
+                    .into_iter()
+                    .map(|filter| self.physical_filter(filter))
+                    .collect(),
+                fixed_region,
+            },
+            Filter::Graph {
+                primitives,
+                fixed_region,
+            } => Filter::Graph {
+                primitives: primitives
+                    .into_iter()
+                    .map(|primitive| FilterPrimitive {
+                        input: primitive.input,
+                        input2: primitive.input2,
+                        region: self.physical_bounds(primitive.region),
+                        kind: self.physical_filter_primitive_kind(primitive.kind),
+                    })
+                    .collect(),
+                fixed_region,
+            },
+            Filter::RectLiquidGlass(mut glass) => {
+                glass.blur_radius = ((glass.blur_radius as f32) * scale).round().max(1.0) as u32;
+                glass.refraction_thickness *= scale;
+                glass.fresnel_range *= scale;
+                glass.glare_range *= scale;
+                Filter::RectLiquidGlass(glass)
+            }
+            Filter::Blur {
+                std_dev_x,
+                std_dev_y,
+                sampling,
+            } => Filter::Blur {
+                std_dev_x: std_dev_x * scale,
+                std_dev_y: std_dev_y * scale,
+                sampling,
+            },
+            Filter::Flood { brush } => Filter::Flood {
+                brush: self.physical_brush(brush),
+            },
+            Filter::Offset { dx, dy } => Filter::Offset {
+                dx: dx * scale,
+                dy: dy * scale,
+            },
+            Filter::Morphology {
+                radius_x,
+                radius_y,
+                operator,
+            } => Filter::Morphology {
+                radius_x: radius_x * scale,
+                radius_y: radius_y * scale,
+                operator,
+            },
+            Filter::DropShadow {
+                offset_x,
+                offset_y,
+                std_dev,
+                brush,
+            } => Filter::DropShadow {
+                offset_x: offset_x * scale,
+                offset_y: offset_y * scale,
+                std_dev: std_dev * scale,
+                brush: self.physical_brush(brush),
+            },
+            filter => filter,
+        }
+    }
+
+    fn physical_filter_primitive_kind(&self, kind: FilterPrimitiveKind) -> FilterPrimitiveKind {
+        let scale = self.scale_f32();
+        match kind {
+            FilterPrimitiveKind::Filter(filter) => {
+                FilterPrimitiveKind::Filter(Box::new(self.physical_filter(*filter)))
+            }
+            FilterPrimitiveKind::Image { brush } => FilterPrimitiveKind::Image {
+                brush: self.physical_brush(brush),
+            },
+            FilterPrimitiveKind::DisplacementMap(mut map) => {
+                map.scale_x *= scale;
+                map.scale_y *= scale;
+                FilterPrimitiveKind::DisplacementMap(map)
+            }
+            FilterPrimitiveKind::Tile { source_region } => FilterPrimitiveKind::Tile {
+                source_region: self.physical_bounds(source_region),
+            },
+            FilterPrimitiveKind::Turbulence(mut turbulence) => {
+                turbulence.transform_x *= scale;
+                turbulence.transform_y *= scale;
+                turbulence.scale_x *= scale;
+                turbulence.scale_y *= scale;
+                turbulence.tile_x *= scale;
+                turbulence.tile_y *= scale;
+                turbulence.tile_width *= scale;
+                turbulence.tile_height *= scale;
+                FilterPrimitiveKind::Turbulence(turbulence)
+            }
+            kind => kind,
+        }
+    }
+
+    fn physical_region(&self, region: Region) -> Region {
+        match region {
+            Region::Rect { rect, radius } => Region::Rect {
+                rect: self.physical_rect(rect),
+                radius: self.physical_radius(radius),
+            },
+            Region::Path {
+                path,
+                transform,
+                tolerance,
+            } => Region::Path {
+                path,
+                transform: self.device_transform() * transform,
+                tolerance: self.device_tolerance(tolerance),
+            },
+        }
+    }
+
+    fn physical_mask(&self, mask: Mask) -> Mask {
+        Mask {
+            region: self.physical_region(mask.region),
+            kind: mask.kind,
+        }
+    }
+
+    fn physical_brush(&self, brush: Brush) -> Brush {
+        let inv_scale = 1.0 / self.scale_f32();
+        match brush {
+            Brush::Solid(_) => brush,
+            Brush::Linear(mut gradient) => {
+                gradient.transform = scale_brush_transform(gradient.transform, inv_scale);
+                Brush::Linear(gradient)
+            }
+            Brush::Radial(mut gradient) => {
+                gradient.transform = scale_brush_transform(gradient.transform, inv_scale);
+                Brush::Radial(gradient)
+            }
+            Brush::Sweep(mut gradient) => {
+                gradient.center[0] *= self.scale_f32();
+                gradient.center[1] *= self.scale_f32();
+                Brush::Sweep(gradient)
+            }
+            Brush::FourCorner(mut gradient) => {
+                let scale = self.scale_f32();
+                gradient.bounds[0] *= scale;
+                gradient.bounds[1] *= scale;
+                gradient.bounds[2] *= scale;
+                gradient.bounds[3] *= scale;
+                Brush::FourCorner(gradient)
+            }
+            Brush::Pattern(mut pattern) => {
+                pattern.transform = scale_brush_transform(pattern.transform, inv_scale);
+                Brush::Pattern(pattern)
+            }
+        }
+    }
+
+    fn physical_sdf(&self, sdf: Sdf) -> Sdf {
+        match sdf {
+            Sdf::Rect(rect) => Sdf::Rect(self.physical_sdf_rect(rect)),
+            Sdf::RectStroke(stroke) => Sdf::RectStroke(SdfRectStroke {
+                rect: self.physical_sdf_rect(stroke.rect),
+                widths: self.physical_stroke_widths(stroke.widths),
+            }),
+            Sdf::Circle(circle) => Sdf::Circle(SdfCircle {
+                center: self.physical_point(circle.center),
+                radius: circle.radius * self.scale_f32(),
+            }),
+            Sdf::CircleStroke(stroke) => Sdf::CircleStroke(SdfCircleStroke {
+                circle: SdfCircle {
+                    center: self.physical_point(stroke.circle.center),
+                    radius: stroke.circle.radius * self.scale_f32(),
+                },
+                half_width: stroke.half_width * self.scale_f32(),
+            }),
+            Sdf::Arc(mut arc) => {
+                arc.center = self.physical_point(arc.center);
+                arc.radius *= self.scale_f32();
+                arc.width *= self.scale_f32();
+                Sdf::Arc(arc)
+            }
+            Sdf::CandleStick(mut candle) => {
+                let scale = self.scale_f32();
+                candle.center_x *= scale;
+                candle.high_y *= scale;
+                candle.low_y *= scale;
+                candle.body_top_y *= scale;
+                candle.body_bottom_y *= scale;
+                candle.body_width = scaled_positive_u32(candle.body_width, scale);
+                candle.wick_width = scaled_positive_u32(candle.wick_width, scale);
+                Sdf::CandleStick(candle)
+            }
+            Sdf::Line(line) => Sdf::Line(self.physical_sdf_line(line)),
+            Sdf::DashLine(mut line) => {
+                line.line = self.physical_sdf_line(line.line);
+                line.dash_length *= self.scale_f32();
+                line.gap_length *= self.scale_f32();
+                line.dash_offset *= self.scale_f32();
+                Sdf::DashLine(line)
+            }
+        }
+    }
+
+    fn physical_sdf_shadow(&self, shadow: SdfShadow) -> SdfShadow {
+        match shadow {
+            SdfShadow::Rect(shadow) => SdfShadow::Rect(SdfRectShadow {
+                rect: self.physical_sdf_rect(shadow.rect),
+                options: self.physical_shadow_options(shadow.options),
+            }),
+            SdfShadow::Circle(shadow) => SdfShadow::Circle(SdfCircleShadow {
+                circle: SdfCircle {
+                    center: self.physical_point(shadow.circle.center),
+                    radius: shadow.circle.radius * self.scale_f32(),
+                },
+                options: self.physical_shadow_options(shadow.options),
+            }),
+            SdfShadow::Arc(mut shadow) => {
+                shadow.arc.center = self.physical_point(shadow.arc.center);
+                shadow.arc.radius *= self.scale_f32();
+                shadow.arc.width *= self.scale_f32();
+                shadow.options = self.physical_shadow_options(shadow.options);
+                SdfShadow::Arc(shadow)
+            }
+            SdfShadow::Line(shadow) => SdfShadow::Line(SdfLineShadow {
+                line: self.physical_sdf_line(shadow.line),
+                options: self.physical_shadow_options(shadow.options),
+            }),
+        }
+    }
+
+    fn physical_sdf_rect(&self, rect: SdfRect) -> SdfRect {
+        SdfRect {
+            start: self.physical_point(rect.start),
+            end: self.physical_point(rect.end),
+            radius: self.physical_radius(rect.radius),
+        }
+    }
+
+    fn physical_sdf_line(&self, line: SdfLine) -> SdfLine {
+        SdfLine {
+            start: self.physical_point(line.start),
+            end: self.physical_point(line.end),
+            width: line.width * self.scale_f32(),
+            cap: line.cap,
         }
     }
 
@@ -519,8 +898,12 @@ impl Canvas {
             other.command_stack.len() == 1 && other.layer_stack.is_empty(),
             "cannot append a canvas with unclosed layers"
         );
+        assert!(
+            (self.scale_factor - other.scale_factor).abs() <= f32::EPSILON,
+            "cannot append canvases with different scale factors"
+        );
 
-        let offset = SceneOffset::new(pos.into());
+        let offset = SceneOffset::new(self.physical_point(pos.into()));
         self.append_scene_ref_unchecked(other, SceneAppendMode::MergeCurrent, offset);
     }
 
@@ -705,7 +1088,7 @@ impl Canvas {
                 } else {
                     offset.brush(brush)
                 };
-                (draw.brush_offset, draw.brush_len) = self.push_brush(brush);
+                (draw.brush_offset, draw.brush_len) = self.push_physical_brush(brush);
             } else {
                 draw.brush_offset = DrawRecord::NONE;
                 draw.brush_len = 0;
@@ -938,9 +1321,14 @@ impl Canvas {
     /// SDF bounds, so future SDF primitives automatically work as clip layers.
     pub fn push_clip_sdf_layer(&mut self, sdf: Sdf) {
         self.ensure_command_root();
+        let sdf = self.physical_sdf(sdf);
         let bounds = sdf.bounds();
-        let draw =
-            self.push_sdf_record(sdf, Brush::Solid(Color::TRANSPARENT), DrawTag::Clip, false);
+        let draw = self.push_physical_sdf_record(
+            sdf,
+            Brush::Solid(Color::TRANSPARENT),
+            DrawTag::Clip,
+            false,
+        );
         let layer = Layer::ClipSdf { bounds, sdf };
         self.push_layer_command(draw, layer, LayerKind::ClipSdf);
     }
@@ -1019,8 +1407,12 @@ impl Canvas {
     /// layer's content before compositing through any outer clips.
     pub fn push_mask_layer(&mut self, mask_scene: Canvas, mask: Mask) {
         self.ensure_command_root();
+        assert!(
+            (self.scale_factor - mask_scene.scale_factor).abs() <= f32::EPSILON,
+            "cannot use a mask canvas with a different scale factor"
+        );
         let mask_commands = self.append_scene_as_command_list(&mask_scene);
-        self.push_mask_command(mask, mask_commands);
+        self.push_mask_command(self.physical_mask(mask), mask_commands);
     }
 
     /// Adds an offscreen filter group sampled from `sample_region`.
@@ -1030,6 +1422,8 @@ impl Canvas {
     /// the original geometry.
     pub fn push_filter_layer(&mut self, filter: Filter, sample_region: Region) {
         self.ensure_command_root();
+        let filter = self.physical_filter(filter);
+        let sample_region = self.physical_region(sample_region);
         assert!(
             !filter.contains_rect_liquid_glass(),
             "RectLiquidGlass is a rounded-rectangle backdrop effect; use push_backdrop_layer with Region::Rect"
@@ -1051,6 +1445,8 @@ impl Canvas {
     /// children normally on top.
     pub fn push_backdrop_layer(&mut self, filter: Filter, sample_region: Region) {
         self.ensure_command_root();
+        let filter = self.physical_filter(filter);
+        let sample_region = self.physical_region(sample_region);
         if filter.contains_rect_liquid_glass() {
             assert!(
                 matches!(sample_region, Region::Rect { .. }),
@@ -1580,16 +1976,20 @@ impl Canvas {
         let line_start = self.lines.len() as u32;
         let path_id = self.path_cnt;
         self.path_cnt += 1;
-        let path = Self::transform_path(path, transform);
-        PathFlatten::new(&path, tolerance as f32, path_id).flatten(&mut self.lines);
+        let path = Self::transform_path(path, self.device_transform() * transform);
+        PathFlatten::new(&path, self.device_tolerance(tolerance) as f32, path_id)
+            .flatten(&mut self.lines);
         let line_count = self.lines.len() as u32 - line_start;
         let pixel_bounds = match options.bounds_override {
-            Some(bounds) => PixelBounds {
-                x0: bounds.x0,
-                y0: bounds.y0,
-                x1: bounds.x1,
-                y1: bounds.y1,
-            },
+            Some(bounds) => {
+                let bounds = self.physical_bounds(bounds);
+                PixelBounds {
+                    x0: bounds.x0,
+                    y0: bounds.y0,
+                    x1: bounds.x1,
+                    y1: bounds.y1,
+                }
+            }
             None => Self::pixel_bounds_for_transformed_path(&path),
         };
         let path_record = PathRecord {
@@ -1691,10 +2091,25 @@ impl Canvas {
         tag: DrawTag,
         emit_draw_command: bool,
     ) -> usize {
+        self.push_physical_sdf_record(
+            self.physical_sdf(sdf),
+            self.physical_brush(brush),
+            tag,
+            emit_draw_command,
+        )
+    }
+
+    fn push_physical_sdf_record(
+        &mut self,
+        sdf: Sdf,
+        brush: Brush,
+        tag: DrawTag,
+        emit_draw_command: bool,
+    ) -> usize {
         self.ensure_command_root();
         let bounds = sdf.bounds();
         let (sdf_offset, sdf_len) = self.push_sdf(sdf);
-        let (brush_offset, brush_len) = self.push_brush(brush);
+        let (brush_offset, brush_len) = self.push_physical_brush(brush);
         let draw_ix = self.push_draw_record(DrawRecord {
             path_id: DrawRecord::NONE,
             glyph_run_id: DrawRecord::NONE,
@@ -1729,10 +2144,25 @@ impl Canvas {
         tag: DrawTag,
         emit_draw_command: bool,
     ) -> usize {
+        self.push_physical_sdf_shadow_record(
+            self.physical_sdf_shadow(sdf_shadow),
+            self.physical_brush(brush),
+            tag,
+            emit_draw_command,
+        )
+    }
+
+    fn push_physical_sdf_shadow_record(
+        &mut self,
+        sdf_shadow: SdfShadow,
+        brush: Brush,
+        tag: DrawTag,
+        emit_draw_command: bool,
+    ) -> usize {
         self.ensure_command_root();
         let bounds = sdf_shadow.bounds();
         let (sdf_shadow_offset, sdf_shadow_len) = self.push_sdf_shadow(sdf_shadow);
-        let (brush_offset, brush_len) = self.push_brush(brush);
+        let (brush_offset, brush_len) = self.push_physical_brush(brush);
         let draw_ix = self.push_draw_record(DrawRecord {
             path_id: DrawRecord::NONE,
             glyph_run_id: DrawRecord::NONE,
@@ -1788,6 +2218,10 @@ impl Canvas {
     }
 
     fn push_brush(&mut self, brush: Brush) -> (u32, u32) {
+        self.push_physical_brush(self.physical_brush(brush))
+    }
+
+    fn push_physical_brush(&mut self, brush: Brush) -> (u32, u32) {
         push_encoded_brush(&mut self.brush_blob, &brush)
     }
 
@@ -1816,11 +2250,11 @@ impl Canvas {
     }
 
     pub(crate) fn width_in_tiles(&self) -> u32 {
-        self.width.div_ceil(crate::TILE_SIZE)
+        self.physical_width().div_ceil(crate::TILE_SIZE)
     }
 
     pub(crate) fn height_in_tiles(&self) -> u32 {
-        self.height.div_ceil(crate::TILE_SIZE)
+        self.physical_height().div_ceil(crate::TILE_SIZE)
     }
 
     fn segment_capacity_for_path_lines(

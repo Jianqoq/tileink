@@ -433,7 +433,7 @@ fn wait_for_vello_gpu(
 }
 
 fn build_candlestick_scenes(config: Config) -> (Canvas, VelloScene) {
-    let mut tileink_scene = Canvas::new(config.width, config.height);
+    let mut tileink_scene = Canvas::new(config.width, config.height, 1.0);
     let mut vello_scene = VelloScene::new();
     tileink_scene.push_rect(
         Rect::new(0.0, 0.0, f64::from(config.width), f64::from(config.height)),
@@ -516,7 +516,7 @@ fn build_candlestick_scenes(config: Config) -> (Canvas, VelloScene) {
 }
 
 fn build_rect_scenes(config: Config) -> (Canvas, VelloScene) {
-    let mut tileink_scene = Canvas::new(config.width, config.height);
+    let mut tileink_scene = Canvas::new(config.width, config.height, 1.0);
     let mut vello_scene = VelloScene::new();
     tileink_scene.push_rect(
         Rect::new(0.0, 0.0, f64::from(config.width), f64::from(config.height)),

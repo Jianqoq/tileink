@@ -4,7 +4,7 @@ use peniko::{Color, kurbo::Rect};
 use tileink::{Canvas, Radius};
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let mut scene = Canvas::new(480, 320);
+    let mut scene = Canvas::new(480, 320, 1.0);
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 480.0, 320.0),

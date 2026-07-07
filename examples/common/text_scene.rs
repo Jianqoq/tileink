@@ -55,7 +55,7 @@ pub fn scene(
     context: &mut TextContext,
     case: &TextCase,
 ) -> Canvas {
-    let mut scene = Canvas::new(WIDTH, HEIGHT);
+    let mut scene = Canvas::new(WIDTH, HEIGHT, 1.0);
     let text = format!("Tileink text {}px", case.font_size as u32);
     let layout = context.layout(
         font_system,

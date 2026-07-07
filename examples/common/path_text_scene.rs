@@ -35,7 +35,7 @@ fn point_tuple(x: f64, y: f64) -> (f64, f64) {
 }
 
 pub fn scene(font_system: &mut TextFontSystem, context: &mut TextContext) -> Canvas {
-    let mut scene = Canvas::new(WIDTH, HEIGHT);
+    let mut scene = Canvas::new(WIDTH, HEIGHT, 1.0);
     scene.push_rect(
         Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),
         tileink::Radius::ZERO,

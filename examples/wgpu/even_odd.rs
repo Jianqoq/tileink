@@ -22,7 +22,7 @@ fn nested_rect_path(offset_x: f64) -> BezPath {
 }
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let mut scene = Canvas::new(520, 280);
+    let mut scene = Canvas::new(520, 280, 1.0);
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 520.0, 280.0),

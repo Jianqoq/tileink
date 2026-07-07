@@ -207,7 +207,7 @@ impl WgpuBatch {
 fn simple_scene() -> Canvas {
     let width = 360;
     let height = 260;
-    let mut scene = Canvas::new(width, height);
+    let mut scene = Canvas::new(width, height, 1.0);
 
     scene.push_rect(
         Rect::new(0.0, 0.0, width as f64, height as f64),
@@ -248,7 +248,7 @@ fn simple_scene() -> Canvas {
 fn stroke_circle_scene() -> Canvas {
     let width = 220;
     let height = 180;
-    let mut scene = Canvas::new(width, height);
+    let mut scene = Canvas::new(width, height, 1.0);
 
     scene.push_rect(
         Rect::new(0.0, 0.0, width as f64, height as f64),
@@ -269,7 +269,7 @@ fn stroke_circle_scene() -> Canvas {
 fn rect_stroke_widths_scene() -> Canvas {
     let width = 480;
     let height = 320;
-    let mut scene = Canvas::new(width, height);
+    let mut scene = Canvas::new(width, height, 1.0);
 
     scene.push_rect(
         Rect::new(0.0, 0.0, width as f64, height as f64),
@@ -318,7 +318,7 @@ fn rect_stroke_widths_scene() -> Canvas {
 }
 
 fn blur_scene() -> Canvas {
-    let mut scene = Canvas::new(1920, 1080);
+    let mut scene = Canvas::new(1920, 1080, 1.0);
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 1920.0, 1080.0),
@@ -350,7 +350,7 @@ fn blur_scene() -> Canvas {
 }
 
 fn blend_scene() -> Canvas {
-    let mut scene = Canvas::new(640, 360);
+    let mut scene = Canvas::new(640, 360, 1.0);
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 640.0, 360.0),
@@ -381,7 +381,7 @@ fn blend_scene() -> Canvas {
 }
 
 fn brightness_scene() -> Canvas {
-    let mut scene = Canvas::new(640, 360);
+    let mut scene = Canvas::new(640, 360, 1.0);
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 640.0, 360.0),
@@ -406,7 +406,7 @@ fn brightness_scene() -> Canvas {
 }
 
 fn contrast_scene() -> Canvas {
-    let mut scene = Canvas::new(640, 360);
+    let mut scene = Canvas::new(640, 360, 1.0);
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 640.0, 360.0),
@@ -443,7 +443,7 @@ fn contrast_scene() -> Canvas {
 }
 
 fn grayscale_scene() -> Canvas {
-    let mut scene = Canvas::new(640, 360);
+    let mut scene = Canvas::new(640, 360, 1.0);
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 640.0, 360.0),
@@ -473,7 +473,7 @@ fn grayscale_scene() -> Canvas {
 }
 
 fn hue_rotate_scene() -> Canvas {
-    let mut scene = Canvas::new(640, 360);
+    let mut scene = Canvas::new(640, 360, 1.0);
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 640.0, 360.0),
@@ -504,7 +504,7 @@ fn hue_rotate_scene() -> Canvas {
 }
 
 fn invert_scene() -> Canvas {
-    let mut scene = Canvas::new(640, 360);
+    let mut scene = Canvas::new(640, 360, 1.0);
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 640.0, 360.0),
@@ -528,7 +528,7 @@ fn invert_scene() -> Canvas {
 }
 
 fn saturate_scene() -> Canvas {
-    let mut scene = Canvas::new(640, 360);
+    let mut scene = Canvas::new(640, 360, 1.0);
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 640.0, 360.0),
@@ -559,7 +559,7 @@ fn saturate_scene() -> Canvas {
 }
 
 fn sepia_scene() -> Canvas {
-    let mut scene = Canvas::new(640, 360);
+    let mut scene = Canvas::new(640, 360, 1.0);
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 640.0, 360.0),
@@ -583,7 +583,7 @@ fn sepia_scene() -> Canvas {
 }
 
 fn drop_shadow_scene() -> Canvas {
-    let mut scene = Canvas::new(640, 360);
+    let mut scene = Canvas::new(640, 360, 1.0);
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 640.0, 360.0),
@@ -611,7 +611,7 @@ fn drop_shadow_scene() -> Canvas {
 }
 
 fn filter_opacity_scene() -> Canvas {
-    let mut scene = Canvas::new(640, 360);
+    let mut scene = Canvas::new(640, 360, 1.0);
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 640.0, 360.0),
@@ -636,7 +636,7 @@ fn filter_opacity_scene() -> Canvas {
 }
 
 fn opacity_scene() -> Canvas {
-    let mut scene = Canvas::new(360, 260);
+    let mut scene = Canvas::new(360, 260, 1.0);
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 360.0, 260.0),
@@ -677,7 +677,7 @@ fn opacity_scene() -> Canvas {
 }
 
 fn clip_scene() -> Canvas {
-    let mut scene = Canvas::new(360, 260);
+    let mut scene = Canvas::new(360, 260, 1.0);
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 360.0, 260.0),
@@ -742,7 +742,7 @@ fn complex_clip_path() -> BezPath {
 }
 
 fn even_odd_scene() -> Canvas {
-    let mut scene = Canvas::new(520, 280);
+    let mut scene = Canvas::new(520, 280, 1.0);
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 520.0, 280.0),
@@ -796,7 +796,7 @@ fn nested_rect_path(offset_x: f64) -> BezPath {
 }
 
 fn rounded_rect_scene() -> Canvas {
-    let mut scene = Canvas::new(480, 320);
+    let mut scene = Canvas::new(480, 320, 1.0);
     common::fill_rect(
         &mut scene,
         Rect::new(0.0, 0.0, 480.0, 320.0),

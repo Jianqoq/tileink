@@ -115,7 +115,7 @@ impl GpuBufferLengths {
             tiles_width,
             tiles_height,
             tile_count,
-            image_pixels: canvas.width as usize * canvas.height as usize,
+            image_pixels: canvas.physical_width() as usize * canvas.physical_height() as usize,
         }
     }
 }
@@ -528,8 +528,8 @@ pub(crate) struct GpuCanvasConfig {
 impl GpuCanvasConfig {
     pub(crate) fn new(canvas: &Canvas, lengths: GpuBufferLengths, clear_color: u32) -> Self {
         Self {
-            width: canvas.width,
-            height: canvas.height,
+            width: canvas.physical_width(),
+            height: canvas.physical_height(),
             tiles_width: canvas.width_in_tiles(),
             tiles_height: canvas.height_in_tiles(),
             line_count: lengths.line_count as u32,
@@ -671,7 +671,7 @@ mod text_length_tests {
             return;
         }
 
-        let mut canvas = Canvas::new(160, 64);
+        let mut canvas = Canvas::new(160, 64, 1.0);
         canvas.push_text_layout(&layout, Point::new(2.0, 32.0), Color::WHITE);
         let text = PreparedTextData::new(
             &canvas.text_glyphs,
@@ -713,7 +713,11 @@ mod tests {
 
     #[test]
     fn scan_chunks_cover_each_backdrop_record_in_fixed_size_tiles() {
-        let mut canvas = Canvas::new((SCAN_CHUNK_SIZE + 17) * crate::TILE_SIZE, crate::TILE_SIZE);
+        let mut canvas = Canvas::new(
+            (SCAN_CHUNK_SIZE + 17) * crate::TILE_SIZE,
+            crate::TILE_SIZE,
+            1.0,
+        );
         canvas.push_path(
             Rect::new(
                 0.0,
@@ -744,7 +748,7 @@ mod tests {
     #[test]
     fn cumsum_plan_splits_each_backdrop_row_into_fixed_size_chunks() {
         let row_tiles = CUMSUM_CHUNK_SIZE + 17;
-        let mut canvas = Canvas::new(row_tiles * crate::TILE_SIZE, crate::TILE_SIZE * 2);
+        let mut canvas = Canvas::new(row_tiles * crate::TILE_SIZE, crate::TILE_SIZE * 2, 1.0);
         canvas.push_path(
             Rect::new(
                 0.0,
@@ -783,7 +787,7 @@ mod tests {
 
     #[test]
     fn tile_draw_bins_keep_each_tiles_draws_in_scene_order() {
-        let mut canvas = Canvas::new(crate::TILE_SIZE * 2, crate::TILE_SIZE);
+        let mut canvas = Canvas::new(crate::TILE_SIZE * 2, crate::TILE_SIZE, 1.0);
         canvas.push_rect(
             Rect::new(0.0, 0.0, 32.0, 16.0),
             crate::Radius::ZERO,
@@ -821,7 +825,7 @@ mod tests {
 
     #[test]
     fn tile_draw_chunk_count_sums_per_tile_draw_chunks() {
-        let mut canvas = Canvas::new(crate::TILE_SIZE * 2, crate::TILE_SIZE);
+        let mut canvas = Canvas::new(crate::TILE_SIZE * 2, crate::TILE_SIZE, 1.0);
         for _ in 0..=COARSE_CHUNK_SIZE {
             canvas.push_rect(
                 Rect::new(0.0, 0.0, 16.0, 16.0),

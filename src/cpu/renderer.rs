@@ -70,8 +70,12 @@ impl Render for Renderer {
     type ExecuteArgs<'a> = &'a mut Image;
 
     fn render(&mut self, canvas: &crate::canvas::Canvas) {
-        self.size = (canvas.width, canvas.height);
-        let mut image = Image::new(canvas.width, canvas.height, self.clear);
+        self.size = canvas.physical_size();
+        let mut image = Image::new(
+            canvas.physical_width(),
+            canvas.physical_height(),
+            self.clear,
+        );
         self.execute(canvas, &mut image);
         self.image = image;
     }
@@ -158,8 +162,12 @@ impl Renderer {
         font_system: &mut TextFontSystem,
         text_context: &mut TextContext,
     ) {
-        self.size = (canvas.width, canvas.height);
-        let mut image = Image::new(canvas.width, canvas.height, self.clear);
+        self.size = canvas.physical_size();
+        let mut image = Image::new(
+            canvas.physical_width(),
+            canvas.physical_height(),
+            self.clear,
+        );
         self.execute_with_text(canvas, &mut image, font_system, text_context);
         self.image = image;
     }
@@ -198,7 +206,7 @@ impl Renderer {
         profile.cumsum = start.elapsed();
 
         let mut image = Image::new(self.size.0, self.size.1, self.clear);
-        let target_bounds = Bounds::canvas(canvas.width, canvas.height);
+        let target_bounds = Bounds::canvas(canvas.physical_width(), canvas.physical_height());
 
         for op in &plan.ops {
             let ExecOp::DrawBatch { draws, layer_stack } = op else {
@@ -269,7 +277,7 @@ impl Renderer {
             plan,
             &plan.ops,
             target,
-            Bounds::canvas(canvas.width, canvas.height),
+            Bounds::canvas(canvas.physical_width(), canvas.physical_height()),
             &mut main,
             text_data.as_ref(),
             text_context,

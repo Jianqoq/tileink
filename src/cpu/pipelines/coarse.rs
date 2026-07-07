@@ -874,7 +874,7 @@ mod tests {
             return;
         }
 
-        let mut canvas = Canvas::new(160, 64);
+        let mut canvas = Canvas::new(160, 64, 1.0);
         canvas.push_text_layout(&layout, Point::new(2.0, 32.0), Color::WHITE);
         let text = PreparedTextData::new(
             &canvas.text_glyphs,

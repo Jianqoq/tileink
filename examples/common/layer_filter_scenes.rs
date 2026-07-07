@@ -47,7 +47,7 @@ fn background(scene: &mut Canvas) {
 }
 
 pub fn filter_clip_opacity_scene() -> Canvas {
-    let mut scene = Canvas::new(WIDTH, HEIGHT);
+    let mut scene = Canvas::new(WIDTH, HEIGHT, 1.0);
     background(&mut scene);
 
     let clip = Rect::new(150.0, 82.0, 570.0, 338.0);
@@ -97,7 +97,7 @@ pub fn filter_clip_opacity_scene() -> Canvas {
 }
 
 pub fn clip_filter_scene() -> Canvas {
-    let mut scene = Canvas::new(WIDTH, HEIGHT);
+    let mut scene = Canvas::new(WIDTH, HEIGHT, 1.0);
     background(&mut scene);
 
     let clip = Circle::new((360.0, 210.0), 142.0);
@@ -144,7 +144,7 @@ pub fn clip_filter_scene() -> Canvas {
 }
 
 pub fn backdrop_blur_scene() -> Canvas {
-    let mut scene = Canvas::new(WIDTH, HEIGHT);
+    let mut scene = Canvas::new(WIDTH, HEIGHT, 1.0);
     background(&mut scene);
 
     for i in 0..18 {
@@ -201,7 +201,7 @@ pub fn backdrop_blur_scene() -> Canvas {
 }
 
 pub fn liquid_glass_scene() -> Canvas {
-    let mut scene = Canvas::new(WIDTH, HEIGHT);
+    let mut scene = Canvas::new(WIDTH, HEIGHT, 1.0);
     background(&mut scene);
 
     for i in 0..20 {

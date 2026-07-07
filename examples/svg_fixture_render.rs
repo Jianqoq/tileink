@@ -274,7 +274,7 @@ fn load_scene(
     let height = size.1;
     let scale_x = width as f64 / tree.size().width() as f64;
     let scale_y = height as f64 / tree.size().height() as f64;
-    let mut scene = Canvas::new(width, height);
+    let mut scene = Canvas::new(width, height, 1.0);
     scene.push_svg_with_options(
         &tree,
         SvgOptions {

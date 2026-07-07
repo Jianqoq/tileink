@@ -12,7 +12,7 @@ pub const HEIGHT: u32 = 520;
 pub const CLEAR: Color = Color::from_rgb8(245, 247, 250);
 
 pub fn scene() -> Canvas {
-    let mut scene = Canvas::new(WIDTH, HEIGHT);
+    let mut scene = Canvas::new(WIDTH, HEIGHT, 1.0);
 
     let linear = Gradient::new_linear((36.0, 0.0), (324.0, 0.0))
         .with_extend(Extend::Pad)

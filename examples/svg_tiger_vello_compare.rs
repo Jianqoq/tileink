@@ -85,7 +85,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let scale_x = width as f64 / tree.size().width() as f64;
     let scale_y = height as f64 / tree.size().height() as f64;
 
-    let mut tileink_scene = Canvas::new(width, height);
+    let mut tileink_scene = Canvas::new(width, height, 1.0);
     tileink_scene.push_svg_with_options(
         &tree,
         SvgOptions {

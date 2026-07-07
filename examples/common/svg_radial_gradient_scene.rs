@@ -27,7 +27,7 @@ const SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="240" height
 
 pub fn scene() -> Result<Canvas, Box<dyn std::error::Error>> {
     let tree = usvg::Tree::from_str(SVG, &usvg::Options::default())?;
-    let mut scene = Canvas::new(WIDTH, HEIGHT);
+    let mut scene = Canvas::new(WIDTH, HEIGHT, 1.0);
     scene.push_svg(&tree)?;
     Ok(scene)
 }

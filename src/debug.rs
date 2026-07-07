@@ -695,8 +695,8 @@ fn write_rgba_rows_json(out: &mut String, rgba: &[[u8; 4]]) {
 }
 
 fn capture_svg(canvas: &Canvas) -> String {
-    let width = canvas.width;
-    let height = canvas.height;
+    let width = canvas.physical_width();
+    let height = canvas.physical_height();
     let width_in_tiles = canvas.width_in_tiles();
     let height_in_tiles = canvas.height_in_tiles();
     let mut out = String::new();
@@ -965,7 +965,7 @@ mod tests {
 
     #[test]
     fn cpu_render_with_options_captures_tile_debug_outputs() {
-        let mut canvas = Canvas::new(32, 32);
+        let mut canvas = Canvas::new(32, 32, 1.0);
         canvas.push_path(
             Rect::new(4.0, 4.0, 20.0, 20.0).to_path(0.1),
             Color::from_rgb8(0, 128, 0),

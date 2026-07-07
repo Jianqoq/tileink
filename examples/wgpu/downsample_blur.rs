@@ -10,7 +10,7 @@ const WIDTH: u32 = 960;
 const HEIGHT: u32 = 540;
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let mut scene = Canvas::new(WIDTH, HEIGHT);
+    let mut scene = Canvas::new(WIDTH, HEIGHT, 1.0);
     draw_background(&mut scene);
     draw_blur_panel(&mut scene, Rect::new(70.0, 92.0, 430.0, 448.0), 1);
     draw_blur_panel(&mut scene, Rect::new(530.0, 92.0, 890.0, 448.0), 4);
