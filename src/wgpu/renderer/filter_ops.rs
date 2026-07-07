@@ -1492,14 +1492,14 @@ impl Renderer {
         let mut ok = self.copy_region_to_target(commands, target, source, bounds);
 
         if ok && glass.blur_radius > 0 {
-            let Some(temp) = self.acquire_scratch() else {
-                self.release_scratch(blurred);
-                self.release_scratch(source);
-                return false;
-            };
             let std_dev = glass.blur_radius as f32 * filter_model::LIQUID_GLASS_BLUR_STD_DEV_SCALE;
             ok = if glass.blur_sampling.factor() > 1 {
-                self.downsampled_blur_to_target(
+                let Some(temp) = self.acquire_scratch() else {
+                    self.release_scratch(blurred);
+                    self.release_scratch(source);
+                    return false;
+                };
+                let ok = self.downsampled_blur_to_target(
                     commands,
                     source,
                     blurred,
@@ -1509,13 +1509,20 @@ impl Renderer {
                     std_dev,
                     std_dev,
                     glass.blur_sampling,
-                )
+                );
+                self.release_scratch(temp);
+                ok
             } else {
-                self.copy_region_to_target(commands, source, blurred, bounds)
-                    && self.blur_region_to_target(commands, blurred, temp, bounds, std_dev, 0)
-                    && self.blur_region_to_target(commands, temp, blurred, bounds, std_dev, 1)
+                self.apply_blur_from_source(
+                    commands,
+                    source,
+                    blurred,
+                    bounds,
+                    std_dev,
+                    std_dev,
+                    filter_model::BlurSampling::FULL_RES,
+                )
             };
-            self.release_scratch(temp);
         } else if ok {
             ok = self.copy_region_to_target(commands, source, blurred, bounds);
         }
@@ -1579,7 +1586,6 @@ impl Renderer {
         );
         true
     }
-
     fn morphology_axis_to_target(
         &self,
         commands: &mut WgpuCommandBatch,
