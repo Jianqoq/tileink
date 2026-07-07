@@ -377,6 +377,8 @@ fn copy_image_with_pad_border(
     atlas_y: u32,
     image: &Image,
 ) {
+    // Duplicate edge texels into a 1px guard band so hardware bilinear sampling
+    // can clamp pad images without bleeding into neighboring atlas entries.
     for y in 0..image.height + 2 {
         let src_y = y.saturating_sub(1).min(image.height - 1);
         for x in 0..image.width + 2 {
