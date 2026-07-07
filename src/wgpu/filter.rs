@@ -437,10 +437,7 @@ impl WgpuFilterPipeline {
             return None;
         }
 
-        let shader = device.create_shader_module(::wgpu::ShaderModuleDescriptor {
-            label: Some("tileink wgpu filter shader"),
-            source: ::wgpu::ShaderSource::Wgsl(filter_shader_source(portable_textures).into()),
-        });
+        let shader_source = filter_shader_source(portable_textures);
         let config_size = std::mem::size_of::<FilterConfig>() as ::wgpu::BufferAddress;
         let config_stride = aligned_uniform_stride(device, config_size);
         let config_slots = WGPU_CONFIG_SLOTS;
@@ -488,7 +485,7 @@ impl WgpuFilterPipeline {
         Some(Self {
             clear_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_clear_region",
                 0,
@@ -497,7 +494,7 @@ impl WgpuFilterPipeline {
             ),
             copy_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_copy_region",
                 0,
@@ -506,7 +503,7 @@ impl WgpuFilterPipeline {
             ),
             source_alpha_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_source_alpha_region",
                 0,
@@ -515,7 +512,7 @@ impl WgpuFilterPipeline {
             ),
             source_over_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_source_over_region",
                 0,
@@ -524,7 +521,7 @@ impl WgpuFilterPipeline {
             ),
             tile_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_tile_region",
                 0,
@@ -533,7 +530,7 @@ impl WgpuFilterPipeline {
             ),
             offset_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_offset_region",
                 0,
@@ -542,7 +539,7 @@ impl WgpuFilterPipeline {
             ),
             flood_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_flood_region",
                 FILTER_RES_BRUSH,
@@ -551,7 +548,7 @@ impl WgpuFilterPipeline {
             ),
             drop_shadow_mask_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_drop_shadow_mask_region",
                 0,
@@ -560,7 +557,7 @@ impl WgpuFilterPipeline {
             ),
             morphology_axis_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_morphology_axis_region",
                 0,
@@ -569,7 +566,7 @@ impl WgpuFilterPipeline {
             ),
             downsample_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_downsample_region",
                 0,
@@ -578,7 +575,7 @@ impl WgpuFilterPipeline {
             ),
             upsample_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_upsample_region",
                 0,
@@ -587,7 +584,7 @@ impl WgpuFilterPipeline {
             ),
             upsample_rect_composite_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_upsample_rect_composite_region",
                 0,
@@ -596,7 +593,7 @@ impl WgpuFilterPipeline {
             ),
             blur_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_blur_region",
                 0,
@@ -605,7 +602,7 @@ impl WgpuFilterPipeline {
             ),
             blur_shared_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_blur_shared_region",
                 0,
@@ -614,7 +611,7 @@ impl WgpuFilterPipeline {
             ),
             svg_mask_coverage_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_svg_mask_coverage_region",
                 0,
@@ -623,7 +620,7 @@ impl WgpuFilterPipeline {
             ),
             apply_region_mask: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_apply_region_mask",
                 0,
@@ -632,7 +629,7 @@ impl WgpuFilterPipeline {
             ),
             color_filter_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_color_region",
                 0,
@@ -641,7 +638,7 @@ impl WgpuFilterPipeline {
             ),
             color_matrix_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_color_matrix_region",
                 0,
@@ -650,7 +647,7 @@ impl WgpuFilterPipeline {
             ),
             component_transfer_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_component_transfer_region",
                 FILTER_RES_TRANSFER,
@@ -659,7 +656,7 @@ impl WgpuFilterPipeline {
             ),
             convolve_matrix_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_convolve_matrix_region",
                 FILTER_RES_CONVOLVE,
@@ -668,7 +665,7 @@ impl WgpuFilterPipeline {
             ),
             lighting_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_lighting_region",
                 0,
@@ -677,7 +674,7 @@ impl WgpuFilterPipeline {
             ),
             liquid_glass_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_liquid_glass_region",
                 0,
@@ -686,7 +683,7 @@ impl WgpuFilterPipeline {
             ),
             liquid_glass_rect_composite_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_liquid_glass_rect_composite_region",
                 0,
@@ -695,7 +692,7 @@ impl WgpuFilterPipeline {
             ),
             blend_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_blend_region",
                 0,
@@ -704,7 +701,7 @@ impl WgpuFilterPipeline {
             ),
             composite_inputs_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_composite_inputs_region",
                 0,
@@ -713,7 +710,7 @@ impl WgpuFilterPipeline {
             ),
             displacement_map_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_displacement_map_region",
                 0,
@@ -722,7 +719,7 @@ impl WgpuFilterPipeline {
             ),
             turbulence_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_turbulence_region",
                 FILTER_RES_TURBULENCE,
@@ -731,7 +728,7 @@ impl WgpuFilterPipeline {
             ),
             composite_drop_shadow_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_composite_drop_shadow_region",
                 FILTER_RES_BRUSH,
@@ -740,7 +737,7 @@ impl WgpuFilterPipeline {
             ),
             layer_mask_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_layer_mask_region",
                 FILTER_RES_SCENE_ALPHA,
@@ -749,7 +746,7 @@ impl WgpuFilterPipeline {
             ),
             rect_mask_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_rect_mask_region",
                 0,
@@ -758,7 +755,7 @@ impl WgpuFilterPipeline {
             ),
             path_mask_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_path_mask_region",
                 FILTER_RES_PATH_MASK,
@@ -767,7 +764,7 @@ impl WgpuFilterPipeline {
             ),
             composite_direct_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_composite_direct_region",
                 0,
@@ -776,7 +773,7 @@ impl WgpuFilterPipeline {
             ),
             composite_rect_direct_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_composite_rect_direct_region",
                 0,
@@ -785,7 +782,7 @@ impl WgpuFilterPipeline {
             ),
             composite_stack_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_composite_stack_region",
                 FILTER_RES_SCENE_STACK,
@@ -794,7 +791,7 @@ impl WgpuFilterPipeline {
             ),
             composite_blend_stack_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_composite_blend_stack_region",
                 FILTER_RES_SCENE_STACK,
@@ -803,7 +800,7 @@ impl WgpuFilterPipeline {
             ),
             composite_surface_direct_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_composite_surface_direct_region",
                 0,
@@ -812,7 +809,7 @@ impl WgpuFilterPipeline {
             ),
             composite_surface_stack_region: create_kernel(
                 device,
-                &shader,
+                shader_source,
                 portable_textures,
                 "filter_composite_surface_stack_region",
                 FILTER_RES_SCENE_STACK,
@@ -2286,27 +2283,50 @@ impl WgpuFilterPipeline {
             path_p1y,
         );
         entries.push(bind_texture(
-            filter_layout::SOURCE_SAMPLE_TEXTURE_BINDING,
+            filter_binding(
+                kernel.portable_textures,
+                kernel.resources,
+                filter_layout::SOURCE_SAMPLE_TEXTURE_BINDING,
+            ),
             source,
         ));
-        entries.push(bind_texture(filter_layout::AUX_SAMPLE_TEXTURE_BINDING, aux));
+        entries.push(bind_texture(
+            filter_binding(
+                kernel.portable_textures,
+                kernel.resources,
+                filter_layout::AUX_SAMPLE_TEXTURE_BINDING,
+            ),
+            aux,
+        ));
         entries.push(bind_sampler(
-            filter_layout::LINEAR_SAMPLER_BINDING,
+            filter_binding(
+                kernel.portable_textures,
+                kernel.resources,
+                filter_layout::LINEAR_SAMPLER_BINDING,
+            ),
             &self.dummy_sampler,
         ));
         if kernel.portable_textures {
             entries.push(bind_texture(
-                55,
+                filter_binding(kernel.portable_textures, kernel.resources, 55),
                 target_read.unwrap_or(&self.dummy_texture_view),
             ));
         }
         if kernel.resources & FILTER_RES_BRUSH != 0 {
             entries.push(bind_texture(
-                filter_layout::IMAGE_RESOURCE_ATLAS_BINDING,
+                filter_binding(
+                    kernel.portable_textures,
+                    kernel.resources,
+                    filter_layout::IMAGE_RESOURCE_ATLAS_BINDING,
+                ),
                 image_resource_atlas,
             ));
             entries.push(bind_sampler(
-                filter_layout::IMAGE_RESOURCE_SAMPLER_BINDING,
+                filter_binding(
+                    kernel.portable_textures,
+                    kernel.resources,
+                    filter_layout::IMAGE_RESOURCE_SAMPLER_BINDING,
+                ),
                 image_resource_sampler,
             ));
         }
@@ -2690,7 +2710,7 @@ fn rect_bounds(rect: Rect) -> Bounds {
 
 fn create_kernel(
     device: &::wgpu::Device,
-    shader: &::wgpu::ShaderModule,
+    shader_source: &'static str,
     portable_textures: bool,
     entry_point: &'static str,
     resources: u32,
@@ -2708,10 +2728,16 @@ fn create_kernel(
         bind_group_layouts: &[Some(&bind_group_layout)],
         immediate_size: 0,
     });
+    let shader = device.create_shader_module(::wgpu::ShaderModuleDescriptor {
+        label: Some(entry_point),
+        source: ::wgpu::ShaderSource::Wgsl(
+            remap_filter_shader_bindings(shader_source, portable_textures, resources).into(),
+        ),
+    });
     let pipeline = device.create_compute_pipeline(&::wgpu::ComputePipelineDescriptor {
         label: Some(entry_point),
         layout: Some(&pipeline_layout),
-        module: shader,
+        module: &shader,
         entry_point: Some(entry_point),
         compilation_options: ::wgpu::PipelineCompilationOptions::default(),
         cache: None,
@@ -2797,27 +2823,136 @@ fn filter_layout_entries(
     push_storage_entry_if(&mut entries, resources, FILTER_RES_PATH_P0Y, 46, true);
     push_storage_entry_if(&mut entries, resources, FILTER_RES_PATH_P1X, 47, true);
     push_storage_entry_if(&mut entries, resources, FILTER_RES_PATH_P1Y, 48, true);
-    entries.push(sampled_filterable_texture_entry(
+    entries.push(sampled_filterable_texture_entry(filter_binding(
+        portable_textures,
+        resources,
         filter_layout::SOURCE_SAMPLE_TEXTURE_BINDING,
-    ));
-    entries.push(sampled_filterable_texture_entry(
+    )));
+    entries.push(sampled_filterable_texture_entry(filter_binding(
+        portable_textures,
+        resources,
         filter_layout::AUX_SAMPLE_TEXTURE_BINDING,
-    ));
-    entries.push(filtering_sampler_entry(
+    )));
+    entries.push(filtering_sampler_entry(filter_binding(
+        portable_textures,
+        resources,
         filter_layout::LINEAR_SAMPLER_BINDING,
-    ));
+    )));
     if portable_textures {
-        entries.push(sampled_texture_entry(55));
+        entries.push(sampled_texture_entry(filter_binding(
+            portable_textures,
+            resources,
+            55,
+        )));
     }
     if resources & FILTER_RES_BRUSH != 0 {
-        entries.push(sampled_filterable_texture_entry(
+        entries.push(sampled_filterable_texture_entry(filter_binding(
+            portable_textures,
+            resources,
             filter_layout::IMAGE_RESOURCE_ATLAS_BINDING,
-        ));
-        entries.push(filtering_sampler_entry(
+        )));
+        entries.push(filtering_sampler_entry(filter_binding(
+            portable_textures,
+            resources,
             filter_layout::IMAGE_RESOURCE_SAMPLER_BINDING,
-        ));
+        )));
     }
     entries
+}
+
+const FILTER_STORAGE_BINDINGS: [(u32, u32); 19] = [
+    (FILTER_RES_DRAW_RECORDS, 4),
+    (FILTER_RES_SDF_BLOB, 10),
+    (FILTER_RES_SDF_SHADOW_BLOB, 11),
+    (FILTER_RES_PATH_RECORDS, 28),
+    (FILTER_RES_BACKDROPS, 29),
+    (FILTER_RES_SEGMENT_RANGES, 30),
+    (FILTER_RES_SEGMENTS, 32),
+    (FILTER_RES_LAYER_STACK, 33),
+    (FILTER_RES_TRANSFER_TABLES, 36),
+    (FILTER_RES_BRUSH_BLOB, 37),
+    (FILTER_RES_CONVOLVE_KERNELS, 40),
+    (FILTER_RES_TURBULENCE_SELECTORS, 41),
+    (FILTER_RES_TURBULENCE_GRADIENTS, 42),
+    (FILTER_RES_PATH_RANGE_STARTS, 43),
+    (FILTER_RES_PATH_RANGE_ENDS, 44),
+    (FILTER_RES_PATH_P0X, 45),
+    (FILTER_RES_PATH_P0Y, 46),
+    (FILTER_RES_PATH_P1X, 47),
+    (FILTER_RES_PATH_P1Y, 48),
+];
+
+const FILTER_TEXTURE_BINDINGS: [u32; 5] = [
+    filter_layout::SOURCE_SAMPLE_TEXTURE_BINDING,
+    filter_layout::AUX_SAMPLE_TEXTURE_BINDING,
+    filter_layout::LINEAR_SAMPLER_BINDING,
+    filter_layout::IMAGE_RESOURCE_ATLAS_BINDING,
+    filter_layout::IMAGE_RESOURCE_SAMPLER_BINDING,
+];
+
+fn filter_binding(portable_textures: bool, resources: u32, old_binding: u32) -> u32 {
+    filter_binding_remaps(portable_textures, resources)
+        .into_iter()
+        .find_map(|(old, new)| (old == old_binding).then_some(new))
+        .unwrap_or(old_binding)
+}
+
+fn filter_binding_remaps(portable_textures: bool, resources: u32) -> Vec<(u32, u32)> {
+    let mut ordered = vec![0, 1, 2, 3];
+    for (flag, old_binding) in FILTER_STORAGE_BINDINGS {
+        if resources & flag != 0 {
+            ordered.push(old_binding);
+        }
+    }
+    ordered.push(filter_layout::SOURCE_SAMPLE_TEXTURE_BINDING);
+    ordered.push(filter_layout::AUX_SAMPLE_TEXTURE_BINDING);
+    ordered.push(filter_layout::LINEAR_SAMPLER_BINDING);
+    if portable_textures {
+        ordered.push(55);
+    }
+    if resources & FILTER_RES_BRUSH != 0 {
+        ordered.push(filter_layout::IMAGE_RESOURCE_ATLAS_BINDING);
+        ordered.push(filter_layout::IMAGE_RESOURCE_SAMPLER_BINDING);
+    }
+
+    for (_, old_binding) in FILTER_STORAGE_BINDINGS {
+        if !ordered.contains(&old_binding) {
+            ordered.push(old_binding);
+        }
+    }
+    for old_binding in FILTER_TEXTURE_BINDINGS {
+        if !ordered.contains(&old_binding) {
+            ordered.push(old_binding);
+        }
+    }
+    if !ordered.contains(&55) {
+        ordered.push(55);
+    }
+
+    ordered
+        .into_iter()
+        .enumerate()
+        .map(|(new, old)| (old, new as u32))
+        .collect()
+}
+
+fn remap_filter_shader_bindings(
+    source: &'static str,
+    portable_textures: bool,
+    resources: u32,
+) -> String {
+    let remaps = filter_binding_remaps(portable_textures, resources);
+    let mut out = source.to_owned();
+    for (old, _) in &remaps {
+        out = out.replace(
+            &format!("@binding({old})"),
+            &format!("@binding(__tileink_binding_{old}__)"),
+        );
+    }
+    for (old, new) in remaps {
+        out = out.replace(&format!("__tileink_binding_{old}__"), &new.to_string());
+    }
+    out
 }
 
 fn push_storage_entry_if(
@@ -2828,7 +2963,10 @@ fn push_storage_entry_if(
     read_only: bool,
 ) {
     if resources & flag != 0 {
-        entries.push(storage_entry(binding, read_only));
+        entries.push(storage_entry(
+            filter_binding(false, resources, binding),
+            read_only,
+        ));
     }
 }
 
@@ -2955,7 +3093,10 @@ fn push_buffer_if<'a>(
     buffer: &'a ::wgpu::Buffer,
 ) {
     if resources & flag != 0 {
-        entries.push(bind_buffer(binding, buffer));
+        entries.push(bind_buffer(
+            filter_binding(false, resources, binding),
+            buffer,
+        ));
     }
 }
 
@@ -3019,9 +3160,21 @@ mod tests {
         for portable_textures in [false, true] {
             let entries = filter_layout_entries(portable_textures, 0);
             let bindings: Vec<u32> = entries.iter().map(|entry| entry.binding).collect();
-            assert!(bindings.contains(&filter_layout::SOURCE_SAMPLE_TEXTURE_BINDING));
-            assert!(bindings.contains(&filter_layout::AUX_SAMPLE_TEXTURE_BINDING));
-            assert!(bindings.contains(&filter_layout::LINEAR_SAMPLER_BINDING));
+            assert!(bindings.contains(&filter_binding(
+                portable_textures,
+                0,
+                filter_layout::SOURCE_SAMPLE_TEXTURE_BINDING
+            )));
+            assert!(bindings.contains(&filter_binding(
+                portable_textures,
+                0,
+                filter_layout::AUX_SAMPLE_TEXTURE_BINDING
+            )));
+            assert!(bindings.contains(&filter_binding(
+                portable_textures,
+                0,
+                filter_layout::LINEAR_SAMPLER_BINDING
+            )));
         }
     }
 
@@ -3045,6 +3198,42 @@ mod tests {
         }
     }
 
+    #[test]
+    fn filter_layout_entries_are_contiguous() {
+        let resource_sets = [
+            0,
+            FILTER_RES_TRANSFER,
+            FILTER_RES_BRUSH,
+            FILTER_RES_CONVOLVE,
+            FILTER_RES_TURBULENCE,
+            FILTER_RES_PATH_MASK,
+            FILTER_RES_SCENE_ALPHA,
+            FILTER_RES_SCENE_STACK,
+        ];
+        for portable_textures in [false, true] {
+            for resources in resource_sets {
+                let entries = filter_layout_entries(portable_textures, resources);
+                assert_contiguous_bindings(&entries);
+            }
+        }
+    }
+
+    #[test]
+    fn filter_shader_binding_remap_matches_layout_entries() {
+        let source = filter_shader_source(false);
+        let remapped = remap_filter_shader_bindings(source, false, FILTER_RES_BRUSH);
+        let bindings: Vec<u32> = filter_layout_entries(false, FILTER_RES_BRUSH)
+            .iter()
+            .map(|entry| entry.binding)
+            .collect();
+        for binding in bindings {
+            assert!(
+                remapped.contains(&format!("@binding({binding})")),
+                "remapped shader is missing binding {binding}"
+            );
+        }
+    }
+
     fn assert_sorted_by_binding(entries: &[::wgpu::BindGroupLayoutEntry]) {
         for pair in entries.windows(2) {
             assert!(
@@ -3053,6 +3242,12 @@ mod tests {
                 pair[0].binding,
                 pair[1].binding
             );
+        }
+    }
+
+    fn assert_contiguous_bindings(entries: &[::wgpu::BindGroupLayoutEntry]) {
+        for (expected, entry) in entries.iter().enumerate() {
+            assert_eq!(entry.binding, expected as u32);
         }
     }
 }

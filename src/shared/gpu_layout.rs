@@ -21,8 +21,8 @@ pub(crate) mod image_resource {}
 
 pub(crate) mod fine {
     pub(crate) const STORAGE_BUFFER_COUNT: u32 = 6;
-    pub(crate) const IMAGE_RESOURCE_ATLAS_BINDING: u32 = 58;
-    pub(crate) const IMAGE_RESOURCE_SAMPLER_BINDING: u32 = 59;
+    pub(crate) const IMAGE_RESOURCE_ATLAS_BINDING: u32 = 8;
+    pub(crate) const IMAGE_RESOURCE_SAMPLER_BINDING: u32 = 9;
 }
 
 pub(crate) mod filter {

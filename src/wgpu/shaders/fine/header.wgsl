@@ -148,14 +148,13 @@ struct PtclRecord {
     color: u32,
 };
 @group(0) @binding(2) var<storage, read> draw_records: array<DrawRecord>;
-@group(0) @binding(8) var<storage, read> paint_blob: array<u32>;
-@group(0) @binding(29) var<storage, read_write> coarse_work: array<u32>;
-@group(0) @binding(37) var<storage, read> segments: array<LineSegment>;
-@group(0) @binding(43) var<storage, read> text_blob: array<u32>;
-@group(0) @binding(53) var<storage, read_write> spills: array<u32>;
-@group(0) @binding(57) var<storage, read_write> fine_indirect_args: array<atomic<u32>>;
-@group(0) @binding(58) var image_resource_atlas: texture_2d<f32>;
-@group(0) @binding(59) var image_resource_sampler: sampler;
+@group(0) @binding(3) var<storage, read> paint_blob: array<u32>;
+@group(0) @binding(4) var<storage, read_write> coarse_work: array<u32>;
+@group(0) @binding(5) var<storage, read> segments: array<LineSegment>;
+@group(0) @binding(6) var<storage, read> text_blob: array<u32>;
+@group(0) @binding(7) var<storage, read_write> spills: array<u32>;
+@group(0) @binding(8) var image_resource_atlas: texture_2d<f32>;
+@group(0) @binding(9) var image_resource_sampler: sampler;
 
 const TILE_COARSE_RECORD_WORDS: u32 = 6u;
 const PTCL_RECORD_WORDS: u32 = 6u;

@@ -77,13 +77,17 @@ impl WgpuFinePipeline {
             label: Some("tileink wgpu fine shader"),
             source: ::wgpu::ShaderSource::Wgsl(fine_shader_source(portable_textures).into()),
         });
+        let compact_shader = device.create_shader_module(::wgpu::ShaderModuleDescriptor {
+            label: Some("tileink wgpu fine compact shader"),
+            source: ::wgpu::ShaderSource::Wgsl(fine_compact_shader_source().into()),
+        });
         let compact_bind_group_layout =
             device.create_bind_group_layout(&::wgpu::BindGroupLayoutDescriptor {
                 label: Some("tileink wgpu tile fine compact bind group layout"),
                 entries: &[
                     uniform_layout_entry(0),
-                    storage_layout_entry(29, false),
-                    storage_layout_entry(57, false),
+                    storage_layout_entry(1, false),
+                    storage_layout_entry(2, false),
                 ],
             });
         let pipeline_layout = device.create_pipeline_layout(&::wgpu::PipelineLayoutDescriptor {
@@ -108,14 +112,14 @@ impl WgpuFinePipeline {
         let clear_pipeline = create_pipeline(
             device,
             &compact_pipeline_layout,
-            &shader,
+            &compact_shader,
             "tileink wgpu tile fine indirect clear pipeline",
             "fine_clear_indirect_main",
         );
         let compact_pipeline = create_pipeline(
             device,
             &compact_pipeline_layout,
-            &shader,
+            &compact_shader,
             "tileink wgpu tile fine compact pipeline",
             "fine_compact_tiles_main",
         );
@@ -384,15 +388,12 @@ impl WgpuFinePipeline {
                 },
             ),
             buffer_binding(2, fine.draw_records),
-            buffer_binding(8, fine.paint_blob),
-            buffer_binding(29, bindings.coarse_work),
-            buffer_binding(37, bindings.segments),
-            buffer_binding(43, bindings.text_blob),
-            buffer_binding(53, bindings.spills),
+            buffer_binding(3, fine.paint_blob),
+            buffer_binding(4, bindings.coarse_work),
+            buffer_binding(5, bindings.segments),
+            buffer_binding(6, bindings.text_blob),
+            buffer_binding(7, bindings.spills),
         ];
-        if self.portable_textures {
-            entries.push(texture_binding(54, target));
-        }
         entries.extend([
             texture_binding(
                 fine_layout::IMAGE_RESOURCE_ATLAS_BINDING,
@@ -403,6 +404,9 @@ impl WgpuFinePipeline {
                 fine.image_resource_sampler,
             ),
         ]);
+        if self.portable_textures {
+            entries.push(texture_binding(10, target));
+        }
         device.create_bind_group(&::wgpu::BindGroupDescriptor {
             label: Some("tileink wgpu tile fine bind group"),
             layout,
@@ -422,8 +426,8 @@ impl WgpuFinePipeline {
             layout: &self.compact_bind_group_layout,
             entries: &[
                 config_buffer_binding(0, &self.config, config_offset, self.config_size),
-                buffer_binding(29, coarse.work.buffer()),
-                buffer_binding(57, fine_indirect_args.buffer()),
+                buffer_binding(1, coarse.work.buffer()),
+                buffer_binding(2, fine_indirect_args.buffer()),
             ],
         })
     }
@@ -438,24 +442,24 @@ fn tile_fine_layout_entries(portable_textures: bool) -> Vec<::wgpu::BindGroupLay
             storage_texture_layout_entry(1, ::wgpu::StorageTextureAccess::ReadWrite)
         },
         storage_layout_entry(2, true),
-        storage_layout_entry(8, true),
-        storage_layout_entry(29, false),
-        storage_layout_entry(37, true),
-        storage_layout_entry(43, true),
-        storage_layout_entry(53, false),
+        storage_layout_entry(3, true),
+        storage_layout_entry(4, false),
+        storage_layout_entry(5, true),
+        storage_layout_entry(6, true),
+        storage_layout_entry(7, false),
     ];
-    if portable_textures {
-        entries.push(storage_texture_layout_entry(
-            54,
-            ::wgpu::StorageTextureAccess::WriteOnly,
-        ));
-    }
     entries.push(sampled_filterable_texture_layout_entry(
         fine_layout::IMAGE_RESOURCE_ATLAS_BINDING,
     ));
     entries.push(filtering_sampler_layout_entry(
         fine_layout::IMAGE_RESOURCE_SAMPLER_BINDING,
     ));
+    if portable_textures {
+        entries.push(storage_texture_layout_entry(
+            10,
+            ::wgpu::StorageTextureAccess::WriteOnly,
+        ));
+    }
     entries
 }
 
@@ -529,6 +533,10 @@ fn fine_shader_source(portable_textures: bool) -> &'static str {
     } else {
         include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_fine.wgsl"))
     }
+}
+
+fn fine_compact_shader_source() -> &'static str {
+    include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_fine_compact.wgsl"))
 }
 
 fn fine_indirect_enabled() -> bool {
@@ -630,6 +638,14 @@ mod tests {
         }
     }
 
+    #[test]
+    fn fine_layout_entries_are_contiguous() {
+        for portable_textures in [false, true] {
+            let entries = tile_fine_layout_entries(portable_textures);
+            assert_contiguous_bindings(&entries);
+        }
+    }
+
     fn assert_sorted_by_binding(entries: &[::wgpu::BindGroupLayoutEntry]) {
         for pair in entries.windows(2) {
             assert!(
@@ -638,6 +654,12 @@ mod tests {
                 pair[0].binding,
                 pair[1].binding
             );
+        }
+    }
+
+    fn assert_contiguous_bindings(entries: &[::wgpu::BindGroupLayoutEntry]) {
+        for (expected, entry) in entries.iter().enumerate() {
+            assert_eq!(entry.binding, expected as u32);
         }
     }
 
