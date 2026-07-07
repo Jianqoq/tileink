@@ -895,18 +895,12 @@ impl Renderer {
             std_dev / factor,
             1,
         );
-        let Some(target_read) = self.snapshot_filter_target(commands, target) else {
-            self.release_scratch(temp);
-            self.release_scratch(low);
-            self.release_scratch(source);
-            return false;
-        };
         filter.rect_liquid_glass_composite_region(
             commands,
             self.render_target_view(source),
             self.render_target_view(low),
             self.render_target_view(target),
-            target_read,
+            self.render_target_view(source),
             self.size,
             self.lengths,
             bounds,
@@ -1001,18 +995,12 @@ impl Renderer {
             low_bounds,
             glass.blur_sampling,
         );
-        let Some(target_read) = self.snapshot_filter_target(commands, target) else {
-            self.release_scratch(temp);
-            self.release_scratch(low);
-            self.release_scratch(source);
-            return false;
-        };
         filter.rect_liquid_glass_composite_region(
             commands,
             self.render_target_view(source),
             self.render_target_view(temp),
             self.render_target_view(target),
-            target_read,
+            self.render_target_view(source),
             self.size,
             self.lengths,
             bounds,
