@@ -41,16 +41,8 @@ wgpu = []
 winit = "0.30"
 
 [[example]]
-name = "cpu_examples"
-path = "examples/cpu/all.rs"
-
-[[example]]
 name = "wgpu_examples"
 path = "examples/wgpu/all.rs"
-
-[[example]]
-name = "cpu_bench_cpu"
-path = "examples/cpu/bench_cpu.rs"
 
 [[example]]
 name = "svg_fixture_render"
@@ -74,11 +66,6 @@ path = "examples/svg_tiger_vello_compare.rs"
 required-features = ["vello-compare"]
 
 [[example]]
-name = "text_quality"
-path = "examples/text_quality.rs"
-required-features = ["directwrite-reference"]
-
-[[example]]
 name = "winit_svg_tiger"
 path = "examples/winit_svg_tiger.rs"
 
@@ -91,6 +78,3 @@ required-features = ["vello-compare"]
 name = "wgpu_batch"
 path = "examples/wgpu_batch.rs"
 
-[[example]]
-name = "wgpu_bench_cpu"
-path = "examples/wgpu/bench_cpu.rs"

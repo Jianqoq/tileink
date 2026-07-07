@@ -13,11 +13,7 @@ repo_root="$(cd "$script_dir/../.." && pwd)"
 cd "$repo_root"
 
 echo "Building examples..."
-cargo build --release --example cpu_examples
 cargo build --release --example wgpu_examples
-
-echo "Running example: cpu_examples"
-cargo run --release --example cpu_examples
 
 if [[ "$wgpu_mode" == "native" ]]; then
     echo "Running example: wgpu_examples [native]"
@@ -27,4 +23,4 @@ else
     TILEINK_WGPU_MODE=native TILEINK_WGPU_COMPARE_PORTABLE=1 cargo run --release --example wgpu_examples
 fi
 
-echo "All examples finished. Outputs are in examples/cpu/out and examples/wgpu/out."
+echo "All examples finished. Outputs are in examples/wgpu/out."

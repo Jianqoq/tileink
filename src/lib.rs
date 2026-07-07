@@ -1,5 +1,6 @@
+#![allow(dead_code)]
+
 mod canvas;
-mod cpu;
 mod debug;
 mod render;
 mod shared;
@@ -21,7 +22,6 @@ pub use cosmic_text::{
     Family as TextFamily, FontSystem as TextFontSystem, Stretch as TextStretch, Style as TextStyle,
     Weight as TextWeight,
 };
-pub use cpu::Renderer as CpuRenderer;
 pub use debug::{
     DebugLineSegment, DebugTileDump, DebugTilePath, DebugTilePathSummary, DebugTileSummary,
     RenderDebugCapture, RenderDebugImage, RenderDebugOptions, RenderDebugText, RenderOptions,

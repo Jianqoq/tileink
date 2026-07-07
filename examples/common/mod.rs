@@ -13,13 +13,12 @@ use peniko::{
     Color,
     kurbo::{Affine, BezPath, Circle, Rect, Shape, Stroke},
 };
-use tileink::{Canvas, CpuRenderer, FillRule, Image, Radius, Region, SvgOptions, WgpuRenderer};
+use tileink::{Canvas, FillRule, Image, Radius, Region, SvgOptions, WgpuRenderer};
 
 pub const EXAMPLE_WIDTH: u32 = 1920;
 pub const EXAMPLE_HEIGHT: u32 = 1080;
 
 thread_local! {
-    static CPU_RENDERER: RefCell<Option<CpuRenderer>> = const { RefCell::new(None) };
     static WGPU_RENDERERS: RefCell<HashMap<(WgpuMode, u32, u32), WgpuRenderer>> = RefCell::new(HashMap::new());
 }
 
@@ -30,7 +29,7 @@ enum WgpuMode {
 }
 
 pub fn example_output(name: &str) -> PathBuf {
-    backend_output("cpu", name)
+    wgpu_example_output(name)
 }
 
 pub fn wgpu_example_output(name: &str) -> PathBuf {
@@ -111,16 +110,7 @@ pub fn render_to_png(
     height: u32,
     clear: Color,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let out = example_output(name);
-    CPU_RENDERER.with(|renderer| -> Result<(), Box<dyn std::error::Error>> {
-        let mut renderer = renderer.borrow_mut();
-        let renderer = renderer.get_or_insert_with(|| CpuRenderer::new(width, height, clear));
-        renderer.set_clear_color(clear);
-        renderer.render(scene);
-        save_example_image(renderer.image(), &out)
-    })?;
-    println!("Wrote {}", out.display());
-    Ok(())
+    render_to_png_wgpu(name, scene, width, height, clear)
 }
 
 pub fn render_to_png_wgpu(

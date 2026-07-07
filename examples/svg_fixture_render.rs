@@ -7,35 +7,25 @@ use std::{
 };
 
 use peniko::{Color, kurbo::Affine};
-use tileink::{Canvas, CpuRenderer, Image, SvgOptions, WgpuRenderer};
+use tileink::{Canvas, Image, SvgOptions, WgpuRenderer};
 
 const REFERENCE_IMAGE_WIDTH: u32 = 300;
 
 #[derive(Clone, Copy)]
 enum Backend {
-    Both,
-    Cpu,
     Wgpu,
 }
 
 impl Backend {
     fn parse(value: &str) -> Result<Self, String> {
         match value {
-            "both" => Ok(Self::Both),
-            "cpu" => Ok(Self::Cpu),
             "wgpu" => Ok(Self::Wgpu),
-            _ => Err(format!(
-                "unknown backend `{value}`, expected both, cpu, or wgpu"
-            )),
+            _ => Err(format!("unknown backend `{value}`, expected wgpu")),
         }
     }
 
-    fn renders_cpu(self) -> bool {
-        matches!(self, Self::Both | Self::Cpu)
-    }
-
     fn renders_wgpu(self) -> bool {
-        matches!(self, Self::Both | Self::Wgpu)
+        matches!(self, Self::Wgpu)
     }
 }
 
@@ -65,7 +55,6 @@ impl WgpuMode {
 }
 
 struct BatchRenderers {
-    cpu: Option<CpuRenderer>,
     wgpu: Option<WgpuRenderer>,
     wgpu_portable: Option<WgpuRenderer>,
     wgpu_mode: WgpuMode,
@@ -75,9 +64,6 @@ struct BatchRenderers {
 impl BatchRenderers {
     fn new(backend: Backend, wgpu_mode: WgpuMode, compare_wgpu_portable: bool) -> Self {
         Self {
-            cpu: backend
-                .renders_cpu()
-                .then(|| CpuRenderer::new(1, 1, Color::TRANSPARENT)),
             wgpu: backend.renders_wgpu().then(|| {
                 new_wgpu_renderer_for_mode(
                     1,
@@ -95,21 +81,6 @@ impl BatchRenderers {
             wgpu_mode,
             compare_wgpu_portable,
         }
-    }
-
-    fn render_cpu(
-        &mut self,
-        scene: &Canvas,
-        input: &Path,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let Some(renderer) = &mut self.cpu else {
-            return Ok(());
-        };
-        let output = output_path(input, "cpu");
-        renderer.render(scene);
-        common::save_image(renderer.image(), &output)?;
-        println!("[cpu] wrote {}", output.display());
-        Ok(())
     }
 
     fn render_wgpu(
@@ -168,9 +139,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("[svg] {}", input.display());
         match load_scene(&input, &mut usvg_options) {
             Ok(scene) => {
-                if let Err(err) = renderers.render_cpu(&scene, &input) {
-                    failures.push(format!("[cpu] {}: {err}", input.display()));
-                }
                 if let Err(err) = renderers.render_wgpu(&scene, &input) {
                     failures.push(format!("[wgpu] {}: {err}", input.display()));
                 }
@@ -197,13 +165,13 @@ fn parse_args() -> Result<(PathBuf, Backend, WgpuMode, bool), Box<dyn std::error
     let args = std::env::args().skip(1).collect::<Vec<_>>();
     if args.is_empty() {
         return Err(
-            "usage: svg_fixture_render <folder> [both|cpu|wgpu] [--wgpu-mode native|portable] [--compare-wgpu-portable]"
+            "usage: svg_fixture_render <folder> [wgpu] [--wgpu-mode native|portable] [--compare-wgpu-portable]"
                 .into(),
         );
     }
 
     let root = PathBuf::from(&args[0]);
-    let mut backend = Backend::Both;
+    let mut backend = Backend::Wgpu;
     let mut wgpu_mode = WgpuMode::Native;
     let mut compare_wgpu_portable = false;
     let mut ix = 1;

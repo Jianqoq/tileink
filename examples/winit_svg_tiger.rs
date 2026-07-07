@@ -1,5 +1,5 @@
-// Kept outside examples/cpu and examples/wgpu so scripts/*/run_examples only runs
-// the headless image-producing examples.
+// Kept outside examples/wgpu so scripts/*/run_examples only runs the headless
+// image-producing examples.
 #[path = "common/mod.rs"]
 mod common;
 
