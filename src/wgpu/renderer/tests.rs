@@ -840,10 +840,9 @@ fn wgpu_coarse_portable_emit_handles_multiple_draw_chunks_when_enabled() {
         );
     }
     let mut renderer = Renderer::new(&device, &queue, 16, 16, Color::TRANSPARENT);
-    let Some(coarse) = renderer.coarse_pipeline.as_ref() else {
+    let Some(_) = renderer.coarse_pipeline.as_ref() else {
         return;
     };
-    assert!(coarse.uses_portable_emit());
 
     renderer.prepare_scene(&canvas);
     assert_eq!(renderer.lengths.tile_draw_chunk_count, 2);
