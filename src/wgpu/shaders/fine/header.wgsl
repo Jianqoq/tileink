@@ -153,9 +153,9 @@ struct PtclRecord {
 @group(0) @binding(37) var<storage, read> segments: array<LineSegment>;
 @group(0) @binding(43) var<storage, read> text_blob: array<u32>;
 @group(0) @binding(53) var<storage, read_write> spills: array<u32>;
+@group(0) @binding(57) var<storage, read_write> fine_indirect_args: array<atomic<u32>>;
 @group(0) @binding(58) var image_resource_atlas: texture_2d<f32>;
 @group(0) @binding(59) var image_resource_sampler: sampler;
-@group(0) @binding(57) var<storage, read_write> fine_indirect_args: array<atomic<u32>>;
 
 const TILE_COARSE_RECORD_WORDS: u32 = 6u;
 const PTCL_RECORD_WORDS: u32 = 6u;

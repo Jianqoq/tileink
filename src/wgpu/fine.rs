@@ -373,19 +373,27 @@ impl WgpuFinePipeline {
         config_offset: ::wgpu::BufferAddress,
     ) -> ::wgpu::BindGroup {
         let fine = &bindings.fine;
-        let texture_entries = if self.portable_textures {
-            vec![texture_binding(1, source), texture_binding(54, target)]
-        } else {
-            vec![texture_binding(1, target)]
-        };
         let mut entries = vec![
             config_buffer_binding(0, &self.config, config_offset, self.config_size),
+            texture_binding(
+                1,
+                if self.portable_textures {
+                    source
+                } else {
+                    target
+                },
+            ),
             buffer_binding(2, fine.draw_records),
             buffer_binding(8, fine.paint_blob),
             buffer_binding(29, bindings.coarse_work),
             buffer_binding(37, bindings.segments),
             buffer_binding(43, bindings.text_blob),
             buffer_binding(53, bindings.spills),
+        ];
+        if self.portable_textures {
+            entries.push(texture_binding(54, target));
+        }
+        entries.extend([
             texture_binding(
                 fine_layout::IMAGE_RESOURCE_ATLAS_BINDING,
                 fine.image_resource_atlas,
@@ -394,8 +402,7 @@ impl WgpuFinePipeline {
                 fine_layout::IMAGE_RESOURCE_SAMPLER_BINDING,
                 fine.image_resource_sampler,
             ),
-        ];
-        entries.extend(texture_entries);
+        ]);
         device.create_bind_group(&::wgpu::BindGroupDescriptor {
             label: Some("tileink wgpu tile fine bind group"),
             layout,
@@ -425,27 +432,30 @@ impl WgpuFinePipeline {
 fn tile_fine_layout_entries(portable_textures: bool) -> Vec<::wgpu::BindGroupLayoutEntry> {
     let mut entries = vec![
         uniform_layout_entry(0),
+        if portable_textures {
+            sampled_texture_layout_entry(1)
+        } else {
+            storage_texture_layout_entry(1, ::wgpu::StorageTextureAccess::ReadWrite)
+        },
         storage_layout_entry(2, true),
         storage_layout_entry(8, true),
         storage_layout_entry(29, false),
         storage_layout_entry(37, true),
         storage_layout_entry(43, true),
         storage_layout_entry(53, false),
-        sampled_filterable_texture_layout_entry(fine_layout::IMAGE_RESOURCE_ATLAS_BINDING),
-        filtering_sampler_layout_entry(fine_layout::IMAGE_RESOURCE_SAMPLER_BINDING),
     ];
     if portable_textures {
-        entries.push(sampled_texture_layout_entry(1));
         entries.push(storage_texture_layout_entry(
             54,
             ::wgpu::StorageTextureAccess::WriteOnly,
         ));
-    } else {
-        entries.push(storage_texture_layout_entry(
-            1,
-            ::wgpu::StorageTextureAccess::ReadWrite,
-        ));
     }
+    entries.push(sampled_filterable_texture_layout_entry(
+        fine_layout::IMAGE_RESOURCE_ATLAS_BINDING,
+    ));
+    entries.push(filtering_sampler_layout_entry(
+        fine_layout::IMAGE_RESOURCE_SAMPLER_BINDING,
+    ));
     entries
 }
 
@@ -610,6 +620,25 @@ mod tests {
         let storage_count = entries.iter().filter(|entry| is_storage(entry)).count() as u32;
         assert_eq!(storage_count, TILE_STORAGE_BINDING_COUNT);
         assert_eq!(TILE_STORAGE_BINDING_COUNT, 6);
+    }
+
+    #[test]
+    fn fine_layout_entries_are_sorted_by_binding() {
+        for portable_textures in [false, true] {
+            let entries = tile_fine_layout_entries(portable_textures);
+            assert_sorted_by_binding(&entries);
+        }
+    }
+
+    fn assert_sorted_by_binding(entries: &[::wgpu::BindGroupLayoutEntry]) {
+        for pair in entries.windows(2) {
+            assert!(
+                pair[0].binding < pair[1].binding,
+                "bindings must be strictly sorted, got {} before {}",
+                pair[0].binding,
+                pair[1].binding
+            );
+        }
     }
 
     fn is_storage(entry: &::wgpu::BindGroupLayoutEntry) -> bool {

@@ -2152,21 +2152,6 @@ impl WgpuFilterPipeline {
             bind_texture(2, aux),
             bind_texture(3, target),
         ];
-        if kernel.portable_textures {
-            entries.push(bind_texture(
-                55,
-                target_read.unwrap_or(&self.dummy_texture_view),
-            ));
-        }
-        entries.push(bind_texture(
-            filter_layout::SOURCE_SAMPLE_TEXTURE_BINDING,
-            source,
-        ));
-        entries.push(bind_texture(filter_layout::AUX_SAMPLE_TEXTURE_BINDING, aux));
-        entries.push(bind_sampler(
-            filter_layout::LINEAR_SAMPLER_BINDING,
-            &self.dummy_sampler,
-        ));
         push_buffer_if(
             &mut entries,
             kernel.resources,
@@ -2300,6 +2285,21 @@ impl WgpuFilterPipeline {
             48,
             path_p1y,
         );
+        entries.push(bind_texture(
+            filter_layout::SOURCE_SAMPLE_TEXTURE_BINDING,
+            source,
+        ));
+        entries.push(bind_texture(filter_layout::AUX_SAMPLE_TEXTURE_BINDING, aux));
+        entries.push(bind_sampler(
+            filter_layout::LINEAR_SAMPLER_BINDING,
+            &self.dummy_sampler,
+        ));
+        if kernel.portable_textures {
+            entries.push(bind_texture(
+                55,
+                target_read.unwrap_or(&self.dummy_texture_view),
+            ));
+        }
         if kernel.resources & FILTER_RES_BRUSH != 0 {
             entries.push(bind_texture(
                 filter_layout::IMAGE_RESOURCE_ATLAS_BINDING,
@@ -2735,13 +2735,7 @@ fn filter_layout_entries(
         read_texture_entry(1, portable_textures),
         read_texture_entry(2, portable_textures),
         write_texture_entry(3, portable_textures),
-        sampled_filterable_texture_entry(filter_layout::SOURCE_SAMPLE_TEXTURE_BINDING),
-        sampled_filterable_texture_entry(filter_layout::AUX_SAMPLE_TEXTURE_BINDING),
-        filtering_sampler_entry(filter_layout::LINEAR_SAMPLER_BINDING),
     ];
-    if portable_textures {
-        entries.push(sampled_texture_entry(55));
-    }
     push_storage_entry_if(&mut entries, resources, FILTER_RES_DRAW_RECORDS, 4, true);
     push_storage_entry_if(&mut entries, resources, FILTER_RES_SDF_BLOB, 10, true);
     push_storage_entry_if(
@@ -2803,6 +2797,18 @@ fn filter_layout_entries(
     push_storage_entry_if(&mut entries, resources, FILTER_RES_PATH_P0Y, 46, true);
     push_storage_entry_if(&mut entries, resources, FILTER_RES_PATH_P1X, 47, true);
     push_storage_entry_if(&mut entries, resources, FILTER_RES_PATH_P1Y, 48, true);
+    entries.push(sampled_filterable_texture_entry(
+        filter_layout::SOURCE_SAMPLE_TEXTURE_BINDING,
+    ));
+    entries.push(sampled_filterable_texture_entry(
+        filter_layout::AUX_SAMPLE_TEXTURE_BINDING,
+    ));
+    entries.push(filtering_sampler_entry(
+        filter_layout::LINEAR_SAMPLER_BINDING,
+    ));
+    if portable_textures {
+        entries.push(sampled_texture_entry(55));
+    }
     if resources & FILTER_RES_BRUSH != 0 {
         entries.push(sampled_filterable_texture_entry(
             filter_layout::IMAGE_RESOURCE_ATLAS_BINDING,
@@ -3016,6 +3022,37 @@ mod tests {
             assert!(bindings.contains(&filter_layout::SOURCE_SAMPLE_TEXTURE_BINDING));
             assert!(bindings.contains(&filter_layout::AUX_SAMPLE_TEXTURE_BINDING));
             assert!(bindings.contains(&filter_layout::LINEAR_SAMPLER_BINDING));
+        }
+    }
+
+    #[test]
+    fn filter_layout_entries_are_sorted_by_binding() {
+        let resource_sets = [
+            0,
+            FILTER_RES_TRANSFER,
+            FILTER_RES_BRUSH,
+            FILTER_RES_CONVOLVE,
+            FILTER_RES_TURBULENCE,
+            FILTER_RES_PATH_MASK,
+            FILTER_RES_SCENE_ALPHA,
+            FILTER_RES_SCENE_STACK,
+        ];
+        for portable_textures in [false, true] {
+            for resources in resource_sets {
+                let entries = filter_layout_entries(portable_textures, resources);
+                assert_sorted_by_binding(&entries);
+            }
+        }
+    }
+
+    fn assert_sorted_by_binding(entries: &[::wgpu::BindGroupLayoutEntry]) {
+        for pair in entries.windows(2) {
+            assert!(
+                pair[0].binding < pair[1].binding,
+                "bindings must be strictly sorted, got {} before {}",
+                pair[0].binding,
+                pair[1].binding
+            );
         }
     }
 }
