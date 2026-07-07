@@ -2402,6 +2402,49 @@ fn wgpu_renderer_shared_blur_matches_cpu_across_workgroup_edges() {
 }
 
 #[test]
+fn wgpu_renderer_global_blur_matches_cpu_with_paired_linear_samples() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut canvas = Canvas::new(96, 72, 1.0);
+    canvas.push_filter_layer(
+        Filter::Blur {
+            std_dev_x: 7.0,
+            std_dev_y: 7.0,
+            sampling: BlurSampling::default(),
+        },
+        Region::rect(Rect::new(5.0, 6.0, 90.0, 66.0), crate::Radius::ZERO),
+    );
+    for x in (7..90).step_by(8) {
+        let color = if x % 3 == 0 {
+            Color::from_rgb8(240, 32, 80)
+        } else {
+            Color::from_rgb8(20, 180, 255)
+        };
+        canvas.push_rect(
+            Rect::new(f64::from(x), 9.0, f64::from(x + 3), 63.0),
+            crate::Radius::ZERO,
+            color,
+        );
+    }
+    for y in (10..66).step_by(9) {
+        canvas.push_rect(
+            Rect::new(8.0, f64::from(y), 87.0, f64::from(y + 3)),
+            crate::Radius::ZERO,
+            Color::from_rgba8(255, 220, 40, 160),
+        );
+    }
+    canvas.pop_layer();
+
+    let image = render_native_wgpu(&canvas);
+    let mut cpu = CpuRenderer::new(96, 72, Color::TRANSPARENT);
+    cpu.render(&canvas);
+
+    assert_images_near(&image, &cpu.image(), 16, "global paired blur");
+}
+
+#[test]
 fn wgpu_renderer_profiles_filter_dispatch_stages_when_enabled() {
     if !run_wgpu_tests() {
         return;
