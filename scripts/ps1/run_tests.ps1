@@ -7,7 +7,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "../..")
 $modes = if ($WgpuMode -eq "both") { @("native", "portable") } else { @($WgpuMode) }
 
 Push-Location $repoRoot

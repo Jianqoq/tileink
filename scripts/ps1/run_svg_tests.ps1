@@ -13,7 +13,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$repo = Resolve-Path (Join-Path $PSScriptRoot "..")
+$repo = Resolve-Path (Join-Path $PSScriptRoot "../..")
 $testsRoot = Join-Path $repo "src\svg\tests"
 
 Push-Location $repo
