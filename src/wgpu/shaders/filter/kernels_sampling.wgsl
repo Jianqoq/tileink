@@ -202,6 +202,50 @@ fn filter_blur_half_width(std_dev: f32) -> i32 {
     return i32(max(ceil(std_dev * 3.0), 1.0));
 }
 
+fn filter_blur_source_sample_pixel(x: f32, y: f32) -> vec4<f32> {
+    return filter_source_sample_premul(x, y) * 255.0;
+}
+
+fn filter_blur_source_pixel(x: u32, y: u32) -> vec4<f32> {
+    let px = source_pixel_at(x, y);
+    return vec4<f32>(
+        f32(px & 255u),
+        f32((px >> 8u) & 255u),
+        f32((px >> 16u) & 255u),
+        f32((px >> 24u) & 255u),
+    );
+}
+
+fn filter_blur_pair_in_region(
+    base_x: i32,
+    base_y: i32,
+    offset: f32,
+    region_x1: i32,
+    region_y1: i32,
+) -> bool {
+    var x0 = f32(base_x) + offset;
+    var x1 = f32(base_x) + offset + 1.0;
+    var y0 = f32(base_y);
+    var y1 = f32(base_y);
+    if (config.blur_axis != 0u) {
+        x0 = f32(base_x);
+        x1 = f32(base_x);
+        y0 = f32(base_y) + offset;
+        y1 = f32(base_y) + offset + 1.0;
+    }
+    return x0 >= f32(config.region_x0) &&
+        x1 < f32(region_x1) &&
+        y0 >= f32(config.region_y0) &&
+        y1 < f32(region_y1);
+}
+
+fn filter_blur_sample_pair(base_x: i32, base_y: i32, offset: f32) -> vec4<f32> {
+    if (config.blur_axis == 0u) {
+        return filter_blur_source_sample_pixel(f32(base_x) + offset, f32(base_y));
+    }
+    return filter_blur_source_sample_pixel(f32(base_x), f32(base_y) + offset);
+}
+
 fn filter_blur_pixel_global(xy: vec2<u32>, dst_ix: u32, std_dev: f32) -> u32 {
     let half_width = i32(max(ceil(std_dev * 3.0), 1.0));
     let sigma = max(std_dev, 0.0001);
@@ -226,7 +270,12 @@ fn filter_blur_pixel_global(xy: vec2<u32>, dst_ix: u32, std_dev: f32) -> u32 {
         if (d > half_width) {
             break;
         }
-        sum += 2.0 * weight;
+        let next_d = d + 1i;
+        let has_pair = next_d <= half_width;
+        let next_weight = weight * weight_ratio;
+        let pair_weight = weight + select(0.0, next_weight, has_pair);
+        sum += 2.0 * pair_weight;
+
         var sample_x = base_x + d;
         var sample_y = base_y;
         if (config.blur_axis == 0u) {
@@ -235,17 +284,46 @@ fn filter_blur_pixel_global(xy: vec2<u32>, dst_ix: u32, std_dev: f32) -> u32 {
             sample_x = base_x;
             sample_y = base_y + d;
         }
-        if (
-            sample_x >= i32(config.region_x0) &&
-            sample_x < region_x1 &&
-            sample_y >= i32(config.region_y0) &&
-            sample_y < region_y1
-        ) {
-            let px = source_pixel_at(u32(sample_x), u32(sample_y));
-            r += f32(px & 255u) * weight;
-            g += f32((px >> 8u) & 255u) * weight;
-            b += f32((px >> 16u) & 255u) * weight;
-            a += f32((px >> 24u) & 255u) * weight;
+        if (has_pair && filter_blur_pair_in_region(base_x, base_y, f32(d), region_x1, region_y1)) {
+            let offset = f32(d) + next_weight / pair_weight;
+            let sample = filter_blur_sample_pair(base_x, base_y, offset);
+            r += sample.r * pair_weight;
+            g += sample.g * pair_weight;
+            b += sample.b * pair_weight;
+            a += sample.a * pair_weight;
+        } else {
+            if (
+                sample_x >= i32(config.region_x0) &&
+                sample_x < region_x1 &&
+                sample_y >= i32(config.region_y0) &&
+                sample_y < region_y1
+            ) {
+                let sample = filter_blur_source_pixel(u32(sample_x), u32(sample_y));
+                r += sample.r * weight;
+                g += sample.g * weight;
+                b += sample.b * weight;
+                a += sample.a * weight;
+            }
+            if (has_pair) {
+                sample_x = base_x + next_d;
+                sample_y = base_y;
+                if (config.blur_axis != 0u) {
+                    sample_x = base_x;
+                    sample_y = base_y + next_d;
+                }
+                if (
+                    sample_x >= i32(config.region_x0) &&
+                    sample_x < region_x1 &&
+                    sample_y >= i32(config.region_y0) &&
+                    sample_y < region_y1
+                ) {
+                    let sample = filter_blur_source_pixel(u32(sample_x), u32(sample_y));
+                    r += sample.r * next_weight;
+                    g += sample.g * next_weight;
+                    b += sample.b * next_weight;
+                    a += sample.a * next_weight;
+                }
+            }
         }
 
         sample_x = base_x - d;
@@ -254,22 +332,57 @@ fn filter_blur_pixel_global(xy: vec2<u32>, dst_ix: u32, std_dev: f32) -> u32 {
             sample_x = base_x;
             sample_y = base_y - d;
         }
-        if (
-            sample_x >= i32(config.region_x0) &&
-            sample_x < region_x1 &&
-            sample_y >= i32(config.region_y0) &&
-            sample_y < region_y1
-        ) {
-            let px = source_pixel_at(u32(sample_x), u32(sample_y));
-            r += f32(px & 255u) * weight;
-            g += f32((px >> 8u) & 255u) * weight;
-            b += f32((px >> 16u) & 255u) * weight;
-            a += f32((px >> 24u) & 255u) * weight;
+        if (has_pair && filter_blur_pair_in_region(base_x, base_y, -f32(next_d), region_x1, region_y1)) {
+            let offset = -(f32(d) + next_weight / pair_weight);
+            let sample = filter_blur_sample_pair(base_x, base_y, offset);
+            r += sample.r * pair_weight;
+            g += sample.g * pair_weight;
+            b += sample.b * pair_weight;
+            a += sample.a * pair_weight;
+        } else {
+            if (
+                sample_x >= i32(config.region_x0) &&
+                sample_x < region_x1 &&
+                sample_y >= i32(config.region_y0) &&
+                sample_y < region_y1
+            ) {
+                let sample = filter_blur_source_pixel(u32(sample_x), u32(sample_y));
+                r += sample.r * weight;
+                g += sample.g * weight;
+                b += sample.b * weight;
+                a += sample.a * weight;
+            }
+            if (has_pair) {
+                sample_x = base_x - next_d;
+                sample_y = base_y;
+                if (config.blur_axis != 0u) {
+                    sample_x = base_x;
+                    sample_y = base_y - next_d;
+                }
+                if (
+                    sample_x >= i32(config.region_x0) &&
+                    sample_x < region_x1 &&
+                    sample_y >= i32(config.region_y0) &&
+                    sample_y < region_y1
+                ) {
+                    let sample = filter_blur_source_pixel(u32(sample_x), u32(sample_y));
+                    r += sample.r * next_weight;
+                    g += sample.g * next_weight;
+                    b += sample.b * next_weight;
+                    a += sample.a * next_weight;
+                }
+            }
         }
 
-        weight *= weight_ratio;
-        weight_ratio *= weight_ratio_decay;
-        d += 1i;
+        if (has_pair) {
+            weight = next_weight * (weight_ratio * weight_ratio_decay);
+            weight_ratio *= weight_ratio_decay * weight_ratio_decay;
+            d += 2i;
+        } else {
+            weight = next_weight;
+            weight_ratio *= weight_ratio_decay;
+            d += 1i;
+        }
     }
 
     var scale = 0.0;
