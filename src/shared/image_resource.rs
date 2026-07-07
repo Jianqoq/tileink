@@ -98,6 +98,18 @@ impl ImageResourceStore {
         GpuImageResourceUpload::from_stores(self, Some(scene), max_atlas_dimension)
     }
 
+    pub(crate) fn upload_signature(
+        &self,
+        scene: &ImageResourceStore,
+        max_atlas_dimension: u32,
+    ) -> ImageResourceUploadSignature {
+        ImageResourceUploadSignature {
+            renderer: self.store_signature(),
+            scene: scene.store_signature(),
+            max_atlas_dimension,
+        }
+    }
+
     pub(crate) fn extend_from(&mut self, other: &ImageResourceStore) {
         self.images.extend(
             other
@@ -110,6 +122,64 @@ impl ImageResourceStore {
     fn iter(&self) -> impl Iterator<Item = (ImageKey, &Arc<Image>)> {
         self.images.iter().map(|(&key, image)| (key, image))
     }
+
+    fn store_signature(&self) -> ImageResourceStoreSignature {
+        let mut entries = self
+            .images
+            .iter()
+            .map(|(&key, image)| {
+                (
+                    key,
+                    image.width,
+                    image.height,
+                    image.pixels.len() as u64,
+                    Arc::as_ptr(image) as usize as u64,
+                    image.pixels.as_ptr() as usize as u64,
+                )
+            })
+            .collect::<Vec<_>>();
+        entries.sort_by_key(|entry| entry.0.0);
+
+        let mut hash = FNV_OFFSET;
+        hash = fnv_mix(hash, entries.len() as u64);
+        for (key, width, height, pixel_len, image_ptr, pixels_ptr) in entries {
+            hash = fnv_mix(hash, key.0);
+            hash = fnv_mix(hash, width as u64);
+            hash = fnv_mix(hash, height as u64);
+            hash = fnv_mix(hash, pixel_len);
+            hash = fnv_mix(hash, image_ptr);
+            hash = fnv_mix(hash, pixels_ptr);
+        }
+        ImageResourceStoreSignature {
+            len: self.images.len() as u64,
+            hash,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct ImageResourceUploadSignature {
+    renderer: ImageResourceStoreSignature,
+    scene: ImageResourceStoreSignature,
+    max_atlas_dimension: u32,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct ImageResourceStoreSignature {
+    len: u64,
+    hash: u64,
+}
+
+const FNV_OFFSET: u64 = 0xcbf29ce484222325;
+const FNV_PRIME: u64 = 0x100000001b3;
+
+#[inline]
+fn fnv_mix(mut hash: u64, value: u64) -> u64 {
+    for byte in value.to_le_bytes() {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash
 }
 
 #[derive(Clone, Copy, Default)]

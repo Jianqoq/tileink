@@ -306,6 +306,45 @@ fn wgpu_renderer_push_image_key_stops_sampling_after_resource_remove_when_enable
 }
 
 #[test]
+fn wgpu_renderer_reuses_image_resource_upload_when_resources_are_unchanged() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let key = ImageKey::new(15);
+    let canvas = Canvas::new(1, 1, 1.0);
+    let mut renderer = new_test_renderer(1, 1, Color::TRANSPARENT);
+    assert!(renderer.insert_image(key, Image::from_rgba8(1, 1, [255, 0, 0, 255])));
+
+    renderer.prepare_image_resource_buffers(canvas.scene_image_resources(), false);
+    assert!(!renderer.image_resource_upload.atlas_pixels.is_empty());
+    renderer.image_resource_upload.atlas_pixels[0] = 0xdead_beef;
+
+    renderer.prepare_image_resource_buffers(canvas.scene_image_resources(), false);
+
+    assert_eq!(renderer.image_resource_upload.atlas_pixels[0], 0xdead_beef);
+}
+
+#[test]
+fn wgpu_renderer_rebuilds_image_resource_upload_after_renderer_image_change() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let key = ImageKey::new(16);
+    let canvas = Canvas::new(1, 1, 1.0);
+    let mut renderer = new_test_renderer(1, 1, Color::TRANSPARENT);
+    assert!(renderer.insert_image(key, Image::from_rgba8(1, 1, [255, 0, 0, 255])));
+    renderer.prepare_image_resource_buffers(canvas.scene_image_resources(), false);
+    renderer.image_resource_upload.atlas_pixels[0] = 0xdead_beef;
+
+    assert!(renderer.insert_image(key, Image::from_rgba8(1, 1, [0, 255, 0, 255])));
+    renderer.prepare_image_resource_buffers(canvas.scene_image_resources(), false);
+
+    assert_ne!(renderer.image_resource_upload.atlas_pixels[0], 0xdead_beef);
+}
+
+#[test]
 fn wgpu_renderer_reuses_pipelines_when_clear_changes() {
     if !run_wgpu_tests() {
         return;

@@ -19,7 +19,9 @@ use crate::{
             plan_stack_depths, required_scratch_count,
         },
         image::Image,
-        image_resource::{GpuImageResourceUpload, ImageKey, ImageResourceStore},
+        image_resource::{
+            GpuImageResourceUpload, ImageKey, ImageResourceStore, ImageResourceUploadSignature,
+        },
         layer::{
             Layer,
             filter::{self as filter_model, Filter},
@@ -133,6 +135,7 @@ pub struct Renderer {
     filter_brushes: WgpuFilterBrushBuffers,
     image_resources: ImageResourceStore,
     image_resource_upload: GpuImageResourceUpload,
+    image_resource_upload_signature: ImageResourceUploadSignature,
     image_resources_dirty: bool,
     filter_convolves: WgpuFilterConvolveBuffers,
     filter_turbulence: WgpuFilterTurbulenceBuffers,
@@ -223,6 +226,7 @@ impl Renderer {
             filter_brushes: WgpuFilterBrushBuffers::new(device),
             image_resources: ImageResourceStore::default(),
             image_resource_upload: GpuImageResourceUpload::default(),
+            image_resource_upload_signature: ImageResourceUploadSignature::default(),
             image_resources_dirty: true,
             filter_convolves: WgpuFilterConvolveBuffers::new(device),
             filter_turbulence: WgpuFilterTurbulenceBuffers::new(device),
@@ -506,12 +510,22 @@ impl Renderer {
         scene_resources: &ImageResourceStore,
         force_upload: bool,
     ) {
-        self.image_resource_upload = self.image_resources.upload_merged(
-            scene_resources,
-            self.device.limits().max_texture_dimension_2d,
-        );
-        self.image_resources_dirty = false;
-        if force_upload || !self.image_resource_upload.atlas_pixels.is_empty() {
+        let max_atlas_dimension = self.device.limits().max_texture_dimension_2d;
+        let signature = self
+            .image_resources
+            .upload_signature(scene_resources, max_atlas_dimension);
+        let rebuild_upload =
+            self.image_resources_dirty || self.image_resource_upload_signature != signature;
+
+        if rebuild_upload {
+            self.image_resource_upload = self
+                .image_resources
+                .upload_merged(scene_resources, max_atlas_dimension);
+            self.image_resource_upload_signature = signature;
+            self.image_resources_dirty = false;
+        }
+
+        if (force_upload || rebuild_upload) && !self.image_resource_upload.atlas_pixels.is_empty() {
             self.scene_buffers.upload_image_resources(
                 &self.device,
                 &self.queue,
