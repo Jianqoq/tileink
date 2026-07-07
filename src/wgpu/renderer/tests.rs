@@ -73,7 +73,7 @@ fn wgpu_renderer_push_image_samples_external_image_when_enabled() {
 
     let mut canvas = Canvas::new(4, 2, 1.0);
     canvas
-        .push_image_with_sampling(
+        .push_image(
             Rect::new(0.0, 0.0, 4.0, 2.0),
             Image::from_rgba8(
                 2,

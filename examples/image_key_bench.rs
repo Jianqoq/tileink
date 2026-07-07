@@ -206,7 +206,7 @@ fn build_scene(config: Config, case: CaseKind, image_key: ImageKey, image: Arc<I
                     let _ = scene.push_image_key(rect, image_key, sampling);
                 }
                 CaseKind::SceneImage(sampling) => {
-                    let _ = scene.push_image_with_sampling(rect, Arc::clone(&image), sampling);
+                    let _ = scene.push_image(rect, Arc::clone(&image), sampling);
                 }
             }
         }

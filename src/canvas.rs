@@ -1503,17 +1503,12 @@ impl Canvas {
         self.draw_id_from_index(draw)
     }
 
-    /// Adds an external image scaled into `rect`.
+    /// Adds an external image scaled into `rect` with explicit sampling.
     ///
     /// The image is stored as a pattern brush, so CPU and wgpu renderers share
     /// the same upload/sampling path used by SVG raster images. Empty images,
     /// empty rectangles, and non-finite rectangles are ignored.
-    pub fn push_image(&mut self, rect: Rect, image: impl Into<SharedArc<Image>>) -> Option<DrawId> {
-        self.push_image_with_sampling(rect, image, PatternSampling::Bilinear)
-    }
-
-    /// Adds an external image scaled into `rect` with explicit sampling.
-    pub fn push_image_with_sampling(
+    pub fn push_image(
         &mut self,
         rect: Rect,
         image: impl Into<SharedArc<Image>>,

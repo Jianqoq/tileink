@@ -133,7 +133,7 @@ fn render_path_text_rasterizes_vector_outlines_without_text_atlas() {
 fn render_push_image_samples_external_image() {
     let mut canvas = Canvas::new(4, 2, 1.0);
     canvas
-        .push_image_with_sampling(
+        .push_image(
             Rect::new(0.0, 0.0, 4.0, 2.0),
             Image::from_rgba8(
                 2,

@@ -129,7 +129,7 @@ fn push_image_records_pattern_rect_draw() {
     let mut canvas = test_scene();
     let image = Image::from_rgba8(2, 1, [255, 0, 0, 255, 0, 0, 255, 255]);
     let draw = canvas
-        .push_image_with_sampling(
+        .push_image(
             Rect::new(10.0, 20.0, 14.0, 22.0),
             image,
             PatternSampling::Nearest,
@@ -172,10 +172,18 @@ fn push_image_reuses_scene_resource_for_same_arc() {
     let image = Arc::new(Image::from_rgba8(2, 1, [255, 0, 0, 255, 0, 0, 255, 255]));
 
     canvas
-        .push_image(Rect::new(0.0, 0.0, 2.0, 1.0), Arc::clone(&image))
+        .push_image(
+            Rect::new(0.0, 0.0, 2.0, 1.0),
+            Arc::clone(&image),
+            PatternSampling::Bilinear,
+        )
         .expect("first image draw");
     canvas
-        .push_image(Rect::new(2.0, 0.0, 4.0, 1.0), Arc::clone(&image))
+        .push_image(
+            Rect::new(2.0, 0.0, 4.0, 1.0),
+            Arc::clone(&image),
+            PatternSampling::Bilinear,
+        )
         .expect("second image draw");
 
     let Brush::Pattern(first) = draw_brush(&canvas, 0) else {
@@ -191,7 +199,7 @@ fn push_image_reuses_scene_resource_for_same_arc() {
 fn new_keeps_image_brush_sampling_in_logical_coordinates() {
     let mut canvas = Canvas::new(64, 64, 2.0);
     canvas
-        .push_image_with_sampling(
+        .push_image(
             Rect::new(10.0, 20.0, 14.0, 22.0),
             Image::from_rgba8(2, 1, [255, 0, 0, 255, 0, 0, 255, 255]),
             PatternSampling::Nearest,
@@ -245,6 +253,7 @@ fn append_translates_image_brush_without_mutating_child() {
         .push_image(
             Rect::new(0.0, 0.0, 2.0, 1.0),
             Image::from_rgba8(2, 1, [255, 0, 0, 255, 0, 0, 255, 255]),
+            PatternSampling::Bilinear,
         )
         .expect("push child image");
     let Brush::Pattern(original_child_pattern) = draw_brush(&child, 0) else {
@@ -280,7 +289,11 @@ fn push_image_rejects_empty_images_and_rects() {
 
     assert!(
         canvas
-            .push_image(Rect::new(0.0, 0.0, 4.0, 4.0), Image::from_rgba8(0, 1, []),)
+            .push_image(
+                Rect::new(0.0, 0.0, 4.0, 4.0),
+                Image::from_rgba8(0, 1, []),
+                PatternSampling::Bilinear,
+            )
             .is_none()
     );
     assert!(
@@ -288,6 +301,7 @@ fn push_image_rejects_empty_images_and_rects() {
             .push_image(
                 Rect::new(0.0, 0.0, 0.0, 4.0),
                 Image::from_rgba8(1, 1, [255, 0, 0, 255]),
+                PatternSampling::Bilinear,
             )
             .is_none()
     );
