@@ -149,12 +149,13 @@ struct PtclRecord {
 };
 @group(0) @binding(2) var<storage, read> draw_records: array<DrawRecord>;
 @group(0) @binding(8) var<storage, read> paint_blob: array<u32>;
-@group(0) @binding(29) var<storage, read> coarse_work: array<u32>;
+@group(0) @binding(29) var<storage, read_write> coarse_work: array<u32>;
 @group(0) @binding(37) var<storage, read> segments: array<LineSegment>;
 @group(0) @binding(43) var<storage, read> text_blob: array<u32>;
 @group(0) @binding(53) var<storage, read_write> spills: array<u32>;
 @group(0) @binding(55) var<storage, read> image_resource_metadata: array<u32>;
 @group(0) @binding(56) var<storage, read> image_resource_pixels: array<u32>;
+@group(0) @binding(57) var<storage, read_write> fine_indirect_args: array<atomic<u32>>;
 
 const TILE_COARSE_RECORD_WORDS: u32 = 6u;
 const PTCL_RECORD_WORDS: u32 = 6u;
@@ -166,6 +167,9 @@ const FINE_TILE_KIND_COLOR_ONLY_NO_STACK: u32 = 2u;
 const FINE_TILE_KIND_PURE_SDF_SOLID_NO_STACK: u32 = 3u;
 const FINE_TILE_KIND_MIXED_ANALYTIC_SOLID_NO_STACK: u32 = 4u;
 const FINE_TILE_KIND_ANALYTIC_WITH_STACK: u32 = 5u;
+const FINE_TILE_LIST_SDF: u32 = 0u;
+const FINE_TILE_LIST_MIXED: u32 = 1u;
+const FINE_TILE_LIST_FULL: u32 = 2u;
 
 fn coarse_tile_base(tile_ix: u32) -> u32 {
     return tile_ix * TILE_COARSE_RECORD_WORDS;
@@ -211,6 +215,14 @@ fn coarse_load_glyph(glyph_ix: u32) -> u32 {
 
 fn fine_tile_kind_at(tile_ix: u32) -> u32 {
     return coarse_work[config.fine_tile_kind_base + tile_ix];
+}
+
+fn fine_tile_list_base(list_ix: u32) -> u32 {
+    return config.fine_tile_kind_base + config.tile_count + list_ix * config.tile_count;
+}
+
+fn fine_tile_list_at(list_ix: u32, tile_list_ix: u32) -> u32 {
+    return coarse_work[fine_tile_list_base(list_ix) + tile_list_ix];
 }
 
 fn glyph_at(glyph_ix: u32) -> GlyphRecord {

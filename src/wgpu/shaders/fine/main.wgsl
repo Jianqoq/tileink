@@ -1,3 +1,71 @@
+@compute @workgroup_size(1)
+fn fine_clear_indirect_main() {
+    atomicStore(&fine_indirect_args[0u], 0u);
+    atomicStore(&fine_indirect_args[1u], 1u);
+    atomicStore(&fine_indirect_args[2u], 1u);
+    atomicStore(&fine_indirect_args[3u], 0u);
+    atomicStore(&fine_indirect_args[4u], 1u);
+    atomicStore(&fine_indirect_args[5u], 1u);
+    atomicStore(&fine_indirect_args[6u], 0u);
+    atomicStore(&fine_indirect_args[7u], 1u);
+    atomicStore(&fine_indirect_args[8u], 1u);
+}
+
+@compute @workgroup_size(256)
+fn fine_compact_tiles_main(
+    @builtin(global_invocation_id) global_id: vec3<u32>,
+) {
+    let tile_ix = global_id.x;
+    if (tile_ix >= config.tile_count) {
+        return;
+    }
+
+    let sdf_base = fine_tile_list_base(FINE_TILE_LIST_SDF);
+    let mixed_base = fine_tile_list_base(FINE_TILE_LIST_MIXED);
+    let full_base = fine_tile_list_base(FINE_TILE_LIST_FULL);
+    let kind = fine_tile_kind_at(tile_ix);
+    if (kind == FINE_TILE_KIND_PURE_SDF_SOLID_NO_STACK) {
+        let out_ix = atomicAdd(&fine_indirect_args[0u], 1u);
+        coarse_work[sdf_base + out_ix] = tile_ix;
+    } else if (
+        kind == FINE_TILE_KIND_COLOR_ONLY_NO_STACK ||
+        kind == FINE_TILE_KIND_MIXED_ANALYTIC_SOLID_NO_STACK
+    ) {
+        let out_ix = atomicAdd(&fine_indirect_args[3u], 1u);
+        coarse_work[mixed_base + out_ix] = tile_ix;
+    } else {
+        let out_ix = atomicAdd(&fine_indirect_args[6u], 1u);
+        coarse_work[full_base + out_ix] = tile_ix;
+    }
+}
+
+@compute @workgroup_size(256)
+fn fine_tile_sdf_list_main(
+    @builtin(workgroup_id) workgroup_id: vec3<u32>,
+    @builtin(local_invocation_id) local_id: vec3<u32>,
+) {
+    let tile_ix = fine_tile_list_at(FINE_TILE_LIST_SDF, workgroup_id.x);
+    render_list_tile(tile_ix, local_id.x, FINE_TILE_KIND_PURE_SDF_SOLID_NO_STACK);
+}
+
+@compute @workgroup_size(256)
+fn fine_tile_mixed_list_main(
+    @builtin(workgroup_id) workgroup_id: vec3<u32>,
+    @builtin(local_invocation_id) local_id: vec3<u32>,
+) {
+    let tile_ix = fine_tile_list_at(FINE_TILE_LIST_MIXED, workgroup_id.x);
+    render_list_tile(tile_ix, local_id.x, FINE_TILE_KIND_MIXED_ANALYTIC_SOLID_NO_STACK);
+}
+
+@compute @workgroup_size(256)
+fn fine_tile_full_list_main(
+    @builtin(workgroup_id) workgroup_id: vec3<u32>,
+    @builtin(local_invocation_id) local_id: vec3<u32>,
+) {
+    let tile_ix = fine_tile_list_at(FINE_TILE_LIST_FULL, workgroup_id.x);
+    render_list_tile(tile_ix, local_id.x, FINE_TILE_KIND_FULL_INTERPRETER);
+}
+
 @compute @workgroup_size(256)
 fn fine_tile_main(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
@@ -30,6 +98,33 @@ fn fine_tile_main(
     } else if (kind == FINE_TILE_KIND_COLOR_ONLY_NO_STACK) {
         pixel = color_only_no_stack_tile_pixel(tile_ix, local_ix);
     } else if (
+        kind == FINE_TILE_KIND_PURE_SDF_SOLID_NO_STACK ||
+        kind == FINE_TILE_KIND_MIXED_ANALYTIC_SOLID_NO_STACK
+    ) {
+        pixel = analytic_solid_no_stack_tile_pixel(tile_ix, local_ix);
+    } else {
+        pixel = tile_pixel(tile_ix, local_ix);
+    }
+    target_store_unorm(global_x, global_y, pixel);
+}
+
+fn render_list_tile(tile_ix: u32, local_ix: u32, kind: u32) {
+    if (tile_ix >= config.tile_count) {
+        return;
+    }
+    let tile_x = tile_ix % config.tiles_width;
+    let tile_y = tile_ix / config.tiles_width;
+    if (tile_y >= config.tiles_height) {
+        return;
+    }
+    let global_x = tile_x * 16u + local_ix % 16u;
+    let global_y = tile_y * 16u + local_ix / 16u;
+    if (global_x >= config.width || global_y >= config.height) {
+        return;
+    }
+
+    var pixel = vec4<f32>(0.0);
+    if (
         kind == FINE_TILE_KIND_PURE_SDF_SOLID_NO_STACK ||
         kind == FINE_TILE_KIND_MIXED_ANALYTIC_SOLID_NO_STACK
     ) {

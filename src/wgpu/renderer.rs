@@ -13,6 +13,7 @@ use crate::{
     shared::{
         bounds::Bounds,
         execution::{ExecOp, ExecPlan, ROOT_COMMAND_LIST_ID},
+        gpu_coarse::{FINE_TILE_DISPATCH_WORDS, FINE_TILE_LIST_COUNT},
         gpu_plan::{
             FINE_GROUP_SPILL_FIELDS, FINE_LOCAL_CLIP_DEPTH, FINE_LOCAL_GROUP_DEPTH,
             FINE_WORKGROUP_SIZE, GpuBufferLengths, GpuCanvasConfig, filter_scratch_extra,
@@ -123,6 +124,7 @@ pub struct Renderer {
     max_clip_depth: usize,
     max_group_depth: usize,
     fine_spills: WgpuBuffer,
+    fine_indirect_args: WgpuBuffer,
     text_data: Option<PreparedTextData>,
     scan_pipeline: Option<WgpuScanPipeline>,
     cumsum: Option<WgpuCumsumPipeline>,
@@ -164,6 +166,7 @@ struct SavedRendererState {
     max_clip_depth: usize,
     max_group_depth: usize,
     fine_spills: WgpuBuffer,
+    fine_indirect_args: WgpuBuffer,
     filter_transfers: WgpuFilterTransferBuffers,
     filter_brushes: WgpuFilterBrushBuffers,
     filter_convolves: WgpuFilterConvolveBuffers,
@@ -268,6 +271,7 @@ impl Renderer {
             max_clip_depth: 0,
             max_group_depth: 0,
             fine_spills: WgpuBuffer::new(device, "tileink wgpu fine spills"),
+            fine_indirect_args: WgpuBuffer::new(device, "tileink wgpu fine indirect args"),
             text_data: None,
             scan_pipeline: WgpuScanPipeline::new(device),
             cumsum: WgpuCumsumPipeline::new(device),
@@ -599,6 +603,10 @@ impl Renderer {
                 &mut self.fine_spills,
                 WgpuBuffer::new(&self.device, "tileink wgpu fine spills"),
             ),
+            fine_indirect_args: std::mem::replace(
+                &mut self.fine_indirect_args,
+                WgpuBuffer::new(&self.device, "tileink wgpu fine indirect args"),
+            ),
             filter_transfers: std::mem::replace(
                 &mut self.filter_transfers,
                 WgpuFilterTransferBuffers::new(&self.device),
@@ -730,6 +738,7 @@ impl Renderer {
         self.max_clip_depth = saved.max_clip_depth;
         self.max_group_depth = saved.max_group_depth;
         self.fine_spills = saved.fine_spills;
+        self.fine_indirect_args = saved.fine_indirect_args;
         self.filter_transfers = saved.filter_transfers;
         self.filter_brushes = saved.filter_brushes;
         self.filter_convolves = saved.filter_convolves;
@@ -775,6 +784,11 @@ impl Renderer {
             "tileink wgpu fine spills",
             lane_count * clip_spill_depth
                 + lane_count * group_spill_depth * FINE_GROUP_SPILL_FIELDS,
+        );
+        self.fine_indirect_args.resize_uninit::<u32>(
+            &self.device,
+            "tileink wgpu fine indirect args",
+            FINE_TILE_LIST_COUNT * FINE_TILE_DISPATCH_WORDS,
         );
     }
 
@@ -971,6 +985,7 @@ impl Renderer {
                         &self.scan,
                         &self.coarse,
                         &self.fine_spills,
+                        &self.fine_indirect_args,
                         target,
                         self.clear_color,
                         true,
@@ -987,6 +1002,7 @@ impl Renderer {
                         &self.scan,
                         &self.coarse,
                         &self.fine_spills,
+                        &self.fine_indirect_args,
                         &mut self.readback_target,
                         self.clear_color,
                         true,
@@ -1004,6 +1020,7 @@ impl Renderer {
                 &self.scan,
                 &self.coarse,
                 &self.fine_spills,
+                &self.fine_indirect_args,
                 &mut self.scratch[ix],
                 self.clear_color,
                 true,
@@ -1043,6 +1060,7 @@ impl Renderer {
             &self.scan,
             &self.coarse,
             &self.fine_spills,
+            &self.fine_indirect_args,
             self.fine_portable_source.view(),
             self.fine_portable_target.view(),
             self.clear_color,

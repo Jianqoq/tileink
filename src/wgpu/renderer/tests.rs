@@ -895,6 +895,57 @@ fn wgpu_fine_tile_kind_classifies_analytic_tiles_when_enabled() {
 }
 
 #[test]
+fn wgpu_fine_indirect_dispatch_counts_match_tile_kinds_when_enabled() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut canvas = Canvas::new(96, 96);
+    canvas.push_rect(
+        Rect::new(0.0, 0.0, 96.0, 96.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(32, 64, 96),
+    );
+    canvas.push_rect(
+        Rect::new(32.0, 32.0, 48.0, 48.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(255, 0, 0),
+    );
+    let mut renderer = new_test_renderer(96, 96, Color::TRANSPARENT);
+    if renderer.fine.is_none() {
+        return;
+    }
+
+    renderer.render(&canvas);
+
+    let kinds =
+        renderer
+            .coarse
+            .read_fine_tile_kinds(renderer.device(), renderer.queue(), renderer.lengths);
+    let sdf_count = kinds
+        .iter()
+        .filter(|&&kind| kind == FineTileKind::PureSdfSolidNoStack)
+        .count() as u32;
+    let mixed_count = kinds
+        .iter()
+        .filter(|&&kind| {
+            matches!(
+                kind,
+                FineTileKind::ColorOnlyNoStack | FineTileKind::MixedAnalyticSolidNoStack
+            )
+        })
+        .count() as u32;
+    let full_count = kinds.len() as u32 - sdf_count - mixed_count;
+    let args = renderer
+        .fine_indirect_args
+        .read::<u32>(renderer.device(), renderer.queue(), 9);
+    assert_eq!(
+        &args,
+        &[sdf_count, 1, 1, mixed_count, 1, 1, full_count, 1, 1]
+    );
+}
+
+#[test]
 fn wgpu_fine_tile_kind_keeps_clip_tiles_on_full_interpreter_when_enabled() {
     if !run_wgpu_tests() {
         return;

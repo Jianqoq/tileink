@@ -116,6 +116,7 @@ fn create_buffer(
         label: Some(label),
         size,
         usage: ::wgpu::BufferUsages::STORAGE
+            | ::wgpu::BufferUsages::INDIRECT
             | ::wgpu::BufferUsages::COPY_DST
             | ::wgpu::BufferUsages::COPY_SRC,
         mapped_at_creation: false,

@@ -1,8 +1,10 @@
 #![allow(clippy::too_many_arguments)]
 
 use crate::shared::{
-    gpu_coarse::coarse_work_fine_tile_kind_word_offset, gpu_layout::fine as fine_layout,
-    gpu_plan::GpuBufferLengths, image::premul_color_to_rgba8_pack,
+    gpu_coarse::{FINE_TILE_DISPATCH_WORDS, coarse_work_fine_tile_kind_word_offset},
+    gpu_layout::fine as fine_layout,
+    gpu_plan::GpuBufferLengths,
+    image::premul_color_to_rgba8_pack,
 };
 
 use super::{
@@ -19,7 +21,13 @@ const TILE_STORAGE_BINDING_COUNT: u32 = fine_layout::STORAGE_BUFFER_COUNT;
 
 pub(crate) struct WgpuFinePipeline {
     pipeline: ::wgpu::ComputePipeline,
+    clear_pipeline: ::wgpu::ComputePipeline,
+    compact_pipeline: ::wgpu::ComputePipeline,
+    sdf_pipeline: ::wgpu::ComputePipeline,
+    mixed_pipeline: ::wgpu::ComputePipeline,
+    full_pipeline: ::wgpu::ComputePipeline,
     bind_group_layout: ::wgpu::BindGroupLayout,
+    compact_bind_group_layout: ::wgpu::BindGroupLayout,
     config: ::wgpu::Buffer,
     config_size: ::wgpu::BufferAddress,
     config_stride: ::wgpu::BufferAddress,
@@ -69,11 +77,26 @@ impl WgpuFinePipeline {
             label: Some("tileink wgpu fine shader"),
             source: ::wgpu::ShaderSource::Wgsl(fine_shader_source(portable_textures).into()),
         });
+        let compact_bind_group_layout =
+            device.create_bind_group_layout(&::wgpu::BindGroupLayoutDescriptor {
+                label: Some("tileink wgpu tile fine compact bind group layout"),
+                entries: &[
+                    uniform_layout_entry(0),
+                    storage_layout_entry(29, false),
+                    storage_layout_entry(57, false),
+                ],
+            });
         let pipeline_layout = device.create_pipeline_layout(&::wgpu::PipelineLayoutDescriptor {
             label: Some("tileink wgpu tile fine pipeline layout"),
             bind_group_layouts: &[Some(&bind_group_layout)],
             immediate_size: 0,
         });
+        let compact_pipeline_layout =
+            device.create_pipeline_layout(&::wgpu::PipelineLayoutDescriptor {
+                label: Some("tileink wgpu tile fine compact pipeline layout"),
+                bind_group_layouts: &[Some(&compact_bind_group_layout)],
+                immediate_size: 0,
+            });
         let pipeline = device.create_compute_pipeline(&::wgpu::ComputePipelineDescriptor {
             label: Some("tileink wgpu tile fine pipeline"),
             layout: Some(&pipeline_layout),
@@ -82,6 +105,41 @@ impl WgpuFinePipeline {
             compilation_options: ::wgpu::PipelineCompilationOptions::default(),
             cache: None,
         });
+        let clear_pipeline = create_pipeline(
+            device,
+            &compact_pipeline_layout,
+            &shader,
+            "tileink wgpu tile fine indirect clear pipeline",
+            "fine_clear_indirect_main",
+        );
+        let compact_pipeline = create_pipeline(
+            device,
+            &compact_pipeline_layout,
+            &shader,
+            "tileink wgpu tile fine compact pipeline",
+            "fine_compact_tiles_main",
+        );
+        let sdf_pipeline = create_pipeline(
+            device,
+            &pipeline_layout,
+            &shader,
+            "tileink wgpu tile fine sdf pipeline",
+            "fine_tile_sdf_list_main",
+        );
+        let mixed_pipeline = create_pipeline(
+            device,
+            &pipeline_layout,
+            &shader,
+            "tileink wgpu tile fine mixed pipeline",
+            "fine_tile_mixed_list_main",
+        );
+        let full_pipeline = create_pipeline(
+            device,
+            &pipeline_layout,
+            &shader,
+            "tileink wgpu tile fine full pipeline",
+            "fine_tile_full_list_main",
+        );
         let config_size = std::mem::size_of::<FineConfig>() as ::wgpu::BufferAddress;
         let config_stride = aligned_uniform_stride(device, config_size);
         let config = device.create_buffer(&::wgpu::BufferDescriptor {
@@ -92,7 +150,13 @@ impl WgpuFinePipeline {
         });
         Some(Self {
             pipeline,
+            clear_pipeline,
+            compact_pipeline,
+            sdf_pipeline,
+            mixed_pipeline,
+            full_pipeline,
             bind_group_layout,
+            compact_bind_group_layout,
             config,
             config_size,
             config_stride,
@@ -114,6 +178,7 @@ impl WgpuFinePipeline {
         scan: &WgpuScanBuffers,
         coarse: &WgpuCoarseBuffers,
         fine_spills: &WgpuBuffer,
+        fine_indirect_args: &WgpuBuffer,
         target: &mut WgpuTarget,
         clear_color: u32,
         load_target: bool,
@@ -130,6 +195,7 @@ impl WgpuFinePipeline {
             scan,
             coarse,
             fine_spills,
+            fine_indirect_args,
             target.view(),
             clear_color,
             load_target,
@@ -149,6 +215,7 @@ impl WgpuFinePipeline {
         scan: &WgpuScanBuffers,
         coarse: &WgpuCoarseBuffers,
         fine_spills: &WgpuBuffer,
+        fine_indirect_args: &WgpuBuffer,
         target: &::wgpu::TextureView,
         clear_color: u32,
         load_target: bool,
@@ -164,6 +231,7 @@ impl WgpuFinePipeline {
             scan,
             coarse,
             fine_spills,
+            fine_indirect_args,
             target,
             target,
             clear_color,
@@ -184,6 +252,7 @@ impl WgpuFinePipeline {
         scan: &WgpuScanBuffers,
         coarse: &WgpuCoarseBuffers,
         fine_spills: &WgpuBuffer,
+        fine_indirect_args: &WgpuBuffer,
         source: &::wgpu::TextureView,
         target: &::wgpu::TextureView,
         clear_color: u32,
@@ -240,19 +309,57 @@ impl WgpuFinePipeline {
             &bindings,
             config_offset,
         );
-        let gpu_scope = start_gpu_scope(commands.device(), "fine");
-        let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
+        let compact_bind_group = self.create_compact_bind_group(
+            commands.device(),
+            coarse,
+            fine_indirect_args,
+            config_offset,
+        );
+        let device = commands.device().clone();
         let encoder = commands.encoder();
+        if fine_indirect_enabled() {
+            let gpu_scope = start_gpu_scope(&device, "fine.compact");
+            let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
+            let mut pass = encoder.begin_compute_pass(&::wgpu::ComputePassDescriptor {
+                label: Some("tileink wgpu tile fine compact pass"),
+                timestamp_writes,
+            });
+            pass.set_bind_group(0, &compact_bind_group, &[]);
+            pass.set_pipeline(&self.clear_pipeline);
+            pass.dispatch_workgroups(1, 1, 1);
+            pass.set_pipeline(&self.compact_pipeline);
+            pass.dispatch_workgroups(lengths.tile_count.div_ceil(256) as u32, 1, 1);
+            drop(pass);
+            finish_gpu_scope(encoder, gpu_scope);
+        }
         {
+            let gpu_scope = start_gpu_scope(&device, "fine");
+            let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
             let mut pass = encoder.begin_compute_pass(&::wgpu::ComputePassDescriptor {
                 label: Some("tileink wgpu tile fine pass"),
                 timestamp_writes,
             });
-            pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
-            pass.dispatch_workgroups(lengths.tile_count as u32, 1, 1);
+            if fine_indirect_enabled() {
+                pass.set_pipeline(&self.sdf_pipeline);
+                pass.dispatch_workgroups_indirect(fine_indirect_args.buffer(), 0);
+                pass.set_pipeline(&self.mixed_pipeline);
+                pass.dispatch_workgroups_indirect(
+                    fine_indirect_args.buffer(),
+                    fine_dispatch_args_stride(),
+                );
+                pass.set_pipeline(&self.full_pipeline);
+                pass.dispatch_workgroups_indirect(
+                    fine_indirect_args.buffer(),
+                    fine_dispatch_args_stride() * 2,
+                );
+            } else {
+                pass.set_pipeline(&self.pipeline);
+                pass.dispatch_workgroups(lengths.tile_count as u32, 1, 1);
+            }
+            drop(pass);
+            finish_gpu_scope(encoder, gpu_scope);
         }
-        finish_gpu_scope(encoder, gpu_scope);
         true
     }
 
@@ -295,6 +402,24 @@ impl WgpuFinePipeline {
             entries: &entries,
         })
     }
+
+    fn create_compact_bind_group(
+        &self,
+        device: &::wgpu::Device,
+        coarse: &WgpuCoarseBuffers,
+        fine_indirect_args: &WgpuBuffer,
+        config_offset: ::wgpu::BufferAddress,
+    ) -> ::wgpu::BindGroup {
+        device.create_bind_group(&::wgpu::BindGroupDescriptor {
+            label: Some("tileink wgpu tile fine compact bind group"),
+            layout: &self.compact_bind_group_layout,
+            entries: &[
+                config_buffer_binding(0, &self.config, config_offset, self.config_size),
+                buffer_binding(29, coarse.work.buffer()),
+                buffer_binding(57, fine_indirect_args.buffer()),
+            ],
+        })
+    }
 }
 
 fn tile_fine_layout_entries(portable_textures: bool) -> Vec<::wgpu::BindGroupLayoutEntry> {
@@ -302,7 +427,7 @@ fn tile_fine_layout_entries(portable_textures: bool) -> Vec<::wgpu::BindGroupLay
         uniform_layout_entry(0),
         storage_layout_entry(2, true),
         storage_layout_entry(8, true),
-        storage_layout_entry(29, true),
+        storage_layout_entry(29, false),
         storage_layout_entry(37, true),
         storage_layout_entry(43, true),
         storage_layout_entry(53, false),
@@ -372,6 +497,31 @@ fn fine_shader_source(portable_textures: bool) -> &'static str {
     } else {
         include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_fine.wgsl"))
     }
+}
+
+fn fine_indirect_enabled() -> bool {
+    std::env::var("TILEINK_FINE_DIRECT").ok().as_deref() != Some("1")
+}
+
+fn fine_dispatch_args_stride() -> ::wgpu::BufferAddress {
+    (FINE_TILE_DISPATCH_WORDS * std::mem::size_of::<u32>()) as ::wgpu::BufferAddress
+}
+
+fn create_pipeline(
+    device: &::wgpu::Device,
+    layout: &::wgpu::PipelineLayout,
+    shader: &::wgpu::ShaderModule,
+    label: &'static str,
+    entry_point: &'static str,
+) -> ::wgpu::ComputePipeline {
+    device.create_compute_pipeline(&::wgpu::ComputePipelineDescriptor {
+        label: Some(label),
+        layout: Some(layout),
+        module: shader,
+        entry_point: Some(entry_point),
+        compilation_options: ::wgpu::PipelineCompilationOptions::default(),
+        cache: None,
+    })
 }
 
 fn storage_layout_entry(binding: u32, read_only: bool) -> ::wgpu::BindGroupLayoutEntry {
