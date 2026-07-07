@@ -6,7 +6,7 @@ use crate::{
         bounds::Bounds,
         brush::Brush,
         fill::FillRule,
-        image_resource::ImageResourceStore,
+        image_resource::ImageResourceResolver,
         layer::blend::Blend,
         line_seg::LineSegment,
         pixel::{
@@ -195,7 +195,7 @@ pub(crate) fn rasterize_tile_buffer_into(
     fill_rule: FillRule,
     brush: &Brush,
     clip_mask: &[u8; 256],
-    image_resources: Option<&ImageResourceStore>,
+    image_resources: ImageResourceResolver<'_>,
 ) {
     rasterize_path_tile_buffer_into(
         tile,
@@ -221,7 +221,7 @@ pub(crate) fn rasterize_path_glyph_tile_buffer_into(
     fill_rule: FillRule,
     brush: &Brush,
     clip_mask: &[u8; 256],
-    image_resources: Option<&ImageResourceStore>,
+    image_resources: ImageResourceResolver<'_>,
 ) {
     rasterize_path_tile_buffer_into(
         tile,
@@ -247,7 +247,7 @@ fn rasterize_path_tile_buffer_into(
     fill_rule: FillRule,
     brush: &Brush,
     clip_mask: &[u8; 256],
-    image_resources: Option<&ImageResourceStore>,
+    image_resources: ImageResourceResolver<'_>,
     linear_text_coverage: bool,
 ) {
     let base_x = tile_x * TILE_SIZE;
@@ -282,7 +282,7 @@ pub(crate) fn rasterize_sdf_tile_buffer_into(
     sdf: &Sdf,
     brush: &Brush,
     clip_mask: &[u8; 256],
-    image_resources: Option<&ImageResourceStore>,
+    image_resources: ImageResourceResolver<'_>,
 ) {
     rasterize_sdf_area_tile_buffer_into(
         tile,
@@ -304,7 +304,7 @@ pub(crate) fn rasterize_sdf_shadow_tile_buffer_into(
     sdf_shadow: &SdfShadow,
     brush: &Brush,
     clip_mask: &[u8; 256],
-    image_resources: Option<&ImageResourceStore>,
+    image_resources: ImageResourceResolver<'_>,
 ) {
     rasterize_sdf_area_tile_buffer_into(
         tile,
@@ -325,7 +325,7 @@ fn rasterize_sdf_area_tile_buffer_into(
     tile_y: u32,
     brush: &Brush,
     clip_mask: &[u8; 256],
-    image_resources: Option<&ImageResourceStore>,
+    image_resources: ImageResourceResolver<'_>,
     fine_area: impl FnOnce(&mut [f32; crate::BLOCK_SIZE as usize], Bounds),
 ) {
     let base_x = (tile_x * TILE_SIZE) as i32;
@@ -369,7 +369,7 @@ pub(crate) fn rasterize_glyphs_tile_buffer_into(
     brush: &Brush,
     text: &PreparedTextData,
     clip_mask: &[u8; 256],
-    image_resources: Option<&ImageResourceStore>,
+    image_resources: ImageResourceResolver<'_>,
 ) {
     let base_x = (tile_x * TILE_SIZE) as i32;
     let base_y = (tile_y * TILE_SIZE) as i32;
@@ -716,7 +716,7 @@ mod tests {
             FillRule::NonZero,
             &brush,
             &clip_mask,
-            None,
+            None.into(),
         );
         rasterize_path_glyph_tile_buffer_into(
             &mut path_glyph,
@@ -727,7 +727,7 @@ mod tests {
             FillRule::NonZero,
             &brush,
             &clip_mask,
-            None,
+            None.into(),
         );
 
         let normal = unpack_rgba8(normal_path[0]);
@@ -772,7 +772,7 @@ mod tests {
             &Brush::Solid(Color::WHITE),
             &text,
             &[255; 256],
-            None,
+            None.into(),
         );
 
         assert_eq!(unpack_rgba8(tile[0]), [255, 0, 0, 255]);

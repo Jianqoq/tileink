@@ -65,8 +65,6 @@ const FILTER_RES_PATH_P0X: u32 = 1 << 15;
 const FILTER_RES_PATH_P0Y: u32 = 1 << 16;
 const FILTER_RES_PATH_P1X: u32 = 1 << 17;
 const FILTER_RES_PATH_P1Y: u32 = 1 << 18;
-const FILTER_RES_IMAGE_RESOURCE_METADATA: u32 = 1 << 19;
-const FILTER_RES_IMAGE_RESOURCE_PIXELS: u32 = 1 << 20;
 
 const FILTER_RES_SCENE_ALPHA: u32 = FILTER_RES_DRAW_RECORDS
     | FILTER_RES_SDF_BLOB
@@ -77,8 +75,7 @@ const FILTER_RES_SCENE_ALPHA: u32 = FILTER_RES_DRAW_RECORDS
     | FILTER_RES_SEGMENTS;
 const FILTER_RES_SCENE_STACK: u32 = FILTER_RES_SCENE_ALPHA | FILTER_RES_LAYER_STACK;
 const FILTER_RES_TRANSFER: u32 = FILTER_RES_TRANSFER_TABLES;
-const FILTER_RES_BRUSH: u32 =
-    FILTER_RES_BRUSH_BLOB | FILTER_RES_IMAGE_RESOURCE_METADATA | FILTER_RES_IMAGE_RESOURCE_PIXELS;
+const FILTER_RES_BRUSH: u32 = FILTER_RES_BRUSH_BLOB;
 const FILTER_RES_CONVOLVE: u32 = FILTER_RES_CONVOLVE_KERNELS;
 const FILTER_RES_TURBULENCE: u32 =
     FILTER_RES_TURBULENCE_SELECTORS | FILTER_RES_TURBULENCE_GRADIENTS;
@@ -355,6 +352,7 @@ pub(crate) struct WgpuFilterPipeline {
     config_slots: u64,
     _dummy_texture: ::wgpu::Texture,
     dummy_texture_view: ::wgpu::TextureView,
+    dummy_sampler: ::wgpu::Sampler,
     dummy_read: ::wgpu::Buffer,
     dummy_read_write: ::wgpu::Buffer,
 }
@@ -410,8 +408,8 @@ enum FilterProfile {
 
 pub(crate) struct WgpuFilterBrushBindings<'a> {
     pub(crate) blob: &'a ::wgpu::Buffer,
-    pub(crate) image_resource_metadata: &'a ::wgpu::Buffer,
-    pub(crate) image_resource_pixels: &'a ::wgpu::Buffer,
+    pub(crate) image_resource_atlas: &'a ::wgpu::TextureView,
+    pub(crate) image_resource_sampler: &'a ::wgpu::Sampler,
 }
 
 pub(crate) struct WgpuFilterTurbulenceBindings<'a> {
@@ -480,6 +478,13 @@ impl WgpuFilterPipeline {
         });
         let dummy_texture_view =
             dummy_texture.create_view(&::wgpu::TextureViewDescriptor::default());
+        let dummy_sampler = device.create_sampler(&::wgpu::SamplerDescriptor {
+            label: Some("tileink wgpu filter dummy sampler"),
+            mag_filter: ::wgpu::FilterMode::Linear,
+            min_filter: ::wgpu::FilterMode::Linear,
+            mipmap_filter: ::wgpu::MipmapFilterMode::Nearest,
+            ..Default::default()
+        });
         Some(Self {
             clear_region: create_kernel(
                 device,
@@ -820,6 +825,7 @@ impl WgpuFilterPipeline {
             config_slots,
             _dummy_texture: dummy_texture,
             dummy_texture_view,
+            dummy_sampler,
             dummy_read,
             dummy_read_write,
         })
@@ -2121,10 +2127,12 @@ impl WgpuFilterPipeline {
         };
         let bindings = bindings.unwrap_or(&fallback);
         let brush_blob = brushes.map_or(&self.dummy_read, |brushes| brushes.blob);
-        let image_resource_metadata =
-            brushes.map_or(&self.dummy_read, |brushes| brushes.image_resource_metadata);
-        let image_resource_pixels =
-            brushes.map_or(&self.dummy_read, |brushes| brushes.image_resource_pixels);
+        let image_resource_atlas = brushes.map_or(&self.dummy_texture_view, |brushes| {
+            brushes.image_resource_atlas
+        });
+        let image_resource_sampler = brushes.map_or(&self.dummy_sampler, |brushes| {
+            brushes.image_resource_sampler
+        });
         let convolve_kernels = convolve_kernels.unwrap_or(&self.dummy_read);
         let turbulence_selectors =
             turbulence_tables.map_or(&self.dummy_read, |tables| tables.selectors);
@@ -2150,6 +2158,15 @@ impl WgpuFilterPipeline {
                 target_read.unwrap_or(&self.dummy_texture_view),
             ));
         }
+        entries.push(bind_texture(
+            filter_layout::SOURCE_SAMPLE_TEXTURE_BINDING,
+            source,
+        ));
+        entries.push(bind_texture(filter_layout::AUX_SAMPLE_TEXTURE_BINDING, aux));
+        entries.push(bind_sampler(
+            filter_layout::LINEAR_SAMPLER_BINDING,
+            &self.dummy_sampler,
+        ));
         push_buffer_if(
             &mut entries,
             kernel.resources,
@@ -2283,20 +2300,16 @@ impl WgpuFilterPipeline {
             48,
             path_p1y,
         );
-        push_buffer_if(
-            &mut entries,
-            kernel.resources,
-            FILTER_RES_IMAGE_RESOURCE_METADATA,
-            filter_layout::IMAGE_RESOURCE_METADATA_BINDING,
-            image_resource_metadata,
-        );
-        push_buffer_if(
-            &mut entries,
-            kernel.resources,
-            FILTER_RES_IMAGE_RESOURCE_PIXELS,
-            filter_layout::IMAGE_RESOURCE_PIXELS_BINDING,
-            image_resource_pixels,
-        );
+        if kernel.resources & FILTER_RES_BRUSH != 0 {
+            entries.push(bind_texture(
+                filter_layout::IMAGE_RESOURCE_ATLAS_BINDING,
+                image_resource_atlas,
+            ));
+            entries.push(bind_sampler(
+                filter_layout::IMAGE_RESOURCE_SAMPLER_BINDING,
+                image_resource_sampler,
+            ));
+        }
         device.create_bind_group(&::wgpu::BindGroupDescriptor {
             label: Some("tileink wgpu filter bind group"),
             layout: &kernel.bind_group_layout,
@@ -2722,6 +2735,9 @@ fn filter_layout_entries(
         read_texture_entry(1, portable_textures),
         read_texture_entry(2, portable_textures),
         write_texture_entry(3, portable_textures),
+        sampled_filterable_texture_entry(filter_layout::SOURCE_SAMPLE_TEXTURE_BINDING),
+        sampled_filterable_texture_entry(filter_layout::AUX_SAMPLE_TEXTURE_BINDING),
+        filtering_sampler_entry(filter_layout::LINEAR_SAMPLER_BINDING),
     ];
     if portable_textures {
         entries.push(sampled_texture_entry(55));
@@ -2787,20 +2803,14 @@ fn filter_layout_entries(
     push_storage_entry_if(&mut entries, resources, FILTER_RES_PATH_P0Y, 46, true);
     push_storage_entry_if(&mut entries, resources, FILTER_RES_PATH_P1X, 47, true);
     push_storage_entry_if(&mut entries, resources, FILTER_RES_PATH_P1Y, 48, true);
-    push_storage_entry_if(
-        &mut entries,
-        resources,
-        FILTER_RES_IMAGE_RESOURCE_METADATA,
-        filter_layout::IMAGE_RESOURCE_METADATA_BINDING,
-        true,
-    );
-    push_storage_entry_if(
-        &mut entries,
-        resources,
-        FILTER_RES_IMAGE_RESOURCE_PIXELS,
-        filter_layout::IMAGE_RESOURCE_PIXELS_BINDING,
-        true,
-    );
+    if resources & FILTER_RES_BRUSH != 0 {
+        entries.push(sampled_filterable_texture_entry(
+            filter_layout::IMAGE_RESOURCE_ATLAS_BINDING,
+        ));
+        entries.push(filtering_sampler_entry(
+            filter_layout::IMAGE_RESOURCE_SAMPLER_BINDING,
+        ));
+    }
     entries
 }
 
@@ -2894,6 +2904,28 @@ fn sampled_texture_entry(binding: u32) -> ::wgpu::BindGroupLayoutEntry {
     }
 }
 
+fn sampled_filterable_texture_entry(binding: u32) -> ::wgpu::BindGroupLayoutEntry {
+    ::wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: ::wgpu::ShaderStages::COMPUTE,
+        ty: ::wgpu::BindingType::Texture {
+            sample_type: ::wgpu::TextureSampleType::Float { filterable: true },
+            view_dimension: ::wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
+    }
+}
+
+fn filtering_sampler_entry(binding: u32) -> ::wgpu::BindGroupLayoutEntry {
+    ::wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: ::wgpu::ShaderStages::COMPUTE,
+        ty: ::wgpu::BindingType::Sampler(::wgpu::SamplerBindingType::Filtering),
+        count: None,
+    }
+}
+
 fn filter_shader_source(portable_textures: bool) -> &'static str {
     if portable_textures {
         include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_filter_web.wgsl"))
@@ -2944,6 +2976,13 @@ fn bind_texture(binding: u32, view: &::wgpu::TextureView) -> ::wgpu::BindGroupEn
     }
 }
 
+fn bind_sampler(binding: u32, sampler: &::wgpu::Sampler) -> ::wgpu::BindGroupEntry<'_> {
+    ::wgpu::BindGroupEntry {
+        binding,
+        resource: ::wgpu::BindingResource::Sampler(sampler),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2967,5 +3006,16 @@ mod tests {
             );
         }
         assert_eq!(filter_storage_binding_count(FILTER_RES_SCENE_STACK), 8);
+    }
+
+    #[test]
+    fn filter_kernel_layouts_always_include_linear_sampling_resources() {
+        for portable_textures in [false, true] {
+            let entries = filter_layout_entries(portable_textures, 0);
+            let bindings: Vec<u32> = entries.iter().map(|entry| entry.binding).collect();
+            assert!(bindings.contains(&filter_layout::SOURCE_SAMPLE_TEXTURE_BINDING));
+            assert!(bindings.contains(&filter_layout::AUX_SAMPLE_TEXTURE_BINDING));
+            assert!(bindings.contains(&filter_layout::LINEAR_SAMPLER_BINDING));
+        }
     }
 }

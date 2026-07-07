@@ -386,13 +386,13 @@ impl WgpuFinePipeline {
             buffer_binding(37, bindings.segments),
             buffer_binding(43, bindings.text_blob),
             buffer_binding(53, bindings.spills),
-            buffer_binding(
-                fine_layout::IMAGE_RESOURCE_METADATA_BINDING,
-                fine.image_resource_metadata,
+            texture_binding(
+                fine_layout::IMAGE_RESOURCE_ATLAS_BINDING,
+                fine.image_resource_atlas,
             ),
-            buffer_binding(
-                fine_layout::IMAGE_RESOURCE_PIXELS_BINDING,
-                fine.image_resource_pixels,
+            sampler_binding(
+                fine_layout::IMAGE_RESOURCE_SAMPLER_BINDING,
+                fine.image_resource_sampler,
             ),
         ];
         entries.extend(texture_entries);
@@ -431,8 +431,8 @@ fn tile_fine_layout_entries(portable_textures: bool) -> Vec<::wgpu::BindGroupLay
         storage_layout_entry(37, true),
         storage_layout_entry(43, true),
         storage_layout_entry(53, false),
-        storage_layout_entry(fine_layout::IMAGE_RESOURCE_METADATA_BINDING, true),
-        storage_layout_entry(fine_layout::IMAGE_RESOURCE_PIXELS_BINDING, true),
+        sampled_filterable_texture_layout_entry(fine_layout::IMAGE_RESOURCE_ATLAS_BINDING),
+        filtering_sampler_layout_entry(fine_layout::IMAGE_RESOURCE_SAMPLER_BINDING),
     ];
     if portable_textures {
         entries.push(sampled_texture_layout_entry(1));
@@ -471,6 +471,28 @@ fn sampled_texture_layout_entry(binding: u32) -> ::wgpu::BindGroupLayoutEntry {
             view_dimension: ::wgpu::TextureViewDimension::D2,
             multisampled: false,
         },
+        count: None,
+    }
+}
+
+fn sampled_filterable_texture_layout_entry(binding: u32) -> ::wgpu::BindGroupLayoutEntry {
+    ::wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: ::wgpu::ShaderStages::COMPUTE,
+        ty: ::wgpu::BindingType::Texture {
+            sample_type: ::wgpu::TextureSampleType::Float { filterable: true },
+            view_dimension: ::wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
+    }
+}
+
+fn filtering_sampler_layout_entry(binding: u32) -> ::wgpu::BindGroupLayoutEntry {
+    ::wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: ::wgpu::ShaderStages::COMPUTE,
+        ty: ::wgpu::BindingType::Sampler(::wgpu::SamplerBindingType::Filtering),
         count: None,
     }
 }
@@ -567,6 +589,13 @@ fn texture_binding(binding: u32, view: &::wgpu::TextureView) -> ::wgpu::BindGrou
     }
 }
 
+fn sampler_binding(binding: u32, sampler: &::wgpu::Sampler) -> ::wgpu::BindGroupEntry<'_> {
+    ::wgpu::BindGroupEntry {
+        binding,
+        resource: ::wgpu::BindingResource::Sampler(sampler),
+    }
+}
+
 pub(crate) fn premul_clear_color(clear: peniko::Color) -> u32 {
     premul_color_to_rgba8_pack(clear)
 }
@@ -580,7 +609,7 @@ mod tests {
         let entries = tile_fine_layout_entries(false);
         let storage_count = entries.iter().filter(|entry| is_storage(entry)).count() as u32;
         assert_eq!(storage_count, TILE_STORAGE_BINDING_COUNT);
-        assert_eq!(TILE_STORAGE_BINDING_COUNT, 8);
+        assert_eq!(TILE_STORAGE_BINDING_COUNT, 6);
     }
 
     fn is_storage(entry: &::wgpu::BindGroupLayoutEntry) -> bool {

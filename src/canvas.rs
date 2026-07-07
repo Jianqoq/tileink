@@ -1,4 +1,7 @@
-use std::sync::Arc as SharedArc;
+use std::sync::{
+    Arc as SharedArc,
+    atomic::{AtomicU64, Ordering},
+};
 
 use peniko::{
     Color, Compose, Mix,
@@ -7,6 +10,7 @@ use peniko::{
         stroke as kurbo_stroke,
     },
 };
+use rustc_hash::FxHashMap;
 
 use crate::shared::{
     bounds::{Bounds, PixelBounds},
@@ -19,7 +23,7 @@ use crate::shared::{
     fill::FillRule,
     gpu_sdf::{decode_sdf, decode_sdf_shadow, push_encoded_sdf, push_encoded_sdf_shadow},
     image::Image,
-    image_resource::ImageKey,
+    image_resource::{ImageKey, ImageResourceStore},
     layer::{
         Layer, LayerKind,
         blend::Blend,
@@ -50,6 +54,7 @@ use crate::text::{TextRun, layout_bounds_at_scaled_origin, scene_glyphs_at_scale
 use crate::{TextContext, TextFontSystem, TextLayout};
 
 const SDF_RECORD_FILL_RULE: FillRule = FillRule::NonZero;
+static SCENE_IMAGE_KEY_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone)]
 pub struct Canvas {
@@ -61,6 +66,8 @@ pub struct Canvas {
     pub(crate) sdf_shadow_blob: Vec<u32>,
     pub(crate) text_glyphs: Vec<crate::text::CanvasGlyph>,
     pub(crate) text_runs: Vec<TextRun>,
+    pub(crate) scene_images: ImageResourceStore,
+    scene_image_keys: FxHashMap<usize, ImageKey>,
     pub(crate) command_lists: Vec<CommandList>,
     root_commands: CommandListId,
     command_stack: Vec<CommandListId>,
@@ -128,6 +135,15 @@ fn scaled_positive_u32(value: u32, scale: f32) -> u32 {
         .round()
         .max(1.0)
         .min(u32::MAX as f32) as u32
+}
+
+fn image_rect_is_valid(rect: Rect) -> bool {
+    rect.x0.is_finite()
+        && rect.y0.is_finite()
+        && rect.x1.is_finite()
+        && rect.y1.is_finite()
+        && rect.width() > 0.0
+        && rect.height() > 0.0
 }
 
 #[derive(Clone, Copy)]
@@ -421,6 +437,8 @@ impl Canvas {
             sdf_shadow_blob: Vec::new(),
             text_glyphs: Vec::new(),
             text_runs: Vec::new(),
+            scene_images: ImageResourceStore::default(),
+            scene_image_keys: FxHashMap::default(),
             command_lists: vec![CommandList::default()],
             root_commands: ROOT_COMMAND_LIST_ID,
             command_stack: vec![ROOT_COMMAND_LIST_ID],
@@ -1046,6 +1064,9 @@ impl Canvas {
         let path_record_start = self.path_records.len();
         let draw_start = self.draw_records.len();
 
+        self.scene_images.extend_from(&other.scene_images);
+        self.scene_image_keys.extend(other.scene_image_keys.clone());
+
         self.lines.reserve(other.lines.len());
         for &line in &other.lines {
             let mut line = line;
@@ -1506,7 +1527,21 @@ impl Canvas {
         image: impl Into<SharedArc<Image>>,
         sampling: PatternSampling,
     ) -> Option<DrawId> {
-        let brush = Brush::from_image_with_sampling(image, rect, sampling)?;
+        if !image_rect_is_valid(rect) {
+            return None;
+        }
+        let image = image.into();
+        if image.width == 0 || image.height == 0 {
+            return None;
+        }
+        let key = self.insert_scene_image(image)?;
+        let brush = Brush::from_scene_image_key_with_options(
+            key,
+            rect,
+            peniko::Extend::Pad,
+            sampling,
+            255,
+        )?;
         Some(self.push_rect(rect, Radius::ZERO, brush))
     }
 
@@ -1522,6 +1557,28 @@ impl Canvas {
     ) -> Option<DrawId> {
         let brush = Brush::from_image_key(key, rect, sampling)?;
         Some(self.push_rect(rect, Radius::ZERO, brush))
+    }
+
+    pub(crate) fn insert_scene_image(
+        &mut self,
+        image: impl Into<SharedArc<Image>>,
+    ) -> Option<ImageKey> {
+        let image = image.into();
+        let identity = SharedArc::as_ptr(&image) as usize;
+        if let Some(&key) = self.scene_image_keys.get(&identity) {
+            return Some(key);
+        }
+        let key = ImageKey::new(SCENE_IMAGE_KEY_COUNTER.fetch_add(1, Ordering::Relaxed));
+        if self.scene_images.insert(key, image) {
+            self.scene_image_keys.insert(identity, key);
+            Some(key)
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn scene_image_resources(&self) -> &ImageResourceStore {
+        &self.scene_images
     }
 
     pub fn push_rect_stroke(
@@ -2202,6 +2259,8 @@ impl Canvas {
         self.sdf_shadow_blob.clear();
         self.text_glyphs.clear();
         self.text_runs.clear();
+        self.scene_images.clear();
+        self.scene_image_keys.clear();
         self.command_lists.clear();
         self.command_lists.push(CommandList::default());
         self.root_commands = ROOT_COMMAND_LIST_ID;

@@ -196,7 +196,7 @@ impl Renderer {
                 &mut surface.image,
                 layer.filter,
                 filter_bounds.surface,
-                Some(&self.image_resources),
+                self.image_resource_resolver(canvas),
             )
             .run();
 
@@ -246,7 +246,7 @@ impl Renderer {
                 bounds,
                 (target_bounds.width(), target_bounds.height()),
                 layer.sample_region,
-                Some(&self.image_resources),
+                self.image_resource_resolver(canvas),
             )
             .run();
 

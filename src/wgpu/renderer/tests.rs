@@ -1,5 +1,5 @@
 use peniko::{
-    Color, Compose, Gradient, Mix,
+    Color, Compose, Extend, Gradient, Mix,
     kurbo::{Affine, BezPath, Line, Rect, Shape},
 };
 
@@ -126,6 +126,148 @@ fn wgpu_renderer_push_image_key_samples_resource_buffer_when_enabled() {
 
     assert_eq!(image.rgba8_at(1, 1), [255, 0, 0, 255]);
     assert_eq!(image.rgba8_at(3, 1), [0, 0, 128, 128]);
+}
+
+#[test]
+fn wgpu_renderer_push_image_key_bilinear_uses_resource_atlas() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let key = ImageKey::new(11);
+    let mut canvas = Canvas::new(2, 1, 1.0);
+    canvas
+        .push_image_key(
+            Rect::new(0.0, 0.0, 2.0, 1.0),
+            key,
+            PatternSampling::Bilinear,
+        )
+        .expect("push image resource");
+
+    let mut renderer = new_test_renderer(2, 1, Color::TRANSPARENT);
+    assert!(renderer.insert_image(
+        key,
+        Image::from_rgba8(
+            2,
+            1,
+            [
+                255, 0, 0, 255, //
+                0, 0, 255, 255,
+            ],
+        )
+    ));
+    renderer.prepare_scene(&canvas);
+    assert!(
+        renderer.render_prepared_tile_plan(&canvas),
+        "expected canvas to render through native wgpu path"
+    );
+    let image = renderer.image();
+
+    assert_eq!(image.rgba8_at(0, 0), [128, 0, 128, 255]);
+    assert_eq!(image.rgba8_at(1, 0), [0, 0, 255, 255]);
+}
+
+#[test]
+fn wgpu_renderer_resource_atlas_nearest_repeat_samples_wrapped_pixels() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let key = ImageKey::new(12);
+    let mut canvas = Canvas::new(4, 1, 1.0);
+    let brush = Brush::from_image_key_with_options(
+        key,
+        Rect::new(0.0, 0.0, 2.0, 1.0),
+        Extend::Repeat,
+        PatternSampling::Nearest,
+        255,
+    )
+    .expect("resource brush");
+    canvas.push_rect(Rect::new(0.0, 0.0, 4.0, 1.0), crate::Radius::ZERO, brush);
+
+    let image = render_resource_atlas_test(canvas, key);
+
+    assert_eq!(image.rgba8_at(0, 0), [255, 0, 0, 255]);
+    assert_eq!(image.rgba8_at(1, 0), [0, 0, 255, 255]);
+    assert_eq!(image.rgba8_at(2, 0), [255, 0, 0, 255]);
+    assert_eq!(image.rgba8_at(3, 0), [0, 0, 255, 255]);
+}
+
+#[test]
+fn wgpu_renderer_resource_atlas_nearest_reflect_samples_mirrored_pixels() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let key = ImageKey::new(13);
+    let mut canvas = Canvas::new(6, 1, 1.0);
+    let brush = Brush::from_image_key_with_options(
+        key,
+        Rect::new(0.0, 0.0, 2.0, 1.0),
+        Extend::Reflect,
+        PatternSampling::Nearest,
+        255,
+    )
+    .expect("resource brush");
+    canvas.push_rect(Rect::new(0.0, 0.0, 6.0, 1.0), crate::Radius::ZERO, brush);
+
+    let image = render_resource_atlas_test(canvas, key);
+
+    assert_eq!(image.rgba8_at(0, 0), [255, 0, 0, 255]);
+    assert_eq!(image.rgba8_at(1, 0), [0, 0, 255, 255]);
+    assert_eq!(image.rgba8_at(2, 0), [0, 0, 255, 255]);
+    assert_eq!(image.rgba8_at(3, 0), [255, 0, 0, 255]);
+    assert_eq!(image.rgba8_at(4, 0), [255, 0, 0, 255]);
+    assert_eq!(image.rgba8_at(5, 0), [0, 0, 255, 255]);
+}
+
+#[test]
+fn wgpu_renderer_resource_atlas_bilinear_repeat_samples_wrapped_pixels() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let key = ImageKey::new(14);
+    let mut canvas = Canvas::new(2, 1, 1.0);
+    let brush = Brush::from_image_key_with_options(
+        key,
+        Rect::new(0.0, 0.0, 2.0, 1.0),
+        Extend::Repeat,
+        PatternSampling::Bilinear,
+        255,
+    )
+    .expect("resource brush");
+    canvas.push_rect(Rect::new(0.0, 0.0, 2.0, 1.0), crate::Radius::ZERO, brush);
+
+    let image = render_resource_atlas_test(canvas, key);
+
+    assert_eq!(image.rgba8_at(0, 0), [128, 0, 128, 255]);
+    assert_eq!(image.rgba8_at(1, 0), [128, 0, 128, 255]);
+}
+
+fn render_resource_atlas_test(canvas: Canvas, key: ImageKey) -> Image {
+    let mut renderer = new_test_renderer(
+        canvas.physical_width(),
+        canvas.physical_height(),
+        Color::TRANSPARENT,
+    );
+    assert!(renderer.insert_image(
+        key,
+        Image::from_rgba8(
+            2,
+            1,
+            [
+                255, 0, 0, 255, //
+                0, 0, 255, 255,
+            ],
+        )
+    ));
+    renderer.prepare_scene(&canvas);
+    assert!(
+        renderer.render_prepared_tile_plan(&canvas),
+        "expected canvas to render through native wgpu path"
+    );
+    renderer.image().clone()
 }
 
 #[test]
@@ -1792,6 +1934,34 @@ fn wgpu_renderer_samples_gradient_flood_filter_when_enabled() {
     assert!(right[2] > right[0], "expected blue side, got {right:?}");
     assert_eq!(left[3], 255);
     assert_eq!(right[3], 255);
+}
+
+#[test]
+fn wgpu_renderer_samples_resource_image_flood_filter_with_atlas() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let key = ImageKey::new(15);
+    let brush = Brush::from_image_key_with_options(
+        key,
+        Rect::new(0.0, 0.0, 2.0, 1.0),
+        Extend::Pad,
+        PatternSampling::Bilinear,
+        255,
+    )
+    .expect("resource brush");
+    let mut canvas = Canvas::new(2, 1, 1.0);
+    canvas.push_filter_layer(
+        Filter::Flood { brush },
+        Region::rect(Rect::new(0.0, 0.0, 2.0, 1.0), crate::Radius::ZERO),
+    );
+    canvas.pop_layer();
+
+    let image = render_resource_atlas_test(canvas, key);
+
+    assert_eq!(image.rgba8_at(0, 0), [128, 0, 128, 255]);
+    assert_eq!(image.rgba8_at(1, 0), [0, 0, 255, 255]);
 }
 
 #[test]

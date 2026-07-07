@@ -2,11 +2,11 @@ use super::*;
 use crate::{
     TextLayoutOptions,
     shared::{
-        brush::PatternImage,
         image::{Image, premul_color_to_rgba8_pack},
-        image_resource::ImageKey,
+        image_resource::{ImageKey, ImageResourceId},
     },
 };
+use std::sync::Arc;
 
 fn draw_sdf(canvas: &Canvas, index: usize) -> Option<Sdf> {
     canvas.draw_sdf(&canvas.draw_records[index])
@@ -154,12 +154,37 @@ fn push_image_records_pattern_rect_draw() {
     let Brush::Pattern(pattern) = draw_brush(&canvas, 0) else {
         panic!("expected image pattern brush");
     };
-    let PatternImage::Inline(image) = &pattern.image else {
-        panic!("expected inline image pattern");
+    let ImageResourceId::Scene(image_key) = pattern.image_resource_id() else {
+        panic!("expected scene image pattern");
     };
+    let image = canvas
+        .scene_image_resources()
+        .get(image_key)
+        .expect("scene image resource");
     assert_eq!((image.width, image.height), (2, 1));
     assert_eq!(pattern.sampling, PatternSampling::Nearest);
-    assert_eq!(pattern.transform, [0.5, 0.0, 0.0, 0.5, -5.0, -10.0]);
+    assert_eq!(pattern.transform, [0.25, 0.0, 0.0, 0.5, -2.5, -10.0]);
+}
+
+#[test]
+fn push_image_reuses_scene_resource_for_same_arc() {
+    let mut canvas = test_scene();
+    let image = Arc::new(Image::from_rgba8(2, 1, [255, 0, 0, 255, 0, 0, 255, 255]));
+
+    canvas
+        .push_image(Rect::new(0.0, 0.0, 2.0, 1.0), Arc::clone(&image))
+        .expect("first image draw");
+    canvas
+        .push_image(Rect::new(2.0, 0.0, 4.0, 1.0), Arc::clone(&image))
+        .expect("second image draw");
+
+    let Brush::Pattern(first) = draw_brush(&canvas, 0) else {
+        panic!("expected first image pattern brush");
+    };
+    let Brush::Pattern(second) = draw_brush(&canvas, 1) else {
+        panic!("expected second image pattern brush");
+    };
+    assert_eq!(first.image_resource_id(), second.image_resource_id());
 }
 
 #[test]
@@ -185,7 +210,7 @@ fn new_keeps_image_brush_sampling_in_logical_coordinates() {
     let Brush::Pattern(pattern) = draw_brush(&canvas, 0) else {
         panic!("expected image pattern brush");
     };
-    assert_eq!(pattern.transform, [0.25, 0.0, 0.0, 0.25, -5.0, -10.0]);
+    assert_eq!(pattern.transform, [0.125, 0.0, 0.0, 0.25, -2.5, -10.0]);
 }
 
 #[test]
@@ -237,7 +262,7 @@ fn append_translates_image_brush_without_mutating_child() {
     let Brush::Pattern(parent_pattern) = draw_brush(&parent, 0) else {
         panic!("expected parent image pattern brush");
     };
-    assert_eq!(parent_pattern.transform, [1.0, 0.0, 0.0, 1.0, -10.0, -20.0]);
+    assert_eq!(parent_pattern.transform, [0.5, 0.0, 0.0, 1.0, -5.0, -20.0]);
     assert_eq!(
         parent.draw_records[0].pixel_bounds,
         PixelBounds {

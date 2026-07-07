@@ -4,7 +4,7 @@ use crate::shared::{
     bounds::Bounds,
     brush::Brush,
     image::{Image, rgba8_pack, unpack_rgba8},
-    image_resource::ImageResourceStore,
+    image_resource::ImageResourceResolver,
     layer::{
         blend::{Blend, src_over_premul},
         filter::{
@@ -30,12 +30,13 @@ fn apply(image: &mut Image, filter: &Filter, bounds: Bounds) {
     apply_with_resources(image, filter, bounds, None);
 }
 
-pub(crate) fn apply_with_resources(
+pub(crate) fn apply_with_resources<'a>(
     image: &mut Image,
     filter: &Filter,
     bounds: Bounds,
-    image_resources: Option<&ImageResourceStore>,
+    image_resources: impl Into<ImageResourceResolver<'a>>,
 ) {
+    let image_resources = image_resources.into();
     apply_with_region(
         image,
         filter,
@@ -46,14 +47,15 @@ pub(crate) fn apply_with_resources(
     );
 }
 
-pub(crate) fn apply_backdrop_with_resources(
+pub(crate) fn apply_backdrop_with_resources<'a>(
     image: &mut Image,
     filter: &Filter,
     bounds: Bounds,
     surface_size: (u32, u32),
     region: &Region,
-    image_resources: Option<&ImageResourceStore>,
+    image_resources: impl Into<ImageResourceResolver<'a>>,
 ) {
+    let image_resources = image_resources.into();
     apply_with_region(
         image,
         filter,
@@ -70,7 +72,7 @@ fn apply_with_region(
     bounds: Bounds,
     surface_size: (u32, u32),
     region: Option<&Region>,
-    image_resources: Option<&ImageResourceStore>,
+    image_resources: ImageResourceResolver<'_>,
 ) {
     match filter {
         Filter::Chain { filters, .. } => {
@@ -795,7 +797,7 @@ fn apply_flood(
     image: &mut Image,
     bounds: Bounds,
     brush: &Brush,
-    image_resources: Option<&ImageResourceStore>,
+    image_resources: ImageResourceResolver<'_>,
 ) {
     for y in 0..image.height {
         for x in 0..image.width {
@@ -1042,7 +1044,7 @@ fn apply_drop_shadow(
     offset_y: f32,
     std_dev: f32,
     brush: &crate::shared::brush::Brush,
-    image_resources: Option<&ImageResourceStore>,
+    image_resources: ImageResourceResolver<'_>,
 ) {
     // Drop-shadow is a filter over the source alpha: offset the alpha mask,
     // blur it, color it, then composite the original source back on top.
@@ -1155,10 +1157,9 @@ fn lum(c: [f32; 3]) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use super::*;
-    use crate::shared::brush::{IDENTITY_TRANSFORM, PatternBrush, PatternImage, PatternSampling};
+    use crate::shared::brush::{PatternBrush, PatternSampling};
+    use crate::shared::image_resource::{ImageKey, ImageResourceId, ImageResourceStore};
     use crate::shared::layer::filter::{
         COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE, CompositeOperator,
         FilterInput, FilterPrimitive, FilterPrimitiveKind,
@@ -1533,19 +1534,28 @@ mod tests {
     #[test]
     fn graph_image_primitive_samples_absolute_brush_and_clips_region() {
         let mut image = Image::new(4, 2, Color::from_rgb8(255, 0, 0));
-        let brush = Brush::Pattern(PatternBrush {
-            image: PatternImage::Inline(Arc::new(Image {
+        let mut resources = ImageResourceStore::default();
+        let key = ImageKey::new(7);
+        resources.insert(
+            key,
+            Image {
                 width: 2,
                 height: 1,
                 pixels: vec![rgba8_pack([0, 255, 0, 255]), rgba8_pack([0, 0, 255, 255])],
-            })),
-            transform: IDENTITY_TRANSFORM,
-            extend: Extend::Pad,
-            sampling: PatternSampling::Nearest,
-            opacity: 255,
-        });
+            },
+        );
+        let brush = Brush::Pattern(
+            PatternBrush::new_resource(
+                ImageResourceId::renderer(key),
+                [0.5, 0.0, 0.0, 1.0, 0.0, 0.0],
+                Extend::Pad,
+                PatternSampling::Nearest,
+                255,
+            )
+            .unwrap(),
+        );
 
-        apply(
+        apply_with_resources(
             &mut image,
             &Filter::Graph {
                 primitives: vec![FilterPrimitive {
@@ -1557,6 +1567,7 @@ mod tests {
                 fixed_region: true,
             },
             Bounds::canvas(4, 2),
+            Some(&resources),
         );
 
         assert_eq!(image.rgba8_at(0, 0), [0, 255, 0, 255]);

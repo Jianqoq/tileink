@@ -23,7 +23,7 @@ use crate::{
         draw_record::DrawRecord,
         execution::{ExecOp, ExecPlan, LayerStackEntry},
         image::Image,
-        image_resource::{ImageKey, ImageResourceStore},
+        image_resource::{ImageKey, ImageResourceResolver, ImageResourceStore},
     },
     text::{PreparedTextData, TextContext},
 };
@@ -113,6 +113,16 @@ impl Render for Renderer {
 }
 
 impl Renderer {
+    fn image_resource_resolver<'a>(
+        &'a self,
+        canvas: &'a crate::canvas::Canvas,
+    ) -> ImageResourceResolver<'a> {
+        ImageResourceResolver::new(
+            Some(&self.image_resources),
+            Some(canvas.scene_image_resources()),
+        )
+    }
+
     pub fn new(width: u32, height: u32, clear: Color) -> Self {
         Self {
             image: Image::new(width, height, clear),
@@ -234,7 +244,7 @@ impl Renderer {
                 target_bounds,
                 &self.main,
                 None,
-                Some(&self.image_resources),
+                self.image_resource_resolver(canvas),
             );
             profile.fine += start.elapsed();
         }
@@ -399,7 +409,7 @@ impl Renderer {
             target_bounds,
             buffers,
             text_data,
-            Some(&self.image_resources),
+            self.image_resource_resolver(canvas),
         );
     }
 }
