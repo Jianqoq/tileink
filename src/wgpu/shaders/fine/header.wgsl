@@ -25,6 +25,7 @@ const GPU_PTCL_SDF: u32 = 9u;
 const GPU_PTCL_GLYPH: u32 = 10u;
 const GPU_PTCL_PATH_GLYPH: u32 = 11u;
 const GPU_PTCL_BEGIN_SDF_CLIP: u32 = 12u;
+const GPU_PTCL_IMAGE: u32 = 13u;
 const GPU_GLYPH_MASK: u32 = 0u;
 const GPU_GLYPH_COLOR: u32 = 1u;
 const GPU_GLYPH_SUBPIXEL_MASK: u32 = 2u;
