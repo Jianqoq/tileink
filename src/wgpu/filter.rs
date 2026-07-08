@@ -1,5 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
+use std::sync::OnceLock;
+
 use peniko::{
     BlendMode, Compose, Mix,
     kurbo::{Rect, Shape},
@@ -313,43 +315,43 @@ impl Default for FilterConfig {
 }
 
 pub(crate) struct WgpuFilterPipeline {
-    clear_region: FilterKernel,
-    copy_region: FilterKernel,
-    source_alpha_region: FilterKernel,
-    source_over_region: FilterKernel,
-    tile_region: FilterKernel,
-    offset_region: FilterKernel,
-    flood_region: FilterKernel,
-    drop_shadow_mask_region: FilterKernel,
-    morphology_axis_region: FilterKernel,
-    downsample_region: FilterKernel,
-    upsample_region: FilterKernel,
-    upsample_rect_composite_region: FilterKernel,
-    blur_region: FilterKernel,
-    blur_shared_region: FilterKernel,
-    svg_mask_coverage_region: FilterKernel,
-    apply_region_mask: FilterKernel,
-    color_filter_region: FilterKernel,
-    color_matrix_region: FilterKernel,
-    component_transfer_region: FilterKernel,
-    convolve_matrix_region: FilterKernel,
-    lighting_region: FilterKernel,
-    liquid_glass_region: FilterKernel,
-    liquid_glass_rect_composite_region: FilterKernel,
-    blend_region: FilterKernel,
-    composite_inputs_region: FilterKernel,
-    displacement_map_region: FilterKernel,
-    turbulence_region: FilterKernel,
-    composite_drop_shadow_region: FilterKernel,
-    layer_mask_region: FilterKernel,
-    rect_mask_region: FilterKernel,
-    path_mask_region: FilterKernel,
-    composite_direct_region: FilterKernel,
-    composite_rect_direct_region: FilterKernel,
-    composite_stack_region: FilterKernel,
-    composite_blend_stack_region: FilterKernel,
-    composite_surface_direct_region: FilterKernel,
-    composite_surface_stack_region: FilterKernel,
+    clear_region: LazyFilterKernel,
+    copy_region: LazyFilterKernel,
+    source_alpha_region: LazyFilterKernel,
+    source_over_region: LazyFilterKernel,
+    tile_region: LazyFilterKernel,
+    offset_region: LazyFilterKernel,
+    flood_region: LazyFilterKernel,
+    drop_shadow_mask_region: LazyFilterKernel,
+    morphology_axis_region: LazyFilterKernel,
+    downsample_region: LazyFilterKernel,
+    upsample_region: LazyFilterKernel,
+    upsample_rect_composite_region: LazyFilterKernel,
+    blur_region: LazyFilterKernel,
+    blur_shared_region: LazyFilterKernel,
+    svg_mask_coverage_region: LazyFilterKernel,
+    apply_region_mask: LazyFilterKernel,
+    color_filter_region: LazyFilterKernel,
+    color_matrix_region: LazyFilterKernel,
+    component_transfer_region: LazyFilterKernel,
+    convolve_matrix_region: LazyFilterKernel,
+    lighting_region: LazyFilterKernel,
+    liquid_glass_region: LazyFilterKernel,
+    liquid_glass_rect_composite_region: LazyFilterKernel,
+    blend_region: LazyFilterKernel,
+    composite_inputs_region: LazyFilterKernel,
+    displacement_map_region: LazyFilterKernel,
+    turbulence_region: LazyFilterKernel,
+    composite_drop_shadow_region: LazyFilterKernel,
+    layer_mask_region: LazyFilterKernel,
+    rect_mask_region: LazyFilterKernel,
+    path_mask_region: LazyFilterKernel,
+    composite_direct_region: LazyFilterKernel,
+    composite_rect_direct_region: LazyFilterKernel,
+    composite_stack_region: LazyFilterKernel,
+    composite_blend_stack_region: LazyFilterKernel,
+    composite_surface_direct_region: LazyFilterKernel,
+    composite_surface_stack_region: LazyFilterKernel,
     config: ::wgpu::Buffer,
     config_size: ::wgpu::BufferAddress,
     config_stride: ::wgpu::BufferAddress,
@@ -362,14 +364,40 @@ pub(crate) struct WgpuFilterPipeline {
     dummy_read: ::wgpu::Buffer,
     dummy_read_write: ::wgpu::Buffer,
     image_bind_group_layout: ::wgpu::BindGroupLayout,
+    shader_source: &'static str,
+    portable_textures: bool,
     large_texture_table_len: u32,
+}
+
+struct LazyFilterKernel {
+    kernel: OnceLock<FilterKernel>,
+    entry_point: &'static str,
+    resources: u32,
+    profile: FilterProfile,
+    shared_workgroups: bool,
+}
+
+impl LazyFilterKernel {
+    fn new(
+        entry_point: &'static str,
+        resources: u32,
+        profile: FilterProfile,
+        shared_workgroups: bool,
+    ) -> Self {
+        Self {
+            kernel: OnceLock::new(),
+            entry_point,
+            resources,
+            profile,
+            shared_workgroups,
+        }
+    }
 }
 
 struct FilterKernel {
     pipeline: ::wgpu::ComputePipeline,
     bind_group_layout: ::wgpu::BindGroupLayout,
     resources: u32,
-    profile: FilterProfile,
     shared_workgroups: bool,
     portable_textures: bool,
 }
@@ -514,354 +542,209 @@ impl WgpuFilterPipeline {
         let large_texture_table_len = large_texture_table_len(device);
         let image_bind_group_layout =
             create_image_resource_bind_group_layout(device, large_texture_table_len);
-        let create_kernel = |device,
-                             shader_source,
-                             portable_textures,
-                             entry_point,
-                             resources,
-                             profile,
-                             shared_workgroups| {
-            create_filter_kernel(
-                device,
-                shader_source,
-                portable_textures,
-                &image_bind_group_layout,
-                large_texture_table_len > 0,
-                entry_point,
-                resources,
-                profile,
-                shared_workgroups,
-            )
-        };
         Some(Self {
-            clear_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            clear_region: LazyFilterKernel::new(
                 "filter_clear_region",
                 0,
                 FilterProfile::Clear,
                 false,
             ),
-            copy_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
-                "filter_copy_region",
-                0,
-                FilterProfile::Copy,
-                false,
-            ),
-            source_alpha_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            copy_region: LazyFilterKernel::new("filter_copy_region", 0, FilterProfile::Copy, false),
+            source_alpha_region: LazyFilterKernel::new(
                 "filter_source_alpha_region",
                 0,
                 FilterProfile::SourceAlpha,
                 false,
             ),
-            source_over_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            source_over_region: LazyFilterKernel::new(
                 "filter_source_over_region",
                 0,
                 FilterProfile::SourceOver,
                 false,
             ),
-            tile_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
-                "filter_tile_region",
-                0,
-                FilterProfile::Tile,
-                false,
-            ),
-            offset_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            tile_region: LazyFilterKernel::new("filter_tile_region", 0, FilterProfile::Tile, false),
+            offset_region: LazyFilterKernel::new(
                 "filter_offset_region",
                 0,
                 FilterProfile::Offset,
                 false,
             ),
-            flood_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            flood_region: LazyFilterKernel::new(
                 "filter_flood_region",
                 FILTER_RES_BRUSH,
                 FilterProfile::Flood,
                 false,
             ),
-            drop_shadow_mask_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            drop_shadow_mask_region: LazyFilterKernel::new(
                 "filter_drop_shadow_mask_region",
                 0,
                 FilterProfile::DropShadowMask,
                 false,
             ),
-            morphology_axis_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            morphology_axis_region: LazyFilterKernel::new(
                 "filter_morphology_axis_region",
                 0,
                 FilterProfile::MorphologyAxis,
                 false,
             ),
-            downsample_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            downsample_region: LazyFilterKernel::new(
                 "filter_downsample_region",
                 0,
                 FilterProfile::Downsample,
                 false,
             ),
-            upsample_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            upsample_region: LazyFilterKernel::new(
                 "filter_upsample_region",
                 0,
                 FilterProfile::Upsample,
                 false,
             ),
-            upsample_rect_composite_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            upsample_rect_composite_region: LazyFilterKernel::new(
                 "filter_upsample_rect_composite_region",
                 0,
                 FilterProfile::UpsampleRectComposite,
                 false,
             ),
-            blur_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
-                "filter_blur_region",
-                0,
-                FilterProfile::Blur,
-                false,
-            ),
-            blur_shared_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            blur_region: LazyFilterKernel::new("filter_blur_region", 0, FilterProfile::Blur, false),
+            blur_shared_region: LazyFilterKernel::new(
                 "filter_blur_shared_region",
                 0,
                 FilterProfile::Blur,
                 true,
             ),
-            svg_mask_coverage_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            svg_mask_coverage_region: LazyFilterKernel::new(
                 "filter_svg_mask_coverage_region",
                 0,
                 FilterProfile::SvgMaskCoverage,
                 false,
             ),
-            apply_region_mask: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            apply_region_mask: LazyFilterKernel::new(
                 "filter_apply_region_mask",
                 0,
                 FilterProfile::ApplyRegionMask,
                 false,
             ),
-            color_filter_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            color_filter_region: LazyFilterKernel::new(
                 "filter_color_region",
                 0,
                 FilterProfile::ColorFilter,
                 false,
             ),
-            color_matrix_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            color_matrix_region: LazyFilterKernel::new(
                 "filter_color_matrix_region",
                 0,
                 FilterProfile::ColorMatrix,
                 false,
             ),
-            component_transfer_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            component_transfer_region: LazyFilterKernel::new(
                 "filter_component_transfer_region",
                 FILTER_RES_TRANSFER,
                 FilterProfile::ComponentTransfer,
                 false,
             ),
-            convolve_matrix_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            convolve_matrix_region: LazyFilterKernel::new(
                 "filter_convolve_matrix_region",
                 FILTER_RES_CONVOLVE,
                 FilterProfile::ConvolveMatrix,
                 false,
             ),
-            lighting_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            lighting_region: LazyFilterKernel::new(
                 "filter_lighting_region",
                 0,
                 FilterProfile::Lighting,
                 false,
             ),
-            liquid_glass_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            liquid_glass_region: LazyFilterKernel::new(
                 "filter_liquid_glass_region",
                 0,
                 FilterProfile::LiquidGlass,
                 false,
             ),
-            liquid_glass_rect_composite_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            liquid_glass_rect_composite_region: LazyFilterKernel::new(
                 "filter_liquid_glass_rect_composite_region",
                 0,
                 FilterProfile::LiquidGlassRectComposite,
                 false,
             ),
-            blend_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            blend_region: LazyFilterKernel::new(
                 "filter_blend_region",
                 0,
                 FilterProfile::Blend,
                 false,
             ),
-            composite_inputs_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            composite_inputs_region: LazyFilterKernel::new(
                 "filter_composite_inputs_region",
                 0,
                 FilterProfile::CompositeInputs,
                 false,
             ),
-            displacement_map_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            displacement_map_region: LazyFilterKernel::new(
                 "filter_displacement_map_region",
                 0,
                 FilterProfile::DisplacementMap,
                 false,
             ),
-            turbulence_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            turbulence_region: LazyFilterKernel::new(
                 "filter_turbulence_region",
                 FILTER_RES_TURBULENCE,
                 FilterProfile::Turbulence,
                 false,
             ),
-            composite_drop_shadow_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            composite_drop_shadow_region: LazyFilterKernel::new(
                 "filter_composite_drop_shadow_region",
                 FILTER_RES_BRUSH,
                 FilterProfile::CompositeDropShadow,
                 false,
             ),
-            layer_mask_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            layer_mask_region: LazyFilterKernel::new(
                 "filter_layer_mask_region",
                 FILTER_RES_SCENE_ALPHA,
                 FilterProfile::LayerMask,
                 false,
             ),
-            rect_mask_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            rect_mask_region: LazyFilterKernel::new(
                 "filter_rect_mask_region",
                 0,
                 FilterProfile::RectMask,
                 false,
             ),
-            path_mask_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            path_mask_region: LazyFilterKernel::new(
                 "filter_path_mask_region",
                 FILTER_RES_PATH_MASK,
                 FilterProfile::PathMask,
                 false,
             ),
-            composite_direct_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            composite_direct_region: LazyFilterKernel::new(
                 "filter_composite_direct_region",
                 0,
                 FilterProfile::CompositeDirect,
                 false,
             ),
-            composite_rect_direct_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            composite_rect_direct_region: LazyFilterKernel::new(
                 "filter_composite_rect_direct_region",
                 0,
                 FilterProfile::CompositeRectDirect,
                 false,
             ),
-            composite_stack_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            composite_stack_region: LazyFilterKernel::new(
                 "filter_composite_stack_region",
                 FILTER_RES_SCENE_STACK,
                 FilterProfile::CompositeStack,
                 false,
             ),
-            composite_blend_stack_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            composite_blend_stack_region: LazyFilterKernel::new(
                 "filter_composite_blend_stack_region",
                 FILTER_RES_SCENE_STACK,
                 FilterProfile::CompositeBlendStack,
                 false,
             ),
-            composite_surface_direct_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            composite_surface_direct_region: LazyFilterKernel::new(
                 "filter_composite_surface_direct_region",
                 0,
                 FilterProfile::CompositeSurfaceDirect,
                 false,
             ),
-            composite_surface_stack_region: create_kernel(
-                device,
-                shader_source,
-                portable_textures,
+            composite_surface_stack_region: LazyFilterKernel::new(
                 "filter_composite_surface_stack_region",
                 FILTER_RES_SCENE_STACK,
                 FilterProfile::CompositeSurfaceStack,
@@ -879,7 +762,28 @@ impl WgpuFilterPipeline {
             dummy_read,
             dummy_read_write,
             image_bind_group_layout,
+            shader_source,
+            portable_textures,
             large_texture_table_len,
+        })
+    }
+
+    fn kernel<'a>(
+        &'a self,
+        device: &::wgpu::Device,
+        lazy: &'a LazyFilterKernel,
+    ) -> &'a FilterKernel {
+        lazy.kernel.get_or_init(|| {
+            create_filter_kernel(
+                device,
+                self.shader_source,
+                self.portable_textures,
+                &self.image_bind_group_layout,
+                self.large_texture_table_len > 0,
+                lazy.entry_point,
+                lazy.resources,
+                lazy.shared_workgroups,
+            )
         })
     }
 
@@ -1904,7 +1808,7 @@ impl WgpuFilterPipeline {
     fn dispatch(
         &self,
         commands: &mut WgpuCommandBatch,
-        pipeline: &FilterKernel,
+        pipeline: &LazyFilterKernel,
         config: &FilterConfig,
         source: &::wgpu::TextureView,
         aux: &::wgpu::TextureView,
@@ -1921,7 +1825,7 @@ impl WgpuFilterPipeline {
     fn dispatch_with_target_read(
         &self,
         commands: &mut WgpuCommandBatch,
-        pipeline: &FilterKernel,
+        pipeline: &LazyFilterKernel,
         config: &FilterConfig,
         source: &::wgpu::TextureView,
         aux: &::wgpu::TextureView,
@@ -1950,7 +1854,7 @@ impl WgpuFilterPipeline {
     fn dispatch_with_transfer_target_read(
         &self,
         commands: &mut WgpuCommandBatch,
-        pipeline: &FilterKernel,
+        pipeline: &LazyFilterKernel,
         config: &FilterConfig,
         source: &::wgpu::TextureView,
         aux: &::wgpu::TextureView,
@@ -1980,7 +1884,7 @@ impl WgpuFilterPipeline {
     fn dispatch_with_extra(
         &self,
         commands: &mut WgpuCommandBatch,
-        pipeline: &FilterKernel,
+        pipeline: &LazyFilterKernel,
         config: &FilterConfig,
         source: &::wgpu::TextureView,
         aux: &::wgpu::TextureView,
@@ -2013,7 +1917,7 @@ impl WgpuFilterPipeline {
     fn dispatch_with_extra_target_read(
         &self,
         commands: &mut WgpuCommandBatch,
-        pipeline: &FilterKernel,
+        pipeline: &LazyFilterKernel,
         config: &FilterConfig,
         source: &::wgpu::TextureView,
         aux: &::wgpu::TextureView,
@@ -2032,6 +1936,7 @@ impl WgpuFilterPipeline {
             return;
         }
 
+        let kernel = self.kernel(commands.device(), pipeline);
         let config_offset = commands.write_uniform_slot(
             "filter.config",
             &self.config,
@@ -2041,7 +1946,7 @@ impl WgpuFilterPipeline {
             bytemuck::bytes_of(config),
         );
         let bind_group = self.create_bind_group(
-            pipeline,
+            kernel,
             commands.device(),
             config_offset,
             source,
@@ -2065,10 +1970,10 @@ impl WgpuFilterPipeline {
                 label: Some(profile_name),
                 timestamp_writes,
             });
-            pass.set_pipeline(&pipeline.pipeline);
+            pass.set_pipeline(&kernel.pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
             pass.set_bind_group(1, &image_bind_group, &[]);
-            let workgroups = self.dispatch_workgroups_for_pipeline(pipeline, config);
+            let workgroups = self.dispatch_workgroups_for_pipeline(kernel, config);
             pass.dispatch_workgroups(workgroups.0, workgroups.1, workgroups.2);
         }
         finish_gpu_scope(encoder, gpu_scope);
@@ -2092,7 +1997,7 @@ impl WgpuFilterPipeline {
 
     fn profile_name_for_pipeline(
         &self,
-        pipeline: &FilterKernel,
+        pipeline: &LazyFilterKernel,
         config: &FilterConfig,
     ) -> &'static str {
         match pipeline.profile {
@@ -2777,7 +2682,6 @@ fn create_filter_kernel(
     large_texture_table_enabled: bool,
     entry_point: &'static str,
     resources: u32,
-    profile: FilterProfile,
     shared_workgroups: bool,
 ) -> FilterKernel {
     debug_assert!(filter_storage_binding_count(resources) <= STORAGE_BINDING_COUNT);
@@ -2811,7 +2715,6 @@ fn create_filter_kernel(
         pipeline,
         bind_group_layout,
         resources,
-        profile,
         shared_workgroups,
         portable_textures,
     }
