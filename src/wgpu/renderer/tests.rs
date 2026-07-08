@@ -2684,6 +2684,55 @@ fn wgpu_renderer_profiles_simple_liquid_glass_without_materialized_upsample_when
 }
 
 #[test]
+fn wgpu_renderer_profiles_liquid_glass_repeated_gpu_timestamps_when_enabled() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut canvas = Canvas::new(64, 40, 1.0);
+    for x in 0..64 {
+        let v = (x * 3) as u8;
+        canvas.push_rect(
+            Rect::new(f64::from(x), 0.0, f64::from(x + 1), 40.0),
+            crate::Radius::ZERO,
+            Color::from_rgb8(v, 90, 255u8.saturating_sub(v)),
+        );
+    }
+    canvas.push_backdrop_layer(
+        Filter::RectLiquidGlass(RectLiquidGlass {
+            blur_radius: 12,
+            blur_sampling: BlurSampling::downsampled(4),
+            ..RectLiquidGlass::default()
+        }),
+        Region::rect(Rect::new(12.0, 8.0, 52.0, 32.0), crate::Radius::all(6.0)),
+    );
+    canvas.pop_layer();
+
+    let mut renderer = new_test_renderer(64, 40, Color::TRANSPARENT);
+    if !renderer
+        .device()
+        .features()
+        .contains(::wgpu::Features::TIMESTAMP_QUERY)
+    {
+        return;
+    }
+
+    for _ in 0..8 {
+        renderer.start_profile();
+        renderer.render(&canvas);
+        let _ = renderer.end_profile();
+        renderer
+            .device()
+            .poll(::wgpu::PollType::wait_indefinitely())
+            .expect("poll wgpu device for liquid glass profile readback");
+        let profile = renderer.poll_profile().clone();
+        assert!(profile.entries().iter().any(|entry| {
+            entry.name == "filter.liquid_glass.composite.rect" && entry.gpu_duration.is_some()
+        }));
+    }
+}
+
+#[test]
 fn wgpu_renderer_applies_morphology_filter_to_offscreen_children_when_enabled() {
     if !run_wgpu_tests() {
         return;

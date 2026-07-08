@@ -1,11 +1,14 @@
 use crate::shared::cpu_time::CpuInstant;
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     fmt,
     rc::Rc,
     sync::mpsc::{self, TryRecvError},
     time::Duration,
 };
+
+const TIMESTAMP_QUERY_PAIRS_PER_BATCH: u32 = 256;
+const TIMESTAMP_QUERY_COUNT_PER_BATCH: u32 = TIMESTAMP_QUERY_PAIRS_PER_BATCH * 2;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct WgpuRenderProfileEntry {
@@ -152,6 +155,7 @@ impl WgpuRenderProfiler {
             let mut state = self.state.borrow_mut();
             state.entries.clear();
             state.pending_gpu.clear();
+            state.timestamp_batches.clear();
             state.started = Some(CpuInstant::now());
             state.active = true;
         }
@@ -166,7 +170,7 @@ impl WgpuRenderProfiler {
         device: &::wgpu::Device,
         queue: &::wgpu::Queue,
     ) -> &WgpuRenderProfile {
-        let (entries, pending_gpu, cpu_total) = {
+        let (entries, pending_gpu, timestamp_batches, cpu_total) = {
             let mut state = self.state.borrow_mut();
             state.active = false;
             let cpu_total = state
@@ -177,15 +181,30 @@ impl WgpuRenderProfiler {
             (
                 std::mem::take(&mut state.entries),
                 std::mem::take(&mut state.pending_gpu),
+                std::mem::take(&mut state.timestamp_batches),
                 cpu_total,
             )
         };
 
-        self.pending_readbacks.extend(
-            pending_gpu
-                .into_iter()
-                .map(|timer| PendingGpuReadback::map(timer, queue.get_timestamp_period())),
-        );
+        let timestamp_period = queue.get_timestamp_period();
+        for batch in timestamp_batches {
+            let scopes = pending_gpu
+                .iter()
+                .filter_map(|timer| {
+                    Rc::ptr_eq(&timer.batch, &batch).then_some(PendingGpuScope {
+                        name: timer.name,
+                        resolve_offset: timer.resolve_offset,
+                    })
+                })
+                .collect::<Vec<_>>();
+            if !scopes.is_empty() {
+                self.pending_readbacks.push(PendingGpuReadback::map(
+                    batch,
+                    scopes,
+                    timestamp_period,
+                ));
+            }
+        }
         self.profile = WgpuRenderProfile { entries, cpu_total };
         self.poll_ready(device);
 
@@ -208,8 +227,8 @@ impl WgpuRenderProfiler {
         let mut ix = 0;
         while ix < self.pending_readbacks.len() {
             match self.pending_readbacks[ix].try_resolve() {
-                PendingGpuReadbackState::Ready(entry) => {
-                    self.profile.entries.push(entry);
+                PendingGpuReadbackState::Ready(entries) => {
+                    self.profile.entries.extend(entries);
                     self.pending_readbacks.swap_remove(ix);
                 }
                 PendingGpuReadbackState::Pending => ix += 1,
@@ -234,6 +253,7 @@ impl WgpuRenderProfiler {
 struct ProfileState {
     entries: Vec<WgpuRenderProfileEntry>,
     pending_gpu: Vec<WgpuGpuProfileScope>,
+    timestamp_batches: Vec<Rc<WgpuGpuProfileBatch>>,
     started: Option<CpuInstant>,
     active: bool,
 }
@@ -281,29 +301,86 @@ pub(crate) fn profile_cpu<T>(name: &'static str, work: impl FnOnce() -> T) -> T 
 #[derive(Debug)]
 pub(crate) struct WgpuGpuProfileScope {
     name: &'static str,
-    query_set: ::wgpu::QuerySet,
-    resolve_buffer: ::wgpu::Buffer,
-    readback_buffer: ::wgpu::Buffer,
+    batch: Rc<WgpuGpuProfileBatch>,
+    query_index: u32,
+    resolve_offset: ::wgpu::BufferAddress,
 }
 
 impl WgpuGpuProfileScope {
     pub(crate) fn timestamp_writes(&self) -> ::wgpu::ComputePassTimestampWrites<'_> {
         ::wgpu::ComputePassTimestampWrites {
-            query_set: &self.query_set,
-            beginning_of_pass_write_index: Some(0),
-            end_of_pass_write_index: Some(1),
+            query_set: &self.batch.query_set,
+            beginning_of_pass_write_index: Some(self.query_index),
+            end_of_pass_write_index: Some(self.query_index + 1),
         }
     }
 
     fn resolve(&self, encoder: &mut ::wgpu::CommandEncoder) {
-        encoder.resolve_query_set(&self.query_set, 0..2, &self.resolve_buffer, 0);
-        encoder.copy_buffer_to_buffer(
-            &self.resolve_buffer,
-            0,
-            &self.readback_buffer,
-            0,
-            2 * ::wgpu::QUERY_SIZE as ::wgpu::BufferAddress,
+        let size = 2 * ::wgpu::QUERY_SIZE as ::wgpu::BufferAddress;
+        encoder.resolve_query_set(
+            &self.batch.query_set,
+            self.query_index..self.query_index + 2,
+            &self.batch.resolve_buffer,
+            self.resolve_offset,
         );
+        encoder.copy_buffer_to_buffer(
+            &self.batch.resolve_buffer,
+            self.resolve_offset,
+            &self.batch.readback_buffer,
+            self.resolve_offset,
+            size,
+        );
+    }
+}
+
+#[derive(Debug)]
+struct WgpuGpuProfileBatch {
+    query_set: ::wgpu::QuerySet,
+    resolve_buffer: ::wgpu::Buffer,
+    readback_buffer: ::wgpu::Buffer,
+    next_query: Cell<u32>,
+}
+
+impl WgpuGpuProfileBatch {
+    fn new(device: &::wgpu::Device) -> Self {
+        let query_set = device.create_query_set(&::wgpu::QuerySetDescriptor {
+            label: Some("tileink wgpu profile timestamps"),
+            ty: ::wgpu::QueryType::Timestamp,
+            count: TIMESTAMP_QUERY_COUNT_PER_BATCH,
+        });
+        let buffer_size = TIMESTAMP_QUERY_PAIRS_PER_BATCH as ::wgpu::BufferAddress
+            * ::wgpu::QUERY_RESOLVE_BUFFER_ALIGNMENT;
+        let resolve_buffer = device.create_buffer(&::wgpu::BufferDescriptor {
+            label: Some("tileink wgpu profile timestamp resolve"),
+            size: buffer_size,
+            usage: ::wgpu::BufferUsages::QUERY_RESOLVE | ::wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        let readback_buffer = device.create_buffer(&::wgpu::BufferDescriptor {
+            label: Some("tileink wgpu profile timestamp readback"),
+            size: buffer_size,
+            usage: ::wgpu::BufferUsages::COPY_DST | ::wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+
+        Self {
+            query_set,
+            resolve_buffer,
+            readback_buffer,
+            next_query: Cell::new(0),
+        }
+    }
+
+    fn reserve_scope(&self) -> Option<(u32, ::wgpu::BufferAddress)> {
+        let next_query = self.next_query.get();
+        if next_query + 1 >= TIMESTAMP_QUERY_COUNT_PER_BATCH {
+            return None;
+        }
+        self.next_query.set(next_query + 2);
+        let pair_ix = next_query / 2;
+        let resolve_offset =
+            pair_ix as ::wgpu::BufferAddress * ::wgpu::QUERY_RESOLVE_BUFFER_ALIGNMENT;
+        Some((next_query, resolve_offset))
     }
 }
 
@@ -327,30 +404,28 @@ pub(crate) fn start_gpu_scope(
         return None;
     }
 
-    let query_set = device.create_query_set(&::wgpu::QuerySetDescriptor {
-        label: Some("tileink wgpu profile timestamps"),
-        ty: ::wgpu::QueryType::Timestamp,
-        count: 2,
-    });
-    let buffer_size = 2 * ::wgpu::QUERY_SIZE as ::wgpu::BufferAddress;
-    let resolve_buffer = device.create_buffer(&::wgpu::BufferDescriptor {
-        label: Some("tileink wgpu profile timestamp resolve"),
-        size: buffer_size,
-        usage: ::wgpu::BufferUsages::QUERY_RESOLVE | ::wgpu::BufferUsages::COPY_SRC,
-        mapped_at_creation: false,
-    });
-    let readback_buffer = device.create_buffer(&::wgpu::BufferDescriptor {
-        label: Some("tileink wgpu profile timestamp readback"),
-        size: buffer_size,
-        usage: ::wgpu::BufferUsages::COPY_DST | ::wgpu::BufferUsages::MAP_READ,
-        mapped_at_creation: false,
-    });
+    let (batch, query_index, resolve_offset) = {
+        let mut state = state.borrow_mut();
+        let last_batch = state.timestamp_batches.last();
+        if let Some(batch) = last_batch
+            && let Some((query_index, resolve_offset)) = batch.reserve_scope()
+        {
+            (Rc::clone(batch), query_index, resolve_offset)
+        } else {
+            let batch = Rc::new(WgpuGpuProfileBatch::new(device));
+            let (query_index, resolve_offset) = batch
+                .reserve_scope()
+                .expect("fresh timestamp query batch has scope capacity");
+            state.timestamp_batches.push(Rc::clone(&batch));
+            (batch, query_index, resolve_offset)
+        }
+    };
 
     Some(WgpuGpuProfileScope {
         name,
-        query_set,
-        resolve_buffer,
-        readback_buffer,
+        batch,
+        query_index,
+        resolve_offset,
     })
 }
 
@@ -373,29 +448,41 @@ pub(crate) fn finish_gpu_scope(
 
 #[derive(Debug)]
 struct PendingGpuReadback {
-    timer: WgpuGpuProfileScope,
+    batch: Rc<WgpuGpuProfileBatch>,
+    scopes: Vec<PendingGpuScope>,
     rx: mpsc::Receiver<Result<(), ::wgpu::BufferAsyncError>>,
     timestamp_period: f32,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct PendingGpuScope {
+    name: &'static str,
+    resolve_offset: ::wgpu::BufferAddress,
+}
+
 #[derive(Debug)]
 enum PendingGpuReadbackState {
-    Ready(WgpuRenderProfileEntry),
+    Ready(Vec<WgpuRenderProfileEntry>),
     Pending,
     Failed,
 }
 
 impl PendingGpuReadback {
-    fn map(timer: WgpuGpuProfileScope, timestamp_period: f32) -> Self {
+    fn map(
+        batch: Rc<WgpuGpuProfileBatch>,
+        scopes: Vec<PendingGpuScope>,
+        timestamp_period: f32,
+    ) -> Self {
         let (tx, rx) = mpsc::channel();
-        timer
+        batch
             .readback_buffer
             .slice(..)
             .map_async(::wgpu::MapMode::Read, move |result| {
                 let _ = tx.send(result);
             });
         Self {
-            timer,
+            batch,
+            scopes,
             rx,
             timestamp_period,
         }
@@ -403,30 +490,37 @@ impl PendingGpuReadback {
 
     fn try_resolve(&self) -> PendingGpuReadbackState {
         match self.rx.try_recv() {
-            Ok(Ok(())) => PendingGpuReadbackState::Ready(self.entry_from_mapped_buffer()),
+            Ok(Ok(())) => PendingGpuReadbackState::Ready(self.entries_from_mapped_buffer()),
             Ok(Err(_)) | Err(TryRecvError::Disconnected) => PendingGpuReadbackState::Failed,
             Err(TryRecvError::Empty) => PendingGpuReadbackState::Pending,
         }
     }
 
-    fn entry_from_mapped_buffer(&self) -> WgpuRenderProfileEntry {
+    fn entries_from_mapped_buffer(&self) -> Vec<WgpuRenderProfileEntry> {
         let mapped = self
-            .timer
+            .batch
             .readback_buffer
             .slice(..)
             .get_mapped_range()
             .expect("read mapped wgpu profile timer buffer");
         let values: &[u64] = bytemuck::cast_slice(&mapped);
-        let ticks = values[1].saturating_sub(values[0]);
-        let nanos = ticks as f64 * self.timestamp_period as f64;
+        let entries = self
+            .scopes
+            .iter()
+            .map(|scope| {
+                let start = scope.resolve_offset as usize / std::mem::size_of::<u64>();
+                let ticks = values[start + 1].saturating_sub(values[start]);
+                let nanos = ticks as f64 * self.timestamp_period as f64;
+                WgpuRenderProfileEntry {
+                    name: scope.name,
+                    cpu_duration: None,
+                    gpu_duration: Some(Duration::from_nanos(nanos.round() as u64)),
+                }
+            })
+            .collect();
         drop(mapped);
-        self.timer.readback_buffer.unmap();
-
-        WgpuRenderProfileEntry {
-            name: self.timer.name,
-            cpu_duration: None,
-            gpu_duration: Some(Duration::from_nanos(nanos.round() as u64)),
-        }
+        self.batch.readback_buffer.unmap();
+        entries
     }
 }
 
