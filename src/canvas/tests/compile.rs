@@ -289,6 +289,54 @@ fn compile_fuses_generic_sdf_clip_without_path_storage() {
 }
 
 #[test]
+fn compile_keeps_outer_sdf_clip_on_backdrop_layer_children() {
+    let mut canvas = test_scene();
+    canvas.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, 64.0, 64.0), Radius::all(12.0));
+    canvas.push_backdrop_layer(
+        Filter::Invert(1.0),
+        Region::rect(Rect::new(0.0, 0.0, 64.0, 64.0), Radius::ZERO),
+    );
+    canvas.push_rect(
+        Rect::new(0.0, 0.0, 64.0, 64.0),
+        Radius::ZERO,
+        Brush::Solid(rgb(255, 0, 0)),
+    );
+    canvas.pop_layer();
+    canvas.pop_layer();
+
+    let plan = canvas.compile(ROOT_COMMAND_LIST_ID);
+    match &plan.ops[..] {
+        [
+            ExecOp::BeginClip,
+            ExecOp::OffscreenLayer {
+                outer_stack,
+                children,
+                ..
+            },
+            ExecOp::EndClip,
+        ] => {
+            assert_layer_stack(
+                &plan,
+                outer_stack.clone(),
+                &[LayerStackEntry::Clip { draw: 0 }],
+            );
+            match &children[..] {
+                [ExecOp::DrawBatch { draws, layer_stack }] => {
+                    assert_eq!(draws.clone(), 1..2);
+                    assert_layer_stack(
+                        &plan,
+                        layer_stack.clone(),
+                        &[LayerStackEntry::Clip { draw: 0 }],
+                    );
+                }
+                ops => panic!("expected backdrop child draw batch, got {ops:#?}"),
+            }
+        }
+        ops => panic!("expected clipped backdrop layer, got {ops:#?}"),
+    }
+}
+
+#[test]
 fn compile_keeps_opacity_with_offscreen_child_isolated() {
     let mut canvas = test_scene();
     canvas.push_opacity_layer(rect_path(0.0, 0.0, 48.0, 48.0), Affine::IDENTITY, 0.0, 0.5);
