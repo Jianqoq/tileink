@@ -91,6 +91,7 @@ struct EmitChunkRecord {
     ptcl_offset: u32,
     glyph_count: u32,
     glyph_offset: u32,
+    class_flags: u32,
 };
 struct LayerStackRecord {
     tag: u32,
@@ -147,7 +148,10 @@ const TILE_COARSE_RECORD_WORDS: u32 = 6u;
 const PTCL_RECORD_WORDS: u32 = 6u;
 const TILE_DRAW_RECORD_WORDS: u32 = 2u;
 const TILE_EMIT_CHUNK_RECORD_WORDS: u32 = 2u;
-const EMIT_CHUNK_RECORD_WORDS: u32 = 6u;
+const EMIT_CHUNK_RECORD_WORDS: u32 = 7u;
+const EMIT_CHUNK_CLASS_COLOR: u32 = 1u;
+const EMIT_CHUNK_CLASS_SDF: u32 = 2u;
+const EMIT_CHUNK_CLASS_OTHER: u32 = 4u;
 const FINE_TILE_KIND_FULL_INTERPRETER: u32 = 0u;
 const FINE_TILE_KIND_EMPTY_OR_CLEAR: u32 = 1u;
 const FINE_TILE_KIND_COLOR_ONLY_NO_STACK: u32 = 2u;
@@ -342,6 +346,7 @@ fn emit_chunk_at(ref_ix: u32) -> EmitChunkRecord {
         coarse_work[base + 3u],
         coarse_work[base + 4u],
         coarse_work[base + 5u],
+        coarse_work[base + 6u],
     );
 }
 
@@ -349,6 +354,7 @@ fn store_emit_chunk_ref(ref_ix: u32, tile_ix: u32, local_chunk: u32) {
     let base = emit_chunk_record_base(ref_ix);
     coarse_work[base] = tile_ix;
     coarse_work[base + 1u] = local_chunk;
+    coarse_work[base + 6u] = 0u;
 }
 
 fn store_emit_chunk_counts(ref_ix: u32, ptcl_count: u32, glyph_count: u32) {
@@ -361,6 +367,10 @@ fn store_emit_chunk_offsets(ref_ix: u32, ptcl_offset: u32, glyph_offset: u32) {
     let base = emit_chunk_record_base(ref_ix);
     coarse_work[base + 3u] = ptcl_offset;
     coarse_work[base + 5u] = glyph_offset;
+}
+
+fn store_emit_chunk_class_flags(ref_ix: u32, flags: u32) {
+    coarse_work[emit_chunk_record_base(ref_ix) + 6u] = flags;
 }
 
 fn coarse_load_tile(tile_ix: u32) -> TileCoarseRecord {

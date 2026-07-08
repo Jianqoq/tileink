@@ -8,6 +8,9 @@ use super::commands::{
 };
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 
+#[cfg(test)]
+use std::sync::atomic::{AtomicBool, Ordering};
+
 const WORKGROUP_SIZE: u32 = 256;
 const COUNT_STORAGE_BINDING_COUNT: u32 = 8;
 const PREFIX_STORAGE_BINDING_COUNT: u32 = 9;
@@ -61,6 +64,7 @@ pub(crate) struct WgpuCoarsePipeline {
     tile_counts_from_emit_chunks: ::wgpu::ComputePipeline,
     emit_bins: ::wgpu::ComputePipeline,
     emit_web: Option<::wgpu::ComputePipeline>,
+    emit_chunk_tile_kinds: Option<::wgpu::ComputePipeline>,
     count_bind_group_layout: ::wgpu::BindGroupLayout,
     prefix_bind_group_layout: ::wgpu::BindGroupLayout,
     emit_bind_group_layout: ::wgpu::BindGroupLayout,
@@ -256,6 +260,12 @@ impl WgpuCoarsePipeline {
                 &emit_chunk_shader,
                 "coarse_emit",
             )),
+            emit_chunk_tile_kinds: Some(create_pipeline(
+                device,
+                &emit_pipeline_layout,
+                &emit_chunk_shader,
+                "coarse_emit_chunk_tile_kinds",
+            )),
             count_bind_group_layout,
             prefix_bind_group_layout,
             emit_bind_group_layout,
@@ -388,6 +398,8 @@ impl WgpuCoarsePipeline {
                 pass.set_bind_group(0, &emit_bind_group, &[]);
                 pass.set_pipeline(self.emit_web.as_ref().unwrap());
                 pass.dispatch_workgroups(emit_chunk_count, 1, 1);
+                pass.set_pipeline(self.emit_chunk_tile_kinds.as_ref().unwrap());
+                pass.dispatch_workgroups(chunk_count, 1, 1);
             } else {
                 pass.set_bind_group(0, &count_bind_group, &[]);
                 pass.set_pipeline(&self.count_bins);
@@ -496,6 +508,13 @@ impl WgpuCoarsePipeline {
                 emit_bind_group,
                 self.emit_web.as_ref().unwrap(),
                 emit_chunk_count,
+            );
+            dispatch_profiled(
+                commands,
+                "coarse.emit_chunk_tile_kinds",
+                emit_bind_group,
+                self.emit_chunk_tile_kinds.as_ref().unwrap(),
+                chunk_count,
             );
         } else {
             dispatch_profiled(
@@ -653,7 +672,19 @@ fn profile_coarse_passes_value(value: Option<&str>) -> bool {
 }
 
 fn coarse_emit_chunks_enabled() -> bool {
+    #[cfg(test)]
+    if FORCE_COARSE_EMIT_CHUNKS.load(Ordering::Relaxed) {
+        return true;
+    }
     std::env::var("TILEINK_COARSE_CHUNKS").ok().as_deref() == Some("1")
+}
+
+#[cfg(test)]
+static FORCE_COARSE_EMIT_CHUNKS: AtomicBool = AtomicBool::new(false);
+
+#[cfg(test)]
+pub(crate) fn force_coarse_emit_chunks_for_test(enabled: bool) -> bool {
+    FORCE_COARSE_EMIT_CHUNKS.swap(enabled, Ordering::Relaxed)
 }
 
 fn coarse_bin_count(lengths: GpuBufferLengths) -> u32 {

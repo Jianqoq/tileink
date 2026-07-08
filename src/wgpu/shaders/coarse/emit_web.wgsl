@@ -121,6 +121,10 @@ fn coarse_emit(
     _ = coarse_total;
     let glyph_offset = workgroup_exclusive_prefix(glyph_count, lane);
     _ = coarse_total;
+    var class_flags = 0u;
+    if (valid) {
+        class_flags = particle_class_flags(ptcl_tag, draw_ix);
+    }
     if (valid) {
         if (ptcl_tag == GPU_PTCL_GLYPH) {
             ptcl_segment_start = glyph_cursor + glyph_offset;
@@ -145,6 +149,56 @@ fn coarse_emit(
         emit_active_stack_ends(end_cursor, tile_x, tile_y);
         store_particle(end_cursor + wrapper_count, GPU_PTCL_END, 0i, 0u, 0u, 0u, 0u);
     }
+
+    let color_count = workgroup_sum(select(0u, 1u, (class_flags & EMIT_CHUNK_CLASS_COLOR) != 0u), lane);
+    let sdf_count = workgroup_sum(select(0u, 1u, (class_flags & EMIT_CHUNK_CLASS_SDF) != 0u), lane);
+    let other_count = workgroup_sum(select(0u, 1u, (class_flags & EMIT_CHUNK_CLASS_OTHER) != 0u), lane);
+    if (lane == 0u) {
+        store_emit_chunk_class_flags(
+            ref_ix,
+            select(0u, EMIT_CHUNK_CLASS_COLOR, color_count != 0u) |
+                select(0u, EMIT_CHUNK_CLASS_SDF, sdf_count != 0u) |
+                select(0u, EMIT_CHUNK_CLASS_OTHER, other_count != 0u),
+        );
+    }
+}
+
+@compute @workgroup_size(256)
+fn coarse_emit_chunk_tile_kinds(
+    @builtin(workgroup_id) workgroup_id: vec3<u32>,
+    @builtin(local_invocation_id) local_id: vec3<u32>,
+) {
+    let tile_ix = workgroup_id.x * 256u + local_id.x;
+    if (tile_ix >= config.tile_count) {
+        return;
+    }
+
+    let tile = coarse_load_tile(tile_ix);
+    if (tile.ptcl_count == 0u) {
+        store_fine_tile_kind(tile_ix, FINE_TILE_KIND_EMPTY_OR_CLEAR);
+        return;
+    }
+
+    let tile_x = tile_ix % config.tiles_width;
+    let tile_y = tile_ix / config.tiles_width;
+    let wrapper_count = active_stack_count(tile_x, tile_y);
+    if (wrapper_count == INVALID) {
+        store_fine_tile_kind(tile_ix, FINE_TILE_KIND_FULL_INTERPRETER);
+        return;
+    }
+
+    var flags = select(0u, EMIT_CHUNK_CLASS_OTHER, wrapper_count != 0u);
+    let chunk_count = tile_emit_chunk_count_at(tile_ix);
+    let chunk_offset = tile_emit_chunk_offset_at(tile_ix);
+    var local_chunk = 0u;
+    loop {
+        if (local_chunk >= chunk_count) {
+            break;
+        }
+        flags |= emit_chunk_at(chunk_offset + local_chunk).class_flags;
+        local_chunk += 1u;
+    }
+    store_fine_tile_kind(tile_ix, classify_fine_tile_kind_from_flags(flags));
 }
 
 fn active_stack_count(tile_x: u32, tile_y: u32) -> u32 {
@@ -400,6 +454,46 @@ fn draw_has_glyph_at(draw_ix: u32) -> bool {
 
 fn draw_solid_color_fast_path_at(draw_ix: u32) -> bool {
     return draw_records[draw_ix].solid_rect != 0u && draw_has_nontransparent_solid_brush_at(draw_ix);
+}
+
+fn particle_class_flags(ptcl_tag: u32, draw_ix: u32) -> u32 {
+    if (ptcl_tag == GPU_PTCL_COLOR) {
+        return EMIT_CHUNK_CLASS_COLOR;
+    }
+    if (ptcl_tag == GPU_PTCL_IMAGE || (ptcl_tag == GPU_PTCL_SDF && draw_solid_supported_sdf_at(draw_ix))) {
+        return EMIT_CHUNK_CLASS_SDF;
+    }
+    return EMIT_CHUNK_CLASS_OTHER;
+}
+
+fn classify_fine_tile_kind_from_flags(flags: u32) -> u32 {
+    if ((flags & EMIT_CHUNK_CLASS_OTHER) != 0u) {
+        return FINE_TILE_KIND_FULL_INTERPRETER;
+    }
+    if ((flags & EMIT_CHUNK_CLASS_SDF) != 0u && (flags & EMIT_CHUNK_CLASS_COLOR) != 0u) {
+        return FINE_TILE_KIND_MIXED_ANALYTIC_SOLID_NO_STACK;
+    }
+    if ((flags & EMIT_CHUNK_CLASS_SDF) != 0u) {
+        return FINE_TILE_KIND_PURE_SDF_SOLID_NO_STACK;
+    }
+    if ((flags & EMIT_CHUNK_CLASS_COLOR) != 0u) {
+        return FINE_TILE_KIND_COLOR_ONLY_NO_STACK;
+    }
+    return FINE_TILE_KIND_EMPTY_OR_CLEAR;
+}
+
+fn draw_solid_supported_sdf_at(draw_ix: u32) -> bool {
+    let draw = draw_records[draw_ix];
+    if (
+        !draw_has_nontransparent_solid_brush_at(draw_ix) ||
+        draw.sdf_offset == INVALID ||
+        draw.sdf_shadow_offset != INVALID ||
+        draw.sdf_len == 0u
+    ) {
+        return false;
+    }
+    let kind = sdf_blob[draw.sdf_offset];
+    return kind == GPU_SDF_RECT || kind == GPU_SDF_CANDLESTICK;
 }
 
 fn draw_has_nontransparent_solid_brush_at(draw_ix: u32) -> bool {

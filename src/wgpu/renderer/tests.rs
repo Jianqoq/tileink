@@ -4,6 +4,7 @@ use peniko::{
 };
 
 use super::{Renderer, WgpuRenderTargetId};
+use crate::wgpu::coarse::force_coarse_emit_chunks_for_test;
 use crate::wgpu::commands::WgpuCommandBatch;
 use crate::{
     Canvas, FillRule, Image, ImageKey, PatternSampling, TextContext, TextFontSystem,
@@ -34,6 +35,24 @@ const GPU_PTCL_BEGIN_CLIP: u32 = 3;
 const GPU_PTCL_END_CLIP: u32 = 4;
 const GPU_PTCL_SDF: u32 = 9;
 const GPU_PTCL_IMAGE: u32 = 13;
+
+struct ForceCoarseChunksGuard {
+    previous: bool,
+}
+
+impl ForceCoarseChunksGuard {
+    fn new() -> Self {
+        Self {
+            previous: force_coarse_emit_chunks_for_test(true),
+        }
+    }
+}
+
+impl Drop for ForceCoarseChunksGuard {
+    fn drop(&mut self) {
+        force_coarse_emit_chunks_for_test(self.previous);
+    }
+}
 
 #[test]
 fn wgpu_renderer_reads_native_render_output_when_enabled() {
@@ -1168,6 +1187,38 @@ fn wgpu_fine_tile_kind_classifies_full_tile_image_rect_as_analytic_when_enabled(
 
     renderer.prepare_scene(&canvas);
     renderer.coarse_batch(&canvas, 0, canvas.draw_records.len() as u32, 0, 0);
+
+    let kinds =
+        renderer
+            .coarse
+            .read_fine_tile_kinds(renderer.device(), renderer.queue(), renderer.lengths);
+    assert_eq!(kinds[0], FineTileKind::PureSdfSolidNoStack);
+    let tags = read_ptcl_tags(&renderer, 2);
+    assert_eq!(tags, vec![GPU_PTCL_IMAGE, GPU_PTCL_END]);
+}
+
+#[test]
+fn wgpu_chunked_render_classifies_full_tile_image_rect_as_analytic_when_enabled() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let _force_chunks = ForceCoarseChunksGuard::new();
+    let mut canvas = Canvas::new(16, 16, 1.0);
+    canvas
+        .push_image(
+            Rect::new(0.0, 0.0, 16.0, 16.0),
+            Image::from_rgba8(1, 1, [40, 90, 180, 255]),
+            Extend::Pad,
+            PatternSampling::Bilinear,
+        )
+        .expect("push image");
+    let mut renderer = new_test_renderer(16, 16, Color::TRANSPARENT);
+    if renderer.fine.is_none() {
+        return;
+    }
+
+    renderer.render(&canvas);
 
     let kinds =
         renderer
