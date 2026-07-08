@@ -7,7 +7,8 @@ use peniko::Color;
 use crate::{
     TextFontSystem,
     canvas::{
-        Canvas, RetainedGraphCacheId, RetainedRootCacheId, RetainedSceneCache, RetainedSceneCacheId,
+        Canvas, RetainedGraphCacheId, RetainedRootCacheId, RetainedSceneCache,
+        RetainedSceneInstanceId,
     },
     debug::{DebugScanBuffers, RenderDebugCapture, RenderOptions, capture_render_debug},
     render::Render,
@@ -167,7 +168,7 @@ pub struct Renderer {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum PreparedRetainedSceneId {
-    Scene(RetainedSceneCacheId),
+    Scene(RetainedSceneInstanceId),
     Root(RetainedRootCacheId),
     Graph(RetainedGraphCacheId),
 }

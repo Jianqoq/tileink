@@ -540,6 +540,51 @@ fn retained_scene_cache_reuses_same_key_revision_and_offset() {
 }
 
 #[test]
+fn retained_scene_cache_reuses_same_key_revision_across_offsets() {
+    let mut child = test_scene();
+    child.push_rect(
+        Rect::new(1.0, 2.0, 5.0, 6.0),
+        crate::Radius::ZERO,
+        Brush::Solid(rgb(255, 0, 0)),
+    );
+    let child = Arc::new(child);
+
+    let mut first_root = test_scene();
+    first_root.append_retained_scene(
+        SceneCacheKey::for_element(7),
+        1,
+        child.clone(),
+        Point::new(10.0, 20.0),
+    );
+    let mut second_root = test_scene();
+    second_root.append_retained_scene(
+        SceneCacheKey::for_element(7),
+        1,
+        child,
+        Point::new(30.0, 40.0),
+    );
+
+    let mut cache = RetainedSceneCache::default();
+    let first = first_root.materialize_retained_scenes(&mut cache);
+    let second = second_root.materialize_retained_scenes(&mut cache);
+
+    assert_eq!(cache.scenes.len(), 1);
+    assert_ne!(
+        first.draw_records[0].pixel_bounds,
+        second.draw_records[0].pixel_bounds
+    );
+    assert_eq!(
+        second.draw_records[0].pixel_bounds,
+        PixelBounds {
+            x0: 31,
+            y0: 42,
+            x1: 35,
+            y1: 46,
+        }
+    );
+}
+
+#[test]
 fn retained_scene_cache_keeps_same_element_different_slots_separate() {
     let mut child = test_scene();
     child.push_rect(

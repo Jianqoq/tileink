@@ -109,6 +109,11 @@ impl SceneCacheKey {
 pub(crate) struct RetainedSceneCacheId {
     key: SceneCacheKey,
     revision: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub(crate) struct RetainedSceneInstanceId {
+    scene: RetainedSceneCacheId,
     dx_bits: u64,
     dy_bits: u64,
 }
@@ -118,7 +123,7 @@ pub(crate) struct RetainedRootCacheId {
     logical_width: u32,
     logical_height: u32,
     scale_bits: u32,
-    scenes: Vec<RetainedSceneCacheId>,
+    scenes: Vec<RetainedSceneInstanceId>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -140,35 +145,13 @@ impl RetainedSceneCache {
         key: SceneCacheKey,
         revision: u64,
         canvas: &SharedArc<Canvas>,
-        offset: SceneOffset,
     ) -> SharedArc<Canvas> {
-        let id = RetainedSceneCacheId {
-            key,
-            revision,
-            dx_bits: offset.dx.to_bits(),
-            dy_bits: offset.dy.to_bits(),
-        };
-        self.scenes.retain(|cached_id, _| {
-            cached_id.key != key
-                || cached_id.dx_bits != id.dx_bits
-                || cached_id.dy_bits != id.dy_bits
-                || cached_id.revision == revision
-        });
+        let id = RetainedSceneCacheId { key, revision };
+        self.scenes
+            .retain(|cached_id, _| cached_id.key != key || cached_id.revision == revision);
         self.scenes
             .entry(id)
-            .or_insert_with(|| {
-                let mut translated = Canvas::new(
-                    canvas.logical_width,
-                    canvas.logical_height,
-                    canvas.scale_factor,
-                );
-                translated.append_scene_ref_unchecked(
-                    canvas,
-                    SceneAppendMode::MergeCurrent,
-                    offset,
-                );
-                SharedArc::new(translated)
-            })
+            .or_insert_with(|| canvas.clone())
             .clone()
     }
 }
@@ -1125,20 +1108,15 @@ impl Canvas {
                         canvas,
                         offset,
                     } => {
-                        let retained = cache.get_or_prepare(
-                            key,
-                            revision,
-                            &canvas,
-                            SceneOffset {
-                                dx: offset.0,
-                                dy: offset.1,
-                            },
-                        );
+                        let retained = cache.get_or_prepare(key, revision, &canvas);
                         materialized.append_scene_ref_to_list_unchecked(
                             &retained,
                             list_ix,
                             SceneAppendMode::MergeCurrent,
-                            SceneOffset { dx: 0.0, dy: 0.0 },
+                            SceneOffset {
+                                dx: offset.0,
+                                dy: offset.1,
+                            },
                         );
                     }
                     command => materialized.command_lists[list_ix].commands.push(command),
@@ -1151,7 +1129,7 @@ impl Canvas {
     pub(crate) fn single_retained_scene(
         &self,
         cache: &mut RetainedSceneCache,
-    ) -> Option<(RetainedSceneCacheId, SharedArc<Canvas>)> {
+    ) -> Option<(RetainedSceneInstanceId, SharedArc<Canvas>)> {
         if !self.lines.is_empty()
             || !self.path_records.is_empty()
             || !self.draw_records.is_empty()
@@ -1179,13 +1157,22 @@ impl Canvas {
             dx: offset.0,
             dy: offset.1,
         };
-        let id = RetainedSceneCacheId {
-            key: *key,
-            revision: *revision,
+        let id = RetainedSceneInstanceId {
+            scene: RetainedSceneCacheId {
+                key: *key,
+                revision: *revision,
+            },
             dx_bits: offset.dx.to_bits(),
             dy_bits: offset.dy.to_bits(),
         };
-        Some((id, cache.get_or_prepare(*key, *revision, canvas, offset)))
+        let scene = cache.get_or_prepare(*key, *revision, canvas);
+        let mut translated = Canvas::new(
+            scene.logical_width,
+            scene.logical_height,
+            scene.scale_factor,
+        );
+        translated.append_scene_ref_unchecked(&scene, SceneAppendMode::MergeCurrent, offset);
+        Some((id, SharedArc::new(translated)))
     }
 
     pub(crate) fn retained_root_cache_id(&self) -> Option<RetainedRootCacheId> {
@@ -1213,9 +1200,11 @@ impl Canvas {
             else {
                 return None;
             };
-            scenes.push(RetainedSceneCacheId {
-                key: *key,
-                revision: *revision,
+            scenes.push(RetainedSceneInstanceId {
+                scene: RetainedSceneCacheId {
+                    key: *key,
+                    revision: *revision,
+                },
                 dx_bits: offset.0.to_bits(),
                 dy_bits: offset.1.to_bits(),
             });
