@@ -1,12 +1,13 @@
 use crate::shared::gpu_layout::brush::{
     GPU_BRUSH_PATTERN, GPU_BRUSH_PATTERN_RESOURCE, GPU_BRUSH_U32_STRIDE,
+    GPU_RESOURCE_TEXTURE_PLACEMENT_BIT,
 };
 
 use crate::shared::{
     brush::{Brush, ENCODED_BRUSH_HEADER_WORDS, push_encoded_brush},
     draw_record::DrawRecord,
     execution::ExecOp,
-    image_resource::{AtlasRect, GpuImageResourceUpload, ImageResourceId},
+    image_resource::{AtlasRect, GpuImageResourceUpload, ImageResourceId, ImageResourcePlacement},
     layer::{
         Layer,
         filter::{Filter, FilterPrimitiveKind},
@@ -98,10 +99,30 @@ impl GpuBrushUpload {
             return;
         }
         let id = ImageResourceId::decode(payload[0], payload[1], payload[2]);
-        if let Some(rect) = image_resources.and_then(|resources| resources.image_rect(id)) {
-            self.patch_atlas_resource_pattern(base, rect);
+        if let Some(placement) = image_resources.and_then(|resources| resources.image_placement(id))
+        {
+            self.patch_resource_pattern(base, placement);
         } else {
             self.clear_missing_resource_pattern(base);
+        }
+    }
+
+    fn patch_resource_pattern(&mut self, base: usize, placement: ImageResourcePlacement) {
+        match placement {
+            ImageResourcePlacement::Atlas(rect) => self.patch_atlas_resource_pattern(base, rect),
+            ImageResourcePlacement::Texture(rect) => {
+                if rect.width > 0 && rect.height > 0 {
+                    self.blob[base + 2] = 0;
+                    self.blob[base + 3] = 0;
+                    // Word 4 stores either an atlas page or a tagged texture-table index.
+                    // The high bit selects texture placement; the remaining bits store the index.
+                    self.blob[base + 4] = GPU_RESOURCE_TEXTURE_PLACEMENT_BIT | rect.index;
+                    self.blob[base + 5] = rect.width;
+                    self.blob[base + 6] = rect.height;
+                } else {
+                    self.clear_missing_resource_pattern(base);
+                }
+            }
         }
     }
 
@@ -109,6 +130,7 @@ impl GpuBrushUpload {
         if rect.width > 0 && rect.height > 0 {
             self.blob[base + 2] = rect.x;
             self.blob[base + 3] = rect.y;
+            self.blob[base + 4] = rect.page;
             self.blob[base + 5] = rect.width;
             self.blob[base + 6] = rect.height;
         } else {
@@ -120,6 +142,7 @@ impl GpuBrushUpload {
         self.blob[base] = GPU_BRUSH_PATTERN;
         self.blob[base + 2] = ENCODED_BRUSH_HEADER_WORDS as u32;
         self.blob[base + 3] = 0;
+        self.blob[base + 4] = 0;
         self.blob[base + 5] = 0;
         self.blob[base + 6] = 0;
     }

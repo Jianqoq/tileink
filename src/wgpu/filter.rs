@@ -22,9 +22,13 @@ use crate::shared::{
 };
 
 use super::{
-    canvas::WgpuFilterBindings,
+    canvas::{WgpuFilterBindings, WgpuImageResourceBindings},
     commands::{
         WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
+    },
+    image_resources::{
+        create_image_resource_bind_group, create_image_resource_bind_group_layout,
+        large_texture_table_len, patch_image_resource_shader_source,
     },
     profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope},
 };
@@ -352,9 +356,13 @@ pub(crate) struct WgpuFilterPipeline {
     config_slots: u64,
     _dummy_texture: ::wgpu::Texture,
     dummy_texture_view: ::wgpu::TextureView,
+    _dummy_atlas_texture: ::wgpu::Texture,
+    dummy_atlas_view: ::wgpu::TextureView,
     dummy_sampler: ::wgpu::Sampler,
     dummy_read: ::wgpu::Buffer,
     dummy_read_write: ::wgpu::Buffer,
+    image_bind_group_layout: ::wgpu::BindGroupLayout,
+    large_texture_table_len: u32,
 }
 
 struct FilterKernel {
@@ -410,6 +418,8 @@ pub(crate) struct WgpuFilterBrushBindings<'a> {
     pub(crate) blob: &'a ::wgpu::Buffer,
     pub(crate) image_resource_atlas: &'a ::wgpu::TextureView,
     pub(crate) image_resource_sampler: &'a ::wgpu::Sampler,
+    pub(crate) image_resource_texture_views: &'a [::wgpu::TextureView],
+    pub(crate) image_resource_dummy_texture: &'a ::wgpu::TextureView,
 }
 
 pub(crate) struct WgpuFilterTurbulenceBindings<'a> {
@@ -475,6 +485,25 @@ impl WgpuFilterPipeline {
         });
         let dummy_texture_view =
             dummy_texture.create_view(&::wgpu::TextureViewDescriptor::default());
+        let dummy_atlas_texture = device.create_texture(&::wgpu::TextureDescriptor {
+            label: Some("tileink wgpu filter dummy image atlas texture"),
+            size: ::wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: ::wgpu::TextureDimension::D2,
+            format: ::wgpu::TextureFormat::Rgba8Unorm,
+            usage: ::wgpu::TextureUsages::TEXTURE_BINDING | ::wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let dummy_atlas_view = dummy_atlas_texture.create_view(&::wgpu::TextureViewDescriptor {
+            label: Some("tileink wgpu filter dummy image atlas view"),
+            dimension: Some(::wgpu::TextureViewDimension::D2Array),
+            ..Default::default()
+        });
         let dummy_sampler = device.create_sampler(&::wgpu::SamplerDescriptor {
             label: Some("tileink wgpu filter dummy sampler"),
             mag_filter: ::wgpu::FilterMode::Linear,
@@ -482,6 +511,28 @@ impl WgpuFilterPipeline {
             mipmap_filter: ::wgpu::MipmapFilterMode::Nearest,
             ..Default::default()
         });
+        let large_texture_table_len = large_texture_table_len(device);
+        let image_bind_group_layout =
+            create_image_resource_bind_group_layout(device, large_texture_table_len);
+        let create_kernel = |device,
+                             shader_source,
+                             portable_textures,
+                             entry_point,
+                             resources,
+                             profile,
+                             shared_workgroups| {
+            create_filter_kernel(
+                device,
+                shader_source,
+                portable_textures,
+                &image_bind_group_layout,
+                large_texture_table_len > 0,
+                entry_point,
+                resources,
+                profile,
+                shared_workgroups,
+            )
+        };
         Some(Self {
             clear_region: create_kernel(
                 device,
@@ -822,9 +873,13 @@ impl WgpuFilterPipeline {
             config_slots,
             _dummy_texture: dummy_texture,
             dummy_texture_view,
+            _dummy_atlas_texture: dummy_atlas_texture,
+            dummy_atlas_view,
             dummy_sampler,
             dummy_read,
             dummy_read_write,
+            image_bind_group_layout,
+            large_texture_table_len,
         })
     }
 
@@ -2000,6 +2055,7 @@ impl WgpuFilterPipeline {
             turbulence_tables,
             path_bindings,
         );
+        let image_bind_group = self.create_image_resource_bind_group(commands.device(), brushes);
 
         let gpu_scope = start_gpu_scope(commands.device(), profile_name);
         let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
@@ -2011,6 +2067,7 @@ impl WgpuFilterPipeline {
             });
             pass.set_pipeline(&pipeline.pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
+            pass.set_bind_group(1, &image_bind_group, &[]);
             let workgroups = self.dispatch_workgroups_for_pipeline(pipeline, config);
             pass.dispatch_workgroups(workgroups.0, workgroups.1, workgroups.2);
         }
@@ -2124,12 +2181,6 @@ impl WgpuFilterPipeline {
         };
         let bindings = bindings.unwrap_or(&fallback);
         let brush_blob = brushes.map_or(&self.dummy_read, |brushes| brushes.blob);
-        let image_resource_atlas = brushes.map_or(&self.dummy_texture_view, |brushes| {
-            brushes.image_resource_atlas
-        });
-        let image_resource_sampler = brushes.map_or(&self.dummy_sampler, |brushes| {
-            brushes.image_resource_sampler
-        });
         let convolve_kernels = convolve_kernels.unwrap_or(&self.dummy_read);
         let turbulence_selectors =
             turbulence_tables.map_or(&self.dummy_read, |tables| tables.selectors);
@@ -2312,29 +2363,39 @@ impl WgpuFilterPipeline {
                 target_read.unwrap_or(&self.dummy_texture_view),
             ));
         }
-        if kernel.resources & FILTER_RES_BRUSH != 0 {
-            entries.push(bind_texture(
-                filter_binding(
-                    kernel.portable_textures,
-                    kernel.resources,
-                    filter_layout::IMAGE_RESOURCE_ATLAS_BINDING,
-                ),
-                image_resource_atlas,
-            ));
-            entries.push(bind_sampler(
-                filter_binding(
-                    kernel.portable_textures,
-                    kernel.resources,
-                    filter_layout::IMAGE_RESOURCE_SAMPLER_BINDING,
-                ),
-                image_resource_sampler,
-            ));
-        }
         device.create_bind_group(&::wgpu::BindGroupDescriptor {
             label: Some("tileink wgpu filter bind group"),
             layout: &kernel.bind_group_layout,
             entries: &entries,
         })
+    }
+
+    fn create_image_resource_bind_group(
+        &self,
+        device: &::wgpu::Device,
+        brushes: Option<&WgpuFilterBrushBindings<'_>>,
+    ) -> ::wgpu::BindGroup {
+        let empty_textures: &[::wgpu::TextureView] = &[];
+        let bindings = brushes.map_or(
+            WgpuImageResourceBindings {
+                atlas: &self.dummy_atlas_view,
+                sampler: &self.dummy_sampler,
+                texture_views: empty_textures,
+                dummy_texture: &self.dummy_texture_view,
+            },
+            |brushes| WgpuImageResourceBindings {
+                atlas: brushes.image_resource_atlas,
+                sampler: brushes.image_resource_sampler,
+                texture_views: brushes.image_resource_texture_views,
+                dummy_texture: brushes.image_resource_dummy_texture,
+            },
+        );
+        create_image_resource_bind_group(
+            device,
+            &self.image_bind_group_layout,
+            &bindings,
+            self.large_texture_table_len,
+        )
     }
 }
 
@@ -2708,10 +2769,12 @@ fn rect_bounds(rect: Rect) -> Bounds {
     )
 }
 
-fn create_kernel(
+fn create_filter_kernel(
     device: &::wgpu::Device,
     shader_source: &'static str,
     portable_textures: bool,
+    image_bind_group_layout: &::wgpu::BindGroupLayout,
+    large_texture_table_enabled: bool,
     entry_point: &'static str,
     resources: u32,
     profile: FilterProfile,
@@ -2725,13 +2788,15 @@ fn create_kernel(
     });
     let pipeline_layout = device.create_pipeline_layout(&::wgpu::PipelineLayoutDescriptor {
         label: Some(entry_point),
-        bind_group_layouts: &[Some(&bind_group_layout)],
+        bind_group_layouts: &[Some(&bind_group_layout), Some(image_bind_group_layout)],
         immediate_size: 0,
     });
+    let shader_source =
+        patch_image_resource_shader_source(shader_source, large_texture_table_enabled);
     let shader = device.create_shader_module(::wgpu::ShaderModuleDescriptor {
         label: Some(entry_point),
         source: ::wgpu::ShaderSource::Wgsl(
-            remap_filter_shader_bindings(shader_source, portable_textures, resources).into(),
+            remap_filter_shader_bindings(&shader_source, portable_textures, resources).into(),
         ),
     });
     let pipeline = device.create_compute_pipeline(&::wgpu::ComputePipelineDescriptor {
@@ -2845,18 +2910,6 @@ fn filter_layout_entries(
             55,
         )));
     }
-    if resources & FILTER_RES_BRUSH != 0 {
-        entries.push(sampled_filterable_texture_entry(filter_binding(
-            portable_textures,
-            resources,
-            filter_layout::IMAGE_RESOURCE_ATLAS_BINDING,
-        )));
-        entries.push(filtering_sampler_entry(filter_binding(
-            portable_textures,
-            resources,
-            filter_layout::IMAGE_RESOURCE_SAMPLER_BINDING,
-        )));
-    }
     entries
 }
 
@@ -2882,12 +2935,10 @@ const FILTER_STORAGE_BINDINGS: [(u32, u32); 19] = [
     (FILTER_RES_PATH_P1Y, 48),
 ];
 
-const FILTER_TEXTURE_BINDINGS: [u32; 5] = [
+const FILTER_TEXTURE_BINDINGS: [u32; 3] = [
     filter_layout::SOURCE_SAMPLE_TEXTURE_BINDING,
     filter_layout::AUX_SAMPLE_TEXTURE_BINDING,
     filter_layout::LINEAR_SAMPLER_BINDING,
-    filter_layout::IMAGE_RESOURCE_ATLAS_BINDING,
-    filter_layout::IMAGE_RESOURCE_SAMPLER_BINDING,
 ];
 
 fn filter_binding(portable_textures: bool, resources: u32, old_binding: u32) -> u32 {
@@ -2910,11 +2961,6 @@ fn filter_binding_remaps(portable_textures: bool, resources: u32) -> Vec<(u32, u
     if portable_textures {
         ordered.push(55);
     }
-    if resources & FILTER_RES_BRUSH != 0 {
-        ordered.push(filter_layout::IMAGE_RESOURCE_ATLAS_BINDING);
-        ordered.push(filter_layout::IMAGE_RESOURCE_SAMPLER_BINDING);
-    }
-
     for (_, old_binding) in FILTER_STORAGE_BINDINGS {
         if !ordered.contains(&old_binding) {
             ordered.push(old_binding);
@@ -2936,11 +2982,7 @@ fn filter_binding_remaps(portable_textures: bool, resources: u32) -> Vec<(u32, u
         .collect()
 }
 
-fn remap_filter_shader_bindings(
-    source: &'static str,
-    portable_textures: bool,
-    resources: u32,
-) -> String {
+fn remap_filter_shader_bindings(source: &str, portable_textures: bool, resources: u32) -> String {
     let remaps = filter_binding_remaps(portable_textures, resources);
     let mut out = source.to_owned();
     for (old, _) in &remaps {

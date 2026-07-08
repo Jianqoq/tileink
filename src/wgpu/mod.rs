@@ -6,6 +6,7 @@ mod cumsum;
 mod filter;
 mod filter_resources;
 mod fine;
+mod image_resources;
 mod profile;
 mod renderer;
 mod scan;

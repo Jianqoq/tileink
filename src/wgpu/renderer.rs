@@ -47,6 +47,7 @@ use super::filter_resources::{
     WgpuFilterTransferBuffers, WgpuFilterTurbulenceBuffers,
 };
 use super::fine::{WgpuFinePipeline, premul_clear_color};
+use super::image_resources::large_texture_table_len;
 use super::profile::{WgpuRenderProfile, WgpuRenderProfiler, profile_cpu, start_cpu_scope};
 use super::scan::WgpuScanPipeline;
 use super::target::WgpuTarget;
@@ -136,6 +137,7 @@ pub struct Renderer {
     image_resources: ImageResourceStore,
     image_resource_upload: GpuImageResourceUpload,
     image_resource_upload_signature: ImageResourceUploadSignature,
+    image_resource_texture_table_len: u32,
     image_resources_dirty: bool,
     filter_convolves: WgpuFilterConvolveBuffers,
     filter_turbulence: WgpuFilterTurbulenceBuffers,
@@ -227,6 +229,7 @@ impl Renderer {
             image_resources: ImageResourceStore::default(),
             image_resource_upload: GpuImageResourceUpload::default(),
             image_resource_upload_signature: ImageResourceUploadSignature::default(),
+            image_resource_texture_table_len: large_texture_table_len(device),
             image_resources_dirty: true,
             filter_convolves: WgpuFilterConvolveBuffers::new(device),
             filter_turbulence: WgpuFilterTurbulenceBuffers::new(device),
@@ -260,7 +263,9 @@ impl Renderer {
             .expect("request default wgpu adapter");
         let required_features = adapter.features()
             & (::wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
-                | ::wgpu::Features::TIMESTAMP_QUERY);
+                | ::wgpu::Features::TIMESTAMP_QUERY
+                | ::wgpu::Features::TEXTURE_BINDING_ARRAY
+                | ::wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING);
         let (device, queue) =
             pollster::block_on(adapter.request_device(&::wgpu::DeviceDescriptor {
                 label: Some("tileink default wgpu device"),
@@ -510,26 +515,36 @@ impl Renderer {
         scene_resources: &ImageResourceStore,
         force_upload: bool,
     ) {
-        let max_atlas_dimension = self.device.limits().max_texture_dimension_2d;
-        let signature = self
-            .image_resources
-            .upload_signature(scene_resources, max_atlas_dimension);
+        let limits = self.device.limits();
+        let max_atlas_dimension = limits.max_texture_dimension_2d;
+        let max_atlas_pages = limits.max_texture_array_layers;
+        let signature = self.image_resources.upload_signature(
+            scene_resources,
+            max_atlas_dimension,
+            max_atlas_pages,
+            self.image_resource_texture_table_len,
+        );
         let rebuild_upload =
             self.image_resources_dirty || self.image_resource_upload_signature != signature;
 
         if rebuild_upload {
-            self.image_resource_upload = self
-                .image_resources
-                .upload_merged(scene_resources, max_atlas_dimension);
+            self.image_resource_upload = self.image_resources.upload_merged(
+                scene_resources,
+                max_atlas_dimension,
+                max_atlas_pages,
+                self.image_resource_texture_table_len,
+                Some(&self.image_resource_upload),
+            );
             self.image_resource_upload_signature = signature;
             self.image_resources_dirty = false;
         }
 
-        if (force_upload || rebuild_upload) && !self.image_resource_upload.atlas_pixels.is_empty() {
+        if force_upload || rebuild_upload {
             self.scene_buffers.upload_image_resources(
                 &self.device,
                 &self.queue,
                 &self.image_resource_upload,
+                force_upload,
             );
         }
     }
@@ -1797,6 +1812,8 @@ impl Renderer {
             blob: self.filter_brushes.blob.buffer(),
             image_resource_atlas: image_resources.atlas,
             image_resource_sampler: image_resources.sampler,
+            image_resource_texture_views: image_resources.texture_views,
+            image_resource_dummy_texture: image_resources.dummy_texture,
         }
     }
 

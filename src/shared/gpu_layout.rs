@@ -8,6 +8,8 @@ pub(crate) mod brush {
     pub(crate) const GPU_BRUSH_FOUR_CORNER: u32 = 5;
     pub(crate) const GPU_BRUSH_PATTERN: u32 = 6;
     pub(crate) const GPU_BRUSH_PATTERN_RESOURCE: u32 = 7;
+    pub(crate) const GPU_RESOURCE_TEXTURE_PLACEMENT_BIT: u32 = 0x8000_0000;
+    pub(crate) const GPU_RESOURCE_TEXTURE_INDEX_MASK: u32 = 0x7fff_ffff;
 
     pub(crate) const GPU_PATTERN_NEAREST: u32 = 0;
     pub(crate) const GPU_PATTERN_BILINEAR: u32 = 1;
@@ -19,8 +21,9 @@ pub(crate) mod brush {
 
 pub(crate) mod fine {
     pub(crate) const STORAGE_BUFFER_COUNT: u32 = 6;
-    pub(crate) const IMAGE_RESOURCE_ATLAS_BINDING: u32 = 8;
-    pub(crate) const IMAGE_RESOURCE_SAMPLER_BINDING: u32 = 9;
+    pub(crate) const IMAGE_RESOURCE_ATLAS_BINDING: u32 = 0;
+    pub(crate) const IMAGE_RESOURCE_SAMPLER_BINDING: u32 = 1;
+    pub(crate) const IMAGE_RESOURCE_TEXTURES_BINDING: u32 = 2;
 }
 
 pub(crate) mod filter {
@@ -28,8 +31,9 @@ pub(crate) mod filter {
     pub(crate) const SOURCE_SAMPLE_TEXTURE_BINDING: u32 = 49;
     pub(crate) const AUX_SAMPLE_TEXTURE_BINDING: u32 = 50;
     pub(crate) const LINEAR_SAMPLER_BINDING: u32 = 51;
-    pub(crate) const IMAGE_RESOURCE_ATLAS_BINDING: u32 = 56;
-    pub(crate) const IMAGE_RESOURCE_SAMPLER_BINDING: u32 = 57;
+    pub(crate) const IMAGE_RESOURCE_ATLAS_BINDING: u32 = 0;
+    pub(crate) const IMAGE_RESOURCE_SAMPLER_BINDING: u32 = 1;
+    pub(crate) const IMAGE_RESOURCE_TEXTURES_BINDING: u32 = 2;
 }
 
 #[cfg(test)]
@@ -66,6 +70,16 @@ mod tests {
                 "GPU_BRUSH_PATTERN_RESOURCE",
                 brush::GPU_BRUSH_PATTERN_RESOURCE,
             );
+            assert_wgsl_const(
+                source,
+                "GPU_RESOURCE_TEXTURE_PLACEMENT_BIT",
+                brush::GPU_RESOURCE_TEXTURE_PLACEMENT_BIT,
+            );
+            assert_wgsl_const(
+                source,
+                "GPU_RESOURCE_TEXTURE_INDEX_MASK",
+                brush::GPU_RESOURCE_TEXTURE_INDEX_MASK,
+            );
             assert_wgsl_const(source, "GPU_PATTERN_BILINEAR", brush::GPU_PATTERN_BILINEAR);
             assert_wgsl_const(source, "GPU_EXTEND_REPEAT", brush::GPU_EXTEND_REPEAT);
             assert_wgsl_const(source, "GPU_EXTEND_REFLECT", brush::GPU_EXTEND_REFLECT);
@@ -78,36 +92,47 @@ mod tests {
             FILTER_HEADER,
             filter::SOURCE_SAMPLE_TEXTURE_BINDING,
             "filter_source_sample_texture",
+            0,
+            "texture_2d<f32>",
         );
         assert_wgsl_texture_binding(
             FILTER_HEADER,
             filter::AUX_SAMPLE_TEXTURE_BINDING,
             "filter_aux_sample_texture",
+            0,
+            "texture_2d<f32>",
         );
         assert_wgsl_sampler_binding(
             FILTER_HEADER,
             filter::LINEAR_SAMPLER_BINDING,
             "filter_linear_sampler",
+            0,
         );
         assert_wgsl_texture_binding(
             FINE_HEADER,
             fine::IMAGE_RESOURCE_ATLAS_BINDING,
             "image_resource_atlas",
+            1,
+            "texture_2d_array<f32>",
         );
         assert_wgsl_sampler_binding(
             FINE_HEADER,
             fine::IMAGE_RESOURCE_SAMPLER_BINDING,
             "image_resource_sampler",
+            1,
         );
         assert_wgsl_texture_binding(
             FILTER_HEADER,
             filter::IMAGE_RESOURCE_ATLAS_BINDING,
             "image_resource_atlas",
+            1,
+            "texture_2d_array<f32>",
         );
         assert_wgsl_sampler_binding(
             FILTER_HEADER,
             filter::IMAGE_RESOURCE_SAMPLER_BINDING,
             "image_resource_sampler",
+            1,
         );
     }
 
@@ -116,13 +141,13 @@ mod tests {
         assert!(source.contains(&needle), "missing WGSL constant `{needle}`");
     }
 
-    fn assert_wgsl_texture_binding(source: &str, binding: u32, name: &str) {
-        let needle = format!("@group(0) @binding({binding}) var {name}: texture_2d<f32>;");
+    fn assert_wgsl_texture_binding(source: &str, binding: u32, name: &str, group: u32, ty: &str) {
+        let needle = format!("@group({group}) @binding({binding}) var {name}: {ty};");
         assert!(source.contains(&needle), "missing WGSL binding `{needle}`");
     }
 
-    fn assert_wgsl_sampler_binding(source: &str, binding: u32, name: &str) {
-        let needle = format!("@group(0) @binding({binding}) var {name}: sampler;");
+    fn assert_wgsl_sampler_binding(source: &str, binding: u32, name: &str, group: u32) {
+        let needle = format!("@group({group}) @binding({binding}) var {name}: sampler;");
         assert!(source.contains(&needle), "missing WGSL binding `{needle}`");
     }
 }

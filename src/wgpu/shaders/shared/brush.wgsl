@@ -59,6 +59,7 @@ fn sample_brush(brush_offset: u32, x: f32, y: f32) -> u32 {
             x,
             y,
             base,
+            brush_word(data_base + 4u),
             brush_word(data_base + 2u),
             brush_word(data_base + 3u),
             brush_word(data_base + 5u),
@@ -157,6 +158,7 @@ fn sample_resource_pattern(
     x: f32,
     y: f32,
     base: u32,
+    placement: u32,
     atlas_x: u32,
     atlas_y: u32,
     width: u32,
@@ -169,7 +171,20 @@ fn sample_resource_pattern(
     if (width > 0u && height > 0u) {
         let tx = (brush_param(base, 0u) * x + brush_param(base, 2u) * y + brush_param(base, 4u)) * f32(width);
         let ty = (brush_param(base, 1u) * x + brush_param(base, 3u) * y + brush_param(base, 5u)) * f32(height);
-        color = sample_resource_pattern_atlas(tx, ty, atlas_x, atlas_y, width, height, opacity, extend, sampling);
+        if ((placement & GPU_RESOURCE_TEXTURE_PLACEMENT_BIT) != 0u) {
+            color = sample_resource_pattern_texture(
+                tx,
+                ty,
+                placement & GPU_RESOURCE_TEXTURE_INDEX_MASK,
+                width,
+                height,
+                opacity,
+                extend,
+                sampling,
+            );
+        } else {
+            color = sample_resource_pattern_atlas(tx, ty, placement, atlas_x, atlas_y, width, height, opacity, extend, sampling);
+        }
     }
     return color;
 }
@@ -177,6 +192,7 @@ fn sample_resource_pattern(
 fn sample_resource_pattern_atlas(
     tx: f32,
     ty: f32,
+    page: u32,
     atlas_x: u32,
     atlas_y: u32,
     width: u32,
@@ -193,7 +209,7 @@ fn sample_resource_pattern_atlas(
             clamp(ty, 0.0, f32(height)),
         );
         let uv = (vec2<f32>(f32(atlas_x), f32(atlas_y)) + local) / dims;
-        color = unorm_to_rgba8(textureSampleLevel(image_resource_atlas, image_resource_sampler, uv, 0.0));
+        color = unorm_to_rgba8(textureSampleLevel(image_resource_atlas, image_resource_sampler, uv, i32(page), 0.0));
     } else if (sampling == GPU_PATTERN_BILINEAR) {
         let sx = tx - 0.5;
         let sy = ty - 0.5;
@@ -203,22 +219,24 @@ fn sample_resource_pattern_atlas(
         let fy = sy - y0f;
         let x0 = i32(x0f);
         let y0 = i32(y0f);
-        let tl = atlas_pattern_pixel(atlas_x, atlas_y, width, height, extend, x0, y0);
-        let tr = atlas_pattern_pixel(atlas_x, atlas_y, width, height, extend, x0 + 1, y0);
-        let bl = atlas_pattern_pixel(atlas_x, atlas_y, width, height, extend, x0, y0 + 1);
-        let br = atlas_pattern_pixel(atlas_x, atlas_y, width, height, extend, x0 + 1, y0 + 1);
+        let tl = atlas_pattern_pixel(page, atlas_x, atlas_y, width, height, extend, x0, y0);
+        let tr = atlas_pattern_pixel(page, atlas_x, atlas_y, width, height, extend, x0 + 1, y0);
+        let bl = atlas_pattern_pixel(page, atlas_x, atlas_y, width, height, extend, x0, y0 + 1);
+        let br = atlas_pattern_pixel(page, atlas_x, atlas_y, width, height, extend, x0 + 1, y0 + 1);
         color = lerp_premul_u8(lerp_premul_u8(tl, tr, fx), lerp_premul_u8(bl, br, fx), fy);
     } else {
-        color = atlas_pattern_pixel(atlas_x, atlas_y, width, height, extend, i32(floor(tx)), i32(floor(ty)));
+        color = atlas_pattern_pixel(page, atlas_x, atlas_y, width, height, extend, i32(floor(tx)), i32(floor(ty)));
     }
     return scale_premul_u8(color, opacity);
 }
 
-fn atlas_pattern_pixel(atlas_x: u32, atlas_y: u32, width: u32, height: u32, extend: u32, x: i32, y: i32) -> u32 {
+fn atlas_pattern_pixel(page: u32, atlas_x: u32, atlas_y: u32, width: u32, height: u32, extend: u32, x: i32, y: i32) -> u32 {
     let local_x = extend_coord_i32(x, width, extend);
     let local_y = extend_coord_i32(y, height, extend);
-    return unorm_to_rgba8(textureLoad(image_resource_atlas, vec2<i32>(i32(atlas_x + local_x), i32(atlas_y + local_y)), 0));
+    return unorm_to_rgba8(textureLoad(image_resource_atlas, vec2<i32>(i32(atlas_x + local_x), i32(atlas_y + local_y)), i32(page), 0));
 }
+
+// TILEINK_IMAGE_RESOURCE_TEXTURE_TABLE_FUNCTIONS
 
 fn sample_ramp(payload_offset: u32, payload_len: u32, t: f32, extend: u32) -> u32 {
     var color = 0u;

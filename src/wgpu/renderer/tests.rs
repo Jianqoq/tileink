@@ -173,6 +173,45 @@ fn wgpu_renderer_push_image_key_bilinear_uses_resource_atlas() {
 }
 
 #[test]
+fn wgpu_renderer_push_image_key_large_image_uses_texture_table() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let key = ImageKey::new(17);
+    let mut canvas = Canvas::new(2, 1, 1.0);
+    canvas
+        .push_image_key(
+            Rect::new(0.0, 0.0, 2.0, 1.0),
+            key,
+            Extend::Pad,
+            PatternSampling::Nearest,
+        )
+        .expect("push image resource");
+
+    let mut renderer = new_test_renderer(2, 1, Color::TRANSPARENT);
+    if renderer.image_resource_texture_table_len == 0 {
+        return;
+    }
+    assert!(renderer.insert_image(key, red_blue_strip_image(2050, 1)));
+    renderer.prepare_scene(&canvas);
+    assert!(matches!(
+        renderer.image_resource_upload.image_placement(
+            crate::shared::image_resource::ImageResourceId::renderer(key)
+        ),
+        Some(crate::shared::image_resource::ImageResourcePlacement::Texture(_))
+    ));
+    assert!(
+        renderer.render_prepared_tile_plan(&canvas),
+        "expected canvas to render through native wgpu path"
+    );
+    let image = renderer.image();
+
+    assert_eq!(image.rgba8_at(0, 0), [255, 0, 0, 255]);
+    assert_eq!(image.rgba8_at(1, 0), [0, 0, 255, 255]);
+}
+
+#[test]
 fn wgpu_renderer_resource_atlas_nearest_repeat_samples_wrapped_pixels() {
     if !run_wgpu_tests() {
         return;
@@ -275,6 +314,20 @@ fn render_resource_atlas_test(canvas: Canvas, key: ImageKey) -> Image {
     renderer.image().clone()
 }
 
+fn red_blue_strip_image(width: u32, height: u32) -> Image {
+    let mut rgba = Vec::with_capacity((width * height * 4) as usize);
+    for _y in 0..height {
+        for x in 0..width {
+            if x < width / 2 {
+                rgba.extend_from_slice(&[255, 0, 0, 255]);
+            } else {
+                rgba.extend_from_slice(&[0, 0, 255, 255]);
+            }
+        }
+    }
+    Image::from_rgba8(width, height, rgba)
+}
+
 #[test]
 fn wgpu_renderer_push_image_key_stops_sampling_after_resource_remove_when_enabled() {
     if !run_wgpu_tests() {
@@ -317,12 +370,19 @@ fn wgpu_renderer_reuses_image_resource_upload_when_resources_are_unchanged() {
     assert!(renderer.insert_image(key, Image::from_rgba8(1, 1, [255, 0, 0, 255])));
 
     renderer.prepare_image_resource_buffers(canvas.scene_image_resources(), false);
-    assert!(!renderer.image_resource_upload.atlas_pixels.is_empty());
-    renderer.image_resource_upload.atlas_pixels[0] = 0xdead_beef;
+    assert!(
+        !renderer.image_resource_upload.atlas_pages()[0]
+            .pixels
+            .is_empty()
+    );
+    renderer.image_resource_upload.atlas_pages_mut()[0].pixels[0] = 0xdead_beef;
 
     renderer.prepare_image_resource_buffers(canvas.scene_image_resources(), false);
 
-    assert_eq!(renderer.image_resource_upload.atlas_pixels[0], 0xdead_beef);
+    assert_eq!(
+        renderer.image_resource_upload.atlas_pages()[0].pixels[0],
+        0xdead_beef
+    );
 }
 
 #[test]
@@ -336,12 +396,15 @@ fn wgpu_renderer_rebuilds_image_resource_upload_after_renderer_image_change() {
     let mut renderer = new_test_renderer(1, 1, Color::TRANSPARENT);
     assert!(renderer.insert_image(key, Image::from_rgba8(1, 1, [255, 0, 0, 255])));
     renderer.prepare_image_resource_buffers(canvas.scene_image_resources(), false);
-    renderer.image_resource_upload.atlas_pixels[0] = 0xdead_beef;
+    renderer.image_resource_upload.atlas_pages_mut()[0].pixels[0] = 0xdead_beef;
 
     assert!(renderer.insert_image(key, Image::from_rgba8(1, 1, [0, 255, 0, 255])));
     renderer.prepare_image_resource_buffers(canvas.scene_image_resources(), false);
 
-    assert_ne!(renderer.image_resource_upload.atlas_pixels[0], 0xdead_beef);
+    assert_ne!(
+        renderer.image_resource_upload.atlas_pages()[0].pixels[0],
+        0xdead_beef
+    );
 }
 
 #[test]

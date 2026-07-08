@@ -46,6 +46,8 @@ const GPU_BRUSH_SWEEP: u32 = 4u;
 const GPU_BRUSH_FOUR_CORNER: u32 = 5u;
 const GPU_BRUSH_PATTERN: u32 = 6u;
 const GPU_BRUSH_PATTERN_RESOURCE: u32 = 7u;
+const GPU_RESOURCE_TEXTURE_PLACEMENT_BIT: u32 = 2147483648u;
+const GPU_RESOURCE_TEXTURE_INDEX_MASK: u32 = 2147483647u;
 const GPU_PATTERN_BILINEAR: u32 = 1u;
 const GPU_EXTEND_REPEAT: u32 = 1u;
 const GPU_EXTEND_REFLECT: u32 = 2u;
@@ -153,8 +155,9 @@ struct PtclRecord {
 @group(0) @binding(5) var<storage, read> segments: array<LineSegment>;
 @group(0) @binding(6) var<storage, read> text_blob: array<u32>;
 @group(0) @binding(7) var<storage, read_write> spills: array<u32>;
-@group(0) @binding(8) var image_resource_atlas: texture_2d<f32>;
-@group(0) @binding(9) var image_resource_sampler: sampler;
+@group(1) @binding(0) var image_resource_atlas: texture_2d_array<f32>;
+@group(1) @binding(1) var image_resource_sampler: sampler;
+// TILEINK_IMAGE_RESOURCE_TEXTURE_TABLE_BINDING
 
 const TILE_COARSE_RECORD_WORDS: u32 = 6u;
 const PTCL_RECORD_WORDS: u32 = 6u;

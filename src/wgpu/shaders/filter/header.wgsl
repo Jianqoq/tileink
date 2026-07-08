@@ -44,6 +44,8 @@ const GPU_BRUSH_SWEEP: u32 = 4u;
 const GPU_BRUSH_FOUR_CORNER: u32 = 5u;
 const GPU_BRUSH_PATTERN: u32 = 6u;
 const GPU_BRUSH_PATTERN_RESOURCE: u32 = 7u;
+const GPU_RESOURCE_TEXTURE_PLACEMENT_BIT: u32 = 2147483648u;
+const GPU_RESOURCE_TEXTURE_INDEX_MASK: u32 = 2147483647u;
 const GPU_PATTERN_BILINEAR: u32 = 1u;
 const GPU_EXTEND_REPEAT: u32 = 1u;
 const GPU_EXTEND_REFLECT: u32 = 2u;
@@ -253,8 +255,9 @@ struct LayerStackRecord {
 @group(0) @binding(49) var filter_source_sample_texture: texture_2d<f32>;
 @group(0) @binding(50) var filter_aux_sample_texture: texture_2d<f32>;
 @group(0) @binding(51) var filter_linear_sampler: sampler;
-@group(0) @binding(56) var image_resource_atlas: texture_2d<f32>;
-@group(0) @binding(57) var image_resource_sampler: sampler;
+@group(1) @binding(0) var image_resource_atlas: texture_2d_array<f32>;
+@group(1) @binding(1) var image_resource_sampler: sampler;
+// TILEINK_IMAGE_RESOURCE_TEXTURE_TABLE_BINDING
 
 fn brush_word(index: u32) -> u32 {
     return brush_blob[index];
