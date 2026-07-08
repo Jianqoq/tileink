@@ -2,7 +2,7 @@
 set -euo pipefail
 
 type="all"
-backend="both"
+backend="wgpu"
 wgpu_mode="both"
 continue_on_error=0
 
@@ -29,14 +29,14 @@ while (($#)); do
         all|filters|masking|paint-servers|painting|shapes|structure|text)
             type="$1"
             ;;
-        both|cpu|wgpu)
+        wgpu)
             backend="$1"
             ;;
         native|portable)
             wgpu_mode="$1"
             ;;
         *)
-            echo "usage: run_svg_tests.sh [--type all|filters|masking|paint-servers|painting|shapes|structure|text] [--backend both|cpu|wgpu] [--wgpu-mode native|portable|both] [--continue-on-error]" >&2
+            echo "usage: run_svg_tests.sh [--type all|filters|masking|paint-servers|painting|shapes|structure|text] [--backend wgpu] [--wgpu-mode native|portable|both] [--continue-on-error]" >&2
             exit 2
             ;;
     esac
@@ -44,7 +44,7 @@ while (($#)); do
 done
 
 case "$type" in all|filters|masking|paint-servers|painting|shapes|structure|text) ;; *) echo "unknown type: $type" >&2; exit 2 ;; esac
-case "$backend" in both|cpu|wgpu) ;; *) echo "unknown backend: $backend" >&2; exit 2 ;; esac
+case "$backend" in wgpu) ;; *) echo "unknown backend: $backend" >&2; exit 2 ;; esac
 case "$wgpu_mode" in native|portable|both) ;; *) echo "unknown wgpu mode: $wgpu_mode" >&2; exit 2 ;; esac
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -82,28 +82,18 @@ failures=()
 for dir in "${type_dirs[@]}"; do
     [[ -d "$dir" ]] || { echo "SVG test folder does not exist: $dir" >&2; exit 1; }
 
-    if [[ "$backend" == "both" || "$backend" == "cpu" ]]; then
-        echo "[cpu] $dir"
-        if ! "$example" "$dir" cpu --wgpu-mode native; then
-            failures+=("[cpu] $dir")
-            [[ "$continue_on_error" == "1" ]] || break
-        fi
+    if [[ "$wgpu_mode" == "native" ]]; then
+        label="wgpu"
+        args=("$dir" wgpu --wgpu-mode native)
+    else
+        label="wgpu-portable-compare"
+        args=("$dir" wgpu --compare-wgpu-portable)
     fi
 
-    if [[ "$backend" == "both" || "$backend" == "wgpu" ]]; then
-        if [[ "$wgpu_mode" == "native" ]]; then
-            label="wgpu"
-            args=("$dir" wgpu --wgpu-mode native)
-        else
-            label="wgpu-portable-compare"
-            args=("$dir" wgpu --compare-wgpu-portable)
-        fi
-
-        echo "[$label] $dir"
-        if ! "$example" "${args[@]}"; then
-            failures+=("[$label] $dir")
-            [[ "$continue_on_error" == "1" ]] || break
-        fi
+    echo "[$label] $dir"
+    if ! "$example" "${args[@]}"; then
+        failures+=("[$label] $dir")
+        [[ "$continue_on_error" == "1" ]] || break
     fi
 done
 

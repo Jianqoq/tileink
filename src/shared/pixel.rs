@@ -6,9 +6,9 @@ pub(crate) const MASK_OPAQUE: u8 = 255;
 
 /// Parameters for contrast-dependent text coverage compensation.
 ///
-/// The default values mirror the GPU constants. The CPU renderer accepts this
-/// as runtime data so the DirectWrite quality harness can search parameter
-/// candidates without rebuilding the renderer for every trial.
+/// The default values mirror the GPU constants. WGPU text rendering accepts this
+/// as runtime data so the quality harness can search parameter candidates
+/// without rebuilding shaders for every trial.
 #[derive(Clone, Copy, Debug)]
 pub struct TextCoverageParams {
     pub dark_on_light_coverage_strength: f32,

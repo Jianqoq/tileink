@@ -15,7 +15,6 @@ use peniko::Color;
 use crate::{
     TILE_SIZE,
     canvas::Canvas,
-    cpu::computes::fine::build_tile_alpha,
     shared::{
         fill::FillRule,
         image::{Image, premul_color_to_rgba8_pack, rgba8_pack},
@@ -24,6 +23,111 @@ use crate::{
         tile_seg_range::TileSegmentRange,
     },
 };
+
+const DEBUG_AREA_EPSILON: f32 = 1.0e-6;
+
+#[inline]
+fn debug_apply_fill_rule(value: f32, fill_rule: FillRule) -> f32 {
+    match fill_rule {
+        FillRule::EvenOdd => (value - 2.0 * (0.5 * value).round()).abs(),
+        FillRule::NonZero => value.abs().min(1.0),
+    }
+}
+
+#[inline]
+fn debug_coverage_to_alpha(value: f32, fill_rule: FillRule) -> u8 {
+    (debug_apply_fill_rule(value, fill_rule).clamp(0.0, 1.0) * 255.0 + 0.5) as u8
+}
+
+#[inline]
+fn debug_segment_row_parts(segment: &LineSegment, y: u32) -> (f32, f32, f32, f32) {
+    let delta_x = segment.p1x - segment.p0x;
+    let delta_y = segment.p1y - segment.p0y;
+    let row_y = y as f32;
+    let local_y = segment.p0y - row_y;
+    let y0 = local_y.clamp(0.0, 1.0);
+    let y1 = (local_y + delta_y).clamp(0.0, 1.0);
+    let dy = y0 - y1;
+    let y_edge = delta_x.signum() * (row_y - segment.y_edge + 1.0).clamp(0.0, 1.0);
+
+    if dy == 0.0 {
+        return (y_edge, dy, 0.0, 0.0);
+    }
+
+    let recip = 1.0 / delta_y;
+    let t0 = (y0 - local_y) * recip;
+    let t1 = (y1 - local_y) * recip;
+    let sx0 = segment.p0x + t0 * delta_x;
+    let sx1 = segment.p0x + t1 * delta_x;
+
+    (y_edge, dy, sx0.min(sx1), sx0.max(sx1))
+}
+
+#[inline]
+fn debug_segment_area_at(xmin: f32, xmax: f32, x: u32) -> f32 {
+    let pixel_x = x as f32;
+    let xmin = xmin - pixel_x;
+    let xmax = xmax - pixel_x;
+    if xmax - xmin <= DEBUG_AREA_EPSILON {
+        return (1.0 - xmin).clamp(0.0, 1.0);
+    }
+    let a_min = xmin.min(1.0) - DEBUG_AREA_EPSILON;
+    let b = xmax.min(1.0);
+    let c = b.max(0.0);
+    let d = a_min.max(0.0);
+    (b + 0.5 * (d * d - c * c) - a_min) / (xmax - a_min)
+}
+
+fn debug_row_coverages(segments: &[LineSegment], backdrop: i32, y: u32) -> [f32; 16] {
+    let mut base = backdrop as f32;
+    let mut diff = [0.0f32; 17];
+    let mut partial = [0.0f32; 16];
+
+    for segment in segments {
+        let (y_edge, dy, xmin, xmax) = debug_segment_row_parts(segment, y);
+        base += y_edge;
+
+        if dy == 0.0 {
+            continue;
+        }
+
+        let full_start = (xmax.ceil() as i32).clamp(0, TILE_SIZE as i32) as usize;
+        if full_start < TILE_SIZE as usize {
+            diff[full_start] += dy;
+        }
+
+        let partial_start = (xmin.floor() as i32).clamp(0, TILE_SIZE as i32) as u32;
+        let partial_end = (xmax.ceil() as i32).clamp(0, TILE_SIZE as i32) as u32;
+        for x in partial_start..partial_end {
+            partial[x as usize] += debug_segment_area_at(xmin, xmax, x) * dy;
+        }
+    }
+
+    let mut out = [0.0f32; 16];
+    let mut running = 0.0;
+    for x in 0..TILE_SIZE as usize {
+        running += diff[x];
+        out[x] = base + running + partial[x];
+    }
+    out
+}
+
+fn build_tile_alpha(segments: &[LineSegment], backdrop: i32, fill_rule: FillRule) -> [u8; 256] {
+    let fill_alpha = debug_coverage_to_alpha(backdrop as f32, fill_rule);
+    let mut tile_alpha = [fill_alpha; 256];
+    if segments.is_empty() {
+        return tile_alpha;
+    }
+
+    for y in 0..TILE_SIZE {
+        let row = debug_row_coverages(segments, backdrop, y);
+        let row_start = (y * TILE_SIZE) as usize;
+        for x in 0..TILE_SIZE as usize {
+            tile_alpha[row_start + x] = debug_coverage_to_alpha(row[x], fill_rule);
+        }
+    }
+    tile_alpha
+}
 
 /// Optional render-time controls that keep normal rendering free of debug work.
 #[derive(Clone, Debug, Default)]
@@ -961,10 +1065,14 @@ mod tests {
     };
 
     use super::{RenderDebugOptions, RenderOptions};
-    use crate::{Canvas, FillRule, cpu::Renderer};
+    use crate::{Canvas, FillRule, WgpuRenderer};
 
     #[test]
-    fn cpu_render_with_options_captures_tile_debug_outputs() {
+    fn wgpu_render_with_options_captures_tile_debug_outputs_when_enabled() {
+        if std::env::var("TILEINK_RUN_WGPU_TESTS").as_deref() != Ok("1") {
+            return;
+        }
+
         let mut canvas = Canvas::new(32, 32, 1.0);
         canvas.push_path(
             Rect::new(4.0, 4.0, 20.0, 20.0).to_path(0.1),
@@ -985,11 +1093,11 @@ mod tests {
                     ),
             ),
         };
-        let mut renderer = Renderer::new(32, 32, Color::TRANSPARENT);
+        let mut renderer = WgpuRenderer::new_default_device(32, 32, Color::TRANSPARENT);
 
         let capture = renderer.render_with_options(&canvas, &options);
 
-        assert_eq!(capture.backend, "cpu");
+        assert_eq!(capture.backend, "wgpu");
         assert_eq!(capture.output_dir, output_dir);
         assert_eq!(capture.tiles.len(), 4);
         assert!(capture.texts.iter().any(|text| text.name == "capture.json"));

@@ -7,7 +7,7 @@ use peniko::{
 use usvg::{Node, Paint, PaintOrder, SpreadMethod, tiny_skia_path::PathSegment};
 
 use crate::{
-    Brush, Canvas, CpuRenderer, FillRule, Filter, Radius, Region,
+    Brush, Canvas, FillRule, Filter, Radius, Region, WgpuRenderer,
     shared::{
         bounds::Bounds,
         brush::{PatternBrush, PatternSampling},
@@ -330,7 +330,7 @@ impl SvgBuilder {
         }
         .push_tree(&mut canvas, tree)?;
 
-        let mut renderer = CpuRenderer::new(width, height, Color::TRANSPARENT);
+        let mut renderer = WgpuRenderer::new_default_device(width, height, Color::TRANSPARENT);
         renderer.render(&canvas);
         Ok(renderer.image().clone())
     }
@@ -700,7 +700,8 @@ impl SvgBuilder {
         }
         .push_group(&mut tile_scene, pattern.root())?;
 
-        let mut renderer = CpuRenderer::new(tile_width, tile_height, Color::TRANSPARENT);
+        let mut renderer =
+            WgpuRenderer::new_default_device(tile_width, tile_height, Color::TRANSPARENT);
         renderer.render(&tile_scene);
 
         let Some(pattern_inverse) = pattern.transform().invert() else {
@@ -779,7 +780,7 @@ impl SvgBuilder {
             .push_group(&mut filter_canvas, image.root())?;
         }
 
-        let mut renderer = CpuRenderer::new(width, height, Color::TRANSPARENT);
+        let mut renderer = WgpuRenderer::new_default_device(width, height, Color::TRANSPARENT);
         renderer.render(&filter_canvas);
         let Some(image_key) = canvas.register_scene_image(renderer.image().clone()) else {
             return Err(SvgError::unsupported("empty feImage"));

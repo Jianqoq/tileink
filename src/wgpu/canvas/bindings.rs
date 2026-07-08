@@ -11,8 +11,6 @@ impl WgpuSceneBuffers {
         WgpuFineSceneBindings {
             draw_records: self.draw_records.buffer(),
             paint_blob: self.fine_paint_blob.buffer(),
-            image_resource_atlas: &self.image_resource_atlas_view,
-            image_resource_sampler: &self.image_resource_sampler,
         }
     }
 
@@ -20,6 +18,8 @@ impl WgpuSceneBuffers {
         WgpuImageResourceBindings {
             atlas: &self.image_resource_atlas_view,
             sampler: &self.image_resource_sampler,
+            texture_views: &self.image_resource_texture_views,
+            dummy_texture: &self.image_resource_dummy_texture_view,
         }
     }
 
@@ -127,13 +127,13 @@ impl WgpuSceneBuffers {
 pub(crate) struct WgpuFineSceneBindings<'a> {
     pub(crate) draw_records: &'a ::wgpu::Buffer,
     pub(crate) paint_blob: &'a ::wgpu::Buffer,
-    pub(crate) image_resource_atlas: &'a ::wgpu::TextureView,
-    pub(crate) image_resource_sampler: &'a ::wgpu::Sampler,
 }
 
 pub(crate) struct WgpuImageResourceBindings<'a> {
     pub(crate) atlas: &'a ::wgpu::TextureView,
     pub(crate) sampler: &'a ::wgpu::Sampler,
+    pub(crate) texture_views: &'a [::wgpu::TextureView],
+    pub(crate) dummy_texture: &'a ::wgpu::TextureView,
 }
 
 pub(crate) struct WgpuTileFineBindings<'a> {

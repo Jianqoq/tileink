@@ -7,7 +7,6 @@ use peniko::Color;
 use crate::{
     TextFontSystem,
     canvas::Canvas,
-    cpu::Renderer as CpuRenderer,
     debug::{DebugScanBuffers, RenderDebugCapture, RenderOptions, capture_render_debug},
     render::Render,
     shared::{
@@ -20,7 +19,9 @@ use crate::{
             plan_stack_depths, required_scratch_count,
         },
         image::Image,
-        image_resource::{GpuImageResourceUpload, ImageKey, ImageResourceStore},
+        image_resource::{
+            GpuImageResourceUpload, ImageKey, ImageResourceStore, ImageResourceUploadSignature,
+        },
         layer::{
             Layer,
             filter::{self as filter_model, Filter},
@@ -46,6 +47,7 @@ use super::filter_resources::{
     WgpuFilterTransferBuffers, WgpuFilterTurbulenceBuffers,
 };
 use super::fine::{WgpuFinePipeline, premul_clear_color};
+use super::image_resources::large_texture_table_len;
 use super::profile::{WgpuRenderProfile, WgpuRenderProfiler, profile_cpu, start_cpu_scope};
 use super::scan::WgpuScanPipeline;
 use super::target::WgpuTarget;
@@ -113,7 +115,6 @@ impl std::error::Error for WgpuTextureRenderError {}
 pub struct Renderer {
     device: ::wgpu::Device,
     queue: ::wgpu::Queue,
-    cpu: CpuRenderer,
     lengths: GpuBufferLengths,
     plan: Option<ExecPlan>,
     config: WgpuBuffer,
@@ -135,6 +136,8 @@ pub struct Renderer {
     filter_brushes: WgpuFilterBrushBuffers,
     image_resources: ImageResourceStore,
     image_resource_upload: GpuImageResourceUpload,
+    image_resource_upload_signature: ImageResourceUploadSignature,
+    image_resource_texture_table_len: u32,
     image_resources_dirty: bool,
     filter_convolves: WgpuFilterConvolveBuffers,
     filter_turbulence: WgpuFilterTurbulenceBuffers,
@@ -185,67 +188,11 @@ struct SavedRendererState {
 }
 
 impl Render for Renderer {
-    type ScanArgs<'a> = ();
-    type CumsumArgs<'a> = ();
-    type CoarseArgs<'a> = WgpuCoarseBatch;
-    type ExecuteArgs<'a> = ();
-
     fn render(&mut self, canvas: &Canvas) {
-        if self.render_native(canvas) {
-            return;
-        }
-        profile_cpu("cpu_fallback.render", || self.cpu.render(canvas));
-        self.upload_cpu_image();
-    }
-
-    fn execute(&mut self, canvas: &Canvas, _: Self::ExecuteArgs<'_>) {
-        self.render(canvas);
-    }
-
-    fn scan(&mut self, canvas: &Canvas, _: Self::ScanArgs<'_>) {
-        if let Some(scan) = &self.scan_pipeline {
-            scan.run(
-                &self.device,
-                &self.queue,
-                &self.scene_buffers,
-                &mut self.scan,
-                self.lengths,
-            );
-        } else {
-            profile_cpu("cpu_fallback.scan", || {
-                <CpuRenderer as Render>::scan(&mut self.cpu, canvas, ())
-            });
-        }
-    }
-
-    fn cumsum(&mut self, canvas: &Canvas, _: Self::CumsumArgs<'_>) {
-        if let Some(cumsum) = &self.cumsum {
-            cumsum.run(
-                &self.device,
-                &self.queue,
-                &self.scene_buffers,
-                &mut self.scan,
-                self.lengths,
-            );
-        } else {
-            profile_cpu("cpu_fallback.cumsum", || {
-                <CpuRenderer as Render>::cumsum(&mut self.cpu, canvas, ())
-            });
-        }
-    }
-
-    fn coarse(&mut self, _: &Canvas, batch: Self::CoarseArgs<'_>) {
-        if let Some(coarse) = &self.coarse_pipeline {
-            coarse.run(
-                &self.device,
-                &self.queue,
-                &self.scene_buffers,
-                &self.scan,
-                &mut self.coarse,
-                self.lengths,
-                batch,
-            );
-        }
+        assert!(
+            self.render_native(canvas),
+            "wgpu renderer could not render scene natively"
+        );
     }
 }
 
@@ -260,7 +207,6 @@ impl Renderer {
         Self {
             device: device.clone(),
             queue: queue.clone(),
-            cpu: CpuRenderer::new(width, height, clear),
             lengths: GpuBufferLengths::default(),
             plan: None,
             config: WgpuBuffer::new(device, "tileink wgpu canvas config"),
@@ -282,6 +228,8 @@ impl Renderer {
             filter_brushes: WgpuFilterBrushBuffers::new(device),
             image_resources: ImageResourceStore::default(),
             image_resource_upload: GpuImageResourceUpload::default(),
+            image_resource_upload_signature: ImageResourceUploadSignature::default(),
+            image_resource_texture_table_len: large_texture_table_len(device),
             image_resources_dirty: true,
             filter_convolves: WgpuFilterConvolveBuffers::new(device),
             filter_turbulence: WgpuFilterTurbulenceBuffers::new(device),
@@ -315,7 +263,9 @@ impl Renderer {
             .expect("request default wgpu adapter");
         let required_features = adapter.features()
             & (::wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
-                | ::wgpu::Features::TIMESTAMP_QUERY);
+                | ::wgpu::Features::TIMESTAMP_QUERY
+                | ::wgpu::Features::TEXTURE_BINDING_ARRAY
+                | ::wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING);
         let (device, queue) =
             pollster::block_on(adapter.request_device(&::wgpu::DeviceDescriptor {
                 label: Some("tileink default wgpu device"),
@@ -338,16 +288,13 @@ impl Renderer {
         if !self.image_resources.insert(key, image.clone()) {
             return false;
         }
-        self.cpu.insert_image(key, image);
         self.image_resources_dirty = true;
         true
     }
 
     pub fn remove_image(&mut self, key: ImageKey) -> bool {
         let removed = self.image_resources.remove(key);
-        let cpu_removed = self.cpu.remove_image(key);
-        debug_assert_eq!(removed, cpu_removed);
-        if removed || cpu_removed {
+        if removed {
             self.image_resources_dirty = true;
             return true;
         }
@@ -356,9 +303,7 @@ impl Renderer {
 
     pub fn clear_images(&mut self) -> bool {
         let removed = self.image_resources.clear();
-        let cpu_removed = self.cpu.clear_images();
-        debug_assert_eq!(removed, cpu_removed);
-        if removed || cpu_removed {
+        if removed {
             self.image_resources_dirty = true;
             return true;
         }
@@ -426,13 +371,11 @@ impl Renderer {
     /// render multiple scenes/examples in a single process.
     pub fn set_clear_color(&mut self, clear: Color) {
         self.clear_color = premul_clear_color(clear);
-        self.cpu.set_clear_color(clear);
     }
 
     /// Renders only through native wgpu compute pipelines.
     ///
-    /// This is useful for backend parity tests because `render` falls back to the
-    /// CPU renderer when a canvas still needs unsupported native coverage.
+    /// This is useful for tests that need to verify the native WGPU path directly.
     pub fn render_native(&mut self, canvas: &Canvas) -> bool {
         self.prepare_scene(canvas);
         self.render_prepared_native(canvas)
@@ -572,16 +515,36 @@ impl Renderer {
         scene_resources: &ImageResourceStore,
         force_upload: bool,
     ) {
-        self.image_resource_upload = self.image_resources.upload_merged(
+        let limits = self.device.limits();
+        let max_atlas_dimension = limits.max_texture_dimension_2d;
+        let max_atlas_pages = limits.max_texture_array_layers;
+        let signature = self.image_resources.upload_signature(
             scene_resources,
-            self.device.limits().max_texture_dimension_2d,
+            max_atlas_dimension,
+            max_atlas_pages,
+            self.image_resource_texture_table_len,
         );
-        self.image_resources_dirty = false;
-        if force_upload || !self.image_resource_upload.atlas_pixels.is_empty() {
+        let rebuild_upload =
+            self.image_resources_dirty || self.image_resource_upload_signature != signature;
+
+        if rebuild_upload {
+            self.image_resource_upload = self.image_resources.upload_merged(
+                scene_resources,
+                max_atlas_dimension,
+                max_atlas_pages,
+                self.image_resource_texture_table_len,
+                Some(&self.image_resource_upload),
+            );
+            self.image_resource_upload_signature = signature;
+            self.image_resources_dirty = false;
+        }
+
+        if force_upload || rebuild_upload {
             self.scene_buffers.upload_image_resources(
                 &self.device,
                 &self.queue,
                 &self.image_resource_upload,
+                force_upload,
             );
         }
     }
@@ -832,22 +795,54 @@ impl Renderer {
     #[cfg(test)]
     fn coarse_batch(
         &mut self,
-        canvas: &Canvas,
+        _canvas: &Canvas,
         draw_start: u32,
         draw_end: u32,
         layer_stack_start: u32,
         layer_stack_end: u32,
     ) {
-        <Self as Render>::coarse(
-            self,
-            canvas,
-            WgpuCoarseBatch {
-                draw_start,
-                draw_end,
-                layer_stack_start,
-                layer_stack_end,
-            },
-        );
+        if let Some(coarse) = &self.coarse_pipeline {
+            coarse.run(
+                &self.device,
+                &self.queue,
+                &self.scene_buffers,
+                &self.scan,
+                &mut self.coarse,
+                self.lengths,
+                WgpuCoarseBatch {
+                    draw_start,
+                    draw_end,
+                    layer_stack_start,
+                    layer_stack_end,
+                },
+            );
+        }
+    }
+
+    #[cfg(test)]
+    fn scan_for_test(&mut self) {
+        if let Some(scan) = &self.scan_pipeline {
+            scan.run(
+                &self.device,
+                &self.queue,
+                &self.scene_buffers,
+                &mut self.scan,
+                self.lengths,
+            );
+        }
+    }
+
+    #[cfg(test)]
+    fn cumsum_for_test(&mut self) {
+        if let Some(cumsum) = &self.cumsum {
+            cumsum.run(
+                &self.device,
+                &self.queue,
+                &self.scene_buffers,
+                &mut self.scan,
+                self.lengths,
+            );
+        }
     }
 
     fn render_prepared_tile_plan(&mut self, canvas: &Canvas) -> bool {
@@ -1817,6 +1812,8 @@ impl Renderer {
             blob: self.filter_brushes.blob.buffer(),
             image_resource_atlas: image_resources.atlas,
             image_resource_sampler: image_resources.sampler,
+            image_resource_texture_views: image_resources.texture_views,
+            image_resource_dummy_texture: image_resources.dummy_texture,
         }
     }
 
@@ -1845,14 +1842,11 @@ impl Renderer {
         text_context: &mut TextContext,
     ) {
         self.prepare_scene_with_text(canvas, font_system, text_context);
-        if self.render_prepared_tile_plan(canvas) {
-            self.size = (canvas.physical_width(), canvas.physical_height());
-            return;
-        }
-        profile_cpu("cpu_fallback.render_text", || {
-            self.cpu.render_with_text(canvas, font_system, text_context)
-        });
-        self.upload_cpu_image();
+        assert!(
+            self.render_prepared_tile_plan(canvas),
+            "wgpu renderer could not render text scene natively"
+        );
+        self.size = (canvas.physical_width(), canvas.physical_height());
     }
 
     pub fn render_with_options(
@@ -1879,10 +1873,7 @@ impl Renderer {
             );
         }
 
-        let mut capture = self.cpu.render_with_options(canvas, options);
-        capture.backend = "wgpu".to_string();
-        self.upload_cpu_image();
-        capture
+        panic!("wgpu renderer could not render debug scene natively")
     }
 
     fn read_debug_scan_buffers(&self) -> WgpuDebugScanReadback {
@@ -1994,14 +1985,9 @@ impl Renderer {
         canvas: &Canvas,
         dst: &::wgpu::Texture,
     ) -> Result<(), WgpuTextureRenderError> {
-        if self.render_native_to_wgpu_texture(canvas, dst) {
-            self.last_frame_used_native = true;
-            return Ok(());
-        }
-        self.last_frame_used_native = false;
-        profile_cpu("cpu_fallback.render", || self.cpu.render(canvas));
-        self.size = (canvas.physical_width(), canvas.physical_height());
-        self.upload_image_to_wgpu_texture(dst, self.cpu.image())
+        self.render_native_to_wgpu_texture(canvas, dst)?;
+        self.last_frame_used_native = true;
+        Ok(())
     }
 
     pub fn render_with_text_to_wgpu_texture(
@@ -2011,19 +1997,16 @@ impl Renderer {
         text_context: &mut TextContext,
         dst: &::wgpu::Texture,
     ) -> Result<(), WgpuTextureRenderError> {
-        if self.render_native_with_text_to_wgpu_texture(canvas, font_system, text_context, dst) {
-            self.last_frame_used_native = true;
-            return Ok(());
-        }
-        self.last_frame_used_native = false;
-        profile_cpu("cpu_fallback.render_text", || {
-            self.cpu.render_with_text(canvas, font_system, text_context)
-        });
-        self.size = (canvas.physical_width(), canvas.physical_height());
-        self.upload_image_to_wgpu_texture(dst, self.cpu.image())
+        self.render_native_with_text_to_wgpu_texture(canvas, font_system, text_context, dst)?;
+        self.last_frame_used_native = true;
+        Ok(())
     }
 
-    fn render_native_to_wgpu_texture(&mut self, canvas: &Canvas, dst: &::wgpu::Texture) -> bool {
+    fn render_native_to_wgpu_texture(
+        &mut self,
+        canvas: &Canvas,
+        dst: &::wgpu::Texture,
+    ) -> Result<(), WgpuTextureRenderError> {
         self.render_native_to_wgpu_texture_with_prepare(canvas, dst, |renderer, canvas| {
             renderer.prepare_scene(canvas);
         })
@@ -2035,7 +2018,7 @@ impl Renderer {
         font_system: &mut TextFontSystem,
         text_context: &mut TextContext,
         dst: &::wgpu::Texture,
-    ) -> bool {
+    ) -> Result<(), WgpuTextureRenderError> {
         self.render_native_to_wgpu_texture_with_prepare(canvas, dst, |renderer, canvas| {
             renderer.prepare_scene_with_text(canvas, font_system, text_context);
         })
@@ -2046,97 +2029,23 @@ impl Renderer {
         canvas: &Canvas,
         dst: &::wgpu::Texture,
         prepare: impl FnOnce(&mut Self, &Canvas),
-    ) -> bool {
-        if self
-            .validate_wgpu_storage_texture_destination(
-                dst,
-                canvas.physical_width(),
-                canvas.physical_height(),
-            )
-            .is_err()
-        {
-            return false;
-        }
+    ) -> Result<(), WgpuTextureRenderError> {
+        self.validate_wgpu_storage_texture_destination(
+            dst,
+            canvas.physical_width(),
+            canvas.physical_height(),
+        )?;
         self.root_target_texture = Some(dst.clone());
         self.root_target_view = Some(dst.create_view(&::wgpu::TextureViewDescriptor::default()));
         prepare(self, canvas);
-        let rendered = if self.render_prepared_tile_plan(canvas) {
-            self.size = (canvas.physical_width(), canvas.physical_height());
-            true
-        } else {
-            false
-        };
+        let rendered = self.render_prepared_tile_plan(canvas);
         self.root_target_view = None;
         self.root_target_texture = None;
-        rendered
-    }
-
-    fn upload_cpu_image(&mut self) {
-        let _profile_scope = start_cpu_scope("cpu_fallback.upload");
-        let image = self.cpu.image();
-        self.size = (image.width, image.height);
-        self.readback_target
-            .resize(&self.device, image.width, image.height);
-        self.readback_target.upload(&self.queue, image);
-    }
-
-    fn upload_image_to_wgpu_texture(
-        &self,
-        dst: &::wgpu::Texture,
-        image: &Image,
-    ) -> Result<(), WgpuTextureRenderError> {
-        let _profile_scope = start_cpu_scope("texture_upload");
-        self.validate_wgpu_copy_texture_destination(dst, image.width, image.height)?;
-        if image.pixels.is_empty() {
+        if rendered {
+            self.size = (canvas.physical_width(), canvas.physical_height());
             return Ok(());
         }
-        self.queue.write_texture(
-            dst.as_image_copy(),
-            bytemuck::cast_slice(&image.pixels),
-            ::wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(image.width * std::mem::size_of::<u32>() as u32),
-                rows_per_image: Some(image.height),
-            },
-            ::wgpu::Extent3d {
-                width: image.width,
-                height: image.height,
-                depth_or_array_layers: 1,
-            },
-        );
-        Ok(())
-    }
-
-    fn validate_wgpu_copy_texture_destination(
-        &self,
-        dst: &::wgpu::Texture,
-        width: u32,
-        height: u32,
-    ) -> Result<(), WgpuTextureRenderError> {
-        if dst.width() < width || dst.height() < height {
-            return Err(WgpuTextureRenderError::DestinationTooSmall {
-                required_width: width,
-                required_height: height,
-                actual_width: dst.width(),
-                actual_height: dst.height(),
-            });
-        }
-        if !dst.usage().contains(::wgpu::TextureUsages::COPY_DST) {
-            return Err(WgpuTextureRenderError::DestinationUsageMissing(dst.usage()));
-        }
-        if !matches!(
-            dst.format(),
-            ::wgpu::TextureFormat::Rgba8Unorm | ::wgpu::TextureFormat::Rgba8UnormSrgb
-        ) || dst.dimension() != ::wgpu::TextureDimension::D2
-            || dst.sample_count() != 1
-        {
-            return Err(WgpuTextureRenderError::UnsupportedDestination {
-                format: dst.format(),
-                dimension: dst.dimension(),
-                sample_count: dst.sample_count(),
-            });
-        }
-        Ok(())
+        panic!("wgpu renderer could not render scene natively")
     }
 
     fn validate_wgpu_storage_texture_destination(

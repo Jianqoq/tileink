@@ -67,8 +67,8 @@ pub struct TextRasterOptions {
     pub composite_mode: TextCompositeMode,
     /// Contrast-dependent text coverage parameters.
     ///
-    /// The CPU and wgpu renderers consume this at runtime, which lets the
-    /// quality harness search candidates without recompiling.
+    /// The wgpu renderer consumes this at runtime, which lets the quality harness
+    /// search candidates without recompiling.
     pub coverage_params: TextCoverageParams,
 }
 
@@ -91,7 +91,7 @@ impl TextRasterOptions {
         self
     }
 
-    /// Overrides CPU text coverage compensation parameters for quality tuning.
+    /// Overrides text coverage compensation parameters for quality tuning.
     pub const fn with_coverage_params(mut self, params: TextCoverageParams) -> Self {
         self.coverage_params = params;
         self

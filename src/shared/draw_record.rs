@@ -70,7 +70,7 @@ pub struct DrawRecord {
     pub tag: DrawTagWord,
     pub fill_rule: FillRuleWord,
     pub pixel_bounds: PixelBounds,
-    /// CPU `FillRect` fast path: coarse emits `Color` only (no flatten/scan).
+    /// Solid `FillRect` fast path: coarse emits `Color` only (no flatten/scan).
     pub solid_rect: u32,
 }
 

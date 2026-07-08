@@ -6,7 +6,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "../..")
-$examples = @("cpu_examples", "wgpu_examples")
+$examples = @("wgpu_examples")
 
 function Get-ExampleExecutable {
     param(
@@ -36,10 +36,6 @@ try {
 
     $metadata = cargo metadata --format-version 1 --no-deps | ConvertFrom-Json
     $examplesOutDir = Join-Path $metadata.target_directory "release\examples"
-
-    $cpuExe = Get-ExampleExecutable -ExamplesOutDir $examplesOutDir -Name "cpu_examples"
-    Write-Host "Running example: cpu_examples"
-    & $cpuExe
 
     $wgpuExe = Get-ExampleExecutable -ExamplesOutDir $examplesOutDir -Name "wgpu_examples"
     $oldMode = $env:TILEINK_WGPU_MODE
@@ -72,4 +68,4 @@ try {
     Pop-Location
 }
 
-Write-Host "All examples finished. Outputs are in examples/cpu/out and examples/wgpu/out."
+Write-Host "All examples finished. Outputs are in examples/wgpu/out."

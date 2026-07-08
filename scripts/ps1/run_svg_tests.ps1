@@ -2,8 +2,8 @@ param(
     [ValidateSet("all", "filters", "masking", "paint-servers", "painting", "shapes", "structure", "text")]
     [string]$Type = "all",
 
-    [ValidateSet("both", "cpu", "wgpu")]
-    [string]$Backend = "both",
+    [ValidateSet("wgpu")]
+    [string]$Backend = "wgpu",
 
     [ValidateSet("native", "portable", "both")]
     [string]$WgpuMode = "both",
@@ -50,15 +50,10 @@ try {
     $failures = New-Object System.Collections.Generic.List[string]
 
     $renderJobs = New-Object System.Collections.Generic.List[object]
-    if ($Backend -eq "both" -or $Backend -eq "cpu") {
-        $renderJobs.Add([pscustomobject]@{ Backend = "cpu"; WgpuMode = "native"; Label = "cpu"; ComparePortable = $false })
-    }
-    if ($Backend -eq "both" -or $Backend -eq "wgpu") {
-        if ($WgpuMode -eq "native") {
-            $renderJobs.Add([pscustomobject]@{ Backend = "wgpu"; WgpuMode = "native"; Label = "wgpu"; ComparePortable = $false })
-        } else {
-            $renderJobs.Add([pscustomobject]@{ Backend = "wgpu"; WgpuMode = "native"; Label = "wgpu-portable-compare"; ComparePortable = $true })
-        }
+    if ($WgpuMode -eq "native") {
+        $renderJobs.Add([pscustomobject]@{ Backend = "wgpu"; WgpuMode = "native"; Label = "wgpu"; ComparePortable = $false })
+    } else {
+        $renderJobs.Add([pscustomobject]@{ Backend = "wgpu"; WgpuMode = "native"; Label = "wgpu-portable-compare"; ComparePortable = $true })
     }
 
     foreach ($dir in $typeDirs) {

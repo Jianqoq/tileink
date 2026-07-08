@@ -528,10 +528,11 @@ mod tests {
     fn translated_scene_preserves_scene_image_resources() {
         let key = ImageKey::new(42);
         let mut canvas = Canvas::new(8, 8, 1.0);
-        assert!(canvas.scene_images.insert(
-            key,
-            Image::from_rgba8(1, 1, [255, 0, 0, 255])
-        ));
+        assert!(
+            canvas
+                .scene_images
+                .insert(key, Image::from_rgba8(1, 1, [255, 0, 0, 255]))
+        );
 
         let translated =
             translated_scene_for_bounds(&canvas, LocalSpace::new(Bounds::new(2, 2, 6, 6)));

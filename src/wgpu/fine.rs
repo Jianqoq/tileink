@@ -13,6 +13,10 @@ use super::{
     commands::{
         WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
     },
+    image_resources::{
+        create_image_resource_bind_group, create_image_resource_bind_group_layout,
+        large_texture_table_len, patch_image_resource_shader_source,
+    },
     profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope},
     target::WgpuTarget,
 };
@@ -27,11 +31,13 @@ pub(crate) struct WgpuFinePipeline {
     mixed_pipeline: ::wgpu::ComputePipeline,
     full_pipeline: ::wgpu::ComputePipeline,
     bind_group_layout: ::wgpu::BindGroupLayout,
+    image_bind_group_layout: ::wgpu::BindGroupLayout,
     compact_bind_group_layout: ::wgpu::BindGroupLayout,
     config: ::wgpu::Buffer,
     config_size: ::wgpu::BufferAddress,
     config_stride: ::wgpu::BufferAddress,
     portable_textures: bool,
+    large_texture_table_len: u32,
 }
 
 #[repr(C)]
@@ -73,9 +79,16 @@ impl WgpuFinePipeline {
                 label: Some("tileink wgpu tile fine bind group layout"),
                 entries: &layout_entries,
             });
+        let large_texture_table_len = large_texture_table_len(device);
+        let image_bind_group_layout =
+            create_image_resource_bind_group_layout(device, large_texture_table_len);
+        let shader_source = patch_image_resource_shader_source(
+            fine_shader_source(portable_textures),
+            large_texture_table_len > 0,
+        );
         let shader = device.create_shader_module(::wgpu::ShaderModuleDescriptor {
             label: Some("tileink wgpu fine shader"),
-            source: ::wgpu::ShaderSource::Wgsl(fine_shader_source(portable_textures).into()),
+            source: ::wgpu::ShaderSource::Wgsl(shader_source.into()),
         });
         let compact_shader = device.create_shader_module(::wgpu::ShaderModuleDescriptor {
             label: Some("tileink wgpu fine compact shader"),
@@ -92,7 +105,7 @@ impl WgpuFinePipeline {
             });
         let pipeline_layout = device.create_pipeline_layout(&::wgpu::PipelineLayoutDescriptor {
             label: Some("tileink wgpu tile fine pipeline layout"),
-            bind_group_layouts: &[Some(&bind_group_layout)],
+            bind_group_layouts: &[Some(&bind_group_layout), Some(&image_bind_group_layout)],
             immediate_size: 0,
         });
         let compact_pipeline_layout =
@@ -160,11 +173,13 @@ impl WgpuFinePipeline {
             mixed_pipeline,
             full_pipeline,
             bind_group_layout,
+            image_bind_group_layout,
             compact_bind_group_layout,
             config,
             config_size,
             config_stride,
             portable_textures,
+            large_texture_table_len,
         })
     }
 
@@ -313,6 +328,12 @@ impl WgpuFinePipeline {
             &bindings,
             config_offset,
         );
+        let image_bind_group = create_image_resource_bind_group(
+            commands.device(),
+            &self.image_bind_group_layout,
+            &scene_buffers.image_resource_bindings(),
+            self.large_texture_table_len,
+        );
         let compact_bind_group = self.create_compact_bind_group(
             commands.device(),
             coarse,
@@ -344,6 +365,7 @@ impl WgpuFinePipeline {
                 timestamp_writes,
             });
             pass.set_bind_group(0, &bind_group, &[]);
+            pass.set_bind_group(1, &image_bind_group, &[]);
             if fine_indirect_enabled() {
                 pass.set_pipeline(&self.sdf_pipeline);
                 pass.dispatch_workgroups_indirect(fine_indirect_args.buffer(), 0);
@@ -394,18 +416,8 @@ impl WgpuFinePipeline {
             buffer_binding(6, bindings.text_blob),
             buffer_binding(7, bindings.spills),
         ];
-        entries.extend([
-            texture_binding(
-                fine_layout::IMAGE_RESOURCE_ATLAS_BINDING,
-                fine.image_resource_atlas,
-            ),
-            sampler_binding(
-                fine_layout::IMAGE_RESOURCE_SAMPLER_BINDING,
-                fine.image_resource_sampler,
-            ),
-        ]);
         if self.portable_textures {
-            entries.push(texture_binding(10, target));
+            entries.push(texture_binding(8, target));
         }
         device.create_bind_group(&::wgpu::BindGroupDescriptor {
             label: Some("tileink wgpu tile fine bind group"),
@@ -448,15 +460,9 @@ fn tile_fine_layout_entries(portable_textures: bool) -> Vec<::wgpu::BindGroupLay
         storage_layout_entry(6, true),
         storage_layout_entry(7, false),
     ];
-    entries.push(sampled_filterable_texture_layout_entry(
-        fine_layout::IMAGE_RESOURCE_ATLAS_BINDING,
-    ));
-    entries.push(filtering_sampler_layout_entry(
-        fine_layout::IMAGE_RESOURCE_SAMPLER_BINDING,
-    ));
     if portable_textures {
         entries.push(storage_texture_layout_entry(
-            10,
+            8,
             ::wgpu::StorageTextureAccess::WriteOnly,
         ));
     }
@@ -485,28 +491,6 @@ fn sampled_texture_layout_entry(binding: u32) -> ::wgpu::BindGroupLayoutEntry {
             view_dimension: ::wgpu::TextureViewDimension::D2,
             multisampled: false,
         },
-        count: None,
-    }
-}
-
-fn sampled_filterable_texture_layout_entry(binding: u32) -> ::wgpu::BindGroupLayoutEntry {
-    ::wgpu::BindGroupLayoutEntry {
-        binding,
-        visibility: ::wgpu::ShaderStages::COMPUTE,
-        ty: ::wgpu::BindingType::Texture {
-            sample_type: ::wgpu::TextureSampleType::Float { filterable: true },
-            view_dimension: ::wgpu::TextureViewDimension::D2,
-            multisampled: false,
-        },
-        count: None,
-    }
-}
-
-fn filtering_sampler_layout_entry(binding: u32) -> ::wgpu::BindGroupLayoutEntry {
-    ::wgpu::BindGroupLayoutEntry {
-        binding,
-        visibility: ::wgpu::ShaderStages::COMPUTE,
-        ty: ::wgpu::BindingType::Sampler(::wgpu::SamplerBindingType::Filtering),
         count: None,
     }
 }
@@ -604,13 +588,6 @@ fn texture_binding(binding: u32, view: &::wgpu::TextureView) -> ::wgpu::BindGrou
     ::wgpu::BindGroupEntry {
         binding,
         resource: ::wgpu::BindingResource::TextureView(view),
-    }
-}
-
-fn sampler_binding(binding: u32, sampler: &::wgpu::Sampler) -> ::wgpu::BindGroupEntry<'_> {
-    ::wgpu::BindGroupEntry {
-        binding,
-        resource: ::wgpu::BindingResource::Sampler(sampler),
     }
 }
 

@@ -25,7 +25,10 @@ use crate::{
 
 use super::super::buffer::WgpuBuffer;
 use super::super::profile::profile_cpu;
-use super::{WgpuCoarseBuffers, WgpuSceneBuffers, create_image_resource_atlas_texture};
+use super::{
+    WgpuCoarseBuffers, WgpuSceneBuffers, create_image_resource_atlas_texture,
+    create_image_resource_atlas_view, create_image_resource_texture,
+};
 
 #[derive(Default)]
 pub(crate) struct WgpuSceneUploadStaging {
@@ -217,37 +220,118 @@ impl WgpuSceneBuffers {
         device: &::wgpu::Device,
         queue: &::wgpu::Queue,
         upload: &GpuImageResourceUpload,
+        force_all: bool,
     ) {
-        let atlas_width = upload.atlas_width.max(1);
-        let atlas_height = upload.atlas_height.max(1);
+        let page_size = upload.atlas_page_size().max(1);
+        let page_count = upload.atlas_page_count().max(1);
         let atlas_capacity = grow_image_resource_atlas_capacity(
             self.image_resource_atlas_size,
-            (atlas_width, atlas_height),
+            (page_size, page_size, page_count),
             device.limits().max_texture_dimension_2d,
+            device.limits().max_texture_array_layers,
         );
         if self.image_resource_atlas_size != atlas_capacity {
-            self.image_resource_atlas =
-                create_image_resource_atlas_texture(device, atlas_capacity.0, atlas_capacity.1);
-            self.image_resource_atlas_view = self
-                .image_resource_atlas
-                .create_view(&::wgpu::TextureViewDescriptor::default());
+            self.image_resource_atlas = create_image_resource_atlas_texture(
+                device,
+                atlas_capacity.0,
+                atlas_capacity.1,
+                atlas_capacity.2,
+            );
+            self.image_resource_atlas_view =
+                create_image_resource_atlas_view(&self.image_resource_atlas);
             self.image_resource_atlas_size = atlas_capacity;
         }
-        if !upload.atlas_pixels.is_empty() {
+        for page in upload.atlas_pages() {
+            if !force_all && !page.dirty {
+                continue;
+            }
+            if page.pixels.is_empty() {
+                continue;
+            }
             queue.write_texture(
-                self.image_resource_atlas.as_image_copy(),
-                bytemuck::cast_slice(&upload.atlas_pixels),
+                ::wgpu::TexelCopyTextureInfo {
+                    texture: &self.image_resource_atlas,
+                    mip_level: 0,
+                    origin: ::wgpu::Origin3d {
+                        x: 0,
+                        y: 0,
+                        z: page.index,
+                    },
+                    aspect: ::wgpu::TextureAspect::All,
+                },
+                bytemuck::cast_slice(&page.pixels),
                 ::wgpu::TexelCopyBufferLayout {
                     offset: 0,
-                    bytes_per_row: Some(atlas_width * std::mem::size_of::<u32>() as u32),
-                    rows_per_image: Some(atlas_height),
+                    bytes_per_row: Some(page.size * std::mem::size_of::<u32>() as u32),
+                    rows_per_image: Some(page.size),
                 },
                 ::wgpu::Extent3d {
-                    width: atlas_width,
-                    height: atlas_height,
+                    width: page.size,
+                    height: page.size,
                     depth_or_array_layers: 1,
                 },
             );
+        }
+        self.upload_image_resource_textures(device, queue, upload, force_all);
+    }
+
+    fn upload_image_resource_textures(
+        &mut self,
+        device: &::wgpu::Device,
+        queue: &::wgpu::Queue,
+        upload: &GpuImageResourceUpload,
+        force_all: bool,
+    ) {
+        for texture in upload.textures() {
+            let index = texture.index as usize;
+            let recreate = self
+                .image_resource_textures
+                .get(index)
+                .is_none_or(|existing| {
+                    let size = existing.size();
+                    size.width != texture.width || size.height != texture.height
+                });
+            if recreate {
+                while self.image_resource_textures.len() <= index {
+                    self.image_resource_textures
+                        .push(create_image_resource_texture(
+                            device,
+                            "tileink wgpu image resource texture",
+                            1,
+                            1,
+                        ));
+                    self.image_resource_texture_views.push(
+                        self.image_resource_textures
+                            .last()
+                            .expect("pushed texture")
+                            .create_view(&::wgpu::TextureViewDescriptor::default()),
+                    );
+                }
+                self.image_resource_textures[index] = create_image_resource_texture(
+                    device,
+                    "tileink wgpu image resource texture",
+                    texture.width,
+                    texture.height,
+                );
+                self.image_resource_texture_views[index] = self.image_resource_textures[index]
+                    .create_view(&::wgpu::TextureViewDescriptor::default());
+            }
+            if force_all || texture.dirty || recreate {
+                queue.write_texture(
+                    self.image_resource_textures[index].as_image_copy(),
+                    bytemuck::cast_slice(&texture.pixels),
+                    ::wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(texture.width * std::mem::size_of::<u32>() as u32),
+                        rows_per_image: Some(texture.height),
+                    },
+                    ::wgpu::Extent3d {
+                        width: texture.width,
+                        height: texture.height,
+                        depth_or_array_layers: 1,
+                    },
+                );
+            }
         }
     }
 
@@ -572,13 +656,15 @@ impl WgpuSceneBuffers {
 }
 
 fn grow_image_resource_atlas_capacity(
-    current: (u32, u32),
-    required: (u32, u32),
+    current: (u32, u32, u32),
+    required: (u32, u32, u32),
     max_dimension: u32,
-) -> (u32, u32) {
+    max_layers: u32,
+) -> (u32, u32, u32) {
     (
         grow_image_resource_atlas_axis(current.0, required.0, max_dimension),
         grow_image_resource_atlas_axis(current.1, required.1, max_dimension),
+        grow_image_resource_atlas_axis(current.2, required.2, max_layers),
     )
 }
 
@@ -604,36 +690,36 @@ mod tests {
     #[test]
     fn image_resource_atlas_capacity_reuses_existing_texture_when_it_fits() {
         assert_eq!(
-            grow_image_resource_atlas_capacity((256, 128), (128, 64), 4096),
-            (256, 128)
+            grow_image_resource_atlas_capacity((256, 128, 4), (128, 64, 2), 4096, 256),
+            (256, 128, 4)
         );
         assert_eq!(
-            grow_image_resource_atlas_capacity((256, 128), (256, 128), 4096),
-            (256, 128)
+            grow_image_resource_atlas_capacity((256, 128, 4), (256, 128, 4), 4096, 256),
+            (256, 128, 4)
         );
     }
 
     #[test]
     fn image_resource_atlas_capacity_grows_by_doubling_until_required_size_fits() {
         assert_eq!(
-            grow_image_resource_atlas_capacity((256, 128), (257, 129), 4096),
-            (512, 256)
+            grow_image_resource_atlas_capacity((256, 128, 4), (257, 129, 5), 4096, 256),
+            (512, 256, 8)
         );
         assert_eq!(
-            grow_image_resource_atlas_capacity((256, 128), (900, 129), 4096),
-            (1024, 256)
+            grow_image_resource_atlas_capacity((256, 128, 4), (900, 129, 9), 4096, 256),
+            (1024, 256, 16)
         );
     }
 
     #[test]
     fn image_resource_atlas_capacity_respects_device_limit() {
         assert_eq!(
-            grow_image_resource_atlas_capacity((4096, 4096), (5000, 5000), 6000),
-            (6000, 6000)
+            grow_image_resource_atlas_capacity((4096, 4096, 128), (5000, 5000, 300), 6000, 256),
+            (6000, 6000, 256)
         );
         assert_eq!(
-            grow_image_resource_atlas_capacity((1, 1), (0, 0), 4096),
-            (1, 1)
+            grow_image_resource_atlas_capacity((1, 1, 1), (0, 0, 0), 4096, 256),
+            (1, 1, 1)
         );
     }
 }

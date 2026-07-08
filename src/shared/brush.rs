@@ -560,8 +560,8 @@ impl PatternBrush {
     /// Creates a pattern brush with a caller-provided world-to-image transform.
     ///
     /// The transform maps canvas coordinates to image pixel coordinates. Images
-    /// are rejected when either dimension is zero because both CPU and wgpu
-    /// samplers require at least one valid texel.
+    /// are rejected when either dimension is zero because sampled resources
+    /// require at least one valid texel.
     pub(crate) fn new_resource(
         id: ImageResourceId,
         transform: [f32; 6],

@@ -1,5 +1,3 @@
-use crate::shared::image::Image;
-
 pub(crate) struct WgpuTarget {
     texture: ::wgpu::Texture,
     view: ::wgpu::TextureView,
@@ -27,26 +25,6 @@ impl WgpuTarget {
         self.view = view;
         self.width = width;
         self.height = height;
-    }
-
-    pub(crate) fn upload(&self, queue: &::wgpu::Queue, image: &Image) {
-        if image.pixels.is_empty() {
-            return;
-        }
-        queue.write_texture(
-            self.texture.as_image_copy(),
-            bytemuck::cast_slice(&image.pixels),
-            ::wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(image.width * std::mem::size_of::<u32>() as u32),
-                rows_per_image: Some(image.height),
-            },
-            ::wgpu::Extent3d {
-                width: image.width,
-                height: image.height,
-                depth_or_array_layers: 1,
-            },
-        );
     }
 
     pub(crate) fn texture(&self) -> &::wgpu::Texture {
