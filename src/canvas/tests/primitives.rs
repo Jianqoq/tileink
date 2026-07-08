@@ -477,6 +477,174 @@ fn append_fast_path_translates_sdf_without_mutating_child() {
 }
 
 #[test]
+fn retained_scene_materializes_like_append_without_texture_cache() {
+    let mut child = test_scene();
+    child.push_rect(
+        Rect::new(1.0, 2.0, 5.0, 6.0),
+        crate::Radius::ZERO,
+        Brush::Solid(rgb(255, 0, 0)),
+    );
+    let child = Arc::new(child);
+
+    let mut retained = test_scene();
+    retained.append_retained_scene(
+        SceneCacheKey::for_element(7),
+        1,
+        child.clone(),
+        Point::new(10.0, 20.0),
+    );
+
+    let mut appended = test_scene();
+    appended.append(&child, Point::new(10.0, 20.0));
+
+    let mut cache = RetainedSceneCache::default();
+    let materialized = retained.materialize_retained_scenes(&mut cache);
+
+    assert_eq!(cache.scenes.len(), 1);
+    assert_eq!(materialized.draw_records.len(), appended.draw_records.len());
+    assert_eq!(
+        materialized.draw_records[0].pixel_bounds,
+        appended.draw_records[0].pixel_bounds
+    );
+    assert!(matches!(draw_sdf(&materialized, 0), Some(Sdf::Rect(_))));
+    assert!(matches!(draw_sdf(&appended, 0), Some(Sdf::Rect(_))));
+}
+
+#[test]
+fn retained_scene_cache_reuses_same_key_revision_and_offset() {
+    let mut child = test_scene();
+    child.push_rect(
+        Rect::new(1.0, 2.0, 5.0, 6.0),
+        crate::Radius::ZERO,
+        Brush::Solid(rgb(255, 0, 0)),
+    );
+    let child = Arc::new(child);
+
+    let mut retained = test_scene();
+    retained.append_retained_scene(
+        SceneCacheKey::for_element(7),
+        1,
+        child.clone(),
+        Point::new(10.0, 20.0),
+    );
+
+    let mut cache = RetainedSceneCache::default();
+    let first = retained.materialize_retained_scenes(&mut cache);
+    let second = retained.materialize_retained_scenes(&mut cache);
+
+    assert_eq!(cache.scenes.len(), 1);
+    assert_eq!(
+        first.draw_records[0].pixel_bounds,
+        second.draw_records[0].pixel_bounds
+    );
+}
+
+#[test]
+fn retained_scene_cache_keeps_same_element_different_slots_separate() {
+    let mut child = test_scene();
+    child.push_rect(
+        Rect::new(1.0, 2.0, 5.0, 6.0),
+        crate::Radius::ZERO,
+        Brush::Solid(rgb(255, 0, 0)),
+    );
+    let child = Arc::new(child);
+
+    let mut retained = test_scene();
+    retained.append_retained_scene(
+        SceneCacheKey::new(7, 0),
+        1,
+        child.clone(),
+        Point::new(10.0, 20.0),
+    );
+    retained.append_retained_scene(SceneCacheKey::new(7, 1), 1, child, Point::new(10.0, 20.0));
+
+    let mut cache = RetainedSceneCache::default();
+    let materialized = retained.materialize_retained_scenes(&mut cache);
+
+    assert_eq!(cache.scenes.len(), 2);
+    assert_eq!(materialized.draw_records.len(), 2);
+}
+
+#[test]
+fn retained_root_cache_id_tracks_many_retained_children() {
+    let mut child_a = test_scene();
+    child_a.push_rect(
+        Rect::new(1.0, 2.0, 5.0, 6.0),
+        crate::Radius::ZERO,
+        Brush::Solid(rgb(255, 0, 0)),
+    );
+    let mut child_b = test_scene();
+    child_b.push_rect(
+        Rect::new(11.0, 12.0, 15.0, 16.0),
+        crate::Radius::ZERO,
+        Brush::Solid(rgb(0, 255, 0)),
+    );
+
+    let mut root = test_scene();
+    root.append_retained_scene(
+        SceneCacheKey::for_element(1),
+        1,
+        Arc::new(child_a),
+        Point::new(0.0, 0.0),
+    );
+    root.append_retained_scene(
+        SceneCacheKey::for_element(2),
+        1,
+        Arc::new(child_b),
+        Point::new(0.0, 0.0),
+    );
+
+    let id = root
+        .retained_root_cache_id()
+        .expect("all-retained root should be cacheable");
+    assert_eq!(id.scenes.len(), 2);
+
+    let mut cache = RetainedSceneCache::default();
+    let materialized = root.materialize_retained_scenes(&mut cache);
+    assert_eq!(cache.scenes.len(), 2);
+    assert_eq!(materialized.draw_records.len(), 2);
+}
+
+#[test]
+fn retained_graph_cache_id_tracks_mixed_direct_and_retained_content() {
+    let mut child = test_scene();
+    child.push_rect(
+        Rect::new(1.0, 2.0, 5.0, 6.0),
+        crate::Radius::ZERO,
+        Brush::Solid(rgb(255, 0, 0)),
+    );
+
+    let mut root = test_scene();
+    root.push_rect(
+        Rect::new(20.0, 20.0, 30.0, 30.0),
+        crate::Radius::ZERO,
+        Brush::Solid(rgb(0, 0, 255)),
+    );
+    root.append_retained_scene(
+        SceneCacheKey::for_element(1),
+        1,
+        Arc::new(child),
+        Point::new(0.0, 0.0),
+    );
+
+    assert!(root.retained_root_cache_id().is_none());
+    let first = root
+        .retained_graph_cache_id()
+        .expect("mixed retained graph should be cacheable");
+    root.set_draw_color(
+        DrawId {
+            index: 0,
+            generation: root.draw_generation,
+        },
+        rgb(0, 255, 0),
+    );
+    let second = root
+        .retained_graph_cache_id()
+        .expect("mixed retained graph should remain cacheable");
+    assert_ne!(first, second);
+}
+
+#[test]
 fn append_fast_path_offsets_text_runs_without_mutating_child() {
     let mut font_system = TextFontSystem::new();
     let mut context = TextContext::new();

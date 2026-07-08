@@ -1,7 +1,7 @@
 use std::{
     env,
     error::Error,
-    sync::mpsc,
+    sync::{Arc, mpsc},
     time::{Duration, Instant},
 };
 
@@ -24,6 +24,9 @@ struct Config {
     candles: usize,
     rects: usize,
     portable: bool,
+    tileink_retained: bool,
+    tileink_retained_leaves: bool,
+    tileink_mixed_direct: bool,
 }
 
 impl Default for Config {
@@ -36,6 +39,9 @@ impl Default for Config {
             candles: 10_000,
             rects: 20_000,
             portable: false,
+            tileink_retained: false,
+            tileink_retained_leaves: false,
+            tileink_mixed_direct: false,
         }
     }
 }
@@ -81,8 +87,15 @@ fn main() -> Result<(), Box<dyn Error>> {
         vello_info.name, vello_info.backend
     );
     println!(
-        "{}x{}, warmup {}, frames {}, portable {}",
-        config.width, config.height, config.warmup, config.frames, config.portable
+        "{}x{}, warmup {}, frames {}, portable {}, tileink_retained {}, tileink_retained_leaves {}, tileink_mixed_direct {}",
+        config.width,
+        config.height,
+        config.warmup,
+        config.frames,
+        config.portable,
+        config.tileink_retained,
+        config.tileink_retained_leaves,
+        config.tileink_mixed_direct
     );
     println!("timing: CPU submit + GPU completion, no readback\n");
 
@@ -204,6 +217,9 @@ fn parse_config() -> Result<Config, Box<dyn Error>> {
             "--candles" => config.candles = value.parse()?,
             "--rects" => config.rects = value.parse()?,
             "--portable" => config.portable = parse_bool(value)?,
+            "--tileink-retained" => config.tileink_retained = parse_bool(value)?,
+            "--tileink-retained-leaves" => config.tileink_retained_leaves = parse_bool(value)?,
+            "--tileink-mixed-direct" => config.tileink_mixed_direct = parse_bool(value)?,
             _ => return Err(format!("unknown argument {flag}").into()),
         }
         i += 2;
@@ -435,9 +451,11 @@ fn wait_for_vello_gpu(
 fn build_candlestick_scenes(config: Config) -> (Canvas, VelloScene) {
     let mut tileink_scene = Canvas::new(config.width, config.height, 1.0);
     let mut vello_scene = VelloScene::new();
-    tileink_scene.push_rect(
+    push_tileink_rect_for_benchmark(
+        &mut tileink_scene,
+        config,
+        3,
         Rect::new(0.0, 0.0, f64::from(config.width), f64::from(config.height)),
-        Radius::ZERO,
         Color::WHITE,
     );
     vello_scene.fill(
@@ -473,10 +491,19 @@ fn build_candlestick_scenes(config: Config) -> (Canvas, VelloScene) {
         let body_width = if i % 3 == 0 { 4 } else { 5 };
         let wick_width = if i % 5 == 0 { 2 } else { 1 };
 
-        tileink_scene.push_candlestick(
-            CandleStick::new(x, high, low, open, close, body_width, wick_width),
-            color,
-        );
+        let candle = CandleStick::new(x, high, low, open, close, body_width, wick_width);
+        if config.tileink_retained_leaves {
+            let mut child = Canvas::new(config.width, config.height, 1.0);
+            child.push_candlestick(candle, color);
+            tileink_scene.append_retained_scene(
+                tileink::SceneCacheKey::for_element(10_000 + i as u64),
+                1,
+                Arc::new(child),
+                (0.0, 0.0),
+            );
+        } else {
+            tileink_scene.push_candlestick(candle, color);
+        }
 
         let wick_half = wick_width as f64 * 0.5;
         vello_scene.fill(
@@ -512,15 +539,20 @@ fn build_candlestick_scenes(config: Config) -> (Canvas, VelloScene) {
             ),
         );
     }
-    (tileink_scene, vello_scene)
+    (
+        wrap_tileink_scene_for_retained_cache(tileink_scene, config, 1),
+        vello_scene,
+    )
 }
 
 fn build_rect_scenes(config: Config) -> (Canvas, VelloScene) {
     let mut tileink_scene = Canvas::new(config.width, config.height, 1.0);
     let mut vello_scene = VelloScene::new();
-    tileink_scene.push_rect(
+    push_tileink_rect_for_benchmark(
+        &mut tileink_scene,
+        config,
+        4,
         Rect::new(0.0, 0.0, f64::from(config.width), f64::from(config.height)),
-        Radius::ZERO,
         Color::WHITE,
     );
     vello_scene.fill(
@@ -543,7 +575,17 @@ fn build_rect_scenes(config: Config) -> (Canvas, VelloScene) {
         let g = (67 * i % 210 + 30) as u8;
         let b = (97 * i % 210 + 30) as u8;
         let color = Color::from_rgb8(r, g, b);
-        tileink_scene.push_rect(rect, Radius::ZERO, color);
+        if config.tileink_retained_leaves {
+            push_tileink_rect_for_benchmark(
+                &mut tileink_scene,
+                config,
+                1_000_000 + i as u64,
+                rect,
+                color,
+            );
+        } else {
+            tileink_scene.push_rect(rect, Radius::ZERO, color);
+        }
         vello_scene.fill(
             VelloFill::NonZero,
             VelloAffine::IDENTITY,
@@ -552,7 +594,45 @@ fn build_rect_scenes(config: Config) -> (Canvas, VelloScene) {
             &VelloRect::new(rect.x0, rect.y0, rect.x1, rect.y1),
         );
     }
-    (tileink_scene, vello_scene)
+    (
+        wrap_tileink_scene_for_retained_cache(tileink_scene, config, 2),
+        vello_scene,
+    )
+}
+
+fn wrap_tileink_scene_for_retained_cache(scene: Canvas, config: Config, key: u64) -> Canvas {
+    if !config.tileink_retained || config.tileink_retained_leaves {
+        return scene;
+    }
+    let mut root = Canvas::new(config.width, config.height, 1.0);
+    root.append_retained_scene(
+        tileink::SceneCacheKey::for_element(key),
+        1,
+        Arc::new(scene),
+        (0.0, 0.0),
+    );
+    root
+}
+
+fn push_tileink_rect_for_benchmark(
+    scene: &mut Canvas,
+    config: Config,
+    key: u64,
+    rect: Rect,
+    color: Color,
+) {
+    if config.tileink_retained_leaves && !(config.tileink_mixed_direct && key < 10) {
+        let mut child = Canvas::new(config.width, config.height, 1.0);
+        child.push_rect(rect, Radius::ZERO, color);
+        scene.append_retained_scene(
+            tileink::SceneCacheKey::for_element(key),
+            1,
+            Arc::new(child),
+            (0.0, 0.0),
+        );
+    } else {
+        scene.push_rect(rect, Radius::ZERO, color);
+    }
 }
 
 fn print_result(name: &str, count: usize, tileink: Stats, vello: Stats) {

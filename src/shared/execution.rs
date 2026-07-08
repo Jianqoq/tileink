@@ -1,8 +1,11 @@
-use std::ops::Range;
+use std::{ops::Range, sync::Arc};
 
 use peniko::BlendMode;
 
-use crate::shared::layer::{Layer, mask::Mask};
+use crate::{
+    Canvas, SceneCacheKey,
+    shared::layer::{Layer, mask::Mask},
+};
 
 pub(crate) type CommandListId = usize;
 pub(crate) const ROOT_COMMAND_LIST_ID: CommandListId = 0;
@@ -22,6 +25,12 @@ pub(crate) struct CommandList {
 #[derive(Clone)]
 pub(crate) enum Command {
     Draw(usize),
+    RetainedScene {
+        key: SceneCacheKey,
+        revision: u64,
+        canvas: Arc<Canvas>,
+        offset: (f64, f64),
+    },
     Layer {
         draw: usize,
         layer: Layer,

@@ -6,7 +6,9 @@ use peniko::Color;
 
 use crate::{
     TextFontSystem,
-    canvas::Canvas,
+    canvas::{
+        Canvas, RetainedGraphCacheId, RetainedRootCacheId, RetainedSceneCache, RetainedSceneCacheId,
+    },
     debug::{DebugScanBuffers, RenderDebugCapture, RenderOptions, capture_render_debug},
     render::Render,
     shared::{
@@ -135,6 +137,11 @@ pub struct Renderer {
     filter_transfers: WgpuFilterTransferBuffers,
     filter_brushes: WgpuFilterBrushBuffers,
     image_resources: ImageResourceStore,
+    retained_scene_cache: RetainedSceneCache,
+    retained_root_scene: Option<(RetainedRootCacheId, SharedArc<Canvas>)>,
+    retained_graph_scene: Option<(RetainedGraphCacheId, SharedArc<Canvas>)>,
+    prepared_retained: Option<PreparedRetainedSceneId>,
+    prepared_retained_uses_text: bool,
     image_resource_upload: GpuImageResourceUpload,
     image_resource_upload_signature: ImageResourceUploadSignature,
     image_resource_texture_table_len: u32,
@@ -156,6 +163,21 @@ pub struct Renderer {
     last_frame_used_native: bool,
     size: (u32, u32),
     surface_origin: (i32, i32),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum PreparedRetainedSceneId {
+    Scene(RetainedSceneCacheId),
+    Root(RetainedRootCacheId),
+    Graph(RetainedGraphCacheId),
+}
+
+enum RetainedSceneSelection {
+    Cacheable {
+        id: PreparedRetainedSceneId,
+        scene: SharedArc<Canvas>,
+    },
+    Materialized(SharedArc<Canvas>),
 }
 
 struct SavedRendererState {
@@ -227,6 +249,11 @@ impl Renderer {
             filter_transfers: WgpuFilterTransferBuffers::new(device),
             filter_brushes: WgpuFilterBrushBuffers::new(device),
             image_resources: ImageResourceStore::default(),
+            retained_scene_cache: RetainedSceneCache::default(),
+            retained_root_scene: None,
+            retained_graph_scene: None,
+            prepared_retained: None,
+            prepared_retained_uses_text: false,
             image_resource_upload: GpuImageResourceUpload::default(),
             image_resource_upload_signature: ImageResourceUploadSignature::default(),
             image_resource_texture_table_len: large_texture_table_len(device),
@@ -289,6 +316,7 @@ impl Renderer {
             return false;
         }
         self.image_resources_dirty = true;
+        self.invalidate_prepared_retained_scene();
         true
     }
 
@@ -296,6 +324,7 @@ impl Renderer {
         let removed = self.image_resources.remove(key);
         if removed {
             self.image_resources_dirty = true;
+            self.invalidate_prepared_retained_scene();
             return true;
         }
         false
@@ -305,6 +334,7 @@ impl Renderer {
         let removed = self.image_resources.clear();
         if removed {
             self.image_resources_dirty = true;
+            self.invalidate_prepared_retained_scene();
             return true;
         }
         false
@@ -371,14 +401,19 @@ impl Renderer {
     /// render multiple scenes/examples in a single process.
     pub fn set_clear_color(&mut self, clear: Color) {
         self.clear_color = premul_clear_color(clear);
+        self.invalidate_prepared_retained_scene();
     }
 
     /// Renders only through native wgpu compute pipelines.
     ///
     /// This is useful for tests that need to verify the native WGPU path directly.
     pub fn render_native(&mut self, canvas: &Canvas) -> bool {
-        self.prepare_scene(canvas);
-        self.render_prepared_native(canvas)
+        self.render_with_retained_scene(
+            canvas,
+            false,
+            |renderer, scene| renderer.prepare_scene(scene),
+            |renderer, scene| renderer.render_prepared_native(scene),
+        )
     }
 
     /// Renders text scenes only through native wgpu compute pipelines.
@@ -391,8 +426,108 @@ impl Renderer {
         font_system: &mut TextFontSystem,
         text_context: &mut TextContext,
     ) -> bool {
-        self.prepare_scene_with_text(canvas, font_system, text_context);
-        self.render_prepared_native(canvas)
+        self.render_with_retained_scene(
+            canvas,
+            true,
+            |renderer, scene| renderer.prepare_scene_with_text(scene, font_system, text_context),
+            |renderer, scene| renderer.render_prepared_native(scene),
+        )
+    }
+
+    fn render_with_retained_scene(
+        &mut self,
+        canvas: &Canvas,
+        uses_text: bool,
+        prepare: impl FnOnce(&mut Self, &Canvas),
+        render: impl FnOnce(&mut Self, &Canvas) -> bool,
+    ) -> bool {
+        match self.retained_scene_selection(canvas) {
+            Some(RetainedSceneSelection::Cacheable { id, scene }) => {
+                if self.prepared_retained.as_ref() != Some(&id)
+                    || self.prepared_retained_uses_text != uses_text
+                    || self.image_resources_dirty
+                {
+                    prepare(self, &scene);
+                    self.prepared_retained = Some(id);
+                    self.prepared_retained_uses_text = uses_text;
+                }
+                render(self, &scene)
+            }
+            Some(RetainedSceneSelection::Materialized(scene)) => {
+                self.invalidate_prepared_retained_scene();
+                prepare(self, &scene);
+                render(self, &scene)
+            }
+            None => {
+                self.invalidate_prepared_retained_scene();
+                prepare(self, canvas);
+                render(self, canvas)
+            }
+        }
+    }
+
+    fn retained_scene_selection(&mut self, canvas: &Canvas) -> Option<RetainedSceneSelection> {
+        if let Some((id, scene)) = canvas.single_retained_scene(&mut self.retained_scene_cache) {
+            return Some(RetainedSceneSelection::Cacheable {
+                id: PreparedRetainedSceneId::Scene(id),
+                scene,
+            });
+        }
+        if let Some(id) = canvas.retained_root_cache_id() {
+            let scene = self.retained_root_scene(canvas, id.clone());
+            return Some(RetainedSceneSelection::Cacheable {
+                id: PreparedRetainedSceneId::Root(id),
+                scene,
+            });
+        }
+        if let Some(id) = canvas.retained_graph_cache_id() {
+            let scene = self.retained_graph_scene(canvas, id.clone());
+            return Some(RetainedSceneSelection::Cacheable {
+                id: PreparedRetainedSceneId::Graph(id),
+                scene,
+            });
+        }
+        canvas.has_retained_scenes().then(|| {
+            RetainedSceneSelection::Materialized(SharedArc::new(
+                canvas.materialize_retained_scenes(&mut self.retained_scene_cache),
+            ))
+        })
+    }
+
+    fn invalidate_prepared_retained_scene(&mut self) {
+        self.prepared_retained = None;
+    }
+
+    fn retained_root_scene(
+        &mut self,
+        canvas: &Canvas,
+        id: RetainedRootCacheId,
+    ) -> SharedArc<Canvas> {
+        if let Some((cached_id, scene)) = &self.retained_root_scene
+            && cached_id == &id
+        {
+            return scene.clone();
+        }
+        let scene =
+            SharedArc::new(canvas.materialize_retained_scenes(&mut self.retained_scene_cache));
+        self.retained_root_scene = Some((id, scene.clone()));
+        scene
+    }
+
+    fn retained_graph_scene(
+        &mut self,
+        canvas: &Canvas,
+        id: RetainedGraphCacheId,
+    ) -> SharedArc<Canvas> {
+        if let Some((cached_id, scene)) = &self.retained_graph_scene
+            && cached_id == &id
+        {
+            return scene.clone();
+        }
+        let scene =
+            SharedArc::new(canvas.materialize_retained_scenes(&mut self.retained_scene_cache));
+        self.retained_graph_scene = Some((id, scene.clone()));
+        scene
     }
 
     fn render_prepared_native(&mut self, canvas: &Canvas) -> bool {
@@ -2007,7 +2142,7 @@ impl Renderer {
         canvas: &Canvas,
         dst: &::wgpu::Texture,
     ) -> Result<(), WgpuTextureRenderError> {
-        self.render_native_to_wgpu_texture_with_prepare(canvas, dst, |renderer, canvas| {
+        self.render_native_to_wgpu_texture_with_prepare(canvas, dst, false, |renderer, canvas| {
             renderer.prepare_scene(canvas);
         })
     }
@@ -2019,7 +2154,7 @@ impl Renderer {
         text_context: &mut TextContext,
         dst: &::wgpu::Texture,
     ) -> Result<(), WgpuTextureRenderError> {
-        self.render_native_to_wgpu_texture_with_prepare(canvas, dst, |renderer, canvas| {
+        self.render_native_to_wgpu_texture_with_prepare(canvas, dst, true, |renderer, canvas| {
             renderer.prepare_scene_with_text(canvas, font_system, text_context);
         })
     }
@@ -2028,6 +2163,7 @@ impl Renderer {
         &mut self,
         canvas: &Canvas,
         dst: &::wgpu::Texture,
+        uses_text: bool,
         prepare: impl FnOnce(&mut Self, &Canvas),
     ) -> Result<(), WgpuTextureRenderError> {
         self.validate_wgpu_storage_texture_destination(
@@ -2037,8 +2173,10 @@ impl Renderer {
         )?;
         self.root_target_texture = Some(dst.clone());
         self.root_target_view = Some(dst.create_view(&::wgpu::TextureViewDescriptor::default()));
-        prepare(self, canvas);
-        let rendered = self.render_prepared_tile_plan(canvas);
+        let rendered =
+            self.render_with_retained_scene(canvas, uses_text, prepare, |renderer, scene| {
+                renderer.render_prepared_tile_plan(scene)
+            });
         self.root_target_view = None;
         self.root_target_texture = None;
         if rendered {

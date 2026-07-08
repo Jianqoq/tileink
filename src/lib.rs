@@ -16,7 +16,7 @@ pub use crate::wgpu::{
     Renderer, Renderer as WgpuRenderer, WgpuRenderProfile, WgpuRenderProfileEntry,
     WgpuRenderProfileEventSummary, WgpuRenderProfileReport, WgpuTextureRenderError,
 };
-pub use canvas::{Canvas, DrawId};
+pub use canvas::{Canvas, DrawId, SceneCacheKey};
 pub use cosmic_text::{
     Align as TextAlign, Attrs as TextAttrs, CacheKeyFlags as TextCacheKeyFlags,
     Family as TextFamily, FontSystem as TextFontSystem, Stretch as TextStretch, Style as TextStyle,
