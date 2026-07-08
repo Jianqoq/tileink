@@ -468,16 +468,16 @@ impl Renderer {
     }
 
     fn retained_scene_selection(&mut self, canvas: &Canvas) -> Option<RetainedSceneSelection> {
-        if let Some((id, scene)) = canvas.single_retained_scene(&mut self.retained_scene_cache) {
-            return Some(RetainedSceneSelection::Cacheable {
-                id: PreparedRetainedSceneId::Scene(id),
-                scene,
-            });
-        }
         if let Some(id) = canvas.retained_root_cache_id() {
             let scene = self.retained_root_scene(canvas, id.clone());
             return Some(RetainedSceneSelection::Cacheable {
                 id: PreparedRetainedSceneId::Root(id),
+                scene,
+            });
+        }
+        if let Some((id, scene)) = canvas.single_retained_scene(&mut self.retained_scene_cache) {
+            return Some(RetainedSceneSelection::Cacheable {
+                id: PreparedRetainedSceneId::Scene(id),
                 scene,
             });
         }
