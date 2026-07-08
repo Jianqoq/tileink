@@ -121,6 +121,10 @@ fn coarse_emit(
     _ = coarse_total;
     let glyph_offset = workgroup_exclusive_prefix(glyph_count, lane);
     _ = coarse_total;
+    var class_flags = 0u;
+    if (valid) {
+        class_flags = particle_class_flags(ptcl_tag, draw_ix);
+    }
     if (valid) {
         if (ptcl_tag == GPU_PTCL_GLYPH) {
             ptcl_segment_start = glyph_cursor + glyph_offset;
@@ -142,9 +146,59 @@ fn coarse_emit(
 
     if (lane == 0u && emit_wrappers && chunk.local_chunk + 1u == tile_emit_chunk_count_at(tile_ix)) {
         let end_cursor = cursor + chunk.ptcl_count;
-        emit_active_stack_ends(end_cursor);
+        emit_active_stack_ends(end_cursor, tile_x, tile_y);
         store_particle(end_cursor + wrapper_count, GPU_PTCL_END, 0i, 0u, 0u, 0u, 0u);
     }
+
+    let color_count = workgroup_sum(select(0u, 1u, (class_flags & EMIT_CHUNK_CLASS_COLOR) != 0u), lane);
+    let sdf_count = workgroup_sum(select(0u, 1u, (class_flags & EMIT_CHUNK_CLASS_SDF) != 0u), lane);
+    let other_count = workgroup_sum(select(0u, 1u, (class_flags & EMIT_CHUNK_CLASS_OTHER) != 0u), lane);
+    if (lane == 0u) {
+        store_emit_chunk_class_flags(
+            ref_ix,
+            select(0u, EMIT_CHUNK_CLASS_COLOR, color_count != 0u) |
+                select(0u, EMIT_CHUNK_CLASS_SDF, sdf_count != 0u) |
+                select(0u, EMIT_CHUNK_CLASS_OTHER, other_count != 0u),
+        );
+    }
+}
+
+@compute @workgroup_size(256)
+fn coarse_emit_chunk_tile_kinds(
+    @builtin(workgroup_id) workgroup_id: vec3<u32>,
+    @builtin(local_invocation_id) local_id: vec3<u32>,
+) {
+    let tile_ix = workgroup_id.x * 256u + local_id.x;
+    if (tile_ix >= config.tile_count) {
+        return;
+    }
+
+    let tile = coarse_load_tile(tile_ix);
+    if (tile.ptcl_count == 0u) {
+        store_fine_tile_kind(tile_ix, FINE_TILE_KIND_EMPTY_OR_CLEAR);
+        return;
+    }
+
+    let tile_x = tile_ix % config.tiles_width;
+    let tile_y = tile_ix / config.tiles_width;
+    let wrapper_count = active_stack_count(tile_x, tile_y);
+    if (wrapper_count == INVALID) {
+        store_fine_tile_kind(tile_ix, FINE_TILE_KIND_FULL_INTERPRETER);
+        return;
+    }
+
+    var flags = select(0u, EMIT_CHUNK_CLASS_OTHER, wrapper_count != 0u);
+    let chunk_count = tile_emit_chunk_count_at(tile_ix);
+    let chunk_offset = tile_emit_chunk_offset_at(tile_ix);
+    var local_chunk = 0u;
+    loop {
+        if (local_chunk >= chunk_count) {
+            break;
+        }
+        flags |= emit_chunk_at(chunk_offset + local_chunk).class_flags;
+        local_chunk += 1u;
+    }
+    store_fine_tile_kind(tile_ix, classify_fine_tile_kind_from_flags(flags));
 }
 
 fn active_stack_count(tile_x: u32, tile_y: u32) -> u32 {
@@ -160,6 +214,7 @@ fn active_stack_count(tile_x: u32, tile_y: u32) -> u32 {
             let layer_tag = layer.tag;
             if (layer_tag != GPU_LAYER_CLIP && layer_tag != GPU_LAYER_OPACITY && layer_tag != GPU_LAYER_BLEND) {
                 valid = false;
+            } else if (active_stack_layer_is_noop_clip(layer, tile_x, tile_y)) {
             } else {
                 let draw_ix = layer.draw;
                 if (draw_has_sdf_at(draw_ix)) {
@@ -197,7 +252,10 @@ fn emit_active_stack_begins(dst_start: u32, tile_x: u32, tile_y: u32) {
         }
         let layer = layer_stack[stack_ix];
         let layer_tag = layer.tag;
-        if (layer_tag == GPU_LAYER_CLIP || layer_tag == GPU_LAYER_OPACITY || layer_tag == GPU_LAYER_BLEND) {
+        if (
+            (layer_tag == GPU_LAYER_CLIP || layer_tag == GPU_LAYER_OPACITY || layer_tag == GPU_LAYER_BLEND) &&
+            !active_stack_layer_is_noop_clip(layer, tile_x, tile_y)
+        ) {
             let draw_ix = layer.draw;
             if (layer_tag == GPU_LAYER_CLIP && draw_has_sdf_at(draw_ix)) {
                 store_particle(dst, GPU_PTCL_BEGIN_SDF_CLIP, 0i, 0u, 0u, 0u, draw_ix);
@@ -228,7 +286,7 @@ fn emit_active_stack_begins(dst_start: u32, tile_x: u32, tile_y: u32) {
     }
 }
 
-fn emit_active_stack_ends(dst_start: u32) {
+fn emit_active_stack_ends(dst_start: u32, tile_x: u32, tile_y: u32) {
     var stack_ix = config.layer_stack_end;
     var dst = dst_start;
     loop {
@@ -236,7 +294,8 @@ fn emit_active_stack_ends(dst_start: u32) {
             break;
         }
         stack_ix -= 1u;
-        let layer_tag = layer_stack[stack_ix].tag;
+        let layer = layer_stack[stack_ix];
+        let layer_tag = layer.tag;
         var ptcl_tag = GPU_PTCL_END_CLIP;
         var valid = true;
         if (layer_tag == GPU_LAYER_OPACITY) {
@@ -246,11 +305,27 @@ fn emit_active_stack_ends(dst_start: u32) {
         } else if (layer_tag != GPU_LAYER_CLIP) {
             valid = false;
         }
+        if (active_stack_layer_is_noop_clip(layer, tile_x, tile_y)) {
+            valid = false;
+        }
         if (valid) {
             store_particle(dst, ptcl_tag, 0i, 0u, 0u, 0u, 0u);
             dst += 1u;
         }
     }
+}
+
+fn active_stack_layer_is_noop_clip(layer: LayerStackRecord, tile_x: u32, tile_y: u32) -> bool {
+    if (layer.tag != GPU_LAYER_CLIP) {
+        return false;
+    }
+    let draw_ix = layer.draw;
+    if (draw_has_sdf_at(draw_ix)) {
+        return draw_sdf_clip_fully_covers_tile_at(draw_ix, tile_x, tile_y);
+    }
+    let backdrop_ix = draw_backdrop_ix(draw_ix, tile_x, tile_y);
+    return backdrop_ix != INVALID &&
+        path_backdrop_fully_covers_tile(backdrop_ix, draw_fill_rule_at(draw_ix));
 }
 
 fn draw_backdrop_ix(draw_ix: u32, tile_x: u32, tile_y: u32) -> u32 {
@@ -381,6 +456,46 @@ fn draw_solid_color_fast_path_at(draw_ix: u32) -> bool {
     return draw_records[draw_ix].solid_rect != 0u && draw_has_nontransparent_solid_brush_at(draw_ix);
 }
 
+fn particle_class_flags(ptcl_tag: u32, draw_ix: u32) -> u32 {
+    if (ptcl_tag == GPU_PTCL_COLOR) {
+        return EMIT_CHUNK_CLASS_COLOR;
+    }
+    if (ptcl_tag == GPU_PTCL_IMAGE || (ptcl_tag == GPU_PTCL_SDF && draw_solid_supported_sdf_at(draw_ix))) {
+        return EMIT_CHUNK_CLASS_SDF;
+    }
+    return EMIT_CHUNK_CLASS_OTHER;
+}
+
+fn classify_fine_tile_kind_from_flags(flags: u32) -> u32 {
+    if ((flags & EMIT_CHUNK_CLASS_OTHER) != 0u) {
+        return FINE_TILE_KIND_FULL_INTERPRETER;
+    }
+    if ((flags & EMIT_CHUNK_CLASS_SDF) != 0u && (flags & EMIT_CHUNK_CLASS_COLOR) != 0u) {
+        return FINE_TILE_KIND_MIXED_ANALYTIC_SOLID_NO_STACK;
+    }
+    if ((flags & EMIT_CHUNK_CLASS_SDF) != 0u) {
+        return FINE_TILE_KIND_PURE_SDF_SOLID_NO_STACK;
+    }
+    if ((flags & EMIT_CHUNK_CLASS_COLOR) != 0u) {
+        return FINE_TILE_KIND_COLOR_ONLY_NO_STACK;
+    }
+    return FINE_TILE_KIND_EMPTY_OR_CLEAR;
+}
+
+fn draw_solid_supported_sdf_at(draw_ix: u32) -> bool {
+    let draw = draw_records[draw_ix];
+    if (
+        !draw_has_nontransparent_solid_brush_at(draw_ix) ||
+        draw.sdf_offset == INVALID ||
+        draw.sdf_shadow_offset != INVALID ||
+        draw.sdf_len == 0u
+    ) {
+        return false;
+    }
+    let kind = sdf_blob[draw.sdf_offset];
+    return kind == GPU_SDF_RECT || kind == GPU_SDF_CANDLESTICK;
+}
+
 fn draw_has_nontransparent_solid_brush_at(draw_ix: u32) -> bool {
     let brush_base = draw_records[draw_ix].brush_offset;
     return brush_base != INVALID &&
@@ -423,88 +538,6 @@ fn draw_has_opaque_image_brush_at(draw_ix: u32) -> bool {
     return brush_base != INVALID &&
         brush_blob[brush_base] == GPU_BRUSH_PATTERN_RESOURCE &&
         brush_blob[brush_base + 7u] == 255u;
-}
-
-fn sdf_rect_fully_covers_tile(sdf_base: u32, tile_x: u32, tile_y: u32) -> bool {
-    // Conservative full-coverage test: pixel centers must stay inside the rect eroded by the
-    // coverage ramp, and rounded corners use squared distances so coarse avoids sqrt work.
-    let rect_min = vec2<f32>(
-        min(sdf_float_at(sdf_base, 1u), sdf_float_at(sdf_base, 3u)),
-        min(sdf_float_at(sdf_base, 2u), sdf_float_at(sdf_base, 4u)),
-    );
-    let rect_max = vec2<f32>(
-        max(sdf_float_at(sdf_base, 1u), sdf_float_at(sdf_base, 3u)),
-        max(sdf_float_at(sdf_base, 2u), sdf_float_at(sdf_base, 4u)),
-    );
-    let tile_min = vec2<f32>(f32(tile_x * 16u), f32(tile_y * 16u)) + vec2<f32>(0.5);
-    let tile_max = tile_min + vec2<f32>(15.0);
-    let rect_size = rect_max - rect_min;
-    let min_size = vec2<f32>(15.0 + 2.0 * FULL_TILE_SDF_SOLID_INSET);
-    let inset = vec2<f32>(FULL_TILE_SDF_SOLID_INSET);
-    var covers =
-        all(rect_size >= min_size) &&
-        all(tile_min >= rect_min + inset) &&
-        all(tile_max <= rect_max - inset);
-    if (covers) {
-        let radius_limit = min(rect_size.x, rect_size.y) * 0.5;
-        let radii = min(max(vec4<f32>(
-            sdf_float_at(sdf_base, 5u),
-            sdf_float_at(sdf_base, 6u),
-            sdf_float_at(sdf_base, 7u),
-            sdf_float_at(sdf_base, 8u),
-        ), vec4<f32>(0.0)), vec4<f32>(radius_limit));
-        if (any(radii > vec4<f32>(0.0))) {
-            covers = rounded_rect_corners_fully_cover_tile(rect_min, rect_max, tile_min, tile_max, radii);
-        }
-    }
-    return covers;
-}
-
-fn sdf_float_at(sdf_base: u32, index: u32) -> f32 {
-    return bitcast<f32>(sdf_blob[sdf_base + index]);
-}
-
-fn rounded_rect_corners_fully_cover_tile(
-    rect_min: vec2<f32>,
-    rect_max: vec2<f32>,
-    tile_min: vec2<f32>,
-    tile_max: vec2<f32>,
-    radii: vec4<f32>,
-) -> bool {
-    let top_left = rounded_rect_corner_fully_covers(
-        tile_min,
-        rect_min,
-        rect_min + vec2<f32>(radii.x),
-        radii.x,
-    );
-    let top_right = rounded_rect_corner_fully_covers(
-        vec2<f32>(tile_max.x, tile_min.y),
-        vec2<f32>(rect_max.x, rect_min.y),
-        vec2<f32>(rect_max.x - radii.y, rect_min.y + radii.y),
-        radii.y,
-    );
-    let bottom_left = rounded_rect_corner_fully_covers(
-        vec2<f32>(tile_min.x, tile_max.y),
-        vec2<f32>(rect_min.x, rect_max.y),
-        vec2<f32>(rect_min.x + radii.z, rect_max.y - radii.z),
-        radii.z,
-    );
-    let bottom_right = rounded_rect_corner_fully_covers(
-        tile_max,
-        rect_max,
-        rect_max - vec2<f32>(radii.w),
-        radii.w,
-    );
-    return top_left && top_right && bottom_left && bottom_right;
-}
-
-fn rounded_rect_corner_fully_covers(point: vec2<f32>, corner: vec2<f32>, center: vec2<f32>, radius: f32) -> bool {
-    let in_corner_square = radius > 0.0 &&
-        abs(point.x - corner.x) < radius &&
-        abs(point.y - corner.y) < radius;
-    let inner_radius = radius - FULL_TILE_SDF_SOLID_INSET;
-    let delta = point - center;
-    return !in_corner_square || (inner_radius > 0.0 && dot(delta, delta) <= inner_radius * inner_radius);
 }
 
 fn store_particle(dst: u32, tag: u32, backdrop: i32, fill_rule: u32, segment_start: u32, segment_end: u32, color: u32) {
