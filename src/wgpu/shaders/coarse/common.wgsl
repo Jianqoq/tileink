@@ -122,6 +122,7 @@ const GPU_BRUSH_PATTERN_RESOURCE: u32 = 7u;
 const GPU_LAYER_CLIP: u32 = 0u;
 const GPU_LAYER_OPACITY: u32 = 1u;
 const GPU_LAYER_BLEND: u32 = 2u;
+const GPU_FILL_RULE_EVEN_ODD: u32 = 1u;
 const GPU_PTCL_END: u32 = 0u;
 const GPU_PTCL_FILL: u32 = 1u;
 const GPU_PTCL_COLOR: u32 = 2u;
@@ -218,6 +219,110 @@ fn tile_emit_chunk_offset_at(tile_ix: u32) -> u32 {
 
 fn store_tile_emit_chunk_count(tile_ix: u32, count: u32) {
     coarse_work[tile_emit_chunk_record_base(tile_ix)] = count;
+}
+
+fn path_backdrop_fully_covers_tile(backdrop_ix: u32, fill_rule: u32) -> bool {
+    let segment_range = segment_ranges[backdrop_ix];
+    return segment_range.start == segment_range.end &&
+        backdrop_value_is_full_alpha(atomicLoad(&backdrops[backdrop_ix]), fill_rule);
+}
+
+fn backdrop_value_is_full_alpha(backdrop: i32, fill_rule: u32) -> bool {
+    if (fill_rule == GPU_FILL_RULE_EVEN_ODD) {
+        return (u32(abs(backdrop)) & 1u) == 1u;
+    }
+    return backdrop != 0i;
+}
+
+fn draw_sdf_clip_fully_covers_tile_at(draw_ix: u32, tile_x: u32, tile_y: u32) -> bool {
+    let draw = draw_records[draw_ix];
+    return draw.sdf_offset != INVALID &&
+        draw.sdf_shadow_offset == INVALID &&
+        draw.sdf_len >= 9u &&
+        sdf_blob[draw.sdf_offset] == GPU_SDF_RECT &&
+        sdf_rect_fully_covers_tile(draw.sdf_offset, tile_x, tile_y);
+}
+
+fn sdf_rect_fully_covers_tile(sdf_base: u32, tile_x: u32, tile_y: u32) -> bool {
+    // Conservative full-coverage test: pixel centers must stay inside the rect eroded by the
+    // coverage ramp, and rounded corners use squared distances so coarse avoids sqrt work.
+    let rect_min = vec2<f32>(
+        min(sdf_float_at(sdf_base, 1u), sdf_float_at(sdf_base, 3u)),
+        min(sdf_float_at(sdf_base, 2u), sdf_float_at(sdf_base, 4u)),
+    );
+    let rect_max = vec2<f32>(
+        max(sdf_float_at(sdf_base, 1u), sdf_float_at(sdf_base, 3u)),
+        max(sdf_float_at(sdf_base, 2u), sdf_float_at(sdf_base, 4u)),
+    );
+    let tile_min = vec2<f32>(f32(tile_x * 16u), f32(tile_y * 16u)) + vec2<f32>(0.5);
+    let tile_max = tile_min + vec2<f32>(15.0);
+    let rect_size = rect_max - rect_min;
+    let min_size = vec2<f32>(15.0 + 2.0 * FULL_TILE_SDF_SOLID_INSET);
+    let inset = vec2<f32>(FULL_TILE_SDF_SOLID_INSET);
+    var covers =
+        all(rect_size >= min_size) &&
+        all(tile_min >= rect_min + inset) &&
+        all(tile_max <= rect_max - inset);
+    if (covers) {
+        let radius_limit = min(rect_size.x, rect_size.y) * 0.5;
+        let radii = min(max(vec4<f32>(
+            sdf_float_at(sdf_base, 5u),
+            sdf_float_at(sdf_base, 6u),
+            sdf_float_at(sdf_base, 7u),
+            sdf_float_at(sdf_base, 8u),
+        ), vec4<f32>(0.0)), vec4<f32>(radius_limit));
+        if (any(radii > vec4<f32>(0.0))) {
+            covers = rounded_rect_corners_fully_cover_tile(rect_min, rect_max, tile_min, tile_max, radii);
+        }
+    }
+    return covers;
+}
+
+fn sdf_float_at(sdf_base: u32, index: u32) -> f32 {
+    return bitcast<f32>(sdf_blob[sdf_base + index]);
+}
+
+fn rounded_rect_corners_fully_cover_tile(
+    rect_min: vec2<f32>,
+    rect_max: vec2<f32>,
+    tile_min: vec2<f32>,
+    tile_max: vec2<f32>,
+    radii: vec4<f32>,
+) -> bool {
+    let top_left = rounded_rect_corner_fully_covers(
+        tile_min,
+        rect_min,
+        rect_min + vec2<f32>(radii.x),
+        radii.x,
+    );
+    let top_right = rounded_rect_corner_fully_covers(
+        vec2<f32>(tile_max.x, tile_min.y),
+        vec2<f32>(rect_max.x, rect_min.y),
+        vec2<f32>(rect_max.x - radii.y, rect_min.y + radii.y),
+        radii.y,
+    );
+    let bottom_left = rounded_rect_corner_fully_covers(
+        vec2<f32>(tile_min.x, tile_max.y),
+        vec2<f32>(rect_min.x, rect_max.y),
+        vec2<f32>(rect_min.x + radii.z, rect_max.y - radii.z),
+        radii.z,
+    );
+    let bottom_right = rounded_rect_corner_fully_covers(
+        tile_max,
+        rect_max,
+        rect_max - vec2<f32>(radii.w),
+        radii.w,
+    );
+    return top_left && top_right && bottom_left && bottom_right;
+}
+
+fn rounded_rect_corner_fully_covers(point: vec2<f32>, corner: vec2<f32>, center: vec2<f32>, radius: f32) -> bool {
+    let in_corner_square = radius > 0.0 &&
+        abs(point.x - corner.x) < radius &&
+        abs(point.y - corner.y) < radius;
+    let inner_radius = radius - FULL_TILE_SDF_SOLID_INSET;
+    let delta = point - center;
+    return !in_corner_square || (inner_radius > 0.0 && dot(delta, delta) <= inner_radius * inner_radius);
 }
 
 fn store_tile_emit_chunk_offset(tile_ix: u32, offset: u32) {

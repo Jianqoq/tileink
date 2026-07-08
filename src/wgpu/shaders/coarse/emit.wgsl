@@ -155,7 +155,7 @@ fn coarse_emit(
     }
 
     if (lane == 0u) {
-        emit_active_stack_ends(cursor);
+        emit_active_stack_ends(cursor, tile_x, tile_y);
         store_particle(cursor + wrapper_count, GPU_PTCL_END, 0i, 0u, 0u, 0u, 0u);
     }
 }
@@ -315,7 +315,7 @@ fn coarse_emit_bins(
         draw_ref_ix += 1u;
     }
 
-    emit_active_stack_ends(cursor);
+    emit_active_stack_ends(cursor, tile_x, tile_y);
     store_particle(cursor + wrapper_count, GPU_PTCL_END, 0i, 0u, 0u, 0u, 0u);
     store_fine_tile_kind(tile_ix, classify_fine_tile_kind(saw_color, saw_sdf, saw_other));
 }
@@ -333,6 +333,7 @@ fn active_stack_count(tile_x: u32, tile_y: u32) -> u32 {
             let layer_tag = layer.tag;
             if (layer_tag != GPU_LAYER_CLIP && layer_tag != GPU_LAYER_OPACITY && layer_tag != GPU_LAYER_BLEND) {
                 valid = false;
+            } else if (active_stack_layer_is_noop_clip(layer, tile_x, tile_y)) {
             } else {
                 let draw_ix = layer.draw;
                 if (draw_has_sdf_at(draw_ix)) {
@@ -370,7 +371,10 @@ fn emit_active_stack_begins(dst_start: u32, tile_x: u32, tile_y: u32) {
         }
         let layer = layer_stack[stack_ix];
         let layer_tag = layer.tag;
-        if (layer_tag == GPU_LAYER_CLIP || layer_tag == GPU_LAYER_OPACITY || layer_tag == GPU_LAYER_BLEND) {
+        if (
+            (layer_tag == GPU_LAYER_CLIP || layer_tag == GPU_LAYER_OPACITY || layer_tag == GPU_LAYER_BLEND) &&
+            !active_stack_layer_is_noop_clip(layer, tile_x, tile_y)
+        ) {
             let draw_ix = layer.draw;
             if (layer_tag == GPU_LAYER_CLIP && draw_has_sdf_at(draw_ix)) {
                 store_particle(dst, GPU_PTCL_BEGIN_SDF_CLIP, 0i, 0u, 0u, 0u, draw_ix);
@@ -401,7 +405,7 @@ fn emit_active_stack_begins(dst_start: u32, tile_x: u32, tile_y: u32) {
     }
 }
 
-fn emit_active_stack_ends(dst_start: u32) {
+fn emit_active_stack_ends(dst_start: u32, tile_x: u32, tile_y: u32) {
     var stack_ix = config.layer_stack_end;
     var dst = dst_start;
     loop {
@@ -409,7 +413,8 @@ fn emit_active_stack_ends(dst_start: u32) {
             break;
         }
         stack_ix -= 1u;
-        let layer_tag = layer_stack[stack_ix].tag;
+        let layer = layer_stack[stack_ix];
+        let layer_tag = layer.tag;
         var ptcl_tag = GPU_PTCL_END_CLIP;
         var valid = true;
         if (layer_tag == GPU_LAYER_OPACITY) {
@@ -419,11 +424,27 @@ fn emit_active_stack_ends(dst_start: u32) {
         } else if (layer_tag != GPU_LAYER_CLIP) {
             valid = false;
         }
+        if (active_stack_layer_is_noop_clip(layer, tile_x, tile_y)) {
+            valid = false;
+        }
         if (valid) {
             store_particle(dst, ptcl_tag, 0i, 0u, 0u, 0u, 0u);
             dst += 1u;
         }
     }
+}
+
+fn active_stack_layer_is_noop_clip(layer: LayerStackRecord, tile_x: u32, tile_y: u32) -> bool {
+    if (layer.tag != GPU_LAYER_CLIP) {
+        return false;
+    }
+    let draw_ix = layer.draw;
+    if (draw_has_sdf_at(draw_ix)) {
+        return draw_sdf_clip_fully_covers_tile_at(draw_ix, tile_x, tile_y);
+    }
+    let backdrop_ix = draw_backdrop_ix(draw_ix, tile_x, tile_y);
+    return backdrop_ix != INVALID &&
+        path_backdrop_fully_covers_tile(backdrop_ix, draw_fill_rule_at(draw_ix));
 }
 
 fn draw_backdrop_ix(draw_ix: u32, tile_x: u32, tile_y: u32) -> u32 {
@@ -626,88 +647,6 @@ fn draw_has_opaque_image_brush_at(draw_ix: u32) -> bool {
     return brush_base != INVALID &&
         brush_blob[brush_base] == GPU_BRUSH_PATTERN_RESOURCE &&
         brush_blob[brush_base + 7u] == 255u;
-}
-
-fn sdf_rect_fully_covers_tile(sdf_base: u32, tile_x: u32, tile_y: u32) -> bool {
-    // Conservative full-coverage test: pixel centers must stay inside the rect eroded by the
-    // coverage ramp, and rounded corners use squared distances so coarse avoids sqrt work.
-    let rect_min = vec2<f32>(
-        min(sdf_float_at(sdf_base, 1u), sdf_float_at(sdf_base, 3u)),
-        min(sdf_float_at(sdf_base, 2u), sdf_float_at(sdf_base, 4u)),
-    );
-    let rect_max = vec2<f32>(
-        max(sdf_float_at(sdf_base, 1u), sdf_float_at(sdf_base, 3u)),
-        max(sdf_float_at(sdf_base, 2u), sdf_float_at(sdf_base, 4u)),
-    );
-    let tile_min = vec2<f32>(f32(tile_x * 16u), f32(tile_y * 16u)) + vec2<f32>(0.5);
-    let tile_max = tile_min + vec2<f32>(15.0);
-    let rect_size = rect_max - rect_min;
-    let min_size = vec2<f32>(15.0 + 2.0 * FULL_TILE_SDF_SOLID_INSET);
-    let inset = vec2<f32>(FULL_TILE_SDF_SOLID_INSET);
-    var covers =
-        all(rect_size >= min_size) &&
-        all(tile_min >= rect_min + inset) &&
-        all(tile_max <= rect_max - inset);
-    if (covers) {
-        let radius_limit = min(rect_size.x, rect_size.y) * 0.5;
-        let radii = min(max(vec4<f32>(
-            sdf_float_at(sdf_base, 5u),
-            sdf_float_at(sdf_base, 6u),
-            sdf_float_at(sdf_base, 7u),
-            sdf_float_at(sdf_base, 8u),
-        ), vec4<f32>(0.0)), vec4<f32>(radius_limit));
-        if (any(radii > vec4<f32>(0.0))) {
-            covers = rounded_rect_corners_fully_cover_tile(rect_min, rect_max, tile_min, tile_max, radii);
-        }
-    }
-    return covers;
-}
-
-fn sdf_float_at(sdf_base: u32, index: u32) -> f32 {
-    return bitcast<f32>(sdf_blob[sdf_base + index]);
-}
-
-fn rounded_rect_corners_fully_cover_tile(
-    rect_min: vec2<f32>,
-    rect_max: vec2<f32>,
-    tile_min: vec2<f32>,
-    tile_max: vec2<f32>,
-    radii: vec4<f32>,
-) -> bool {
-    let top_left = rounded_rect_corner_fully_covers(
-        tile_min,
-        rect_min,
-        rect_min + vec2<f32>(radii.x),
-        radii.x,
-    );
-    let top_right = rounded_rect_corner_fully_covers(
-        vec2<f32>(tile_max.x, tile_min.y),
-        vec2<f32>(rect_max.x, rect_min.y),
-        vec2<f32>(rect_max.x - radii.y, rect_min.y + radii.y),
-        radii.y,
-    );
-    let bottom_left = rounded_rect_corner_fully_covers(
-        vec2<f32>(tile_min.x, tile_max.y),
-        vec2<f32>(rect_min.x, rect_max.y),
-        vec2<f32>(rect_min.x + radii.z, rect_max.y - radii.z),
-        radii.z,
-    );
-    let bottom_right = rounded_rect_corner_fully_covers(
-        tile_max,
-        rect_max,
-        rect_max - vec2<f32>(radii.w),
-        radii.w,
-    );
-    return top_left && top_right && bottom_left && bottom_right;
-}
-
-fn rounded_rect_corner_fully_covers(point: vec2<f32>, corner: vec2<f32>, center: vec2<f32>, radius: f32) -> bool {
-    let in_corner_square = radius > 0.0 &&
-        abs(point.x - corner.x) < radius &&
-        abs(point.y - corner.y) < radius;
-    let inner_radius = radius - FULL_TILE_SDF_SOLID_INSET;
-    let delta = point - center;
-    return !in_corner_square || (inner_radius > 0.0 && dot(delta, delta) <= inner_radius * inner_radius);
 }
 
 fn store_particle(dst: u32, tag: u32, backdrop: i32, fill_rule: u32, segment_start: u32, segment_end: u32, color: u32) {
