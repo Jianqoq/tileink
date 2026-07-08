@@ -2043,6 +2043,77 @@ fn wgpu_renderer_rect_liquid_glass_backdrop_is_stable_when_enabled() {
 }
 
 #[test]
+fn wgpu_renderer_clips_rect_liquid_glass_backdrop_with_outer_sdf_clip_when_enabled() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut canvas = Canvas::new(16, 16, 1.0);
+    canvas.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(20, 40, 80),
+    );
+    canvas.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::all(6.0));
+    canvas.push_backdrop_layer(
+        Filter::RectLiquidGlass(RectLiquidGlass {
+            blur_radius: 0,
+            tint: Color::from_rgba8(255, 0, 0, 255),
+            refraction_factor: 0.0,
+            fresnel_factor: 0.0,
+            glare_factor: 0.0,
+            ..RectLiquidGlass::default()
+        }),
+        Region::rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO),
+    );
+    canvas.pop_layer();
+    canvas.pop_layer();
+
+    let image = render_native_wgpu(&canvas);
+
+    assert_ne!(image.rgba8_at(8, 8), [20, 40, 80, 255]);
+    assert_eq!(image.rgba8_at(0, 0), [20, 40, 80, 255]);
+}
+
+#[test]
+fn wgpu_renderer_clips_rect_liquid_glass_children_with_outer_sdf_clip_when_enabled() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut canvas = Canvas::new(16, 16, 1.0);
+    canvas.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(20, 40, 80),
+    );
+    canvas.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::all(6.0));
+    canvas.push_backdrop_layer(
+        Filter::RectLiquidGlass(RectLiquidGlass {
+            blur_radius: 0,
+            tint: Color::from_rgba8(255, 0, 0, 255),
+            refraction_factor: 0.0,
+            fresnel_factor: 0.0,
+            glare_factor: 0.0,
+            ..RectLiquidGlass::default()
+        }),
+        Region::rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO),
+    );
+    canvas.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(0, 255, 0),
+    );
+    canvas.pop_layer();
+    canvas.pop_layer();
+
+    let image = render_native_wgpu(&canvas);
+
+    assert_eq!(image.rgba8_at(8, 8), [0, 255, 0, 255]);
+    assert_eq!(image.rgba8_at(0, 0), [20, 40, 80, 255]);
+}
+
+#[test]
 fn wgpu_renderer_merges_filter_graph_inputs_when_enabled() {
     if !run_wgpu_tests() {
         return;

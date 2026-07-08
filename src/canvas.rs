@@ -2411,7 +2411,12 @@ impl Canvas {
                             outer_stack: stack_start..stack_end,
                             children: {
                                 let mut child_ops = Vec::new();
-                                let mut child_layer_stack = Vec::new();
+                                let mut child_layer_stack =
+                                    if matches!(layer, Layer::Backdrop { .. }) {
+                                        layer_stack.clone()
+                                    } else {
+                                        Vec::new()
+                                    };
                                 self.compile_into(
                                     *children,
                                     &mut child_ops,
