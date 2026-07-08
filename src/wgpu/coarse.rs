@@ -8,9 +8,12 @@ use super::commands::{
 };
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 
+#[cfg(test)]
+use std::sync::atomic::{AtomicBool, Ordering};
+
 const WORKGROUP_SIZE: u32 = 256;
-const COUNT_STORAGE_BINDING_COUNT: u32 = 7;
-const PREFIX_STORAGE_BINDING_COUNT: u32 = 8;
+const COUNT_STORAGE_BINDING_COUNT: u32 = 8;
+const PREFIX_STORAGE_BINDING_COUNT: u32 = 9;
 const EMIT_STORAGE_BINDING_COUNT: u32 = 9;
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -61,6 +64,7 @@ pub(crate) struct WgpuCoarsePipeline {
     tile_counts_from_emit_chunks: ::wgpu::ComputePipeline,
     emit_bins: ::wgpu::ComputePipeline,
     emit_web: Option<::wgpu::ComputePipeline>,
+    emit_chunk_tile_kinds: Option<::wgpu::ComputePipeline>,
     count_bind_group_layout: ::wgpu::BindGroupLayout,
     prefix_bind_group_layout: ::wgpu::BindGroupLayout,
     emit_bind_group_layout: ::wgpu::BindGroupLayout,
@@ -256,6 +260,12 @@ impl WgpuCoarsePipeline {
                 &emit_chunk_shader,
                 "coarse_emit",
             )),
+            emit_chunk_tile_kinds: Some(create_pipeline(
+                device,
+                &emit_pipeline_layout,
+                &emit_chunk_shader,
+                "coarse_emit_chunk_tile_kinds",
+            )),
             count_bind_group_layout,
             prefix_bind_group_layout,
             emit_bind_group_layout,
@@ -388,6 +398,8 @@ impl WgpuCoarsePipeline {
                 pass.set_bind_group(0, &emit_bind_group, &[]);
                 pass.set_pipeline(self.emit_web.as_ref().unwrap());
                 pass.dispatch_workgroups(emit_chunk_count, 1, 1);
+                pass.set_pipeline(self.emit_chunk_tile_kinds.as_ref().unwrap());
+                pass.dispatch_workgroups(chunk_count, 1, 1);
             } else {
                 pass.set_bind_group(0, &count_bind_group, &[]);
                 pass.set_pipeline(&self.count_bins);
@@ -497,6 +509,13 @@ impl WgpuCoarsePipeline {
                 self.emit_web.as_ref().unwrap(),
                 emit_chunk_count,
             );
+            dispatch_profiled(
+                commands,
+                "coarse.emit_chunk_tile_kinds",
+                emit_bind_group,
+                self.emit_chunk_tile_kinds.as_ref().unwrap(),
+                chunk_count,
+            );
         } else {
             dispatch_profiled(
                 commands,
@@ -586,6 +605,7 @@ impl WgpuCoarsePipeline {
                 bind_buffer(5, bindings.segment_ranges),
                 bind_buffer(6, bindings.layer_stack),
                 bind_buffer(7, bindings.coarse_work),
+                bind_buffer(8, bindings.sdf_blob),
             ],
         })
     }
@@ -609,6 +629,7 @@ impl WgpuCoarsePipeline {
                 bind_buffer(6, bindings.layer_stack),
                 bind_buffer(7, bindings.coarse_work),
                 bind_buffer(8, bindings.chunk_records),
+                bind_buffer(9, bindings.sdf_blob),
             ],
         })
     }
@@ -651,7 +672,19 @@ fn profile_coarse_passes_value(value: Option<&str>) -> bool {
 }
 
 fn coarse_emit_chunks_enabled() -> bool {
+    #[cfg(test)]
+    if FORCE_COARSE_EMIT_CHUNKS.load(Ordering::Relaxed) {
+        return true;
+    }
     std::env::var("TILEINK_COARSE_CHUNKS").ok().as_deref() == Some("1")
+}
+
+#[cfg(test)]
+static FORCE_COARSE_EMIT_CHUNKS: AtomicBool = AtomicBool::new(false);
+
+#[cfg(test)]
+pub(crate) fn force_coarse_emit_chunks_for_test(enabled: bool) -> bool {
+    FORCE_COARSE_EMIT_CHUNKS.swap(enabled, Ordering::Relaxed)
 }
 
 fn coarse_bin_count(lengths: GpuBufferLengths) -> u32 {
@@ -708,6 +741,7 @@ fn count_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         storage_entry(5, true),
         storage_entry(6, true),
         storage_entry(7, false),
+        storage_entry(8, true),
     ]
 }
 
@@ -722,6 +756,7 @@ fn prefix_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         storage_entry(6, true),
         storage_entry(7, false),
         storage_entry(8, false),
+        storage_entry(9, true),
     ]
 }
 
@@ -813,8 +848,8 @@ mod tests {
             storage_count(&emit_layout_entries()),
             EMIT_STORAGE_BINDING_COUNT
         );
-        assert_eq!(COUNT_STORAGE_BINDING_COUNT, 7);
-        assert_eq!(PREFIX_STORAGE_BINDING_COUNT, 8);
+        assert_eq!(COUNT_STORAGE_BINDING_COUNT, 8);
+        assert_eq!(PREFIX_STORAGE_BINDING_COUNT, 9);
         assert_eq!(EMIT_STORAGE_BINDING_COUNT, 9);
     }
 

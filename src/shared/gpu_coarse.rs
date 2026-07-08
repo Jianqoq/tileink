@@ -34,6 +34,7 @@ pub(crate) struct EmitChunkRecord {
     pub(crate) ptcl_offset: u32,
     pub(crate) glyph_count: u32,
     pub(crate) glyph_offset: u32,
+    pub(crate) class_flags: u32,
 }
 
 #[repr(C)]
@@ -219,7 +220,7 @@ mod tests {
     fn coarse_record_structs_are_gpu_word_layouts() {
         assert_eq!(std::mem::size_of::<CoarseChunkRecord>(), 16);
         assert_eq!(std::mem::size_of::<TileEmitChunkRecord>(), 8);
-        assert_eq!(std::mem::size_of::<EmitChunkRecord>(), 24);
+        assert_eq!(std::mem::size_of::<EmitChunkRecord>(), 28);
         assert_eq!(std::mem::size_of::<TileDrawRecord>(), 8);
         assert_eq!(std::mem::size_of::<LayerStackRecord>(), 12);
         assert_eq!(std::mem::size_of::<PtclRecord>(), 24);
@@ -248,10 +249,11 @@ mod tests {
             ptcl_offset: 10,
             glyph_count: 11,
             glyph_offset: 12,
+            class_flags: 13,
         };
         assert_eq!(
             bytemuck::cast_slice::<_, u32>(&[emit_chunk]),
-            &[7, 8, 9, 10, 11, 12]
+            &[7, 8, 9, 10, 11, 12, 13]
         );
 
         let layer = LayerStackRecord {
@@ -281,7 +283,7 @@ mod tests {
         assert_eq!(PTCL_RECORD_WORDS, 6);
         assert_eq!(TILE_DRAW_RECORD_WORDS, 2);
         assert_eq!(TILE_EMIT_CHUNK_RECORD_WORDS, 2);
-        assert_eq!(EMIT_CHUNK_RECORD_WORDS, 6);
+        assert_eq!(EMIT_CHUNK_RECORD_WORDS, 7);
         assert_eq!(FINE_TILE_KIND_WORDS, 1);
         assert_eq!(FINE_TILE_LIST_COUNT, 3);
         assert_eq!(FINE_TILE_DISPATCH_WORDS, 3);
@@ -294,8 +296,8 @@ mod tests {
             72
         );
         assert_eq!(coarse_work_emit_chunk_record_word_offset(3, 5, 7, 11), 78);
-        assert_eq!(coarse_work_fine_tile_kind_word_offset(3, 5, 7, 11, 13), 156);
-        assert_eq!(coarse_work_fine_tile_list_word_offset(3, 5, 7, 11, 13), 159);
-        assert_eq!(coarse_work_word_len(3, 5, 7, 11, 13), 168);
+        assert_eq!(coarse_work_fine_tile_kind_word_offset(3, 5, 7, 11, 13), 169);
+        assert_eq!(coarse_work_fine_tile_list_word_offset(3, 5, 7, 11, 13), 172);
+        assert_eq!(coarse_work_word_len(3, 5, 7, 11, 13), 181);
     }
 }

@@ -8,6 +8,7 @@
 @group(0) @binding(5) var<storage, read> segment_ranges: array<TileSegmentRange>;
 @group(0) @binding(6) var<storage, read> layer_stack: array<LayerStackRecord>;
 @group(0) @binding(7) var<storage, read_write> coarse_work: array<u32>;
+@group(0) @binding(8) var<storage, read> sdf_blob: array<u32>;
 
 @compute @workgroup_size(256)
 fn coarse_count(
@@ -170,7 +171,8 @@ fn active_stack_count(tile_x: u32, tile_y: u32) -> u32 {
             } else {
                 let draw_ix = layer.draw;
                 if (draw_has_sdf_at(draw_ix)) {
-                    if (draw_tile_hit(draw_ix, tile_x, tile_y)) {
+                    if (layer_tag == GPU_LAYER_CLIP && draw_sdf_clip_fully_covers_tile_at(draw_ix, tile_x, tile_y)) {
+                    } else if (draw_tile_hit(draw_ix, tile_x, tile_y)) {
                         count += 1u;
                     } else {
                         valid = false;
@@ -179,6 +181,10 @@ fn active_stack_count(tile_x: u32, tile_y: u32) -> u32 {
                     let backdrop_ix = draw_backdrop_ix(draw_ix, tile_x, tile_y);
                     if (backdrop_ix == INVALID) {
                         valid = false;
+                    } else if (
+                        layer_tag == GPU_LAYER_CLIP &&
+                        path_backdrop_fully_covers_tile(backdrop_ix, draw_records[draw_ix].fill_rule)
+                    ) {
                     } else if (segment_ranges[backdrop_ix].start == segment_ranges[backdrop_ix].end && atomicLoad(&backdrops[backdrop_ix]) == 0i) {
                         valid = false;
                     } else {
