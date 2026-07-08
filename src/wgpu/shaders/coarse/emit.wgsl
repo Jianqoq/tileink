@@ -84,6 +84,9 @@ fn coarse_emit(
                     if (solid_color != 0u) {
                         ptcl_tag = GPU_PTCL_COLOR;
                         ptcl_color = solid_color;
+                    } else if (draw_sdf_full_tile_image_at(draw_ix, tile_x, tile_y)) {
+                        ptcl_tag = GPU_PTCL_IMAGE;
+                        ptcl_color = draw_ix;
                     } else {
                         ptcl_tag = GPU_PTCL_SDF;
                         ptcl_segment_start = draw_ix;
@@ -236,6 +239,9 @@ fn coarse_emit_bins(
                     if (solid_color != 0u) {
                         ptcl_tag = GPU_PTCL_COLOR;
                         ptcl_color = solid_color;
+                    } else if (draw_sdf_full_tile_image_at(draw_ix, tile_x, tile_y)) {
+                        ptcl_tag = GPU_PTCL_IMAGE;
+                        ptcl_color = draw_ix;
                     } else {
                         ptcl_tag = GPU_PTCL_SDF;
                         ptcl_segment_start = draw_ix;
@@ -278,6 +284,8 @@ fn coarse_emit_bins(
         if (valid) {
             if (ptcl_tag == GPU_PTCL_COLOR) {
                 saw_color = true;
+            } else if (ptcl_tag == GPU_PTCL_IMAGE) {
+                saw_sdf = true;
             } else if (ptcl_tag == GPU_PTCL_SDF && draw_solid_supported_sdf_at(draw_ix)) {
                 saw_sdf = true;
             } else {
@@ -601,6 +609,23 @@ fn draw_sdf_full_tile_solid_color_at(draw_ix: u32, tile_x: u32, tile_y: u32) -> 
         color = draw_solid_color_at(draw_ix);
     }
     return color;
+}
+
+fn draw_sdf_full_tile_image_at(draw_ix: u32, tile_x: u32, tile_y: u32) -> bool {
+    let draw = draw_records[draw_ix];
+    return draw_has_opaque_image_brush_at(draw_ix) &&
+        draw.sdf_offset != INVALID &&
+        draw.sdf_shadow_offset == INVALID &&
+        draw.sdf_len >= 9u &&
+        sdf_blob[draw.sdf_offset] == GPU_SDF_RECT &&
+        sdf_rect_fully_covers_tile(draw.sdf_offset, tile_x, tile_y);
+}
+
+fn draw_has_opaque_image_brush_at(draw_ix: u32) -> bool {
+    let brush_base = draw_records[draw_ix].brush_offset;
+    return brush_base != INVALID &&
+        brush_blob[brush_base] == GPU_BRUSH_PATTERN_RESOURCE &&
+        brush_blob[brush_base + 7u] == 255u;
 }
 
 fn sdf_rect_fully_covers_tile(sdf_base: u32, tile_x: u32, tile_y: u32) -> bool {

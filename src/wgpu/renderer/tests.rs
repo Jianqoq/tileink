@@ -31,6 +31,7 @@ use crate::{
 const GPU_PTCL_END: u32 = 0;
 const GPU_PTCL_COLOR: u32 = 2;
 const GPU_PTCL_SDF: u32 = 9;
+const GPU_PTCL_IMAGE: u32 = 13;
 
 #[test]
 fn wgpu_renderer_reads_native_render_output_when_enabled() {
@@ -1141,6 +1142,75 @@ fn wgpu_fine_tile_kind_classifies_analytic_tiles_when_enabled() {
     assert_eq!(kinds[0], FineTileKind::PureSdfSolidNoStack);
     assert_eq!(kinds[2 + 2 * 6], FineTileKind::MixedAnalyticSolidNoStack);
     assert_eq!(kinds[3 + 3 * 6], FineTileKind::ColorOnlyNoStack);
+}
+
+#[test]
+fn wgpu_fine_tile_kind_classifies_full_tile_image_rect_as_analytic_when_enabled() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut canvas = Canvas::new(16, 16, 1.0);
+    canvas
+        .push_image(
+            Rect::new(0.0, 0.0, 16.0, 16.0),
+            Image::from_rgba8(1, 1, [40, 90, 180, 255]),
+            Extend::Pad,
+            PatternSampling::Bilinear,
+        )
+        .expect("push image");
+    let mut renderer = new_test_renderer(16, 16, Color::TRANSPARENT);
+    if renderer.coarse_pipeline.is_none() {
+        return;
+    }
+
+    renderer.prepare_scene(&canvas);
+    renderer.coarse_batch(&canvas, 0, canvas.draw_records.len() as u32, 0, 0);
+
+    let kinds =
+        renderer
+            .coarse
+            .read_fine_tile_kinds(renderer.device(), renderer.queue(), renderer.lengths);
+    assert_eq!(kinds[0], FineTileKind::PureSdfSolidNoStack);
+    let tags = read_ptcl_tags(&renderer, 2);
+    assert_eq!(tags, vec![GPU_PTCL_IMAGE, GPU_PTCL_END]);
+}
+
+#[test]
+fn wgpu_fine_tile_kind_keeps_stacked_image_rect_on_full_interpreter_when_enabled() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut canvas = Canvas::new(16, 16, 1.0);
+    canvas.push_clip_layer(
+        Rect::new(0.0, 0.0, 16.0, 16.0).to_path(0.0),
+        Affine::IDENTITY,
+        FillRule::NonZero,
+        0.0,
+    );
+    canvas
+        .push_image(
+            Rect::new(0.0, 0.0, 16.0, 16.0),
+            Image::from_rgba8(1, 1, [40, 90, 180, 255]),
+            Extend::Pad,
+            PatternSampling::Bilinear,
+        )
+        .expect("push image");
+    canvas.pop_layer();
+    let mut renderer = new_test_renderer(16, 16, Color::TRANSPARENT);
+    if renderer.coarse_pipeline.is_none() {
+        return;
+    }
+
+    renderer.prepare_scene(&canvas);
+    renderer.coarse_batch(&canvas, 0, canvas.draw_records.len() as u32, 0, 0);
+
+    let kinds =
+        renderer
+            .coarse
+            .read_fine_tile_kinds(renderer.device(), renderer.queue(), renderer.lengths);
+    assert_eq!(kinds[0], FineTileKind::FullInterpreter);
 }
 
 #[test]

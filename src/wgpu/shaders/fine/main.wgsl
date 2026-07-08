@@ -143,6 +143,17 @@ fn analytic_solid_no_stack_tile_pixel(tile_ix: u32, local_ix: u32) -> vec4<f32> 
     var pixel = fine_initial_pixel(global_x, global_y);
 
     let tile = coarse_load_tile(tile_ix);
+    if (tile.ptcl_start + 1u < tile.ptcl_end) {
+        let first = coarse_load_ptcl(tile.ptcl_start);
+        let second = coarse_load_ptcl(tile.ptcl_start + 1u);
+        if (first.tag == GPU_PTCL_IMAGE && second.tag == GPU_PTCL_END) {
+            let color = sample_image_draw_brush(draw_records[first.color], sample_x, sample_y);
+            if (premul_u8_is_opaque(color)) {
+                return rgba8_to_unorm(color);
+            }
+            return src_over_premul_unorm(pixel, rgba8_to_unorm(color));
+        }
+    }
     var ptcl_ix = tile.ptcl_start;
     loop {
         if (ptcl_ix >= tile.ptcl_end) {
@@ -158,6 +169,14 @@ fn analytic_solid_no_stack_tile_pixel(tile_ix: u32, local_ix: u32) -> vec4<f32> 
                 pixel = rgba8_to_unorm(ptcl.color);
             } else {
                 pixel = src_over_premul_unorm(pixel, rgba8_to_unorm(ptcl.color));
+            }
+        } else if (tag == GPU_PTCL_IMAGE) {
+            let draw = draw_records[ptcl.color];
+            let color = sample_image_draw_brush(draw, sample_x, sample_y);
+            if (premul_u8_is_opaque(color)) {
+                pixel = rgba8_to_unorm(color);
+            } else {
+                pixel = src_over_premul_unorm(pixel, rgba8_to_unorm(color));
             }
         } else if (tag == GPU_PTCL_SDF) {
             let draw = draw_records[ptcl.color];
@@ -232,6 +251,16 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> vec4<f32> {
                     pixel = rgba8_to_unorm(ptcl.color);
                 } else {
                     pixel = src_over_premul_unorm(pixel, scale_premul_u8_to_unorm(ptcl.color, clip_mask));
+                }
+            }
+        } else if (tag == GPU_PTCL_IMAGE) {
+            if (clip_mask != 0u) {
+                let draw = draw_records[ptcl.color];
+                let color = sample_image_draw_brush(draw, f32(global_x) + 0.5, f32(global_y) + 0.5);
+                if (clip_mask == 255u && premul_u8_is_opaque(color)) {
+                    pixel = rgba8_to_unorm(color);
+                } else {
+                    pixel = src_over_premul_unorm(pixel, scale_premul_u8_to_unorm(color, clip_mask));
                 }
             }
         } else if (tag == GPU_PTCL_SDF) {
@@ -457,6 +486,24 @@ fn sample_draw_brush(brush_offset: u32, x: f32, y: f32) -> u32 {
     return sample_brush(brush_offset, x, y);
 }
 
+fn sample_image_draw_brush(draw: DrawRecord, x: f32, y: f32) -> u32 {
+    let data_base = draw.brush_offset;
+    let base = data_base + GPU_BRUSH_U32_STRIDE;
+    return sample_resource_pattern(
+        x,
+        y,
+        base,
+        brush_word(data_base + 4u),
+        brush_word(data_base + 2u),
+        brush_word(data_base + 3u),
+        brush_word(data_base + 5u),
+        brush_word(data_base + 6u),
+        brush_word(data_base + 7u),
+        brush_word(data_base + 1u),
+        brush_word(data_base + 8u),
+    );
+}
+
 fn pixel_in_draw_bounds(draw: DrawRecord, global_x: u32, global_y: u32) -> bool {
     let px = i32(global_x);
     let py = i32(global_y);
@@ -662,5 +709,3 @@ fn segment_area_at(xmin_abs: f32, xmax_abs: f32, x: u32) -> f32 {
     }
     return area;
 }
-
-
