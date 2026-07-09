@@ -566,19 +566,21 @@ pub(crate) struct GpuScanChunkRange {
 
 #[cfg(test)]
 pub(crate) fn build_scan_chunks(canvas: &Canvas) -> (Vec<GpuScanChunk>, Vec<GpuScanChunkRange>) {
-    let mut chunks = Vec::with_capacity(GpuBufferLengths::from_scene(canvas).scan_chunk_count);
+    let lengths = GpuBufferLengths::from_scene(canvas);
+    let mut chunks = Vec::with_capacity(lengths.scan_chunk_count);
     let mut ranges = Vec::with_capacity(canvas.path_records.len());
-    build_scan_chunks_into(canvas, &mut chunks, &mut ranges);
+    build_scan_chunks_into(canvas, lengths.scan_chunk_count, &mut chunks, &mut ranges);
     (chunks, ranges)
 }
 
 pub(crate) fn build_scan_chunks_into(
     canvas: &Canvas,
+    scan_chunk_count: usize,
     chunks: &mut Vec<GpuScanChunk>,
     ranges: &mut Vec<GpuScanChunkRange>,
 ) {
     chunks.clear();
-    chunks.reserve(GpuBufferLengths::from_scene(canvas).scan_chunk_count);
+    chunks.reserve(scan_chunk_count);
     ranges.clear();
     ranges.resize(canvas.path_records.len(), GpuScanChunkRange::default());
 
@@ -614,13 +616,17 @@ pub(crate) struct GpuCumsumPlan {
 
 #[cfg(test)]
 pub(crate) fn build_cumsum_plan(canvas: &Canvas) -> GpuCumsumPlan {
+    let lengths = GpuBufferLengths::from_scene(canvas);
     let mut plan = GpuCumsumPlan::default();
-    build_cumsum_plan_into(canvas, &mut plan);
+    build_cumsum_plan_into(canvas, lengths, &mut plan);
     plan
 }
 
-pub(crate) fn build_cumsum_plan_into(canvas: &Canvas, plan: &mut GpuCumsumPlan) {
-    let lengths = GpuBufferLengths::from_scene(canvas);
+pub(crate) fn build_cumsum_plan_into(
+    canvas: &Canvas,
+    lengths: GpuBufferLengths,
+    plan: &mut GpuCumsumPlan,
+) {
     plan.chunk_backdrop_offsets.clear();
     plan.chunk_lens.clear();
     plan.row_chunk_starts.clear();
@@ -706,10 +712,18 @@ mod tests {
     };
 
     use super::{
-        COARSE_CHUNK_SIZE, CUMSUM_CHUNK_SIZE, GpuBufferLengths, SCAN_CHUNK_SIZE, build_cumsum_plan,
-        build_scan_chunks, build_tile_draw_bins,
+        COARSE_CHUNK_SIZE, CUMSUM_CHUNK_SIZE, GpuBufferLengths, GpuScanChunk, GpuScanChunkRange,
+        SCAN_CHUNK_SIZE, build_cumsum_plan, build_scan_chunks, build_tile_draw_bins,
     };
     use crate::{Canvas, FillRule};
+
+    #[test]
+    fn scan_plan_records_are_gpu_word_layouts() {
+        assert_eq!(std::mem::size_of::<GpuScanChunk>(), 16);
+        assert_eq!(std::mem::align_of::<GpuScanChunk>(), 4);
+        assert_eq!(std::mem::size_of::<GpuScanChunkRange>(), 8);
+        assert_eq!(std::mem::align_of::<GpuScanChunkRange>(), 4);
+    }
 
     #[test]
     fn scan_chunks_cover_each_backdrop_record_in_fixed_size_tiles() {

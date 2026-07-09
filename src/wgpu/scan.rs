@@ -9,9 +9,9 @@ use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 const WORKGROUP_SIZE: u32 = 256;
 const CLEAR_STORAGE_BINDING_COUNT: u32 = 7;
 const COUNT_STORAGE_BINDING_COUNT: u32 = 4;
-const PREFIX_STORAGE_BINDING_COUNT: u32 = 5;
-const CHUNK_OFFSETS_STORAGE_BINDING_COUNT: u32 = 6;
-const APPLY_CHUNK_OFFSETS_STORAGE_BINDING_COUNT: u32 = 5;
+const PREFIX_STORAGE_BINDING_COUNT: u32 = 4;
+const CHUNK_OFFSETS_STORAGE_BINDING_COUNT: u32 = 5;
+const APPLY_CHUNK_OFFSETS_STORAGE_BINDING_COUNT: u32 = 4;
 const EMIT_STORAGE_BINDING_COUNT: u32 = 4;
 const STORAGE_BINDING_COUNTS: [u32; 6] = [
     CLEAR_STORAGE_BINDING_COUNT,
@@ -292,11 +292,10 @@ impl WgpuScanPipeline {
             layout: &self.prefix_bind_group_layout,
             entries: &[
                 bind_config_buffer(0, &self.config, config_offset, self.config_size),
-                bind_buffer(1, bindings.scan_chunk_backdrop_offsets),
-                bind_buffer(2, bindings.scan_chunk_lens),
-                bind_buffer(3, bindings.tile_segment_ranges),
-                bind_buffer(4, bindings.segment_tile_counts),
-                bind_buffer(5, bindings.chunk_totals),
+                bind_buffer(1, bindings.scan_chunks),
+                bind_buffer(2, bindings.tile_segment_ranges),
+                bind_buffer(3, bindings.segment_tile_counts),
+                bind_buffer(4, bindings.chunk_totals),
             ],
         })
     }
@@ -313,11 +312,10 @@ impl WgpuScanPipeline {
             entries: &[
                 bind_config_buffer(0, &self.config, config_offset, self.config_size),
                 bind_buffer(1, bindings.path_records),
-                bind_buffer(2, bindings.scan_chunk_range_starts),
-                bind_buffer(3, bindings.scan_chunk_range_ends),
-                bind_buffer(4, bindings.segment_bumps),
-                bind_buffer(5, bindings.chunk_totals),
-                bind_buffer(6, bindings.chunk_offsets),
+                bind_buffer(2, bindings.scan_chunk_ranges),
+                bind_buffer(3, bindings.segment_bumps),
+                bind_buffer(4, bindings.chunk_totals),
+                bind_buffer(5, bindings.chunk_offsets),
             ],
         })
     }
@@ -333,11 +331,10 @@ impl WgpuScanPipeline {
             layout: &self.apply_chunk_offsets_bind_group_layout,
             entries: &[
                 bind_config_buffer(0, &self.config, config_offset, self.config_size),
-                bind_buffer(1, bindings.scan_chunk_backdrop_offsets),
-                bind_buffer(2, bindings.scan_chunk_lens),
-                bind_buffer(3, bindings.tile_segment_ranges),
-                bind_buffer(4, bindings.segment_tile_cursors),
-                bind_buffer(5, bindings.chunk_offsets),
+                bind_buffer(1, bindings.scan_chunks),
+                bind_buffer(2, bindings.tile_segment_ranges),
+                bind_buffer(3, bindings.segment_tile_cursors),
+                bind_buffer(4, bindings.chunk_offsets),
             ],
         })
     }
@@ -420,10 +417,9 @@ fn prefix_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
     vec![
         uniform_entry(0),
         storage_entry(1, true),
-        storage_entry(2, true),
+        storage_entry(2, false),
         storage_entry(3, false),
         storage_entry(4, false),
-        storage_entry(5, false),
     ]
 }
 
@@ -432,10 +428,9 @@ fn chunk_offsets_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         uniform_entry(0),
         storage_entry(1, true),
         storage_entry(2, true),
-        storage_entry(3, true),
+        storage_entry(3, false),
         storage_entry(4, false),
         storage_entry(5, false),
-        storage_entry(6, false),
     ]
 }
 
@@ -443,10 +438,9 @@ fn apply_chunk_offsets_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
     vec![
         uniform_entry(0),
         storage_entry(1, true),
-        storage_entry(2, true),
+        storage_entry(2, false),
         storage_entry(3, false),
         storage_entry(4, false),
-        storage_entry(5, false),
     ]
 }
 

@@ -5,10 +5,12 @@ use crate::{
         execution::{ExecPlan, LayerStackEntry},
         gpu_brush::GpuBrushUpload,
         gpu_coarse::LayerStackRecord,
-        gpu_coarse::coarse_work_tile_draw_record_word_offset,
+        gpu_coarse::{
+            coarse_work_tile_draw_index_word_offset, coarse_work_tile_draw_record_word_offset,
+        },
         gpu_plan::{
-            GpuCumsumPlan, GpuScanChunk, GpuScanChunkRange, TileDrawBins, build_cumsum_plan_into,
-            build_scan_chunks_into, build_tile_draw_bins_into,
+            GpuBufferLengths, GpuCumsumPlan, GpuScanChunk, GpuScanChunkRange, TileDrawBins,
+            build_cumsum_plan_into, build_scan_chunks_into, build_tile_draw_bins_into,
         },
         gpu_text::{GlyphImageRecord, GlyphRecord, GlyphRunRecord, text_blob_word_len},
         gpu_types::{
@@ -40,7 +42,6 @@ pub(crate) struct WgpuSceneUploadStaging {
     cumsum_plan: GpuCumsumPlan,
     tile_draw_bins: TileDrawBins,
     tile_draw_cursors: Vec<u32>,
-    tile_draw_data: Vec<u32>,
     layer_stack: Vec<LayerStackRecord>,
     scene_brush_blob: Vec<u32>,
     fine_text_blob: Vec<u32>,
@@ -148,22 +149,7 @@ impl TextUpload {
     }
 }
 
-fn upload_mapped_u32<T>(
-    device: &::wgpu::Device,
-    queue: &::wgpu::Queue,
-    buffer: &mut WgpuBuffer,
-    label: &'static str,
-    scratch: &mut Vec<u32>,
-    items: &[T],
-    map: impl FnMut(&T) -> u32,
-) {
-    scratch.clear();
-    scratch.reserve(items.len());
-    scratch.extend(items.iter().map(map));
-    buffer.upload(device, queue, label, scratch);
-}
-
-fn word_offset(words: u32) -> ::wgpu::BufferAddress {
+fn word_offset(words: usize) -> ::wgpu::BufferAddress {
     words as ::wgpu::BufferAddress * std::mem::size_of::<u32>() as ::wgpu::BufferAddress
 }
 
@@ -345,6 +331,7 @@ impl WgpuSceneBuffers {
         device: &::wgpu::Device,
         queue: &::wgpu::Queue,
         canvas: &Canvas,
+        lengths: GpuBufferLengths,
         plan: &ExecPlan,
         text: Option<&PreparedTextData>,
         image_resources: Option<&GpuImageResourceUpload>,
@@ -354,12 +341,13 @@ impl WgpuSceneBuffers {
         profile_cpu("prepare.upload_scene.build_scan_chunks", || {
             build_scan_chunks_into(
                 canvas,
+                lengths.scan_chunk_count,
                 &mut staging.scan_chunks,
                 &mut staging.scan_chunk_ranges,
             );
         });
         profile_cpu("prepare.upload_scene.build_cumsum_plan", || {
-            build_cumsum_plan_into(canvas, &mut staging.cumsum_plan);
+            build_cumsum_plan_into(canvas, lengths, &mut staging.cumsum_plan);
         });
         profile_cpu("prepare.upload_scene.build_tile_draw_bins", || {
             build_tile_draw_bins_into(
@@ -439,11 +427,14 @@ impl WgpuSceneBuffers {
             self.paint_blob.write_at(queue, 0, &canvas.sdf_blob);
             self.paint_blob.write_at(
                 queue,
-                word_offset(self.paint_sdf_shadow_base),
+                word_offset(self.paint_sdf_shadow_base as usize),
                 &canvas.sdf_shadow_blob,
             );
-            self.paint_blob
-                .write_at(queue, word_offset(self.paint_brush_base), scene_brush_blob);
+            self.paint_blob.write_at(
+                queue,
+                word_offset(self.paint_brush_base as usize),
+                scene_brush_blob,
+            );
         });
     }
 
@@ -564,59 +555,18 @@ impl WgpuSceneBuffers {
         queue: &::wgpu::Queue,
         staging: &mut WgpuSceneUploadStaging,
     ) {
-        upload_mapped_u32(
+        // Scan kernels consume the CPU-built AoS plan directly, avoiding per-field packing in prepare.
+        self.scan_chunks.upload(
             device,
             queue,
-            &mut self.scan_chunk_path_ids,
-            "tileink wgpu canvas scan chunk path ids",
-            &mut staging.u32s,
+            "tileink wgpu canvas scan chunks",
             &staging.scan_chunks,
-            |chunk| chunk.path_id,
         );
-        upload_mapped_u32(
+        self.scan_chunk_ranges.upload(
             device,
             queue,
-            &mut self.scan_chunk_backdrop_offsets,
-            "tileink wgpu canvas scan chunk backdrop offsets",
-            &mut staging.u32s,
-            &staging.scan_chunks,
-            |chunk| chunk.backdrop_offset,
-        );
-        upload_mapped_u32(
-            device,
-            queue,
-            &mut self.scan_chunk_segment_starts,
-            "tileink wgpu canvas scan chunk segment starts",
-            &mut staging.u32s,
-            &staging.scan_chunks,
-            |chunk| chunk.segment_start,
-        );
-        upload_mapped_u32(
-            device,
-            queue,
-            &mut self.scan_chunk_lens,
-            "tileink wgpu canvas scan chunk lens",
-            &mut staging.u32s,
-            &staging.scan_chunks,
-            |chunk| chunk.len,
-        );
-        upload_mapped_u32(
-            device,
-            queue,
-            &mut self.scan_chunk_range_starts,
-            "tileink wgpu canvas scan chunk range starts",
-            &mut staging.u32s,
+            "tileink wgpu canvas scan chunk ranges",
             &staging.scan_chunk_ranges,
-            |range| range.start,
-        );
-        upload_mapped_u32(
-            device,
-            queue,
-            &mut self.scan_chunk_range_ends,
-            "tileink wgpu canvas scan chunk range ends",
-            &mut staging.u32s,
-            &staging.scan_chunk_ranges,
-            |range| range.end,
         );
     }
 
@@ -729,21 +679,21 @@ impl WgpuCoarseBuffers {
         lengths: crate::shared::gpu_plan::GpuBufferLengths,
         staging: &mut WgpuSceneUploadStaging,
     ) {
-        let bins = &staging.tile_draw_bins;
-        staging.tile_draw_data.clear();
-        staging
-            .tile_draw_data
-            .extend_from_slice(bytemuck::cast_slice(&bins.records));
-        staging.tile_draw_data.extend_from_slice(&bins.draw_indices);
-        let word_offset = coarse_work_tile_draw_record_word_offset(
+        let record_word_offset = coarse_work_tile_draw_record_word_offset(
             lengths.tile_count,
             lengths.coarse_ptcl_capacity,
             lengths.coarse_glyph_capacity,
         );
-        self.work.write_at(
-            queue,
-            (word_offset * std::mem::size_of::<u32>()) as ::wgpu::BufferAddress,
-            &staging.tile_draw_data,
+        let index_word_offset = coarse_work_tile_draw_index_word_offset(
+            lengths.tile_count,
+            lengths.coarse_ptcl_capacity,
+            lengths.coarse_glyph_capacity,
         );
+        let bins = &staging.tile_draw_bins;
+        // Coarse work keeps tile draw records and indices in adjacent regions; write each source directly.
+        self.work
+            .write_at(queue, word_offset(record_word_offset), &bins.records);
+        self.work
+            .write_at(queue, word_offset(index_word_offset), &bins.draw_indices);
     }
 }

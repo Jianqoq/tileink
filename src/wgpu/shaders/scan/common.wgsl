@@ -32,6 +32,18 @@ struct PathRecord {
     segment_count: u32,
 };
 
+struct GpuScanChunk {
+    path_id: u32,
+    backdrop_offset: u32,
+    segment_start: u32,
+    len: u32,
+};
+
+struct GpuScanChunkRange {
+    start: u32,
+    end: u32,
+};
+
 struct LineSegment {
     p0x: f32,
     p0y: f32,

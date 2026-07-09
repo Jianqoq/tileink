@@ -1,10 +1,9 @@
 #include "common.wgsl"
 
-@group(0) @binding(1) var<storage, read> scan_chunk_backdrop_offsets: array<u32>;
-@group(0) @binding(2) var<storage, read> scan_chunk_lens: array<u32>;
-@group(0) @binding(3) var<storage, read_write> segment_ranges: array<TileSegmentRange>;
-@group(0) @binding(4) var<storage, read_write> segment_tile_counts: array<atomic<u32>>;
-@group(0) @binding(5) var<storage, read_write> chunk_totals: array<u32>;
+@group(0) @binding(1) var<storage, read> scan_chunks: array<GpuScanChunk>;
+@group(0) @binding(2) var<storage, read_write> segment_ranges: array<TileSegmentRange>;
+@group(0) @binding(3) var<storage, read_write> segment_tile_counts: array<atomic<u32>>;
+@group(0) @binding(4) var<storage, read_write> chunk_totals: array<u32>;
 
 var<workgroup> scan_scratch: array<u32, 256>;
 
@@ -15,8 +14,9 @@ fn scan_prefix_chunks(
 ) {
     let chunk_ix = workgroup_id.x;
     let lane = local_id.x;
-    let chunk_offset = scan_chunk_backdrop_offsets[chunk_ix];
-    let chunk_len = scan_chunk_lens[chunk_ix];
+    let chunk = scan_chunks[chunk_ix];
+    let chunk_offset = chunk.backdrop_offset;
+    let chunk_len = chunk.len;
 
     var count = 0u;
     if (lane < chunk_len) {
