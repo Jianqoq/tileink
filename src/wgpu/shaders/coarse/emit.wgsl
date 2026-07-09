@@ -198,7 +198,8 @@ fn coarse_emit_bins(
 
     var saw_color = false;
     var saw_sdf = false;
-    var saw_other = wrapper_count != 0u;
+    let analytic_stack = wrapper_count != 0u && active_stack_is_analytic_clip_only(tile_x, tile_y);
+    var saw_other = wrapper_count != 0u && !analytic_stack;
 
     emit_active_stack_begins(cursor, tile_x, tile_y);
     cursor += wrapper_count;
@@ -316,7 +317,10 @@ fn coarse_emit_bins(
 
     emit_active_stack_ends(cursor, tile_x, tile_y);
     store_particle(cursor + wrapper_count, GPU_PTCL_END, 0i, 0u, 0u, 0u, 0u);
-    store_fine_tile_kind(tile_ix, classify_fine_tile_kind(saw_color, saw_sdf, saw_other));
+    store_fine_tile_kind(
+        tile_ix,
+        classify_fine_tile_kind(saw_color, saw_sdf, saw_other, analytic_stack),
+    );
 }
 
 fn active_stack_count(tile_x: u32, tile_y: u32) -> u32 {
@@ -446,6 +450,24 @@ fn active_stack_layer_is_noop_clip(layer: LayerStackRecord, tile_x: u32, tile_y:
         path_backdrop_fully_covers_tile(backdrop_ix, draw_fill_rule_at(draw_ix));
 }
 
+fn active_stack_is_analytic_clip_only(tile_x: u32, tile_y: u32) -> bool {
+    var supported = true;
+    var stack_ix = config.layer_stack_start;
+    loop {
+        if (stack_ix >= config.layer_stack_end) {
+            break;
+        }
+        if (supported) {
+            let layer = layer_stack[stack_ix];
+            if (!active_stack_layer_is_noop_clip(layer, tile_x, tile_y)) {
+                supported = layer.tag == GPU_LAYER_CLIP;
+            }
+        }
+        stack_ix += 1u;
+    }
+    return supported;
+}
+
 fn draw_backdrop_ix(draw_ix: u32, tile_x: u32, tile_y: u32) -> u32 {
     let draw = draw_records[draw_ix];
     let path_id = draw.path_id;
@@ -568,90 +590,6 @@ fn draw_has_sdf_at(draw_ix: u32) -> bool {
 
 fn draw_has_glyph_at(draw_ix: u32) -> bool {
     return config.text_enabled != 0u && draw_records[draw_ix].glyph_run_id != INVALID;
-}
-
-fn draw_solid_color_fast_path_at(draw_ix: u32) -> bool {
-    return draw_records[draw_ix].solid_rect != 0u && draw_has_nontransparent_solid_brush_at(draw_ix);
-}
-
-fn classify_fine_tile_kind(saw_color: bool, saw_sdf: bool, saw_other: bool) -> u32 {
-    if (saw_other) {
-        return FINE_TILE_KIND_FULL_INTERPRETER;
-    }
-    if (saw_sdf && saw_color) {
-        return FINE_TILE_KIND_MIXED_ANALYTIC_SOLID_NO_STACK;
-    }
-    if (saw_sdf) {
-        return FINE_TILE_KIND_PURE_SDF_SOLID_NO_STACK;
-    }
-    if (saw_color) {
-        return FINE_TILE_KIND_COLOR_ONLY_NO_STACK;
-    }
-    return FINE_TILE_KIND_EMPTY_OR_CLEAR;
-}
-
-fn draw_solid_supported_sdf_at(draw_ix: u32) -> bool {
-    let draw = draw_records[draw_ix];
-    if (
-        !draw_has_nontransparent_solid_brush_at(draw_ix) ||
-        draw.sdf_offset == INVALID ||
-        draw.sdf_shadow_offset != INVALID ||
-        draw.sdf_len == 0u
-    ) {
-        return false;
-    }
-    let kind = sdf_blob[draw.sdf_offset];
-    return kind == GPU_SDF_RECT || kind == GPU_SDF_CANDLESTICK;
-}
-
-fn draw_has_nontransparent_solid_brush_at(draw_ix: u32) -> bool {
-    let brush_offset = draw_records[draw_ix].brush_offset;
-    if (brush_offset == INVALID) {
-        return false;
-    }
-    let brush_base = config.paint_brush_base + brush_offset;
-    return sdf_blob[brush_base] == GPU_BRUSH_SOLID &&
-        sdf_blob[brush_base + 4u] != 0u;
-}
-
-fn draw_solid_color_at(draw_ix: u32) -> u32 {
-    return sdf_blob[config.paint_brush_base + draw_records[draw_ix].brush_offset + 4u];
-}
-
-fn draw_sdf_full_tile_solid_color_at(draw_ix: u32, tile_x: u32, tile_y: u32) -> u32 {
-    let draw = draw_records[draw_ix];
-    var color = 0u;
-    if (
-        draw_has_nontransparent_solid_brush_at(draw_ix) &&
-        draw.sdf_offset != INVALID &&
-        draw.sdf_shadow_offset == INVALID &&
-        draw.sdf_len >= 9u &&
-        sdf_blob[draw.sdf_offset] == GPU_SDF_RECT &&
-        sdf_rect_fully_covers_tile(draw.sdf_offset, tile_x, tile_y)
-    ) {
-        color = draw_solid_color_at(draw_ix);
-    }
-    return color;
-}
-
-fn draw_sdf_full_tile_image_at(draw_ix: u32, tile_x: u32, tile_y: u32) -> bool {
-    let draw = draw_records[draw_ix];
-    return draw_has_opaque_image_brush_at(draw_ix) &&
-        draw.sdf_offset != INVALID &&
-        draw.sdf_shadow_offset == INVALID &&
-        draw.sdf_len >= 9u &&
-        sdf_blob[draw.sdf_offset] == GPU_SDF_RECT &&
-        sdf_rect_fully_covers_tile(draw.sdf_offset, tile_x, tile_y);
-}
-
-fn draw_has_opaque_image_brush_at(draw_ix: u32) -> bool {
-    let brush_offset = draw_records[draw_ix].brush_offset;
-    if (brush_offset == INVALID) {
-        return false;
-    }
-    let brush_base = config.paint_brush_base + brush_offset;
-    return sdf_blob[brush_base] == GPU_BRUSH_PATTERN_RESOURCE &&
-        sdf_blob[brush_base + 7u] == 255u;
 }
 
 fn store_particle(dst: u32, tag: u32, backdrop: i32, fill_rule: u32, segment_start: u32, segment_end: u32, color: u32) {

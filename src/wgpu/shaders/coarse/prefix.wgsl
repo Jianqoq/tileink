@@ -279,20 +279,30 @@ fn coarse_emit_chunk_particle_counts(
     let draw_ref_ix = tile_draw_start_at(tile_ix) + chunk.local_chunk * 256u + lane;
     var ptcl_count = 0u;
     var glyph_count = 0u;
+    var class_flags = 0u;
     let wrapper_count = active_stack_count(tile_x, tile_y);
 
     if (wrapper_count != INVALID && draw_ref_ix < tile_draw_end_at(tile_ix)) {
         let draw_ix = tile_draw_index_at(draw_ref_ix);
         if (draw_in_batch(draw_ix)) {
             let draw_tag = draw_tag_at(draw_ix);
+            var ptcl_tag = GPU_PTCL_FILL;
             if (draw_has_glyph_at(draw_ix)) {
                 if (draw_tag == GPU_DRAW_BRUSH) {
                     glyph_count = count_tile_glyphs_for_run(draw_records[draw_ix].glyph_run_id, tile_x, tile_y);
                     ptcl_count = select(0u, 1u, glyph_count > 0u);
+                    ptcl_tag = GPU_PTCL_GLYPH;
                 }
             } else if (draw_has_sdf_at(draw_ix)) {
                 if (draw_tag == GPU_DRAW_BRUSH) {
                     ptcl_count = 1u;
+                    if (draw_sdf_full_tile_solid_color_at(draw_ix, tile_x, tile_y) != 0u) {
+                        ptcl_tag = GPU_PTCL_COLOR;
+                    } else if (draw_sdf_full_tile_image_at(draw_ix, tile_x, tile_y)) {
+                        ptcl_tag = GPU_PTCL_IMAGE;
+                    } else {
+                        ptcl_tag = GPU_PTCL_SDF;
+                    }
                 }
             } else {
                 let backdrop_ix = draw_backdrop_ix(draw_ix, tile_x, tile_y);
@@ -303,16 +313,35 @@ fn coarse_emit_chunk_particle_counts(
                         (segment_range.start != segment_range.end || atomicLoad(&backdrops[backdrop_ix]) != 0i)
                     ) {
                         ptcl_count = 1u;
+                        if (draw_tag == GPU_DRAW_CLIP) {
+                            ptcl_tag = GPU_PTCL_BEGIN_CLIP;
+                        } else if (draw_tag == GPU_DRAW_PATH_GLYPH) {
+                            ptcl_tag = GPU_PTCL_PATH_GLYPH;
+                        } else if (draw_solid_color_fast_path_at(draw_ix) && segment_range.start == segment_range.end) {
+                            ptcl_tag = GPU_PTCL_COLOR;
+                        }
                     }
                 }
+            }
+            if (ptcl_count != 0u) {
+                class_flags = particle_class_flags(ptcl_tag, draw_ix);
             }
         }
     }
 
     let chunk_ptcl_count = workgroup_sum(ptcl_count, lane);
     let chunk_glyph_count = workgroup_sum(glyph_count, lane);
+    let color_count = workgroup_sum(select(0u, 1u, (class_flags & EMIT_CHUNK_CLASS_COLOR) != 0u), lane);
+    let sdf_count = workgroup_sum(select(0u, 1u, (class_flags & EMIT_CHUNK_CLASS_SDF) != 0u), lane);
+    let other_count = workgroup_sum(select(0u, 1u, (class_flags & EMIT_CHUNK_CLASS_OTHER) != 0u), lane);
     if (lane == 0u) {
         store_emit_chunk_counts(ref_ix, chunk_ptcl_count, chunk_glyph_count);
+        store_emit_chunk_class_flags(
+            ref_ix,
+            select(0u, EMIT_CHUNK_CLASS_COLOR, color_count != 0u) |
+                select(0u, EMIT_CHUNK_CLASS_SDF, sdf_count != 0u) |
+                select(0u, EMIT_CHUNK_CLASS_OTHER, other_count != 0u),
+        );
     }
 }
 
@@ -357,6 +386,7 @@ fn coarse_tile_counts_from_emit_chunks(
     var local_chunk = 0u;
     var ptcl_count = 0u;
     var glyph_count = 0u;
+    var flags = 0u;
     loop {
         if (local_chunk >= chunk_count) {
             break;
@@ -364,6 +394,7 @@ fn coarse_tile_counts_from_emit_chunks(
         let chunk = emit_chunk_at(chunk_offset + local_chunk);
         ptcl_count += chunk.ptcl_count;
         glyph_count += chunk.glyph_count;
+        flags |= chunk.class_flags;
         local_chunk += 1u;
     }
 
@@ -372,17 +403,18 @@ fn coarse_tile_counts_from_emit_chunks(
         let tile_y = tile_ix / config.tiles_width;
         let wrapper_count = active_stack_count(tile_x, tile_y);
         if (wrapper_count != INVALID) {
+            let analytic_stack = wrapper_count != 0u && active_stack_is_analytic_clip_only(tile_x, tile_y);
+            flags |= select(0u, EMIT_CHUNK_CLASS_OTHER, wrapper_count != 0u && !analytic_stack) |
+                select(0u, EMIT_CHUNK_CLASS_STACK, analytic_stack);
             ptcl_count += wrapper_count * 2u + 1u;
         } else {
             ptcl_count = 0u;
             glyph_count = 0u;
+            flags = EMIT_CHUNK_CLASS_OTHER;
         }
     }
     coarse_store_tile_counts(tile_ix, ptcl_count, glyph_count);
-    store_fine_tile_kind(
-        tile_ix,
-        select(FINE_TILE_KIND_EMPTY_OR_CLEAR, FINE_TILE_KIND_FULL_INTERPRETER, ptcl_count > 0u),
-    );
+    store_fine_tile_kind(tile_ix, classify_fine_tile_kind_from_flags(flags));
 }
 
 fn active_stack_count(tile_x: u32, tile_y: u32) -> u32 {
@@ -429,6 +461,37 @@ fn active_stack_count(tile_x: u32, tile_y: u32) -> u32 {
         return count;
     }
     return INVALID;
+}
+
+fn active_stack_is_analytic_clip_only(tile_x: u32, tile_y: u32) -> bool {
+    var supported = true;
+    var stack_ix = config.layer_stack_start;
+    loop {
+        if (stack_ix >= config.layer_stack_end) {
+            break;
+        }
+        if (supported) {
+            let layer = layer_stack[stack_ix];
+            if (!active_stack_layer_is_noop_clip(layer, tile_x, tile_y)) {
+                supported = layer.tag == GPU_LAYER_CLIP;
+            }
+        }
+        stack_ix += 1u;
+    }
+    return supported;
+}
+
+fn active_stack_layer_is_noop_clip(layer: LayerStackRecord, tile_x: u32, tile_y: u32) -> bool {
+    if (layer.tag != GPU_LAYER_CLIP) {
+        return false;
+    }
+    let draw_ix = layer.draw;
+    if (draw_has_sdf_at(draw_ix)) {
+        return draw_sdf_clip_fully_covers_tile_at(draw_ix, tile_x, tile_y);
+    }
+    let backdrop_ix = draw_backdrop_ix(draw_ix, tile_x, tile_y);
+    return backdrop_ix != INVALID &&
+        path_backdrop_fully_covers_tile(backdrop_ix, draw_records[draw_ix].fill_rule);
 }
 
 fn draw_backdrop_ix(draw_ix: u32, tile_x: u32, tile_y: u32) -> u32 {

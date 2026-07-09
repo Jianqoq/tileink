@@ -141,6 +141,7 @@ const GPU_PTCL_PATH_GLYPH: u32 = 11u;
 const GPU_PTCL_BEGIN_SDF_CLIP: u32 = 12u;
 const GPU_PTCL_IMAGE: u32 = 13u;
 const GPU_SDF_RECT: u32 = 1u;
+const GPU_SDF_RECT_STROKE: u32 = 3u;
 const GPU_SDF_CANDLESTICK: u32 = 5u;
 const FULL_TILE_SDF_SOLID_INSET: f32 = 0.75;
 const GLYPH_RUN_RECORD_WORDS: u32 = 2u;
@@ -154,6 +155,7 @@ const EMIT_CHUNK_RECORD_WORDS: u32 = 7u;
 const EMIT_CHUNK_CLASS_COLOR: u32 = 1u;
 const EMIT_CHUNK_CLASS_SDF: u32 = 2u;
 const EMIT_CHUNK_CLASS_OTHER: u32 = 4u;
+const EMIT_CHUNK_CLASS_STACK: u32 = 8u;
 const FINE_TILE_KIND_FULL_INTERPRETER: u32 = 0u;
 const FINE_TILE_KIND_EMPTY_OR_CLEAR: u32 = 1u;
 const FINE_TILE_KIND_COLOR_ONLY_NO_STACK: u32 = 2u;
@@ -247,6 +249,112 @@ fn draw_sdf_clip_fully_covers_tile_at(draw_ix: u32, tile_x: u32, tile_y: u32) ->
         draw.sdf_len >= 9u &&
         sdf_blob[draw.sdf_offset] == GPU_SDF_RECT &&
         sdf_rect_fully_covers_tile(draw.sdf_offset, tile_x, tile_y);
+}
+
+fn draw_solid_color_fast_path_at(draw_ix: u32) -> bool {
+    return draw_records[draw_ix].solid_rect != 0u && draw_has_nontransparent_solid_brush_at(draw_ix);
+}
+
+fn particle_class_flags(ptcl_tag: u32, draw_ix: u32) -> u32 {
+    if (ptcl_tag == GPU_PTCL_COLOR) {
+        return EMIT_CHUNK_CLASS_COLOR;
+    }
+    if (ptcl_tag == GPU_PTCL_IMAGE || (ptcl_tag == GPU_PTCL_SDF && draw_solid_supported_sdf_at(draw_ix))) {
+        return EMIT_CHUNK_CLASS_SDF;
+    }
+    return EMIT_CHUNK_CLASS_OTHER;
+}
+
+fn classify_fine_tile_kind(saw_color: bool, saw_sdf: bool, saw_other: bool, analytic_stack: bool) -> u32 {
+    let flags =
+        select(0u, EMIT_CHUNK_CLASS_COLOR, saw_color) |
+        select(0u, EMIT_CHUNK_CLASS_SDF, saw_sdf) |
+        select(0u, EMIT_CHUNK_CLASS_OTHER, saw_other) |
+        select(0u, EMIT_CHUNK_CLASS_STACK, analytic_stack);
+    return classify_fine_tile_kind_from_flags(flags);
+}
+
+fn classify_fine_tile_kind_from_flags(flags: u32) -> u32 {
+    if ((flags & EMIT_CHUNK_CLASS_OTHER) != 0u) {
+        return FINE_TILE_KIND_FULL_INTERPRETER;
+    }
+    if ((flags & EMIT_CHUNK_CLASS_STACK) != 0u && (flags & (EMIT_CHUNK_CLASS_SDF | EMIT_CHUNK_CLASS_COLOR)) != 0u) {
+        return FINE_TILE_KIND_ANALYTIC_WITH_STACK;
+    }
+    if ((flags & EMIT_CHUNK_CLASS_SDF) != 0u && (flags & EMIT_CHUNK_CLASS_COLOR) != 0u) {
+        return FINE_TILE_KIND_MIXED_ANALYTIC_SOLID_NO_STACK;
+    }
+    if ((flags & EMIT_CHUNK_CLASS_SDF) != 0u) {
+        return FINE_TILE_KIND_PURE_SDF_SOLID_NO_STACK;
+    }
+    if ((flags & EMIT_CHUNK_CLASS_COLOR) != 0u) {
+        return FINE_TILE_KIND_COLOR_ONLY_NO_STACK;
+    }
+    return FINE_TILE_KIND_EMPTY_OR_CLEAR;
+}
+
+fn draw_solid_supported_sdf_at(draw_ix: u32) -> bool {
+    let draw = draw_records[draw_ix];
+    if (
+        !draw_has_nontransparent_solid_brush_at(draw_ix) ||
+        draw.sdf_offset == INVALID ||
+        draw.sdf_shadow_offset != INVALID ||
+        draw.sdf_len == 0u
+    ) {
+        return false;
+    }
+    let kind = sdf_blob[draw.sdf_offset];
+    return kind == GPU_SDF_RECT || kind == GPU_SDF_RECT_STROKE || kind == GPU_SDF_CANDLESTICK;
+}
+
+fn draw_has_nontransparent_solid_brush_at(draw_ix: u32) -> bool {
+    let brush_offset = draw_records[draw_ix].brush_offset;
+    if (brush_offset == INVALID) {
+        return false;
+    }
+    let brush_base = config.paint_brush_base + brush_offset;
+    return sdf_blob[brush_base] == GPU_BRUSH_SOLID &&
+        sdf_blob[brush_base + 4u] != 0u;
+}
+
+fn draw_solid_color_at(draw_ix: u32) -> u32 {
+    return sdf_blob[config.paint_brush_base + draw_records[draw_ix].brush_offset + 4u];
+}
+
+fn draw_sdf_full_tile_solid_color_at(draw_ix: u32, tile_x: u32, tile_y: u32) -> u32 {
+    let draw = draw_records[draw_ix];
+    var color = 0u;
+    if (
+        draw_has_nontransparent_solid_brush_at(draw_ix) &&
+        draw.sdf_offset != INVALID &&
+        draw.sdf_shadow_offset == INVALID &&
+        draw.sdf_len >= 9u &&
+        sdf_blob[draw.sdf_offset] == GPU_SDF_RECT &&
+        sdf_rect_fully_covers_tile(draw.sdf_offset, tile_x, tile_y)
+    ) {
+        color = draw_solid_color_at(draw_ix);
+    }
+    return color;
+}
+
+fn draw_sdf_full_tile_image_at(draw_ix: u32, tile_x: u32, tile_y: u32) -> bool {
+    let draw = draw_records[draw_ix];
+    return draw_has_opaque_image_brush_at(draw_ix) &&
+        draw.sdf_offset != INVALID &&
+        draw.sdf_shadow_offset == INVALID &&
+        draw.sdf_len >= 9u &&
+        sdf_blob[draw.sdf_offset] == GPU_SDF_RECT &&
+        sdf_rect_fully_covers_tile(draw.sdf_offset, tile_x, tile_y);
+}
+
+fn draw_has_opaque_image_brush_at(draw_ix: u32) -> bool {
+    let brush_offset = draw_records[draw_ix].brush_offset;
+    if (brush_offset == INVALID) {
+        return false;
+    }
+    let brush_base = config.paint_brush_base + brush_offset;
+    return sdf_blob[brush_base] == GPU_BRUSH_PATTERN_RESOURCE &&
+        sdf_blob[brush_base + 7u] == 255u;
 }
 
 fn sdf_rect_fully_covers_tile(sdf_base: u32, tile_x: u32, tile_y: u32) -> bool {

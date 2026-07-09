@@ -1230,6 +1230,38 @@ fn wgpu_chunked_render_classifies_full_tile_image_rect_as_analytic_when_enabled(
 }
 
 #[test]
+fn wgpu_chunked_render_keeps_translucent_full_tile_image_rect_on_full_interpreter() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let _force_chunks = ForceCoarseChunksGuard::new();
+    let mut canvas = Canvas::new(16, 16, 1.0);
+    canvas
+        .push_image(
+            Rect::new(0.0, 0.0, 16.0, 16.0),
+            Image::from_rgba8(1, 1, [40, 90, 180, 128]),
+            Extend::Pad,
+            PatternSampling::Bilinear,
+        )
+        .expect("push image");
+    let mut renderer = new_test_renderer(16, 16, Color::TRANSPARENT);
+    if renderer.fine.is_none() {
+        return;
+    }
+
+    renderer.render(&canvas);
+
+    let kinds =
+        renderer
+            .coarse
+            .read_fine_tile_kinds(renderer.device(), renderer.queue(), renderer.lengths);
+    assert_eq!(kinds[0], FineTileKind::FullInterpreter);
+    let tags = read_ptcl_tags(&renderer, 2);
+    assert_eq!(tags, vec![GPU_PTCL_SDF, GPU_PTCL_END]);
+}
+
+#[test]
 fn wgpu_fine_tile_kind_elides_full_cover_path_clip_for_image_rect_when_enabled() {
     if !run_wgpu_tests() {
         return;
@@ -1303,7 +1335,7 @@ fn wgpu_fine_tile_kind_elides_full_cover_sdf_clip_for_image_rect_when_enabled() 
 }
 
 #[test]
-fn wgpu_fine_tile_kind_keeps_partial_clip_image_rect_on_full_interpreter_when_enabled() {
+fn wgpu_fine_tile_kind_keeps_partial_clip_image_rect_on_analytic_stack_when_enabled() {
     if !run_wgpu_tests() {
         return;
     }
@@ -1336,7 +1368,7 @@ fn wgpu_fine_tile_kind_keeps_partial_clip_image_rect_on_full_interpreter_when_en
         renderer
             .coarse
             .read_fine_tile_kinds(renderer.device(), renderer.queue(), renderer.lengths);
-    assert_eq!(kinds[0], FineTileKind::FullInterpreter);
+    assert_eq!(kinds[0], FineTileKind::AnalyticWithStack);
     let tags = read_ptcl_tags(&renderer, 4);
     assert_eq!(
         tags,
@@ -1390,7 +1422,18 @@ fn wgpu_fine_indirect_dispatch_counts_match_tile_kinds_when_enabled() {
             )
         })
         .count() as u32;
-    let full_count = kinds.len() as u32 - sdf_count - mixed_count;
+    let full_count = kinds
+        .iter()
+        .filter(|&&kind| {
+            !matches!(
+                kind,
+                FineTileKind::EmptyOrClear
+                    | FineTileKind::ColorOnlyNoStack
+                    | FineTileKind::PureSdfSolidNoStack
+                    | FineTileKind::MixedAnalyticSolidNoStack
+            )
+        })
+        .count() as u32;
     let args = renderer
         .fine_indirect_args
         .read::<u32>(renderer.device(), renderer.queue(), 9);
@@ -1401,7 +1444,7 @@ fn wgpu_fine_indirect_dispatch_counts_match_tile_kinds_when_enabled() {
 }
 
 #[test]
-fn wgpu_fine_tile_kind_keeps_clip_tiles_on_full_interpreter_when_enabled() {
+fn wgpu_fine_tile_kind_keeps_clip_tiles_on_analytic_stack_when_enabled() {
     if !run_wgpu_tests() {
         return;
     }
@@ -1431,7 +1474,46 @@ fn wgpu_fine_tile_kind_keeps_clip_tiles_on_full_interpreter_when_enabled() {
         renderer
             .coarse
             .read_fine_tile_kinds(renderer.device(), renderer.queue(), renderer.lengths);
-    assert_eq!(kinds[0], FineTileKind::FullInterpreter);
+    assert_eq!(kinds[0], FineTileKind::AnalyticWithStack);
+}
+
+#[test]
+fn wgpu_fine_tile_kind_classifies_rect_stroke_as_analytic_when_enabled() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut canvas = Canvas::new(32, 32, 1.0);
+    canvas.push_rect_stroke(
+        Rect::new(4.0, 4.0, 28.0, 28.0),
+        crate::Radius::all(4.0),
+        peniko::kurbo::Stroke::new(4.0),
+        Color::from_rgb8(255, 255, 255),
+    );
+    let mut renderer = new_test_renderer(32, 32, Color::TRANSPARENT);
+    if renderer.coarse_pipeline.is_none() {
+        return;
+    }
+
+    renderer.prepare_scene(&canvas);
+    renderer.coarse_batch(&canvas, 0, canvas.draw_records.len() as u32, 0, 0);
+
+    let kinds =
+        renderer
+            .coarse
+            .read_fine_tile_kinds(renderer.device(), renderer.queue(), renderer.lengths);
+    assert!(
+        kinds
+            .iter()
+            .any(|kind| *kind == FineTileKind::PureSdfSolidNoStack),
+        "rect stroke should use analytic SDF tiles; kinds: {kinds:?}",
+    );
+    assert!(
+        kinds
+            .iter()
+            .all(|kind| *kind != FineTileKind::FullInterpreter),
+        "solid rect stroke should not require full interpreter; kinds: {kinds:?}",
+    );
 }
 
 #[test]

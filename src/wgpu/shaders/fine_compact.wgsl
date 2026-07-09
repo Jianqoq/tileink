@@ -1,4 +1,5 @@
 const FINE_TILE_KIND_COLOR_ONLY_NO_STACK: u32 = 2u;
+const FINE_TILE_KIND_EMPTY_OR_CLEAR: u32 = 1u;
 const FINE_TILE_KIND_PURE_SDF_SOLID_NO_STACK: u32 = 3u;
 const FINE_TILE_KIND_MIXED_ANALYTIC_SOLID_NO_STACK: u32 = 4u;
 const FINE_TILE_LIST_SDF: u32 = 0u;
@@ -71,7 +72,7 @@ fn fine_compact_tiles_main(
     ) {
         let out_ix = atomicAdd(&fine_indirect_args[3u], 1u);
         coarse_work[mixed_base + out_ix] = tile_ix;
-    } else {
+    } else if (kind != FINE_TILE_KIND_EMPTY_OR_CLEAR) {
         let out_ix = atomicAdd(&fine_indirect_args[6u], 1u);
         coarse_work[full_base + out_ix] = tile_ix;
     }

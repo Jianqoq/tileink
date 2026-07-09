@@ -350,9 +350,6 @@ fn liquid_glass_pixel(
     distance_norm: f32,
     surface_height: f32,
 ) -> u32 {
-    let normal = liquid_glass_normal(world_x, world_y);
-    let nx = normal.x;
-    let ny = normal.y;
     let inside_distance = -distance;
     let edge = liquid_glass_edge(
         inside_distance,
@@ -382,6 +379,10 @@ fn liquid_glass_pixel(
             a = lerp_f32(a, 1.0, tint_mix);
         }
     } else {
+        // Flat interior pixels do not refract, so only edge pixels need the SDF normal.
+        let normal = liquid_glass_normal(world_x, world_y);
+        let nx = normal.x;
+        let ny = normal.y;
         let offset_x = -nx * edge * LIQUID_GLASS_REFRACTION_PIXEL_SCALE;
         let offset_y = -ny * edge * LIQUID_GLASS_REFRACTION_PIXEL_SCALE;
         if (abs(config.liquid_refraction_dispersion) <= LIQUID_GLASS_EPSILON) {
@@ -1006,4 +1007,3 @@ fn filter_apply_region_mask(@builtin(global_invocation_id) gid: vec3<u32>) {
     let alpha = combine_alpha(target_load_ix(ix) >> 24u, aux_pixel_ix(ix) >> 24u);
     target_store_ix(ix, gray_alpha(alpha));
 }
-

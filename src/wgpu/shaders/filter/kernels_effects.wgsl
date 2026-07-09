@@ -348,19 +348,8 @@ fn filter_liquid_glass_rect_composite_region(@builtin(global_invocation_id) gid:
         config.radius_bottom_left,
         config.radius_bottom_right,
     );
-    let mask_distance = rect_sdf_distance(
-        world_x,
-        world_y,
-        config.rect_x0,
-        config.rect_y0,
-        config.rect_x1,
-        config.rect_y1,
-        config.radius_top_left,
-        config.radius_top_right,
-        config.radius_bottom_left,
-        config.radius_bottom_right,
-    );
-    let source_alpha = coverage_to_u8(sdf_coverage_from_dist(mask_distance));
+    // The liquid glass distance matches the rounded rect mask, so reuse it for coverage.
+    let source_alpha = coverage_to_u8(sdf_coverage_from_dist(distance));
     if (source_alpha == 0u) {
         return;
     }
