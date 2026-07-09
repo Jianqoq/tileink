@@ -1,5 +1,7 @@
 use crate::shared::gpu_plan::{CUMSUM_CHUNK_SIZE, GpuBufferLengths};
 
+use std::cell::OnceCell;
+
 use super::canvas::{WgpuCumsumBindings, WgpuScanBuffers, WgpuSceneBuffers};
 use super::commands::{
     WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
@@ -22,10 +24,12 @@ unsafe impl bytemuck::Zeroable for CumsumConfig {}
 unsafe impl bytemuck::Pod for CumsumConfig {}
 
 pub(crate) struct WgpuCumsumPipeline {
-    prefix_chunks: ::wgpu::ComputePipeline,
-    chunk_offsets: ::wgpu::ComputePipeline,
-    apply_chunk_offsets: ::wgpu::ComputePipeline,
+    shader: OnceCell<::wgpu::ShaderModule>,
+    prefix_chunks: OnceCell<::wgpu::ComputePipeline>,
+    chunk_offsets: OnceCell<::wgpu::ComputePipeline>,
+    apply_chunk_offsets: OnceCell<::wgpu::ComputePipeline>,
     bind_group_layout: ::wgpu::BindGroupLayout,
+    pipeline_layout: ::wgpu::PipelineLayout,
     config: ::wgpu::Buffer,
     config_size: ::wgpu::BufferAddress,
     config_stride: ::wgpu::BufferAddress,
@@ -42,27 +46,11 @@ impl WgpuCumsumPipeline {
                 label: Some("tileink wgpu cumsum bind group layout"),
                 entries: &cumsum_layout_entries(),
             });
-        let shader = device.create_shader_module(::wgpu::ShaderModuleDescriptor {
-            label: Some("tileink wgpu cumsum shader"),
-            source: ::wgpu::ShaderSource::Wgsl(
-                include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_cumsum.wgsl")).into(),
-            ),
-        });
         let pipeline_layout = device.create_pipeline_layout(&::wgpu::PipelineLayoutDescriptor {
             label: Some("tileink wgpu cumsum pipeline layout"),
             bind_group_layouts: &[Some(&bind_group_layout)],
             immediate_size: 0,
         });
-        let prefix_chunks =
-            create_pipeline(device, &pipeline_layout, &shader, "cumsum_prefix_chunks");
-        let chunk_offsets =
-            create_pipeline(device, &pipeline_layout, &shader, "cumsum_chunk_offsets");
-        let apply_chunk_offsets = create_pipeline(
-            device,
-            &pipeline_layout,
-            &shader,
-            "cumsum_apply_chunk_offsets",
-        );
         let config_size = std::mem::size_of::<CumsumConfig>() as ::wgpu::BufferAddress;
         let config_stride = aligned_uniform_stride(device, config_size);
         let config = device.create_buffer(&::wgpu::BufferDescriptor {
@@ -73,10 +61,12 @@ impl WgpuCumsumPipeline {
         });
 
         Some(Self {
-            prefix_chunks,
-            chunk_offsets,
-            apply_chunk_offsets,
+            shader: OnceCell::new(),
+            prefix_chunks: OnceCell::new(),
+            chunk_offsets: OnceCell::new(),
+            apply_chunk_offsets: OnceCell::new(),
             bind_group_layout,
+            pipeline_layout,
             config,
             config_size,
             config_stride,
@@ -124,6 +114,12 @@ impl WgpuCumsumPipeline {
         );
         let bindings = canvas.cumsum_bindings(scan);
         let bind_group = self.create_bind_group(commands.device(), &bindings, config_offset);
+        let row_count = lengths.cumsum_row_count as u32;
+        let prefix_chunks = self.prefix_chunks(commands.device());
+        let chunk_offsets =
+            (row_count != chunk_count).then(|| self.chunk_offsets(commands.device()));
+        let apply_chunk_offsets =
+            (row_count != chunk_count).then(|| self.apply_chunk_offsets(commands.device()));
         let gpu_scope = start_gpu_scope(commands.device(), "cumsum");
         let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
         let encoder = commands.encoder();
@@ -133,18 +129,58 @@ impl WgpuCumsumPipeline {
                 timestamp_writes,
             });
             pass.set_bind_group(0, &bind_group, &[]);
-            pass.set_pipeline(&self.prefix_chunks);
+            pass.set_pipeline(prefix_chunks);
             pass.dispatch_workgroups(chunk_count, 1, 1);
 
-            let row_count = lengths.cumsum_row_count as u32;
-            if row_count != chunk_count {
-                pass.set_pipeline(&self.chunk_offsets);
+            if let (Some(chunk_offsets), Some(apply_chunk_offsets)) =
+                (chunk_offsets, apply_chunk_offsets)
+            {
+                pass.set_pipeline(chunk_offsets);
                 pass.dispatch_workgroups(row_count.div_ceil(WORKGROUP_SIZE), 1, 1);
-                pass.set_pipeline(&self.apply_chunk_offsets);
+                pass.set_pipeline(apply_chunk_offsets);
                 pass.dispatch_workgroups(chunk_count, 1, 1);
             }
         }
         finish_gpu_scope(encoder, gpu_scope);
+    }
+
+    fn shader(&self, device: &::wgpu::Device) -> &::wgpu::ShaderModule {
+        self.shader.get_or_init(|| {
+            device.create_shader_module(::wgpu::ShaderModuleDescriptor {
+                label: Some("tileink wgpu cumsum shader"),
+                source: ::wgpu::ShaderSource::Wgsl(
+                    include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_cumsum.wgsl")).into(),
+                ),
+            })
+        })
+    }
+
+    fn prefix_chunks(&self, device: &::wgpu::Device) -> &::wgpu::ComputePipeline {
+        self.prefix_chunks
+            .get_or_init(|| self.create_pipeline(device, "cumsum_prefix_chunks"))
+    }
+
+    fn chunk_offsets(&self, device: &::wgpu::Device) -> &::wgpu::ComputePipeline {
+        self.chunk_offsets
+            .get_or_init(|| self.create_pipeline(device, "cumsum_chunk_offsets"))
+    }
+
+    fn apply_chunk_offsets(&self, device: &::wgpu::Device) -> &::wgpu::ComputePipeline {
+        self.apply_chunk_offsets
+            .get_or_init(|| self.create_pipeline(device, "cumsum_apply_chunk_offsets"))
+    }
+
+    fn create_pipeline(
+        &self,
+        device: &::wgpu::Device,
+        entry_point: &'static str,
+    ) -> ::wgpu::ComputePipeline {
+        create_pipeline(
+            device,
+            &self.pipeline_layout,
+            self.shader(device),
+            entry_point,
+        )
     }
 
     fn create_bind_group(
