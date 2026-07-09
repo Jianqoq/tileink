@@ -85,6 +85,8 @@ struct FineConfig {
     clip_spill_depth: u32,
     group_spill_depth: u32,
     ptcl_capacity: u32,
+    paint_sdf_shadow_base: u32,
+    paint_brush_base: u32,
     text_image_base: u32,
     text_image_data_base: u32,
     group_spill_base: u32,
@@ -146,9 +148,7 @@ struct PtclRecord {
     color: u32,
 };
 @group(0) @binding(2) var<storage, read> draw_records: array<DrawRecord>;
-@group(0) @binding(8) var<storage, read> sdf_blob: array<u32>;
-@group(0) @binding(9) var<storage, read> sdf_shadow_blob: array<u32>;
-@group(0) @binding(10) var<storage, read> brush_blob: array<u32>;
+@group(0) @binding(8) var<storage, read> paint_blob: array<u32>;
 @group(0) @binding(29) var<storage, read_write> coarse_work: array<u32>;
 @group(0) @binding(37) var<storage, read> segments: array<LineSegment>;
 @group(0) @binding(43) var<storage, read> text_blob: array<u32>;
@@ -251,12 +251,12 @@ fn glyph_image_data_at(data_ix: u32) -> u32 {
 }
 
 fn brush_word(index: u32) -> u32 {
-    return brush_blob[index];
+    return paint_blob[config.paint_brush_base + index];
 }
 
 fn sdf_storage_word(index: u32, shadow_blob: bool) -> u32 {
     if (shadow_blob) {
-        return sdf_shadow_blob[index];
+        return paint_blob[config.paint_sdf_shadow_base + index];
     }
-    return sdf_blob[index];
+    return paint_blob[index];
 }

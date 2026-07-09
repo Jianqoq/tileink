@@ -11,7 +11,7 @@ use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 const WORKGROUP_SIZE: u32 = 256;
 const COUNT_STORAGE_BINDING_COUNT: u32 = 7;
 const PREFIX_STORAGE_BINDING_COUNT: u32 = 8;
-const EMIT_STORAGE_BINDING_COUNT: u32 = 9;
+const EMIT_STORAGE_BINDING_COUNT: u32 = 8;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct WgpuCoarseBatch {
@@ -38,6 +38,7 @@ struct CoarseConfig {
     text_glyph_count: u32,
     tile_draw_index_count: u32,
     emit_chunk_capacity: u32,
+    paint_brush_base: u32,
 }
 
 unsafe impl bytemuck::Zeroable for CoarseConfig {}
@@ -318,6 +319,7 @@ impl WgpuCoarsePipeline {
                 text_glyph_count: lengths.text_glyph_count as u32,
                 tile_draw_index_count: lengths.tile_draw_index_count as u32,
                 emit_chunk_capacity: lengths.tile_draw_chunk_count as u32,
+                paint_brush_base: canvas.paint_brush_base(),
             }),
         );
         let bindings = canvas.coarse_bindings(scan, coarse);
@@ -626,8 +628,7 @@ impl WgpuCoarsePipeline {
                 bind_config_buffer(0, &self.config, config_offset, self.config_size),
                 bind_buffer(1, bindings.draw_records),
                 bind_buffer(3, bindings.text_blob),
-                bind_buffer(13, bindings.brush_blob),
-                bind_buffer(14, bindings.sdf_blob),
+                bind_buffer(13, bindings.paint_blob),
                 bind_buffer(18, bindings.path_records),
                 bind_buffer(19, bindings.backdrops),
                 bind_buffer(20, bindings.segment_ranges),
@@ -731,7 +732,6 @@ fn emit_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         storage_entry(1, true),
         storage_entry(3, true),
         storage_entry(13, true),
-        storage_entry(14, true),
         storage_entry(18, true),
         storage_entry(19, false),
         storage_entry(20, true),
@@ -815,7 +815,7 @@ mod tests {
         );
         assert_eq!(COUNT_STORAGE_BINDING_COUNT, 7);
         assert_eq!(PREFIX_STORAGE_BINDING_COUNT, 8);
-        assert_eq!(EMIT_STORAGE_BINDING_COUNT, 9);
+        assert_eq!(EMIT_STORAGE_BINDING_COUNT, 8);
     }
 
     #[test]

@@ -47,6 +47,8 @@ struct FineConfig {
     clip_spill_depth: u32,
     group_spill_depth: u32,
     ptcl_capacity: u32,
+    paint_sdf_shadow_base: u32,
+    paint_brush_base: u32,
     text_image_base: u32,
     text_image_data_base: u32,
     group_spill_base: u32,
@@ -280,6 +282,8 @@ impl WgpuFinePipeline {
                 clip_spill_depth,
                 group_spill_depth,
                 ptcl_capacity: lengths.coarse_ptcl_capacity as u32,
+                paint_sdf_shadow_base: scene_buffers.paint_sdf_shadow_base(),
+                paint_brush_base: scene_buffers.paint_brush_base(),
                 text_image_base: scene_buffers.fine_text_image_base(),
                 text_image_data_base: scene_buffers.fine_text_image_data_base(),
                 group_spill_base: (lengths.tile_count
@@ -377,9 +381,7 @@ impl WgpuFinePipeline {
         let mut entries = vec![
             config_buffer_binding(0, &self.config, config_offset, self.config_size),
             buffer_binding(2, fine.draw_records),
-            buffer_binding(8, fine.sdf_blob),
-            buffer_binding(9, fine.sdf_shadow_blob),
-            buffer_binding(10, fine.brush_blob),
+            buffer_binding(8, fine.paint_blob),
             buffer_binding(29, bindings.coarse_work),
             buffer_binding(37, bindings.segments),
             buffer_binding(43, bindings.text_blob),
@@ -425,8 +427,6 @@ fn tile_fine_layout_entries(portable_textures: bool) -> Vec<::wgpu::BindGroupLay
         uniform_layout_entry(0),
         storage_layout_entry(2, true),
         storage_layout_entry(8, true),
-        storage_layout_entry(9, true),
-        storage_layout_entry(10, true),
         storage_layout_entry(29, false),
         storage_layout_entry(37, true),
         storage_layout_entry(43, true),
@@ -580,7 +580,7 @@ mod tests {
         let entries = tile_fine_layout_entries(false);
         let storage_count = entries.iter().filter(|entry| is_storage(entry)).count() as u32;
         assert_eq!(storage_count, TILE_STORAGE_BINDING_COUNT);
-        assert_eq!(TILE_STORAGE_BINDING_COUNT, 10);
+        assert_eq!(TILE_STORAGE_BINDING_COUNT, 8);
     }
 
     fn is_storage(entry: &::wgpu::BindGroupLayoutEntry) -> bool {

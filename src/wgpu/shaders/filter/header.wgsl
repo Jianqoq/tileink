@@ -102,6 +102,7 @@ struct FilterConfig {
     filter_kind: u32,
     table_index: u32,
     brush_offset: u32,
+    paint_sdf_shadow_base: u32,
     offset_x: i32,
     offset_y: i32,
     morphology_radius: u32,
@@ -175,6 +176,10 @@ struct FilterConfig {
     liquid_glare_opposite_factor: f32,
     liquid_glare_factor: f32,
     liquid_glare_angle: f32,
+    // Keep matrix fields aligned with Rust FilterConfig.
+    matrix_pad0: u32,
+    matrix_pad1: u32,
+    matrix_pad2: u32,
     matrix_r: vec4<f32>,
     matrix_g: vec4<f32>,
     matrix_b: vec4<f32>,
@@ -232,8 +237,7 @@ struct LayerStackRecord {
     payload: u32,
 };
 @group(0) @binding(4) var<storage, read> draw_records: array<DrawRecord>;
-@group(0) @binding(10) var<storage, read> sdf_blob: array<u32>;
-@group(0) @binding(11) var<storage, read> sdf_shadow_blob: array<u32>;
+@group(0) @binding(10) var<storage, read> paint_blob: array<u32>;
 @group(0) @binding(28) var<storage, read> path_records: array<PathRecord>;
 @group(0) @binding(29) var<storage, read_write> backdrops: array<atomic<i32>>;
 @group(0) @binding(30) var<storage, read> segment_ranges: array<TileSegmentRange>;
@@ -259,7 +263,7 @@ fn brush_word(index: u32) -> u32 {
 
 fn sdf_storage_word(index: u32, shadow_blob: bool) -> u32 {
     if (shadow_blob) {
-        return sdf_shadow_blob[index];
+        return paint_blob[config.paint_sdf_shadow_base + index];
     }
-    return sdf_blob[index];
+    return paint_blob[index];
 }

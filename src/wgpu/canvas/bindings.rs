@@ -10,9 +10,7 @@ impl WgpuSceneBuffers {
     pub(crate) fn fine_bindings(&self) -> WgpuFineSceneBindings<'_> {
         WgpuFineSceneBindings {
             draw_records: self.draw_records.buffer(),
-            sdf_blob: self.sdf_blob.buffer(),
-            sdf_shadow_blob: self.sdf_shadow_blob.buffer(),
-            brush_blob: self.brush_blob.buffer(),
+            paint_blob: self.paint_blob.buffer(),
             image_resource_metadata: self.image_resource_metadata.buffer(),
             image_resource_pixels: self.image_resource_pixels.buffer(),
         }
@@ -23,6 +21,14 @@ impl WgpuSceneBuffers {
             self.image_resource_metadata.buffer(),
             self.image_resource_pixels.buffer(),
         )
+    }
+
+    pub(crate) fn paint_sdf_shadow_base(&self) -> u32 {
+        self.paint_sdf_shadow_base
+    }
+
+    pub(crate) fn paint_brush_base(&self) -> u32 {
+        self.paint_brush_base
     }
 
     pub(crate) fn fine_text_image_base(&self) -> u32 {
@@ -69,8 +75,8 @@ impl WgpuSceneBuffers {
     ) -> WgpuFilterBindings<'a> {
         WgpuFilterBindings {
             draw_records: self.draw_records.buffer(),
-            sdf_blob: self.sdf_blob.buffer(),
-            sdf_shadow_blob: self.sdf_shadow_blob.buffer(),
+            paint_blob: self.paint_blob.buffer(),
+            paint_sdf_shadow_base: self.paint_sdf_shadow_base,
             path_records: self.path_records.buffer(),
             backdrops: scan.backdrops.buffer(),
             segment_ranges: scan.tile_segment_ranges.buffer(),
@@ -106,8 +112,7 @@ impl WgpuSceneBuffers {
         WgpuCoarseBindings {
             draw_records: self.draw_records.buffer(),
             text_blob: self.coarse_text_blob.buffer(),
-            brush_blob: self.brush_blob.buffer(),
-            sdf_blob: self.sdf_blob.buffer(),
+            paint_blob: self.paint_blob.buffer(),
             path_records: self.path_records.buffer(),
             backdrops: scan.backdrops.buffer(),
             segment_ranges: scan.tile_segment_ranges.buffer(),
@@ -120,9 +125,7 @@ impl WgpuSceneBuffers {
 
 pub(crate) struct WgpuFineSceneBindings<'a> {
     pub(crate) draw_records: &'a ::wgpu::Buffer,
-    pub(crate) sdf_blob: &'a ::wgpu::Buffer,
-    pub(crate) sdf_shadow_blob: &'a ::wgpu::Buffer,
-    pub(crate) brush_blob: &'a ::wgpu::Buffer,
+    pub(crate) paint_blob: &'a ::wgpu::Buffer,
     pub(crate) image_resource_metadata: &'a ::wgpu::Buffer,
     pub(crate) image_resource_pixels: &'a ::wgpu::Buffer,
 }
@@ -137,8 +140,8 @@ pub(crate) struct WgpuTileFineBindings<'a> {
 
 pub(crate) struct WgpuFilterBindings<'a> {
     pub(crate) draw_records: &'a ::wgpu::Buffer,
-    pub(crate) sdf_blob: &'a ::wgpu::Buffer,
-    pub(crate) sdf_shadow_blob: &'a ::wgpu::Buffer,
+    pub(crate) paint_blob: &'a ::wgpu::Buffer,
+    pub(crate) paint_sdf_shadow_base: u32,
     pub(crate) path_records: &'a ::wgpu::Buffer,
     pub(crate) backdrops: &'a ::wgpu::Buffer,
     pub(crate) segment_ranges: &'a ::wgpu::Buffer,
@@ -176,8 +179,7 @@ pub(crate) struct WgpuScanBindings<'a> {
 pub(crate) struct WgpuCoarseBindings<'a> {
     pub(crate) draw_records: &'a ::wgpu::Buffer,
     pub(crate) text_blob: &'a ::wgpu::Buffer,
-    pub(crate) brush_blob: &'a ::wgpu::Buffer,
-    pub(crate) sdf_blob: &'a ::wgpu::Buffer,
+    pub(crate) paint_blob: &'a ::wgpu::Buffer,
     pub(crate) path_records: &'a ::wgpu::Buffer,
     pub(crate) backdrops: &'a ::wgpu::Buffer,
     pub(crate) segment_ranges: &'a ::wgpu::Buffer,

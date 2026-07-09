@@ -203,6 +203,10 @@ fn upload_fine_text_blob(
     (image_base as u32, image_data_base as u32)
 }
 
+fn word_offset(words: u32) -> ::wgpu::BufferAddress {
+    words as ::wgpu::BufferAddress * std::mem::size_of::<u32>() as ::wgpu::BufferAddress
+}
+
 fn encode_layer_payload(entry: LayerStackEntry) -> u32 {
     match entry {
         LayerStackEntry::Clip { .. } => 0,
@@ -299,21 +303,7 @@ impl WgpuSceneBuffers {
                 &canvas.path_records,
             );
         });
-        profile_cpu("prepare.upload_scene.upload_sdf_blobs", || {
-            self.sdf_blob.upload(
-                device,
-                queue,
-                "tileink wgpu canvas sdf blob",
-                &canvas.sdf_blob,
-            );
-            self.sdf_shadow_blob.upload(
-                device,
-                queue,
-                "tileink wgpu canvas sdf shadow blob",
-                &canvas.sdf_shadow_blob,
-            );
-        });
-        profile_cpu("prepare.upload_scene.blobs.brushes", || {
+        profile_cpu("prepare.upload_scene.upload_paint_blob", || {
             let scene_brush_blob = if GpuBrushUpload::scene_brushes_need_resource_patch(
                 &canvas.draw_records,
                 &canvas.brush_blob,
@@ -331,12 +321,26 @@ impl WgpuSceneBuffers {
             } else {
                 &canvas.brush_blob
             };
-            self.brush_blob.upload(
+            self.paint_sdf_shadow_base = canvas.sdf_blob.len() as u32;
+            self.paint_brush_base = (canvas.sdf_blob.len() + canvas.sdf_shadow_blob.len()) as u32;
+            let paint_words =
+                canvas.sdf_blob.len() + canvas.sdf_shadow_blob.len() + scene_brush_blob.len();
+
+            // Coarse, fine, and filter share one scene paint buffer. Draw-record offsets remain
+            // section-local, so each shader adds the base for the section it reads.
+            self.paint_blob.resize_uninit::<u32>(
                 device,
-                queue,
-                "tileink wgpu canvas brush blob",
-                scene_brush_blob,
+                "tileink wgpu canvas paint blob",
+                paint_words,
             );
+            self.paint_blob.write_at(queue, 0, &canvas.sdf_blob);
+            self.paint_blob.write_at(
+                queue,
+                word_offset(self.paint_sdf_shadow_base),
+                &canvas.sdf_shadow_blob,
+            );
+            self.paint_blob
+                .write_at(queue, word_offset(self.paint_brush_base), scene_brush_blob);
         });
     }
 

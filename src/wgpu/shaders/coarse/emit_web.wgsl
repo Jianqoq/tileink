@@ -3,8 +3,7 @@
 
 @group(0) @binding(1) var<storage, read> draw_records: array<DrawRecord>;
 @group(0) @binding(3) var<storage, read> text_blob: array<u32>;
-@group(0) @binding(13) var<storage, read> brush_blob: array<u32>;
-@group(0) @binding(14) var<storage, read> sdf_blob: array<u32>;
+@group(0) @binding(13) var<storage, read> paint_blob: array<u32>;
 @group(0) @binding(18) var<storage, read> path_records: array<PathRecord>;
 @group(0) @binding(19) var<storage, read_write> backdrops: array<atomic<i32>>;
 @group(0) @binding(20) var<storage, read> segment_ranges: array<TileSegmentRange>;
@@ -379,14 +378,17 @@ fn draw_solid_color_fast_path_at(draw_ix: u32) -> bool {
 }
 
 fn draw_has_nontransparent_solid_brush_at(draw_ix: u32) -> bool {
-    let brush_base = draw_records[draw_ix].brush_offset;
-    return brush_base != INVALID &&
-        brush_blob[brush_base] == GPU_BRUSH_SOLID &&
-        brush_blob[brush_base + 4u] != 0u;
+    let brush_offset = draw_records[draw_ix].brush_offset;
+    if (brush_offset == INVALID) {
+        return false;
+    }
+    let brush_base = config.paint_brush_base + brush_offset;
+    return paint_blob[brush_base] == GPU_BRUSH_SOLID &&
+        paint_blob[brush_base + 4u] != 0u;
 }
 
 fn draw_solid_color_at(draw_ix: u32) -> u32 {
-    return brush_blob[draw_records[draw_ix].brush_offset + 4u];
+    return paint_blob[config.paint_brush_base + draw_records[draw_ix].brush_offset + 4u];
 }
 
 fn draw_sdf_full_tile_solid_color_at(draw_ix: u32, tile_x: u32, tile_y: u32) -> u32 {
@@ -397,7 +399,7 @@ fn draw_sdf_full_tile_solid_color_at(draw_ix: u32, tile_x: u32, tile_y: u32) -> 
         draw.sdf_offset != INVALID &&
         draw.sdf_shadow_offset == INVALID &&
         draw.sdf_len >= 9u &&
-        sdf_blob[draw.sdf_offset] == GPU_SDF_RECT &&
+        paint_blob[draw.sdf_offset] == GPU_SDF_RECT &&
         sdf_rect_fully_covers_tile(draw.sdf_offset, tile_x, tile_y)
     ) {
         color = draw_solid_color_at(draw_ix);
@@ -441,7 +443,7 @@ fn sdf_rect_fully_covers_tile(sdf_base: u32, tile_x: u32, tile_y: u32) -> bool {
 }
 
 fn sdf_float_at(sdf_base: u32, index: u32) -> f32 {
-    return bitcast<f32>(sdf_blob[sdf_base + index]);
+    return bitcast<f32>(paint_blob[sdf_base + index]);
 }
 
 fn rounded_rect_corners_fully_cover_tile(
