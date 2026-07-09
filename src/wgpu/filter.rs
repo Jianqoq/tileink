@@ -344,6 +344,7 @@ pub(crate) struct WgpuFilterPipeline {
     lighting_region: LazyFilterKernel,
     liquid_glass_region: LazyFilterKernel,
     liquid_glass_rect_composite_region: LazyFilterKernel,
+    liquid_glass_simple_rect_composite_region: LazyFilterKernel,
     blend_region: LazyFilterKernel,
     composite_inputs_region: LazyFilterKernel,
     displacement_map_region: LazyFilterKernel,
@@ -668,6 +669,12 @@ impl WgpuFilterPipeline {
             ),
             liquid_glass_rect_composite_region: LazyFilterKernel::new(
                 "filter_liquid_glass_rect_composite_region",
+                0,
+                FilterProfile::LiquidGlassRectComposite,
+                false,
+            ),
+            liquid_glass_simple_rect_composite_region: LazyFilterKernel::new(
+                "filter_liquid_glass_simple_rect_composite_region",
                 0,
                 FilterProfile::LiquidGlassRectComposite,
                 false,
@@ -2445,9 +2452,14 @@ impl WgpuFilterPipeline {
         config.source_y1 = blurred_bounds.y1 as u32;
         config.downsample = sampling.factor();
         config.upsample_filter = encode_blur_upsample_filter(sampling.upsample_filter);
+        let pipeline = if rect_liquid_glass_uses_simple_composite(glass) {
+            &self.liquid_glass_simple_rect_composite_region
+        } else {
+            &self.liquid_glass_rect_composite_region
+        };
         self.dispatch_with_target_read(
             commands,
-            &self.liquid_glass_rect_composite_region,
+            pipeline,
             &config,
             source,
             blurred,
@@ -2618,6 +2630,12 @@ fn shared_blur_radius(std_dev: f32) -> Option<u32> {
     }
     let radius = (std_dev * 3.0).ceil().max(1.0) as u32;
     (radius <= SHARED_BLUR_MAX_RADIUS).then_some(radius)
+}
+
+fn rect_liquid_glass_uses_simple_composite(glass: RectLiquidGlass) -> bool {
+    glass.refraction_dispersion.abs() <= f32::EPSILON
+        && glass.fresnel_factor <= 0.0
+        && glass.glare_factor <= 0.0
 }
 
 fn config_for_bounds(

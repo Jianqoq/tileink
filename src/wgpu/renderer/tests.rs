@@ -2989,12 +2989,12 @@ fn wgpu_renderer_profiles_empty_stack_liquid_glass_with_direct_composite_when_en
     let mut renderer = new_test_renderer(64, 40, Color::TRANSPARENT);
     let profile = renderer.render_profiled(&canvas);
 
-    assert_profile_has(&profile, "filter.copy");
     assert_profile_has(&profile, "filter.downsample");
     assert_profile_has(&profile, "filter.blur.x");
     assert_profile_has(&profile, "filter.blur.y");
     assert_profile_has(&profile, "filter.upsample");
     assert_profile_has(&profile, "filter.liquid_glass.composite.rect");
+    assert_profile_missing(&profile, "filter.copy");
     assert_profile_missing(&profile, "filter.liquid_glass");
     assert_profile_missing(&profile, "filter.composite.rect_direct");
     assert_profile_missing(&profile, "filter.stack.src_over");
@@ -3031,11 +3031,11 @@ fn wgpu_renderer_profiles_simple_liquid_glass_without_materialized_upsample_when
     let mut renderer = new_test_renderer(64, 40, Color::TRANSPARENT);
     let profile = renderer.render_profiled(&canvas);
 
-    assert_profile_has(&profile, "filter.copy");
     assert_profile_has(&profile, "filter.downsample");
     assert_profile_has(&profile, "filter.blur.x");
     assert_profile_has(&profile, "filter.blur.y");
     assert_profile_has(&profile, "filter.liquid_glass.composite.rect");
+    assert_profile_missing(&profile, "filter.copy");
     assert_profile_missing(&profile, "filter.upsample");
     assert_profile_missing(&profile, "filter.liquid_glass");
     assert_profile_missing(&profile, "filter.composite.rect_direct");

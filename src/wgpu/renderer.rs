@@ -1804,6 +1804,35 @@ impl Renderer {
         }
     }
 
+    fn copy_render_target_region(
+        &self,
+        commands: &mut WgpuCommandBatch,
+        source: WgpuRenderTargetId,
+        target: WgpuRenderTargetId,
+        bounds: Bounds,
+    ) -> bool {
+        if source == target {
+            return true;
+        }
+        let bounds = bounds.intersect(Bounds::canvas(self.size.0, self.size.1));
+        if bounds.is_empty() {
+            return true;
+        }
+        let Some(source) = self.render_target_texture(source) else {
+            return false;
+        };
+        let Some(target) = self.render_target_texture(target) else {
+            return false;
+        };
+        if !source.usage().contains(::wgpu::TextureUsages::COPY_SRC)
+            || !target.usage().contains(::wgpu::TextureUsages::COPY_DST)
+        {
+            return false;
+        }
+        copy_texture_region(commands.encoder(), source, target, bounds);
+        true
+    }
+
     fn snapshot_filter_target(
         &self,
         commands: &mut WgpuCommandBatch,
@@ -2139,6 +2168,35 @@ fn copy_texture(
         ::wgpu::Extent3d {
             width: size.0.max(1),
             height: size.1.max(1),
+            depth_or_array_layers: 1,
+        },
+    );
+}
+
+fn copy_texture_region(
+    encoder: &mut ::wgpu::CommandEncoder,
+    source: &::wgpu::Texture,
+    target: &::wgpu::Texture,
+    bounds: Bounds,
+) {
+    let mut source_copy = source.as_image_copy();
+    source_copy.origin = ::wgpu::Origin3d {
+        x: bounds.x0 as u32,
+        y: bounds.y0 as u32,
+        z: 0,
+    };
+    let mut target_copy = target.as_image_copy();
+    target_copy.origin = ::wgpu::Origin3d {
+        x: bounds.x0 as u32,
+        y: bounds.y0 as u32,
+        z: 0,
+    };
+    encoder.copy_texture_to_texture(
+        source_copy,
+        target_copy,
+        ::wgpu::Extent3d {
+            width: bounds.width(),
+            height: bounds.height(),
             depth_or_array_layers: 1,
         },
     );

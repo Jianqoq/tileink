@@ -457,6 +457,70 @@ fn liquid_glass_pixel(
     return liquid_glass_pack_straight_rgba8(r, g, b, a);
 }
 
+fn liquid_glass_simple_pixel(
+    base: u32,
+    world_x: f32,
+    world_y: f32,
+    pixel_x: f32,
+    pixel_y: f32,
+    distance: f32,
+    distance_norm: f32,
+    surface_height: f32,
+) -> u32 {
+    let inside_distance = -distance;
+    let edge = liquid_glass_edge(
+        inside_distance,
+        config.liquid_refraction_thickness,
+        config.liquid_refraction_factor,
+    );
+    var blur_mix = inside_distance / max(config.liquid_refraction_thickness, LIQUID_GLASS_EPSILON);
+    if (config.mask_enabled == 1u) {
+        blur_mix = 1.0;
+    }
+    blur_mix = clamp(blur_mix, 0.0, 1.0);
+
+    let initial_blur = liquid_glass_sample_straight_rgba(1u, pixel_x, pixel_y);
+    var r = initial_blur.r;
+    var g = initial_blur.g;
+    var b = initial_blur.b;
+    var a = initial_blur.a;
+    let tint_mix = config.liquid_tint_a * LIQUID_GLASS_TINT_MIX;
+
+    if (edge <= 0.0) {
+        if (tint_mix > 0.0) {
+            r = lerp_f32(r, config.liquid_tint_r, tint_mix);
+            g = lerp_f32(g, config.liquid_tint_g, tint_mix);
+            b = lerp_f32(b, config.liquid_tint_b, tint_mix);
+            a = lerp_f32(a, 1.0, tint_mix);
+        }
+    } else {
+        let normal = liquid_glass_normal(world_x, world_y);
+        let offset_x = -normal.x * edge * LIQUID_GLASS_REFRACTION_PIXEL_SCALE;
+        let offset_y = -normal.y * edge * LIQUID_GLASS_REFRACTION_PIXEL_SCALE;
+        let sx = pixel_x + offset_x;
+        let sy = pixel_y + offset_y;
+        let src_rgba = liquid_glass_sample_straight_rgba(0u, sx, sy);
+        let blur_rgba = liquid_glass_sample_straight_rgba(1u, sx, sy);
+        r = lerp_f32(src_rgba.r, blur_rgba.r, blur_mix);
+        g = lerp_f32(src_rgba.g, blur_rgba.g, blur_mix);
+        b = lerp_f32(src_rgba.b, blur_rgba.b, blur_mix);
+        a = max(src_rgba.a, blur_rgba.a);
+        if (tint_mix > 0.0) {
+            r = lerp_f32(r, config.liquid_tint_r, tint_mix);
+            g = lerp_f32(g, config.liquid_tint_g, tint_mix);
+            b = lerp_f32(b, config.liquid_tint_b, tint_mix);
+            a = lerp_f32(a, 1.0, tint_mix);
+        }
+    }
+
+    let edge_mix = liquid_glass_smoothstep(LIQUID_GLASS_EDGE_BLEND_START, LIQUID_GLASS_EDGE_BLEND_END, distance_norm);
+    r = lerp_f32(r, liquid_glass_pixel_straight_channel(base, 0u), edge_mix);
+    g = lerp_f32(g, liquid_glass_pixel_straight_channel(base, 1u), edge_mix);
+    b = lerp_f32(b, liquid_glass_pixel_straight_channel(base, 2u), edge_mix);
+    a = lerp_f32(a, liquid_glass_pixel_straight_channel(base, 3u), edge_mix);
+    return liquid_glass_pack_straight_rgba8(r, g, b, a);
+}
+
 fn liquid_glass_edge(inside_distance: f32, refraction_thickness: f32, refraction_factor: f32) -> f32 {
     let thickness = max(refraction_thickness, LIQUID_GLASS_EPSILON);
     var out = 0.0;

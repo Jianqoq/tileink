@@ -95,6 +95,24 @@ fn filter_downsample_region(@builtin(global_invocation_id) gid: vec3<u32>) {
         target_store_at(xy.x, xy.y, source_pixel_at(sx, sy));
         return;
     }
+    let cell_width = cell_x1 - cell_x0;
+    let cell_height = cell_y1 - cell_y0;
+    if (factor == 2u && cell_width == 2u && cell_height == 2u) {
+        let sample = filter_source_sample_premul(f32(cell_x0) + 0.5, f32(cell_y0) + 0.5);
+        target_store_at(xy.x, xy.y, pack_premul_rgba8(sample.r, sample.g, sample.b, sample.a));
+        return;
+    }
+    if (factor == 4u && cell_width == 4u && cell_height == 4u) {
+        let x0 = f32(cell_x0);
+        let y0 = f32(cell_y0);
+        let sample =
+            (filter_source_sample_premul(x0 + 0.5, y0 + 0.5) +
+            filter_source_sample_premul(x0 + 2.5, y0 + 0.5) +
+            filter_source_sample_premul(x0 + 0.5, y0 + 2.5) +
+            filter_source_sample_premul(x0 + 2.5, y0 + 2.5)) * 0.25;
+        target_store_at(xy.x, xy.y, pack_premul_rgba8(sample.r, sample.g, sample.b, sample.a));
+        return;
+    }
 
     var acc = vec4<f32>(0.0);
     var count = 0.0;

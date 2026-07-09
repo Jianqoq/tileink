@@ -849,6 +849,13 @@ impl Renderer {
             return false;
         };
 
+        if !self.copy_region_to_target(commands, target, source, bounds) {
+            self.release_scratch(temp);
+            self.release_scratch(low);
+            self.release_scratch(source);
+            return false;
+        }
+
         let Some(filter) = &self.filter else {
             self.release_scratch(temp);
             self.release_scratch(low);
@@ -857,14 +864,6 @@ impl Renderer {
         };
         let factor = glass.blur_sampling.factor() as f32;
         let std_dev = glass.blur_radius as f32 * filter_model::LIQUID_GLASS_BLUR_STD_DEV_SCALE;
-        filter.copy_region(
-            commands,
-            self.render_target_view(target),
-            self.render_target_view(source),
-            self.size,
-            self.lengths,
-            bounds,
-        );
         filter.downsample_region(
             commands,
             self.render_target_view(source),
@@ -939,6 +938,13 @@ impl Renderer {
             return false;
         };
 
+        if !self.copy_region_to_target(commands, target, source, bounds) {
+            self.release_scratch(temp);
+            self.release_scratch(low);
+            self.release_scratch(source);
+            return false;
+        }
+
         let Some(filter) = &self.filter else {
             self.release_scratch(temp);
             self.release_scratch(low);
@@ -947,14 +953,6 @@ impl Renderer {
         };
         let factor = glass.blur_sampling.factor() as f32;
         let std_dev = glass.blur_radius as f32 * filter_model::LIQUID_GLASS_BLUR_STD_DEV_SCALE;
-        filter.copy_region(
-            commands,
-            self.render_target_view(target),
-            self.render_target_view(source),
-            self.size,
-            self.lengths,
-            bounds,
-        );
         filter.downsample_region(
             commands,
             self.render_target_view(source),
@@ -1038,16 +1036,7 @@ impl Renderer {
             return false;
         };
         if low_bounds.width() >= bounds.width() && low_bounds.height() >= bounds.height() {
-            if source != target {
-                filter.copy_region(
-                    commands,
-                    self.render_target_view(source),
-                    self.render_target_view(target),
-                    self.size,
-                    self.lengths,
-                    bounds,
-                );
-            }
+            self.copy_region_to_target(commands, source, target, bounds);
             filter.blur_region(
                 commands,
                 self.render_target_view(target),
@@ -1633,6 +1622,10 @@ impl Renderer {
         target: WgpuRenderTargetId,
         bounds: Bounds,
     ) -> bool {
+        if self.copy_render_target_region(commands, source, target, bounds) {
+            return true;
+        }
+
         let Some(filter) = &self.filter else {
             return false;
         };
