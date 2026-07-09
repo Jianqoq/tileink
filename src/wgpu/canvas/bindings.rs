@@ -10,7 +10,9 @@ impl WgpuSceneBuffers {
     pub(crate) fn fine_bindings(&self) -> WgpuFineSceneBindings<'_> {
         WgpuFineSceneBindings {
             draw_records: self.draw_records.buffer(),
-            paint_blob: self.fine_paint_blob.buffer(),
+            sdf_blob: self.sdf_blob.buffer(),
+            sdf_shadow_blob: self.sdf_shadow_blob.buffer(),
+            brush_blob: self.brush_blob.buffer(),
             image_resource_metadata: self.image_resource_metadata.buffer(),
             image_resource_pixels: self.image_resource_pixels.buffer(),
         }
@@ -21,14 +23,6 @@ impl WgpuSceneBuffers {
             self.image_resource_metadata.buffer(),
             self.image_resource_pixels.buffer(),
         )
-    }
-
-    pub(crate) fn fine_paint_sdf_shadow_base(&self) -> u32 {
-        self.fine_paint_sdf_shadow_base
-    }
-
-    pub(crate) fn fine_paint_brush_base(&self) -> u32 {
-        self.fine_paint_brush_base
     }
 
     pub(crate) fn fine_text_image_base(&self) -> u32 {
@@ -126,7 +120,9 @@ impl WgpuSceneBuffers {
 
 pub(crate) struct WgpuFineSceneBindings<'a> {
     pub(crate) draw_records: &'a ::wgpu::Buffer,
-    pub(crate) paint_blob: &'a ::wgpu::Buffer,
+    pub(crate) sdf_blob: &'a ::wgpu::Buffer,
+    pub(crate) sdf_shadow_blob: &'a ::wgpu::Buffer,
+    pub(crate) brush_blob: &'a ::wgpu::Buffer,
     pub(crate) image_resource_metadata: &'a ::wgpu::Buffer,
     pub(crate) image_resource_pixels: &'a ::wgpu::Buffer,
 }

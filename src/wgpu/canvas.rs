@@ -18,7 +18,6 @@ pub(crate) struct WgpuSceneBuffers {
     draw_records: WgpuBuffer,
     sdf_blob: WgpuBuffer,
     sdf_shadow_blob: WgpuBuffer,
-    fine_paint_blob: WgpuBuffer,
     scan_chunk_path_ids: WgpuBuffer,
     scan_chunk_backdrop_offsets: WgpuBuffer,
     scan_chunk_segment_starts: WgpuBuffer,
@@ -37,8 +36,6 @@ pub(crate) struct WgpuSceneBuffers {
     coarse_text_blob: WgpuBuffer,
     fine_text_blob: WgpuBuffer,
     glyph_atlas_signature: AtlasSignature,
-    fine_paint_sdf_shadow_base: u32,
-    fine_paint_brush_base: u32,
     fine_text_image_base: u32,
     fine_text_image_data_base: u32,
 }
@@ -51,7 +48,6 @@ impl WgpuSceneBuffers {
             draw_records: WgpuBuffer::new(device, "tileink wgpu canvas draw records"),
             sdf_blob: WgpuBuffer::new(device, "tileink wgpu canvas sdf blob"),
             sdf_shadow_blob: WgpuBuffer::new(device, "tileink wgpu canvas sdf shadow blob"),
-            fine_paint_blob: WgpuBuffer::new(device, "tileink wgpu canvas fine paint blob"),
             scan_chunk_path_ids: WgpuBuffer::new(device, "tileink wgpu canvas scan chunk path ids"),
             scan_chunk_backdrop_offsets: WgpuBuffer::new(
                 device,
@@ -94,8 +90,6 @@ impl WgpuSceneBuffers {
             coarse_text_blob: WgpuBuffer::new(device, "tileink wgpu canvas coarse text blob"),
             fine_text_blob: WgpuBuffer::new(device, "tileink wgpu canvas fine text blob"),
             glyph_atlas_signature: AtlasSignature::default(),
-            fine_paint_sdf_shadow_base: 0,
-            fine_paint_brush_base: 0,
             fine_text_image_base: 0,
             fine_text_image_data_base: 0,
         }

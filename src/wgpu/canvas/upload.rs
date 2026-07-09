@@ -39,7 +39,7 @@ pub(crate) struct WgpuSceneUploadStaging {
     tile_draw_cursors: Vec<u32>,
     tile_draw_data: Vec<u32>,
     layer_stack: Vec<LayerStackRecord>,
-    paint_blob: Vec<u32>,
+    scene_brush_blob: Vec<u32>,
     fine_text_blob: Vec<u32>,
 }
 
@@ -314,34 +314,28 @@ impl WgpuSceneBuffers {
             );
         });
         profile_cpu("prepare.upload_scene.blobs.brushes", || {
-            let brush_upload = GpuBrushUpload::from_scene_brush_blob(
+            let scene_brush_blob = if GpuBrushUpload::scene_brushes_need_resource_patch(
                 &canvas.draw_records,
                 &canvas.brush_blob,
-                image_resources,
-            );
+            ) {
+                staging.scene_brush_blob.clear();
+                staging
+                    .scene_brush_blob
+                    .extend_from_slice(&canvas.brush_blob);
+                GpuBrushUpload::patch_scene_brush_blob(
+                    &mut staging.scene_brush_blob,
+                    &canvas.draw_records,
+                    image_resources,
+                );
+                &staging.scene_brush_blob
+            } else {
+                &canvas.brush_blob
+            };
             self.brush_blob.upload(
                 device,
                 queue,
                 "tileink wgpu canvas brush blob",
-                &brush_upload.blob,
-            );
-            self.fine_paint_sdf_shadow_base = canvas.sdf_blob.len() as u32;
-            self.fine_paint_brush_base =
-                (canvas.sdf_blob.len() + canvas.sdf_shadow_blob.len()) as u32;
-            staging.paint_blob.clear();
-            staging.paint_blob.reserve(
-                canvas.sdf_blob.len() + canvas.sdf_shadow_blob.len() + brush_upload.blob.len(),
-            );
-            staging.paint_blob.extend_from_slice(&canvas.sdf_blob);
-            staging
-                .paint_blob
-                .extend_from_slice(&canvas.sdf_shadow_blob);
-            staging.paint_blob.extend_from_slice(&brush_upload.blob);
-            self.fine_paint_blob.upload(
-                device,
-                queue,
-                "tileink wgpu canvas fine paint blob",
-                &staging.paint_blob,
+                scene_brush_blob,
             );
         });
     }
