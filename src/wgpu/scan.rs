@@ -1,5 +1,7 @@
 use crate::shared::gpu_plan::{GpuBufferLengths, SCAN_CHUNK_SIZE};
 
+use std::cell::OnceCell;
+
 use super::canvas::{WgpuScanBindings, WgpuScanBuffers, WgpuSceneBuffers};
 use super::commands::{
     WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
@@ -39,21 +41,74 @@ unsafe impl bytemuck::Zeroable for ScanConfig {}
 unsafe impl bytemuck::Pod for ScanConfig {}
 
 pub(crate) struct WgpuScanPipeline {
-    clear: ::wgpu::ComputePipeline,
-    count: ::wgpu::ComputePipeline,
-    prefix_chunks: ::wgpu::ComputePipeline,
-    chunk_offsets: ::wgpu::ComputePipeline,
-    apply_chunk_offsets: ::wgpu::ComputePipeline,
-    emit: ::wgpu::ComputePipeline,
-    clear_bind_group_layout: ::wgpu::BindGroupLayout,
-    count_bind_group_layout: ::wgpu::BindGroupLayout,
-    prefix_bind_group_layout: ::wgpu::BindGroupLayout,
-    chunk_offsets_bind_group_layout: ::wgpu::BindGroupLayout,
-    apply_chunk_offsets_bind_group_layout: ::wgpu::BindGroupLayout,
-    emit_bind_group_layout: ::wgpu::BindGroupLayout,
+    clear: LazyScanKernel,
+    count: LazyScanKernel,
+    prefix_chunks: LazyScanKernel,
+    chunk_offsets: LazyScanKernel,
+    apply_chunk_offsets: LazyScanKernel,
+    emit: LazyScanKernel,
     config: ::wgpu::Buffer,
     config_size: ::wgpu::BufferAddress,
     config_stride: ::wgpu::BufferAddress,
+}
+
+struct LazyScanKernel {
+    shader: OnceCell<::wgpu::ShaderModule>,
+    pipeline: OnceCell<::wgpu::ComputePipeline>,
+    bind_group_layout: ::wgpu::BindGroupLayout,
+    pipeline_layout: ::wgpu::PipelineLayout,
+    label: &'static str,
+    source: &'static str,
+    entry_point: &'static str,
+}
+
+impl LazyScanKernel {
+    fn new(
+        device: &::wgpu::Device,
+        label: &'static str,
+        source: &'static str,
+        entry_point: &'static str,
+        entries: &[::wgpu::BindGroupLayoutEntry],
+    ) -> Self {
+        let bind_group_layout =
+            device.create_bind_group_layout(&::wgpu::BindGroupLayoutDescriptor {
+                label: Some(label),
+                entries,
+            });
+        let pipeline_layout = device.create_pipeline_layout(&::wgpu::PipelineLayoutDescriptor {
+            label: Some(label),
+            bind_group_layouts: &[Some(&bind_group_layout)],
+            immediate_size: 0,
+        });
+        Self {
+            shader: OnceCell::new(),
+            pipeline: OnceCell::new(),
+            bind_group_layout,
+            pipeline_layout,
+            label,
+            source,
+            entry_point,
+        }
+    }
+
+    fn pipeline(&self, device: &::wgpu::Device) -> &::wgpu::ComputePipeline {
+        self.pipeline.get_or_init(|| {
+            let shader = self.shader.get_or_init(|| {
+                device.create_shader_module(::wgpu::ShaderModuleDescriptor {
+                    label: Some(self.label),
+                    source: ::wgpu::ShaderSource::Wgsl(self.source.into()),
+                })
+            });
+            device.create_compute_pipeline(&::wgpu::ComputePipelineDescriptor {
+                label: Some(self.label),
+                layout: Some(&self.pipeline_layout),
+                module: shader,
+                entry_point: Some(self.entry_point),
+                compilation_options: ::wgpu::PipelineCompilationOptions::default(),
+                cache: None,
+            })
+        })
+    }
 }
 
 impl WgpuScanPipeline {
@@ -62,21 +117,21 @@ impl WgpuScanPipeline {
             return None;
         }
 
-        let (clear, clear_bind_group_layout) = create_kernel(
+        let clear = LazyScanKernel::new(
             device,
             "tileink wgpu scan clear",
             include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_scan_clear.wgsl")),
             "scan_clear",
             &clear_layout_entries(),
         );
-        let (count, count_bind_group_layout) = create_kernel(
+        let count = LazyScanKernel::new(
             device,
             "tileink wgpu scan count",
             include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_scan_count.wgsl")),
             "scan_count",
             &count_layout_entries(),
         );
-        let (prefix_chunks, prefix_bind_group_layout) = create_kernel(
+        let prefix_chunks = LazyScanKernel::new(
             device,
             "tileink wgpu scan prefix chunks",
             include_str!(concat!(
@@ -86,7 +141,7 @@ impl WgpuScanPipeline {
             "scan_prefix_chunks",
             &prefix_layout_entries(),
         );
-        let (chunk_offsets, chunk_offsets_bind_group_layout) = create_kernel(
+        let chunk_offsets = LazyScanKernel::new(
             device,
             "tileink wgpu scan chunk offsets",
             include_str!(concat!(
@@ -96,7 +151,7 @@ impl WgpuScanPipeline {
             "scan_chunk_offsets",
             &chunk_offsets_layout_entries(),
         );
-        let (apply_chunk_offsets, apply_chunk_offsets_bind_group_layout) = create_kernel(
+        let apply_chunk_offsets = LazyScanKernel::new(
             device,
             "tileink wgpu scan apply chunk offsets",
             include_str!(concat!(
@@ -106,7 +161,7 @@ impl WgpuScanPipeline {
             "scan_apply_chunk_offsets",
             &apply_chunk_offsets_layout_entries(),
         );
-        let (emit, emit_bind_group_layout) = create_kernel(
+        let emit = LazyScanKernel::new(
             device,
             "tileink wgpu scan emit",
             include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_scan_emit.wgsl")),
@@ -123,12 +178,6 @@ impl WgpuScanPipeline {
             chunk_offsets,
             apply_chunk_offsets,
             emit,
-            clear_bind_group_layout,
-            count_bind_group_layout,
-            prefix_bind_group_layout,
-            chunk_offsets_bind_group_layout,
-            apply_chunk_offsets_bind_group_layout,
-            emit_bind_group_layout,
             config: device.create_buffer(&::wgpu::BufferDescriptor {
                 label: Some("tileink wgpu scan config"),
                 size: uniform_slots_buffer_size(device, config_size),
@@ -198,6 +247,16 @@ impl WgpuScanPipeline {
             self.create_apply_chunk_offsets_bind_group(commands.device(), &bindings, config_offset);
         let emit_bind_group =
             self.create_emit_bind_group(commands.device(), &bindings, config_offset);
+        let clear_pipeline = (clear_len > 0).then(|| self.clear.pipeline(commands.device()));
+        let count_pipeline = (line_count > 0).then(|| self.count.pipeline(commands.device()));
+        let prefix_chunks_pipeline =
+            (scan_chunk_count > 0).then(|| self.prefix_chunks.pipeline(commands.device()));
+        let chunk_offsets_pipeline =
+            (path_count > 0).then(|| self.chunk_offsets.pipeline(commands.device()));
+        let apply_chunk_offsets_pipeline =
+            (scan_chunk_count > 0).then(|| self.apply_chunk_offsets.pipeline(commands.device()));
+        let emit_pipeline =
+            (line_count > 0 && segment_capacity > 0).then(|| self.emit.pipeline(commands.device()));
         let gpu_scope = start_gpu_scope(commands.device(), "scan");
         let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
         let encoder = commands.encoder();
@@ -206,34 +265,34 @@ impl WgpuScanPipeline {
                 label: Some("tileink wgpu scan pass"),
                 timestamp_writes,
             });
-            if clear_len > 0 {
+            if let Some(clear_pipeline) = clear_pipeline {
                 pass.set_bind_group(0, &clear_bind_group, &[]);
-                pass.set_pipeline(&self.clear);
+                pass.set_pipeline(clear_pipeline);
                 pass.dispatch_workgroups(clear_len.div_ceil(WORKGROUP_SIZE), 1, 1);
             }
-            if line_count > 0 {
+            if let Some(count_pipeline) = count_pipeline {
                 pass.set_bind_group(0, &count_bind_group, &[]);
-                pass.set_pipeline(&self.count);
+                pass.set_pipeline(count_pipeline);
                 pass.dispatch_workgroups(line_count.div_ceil(WORKGROUP_SIZE), 1, 1);
             }
-            if scan_chunk_count > 0 {
+            if let Some(prefix_chunks_pipeline) = prefix_chunks_pipeline {
                 pass.set_bind_group(0, &prefix_bind_group, &[]);
-                pass.set_pipeline(&self.prefix_chunks);
+                pass.set_pipeline(prefix_chunks_pipeline);
                 pass.dispatch_workgroups(scan_chunk_count, 1, 1);
             }
-            if path_count > 0 {
+            if let Some(chunk_offsets_pipeline) = chunk_offsets_pipeline {
                 pass.set_bind_group(0, &chunk_offsets_bind_group, &[]);
-                pass.set_pipeline(&self.chunk_offsets);
+                pass.set_pipeline(chunk_offsets_pipeline);
                 pass.dispatch_workgroups(path_count.div_ceil(WORKGROUP_SIZE), 1, 1);
             }
-            if scan_chunk_count > 0 {
+            if let Some(apply_chunk_offsets_pipeline) = apply_chunk_offsets_pipeline {
                 pass.set_bind_group(0, &apply_chunk_offsets_bind_group, &[]);
-                pass.set_pipeline(&self.apply_chunk_offsets);
+                pass.set_pipeline(apply_chunk_offsets_pipeline);
                 pass.dispatch_workgroups(scan_chunk_count, 1, 1);
             }
-            if line_count > 0 && segment_capacity > 0 {
+            if let Some(emit_pipeline) = emit_pipeline {
                 pass.set_bind_group(0, &emit_bind_group, &[]);
-                pass.set_pipeline(&self.emit);
+                pass.set_pipeline(emit_pipeline);
                 pass.dispatch_workgroups(line_count.div_ceil(WORKGROUP_SIZE), 1, 1);
             }
         }
@@ -248,7 +307,7 @@ impl WgpuScanPipeline {
     ) -> ::wgpu::BindGroup {
         device.create_bind_group(&::wgpu::BindGroupDescriptor {
             label: Some("tileink wgpu scan clear bind group"),
-            layout: &self.clear_bind_group_layout,
+            layout: &self.clear.bind_group_layout,
             entries: &[
                 bind_config_buffer(0, &self.config, config_offset, self.config_size),
                 bind_buffer(1, bindings.backdrops),
@@ -270,7 +329,7 @@ impl WgpuScanPipeline {
     ) -> ::wgpu::BindGroup {
         device.create_bind_group(&::wgpu::BindGroupDescriptor {
             label: Some("tileink wgpu scan count bind group"),
-            layout: &self.count_bind_group_layout,
+            layout: &self.count.bind_group_layout,
             entries: &[
                 bind_config_buffer(0, &self.config, config_offset, self.config_size),
                 bind_buffer(1, bindings.lines),
@@ -289,7 +348,7 @@ impl WgpuScanPipeline {
     ) -> ::wgpu::BindGroup {
         device.create_bind_group(&::wgpu::BindGroupDescriptor {
             label: Some("tileink wgpu scan prefix bind group"),
-            layout: &self.prefix_bind_group_layout,
+            layout: &self.prefix_chunks.bind_group_layout,
             entries: &[
                 bind_config_buffer(0, &self.config, config_offset, self.config_size),
                 bind_buffer(1, bindings.scan_chunks),
@@ -308,7 +367,7 @@ impl WgpuScanPipeline {
     ) -> ::wgpu::BindGroup {
         device.create_bind_group(&::wgpu::BindGroupDescriptor {
             label: Some("tileink wgpu scan chunk offsets bind group"),
-            layout: &self.chunk_offsets_bind_group_layout,
+            layout: &self.chunk_offsets.bind_group_layout,
             entries: &[
                 bind_config_buffer(0, &self.config, config_offset, self.config_size),
                 bind_buffer(1, bindings.path_records),
@@ -328,7 +387,7 @@ impl WgpuScanPipeline {
     ) -> ::wgpu::BindGroup {
         device.create_bind_group(&::wgpu::BindGroupDescriptor {
             label: Some("tileink wgpu scan apply chunk offsets bind group"),
-            layout: &self.apply_chunk_offsets_bind_group_layout,
+            layout: &self.apply_chunk_offsets.bind_group_layout,
             entries: &[
                 bind_config_buffer(0, &self.config, config_offset, self.config_size),
                 bind_buffer(1, bindings.scan_chunks),
@@ -347,7 +406,7 @@ impl WgpuScanPipeline {
     ) -> ::wgpu::BindGroup {
         device.create_bind_group(&::wgpu::BindGroupDescriptor {
             label: Some("tileink wgpu scan emit bind group"),
-            layout: &self.emit_bind_group_layout,
+            layout: &self.emit.bind_group_layout,
             entries: &[
                 bind_config_buffer(0, &self.config, config_offset, self.config_size),
                 bind_buffer(1, bindings.lines),
@@ -357,37 +416,6 @@ impl WgpuScanPipeline {
             ],
         })
     }
-}
-
-fn create_kernel(
-    device: &::wgpu::Device,
-    label: &'static str,
-    source: &'static str,
-    entry_point: &'static str,
-    entries: &[::wgpu::BindGroupLayoutEntry],
-) -> (::wgpu::ComputePipeline, ::wgpu::BindGroupLayout) {
-    let bind_group_layout = device.create_bind_group_layout(&::wgpu::BindGroupLayoutDescriptor {
-        label: Some(label),
-        entries,
-    });
-    let shader = device.create_shader_module(::wgpu::ShaderModuleDescriptor {
-        label: Some(label),
-        source: ::wgpu::ShaderSource::Wgsl(source.into()),
-    });
-    let pipeline_layout = device.create_pipeline_layout(&::wgpu::PipelineLayoutDescriptor {
-        label: Some(label),
-        bind_group_layouts: &[Some(&bind_group_layout)],
-        immediate_size: 0,
-    });
-    let pipeline = device.create_compute_pipeline(&::wgpu::ComputePipelineDescriptor {
-        label: Some(label),
-        layout: Some(&pipeline_layout),
-        module: &shader,
-        entry_point: Some(entry_point),
-        compilation_options: ::wgpu::PipelineCompilationOptions::default(),
-        cache: None,
-    });
-    (pipeline, bind_group_layout)
 }
 
 fn clear_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
