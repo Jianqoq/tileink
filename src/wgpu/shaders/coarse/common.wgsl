@@ -13,6 +13,7 @@ struct CoarseConfig {
     text_glyph_count: u32,
     tile_draw_index_count: u32,
     emit_chunk_capacity: u32,
+    paint_brush_base: u32,
 };
 
 @group(0) @binding(0) var<uniform> config: CoarseConfig;

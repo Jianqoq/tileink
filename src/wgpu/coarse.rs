@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 const WORKGROUP_SIZE: u32 = 256;
 const COUNT_STORAGE_BINDING_COUNT: u32 = 8;
 const PREFIX_STORAGE_BINDING_COUNT: u32 = 9;
-const EMIT_STORAGE_BINDING_COUNT: u32 = 9;
+const EMIT_STORAGE_BINDING_COUNT: u32 = 8;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct WgpuCoarseBatch {
@@ -41,6 +41,7 @@ struct CoarseConfig {
     text_glyph_count: u32,
     tile_draw_index_count: u32,
     emit_chunk_capacity: u32,
+    paint_brush_base: u32,
 }
 
 unsafe impl bytemuck::Zeroable for CoarseConfig {}
@@ -328,6 +329,7 @@ impl WgpuCoarsePipeline {
                 text_glyph_count: lengths.text_glyph_count as u32,
                 tile_draw_index_count: lengths.tile_draw_index_count as u32,
                 emit_chunk_capacity: lengths.tile_draw_chunk_count as u32,
+                paint_brush_base: canvas.paint_brush_base(),
             }),
         );
         let bindings = canvas.coarse_bindings(scan, coarse);
@@ -605,7 +607,7 @@ impl WgpuCoarsePipeline {
                 bind_buffer(5, bindings.segment_ranges),
                 bind_buffer(6, bindings.layer_stack),
                 bind_buffer(7, bindings.coarse_work),
-                bind_buffer(8, bindings.sdf_blob),
+                bind_buffer(8, bindings.paint_blob),
             ],
         })
     }
@@ -629,7 +631,7 @@ impl WgpuCoarsePipeline {
                 bind_buffer(6, bindings.layer_stack),
                 bind_buffer(7, bindings.coarse_work),
                 bind_buffer(8, bindings.chunk_records),
-                bind_buffer(9, bindings.sdf_blob),
+                bind_buffer(9, bindings.paint_blob),
             ],
         })
     }
@@ -647,13 +649,12 @@ impl WgpuCoarsePipeline {
                 bind_config_buffer(0, &self.config, config_offset, self.config_size),
                 bind_buffer(1, bindings.draw_records),
                 bind_buffer(2, bindings.text_blob),
-                bind_buffer(3, bindings.brush_blob),
-                bind_buffer(4, bindings.sdf_blob),
-                bind_buffer(5, bindings.path_records),
-                bind_buffer(6, bindings.backdrops),
-                bind_buffer(7, bindings.segment_ranges),
-                bind_buffer(8, bindings.layer_stack),
-                bind_buffer(9, bindings.coarse_work),
+                bind_buffer(3, bindings.paint_blob),
+                bind_buffer(4, bindings.path_records),
+                bind_buffer(5, bindings.backdrops),
+                bind_buffer(6, bindings.segment_ranges),
+                bind_buffer(7, bindings.layer_stack),
+                bind_buffer(8, bindings.coarse_work),
             ],
         })
     }
@@ -767,11 +768,10 @@ fn emit_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         storage_entry(2, true),
         storage_entry(3, true),
         storage_entry(4, true),
-        storage_entry(5, true),
-        storage_entry(6, false),
+        storage_entry(5, false),
+        storage_entry(6, true),
         storage_entry(7, true),
-        storage_entry(8, true),
-        storage_entry(9, false),
+        storage_entry(8, false),
     ]
 }
 
@@ -850,7 +850,7 @@ mod tests {
         );
         assert_eq!(COUNT_STORAGE_BINDING_COUNT, 8);
         assert_eq!(PREFIX_STORAGE_BINDING_COUNT, 9);
-        assert_eq!(EMIT_STORAGE_BINDING_COUNT, 9);
+        assert_eq!(EMIT_STORAGE_BINDING_COUNT, 8);
     }
 
     #[test]

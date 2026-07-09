@@ -301,8 +301,8 @@ impl WgpuFinePipeline {
                 clip_spill_depth,
                 group_spill_depth,
                 ptcl_capacity: lengths.coarse_ptcl_capacity as u32,
-                paint_sdf_shadow_base: scene_buffers.fine_paint_sdf_shadow_base(),
-                paint_brush_base: scene_buffers.fine_paint_brush_base(),
+                paint_sdf_shadow_base: scene_buffers.paint_sdf_shadow_base(),
+                paint_brush_base: scene_buffers.paint_brush_base(),
                 text_image_base: scene_buffers.fine_text_image_base(),
                 text_image_data_base: scene_buffers.fine_text_image_data_base(),
                 group_spill_base: (lengths.tile_count

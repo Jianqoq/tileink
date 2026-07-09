@@ -53,28 +53,26 @@ const SHARED_BLUR_MAX_RADIUS: u32 = 16;
 const STORAGE_BINDING_COUNT: u32 = filter_layout::MAX_STORAGE_BUFFER_COUNT;
 
 const FILTER_RES_DRAW_RECORDS: u32 = 1 << 0;
-const FILTER_RES_SDF_BLOB: u32 = 1 << 1;
-const FILTER_RES_SDF_SHADOW_BLOB: u32 = 1 << 2;
-const FILTER_RES_PATH_RECORDS: u32 = 1 << 3;
-const FILTER_RES_BACKDROPS: u32 = 1 << 4;
-const FILTER_RES_SEGMENT_RANGES: u32 = 1 << 5;
-const FILTER_RES_SEGMENTS: u32 = 1 << 6;
-const FILTER_RES_LAYER_STACK: u32 = 1 << 7;
-const FILTER_RES_TRANSFER_TABLES: u32 = 1 << 8;
-const FILTER_RES_BRUSH_BLOB: u32 = 1 << 9;
-const FILTER_RES_CONVOLVE_KERNELS: u32 = 1 << 10;
-const FILTER_RES_TURBULENCE_SELECTORS: u32 = 1 << 11;
-const FILTER_RES_TURBULENCE_GRADIENTS: u32 = 1 << 12;
-const FILTER_RES_PATH_RANGE_STARTS: u32 = 1 << 13;
-const FILTER_RES_PATH_RANGE_ENDS: u32 = 1 << 14;
-const FILTER_RES_PATH_P0X: u32 = 1 << 15;
-const FILTER_RES_PATH_P0Y: u32 = 1 << 16;
-const FILTER_RES_PATH_P1X: u32 = 1 << 17;
-const FILTER_RES_PATH_P1Y: u32 = 1 << 18;
+const FILTER_RES_PAINT_BLOB: u32 = 1 << 1;
+const FILTER_RES_PATH_RECORDS: u32 = 1 << 2;
+const FILTER_RES_BACKDROPS: u32 = 1 << 3;
+const FILTER_RES_SEGMENT_RANGES: u32 = 1 << 4;
+const FILTER_RES_SEGMENTS: u32 = 1 << 5;
+const FILTER_RES_LAYER_STACK: u32 = 1 << 6;
+const FILTER_RES_TRANSFER_TABLES: u32 = 1 << 7;
+const FILTER_RES_BRUSH_BLOB: u32 = 1 << 8;
+const FILTER_RES_CONVOLVE_KERNELS: u32 = 1 << 9;
+const FILTER_RES_TURBULENCE_SELECTORS: u32 = 1 << 10;
+const FILTER_RES_TURBULENCE_GRADIENTS: u32 = 1 << 11;
+const FILTER_RES_PATH_RANGE_STARTS: u32 = 1 << 12;
+const FILTER_RES_PATH_RANGE_ENDS: u32 = 1 << 13;
+const FILTER_RES_PATH_P0X: u32 = 1 << 14;
+const FILTER_RES_PATH_P0Y: u32 = 1 << 15;
+const FILTER_RES_PATH_P1X: u32 = 1 << 16;
+const FILTER_RES_PATH_P1Y: u32 = 1 << 17;
 
 const FILTER_RES_SCENE_ALPHA: u32 = FILTER_RES_DRAW_RECORDS
-    | FILTER_RES_SDF_BLOB
-    | FILTER_RES_SDF_SHADOW_BLOB
+    | FILTER_RES_PAINT_BLOB
     | FILTER_RES_PATH_RECORDS
     | FILTER_RES_BACKDROPS
     | FILTER_RES_SEGMENT_RANGES
@@ -122,6 +120,7 @@ struct FilterConfig {
     filter_kind: u32,
     table_index: u32,
     brush_offset: u32,
+    paint_sdf_shadow_base: u32,
     offset_x: i32,
     offset_y: i32,
     morphology_radius: u32,
@@ -195,6 +194,9 @@ struct FilterConfig {
     liquid_glare_opposite_factor: f32,
     liquid_glare_factor: f32,
     liquid_glare_angle: f32,
+    matrix_pad0: u32,
+    matrix_pad1: u32,
+    matrix_pad2: u32,
     matrix_r: [f32; 4],
     matrix_g: [f32; 4],
     matrix_b: [f32; 4],
@@ -232,6 +234,7 @@ impl Default for FilterConfig {
             filter_kind: 0,
             table_index: 0,
             brush_offset: 0,
+            paint_sdf_shadow_base: 0,
             offset_x: 0,
             offset_y: 0,
             morphology_radius: 0,
@@ -305,6 +308,9 @@ impl Default for FilterConfig {
             liquid_glare_opposite_factor: 0.0,
             liquid_glare_factor: 0.0,
             liquid_glare_angle: 0.0,
+            matrix_pad0: 0,
+            matrix_pad1: 0,
+            matrix_pad2: 0,
             matrix_r: [0.0; 4],
             matrix_g: [0.0; 4],
             matrix_b: [0.0; 4],
@@ -1930,7 +1936,11 @@ impl WgpuFilterPipeline {
         turbulence_tables: Option<&WgpuFilterTurbulenceBindings<'_>>,
         path_bindings: Option<&WgpuFilterPathBindings<'_>>,
     ) {
-        let profile_name = self.profile_name_for_pipeline(pipeline, config);
+        let mut config = *config;
+        if let Some(scene_bindings) = bindings {
+            config.paint_sdf_shadow_base = scene_bindings.paint_sdf_shadow_base;
+        }
+        let profile_name = self.profile_name_for_pipeline(pipeline, &config);
         let _profile_scope = start_cpu_scope(profile_name);
         if config.pixel_count == 0 {
             return;
@@ -1943,7 +1953,7 @@ impl WgpuFilterPipeline {
             self.config_size,
             self.config_stride,
             self.config_slots,
-            bytemuck::bytes_of(config),
+            bytemuck::bytes_of(&config),
         );
         let bind_group = self.create_bind_group(
             kernel,
@@ -1973,7 +1983,7 @@ impl WgpuFilterPipeline {
             pass.set_pipeline(&kernel.pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
             pass.set_bind_group(1, &image_bind_group, &[]);
-            let workgroups = self.dispatch_workgroups_for_pipeline(kernel, config);
+            let workgroups = self.dispatch_workgroups_for_pipeline(kernel, &config);
             pass.dispatch_workgroups(workgroups.0, workgroups.1, workgroups.2);
         }
         finish_gpu_scope(encoder, gpu_scope);
@@ -2076,8 +2086,8 @@ impl WgpuFilterPipeline {
     ) -> ::wgpu::BindGroup {
         let fallback = WgpuFilterBindings {
             draw_records: &self.dummy_read,
-            sdf_blob: &self.dummy_read,
-            sdf_shadow_blob: &self.dummy_read,
+            paint_blob: &self.dummy_read,
+            paint_sdf_shadow_base: 0,
             path_records: &self.dummy_read,
             backdrops: &self.dummy_read_write,
             segment_ranges: &self.dummy_read,
@@ -2115,16 +2125,9 @@ impl WgpuFilterPipeline {
         push_buffer_if(
             &mut entries,
             kernel.resources,
-            FILTER_RES_SDF_BLOB,
+            FILTER_RES_PAINT_BLOB,
             10,
-            bindings.sdf_blob,
-        );
-        push_buffer_if(
-            &mut entries,
-            kernel.resources,
-            FILTER_RES_SDF_SHADOW_BLOB,
-            11,
-            bindings.sdf_shadow_blob,
+            bindings.paint_blob,
         );
         push_buffer_if(
             &mut entries,
@@ -2731,14 +2734,7 @@ fn filter_layout_entries(
         write_texture_entry(3, portable_textures),
     ];
     push_storage_entry_if(&mut entries, resources, FILTER_RES_DRAW_RECORDS, 4, true);
-    push_storage_entry_if(&mut entries, resources, FILTER_RES_SDF_BLOB, 10, true);
-    push_storage_entry_if(
-        &mut entries,
-        resources,
-        FILTER_RES_SDF_SHADOW_BLOB,
-        11,
-        true,
-    );
+    push_storage_entry_if(&mut entries, resources, FILTER_RES_PAINT_BLOB, 10, true);
     push_storage_entry_if(&mut entries, resources, FILTER_RES_PATH_RECORDS, 28, true);
     push_storage_entry_if(&mut entries, resources, FILTER_RES_BACKDROPS, 29, false);
     push_storage_entry_if(&mut entries, resources, FILTER_RES_SEGMENT_RANGES, 30, true);
@@ -2816,10 +2812,9 @@ fn filter_layout_entries(
     entries
 }
 
-const FILTER_STORAGE_BINDINGS: [(u32, u32); 19] = [
+const FILTER_STORAGE_BINDINGS: [(u32, u32); 18] = [
     (FILTER_RES_DRAW_RECORDS, 4),
-    (FILTER_RES_SDF_BLOB, 10),
-    (FILTER_RES_SDF_SHADOW_BLOB, 11),
+    (FILTER_RES_PAINT_BLOB, 10),
     (FILTER_RES_PATH_RECORDS, 28),
     (FILTER_RES_BACKDROPS, 29),
     (FILTER_RES_SEGMENT_RANGES, 30),
@@ -3097,7 +3092,13 @@ mod tests {
                 "filter resource set has too many storage bindings: {resources:#x}"
             );
         }
-        assert_eq!(filter_storage_binding_count(FILTER_RES_SCENE_STACK), 8);
+        assert_eq!(filter_storage_binding_count(FILTER_RES_SCENE_STACK), 7);
+    }
+
+    #[test]
+    fn filter_config_keeps_matrix_vec4_alignment() {
+        assert_eq!(std::mem::offset_of!(FilterConfig, matrix_r) % 16, 0);
+        assert_eq!(std::mem::size_of::<FilterConfig>(), 496);
     }
 
     #[test]

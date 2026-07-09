@@ -3,13 +3,12 @@
 
 @group(0) @binding(1) var<storage, read> draw_records: array<DrawRecord>;
 @group(0) @binding(2) var<storage, read> text_blob: array<u32>;
-@group(0) @binding(3) var<storage, read> brush_blob: array<u32>;
-@group(0) @binding(4) var<storage, read> sdf_blob: array<u32>;
-@group(0) @binding(5) var<storage, read> path_records: array<PathRecord>;
-@group(0) @binding(6) var<storage, read_write> backdrops: array<atomic<i32>>;
-@group(0) @binding(7) var<storage, read> segment_ranges: array<TileSegmentRange>;
-@group(0) @binding(8) var<storage, read> layer_stack: array<LayerStackRecord>;
-@group(0) @binding(9) var<storage, read_write> coarse_work: array<u32>;
+@group(0) @binding(3) var<storage, read> sdf_blob: array<u32>;
+@group(0) @binding(4) var<storage, read> path_records: array<PathRecord>;
+@group(0) @binding(5) var<storage, read_write> backdrops: array<atomic<i32>>;
+@group(0) @binding(6) var<storage, read> segment_ranges: array<TileSegmentRange>;
+@group(0) @binding(7) var<storage, read> layer_stack: array<LayerStackRecord>;
+@group(0) @binding(8) var<storage, read_write> coarse_work: array<u32>;
 
 @compute @workgroup_size(256)
 fn coarse_emit(
@@ -497,14 +496,17 @@ fn draw_solid_supported_sdf_at(draw_ix: u32) -> bool {
 }
 
 fn draw_has_nontransparent_solid_brush_at(draw_ix: u32) -> bool {
-    let brush_base = draw_records[draw_ix].brush_offset;
-    return brush_base != INVALID &&
-        brush_blob[brush_base] == GPU_BRUSH_SOLID &&
-        brush_blob[brush_base + 4u] != 0u;
+    let brush_offset = draw_records[draw_ix].brush_offset;
+    if (brush_offset == INVALID) {
+        return false;
+    }
+    let brush_base = config.paint_brush_base + brush_offset;
+    return sdf_blob[brush_base] == GPU_BRUSH_SOLID &&
+        sdf_blob[brush_base + 4u] != 0u;
 }
 
 fn draw_solid_color_at(draw_ix: u32) -> u32 {
-    return brush_blob[draw_records[draw_ix].brush_offset + 4u];
+    return sdf_blob[config.paint_brush_base + draw_records[draw_ix].brush_offset + 4u];
 }
 
 fn draw_sdf_full_tile_solid_color_at(draw_ix: u32, tile_x: u32, tile_y: u32) -> u32 {
@@ -534,10 +536,13 @@ fn draw_sdf_full_tile_image_at(draw_ix: u32, tile_x: u32, tile_y: u32) -> bool {
 }
 
 fn draw_has_opaque_image_brush_at(draw_ix: u32) -> bool {
-    let brush_base = draw_records[draw_ix].brush_offset;
-    return brush_base != INVALID &&
-        brush_blob[brush_base] == GPU_BRUSH_PATTERN_RESOURCE &&
-        brush_blob[brush_base + 7u] == 255u;
+    let brush_offset = draw_records[draw_ix].brush_offset;
+    if (brush_offset == INVALID) {
+        return false;
+    }
+    let brush_base = config.paint_brush_base + brush_offset;
+    return sdf_blob[brush_base] == GPU_BRUSH_PATTERN_RESOURCE &&
+        sdf_blob[brush_base + 7u] == 255u;
 }
 
 fn store_particle(dst: u32, tag: u32, backdrop: i32, fill_rule: u32, segment_start: u32, segment_end: u32, color: u32) {

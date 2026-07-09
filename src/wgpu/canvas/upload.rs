@@ -42,7 +42,7 @@ pub(crate) struct WgpuSceneUploadStaging {
     tile_draw_cursors: Vec<u32>,
     tile_draw_data: Vec<u32>,
     layer_stack: Vec<LayerStackRecord>,
-    paint_blob: Vec<u32>,
+    scene_brush_blob: Vec<u32>,
     fine_text_blob: Vec<u32>,
 }
 
@@ -161,6 +161,10 @@ fn upload_mapped_u32<T>(
     scratch.reserve(items.len());
     scratch.extend(items.iter().map(map));
     buffer.upload(device, queue, label, scratch);
+}
+
+fn word_offset(words: u32) -> ::wgpu::BufferAddress {
+    words as ::wgpu::BufferAddress * std::mem::size_of::<u32>() as ::wgpu::BufferAddress
 }
 
 fn upload_coarse_text_blob(
@@ -402,50 +406,44 @@ impl WgpuSceneBuffers {
                 &canvas.path_records,
             );
         });
-        profile_cpu("prepare.upload_scene.upload_sdf_blobs", || {
-            self.sdf_blob.upload(
-                device,
-                queue,
-                "tileink wgpu canvas sdf blob",
-                &canvas.sdf_blob,
-            );
-            self.sdf_shadow_blob.upload(
-                device,
-                queue,
-                "tileink wgpu canvas sdf shadow blob",
-                &canvas.sdf_shadow_blob,
-            );
-        });
-        profile_cpu("prepare.upload_scene.blobs.brushes", || {
-            let brush_upload = GpuBrushUpload::from_scene_brush_blob(
+        profile_cpu("prepare.upload_scene.upload_paint_blob", || {
+            let scene_brush_blob = if GpuBrushUpload::scene_brushes_need_resource_patch(
                 &canvas.draw_records,
                 &canvas.brush_blob,
-                image_resources,
-            );
-            self.brush_blob.upload(
+            ) {
+                staging.scene_brush_blob.clear();
+                staging
+                    .scene_brush_blob
+                    .extend_from_slice(&canvas.brush_blob);
+                GpuBrushUpload::patch_scene_brush_blob(
+                    &mut staging.scene_brush_blob,
+                    &canvas.draw_records,
+                    image_resources,
+                );
+                &staging.scene_brush_blob
+            } else {
+                &canvas.brush_blob
+            };
+
+            self.paint_sdf_shadow_base = canvas.sdf_blob.len() as u32;
+            self.paint_brush_base = (canvas.sdf_blob.len() + canvas.sdf_shadow_blob.len()) as u32;
+            let paint_words =
+                canvas.sdf_blob.len() + canvas.sdf_shadow_blob.len() + scene_brush_blob.len();
+            // SDF, SDF-shadow, and scene brushes share one storage buffer so coarse, fine,
+            // and filter bind the same paint data without CPU-side repacking.
+            self.paint_blob.resize_uninit::<u32>(
                 device,
+                "tileink wgpu canvas paint blob",
+                paint_words,
+            );
+            self.paint_blob.write_at(queue, 0, &canvas.sdf_blob);
+            self.paint_blob.write_at(
                 queue,
-                "tileink wgpu canvas brush blob",
-                &brush_upload.blob,
+                word_offset(self.paint_sdf_shadow_base),
+                &canvas.sdf_shadow_blob,
             );
-            self.fine_paint_sdf_shadow_base = canvas.sdf_blob.len() as u32;
-            self.fine_paint_brush_base =
-                (canvas.sdf_blob.len() + canvas.sdf_shadow_blob.len()) as u32;
-            staging.paint_blob.clear();
-            staging.paint_blob.reserve(
-                canvas.sdf_blob.len() + canvas.sdf_shadow_blob.len() + brush_upload.blob.len(),
-            );
-            staging.paint_blob.extend_from_slice(&canvas.sdf_blob);
-            staging
-                .paint_blob
-                .extend_from_slice(&canvas.sdf_shadow_blob);
-            staging.paint_blob.extend_from_slice(&brush_upload.blob);
-            self.fine_paint_blob.upload(
-                device,
-                queue,
-                "tileink wgpu canvas fine paint blob",
-                &staging.paint_blob,
-            );
+            self.paint_blob
+                .write_at(queue, word_offset(self.paint_brush_base), scene_brush_blob);
         });
     }
 
