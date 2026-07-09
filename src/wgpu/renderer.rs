@@ -450,7 +450,8 @@ impl Renderer {
             );
         });
         let lengths = profile_cpu("prepare.lengths", || {
-            GpuBufferLengths::from_scene_with_text(canvas, self.text_data.as_ref())
+            self.scene_upload
+                .build_lengths(canvas, self.text_data.as_ref())
         });
         let plan = profile_cpu("prepare.compile", || canvas.compile(ROOT_COMMAND_LIST_ID));
         let (max_clip_depth, max_group_depth) =
@@ -472,9 +473,13 @@ impl Renderer {
             self.scan.prepare_outputs(&self.device, lengths);
         });
         profile_cpu("prepare.coarse_buffers", || {
-            self.coarse.prepare_outputs(&self.device, lengths);
-            self.coarse
-                .upload_tile_draw_bins(&self.queue, lengths, &mut self.scene_upload);
+            profile_cpu("prepare.coarse_buffers.resize", || {
+                self.coarse.prepare_outputs(&self.device, lengths);
+            });
+            profile_cpu("prepare.coarse_buffers.upload_tile_draw_bins", || {
+                self.coarse
+                    .upload_tile_draw_bins(&self.queue, lengths, &mut self.scene_upload);
+            });
         });
         profile_cpu("prepare.fine_spills", || {
             self.prepare_fine_stack_spills(lengths, max_clip_depth, max_group_depth);
@@ -644,7 +649,8 @@ impl Renderer {
         };
 
         let lengths = profile_cpu("prepare.local.lengths", || {
-            GpuBufferLengths::from_scene_with_text(canvas, self.text_data.as_ref())
+            self.scene_upload
+                .build_lengths(canvas, self.text_data.as_ref())
         });
         let (max_clip_depth, max_group_depth) =
             profile_cpu("prepare.local.stack_depths", || plan_stack_depths(plan));
@@ -671,9 +677,13 @@ impl Renderer {
             self.scan.prepare_outputs(&self.device, lengths);
         });
         profile_cpu("prepare.local.coarse_buffers", || {
-            self.coarse.prepare_outputs(&self.device, lengths);
-            self.coarse
-                .upload_tile_draw_bins(&self.queue, lengths, &mut self.scene_upload);
+            profile_cpu("prepare.local.coarse_buffers.resize", || {
+                self.coarse.prepare_outputs(&self.device, lengths);
+            });
+            profile_cpu("prepare.local.coarse_buffers.upload_tile_draw_bins", || {
+                self.coarse
+                    .upload_tile_draw_bins(&self.queue, lengths, &mut self.scene_upload);
+            });
         });
         profile_cpu("prepare.local.fine_spills", || {
             self.prepare_fine_stack_spills(lengths, max_clip_depth, max_group_depth);

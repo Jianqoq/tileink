@@ -10,7 +10,7 @@ use crate::{
         },
         gpu_plan::{
             GpuBufferLengths, GpuCumsumPlan, GpuScanChunk, GpuScanChunkRange, TileDrawBins,
-            build_cumsum_plan_into, build_scan_chunks_into, build_tile_draw_bins_into,
+            build_cumsum_plan_into, build_scan_chunks_into,
         },
         gpu_text::{GlyphImageRecord, GlyphRecord, GlyphRunRecord, text_blob_word_len},
         gpu_types::{
@@ -45,6 +45,23 @@ pub(crate) struct WgpuSceneUploadStaging {
     layer_stack: Vec<LayerStackRecord>,
     scene_brush_blob: Vec<u32>,
     fine_text_blob: Vec<u32>,
+}
+
+impl WgpuSceneUploadStaging {
+    pub(crate) fn build_lengths(
+        &mut self,
+        canvas: &Canvas,
+        text: Option<&PreparedTextData>,
+    ) -> GpuBufferLengths {
+        // Lengths and tile draw bins must describe the same scene; building both here avoids
+        // recounting every draw/tile intersection later in prepare.
+        GpuBufferLengths::from_scene_with_text_and_tile_draw_bins(
+            canvas,
+            text,
+            &mut self.tile_draw_bins,
+            &mut self.tile_draw_cursors,
+        )
+    }
 }
 
 #[derive(Default)]
@@ -348,13 +365,6 @@ impl WgpuSceneBuffers {
         });
         profile_cpu("prepare.upload_scene.build_cumsum_plan", || {
             build_cumsum_plan_into(canvas, lengths, &mut staging.cumsum_plan);
-        });
-        profile_cpu("prepare.upload_scene.build_tile_draw_bins", || {
-            build_tile_draw_bins_into(
-                canvas,
-                &mut staging.tile_draw_bins,
-                &mut staging.tile_draw_cursors,
-            );
         });
         profile_cpu("prepare.upload_scene.upload_draw_records", || {
             self.upload_draw_records(device, queue, &canvas.draw_records, text.is_some(), staging);

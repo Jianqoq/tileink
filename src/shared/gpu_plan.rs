@@ -62,15 +62,50 @@ impl GpuBufferLengths {
     pub(crate) fn from_scene_with_text(canvas: &Canvas, text: Option<&PreparedTextData>) -> Self {
         let tiles_width = canvas.width_in_tiles() as usize;
         let tiles_height = canvas.height_in_tiles() as usize;
+        let tile_draw_counts = tile_draw_counts_for_draws(
+            &canvas.draw_records,
+            (tiles_width as u32, tiles_height as u32),
+        );
+        Self::from_scene_with_text_and_tile_draw_counts(
+            canvas,
+            text,
+            tiles_width,
+            tiles_height,
+            tile_draw_counts,
+        )
+    }
+
+    pub(crate) fn from_scene_with_text_and_tile_draw_bins(
+        canvas: &Canvas,
+        text: Option<&PreparedTextData>,
+        bins: &mut TileDrawBins,
+        cursors: &mut Vec<u32>,
+    ) -> Self {
+        let tiles_width = canvas.width_in_tiles() as usize;
+        let tiles_height = canvas.height_in_tiles() as usize;
+        let tile_draw_counts = build_tile_draw_bins_into(canvas, bins, cursors);
+        Self::from_scene_with_text_and_tile_draw_counts(
+            canvas,
+            text,
+            tiles_width,
+            tiles_height,
+            tile_draw_counts,
+        )
+    }
+
+    fn from_scene_with_text_and_tile_draw_counts(
+        canvas: &Canvas,
+        text: Option<&PreparedTextData>,
+        tiles_width: usize,
+        tiles_height: usize,
+        tile_draw_counts: TileDrawCounts,
+    ) -> Self {
         let tile_count = tiles_width * tiles_height;
-        let coarse_ptcl_capacity =
-            coarse_ptcl_capacity(canvas, tiles_width as u32, tiles_height as u32);
+        let width_in_tiles = tiles_width as u32;
+        let height_in_tiles = tiles_height as u32;
+        let coarse_ptcl_capacity = coarse_ptcl_capacity(canvas, width_in_tiles, height_in_tiles);
         let coarse_glyph_capacity =
-            coarse_glyph_capacity(canvas, text, tiles_width as u32, tiles_height as u32);
-        let tile_draw_index_count =
-            tile_draw_index_count(canvas, tiles_width as u32, tiles_height as u32);
-        let tile_draw_chunk_count =
-            tile_draw_chunk_count(canvas, tiles_width as u32, tiles_height as u32);
+            coarse_glyph_capacity(canvas, text, width_in_tiles, height_in_tiles);
         Self {
             line_count: canvas.lines.len(),
             path_count: canvas.path_records.len(),
@@ -108,8 +143,8 @@ impl GpuBufferLengths {
             coarse_chunk_count: tile_count.div_ceil(COARSE_CHUNK_SIZE as usize),
             coarse_ptcl_capacity,
             coarse_glyph_capacity,
-            tile_draw_index_count,
-            tile_draw_chunk_count,
+            tile_draw_index_count: tile_draw_counts.index_count,
+            tile_draw_chunk_count: tile_draw_counts.chunk_count,
             text_run_count: canvas.text_runs.len(),
             text_glyph_count: canvas.text_glyphs.len(),
             tiles_width,
@@ -131,6 +166,12 @@ pub(crate) struct TileDrawBins {
     pub(crate) draw_indices: Vec<u32>,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct TileDrawCounts {
+    pub(crate) index_count: usize,
+    pub(crate) chunk_count: usize,
+}
+
 #[cfg(test)]
 pub(crate) fn build_tile_draw_bins(canvas: &Canvas) -> TileDrawBins {
     let mut bins = TileDrawBins::default();
@@ -143,13 +184,13 @@ pub(crate) fn build_tile_draw_bins_into(
     canvas: &Canvas,
     bins: &mut TileDrawBins,
     cursors: &mut Vec<u32>,
-) {
+) -> TileDrawCounts {
     build_tile_draw_bins_for_draws_into(
         &canvas.draw_records,
         (canvas.width_in_tiles(), canvas.height_in_tiles()),
         bins,
         cursors,
-    );
+    )
 }
 
 pub(crate) fn build_tile_draw_bins_for_draws_into(
@@ -157,7 +198,7 @@ pub(crate) fn build_tile_draw_bins_for_draws_into(
     tiles_size: (u32, u32),
     bins: &mut TileDrawBins,
     cursors: &mut Vec<u32>,
-) {
+) -> TileDrawCounts {
     let (width_in_tiles, height_in_tiles) = tiles_size;
     let tile_count = width_in_tiles as usize * height_in_tiles as usize;
 
@@ -178,10 +219,13 @@ pub(crate) fn build_tile_draw_bins_for_draws_into(
     }
 
     let mut cursor = 0;
+    let mut chunk_count = 0;
     for record in &mut bins.records {
+        let count = record.end;
         record.start = cursor;
-        cursor += record.end;
+        cursor += count;
         record.end = cursor;
+        chunk_count += (count as usize).div_ceil(COARSE_CHUNK_SIZE as usize);
     }
 
     bins.draw_indices.resize(cursor as usize, 0);
@@ -207,6 +251,11 @@ pub(crate) fn build_tile_draw_bins_for_draws_into(
             .zip(&bins.records)
             .all(|(cursor, record)| *cursor == record.end)
     );
+
+    TileDrawCounts {
+        index_count: cursor as usize,
+        chunk_count,
+    }
 }
 
 fn for_tile_in_bbox(mut bbox: TileBbox, width_in_tiles: u32, mut visit: impl FnMut(usize)) {
@@ -253,28 +302,32 @@ fn coarse_glyph_capacity(
         .sum()
 }
 
-fn tile_draw_index_count(canvas: &Canvas, width_in_tiles: u32, height_in_tiles: u32) -> usize {
-    canvas
-        .draw_records
-        .iter()
-        .map(|draw| draw.tile_bbox(width_in_tiles, height_in_tiles).tile_count() as usize)
-        .sum()
-}
-
-fn tile_draw_chunk_count(canvas: &Canvas, width_in_tiles: u32, height_in_tiles: u32) -> usize {
+fn tile_draw_counts_for_draws(
+    draw_records: &[DrawRecord],
+    tiles_size: (u32, u32),
+) -> TileDrawCounts {
+    let (width_in_tiles, height_in_tiles) = tiles_size;
     let tile_count = width_in_tiles as usize * height_in_tiles as usize;
+    let mut index_count = 0;
     let mut counts = vec![0usize; tile_count];
-    for draw in &canvas.draw_records {
+    for draw in draw_records {
         for_tile_in_bbox(
             draw.tile_bbox(width_in_tiles, height_in_tiles),
             width_in_tiles,
-            |tile_ix| counts[tile_ix] += 1,
+            |tile_ix| {
+                counts[tile_ix] += 1;
+                index_count += 1;
+            },
         );
     }
-    counts
+    let chunk_count = counts
         .into_iter()
         .map(|count| count.div_ceil(COARSE_CHUNK_SIZE as usize))
-        .sum()
+        .sum();
+    TileDrawCounts {
+        index_count,
+        chunk_count,
+    }
 }
 
 fn bounds_tile_bbox(bounds: Bounds, width_in_tiles: u32, height_in_tiles: u32) -> TileBbox {
@@ -713,7 +766,7 @@ mod tests {
 
     use super::{
         COARSE_CHUNK_SIZE, CUMSUM_CHUNK_SIZE, GpuBufferLengths, GpuScanChunk, GpuScanChunkRange,
-        SCAN_CHUNK_SIZE, build_cumsum_plan, build_scan_chunks, build_tile_draw_bins,
+        SCAN_CHUNK_SIZE, TileDrawBins, build_cumsum_plan, build_scan_chunks, build_tile_draw_bins,
     };
     use crate::{Canvas, FillRule};
 
@@ -835,6 +888,47 @@ mod tests {
             vec![1, 3]
         );
         assert_eq!(bins.draw_indices, vec![0, 0, 1]);
+    }
+
+    #[test]
+    fn fused_lengths_reuse_the_same_tile_draw_bins() {
+        let mut canvas = Canvas::new(crate::TILE_SIZE * 2, crate::TILE_SIZE, 1.0);
+        for _ in 0..=COARSE_CHUNK_SIZE {
+            canvas.push_rect(
+                Rect::new(0.0, 0.0, 16.0, 16.0),
+                crate::Radius::ZERO,
+                Color::BLACK,
+            );
+        }
+        canvas.push_rect(
+            Rect::new(16.0, 0.0, 32.0, 16.0),
+            crate::Radius::ZERO,
+            Color::WHITE,
+        );
+
+        let mut bins = TileDrawBins::default();
+        let mut cursors = Vec::new();
+        let lengths = GpuBufferLengths::from_scene_with_text_and_tile_draw_bins(
+            &canvas,
+            None,
+            &mut bins,
+            &mut cursors,
+        );
+
+        assert_eq!(lengths.tile_draw_index_count, bins.draw_indices.len());
+        assert_eq!(
+            lengths.tile_draw_chunk_count,
+            bins.records
+                .iter()
+                .map(|record| (record.end - record.start) as usize)
+                .map(|count| count.div_ceil(COARSE_CHUNK_SIZE as usize))
+                .sum::<usize>()
+        );
+        assert_eq!(
+            bins.records[0].end - bins.records[0].start,
+            COARSE_CHUNK_SIZE + 1
+        );
+        assert_eq!(bins.records[1].end - bins.records[1].start, 1);
     }
 
     #[test]
