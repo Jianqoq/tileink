@@ -3120,6 +3120,34 @@ fn wgpu_renderer_draws_text_in_tile_fine_when_enabled() {
 }
 
 #[test]
+fn wgpu_renderer_ignores_glyph_runs_without_prepared_text_data() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut font_system = TextFontSystem::new();
+    let mut text_context = TextContext::new();
+    let layout = text_context.layout(&mut font_system, TextLayoutOptions::new("Text", 28.0));
+    if layout.is_empty() {
+        return;
+    }
+    let mut canvas = Canvas::new(160, 64, 1.0);
+    canvas.push_text_layout(&layout, peniko::kurbo::Point::new(8.0, 32.0), Color::BLACK);
+    let mut renderer = new_test_renderer(160, 64, Color::TRANSPARENT);
+
+    renderer.render(&canvas);
+
+    assert!(
+        renderer
+            .image()
+            .pixels
+            .iter()
+            .all(|pixel| (pixel >> 24) == 0),
+        "unprepared glyph runs should not sample empty text buffers"
+    );
+}
+
+#[test]
 fn wgpu_renderer_renders_text_directly_to_storage_texture_when_enabled() {
     if !run_wgpu_tests() {
         return;

@@ -448,7 +448,7 @@ fn draw_has_sdf_at(draw_ix: u32) -> bool {
 }
 
 fn draw_has_glyph_at(draw_ix: u32) -> bool {
-    return draw_records[draw_ix].glyph_run_id != INVALID;
+    return config.text_enabled != 0u && draw_records[draw_ix].glyph_run_id != INVALID;
 }
 
 fn draw_solid_color_fast_path_at(draw_ix: u32) -> bool {

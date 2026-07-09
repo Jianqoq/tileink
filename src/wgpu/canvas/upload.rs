@@ -35,7 +35,6 @@ use super::{
 #[derive(Default)]
 pub(crate) struct WgpuSceneUploadStaging {
     u32s: Vec<u32>,
-    draw_records: Vec<DrawRecord>,
     text: TextUpload,
     scan_chunks: Vec<GpuScanChunk>,
     scan_chunk_ranges: Vec<GpuScanChunkRange>,
@@ -367,7 +366,7 @@ impl WgpuSceneBuffers {
             build_cumsum_plan_into(canvas, lengths, &mut staging.cumsum_plan);
         });
         profile_cpu("prepare.upload_scene.upload_draw_records", || {
-            self.upload_draw_records(device, queue, &canvas.draw_records, text.is_some(), staging);
+            self.upload_draw_records(device, queue, &canvas.draw_records);
         });
         profile_cpu("prepare.upload_scene.upload_scene_records", || {
             self.upload_scene_records(device, queue, canvas, image_resources, staging);
@@ -453,29 +452,12 @@ impl WgpuSceneBuffers {
         device: &::wgpu::Device,
         queue: &::wgpu::Queue,
         draw_records: &[DrawRecord],
-        text_enabled: bool,
-        staging: &mut WgpuSceneUploadStaging,
     ) {
-        if text_enabled {
-            self.draw_records.upload(
-                device,
-                queue,
-                "tileink wgpu canvas draw records",
-                draw_records,
-            );
-            return;
-        }
-
-        staging.draw_records.clear();
-        staging.draw_records.extend_from_slice(draw_records);
-        for draw in &mut staging.draw_records {
-            draw.glyph_run_id = DrawRecord::NONE;
-        }
         self.draw_records.upload(
             device,
             queue,
             "tileink wgpu canvas draw records",
-            &staging.draw_records,
+            draw_records,
         );
     }
 

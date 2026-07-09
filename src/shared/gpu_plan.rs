@@ -46,6 +46,7 @@ pub(crate) struct GpuBufferLengths {
     pub coarse_glyph_capacity: usize,
     pub tile_draw_index_count: usize,
     pub tile_draw_chunk_count: usize,
+    pub text_enabled: bool,
     pub text_run_count: usize,
     pub text_glyph_count: usize,
     pub tiles_width: usize,
@@ -145,6 +146,7 @@ impl GpuBufferLengths {
             coarse_glyph_capacity,
             tile_draw_index_count: tile_draw_counts.index_count,
             tile_draw_chunk_count: tile_draw_counts.chunk_count,
+            text_enabled: text.is_some(),
             text_run_count: canvas.text_runs.len(),
             text_glyph_count: canvas.text_glyphs.len(),
             tiles_width,
@@ -754,6 +756,30 @@ mod text_length_tests {
             .sum::<usize>();
 
         assert_eq!(lengths.coarse_glyph_capacity, expected);
+    }
+
+    #[test]
+    fn text_lengths_track_whether_gpu_text_data_was_prepared() {
+        let mut font_system = TextFontSystem::new();
+        let mut context = TextContext::new();
+        let layout = context.layout(&mut font_system, TextLayoutOptions::new("text", 24.0));
+        if layout.is_empty() {
+            return;
+        }
+
+        let mut canvas = Canvas::new(96, 48, 1.0);
+        canvas.push_text_layout(&layout, Point::new(2.0, 28.0), Color::WHITE);
+        let no_text_lengths = GpuBufferLengths::from_scene(&canvas);
+        let text = PreparedTextData::new(
+            &canvas.text_glyphs,
+            &canvas.text_runs,
+            &mut font_system,
+            &mut context,
+        );
+        let text_lengths = GpuBufferLengths::from_scene_with_text(&canvas, Some(&text));
+
+        assert!(!no_text_lengths.text_enabled);
+        assert!(text_lengths.text_enabled);
     }
 }
 

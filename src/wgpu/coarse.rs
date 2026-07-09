@@ -42,6 +42,7 @@ struct CoarseConfig {
     tile_draw_index_count: u32,
     emit_chunk_capacity: u32,
     paint_brush_base: u32,
+    text_enabled: u32,
 }
 
 unsafe impl bytemuck::Zeroable for CoarseConfig {}
@@ -330,6 +331,7 @@ impl WgpuCoarsePipeline {
                 tile_draw_index_count: lengths.tile_draw_index_count as u32,
                 emit_chunk_capacity: lengths.tile_draw_chunk_count as u32,
                 paint_brush_base: canvas.paint_brush_base(),
+                text_enabled: u32::from(lengths.text_enabled),
             }),
         );
         let bindings = canvas.coarse_bindings(scan, coarse);
