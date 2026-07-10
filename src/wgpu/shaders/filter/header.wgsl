@@ -86,6 +86,10 @@ struct FilterConfig {
     region_width: u32,
     region_height: u32,
     pixel_count: u32,
+    active_tile_count: u32,
+    compact_tiles: u32,
+    active_tile_pad0: u32,
+    active_tile_pad1: u32,
     downsample: u32,
     downsample_filter: u32,
     upsample_filter: u32,
@@ -255,6 +259,7 @@ struct LayerStackRecord {
 @group(0) @binding(46) var<storage, read> path_p0y: array<i32>;
 @group(0) @binding(47) var<storage, read> path_p1x: array<i32>;
 @group(0) @binding(48) var<storage, read> path_p1y: array<i32>;
+@group(0) @binding(52) var<storage, read> active_tiles: array<u32>;
 @group(0) @binding(49) var filter_source_sample_texture: texture_2d<f32>;
 @group(0) @binding(50) var filter_aux_sample_texture: texture_2d<f32>;
 @group(0) @binding(51) var filter_linear_sampler: sampler;

@@ -7,7 +7,7 @@ var<workgroup> shared_blur_pixels: array<u32, 768>;
 @compute @workgroup_size(256)
 fn filter_clear_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = gid.x;
-    if (region_ix >= config.pixel_count) {
+    if (!filter_region_ix_valid(region_ix)) {
         return;
     }
     target_store_ix(target_ix_for_region_ix(region_ix), config.clear_color);
@@ -16,7 +16,7 @@ fn filter_clear_region(@builtin(global_invocation_id) gid: vec3<u32>) {
 @compute @workgroup_size(256)
 fn filter_copy_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = gid.x;
-    if (region_ix >= config.pixel_count) {
+    if (!filter_region_ix_valid(region_ix)) {
         return;
     }
     let ix = target_ix_for_region_ix(region_ix);
@@ -26,7 +26,7 @@ fn filter_copy_region(@builtin(global_invocation_id) gid: vec3<u32>) {
 @compute @workgroup_size(256)
 fn filter_source_alpha_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = gid.x;
-    if (region_ix >= config.pixel_count) {
+    if (!filter_region_ix_valid(region_ix)) {
         return;
     }
     let ix = target_ix_for_region_ix(region_ix);
@@ -36,7 +36,7 @@ fn filter_source_alpha_region(@builtin(global_invocation_id) gid: vec3<u32>) {
 @compute @workgroup_size(256)
 fn filter_source_over_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = gid.x;
-    if (region_ix >= config.pixel_count) {
+    if (!filter_region_ix_valid(region_ix)) {
         return;
     }
     let ix = target_ix_for_region_ix(region_ix);
@@ -46,7 +46,7 @@ fn filter_source_over_region(@builtin(global_invocation_id) gid: vec3<u32>) {
 @compute @workgroup_size(256)
 fn filter_tile_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = gid.x;
-    if (region_ix >= config.pixel_count) {
+    if (!filter_region_ix_valid(region_ix)) {
         return;
     }
     let xy = xy_for_region_ix(region_ix);
@@ -65,7 +65,7 @@ fn filter_tile_region(@builtin(global_invocation_id) gid: vec3<u32>) {
 @compute @workgroup_size(256)
 fn filter_offset_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = gid.x;
-    if (region_ix >= config.pixel_count) {
+    if (!filter_region_ix_valid(region_ix)) {
         return;
     }
     let xy = xy_for_region_ix(region_ix);
@@ -88,7 +88,7 @@ fn filter_offset_region(@builtin(global_invocation_id) gid: vec3<u32>) {
 @compute @workgroup_size(256)
 fn filter_turbulence_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = gid.x;
-    if (region_ix >= config.pixel_count) {
+    if (!filter_region_ix_valid(region_ix)) {
         return;
     }
     let xy = xy_for_region_ix(region_ix);
@@ -98,7 +98,7 @@ fn filter_turbulence_region(@builtin(global_invocation_id) gid: vec3<u32>) {
 @compute @workgroup_size(256)
 fn filter_flood_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = gid.x;
-    if (region_ix >= config.pixel_count) {
+    if (!filter_region_ix_valid(region_ix)) {
         return;
     }
     let xy = xy_for_region_ix(region_ix);
@@ -108,7 +108,7 @@ fn filter_flood_region(@builtin(global_invocation_id) gid: vec3<u32>) {
 @compute @workgroup_size(256)
 fn filter_drop_shadow_mask_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = gid.x;
-    if (region_ix >= config.pixel_count) {
+    if (!filter_region_ix_valid(region_ix)) {
         return;
     }
 

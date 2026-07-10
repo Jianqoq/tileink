@@ -46,6 +46,8 @@ struct Timing {
     dirty_tiles: f64,
     total_tiles: u32,
     scanned_paths: f64,
+    filter_dispatches: f64,
+    compact_filter_dispatches: f64,
     reused_plan_ratio: f64,
 }
 
@@ -70,7 +72,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             bench_mode(&seed, config, &scenario, IncrementalRenderMode::ForceFull)?;
         let speedup = full.average / auto.average;
         println!(
-            "{}: auto {:>7.3} ms avg (p50 {:>7.3}, p95 {:>7.3}), full {:>7.3} ms, {:>5.2}x, dirty {:.1}/{}, scanned paths {:.1}, plan reuse {:.0}%",
+            "{}: auto {:>7.3} ms avg (p50 {:>7.3}, p95 {:>7.3}), full {:>7.3} ms, {:>5.2}x, dirty {:.1}/{}, scanned paths {:.1}, filter dispatches {:.1} ({:.1} compact), plan reuse {:.0}%",
             scenario.name,
             auto.average,
             auto.p50,
@@ -80,6 +82,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             auto.dirty_tiles,
             auto.total_tiles,
             auto.scanned_paths,
+            auto.filter_dispatches,
+            auto.compact_filter_dispatches,
             auto.reused_plan_ratio * 100.0,
         );
         println!("auto stages\n{auto_profile}");
@@ -572,6 +576,8 @@ fn bench_mode(
     let mut samples = Vec::with_capacity(config.frames);
     let mut dirty = 0u64;
     let mut scanned_paths = 0u64;
+    let mut filter_dispatches = 0u64;
+    let mut compact_filter_dispatches = 0u64;
     let mut reused_plans = 0u64;
     let mut profile = WgpuRenderProfileReport::new();
     for index in 0..config.frames {
@@ -587,6 +593,8 @@ fn bench_mode(
         let stats = renderer.incremental_render_stats();
         dirty += stats.dirty_tiles as u64;
         scanned_paths += stats.scanned_paths as u64;
+        filter_dispatches += stats.filter_dispatches as u64;
+        compact_filter_dispatches += stats.compact_filter_dispatches as u64;
         reused_plans += u64::from(stats.reused_compiled_plan);
     }
     Ok((
@@ -595,6 +603,8 @@ fn bench_mode(
             dirty as f64 / config.frames as f64,
             renderer.incremental_render_stats().total_tiles,
             scanned_paths as f64 / config.frames as f64,
+            filter_dispatches as f64 / config.frames as f64,
+            compact_filter_dispatches as f64 / config.frames as f64,
             reused_plans as f64 / config.frames as f64,
         ),
         profile,
@@ -646,6 +656,8 @@ fn timing(
     dirty_tiles: f64,
     total_tiles: u32,
     scanned_paths: f64,
+    filter_dispatches: f64,
+    compact_filter_dispatches: f64,
     reused_plan_ratio: f64,
 ) -> Timing {
     let mut milliseconds = samples
@@ -662,6 +674,8 @@ fn timing(
         dirty_tiles,
         total_tiles,
         scanned_paths,
+        filter_dispatches,
+        compact_filter_dispatches,
         reused_plan_ratio,
     }
 }

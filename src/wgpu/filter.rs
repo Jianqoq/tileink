@@ -1,6 +1,9 @@
 #![allow(clippy::too_many_arguments)]
 
-use std::sync::OnceLock;
+use std::sync::{
+    OnceLock,
+    atomic::{AtomicU32, Ordering},
+};
 
 use peniko::{
     BlendMode, Compose, Mix,
@@ -28,6 +31,7 @@ use super::{
     commands::{
         WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
     },
+    filter_work::FilterTileWork,
     image_resources::{
         create_image_resource_bind_group, create_image_resource_bind_group_layout,
         large_texture_table_len, patch_image_resource_shader_source,
@@ -71,6 +75,8 @@ const FILTER_RES_PATH_P0X: u32 = 1 << 14;
 const FILTER_RES_PATH_P0Y: u32 = 1 << 15;
 const FILTER_RES_PATH_P1X: u32 = 1 << 16;
 const FILTER_RES_PATH_P1Y: u32 = 1 << 17;
+const FILTER_RES_ACTIVE_TILES: u32 = 1 << 18;
+const ACTIVE_TILES_BINDING: u32 = 52;
 
 const FILTER_RES_SCENE_ALPHA: u32 = FILTER_RES_DRAW_RECORDS
     | FILTER_RES_PAINT_BLOB
@@ -103,6 +109,10 @@ struct FilterConfig {
     region_width: u32,
     region_height: u32,
     pixel_count: u32,
+    active_tile_count: u32,
+    compact_tiles: u32,
+    active_tile_pad0: u32,
+    active_tile_pad1: u32,
     downsample: u32,
     downsample_filter: u32,
     upsample_filter: u32,
@@ -217,6 +227,10 @@ impl Default for FilterConfig {
             region_width: 0,
             region_height: 0,
             pixel_count: 0,
+            active_tile_count: 0,
+            compact_tiles: 0,
+            active_tile_pad0: 0,
+            active_tile_pad1: 0,
             downsample: 1,
             downsample_filter: 0,
             upsample_filter: 0,
@@ -376,6 +390,9 @@ pub(crate) struct WgpuFilterPipeline {
     large_texture_table_len: u32,
     pipeline_cache: Option<::wgpu::PipelineCache>,
     compilation_tracker: PipelineCompilationTracker,
+    active_tile_work: Option<FilterTileWork>,
+    dispatch_count: AtomicU32,
+    compact_dispatch_count: AtomicU32,
 }
 
 struct LazyFilterKernel {
@@ -396,7 +413,10 @@ impl LazyFilterKernel {
         Self {
             kernel: OnceLock::new(),
             entry_point,
-            resources,
+            // All region kernels share the coordinate remap helper. Keeping
+            // the worklist binding uniform across kernels avoids a parallel
+            // family of compact pipelines and keeps lazy compilation intact.
+            resources: resources | FILTER_RES_ACTIVE_TILES,
             profile,
             shared_workgroups,
         }
@@ -780,7 +800,35 @@ impl WgpuFilterPipeline {
             large_texture_table_len,
             pipeline_cache: pipeline_cache.cloned(),
             compilation_tracker: compilation_tracker.clone(),
+            active_tile_work: None,
+            dispatch_count: AtomicU32::new(0),
+            compact_dispatch_count: AtomicU32::new(0),
         })
+    }
+
+    pub(crate) fn reset_dispatch_counts(&self) {
+        self.dispatch_count.store(0, Ordering::Relaxed);
+        self.compact_dispatch_count.store(0, Ordering::Relaxed);
+    }
+
+    pub(crate) fn dispatch_counts(&self) -> (u32, u32) {
+        (
+            self.dispatch_count.load(Ordering::Relaxed),
+            self.compact_dispatch_count.load(Ordering::Relaxed),
+        )
+    }
+
+    /// Restores dense rectangle execution for subsequent filter stages.
+    pub(crate) fn clear_active_tile_work(&mut self) {
+        self.active_tile_work = None;
+    }
+
+    pub(crate) fn active_tile_work(&self) -> Option<FilterTileWork> {
+        self.active_tile_work.clone()
+    }
+
+    pub(crate) fn restore_active_tile_work(&mut self, work: Option<FilterTileWork>) {
+        self.active_tile_work = work;
     }
 
     fn kernel<'a>(
@@ -813,13 +861,20 @@ impl WgpuFilterPipeline {
         lengths: GpuBufferLengths,
         color: u32,
     ) {
-        self.clear_region(
+        let Some(mut config) =
+            config_for_bounds_dense(size, lengths, Bounds::canvas(size.0, size.1))
+        else {
+            return;
+        };
+        config.clear_color = color;
+        self.dispatch(
             commands,
+            &self.clear_region,
+            &config,
+            &self.dummy_texture_view,
+            &self.dummy_texture_view,
             target,
-            size,
-            lengths,
-            Bounds::canvas(size.0, size.1),
-            color,
+            None,
         );
     }
 
@@ -1987,6 +2042,14 @@ impl WgpuFilterPipeline {
         path_bindings: Option<&WgpuFilterPathBindings<'_>>,
     ) {
         let mut config = *config;
+        if config.compact_tiles != 0 {
+            if let Some(work) = &self.active_tile_work {
+                config.active_tile_count = work.count;
+                config.pixel_count = work.count.saturating_mul(WORKGROUP_SIZE);
+            } else {
+                config.compact_tiles = 0;
+            }
+        }
         if let Some(scene_bindings) = bindings {
             config.paint_sdf_shadow_base = scene_bindings.paint_sdf_shadow_base;
         }
@@ -1994,6 +2057,10 @@ impl WgpuFilterPipeline {
         let _profile_scope = start_cpu_scope(profile_name);
         if config.pixel_count == 0 {
             return;
+        }
+        self.dispatch_count.fetch_add(1, Ordering::Relaxed);
+        if config.compact_tiles != 0 {
+            self.compact_dispatch_count.fetch_add(1, Ordering::Relaxed);
         }
 
         let kernel = self.kernel(commands.device(), pipeline);
@@ -2044,7 +2111,9 @@ impl WgpuFilterPipeline {
         pipeline: &FilterKernel,
         config: &FilterConfig,
     ) -> (u32, u32, u32) {
-        if pipeline.shared_workgroups {
+        if config.compact_tiles != 0 {
+            (config.active_tile_count, 1, 1)
+        } else if pipeline.shared_workgroups {
             (
                 config.region_width.div_ceil(SHARED_BLUR_TILE_WIDTH),
                 config.region_height.div_ceil(SHARED_BLUR_TILE_HEIGHT),
@@ -2291,6 +2360,15 @@ impl WgpuFilterPipeline {
             48,
             path_p1y,
         );
+        push_buffer_if(
+            &mut entries,
+            kernel.resources,
+            FILTER_RES_ACTIVE_TILES,
+            ACTIVE_TILES_BINDING,
+            self.active_tile_work
+                .as_ref()
+                .map_or(&self.dummy_read, |work| &work.buffer),
+        );
         entries.push(bind_texture(
             filter_binding(
                 kernel.portable_textures,
@@ -2370,6 +2448,9 @@ impl WgpuFilterPipeline {
         target_bounds: Bounds,
         sampling: BlurSampling,
     ) {
+        // Retained callers install a projected worklist in the downsampled
+        // coordinate space before this stage. Non-retained callers have no
+        // worklist and automatically use the same single dense dispatch.
         let Some(mut config) = config_for_bounds(size, lengths, target_bounds) else {
             return;
         };
@@ -2692,8 +2773,21 @@ fn config_for_bounds(
         region_width: width,
         region_height: height,
         pixel_count: width * height,
+        // Request compact execution. The dispatcher falls back to the dense
+        // rectangle when no retained active-tile worklist is installed.
+        compact_tiles: 1,
         ..FilterConfig::default()
     })
+}
+
+fn config_for_bounds_dense(
+    size: (u32, u32),
+    lengths: GpuBufferLengths,
+    bounds: Bounds,
+) -> Option<FilterConfig> {
+    let mut config = config_for_bounds(size, lengths, bounds)?;
+    config.compact_tiles = 0;
+    Some(config)
 }
 
 fn encode_mask_kind(kind: MaskKind) -> u32 {
@@ -2838,6 +2932,13 @@ fn filter_layout_entries(
     push_storage_entry_if(&mut entries, resources, FILTER_RES_PATH_P0Y, 46, true);
     push_storage_entry_if(&mut entries, resources, FILTER_RES_PATH_P1X, 47, true);
     push_storage_entry_if(&mut entries, resources, FILTER_RES_PATH_P1Y, 48, true);
+    push_storage_entry_if(
+        &mut entries,
+        resources,
+        FILTER_RES_ACTIVE_TILES,
+        ACTIVE_TILES_BINDING,
+        true,
+    );
     entries.push(sampled_filterable_texture_entry(filter_binding(
         portable_textures,
         resources,
@@ -2863,7 +2964,7 @@ fn filter_layout_entries(
     entries
 }
 
-const FILTER_STORAGE_BINDINGS: [(u32, u32); 18] = [
+const FILTER_STORAGE_BINDINGS: [(u32, u32); 19] = [
     (FILTER_RES_DRAW_RECORDS, 4),
     (FILTER_RES_PAINT_BLOB, 10),
     (FILTER_RES_PATH_RECORDS, 28),
@@ -2882,6 +2983,7 @@ const FILTER_STORAGE_BINDINGS: [(u32, u32); 18] = [
     (FILTER_RES_PATH_P0Y, 46),
     (FILTER_RES_PATH_P1X, 47),
     (FILTER_RES_PATH_P1Y, 48),
+    (FILTER_RES_ACTIVE_TILES, ACTIVE_TILES_BINDING),
 ];
 
 const FILTER_TEXTURE_BINDINGS: [u32; 3] = [
@@ -3137,19 +3239,22 @@ mod tests {
             FILTER_RES_SCENE_ALPHA,
             FILTER_RES_SCENE_STACK,
         ];
-        for resources in resource_sets {
+        for resources in resource_sets.map(|resources| resources | FILTER_RES_ACTIVE_TILES) {
             assert!(
                 filter_storage_binding_count(resources) <= STORAGE_BINDING_COUNT,
                 "filter resource set has too many storage bindings: {resources:#x}"
             );
         }
-        assert_eq!(filter_storage_binding_count(FILTER_RES_SCENE_STACK), 7);
+        assert_eq!(
+            filter_storage_binding_count(FILTER_RES_SCENE_STACK | FILTER_RES_ACTIVE_TILES),
+            8
+        );
     }
 
     #[test]
     fn filter_config_keeps_matrix_vec4_alignment() {
         assert_eq!(std::mem::offset_of!(FilterConfig, matrix_r) % 16, 0);
-        assert_eq!(std::mem::size_of::<FilterConfig>(), 496);
+        assert_eq!(std::mem::size_of::<FilterConfig>(), 512);
     }
 
     #[test]

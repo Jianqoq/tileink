@@ -62,6 +62,13 @@ fn retained_renderer_updates_only_changed_tiles_and_matches_full_render() {
     assert!(!incremental.incremental_render_stats().full_redraw);
     assert_eq!(incremental.incremental_render_stats().dirty_tiles, 1);
     assert!(incremental.incremental_render_stats().reused_compiled_plan);
+    assert_eq!(incremental.incremental_render_stats().filter_dispatches, 1);
+    assert_eq!(
+        incremental
+            .incremental_render_stats()
+            .compact_filter_dispatches,
+        1
+    );
 
     let mut full = new_test_renderer(64, 32, Color::TRANSPARENT);
     let mut config = full.incremental_render_config();
@@ -83,6 +90,72 @@ fn retained_renderer_updates_only_changed_tiles_and_matches_full_render() {
             );
         }
     }
+}
+
+#[test]
+fn retained_sparse_damage_clears_with_one_compact_dispatch() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    fn child(color: Color) -> std::sync::Arc<Canvas> {
+        let mut scene = Canvas::new(16, 16, 1.0);
+        scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
+        std::sync::Arc::new(scene)
+    }
+
+    let root = RetainedNodeId::for_owner(10);
+    let first_id = RetainedNodeId::for_owner(11);
+    let second_id = RetainedNodeId::for_owner(12);
+    let stable_id = RetainedNodeId::for_owner(13);
+    let stable = child(Color::from_rgb8(20, 40, 220));
+
+    let mut first = Canvas::new_retained(96, 64, 1.0, root);
+    first.append_retained_scene(
+        first_id,
+        0,
+        child(Color::from_rgb8(220, 20, 20)),
+        (0.0, 0.0),
+    );
+    first.append_retained_scene(stable_id, 0, stable.clone(), (32.0, 16.0));
+    first.append_retained_scene(
+        second_id,
+        0,
+        child(Color::from_rgb8(20, 220, 20)),
+        (80.0, 48.0),
+    );
+
+    let mut second = Canvas::new_retained(96, 64, 1.0, root);
+    second.append_retained_scene(
+        first_id,
+        1,
+        child(Color::from_rgb8(220, 220, 20)),
+        (0.0, 0.0),
+    );
+    second.append_retained_scene(stable_id, 0, stable, (32.0, 16.0));
+    second.append_retained_scene(
+        second_id,
+        1,
+        child(Color::from_rgb8(20, 220, 220)),
+        (80.0, 48.0),
+    );
+
+    let mut incremental = new_test_renderer(96, 64, Color::TRANSPARENT);
+    incremental.render(&first);
+    let stable_before = incremental.image().rgba8_at(40, 24);
+    incremental.render(&second);
+    let stats = incremental.incremental_render_stats();
+    assert_eq!(stats.dirty_tiles, 2);
+    assert_eq!(stats.filter_dispatches, 1);
+    assert_eq!(stats.compact_filter_dispatches, 1);
+    assert_eq!(incremental.image().rgba8_at(40, 24), stable_before);
+
+    let mut full = new_test_renderer(96, 64, Color::TRANSPARENT);
+    let mut config = full.incremental_render_config();
+    config.mode = crate::IncrementalRenderMode::ForceFull;
+    full.set_incremental_render_config(config);
+    full.render(&second);
+    assert_eq!(incremental.image().pixels, full.image().pixels);
 }
 
 #[test]
@@ -638,6 +711,12 @@ fn retained_liquid_glass_ignores_later_foreground_history_when_slider_moves() {
             !incremental.incremental_render_stats().full_redraw,
             "slider movement must exercise dirty-tile rendering"
         );
+        let stats = incremental.incremental_render_stats();
+        assert!(stats.filter_dispatches > 0);
+        assert_eq!(
+            stats.compact_filter_dispatches, stats.filter_dispatches,
+            "every retained liquid-glass stage, including downsampled blur, must use one compact worklist dispatch"
+        );
 
         full.render(&current);
         let incremental_image = incremental.image();
@@ -711,6 +790,7 @@ fn retained_mask_updates_local_tiles_and_matches_full_render() {
     let stats = incremental.incremental_render_stats().clone();
     assert_eq!(stats.rerendered_offscreen_surfaces, 1);
     assert!(stats.rerendered_offscreen_tiles < 24, "{stats:?}");
+    assert_eq!(stats.compact_filter_dispatches, stats.filter_dispatches);
 
     let mut full = new_test_renderer(128, 96, Color::TRANSPARENT);
     let mut config = full.incremental_render_config();

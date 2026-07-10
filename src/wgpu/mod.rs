@@ -5,6 +5,7 @@ mod commands;
 mod cumsum;
 mod filter;
 mod filter_resources;
+mod filter_work;
 mod fine;
 mod image_resources;
 mod incremental;

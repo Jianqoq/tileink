@@ -46,6 +46,7 @@ use super::filter_resources::{
     WgpuFilterBrushBuffers, WgpuFilterConvolveBuffers, WgpuFilterCursors, WgpuFilterPathBuffers,
     WgpuFilterTransferBuffers, WgpuFilterTurbulenceBuffers,
 };
+use super::filter_work::{FilterTileWork, FilterTileWorkArena};
 use super::fine::{WgpuFinePipeline, premul_clear_color};
 use super::image_resources::large_texture_table_len;
 use super::incremental::{
@@ -162,6 +163,7 @@ pub struct Renderer {
     incremental_state: IncrementalState,
     incremental_stats: IncrementalRenderStats,
     active_tiles: Option<DamageTiles>,
+    filter_tile_work_arena: FilterTileWorkArena,
     history_valid: bool,
     retained_surfaces: RetainedSurfaceCache,
     rendering_frame: Option<RetainedFrame>,
@@ -253,6 +255,7 @@ struct SavedRendererState {
     size: (u32, u32),
     surface_origin: (i32, i32),
     active_tiles: Option<DamageTiles>,
+    filter_active_tile_work: Option<FilterTileWork>,
 }
 
 impl Render for Renderer {
@@ -328,6 +331,7 @@ impl Renderer {
             incremental_state: IncrementalState::default(),
             incremental_stats: IncrementalRenderStats::default(),
             active_tiles: None,
+            filter_tile_work_arena: FilterTileWorkArena::default(),
             history_valid: false,
             retained_surfaces: RetainedSurfaceCache::new(
                 IncrementalRenderConfig::default().retained_texture_budget_bytes,
@@ -675,6 +679,36 @@ impl Renderer {
             self.coarse
                 .upload_active_tiles(&self.queue, self.lengths, active.list());
         }
+        self.prepare_filter_active_tile_work();
+    }
+
+    /// Uploads the current compact filter worklist into a unique arena slot.
+    ///
+    /// A frame may switch from an expanded source/halo list to an exact output
+    /// list after commands using the first list have already been encoded.
+    /// Separate buffers prevent a later queue write from changing what those
+    /// earlier dispatches observe; slots are retained and reused next frame.
+    fn prepare_filter_active_tile_work(&mut self) {
+        let Some(tiles) = self
+            .active_tiles
+            .as_ref()
+            .map(|active| active.list().to_vec())
+        else {
+            if let Some(filter) = self.filter.as_mut() {
+                filter.clear_active_tile_work();
+            }
+            return;
+        };
+        self.prepare_filter_tile_work(&tiles);
+    }
+
+    fn prepare_filter_tile_work(&mut self, tiles: &[u32]) {
+        let work = self
+            .filter_tile_work_arena
+            .upload(&self.device, &self.queue, tiles);
+        if let Some(filter) = self.filter.as_mut() {
+            filter.restore_active_tile_work(Some(work));
+        }
     }
 
     fn take_matching_retained_surface(
@@ -980,6 +1014,10 @@ impl Renderer {
             size: self.size,
             surface_origin: self.surface_origin,
             active_tiles: self.active_tiles.take(),
+            filter_active_tile_work: self
+                .filter
+                .as_ref()
+                .and_then(WgpuFilterPipeline::active_tile_work),
         };
 
         let lengths = profile_cpu("prepare.local.lengths", || {
@@ -991,6 +1029,9 @@ impl Renderer {
         self.size = (canvas.physical_width(), canvas.physical_height());
         self.surface_origin = surface_origin;
         self.active_tiles = None;
+        if let Some(filter) = self.filter.as_mut() {
+            filter.clear_active_tile_work();
+        }
         self.lengths = lengths;
         self.max_clip_depth = max_clip_depth;
         self.max_group_depth = max_group_depth;
@@ -1093,6 +1134,9 @@ impl Renderer {
         self.size = saved.size;
         self.surface_origin = saved.surface_origin;
         self.active_tiles = saved.active_tiles;
+        if let Some(filter) = self.filter.as_mut() {
+            filter.restore_active_tile_work(saved.filter_active_tile_work);
+        }
     }
 
     fn prepare_scratch_buffers(&mut self, count: usize) {
@@ -1238,21 +1282,23 @@ impl Renderer {
         {
             return true;
         }
+        if let Some(filter) = &self.filter {
+            filter.reset_dispatch_counts();
+        }
+        self.filter_tile_work_arena.reset();
         self.prepare_active_tile_buffers();
 
         let mut commands = WgpuCommandBatch::new(&self.device, &self.queue, "tileink wgpu frame");
         if !self.scan_and_cumsum(&mut commands, canvas) {
             return false;
         }
-        if let Some(active) = &self.active_tiles {
-            for bounds in active.coalesced_rects(self.size) {
-                self.clear_render_region(
-                    &mut commands,
-                    WgpuRenderTargetId::Main,
-                    bounds,
-                    self.clear_color,
-                );
-            }
+        if self.active_tiles.is_some() {
+            self.clear_render_region(
+                &mut commands,
+                WgpuRenderTargetId::Main,
+                Bounds::canvas(self.size.0, self.size.1),
+                self.clear_color,
+            );
         } else {
             self.clear_render_target(&mut commands, WgpuRenderTargetId::Main, self.clear_color);
         }
@@ -1266,6 +1312,11 @@ impl Renderer {
             &mut filter_cursors,
         );
         commands.finish();
+        if let Some(filter) = &self.filter {
+            let (dispatches, compact_dispatches) = filter.dispatch_counts();
+            self.incremental_stats.filter_dispatches = dispatches;
+            self.incremental_stats.compact_filter_dispatches = compact_dispatches;
+        }
         ok
     }
 
@@ -1669,7 +1720,7 @@ impl Renderer {
                 return false;
             };
             self.install_scratch_render_target(source, surface.primary);
-            for bounds in self.active_bounds(bounds) {
+            if let Some(bounds) = self.active_region(bounds) {
                 self.clear_render_region(commands, source, bounds, 0);
             }
             if !self.execute_ops(commands, canvas, plan, children, source, filter_cursors) {
@@ -1696,16 +1747,10 @@ impl Renderer {
             (source, None)
         };
         let (source, cached_mask) = source;
-        if let Some(opacity) = opacity {
-            for bounds in self.active_bounds(bounds) {
-                self.apply_color_filter_to_target(
-                    commands,
-                    source,
-                    bounds,
-                    FILTER_OPACITY,
-                    opacity,
-                );
-            }
+        if let Some(opacity) = opacity
+            && let Some(bounds) = self.active_region(bounds)
+        {
+            self.apply_color_filter_to_target(commands, source, bounds, FILTER_OPACITY, opacity);
         }
 
         let mask = if let Some(mask) = cached_mask {
@@ -1717,7 +1762,7 @@ impl Renderer {
             };
             mask
         };
-        for bounds in self.active_bounds(bounds) {
+        if let Some(bounds) = self.active_region(bounds) {
             self.build_layer_mask(commands, mask, draw as u32, bounds);
         }
         let ok = self.composite_group_targets(
@@ -1858,15 +1903,8 @@ impl Renderer {
                     filter_model::filter_dependency_outset(&local_filter),
                 ));
                 self.prepare_active_tile_buffers();
-                for bounds in self
-                    .active_tiles
-                    .as_ref()
-                    .unwrap()
-                    .coalesced_rects(self.size)
-                {
-                    self.clear_render_region(commands, source, bounds, 0);
-                }
-                Some(output_update)
+                self.clear_render_region(commands, source, local_bounds, 0);
+                Some((output_update, output_damage))
             } else {
                 self.scratch_in_use[0] = true;
                 self.clear_render_target(commands, source, 0);
@@ -1885,7 +1923,8 @@ impl Renderer {
             source,
             &mut local_filter_cursors,
         );
-        if let Some(output_update) = partial_output {
+        let is_partial_output = partial_output.is_some();
+        if let Some((output_update, output_damage)) = partial_output {
             let process_bounds = output_update
                 .outset(filter_model::filter_dependency_outset(&local_filter))
                 .intersect(local_bounds);
@@ -1902,8 +1941,14 @@ impl Renderer {
                     &local_filter,
                     None,
                     &mut local_filter_cursors,
-                )
-                && self.copy_region_to_target(commands, temp, filtered, output_update);
+                );
+            // The expanded source worklist includes every halo tile sampled by
+            // the filter. Switch to the original output list before touching
+            // retained filtered history so clean output tiles remain byte-for-
+            // byte unchanged.
+            self.active_tiles = Some(output_damage);
+            self.prepare_filter_active_tile_work();
+            ok = ok && self.copy_region_to_target(commands, temp, filtered, output_update);
             self.release_scratch(temp);
         } else {
             if cache_surface {
@@ -1926,7 +1971,7 @@ impl Renderer {
             .as_ref()
             .map_or_else(|| tile_count_for_bounds(local_bounds), DamageTiles::len);
         let (source_buffer, source_history) = if cache_surface {
-            if partial_output.is_some() {
+            if is_partial_output {
                 (
                     self.take_scratch_target(filtered).unwrap(),
                     Some(self.take_scratch_target(source).unwrap()),
@@ -2097,17 +2142,16 @@ impl Renderer {
                 self.release_scratch(backdrop);
                 return false;
             };
-            let source_updates = if cached_source.is_some() {
-                self.active_bounds(bounds)
+            let source_update = if cached_source.is_some() {
+                self.active_region(bounds)
             } else {
-                vec![bounds]
+                Some(bounds)
             };
             if let Some(cached_source) = cached_source {
                 self.install_scratch_render_target(source, cached_source);
             }
-            let source_ok = source_updates
-                .into_iter()
-                .all(|bounds| self.copy_region_to_target(commands, target, source, bounds));
+            let source_ok = source_update
+                .is_none_or(|bounds| self.copy_region_to_target(commands, target, source, bounds));
             if !source_ok {
                 self.release_scratch(source);
                 self.release_scratch(backdrop);
@@ -2179,7 +2223,7 @@ impl Renderer {
 
         let mut retained_mask = None;
         let ok = if outer_stack.is_empty() {
-            self.active_bounds(bounds).into_iter().all(|bounds| {
+            self.active_region(bounds).is_none_or(|bounds| {
                 self.composite_src_over_rect_mask_direct(
                     commands,
                     target,
@@ -2218,7 +2262,7 @@ impl Renderer {
                 mask
             };
 
-            let ok = self.active_bounds(bounds).into_iter().all(|bounds| {
+            let ok = self.active_region(bounds).is_none_or(|bounds| {
                 self.composite_src_over_with_stack(
                     commands,
                     target,
@@ -2322,7 +2366,7 @@ impl Renderer {
                 return false;
             };
             self.install_scratch_render_target(content_target, surface.primary);
-            for update in self.active_bounds(bounds) {
+            if let Some(update) = self.active_region(bounds) {
                 self.clear_render_region(commands, content_target, update, 0);
             }
             if !self.execute_ops(
@@ -2373,7 +2417,7 @@ impl Renderer {
             };
             mask
         };
-        for update in self.active_bounds(bounds) {
+        if let Some(update) = self.active_region(bounds) {
             self.svg_mask_coverage(commands, mask_source, mask, update, layer.kind);
         }
         self.release_scratch(mask_source);
@@ -2383,7 +2427,7 @@ impl Renderer {
             self.release_scratch(content_target);
             return false;
         };
-        let region_ok = self.active_bounds(bounds).into_iter().all(|update| {
+        let region_ok = self.active_region(bounds).is_none_or(|update| {
             self.build_region_mask(commands, region_mask, &layer.region, path_index, update) && {
                 self.apply_region_mask(commands, region_mask, mask, update);
                 true
@@ -2555,15 +2599,11 @@ impl Renderer {
         true
     }
 
-    fn active_bounds(&self, bounds: Bounds) -> Vec<Bounds> {
+    fn active_region(&self, bounds: Bounds) -> Option<Bounds> {
         match &self.active_tiles {
-            Some(active) => active
-                .coalesced_rects(self.size)
-                .into_iter()
-                .map(|damage| damage.intersect(bounds))
-                .filter(|bounds| !bounds.is_empty())
-                .collect(),
-            None => vec![bounds],
+            Some(active) if active.intersects_bounds(bounds) => Some(bounds),
+            Some(_) => None,
+            None => Some(bounds),
         }
     }
 
@@ -2585,7 +2625,7 @@ impl Renderer {
         layer_stack: std::ops::Range<usize>,
         blend: Option<peniko::BlendMode>,
     ) -> bool {
-        self.active_bounds(bounds).into_iter().all(|bounds| {
+        self.active_region(bounds).is_none_or(|bounds| {
             if let Some(mode) = blend {
                 self.composite_blend_with_stack(
                     commands,
@@ -2627,7 +2667,7 @@ impl Renderer {
             return false;
         };
         let bindings = self.scene_buffers.filter_bindings(&self.scan);
-        self.active_bounds(bounds).into_iter().all(|bounds| {
+        self.active_region(bounds).is_none_or(|bounds| {
             let Some(target_read) = self.snapshot_filter_target(commands, target) else {
                 return false;
             };
@@ -2713,7 +2753,7 @@ impl Renderer {
         let Some(filter) = &self.filter else {
             return false;
         };
-        self.active_bounds(bounds).into_iter().all(|bounds| {
+        self.active_region(bounds).is_none_or(|bounds| {
             let Some(target_read) = self.snapshot_filter_target(commands, target) else {
                 return false;
             };
@@ -2807,7 +2847,7 @@ impl Renderer {
         bounds: Bounds,
         layer_stack: std::ops::Range<usize>,
     ) -> bool {
-        self.active_bounds(bounds).into_iter().all(|bounds| {
+        self.active_region(bounds).is_none_or(|bounds| {
             self.composite_surface_src_over_with_stack(
                 commands,
                 target,

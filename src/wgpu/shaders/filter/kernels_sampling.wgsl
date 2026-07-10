@@ -1,6 +1,6 @@
 fn filter_morphology_axis_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = gid.x;
-    if (region_ix >= config.pixel_count) {
+    if (!filter_region_ix_valid(region_ix)) {
         return;
     }
     let xy = xy_for_region_ix(region_ix);
@@ -70,7 +70,7 @@ fn filter_morphology_axis_region(@builtin(global_invocation_id) gid: vec3<u32>) 
 @compute @workgroup_size(256)
 fn filter_downsample_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = gid.x;
-    if (region_ix >= config.pixel_count) {
+    if (!filter_region_ix_valid(region_ix)) {
         return;
     }
 
@@ -141,7 +141,7 @@ fn upsampled_source_pixel_at(
 @compute @workgroup_size(256)
 fn filter_upsample_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = gid.x;
-    if (region_ix >= config.pixel_count) {
+    if (!filter_region_ix_valid(region_ix)) {
         return;
     }
 
@@ -160,7 +160,7 @@ fn filter_upsample_region(@builtin(global_invocation_id) gid: vec3<u32>) {
 @compute @workgroup_size(256)
 fn filter_upsample_rect_composite_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = gid.x;
-    if (region_ix >= config.pixel_count) {
+    if (!filter_region_ix_valid(region_ix)) {
         return;
     }
 
@@ -481,7 +481,7 @@ fn filter_blur_pixel_shared(local_xy: vec2<u32>, half_width: i32, std_dev: f32) 
 @compute @workgroup_size(256)
 fn filter_blur_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = gid.x;
-    if (region_ix >= config.pixel_count) {
+    if (!filter_region_ix_valid(region_ix)) {
         return;
     }
 
@@ -502,10 +502,19 @@ fn filter_blur_shared_region(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
 ) {
     let std_dev = max(config.amount, 0.0);
-    let tile_x0 = config.region_x0 + workgroup_id.x * SHARED_BLUR_TILE_WIDTH;
-    let tile_y0 = config.region_y0 + workgroup_id.y * SHARED_BLUR_TILE_HEIGHT;
+    var tile_x0 = config.region_x0 + workgroup_id.x * SHARED_BLUR_TILE_WIDTH;
+    var tile_y0 = config.region_y0 + workgroup_id.y * SHARED_BLUR_TILE_HEIGHT;
+    if (config.compact_tiles != 0u) {
+        let tile = active_tiles[workgroup_id.x];
+        tile_x0 = (tile % config.tiles_width) * SHARED_BLUR_TILE_WIDTH;
+        tile_y0 = (tile / config.tiles_width) * SHARED_BLUR_TILE_HEIGHT;
+    }
     let xy = vec2<u32>(tile_x0 + local_id.x, tile_y0 + local_id.y);
-    let in_region = xy.x < config.region_x0 + config.region_width &&
+    let in_region = xy.x < config.width &&
+        xy.y < config.height &&
+        xy.x >= config.region_x0 &&
+        xy.y >= config.region_y0 &&
+        xy.x < config.region_x0 + config.region_width &&
         xy.y < config.region_y0 + config.region_height;
 
     if (std_dev <= 0.0) {

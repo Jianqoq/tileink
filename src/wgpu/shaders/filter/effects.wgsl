@@ -999,7 +999,7 @@ fn lerp_vec4(a: vec4<f32>, b: vec4<f32>, t: f32) -> vec4<f32> {
 @compute @workgroup_size(256)
 fn filter_apply_region_mask(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = gid.x;
-    if (region_ix >= config.pixel_count) {
+    if (!filter_region_ix_valid(region_ix)) {
         return;
     }
     let ix = target_ix_for_region_ix(region_ix);

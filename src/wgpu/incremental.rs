@@ -76,6 +76,10 @@ pub struct IncrementalRenderStats {
     pub scanned_paths: u32,
     pub scanned_lines: u32,
     pub scan_chunks: u32,
+    /// Total filter compute passes encoded for this frame.
+    pub filter_dispatches: u32,
+    /// Filter passes encoded as one workgroup per active dirty tile.
+    pub compact_filter_dispatches: u32,
     pub reused_compiled_plan: bool,
 }
 
@@ -208,9 +212,10 @@ impl DamageTiles {
     /// Decomposes dirty tiles into non-overlapping pixel rectangles.
     ///
     /// Horizontal runs with the same extent on adjacent tile rows are merged
-    /// vertically. Filter clear/copy/composite kernels dispatch once per
-    /// rectangle, so a rectangular damage region stays one dispatch instead
-    /// of one dispatch per 16-pixel row.
+    /// vertically. GPU execution consumes `list` directly as one compact
+    /// dispatch; rectangles remain useful for CPU damage propagation, bounds
+    /// transforms, and diagnostics without expanding sparse damage to its
+    /// bounding box.
     pub(crate) fn coalesced_rects(&self, physical_size: (u32, u32)) -> Vec<Bounds> {
         let mut rects = Vec::<Bounds>::new();
         let mut previous_row = HashMap::<(u32, u32), usize>::new();
