@@ -61,6 +61,50 @@ pub(crate) struct ExecPlan {
     pub layer_stack_data: Vec<LayerStackEntry>,
 }
 
+impl ExecPlan {
+    /// Removes artificial GPU batch boundaries introduced only by retained command scopes.
+    ///
+    /// Retained nodes carry CPU-side identity and offscreen ownership, but adjacent plain draws
+    /// with the same effective layer stack have exactly the same raster semantics as one batch.
+    /// Coalescing them is important for component trees: otherwise every widget scope would emit
+    /// another coarse/fine dispatch pair even during a full redraw.
+    pub(crate) fn coalesce_draw_batches(&mut self) {
+        coalesce_draw_batches_in(&mut self.ops, &self.layer_stack_data);
+    }
+}
+
+fn coalesce_draw_batches_in(ops: &mut Vec<ExecOp>, layer_stacks: &[LayerStackEntry]) {
+    for op in ops.iter_mut() {
+        match op {
+            ExecOp::OffscreenLayer { children, .. } => {
+                coalesce_draw_batches_in(children, layer_stacks);
+            }
+            ExecOp::OffscreenMaskLayer { content, mask, .. } => {
+                coalesce_draw_batches_in(content, layer_stacks);
+                coalesce_draw_batches_in(mask, layer_stacks);
+            }
+            _ => {}
+        }
+    }
+
+    let mut coalesced = Vec::with_capacity(ops.len());
+    for op in ops.drain(..) {
+        if let ExecOp::DrawBatch { draws, layer_stack } = &op
+            && let Some(ExecOp::DrawBatch {
+                draws: previous_draws,
+                layer_stack: previous_stack,
+            }) = coalesced.last_mut()
+            && previous_draws.end == draws.start
+            && layer_stacks[previous_stack.clone()] == layer_stacks[layer_stack.clone()]
+        {
+            previous_draws.end = draws.end;
+            continue;
+        }
+        coalesced.push(op);
+    }
+    *ops = coalesced;
+}
+
 #[derive(Clone, Debug)]
 pub(crate) enum ExecOp {
     DrawBatch {

@@ -1,3 +1,4 @@
+use super::incremental::IncrementalRenderStats;
 use crate::shared::cpu_time::CpuInstant;
 use std::{
     cell::{Cell, RefCell},
@@ -30,6 +31,7 @@ pub struct WgpuRenderProfileEventSummary {
 pub struct WgpuRenderProfile {
     entries: Vec<WgpuRenderProfileEntry>,
     cpu_total: Duration,
+    incremental: Option<IncrementalRenderStats>,
 }
 
 impl WgpuRenderProfile {
@@ -39,6 +41,11 @@ impl WgpuRenderProfile {
 
     pub fn cpu_time(&self) -> Duration {
         self.cpu_total
+    }
+
+    /// Incremental renderer diagnostics captured for the profiled frame.
+    pub fn incremental_stats(&self) -> Option<&IncrementalRenderStats> {
+        self.incremental.as_ref()
     }
 
     pub fn gpu_time(&self) -> Duration {
@@ -103,6 +110,7 @@ impl WgpuRenderProfileReport {
         self.iterations += 1;
         self.profile.entries.extend_from_slice(profile.entries());
         self.profile.cpu_total += profile.cpu_time();
+        self.profile.incremental = profile.incremental_stats().cloned();
     }
 
     pub fn iterations(&self) -> usize {
@@ -169,6 +177,7 @@ impl WgpuRenderProfiler {
         &mut self,
         device: &::wgpu::Device,
         queue: &::wgpu::Queue,
+        incremental: IncrementalRenderStats,
     ) -> &WgpuRenderProfile {
         let (entries, pending_gpu, timestamp_batches, cpu_total) = {
             let mut state = self.state.borrow_mut();
@@ -205,7 +214,11 @@ impl WgpuRenderProfiler {
                 ));
             }
         }
-        self.profile = WgpuRenderProfile { entries, cpu_total };
+        self.profile = WgpuRenderProfile {
+            entries,
+            cpu_total,
+            incremental: Some(incremental),
+        };
         self.poll_ready(device);
 
         let state = Rc::clone(&self.state);
@@ -242,6 +255,10 @@ impl WgpuRenderProfiler {
 
     pub(crate) fn has_pending_readbacks(&self) -> bool {
         !self.pending_readbacks.is_empty()
+    }
+
+    pub(crate) fn is_active(&self) -> bool {
+        self.state.borrow().active
     }
 
     pub(crate) fn profile(&self) -> &WgpuRenderProfile {

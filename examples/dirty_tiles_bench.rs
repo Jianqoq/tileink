@@ -9,9 +9,9 @@ use peniko::{
     kurbo::{Affine, Point, Rect},
 };
 use tileink::{
-    BlurSampling, Canvas, Filter, IncrementalRenderMode, Mask, MaskKind, Radius, RectLiquidGlass,
-    Region, RetainedNodeId, TextContext, TextFontSystem, TextLayoutOptions,
-    WgpuRenderProfileReport, WgpuRenderer,
+    BlurSampling, Canvas, Filter, IncrementalOutputMode, IncrementalRenderMode, Mask, MaskKind,
+    Radius, RectLiquidGlass, Region, RetainedNodeId, TextContext, TextFontSystem,
+    TextLayoutOptions, WgpuRenderProfileReport, WgpuRenderer,
 };
 
 #[derive(Clone, Copy)]
@@ -46,9 +46,26 @@ struct Timing {
     dirty_tiles: f64,
     total_tiles: u32,
     scanned_paths: f64,
+    draw_batches: f64,
+    root_draw_batches: f64,
     filter_dispatches: f64,
     compact_filter_dispatches: f64,
     reused_plan_ratio: f64,
+    direct_output_ratio: f64,
+    history_copy_ratio: f64,
+}
+
+struct WorkMetrics {
+    dirty_tiles: f64,
+    total_tiles: u32,
+    scanned_paths: f64,
+    draw_batches: f64,
+    root_draw_batches: f64,
+    filter_dispatches: f64,
+    compact_filter_dispatches: f64,
+    reused_plan_ratio: f64,
+    direct_output_ratio: f64,
+    history_copy_ratio: f64,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -62,7 +79,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         "dirty tile bench: {}x{}, warmup {}, measured frames {}",
         config.width, config.height, config.warmup, config.frames
     );
-    println!("timing includes CPU submit, GPU completion, and retained-history copy\n");
+    println!("timing includes CPU submit, GPU completion, and any required presentation copy\n");
 
     for scenario in scenarios {
         verify_parity(&seed, config, &scenario)?;
@@ -72,7 +89,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             bench_mode(&seed, config, &scenario, IncrementalRenderMode::ForceFull)?;
         let speedup = full.average / auto.average;
         println!(
-            "{}: auto {:>7.3} ms avg (p50 {:>7.3}, p95 {:>7.3}), full {:>7.3} ms, {:>5.2}x, dirty {:.1}/{}, scanned paths {:.1}, filter dispatches {:.1} ({:.1} compact), plan reuse {:.0}%",
+            "{}: auto {:>7.3} ms avg (p50 {:>7.3}, p95 {:>7.3}), full {:>7.3} ms, {:>5.2}x, dirty {:.1}/{}, batches {:.1}/{:.1} root, scanned paths {:.1}, filter dispatches {:.1} ({:.1} compact), plan reuse {:.0}%, direct {:.0}%, history copy {:.0}%",
             scenario.name,
             auto.average,
             auto.p50,
@@ -81,10 +98,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             speedup,
             auto.dirty_tiles,
             auto.total_tiles,
+            auto.root_draw_batches,
+            auto.draw_batches,
             auto.scanned_paths,
             auto.filter_dispatches,
             auto.compact_filter_dispatches,
             auto.reused_plan_ratio * 100.0,
+            auto.direct_output_ratio * 100.0,
+            auto.history_copy_ratio * 100.0,
         );
         println!("auto stages\n{auto_profile}");
         println!("full stages\n{full_profile}\n");
@@ -149,6 +170,10 @@ fn scenarios(
         Scenario {
             name: "scattered-components",
             frames: scattered_frames(config),
+        },
+        Scenario {
+            name: "large-damage-direct-output",
+            frames: large_damage_frames(config),
         },
         Scenario {
             name: "blurred-offscreen",
@@ -378,6 +403,32 @@ fn scattered_frames(config: Config) -> Vec<Canvas> {
         .collect()
 }
 
+fn large_damage_frames(config: Config) -> Vec<Canvas> {
+    [
+        Color::from_rgb8(35, 105, 220),
+        Color::from_rgb8(220, 85, 55),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(revision, color)| {
+        let height = (config.height as f64 * 0.8).ceil();
+        let scene = rect_scene(
+            (config.width, config.height),
+            Rect::new(0.0, 0.0, config.width as f64, height),
+            color,
+        );
+        let mut frame = retained_root(config, 19);
+        frame.append_retained_scene(
+            RetainedNodeId::for_owner(190),
+            revision as u64,
+            scene,
+            (0.0, 0.0),
+        );
+        frame
+    })
+    .collect()
+}
+
 fn filter_frames(config: Config) -> Vec<Canvas> {
     [Color::from_rgb8(220, 50, 50), Color::from_rgb8(40, 210, 90)]
         .into_iter()
@@ -576,9 +627,13 @@ fn bench_mode(
     let mut samples = Vec::with_capacity(config.frames);
     let mut dirty = 0u64;
     let mut scanned_paths = 0u64;
+    let mut draw_batches = 0u64;
+    let mut root_draw_batches = 0u64;
     let mut filter_dispatches = 0u64;
     let mut compact_filter_dispatches = 0u64;
     let mut reused_plans = 0u64;
+    let mut direct_outputs = 0u64;
+    let mut history_copies = 0u64;
     let mut profile = WgpuRenderProfileReport::new();
     for index in 0..config.frames {
         let scene = &scenario.frames[index % scenario.frames.len()];
@@ -593,19 +648,29 @@ fn bench_mode(
         let stats = renderer.incremental_render_stats();
         dirty += stats.dirty_tiles as u64;
         scanned_paths += stats.scanned_paths as u64;
+        draw_batches += stats.draw_batches as u64;
+        root_draw_batches += stats.root_draw_batches as u64;
         filter_dispatches += stats.filter_dispatches as u64;
         compact_filter_dispatches += stats.compact_filter_dispatches as u64;
         reused_plans += u64::from(stats.reused_compiled_plan);
+        direct_outputs += u64::from(stats.output_mode == IncrementalOutputMode::DirectTransient);
+        history_copies += u64::from(stats.history_copied_to_output);
     }
     Ok((
         timing(
             &samples,
-            dirty as f64 / config.frames as f64,
-            renderer.incremental_render_stats().total_tiles,
-            scanned_paths as f64 / config.frames as f64,
-            filter_dispatches as f64 / config.frames as f64,
-            compact_filter_dispatches as f64 / config.frames as f64,
-            reused_plans as f64 / config.frames as f64,
+            WorkMetrics {
+                dirty_tiles: dirty as f64 / config.frames as f64,
+                total_tiles: renderer.incremental_render_stats().total_tiles,
+                scanned_paths: scanned_paths as f64 / config.frames as f64,
+                draw_batches: draw_batches as f64 / config.frames as f64,
+                root_draw_batches: root_draw_batches as f64 / config.frames as f64,
+                filter_dispatches: filter_dispatches as f64 / config.frames as f64,
+                compact_filter_dispatches: compact_filter_dispatches as f64 / config.frames as f64,
+                reused_plan_ratio: reused_plans as f64 / config.frames as f64,
+                direct_output_ratio: direct_outputs as f64 / config.frames as f64,
+                history_copy_ratio: history_copies as f64 / config.frames as f64,
+            },
         ),
         profile,
     ))
@@ -616,7 +681,7 @@ fn verify_parity(
     config: Config,
     scenario: &Scenario,
 ) -> Result<(), Box<dyn Error>> {
-    let render = |mode| -> Result<Vec<u32>, Box<dyn Error>> {
+    let render = |mode| -> Result<Vec<u8>, Box<dyn Error>> {
         let mut renderer = WgpuRenderer::new(
             seed.device(),
             seed.queue(),
@@ -627,39 +692,46 @@ fn verify_parity(
         let mut renderer_config = renderer.incremental_render_config();
         renderer_config.mode = mode;
         renderer.set_incremental_render_config(renderer_config);
-        for frame in &scenario.frames {
-            renderer.render(frame);
+        let texture = output_texture(renderer.device(), config.width, config.height);
+        let mut checkpoints = Vec::new();
+        for (index, frame) in scenario.frames.iter().enumerate() {
+            renderer.render_to_wgpu_texture(frame, &texture)?;
+            if index == 0 || index + 1 == scenario.frames.len() {
+                checkpoints.extend(read_output_texture(
+                    renderer.device(),
+                    renderer.queue(),
+                    &texture,
+                    config.width,
+                    config.height,
+                )?);
+            }
         }
-        Ok(renderer.image().pixels)
+        Ok(checkpoints)
     };
     let auto = render(IncrementalRenderMode::Auto)?;
     let full = render(IncrementalRenderMode::ForceFull)?;
     if auto != full {
-        let pixel = auto
+        let byte = auto
             .iter()
             .zip(&full)
             .position(|(auto, full)| auto != full)
             .unwrap_or(0);
-        let x = pixel as u32 % config.width;
-        let y = pixel as u32 / config.width;
+        let pixels_per_checkpoint = config.width as usize * config.height as usize;
+        let pixel = byte / 4;
+        let checkpoint = pixel / pixels_per_checkpoint;
+        let local_pixel = pixel % pixels_per_checkpoint;
+        let x = local_pixel as u32 % config.width;
+        let y = local_pixel as u32 / config.width;
         return Err(format!(
-            "{} incremental output differs from full render at ({x}, {y}): auto={:#010x}, full={:#010x}",
-            scenario.name, auto[pixel], full[pixel]
+            "{} incremental output differs from full render at checkpoint {checkpoint}, ({x}, {y}): auto={}, full={}",
+            scenario.name, auto[byte], full[byte]
         )
         .into());
     }
     Ok(())
 }
 
-fn timing(
-    samples: &[Duration],
-    dirty_tiles: f64,
-    total_tiles: u32,
-    scanned_paths: f64,
-    filter_dispatches: f64,
-    compact_filter_dispatches: f64,
-    reused_plan_ratio: f64,
-) -> Timing {
+fn timing(samples: &[Duration], work: WorkMetrics) -> Timing {
     let mut milliseconds = samples
         .iter()
         .map(|sample| sample.as_secs_f64() * 1_000.0)
@@ -671,12 +743,16 @@ fn timing(
         average: milliseconds.iter().sum::<f64>() / milliseconds.len() as f64,
         p50: percentile(0.50),
         p95: percentile(0.95),
-        dirty_tiles,
-        total_tiles,
-        scanned_paths,
-        filter_dispatches,
-        compact_filter_dispatches,
-        reused_plan_ratio,
+        dirty_tiles: work.dirty_tiles,
+        total_tiles: work.total_tiles,
+        scanned_paths: work.scanned_paths,
+        draw_batches: work.draw_batches,
+        root_draw_batches: work.root_draw_batches,
+        filter_dispatches: work.filter_dispatches,
+        compact_filter_dispatches: work.compact_filter_dispatches,
+        reused_plan_ratio: work.reused_plan_ratio,
+        direct_output_ratio: work.direct_output_ratio,
+        history_copy_ratio: work.history_copy_ratio,
     }
 }
 
@@ -698,6 +774,61 @@ fn output_texture(device: &wgpu::Device, width: u32, height: u32) -> wgpu::Textu
             | wgpu::TextureUsages::TEXTURE_BINDING,
         view_formats: &[],
     })
+}
+
+fn read_output_texture(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    texture: &wgpu::Texture,
+    width: u32,
+    height: u32,
+) -> Result<Vec<u8>, Box<dyn Error>> {
+    let row_bytes = width as u64 * 4;
+    let padded_row_bytes = row_bytes.next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as u64);
+    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("tileink dirty tile benchmark parity readback"),
+        size: padded_row_bytes * height as u64,
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("tileink dirty tile benchmark parity copy"),
+    });
+    encoder.copy_texture_to_buffer(
+        texture.as_image_copy(),
+        wgpu::TexelCopyBufferInfo {
+            buffer: &buffer,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(padded_row_bytes as u32),
+                rows_per_image: None,
+            },
+        },
+        wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+    );
+    queue.submit([encoder.finish()]);
+    let (tx, rx) = mpsc::channel();
+    buffer
+        .slice(..)
+        .map_async(wgpu::MapMode::Read, move |result| {
+            let _ = tx.send(result);
+        });
+    device.poll(wgpu::PollType::wait_indefinitely())?;
+    rx.recv()??;
+
+    let mapped = buffer.slice(..).get_mapped_range()?;
+    let mut pixels = Vec::with_capacity((row_bytes * height as u64) as usize);
+    for row in 0..height as usize {
+        let start = row * padded_row_bytes as usize;
+        pixels.extend_from_slice(&mapped[start..start + row_bytes as usize]);
+    }
+    drop(mapped);
+    buffer.unmap();
+    Ok(pixels)
 }
 
 fn wait_for_gpu(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<(), Box<dyn Error>> {

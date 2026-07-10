@@ -2413,6 +2413,7 @@ impl Canvas {
             &mut surface_slots,
         );
         plan.ops = ops;
+        plan.coalesce_draw_batches();
         plan
     }
 

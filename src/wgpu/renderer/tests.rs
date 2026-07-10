@@ -62,6 +62,8 @@ fn retained_renderer_updates_only_changed_tiles_and_matches_full_render() {
     assert!(!incremental.incremental_render_stats().full_redraw);
     assert_eq!(incremental.incremental_render_stats().dirty_tiles, 1);
     assert!(incremental.incremental_render_stats().reused_compiled_plan);
+    assert_eq!(incremental.incremental_render_stats().draw_batches, 1);
+    assert_eq!(incremental.incremental_render_stats().root_draw_batches, 1);
     assert_eq!(incremental.incremental_render_stats().filter_dispatches, 1);
     assert_eq!(
         incremental
@@ -344,6 +346,203 @@ fn retained_renderer_copies_complete_history_to_external_texture() {
     assert_eq!(&bytes[4 * 8..4 * 9], &[30, 210, 70, 255]);
     assert_eq!(&bytes[4 * 24..4 * 25], &[20, 50, 220, 255]);
     assert_eq!(renderer.incremental_render_stats().dirty_tiles, 1);
+}
+
+#[test]
+fn high_damage_renders_directly_then_rebuilds_internal_history() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    fn frame(revision: u64, color: Color) -> Canvas {
+        let mut child = Canvas::new(48, 16, 1.0);
+        child.push_rect(Rect::new(0.0, 0.0, 48.0, 16.0), crate::Radius::ZERO, color);
+        let mut root = Canvas::new_retained(64, 16, 1.0, RetainedNodeId::for_owner(200));
+        root.append_retained_scene(
+            RetainedNodeId::for_owner(201),
+            revision,
+            std::sync::Arc::new(child),
+            (0.0, 0.0),
+        );
+        root
+    }
+
+    let first = frame(0, Color::from_rgb8(220, 30, 40));
+    let second = frame(1, Color::from_rgb8(30, 210, 70));
+    let mut renderer = new_test_renderer(64, 16, Color::TRANSPARENT);
+    let texture = create_test_target_texture(&renderer, 64, 16, "direct output state test");
+
+    renderer
+        .render_to_wgpu_texture(&first, &texture)
+        .expect("build first retained history");
+    assert_eq!(
+        renderer.incremental_render_stats().output_mode,
+        crate::IncrementalOutputMode::InternalHistory
+    );
+    assert!(renderer.incremental_render_stats().history_copied_to_output);
+
+    renderer
+        .render_to_wgpu_texture(&second, &texture)
+        .expect("render high-damage frame directly");
+    let stats = renderer.incremental_render_stats();
+    assert_eq!(
+        stats.full_redraw_reason,
+        Some(crate::FullRedrawReason::DirtyTileThreshold)
+    );
+    assert_eq!(
+        stats.output_mode,
+        crate::IncrementalOutputMode::DirectTransient
+    );
+    assert!(!stats.history_copied_to_output);
+    assert_eq!(
+        &read_texture_rgba8(renderer.device(), renderer.queue(), &texture, 64, 16)[4 * 8..4 * 9],
+        &[30, 210, 70, 255]
+    );
+
+    renderer
+        .render_to_wgpu_texture(&second, &texture)
+        .expect("keep direct mode through first low-damage frame");
+    assert_eq!(
+        renderer.incremental_render_stats().output_mode,
+        crate::IncrementalOutputMode::DirectTransient
+    );
+    assert_eq!(renderer.incremental_render_stats().changed_tiles, 0);
+    assert_eq!(
+        renderer.incremental_render_stats().dirty_tiles,
+        renderer.incremental_render_stats().total_tiles
+    );
+
+    renderer
+        .render_to_wgpu_texture(&second, &texture)
+        .expect("rebuild history after hysteresis");
+    assert_eq!(
+        renderer.incremental_render_stats().output_mode,
+        crate::IncrementalOutputMode::RebuildHistory
+    );
+    assert!(renderer.incremental_render_stats().history_copied_to_output);
+}
+
+#[test]
+fn retained_resize_skips_internal_history_resize_and_copy() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    fn frame(width: u32) -> Canvas {
+        let mut child = Canvas::new(width, 16, 1.0);
+        child.push_rect(
+            Rect::new(0.0, 0.0, width as f64, 16.0),
+            crate::Radius::ZERO,
+            Color::from_rgb8(40, 120, 220),
+        );
+        let mut root = Canvas::new_retained(width, 16, 1.0, RetainedNodeId::for_owner(205));
+        root.append_retained_scene(
+            RetainedNodeId::for_owner(206),
+            width as u64,
+            std::sync::Arc::new(child),
+            (0.0, 0.0),
+        );
+        root
+    }
+
+    let mut renderer = new_test_renderer(64, 16, Color::TRANSPARENT);
+    let texture = create_test_target_texture(&renderer, 64, 16, "resize direct output test");
+    renderer
+        .render_to_wgpu_texture(&frame(32), &texture)
+        .expect("initialize smaller history");
+    assert_eq!(renderer.readback_target.size(), (32, 16));
+
+    renderer
+        .render_to_wgpu_texture(&frame(64), &texture)
+        .expect("render resized frame directly");
+    let stats = renderer.incremental_render_stats();
+    assert_eq!(
+        stats.full_redraw_reason,
+        Some(crate::FullRedrawReason::SurfaceChanged)
+    );
+    assert_eq!(
+        stats.output_mode,
+        crate::IncrementalOutputMode::DirectTransient
+    );
+    assert!(!stats.history_copied_to_output);
+    assert_eq!(renderer.readback_target.size(), (32, 16));
+    let bytes = read_texture_rgba8(renderer.device(), renderer.queue(), &texture, 64, 16);
+    assert_eq!(&bytes[4 * 48..4 * 49], &[40, 120, 220, 255]);
+
+    renderer
+        .render_to_wgpu_texture(&frame(64), &texture)
+        .expect("remain direct for first stable frame");
+    assert_eq!(renderer.readback_target.size(), (32, 16));
+    renderer
+        .render_to_wgpu_texture(&frame(64), &texture)
+        .expect("rebuild resized history");
+    assert_eq!(
+        renderer.incremental_render_stats().output_mode,
+        crate::IncrementalOutputMode::RebuildHistory
+    );
+    assert_eq!(renderer.readback_target.size(), (64, 16));
+}
+
+#[test]
+fn persistent_external_texture_is_updated_in_place_without_history_copy() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    fn child(color: Color) -> std::sync::Arc<Canvas> {
+        let mut canvas = Canvas::new(16, 16, 1.0);
+        canvas.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
+        std::sync::Arc::new(canvas)
+    }
+
+    let root_id = RetainedNodeId::for_owner(210);
+    let left_id = RetainedNodeId::for_owner(211);
+    let right_id = RetainedNodeId::for_owner(212);
+    let blue = child(Color::from_rgb8(20, 50, 220));
+    let mut first = Canvas::new_retained(32, 16, 1.0, root_id);
+    first.append_retained_scene(left_id, 0, child(Color::from_rgb8(220, 30, 40)), (0.0, 0.0));
+    first.append_retained_scene(right_id, 0, blue.clone(), (16.0, 0.0));
+    let mut second = Canvas::new_retained(32, 16, 1.0, root_id);
+    second.append_retained_scene(left_id, 1, child(Color::from_rgb8(30, 210, 70)), (0.0, 0.0));
+    second.append_retained_scene(right_id, 0, blue, (16.0, 0.0));
+
+    let mut renderer = new_test_renderer(32, 16, Color::TRANSPARENT);
+    let texture = create_test_target_texture(&renderer, 32, 16, "persistent history test");
+    let history_id = crate::ExternalTextureHistoryId::new(1);
+    renderer
+        .render_to_persistent_wgpu_texture(&first, &texture, history_id)
+        .expect("initialize external history");
+    renderer
+        .render_to_persistent_wgpu_texture(&second, &texture, history_id)
+        .expect("incrementally update external history");
+
+    let stats = renderer.incremental_render_stats();
+    assert_eq!(
+        stats.output_mode,
+        crate::IncrementalOutputMode::ExternalHistory
+    );
+    assert!(!stats.full_redraw);
+    assert_eq!(stats.dirty_tiles, 1);
+    assert!(!stats.history_copied_to_output);
+    let bytes = read_texture_rgba8(renderer.device(), renderer.queue(), &texture, 32, 16);
+    assert_eq!(&bytes[4 * 8..4 * 9], &[30, 210, 70, 255]);
+    assert_eq!(&bytes[4 * 24..4 * 25], &[20, 50, 220, 255]);
+
+    let replacement = create_test_target_texture(&renderer, 32, 16, "replacement history test");
+    renderer
+        .render_to_persistent_wgpu_texture(
+            &second,
+            &replacement,
+            crate::ExternalTextureHistoryId::new(2),
+        )
+        .expect("new external identity must rebuild its contents");
+    assert_eq!(
+        renderer.incremental_render_stats().full_redraw_reason,
+        Some(crate::FullRedrawReason::FirstFrame)
+    );
+    let bytes = read_texture_rgba8(renderer.device(), renderer.queue(), &replacement, 32, 16);
+    assert_eq!(&bytes[4 * 8..4 * 9], &[30, 210, 70, 255]);
+    assert_eq!(&bytes[4 * 24..4 * 25], &[20, 50, 220, 255]);
 }
 
 #[test]
@@ -1407,6 +1606,14 @@ fn wgpu_renderer_profile_includes_cpu_prepare_and_gpu_stages() {
     assert_profile_has(&profile, "scan");
     assert_profile_has(&profile, "coarse");
     assert_profile_has(&profile, "fine");
+    let incremental = profile
+        .incremental_stats()
+        .expect("profile must capture incremental diagnostics");
+    assert_eq!(incremental.active_tiles, vec![0]);
+    assert_eq!(
+        incremental.active_tile_bounds,
+        vec![Bounds::new(0, 0, 16, 16)]
+    );
     if renderer
         .device()
         .features()
@@ -1425,6 +1632,42 @@ fn wgpu_renderer_profile_includes_cpu_prepare_and_gpu_stages() {
             "expected at least one GPU timestamp entry"
         );
     }
+}
+
+#[test]
+fn retained_profile_breaks_out_collection_materialization_and_damage() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut child = Canvas::new(16, 16, 1.0);
+    child.push_rect(
+        Rect::new(2.0, 2.0, 14.0, 14.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(30, 120, 220),
+    );
+    let mut canvas = Canvas::new_retained(16, 16, 1.0, RetainedNodeId::for_owner(300));
+    canvas.append_retained_scene(
+        RetainedNodeId::for_owner(301),
+        0,
+        std::sync::Arc::new(child),
+        (0.0, 0.0),
+    );
+    let mut renderer = new_test_renderer(16, 16, Color::TRANSPARENT);
+
+    renderer.start_profile();
+    renderer.render(&canvas);
+    let profile = renderer.end_profile().clone();
+
+    assert_profile_has(&profile, "retained.collect");
+    assert_profile_has(&profile, "retained.materialize");
+    assert_profile_has(&profile, "retained.damage");
+    let stats = profile
+        .incremental_stats()
+        .expect("incremental diagnostics");
+    assert!(!stats.materialized_scene_reused);
+    assert_eq!(stats.root_draw_batches, 1);
+    assert_eq!(stats.draw_batches, 1);
 }
 
 #[test]
@@ -4370,6 +4613,32 @@ fn read_ptcl_records(renderer: &Renderer, len: usize) -> Vec<PtclRecord> {
         renderer.lengths.tile_count,
         len,
     )
+}
+
+fn create_test_target_texture(
+    renderer: &Renderer,
+    width: u32,
+    height: u32,
+    label: &str,
+) -> ::wgpu::Texture {
+    renderer
+        .device()
+        .create_texture(&::wgpu::TextureDescriptor {
+            label: Some(label),
+            size: ::wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: ::wgpu::TextureDimension::D2,
+            format: ::wgpu::TextureFormat::Rgba8Unorm,
+            usage: ::wgpu::TextureUsages::STORAGE_BINDING
+                | ::wgpu::TextureUsages::COPY_DST
+                | ::wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        })
 }
 
 fn read_texture_rgba8(

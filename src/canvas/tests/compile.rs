@@ -18,6 +18,30 @@ fn execution_plan_fingerprint_ignores_buffer_only_changes() {
 }
 
 #[test]
+fn compile_coalesces_plain_draws_across_retained_scope_boundaries() {
+    let mut canvas = Canvas::new_retained(64, 64, 1.0, RetainedNodeId::for_owner(1));
+    for owner in 2..=4 {
+        canvas.with_retained_node(RetainedNodeId::for_owner(owner), 0, |scope| {
+            let x = ((owner - 2) * 16) as f64;
+            scope.push_rect(
+                Rect::new(x, 0.0, x + 12.0, 12.0),
+                Radius::ZERO,
+                rgb(40 * owner as u8, 80, 160),
+            );
+        });
+    }
+
+    let plan = canvas.compile(ROOT_COMMAND_LIST_ID);
+    match plan.ops.as_slice() {
+        [ExecOp::DrawBatch { draws, layer_stack }] => {
+            assert_eq!(draws.clone(), 0..3);
+            assert!(layer_stack.is_empty());
+        }
+        ops => panic!("plain retained scopes must not split GPU batches: {ops:#?}"),
+    }
+}
+
+#[test]
 fn compile_lowers_clip_blend_batches_in_user_order() {
     let mut canvas = test_scene();
     canvas.push_clip_layer(

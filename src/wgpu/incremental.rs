@@ -19,7 +19,17 @@ pub enum IncrementalRenderMode {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct IncrementalRenderConfig {
     pub mode: IncrementalRenderMode,
+    /// Dirty-tile ratio that selects the full fast path and transient direct output.
     pub full_redraw_ratio: f32,
+    /// Ratio below which transient direct rendering starts its history-rebuild countdown.
+    pub direct_render_exit_ratio: f32,
+    /// Consecutive low-damage frames required before rebuilding renderer-owned history.
+    pub direct_render_exit_frames: u32,
+    /// Capture exact active tile IDs and regions in [`IncrementalRenderStats`].
+    ///
+    /// Disabled by default so ordinary rendering does not allocate diagnostic vectors per frame.
+    /// The WGPU profiler captures them automatically for profiled frames regardless of this flag.
+    pub capture_active_tiles: bool,
     pub retained_texture_budget_bytes: u64,
 }
 
@@ -28,6 +38,9 @@ impl Default for IncrementalRenderConfig {
         Self {
             mode: IncrementalRenderMode::Auto,
             full_redraw_ratio: 0.7,
+            direct_render_exit_ratio: 0.4,
+            direct_render_exit_frames: 2,
+            capture_active_tiles: false,
             retained_texture_budget_bytes: if cfg!(target_arch = "wasm32") {
                 64 * 1024 * 1024
             } else {
@@ -44,6 +57,16 @@ impl IncrementalRenderConfig {
                 && self.full_redraw_ratio > 0.0
                 && self.full_redraw_ratio <= 1.0,
             "full_redraw_ratio must be in (0, 1]"
+        );
+        assert!(
+            self.direct_render_exit_ratio.is_finite()
+                && self.direct_render_exit_ratio >= 0.0
+                && self.direct_render_exit_ratio < self.full_redraw_ratio,
+            "direct_render_exit_ratio must be in [0, full_redraw_ratio)"
+        );
+        assert!(
+            self.direct_render_exit_frames > 0,
+            "direct_render_exit_frames must be greater than zero"
         );
         self
     }
@@ -62,14 +85,43 @@ pub enum FullRedrawReason {
     DirtyTileThreshold,
 }
 
+/// Destination strategy used for the most recent retained frame.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum IncrementalOutputMode {
+    /// Renderer-owned history was updated. A texture render may copy it to the caller afterward.
+    #[default]
+    InternalHistory,
+    /// A high-damage frame was rendered straight to a transient caller texture.
+    DirectTransient,
+    /// Renderer-owned history was rebuilt after transient direct rendering ended.
+    RebuildHistory,
+    /// A caller-owned persistent texture is itself the retained history.
+    ExternalHistory,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct IncrementalRenderStats {
     pub full_redraw: bool,
     pub full_redraw_reason: Option<FullRedrawReason>,
     pub dirty_tiles: u32,
     pub total_tiles: u32,
+    pub tiles_width: u32,
+    pub tiles_height: u32,
     pub dirty_ratio: f32,
+    /// Scene damage before a missing internal history forces full rendering.
+    pub changed_tiles: u32,
+    pub changed_ratio: f32,
+    pub output_mode: IncrementalOutputMode,
+    pub history_copied_to_output: bool,
+    /// Exact active tile IDs captured for profiler/diagnostic frames.
+    pub active_tiles: Vec<u32>,
+    /// Coalesced pixel-space regions for [`Self::active_tiles`].
+    pub active_tile_bounds: Vec<Bounds>,
     pub retained_nodes: u32,
+    /// Coarse/fine batches encoded across root and offscreen targets.
+    pub draw_batches: u32,
+    /// Coarse/fine batches that write the root target.
+    pub root_draw_batches: u32,
     pub reused_offscreen_surfaces: u32,
     pub rerendered_offscreen_surfaces: u32,
     pub rerendered_offscreen_tiles: u32,
@@ -80,6 +132,8 @@ pub struct IncrementalRenderStats {
     pub filter_dispatches: u32,
     /// Filter passes encoded as one workgroup per active dirty tile.
     pub compact_filter_dispatches: u32,
+    /// Whether the renderer reused the already-flattened retained scene.
+    pub materialized_scene_reused: bool,
     pub reused_compiled_plan: bool,
 }
 
@@ -368,8 +422,63 @@ fn append_cumsum_path(record: &crate::shared::path::PathRecord, plan: &mut GpuCu
 
 pub(crate) struct DamagePlan {
     pub(crate) tiles: DamageTiles,
+    pub(crate) changed_tiles: DamageTiles,
     pub(crate) stats: IncrementalRenderStats,
     pub(crate) frame: Option<RetainedFrame>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum TransientOutputDecision {
+    InternalHistory,
+    Direct,
+    RebuildHistory,
+}
+
+/// Tracks whether renderer-owned history is intentionally stale while full frames are sent
+/// straight to transient output textures.
+#[derive(Default)]
+pub(crate) struct TransientOutputState {
+    active: bool,
+    low_damage_frames: u32,
+}
+
+impl TransientOutputState {
+    pub(crate) fn reset(&mut self) {
+        *self = Self::default();
+    }
+
+    pub(crate) fn decide(
+        &mut self,
+        stats: &IncrementalRenderStats,
+        config: IncrementalRenderConfig,
+    ) -> TransientOutputDecision {
+        if config.mode == IncrementalRenderMode::ForceFull {
+            self.reset();
+            return TransientOutputDecision::InternalHistory;
+        }
+
+        if !self.active {
+            let initial_history_build =
+                stats.full_redraw_reason == Some(FullRedrawReason::FirstFrame);
+            if !initial_history_build && stats.changed_ratio >= config.full_redraw_ratio {
+                self.active = true;
+                self.low_damage_frames = 0;
+                return TransientOutputDecision::Direct;
+            }
+            return TransientOutputDecision::InternalHistory;
+        }
+
+        if stats.changed_ratio <= config.direct_render_exit_ratio {
+            self.low_damage_frames = self.low_damage_frames.saturating_add(1);
+            if self.low_damage_frames >= config.direct_render_exit_frames {
+                self.reset();
+                return TransientOutputDecision::RebuildHistory;
+            }
+        } else {
+            self.low_damage_frames = 0;
+        }
+        TransientOutputDecision::Direct
+    }
 }
 
 impl DamagePlan {
@@ -378,29 +487,32 @@ impl DamagePlan {
         bounds: impl IntoIterator<Item = Bounds>,
         config: IncrementalRenderConfig,
     ) {
-        if self.stats.full_redraw {
-            return;
-        }
         for bounds in bounds {
-            self.tiles.add_bounds(bounds);
+            self.changed_tiles.add_bounds(bounds);
         }
-        if self.tiles.total_tiles() > 0
-            && self.tiles.len() as f32 / self.tiles.total_tiles() as f32 >= config.full_redraw_ratio
-        {
+        self.stats.changed_tiles = self.changed_tiles.len();
+        self.stats.changed_ratio = tile_ratio(&self.changed_tiles);
+        if !self.stats.full_redraw && self.stats.changed_ratio >= config.full_redraw_ratio {
             let size = (
-                self.tiles.tiles_width * TILE_SIZE,
-                self.tiles.tiles_height * TILE_SIZE,
+                self.changed_tiles.tiles_width * TILE_SIZE,
+                self.changed_tiles.tiles_height * TILE_SIZE,
             );
             self.tiles = DamageTiles::full(size);
             self.stats.full_redraw = true;
             self.stats.full_redraw_reason = Some(FullRedrawReason::DirtyTileThreshold);
+        } else if !self.stats.full_redraw {
+            self.tiles = self.changed_tiles.clone();
         }
         self.stats.dirty_tiles = self.tiles.len();
-        self.stats.dirty_ratio = if self.stats.total_tiles == 0 {
-            0.0
-        } else {
-            self.stats.dirty_tiles as f32 / self.stats.total_tiles as f32
-        };
+        self.stats.dirty_ratio = tile_ratio(&self.tiles);
+    }
+}
+
+fn tile_ratio(tiles: &DamageTiles) -> f32 {
+    if tiles.total_tiles() == 0 {
+        0.0
+    } else {
+        tiles.len() as f32 / tiles.total_tiles() as f32
     }
 }
 
@@ -430,50 +542,70 @@ impl IncrementalState {
         let size = physical_size;
         let mut stats = IncrementalRenderStats {
             total_tiles: size.0.div_ceil(TILE_SIZE) * size.1.div_ceil(TILE_SIZE),
+            tiles_width: size.0.div_ceil(TILE_SIZE),
+            tiles_height: size.1.div_ceil(TILE_SIZE),
             retained_nodes: frame.as_ref().map_or(0, |frame| frame.nodes.len() as u32),
             ..Default::default()
         };
 
         let reason = self.full_reason(frame.as_ref(), config.mode, history_valid);
-        let mut tiles = if reason.is_some() {
-            DamageTiles::full(size)
-        } else {
-            let mut tiles = DamageTiles::new(size);
-            let current = frame.as_ref().expect("incremental frame exists");
-            diff_frames(
-                self.previous.as_ref().expect("previous frame exists"),
-                current,
-                &mut tiles,
-            );
-            for bounds in &current.invalidated_bounds {
-                tiles.add_bounds(*bounds);
-            }
-            tiles
-        };
-
-        let threshold_exceeded = reason.is_none()
-            && tiles.total_tiles() > 0
-            && tiles.len() as f32 / tiles.total_tiles() as f32 >= config.full_redraw_ratio;
+        let changed_tiles = self.scene_damage(frame.as_ref(), size);
+        let threshold_exceeded =
+            reason.is_none() && tile_ratio(&changed_tiles) >= config.full_redraw_ratio;
         let reason = if threshold_exceeded {
-            tiles = DamageTiles::full(size);
             Some(FullRedrawReason::DirtyTileThreshold)
         } else {
             reason
+        };
+        let tiles = if reason.is_some() {
+            DamageTiles::full(size)
+        } else {
+            changed_tiles.clone()
         };
 
         stats.full_redraw = reason.is_some();
         stats.full_redraw_reason = reason;
         stats.dirty_tiles = tiles.len();
-        stats.dirty_ratio = if stats.total_tiles == 0 {
-            0.0
-        } else {
-            stats.dirty_tiles as f32 / stats.total_tiles as f32
-        };
+        stats.dirty_ratio = tile_ratio(&tiles);
+        stats.changed_tiles = changed_tiles.len();
+        stats.changed_ratio = tile_ratio(&changed_tiles);
         DamagePlan {
             tiles,
+            changed_tiles,
             stats,
             frame,
         }
+    }
+
+    fn scene_damage(
+        &self,
+        frame: Option<&RetainedFrame>,
+        physical_size: (u32, u32),
+    ) -> DamageTiles {
+        let Some(current) = frame else {
+            return DamageTiles::full(physical_size);
+        };
+        let Some(previous) = self.previous.as_ref() else {
+            return DamageTiles::full(physical_size);
+        };
+        if self.renderer_state_invalid
+            || previous.root != current.root
+            || previous.logical_size != current.logical_size
+            || previous.physical_size != current.physical_size
+            || previous.scale_bits != current.scale_bits
+            || !previous.complete
+            || !current.complete
+            || current.invalidate_all
+        {
+            return DamageTiles::full(physical_size);
+        }
+
+        let mut tiles = DamageTiles::new(physical_size);
+        diff_frames(previous, current, &mut tiles);
+        for bounds in &current.invalidated_bounds {
+            tiles.add_bounds(*bounds);
+        }
+        tiles
     }
 
     pub(crate) fn commit(&mut self, frame: Option<RetainedFrame>) {
@@ -496,7 +628,7 @@ impl IncrementalState {
         if self.renderer_state_invalid && self.previous.is_some() {
             return Some(FullRedrawReason::RendererStateChanged);
         }
-        if !history_valid || self.previous.is_none() {
+        if self.previous.is_none() {
             return Some(FullRedrawReason::FirstFrame);
         }
         let previous = self.previous.as_ref().unwrap();
@@ -519,6 +651,9 @@ impl IncrementalState {
         }
         if frame.invalidate_all {
             return Some(FullRedrawReason::ExplicitInvalidation);
+        }
+        if !history_valid {
+            return Some(FullRedrawReason::FirstFrame);
         }
         None
     }
@@ -749,6 +884,76 @@ mod tests {
             Some(FullRedrawReason::DirtyTileThreshold)
         );
         assert_eq!(plan.stats.dirty_tiles, plan.stats.total_tiles);
+    }
+
+    #[test]
+    fn stale_history_preserves_scene_damage_for_output_strategy() {
+        let old = frame(&[(2, 0, Bounds::new(0, 0, 16, 16))]);
+        let new = frame(&[(2, 1, Bounds::new(16, 0, 32, 16))]);
+        let mut state = IncrementalState {
+            previous: Some(old),
+            renderer_state_invalid: false,
+        };
+
+        let plan = state.plan(
+            Some(new),
+            (128, 64),
+            IncrementalRenderConfig::default(),
+            false,
+        );
+
+        assert_eq!(
+            plan.stats.full_redraw_reason,
+            Some(FullRedrawReason::FirstFrame)
+        );
+        assert_eq!(plan.stats.dirty_tiles, plan.stats.total_tiles);
+        assert_eq!(plan.stats.changed_tiles, 2);
+    }
+
+    #[test]
+    fn transient_output_uses_hysteresis_before_rebuilding_history() {
+        let config = IncrementalRenderConfig::default();
+        let stats = |changed_ratio, reason| IncrementalRenderStats {
+            changed_ratio,
+            full_redraw_reason: reason,
+            ..Default::default()
+        };
+        let mut state = TransientOutputState::default();
+
+        assert_eq!(
+            state.decide(&stats(1.0, Some(FullRedrawReason::SurfaceChanged)), config),
+            TransientOutputDecision::Direct
+        );
+        assert_eq!(
+            state.decide(&stats(0.1, Some(FullRedrawReason::FirstFrame)), config),
+            TransientOutputDecision::Direct
+        );
+        assert_eq!(
+            state.decide(&stats(0.5, Some(FullRedrawReason::FirstFrame)), config),
+            TransientOutputDecision::Direct
+        );
+        assert_eq!(
+            state.decide(&stats(0.0, Some(FullRedrawReason::FirstFrame)), config),
+            TransientOutputDecision::Direct
+        );
+        assert_eq!(
+            state.decide(&stats(0.0, Some(FullRedrawReason::FirstFrame)), config),
+            TransientOutputDecision::RebuildHistory
+        );
+    }
+
+    #[test]
+    fn first_frame_builds_history_instead_of_starting_direct_mode() {
+        let mut state = TransientOutputState::default();
+        let stats = IncrementalRenderStats {
+            changed_ratio: 1.0,
+            full_redraw_reason: Some(FullRedrawReason::FirstFrame),
+            ..Default::default()
+        };
+        assert_eq!(
+            state.decide(&stats, IncrementalRenderConfig::default()),
+            TransientOutputDecision::InternalHistory
+        );
     }
 
     #[test]

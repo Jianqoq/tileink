@@ -17,10 +17,11 @@ mod scan;
 mod target;
 
 pub use incremental::{
-    FullRedrawReason, IncrementalRenderConfig, IncrementalRenderMode, IncrementalRenderStats,
+    FullRedrawReason, IncrementalOutputMode, IncrementalRenderConfig, IncrementalRenderMode,
+    IncrementalRenderStats,
 };
 pub use profile::{
     WgpuRenderProfile, WgpuRenderProfileEntry, WgpuRenderProfileEventSummary,
     WgpuRenderProfileReport,
 };
-pub use renderer::{Renderer, RendererOptions, WgpuTextureRenderError};
+pub use renderer::{ExternalTextureHistoryId, Renderer, RendererOptions, WgpuTextureRenderError};

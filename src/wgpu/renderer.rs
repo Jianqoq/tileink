@@ -50,8 +50,8 @@ use super::filter_work::{FilterTileWork, FilterTileWorkArena};
 use super::fine::{WgpuFinePipeline, premul_clear_color};
 use super::image_resources::large_texture_table_len;
 use super::incremental::{
-    ActiveScanPlan, DamagePlan, DamageTiles, IncrementalRenderConfig, IncrementalRenderStats,
-    IncrementalState,
+    ActiveScanPlan, DamagePlan, DamageTiles, IncrementalOutputMode, IncrementalRenderConfig,
+    IncrementalRenderStats, IncrementalState, TransientOutputDecision, TransientOutputState,
 };
 use super::lazy::PipelineCompilationTracker;
 use super::profile::{WgpuRenderProfile, WgpuRenderProfiler, profile_cpu, start_cpu_scope};
@@ -84,6 +84,23 @@ pub enum WgpuTextureRenderError {
         dimension: ::wgpu::TextureDimension,
         sample_count: u32,
     },
+}
+
+/// Stable identity for a caller-owned texture whose pixels persist between retained frames.
+///
+/// Reuse an ID only while passing the same texture with unmodified contents. Allocate a new ID
+/// after recreating, resizing, clearing, or otherwise mutating that texture outside tileink.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct ExternalTextureHistoryId(u64);
+
+impl ExternalTextureHistoryId {
+    pub const fn new(id: u64) -> Self {
+        Self(id)
+    }
+
+    pub const fn get(self) -> u64 {
+        self.0
+    }
 }
 
 impl std::fmt::Display for WgpuTextureRenderError {
@@ -165,6 +182,8 @@ pub struct Renderer {
     active_tiles: Option<DamageTiles>,
     filter_tile_work_arena: FilterTileWorkArena,
     history_valid: bool,
+    history_owner: HistoryOwner,
+    transient_output: TransientOutputState,
     retained_surfaces: RetainedSurfaceCache,
     rendering_frame: Option<RetainedFrame>,
     image_resources: ImageResourceStore,
@@ -201,7 +220,21 @@ enum SelectedScene<'a> {
     Retained {
         scene: SharedArc<Canvas>,
         frame: RetainedFrame,
+        materialized_reused: bool,
     },
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum HistoryOwner {
+    #[default]
+    Internal,
+    External(ExternalTextureHistoryId),
+}
+
+#[derive(Clone, Copy)]
+enum RequestedTextureHistory {
+    Transient,
+    External(ExternalTextureHistoryId),
 }
 
 impl SelectedScene<'_> {
@@ -224,6 +257,16 @@ impl SelectedScene<'_> {
             Self::Borrowed(_) => None,
             Self::Retained { scene, .. } => Some(SharedArc::as_ptr(scene)),
         }
+    }
+
+    fn materialized_reused(&self) -> bool {
+        matches!(
+            self,
+            Self::Retained {
+                materialized_reused: true,
+                ..
+            }
+        )
     }
 }
 
@@ -333,6 +376,8 @@ impl Renderer {
             active_tiles: None,
             filter_tile_work_arena: FilterTileWorkArena::default(),
             history_valid: false,
+            history_owner: HistoryOwner::Internal,
+            transient_output: TransientOutputState::default(),
             retained_surfaces: RetainedSurfaceCache::new(
                 IncrementalRenderConfig::default().retained_texture_budget_bytes,
             ),
@@ -460,7 +505,8 @@ impl Renderer {
     /// GPU timestamp entries are merged by `poll_profile` after the device has made the mapped
     /// readback buffers available. This keeps `end_profile` off the GPU completion path.
     pub fn end_profile(&mut self) -> &WgpuRenderProfile {
-        self.profiler.end(&self.device, &self.queue)
+        self.profiler
+            .end(&self.device, &self.queue, self.incremental_stats.clone())
     }
 
     /// Polls pending async GPU timestamp readbacks without blocking and returns the latest profile.
@@ -524,18 +570,22 @@ impl Renderer {
     ///
     /// This is useful for tests that need to verify the native WGPU path directly.
     pub fn render_native(&mut self, canvas: &Canvas) -> bool {
+        self.set_history_owner(HistoryOwner::Internal);
+        self.transient_output.reset();
         let selected = self.select_scene(canvas);
         let frame = selected.frame();
         let retained_ptr = selected.retained_ptr();
+        let materialized_reused = selected.materialized_reused();
         let scene = selected.scene();
         let plan = self.begin_incremental_frame(frame, scene);
+        self.incremental_stats.materialized_scene_reused = materialized_reused;
         let has_work = !plan.tiles.is_empty();
         if has_work && self.scene_needs_prepare(retained_ptr, false) {
             self.prepare_scene(scene);
             self.mark_scene_prepared(retained_ptr, false);
         }
         let rendered = !has_work || self.render_prepared_native(scene);
-        self.finish_incremental_frame(plan, rendered);
+        self.finish_incremental_frame(plan, rendered, true);
         rendered
     }
 
@@ -549,23 +599,27 @@ impl Renderer {
         font_system: &mut TextFontSystem,
         text_context: &mut TextContext,
     ) -> bool {
+        self.set_history_owner(HistoryOwner::Internal);
+        self.transient_output.reset();
         let selected = self.select_scene(canvas);
         let frame = selected.frame();
         let retained_ptr = selected.retained_ptr();
+        let materialized_reused = selected.materialized_reused();
         let scene = selected.scene();
         let plan = self.begin_incremental_frame(frame, scene);
+        self.incremental_stats.materialized_scene_reused = materialized_reused;
         let has_work = !plan.tiles.is_empty();
         if has_work && self.scene_needs_prepare(retained_ptr, true) {
             self.prepare_scene_with_text(scene, font_system, text_context);
             self.mark_scene_prepared(retained_ptr, true);
         }
         let rendered = !has_work || self.render_prepared_native(scene);
-        self.finish_incremental_frame(plan, rendered);
+        self.finish_incremental_frame(plan, rendered, true);
         rendered
     }
 
     fn select_scene<'a>(&mut self, canvas: &'a Canvas) -> SelectedScene<'a> {
-        let Some(frame) = canvas.retained_frame() else {
+        let Some(frame) = profile_cpu("retained.collect", || canvas.retained_frame()) else {
             self.prepared_retained_scene = None;
             return SelectedScene::Borrowed(canvas);
         };
@@ -577,11 +631,13 @@ impl Renderer {
             return SelectedScene::Retained {
                 scene: cached.scene.clone(),
                 frame,
+                materialized_reused: true,
             };
         }
 
-        let scene =
-            SharedArc::new(canvas.materialize_retained_scenes(&mut self.retained_scene_cache));
+        let scene = profile_cpu("retained.materialize", || {
+            SharedArc::new(canvas.materialize_retained_scenes(&mut self.retained_scene_cache))
+        });
         self.retained_scene_cache.retain_frame(&frame);
         if frame.complete {
             self.retained_materialized = Some(CachedMaterializedScene {
@@ -589,7 +645,11 @@ impl Renderer {
                 scene: scene.clone(),
             });
         }
-        SelectedScene::Retained { scene, frame }
+        SelectedScene::Retained {
+            scene,
+            frame,
+            materialized_reused: false,
+        }
     }
 
     fn begin_incremental_frame(
@@ -601,16 +661,24 @@ impl Renderer {
             self.history_valid = false;
         }
         let physical_size = scene.physical_size();
-        let mut plan = self.incremental_state.plan(
-            frame,
-            physical_size,
-            self.incremental_config,
-            self.history_valid,
-        );
-        if !plan.stats.full_redraw {
-            let mut dependent = plan.tiles.coalesced_rects(physical_size);
-            scene.propagate_damage(&mut dependent);
+        let mut plan = profile_cpu("retained.damage", || {
+            self.incremental_state.plan(
+                frame,
+                physical_size,
+                self.incremental_config,
+                self.history_valid,
+            )
+        });
+        if plan.changed_tiles.len() < plan.changed_tiles.total_tiles() {
+            let mut dependent = plan.changed_tiles.coalesced_rects(physical_size);
+            profile_cpu("retained.damage.propagate", || {
+                scene.propagate_damage(&mut dependent)
+            });
             plan.include_dependent_bounds(dependent, self.incremental_config);
+        }
+        if self.incremental_config.capture_active_tiles || self.profiler.is_active() {
+            plan.stats.active_tiles = plan.tiles.list().to_vec();
+            plan.stats.active_tile_bounds = plan.tiles.coalesced_rects(physical_size);
         }
         self.incremental_stats = plan.stats.clone();
         self.active_tiles = (!plan.stats.full_redraw).then(|| plan.tiles.clone());
@@ -618,7 +686,12 @@ impl Renderer {
         plan
     }
 
-    fn finish_incremental_frame(&mut self, plan: DamagePlan, rendered: bool) {
+    fn finish_incremental_frame(
+        &mut self,
+        plan: DamagePlan,
+        rendered: bool,
+        history_updated: bool,
+    ) {
         let backdrop_history_valid = !self.retained_surfaces.take_backdrop_evicted();
         if rendered {
             if let Some(frame) = &plan.frame {
@@ -626,12 +699,21 @@ impl Renderer {
                 self.retained_surfaces.retain_nodes(&nodes);
             }
             self.incremental_state.commit(plan.frame);
-            self.history_valid = backdrop_history_valid;
+            self.history_valid = history_updated && backdrop_history_valid;
         } else {
             self.history_valid = false;
         }
         self.active_tiles = None;
         self.rendering_frame = None;
+    }
+
+    fn set_history_owner(&mut self, owner: HistoryOwner) {
+        if self.history_owner == owner {
+            return;
+        }
+        self.history_owner = owner;
+        self.history_valid = false;
+        self.transient_output.reset();
     }
 
     fn retained_surface_meta(
@@ -1398,6 +1480,11 @@ impl Renderer {
     ) -> bool {
         if draws.start >= draws.end {
             return true;
+        }
+        self.incremental_stats.draw_batches = self.incremental_stats.draw_batches.saturating_add(1);
+        if target == WgpuRenderTargetId::Main {
+            self.incremental_stats.root_draw_batches =
+                self.incremental_stats.root_draw_batches.saturating_add(1);
         }
         self.coarse_and_fine_batch_to(
             commands,
@@ -2988,17 +3075,21 @@ impl Renderer {
         canvas: &Canvas,
         options: &RenderOptions,
     ) -> RenderDebugCapture {
+        self.set_history_owner(HistoryOwner::Internal);
+        self.transient_output.reset();
         let mode = self.incremental_config.mode;
         self.incremental_config.mode = super::incremental::IncrementalRenderMode::ForceFull;
         let selected = self.select_scene(canvas);
         let frame = selected.frame();
         let retained_ptr = selected.retained_ptr();
+        let materialized_reused = selected.materialized_reused();
         let scene = selected.scene();
         let plan = self.begin_incremental_frame(frame, scene);
+        self.incremental_stats.materialized_scene_reused = materialized_reused;
         self.prepare_scene(scene);
         self.mark_scene_prepared(retained_ptr, false);
         let rendered_native = self.render_prepared_tile_plan(scene);
-        self.finish_incremental_frame(plan, rendered_native);
+        self.finish_incremental_frame(plan, rendered_native, true);
         self.incremental_config.mode = mode;
         if rendered_native {
             self.size = scene.physical_size();
@@ -3129,7 +3220,27 @@ impl Renderer {
         canvas: &Canvas,
         dst: &::wgpu::Texture,
     ) -> Result<(), WgpuTextureRenderError> {
-        self.render_native_to_wgpu_texture(canvas, dst)?;
+        self.render_native_to_wgpu_texture(canvas, dst, RequestedTextureHistory::Transient)?;
+        self.last_frame_used_native = true;
+        Ok(())
+    }
+
+    /// Renders into a caller-owned texture that remains intact between retained frames.
+    ///
+    /// The destination itself becomes active root history, so this path does not update or resize
+    /// renderer-owned root history and does not issue a full-surface presentation copy.
+    /// `history_id` must change if the destination is recreated or externally modified.
+    pub fn render_to_persistent_wgpu_texture(
+        &mut self,
+        canvas: &Canvas,
+        dst: &::wgpu::Texture,
+        history_id: ExternalTextureHistoryId,
+    ) -> Result<(), WgpuTextureRenderError> {
+        self.render_native_to_wgpu_texture(
+            canvas,
+            dst,
+            RequestedTextureHistory::External(history_id),
+        )?;
         self.last_frame_used_native = true;
         Ok(())
     }
@@ -3141,7 +3252,33 @@ impl Renderer {
         text_context: &mut TextContext,
         dst: &::wgpu::Texture,
     ) -> Result<(), WgpuTextureRenderError> {
-        self.render_native_with_text_to_wgpu_texture(canvas, font_system, text_context, dst)?;
+        self.render_native_with_text_to_wgpu_texture(
+            canvas,
+            font_system,
+            text_context,
+            dst,
+            RequestedTextureHistory::Transient,
+        )?;
+        self.last_frame_used_native = true;
+        Ok(())
+    }
+
+    /// Text-capable variant of [`Self::render_to_persistent_wgpu_texture`].
+    pub fn render_with_text_to_persistent_wgpu_texture(
+        &mut self,
+        canvas: &Canvas,
+        font_system: &mut TextFontSystem,
+        text_context: &mut TextContext,
+        dst: &::wgpu::Texture,
+        history_id: ExternalTextureHistoryId,
+    ) -> Result<(), WgpuTextureRenderError> {
+        self.render_native_with_text_to_wgpu_texture(
+            canvas,
+            font_system,
+            text_context,
+            dst,
+            RequestedTextureHistory::External(history_id),
+        )?;
         self.last_frame_used_native = true;
         Ok(())
     }
@@ -3150,10 +3287,17 @@ impl Renderer {
         &mut self,
         canvas: &Canvas,
         dst: &::wgpu::Texture,
+        history: RequestedTextureHistory,
     ) -> Result<(), WgpuTextureRenderError> {
-        self.render_native_to_wgpu_texture_with_prepare(canvas, dst, false, |renderer, canvas| {
-            renderer.prepare_scene(canvas);
-        })
+        self.render_native_to_wgpu_texture_with_prepare(
+            canvas,
+            dst,
+            false,
+            history,
+            |renderer, canvas| {
+                renderer.prepare_scene(canvas);
+            },
+        )
     }
 
     fn render_native_with_text_to_wgpu_texture(
@@ -3162,10 +3306,17 @@ impl Renderer {
         font_system: &mut TextFontSystem,
         text_context: &mut TextContext,
         dst: &::wgpu::Texture,
+        history: RequestedTextureHistory,
     ) -> Result<(), WgpuTextureRenderError> {
-        self.render_native_to_wgpu_texture_with_prepare(canvas, dst, true, |renderer, canvas| {
-            renderer.prepare_scene_with_text(canvas, font_system, text_context);
-        })
+        self.render_native_to_wgpu_texture_with_prepare(
+            canvas,
+            dst,
+            true,
+            history,
+            |renderer, canvas| {
+                renderer.prepare_scene_with_text(canvas, font_system, text_context);
+            },
+        )
     }
 
     fn render_native_to_wgpu_texture_with_prepare(
@@ -3173,6 +3324,7 @@ impl Renderer {
         canvas: &Canvas,
         dst: &::wgpu::Texture,
         uses_text: bool,
+        requested_history: RequestedTextureHistory,
         prepare: impl FnOnce(&mut Self, &Canvas),
     ) -> Result<(), WgpuTextureRenderError> {
         self.validate_wgpu_storage_texture_destination(
@@ -3183,17 +3335,73 @@ impl Renderer {
         let selected = self.select_scene(canvas);
         let frame = selected.frame();
         let retained_ptr = selected.retained_ptr();
+        let materialized_reused = selected.materialized_reused();
         let is_retained = frame.is_some();
-        if is_retained && !dst.usage().contains(::wgpu::TextureUsages::COPY_DST) {
-            return Err(WgpuTextureRenderError::DestinationUsageMissing(dst.usage()));
-        }
-        if !is_retained {
-            self.root_target_texture = Some(dst.clone());
-            self.root_target_view =
-                Some(dst.create_view(&::wgpu::TextureViewDescriptor::default()));
+        let history_owner = match (is_retained, requested_history) {
+            (true, RequestedTextureHistory::External(id)) => HistoryOwner::External(id),
+            _ => HistoryOwner::Internal,
+        };
+        self.set_history_owner(history_owner);
+        let transient_without_copy = is_retained
+            && matches!(requested_history, RequestedTextureHistory::Transient)
+            && !dst.usage().contains(::wgpu::TextureUsages::COPY_DST);
+        if transient_without_copy {
+            // A swapchain without COPY_DST cannot receive internal history. Keep the retained
+            // scene baseline for damage statistics, but force full direct output for correctness.
+            self.history_valid = false;
+            self.transient_output.reset();
         }
         let scene = selected.scene();
         let plan = self.begin_incremental_frame(frame, scene);
+        self.incremental_stats.materialized_scene_reused = materialized_reused;
+        let (output_mode, history_updated, copy_history) = if !is_retained {
+            self.transient_output.reset();
+            (IncrementalOutputMode::DirectTransient, false, false)
+        } else {
+            match requested_history {
+                RequestedTextureHistory::External(_) => {
+                    (IncrementalOutputMode::ExternalHistory, true, false)
+                }
+                RequestedTextureHistory::Transient if transient_without_copy => {
+                    (IncrementalOutputMode::DirectTransient, false, false)
+                }
+                RequestedTextureHistory::Transient => {
+                    match self
+                        .transient_output
+                        .decide(&plan.stats, self.incremental_config)
+                    {
+                        TransientOutputDecision::Direct => {
+                            (IncrementalOutputMode::DirectTransient, false, false)
+                        }
+                        TransientOutputDecision::RebuildHistory => {
+                            (IncrementalOutputMode::RebuildHistory, true, true)
+                        }
+                        TransientOutputDecision::InternalHistory => {
+                            (IncrementalOutputMode::InternalHistory, true, true)
+                        }
+                    }
+                }
+            }
+        };
+        let render_direct = matches!(
+            output_mode,
+            IncrementalOutputMode::DirectTransient | IncrementalOutputMode::ExternalHistory
+        );
+        if render_direct {
+            self.root_target_texture = Some(dst.clone());
+            self.root_target_view =
+                Some(dst.create_view(&::wgpu::TextureViewDescriptor::default()));
+        } else {
+            // A direct resize deliberately leaves internal history at its old allocation. The
+            // retained scene may still be prepared when hysteresis later chooses RebuildHistory,
+            // so target allocation cannot be coupled only to scene-buffer preparation.
+            self.readback_target.resize(
+                &self.device,
+                scene.physical_width(),
+                scene.physical_height(),
+            );
+        }
+        self.incremental_stats.output_mode = output_mode;
         let has_work = !plan.tiles.is_empty();
         if has_work && self.scene_needs_prepare(retained_ptr, uses_text) {
             prepare(self, scene);
@@ -3202,11 +3410,12 @@ impl Renderer {
         let rendered = !has_work || self.render_prepared_tile_plan(scene);
         self.root_target_view = None;
         self.root_target_texture = None;
-        self.finish_incremental_frame(plan, rendered);
+        self.finish_incremental_frame(plan, rendered, history_updated);
         if rendered {
             self.size = scene.physical_size();
-            if is_retained {
+            if copy_history {
                 self.copy_history_to(dst);
+                self.incremental_stats.history_copied_to_output = true;
             }
             return Ok(());
         }
