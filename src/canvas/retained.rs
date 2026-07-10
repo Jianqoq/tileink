@@ -194,6 +194,10 @@ impl Canvas {
             (self.scale_factor - scene.scale_factor).abs() <= f32::EPSILON,
             "cannot append canvases with different scale factors"
         );
+        if !self.is_retained() {
+            self.append(&scene, pos);
+            return;
+        }
         let offset = SceneOffset::new(self.physical_point(pos.into()));
         self.current_command_list_mut()
             .commands
@@ -831,6 +835,33 @@ mod tests {
         assert_eq!(frame.nodes[0].id, child);
         assert_eq!(frame.nodes[0].revision, SceneRevision::new(7));
         assert_eq!(frame.nodes[0].bounds, Bounds::new(12, 23, 28, 40));
+    }
+
+    #[test]
+    fn retained_apis_fall_back_to_flat_commands_on_an_immediate_canvas() {
+        let mut canvas = Canvas::new(64, 64, 1.0);
+        assert!(!canvas.is_retained());
+        canvas.append_retained_scene(
+            RetainedNodeId::for_owner(2),
+            SceneRevision::INITIAL,
+            scene(Color::WHITE),
+            (4.0, 5.0),
+        );
+        canvas.push_retained_clip_sdf_rect_layer(
+            RetainedLayerKey::new(RetainedNodeId::for_owner(3), SceneRevision::INITIAL),
+            Rect::new(0.0, 0.0, 32.0, 32.0),
+            Radius::ZERO,
+        );
+        canvas.pop_layer();
+
+        assert!(!canvas.has_retained_scenes());
+        assert!(matches!(
+            canvas.command_lists[canvas.root_commands]
+                .commands
+                .as_slice(),
+            [Command::Draw(_), Command::Layer { retained: None, .. }]
+        ));
+        assert!(canvas.retained_frame().is_none());
     }
 
     #[test]

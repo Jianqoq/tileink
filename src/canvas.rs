@@ -492,6 +492,11 @@ impl Canvas {
         (self.logical_width, self.logical_height)
     }
 
+    /// Returns whether this canvas records stable retained scene history.
+    pub fn is_retained(&self) -> bool {
+        self.retained_root.is_some()
+    }
+
     pub fn physical_width(&self) -> u32 {
         scaled_canvas_extent(self.logical_width, self.scale_factor)
     }
@@ -911,6 +916,7 @@ impl Canvas {
         layer: Layer,
         kind: LayerKind,
     ) {
+        let retained = if self.is_retained() { retained } else { None };
         let children = self.push_child_command_list();
         self.current_command_list_mut()
             .commands
@@ -930,6 +936,7 @@ impl Canvas {
         layer: Mask,
         mask_commands: CommandListId,
     ) {
+        let retained = if self.is_retained() { retained } else { None };
         let content = self.push_child_command_list();
         self.current_command_list_mut()
             .commands
