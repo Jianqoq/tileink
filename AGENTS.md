@@ -26,6 +26,7 @@
 - Every new feature must include semantic tests and edge cases.
 - If a suspected bug is found while coding, add a focused test first, then fix it.
 - Temporary diagnostic tests are allowed but must be removed before finishing unless they become permanent regression tests.
+- All tests must run in single thread
 
 ## Debug
 
