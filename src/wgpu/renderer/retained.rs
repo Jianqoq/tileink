@@ -1,0 +1,371 @@
+//! Retained-scene lifecycle and incremental history ownership.
+//!
+//! Keeping this state together prevents the GPU executor from independently mutating damage,
+//! scene, surface, and presentation history that must advance as one transaction per frame.
+
+use std::{collections::HashSet, sync::Arc};
+
+use crate::{
+    Canvas,
+    canvas::{RetainedFrame, RetainedSceneCache, RetainedSurfaceId},
+    shared::bounds::Bounds,
+};
+
+use super::super::{
+    incremental::{
+        DamagePlan, DamageTiles, IncrementalRenderConfig, IncrementalRenderStats, IncrementalState,
+        TransientOutputDecision, TransientOutputState,
+    },
+    retained_surfaces::{
+        RetainedSurface, RetainedSurfaceCache, RetainedSurfaceKind, RetainedSurfaceMeta,
+    },
+};
+use super::{ExternalTextureHistoryId, profile_cpu};
+
+/// Coordinates CPU-side retained state while [`super::Renderer`] executes the resulting GPU work.
+pub(super) struct RetainedRenderState {
+    scene_cache: RetainedSceneCache,
+    materialized: Option<CachedMaterializedScene>,
+    prepared_scene: Option<*const Canvas>,
+    prepared_uses_text: bool,
+    config: IncrementalRenderConfig,
+    incremental: IncrementalState,
+    stats: IncrementalRenderStats,
+    active_tiles: Option<DamageTiles>,
+    history_valid: bool,
+    history_owner: HistoryOwner,
+    transient_output: TransientOutputState,
+    surfaces: RetainedSurfaceCache,
+    rendering_frame: Option<RetainedFrame>,
+    dirty_backdrop_nodes: HashSet<crate::RetainedNodeId>,
+}
+
+impl RetainedRenderState {
+    pub(super) fn new(config: IncrementalRenderConfig) -> Self {
+        Self {
+            scene_cache: RetainedSceneCache::default(),
+            materialized: None,
+            prepared_scene: None,
+            prepared_uses_text: false,
+            config,
+            incremental: IncrementalState::default(),
+            stats: IncrementalRenderStats::default(),
+            active_tiles: None,
+            history_valid: false,
+            history_owner: HistoryOwner::Internal,
+            transient_output: TransientOutputState::default(),
+            surfaces: RetainedSurfaceCache::new(config.retained_texture_budget_bytes),
+            rendering_frame: None,
+            dirty_backdrop_nodes: HashSet::new(),
+        }
+    }
+
+    pub(super) fn config(&self) -> IncrementalRenderConfig {
+        self.config
+    }
+
+    pub(super) fn set_config(&mut self, config: IncrementalRenderConfig) {
+        self.config = config.validate();
+        self.surfaces
+            .set_budget(self.config.retained_texture_budget_bytes);
+    }
+
+    pub(super) fn replace_mode(
+        &mut self,
+        mode: super::super::incremental::IncrementalRenderMode,
+    ) -> super::super::incremental::IncrementalRenderMode {
+        std::mem::replace(&mut self.config.mode, mode)
+    }
+
+    pub(super) fn stats(&self) -> &IncrementalRenderStats {
+        &self.stats
+    }
+
+    pub(super) fn stats_mut(&mut self) -> &mut IncrementalRenderStats {
+        &mut self.stats
+    }
+
+    pub(super) fn active_tiles(&self) -> Option<&DamageTiles> {
+        self.active_tiles.as_ref()
+    }
+
+    pub(super) fn set_active_tiles(&mut self, active: Option<DamageTiles>) {
+        self.active_tiles = active;
+    }
+
+    pub(super) fn take_active_tiles(&mut self) -> Option<DamageTiles> {
+        self.active_tiles.take()
+    }
+
+    pub(super) fn invalidate(&mut self) {
+        self.incremental.invalidate_renderer_state();
+        self.history_valid = false;
+        self.prepared_scene = None;
+    }
+
+    pub(super) fn invalidate_history(&mut self) {
+        self.history_valid = false;
+    }
+
+    pub(super) fn reset_transient_output(&mut self) {
+        self.transient_output.reset();
+    }
+
+    pub(super) fn decide_transient_output(
+        &mut self,
+        stats: &IncrementalRenderStats,
+    ) -> TransientOutputDecision {
+        self.transient_output.decide(stats, self.config)
+    }
+
+    pub(super) fn set_history_owner(&mut self, owner: HistoryOwner) {
+        if self.history_owner == owner {
+            return;
+        }
+        self.history_owner = owner;
+        self.history_valid = false;
+        self.transient_output.reset();
+    }
+
+    pub(super) fn select_scene<'a>(&mut self, canvas: &'a Canvas) -> SelectedScene<'a> {
+        let Some(frame) = profile_cpu("retained.collect", || canvas.retained_frame()) else {
+            self.prepared_scene = None;
+            return SelectedScene::Borrowed(canvas);
+        };
+
+        if frame.complete
+            && let Some(cached) = &self.materialized
+            && cached.frame.same_scene(&frame)
+        {
+            return SelectedScene::Retained {
+                scene: cached.scene.clone(),
+                frame,
+                materialized_reused: true,
+            };
+        }
+
+        let scene = profile_cpu("retained.materialize", || {
+            Arc::new(canvas.materialize_retained_scenes(&mut self.scene_cache))
+        });
+        self.scene_cache.retain_frame(&frame);
+        if frame.complete {
+            self.materialized = Some(CachedMaterializedScene {
+                frame: frame.clone(),
+                scene: scene.clone(),
+            });
+        }
+        SelectedScene::Retained {
+            scene,
+            frame,
+            materialized_reused: false,
+        }
+    }
+
+    pub(super) fn begin_frame(
+        &mut self,
+        frame: Option<RetainedFrame>,
+        scene: &Canvas,
+        profiler_active: bool,
+    ) -> DamagePlan {
+        if self.surfaces.take_backdrop_evicted() {
+            self.history_valid = false;
+        }
+        let physical_size = scene.physical_size();
+        let mut plan = profile_cpu("retained.damage", || {
+            self.incremental
+                .plan(frame, physical_size, self.config, self.history_valid)
+        });
+        if plan.changed_tiles.len() < plan.changed_tiles.total_tiles() {
+            let propagated = profile_cpu("retained.damage.propagate", || {
+                scene.propagate_damage(&plan.retained_damage)
+            });
+            self.dirty_backdrop_nodes = propagated.dirty_backdrops;
+            plan.include_dependent_bounds(propagated.bounds, self.config);
+        } else {
+            self.dirty_backdrop_nodes.clear();
+        }
+        if self.config.capture_active_tiles || profiler_active {
+            plan.stats.active_tiles = plan.tiles.list().to_vec();
+            plan.stats.active_tile_bounds = plan.tiles.coalesced_rects(physical_size);
+        }
+        self.stats = plan.stats.clone();
+        self.active_tiles = (!plan.stats.full_redraw).then(|| plan.tiles.clone());
+        self.rendering_frame = plan.frame.clone();
+        plan
+    }
+
+    pub(super) fn finish_frame(&mut self, plan: DamagePlan, rendered: bool, history_updated: bool) {
+        let backdrop_history_valid = !self.surfaces.take_backdrop_evicted();
+        if rendered {
+            if let Some(frame) = &plan.frame {
+                let nodes = frame.nodes.iter().map(|node| node.id).collect();
+                self.surfaces.retain_nodes(&nodes);
+            }
+            self.incremental.commit(plan.frame);
+            self.history_valid = history_updated && backdrop_history_valid;
+        } else {
+            self.history_valid = false;
+        }
+        self.active_tiles = None;
+        self.rendering_frame = None;
+        self.dirty_backdrop_nodes.clear();
+    }
+
+    pub(super) fn scene_needs_prepare(
+        &self,
+        retained_ptr: Option<*const Canvas>,
+        uses_text: bool,
+        resources_dirty: bool,
+    ) -> bool {
+        retained_ptr.is_none()
+            || self.prepared_scene != retained_ptr
+            || self.prepared_uses_text != uses_text
+            || resources_dirty
+    }
+
+    pub(super) fn mark_scene_prepared(
+        &mut self,
+        retained_ptr: Option<*const Canvas>,
+        uses_text: bool,
+    ) {
+        self.prepared_scene = retained_ptr;
+        self.prepared_uses_text = uses_text;
+    }
+
+    pub(super) fn surface_meta(
+        &self,
+        id: RetainedSurfaceId,
+        kind: RetainedSurfaceKind,
+        size: (u32, u32),
+        origin: (i32, i32),
+        bounds: Bounds,
+    ) -> Option<RetainedSurfaceMeta> {
+        Some(RetainedSurfaceMeta {
+            revision: self.rendering_frame.as_ref()?.node_revision(id.node)?,
+            kind,
+            size,
+            origin,
+            bounds,
+        })
+    }
+
+    pub(super) fn surface_is_dirty(&self, bounds: Bounds) -> bool {
+        self.active_tiles
+            .as_ref()
+            .is_none_or(|tiles| tiles.intersects_bounds(bounds))
+    }
+
+    pub(super) fn local_damage_for_surface(
+        &self,
+        surface: Bounds,
+        root_size: (u32, u32),
+    ) -> Option<DamageTiles> {
+        let active = self.active_tiles.as_ref()?;
+        let mut local = DamageTiles::new((surface.width(), surface.height()));
+        for bounds in active.coalesced_rects(root_size) {
+            let bounds = bounds.intersect(surface);
+            if !bounds.is_empty() {
+                local.add_bounds(Bounds::new(
+                    bounds.x0 - surface.x0,
+                    bounds.y0 - surface.y0,
+                    bounds.x1 - surface.x0,
+                    bounds.y1 - surface.y0,
+                ));
+            }
+        }
+        Some(local)
+    }
+
+    pub(super) fn take_matching_surface(
+        &mut self,
+        id: Option<RetainedSurfaceId>,
+        meta: Option<RetainedSurfaceMeta>,
+    ) -> Option<(RetainedSurfaceId, RetainedSurface)> {
+        let id = id?;
+        let surface = self.surfaces.take(id)?;
+        (Some(surface.meta) == meta).then_some((id, surface))
+    }
+
+    pub(super) fn cache_surface(
+        &mut self,
+        id: Option<RetainedSurfaceId>,
+        meta: Option<RetainedSurfaceMeta>,
+        primary: super::super::target::WgpuTarget,
+        secondary: Option<super::super::target::WgpuTarget>,
+        backdrop_source: Option<super::super::target::WgpuTarget>,
+    ) {
+        if let (Some(id), Some(meta)) = (id, meta) {
+            self.surfaces
+                .insert(id, meta, primary, secondary, backdrop_source);
+        }
+    }
+
+    pub(super) fn insert_surface(&mut self, id: RetainedSurfaceId, surface: RetainedSurface) {
+        self.surfaces.insert(
+            id,
+            surface.meta,
+            surface.primary,
+            surface.secondary,
+            surface.backdrop_source,
+        );
+    }
+
+    pub(super) fn backdrop_is_dirty(&self, id: Option<RetainedSurfaceId>) -> bool {
+        self.active_tiles.is_none()
+            || id.is_none_or(|id| self.dirty_backdrop_nodes.contains(&id.node))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) enum HistoryOwner {
+    #[default]
+    Internal,
+    External(ExternalTextureHistoryId),
+}
+
+struct CachedMaterializedScene {
+    frame: RetainedFrame,
+    scene: Arc<Canvas>,
+}
+
+pub(super) enum SelectedScene<'a> {
+    Borrowed(&'a Canvas),
+    Retained {
+        scene: Arc<Canvas>,
+        frame: RetainedFrame,
+        materialized_reused: bool,
+    },
+}
+
+impl SelectedScene<'_> {
+    pub(super) fn scene(&self) -> &Canvas {
+        match self {
+            Self::Borrowed(scene) => scene,
+            Self::Retained { scene, .. } => scene,
+        }
+    }
+
+    pub(super) fn frame(&self) -> Option<RetainedFrame> {
+        match self {
+            Self::Borrowed(_) => None,
+            Self::Retained { frame, .. } => Some(frame.clone()),
+        }
+    }
+
+    pub(super) fn retained_ptr(&self) -> Option<*const Canvas> {
+        match self {
+            Self::Borrowed(_) => None,
+            Self::Retained { scene, .. } => Some(Arc::as_ptr(scene)),
+        }
+    }
+
+    pub(super) fn materialized_reused(&self) -> bool {
+        matches!(
+            self,
+            Self::Retained {
+                materialized_reused: true,
+                ..
+            }
+        )
+    }
+}

@@ -17,9 +17,7 @@ impl Renderer {
         bounds: Bounds,
         factor: u32,
     ) -> Option<FilterTileWork> {
-        let Some(active) = &self.active_tiles else {
-            return None;
-        };
+        let active = self.retained.active_tiles()?;
         let previous = self
             .filter
             .as_ref()
@@ -567,7 +565,7 @@ impl Renderer {
         let Some(filter) = &self.filter else {
             return false;
         };
-        if self.active_tiles.is_some() {
+        if self.retained.active_tiles().is_some() {
             filter.clear_region(
                 commands,
                 self.render_target_view(target),

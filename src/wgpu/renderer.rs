@@ -1,25 +1,20 @@
 #![allow(clippy::too_many_arguments)]
 
-use std::{
-    collections::HashSet,
-    sync::{Arc as SharedArc, mpsc},
-};
+use std::sync::Arc as SharedArc;
 
 use peniko::Color;
 
 use crate::{
     TextFontSystem,
-    canvas::{Canvas, RetainedFrame, RetainedSceneCache},
+    canvas::Canvas,
     debug::{DebugScanBuffers, RenderDebugCapture, RenderOptions, capture_render_debug},
     render::Render,
     shared::{
         bounds::Bounds,
-        execution::{ExecOp, ExecPlan, ROOT_COMMAND_LIST_ID},
-        gpu_coarse::{FINE_TILE_DISPATCH_WORDS, FINE_TILE_LIST_COUNT},
+        execution::{ExecOp, ExecPlan},
         gpu_plan::{
-            FINE_GROUP_SPILL_FIELDS, FINE_LOCAL_CLIP_DEPTH, FINE_LOCAL_GROUP_DEPTH,
-            FINE_WORKGROUP_SIZE, GpuBufferLengths, GpuCanvasConfig, filter_scratch_extra,
-            plan_stack_depths, required_scratch_count,
+            FINE_LOCAL_CLIP_DEPTH, FINE_LOCAL_GROUP_DEPTH, GpuBufferLengths, filter_scratch_extra,
+            required_scratch_count,
         },
         image::Image,
         image_resource::{
@@ -53,92 +48,27 @@ use super::filter_work::{FilterTileWork, FilterTileWorkArena};
 use super::fine::{WgpuFinePipeline, premul_clear_color};
 use super::image_resources::large_texture_table_len;
 use super::incremental::{
-    ActiveScanPlan, DamagePlan, DamageTiles, IncrementalOutputMode, IncrementalRenderConfig,
-    IncrementalRenderStats, IncrementalState, TransientOutputDecision, TransientOutputState,
+    ActiveScanPlan, DamageTiles, IncrementalRenderConfig, IncrementalRenderStats,
 };
 use super::lazy::PipelineCompilationTracker;
 use super::profile::{WgpuRenderProfile, WgpuRenderProfiler, profile_cpu, start_cpu_scope};
-use super::retained_surfaces::{
-    RetainedSurface, RetainedSurfaceCache, RetainedSurfaceKind, RetainedSurfaceMeta,
-};
+use super::retained_surfaces::{RetainedSurface, RetainedSurfaceKind, RetainedSurfaceMeta};
 use super::scan::WgpuScanPipeline;
 use super::target::WgpuTarget;
 
 mod filter_ops;
+mod output;
+mod retained;
+mod scene;
+
+pub use output::{ExternalTextureHistoryId, WgpuTextureRenderError};
+use retained::{HistoryOwner, RetainedRenderState};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum WgpuRenderTargetId {
     Main,
     Scratch(usize),
 }
-
-#[derive(Debug)]
-pub enum WgpuTextureRenderError {
-    DestinationTooSmall {
-        required_width: u32,
-        required_height: u32,
-        actual_width: u32,
-        actual_height: u32,
-    },
-    DestinationUsageMissing(::wgpu::TextureUsages),
-    DestinationStorageUsageMissing(::wgpu::TextureUsages),
-    UnsupportedDestination {
-        format: ::wgpu::TextureFormat,
-        dimension: ::wgpu::TextureDimension,
-        sample_count: u32,
-    },
-}
-
-/// Stable identity for a caller-owned texture whose pixels persist between retained frames.
-///
-/// Reuse an ID only while passing the same texture with unmodified contents. Allocate a new ID
-/// after recreating, resizing, clearing, or otherwise mutating that texture outside tileink.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct ExternalTextureHistoryId(u64);
-
-impl ExternalTextureHistoryId {
-    pub const fn new(id: u64) -> Self {
-        Self(id)
-    }
-
-    pub const fn get(self) -> u64 {
-        self.0
-    }
-}
-
-impl std::fmt::Display for WgpuTextureRenderError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::DestinationTooSmall {
-                required_width,
-                required_height,
-                actual_width,
-                actual_height,
-            } => write!(
-                f,
-                "destination texture is {actual_width}x{actual_height}, but {required_width}x{required_height} is required"
-            ),
-            Self::DestinationUsageMissing(usage) => write!(
-                f,
-                "destination texture usage {usage:?} is missing wgpu::TextureUsages::COPY_DST"
-            ),
-            Self::DestinationStorageUsageMissing(usage) => write!(
-                f,
-                "destination texture usage {usage:?} is missing wgpu::TextureUsages::STORAGE_BINDING"
-            ),
-            Self::UnsupportedDestination {
-                format,
-                dimension,
-                sample_count,
-            } => write!(
-                f,
-                "unsupported destination texture format {format:?}, dimension {dimension:?}, sample_count {sample_count}; expected single-sample 2D Rgba8Unorm or Rgba8UnormSrgb"
-            ),
-        }
-    }
-}
-
-impl std::error::Error for WgpuTextureRenderError {}
 
 /// Wgpu-owned renderer target and native compute pipelines.
 #[derive(Clone, Debug, Default)]
@@ -174,22 +104,9 @@ pub struct Renderer {
     pipeline_compilations: PipelineCompilationTracker,
     filter_transfers: WgpuFilterTransferBuffers,
     filter_brushes: WgpuFilterBrushBuffers,
-    retained_scene_cache: RetainedSceneCache,
-    retained_materialized: Option<CachedMaterializedScene>,
-    prepared_retained_scene: Option<*const Canvas>,
-    prepared_retained_uses_text: bool,
     prepared_plan_fingerprint: Option<u64>,
-    incremental_config: IncrementalRenderConfig,
-    incremental_state: IncrementalState,
-    incremental_stats: IncrementalRenderStats,
-    active_tiles: Option<DamageTiles>,
+    retained: RetainedRenderState,
     filter_tile_work_arena: FilterTileWorkArena,
-    history_valid: bool,
-    history_owner: HistoryOwner,
-    transient_output: TransientOutputState,
-    retained_surfaces: RetainedSurfaceCache,
-    rendering_frame: Option<RetainedFrame>,
-    dirty_backdrop_nodes: HashSet<crate::RetainedNodeId>,
     image_resources: ImageResourceStore,
     image_resource_upload: GpuImageResourceUpload,
     image_resource_upload_signature: ImageResourceUploadSignature,
@@ -212,66 +129,6 @@ pub struct Renderer {
     last_frame_used_native: bool,
     size: (u32, u32),
     surface_origin: (i32, i32),
-}
-
-struct CachedMaterializedScene {
-    frame: RetainedFrame,
-    scene: SharedArc<Canvas>,
-}
-
-enum SelectedScene<'a> {
-    Borrowed(&'a Canvas),
-    Retained {
-        scene: SharedArc<Canvas>,
-        frame: RetainedFrame,
-        materialized_reused: bool,
-    },
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-enum HistoryOwner {
-    #[default]
-    Internal,
-    External(ExternalTextureHistoryId),
-}
-
-#[derive(Clone, Copy)]
-enum RequestedTextureHistory {
-    Transient,
-    External(ExternalTextureHistoryId),
-}
-
-impl SelectedScene<'_> {
-    fn scene(&self) -> &Canvas {
-        match self {
-            Self::Borrowed(scene) => scene,
-            Self::Retained { scene, .. } => scene,
-        }
-    }
-
-    fn frame(&self) -> Option<RetainedFrame> {
-        match self {
-            Self::Borrowed(_) => None,
-            Self::Retained { frame, .. } => Some(frame.clone()),
-        }
-    }
-
-    fn retained_ptr(&self) -> Option<*const Canvas> {
-        match self {
-            Self::Borrowed(_) => None,
-            Self::Retained { scene, .. } => Some(SharedArc::as_ptr(scene)),
-        }
-    }
-
-    fn materialized_reused(&self) -> bool {
-        matches!(
-            self,
-            Self::Retained {
-                materialized_reused: true,
-                ..
-            }
-        )
-    }
 }
 
 struct SavedRendererState {
@@ -369,24 +226,9 @@ impl Renderer {
             pipeline_compilations,
             filter_transfers: WgpuFilterTransferBuffers::new(device),
             filter_brushes: WgpuFilterBrushBuffers::new(device),
-            retained_scene_cache: RetainedSceneCache::default(),
-            retained_materialized: None,
-            prepared_retained_scene: None,
-            prepared_retained_uses_text: false,
             prepared_plan_fingerprint: None,
-            incremental_config: IncrementalRenderConfig::default(),
-            incremental_state: IncrementalState::default(),
-            incremental_stats: IncrementalRenderStats::default(),
-            active_tiles: None,
+            retained: RetainedRenderState::new(IncrementalRenderConfig::default()),
             filter_tile_work_arena: FilterTileWorkArena::default(),
-            history_valid: false,
-            history_owner: HistoryOwner::Internal,
-            transient_output: TransientOutputState::default(),
-            retained_surfaces: RetainedSurfaceCache::new(
-                IncrementalRenderConfig::default().retained_texture_budget_bytes,
-            ),
-            rendering_frame: None,
-            dirty_backdrop_nodes: HashSet::new(),
             image_resources: ImageResourceStore::default(),
             image_resource_upload: GpuImageResourceUpload::default(),
             image_resource_upload_signature: ImageResourceUploadSignature::default(),
@@ -511,7 +353,7 @@ impl Renderer {
     /// readback buffers available. This keeps `end_profile` off the GPU completion path.
     pub fn end_profile(&mut self) -> &WgpuRenderProfile {
         self.profiler
-            .end(&self.device, &self.queue, self.incremental_stats.clone())
+            .end(&self.device, &self.queue, self.retained.stats().clone())
     }
 
     /// Polls pending async GPU timestamp readbacks without blocking and returns the latest profile.
@@ -533,17 +375,15 @@ impl Renderer {
     }
 
     pub fn incremental_render_config(&self) -> IncrementalRenderConfig {
-        self.incremental_config
+        self.retained.config()
     }
 
     pub fn set_incremental_render_config(&mut self, config: IncrementalRenderConfig) {
-        self.incremental_config = config.validate();
-        self.retained_surfaces
-            .set_budget(self.incremental_config.retained_texture_budget_bytes);
+        self.retained.set_config(config);
     }
 
     pub fn incremental_render_stats(&self) -> &IncrementalRenderStats {
-        &self.incremental_stats
+        self.retained.stats()
     }
 
     /// Monotonic epoch advanced after each lazy compute pipeline is compiled.
@@ -556,9 +396,7 @@ impl Renderer {
     /// Invalidates the retained history after external state changes that the
     /// scene graph cannot associate with a specific node.
     pub fn invalidate_retained_history(&mut self) {
-        self.incremental_state.invalidate_renderer_state();
-        self.history_valid = false;
-        self.prepared_retained_scene = None;
+        self.retained.invalidate();
     }
 
     /// Updates the clear color without rebuilding device-owned pipelines, so one renderer can
@@ -575,22 +413,28 @@ impl Renderer {
     ///
     /// This is useful for tests that need to verify the native WGPU path directly.
     pub fn render_native(&mut self, canvas: &Canvas) -> bool {
-        self.set_history_owner(HistoryOwner::Internal);
-        self.transient_output.reset();
-        let selected = self.select_scene(canvas);
+        self.retained.set_history_owner(HistoryOwner::Internal);
+        self.retained.reset_transient_output();
+        let selected = self.retained.select_scene(canvas);
         let frame = selected.frame();
         let retained_ptr = selected.retained_ptr();
         let materialized_reused = selected.materialized_reused();
         let scene = selected.scene();
-        let plan = self.begin_incremental_frame(frame, scene);
-        self.incremental_stats.materialized_scene_reused = materialized_reused;
+        let plan = self
+            .retained
+            .begin_frame(frame, scene, self.profiler.is_active());
+        self.retained.stats_mut().materialized_scene_reused = materialized_reused;
         let has_work = !plan.tiles.is_empty();
-        if has_work && self.scene_needs_prepare(retained_ptr, false) {
+        if has_work
+            && self
+                .retained
+                .scene_needs_prepare(retained_ptr, false, self.image_resources_dirty)
+        {
             self.prepare_scene(scene);
-            self.mark_scene_prepared(retained_ptr, false);
+            self.retained.mark_scene_prepared(retained_ptr, false);
         }
         let rendered = !has_work || self.render_prepared_native(scene);
-        self.finish_incremental_frame(plan, rendered, true);
+        self.retained.finish_frame(plan, rendered, true);
         rendered
     }
 
@@ -604,124 +448,29 @@ impl Renderer {
         font_system: &mut TextFontSystem,
         text_context: &mut TextContext,
     ) -> bool {
-        self.set_history_owner(HistoryOwner::Internal);
-        self.transient_output.reset();
-        let selected = self.select_scene(canvas);
+        self.retained.set_history_owner(HistoryOwner::Internal);
+        self.retained.reset_transient_output();
+        let selected = self.retained.select_scene(canvas);
         let frame = selected.frame();
         let retained_ptr = selected.retained_ptr();
         let materialized_reused = selected.materialized_reused();
         let scene = selected.scene();
-        let plan = self.begin_incremental_frame(frame, scene);
-        self.incremental_stats.materialized_scene_reused = materialized_reused;
+        let plan = self
+            .retained
+            .begin_frame(frame, scene, self.profiler.is_active());
+        self.retained.stats_mut().materialized_scene_reused = materialized_reused;
         let has_work = !plan.tiles.is_empty();
-        if has_work && self.scene_needs_prepare(retained_ptr, true) {
+        if has_work
+            && self
+                .retained
+                .scene_needs_prepare(retained_ptr, true, self.image_resources_dirty)
+        {
             self.prepare_scene_with_text(scene, font_system, text_context);
-            self.mark_scene_prepared(retained_ptr, true);
+            self.retained.mark_scene_prepared(retained_ptr, true);
         }
         let rendered = !has_work || self.render_prepared_native(scene);
-        self.finish_incremental_frame(plan, rendered, true);
+        self.retained.finish_frame(plan, rendered, true);
         rendered
-    }
-
-    fn select_scene<'a>(&mut self, canvas: &'a Canvas) -> SelectedScene<'a> {
-        let Some(frame) = profile_cpu("retained.collect", || canvas.retained_frame()) else {
-            self.prepared_retained_scene = None;
-            return SelectedScene::Borrowed(canvas);
-        };
-
-        if frame.complete
-            && let Some(cached) = &self.retained_materialized
-            && cached.frame.same_scene(&frame)
-        {
-            return SelectedScene::Retained {
-                scene: cached.scene.clone(),
-                frame,
-                materialized_reused: true,
-            };
-        }
-
-        let scene = profile_cpu("retained.materialize", || {
-            SharedArc::new(canvas.materialize_retained_scenes(&mut self.retained_scene_cache))
-        });
-        self.retained_scene_cache.retain_frame(&frame);
-        if frame.complete {
-            self.retained_materialized = Some(CachedMaterializedScene {
-                frame: frame.clone(),
-                scene: scene.clone(),
-            });
-        }
-        SelectedScene::Retained {
-            scene,
-            frame,
-            materialized_reused: false,
-        }
-    }
-
-    fn begin_incremental_frame(
-        &mut self,
-        frame: Option<RetainedFrame>,
-        scene: &Canvas,
-    ) -> DamagePlan {
-        if self.retained_surfaces.take_backdrop_evicted() {
-            self.history_valid = false;
-        }
-        let physical_size = scene.physical_size();
-        let mut plan = profile_cpu("retained.damage", || {
-            self.incremental_state.plan(
-                frame,
-                physical_size,
-                self.incremental_config,
-                self.history_valid,
-            )
-        });
-        if plan.changed_tiles.len() < plan.changed_tiles.total_tiles() {
-            let propagated = profile_cpu("retained.damage.propagate", || {
-                scene.propagate_damage(&plan.retained_damage)
-            });
-            self.dirty_backdrop_nodes = propagated.dirty_backdrops;
-            plan.include_dependent_bounds(propagated.bounds, self.incremental_config);
-        } else {
-            self.dirty_backdrop_nodes.clear();
-        }
-        if self.incremental_config.capture_active_tiles || self.profiler.is_active() {
-            plan.stats.active_tiles = plan.tiles.list().to_vec();
-            plan.stats.active_tile_bounds = plan.tiles.coalesced_rects(physical_size);
-        }
-        self.incremental_stats = plan.stats.clone();
-        self.active_tiles = (!plan.stats.full_redraw).then(|| plan.tiles.clone());
-        self.rendering_frame = plan.frame.clone();
-        plan
-    }
-
-    fn finish_incremental_frame(
-        &mut self,
-        plan: DamagePlan,
-        rendered: bool,
-        history_updated: bool,
-    ) {
-        let backdrop_history_valid = !self.retained_surfaces.take_backdrop_evicted();
-        if rendered {
-            if let Some(frame) = &plan.frame {
-                let nodes = frame.nodes.iter().map(|node| node.id).collect();
-                self.retained_surfaces.retain_nodes(&nodes);
-            }
-            self.incremental_state.commit(plan.frame);
-            self.history_valid = history_updated && backdrop_history_valid;
-        } else {
-            self.history_valid = false;
-        }
-        self.active_tiles = None;
-        self.rendering_frame = None;
-        self.dirty_backdrop_nodes.clear();
-    }
-
-    fn set_history_owner(&mut self, owner: HistoryOwner) {
-        if self.history_owner == owner {
-            return;
-        }
-        self.history_owner = owner;
-        self.history_valid = false;
-        self.transient_output.reset();
     }
 
     fn retained_surface_meta(
@@ -732,40 +481,19 @@ impl Renderer {
         origin: (i32, i32),
         bounds: Bounds,
     ) -> Option<RetainedSurfaceMeta> {
-        Some(RetainedSurfaceMeta {
-            revision: self.rendering_frame.as_ref()?.node_revision(id.node)?,
-            kind,
-            size,
-            origin,
-            bounds,
-        })
+        self.retained.surface_meta(id, kind, size, origin, bounds)
     }
 
     fn retained_surface_is_dirty(&self, bounds: Bounds) -> bool {
-        self.active_tiles
-            .as_ref()
-            .is_none_or(|tiles| tiles.intersects_bounds(bounds))
+        self.retained.surface_is_dirty(bounds)
     }
 
     fn local_damage_for_surface(&self, surface: Bounds) -> Option<DamageTiles> {
-        let active = self.active_tiles.as_ref()?;
-        let mut local = DamageTiles::new((surface.width(), surface.height()));
-        for bounds in active.coalesced_rects(self.size) {
-            let bounds = bounds.intersect(surface);
-            if !bounds.is_empty() {
-                local.add_bounds(Bounds::new(
-                    bounds.x0 - surface.x0,
-                    bounds.y0 - surface.y0,
-                    bounds.x1 - surface.x0,
-                    bounds.y1 - surface.y0,
-                ));
-            }
-        }
-        Some(local)
+        self.retained.local_damage_for_surface(surface, self.size)
     }
 
     fn prepare_active_tile_buffers(&mut self) {
-        if let Some(active) = &self.active_tiles {
+        if let Some(active) = self.retained.active_tiles() {
             self.coarse
                 .upload_active_tiles(&self.queue, self.lengths, active.list());
         }
@@ -780,8 +508,8 @@ impl Renderer {
     /// earlier dispatches observe; slots are retained and reused next frame.
     fn prepare_filter_active_tile_work(&mut self) {
         let Some(tiles) = self
-            .active_tiles
-            .as_ref()
+            .retained
+            .active_tiles()
             .map(|active| active.list().to_vec())
         else {
             if let Some(filter) = self.filter.as_mut() {
@@ -793,7 +521,7 @@ impl Renderer {
     }
 
     fn suspend_incremental_filter_work(&mut self) -> Option<DamageTiles> {
-        let active = self.active_tiles.take();
+        let active = self.retained.take_active_tiles();
         if active.is_some()
             && let Some(filter) = self.filter.as_mut()
         {
@@ -803,7 +531,7 @@ impl Renderer {
     }
 
     fn restore_incremental_filter_work(&mut self, active: Option<DamageTiles>) {
-        self.active_tiles = active;
+        self.retained.set_active_tiles(active);
         self.prepare_filter_active_tile_work();
     }
 
@@ -821,13 +549,7 @@ impl Renderer {
         id: Option<crate::canvas::RetainedSurfaceId>,
         meta: Option<RetainedSurfaceMeta>,
     ) -> Option<(crate::canvas::RetainedSurfaceId, RetainedSurface)> {
-        let id = id?;
-        let surface = self.retained_surfaces.take(id)?;
-        if Some(surface.meta) == meta {
-            Some((id, surface))
-        } else {
-            None
-        }
+        self.retained.take_matching_surface(id, meta)
     }
 
     fn cache_retained_surface(
@@ -838,446 +560,8 @@ impl Renderer {
         secondary: Option<WgpuTarget>,
         backdrop_source: Option<WgpuTarget>,
     ) {
-        if let (Some(id), Some(meta)) = (id, meta) {
-            self.retained_surfaces
-                .insert(id, meta, primary, secondary, backdrop_source);
-        }
-    }
-
-    fn scene_needs_prepare(&self, retained_ptr: Option<*const Canvas>, uses_text: bool) -> bool {
-        retained_ptr.is_none()
-            || self.prepared_retained_scene != retained_ptr
-            || self.prepared_retained_uses_text != uses_text
-            || self.image_resources_dirty
-    }
-
-    fn mark_scene_prepared(&mut self, retained_ptr: Option<*const Canvas>, uses_text: bool) {
-        self.prepared_retained_scene = retained_ptr;
-        self.prepared_retained_uses_text = uses_text;
-    }
-
-    fn render_prepared_native(&mut self, canvas: &Canvas) -> bool {
-        if self.render_prepared_tile_plan(canvas) {
-            self.size = (canvas.physical_width(), canvas.physical_height());
-            return true;
-        }
-        false
-    }
-
-    fn prepare_scene(&mut self, canvas: &Canvas) {
-        let _profile_scope = start_cpu_scope("prepare");
-        self.text_data = None;
-        self.prepare_scene_resources(canvas);
-    }
-
-    fn prepare_scene_with_text(
-        &mut self,
-        canvas: &Canvas,
-        font_system: &mut TextFontSystem,
-        text_context: &mut TextContext,
-    ) {
-        let _profile_scope = start_cpu_scope("prepare");
-        self.text_data = profile_cpu("prepare.text", || {
-            Some(PreparedTextData::new(
-                &canvas.text_glyphs,
-                &canvas.text_runs,
-                font_system,
-                text_context,
-            ))
-        });
-        self.prepare_scene_resources(canvas);
-    }
-
-    fn prepare_scene_resources(&mut self, canvas: &Canvas) {
-        self.size = (canvas.physical_width(), canvas.physical_height());
-        self.surface_origin = (0, 0);
-        profile_cpu("prepare.target", || {
-            if self.root_target_view.is_none() {
-                self.readback_target.resize(
-                    &self.device,
-                    canvas.physical_width(),
-                    canvas.physical_height(),
-                );
-            }
-            self.fine_portable_source.resize(
-                &self.device,
-                canvas.physical_width(),
-                canvas.physical_height(),
-            );
-            self.fine_portable_target.resize(
-                &self.device,
-                canvas.physical_width(),
-                canvas.physical_height(),
-            );
-        });
-        let lengths = profile_cpu("prepare.lengths", || {
-            self.scene_upload
-                .build_lengths(canvas, self.text_data.as_ref())
-        });
-        let plan_fingerprint = canvas.execution_plan_fingerprint();
-        let reused_plan =
-            self.prepared_plan_fingerprint == Some(plan_fingerprint) && self.plan.is_some();
-        let plan = profile_cpu("prepare.compile", || {
-            if reused_plan {
-                self.plan.as_ref().expect("cached execution plan").clone()
-            } else {
-                canvas.compile(ROOT_COMMAND_LIST_ID)
-            }
-        });
-        self.incremental_stats.reused_compiled_plan = reused_plan;
-        self.prepared_plan_fingerprint = Some(plan_fingerprint);
-        let (max_clip_depth, max_group_depth) =
-            profile_cpu("prepare.stack_depths", || plan_stack_depths(&plan));
-        profile_cpu("prepare.upload_scene", || {
-            self.prepare_image_resource_buffers(canvas.scene_image_resources(), false);
-            self.scene_buffers.upload(
-                &self.device,
-                &self.queue,
-                canvas,
-                lengths,
-                &plan,
-                self.text_data.as_ref(),
-                Some(&self.image_resource_upload),
-                &mut self.scene_upload,
-            );
-        });
-        profile_cpu("prepare.scan_buffers", || {
-            self.scan.prepare_outputs(&self.device, lengths);
-        });
-        profile_cpu("prepare.coarse_buffers", || {
-            profile_cpu("prepare.coarse_buffers.resize", || {
-                self.coarse.prepare_outputs(&self.device, lengths);
-            });
-            profile_cpu("prepare.coarse_buffers.upload_tile_draw_bins", || {
-                self.coarse
-                    .upload_tile_draw_bins(&self.queue, lengths, &mut self.scene_upload);
-            });
-        });
-        profile_cpu("prepare.fine_spills", || {
-            self.prepare_fine_stack_spills(lengths, max_clip_depth, max_group_depth);
-        });
-        profile_cpu("prepare.scratch", || {
-            self.prepare_scratch_buffers(required_scratch_count(&plan));
-        });
-        profile_cpu("prepare.filter_uploads", || {
-            self.filter_transfers
-                .upload(&self.device, &self.queue, &plan);
-            self.filter_brushes.upload(
-                &self.device,
-                &self.queue,
-                &plan,
-                Some(&self.image_resource_upload),
-            );
-            self.filter_convolves
-                .upload(&self.device, &self.queue, &plan);
-            self.filter_turbulence
-                .upload(&self.device, &self.queue, &plan);
-            self.filter_paths.upload(&self.device, &self.queue, &plan);
-        });
-        profile_cpu("prepare.config", || {
-            self.config.upload(
-                &self.device,
-                &self.queue,
-                "tileink wgpu canvas config",
-                &[GpuCanvasConfig::new(canvas, lengths, self.clear_color)],
-            );
-        });
-        self.lengths = lengths;
-        self.max_clip_depth = max_clip_depth;
-        self.max_group_depth = max_group_depth;
-        self.plan = Some(plan);
-    }
-
-    fn prepare_image_resource_buffers(
-        &mut self,
-        scene_resources: &ImageResourceStore,
-        force_upload: bool,
-    ) {
-        let limits = self.device.limits();
-        let max_atlas_dimension = limits.max_texture_dimension_2d;
-        let max_atlas_pages = limits.max_texture_array_layers;
-        let signature = self.image_resources.upload_signature(
-            scene_resources,
-            max_atlas_dimension,
-            max_atlas_pages,
-            self.image_resource_texture_table_len,
-        );
-        let rebuild_upload =
-            self.image_resources_dirty || self.image_resource_upload_signature != signature;
-
-        if rebuild_upload {
-            self.image_resource_upload = self.image_resources.upload_merged(
-                scene_resources,
-                max_atlas_dimension,
-                max_atlas_pages,
-                self.image_resource_texture_table_len,
-                Some(&self.image_resource_upload),
-            );
-            self.image_resource_upload_signature = signature;
-            self.image_resources_dirty = false;
-        }
-
-        if force_upload || rebuild_upload {
-            self.scene_buffers.upload_image_resources(
-                &self.device,
-                &self.queue,
-                &self.image_resource_upload,
-                force_upload,
-            );
-        }
-    }
-
-    fn activate_local_scene_resources(
-        &mut self,
-        canvas: &Canvas,
-        plan: &ExecPlan,
-        parent_filter: &Filter,
-        scratch_count: usize,
-        surface_origin: (i32, i32),
-    ) -> SavedRendererState {
-        let _profile_scope = start_cpu_scope("prepare.local");
-        let saved = SavedRendererState {
-            lengths: self.lengths,
-            plan: self.plan.take(),
-            config: std::mem::replace(
-                &mut self.config,
-                WgpuBuffer::new(&self.device, "tileink wgpu canvas config"),
-            ),
-            scene_buffers: std::mem::replace(
-                &mut self.scene_buffers,
-                WgpuSceneBuffers::new(&self.device),
-            ),
-            scene_upload: std::mem::take(&mut self.scene_upload),
-            scan: std::mem::replace(&mut self.scan, WgpuScanBuffers::new(&self.device)),
-            coarse: std::mem::replace(&mut self.coarse, WgpuCoarseBuffers::new(&self.device)),
-            max_clip_depth: self.max_clip_depth,
-            max_group_depth: self.max_group_depth,
-            fine_spills: std::mem::replace(
-                &mut self.fine_spills,
-                WgpuBuffer::new(&self.device, "tileink wgpu fine spills"),
-            ),
-            fine_indirect_args: std::mem::replace(
-                &mut self.fine_indirect_args,
-                WgpuBuffer::new(&self.device, "tileink wgpu fine indirect args"),
-            ),
-            filter_transfers: std::mem::replace(
-                &mut self.filter_transfers,
-                WgpuFilterTransferBuffers::new(&self.device),
-            ),
-            filter_brushes: std::mem::replace(
-                &mut self.filter_brushes,
-                WgpuFilterBrushBuffers::new(&self.device),
-            ),
-            filter_convolves: std::mem::replace(
-                &mut self.filter_convolves,
-                WgpuFilterConvolveBuffers::new(&self.device),
-            ),
-            filter_turbulence: std::mem::replace(
-                &mut self.filter_turbulence,
-                WgpuFilterTurbulenceBuffers::new(&self.device),
-            ),
-            filter_paths: std::mem::replace(
-                &mut self.filter_paths,
-                WgpuFilterPathBuffers::new(&self.device),
-            ),
-            readback_target: std::mem::replace(
-                &mut self.readback_target,
-                WgpuTarget::new(
-                    &self.device,
-                    canvas.physical_width(),
-                    canvas.physical_height(),
-                ),
-            ),
-            fine_portable_source: std::mem::replace(
-                &mut self.fine_portable_source,
-                WgpuTarget::new(
-                    &self.device,
-                    canvas.physical_width(),
-                    canvas.physical_height(),
-                ),
-            ),
-            fine_portable_target: std::mem::replace(
-                &mut self.fine_portable_target,
-                WgpuTarget::new(
-                    &self.device,
-                    canvas.physical_width(),
-                    canvas.physical_height(),
-                ),
-            ),
-            filter_target_snapshot: std::mem::replace(
-                &mut self.filter_target_snapshot,
-                WgpuTarget::new(
-                    &self.device,
-                    canvas.physical_width(),
-                    canvas.physical_height(),
-                ),
-            ),
-            root_target_texture: std::mem::take(&mut self.root_target_texture),
-            root_target_view: std::mem::take(&mut self.root_target_view),
-            scratch: std::mem::take(&mut self.scratch),
-            scratch_in_use: std::mem::take(&mut self.scratch_in_use),
-            size: self.size,
-            surface_origin: self.surface_origin,
-            active_tiles: self.active_tiles.take(),
-            filter_active_tile_work: self
-                .filter
-                .as_ref()
-                .and_then(WgpuFilterPipeline::active_tile_work),
-        };
-
-        let lengths = profile_cpu("prepare.local.lengths", || {
-            self.scene_upload
-                .build_lengths(canvas, self.text_data.as_ref())
-        });
-        let (max_clip_depth, max_group_depth) =
-            profile_cpu("prepare.local.stack_depths", || plan_stack_depths(plan));
-        self.size = (canvas.physical_width(), canvas.physical_height());
-        self.surface_origin = surface_origin;
-        self.active_tiles = None;
-        if let Some(filter) = self.filter.as_mut() {
-            filter.clear_active_tile_work();
-        }
-        self.lengths = lengths;
-        self.max_clip_depth = max_clip_depth;
-        self.max_group_depth = max_group_depth;
-        self.plan = Some(plan.clone());
-        profile_cpu("prepare.local.upload_scene", || {
-            self.prepare_image_resource_buffers(canvas.scene_image_resources(), true);
-            self.scene_buffers.upload(
-                &self.device,
-                &self.queue,
-                canvas,
-                lengths,
-                plan,
-                self.text_data.as_ref(),
-                Some(&self.image_resource_upload),
-                &mut self.scene_upload,
-            );
-        });
-        profile_cpu("prepare.local.scan_buffers", || {
-            self.scan.prepare_outputs(&self.device, lengths);
-        });
-        profile_cpu("prepare.local.coarse_buffers", || {
-            profile_cpu("prepare.local.coarse_buffers.resize", || {
-                self.coarse.prepare_outputs(&self.device, lengths);
-            });
-            profile_cpu("prepare.local.coarse_buffers.upload_tile_draw_bins", || {
-                self.coarse
-                    .upload_tile_draw_bins(&self.queue, lengths, &mut self.scene_upload);
-            });
-        });
-        profile_cpu("prepare.local.fine_spills", || {
-            self.prepare_fine_stack_spills(lengths, max_clip_depth, max_group_depth);
-        });
-        profile_cpu("prepare.local.scratch", || {
-            self.prepare_scratch_buffers(scratch_count.max(1));
-        });
-        profile_cpu("prepare.local.filter_uploads", || {
-            self.filter_transfers.upload_for_ops_and_filter(
-                &self.device,
-                &self.queue,
-                &plan.ops,
-                parent_filter,
-            );
-            self.filter_brushes.upload_for_ops_and_filter(
-                &self.device,
-                &self.queue,
-                &plan.ops,
-                parent_filter,
-                Some(&self.image_resource_upload),
-            );
-            self.filter_convolves.upload_for_ops_and_filter(
-                &self.device,
-                &self.queue,
-                &plan.ops,
-                parent_filter,
-            );
-            self.filter_turbulence.upload_for_ops_and_filter(
-                &self.device,
-                &self.queue,
-                &plan.ops,
-                parent_filter,
-            );
-            self.filter_paths.upload(&self.device, &self.queue, plan);
-        });
-        profile_cpu("prepare.local.config", || {
-            self.config.upload(
-                &self.device,
-                &self.queue,
-                "tileink wgpu canvas config",
-                &[GpuCanvasConfig::new(canvas, lengths, self.clear_color)],
-            );
-        });
-        saved
-    }
-
-    fn restore_root_scene_resources(&mut self, saved: SavedRendererState) {
-        self.lengths = saved.lengths;
-        self.plan = saved.plan;
-        self.config = saved.config;
-        self.scene_buffers = saved.scene_buffers;
-        self.scene_upload = saved.scene_upload;
-        self.scan = saved.scan;
-        self.coarse = saved.coarse;
-        self.max_clip_depth = saved.max_clip_depth;
-        self.max_group_depth = saved.max_group_depth;
-        self.fine_spills = saved.fine_spills;
-        self.fine_indirect_args = saved.fine_indirect_args;
-        self.filter_transfers = saved.filter_transfers;
-        self.filter_brushes = saved.filter_brushes;
-        self.filter_convolves = saved.filter_convolves;
-        self.filter_turbulence = saved.filter_turbulence;
-        self.filter_paths = saved.filter_paths;
-        self.readback_target = saved.readback_target;
-        self.fine_portable_source = saved.fine_portable_source;
-        self.fine_portable_target = saved.fine_portable_target;
-        self.filter_target_snapshot = saved.filter_target_snapshot;
-        self.root_target_texture = saved.root_target_texture;
-        self.root_target_view = saved.root_target_view;
-        self.scratch = saved.scratch;
-        self.scratch_in_use = saved.scratch_in_use;
-        self.size = saved.size;
-        self.surface_origin = saved.surface_origin;
-        self.active_tiles = saved.active_tiles;
-        if let Some(filter) = self.filter.as_mut() {
-            filter.restore_active_tile_work(saved.filter_active_tile_work);
-        }
-    }
-
-    fn prepare_scratch_buffers(&mut self, count: usize) {
-        while self.scratch.len() < count {
-            self.scratch
-                .push(WgpuTarget::new(&self.device, self.size.0, self.size.1));
-        }
-        for scratch in &mut self.scratch {
-            scratch.resize(&self.device, self.size.0, self.size.1);
-        }
-        self.filter_target_snapshot
-            .resize(&self.device, self.size.0, self.size.1);
-        self.scratch_in_use.clear();
-        self.scratch_in_use.resize(self.scratch.len(), false);
-    }
-
-    fn prepare_fine_stack_spills(
-        &mut self,
-        lengths: GpuBufferLengths,
-        max_clip_depth: usize,
-        max_group_depth: usize,
-    ) {
-        let lane_count = lengths.tile_count * FINE_WORKGROUP_SIZE as usize;
-        let clip_spill_depth = max_clip_depth.saturating_sub(FINE_LOCAL_CLIP_DEPTH);
-        let group_spill_depth = max_group_depth.saturating_sub(FINE_LOCAL_GROUP_DEPTH);
-        self.fine_spills.resize_uninit::<u32>(
-            &self.device,
-            "tileink wgpu fine spills",
-            lane_count * clip_spill_depth
-                + lane_count * group_spill_depth * FINE_GROUP_SPILL_FIELDS,
-        );
-        self.fine_indirect_args.resize_uninit::<u32>(
-            &self.device,
-            "tileink wgpu fine indirect args",
-            FINE_TILE_LIST_COUNT * FINE_TILE_DISPATCH_WORDS,
-        );
+        self.retained
+            .cache_surface(id, meta, primary, secondary, backdrop_source);
     }
 
     fn scan_and_cumsum(&mut self, commands: &mut WgpuCommandBatch, scene: &Canvas) -> bool {
@@ -1285,21 +569,22 @@ impl Renderer {
             return false;
         };
         let active = self
-            .active_tiles
-            .as_ref()
+            .retained
+            .active_tiles()
             .map(|damage| ActiveScanPlan::new(scene, damage));
+        let stats = self.retained.stats_mut();
         if let Some(active) = &active {
             self.scan
                 .upload_active_indices(&self.device, &self.queue, &active.indices);
             self.scan
                 .upload_active_cumsum_plan(&self.device, &self.queue, &active.cumsum);
-            self.incremental_stats.scanned_paths += active.path_count;
-            self.incremental_stats.scanned_lines += active.line_count;
-            self.incremental_stats.scan_chunks += active.chunk_count;
+            stats.scanned_paths += active.path_count;
+            stats.scanned_lines += active.line_count;
+            stats.scan_chunks += active.chunk_count;
         } else {
-            self.incremental_stats.scanned_paths += self.lengths.path_count as u32;
-            self.incremental_stats.scanned_lines += self.lengths.line_count as u32;
-            self.incremental_stats.scan_chunks += self.lengths.scan_chunk_count as u32;
+            stats.scanned_paths += self.lengths.path_count as u32;
+            stats.scanned_lines += self.lengths.line_count as u32;
+            stats.scan_chunks += self.lengths.scan_chunk_count as u32;
         }
         scan.run_in(
             commands,
@@ -1382,15 +667,15 @@ impl Renderer {
         history_copy_dst: Option<&::wgpu::Texture>,
     ) -> bool {
         if self
-            .active_tiles
-            .as_ref()
+            .retained
+            .active_tiles()
             .is_some_and(DamageTiles::is_empty)
         {
             if let Some(dst) = history_copy_dst {
                 let mut commands =
                     WgpuCommandBatch::new(&self.device, &self.queue, "tileink wgpu frame");
                 self.encode_history_copy(&mut commands, dst);
-                self.incremental_stats.queue_submissions = commands.finish();
+                self.retained.stats_mut().queue_submissions = commands.finish();
             }
             return true;
         }
@@ -1409,10 +694,10 @@ impl Renderer {
 
         let mut commands = WgpuCommandBatch::new(&self.device, &self.queue, "tileink wgpu frame");
         if !self.scan_and_cumsum(&mut commands, canvas) {
-            self.incremental_stats.queue_submissions = commands.finish();
+            self.retained.stats_mut().queue_submissions = commands.finish();
             return false;
         }
-        if self.active_tiles.is_some() {
+        if self.retained.active_tiles().is_some() {
             self.clear_render_region(
                 &mut commands,
                 WgpuRenderTargetId::Main,
@@ -1434,11 +719,12 @@ impl Renderer {
         if ok && let Some(dst) = history_copy_dst {
             self.encode_history_copy(&mut commands, dst);
         }
-        self.incremental_stats.queue_submissions = commands.finish();
+        self.retained.stats_mut().queue_submissions = commands.finish();
         if let Some(filter) = &self.filter {
             let (dispatches, compact_dispatches) = filter.dispatch_counts();
-            self.incremental_stats.filter_dispatches = dispatches;
-            self.incremental_stats.compact_filter_dispatches = compact_dispatches;
+            let stats = self.retained.stats_mut();
+            stats.filter_dispatches = dispatches;
+            stats.compact_filter_dispatches = compact_dispatches;
         }
         ok
     }
@@ -1532,10 +818,10 @@ impl Renderer {
         if draws.start >= draws.end {
             return true;
         }
-        self.incremental_stats.draw_batches = self.incremental_stats.draw_batches.saturating_add(1);
+        let stats = self.retained.stats_mut();
+        stats.draw_batches = stats.draw_batches.saturating_add(1);
         if target == WgpuRenderTargetId::Main {
-            self.incremental_stats.root_draw_batches =
-                self.incremental_stats.root_draw_batches.saturating_add(1);
+            stats.root_draw_batches = stats.root_draw_batches.saturating_add(1);
         }
         self.coarse_and_fine_batch_to(
             commands,
@@ -1564,7 +850,7 @@ impl Renderer {
             draw_end,
             layer_stack_start,
             layer_stack_end,
-            active_tile_count: self.active_tiles.as_ref().map(DamageTiles::len),
+            active_tile_count: self.retained.active_tiles().map(DamageTiles::len),
         };
         self.coarse_pipeline.as_ref().unwrap().encode_in(
             commands,
@@ -1585,7 +871,7 @@ impl Renderer {
         let Some(fine) = &self.fine else {
             return false;
         };
-        let active_tile_count = self.active_tiles.as_ref().map(DamageTiles::len);
+        let active_tile_count = self.retained.active_tiles().map(DamageTiles::len);
         if fine.uses_portable_textures() {
             return self.fine_portable_batch_to_in(commands, target);
         }
@@ -1660,7 +946,7 @@ impl Renderer {
         let Some(target_texture) = self.render_target_texture(target).cloned() else {
             return false;
         };
-        let active_tile_count = self.active_tiles.as_ref().map(DamageTiles::len);
+        let active_tile_count = self.retained.active_tiles().map(DamageTiles::len);
         self.fine_portable_source
             .resize(commands.device(), self.size.0, self.size.1);
         self.fine_portable_target
@@ -1830,14 +1116,8 @@ impl Renderer {
                 outer_stack,
                 blend,
             );
-            self.incremental_stats.reused_offscreen_surfaces += 1;
-            self.retained_surfaces.insert(
-                id,
-                surface.meta,
-                surface.primary,
-                surface.secondary,
-                surface.backdrop_source,
-            );
+            self.retained.stats_mut().reused_offscreen_surfaces += 1;
+            self.retained.insert_surface(id, surface);
             filter_cursors.advance_ops(children);
             return ok;
         }
@@ -1845,12 +1125,14 @@ impl Renderer {
             .as_ref()
             .is_some_and(|(_, surface)| surface.secondary.is_some());
         if retained_id.is_some() {
-            self.incremental_stats.rerendered_offscreen_surfaces += 1;
-            self.incremental_stats.rerendered_offscreen_tiles += if partial {
+            let rerendered_tiles = if partial {
                 self.active_tile_count(bounds)
             } else {
                 tile_count_for_bounds(bounds)
             };
+            let stats = self.retained.stats_mut();
+            stats.rerendered_offscreen_surfaces += 1;
+            stats.rerendered_offscreen_tiles += rerendered_tiles;
         }
 
         let source = if let Some((_, mut surface)) = cached {
@@ -1975,14 +1257,8 @@ impl Renderer {
                 filter_bounds.output,
                 outer_stack,
             );
-            self.incremental_stats.reused_offscreen_surfaces += 1;
-            self.retained_surfaces.insert(
-                id,
-                surface.meta,
-                surface.primary,
-                surface.secondary,
-                surface.backdrop_source,
-            );
+            self.retained.stats_mut().reused_offscreen_surfaces += 1;
+            self.retained.insert_surface(id, surface);
             return ok;
         }
         let local_damage = cached
@@ -2036,10 +1312,10 @@ impl Renderer {
                 // root target (for example, a shape below the bottom edge blurred
                 // back into view). Redraw the full source dependency window while
                 // keeping the filtered write restricted to the visible output.
-                self.active_tiles = Some(output_damage.outset(
+                self.retained.set_active_tiles(Some(output_damage.outset(
                     surface_size,
                     filter_model::filter_dependency_outset(&local_filter),
-                ));
+                )));
                 self.prepare_active_tile_buffers();
                 self.clear_render_region(commands, source, local_bounds, 0);
                 Some((output_update, output_damage))
@@ -2084,7 +1360,7 @@ impl Renderer {
             // the filter. Switch to the original output list before touching
             // retained filtered history so clean output tiles remain byte-for-
             // byte unchanged.
-            self.active_tiles = Some(output_damage);
+            self.retained.set_active_tiles(Some(output_damage));
             self.prepare_filter_active_tile_work();
             ok = ok && self.copy_region_to_target(commands, temp, filtered, output_update);
             self.release_scratch(temp);
@@ -2105,8 +1381,8 @@ impl Renderer {
         }
 
         let rerendered_local_tiles = self
-            .active_tiles
-            .as_ref()
+            .retained
+            .active_tiles()
             .map_or_else(|| tile_count_for_bounds(local_bounds), DamageTiles::len);
         let (source_buffer, source_history) = if cache_surface {
             if is_partial_output {
@@ -2127,8 +1403,9 @@ impl Renderer {
         self.scratch_in_use.clear();
         self.restore_root_scene_resources(saved);
         if retained_id.is_some() {
-            self.incremental_stats.rerendered_offscreen_surfaces += 1;
-            self.incremental_stats.rerendered_offscreen_tiles += rerendered_local_tiles;
+            let stats = self.retained.stats_mut();
+            stats.rerendered_offscreen_surfaces += 1;
+            stats.rerendered_offscreen_tiles += rerendered_local_tiles;
         }
         let ok = ok
             && self.composite_cached_filter_surface(
@@ -2178,8 +1455,7 @@ impl Renderer {
             )
         });
         let mut cached = self.take_matching_retained_surface(retained_id, meta);
-        let backdrop_dirty = self.active_tiles.is_none()
-            || retained_id.is_none_or(|id| self.dirty_backdrop_nodes.contains(&id.node));
+        let backdrop_dirty = self.retained.backdrop_is_dirty(retained_id);
         if !backdrop_dirty && let Some((id, surface)) = cached.take() {
             let ok = self.composite_cached_backdrop(
                 commands,
@@ -2190,14 +1466,8 @@ impl Renderer {
                 sample_region,
                 outer_stack.clone(),
             );
-            self.incremental_stats.reused_offscreen_surfaces += 1;
-            self.retained_surfaces.insert(
-                id,
-                surface.meta,
-                surface.primary,
-                surface.secondary,
-                surface.backdrop_source,
-            );
+            self.retained.stats_mut().reused_offscreen_surfaces += 1;
+            self.retained.insert_surface(id, surface);
             filter_cursors.advance_filter(filter);
             return ok
                 && self.execute_ops(commands, canvas, plan, children, target, filter_cursors);
@@ -2210,12 +1480,14 @@ impl Renderer {
                 )
         });
         if retained_id.is_some() {
-            self.incremental_stats.rerendered_offscreen_surfaces += 1;
-            self.incremental_stats.rerendered_offscreen_tiles += if partial {
+            let rerendered_tiles = if partial {
                 self.active_tile_count(bounds)
             } else {
                 tile_count_for_bounds(bounds)
             };
+            let stats = self.retained.stats_mut();
+            stats.rerendered_offscreen_surfaces += 1;
+            stats.rerendered_offscreen_tiles += rerendered_tiles;
         }
 
         if retained_id.is_none()
@@ -2483,14 +1755,8 @@ impl Renderer {
                 outer_stack,
                 None,
             );
-            self.incremental_stats.reused_offscreen_surfaces += 1;
-            self.retained_surfaces.insert(
-                id,
-                surface.meta,
-                surface.primary,
-                surface.secondary,
-                surface.backdrop_source,
-            );
+            self.retained.stats_mut().reused_offscreen_surfaces += 1;
+            self.retained.insert_surface(id, surface);
             filter_cursors.advance_ops(content);
             filter_cursors.advance_ops(mask_ops);
             return ok;
@@ -2499,12 +1765,14 @@ impl Renderer {
             .as_ref()
             .is_some_and(|(_, surface)| surface.secondary.is_some());
         if retained_id.is_some() {
-            self.incremental_stats.rerendered_offscreen_surfaces += 1;
-            self.incremental_stats.rerendered_offscreen_tiles += if partial {
+            let rerendered_tiles = if partial {
                 self.active_tile_count(bounds)
             } else {
                 tile_count_for_bounds(bounds)
             };
+            let stats = self.retained.stats_mut();
+            stats.rerendered_offscreen_surfaces += 1;
+            stats.rerendered_offscreen_tiles += rerendered_tiles;
         }
 
         let (content_target, cached_mask) = if let Some((_, mut surface)) = cached {
@@ -2746,7 +2014,7 @@ impl Renderer {
     }
 
     fn active_region(&self, bounds: Bounds) -> Option<Bounds> {
-        match &self.active_tiles {
+        match self.retained.active_tiles() {
             Some(active) if active.intersects_bounds(bounds) => Some(bounds),
             Some(_) => None,
             None => Some(bounds),
@@ -2754,7 +2022,7 @@ impl Renderer {
     }
 
     fn active_tile_count(&self, bounds: Bounds) -> u32 {
-        self.active_tiles.as_ref().map_or_else(
+        self.retained.active_tiles().map_or_else(
             || tile_count_for_bounds(bounds),
             |tiles| tiles.count_in_bounds(bounds),
         )
@@ -3046,8 +2314,8 @@ impl Renderer {
     }
 
     fn active_bounds_union(&self) -> Option<Bounds> {
-        self.active_tiles
-            .as_ref()?
+        self.retained
+            .active_tiles()?
             .coalesced_rects(self.size)
             .into_iter()
             .reduce(Bounds::union)
@@ -3134,22 +2402,25 @@ impl Renderer {
         canvas: &Canvas,
         options: &RenderOptions,
     ) -> RenderDebugCapture {
-        self.set_history_owner(HistoryOwner::Internal);
-        self.transient_output.reset();
-        let mode = self.incremental_config.mode;
-        self.incremental_config.mode = super::incremental::IncrementalRenderMode::ForceFull;
-        let selected = self.select_scene(canvas);
+        self.retained.set_history_owner(HistoryOwner::Internal);
+        self.retained.reset_transient_output();
+        let mode = self
+            .retained
+            .replace_mode(super::incremental::IncrementalRenderMode::ForceFull);
+        let selected = self.retained.select_scene(canvas);
         let frame = selected.frame();
         let retained_ptr = selected.retained_ptr();
         let materialized_reused = selected.materialized_reused();
         let scene = selected.scene();
-        let plan = self.begin_incremental_frame(frame, scene);
-        self.incremental_stats.materialized_scene_reused = materialized_reused;
+        let plan = self
+            .retained
+            .begin_frame(frame, scene, self.profiler.is_active());
+        self.retained.stats_mut().materialized_scene_reused = materialized_reused;
         self.prepare_scene(scene);
-        self.mark_scene_prepared(retained_ptr, false);
+        self.retained.mark_scene_prepared(retained_ptr, false);
         let rendered_native = self.render_prepared_tile_plan(scene);
-        self.finish_incremental_frame(plan, rendered_native, true);
-        self.incremental_config.mode = mode;
+        self.retained.finish_frame(plan, rendered_native, true);
+        self.retained.replace_mode(mode);
         if rendered_native {
             self.size = scene.physical_size();
             let image = self.image();
@@ -3191,364 +2462,12 @@ impl Renderer {
             segments,
         }
     }
-
-    pub fn image(&self) -> Image {
-        let byte_len = self.target_rgba8_byte_len();
-        if byte_len == 0 {
-            return Image {
-                width: self.size.0,
-                height: self.size.1,
-                pixels: Vec::new(),
-            };
-        }
-
-        let row_bytes = self.target_row_bytes();
-        let padded_row_bytes =
-            row_bytes.next_multiple_of(::wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as u64);
-        let readback = self.device.create_buffer(&::wgpu::BufferDescriptor {
-            label: Some("tileink wgpu target readback"),
-            size: padded_row_bytes * self.size.1 as u64,
-            usage: ::wgpu::BufferUsages::COPY_DST | ::wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
-        let mut encoder = self
-            .device
-            .create_command_encoder(&::wgpu::CommandEncoderDescriptor {
-                label: Some("tileink wgpu target readback copy"),
-            });
-        encoder.copy_texture_to_buffer(
-            self.readback_target.texture().as_image_copy(),
-            ::wgpu::TexelCopyBufferInfo {
-                buffer: &readback,
-                layout: ::wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(padded_row_bytes as u32),
-                    rows_per_image: None,
-                },
-            },
-            self.target_texture_extent(),
-        );
-        self.queue.submit([encoder.finish()]);
-
-        let (tx, rx) = mpsc::channel();
-        readback
-            .slice(..)
-            .map_async(::wgpu::MapMode::Read, move |result| {
-                tx.send(result).unwrap()
-            });
-        self.device
-            .poll(::wgpu::PollType::wait_indefinitely())
-            .expect("poll wgpu device for target readback");
-        rx.recv()
-            .expect("receive target readback map result")
-            .expect("map wgpu target readback buffer");
-
-        let mapped = readback
-            .slice(..)
-            .get_mapped_range()
-            .expect("read mapped wgpu target readback buffer");
-        let mut pixels = Vec::with_capacity(self.size.0 as usize * self.size.1 as usize);
-        for row in 0..self.size.1 as usize {
-            let start = row * padded_row_bytes as usize;
-            let row = &mapped[start..start + row_bytes as usize];
-            pixels.extend_from_slice(bytemuck::cast_slice(row));
-        }
-        drop(mapped);
-        readback.unmap();
-        Image {
-            width: self.size.0,
-            height: self.size.1,
-            pixels,
-        }
-    }
-
-    pub fn device(&self) -> &::wgpu::Device {
-        &self.device
-    }
-
-    pub fn queue(&self) -> &::wgpu::Queue {
-        &self.queue
-    }
-
-    pub fn target_rgba8_byte_len(&self) -> ::wgpu::BufferAddress {
-        rgba8_byte_len(self.size.0, self.size.1)
-    }
-
-    pub fn render_to_wgpu_texture(
-        &mut self,
-        canvas: &Canvas,
-        dst: &::wgpu::Texture,
-    ) -> Result<(), WgpuTextureRenderError> {
-        self.render_native_to_wgpu_texture(canvas, dst, RequestedTextureHistory::Transient)?;
-        self.last_frame_used_native = true;
-        Ok(())
-    }
-
-    /// Renders into a caller-owned texture that remains intact between retained frames.
-    ///
-    /// The destination itself becomes active root history, so this path does not update or resize
-    /// renderer-owned root history and does not issue a full-surface presentation copy.
-    /// `history_id` must change if the destination is recreated or externally modified.
-    pub fn render_to_persistent_wgpu_texture(
-        &mut self,
-        canvas: &Canvas,
-        dst: &::wgpu::Texture,
-        history_id: ExternalTextureHistoryId,
-    ) -> Result<(), WgpuTextureRenderError> {
-        self.render_native_to_wgpu_texture(
-            canvas,
-            dst,
-            RequestedTextureHistory::External(history_id),
-        )?;
-        self.last_frame_used_native = true;
-        Ok(())
-    }
-
-    pub fn render_with_text_to_wgpu_texture(
-        &mut self,
-        canvas: &Canvas,
-        font_system: &mut TextFontSystem,
-        text_context: &mut TextContext,
-        dst: &::wgpu::Texture,
-    ) -> Result<(), WgpuTextureRenderError> {
-        self.render_native_with_text_to_wgpu_texture(
-            canvas,
-            font_system,
-            text_context,
-            dst,
-            RequestedTextureHistory::Transient,
-        )?;
-        self.last_frame_used_native = true;
-        Ok(())
-    }
-
-    /// Text-capable variant of [`Self::render_to_persistent_wgpu_texture`].
-    pub fn render_with_text_to_persistent_wgpu_texture(
-        &mut self,
-        canvas: &Canvas,
-        font_system: &mut TextFontSystem,
-        text_context: &mut TextContext,
-        dst: &::wgpu::Texture,
-        history_id: ExternalTextureHistoryId,
-    ) -> Result<(), WgpuTextureRenderError> {
-        self.render_native_with_text_to_wgpu_texture(
-            canvas,
-            font_system,
-            text_context,
-            dst,
-            RequestedTextureHistory::External(history_id),
-        )?;
-        self.last_frame_used_native = true;
-        Ok(())
-    }
-
-    fn render_native_to_wgpu_texture(
-        &mut self,
-        canvas: &Canvas,
-        dst: &::wgpu::Texture,
-        history: RequestedTextureHistory,
-    ) -> Result<(), WgpuTextureRenderError> {
-        self.render_native_to_wgpu_texture_with_prepare(
-            canvas,
-            dst,
-            false,
-            history,
-            |renderer, canvas| {
-                renderer.prepare_scene(canvas);
-            },
-        )
-    }
-
-    fn render_native_with_text_to_wgpu_texture(
-        &mut self,
-        canvas: &Canvas,
-        font_system: &mut TextFontSystem,
-        text_context: &mut TextContext,
-        dst: &::wgpu::Texture,
-        history: RequestedTextureHistory,
-    ) -> Result<(), WgpuTextureRenderError> {
-        self.render_native_to_wgpu_texture_with_prepare(
-            canvas,
-            dst,
-            true,
-            history,
-            |renderer, canvas| {
-                renderer.prepare_scene_with_text(canvas, font_system, text_context);
-            },
-        )
-    }
-
-    fn render_native_to_wgpu_texture_with_prepare(
-        &mut self,
-        canvas: &Canvas,
-        dst: &::wgpu::Texture,
-        uses_text: bool,
-        requested_history: RequestedTextureHistory,
-        prepare: impl FnOnce(&mut Self, &Canvas),
-    ) -> Result<(), WgpuTextureRenderError> {
-        self.validate_wgpu_storage_texture_destination(
-            dst,
-            canvas.physical_width(),
-            canvas.physical_height(),
-        )?;
-        let selected = self.select_scene(canvas);
-        let frame = selected.frame();
-        let retained_ptr = selected.retained_ptr();
-        let materialized_reused = selected.materialized_reused();
-        let is_retained = frame.is_some();
-        let history_owner = match (is_retained, requested_history) {
-            (true, RequestedTextureHistory::External(id)) => HistoryOwner::External(id),
-            _ => HistoryOwner::Internal,
-        };
-        self.set_history_owner(history_owner);
-        let transient_without_copy = is_retained
-            && matches!(requested_history, RequestedTextureHistory::Transient)
-            && !dst.usage().contains(::wgpu::TextureUsages::COPY_DST);
-        if transient_without_copy {
-            // A swapchain without COPY_DST cannot receive internal history. Keep the retained
-            // scene baseline for damage statistics, but force full direct output for correctness.
-            self.history_valid = false;
-            self.transient_output.reset();
-        }
-        let scene = selected.scene();
-        let plan = self.begin_incremental_frame(frame, scene);
-        self.incremental_stats.materialized_scene_reused = materialized_reused;
-        let (output_mode, history_updated, copy_history) = if !is_retained {
-            self.transient_output.reset();
-            (IncrementalOutputMode::DirectTransient, false, false)
-        } else {
-            match requested_history {
-                RequestedTextureHistory::External(_) => {
-                    (IncrementalOutputMode::ExternalHistory, true, false)
-                }
-                RequestedTextureHistory::Transient if transient_without_copy => {
-                    (IncrementalOutputMode::DirectTransient, false, false)
-                }
-                RequestedTextureHistory::Transient => {
-                    match self
-                        .transient_output
-                        .decide(&plan.stats, self.incremental_config)
-                    {
-                        TransientOutputDecision::Direct => {
-                            (IncrementalOutputMode::DirectTransient, false, false)
-                        }
-                        TransientOutputDecision::RebuildHistory => {
-                            (IncrementalOutputMode::RebuildHistory, true, true)
-                        }
-                        TransientOutputDecision::InternalHistory => {
-                            (IncrementalOutputMode::InternalHistory, true, true)
-                        }
-                    }
-                }
-            }
-        };
-        let render_direct = matches!(
-            output_mode,
-            IncrementalOutputMode::DirectTransient | IncrementalOutputMode::ExternalHistory
-        );
-        if render_direct {
-            self.root_target_texture = Some(dst.clone());
-            self.root_target_view =
-                Some(dst.create_view(&::wgpu::TextureViewDescriptor::default()));
-        } else {
-            // A direct resize deliberately leaves internal history at its old allocation. The
-            // retained scene may still be prepared when hysteresis later chooses RebuildHistory,
-            // so target allocation cannot be coupled only to scene-buffer preparation.
-            self.readback_target.resize(
-                &self.device,
-                scene.physical_width(),
-                scene.physical_height(),
-            );
-        }
-        self.incremental_stats.output_mode = output_mode;
-        let has_work = !plan.tiles.is_empty();
-        if has_work && self.scene_needs_prepare(retained_ptr, uses_text) {
-            prepare(self, scene);
-            self.mark_scene_prepared(retained_ptr, uses_text);
-        }
-        let rendered = if has_work || copy_history {
-            self.render_prepared_tile_plan_with_history_copy(scene, copy_history.then_some(dst))
-        } else {
-            true
-        };
-        self.root_target_view = None;
-        self.root_target_texture = None;
-        self.finish_incremental_frame(plan, rendered, history_updated);
-        if rendered {
-            self.size = scene.physical_size();
-            if copy_history {
-                self.incremental_stats.history_copied_to_output = true;
-            }
-            return Ok(());
-        }
-        panic!("wgpu renderer could not render scene natively")
-    }
-
-    fn validate_wgpu_storage_texture_destination(
-        &self,
-        dst: &::wgpu::Texture,
-        width: u32,
-        height: u32,
-    ) -> Result<(), WgpuTextureRenderError> {
-        if dst.width() < width || dst.height() < height {
-            return Err(WgpuTextureRenderError::DestinationTooSmall {
-                required_width: width,
-                required_height: height,
-                actual_width: dst.width(),
-                actual_height: dst.height(),
-            });
-        }
-        if !dst.usage().contains(::wgpu::TextureUsages::STORAGE_BINDING) {
-            return Err(WgpuTextureRenderError::DestinationStorageUsageMissing(
-                dst.usage(),
-            ));
-        }
-        if self
-            .fine
-            .as_ref()
-            .is_some_and(WgpuFinePipeline::uses_portable_textures)
-            && !dst
-                .usage()
-                .contains(::wgpu::TextureUsages::COPY_SRC | ::wgpu::TextureUsages::COPY_DST)
-        {
-            return Err(WgpuTextureRenderError::DestinationUsageMissing(dst.usage()));
-        }
-        if dst.format() != ::wgpu::TextureFormat::Rgba8Unorm
-            || dst.dimension() != ::wgpu::TextureDimension::D2
-            || dst.sample_count() != 1
-        {
-            return Err(WgpuTextureRenderError::UnsupportedDestination {
-                format: dst.format(),
-                dimension: dst.dimension(),
-                sample_count: dst.sample_count(),
-            });
-        }
-        Ok(())
-    }
-
-    fn target_row_bytes(&self) -> ::wgpu::BufferAddress {
-        self.size.0 as ::wgpu::BufferAddress * std::mem::size_of::<u32>() as ::wgpu::BufferAddress
-    }
-
-    fn target_texture_extent(&self) -> ::wgpu::Extent3d {
-        ::wgpu::Extent3d {
-            width: self.size.0,
-            height: self.size.1,
-            depth_or_array_layers: 1,
-        }
-    }
 }
 
 struct WgpuDebugScanReadback {
     backdrops: Vec<i32>,
     tile_segment_ranges: Vec<TileSegmentRange>,
     segments: Vec<LineSegment>,
-}
-
-fn rgba8_byte_len(width: u32, height: u32) -> ::wgpu::BufferAddress {
-    width as ::wgpu::BufferAddress
-        * height as ::wgpu::BufferAddress
-        * std::mem::size_of::<u32>() as ::wgpu::BufferAddress
 }
 
 fn copy_texture(
