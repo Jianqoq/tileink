@@ -784,6 +784,21 @@ impl Renderer {
         self.prepare_filter_tile_work(&tiles);
     }
 
+    fn suspend_incremental_filter_work(&mut self) -> Option<DamageTiles> {
+        let active = self.active_tiles.take();
+        if active.is_some()
+            && let Some(filter) = self.filter.as_mut()
+        {
+            filter.clear_active_tile_work();
+        }
+        active
+    }
+
+    fn restore_incremental_filter_work(&mut self, active: Option<DamageTiles>) {
+        self.active_tiles = active;
+        self.prepare_filter_active_tile_work();
+    }
+
     fn prepare_filter_tile_work(&mut self, tiles: &[u32]) {
         let work = self
             .filter_tile_work_arena
@@ -2277,6 +2292,11 @@ impl Renderer {
             None
         };
         let filter_source = source_history.unwrap_or(target);
+        // Filters without a partial-update implementation rebuild their whole
+        // cached surface. Running that rebuild with the root dirty-tile
+        // worklist would mix newly filtered tiles with stale filtered pixels,
+        // which then become blur/refraction input on the next frame.
+        let suspended_active = (!partial).then(|| self.suspend_incremental_filter_work());
         let filter_ok = if partial {
             let output = self
                 .active_bounds_union()
@@ -2328,6 +2348,9 @@ impl Renderer {
                 }
             }
         };
+        if let Some(active) = suspended_active {
+            self.restore_incremental_filter_work(active);
+        }
         if !filter_ok {
             if let Some(source) = source_history {
                 self.release_scratch(source);

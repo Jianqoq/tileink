@@ -994,6 +994,124 @@ fn retained_liquid_glass_ignores_later_foreground_history_when_slider_moves() {
 }
 
 #[test]
+fn retained_nested_liquid_glass_stays_stable_when_clipped_slider_moves() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    fn frame(slider_x: f64) -> Canvas {
+        let panel = Rect::new(24.0, 16.0, 296.0, 176.0);
+        let mut canvas = Canvas::new_retained(320, 192, 1.0, RetainedNodeId::for_owner(100));
+
+        let mut background = Canvas::new(320, 192, 1.0);
+        for y in (0..192).step_by(8) {
+            for x in (0..320).step_by(8) {
+                let color = if (x / 8 + y / 8) % 2 == 0 {
+                    Color::from_rgb8(236, 242, 250)
+                } else {
+                    Color::from_rgb8(86, 132, 178)
+                };
+                background.push_rect(
+                    Rect::new(
+                        f64::from(x),
+                        f64::from(y),
+                        f64::from(x + 8),
+                        f64::from(y + 8),
+                    ),
+                    crate::Radius::ZERO,
+                    color,
+                );
+            }
+        }
+        canvas.append_retained_scene(
+            RetainedNodeId::for_owner(101),
+            0,
+            std::sync::Arc::new(background),
+            (0.0, 0.0),
+        );
+
+        canvas.push_retained_clip_sdf_rect_layer(
+            RetainedLayerKey::new(RetainedNodeId::for_owner(102), crate::SceneRevision::INITIAL),
+            panel,
+            crate::Radius::all(20.0),
+        );
+        let mut panel_scene = Canvas::new(272, 160, 1.0);
+        let local_panel = Rect::new(0.0, 0.0, 272.0, 160.0);
+        panel_scene.push_backdrop_layer(
+            Filter::RectLiquidGlass(RectLiquidGlass {
+                blur_radius: 5,
+                blur_sampling: BlurSampling::downsampled(4),
+                tint: Color::from_rgba8(255, 255, 255, 26),
+                refraction_thickness: 28.0,
+                refraction_factor: 2.5,
+                refraction_dispersion: 10.0,
+                ..RectLiquidGlass::default()
+            }),
+            Region::rect(local_panel, crate::Radius::all(20.0)),
+        );
+        panel_scene.push_rect(
+            local_panel,
+            crate::Radius::all(20.0),
+            Color::from_rgba8(255, 255, 255, 26),
+        );
+        panel_scene.pop_layer();
+        canvas.append_retained_scene(
+            RetainedNodeId::for_owner(103),
+            0,
+            std::sync::Arc::new(panel_scene),
+            (24.0, 16.0),
+        );
+
+        let mut track = Canvas::new(220, 6, 1.0);
+        track.push_rect(
+            Rect::new(0.0, 0.0, 220.0, 6.0),
+            crate::Radius::all(3.0),
+            Color::from_rgba8(40, 50, 64, 100),
+        );
+        canvas.append_retained_scene(
+            RetainedNodeId::for_owner(104),
+            0,
+            std::sync::Arc::new(track),
+            (50.0, 93.0),
+        );
+
+        let mut thumb = Canvas::new(18, 18, 1.0);
+        thumb.push_rect(
+            Rect::new(0.0, 0.0, 18.0, 18.0),
+            crate::Radius::all(9.0),
+            Color::from_rgb8(24, 30, 40),
+        );
+        canvas.append_retained_scene(
+            RetainedNodeId::for_owner(105),
+            0,
+            std::sync::Arc::new(thumb),
+            (slider_x, 87.0),
+        );
+        canvas.pop_layer();
+        canvas
+    }
+
+    let mut incremental = new_test_renderer(320, 192, Color::TRANSPARENT);
+    incremental.render(&frame(64.0));
+    for slider_x in [80.0, 96.0, 112.0, 128.0, 144.0, 160.0] {
+        incremental.render(&frame(slider_x));
+    }
+
+    let final_frame = frame(160.0);
+    let mut full = new_test_renderer(320, 192, Color::TRANSPARENT);
+    let mut config = full.incremental_render_config();
+    config.mode = crate::IncrementalRenderMode::ForceFull;
+    full.set_incremental_render_config(config);
+    full.render(&final_frame);
+
+    assert_eq!(
+        incremental.image().pixels,
+        full.image().pixels,
+        "a later clipped slider must not feed tile-shaped history into a nested liquid-glass backdrop"
+    );
+}
+
+#[test]
 fn retained_mask_updates_local_tiles_and_matches_full_render() {
     if !run_wgpu_tests() {
         return;
