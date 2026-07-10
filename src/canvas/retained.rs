@@ -889,6 +889,22 @@ mod tests {
     }
 
     #[test]
+    fn retained_scene_cache_trusts_revision_as_content_identity() {
+        let id = RetainedNodeId::for_owner(4);
+        let revision = SceneRevision::new(7);
+        let red = scene(Color::from_rgb8(255, 0, 0));
+        let green = scene(Color::from_rgb8(0, 255, 0));
+        let mut cache = RetainedSceneCache::default();
+
+        let first = cache.scene(id, revision, &red);
+        let reused = cache.scene(id, revision, &green);
+        assert!(Arc::ptr_eq(&first, &reused));
+
+        let advanced = cache.scene(id, SceneRevision::new(8), &green);
+        assert!(Arc::ptr_eq(&advanced, &green));
+    }
+
+    #[test]
     fn retained_layer_owns_direct_commands() {
         let layer = RetainedNodeId::for_owner(2);
         let mut canvas = Canvas::new_retained(64, 64, 1.0, RetainedNodeId::for_owner(1));

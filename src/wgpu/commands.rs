@@ -4,6 +4,7 @@ pub(crate) struct WgpuCommandBatch {
     encoder: Option<::wgpu::CommandEncoder>,
     uniform_writes: Vec<UniformWriteArena>,
     has_work: bool,
+    submissions: u32,
     label: &'static str,
 }
 
@@ -24,9 +25,12 @@ impl WgpuCommandBatch {
         Self {
             device: device.clone(),
             queue: queue.clone(),
-            encoder: Some(create_encoder(device, label)),
+            // Allocate on first encoded command. A submitted batch must not create an unused
+            // successor encoder merely so `finish` or `Drop` can discard it.
+            encoder: None,
             uniform_writes: Vec::new(),
             has_work: false,
+            submissions: 0,
             label,
         }
     }
@@ -38,8 +42,7 @@ impl WgpuCommandBatch {
     pub(crate) fn encoder(&mut self) -> &mut ::wgpu::CommandEncoder {
         self.has_work = true;
         self.encoder
-            .as_mut()
-            .expect("wgpu command batch encoder exists until submit")
+            .get_or_insert_with(|| create_encoder(&self.device, self.label))
     }
 
     pub(crate) fn write_uniform_slot(
@@ -108,12 +111,13 @@ impl WgpuCommandBatch {
             .take()
             .expect("wgpu command batch encoder exists while submitting");
         self.queue.submit([encoder.finish()]);
-        self.encoder = Some(create_encoder(&self.device, self.label));
+        self.submissions += 1;
         self.has_work = false;
     }
 
-    pub(crate) fn finish(mut self) {
+    pub(crate) fn finish(mut self) -> u32 {
         self.submit_current();
+        self.submissions
     }
 }
 

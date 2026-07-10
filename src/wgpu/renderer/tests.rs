@@ -259,25 +259,25 @@ fn retained_path_scan_dispatches_only_paths_reaching_dirty_tiles() {
 }
 
 #[test]
-fn retained_direct_commands_change_and_disappear_without_manual_damage() {
+fn retained_scene_revision_change_and_removal_dirty_without_manual_damage() {
     if !run_wgpu_tests() {
         return;
     }
 
     let root = RetainedNodeId::for_owner(80);
     let node = RetainedNodeId::for_owner(81);
-    let frame = |color: Option<Color>| {
+    let frame = |revision, color: Option<Color>| {
         let mut canvas = Canvas::new_retained(32, 16, 1.0, root);
         if let Some(color) = color {
             let mut child = Canvas::new(16, 16, 1.0);
             child.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
-            canvas.append_retained_scene(node, 0, std::sync::Arc::new(child), (0.0, 0.0));
+            canvas.append_retained_scene(node, revision, std::sync::Arc::new(child), (0.0, 0.0));
         }
         canvas
     };
-    let red = frame(Some(Color::from_rgb8(220, 30, 40)));
-    let green = frame(Some(Color::from_rgb8(30, 210, 70)));
-    let empty = frame(None);
+    let red = frame(0, Some(Color::from_rgb8(220, 30, 40)));
+    let green = frame(1, Some(Color::from_rgb8(30, 210, 70)));
+    let empty = frame(1, None);
     let mut renderer = new_test_renderer(32, 16, Color::TRANSPARENT);
 
     renderer.render(&red);
@@ -390,7 +390,9 @@ fn retained_renderer_copies_complete_history_to_external_texture() {
     let bytes = read_texture_rgba8(renderer.device(), renderer.queue(), &texture, 32, 16);
     assert_eq!(&bytes[4 * 8..4 * 9], &[30, 210, 70, 255]);
     assert_eq!(&bytes[4 * 24..4 * 25], &[20, 50, 220, 255]);
-    assert_eq!(renderer.incremental_render_stats().dirty_tiles, 1);
+    let stats = renderer.incremental_render_stats();
+    assert_eq!(stats.dirty_tiles, 1);
+    assert_eq!(stats.queue_submissions, 1);
 }
 
 #[test]
@@ -425,6 +427,7 @@ fn high_damage_renders_directly_then_rebuilds_internal_history() {
         crate::IncrementalOutputMode::InternalHistory
     );
     assert!(renderer.incremental_render_stats().history_copied_to_output);
+    assert_eq!(renderer.incremental_render_stats().queue_submissions, 1);
 
     renderer
         .render_to_wgpu_texture(&second, &texture)
@@ -465,6 +468,7 @@ fn high_damage_renders_directly_then_rebuilds_internal_history() {
         crate::IncrementalOutputMode::RebuildHistory
     );
     assert!(renderer.incremental_render_stats().history_copied_to_output);
+    assert_eq!(renderer.incremental_render_stats().queue_submissions, 1);
 }
 
 #[test]

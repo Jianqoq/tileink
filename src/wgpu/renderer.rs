@@ -1350,6 +1350,27 @@ impl Renderer {
     }
 
     fn render_prepared_tile_plan(&mut self, canvas: &Canvas) -> bool {
+        self.render_prepared_tile_plan_with_history_copy(canvas, None)
+    }
+
+    fn render_prepared_tile_plan_with_history_copy(
+        &mut self,
+        canvas: &Canvas,
+        history_copy_dst: Option<&::wgpu::Texture>,
+    ) -> bool {
+        if self
+            .active_tiles
+            .as_ref()
+            .is_some_and(DamageTiles::is_empty)
+        {
+            if let Some(dst) = history_copy_dst {
+                let mut commands =
+                    WgpuCommandBatch::new(&self.device, &self.queue, "tileink wgpu frame");
+                self.encode_history_copy(&mut commands, dst);
+                self.incremental_stats.queue_submissions = commands.finish();
+            }
+            return true;
+        }
         if self.fine.is_none() || self.coarse_pipeline.is_none() || self.filter.is_none() {
             return false;
         }
@@ -1357,13 +1378,6 @@ impl Renderer {
             return false;
         };
 
-        if self
-            .active_tiles
-            .as_ref()
-            .is_some_and(DamageTiles::is_empty)
-        {
-            return true;
-        }
         if let Some(filter) = &self.filter {
             filter.reset_dispatch_counts();
         }
@@ -1372,6 +1386,7 @@ impl Renderer {
 
         let mut commands = WgpuCommandBatch::new(&self.device, &self.queue, "tileink wgpu frame");
         if !self.scan_and_cumsum(&mut commands, canvas) {
+            self.incremental_stats.queue_submissions = commands.finish();
             return false;
         }
         if self.active_tiles.is_some() {
@@ -1393,13 +1408,26 @@ impl Renderer {
             WgpuRenderTargetId::Main,
             &mut filter_cursors,
         );
-        commands.finish();
+        if ok && let Some(dst) = history_copy_dst {
+            self.encode_history_copy(&mut commands, dst);
+        }
+        self.incremental_stats.queue_submissions = commands.finish();
         if let Some(filter) = &self.filter {
             let (dispatches, compact_dispatches) = filter.dispatch_counts();
             self.incremental_stats.filter_dispatches = dispatches;
             self.incremental_stats.compact_filter_dispatches = compact_dispatches;
         }
         ok
+    }
+
+    fn encode_history_copy(&self, commands: &mut WgpuCommandBatch, dst: &::wgpu::Texture) {
+        let _profile_scope = start_cpu_scope("history.copy");
+        copy_texture(
+            commands.encoder(),
+            self.readback_target.texture(),
+            dst,
+            self.size,
+        );
     }
 
     fn execute_ops(
@@ -3407,29 +3435,22 @@ impl Renderer {
             prepare(self, scene);
             self.mark_scene_prepared(retained_ptr, uses_text);
         }
-        let rendered = !has_work || self.render_prepared_tile_plan(scene);
+        let rendered = if has_work || copy_history {
+            self.render_prepared_tile_plan_with_history_copy(scene, copy_history.then_some(dst))
+        } else {
+            true
+        };
         self.root_target_view = None;
         self.root_target_texture = None;
         self.finish_incremental_frame(plan, rendered, history_updated);
         if rendered {
             self.size = scene.physical_size();
             if copy_history {
-                self.copy_history_to(dst);
                 self.incremental_stats.history_copied_to_output = true;
             }
             return Ok(());
         }
         panic!("wgpu renderer could not render scene natively")
-    }
-
-    fn copy_history_to(&self, dst: &::wgpu::Texture) {
-        let mut encoder = self
-            .device
-            .create_command_encoder(&::wgpu::CommandEncoderDescriptor {
-                label: Some("tileink retained history copy"),
-            });
-        copy_texture(&mut encoder, self.readback_target.texture(), dst, self.size);
-        self.queue.submit([encoder.finish()]);
     }
 
     fn validate_wgpu_storage_texture_destination(
