@@ -1,11 +1,10 @@
 use crate::shared::gpu_plan::{GpuBufferLengths, SCAN_CHUNK_SIZE};
 
-use std::cell::OnceCell;
-
 use super::canvas::{WgpuScanBindings, WgpuScanBuffers, WgpuSceneBuffers};
 use super::commands::{
     WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
 };
+use super::lazy::{LazyComputePipeline, LazyShaderModule};
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 
 const WORKGROUP_SIZE: u32 = 256;
@@ -53,13 +52,11 @@ pub(crate) struct WgpuScanPipeline {
 }
 
 struct LazyScanKernel {
-    shader: OnceCell<::wgpu::ShaderModule>,
-    pipeline: OnceCell<::wgpu::ComputePipeline>,
+    shader: LazyShaderModule,
+    pipeline: LazyComputePipeline,
     bind_group_layout: ::wgpu::BindGroupLayout,
     pipeline_layout: ::wgpu::PipelineLayout,
-    label: &'static str,
     source: &'static str,
-    entry_point: &'static str,
 }
 
 impl LazyScanKernel {
@@ -81,33 +78,19 @@ impl LazyScanKernel {
             immediate_size: 0,
         });
         Self {
-            shader: OnceCell::new(),
-            pipeline: OnceCell::new(),
+            shader: LazyShaderModule::new(label),
+            pipeline: LazyComputePipeline::new(label, entry_point),
             bind_group_layout,
             pipeline_layout,
-            label,
             source,
-            entry_point,
         }
     }
 
     fn pipeline(&self, device: &::wgpu::Device) -> &::wgpu::ComputePipeline {
-        self.pipeline.get_or_init(|| {
-            let shader = self.shader.get_or_init(|| {
-                device.create_shader_module(::wgpu::ShaderModuleDescriptor {
-                    label: Some(self.label),
-                    source: ::wgpu::ShaderSource::Wgsl(self.source.into()),
-                })
-            });
-            device.create_compute_pipeline(&::wgpu::ComputePipelineDescriptor {
-                label: Some(self.label),
-                layout: Some(&self.pipeline_layout),
-                module: shader,
-                entry_point: Some(self.entry_point),
-                compilation_options: ::wgpu::PipelineCompilationOptions::default(),
-                cache: None,
-            })
-        })
+        let shader = self
+            .shader
+            .get(device, || ::wgpu::ShaderSource::Wgsl(self.source.into()));
+        self.pipeline.get(device, &self.pipeline_layout, shader)
     }
 }
 
@@ -415,6 +398,21 @@ impl WgpuScanPipeline {
                 bind_buffer(4, bindings.segments),
             ],
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn initialized_pipeline_count(&self) -> usize {
+        [
+            &self.clear,
+            &self.count,
+            &self.prefix_chunks,
+            &self.chunk_offsets,
+            &self.apply_chunk_offsets,
+            &self.emit,
+        ]
+        .into_iter()
+        .filter(|kernel| kernel.pipeline.is_initialized())
+        .count()
     }
 }
 

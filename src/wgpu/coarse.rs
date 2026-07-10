@@ -2,12 +2,11 @@
 
 use crate::shared::gpu_plan::{COARSE_CHUNK_SIZE, GpuBufferLengths};
 
-use std::cell::OnceCell;
-
 use super::canvas::{WgpuCoarseBindings, WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers};
 use super::commands::{
     WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
 };
+use super::lazy::{LazyComputePipeline, LazyShaderModule};
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 
 #[cfg(test)]
@@ -51,10 +50,10 @@ unsafe impl bytemuck::Zeroable for CoarseConfig {}
 unsafe impl bytemuck::Pod for CoarseConfig {}
 
 pub(crate) struct WgpuCoarsePipeline {
-    count_shader: OnceCell<::wgpu::ShaderModule>,
-    prefix_shader: OnceCell<::wgpu::ShaderModule>,
-    emit_shader: OnceCell<::wgpu::ShaderModule>,
-    emit_chunk_shader: OnceCell<::wgpu::ShaderModule>,
+    count_shader: LazyShaderModule,
+    prefix_shader: LazyShaderModule,
+    emit_shader: LazyShaderModule,
+    emit_chunk_shader: LazyShaderModule,
     count_bins: LazyCoarseKernel,
     ptcl_prefix_chunks: LazyCoarseKernel,
     ptcl_chunk_offsets: LazyCoarseKernel,
@@ -100,8 +99,7 @@ enum CoarseLayoutKind {
 }
 
 struct LazyCoarseKernel {
-    pipeline: OnceCell<::wgpu::ComputePipeline>,
-    entry_point: &'static str,
+    pipeline: LazyComputePipeline,
     shader: CoarseShaderKind,
     layout: CoarseLayoutKind,
 }
@@ -109,8 +107,7 @@ struct LazyCoarseKernel {
 impl LazyCoarseKernel {
     fn new(entry_point: &'static str, shader: CoarseShaderKind, layout: CoarseLayoutKind) -> Self {
         Self {
-            pipeline: OnceCell::new(),
-            entry_point,
+            pipeline: LazyComputePipeline::new(entry_point, entry_point),
             shader,
             layout,
         }
@@ -174,10 +171,10 @@ impl WgpuCoarsePipeline {
         });
 
         Some(Self {
-            count_shader: OnceCell::new(),
-            prefix_shader: OnceCell::new(),
-            emit_shader: OnceCell::new(),
-            emit_chunk_shader: OnceCell::new(),
+            count_shader: LazyShaderModule::new("tileink wgpu coarse count shader"),
+            prefix_shader: LazyShaderModule::new("tileink wgpu coarse prefix shader"),
+            emit_shader: LazyShaderModule::new("tileink wgpu coarse emit shader"),
+            emit_chunk_shader: LazyShaderModule::new("tileink wgpu coarse chunk emit shader"),
             count_bins: LazyCoarseKernel::new(
                 "coarse_count_bins",
                 CoarseShaderKind::Count,
@@ -285,14 +282,11 @@ impl WgpuCoarsePipeline {
         device: &::wgpu::Device,
         kernel: &'a LazyCoarseKernel,
     ) -> &'a ::wgpu::ComputePipeline {
-        kernel.pipeline.get_or_init(|| {
-            create_pipeline(
-                device,
-                self.layout_for(kernel.layout),
-                self.shader_for(device, kernel.shader),
-                kernel.entry_point,
-            )
-        })
+        kernel.pipeline.get(
+            device,
+            self.layout_for(kernel.layout),
+            self.shader_for(device, kernel.shader),
+        )
     }
 
     fn shader_for(
@@ -301,35 +295,30 @@ impl WgpuCoarsePipeline {
         shader: CoarseShaderKind,
     ) -> &::wgpu::ShaderModule {
         match shader {
-            CoarseShaderKind::Count => self.count_shader.get_or_init(|| {
-                create_shader(
-                    device,
-                    "tileink wgpu coarse count shader",
-                    include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_coarse_count.wgsl")),
+            CoarseShaderKind::Count => self.count_shader.get(device, || {
+                ::wgpu::ShaderSource::Wgsl(
+                    include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_coarse_count.wgsl"))
+                        .into(),
                 )
             }),
-            CoarseShaderKind::Prefix => self.prefix_shader.get_or_init(|| {
-                create_shader(
-                    device,
-                    "tileink wgpu coarse prefix shader",
-                    include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_coarse_prefix.wgsl")),
+            CoarseShaderKind::Prefix => self.prefix_shader.get(device, || {
+                ::wgpu::ShaderSource::Wgsl(
+                    include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_coarse_prefix.wgsl"))
+                        .into(),
                 )
             }),
-            CoarseShaderKind::Emit => self.emit_shader.get_or_init(|| {
-                create_shader(
-                    device,
-                    "tileink wgpu coarse emit shader",
-                    include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_coarse_emit.wgsl")),
+            CoarseShaderKind::Emit => self.emit_shader.get(device, || {
+                ::wgpu::ShaderSource::Wgsl(
+                    include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_coarse_emit.wgsl")).into(),
                 )
             }),
-            CoarseShaderKind::EmitChunk => self.emit_chunk_shader.get_or_init(|| {
-                create_shader(
-                    device,
-                    "tileink wgpu coarse chunk emit shader",
+            CoarseShaderKind::EmitChunk => self.emit_chunk_shader.get(device, || {
+                ::wgpu::ShaderSource::Wgsl(
                     include_str!(concat!(
                         env!("OUT_DIR"),
                         "/tileink_wgpu_coarse_emit_web.wgsl"
-                    )),
+                    ))
+                    .into(),
                 )
             }),
         }
@@ -768,6 +757,33 @@ impl WgpuCoarsePipeline {
             ],
         })
     }
+
+    #[cfg(test)]
+    pub(crate) fn initialized_pipeline_count(&self) -> usize {
+        [
+            &self.count_bins,
+            &self.ptcl_prefix_chunks,
+            &self.ptcl_chunk_offsets,
+            &self.ptcl_apply_chunk_offsets,
+            &self.glyph_prefix_chunks,
+            &self.glyph_chunk_offsets,
+            &self.glyph_apply_chunk_offsets,
+            &self.emit_chunk_counts,
+            &self.emit_prefix_chunks,
+            &self.emit_chunk_offsets,
+            &self.emit_apply_chunk_offsets,
+            &self.emit_fill_refs,
+            &self.emit_chunk_particle_counts,
+            &self.emit_chunk_particle_offsets,
+            &self.tile_counts_from_emit_chunks,
+            &self.emit_bins,
+            &self.emit_web,
+            &self.emit_chunk_tile_kinds,
+        ]
+        .into_iter()
+        .filter(|kernel| kernel.pipeline.is_initialized())
+        .count()
+    }
 }
 
 fn profile_coarse_passes() -> bool {
@@ -824,33 +840,6 @@ fn dispatch_profiled(
         pass.dispatch_workgroups(workgroups, 1, 1);
     }
     finish_gpu_scope(encoder, gpu_scope);
-}
-
-fn create_shader(
-    device: &::wgpu::Device,
-    label: &'static str,
-    source: &'static str,
-) -> ::wgpu::ShaderModule {
-    device.create_shader_module(::wgpu::ShaderModuleDescriptor {
-        label: Some(label),
-        source: ::wgpu::ShaderSource::Wgsl(source.into()),
-    })
-}
-
-fn create_pipeline(
-    device: &::wgpu::Device,
-    layout: &::wgpu::PipelineLayout,
-    shader: &::wgpu::ShaderModule,
-    entry_point: &'static str,
-) -> ::wgpu::ComputePipeline {
-    device.create_compute_pipeline(&::wgpu::ComputePipelineDescriptor {
-        label: Some(entry_point),
-        layout: Some(layout),
-        module: shader,
-        entry_point: Some(entry_point),
-        compilation_options: ::wgpu::PipelineCompilationOptions::default(),
-        cache: None,
-    })
 }
 
 fn count_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {

@@ -1,11 +1,10 @@
 use crate::shared::gpu_plan::{CUMSUM_CHUNK_SIZE, GpuBufferLengths};
 
-use std::cell::OnceCell;
-
 use super::canvas::{WgpuCumsumBindings, WgpuScanBuffers, WgpuSceneBuffers};
 use super::commands::{
     WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
 };
+use super::lazy::{LazyComputePipeline, LazyShaderModule};
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 
 const WORKGROUP_SIZE: u32 = 256;
@@ -24,10 +23,10 @@ unsafe impl bytemuck::Zeroable for CumsumConfig {}
 unsafe impl bytemuck::Pod for CumsumConfig {}
 
 pub(crate) struct WgpuCumsumPipeline {
-    shader: OnceCell<::wgpu::ShaderModule>,
-    prefix_chunks: OnceCell<::wgpu::ComputePipeline>,
-    chunk_offsets: OnceCell<::wgpu::ComputePipeline>,
-    apply_chunk_offsets: OnceCell<::wgpu::ComputePipeline>,
+    shader: LazyShaderModule,
+    prefix_chunks: LazyComputePipeline,
+    chunk_offsets: LazyComputePipeline,
+    apply_chunk_offsets: LazyComputePipeline,
     bind_group_layout: ::wgpu::BindGroupLayout,
     pipeline_layout: ::wgpu::PipelineLayout,
     config: ::wgpu::Buffer,
@@ -61,10 +60,13 @@ impl WgpuCumsumPipeline {
         });
 
         Some(Self {
-            shader: OnceCell::new(),
-            prefix_chunks: OnceCell::new(),
-            chunk_offsets: OnceCell::new(),
-            apply_chunk_offsets: OnceCell::new(),
+            shader: LazyShaderModule::new("tileink wgpu cumsum shader"),
+            prefix_chunks: LazyComputePipeline::new("cumsum_prefix_chunks", "cumsum_prefix_chunks"),
+            chunk_offsets: LazyComputePipeline::new("cumsum_chunk_offsets", "cumsum_chunk_offsets"),
+            apply_chunk_offsets: LazyComputePipeline::new(
+                "cumsum_apply_chunk_offsets",
+                "cumsum_apply_chunk_offsets",
+            ),
             bind_group_layout,
             pipeline_layout,
             config,
@@ -145,42 +147,38 @@ impl WgpuCumsumPipeline {
     }
 
     fn shader(&self, device: &::wgpu::Device) -> &::wgpu::ShaderModule {
-        self.shader.get_or_init(|| {
-            device.create_shader_module(::wgpu::ShaderModuleDescriptor {
-                label: Some("tileink wgpu cumsum shader"),
-                source: ::wgpu::ShaderSource::Wgsl(
-                    include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_cumsum.wgsl")).into(),
-                ),
-            })
+        self.shader.get(device, || {
+            ::wgpu::ShaderSource::Wgsl(
+                include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_cumsum.wgsl")).into(),
+            )
         })
     }
 
     fn prefix_chunks(&self, device: &::wgpu::Device) -> &::wgpu::ComputePipeline {
         self.prefix_chunks
-            .get_or_init(|| self.create_pipeline(device, "cumsum_prefix_chunks"))
+            .get(device, &self.pipeline_layout, self.shader(device))
     }
 
     fn chunk_offsets(&self, device: &::wgpu::Device) -> &::wgpu::ComputePipeline {
         self.chunk_offsets
-            .get_or_init(|| self.create_pipeline(device, "cumsum_chunk_offsets"))
+            .get(device, &self.pipeline_layout, self.shader(device))
     }
 
     fn apply_chunk_offsets(&self, device: &::wgpu::Device) -> &::wgpu::ComputePipeline {
         self.apply_chunk_offsets
-            .get_or_init(|| self.create_pipeline(device, "cumsum_apply_chunk_offsets"))
+            .get(device, &self.pipeline_layout, self.shader(device))
     }
 
-    fn create_pipeline(
-        &self,
-        device: &::wgpu::Device,
-        entry_point: &'static str,
-    ) -> ::wgpu::ComputePipeline {
-        create_pipeline(
-            device,
-            &self.pipeline_layout,
-            self.shader(device),
-            entry_point,
-        )
+    #[cfg(test)]
+    pub(crate) fn initialized_pipeline_count(&self) -> usize {
+        [
+            &self.prefix_chunks,
+            &self.chunk_offsets,
+            &self.apply_chunk_offsets,
+        ]
+        .into_iter()
+        .filter(|pipeline| pipeline.is_initialized())
+        .count()
     }
 
     fn create_bind_group(
@@ -204,22 +202,6 @@ impl WgpuCumsumPipeline {
             ],
         })
     }
-}
-
-fn create_pipeline(
-    device: &::wgpu::Device,
-    layout: &::wgpu::PipelineLayout,
-    shader: &::wgpu::ShaderModule,
-    entry_point: &'static str,
-) -> ::wgpu::ComputePipeline {
-    device.create_compute_pipeline(&::wgpu::ComputePipelineDescriptor {
-        label: Some(entry_point),
-        layout: Some(layout),
-        module: shader,
-        entry_point: Some(entry_point),
-        compilation_options: ::wgpu::PipelineCompilationOptions::default(),
-        cache: None,
-    })
 }
 
 fn cumsum_layout_entries() -> [::wgpu::BindGroupLayoutEntry; 8] {

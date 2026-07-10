@@ -55,6 +55,46 @@ impl Drop for ForceCoarseChunksGuard {
 }
 
 #[test]
+fn wgpu_renderer_lazily_initializes_and_reuses_compute_pipelines() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut path = BezPath::new();
+    path.move_to((2.0, 2.0));
+    path.line_to((30.0, 4.0));
+    path.line_to((12.0, 30.0));
+    path.close_path();
+    let mut canvas = Canvas::new(32, 32, 1.0);
+    canvas.push_path(
+        path,
+        Color::from_rgb8(40, 120, 220),
+        Affine::IDENTITY,
+        FillRule::NonZero,
+        0.0,
+    );
+    let mut renderer = new_test_renderer(32, 32, Color::TRANSPARENT);
+    if renderer.scan_pipeline.is_none()
+        || renderer.cumsum.is_none()
+        || renderer.coarse_pipeline.is_none()
+        || renderer.fine.is_none()
+        || renderer.filter.is_none()
+    {
+        return;
+    }
+    assert_eq!(initialized_compute_pipeline_counts(&renderer), [0; 4]);
+
+    renderer.render(&canvas);
+    let first_render = initialized_compute_pipeline_counts(&renderer);
+    assert!(
+        first_render[..4].iter().all(|count| *count > 0),
+        "tile stages should initialize only the pipelines used by the first render: {first_render:?}"
+    );
+    renderer.render(&canvas);
+    assert_eq!(initialized_compute_pipeline_counts(&renderer), first_render);
+}
+
+#[test]
 fn wgpu_renderer_reads_native_render_output_when_enabled() {
     if !run_wgpu_tests() {
         return;
@@ -3351,6 +3391,27 @@ fn assert_profile_missing(profile: &crate::WgpuRenderProfile, name: &'static str
         "profile unexpectedly included {name}; entries: {:?}",
         profile.entries()
     );
+}
+
+fn initialized_compute_pipeline_counts(renderer: &Renderer) -> [usize; 4] {
+    [
+        renderer
+            .scan_pipeline
+            .as_ref()
+            .map_or(0, |pipeline| pipeline.initialized_pipeline_count()),
+        renderer
+            .cumsum
+            .as_ref()
+            .map_or(0, |pipeline| pipeline.initialized_pipeline_count()),
+        renderer
+            .coarse_pipeline
+            .as_ref()
+            .map_or(0, |pipeline| pipeline.initialized_pipeline_count()),
+        renderer
+            .fine
+            .as_ref()
+            .map_or(0, |pipeline| pipeline.initialized_pipeline_count()),
+    ]
 }
 
 fn read_render_target_u32(renderer: &Renderer, target: WgpuRenderTargetId, len: usize) -> Vec<u32> {

@@ -1,7 +1,5 @@
 #![allow(clippy::too_many_arguments)]
 
-use std::cell::OnceCell;
-
 use crate::shared::{
     gpu_coarse::{FINE_TILE_DISPATCH_WORDS, coarse_work_fine_tile_kind_word_offset},
     gpu_layout::fine as fine_layout,
@@ -19,6 +17,7 @@ use super::{
         create_image_resource_bind_group, create_image_resource_bind_group_layout,
         large_texture_table_len, patch_image_resource_shader_source,
     },
+    lazy::{LazyComputePipeline, LazyShaderModule},
     profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope},
     target::WgpuTarget,
 };
@@ -26,14 +25,14 @@ use super::{
 const TILE_STORAGE_BINDING_COUNT: u32 = fine_layout::STORAGE_BUFFER_COUNT;
 
 pub(crate) struct WgpuFinePipeline {
-    fine_shader: OnceCell<::wgpu::ShaderModule>,
-    compact_shader: OnceCell<::wgpu::ShaderModule>,
-    pipeline: OnceCell<::wgpu::ComputePipeline>,
-    clear_pipeline: OnceCell<::wgpu::ComputePipeline>,
-    compact_pipeline: OnceCell<::wgpu::ComputePipeline>,
-    sdf_pipeline: OnceCell<::wgpu::ComputePipeline>,
-    mixed_pipeline: OnceCell<::wgpu::ComputePipeline>,
-    full_pipeline: OnceCell<::wgpu::ComputePipeline>,
+    fine_shader: LazyShaderModule,
+    compact_shader: LazyShaderModule,
+    pipeline: LazyComputePipeline,
+    clear_pipeline: LazyComputePipeline,
+    compact_pipeline: LazyComputePipeline,
+    sdf_pipeline: LazyComputePipeline,
+    mixed_pipeline: LazyComputePipeline,
+    full_pipeline: LazyComputePipeline,
     bind_group_layout: ::wgpu::BindGroupLayout,
     image_bind_group_layout: ::wgpu::BindGroupLayout,
     compact_bind_group_layout: ::wgpu::BindGroupLayout,
@@ -117,14 +116,29 @@ impl WgpuFinePipeline {
             mapped_at_creation: false,
         });
         Some(Self {
-            fine_shader: OnceCell::new(),
-            compact_shader: OnceCell::new(),
-            pipeline: OnceCell::new(),
-            clear_pipeline: OnceCell::new(),
-            compact_pipeline: OnceCell::new(),
-            sdf_pipeline: OnceCell::new(),
-            mixed_pipeline: OnceCell::new(),
-            full_pipeline: OnceCell::new(),
+            fine_shader: LazyShaderModule::new("tileink wgpu fine shader"),
+            compact_shader: LazyShaderModule::new("tileink wgpu fine compact shader"),
+            pipeline: LazyComputePipeline::new("tileink wgpu tile fine pipeline", "fine_tile_main"),
+            clear_pipeline: LazyComputePipeline::new(
+                "tileink wgpu tile fine indirect clear pipeline",
+                "fine_clear_indirect_main",
+            ),
+            compact_pipeline: LazyComputePipeline::new(
+                "tileink wgpu tile fine compact pipeline",
+                "fine_compact_tiles_main",
+            ),
+            sdf_pipeline: LazyComputePipeline::new(
+                "tileink wgpu tile fine sdf pipeline",
+                "fine_tile_sdf_list_main",
+            ),
+            mixed_pipeline: LazyComputePipeline::new(
+                "tileink wgpu tile fine mixed pipeline",
+                "fine_tile_mixed_list_main",
+            ),
+            full_pipeline: LazyComputePipeline::new(
+                "tileink wgpu tile fine full pipeline",
+                "fine_tile_full_list_main",
+            ),
             bind_group_layout,
             image_bind_group_layout,
             compact_bind_group_layout,
@@ -357,97 +371,70 @@ impl WgpuFinePipeline {
     }
 
     fn fine_shader(&self, device: &::wgpu::Device) -> &::wgpu::ShaderModule {
-        self.fine_shader.get_or_init(|| {
+        self.fine_shader.get(device, || {
             let shader_source = patch_image_resource_shader_source(
                 fine_shader_source(self.portable_textures),
                 self.large_texture_table_len > 0,
             );
-            device.create_shader_module(::wgpu::ShaderModuleDescriptor {
-                label: Some("tileink wgpu fine shader"),
-                source: ::wgpu::ShaderSource::Wgsl(shader_source.into()),
-            })
+            ::wgpu::ShaderSource::Wgsl(shader_source.into())
         })
     }
 
     fn compact_shader(&self, device: &::wgpu::Device) -> &::wgpu::ShaderModule {
-        self.compact_shader.get_or_init(|| {
-            device.create_shader_module(::wgpu::ShaderModuleDescriptor {
-                label: Some("tileink wgpu fine compact shader"),
-                source: ::wgpu::ShaderSource::Wgsl(fine_compact_shader_source().into()),
-            })
+        self.compact_shader.get(device, || {
+            ::wgpu::ShaderSource::Wgsl(fine_compact_shader_source().into())
         })
     }
 
     fn pipeline(&self, device: &::wgpu::Device) -> &::wgpu::ComputePipeline {
-        self.pipeline.get_or_init(|| {
-            create_pipeline(
-                device,
-                &self.pipeline_layout,
-                self.fine_shader(device),
-                "tileink wgpu tile fine pipeline",
-                "fine_tile_main",
-            )
-        })
+        self.pipeline
+            .get(device, &self.pipeline_layout, self.fine_shader(device))
     }
 
     fn clear_pipeline(&self, device: &::wgpu::Device) -> &::wgpu::ComputePipeline {
-        self.clear_pipeline.get_or_init(|| {
-            create_pipeline(
-                device,
-                &self.compact_pipeline_layout,
-                self.compact_shader(device),
-                "tileink wgpu tile fine indirect clear pipeline",
-                "fine_clear_indirect_main",
-            )
-        })
+        self.clear_pipeline.get(
+            device,
+            &self.compact_pipeline_layout,
+            self.compact_shader(device),
+        )
     }
 
     fn compact_pipeline(&self, device: &::wgpu::Device) -> &::wgpu::ComputePipeline {
-        self.compact_pipeline.get_or_init(|| {
-            create_pipeline(
-                device,
-                &self.compact_pipeline_layout,
-                self.compact_shader(device),
-                "tileink wgpu tile fine compact pipeline",
-                "fine_compact_tiles_main",
-            )
-        })
+        self.compact_pipeline.get(
+            device,
+            &self.compact_pipeline_layout,
+            self.compact_shader(device),
+        )
     }
 
     fn sdf_pipeline(&self, device: &::wgpu::Device) -> &::wgpu::ComputePipeline {
-        self.sdf_pipeline.get_or_init(|| {
-            create_pipeline(
-                device,
-                &self.pipeline_layout,
-                self.fine_shader(device),
-                "tileink wgpu tile fine sdf pipeline",
-                "fine_tile_sdf_list_main",
-            )
-        })
+        self.sdf_pipeline
+            .get(device, &self.pipeline_layout, self.fine_shader(device))
     }
 
     fn mixed_pipeline(&self, device: &::wgpu::Device) -> &::wgpu::ComputePipeline {
-        self.mixed_pipeline.get_or_init(|| {
-            create_pipeline(
-                device,
-                &self.pipeline_layout,
-                self.fine_shader(device),
-                "tileink wgpu tile fine mixed pipeline",
-                "fine_tile_mixed_list_main",
-            )
-        })
+        self.mixed_pipeline
+            .get(device, &self.pipeline_layout, self.fine_shader(device))
     }
 
     fn full_pipeline(&self, device: &::wgpu::Device) -> &::wgpu::ComputePipeline {
-        self.full_pipeline.get_or_init(|| {
-            create_pipeline(
-                device,
-                &self.pipeline_layout,
-                self.fine_shader(device),
-                "tileink wgpu tile fine full pipeline",
-                "fine_tile_full_list_main",
-            )
-        })
+        self.full_pipeline
+            .get(device, &self.pipeline_layout, self.fine_shader(device))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn initialized_pipeline_count(&self) -> usize {
+        [
+            &self.pipeline,
+            &self.clear_pipeline,
+            &self.compact_pipeline,
+            &self.sdf_pipeline,
+            &self.mixed_pipeline,
+            &self.full_pipeline,
+        ]
+        .into_iter()
+        .filter(|pipeline| pipeline.is_initialized())
+        .count()
     }
 
     fn create_tile_bind_group_for_view(
@@ -590,23 +577,6 @@ fn fine_indirect_enabled() -> bool {
 
 fn fine_dispatch_args_stride() -> ::wgpu::BufferAddress {
     (FINE_TILE_DISPATCH_WORDS * std::mem::size_of::<u32>()) as ::wgpu::BufferAddress
-}
-
-fn create_pipeline(
-    device: &::wgpu::Device,
-    layout: &::wgpu::PipelineLayout,
-    shader: &::wgpu::ShaderModule,
-    label: &'static str,
-    entry_point: &'static str,
-) -> ::wgpu::ComputePipeline {
-    device.create_compute_pipeline(&::wgpu::ComputePipelineDescriptor {
-        label: Some(label),
-        layout: Some(layout),
-        module: shader,
-        entry_point: Some(entry_point),
-        compilation_options: ::wgpu::PipelineCompilationOptions::default(),
-        cache: None,
-    })
 }
 
 fn storage_layout_entry(binding: u32, read_only: bool) -> ::wgpu::BindGroupLayoutEntry {
