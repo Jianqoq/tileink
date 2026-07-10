@@ -1,7 +1,10 @@
 #![allow(clippy::too_many_arguments)]
 
 use crate::shared::{
-    gpu_coarse::{FINE_TILE_DISPATCH_WORDS, coarse_work_fine_tile_kind_word_offset},
+    gpu_coarse::{
+        FINE_TILE_DISPATCH_WORDS, coarse_work_active_tile_list_word_offset,
+        coarse_work_fine_tile_kind_word_offset,
+    },
     gpu_layout::fine as fine_layout,
     gpu_plan::GpuBufferLengths,
     image::premul_color_to_rgba8_pack,
@@ -17,7 +20,7 @@ use super::{
         create_image_resource_bind_group, create_image_resource_bind_group_layout,
         large_texture_table_len, patch_image_resource_shader_source,
     },
-    lazy::{LazyComputePipeline, LazyShaderModule},
+    lazy::{LazyComputePipeline, LazyShaderModule, PipelineCompilationTracker},
     profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope},
     target::WgpuTarget,
 };
@@ -64,13 +67,20 @@ struct FineConfig {
     text_image_data_base: u32,
     group_spill_base: u32,
     fine_tile_kind_base: u32,
+    active_tile_count: u32,
+    active_tile_list_base: u32,
+    incremental: u32,
 }
 
 unsafe impl bytemuck::Zeroable for FineConfig {}
 unsafe impl bytemuck::Pod for FineConfig {}
 
 impl WgpuFinePipeline {
-    pub(crate) fn new(device: &::wgpu::Device) -> Option<Self> {
+    pub(crate) fn new(
+        device: &::wgpu::Device,
+        pipeline_cache: Option<&::wgpu::PipelineCache>,
+        compilation_tracker: &PipelineCompilationTracker,
+    ) -> Option<Self> {
         let portable_textures = !device
             .features()
             .contains(::wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES);
@@ -118,26 +128,41 @@ impl WgpuFinePipeline {
         Some(Self {
             fine_shader: LazyShaderModule::new("tileink wgpu fine shader"),
             compact_shader: LazyShaderModule::new("tileink wgpu fine compact shader"),
-            pipeline: LazyComputePipeline::new("tileink wgpu tile fine pipeline", "fine_tile_main"),
+            pipeline: LazyComputePipeline::new(
+                "tileink wgpu tile fine pipeline",
+                "fine_tile_main",
+                pipeline_cache,
+                compilation_tracker,
+            ),
             clear_pipeline: LazyComputePipeline::new(
                 "tileink wgpu tile fine indirect clear pipeline",
                 "fine_clear_indirect_main",
+                pipeline_cache,
+                compilation_tracker,
             ),
             compact_pipeline: LazyComputePipeline::new(
                 "tileink wgpu tile fine compact pipeline",
                 "fine_compact_tiles_main",
+                pipeline_cache,
+                compilation_tracker,
             ),
             sdf_pipeline: LazyComputePipeline::new(
                 "tileink wgpu tile fine sdf pipeline",
                 "fine_tile_sdf_list_main",
+                pipeline_cache,
+                compilation_tracker,
             ),
             mixed_pipeline: LazyComputePipeline::new(
                 "tileink wgpu tile fine mixed pipeline",
                 "fine_tile_mixed_list_main",
+                pipeline_cache,
+                compilation_tracker,
             ),
             full_pipeline: LazyComputePipeline::new(
                 "tileink wgpu tile fine full pipeline",
                 "fine_tile_full_list_main",
+                pipeline_cache,
+                compilation_tracker,
             ),
             bind_group_layout,
             image_bind_group_layout,
@@ -172,6 +197,7 @@ impl WgpuFinePipeline {
         load_target: bool,
         clip_spill_depth: u32,
         group_spill_depth: u32,
+        active_tile_count: Option<u32>,
     ) -> bool {
         target.resize(commands.device(), width, height);
         self.render_tiles_to_view_in(
@@ -189,6 +215,7 @@ impl WgpuFinePipeline {
             load_target,
             clip_spill_depth,
             group_spill_depth,
+            active_tile_count,
         )
     }
 
@@ -209,6 +236,7 @@ impl WgpuFinePipeline {
         load_target: bool,
         clip_spill_depth: u32,
         group_spill_depth: u32,
+        active_tile_count: Option<u32>,
     ) -> bool {
         self.render_tiles_to_views_in(
             commands,
@@ -226,6 +254,7 @@ impl WgpuFinePipeline {
             load_target,
             clip_spill_depth,
             group_spill_depth,
+            active_tile_count,
         )
     }
 
@@ -247,11 +276,13 @@ impl WgpuFinePipeline {
         load_target: bool,
         clip_spill_depth: u32,
         group_spill_depth: u32,
+        active_tile_count: Option<u32>,
     ) -> bool {
         let _profile_scope = start_cpu_scope("fine");
         if lengths.tile_count == 0 {
             return true;
         }
+        let dispatch_tile_count = active_tile_count.unwrap_or(lengths.tile_count as u32);
 
         let config_offset = commands.write_uniform_slot(
             "fine.config",
@@ -285,6 +316,15 @@ impl WgpuFinePipeline {
                     lengths.tile_draw_index_count,
                     lengths.tile_draw_chunk_count,
                 ) as u32,
+                active_tile_count: dispatch_tile_count,
+                active_tile_list_base: coarse_work_active_tile_list_word_offset(
+                    lengths.tile_count,
+                    lengths.coarse_ptcl_capacity,
+                    lengths.coarse_glyph_capacity,
+                    lengths.tile_draw_index_count,
+                    lengths.tile_draw_chunk_count,
+                ) as u32,
+                incremental: u32::from(active_tile_count.is_some()),
             }),
         );
 
@@ -325,7 +365,7 @@ impl WgpuFinePipeline {
             pass.set_pipeline(clear_pipeline);
             pass.dispatch_workgroups(1, 1, 1);
             pass.set_pipeline(compact_pipeline);
-            pass.dispatch_workgroups(lengths.tile_count.div_ceil(256) as u32, 1, 1);
+            pass.dispatch_workgroups(dispatch_tile_count.div_ceil(256), 1, 1);
             drop(pass);
             finish_gpu_scope(encoder, gpu_scope);
         }
@@ -362,7 +402,7 @@ impl WgpuFinePipeline {
                 );
             } else {
                 pass.set_pipeline(direct_pipeline.expect("direct fine pipeline"));
-                pass.dispatch_workgroups(lengths.tile_count as u32, 1, 1);
+                pass.dispatch_workgroups(dispatch_tile_count, 1, 1);
             }
             drop(pass);
             finish_gpu_scope(encoder, gpu_scope);

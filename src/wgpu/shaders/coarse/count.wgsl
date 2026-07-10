@@ -15,7 +15,10 @@ fn coarse_count(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
 ) {
-    let tile_ix = workgroup_id.x;
+    if (workgroup_id.x >= config.active_tile_count) {
+        return;
+    }
+    let tile_ix = dispatched_tile_at(workgroup_id.x);
     if (tile_ix >= config.tile_count) {
         return;
     }

@@ -4,13 +4,14 @@
 @group(0) @binding(2) var<storage, read> path_records: array<PathRecord>;
 @group(0) @binding(3) var<storage, read_write> backdrops: array<atomic<i32>>;
 @group(0) @binding(4) var<storage, read_write> segment_tile_counts: array<atomic<u32>>;
+@group(0) @binding(5) var<storage, read> active_indices: array<u32>;
 
 @compute @workgroup_size(256)
 fn scan_count(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    let line_ix = global_id.x;
-    if (line_ix >= config.line_count) {
+    if (global_id.x >= config.line_count) {
         return;
     }
+    let line_ix = dispatched_index(global_id.x, config.line_base);
     let line = lines[line_ix];
     let path_id = line.path_id;
     if (path_id >= arrayLength(&path_records)) {

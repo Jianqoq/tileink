@@ -32,6 +32,7 @@ use super::{
         create_image_resource_bind_group, create_image_resource_bind_group_layout,
         large_texture_table_len, patch_image_resource_shader_source,
     },
+    lazy::PipelineCompilationTracker,
     profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope},
 };
 
@@ -373,6 +374,8 @@ pub(crate) struct WgpuFilterPipeline {
     shader_source: &'static str,
     portable_textures: bool,
     large_texture_table_len: u32,
+    pipeline_cache: Option<::wgpu::PipelineCache>,
+    compilation_tracker: PipelineCompilationTracker,
 }
 
 struct LazyFilterKernel {
@@ -473,7 +476,11 @@ pub(crate) struct WgpuFilterPathBindings<'a> {
 const DUMMY_STORAGE_BUFFER_SIZE: ::wgpu::BufferAddress = 256;
 
 impl WgpuFilterPipeline {
-    pub(crate) fn new(device: &::wgpu::Device) -> Option<Self> {
+    pub(crate) fn new(
+        device: &::wgpu::Device,
+        pipeline_cache: Option<&::wgpu::PipelineCache>,
+        compilation_tracker: &PipelineCompilationTracker,
+    ) -> Option<Self> {
         let portable_textures = !device
             .features()
             .contains(::wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES);
@@ -771,6 +778,8 @@ impl WgpuFilterPipeline {
             shader_source,
             portable_textures,
             large_texture_table_len,
+            pipeline_cache: pipeline_cache.cloned(),
+            compilation_tracker: compilation_tracker.clone(),
         })
     }
 
@@ -780,7 +789,7 @@ impl WgpuFilterPipeline {
         lazy: &'a LazyFilterKernel,
     ) -> &'a FilterKernel {
         lazy.kernel.get_or_init(|| {
-            create_filter_kernel(
+            let kernel = create_filter_kernel(
                 device,
                 self.shader_source,
                 self.portable_textures,
@@ -789,7 +798,10 @@ impl WgpuFilterPipeline {
                 lazy.entry_point,
                 lazy.resources,
                 lazy.shared_workgroups,
-            )
+                self.pipeline_cache.as_ref(),
+            );
+            self.compilation_tracker.record();
+            kernel
         })
     }
 
@@ -1204,6 +1216,44 @@ impl WgpuFilterPipeline {
         };
         config.amount = std_dev;
         config.blur_axis = axis;
+        let pipeline = if shared_blur_radius(std_dev).is_some() {
+            &self.blur_shared_region
+        } else {
+            &self.blur_region
+        };
+        self.dispatch(
+            commands,
+            pipeline,
+            &config,
+            source,
+            &self.dummy_texture_view,
+            target,
+            None,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn blur_region_partial(
+        &self,
+        commands: &mut WgpuCommandBatch,
+        source: &::wgpu::TextureView,
+        target: &::wgpu::TextureView,
+        size: (u32, u32),
+        lengths: GpuBufferLengths,
+        output_bounds: Bounds,
+        sample_bounds: Bounds,
+        std_dev: f32,
+        axis: u32,
+    ) {
+        let Some(mut config) = config_for_bounds(size, lengths, output_bounds) else {
+            return;
+        };
+        config.amount = std_dev;
+        config.blur_axis = axis;
+        config.source_x0 = sample_bounds.x0.max(0) as u32;
+        config.source_y0 = sample_bounds.y0.max(0) as u32;
+        config.source_x1 = sample_bounds.x1.max(0) as u32;
+        config.source_y1 = sample_bounds.y1.max(0) as u32;
         let pipeline = if shared_blur_radius(std_dev).is_some() {
             &self.blur_shared_region
         } else {
@@ -2686,6 +2736,7 @@ fn create_filter_kernel(
     entry_point: &'static str,
     resources: u32,
     shared_workgroups: bool,
+    pipeline_cache: Option<&::wgpu::PipelineCache>,
 ) -> FilterKernel {
     debug_assert!(filter_storage_binding_count(resources) <= STORAGE_BINDING_COUNT);
     let layout_entries = filter_layout_entries(portable_textures, resources);
@@ -2712,7 +2763,7 @@ fn create_filter_kernel(
         module: &shader,
         entry_point: Some(entry_point),
         compilation_options: ::wgpu::PipelineCompilationOptions::default(),
-        cache: None,
+        cache: pipeline_cache,
     });
     FilterKernel {
         pipeline,

@@ -15,9 +15,19 @@ struct CoarseConfig {
     emit_chunk_capacity: u32,
     paint_brush_base: u32,
     text_enabled: u32,
+    active_tile_count: u32,
+    active_tile_list_base: u32,
+    incremental: u32,
 };
 
 @group(0) @binding(0) var<uniform> config: CoarseConfig;
+
+fn dispatched_tile_at(dispatch_ix: u32) -> u32 {
+    if (config.incremental != 0u) {
+        return coarse_work[config.active_tile_list_base + dispatch_ix];
+    }
+    return dispatch_ix;
+}
 
 struct DrawRecord {
     path_id: u32,
@@ -142,7 +152,10 @@ const GPU_PTCL_BEGIN_SDF_CLIP: u32 = 12u;
 const GPU_PTCL_IMAGE: u32 = 13u;
 const GPU_SDF_RECT: u32 = 1u;
 const GPU_SDF_CANDLESTICK: u32 = 5u;
-const FULL_TILE_SDF_SOLID_INSET: f32 = 0.75;
+// `sdf_coverage_from_dist` reaches exactly 1.0 at distance -0.5. Using the
+// mathematical coverage threshold here lets a sharp rect aligned to a tile
+// take the analytic/image fast path without changing any edge pixels.
+const FULL_TILE_SDF_SOLID_INSET: f32 = 0.5;
 const GLYPH_RUN_RECORD_WORDS: u32 = 2u;
 const GLYPH_RECORD_WORDS: u32 = 3u;
 const GLYPH_IMAGE_RECORD_WORDS: u32 = 6u;

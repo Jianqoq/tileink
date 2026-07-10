@@ -4,7 +4,8 @@ use super::canvas::{WgpuCumsumBindings, WgpuScanBuffers, WgpuSceneBuffers};
 use super::commands::{
     WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
 };
-use super::lazy::{LazyComputePipeline, LazyShaderModule};
+use super::incremental::ActiveScanPlan;
+use super::lazy::{LazyComputePipeline, LazyShaderModule, PipelineCompilationTracker};
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 
 const WORKGROUP_SIZE: u32 = 256;
@@ -35,7 +36,11 @@ pub(crate) struct WgpuCumsumPipeline {
 }
 
 impl WgpuCumsumPipeline {
-    pub(crate) fn new(device: &::wgpu::Device) -> Option<Self> {
+    pub(crate) fn new(
+        device: &::wgpu::Device,
+        pipeline_cache: Option<&::wgpu::PipelineCache>,
+        compilation_tracker: &PipelineCompilationTracker,
+    ) -> Option<Self> {
         if device.limits().max_storage_buffers_per_shader_stage < STORAGE_BINDING_COUNT {
             return None;
         }
@@ -61,11 +66,23 @@ impl WgpuCumsumPipeline {
 
         Some(Self {
             shader: LazyShaderModule::new("tileink wgpu cumsum shader"),
-            prefix_chunks: LazyComputePipeline::new("cumsum_prefix_chunks", "cumsum_prefix_chunks"),
-            chunk_offsets: LazyComputePipeline::new("cumsum_chunk_offsets", "cumsum_chunk_offsets"),
+            prefix_chunks: LazyComputePipeline::new(
+                "cumsum_prefix_chunks",
+                "cumsum_prefix_chunks",
+                pipeline_cache,
+                compilation_tracker,
+            ),
+            chunk_offsets: LazyComputePipeline::new(
+                "cumsum_chunk_offsets",
+                "cumsum_chunk_offsets",
+                pipeline_cache,
+                compilation_tracker,
+            ),
             apply_chunk_offsets: LazyComputePipeline::new(
                 "cumsum_apply_chunk_offsets",
                 "cumsum_apply_chunk_offsets",
+                pipeline_cache,
+                compilation_tracker,
             ),
             bind_group_layout,
             pipeline_layout,
@@ -84,7 +101,7 @@ impl WgpuCumsumPipeline {
         lengths: GpuBufferLengths,
     ) {
         let mut commands = WgpuCommandBatch::new(device, queue, "tileink wgpu cumsum encoder");
-        self.run_in(&mut commands, canvas, scan, lengths);
+        self.run_in(&mut commands, canvas, scan, lengths, None);
         commands.finish();
     }
 
@@ -94,9 +111,12 @@ impl WgpuCumsumPipeline {
         canvas: &WgpuSceneBuffers,
         scan: &mut WgpuScanBuffers,
         lengths: GpuBufferLengths,
+        active: Option<&ActiveScanPlan>,
     ) {
         let _profile_scope = start_cpu_scope("cumsum");
-        let chunk_count = lengths.cumsum_chunk_count as u32;
+        let chunk_count = active.map_or(lengths.cumsum_chunk_count as u32, |plan| {
+            plan.cumsum.chunk_lens.len() as u32
+        });
         if chunk_count == 0 {
             return;
         }
@@ -108,15 +128,19 @@ impl WgpuCumsumPipeline {
             self.config_stride,
             WGPU_CONFIG_SLOTS,
             bytemuck::bytes_of(&CumsumConfig {
-                row_count: lengths.cumsum_row_count as u32,
+                row_count: active.map_or(lengths.cumsum_row_count as u32, |plan| {
+                    plan.cumsum.row_chunk_starts.len() as u32
+                }),
                 _pad0: 0,
                 _pad1: 0,
                 _pad2: 0,
             }),
         );
-        let bindings = canvas.cumsum_bindings(scan);
+        let bindings = canvas.cumsum_bindings(scan, active.is_some());
         let bind_group = self.create_bind_group(commands.device(), &bindings, config_offset);
-        let row_count = lengths.cumsum_row_count as u32;
+        let row_count = active.map_or(lengths.cumsum_row_count as u32, |plan| {
+            plan.cumsum.row_chunk_starts.len() as u32
+        });
         let prefix_chunks = self.prefix_chunks(commands.device());
         let chunk_offsets =
             (row_count != chunk_count).then(|| self.chunk_offsets(commands.device()));

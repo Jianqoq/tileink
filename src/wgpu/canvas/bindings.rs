@@ -57,12 +57,29 @@ impl WgpuSceneBuffers {
     pub(crate) fn cumsum_bindings<'a>(
         &'a self,
         scan: &'a WgpuScanBuffers,
+        incremental: bool,
     ) -> WgpuCumsumBindings<'a> {
+        let (chunk_backdrop_offsets, chunk_lens, row_chunk_starts, row_chunk_ends) = if incremental
+        {
+            (
+                scan.active_cumsum_chunk_backdrop_offsets.buffer(),
+                scan.active_cumsum_chunk_lens.buffer(),
+                scan.active_cumsum_row_chunk_starts.buffer(),
+                scan.active_cumsum_row_chunk_ends.buffer(),
+            )
+        } else {
+            (
+                self.cumsum_chunk_backdrop_offsets.buffer(),
+                self.cumsum_chunk_lens.buffer(),
+                self.cumsum_row_chunk_starts.buffer(),
+                self.cumsum_row_chunk_ends.buffer(),
+            )
+        };
         WgpuCumsumBindings {
-            chunk_backdrop_offsets: self.cumsum_chunk_backdrop_offsets.buffer(),
-            chunk_lens: self.cumsum_chunk_lens.buffer(),
-            row_chunk_starts: self.cumsum_row_chunk_starts.buffer(),
-            row_chunk_ends: self.cumsum_row_chunk_ends.buffer(),
+            chunk_backdrop_offsets,
+            chunk_lens,
+            row_chunk_starts,
+            row_chunk_ends,
             backdrops: scan.backdrops.buffer(),
             chunk_totals: scan.cumsum_chunk_totals.buffer(),
             chunk_offsets: scan.cumsum_chunk_offsets.buffer(),
@@ -99,6 +116,7 @@ impl WgpuSceneBuffers {
             chunk_totals: scan.chunk_totals.buffer(),
             chunk_offsets: scan.chunk_offsets.buffer(),
             segments: scan.segments.buffer(),
+            active_indices: scan.active_indices.buffer(),
         }
     }
 
@@ -175,6 +193,7 @@ pub(crate) struct WgpuScanBindings<'a> {
     pub(crate) chunk_totals: &'a ::wgpu::Buffer,
     pub(crate) chunk_offsets: &'a ::wgpu::Buffer,
     pub(crate) segments: &'a ::wgpu::Buffer,
+    pub(crate) active_indices: &'a ::wgpu::Buffer,
 }
 
 pub(crate) struct WgpuCoarseBindings<'a> {

@@ -3,16 +3,17 @@ use peniko::{
     kurbo::{Affine, BezPath, Line, Rect, Shape},
 };
 
-use super::{Renderer, WgpuRenderTargetId};
+use super::{Renderer, RendererOptions, WgpuRenderTargetId};
 use crate::wgpu::coarse::force_coarse_emit_chunks_for_test;
 use crate::wgpu::commands::WgpuCommandBatch;
 use crate::{
-    Canvas, FillRule, Image, ImageKey, PatternSampling, TextContext, TextFontSystem,
-    TextLayoutOptions,
+    Canvas, FillRule, Image, ImageKey, PatternSampling, RetainedNodeId, TextContext,
+    TextFontSystem, TextLayoutOptions,
     debug::{RenderDebugOptions, RenderOptions},
     shared::{
         bounds::Bounds,
         brush::Brush,
+        execution::ExecOp,
         gpu_coarse::{FineTileKind, PtclRecord},
         layer::{
             filter::{
@@ -29,11 +30,702 @@ use crate::{
     },
 };
 
+#[test]
+fn retained_renderer_updates_only_changed_tiles_and_matches_full_render() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    fn child(color: Color) -> std::sync::Arc<Canvas> {
+        let mut scene = Canvas::new(16, 16, 1.0);
+        scene.push_rect(Rect::new(1.0, 1.0, 15.0, 15.0), crate::Radius::ZERO, color);
+        std::sync::Arc::new(scene)
+    }
+
+    let root = RetainedNodeId::for_owner(1);
+    let left = RetainedNodeId::for_owner(2);
+    let right = RetainedNodeId::for_owner(3);
+    let blue = child(Color::from_rgb8(20, 40, 220));
+    let mut first = Canvas::new_retained(64, 32, 1.0, root);
+    first.append_retained_scene(left, 0, child(Color::from_rgb8(220, 40, 20)), (0.0, 0.0));
+    first.append_retained_scene(right, 0, blue.clone(), (32.0, 0.0));
+
+    let mut second = Canvas::new_retained(64, 32, 1.0, root);
+    second.append_retained_scene(left, 1, child(Color::from_rgb8(20, 220, 40)), (0.0, 0.0));
+    second.append_retained_scene(right, 0, blue, (32.0, 0.0));
+
+    let mut incremental = new_test_renderer(64, 32, Color::TRANSPARENT);
+    incremental.render(&first);
+    let first_image = incremental.image();
+    incremental.render(&second);
+    let incremental_image = incremental.image();
+    assert!(!incremental.incremental_render_stats().full_redraw);
+    assert_eq!(incremental.incremental_render_stats().dirty_tiles, 1);
+    assert!(incremental.incremental_render_stats().reused_compiled_plan);
+
+    let mut full = new_test_renderer(64, 32, Color::TRANSPARENT);
+    let mut config = full.incremental_render_config();
+    config.mode = crate::IncrementalRenderMode::ForceFull;
+    full.set_incremental_render_config(config);
+    full.render(&second);
+    let full_image = full.image();
+    assert_eq!(incremental_image.width, full_image.width);
+    assert_eq!(incremental_image.height, full_image.height);
+    assert_eq!(incremental_image.pixels, full_image.pixels);
+    assert_eq!(incremental_image.rgba8_at(8, 8), [20, 220, 40, 255]);
+    assert_eq!(incremental_image.rgba8_at(40, 8), [20, 40, 220, 255]);
+    for y in 0..32 {
+        for x in 32..64 {
+            assert_eq!(
+                incremental_image.rgba8_at(x, y),
+                first_image.rgba8_at(x, y),
+                "clean tile changed at ({x}, {y})"
+            );
+        }
+    }
+}
+
+#[test]
+fn retained_path_scan_dispatches_only_paths_reaching_dirty_tiles() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    fn path_scene(color: Color) -> std::sync::Arc<Canvas> {
+        let mut path = BezPath::new();
+        path.move_to((1.0, 1.0));
+        path.line_to((15.0, 2.0));
+        path.line_to((8.0, 15.0));
+        path.close_path();
+        let mut scene = Canvas::new(16, 16, 1.0);
+        scene.push_path(path, color, Affine::IDENTITY, FillRule::NonZero, 0.0);
+        std::sync::Arc::new(scene)
+    }
+
+    let root = RetainedNodeId::for_owner(70);
+    let left = RetainedNodeId::for_owner(71);
+    let right = RetainedNodeId::for_owner(72);
+    let right_scene = path_scene(Color::from_rgb8(20, 40, 220));
+    let mut first = Canvas::new_retained(64, 16, 1.0, root);
+    first.append_retained_scene(
+        left,
+        0,
+        path_scene(Color::from_rgb8(220, 40, 20)),
+        (0.0, 0.0),
+    );
+    first.append_retained_scene(right, 0, right_scene.clone(), (48.0, 0.0));
+    let mut second = Canvas::new_retained(64, 16, 1.0, root);
+    second.append_retained_scene(
+        left,
+        1,
+        path_scene(Color::from_rgb8(20, 220, 40)),
+        (0.0, 0.0),
+    );
+    second.append_retained_scene(right, 0, right_scene, (48.0, 0.0));
+    let mut incremental = new_test_renderer(64, 16, Color::TRANSPARENT);
+
+    incremental.render(&first);
+    incremental.render(&second);
+
+    assert!(!incremental.incremental_render_stats().full_redraw);
+    assert_eq!(incremental.incremental_render_stats().dirty_tiles, 1);
+    assert_eq!(incremental.incremental_render_stats().scanned_paths, 1);
+    let mut full = new_test_renderer(64, 16, Color::TRANSPARENT);
+    let mut config = full.incremental_render_config();
+    config.mode = crate::IncrementalRenderMode::ForceFull;
+    full.set_incremental_render_config(config);
+    full.render(&second);
+    assert_eq!(incremental.image().pixels, full.image().pixels);
+}
+
+#[test]
+fn retained_direct_commands_change_and_disappear_without_manual_damage() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let root = RetainedNodeId::for_owner(80);
+    let node = RetainedNodeId::for_owner(81);
+    let frame = |color: Option<Color>| {
+        let mut canvas = Canvas::new_retained(32, 16, 1.0, root);
+        canvas.with_retained_node(node, 0, |scope| {
+            if let Some(color) = color {
+                scope.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
+            }
+        });
+        canvas
+    };
+    let red = frame(Some(Color::from_rgb8(220, 30, 40)));
+    let green = frame(Some(Color::from_rgb8(30, 210, 70)));
+    let empty = frame(None);
+    let mut renderer = new_test_renderer(32, 16, Color::TRANSPARENT);
+
+    renderer.render(&red);
+    renderer.render(&green);
+    assert!(!renderer.incremental_render_stats().full_redraw);
+    assert_eq!(renderer.incremental_render_stats().dirty_tiles, 1);
+    assert_eq!(renderer.image().rgba8_at(8, 8), [30, 210, 70, 255]);
+
+    renderer.render(&empty);
+    assert!(!renderer.incremental_render_stats().full_redraw);
+    assert_eq!(renderer.incremental_render_stats().dirty_tiles, 1);
+    assert_eq!(renderer.image().rgba8_at(8, 8), [0, 0, 0, 0]);
+}
+
+#[test]
+fn untracked_previous_frame_is_not_committed_as_incremental_history() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let root = RetainedNodeId::for_owner(82);
+    let child_id = RetainedNodeId::for_owner(83);
+    let child = std::sync::Arc::new(Canvas::new(32, 16, 1.0));
+    let mut first = Canvas::new_retained(32, 16, 1.0, root);
+    first.append_retained_scene(child_id, 0, child.clone(), (0.0, 0.0));
+    first.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(220, 30, 40),
+    );
+    let mut second = Canvas::new_retained(32, 16, 1.0, root);
+    second.append_retained_scene(child_id, 0, child, (0.0, 0.0));
+    let mut renderer = new_test_renderer(32, 16, Color::TRANSPARENT);
+
+    renderer.render(&first);
+    renderer.render(&second);
+
+    assert_eq!(
+        renderer.incremental_render_stats().full_redraw_reason,
+        Some(crate::FullRedrawReason::UntrackedContent)
+    );
+    assert_eq!(renderer.image().rgba8_at(8, 8), [0, 0, 0, 0]);
+}
+
+#[test]
+fn retained_renderer_copies_complete_history_to_external_texture() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    fn scene(color: Color) -> std::sync::Arc<Canvas> {
+        let mut scene = Canvas::new(16, 16, 1.0);
+        scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
+        std::sync::Arc::new(scene)
+    }
+
+    let root = RetainedNodeId::for_owner(5);
+    let mut first = Canvas::new_retained(32, 16, 1.0, root);
+    first.append_retained_scene(
+        RetainedNodeId::for_owner(6),
+        0,
+        scene(Color::from_rgb8(220, 30, 40)),
+        (0.0, 0.0),
+    );
+    first.append_retained_scene(
+        RetainedNodeId::for_owner(7),
+        0,
+        scene(Color::from_rgb8(20, 50, 220)),
+        (16.0, 0.0),
+    );
+    let mut second = Canvas::new_retained(32, 16, 1.0, root);
+    second.append_retained_scene(
+        RetainedNodeId::for_owner(6),
+        1,
+        scene(Color::from_rgb8(30, 210, 70)),
+        (0.0, 0.0),
+    );
+    second.append_retained_scene(
+        RetainedNodeId::for_owner(7),
+        0,
+        scene(Color::from_rgb8(20, 50, 220)),
+        (16.0, 0.0),
+    );
+
+    let mut renderer = new_test_renderer(32, 16, Color::TRANSPARENT);
+    let texture = renderer
+        .device()
+        .create_texture(&::wgpu::TextureDescriptor {
+            label: Some("tileink retained external target test"),
+            size: ::wgpu::Extent3d {
+                width: 32,
+                height: 16,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: ::wgpu::TextureDimension::D2,
+            format: ::wgpu::TextureFormat::Rgba8Unorm,
+            usage: ::wgpu::TextureUsages::STORAGE_BINDING
+                | ::wgpu::TextureUsages::COPY_DST
+                | ::wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+    renderer
+        .render_to_wgpu_texture(&first, &texture)
+        .expect("render first retained frame");
+    renderer
+        .render_to_wgpu_texture(&second, &texture)
+        .expect("render second retained frame");
+    let bytes = read_texture_rgba8(renderer.device(), renderer.queue(), &texture, 32, 16);
+    assert_eq!(&bytes[4 * 8..4 * 9], &[30, 210, 70, 255]);
+    assert_eq!(&bytes[4 * 24..4 * 25], &[20, 50, 220, 255]);
+    assert_eq!(renderer.incremental_render_stats().dirty_tiles, 1);
+}
+
+#[test]
+fn retained_filter_surface_is_reused_when_damage_is_elsewhere() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut filtered = Canvas::new(40, 40, 1.0);
+    filtered.push_filter_layer(
+        Filter::Blur {
+            std_dev_x: 2.0,
+            std_dev_y: 2.0,
+            sampling: BlurSampling::default(),
+        },
+        Region::rect(Rect::new(4.0, 4.0, 28.0, 28.0), crate::Radius::ZERO),
+    );
+    filtered.push_rect(
+        Rect::new(8.0, 8.0, 24.0, 24.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(220, 40, 80),
+    );
+    filtered.pop_layer();
+    let filtered = std::sync::Arc::new(filtered);
+
+    fn marker(color: Color) -> std::sync::Arc<Canvas> {
+        let mut scene = Canvas::new(16, 16, 1.0);
+        scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
+        std::sync::Arc::new(scene)
+    }
+
+    let root = RetainedNodeId::for_owner(10);
+    let filter_id = RetainedNodeId::for_owner(11);
+    let marker_id = RetainedNodeId::for_owner(12);
+    let mut first = Canvas::new_retained(128, 64, 1.0, root);
+    first.append_retained_scene(filter_id, 0, filtered.clone(), (0.0, 0.0));
+    first.append_retained_scene(
+        marker_id,
+        0,
+        marker(Color::from_rgb8(20, 40, 200)),
+        (96.0, 0.0),
+    );
+    let mut second = Canvas::new_retained(128, 64, 1.0, root);
+    second.append_retained_scene(filter_id, 0, filtered, (0.0, 0.0));
+    second.append_retained_scene(
+        marker_id,
+        1,
+        marker(Color::from_rgb8(20, 200, 40)),
+        (96.0, 0.0),
+    );
+
+    let mut renderer = new_test_renderer(128, 64, Color::TRANSPARENT);
+    renderer.render(&first);
+    renderer.render(&second);
+    assert!(!renderer.incremental_render_stats().full_redraw);
+    assert_eq!(
+        renderer
+            .incremental_render_stats()
+            .reused_offscreen_surfaces,
+        1
+    );
+    assert_eq!(
+        renderer
+            .incremental_render_stats()
+            .rerendered_offscreen_surfaces,
+        0
+    );
+
+    let incremental = renderer.image();
+
+    let mut evicted = new_test_renderer(128, 64, Color::TRANSPARENT);
+    let mut evicted_config = evicted.incremental_render_config();
+    evicted_config.retained_texture_budget_bytes = 0;
+    evicted.set_incremental_render_config(evicted_config);
+    evicted.render(&first);
+    evicted.render(&second);
+    assert_eq!(
+        evicted.incremental_render_stats().reused_offscreen_surfaces,
+        0
+    );
+    assert_eq!(
+        evicted
+            .incremental_render_stats()
+            .rerendered_offscreen_surfaces,
+        1
+    );
+
+    let mut full = new_test_renderer(128, 64, Color::TRANSPARENT);
+    let mut config = full.incremental_render_config();
+    config.mode = crate::IncrementalRenderMode::ForceFull;
+    full.set_incremental_render_config(config);
+    full.render(&second);
+    assert_eq!(incremental.pixels, full.image().pixels);
+    assert_eq!(evicted.image().pixels, full.image().pixels);
+}
+
+#[test]
+fn retained_filter_updates_local_dirty_tiles_and_matches_full_render() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    fn frame(revision: u64, color: Color) -> Canvas {
+        let root = RetainedNodeId::for_owner(20);
+        let filter_node = RetainedNodeId::for_owner(21);
+        let content_node = RetainedNodeId::for_owner(22);
+        let mut content = Canvas::new(20, 20, 1.0);
+        content.push_rect(Rect::new(2.0, 2.0, 18.0, 18.0), crate::Radius::ZERO, color);
+
+        let mut canvas = Canvas::new_retained(160, 96, 1.0, root);
+        let token = canvas.begin_retained_node(filter_node, 0);
+        canvas.push_filter_layer(
+            Filter::Blur {
+                std_dev_x: 2.0,
+                std_dev_y: 2.0,
+                sampling: BlurSampling::default(),
+            },
+            Region::rect(Rect::new(8.0, 8.0, 136.0, 72.0), crate::Radius::ZERO),
+        );
+        canvas.append_retained_scene(
+            content_node,
+            revision,
+            std::sync::Arc::new(content),
+            (40.0, 24.0),
+        );
+        canvas.pop_layer();
+        canvas.end_retained_node(token);
+        canvas
+    }
+
+    let first = frame(0, Color::from_rgb8(220, 40, 30));
+    let second = frame(1, Color::from_rgb8(20, 210, 50));
+    let mut incremental = new_test_renderer(160, 96, Color::TRANSPARENT);
+    incremental.render(&first);
+    incremental.render(&second);
+    let stats = incremental.incremental_render_stats().clone();
+    assert!(!stats.full_redraw);
+    assert_eq!(stats.rerendered_offscreen_surfaces, 1);
+    assert!(
+        stats.rerendered_offscreen_tiles < 45,
+        "local filter should not redraw its full surface: {stats:?}"
+    );
+
+    let image = incremental.image();
+    let mut full = new_test_renderer(160, 96, Color::TRANSPARENT);
+    let mut config = full.incremental_render_config();
+    config.mode = crate::IncrementalRenderMode::ForceFull;
+    full.set_incremental_render_config(config);
+    full.render(&second);
+    assert_eq!(image.pixels, full.image().pixels);
+}
+
+#[test]
+fn retained_backdrop_blur_updates_local_tiles_and_matches_full_render() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    fn frame(revision: u64, color: Color) -> Canvas {
+        let mut canvas = Canvas::new_retained(128, 96, 1.0, RetainedNodeId::for_owner(30));
+        let mut background = Canvas::new(128, 96, 1.0);
+        background.push_rect(
+            Rect::new(0.0, 0.0, 128.0, 96.0),
+            crate::Radius::ZERO,
+            Color::from_rgb8(32, 38, 48),
+        );
+        canvas.append_retained_scene(
+            RetainedNodeId::for_owner(31),
+            0,
+            std::sync::Arc::new(background),
+            (0.0, 0.0),
+        );
+        let mut marker = Canvas::new(16, 16, 1.0);
+        marker.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
+        canvas.append_retained_scene(
+            RetainedNodeId::for_owner(32),
+            revision,
+            std::sync::Arc::new(marker),
+            (48.0, 32.0),
+        );
+        let token = canvas.begin_retained_node(RetainedNodeId::for_owner(33), 0);
+        canvas.push_backdrop_layer(
+            Filter::Blur {
+                std_dev_x: 2.0,
+                std_dev_y: 2.0,
+                sampling: BlurSampling::FULL_RES,
+            },
+            Region::rect(Rect::new(16.0, 16.0, 112.0, 80.0), crate::Radius::all(8.0)),
+        );
+        canvas.pop_layer();
+        canvas.end_retained_node(token);
+        canvas
+    }
+
+    let first = frame(0, Color::from_rgb8(230, 50, 40));
+    let second = frame(1, Color::from_rgb8(30, 210, 90));
+    let mut incremental = new_test_renderer(128, 96, Color::TRANSPARENT);
+    incremental.render(&first);
+    incremental.render(&second);
+    let stats = incremental.incremental_render_stats().clone();
+    assert_eq!(stats.rerendered_offscreen_surfaces, 1);
+    assert!(stats.rerendered_offscreen_tiles < 35, "{stats:?}");
+
+    let mut full = new_test_renderer(128, 96, Color::TRANSPARENT);
+    let mut config = full.incremental_render_config();
+    config.mode = crate::IncrementalRenderMode::ForceFull;
+    full.set_incremental_render_config(config);
+    full.render(&second);
+    let incremental_image = incremental.image();
+    let full_image = full.image();
+    let differences = incremental_image
+        .pixels
+        .iter()
+        .zip(&full_image.pixels)
+        .enumerate()
+        .filter(|(_, (actual, expected))| actual != expected)
+        .map(|(index, _)| ((index as u32) % 128, (index as u32) / 128))
+        .collect::<Vec<_>>();
+    assert!(
+        differences.is_empty(),
+        "backdrop differs at {} pixels, first {:?}",
+        differences.len(),
+        differences.first()
+    );
+}
+
+#[test]
+fn retained_clipped_liquid_glass_rerenders_after_backdrop_damage() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    fn frame(revision: u64, color: Color) -> Canvas {
+        let mut canvas = Canvas::new_retained(256, 192, 1.0, RetainedNodeId::for_owner(34));
+        let mut background = Canvas::new(256, 192, 1.0);
+        background.push_rect(
+            Rect::new(0.0, 0.0, 256.0, 192.0),
+            crate::Radius::ZERO,
+            Color::from_rgb8(24, 32, 48),
+        );
+        canvas.append_retained_scene(
+            RetainedNodeId::for_owner(35),
+            0,
+            std::sync::Arc::new(background),
+            (0.0, 0.0),
+        );
+
+        let mut marker = Canvas::new(16, 16, 1.0);
+        marker.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
+        canvas.append_retained_scene(
+            RetainedNodeId::for_owner(36),
+            revision,
+            std::sync::Arc::new(marker),
+            (48.0, 32.0),
+        );
+
+        let token = canvas.begin_retained_node(RetainedNodeId::for_owner(37), 0);
+        canvas
+            .push_clip_sdf_rect_layer(Rect::new(16.0, 16.0, 112.0, 80.0), crate::Radius::all(12.0));
+        canvas.push_backdrop_layer(
+            Filter::RectLiquidGlass(RectLiquidGlass {
+                blur_radius: 8,
+                blur_sampling: BlurSampling::downsampled(2),
+                ..RectLiquidGlass::default()
+            }),
+            Region::rect(Rect::new(24.0, 20.0, 104.0, 76.0), crate::Radius::all(10.0)),
+        );
+        canvas.pop_layer();
+        canvas.pop_layer();
+        canvas.end_retained_node(token);
+        canvas
+    }
+
+    let first = frame(0, Color::from_rgb8(220, 40, 60));
+    let second = frame(1, Color::from_rgb8(30, 210, 100));
+    let mut incremental = new_test_renderer(256, 192, Color::TRANSPARENT);
+    incremental.render(&first);
+    incremental.render(&second);
+    let stats = incremental.incremental_render_stats();
+    assert!(
+        !stats.full_redraw,
+        "second frame must exercise retained rerendering"
+    );
+    assert_eq!(stats.rerendered_offscreen_surfaces, 1);
+
+    let mut full = new_test_renderer(256, 192, Color::TRANSPARENT);
+    let mut config = full.incremental_render_config();
+    config.mode = crate::IncrementalRenderMode::ForceFull;
+    full.set_incremental_render_config(config);
+    full.render(&second);
+    assert_eq!(incremental.image().pixels, full.image().pixels);
+}
+
+#[test]
+fn retained_liquid_glass_ignores_later_foreground_history_when_slider_moves() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    fn frame(slider_x: f64) -> Canvas {
+        let root = RetainedNodeId::for_owner(90);
+        let background_id = RetainedNodeId::for_owner(91);
+        let panel_id = RetainedNodeId::for_owner(92);
+        let slider_id = RetainedNodeId::for_owner(93);
+        let mut canvas = Canvas::new_retained(320, 192, 1.0, root);
+
+        let mut background = Canvas::new(320, 192, 1.0);
+        for x in (0..320).step_by(8) {
+            let color = if x % 16 == 0 {
+                Color::from_rgb8(24, 72, 120)
+            } else {
+                Color::from_rgb8(120, 56, 32)
+            };
+            background.push_rect(
+                Rect::new(f64::from(x), 0.0, f64::from(x + 8), 192.0),
+                crate::Radius::ZERO,
+                color,
+            );
+        }
+        canvas.append_retained_scene(
+            background_id,
+            0,
+            std::sync::Arc::new(background),
+            (0.0, 0.0),
+        );
+
+        let panel = Rect::new(24.0, 16.0, 296.0, 176.0);
+        let token = canvas.begin_retained_node(panel_id, 0);
+        canvas.push_backdrop_layer(
+            Filter::RectLiquidGlass(RectLiquidGlass {
+                blur_radius: 5,
+                blur_sampling: BlurSampling::downsampled(4),
+                tint: Color::from_rgba8(255, 255, 255, 26),
+                refraction_thickness: 28.0,
+                refraction_factor: 2.5,
+                refraction_dispersion: 10.0,
+                ..RectLiquidGlass::default()
+            }),
+            Region::rect(panel, crate::Radius::all(28.0)),
+        );
+        canvas.pop_layer();
+        canvas.end_retained_node(token);
+
+        let mut slider = Canvas::new(18, 18, 1.0);
+        slider.push_rect(
+            Rect::new(0.0, 0.0, 18.0, 18.0),
+            crate::Radius::all(9.0),
+            Color::WHITE,
+        );
+        canvas.append_retained_scene(slider_id, 0, std::sync::Arc::new(slider), (slider_x, 72.0));
+        canvas
+    }
+
+    let mut incremental = new_test_renderer(320, 192, Color::TRANSPARENT);
+    incremental.render(&frame(120.0));
+    let mut full = new_test_renderer(320, 192, Color::TRANSPARENT);
+    let mut config = full.incremental_render_config();
+    config.mode = crate::IncrementalRenderMode::ForceFull;
+    full.set_incremental_render_config(config);
+
+    for slider_x in [132.0, 144.0, 156.0, 170.0] {
+        let current = frame(slider_x);
+        incremental.render(&current);
+        assert!(
+            !incremental.incremental_render_stats().full_redraw,
+            "slider movement must exercise dirty-tile rendering"
+        );
+
+        full.render(&current);
+        let incremental_image = incremental.image();
+        let full_image = full.image();
+        let difference = incremental_image
+            .pixels
+            .iter()
+            .zip(&full_image.pixels)
+            .position(|(actual, expected)| actual != expected);
+        assert_eq!(
+            difference, None,
+            "retained liquid glass diverged after moving slider to {slider_x}"
+        );
+    }
+
+    // Evicting the backdrop source history must fall back to a full root
+    // redraw. Rebuilding it from a partial final-frame texture would recreate
+    // the same foreground feedback this test guards against.
+    let mut uncached = new_test_renderer(320, 192, Color::TRANSPARENT);
+    let mut uncached_config = uncached.incremental_render_config();
+    uncached_config.retained_texture_budget_bytes = 0;
+    uncached.set_incremental_render_config(uncached_config);
+    uncached.render(&frame(120.0));
+    let final_frame = frame(170.0);
+    uncached.render(&final_frame);
+    assert!(uncached.incremental_render_stats().full_redraw);
+    full.render(&final_frame);
+    assert_eq!(uncached.image().pixels, full.image().pixels);
+}
+
+#[test]
+fn retained_mask_updates_local_tiles_and_matches_full_render() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    fn frame(revision: u64, color: Color) -> Canvas {
+        let mut canvas = Canvas::new_retained(128, 96, 1.0, RetainedNodeId::for_owner(40));
+        let mut mask_scene = Canvas::new(128, 96, 1.0);
+        mask_scene.push_rect(
+            Rect::new(16.0, 16.0, 112.0, 80.0),
+            crate::Radius::all(12.0),
+            Color::WHITE,
+        );
+        let token = canvas.begin_retained_node(RetainedNodeId::for_owner(41), 0);
+        canvas.push_mask_layer(
+            mask_scene,
+            Mask {
+                region: Region::rect(Rect::new(16.0, 16.0, 112.0, 80.0), crate::Radius::all(12.0)),
+                kind: MaskKind::Alpha,
+            },
+        );
+        let mut content = Canvas::new(16, 16, 1.0);
+        content.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
+        canvas.append_retained_scene(
+            RetainedNodeId::for_owner(42),
+            revision,
+            std::sync::Arc::new(content),
+            (48.0, 32.0),
+        );
+        canvas.pop_layer();
+        canvas.end_retained_node(token);
+        canvas
+    }
+
+    let first = frame(0, Color::from_rgb8(220, 50, 90));
+    let second = frame(1, Color::from_rgb8(40, 200, 150));
+    let mut incremental = new_test_renderer(128, 96, Color::TRANSPARENT);
+    incremental.render(&first);
+    incremental.render(&second);
+    let stats = incremental.incremental_render_stats().clone();
+    assert_eq!(stats.rerendered_offscreen_surfaces, 1);
+    assert!(stats.rerendered_offscreen_tiles < 24, "{stats:?}");
+
+    let mut full = new_test_renderer(128, 96, Color::TRANSPARENT);
+    let mut config = full.incremental_render_config();
+    config.mode = crate::IncrementalRenderMode::ForceFull;
+    full.set_incremental_render_config(config);
+    full.render(&second);
+    assert_eq!(incremental.image().pixels, full.image().pixels);
+}
+
 const GPU_PTCL_END: u32 = 0;
 const GPU_PTCL_COLOR: u32 = 2;
 const GPU_PTCL_BEGIN_CLIP: u32 = 3;
 const GPU_PTCL_END_CLIP: u32 = 4;
 const GPU_PTCL_SDF: u32 = 9;
+const GPU_PTCL_BEGIN_SDF_CLIP: u32 = 12;
 const GPU_PTCL_IMAGE: u32 = 13;
 
 struct ForceCoarseChunksGuard {
@@ -83,15 +775,128 @@ fn wgpu_renderer_lazily_initializes_and_reuses_compute_pipelines() {
         return;
     }
     assert_eq!(initialized_compute_pipeline_counts(&renderer), [0; 4]);
+    assert_eq!(renderer.pipeline_compilation_epoch(), 0);
 
     renderer.render(&canvas);
     let first_render = initialized_compute_pipeline_counts(&renderer);
+    let first_epoch = renderer.pipeline_compilation_epoch();
     assert!(
         first_render[..4].iter().all(|count| *count > 0),
         "tile stages should initialize only the pipelines used by the first render: {first_render:?}"
     );
+    assert!(first_epoch > 0);
     renderer.render(&canvas);
     assert_eq!(initialized_compute_pipeline_counts(&renderer), first_render);
+    assert_eq!(renderer.pipeline_compilation_epoch(), first_epoch);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn wgpu_renderer_populates_and_reloads_pipeline_cache_when_enabled() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let instance = ::wgpu::Instance::new(::wgpu::InstanceDescriptor {
+        backends: ::wgpu::Backends::VULKAN,
+        flags: ::wgpu::InstanceFlags::empty(),
+        memory_budget_thresholds: ::wgpu::MemoryBudgetThresholds::default(),
+        backend_options: ::wgpu::BackendOptions::default(),
+        display: None,
+    });
+    let Ok(adapter) =
+        pollster::block_on(instance.request_adapter(&::wgpu::RequestAdapterOptions {
+            power_preference: ::wgpu::PowerPreference::HighPerformance,
+            compatible_surface: None,
+            force_fallback_adapter: false,
+            apply_limit_buckets: false,
+        }))
+    else {
+        return;
+    };
+    if !adapter
+        .features()
+        .contains(::wgpu::Features::PIPELINE_CACHE)
+    {
+        return;
+    }
+    let optional = ::wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
+        | ::wgpu::Features::TEXTURE_BINDING_ARRAY
+        | ::wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING;
+    let required_features = ::wgpu::Features::PIPELINE_CACHE | (adapter.features() & optional);
+    let Ok((device, queue)) =
+        pollster::block_on(adapter.request_device(&::wgpu::DeviceDescriptor {
+            label: Some("tileink pipeline cache test device"),
+            required_features,
+            required_limits: adapter.limits(),
+            memory_hints: ::wgpu::MemoryHints::Performance,
+            trace: ::wgpu::Trace::Off,
+            experimental_features: ::wgpu::ExperimentalFeatures::disabled(),
+        }))
+    else {
+        return;
+    };
+    // SAFETY: no initial cache data is supplied.
+    let cache = unsafe {
+        device.create_pipeline_cache(&::wgpu::PipelineCacheDescriptor {
+            label: Some("tileink pipeline cache test"),
+            data: None,
+            fallback: true,
+        })
+    };
+
+    let mut canvas = Canvas::new(64, 48, 1.0);
+    canvas.push_filter_layer(
+        Filter::Blur {
+            std_dev_x: 2.0,
+            std_dev_y: 2.0,
+            sampling: BlurSampling::FULL_RES,
+        },
+        Region::rect(Rect::new(4.0, 4.0, 60.0, 44.0), crate::Radius::ZERO),
+    );
+    canvas.push_rect(
+        Rect::new(12.0, 10.0, 52.0, 38.0),
+        crate::Radius::all(5.0),
+        Color::from_rgb8(40, 120, 220),
+    );
+    canvas.pop_layer();
+
+    let mut renderer = Renderer::new_with_options(
+        &device,
+        &queue,
+        64,
+        48,
+        Color::TRANSPARENT,
+        RendererOptions {
+            pipeline_cache: Some(cache.clone()),
+        },
+    );
+    renderer.render(&canvas);
+    let data = cache
+        .get_data()
+        .filter(|data| !data.is_empty())
+        .expect("rendered compute pipelines should populate the Vulkan cache");
+
+    // SAFETY: `data` came directly from a wgpu pipeline cache for this same device.
+    let reloaded = unsafe {
+        device.create_pipeline_cache(&::wgpu::PipelineCacheDescriptor {
+            label: Some("tileink reloaded pipeline cache test"),
+            data: Some(&data),
+            fallback: false,
+        })
+    };
+    let mut renderer = Renderer::new_with_options(
+        &device,
+        &queue,
+        64,
+        48,
+        Color::TRANSPARENT,
+        RendererOptions {
+            pipeline_cache: Some(reloaded.clone()),
+        },
+    );
+    renderer.render(&canvas);
+    assert!(reloaded.get_data().is_some());
 }
 
 #[test]
@@ -201,17 +1006,19 @@ fn wgpu_renderer_push_image_key_bilinear_uses_resource_atlas() {
     }
 
     let key = ImageKey::new(11);
-    let mut canvas = Canvas::new(2, 1, 1.0);
+    // Scale two source texels into one destination pixel so its center maps
+    // exactly to the source texel boundary and must interpolate both colors.
+    let mut canvas = Canvas::new(1, 1, 1.0);
     canvas
         .push_image_key(
-            Rect::new(0.0, 0.0, 2.0, 1.0),
+            Rect::new(0.0, 0.0, 1.0, 1.0),
             key,
             Extend::Pad,
             PatternSampling::Bilinear,
         )
         .expect("push image resource");
 
-    let mut renderer = new_test_renderer(2, 1, Color::TRANSPARENT);
+    let mut renderer = new_test_renderer(1, 1, Color::TRANSPARENT);
     assert!(renderer.insert_image(
         key,
         Image::from_rgba8(
@@ -231,7 +1038,6 @@ fn wgpu_renderer_push_image_key_bilinear_uses_resource_atlas() {
     let image = renderer.image();
 
     assert_eq!(image.rgba8_at(0, 0), [128, 0, 128, 255]);
-    assert_eq!(image.rgba8_at(1, 0), [0, 0, 255, 255]);
 }
 
 #[test]
@@ -335,9 +1141,12 @@ fn wgpu_renderer_resource_atlas_bilinear_repeat_samples_wrapped_pixels() {
 
     let key = ImageKey::new(14);
     let mut canvas = Canvas::new(2, 1, 1.0);
+    // Shift the pattern by half a destination pixel. Both destination centers
+    // then land halfway between source texels, including across the repeat
+    // seam for the second pixel.
     let brush = Brush::from_image_key_with_options(
         key,
-        Rect::new(0.0, 0.0, 2.0, 1.0),
+        Rect::new(-0.5, 0.0, 1.5, 1.0),
         Extend::Repeat,
         PatternSampling::Bilinear,
         255,
@@ -980,12 +1789,12 @@ fn wgpu_coarse_emits_sdf_particles_for_rects_when_enabled() {
 
     let mut canvas = Canvas::new(32, 16, 1.0);
     canvas.push_rect(
-        Rect::new(0.0, 0.0, 32.0, 16.0),
+        Rect::new(0.25, 0.25, 31.75, 15.75),
         crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
     );
     canvas.push_rect(
-        Rect::new(16.0, 0.0, 32.0, 16.0),
+        Rect::new(16.25, 0.25, 31.75, 15.75),
         crate::Radius::ZERO,
         Color::from_rgb8(0, 0, 255),
     );
@@ -1040,12 +1849,12 @@ fn wgpu_coarse_tile_draw_bins_respect_batch_range_when_enabled() {
 
     let mut canvas = Canvas::new(32, 16, 1.0);
     canvas.push_rect(
-        Rect::new(0.0, 0.0, 32.0, 16.0),
+        Rect::new(0.25, 0.25, 31.75, 15.75),
         crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
     );
     canvas.push_rect(
-        Rect::new(0.0, 0.0, 32.0, 16.0),
+        Rect::new(0.25, 0.25, 31.75, 15.75),
         crate::Radius::ZERO,
         Color::from_rgb8(0, 0, 255),
     );
@@ -1091,7 +1900,7 @@ fn wgpu_coarse_emits_deep_inside_sdf_rect_tiles_as_solid_color_when_enabled() {
 
     let mut canvas = Canvas::new(64, 64, 1.0);
     canvas.push_rect(
-        Rect::new(0.0, 0.0, 64.0, 64.0),
+        Rect::new(0.25, 0.25, 63.75, 63.75),
         crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
     );
@@ -1145,7 +1954,7 @@ fn wgpu_coarse_portable_emit_handles_multiple_draw_chunks_when_enabled() {
     let mut canvas = Canvas::new(16, 16, 1.0);
     for _ in 0..257 {
         canvas.push_rect(
-            Rect::new(0.0, 0.0, 16.0, 16.0),
+            Rect::new(0.25, 0.25, 15.75, 15.75),
             crate::Radius::ZERO,
             Color::BLACK,
         );
@@ -1179,12 +1988,14 @@ fn wgpu_fine_tile_kind_classifies_analytic_tiles_when_enabled() {
 
     let mut canvas = Canvas::new(96, 96, 1.0);
     canvas.push_rect(
-        Rect::new(0.0, 0.0, 96.0, 96.0),
+        // Fractional outer edges keep boundary tiles on the analytic SDF path,
+        // while interior tiles are still provably solid.
+        Rect::new(0.25, 0.25, 95.75, 95.75),
         crate::Radius::ZERO,
         Color::from_rgb8(32, 64, 96),
     );
     canvas.push_rect(
-        Rect::new(32.0, 32.0, 48.0, 48.0),
+        Rect::new(32.25, 32.25, 47.75, 47.75),
         crate::Radius::ZERO,
         Color::from_rgb8(255, 0, 0),
     );
@@ -1297,7 +2108,7 @@ fn wgpu_fine_tile_kind_elides_full_cover_path_clip_for_image_rect_when_enabled()
     }
 
     renderer.prepare_scene(&canvas);
-    renderer.coarse_batch(&canvas, 0, canvas.draw_records.len() as u32, 0, 0);
+    coarse_first_draw_batch(&mut renderer, &canvas);
 
     let kinds =
         renderer
@@ -1331,7 +2142,7 @@ fn wgpu_fine_tile_kind_elides_full_cover_sdf_clip_for_image_rect_when_enabled() 
     }
 
     renderer.prepare_scene(&canvas);
-    renderer.coarse_batch(&canvas, 0, canvas.draw_records.len() as u32, 0, 0);
+    coarse_first_draw_batch(&mut renderer, &canvas);
 
     let kinds =
         renderer
@@ -1370,7 +2181,7 @@ fn wgpu_fine_tile_kind_keeps_partial_clip_image_rect_on_full_interpreter_when_en
     }
 
     renderer.prepare_scene(&canvas);
-    renderer.coarse_batch(&canvas, 0, canvas.draw_records.len() as u32, 0, 0);
+    coarse_first_draw_batch(&mut renderer, &canvas);
 
     let kinds =
         renderer
@@ -1381,7 +2192,7 @@ fn wgpu_fine_tile_kind_keeps_partial_clip_image_rect_on_full_interpreter_when_en
     assert_eq!(
         tags,
         vec![
-            GPU_PTCL_BEGIN_CLIP,
+            GPU_PTCL_BEGIN_SDF_CLIP,
             GPU_PTCL_IMAGE,
             GPU_PTCL_END_CLIP,
             GPU_PTCL_END
@@ -1465,7 +2276,7 @@ fn wgpu_fine_tile_kind_keeps_clip_tiles_on_full_interpreter_when_enabled() {
     }
 
     renderer.prepare_scene(&canvas);
-    renderer.coarse_batch(&canvas, 0, canvas.draw_records.len() as u32, 0, 0);
+    coarse_first_draw_batch(&mut renderer, &canvas);
 
     let kinds =
         renderer
@@ -2364,23 +3175,22 @@ fn wgpu_renderer_samples_resource_image_flood_filter_with_atlas() {
     let key = ImageKey::new(15);
     let brush = Brush::from_image_key_with_options(
         key,
-        Rect::new(0.0, 0.0, 2.0, 1.0),
+        Rect::new(0.0, 0.0, 1.0, 1.0),
         Extend::Pad,
         PatternSampling::Bilinear,
         255,
     )
     .expect("resource brush");
-    let mut canvas = Canvas::new(2, 1, 1.0);
+    let mut canvas = Canvas::new(1, 1, 1.0);
     canvas.push_filter_layer(
         Filter::Flood { brush },
-        Region::rect(Rect::new(0.0, 0.0, 2.0, 1.0), crate::Radius::ZERO),
+        Region::rect(Rect::new(0.0, 0.0, 1.0, 1.0), crate::Radius::ZERO),
     );
     canvas.pop_layer();
 
     let image = render_resource_atlas_test(canvas, key);
 
     assert_eq!(image.rgba8_at(0, 0), [128, 0, 128, 255]);
-    assert_eq!(image.rgba8_at(1, 0), [0, 0, 255, 255]);
 }
 
 #[test]
@@ -3426,8 +4236,37 @@ fn read_render_target_u32(renderer: &Renderer, target: WgpuRenderTargetId, len: 
         renderer.size.0,
         renderer.size.1,
     );
-    let values = bytemuck::cast_slice(&bytes)[..len].to_vec();
-    values
+    bytemuck::cast_slice(&bytes)[..len].to_vec()
+}
+
+/// Runs the first compiled draw batch with its fused layer stack.
+///
+/// Clip commands are structural execution-plan entries, not ordinary draws in
+/// the child batch. Coarse tests must follow the compiled contract used by the
+/// renderer or they silently omit the clip wrappers they intend to inspect.
+fn coarse_first_draw_batch(renderer: &mut Renderer, canvas: &Canvas) {
+    let (draws, layer_stack) = renderer
+        .plan
+        .as_ref()
+        .expect("prepared execution plan")
+        .ops
+        .iter()
+        .find_map(|op| match op {
+            ExecOp::DrawBatch { draws, layer_stack } => Some((draws.clone(), layer_stack.clone())),
+            _ => None,
+        })
+        .expect("execution plan contains a draw batch");
+    // Path clips in the fused stack consume scan/cumsum backdrops before
+    // coarse can decide whether the clip is a no-op or needs wrapper particles.
+    renderer.scan_for_test();
+    renderer.cumsum_for_test();
+    renderer.coarse_batch(
+        canvas,
+        draws.start as u32,
+        draws.end as u32,
+        layer_stack.start as u32,
+        layer_stack.end as u32,
+    );
 }
 
 fn read_ptcl_tags(renderer: &Renderer, len: usize) -> Vec<u32> {

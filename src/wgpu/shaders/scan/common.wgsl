@@ -5,8 +5,11 @@ struct ScanConfig {
     scan_chunk_count: u32,
     line_count: u32,
     segment_capacity: u32,
-    _pad0: u32,
-    _pad1: u32,
+    incremental: u32,
+    line_base: u32,
+    path_base: u32,
+    chunk_base: u32,
+    backdrop_base: u32,
 };
 
 struct Line {
@@ -57,6 +60,13 @@ struct TileSegmentRange {
 };
 
 @group(0) @binding(0) var<uniform> config: ScanConfig;
+
+fn dispatched_index(local_ix: u32, base: u32) -> u32 {
+    if (config.incremental != 0u) {
+        return active_indices[base + local_ix];
+    }
+    return local_ix;
+}
 
 // Shared by DDA top-edge detection, top-clipped backdrop bumps, and tile-boundary
 // segment snapping. This only absorbs arithmetic noise around an exact tile

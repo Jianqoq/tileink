@@ -13,10 +13,12 @@ pub const TILE_SCALE: f32 = 1.0 / TILE_SIZE as f32;
 pub const BLOCK_SIZE: u32 = 16 * 16;
 
 pub use crate::wgpu::{
-    Renderer, Renderer as WgpuRenderer, WgpuRenderProfile, WgpuRenderProfileEntry,
-    WgpuRenderProfileEventSummary, WgpuRenderProfileReport, WgpuTextureRenderError,
+    FullRedrawReason, IncrementalRenderConfig, IncrementalRenderMode, IncrementalRenderStats,
+    Renderer, Renderer as WgpuRenderer, RendererOptions, RendererOptions as WgpuRendererOptions,
+    WgpuRenderProfile, WgpuRenderProfileEntry, WgpuRenderProfileEventSummary,
+    WgpuRenderProfileReport, WgpuTextureRenderError,
 };
-pub use canvas::{Canvas, DrawId};
+pub use canvas::{Canvas, DrawId, RetainedNodeId, RetainedNodeToken, SceneRevision};
 pub use cosmic_text::{
     Align as TextAlign, Attrs as TextAttrs, CacheKeyFlags as TextCacheKeyFlags,
     Family as TextFamily, FontSystem as TextFontSystem, Stretch as TextStretch, Style as TextStyle,

@@ -3,6 +3,21 @@ use crate::shared::layer::mask::MaskKind;
 use peniko::{BlendMode, Compose, Mix};
 
 #[test]
+fn execution_plan_fingerprint_ignores_buffer_only_changes() {
+    let build = |color| {
+        let mut canvas = Canvas::new(32, 32, 1.0);
+        canvas.push_rect(Rect::new(2.0, 2.0, 18.0, 18.0), crate::Radius::ZERO, color);
+        canvas
+    };
+    let red = build(rgb(255, 0, 0));
+    let green = build(rgb(0, 255, 0));
+    assert_eq!(
+        red.execution_plan_fingerprint(),
+        green.execution_plan_fingerprint()
+    );
+}
+
+#[test]
 fn compile_lowers_clip_blend_batches_in_user_order() {
     let mut canvas = test_scene();
     canvas.push_clip_layer(
@@ -248,6 +263,76 @@ fn compile_fuses_sdf_clip_into_layer_stack() {
 }
 
 #[test]
+fn path_api_promotes_axis_aligned_rect_clip_without_path_storage() {
+    let mut canvas = test_scene();
+    canvas.push_clip_layer(
+        rect_path(1.0, 2.0, 17.0, 18.0),
+        Affine::translate((3.0, 4.0)),
+        FillRule::EvenOdd,
+        0.1,
+    );
+    canvas.push_rect(
+        Rect::new(0.0, 0.0, 32.0, 32.0),
+        Radius::ZERO,
+        rgb(255, 0, 0),
+    );
+    canvas.pop_layer();
+
+    assert!(canvas.path_records.is_empty());
+    match canvas.draw_sdf(&canvas.draw_records[0]) {
+        Some(Sdf::Rect(rect)) => {
+            assert_eq!(rect.start, Point::new(4.0, 6.0));
+            assert_eq!(rect.end, Point::new(20.0, 22.0));
+            assert!(rect.radius.is_zero());
+        }
+        sdf => panic!("expected promoted rectangular clip, got {sdf:#?}"),
+    }
+}
+
+#[test]
+fn path_api_keeps_non_rectangular_clip_as_path_geometry() {
+    let mut triangle = BezPath::new();
+    triangle.move_to((2.0, 2.0));
+    triangle.line_to((30.0, 4.0));
+    triangle.line_to((12.0, 28.0));
+    triangle.close_path();
+
+    let mut canvas = test_scene();
+    canvas.push_clip_layer(triangle, Affine::IDENTITY, FillRule::NonZero, 0.1);
+    canvas.push_rect(
+        Rect::new(0.0, 0.0, 32.0, 32.0),
+        Radius::ZERO,
+        rgb(255, 0, 0),
+    );
+    canvas.pop_layer();
+
+    assert_eq!(canvas.path_records.len(), 1);
+    assert!(canvas.draw_sdf(&canvas.draw_records[0]).is_none());
+}
+
+#[test]
+fn path_api_keeps_fractional_physical_rect_clip_as_path_geometry() {
+    let mut canvas = Canvas::new(64, 64, 1.5);
+    canvas.push_clip_layer(
+        rect_path(1.0, 1.0, 17.0, 17.0),
+        Affine::IDENTITY,
+        FillRule::NonZero,
+        0.1,
+    );
+    canvas.push_rect(
+        Rect::new(0.0, 0.0, 32.0, 32.0),
+        Radius::ZERO,
+        rgb(255, 0, 0),
+    );
+    canvas.pop_layer();
+
+    // Path and SDF coverage differ at fractional physical clip edges. Keep the
+    // path so DPI/viewBox scaling remains pixel-identical to existing scenes.
+    assert_eq!(canvas.path_records.len(), 1);
+    assert!(canvas.draw_sdf(&canvas.draw_records[0]).is_none());
+}
+
+#[test]
 fn compile_fuses_generic_sdf_clip_without_path_storage() {
     let mut canvas = test_scene();
     canvas.push_clip_sdf_layer(Sdf::Line(SdfLine::new(
@@ -358,6 +443,7 @@ fn compile_keeps_opacity_with_offscreen_child_isolated() {
     assert_eq!(plan.ops.len(), 1, "{:#?}", plan.ops);
     match &plan.ops[0] {
         ExecOp::OffscreenLayer {
+            retained_id: _,
             draw,
             layer: Layer::Opacity(opacity),
             outer_stack,
@@ -406,6 +492,7 @@ fn compile_keeps_blend_with_offscreen_child_isolated() {
     assert_eq!(plan.ops.len(), 1, "{:#?}", plan.ops);
     match &plan.ops[0] {
         ExecOp::OffscreenLayer {
+            retained_id: _,
             draw,
             layer: Layer::Blend(blend),
             outer_stack,
@@ -443,6 +530,7 @@ fn compile_keeps_isolate_as_offscreen_layer() {
     assert_eq!(plan.ops.len(), 1, "{:#?}", plan.ops);
     match &plan.ops[0] {
         ExecOp::OffscreenLayer {
+            retained_id: _,
             draw,
             layer: Layer::Isolate,
             outer_stack,
@@ -489,6 +577,7 @@ fn compile_keeps_mask_content_and_mask_isolated() {
     assert_eq!(plan.ops.len(), 1, "{:#?}", plan.ops);
     match &plan.ops[0] {
         ExecOp::OffscreenMaskLayer {
+            retained_id: _,
             layer,
             outer_stack,
             content,

@@ -34,6 +34,14 @@ impl WgpuTarget {
     pub(crate) fn view(&self) -> &::wgpu::TextureView {
         &self.view
     }
+
+    pub(crate) fn size(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
+
+    pub(crate) fn byte_len(&self) -> u64 {
+        self.width as u64 * self.height as u64 * 4
+    }
 }
 
 fn create_target_texture(

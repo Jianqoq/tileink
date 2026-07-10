@@ -216,6 +216,30 @@ fn filter_blur_source_pixel(x: u32, y: u32) -> vec4<f32> {
     );
 }
 
+fn filter_blur_sample_x0() -> u32 {
+    return select(config.region_x0, config.source_x0, config.source_x1 > config.source_x0);
+}
+
+fn filter_blur_sample_y0() -> u32 {
+    return select(config.region_y0, config.source_y0, config.source_y1 > config.source_y0);
+}
+
+fn filter_blur_sample_x1() -> u32 {
+    return select(
+        config.region_x0 + config.region_width,
+        config.source_x1,
+        config.source_x1 > config.source_x0,
+    );
+}
+
+fn filter_blur_sample_y1() -> u32 {
+    return select(
+        config.region_y0 + config.region_height,
+        config.source_y1,
+        config.source_y1 > config.source_y0,
+    );
+}
+
 fn filter_blur_pair_in_region(
     base_x: i32,
     base_y: i32,
@@ -233,9 +257,9 @@ fn filter_blur_pair_in_region(
         y0 = f32(base_y) + offset;
         y1 = f32(base_y) + offset + 1.0;
     }
-    return x0 >= f32(config.region_x0) &&
+    return x0 >= f32(filter_blur_sample_x0()) &&
         x1 < f32(region_x1) &&
-        y0 >= f32(config.region_y0) &&
+        y0 >= f32(filter_blur_sample_y0()) &&
         y1 < f32(region_y1);
 }
 
@@ -250,8 +274,10 @@ fn filter_blur_pixel_global(xy: vec2<u32>, dst_ix: u32, std_dev: f32) -> u32 {
     let half_width = i32(max(ceil(std_dev * 3.0), 1.0));
     let sigma = max(std_dev, 0.0001);
     let two_sigma_sq = 2.0 * sigma * sigma;
-    let region_x1 = i32(config.region_x0 + config.region_width);
-    let region_y1 = i32(config.region_y0 + config.region_height);
+    let region_x0 = i32(filter_blur_sample_x0());
+    let region_y0 = i32(filter_blur_sample_y0());
+    let region_x1 = i32(filter_blur_sample_x1());
+    let region_y1 = i32(filter_blur_sample_y1());
     let base_x = i32(xy.x);
     let base_y = i32(xy.y);
 
@@ -293,9 +319,9 @@ fn filter_blur_pixel_global(xy: vec2<u32>, dst_ix: u32, std_dev: f32) -> u32 {
             a += sample.a * pair_weight;
         } else {
             if (
-                sample_x >= i32(config.region_x0) &&
+                sample_x >= region_x0 &&
                 sample_x < region_x1 &&
-                sample_y >= i32(config.region_y0) &&
+                sample_y >= region_y0 &&
                 sample_y < region_y1
             ) {
                 let sample = filter_blur_source_pixel(u32(sample_x), u32(sample_y));
@@ -312,9 +338,9 @@ fn filter_blur_pixel_global(xy: vec2<u32>, dst_ix: u32, std_dev: f32) -> u32 {
                     sample_y = base_y + next_d;
                 }
                 if (
-                    sample_x >= i32(config.region_x0) &&
+                    sample_x >= region_x0 &&
                     sample_x < region_x1 &&
-                    sample_y >= i32(config.region_y0) &&
+                    sample_y >= region_y0 &&
                     sample_y < region_y1
                 ) {
                     let sample = filter_blur_source_pixel(u32(sample_x), u32(sample_y));
@@ -341,9 +367,9 @@ fn filter_blur_pixel_global(xy: vec2<u32>, dst_ix: u32, std_dev: f32) -> u32 {
             a += sample.a * pair_weight;
         } else {
             if (
-                sample_x >= i32(config.region_x0) &&
+                sample_x >= region_x0 &&
                 sample_x < region_x1 &&
-                sample_y >= i32(config.region_y0) &&
+                sample_y >= region_y0 &&
                 sample_y < region_y1
             ) {
                 let sample = filter_blur_source_pixel(u32(sample_x), u32(sample_y));
@@ -360,9 +386,9 @@ fn filter_blur_pixel_global(xy: vec2<u32>, dst_ix: u32, std_dev: f32) -> u32 {
                     sample_y = base_y - next_d;
                 }
                 if (
-                    sample_x >= i32(config.region_x0) &&
+                    sample_x >= region_x0 &&
                     sample_x < region_x1 &&
-                    sample_y >= i32(config.region_y0) &&
+                    sample_y >= region_y0 &&
                     sample_y < region_y1
                 ) {
                     let sample = filter_blur_source_pixel(u32(sample_x), u32(sample_y));
@@ -501,8 +527,10 @@ fn filter_blur_shared_region(
 
     let radius = u32(half_width);
     let local_ix = local_id.y * SHARED_BLUR_TILE_WIDTH + local_id.x;
-    let region_x1 = i32(config.region_x0 + config.region_width);
-    let region_y1 = i32(config.region_y0 + config.region_height);
+    let region_x0 = i32(filter_blur_sample_x0());
+    let region_y0 = i32(filter_blur_sample_y0());
+    let region_x1 = i32(filter_blur_sample_x1());
+    let region_y1 = i32(filter_blur_sample_y1());
     var sample_count = SHARED_BLUR_TILE_WIDTH * (SHARED_BLUR_TILE_HEIGHT + 2u * radius);
     if (config.blur_axis == 0u) {
         sample_count = (SHARED_BLUR_TILE_WIDTH + 2u * radius) * SHARED_BLUR_TILE_HEIGHT;
@@ -527,9 +555,9 @@ fn filter_blur_shared_region(
 
         var pixel = 0u;
         if (
-            sx >= i32(config.region_x0) &&
+            sx >= region_x0 &&
             sx < region_x1 &&
-            sy >= i32(config.region_y0) &&
+            sy >= region_y0 &&
             sy < region_y1
         ) {
             pixel = source_pixel_at(u32(sx), u32(sy));

@@ -57,6 +57,10 @@ name = "image_key_bench"
 path = "examples/image_key_bench.rs"
 
 [[example]]
+name = "dirty_tiles_bench"
+path = "examples/dirty_tiles_bench.rs"
+
+[[example]]
 name = "blur_pairing_bench"
 path = "examples/blur_pairing_bench.rs"
 

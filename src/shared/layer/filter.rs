@@ -528,7 +528,7 @@ pub(crate) fn unclipped_filtered_region_bounds(filter: &Filter, sample_region: &
     region_bounds(sample_region).outset(filter_outset(filter))
 }
 
-fn filter_outset(filter: &Filter) -> i32 {
+pub(crate) fn filter_outset(filter: &Filter) -> i32 {
     match filter {
         Filter::Chain {
             filters,
@@ -566,7 +566,7 @@ fn filter_outset(filter: &Filter) -> i32 {
     }
 }
 
-fn filter_dependency_outset(filter: &Filter) -> i32 {
+pub(crate) fn filter_dependency_outset(filter: &Filter) -> i32 {
     match filter {
         Filter::Chain { filters, .. } => filters.iter().map(filter_dependency_outset).sum(),
         Filter::Graph { primitives, .. } => graph_dependency_outset(primitives),
@@ -604,7 +604,7 @@ fn bounds_distance(a: Bounds, b: Bounds) -> i32 {
         .max((a.y1 - b.y1).abs())
 }
 
-fn region_bounds(region: &Region) -> Bounds {
+pub(crate) fn region_bounds(region: &Region) -> Bounds {
     match region {
         Region::Rect { rect, .. } => rect_bounds(*rect),
         Region::Path {

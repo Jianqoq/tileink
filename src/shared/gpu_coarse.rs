@@ -155,13 +155,13 @@ pub(crate) fn coarse_work_word_len(
     tile_draw_index_count: usize,
     tile_draw_chunk_count: usize,
 ) -> usize {
-    coarse_work_fine_tile_list_word_offset(
+    coarse_work_active_tile_list_word_offset(
         tile_count,
         ptcl_capacity,
         glyph_capacity,
         tile_draw_index_count,
         tile_draw_chunk_count,
-    ) + tile_count * FINE_TILE_LIST_COUNT
+    ) + tile_count
 }
 
 pub(crate) fn coarse_work_fine_tile_kind_word_offset(
@@ -193,6 +193,22 @@ pub(crate) fn coarse_work_fine_tile_list_word_offset(
         tile_draw_index_count,
         tile_draw_chunk_count,
     ) + tile_count * FINE_TILE_KIND_WORDS
+}
+
+pub(crate) fn coarse_work_active_tile_list_word_offset(
+    tile_count: usize,
+    ptcl_capacity: usize,
+    glyph_capacity: usize,
+    tile_draw_index_count: usize,
+    tile_draw_chunk_count: usize,
+) -> usize {
+    coarse_work_fine_tile_list_word_offset(
+        tile_count,
+        ptcl_capacity,
+        glyph_capacity,
+        tile_draw_index_count,
+        tile_draw_chunk_count,
+    ) + tile_count * FINE_TILE_LIST_COUNT
 }
 
 #[cfg(test)]
@@ -298,6 +314,10 @@ mod tests {
         assert_eq!(coarse_work_emit_chunk_record_word_offset(3, 5, 7, 11), 78);
         assert_eq!(coarse_work_fine_tile_kind_word_offset(3, 5, 7, 11, 13), 169);
         assert_eq!(coarse_work_fine_tile_list_word_offset(3, 5, 7, 11, 13), 172);
-        assert_eq!(coarse_work_word_len(3, 5, 7, 11, 13), 181);
+        assert_eq!(
+            coarse_work_active_tile_list_word_offset(3, 5, 7, 11, 13),
+            181
+        );
+        assert_eq!(coarse_work_word_len(3, 5, 7, 11, 13), 184);
     }
 }

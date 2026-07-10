@@ -29,10 +29,11 @@ fn coarse_glyph_prefix_chunks(
 
 fn prefix_chunks(chunk_ix: u32, lane: u32, glyph: bool) {
     let chunk_offset = chunk_ix * 256u;
-    let chunk_len = min(config.tile_count - chunk_offset, 256u);
+    let item_count = select(config.tile_count, config.active_tile_count, config.incremental != 0u);
+    let chunk_len = min(item_count - chunk_offset, 256u);
     var count = 0u;
     if (lane < chunk_len) {
-        let tile_ix = chunk_offset + lane;
+        let tile_ix = dispatched_tile_at(chunk_offset + lane);
         count = coarse_tile_count(tile_ix, glyph);
     }
     coarse_scratch[lane] = count;
@@ -78,7 +79,7 @@ fn prefix_chunks(chunk_ix: u32, lane: u32, glyph: bool) {
     }
 
     if (lane < chunk_len) {
-        let tile_ix = chunk_offset + lane;
+        let tile_ix = dispatched_tile_at(chunk_offset + lane);
         let start = coarse_scratch[lane];
         coarse_store_tile_range(tile_ix, glyph, start, start + count);
     }
@@ -129,10 +130,12 @@ fn coarse_glyph_apply_chunk_offsets(
 }
 
 fn apply_chunk_offsets(chunk_ix: u32, lane: u32, glyph: bool) {
-    let tile_ix = chunk_ix * 256u + lane;
-    if (tile_ix >= config.tile_count) {
+    let item_ix = chunk_ix * 256u + lane;
+    let item_count = select(config.tile_count, config.active_tile_count, config.incremental != 0u);
+    if (item_ix >= item_count) {
         return;
     }
+    let tile_ix = dispatched_tile_at(item_ix);
     if (glyph) {
         let offset = chunk_records[chunk_ix].glyph_offset;
         coarse_add_tile_range_offset(tile_ix, true, offset);

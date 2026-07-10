@@ -76,7 +76,7 @@ impl WgpuFilterTransferBuffers {
         queue: &::wgpu::Queue,
         upload: FilterTransferUpload,
     ) {
-        self.tables.upload(
+        self.tables.upload_cached(
             device,
             queue,
             "tileink wgpu filter transfer tables",
@@ -122,7 +122,7 @@ impl WgpuFilterBrushBuffers {
         queue: &::wgpu::Queue,
         upload: GpuBrushUpload,
     ) {
-        self.blob.upload(
+        self.blob.upload_cached(
             device,
             queue,
             "tileink wgpu filter brush blob",
@@ -165,7 +165,7 @@ impl WgpuFilterConvolveBuffers {
         queue: &::wgpu::Queue,
         upload: FilterConvolveUpload,
     ) {
-        self.kernels.upload(
+        self.kernels.upload_cached(
             device,
             queue,
             "tileink wgpu filter convolve kernels",
@@ -209,13 +209,13 @@ impl WgpuFilterTurbulenceBuffers {
         queue: &::wgpu::Queue,
         upload: FilterTurbulenceUpload,
     ) {
-        self.selectors.upload(
+        self.selectors.upload_cached(
             device,
             queue,
             "tileink wgpu filter turbulence selectors",
             &upload.selectors,
         );
-        self.gradients.upload(
+        self.gradients.upload_cached(
             device,
             queue,
             "tileink wgpu filter turbulence gradients",
@@ -243,26 +243,26 @@ impl WgpuFilterPathBuffers {
         plan: &ExecPlan,
     ) {
         let upload = FilterPathUpload::from_plan(plan);
-        self.range_starts.upload(
+        self.range_starts.upload_cached(
             device,
             queue,
             "tileink wgpu filter path range starts",
             &upload.range_starts,
         );
-        self.range_ends.upload(
+        self.range_ends.upload_cached(
             device,
             queue,
             "tileink wgpu filter path range ends",
             &upload.range_ends,
         );
         self.p0x
-            .upload(device, queue, "tileink wgpu filter path p0x", &upload.p0x);
+            .upload_cached(device, queue, "tileink wgpu filter path p0x", &upload.p0x);
         self.p0y
-            .upload(device, queue, "tileink wgpu filter path p0y", &upload.p0y);
+            .upload_cached(device, queue, "tileink wgpu filter path p0y", &upload.p0y);
         self.p1x
-            .upload(device, queue, "tileink wgpu filter path p1x", &upload.p1x);
+            .upload_cached(device, queue, "tileink wgpu filter path p1x", &upload.p1x);
         self.p1y
-            .upload(device, queue, "tileink wgpu filter path p1y", &upload.p1y);
+            .upload_cached(device, queue, "tileink wgpu filter path p1y", &upload.p1y);
     }
 }
 

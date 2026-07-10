@@ -1,9 +1,11 @@
+mod retained;
+
 use std::sync::Arc as SharedArc;
 
 use peniko::{
     Color, Compose, Extend, Mix,
     kurbo::{
-        Affine, Arc, BezPath, Circle, Point, Rect, Shape, Stroke, StrokeOpts,
+        Affine, Arc, BezPath, Circle, PathEl, Point, Rect, Shape, Stroke, StrokeOpts,
         stroke as kurbo_stroke,
     },
 };
@@ -49,6 +51,11 @@ use crate::shared::{
 use crate::text::{TextRun, layout_bounds_at_scaled_origin, scene_glyphs_at_scaled_origin};
 use crate::{TextContext, TextFontSystem, TextLayout};
 
+pub(crate) use retained::{
+    RetainedFrame, RetainedNodeKind, RetainedNodeState, RetainedSceneCache, RetainedSurfaceId,
+};
+pub use retained::{RetainedNodeId, RetainedNodeToken, SceneRevision};
+
 const SDF_RECORD_FILL_RULE: FillRule = FillRule::NonZero;
 
 #[derive(Clone)]
@@ -73,6 +80,10 @@ pub struct Canvas {
     pub(crate) logical_height: u32,
     pub(crate) scale_factor: f32,
     draw_generation: u32,
+    retained_root: Option<RetainedNodeId>,
+    retained_stack: Vec<RetainedNodeId>,
+    invalidated_bounds: Vec<Bounds>,
+    invalidate_all: bool,
 }
 
 /// Opaque handle to a draw stored inside a [`Canvas`].
@@ -409,6 +420,11 @@ impl SceneOffset {
     fn command(self, command: &mut Command) {
         match command {
             Command::Draw(_) => {}
+            Command::RetainedScene { offset, .. } => {
+                offset.0 += self.dx;
+                offset.1 += self.dy;
+            }
+            Command::RetainedNode { .. } => {}
             Command::Layer { layer, .. } => {
                 *layer = self.layer(layer.clone());
             }
@@ -443,7 +459,27 @@ impl Canvas {
             logical_height,
             scale_factor: scale,
             draw_generation: 0,
+            retained_root: None,
+            retained_stack: Vec::new(),
+            invalidated_bounds: Vec::new(),
+            invalidate_all: false,
         }
+    }
+
+    /// Creates a frame whose retained identity is stable across Canvas values.
+    ///
+    /// The renderer uses `root_id` to select the previous frame texture and to
+    /// diff retained descendants. Callers must use a different id for unrelated
+    /// render targets.
+    pub fn new_retained(
+        logical_width: u32,
+        logical_height: u32,
+        scale_factor: f32,
+        root_id: RetainedNodeId,
+    ) -> Self {
+        let mut canvas = Self::new(logical_width, logical_height, scale_factor);
+        canvas.retained_root = Some(root_id);
+        canvas
     }
 
     pub fn scale_factor(&self) -> f32 {
@@ -924,6 +960,16 @@ impl Canvas {
         mode: SceneAppendMode,
         offset: SceneOffset,
     ) -> Option<CommandListId> {
+        self.append_scene_ref_to_list_unchecked(other, self.current_command_list_id(), mode, offset)
+    }
+
+    fn append_scene_ref_to_list_unchecked(
+        &mut self,
+        other: &Canvas,
+        target_commands: CommandListId,
+        mode: SceneAppendMode,
+        offset: SceneOffset,
+    ) -> Option<CommandListId> {
         let draw_offset = self.append_scene_data(other, offset);
         let command_list_offset = self.command_lists.len();
         let root_commands = other.root_commands;
@@ -956,7 +1002,6 @@ impl Canvas {
                         ));
                 }
 
-                let target_commands = self.current_command_list_id();
                 self.command_lists[target_commands]
                     .commands
                     .extend(remapped_root_commands);
@@ -1223,6 +1268,26 @@ impl Canvas {
     fn remap_command(command: Command, draw_offset: usize, child_list_offset: usize) -> Command {
         match command {
             Command::Draw(draw_ix) => Command::Draw(draw_ix + draw_offset),
+            Command::RetainedScene {
+                id,
+                revision,
+                canvas,
+                offset,
+            } => Command::RetainedScene {
+                id,
+                revision,
+                canvas,
+                offset,
+            },
+            Command::RetainedNode {
+                id,
+                revision,
+                children,
+            } => Command::RetainedNode {
+                id,
+                revision,
+                children: children + child_list_offset,
+            },
             Command::Layer {
                 draw,
                 layer,
@@ -1295,6 +1360,18 @@ impl Canvas {
         rule: FillRule,
         tolerance: f64,
     ) {
+        // Rectangular clips are common in UI trees. Keeping them as generic
+        // paths creates scan segments on tile boundaries and prevents coarse
+        // from proving that a fully covered tile needs no clip wrappers. An
+        // exact axis-aligned rectangle with pixel-aligned physical edges has
+        // identical SDF coverage semantics, avoids path storage entirely, and
+        // works for translated/reflected input paths as well.
+        if let Some(rect) = axis_aligned_rect_path(&path, transform)
+            && self.rect_has_pixel_aligned_edges(rect)
+        {
+            self.push_clip_sdf_rect_layer(rect, Radius::ZERO);
+            return;
+        }
         self.ensure_command_root();
         let draw = self.push_layer_path(DrawTag::Clip, path, transform, rule, tolerance);
         self.push_layer_command(draw, Layer::Clip, LayerKind::Clip);
@@ -1310,6 +1387,13 @@ impl Canvas {
             end: Point::new(rect.x1, rect.y1),
             radius,
         }));
+    }
+
+    fn rect_has_pixel_aligned_edges(&self, rect: Rect) -> bool {
+        let rect = self.physical_rect(rect);
+        [rect.x0, rect.y0, rect.x1, rect.y1]
+            .into_iter()
+            .all(|value| (value - value.round()).abs() <= 1.0e-9)
     }
 
     pub fn push_clip_sdf_circle_layer(&mut self, circle: Circle) {
@@ -2243,6 +2327,9 @@ impl Canvas {
         self.command_stack.clear();
         self.command_stack.push(self.root_commands);
         self.layer_stack.clear();
+        self.retained_stack.clear();
+        self.invalidated_bounds.clear();
+        self.invalidate_all = false;
         self.path_cnt = 0;
         self.backdrop_pool_capacity = 0;
         self.tile_cnt = 0;
@@ -2316,9 +2403,79 @@ impl Canvas {
             layer_stack_data: Vec::new(),
         };
         let mut layer_stack = Vec::new();
-        self.compile_into(list_id, &mut ops, &mut plan, &mut layer_stack);
+        let mut surface_slots = std::collections::HashMap::new();
+        self.compile_into(
+            list_id,
+            &mut ops,
+            &mut plan,
+            &mut layer_stack,
+            self.retained_root,
+            &mut surface_slots,
+        );
         plan.ops = ops;
         plan
+    }
+
+    /// Hashes the command topology and layer parameters that determine an
+    /// [`ExecPlan`]. Geometry, brushes, and text data are intentionally absent:
+    /// they live in scene buffers and can change without rebuilding execution
+    /// control flow.
+    pub(crate) fn execution_plan_fingerprint(&self) -> u64 {
+        use std::{fmt::Write as _, hash::Hasher as _};
+
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        for (list_ix, list) in self.command_lists.iter().enumerate() {
+            hasher.write_usize(list_ix);
+            hasher.write_usize(list.commands.len());
+            for command in &list.commands {
+                match command {
+                    Command::Draw(draw) => {
+                        hasher.write_u8(0);
+                        hasher.write_usize(*draw);
+                    }
+                    Command::RetainedScene {
+                        id,
+                        revision,
+                        offset,
+                        ..
+                    } => {
+                        hasher.write_u8(1);
+                        hasher.write_u64(id.owner);
+                        hasher.write_u32(id.slot);
+                        hasher.write_u64(revision.get());
+                        hasher.write_u64(offset.0.to_bits());
+                        hasher.write_u64(offset.1.to_bits());
+                    }
+                    Command::RetainedNode { id, children, .. } => {
+                        hasher.write_u8(2);
+                        hasher.write_u64(id.owner);
+                        hasher.write_u32(id.slot);
+                        hasher.write_usize(*children);
+                    }
+                    Command::Layer {
+                        draw,
+                        layer,
+                        children,
+                    } => {
+                        hasher.write_u8(3);
+                        hasher.write_usize(*draw);
+                        hasher.write_usize(*children);
+                        let _ = write!(HasherWriter(&mut hasher), "{layer:?}");
+                    }
+                    Command::MaskLayer {
+                        layer,
+                        content,
+                        mask,
+                    } => {
+                        hasher.write_u8(4);
+                        hasher.write_usize(*content);
+                        hasher.write_usize(*mask);
+                        let _ = write!(HasherWriter(&mut hasher), "{layer:?}");
+                    }
+                }
+            }
+        }
+        hasher.finish()
     }
 
     fn compile_into(
@@ -2327,6 +2484,8 @@ impl Canvas {
         ops: &mut Vec<ExecOp>,
         plan: &mut ExecPlan,
         layer_stack: &mut Vec<LayerStackEntry>,
+        retained_owner: Option<RetainedNodeId>,
+        surface_slots: &mut std::collections::HashMap<RetainedNodeId, u32>,
     ) {
         let mut pending_batch: Option<(usize, usize)> = None;
 
@@ -2361,6 +2520,17 @@ impl Canvas {
                         pending_batch = Some((*draw_ix, *draw_ix + 1));
                     }
                 },
+                Command::RetainedScene { .. } => {
+                    panic!("retained scenes must be materialized before compile")
+                }
+                Command::RetainedNode {
+                    id,
+                    revision: _,
+                    children,
+                } => {
+                    flush_batch(&mut pending_batch, ops, plan, layer_stack);
+                    self.compile_into(*children, ops, plan, layer_stack, Some(*id), surface_slots);
+                }
                 Command::Layer {
                     draw,
                     layer,
@@ -2375,7 +2545,14 @@ impl Canvas {
                                 // path clips, instead of materializing a mask.
                                 ops.push(ExecOp::BeginClip);
                                 layer_stack.push(LayerStackEntry::Clip { draw: *draw as u32 });
-                                self.compile_into(*children, ops, plan, layer_stack);
+                                self.compile_into(
+                                    *children,
+                                    ops,
+                                    plan,
+                                    layer_stack,
+                                    retained_owner,
+                                    surface_slots,
+                                );
                                 layer_stack.pop();
                                 ops.push(ExecOp::EndClip);
                             }
@@ -2385,7 +2562,14 @@ impl Canvas {
                                     draw: *draw as u32,
                                     opacity: opacity.opacity,
                                 });
-                                self.compile_into(*children, ops, plan, layer_stack);
+                                self.compile_into(
+                                    *children,
+                                    ops,
+                                    plan,
+                                    layer_stack,
+                                    retained_owner,
+                                    surface_slots,
+                                );
                                 layer_stack.pop();
                                 ops.push(ExecOp::EndOpacity);
                             }
@@ -2395,7 +2579,14 @@ impl Canvas {
                                     draw: *draw as u32,
                                     mode: blend.mode,
                                 });
-                                self.compile_into(*children, ops, plan, layer_stack);
+                                self.compile_into(
+                                    *children,
+                                    ops,
+                                    plan,
+                                    layer_stack,
+                                    retained_owner,
+                                    surface_slots,
+                                );
                                 layer_stack.pop();
                                 ops.push(ExecOp::EndBlend);
                             }
@@ -2406,6 +2597,12 @@ impl Canvas {
                         plan.layer_stack_data.extend_from_slice(layer_stack);
                         let stack_end = plan.layer_stack_data.len();
                         ops.push(ExecOp::OffscreenLayer {
+                            retained_id: retained_owner.map(|owner| {
+                                let slot = surface_slots.entry(owner).or_default();
+                                let id = RetainedSurfaceId::new(owner, *slot);
+                                *slot += 1;
+                                id
+                            }),
                             draw: *draw,
                             layer: layer.clone(),
                             outer_stack: stack_start..stack_end,
@@ -2422,6 +2619,8 @@ impl Canvas {
                                     &mut child_ops,
                                     plan,
                                     &mut child_layer_stack,
+                                    retained_owner,
+                                    surface_slots,
                                 );
                                 child_ops
                             },
@@ -2438,6 +2637,12 @@ impl Canvas {
                     plan.layer_stack_data.extend_from_slice(layer_stack);
                     let stack_end = plan.layer_stack_data.len();
                     ops.push(ExecOp::OffscreenMaskLayer {
+                        retained_id: retained_owner.map(|owner| {
+                            let slot = surface_slots.entry(owner).or_default();
+                            let id = RetainedSurfaceId::new(owner, *slot);
+                            *slot += 1;
+                            id
+                        }),
                         layer: layer.clone(),
                         outer_stack: stack_start..stack_end,
                         content: {
@@ -2448,13 +2653,22 @@ impl Canvas {
                                 &mut child_ops,
                                 plan,
                                 &mut child_layer_stack,
+                                retained_owner,
+                                surface_slots,
                             );
                             child_ops
                         },
                         mask: {
                             let mut mask_ops = Vec::new();
                             let mut mask_layer_stack = Vec::new();
-                            self.compile_into(*mask, &mut mask_ops, plan, &mut mask_layer_stack);
+                            self.compile_into(
+                                *mask,
+                                &mut mask_ops,
+                                plan,
+                                &mut mask_layer_stack,
+                                retained_owner,
+                                surface_slots,
+                            );
                             mask_ops
                         },
                     });
@@ -2483,6 +2697,10 @@ impl Canvas {
             .iter()
             .any(|command| match command {
                 Command::Draw(_) => false,
+                Command::RetainedScene { .. } => true,
+                Command::RetainedNode { children, .. } => {
+                    self.command_list_contains_offscreen(*children)
+                }
                 Command::Layer {
                     layer, children, ..
                 } => {
@@ -2493,6 +2711,115 @@ impl Canvas {
                 }
                 Command::MaskLayer { .. } => true,
             })
+    }
+}
+
+fn axis_aligned_rect_path(path: &BezPath, transform: Affine) -> Option<Rect> {
+    let mut points = Vec::with_capacity(5);
+    let mut closed = false;
+    for element in path.elements() {
+        match *element {
+            PathEl::MoveTo(point) if points.is_empty() => points.push(transform * point),
+            PathEl::LineTo(point) if !closed => points.push(transform * point),
+            PathEl::ClosePath if !closed => closed = true,
+            _ => return None,
+        }
+    }
+    if !closed || points.len() < 4 || points.len() > 5 {
+        return None;
+    }
+
+    if points
+        .iter()
+        .any(|point| !point.x.is_finite() || !point.y.is_finite())
+    {
+        return None;
+    }
+    let min_x = points
+        .iter()
+        .map(|point| point.x)
+        .fold(f64::INFINITY, f64::min);
+    let min_y = points
+        .iter()
+        .map(|point| point.y)
+        .fold(f64::INFINITY, f64::min);
+    let max_x = points
+        .iter()
+        .map(|point| point.x)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let max_y = points
+        .iter()
+        .map(|point| point.y)
+        .fold(f64::NEG_INFINITY, f64::max);
+    // Base tolerance on shape extent, not world-space translation. A large
+    // translation must not make a slightly rotated quadrilateral look axial.
+    let epsilon = (max_x - min_x).max(max_y - min_y).max(1.0) * 1.0e-12;
+    let same = |a: Point, b: Point| (a.x - b.x).abs() <= epsilon && (a.y - b.y).abs() <= epsilon;
+    if points.len() == 5 && same(points[0], points[4]) {
+        points.pop();
+    }
+    if points.len() != 4 {
+        return None;
+    }
+
+    let x0 = points
+        .iter()
+        .map(|point| point.x)
+        .fold(f64::INFINITY, f64::min);
+    let y0 = points
+        .iter()
+        .map(|point| point.y)
+        .fold(f64::INFINITY, f64::min);
+    let x1 = points
+        .iter()
+        .map(|point| point.x)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let y1 = points
+        .iter()
+        .map(|point| point.y)
+        .fold(f64::NEG_INFINITY, f64::max);
+    if x1 - x0 <= epsilon || y1 - y0 <= epsilon {
+        return None;
+    }
+
+    let mut corners = 0u8;
+    for (index, point) in points.iter().enumerate() {
+        let x_side = if (point.x - x0).abs() <= epsilon {
+            0
+        } else if (point.x - x1).abs() <= epsilon {
+            1
+        } else {
+            return None;
+        };
+        let y_side = if (point.y - y0).abs() <= epsilon {
+            0
+        } else if (point.y - y1).abs() <= epsilon {
+            1
+        } else {
+            return None;
+        };
+        let corner = 1 << (y_side * 2 + x_side);
+        if corners & corner != 0 {
+            return None;
+        }
+        corners |= corner;
+
+        let next = points[(index + 1) % points.len()];
+        let horizontal = (point.y - next.y).abs() <= epsilon;
+        let vertical = (point.x - next.x).abs() <= epsilon;
+        if horizontal == vertical {
+            return None;
+        }
+    }
+    (corners == 0b1111).then(|| Rect::new(x0, y0, x1, y1))
+}
+
+struct HasherWriter<'a, H>(&'a mut H);
+
+impl<H: std::hash::Hasher> std::fmt::Write for HasherWriter<'_, H> {
+    fn write_str(&mut self, value: &str) -> std::fmt::Result {
+        self.0.write(value.as_bytes());
+        Ok(())
     }
 }
 

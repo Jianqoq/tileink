@@ -1,4 +1,22 @@
-use std::sync::OnceLock;
+use std::sync::{
+    Arc, OnceLock,
+    atomic::{AtomicU64, Ordering},
+};
+
+#[derive(Clone, Default)]
+pub(crate) struct PipelineCompilationTracker {
+    epoch: Arc<AtomicU64>,
+}
+
+impl PipelineCompilationTracker {
+    pub(crate) fn record(&self) {
+        self.epoch.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(crate) fn epoch(&self) -> u64 {
+        self.epoch.load(Ordering::Relaxed)
+    }
+}
 
 /// Defers shader-module creation until a pipeline using that shader is dispatched.
 ///
@@ -37,14 +55,23 @@ impl LazyShaderModule {
 /// concurrent first users cannot compile the same pipeline more than once.
 pub(crate) struct LazyComputePipeline {
     pipeline: OnceLock<::wgpu::ComputePipeline>,
+    pipeline_cache: Option<::wgpu::PipelineCache>,
+    compilation_tracker: PipelineCompilationTracker,
     label: &'static str,
     entry_point: &'static str,
 }
 
 impl LazyComputePipeline {
-    pub(crate) const fn new(label: &'static str, entry_point: &'static str) -> Self {
+    pub(crate) fn new(
+        label: &'static str,
+        entry_point: &'static str,
+        pipeline_cache: Option<&::wgpu::PipelineCache>,
+        compilation_tracker: &PipelineCompilationTracker,
+    ) -> Self {
         Self {
             pipeline: OnceLock::new(),
+            pipeline_cache: pipeline_cache.cloned(),
+            compilation_tracker: compilation_tracker.clone(),
             label,
             entry_point,
         }
@@ -57,14 +84,16 @@ impl LazyComputePipeline {
         module: &::wgpu::ShaderModule,
     ) -> &::wgpu::ComputePipeline {
         self.pipeline.get_or_init(|| {
-            device.create_compute_pipeline(&::wgpu::ComputePipelineDescriptor {
+            let pipeline = device.create_compute_pipeline(&::wgpu::ComputePipelineDescriptor {
                 label: Some(self.label),
                 layout: Some(layout),
                 module,
                 entry_point: Some(self.entry_point),
                 compilation_options: ::wgpu::PipelineCompilationOptions::default(),
-                cache: None,
-            })
+                cache: self.pipeline_cache.as_ref(),
+            });
+            self.compilation_tracker.record();
+            pipeline
         })
     }
 
@@ -76,11 +105,12 @@ impl LazyComputePipeline {
 
 #[cfg(test)]
 mod tests {
-    use super::{LazyComputePipeline, LazyShaderModule};
+    use super::{LazyComputePipeline, LazyShaderModule, PipelineCompilationTracker};
 
     #[test]
     fn lazy_compute_pipeline_starts_uninitialized() {
-        let pipeline = LazyComputePipeline::new("test pipeline", "main");
+        let tracker = PipelineCompilationTracker::default();
+        let pipeline = LazyComputePipeline::new("test pipeline", "main", None, &tracker);
 
         assert!(!pipeline.is_initialized());
     }
@@ -92,5 +122,6 @@ mod tests {
 
         assert_send_sync::<LazyShaderModule>();
         assert_send_sync::<LazyComputePipeline>();
+        assert_send_sync::<PipelineCompilationTracker>();
     }
 }

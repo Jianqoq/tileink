@@ -4,16 +4,17 @@ use super::canvas::{WgpuScanBindings, WgpuScanBuffers, WgpuSceneBuffers};
 use super::commands::{
     WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
 };
-use super::lazy::{LazyComputePipeline, LazyShaderModule};
+use super::incremental::ActiveScanPlan;
+use super::lazy::{LazyComputePipeline, LazyShaderModule, PipelineCompilationTracker};
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 
 const WORKGROUP_SIZE: u32 = 256;
-const CLEAR_STORAGE_BINDING_COUNT: u32 = 7;
-const COUNT_STORAGE_BINDING_COUNT: u32 = 4;
-const PREFIX_STORAGE_BINDING_COUNT: u32 = 4;
-const CHUNK_OFFSETS_STORAGE_BINDING_COUNT: u32 = 5;
-const APPLY_CHUNK_OFFSETS_STORAGE_BINDING_COUNT: u32 = 4;
-const EMIT_STORAGE_BINDING_COUNT: u32 = 4;
+const CLEAR_STORAGE_BINDING_COUNT: u32 = 8;
+const COUNT_STORAGE_BINDING_COUNT: u32 = 5;
+const PREFIX_STORAGE_BINDING_COUNT: u32 = 5;
+const CHUNK_OFFSETS_STORAGE_BINDING_COUNT: u32 = 6;
+const APPLY_CHUNK_OFFSETS_STORAGE_BINDING_COUNT: u32 = 5;
+const EMIT_STORAGE_BINDING_COUNT: u32 = 5;
 const STORAGE_BINDING_COUNTS: [u32; 6] = [
     CLEAR_STORAGE_BINDING_COUNT,
     COUNT_STORAGE_BINDING_COUNT,
@@ -32,8 +33,11 @@ struct ScanConfig {
     scan_chunk_count: u32,
     line_count: u32,
     segment_capacity: u32,
-    _pad0: u32,
-    _pad1: u32,
+    incremental: u32,
+    line_base: u32,
+    path_base: u32,
+    chunk_base: u32,
+    backdrop_base: u32,
 }
 
 unsafe impl bytemuck::Zeroable for ScanConfig {}
@@ -66,6 +70,8 @@ impl LazyScanKernel {
         source: &'static str,
         entry_point: &'static str,
         entries: &[::wgpu::BindGroupLayoutEntry],
+        pipeline_cache: Option<&::wgpu::PipelineCache>,
+        compilation_tracker: &PipelineCompilationTracker,
     ) -> Self {
         let bind_group_layout =
             device.create_bind_group_layout(&::wgpu::BindGroupLayoutDescriptor {
@@ -79,7 +85,12 @@ impl LazyScanKernel {
         });
         Self {
             shader: LazyShaderModule::new(label),
-            pipeline: LazyComputePipeline::new(label, entry_point),
+            pipeline: LazyComputePipeline::new(
+                label,
+                entry_point,
+                pipeline_cache,
+                compilation_tracker,
+            ),
             bind_group_layout,
             pipeline_layout,
             source,
@@ -95,7 +106,11 @@ impl LazyScanKernel {
 }
 
 impl WgpuScanPipeline {
-    pub(crate) fn new(device: &::wgpu::Device) -> Option<Self> {
+    pub(crate) fn new(
+        device: &::wgpu::Device,
+        pipeline_cache: Option<&::wgpu::PipelineCache>,
+        compilation_tracker: &PipelineCompilationTracker,
+    ) -> Option<Self> {
         if device.limits().max_storage_buffers_per_shader_stage < max_storage_binding_count() {
             return None;
         }
@@ -106,6 +121,8 @@ impl WgpuScanPipeline {
             include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_scan_clear.wgsl")),
             "scan_clear",
             &clear_layout_entries(),
+            pipeline_cache,
+            compilation_tracker,
         );
         let count = LazyScanKernel::new(
             device,
@@ -113,6 +130,8 @@ impl WgpuScanPipeline {
             include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_scan_count.wgsl")),
             "scan_count",
             &count_layout_entries(),
+            pipeline_cache,
+            compilation_tracker,
         );
         let prefix_chunks = LazyScanKernel::new(
             device,
@@ -123,6 +142,8 @@ impl WgpuScanPipeline {
             )),
             "scan_prefix_chunks",
             &prefix_layout_entries(),
+            pipeline_cache,
+            compilation_tracker,
         );
         let chunk_offsets = LazyScanKernel::new(
             device,
@@ -133,6 +154,8 @@ impl WgpuScanPipeline {
             )),
             "scan_chunk_offsets",
             &chunk_offsets_layout_entries(),
+            pipeline_cache,
+            compilation_tracker,
         );
         let apply_chunk_offsets = LazyScanKernel::new(
             device,
@@ -143,6 +166,8 @@ impl WgpuScanPipeline {
             )),
             "scan_apply_chunk_offsets",
             &apply_chunk_offsets_layout_entries(),
+            pipeline_cache,
+            compilation_tracker,
         );
         let emit = LazyScanKernel::new(
             device,
@@ -150,6 +175,8 @@ impl WgpuScanPipeline {
             include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_scan_emit.wgsl")),
             "scan_emit",
             &emit_layout_entries(),
+            pipeline_cache,
+            compilation_tracker,
         );
 
         let config_size = std::mem::size_of::<ScanConfig>() as ::wgpu::BufferAddress;
@@ -181,7 +208,7 @@ impl WgpuScanPipeline {
         lengths: GpuBufferLengths,
     ) {
         let mut commands = WgpuCommandBatch::new(device, queue, "tileink wgpu scan encoder");
-        self.run_in(&mut commands, canvas, scan, lengths);
+        self.run_in(&mut commands, canvas, scan, lengths, None);
         commands.finish();
     }
 
@@ -191,12 +218,14 @@ impl WgpuScanPipeline {
         canvas: &WgpuSceneBuffers,
         scan: &mut WgpuScanBuffers,
         lengths: GpuBufferLengths,
+        active: Option<&ActiveScanPlan>,
     ) {
         let _profile_scope = start_cpu_scope("scan");
-        let backdrop_len = lengths.backdrop_len as u32;
-        let path_count = lengths.path_count as u32;
-        let line_count = lengths.line_count as u32;
-        let scan_chunk_count = lengths.scan_chunk_count as u32;
+        let backdrop_len = active.map_or(lengths.backdrop_len as u32, |plan| plan.backdrop_count);
+        let path_count = active.map_or(lengths.path_count as u32, |plan| plan.path_count);
+        let line_count = active.map_or(lengths.line_count as u32, |plan| plan.line_count);
+        let scan_chunk_count =
+            active.map_or(lengths.scan_chunk_count as u32, |plan| plan.chunk_count);
         let segment_capacity = lengths.segment_capacity as u32;
         let clear_len = backdrop_len.max(path_count).max(scan_chunk_count);
         let config_offset = commands.write_uniform_slot(
@@ -212,8 +241,11 @@ impl WgpuScanPipeline {
                 scan_chunk_count,
                 line_count,
                 segment_capacity,
-                _pad0: 0,
-                _pad1: 0,
+                incremental: u32::from(active.is_some()),
+                line_base: active.map_or(0, |plan| plan.line_base),
+                path_base: active.map_or(0, |plan| plan.path_base),
+                chunk_base: active.map_or(0, |plan| plan.chunk_base),
+                backdrop_base: active.map_or(0, |plan| plan.backdrop_base),
             }),
         );
 
@@ -300,6 +332,7 @@ impl WgpuScanPipeline {
                 bind_buffer(5, bindings.segment_bumps),
                 bind_buffer(6, bindings.chunk_totals),
                 bind_buffer(7, bindings.chunk_offsets),
+                bind_buffer(8, bindings.active_indices),
             ],
         })
     }
@@ -319,6 +352,7 @@ impl WgpuScanPipeline {
                 bind_buffer(2, bindings.path_records),
                 bind_buffer(3, bindings.backdrops),
                 bind_buffer(4, bindings.segment_tile_counts),
+                bind_buffer(5, bindings.active_indices),
             ],
         })
     }
@@ -338,6 +372,7 @@ impl WgpuScanPipeline {
                 bind_buffer(2, bindings.tile_segment_ranges),
                 bind_buffer(3, bindings.segment_tile_counts),
                 bind_buffer(4, bindings.chunk_totals),
+                bind_buffer(5, bindings.active_indices),
             ],
         })
     }
@@ -358,6 +393,7 @@ impl WgpuScanPipeline {
                 bind_buffer(3, bindings.segment_bumps),
                 bind_buffer(4, bindings.chunk_totals),
                 bind_buffer(5, bindings.chunk_offsets),
+                bind_buffer(6, bindings.active_indices),
             ],
         })
     }
@@ -377,6 +413,7 @@ impl WgpuScanPipeline {
                 bind_buffer(2, bindings.tile_segment_ranges),
                 bind_buffer(3, bindings.segment_tile_cursors),
                 bind_buffer(4, bindings.chunk_offsets),
+                bind_buffer(5, bindings.active_indices),
             ],
         })
     }
@@ -396,6 +433,7 @@ impl WgpuScanPipeline {
                 bind_buffer(2, bindings.path_records),
                 bind_buffer(3, bindings.segment_tile_cursors),
                 bind_buffer(4, bindings.segments),
+                bind_buffer(5, bindings.active_indices),
             ],
         })
     }
@@ -426,6 +464,7 @@ fn clear_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         storage_entry(5, false),
         storage_entry(6, false),
         storage_entry(7, false),
+        storage_entry(8, true),
     ]
 }
 
@@ -436,6 +475,7 @@ fn count_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         storage_entry(2, true),
         storage_entry(3, false),
         storage_entry(4, false),
+        storage_entry(5, true),
     ]
 }
 
@@ -446,6 +486,7 @@ fn prefix_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         storage_entry(2, false),
         storage_entry(3, false),
         storage_entry(4, false),
+        storage_entry(5, true),
     ]
 }
 
@@ -457,6 +498,7 @@ fn chunk_offsets_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         storage_entry(3, false),
         storage_entry(4, false),
         storage_entry(5, false),
+        storage_entry(6, true),
     ]
 }
 
@@ -467,6 +509,7 @@ fn apply_chunk_offsets_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         storage_entry(2, false),
         storage_entry(3, false),
         storage_entry(4, false),
+        storage_entry(5, true),
     ]
 }
 
@@ -477,6 +520,7 @@ fn emit_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         storage_entry(2, true),
         storage_entry(3, false),
         storage_entry(4, false),
+        storage_entry(5, true),
     ]
 }
 

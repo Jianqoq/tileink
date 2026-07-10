@@ -146,9 +146,14 @@ fn push_path_reserves_segment_capacity_from_scan_tile_count() {
 
 #[test]
 fn push_layer_path_flattens_transformed_geometry() {
+    let mut triangle = BezPath::new();
+    triangle.move_to((0.0, 0.0));
+    triangle.line_to((10.0, 0.0));
+    triangle.line_to((5.0, 10.0));
+    triangle.close_path();
     let mut canvas = test_scene();
     canvas.push_clip_layer(
-        rect_path(0.0, 0.0, 10.0, 10.0),
+        triangle,
         Affine::translate((12.0, 6.0)),
         FillRule::NonZero,
         0.25,

@@ -94,6 +94,9 @@ struct FineConfig {
     text_image_data_base: u32,
     group_spill_base: u32,
     fine_tile_kind_base: u32,
+    active_tile_count: u32,
+    active_tile_list_base: u32,
+    incremental: u32,
 };
 
 @group(0) @binding(0) var<uniform> config: FineConfig;
@@ -153,6 +156,13 @@ struct PtclRecord {
 @group(0) @binding(2) var<storage, read> draw_records: array<DrawRecord>;
 @group(0) @binding(3) var<storage, read> paint_blob: array<u32>;
 @group(0) @binding(4) var<storage, read_write> coarse_work: array<u32>;
+
+fn dispatched_tile_at(dispatch_ix: u32) -> u32 {
+    if (config.incremental != 0u) {
+        return coarse_work[config.active_tile_list_base + dispatch_ix];
+    }
+    return dispatch_ix;
+}
 @group(0) @binding(5) var<storage, read> segments: array<LineSegment>;
 @group(0) @binding(6) var<storage, read> text_blob: array<u32>;
 @group(0) @binding(7) var<storage, read_write> spills: array<u32>;

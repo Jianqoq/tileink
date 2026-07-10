@@ -1,12 +1,15 @@
 #![allow(clippy::too_many_arguments)]
 
-use crate::shared::gpu_plan::{COARSE_CHUNK_SIZE, GpuBufferLengths};
+use crate::shared::{
+    gpu_coarse::coarse_work_active_tile_list_word_offset,
+    gpu_plan::{COARSE_CHUNK_SIZE, GpuBufferLengths},
+};
 
 use super::canvas::{WgpuCoarseBindings, WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers};
 use super::commands::{
     WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
 };
-use super::lazy::{LazyComputePipeline, LazyShaderModule};
+use super::lazy::{LazyComputePipeline, LazyShaderModule, PipelineCompilationTracker};
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 
 #[cfg(test)]
@@ -23,6 +26,7 @@ pub(crate) struct WgpuCoarseBatch {
     pub(crate) draw_end: u32,
     pub(crate) layer_stack_start: u32,
     pub(crate) layer_stack_end: u32,
+    pub(crate) active_tile_count: Option<u32>,
 }
 
 #[repr(C)]
@@ -44,6 +48,9 @@ struct CoarseConfig {
     emit_chunk_capacity: u32,
     paint_brush_base: u32,
     text_enabled: u32,
+    active_tile_count: u32,
+    active_tile_list_base: u32,
+    incremental: u32,
 }
 
 unsafe impl bytemuck::Zeroable for CoarseConfig {}
@@ -55,6 +62,7 @@ pub(crate) struct WgpuCoarsePipeline {
     emit_shader: LazyShaderModule,
     emit_chunk_shader: LazyShaderModule,
     count_bins: LazyCoarseKernel,
+    count_tiles: LazyCoarseKernel,
     ptcl_prefix_chunks: LazyCoarseKernel,
     ptcl_chunk_offsets: LazyCoarseKernel,
     ptcl_apply_chunk_offsets: LazyCoarseKernel,
@@ -70,6 +78,7 @@ pub(crate) struct WgpuCoarsePipeline {
     emit_chunk_particle_offsets: LazyCoarseKernel,
     tile_counts_from_emit_chunks: LazyCoarseKernel,
     emit_bins: LazyCoarseKernel,
+    emit_tiles: LazyCoarseKernel,
     emit_web: LazyCoarseKernel,
     emit_chunk_tile_kinds: LazyCoarseKernel,
     count_bind_group_layout: ::wgpu::BindGroupLayout,
@@ -105,9 +114,20 @@ struct LazyCoarseKernel {
 }
 
 impl LazyCoarseKernel {
-    fn new(entry_point: &'static str, shader: CoarseShaderKind, layout: CoarseLayoutKind) -> Self {
+    fn new(
+        entry_point: &'static str,
+        shader: CoarseShaderKind,
+        layout: CoarseLayoutKind,
+        pipeline_cache: Option<&::wgpu::PipelineCache>,
+        compilation_tracker: &PipelineCompilationTracker,
+    ) -> Self {
         Self {
-            pipeline: LazyComputePipeline::new(entry_point, entry_point),
+            pipeline: LazyComputePipeline::new(
+                entry_point,
+                entry_point,
+                pipeline_cache,
+                compilation_tracker,
+            ),
             shader,
             layout,
         }
@@ -115,7 +135,11 @@ impl LazyCoarseKernel {
 }
 
 impl WgpuCoarsePipeline {
-    pub(crate) fn new(device: &::wgpu::Device) -> Option<Self> {
+    pub(crate) fn new(
+        device: &::wgpu::Device,
+        pipeline_cache: Option<&::wgpu::PipelineCache>,
+        compilation_tracker: &PipelineCompilationTracker,
+    ) -> Option<Self> {
         let max_storage = device.limits().max_storage_buffers_per_shader_stage;
         if max_storage
             < COUNT_STORAGE_BINDING_COUNT
@@ -170,97 +194,116 @@ impl WgpuCoarsePipeline {
             mapped_at_creation: false,
         });
 
+        let kernel = |entry_point, shader, layout| {
+            LazyCoarseKernel::new(
+                entry_point,
+                shader,
+                layout,
+                pipeline_cache,
+                compilation_tracker,
+            )
+        };
         Some(Self {
             count_shader: LazyShaderModule::new("tileink wgpu coarse count shader"),
             prefix_shader: LazyShaderModule::new("tileink wgpu coarse prefix shader"),
             emit_shader: LazyShaderModule::new("tileink wgpu coarse emit shader"),
             emit_chunk_shader: LazyShaderModule::new("tileink wgpu coarse chunk emit shader"),
-            count_bins: LazyCoarseKernel::new(
+            count_bins: kernel(
                 "coarse_count_bins",
                 CoarseShaderKind::Count,
                 CoarseLayoutKind::Count,
             ),
-            ptcl_prefix_chunks: LazyCoarseKernel::new(
+            count_tiles: kernel(
+                "coarse_count",
+                CoarseShaderKind::Count,
+                CoarseLayoutKind::Count,
+            ),
+            ptcl_prefix_chunks: kernel(
                 "coarse_ptcl_prefix_chunks",
                 CoarseShaderKind::Prefix,
                 CoarseLayoutKind::Prefix,
             ),
-            ptcl_chunk_offsets: LazyCoarseKernel::new(
+            ptcl_chunk_offsets: kernel(
                 "coarse_ptcl_chunk_offsets",
                 CoarseShaderKind::Prefix,
                 CoarseLayoutKind::Prefix,
             ),
-            ptcl_apply_chunk_offsets: LazyCoarseKernel::new(
+            ptcl_apply_chunk_offsets: kernel(
                 "coarse_ptcl_apply_chunk_offsets",
                 CoarseShaderKind::Prefix,
                 CoarseLayoutKind::Prefix,
             ),
-            glyph_prefix_chunks: LazyCoarseKernel::new(
+            glyph_prefix_chunks: kernel(
                 "coarse_glyph_prefix_chunks",
                 CoarseShaderKind::Prefix,
                 CoarseLayoutKind::Prefix,
             ),
-            glyph_chunk_offsets: LazyCoarseKernel::new(
+            glyph_chunk_offsets: kernel(
                 "coarse_glyph_chunk_offsets",
                 CoarseShaderKind::Prefix,
                 CoarseLayoutKind::Prefix,
             ),
-            glyph_apply_chunk_offsets: LazyCoarseKernel::new(
+            glyph_apply_chunk_offsets: kernel(
                 "coarse_glyph_apply_chunk_offsets",
                 CoarseShaderKind::Prefix,
                 CoarseLayoutKind::Prefix,
             ),
-            emit_chunk_counts: LazyCoarseKernel::new(
+            emit_chunk_counts: kernel(
                 "coarse_emit_chunk_counts",
                 CoarseShaderKind::Prefix,
                 CoarseLayoutKind::Prefix,
             ),
-            emit_prefix_chunks: LazyCoarseKernel::new(
+            emit_prefix_chunks: kernel(
                 "coarse_emit_prefix_chunks",
                 CoarseShaderKind::Prefix,
                 CoarseLayoutKind::Prefix,
             ),
-            emit_chunk_offsets: LazyCoarseKernel::new(
+            emit_chunk_offsets: kernel(
                 "coarse_emit_chunk_offsets",
                 CoarseShaderKind::Prefix,
                 CoarseLayoutKind::Prefix,
             ),
-            emit_apply_chunk_offsets: LazyCoarseKernel::new(
+            emit_apply_chunk_offsets: kernel(
                 "coarse_emit_apply_chunk_offsets",
                 CoarseShaderKind::Prefix,
                 CoarseLayoutKind::Prefix,
             ),
-            emit_fill_refs: LazyCoarseKernel::new(
+            emit_fill_refs: kernel(
                 "coarse_emit_fill_refs",
                 CoarseShaderKind::Prefix,
                 CoarseLayoutKind::Prefix,
             ),
-            emit_chunk_particle_counts: LazyCoarseKernel::new(
+            emit_chunk_particle_counts: kernel(
                 "coarse_emit_chunk_particle_counts",
                 CoarseShaderKind::Prefix,
                 CoarseLayoutKind::Prefix,
             ),
-            emit_chunk_particle_offsets: LazyCoarseKernel::new(
+            emit_chunk_particle_offsets: kernel(
                 "coarse_emit_chunk_particle_offsets",
                 CoarseShaderKind::Prefix,
                 CoarseLayoutKind::Prefix,
             ),
-            tile_counts_from_emit_chunks: LazyCoarseKernel::new(
+            tile_counts_from_emit_chunks: kernel(
                 "coarse_tile_counts_from_emit_chunks",
                 CoarseShaderKind::Prefix,
                 CoarseLayoutKind::Prefix,
             ),
-            emit_bins: LazyCoarseKernel::new(
+            emit_bins: kernel(
                 "coarse_emit_bins",
                 CoarseShaderKind::Emit,
                 CoarseLayoutKind::Emit,
             ),
-            emit_web: LazyCoarseKernel::new(
+            emit_tiles: kernel(
+                "coarse_emit",
+                CoarseShaderKind::Emit,
+                CoarseLayoutKind::Emit,
+            ),
+            emit_web: kernel(
                 "coarse_emit",
                 CoarseShaderKind::EmitChunk,
                 CoarseLayoutKind::Emit,
             ),
-            emit_chunk_tile_kinds: LazyCoarseKernel::new(
+            emit_chunk_tile_kinds: kernel(
                 "coarse_emit_chunk_tile_kinds",
                 CoarseShaderKind::EmitChunk,
                 CoarseLayoutKind::Emit,
@@ -363,6 +406,20 @@ impl WgpuCoarsePipeline {
             return;
         }
         let bin_count = coarse_bin_count(lengths);
+        let active_tile_count = batch.active_tile_count.unwrap_or(tile_count);
+        let incremental = batch.active_tile_count.is_some();
+        let prefix_chunk_count = if incremental {
+            active_tile_count.div_ceil(WORKGROUP_SIZE)
+        } else {
+            chunk_count
+        };
+        let active_tile_list_base = coarse_work_active_tile_list_word_offset(
+            lengths.tile_count,
+            lengths.coarse_ptcl_capacity,
+            lengths.coarse_glyph_capacity,
+            lengths.tile_draw_index_count,
+            lengths.tile_draw_chunk_count,
+        ) as u32;
 
         let config_offset = commands.write_uniform_slot(
             "coarse.config",
@@ -380,13 +437,16 @@ impl WgpuCoarsePipeline {
                 layer_stack_end: batch.layer_stack_end,
                 ptcl_capacity: lengths.coarse_ptcl_capacity as u32,
                 glyph_capacity: lengths.coarse_glyph_capacity as u32,
-                chunk_count,
+                chunk_count: prefix_chunk_count,
                 text_run_count: lengths.text_run_count as u32,
                 text_glyph_count: lengths.text_glyph_count as u32,
                 tile_draw_index_count: lengths.tile_draw_index_count as u32,
                 emit_chunk_capacity: lengths.tile_draw_chunk_count as u32,
                 paint_brush_base: canvas.paint_brush_base(),
                 text_enabled: u32::from(lengths.text_enabled),
+                active_tile_count,
+                active_tile_list_base,
+                incremental: u32::from(incremental),
             }),
         );
         let bindings = canvas.coarse_bindings(scan, coarse);
@@ -396,7 +456,7 @@ impl WgpuCoarsePipeline {
             self.create_prefix_bind_group(commands.device(), &bindings, config_offset);
         let emit_bind_group =
             self.create_emit_bind_group(commands.device(), &bindings, config_offset);
-        if profile_coarse_passes() {
+        if profile_coarse_passes() && !incremental {
             self.encode_profiled_chunked(
                 commands,
                 &count_bind_group,
@@ -410,7 +470,8 @@ impl WgpuCoarsePipeline {
             return;
         }
         let emit_chunk_count = lengths.tile_draw_chunk_count as u32;
-        let use_emit_chunks = coarse_emit_chunks_enabled()
+        let use_emit_chunks = !incremental
+            && coarse_emit_chunks_enabled()
             && batch.draw_start < batch.draw_end
             && lengths.coarse_ptcl_capacity > 0
             && emit_chunk_count > 0;
@@ -439,11 +500,29 @@ impl WgpuCoarsePipeline {
         let emit_web = use_emit_chunks.then(|| self.pipeline(device, &self.emit_web));
         let emit_chunk_tile_kinds =
             use_emit_chunks.then(|| self.pipeline(device, &self.emit_chunk_tile_kinds));
-        let count_bins = (!use_emit_chunks).then(|| self.pipeline(device, &self.count_bins));
-        let emit_bins = (!use_emit_chunks
+        let count = (!use_emit_chunks).then(|| {
+            self.pipeline(
+                device,
+                if incremental {
+                    &self.count_tiles
+                } else {
+                    &self.count_bins
+                },
+            )
+        });
+        let emit = (!use_emit_chunks
             && batch.draw_start < batch.draw_end
             && lengths.coarse_ptcl_capacity > 0)
-            .then(|| self.pipeline(device, &self.emit_bins));
+            .then(|| {
+                self.pipeline(
+                    device,
+                    if incremental {
+                        &self.emit_tiles
+                    } else {
+                        &self.emit_bins
+                    },
+                )
+            });
         let gpu_scope = start_gpu_scope(commands.device(), "coarse");
         let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
         let encoder = commands.encoder();
@@ -470,17 +549,17 @@ impl WgpuCoarsePipeline {
                 pass.set_pipeline(tile_counts_from_emit_chunks.unwrap());
                 pass.dispatch_workgroups(chunk_count, 1, 1);
                 pass.set_pipeline(ptcl_prefix_chunks);
-                pass.dispatch_workgroups(chunk_count, 1, 1);
+                pass.dispatch_workgroups(prefix_chunk_count, 1, 1);
                 pass.set_pipeline(ptcl_chunk_offsets);
                 pass.dispatch_workgroups(1, 1, 1);
                 pass.set_pipeline(ptcl_apply_chunk_offsets);
-                pass.dispatch_workgroups(chunk_count, 1, 1);
+                pass.dispatch_workgroups(prefix_chunk_count, 1, 1);
                 pass.set_pipeline(glyph_prefix_chunks);
-                pass.dispatch_workgroups(chunk_count, 1, 1);
+                pass.dispatch_workgroups(prefix_chunk_count, 1, 1);
                 pass.set_pipeline(glyph_chunk_offsets);
                 pass.dispatch_workgroups(1, 1, 1);
                 pass.set_pipeline(glyph_apply_chunk_offsets);
-                pass.dispatch_workgroups(chunk_count, 1, 1);
+                pass.dispatch_workgroups(prefix_chunk_count, 1, 1);
                 pass.set_pipeline(emit_chunk_particle_offsets.unwrap());
                 pass.dispatch_workgroups(chunk_count, 1, 1);
 
@@ -491,26 +570,42 @@ impl WgpuCoarsePipeline {
                 pass.dispatch_workgroups(chunk_count, 1, 1);
             } else {
                 pass.set_bind_group(0, &count_bind_group, &[]);
-                pass.set_pipeline(count_bins.unwrap());
-                pass.dispatch_workgroups(bin_count, 1, 1);
+                pass.set_pipeline(count.unwrap());
+                pass.dispatch_workgroups(
+                    if incremental {
+                        active_tile_count
+                    } else {
+                        bin_count
+                    },
+                    1,
+                    1,
+                );
                 pass.set_bind_group(0, &prefix_bind_group, &[]);
                 pass.set_pipeline(ptcl_prefix_chunks);
-                pass.dispatch_workgroups(chunk_count, 1, 1);
+                pass.dispatch_workgroups(prefix_chunk_count, 1, 1);
                 pass.set_pipeline(ptcl_chunk_offsets);
                 pass.dispatch_workgroups(1, 1, 1);
                 pass.set_pipeline(ptcl_apply_chunk_offsets);
-                pass.dispatch_workgroups(chunk_count, 1, 1);
+                pass.dispatch_workgroups(prefix_chunk_count, 1, 1);
                 pass.set_pipeline(glyph_prefix_chunks);
-                pass.dispatch_workgroups(chunk_count, 1, 1);
+                pass.dispatch_workgroups(prefix_chunk_count, 1, 1);
                 pass.set_pipeline(glyph_chunk_offsets);
                 pass.dispatch_workgroups(1, 1, 1);
                 pass.set_pipeline(glyph_apply_chunk_offsets);
-                pass.dispatch_workgroups(chunk_count, 1, 1);
+                pass.dispatch_workgroups(prefix_chunk_count, 1, 1);
 
-                if let Some(emit_bins) = emit_bins {
+                if let Some(emit) = emit {
                     pass.set_bind_group(0, &emit_bind_group, &[]);
-                    pass.set_pipeline(emit_bins);
-                    pass.dispatch_workgroups(bin_count, 1, 1);
+                    pass.set_pipeline(emit);
+                    pass.dispatch_workgroups(
+                        if incremental {
+                            active_tile_count
+                        } else {
+                            bin_count
+                        },
+                        1,
+                        1,
+                    );
                 }
             }
         }
@@ -762,6 +857,7 @@ impl WgpuCoarsePipeline {
     pub(crate) fn initialized_pipeline_count(&self) -> usize {
         [
             &self.count_bins,
+            &self.count_tiles,
             &self.ptcl_prefix_chunks,
             &self.ptcl_chunk_offsets,
             &self.ptcl_apply_chunk_offsets,
@@ -777,6 +873,7 @@ impl WgpuCoarsePipeline {
             &self.emit_chunk_particle_offsets,
             &self.tile_counts_from_emit_chunks,
             &self.emit_bins,
+            &self.emit_tiles,
             &self.emit_web,
             &self.emit_chunk_tile_kinds,
         ]

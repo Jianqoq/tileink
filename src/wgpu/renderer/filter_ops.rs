@@ -695,6 +695,76 @@ impl Renderer {
         }
     }
 
+    /// Updates only `output_bounds` of an existing blur target while sampling
+    /// the complete source texture. The horizontal intermediate is expanded
+    /// vertically so the second pass never observes an uninitialized row.
+    pub(super) fn apply_blur_from_source_partial(
+        &mut self,
+        commands: &mut WgpuCommandBatch,
+        source: WgpuRenderTargetId,
+        target: WgpuRenderTargetId,
+        output_bounds: Bounds,
+        sample_bounds: Bounds,
+        std_dev_x: f32,
+        std_dev_y: f32,
+    ) -> bool {
+        let std_dev_x = std_dev_x.max(0.0);
+        let std_dev_y = std_dev_y.max(0.0);
+        match (std_dev_x > 0.0, std_dev_y > 0.0) {
+            (true, true) => {
+                let Some(temp) = self.acquire_scratch() else {
+                    return false;
+                };
+                let radius_y = (std_dev_y * 3.0).ceil() as i32;
+                let intermediate_bounds = Bounds::new(
+                    output_bounds.x0,
+                    output_bounds.y0 - radius_y,
+                    output_bounds.x1,
+                    output_bounds.y1 + radius_y,
+                )
+                .intersect(Bounds::canvas(self.size.0, self.size.1));
+                let ok = self.blur_region_partial_to_target(
+                    commands,
+                    source,
+                    temp,
+                    intermediate_bounds,
+                    sample_bounds,
+                    std_dev_x,
+                    0,
+                ) && self.blur_region_partial_to_target(
+                    commands,
+                    temp,
+                    target,
+                    output_bounds,
+                    sample_bounds,
+                    std_dev_y,
+                    1,
+                );
+                self.release_scratch(temp);
+                ok
+            }
+            (true, false) => self.blur_region_partial_to_target(
+                commands,
+                source,
+                target,
+                output_bounds,
+                sample_bounds,
+                std_dev_x,
+                0,
+            ),
+            (false, true) => self.blur_region_partial_to_target(
+                commands,
+                source,
+                target,
+                output_bounds,
+                sample_bounds,
+                std_dev_y,
+                1,
+            ),
+            (false, false) => self.copy_region_to_target(commands, source, target, output_bounds),
+        }
+    }
+
     pub(super) fn apply_downsampled_blur_rect_composite(
         &mut self,
         commands: &mut WgpuCommandBatch,
@@ -1569,6 +1639,34 @@ impl Renderer {
             self.size,
             self.lengths,
             bounds,
+            std_dev,
+            axis,
+        );
+        true
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn blur_region_partial_to_target(
+        &self,
+        commands: &mut WgpuCommandBatch,
+        source: WgpuRenderTargetId,
+        target: WgpuRenderTargetId,
+        output_bounds: Bounds,
+        sample_bounds: Bounds,
+        std_dev: f32,
+        axis: u32,
+    ) -> bool {
+        let Some(filter) = &self.filter else {
+            return false;
+        };
+        filter.blur_region_partial(
+            commands,
+            self.render_target_view(source),
+            self.render_target_view(target),
+            self.size,
+            self.lengths,
+            output_bounds,
+            sample_bounds,
             std_dev,
             axis,
         );

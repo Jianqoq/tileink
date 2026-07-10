@@ -476,6 +476,7 @@ fn max_scratch_for_ops(ops: &[ExecOp], held: usize) -> usize {
     for op in ops {
         match op {
             ExecOp::OffscreenLayer {
+                retained_id,
                 layer,
                 outer_stack,
                 children,
@@ -495,7 +496,9 @@ fn max_scratch_for_ops(ops: &[ExecOp], held: usize) -> usize {
                     max_count = max_count.max(max_scratch_for_ops(children, source_held));
                 }
                 Layer::Backdrop { filter, .. } => {
-                    let backdrop_held = held + 1;
+                    // Retained backdrops keep both filtered output and the
+                    // painter-order source history live while rerendering.
+                    let backdrop_held = held + 1 + usize::from(retained_id.is_some());
                     max_count = max_count.max(backdrop_held + filter_scratch_extra(filter));
                     max_count = max_count.max(backdrop_held + 1);
                     let content_held = held + 1;

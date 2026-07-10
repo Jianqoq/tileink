@@ -43,6 +43,7 @@ pub(crate) struct WgpuSceneUploadStaging {
     tile_draw_cursors: Vec<u32>,
     layer_stack: Vec<LayerStackRecord>,
     scene_brush_blob: Vec<u32>,
+    paint_blob: Vec<u32>,
     fine_text_blob: Vec<u32>,
 }
 
@@ -185,7 +186,7 @@ fn upload_coarse_text_blob(
     scratch.extend_from_slice(bytemuck::cast_slice(&text.runs));
     scratch.extend_from_slice(bytemuck::cast_slice(&text.glyphs));
     scratch.extend_from_slice(bytemuck::cast_slice(&text.images));
-    buffer.upload(
+    buffer.upload_cached(
         device,
         queue,
         "tileink wgpu canvas coarse text blob",
@@ -208,7 +209,7 @@ fn upload_fine_text_blob(
     blob.extend_from_slice(bytemuck::cast_slice(&text.glyphs));
     blob.extend_from_slice(bytemuck::cast_slice(&text.images));
     blob.extend_from_slice(&text.image_data);
-    buffer.upload(device, queue, "tileink wgpu canvas fine text blob", blob);
+    buffer.upload_cached(device, queue, "tileink wgpu canvas fine text blob", blob);
     (image_base as u32, image_data_base as u32)
 }
 
@@ -381,7 +382,7 @@ impl WgpuSceneBuffers {
             self.upload_scan_plan(device, queue, staging);
         });
         profile_cpu("prepare.upload_scene.upload_cumsum_plan", || {
-            self.upload_cumsum_plan(device, queue, staging);
+            self.upload_cumsum_plan(device, queue, &staging.cumsum_plan);
         });
     }
 
@@ -395,8 +396,8 @@ impl WgpuSceneBuffers {
     ) {
         profile_cpu("prepare.upload_scene.records.geometry", || {
             self.lines
-                .upload(device, queue, "tileink wgpu canvas lines", &canvas.lines);
-            self.path_records.upload(
+                .upload_cached(device, queue, "tileink wgpu canvas lines", &canvas.lines);
+            self.path_records.upload_cached(
                 device,
                 queue,
                 "tileink wgpu canvas path records",
@@ -424,25 +425,20 @@ impl WgpuSceneBuffers {
 
             self.paint_sdf_shadow_base = canvas.sdf_blob.len() as u32;
             self.paint_brush_base = (canvas.sdf_blob.len() + canvas.sdf_shadow_blob.len()) as u32;
-            let paint_words =
-                canvas.sdf_blob.len() + canvas.sdf_shadow_blob.len() + scene_brush_blob.len();
             // SDF, SDF-shadow, and scene brushes share one storage buffer so coarse, fine,
-            // and filter bind the same paint data without CPU-side repacking.
-            self.paint_blob.resize_uninit::<u32>(
+            // and filter bind the same paint data. Keeping one staging vector
+            // also lets retained uploads transmit only the changed range.
+            staging.paint_blob.clear();
+            staging.paint_blob.extend_from_slice(&canvas.sdf_blob);
+            staging
+                .paint_blob
+                .extend_from_slice(&canvas.sdf_shadow_blob);
+            staging.paint_blob.extend_from_slice(scene_brush_blob);
+            self.paint_blob.upload_cached(
                 device,
+                queue,
                 "tileink wgpu canvas paint blob",
-                paint_words,
-            );
-            self.paint_blob.write_at(queue, 0, &canvas.sdf_blob);
-            self.paint_blob.write_at(
-                queue,
-                word_offset(self.paint_sdf_shadow_base as usize),
-                &canvas.sdf_shadow_blob,
-            );
-            self.paint_blob.write_at(
-                queue,
-                word_offset(self.paint_brush_base as usize),
-                scene_brush_blob,
+                &staging.paint_blob,
             );
         });
     }
@@ -453,7 +449,7 @@ impl WgpuSceneBuffers {
         queue: &::wgpu::Queue,
         draw_records: &[DrawRecord],
     ) {
-        self.draw_records.upload(
+        self.draw_records.upload_cached(
             device,
             queue,
             "tileink wgpu canvas draw records",
@@ -485,7 +481,7 @@ impl WgpuSceneBuffers {
                 },
                 payload: encode_layer_payload(*entry),
             }));
-        self.plan_layer_stack.upload(
+        self.plan_layer_stack.upload_cached(
             device,
             queue,
             "tileink wgpu canvas plan layer stack",
@@ -507,7 +503,7 @@ impl WgpuSceneBuffers {
                 .refill(canvas, text, self.glyph_atlas_signature);
         });
         profile_cpu("prepare.upload_scene.text.runs", || {
-            self.text_runs.upload(
+            self.text_runs.upload_cached(
                 device,
                 queue,
                 "tileink wgpu canvas text runs",
@@ -548,13 +544,13 @@ impl WgpuSceneBuffers {
         staging: &mut WgpuSceneUploadStaging,
     ) {
         // Scan kernels consume the CPU-built AoS plan directly, avoiding per-field packing in prepare.
-        self.scan_chunks.upload(
+        self.scan_chunks.upload_cached(
             device,
             queue,
             "tileink wgpu canvas scan chunks",
             &staging.scan_chunks,
         );
-        self.scan_chunk_ranges.upload(
+        self.scan_chunk_ranges.upload_cached(
             device,
             queue,
             "tileink wgpu canvas scan chunk ranges",
@@ -562,35 +558,35 @@ impl WgpuSceneBuffers {
         );
     }
 
-    fn upload_cumsum_plan(
+    pub(crate) fn upload_cumsum_plan(
         &mut self,
         device: &::wgpu::Device,
         queue: &::wgpu::Queue,
-        staging: &WgpuSceneUploadStaging,
+        plan: &GpuCumsumPlan,
     ) {
-        self.cumsum_chunk_backdrop_offsets.upload(
+        self.cumsum_chunk_backdrop_offsets.upload_cached(
             device,
             queue,
             "tileink wgpu canvas cumsum chunk backdrop offsets",
-            &staging.cumsum_plan.chunk_backdrop_offsets,
+            &plan.chunk_backdrop_offsets,
         );
-        self.cumsum_chunk_lens.upload(
+        self.cumsum_chunk_lens.upload_cached(
             device,
             queue,
             "tileink wgpu canvas cumsum chunk lens",
-            &staging.cumsum_plan.chunk_lens,
+            &plan.chunk_lens,
         );
-        self.cumsum_row_chunk_starts.upload(
+        self.cumsum_row_chunk_starts.upload_cached(
             device,
             queue,
             "tileink wgpu canvas cumsum row chunk starts",
-            &staging.cumsum_plan.row_chunk_starts,
+            &plan.row_chunk_starts,
         );
-        self.cumsum_row_chunk_ends.upload(
+        self.cumsum_row_chunk_ends.upload_cached(
             device,
             queue,
             "tileink wgpu canvas cumsum row chunk ends",
-            &staging.cumsum_plan.row_chunk_ends,
+            &plan.row_chunk_ends,
         );
     }
 }
@@ -666,7 +662,7 @@ mod tests {
 
 impl WgpuCoarseBuffers {
     pub(crate) fn upload_tile_draw_bins(
-        &self,
+        &mut self,
         queue: &::wgpu::Queue,
         lengths: crate::shared::gpu_plan::GpuBufferLengths,
         staging: &mut WgpuSceneUploadStaging,

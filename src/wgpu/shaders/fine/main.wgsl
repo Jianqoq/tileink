@@ -30,10 +30,10 @@ fn fine_tile_main(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
 ) {
-    let tile_ix = workgroup_id.x;
-    if (tile_ix >= config.tile_count) {
+    if (workgroup_id.x >= config.active_tile_count) {
         return;
     }
+    let tile_ix = dispatched_tile_at(workgroup_id.x);
 
     let local_ix = local_id.x;
     let local_x = local_ix % 16u;

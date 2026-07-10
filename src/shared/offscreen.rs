@@ -342,22 +342,26 @@ fn translate_exec_ops_to_local(ops: &[ExecOp], local: LocalSpace) -> Vec<ExecOp>
             ExecOp::BeginBlend => ExecOp::BeginBlend,
             ExecOp::EndBlend => ExecOp::EndBlend,
             ExecOp::OffscreenLayer {
+                retained_id,
                 draw,
                 layer,
                 outer_stack,
                 children,
             } => ExecOp::OffscreenLayer {
+                retained_id: *retained_id,
                 draw: *draw,
                 layer: translate_layer_to_local(layer, local),
                 outer_stack: outer_stack.clone(),
                 children: translate_exec_ops_to_local(children, local),
             },
             ExecOp::OffscreenMaskLayer {
+                retained_id,
                 layer,
                 outer_stack,
                 content,
                 mask,
             } => ExecOp::OffscreenMaskLayer {
+                retained_id: *retained_id,
                 layer: translate_mask_to_local(layer, local),
                 outer_stack: outer_stack.clone(),
                 content: translate_exec_ops_to_local(content, local),

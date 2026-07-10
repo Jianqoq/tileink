@@ -6,7 +6,7 @@ use peniko::Color;
 
 use crate::{
     TextFontSystem,
-    canvas::Canvas,
+    canvas::{Canvas, RetainedFrame, RetainedSceneCache},
     debug::{DebugScanBuffers, RenderDebugCapture, RenderOptions, capture_render_debug},
     render::Render,
     shared::{
@@ -48,7 +48,15 @@ use super::filter_resources::{
 };
 use super::fine::{WgpuFinePipeline, premul_clear_color};
 use super::image_resources::large_texture_table_len;
+use super::incremental::{
+    ActiveScanPlan, DamagePlan, DamageTiles, IncrementalRenderConfig, IncrementalRenderStats,
+    IncrementalState,
+};
+use super::lazy::PipelineCompilationTracker;
 use super::profile::{WgpuRenderProfile, WgpuRenderProfiler, profile_cpu, start_cpu_scope};
+use super::retained_surfaces::{
+    RetainedSurface, RetainedSurfaceCache, RetainedSurfaceKind, RetainedSurfaceMeta,
+};
 use super::scan::WgpuScanPipeline;
 use super::target::WgpuTarget;
 
@@ -112,6 +120,16 @@ impl std::fmt::Display for WgpuTextureRenderError {
 impl std::error::Error for WgpuTextureRenderError {}
 
 /// Wgpu-owned renderer target and native compute pipelines.
+#[derive(Clone, Debug, Default)]
+pub struct RendererOptions {
+    /// Shared backend pipeline cache used by every compute pipeline created by this renderer.
+    ///
+    /// The cache must have been created from `device`. The caller owns loading and persisting its
+    /// data because only the application knows the appropriate cache directory and lifetime.
+    pub pipeline_cache: Option<::wgpu::PipelineCache>,
+}
+
+/// Wgpu-owned renderer target and native compute pipelines.
 pub struct Renderer {
     device: ::wgpu::Device,
     queue: ::wgpu::Queue,
@@ -132,8 +150,21 @@ pub struct Renderer {
     coarse_pipeline: Option<WgpuCoarsePipeline>,
     fine: Option<WgpuFinePipeline>,
     filter: Option<WgpuFilterPipeline>,
+    pipeline_compilations: PipelineCompilationTracker,
     filter_transfers: WgpuFilterTransferBuffers,
     filter_brushes: WgpuFilterBrushBuffers,
+    retained_scene_cache: RetainedSceneCache,
+    retained_materialized: Option<CachedMaterializedScene>,
+    prepared_retained_scene: Option<*const Canvas>,
+    prepared_retained_uses_text: bool,
+    prepared_plan_fingerprint: Option<u64>,
+    incremental_config: IncrementalRenderConfig,
+    incremental_state: IncrementalState,
+    incremental_stats: IncrementalRenderStats,
+    active_tiles: Option<DamageTiles>,
+    history_valid: bool,
+    retained_surfaces: RetainedSurfaceCache,
+    rendering_frame: Option<RetainedFrame>,
     image_resources: ImageResourceStore,
     image_resource_upload: GpuImageResourceUpload,
     image_resource_upload_signature: ImageResourceUploadSignature,
@@ -156,6 +187,42 @@ pub struct Renderer {
     last_frame_used_native: bool,
     size: (u32, u32),
     surface_origin: (i32, i32),
+}
+
+struct CachedMaterializedScene {
+    frame: RetainedFrame,
+    scene: SharedArc<Canvas>,
+}
+
+enum SelectedScene<'a> {
+    Borrowed(&'a Canvas),
+    Retained {
+        scene: SharedArc<Canvas>,
+        frame: RetainedFrame,
+    },
+}
+
+impl SelectedScene<'_> {
+    fn scene(&self) -> &Canvas {
+        match self {
+            Self::Borrowed(scene) => scene,
+            Self::Retained { scene, .. } => scene,
+        }
+    }
+
+    fn frame(&self) -> Option<RetainedFrame> {
+        match self {
+            Self::Borrowed(_) => None,
+            Self::Retained { frame, .. } => Some(frame.clone()),
+        }
+    }
+
+    fn retained_ptr(&self) -> Option<*const Canvas> {
+        match self {
+            Self::Borrowed(_) => None,
+            Self::Retained { scene, .. } => Some(SharedArc::as_ptr(scene)),
+        }
+    }
 }
 
 struct SavedRendererState {
@@ -185,6 +252,7 @@ struct SavedRendererState {
     scratch_in_use: Vec<bool>,
     size: (u32, u32),
     surface_origin: (i32, i32),
+    active_tiles: Option<DamageTiles>,
 }
 
 impl Render for Renderer {
@@ -204,6 +272,26 @@ impl Renderer {
         height: u32,
         clear: Color,
     ) -> Self {
+        Self::new_with_options(
+            device,
+            queue,
+            width,
+            height,
+            clear,
+            RendererOptions::default(),
+        )
+    }
+
+    pub fn new_with_options(
+        device: &::wgpu::Device,
+        queue: &::wgpu::Queue,
+        width: u32,
+        height: u32,
+        clear: Color,
+        options: RendererOptions,
+    ) -> Self {
+        let pipeline_cache = options.pipeline_cache.as_ref();
+        let pipeline_compilations = PipelineCompilationTracker::default();
         Self {
             device: device.clone(),
             queue: queue.clone(),
@@ -219,13 +307,32 @@ impl Renderer {
             fine_spills: WgpuBuffer::new(device, "tileink wgpu fine spills"),
             fine_indirect_args: WgpuBuffer::new(device, "tileink wgpu fine indirect args"),
             text_data: None,
-            scan_pipeline: WgpuScanPipeline::new(device),
-            cumsum: WgpuCumsumPipeline::new(device),
-            coarse_pipeline: WgpuCoarsePipeline::new(device),
-            fine: WgpuFinePipeline::new(device),
-            filter: WgpuFilterPipeline::new(device),
+            scan_pipeline: WgpuScanPipeline::new(device, pipeline_cache, &pipeline_compilations),
+            cumsum: WgpuCumsumPipeline::new(device, pipeline_cache, &pipeline_compilations),
+            coarse_pipeline: WgpuCoarsePipeline::new(
+                device,
+                pipeline_cache,
+                &pipeline_compilations,
+            ),
+            fine: WgpuFinePipeline::new(device, pipeline_cache, &pipeline_compilations),
+            filter: WgpuFilterPipeline::new(device, pipeline_cache, &pipeline_compilations),
+            pipeline_compilations,
             filter_transfers: WgpuFilterTransferBuffers::new(device),
             filter_brushes: WgpuFilterBrushBuffers::new(device),
+            retained_scene_cache: RetainedSceneCache::default(),
+            retained_materialized: None,
+            prepared_retained_scene: None,
+            prepared_retained_uses_text: false,
+            prepared_plan_fingerprint: None,
+            incremental_config: IncrementalRenderConfig::default(),
+            incremental_state: IncrementalState::default(),
+            incremental_stats: IncrementalRenderStats::default(),
+            active_tiles: None,
+            history_valid: false,
+            retained_surfaces: RetainedSurfaceCache::new(
+                IncrementalRenderConfig::default().retained_texture_budget_bytes,
+            ),
+            rendering_frame: None,
             image_resources: ImageResourceStore::default(),
             image_resource_upload: GpuImageResourceUpload::default(),
             image_resource_upload_signature: ImageResourceUploadSignature::default(),
@@ -289,6 +396,7 @@ impl Renderer {
             return false;
         }
         self.image_resources_dirty = true;
+        self.invalidate_retained_history();
         true
     }
 
@@ -296,6 +404,7 @@ impl Renderer {
         let removed = self.image_resources.remove(key);
         if removed {
             self.image_resources_dirty = true;
+            self.invalidate_retained_history();
             return true;
         }
         false
@@ -305,6 +414,7 @@ impl Renderer {
         let removed = self.image_resources.clear();
         if removed {
             self.image_resources_dirty = true;
+            self.invalidate_retained_history();
             return true;
         }
         false
@@ -367,18 +477,62 @@ impl Renderer {
         self.last_frame_used_native
     }
 
+    pub fn incremental_render_config(&self) -> IncrementalRenderConfig {
+        self.incremental_config
+    }
+
+    pub fn set_incremental_render_config(&mut self, config: IncrementalRenderConfig) {
+        self.incremental_config = config.validate();
+        self.retained_surfaces
+            .set_budget(self.incremental_config.retained_texture_budget_bytes);
+    }
+
+    pub fn incremental_render_stats(&self) -> &IncrementalRenderStats {
+        &self.incremental_stats
+    }
+
+    /// Monotonic epoch advanced after each lazy compute pipeline is compiled.
+    /// Applications can use this to persist a backend pipeline cache only when
+    /// new data may have been added, without polling the cache every frame.
+    pub fn pipeline_compilation_epoch(&self) -> u64 {
+        self.pipeline_compilations.epoch()
+    }
+
+    /// Invalidates the retained history after external state changes that the
+    /// scene graph cannot associate with a specific node.
+    pub fn invalidate_retained_history(&mut self) {
+        self.incremental_state.invalidate_renderer_state();
+        self.history_valid = false;
+        self.prepared_retained_scene = None;
+    }
+
     /// Updates the clear color without rebuilding device-owned pipelines, so one renderer can
     /// render multiple scenes/examples in a single process.
     pub fn set_clear_color(&mut self, clear: Color) {
-        self.clear_color = premul_clear_color(clear);
+        let clear = premul_clear_color(clear);
+        if self.clear_color != clear {
+            self.clear_color = clear;
+            self.invalidate_retained_history();
+        }
     }
 
     /// Renders only through native wgpu compute pipelines.
     ///
     /// This is useful for tests that need to verify the native WGPU path directly.
     pub fn render_native(&mut self, canvas: &Canvas) -> bool {
-        self.prepare_scene(canvas);
-        self.render_prepared_native(canvas)
+        let selected = self.select_scene(canvas);
+        let frame = selected.frame();
+        let retained_ptr = selected.retained_ptr();
+        let scene = selected.scene();
+        let plan = self.begin_incremental_frame(frame, scene);
+        let has_work = !plan.tiles.is_empty();
+        if has_work && self.scene_needs_prepare(retained_ptr, false) {
+            self.prepare_scene(scene);
+            self.mark_scene_prepared(retained_ptr, false);
+        }
+        let rendered = !has_work || self.render_prepared_native(scene);
+        self.finish_incremental_frame(plan, rendered);
+        rendered
     }
 
     /// Renders text scenes only through native wgpu compute pipelines.
@@ -391,8 +545,176 @@ impl Renderer {
         font_system: &mut TextFontSystem,
         text_context: &mut TextContext,
     ) -> bool {
-        self.prepare_scene_with_text(canvas, font_system, text_context);
-        self.render_prepared_native(canvas)
+        let selected = self.select_scene(canvas);
+        let frame = selected.frame();
+        let retained_ptr = selected.retained_ptr();
+        let scene = selected.scene();
+        let plan = self.begin_incremental_frame(frame, scene);
+        let has_work = !plan.tiles.is_empty();
+        if has_work && self.scene_needs_prepare(retained_ptr, true) {
+            self.prepare_scene_with_text(scene, font_system, text_context);
+            self.mark_scene_prepared(retained_ptr, true);
+        }
+        let rendered = !has_work || self.render_prepared_native(scene);
+        self.finish_incremental_frame(plan, rendered);
+        rendered
+    }
+
+    fn select_scene<'a>(&mut self, canvas: &'a Canvas) -> SelectedScene<'a> {
+        let Some(frame) = canvas.retained_frame() else {
+            self.prepared_retained_scene = None;
+            return SelectedScene::Borrowed(canvas);
+        };
+
+        if frame.complete
+            && let Some(cached) = &self.retained_materialized
+            && cached.frame.same_scene(&frame)
+        {
+            return SelectedScene::Retained {
+                scene: cached.scene.clone(),
+                frame,
+            };
+        }
+
+        let scene =
+            SharedArc::new(canvas.materialize_retained_scenes(&mut self.retained_scene_cache));
+        self.retained_scene_cache.retain_frame(&frame);
+        if frame.complete {
+            self.retained_materialized = Some(CachedMaterializedScene {
+                frame: frame.clone(),
+                scene: scene.clone(),
+            });
+        }
+        SelectedScene::Retained { scene, frame }
+    }
+
+    fn begin_incremental_frame(
+        &mut self,
+        frame: Option<RetainedFrame>,
+        scene: &Canvas,
+    ) -> DamagePlan {
+        if self.retained_surfaces.take_backdrop_evicted() {
+            self.history_valid = false;
+        }
+        let physical_size = scene.physical_size();
+        let mut plan = self.incremental_state.plan(
+            frame,
+            physical_size,
+            self.incremental_config,
+            self.history_valid,
+        );
+        if !plan.stats.full_redraw {
+            let mut dependent = plan.tiles.coalesced_rects(physical_size);
+            scene.propagate_damage(&mut dependent);
+            plan.include_dependent_bounds(dependent, self.incremental_config);
+        }
+        self.incremental_stats = plan.stats.clone();
+        self.active_tiles = (!plan.stats.full_redraw).then(|| plan.tiles.clone());
+        self.rendering_frame = plan.frame.clone();
+        plan
+    }
+
+    fn finish_incremental_frame(&mut self, plan: DamagePlan, rendered: bool) {
+        let backdrop_history_valid = !self.retained_surfaces.take_backdrop_evicted();
+        if rendered {
+            if let Some(frame) = &plan.frame {
+                let nodes = frame.nodes.iter().map(|node| node.id).collect();
+                self.retained_surfaces.retain_nodes(&nodes);
+            }
+            self.incremental_state.commit(plan.frame);
+            self.history_valid = backdrop_history_valid;
+        } else {
+            self.history_valid = false;
+        }
+        self.active_tiles = None;
+        self.rendering_frame = None;
+    }
+
+    fn retained_surface_meta(
+        &self,
+        id: crate::canvas::RetainedSurfaceId,
+        kind: RetainedSurfaceKind,
+        size: (u32, u32),
+        origin: (i32, i32),
+        bounds: Bounds,
+    ) -> Option<RetainedSurfaceMeta> {
+        Some(RetainedSurfaceMeta {
+            revision: self.rendering_frame.as_ref()?.node_revision(id.node)?,
+            kind,
+            size,
+            origin,
+            bounds,
+        })
+    }
+
+    fn retained_surface_is_dirty(&self, bounds: Bounds) -> bool {
+        self.active_tiles
+            .as_ref()
+            .is_none_or(|tiles| tiles.intersects_bounds(bounds))
+    }
+
+    fn local_damage_for_surface(&self, surface: Bounds) -> Option<DamageTiles> {
+        let active = self.active_tiles.as_ref()?;
+        let mut local = DamageTiles::new((surface.width(), surface.height()));
+        for bounds in active.coalesced_rects(self.size) {
+            let bounds = bounds.intersect(surface);
+            if !bounds.is_empty() {
+                local.add_bounds(Bounds::new(
+                    bounds.x0 - surface.x0,
+                    bounds.y0 - surface.y0,
+                    bounds.x1 - surface.x0,
+                    bounds.y1 - surface.y0,
+                ));
+            }
+        }
+        Some(local)
+    }
+
+    fn prepare_active_tile_buffers(&mut self) {
+        if let Some(active) = &self.active_tiles {
+            self.coarse
+                .upload_active_tiles(&self.queue, self.lengths, active.list());
+        }
+    }
+
+    fn take_matching_retained_surface(
+        &mut self,
+        id: Option<crate::canvas::RetainedSurfaceId>,
+        meta: Option<RetainedSurfaceMeta>,
+    ) -> Option<(crate::canvas::RetainedSurfaceId, RetainedSurface)> {
+        let id = id?;
+        let surface = self.retained_surfaces.take(id)?;
+        if Some(surface.meta) == meta {
+            Some((id, surface))
+        } else {
+            None
+        }
+    }
+
+    fn cache_retained_surface(
+        &mut self,
+        id: Option<crate::canvas::RetainedSurfaceId>,
+        meta: Option<RetainedSurfaceMeta>,
+        primary: WgpuTarget,
+        secondary: Option<WgpuTarget>,
+        backdrop_source: Option<WgpuTarget>,
+    ) {
+        if let (Some(id), Some(meta)) = (id, meta) {
+            self.retained_surfaces
+                .insert(id, meta, primary, secondary, backdrop_source);
+        }
+    }
+
+    fn scene_needs_prepare(&self, retained_ptr: Option<*const Canvas>, uses_text: bool) -> bool {
+        retained_ptr.is_none()
+            || self.prepared_retained_scene != retained_ptr
+            || self.prepared_retained_uses_text != uses_text
+            || self.image_resources_dirty
+    }
+
+    fn mark_scene_prepared(&mut self, retained_ptr: Option<*const Canvas>, uses_text: bool) {
+        self.prepared_retained_scene = retained_ptr;
+        self.prepared_retained_uses_text = uses_text;
     }
 
     fn render_prepared_native(&mut self, canvas: &Canvas) -> bool {
@@ -453,7 +775,18 @@ impl Renderer {
             self.scene_upload
                 .build_lengths(canvas, self.text_data.as_ref())
         });
-        let plan = profile_cpu("prepare.compile", || canvas.compile(ROOT_COMMAND_LIST_ID));
+        let plan_fingerprint = canvas.execution_plan_fingerprint();
+        let reused_plan =
+            self.prepared_plan_fingerprint == Some(plan_fingerprint) && self.plan.is_some();
+        let plan = profile_cpu("prepare.compile", || {
+            if reused_plan {
+                self.plan.as_ref().expect("cached execution plan").clone()
+            } else {
+                canvas.compile(ROOT_COMMAND_LIST_ID)
+            }
+        });
+        self.incremental_stats.reused_compiled_plan = reused_plan;
+        self.prepared_plan_fingerprint = Some(plan_fingerprint);
         let (max_clip_depth, max_group_depth) =
             profile_cpu("prepare.stack_depths", || plan_stack_depths(&plan));
         profile_cpu("prepare.upload_scene", || {
@@ -646,6 +979,7 @@ impl Renderer {
             scratch_in_use: std::mem::take(&mut self.scratch_in_use),
             size: self.size,
             surface_origin: self.surface_origin,
+            active_tiles: self.active_tiles.take(),
         };
 
         let lengths = profile_cpu("prepare.local.lengths", || {
@@ -656,6 +990,7 @@ impl Renderer {
             profile_cpu("prepare.local.stack_depths", || plan_stack_depths(plan));
         self.size = (canvas.physical_width(), canvas.physical_height());
         self.surface_origin = surface_origin;
+        self.active_tiles = None;
         self.lengths = lengths;
         self.max_clip_depth = max_clip_depth;
         self.max_group_depth = max_group_depth;
@@ -757,6 +1092,7 @@ impl Renderer {
         self.scratch_in_use = saved.scratch_in_use;
         self.size = saved.size;
         self.surface_origin = saved.surface_origin;
+        self.active_tiles = saved.active_tiles;
     }
 
     fn prepare_scratch_buffers(&mut self, count: usize) {
@@ -795,12 +1131,41 @@ impl Renderer {
         );
     }
 
-    fn scan_and_cumsum(&mut self, commands: &mut WgpuCommandBatch, _scene: &Canvas) -> bool {
+    fn scan_and_cumsum(&mut self, commands: &mut WgpuCommandBatch, scene: &Canvas) -> bool {
         let (Some(scan), Some(cumsum)) = (&self.scan_pipeline, &self.cumsum) else {
             return false;
         };
-        scan.run_in(commands, &self.scene_buffers, &mut self.scan, self.lengths);
-        cumsum.run_in(commands, &self.scene_buffers, &mut self.scan, self.lengths);
+        let active = self
+            .active_tiles
+            .as_ref()
+            .map(|damage| ActiveScanPlan::new(scene, damage));
+        if let Some(active) = &active {
+            self.scan
+                .upload_active_indices(&self.device, &self.queue, &active.indices);
+            self.scan
+                .upload_active_cumsum_plan(&self.device, &self.queue, &active.cumsum);
+            self.incremental_stats.scanned_paths += active.path_count;
+            self.incremental_stats.scanned_lines += active.line_count;
+            self.incremental_stats.scan_chunks += active.chunk_count;
+        } else {
+            self.incremental_stats.scanned_paths += self.lengths.path_count as u32;
+            self.incremental_stats.scanned_lines += self.lengths.line_count as u32;
+            self.incremental_stats.scan_chunks += self.lengths.scan_chunk_count as u32;
+        }
+        scan.run_in(
+            commands,
+            &self.scene_buffers,
+            &mut self.scan,
+            self.lengths,
+            active.as_ref(),
+        );
+        cumsum.run_in(
+            commands,
+            &self.scene_buffers,
+            &mut self.scan,
+            self.lengths,
+            active.as_ref(),
+        );
         true
     }
 
@@ -826,6 +1191,7 @@ impl Renderer {
                     draw_end,
                     layer_stack_start,
                     layer_stack_end,
+                    active_tile_count: None,
                 },
             );
         }
@@ -865,11 +1231,31 @@ impl Renderer {
             return false;
         };
 
+        if self
+            .active_tiles
+            .as_ref()
+            .is_some_and(DamageTiles::is_empty)
+        {
+            return true;
+        }
+        self.prepare_active_tile_buffers();
+
         let mut commands = WgpuCommandBatch::new(&self.device, &self.queue, "tileink wgpu frame");
         if !self.scan_and_cumsum(&mut commands, canvas) {
             return false;
         }
-        self.clear_render_target(&mut commands, WgpuRenderTargetId::Main, self.clear_color);
+        if let Some(active) = &self.active_tiles {
+            for bounds in active.coalesced_rects(self.size) {
+                self.clear_render_region(
+                    &mut commands,
+                    WgpuRenderTargetId::Main,
+                    bounds,
+                    self.clear_color,
+                );
+            }
+        } else {
+            self.clear_render_target(&mut commands, WgpuRenderTargetId::Main, self.clear_color);
+        }
         let mut filter_cursors = WgpuFilterCursors::default();
         let ok = self.execute_ops(
             &mut commands,
@@ -908,12 +1294,14 @@ impl Renderer {
                 | ExecOp::BeginBlend
                 | ExecOp::EndBlend => true,
                 ExecOp::OffscreenLayer {
+                    retained_id,
                     draw,
                     layer,
                     outer_stack,
                     children,
                 } => self.execute_offscreen_layer(
                     commands,
+                    *retained_id,
                     canvas,
                     plan,
                     *draw,
@@ -924,12 +1312,14 @@ impl Renderer {
                     filter_cursors,
                 ),
                 ExecOp::OffscreenMaskLayer {
+                    retained_id,
                     layer,
                     outer_stack,
                     content,
                     mask,
                 } => self.execute_mask_layer(
                     commands,
+                    *retained_id,
                     canvas,
                     plan,
                     layer,
@@ -985,6 +1375,7 @@ impl Renderer {
             draw_end,
             layer_stack_start,
             layer_stack_end,
+            active_tile_count: self.active_tiles.as_ref().map(DamageTiles::len),
         };
         self.coarse_pipeline.as_ref().unwrap().encode_in(
             commands,
@@ -1005,6 +1396,7 @@ impl Renderer {
         let Some(fine) = &self.fine else {
             return false;
         };
+        let active_tile_count = self.active_tiles.as_ref().map(DamageTiles::len);
         if fine.uses_portable_textures() {
             return self.fine_portable_batch_to_in(commands, target);
         }
@@ -1026,6 +1418,7 @@ impl Renderer {
                         true,
                         self.max_clip_depth.saturating_sub(FINE_LOCAL_CLIP_DEPTH) as u32,
                         self.max_group_depth.saturating_sub(FINE_LOCAL_GROUP_DEPTH) as u32,
+                        active_tile_count,
                     )
                 } else {
                     fine.render_tiles_in(
@@ -1043,6 +1436,7 @@ impl Renderer {
                         true,
                         self.max_clip_depth.saturating_sub(FINE_LOCAL_CLIP_DEPTH) as u32,
                         self.max_group_depth.saturating_sub(FINE_LOCAL_GROUP_DEPTH) as u32,
+                        active_tile_count,
                     )
                 }
             }
@@ -1061,6 +1455,7 @@ impl Renderer {
                 true,
                 self.max_clip_depth.saturating_sub(FINE_LOCAL_CLIP_DEPTH) as u32,
                 self.max_group_depth.saturating_sub(FINE_LOCAL_GROUP_DEPTH) as u32,
+                active_tile_count,
             ),
         }
     }
@@ -1076,6 +1471,7 @@ impl Renderer {
         let Some(target_texture) = self.render_target_texture(target).cloned() else {
             return false;
         };
+        let active_tile_count = self.active_tiles.as_ref().map(DamageTiles::len);
         self.fine_portable_source
             .resize(commands.device(), self.size.0, self.size.1);
         self.fine_portable_target
@@ -1102,6 +1498,7 @@ impl Renderer {
             true,
             self.max_clip_depth.saturating_sub(FINE_LOCAL_CLIP_DEPTH) as u32,
             self.max_group_depth.saturating_sub(FINE_LOCAL_GROUP_DEPTH) as u32,
+            active_tile_count,
         );
         if ok {
             copy_texture(
@@ -1117,6 +1514,7 @@ impl Renderer {
     fn execute_offscreen_layer(
         &mut self,
         commands: &mut WgpuCommandBatch,
+        retained_id: Option<crate::canvas::RetainedSurfaceId>,
         canvas: &Canvas,
         plan: &ExecPlan,
         draw: usize,
@@ -1129,6 +1527,7 @@ impl Renderer {
         match layer {
             Layer::Isolate => self.execute_masked_group_layer(
                 commands,
+                retained_id,
                 canvas,
                 plan,
                 draw,
@@ -1141,6 +1540,7 @@ impl Renderer {
             ),
             Layer::Opacity(opacity) => self.execute_masked_group_layer(
                 commands,
+                retained_id,
                 canvas,
                 plan,
                 draw,
@@ -1153,6 +1553,7 @@ impl Renderer {
             ),
             Layer::Blend(blend) => self.execute_masked_group_layer(
                 commands,
+                retained_id,
                 canvas,
                 plan,
                 draw,
@@ -1168,6 +1569,7 @@ impl Renderer {
                 sample_region,
             } => self.execute_filter_layer(
                 commands,
+                retained_id,
                 canvas,
                 plan,
                 filter,
@@ -1182,6 +1584,7 @@ impl Renderer {
                 sample_region,
             } => self.execute_backdrop_layer(
                 commands,
+                retained_id,
                 canvas,
                 plan,
                 filter,
@@ -1200,6 +1603,7 @@ impl Renderer {
     fn execute_masked_group_layer(
         &mut self,
         commands: &mut WgpuCommandBatch,
+        retained_id: Option<crate::canvas::RetainedSurfaceId>,
         canvas: &Canvas,
         plan: &ExecPlan,
         draw: usize,
@@ -1215,42 +1619,126 @@ impl Renderer {
             return true;
         }
 
-        let Some(source) =
-            self.render_ops_to_scratch(commands, canvas, plan, children, filter_cursors)
-        else {
-            return false;
-        };
-        if let Some(opacity) = opacity {
-            self.apply_color_filter_to_target(commands, source, bounds, FILTER_OPACITY, opacity);
+        let meta = retained_id.and_then(|id| {
+            self.retained_surface_meta(
+                id,
+                RetainedSurfaceKind::Group,
+                self.size,
+                self.surface_origin,
+                bounds,
+            )
+        });
+        let mut cached = self.take_matching_retained_surface(retained_id, meta);
+        if !self.retained_surface_is_dirty(bounds)
+            && let Some((id, surface)) = cached.take()
+        {
+            let ok = self.composite_cached_group(
+                commands,
+                target,
+                &surface.primary,
+                surface.secondary.as_ref(),
+                bounds,
+                outer_stack,
+                blend,
+            );
+            self.incremental_stats.reused_offscreen_surfaces += 1;
+            self.retained_surfaces.insert(
+                id,
+                surface.meta,
+                surface.primary,
+                surface.secondary,
+                surface.backdrop_source,
+            );
+            filter_cursors.advance_ops(children);
+            return ok;
+        }
+        let partial = cached
+            .as_ref()
+            .is_some_and(|(_, surface)| surface.secondary.is_some());
+        if retained_id.is_some() {
+            self.incremental_stats.rerendered_offscreen_surfaces += 1;
+            self.incremental_stats.rerendered_offscreen_tiles += if partial {
+                self.active_tile_count(bounds)
+            } else {
+                tile_count_for_bounds(bounds)
+            };
         }
 
-        let Some(mask) = self.acquire_scratch() else {
-            self.release_scratch(source);
-            return false;
-        };
-        self.build_layer_mask(commands, mask, draw as u32, bounds);
-        let ok = if let Some(mode) = blend {
-            self.composite_blend_with_stack(
-                commands,
-                target,
-                source,
+        let source = if let Some((_, mut surface)) = cached {
+            let Some(source) = self.acquire_scratch() else {
+                return false;
+            };
+            self.install_scratch_render_target(source, surface.primary);
+            for bounds in self.active_bounds(bounds) {
+                self.clear_render_region(commands, source, bounds, 0);
+            }
+            if !self.execute_ops(commands, canvas, plan, children, source, filter_cursors) {
+                return false;
+            }
+            let Some(mask) = self.acquire_scratch() else {
+                self.release_scratch(source);
+                return false;
+            };
+            self.install_scratch_render_target(
                 mask,
-                bounds,
-                outer_stack,
-                mode,
-            )
+                surface
+                    .secondary
+                    .take()
+                    .expect("group cache has a retained mask"),
+            );
+            (source, Some(mask))
         } else {
-            self.composite_src_over_with_stack(
-                commands,
-                target,
-                source,
-                Some(mask),
-                bounds,
-                outer_stack,
-            )
+            let Some(source) =
+                self.render_ops_to_scratch(commands, canvas, plan, children, filter_cursors)
+            else {
+                return false;
+            };
+            (source, None)
         };
-        self.release_scratch(mask);
-        self.release_scratch(source);
+        let (source, cached_mask) = source;
+        if let Some(opacity) = opacity {
+            for bounds in self.active_bounds(bounds) {
+                self.apply_color_filter_to_target(
+                    commands,
+                    source,
+                    bounds,
+                    FILTER_OPACITY,
+                    opacity,
+                );
+            }
+        }
+
+        let mask = if let Some(mask) = cached_mask {
+            mask
+        } else {
+            let Some(mask) = self.acquire_scratch() else {
+                self.release_scratch(source);
+                return false;
+            };
+            mask
+        };
+        for bounds in self.active_bounds(bounds) {
+            self.build_layer_mask(commands, mask, draw as u32, bounds);
+        }
+        let ok = self.composite_group_targets(
+            commands,
+            target,
+            source,
+            mask,
+            bounds,
+            outer_stack,
+            blend,
+        );
+        if retained_id.is_some() && meta.is_some() {
+            let source = self.take_scratch_target(source);
+            let mask = self.take_scratch_target(mask);
+            if let (Some(source), Some(mask)) = (source, mask) {
+                self.cache_retained_surface(retained_id, meta, source, Some(mask), None);
+            }
+        } else {
+            self.release_scratch(mask);
+            self.release_scratch(source);
+        }
         ok
     }
 
@@ -1258,6 +1746,7 @@ impl Renderer {
     fn execute_filter_layer(
         &mut self,
         commands: &mut WgpuCommandBatch,
+        retained_id: Option<crate::canvas::RetainedSurfaceId>,
         canvas: &Canvas,
         plan: &ExecPlan,
         filter: &Filter,
@@ -1276,6 +1765,47 @@ impl Renderer {
         };
 
         filter_cursors.advance_filter_layer(sample_region, children, filter);
+        let surface_size = (
+            filter_bounds.surface.width(),
+            filter_bounds.surface.height(),
+        );
+        let surface_origin = (filter_bounds.surface.x0, filter_bounds.surface.y0);
+        let meta = retained_id.and_then(|id| {
+            self.retained_surface_meta(
+                id,
+                RetainedSurfaceKind::Filter,
+                surface_size,
+                surface_origin,
+                filter_bounds.output,
+            )
+        });
+        let mut cached = self.take_matching_retained_surface(retained_id, meta);
+        if !self.retained_surface_is_dirty(filter_bounds.output)
+            && let Some((id, surface)) = cached.take()
+        {
+            let ok = self.composite_cached_filter_surface(
+                commands,
+                target,
+                &surface.primary,
+                surface_size,
+                surface_origin,
+                filter_bounds.output,
+                outer_stack,
+            );
+            self.incremental_stats.reused_offscreen_surfaces += 1;
+            self.retained_surfaces.insert(
+                id,
+                surface.meta,
+                surface.primary,
+                surface.secondary,
+                surface.backdrop_source,
+            );
+            return ok;
+        }
+        let local_damage = cached
+            .as_ref()
+            .filter(|(_, surface)| surface.secondary.is_some())
+            .and_then(|_| self.local_damage_for_surface(filter_bounds.surface));
         let local = profile_cpu("prepare.local_scene", || {
             local_offscreen_scene(canvas, plan, children, filter_bounds.surface)
         });
@@ -1290,8 +1820,12 @@ impl Renderer {
             self.surface_origin.0 + filter_bounds.surface.x0,
             self.surface_origin.1 + filter_bounds.surface.y0,
         );
-        let local_scratch_count =
-            1 + required_scratch_count(&local.plan).max(filter_scratch_extra(&local_filter));
+        let cache_surface = retained_id.is_some() && meta.is_some();
+        let local_scratch_count = if cache_surface {
+            3 + required_scratch_count(&local.plan).max(filter_scratch_extra(&local_filter))
+        } else {
+            1 + required_scratch_count(&local.plan).max(filter_scratch_extra(&local_filter))
+        };
         let saved = self.activate_local_scene_resources(
             &local.canvas,
             &local.plan,
@@ -1301,51 +1835,137 @@ impl Renderer {
         );
 
         let source = WgpuRenderTargetId::Scratch(0);
-        self.scratch_in_use[0] = true;
-        self.clear_render_target(commands, source, 0);
+        let filtered = WgpuRenderTargetId::Scratch(1);
+        let partial_output =
+            if let (Some((_, mut surface)), Some(output_damage)) = (cached, local_damage) {
+                let source_history = surface
+                    .secondary
+                    .take()
+                    .expect("partial filter cache has source history");
+                self.install_scratch_target(0, source_history);
+                self.install_scratch_target(1, surface.primary);
+                let output_update = output_damage
+                    .coalesced_rects(surface_size)
+                    .into_iter()
+                    .reduce(Bounds::union)
+                    .unwrap_or(local_bounds);
+                // Visible output damage can depend on source pixels outside the
+                // root target (for example, a shape below the bottom edge blurred
+                // back into view). Redraw the full source dependency window while
+                // keeping the filtered write restricted to the visible output.
+                self.active_tiles = Some(output_damage.outset(
+                    surface_size,
+                    filter_model::filter_dependency_outset(&local_filter),
+                ));
+                self.prepare_active_tile_buffers();
+                for bounds in self
+                    .active_tiles
+                    .as_ref()
+                    .unwrap()
+                    .coalesced_rects(self.size)
+                {
+                    self.clear_render_region(commands, source, bounds, 0);
+                }
+                Some(output_update)
+            } else {
+                self.scratch_in_use[0] = true;
+                self.clear_render_target(commands, source, 0);
+                None
+            };
         if !self.scan_and_cumsum(commands, &local.canvas) {
             self.restore_root_scene_resources(saved);
             return false;
         }
         let mut local_filter_cursors = WgpuFilterCursors::default();
-        let ok = self.execute_ops(
+        let mut ok = self.execute_ops(
             commands,
             &local.canvas,
             &local.plan,
             &local.children,
             source,
             &mut local_filter_cursors,
-        ) && self.apply_filter(
-            commands,
-            source,
-            local_bounds,
-            &local_filter,
-            None,
-            &mut local_filter_cursors,
         );
+        if let Some(output_update) = partial_output {
+            let process_bounds = output_update
+                .outset(filter_model::filter_dependency_outset(&local_filter))
+                .intersect(local_bounds);
+            let Some(temp) = self.acquire_scratch() else {
+                self.restore_root_scene_resources(saved);
+                return false;
+            };
+            ok = ok
+                && self.copy_region_to_target(commands, source, temp, process_bounds)
+                && self.apply_filter(
+                    commands,
+                    temp,
+                    process_bounds,
+                    &local_filter,
+                    None,
+                    &mut local_filter_cursors,
+                )
+                && self.copy_region_to_target(commands, temp, filtered, output_update);
+            self.release_scratch(temp);
+        } else {
+            if cache_surface {
+                self.scratch_in_use[1] = true;
+                ok = ok && self.copy_region_to_target(commands, source, filtered, local_bounds);
+            }
+            ok = ok
+                && self.apply_filter(
+                    commands,
+                    source,
+                    local_bounds,
+                    &local_filter,
+                    None,
+                    &mut local_filter_cursors,
+                );
+        }
 
-        let mut local_scratch = std::mem::take(&mut self.scratch);
-        let source_buffer = local_scratch.remove(0);
+        let rerendered_local_tiles = self
+            .active_tiles
+            .as_ref()
+            .map_or_else(|| tile_count_for_bounds(local_bounds), DamageTiles::len);
+        let (source_buffer, source_history) = if cache_surface {
+            if partial_output.is_some() {
+                (
+                    self.take_scratch_target(filtered).unwrap(),
+                    Some(self.take_scratch_target(source).unwrap()),
+                )
+            } else {
+                (
+                    self.take_scratch_target(source).unwrap(),
+                    Some(self.take_scratch_target(filtered).unwrap()),
+                )
+            }
+        } else {
+            let mut local_scratch = std::mem::take(&mut self.scratch);
+            (local_scratch.remove(0), None)
+        };
         self.scratch_in_use.clear();
         self.restore_root_scene_resources(saved);
-        ok && self.composite_surface_src_over_with_stack(
-            commands,
-            target,
-            &source_buffer,
-            (
-                filter_bounds.surface.width(),
-                filter_bounds.surface.height(),
-            ),
-            (filter_bounds.surface.x0, filter_bounds.surface.y0),
-            filter_bounds.output,
-            outer_stack,
-        )
+        if retained_id.is_some() {
+            self.incremental_stats.rerendered_offscreen_surfaces += 1;
+            self.incremental_stats.rerendered_offscreen_tiles += rerendered_local_tiles;
+        }
+        let ok = ok
+            && self.composite_cached_filter_surface(
+                commands,
+                target,
+                &source_buffer,
+                surface_size,
+                surface_origin,
+                filter_bounds.output,
+                outer_stack,
+            );
+        self.cache_retained_surface(retained_id, meta, source_buffer, source_history, None);
+        ok
     }
 
     #[allow(clippy::too_many_arguments)]
     fn execute_backdrop_layer(
         &mut self,
         commands: &mut WgpuCommandBatch,
+        retained_id: Option<crate::canvas::RetainedSurfaceId>,
         canvas: &Canvas,
         plan: &ExecPlan,
         filter: &Filter,
@@ -1365,8 +1985,58 @@ impl Renderer {
             return true;
         }
         let path_index = filter_cursors.next_path_index(sample_region);
+        let meta = retained_id.and_then(|id| {
+            self.retained_surface_meta(
+                id,
+                RetainedSurfaceKind::Backdrop,
+                self.size,
+                self.surface_origin,
+                bounds,
+            )
+        });
+        let mut cached = self.take_matching_retained_surface(retained_id, meta);
+        if !self.retained_surface_is_dirty(bounds)
+            && let Some((id, surface)) = cached.take()
+        {
+            let ok = self.composite_cached_backdrop(
+                commands,
+                target,
+                &surface.primary,
+                surface.secondary.as_ref(),
+                bounds,
+                sample_region,
+                outer_stack.clone(),
+            );
+            self.incremental_stats.reused_offscreen_surfaces += 1;
+            self.retained_surfaces.insert(
+                id,
+                surface.meta,
+                surface.primary,
+                surface.secondary,
+                surface.backdrop_source,
+            );
+            filter_cursors.advance_filter(filter);
+            return ok
+                && self.execute_ops(commands, canvas, plan, children, target, filter_cursors);
+        }
+        let partial = cached.as_ref().is_some_and(|(_, surface)| {
+            surface.backdrop_source.is_some()
+                && matches!(
+                    filter,
+                    Filter::Blur { sampling, .. } if sampling.factor() == 1
+                )
+        });
+        if retained_id.is_some() {
+            self.incremental_stats.rerendered_offscreen_surfaces += 1;
+            self.incremental_stats.rerendered_offscreen_tiles += if partial {
+                self.active_tile_count(bounds)
+            } else {
+                tile_count_for_bounds(bounds)
+            };
+        }
 
-        if outer_stack.is_empty()
+        if retained_id.is_none()
+            && outer_stack.is_empty()
             && let Filter::Blur {
                 std_dev_x,
                 std_dev_y,
@@ -1385,7 +2055,8 @@ impl Renderer {
             return self.execute_ops(commands, canvas, plan, children, target, filter_cursors);
         }
 
-        if outer_stack.is_empty()
+        if retained_id.is_none()
+            && outer_stack.is_empty()
             && let Filter::RectLiquidGlass(glass) = filter
             && self.apply_downsampled_liquid_glass_rect_composite(
                 commands,
@@ -1398,71 +2069,184 @@ impl Renderer {
             return self.execute_ops(commands, canvas, plan, children, target, filter_cursors);
         }
 
-        let Some(backdrop) = self.acquire_scratch() else {
-            return false;
+        let cache_surface = retained_id.is_some() && meta.is_some();
+        let (backdrop, cached_mask, cached_source) = if let Some((_, mut surface)) = cached {
+            let Some(backdrop) = self.acquire_scratch() else {
+                return false;
+            };
+            self.install_scratch_render_target(backdrop, surface.primary);
+            (
+                backdrop,
+                surface.secondary.take(),
+                surface.backdrop_source.take(),
+            )
+        } else {
+            let Some(backdrop) = self.acquire_scratch() else {
+                return false;
+            };
+            (backdrop, None, None)
         };
-        let filter_ok = match filter {
-            Filter::Blur {
+
+        // A retained root texture stores the final previous frame. Clean tiles
+        // therefore contain this backdrop and any later foreground content,
+        // not the painter-order input the filter must sample. Preserve that
+        // pre-backdrop input separately and update it only from dirty tiles
+        // after earlier draw operations have been replayed.
+        let source_history = if cache_surface {
+            let Some(source) = self.acquire_scratch() else {
+                self.release_scratch(backdrop);
+                return false;
+            };
+            let source_updates = if cached_source.is_some() {
+                self.active_bounds(bounds)
+            } else {
+                vec![bounds]
+            };
+            if let Some(cached_source) = cached_source {
+                self.install_scratch_render_target(source, cached_source);
+            }
+            let source_ok = source_updates
+                .into_iter()
+                .all(|bounds| self.copy_region_to_target(commands, target, source, bounds));
+            if !source_ok {
+                self.release_scratch(source);
+                self.release_scratch(backdrop);
+                return false;
+            }
+            Some(source)
+        } else {
+            None
+        };
+        let filter_source = source_history.unwrap_or(target);
+        let filter_ok = if partial {
+            let output = self
+                .active_bounds_union()
+                .unwrap_or(bounds)
+                .intersect(bounds);
+            let Filter::Blur {
                 std_dev_x,
                 std_dev_y,
-                sampling,
-            } => self.apply_blur_from_source(
-                commands, target, backdrop, bounds, *std_dev_x, *std_dev_y, *sampling,
-            ),
-            _ => {
-                self.copy_region_to_target(commands, target, backdrop, bounds)
-                    && self.apply_filter(
-                        commands,
-                        backdrop,
-                        bounds,
-                        filter,
-                        Some(sample_region),
-                        filter_cursors,
-                    )
+                ..
+            } = filter
+            else {
+                unreachable!("only full-resolution blur supports partial backdrop updates")
+            };
+            filter_cursors.advance_filter(filter);
+            self.apply_blur_from_source_partial(
+                commands,
+                filter_source,
+                backdrop,
+                output,
+                bounds,
+                *std_dev_x,
+                *std_dev_y,
+            )
+        } else {
+            match filter {
+                Filter::Blur {
+                    std_dev_x,
+                    std_dev_y,
+                    sampling,
+                } => self.apply_blur_from_source(
+                    commands,
+                    filter_source,
+                    backdrop,
+                    bounds,
+                    *std_dev_x,
+                    *std_dev_y,
+                    *sampling,
+                ),
+                _ => {
+                    self.copy_region_to_target(commands, filter_source, backdrop, bounds)
+                        && self.apply_filter(
+                            commands,
+                            backdrop,
+                            bounds,
+                            filter,
+                            Some(sample_region),
+                            filter_cursors,
+                        )
+                }
             }
         };
         if !filter_ok {
+            if let Some(source) = source_history {
+                self.release_scratch(source);
+            }
             self.release_scratch(backdrop);
             return false;
         }
 
+        let mut retained_mask = None;
         let ok = if outer_stack.is_empty() {
-            self.composite_src_over_rect_mask_direct(
-                commands,
-                target,
-                backdrop,
-                bounds,
-                sample_region,
-            )
+            self.active_bounds(bounds).into_iter().all(|bounds| {
+                self.composite_src_over_rect_mask_direct(
+                    commands,
+                    target,
+                    backdrop,
+                    bounds,
+                    sample_region,
+                )
+            })
         } else {
-            false
-        };
-        let ok = if ok {
-            true
-        } else {
-            let Some(mask) = self.acquire_scratch() else {
-                self.release_scratch(backdrop);
-                return false;
+            let mask = if let Some(mask) = cached_mask {
+                let Some(mask_target) = self.acquire_scratch() else {
+                    if let Some(source) = source_history {
+                        self.release_scratch(source);
+                    }
+                    self.release_scratch(backdrop);
+                    return false;
+                };
+                self.install_scratch_render_target(mask_target, mask);
+                mask_target
+            } else {
+                let Some(mask) = self.acquire_scratch() else {
+                    if let Some(source) = source_history {
+                        self.release_scratch(source);
+                    }
+                    self.release_scratch(backdrop);
+                    return false;
+                };
+                if !self.build_region_mask(commands, mask, sample_region, path_index, bounds) {
+                    self.release_scratch(mask);
+                    if let Some(source) = source_history {
+                        self.release_scratch(source);
+                    }
+                    self.release_scratch(backdrop);
+                    return false;
+                }
+                mask
             };
-            let mask_ok = self.build_region_mask(commands, mask, sample_region, path_index, bounds);
-            if !mask_ok {
-                self.release_scratch(mask);
-                self.release_scratch(backdrop);
-                return false;
-            }
 
-            let ok = self.composite_src_over_with_stack(
-                commands,
-                target,
-                backdrop,
-                Some(mask),
-                bounds,
-                outer_stack,
-            );
-            self.release_scratch(mask);
+            let ok = self.active_bounds(bounds).into_iter().all(|bounds| {
+                self.composite_src_over_with_stack(
+                    commands,
+                    target,
+                    backdrop,
+                    Some(mask),
+                    bounds,
+                    outer_stack.clone(),
+                )
+            });
+            retained_mask = Some(mask);
             ok
         };
-        self.release_scratch(backdrop);
+        if cache_surface {
+            let backdrop = self.take_scratch_target(backdrop);
+            let mask = retained_mask.and_then(|mask| self.take_scratch_target(mask));
+            let source = source_history.and_then(|source| self.take_scratch_target(source));
+            if let (Some(backdrop), Some(source)) = (backdrop, source) {
+                self.cache_retained_surface(retained_id, meta, backdrop, mask, Some(source));
+            }
+        } else {
+            if let Some(mask) = retained_mask {
+                self.release_scratch(mask);
+            }
+            if let Some(source) = source_history {
+                self.release_scratch(source);
+            }
+            self.release_scratch(backdrop);
+        }
         ok && self.execute_ops(commands, canvas, plan, children, target, filter_cursors)
     }
 
@@ -1470,6 +2254,7 @@ impl Renderer {
     fn execute_mask_layer(
         &mut self,
         commands: &mut WgpuCommandBatch,
+        retained_id: Option<crate::canvas::RetainedSurfaceId>,
         canvas: &Canvas,
         plan: &ExecPlan,
         layer: &crate::shared::layer::mask::Mask,
@@ -1486,11 +2271,90 @@ impl Renderer {
             return true;
         }
         let path_index = filter_cursors.next_path_index(&layer.region);
+        let meta = retained_id.and_then(|id| {
+            self.retained_surface_meta(
+                id,
+                RetainedSurfaceKind::Mask,
+                self.size,
+                self.surface_origin,
+                bounds,
+            )
+        });
+        let mut cached = self.take_matching_retained_surface(retained_id, meta);
+        if !self.retained_surface_is_dirty(bounds)
+            && let Some((id, surface)) = cached.take()
+        {
+            let ok = self.composite_cached_group(
+                commands,
+                target,
+                &surface.primary,
+                surface.secondary.as_ref(),
+                bounds,
+                outer_stack,
+                None,
+            );
+            self.incremental_stats.reused_offscreen_surfaces += 1;
+            self.retained_surfaces.insert(
+                id,
+                surface.meta,
+                surface.primary,
+                surface.secondary,
+                surface.backdrop_source,
+            );
+            filter_cursors.advance_ops(content);
+            filter_cursors.advance_ops(mask_ops);
+            return ok;
+        }
+        let partial = cached
+            .as_ref()
+            .is_some_and(|(_, surface)| surface.secondary.is_some());
+        if retained_id.is_some() {
+            self.incremental_stats.rerendered_offscreen_surfaces += 1;
+            self.incremental_stats.rerendered_offscreen_tiles += if partial {
+                self.active_tile_count(bounds)
+            } else {
+                tile_count_for_bounds(bounds)
+            };
+        }
 
-        let Some(content_target) =
-            self.render_ops_to_scratch(commands, canvas, plan, content, filter_cursors)
-        else {
-            return false;
+        let (content_target, cached_mask) = if let Some((_, mut surface)) = cached {
+            let Some(content_target) = self.acquire_scratch() else {
+                return false;
+            };
+            self.install_scratch_render_target(content_target, surface.primary);
+            for update in self.active_bounds(bounds) {
+                self.clear_render_region(commands, content_target, update, 0);
+            }
+            if !self.execute_ops(
+                commands,
+                canvas,
+                plan,
+                content,
+                content_target,
+                filter_cursors,
+            ) {
+                self.release_scratch(content_target);
+                return false;
+            }
+            let Some(mask) = self.acquire_scratch() else {
+                self.release_scratch(content_target);
+                return false;
+            };
+            self.install_scratch_render_target(
+                mask,
+                surface
+                    .secondary
+                    .take()
+                    .expect("mask cache has retained mask coverage"),
+            );
+            (content_target, Some(mask))
+        } else {
+            let Some(content_target) =
+                self.render_ops_to_scratch(commands, canvas, plan, content, filter_cursors)
+            else {
+                return false;
+            };
+            (content_target, None)
         };
         let Some(mask_source) =
             self.render_ops_to_scratch(commands, canvas, plan, mask_ops, filter_cursors)
@@ -1499,12 +2363,19 @@ impl Renderer {
             return false;
         };
 
-        let Some(mask) = self.acquire_scratch() else {
-            self.release_scratch(mask_source);
-            self.release_scratch(content_target);
-            return false;
+        let mask = if let Some(mask) = cached_mask {
+            mask
+        } else {
+            let Some(mask) = self.acquire_scratch() else {
+                self.release_scratch(mask_source);
+                self.release_scratch(content_target);
+                return false;
+            };
+            mask
         };
-        self.svg_mask_coverage(commands, mask_source, mask, bounds, layer.kind);
+        for update in self.active_bounds(bounds) {
+            self.svg_mask_coverage(commands, mask_source, mask, update, layer.kind);
+        }
         self.release_scratch(mask_source);
 
         let Some(region_mask) = self.acquire_scratch() else {
@@ -1512,11 +2383,12 @@ impl Renderer {
             self.release_scratch(content_target);
             return false;
         };
-        let region_ok =
-            self.build_region_mask(commands, region_mask, &layer.region, path_index, bounds);
-        if region_ok {
-            self.apply_region_mask(commands, region_mask, mask, bounds);
-        }
+        let region_ok = self.active_bounds(bounds).into_iter().all(|update| {
+            self.build_region_mask(commands, region_mask, &layer.region, path_index, update) && {
+                self.apply_region_mask(commands, region_mask, mask, update);
+                true
+            }
+        });
         self.release_scratch(region_mask);
         if !region_ok {
             self.release_scratch(mask);
@@ -1524,16 +2396,25 @@ impl Renderer {
             return false;
         }
 
-        let ok = self.composite_src_over_with_stack(
+        let ok = self.composite_group_targets(
             commands,
             target,
             content_target,
-            Some(mask),
+            mask,
             bounds,
             outer_stack,
+            None,
         );
-        self.release_scratch(mask);
-        self.release_scratch(content_target);
+        if retained_id.is_some() && meta.is_some() {
+            let content = self.take_scratch_target(content_target);
+            let mask = self.take_scratch_target(mask);
+            if let (Some(content), Some(mask)) = (content, mask) {
+                self.cache_retained_surface(retained_id, meta, content, Some(mask), None);
+            }
+        } else {
+            self.release_scratch(mask);
+            self.release_scratch(content_target);
+        }
         ok
     }
 
@@ -1674,6 +2555,114 @@ impl Renderer {
         true
     }
 
+    fn active_bounds(&self, bounds: Bounds) -> Vec<Bounds> {
+        match &self.active_tiles {
+            Some(active) => active
+                .coalesced_rects(self.size)
+                .into_iter()
+                .map(|damage| damage.intersect(bounds))
+                .filter(|bounds| !bounds.is_empty())
+                .collect(),
+            None => vec![bounds],
+        }
+    }
+
+    fn active_tile_count(&self, bounds: Bounds) -> u32 {
+        self.active_tiles.as_ref().map_or_else(
+            || tile_count_for_bounds(bounds),
+            |tiles| tiles.count_in_bounds(bounds),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn composite_group_targets(
+        &self,
+        commands: &mut WgpuCommandBatch,
+        target: WgpuRenderTargetId,
+        source: WgpuRenderTargetId,
+        mask: WgpuRenderTargetId,
+        bounds: Bounds,
+        layer_stack: std::ops::Range<usize>,
+        blend: Option<peniko::BlendMode>,
+    ) -> bool {
+        self.active_bounds(bounds).into_iter().all(|bounds| {
+            if let Some(mode) = blend {
+                self.composite_blend_with_stack(
+                    commands,
+                    target,
+                    source,
+                    mask,
+                    bounds,
+                    layer_stack.clone(),
+                    mode,
+                )
+            } else {
+                self.composite_src_over_with_stack(
+                    commands,
+                    target,
+                    source,
+                    Some(mask),
+                    bounds,
+                    layer_stack.clone(),
+                )
+            }
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn composite_cached_group(
+        &self,
+        commands: &mut WgpuCommandBatch,
+        target: WgpuRenderTargetId,
+        source: &WgpuTarget,
+        mask: Option<&WgpuTarget>,
+        bounds: Bounds,
+        layer_stack: std::ops::Range<usize>,
+        blend: Option<peniko::BlendMode>,
+    ) -> bool {
+        let Some(filter) = &self.filter else {
+            return false;
+        };
+        let Some(mask) = mask else {
+            return false;
+        };
+        let bindings = self.scene_buffers.filter_bindings(&self.scan);
+        self.active_bounds(bounds).into_iter().all(|bounds| {
+            let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+                return false;
+            };
+            if let Some(mode) = blend {
+                filter.composite_blend_with_stack(
+                    commands,
+                    self.render_target_view(target),
+                    target_read,
+                    source.view(),
+                    mask.view(),
+                    self.size,
+                    self.lengths,
+                    &bindings,
+                    bounds,
+                    layer_stack.clone(),
+                    mode,
+                );
+            } else {
+                filter.composite_src_over_with_stack(
+                    commands,
+                    self.render_target_view(target),
+                    target_read,
+                    source.view(),
+                    Some(mask.view()),
+                    self.size,
+                    self.lengths,
+                    &bindings,
+                    bounds,
+                    layer_stack.clone(),
+                );
+            }
+            true
+        })
+    }
+
     fn composite_src_over_rect_mask_direct(
         &self,
         commands: &mut WgpuCommandBatch,
@@ -1698,6 +2687,47 @@ impl Renderer {
             bounds,
             region,
         )
+    }
+
+    fn composite_cached_backdrop(
+        &self,
+        commands: &mut WgpuCommandBatch,
+        target: WgpuRenderTargetId,
+        source: &WgpuTarget,
+        mask: Option<&WgpuTarget>,
+        bounds: Bounds,
+        region: &crate::shared::layer::region::Region,
+        layer_stack: std::ops::Range<usize>,
+    ) -> bool {
+        if !layer_stack.is_empty() {
+            return self.composite_cached_group(
+                commands,
+                target,
+                source,
+                mask,
+                bounds,
+                layer_stack,
+                None,
+            );
+        }
+        let Some(filter) = &self.filter else {
+            return false;
+        };
+        self.active_bounds(bounds).into_iter().all(|bounds| {
+            let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+                return false;
+            };
+            filter.composite_src_over_rect_mask_direct(
+                commands,
+                self.render_target_view(target),
+                target_read,
+                source.view(),
+                self.size,
+                self.lengths,
+                bounds,
+                region,
+            )
+        })
     }
 
     fn composite_blend_with_stack(
@@ -1766,6 +2796,30 @@ impl Renderer {
         true
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn composite_cached_filter_surface(
+        &self,
+        commands: &mut WgpuCommandBatch,
+        target: WgpuRenderTargetId,
+        source: &WgpuTarget,
+        source_size: (u32, u32),
+        source_origin: (i32, i32),
+        bounds: Bounds,
+        layer_stack: std::ops::Range<usize>,
+    ) -> bool {
+        self.active_bounds(bounds).into_iter().all(|bounds| {
+            self.composite_surface_src_over_with_stack(
+                commands,
+                target,
+                source,
+                source_size,
+                source_origin,
+                bounds,
+                layer_stack.clone(),
+            )
+        })
+    }
+
     fn acquire_scratch(&mut self) -> Option<WgpuRenderTargetId> {
         for (ix, in_use) in self.scratch_in_use.iter_mut().enumerate() {
             if !*in_use {
@@ -1781,6 +2835,36 @@ impl Renderer {
             return;
         };
         self.scratch_in_use[ix] = false;
+    }
+
+    fn take_scratch_target(&mut self, target: WgpuRenderTargetId) -> Option<WgpuTarget> {
+        let WgpuRenderTargetId::Scratch(ix) = target else {
+            return None;
+        };
+        let replacement = WgpuTarget::new(&self.device, self.size.0, self.size.1);
+        self.scratch_in_use[ix] = false;
+        Some(std::mem::replace(&mut self.scratch[ix], replacement))
+    }
+
+    fn install_scratch_target(&mut self, index: usize, target: WgpuTarget) {
+        debug_assert_eq!(target.size(), self.size);
+        self.scratch[index] = target;
+        self.scratch_in_use[index] = true;
+    }
+
+    fn install_scratch_render_target(&mut self, target_id: WgpuRenderTargetId, target: WgpuTarget) {
+        let WgpuRenderTargetId::Scratch(index) = target_id else {
+            unreachable!("retained surfaces can only occupy scratch targets")
+        };
+        self.install_scratch_target(index, target);
+    }
+
+    fn active_bounds_union(&self) -> Option<Bounds> {
+        self.active_tiles
+            .as_ref()?
+            .coalesced_rects(self.size)
+            .into_iter()
+            .reduce(Bounds::union)
     }
 
     fn render_target_view(&self, target: WgpuRenderTargetId) -> &::wgpu::TextureView {
@@ -1853,12 +2937,10 @@ impl Renderer {
         font_system: &mut TextFontSystem,
         text_context: &mut TextContext,
     ) {
-        self.prepare_scene_with_text(canvas, font_system, text_context);
         assert!(
-            self.render_prepared_tile_plan(canvas),
+            self.render_native_with_text(canvas, font_system, text_context),
             "wgpu renderer could not render text scene natively"
         );
-        self.size = (canvas.physical_width(), canvas.physical_height());
     }
 
     pub fn render_with_options(
@@ -1866,15 +2948,25 @@ impl Renderer {
         canvas: &Canvas,
         options: &RenderOptions,
     ) -> RenderDebugCapture {
-        self.prepare_scene(canvas);
-        let rendered_native = self.render_prepared_tile_plan(canvas);
+        let mode = self.incremental_config.mode;
+        self.incremental_config.mode = super::incremental::IncrementalRenderMode::ForceFull;
+        let selected = self.select_scene(canvas);
+        let frame = selected.frame();
+        let retained_ptr = selected.retained_ptr();
+        let scene = selected.scene();
+        let plan = self.begin_incremental_frame(frame, scene);
+        self.prepare_scene(scene);
+        self.mark_scene_prepared(retained_ptr, false);
+        let rendered_native = self.render_prepared_tile_plan(scene);
+        self.finish_incremental_frame(plan, rendered_native);
+        self.incremental_config.mode = mode;
         if rendered_native {
-            self.size = (canvas.physical_width(), canvas.physical_height());
+            self.size = scene.physical_size();
             let image = self.image();
             let debug = self.read_debug_scan_buffers();
             return capture_render_debug(
                 "wgpu",
-                canvas,
+                scene,
                 &image,
                 DebugScanBuffers {
                     backdrops: &debug.backdrops,
@@ -2019,7 +3111,7 @@ impl Renderer {
         canvas: &Canvas,
         dst: &::wgpu::Texture,
     ) -> Result<(), WgpuTextureRenderError> {
-        self.render_native_to_wgpu_texture_with_prepare(canvas, dst, |renderer, canvas| {
+        self.render_native_to_wgpu_texture_with_prepare(canvas, dst, false, |renderer, canvas| {
             renderer.prepare_scene(canvas);
         })
     }
@@ -2031,7 +3123,7 @@ impl Renderer {
         text_context: &mut TextContext,
         dst: &::wgpu::Texture,
     ) -> Result<(), WgpuTextureRenderError> {
-        self.render_native_to_wgpu_texture_with_prepare(canvas, dst, |renderer, canvas| {
+        self.render_native_to_wgpu_texture_with_prepare(canvas, dst, true, |renderer, canvas| {
             renderer.prepare_scene_with_text(canvas, font_system, text_context);
         })
     }
@@ -2040,6 +3132,7 @@ impl Renderer {
         &mut self,
         canvas: &Canvas,
         dst: &::wgpu::Texture,
+        uses_text: bool,
         prepare: impl FnOnce(&mut Self, &Canvas),
     ) -> Result<(), WgpuTextureRenderError> {
         self.validate_wgpu_storage_texture_destination(
@@ -2047,17 +3140,47 @@ impl Renderer {
             canvas.physical_width(),
             canvas.physical_height(),
         )?;
-        self.root_target_texture = Some(dst.clone());
-        self.root_target_view = Some(dst.create_view(&::wgpu::TextureViewDescriptor::default()));
-        prepare(self, canvas);
-        let rendered = self.render_prepared_tile_plan(canvas);
+        let selected = self.select_scene(canvas);
+        let frame = selected.frame();
+        let retained_ptr = selected.retained_ptr();
+        let is_retained = frame.is_some();
+        if is_retained && !dst.usage().contains(::wgpu::TextureUsages::COPY_DST) {
+            return Err(WgpuTextureRenderError::DestinationUsageMissing(dst.usage()));
+        }
+        if !is_retained {
+            self.root_target_texture = Some(dst.clone());
+            self.root_target_view =
+                Some(dst.create_view(&::wgpu::TextureViewDescriptor::default()));
+        }
+        let scene = selected.scene();
+        let plan = self.begin_incremental_frame(frame, scene);
+        let has_work = !plan.tiles.is_empty();
+        if has_work && self.scene_needs_prepare(retained_ptr, uses_text) {
+            prepare(self, scene);
+            self.mark_scene_prepared(retained_ptr, uses_text);
+        }
+        let rendered = !has_work || self.render_prepared_tile_plan(scene);
         self.root_target_view = None;
         self.root_target_texture = None;
+        self.finish_incremental_frame(plan, rendered);
         if rendered {
-            self.size = (canvas.physical_width(), canvas.physical_height());
+            self.size = scene.physical_size();
+            if is_retained {
+                self.copy_history_to(dst);
+            }
             return Ok(());
         }
         panic!("wgpu renderer could not render scene natively")
+    }
+
+    fn copy_history_to(&self, dst: &::wgpu::Texture) {
+        let mut encoder = self
+            .device
+            .create_command_encoder(&::wgpu::CommandEncoderDescriptor {
+                label: Some("tileink retained history copy"),
+            });
+        copy_texture(&mut encoder, self.readback_target.texture(), dst, self.size);
+        self.queue.submit([encoder.finish()]);
     }
 
     fn validate_wgpu_storage_texture_destination(
@@ -2166,6 +3289,17 @@ fn rect_liquid_glass_region(
 fn draw_bounds(canvas: &Canvas, draw_ix: usize) -> Bounds {
     let bounds = canvas.draw_records[draw_ix].pixel_bounds;
     Bounds::new(bounds.x0, bounds.y0, bounds.x1, bounds.y1)
+}
+
+fn tile_count_for_bounds(bounds: Bounds) -> u32 {
+    if bounds.is_empty() {
+        return 0;
+    }
+    let width = (bounds.x1.max(0) as u32).div_ceil(crate::TILE_SIZE)
+        - (bounds.x0.max(0) as u32 / crate::TILE_SIZE);
+    let height = (bounds.y1.max(0) as u32).div_ceil(crate::TILE_SIZE)
+        - (bounds.y0.max(0) as u32 / crate::TILE_SIZE);
+    width.saturating_mul(height)
 }
 
 #[cfg(test)]
