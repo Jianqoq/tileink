@@ -712,15 +712,72 @@ fn diff_frames(
     let old_order = common_order(&previous.nodes, &common, &new);
     let new_order = common_order(&current.nodes, &common, &old);
     if old_order != new_order {
-        let new_rank = ranks(&new_order);
-        for (index, a) in old_order.iter().enumerate() {
-            for b in &old_order[index + 1..] {
-                if new_rank[a] > new_rank[b] {
-                    let a = old[a].bounds.union(new[a].bounds);
-                    let b = old[b].bounds.union(new[b].bounds);
-                    let bounds = a.intersect(b);
-                    damage.add_bounds(bounds);
-                    retained.add_unattributed(bounds);
+        damage_reordered_nodes(&old_order, &new_order, &old, &new, damage, retained);
+    }
+}
+
+/// Damages overlapping nodes whose painter order was inverted.
+///
+/// Reordering previously compared every common node pair, making even a reorder of disjoint
+/// components quadratic. Tile buckets restrict comparisons to spatial neighbors. The remaining
+/// worst case is intentionally output-sensitive: mutually overlapping reordered nodes can have
+/// O(n²) real inversions, but processing stops as soon as every output tile is already dirty.
+fn damage_reordered_nodes(
+    old_order: &[crate::RetainedNodeId],
+    new_order: &[crate::RetainedNodeId],
+    old: &HashMap<crate::RetainedNodeId, &RetainedNodeState>,
+    new: &HashMap<crate::RetainedNodeId, &RetainedNodeState>,
+    damage: &mut DamageTiles,
+    retained: &mut RetainedDamage,
+) {
+    let new_rank = ranks(new_order);
+    let influence = old_order
+        .iter()
+        .map(|id| old[id].bounds.union(new[id].bounds))
+        .collect::<Vec<_>>();
+    let mut buckets = vec![Vec::new(); damage.total_tiles() as usize];
+    let canvas = Bounds::canvas(
+        damage.tiles_width.saturating_mul(TILE_SIZE),
+        damage.tiles_height.saturating_mul(TILE_SIZE),
+    );
+    for (index, bounds) in influence.iter().enumerate() {
+        let bounds = bounds.intersect(canvas);
+        if bounds.is_empty() {
+            continue;
+        }
+        let x0 = bounds.x0.max(0) as u32 / TILE_SIZE;
+        let y0 = bounds.y0.max(0) as u32 / TILE_SIZE;
+        let x1 = (bounds.x1.max(0) as u32)
+            .div_ceil(TILE_SIZE)
+            .min(damage.tiles_width);
+        let y1 = (bounds.y1.max(0) as u32)
+            .div_ceil(TILE_SIZE)
+            .min(damage.tiles_height);
+        for y in y0..y1 {
+            for x in x0..x1 {
+                buckets[(y * damage.tiles_width + x) as usize].push(index);
+            }
+        }
+    }
+
+    let mut compared = HashSet::new();
+    for bucket in buckets {
+        if bucket
+            .windows(2)
+            .all(|pair| new_rank[&old_order[pair[0]]] < new_rank[&old_order[pair[1]]])
+        {
+            continue;
+        }
+        for (offset, &a) in bucket.iter().enumerate() {
+            for &b in &bucket[offset + 1..] {
+                if new_rank[&old_order[a]] < new_rank[&old_order[b]] || !compared.insert((a, b)) {
+                    continue;
+                }
+                let bounds = influence[a].intersect(influence[b]);
+                damage.add_bounds(bounds);
+                retained.add_unattributed(bounds);
+                if damage.len() == damage.total_tiles() {
+                    return;
                 }
             }
         }
@@ -883,6 +940,72 @@ mod tests {
         let mut damage = DamageTiles::new(new.physical_size);
         diff_frames(&old, &new, &mut damage, &mut RetainedDamage::default());
         assert!(damage.is_empty());
+    }
+
+    #[test]
+    fn spatial_reorder_matches_brute_force_for_every_ordering() {
+        let nodes = [
+            (2, 0, Bounds::new(-8, 0, 12, 24)),
+            (3, 0, Bounds::new(4, 8, 28, 32)),
+            (4, 0, Bounds::new(24, 0, 44, 20)),
+            (5, 0, Bounds::new(36, 12, 60, 36)),
+            (6, 0, Bounds::new(8, 28, 52, 52)),
+        ];
+        let previous = frame(&nodes);
+        let old_rank = previous
+            .nodes
+            .iter()
+            .enumerate()
+            .map(|(rank, node)| (node.id, rank))
+            .collect::<HashMap<_, _>>();
+        let bounds = previous
+            .nodes
+            .iter()
+            .map(|node| (node.id, node.bounds))
+            .collect::<HashMap<_, _>>();
+        let mut ids = nodes.map(|node| node.0);
+
+        for_each_permutation(&mut ids, 0, &mut |order| {
+            let current = frame(
+                &order
+                    .iter()
+                    .map(|id| (*id, 0, bounds[&RetainedNodeId::for_owner(*id)]))
+                    .collect::<Vec<_>>(),
+            );
+            let mut actual = DamageTiles::new(current.physical_size);
+            diff_frames(
+                &previous,
+                &current,
+                &mut actual,
+                &mut RetainedDamage::default(),
+            );
+
+            let mut expected = DamageTiles::new(current.physical_size);
+            for (new_rank_a, a) in current.nodes.iter().enumerate() {
+                for b in &current.nodes[new_rank_a + 1..] {
+                    if old_rank[&a.id] > old_rank[&b.id] {
+                        expected.add_bounds(a.bounds.intersect(b.bounds));
+                    }
+                }
+            }
+            let mut actual = actual.list().to_vec();
+            let mut expected = expected.list().to_vec();
+            actual.sort_unstable();
+            expected.sort_unstable();
+            assert_eq!(actual, expected, "order {order:?}");
+        });
+    }
+
+    fn for_each_permutation(values: &mut [u64], index: usize, visit: &mut dyn FnMut(&[u64])) {
+        if index == values.len() {
+            visit(values);
+            return;
+        }
+        for next in index..values.len() {
+            values.swap(index, next);
+            for_each_permutation(values, index + 1, visit);
+            values.swap(index, next);
+        }
     }
 
     #[test]
