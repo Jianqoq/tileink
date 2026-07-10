@@ -63,13 +63,21 @@ impl From<u64> for SceneRevision {
     }
 }
 
-/// Token proving which retained node must be closed next.
-#[derive(Debug)]
-pub struct RetainedNodeToken {
-    id: RetainedNodeId,
-    command_depth: usize,
-    layer_depth: usize,
-    retained_depth: usize,
+/// Stable identity and revision for a retained layer boundary.
+///
+/// A key belongs to the visual operation opened by `push_*_retained_layer`,
+/// not to a generic widget/container. This lets the renderer retain clips and
+/// offscreen surfaces without fragmenting ordinary draw batches.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct RetainedLayerKey {
+    pub id: RetainedNodeId,
+    pub revision: SceneRevision,
+}
+
+impl RetainedLayerKey {
+    pub const fn new(id: RetainedNodeId, revision: SceneRevision) -> Self {
+        Self { id, revision }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -87,7 +95,7 @@ impl RetainedSurfaceId {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RetainedNodeKind {
     Scene,
-    Scope,
+    Layer,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -98,7 +106,7 @@ pub(crate) struct RetainedNodeState {
     pub(crate) order: u32,
     pub(crate) kind: RetainedNodeKind,
     pub(crate) placement_bits: Option<(u64, u64)>,
-    /// Fingerprint of commands recorded directly in a retained scope.
+    /// Fingerprint of commands recorded directly in a retained layer.
     ///
     /// Revisions remain the fast, caller-controlled invalidation path for
     /// cached child scenes. This fingerprint is the safety net for direct
@@ -179,10 +187,8 @@ impl Canvas {
     ) {
         self.ensure_command_root();
         assert!(
-            scene.command_stack.len() == 1
-                && scene.layer_stack.is_empty()
-                && scene.retained_stack.is_empty(),
-            "cannot append a canvas with unclosed layers or retained nodes"
+            scene.command_stack.len() == 1 && scene.layer_stack.is_empty(),
+            "cannot append a canvas with unclosed layers"
         );
         assert!(
             (self.scale_factor - scene.scale_factor).abs() <= f32::EPSILON,
@@ -197,65 +203,6 @@ impl Canvas {
                 canvas: scene,
                 offset: (offset.dx, offset.dy),
             });
-    }
-
-    /// Opens a stable command subtree. The matching token enforces LIFO closure.
-    pub fn begin_retained_node(
-        &mut self,
-        id: RetainedNodeId,
-        revision: impl Into<SceneRevision>,
-    ) -> RetainedNodeToken {
-        self.ensure_command_root();
-        let children = self.push_child_command_list();
-        self.current_command_list_mut()
-            .commands
-            .push(Command::RetainedNode {
-                id,
-                revision: revision.into(),
-                children,
-            });
-        let token = RetainedNodeToken {
-            id,
-            command_depth: self.command_stack.len(),
-            layer_depth: self.layer_stack.len(),
-            retained_depth: self.retained_stack.len(),
-        };
-        self.command_stack.push(children);
-        self.retained_stack.push(id);
-        token
-    }
-
-    pub fn end_retained_node(&mut self, token: RetainedNodeToken) {
-        assert_eq!(
-            self.retained_stack.last(),
-            Some(&token.id),
-            "retained nodes must close in LIFO order"
-        );
-        assert_eq!(
-            self.layer_stack.len(),
-            token.layer_depth,
-            "retained node contains an unclosed layer"
-        );
-        assert_eq!(
-            self.command_stack.len(),
-            token.command_depth + 1,
-            "retained node command stack is unbalanced"
-        );
-        assert_eq!(self.retained_stack.len(), token.retained_depth + 1);
-        self.command_stack.pop();
-        self.retained_stack.pop();
-    }
-
-    pub fn with_retained_node<R>(
-        &mut self,
-        id: RetainedNodeId,
-        revision: impl Into<SceneRevision>,
-        render: impl FnOnce(&mut Canvas) -> R,
-    ) -> R {
-        let token = self.begin_retained_node(id, revision);
-        let result = render(self);
-        self.end_retained_node(token);
-        result
     }
 
     /// Adds caller-supplied damage in logical canvas coordinates.
@@ -342,13 +289,13 @@ impl Canvas {
                                 },
                             )
                             .expect("retained scene append creates a command list");
-                        materialized.command_lists[list_ix]
-                            .commands
-                            .push(Command::RetainedNode {
+                        materialized.command_lists[list_ix].commands.push(
+                            Command::MaterializedRetainedScene {
                                 id,
                                 revision,
                                 children,
-                            });
+                            },
+                        );
                     }
                     command => materialized.command_lists[list_ix].commands.push(command),
                 }
@@ -464,7 +411,7 @@ impl FrameCollector {
                     );
                     child_bounds
                 }
-                Command::RetainedNode {
+                Command::MaterializedRetainedScene {
                     id,
                     revision,
                     children,
@@ -474,26 +421,34 @@ impl FrameCollector {
                         *id,
                         *revision,
                         child.bounds,
-                        RetainedNodeKind::Scope,
+                        RetainedNodeKind::Scene,
                         None,
                         child.direct.finish(),
                     );
                     child.bounds
                 }
                 Command::Layer {
+                    retained,
                     draw,
                     layer,
                     children,
                 } => {
-                    if !inside_retained {
+                    let owns_identity = retained.is_some();
+                    if !inside_retained && !owns_identity {
                         self.complete = false;
                     }
                     let node_start = self.nodes.len();
-                    let child = self.visit_list(canvas, *children, inside_retained, offset);
-                    direct.add_tag(2);
-                    direct.add_debug(layer);
-                    direct.add_draw(canvas, *draw);
-                    direct.merge(child.direct);
+                    let child = self.visit_list(
+                        canvas,
+                        *children,
+                        inside_retained || owns_identity,
+                        offset,
+                    );
+                    let mut layer_fingerprint = ContentFingerprint::default();
+                    layer_fingerprint.add_tag(2);
+                    layer_fingerprint.add_debug(layer);
+                    layer_fingerprint.add_draw(canvas, *draw);
+                    layer_fingerprint.merge(child.direct);
                     let bounds = layer_bounds(canvas, *draw, layer, child.bounds, offset);
                     if matches!(layer, Layer::Clip | Layer::ClipSdf { .. }) {
                         let clip =
@@ -526,28 +481,58 @@ impl FrameCollector {
                             };
                         }
                     }
+                    if let Some(retained) = retained {
+                        self.push_node(
+                            retained.id,
+                            retained.revision,
+                            bounds,
+                            RetainedNodeKind::Layer,
+                            None,
+                            layer_fingerprint.finish(),
+                        );
+                    } else {
+                        direct.merge(layer_fingerprint);
+                    }
                     bounds
                 }
                 Command::MaskLayer {
+                    retained,
                     layer,
                     content,
                     mask,
                 } => {
-                    if !inside_retained {
+                    let owns_identity = retained.is_some();
+                    if !inside_retained && !owns_identity {
                         self.complete = false;
                     }
                     let node_start = self.nodes.len();
-                    let content = self.visit_list(canvas, *content, inside_retained, offset);
-                    let mask = self.visit_list(canvas, *mask, inside_retained, offset);
-                    direct.add_tag(3);
-                    direct.add_debug(layer);
-                    direct.merge(content.direct);
-                    direct.merge(mask.direct);
+                    let content =
+                        self.visit_list(canvas, *content, inside_retained || owns_identity, offset);
+                    let mask =
+                        self.visit_list(canvas, *mask, inside_retained || owns_identity, offset);
+                    let mut layer_fingerprint = ContentFingerprint::default();
+                    layer_fingerprint.add_tag(3);
+                    layer_fingerprint.add_debug(layer);
+                    layer_fingerprint.merge(content.direct);
+                    layer_fingerprint.merge(mask.direct);
                     let region = offset.bounds(region_bounds(&layer.region));
                     for node in &mut self.nodes[node_start..] {
                         node.bounds = node.bounds.intersect(region);
                     }
-                    content.bounds.intersect(region)
+                    let bounds = content.bounds.intersect(region);
+                    if let Some(retained) = retained {
+                        self.push_node(
+                            retained.id,
+                            retained.revision,
+                            bounds,
+                            RetainedNodeKind::Layer,
+                            None,
+                            layer_fingerprint.finish(),
+                        );
+                    } else {
+                        direct.merge(layer_fingerprint);
+                    }
+                    bounds
                 }
             };
             bounds = bounds.union(command_bounds);
@@ -684,13 +669,14 @@ fn list_visual_bounds(canvas: &Canvas, list_id: usize, offset: SceneOffset) -> B
                     dy: offset.dy + child.1,
                 }
                 .bounds(canvas_visual_bounds(canvas)),
-                Command::RetainedNode { children, .. } => {
+                Command::MaterializedRetainedScene { children, .. } => {
                     list_visual_bounds(canvas, *children, offset)
                 }
                 Command::Layer {
                     draw,
                     layer,
                     children,
+                    ..
                 } => layer_bounds(
                     canvas,
                     *draw,
@@ -753,7 +739,7 @@ fn propagate_list_damage(canvas: &Canvas, list_id: usize, damage: &mut Vec<Bound
     for command in &canvas.command_lists[list_id].commands {
         match command {
             Command::Draw(_) | Command::RetainedScene { .. } => {}
-            Command::RetainedNode { children, .. } => {
+            Command::MaterializedRetainedScene { children, .. } => {
                 propagate_list_damage(canvas, *children, damage);
             }
             Command::Layer {
@@ -848,16 +834,80 @@ mod tests {
     }
 
     #[test]
-    fn direct_commands_are_fingerprinted_without_a_manual_revision() {
+    fn cached_scene_is_the_only_retained_node_for_a_drawable() {
+        let child = RetainedNodeId::for_owner(3);
+        let mut canvas = Canvas::new_retained(64, 64, 1.0, RetainedNodeId::for_owner(1));
+        canvas.append_retained_scene(child, 7, scene(Color::WHITE), (0.0, 0.0));
+
+        assert!(matches!(
+            canvas.command_lists[canvas.root_commands]
+                .commands
+                .as_slice(),
+            [Command::RetainedScene { id, .. }] if *id == child
+        ));
+        assert_eq!(
+            canvas.command_lists.len(),
+            1,
+            "a cached drawable must not create a wrapper command list"
+        );
+        let frame = canvas.retained_frame().expect("retained frame");
+        assert_eq!(
+            frame.nodes.iter().map(|node| node.id).collect::<Vec<_>>(),
+            vec![child]
+        );
+    }
+
+    #[test]
+    fn retained_layer_owns_direct_commands() {
+        let layer = RetainedNodeId::for_owner(2);
+        let mut canvas = Canvas::new_retained(64, 64, 1.0, RetainedNodeId::for_owner(1));
+        canvas.push_retained_clip_sdf_rect_layer(
+            RetainedLayerKey::new(layer, SceneRevision::INITIAL),
+            Rect::new(0.0, 0.0, 32.0, 32.0),
+            Radius::ZERO,
+        );
+        canvas.push_rect(Rect::new(4.0, 4.0, 20.0, 20.0), Radius::ZERO, Color::WHITE);
+        canvas.pop_layer();
+        let frame = canvas.retained_frame().expect("retained frame");
+        assert!(frame.complete);
+        assert_eq!(frame.nodes.len(), 1);
+        assert_eq!(frame.nodes[0].id, layer);
+        assert_eq!(frame.nodes[0].kind, RetainedNodeKind::Layer);
+        assert!(frame.nodes[0].direct_fingerprint.is_some());
+    }
+
+    #[test]
+    fn retained_layer_keeps_identity_for_layer_semantics() {
+        let layer = RetainedNodeId::for_owner(2);
+        let child = RetainedNodeId::for_owner(3);
+        let mut canvas = Canvas::new_retained(64, 64, 1.0, RetainedNodeId::for_owner(1));
+        canvas.push_retained_clip_sdf_rect_layer(
+            RetainedLayerKey::new(layer, SceneRevision::INITIAL),
+            Rect::new(0.0, 0.0, 32.0, 32.0),
+            Radius::ZERO,
+        );
+        canvas.append_retained_scene(child, 0, scene(Color::WHITE), (0.0, 0.0));
+        canvas.pop_layer();
+
+        let frame = canvas.retained_frame().expect("retained frame");
+        assert_eq!(
+            frame.nodes.iter().map(|node| node.id).collect::<Vec<_>>(),
+            vec![child, layer]
+        );
+        assert!(frame.nodes[1].direct_fingerprint.is_some());
+    }
+
+    #[test]
+    fn retained_layer_direct_commands_are_fingerprinted_without_a_manual_revision() {
         let build = |color| {
             let mut canvas = Canvas::new_retained(64, 64, 1.0, RetainedNodeId::for_owner(1));
-            canvas.with_retained_node(
-                RetainedNodeId::for_owner(2),
-                SceneRevision::INITIAL,
-                |node| {
-                    node.push_rect(Rect::new(4.0, 4.0, 20.0, 20.0), Radius::ZERO, color);
-                },
+            canvas.push_retained_clip_sdf_rect_layer(
+                RetainedLayerKey::new(RetainedNodeId::for_owner(2), SceneRevision::INITIAL),
+                Rect::new(0.0, 0.0, 32.0, 32.0),
+                Radius::ZERO,
             );
+            canvas.push_rect(Rect::new(4.0, 4.0, 20.0, 20.0), Radius::ZERO, color);
+            canvas.pop_layer();
             canvas.retained_frame().expect("retained frame")
         };
 
@@ -868,19 +918,6 @@ mod tests {
         assert_ne!(
             red.nodes[0].direct_fingerprint,
             green.nodes[0].direct_fingerprint
-        );
-    }
-
-    #[test]
-    fn retained_token_rejects_unclosed_layers() {
-        let mut canvas = Canvas::new_retained(64, 64, 1.0, RetainedNodeId::for_owner(1));
-        let token = canvas.begin_retained_node(RetainedNodeId::for_owner(2), 0);
-        canvas.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, 32.0, 32.0), Radius::ZERO);
-        assert!(
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                canvas.end_retained_node(token)
-            }))
-            .is_err()
         );
     }
 
@@ -900,11 +937,13 @@ mod tests {
         child.push_rect(Rect::new(0.0, 0.0, 64.0, 16.0), Radius::ZERO, Color::WHITE);
         let child_id = RetainedNodeId::for_owner(3);
         let mut canvas = Canvas::new_retained(64, 16, 1.0, RetainedNodeId::for_owner(1));
-        let token = canvas.begin_retained_node(RetainedNodeId::for_owner(2), 0);
-        canvas.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::ZERO);
+        canvas.push_retained_clip_sdf_rect_layer(
+            RetainedLayerKey::new(RetainedNodeId::for_owner(2), SceneRevision::INITIAL),
+            Rect::new(0.0, 0.0, 16.0, 16.0),
+            Radius::ZERO,
+        );
         canvas.append_retained_scene(child_id, 0, Arc::new(child), (0.0, 0.0));
         canvas.pop_layer();
-        canvas.end_retained_node(token);
 
         let frame = canvas.retained_frame().expect("retained frame");
         assert_eq!(
@@ -922,8 +961,8 @@ mod tests {
     fn filter_maps_off_canvas_source_changes_back_into_visible_bounds() {
         let child_id = RetainedNodeId::for_owner(3);
         let mut canvas = Canvas::new_retained(64, 64, 1.0, RetainedNodeId::for_owner(1));
-        let token = canvas.begin_retained_node(RetainedNodeId::for_owner(2), 0);
-        canvas.push_filter_layer(
+        canvas.push_retained_filter_layer(
+            RetainedLayerKey::new(RetainedNodeId::for_owner(2), SceneRevision::INITIAL),
             Filter::Blur {
                 std_dev_x: 4.0,
                 std_dev_y: 4.0,
@@ -933,7 +972,6 @@ mod tests {
         );
         canvas.append_retained_scene(child_id, 0, scene(Color::WHITE), (40.0, 52.0));
         canvas.pop_layer();
-        canvas.end_retained_node(token);
 
         let frame = canvas.retained_frame().expect("retained frame");
         let child = frame

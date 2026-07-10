@@ -7,8 +7,8 @@ use super::{Renderer, RendererOptions, WgpuRenderTargetId};
 use crate::wgpu::coarse::force_coarse_emit_chunks_for_test;
 use crate::wgpu::commands::WgpuCommandBatch;
 use crate::{
-    Canvas, FillRule, Image, ImageKey, PatternSampling, RetainedNodeId, TextContext,
-    TextFontSystem, TextLayoutOptions,
+    Canvas, FillRule, Image, ImageKey, PatternSampling, RetainedLayerKey, RetainedNodeId,
+    TextContext, TextFontSystem, TextLayoutOptions,
     debug::{RenderDebugOptions, RenderOptions},
     shared::{
         bounds::Bounds,
@@ -92,6 +92,51 @@ fn retained_renderer_updates_only_changed_tiles_and_matches_full_render() {
             );
         }
     }
+}
+
+#[test]
+fn retained_components_keep_only_cached_scene_nodes_and_match_full_render() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    fn frame(left_revision: u64, left_color: Color) -> Canvas {
+        let mut root = Canvas::new_retained(64, 32, 1.0, RetainedNodeId::for_owner(400));
+        for (owner, revision, x, color) in [
+            (401, left_revision, 0.0, left_color),
+            (402, 0, 32.0, Color::from_rgb8(20, 40, 220)),
+        ] {
+            let mut child = Canvas::new(16, 16, 1.0);
+            child.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
+            root.append_retained_scene(
+                RetainedNodeId::new(owner, 1),
+                revision,
+                std::sync::Arc::new(child),
+                (x, 0.0),
+            );
+        }
+        root
+    }
+
+    let first = frame(0, Color::from_rgb8(220, 40, 20));
+    let second = frame(1, Color::from_rgb8(20, 220, 40));
+    let mut incremental = new_test_renderer(64, 32, Color::TRANSPARENT);
+    incremental.render(&first);
+    incremental.render(&second);
+    let stats = incremental.incremental_render_stats();
+    assert_eq!(
+        stats.retained_nodes, 2,
+        "cached drawables must not gain generic component nodes"
+    );
+    assert_eq!(stats.dirty_tiles, 1);
+    assert_eq!(stats.root_draw_batches, 1);
+
+    let mut full = new_test_renderer(64, 32, Color::TRANSPARENT);
+    let mut config = full.incremental_render_config();
+    config.mode = crate::IncrementalRenderMode::ForceFull;
+    full.set_incremental_render_config(config);
+    full.render(&second);
+    assert_eq!(incremental.image().pixels, full.image().pixels);
 }
 
 #[test]
@@ -223,11 +268,11 @@ fn retained_direct_commands_change_and_disappear_without_manual_damage() {
     let node = RetainedNodeId::for_owner(81);
     let frame = |color: Option<Color>| {
         let mut canvas = Canvas::new_retained(32, 16, 1.0, root);
-        canvas.with_retained_node(node, 0, |scope| {
-            if let Some(color) = color {
-                scope.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
-            }
-        });
+        if let Some(color) = color {
+            let mut child = Canvas::new(16, 16, 1.0);
+            child.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
+            canvas.append_retained_scene(node, 0, std::sync::Arc::new(child), (0.0, 0.0));
+        }
         canvas
     };
     let red = frame(Some(Color::from_rgb8(220, 30, 40)));
@@ -653,8 +698,8 @@ fn retained_filter_updates_local_dirty_tiles_and_matches_full_render() {
         content.push_rect(Rect::new(2.0, 2.0, 18.0, 18.0), crate::Radius::ZERO, color);
 
         let mut canvas = Canvas::new_retained(160, 96, 1.0, root);
-        let token = canvas.begin_retained_node(filter_node, 0);
-        canvas.push_filter_layer(
+        canvas.push_retained_filter_layer(
+            RetainedLayerKey::new(filter_node, crate::SceneRevision::INITIAL),
             Filter::Blur {
                 std_dev_x: 2.0,
                 std_dev_y: 2.0,
@@ -669,7 +714,6 @@ fn retained_filter_updates_local_dirty_tiles_and_matches_full_render() {
             (40.0, 24.0),
         );
         canvas.pop_layer();
-        canvas.end_retained_node(token);
         canvas
     }
 
@@ -723,8 +767,8 @@ fn retained_backdrop_blur_updates_local_tiles_and_matches_full_render() {
             std::sync::Arc::new(marker),
             (48.0, 32.0),
         );
-        let token = canvas.begin_retained_node(RetainedNodeId::for_owner(33), 0);
-        canvas.push_backdrop_layer(
+        canvas.push_retained_backdrop_layer(
+            RetainedLayerKey::new(RetainedNodeId::for_owner(33), crate::SceneRevision::INITIAL),
             Filter::Blur {
                 std_dev_x: 2.0,
                 std_dev_y: 2.0,
@@ -733,7 +777,6 @@ fn retained_backdrop_blur_updates_local_tiles_and_matches_full_render() {
             Region::rect(Rect::new(16.0, 16.0, 112.0, 80.0), crate::Radius::all(8.0)),
         );
         canvas.pop_layer();
-        canvas.end_retained_node(token);
         canvas
     }
 
@@ -799,9 +842,11 @@ fn retained_clipped_liquid_glass_rerenders_after_backdrop_damage() {
             (48.0, 32.0),
         );
 
-        let token = canvas.begin_retained_node(RetainedNodeId::for_owner(37), 0);
-        canvas
-            .push_clip_sdf_rect_layer(Rect::new(16.0, 16.0, 112.0, 80.0), crate::Radius::all(12.0));
+        canvas.push_retained_clip_sdf_rect_layer(
+            RetainedLayerKey::new(RetainedNodeId::for_owner(37), crate::SceneRevision::INITIAL),
+            Rect::new(16.0, 16.0, 112.0, 80.0),
+            crate::Radius::all(12.0),
+        );
         canvas.push_backdrop_layer(
             Filter::RectLiquidGlass(RectLiquidGlass {
                 blur_radius: 8,
@@ -812,7 +857,6 @@ fn retained_clipped_liquid_glass_rerenders_after_backdrop_damage() {
         );
         canvas.pop_layer();
         canvas.pop_layer();
-        canvas.end_retained_node(token);
         canvas
     }
 
@@ -870,8 +914,8 @@ fn retained_liquid_glass_ignores_later_foreground_history_when_slider_moves() {
         );
 
         let panel = Rect::new(24.0, 16.0, 296.0, 176.0);
-        let token = canvas.begin_retained_node(panel_id, 0);
-        canvas.push_backdrop_layer(
+        canvas.push_retained_backdrop_layer(
+            RetainedLayerKey::new(panel_id, crate::SceneRevision::INITIAL),
             Filter::RectLiquidGlass(RectLiquidGlass {
                 blur_radius: 5,
                 blur_sampling: BlurSampling::downsampled(4),
@@ -884,7 +928,6 @@ fn retained_liquid_glass_ignores_later_foreground_history_when_slider_moves() {
             Region::rect(panel, crate::Radius::all(28.0)),
         );
         canvas.pop_layer();
-        canvas.end_retained_node(token);
 
         let mut slider = Canvas::new(18, 18, 1.0);
         slider.push_rect(
@@ -960,8 +1003,8 @@ fn retained_mask_updates_local_tiles_and_matches_full_render() {
             crate::Radius::all(12.0),
             Color::WHITE,
         );
-        let token = canvas.begin_retained_node(RetainedNodeId::for_owner(41), 0);
-        canvas.push_mask_layer(
+        canvas.push_retained_mask_layer(
+            RetainedLayerKey::new(RetainedNodeId::for_owner(41), crate::SceneRevision::INITIAL),
             mask_scene,
             Mask {
                 region: Region::rect(Rect::new(16.0, 16.0, 112.0, 80.0), crate::Radius::all(12.0)),
@@ -977,7 +1020,6 @@ fn retained_mask_updates_local_tiles_and_matches_full_render() {
             (48.0, 32.0),
         );
         canvas.pop_layer();
-        canvas.end_retained_node(token);
         canvas
     }
 

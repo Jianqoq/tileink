@@ -10,8 +10,8 @@ use peniko::{
 };
 use tileink::{
     BlurSampling, Canvas, Filter, IncrementalOutputMode, IncrementalRenderMode, Mask, MaskKind,
-    Radius, RectLiquidGlass, Region, RetainedNodeId, TextContext, TextFontSystem,
-    TextLayoutOptions, WgpuRenderProfileReport, WgpuRenderer,
+    Radius, RectLiquidGlass, Region, RetainedLayerKey, RetainedNodeId, SceneRevision, TextContext,
+    TextFontSystem, TextLayoutOptions, WgpuRenderProfileReport, WgpuRenderer,
 };
 
 #[derive(Clone, Copy)]
@@ -321,8 +321,8 @@ fn scroll_clip_frames(config: Config) -> Vec<Canvas> {
         .into_iter()
         .map(|scroll_x| {
             let mut frame = retained_root(config, 124);
-            let token = frame.begin_retained_node(RetainedNodeId::for_owner(125), 0);
-            frame.push_clip_sdf_rect_layer(
+            frame.push_retained_clip_sdf_rect_layer(
+                RetainedLayerKey::new(RetainedNodeId::for_owner(125), SceneRevision::INITIAL),
                 Rect::new(
                     48.0,
                     48.0,
@@ -338,7 +338,6 @@ fn scroll_clip_frames(config: Config) -> Vec<Canvas> {
                 (48.0 + scroll_x, 48.0),
             );
             frame.pop_layer();
-            frame.end_retained_node(token);
             frame
         })
         .collect()
@@ -435,8 +434,8 @@ fn filter_frames(config: Config) -> Vec<Canvas> {
         .enumerate()
         .map(|(revision, color)| {
             let mut frame = retained_root(config, 140);
-            let token = frame.begin_retained_node(RetainedNodeId::for_owner(141), 0);
-            frame.push_filter_layer(
+            frame.push_retained_filter_layer(
+                RetainedLayerKey::new(RetainedNodeId::for_owner(141), SceneRevision::INITIAL),
                 Filter::Blur {
                     std_dev_x: 8.0,
                     std_dev_y: 8.0,
@@ -451,7 +450,6 @@ fn filter_frames(config: Config) -> Vec<Canvas> {
                 (160.0, 160.0),
             );
             frame.pop_layer();
-            frame.end_retained_node(token);
             frame
         })
         .collect()
@@ -466,8 +464,8 @@ fn color_filter_frames(config: Config) -> Vec<Canvas> {
     .enumerate()
     .map(|(revision, color)| {
         let mut frame = retained_root(config, 145);
-        let token = frame.begin_retained_node(RetainedNodeId::for_owner(146), 0);
-        frame.push_filter_layer(
+        frame.push_retained_filter_layer(
+            RetainedLayerKey::new(RetainedNodeId::for_owner(146), SceneRevision::INITIAL),
             Filter::Brightness(1.2),
             Region::rect(Rect::new(40.0, 40.0, 600.0, 400.0), Radius::all(12.0)),
         );
@@ -478,7 +476,6 @@ fn color_filter_frames(config: Config) -> Vec<Canvas> {
             (180.0, 120.0),
         );
         frame.pop_layer();
-        frame.end_retained_node(token);
         frame
     })
     .collect()
@@ -496,8 +493,8 @@ fn backdrop_frames(config: Config) -> Vec<Canvas> {
                 rect_scene((80, 80), Rect::new(0.0, 0.0, 80.0, 80.0), color),
                 (180.0, 140.0),
             );
-            let token = frame.begin_retained_node(RetainedNodeId::for_owner(152), 0);
-            frame.push_backdrop_layer(
+            frame.push_retained_backdrop_layer(
+                RetainedLayerKey::new(RetainedNodeId::for_owner(152), SceneRevision::INITIAL),
                 Filter::Blur {
                     std_dev_x: 6.0,
                     std_dev_y: 6.0,
@@ -506,7 +503,6 @@ fn backdrop_frames(config: Config) -> Vec<Canvas> {
                 Region::rect(Rect::new(120.0, 100.0, 420.0, 320.0), Radius::all(18.0)),
             );
             frame.pop_layer();
-            frame.end_retained_node(token);
             frame
         })
         .collect()
@@ -527,8 +523,8 @@ fn mask_frames(config: Config) -> Vec<Canvas> {
             Radius::all(48.0),
             Color::WHITE,
         );
-        let token = frame.begin_retained_node(RetainedNodeId::for_owner(161), 0);
-        frame.push_mask_layer(
+        frame.push_retained_mask_layer(
+            RetainedLayerKey::new(RetainedNodeId::for_owner(161), SceneRevision::INITIAL),
             mask,
             Mask {
                 region: Region::rect(Rect::new(100.0, 100.0, 360.0, 300.0), Radius::all(48.0)),
@@ -542,7 +538,6 @@ fn mask_frames(config: Config) -> Vec<Canvas> {
             (140.0, 140.0),
         );
         frame.pop_layer();
-        frame.end_retained_node(token);
         frame
     })
     .collect()
@@ -563,8 +558,8 @@ fn liquid_glass_frames(config: Config) -> Vec<Canvas> {
             rect_scene((72, 72), Rect::new(0.0, 0.0, 72.0, 72.0), color),
             (180.0, 120.0),
         );
-        let token = frame.begin_retained_node(RetainedNodeId::for_owner(172), 0);
-        frame.push_backdrop_layer(
+        frame.push_retained_backdrop_layer(
+            RetainedLayerKey::new(RetainedNodeId::for_owner(172), SceneRevision::INITIAL),
             Filter::RectLiquidGlass(RectLiquidGlass {
                 blur_radius: 4,
                 ..RectLiquidGlass::default()
@@ -572,7 +567,6 @@ fn liquid_glass_frames(config: Config) -> Vec<Canvas> {
             Region::rect(Rect::new(100.0, 80.0, 520.0, 340.0), Radius::all(24.0)),
         );
         frame.pop_layer();
-        frame.end_retained_node(token);
         frame
     })
     .collect()

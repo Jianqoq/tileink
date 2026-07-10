@@ -791,9 +791,9 @@ mod tests {
     }
 
     #[test]
-    fn direct_scope_fingerprint_change_dirties_its_bounds() {
+    fn retained_layer_fingerprint_change_dirties_its_bounds() {
         let mut previous = frame(&[(2, 0, Bounds::new(16, 0, 32, 16))]);
-        previous.nodes[0].kind = RetainedNodeKind::Scope;
+        previous.nodes[0].kind = RetainedNodeKind::Layer;
         previous.nodes[0].direct_fingerprint = Some(1);
         let mut current = previous.clone();
         current.nodes[0].direct_fingerprint = Some(2);

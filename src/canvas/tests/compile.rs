@@ -18,26 +18,31 @@ fn execution_plan_fingerprint_ignores_buffer_only_changes() {
 }
 
 #[test]
-fn compile_coalesces_plain_draws_across_retained_scope_boundaries() {
+fn compile_coalesces_plain_draws_across_materialized_retained_scenes() {
     let mut canvas = Canvas::new_retained(64, 64, 1.0, RetainedNodeId::for_owner(1));
     for owner in 2..=4 {
-        canvas.with_retained_node(RetainedNodeId::for_owner(owner), 0, |scope| {
-            let x = ((owner - 2) * 16) as f64;
-            scope.push_rect(
-                Rect::new(x, 0.0, x + 12.0, 12.0),
-                Radius::ZERO,
-                rgb(40 * owner as u8, 80, 160),
-            );
-        });
+        let mut child = Canvas::new(16, 16, 1.0);
+        child.push_rect(
+            Rect::new(0.0, 0.0, 12.0, 12.0),
+            Radius::ZERO,
+            rgb(40 * owner as u8, 80, 160),
+        );
+        canvas.append_retained_scene(
+            RetainedNodeId::for_owner(owner),
+            0,
+            std::sync::Arc::new(child),
+            (((owner - 2) * 16) as f64, 0.0),
+        );
     }
 
+    let canvas = canvas.materialize_retained_scenes(&mut RetainedSceneCache::default());
     let plan = canvas.compile(ROOT_COMMAND_LIST_ID);
     match plan.ops.as_slice() {
         [ExecOp::DrawBatch { draws, layer_stack }] => {
             assert_eq!(draws.clone(), 0..3);
             assert!(layer_stack.is_empty());
         }
-        ops => panic!("plain retained scopes must not split GPU batches: {ops:#?}"),
+        ops => panic!("materialized retained scenes must not split GPU batches: {ops:#?}"),
     }
 }
 

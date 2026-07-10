@@ -3,7 +3,7 @@ use std::{ops::Range, sync::Arc};
 use peniko::BlendMode;
 
 use crate::{
-    Canvas, RetainedNodeId, SceneRevision,
+    Canvas, RetainedLayerKey, RetainedNodeId, SceneRevision,
     canvas::RetainedSurfaceId,
     shared::layer::{Layer, mask::Mask},
 };
@@ -32,17 +32,19 @@ pub(crate) enum Command {
         canvas: Arc<Canvas>,
         offset: (f64, f64),
     },
-    RetainedNode {
+    MaterializedRetainedScene {
         id: RetainedNodeId,
         revision: SceneRevision,
         children: CommandListId,
     },
     Layer {
+        retained: Option<RetainedLayerKey>,
         draw: usize,
         layer: Layer,
         children: CommandListId,
     },
     MaskLayer {
+        retained: Option<RetainedLayerKey>,
         layer: Mask,
         content: CommandListId,
         mask: CommandListId,
@@ -62,12 +64,12 @@ pub(crate) struct ExecPlan {
 }
 
 impl ExecPlan {
-    /// Removes artificial GPU batch boundaries introduced only by retained command scopes.
+    /// Removes artificial GPU batch boundaries introduced by materialized retained scenes.
     ///
-    /// Retained nodes carry CPU-side identity and offscreen ownership, but adjacent plain draws
+    /// Retained scenes carry CPU-side identity and offscreen ownership, but adjacent plain draws
     /// with the same effective layer stack have exactly the same raster semantics as one batch.
-    /// Coalescing them is important for component trees: otherwise every widget scope would emit
-    /// another coarse/fine dispatch pair even during a full redraw.
+    /// Coalescing them is important for component trees: otherwise every cached drawable would
+    /// emit another coarse/fine dispatch pair even during a full redraw.
     pub(crate) fn coalesce_draw_batches(&mut self) {
         coalesce_draw_batches_in(&mut self.ops, &self.layer_stack_data);
     }
