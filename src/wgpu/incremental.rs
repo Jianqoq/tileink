@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     Canvas, TILE_SIZE,
-    canvas::{RetainedFrame, RetainedNodeKind, RetainedNodeState},
+    canvas::{RetainedDamage, RetainedFrame, RetainedNodeState},
     shared::{
         bounds::Bounds,
         gpu_plan::{CUMSUM_CHUNK_SIZE, GpuCumsumPlan, SCAN_CHUNK_SIZE},
@@ -425,6 +425,7 @@ fn append_cumsum_path(record: &crate::shared::path::PathRecord, plan: &mut GpuCu
 pub(crate) struct DamagePlan {
     pub(crate) tiles: DamageTiles,
     pub(crate) changed_tiles: DamageTiles,
+    pub(crate) retained_damage: RetainedDamage,
     pub(crate) stats: IncrementalRenderStats,
     pub(crate) frame: Option<RetainedFrame>,
 }
@@ -551,7 +552,7 @@ impl IncrementalState {
         };
 
         let reason = self.full_reason(frame.as_ref(), config.mode, history_valid);
-        let changed_tiles = self.scene_damage(frame.as_ref(), size);
+        let (changed_tiles, retained_damage) = self.scene_damage(frame.as_ref(), size);
         let threshold_exceeded =
             reason.is_none() && tile_ratio(&changed_tiles) >= config.full_redraw_ratio;
         let reason = if threshold_exceeded {
@@ -574,6 +575,7 @@ impl IncrementalState {
         DamagePlan {
             tiles,
             changed_tiles,
+            retained_damage,
             stats,
             frame,
         }
@@ -583,12 +585,12 @@ impl IncrementalState {
         &self,
         frame: Option<&RetainedFrame>,
         physical_size: (u32, u32),
-    ) -> DamageTiles {
+    ) -> (DamageTiles, RetainedDamage) {
         let Some(current) = frame else {
-            return DamageTiles::full(physical_size);
+            return (DamageTiles::full(physical_size), RetainedDamage::default());
         };
         let Some(previous) = self.previous.as_ref() else {
-            return DamageTiles::full(physical_size);
+            return (DamageTiles::full(physical_size), RetainedDamage::default());
         };
         if self.renderer_state_invalid
             || previous.root != current.root
@@ -599,15 +601,17 @@ impl IncrementalState {
             || !current.complete
             || current.invalidate_all
         {
-            return DamageTiles::full(physical_size);
+            return (DamageTiles::full(physical_size), RetainedDamage::default());
         }
 
         let mut tiles = DamageTiles::new(physical_size);
-        diff_frames(previous, current, &mut tiles);
+        let mut retained = RetainedDamage::default();
+        diff_frames(previous, current, &mut tiles, &mut retained);
         for bounds in &current.invalidated_bounds {
             tiles.add_bounds(*bounds);
+            retained.add_unattributed(*bounds);
         }
-        tiles
+        (tiles, retained)
     }
 
     pub(crate) fn commit(&mut self, frame: Option<RetainedFrame>) {
@@ -661,7 +665,12 @@ impl IncrementalState {
     }
 }
 
-fn diff_frames(previous: &RetainedFrame, current: &RetainedFrame, damage: &mut DamageTiles) {
+fn diff_frames(
+    previous: &RetainedFrame,
+    current: &RetainedFrame,
+    damage: &mut DamageTiles,
+    retained: &mut RetainedDamage,
+) {
     let old = previous
         .nodes
         .iter()
@@ -676,20 +685,26 @@ fn diff_frames(previous: &RetainedFrame, current: &RetainedFrame, damage: &mut D
     for node in &current.nodes {
         let Some(previous) = old.get(&node.id) else {
             damage.add_bounds(node.bounds);
+            retained.add_node(node.id, node.bounds);
             continue;
         };
         if previous.revision != node.revision
             || previous.kind != node.kind
             || previous.placement_bits != node.placement_bits
-            || previous.direct_fingerprint != node.direct_fingerprint
-            || (node.kind == RetainedNodeKind::Scene && previous.bounds != node.bounds)
+            || previous.bounds != node.bounds
         {
-            damage.add_bounds(previous.bounds.union(node.bounds));
+            let bounds = previous.bounds.union(node.bounds);
+            damage.add_bounds(bounds);
+            retained.add_node(node.id, bounds);
         }
     }
     for node in &previous.nodes {
         if !new.contains_key(&node.id) {
             damage.add_bounds(node.bounds);
+            // Removed commands have no insertion point in the current painter
+            // order, so conservatively expose their old pixels to every
+            // backdrop dependency.
+            retained.add_unattributed(node.bounds);
         }
     }
 
@@ -703,7 +718,9 @@ fn diff_frames(previous: &RetainedFrame, current: &RetainedFrame, damage: &mut D
                 if new_rank[a] > new_rank[b] {
                     let a = old[a].bounds.union(new[a].bounds);
                     let b = old[b].bounds.union(new[b].bounds);
-                    damage.add_bounds(a.intersect(b));
+                    let bounds = a.intersect(b);
+                    damage.add_bounds(bounds);
+                    retained.add_unattributed(bounds);
                 }
             }
         }
@@ -732,7 +749,7 @@ fn ranks(ids: &[crate::RetainedNodeId]) -> HashMap<crate::RetainedNodeId, usize>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{RetainedNodeId, SceneRevision};
+    use crate::{RetainedNodeId, SceneRevision, canvas::RetainedNodeKind};
 
     fn frame(nodes: &[(u64, u64, Bounds)]) -> RetainedFrame {
         RetainedFrame {
@@ -750,7 +767,6 @@ mod tests {
                     order: order as u32,
                     kind: RetainedNodeKind::Scene,
                     placement_bits: None,
-                    direct_fingerprint: None,
                 })
                 .collect(),
             invalidated_bounds: Vec::new(),
@@ -764,7 +780,7 @@ mod tests {
         let old = frame(&[(2, 0, Bounds::new(1, 1, 15, 15))]);
         let new = frame(&[(2, 1, Bounds::new(20, 1, 33, 15))]);
         let mut damage = DamageTiles::new(new.physical_size);
-        diff_frames(&old, &new, &mut damage);
+        diff_frames(&old, &new, &mut damage, &mut RetainedDamage::default());
         assert_eq!(damage.list(), &[0, 1, 2]);
     }
 
@@ -793,15 +809,19 @@ mod tests {
     }
 
     #[test]
-    fn retained_layer_fingerprint_change_dirties_its_bounds() {
+    fn retained_layer_revision_change_dirties_its_bounds() {
         let mut previous = frame(&[(2, 0, Bounds::new(16, 0, 32, 16))]);
         previous.nodes[0].kind = RetainedNodeKind::Layer;
-        previous.nodes[0].direct_fingerprint = Some(1);
         let mut current = previous.clone();
-        current.nodes[0].direct_fingerprint = Some(2);
+        current.nodes[0].revision = SceneRevision::new(1);
         let mut damage = DamageTiles::new(current.physical_size);
 
-        diff_frames(&previous, &current, &mut damage);
+        diff_frames(
+            &previous,
+            &current,
+            &mut damage,
+            &mut RetainedDamage::default(),
+        );
 
         assert_eq!(damage.list(), &[1]);
     }
@@ -818,7 +838,7 @@ mod tests {
             (3, 0, Bounds::new(32, 0, 48, 16)),
         ]);
         let mut damage = DamageTiles::new(new.physical_size);
-        diff_frames(&old, &new, &mut damage);
+        diff_frames(&old, &new, &mut damage, &mut RetainedDamage::default());
         assert_eq!(damage.list(), &[1]);
     }
 
@@ -830,7 +850,7 @@ mod tests {
         ]);
         let new = frame(&[(2, 0, Bounds::new(0, 0, 16, 16))]);
         let mut damage = DamageTiles::new(new.physical_size);
-        diff_frames(&old, &new, &mut damage);
+        diff_frames(&old, &new, &mut damage, &mut RetainedDamage::default());
         assert_eq!(damage.list(), &[10]);
     }
 
@@ -845,7 +865,7 @@ mod tests {
             (2, 0, Bounds::new(0, 0, 32, 16)),
         ]);
         let mut damage = DamageTiles::new(new.physical_size);
-        diff_frames(&old, &new, &mut damage);
+        diff_frames(&old, &new, &mut damage, &mut RetainedDamage::default());
         assert_eq!(damage.list(), &[1]);
     }
 
@@ -860,7 +880,7 @@ mod tests {
             (2, 0, Bounds::new(0, 0, 16, 16)),
         ]);
         let mut damage = DamageTiles::new(new.physical_size);
-        diff_frames(&old, &new, &mut damage);
+        diff_frames(&old, &new, &mut damage, &mut RetainedDamage::default());
         assert!(damage.is_empty());
     }
 

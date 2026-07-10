@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, HashSet},
-    fmt::{self, Write},
     sync::Arc,
 };
 
@@ -67,7 +66,10 @@ impl From<u64> for SceneRevision {
 ///
 /// A key belongs to the visual operation opened by `push_*_retained_layer`,
 /// not to a generic widget/container. This lets the renderer retain clips and
-/// offscreen surfaces without fragmenting ordinary draw batches.
+/// offscreen surfaces without fragmenting ordinary draw batches. Callers must
+/// advance `revision` whenever the layer, its direct commands, or other
+/// non-retained content owned by the layer changes; retained collection never
+/// hashes command contents.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct RetainedLayerKey {
     pub id: RetainedNodeId,
@@ -106,13 +108,6 @@ pub(crate) struct RetainedNodeState {
     pub(crate) order: u32,
     pub(crate) kind: RetainedNodeKind,
     pub(crate) placement_bits: Option<(u64, u64)>,
-    /// Fingerprint of commands recorded directly in a retained layer.
-    ///
-    /// Revisions remain the fast, caller-controlled invalidation path for
-    /// cached child scenes. This fingerprint is the safety net for direct
-    /// commands, layer parameters, and custom widgets whose caller cannot
-    /// provide a separate revision.
-    pub(crate) direct_fingerprint: Option<u64>,
 }
 
 #[derive(Clone, Debug)]
@@ -125,6 +120,33 @@ pub(crate) struct RetainedFrame {
     pub(crate) invalidated_bounds: Vec<Bounds>,
     pub(crate) invalidate_all: bool,
     pub(crate) complete: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct RetainedDamage {
+    node_bounds: HashMap<RetainedNodeId, Bounds>,
+    unattributed: Vec<Bounds>,
+}
+
+pub(crate) struct RetainedDamagePropagation {
+    pub(crate) bounds: Vec<Bounds>,
+    pub(crate) dirty_backdrops: HashSet<RetainedNodeId>,
+}
+
+impl RetainedDamage {
+    pub(crate) fn add_node(&mut self, id: RetainedNodeId, bounds: Bounds) {
+        if bounds.is_empty() {
+            return;
+        }
+        self.node_bounds
+            .entry(id)
+            .and_modify(|current| *current = current.union(bounds))
+            .or_insert(bounds);
+    }
+
+    pub(crate) fn add_unattributed(&mut self, bounds: Bounds) {
+        push_unique_damage(&mut self.unattributed, bounds);
+    }
 }
 
 impl RetainedFrame {
@@ -178,6 +200,10 @@ impl RetainedSceneCache {
 
 impl Canvas {
     /// Appends a reusable child scene while preserving its identity until render preparation.
+    ///
+    /// `revision` is the explicit content identity. Callers must advance it
+    /// whenever `scene` changes; retained collection does not compare or hash
+    /// child commands.
     pub fn append_retained_scene(
         &mut self,
         id: RetainedNodeId,
@@ -315,8 +341,21 @@ impl Canvas {
     /// pixels whose value depends on those changes, notably blur/shadow output
     /// and backdrop regions. It is deliberately conservative for graph filters:
     /// an uncertain dependency redraws that layer, never unrelated root tiles.
-    pub(crate) fn propagate_damage(&self, damage: &mut Vec<Bounds>) {
-        propagate_list_damage(self, self.root_commands, damage);
+    pub(crate) fn propagate_damage(&self, damage: &RetainedDamage) -> RetainedDamagePropagation {
+        let mut propagated = damage.unattributed.clone();
+        let mut dirty_backdrops = HashSet::new();
+        propagate_list_damage(
+            self,
+            self.root_commands,
+            damage,
+            &mut propagated,
+            &mut dirty_backdrops,
+            None,
+        );
+        RetainedDamagePropagation {
+            bounds: propagated,
+            dirty_backdrops,
+        }
     }
 
     pub(crate) fn has_retained_scenes(&self) -> bool {
@@ -354,7 +393,6 @@ impl FrameCollector {
         bounds: Bounds,
         kind: RetainedNodeKind,
         placement_bits: Option<(u64, u64)>,
-        direct_fingerprint: Option<u64>,
     ) {
         if !self.ids.insert(id) {
             self.complete = false;
@@ -370,7 +408,6 @@ impl FrameCollector {
             order: self.order,
             kind,
             placement_bits,
-            direct_fingerprint,
         });
         self.order += 1;
     }
@@ -381,17 +418,14 @@ impl FrameCollector {
         list_id: usize,
         inside_retained: bool,
         offset: SceneOffset,
-    ) -> CollectedList {
+    ) -> Bounds {
         let mut bounds = empty_bounds();
-        let mut direct = ContentFingerprint::default();
         for command in &canvas.command_lists[list_id].commands {
             let command_bounds = match command {
                 Command::Draw(draw) => {
                     if !inside_retained {
                         self.complete = false;
                     }
-                    direct.add_tag(1);
-                    direct.add_draw(canvas, *draw);
                     offset.bounds(pixel_bounds(canvas.draw_records[*draw].pixel_bounds))
                 }
                 Command::RetainedScene {
@@ -411,7 +445,6 @@ impl FrameCollector {
                         child_bounds,
                         RetainedNodeKind::Scene,
                         Some((child_offset.dx.to_bits(), child_offset.dy.to_bits())),
-                        None,
                     );
                     child_bounds
                 }
@@ -420,16 +453,9 @@ impl FrameCollector {
                     revision,
                     children,
                 } => {
-                    let child = self.visit_list(canvas, *children, true, offset);
-                    self.push_node(
-                        *id,
-                        *revision,
-                        child.bounds,
-                        RetainedNodeKind::Scene,
-                        None,
-                        child.direct.finish(),
-                    );
-                    child.bounds
+                    let child_bounds = self.visit_list(canvas, *children, true, offset);
+                    self.push_node(*id, *revision, child_bounds, RetainedNodeKind::Scene, None);
+                    child_bounds
                 }
                 Command::Layer {
                     retained,
@@ -442,18 +468,13 @@ impl FrameCollector {
                         self.complete = false;
                     }
                     let node_start = self.nodes.len();
-                    let child = self.visit_list(
+                    let child_bounds = self.visit_list(
                         canvas,
                         *children,
                         inside_retained || owns_identity,
                         offset,
                     );
-                    let mut layer_fingerprint = ContentFingerprint::default();
-                    layer_fingerprint.add_tag(2);
-                    layer_fingerprint.add_debug(layer);
-                    layer_fingerprint.add_draw(canvas, *draw);
-                    layer_fingerprint.merge(child.direct);
-                    let bounds = layer_bounds(canvas, *draw, layer, child.bounds, offset);
+                    let bounds = layer_bounds(canvas, *draw, layer, child_bounds, offset);
                     if matches!(layer, Layer::Clip | Layer::ClipSdf { .. }) {
                         let clip =
                             offset.bounds(pixel_bounds(canvas.draw_records[*draw].pixel_bounds));
@@ -492,10 +513,7 @@ impl FrameCollector {
                             bounds,
                             RetainedNodeKind::Layer,
                             None,
-                            layer_fingerprint.finish(),
                         );
-                    } else {
-                        direct.merge(layer_fingerprint);
                     }
                     bounds
                 }
@@ -510,20 +528,14 @@ impl FrameCollector {
                         self.complete = false;
                     }
                     let node_start = self.nodes.len();
-                    let content =
+                    let content_bounds =
                         self.visit_list(canvas, *content, inside_retained || owns_identity, offset);
-                    let mask =
-                        self.visit_list(canvas, *mask, inside_retained || owns_identity, offset);
-                    let mut layer_fingerprint = ContentFingerprint::default();
-                    layer_fingerprint.add_tag(3);
-                    layer_fingerprint.add_debug(layer);
-                    layer_fingerprint.merge(content.direct);
-                    layer_fingerprint.merge(mask.direct);
+                    self.visit_list(canvas, *mask, inside_retained || owns_identity, offset);
                     let region = offset.bounds(region_bounds(&layer.region));
                     for node in &mut self.nodes[node_start..] {
                         node.bounds = node.bounds.intersect(region);
                     }
-                    let bounds = content.bounds.intersect(region);
+                    let bounds = content_bounds.intersect(region);
                     if let Some(retained) = retained {
                         self.push_node(
                             retained.id,
@@ -531,120 +543,15 @@ impl FrameCollector {
                             bounds,
                             RetainedNodeKind::Layer,
                             None,
-                            layer_fingerprint.finish(),
                         );
-                    } else {
-                        direct.merge(layer_fingerprint);
                     }
                     bounds
                 }
             };
             bounds = bounds.union(command_bounds);
         }
-        CollectedList { bounds, direct }
+        bounds
     }
-}
-
-struct CollectedList {
-    bounds: Bounds,
-    direct: ContentFingerprint,
-}
-
-/// Stable FNV-1a fingerprint for direct retained commands.
-///
-/// This is not used as a resource identity or a security boundary. It exists
-/// solely to make exact command changes participate in retained damage when a
-/// higher-level component has no revision counter of its own.
-#[derive(Clone, Copy)]
-struct ContentFingerprint {
-    hash: u64,
-    has_content: bool,
-}
-
-impl Default for ContentFingerprint {
-    fn default() -> Self {
-        Self {
-            hash: 0xcbf29ce484222325,
-            has_content: false,
-        }
-    }
-}
-
-impl ContentFingerprint {
-    fn add_tag(&mut self, tag: u8) {
-        self.has_content = true;
-        self.add_bytes(&[tag]);
-    }
-
-    fn add_bytes(&mut self, bytes: &[u8]) {
-        for byte in bytes {
-            self.hash = (self.hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3);
-        }
-    }
-
-    fn add_debug(&mut self, value: &impl fmt::Debug) {
-        self.has_content = true;
-        let _ = write!(self, "{value:?}");
-    }
-
-    fn add_draw(&mut self, canvas: &Canvas, draw_ix: usize) {
-        let Some(&draw) = canvas.draw_records.get(draw_ix) else {
-            // Filters and backdrops that use a geometric Region do not need a
-            // hidden draw record. The layer value itself is already hashed.
-            self.add_bytes(&draw_ix.to_le_bytes());
-            return;
-        };
-        self.add_bytes(bytemuck::bytes_of(&draw));
-        if let Some(path_ix) = draw.path_id() {
-            let record = canvas.path_records[path_ix as usize];
-            self.add_bytes(bytemuck::bytes_of(&record));
-            let lines = record.line_start as usize
-                ..record.line_start.saturating_add(record.line_count) as usize;
-            self.add_bytes(bytemuck::cast_slice(&canvas.lines[lines]));
-        }
-        add_word_range(self, &canvas.brush_blob, draw.brush_offset, draw.brush_len);
-        add_word_range(self, &canvas.sdf_blob, draw.sdf_offset, draw.sdf_len);
-        add_word_range(
-            self,
-            &canvas.sdf_shadow_blob,
-            draw.sdf_shadow_offset,
-            draw.sdf_shadow_len,
-        );
-        if let Some(run_ix) = draw.glyph_run_id() {
-            let run = canvas.text_runs[run_ix as usize];
-            self.add_debug(&run);
-            let glyphs =
-                run.glyph_start as usize..run.glyph_start.saturating_add(run.glyph_count) as usize;
-            self.add_debug(&&canvas.text_glyphs[glyphs]);
-        }
-    }
-
-    fn merge(&mut self, other: Self) {
-        if !other.has_content {
-            return;
-        }
-        self.add_tag(0xff);
-        self.add_bytes(&other.hash.to_le_bytes());
-    }
-
-    fn finish(self) -> Option<u64> {
-        self.has_content.then_some(self.hash)
-    }
-}
-
-impl Write for ContentFingerprint {
-    fn write_str(&mut self, value: &str) -> fmt::Result {
-        self.add_bytes(value.as_bytes());
-        Ok(())
-    }
-}
-
-fn add_word_range(fingerprint: &mut ContentFingerprint, words: &[u32], offset: u32, len: u32) {
-    if offset == crate::shared::draw_record::DrawRecord::NONE || len == 0 {
-        return;
-    }
-    let range = offset as usize..offset.saturating_add(len) as usize;
-    fingerprint.add_bytes(bytemuck::cast_slice(&words[range]));
 }
 
 fn canvas_visual_bounds(canvas: &Canvas) -> Bounds {
@@ -739,59 +646,172 @@ fn empty_bounds() -> Bounds {
     Bounds::new(0, 0, 0, 0)
 }
 
-fn propagate_list_damage(canvas: &Canvas, list_id: usize, damage: &mut Vec<Bounds>) {
+fn propagate_list_damage(
+    canvas: &Canvas,
+    list_id: usize,
+    pending: &RetainedDamage,
+    damage: &mut Vec<Bounds>,
+    dirty_backdrops: &mut HashSet<RetainedNodeId>,
+    retained_owner: Option<RetainedNodeId>,
+) {
     for command in &canvas.command_lists[list_id].commands {
         match command {
             Command::Draw(_) | Command::RetainedScene { .. } => {}
-            Command::MaterializedRetainedScene { children, .. } => {
-                propagate_list_damage(canvas, *children, damage);
+            Command::MaterializedRetainedScene { id, children, .. } => {
+                propagate_list_damage(
+                    canvas,
+                    *children,
+                    pending,
+                    damage,
+                    dirty_backdrops,
+                    Some(*id),
+                );
+                append_node_damage(pending, *id, damage);
             }
             Command::Layer {
-                layer, children, ..
+                retained,
+                layer,
+                children,
+                ..
             } => {
-                propagate_list_damage(canvas, *children, damage);
+                let retained_owner = retained.map(|key| key.id).or(retained_owner);
                 match layer {
-                    Layer::Filter {
-                        filter: value,
-                        sample_region,
-                    }
-                    | Layer::Backdrop {
+                    Layer::Backdrop {
                         filter: value,
                         sample_region,
                     } => {
-                        let dependency = filter::region_bounds(sample_region)
-                            .outset(filter::filter_dependency_outset(value));
-                        let output = filter::unclipped_filtered_region_bounds(value, sample_region)
-                            .intersect(Bounds::canvas(
-                                canvas.physical_width(),
-                                canvas.physical_height(),
-                            ));
-                        let affected = damage
-                            .clone()
-                            .into_iter()
-                            .filter_map(|changed| {
-                                let changed = changed.intersect(dependency);
-                                (!changed.is_empty()).then(|| {
-                                    changed
-                                        .outset(filter::filter_outset(value))
-                                        .intersect(output)
-                                })
-                            })
-                            .collect::<Vec<_>>();
-                        for affected in affected {
-                            push_unique_damage(damage, affected);
+                        let source_changed =
+                            propagate_filter_damage(canvas, value, sample_region, damage);
+                        if source_changed
+                            || retained_owner
+                                .is_some_and(|id| pending.node_bounds.contains_key(&id))
+                        {
+                            dirty_backdrops.extend(retained_owner);
                         }
+                        // Backdrop children are painted after the sampled background and
+                        // therefore cannot invalidate that backdrop in the same frame.
+                        propagate_list_damage(
+                            canvas,
+                            *children,
+                            pending,
+                            damage,
+                            dirty_backdrops,
+                            retained_owner,
+                        );
                     }
-                    _ => {}
+                    Layer::Filter {
+                        filter: value,
+                        sample_region,
+                    } => {
+                        let mut local = Vec::new();
+                        propagate_list_damage(
+                            canvas,
+                            *children,
+                            pending,
+                            &mut local,
+                            dirty_backdrops,
+                            retained_owner,
+                        );
+                        propagate_filter_damage(canvas, value, sample_region, &mut local);
+                        append_unique_damage(damage, local);
+                    }
+                    Layer::Isolate => {
+                        let mut local = Vec::new();
+                        propagate_list_damage(
+                            canvas,
+                            *children,
+                            pending,
+                            &mut local,
+                            dirty_backdrops,
+                            retained_owner,
+                        );
+                        append_unique_damage(damage, local);
+                    }
+                    _ => propagate_list_damage(
+                        canvas,
+                        *children,
+                        pending,
+                        damage,
+                        dirty_backdrops,
+                        retained_owner,
+                    ),
+                }
+                if let Some(retained) = retained {
+                    append_node_damage(pending, retained.id, damage);
                 }
             }
-            Command::MaskLayer { content, mask, .. } => {
-                propagate_list_damage(canvas, *content, damage);
-                propagate_list_damage(canvas, *mask, damage);
+            Command::MaskLayer {
+                retained,
+                content,
+                mask,
+                ..
+            } => {
+                let mut local = Vec::new();
+                let retained_owner = retained.map(|key| key.id).or(retained_owner);
+                propagate_list_damage(
+                    canvas,
+                    *content,
+                    pending,
+                    &mut local,
+                    dirty_backdrops,
+                    retained_owner,
+                );
+                propagate_list_damage(
+                    canvas,
+                    *mask,
+                    pending,
+                    &mut local,
+                    dirty_backdrops,
+                    retained_owner,
+                );
                 // Content and mask damage are both spatial: changing one tile
                 // cannot affect a different tile of the masked result.
+                append_unique_damage(damage, local);
+                if let Some(retained) = retained {
+                    append_node_damage(pending, retained.id, damage);
+                }
             }
         }
+    }
+}
+
+fn propagate_filter_damage(
+    canvas: &Canvas,
+    value: &filter::Filter,
+    sample_region: &Region,
+    damage: &mut Vec<Bounds>,
+) -> bool {
+    let dependency =
+        filter::region_bounds(sample_region).outset(filter::filter_dependency_outset(value));
+    let output = filter::unclipped_filtered_region_bounds(value, sample_region).intersect(
+        Bounds::canvas(canvas.physical_width(), canvas.physical_height()),
+    );
+    let initial_len = damage.len();
+    let mut changed = false;
+    for index in 0..initial_len {
+        let affected = damage[index].intersect(dependency);
+        if !affected.is_empty() {
+            changed = true;
+            push_unique_damage(
+                damage,
+                affected
+                    .outset(filter::filter_outset(value))
+                    .intersect(output),
+            );
+        }
+    }
+    changed
+}
+
+fn append_node_damage(pending: &RetainedDamage, id: RetainedNodeId, damage: &mut Vec<Bounds>) {
+    if let Some(bounds) = pending.node_bounds.get(&id) {
+        push_unique_damage(damage, *bounds);
+    }
+}
+
+fn append_unique_damage(damage: &mut Vec<Bounds>, bounds: impl IntoIterator<Item = Bounds>) {
+    for bounds in bounds {
+        push_unique_damage(damage, bounds);
     }
 }
 
@@ -920,7 +940,7 @@ mod tests {
         assert_eq!(frame.nodes.len(), 1);
         assert_eq!(frame.nodes[0].id, layer);
         assert_eq!(frame.nodes[0].kind, RetainedNodeKind::Layer);
-        assert!(frame.nodes[0].direct_fingerprint.is_some());
+        assert_eq!(frame.nodes[0].revision, SceneRevision::INITIAL);
     }
 
     #[test]
@@ -941,15 +961,15 @@ mod tests {
             frame.nodes.iter().map(|node| node.id).collect::<Vec<_>>(),
             vec![child, layer]
         );
-        assert!(frame.nodes[1].direct_fingerprint.is_some());
+        assert_eq!(frame.nodes[1].revision, SceneRevision::INITIAL);
     }
 
     #[test]
-    fn retained_layer_direct_commands_are_fingerprinted_without_a_manual_revision() {
-        let build = |color| {
+    fn retained_layer_revision_is_the_explicit_content_identity() {
+        let build = |color, revision| {
             let mut canvas = Canvas::new_retained(64, 64, 1.0, RetainedNodeId::for_owner(1));
             canvas.push_retained_clip_sdf_rect_layer(
-                RetainedLayerKey::new(RetainedNodeId::for_owner(2), SceneRevision::INITIAL),
+                RetainedLayerKey::new(RetainedNodeId::for_owner(2), revision),
                 Rect::new(0.0, 0.0, 32.0, 32.0),
                 Radius::ZERO,
             );
@@ -958,14 +978,12 @@ mod tests {
             canvas.retained_frame().expect("retained frame")
         };
 
-        let red = build(Color::from_rgb8(255, 0, 0));
-        let green = build(Color::from_rgb8(0, 255, 0));
+        let red = build(Color::from_rgb8(255, 0, 0), SceneRevision::INITIAL);
+        let stale_green = build(Color::from_rgb8(0, 255, 0), SceneRevision::INITIAL);
+        let green = build(Color::from_rgb8(0, 255, 0), SceneRevision::new(1));
 
-        assert!(red.complete && green.complete);
-        assert_ne!(
-            red.nodes[0].direct_fingerprint,
-            green.nodes[0].direct_fingerprint
-        );
+        assert_eq!(red.nodes, stale_green.nodes);
+        assert_ne!(red.nodes, green.nodes);
     }
 
     #[test]

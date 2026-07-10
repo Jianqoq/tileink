@@ -1,6 +1,9 @@
 #![allow(clippy::too_many_arguments)]
 
-use std::sync::{Arc as SharedArc, mpsc};
+use std::{
+    collections::HashSet,
+    sync::{Arc as SharedArc, mpsc},
+};
 
 use peniko::Color;
 
@@ -186,6 +189,7 @@ pub struct Renderer {
     transient_output: TransientOutputState,
     retained_surfaces: RetainedSurfaceCache,
     rendering_frame: Option<RetainedFrame>,
+    dirty_backdrop_nodes: HashSet<crate::RetainedNodeId>,
     image_resources: ImageResourceStore,
     image_resource_upload: GpuImageResourceUpload,
     image_resource_upload_signature: ImageResourceUploadSignature,
@@ -382,6 +386,7 @@ impl Renderer {
                 IncrementalRenderConfig::default().retained_texture_budget_bytes,
             ),
             rendering_frame: None,
+            dirty_backdrop_nodes: HashSet::new(),
             image_resources: ImageResourceStore::default(),
             image_resource_upload: GpuImageResourceUpload::default(),
             image_resource_upload_signature: ImageResourceUploadSignature::default(),
@@ -670,11 +675,13 @@ impl Renderer {
             )
         });
         if plan.changed_tiles.len() < plan.changed_tiles.total_tiles() {
-            let mut dependent = plan.changed_tiles.coalesced_rects(physical_size);
-            profile_cpu("retained.damage.propagate", || {
-                scene.propagate_damage(&mut dependent)
+            let propagated = profile_cpu("retained.damage.propagate", || {
+                scene.propagate_damage(&plan.retained_damage)
             });
-            plan.include_dependent_bounds(dependent, self.incremental_config);
+            self.dirty_backdrop_nodes = propagated.dirty_backdrops;
+            plan.include_dependent_bounds(propagated.bounds, self.incremental_config);
+        } else {
+            self.dirty_backdrop_nodes.clear();
         }
         if self.incremental_config.capture_active_tiles || self.profiler.is_active() {
             plan.stats.active_tiles = plan.tiles.list().to_vec();
@@ -705,6 +712,7 @@ impl Renderer {
         }
         self.active_tiles = None;
         self.rendering_frame = None;
+        self.dirty_backdrop_nodes.clear();
     }
 
     fn set_history_owner(&mut self, owner: HistoryOwner) {
@@ -2170,9 +2178,9 @@ impl Renderer {
             )
         });
         let mut cached = self.take_matching_retained_surface(retained_id, meta);
-        if !self.retained_surface_is_dirty(bounds)
-            && let Some((id, surface)) = cached.take()
-        {
+        let backdrop_dirty = self.active_tiles.is_none()
+            || retained_id.is_none_or(|id| self.dirty_backdrop_nodes.contains(&id.node));
+        if !backdrop_dirty && let Some((id, surface)) = cached.take() {
             let ok = self.composite_cached_backdrop(
                 commands,
                 target,

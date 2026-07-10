@@ -51,8 +51,10 @@ use crate::shared::{
 use crate::text::{TextRun, layout_bounds_at_scaled_origin, scene_glyphs_at_scaled_origin};
 use crate::{TextContext, TextFontSystem, TextLayout};
 
+#[cfg(test)]
+pub(crate) use retained::RetainedNodeKind;
 pub(crate) use retained::{
-    RetainedFrame, RetainedNodeKind, RetainedNodeState, RetainedSceneCache, RetainedSurfaceId,
+    RetainedDamage, RetainedFrame, RetainedNodeState, RetainedSceneCache, RetainedSurfaceId,
 };
 pub use retained::{RetainedLayerKey, RetainedNodeId, SceneRevision};
 

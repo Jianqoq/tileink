@@ -999,10 +999,7 @@ fn retained_nested_liquid_glass_stays_stable_when_clipped_slider_moves() {
         return;
     }
 
-    fn frame(slider_x: f64) -> Canvas {
-        let panel = Rect::new(24.0, 16.0, 296.0, 176.0);
-        let mut canvas = Canvas::new_retained(320, 192, 1.0, RetainedNodeId::for_owner(100));
-
+    fn background() -> std::sync::Arc<Canvas> {
         let mut background = Canvas::new(320, 192, 1.0);
         for y in (0..192).step_by(8) {
             for x in (0..320).step_by(8) {
@@ -1023,15 +1020,24 @@ fn retained_nested_liquid_glass_stays_stable_when_clipped_slider_moves() {
                 );
             }
         }
+        std::sync::Arc::new(background)
+    }
+
+    fn frame(slider_x: f64, background: &std::sync::Arc<Canvas>) -> Canvas {
+        let panel = Rect::new(24.0, 16.0, 296.0, 176.0);
+        let mut canvas = Canvas::new_retained(320, 192, 1.0, RetainedNodeId::for_owner(100));
         canvas.append_retained_scene(
             RetainedNodeId::for_owner(101),
             0,
-            std::sync::Arc::new(background),
+            background.clone(),
             (0.0, 0.0),
         );
 
         canvas.push_retained_clip_sdf_rect_layer(
-            RetainedLayerKey::new(RetainedNodeId::for_owner(102), crate::SceneRevision::INITIAL),
+            RetainedLayerKey::new(
+                RetainedNodeId::for_owner(102),
+                crate::SceneRevision::INITIAL,
+            ),
             panel,
             crate::Radius::all(20.0),
         );
@@ -1091,23 +1097,110 @@ fn retained_nested_liquid_glass_stays_stable_when_clipped_slider_moves() {
         canvas
     }
 
+    let background = background();
     let mut incremental = new_test_renderer(320, 192, Color::TRANSPARENT);
-    incremental.render(&frame(64.0));
+    incremental.render(&frame(64.0, &background));
     for slider_x in [80.0, 96.0, 112.0, 128.0, 144.0, 160.0] {
-        incremental.render(&frame(slider_x));
+        incremental.render(&frame(slider_x, &background));
+        let stats = incremental.incremental_render_stats();
+        assert!(!stats.full_redraw, "slider movement must stay incremental");
+        assert!(stats.reused_offscreen_surfaces > 0);
+        assert_eq!(stats.compact_filter_dispatches, stats.filter_dispatches);
     }
 
-    let final_frame = frame(160.0);
+    let final_frame = frame(160.0, &background);
     let mut full = new_test_renderer(320, 192, Color::TRANSPARENT);
     let mut config = full.incremental_render_config();
     config.mode = crate::IncrementalRenderMode::ForceFull;
     full.set_incremental_render_config(config);
     full.render(&final_frame);
 
+    let incremental_image = incremental.image();
+    let full_image = full.image();
+    let difference = incremental_image
+        .pixels
+        .iter()
+        .zip(&full_image.pixels)
+        .position(|(actual, expected)| actual != expected);
     assert_eq!(
-        incremental.image().pixels,
-        full.image().pixels,
+        difference, None,
         "a later clipped slider must not feed tile-shaped history into a nested liquid-glass backdrop"
+    );
+}
+
+#[test]
+fn retained_backdrop_revision_rebuilds_same_bounds_region_mask() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    fn frame(revision: u64, radius: f32) -> Canvas {
+        let mut canvas = Canvas::new_retained(256, 192, 1.0, RetainedNodeId::for_owner(110));
+        let mut background = Canvas::new(256, 192, 1.0);
+        background.push_rect(
+            Rect::new(0.0, 0.0, 128.0, 192.0),
+            crate::Radius::ZERO,
+            Color::from_rgb8(30, 90, 180),
+        );
+        background.push_rect(
+            Rect::new(128.0, 0.0, 256.0, 192.0),
+            crate::Radius::ZERO,
+            Color::from_rgb8(220, 100, 30),
+        );
+        canvas.append_retained_scene(
+            RetainedNodeId::for_owner(111),
+            0,
+            std::sync::Arc::new(background),
+            (0.0, 0.0),
+        );
+
+        canvas.push_retained_clip_sdf_rect_layer(
+            RetainedLayerKey::new(RetainedNodeId::for_owner(112), 0.into()),
+            Rect::new(16.0, 8.0, 144.0, 88.0),
+            crate::Radius::all(24.0),
+        );
+        canvas.push_retained_backdrop_layer(
+            RetainedLayerKey::new(RetainedNodeId::for_owner(113), revision.into()),
+            Filter::Blur {
+                std_dev_x: 3.0,
+                std_dev_y: 3.0,
+                sampling: BlurSampling::FULL_RES,
+            },
+            Region::rect(
+                Rect::new(32.0, 16.0, 128.0, 80.0),
+                crate::Radius::all(radius),
+            ),
+        );
+        canvas.pop_layer();
+        canvas.pop_layer();
+        canvas
+    }
+
+    let first = frame(0, 0.0);
+    let second = frame(1, 22.0);
+    let mut incremental = new_test_renderer(256, 192, Color::TRANSPARENT);
+    incremental.render(&first);
+    incremental.render(&second);
+    assert!(
+        !incremental.incremental_render_stats().full_redraw,
+        "{:?}",
+        incremental.incremental_render_stats()
+    );
+
+    let mut full = new_test_renderer(256, 192, Color::TRANSPARENT);
+    let mut config = full.incremental_render_config();
+    config.mode = crate::IncrementalRenderMode::ForceFull;
+    full.set_incremental_render_config(config);
+    full.render(&second);
+    let incremental_image = incremental.image();
+    let full_image = full.image();
+    assert_eq!(
+        incremental_image
+            .pixels
+            .iter()
+            .zip(&full_image.pixels)
+            .position(|(actual, expected)| actual != expected),
+        None
     );
 }
 
