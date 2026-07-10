@@ -119,7 +119,11 @@ pub(crate) struct RetainedFrame {
     pub(crate) nodes: Vec<RetainedNodeState>,
     pub(crate) invalidated_bounds: Vec<Bounds>,
     pub(crate) invalidate_all: bool,
-    pub(crate) complete: bool,
+    /// Whether every command is represented by retained identity and the flattened scene can be
+    /// reused solely from node metadata. Manual damage can make a frame incrementally complete,
+    /// but cannot make untracked command contents safe to cache.
+    pub(crate) materialization_cacheable: bool,
+    pub(crate) incremental_complete: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -163,13 +167,22 @@ impl RetainedFrame {
             && self.physical_size == other.physical_size
             && self.scale_bits == other.scale_bits
             && self.nodes == other.nodes
-            && self.complete == other.complete
+            && self.materialization_cacheable == other.materialization_cacheable
+            && self.incremental_complete == other.incremental_complete
     }
 }
 
 #[derive(Default)]
 pub(crate) struct RetainedSceneCache {
-    scenes: HashMap<(RetainedNodeId, SceneRevision), Arc<Canvas>>,
+    /// One entry per node makes revision replacement O(1). The previous composite-key map had to
+    /// scan every cached scene before each lookup to remove older revisions, making materializing
+    /// an N-node frame O(N²).
+    scenes: HashMap<RetainedNodeId, CachedRetainedScene>,
+}
+
+struct CachedRetainedScene {
+    revision: SceneRevision,
+    canvas: Arc<Canvas>,
 }
 
 impl RetainedSceneCache {
@@ -179,13 +192,20 @@ impl RetainedSceneCache {
         revision: SceneRevision,
         canvas: &Arc<Canvas>,
     ) -> Arc<Canvas> {
-        self.scenes.retain(|(cached_id, cached_revision), _| {
-            *cached_id != id || *cached_revision == revision
-        });
-        self.scenes
-            .entry((id, revision))
-            .or_insert_with(|| canvas.clone())
-            .clone()
+        let cached = self
+            .scenes
+            .entry(id)
+            .or_insert_with(|| CachedRetainedScene {
+                revision,
+                canvas: canvas.clone(),
+            });
+        if cached.revision != revision {
+            *cached = CachedRetainedScene {
+                revision,
+                canvas: canvas.clone(),
+            };
+        }
+        cached.canvas.clone()
     }
 
     pub(crate) fn retain_frame(&mut self, frame: &RetainedFrame) {
@@ -194,7 +214,7 @@ impl RetainedSceneCache {
             .iter()
             .map(|node| node.id)
             .collect::<HashSet<_>>();
-        self.scenes.retain(|(id, _), _| active.contains(id));
+        self.scenes.retain(|id, _| active.contains(id));
     }
 }
 
@@ -236,6 +256,11 @@ impl Canvas {
     }
 
     /// Adds caller-supplied damage in logical canvas coordinates.
+    ///
+    /// This can track direct commands that are not enclosed by retained identity. Callers must
+    /// invalidate both old and new affected bounds whenever those commands change or disappear.
+    /// Manual damage enables incremental rendering but never makes untracked commands eligible
+    /// for materialized-scene reuse.
     pub fn invalidate_rect(&mut self, rect: Rect) {
         assert!(
             rect.x0.is_finite()
@@ -263,6 +288,7 @@ impl Canvas {
         }
     }
 
+    /// Marks the whole output damaged without making untracked commands cacheable.
     pub fn invalidate_all(&mut self) {
         self.invalidate_all = true;
     }
@@ -284,7 +310,8 @@ impl Canvas {
             nodes: collector.nodes,
             invalidated_bounds: self.invalidated_bounds.clone(),
             invalidate_all: self.invalidate_all,
-            complete: collector.complete
+            materialization_cacheable: collector.identity_complete,
+            incremental_complete: collector.identity_complete
                 || self.invalidate_all
                 || !self.invalidated_bounds.is_empty(),
         })
@@ -372,7 +399,7 @@ struct FrameCollector {
     nodes: Vec<RetainedNodeState>,
     ids: HashSet<RetainedNodeId>,
     order: u32,
-    complete: bool,
+    identity_complete: bool,
 }
 
 impl FrameCollector {
@@ -382,7 +409,7 @@ impl FrameCollector {
             nodes: Vec::new(),
             ids: HashSet::new(),
             order: 0,
-            complete: true,
+            identity_complete: true,
         }
     }
 
@@ -395,7 +422,7 @@ impl FrameCollector {
         placement_bits: Option<(u64, u64)>,
     ) {
         if !self.ids.insert(id) {
-            self.complete = false;
+            self.identity_complete = false;
             return;
         }
         self.nodes.push(RetainedNodeState {
@@ -424,7 +451,7 @@ impl FrameCollector {
             let command_bounds = match command {
                 Command::Draw(draw) => {
                     if !inside_retained {
-                        self.complete = false;
+                        self.identity_complete = false;
                     }
                     offset.bounds(pixel_bounds(canvas.draw_records[*draw].pixel_bounds))
                 }
@@ -465,7 +492,7 @@ impl FrameCollector {
                 } => {
                     let owns_identity = retained.is_some();
                     if !inside_retained && !owns_identity {
-                        self.complete = false;
+                        self.identity_complete = false;
                     }
                     let node_start = self.nodes.len();
                     let child_bounds = self.visit_list(
@@ -525,7 +552,7 @@ impl FrameCollector {
                 } => {
                     let owns_identity = retained.is_some();
                     if !inside_retained && !owns_identity {
-                        self.complete = false;
+                        self.identity_complete = false;
                     }
                     let node_start = self.nodes.len();
                     let content_bounds =
@@ -850,7 +877,7 @@ mod tests {
         );
 
         let frame = canvas.retained_frame().unwrap();
-        assert!(frame.complete);
+        assert!(frame.incremental_complete);
         assert_eq!(frame.nodes.len(), 1);
         assert_eq!(frame.nodes[0].id, child);
         assert_eq!(frame.nodes[0].revision, SceneRevision::new(7));
@@ -919,9 +946,12 @@ mod tests {
         let first = cache.scene(id, revision, &red);
         let reused = cache.scene(id, revision, &green);
         assert!(Arc::ptr_eq(&first, &reused));
+        assert_eq!(cache.scenes.len(), 1);
 
         let advanced = cache.scene(id, SceneRevision::new(8), &green);
         assert!(Arc::ptr_eq(&advanced, &green));
+        assert_eq!(cache.scenes.len(), 1);
+        assert_eq!(cache.scenes[&id].revision, SceneRevision::new(8));
     }
 
     #[test]
@@ -936,7 +966,7 @@ mod tests {
         canvas.push_rect(Rect::new(4.0, 4.0, 20.0, 20.0), Radius::ZERO, Color::WHITE);
         canvas.pop_layer();
         let frame = canvas.retained_frame().expect("retained frame");
-        assert!(frame.complete);
+        assert!(frame.incremental_complete);
         assert_eq!(frame.nodes.len(), 1);
         assert_eq!(frame.nodes[0].id, layer);
         assert_eq!(frame.nodes[0].kind, RetainedNodeKind::Layer);
@@ -994,6 +1024,17 @@ mod tests {
             canvas.retained_frame().unwrap().invalidated_bounds,
             vec![Bounds::new(0, 2, 9, 20)]
         );
+    }
+
+    #[test]
+    fn manual_damage_does_not_make_untracked_commands_cacheable() {
+        let mut canvas = Canvas::new_retained(32, 16, 1.0, RetainedNodeId::for_owner(1));
+        canvas.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::ZERO, Color::WHITE);
+        canvas.invalidate_rect(Rect::new(0.0, 0.0, 16.0, 16.0));
+
+        let frame = canvas.retained_frame().expect("retained frame");
+        assert!(frame.incremental_complete);
+        assert!(!frame.materialization_cacheable);
     }
 
     #[test]

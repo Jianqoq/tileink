@@ -133,7 +133,7 @@ impl RetainedRenderState {
             return SelectedScene::Borrowed(canvas);
         };
 
-        if frame.complete
+        if frame.materialization_cacheable
             && let Some(cached) = &self.materialized
             && cached.frame.same_scene(&frame)
         {
@@ -148,7 +148,7 @@ impl RetainedRenderState {
             Arc::new(canvas.materialize_retained_scenes(&mut self.scene_cache))
         });
         self.scene_cache.retain_frame(&frame);
-        if frame.complete {
+        if frame.materialization_cacheable {
             self.materialized = Some(CachedMaterializedScene {
                 frame: frame.clone(),
                 scene: scene.clone(),

@@ -597,8 +597,8 @@ impl IncrementalState {
             || previous.logical_size != current.logical_size
             || previous.physical_size != current.physical_size
             || previous.scale_bits != current.scale_bits
-            || !previous.complete
-            || !current.complete
+            || !previous.incremental_complete
+            || !current.incremental_complete
             || current.invalidate_all
         {
             return (DamageTiles::full(physical_size), RetainedDamage::default());
@@ -652,7 +652,7 @@ impl IncrementalState {
         // it must never become the baseline for a later incremental frame: a
         // removed untracked command would otherwise leave its old pixels in
         // the history texture.
-        if !previous.complete || !frame.complete {
+        if !previous.incremental_complete || !frame.incremental_complete {
             return Some(FullRedrawReason::UntrackedContent);
         }
         if frame.invalidate_all {
@@ -771,7 +771,8 @@ mod tests {
                 .collect(),
             invalidated_bounds: Vec::new(),
             invalidate_all: false,
-            complete: true,
+            materialization_cacheable: true,
+            incremental_complete: true,
         }
     }
 
@@ -787,7 +788,7 @@ mod tests {
     #[test]
     fn incomplete_previous_frame_cannot_become_an_incremental_baseline() {
         let mut previous = frame(&[(2, 0, Bounds::new(0, 0, 16, 16))]);
-        previous.complete = false;
+        previous.incremental_complete = false;
         let current = frame(&[(2, 0, Bounds::new(0, 0, 16, 16))]);
         let mut state = IncrementalState {
             previous: Some(previous),

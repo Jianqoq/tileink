@@ -323,6 +323,36 @@ fn untracked_previous_frame_is_not_committed_as_incremental_history() {
 }
 
 #[test]
+fn manual_invalidation_renders_current_untracked_commands() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    for invalidate_all in [false, true] {
+        let frame = |color| {
+            let mut canvas = Canvas::new_retained(32, 16, 1.0, RetainedNodeId::for_owner(84));
+            canvas.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
+            if invalidate_all {
+                canvas.invalidate_all();
+            } else {
+                canvas.invalidate_rect(Rect::new(0.0, 0.0, 16.0, 16.0));
+            }
+            canvas
+        };
+        let mut renderer = new_test_renderer(32, 16, Color::TRANSPARENT);
+
+        renderer.render(&frame(Color::from_rgb8(220, 30, 40)));
+        renderer.render(&frame(Color::from_rgb8(30, 210, 70)));
+
+        assert_eq!(
+            renderer.image().rgba8_at(8, 8),
+            [30, 210, 70, 255],
+            "invalidate_all={invalidate_all}"
+        );
+    }
+}
+
+#[test]
 fn retained_renderer_copies_complete_history_to_external_texture() {
     if !run_wgpu_tests() {
         return;

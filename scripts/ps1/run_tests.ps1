@@ -2,10 +2,7 @@ param(
     [ValidateSet("native", "portable", "both")]
     [string]$WgpuMode = "both",
 
-    [string[]]$CargoArgs = @(),
-
-    [ValidateRange(1, 64)]
-    [int]$TestThreads = 1
+    [string[]]$CargoArgs = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -26,14 +23,15 @@ function Invoke-ReleaseTests {
         $arguments.Add($argument)
     }
 
-    if (-not ($CargoArgs | Where-Object { $_ -like "--test-threads*" })) {
-        if (-not $CargoArgs.Contains("--")) {
-            $arguments.Add("--")
-        }
-        $arguments.Add("--test-threads=$TestThreads")
+    if ($CargoArgs | Where-Object { $_ -like "--test-threads*" }) {
+        throw "Test thread count is fixed at 1; do not pass --test-threads in CargoArgs"
     }
+    if (-not $CargoArgs.Contains("--")) {
+        $arguments.Add("--")
+    }
+    $arguments.Add("--test-threads=1")
 
-    Write-Host "Running explicit WGPU release tests [$Mode, $TestThreads test thread(s)]"
+    Write-Host "Running explicit WGPU release tests [$Mode, single-threaded]"
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     & cargo $arguments
     $exitCode = $LASTEXITCODE
