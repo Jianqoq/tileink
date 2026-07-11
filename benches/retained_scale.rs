@@ -19,10 +19,10 @@ const COUNTS: [usize; 5] = [100, 1_000, 5_000, 20_000, 100_000];
 fn retained_materialize_stage(
     c: &mut Criterion,
     seed: &WgpuRenderer,
+    scenario: Scenario,
     name: &str,
     duration: fn(&Measurements) -> Duration,
 ) {
-    let scenario = Scenario::AllRevisions;
     let mut group = c.benchmark_group(format!("retained_materialize/{name}"));
     for count in COUNTS {
         group.throughput(Throughput::Elements(count as u64));
@@ -92,7 +92,17 @@ fn retained_scale(c: &mut Criterion) {
         ("all-revisions-plan-sync", |m| m.materialize_plan_sync),
         ("all-revisions-frame", |m| m.materialize_frame),
     ] {
-        retained_materialize_stage(c, &seed, name, duration);
+        retained_materialize_stage(c, &seed, Scenario::AllRevisions, name, duration);
+    }
+    for (name, duration) in [
+        (
+            "liquid-glass-move",
+            (|m: &Measurements| m.materialize) as fn(&Measurements) -> Duration,
+        ),
+        ("liquid-glass-move-plan-sync", |m| m.materialize_plan_sync),
+        ("liquid-glass-move-frame", |m| m.materialize_frame),
+    ] {
+        retained_materialize_stage(c, &seed, Scenario::LiquidGlassMove, name, duration);
     }
 
     for (scenario, name) in [

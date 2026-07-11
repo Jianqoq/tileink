@@ -117,13 +117,21 @@ impl Renderer {
             .buffer_changes
             .as_ref()
             .is_some_and(|changes| changes.plan_structure_reused);
-        let reused_plan = (self.prepared_plan_fingerprint == Some(plan_fingerprint)
+        let values_patched = canvas
+            .buffer_changes
+            .as_ref()
+            .is_some_and(|changes| changes.plan_values_patched);
+        let exact_plan_reuse = (self.prepared_plan_fingerprint == Some(plan_fingerprint)
             || structure_reused)
             && self.plan.is_some();
+        let reused_plan_metadata = (exact_plan_reuse || values_patched) && self.plan.is_some();
         let plan = profile_cpu("prepare.compile", || {
-            if reused_plan {
+            if exact_plan_reuse {
                 self.plan.take().expect("cached execution plan")
             } else {
+                // A patched persistent plan keeps the same topology and buffer lengths but may
+                // contain new offscreen bounds. Consume Canvas's new precompiled Arc instead of
+                // executing the renderer's stale cached plan.
                 canvas.compile_shared(ROOT_COMMAND_LIST_ID)
             }
         });
@@ -132,13 +140,13 @@ impl Renderer {
                 canvas,
                 self.text_data.as_ref(),
                 &plan,
-                reused_plan,
-                reused_plan.then_some((self.max_clip_depth, self.max_group_depth)),
+                reused_plan_metadata,
+                reused_plan_metadata.then_some((self.max_clip_depth, self.max_group_depth)),
             )
         });
-        self.retained.stats_mut().reused_compiled_plan = reused_plan;
+        self.retained.stats_mut().reused_compiled_plan = reused_plan_metadata;
         self.prepared_plan_fingerprint = Some(plan_fingerprint);
-        let (max_clip_depth, max_group_depth) = if reused_plan {
+        let (max_clip_depth, max_group_depth) = if reused_plan_metadata {
             (self.max_clip_depth, self.max_group_depth)
         } else {
             profile_cpu("prepare.stack_depths", || plan_stack_depths(&plan))
@@ -154,7 +162,7 @@ impl Renderer {
                 self.text_data.as_ref(),
                 Some(&self.image_resource_upload),
                 &mut self.scene_upload,
-                !reused_plan,
+                !reused_plan_metadata,
             );
             self.retained.stats_mut().gpu_uploaded_bytes += uploaded as u64;
         });
@@ -176,7 +184,7 @@ impl Renderer {
         profile_cpu("prepare.fine_spills", || {
             self.prepare_fine_stack_spills(lengths, max_clip_depth, max_group_depth);
         });
-        if !reused_plan {
+        if !reused_plan_metadata {
             profile_cpu("prepare.scratch", || {
                 self.prepare_scratch_buffers(required_scratch_count(&plan));
             });
@@ -185,7 +193,7 @@ impl Renderer {
             .buffer_changes
             .as_ref()
             .is_some_and(|changes| changes.filter_resources_changed);
-        if !reused_plan || filter_resources_changed {
+        if !reused_plan_metadata || filter_resources_changed {
             profile_cpu("prepare.filter_uploads", || {
                 self.filter_transfers
                     .upload(&self.device, &self.queue, &plan);

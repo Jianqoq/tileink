@@ -685,6 +685,26 @@ fn word_offset(words: usize) -> ::wgpu::BufferAddress {
     words as ::wgpu::BufferAddress * std::mem::size_of::<u32>() as ::wgpu::BufferAddress
 }
 
+fn contiguous_index_runs(indices: impl IntoIterator<Item = usize>) -> Vec<std::ops::Range<usize>> {
+    let mut indices = indices.into_iter();
+    let Some(first) = indices.next() else {
+        return Vec::new();
+    };
+    let mut runs = Vec::new();
+    let (mut start, mut end) = (first, first + 1);
+    for index in indices {
+        if index == end {
+            end += 1;
+        } else {
+            runs.push(start..end);
+            start = index;
+            end = index + 1;
+        }
+    }
+    runs.push(start..end);
+    runs
+}
+
 fn upload_coarse_text_blob(
     device: &::wgpu::Device,
     queue: &::wgpu::Queue,
@@ -1409,21 +1429,22 @@ impl WgpuCoarseBuffers {
             self.work
                 .write_at(queue, word_offset(index_word_offset), &bins.draw_indices);
         } else {
-            for tile in dirty_records {
+            for tiles in contiguous_index_runs(dirty_records) {
                 self.work.write_at(
                     queue,
                     word_offset(record_word_offset)
-                        + (tile * std::mem::size_of::<crate::shared::gpu_coarse::TileDrawRecord>())
+                        + (tiles.start
+                            * std::mem::size_of::<crate::shared::gpu_coarse::TileDrawRecord>())
                             as u64,
-                    &bins.records[tile..tile + 1],
+                    &bins.records[tiles],
                 );
             }
-            for page in &dirty_pages {
-                let start = *page as usize * TILE_DRAW_PAGE_WORDS;
+            for pages in contiguous_index_runs(dirty_pages.iter().map(|page| *page as usize)) {
+                let words = pages.start * TILE_DRAW_PAGE_WORDS..pages.end * TILE_DRAW_PAGE_WORDS;
                 self.work.write_at(
                     queue,
-                    word_offset(index_word_offset + start),
-                    &bins.draw_indices[start..start + TILE_DRAW_PAGE_WORDS],
+                    word_offset(index_word_offset + words.start),
+                    &bins.draw_indices[words],
                 );
             }
         }
@@ -1440,9 +1461,18 @@ impl WgpuCoarseBuffers {
 #[cfg(test)]
 mod tests {
     use super::{
-        WORK_CAPACITY_SHRINK_DELAY, grow_image_resource_atlas_capacity, grow_paint_layout,
-        stable_work_capacity,
+        WORK_CAPACITY_SHRINK_DELAY, contiguous_index_runs, grow_image_resource_atlas_capacity,
+        grow_paint_layout, stable_work_capacity,
     };
+
+    #[test]
+    fn contiguous_dirty_indices_are_coalesced_without_bridging_gaps() {
+        assert_eq!(
+            contiguous_index_runs([2, 3, 4, 8, 10, 11]),
+            [2..5, 8..9, 10..12]
+        );
+        assert!(contiguous_index_runs([]).is_empty());
+    }
 
     #[test]
     fn work_capacity_does_not_thrash_under_alternating_layer_depth() {

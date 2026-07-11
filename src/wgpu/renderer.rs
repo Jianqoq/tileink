@@ -1755,7 +1755,8 @@ impl Renderer {
             stats.rerendered_offscreen_tiles += rerendered_tiles;
         }
 
-        if retained_id.is_none()
+        let direct_backdrop = retained_id.is_none() || self.retained.bypasses_backdrop_cache();
+        if direct_backdrop
             && outer_stack.is_empty()
             && let Filter::Blur {
                 std_dev_x,
@@ -1783,7 +1784,7 @@ impl Renderer {
             );
         }
 
-        if retained_id.is_none()
+        if direct_backdrop
             && outer_stack.is_empty()
             && let Filter::RectLiquidGlass(glass) = filter
             && self.apply_downsampled_liquid_glass_rect_composite(
@@ -1805,7 +1806,11 @@ impl Renderer {
             );
         }
 
-        let cache_surface = retained_id.is_some() && meta.is_some();
+        // A full-root redraw cannot reuse this frame's temporary source/output history. Keeping
+        // it would add a target->history copy to every backdrop (and can double liquid-glass
+        // cost under an outer clip) merely to discard or invalidate it on the next moving frame.
+        let cache_surface =
+            retained_id.is_some() && meta.is_some() && !self.retained.bypasses_backdrop_cache();
         let (backdrop, cached_mask, cached_source) = if let Some((_, mut surface)) = cached {
             let Some(backdrop) = self.acquire_scratch() else {
                 return false;

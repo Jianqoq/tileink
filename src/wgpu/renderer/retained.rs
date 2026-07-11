@@ -99,6 +99,19 @@ impl RetainedRenderState {
         self.active_tiles.as_ref()
     }
 
+    /// High-damage transient/forced frames cannot benefit from backdrop history on the next
+    /// equivalent frame. First-frame and surface-rebuild redraws are excluded because their
+    /// surfaces seed the cache used by the following incremental frame.
+    pub(super) fn bypasses_backdrop_cache(&self) -> bool {
+        matches!(
+            self.stats.full_redraw_reason,
+            Some(
+                super::super::incremental::FullRedrawReason::Forced
+                    | super::super::incremental::FullRedrawReason::DirtyTileThreshold
+            )
+        )
+    }
+
     pub(super) fn set_active_tiles(&mut self, active: Option<DamageTiles>) {
         self.active_tiles = active;
     }

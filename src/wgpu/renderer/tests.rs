@@ -1,6 +1,6 @@
 use peniko::{
     Color, Compose, Extend, Gradient, Mix,
-    kurbo::{Affine, BezPath, Line, Rect, Shape},
+    kurbo::{Affine, BezPath, Line, Point, Rect, Shape},
 };
 
 use super::{Renderer, RendererOptions, WgpuRenderTargetId};
@@ -122,6 +122,90 @@ fn persistent_retained_scene_updates_incrementally_and_reuses_static_frames() {
         .unwrap();
     renderer.render_retained(&scene);
     assert_eq!(renderer.image().rgba8_at(8, 8), [20, 80, 230, 255]);
+}
+
+#[test]
+fn persistent_move_preserves_backdrop_children_and_shadow() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let root = RetainedNodeId::for_owner(50_003);
+    let background_id = RetainedNodeId::for_owner(50_004);
+    let card_id = RetainedNodeId::for_owner(50_005);
+    let mut background = Canvas::new(96, 48, 1.0);
+    background.push_rect(
+        Rect::new(0.0, 0.0, 96.0, 48.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(35, 90, 180),
+    );
+    let mut card = Canvas::new(32, 24, 1.0);
+    let card_bounds = Rect::new(0.0, 0.0, 32.0, 24.0);
+    card.push_rect_shadow(
+        card_bounds,
+        crate::Radius::all(6.0),
+        crate::RectShadowOptions::new(0.0, 3.0, 3.0, 0.8),
+        Color::BLACK,
+    );
+    card.push_backdrop_layer(
+        Filter::RectLiquidGlass(RectLiquidGlass {
+            blur_radius: 3,
+            tint: Color::from_rgba8(255, 255, 255, 32),
+            ..Default::default()
+        }),
+        Region::rect(card_bounds, crate::Radius::all(6.0)),
+    );
+    card.push_rect(
+        card_bounds,
+        crate::Radius::all(6.0),
+        Color::from_rgba8(255, 255, 255, 48),
+    );
+    card.pop_layer();
+
+    let mut scene = RetainedScene::new(96, 48, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            background_id,
+            std::sync::Arc::new(background),
+            (0.0, 0.0),
+        )
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            card_id,
+            std::sync::Arc::new(card),
+            (8.0, 8.0),
+        )
+        .commit()
+        .unwrap();
+
+    let mut incremental = new_test_renderer(96, 48, Color::TRANSPARENT);
+    incremental.render_retained(&scene);
+    scene
+        .transaction()
+        .set_position(card_id, (48.0, 8.0))
+        .commit()
+        .unwrap();
+    incremental.render_retained(&scene);
+    let stats = incremental.incremental_render_stats();
+    assert_eq!(stats.chunks_rebuilt, 1);
+    assert_eq!(stats.plan_fragments_rebuilt, 1);
+    assert!(stats.reused_compiled_plan);
+    assert!(!stats.full_scene_sync);
+
+    let mut full = new_test_renderer(96, 48, Color::TRANSPARENT);
+    full.render_retained(&scene);
+    let mismatches = incremental
+        .image()
+        .pixels
+        .iter()
+        .zip(&full.image().pixels)
+        .filter(|(actual, expected)| actual != expected)
+        .count();
+    assert_eq!(mismatches, 0);
 }
 
 #[test]
@@ -6747,6 +6831,111 @@ fn wgpu_renderer_profiles_empty_stack_liquid_glass_with_direct_composite_when_en
     assert_profile_missing(&profile, "filter.liquid_glass");
     assert_profile_missing(&profile, "filter.composite.rect_direct");
     assert_profile_missing(&profile, "filter.stack.src_over");
+}
+
+#[test]
+fn retained_full_redraw_liquid_glass_uses_direct_composite() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut background = Canvas::new(64, 40, 1.0);
+    background.push_rect(
+        Rect::new(0.0, 0.0, 64.0, 40.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(32, 96, 160),
+    );
+    background.push_backdrop_layer(
+        Filter::RectLiquidGlass(RectLiquidGlass {
+            blur_radius: 12,
+            blur_sampling: BlurSampling::downsampled(4),
+            ..RectLiquidGlass::default()
+        }),
+        Region::rect(Rect::new(12.0, 8.0, 52.0, 32.0), crate::Radius::all(6.0)),
+    );
+    background.pop_layer();
+
+    let root = crate::RetainedNodeId::for_owner(68_200);
+    let mut canvas = Canvas::new_retained(64, 40, 1.0, root);
+    canvas.append_retained_scene(
+        crate::RetainedNodeId::for_owner(68_201),
+        crate::SceneRevision::INITIAL,
+        std::sync::Arc::new(background),
+        Point::ZERO,
+    );
+    let mut renderer = new_test_renderer(64, 40, Color::TRANSPARENT);
+    let mut config = renderer.incremental_render_config();
+    config.mode = crate::IncrementalRenderMode::ForceFull;
+    renderer.set_incremental_render_config(config);
+    renderer.start_profile();
+    renderer.render(&canvas);
+    let profile = renderer.end_profile().clone();
+
+    assert!(renderer.incremental_render_stats().full_redraw);
+    assert_profile_has(&profile, "filter.liquid_glass.composite.rect");
+    assert_profile_missing(&profile, "filter.liquid_glass");
+    assert_profile_missing(&profile, "filter.composite.rect_direct");
+    assert_profile_missing(&profile, "filter.stack.src_over");
+}
+
+#[test]
+fn retained_full_redraw_clipped_liquid_glass_skips_unused_source_history() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut scene = Canvas::new(64, 40, 1.0);
+    scene.push_rect(
+        Rect::new(0.0, 0.0, 64.0, 40.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(32, 96, 160),
+    );
+    scene.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, 64.0, 40.0), crate::Radius::all(4.0));
+    scene.push_backdrop_layer(
+        Filter::RectLiquidGlass(RectLiquidGlass {
+            blur_radius: 12,
+            blur_sampling: BlurSampling::downsampled(4),
+            ..RectLiquidGlass::default()
+        }),
+        Region::rect(Rect::new(12.0, 8.0, 52.0, 32.0), crate::Radius::all(6.0)),
+    );
+    scene.pop_layer();
+    scene.pop_layer();
+    let immediate = scene.clone();
+
+    let root = crate::RetainedNodeId::for_owner(68_210);
+    let mut canvas = Canvas::new_retained(64, 40, 1.0, root);
+    canvas.append_retained_scene(
+        crate::RetainedNodeId::for_owner(68_211),
+        crate::SceneRevision::INITIAL,
+        std::sync::Arc::new(scene),
+        Point::ZERO,
+    );
+    let mut renderer = new_test_renderer(64, 40, Color::TRANSPARENT);
+    let mut config = renderer.incremental_render_config();
+    config.mode = crate::IncrementalRenderMode::ForceFull;
+    renderer.set_incremental_render_config(config);
+    renderer.start_profile();
+    renderer.render(&canvas);
+    let profile = renderer.end_profile().clone();
+    let mut immediate_renderer = new_test_renderer(64, 40, Color::TRANSPARENT);
+    let immediate_profile = immediate_renderer.render_profiled(&immediate);
+
+    assert!(renderer.incremental_render_stats().full_redraw);
+    assert_profile_has(&profile, "filter.liquid_glass");
+    assert_eq!(
+        profile
+            .entries()
+            .iter()
+            .filter(|entry| entry.name == "filter.copy")
+            .count(),
+        immediate_profile
+            .entries()
+            .iter()
+            .filter(|entry| entry.name == "filter.copy")
+            .count(),
+        "full retained redraw must not add a copy for unused source history"
+    );
 }
 
 #[test]

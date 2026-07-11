@@ -118,6 +118,9 @@ pub(crate) struct SceneBufferChanges {
     /// The persistent plan object was patched without changing execution structure. Renderers
     /// may reuse cached depth/scratch metadata while consuming the new precompiled plan.
     pub(crate) plan_structure_reused: bool,
+    /// The plan has new descriptor values but unchanged buffer lengths and stack/scratch depth.
+    /// Renderers consume the new precompiled plan while reusing only its size metadata.
+    pub(crate) plan_values_patched: bool,
     /// Changed fused layer-stack records in the precompiled plan.
     pub(crate) plan_layer_stack: Vec<Range<usize>>,
     /// Offscreen filter descriptors changed and their auxiliary GPU tables must be refreshed.

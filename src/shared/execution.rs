@@ -188,6 +188,26 @@ impl ExecPlan {
         patch_retained_layer_ops(&mut self.ops, id, old_draw, old_layer, new)
     }
 
+    /// Updates only translated offscreen descriptors belonging to one retained scene leaf.
+    ///
+    /// Position changes preserve command topology, physical draw slots, and BatchIds. Replacing
+    /// these descriptors avoids recompiling unrelated scene fragments while still moving filter,
+    /// backdrop, group, and mask surface geometry to the new coordinates.
+    pub(crate) fn patch_retained_scene_position(
+        &mut self,
+        id: RetainedNodeId,
+        fragment: &ExecPlan,
+    ) -> bool {
+        let mut replacements = HashMap::new();
+        collect_surface_patches(&fragment.ops, id, &mut replacements);
+        if replacements.is_empty() {
+            return false;
+        }
+        let mut patched = 0;
+        patch_surface_ops(&mut self.ops, &replacements, &mut patched);
+        patched == replacements.len()
+    }
+
     pub(crate) fn layer_stack_ranges_for_draw(&self, draw: usize) -> Vec<Range<usize>> {
         let Some(locations) = self.layer_stack_locations.get(&(draw as u32)) else {
             return Vec::new();
@@ -472,6 +492,106 @@ impl ExecPlan {
     pub(crate) fn restore_removed_batch(&mut self, index: usize, op: ExecOp) {
         self.ops.insert(index, op);
         self.refresh_direct_root_batch_ops();
+    }
+}
+
+#[derive(Clone)]
+enum SurfacePatch {
+    Layer { draw: usize, layer: Layer },
+    Mask { layer: Mask },
+}
+
+fn collect_surface_patches(
+    ops: &[ExecOp],
+    owner: RetainedNodeId,
+    patches: &mut HashMap<RetainedSurfaceId, SurfacePatch>,
+) {
+    for op in ops {
+        match op {
+            ExecOp::OffscreenLayer {
+                retained_id,
+                draw,
+                layer,
+                children,
+                ..
+            } => {
+                if let Some(id) = retained_id.filter(|id| id.node == owner) {
+                    patches.insert(
+                        id,
+                        SurfacePatch::Layer {
+                            draw: *draw,
+                            layer: layer.clone(),
+                        },
+                    );
+                }
+                collect_surface_patches(children, owner, patches);
+            }
+            ExecOp::OffscreenMaskLayer {
+                retained_id,
+                layer,
+                content,
+                mask,
+                ..
+            } => {
+                if let Some(id) = retained_id.filter(|id| id.node == owner) {
+                    patches.insert(
+                        id,
+                        SurfacePatch::Mask {
+                            layer: layer.clone(),
+                        },
+                    );
+                }
+                collect_surface_patches(content, owner, patches);
+                collect_surface_patches(mask, owner, patches);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn patch_surface_ops(
+    ops: &mut [ExecOp],
+    patches: &HashMap<RetainedSurfaceId, SurfacePatch>,
+    patched: &mut usize,
+) {
+    for op in ops {
+        match op {
+            ExecOp::OffscreenLayer {
+                retained_id,
+                draw,
+                layer,
+                children,
+                ..
+            } => {
+                if let Some(SurfacePatch::Layer {
+                    draw: replacement_draw,
+                    layer: replacement_layer,
+                }) = retained_id.and_then(|id| patches.get(&id))
+                {
+                    *draw = *replacement_draw;
+                    *layer = replacement_layer.clone();
+                    *patched += 1;
+                }
+                patch_surface_ops(children, patches, patched);
+            }
+            ExecOp::OffscreenMaskLayer {
+                retained_id,
+                layer,
+                content,
+                mask,
+                ..
+            } => {
+                if let Some(SurfacePatch::Mask { layer: replacement }) =
+                    retained_id.and_then(|id| patches.get(&id))
+                {
+                    *layer = replacement.clone();
+                    *patched += 1;
+                }
+                patch_surface_ops(content, patches, patched);
+                patch_surface_ops(mask, patches, patched);
+            }
+            _ => {}
+        }
     }
 }
 

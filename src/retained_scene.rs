@@ -321,6 +321,8 @@ impl SceneChangeSet {
 
 struct SceneChunk {
     generation: u64,
+    source_canvas: Option<Arc<Canvas>>,
+    position_bits: Option<(u64, u64)>,
     // Chunks have a single owner. Keeping their mutable encoding behind an Arc made every
     // revision pay an atomic uniqueness check and made newly inserted chunks allocate twice.
     canvas: Canvas,
@@ -336,6 +338,12 @@ struct SceneChunk {
     segments: ArenaAllocation,
     plan_fingerprint: u64,
     plain_fragment: bool,
+}
+
+#[derive(Clone, Copy)]
+struct NodeRebuild {
+    plan_dirty: bool,
+    position_only: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -659,6 +667,8 @@ impl PersistentSceneMaterializer {
         let mut plan_layer_stack_changes = Vec::new();
         let mut layer_bounds_stable = true;
         let mut chunks_rebuilt = 0;
+        let mut position_plan_patches = Vec::new();
+        let mut unpatchable_plan_change = changes.topology_changed;
         drop(analysis_profile);
         let chunk_profile = crate::wgpu::start_cpu_scope("retained.materialize.chunks");
         for id in &changes.removed_nodes {
@@ -682,7 +692,13 @@ impl PersistentSceneMaterializer {
             let old_layer_bounds = layer_update_candidate
                 .then(|| self.chunks.get(id).map(chunk_layer_influence_bounds))
                 .flatten();
-            plan_dirty |= self.rebuild_node(scene, *id);
+            let rebuilt = self.rebuild_node(scene, *id);
+            plan_dirty |= rebuilt.plan_dirty;
+            if rebuilt.plan_dirty && rebuilt.position_only {
+                position_plan_patches.push(*id);
+            } else {
+                unpatchable_plan_change |= rebuilt.plan_dirty;
+            }
             chunks_rebuilt += 1;
             if !changes.topology_changed && matches!(node.kind, NodeKind::Scene { .. }) {
                 self.patch_scene_commands(scene, *id);
@@ -791,6 +807,7 @@ impl PersistentSceneMaterializer {
             delta_eligible = changes.changed_nodes.iter().all(|id| {
                 scene.nodes.get(id).is_none_or(|node| {
                     matches!(node.kind, NodeKind::Group)
+                        || position_plan_patches.contains(id)
                         || self.chunks.get(id).is_some_and(|chunk| {
                             self.raw_node_bounds.get(id).copied()
                                 == Some(chunk.canvas.visual_bounds())
@@ -806,6 +823,19 @@ impl PersistentSceneMaterializer {
             self.remap_all_chunks();
             commands_dirty = true;
             plan_dirty = true;
+        }
+        let position_plan_patched = plan_dirty
+            && !unpatchable_plan_change
+            && !compacted
+            && !position_plan_patches.is_empty()
+            && position_plan_patches
+                .iter()
+                .all(|&id| self.patch_scene_position_plan(id));
+        if position_plan_patched {
+            // The immutable plan Arc may still be owned by the renderer for the previous frame.
+            // Advance the key so prepare selects this patched Arc without recompiling the scene.
+            self.plan_cache_key = next_plan_cache_key();
+            plan_dirty = false;
         }
         if scene_data_changed {
             self.sync_canvas_data(chunks_rebuilt, false);
@@ -966,7 +996,7 @@ impl PersistentSceneMaterializer {
             } else if (changes.topology_changed && !layer_plan_patched) || compacted {
                 self.rebuild_painter_metadata(scene);
                 plan_compiled_during_update = true;
-            } else if layer_plan_patched {
+            } else if layer_plan_patched || position_plan_patched {
                 // Layer parameters and hidden layer geometry do not change leaf painter keys or
                 // stable batch membership. The plan fragment above already references the new
                 // hidden draw slot, so cloning the scene-wide metadata arrays would be wasted.
@@ -1036,11 +1066,13 @@ impl PersistentSceneMaterializer {
             if !plan_compiled_during_update {
                 Arc::make_mut(&mut self.canvas).compiled_plan = None;
                 self.refresh_compiled_plan();
+                self.sync_stable_batches_from_plan();
             }
         }
         if let Some(buffer_changes) = &mut Arc::make_mut(&mut self.canvas).buffer_changes {
             buffer_changes.plan_structure_reused =
                 layer_plan_patched || root_offscreen_reorder_patched;
+            buffer_changes.plan_values_patched = position_plan_patched;
             buffer_changes.plan_layer_stack = if layer_plan_patched {
                 plan_layer_stack_changes
             } else {
@@ -1050,7 +1082,9 @@ impl PersistentSceneMaterializer {
                 && layer_plan_patches.iter().any(|(_, old, new)| {
                     command_has_filter_resources(old) || command_has_filter_resources(new)
                 });
-            buffer_changes.plan_fragments_rebuilt = if layer_plan_patched {
+            buffer_changes.plan_fragments_rebuilt = if position_plan_patched {
+                position_plan_patches.len() as u32
+            } else if layer_plan_patched {
                 layer_plan_patches.len() as u32
             } else if root_layer_plan_patched {
                 changes.changed_nodes.len() as u32
@@ -1181,9 +1215,10 @@ impl PersistentSceneMaterializer {
         self.rebuild_spatial_index();
     }
 
-    /// Returns whether an allocation moved and command draw references must be rebuilt.
-    fn rebuild_node(&mut self, scene: &RetainedScene, id: RetainedNodeId) -> bool {
+    /// Re-encodes one node and classifies whether its execution plan needs synchronization.
+    fn rebuild_node(&mut self, scene: &RetainedScene, id: RetainedNodeId) -> NodeRebuild {
         let node = &scene.nodes[&id];
+        let (source_canvas, position_bits) = scene_node_placement(node);
         let updated = {
             // Borrow the materializer fields independently so an existing chunk stays in its map
             // slot while encoding, arena remapping, and resource refcounts are updated.
@@ -1196,6 +1231,13 @@ impl PersistentSceneMaterializer {
                 ..
             } = self;
             chunks.get_mut(&id).map(|chunk| {
+                let position_only = chunk
+                    .source_canvas
+                    .as_ref()
+                    .zip(source_canvas.as_ref())
+                    .is_some_and(|(old, new)| Arc::ptr_eq(old, new))
+                    && chunk.position_bits != position_bits
+                    && source_canvas.is_some();
                 Self::remove_chunk_resources(resource_refs, canvas, &chunk.canvas.scene_images);
                 let old_plan = chunk.plan_fingerprint;
                 let old_lengths = SceneChunkLengths::from_canvas(&chunk.canvas);
@@ -1239,13 +1281,18 @@ impl PersistentSceneMaterializer {
                         .replace(chunk.segments, &vec![0; new_lengths.segments]);
                 }
                 chunk.generation = node.generation;
+                chunk.source_canvas = source_canvas.clone();
+                chunk.position_bits = position_bits;
                 if old_plan != new_plan {
                     chunk.plain_fragment = is_plain_fragment(&chunk.canvas);
                 }
                 chunk.plan_fingerprint = new_plan;
                 Self::add_chunk_resources(resource_refs, canvas, &chunk.canvas.scene_images);
                 Self::remap_chunk_data(arenas, chunk);
-                moved || old_plan != new_plan
+                NodeRebuild {
+                    plan_dirty: moved || old_plan != new_plan,
+                    position_only: position_only && !moved,
+                }
             })
         };
         if let Some(updated) = updated {
@@ -1257,6 +1304,8 @@ impl PersistentSceneMaterializer {
         let plan_fingerprint = encoded.execution_plan_fingerprint();
         let chunk = SceneChunk {
             generation: node.generation,
+            source_canvas,
+            position_bits,
             lines: self.arenas.lines.insert(&encoded.lines),
             paths: self.arenas.paths.insert(&encoded.path_records),
             draws: self.arenas.draws.insert(&encoded.draw_records),
@@ -1284,7 +1333,10 @@ impl PersistentSceneMaterializer {
         );
         Self::remap_chunk_data(&mut self.arenas, &chunk);
         self.chunks.insert(id, chunk);
-        true
+        NodeRebuild {
+            plan_dirty: true,
+            position_only: false,
+        }
     }
 
     fn remap_chunk_data(arenas: &mut MaterializedArenas, chunk: &SceneChunk) {
@@ -1645,6 +1697,7 @@ impl PersistentSceneMaterializer {
             cpu_copied_bytes,
             painter: Vec::new(),
             plan_structure_reused: false,
+            plan_values_patched: false,
             plan_layer_stack: Vec::new(),
             filter_resources_changed: false,
             arena_live_bytes,
@@ -1867,6 +1920,25 @@ impl PersistentSceneMaterializer {
                 ..old
             },
         );
+    }
+
+    /// Patches translated offscreen descriptors owned by one otherwise unchanged scene leaf.
+    /// Draw records and stable batch membership live in arenas and do not need plan rebuilding.
+    fn patch_scene_position_plan(&mut self, id: RetainedNodeId) -> bool {
+        let location = &self.scene_command_locations[&id];
+        let command = Arc::make_mut(&mut self.canvas).command_lists[location.parent_list].commands
+            [location.command_index]
+            .clone();
+        let temporary = self.push_command_list();
+        Arc::make_mut(&mut self.canvas).command_lists[temporary]
+            .commands
+            .push(command);
+        let fragment = self.canvas.compile(temporary);
+        Arc::make_mut(&mut self.canvas).command_lists.pop();
+        Arc::make_mut(&mut self.canvas)
+            .compiled_plan
+            .as_mut()
+            .is_some_and(|plan| Arc::make_mut(plan).patch_retained_scene_position(id, &fragment))
     }
 
     /// Replaces one retained layer fragment without walking or rewriting unrelated siblings.
@@ -2588,6 +2660,30 @@ impl PersistentSceneMaterializer {
         ));
     }
 
+    /// Synchronizes stable GPU batch membership after a full execution-plan rebuild.
+    ///
+    /// A non-plain retained leaf can own draws on both sides of an offscreen layer, so it has no
+    /// single `node_batches` entry. Clearing that leaf's dirty draw slots before recompiling used
+    /// to leave them inactive even though the rebuilt plan still referenced them. Deriving the
+    /// table from the new plan is the authoritative path whenever plan structure is rebuilt and
+    /// also covers same-length content mutations that renumber later batches.
+    fn sync_stable_batches_from_plan(&mut self) {
+        let canvas = Arc::make_mut(&mut self.canvas);
+        let Some(plan) = canvas.compiled_plan.as_ref() else {
+            return;
+        };
+        let mut batches = (*plan.draw_batch_ids).clone();
+        batches.resize(self.arenas.draws.values().len(), u32::MAX);
+        let dirty =
+            changed_value_ranges(canvas.stable_batch_ids.as_deref().unwrap_or(&[]), &batches);
+        if let Some(changes) = &mut canvas.buffer_changes {
+            changes.painter.extend(dirty);
+            changes.painter = merge_index_ranges(std::mem::take(&mut changes.painter));
+        }
+        canvas.stable_batch_counts = Some(count_stable_batches(&batches));
+        canvas.stable_batch_ids = Some(batches);
+    }
+
     fn write_node_painter_metadata(
         &self,
         id: RetainedNodeId,
@@ -2792,11 +2888,10 @@ impl PersistentSceneMaterializer {
             let raw_bounds = chunk.canvas.visual_bounds();
             let new = crate::canvas::RetainedNodeState {
                 revision: SceneRevision::new(node.generation),
-                bounds: if self.dependency_free {
-                    raw_bounds
-                } else {
-                    old.bounds
-                },
+                // Position-only patches in scenes with layers still need the new influenced
+                // bounds. Keeping `old.bounds` forced later frames to rebuild the full retained
+                // frame/spatial index and missed the moved node's new backdrop dependencies.
+                bounds: self.influenced_bounds(scene, id, raw_bounds),
                 kind: match node.kind {
                     NodeKind::Layer(_) => RetainedNodeKind::Layer,
                     NodeKind::Scene { .. } => RetainedNodeKind::Scene,
@@ -3397,6 +3492,16 @@ fn is_plain_fragment(canvas: &Canvas) -> bool {
             .ops
             .iter()
             .all(|op| matches!(op, crate::shared::execution::ExecOp::DrawBatch { .. }))
+}
+
+fn scene_node_placement(node: &SceneNode) -> (Option<Arc<Canvas>>, Option<(u64, u64)>) {
+    match &node.kind {
+        NodeKind::Scene { canvas, position } => (
+            Some(canvas.clone()),
+            Some((position.x.to_bits(), position.y.to_bits())),
+        ),
+        _ => (None, None),
+    }
 }
 
 fn command_has_filter_resources(command: &Command) -> bool {

@@ -20,6 +20,7 @@ pub enum Scenario {
     LateResourceRevision,
     AllRevisions,
     OneMove,
+    LiquidGlassMove,
     AddRemove,
     LayerAddRemove,
     MiddleLayerAddRemove,
@@ -38,7 +39,7 @@ pub enum Scenario {
 }
 
 impl Scenario {
-    pub const ALL: [Self; 22] = [
+    pub const ALL: [Self; 23] = [
         Self::Static,
         Self::OneRevision,
         Self::VariableLength,
@@ -46,6 +47,7 @@ impl Scenario {
         Self::LateResourceRevision,
         Self::AllRevisions,
         Self::OneMove,
+        Self::LiquidGlassMove,
         Self::AddRemove,
         Self::LayerAddRemove,
         Self::MiddleLayerAddRemove,
@@ -72,6 +74,7 @@ impl Scenario {
             Self::LateResourceRevision => "late-resource-revision",
             Self::AllRevisions => "all-revisions",
             Self::OneMove => "one-move",
+            Self::LiquidGlassMove => "liquid-glass-move",
             Self::AddRemove => "add-remove",
             Self::LayerAddRemove => "layer-add-remove",
             Self::MiddleLayerAddRemove => "middle-layer-add-remove",
@@ -106,6 +109,7 @@ pub struct Workload {
     longer: Arc<Canvas>,
     resource_first: Arc<Canvas>,
     resource_longer: Arc<Canvas>,
+    liquid_glass: Arc<Canvas>,
 }
 
 impl Workload {
@@ -125,6 +129,7 @@ impl Workload {
             longer: two_rect_scene(),
             resource_first: image_scene(image.clone(), false),
             resource_longer: image_scene(image, true),
+            liquid_glass: liquid_glass_scene(),
         }
     }
 
@@ -190,7 +195,9 @@ impl Workload {
             RetainedParent::content(root)
         };
         for index in 0..self.count {
-            let child = if matches!(self.scenario, Scenario::LateResourceRevision)
+            let child = if matches!(self.scenario, Scenario::LiquidGlassMove) && index == 0 {
+                self.liquid_glass.clone()
+            } else if matches!(self.scenario, Scenario::LateResourceRevision)
                 && index + 1 == self.count
             {
                 self.resource_first.clone()
@@ -300,7 +307,7 @@ impl Workload {
                     transaction.replace_scene(node_id(index + 1), child.clone());
                 }
             }
-            Scenario::OneMove => {
+            Scenario::OneMove | Scenario::LiquidGlassMove => {
                 let mut position = position(0, self.count);
                 if !even {
                     position.0 += 16.0;
@@ -517,6 +524,35 @@ fn two_rect_scene() -> Arc<Canvas> {
         Radius::ZERO,
         Color::from_rgb8(240, 210, 40),
     );
+    Arc::new(scene)
+}
+
+/// A retained leaf that straddles two batches around an offscreen backdrop layer. Moving this
+/// exact shape guards both the incremental plan/batch synchronization and the UI glass-card
+/// workload that originally exposed it.
+fn liquid_glass_scene() -> Arc<Canvas> {
+    let mut scene = Canvas::new(8, 8, 1.0);
+    let bounds = Rect::new(0.0, 0.0, 8.0, 8.0);
+    scene.push_rect_shadow(
+        bounds,
+        Radius::all(2.0),
+        tileink::RectShadowOptions::new(0.0, 2.0, 2.0, 0.6),
+        Color::BLACK,
+    );
+    scene.push_backdrop_layer(
+        Filter::RectLiquidGlass(tileink::RectLiquidGlass {
+            blur_radius: 2,
+            tint: Color::from_rgba8(255, 255, 255, 32),
+            ..Default::default()
+        }),
+        Region::rect(bounds, Radius::all(2.0)),
+    );
+    scene.push_rect(
+        bounds,
+        Radius::all(2.0),
+        Color::from_rgba8(255, 255, 255, 48),
+    );
+    scene.pop_layer();
     Arc::new(scene)
 }
 
