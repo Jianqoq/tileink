@@ -61,6 +61,14 @@ name = "dirty_tiles_bench"
 path = "examples/dirty_tiles_bench.rs"
 
 [[example]]
+name = "retained_scale_bench"
+path = "examples/retained_scale_bench.rs"
+
+[[example]]
+name = "retained_dirty_ratio_bench"
+path = "examples/retained_dirty_ratio_bench.rs"
+
+[[example]]
 name = "blur_pairing_bench"
 path = "examples/blur_pairing_bench.rs"
 
