@@ -338,6 +338,17 @@ struct SceneChunk {
     segments: ArenaAllocation,
     plan_fingerprint: u64,
     plain_fragment: bool,
+    // Persistent damage propagation cannot rediscover ordinary backdrop commands by walking the
+    // materialized command tree every frame. Cache their translated dependency geometry with the
+    // chunk so an earlier node mutation only visits actual backdrop owners.
+    backdrop_dependencies: Vec<BackdropDependency>,
+}
+
+#[derive(Clone, Copy)]
+struct BackdropDependency {
+    dependency: Bounds,
+    output: Bounds,
+    output_outset: i32,
 }
 
 #[derive(Clone, Copy)]
@@ -538,9 +549,6 @@ impl PersistentSceneMaterializer {
             self.nonlocal_dependencies.remove(id);
         }
         if changes.topology_changed {
-            // Scene content and position changes cannot alter layer dependency membership. Layer
-            // insertions, removals, and descriptor updates are all topology changes, so only that
-            // journal class needs to touch these sets.
             for &id in &changes.changed_nodes {
                 let node = scene.nodes.get(&id);
                 if node.is_some_and(|node| matches!(&node.kind, NodeKind::Layer(_))) {
@@ -548,19 +556,13 @@ impl PersistentSceneMaterializer {
                 } else {
                     self.layer_nodes.remove(&id);
                 }
-                if node.is_some_and(|node| {
-                    matches!(
-                        &node.kind,
-                        NodeKind::Layer(RetainedLayerDescriptor::Backdrop { .. })
-                    )
-                }) {
-                    self.nonlocal_dependencies.insert(id);
-                } else {
+                // Scene chunks may contain ordinary backdrop commands. Keep their existing
+                // membership until rebuild_node refreshes it from the newly encoded chunk.
+                if !node.is_some_and(|node| matches!(&node.kind, NodeKind::Scene { .. })) {
                     self.nonlocal_dependencies.remove(&id);
                 }
             }
         }
-        self.dependency_free = self.layer_nodes.is_empty();
         let expanded_topology_changes =
             if changes.hierarchy_changed {
                 let mut topology_changes = changes.clone();
@@ -711,6 +713,7 @@ impl PersistentSceneMaterializer {
                 commands_dirty = true;
             }
         }
+        self.dependency_free = self.layer_nodes.is_empty() && self.nonlocal_dependencies.is_empty();
         drop(chunk_profile);
         let plan_profile = crate::wgpu::start_cpu_scope("retained.materialize.plan_sync");
         let mut plain_topology_candidate =
@@ -1178,18 +1181,7 @@ impl PersistentSceneMaterializer {
             .iter()
             .filter_map(|(&id, node)| matches!(&node.kind, NodeKind::Layer(_)).then_some(id))
             .collect();
-        self.nonlocal_dependencies = scene
-            .nodes
-            .iter()
-            .filter_map(|(&id, node)| {
-                matches!(
-                    &node.kind,
-                    NodeKind::Layer(RetainedLayerDescriptor::Backdrop { .. })
-                )
-                .then_some(id)
-            })
-            .collect();
-        self.dependency_free = self.layer_nodes.is_empty();
+        self.nonlocal_dependencies.clear();
         self.canvas = Arc::new(Canvas::new_retained(
             scene.width,
             scene.height,
@@ -1201,6 +1193,7 @@ impl PersistentSceneMaterializer {
                 self.rebuild_node(scene, id);
             }
         }
+        self.dependency_free = self.layer_nodes.is_empty() && self.nonlocal_dependencies.is_empty();
         self.sync_canvas_data(self.chunks.len() as u32, true);
         self.rebuild_commands(scene);
         self.rebuild_painter_metadata(scene);
@@ -1287,6 +1280,7 @@ impl PersistentSceneMaterializer {
                     chunk.plain_fragment = is_plain_fragment(&chunk.canvas);
                 }
                 chunk.plan_fingerprint = new_plan;
+                chunk.backdrop_dependencies = backdrop_dependencies(&chunk.canvas);
                 Self::add_chunk_resources(resource_refs, canvas, &chunk.canvas.scene_images);
                 Self::remap_chunk_data(arenas, chunk);
                 NodeRebuild {
@@ -1296,6 +1290,7 @@ impl PersistentSceneMaterializer {
             })
         };
         if let Some(updated) = updated {
+            self.refresh_nonlocal_dependency(id);
             return updated;
         }
 
@@ -1324,6 +1319,7 @@ impl PersistentSceneMaterializer {
                 .insert(&vec![0; encoded.tile_cnt as usize]),
             plan_fingerprint,
             plain_fragment: is_plain_fragment(&encoded),
+            backdrop_dependencies: backdrop_dependencies(&encoded),
             canvas: encoded,
         };
         Self::add_chunk_resources(
@@ -1333,9 +1329,22 @@ impl PersistentSceneMaterializer {
         );
         Self::remap_chunk_data(&mut self.arenas, &chunk);
         self.chunks.insert(id, chunk);
+        self.refresh_nonlocal_dependency(id);
         NodeRebuild {
             plan_dirty: true,
             position_only: false,
+        }
+    }
+
+    fn refresh_nonlocal_dependency(&mut self, id: RetainedNodeId) {
+        if self
+            .chunks
+            .get(&id)
+            .is_some_and(|chunk| !chunk.backdrop_dependencies.is_empty())
+        {
+            self.nonlocal_dependencies.insert(id);
+        } else {
+            self.nonlocal_dependencies.remove(&id);
         }
     }
 
@@ -2789,8 +2798,6 @@ impl PersistentSceneMaterializer {
         scene: &RetainedScene,
         sources: &[(Option<RetainedNodeId>, Bounds)],
     ) -> (Vec<(RetainedNodeId, Bounds)>, Vec<RetainedNodeId>) {
-        let canvas_bounds =
-            Bounds::canvas(self.canvas.physical_width(), self.canvas.physical_height());
         let mut damage = HashMap::<RetainedNodeId, Bounds>::default();
         let mut dirty = Vec::new();
         let mut pending = sources.to_vec();
@@ -2801,55 +2808,52 @@ impl PersistentSceneMaterializer {
             .collect::<Vec<_>>();
         backdrops.sort_unstable_by_key(|id| painter_path(scene, *id));
         for backdrop in backdrops {
-            let NodeKind::Layer(RetainedLayerDescriptor::Backdrop {
-                filter: value,
-                sample_region,
-            }) = &scene.nodes[&backdrop].kind
-            else {
+            let Some(chunk) = self.chunks.get(&backdrop) else {
                 continue;
             };
             let backdrop_painter = painter_path(scene, backdrop);
-            let dependency = filter::region_bounds(sample_region)
-                .outset(filter::filter_dependency_outset(value));
-            let output = filter::unclipped_filtered_region_bounds(value, sample_region)
-                .intersect(canvas_bounds);
             let mut affected_output = Bounds::new(0, 0, 0, 0);
-            for &(source, bounds) in &pending {
-                let affected = if source == Some(backdrop) {
-                    self.node_bounds.get(&backdrop).copied().unwrap_or(output)
-                } else if let Some(source) = source {
-                    let Some(source_painter) =
-                        self.painter_bases.get(&source).cloned().or_else(|| {
-                            scene
-                                .nodes
-                                .contains_key(&source)
-                                .then(|| painter_path(scene, source))
-                        })
-                    else {
-                        continue;
+            for dependency in &chunk.backdrop_dependencies {
+                for &(source, bounds) in &pending {
+                    let affected = if source == Some(backdrop) {
+                        self.node_bounds
+                            .get(&backdrop)
+                            .copied()
+                            .unwrap_or(dependency.output)
+                    } else if let Some(source) = source {
+                        let Some(source_painter) =
+                            self.painter_bases.get(&source).cloned().or_else(|| {
+                                scene
+                                    .nodes
+                                    .contains_key(&source)
+                                    .then(|| painter_path(scene, source))
+                            })
+                        else {
+                            continue;
+                        };
+                        if source_painter.as_ref() >= backdrop_painter.as_ref() {
+                            continue;
+                        }
+                        let sampled = bounds.intersect(dependency.dependency);
+                        if sampled.is_empty() {
+                            continue;
+                        }
+                        sampled
+                            .outset(dependency.output_outset)
+                            .intersect(dependency.output)
+                    } else {
+                        // Manual invalidation is already expressed in root output coordinates but
+                        // has no painter owner. Any intersecting backdrop may sample those pixels.
+                        let sampled = bounds.intersect(dependency.dependency);
+                        if sampled.is_empty() {
+                            continue;
+                        }
+                        sampled
+                            .outset(dependency.output_outset)
+                            .intersect(dependency.output)
                     };
-                    if source_painter.as_ref() >= backdrop_painter.as_ref() {
-                        continue;
-                    }
-                    let sampled = bounds.intersect(dependency);
-                    if sampled.is_empty() {
-                        continue;
-                    }
-                    sampled
-                        .outset(filter::filter_outset(value))
-                        .intersect(output)
-                } else {
-                    // Manual invalidation is already expressed in root output coordinates but
-                    // has no painter owner. Any intersecting backdrop may sample those pixels.
-                    let sampled = bounds.intersect(dependency);
-                    if sampled.is_empty() {
-                        continue;
-                    }
-                    sampled
-                        .outset(filter::filter_outset(value))
-                        .intersect(output)
-                };
-                affected_output = affected_output.union(affected);
+                    affected_output = affected_output.union(affected);
+                }
             }
             if !affected_output.is_empty() {
                 dirty.push(backdrop);
@@ -3512,6 +3516,35 @@ fn command_has_filter_resources(command: &Command) -> bool {
             ..
         }
     )
+}
+
+fn backdrop_dependencies(canvas: &Canvas) -> Vec<BackdropDependency> {
+    let canvas_bounds = Bounds::canvas(canvas.physical_width(), canvas.physical_height());
+    canvas
+        .command_lists
+        .iter()
+        .flat_map(|list| &list.commands)
+        .filter_map(|command| {
+            let Command::Layer {
+                layer:
+                    Layer::Backdrop {
+                        filter: value,
+                        sample_region,
+                    },
+                ..
+            } = command
+            else {
+                return None;
+            };
+            Some(BackdropDependency {
+                dependency: filter::region_bounds(sample_region)
+                    .outset(filter::filter_dependency_outset(value)),
+                output: filter::unclipped_filtered_region_bounds(value, sample_region)
+                    .intersect(canvas_bounds),
+                output_outset: filter::filter_outset(value),
+            })
+        })
+        .collect()
 }
 
 fn chunk_layer_influence_bounds(chunk: &SceneChunk) -> Bounds {
@@ -4530,6 +4563,16 @@ mod tests {
         Arc::new(Canvas::new(16, 16, 1.0))
     }
 
+    fn backdrop_leaf() -> Arc<Canvas> {
+        let mut canvas = Canvas::new(16, 16, 1.0);
+        canvas.push_backdrop_layer(
+            Filter::Opacity(0.5),
+            Region::rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::ZERO),
+        );
+        canvas.pop_layer();
+        Arc::new(canvas)
+    }
+
     #[test]
     fn transaction_is_atomic_when_a_late_mutation_is_invalid() {
         let root = RetainedNodeId::for_owner(1);
@@ -4589,6 +4632,49 @@ mod tests {
             storage
         );
         assert_eq!(materializer.chunks[&child].generation, 1);
+    }
+
+    #[test]
+    fn scene_content_replacement_refreshes_embedded_backdrop_index() {
+        let root = RetainedNodeId::for_owner(60_000);
+        let child = RetainedNodeId::for_owner(60_001);
+        let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
+        scene
+            .transaction()
+            .insert_scene(
+                RetainedParent::content(root),
+                None,
+                child,
+                leaf(Color::WHITE),
+                (8.0, 12.0),
+            )
+            .commit()
+            .unwrap();
+        let mut materializer = PersistentSceneMaterializer::new(&scene);
+        assert!(materializer.dependency_free);
+        assert!(!materializer.nonlocal_dependencies.contains(&child));
+
+        scene
+            .transaction()
+            .replace_scene(child, backdrop_leaf())
+            .commit()
+            .unwrap();
+        assert!(materializer.update(&scene));
+        assert!(!materializer.dependency_free);
+        assert!(materializer.nonlocal_dependencies.contains(&child));
+        assert_eq!(
+            materializer.chunks[&child].backdrop_dependencies[0].output,
+            Bounds::new(8, 12, 24, 28)
+        );
+
+        scene
+            .transaction()
+            .replace_scene(child, leaf(Color::BLACK))
+            .commit()
+            .unwrap();
+        assert!(materializer.update(&scene));
+        assert!(materializer.dependency_free);
+        assert!(!materializer.nonlocal_dependencies.contains(&child));
     }
 
     #[test]

@@ -1163,6 +1163,103 @@ fn persistent_retained_backdrop_background_revision_matches_force_full() {
 }
 
 #[test]
+fn persistent_scene_embedded_backdrop_tracks_earlier_moving_scene() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let root = RetainedNodeId::for_owner(50_263);
+    let background = RetainedNodeId::for_owner(50_264);
+    let card = RetainedNodeId::for_owner(50_265);
+    let panel = RetainedNodeId::for_owner(50_266);
+    let solid = |width, height, color| {
+        let mut canvas = Canvas::new(width, height, 1.0);
+        canvas.push_rect(
+            Rect::new(0.0, 0.0, f64::from(width), f64::from(height)),
+            crate::Radius::ZERO,
+            color,
+        );
+        std::sync::Arc::new(canvas)
+    };
+    let mut panel_canvas = Canvas::new(40, 32, 1.0);
+    let panel_rect = Rect::new(0.0, 0.0, 40.0, 32.0);
+    panel_canvas.push_backdrop_layer(
+        Filter::RectLiquidGlass(RectLiquidGlass {
+            blur_radius: 3,
+            tint: Color::from_rgba8(255, 255, 255, 36),
+            refraction_thickness: 10.0,
+            refraction_factor: 1.5,
+            ..RectLiquidGlass::default()
+        }),
+        Region::rect(panel_rect, crate::Radius::all(6.0)),
+    );
+    panel_canvas.pop_layer();
+
+    let mut scene = RetainedScene::new(96, 48, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            background,
+            solid(96, 48, Color::from_rgb8(28, 48, 76)),
+            (0.0, 0.0),
+        )
+        // The card is painted before the panel, so the later backdrop must sample it.
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            card,
+            solid(16, 16, Color::from_rgb8(235, 48, 38)),
+            (8.0, 16.0),
+        )
+        // This is deliberately a Scene node containing an ordinary backdrop command. Cached UI
+        // widgets use this shape instead of a RetainedLayerDescriptor::Backdrop hierarchy node.
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            panel,
+            std::sync::Arc::new(panel_canvas),
+            (48.0, 8.0),
+        )
+        .commit()
+        .unwrap();
+
+    let mut incremental = new_test_renderer(96, 48, Color::TRANSPARENT);
+    incremental.render_retained(&scene);
+    scene
+        .transaction()
+        .set_position(card, (56.0, 16.0))
+        .commit()
+        .unwrap();
+    incremental.render_retained(&scene);
+
+    let mut full = new_test_renderer(96, 48, Color::TRANSPARENT);
+    let mut config = full.incremental_render_config();
+    config.mode = crate::IncrementalRenderMode::ForceFull;
+    full.set_incremental_render_config(config);
+    full.render_retained(&scene);
+    let incremental_image = incremental.image();
+    let full_image = full.image();
+    let difference = incremental_image
+        .pixels
+        .iter()
+        .zip(&full_image.pixels)
+        .position(|(actual, expected)| actual != expected);
+    assert_eq!(
+        difference, None,
+        "embedded backdrop retained output diverged"
+    );
+    assert!(
+        incremental
+            .incremental_render_stats()
+            .rerendered_offscreen_surfaces
+            > 0,
+        "moving an earlier scene into an embedded backdrop must invalidate its retained surface"
+    );
+}
+
+#[test]
 fn persistent_retained_nested_layer_insert_rebuilds_only_offscreen_ancestor() {
     if !run_wgpu_tests() {
         return;
