@@ -562,7 +562,9 @@ impl Canvas {
         self.retained_root.is_some()
     }
 
-    pub(crate) fn is_closed_for_append(&self) -> bool {
+    /// Returns whether every layer and command list opened while recording has been closed.
+    /// Only a closed canvas can be appended or installed as a retained scene leaf.
+    pub fn is_closed_for_append(&self) -> bool {
         self.command_stack.len() == 1 && self.layer_stack.is_empty()
     }
 

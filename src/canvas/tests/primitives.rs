@@ -948,3 +948,13 @@ fn push_dashed_circle_stroke_uses_path_storage() {
     assert!(canvas.draw_records[0].sdf_range().is_none());
     assert!(canvas.draw_records[0].sdf_shadow_range().is_none());
 }
+
+#[test]
+fn canvas_reports_unclosed_layers_before_retained_installation() {
+    let mut canvas = Canvas::new(32, 32, 1.0);
+    assert!(canvas.is_closed_for_append());
+    canvas.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, 32.0, 32.0), Radius::ZERO);
+    assert!(!canvas.is_closed_for_append());
+    canvas.pop_layer();
+    assert!(canvas.is_closed_for_append());
+}

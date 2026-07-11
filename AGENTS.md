@@ -48,4 +48,4 @@ After each feature or bug fix:
 7. In svg, resvg reference png are not 100% correct, small pixels difference is acceptable, ask developer to confirm before consider the change failed.
 8. Every change related to rendering, must run full svg tests and examples, if there are diff in pngs, make sure the change make sense and reviewed by human
 9. Review your changes, do they make sense
-10. After benchmark running, individual performance regression must not greater than 5%
+10. After benchmark running, individual performance regression must not greater than 2%

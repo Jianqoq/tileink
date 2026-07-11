@@ -1,5 +1,6 @@
+use rustc_hash::FxHashMap as HashMap;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet},
     ops::Range,
 };
 
@@ -38,7 +39,7 @@ impl<T: Copy> SceneArena<T> {
         Self {
             values: Vec::new(),
             vacant,
-            allocations: HashMap::new(),
+            allocations: HashMap::default(),
             free_by_start: BTreeMap::new(),
             free_by_size: BTreeSet::new(),
             free_len: 0,
