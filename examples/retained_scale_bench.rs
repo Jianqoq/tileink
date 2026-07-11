@@ -1,100 +1,113 @@
 #[path = "support/retained_bench.rs"]
-mod retained_bench_support;
+mod retained_bench;
+#[path = "support/retained_scale.rs"]
+mod retained_scale;
 
-use std::{error::Error, sync::Arc};
+use std::error::Error;
 
-use peniko::{
-    Color,
-    kurbo::{Point, Rect},
-};
-use retained_bench_support::{BenchConfig, HEIGHT, WIDTH, bench, median_ms, ms};
-use tileink::{Canvas, IncrementalRenderMode, Radius, RetainedNodeId, WgpuRenderer};
-
-#[derive(Clone, Copy)]
-enum Scenario {
-    Static,
-    OneRevision,
-    AllRevisions,
-    OneMove,
-    AddRemove,
-    Reorder,
-    ManualInvalidation,
-}
-
-impl Scenario {
-    const ALL: [Self; 7] = [
-        Self::Static,
-        Self::OneRevision,
-        Self::AllRevisions,
-        Self::OneMove,
-        Self::AddRemove,
-        Self::Reorder,
-        Self::ManualInvalidation,
-    ];
-
-    fn name(self) -> &'static str {
-        match self {
-            Self::Static => "static",
-            Self::OneRevision => "one-revision",
-            Self::AllRevisions => "all-revisions",
-            Self::OneMove => "one-move",
-            Self::AddRemove => "add-remove",
-            Self::Reorder => "reorder",
-            Self::ManualInvalidation => "manual-invalidation",
-        }
-    }
-}
+use peniko::Color;
+use retained_bench::{BenchConfig, HEIGHT, WIDTH, bench_persistent, median_ms, ms};
+use retained_scale::{Scenario, Workload};
+use tileink::{IncrementalRenderMode, WgpuRenderer};
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let (config, counts) = parse_config()?;
+    let RunConfig {
+        bench: config,
+        counts,
+        scenarios,
+    } = parse_config()?;
     let seed = WgpuRenderer::new_default_device(WIDTH, HEIGHT, Color::TRANSPARENT);
     println!(
-        "retained scale bench: {WIDTH}x{HEIGHT}, warmup {}, measured frames {}",
+        "persistent retained scale bench: {WIDTH}x{HEIGHT}, warmup {}, measured frames {}",
         config.warmup, config.frames
     );
     println!(
-        "wall includes CPU submit and GPU completion; stage columns are profiler CPU time per frame"
+        "wall includes submit and GPU completion; transaction is reported separately from render"
     );
     println!(
-        "{:<20} {:>7} {:>10} {:>10} {:>10} {:>12} {:>10} {:>10} {:>9}",
+        "{:<20} {:>7} {:>9} {:>10} {:>10} {:>10} {:>12} {:>10} {:>10} {:>9} {:>9} {:>9} {:>9} {:>9} {:>7} {:>7} {:>7} {:>5} {:>10} {:>10} {:>8} {:>10} {:>10} {:>7} {:>7}",
         "scenario",
         "nodes",
+        "txn ms",
         "wall ms",
         "cpu ms",
         "collect",
         "materialize",
         "damage",
         "prepare",
-        "dirty"
+        "scan",
+        "raster",
+        "select",
+        "execute",
+        "dirty",
+        "chunks",
+        "plans",
+        "batches",
+        "sync",
+        "CPU KiB",
+        "GPU KiB",
+        "pages",
+        "live KiB",
+        "cap KiB",
+        "frag %",
+        "compact"
     );
 
     for count in counts {
-        let shared = rect_scene(Color::from_rgb8(30, 130, 220));
-        let changed = rect_scene(Color::from_rgb8(230, 90, 40));
-        for scenario in Scenario::ALL {
-            let frames = build_frames(count, scenario, &shared, &changed);
-            let measured = bench(&seed, config, &frames, IncrementalRenderMode::Auto)?;
+        for &scenario in &scenarios {
+            let workload = Workload::new(count, scenario);
+            let scene = workload.build_scene();
+            let measured = bench_persistent(
+                &seed,
+                config,
+                scene,
+                IncrementalRenderMode::Auto,
+                |scene, frame| workload.mutate(scene, frame),
+            )?;
             let n = config.frames as u32;
             println!(
-                "{:<20} {:>7} {:>10.3} {:>10.3} {:>10.3} {:>12.3} {:>10.3} {:>10.3} {:>9.1}",
+                "{:<20} {:>7} {:>9.3} {:>10.3} {:>10.3} {:>10.3} {:>12.3} {:>10.3} {:>10.3} {:>9.3} {:>9.3} {:>9.3} {:>9.3} {:>9.1} {:>7.1} {:>7.1} {:>7.1} {:>5} {:>10.2} {:>10.2} {:>8.1} {:>10.1} {:>10.1} {:>7.1} {:>7}",
                 scenario.name(),
                 count,
+                ms(measured.transaction / n),
                 median_ms(&measured.wall),
                 ms(measured.cpu / n),
                 ms(measured.collect / n),
                 ms(measured.materialize / n),
                 ms(measured.damage / n),
                 ms(measured.prepare / n),
+                ms(measured.scan / n),
+                ms(measured.raster / n),
+                ms(measured.plan_select / n),
+                ms(measured.plan_execute / n),
                 measured.dirty_tiles as f64 / config.frames as f64,
+                measured.chunks_rebuilt as f64 / config.frames as f64,
+                measured.plan_fragments_rebuilt as f64 / config.frames as f64,
+                measured.root_draw_batches as f64 / config.frames as f64,
+                measured.full_scene_syncs,
+                measured.cpu_copied_bytes as f64 / config.frames as f64 / 1024.0,
+                measured.gpu_uploaded_bytes as f64 / config.frames as f64 / 1024.0,
+                measured.tile_pages_rewritten as f64 / config.frames as f64,
+                measured.arena_live_bytes as f64 / config.frames as f64 / 1024.0,
+                measured.arena_capacity_bytes as f64 / config.frames as f64 / 1024.0,
+                measured.arena_fragmentation / config.frames as f64 * 100.0,
+                measured.arena_compactions,
             );
         }
     }
     Ok(())
 }
 
-fn parse_config() -> Result<(BenchConfig, Vec<usize>), Box<dyn Error>> {
+struct RunConfig {
+    bench: BenchConfig,
+    counts: Vec<usize>,
+    scenarios: Vec<Scenario>,
+}
+
+fn parse_config() -> Result<RunConfig, Box<dyn Error>> {
     let mut config = BenchConfig::default();
-    let mut counts = vec![10, 100, 1_000, 5_000];
+    let mut counts = vec![100, 1_000, 5_000, 20_000, 100_000];
+    let mut scenarios = Scenario::ALL.to_vec();
     let args = std::env::args().skip(1).collect::<Vec<_>>();
     let mut index = 0;
     while index < args.len() {
@@ -111,88 +124,25 @@ fn parse_config() -> Result<(BenchConfig, Vec<usize>), Box<dyn Error>> {
                     .map(str::parse)
                     .collect::<Result<Vec<_>, _>>()?
             }
+            "--scenarios" => {
+                scenarios = value
+                    .split(',')
+                    .map(|name| {
+                        Scenario::parse(name)
+                            .ok_or_else(|| format!("unknown benchmark scenario {name}"))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+            }
             _ => return Err(format!("unknown argument {flag}").into()),
         }
         index += 2;
     }
-    if config.frames == 0 || counts.is_empty() || counts.contains(&0) {
-        return Err("frames and every node count must be positive".into());
+    if config.frames == 0 || counts.is_empty() || counts.contains(&0) || scenarios.is_empty() {
+        return Err("frames, scenarios, and every node count must be positive".into());
     }
-    Ok((config, counts))
-}
-
-fn rect_scene(color: Color) -> Arc<Canvas> {
-    let mut scene = Canvas::new(8, 8, 1.0);
-    scene.push_rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::ZERO, color);
-    Arc::new(scene)
-}
-
-fn build_frames(
-    count: usize,
-    scenario: Scenario,
-    shared: &Arc<Canvas>,
-    changed: &Arc<Canvas>,
-) -> [Canvas; 2] {
-    let mut first_order = (0..count).collect::<Vec<_>>();
-    let mut second_order = first_order.clone();
-    if matches!(scenario, Scenario::Reorder) && count > 1 {
-        second_order.rotate_left(1);
-    }
-    let second_count = if matches!(scenario, Scenario::AddRemove) {
-        count.saturating_sub(1)
-    } else {
-        count
-    };
-    first_order.truncate(count);
-    second_order.truncate(second_count);
-
-    [
-        build_frame(count, scenario, 0, &first_order, shared, changed),
-        build_frame(count, scenario, 1, &second_order, shared, changed),
-    ]
-}
-
-fn build_frame(
-    count: usize,
-    scenario: Scenario,
-    phase: usize,
-    order: &[usize],
-    shared: &Arc<Canvas>,
-    changed: &Arc<Canvas>,
-) -> Canvas {
-    let mut frame = Canvas::new_retained(WIDTH, HEIGHT, 1.0, RetainedNodeId::for_owner(1));
-    if matches!(scenario, Scenario::ManualInvalidation) {
-        let color = if phase == 0 {
-            Color::BLACK
-        } else {
-            Color::WHITE
-        };
-        frame.push_rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::ZERO, color);
-        frame.invalidate_rect(Rect::new(0.0, 0.0, 8.0, 8.0));
-    }
-    for &index in order {
-        let all_changed = matches!(scenario, Scenario::AllRevisions) && phase == 1;
-        let one_changed = matches!(scenario, Scenario::OneRevision) && phase == 1 && index == 0;
-        let revision = u64::from(all_changed || one_changed);
-        let scene = if one_changed { changed } else { shared };
-        let mut position = position(index, count);
-        if matches!(scenario, Scenario::OneMove) && phase == 1 && index == 0 {
-            position.x += 16.0;
-        }
-        frame.append_retained_scene(
-            RetainedNodeId::for_owner(index as u64 + 2),
-            revision,
-            scene.clone(),
-            position,
-        );
-    }
-    frame
-}
-
-fn position(index: usize, count: usize) -> Point {
-    let columns = (count as f64).sqrt().ceil().max(1.0) as usize;
-    Point::new(
-        (index % columns) as f64 * 10.0,
-        (index / columns) as f64 * 10.0,
-    )
+    Ok(RunConfig {
+        bench: config,
+        counts,
+        scenarios,
+    })
 }

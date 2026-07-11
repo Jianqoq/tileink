@@ -123,6 +123,19 @@ impl RetainedSurfaceCache {
         });
     }
 
+    pub(crate) fn remove_nodes(&mut self, nodes: &HashSet<RetainedNodeId>) {
+        if nodes.is_empty() {
+            return;
+        }
+        self.entries.retain(|id, surface| {
+            let keep = !nodes.contains(&id.node);
+            if !keep {
+                self.byte_len = self.byte_len.saturating_sub(surface.byte_len());
+            }
+            keep
+        });
+    }
+
     fn evict_to_budget(&mut self) {
         while self.byte_len > self.budget {
             let Some(id) = self

@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use crate::{
     Canvas, TILE_SIZE,
@@ -137,6 +140,22 @@ pub struct IncrementalRenderStats {
     /// Whether the renderer reused the already-flattened retained scene.
     pub materialized_scene_reused: bool,
     pub reused_compiled_plan: bool,
+    /// Persistent chunks encoded for this frame.
+    pub chunks_rebuilt: u32,
+    /// Persistent execution-plan fragments patched or rebuilt this frame.
+    pub plan_fragments_rebuilt: u32,
+    /// Whether journal loss, surface change, or first use required a complete scene resync.
+    pub full_scene_sync: bool,
+    /// Bytes copied from changed chunk allocations into stable CPU scene arrays.
+    pub cpu_copied_bytes: u64,
+    /// Bytes written to scene storage buffers, excluding render targets and transient worklists.
+    pub gpu_uploaded_bytes: u64,
+    pub tile_pages_rewritten: u32,
+    pub tile_page_compactions: u64,
+    pub arena_live_bytes: u64,
+    pub arena_capacity_bytes: u64,
+    pub arena_fragmentation: f32,
+    pub arena_compactions: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -604,6 +623,49 @@ impl IncrementalState {
             return (DamageTiles::full(physical_size), RetainedDamage::default());
         }
 
+        if let (Some(previous_version), Some(delta)) = (previous.version, &current.delta)
+            && delta.from_version == previous_version
+            && current.version == Some(delta.to_version)
+        {
+            let mut tiles = DamageTiles::new(physical_size);
+            let mut retained = RetainedDamage::default();
+            for patch in delta.patches.iter() {
+                if patch.old != patch.new {
+                    let bounds = match (patch.old, patch.new) {
+                        (Some(old), Some(new)) => old.bounds.union(new.bounds),
+                        (Some(old), None) => old.bounds,
+                        (None, Some(new)) => new.bounds,
+                        (None, None) => continue,
+                    };
+                    tiles.add_bounds(bounds);
+                    if let Some(node) = patch.new.or(patch.old) {
+                        retained.add_node(node.id, bounds);
+                    }
+                }
+            }
+            for &(id, bounds) in delta.damage.iter() {
+                tiles.add_bounds(bounds);
+                retained.add_node(id, bounds);
+            }
+            for &bounds in &current.invalidated_bounds {
+                tiles.add_bounds(bounds);
+                retained.add_unattributed(bounds);
+            }
+            return (tiles, retained);
+        }
+
+        // A persistent scene version is collected once and shared by subsequent static frames.
+        // Pointer identity makes static and raster-only invalidation independent of node count.
+        if Arc::ptr_eq(&previous.nodes, &current.nodes) {
+            let mut tiles = DamageTiles::new(physical_size);
+            let mut retained = RetainedDamage::default();
+            for &bounds in &current.invalidated_bounds {
+                tiles.add_bounds(bounds);
+                retained.add_unattributed(bounds);
+            }
+            return (tiles, retained);
+        }
+
         let mut tiles = DamageTiles::new(physical_size);
         let mut retained = RetainedDamage::default();
         diff_frames(previous, current, &mut tiles, &mut retained);
@@ -682,7 +744,7 @@ fn diff_frames(
         .map(|node| (node.id, node))
         .collect::<HashMap<_, _>>();
 
-    for node in &current.nodes {
+    for node in current.nodes.iter() {
         let Some(previous) = old.get(&node.id) else {
             damage.add_bounds(node.bounds);
             retained.add_node(node.id, node.bounds);
@@ -698,7 +760,7 @@ fn diff_frames(
             retained.add_node(node.id, bounds);
         }
     }
-    for node in &previous.nodes {
+    for node in previous.nodes.iter() {
         if !new.contains_key(&node.id) {
             damage.add_bounds(node.bounds);
             // Removed commands have no insertion point in the current painter
@@ -809,27 +871,38 @@ mod tests {
     use crate::{RetainedNodeId, SceneRevision, canvas::RetainedNodeKind};
 
     fn frame(nodes: &[(u64, u64, Bounds)]) -> RetainedFrame {
+        let nodes = nodes
+            .iter()
+            .enumerate()
+            .map(|(order, (id, revision, bounds))| RetainedNodeState {
+                id: RetainedNodeId::for_owner(*id),
+                revision: SceneRevision::new(*revision),
+                bounds: *bounds,
+                order: order as u32,
+                kind: RetainedNodeKind::Scene,
+                placement_bits: None,
+            })
+            .collect::<Vec<_>>();
+        let node_index = nodes
+            .iter()
+            .enumerate()
+            .map(|(index, node)| (node.id, index))
+            .collect();
         RetainedFrame {
             root: RetainedNodeId::for_owner(1),
             logical_size: (128, 64),
             physical_size: (128, 64),
             scale_bits: 1.0f32.to_bits(),
-            nodes: nodes
-                .iter()
-                .enumerate()
-                .map(|(order, (id, revision, bounds))| RetainedNodeState {
-                    id: RetainedNodeId::for_owner(*id),
-                    revision: SceneRevision::new(*revision),
-                    bounds: *bounds,
-                    order: order as u32,
-                    kind: RetainedNodeKind::Scene,
-                    placement_bits: None,
-                })
-                .collect(),
+            nodes: nodes.into(),
+            node_index: std::sync::Arc::new(node_index),
             invalidated_bounds: Vec::new(),
             invalidate_all: false,
             materialization_cacheable: true,
             incremental_complete: true,
+            version: None,
+            delta: None,
+            dependency_free: false,
+            requires_damage_propagation: true,
         }
     }
 
@@ -869,9 +942,9 @@ mod tests {
     #[test]
     fn retained_layer_revision_change_dirties_its_bounds() {
         let mut previous = frame(&[(2, 0, Bounds::new(16, 0, 32, 16))]);
-        previous.nodes[0].kind = RetainedNodeKind::Layer;
+        Arc::make_mut(&mut previous.nodes)[0].kind = RetainedNodeKind::Layer;
         let mut current = previous.clone();
-        current.nodes[0].revision = SceneRevision::new(1);
+        Arc::make_mut(&mut current.nodes)[0].revision = SceneRevision::new(1);
         let mut damage = DamageTiles::new(current.physical_size);
 
         diff_frames(

@@ -16,12 +16,18 @@ struct CumsumConfig {
 
 var<workgroup> scratch: array<i32, 256>;
 
+fn linear_workgroup_index(workgroup_id: vec3<u32>, num_workgroups: vec3<u32>) -> u32 {
+    return workgroup_id.x + workgroup_id.y * num_workgroups.x +
+        workgroup_id.z * num_workgroups.x * num_workgroups.y;
+}
+
 @compute @workgroup_size(256)
 fn cumsum_prefix_chunks(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
+    @builtin(num_workgroups) num_workgroups: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
 ) {
-    let chunk_ix = workgroup_id.x;
+    let chunk_ix = linear_workgroup_index(workgroup_id, num_workgroups);
     let lane = local_id.x;
     let chunk_offset = chunk_backdrop_offsets[chunk_ix];
     let chunk_len = chunk_lens[chunk_ix];
@@ -96,9 +102,10 @@ fn cumsum_chunk_offsets(@builtin(global_invocation_id) global_id: vec3<u32>) {
 @compute @workgroup_size(256)
 fn cumsum_apply_chunk_offsets(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
+    @builtin(num_workgroups) num_workgroups: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
 ) {
-    let chunk_ix = workgroup_id.x;
+    let chunk_ix = linear_workgroup_index(workgroup_id, num_workgroups);
     let lane = local_id.x;
     let chunk_len = chunk_lens[chunk_ix];
     if (lane >= chunk_len) {

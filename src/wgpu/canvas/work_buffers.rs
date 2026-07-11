@@ -169,6 +169,7 @@ impl WgpuScanBuffers {
 pub(crate) struct WgpuCoarseBuffers {
     pub(crate) work: WgpuBuffer,
     pub(crate) chunk_records: WgpuBuffer,
+    pub(crate) tile_bin_layout: Option<(u64, usize, usize, usize)>,
 }
 
 impl WgpuCoarseBuffers {
@@ -176,6 +177,7 @@ impl WgpuCoarseBuffers {
         Self {
             work: WgpuBuffer::new(device, "tileink wgpu coarse work"),
             chunk_records: WgpuBuffer::new(device, "tileink wgpu coarse chunk records"),
+            tile_bin_layout: None,
         }
     }
 

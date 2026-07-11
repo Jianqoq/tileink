@@ -4,6 +4,7 @@ pub(crate) struct WgpuBuffer {
     buffer: ::wgpu::Buffer,
     capacity: ::wgpu::BufferAddress,
     cached_upload: Vec<u8>,
+    generation: u64,
 }
 
 impl WgpuBuffer {
@@ -12,6 +13,7 @@ impl WgpuBuffer {
             buffer: create_buffer(device, label, 4),
             capacity: 4,
             cached_upload: Vec::new(),
+            generation: 1,
         }
     }
 
@@ -27,6 +29,7 @@ impl WgpuBuffer {
         if capacity > self.capacity {
             self.buffer = create_buffer(device, label, capacity.next_power_of_two());
             self.capacity = capacity.next_power_of_two();
+            self.generation += 1;
         }
         if !bytes.is_empty() {
             queue.write_buffer(&self.buffer, 0, bytes);
@@ -54,6 +57,7 @@ impl WgpuBuffer {
         if recreated {
             self.buffer = create_buffer(device, label, capacity.next_power_of_two());
             self.capacity = capacity.next_power_of_two();
+            self.generation += 1;
             self.cached_upload.clear();
         }
         if bytes == self.cached_upload {
@@ -69,6 +73,55 @@ impl WgpuBuffer {
         range.len()
     }
 
+    /// Uploads caller-provided changed element ranges without scanning the full retained arena.
+    ///
+    /// The retained scene allocator is the source of truth for dirtiness. A missing byte cache or
+    /// buffer growth performs one full upload; ordinary node updates write only their allocations.
+    pub(crate) fn upload_ranges<T: Pod>(
+        &mut self,
+        device: &::wgpu::Device,
+        queue: &::wgpu::Queue,
+        label: &'static str,
+        data: &[T],
+        ranges: &[std::ops::Range<usize>],
+    ) -> usize {
+        let bytes = bytemuck::cast_slice(data);
+        let item_size = std::mem::size_of::<T>();
+        let capacity = required_storage_capacity::<T>(data.len());
+        let full_upload = capacity > self.capacity || self.cached_upload.is_empty();
+        if capacity > self.capacity {
+            self.buffer = create_buffer(device, label, capacity.next_power_of_two());
+            self.capacity = capacity.next_power_of_two();
+            self.generation += 1;
+        }
+        if full_upload {
+            if !bytes.is_empty() {
+                queue.write_buffer(&self.buffer, 0, bytes);
+            }
+            self.cached_upload.clear();
+            self.cached_upload.extend_from_slice(bytes);
+            return bytes.len();
+        }
+
+        self.cached_upload.resize(bytes.len(), 0);
+        let mut uploaded = 0;
+        for range in ranges {
+            assert!(range.start <= range.end && range.end <= data.len());
+            let byte_range = range.start * item_size..range.end * item_size;
+            if byte_range.is_empty() {
+                continue;
+            }
+            queue.write_buffer(
+                &self.buffer,
+                byte_range.start as ::wgpu::BufferAddress,
+                &bytes[byte_range.clone()],
+            );
+            self.cached_upload[byte_range.clone()].copy_from_slice(&bytes[byte_range.clone()]);
+            uploaded += byte_range.len();
+        }
+        uploaded
+    }
+
     pub(crate) fn resize_uninit<T: Pod>(
         &mut self,
         device: &::wgpu::Device,
@@ -79,6 +132,7 @@ impl WgpuBuffer {
         if capacity > self.capacity {
             self.buffer = create_buffer(device, label, capacity.next_power_of_two());
             self.capacity = capacity.next_power_of_two();
+            self.generation += 1;
             self.cached_upload.clear();
         }
     }
@@ -98,6 +152,10 @@ impl WgpuBuffer {
 
     pub(crate) fn buffer(&self) -> &::wgpu::Buffer {
         &self.buffer
+    }
+
+    pub(crate) fn generation(&self) -> u64 {
+        self.generation
     }
 
     #[cfg(test)]

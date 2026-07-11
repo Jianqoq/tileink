@@ -127,6 +127,7 @@ impl WgpuSceneBuffers {
     ) -> WgpuCoarseBindings<'a> {
         WgpuCoarseBindings {
             draw_records: self.draw_records.buffer(),
+            draw_batch_ids: self.draw_batch_ids.buffer(),
             text_blob: self.coarse_text_blob.buffer(),
             paint_blob: self.paint_blob.buffer(),
             path_records: self.path_records.buffer(),
@@ -198,6 +199,7 @@ pub(crate) struct WgpuScanBindings<'a> {
 
 pub(crate) struct WgpuCoarseBindings<'a> {
     pub(crate) draw_records: &'a ::wgpu::Buffer,
+    pub(crate) draw_batch_ids: &'a ::wgpu::Buffer,
     pub(crate) text_blob: &'a ::wgpu::Buffer,
     pub(crate) paint_blob: &'a ::wgpu::Buffer,
     pub(crate) path_records: &'a ::wgpu::Buffer,

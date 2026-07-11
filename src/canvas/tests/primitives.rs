@@ -443,7 +443,7 @@ fn append_fast_path_translates_sdf_without_mutating_child() {
         crate::Radius::ZERO,
         Brush::Solid(rgb(255, 0, 0)),
     );
-    let original_child_draw = child.draw_records[0].clone();
+    let original_child_draw = child.draw_records[0];
 
     let mut parent = test_scene();
     parent.append(&child, Point::new(10.0, 20.0));

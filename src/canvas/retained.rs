@@ -6,10 +6,14 @@ use std::{
 use peniko::kurbo::{Point, Rect};
 
 use super::{Canvas, SceneAppendMode, SceneOffset};
-use crate::shared::{
-    bounds::Bounds,
-    execution::Command,
-    layer::{Layer, filter, region::Region},
+use crate::{
+    RetainedParent, RetainedScene,
+    retained_scene::PersistentSceneMaterializer,
+    shared::{
+        bounds::Bounds,
+        execution::Command,
+        layer::{Layer, filter, region::Region},
+    },
 };
 
 /// Stable identity for retained content.
@@ -110,13 +114,31 @@ pub(crate) struct RetainedNodeState {
     pub(crate) placement_bits: Option<(u64, u64)>,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RetainedNodePatch {
+    pub(crate) old: Option<RetainedNodeState>,
+    pub(crate) new: Option<RetainedNodeState>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct RetainedFrameDelta {
+    pub(crate) from_version: u64,
+    pub(crate) to_version: u64,
+    pub(crate) patches: Arc<[RetainedNodePatch]>,
+    pub(crate) previous: Option<Arc<RetainedFrameDelta>>,
+    pub(crate) depth: u16,
+    pub(crate) damage: Arc<[(RetainedNodeId, Bounds)]>,
+    pub(crate) index: Arc<HashMap<RetainedNodeId, usize>>,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct RetainedFrame {
     pub(crate) root: RetainedNodeId,
     pub(crate) logical_size: (u32, u32),
     pub(crate) physical_size: (u32, u32),
     pub(crate) scale_bits: u32,
-    pub(crate) nodes: Vec<RetainedNodeState>,
+    pub(crate) nodes: Arc<[RetainedNodeState]>,
+    pub(crate) node_index: Arc<HashMap<RetainedNodeId, usize>>,
     pub(crate) invalidated_bounds: Vec<Bounds>,
     pub(crate) invalidate_all: bool,
     /// Whether every command is represented by retained identity and the flattened scene can be
@@ -124,6 +146,15 @@ pub(crate) struct RetainedFrame {
     /// but cannot make untracked command contents safe to cache.
     pub(crate) materialization_cacheable: bool,
     pub(crate) incremental_complete: bool,
+    /// Stateful-scene version and small immutable overlay. Snapshot canvases leave these empty.
+    pub(crate) version: Option<u64>,
+    pub(crate) delta: Option<Arc<RetainedFrameDelta>>,
+    /// No layer/filter/mask can propagate leaf damage outside the changed node bounds.
+    pub(crate) dependency_free: bool,
+    /// Filter/backdrop dependencies require walking command ancestry after retained diffing.
+    /// Spatial-only layers can skip that walk even though they are not dependency-free for
+    /// materialization and painter-plan purposes.
+    pub(crate) requires_damage_propagation: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -154,11 +185,19 @@ impl RetainedDamage {
 }
 
 impl RetainedFrame {
+    pub(crate) fn node_state(&self, id: RetainedNodeId) -> Option<RetainedNodeState> {
+        let mut delta = self.delta.as_deref();
+        while let Some(current) = delta {
+            if let Some(&index) = current.index.get(&id) {
+                return current.patches[index].new;
+            }
+            delta = current.previous.as_deref();
+        }
+        self.node_index.get(&id).map(|&index| self.nodes[index])
+    }
+
     pub(crate) fn node_revision(&self, id: RetainedNodeId) -> Option<SceneRevision> {
-        self.nodes
-            .iter()
-            .find(|node| node.id == id)
-            .map(|node| node.revision)
+        self.node_state(id).map(|node| node.revision)
     }
 
     pub(crate) fn same_scene(&self, other: &Self) -> bool {
@@ -178,11 +217,30 @@ pub(crate) struct RetainedSceneCache {
     /// scan every cached scene before each lookup to remove older revisions, making materializing
     /// an N-node frame O(N²).
     scenes: HashMap<RetainedNodeId, CachedRetainedScene>,
+    snapshot: Option<Box<SnapshotMaterialization>>,
 }
 
 struct CachedRetainedScene {
     revision: SceneRevision,
     canvas: Arc<Canvas>,
+}
+
+#[derive(Clone)]
+struct SnapshotNode {
+    id: RetainedNodeId,
+    revision: SceneRevision,
+    canvas: Arc<Canvas>,
+    position: Point,
+}
+
+struct SnapshotMaterialization {
+    root: RetainedNodeId,
+    logical_size: (u32, u32),
+    scale_bits: u32,
+    nodes: HashMap<RetainedNodeId, (SceneRevision, Point)>,
+    order: Vec<RetainedNodeId>,
+    scene: RetainedScene,
+    materializer: PersistentSceneMaterializer,
 }
 
 impl RetainedSceneCache {
@@ -215,6 +273,212 @@ impl RetainedSceneCache {
             .map(|node| node.id)
             .collect::<HashSet<_>>();
         self.scenes.retain(|id, _| active.contains(id));
+    }
+
+    /// Adapts flat snapshot-style retained children to the same stable chunk backend used by
+    /// [`RetainedScene`]. Metadata is still scanned because snapshots carry no journal, while
+    /// unchanged child records remain in their arena allocations.
+    pub(crate) fn materialize_snapshot_shared(&mut self, canvas: &Canvas) -> Arc<Canvas> {
+        let Some(nodes) = flat_snapshot_nodes(canvas) else {
+            return Arc::new(canvas.materialize_retained_scenes(self));
+        };
+        let root = canvas
+            .retained_root
+            .expect("snapshot adapter requires retained root");
+        let compatible = self.snapshot.as_ref().is_some_and(|snapshot| {
+            snapshot.root == root
+                && snapshot.logical_size == canvas.logical_size()
+                && snapshot.scale_bits == canvas.scale_factor.to_bits()
+        });
+        if !compatible {
+            self.snapshot = Some(Box::new(SnapshotMaterialization::new(canvas, nodes)));
+        } else {
+            self.snapshot.as_mut().unwrap().update(canvas, nodes);
+        }
+        self.snapshot.as_ref().unwrap().materializer.canvas()
+    }
+}
+
+impl SnapshotMaterialization {
+    fn new(canvas: &Canvas, nodes: Vec<SnapshotNode>) -> Self {
+        let root = canvas.retained_root.expect("snapshot has retained root");
+        let mut scene = RetainedScene::new(
+            canvas.logical_width,
+            canvas.logical_height,
+            canvas.scale_factor,
+            root,
+        )
+        .expect("validated Canvas dimensions are a valid retained scene");
+        let mut transaction = scene.transaction();
+        for node in &nodes {
+            transaction.insert_scene(
+                RetainedParent::content(root),
+                None,
+                node.id,
+                node.canvas.clone(),
+                node.position,
+            );
+        }
+        append_snapshot_invalidation(&mut transaction, canvas);
+        transaction
+            .commit()
+            .expect("Canvas retained snapshot was validated when recorded");
+        let materializer = PersistentSceneMaterializer::new(&scene);
+        Self {
+            root,
+            logical_size: canvas.logical_size(),
+            scale_bits: canvas.scale_factor.to_bits(),
+            nodes: snapshot_node_map(&nodes),
+            order: nodes.iter().map(|node| node.id).collect(),
+            scene,
+            materializer,
+        }
+    }
+
+    fn update(&mut self, canvas: &Canvas, nodes: Vec<SnapshotNode>) {
+        let desired = snapshot_node_map(&nodes);
+        let desired_order = nodes.iter().map(|node| node.id).collect::<Vec<_>>();
+        let mut transaction = self.scene.transaction();
+        for id in self.nodes.keys().filter(|id| !desired.contains_key(id)) {
+            transaction.remove_subtree(*id);
+        }
+        for node in &nodes {
+            match self.nodes.get(&node.id) {
+                None => {
+                    transaction.insert_scene(
+                        RetainedParent::content(self.root),
+                        None,
+                        node.id,
+                        node.canvas.clone(),
+                        node.position,
+                    );
+                }
+                Some((revision, position)) => {
+                    if *revision != node.revision {
+                        transaction.replace_scene(node.id, node.canvas.clone());
+                    }
+                    if *position != node.position {
+                        transaction.set_position(node.id, node.position);
+                    }
+                }
+            }
+        }
+        if self.order != desired_order {
+            let mut effective_order = self
+                .order
+                .iter()
+                .copied()
+                .filter(|id| desired.contains_key(id))
+                .collect::<Vec<_>>();
+            effective_order.extend(
+                desired_order
+                    .iter()
+                    .copied()
+                    .filter(|id| !self.nodes.contains_key(id)),
+            );
+            for (id, before) in snapshot_reorder_moves(&effective_order, &desired_order) {
+                transaction.move_before(id, before);
+            }
+        }
+        append_snapshot_invalidation(&mut transaction, canvas);
+        transaction
+            .commit()
+            .expect("Canvas retained snapshot was validated when recorded");
+        self.nodes = desired;
+        self.order = desired_order;
+        self.materializer.update(&self.scene);
+    }
+}
+
+fn flat_snapshot_nodes(canvas: &Canvas) -> Option<Vec<SnapshotNode>> {
+    if canvas.retained_root.is_none() || canvas.command_lists.len() != 1 {
+        return None;
+    }
+    let mut ids = HashSet::new();
+    canvas.command_lists[canvas.root_commands]
+        .commands
+        .iter()
+        .map(|command| {
+            let Command::RetainedScene {
+                id,
+                revision,
+                canvas: child,
+                offset,
+            } = command
+            else {
+                return None;
+            };
+            ids.insert(*id).then_some(SnapshotNode {
+                id: *id,
+                revision: *revision,
+                canvas: child.clone(),
+                position: Point::new(
+                    offset.0 / f64::from(canvas.scale_factor),
+                    offset.1 / f64::from(canvas.scale_factor),
+                ),
+            })
+        })
+        .collect()
+}
+
+fn snapshot_node_map(nodes: &[SnapshotNode]) -> HashMap<RetainedNodeId, (SceneRevision, Point)> {
+    nodes
+        .iter()
+        .map(|node| (node.id, (node.revision, node.position)))
+        .collect()
+}
+
+fn snapshot_reorder_moves(
+    current: &[RetainedNodeId],
+    desired: &[RetainedNodeId],
+) -> Vec<(RetainedNodeId, RetainedNodeId)> {
+    let mut previous = HashMap::with_capacity(current.len());
+    let mut next = HashMap::with_capacity(current.len());
+    for (index, &id) in current.iter().enumerate() {
+        previous.insert(id, index.checked_sub(1).map(|index| current[index]));
+        next.insert(id, current.get(index + 1).copied());
+    }
+    let mut moves = Vec::new();
+    for pair in desired.windows(2).rev() {
+        let (id, before) = (pair[0], pair[1]);
+        if next.get(&id).copied().flatten() == Some(before) {
+            continue;
+        }
+        let old_previous = previous[&id];
+        let old_next = next[&id];
+        if let Some(old_previous) = old_previous {
+            next.insert(old_previous, old_next);
+        }
+        if let Some(old_next) = old_next {
+            previous.insert(old_next, old_previous);
+        }
+        let insert_previous = previous[&before];
+        previous.insert(id, insert_previous);
+        next.insert(id, Some(before));
+        previous.insert(before, Some(id));
+        if let Some(insert_previous) = insert_previous {
+            next.insert(insert_previous, Some(id));
+        }
+        moves.push((id, before));
+    }
+    moves
+}
+
+fn append_snapshot_invalidation(
+    transaction: &mut crate::RetainedSceneTransaction<'_>,
+    canvas: &Canvas,
+) {
+    if canvas.invalidate_all {
+        transaction.invalidate_all();
+    }
+    let scale = f64::from(canvas.scale_factor);
+    for bounds in &canvas.invalidated_bounds {
+        transaction.invalidate_rect(Rect::new(
+            f64::from(bounds.x0) / scale,
+            f64::from(bounds.y0) / scale,
+            f64::from(bounds.x1) / scale,
+            f64::from(bounds.y1) / scale,
+        ));
     }
 }
 
@@ -294,6 +558,13 @@ impl Canvas {
     }
 
     pub(crate) fn retained_frame(&self) -> Option<RetainedFrame> {
+        if let Some(frame) = &self.retained_frame_override {
+            return Some(frame.clone());
+        }
+        self.collect_retained_frame()
+    }
+
+    pub(crate) fn collect_retained_frame(&self) -> Option<RetainedFrame> {
         let root = self.retained_root?;
         let mut collector = FrameCollector::new(self);
         collector.visit_list(
@@ -302,19 +573,34 @@ impl Canvas {
             false,
             SceneOffset { dx: 0.0, dy: 0.0 },
         );
+        let nodes = collector.nodes;
+        let node_index = nodes
+            .iter()
+            .enumerate()
+            .map(|(index, node)| (node.id, index))
+            .collect();
         Some(RetainedFrame {
             root,
             logical_size: self.logical_size(),
             physical_size: self.physical_size(),
             scale_bits: self.scale_factor.to_bits(),
-            nodes: collector.nodes,
+            nodes: nodes.into(),
+            node_index: Arc::new(node_index),
             invalidated_bounds: self.invalidated_bounds.clone(),
             invalidate_all: self.invalidate_all,
             materialization_cacheable: collector.identity_complete,
             incremental_complete: collector.identity_complete
                 || self.invalidate_all
                 || !self.invalidated_bounds.is_empty(),
+            version: None,
+            delta: None,
+            dependency_free: false,
+            requires_damage_propagation: true,
         })
+    }
+
+    pub(crate) fn visual_bounds(&self) -> Bounds {
+        canvas_visual_bounds(self)
     }
 
     pub(crate) fn materialize_retained_scenes(&self, cache: &mut RetainedSceneCache) -> Canvas {
@@ -932,6 +1218,52 @@ mod tests {
         assert_eq!(
             frame.nodes.iter().map(|node| node.id).collect::<Vec<_>>(),
             vec![child]
+        );
+    }
+
+    #[test]
+    fn flat_snapshot_adapter_rebuilds_only_changed_child_chunks() {
+        let root = RetainedNodeId::for_owner(10);
+        let build = |revision, changed: Color| {
+            let mut canvas = Canvas::new_retained(64, 64, 1.0, root);
+            for index in 0..100 {
+                canvas.append_retained_scene(
+                    RetainedNodeId::for_owner(index + 11),
+                    if index == 0 { revision } else { 0 },
+                    scene(if index == 0 { changed } else { Color::WHITE }),
+                    ((index % 8) as f64 * 4.0, (index / 8) as f64 * 4.0),
+                );
+            }
+            canvas
+        };
+        let first = build(0, Color::from_rgb8(220, 30, 40));
+        let second = build(1, Color::from_rgb8(30, 210, 70));
+        let mut cache = RetainedSceneCache::default();
+        let initial = cache.materialize_snapshot_shared(&first);
+        assert_eq!(initial.buffer_changes.as_ref().unwrap().chunks_rebuilt, 100);
+
+        let changed = cache.materialize_snapshot_shared(&second);
+        let changes = changed.buffer_changes.as_ref().unwrap();
+        assert_eq!(changes.chunks_rebuilt, 1);
+        assert!(!changes.full_scene_sync);
+        assert!(
+            changes.cpu_copied_bytes < initial.buffer_changes.as_ref().unwrap().cpu_copied_bytes
+        );
+
+        let unchanged = cache.materialize_snapshot_shared(&second);
+        assert!(Arc::ptr_eq(&changed, &unchanged));
+    }
+
+    #[test]
+    fn snapshot_reorder_diff_records_only_the_moved_sibling() {
+        let ids = (0..4).map(RetainedNodeId::for_owner).collect::<Vec<_>>();
+        assert_eq!(
+            snapshot_reorder_moves(&ids, &[ids[1], ids[2], ids[0], ids[3]]),
+            vec![(ids[0], ids[3])]
+        );
+        assert_eq!(
+            snapshot_reorder_moves(&ids, &[ids[3], ids[0], ids[1], ids[2]]),
+            vec![(ids[3], ids[0])]
         );
     }
 

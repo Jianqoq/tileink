@@ -149,6 +149,11 @@ pub(crate) fn local_offscreen_scene(
         plan: ExecPlan {
             ops: local_children.clone(),
             layer_stack_data: plan.layer_stack_data.clone(),
+            draw_order: plan.draw_order.clone(),
+            draw_batch_ids: plan.draw_batch_ids.clone(),
+            retained_batch_ids: plan.retained_batch_ids.clone(),
+            layer_stack_locations: std::collections::HashMap::new(),
+            direct_root_batch_ops: None,
         },
         children: local_children,
     }
@@ -215,6 +220,12 @@ fn translated_scene_for_bounds(canvas: &Canvas, local: LocalSpace) -> Canvas {
         .map(|glyph| glyph.translated(-f64::from(local.surface.x0), -f64::from(local.surface.y0)))
         .collect();
     translated.text_runs = canvas.text_runs.clone();
+    // Persistent plans keep physical slots stable and patch painter/batch metadata independently
+    // of `ExecPlan::draw_order`. Local filter scenes must retain it or newly added draws disappear
+    // from their rebuilt tile bins.
+    translated.painter_keys = canvas.painter_keys.clone();
+    translated.stable_batch_ids = canvas.stable_batch_ids.clone();
+    translated.stable_batch_counts = canvas.stable_batch_counts.clone();
     rebuild_translated_path_backdrops(&mut translated);
     translated.path_cnt = canvas.path_cnt;
     translated.backdrop_pool_capacity = translated
@@ -331,9 +342,16 @@ fn translated_path_segment_capacity(canvas: &Canvas, path_id: usize, tile_bbox: 
 fn translate_exec_ops_to_local(ops: &[ExecOp], local: LocalSpace) -> Vec<ExecOp> {
     ops.iter()
         .map(|op| match op {
-            ExecOp::DrawBatch { draws, layer_stack } => ExecOp::DrawBatch {
+            ExecOp::DrawBatch {
+                draws,
+                batch_id,
+                layer_stack,
+                owners,
+            } => ExecOp::DrawBatch {
                 draws: draws.clone(),
+                batch_id: *batch_id,
                 layer_stack: layer_stack.clone(),
+                owners: owners.clone(),
             },
             ExecOp::BeginClip => ExecOp::BeginClip,
             ExecOp::EndClip => ExecOp::EndClip,

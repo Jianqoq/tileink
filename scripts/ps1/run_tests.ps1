@@ -10,37 +10,84 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "../..")
 $modes = if ($WgpuMode -eq "both") { @("native", "portable") } else { @($WgpuMode) }
 
-function Invoke-ReleaseTests {
+if ($CargoArgs | Where-Object { $_ -like "--test-threads*" }) {
+    throw "Test thread count is fixed at 1; do not pass --test-threads in CargoArgs"
+}
+
+function Invoke-CargoTest {
     param(
-        [Parameter(Mandatory = $true)]
-        [string]$Mode
+        [Parameter(Mandatory = $true)][string]$Mode,
+        [Parameter(Mandatory = $true)][string]$Label,
+        [string]$Filter = "",
+        [string[]]$HarnessArgs = @(),
+        [string[]]$ExtraCargoArgs = @()
     )
 
     $arguments = [System.Collections.Generic.List[string]]::new()
     $arguments.Add("test")
     $arguments.Add("--release")
-    foreach ($argument in $CargoArgs) {
+    foreach ($argument in $ExtraCargoArgs) {
         $arguments.Add($argument)
     }
-
-    if ($CargoArgs | Where-Object { $_ -like "--test-threads*" }) {
-        throw "Test thread count is fixed at 1; do not pass --test-threads in CargoArgs"
+    if ($Filter) {
+        $arguments.Add($Filter)
     }
-    if (-not $CargoArgs.Contains("--")) {
-        $arguments.Add("--")
+    $arguments.Add("--")
+    foreach ($argument in $HarnessArgs) {
+        $arguments.Add($argument)
     }
     $arguments.Add("--test-threads=1")
 
-    Write-Host "Running explicit WGPU release tests [$Mode, single-threaded]"
-    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    Write-Host "Running explicit WGPU release tests [$Mode, $Label, single-threaded]"
     & cargo $arguments
-    $exitCode = $LASTEXITCODE
+    if ($LASTEXITCODE -ne 0) {
+        throw "cargo test failed in '$Mode/$Label' with exit code $LASTEXITCODE"
+    }
+}
+
+function Invoke-ReleaseTests {
+    param([Parameter(Mandatory = $true)][string]$Mode)
+
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    if ($CargoArgs.Count -gt 0) {
+        $separator = [Array]::IndexOf($CargoArgs, "--")
+        if ($separator -ge 0) {
+            $cargo = if ($separator -gt 0) {
+                @($CargoArgs[0..($separator - 1)])
+            } else {
+                @()
+            }
+            $harness = if ($separator + 1 -lt $CargoArgs.Count) {
+                @($CargoArgs[($separator + 1)..($CargoArgs.Count - 1)])
+            } else {
+                @()
+            }
+            Invoke-CargoTest -Mode $Mode -Label "focused" -ExtraCargoArgs $cargo -HarnessArgs $harness
+        } else {
+            Invoke-CargoTest -Mode $Mode -Label "focused" -ExtraCargoArgs $CargoArgs
+        }
+    } else {
+        # WGPU/DX12 drivers become unstable when hundreds of device-heavy tests share one process.
+        # These partitions still run strictly serially, but release each process's driver state.
+        Invoke-CargoTest -Mode $Mode -Label "core" -HarnessArgs @(
+            "--skip", "svg::tests::",
+            "--skip", "wgpu::renderer::tests::"
+        )
+        Invoke-CargoTest -Mode $Mode -Label "svg-unit" -Filter "svg::tests::"
+        Invoke-CargoTest -Mode $Mode -Label "persistent-renderer" -Filter "wgpu::renderer::tests::persistent_"
+        Invoke-CargoTest -Mode $Mode -Label "snapshot-retained-renderer" -Filter "wgpu::renderer::tests::retained_"
+        Invoke-CargoTest -Mode $Mode -Label "low-level-renderer" -Filter "wgpu::renderer::tests::wgpu_" -HarnessArgs @(
+            "--skip", "wgpu_renderer_samples_"
+        )
+        Invoke-CargoTest -Mode $Mode -Label "renderer-sampling" -Filter "wgpu::renderer::tests::wgpu_renderer_samples_"
+        Invoke-CargoTest -Mode $Mode -Label "renderer-misc" -Filter "wgpu::renderer::tests::" -HarnessArgs @(
+            "--skip", "persistent_",
+            "--skip", "retained_",
+            "--skip", "wgpu_"
+        )
+    }
     $stopwatch.Stop()
     Write-Host ("Finished [{0}] in {1:c}" -f $Mode, $stopwatch.Elapsed)
-
-    if ($exitCode -ne 0) {
-        throw "cargo test failed in '$Mode' mode with exit code $exitCode"
-    }
 }
 
 Push-Location $repoRoot

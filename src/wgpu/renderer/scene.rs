@@ -58,18 +58,39 @@ impl Renderer {
         text_context: &mut TextContext,
     ) {
         let _profile_scope = start_cpu_scope("prepare");
-        self.text_data = profile_cpu("prepare.text", || {
-            Some(PreparedTextData::new(
-                &canvas.text_glyphs,
-                &canvas.text_runs,
-                font_system,
-                text_context,
-            ))
+        profile_cpu("prepare.text", || {
+            if let (Some(text), Some(changes)) = (&mut self.text_data, &canvas.buffer_changes) {
+                text.update(
+                    &canvas.text_glyphs,
+                    &canvas.text_runs,
+                    &changes.glyphs,
+                    &changes.text_runs,
+                    font_system,
+                    text_context,
+                );
+            } else {
+                self.text_data = Some(PreparedTextData::new(
+                    &canvas.text_glyphs,
+                    &canvas.text_runs,
+                    font_system,
+                    text_context,
+                ));
+            }
         });
         self.prepare_scene_resources(canvas);
     }
 
     fn prepare_scene_resources(&mut self, canvas: &Canvas) {
+        if let Some(changes) = &canvas.buffer_changes {
+            self.retained.stats_mut().chunks_rebuilt = changes.chunks_rebuilt;
+            self.retained.stats_mut().plan_fragments_rebuilt = changes.plan_fragments_rebuilt;
+            self.retained.stats_mut().full_scene_sync = changes.full_scene_sync;
+            self.retained.stats_mut().cpu_copied_bytes = changes.cpu_copied_bytes;
+            self.retained.stats_mut().arena_live_bytes = changes.arena_live_bytes;
+            self.retained.stats_mut().arena_capacity_bytes = changes.arena_capacity_bytes;
+            self.retained.stats_mut().arena_fragmentation = changes.arena_fragmentation;
+            self.retained.stats_mut().arena_compactions = changes.arena_compactions;
+        }
         self.size = (canvas.physical_width(), canvas.physical_height());
         self.surface_origin = (0, 0);
         profile_cpu("prepare.target", || {
@@ -91,27 +112,40 @@ impl Renderer {
                 canvas.physical_height(),
             );
         });
-        let lengths = profile_cpu("prepare.lengths", || {
-            self.scene_upload
-                .build_lengths(canvas, self.text_data.as_ref())
-        });
         let plan_fingerprint = canvas.execution_plan_fingerprint();
-        let reused_plan =
-            self.prepared_plan_fingerprint == Some(plan_fingerprint) && self.plan.is_some();
+        let structure_reused = canvas
+            .buffer_changes
+            .as_ref()
+            .is_some_and(|changes| changes.plan_structure_reused);
+        let reused_plan = (self.prepared_plan_fingerprint == Some(plan_fingerprint)
+            || structure_reused)
+            && self.plan.is_some();
         let plan = profile_cpu("prepare.compile", || {
             if reused_plan {
-                self.plan.as_ref().expect("cached execution plan").clone()
+                self.plan.take().expect("cached execution plan")
             } else {
-                canvas.compile(ROOT_COMMAND_LIST_ID)
+                canvas.compile_shared(ROOT_COMMAND_LIST_ID)
             }
+        });
+        let lengths = profile_cpu("prepare.lengths", || {
+            self.scene_upload.build_lengths(
+                canvas,
+                self.text_data.as_ref(),
+                &plan,
+                reused_plan,
+                reused_plan.then_some((self.max_clip_depth, self.max_group_depth)),
+            )
         });
         self.retained.stats_mut().reused_compiled_plan = reused_plan;
         self.prepared_plan_fingerprint = Some(plan_fingerprint);
-        let (max_clip_depth, max_group_depth) =
-            profile_cpu("prepare.stack_depths", || plan_stack_depths(&plan));
+        let (max_clip_depth, max_group_depth) = if reused_plan {
+            (self.max_clip_depth, self.max_group_depth)
+        } else {
+            profile_cpu("prepare.stack_depths", || plan_stack_depths(&plan))
+        };
         profile_cpu("prepare.upload_scene", || {
             self.prepare_image_resource_buffers(canvas.scene_image_resources(), false);
-            self.scene_buffers.upload(
+            let uploaded = self.scene_buffers.upload(
                 &self.device,
                 &self.queue,
                 canvas,
@@ -120,7 +154,9 @@ impl Renderer {
                 self.text_data.as_ref(),
                 Some(&self.image_resource_upload),
                 &mut self.scene_upload,
+                !reused_plan,
             );
+            self.retained.stats_mut().gpu_uploaded_bytes += uploaded as u64;
         });
         profile_cpu("prepare.scan_buffers", || {
             self.scan.prepare_outputs(&self.device, lengths);
@@ -130,31 +166,42 @@ impl Renderer {
                 self.coarse.prepare_outputs(&self.device, lengths);
             });
             profile_cpu("prepare.coarse_buffers.upload_tile_draw_bins", || {
-                self.coarse
-                    .upload_tile_draw_bins(&self.queue, lengths, &mut self.scene_upload);
+                let (pages, compactions) =
+                    self.coarse
+                        .upload_tile_draw_bins(&self.queue, lengths, &mut self.scene_upload);
+                self.retained.stats_mut().tile_pages_rewritten = pages as u32;
+                self.retained.stats_mut().tile_page_compactions = compactions;
             });
         });
         profile_cpu("prepare.fine_spills", || {
             self.prepare_fine_stack_spills(lengths, max_clip_depth, max_group_depth);
         });
-        profile_cpu("prepare.scratch", || {
-            self.prepare_scratch_buffers(required_scratch_count(&plan));
-        });
-        profile_cpu("prepare.filter_uploads", || {
-            self.filter_transfers
-                .upload(&self.device, &self.queue, &plan);
-            self.filter_brushes.upload(
-                &self.device,
-                &self.queue,
-                &plan,
-                Some(&self.image_resource_upload),
-            );
-            self.filter_convolves
-                .upload(&self.device, &self.queue, &plan);
-            self.filter_turbulence
-                .upload(&self.device, &self.queue, &plan);
-            self.filter_paths.upload(&self.device, &self.queue, &plan);
-        });
+        if !reused_plan {
+            profile_cpu("prepare.scratch", || {
+                self.prepare_scratch_buffers(required_scratch_count(&plan));
+            });
+        }
+        let filter_resources_changed = canvas
+            .buffer_changes
+            .as_ref()
+            .is_some_and(|changes| changes.filter_resources_changed);
+        if !reused_plan || filter_resources_changed {
+            profile_cpu("prepare.filter_uploads", || {
+                self.filter_transfers
+                    .upload(&self.device, &self.queue, &plan);
+                self.filter_brushes.upload(
+                    &self.device,
+                    &self.queue,
+                    &plan,
+                    Some(&self.image_resource_upload),
+                );
+                self.filter_convolves
+                    .upload(&self.device, &self.queue, &plan);
+                self.filter_turbulence
+                    .upload(&self.device, &self.queue, &plan);
+                self.filter_paths.upload(&self.device, &self.queue, &plan);
+            });
+        }
         profile_cpu("prepare.config", || {
             self.config.upload(
                 &self.device,
@@ -308,7 +355,7 @@ impl Renderer {
 
         let lengths = profile_cpu("prepare.local.lengths", || {
             self.scene_upload
-                .build_lengths(canvas, self.text_data.as_ref())
+                .build_lengths(canvas, self.text_data.as_ref(), plan, false, None)
         });
         let (max_clip_depth, max_group_depth) =
             profile_cpu("prepare.local.stack_depths", || plan_stack_depths(plan));
@@ -321,10 +368,10 @@ impl Renderer {
         self.lengths = lengths;
         self.max_clip_depth = max_clip_depth;
         self.max_group_depth = max_group_depth;
-        self.plan = Some(plan.clone());
+        self.plan = Some(std::sync::Arc::new(plan.clone()));
         profile_cpu("prepare.local.upload_scene", || {
             self.prepare_image_resource_buffers(canvas.scene_image_resources(), true);
-            self.scene_buffers.upload(
+            let _ = self.scene_buffers.upload(
                 &self.device,
                 &self.queue,
                 canvas,
@@ -333,6 +380,7 @@ impl Renderer {
                 self.text_data.as_ref(),
                 Some(&self.image_resource_upload),
                 &mut self.scene_upload,
+                true,
             );
         });
         profile_cpu("prepare.local.scan_buffers", || {

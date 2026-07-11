@@ -16,6 +16,7 @@ pub(crate) struct WgpuSceneBuffers {
     lines: WgpuBuffer,
     path_records: WgpuBuffer,
     draw_records: WgpuBuffer,
+    draw_batch_ids: WgpuBuffer,
     paint_blob: WgpuBuffer,
     scan_chunks: WgpuBuffer,
     scan_chunk_ranges: WgpuBuffer,
@@ -62,6 +63,7 @@ impl WgpuSceneBuffers {
             lines: WgpuBuffer::new(device, "tileink wgpu canvas lines"),
             path_records: WgpuBuffer::new(device, "tileink wgpu canvas path records"),
             draw_records: WgpuBuffer::new(device, "tileink wgpu canvas draw records"),
+            draw_batch_ids: WgpuBuffer::new(device, "tileink wgpu canvas draw batch ids"),
             paint_blob: WgpuBuffer::new(device, "tileink wgpu canvas paint blob"),
             scan_chunks: WgpuBuffer::new(device, "tileink wgpu canvas scan chunks"),
             scan_chunk_ranges: WgpuBuffer::new(device, "tileink wgpu canvas scan chunk ranges"),
@@ -105,6 +107,17 @@ impl WgpuSceneBuffers {
             fine_text_image_base: 0,
             fine_text_image_data_base: 0,
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn upload_test_batch_ids(
+        &mut self,
+        device: &::wgpu::Device,
+        queue: &::wgpu::Queue,
+        ids: &[u32],
+    ) {
+        self.draw_batch_ids
+            .upload(device, queue, "tileink wgpu test draw batch ids", ids);
     }
 }
 

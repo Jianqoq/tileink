@@ -4,6 +4,7 @@ use super::canvas::{WgpuCumsumBindings, WgpuScanBuffers, WgpuSceneBuffers};
 use super::commands::{
     WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
 };
+use super::dispatch_2d;
 use super::incremental::ActiveScanPlan;
 use super::lazy::{LazyComputePipeline, LazyShaderModule, PipelineCompilationTracker};
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
@@ -147,6 +148,10 @@ impl WgpuCumsumPipeline {
         let apply_chunk_offsets =
             (row_count != chunk_count).then(|| self.apply_chunk_offsets(commands.device()));
         let gpu_scope = start_gpu_scope(commands.device(), "cumsum");
+        let max_workgroups = commands
+            .device()
+            .limits()
+            .max_compute_workgroups_per_dimension;
         let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
         let encoder = commands.encoder();
         {
@@ -156,7 +161,8 @@ impl WgpuCumsumPipeline {
             });
             pass.set_bind_group(0, &bind_group, &[]);
             pass.set_pipeline(prefix_chunks);
-            pass.dispatch_workgroups(chunk_count, 1, 1);
+            let (x, y) = dispatch_2d(chunk_count, max_workgroups);
+            pass.dispatch_workgroups(x, y, 1);
 
             if let (Some(chunk_offsets), Some(apply_chunk_offsets)) =
                 (chunk_offsets, apply_chunk_offsets)
@@ -164,7 +170,8 @@ impl WgpuCumsumPipeline {
                 pass.set_pipeline(chunk_offsets);
                 pass.dispatch_workgroups(row_count.div_ceil(WORKGROUP_SIZE), 1, 1);
                 pass.set_pipeline(apply_chunk_offsets);
-                pass.dispatch_workgroups(chunk_count, 1, 1);
+                let (x, y) = dispatch_2d(chunk_count, max_workgroups);
+                pass.dispatch_workgroups(x, y, 1);
             }
         }
         finish_gpu_scope(encoder, gpu_scope);

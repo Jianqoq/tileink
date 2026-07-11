@@ -11,9 +11,13 @@ var<workgroup> scan_scratch: array<u32, 256>;
 @compute @workgroup_size(256)
 fn scan_prefix_chunks(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
+    @builtin(num_workgroups) num_workgroups: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
 ) {
-    let chunk_ix = dispatched_index(workgroup_id.x, config.chunk_base);
+    let chunk_ix = dispatched_index(
+        linear_workgroup_index(workgroup_id, num_workgroups),
+        config.chunk_base,
+    );
     let lane = local_id.x;
     let chunk = scan_chunks[chunk_ix];
     let chunk_offset = chunk.backdrop_offset;

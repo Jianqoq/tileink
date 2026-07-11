@@ -39,6 +39,15 @@ wgpu = []
 
 [dev-dependencies]
 winit = "0.30"
+criterion = "0.8.2"
+
+[[bench]]
+name = "retained_scale"
+harness = false
+
+[[bench]]
+name = "retained_dirty_ratio"
+harness = false
 
 [[example]]
 name = "wgpu_examples"

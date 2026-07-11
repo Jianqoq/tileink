@@ -3,6 +3,7 @@
 mod canvas;
 mod debug;
 mod render;
+mod retained_scene;
 mod shared;
 mod svg;
 mod text;
@@ -29,6 +30,10 @@ pub use debug::{
     DebugLineSegment, DebugTileDump, DebugTilePath, DebugTilePathSummary, DebugTileSummary,
     RenderDebugCapture, RenderDebugImage, RenderDebugOptions, RenderDebugText, RenderOptions,
     TileOverlayOptions, debug_capture_json,
+};
+pub use retained_scene::{
+    RetainedChildBranch, RetainedLayerDescriptor, RetainedParent, RetainedScene,
+    RetainedSceneError, RetainedSceneTransaction, SceneVersion,
 };
 pub use shared::{
     bounds::Bounds,

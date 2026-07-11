@@ -61,6 +61,11 @@ struct TileSegmentRange {
 
 @group(0) @binding(0) var<uniform> config: ScanConfig;
 
+fn linear_workgroup_index(workgroup_id: vec3<u32>, num_workgroups: vec3<u32>) -> u32 {
+    return workgroup_id.x + workgroup_id.y * num_workgroups.x +
+        workgroup_id.z * num_workgroups.x * num_workgroups.y;
+}
+
 fn dispatched_index(local_ix: u32, base: u32) -> u32 {
     if (config.incremental != 0u) {
         return active_indices[base + local_ix];

@@ -238,6 +238,39 @@ fn prepared_text_signature_changes_with_glyph_images() {
 }
 
 #[test]
+fn prepared_text_updates_only_dirty_glyph_slots_without_rebuilding_atlas() {
+    let mut font_system = FontSystem::new();
+    let mut context = TextContext::new();
+    let layout = context.layout(&mut font_system, TextLayoutOptions::new("AB", 20.0));
+    if layout.is_empty() {
+        return;
+    }
+    let mut glyphs: Vec<_> = scene_glyphs_at_origin(&layout, Point::new(0.0, 0.0)).collect();
+    let runs = [TextRun {
+        glyph_start: 0,
+        glyph_count: glyphs.len() as u32,
+    }];
+    let mut prepared = PreparedTextData::new(&glyphs, &runs, &mut font_system, &mut context);
+    let signature = prepared.atlas_signature();
+    let first = prepared.glyph(0).map(|glyph| (glyph.x, glyph.y));
+    let changed = glyphs.len() - 1;
+    glyphs[changed].x += 13;
+
+    prepared.update(
+        &glyphs,
+        &runs,
+        std::slice::from_ref(&(changed..changed + 1)),
+        &[],
+        &mut font_system,
+        &mut context,
+    );
+
+    assert_eq!(prepared.atlas_signature(), signature);
+    assert_eq!(prepared.glyph(0).map(|glyph| (glyph.x, glyph.y)), first);
+    assert_eq!(prepared.glyph(changed as u32).unwrap().x, glyphs[changed].x);
+}
+
+#[test]
 fn prepared_text_signature_changes_with_composite_mode() {
     let mut font_system = FontSystem::new();
     let mut context = TextContext::new();

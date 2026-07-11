@@ -9,6 +9,7 @@
 @group(0) @binding(6) var<storage, read> segment_ranges: array<TileSegmentRange>;
 @group(0) @binding(7) var<storage, read> layer_stack: array<LayerStackRecord>;
 @group(0) @binding(8) var<storage, read_write> coarse_work: array<u32>;
+@group(0) @binding(9) var<storage, read> draw_batch_ids: array<u32>;
 
 @compute @workgroup_size(256)
 fn coarse_emit(
@@ -45,15 +46,14 @@ fn coarse_emit(
     }
     cursor += wrapper_count;
 
-    let tile_draw_start = tile_draw_start_at(tile_ix);
-    let tile_draw_end = tile_draw_end_at(tile_ix);
-    var chunk_start = tile_draw_start;
+    var page = tile_draw_head_at(tile_ix);
+    var remaining = tile_draw_count_at(tile_ix);
     loop {
-        if (chunk_start >= tile_draw_end) {
+        if (page == INVALID || remaining == 0u) {
             break;
         }
 
-        let draw_ref_ix = chunk_start + lane;
+        let page_count = min(remaining, TILE_DRAW_PAGE_SIZE);
         var draw_ix = INVALID;
         var valid = false;
         var glyph_count = 0u;
@@ -64,8 +64,8 @@ fn coarse_emit(
         var ptcl_segment_end = 0u;
         var ptcl_color = 0u;
 
-        if (draw_ref_ix < tile_draw_end) {
-            draw_ix = tile_draw_index_at(draw_ref_ix);
+        if (lane < page_count) {
+            draw_ix = tile_draw_index_in_page(page, lane);
         }
 
         if (draw_in_batch(draw_ix)) {
@@ -153,7 +153,8 @@ fn coarse_emit(
         }
         cursor += emitted;
         glyph_cursor += emitted_glyphs;
-        chunk_start += 256u;
+        remaining -= page_count;
+        page = tile_draw_next_page(page);
     }
 
     if (lane == 0u) {
@@ -206,14 +207,15 @@ fn coarse_emit_bins(
     emit_active_stack_begins(cursor, tile_x, tile_y);
     cursor += wrapper_count;
 
-    var draw_ref_ix = tile_draw_start_at(tile_ix);
-    let tile_draw_end = tile_draw_end_at(tile_ix);
+    var page = tile_draw_head_at(tile_ix);
+    var remaining = tile_draw_count_at(tile_ix);
+    var slot = 0u;
     loop {
-        if (draw_ref_ix >= tile_draw_end) {
+        if (page == INVALID || remaining == 0u) {
             break;
         }
 
-        let draw_ix = tile_draw_index_at(draw_ref_ix);
+        let draw_ix = tile_draw_index_in_page(page, slot);
         var valid = false;
         var glyph_count = 0u;
         var ptcl_tag = GPU_PTCL_FILL;
@@ -314,7 +316,12 @@ fn coarse_emit_bins(
                 cursor += 1u;
             }
         }
-        draw_ref_ix += 1u;
+        slot += 1u;
+        remaining -= 1u;
+        if (slot == TILE_DRAW_PAGE_SIZE) {
+            page = tile_draw_next_page(page);
+            slot = 0u;
+        }
     }
 
     emit_active_stack_ends(cursor, tile_x, tile_y);
@@ -553,7 +560,7 @@ fn glyph_hits_tile(glyph_ix: u32, tile_x: u32, tile_y: u32) -> bool {
 }
 
 fn draw_in_batch(draw_ix: u32) -> bool {
-    return draw_ix >= config.draw_start && draw_ix < config.draw_end;
+    return draw_ix < arrayLength(&draw_batch_ids) && draw_batch_ids[draw_ix] == config.draw_start;
 }
 
 fn draw_tag_at(draw_ix: u32) -> u32 {

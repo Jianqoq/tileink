@@ -1,6 +1,6 @@
 mod retained;
 
-use std::sync::Arc as SharedArc;
+use std::{ops::Range, sync::Arc as SharedArc};
 
 use peniko::{
     Color, Compose, Extend, Mix,
@@ -16,7 +16,7 @@ use crate::shared::{
     draw_record::{DrawRecord, DrawTag},
     execution::{
         Command, CommandList, CommandListId, ExecOp, ExecPlan, LayerStackEntry,
-        ROOT_COMMAND_LIST_ID,
+        ROOT_COMMAND_LIST_ID, RetainedBatchBranch, RetainedBatchOwner,
     },
     fill::FillRule,
     gpu_sdf::{decode_sdf, decode_sdf_shadow, push_encoded_sdf, push_encoded_sdf_shadow},
@@ -51,10 +51,9 @@ use crate::shared::{
 use crate::text::{TextRun, layout_bounds_at_scaled_origin, scene_glyphs_at_scaled_origin};
 use crate::{TextContext, TextFontSystem, TextLayout};
 
-#[cfg(test)]
-pub(crate) use retained::RetainedNodeKind;
 pub(crate) use retained::{
-    RetainedDamage, RetainedFrame, RetainedNodeState, RetainedSceneCache, RetainedSurfaceId,
+    RetainedDamage, RetainedFrame, RetainedFrameDelta, RetainedNodeKind, RetainedNodePatch,
+    RetainedNodeState, RetainedSceneCache, RetainedSurfaceId,
 };
 pub use retained::{RetainedLayerKey, RetainedNodeId, SceneRevision};
 
@@ -72,9 +71,9 @@ pub struct Canvas {
     pub(crate) text_runs: Vec<TextRun>,
     pub(crate) scene_images: ImageResourceStore,
     pub(crate) command_lists: Vec<CommandList>,
-    root_commands: CommandListId,
-    command_stack: Vec<CommandListId>,
-    layer_stack: Vec<LayerKind>,
+    pub(crate) root_commands: CommandListId,
+    pub(crate) command_stack: Vec<CommandListId>,
+    pub(crate) layer_stack: Vec<LayerKind>,
     pub(crate) path_cnt: u32,
     pub(crate) backdrop_pool_capacity: u32,
     pub(crate) tile_cnt: u32,
@@ -82,9 +81,66 @@ pub struct Canvas {
     pub(crate) logical_height: u32,
     pub(crate) scale_factor: f32,
     draw_generation: u32,
-    retained_root: Option<RetainedNodeId>,
-    invalidated_bounds: Vec<Bounds>,
-    invalidate_all: bool,
+    pub(crate) retained_root: Option<RetainedNodeId>,
+    pub(crate) invalidated_bounds: Vec<Bounds>,
+    pub(crate) invalidate_all: bool,
+    pub(crate) buffer_changes: Option<SceneBufferChanges>,
+    /// Stable identity for a precompiled persistent command topology.
+    ///
+    /// Ordinary canvases derive this by hashing commands. Persistent scenes assign an opaque key
+    /// only when topology or physical draw slots change, so buffer-only edits do not scan the
+    /// whole command graph during prepare.
+    pub(crate) plan_cache_key: Option<u64>,
+    pub(crate) compiled_plan: Option<SharedArc<ExecPlan>>,
+    pub(crate) retained_frame_override: Option<RetainedFrame>,
+    pub(crate) painter_keys: Option<Vec<PainterKey>>,
+    pub(crate) stable_batch_ids: Option<Vec<u32>>,
+    /// Live physical draw count per stable batch. Persistent plans may keep an empty placeholder
+    /// or a stale shared draw list while membership moves through the stable ID table.
+    pub(crate) stable_batch_counts: Option<Vec<u32>>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct SceneBufferChanges {
+    pub(crate) lines: Vec<Range<usize>>,
+    pub(crate) paths: Vec<Range<usize>>,
+    pub(crate) draws: Vec<Range<usize>>,
+    pub(crate) brushes: Vec<Range<usize>>,
+    pub(crate) sdfs: Vec<Range<usize>>,
+    pub(crate) shadows: Vec<Range<usize>>,
+    pub(crate) glyphs: Vec<Range<usize>>,
+    pub(crate) text_runs: Vec<Range<usize>>,
+    pub(crate) chunks_rebuilt: u32,
+    pub(crate) plan_fragments_rebuilt: u32,
+    pub(crate) full_scene_sync: bool,
+    pub(crate) cpu_copied_bytes: u64,
+    pub(crate) painter: Vec<Range<usize>>,
+    /// The persistent plan object was patched without changing execution structure. Renderers
+    /// may reuse cached depth/scratch metadata while consuming the new precompiled plan.
+    pub(crate) plan_structure_reused: bool,
+    /// Changed fused layer-stack records in the precompiled plan.
+    pub(crate) plan_layer_stack: Vec<Range<usize>>,
+    /// Offscreen filter descriptors changed and their auxiliary GPU tables must be refreshed.
+    pub(crate) filter_resources_changed: bool,
+    pub(crate) arena_live_bytes: u64,
+    pub(crate) arena_capacity_bytes: u64,
+    pub(crate) arena_fragmentation: f32,
+    pub(crate) arena_compactions: u64,
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub(crate) struct PainterKey {
+    pub(crate) path: SharedArc<[u128]>,
+    pub(crate) local: u32,
+}
+
+impl PainterKey {
+    pub(crate) fn inactive() -> Self {
+        Self {
+            path: SharedArc::from([u128::MAX]),
+            local: u32::MAX,
+        }
+    }
 }
 
 /// Opaque handle to a draw stored inside a [`Canvas`].
@@ -463,6 +519,13 @@ impl Canvas {
             retained_root: None,
             invalidated_bounds: Vec::new(),
             invalidate_all: false,
+            buffer_changes: None,
+            plan_cache_key: None,
+            compiled_plan: None,
+            retained_frame_override: None,
+            painter_keys: None,
+            stable_batch_ids: None,
+            stable_batch_counts: None,
         }
     }
 
@@ -497,6 +560,10 @@ impl Canvas {
     /// Returns whether this canvas records stable retained scene history.
     pub fn is_retained(&self) -> bool {
         self.retained_root.is_some()
+    }
+
+    pub(crate) fn is_closed_for_append(&self) -> bool {
+        self.command_stack.len() == 1 && self.layer_stack.is_empty()
     }
 
     pub fn physical_width(&self) -> u32 {
@@ -1285,7 +1352,11 @@ impl Canvas {
         self.tile_cnt = segment_start;
     }
 
-    fn remap_command(command: Command, draw_offset: usize, child_list_offset: usize) -> Command {
+    pub(crate) fn remap_command(
+        command: Command,
+        draw_offset: usize,
+        child_list_offset: usize,
+    ) -> Command {
         match command {
             Command::Draw(draw_ix) => Command::Draw(draw_ix + draw_offset),
             Command::RetainedScene {
@@ -2560,6 +2631,13 @@ impl Canvas {
         self.layer_stack.clear();
         self.invalidated_bounds.clear();
         self.invalidate_all = false;
+        self.buffer_changes = None;
+        self.plan_cache_key = None;
+        self.compiled_plan = None;
+        self.retained_frame_override = None;
+        self.painter_keys = None;
+        self.stable_batch_ids = None;
+        self.stable_batch_counts = None;
         self.path_cnt = 0;
         self.backdrop_pool_capacity = 0;
         self.tile_cnt = 0;
@@ -2627,10 +2705,33 @@ impl Canvas {
     }
 
     pub(crate) fn compile(&self, list_id: CommandListId) -> ExecPlan {
+        if list_id == ROOT_COMMAND_LIST_ID
+            && let Some(plan) = &self.compiled_plan
+        {
+            return (**plan).clone();
+        }
+        self.compile_uncached(list_id)
+    }
+
+    pub(crate) fn compile_shared(&self, list_id: CommandListId) -> SharedArc<ExecPlan> {
+        if list_id == ROOT_COMMAND_LIST_ID
+            && let Some(plan) = &self.compiled_plan
+        {
+            return plan.clone();
+        }
+        SharedArc::new(self.compile_uncached(list_id))
+    }
+
+    fn compile_uncached(&self, list_id: CommandListId) -> ExecPlan {
         let mut ops = Vec::new();
         let mut plan = ExecPlan {
             ops: Vec::new(),
             layer_stack_data: Vec::new(),
+            draw_order: SharedArc::new(Vec::new()),
+            draw_batch_ids: SharedArc::new(Vec::new()),
+            retained_batch_ids: std::collections::HashMap::new(),
+            layer_stack_locations: std::collections::HashMap::new(),
+            direct_root_batch_ops: None,
         };
         let mut layer_stack = Vec::new();
         let mut surface_slots = std::collections::HashMap::new();
@@ -2639,11 +2740,15 @@ impl Canvas {
             &mut ops,
             &mut plan,
             &mut layer_stack,
-            self.retained_root,
+            CompileOwners {
+                retained: self.retained_root,
+                batch: None,
+            },
             &mut surface_slots,
         );
         plan.ops = ops;
         plan.coalesce_draw_batches();
+        plan.finalize_draw_batches(self.draw_records.len());
         plan
     }
 
@@ -2654,6 +2759,9 @@ impl Canvas {
     pub(crate) fn execution_plan_fingerprint(&self) -> u64 {
         use std::{fmt::Write as _, hash::Hasher as _};
 
+        if let Some(key) = self.plan_cache_key {
+            return key;
+        }
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         for (list_ix, list) in self.command_lists.iter().enumerate() {
             hasher.write_usize(list_ix);
@@ -2716,7 +2824,8 @@ impl Canvas {
                 }
             }
         }
-        hasher.finish()
+        // Persistent keys use the high bit, keeping the two identity domains disjoint.
+        hasher.finish() & !(1 << 63)
     }
 
     fn compile_into(
@@ -2725,42 +2834,39 @@ impl Canvas {
         ops: &mut Vec<ExecOp>,
         plan: &mut ExecPlan,
         layer_stack: &mut Vec<LayerStackEntry>,
-        retained_owner: Option<RetainedNodeId>,
+        owners: CompileOwners,
         surface_slots: &mut std::collections::HashMap<RetainedNodeId, u32>,
     ) {
-        let mut pending_batch: Option<(usize, usize)> = None;
+        let CompileOwners {
+            retained: retained_owner,
+            batch: batch_owner,
+        } = owners;
+        let op_start = ops.len();
+        let mut pending_batch = Vec::<usize>::new();
 
-        let flush_batch = |pending_batch: &mut Option<(usize, usize)>,
+        let flush_batch = |pending_batch: &mut Vec<usize>,
                            ops: &mut Vec<ExecOp>,
                            plan: &mut ExecPlan,
-                           layer_stack: &[LayerStackEntry]| {
-            let Some((start, end)) = pending_batch.take() else {
+                           layer_stack: &[LayerStackEntry],
+                           batch_owner: Option<RetainedBatchOwner>| {
+            if pending_batch.is_empty() {
                 return;
-            };
+            }
             let layer_start = plan.layer_stack_data.len();
             plan.layer_stack_data.extend_from_slice(layer_stack);
             let layer_end = plan.layer_stack_data.len();
 
             ops.push(ExecOp::DrawBatch {
-                draws: start..end,
+                draws: SharedArc::new(std::mem::take(pending_batch)),
+                batch_id: u32::MAX,
+                owners: SharedArc::new(batch_owner.into_iter().collect()),
                 layer_stack: layer_start..layer_end,
             });
         };
 
         for command in &self.command_lists[list_id].commands {
             match command {
-                Command::Draw(draw_ix) => match &mut pending_batch {
-                    Some((start, end)) if *end == *draw_ix => {
-                        *end = *draw_ix + 1;
-                    }
-                    Some(_) => {
-                        flush_batch(&mut pending_batch, ops, plan, layer_stack);
-                        pending_batch = Some((*draw_ix, *draw_ix + 1));
-                    }
-                    None => {
-                        pending_batch = Some((*draw_ix, *draw_ix + 1));
-                    }
-                },
+                Command::Draw(draw_ix) => pending_batch.push(*draw_ix),
                 Command::RetainedScene { .. } => {
                     panic!("retained scenes must be materialized before compile")
                 }
@@ -2769,8 +2875,18 @@ impl Canvas {
                     revision: _,
                     children,
                 } => {
-                    flush_batch(&mut pending_batch, ops, plan, layer_stack);
-                    self.compile_into(*children, ops, plan, layer_stack, Some(*id), surface_slots);
+                    flush_batch(&mut pending_batch, ops, plan, layer_stack, batch_owner);
+                    self.compile_into(
+                        *children,
+                        ops,
+                        plan,
+                        layer_stack,
+                        CompileOwners {
+                            retained: Some(*id),
+                            batch: batch_owner,
+                        },
+                        surface_slots,
+                    );
                 }
                 Command::Layer {
                     retained,
@@ -2778,8 +2894,14 @@ impl Canvas {
                     layer,
                     children,
                 } => {
-                    flush_batch(&mut pending_batch, ops, plan, layer_stack);
+                    flush_batch(&mut pending_batch, ops, plan, layer_stack, batch_owner);
                     let retained_owner = retained.map(|key| key.id).or(retained_owner);
+                    let child_batch_owner = retained
+                        .map(|key| RetainedBatchOwner {
+                            node: key.id,
+                            branch: RetainedBatchBranch::Content,
+                        })
+                        .or(batch_owner);
                     if self.can_fuse(layer, *children) {
                         match layer {
                             Layer::Clip | Layer::ClipSdf { .. } => {
@@ -2793,7 +2915,10 @@ impl Canvas {
                                     ops,
                                     plan,
                                     layer_stack,
-                                    retained_owner,
+                                    CompileOwners {
+                                        retained: retained_owner,
+                                        batch: child_batch_owner,
+                                    },
                                     surface_slots,
                                 );
                                 layer_stack.pop();
@@ -2810,7 +2935,10 @@ impl Canvas {
                                     ops,
                                     plan,
                                     layer_stack,
-                                    retained_owner,
+                                    CompileOwners {
+                                        retained: retained_owner,
+                                        batch: child_batch_owner,
+                                    },
                                     surface_slots,
                                 );
                                 layer_stack.pop();
@@ -2827,7 +2955,10 @@ impl Canvas {
                                     ops,
                                     plan,
                                     layer_stack,
-                                    retained_owner,
+                                    CompileOwners {
+                                        retained: retained_owner,
+                                        batch: child_batch_owner,
+                                    },
                                     surface_slots,
                                 );
                                 layer_stack.pop();
@@ -2862,7 +2993,10 @@ impl Canvas {
                                     &mut child_ops,
                                     plan,
                                     &mut child_layer_stack,
-                                    retained_owner,
+                                    CompileOwners {
+                                        retained: retained_owner,
+                                        batch: child_batch_owner,
+                                    },
                                     surface_slots,
                                 );
                                 child_ops
@@ -2876,8 +3010,20 @@ impl Canvas {
                     content,
                     mask,
                 } => {
-                    flush_batch(&mut pending_batch, ops, plan, layer_stack);
+                    flush_batch(&mut pending_batch, ops, plan, layer_stack, batch_owner);
                     let retained_owner = retained.map(|key| key.id).or(retained_owner);
+                    let content_batch_owner = retained
+                        .map(|key| RetainedBatchOwner {
+                            node: key.id,
+                            branch: RetainedBatchBranch::Content,
+                        })
+                        .or(batch_owner);
+                    let mask_batch_owner = retained
+                        .map(|key| RetainedBatchOwner {
+                            node: key.id,
+                            branch: RetainedBatchBranch::Mask,
+                        })
+                        .or(batch_owner);
                     let stack_start = plan.layer_stack_data.len();
                     plan.layer_stack_data.extend_from_slice(layer_stack);
                     let stack_end = plan.layer_stack_data.len();
@@ -2898,7 +3044,10 @@ impl Canvas {
                                 &mut child_ops,
                                 plan,
                                 &mut child_layer_stack,
-                                retained_owner,
+                                CompileOwners {
+                                    retained: retained_owner,
+                                    batch: content_batch_owner,
+                                },
                                 surface_slots,
                             );
                             child_ops
@@ -2911,7 +3060,10 @@ impl Canvas {
                                 &mut mask_ops,
                                 plan,
                                 &mut mask_layer_stack,
-                                retained_owner,
+                                CompileOwners {
+                                    retained: retained_owner,
+                                    batch: mask_batch_owner,
+                                },
                                 surface_slots,
                             );
                             mask_ops
@@ -2921,7 +3073,20 @@ impl Canvas {
             }
         }
 
-        flush_batch(&mut pending_batch, ops, plan, layer_stack);
+        flush_batch(&mut pending_batch, ops, plan, layer_stack, batch_owner);
+        if let Some(owner) = batch_owner
+            && !exec_ops_contain_owner(&ops[op_start..], owner)
+        {
+            let layer_start = plan.layer_stack_data.len();
+            plan.layer_stack_data.extend_from_slice(layer_stack);
+            let layer_end = plan.layer_stack_data.len();
+            ops.push(ExecOp::DrawBatch {
+                draws: SharedArc::new(Vec::new()),
+                batch_id: u32::MAX,
+                owners: SharedArc::new(vec![owner]),
+                layer_stack: layer_start..layer_end,
+            });
+        }
     }
 
     fn can_fuse(&self, layer: &Layer, children: CommandListId) -> bool {
@@ -2957,6 +3122,23 @@ impl Canvas {
                 Command::MaskLayer { .. } => true,
             })
     }
+}
+
+#[derive(Clone, Copy)]
+struct CompileOwners {
+    retained: Option<RetainedNodeId>,
+    batch: Option<RetainedBatchOwner>,
+}
+
+fn exec_ops_contain_owner(ops: &[ExecOp], owner: RetainedBatchOwner) -> bool {
+    ops.iter().any(|op| match op {
+        ExecOp::DrawBatch { owners, .. } => owners.contains(&owner),
+        ExecOp::OffscreenLayer { children, .. } => exec_ops_contain_owner(children, owner),
+        ExecOp::OffscreenMaskLayer { content, mask, .. } => {
+            exec_ops_contain_owner(content, owner) || exec_ops_contain_owner(mask, owner)
+        }
+        _ => false,
+    })
 }
 
 fn axis_aligned_rect_path(path: &BezPath, transform: Affine) -> Option<Rect> {

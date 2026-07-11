@@ -18,6 +18,21 @@ fn execution_plan_fingerprint_ignores_buffer_only_changes() {
 }
 
 #[test]
+fn reset_discards_cached_execution_plan() {
+    let mut canvas = Canvas::new(32, 32, 1.0);
+    canvas.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
+        rgb(255, 0, 0),
+    );
+    canvas.compiled_plan = Some(canvas.compile_shared(ROOT_COMMAND_LIST_ID));
+
+    canvas.reset();
+
+    assert!(canvas.compile(ROOT_COMMAND_LIST_ID).draw_order.is_empty());
+}
+
+#[test]
 fn compile_coalesces_plain_draws_across_materialized_retained_scenes() {
     let mut canvas = Canvas::new_retained(64, 64, 1.0, RetainedNodeId::for_owner(1));
     for owner in 2..=4 {
@@ -25,7 +40,7 @@ fn compile_coalesces_plain_draws_across_materialized_retained_scenes() {
         child.push_rect(
             Rect::new(0.0, 0.0, 12.0, 12.0),
             Radius::ZERO,
-            rgb(40 * owner as u8, 80, 160),
+            rgb(10 * owner as u8, 80, 160),
         );
         canvas.append_retained_scene(
             RetainedNodeId::for_owner(owner),
@@ -38,11 +53,115 @@ fn compile_coalesces_plain_draws_across_materialized_retained_scenes() {
     let canvas = canvas.materialize_retained_scenes(&mut RetainedSceneCache::default());
     let plan = canvas.compile(ROOT_COMMAND_LIST_ID);
     match plan.ops.as_slice() {
-        [ExecOp::DrawBatch { draws, layer_stack }] => {
-            assert_eq!(draws.clone(), 0..3);
+        [
+            ExecOp::DrawBatch {
+                draws, layer_stack, ..
+            },
+        ] => {
+            assert_eq!(draws.as_ref().clone(), (0..3).collect::<Vec<_>>());
             assert!(layer_stack.is_empty());
         }
         ops => panic!("materialized retained scenes must not split GPU batches: {ops:#?}"),
+    }
+}
+
+#[test]
+fn compile_discards_orphaned_layer_stacks_after_retained_batch_coalescing() {
+    let mut canvas = Canvas::new_retained(64, 64, 1.0, RetainedNodeId::for_owner(10));
+    canvas.push_opacity_layer(rect_path(0.0, 0.0, 64.0, 64.0), Affine::IDENTITY, 0.1, 0.5);
+    for owner in 11..=13 {
+        let mut child = Canvas::new(16, 16, 1.0);
+        child.push_rect(
+            Rect::new(0.0, 0.0, 12.0, 12.0),
+            Radius::ZERO,
+            rgb(120, 80, 160),
+        );
+        canvas.append_retained_scene(
+            RetainedNodeId::for_owner(owner),
+            0,
+            std::sync::Arc::new(child),
+            (((owner - 11) * 16) as f64, 0.0),
+        );
+    }
+    canvas.pop_layer();
+
+    let materialized = canvas.materialize_retained_scenes(&mut RetainedSceneCache::default());
+    let plan = materialized.compile(ROOT_COMMAND_LIST_ID);
+    assert_eq!(plan.layer_stack_data.len(), 1);
+    assert_eq!(plan.draw_order.len(), 3);
+}
+
+#[test]
+fn compile_preserves_stable_batch_for_empty_retained_layer_content() {
+    let id = RetainedNodeId::for_owner(20);
+    let owner = RetainedBatchOwner {
+        node: id,
+        branch: RetainedBatchBranch::Content,
+    };
+    let mut canvas = Canvas::new_retained(32, 32, 1.0, RetainedNodeId::for_owner(19));
+    canvas.push_retained_opacity_layer(
+        RetainedLayerKey::new(id, SceneRevision::INITIAL),
+        rect_path(0.0, 0.0, 32.0, 32.0),
+        Affine::IDENTITY,
+        0.1,
+        0.5,
+    );
+    canvas.pop_layer();
+
+    let plan = canvas.compile(ROOT_COMMAND_LIST_ID);
+    let batch = plan.retained_batch_ids[&owner];
+    assert!(plan.ops.iter().any(|op| {
+        matches!(
+            op,
+            ExecOp::DrawBatch { draws, batch_id, owners, .. }
+                if draws.is_empty() && *batch_id == batch && owners.as_slice() == [owner]
+        )
+    }));
+}
+
+#[test]
+fn compile_preserves_distinct_empty_batches_for_retained_mask_branches() {
+    let id = RetainedNodeId::for_owner(22);
+    let content = RetainedBatchOwner {
+        node: id,
+        branch: RetainedBatchBranch::Content,
+    };
+    let mask = RetainedBatchOwner {
+        node: id,
+        branch: RetainedBatchBranch::Mask,
+    };
+    let mut canvas = Canvas::new_retained(32, 32, 1.0, RetainedNodeId::for_owner(21));
+    canvas.push_retained_mask_layer(
+        RetainedLayerKey::new(id, SceneRevision::INITIAL),
+        Canvas::new(32, 32, 1.0),
+        Mask {
+            region: Region::rect(Rect::new(0.0, 0.0, 32.0, 32.0), Radius::ZERO),
+            kind: MaskKind::Alpha,
+        },
+    );
+    canvas.pop_layer();
+
+    let plan = canvas.compile(ROOT_COMMAND_LIST_ID);
+    let content_batch = plan.retained_batch_ids[&content];
+    let mask_batch = plan.retained_batch_ids[&mask];
+    assert_ne!(content_batch, mask_batch);
+    for (owner, batch) in [(content, content_batch), (mask, mask_batch)] {
+        assert!(plan.ops.iter().any(|op| {
+            match op {
+            ExecOp::OffscreenMaskLayer {
+                content,
+                mask,
+                ..
+            } => content.iter().chain(mask).any(|op| {
+                matches!(
+                    op,
+                    ExecOp::DrawBatch { draws, batch_id, owners, .. }
+                        if draws.is_empty() && *batch_id == batch && owners.as_slice() == [owner]
+                )
+            }),
+            _ => false,
+        }
+        }));
     }
 }
 
@@ -94,8 +213,10 @@ fn compile_lowers_clip_blend_batches_in_user_order() {
         op => panic!("expected BeginClip, got {op:#?}"),
     }
     match &plan.ops[1] {
-        ExecOp::DrawBatch { draws, layer_stack } => {
-            assert_eq!(draws.clone(), 1..2);
+        ExecOp::DrawBatch {
+            draws, layer_stack, ..
+        } => {
+            assert_eq!(draws.as_ref().clone(), (1..2).collect::<Vec<_>>());
             assert_layer_stack(
                 &plan,
                 layer_stack.clone(),
@@ -109,8 +230,10 @@ fn compile_lowers_clip_blend_batches_in_user_order() {
         op => panic!("expected BeginBlend, got {op:#?}"),
     }
     match &plan.ops[3] {
-        ExecOp::DrawBatch { draws, layer_stack } => {
-            assert_eq!(draws.clone(), 3..4);
+        ExecOp::DrawBatch {
+            draws, layer_stack, ..
+        } => {
+            assert_eq!(draws.as_ref().clone(), (3..4).collect::<Vec<_>>());
             assert_layer_stack(
                 &plan,
                 layer_stack.clone(),
@@ -130,8 +253,10 @@ fn compile_lowers_clip_blend_batches_in_user_order() {
         op => panic!("expected EndBlend, got {op:#?}"),
     }
     match &plan.ops[5] {
-        ExecOp::DrawBatch { draws, layer_stack } => {
-            assert_eq!(draws.clone(), 4..5);
+        ExecOp::DrawBatch {
+            draws, layer_stack, ..
+        } => {
+            assert_eq!(draws.as_ref().clone(), (4..5).collect::<Vec<_>>());
             assert_layer_stack(
                 &plan,
                 layer_stack.clone(),
@@ -189,8 +314,10 @@ fn compile_keeps_opacity_group_alive_across_nested_batches() {
         op => panic!("expected BeginOpacity, got {op:#?}"),
     }
     match &plan.ops[1] {
-        ExecOp::DrawBatch { draws, layer_stack } => {
-            assert_eq!(draws.clone(), 1..2);
+        ExecOp::DrawBatch {
+            draws, layer_stack, ..
+        } => {
+            assert_eq!(draws.as_ref().clone(), (1..2).collect::<Vec<_>>());
             assert_layer_stack(
                 &plan,
                 layer_stack.clone(),
@@ -207,8 +334,10 @@ fn compile_keeps_opacity_group_alive_across_nested_batches() {
         op => panic!("expected BeginBlend, got {op:#?}"),
     }
     match &plan.ops[3] {
-        ExecOp::DrawBatch { draws, layer_stack } => {
-            assert_eq!(draws.clone(), 3..4);
+        ExecOp::DrawBatch {
+            draws, layer_stack, ..
+        } => {
+            assert_eq!(draws.as_ref().clone(), (3..4).collect::<Vec<_>>());
             assert_layer_stack(
                 &plan,
                 layer_stack.clone(),
@@ -231,8 +360,10 @@ fn compile_keeps_opacity_group_alive_across_nested_batches() {
         op => panic!("expected EndBlend, got {op:#?}"),
     }
     match &plan.ops[5] {
-        ExecOp::DrawBatch { draws, layer_stack } => {
-            assert_eq!(draws.clone(), 4..5);
+        ExecOp::DrawBatch {
+            draws, layer_stack, ..
+        } => {
+            assert_eq!(draws.as_ref().clone(), (4..5).collect::<Vec<_>>());
             assert_layer_stack(
                 &plan,
                 layer_stack.clone(),
@@ -275,8 +406,10 @@ fn compile_fuses_sdf_clip_into_layer_stack() {
         op => panic!("expected BeginClip, got {op:#?}"),
     }
     match &plan.ops[1] {
-        ExecOp::DrawBatch { draws, layer_stack } => {
-            assert_eq!(draws.clone(), 1..2);
+        ExecOp::DrawBatch {
+            draws, layer_stack, ..
+        } => {
+            assert_eq!(draws.as_ref().clone(), (1..2).collect::<Vec<_>>());
             assert_layer_stack(
                 &plan,
                 layer_stack.clone(),
@@ -390,8 +523,10 @@ fn compile_fuses_generic_sdf_clip_without_path_storage() {
     assert_eq!(canvas.draw_records[0].pixel_bounds.y1, 27);
     assert_eq!(plan.ops.len(), 3, "{:#?}", plan.ops);
     match &plan.ops[1] {
-        ExecOp::DrawBatch { draws, layer_stack } => {
-            assert_eq!(draws.clone(), 1..2);
+        ExecOp::DrawBatch {
+            draws, layer_stack, ..
+        } => {
+            assert_eq!(draws.as_ref().clone(), (1..2).collect::<Vec<_>>());
             assert_layer_stack(
                 &plan,
                 layer_stack.clone(),
@@ -435,8 +570,12 @@ fn compile_keeps_outer_sdf_clip_on_backdrop_layer_children() {
                 &[LayerStackEntry::Clip { draw: 0 }],
             );
             match &children[..] {
-                [ExecOp::DrawBatch { draws, layer_stack }] => {
-                    assert_eq!(draws.clone(), 1..2);
+                [
+                    ExecOp::DrawBatch {
+                        draws, layer_stack, ..
+                    },
+                ] => {
+                    assert_eq!(draws.as_ref().clone(), (1..2).collect::<Vec<_>>());
                     assert_layer_stack(
                         &plan,
                         layer_stack.clone(),
@@ -568,8 +707,12 @@ fn compile_keeps_isolate_as_offscreen_layer() {
             assert_eq!(*draw, 0);
             assert!(outer_stack.is_empty());
             match children.as_slice() {
-                [ExecOp::DrawBatch { draws, layer_stack }] => {
-                    assert_eq!(draws.clone(), 1..2);
+                [
+                    ExecOp::DrawBatch {
+                        draws, layer_stack, ..
+                    },
+                ] => {
+                    assert_eq!(draws.as_ref().clone(), (1..2).collect::<Vec<_>>());
                     assert!(layer_stack.is_empty());
                 }
                 ops => panic!("expected one isolate child batch, got {ops:#?}"),
@@ -615,15 +758,23 @@ fn compile_keeps_mask_content_and_mask_isolated() {
             assert!(outer_stack.is_empty());
             assert_eq!(layer.kind, MaskKind::Alpha);
             match content.as_slice() {
-                [ExecOp::DrawBatch { draws, layer_stack }] => {
-                    assert_eq!(draws.clone(), 1..2);
+                [
+                    ExecOp::DrawBatch {
+                        draws, layer_stack, ..
+                    },
+                ] => {
+                    assert_eq!(draws.as_ref().clone(), (1..2).collect::<Vec<_>>());
                     assert!(layer_stack.is_empty());
                 }
                 ops => panic!("expected one mask content batch, got {ops:#?}"),
             }
             match mask.as_slice() {
-                [ExecOp::DrawBatch { draws, layer_stack }] => {
-                    assert_eq!(draws.clone(), 0..1);
+                [
+                    ExecOp::DrawBatch {
+                        draws, layer_stack, ..
+                    },
+                ] => {
+                    assert_eq!(draws.as_ref().clone(), (0..1).collect::<Vec<_>>());
                     assert!(layer_stack.is_empty());
                 }
                 ops => panic!("expected one mask source batch, got {ops:#?}"),

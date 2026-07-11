@@ -64,6 +64,7 @@ fn encode_key(scope: u32, key: ImageKey) -> (u32, u32, u32) {
 #[derive(Clone, Default)]
 pub(crate) struct ImageResourceStore {
     images: FxHashMap<ImageKey, Arc<Image>>,
+    signature_hash: u64,
 }
 
 impl ImageResourceStore {
@@ -72,7 +73,10 @@ impl ImageResourceStore {
         if image.width == 0 || image.height == 0 {
             return false;
         }
-        self.images.insert(key, image);
+        if let Some(previous) = self.images.insert(key, image.clone()) {
+            self.signature_hash ^= image_entry_hash(key, &previous);
+        }
+        self.signature_hash ^= image_entry_hash(key, &image);
         true
     }
 
@@ -81,12 +85,17 @@ impl ImageResourceStore {
     }
 
     pub(crate) fn remove(&mut self, key: ImageKey) -> bool {
-        self.images.remove(&key).is_some()
+        let Some(image) = self.images.remove(&key) else {
+            return false;
+        };
+        self.signature_hash ^= image_entry_hash(key, &image);
+        true
     }
 
     pub(crate) fn clear(&mut self) -> bool {
         let had_images = !self.images.is_empty();
         self.images.clear();
+        self.signature_hash = 0;
         had_images
     }
 
@@ -125,50 +134,31 @@ impl ImageResourceStore {
     }
 
     pub(crate) fn extend_from(&mut self, other: &ImageResourceStore) {
-        self.images.extend(
-            other
-                .images
-                .iter()
-                .map(|(&key, image)| (key, image.clone())),
-        );
+        for (&key, image) in &other.images {
+            self.insert(key, image.clone());
+        }
     }
 
-    fn iter(&self) -> impl Iterator<Item = (ImageKey, &Arc<Image>)> {
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (ImageKey, &Arc<Image>)> {
         self.images.iter().map(|(&key, image)| (key, image))
     }
 
     fn store_signature(&self) -> ImageResourceStoreSignature {
-        let mut entries = self
-            .images
-            .iter()
-            .map(|(&key, image)| {
-                (
-                    key,
-                    image.width,
-                    image.height,
-                    image.pixels.len() as u64,
-                    Arc::as_ptr(image) as usize as u64,
-                    image.pixels.as_ptr() as usize as u64,
-                )
-            })
-            .collect::<Vec<_>>();
-        entries.sort_by_key(|entry| entry.0.0);
-
-        let mut hash = FNV_OFFSET;
-        hash = fnv_mix(hash, entries.len() as u64);
-        for (key, width, height, pixel_len, image_ptr, pixels_ptr) in entries {
-            hash = fnv_mix(hash, key.0);
-            hash = fnv_mix(hash, width as u64);
-            hash = fnv_mix(hash, height as u64);
-            hash = fnv_mix(hash, pixel_len);
-            hash = fnv_mix(hash, image_ptr);
-            hash = fnv_mix(hash, pixels_ptr);
-        }
         ImageResourceStoreSignature {
             len: self.images.len() as u64,
-            hash,
+            hash: self.signature_hash,
         }
     }
+}
+
+fn image_entry_hash(key: ImageKey, image: &Arc<Image>) -> u64 {
+    let mut hash = FNV_OFFSET;
+    hash = fnv_mix(hash, key.0);
+    hash = fnv_mix(hash, image.width as u64);
+    hash = fnv_mix(hash, image.height as u64);
+    hash = fnv_mix(hash, image.pixels.len() as u64);
+    hash = fnv_mix(hash, Arc::as_ptr(image) as usize as u64);
+    fnv_mix(hash, image.pixels.as_ptr() as usize as u64)
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -270,6 +260,10 @@ impl GpuImageResourceUpload {
     #[inline]
     pub(crate) fn image_placement(&self, id: ImageResourceId) -> Option<ImageResourcePlacement> {
         self.placements.get(&id).copied()
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.placements.is_empty()
     }
 
     pub(crate) fn atlas_page_size(&self) -> u32 {

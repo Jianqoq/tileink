@@ -5,7 +5,7 @@
 
 use std::sync::mpsc;
 
-use crate::{Canvas, TextFontSystem, shared::image::Image, text::TextContext};
+use crate::{Canvas, RetainedScene, TextFontSystem, shared::image::Image, text::TextContext};
 
 use super::{
     super::{
@@ -13,7 +13,7 @@ use super::{
         incremental::{IncrementalOutputMode, TransientOutputDecision},
     },
     Renderer,
-    retained::HistoryOwner,
+    retained::{HistoryOwner, SelectedScene},
 };
 
 #[derive(Debug)]
@@ -183,6 +183,49 @@ impl Renderer {
         Ok(())
     }
 
+    pub fn render_retained_to_wgpu_texture(
+        &mut self,
+        scene: &RetainedScene,
+        dst: &::wgpu::Texture,
+    ) -> Result<(), WgpuTextureRenderError> {
+        let (canvas, reused) = self.retained_scene_canvas(scene);
+        let selected =
+            self.retained
+                .select_materialized(canvas, reused, scene.id(), scene.version());
+        self.render_selected_native_to_wgpu_texture(
+            selected,
+            dst,
+            false,
+            RequestedTextureHistory::Transient,
+            |renderer, canvas| renderer.prepare_scene(canvas),
+        )?;
+        self.last_frame_used_native = true;
+        self.mark_retained_scene_rendered(scene);
+        Ok(())
+    }
+
+    pub fn render_retained_to_persistent_wgpu_texture(
+        &mut self,
+        scene: &RetainedScene,
+        dst: &::wgpu::Texture,
+        history_id: ExternalTextureHistoryId,
+    ) -> Result<(), WgpuTextureRenderError> {
+        let (canvas, reused) = self.retained_scene_canvas(scene);
+        let selected =
+            self.retained
+                .select_materialized(canvas, reused, scene.id(), scene.version());
+        self.render_selected_native_to_wgpu_texture(
+            selected,
+            dst,
+            false,
+            RequestedTextureHistory::External(history_id),
+            |renderer, canvas| renderer.prepare_scene(canvas),
+        )?;
+        self.last_frame_used_native = true;
+        self.mark_retained_scene_rendered(scene);
+        Ok(())
+    }
+
     /// Renders into a caller-owned texture that remains intact between retained frames.
     ///
     /// The destination itself becomes active root history, so this path does not update or resize
@@ -218,6 +261,57 @@ impl Renderer {
             RequestedTextureHistory::Transient,
         )?;
         self.last_frame_used_native = true;
+        Ok(())
+    }
+
+    pub fn render_retained_with_text_to_wgpu_texture(
+        &mut self,
+        scene: &RetainedScene,
+        font_system: &mut TextFontSystem,
+        text_context: &mut TextContext,
+        dst: &::wgpu::Texture,
+    ) -> Result<(), WgpuTextureRenderError> {
+        let (canvas, reused) = self.retained_scene_canvas(scene);
+        let selected =
+            self.retained
+                .select_materialized(canvas, reused, scene.id(), scene.version());
+        self.render_selected_native_to_wgpu_texture(
+            selected,
+            dst,
+            true,
+            RequestedTextureHistory::Transient,
+            |renderer, canvas| {
+                renderer.prepare_scene_with_text(canvas, font_system, text_context);
+            },
+        )?;
+        self.last_frame_used_native = true;
+        self.mark_retained_scene_rendered(scene);
+        Ok(())
+    }
+
+    pub fn render_retained_with_text_to_persistent_wgpu_texture(
+        &mut self,
+        scene: &RetainedScene,
+        font_system: &mut TextFontSystem,
+        text_context: &mut TextContext,
+        dst: &::wgpu::Texture,
+        history_id: ExternalTextureHistoryId,
+    ) -> Result<(), WgpuTextureRenderError> {
+        let (canvas, reused) = self.retained_scene_canvas(scene);
+        let selected =
+            self.retained
+                .select_materialized(canvas, reused, scene.id(), scene.version());
+        self.render_selected_native_to_wgpu_texture(
+            selected,
+            dst,
+            true,
+            RequestedTextureHistory::External(history_id),
+            |renderer, canvas| {
+                renderer.prepare_scene_with_text(canvas, font_system, text_context);
+            },
+        )?;
+        self.last_frame_used_native = true;
+        self.mark_retained_scene_rendered(scene);
         Ok(())
     }
 
@@ -283,14 +377,32 @@ impl Renderer {
         requested_history: RequestedTextureHistory,
         prepare: impl FnOnce(&mut Self, &Canvas),
     ) -> Result<(), WgpuTextureRenderError> {
+        let selected = self.retained.select_scene(canvas);
+        self.render_selected_native_to_wgpu_texture(
+            selected,
+            dst,
+            uses_text,
+            requested_history,
+            prepare,
+        )
+    }
+
+    fn render_selected_native_to_wgpu_texture(
+        &mut self,
+        selected: SelectedScene<'_>,
+        dst: &::wgpu::Texture,
+        uses_text: bool,
+        requested_history: RequestedTextureHistory,
+        prepare: impl FnOnce(&mut Self, &Canvas),
+    ) -> Result<(), WgpuTextureRenderError> {
+        let scene = selected.scene();
         self.validate_wgpu_storage_texture_destination(
             dst,
-            canvas.physical_width(),
-            canvas.physical_height(),
+            scene.physical_width(),
+            scene.physical_height(),
         )?;
-        let selected = self.retained.select_scene(canvas);
         let frame = selected.frame();
-        let retained_ptr = selected.retained_ptr();
+        let materialization = selected.materialization();
         let materialized_reused = selected.materialized_reused();
         let is_retained = frame.is_some();
         let history_owner = match (is_retained, requested_history) {
@@ -307,7 +419,6 @@ impl Renderer {
             self.retained.invalidate_history();
             self.retained.reset_transient_output();
         }
-        let scene = selected.scene();
         let plan = self
             .retained
             .begin_frame(frame, scene, self.profiler.is_active());
@@ -358,15 +469,14 @@ impl Renderer {
         }
         self.retained.stats_mut().output_mode = output_mode;
         let has_work = !plan.tiles.is_empty();
-        if has_work
-            && self.retained.scene_needs_prepare(
-                retained_ptr,
-                uses_text,
-                self.image_resources_dirty,
-            )
+        // Empty structural commits still update persistent plan/resource state for the next frame.
+        if self
+            .retained
+            .scene_needs_prepare(materialization, uses_text, self.image_resources_dirty)
         {
             prepare(self, scene);
-            self.retained.mark_scene_prepared(retained_ptr, uses_text);
+            self.retained
+                .mark_scene_prepared(materialization, uses_text);
         }
         let rendered = if has_work || copy_history {
             self.render_prepared_tile_plan_with_history_copy(scene, copy_history.then_some(dst))

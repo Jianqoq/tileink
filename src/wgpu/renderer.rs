@@ -5,10 +5,11 @@ use std::sync::Arc as SharedArc;
 use peniko::Color;
 
 use crate::{
-    TextFontSystem,
+    RetainedScene, SceneVersion, TextFontSystem,
     canvas::Canvas,
     debug::{DebugScanBuffers, RenderDebugCapture, RenderOptions, capture_render_debug},
     render::Render,
+    retained_scene::PersistentSceneMaterializer,
     shared::{
         bounds::Bounds,
         execution::{ExecOp, ExecPlan},
@@ -62,7 +63,7 @@ mod retained;
 mod scene;
 
 pub use output::{ExternalTextureHistoryId, WgpuTextureRenderError};
-use retained::{HistoryOwner, RetainedRenderState};
+use retained::{HistoryOwner, RetainedRenderState, SelectedScene};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum WgpuRenderTargetId {
@@ -85,7 +86,7 @@ pub struct Renderer {
     device: ::wgpu::Device,
     queue: ::wgpu::Queue,
     lengths: GpuBufferLengths,
-    plan: Option<ExecPlan>,
+    plan: Option<SharedArc<ExecPlan>>,
     config: WgpuBuffer,
     scene_buffers: WgpuSceneBuffers,
     scene_upload: WgpuSceneUploadStaging,
@@ -129,11 +130,13 @@ pub struct Renderer {
     last_frame_used_native: bool,
     size: (u32, u32),
     surface_origin: (i32, i32),
+    persistent_scene: Option<PersistentSceneMaterializer>,
+    persistent_scene_rendered: Option<(u64, SceneVersion)>,
 }
 
 struct SavedRendererState {
     lengths: GpuBufferLengths,
-    plan: Option<ExecPlan>,
+    plan: Option<SharedArc<ExecPlan>>,
     config: WgpuBuffer,
     scene_buffers: WgpuSceneBuffers,
     scene_upload: WgpuSceneUploadStaging,
@@ -250,6 +253,8 @@ impl Renderer {
             last_frame_used_native: true,
             size: (width, height),
             surface_origin: (0, 0),
+            persistent_scene: None,
+            persistent_scene_rendered: None,
         }
     }
 
@@ -284,6 +289,100 @@ impl Renderer {
 
     pub fn render(&mut self, canvas: &Canvas) {
         <Self as Render>::render(self, canvas);
+    }
+
+    pub fn render_retained(&mut self, scene: &RetainedScene) {
+        let (canvas, reused) = self.retained_scene_canvas(scene);
+        let selected =
+            self.retained
+                .select_materialized(canvas, reused, scene.id(), scene.version());
+        assert!(
+            self.render_native_selected(selected, false, None),
+            "wgpu renderer could not render retained scene natively"
+        );
+        self.mark_retained_scene_rendered(scene);
+    }
+
+    pub fn render_retained_with_text(
+        &mut self,
+        scene: &RetainedScene,
+        font_system: &mut TextFontSystem,
+        text_context: &mut TextContext,
+    ) {
+        let (canvas, reused) = self.retained_scene_canvas(scene);
+        let selected =
+            self.retained
+                .select_materialized(canvas, reused, scene.id(), scene.version());
+        assert!(
+            self.render_native_selected(selected, true, Some((font_system, text_context)),),
+            "wgpu renderer could not render retained text scene natively"
+        );
+        self.mark_retained_scene_rendered(scene);
+    }
+
+    pub fn render_retained_profiled(&mut self, scene: &RetainedScene) -> WgpuRenderProfile {
+        self.start_profile();
+        self.render_retained(scene);
+        self.end_profile().clone()
+    }
+
+    pub fn render_retained_with_text_profiled(
+        &mut self,
+        scene: &RetainedScene,
+        font_system: &mut TextFontSystem,
+        text_context: &mut TextContext,
+    ) -> WgpuRenderProfile {
+        self.start_profile();
+        self.render_retained_with_text(scene, font_system, text_context);
+        self.end_profile().clone()
+    }
+
+    pub(crate) fn retained_scene_canvas(
+        &mut self,
+        scene: &RetainedScene,
+    ) -> (SharedArc<Canvas>, bool) {
+        let id = scene.id();
+        let switched = self
+            .persistent_scene
+            .as_ref()
+            .is_some_and(|cached| cached.scene_id() != id);
+        if switched {
+            self.retained.invalidate();
+            self.persistent_scene_rendered = None;
+        }
+        if self.persistent_scene.is_none() || switched {
+            self.persistent_scene = Some(profile_cpu("retained.materialize", || {
+                PersistentSceneMaterializer::new(scene)
+            }));
+        }
+        let materializer = self.persistent_scene.as_mut().unwrap();
+        let unchanged = materializer.version() == scene.version();
+        let plan_may_change = !unchanged
+            && scene
+                .changes_since(materializer.version())
+                .is_none_or(|changes| changes.topology_changed || changes.surface_changed);
+        if plan_may_change {
+            // GPU submission no longer borrows the previous frame's plan. Releasing that Arc
+            // lets the materializer patch layer fragments in place instead of cloning an
+            // otherwise scene-sized ExecPlan for one changed layer.
+            self.plan = None;
+        }
+        let scene_data_changed = profile_cpu("retained.materialize", || materializer.update(scene));
+        if materializer.version() != scene.version() {
+            unreachable!("persistent materializer did not consume scene version");
+        }
+        if scene_data_changed {
+            self.retained.invalidate_prepared_scene();
+        }
+        let canvas = materializer.canvas();
+        if plan_may_change {
+            self.plan = canvas.compiled_plan.clone();
+        }
+        (canvas, unchanged || !scene_data_changed)
+    }
+
+    pub(crate) fn mark_retained_scene_rendered(&mut self, scene: &RetainedScene) {
+        self.persistent_scene_rendered = Some((scene.id(), scene.version()));
     }
 
     pub fn insert_image(&mut self, key: ImageKey, image: impl Into<SharedArc<Image>>) -> bool {
@@ -416,8 +515,17 @@ impl Renderer {
         self.retained.set_history_owner(HistoryOwner::Internal);
         self.retained.reset_transient_output();
         let selected = self.retained.select_scene(canvas);
+        self.render_native_selected(selected, false, None)
+    }
+
+    fn render_native_selected(
+        &mut self,
+        selected: SelectedScene<'_>,
+        uses_text: bool,
+        text: Option<(&mut TextFontSystem, &mut TextContext)>,
+    ) -> bool {
         let frame = selected.frame();
-        let retained_ptr = selected.retained_ptr();
+        let materialization = selected.materialization();
         let materialized_reused = selected.materialized_reused();
         let scene = selected.scene();
         let plan = self
@@ -425,13 +533,20 @@ impl Renderer {
             .begin_frame(frame, scene, self.profiler.is_active());
         self.retained.stats_mut().materialized_scene_reused = materialized_reused;
         let has_work = !plan.tiles.is_empty();
-        if has_work
-            && self
-                .retained
-                .scene_needs_prepare(retained_ptr, false, self.image_resources_dirty)
+        // A structural commit can add no immediate pixel damage (for example, an empty retained
+        // layer) while still changing the persistent plan and GPU tables needed by later commits.
+        // Consume that state now; only raster execution remains conditional on `has_work`.
+        if self
+            .retained
+            .scene_needs_prepare(materialization, uses_text, self.image_resources_dirty)
         {
-            self.prepare_scene(scene);
-            self.retained.mark_scene_prepared(retained_ptr, false);
+            if let Some((font_system, text_context)) = text {
+                self.prepare_scene_with_text(scene, font_system, text_context);
+            } else {
+                self.prepare_scene(scene);
+            }
+            self.retained
+                .mark_scene_prepared(materialization, uses_text);
         }
         let rendered = !has_work || self.render_prepared_native(scene);
         self.retained.finish_frame(plan, rendered, true);
@@ -452,7 +567,7 @@ impl Renderer {
         self.retained.reset_transient_output();
         let selected = self.retained.select_scene(canvas);
         let frame = selected.frame();
-        let retained_ptr = selected.retained_ptr();
+        let materialization = selected.materialization();
         let materialized_reused = selected.materialized_reused();
         let scene = selected.scene();
         let plan = self
@@ -460,13 +575,13 @@ impl Renderer {
             .begin_frame(frame, scene, self.profiler.is_active());
         self.retained.stats_mut().materialized_scene_reused = materialized_reused;
         let has_work = !plan.tiles.is_empty();
-        if has_work
-            && self
-                .retained
-                .scene_needs_prepare(retained_ptr, true, self.image_resources_dirty)
+        // Keep plan/resource cursors current even when this commit has no raster work.
+        if self
+            .retained
+            .scene_needs_prepare(materialization, true, self.image_resources_dirty)
         {
             self.prepare_scene_with_text(scene, font_system, text_context);
-            self.retained.mark_scene_prepared(retained_ptr, true);
+            self.retained.mark_scene_prepared(materialization, true);
         }
         let rendered = !has_work || self.render_prepared_native(scene);
         self.retained.finish_frame(plan, rendered, true);
@@ -707,15 +822,35 @@ impl Renderer {
         } else {
             self.clear_render_target(&mut commands, WgpuRenderTargetId::Main, self.clear_color);
         }
+        let draw_batch_ids = canvas
+            .stable_batch_ids
+            .as_deref()
+            .unwrap_or(&plan.draw_batch_ids);
+        let active_batches = profile_cpu("plan.active_batches", || {
+            self.retained.active_tiles().map(|tiles| {
+                self.scene_upload
+                    .active_batch_ids(tiles.list(), draw_batch_ids)
+            })
+        });
         let mut filter_cursors = WgpuFilterCursors::default();
-        let ok = self.execute_ops(
-            &mut commands,
-            canvas,
-            &plan,
-            &plan.ops,
-            WgpuRenderTargetId::Main,
-            &mut filter_cursors,
-        );
+        let ok = profile_cpu("plan.execute", || {
+            let direct_ops = active_batches
+                .as_ref()
+                .and_then(|active| plan.active_direct_root_ops(active));
+            if let Some(ops) = direct_ops {
+                self.execute_direct_root_batches(&mut commands, canvas, &plan, &ops)
+            } else {
+                self.execute_ops(
+                    &mut commands,
+                    canvas,
+                    &plan,
+                    &plan.ops,
+                    WgpuRenderTargetId::Main,
+                    &mut filter_cursors,
+                    active_batches.as_ref(),
+                )
+            }
+        });
         if ok && let Some(dst) = history_copy_dst {
             self.encode_history_copy(&mut commands, dst);
         }
@@ -747,16 +882,26 @@ impl Renderer {
         ops: &[ExecOp],
         target: WgpuRenderTargetId,
         filter_cursors: &mut WgpuFilterCursors,
+        active_batches: Option<&std::collections::HashSet<u32>>,
     ) -> bool {
         for op in ops {
             let ok = match op {
-                ExecOp::DrawBatch { draws, layer_stack } => self.execute_draw_batch(
-                    commands,
-                    canvas,
-                    draws.clone(),
-                    layer_stack.clone(),
-                    target,
-                ),
+                ExecOp::DrawBatch {
+                    draws,
+                    batch_id,
+                    layer_stack,
+                    ..
+                } => {
+                    active_batches.is_some_and(|active| !active.contains(batch_id))
+                        || self.execute_draw_batch(
+                            commands,
+                            canvas,
+                            draws,
+                            *batch_id,
+                            layer_stack.clone(),
+                            target,
+                        )
+                }
                 ExecOp::BeginClip
                 | ExecOp::EndClip
                 | ExecOp::BeginOpacity
@@ -810,12 +955,19 @@ impl Renderer {
     fn execute_draw_batch(
         &mut self,
         commands: &mut WgpuCommandBatch,
-        _scene: &Canvas,
-        draws: std::ops::Range<usize>,
+        scene: &Canvas,
+        draws: &[usize],
+        batch_id: u32,
         layer_stack: std::ops::Range<usize>,
         target: WgpuRenderTargetId,
     ) -> bool {
-        if draws.start >= draws.end {
+        let live = scene
+            .stable_batch_counts
+            .as_ref()
+            .map_or(!draws.is_empty(), |counts| {
+                counts.get(batch_id as usize).copied().unwrap_or(0) != 0
+            });
+        if !live {
             return true;
         }
         let stats = self.retained.stats_mut();
@@ -825,12 +977,43 @@ impl Renderer {
         }
         self.coarse_and_fine_batch_to(
             commands,
-            draws.start as u32,
-            draws.end as u32,
+            batch_id,
+            batch_id.saturating_add(1),
             layer_stack.start as u32,
             layer_stack.end as u32,
             target,
         )
+    }
+
+    fn execute_direct_root_batches(
+        &mut self,
+        commands: &mut WgpuCommandBatch,
+        canvas: &Canvas,
+        plan: &ExecPlan,
+        ops: &[usize],
+    ) -> bool {
+        for &index in ops {
+            let ExecOp::DrawBatch {
+                draws,
+                batch_id,
+                layer_stack,
+                ..
+            } = &plan.ops[index]
+            else {
+                unreachable!("direct root index points to a draw batch")
+            };
+            if !self.execute_draw_batch(
+                commands,
+                canvas,
+                draws,
+                *batch_id,
+                layer_stack.clone(),
+                WgpuRenderTargetId::Main,
+            ) {
+                return false;
+            }
+        }
+        true
     }
 
     fn coarse_and_fine_batch_to(
@@ -1143,7 +1326,15 @@ impl Renderer {
             if let Some(bounds) = self.active_region(bounds) {
                 self.clear_render_region(commands, source, bounds, 0);
             }
-            if !self.execute_ops(commands, canvas, plan, children, source, filter_cursors) {
+            if !self.execute_ops(
+                commands,
+                canvas,
+                plan,
+                children,
+                source,
+                filter_cursors,
+                None,
+            ) {
                 return false;
             }
             let Some(mask) = self.acquire_scratch() else {
@@ -1336,6 +1527,7 @@ impl Renderer {
             &local.children,
             source,
             &mut local_filter_cursors,
+            None,
         );
         let is_partial_output = partial_output.is_some();
         if let Some((output_update, output_damage)) = partial_output {
@@ -1470,7 +1662,15 @@ impl Renderer {
             self.retained.insert_surface(id, surface);
             filter_cursors.advance_filter(filter);
             return ok
-                && self.execute_ops(commands, canvas, plan, children, target, filter_cursors);
+                && self.execute_ops(
+                    commands,
+                    canvas,
+                    plan,
+                    children,
+                    target,
+                    filter_cursors,
+                    None,
+                );
         }
         let partial = cached.as_ref().is_some_and(|(_, surface)| {
             surface.backdrop_source.is_some()
@@ -1507,7 +1707,15 @@ impl Renderer {
                 sample_region,
             )
         {
-            return self.execute_ops(commands, canvas, plan, children, target, filter_cursors);
+            return self.execute_ops(
+                commands,
+                canvas,
+                plan,
+                children,
+                target,
+                filter_cursors,
+                None,
+            );
         }
 
         if retained_id.is_none()
@@ -1521,7 +1729,15 @@ impl Renderer {
                 sample_region,
             )
         {
-            return self.execute_ops(commands, canvas, plan, children, target, filter_cursors);
+            return self.execute_ops(
+                commands,
+                canvas,
+                plan,
+                children,
+                target,
+                filter_cursors,
+                None,
+            );
         }
 
         let cache_surface = retained_id.is_some() && meta.is_some();
@@ -1709,7 +1925,15 @@ impl Renderer {
             }
             self.release_scratch(backdrop);
         }
-        ok && self.execute_ops(commands, canvas, plan, children, target, filter_cursors)
+        ok && self.execute_ops(
+            commands,
+            canvas,
+            plan,
+            children,
+            target,
+            filter_cursors,
+            None,
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1790,6 +2014,7 @@ impl Renderer {
                 content,
                 content_target,
                 filter_cursors,
+                None,
             ) {
                 self.release_scratch(content_target);
                 return false;
@@ -1886,7 +2111,7 @@ impl Renderer {
     ) -> Option<WgpuRenderTargetId> {
         let target = self.acquire_scratch()?;
         self.clear_render_target(commands, target, 0);
-        if self.execute_ops(commands, canvas, plan, ops, target, filter_cursors) {
+        if self.execute_ops(commands, canvas, plan, ops, target, filter_cursors, None) {
             Some(target)
         } else {
             self.release_scratch(target);
@@ -2409,7 +2634,7 @@ impl Renderer {
             .replace_mode(super::incremental::IncrementalRenderMode::ForceFull);
         let selected = self.retained.select_scene(canvas);
         let frame = selected.frame();
-        let retained_ptr = selected.retained_ptr();
+        let materialization = selected.materialization();
         let materialized_reused = selected.materialized_reused();
         let scene = selected.scene();
         let plan = self
@@ -2417,7 +2642,7 @@ impl Renderer {
             .begin_frame(frame, scene, self.profiler.is_active());
         self.retained.stats_mut().materialized_scene_reused = materialized_reused;
         self.prepare_scene(scene);
-        self.retained.mark_scene_prepared(retained_ptr, false);
+        self.retained.mark_scene_prepared(materialization, false);
         let rendered_native = self.render_prepared_tile_plan(scene);
         self.retained.finish_frame(plan, rendered_native, true);
         self.retained.replace_mode(mode);

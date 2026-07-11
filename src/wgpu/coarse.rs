@@ -9,6 +9,7 @@ use super::canvas::{WgpuCoarseBindings, WgpuCoarseBuffers, WgpuScanBuffers, Wgpu
 use super::commands::{
     WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
 };
+use super::dispatch_2d;
 use super::lazy::{LazyComputePipeline, LazyShaderModule, PipelineCompilationTracker};
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 
@@ -16,9 +17,9 @@ use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 const WORKGROUP_SIZE: u32 = 256;
-const COUNT_STORAGE_BINDING_COUNT: u32 = 8;
-const PREFIX_STORAGE_BINDING_COUNT: u32 = 9;
-const EMIT_STORAGE_BINDING_COUNT: u32 = 8;
+const COUNT_STORAGE_BINDING_COUNT: u32 = 9;
+const PREFIX_STORAGE_BINDING_COUNT: u32 = 10;
+const EMIT_STORAGE_BINDING_COUNT: u32 = 9;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct WgpuCoarseBatch {
@@ -476,6 +477,7 @@ impl WgpuCoarsePipeline {
             && lengths.coarse_ptcl_capacity > 0
             && emit_chunk_count > 0;
         let device = commands.device();
+        let max_workgroups = device.limits().max_compute_workgroups_per_dimension;
         let ptcl_prefix_chunks = self.pipeline(device, &self.ptcl_prefix_chunks);
         let ptcl_chunk_offsets = self.pipeline(device, &self.ptcl_chunk_offsets);
         let ptcl_apply_chunk_offsets = self.pipeline(device, &self.ptcl_apply_chunk_offsets);
@@ -545,7 +547,8 @@ impl WgpuCoarsePipeline {
                 pass.set_pipeline(emit_fill_refs.unwrap());
                 pass.dispatch_workgroups(chunk_count, 1, 1);
                 pass.set_pipeline(emit_chunk_particle_counts.unwrap());
-                pass.dispatch_workgroups(emit_chunk_count, 1, 1);
+                let (x, y) = dispatch_2d(emit_chunk_count, max_workgroups);
+                pass.dispatch_workgroups(x, y, 1);
                 pass.set_pipeline(tile_counts_from_emit_chunks.unwrap());
                 pass.dispatch_workgroups(chunk_count, 1, 1);
                 pass.set_pipeline(ptcl_prefix_chunks);
@@ -565,7 +568,8 @@ impl WgpuCoarsePipeline {
 
                 pass.set_bind_group(0, &emit_bind_group, &[]);
                 pass.set_pipeline(emit_web.unwrap());
-                pass.dispatch_workgroups(emit_chunk_count, 1, 1);
+                let (x, y) = dispatch_2d(emit_chunk_count, max_workgroups);
+                pass.dispatch_workgroups(x, y, 1);
                 pass.set_pipeline(emit_chunk_tile_kinds.unwrap());
                 pass.dispatch_workgroups(chunk_count, 1, 1);
             } else {
@@ -664,7 +668,7 @@ impl WgpuCoarsePipeline {
                 &self.emit_fill_refs,
                 chunk_count,
             );
-            self.dispatch_profiled_kernel(
+            self.dispatch_profiled_large_kernel(
                 commands,
                 "coarse.emit_chunk_particle_counts",
                 prefix_bind_group,
@@ -686,7 +690,7 @@ impl WgpuCoarsePipeline {
                 &self.emit_chunk_particle_offsets,
                 chunk_count,
             );
-            self.dispatch_profiled_kernel(
+            self.dispatch_profiled_large_kernel(
                 commands,
                 "coarse.emit_web",
                 emit_bind_group,
@@ -783,6 +787,18 @@ impl WgpuCoarsePipeline {
         dispatch_profiled(commands, name, bind_group, pipeline, workgroups);
     }
 
+    fn dispatch_profiled_large_kernel(
+        &self,
+        commands: &mut WgpuCommandBatch,
+        name: &'static str,
+        bind_group: &::wgpu::BindGroup,
+        kernel: &LazyCoarseKernel,
+        workgroups: u32,
+    ) {
+        let pipeline = self.pipeline(commands.device(), kernel);
+        dispatch_profiled_large(commands, name, bind_group, pipeline, workgroups);
+    }
+
     fn create_count_bind_group(
         &self,
         device: &::wgpu::Device,
@@ -802,6 +818,7 @@ impl WgpuCoarsePipeline {
                 bind_buffer(6, bindings.layer_stack),
                 bind_buffer(7, bindings.coarse_work),
                 bind_buffer(8, bindings.paint_blob),
+                bind_buffer(9, bindings.draw_batch_ids),
             ],
         })
     }
@@ -826,6 +843,7 @@ impl WgpuCoarsePipeline {
                 bind_buffer(7, bindings.coarse_work),
                 bind_buffer(8, bindings.chunk_records),
                 bind_buffer(9, bindings.paint_blob),
+                bind_buffer(10, bindings.draw_batch_ids),
             ],
         })
     }
@@ -849,6 +867,7 @@ impl WgpuCoarsePipeline {
                 bind_buffer(6, bindings.segment_ranges),
                 bind_buffer(7, bindings.layer_stack),
                 bind_buffer(8, bindings.coarse_work),
+                bind_buffer(9, bindings.draw_batch_ids),
             ],
         })
     }
@@ -939,6 +958,35 @@ fn dispatch_profiled(
     finish_gpu_scope(encoder, gpu_scope);
 }
 
+fn dispatch_profiled_large(
+    commands: &mut WgpuCommandBatch,
+    name: &'static str,
+    bind_group: &::wgpu::BindGroup,
+    pipeline: &::wgpu::ComputePipeline,
+    workgroups: u32,
+) {
+    let (x, y) = dispatch_2d(
+        workgroups,
+        commands
+            .device()
+            .limits()
+            .max_compute_workgroups_per_dimension,
+    );
+    let gpu_scope = start_gpu_scope(commands.device(), name);
+    let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
+    let encoder = commands.encoder();
+    {
+        let mut pass = encoder.begin_compute_pass(&::wgpu::ComputePassDescriptor {
+            label: Some(name),
+            timestamp_writes,
+        });
+        pass.set_bind_group(0, bind_group, &[]);
+        pass.set_pipeline(pipeline);
+        pass.dispatch_workgroups(x, y, 1);
+    }
+    finish_gpu_scope(encoder, gpu_scope);
+}
+
 fn count_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
     vec![
         uniform_entry(0),
@@ -950,6 +998,7 @@ fn count_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         storage_entry(6, true),
         storage_entry(7, false),
         storage_entry(8, true),
+        storage_entry(9, true),
     ]
 }
 
@@ -965,6 +1014,7 @@ fn prefix_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         storage_entry(7, false),
         storage_entry(8, false),
         storage_entry(9, true),
+        storage_entry(10, true),
     ]
 }
 
@@ -979,6 +1029,7 @@ fn emit_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         storage_entry(6, true),
         storage_entry(7, true),
         storage_entry(8, false),
+        storage_entry(9, true),
     ]
 }
 
@@ -1055,9 +1106,9 @@ mod tests {
             storage_count(&emit_layout_entries()),
             EMIT_STORAGE_BINDING_COUNT
         );
-        assert_eq!(COUNT_STORAGE_BINDING_COUNT, 8);
-        assert_eq!(PREFIX_STORAGE_BINDING_COUNT, 9);
-        assert_eq!(EMIT_STORAGE_BINDING_COUNT, 8);
+        assert_eq!(COUNT_STORAGE_BINDING_COUNT, 9);
+        assert_eq!(PREFIX_STORAGE_BINDING_COUNT, 10);
+        assert_eq!(EMIT_STORAGE_BINDING_COUNT, 9);
     }
 
     #[test]

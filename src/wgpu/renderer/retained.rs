@@ -6,7 +6,7 @@
 use std::{collections::HashSet, sync::Arc};
 
 use crate::{
-    Canvas,
+    Canvas, SceneVersion,
     canvas::{RetainedFrame, RetainedSceneCache, RetainedSurfaceId},
     shared::bounds::Bounds,
 };
@@ -26,7 +26,9 @@ use super::{ExternalTextureHistoryId, profile_cpu};
 pub(super) struct RetainedRenderState {
     scene_cache: RetainedSceneCache,
     materialized: Option<CachedMaterializedScene>,
-    prepared_scene: Option<*const Canvas>,
+    prepared_scene: Option<u64>,
+    next_materialization: u64,
+    persistent_materialization: Option<(u64, u64)>,
     prepared_uses_text: bool,
     config: IncrementalRenderConfig,
     incremental: IncrementalState,
@@ -38,6 +40,7 @@ pub(super) struct RetainedRenderState {
     surfaces: RetainedSurfaceCache,
     rendering_frame: Option<RetainedFrame>,
     dirty_backdrop_nodes: HashSet<crate::RetainedNodeId>,
+    persistent_frame: Option<(u64, SceneVersion, RetainedFrame)>,
 }
 
 impl RetainedRenderState {
@@ -46,6 +49,8 @@ impl RetainedRenderState {
             scene_cache: RetainedSceneCache::default(),
             materialized: None,
             prepared_scene: None,
+            next_materialization: 1,
+            persistent_materialization: None,
             prepared_uses_text: false,
             config,
             incremental: IncrementalState::default(),
@@ -57,6 +62,7 @@ impl RetainedRenderState {
             surfaces: RetainedSurfaceCache::new(config.retained_texture_budget_bytes),
             rendering_frame: None,
             dirty_backdrop_nodes: HashSet::new(),
+            persistent_frame: None,
         }
     }
 
@@ -107,6 +113,10 @@ impl RetainedRenderState {
         self.history_valid = false;
     }
 
+    pub(super) fn invalidate_prepared_scene(&mut self) {
+        self.prepared_scene = None;
+    }
+
     pub(super) fn reset_transient_output(&mut self) {
         self.transient_output.reset();
     }
@@ -141,24 +151,84 @@ impl RetainedRenderState {
                 scene: cached.scene.clone(),
                 frame,
                 materialized_reused: true,
+                materialization: cached.materialization,
             };
         }
 
         let scene = profile_cpu("retained.materialize", || {
-            Arc::new(canvas.materialize_retained_scenes(&mut self.scene_cache))
+            self.scene_cache.materialize_snapshot_shared(canvas)
         });
         self.scene_cache.retain_frame(&frame);
+        let materialization = self.allocate_materialization();
         if frame.materialization_cacheable {
             self.materialized = Some(CachedMaterializedScene {
                 frame: frame.clone(),
                 scene: scene.clone(),
+                materialization,
             });
         }
         SelectedScene::Retained {
             scene,
             frame,
             materialized_reused: false,
+            materialization,
         }
+    }
+
+    pub(super) fn select_materialized(
+        &mut self,
+        scene: Arc<Canvas>,
+        materialized_reused: bool,
+        scene_id: u64,
+        version: SceneVersion,
+    ) -> SelectedScene<'static> {
+        let materialization = if materialized_reused
+            && let Some((cached_scene, materialization)) = self.persistent_materialization
+            && cached_scene == scene_id
+        {
+            materialization
+        } else {
+            let materialization = self.allocate_materialization();
+            self.persistent_materialization = Some((scene_id, materialization));
+            materialization
+        };
+        let frame = if let Some((cached_id, cached_version, frame)) = &self.persistent_frame
+            && (*cached_id, *cached_version) == (scene_id, version)
+        {
+            frame.clone()
+        } else if materialized_reused
+            && let Some((cached_id, _, cached)) = &self.persistent_frame
+            && *cached_id == scene_id
+        {
+            // Raster-only invalidation installs an O(1) frame delta in the materialized Canvas.
+            // Read that override so version cursors remain exact across later content commits.
+            let _ = cached;
+            let frame = scene
+                .retained_frame()
+                .expect("persistent materialized scene has retained identity");
+            self.persistent_frame = Some((scene_id, version, frame.clone()));
+            frame
+        } else {
+            let frame = profile_cpu("retained.collect", || {
+                scene
+                    .retained_frame()
+                    .expect("persistent materialized scene has retained identity")
+            });
+            self.persistent_frame = Some((scene_id, version, frame.clone()));
+            frame
+        };
+        SelectedScene::Retained {
+            scene,
+            frame,
+            materialized_reused,
+            materialization,
+        }
+    }
+
+    fn allocate_materialization(&mut self) -> u64 {
+        let id = self.next_materialization;
+        self.next_materialization = self.next_materialization.wrapping_add(1).max(1);
+        id
     }
 
     pub(super) fn begin_frame(
@@ -175,7 +245,12 @@ impl RetainedRenderState {
             self.incremental
                 .plan(frame, physical_size, self.config, self.history_valid)
         });
-        if plan.changed_tiles.len() < plan.changed_tiles.total_tiles() {
+        if plan.changed_tiles.len() < plan.changed_tiles.total_tiles()
+            && plan
+                .frame
+                .as_ref()
+                .is_none_or(|frame| frame.requires_damage_propagation)
+        {
             let propagated = profile_cpu("retained.damage.propagate", || {
                 scene.propagate_damage(&plan.retained_damage)
             });
@@ -198,8 +273,18 @@ impl RetainedRenderState {
         let backdrop_history_valid = !self.surfaces.take_backdrop_evicted();
         if rendered {
             if let Some(frame) = &plan.frame {
-                let nodes = frame.nodes.iter().map(|node| node.id).collect();
-                self.surfaces.retain_nodes(&nodes);
+                if let Some(delta) = &frame.delta {
+                    let removed = delta
+                        .patches
+                        .iter()
+                        .filter(|patch| patch.old.is_some() && patch.new.is_none())
+                        .map(|patch| patch.old.unwrap().id)
+                        .collect();
+                    self.surfaces.remove_nodes(&removed);
+                } else {
+                    let nodes = frame.nodes.iter().map(|node| node.id).collect();
+                    self.surfaces.retain_nodes(&nodes);
+                }
             }
             self.incremental.commit(plan.frame);
             self.history_valid = history_updated && backdrop_history_valid;
@@ -213,22 +298,18 @@ impl RetainedRenderState {
 
     pub(super) fn scene_needs_prepare(
         &self,
-        retained_ptr: Option<*const Canvas>,
+        materialization: Option<u64>,
         uses_text: bool,
         resources_dirty: bool,
     ) -> bool {
-        retained_ptr.is_none()
-            || self.prepared_scene != retained_ptr
+        materialization.is_none()
+            || self.prepared_scene != materialization
             || self.prepared_uses_text != uses_text
             || resources_dirty
     }
 
-    pub(super) fn mark_scene_prepared(
-        &mut self,
-        retained_ptr: Option<*const Canvas>,
-        uses_text: bool,
-    ) {
-        self.prepared_scene = retained_ptr;
+    pub(super) fn mark_scene_prepared(&mut self, materialization: Option<u64>, uses_text: bool) {
+        self.prepared_scene = materialization;
         self.prepared_uses_text = uses_text;
     }
 
@@ -326,6 +407,7 @@ pub(super) enum HistoryOwner {
 struct CachedMaterializedScene {
     frame: RetainedFrame,
     scene: Arc<Canvas>,
+    materialization: u64,
 }
 
 pub(super) enum SelectedScene<'a> {
@@ -334,6 +416,7 @@ pub(super) enum SelectedScene<'a> {
         scene: Arc<Canvas>,
         frame: RetainedFrame,
         materialized_reused: bool,
+        materialization: u64,
     },
 }
 
@@ -352,10 +435,12 @@ impl SelectedScene<'_> {
         }
     }
 
-    pub(super) fn retained_ptr(&self) -> Option<*const Canvas> {
+    pub(super) fn materialization(&self) -> Option<u64> {
         match self {
             Self::Borrowed(_) => None,
-            Self::Retained { scene, .. } => Some(Arc::as_ptr(scene)),
+            Self::Retained {
+                materialization, ..
+            } => Some(*materialization),
         }
     }
 

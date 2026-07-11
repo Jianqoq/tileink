@@ -10,6 +10,7 @@
 @group(0) @binding(7) var<storage, read_write> coarse_work: array<u32>;
 @group(0) @binding(8) var<storage, read_write> chunk_records: array<CoarseChunkRecord>;
 @group(0) @binding(9) var<storage, read> sdf_blob: array<u32>;
+@group(0) @binding(10) var<storage, read> draw_batch_ids: array<u32>;
 
 @compute @workgroup_size(256)
 fn coarse_ptcl_prefix_chunks(
@@ -154,7 +155,7 @@ fn coarse_emit_chunk_counts(
     if (tile_ix >= config.tile_count) {
         return;
     }
-    let draw_count = tile_draw_end_at(tile_ix) - tile_draw_start_at(tile_ix);
+    let draw_count = tile_draw_count_at(tile_ix);
     store_tile_emit_chunk_count(tile_ix, (draw_count + 255u) / 256u);
 }
 
@@ -271,21 +272,23 @@ fn coarse_emit_fill_refs(
 @compute @workgroup_size(256)
 fn coarse_emit_chunk_particle_counts(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
+    @builtin(num_workgroups) num_workgroups: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
 ) {
-    let ref_ix = workgroup_id.x;
+    let ref_ix = linear_workgroup_index(workgroup_id, num_workgroups);
     let lane = local_id.x;
     let chunk = emit_chunk_at(ref_ix);
     let tile_ix = chunk.tile;
     let tile_x = tile_ix % config.tiles_width;
     let tile_y = tile_ix / config.tiles_width;
-    let draw_ref_ix = tile_draw_start_at(tile_ix) + chunk.local_chunk * 256u + lane;
+    let draw_ordinal = chunk.local_chunk * TILE_DRAW_PAGE_SIZE + lane;
+    let page = tile_draw_page_at(tile_ix, chunk.local_chunk);
     var ptcl_count = 0u;
     var glyph_count = 0u;
     let wrapper_count = active_stack_count(tile_x, tile_y);
 
-    if (wrapper_count != INVALID && draw_ref_ix < tile_draw_end_at(tile_ix)) {
-        let draw_ix = tile_draw_index_at(draw_ref_ix);
+    if (wrapper_count != INVALID && page != INVALID && draw_ordinal < tile_draw_count_at(tile_ix)) {
+        let draw_ix = tile_draw_index_in_page(page, lane);
         if (draw_in_batch(draw_ix)) {
             let draw_tag = draw_tag_at(draw_ix);
             if (draw_has_glyph_at(draw_ix)) {
@@ -518,7 +521,7 @@ fn glyph_hits_tile(glyph_ix: u32, tile_x: u32, tile_y: u32) -> bool {
 }
 
 fn draw_in_batch(draw_ix: u32) -> bool {
-    return draw_ix >= config.draw_start && draw_ix < config.draw_end;
+    return draw_ix < arrayLength(&draw_batch_ids) && draw_batch_ids[draw_ix] == config.draw_start;
 }
 
 fn draw_tag_at(draw_ix: u32) -> u32 {

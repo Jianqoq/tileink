@@ -22,6 +22,11 @@ struct CoarseConfig {
 
 @group(0) @binding(0) var<uniform> config: CoarseConfig;
 
+fn linear_workgroup_index(workgroup_id: vec3<u32>, num_workgroups: vec3<u32>) -> u32 {
+    return workgroup_id.x + workgroup_id.y * num_workgroups.x +
+        workgroup_id.z * num_workgroups.x * num_workgroups.y;
+}
+
 fn dispatched_tile_at(dispatch_ix: u32) -> u32 {
     if (config.incremental != 0u) {
         return coarse_work[config.active_tile_list_base + dispatch_ix];
@@ -212,16 +217,36 @@ fn store_fine_tile_kind(tile_ix: u32, kind: u32) {
     coarse_work[coarse_fine_tile_kind_base() + tile_ix] = kind;
 }
 
-fn tile_draw_start_at(tile_ix: u32) -> u32 {
+const TILE_DRAW_PAGE_SIZE: u32 = 256u;
+const TILE_DRAW_PAGE_WORDS: u32 = 257u;
+
+fn tile_draw_head_at(tile_ix: u32) -> u32 {
     return coarse_work[coarse_tile_draw_record_base(tile_ix)];
 }
 
-fn tile_draw_end_at(tile_ix: u32) -> u32 {
+fn tile_draw_count_at(tile_ix: u32) -> u32 {
     return coarse_work[coarse_tile_draw_record_base(tile_ix) + 1u];
 }
 
-fn tile_draw_index_at(draw_ref_ix: u32) -> u32 {
-    return coarse_work[coarse_tile_draw_index_base() + draw_ref_ix];
+fn tile_draw_next_page(page: u32) -> u32 {
+    return coarse_work[coarse_tile_draw_index_base() + page * TILE_DRAW_PAGE_WORDS];
+}
+
+fn tile_draw_index_in_page(page: u32, slot: u32) -> u32 {
+    return coarse_work[coarse_tile_draw_index_base() + page * TILE_DRAW_PAGE_WORDS + 1u + slot];
+}
+
+fn tile_draw_page_at(tile_ix: u32, local_page: u32) -> u32 {
+    var page = tile_draw_head_at(tile_ix);
+    var index = 0u;
+    loop {
+        if (page == INVALID || index >= local_page) {
+            return page;
+        }
+        page = tile_draw_next_page(page);
+        index += 1u;
+    }
+    return INVALID;
 }
 
 fn tile_emit_chunk_record_base(tile_ix: u32) -> u32 {

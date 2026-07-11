@@ -4,6 +4,7 @@ use super::canvas::{WgpuScanBindings, WgpuScanBuffers, WgpuSceneBuffers};
 use super::commands::{
     WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
 };
+use super::dispatch_2d;
 use super::incremental::ActiveScanPlan;
 use super::lazy::{LazyComputePipeline, LazyShaderModule, PipelineCompilationTracker};
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
@@ -273,6 +274,10 @@ impl WgpuScanPipeline {
         let emit_pipeline =
             (line_count > 0 && segment_capacity > 0).then(|| self.emit.pipeline(commands.device()));
         let gpu_scope = start_gpu_scope(commands.device(), "scan");
+        let max_workgroups = commands
+            .device()
+            .limits()
+            .max_compute_workgroups_per_dimension;
         let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
         let encoder = commands.encoder();
         {
@@ -293,7 +298,8 @@ impl WgpuScanPipeline {
             if let Some(prefix_chunks_pipeline) = prefix_chunks_pipeline {
                 pass.set_bind_group(0, &prefix_bind_group, &[]);
                 pass.set_pipeline(prefix_chunks_pipeline);
-                pass.dispatch_workgroups(scan_chunk_count, 1, 1);
+                let (x, y) = dispatch_2d(scan_chunk_count, max_workgroups);
+                pass.dispatch_workgroups(x, y, 1);
             }
             if let Some(chunk_offsets_pipeline) = chunk_offsets_pipeline {
                 pass.set_bind_group(0, &chunk_offsets_bind_group, &[]);
@@ -303,7 +309,8 @@ impl WgpuScanPipeline {
             if let Some(apply_chunk_offsets_pipeline) = apply_chunk_offsets_pipeline {
                 pass.set_bind_group(0, &apply_chunk_offsets_bind_group, &[]);
                 pass.set_pipeline(apply_chunk_offsets_pipeline);
-                pass.dispatch_workgroups(scan_chunk_count, 1, 1);
+                let (x, y) = dispatch_2d(scan_chunk_count, max_workgroups);
+                pass.dispatch_workgroups(x, y, 1);
             }
             if let Some(emit_pipeline) = emit_pipeline {
                 pass.set_bind_group(0, &emit_bind_group, &[]);
