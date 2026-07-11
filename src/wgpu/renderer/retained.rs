@@ -7,7 +7,7 @@ use std::{collections::HashSet, sync::Arc};
 
 use crate::{
     Canvas, SceneVersion,
-    canvas::{RetainedFrame, RetainedSceneCache, RetainedSurfaceId},
+    canvas::{RetainedFrame, RetainedSurfaceId},
     shared::bounds::Bounds,
 };
 
@@ -24,8 +24,6 @@ use super::{ExternalTextureHistoryId, profile_cpu};
 
 /// Coordinates CPU-side retained state while [`super::Renderer`] executes the resulting GPU work.
 pub(super) struct RetainedRenderState {
-    scene_cache: RetainedSceneCache,
-    materialized: Option<CachedMaterializedScene>,
     prepared_scene: Option<u64>,
     next_materialization: u64,
     persistent_materialization: Option<(u64, u64)>,
@@ -49,8 +47,6 @@ pub(super) struct RetainedRenderState {
 impl RetainedRenderState {
     pub(super) fn new(config: IncrementalRenderConfig) -> Self {
         Self {
-            scene_cache: RetainedSceneCache::default(),
-            materialized: None,
             prepared_scene: None,
             next_materialization: 1,
             persistent_materialization: None,
@@ -154,44 +150,6 @@ impl RetainedRenderState {
         self.transient_output.reset();
     }
 
-    pub(super) fn select_scene<'a>(&mut self, canvas: &'a Canvas) -> SelectedScene<'a> {
-        let Some(frame) = profile_cpu("retained.collect", || canvas.retained_frame()) else {
-            self.prepared_scene = None;
-            return SelectedScene::Borrowed(canvas);
-        };
-
-        if frame.materialization_cacheable
-            && let Some(cached) = &self.materialized
-            && cached.frame.same_scene(&frame)
-        {
-            return SelectedScene::Retained {
-                scene: cached.scene.clone(),
-                frame,
-                materialized_reused: true,
-                materialization: cached.materialization,
-            };
-        }
-
-        let scene = profile_cpu("retained.materialize", || {
-            self.scene_cache.materialize_snapshot_shared(canvas)
-        });
-        self.scene_cache.retain_frame(&frame);
-        let materialization = self.allocate_materialization();
-        if frame.materialization_cacheable {
-            self.materialized = Some(CachedMaterializedScene {
-                frame: frame.clone(),
-                scene: scene.clone(),
-                materialization,
-            });
-        }
-        SelectedScene::Retained {
-            scene,
-            frame,
-            materialized_reused: false,
-            materialization,
-        }
-    }
-
     pub(super) fn select_materialized(
         &mut self,
         scene: Arc<Canvas>,
@@ -263,8 +221,7 @@ impl RetainedRenderState {
                 .plan(frame, physical_size, self.config, self.history_valid)
         });
         // Persistent deltas already contain ordinary layer influence and indexed backdrop
-        // propagation. Snapshot canvases mark propagation as required and retain the generic
-        // command-tree oracle; journal-connected scenes never need to rescan that tree.
+        // propagation, so journal-connected scenes normally skip the command-tree oracle.
         if plan.changed_tiles.len() < plan.changed_tiles.total_tiles()
             && plan
                 .frame
@@ -439,12 +396,6 @@ pub(super) enum HistoryOwner {
     #[default]
     Internal,
     External(ExternalTextureHistoryId),
-}
-
-struct CachedMaterializedScene {
-    frame: RetainedFrame,
-    scene: Arc<Canvas>,
-    materialization: u64,
 }
 
 pub(super) enum SelectedScene<'a> {

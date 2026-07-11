@@ -15,10 +15,10 @@ use peniko::{
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 use crate::{
-    Canvas, FillRule, Filter, Mask, Region, RetainedLayerKey, RetainedNodeId, SceneRevision, Sdf,
+    Canvas, FillRule, Filter, Mask, NodeGeneration, PersistentLayerKey, Region, RetainedNodeId,
+    Sdf,
     canvas::{
-        PainterKey, RetainedFrameDelta, RetainedNodeKind, RetainedNodePatch, RetainedSceneCache,
-        SceneBufferChanges,
+        PainterKey, RetainedFrameDelta, RetainedNodeKind, RetainedNodePatch, SceneBufferChanges,
     },
     shared::{
         bounds::Bounds,
@@ -452,7 +452,6 @@ pub(crate) struct PersistentSceneMaterializer {
     canvas: Arc<Canvas>,
     chunks: HashMap<RetainedNodeId, SceneChunk>,
     arenas: MaterializedArenas,
-    nested_cache: RetainedSceneCache,
     plan_cache_key: u64,
     scene_command_locations: HashMap<RetainedNodeId, SceneCommandLocation>,
     layer_command_locations: HashMap<RetainedNodeId, LayerCommandLocation>,
@@ -460,12 +459,15 @@ pub(crate) struct PersistentSceneMaterializer {
     dependency_free: bool,
     layer_nodes: HashSet<RetainedNodeId>,
     nonlocal_dependencies: HashSet<RetainedNodeId>,
+    surface_dependent_plans: HashSet<RetainedNodeId>,
     painter_bases: HashMap<RetainedNodeId, Arc<[u128]>>,
     painter_parents: HashMap<RetainedNodeId, RetainedParent>,
     flat_plan_has_draws: bool,
     node_bounds: HashMap<RetainedNodeId, Bounds>,
     raw_node_bounds: HashMap<RetainedNodeId, Bounds>,
     node_tiles: Vec<HashSet<RetainedNodeId>>,
+    spatial_tiles_size: (u32, u32),
+    surface_metadata_stale: bool,
     node_batches: HashMap<RetainedNodeId, u32>,
     container_batches: HashMap<RetainedParent, u32>,
     root_plan_fragments: HashMap<RetainedNodeId, RootPlanFragment>,
@@ -482,7 +484,7 @@ impl PersistentSceneMaterializer {
         let mut materializer = Self {
             scene_id: scene.id,
             version: SceneVersion::INITIAL,
-            canvas: Arc::new(Canvas::new_retained(
+            canvas: Arc::new(Canvas::new_persistent(
                 scene.width,
                 scene.height,
                 scene.scale,
@@ -490,7 +492,6 @@ impl PersistentSceneMaterializer {
             )),
             chunks: HashMap::default(),
             arenas: MaterializedArenas::default(),
-            nested_cache: RetainedSceneCache::default(),
             plan_cache_key: next_plan_cache_key(),
             scene_command_locations: HashMap::default(),
             layer_command_locations: HashMap::default(),
@@ -498,12 +499,15 @@ impl PersistentSceneMaterializer {
             dependency_free: false,
             layer_nodes: HashSet::default(),
             nonlocal_dependencies: HashSet::default(),
+            surface_dependent_plans: HashSet::default(),
             painter_bases: HashMap::default(),
             painter_parents: HashMap::default(),
             flat_plan_has_draws: false,
             node_bounds: HashMap::default(),
             raw_node_bounds: HashMap::default(),
             node_tiles: Vec::new(),
+            spatial_tiles_size: (0, 0),
+            surface_metadata_stale: false,
             node_batches: HashMap::default(),
             container_batches: HashMap::default(),
             root_plan_fragments: HashMap::default(),
@@ -538,15 +542,35 @@ impl PersistentSceneMaterializer {
             self.rebuild_all(scene);
             return true;
         };
-        if changes.surface_changed {
+        let compactions_before = self.arena_compactions();
+        let surface_changed = changes.surface_changed;
+        if surface_changed && self.canvas.scale_factor().to_bits() != scene.scale.to_bits() {
             self.rebuild_all(scene);
             return true;
+        }
+        if surface_changed {
+            self.resize_surface(scene);
+        } else if self.surface_metadata_stale {
+            // Continuous resize already redraws the full target. Rebuild the deferred node/spatial
+            // baseline once, immediately before the first later incremental mutation needs it.
+            self.rebuild_frame_override(scene);
+            self.rebuild_spatial_index();
+            self.surface_metadata_stale = false;
+        }
+        let surface_metadata_reusable =
+            surface_changed && !changes.topology_changed && changes.removed_nodes.is_empty();
+        if !surface_metadata_reusable
+            && self.spatial_tiles_size
+                != (self.canvas.width_in_tiles(), self.canvas.height_in_tiles())
+        {
+            self.rebuild_spatial_index();
         }
         let analysis_profile = crate::wgpu::start_cpu_scope("retained.materialize.analysis");
         let previous_dependency_free = self.dependency_free;
         for id in &changes.removed_nodes {
             self.layer_nodes.remove(id);
             self.nonlocal_dependencies.remove(id);
+            self.surface_dependent_plans.remove(id);
         }
         if changes.topology_changed {
             for &id in &changes.changed_nodes {
@@ -560,6 +584,7 @@ impl PersistentSceneMaterializer {
                 // membership until rebuild_node refreshes it from the newly encoded chunk.
                 if !node.is_some_and(|node| matches!(&node.kind, NodeKind::Scene { .. })) {
                     self.nonlocal_dependencies.remove(&id);
+                    self.surface_dependent_plans.remove(&id);
                 }
             }
         }
@@ -581,14 +606,13 @@ impl PersistentSceneMaterializer {
             };
         let topology_changes = expanded_topology_changes.as_ref().unwrap_or(&changes);
 
-        let scene_data_changed = changes.topology_changed
+        let scene_data_changed = surface_changed
+            || changes.topology_changed
             || !changes.changed_nodes.is_empty()
             || !changes.removed_nodes.is_empty();
-        let previous_frame = Arc::make_mut(&mut self.canvas)
-            .retained_frame_override
-            .clone();
+        let previous_frame = Arc::make_mut(&mut self.canvas).persistent_frame.clone();
         let mut delta_eligible =
-            !changes.topology_changed && !changes.surface_changed && self.dependency_free;
+            !changes.topology_changed && !surface_changed && self.dependency_free;
         let topology_delta_eligible = changes.topology_changed
             && self.dependency_free
             && previous_frame.as_ref().is_some_and(|frame| {
@@ -655,7 +679,6 @@ impl PersistentSceneMaterializer {
                 })
             });
 
-        let compactions_before = self.arena_compactions();
         let flat_plan_had_draws = self.flat_plan_has_draws;
         let removed_plain_leaves = changes.removed_nodes.iter().all(|id| {
             self.chunks
@@ -663,14 +686,15 @@ impl PersistentSceneMaterializer {
                 .is_some_and(|chunk| chunk.plain_fragment && self.node_batches.contains_key(id))
         });
         let mut commands_dirty = changes.topology_changed && !layer_update_candidate;
-        let mut plan_dirty = changes.topology_changed;
+        let surface_plan_changed = surface_changed && !self.surface_dependent_plans.is_empty();
+        let mut plan_dirty = changes.topology_changed || surface_plan_changed;
         let mut plan_compiled_during_update = false;
         let mut layer_plan_patches = Vec::new();
         let mut plan_layer_stack_changes = Vec::new();
         let mut layer_bounds_stable = true;
         let mut chunks_rebuilt = 0;
         let mut position_plan_patches = Vec::new();
-        let mut unpatchable_plan_change = changes.topology_changed;
+        let mut unpatchable_plan_change = changes.topology_changed || surface_plan_changed;
         drop(analysis_profile);
         let chunk_profile = crate::wgpu::start_cpu_scope("retained.materialize.chunks");
         for id in &changes.removed_nodes {
@@ -1123,7 +1147,9 @@ impl PersistentSceneMaterializer {
             canvas.invalidate_rect(rect);
         }
         delta_eligible |= layer_plan_patched && layer_bounds_stable;
-        let frame_patched = if delta_eligible {
+        let frame_patched = if surface_metadata_reusable {
+            self.patch_surface_frame(scene, previous_frame.clone())
+        } else if delta_eligible {
             self.patch_frame_override(scene, previous_frame.clone(), &changes.changed_nodes);
             true
         } else {
@@ -1163,7 +1189,6 @@ impl PersistentSceneMaterializer {
         self.version = scene.version;
         self.chunks.clear();
         self.arenas = MaterializedArenas::default();
-        self.nested_cache = RetainedSceneCache::default();
         self.plan_cache_key = next_plan_cache_key();
         self.scene_command_locations.clear();
         self.resource_refs.clear();
@@ -1173,6 +1198,8 @@ impl PersistentSceneMaterializer {
         self.node_bounds.clear();
         self.raw_node_bounds.clear();
         self.node_tiles.clear();
+        self.spatial_tiles_size = (0, 0);
+        self.surface_metadata_stale = false;
         self.node_batches.clear();
         self.container_batches.clear();
         self.root_plan_fragments.clear();
@@ -1182,7 +1209,8 @@ impl PersistentSceneMaterializer {
             .filter_map(|(&id, node)| matches!(&node.kind, NodeKind::Layer(_)).then_some(id))
             .collect();
         self.nonlocal_dependencies.clear();
-        self.canvas = Arc::new(Canvas::new_retained(
+        self.surface_dependent_plans.clear();
+        self.canvas = Arc::new(Canvas::new_persistent(
             scene.width,
             scene.height,
             scene.scale,
@@ -1208,6 +1236,32 @@ impl PersistentSceneMaterializer {
         self.rebuild_spatial_index();
     }
 
+    /// Applies a same-scale viewport resize without re-encoding retained node geometry.
+    ///
+    /// Path backdrop and segment allocations depend on viewport clipping, so only those
+    /// allocations are resized and remapped. SDF, image, and text chunks keep their stable slots.
+    /// The regular update tail recompiles the surface-dependent plan and damage metadata.
+    fn resize_surface(&mut self, scene: &RetainedScene) {
+        Arc::make_mut(&mut self.canvas).set_surface_extent(scene.width, scene.height);
+        let Self { chunks, arenas, .. } = self;
+        for chunk in chunks.values_mut() {
+            let old_backdrops = chunk.canvas.backdrop_pool_capacity as usize;
+            let old_segments = chunk.canvas.tile_cnt as usize;
+            chunk.canvas.resize_surface(scene.width, scene.height);
+            let new_backdrops = chunk.canvas.backdrop_pool_capacity as usize;
+            let new_segments = chunk.canvas.tile_cnt as usize;
+            if old_backdrops != 0 || new_backdrops != 0 {
+                arenas.backdrops.resize(chunk.backdrops, new_backdrops);
+            }
+            if old_segments != 0 || new_segments != 0 {
+                arenas.segments.resize(chunk.segments, new_segments);
+            }
+            if !chunk.canvas.path_records.is_empty() {
+                Self::remap_chunk_data(arenas, chunk);
+            }
+        }
+    }
+
     /// Re-encodes one node and classifies whether its execution plan needs synchronization.
     fn rebuild_node(&mut self, scene: &RetainedScene, id: RetainedNodeId) -> NodeRebuild {
         let node = &scene.nodes[&id];
@@ -1219,7 +1273,6 @@ impl PersistentSceneMaterializer {
                 canvas,
                 chunks,
                 arenas,
-                nested_cache,
                 resource_refs,
                 ..
             } = self;
@@ -1231,10 +1284,68 @@ impl PersistentSceneMaterializer {
                     .is_some_and(|(old, new)| Arc::ptr_eq(old, new))
                     && chunk.position_bits != position_bits
                     && source_canvas.is_some();
-                Self::remove_chunk_resources(resource_refs, canvas, &chunk.canvas.scene_images);
+                if position_only {
+                    let (old_x, old_y) = chunk.position_bits.unwrap();
+                    let (new_x, new_y) = position_bits.unwrap();
+                    chunk.canvas.translate_scene(Point::new(
+                        f64::from_bits(new_x) - f64::from_bits(old_x),
+                        f64::from_bits(new_y) - f64::from_bits(old_y),
+                    ));
+                    let old_plan = chunk.plan_fingerprint;
+                    let new_plan = chunk.canvas.execution_plan_fingerprint();
+                    let mut moved = false;
+                    if !chunk.canvas.brush_blob.is_empty() {
+                        arenas
+                            .brushes
+                            .write(chunk.brushes, &chunk.canvas.brush_blob);
+                    }
+                    if !chunk.canvas.sdf_blob.is_empty() {
+                        arenas.sdfs.write(chunk.sdfs, &chunk.canvas.sdf_blob);
+                    }
+                    if !chunk.canvas.sdf_shadow_blob.is_empty() {
+                        arenas
+                            .shadows
+                            .write(chunk.shadows, &chunk.canvas.sdf_shadow_blob);
+                    }
+                    if let Some(glyphs) = chunk.glyphs {
+                        arenas
+                            .glyphs
+                            .as_mut()
+                            .expect("glyph allocation requires a glyph arena")
+                            .write(glyphs, &chunk.canvas.text_glyphs);
+                    }
+                    if !chunk.canvas.path_records.is_empty() {
+                        moved |= arenas.backdrops.resize(
+                            chunk.backdrops,
+                            chunk.canvas.backdrop_pool_capacity as usize,
+                        );
+                        moved |= arenas
+                            .segments
+                            .resize(chunk.segments, chunk.canvas.tile_cnt as usize);
+                    }
+                    chunk.generation = node.generation;
+                    chunk.position_bits = position_bits;
+                    if old_plan != new_plan {
+                        chunk.plain_fragment = is_plain_fragment(&chunk.canvas);
+                    }
+                    chunk.plan_fingerprint = new_plan;
+                    if !chunk.backdrop_dependencies.is_empty() {
+                        chunk.backdrop_dependencies = backdrop_dependencies(&chunk.canvas);
+                    }
+                    Self::remap_chunk_data(arenas, chunk);
+                    return (
+                        NodeRebuild {
+                            plan_dirty: moved || old_plan != new_plan,
+                            position_only: !moved,
+                        },
+                        false,
+                    );
+                }
+
                 let old_plan = chunk.plan_fingerprint;
                 let old_lengths = SceneChunkLengths::from_canvas(&chunk.canvas);
-                Self::encode_node_into(nested_cache, scene, node, &mut chunk.canvas);
+                Self::remove_chunk_resources(resource_refs, canvas, &chunk.canvas.scene_images);
+                Self::encode_node_into(scene, node, &mut chunk.canvas);
                 let encoded = &chunk.canvas;
                 let new_lengths = SceneChunkLengths::from_canvas(encoded);
                 let new_plan = encoded.execution_plan_fingerprint();
@@ -1283,18 +1394,23 @@ impl PersistentSceneMaterializer {
                 chunk.backdrop_dependencies = backdrop_dependencies(&chunk.canvas);
                 Self::add_chunk_resources(resource_refs, canvas, &chunk.canvas.scene_images);
                 Self::remap_chunk_data(arenas, chunk);
-                NodeRebuild {
-                    plan_dirty: moved || old_plan != new_plan,
-                    position_only: position_only && !moved,
-                }
+                (
+                    NodeRebuild {
+                        plan_dirty: moved || old_plan != new_plan,
+                        position_only: false,
+                    },
+                    true,
+                )
             })
         };
-        if let Some(updated) = updated {
-            self.refresh_nonlocal_dependency(id);
+        if let Some((updated, dependencies_changed)) = updated {
+            if dependencies_changed {
+                self.refresh_chunk_dependencies(id);
+            }
             return updated;
         }
 
-        let encoded = Self::encode_node(&mut self.nested_cache, scene, node);
+        let encoded = Self::encode_node(scene, node);
         let glyphs = Self::insert_glyphs(&mut self.arenas, &encoded.text_glyphs);
         let plan_fingerprint = encoded.execution_plan_fingerprint();
         let chunk = SceneChunk {
@@ -1329,14 +1445,14 @@ impl PersistentSceneMaterializer {
         );
         Self::remap_chunk_data(&mut self.arenas, &chunk);
         self.chunks.insert(id, chunk);
-        self.refresh_nonlocal_dependency(id);
+        self.refresh_chunk_dependencies(id);
         NodeRebuild {
             plan_dirty: true,
             position_only: false,
         }
     }
 
-    fn refresh_nonlocal_dependency(&mut self, id: RetainedNodeId) {
+    fn refresh_chunk_dependencies(&mut self, id: RetainedNodeId) {
         if self
             .chunks
             .get(&id)
@@ -1345,6 +1461,15 @@ impl PersistentSceneMaterializer {
             self.nonlocal_dependencies.insert(id);
         } else {
             self.nonlocal_dependencies.remove(&id);
+        }
+        if self
+            .chunks
+            .get(&id)
+            .is_some_and(|chunk| chunk_has_surface_dependent_plan(&chunk.canvas))
+        {
+            self.surface_dependent_plans.insert(id);
+        } else {
+            self.surface_dependent_plans.remove(&id);
         }
     }
 
@@ -1445,34 +1570,21 @@ impl PersistentSceneMaterializer {
         }
     }
 
-    fn encode_node(
-        nested_cache: &mut RetainedSceneCache,
-        scene: &RetainedScene,
-        node: &SceneNode,
-    ) -> Canvas {
+    fn encode_node(scene: &RetainedScene, node: &SceneNode) -> Canvas {
         let mut canvas = Canvas::new(scene.width, scene.height, scene.scale);
-        Self::encode_node_into(nested_cache, scene, node, &mut canvas);
+        Self::encode_node_into(scene, node, &mut canvas);
         canvas
     }
 
-    fn encode_node_into(
-        nested_cache: &mut RetainedSceneCache,
-        scene: &RetainedScene,
-        node: &SceneNode,
-        canvas: &mut Canvas,
-    ) {
+    fn encode_node_into(scene: &RetainedScene, node: &SceneNode, canvas: &mut Canvas) {
+        canvas.resize_surface(scene.width, scene.height);
         canvas.reset();
         match &node.kind {
             NodeKind::Scene {
                 canvas: child,
                 position,
             } => {
-                let materialized = if child.has_retained_scenes() {
-                    nested_cache.materialize_snapshot_shared(child)
-                } else {
-                    child.clone()
-                };
-                canvas.append(&materialized, *position);
+                canvas.append(child, *position);
             }
             NodeKind::Layer(layer) => {
                 match layer {
@@ -1749,7 +1861,7 @@ impl PersistentSceneMaterializer {
         canvas.command_stack.clear();
         canvas.command_stack.push(0);
         canvas.layer_stack.clear();
-        canvas.retained_root = Some(scene.root);
+        canvas.persistent_root = Some(scene.root);
         self.scene_command_locations.clear();
         self.layer_command_locations.clear();
         self.root_plan_fragments.clear();
@@ -1790,7 +1902,7 @@ impl PersistentSceneMaterializer {
                     .commands
                     .push(Command::MaterializedRetainedScene {
                         id,
-                        revision: SceneRevision::new(node.generation),
+                        revision: NodeGeneration::new(node.generation),
                         children,
                     });
                 self.scene_command_locations.insert(
@@ -1814,9 +1926,9 @@ impl PersistentSceneMaterializer {
                 Arc::make_mut(&mut self.canvas).command_lists[target]
                     .commands
                     .push(Command::MaskLayer {
-                        retained: Some(RetainedLayerKey::new(
+                        retained: Some(PersistentLayerKey::new(
                             id,
-                            SceneRevision::new(node.generation),
+                            NodeGeneration::new(node.generation),
                         )),
                         layer: mask.clone(),
                         content,
@@ -1852,9 +1964,9 @@ impl PersistentSceneMaterializer {
                 Arc::make_mut(&mut self.canvas).command_lists[target]
                     .commands
                     .push(Command::Layer {
-                        retained: Some(RetainedLayerKey::new(
+                        retained: Some(PersistentLayerKey::new(
                             id,
-                            SceneRevision::new(node.generation),
+                            NodeGeneration::new(node.generation),
                         )),
                         draw,
                         layer,
@@ -1918,7 +2030,7 @@ impl PersistentSceneMaterializer {
         Arc::make_mut(&mut self.canvas).command_lists[old.parent_list].commands
             [old.command_index] = Command::MaterializedRetainedScene {
             id,
-            revision: SceneRevision::new(scene.nodes[&id].generation),
+            revision: NodeGeneration::new(scene.nodes[&id].generation),
             children,
         };
         self.scene_command_locations.insert(
@@ -1961,7 +2073,7 @@ impl PersistentSceneMaterializer {
         let old = Arc::make_mut(&mut self.canvas).command_lists[location.parent_list].commands
             [location.command_index]
             .clone();
-        let generation = SceneRevision::new(scene.nodes[&id].generation);
+        let generation = NodeGeneration::new(scene.nodes[&id].generation);
         let command = match &scene.nodes[&id].kind {
             NodeKind::Layer(RetainedLayerDescriptor::Mask(mask)) => {
                 let (content, mask_commands) = match old.clone() {
@@ -1970,7 +2082,7 @@ impl PersistentSceneMaterializer {
                     _ => unreachable!("retained layer location must reference a layer command"),
                 };
                 Command::MaskLayer {
-                    retained: Some(RetainedLayerKey::new(id, generation)),
+                    retained: Some(PersistentLayerKey::new(id, generation)),
                     layer: mask.clone(),
                     content,
                     mask: mask_commands,
@@ -1990,7 +2102,7 @@ impl PersistentSceneMaterializer {
                     unreachable!("non-mask retained layer chunk has one layer command")
                 };
                 Command::Layer {
-                    retained: Some(RetainedLayerKey::new(id, generation)),
+                    retained: Some(PersistentLayerKey::new(id, generation)),
                     draw: draw_base + draw,
                     layer,
                     children,
@@ -2891,7 +3003,7 @@ impl PersistentSceneMaterializer {
             };
             let raw_bounds = chunk.canvas.visual_bounds();
             let new = crate::canvas::RetainedNodeState {
-                revision: SceneRevision::new(node.generation),
+                revision: NodeGeneration::new(node.generation),
                 // Position-only patches in scenes with layers still need the new influenced
                 // bounds. Keeping `old.bounds` forced later frames to rebuild the full retained
                 // frame/spatial index and missed the moved node's new backdrop dependencies.
@@ -2966,7 +3078,27 @@ impl PersistentSceneMaterializer {
         frame.invalidate_all = Arc::make_mut(&mut self.canvas).invalidate_all;
         frame.dependency_free = self.dependency_free;
         frame.requires_damage_propagation = !self.nonlocal_dependencies.is_empty();
-        Arc::make_mut(&mut self.canvas).retained_frame_override = Some(frame);
+        Arc::make_mut(&mut self.canvas).persistent_frame = Some(frame);
+    }
+
+    fn patch_surface_frame(
+        &mut self,
+        scene: &RetainedScene,
+        previous: Option<crate::canvas::RetainedFrame>,
+    ) -> bool {
+        let Some(mut frame) = previous else {
+            return false;
+        };
+        frame.logical_size = (scene.width, scene.height);
+        frame.physical_size = self.canvas.physical_size();
+        frame.scale_bits = scene.scale.to_bits();
+        frame.version = Some(scene.version.get());
+        let canvas = Arc::make_mut(&mut self.canvas);
+        frame.invalidated_bounds = canvas.invalidated_bounds.clone();
+        frame.invalidate_all = true;
+        canvas.persistent_frame = Some(frame);
+        self.surface_metadata_stale = true;
+        true
     }
 
     fn patch_topology_frame_override(
@@ -3020,7 +3152,7 @@ impl PersistentSceneMaterializer {
                 old,
                 new: Some(crate::canvas::RetainedNodeState {
                     id,
-                    revision: SceneRevision::new(node.generation),
+                    revision: NodeGeneration::new(node.generation),
                     bounds,
                     order: old.map_or(0, |node| node.order),
                     kind,
@@ -3073,31 +3205,106 @@ impl PersistentSceneMaterializer {
         frame.invalidate_all = canvas.invalidate_all;
         frame.dependency_free = self.dependency_free;
         frame.requires_damage_propagation = !self.nonlocal_dependencies.is_empty();
-        canvas.retained_frame_override = Some(frame);
+        canvas.persistent_frame = Some(frame);
         true
     }
 
     fn rebuild_frame_override(&mut self, scene: &RetainedScene) {
+        let mut nodes = Vec::with_capacity(self.chunks.len());
+        self.collect_frame_nodes(scene, RetainedParent::content(scene.root), &mut nodes);
+        let node_index = nodes
+            .iter()
+            .enumerate()
+            .map(|(index, node)| (node.id, index))
+            .collect();
         let canvas = Arc::make_mut(&mut self.canvas);
-        canvas.retained_frame_override = None;
-        let mut frame = canvas
-            .collect_retained_frame()
-            .expect("persistent materialized scene has retained identity");
-        frame.version = Some(scene.version.get());
-        frame.dependency_free = self.dependency_free;
-        frame.requires_damage_propagation = !self.nonlocal_dependencies.is_empty();
-        canvas.retained_frame_override = Some(frame);
+        canvas.persistent_frame = Some(crate::canvas::RetainedFrame {
+            root: scene.root,
+            logical_size: (scene.width, scene.height),
+            physical_size: canvas.physical_size(),
+            scale_bits: scene.scale.to_bits(),
+            nodes: nodes.into(),
+            node_index: Arc::new(node_index),
+            invalidated_bounds: canvas.invalidated_bounds.clone(),
+            invalidate_all: canvas.invalidate_all,
+            incremental_complete: true,
+            version: Some(scene.version.get()),
+            delta: None,
+            dependency_free: self.dependency_free,
+            requires_damage_propagation: !self.nonlocal_dependencies.is_empty(),
+        });
+    }
+
+    fn collect_frame_nodes(
+        &self,
+        scene: &RetainedScene,
+        parent: RetainedParent,
+        nodes: &mut Vec<crate::canvas::RetainedNodeState>,
+    ) {
+        let children = scene.nodes[&parent.node]
+            .children(parent.branch)
+            .expect("validated retained branch");
+        for &id in children.values() {
+            let node = &scene.nodes[&id];
+            match &node.kind {
+                NodeKind::Group => {
+                    self.collect_frame_nodes(scene, RetainedParent::content(id), nodes);
+                }
+                NodeKind::Scene { .. } => {
+                    let chunk = &self.chunks[&id];
+                    nodes.push(crate::canvas::RetainedNodeState {
+                        id,
+                        revision: NodeGeneration::new(node.generation),
+                        bounds: self.influenced_bounds(scene, id, chunk.canvas.visual_bounds()),
+                        order: nodes.len() as u32,
+                        kind: RetainedNodeKind::Scene,
+                        placement_bits: None,
+                    });
+                }
+                NodeKind::Layer(descriptor) => {
+                    self.collect_frame_nodes(scene, RetainedParent::content(id), nodes);
+                    if matches!(descriptor, RetainedLayerDescriptor::Mask(_)) {
+                        self.collect_frame_nodes(scene, RetainedParent::mask(id), nodes);
+                    }
+                    let chunk = &self.chunks[&id];
+                    let mut bounds =
+                        self.influenced_bounds(scene, id, chunk_layer_influence_bounds(chunk));
+                    let mut leaves = Vec::new();
+                    collect_scene_leaves(scene, id, &mut leaves);
+                    for leaf in leaves {
+                        let chunk = &self.chunks[&leaf];
+                        bounds = bounds.union(self.influenced_bounds(
+                            scene,
+                            leaf,
+                            chunk.canvas.visual_bounds(),
+                        ));
+                    }
+                    nodes.push(crate::canvas::RetainedNodeState {
+                        id,
+                        revision: NodeGeneration::new(node.generation),
+                        bounds,
+                        order: nodes.len() as u32,
+                        kind: RetainedNodeKind::Layer,
+                        placement_bits: None,
+                    });
+                }
+            }
+        }
     }
 
     fn rebuild_spatial_index(&mut self) {
         self.node_bounds.clear();
         self.raw_node_bounds.clear();
-        let tile_count = Arc::make_mut(&mut self.canvas).width_in_tiles() as usize
-            * Arc::make_mut(&mut self.canvas).height_in_tiles() as usize;
+        let tiles_size = (
+            Arc::make_mut(&mut self.canvas).width_in_tiles(),
+            Arc::make_mut(&mut self.canvas).height_in_tiles(),
+        );
+        let tile_count = tiles_size.0 as usize * tiles_size.1 as usize;
         self.node_tiles.clear();
         self.node_tiles.resize(tile_count, HashSet::default());
+        self.spatial_tiles_size = tiles_size;
         let frame = Arc::make_mut(&mut self.canvas)
-            .retained_frame_override
+            .persistent_frame
             .clone()
             .expect("persistent frame override");
         for &node in frame.nodes.iter() {
@@ -3466,7 +3673,7 @@ fn first_command_list(command: &Command) -> usize {
             *children
         }
         Command::MaskLayer { content, mask, .. } => (*content).min(*mask),
-        Command::Draw(_) | Command::RetainedScene { .. } => {
+        Command::Draw(_) => {
             unreachable!("retained root layer command owns at least one child command list")
         }
     }
@@ -3516,6 +3723,20 @@ fn command_has_filter_resources(command: &Command) -> bool {
             ..
         }
     )
+}
+
+fn chunk_has_surface_dependent_plan(canvas: &Canvas) -> bool {
+    canvas.command_lists.iter().any(|list| {
+        list.commands.iter().any(|command| {
+            matches!(
+                command,
+                Command::Layer {
+                    layer: Layer::Filter { .. } | Layer::Backdrop { .. },
+                    ..
+                } | Command::MaskLayer { .. }
+            )
+        })
+    })
 }
 
 fn backdrop_dependencies(canvas: &Canvas) -> Vec<BackdropDependency> {
@@ -3669,7 +3890,7 @@ impl RetainedScene {
     }
 
     pub(crate) fn to_canvas(&self) -> Canvas {
-        let mut canvas = Canvas::new_retained(self.width, self.height, self.scale, self.root);
+        let mut canvas = Canvas::new(self.width, self.height, self.scale);
         self.append_children(&mut canvas, RetainedParent::content(self.root));
         canvas
     }
@@ -3691,60 +3912,34 @@ impl RetainedScene {
             NodeKind::Scene {
                 canvas: child,
                 position,
-            } => canvas.append_retained_scene(
-                id,
-                SceneRevision::new(node.generation),
-                child.clone(),
-                *position,
-            ),
+            } => canvas.append(child, *position),
             NodeKind::Layer(layer) => {
-                let key = RetainedLayerKey::new(id, SceneRevision::new(node.generation));
                 match layer {
                     RetainedLayerDescriptor::ClipPath {
                         path,
                         transform,
                         rule,
                         tolerance,
-                    } => canvas.push_retained_clip_layer(
-                        key,
-                        path.clone(),
-                        *transform,
-                        *rule,
-                        *tolerance,
-                    ),
-                    RetainedLayerDescriptor::ClipSdf(sdf) => {
-                        canvas.push_retained_clip_sdf_layer(key, *sdf)
-                    }
+                    } => canvas.push_clip_layer(path.clone(), *transform, *rule, *tolerance),
+                    RetainedLayerDescriptor::ClipSdf(sdf) => canvas.push_clip_sdf_layer(*sdf),
                     RetainedLayerDescriptor::Isolate {
                         path,
                         transform,
                         tolerance,
-                    } => canvas.push_retained_isolate_layer(
-                        key,
-                        path.clone(),
-                        *transform,
-                        *tolerance,
-                    ),
+                    } => canvas.push_isolate_layer(path.clone(), *transform, *tolerance),
                     RetainedLayerDescriptor::Opacity {
                         path,
                         transform,
                         tolerance,
                         opacity,
-                    } => canvas.push_retained_opacity_layer(
-                        key,
-                        path.clone(),
-                        *transform,
-                        *tolerance,
-                        *opacity,
-                    ),
+                    } => canvas.push_opacity_layer(path.clone(), *transform, *tolerance, *opacity),
                     RetainedLayerDescriptor::Blend {
                         path,
                         transform,
                         tolerance,
                         mix,
                         compose,
-                    } => canvas.push_retained_blend_layer(
-                        key,
+                    } => canvas.push_blend_layer(
                         path.clone(),
                         *transform,
                         *tolerance,
@@ -3754,24 +3949,15 @@ impl RetainedScene {
                     RetainedLayerDescriptor::Filter {
                         filter,
                         sample_region,
-                    } => canvas.push_retained_filter_layer(
-                        key,
-                        filter.clone(),
-                        sample_region.clone(),
-                    ),
+                    } => canvas.push_filter_layer(filter.clone(), sample_region.clone()),
                     RetainedLayerDescriptor::Backdrop {
                         filter,
                         sample_region,
-                    } => canvas.push_retained_backdrop_layer(
-                        key,
-                        filter.clone(),
-                        sample_region.clone(),
-                    ),
+                    } => canvas.push_backdrop_layer(filter.clone(), sample_region.clone()),
                     RetainedLayerDescriptor::Mask(mask) => {
-                        let mut mask_canvas =
-                            Canvas::new_retained(self.width, self.height, self.scale, id);
+                        let mut mask_canvas = Canvas::new(self.width, self.height, self.scale);
                         self.append_children(&mut mask_canvas, RetainedParent::mask(id));
-                        canvas.push_retained_mask_layer(key, mask_canvas, mask.clone());
+                        canvas.push_mask_layer(mask_canvas, mask.clone());
                     }
                 }
                 self.append_children(canvas, RetainedParent::content(id));
@@ -4635,6 +4821,67 @@ mod tests {
     }
 
     #[test]
+    fn surface_resize_reuses_chunks_and_refreshes_path_tile_bounds() {
+        let root = RetainedNodeId::for_owner(62_000);
+        let clip = RetainedNodeId::for_owner(62_002);
+        let child = RetainedNodeId::for_owner(62_001);
+        let mut path_leaf = Canvas::new(96, 32, 1.0);
+        path_leaf.push_path(
+            Rect::new(8.0, 4.0, 88.0, 28.0).to_path(0.1),
+            Color::WHITE,
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.1,
+        );
+        let mut scene = RetainedScene::new(32, 32, 1.0, root).unwrap();
+        scene
+            .transaction()
+            .insert_layer(
+                RetainedParent::content(root),
+                None,
+                clip,
+                RetainedLayerDescriptor::ClipPath {
+                    path: Rect::new(0.0, 0.0, 96.0, 32.0).to_path(0.1),
+                    transform: Affine::IDENTITY,
+                    rule: FillRule::NonZero,
+                    tolerance: 0.1,
+                },
+            )
+            .insert_scene(
+                RetainedParent::content(clip),
+                None,
+                child,
+                Arc::new(path_leaf),
+                (0.0, 0.0),
+            )
+            .commit()
+            .unwrap();
+        let mut materializer = PersistentSceneMaterializer::new(&scene);
+        let chunk_canvas = std::ptr::from_ref(&materializer.chunks[&child].canvas);
+        assert_eq!(
+            materializer.chunks[&child].canvas.path_records[0].tile_x1,
+            2
+        );
+
+        scene.transaction().resize(96, 32, 1.0).commit().unwrap();
+        assert!(materializer.update(&scene));
+
+        assert_eq!(
+            std::ptr::from_ref(&materializer.chunks[&child].canvas),
+            chunk_canvas
+        );
+        assert_eq!(
+            materializer.chunks[&child].canvas.path_records[0].tile_x1,
+            6
+        );
+        let canvas = materializer.canvas();
+        assert_eq!(canvas.logical_size(), (96, 32));
+        let changes = canvas.buffer_changes.as_ref().unwrap();
+        assert_eq!(changes.chunks_rebuilt, 0);
+        assert!(!changes.full_scene_sync);
+    }
+
+    #[test]
     fn scene_content_replacement_refreshes_embedded_backdrop_index() {
         let root = RetainedNodeId::for_owner(60_000);
         let child = RetainedNodeId::for_owner(60_001);
@@ -4653,6 +4900,7 @@ mod tests {
         let mut materializer = PersistentSceneMaterializer::new(&scene);
         assert!(materializer.dependency_free);
         assert!(!materializer.nonlocal_dependencies.contains(&child));
+        assert!(!materializer.surface_dependent_plans.contains(&child));
 
         scene
             .transaction()
@@ -4662,6 +4910,7 @@ mod tests {
         assert!(materializer.update(&scene));
         assert!(!materializer.dependency_free);
         assert!(materializer.nonlocal_dependencies.contains(&child));
+        assert!(materializer.surface_dependent_plans.contains(&child));
         assert_eq!(
             materializer.chunks[&child].backdrop_dependencies[0].output,
             Bounds::new(8, 12, 24, 28)
@@ -4675,6 +4924,7 @@ mod tests {
         assert!(materializer.update(&scene));
         assert!(materializer.dependency_free);
         assert!(!materializer.nonlocal_dependencies.contains(&child));
+        assert!(!materializer.surface_dependent_plans.contains(&child));
     }
 
     #[test]
@@ -4829,7 +5079,8 @@ mod tests {
         transaction.commit().unwrap();
         let mut transaction = scene.transaction();
         transaction.move_before(b, a).commit().unwrap();
-        let frame = scene.to_canvas().retained_frame().unwrap();
+        let materializer = PersistentSceneMaterializer::new(&scene);
+        let frame = materializer.canvas.persistent_frame.as_ref().unwrap();
         assert_eq!(
             frame.nodes.iter().map(|node| node.id).collect::<Vec<_>>(),
             vec![b, a]
@@ -4955,7 +5206,7 @@ mod tests {
             .unwrap();
         let mut materializer = PersistentSceneMaterializer::new(&scene);
         let base_batch = materializer.node_batches[&base];
-        let base_frame = materializer.canvas.retained_frame_override.clone().unwrap();
+        let base_frame = materializer.canvas.persistent_frame.clone().unwrap();
         scene
             .transaction()
             .insert_layer(
@@ -4993,7 +5244,7 @@ mod tests {
             "patched root plan: {:#?}",
             plan.ops
         );
-        let inserted_frame = materializer.canvas.retained_frame_override.clone().unwrap();
+        let inserted_frame = materializer.canvas.persistent_frame.clone().unwrap();
         assert!(
             Arc::ptr_eq(&base_frame.nodes, &inserted_frame.nodes),
             "root layer insertion must patch the immutable frame instead of collecting every node"
@@ -5004,7 +5255,7 @@ mod tests {
 
         scene.transaction().remove_subtree(layer).commit().unwrap();
         assert!(materializer.update(&scene));
-        let removed_frame = materializer.canvas.retained_frame_override.clone().unwrap();
+        let removed_frame = materializer.canvas.persistent_frame.clone().unwrap();
         assert!(Arc::ptr_eq(&base_frame.nodes, &removed_frame.nodes));
         assert!(removed_frame.node_state(layer).is_none());
         assert!(removed_frame.node_state(child).is_none());

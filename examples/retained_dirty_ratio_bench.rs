@@ -19,13 +19,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         config.warmup, config.frames
     );
     println!(
-        "render timing excludes Canvas construction; preflat immediate is a lower bound, not an end-to-end comparison"
-    );
-    println!(
-        "{:<10} {:>12} {:>11} {:>13} {:>18} {:>12} {:>10} {:>10}",
+        "{:<10} {:>12} {:>13} {:>18} {:>12} {:>10} {:>10}",
         "changed",
         "persistent",
-        "snapshot",
         "force-full",
         "preflat immediate",
         "materialize",
@@ -41,20 +37,22 @@ fn main() -> Result<(), Box<dyn Error>> {
             IncrementalRenderMode::Auto,
             |scene, frame| workload.mutate_persistent(scene, requested_ratio, frame),
         )?;
-        let retained = workload.retained_frames(requested_ratio);
+        let persistent_full = bench_persistent(
+            &seed,
+            config,
+            workload.persistent_scene(requested_ratio),
+            IncrementalRenderMode::ForceFull,
+            |scene, frame| workload.mutate_persistent(scene, requested_ratio, frame),
+        )?;
         let immediate = workload.immediate_frames(requested_ratio);
-        let auto = bench(&seed, config, &retained, IncrementalRenderMode::Auto)?;
-        let retained_full = bench(&seed, config, &retained, IncrementalRenderMode::ForceFull)?;
         let non_retained = bench(&seed, config, &immediate, IncrementalRenderMode::Auto)?;
-        let auto_ms = median_ms(&auto.wall);
         let changed_ratio =
-            auto.changed_tiles as f64 / config.frames as f64 / auto.total_tiles as f64;
+            persistent.changed_tiles as f64 / config.frames as f64 / persistent.total_tiles as f64;
         println!(
-            "{:>9.1}% {:>12.3} {:>11.3} {:>13.3} {:>18.3} {:>12.3} {:>10.3} {:>10.2}",
+            "{:>9.1}% {:>12.3} {:>13.3} {:>18.3} {:>12.3} {:>10.3} {:>10.2}",
             changed_ratio * 100.0,
             median_ms(&persistent.wall),
-            auto_ms,
-            median_ms(&retained_full.wall),
+            median_ms(&persistent_full.wall),
             median_ms(&non_retained.wall),
             ms(persistent.materialize / config.frames as u32),
             ms(persistent.prepare / config.frames as u32),

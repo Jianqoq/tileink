@@ -3,7 +3,7 @@ use std::{collections::HashMap, ops::Range, sync::Arc};
 use peniko::BlendMode;
 
 use crate::{
-    Canvas, RetainedLayerKey, RetainedNodeId, SceneRevision,
+    NodeGeneration, PersistentLayerKey, RetainedNodeId,
     canvas::RetainedSurfaceId,
     shared::layer::{Layer, mask::Mask},
 };
@@ -38,25 +38,19 @@ pub(crate) struct CommandList {
 #[derive(Clone)]
 pub(crate) enum Command {
     Draw(usize),
-    RetainedScene {
-        id: RetainedNodeId,
-        revision: SceneRevision,
-        canvas: Arc<Canvas>,
-        offset: (f64, f64),
-    },
     MaterializedRetainedScene {
         id: RetainedNodeId,
-        revision: SceneRevision,
+        revision: NodeGeneration,
         children: CommandListId,
     },
     Layer {
-        retained: Option<RetainedLayerKey>,
+        retained: Option<PersistentLayerKey>,
         draw: usize,
         layer: Layer,
         children: CommandListId,
     },
     MaskLayer {
-        retained: Option<RetainedLayerKey>,
+        retained: Option<PersistentLayerKey>,
         layer: Mask,
         content: CommandListId,
         mask: CommandListId,

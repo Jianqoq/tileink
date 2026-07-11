@@ -1437,10 +1437,13 @@ impl WgpuCoarseBuffers {
         self.pending_tile_bin_copies.clear();
         if full {
             profile_cpu("prepare.coarse_buffers.upload_tile_draw_bins.full", || {
+                self.work.write_at(
+                    queue,
+                    word_offset(record_word_offset),
+                    bins.upload_records(),
+                );
                 self.work
-                    .write_at(queue, word_offset(record_word_offset), &bins.records);
-                self.work
-                    .write_at(queue, word_offset(index_word_offset), &bins.draw_indices);
+                    .write_at(queue, word_offset(index_word_offset), bins.upload_indices());
             });
         } else {
             profile_cpu(

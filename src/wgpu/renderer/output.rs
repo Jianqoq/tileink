@@ -377,7 +377,7 @@ impl Renderer {
         requested_history: RequestedTextureHistory,
         prepare: impl FnOnce(&mut Self, &Canvas),
     ) -> Result<(), WgpuTextureRenderError> {
-        let selected = self.retained.select_scene(canvas);
+        let selected = SelectedScene::Borrowed(canvas);
         self.render_selected_native_to_wgpu_texture(
             selected,
             dst,
@@ -404,13 +404,13 @@ impl Renderer {
         let frame = selected.frame();
         let materialization = selected.materialization();
         let materialized_reused = selected.materialized_reused();
-        let is_retained = frame.is_some();
-        let history_owner = match (is_retained, requested_history) {
+        let is_persistent = frame.is_some();
+        let history_owner = match (is_persistent, requested_history) {
             (true, RequestedTextureHistory::External(id)) => HistoryOwner::External(id),
             _ => HistoryOwner::Internal,
         };
         self.retained.set_history_owner(history_owner);
-        let transient_without_copy = is_retained
+        let transient_without_copy = is_persistent
             && matches!(requested_history, RequestedTextureHistory::Transient)
             && !dst.usage().contains(::wgpu::TextureUsages::COPY_DST);
         if transient_without_copy {
@@ -423,7 +423,7 @@ impl Renderer {
             .retained
             .begin_frame(frame, scene, self.profiler.is_active());
         self.retained.stats_mut().materialized_scene_reused = materialized_reused;
-        let (output_mode, history_updated, copy_history) = if !is_retained {
+        let (output_mode, history_updated, copy_history) = if !is_persistent {
             self.retained.reset_transient_output();
             (IncrementalOutputMode::DirectTransient, false, false)
         } else {

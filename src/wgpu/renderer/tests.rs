@@ -7,8 +7,8 @@ use super::{Renderer, RendererOptions, WgpuRenderTargetId};
 use crate::wgpu::coarse::force_coarse_emit_chunks_for_test;
 use crate::wgpu::commands::WgpuCommandBatch;
 use crate::{
-    Canvas, FillRule, Image, ImageKey, PatternSampling, RetainedLayerDescriptor, RetainedLayerKey,
-    RetainedNodeId, RetainedParent, RetainedScene, TextContext, TextFontSystem, TextLayoutOptions,
+    Canvas, FillRule, Image, ImageKey, PatternSampling, RetainedLayerDescriptor, RetainedNodeId,
+    RetainedParent, RetainedScene, TextContext, TextFontSystem, TextLayoutOptions,
     debug::{RenderDebugOptions, RenderOptions},
     shared::{
         bounds::Bounds,
@@ -122,6 +122,65 @@ fn persistent_retained_scene_updates_incrementally_and_reuses_static_frames() {
         .unwrap();
     renderer.render_retained(&scene);
     assert_eq!(renderer.image().rgba8_at(8, 8), [20, 80, 230, 255]);
+}
+
+#[test]
+fn persistent_surface_resize_matches_force_full_without_rebuilding_chunks() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let root = RetainedNodeId::for_owner(50_100);
+    let node = RetainedNodeId::for_owner(50_101);
+    let mut leaf = Canvas::new(96, 32, 1.0);
+    leaf.push_path(
+        Rect::new(8.0, 4.0, 88.0, 28.0).to_path(0.1),
+        Color::from_rgb8(40, 120, 230),
+        Affine::IDENTITY,
+        FillRule::NonZero,
+        0.1,
+    );
+    let mut scene = RetainedScene::new(32, 32, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            node,
+            std::sync::Arc::new(leaf),
+            (0.0, 0.0),
+        )
+        .commit()
+        .unwrap();
+    let mut incremental = new_test_renderer(32, 32, Color::TRANSPARENT);
+    incremental.render_retained(&scene);
+
+    for width in [96, 24, 72] {
+        scene.transaction().resize(width, 32, 1.0).commit().unwrap();
+        incremental.render_retained(&scene);
+        assert_eq!(incremental.incremental_render_stats().chunks_rebuilt, 0);
+        assert!(!incremental.incremental_render_stats().full_scene_sync);
+
+        let mut full = new_test_renderer(width, 32, Color::TRANSPARENT);
+        let mut config = full.incremental_render_config();
+        config.mode = crate::IncrementalRenderMode::ForceFull;
+        full.set_incremental_render_config(config);
+        full.render(&scene.to_canvas());
+        assert_eq!(incremental.image().pixels, full.image().pixels);
+    }
+
+    scene
+        .transaction()
+        .set_position(node, (2.0, 0.0))
+        .commit()
+        .unwrap();
+    incremental.render_retained(&scene);
+    let mut full = new_test_renderer(72, 32, Color::TRANSPARENT);
+    let mut config = full.incremental_render_config();
+    config.mode = crate::IncrementalRenderMode::ForceFull;
+    full.set_incremental_render_config(config);
+    full.render(&scene.to_canvas());
+    assert_eq!(incremental.image().pixels, full.image().pixels);
 }
 
 #[test]
@@ -1819,7 +1878,7 @@ fn persistent_retained_layer_reparent_rebuilds_old_and_new_offscreen_ancestors()
 }
 
 #[test]
-fn persistent_retained_root_offscreen_layer_reorder_reuses_child_fragments() {
+fn persistent_root_offscreen_layer_reorder_reuses_child_fragments() {
     if !run_wgpu_tests() {
         return;
     }
@@ -2379,7 +2438,7 @@ fn persistent_retained_tail_layer_and_leaf_inserted_together_are_rendered() {
 }
 
 #[test]
-fn persistent_retained_root_layer_insert_before_intersecting_scene_patches_plan() {
+fn persistent_root_layer_insert_before_intersecting_scene_patches_plan() {
     if !run_wgpu_tests() {
         return;
     }
@@ -2736,1263 +2795,6 @@ fn persistent_retained_renderers_consume_independent_cursors_and_recover_after_j
     current.render_retained(&scene);
     assert_eq!(current.image().pixels, lagging.image().pixels);
 }
-
-#[test]
-fn retained_renderer_updates_only_changed_tiles_and_matches_full_render() {
-    if !run_wgpu_tests() {
-        return;
-    }
-
-    fn child(color: Color) -> std::sync::Arc<Canvas> {
-        let mut scene = Canvas::new(16, 16, 1.0);
-        scene.push_rect(Rect::new(1.0, 1.0, 15.0, 15.0), crate::Radius::ZERO, color);
-        std::sync::Arc::new(scene)
-    }
-
-    let root = RetainedNodeId::for_owner(1);
-    let left = RetainedNodeId::for_owner(2);
-    let right = RetainedNodeId::for_owner(3);
-    let blue = child(Color::from_rgb8(20, 40, 220));
-    let mut first = Canvas::new_retained(64, 32, 1.0, root);
-    first.append_retained_scene(left, 0, child(Color::from_rgb8(220, 40, 20)), (0.0, 0.0));
-    first.append_retained_scene(right, 0, blue.clone(), (32.0, 0.0));
-
-    let mut second = Canvas::new_retained(64, 32, 1.0, root);
-    second.append_retained_scene(left, 1, child(Color::from_rgb8(20, 220, 40)), (0.0, 0.0));
-    second.append_retained_scene(right, 0, blue, (32.0, 0.0));
-
-    let mut incremental = new_test_renderer(64, 32, Color::TRANSPARENT);
-    incremental.render(&first);
-    let first_image = incremental.image();
-    incremental.render(&second);
-    let incremental_image = incremental.image();
-    assert!(!incremental.incremental_render_stats().full_redraw);
-    assert_eq!(incremental.incremental_render_stats().dirty_tiles, 1);
-    assert!(incremental.incremental_render_stats().reused_compiled_plan);
-    assert_eq!(incremental.incremental_render_stats().draw_batches, 1);
-    assert_eq!(incremental.incremental_render_stats().root_draw_batches, 1);
-    assert_eq!(incremental.incremental_render_stats().filter_dispatches, 1);
-    assert_eq!(
-        incremental
-            .incremental_render_stats()
-            .compact_filter_dispatches,
-        1
-    );
-
-    let mut full = new_test_renderer(64, 32, Color::TRANSPARENT);
-    let mut config = full.incremental_render_config();
-    config.mode = crate::IncrementalRenderMode::ForceFull;
-    full.set_incremental_render_config(config);
-    full.render(&second);
-    let full_image = full.image();
-    assert_eq!(incremental_image.width, full_image.width);
-    assert_eq!(incremental_image.height, full_image.height);
-    assert_eq!(incremental_image.pixels, full_image.pixels);
-    assert_eq!(incremental_image.rgba8_at(8, 8), [20, 220, 40, 255]);
-    assert_eq!(incremental_image.rgba8_at(40, 8), [20, 40, 220, 255]);
-    for y in 0..32 {
-        for x in 32..64 {
-            assert_eq!(
-                incremental_image.rgba8_at(x, y),
-                first_image.rgba8_at(x, y),
-                "clean tile changed at ({x}, {y})"
-            );
-        }
-    }
-}
-
-#[test]
-fn retained_components_keep_only_cached_scene_nodes_and_match_full_render() {
-    if !run_wgpu_tests() {
-        return;
-    }
-
-    fn frame(left_revision: u64, left_color: Color) -> Canvas {
-        let mut root = Canvas::new_retained(64, 32, 1.0, RetainedNodeId::for_owner(400));
-        for (owner, revision, x, color) in [
-            (401, left_revision, 0.0, left_color),
-            (402, 0, 32.0, Color::from_rgb8(20, 40, 220)),
-        ] {
-            let mut child = Canvas::new(16, 16, 1.0);
-            child.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
-            root.append_retained_scene(
-                RetainedNodeId::new(owner, 1),
-                revision,
-                std::sync::Arc::new(child),
-                (x, 0.0),
-            );
-        }
-        root
-    }
-
-    let first = frame(0, Color::from_rgb8(220, 40, 20));
-    let second = frame(1, Color::from_rgb8(20, 220, 40));
-    let mut incremental = new_test_renderer(64, 32, Color::TRANSPARENT);
-    incremental.render(&first);
-    incremental.render(&second);
-    let stats = incremental.incremental_render_stats();
-    assert_eq!(
-        stats.retained_nodes, 2,
-        "cached drawables must not gain generic component nodes"
-    );
-    assert_eq!(stats.dirty_tiles, 1);
-    assert_eq!(stats.root_draw_batches, 1);
-
-    let mut full = new_test_renderer(64, 32, Color::TRANSPARENT);
-    let mut config = full.incremental_render_config();
-    config.mode = crate::IncrementalRenderMode::ForceFull;
-    full.set_incremental_render_config(config);
-    full.render(&second);
-    assert_eq!(incremental.image().pixels, full.image().pixels);
-}
-
-#[test]
-fn retained_sparse_damage_clears_with_one_compact_dispatch() {
-    if !run_wgpu_tests() {
-        return;
-    }
-
-    fn child(color: Color) -> std::sync::Arc<Canvas> {
-        let mut scene = Canvas::new(16, 16, 1.0);
-        scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
-        std::sync::Arc::new(scene)
-    }
-
-    let root = RetainedNodeId::for_owner(10);
-    let first_id = RetainedNodeId::for_owner(11);
-    let second_id = RetainedNodeId::for_owner(12);
-    let stable_id = RetainedNodeId::for_owner(13);
-    let stable = child(Color::from_rgb8(20, 40, 220));
-
-    let mut first = Canvas::new_retained(96, 64, 1.0, root);
-    first.append_retained_scene(
-        first_id,
-        0,
-        child(Color::from_rgb8(220, 20, 20)),
-        (0.0, 0.0),
-    );
-    first.append_retained_scene(stable_id, 0, stable.clone(), (32.0, 16.0));
-    first.append_retained_scene(
-        second_id,
-        0,
-        child(Color::from_rgb8(20, 220, 20)),
-        (80.0, 48.0),
-    );
-
-    let mut second = Canvas::new_retained(96, 64, 1.0, root);
-    second.append_retained_scene(
-        first_id,
-        1,
-        child(Color::from_rgb8(220, 220, 20)),
-        (0.0, 0.0),
-    );
-    second.append_retained_scene(stable_id, 0, stable, (32.0, 16.0));
-    second.append_retained_scene(
-        second_id,
-        1,
-        child(Color::from_rgb8(20, 220, 220)),
-        (80.0, 48.0),
-    );
-
-    let mut incremental = new_test_renderer(96, 64, Color::TRANSPARENT);
-    incremental.render(&first);
-    let stable_before = incremental.image().rgba8_at(40, 24);
-    incremental.render(&second);
-    let stats = incremental.incremental_render_stats();
-    assert_eq!(stats.dirty_tiles, 2);
-    assert_eq!(stats.filter_dispatches, 1);
-    assert_eq!(stats.compact_filter_dispatches, 1);
-    assert_eq!(incremental.image().rgba8_at(40, 24), stable_before);
-
-    let mut full = new_test_renderer(96, 64, Color::TRANSPARENT);
-    let mut config = full.incremental_render_config();
-    config.mode = crate::IncrementalRenderMode::ForceFull;
-    full.set_incremental_render_config(config);
-    full.render(&second);
-    assert_eq!(incremental.image().pixels, full.image().pixels);
-}
-
-#[test]
-fn retained_path_scan_dispatches_only_paths_reaching_dirty_tiles() {
-    if !run_wgpu_tests() {
-        return;
-    }
-
-    fn path_scene(color: Color) -> std::sync::Arc<Canvas> {
-        let mut path = BezPath::new();
-        path.move_to((1.0, 1.0));
-        path.line_to((15.0, 2.0));
-        path.line_to((8.0, 15.0));
-        path.close_path();
-        let mut scene = Canvas::new(16, 16, 1.0);
-        scene.push_path(path, color, Affine::IDENTITY, FillRule::NonZero, 0.0);
-        std::sync::Arc::new(scene)
-    }
-
-    let root = RetainedNodeId::for_owner(70);
-    let left = RetainedNodeId::for_owner(71);
-    let right = RetainedNodeId::for_owner(72);
-    let right_scene = path_scene(Color::from_rgb8(20, 40, 220));
-    let mut first = Canvas::new_retained(64, 16, 1.0, root);
-    first.append_retained_scene(
-        left,
-        0,
-        path_scene(Color::from_rgb8(220, 40, 20)),
-        (0.0, 0.0),
-    );
-    first.append_retained_scene(right, 0, right_scene.clone(), (48.0, 0.0));
-    let mut second = Canvas::new_retained(64, 16, 1.0, root);
-    second.append_retained_scene(
-        left,
-        1,
-        path_scene(Color::from_rgb8(20, 220, 40)),
-        (0.0, 0.0),
-    );
-    second.append_retained_scene(right, 0, right_scene, (48.0, 0.0));
-    let mut incremental = new_test_renderer(64, 16, Color::TRANSPARENT);
-
-    incremental.render(&first);
-    incremental.render(&second);
-
-    assert!(!incremental.incremental_render_stats().full_redraw);
-    assert_eq!(incremental.incremental_render_stats().dirty_tiles, 1);
-    assert_eq!(incremental.incremental_render_stats().scanned_paths, 1);
-    let mut full = new_test_renderer(64, 16, Color::TRANSPARENT);
-    let mut config = full.incremental_render_config();
-    config.mode = crate::IncrementalRenderMode::ForceFull;
-    full.set_incremental_render_config(config);
-    full.render(&second);
-    assert_eq!(incremental.image().pixels, full.image().pixels);
-}
-
-#[test]
-fn retained_scene_revision_change_and_removal_dirty_without_manual_damage() {
-    if !run_wgpu_tests() {
-        return;
-    }
-
-    let root = RetainedNodeId::for_owner(80);
-    let node = RetainedNodeId::for_owner(81);
-    let frame = |revision, color: Option<Color>| {
-        let mut canvas = Canvas::new_retained(32, 16, 1.0, root);
-        if let Some(color) = color {
-            let mut child = Canvas::new(16, 16, 1.0);
-            child.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
-            canvas.append_retained_scene(node, revision, std::sync::Arc::new(child), (0.0, 0.0));
-        }
-        canvas
-    };
-    let red = frame(0, Some(Color::from_rgb8(220, 30, 40)));
-    let green = frame(1, Some(Color::from_rgb8(30, 210, 70)));
-    let empty = frame(1, None);
-    let mut renderer = new_test_renderer(32, 16, Color::TRANSPARENT);
-
-    renderer.render(&red);
-    renderer.render(&green);
-    assert!(!renderer.incremental_render_stats().full_redraw);
-    assert_eq!(renderer.incremental_render_stats().dirty_tiles, 1);
-    assert_eq!(renderer.image().rgba8_at(8, 8), [30, 210, 70, 255]);
-
-    renderer.render(&empty);
-    assert!(!renderer.incremental_render_stats().full_redraw);
-    assert_eq!(renderer.incremental_render_stats().dirty_tiles, 1);
-    assert_eq!(renderer.image().rgba8_at(8, 8), [0, 0, 0, 0]);
-}
-
-#[test]
-fn untracked_previous_frame_is_not_committed_as_incremental_history() {
-    if !run_wgpu_tests() {
-        return;
-    }
-
-    let root = RetainedNodeId::for_owner(82);
-    let child_id = RetainedNodeId::for_owner(83);
-    let child = std::sync::Arc::new(Canvas::new(32, 16, 1.0));
-    let mut first = Canvas::new_retained(32, 16, 1.0, root);
-    first.append_retained_scene(child_id, 0, child.clone(), (0.0, 0.0));
-    first.push_rect(
-        Rect::new(0.0, 0.0, 16.0, 16.0),
-        crate::Radius::ZERO,
-        Color::from_rgb8(220, 30, 40),
-    );
-    let mut second = Canvas::new_retained(32, 16, 1.0, root);
-    second.append_retained_scene(child_id, 0, child, (0.0, 0.0));
-    let mut renderer = new_test_renderer(32, 16, Color::TRANSPARENT);
-
-    renderer.render(&first);
-    renderer.render(&second);
-
-    assert_eq!(
-        renderer.incremental_render_stats().full_redraw_reason,
-        Some(crate::FullRedrawReason::UntrackedContent)
-    );
-    assert_eq!(renderer.image().rgba8_at(8, 8), [0, 0, 0, 0]);
-}
-
-#[test]
-fn manual_invalidation_renders_current_untracked_commands() {
-    if !run_wgpu_tests() {
-        return;
-    }
-
-    for invalidate_all in [false, true] {
-        let frame = |color| {
-            let mut canvas = Canvas::new_retained(32, 16, 1.0, RetainedNodeId::for_owner(84));
-            canvas.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
-            if invalidate_all {
-                canvas.invalidate_all();
-            } else {
-                canvas.invalidate_rect(Rect::new(0.0, 0.0, 16.0, 16.0));
-            }
-            canvas
-        };
-        let mut renderer = new_test_renderer(32, 16, Color::TRANSPARENT);
-
-        renderer.render(&frame(Color::from_rgb8(220, 30, 40)));
-        renderer.render(&frame(Color::from_rgb8(30, 210, 70)));
-
-        assert_eq!(
-            renderer.image().rgba8_at(8, 8),
-            [30, 210, 70, 255],
-            "invalidate_all={invalidate_all}"
-        );
-    }
-}
-
-#[test]
-fn retained_renderer_copies_complete_history_to_external_texture() {
-    if !run_wgpu_tests() {
-        return;
-    }
-
-    fn scene(color: Color) -> std::sync::Arc<Canvas> {
-        let mut scene = Canvas::new(16, 16, 1.0);
-        scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
-        std::sync::Arc::new(scene)
-    }
-
-    let root = RetainedNodeId::for_owner(5);
-    let mut first = Canvas::new_retained(32, 16, 1.0, root);
-    first.append_retained_scene(
-        RetainedNodeId::for_owner(6),
-        0,
-        scene(Color::from_rgb8(220, 30, 40)),
-        (0.0, 0.0),
-    );
-    first.append_retained_scene(
-        RetainedNodeId::for_owner(7),
-        0,
-        scene(Color::from_rgb8(20, 50, 220)),
-        (16.0, 0.0),
-    );
-    let mut second = Canvas::new_retained(32, 16, 1.0, root);
-    second.append_retained_scene(
-        RetainedNodeId::for_owner(6),
-        1,
-        scene(Color::from_rgb8(30, 210, 70)),
-        (0.0, 0.0),
-    );
-    second.append_retained_scene(
-        RetainedNodeId::for_owner(7),
-        0,
-        scene(Color::from_rgb8(20, 50, 220)),
-        (16.0, 0.0),
-    );
-
-    let mut renderer = new_test_renderer(32, 16, Color::TRANSPARENT);
-    let texture = renderer
-        .device()
-        .create_texture(&::wgpu::TextureDescriptor {
-            label: Some("tileink retained external target test"),
-            size: ::wgpu::Extent3d {
-                width: 32,
-                height: 16,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: ::wgpu::TextureDimension::D2,
-            format: ::wgpu::TextureFormat::Rgba8Unorm,
-            usage: ::wgpu::TextureUsages::STORAGE_BINDING
-                | ::wgpu::TextureUsages::COPY_DST
-                | ::wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
-        });
-    renderer
-        .render_to_wgpu_texture(&first, &texture)
-        .expect("render first retained frame");
-    renderer
-        .render_to_wgpu_texture(&second, &texture)
-        .expect("render second retained frame");
-    let bytes = read_texture_rgba8(renderer.device(), renderer.queue(), &texture, 32, 16);
-    assert_eq!(&bytes[4 * 8..4 * 9], &[30, 210, 70, 255]);
-    assert_eq!(&bytes[4 * 24..4 * 25], &[20, 50, 220, 255]);
-    let stats = renderer.incremental_render_stats();
-    assert_eq!(stats.dirty_tiles, 1);
-    assert_eq!(stats.queue_submissions, 1);
-}
-
-#[test]
-fn high_damage_renders_directly_then_rebuilds_internal_history() {
-    if !run_wgpu_tests() {
-        return;
-    }
-
-    fn frame(revision: u64, color: Color) -> Canvas {
-        let mut child = Canvas::new(48, 16, 1.0);
-        child.push_rect(Rect::new(0.0, 0.0, 48.0, 16.0), crate::Radius::ZERO, color);
-        let mut root = Canvas::new_retained(64, 16, 1.0, RetainedNodeId::for_owner(200));
-        root.append_retained_scene(
-            RetainedNodeId::for_owner(201),
-            revision,
-            std::sync::Arc::new(child),
-            (0.0, 0.0),
-        );
-        root
-    }
-
-    let first = frame(0, Color::from_rgb8(220, 30, 40));
-    let second = frame(1, Color::from_rgb8(30, 210, 70));
-    let mut renderer = new_test_renderer(64, 16, Color::TRANSPARENT);
-    let texture = create_test_target_texture(&renderer, 64, 16, "direct output state test");
-
-    renderer
-        .render_to_wgpu_texture(&first, &texture)
-        .expect("build first retained history");
-    assert_eq!(
-        renderer.incremental_render_stats().output_mode,
-        crate::IncrementalOutputMode::InternalHistory
-    );
-    assert!(renderer.incremental_render_stats().history_copied_to_output);
-    assert_eq!(renderer.incremental_render_stats().queue_submissions, 1);
-
-    renderer
-        .render_to_wgpu_texture(&second, &texture)
-        .expect("render high-damage frame directly");
-    let stats = renderer.incremental_render_stats();
-    assert_eq!(
-        stats.full_redraw_reason,
-        Some(crate::FullRedrawReason::DirtyTileThreshold)
-    );
-    assert_eq!(
-        stats.output_mode,
-        crate::IncrementalOutputMode::DirectTransient
-    );
-    assert!(!stats.history_copied_to_output);
-    assert_eq!(
-        &read_texture_rgba8(renderer.device(), renderer.queue(), &texture, 64, 16)[4 * 8..4 * 9],
-        &[30, 210, 70, 255]
-    );
-
-    renderer
-        .render_to_wgpu_texture(&second, &texture)
-        .expect("keep direct mode through first low-damage frame");
-    assert_eq!(
-        renderer.incremental_render_stats().output_mode,
-        crate::IncrementalOutputMode::DirectTransient
-    );
-    assert_eq!(renderer.incremental_render_stats().changed_tiles, 0);
-    assert_eq!(
-        renderer.incremental_render_stats().dirty_tiles,
-        renderer.incremental_render_stats().total_tiles
-    );
-
-    renderer
-        .render_to_wgpu_texture(&second, &texture)
-        .expect("rebuild history after hysteresis");
-    assert_eq!(
-        renderer.incremental_render_stats().output_mode,
-        crate::IncrementalOutputMode::RebuildHistory
-    );
-    assert!(renderer.incremental_render_stats().history_copied_to_output);
-    assert_eq!(renderer.incremental_render_stats().queue_submissions, 1);
-}
-
-#[test]
-fn retained_resize_skips_internal_history_resize_and_copy() {
-    if !run_wgpu_tests() {
-        return;
-    }
-
-    fn frame(width: u32) -> Canvas {
-        let mut child = Canvas::new(width, 16, 1.0);
-        child.push_rect(
-            Rect::new(0.0, 0.0, width as f64, 16.0),
-            crate::Radius::ZERO,
-            Color::from_rgb8(40, 120, 220),
-        );
-        let mut root = Canvas::new_retained(width, 16, 1.0, RetainedNodeId::for_owner(205));
-        root.append_retained_scene(
-            RetainedNodeId::for_owner(206),
-            width as u64,
-            std::sync::Arc::new(child),
-            (0.0, 0.0),
-        );
-        root
-    }
-
-    let mut renderer = new_test_renderer(64, 16, Color::TRANSPARENT);
-    let texture = create_test_target_texture(&renderer, 64, 16, "resize direct output test");
-    renderer
-        .render_to_wgpu_texture(&frame(32), &texture)
-        .expect("initialize smaller history");
-    assert_eq!(renderer.readback_target.size(), (32, 16));
-
-    renderer
-        .render_to_wgpu_texture(&frame(64), &texture)
-        .expect("render resized frame directly");
-    let stats = renderer.incremental_render_stats();
-    assert_eq!(
-        stats.full_redraw_reason,
-        Some(crate::FullRedrawReason::SurfaceChanged)
-    );
-    assert_eq!(
-        stats.output_mode,
-        crate::IncrementalOutputMode::DirectTransient
-    );
-    assert!(!stats.history_copied_to_output);
-    assert_eq!(renderer.readback_target.size(), (32, 16));
-    let bytes = read_texture_rgba8(renderer.device(), renderer.queue(), &texture, 64, 16);
-    assert_eq!(&bytes[4 * 48..4 * 49], &[40, 120, 220, 255]);
-
-    renderer
-        .render_to_wgpu_texture(&frame(64), &texture)
-        .expect("remain direct for first stable frame");
-    assert_eq!(renderer.readback_target.size(), (32, 16));
-    renderer
-        .render_to_wgpu_texture(&frame(64), &texture)
-        .expect("rebuild resized history");
-    assert_eq!(
-        renderer.incremental_render_stats().output_mode,
-        crate::IncrementalOutputMode::RebuildHistory
-    );
-    assert_eq!(renderer.readback_target.size(), (64, 16));
-}
-
-#[test]
-fn persistent_external_texture_is_updated_in_place_without_history_copy() {
-    if !run_wgpu_tests() {
-        return;
-    }
-
-    fn child(color: Color) -> std::sync::Arc<Canvas> {
-        let mut canvas = Canvas::new(16, 16, 1.0);
-        canvas.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
-        std::sync::Arc::new(canvas)
-    }
-
-    let root_id = RetainedNodeId::for_owner(210);
-    let left_id = RetainedNodeId::for_owner(211);
-    let right_id = RetainedNodeId::for_owner(212);
-    let blue = child(Color::from_rgb8(20, 50, 220));
-    let mut first = Canvas::new_retained(32, 16, 1.0, root_id);
-    first.append_retained_scene(left_id, 0, child(Color::from_rgb8(220, 30, 40)), (0.0, 0.0));
-    first.append_retained_scene(right_id, 0, blue.clone(), (16.0, 0.0));
-    let mut second = Canvas::new_retained(32, 16, 1.0, root_id);
-    second.append_retained_scene(left_id, 1, child(Color::from_rgb8(30, 210, 70)), (0.0, 0.0));
-    second.append_retained_scene(right_id, 0, blue, (16.0, 0.0));
-
-    let mut renderer = new_test_renderer(32, 16, Color::TRANSPARENT);
-    let texture = create_test_target_texture(&renderer, 32, 16, "persistent history test");
-    let history_id = crate::ExternalTextureHistoryId::new(1);
-    renderer
-        .render_to_persistent_wgpu_texture(&first, &texture, history_id)
-        .expect("initialize external history");
-    renderer
-        .render_to_persistent_wgpu_texture(&second, &texture, history_id)
-        .expect("incrementally update external history");
-
-    let stats = renderer.incremental_render_stats();
-    assert_eq!(
-        stats.output_mode,
-        crate::IncrementalOutputMode::ExternalHistory
-    );
-    assert!(!stats.full_redraw);
-    assert_eq!(stats.dirty_tiles, 1);
-    assert!(!stats.history_copied_to_output);
-    let bytes = read_texture_rgba8(renderer.device(), renderer.queue(), &texture, 32, 16);
-    assert_eq!(&bytes[4 * 8..4 * 9], &[30, 210, 70, 255]);
-    assert_eq!(&bytes[4 * 24..4 * 25], &[20, 50, 220, 255]);
-
-    let replacement = create_test_target_texture(&renderer, 32, 16, "replacement history test");
-    renderer
-        .render_to_persistent_wgpu_texture(
-            &second,
-            &replacement,
-            crate::ExternalTextureHistoryId::new(2),
-        )
-        .expect("new external identity must rebuild its contents");
-    assert_eq!(
-        renderer.incremental_render_stats().full_redraw_reason,
-        Some(crate::FullRedrawReason::FirstFrame)
-    );
-    let bytes = read_texture_rgba8(renderer.device(), renderer.queue(), &replacement, 32, 16);
-    assert_eq!(&bytes[4 * 8..4 * 9], &[30, 210, 70, 255]);
-    assert_eq!(&bytes[4 * 24..4 * 25], &[20, 50, 220, 255]);
-}
-
-#[test]
-fn retained_filter_surface_is_reused_when_damage_is_elsewhere() {
-    if !run_wgpu_tests() {
-        return;
-    }
-
-    let mut filtered = Canvas::new(40, 40, 1.0);
-    filtered.push_filter_layer(
-        Filter::Blur {
-            std_dev_x: 2.0,
-            std_dev_y: 2.0,
-            sampling: BlurSampling::default(),
-        },
-        Region::rect(Rect::new(4.0, 4.0, 28.0, 28.0), crate::Radius::ZERO),
-    );
-    filtered.push_rect(
-        Rect::new(8.0, 8.0, 24.0, 24.0),
-        crate::Radius::ZERO,
-        Color::from_rgb8(220, 40, 80),
-    );
-    filtered.pop_layer();
-    let filtered = std::sync::Arc::new(filtered);
-
-    fn marker(color: Color) -> std::sync::Arc<Canvas> {
-        let mut scene = Canvas::new(16, 16, 1.0);
-        scene.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
-        std::sync::Arc::new(scene)
-    }
-
-    let root = RetainedNodeId::for_owner(10);
-    let filter_id = RetainedNodeId::for_owner(11);
-    let marker_id = RetainedNodeId::for_owner(12);
-    let mut first = Canvas::new_retained(128, 64, 1.0, root);
-    first.append_retained_scene(filter_id, 0, filtered.clone(), (0.0, 0.0));
-    first.append_retained_scene(
-        marker_id,
-        0,
-        marker(Color::from_rgb8(20, 40, 200)),
-        (96.0, 0.0),
-    );
-    let mut second = Canvas::new_retained(128, 64, 1.0, root);
-    second.append_retained_scene(filter_id, 0, filtered, (0.0, 0.0));
-    second.append_retained_scene(
-        marker_id,
-        1,
-        marker(Color::from_rgb8(20, 200, 40)),
-        (96.0, 0.0),
-    );
-
-    let mut renderer = new_test_renderer(128, 64, Color::TRANSPARENT);
-    renderer.render(&first);
-    renderer.render(&second);
-    assert!(!renderer.incremental_render_stats().full_redraw);
-    assert_eq!(
-        renderer
-            .incremental_render_stats()
-            .reused_offscreen_surfaces,
-        1
-    );
-    assert_eq!(
-        renderer
-            .incremental_render_stats()
-            .rerendered_offscreen_surfaces,
-        0
-    );
-
-    let incremental = renderer.image();
-
-    let mut evicted = new_test_renderer(128, 64, Color::TRANSPARENT);
-    let mut evicted_config = evicted.incremental_render_config();
-    evicted_config.retained_texture_budget_bytes = 0;
-    evicted.set_incremental_render_config(evicted_config);
-    evicted.render(&first);
-    evicted.render(&second);
-    assert_eq!(
-        evicted.incremental_render_stats().reused_offscreen_surfaces,
-        0
-    );
-    assert_eq!(
-        evicted
-            .incremental_render_stats()
-            .rerendered_offscreen_surfaces,
-        1
-    );
-
-    let mut full = new_test_renderer(128, 64, Color::TRANSPARENT);
-    let mut config = full.incremental_render_config();
-    config.mode = crate::IncrementalRenderMode::ForceFull;
-    full.set_incremental_render_config(config);
-    full.render(&second);
-    assert_eq!(incremental.pixels, full.image().pixels);
-    assert_eq!(evicted.image().pixels, full.image().pixels);
-}
-
-#[test]
-fn retained_filter_updates_local_dirty_tiles_and_matches_full_render() {
-    if !run_wgpu_tests() {
-        return;
-    }
-
-    fn frame(revision: u64, color: Color) -> Canvas {
-        let root = RetainedNodeId::for_owner(20);
-        let filter_node = RetainedNodeId::for_owner(21);
-        let content_node = RetainedNodeId::for_owner(22);
-        let mut content = Canvas::new(20, 20, 1.0);
-        content.push_rect(Rect::new(2.0, 2.0, 18.0, 18.0), crate::Radius::ZERO, color);
-
-        let mut canvas = Canvas::new_retained(160, 96, 1.0, root);
-        canvas.push_retained_filter_layer(
-            RetainedLayerKey::new(filter_node, crate::SceneRevision::INITIAL),
-            Filter::Blur {
-                std_dev_x: 2.0,
-                std_dev_y: 2.0,
-                sampling: BlurSampling::default(),
-            },
-            Region::rect(Rect::new(8.0, 8.0, 136.0, 72.0), crate::Radius::ZERO),
-        );
-        canvas.append_retained_scene(
-            content_node,
-            revision,
-            std::sync::Arc::new(content),
-            (40.0, 24.0),
-        );
-        canvas.pop_layer();
-        canvas
-    }
-
-    let first = frame(0, Color::from_rgb8(220, 40, 30));
-    let second = frame(1, Color::from_rgb8(20, 210, 50));
-    let mut incremental = new_test_renderer(160, 96, Color::TRANSPARENT);
-    incremental.render(&first);
-    incremental.render(&second);
-    let stats = incremental.incremental_render_stats().clone();
-    assert!(!stats.full_redraw);
-    assert_eq!(stats.rerendered_offscreen_surfaces, 1);
-    assert!(
-        stats.rerendered_offscreen_tiles < 45,
-        "local filter should not redraw its full surface: {stats:?}"
-    );
-
-    let image = incremental.image();
-    let mut full = new_test_renderer(160, 96, Color::TRANSPARENT);
-    let mut config = full.incremental_render_config();
-    config.mode = crate::IncrementalRenderMode::ForceFull;
-    full.set_incremental_render_config(config);
-    full.render(&second);
-    assert_eq!(image.pixels, full.image().pixels);
-}
-
-#[test]
-fn retained_backdrop_blur_updates_local_tiles_and_matches_full_render() {
-    if !run_wgpu_tests() {
-        return;
-    }
-
-    fn frame(revision: u64, color: Color) -> Canvas {
-        let mut canvas = Canvas::new_retained(128, 96, 1.0, RetainedNodeId::for_owner(30));
-        let mut background = Canvas::new(128, 96, 1.0);
-        background.push_rect(
-            Rect::new(0.0, 0.0, 128.0, 96.0),
-            crate::Radius::ZERO,
-            Color::from_rgb8(32, 38, 48),
-        );
-        canvas.append_retained_scene(
-            RetainedNodeId::for_owner(31),
-            0,
-            std::sync::Arc::new(background),
-            (0.0, 0.0),
-        );
-        let mut marker = Canvas::new(16, 16, 1.0);
-        marker.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
-        canvas.append_retained_scene(
-            RetainedNodeId::for_owner(32),
-            revision,
-            std::sync::Arc::new(marker),
-            (48.0, 32.0),
-        );
-        canvas.push_retained_backdrop_layer(
-            RetainedLayerKey::new(RetainedNodeId::for_owner(33), crate::SceneRevision::INITIAL),
-            Filter::Blur {
-                std_dev_x: 2.0,
-                std_dev_y: 2.0,
-                sampling: BlurSampling::FULL_RES,
-            },
-            Region::rect(Rect::new(16.0, 16.0, 112.0, 80.0), crate::Radius::all(8.0)),
-        );
-        canvas.pop_layer();
-        canvas
-    }
-
-    let first = frame(0, Color::from_rgb8(230, 50, 40));
-    let second = frame(1, Color::from_rgb8(30, 210, 90));
-    let mut incremental = new_test_renderer(128, 96, Color::TRANSPARENT);
-    incremental.render(&first);
-    incremental.render(&second);
-    let stats = incremental.incremental_render_stats().clone();
-    assert_eq!(stats.rerendered_offscreen_surfaces, 1);
-    assert!(stats.rerendered_offscreen_tiles < 35, "{stats:?}");
-
-    let mut full = new_test_renderer(128, 96, Color::TRANSPARENT);
-    let mut config = full.incremental_render_config();
-    config.mode = crate::IncrementalRenderMode::ForceFull;
-    full.set_incremental_render_config(config);
-    full.render(&second);
-    let incremental_image = incremental.image();
-    let full_image = full.image();
-    let differences = incremental_image
-        .pixels
-        .iter()
-        .zip(&full_image.pixels)
-        .enumerate()
-        .filter(|(_, (actual, expected))| actual != expected)
-        .map(|(index, _)| ((index as u32) % 128, (index as u32) / 128))
-        .collect::<Vec<_>>();
-    assert!(
-        differences.is_empty(),
-        "backdrop differs at {} pixels, first {:?}",
-        differences.len(),
-        differences.first()
-    );
-}
-
-#[test]
-fn retained_clipped_liquid_glass_rerenders_after_backdrop_damage() {
-    if !run_wgpu_tests() {
-        return;
-    }
-
-    fn frame(revision: u64, color: Color) -> Canvas {
-        let mut canvas = Canvas::new_retained(256, 192, 1.0, RetainedNodeId::for_owner(34));
-        let mut background = Canvas::new(256, 192, 1.0);
-        background.push_rect(
-            Rect::new(0.0, 0.0, 256.0, 192.0),
-            crate::Radius::ZERO,
-            Color::from_rgb8(24, 32, 48),
-        );
-        canvas.append_retained_scene(
-            RetainedNodeId::for_owner(35),
-            0,
-            std::sync::Arc::new(background),
-            (0.0, 0.0),
-        );
-
-        let mut marker = Canvas::new(16, 16, 1.0);
-        marker.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
-        canvas.append_retained_scene(
-            RetainedNodeId::for_owner(36),
-            revision,
-            std::sync::Arc::new(marker),
-            (48.0, 32.0),
-        );
-
-        canvas.push_retained_clip_sdf_rect_layer(
-            RetainedLayerKey::new(RetainedNodeId::for_owner(37), crate::SceneRevision::INITIAL),
-            Rect::new(16.0, 16.0, 112.0, 80.0),
-            crate::Radius::all(12.0),
-        );
-        canvas.push_backdrop_layer(
-            Filter::RectLiquidGlass(RectLiquidGlass {
-                blur_radius: 8,
-                blur_sampling: BlurSampling::downsampled(2),
-                ..RectLiquidGlass::default()
-            }),
-            Region::rect(Rect::new(24.0, 20.0, 104.0, 76.0), crate::Radius::all(10.0)),
-        );
-        canvas.pop_layer();
-        canvas.pop_layer();
-        canvas
-    }
-
-    let first = frame(0, Color::from_rgb8(220, 40, 60));
-    let second = frame(1, Color::from_rgb8(30, 210, 100));
-    let mut incremental = new_test_renderer(256, 192, Color::TRANSPARENT);
-    incremental.render(&first);
-    incremental.render(&second);
-    let stats = incremental.incremental_render_stats();
-    assert!(
-        !stats.full_redraw,
-        "second frame must exercise retained rerendering"
-    );
-    assert_eq!(stats.rerendered_offscreen_surfaces, 1);
-
-    let mut full = new_test_renderer(256, 192, Color::TRANSPARENT);
-    let mut config = full.incremental_render_config();
-    config.mode = crate::IncrementalRenderMode::ForceFull;
-    full.set_incremental_render_config(config);
-    full.render(&second);
-    assert_eq!(incremental.image().pixels, full.image().pixels);
-}
-
-#[test]
-fn retained_liquid_glass_ignores_later_foreground_history_when_slider_moves() {
-    if !run_wgpu_tests() {
-        return;
-    }
-
-    fn frame(slider_x: f64) -> Canvas {
-        let root = RetainedNodeId::for_owner(90);
-        let background_id = RetainedNodeId::for_owner(91);
-        let panel_id = RetainedNodeId::for_owner(92);
-        let slider_id = RetainedNodeId::for_owner(93);
-        let mut canvas = Canvas::new_retained(320, 192, 1.0, root);
-
-        let mut background = Canvas::new(320, 192, 1.0);
-        for x in (0..320).step_by(8) {
-            let color = if x % 16 == 0 {
-                Color::from_rgb8(24, 72, 120)
-            } else {
-                Color::from_rgb8(120, 56, 32)
-            };
-            background.push_rect(
-                Rect::new(f64::from(x), 0.0, f64::from(x + 8), 192.0),
-                crate::Radius::ZERO,
-                color,
-            );
-        }
-        canvas.append_retained_scene(
-            background_id,
-            0,
-            std::sync::Arc::new(background),
-            (0.0, 0.0),
-        );
-
-        let panel = Rect::new(24.0, 16.0, 296.0, 176.0);
-        canvas.push_retained_backdrop_layer(
-            RetainedLayerKey::new(panel_id, crate::SceneRevision::INITIAL),
-            Filter::RectLiquidGlass(RectLiquidGlass {
-                blur_radius: 5,
-                blur_sampling: BlurSampling::downsampled(4),
-                tint: Color::from_rgba8(255, 255, 255, 26),
-                refraction_thickness: 28.0,
-                refraction_factor: 2.5,
-                refraction_dispersion: 10.0,
-                ..RectLiquidGlass::default()
-            }),
-            Region::rect(panel, crate::Radius::all(28.0)),
-        );
-        canvas.pop_layer();
-
-        let mut slider = Canvas::new(18, 18, 1.0);
-        slider.push_rect(
-            Rect::new(0.0, 0.0, 18.0, 18.0),
-            crate::Radius::all(9.0),
-            Color::WHITE,
-        );
-        canvas.append_retained_scene(slider_id, 0, std::sync::Arc::new(slider), (slider_x, 72.0));
-        canvas
-    }
-
-    let mut incremental = new_test_renderer(320, 192, Color::TRANSPARENT);
-    incremental.render(&frame(120.0));
-    let mut full = new_test_renderer(320, 192, Color::TRANSPARENT);
-    let mut config = full.incremental_render_config();
-    config.mode = crate::IncrementalRenderMode::ForceFull;
-    full.set_incremental_render_config(config);
-
-    for slider_x in [132.0, 144.0, 156.0, 170.0] {
-        let current = frame(slider_x);
-        incremental.render(&current);
-        assert!(
-            !incremental.incremental_render_stats().full_redraw,
-            "slider movement must exercise dirty-tile rendering"
-        );
-        let stats = incremental.incremental_render_stats();
-        assert!(stats.filter_dispatches > 0);
-        assert_eq!(
-            stats.compact_filter_dispatches, stats.filter_dispatches,
-            "every retained liquid-glass stage, including downsampled blur, must use one compact worklist dispatch"
-        );
-
-        full.render(&current);
-        let incremental_image = incremental.image();
-        let full_image = full.image();
-        let difference = incremental_image
-            .pixels
-            .iter()
-            .zip(&full_image.pixels)
-            .position(|(actual, expected)| actual != expected);
-        assert_eq!(
-            difference, None,
-            "retained liquid glass diverged after moving slider to {slider_x}"
-        );
-    }
-
-    // Evicting the backdrop source history must fall back to a full root
-    // redraw. Rebuilding it from a partial final-frame texture would recreate
-    // the same foreground feedback this test guards against.
-    let mut uncached = new_test_renderer(320, 192, Color::TRANSPARENT);
-    let mut uncached_config = uncached.incremental_render_config();
-    uncached_config.retained_texture_budget_bytes = 0;
-    uncached.set_incremental_render_config(uncached_config);
-    uncached.render(&frame(120.0));
-    let final_frame = frame(170.0);
-    uncached.render(&final_frame);
-    assert!(uncached.incremental_render_stats().full_redraw);
-    full.render(&final_frame);
-    assert_eq!(uncached.image().pixels, full.image().pixels);
-}
-
-#[test]
-fn retained_nested_liquid_glass_stays_stable_when_clipped_slider_moves() {
-    if !run_wgpu_tests() {
-        return;
-    }
-
-    fn background() -> std::sync::Arc<Canvas> {
-        let mut background = Canvas::new(320, 192, 1.0);
-        for y in (0..192).step_by(8) {
-            for x in (0..320).step_by(8) {
-                let color = if (x / 8 + y / 8) % 2 == 0 {
-                    Color::from_rgb8(236, 242, 250)
-                } else {
-                    Color::from_rgb8(86, 132, 178)
-                };
-                background.push_rect(
-                    Rect::new(
-                        f64::from(x),
-                        f64::from(y),
-                        f64::from(x + 8),
-                        f64::from(y + 8),
-                    ),
-                    crate::Radius::ZERO,
-                    color,
-                );
-            }
-        }
-        std::sync::Arc::new(background)
-    }
-
-    fn frame(slider_x: f64, background: &std::sync::Arc<Canvas>) -> Canvas {
-        let panel = Rect::new(24.0, 16.0, 296.0, 176.0);
-        let mut canvas = Canvas::new_retained(320, 192, 1.0, RetainedNodeId::for_owner(100));
-        canvas.append_retained_scene(
-            RetainedNodeId::for_owner(101),
-            0,
-            background.clone(),
-            (0.0, 0.0),
-        );
-
-        canvas.push_retained_clip_sdf_rect_layer(
-            RetainedLayerKey::new(
-                RetainedNodeId::for_owner(102),
-                crate::SceneRevision::INITIAL,
-            ),
-            panel,
-            crate::Radius::all(20.0),
-        );
-        let mut panel_scene = Canvas::new(272, 160, 1.0);
-        let local_panel = Rect::new(0.0, 0.0, 272.0, 160.0);
-        panel_scene.push_backdrop_layer(
-            Filter::RectLiquidGlass(RectLiquidGlass {
-                blur_radius: 5,
-                blur_sampling: BlurSampling::downsampled(4),
-                tint: Color::from_rgba8(255, 255, 255, 26),
-                refraction_thickness: 28.0,
-                refraction_factor: 2.5,
-                refraction_dispersion: 10.0,
-                ..RectLiquidGlass::default()
-            }),
-            Region::rect(local_panel, crate::Radius::all(20.0)),
-        );
-        panel_scene.push_rect(
-            local_panel,
-            crate::Radius::all(20.0),
-            Color::from_rgba8(255, 255, 255, 26),
-        );
-        panel_scene.pop_layer();
-        canvas.append_retained_scene(
-            RetainedNodeId::for_owner(103),
-            0,
-            std::sync::Arc::new(panel_scene),
-            (24.0, 16.0),
-        );
-
-        let mut track = Canvas::new(220, 6, 1.0);
-        track.push_rect(
-            Rect::new(0.0, 0.0, 220.0, 6.0),
-            crate::Radius::all(3.0),
-            Color::from_rgba8(40, 50, 64, 100),
-        );
-        canvas.append_retained_scene(
-            RetainedNodeId::for_owner(104),
-            0,
-            std::sync::Arc::new(track),
-            (50.0, 93.0),
-        );
-
-        let mut thumb = Canvas::new(18, 18, 1.0);
-        thumb.push_rect(
-            Rect::new(0.0, 0.0, 18.0, 18.0),
-            crate::Radius::all(9.0),
-            Color::from_rgb8(24, 30, 40),
-        );
-        canvas.append_retained_scene(
-            RetainedNodeId::for_owner(105),
-            0,
-            std::sync::Arc::new(thumb),
-            (slider_x, 87.0),
-        );
-        canvas.pop_layer();
-        canvas
-    }
-
-    let background = background();
-    let mut incremental = new_test_renderer(320, 192, Color::TRANSPARENT);
-    incremental.render(&frame(64.0, &background));
-    for slider_x in [80.0, 96.0, 112.0, 128.0, 144.0, 160.0] {
-        incremental.render(&frame(slider_x, &background));
-        let stats = incremental.incremental_render_stats();
-        assert!(!stats.full_redraw, "slider movement must stay incremental");
-        assert!(stats.reused_offscreen_surfaces > 0);
-        assert_eq!(stats.compact_filter_dispatches, stats.filter_dispatches);
-    }
-
-    let final_frame = frame(160.0, &background);
-    let mut full = new_test_renderer(320, 192, Color::TRANSPARENT);
-    let mut config = full.incremental_render_config();
-    config.mode = crate::IncrementalRenderMode::ForceFull;
-    full.set_incremental_render_config(config);
-    full.render(&final_frame);
-
-    let incremental_image = incremental.image();
-    let full_image = full.image();
-    let difference = incremental_image
-        .pixels
-        .iter()
-        .zip(&full_image.pixels)
-        .position(|(actual, expected)| actual != expected);
-    assert_eq!(
-        difference, None,
-        "a later clipped slider must not feed tile-shaped history into a nested liquid-glass backdrop"
-    );
-}
-
-#[test]
-fn retained_backdrop_revision_rebuilds_same_bounds_region_mask() {
-    if !run_wgpu_tests() {
-        return;
-    }
-
-    fn frame(revision: u64, radius: f32) -> Canvas {
-        let mut canvas = Canvas::new_retained(256, 192, 1.0, RetainedNodeId::for_owner(110));
-        let mut background = Canvas::new(256, 192, 1.0);
-        background.push_rect(
-            Rect::new(0.0, 0.0, 128.0, 192.0),
-            crate::Radius::ZERO,
-            Color::from_rgb8(30, 90, 180),
-        );
-        background.push_rect(
-            Rect::new(128.0, 0.0, 256.0, 192.0),
-            crate::Radius::ZERO,
-            Color::from_rgb8(220, 100, 30),
-        );
-        canvas.append_retained_scene(
-            RetainedNodeId::for_owner(111),
-            0,
-            std::sync::Arc::new(background),
-            (0.0, 0.0),
-        );
-
-        canvas.push_retained_clip_sdf_rect_layer(
-            RetainedLayerKey::new(RetainedNodeId::for_owner(112), 0.into()),
-            Rect::new(16.0, 8.0, 144.0, 88.0),
-            crate::Radius::all(24.0),
-        );
-        canvas.push_retained_backdrop_layer(
-            RetainedLayerKey::new(RetainedNodeId::for_owner(113), revision.into()),
-            Filter::Blur {
-                std_dev_x: 3.0,
-                std_dev_y: 3.0,
-                sampling: BlurSampling::FULL_RES,
-            },
-            Region::rect(
-                Rect::new(32.0, 16.0, 128.0, 80.0),
-                crate::Radius::all(radius),
-            ),
-        );
-        canvas.pop_layer();
-        canvas.pop_layer();
-        canvas
-    }
-
-    let first = frame(0, 0.0);
-    let second = frame(1, 22.0);
-    let mut incremental = new_test_renderer(256, 192, Color::TRANSPARENT);
-    incremental.render(&first);
-    incremental.render(&second);
-    assert!(
-        !incremental.incremental_render_stats().full_redraw,
-        "{:?}",
-        incremental.incremental_render_stats()
-    );
-
-    let mut full = new_test_renderer(256, 192, Color::TRANSPARENT);
-    let mut config = full.incremental_render_config();
-    config.mode = crate::IncrementalRenderMode::ForceFull;
-    full.set_incremental_render_config(config);
-    full.render(&second);
-    let incremental_image = incremental.image();
-    let full_image = full.image();
-    assert_eq!(
-        incremental_image
-            .pixels
-            .iter()
-            .zip(&full_image.pixels)
-            .position(|(actual, expected)| actual != expected),
-        None
-    );
-}
-
-#[test]
-fn retained_mask_updates_local_tiles_and_matches_full_render() {
-    if !run_wgpu_tests() {
-        return;
-    }
-
-    fn frame(revision: u64, color: Color) -> Canvas {
-        let mut canvas = Canvas::new_retained(128, 96, 1.0, RetainedNodeId::for_owner(40));
-        let mut mask_scene = Canvas::new(128, 96, 1.0);
-        mask_scene.push_rect(
-            Rect::new(16.0, 16.0, 112.0, 80.0),
-            crate::Radius::all(12.0),
-            Color::WHITE,
-        );
-        canvas.push_retained_mask_layer(
-            RetainedLayerKey::new(RetainedNodeId::for_owner(41), crate::SceneRevision::INITIAL),
-            mask_scene,
-            Mask {
-                region: Region::rect(Rect::new(16.0, 16.0, 112.0, 80.0), crate::Radius::all(12.0)),
-                kind: MaskKind::Alpha,
-            },
-        );
-        let mut content = Canvas::new(16, 16, 1.0);
-        content.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
-        canvas.append_retained_scene(
-            RetainedNodeId::for_owner(42),
-            revision,
-            std::sync::Arc::new(content),
-            (48.0, 32.0),
-        );
-        canvas.pop_layer();
-        canvas
-    }
-
-    let first = frame(0, Color::from_rgb8(220, 50, 90));
-    let second = frame(1, Color::from_rgb8(40, 200, 150));
-    let mut incremental = new_test_renderer(128, 96, Color::TRANSPARENT);
-    incremental.render(&first);
-    incremental.render(&second);
-    let stats = incremental.incremental_render_stats().clone();
-    assert_eq!(stats.rerendered_offscreen_surfaces, 1);
-    assert!(stats.rerendered_offscreen_tiles < 24, "{stats:?}");
-    assert_eq!(stats.compact_filter_dispatches, stats.filter_dispatches);
-
-    let mut full = new_test_renderer(128, 96, Color::TRANSPARENT);
-    let mut config = full.incremental_render_config();
-    config.mode = crate::IncrementalRenderMode::ForceFull;
-    full.set_incremental_render_config(config);
-    full.render(&second);
-    assert_eq!(incremental.image().pixels, full.image().pixels);
-}
-
 const GPU_PTCL_END: u32 = 0;
 const GPU_PTCL_COLOR: u32 = 2;
 const GPU_PTCL_BEGIN_CLIP: u32 = 3;
@@ -4626,42 +3428,6 @@ fn wgpu_renderer_profile_includes_cpu_prepare_and_gpu_stages() {
             "expected at least one GPU timestamp entry"
         );
     }
-}
-
-#[test]
-fn retained_profile_breaks_out_collection_materialization_and_damage() {
-    if !run_wgpu_tests() {
-        return;
-    }
-
-    let mut child = Canvas::new(16, 16, 1.0);
-    child.push_rect(
-        Rect::new(2.0, 2.0, 14.0, 14.0),
-        crate::Radius::ZERO,
-        Color::from_rgb8(30, 120, 220),
-    );
-    let mut canvas = Canvas::new_retained(16, 16, 1.0, RetainedNodeId::for_owner(300));
-    canvas.append_retained_scene(
-        RetainedNodeId::for_owner(301),
-        0,
-        std::sync::Arc::new(child),
-        (0.0, 0.0),
-    );
-    let mut renderer = new_test_renderer(16, 16, Color::TRANSPARENT);
-
-    renderer.start_profile();
-    renderer.render(&canvas);
-    let profile = renderer.end_profile().clone();
-
-    assert_profile_has(&profile, "retained.collect");
-    assert_profile_has(&profile, "retained.materialize");
-    assert_profile_has(&profile, "retained.damage");
-    let stats = profile
-        .incremental_stats()
-        .expect("incremental diagnostics");
-    assert!(!stats.materialized_scene_reused);
-    assert_eq!(stats.root_draw_batches, 1);
-    assert_eq!(stats.draw_batches, 1);
 }
 
 #[test]
@@ -7139,7 +5905,7 @@ fn wgpu_renderer_profiles_empty_stack_liquid_glass_with_direct_composite_when_en
 }
 
 #[test]
-fn retained_full_redraw_liquid_glass_uses_direct_composite() {
+fn persistent_full_redraw_liquid_glass_uses_direct_composite() {
     if !run_wgpu_tests() {
         return;
     }
@@ -7161,19 +5927,24 @@ fn retained_full_redraw_liquid_glass_uses_direct_composite() {
     background.pop_layer();
 
     let root = crate::RetainedNodeId::for_owner(68_200);
-    let mut canvas = Canvas::new_retained(64, 40, 1.0, root);
-    canvas.append_retained_scene(
-        crate::RetainedNodeId::for_owner(68_201),
-        crate::SceneRevision::INITIAL,
-        std::sync::Arc::new(background),
-        Point::ZERO,
-    );
+    let mut scene = RetainedScene::new(64, 40, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            crate::RetainedNodeId::for_owner(68_201),
+            std::sync::Arc::new(background),
+            Point::ZERO,
+        )
+        .commit()
+        .unwrap();
     let mut renderer = new_test_renderer(64, 40, Color::TRANSPARENT);
     let mut config = renderer.incremental_render_config();
     config.mode = crate::IncrementalRenderMode::ForceFull;
     renderer.set_incremental_render_config(config);
     renderer.start_profile();
-    renderer.render(&canvas);
+    renderer.render_retained(&scene);
     let profile = renderer.end_profile().clone();
 
     assert!(renderer.incremental_render_stats().full_redraw);
@@ -7184,7 +5955,7 @@ fn retained_full_redraw_liquid_glass_uses_direct_composite() {
 }
 
 #[test]
-fn retained_full_redraw_clipped_liquid_glass_skips_unused_source_history() {
+fn persistent_full_redraw_clipped_liquid_glass_skips_unused_source_history() {
     if !run_wgpu_tests() {
         return;
     }
@@ -7209,19 +5980,24 @@ fn retained_full_redraw_clipped_liquid_glass_skips_unused_source_history() {
     let immediate = scene.clone();
 
     let root = crate::RetainedNodeId::for_owner(68_210);
-    let mut canvas = Canvas::new_retained(64, 40, 1.0, root);
-    canvas.append_retained_scene(
-        crate::RetainedNodeId::for_owner(68_211),
-        crate::SceneRevision::INITIAL,
-        std::sync::Arc::new(scene),
-        Point::ZERO,
-    );
+    let mut retained = RetainedScene::new(64, 40, 1.0, root).unwrap();
+    retained
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            crate::RetainedNodeId::for_owner(68_211),
+            std::sync::Arc::new(scene),
+            Point::ZERO,
+        )
+        .commit()
+        .unwrap();
     let mut renderer = new_test_renderer(64, 40, Color::TRANSPARENT);
     let mut config = renderer.incremental_render_config();
     config.mode = crate::IncrementalRenderMode::ForceFull;
     renderer.set_incremental_render_config(config);
     renderer.start_profile();
-    renderer.render(&canvas);
+    renderer.render_retained(&retained);
     let profile = renderer.end_profile().clone();
     let mut immediate_renderer = new_test_renderer(64, 40, Color::TRANSPARENT);
     let immediate_profile = immediate_renderer.render_profiled(&immediate);

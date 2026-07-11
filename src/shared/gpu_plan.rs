@@ -130,16 +130,16 @@ impl GpuBufferLengths {
             });
         let tile_draw_counts = if updated {
             TileDrawCounts {
-                index_count: bins.draw_indices.len(),
+                index_count: bins.upload_index_count(),
                 chunk_count: bins.active_pages,
             }
-        } else if canvas.retained_root.is_none()
+        } else if canvas.persistent_root.is_none()
             && canvas.buffer_changes.is_none()
             && canvas.painter_keys.is_none()
         {
             bins.reset_transient(&canvas.draw_records, &plan.draw_order, tiles_size, cursors);
             TileDrawCounts {
-                index_count: bins.draw_indices.len(),
+                index_count: bins.upload_index_count(),
                 chunk_count: bins.active_pages,
             }
         } else {
@@ -253,6 +253,10 @@ pub(crate) struct TileDrawBins {
     dirty_records: Vec<usize>,
     dirty_pages: Vec<u32>,
     full_upload: bool,
+    flat_full_upload: bool,
+    full_upload_records: Vec<TileDrawRecord>,
+    full_upload_indices: Vec<u32>,
+    page_arena_valid: bool,
     compactions: u64,
     active_batch_marks: Vec<u32>,
     active_batch_generation: u32,
@@ -373,7 +377,13 @@ impl TileDrawBins {
         tiles_size: (u32, u32),
     ) {
         let tile_count = tiles_size.0 as usize * tiles_size.1 as usize;
-        self.records.clear();
+        if !self.page_arena_valid {
+            self.draw_indices.clear();
+            self.tile_pages.clear();
+            self.free_pages.clear();
+            self.active_pages = 0;
+            self.page_arena_valid = true;
+        }
         self.records.resize(
             tile_count,
             TileDrawRecord {
@@ -381,12 +391,21 @@ impl TileDrawBins {
                 end: 0,
             },
         );
-        self.draw_indices.clear();
-        self.tile_pages.clear();
-        self.tile_pages.resize(tile_count, Vec::new());
-        self.tile_refs.clear();
-        self.tile_refs.resize(tile_count, Vec::new());
-        self.free_pages.clear();
+        self.records.fill(TileDrawRecord {
+            start: u32::MAX,
+            end: 0,
+        });
+        if self.tile_pages.len() > tile_count {
+            for pages in self.tile_pages.drain(tile_count..) {
+                self.active_pages -= pages.len();
+                self.free_pages.extend(pages);
+            }
+        }
+        self.tile_pages.resize_with(tile_count, Vec::new);
+        self.tile_refs.resize_with(tile_count, Vec::new);
+        for draws in &mut self.tile_refs {
+            draws.clear();
+        }
         self.draw_bboxes.clear();
         self.draw_bboxes.resize(
             draw_records.len(),
@@ -404,7 +423,8 @@ impl TileDrawBins {
         self.draw_ptcl_capacities.resize(draw_records.len(), 0);
         self.draw_ptcl_capacity = 0;
         self.tiles_size = tiles_size;
-        self.active_pages = 0;
+        self.dirty_records.clear();
+        self.dirty_pages.clear();
         let mut stable_order = Vec::new();
         let ordered = if let Some(keys) = painter_keys {
             stable_order.extend(
@@ -437,6 +457,7 @@ impl TileDrawBins {
         for tile in 0..tile_count {
             self.rewrite_tile(tile);
         }
+        self.build_flat_full_upload();
         self.dirty_records.clear();
         self.dirty_pages.clear();
         self.full_upload = true;
@@ -507,6 +528,10 @@ impl TileDrawBins {
         self.draw_ptcl_capacities.clear();
         self.tiles_size = tiles_size;
         self.active_pages = chunk_count;
+        self.page_arena_valid = false;
+        self.flat_full_upload = false;
+        self.full_upload_records.clear();
+        self.full_upload_indices.clear();
         self.dirty_records.clear();
         self.dirty_pages.clear();
         self.full_upload = true;
@@ -595,6 +620,7 @@ impl TileDrawBins {
                 });
             }
         }
+        let page_membership_changed = !affected_tiles.is_empty();
         let mut changed_ids = membership_changed
             .iter()
             .filter_map(|&draw| (draw < new_len).then_some(draw as u32))
@@ -623,6 +649,15 @@ impl TileDrawBins {
         self.draw_bboxes.truncate(new_len);
         self.draw_ranks.truncate(new_len);
         self.draw_ptcl_capacities.truncate(new_len);
+        if page_membership_changed && self.flat_full_upload {
+            // The GPU currently contains the compact flat representation from the preceding
+            // full upload. Keep it for content-only updates; switch once tile membership really
+            // changes, uploading the already-maintained persistent page arena exactly once.
+            self.flat_full_upload = false;
+            self.full_upload_records.clear();
+            self.full_upload_indices.clear();
+            self.full_upload = true;
+        }
         self.maybe_compact_pages();
         true
     }
@@ -661,6 +696,31 @@ impl TileDrawBins {
         }
     }
 
+    fn build_flat_full_upload(&mut self) {
+        self.flat_full_upload = true;
+        self.full_upload_records.clear();
+        self.full_upload_records.resize(
+            self.tile_refs.len(),
+            TileDrawRecord {
+                start: u32::MAX,
+                end: 0,
+            },
+        );
+        self.full_upload_indices.clear();
+        for (tile, draws) in self.tile_refs.iter().enumerate() {
+            if draws.is_empty() {
+                continue;
+            }
+            let start = self.full_upload_indices.len();
+            assert!(start < TILE_DRAW_FLAT_FLAG as usize);
+            self.full_upload_records[tile] = TileDrawRecord {
+                start: TILE_DRAW_FLAT_FLAG | start as u32,
+                end: draws.len() as u32,
+            };
+            self.full_upload_indices.extend_from_slice(draws);
+        }
+    }
+
     fn allocate_page(&mut self) -> u32 {
         if let Some(page) = self.free_pages.pop() {
             return page;
@@ -686,6 +746,9 @@ impl TileDrawBins {
             self.rewrite_tile(tile);
         }
         self.full_upload = true;
+        self.flat_full_upload = false;
+        self.full_upload_records.clear();
+        self.full_upload_indices.clear();
         self.compactions += 1;
     }
 
@@ -704,6 +767,26 @@ impl TileDrawBins {
 
     pub(crate) fn active_page_count(&self) -> usize {
         self.active_pages
+    }
+
+    pub(crate) fn upload_records(&self) -> &[TileDrawRecord] {
+        if self.flat_full_upload {
+            &self.full_upload_records
+        } else {
+            &self.records
+        }
+    }
+
+    pub(crate) fn upload_indices(&self) -> &[u32] {
+        if self.flat_full_upload {
+            &self.full_upload_indices
+        } else {
+            &self.draw_indices
+        }
+    }
+
+    pub(crate) fn upload_index_count(&self) -> usize {
+        self.upload_indices().len()
     }
 
     pub(crate) fn compactions(&self) -> u64 {
@@ -793,7 +876,7 @@ pub(crate) fn build_tile_draw_bins_for_draws_into(
     cursors.clear();
 
     TileDrawCounts {
-        index_count: bins.draw_indices.len(),
+        index_count: bins.upload_index_count(),
         chunk_count: bins.active_pages,
     }
 }
@@ -1966,7 +2049,12 @@ mod tests {
 
     #[test]
     fn fused_lengths_reuse_the_same_tile_draw_bins() {
-        let mut canvas = Canvas::new(crate::TILE_SIZE * 2, crate::TILE_SIZE, 1.0);
+        let mut canvas = Canvas::new_persistent(
+            crate::TILE_SIZE * 2,
+            crate::TILE_SIZE,
+            1.0,
+            crate::RetainedNodeId::for_owner(70_000),
+        );
         for _ in 0..=COARSE_CHUNK_SIZE {
             canvas.push_rect(
                 Rect::new(0.0, 0.0, 16.0, 16.0),
@@ -1993,7 +2081,8 @@ mod tests {
             GpuLengthOverrides::default(),
         );
 
-        assert_eq!(lengths.tile_draw_index_count, bins.draw_indices.len());
+        assert_eq!(lengths.tile_draw_index_count, bins.upload_index_count());
+        assert!(bins.upload_indices().len() < bins.draw_indices.len());
         assert_eq!(
             lengths.tile_draw_chunk_count,
             bins.records
@@ -2004,6 +2093,65 @@ mod tests {
         );
         assert_eq!(bins.records[0].end, COARSE_CHUNK_SIZE + 1);
         assert_eq!(bins.records[1].end, 1);
+    }
+
+    #[test]
+    fn tile_bins_switch_from_transient_flat_upload_back_to_persistent_pages() {
+        let mut transient = Canvas::new(crate::TILE_SIZE * 2, crate::TILE_SIZE, 1.0);
+        transient.push_rect(
+            Rect::new(0.0, 0.0, 16.0, 16.0),
+            crate::Radius::ZERO,
+            Color::BLACK,
+        );
+        transient.push_rect(
+            Rect::new(16.0, 0.0, 32.0, 16.0),
+            crate::Radius::ZERO,
+            Color::WHITE,
+        );
+        let mut bins = TileDrawBins::default();
+        let mut cursors = Vec::new();
+        let transient_plan = transient.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
+        GpuBufferLengths::from_scene_with_text_and_tile_draw_bins(
+            &transient,
+            None,
+            &transient_plan,
+            &mut bins,
+            &mut cursors,
+            false,
+            GpuLengthOverrides::default(),
+        );
+
+        let mut persistent = Canvas::new_persistent(
+            crate::TILE_SIZE * 2,
+            crate::TILE_SIZE,
+            1.0,
+            crate::RetainedNodeId::for_owner(70_001),
+        );
+        persistent.push_rect(
+            Rect::new(0.0, 0.0, 16.0, 16.0),
+            crate::Radius::ZERO,
+            Color::BLACK,
+        );
+        persistent.push_rect(
+            Rect::new(16.0, 0.0, 32.0, 16.0),
+            crate::Radius::ZERO,
+            Color::WHITE,
+        );
+        let persistent_plan = persistent.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
+        let lengths = GpuBufferLengths::from_scene_with_text_and_tile_draw_bins(
+            &persistent,
+            None,
+            &persistent_plan,
+            &mut bins,
+            &mut cursors,
+            false,
+            GpuLengthOverrides::default(),
+        );
+
+        assert_eq!(bins.tile_draws(0), [0]);
+        assert_eq!(bins.tile_draws(1), [1]);
+        assert_eq!(lengths.tile_draw_chunk_count, 2);
+        assert_eq!(lengths.tile_draw_index_count, 2);
     }
 
     #[test]
@@ -2133,6 +2281,7 @@ mod tests {
         let mut cursors = Vec::new();
         build_tile_draw_bins_into(&canvas, &plan, &mut bins, &mut cursors);
         let _ = bins.take_dirty();
+        let compact_indices = bins.upload_index_count();
 
         assert!(bins.update_changed(
             &canvas.draw_records,
@@ -2145,6 +2294,8 @@ mod tests {
         assert!(!full);
         assert!(dirty_records.is_empty());
         assert!(dirty_pages.is_empty());
+        assert_eq!(bins.upload_index_count(), compact_indices);
+        assert!(bins.upload_indices().len() < bins.draw_indices.len());
     }
 
     #[test]

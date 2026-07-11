@@ -12,14 +12,19 @@ use peniko::{
 
 use crate::shared::{
     bounds::{Bounds, PixelBounds},
-    brush::{Brush, PatternSampling, decode_encoded_brush, push_encoded_brush},
+    brush::{
+        Brush, PatternSampling, decode_encoded_brush, push_encoded_brush, translate_encoded_brush,
+    },
     draw_record::{DrawRecord, DrawTag},
     execution::{
         Command, CommandList, CommandListId, ExecOp, ExecPlan, LayerStackEntry,
         ROOT_COMMAND_LIST_ID, RetainedBatchBranch, RetainedBatchOwner,
     },
     fill::FillRule,
-    gpu_sdf::{decode_sdf, decode_sdf_shadow, push_encoded_sdf, push_encoded_sdf_shadow},
+    gpu_sdf::{
+        decode_sdf, decode_sdf_shadow, push_encoded_sdf, push_encoded_sdf_shadow,
+        translate_encoded_sdf,
+    },
     image::Image,
     image_resource::{ImageKey, ImageResourceStore},
     layer::{
@@ -51,11 +56,11 @@ use crate::shared::{
 use crate::text::{TextRun, layout_bounds_at_scaled_origin, scene_glyphs_at_scaled_origin};
 use crate::{TextContext, TextFontSystem, TextLayout};
 
+pub use retained::RetainedNodeId;
 pub(crate) use retained::{
-    RetainedDamage, RetainedFrame, RetainedFrameDelta, RetainedNodeKind, RetainedNodePatch,
-    RetainedNodeState, RetainedSceneCache, RetainedSurfaceId,
+    NodeGeneration, PersistentLayerKey, RetainedDamage, RetainedFrame, RetainedFrameDelta,
+    RetainedNodeKind, RetainedNodePatch, RetainedNodeState, RetainedSurfaceId,
 };
-pub use retained::{RetainedLayerKey, RetainedNodeId, SceneRevision};
 
 const SDF_RECORD_FILL_RULE: FillRule = FillRule::NonZero;
 
@@ -81,7 +86,7 @@ pub struct Canvas {
     pub(crate) logical_height: u32,
     pub(crate) scale_factor: f32,
     draw_generation: u32,
-    pub(crate) retained_root: Option<RetainedNodeId>,
+    pub(crate) persistent_root: Option<RetainedNodeId>,
     pub(crate) invalidated_bounds: Vec<Bounds>,
     pub(crate) invalidate_all: bool,
     pub(crate) buffer_changes: Option<SceneBufferChanges>,
@@ -92,7 +97,7 @@ pub struct Canvas {
     /// whole command graph during prepare.
     pub(crate) plan_cache_key: Option<u64>,
     pub(crate) compiled_plan: Option<SharedArc<ExecPlan>>,
-    pub(crate) retained_frame_override: Option<RetainedFrame>,
+    pub(crate) persistent_frame: Option<RetainedFrame>,
     pub(crate) painter_keys: Option<Vec<PainterKey>>,
     pub(crate) stable_batch_ids: Option<Vec<u32>>,
     /// Live physical draw count per stable batch. Persistent plans may keep an empty placeholder
@@ -480,10 +485,6 @@ impl SceneOffset {
     fn command(self, command: &mut Command) {
         match command {
             Command::Draw(_) => {}
-            Command::RetainedScene { offset, .. } => {
-                offset.0 += self.dx;
-                offset.1 += self.dy;
-            }
             Command::MaterializedRetainedScene { .. } => {}
             Command::Layer { layer, .. } => {
                 *layer = self.layer(layer.clone());
@@ -519,32 +520,28 @@ impl Canvas {
             logical_height,
             scale_factor: scale,
             draw_generation: 0,
-            retained_root: None,
+            persistent_root: None,
             invalidated_bounds: Vec::new(),
             invalidate_all: false,
             buffer_changes: None,
             plan_cache_key: None,
             compiled_plan: None,
-            retained_frame_override: None,
+            persistent_frame: None,
             painter_keys: None,
             stable_batch_ids: None,
             stable_batch_counts: None,
         }
     }
 
-    /// Creates a frame whose retained identity is stable across Canvas values.
-    ///
-    /// The renderer uses `root_id` to select the previous frame texture and to
-    /// diff retained descendants. Callers must use a different id for unrelated
-    /// render targets.
-    pub fn new_retained(
+    /// Creates the internal materialized target owned by one persistent scene.
+    pub(crate) fn new_persistent(
         logical_width: u32,
         logical_height: u32,
         scale_factor: f32,
         root_id: RetainedNodeId,
     ) -> Self {
         let mut canvas = Self::new(logical_width, logical_height, scale_factor);
-        canvas.retained_root = Some(root_id);
+        canvas.persistent_root = Some(root_id);
         canvas
     }
 
@@ -560,9 +557,100 @@ impl Canvas {
         (self.logical_width, self.logical_height)
     }
 
-    /// Returns whether this canvas records stable retained scene history.
-    pub fn is_retained(&self) -> bool {
-        self.retained_root.is_some()
+    /// Changes only the viewport extent and rebuilds path allocations clipped to that viewport.
+    /// Geometry, commands, brushes, images, and text remain valid when scale is unchanged.
+    pub(crate) fn resize_surface(&mut self, logical_width: u32, logical_height: u32) {
+        if (self.logical_width, self.logical_height) == (logical_width, logical_height) {
+            return;
+        }
+        self.set_surface_extent(logical_width, logical_height);
+        self.backdrop_pool_capacity = 0;
+        self.tile_cnt = 0;
+        self.append_path_backdrops_for_paths(
+            0,
+            self.path_records.len(),
+            0,
+            self.draw_records.len(),
+        );
+    }
+
+    pub(crate) fn set_surface_extent(&mut self, logical_width: u32, logical_height: u32) {
+        self.logical_width = logical_width;
+        self.logical_height = logical_height;
+    }
+
+    /// Translates already-encoded scene data without decoding and appending the source Canvas.
+    /// This preserves record shape and command topology for retained position-only updates.
+    pub(crate) fn translate_scene(&mut self, logical_delta: Point) {
+        let offset = SceneOffset::new(self.physical_point(logical_delta));
+        if offset.is_zero() {
+            return;
+        }
+        for line in &mut self.lines {
+            offset.line(line);
+        }
+        for index in 0..self.draw_records.len() {
+            let draw = self.draw_records[index];
+            if draw.brush_offset != DrawRecord::NONE {
+                assert!(translate_encoded_brush(
+                    &mut self.brush_blob,
+                    draw.brush_offset,
+                    draw.brush_len,
+                    offset.dx as f32,
+                    offset.dy as f32,
+                ));
+            }
+            let pixel_bounds = if draw.sdf_offset != DrawRecord::NONE {
+                assert!(translate_encoded_sdf(
+                    &mut self.sdf_blob,
+                    draw.sdf_offset,
+                    draw.sdf_len,
+                    offset.dx as f32,
+                    offset.dy as f32,
+                ));
+                Self::pixel_bounds_from_bounds(
+                    decode_sdf(&self.sdf_blob, draw.sdf_offset, draw.sdf_len)
+                        .expect("translated SDF remains valid")
+                        .bounds(),
+                )
+            } else if draw.sdf_shadow_offset != DrawRecord::NONE {
+                assert!(translate_encoded_sdf(
+                    &mut self.sdf_shadow_blob,
+                    draw.sdf_shadow_offset,
+                    draw.sdf_shadow_len,
+                    offset.dx as f32,
+                    offset.dy as f32,
+                ));
+                Self::pixel_bounds_from_bounds(
+                    decode_sdf_shadow(
+                        &self.sdf_shadow_blob,
+                        draw.sdf_shadow_offset,
+                        draw.sdf_shadow_len,
+                    )
+                    .expect("translated SDF shadow remains valid")
+                    .bounds(),
+                )
+            } else {
+                offset.pixel_bounds(draw.pixel_bounds)
+            };
+            self.draw_records[index].pixel_bounds = pixel_bounds;
+        }
+        for glyph in &mut self.text_glyphs {
+            *glyph = glyph.translated(offset.dx, offset.dy);
+        }
+        for list in &mut self.command_lists {
+            for command in &mut list.commands {
+                offset.command(command);
+            }
+        }
+        self.backdrop_pool_capacity = 0;
+        self.tile_cnt = 0;
+        self.append_path_backdrops_for_paths(
+            0,
+            self.path_records.len(),
+            0,
+            self.draw_records.len(),
+        );
     }
 
     /// Returns whether every layer and command list opened while recording has been closed.
@@ -983,19 +1071,12 @@ impl Canvas {
         children
     }
 
-    fn push_layer_command(
-        &mut self,
-        retained: Option<RetainedLayerKey>,
-        draw: usize,
-        layer: Layer,
-        kind: LayerKind,
-    ) {
-        let retained = if self.is_retained() { retained } else { None };
+    fn push_layer_command(&mut self, draw: usize, layer: Layer, kind: LayerKind) {
         let children = self.push_child_command_list();
         self.current_command_list_mut()
             .commands
             .push(Command::Layer {
-                retained,
+                retained: None,
                 draw,
                 layer,
                 children,
@@ -1004,18 +1085,12 @@ impl Canvas {
         self.layer_stack.push(kind);
     }
 
-    fn push_mask_command(
-        &mut self,
-        retained: Option<RetainedLayerKey>,
-        layer: Mask,
-        mask_commands: CommandListId,
-    ) {
-        let retained = if self.is_retained() { retained } else { None };
+    fn push_mask_command(&mut self, layer: Mask, mask_commands: CommandListId) {
         let content = self.push_child_command_list();
         self.current_command_list_mut()
             .commands
             .push(Command::MaskLayer {
-                retained,
+                retained: None,
                 layer,
                 content,
                 mask: mask_commands,
@@ -1360,17 +1435,6 @@ impl Canvas {
     ) -> Command {
         match command {
             Command::Draw(draw_ix) => Command::Draw(draw_ix + draw_offset),
-            Command::RetainedScene {
-                id,
-                revision,
-                canvas,
-                offset,
-            } => Command::RetainedScene {
-                id,
-                revision,
-                canvas,
-                offset,
-            },
             Command::MaterializedRetainedScene {
                 id,
                 revision,
@@ -1456,23 +1520,11 @@ impl Canvas {
         rule: FillRule,
         tolerance: f64,
     ) {
-        self.push_clip_layer_with_retention(None, path, transform, rule, tolerance);
+        self.push_clip_layer_inner(path, transform, rule, tolerance);
     }
 
-    pub fn push_retained_clip_layer(
+    fn push_clip_layer_inner(
         &mut self,
-        retained: RetainedLayerKey,
-        path: BezPath,
-        transform: Affine,
-        rule: FillRule,
-        tolerance: f64,
-    ) {
-        self.push_clip_layer_with_retention(Some(retained), path, transform, rule, tolerance);
-    }
-
-    fn push_clip_layer_with_retention(
-        &mut self,
-        retained: Option<RetainedLayerKey>,
         path: BezPath,
         transform: Affine,
         rule: FillRule,
@@ -1487,12 +1539,12 @@ impl Canvas {
         if let Some(rect) = axis_aligned_rect_path(&path, transform)
             && self.rect_has_pixel_aligned_edges(rect)
         {
-            self.push_clip_sdf_rect_layer_with_retention(retained, rect, Radius::ZERO);
+            self.push_clip_sdf_rect_layer_inner(rect, Radius::ZERO);
             return;
         }
         self.ensure_command_root();
         let draw = self.push_layer_path(DrawTag::Clip, path, transform, rule, tolerance);
-        self.push_layer_command(retained, draw, Layer::Clip, LayerKind::Clip);
+        self.push_layer_command(draw, Layer::Clip, LayerKind::Clip);
     }
 
     /// Adds a rounded/sharp rectangle clip that is rasterized directly from an SDF.
@@ -1500,33 +1552,15 @@ impl Canvas {
     /// This avoids flattening simple rounded clips into path segments while keeping
     /// the SDF geometry as the source of truth until render time.
     pub fn push_clip_sdf_rect_layer(&mut self, rect: Rect, radius: Radius) {
-        self.push_clip_sdf_rect_layer_with_retention(None, rect, radius);
+        self.push_clip_sdf_rect_layer_inner(rect, radius);
     }
 
-    /// Opens an SDF rectangle clip whose command subtree has stable retained identity.
-    pub fn push_retained_clip_sdf_rect_layer(
-        &mut self,
-        retained: RetainedLayerKey,
-        rect: Rect,
-        radius: Radius,
-    ) {
-        self.push_clip_sdf_rect_layer_with_retention(Some(retained), rect, radius);
-    }
-
-    fn push_clip_sdf_rect_layer_with_retention(
-        &mut self,
-        retained: Option<RetainedLayerKey>,
-        rect: Rect,
-        radius: Radius,
-    ) {
-        self.push_clip_sdf_layer_with_retention(
-            retained,
-            Sdf::Rect(SdfRect {
-                start: Point::new(rect.x0, rect.y0),
-                end: Point::new(rect.x1, rect.y1),
-                radius,
-            }),
-        );
+    fn push_clip_sdf_rect_layer_inner(&mut self, rect: Rect, radius: Radius) {
+        self.push_clip_sdf_layer_inner(Sdf::Rect(SdfRect {
+            start: Point::new(rect.x0, rect.y0),
+            end: Point::new(rect.x1, rect.y1),
+            radius,
+        }));
     }
 
     fn rect_has_pixel_aligned_edges(&self, rect: Rect) -> bool {
@@ -1537,43 +1571,18 @@ impl Canvas {
     }
 
     pub fn push_clip_sdf_circle_layer(&mut self, circle: Circle) {
-        self.push_clip_sdf_layer_with_retention(
-            None,
-            Sdf::Circle(SdfCircle {
-                center: circle.center,
-                radius: circle.radius as f32,
-            }),
-        );
-    }
-
-    pub fn push_retained_clip_sdf_circle_layer(
-        &mut self,
-        retained: RetainedLayerKey,
-        circle: Circle,
-    ) {
-        self.push_clip_sdf_layer_with_retention(
-            Some(retained),
-            Sdf::Circle(SdfCircle {
-                center: circle.center,
-                radius: circle.radius as f32,
-            }),
-        );
+        self.push_clip_sdf_layer_inner(Sdf::Circle(SdfCircle {
+            center: circle.center,
+            radius: circle.radius as f32,
+        }));
     }
 
     pub fn push_clip_sdf_arc_layer(&mut self, arc: SdfArc) {
         self.push_clip_sdf_layer(Sdf::Arc(arc));
     }
 
-    pub fn push_retained_clip_sdf_arc_layer(&mut self, retained: RetainedLayerKey, arc: SdfArc) {
-        self.push_clip_sdf_layer_with_retention(Some(retained), Sdf::Arc(arc));
-    }
-
     pub fn push_clip_sdf_line_layer(&mut self, line: SdfLine) {
         self.push_clip_sdf_layer(Sdf::Line(line));
-    }
-
-    pub fn push_retained_clip_sdf_line_layer(&mut self, retained: RetainedLayerKey, line: SdfLine) {
-        self.push_clip_sdf_layer_with_retention(Some(retained), Sdf::Line(line));
     }
 
     /// Adds a clip layer backed by exact SDF geometry.
@@ -1582,14 +1591,10 @@ impl Canvas {
     /// or per-tile segments. The renderer rasterizes the mask directly from the
     /// SDF bounds, so future SDF primitives automatically work as clip layers.
     pub fn push_clip_sdf_layer(&mut self, sdf: Sdf) {
-        self.push_clip_sdf_layer_with_retention(None, sdf);
+        self.push_clip_sdf_layer_inner(sdf);
     }
 
-    pub fn push_retained_clip_sdf_layer(&mut self, retained: RetainedLayerKey, sdf: Sdf) {
-        self.push_clip_sdf_layer_with_retention(Some(retained), sdf);
-    }
-
-    fn push_clip_sdf_layer_with_retention(&mut self, retained: Option<RetainedLayerKey>, sdf: Sdf) {
+    fn push_clip_sdf_layer_inner(&mut self, sdf: Sdf) {
         self.ensure_command_root();
         let sdf = self.physical_sdf(sdf);
         let bounds = sdf.bounds();
@@ -1600,7 +1605,7 @@ impl Canvas {
             false,
         );
         let layer = Layer::ClipSdf { bounds, sdf };
-        self.push_layer_command(retained, draw, layer, LayerKind::ClipSdf);
+        self.push_layer_command(draw, layer, LayerKind::ClipSdf);
     }
 
     /// Starts an isolated source-over group.
@@ -1610,26 +1615,10 @@ impl Canvas {
     /// transparent offscreen buffer first, then the group is composited back
     /// through the supplied layer path and any outer clips.
     pub fn push_isolate_layer(&mut self, path: BezPath, transform: Affine, tolerance: f64) {
-        self.push_isolate_layer_with_retention(None, path, transform, tolerance);
+        self.push_isolate_layer_inner(path, transform, tolerance);
     }
 
-    pub fn push_retained_isolate_layer(
-        &mut self,
-        retained: RetainedLayerKey,
-        path: BezPath,
-        transform: Affine,
-        tolerance: f64,
-    ) {
-        self.push_isolate_layer_with_retention(Some(retained), path, transform, tolerance);
-    }
-
-    fn push_isolate_layer_with_retention(
-        &mut self,
-        retained: Option<RetainedLayerKey>,
-        path: BezPath,
-        transform: Affine,
-        tolerance: f64,
-    ) {
+    fn push_isolate_layer_inner(&mut self, path: BezPath, transform: Affine, tolerance: f64) {
         self.ensure_command_root();
         let draw = self.push_layer_path(
             DrawTag::Isolate,
@@ -1638,7 +1627,7 @@ impl Canvas {
             FillRule::NonZero,
             tolerance,
         );
-        self.push_layer_command(retained, draw, Layer::Isolate, LayerKind::Isolate);
+        self.push_layer_command(draw, Layer::Isolate, LayerKind::Isolate);
     }
 
     pub fn push_opacity_layer(
@@ -1648,23 +1637,11 @@ impl Canvas {
         tolerance: f64,
         opacity: f32,
     ) {
-        self.push_opacity_layer_with_retention(None, path, transform, tolerance, opacity);
+        self.push_opacity_layer_inner(path, transform, tolerance, opacity);
     }
 
-    pub fn push_retained_opacity_layer(
+    fn push_opacity_layer_inner(
         &mut self,
-        retained: RetainedLayerKey,
-        path: BezPath,
-        transform: Affine,
-        tolerance: f64,
-        opacity: f32,
-    ) {
-        self.push_opacity_layer_with_retention(Some(retained), path, transform, tolerance, opacity);
-    }
-
-    fn push_opacity_layer_with_retention(
-        &mut self,
-        retained: Option<RetainedLayerKey>,
         path: BezPath,
         transform: Affine,
         tolerance: f64,
@@ -1679,7 +1656,7 @@ impl Canvas {
             tolerance,
         );
         let layer = Layer::Opacity(Opacity { opacity });
-        self.push_layer_command(retained, draw, layer, LayerKind::Opacity);
+        self.push_layer_command(draw, layer, LayerKind::Opacity);
     }
 
     pub(crate) fn push_blend_layer_inner(
@@ -1689,12 +1666,11 @@ impl Canvas {
         tolerance: f64,
         blend: Blend,
     ) {
-        self.push_blend_layer_with_retention(None, path, transform, tolerance, blend);
+        self.push_blend_layer_inner_impl(path, transform, tolerance, blend);
     }
 
-    fn push_blend_layer_with_retention(
+    fn push_blend_layer_inner_impl(
         &mut self,
-        retained: Option<RetainedLayerKey>,
         path: BezPath,
         transform: Affine,
         tolerance: f64,
@@ -1709,7 +1685,7 @@ impl Canvas {
             tolerance,
         );
         let layer = Layer::Blend(Blend { mode: blend.mode });
-        self.push_layer_command(retained, draw, layer, LayerKind::Blend);
+        self.push_layer_command(draw, layer, LayerKind::Blend);
     }
 
     pub fn push_blend_layer(
@@ -1723,56 +1699,23 @@ impl Canvas {
         self.push_blend_layer_inner(path, transform, tolerance, Blend::new(mix, compose));
     }
 
-    pub fn push_retained_blend_layer(
-        &mut self,
-        retained: RetainedLayerKey,
-        path: BezPath,
-        transform: Affine,
-        tolerance: f64,
-        mix: Mix,
-        compose: Compose,
-    ) {
-        self.push_blend_layer_with_retention(
-            Some(retained),
-            path,
-            transform,
-            tolerance,
-            Blend::new(mix, compose),
-        );
-    }
-
     /// Starts a masked group using `mask_scene` as the mask source.
     ///
     /// The mask source is rendered isolated, converted to either alpha or
     /// luminance coverage, clipped to `mask.region`, then applied to this
     /// layer's content before compositing through any outer clips.
     pub fn push_mask_layer(&mut self, mask_scene: Canvas, mask: Mask) {
-        self.push_mask_layer_with_retention(None, mask_scene, mask);
+        self.push_mask_layer_inner(mask_scene, mask);
     }
 
-    /// Opens a retained mask boundary and uses its key for both damage and surface history.
-    pub fn push_retained_mask_layer(
-        &mut self,
-        retained: RetainedLayerKey,
-        mask_scene: Canvas,
-        mask: Mask,
-    ) {
-        self.push_mask_layer_with_retention(Some(retained), mask_scene, mask);
-    }
-
-    fn push_mask_layer_with_retention(
-        &mut self,
-        retained: Option<RetainedLayerKey>,
-        mask_scene: Canvas,
-        mask: Mask,
-    ) {
+    fn push_mask_layer_inner(&mut self, mask_scene: Canvas, mask: Mask) {
         self.ensure_command_root();
         assert!(
             (self.scale_factor - mask_scene.scale_factor).abs() <= f32::EPSILON,
             "cannot use a mask canvas with a different scale factor"
         );
         let mask_commands = self.append_scene_as_command_list(&mask_scene);
-        self.push_mask_command(retained, self.physical_mask(mask), mask_commands);
+        self.push_mask_command(self.physical_mask(mask), mask_commands);
     }
 
     /// Adds an offscreen filter group sampled from `sample_region`.
@@ -1781,25 +1724,10 @@ impl Canvas {
     /// drop-shadow expand it internally so their output is not clipped back to
     /// the original geometry.
     pub fn push_filter_layer(&mut self, filter: Filter, sample_region: Region) {
-        self.push_filter_layer_with_retention(None, filter, sample_region);
+        self.push_filter_layer_inner(filter, sample_region);
     }
 
-    /// Opens a filter layer whose offscreen output can be reused across frames.
-    pub fn push_retained_filter_layer(
-        &mut self,
-        retained: RetainedLayerKey,
-        filter: Filter,
-        sample_region: Region,
-    ) {
-        self.push_filter_layer_with_retention(Some(retained), filter, sample_region);
-    }
-
-    fn push_filter_layer_with_retention(
-        &mut self,
-        retained: Option<RetainedLayerKey>,
-        filter: Filter,
-        sample_region: Region,
-    ) {
+    fn push_filter_layer_inner(&mut self, filter: Filter, sample_region: Region) {
         self.ensure_command_root();
         let filter = self.physical_filter(filter);
         let sample_region = self.physical_region(sample_region);
@@ -1808,7 +1736,6 @@ impl Canvas {
             "RectLiquidGlass is a rounded-rectangle backdrop effect; use push_backdrop_layer with Region::Rect"
         );
         self.push_layer_command(
-            retained,
             0,
             Layer::Filter {
                 filter,
@@ -1824,25 +1751,10 @@ impl Canvas {
     /// the filtered backdrop back to that region, then renders this layer's
     /// children normally on top.
     pub fn push_backdrop_layer(&mut self, filter: Filter, sample_region: Region) {
-        self.push_backdrop_layer_with_retention(None, filter, sample_region);
+        self.push_backdrop_layer_inner(filter, sample_region);
     }
 
-    /// Opens a retained backdrop layer with stable history ownership.
-    pub fn push_retained_backdrop_layer(
-        &mut self,
-        retained: RetainedLayerKey,
-        filter: Filter,
-        sample_region: Region,
-    ) {
-        self.push_backdrop_layer_with_retention(Some(retained), filter, sample_region);
-    }
-
-    fn push_backdrop_layer_with_retention(
-        &mut self,
-        retained: Option<RetainedLayerKey>,
-        filter: Filter,
-        sample_region: Region,
-    ) {
+    fn push_backdrop_layer_inner(&mut self, filter: Filter, sample_region: Region) {
         self.ensure_command_root();
         let filter = self.physical_filter(filter);
         let sample_region = self.physical_region(sample_region);
@@ -1853,7 +1765,6 @@ impl Canvas {
             );
         }
         self.push_layer_command(
-            retained,
             0,
             Layer::Backdrop {
                 filter,
@@ -2639,7 +2550,7 @@ impl Canvas {
         self.buffer_changes = None;
         self.plan_cache_key = None;
         self.compiled_plan = None;
-        self.retained_frame_override = None;
+        self.persistent_frame = None;
         self.painter_keys = None;
         self.stable_batch_ids = None;
         self.stable_batch_counts = None;
@@ -2746,7 +2657,7 @@ impl Canvas {
             &mut plan,
             &mut layer_stack,
             CompileOwners {
-                retained: self.retained_root,
+                retained: self.persistent_root,
                 batch: None,
             },
             &mut surface_slots,
@@ -2777,21 +2688,8 @@ impl Canvas {
                         hasher.write_u8(0);
                         hasher.write_usize(*draw);
                     }
-                    Command::RetainedScene {
-                        id,
-                        revision,
-                        offset,
-                        ..
-                    } => {
-                        hasher.write_u8(1);
-                        hasher.write_u64(id.owner);
-                        hasher.write_u32(id.slot);
-                        hasher.write_u64(revision.get());
-                        hasher.write_u64(offset.0.to_bits());
-                        hasher.write_u64(offset.1.to_bits());
-                    }
                     Command::MaterializedRetainedScene { id, children, .. } => {
-                        hasher.write_u8(2);
+                        hasher.write_u8(1);
                         hasher.write_u64(id.owner);
                         hasher.write_u32(id.slot);
                         hasher.write_usize(*children);
@@ -2802,7 +2700,7 @@ impl Canvas {
                         layer,
                         children,
                     } => {
-                        hasher.write_u8(3);
+                        hasher.write_u8(2);
                         hasher.write_usize(*draw);
                         hasher.write_usize(*children);
                         if let Some(retained) = retained {
@@ -2817,7 +2715,7 @@ impl Canvas {
                         content,
                         mask,
                     } => {
-                        hasher.write_u8(4);
+                        hasher.write_u8(3);
                         hasher.write_usize(*content);
                         hasher.write_usize(*mask);
                         if let Some(retained) = retained {
@@ -2872,9 +2770,6 @@ impl Canvas {
         for command in &self.command_lists[list_id].commands {
             match command {
                 Command::Draw(draw_ix) => pending_batch.push(*draw_ix),
-                Command::RetainedScene { .. } => {
-                    panic!("retained scenes must be materialized before compile")
-                }
                 Command::MaterializedRetainedScene {
                     id,
                     revision: _,
@@ -3112,7 +3007,6 @@ impl Canvas {
             .iter()
             .any(|command| match command {
                 Command::Draw(_) => false,
-                Command::RetainedScene { .. } => true,
                 Command::MaterializedRetainedScene { children, .. } => {
                     self.command_list_contains_offscreen(*children)
                 }

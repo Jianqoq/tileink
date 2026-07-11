@@ -20,7 +20,8 @@ pub use crate::wgpu::{
     WgpuRenderProfileEntry, WgpuRenderProfileEventSummary, WgpuRenderProfileReport,
     WgpuTextureRenderError,
 };
-pub use canvas::{Canvas, DrawId, RetainedLayerKey, RetainedNodeId, SceneRevision};
+pub use canvas::{Canvas, DrawId, RetainedNodeId};
+pub(crate) use canvas::{NodeGeneration, PersistentLayerKey};
 pub use cosmic_text::{
     Align as TextAlign, Attrs as TextAttrs, CacheKeyFlags as TextCacheKeyFlags,
     Family as TextFamily, FontSystem as TextFontSystem, Stretch as TextStretch, Style as TextStyle,

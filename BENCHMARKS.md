@@ -28,15 +28,14 @@ The complete run contains two suites:
   have separate phase benchmarks so one cheap phase cannot hide a regression in the other.
   Stateful scale cases warm through a complete alternating mutation cycle before sampling, so
   Criterion measures stable updates instead of rebuilding a cold arena for every sample.
-- `retained_dirty_ratio`: 13 dirty ratios from 0.5% to 100%, each measured with persistent Auto
-  and ForceFull, the flat retained snapshot adapter, the remaining mixed-command legacy fallback,
-  their ForceFull variants, and the preflattened-immediate lower bound.
+- `retained_dirty_ratio`: 13 dirty ratios from 0.5% to 100%, each measured with the persistent
+  `RetainedScene` backend in Auto and ForceFull modes plus the preflattened-immediate lower bound.
 
 Use filters for focused development runs without deleting any matrix entries:
 
 ```powershell
 .\scripts\ps1\run_retained_benchmarks.ps1 -Benchmark scale -Filter "one-revision/5000"
-.\scripts\ps1\run_retained_benchmarks.ps1 -Benchmark dirty-ratio -Filter "auto/10.0%"
+.\scripts\ps1\run_retained_benchmarks.ps1 -Benchmark dirty-ratio -Filter "persistent-auto/10.0%"
 ```
 
 The existing `retained_scale_bench` and `retained_dirty_ratio_bench` examples use the same workload

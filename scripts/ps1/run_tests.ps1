@@ -12,7 +12,7 @@ $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "../..")
 $modes = if ($WgpuMode -eq "both") { @("native", "portable") } else { @($WgpuMode) }
 $logPath = New-QuietRunLog -Name "tests"
 $script:QuietStep = 0
-$script:QuietTotal = $modes.Count * $(if ($CargoArgs.Count -gt 0) { 1 } else { 7 })
+$script:QuietTotal = $modes.Count * $(if ($CargoArgs.Count -gt 0) { 1 } else { 6 })
 
 if ($CargoArgs | Where-Object { $_ -like "--test-threads*" }) {
     throw "Test thread count is fixed at 1; do not pass --test-threads in CargoArgs"
@@ -79,14 +79,12 @@ function Invoke-ReleaseTests {
         )
         Invoke-CargoTest -Mode $Mode -Label "svg-unit" -Filter "svg::tests::"
         Invoke-CargoTest -Mode $Mode -Label "persistent-renderer" -Filter "wgpu::renderer::tests::persistent_"
-        Invoke-CargoTest -Mode $Mode -Label "snapshot-retained-renderer" -Filter "wgpu::renderer::tests::retained_"
         Invoke-CargoTest -Mode $Mode -Label "low-level-renderer" -Filter "wgpu::renderer::tests::wgpu_" -HarnessArgs @(
             "--skip", "wgpu_renderer_samples_"
         )
         Invoke-CargoTest -Mode $Mode -Label "renderer-sampling" -Filter "wgpu::renderer::tests::wgpu_renderer_samples_"
         Invoke-CargoTest -Mode $Mode -Label "renderer-misc" -Filter "wgpu::renderer::tests::" -HarnessArgs @(
             "--skip", "persistent_",
-            "--skip", "retained_",
             "--skip", "wgpu_"
         )
     }

@@ -251,6 +251,54 @@ pub(crate) fn encoded_sdf(blob: &[u32], offset: u32, len: u32) -> Option<Encoded
     })
 }
 
+pub(crate) fn translate_encoded_sdf(
+    blob: &mut [u32],
+    offset: u32,
+    len: u32,
+    dx: f32,
+    dy: f32,
+) -> bool {
+    let start = offset as usize;
+    let Some(words) = blob.get_mut(start..start.saturating_add(len as usize)) else {
+        return false;
+    };
+    if words.len() != ENCODED_SDF_WORDS {
+        return false;
+    }
+    let add = |word: &mut u32, delta: f32| *word = (f32::from_bits(*word) + delta).to_bits();
+    match words[0] {
+        GPU_SDF_RECT | GPU_SDF_RECT_STROKE | GPU_SDF_RECT_SHADOW => {
+            add(&mut words[1], dx);
+            add(&mut words[2], dy);
+            add(&mut words[3], dx);
+            add(&mut words[4], dy);
+        }
+        GPU_SDF_CIRCLE
+        | GPU_SDF_CIRCLE_STROKE
+        | GPU_SDF_CIRCLE_SHADOW
+        | GPU_SDF_ARC
+        | GPU_SDF_ARC_SHADOW => {
+            add(&mut words[1], dx);
+            add(&mut words[2], dy);
+        }
+        GPU_SDF_CANDLESTICK => {
+            add(&mut words[1], dx);
+            add(&mut words[2], dy);
+            add(&mut words[3], dy);
+            add(&mut words[4], dy);
+            add(&mut words[5], dy);
+        }
+        GPU_SDF_LINE | GPU_SDF_DASH_LINE | GPU_SDF_LINE_SHADOW => {
+            add(&mut words[1], dx);
+            add(&mut words[2], dy);
+            add(&mut words[3], dx);
+            add(&mut words[4], dy);
+        }
+        _ => return false,
+    }
+    true
+}
+
 pub(crate) fn decode_sdf(blob: &[u32], offset: u32, len: u32) -> Option<Sdf> {
     let sdf = encoded_sdf(blob, offset, len)?;
     match sdf.kind {

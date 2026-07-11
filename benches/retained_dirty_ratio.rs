@@ -15,21 +15,13 @@ use tileink::{IncrementalRenderMode, WgpuRenderer};
 enum Mode {
     PersistentAuto,
     PersistentForceFull,
-    Auto,
-    ForceFull,
-    LegacyAuto,
-    LegacyForceFull,
     Immediate,
 }
 
 impl Mode {
-    const ALL: [Self; 7] = [
+    const ALL: [Self; 3] = [
         Self::PersistentAuto,
         Self::PersistentForceFull,
-        Self::Auto,
-        Self::ForceFull,
-        Self::LegacyAuto,
-        Self::LegacyForceFull,
         Self::Immediate,
     ];
 
@@ -37,10 +29,6 @@ impl Mode {
         match self {
             Self::PersistentAuto => "persistent-auto",
             Self::PersistentForceFull => "persistent-force-full",
-            Self::Auto => "auto",
-            Self::ForceFull => "force-full",
-            Self::LegacyAuto => "legacy-fallback-auto",
-            Self::LegacyForceFull => "legacy-fallback-force-full",
             Self::Immediate => "preflat-immediate",
         }
     }
@@ -77,24 +65,7 @@ fn retained_dirty_ratio(c: &mut Criterion) {
                             .expect("persistent dirty-ratio Criterion benchmark must render");
                             return measurements.wall.into_iter().sum::<Duration>();
                         }
-                        let frames = match mode {
-                            Mode::Auto | Mode::ForceFull => workload.retained_frames(ratio),
-                            Mode::LegacyAuto | Mode::LegacyForceFull => {
-                                workload.legacy_retained_frames(ratio)
-                            }
-                            Mode::Immediate => workload.immediate_frames(ratio),
-                            Mode::PersistentAuto | Mode::PersistentForceFull => unreachable!(),
-                        };
-                        let render_mode = match mode {
-                            Mode::ForceFull | Mode::LegacyForceFull => {
-                                IncrementalRenderMode::ForceFull
-                            }
-                            Mode::PersistentAuto
-                            | Mode::PersistentForceFull
-                            | Mode::Auto
-                            | Mode::LegacyAuto
-                            | Mode::Immediate => IncrementalRenderMode::Auto,
-                        };
+                        let frames = workload.immediate_frames(ratio);
                         let measurements = bench(
                             &seed,
                             BenchConfig {
@@ -102,7 +73,7 @@ fn retained_dirty_ratio(c: &mut Criterion) {
                                 frames: iterations as usize,
                             },
                             &frames,
-                            render_mode,
+                            IncrementalRenderMode::Auto,
                         )
                         .expect("dirty-ratio Criterion benchmark must render");
                         measurements.wall.into_iter().sum::<Duration>()

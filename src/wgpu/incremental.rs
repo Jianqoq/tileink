@@ -884,7 +884,7 @@ fn ranks(ids: &[crate::RetainedNodeId]) -> HashMap<crate::RetainedNodeId, usize>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{RetainedNodeId, SceneRevision, canvas::RetainedNodeKind};
+    use crate::{NodeGeneration, RetainedNodeId, canvas::RetainedNodeKind};
 
     fn frame(nodes: &[(u64, u64, Bounds)]) -> RetainedFrame {
         let nodes = nodes
@@ -892,7 +892,7 @@ mod tests {
             .enumerate()
             .map(|(order, (id, revision, bounds))| RetainedNodeState {
                 id: RetainedNodeId::for_owner(*id),
-                revision: SceneRevision::new(*revision),
+                revision: NodeGeneration::new(*revision),
                 bounds: *bounds,
                 order: order as u32,
                 kind: RetainedNodeKind::Scene,
@@ -913,7 +913,6 @@ mod tests {
             node_index: std::sync::Arc::new(node_index),
             invalidated_bounds: Vec::new(),
             invalidate_all: false,
-            materialization_cacheable: true,
             incremental_complete: true,
             version: None,
             delta: None,
@@ -960,7 +959,7 @@ mod tests {
         let mut previous = frame(&[(2, 0, Bounds::new(16, 0, 32, 16))]);
         Arc::make_mut(&mut previous.nodes)[0].kind = RetainedNodeKind::Layer;
         let mut current = previous.clone();
-        Arc::make_mut(&mut current.nodes)[0].revision = SceneRevision::new(1);
+        Arc::make_mut(&mut current.nodes)[0].revision = NodeGeneration::new(1);
         let mut damage = DamageTiles::new(current.physical_size);
 
         diff_frames(

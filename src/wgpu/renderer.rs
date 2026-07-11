@@ -517,7 +517,7 @@ impl Renderer {
     pub fn render_native(&mut self, canvas: &Canvas) -> bool {
         self.retained.set_history_owner(HistoryOwner::Internal);
         self.retained.reset_transient_output();
-        let selected = self.retained.select_scene(canvas);
+        let selected = SelectedScene::Borrowed(canvas);
         self.render_native_selected(selected, false, None)
     }
 
@@ -568,7 +568,7 @@ impl Renderer {
     ) -> bool {
         self.retained.set_history_owner(HistoryOwner::Internal);
         self.retained.reset_transient_output();
-        let selected = self.retained.select_scene(canvas);
+        let selected = SelectedScene::Borrowed(canvas);
         let frame = selected.frame();
         let materialization = selected.materialization();
         let materialized_reused = selected.materialized_reused();
@@ -2728,7 +2728,7 @@ impl Renderer {
         let mode = self
             .retained
             .replace_mode(super::incremental::IncrementalRenderMode::ForceFull);
-        let selected = self.retained.select_scene(canvas);
+        let selected = SelectedScene::Borrowed(canvas);
         let frame = selected.frame();
         let materialization = selected.materialization();
         let materialized_reused = selected.materialized_reused();
