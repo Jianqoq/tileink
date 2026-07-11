@@ -363,10 +363,7 @@ impl ExecPlan {
         );
     }
 
-    pub(crate) fn active_direct_root_ops(
-        &self,
-        active_batches: &std::collections::HashSet<u32>,
-    ) -> Option<Vec<usize>> {
+    pub(crate) fn active_direct_root_ops(&self, active_batches: &[u32]) -> Option<Vec<usize>> {
         let locations = self.direct_root_batch_ops.as_ref()?;
         let mut ops = active_batches
             .iter()

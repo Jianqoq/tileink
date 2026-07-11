@@ -174,9 +174,12 @@ impl Renderer {
                 self.coarse.prepare_outputs(&self.device, lengths);
             });
             profile_cpu("prepare.coarse_buffers.upload_tile_draw_bins", || {
-                let (pages, compactions) =
-                    self.coarse
-                        .upload_tile_draw_bins(&self.queue, lengths, &mut self.scene_upload);
+                let (pages, compactions) = self.coarse.upload_tile_draw_bins(
+                    &self.device,
+                    &self.queue,
+                    lengths,
+                    &mut self.scene_upload,
+                );
                 self.retained.stats_mut().tile_pages_rewritten = pages as u32;
                 self.retained.stats_mut().tile_page_compactions = compactions;
             });
@@ -400,8 +403,12 @@ impl Renderer {
                 self.coarse.prepare_outputs(&self.device, lengths);
             });
             profile_cpu("prepare.local.coarse_buffers.upload_tile_draw_bins", || {
-                self.coarse
-                    .upload_tile_draw_bins(&self.queue, lengths, &mut self.scene_upload);
+                self.coarse.upload_tile_draw_bins(
+                    &self.device,
+                    &self.queue,
+                    lengths,
+                    &mut self.scene_upload,
+                );
             });
         });
         profile_cpu("prepare.local.fine_spills", || {

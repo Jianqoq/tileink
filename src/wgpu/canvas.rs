@@ -1,4 +1,5 @@
 use crate::text::AtlasSignature;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::buffer::WgpuBuffer;
 
@@ -7,12 +8,15 @@ mod upload;
 mod work_buffers;
 
 pub(crate) use bindings::{
-    WgpuCoarseBindings, WgpuCumsumBindings, WgpuFilterBindings, WgpuImageResourceBindings,
-    WgpuScanBindings, WgpuTileFineBindings,
+    WgpuCoarseBindings, WgpuCumsumBindings, WgpuFilterBindings, WgpuImageResourceBindingKey,
+    WgpuImageResourceBindings, WgpuScanBindings, WgpuTileFineBindings,
 };
 pub(crate) use upload::WgpuSceneUploadStaging;
-pub(crate) use work_buffers::{WgpuCoarseBuffers, WgpuScanBuffers};
+pub(crate) use work_buffers::{WgpuCoarseBindGroups, WgpuCoarseBuffers, WgpuScanBuffers};
+static NEXT_SCENE_BUFFERS_ID: AtomicU64 = AtomicU64::new(1);
+
 pub(crate) struct WgpuSceneBuffers {
+    id: u64,
     lines: WgpuBuffer,
     path_records: WgpuBuffer,
     draw_records: WgpuBuffer,
@@ -37,6 +41,7 @@ pub(crate) struct WgpuSceneBuffers {
     image_resource_dummy_texture_view: ::wgpu::TextureView,
     image_resource_sampler: ::wgpu::Sampler,
     image_resource_atlas_size: (u32, u32, u32),
+    image_resource_binding_generation: u64,
     text_runs: WgpuBuffer,
     coarse_text_blob: WgpuBuffer,
     fine_text_blob: WgpuBuffer,
@@ -60,6 +65,7 @@ impl WgpuSceneBuffers {
         let image_resource_dummy_texture_view =
             image_resource_dummy_texture.create_view(&::wgpu::TextureViewDescriptor::default());
         Self {
+            id: NEXT_SCENE_BUFFERS_ID.fetch_add(1, Ordering::Relaxed),
             lines: WgpuBuffer::new(device, "tileink wgpu canvas lines"),
             path_records: WgpuBuffer::new(device, "tileink wgpu canvas path records"),
             draw_records: WgpuBuffer::new(device, "tileink wgpu canvas draw records"),
@@ -98,6 +104,7 @@ impl WgpuSceneBuffers {
                 ..Default::default()
             }),
             image_resource_atlas_size: (1, 1, 1),
+            image_resource_binding_generation: 1,
             text_runs: WgpuBuffer::new(device, "tileink wgpu canvas text runs"),
             coarse_text_blob: WgpuBuffer::new(device, "tileink wgpu canvas coarse text blob"),
             fine_text_blob: WgpuBuffer::new(device, "tileink wgpu canvas fine text blob"),

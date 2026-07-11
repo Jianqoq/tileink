@@ -898,7 +898,8 @@ impl Renderer {
         self.restore_full_resolution_filter_work(low_work);
         let ok = low_ok
             && if let Some(filter) = &self.filter {
-                let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+                let Some(target_read) = self.snapshot_filter_target(commands, target, bounds)
+                else {
                     self.release_scratch(temp);
                     self.release_scratch(low);
                     return false;
@@ -1280,7 +1281,7 @@ impl Renderer {
         let Some(filter) = &self.filter else {
             return false;
         };
-        let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+        let Some(target_read) = self.snapshot_filter_target(commands, target, bounds) else {
             return false;
         };
         filter.source_over_region(
@@ -1307,7 +1308,7 @@ impl Renderer {
         let Some(filter) = &self.filter else {
             return false;
         };
-        let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+        let Some(target_read) = self.snapshot_filter_target(commands, target, bounds) else {
             return false;
         };
         filter.blend_region(
@@ -1434,7 +1435,7 @@ impl Renderer {
             return false;
         };
         let brushes = self.filter_brush_bindings();
-        let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+        let Some(target_read) = self.snapshot_filter_target(commands, target, bounds) else {
             return false;
         };
         filter.composite_drop_shadow(
@@ -1459,7 +1460,7 @@ impl Renderer {
         matrix: [f32; 20],
     ) {
         if let Some(filter) = &self.filter {
-            let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+            let Some(target_read) = self.snapshot_filter_target(commands, target, bounds) else {
                 return;
             };
             filter.apply_color_matrix(
@@ -1482,7 +1483,7 @@ impl Renderer {
         table_index: u32,
     ) {
         if let Some(filter) = &self.filter {
-            let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+            let Some(target_read) = self.snapshot_filter_target(commands, target, bounds) else {
                 return;
             };
             filter.apply_component_transfer(
@@ -1630,6 +1631,60 @@ impl Renderer {
                 .liquid_glass_to_target(commands, source, blurred, target, bounds, glass, region);
         self.release_scratch(blurred);
         self.release_scratch(source);
+        ok
+    }
+
+    /// Recomputes only the damaged output of a cached full-resolution liquid-glass backdrop.
+    ///
+    /// `source` is the complete painter-order history captured before the backdrop. The blurred
+    /// temporary needs a rectangular refraction halo beyond the compact root worklist, so that
+    /// halo is generated with compact dispatch temporarily suspended; the final glass pass then
+    /// returns to the exact dirty-tile worklist and leaves clean cached output untouched.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn apply_liquid_glass_from_source_partial(
+        &mut self,
+        commands: &mut WgpuCommandBatch,
+        source: WgpuRenderTargetId,
+        target: WgpuRenderTargetId,
+        output_bounds: Bounds,
+        sample_bounds: Bounds,
+        glass: filter_model::RectLiquidGlass,
+        region: filter_model::RectLiquidGlassRegion,
+    ) -> bool {
+        debug_assert_eq!(glass.blur_sampling.factor(), 1);
+        let Some(blurred) = self.acquire_scratch() else {
+            return false;
+        };
+        let blur_output = output_bounds
+            .outset(glass.sample_outset())
+            .intersect(sample_bounds);
+        let active = self.suspend_incremental_filter_work();
+        let blur_ok = if glass.blur_radius == 0 {
+            self.copy_region_to_target(commands, source, blurred, blur_output)
+        } else {
+            let std_dev = glass.blur_radius as f32 * filter_model::LIQUID_GLASS_BLUR_STD_DEV_SCALE;
+            self.apply_blur_from_source_partial(
+                commands,
+                source,
+                blurred,
+                blur_output,
+                sample_bounds,
+                std_dev,
+                std_dev,
+            )
+        };
+        self.restore_incremental_filter_work(active);
+        let ok = blur_ok
+            && self.liquid_glass_to_target(
+                commands,
+                source,
+                blurred,
+                target,
+                output_bounds,
+                glass,
+                region,
+            );
+        self.release_scratch(blurred);
         ok
     }
 
@@ -1794,7 +1849,7 @@ impl Renderer {
         amount: f32,
     ) {
         if let Some(filter) = &self.filter {
-            let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+            let Some(target_read) = self.snapshot_filter_target(commands, target, bounds) else {
                 return;
             };
             filter.apply_color_filter(

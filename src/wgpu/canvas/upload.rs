@@ -115,7 +115,7 @@ impl WgpuSceneUploadStaging {
         self.resource_brush_draw_count != 0
     }
 
-    pub(crate) fn active_batch_ids(&self, tiles: &[u32], draw_batch_ids: &[u32]) -> HashSet<u32> {
+    pub(crate) fn active_batch_ids(&mut self, tiles: &[u32], draw_batch_ids: &[u32]) -> Vec<u32> {
         self.tile_draw_bins.active_batch_ids(tiles, draw_batch_ids)
     }
 
@@ -786,6 +786,8 @@ impl WgpuSceneBuffers {
             self.image_resource_atlas_view =
                 create_image_resource_atlas_view(&self.image_resource_atlas);
             self.image_resource_atlas_size = atlas_capacity;
+            self.image_resource_binding_generation =
+                self.image_resource_binding_generation.wrapping_add(1);
         }
         for page in upload.atlas_pages() {
             if !force_all && !page.dirty {
@@ -852,6 +854,8 @@ impl WgpuSceneBuffers {
                             .expect("pushed texture")
                             .create_view(&::wgpu::TextureViewDescriptor::default()),
                     );
+                    self.image_resource_binding_generation =
+                        self.image_resource_binding_generation.wrapping_add(1);
                 }
                 self.image_resource_textures[index] = create_image_resource_texture(
                     device,
@@ -861,6 +865,8 @@ impl WgpuSceneBuffers {
                 );
                 self.image_resource_texture_views[index] = self.image_resource_textures[index]
                     .create_view(&::wgpu::TextureViewDescriptor::default());
+                self.image_resource_binding_generation =
+                    self.image_resource_binding_generation.wrapping_add(1);
             }
             if force_all || texture.dirty || recreate {
                 queue.write_texture(
@@ -1400,6 +1406,7 @@ fn grow_image_resource_atlas_axis(current: u32, required: u32, max_dimension: u3
 impl WgpuCoarseBuffers {
     pub(crate) fn upload_tile_draw_bins(
         &mut self,
+        device: &::wgpu::Device,
         queue: &::wgpu::Queue,
         lengths: crate::shared::gpu_plan::GpuBufferLengths,
         staging: &mut WgpuSceneUploadStaging,
@@ -1414,7 +1421,10 @@ impl WgpuCoarseBuffers {
             lengths.coarse_ptcl_capacity,
             lengths.coarse_glyph_capacity,
         );
-        let (bins_full, dirty_records, dirty_pages) = staging.tile_draw_bins.take_dirty();
+        let (bins_full, dirty_records, dirty_pages) = profile_cpu(
+            "prepare.coarse_buffers.upload_tile_draw_bins.take_dirty",
+            || staging.tile_draw_bins.take_dirty(),
+        );
         let bins = &staging.tile_draw_bins;
         let layout = (
             self.work.generation(),
@@ -1423,30 +1433,62 @@ impl WgpuCoarseBuffers {
             lengths.tile_draw_index_count,
         );
         let full = bins_full || self.tile_bin_layout != Some(layout);
+        self.tile_bin_staging_words.clear();
+        self.pending_tile_bin_copies.clear();
         if full {
-            self.work
-                .write_at(queue, word_offset(record_word_offset), &bins.records);
-            self.work
-                .write_at(queue, word_offset(index_word_offset), &bins.draw_indices);
+            profile_cpu("prepare.coarse_buffers.upload_tile_draw_bins.full", || {
+                self.work
+                    .write_at(queue, word_offset(record_word_offset), &bins.records);
+                self.work
+                    .write_at(queue, word_offset(index_word_offset), &bins.draw_indices);
+            });
         } else {
-            for tiles in contiguous_index_runs(dirty_records) {
-                self.work.write_at(
-                    queue,
-                    word_offset(record_word_offset)
-                        + (tiles.start
-                            * std::mem::size_of::<crate::shared::gpu_coarse::TileDrawRecord>())
-                            as u64,
-                    &bins.records[tiles],
-                );
-            }
-            for pages in contiguous_index_runs(dirty_pages.iter().map(|page| *page as usize)) {
-                let words = pages.start * TILE_DRAW_PAGE_WORDS..pages.end * TILE_DRAW_PAGE_WORDS;
-                self.work.write_at(
-                    queue,
-                    word_offset(index_word_offset + words.start),
-                    &bins.draw_indices[words],
-                );
-            }
+            profile_cpu(
+                "prepare.coarse_buffers.upload_tile_draw_bins.records",
+                || {
+                    for tiles in contiguous_index_runs(dirty_records) {
+                        let words: &[u32] = bytemuck::cast_slice(&bins.records[tiles.clone()]);
+                        let source = self.tile_bin_staging_words.len();
+                        self.tile_bin_staging_words.extend_from_slice(words);
+                        self.pending_tile_bin_copies.push((
+                            word_offset(source),
+                            word_offset(record_word_offset)
+                                + (tiles.start
+                                    * std::mem::size_of::<
+                                        crate::shared::gpu_coarse::TileDrawRecord,
+                                    >()) as u64,
+                            word_offset(words.len()),
+                        ));
+                    }
+                },
+            );
+            profile_cpu("prepare.coarse_buffers.upload_tile_draw_bins.pages", || {
+                for pages in contiguous_index_runs(dirty_pages.iter().map(|page| *page as usize)) {
+                    let words =
+                        pages.start * TILE_DRAW_PAGE_WORDS..pages.end * TILE_DRAW_PAGE_WORDS;
+                    let source = self.tile_bin_staging_words.len();
+                    self.tile_bin_staging_words
+                        .extend_from_slice(&bins.draw_indices[words.clone()]);
+                    self.pending_tile_bin_copies.push((
+                        word_offset(source),
+                        word_offset(index_word_offset + words.start),
+                        word_offset(words.len()),
+                    ));
+                }
+            });
+            profile_cpu(
+                "prepare.coarse_buffers.upload_tile_draw_bins.staging_upload",
+                || {
+                    if !self.tile_bin_staging_words.is_empty() {
+                        self.tile_bin_staging.upload(
+                            device,
+                            queue,
+                            "tileink wgpu tile bin staging",
+                            &self.tile_bin_staging_words,
+                        );
+                    }
+                },
+            );
         }
         self.tile_bin_layout = Some(layout);
         let rewritten = if full {

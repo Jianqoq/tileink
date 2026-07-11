@@ -1,6 +1,16 @@
 use bytemuck::Pod;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static NEXT_BUFFER_ID: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) struct WgpuBufferBindingKey {
+    id: u64,
+    generation: u64,
+}
 
 pub(crate) struct WgpuBuffer {
+    id: u64,
     buffer: ::wgpu::Buffer,
     capacity: ::wgpu::BufferAddress,
     cached_upload: Vec<u8>,
@@ -10,6 +20,7 @@ pub(crate) struct WgpuBuffer {
 impl WgpuBuffer {
     pub(crate) fn new(device: &::wgpu::Device, label: &'static str) -> Self {
         Self {
+            id: NEXT_BUFFER_ID.fetch_add(1, Ordering::Relaxed),
             buffer: create_buffer(device, label, 4),
             capacity: 4,
             cached_upload: Vec::new(),
@@ -156,6 +167,15 @@ impl WgpuBuffer {
 
     pub(crate) fn generation(&self) -> u64 {
         self.generation
+    }
+
+    pub(crate) fn binding_key(&self) -> WgpuBufferBindingKey {
+        // Bind groups may outlive an upload, but not a buffer reallocation. The stable owner ID
+        // also distinguishes otherwise identical generations in swapped local render contexts.
+        WgpuBufferBindingKey {
+            id: self.id,
+            generation: self.generation,
+        }
     }
 
     #[cfg(test)]

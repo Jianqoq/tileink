@@ -12,7 +12,10 @@ use crate::shared::{
 
 use super::{
     buffer::WgpuBuffer,
-    canvas::{WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers, WgpuTileFineBindings},
+    canvas::{
+        WgpuCoarseBuffers, WgpuImageResourceBindingKey, WgpuImageResourceBindings, WgpuScanBuffers,
+        WgpuSceneBuffers, WgpuTileFineBindings,
+    },
     commands::{
         WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
     },
@@ -46,6 +49,8 @@ pub(crate) struct WgpuFinePipeline {
     config_stride: ::wgpu::BufferAddress,
     portable_textures: bool,
     large_texture_table_len: u32,
+    image_bind_group_cache:
+        std::sync::Mutex<Option<(WgpuImageResourceBindingKey, ::wgpu::BindGroup)>>,
 }
 
 #[repr(C)]
@@ -174,6 +179,7 @@ impl WgpuFinePipeline {
             config_stride,
             portable_textures,
             large_texture_table_len,
+            image_bind_group_cache: std::sync::Mutex::new(None),
         })
     }
 
@@ -328,27 +334,31 @@ impl WgpuFinePipeline {
             }),
         );
 
-        let bindings = scene_buffers.tile_fine_bindings(scan, coarse, fine_spills);
-        let bind_group = self.create_tile_bind_group_for_view(
-            commands.device(),
-            source,
-            target,
-            &self.bind_group_layout,
-            &bindings,
-            config_offset,
-        );
-        let image_bind_group = create_image_resource_bind_group(
-            commands.device(),
-            &self.image_bind_group_layout,
-            &scene_buffers.image_resource_bindings(),
-            self.large_texture_table_len,
-        );
-        let compact_bind_group = self.create_compact_bind_group(
-            commands.device(),
-            coarse,
-            fine_indirect_args,
-            config_offset,
-        );
+        let (bind_group, image_bind_group, compact_bind_group) = {
+            let _profile_scope = start_cpu_scope("fine.bind_groups");
+            let bindings = scene_buffers.tile_fine_bindings(scan, coarse, fine_spills);
+            (
+                self.create_tile_bind_group_for_view(
+                    commands.device(),
+                    source,
+                    target,
+                    &self.bind_group_layout,
+                    &bindings,
+                    config_offset,
+                ),
+                self.cached_image_resource_bind_group(
+                    commands.device(),
+                    scene_buffers.image_resource_binding_key(),
+                    &scene_buffers.image_resource_bindings(),
+                ),
+                self.create_compact_bind_group(
+                    commands.device(),
+                    coarse,
+                    fine_indirect_args,
+                    config_offset,
+                ),
+            )
+        };
         let device = commands.device().clone();
         let use_indirect = fine_indirect_enabled();
         if use_indirect {
@@ -408,6 +418,30 @@ impl WgpuFinePipeline {
             finish_gpu_scope(encoder, gpu_scope);
         }
         true
+    }
+
+    fn cached_image_resource_bind_group(
+        &self,
+        device: &::wgpu::Device,
+        key: WgpuImageResourceBindingKey,
+        bindings: &WgpuImageResourceBindings<'_>,
+    ) -> ::wgpu::BindGroup {
+        // Pixel uploads keep the same views. Atlas/table recreation advances `key`, so a cached
+        // group can never retain a destroyed or superseded resource view.
+        let mut cache = self.image_bind_group_cache.lock().unwrap();
+        if let Some((cached_key, bind_group)) = cache.as_ref()
+            && *cached_key == key
+        {
+            return bind_group.clone();
+        }
+        let bind_group = create_image_resource_bind_group(
+            device,
+            &self.image_bind_group_layout,
+            bindings,
+            self.large_texture_table_len,
+        );
+        *cache = Some((key, bind_group.clone()));
+        bind_group
     }
 
     fn fine_shader(&self, device: &::wgpu::Device) -> &::wgpu::ShaderModule {

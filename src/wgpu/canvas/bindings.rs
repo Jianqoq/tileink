@@ -1,4 +1,4 @@
-use super::super::buffer::WgpuBuffer;
+use super::super::buffer::{WgpuBuffer, WgpuBufferBindingKey};
 use super::{WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers};
 
 impl WgpuSceneBuffers {
@@ -20,6 +20,13 @@ impl WgpuSceneBuffers {
             sampler: &self.image_resource_sampler,
             texture_views: &self.image_resource_texture_views,
             dummy_texture: &self.image_resource_dummy_texture_view,
+        }
+    }
+
+    pub(crate) fn image_resource_binding_key(&self) -> WgpuImageResourceBindingKey {
+        WgpuImageResourceBindingKey {
+            owner: self.id,
+            generation: self.image_resource_binding_generation,
         }
     }
 
@@ -136,6 +143,18 @@ impl WgpuSceneBuffers {
             layer_stack: self.plan_layer_stack.buffer(),
             coarse_work: coarse.work.buffer(),
             chunk_records: coarse.chunk_records.buffer(),
+            key: WgpuCoarseBindingKey([
+                self.draw_records.binding_key(),
+                self.draw_batch_ids.binding_key(),
+                self.coarse_text_blob.binding_key(),
+                self.paint_blob.binding_key(),
+                self.path_records.binding_key(),
+                scan.backdrops.binding_key(),
+                scan.tile_segment_ranges.binding_key(),
+                self.plan_layer_stack.binding_key(),
+                coarse.work.binding_key(),
+                coarse.chunk_records.binding_key(),
+            ]),
         }
     }
 }
@@ -150,6 +169,12 @@ pub(crate) struct WgpuImageResourceBindings<'a> {
     pub(crate) sampler: &'a ::wgpu::Sampler,
     pub(crate) texture_views: &'a [::wgpu::TextureView],
     pub(crate) dummy_texture: &'a ::wgpu::TextureView,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct WgpuImageResourceBindingKey {
+    owner: u64,
+    generation: u64,
 }
 
 pub(crate) struct WgpuTileFineBindings<'a> {
@@ -208,4 +233,8 @@ pub(crate) struct WgpuCoarseBindings<'a> {
     pub(crate) layer_stack: &'a ::wgpu::Buffer,
     pub(crate) coarse_work: &'a ::wgpu::Buffer,
     pub(crate) chunk_records: &'a ::wgpu::Buffer,
+    pub(crate) key: WgpuCoarseBindingKey,
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct WgpuCoarseBindingKey([WgpuBufferBindingKey; 10]);

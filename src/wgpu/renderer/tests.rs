@@ -737,6 +737,68 @@ fn persistent_resource_brush_repatches_after_atlas_placement_changes() {
 }
 
 #[test]
+fn fine_image_bind_group_cache_invalidates_when_atlas_grows() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let key = ImageKey::new(20_001);
+    let mut canvas = Canvas::new(8, 8, 1.0);
+    canvas
+        .push_image_key(
+            Rect::new(0.0, 0.0, 8.0, 8.0),
+            key,
+            Extend::Pad,
+            PatternSampling::Nearest,
+        )
+        .unwrap();
+    let mut renderer = new_test_renderer(8, 8, Color::TRANSPARENT);
+    assert!(renderer.insert_image(key, Image::from_rgba8(1, 1, [230, 20, 30, 255])));
+    renderer.render(&canvas);
+    assert_eq!(renderer.image().rgba8_at(4, 4), [230, 20, 30, 255]);
+
+    let blue = [30, 80, 240, 255].repeat(64 * 64);
+    assert!(renderer.insert_image(key, Image::from_rgba8(64, 64, blue)));
+    renderer.render(&canvas);
+    assert_eq!(renderer.image().rgba8_at(4, 4), [30, 80, 240, 255]);
+}
+
+#[test]
+fn coarse_bind_group_cache_invalidates_after_scene_buffer_growth() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut renderer = new_test_renderer(32, 32, Color::TRANSPARENT);
+    let mut small = Canvas::new(32, 32, 1.0);
+    small.push_rect(
+        Rect::new(0.0, 0.0, 32.0, 32.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(220, 30, 40),
+    );
+    renderer.render(&small);
+    assert_eq!(renderer.image().rgba8_at(16, 16), [220, 30, 40, 255]);
+
+    let mut grown = Canvas::new(32, 32, 1.0);
+    for index in 0..512 {
+        let x = (index % 32) as f64;
+        let y = (index / 32) as f64;
+        grown.push_rect(
+            Rect::new(x, y, x + 1.0, y + 1.0),
+            crate::Radius::ZERO,
+            Color::BLACK,
+        );
+    }
+    grown.push_rect(
+        Rect::new(0.0, 0.0, 32.0, 32.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(30, 80, 240),
+    );
+    renderer.render(&grown);
+    assert_eq!(renderer.image().rgba8_at(16, 16), [30, 80, 240, 255]);
+}
+
+#[test]
 fn persistent_resource_brush_membership_tracks_incremental_replacement() {
     if !run_wgpu_tests() {
         return;
@@ -1257,6 +1319,152 @@ fn persistent_scene_embedded_backdrop_tracks_earlier_moving_scene() {
             > 0,
         "moving an earlier scene into an embedded backdrop must invalidate its retained surface"
     );
+}
+
+#[test]
+fn persistent_embedded_liquid_glass_updates_only_damaged_surface_tiles() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let root = RetainedNodeId::for_owner(50_267);
+    let background = RetainedNodeId::for_owner(50_268);
+    let card = RetainedNodeId::for_owner(50_269);
+    let panel = RetainedNodeId::for_owner(50_270);
+    let mut background_canvas = Canvas::new(512, 384, 1.0);
+    for y in (0..384).step_by(32) {
+        for x in (0..512).step_by(32) {
+            background_canvas.push_rect(
+                Rect::new(
+                    f64::from(x),
+                    f64::from(y),
+                    f64::from(x + 32),
+                    f64::from(y + 32),
+                ),
+                crate::Radius::ZERO,
+                if (x / 32 + y / 32) % 2 == 0 {
+                    Color::from_rgb8(34, 92, 156)
+                } else {
+                    Color::from_rgb8(166, 58, 108)
+                },
+            );
+        }
+    }
+    let mut card_canvas = Canvas::new(24, 24, 1.0);
+    card_canvas.push_rect(
+        Rect::new(0.0, 0.0, 24.0, 24.0),
+        crate::Radius::all(5.0),
+        Color::from_rgb8(245, 214, 42),
+    );
+    let mut panel_canvas = Canvas::new(320, 256, 1.0);
+    let panel_bounds = Rect::new(0.0, 0.0, 320.0, 256.0);
+    panel_canvas.push_backdrop_layer(
+        Filter::RectLiquidGlass(RectLiquidGlass {
+            blur_radius: 5,
+            blur_sampling: BlurSampling::FULL_RES,
+            tint: Color::from_rgba8(255, 255, 255, 20),
+            refraction_thickness: 24.0,
+            refraction_factor: 2.0,
+            refraction_dispersion: 8.0,
+            ..RectLiquidGlass::default()
+        }),
+        Region::rect(panel_bounds, crate::Radius::all(20.0)),
+    );
+    panel_canvas.push_rect(
+        panel_bounds,
+        crate::Radius::all(20.0),
+        Color::from_rgba8(10, 18, 30, 40),
+    );
+    panel_canvas.pop_layer();
+
+    let mut scene = RetainedScene::new(512, 384, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            background,
+            std::sync::Arc::new(background_canvas),
+            (0.0, 0.0),
+        )
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            card,
+            std::sync::Arc::new(card_canvas),
+            (128.0, 176.0),
+        )
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            panel,
+            std::sync::Arc::new(panel_canvas),
+            (96.0, 64.0),
+        )
+        .commit()
+        .unwrap();
+
+    let mut incremental = new_test_renderer(512, 384, Color::TRANSPARENT);
+    let mut incremental_config = incremental.incremental_render_config();
+    incremental_config.capture_active_tiles = true;
+    incremental.set_incremental_render_config(incremental_config);
+    incremental.render_retained(&scene);
+    let mut full = new_test_renderer(512, 384, Color::TRANSPARENT);
+    let mut config = full.incremental_render_config();
+    config.mode = crate::IncrementalRenderMode::ForceFull;
+    full.set_incremental_render_config(config);
+
+    for x in [160.0, 208.0, 256.0] {
+        scene
+            .transaction()
+            .set_position(card, (x, 176.0))
+            .commit()
+            .unwrap();
+        incremental.render_retained(&scene);
+        full.render_retained(&scene);
+        let active_bounds = incremental
+            .incremental_render_stats()
+            .active_tile_bounds
+            .clone();
+        let incremental_image = incremental.image();
+        let full_image = full.image();
+        let max_difference = incremental_image
+            .pixels
+            .iter()
+            .zip(&full_image.pixels)
+            .enumerate()
+            .filter(|(index, _)| {
+                let x = (*index % 512) as i32;
+                let y = (*index / 512) as i32;
+                active_bounds.iter().any(|bounds| {
+                    x >= bounds.x0 && x < bounds.x1 && y >= bounds.y0 && y < bounds.y1
+                })
+            })
+            .flat_map(|(index, (actual, expected))| {
+                actual
+                    .to_le_bytes()
+                    .into_iter()
+                    .zip(expected.to_le_bytes())
+                    .map(move |(actual, expected)| (actual.abs_diff(expected), index))
+            })
+            .max()
+            .unwrap_or((0, 0));
+        assert!(
+            max_difference.0 <= 2,
+            "partial liquid glass diverged inside damage at x={x} by {} channel levels at ({}, {}), active={:?}",
+            max_difference.0,
+            max_difference.1 % 512,
+            max_difference.1 / 512,
+            active_bounds,
+        );
+        assert!(
+            incremental
+                .incremental_render_stats()
+                .rerendered_offscreen_tiles
+                < 320,
+            "a small source mutation must not rebuild all 20x16 panel tiles"
+        );
+    }
 }
 
 #[test]

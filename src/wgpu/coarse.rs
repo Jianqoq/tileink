@@ -5,7 +5,9 @@ use crate::shared::{
     gpu_plan::{COARSE_CHUNK_SIZE, GpuBufferLengths},
 };
 
-use super::canvas::{WgpuCoarseBindings, WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers};
+use super::canvas::{
+    WgpuCoarseBindGroups, WgpuCoarseBindings, WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers,
+};
 use super::commands::{
     WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
 };
@@ -451,12 +453,18 @@ impl WgpuCoarsePipeline {
             }),
         );
         let bindings = canvas.coarse_bindings(scan, coarse);
-        let count_bind_group =
-            self.create_count_bind_group(commands.device(), &bindings, config_offset);
-        let prefix_bind_group =
-            self.create_prefix_bind_group(commands.device(), &bindings, config_offset);
-        let emit_bind_group =
-            self.create_emit_bind_group(commands.device(), &bindings, config_offset);
+        let bind_groups = {
+            let _profile_scope = start_cpu_scope("coarse.bind_groups");
+            let slot = (config_offset / self.config_stride) as usize;
+            coarse.cached_bind_groups(bindings.key, slot, || WgpuCoarseBindGroups {
+                count: self.create_count_bind_group(commands.device(), &bindings, config_offset),
+                prefix: self.create_prefix_bind_group(commands.device(), &bindings, config_offset),
+                emit: self.create_emit_bind_group(commands.device(), &bindings, config_offset),
+            })
+        };
+        let count_bind_group = bind_groups.count;
+        let prefix_bind_group = bind_groups.prefix;
+        let emit_bind_group = bind_groups.emit;
         if profile_coarse_passes() && !incremental {
             self.encode_profiled_chunked(
                 commands,

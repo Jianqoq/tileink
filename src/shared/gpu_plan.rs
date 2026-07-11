@@ -254,17 +254,42 @@ pub(crate) struct TileDrawBins {
     dirty_pages: Vec<u32>,
     full_upload: bool,
     compactions: u64,
+    active_batch_marks: Vec<u32>,
+    active_batch_generation: u32,
+    active_batches: Vec<u32>,
 }
 
 impl TileDrawBins {
-    pub(crate) fn active_batch_ids(&self, tiles: &[u32], draw_batch_ids: &[u32]) -> HashSet<u32> {
-        tiles
+    pub(crate) fn active_batch_ids(&mut self, tiles: &[u32], draw_batch_ids: &[u32]) -> Vec<u32> {
+        self.active_batch_generation = self.active_batch_generation.wrapping_add(1);
+        if self.active_batch_generation == 0 {
+            self.active_batch_marks.fill(0);
+            self.active_batch_generation = 1;
+        }
+        let generation = self.active_batch_generation;
+        self.active_batches.clear();
+        for draw in tiles
             .iter()
             .filter_map(|&tile| self.tile_refs.get(tile as usize))
             .flatten()
-            .filter_map(|&draw| draw_batch_ids.get(draw as usize).copied())
-            .filter(|&batch| batch != u32::MAX)
-            .collect()
+        {
+            let Some(&batch) = draw_batch_ids.get(*draw as usize) else {
+                continue;
+            };
+            if batch == u32::MAX {
+                continue;
+            }
+            let index = batch as usize;
+            if index >= self.active_batch_marks.len() {
+                self.active_batch_marks.resize(index + 1, 0);
+            }
+            if self.active_batch_marks[index] != generation {
+                self.active_batch_marks[index] = generation;
+                self.active_batches.push(batch);
+            }
+        }
+        self.active_batches.sort_unstable();
+        self.active_batches.clone()
     }
 
     fn tile_draws(&self, tile: usize) -> Vec<u32> {
@@ -1911,6 +1936,32 @@ mod tests {
             bins.draws_in_bounds(Bounds::new(0, 32, 32, 64), &plan.draw_order)
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn active_batch_ids_deduplicate_with_reusable_generation_marks() {
+        let mut canvas = Canvas::new(crate::TILE_SIZE * 3, crate::TILE_SIZE, 1.0);
+        canvas.push_rect(
+            Rect::new(0.0, 0.0, 32.0, 16.0),
+            crate::Radius::ZERO,
+            Color::BLACK,
+        );
+        canvas.push_rect(
+            Rect::new(16.0, 0.0, 32.0, 16.0),
+            crate::Radius::ZERO,
+            Color::WHITE,
+        );
+        canvas.push_rect(
+            Rect::new(32.0, 0.0, 48.0, 16.0),
+            crate::Radius::ZERO,
+            Color::BLACK,
+        );
+        let mut bins = build_tile_draw_bins(&canvas);
+        let batches = [7, 3, u32::MAX];
+
+        assert_eq!(bins.active_batch_ids(&[0, 1], &batches), [3, 7]);
+        assert!(bins.active_batch_ids(&[2], &batches).is_empty());
+        assert_eq!(bins.active_batch_ids(&[1], &batches), [3, 7]);
     }
 
     #[test]

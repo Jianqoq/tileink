@@ -13,7 +13,25 @@ use crate::shared::gpu_coarse::{
     coarse_work_fine_tile_kind_word_offset, coarse_work_ptcl_word_offset,
 };
 
+use std::sync::Mutex;
+
 use super::super::buffer::WgpuBuffer;
+use super::bindings::WgpuCoarseBindingKey;
+
+const COARSE_BIND_GROUP_CACHE_SLOTS: usize = 256;
+
+#[derive(Clone)]
+pub(crate) struct WgpuCoarseBindGroups {
+    pub(crate) count: ::wgpu::BindGroup,
+    pub(crate) prefix: ::wgpu::BindGroup,
+    pub(crate) emit: ::wgpu::BindGroup,
+}
+
+#[derive(Default)]
+struct WgpuCoarseBindGroupCache {
+    key: Option<WgpuCoarseBindingKey>,
+    slots: Vec<Option<WgpuCoarseBindGroups>>,
+}
 
 pub(crate) struct WgpuScanBuffers {
     pub(crate) backdrops: WgpuBuffer,
@@ -170,6 +188,10 @@ pub(crate) struct WgpuCoarseBuffers {
     pub(crate) work: WgpuBuffer,
     pub(crate) chunk_records: WgpuBuffer,
     pub(crate) tile_bin_layout: Option<(u64, usize, usize, usize)>,
+    pub(crate) tile_bin_staging: WgpuBuffer,
+    pub(crate) tile_bin_staging_words: Vec<u32>,
+    pub(crate) pending_tile_bin_copies: Vec<(u64, u64, u64)>,
+    bind_group_cache: Mutex<WgpuCoarseBindGroupCache>,
 }
 
 impl WgpuCoarseBuffers {
@@ -178,7 +200,45 @@ impl WgpuCoarseBuffers {
             work: WgpuBuffer::new(device, "tileink wgpu coarse work"),
             chunk_records: WgpuBuffer::new(device, "tileink wgpu coarse chunk records"),
             tile_bin_layout: None,
+            tile_bin_staging: WgpuBuffer::new(device, "tileink wgpu tile bin staging"),
+            tile_bin_staging_words: Vec::new(),
+            pending_tile_bin_copies: Vec::new(),
+            bind_group_cache: Mutex::new(WgpuCoarseBindGroupCache::default()),
         }
+    }
+
+    pub(crate) fn encode_pending_tile_bin_copies(&mut self, encoder: &mut ::wgpu::CommandEncoder) {
+        for (source, target, size) in self.pending_tile_bin_copies.drain(..) {
+            encoder.copy_buffer_to_buffer(
+                self.tile_bin_staging.buffer(),
+                source,
+                self.work.buffer(),
+                target,
+                size,
+            );
+        }
+    }
+
+    pub(crate) fn cached_bind_groups(
+        &self,
+        key: WgpuCoarseBindingKey,
+        slot: usize,
+        create: impl FnOnce() -> WgpuCoarseBindGroups,
+    ) -> WgpuCoarseBindGroups {
+        // Config offsets repeat from zero in each command batch. Cache the common slots, while
+        // bounding driver objects for pathological plans with thousands of independent batches.
+        if slot >= COARSE_BIND_GROUP_CACHE_SLOTS {
+            return create();
+        }
+        let mut cache = self.bind_group_cache.lock().unwrap();
+        if cache.key != Some(key) {
+            cache.key = Some(key);
+            cache.slots.clear();
+        }
+        if cache.slots.len() <= slot {
+            cache.slots.resize_with(slot + 1, || None);
+        }
+        cache.slots[slot].get_or_insert_with(create).clone()
     }
 
     pub(crate) fn prepare_outputs(&mut self, device: &::wgpu::Device, lengths: GpuBufferLengths) {

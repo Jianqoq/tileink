@@ -686,6 +686,8 @@ impl Renderer {
         let (Some(scan), Some(cumsum)) = (&self.scan_pipeline, &self.cumsum) else {
             return false;
         };
+        self.coarse
+            .encode_pending_tile_bin_copies(commands.encoder());
         let active = self
             .retained
             .active_tiles()
@@ -850,7 +852,7 @@ impl Renderer {
                     &plan.ops,
                     WgpuRenderTargetId::Main,
                     &mut filter_cursors,
-                    active_batches.as_ref(),
+                    active_batches.as_deref(),
                 )
             }
         });
@@ -885,7 +887,7 @@ impl Renderer {
         ops: &[ExecOp],
         target: WgpuRenderTargetId,
         filter_cursors: &mut WgpuFilterCursors,
-        active_batches: Option<&std::collections::HashSet<u32>>,
+        active_batches: Option<&[u32]>,
     ) -> bool {
         for op in ops {
             let ok = match op {
@@ -895,7 +897,7 @@ impl Renderer {
                     layer_stack,
                     ..
                 } => {
-                    active_batches.is_some_and(|active| !active.contains(batch_id))
+                    active_batches.is_some_and(|active| active.binary_search(batch_id).is_err())
                         || self.execute_draw_batch(
                             commands,
                             canvas,
@@ -1739,10 +1741,11 @@ impl Renderer {
         }
         let partial = cached.as_ref().is_some_and(|(_, surface)| {
             surface.backdrop_source.is_some()
-                && matches!(
-                    filter,
-                    Filter::Blur { sampling, .. } if sampling.factor() == 1
-                )
+                && (matches!(filter, Filter::Blur { sampling, .. } if sampling.factor() == 1)
+                    || matches!(
+                        filter,
+                        Filter::RectLiquidGlass(glass) if glass.blur_sampling.factor() == 1
+                    ))
         });
         if retained_id.is_some() {
             let rerendered_tiles = if partial {
@@ -1858,34 +1861,48 @@ impl Renderer {
             None
         };
         let filter_source = source_history.unwrap_or(target);
-        // Filters without a partial-update implementation rebuild their whole
-        // cached surface. Running that rebuild with the root dirty-tile
-        // worklist would mix newly filtered tiles with stale filtered pixels,
-        // which then become blur/refraction input on the next frame.
+        // Filters without a partial-update implementation rebuild their whole cached surface.
+        // Blur needs explicit intermediate halos. Liquid glass is safe with the root worklist
+        // because its cached source is complete and retained damage already includes the full
+        // blur/refraction dependency outset needed by every dirty output tile.
         let suspended_active = (!partial).then(|| self.suspend_incremental_filter_work());
         let filter_ok = if partial {
             let output = self
                 .active_bounds_union()
                 .unwrap_or(bounds)
                 .intersect(bounds);
-            let Filter::Blur {
-                std_dev_x,
-                std_dev_y,
-                ..
-            } = filter
-            else {
-                unreachable!("only full-resolution blur supports partial backdrop updates")
-            };
-            filter_cursors.advance_filter(filter);
-            self.apply_blur_from_source_partial(
-                commands,
-                filter_source,
-                backdrop,
-                output,
-                bounds,
-                *std_dev_x,
-                *std_dev_y,
-            )
+            match filter {
+                Filter::Blur {
+                    std_dev_x,
+                    std_dev_y,
+                    ..
+                } => {
+                    filter_cursors.advance_filter(filter);
+                    self.apply_blur_from_source_partial(
+                        commands,
+                        filter_source,
+                        backdrop,
+                        output,
+                        bounds,
+                        *std_dev_x,
+                        *std_dev_y,
+                    )
+                }
+                Filter::RectLiquidGlass(glass) => {
+                    rect_liquid_glass_region(Some(sample_region), bounds).is_some_and(|region| {
+                        self.apply_liquid_glass_from_source_partial(
+                            commands,
+                            filter_source,
+                            backdrop,
+                            output,
+                            bounds,
+                            *glass,
+                            region,
+                        )
+                    })
+                }
+                _ => unreachable!("only blur and liquid glass support partial backdrop updates"),
+            }
         } else {
             match filter {
                 Filter::Blur {
@@ -2262,7 +2279,7 @@ impl Renderer {
         bounds: Bounds,
     ) {
         if let Some(filter) = &self.filter {
-            let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+            let Some(target_read) = self.snapshot_filter_target(commands, target, bounds) else {
                 return;
             };
             filter.apply_region_mask(
@@ -2290,7 +2307,7 @@ impl Renderer {
             return false;
         };
         let bindings = self.scene_buffers.filter_bindings(&self.scan);
-        let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+        let Some(target_read) = self.snapshot_filter_target(commands, target, bounds) else {
             return false;
         };
         filter.composite_src_over_with_stack(
@@ -2377,7 +2394,7 @@ impl Renderer {
         };
         let bindings = self.scene_buffers.filter_bindings(&self.scan);
         self.active_region(bounds).is_none_or(|bounds| {
-            let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+            let Some(target_read) = self.snapshot_filter_target(commands, target, bounds) else {
                 return false;
             };
             if let Some(mode) = blend {
@@ -2423,7 +2440,7 @@ impl Renderer {
         let Some(filter) = &self.filter else {
             return false;
         };
-        let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+        let Some(target_read) = self.snapshot_filter_target(commands, target, bounds) else {
             return false;
         };
         filter.composite_src_over_rect_mask_direct(
@@ -2463,7 +2480,7 @@ impl Renderer {
             return false;
         };
         self.active_region(bounds).is_none_or(|bounds| {
-            let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+            let Some(target_read) = self.snapshot_filter_target(commands, target, bounds) else {
                 return false;
             };
             filter.composite_src_over_rect_mask_direct(
@@ -2493,7 +2510,7 @@ impl Renderer {
             return false;
         };
         let bindings = self.scene_buffers.filter_bindings(&self.scan);
-        let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+        let Some(target_read) = self.snapshot_filter_target(commands, target, bounds) else {
             return false;
         };
         filter.composite_blend_with_stack(
@@ -2526,7 +2543,7 @@ impl Renderer {
             return false;
         };
         let bindings = self.scene_buffers.filter_bindings(&self.scan);
-        let Some(target_read) = self.snapshot_filter_target(commands, target) else {
+        let Some(target_read) = self.snapshot_filter_target(commands, target, bounds) else {
             return false;
         };
         filter.composite_src_over_surface_with_stack(
@@ -2648,12 +2665,14 @@ impl Renderer {
         &self,
         commands: &mut WgpuCommandBatch,
         target: WgpuRenderTargetId,
+        bounds: Bounds,
     ) -> Option<&::wgpu::TextureView> {
-        copy_texture(
+        copy_texture_region(
             commands.encoder(),
             self.render_target_texture(target)?,
             self.filter_target_snapshot.texture(),
             self.size,
+            bounds,
         );
         Some(self.filter_target_snapshot.view())
     }
@@ -2784,6 +2803,37 @@ fn copy_texture(
         ::wgpu::Extent3d {
             width: size.0.max(1),
             height: size.1.max(1),
+            depth_or_array_layers: 1,
+        },
+    );
+}
+
+fn copy_texture_region(
+    encoder: &mut ::wgpu::CommandEncoder,
+    source: &::wgpu::Texture,
+    target: &::wgpu::Texture,
+    size: (u32, u32),
+    bounds: Bounds,
+) {
+    let bounds = bounds.intersect(Bounds::canvas(size.0, size.1));
+    if bounds.is_empty() {
+        return;
+    }
+    let origin = ::wgpu::Origin3d {
+        x: bounds.x0 as u32,
+        y: bounds.y0 as u32,
+        z: 0,
+    };
+    let mut source_copy = source.as_image_copy();
+    source_copy.origin = origin;
+    let mut target_copy = target.as_image_copy();
+    target_copy.origin = origin;
+    encoder.copy_texture_to_texture(
+        source_copy,
+        target_copy,
+        ::wgpu::Extent3d {
+            width: bounds.width(),
+            height: bounds.height(),
             depth_or_array_layers: 1,
         },
     );
