@@ -12,31 +12,27 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "quiet_runner.ps1")
 
 $repo = Resolve-Path (Join-Path $PSScriptRoot "../..")
 $testsRoot = Join-Path $repo "src\svg\tests"
+$logPath = New-QuietRunLog -Name "svg-$Type"
+$metadataPath = "$logPath.metadata.json"
 
 Push-Location $repo
 try {
-    $oldErrorActionPreference = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
-    $metadataJson = cargo metadata --format-version 1 --no-deps
-    $metadataExit = $LASTEXITCODE
-    $ErrorActionPreference = $oldErrorActionPreference
-    if ($metadataExit -ne 0) {
-        throw "cargo metadata failed with exit code $metadataExit"
-    }
-    $metadata = $metadataJson | ConvertFrom-Json
+    Write-QuietProgress -Label "Read Cargo metadata"
+    $metadataExit = Invoke-QuietCommand -Label "Cargo metadata" -FilePath "cargo" `
+        -ArgumentList @("metadata", "--format-version", "1", "--no-deps") `
+        -LogPath $logPath -StdoutPath $metadataPath
+    $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+    Remove-Item -LiteralPath $metadataPath -Force
     $example = Join-Path $metadata.target_directory "release\examples\svg_fixture_render.exe"
 
-    $oldErrorActionPreference = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
-    cargo build --release --example svg_fixture_render
-    $buildExit = $LASTEXITCODE
-    $ErrorActionPreference = $oldErrorActionPreference
-    if ($buildExit -ne 0) {
-        throw "cargo build failed with exit code $buildExit"
-    }
+    Write-QuietProgress -Label "Build SVG fixture renderer"
+    $buildExit = Invoke-QuietCommand -Label "Build SVG fixture renderer" -FilePath "cargo" `
+        -ArgumentList @("build", "--release", "--example", "svg_fixture_render") `
+        -LogPath $logPath
     if (-not (Test-Path -Path $example)) {
         throw "Expected renderer executable was not created: $example"
     }
@@ -56,18 +52,20 @@ try {
         $renderJobs.Add([pscustomobject]@{ Backend = "wgpu"; WgpuMode = "native"; Label = "wgpu-portable-compare"; ComparePortable = $true })
     }
 
+    $renderStep = 0
+    $renderTotal = $typeDirs.Count * $renderJobs.Count
     foreach ($dir in $typeDirs) {
         foreach ($job in $renderJobs) {
-            Write-Host "[$($job.Label)] $($dir.FullName)"
-            $oldErrorActionPreference = $ErrorActionPreference
-            $ErrorActionPreference = "Continue"
+            $renderStep++
+            $label = "SVG [$($job.Label)] $($dir.Name)"
+            Write-QuietProgress -Label $label -Step $renderStep -Total $renderTotal
             if ($job.ComparePortable) {
-                & $example $dir.FullName $job.Backend --compare-wgpu-portable
+                $arguments = @($dir.FullName, $job.Backend, "--compare-wgpu-portable")
             } else {
-                & $example $dir.FullName $job.Backend --wgpu-mode $job.WgpuMode
+                $arguments = @($dir.FullName, $job.Backend, "--wgpu-mode", $job.WgpuMode)
             }
-            $renderExit = $LASTEXITCODE
-            $ErrorActionPreference = $oldErrorActionPreference
+            $renderExit = Invoke-QuietCommand -Label $label -FilePath $example `
+                -ArgumentList $arguments -LogPath $logPath -AllowFailure
             if ($renderExit -ne 0) {
                 $message = "[$($job.Label)] $($dir.FullName)"
                 $failures.Add($message)
@@ -79,7 +77,6 @@ try {
     }
 
     if ($failures.Count -gt 0) {
-        Write-Host ""
         Write-Host "Failures:"
         $failures | ForEach-Object { Write-Host "  $_" }
         exit 1
@@ -87,3 +84,5 @@ try {
 } finally {
     Pop-Location
 }
+
+Complete-QuietRun -Label "SVG tests [$Type]" -LogPath $logPath

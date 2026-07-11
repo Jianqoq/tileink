@@ -266,6 +266,13 @@ impl GpuImageResourceUpload {
         self.placements.is_empty()
     }
 
+    /// Changes whenever resource placement data is rebuilt. Scene brush uploads use this to
+    /// distinguish a placement-table change, which requires repatching every image brush, from
+    /// an ordinary retained mutation, which only requires patching dirty brush allocations.
+    pub(crate) fn generation(&self) -> u64 {
+        self.generation
+    }
+
     pub(crate) fn atlas_page_size(&self) -> u32 {
         self.atlas_page_size
     }
@@ -290,6 +297,7 @@ impl GpuImageResourceUpload {
 
 #[derive(Clone, Default)]
 pub(crate) struct GpuImageResourceUpload {
+    generation: u64,
     atlas_page_size: u32,
     atlas_pages: Vec<GpuImageResourceAtlasPageUpload>,
     textures: Vec<GpuImageResourceTextureUpload>,
@@ -537,6 +545,7 @@ impl<'a> ImageResourceUploadBuilder<'a> {
         }
 
         GpuImageResourceUpload {
+            generation: previous.map_or(1, |upload| upload.generation.wrapping_add(1)),
             atlas_page_size: page_uploads.first().map_or(1, |page| page.size),
             atlas_pages: page_uploads,
             textures,

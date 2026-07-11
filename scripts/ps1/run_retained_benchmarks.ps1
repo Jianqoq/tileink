@@ -12,21 +12,24 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "quiet_runner.ps1")
 
 if ($SaveBaseline -and $Baseline) {
     throw "Use either -SaveBaseline or -Baseline, not both"
 }
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "../..")
-$targets = switch ($Benchmark) {
+$targets = @(switch ($Benchmark) {
     "scale" { @("retained_scale") }
     "dirty-ratio" { @("retained_dirty_ratio") }
     default { @("retained_scale", "retained_dirty_ratio") }
-}
+})
+$logPath = New-QuietRunLog -Name "retained-benchmarks"
 
 Push-Location $repoRoot
 try {
-    foreach ($target in $targets) {
+    for ($index = 0; $index -lt $targets.Count; $index++) {
+        $target = $targets[$index]
         $arguments = [System.Collections.Generic.List[string]]::new()
         $arguments.Add("bench")
         $arguments.Add("--bench")
@@ -46,12 +49,13 @@ try {
             $arguments.Add("--quick")
         }
 
-        Write-Host "Running Criterion benchmark: $target"
-        & cargo $arguments
-        if ($LASTEXITCODE -ne 0) {
-            throw "Criterion benchmark '$target' failed with exit code $LASTEXITCODE"
-        }
+        $label = "Criterion benchmark [$target]"
+        Write-QuietProgress -Label $label -Step ($index + 1) -Total $targets.Count
+        $exitCode = Invoke-QuietCommand -Label $label -FilePath "cargo" `
+            -ArgumentList $arguments -LogPath $logPath
     }
 } finally {
     Pop-Location
 }
+
+Complete-QuietRun -Label "retained benchmarks" -LogPath $logPath

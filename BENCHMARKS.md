@@ -18,13 +18,16 @@ Compare the current code with it:
 
 The complete run contains two suites:
 
-- `retained_scale`: static, revision, variable-length content, all revisions, move, scene and
-  tail/middle/nested layer add/remove, reparent, reorder, single/many layer update, arena
-  fragmentation, full-canvas and cropped/offset filter-child revision, backdrop-background
-  revision, and manual invalidation at 100, 1k, 5k, 20k, and 100k nodes. The cropped filter case
-  keeps its pixel region fixed while scene size grows, detecting regressions that translate or
-  upload unrelated draws. Middle and nested layer insertion/removal also have separate phase
-  benchmarks so one cheap phase cannot hide a regression in the other.
+- `retained_scale`: static, revision, variable-length content, variable-length image resources,
+  late/sparse image-resource revision, all revisions, move, scene and tail/middle/nested layer
+  add/remove, reparent, reorder, single/many layer update, arena fragmentation, full-canvas and
+  cropped/offset filter-child revision, backdrop-background revision, and
+  plain/cropped-filter/backdrop manual invalidation at 100, 1k, 5k, 20k, and 100k nodes. The
+  cropped filter case keeps its pixel region fixed while scene size grows, detecting regressions
+  that translate or upload unrelated draws. Tail, middle, and nested layer insertion/removal also
+  have separate phase benchmarks so one cheap phase cannot hide a regression in the other.
+  Stateful scale cases warm through a complete alternating mutation cycle before sampling, so
+  Criterion measures stable updates instead of rebuilding a cold arena for every sample.
 - `retained_dirty_ratio`: 13 dirty ratios from 0.5% to 100%, each measured with persistent Auto
   and ForceFull, the flat retained snapshot adapter, the remaining mixed-command legacy fallback,
   their ForceFull variants, and the preflattened-immediate lower bound.
@@ -38,4 +41,9 @@ Use filters for focused development runs without deleting any matrix entries:
 
 The existing `retained_scale_bench` and `retained_dirty_ratio_bench` examples use the same workload
 definitions and remain useful for profiler stage counters such as materialization, prepare, uploaded
-bytes, tile pages, plan fragments, and arena fragmentation.
+bytes, rewritten/compacted tile pages, plan fragments, and arena fragmentation. Alternating
+insert/remove scenarios can be profiled independently:
+
+```powershell
+cargo run --release --example retained_scale_bench -- --counts 1000,100000 --frames 30 --warmup 3 --scenarios nested-layer-add-remove --phase insert
+```

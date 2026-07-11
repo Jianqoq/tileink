@@ -343,6 +343,7 @@ impl Renderer {
             root_target_texture: std::mem::take(&mut self.root_target_texture),
             root_target_view: std::mem::take(&mut self.root_target_view),
             scratch: std::mem::take(&mut self.scratch),
+            scratch_spares: std::mem::take(&mut self.scratch_spares),
             scratch_in_use: std::mem::take(&mut self.scratch_in_use),
             size: self.size,
             surface_origin: self.surface_origin,
@@ -464,6 +465,7 @@ impl Renderer {
         self.root_target_texture = saved.root_target_texture;
         self.root_target_view = saved.root_target_view;
         self.scratch = saved.scratch;
+        self.scratch_spares = saved.scratch_spares;
         self.scratch_in_use = saved.scratch_in_use;
         self.size = saved.size;
         self.surface_origin = saved.surface_origin;
@@ -479,6 +481,9 @@ impl Renderer {
                 .push(WgpuTarget::new(&self.device, self.size.0, self.size.1));
         }
         for scratch in &mut self.scratch {
+            scratch.resize(&self.device, self.size.0, self.size.1);
+        }
+        for scratch in &mut self.scratch_spares {
             scratch.resize(&self.device, self.size.0, self.size.1);
         }
         self.filter_target_snapshot

@@ -130,6 +130,9 @@ pub struct IncrementalRenderStats {
     pub reused_offscreen_surfaces: u32,
     pub rerendered_offscreen_surfaces: u32,
     pub rerendered_offscreen_tiles: u32,
+    /// Retained nodes visited to reconcile offscreen-surface ownership. Static frames and
+    /// journal-connected commits keep this at zero.
+    pub retained_surface_nodes_scanned: u32,
     pub scanned_paths: u32,
     pub scanned_lines: u32,
     pub scan_chunks: u32,
@@ -580,9 +583,8 @@ impl IncrementalState {
             (delta.backdrop_damage_complete
                 && delta.from_version == previous_version
                 && current.version == Some(delta.to_version)
-                && !current.invalidate_all
-                && current.invalidated_bounds.is_empty())
-            .then(|| delta.dirty_backdrops.clone())
+                && !current.invalidate_all)
+                .then(|| delta.dirty_backdrops.clone())
         });
         let (changed_tiles, retained_damage) = self.scene_damage(frame.as_ref(), size);
         let threshold_exceeded =

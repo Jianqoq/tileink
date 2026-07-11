@@ -73,6 +73,13 @@ fn persistent_retained_scene_updates_incrementally_and_reuses_static_frames() {
     assert_eq!(renderer.incremental_render_stats().dirty_tiles, 0);
     assert_eq!(renderer.incremental_render_stats().chunks_rebuilt, 0);
     assert_eq!(renderer.incremental_render_stats().gpu_uploaded_bytes, 0);
+    assert_eq!(
+        renderer
+            .incremental_render_stats()
+            .retained_surface_nodes_scanned,
+        0,
+        "an unchanged frame must not rescan every node for surface ownership"
+    );
     assert!(
         renderer
             .incremental_render_stats()
@@ -100,6 +107,13 @@ fn persistent_retained_scene_updates_incrementally_and_reuses_static_frames() {
             .all(|entry| entry.name != "prepare"),
         "raster-only invalidation must reuse prepared scene buffers"
     );
+    assert!(
+        profile
+            .entries()
+            .iter()
+            .all(|entry| entry.name != "retained.damage.propagate"),
+        "manual invalidation in a dependency-free scene must not walk every retained command"
+    );
 
     scene
         .transaction()
@@ -108,6 +122,146 @@ fn persistent_retained_scene_updates_incrementally_and_reuses_static_frames() {
         .unwrap();
     renderer.render_retained(&scene);
     assert_eq!(renderer.image().rgba8_at(8, 8), [20, 80, 230, 255]);
+}
+
+#[test]
+fn persistent_filter_manual_invalidation_skips_command_tree_propagation() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let root = RetainedNodeId::for_owner(54_000);
+    let layer = RetainedNodeId::for_owner(54_001);
+    let leaf = RetainedNodeId::for_owner(54_002);
+    let mut child = Canvas::new(16, 16, 1.0);
+    child.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(30, 130, 220),
+    );
+    let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_layer(
+            RetainedParent::content(root),
+            None,
+            layer,
+            RetainedLayerDescriptor::Filter {
+                filter: Filter::Opacity(0.75),
+                sample_region: Region::rect(Rect::new(0.0, 0.0, 32.0, 32.0), crate::Radius::ZERO),
+            },
+        )
+        .insert_scene(
+            RetainedParent::content(layer),
+            None,
+            leaf,
+            std::sync::Arc::new(child),
+            (0.0, 0.0),
+        )
+        .commit()
+        .unwrap();
+
+    let mut renderer = new_test_renderer(64, 64, Color::TRANSPARENT);
+    renderer.render_retained(&scene);
+    scene
+        .transaction()
+        .invalidate_rect(Rect::new(48.0, 48.0, 56.0, 56.0))
+        .commit()
+        .unwrap();
+    renderer.start_profile();
+    renderer.render_retained(&scene);
+    let profile = renderer.end_profile().clone();
+    assert_eq!(
+        renderer
+            .incremental_render_stats()
+            .rerendered_offscreen_surfaces,
+        0
+    );
+    assert_profile_missing(&profile, "retained.damage.propagate");
+
+    scene
+        .transaction()
+        .invalidate_rect(Rect::new(0.0, 0.0, 8.0, 8.0))
+        .commit()
+        .unwrap();
+    renderer.start_profile();
+    renderer.render_retained(&scene);
+    let profile = renderer.end_profile().clone();
+    assert_eq!(renderer.incremental_render_stats().dirty_tiles, 1);
+    assert_profile_missing(&profile, "retained.damage.propagate");
+}
+
+#[test]
+fn persistent_backdrop_manual_invalidation_uses_indexed_dependency_damage() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let root = RetainedNodeId::for_owner(55_000);
+    let background = RetainedNodeId::for_owner(55_001);
+    let backdrop = RetainedNodeId::for_owner(55_002);
+    let mut child = Canvas::new(64, 64, 1.0);
+    child.push_rect(
+        Rect::new(0.0, 0.0, 64.0, 64.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(30, 130, 220),
+    );
+    let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            background,
+            std::sync::Arc::new(child),
+            (0.0, 0.0),
+        )
+        .insert_layer(
+            RetainedParent::content(root),
+            None,
+            backdrop,
+            RetainedLayerDescriptor::Backdrop {
+                filter: Filter::Opacity(0.75),
+                sample_region: Region::rect(Rect::new(0.0, 0.0, 32.0, 32.0), crate::Radius::ZERO),
+            },
+        )
+        .commit()
+        .unwrap();
+
+    let mut renderer = new_test_renderer(64, 64, Color::TRANSPARENT);
+    renderer.render_retained(&scene);
+    scene
+        .transaction()
+        .invalidate_rect(Rect::new(48.0, 48.0, 56.0, 56.0))
+        .commit()
+        .unwrap();
+    renderer.start_profile();
+    renderer.render_retained(&scene);
+    let profile = renderer.end_profile().clone();
+    assert_eq!(
+        renderer
+            .incremental_render_stats()
+            .rerendered_offscreen_surfaces,
+        0
+    );
+    assert_profile_missing(&profile, "retained.damage.propagate");
+
+    scene
+        .transaction()
+        .invalidate_rect(Rect::new(0.0, 0.0, 8.0, 8.0))
+        .commit()
+        .unwrap();
+    renderer.start_profile();
+    renderer.render_retained(&scene);
+    let profile = renderer.end_profile().clone();
+    assert_eq!(renderer.incremental_render_stats().dirty_tiles, 1);
+    assert_eq!(
+        renderer
+            .incremental_render_stats()
+            .rerendered_offscreen_surfaces,
+        1
+    );
+    assert_profile_missing(&profile, "retained.damage.propagate");
 }
 
 #[test]
@@ -306,6 +460,265 @@ fn persistent_retained_scene_preserves_order_after_variable_length_reallocation(
     assert_eq!(incremental.image().pixels, full.image().pixels);
     assert_eq!(incremental.image().rgba8_at(8, 8), [30, 210, 70, 255]);
     assert_eq!(incremental.image().rgba8_at(24, 8), [240, 210, 40, 255]);
+}
+
+#[test]
+fn persistent_variable_length_update_uploads_only_changed_allocations() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let one_draw = {
+        let mut canvas = Canvas::new(8, 8, 1.0);
+        canvas.push_rect(
+            Rect::new(0.0, 0.0, 8.0, 8.0),
+            crate::Radius::ZERO,
+            Color::from_rgb8(30, 130, 220),
+        );
+        std::sync::Arc::new(canvas)
+    };
+    let two_draws = {
+        let mut canvas = Canvas::new(8, 8, 1.0);
+        canvas.push_rect(
+            Rect::new(0.0, 0.0, 4.0, 8.0),
+            crate::Radius::ZERO,
+            Color::from_rgb8(30, 210, 70),
+        );
+        canvas.push_rect(
+            Rect::new(4.0, 0.0, 8.0, 8.0),
+            crate::Radius::ZERO,
+            Color::from_rgb8(240, 210, 40),
+        );
+        std::sync::Arc::new(canvas)
+    };
+    let root = RetainedNodeId::for_owner(50_200);
+    let changed = RetainedNodeId::for_owner(50_201);
+    let mut scene = RetainedScene::new(256, 128, 1.0, root).unwrap();
+    let mut transaction = scene.transaction();
+    for index in 0..512 {
+        transaction.insert_scene(
+            RetainedParent::content(root),
+            None,
+            RetainedNodeId::for_owner(50_201 + index),
+            one_draw.clone(),
+            ((index % 32) as f64 * 8.0, (index / 32) as f64 * 8.0),
+        );
+    }
+    transaction.commit().unwrap();
+
+    let mut renderer = new_test_renderer(256, 128, Color::TRANSPARENT);
+    renderer.render_retained(&scene);
+    scene
+        .transaction()
+        .replace_scene(changed, two_draws.clone())
+        .commit()
+        .unwrap();
+    renderer.render_retained(&scene);
+    assert!(
+        renderer.incremental_render_stats().gpu_uploaded_bytes < 16 * 1024,
+        "one variable-length chunk must not relocate and upload the full paint arena: {:?}",
+        renderer.incremental_render_stats()
+    );
+    assert_eq!(renderer.image().rgba8_at(2, 4), [30, 210, 70, 255]);
+    assert_eq!(renderer.image().rgba8_at(6, 4), [240, 210, 40, 255]);
+
+    scene
+        .transaction()
+        .replace_scene(changed, one_draw)
+        .commit()
+        .unwrap();
+    renderer.render_retained(&scene);
+    assert!(renderer.incremental_render_stats().gpu_uploaded_bytes < 16 * 1024);
+}
+
+#[test]
+fn persistent_resource_variable_length_update_is_local_and_matches_full_render() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let image = std::sync::Arc::new(Image::from_rgba8(
+        2,
+        2,
+        [
+            255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255,
+        ],
+    ));
+    let child = |two_draws| {
+        let mut canvas = Canvas::new(8, 8, 1.0);
+        let end = if two_draws { 4.0 } else { 8.0 };
+        canvas
+            .push_image(
+                Rect::new(0.0, 0.0, end, 8.0),
+                image.clone(),
+                Extend::Pad,
+                PatternSampling::Bilinear,
+            )
+            .unwrap();
+        if two_draws {
+            canvas
+                .push_image(
+                    Rect::new(4.0, 0.0, 8.0, 8.0),
+                    image.clone(),
+                    Extend::Pad,
+                    PatternSampling::Bilinear,
+                )
+                .unwrap();
+        }
+        std::sync::Arc::new(canvas)
+    };
+    let one_draw = child(false);
+    let two_draws = child(true);
+    let root = RetainedNodeId::for_owner(51_000);
+    let changed = RetainedNodeId::for_owner(51_001);
+    let mut scene = RetainedScene::new(256, 128, 1.0, root).unwrap();
+    let mut transaction = scene.transaction();
+    for index in 0..512 {
+        transaction.insert_scene(
+            RetainedParent::content(root),
+            None,
+            RetainedNodeId::for_owner(51_001 + index),
+            one_draw.clone(),
+            ((index % 32) as f64 * 8.0, (index / 32) as f64 * 8.0),
+        );
+    }
+    transaction.commit().unwrap();
+
+    let mut incremental = new_test_renderer(256, 128, Color::TRANSPARENT);
+    incremental.render_retained(&scene);
+    scene
+        .transaction()
+        .replace_scene(changed, two_draws)
+        .commit()
+        .unwrap();
+    incremental.render_retained(&scene);
+
+    let mut full = new_test_renderer(256, 128, Color::TRANSPARENT);
+    let mut config = full.incremental_render_config();
+    config.mode = crate::IncrementalRenderMode::ForceFull;
+    full.set_incremental_render_config(config);
+    full.render(&scene.to_canvas());
+    assert_eq!(incremental.image().pixels, full.image().pixels);
+    assert!(
+        incremental.incremental_render_stats().gpu_uploaded_bytes < 16 * 1024,
+        "one resource-pattern chunk must not repatch and upload every brush: {:?}",
+        incremental.incremental_render_stats()
+    );
+}
+
+#[test]
+fn persistent_resource_brush_repatches_after_atlas_placement_changes() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let sampled = ImageKey::new(20);
+    let mut child = Canvas::new(8, 8, 1.0);
+    child
+        .push_image_key(
+            Rect::new(0.0, 0.0, 8.0, 8.0),
+            sampled,
+            Extend::Pad,
+            PatternSampling::Nearest,
+        )
+        .unwrap();
+    let root = RetainedNodeId::for_owner(52_000);
+    let mut scene = RetainedScene::new(8, 8, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            RetainedNodeId::for_owner(52_001),
+            std::sync::Arc::new(child),
+            (0.0, 0.0),
+        )
+        .commit()
+        .unwrap();
+
+    let mut renderer = new_test_renderer(8, 8, Color::TRANSPARENT);
+    assert!(renderer.insert_image(sampled, Image::from_rgba8(1, 1, [20, 210, 70, 255])));
+    renderer.render_retained(&scene);
+    assert_eq!(renderer.image().rgba8_at(4, 4), [20, 210, 70, 255]);
+
+    // A lower key sorts ahead of the sampled image and moves its atlas rectangle. The scene and
+    // draw allocation remain unchanged, so only the image-resource generation can trigger the
+    // required brush placement repatch.
+    assert!(renderer.insert_image(
+        ImageKey::new(1),
+        Image::from_rgba8(1, 1, [240, 30, 40, 255])
+    ));
+    renderer.render_retained(&scene);
+    assert_eq!(renderer.image().rgba8_at(4, 4), [20, 210, 70, 255]);
+}
+
+#[test]
+fn persistent_resource_brush_membership_tracks_incremental_replacement() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let solid = {
+        let mut canvas = Canvas::new(8, 8, 1.0);
+        canvas.push_rect(
+            Rect::new(0.0, 0.0, 8.0, 8.0),
+            crate::Radius::ZERO,
+            Color::from_rgb8(30, 80, 220),
+        );
+        std::sync::Arc::new(canvas)
+    };
+    let key = ImageKey::new(30);
+    let resource = {
+        let mut canvas = Canvas::new(8, 8, 1.0);
+        canvas
+            .push_image_key(
+                Rect::new(0.0, 0.0, 8.0, 8.0),
+                key,
+                Extend::Pad,
+                PatternSampling::Nearest,
+            )
+            .unwrap();
+        std::sync::Arc::new(canvas)
+    };
+    let root = RetainedNodeId::for_owner(53_000);
+    let leaf = RetainedNodeId::for_owner(53_001);
+    let mut scene = RetainedScene::new(8, 8, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            leaf,
+            solid.clone(),
+            (0.0, 0.0),
+        )
+        .commit()
+        .unwrap();
+    let mut renderer = new_test_renderer(8, 8, Color::TRANSPARENT);
+    renderer.render_retained(&scene);
+    assert_eq!(renderer.image().rgba8_at(4, 4), [30, 80, 220, 255]);
+
+    scene
+        .transaction()
+        .replace_scene(leaf, resource)
+        .commit()
+        .unwrap();
+    renderer.render_retained(&scene);
+    assert_eq!(renderer.image().rgba8_at(4, 4), [0, 0, 0, 0]);
+
+    // Mutations made while the resource table is empty are picked up by the one-time membership
+    // rebuild when the first image arrives.
+    assert!(renderer.insert_image(key, Image::from_rgba8(1, 1, [20, 210, 70, 255])));
+    renderer.render_retained(&scene);
+    assert_eq!(renderer.image().rgba8_at(4, 4), [20, 210, 70, 255]);
+
+    scene
+        .transaction()
+        .replace_scene(leaf, solid)
+        .commit()
+        .unwrap();
+    renderer.render_retained(&scene);
+    assert_eq!(renderer.image().rgba8_at(4, 4), [30, 80, 220, 255]);
 }
 
 #[test]
@@ -1505,6 +1918,75 @@ fn persistent_retained_tail_layer_add_remove_patches_plan_without_ghost_draws() 
     );
     assert_eq!(renderer.incremental_render_stats().chunks_rebuilt, 0);
     assert!(!renderer.incremental_render_stats().full_scene_sync);
+}
+
+#[test]
+fn persistent_retained_tail_layer_and_leaf_inserted_together_are_rendered() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let root = RetainedNodeId::for_owner(50_655);
+    let base = RetainedNodeId::for_owner(50_656);
+    let layer = RetainedNodeId::for_owner(50_657);
+    let leaf = RetainedNodeId::for_owner(50_658);
+    let child = |color| {
+        let mut canvas = Canvas::new(32, 16, 1.0);
+        canvas.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
+        std::sync::Arc::new(canvas)
+    };
+    let mut scene = RetainedScene::new(32, 16, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            base,
+            child(Color::from_rgb8(30, 70, 180)),
+            (16.0, 0.0),
+        )
+        .commit()
+        .unwrap();
+    let mut renderer = new_test_renderer(32, 16, Color::TRANSPARENT);
+    renderer.render_retained(&scene);
+    let initial = renderer.image();
+
+    scene
+        .transaction()
+        .insert_layer(
+            RetainedParent::content(root),
+            None,
+            layer,
+            RetainedLayerDescriptor::Opacity {
+                path: Rect::new(0.0, 0.0, 16.0, 16.0).to_path(0.1),
+                transform: Affine::IDENTITY,
+                tolerance: 0.1,
+                opacity: 0.5,
+            },
+        )
+        .insert_scene(
+            RetainedParent::content(layer),
+            None,
+            leaf,
+            child(Color::from_rgb8(240, 80, 30)),
+            (0.0, 0.0),
+        )
+        .commit()
+        .unwrap();
+    renderer.render_retained(&scene);
+    assert_eq!(renderer.incremental_render_stats().dirty_tiles, 1);
+    assert_eq!(renderer.image().rgba8_at(8, 8), [120, 40, 15, 128]);
+
+    let mut full = new_test_renderer(32, 16, Color::TRANSPARENT);
+    let mut config = full.incremental_render_config();
+    config.mode = crate::IncrementalRenderMode::ForceFull;
+    full.set_incremental_render_config(config);
+    full.render_retained(&scene);
+    assert_eq!(renderer.image().pixels, full.image().pixels);
+
+    scene.transaction().remove_subtree(layer).commit().unwrap();
+    renderer.render_retained(&scene);
+    assert_eq!(renderer.image().pixels, initial.pixels);
 }
 
 #[test]

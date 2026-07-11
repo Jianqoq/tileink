@@ -4,9 +4,13 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "quiet_runner.ps1")
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "../..")
 $examples = @("wgpu_examples")
+$logPath = New-QuietRunLog -Name "examples"
+$metadataPath = "$logPath.metadata.json"
+$totalSteps = $examples.Count + 2
 
 function Get-ExampleExecutable {
     param(
@@ -29,12 +33,20 @@ function Get-ExampleExecutable {
 
 Push-Location $repoRoot
 try {
-    Write-Host "Building examples..."
-    foreach ($name in $examples) {
-        cargo build --release --example $name
+    for ($index = 0; $index -lt $examples.Count; $index++) {
+        $name = $examples[$index]
+        $label = "Build example [$name]"
+        Write-QuietProgress -Label $label -Step ($index + 1) -Total $totalSteps
+        $exitCode = Invoke-QuietCommand -Label $label -FilePath "cargo" `
+            -ArgumentList @("build", "--release", "--example", $name) -LogPath $logPath
     }
 
-    $metadata = cargo metadata --format-version 1 --no-deps | ConvertFrom-Json
+    Write-QuietProgress -Label "Read Cargo metadata" -Step ($examples.Count + 1) -Total $totalSteps
+    $exitCode = Invoke-QuietCommand -Label "Cargo metadata" -FilePath "cargo" `
+        -ArgumentList @("metadata", "--format-version", "1", "--no-deps") `
+        -LogPath $logPath -StdoutPath $metadataPath
+    $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+    Remove-Item -LiteralPath $metadataPath -Force
     $examplesOutDir = Join-Path $metadata.target_directory "release\examples"
 
     $wgpuExe = Get-ExampleExecutable -ExamplesOutDir $examplesOutDir -Name "wgpu_examples"
@@ -44,14 +56,14 @@ try {
         if ($WgpuMode -eq "native") {
             $env:TILEINK_WGPU_MODE = "native"
             Remove-Item Env:\TILEINK_WGPU_COMPARE_PORTABLE -ErrorAction SilentlyContinue
-            Write-Host "Running example: wgpu_examples [native]"
-            & $wgpuExe
+            $label = "Run examples [native]"
         } else {
             $env:TILEINK_WGPU_MODE = "native"
             $env:TILEINK_WGPU_COMPARE_PORTABLE = "1"
-            Write-Host "Running example: wgpu_examples [native + portable pixel compare]"
-            & $wgpuExe
+            $label = "Run examples [native + portable pixel compare]"
         }
+        Write-QuietProgress -Label $label -Step $totalSteps -Total $totalSteps
+        $exitCode = Invoke-QuietCommand -Label $label -FilePath $wgpuExe -LogPath $logPath
     } finally {
         if ($null -eq $oldMode) {
             Remove-Item Env:\TILEINK_WGPU_MODE -ErrorAction SilentlyContinue
@@ -68,4 +80,4 @@ try {
     Pop-Location
 }
 
-Write-Host "All examples finished. Outputs are in examples/wgpu/out."
+Complete-QuietRun -Label "examples; outputs are in examples/wgpu/out" -LogPath $logPath

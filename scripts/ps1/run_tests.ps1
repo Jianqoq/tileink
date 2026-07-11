@@ -6,9 +6,13 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "quiet_runner.ps1")
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "../..")
 $modes = if ($WgpuMode -eq "both") { @("native", "portable") } else { @($WgpuMode) }
+$logPath = New-QuietRunLog -Name "tests"
+$script:QuietStep = 0
+$script:QuietTotal = $modes.Count * $(if ($CargoArgs.Count -gt 0) { 1 } else { 7 })
 
 if ($CargoArgs | Where-Object { $_ -like "--test-threads*" }) {
     throw "Test thread count is fixed at 1; do not pass --test-threads in CargoArgs"
@@ -38,11 +42,11 @@ function Invoke-CargoTest {
     }
     $arguments.Add("--test-threads=1")
 
-    Write-Host "Running explicit WGPU release tests [$Mode, $Label, single-threaded]"
-    & cargo $arguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "cargo test failed in '$Mode/$Label' with exit code $LASTEXITCODE"
-    }
+    $script:QuietStep++
+    $progressLabel = "WGPU release tests [$Mode, $Label, single-threaded]"
+    Write-QuietProgress -Label $progressLabel -Step $script:QuietStep -Total $script:QuietTotal
+    $exitCode = Invoke-QuietCommand -Label $progressLabel -FilePath "cargo" `
+        -ArgumentList $arguments -LogPath $logPath
 }
 
 function Invoke-ReleaseTests {
@@ -87,7 +91,7 @@ function Invoke-ReleaseTests {
         )
     }
     $stopwatch.Stop()
-    Write-Host ("Finished [{0}] in {1:c}" -f $Mode, $stopwatch.Elapsed)
+    Add-QuietLog -LogPath $logPath -Text ("Finished [{0}] in {1:c}`n" -f $Mode, $stopwatch.Elapsed)
 }
 
 Push-Location $repoRoot
@@ -107,3 +111,5 @@ try {
 } finally {
     Pop-Location
 }
+
+Complete-QuietRun -Label "release tests" -LogPath $logPath

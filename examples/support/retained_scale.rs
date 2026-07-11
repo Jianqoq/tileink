@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
 use peniko::{
-    Color,
+    Color, Extend,
     kurbo::{Affine, Rect, Shape},
 };
 use tileink::{
-    Canvas, Filter, Radius, Region, RetainedLayerDescriptor, RetainedNodeId, RetainedParent,
-    RetainedScene,
+    Canvas, Filter, Image, PatternSampling, Radius, Region, RetainedLayerDescriptor,
+    RetainedNodeId, RetainedParent, RetainedScene,
 };
 
 use super::retained_bench::{HEIGHT, WIDTH};
@@ -16,6 +16,8 @@ pub enum Scenario {
     Static,
     OneRevision,
     VariableLength,
+    ResourceVariableLength,
+    LateResourceRevision,
     AllRevisions,
     OneMove,
     AddRemove,
@@ -31,13 +33,17 @@ pub enum Scenario {
     BackdropBackgroundRevision,
     ArenaFragmentation,
     ManualInvalidation,
+    CroppedFilterManualInvalidation,
+    BackdropManualInvalidation,
 }
 
 impl Scenario {
-    pub const ALL: [Self; 18] = [
+    pub const ALL: [Self; 22] = [
         Self::Static,
         Self::OneRevision,
         Self::VariableLength,
+        Self::ResourceVariableLength,
+        Self::LateResourceRevision,
         Self::AllRevisions,
         Self::OneMove,
         Self::AddRemove,
@@ -53,6 +59,8 @@ impl Scenario {
         Self::BackdropBackgroundRevision,
         Self::ArenaFragmentation,
         Self::ManualInvalidation,
+        Self::CroppedFilterManualInvalidation,
+        Self::BackdropManualInvalidation,
     ];
 
     pub const fn name(self) -> &'static str {
@@ -60,6 +68,8 @@ impl Scenario {
             Self::Static => "static",
             Self::OneRevision => "one-revision",
             Self::VariableLength => "variable-length",
+            Self::ResourceVariableLength => "resource-variable-length",
+            Self::LateResourceRevision => "late-resource-revision",
             Self::AllRevisions => "all-revisions",
             Self::OneMove => "one-move",
             Self::AddRemove => "add-remove",
@@ -75,6 +85,8 @@ impl Scenario {
             Self::BackdropBackgroundRevision => "backdrop-background-revision",
             Self::ArenaFragmentation => "arena-fragmentation",
             Self::ManualInvalidation => "manual-invalidation",
+            Self::CroppedFilterManualInvalidation => "cropped-filter-manual-invalidation",
+            Self::BackdropManualInvalidation => "backdrop-manual-invalidation",
         }
     }
 
@@ -92,16 +104,27 @@ pub struct Workload {
     first: Arc<Canvas>,
     second: Arc<Canvas>,
     longer: Arc<Canvas>,
+    resource_first: Arc<Canvas>,
+    resource_longer: Arc<Canvas>,
 }
 
 impl Workload {
     pub fn new(count: usize, scenario: Scenario) -> Self {
+        let image = Arc::new(Image::from_rgba8(
+            2,
+            2,
+            [
+                255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255,
+            ],
+        ));
         Self {
             count,
             scenario,
             first: rect_scene(Color::from_rgb8(30, 130, 220)),
             second: rect_scene(Color::from_rgb8(230, 90, 40)),
             longer: two_rect_scene(),
+            resource_first: image_scene(image.clone(), false),
+            resource_longer: image_scene(image, true),
         }
     }
 
@@ -141,6 +164,7 @@ impl Workload {
             Scenario::LayerUpdate
                 | Scenario::FilterChildRevision
                 | Scenario::CroppedFilterChildRevision
+                | Scenario::CroppedFilterManualInvalidation
         ) {
             transaction.insert_layer(
                 RetainedParent::content(root),
@@ -149,6 +173,7 @@ impl Workload {
                 match self.scenario {
                     Scenario::FilterChildRevision => filter_layer(),
                     Scenario::CroppedFilterChildRevision => cropped_filter_layer(),
+                    Scenario::CroppedFilterManualInvalidation => cropped_filter_layer(),
                     _ => opacity_layer(0.75),
                 },
             );
@@ -158,17 +183,25 @@ impl Workload {
             Scenario::LayerUpdate
                 | Scenario::FilterChildRevision
                 | Scenario::CroppedFilterChildRevision
+                | Scenario::CroppedFilterManualInvalidation
         ) {
             RetainedParent::content(layer)
         } else {
             RetainedParent::content(root)
         };
         for index in 0..self.count {
+            let child = if matches!(self.scenario, Scenario::LateResourceRevision)
+                && index + 1 == self.count
+            {
+                self.resource_first.clone()
+            } else {
+                self.first.clone()
+            };
             transaction.insert_scene(
                 parent,
                 None,
                 node_id(index + 1),
-                self.first.clone(),
+                child,
                 position(index, self.count),
             );
         }
@@ -189,7 +222,10 @@ impl Workload {
                     (0.0, 0.0),
                 );
         }
-        if matches!(self.scenario, Scenario::BackdropBackgroundRevision) {
+        if matches!(
+            self.scenario,
+            Scenario::BackdropBackgroundRevision | Scenario::BackdropManualInvalidation
+        ) {
             transaction
                 .insert_layer(RetainedParent::content(root), None, layer, backdrop_layer())
                 .insert_scene(
@@ -228,6 +264,16 @@ impl Workload {
                     },
                 );
             }
+            Scenario::LateResourceRevision => {
+                transaction.replace_scene(
+                    first_node,
+                    if even {
+                        self.first.clone()
+                    } else {
+                        self.second.clone()
+                    },
+                );
+            }
             Scenario::VariableLength => {
                 transaction.replace_scene(
                     first_node,
@@ -235,6 +281,16 @@ impl Workload {
                         self.first.clone()
                     } else {
                         self.longer.clone()
+                    },
+                );
+            }
+            Scenario::ResourceVariableLength => {
+                transaction.replace_scene(
+                    first_node,
+                    if even {
+                        self.resource_first.clone()
+                    } else {
+                        self.resource_longer.clone()
                     },
                 );
             }
@@ -368,6 +424,12 @@ impl Workload {
             Scenario::ManualInvalidation => {
                 transaction.invalidate_rect(Rect::new(0.0, 0.0, 8.0, 8.0));
             }
+            Scenario::CroppedFilterManualInvalidation => {
+                transaction.invalidate_rect(Rect::new(2.0, 2.0, 8.0, 8.0));
+            }
+            Scenario::BackdropManualInvalidation => {
+                transaction.invalidate_rect(Rect::new(0.0, 0.0, 8.0, 8.0));
+            }
         }
         transaction.commit().unwrap();
     }
@@ -455,6 +517,30 @@ fn two_rect_scene() -> Arc<Canvas> {
         Radius::ZERO,
         Color::from_rgb8(240, 210, 40),
     );
+    Arc::new(scene)
+}
+
+fn image_scene(image: Arc<Image>, two_draws: bool) -> Arc<Canvas> {
+    let mut scene = Canvas::new(8, 8, 1.0);
+    let end = if two_draws { 4.0 } else { 8.0 };
+    scene
+        .push_image(
+            Rect::new(0.0, 0.0, end, 8.0),
+            image.clone(),
+            Extend::Pad,
+            PatternSampling::Bilinear,
+        )
+        .unwrap();
+    if two_draws {
+        scene
+            .push_image(
+                Rect::new(4.0, 0.0, 8.0, 8.0),
+                image,
+                Extend::Pad,
+                PatternSampling::Bilinear,
+            )
+            .unwrap();
+    }
     Arc::new(scene)
 }
 

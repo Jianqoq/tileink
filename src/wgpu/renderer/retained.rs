@@ -41,6 +41,9 @@ pub(super) struct RetainedRenderState {
     rendering_frame: Option<RetainedFrame>,
     dirty_backdrop_nodes: HashSet<crate::RetainedNodeId>,
     persistent_frame: Option<(u64, SceneVersion, RetainedFrame)>,
+    /// Last frame whose node membership was applied to the retained surface cache. Pointer
+    /// identity makes unchanged frames O(1); a bridging journal delta updates removals directly.
+    surface_frame: Option<RetainedFrame>,
 }
 
 impl RetainedRenderState {
@@ -63,6 +66,7 @@ impl RetainedRenderState {
             rendering_frame: None,
             dirty_backdrop_nodes: HashSet::new(),
             persistent_frame: None,
+            surface_frame: None,
         }
     }
 
@@ -245,12 +249,14 @@ impl RetainedRenderState {
             self.incremental
                 .plan(frame, physical_size, self.config, self.history_valid)
         });
+        // Persistent deltas already contain ordinary layer influence and indexed backdrop
+        // propagation. Snapshot canvases mark propagation as required and retain the generic
+        // command-tree oracle; journal-connected scenes never need to rescan that tree.
         if plan.changed_tiles.len() < plan.changed_tiles.total_tiles()
-            && plan.frame.as_ref().is_none_or(|frame| {
-                frame.requires_damage_propagation
-                    || frame.invalidate_all
-                    || !frame.invalidated_bounds.is_empty()
-            })
+            && plan
+                .frame
+                .as_ref()
+                .is_none_or(|frame| frame.requires_damage_propagation)
         {
             if let Some(dirty) = &plan.dirty_backdrops {
                 self.dirty_backdrop_nodes = dirty.iter().copied().collect();
@@ -278,7 +284,18 @@ impl RetainedRenderState {
         let backdrop_history_valid = !self.surfaces.take_backdrop_evicted();
         if rendered {
             if let Some(frame) = &plan.frame {
-                if let Some(delta) = &frame.delta {
+                let same_nodes = self
+                    .surface_frame
+                    .as_ref()
+                    .is_some_and(|previous| Arc::ptr_eq(&previous.nodes, &frame.nodes));
+                let bridging_delta = self.surface_frame.as_ref().and_then(|previous| {
+                    let delta = frame.delta.as_ref()?;
+                    (previous.root == frame.root
+                        && previous.version == Some(delta.from_version)
+                        && frame.version == Some(delta.to_version))
+                    .then_some(delta)
+                });
+                if !same_nodes && let Some(delta) = bridging_delta {
                     let removed = delta
                         .patches
                         .iter()
@@ -286,10 +303,12 @@ impl RetainedRenderState {
                         .map(|patch| patch.old.unwrap().id)
                         .collect();
                     self.surfaces.remove_nodes(&removed);
-                } else {
+                } else if !same_nodes {
+                    self.stats.retained_surface_nodes_scanned = frame.nodes.len() as u32;
                     let nodes = frame.nodes.iter().map(|node| node.id).collect();
                     self.surfaces.retain_nodes(&nodes);
                 }
+                self.surface_frame = Some(frame.clone());
             }
             self.incremental.commit(plan.frame);
             self.history_valid = history_updated && backdrop_history_valid;

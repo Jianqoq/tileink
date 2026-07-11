@@ -124,6 +124,7 @@ pub struct Renderer {
     root_target_texture: Option<::wgpu::Texture>,
     root_target_view: Option<::wgpu::TextureView>,
     scratch: Vec<WgpuTarget>,
+    scratch_spares: Vec<WgpuTarget>,
     scratch_in_use: Vec<bool>,
     clear_color: u32,
     profiler: WgpuRenderProfiler,
@@ -158,6 +159,7 @@ struct SavedRendererState {
     root_target_texture: Option<::wgpu::Texture>,
     root_target_view: Option<::wgpu::TextureView>,
     scratch: Vec<WgpuTarget>,
+    scratch_spares: Vec<WgpuTarget>,
     scratch_in_use: Vec<bool>,
     size: (u32, u32),
     surface_origin: (i32, i32),
@@ -247,6 +249,7 @@ impl Renderer {
             root_target_texture: None,
             root_target_view: None,
             scratch: Vec::new(),
+            scratch_spares: Vec::new(),
             scratch_in_use: Vec::new(),
             clear_color: premul_clear_color(clear),
             profiler: WgpuRenderProfiler::default(),
@@ -975,14 +978,16 @@ impl Renderer {
         if target == WgpuRenderTargetId::Main {
             stats.root_draw_batches = stats.root_draw_batches.saturating_add(1);
         }
-        self.coarse_and_fine_batch_to(
-            commands,
-            batch_id,
-            batch_id.saturating_add(1),
-            layer_stack.start as u32,
-            layer_stack.end as u32,
-            target,
-        )
+        profile_cpu("plan.draw_batch", || {
+            self.coarse_and_fine_batch_to(
+                commands,
+                batch_id,
+                batch_id.saturating_add(1),
+                layer_stack.start as u32,
+                layer_stack.end as u32,
+                target,
+            )
+        })
     }
 
     fn execute_direct_root_batches(
@@ -1277,28 +1282,35 @@ impl Renderer {
             return true;
         }
 
-        let meta = retained_id.and_then(|id| {
-            self.retained_surface_meta(
-                id,
-                RetainedSurfaceKind::Group,
-                self.size,
-                self.surface_origin,
-                bounds,
-            )
-        });
-        let mut cached = self.take_matching_retained_surface(retained_id, meta);
+        let (meta, mut cached) = {
+            let _scope = start_cpu_scope("plan.group.cache");
+            let meta = retained_id.and_then(|id| {
+                self.retained_surface_meta(
+                    id,
+                    RetainedSurfaceKind::Group,
+                    self.size,
+                    self.surface_origin,
+                    bounds,
+                )
+            });
+            let cached = self.take_matching_retained_surface(retained_id, meta);
+            (meta, cached)
+        };
         if !self.retained_surface_is_dirty(bounds)
             && let Some((id, surface)) = cached.take()
         {
-            let ok = self.composite_cached_group(
-                commands,
-                target,
-                &surface.primary,
-                surface.secondary.as_ref(),
-                bounds,
-                outer_stack,
-                blend,
-            );
+            let ok = {
+                let _scope = start_cpu_scope("plan.group.composite");
+                self.composite_cached_group(
+                    commands,
+                    target,
+                    &surface.primary,
+                    surface.secondary.as_ref(),
+                    bounds,
+                    outer_stack,
+                    blend,
+                )
+            };
             self.retained.stats_mut().reused_offscreen_surfaces += 1;
             self.retained.insert_surface(id, surface);
             filter_cursors.advance_ops(children);
@@ -1318,44 +1330,59 @@ impl Renderer {
             stats.rerendered_offscreen_tiles += rerendered_tiles;
         }
 
-        let source = if let Some((_, mut surface)) = cached {
-            let Some(source) = self.acquire_scratch() else {
-                return false;
-            };
-            self.install_scratch_render_target(source, surface.primary);
-            if let Some(bounds) = self.active_region(bounds) {
-                self.clear_render_region(commands, source, bounds, 0);
+        let source = {
+            let _scope = start_cpu_scope("plan.group.children");
+            if let Some((_, mut surface)) = cached {
+                let source = {
+                    let _scope = start_cpu_scope("plan.group.scratch");
+                    let Some(source) = self.acquire_scratch() else {
+                        return false;
+                    };
+                    self.install_scratch_render_target(source, surface.primary);
+                    source
+                };
+                if let Some(bounds) = self.active_region(bounds) {
+                    self.clear_render_region(commands, source, bounds, 0);
+                }
+                let rendered = profile_cpu("plan.group.render", || {
+                    self.execute_ops(
+                        commands,
+                        canvas,
+                        plan,
+                        children,
+                        source,
+                        filter_cursors,
+                        None,
+                    )
+                });
+                if !rendered {
+                    return false;
+                }
+                let mask = {
+                    let _scope = start_cpu_scope("plan.group.scratch");
+                    let Some(mask) = self.acquire_scratch() else {
+                        self.release_scratch(source);
+                        return false;
+                    };
+                    self.install_scratch_render_target(
+                        mask,
+                        surface
+                            .secondary
+                            .take()
+                            .expect("group cache has a retained mask"),
+                    );
+                    mask
+                };
+                (source, Some(mask))
+            } else {
+                let source = profile_cpu("plan.group.render", || {
+                    self.render_ops_to_scratch(commands, canvas, plan, children, filter_cursors)
+                });
+                let Some(source) = source else {
+                    return false;
+                };
+                (source, None)
             }
-            if !self.execute_ops(
-                commands,
-                canvas,
-                plan,
-                children,
-                source,
-                filter_cursors,
-                None,
-            ) {
-                return false;
-            }
-            let Some(mask) = self.acquire_scratch() else {
-                self.release_scratch(source);
-                return false;
-            };
-            self.install_scratch_render_target(
-                mask,
-                surface
-                    .secondary
-                    .take()
-                    .expect("group cache has a retained mask"),
-            );
-            (source, Some(mask))
-        } else {
-            let Some(source) =
-                self.render_ops_to_scratch(commands, canvas, plan, children, filter_cursors)
-            else {
-                return false;
-            };
-            (source, None)
         };
         let (source, cached_mask) = source;
         if let Some(opacity) = opacity
@@ -1374,17 +1401,13 @@ impl Renderer {
             mask
         };
         if let Some(bounds) = self.active_region(bounds) {
+            let _scope = start_cpu_scope("plan.group.mask");
             self.build_layer_mask(commands, mask, draw as u32, bounds);
         }
-        let ok = self.composite_group_targets(
-            commands,
-            target,
-            source,
-            mask,
-            bounds,
-            outer_stack,
-            blend,
-        );
+        let ok = {
+            let _scope = start_cpu_scope("plan.group.composite");
+            self.composite_group_targets(commands, target, source, mask, bounds, outer_stack, blend)
+        };
         if retained_id.is_some() && meta.is_some() {
             let source = self.take_scratch_target(source);
             let mask = self.take_scratch_target(mask);
@@ -2562,14 +2585,21 @@ impl Renderer {
         let WgpuRenderTargetId::Scratch(ix) = target else {
             return None;
         };
-        let replacement = WgpuTarget::new(&self.device, self.size.0, self.size.1);
+        // A retained surface temporarily owns the texture that occupied this slot. Reuse the
+        // displaced slot target on the inverse transfer instead of allocating and immediately
+        // dropping a full-size placeholder texture every incremental frame.
+        let replacement = self
+            .scratch_spares
+            .pop()
+            .unwrap_or_else(|| WgpuTarget::new(&self.device, self.size.0, self.size.1));
         self.scratch_in_use[ix] = false;
         Some(std::mem::replace(&mut self.scratch[ix], replacement))
     }
 
     fn install_scratch_target(&mut self, index: usize, target: WgpuTarget) {
         debug_assert_eq!(target.size(), self.size);
-        self.scratch[index] = target;
+        let displaced = std::mem::replace(&mut self.scratch[index], target);
+        self.scratch_spares.push(displaced);
         self.scratch_in_use[index] = true;
     }
 

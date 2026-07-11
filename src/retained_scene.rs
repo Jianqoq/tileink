@@ -1036,6 +1036,7 @@ impl PersistentSceneMaterializer {
             (topology_delta_eligible
                 || plain_topology_candidate
                 || root_painter_update
+                || root_layer_plan_patched
                 || root_layer_remove_patched
                 || nested_offscreen_plan_patched
                 || nested_offscreen_hierarchy_patched
@@ -2193,21 +2194,26 @@ impl PersistentSceneMaterializer {
                 other.ops.end -= removed_ops.len();
             }
         }
-        canvas.command_lists[0]
-            .commands
-            .remove(location.command_index);
-        for command_location in self.scene_command_locations.values_mut() {
-            if command_location.parent_list == 0
-                && command_location.command_index > location.command_index
-            {
-                command_location.command_index -= 1;
+        let root_commands = &mut canvas.command_lists[0].commands;
+        let removed_tail_command = location.command_index + 1 == root_commands.len();
+        root_commands.remove(location.command_index);
+        // Appended root fragments are normally removed from the tail. In that case no command
+        // location can shift, so scanning every retained leaf would turn a two-node removal into
+        // O(scene nodes) work. Non-tail removal still repairs every affected stable location.
+        if !removed_tail_command {
+            for command_location in self.scene_command_locations.values_mut() {
+                if command_location.parent_list == 0
+                    && command_location.command_index > location.command_index
+                {
+                    command_location.command_index -= 1;
+                }
             }
-        }
-        for layer_location in self.layer_command_locations.values_mut() {
-            if layer_location.parent_list == 0
-                && layer_location.command_index > location.command_index
-            {
-                layer_location.command_index -= 1;
+            for layer_location in self.layer_command_locations.values_mut() {
+                if layer_location.parent_list == 0
+                    && layer_location.command_index > location.command_index
+                {
+                    layer_location.command_index -= 1;
+                }
             }
         }
         if !fragment.command_lists.is_empty()
@@ -2564,7 +2570,7 @@ impl PersistentSceneMaterializer {
     fn incremental_backdrop_damage(
         &self,
         scene: &RetainedScene,
-        sources: &[(RetainedNodeId, Bounds)],
+        sources: &[(Option<RetainedNodeId>, Bounds)],
     ) -> (Vec<(RetainedNodeId, Bounds)>, Vec<RetainedNodeId>) {
         let canvas_bounds =
             Bounds::canvas(self.canvas.physical_width(), self.canvas.physical_height());
@@ -2592,9 +2598,9 @@ impl PersistentSceneMaterializer {
                 .intersect(canvas_bounds);
             let mut affected_output = Bounds::new(0, 0, 0, 0);
             for &(source, bounds) in &pending {
-                let affected = if source == backdrop {
+                let affected = if source == Some(backdrop) {
                     self.node_bounds.get(&backdrop).copied().unwrap_or(output)
-                } else {
+                } else if let Some(source) = source {
                     let Some(source_painter) =
                         self.painter_bases.get(&source).cloned().or_else(|| {
                             scene
@@ -2615,13 +2621,23 @@ impl PersistentSceneMaterializer {
                     sampled
                         .outset(filter::filter_outset(value))
                         .intersect(output)
+                } else {
+                    // Manual invalidation is already expressed in root output coordinates but
+                    // has no painter owner. Any intersecting backdrop may sample those pixels.
+                    let sampled = bounds.intersect(dependency);
+                    if sampled.is_empty() {
+                        continue;
+                    }
+                    sampled
+                        .outset(filter::filter_outset(value))
+                        .intersect(output)
                 };
                 affected_output = affected_output.union(affected);
             }
             if !affected_output.is_empty() {
                 dirty.push(backdrop);
                 // A changed earlier backdrop becomes sampled background for later backdrops.
-                pending.push((backdrop, affected_output));
+                pending.push((Some(backdrop), affected_output));
                 damage
                     .entry(backdrop)
                     .and_modify(|current| *current = current.union(affected_output))
@@ -2641,10 +2657,6 @@ impl PersistentSceneMaterializer {
             self.rebuild_frame_override(scene);
             return;
         };
-        if frame.delta.as_ref().is_some_and(|delta| delta.depth >= 255) {
-            self.rebuild_frame_override(scene);
-            return;
-        }
         let mut patches = Vec::with_capacity(changed.len());
         for &id in changed {
             let Some(old) = frame.node_state(id) else {
@@ -2681,8 +2693,14 @@ impl PersistentSceneMaterializer {
             });
             self.raw_node_bounds.insert(id, raw_bounds);
         }
-        let depth = frame.delta.as_ref().map_or(1, |delta| delta.depth + 1);
-        let source_damage = patches
+        let index = retained_patch_index(&patches);
+        let (previous, depth) = prune_shadowed_delta(frame.delta.clone(), &index);
+        if depth > 255 {
+            self.rebuild_frame_override(scene);
+            self.rebuild_spatial_index();
+            return;
+        }
+        let mut source_damage = patches
             .iter()
             .map(|patch| {
                 let node = patch.new.or(patch.old).unwrap();
@@ -2692,21 +2710,27 @@ impl PersistentSceneMaterializer {
                     (None, Some(new)) => new.bounds,
                     (None, None) => unreachable!("retained patch has a node"),
                 };
-                (node.id, bounds)
+                (Some(node.id), bounds)
             })
             .collect::<Vec<_>>();
+        source_damage.extend(
+            self.canvas
+                .invalidated_bounds
+                .iter()
+                .copied()
+                .map(|bounds| (None, bounds)),
+        );
         let (backdrop_damage, dirty_backdrops) =
             self.incremental_backdrop_damage(scene, &source_damage);
         for patch in &patches {
             self.set_node_bounds(patch.new.unwrap().id, patch.new.map(|node| node.bounds));
         }
         frame.version = Some(scene.version.get());
-        let index = retained_patch_index(&patches);
         frame.delta = Some(Arc::new(RetainedFrameDelta {
             from_version: self.version.get(),
             to_version: scene.version.get(),
             patches: patches.into(),
-            previous: frame.delta.clone(),
+            previous,
             depth,
             damage: backdrop_damage.into(),
             dirty_backdrops: dirty_backdrops.into(),
@@ -2730,9 +2754,6 @@ impl PersistentSceneMaterializer {
         let Some(mut frame) = previous else {
             return false;
         };
-        if frame.delta.as_ref().is_some_and(|delta| delta.depth >= 255) {
-            return false;
-        }
         let mut patches = Vec::new();
         for &id in &changes.removed_nodes {
             if let Some(old) = frame.node_state(id) {
@@ -2746,19 +2767,38 @@ impl PersistentSceneMaterializer {
             let Some(node) = scene.nodes.get(&id) else {
                 continue;
             };
-            if !matches!(node.kind, NodeKind::Scene { .. }) {
-                continue;
-            }
             let chunk = &self.chunks[&id];
             let old = frame.node_state(id);
+            let (bounds, kind) = match &node.kind {
+                NodeKind::Scene { .. } => (
+                    self.influenced_bounds(scene, id, chunk.canvas.visual_bounds()),
+                    RetainedNodeKind::Scene,
+                ),
+                NodeKind::Layer(_) => {
+                    let mut bounds =
+                        self.influenced_bounds(scene, id, chunk_layer_influence_bounds(chunk));
+                    let mut leaves = Vec::new();
+                    collect_scene_leaves(scene, id, &mut leaves);
+                    for leaf_id in leaves {
+                        let leaf = &self.chunks[&leaf_id];
+                        bounds = bounds.union(self.influenced_bounds(
+                            scene,
+                            leaf_id,
+                            leaf.canvas.visual_bounds(),
+                        ));
+                    }
+                    (bounds, RetainedNodeKind::Layer)
+                }
+                NodeKind::Group => continue,
+            };
             patches.push(RetainedNodePatch {
                 old,
                 new: Some(crate::canvas::RetainedNodeState {
                     id,
                     revision: SceneRevision::new(node.generation),
-                    bounds: self.influenced_bounds(scene, id, chunk.canvas.visual_bounds()),
+                    bounds,
                     order: old.map_or(0, |node| node.order),
-                    kind: RetainedNodeKind::Scene,
+                    kind,
                     placement_bits: None,
                 }),
             });
@@ -2774,7 +2814,11 @@ impl PersistentSceneMaterializer {
             };
             (node.id, bounds)
         }));
-        let depth = frame.delta.as_ref().map_or(1, |delta| delta.depth + 1);
+        let index = retained_patch_index(&patches);
+        let (previous, depth) = prune_shadowed_delta(frame.delta.clone(), &index);
+        if depth > 255 {
+            return false;
+        }
         for patch in &patches {
             let id = patch.new.or(patch.old).unwrap().id;
             self.set_node_bounds(id, patch.new.map(|node| node.bounds));
@@ -2786,12 +2830,11 @@ impl PersistentSceneMaterializer {
             }
         }
         frame.version = Some(scene.version.get());
-        let index = retained_patch_index(&patches);
         frame.delta = Some(Arc::new(RetainedFrameDelta {
             from_version: self.version.get(),
             to_version: scene.version.get(),
             patches: patches.into(),
-            previous: frame.delta.clone(),
+            previous,
             depth,
             damage: explicit_damage.into(),
             dirty_backdrops: Arc::new([]),
@@ -2993,6 +3036,20 @@ fn retained_patch_index(patches: &[RetainedNodePatch]) -> HashMap<RetainedNodeId
         .enumerate()
         .map(|(index, patch)| (patch.new.or(patch.old).unwrap().id, index))
         .collect()
+}
+
+fn prune_shadowed_delta(
+    mut previous: Option<Arc<RetainedFrameDelta>>,
+    index: &HashMap<RetainedNodeId, usize>,
+) -> (Option<Arc<RetainedFrameDelta>>, u16) {
+    while previous
+        .as_ref()
+        .is_some_and(|delta| delta.index.keys().all(|id| index.contains_key(id)))
+    {
+        previous = previous.unwrap().previous.clone();
+    }
+    let depth = previous.as_ref().map_or(1, |delta| delta.depth + 1);
+    (previous, depth)
 }
 
 fn collect_scene_leaves(
@@ -4476,6 +4533,7 @@ mod tests {
             .unwrap();
         let mut materializer = PersistentSceneMaterializer::new(&scene);
         let base_batch = materializer.node_batches[&base];
+        let base_frame = materializer.canvas.retained_frame_override.clone().unwrap();
         scene
             .transaction()
             .insert_layer(
@@ -4513,5 +4571,21 @@ mod tests {
             "patched root plan: {:#?}",
             plan.ops
         );
+        let inserted_frame = materializer.canvas.retained_frame_override.clone().unwrap();
+        assert!(
+            Arc::ptr_eq(&base_frame.nodes, &inserted_frame.nodes),
+            "root layer insertion must patch the immutable frame instead of collecting every node"
+        );
+        assert!(inserted_frame.node_state(layer).is_some());
+        assert!(inserted_frame.node_state(child).is_some());
+        assert_eq!(inserted_frame.delta.as_ref().unwrap().depth, 1);
+
+        scene.transaction().remove_subtree(layer).commit().unwrap();
+        assert!(materializer.update(&scene));
+        let removed_frame = materializer.canvas.retained_frame_override.clone().unwrap();
+        assert!(Arc::ptr_eq(&base_frame.nodes, &removed_frame.nodes));
+        assert!(removed_frame.node_state(layer).is_none());
+        assert!(removed_frame.node_state(child).is_none());
+        assert_eq!(removed_frame.delta.as_ref().unwrap().depth, 1);
     }
 }

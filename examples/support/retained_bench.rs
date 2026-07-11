@@ -47,6 +47,13 @@ pub struct Measurements {
     pub raster: Duration,
     pub plan_select: Duration,
     pub plan_execute: Duration,
+    pub draw_batch: Duration,
+    pub group_cache: Duration,
+    pub group_children: Duration,
+    pub group_scratch: Duration,
+    pub group_render: Duration,
+    pub group_mask: Duration,
+    pub group_composite: Duration,
     pub dirty_tiles: u64,
     pub changed_tiles: u64,
     pub draw_batches: u64,
@@ -266,6 +273,13 @@ fn accumulate(
     measurements.raster += stage(profile, "coarse") + stage(profile, "fine");
     measurements.plan_select += stage(profile, "plan.active_batches");
     measurements.plan_execute += stage(profile, "plan.execute");
+    measurements.draw_batch += stage(profile, "plan.draw_batch");
+    measurements.group_cache += stage(profile, "plan.group.cache");
+    measurements.group_children += stage(profile, "plan.group.children");
+    measurements.group_scratch += stage(profile, "plan.group.scratch");
+    measurements.group_render += stage(profile, "plan.group.render");
+    measurements.group_mask += stage(profile, "plan.group.mask");
+    measurements.group_composite += stage(profile, "plan.group.composite");
     let stats = renderer.incremental_render_stats();
     measurements.dirty_tiles += stats.dirty_tiles as u64;
     measurements.changed_tiles += stats.changed_tiles as u64;

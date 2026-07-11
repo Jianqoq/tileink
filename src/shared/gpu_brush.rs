@@ -20,15 +20,10 @@ pub(crate) struct GpuBrushUpload {
 }
 
 impl GpuBrushUpload {
-    pub(crate) fn scene_brushes_need_resource_patch(
-        draws: &[DrawRecord],
-        brush_blob: &[u32],
-    ) -> bool {
-        draws.iter().any(|draw| {
-            let base = draw.brush_offset as usize;
-            draw.brush_offset != DrawRecord::NONE
-                && brush_blob.get(base).copied() == Some(GPU_BRUSH_PATTERN_RESOURCE)
-        })
+    pub(crate) fn draw_uses_resource_brush(draw: &DrawRecord, brush_blob: &[u32]) -> bool {
+        let base = draw.brush_offset as usize;
+        draw.brush_offset != DrawRecord::NONE
+            && brush_blob.get(base).copied() == Some(GPU_BRUSH_PATTERN_RESOURCE)
     }
 
     pub(crate) fn patch_scene_brush_blob(
@@ -37,6 +32,21 @@ impl GpuBrushUpload {
         image_resources: Option<&GpuImageResourceUpload>,
     ) {
         for draw in draws {
+            if draw.brush_offset != DrawRecord::NONE {
+                patch_resource_brush_at(blob, draw.brush_offset, image_resources);
+            }
+        }
+    }
+
+    pub(crate) fn patch_scene_brush_blob_draw_ranges(
+        blob: &mut [u32],
+        draws: &[DrawRecord],
+        ranges: &[std::ops::Range<usize>],
+        image_resources: Option<&GpuImageResourceUpload>,
+    ) {
+        for draw in ranges.iter().flat_map(|range| {
+            draws[range.start.min(draws.len())..range.end.min(draws.len())].iter()
+        }) {
             if draw.brush_offset != DrawRecord::NONE {
                 patch_resource_brush_at(blob, draw.brush_offset, image_resources);
             }
@@ -240,12 +250,12 @@ mod tests {
     }
 
     #[test]
-    fn scene_brushes_need_resource_patch_only_for_resource_patterns() {
+    fn draw_uses_resource_brush_only_for_resource_patterns() {
         let mut blob = Vec::new();
         let solid = Brush::Solid(Color::from_rgb8(16, 32, 48));
         let (solid_offset, solid_len) = push_encoded_brush(&mut blob, &solid);
-        assert!(!GpuBrushUpload::scene_brushes_need_resource_patch(
-            &[draw_with_brush(solid_offset, solid_len)],
+        assert!(!GpuBrushUpload::draw_uses_resource_brush(
+            &draw_with_brush(solid_offset, solid_len),
             &blob
         ));
 
@@ -261,8 +271,8 @@ mod tests {
             .unwrap(),
         );
         let (resource_offset, resource_len) = push_encoded_brush(&mut blob, &resource);
-        assert!(GpuBrushUpload::scene_brushes_need_resource_patch(
-            &[draw_with_brush(resource_offset, resource_len)],
+        assert!(GpuBrushUpload::draw_uses_resource_brush(
+            &draw_with_brush(resource_offset, resource_len),
             &blob
         ));
     }

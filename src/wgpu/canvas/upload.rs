@@ -40,16 +40,81 @@ pub(crate) struct WgpuSceneUploadStaging {
     path_plans: PersistentPathPlans,
     glyph_capacity: GlyphCapacityCache,
     coarse_ptcl_capacity: usize,
+    coarse_ptcl_underused_frames: u16,
     coarse_glyph_capacity: usize,
+    coarse_glyph_underused_frames: u16,
     tile_draw_bins: TileDrawBins,
     tile_draw_cursors: Vec<u32>,
     layer_stack: Vec<LayerStackRecord>,
     scene_brush_blob: Vec<u32>,
+    resource_brush_draws: Vec<bool>,
+    resource_brush_draw_count: usize,
+    resource_brush_draws_initialized: bool,
+    image_resource_generation: Option<u64>,
     paint_blob: Vec<u32>,
     paint_layout: (usize, usize, usize),
 }
 
 impl WgpuSceneUploadStaging {
+    fn update_resource_brush_draws(&mut self, canvas: &Canvas) -> bool {
+        let full = !self.resource_brush_draws_initialized
+            || canvas.buffer_changes.is_none()
+            || canvas
+                .buffer_changes
+                .as_ref()
+                .is_some_and(|changes| changes.full_scene_sync);
+        if full {
+            self.resource_brush_draws.clear();
+            self.resource_brush_draws
+                .resize(canvas.draw_records.len(), false);
+            self.resource_brush_draw_count = 0;
+            for (index, draw) in canvas.draw_records.iter().enumerate() {
+                let resource = GpuBrushUpload::draw_uses_resource_brush(draw, &canvas.brush_blob);
+                self.resource_brush_draws[index] = resource;
+                self.resource_brush_draw_count += resource as usize;
+            }
+            self.resource_brush_draws_initialized = true;
+        } else {
+            if self.resource_brush_draws.len() > canvas.draw_records.len() {
+                self.resource_brush_draw_count -= self.resource_brush_draws
+                    [canvas.draw_records.len()..]
+                    .iter()
+                    .filter(|resource| **resource)
+                    .count();
+                self.resource_brush_draws
+                    .truncate(canvas.draw_records.len());
+            } else {
+                self.resource_brush_draws
+                    .resize(canvas.draw_records.len(), false);
+            }
+            for index in canvas
+                .buffer_changes
+                .as_ref()
+                .unwrap()
+                .draws
+                .iter()
+                .flat_map(|range| {
+                    range.start.min(canvas.draw_records.len())
+                        ..range.end.min(canvas.draw_records.len())
+                })
+            {
+                let resource = GpuBrushUpload::draw_uses_resource_brush(
+                    &canvas.draw_records[index],
+                    &canvas.brush_blob,
+                );
+                if self.resource_brush_draws[index] != resource {
+                    if resource {
+                        self.resource_brush_draw_count += 1;
+                    } else {
+                        self.resource_brush_draw_count -= 1;
+                    }
+                    self.resource_brush_draws[index] = resource;
+                }
+            }
+        }
+        self.resource_brush_draw_count != 0
+    }
+
     pub(crate) fn active_batch_ids(&self, tiles: &[u32], draw_batch_ids: &[u32]) -> HashSet<u32> {
         self.tile_draw_bins.active_batch_ids(tiles, draw_batch_ids)
     }
@@ -98,31 +163,69 @@ impl WgpuSceneUploadStaging {
             },
         );
         if canvas.buffer_changes.is_some() {
-            lengths.coarse_ptcl_capacity =
-                stable_work_capacity(&mut self.coarse_ptcl_capacity, lengths.coarse_ptcl_capacity);
+            lengths.coarse_ptcl_capacity = stable_work_capacity(
+                &mut self.coarse_ptcl_capacity,
+                &mut self.coarse_ptcl_underused_frames,
+                lengths.coarse_ptcl_capacity,
+            );
             lengths.coarse_glyph_capacity = stable_work_capacity(
                 &mut self.coarse_glyph_capacity,
+                &mut self.coarse_glyph_underused_frames,
                 lengths.coarse_glyph_capacity,
             );
         } else {
             self.coarse_ptcl_capacity = lengths.coarse_ptcl_capacity;
+            self.coarse_ptcl_underused_frames = 0;
             self.coarse_glyph_capacity = lengths.coarse_glyph_capacity;
+            self.coarse_glyph_underused_frames = 0;
         }
         lengths
     }
 }
 
-fn stable_work_capacity(capacity: &mut usize, live: usize) -> usize {
+const WORK_CAPACITY_SHRINK_DELAY: u16 = 120;
+
+fn stable_work_capacity(capacity: &mut usize, underused_frames: &mut u16, live: usize) -> usize {
     if live > *capacity {
         *capacity = live.saturating_add(live / 2).max(live);
-    } else if live == 0 {
-        *capacity = 0;
+        *underused_frames = 0;
     } else if capacity.saturating_mul(10) > live.saturating_mul(18) {
-        // A persistent shrink past the 1.8x bound is an explicit work-arena compaction. Small
-        // shape oscillations retain their offsets, while mass deletion releases excess memory.
-        *capacity = live.saturating_add(live / 2).max(live);
+        // Shrinking immediately makes alternating layer depth or glyph workloads move every
+        // following work-buffer section twice per pair of frames. Require sustained low usage so
+        // temporary topology changes retain stable offsets while genuinely smaller scenes still
+        // release excess capacity.
+        *underused_frames = underused_frames.saturating_add(1);
+        if *underused_frames >= WORK_CAPACITY_SHRINK_DELAY {
+            *capacity = live.saturating_add(live / 2).max(live);
+            *underused_frames = 0;
+        }
+    } else {
+        *underused_frames = 0;
     }
     *capacity
+}
+
+fn grow_paint_layout(
+    current: (usize, usize, usize),
+    required: (usize, usize, usize),
+) -> (usize, usize, usize) {
+    let grow = |capacity: usize, live: usize| {
+        if live == 0 {
+            0
+        } else if live > capacity || capacity.saturating_mul(10) > live.saturating_mul(18) {
+            live.checked_div(256)
+                .and_then(|pages| pages.checked_add(1))
+                .and_then(|pages| pages.checked_mul(256))
+                .unwrap_or(usize::MAX)
+        } else {
+            capacity
+        }
+    };
+    (
+        grow(current.0, required.0),
+        grow(current.1, required.1),
+        grow(current.2, required.2),
+    )
 }
 
 #[derive(Default)]
@@ -883,29 +986,59 @@ impl WgpuSceneBuffers {
             }
         });
         let paint = profile_cpu("prepare.upload_scene.upload_paint_blob", || {
-            let patches_resources = image_resources.is_some_and(|resources| !resources.is_empty())
-                && GpuBrushUpload::scene_brushes_need_resource_patch(
-                    &canvas.draw_records,
-                    &canvas.brush_blob,
-                );
+            let has_image_resources =
+                image_resources.is_some_and(|resources| !resources.is_empty());
+            let patches_resources =
+                has_image_resources && staging.update_resource_brush_draws(canvas);
+            if !has_image_resources {
+                // Draw mutations while no image table exists are intentionally not tracked. The
+                // first later resource insertion rebuilds membership once, then resumes journal
+                // updates without charging image-free scenes for resource bookkeeping.
+                staging.resource_brush_draws_initialized = false;
+            }
+            let resource_generation = image_resources.map(GpuImageResourceUpload::generation);
+            let repatch_all_resources =
+                patches_resources && staging.image_resource_generation != resource_generation;
             let scene_brush_blob = if patches_resources {
-                staging.scene_brush_blob.clear();
-                staging
-                    .scene_brush_blob
-                    .extend_from_slice(&canvas.brush_blob);
-                GpuBrushUpload::patch_scene_brush_blob(
-                    &mut staging.scene_brush_blob,
-                    &canvas.draw_records,
-                    image_resources,
-                );
+                let full_patch = repatch_all_resources
+                    || canvas.buffer_changes.is_none()
+                    || staging.scene_brush_blob.len() != canvas.brush_blob.len();
+                if full_patch {
+                    staging.scene_brush_blob.clear();
+                    staging
+                        .scene_brush_blob
+                        .extend_from_slice(&canvas.brush_blob);
+                    GpuBrushUpload::patch_scene_brush_blob(
+                        &mut staging.scene_brush_blob,
+                        &canvas.draw_records,
+                        image_resources,
+                    );
+                } else {
+                    let changes = canvas.buffer_changes.as_ref().unwrap();
+                    patch_u32_ranges(
+                        &mut staging.scene_brush_blob,
+                        0,
+                        &canvas.brush_blob,
+                        &changes.brushes,
+                    );
+                    GpuBrushUpload::patch_scene_brush_blob_draw_ranges(
+                        &mut staging.scene_brush_blob,
+                        &canvas.draw_records,
+                        &changes.draws,
+                        image_resources,
+                    );
+                }
+                staging.image_resource_generation = resource_generation;
                 &staging.scene_brush_blob
             } else {
+                staging.image_resource_generation = resource_generation;
                 &canvas.brush_blob
             };
 
-            self.paint_sdf_shadow_base = canvas.sdf_blob.len() as u32;
-            self.paint_brush_base = (canvas.sdf_blob.len() + canvas.sdf_shadow_blob.len()) as u32;
             if canvas.buffer_changes.is_none() {
+                self.paint_sdf_shadow_base = canvas.sdf_blob.len() as u32;
+                self.paint_brush_base =
+                    (canvas.sdf_blob.len() + canvas.sdf_shadow_blob.len()) as u32;
                 // Immediate canvases have no dirty-allocation journal and are prepared as
                 // one-shot contiguous buffers. Writing the three existing slices directly is
                 // substantially cheaper than concatenating them, diffing a byte cache, and then
@@ -935,17 +1068,71 @@ impl WgpuSceneBuffers {
             // SDF, SDF-shadow, and scene brushes share one storage buffer so coarse, fine,
             // and filter bind the same paint data. Keeping one staging vector
             // also lets retained uploads transmit only the changed range.
-            let layout = (
+            let required = (
                 canvas.sdf_blob.len(),
                 canvas.sdf_shadow_blob.len(),
                 scene_brush_blob.len(),
             );
+            let layout = grow_paint_layout(staging.paint_layout, required);
             let shadow_base = layout.0;
             let brush_base = layout.0 + layout.1;
-            let incremental = !patches_resources
-                && staging.paint_layout == layout
-                && canvas.buffer_changes.is_some();
-            let ranges = if incremental {
+            self.paint_sdf_shadow_base = shadow_base as u32;
+            self.paint_brush_base = brush_base as u32;
+            let relayout = staging.paint_layout != layout
+                || staging.paint_blob.len() != layout.0 + layout.1 + layout.2;
+            let ranges = if relayout {
+                staging.paint_blob.clear();
+                staging.paint_blob.resize(layout.0 + layout.1 + layout.2, 0);
+                staging.paint_blob[..required.0].copy_from_slice(&canvas.sdf_blob);
+                staging.paint_blob[shadow_base..shadow_base + required.1]
+                    .copy_from_slice(&canvas.sdf_shadow_blob);
+                staging.paint_blob[brush_base..brush_base + required.2]
+                    .copy_from_slice(scene_brush_blob);
+                staging.paint_layout = layout;
+                std::iter::once(0..staging.paint_blob.len()).collect()
+            } else if patches_resources {
+                let changes = canvas.buffer_changes.as_ref().unwrap();
+                patch_u32_ranges(&mut staging.paint_blob, 0, &canvas.sdf_blob, &changes.sdfs);
+                patch_u32_ranges(
+                    &mut staging.paint_blob,
+                    shadow_base,
+                    &canvas.sdf_shadow_blob,
+                    &changes.shadows,
+                );
+                if repatch_all_resources {
+                    staging.paint_blob[brush_base..brush_base + required.2]
+                        .copy_from_slice(scene_brush_blob);
+                } else {
+                    patch_u32_ranges(
+                        &mut staging.paint_blob,
+                        brush_base,
+                        scene_brush_blob,
+                        &changes.brushes,
+                    );
+                }
+                let mut ranges = changes
+                    .sdfs
+                    .iter()
+                    .cloned()
+                    .chain(
+                        changes
+                            .shadows
+                            .iter()
+                            .map(|range| range.start + shadow_base..range.end + shadow_base),
+                    )
+                    .collect::<Vec<_>>();
+                if repatch_all_resources {
+                    ranges.push(brush_base..brush_base + required.2);
+                } else {
+                    ranges.extend(
+                        changes
+                            .brushes
+                            .iter()
+                            .map(|range| range.start + brush_base..range.end + brush_base),
+                    );
+                }
+                ranges
+            } else {
                 let changes = canvas.buffer_changes.as_ref().unwrap();
                 patch_u32_ranges(&mut staging.paint_blob, 0, &canvas.sdf_blob, &changes.sdfs);
                 patch_u32_ranges(
@@ -977,15 +1164,6 @@ impl WgpuSceneBuffers {
                             .map(|range| range.start + brush_base..range.end + brush_base),
                     )
                     .collect::<Vec<_>>()
-            } else {
-                staging.paint_blob.clear();
-                staging.paint_blob.extend_from_slice(&canvas.sdf_blob);
-                staging
-                    .paint_blob
-                    .extend_from_slice(&canvas.sdf_shadow_blob);
-                staging.paint_blob.extend_from_slice(scene_brush_blob);
-                staging.paint_layout = layout;
-                std::iter::once(0..staging.paint_blob.len()).collect()
             };
             self.paint_blob.upload_ranges(
                 device,
@@ -1261,7 +1439,63 @@ impl WgpuCoarseBuffers {
 
 #[cfg(test)]
 mod tests {
-    use super::grow_image_resource_atlas_capacity;
+    use super::{
+        WORK_CAPACITY_SHRINK_DELAY, grow_image_resource_atlas_capacity, grow_paint_layout,
+        stable_work_capacity,
+    };
+
+    #[test]
+    fn work_capacity_does_not_thrash_under_alternating_layer_depth() {
+        let mut capacity = 1_000;
+        let mut underused = 0;
+        for _ in 0..WORK_CAPACITY_SHRINK_DELAY * 2 {
+            assert_eq!(
+                stable_work_capacity(&mut capacity, &mut underused, 400),
+                1_000
+            );
+            assert_eq!(
+                stable_work_capacity(&mut capacity, &mut underused, 900),
+                1_000
+            );
+            assert_eq!(underused, 0);
+        }
+    }
+
+    #[test]
+    fn work_capacity_releases_sustained_excess_capacity() {
+        let mut capacity = 1_000;
+        let mut underused = 0;
+        for _ in 1..WORK_CAPACITY_SHRINK_DELAY {
+            assert_eq!(
+                stable_work_capacity(&mut capacity, &mut underused, 400),
+                1_000
+            );
+        }
+        assert_eq!(
+            stable_work_capacity(&mut capacity, &mut underused, 400),
+            600
+        );
+        assert_eq!(underused, 0);
+
+        assert_eq!(
+            stable_work_capacity(&mut capacity, &mut underused, 800),
+            1_200
+        );
+        assert_eq!(underused, 0);
+    }
+
+    #[test]
+    fn paint_layout_keeps_segment_bases_stable_until_capacity_is_exhausted() {
+        let initial = grow_paint_layout((0, 0, 0), (100, 20, 200));
+        assert_eq!(initial, (256, 256, 256));
+        assert_eq!(grow_paint_layout(initial, (120, 10, 250)), initial);
+        assert_eq!(grow_paint_layout(initial, (257, 10, 250)), (512, 256, 256));
+        assert_eq!(grow_paint_layout((0, 0, 0), (256, 0, 0)).0, 512);
+        assert_eq!(
+            grow_paint_layout((1024, 512, 256), (100, 0, 200)),
+            (256, 0, 256)
+        );
+    }
 
     #[test]
     fn image_resource_atlas_capacity_reuses_existing_texture_when_it_fits() {

@@ -28,7 +28,10 @@ fn retained_scale(c: &mut Criterion) {
                     let measurements = bench_persistent(
                         &seed,
                         BenchConfig {
-                            warmup: 1,
+                            // Exercise both sides of alternating workloads before Criterion
+                            // samples. One warmup frame leaves variable-length/add-remove cases
+                            // measuring first-use arena growth in every newly constructed sample.
+                            warmup: 3,
                             frames: iterations as usize,
                         },
                         scene,
@@ -44,6 +47,7 @@ fn retained_scale(c: &mut Criterion) {
     }
 
     for (scenario, name) in [
+        (Scenario::LayerAddRemove, "tail-layer"),
         (Scenario::MiddleLayerAddRemove, "middle-layer"),
         (Scenario::NestedLayerAddRemove, "nested-layer"),
     ] {
