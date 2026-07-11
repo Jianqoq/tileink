@@ -60,18 +60,27 @@ impl<T: Copy> SceneArena<T> {
     }
 
     pub(crate) fn replace(&mut self, id: ArenaAllocation, data: &[T]) -> bool {
+        let moved = self.resize(id, data.len());
+        self.write(id, data);
+        moved
+    }
+
+    /// Changes an allocation's logical length without copying temporary local-index records.
+    /// Callers that remap cross-arena offsets can then write the final physical records once.
+    pub(crate) fn resize(&mut self, id: ArenaAllocation, len: usize) -> bool {
         let old = self.allocations[&id];
-        self.live_len = self.live_len - old.len + data.len();
-        if data.len() <= old.capacity {
-            let updated = Allocation {
-                len: data.len(),
-                ..old
-            };
-            self.allocations.insert(id, updated);
-            self.write_allocation(updated, data);
-            if data.len() < old.capacity {
-                self.values[old.start + data.len()..old.start + old.capacity].fill(self.vacant);
-                self.mark_dirty(old.start + data.len()..old.start + old.capacity);
+        if old.len == len {
+            return false;
+        }
+        self.live_len = self.live_len - old.len + len;
+        if len <= old.capacity {
+            self.allocations
+                .get_mut(&id)
+                .expect("allocation was read above")
+                .len = len;
+            if len < old.capacity {
+                self.values[old.start + len..old.start + old.capacity].fill(self.vacant);
+                self.mark_dirty(old.start + len..old.start + old.capacity);
             }
             return false;
         }
@@ -79,11 +88,39 @@ impl<T: Copy> SceneArena<T> {
         // Remove the allocation before allocate() may compact. Otherwise compaction would treat
         // the just-freed range as live and can copy it after trailing-hole truncation.
         self.allocations.remove(&id);
+        self.values[old.start..old.start + old.capacity].fill(self.vacant);
+        self.mark_dirty(old.start..old.start + old.capacity);
         self.release_range(old.start..old.start + old.capacity);
-        let allocation = self.allocate(data.len());
+        let allocation = self.allocate(len);
         self.allocations.insert(id, allocation);
-        self.write_allocation(allocation, data);
         true
+    }
+
+    pub(crate) fn write(&mut self, id: ArenaAllocation, data: &[T]) {
+        let allocation = self.allocations[&id];
+        assert_eq!(allocation.len, data.len());
+        self.write_allocation(allocation, data);
+    }
+
+    /// Writes transformed records directly into stable storage.
+    ///
+    /// Retained chunks store local indices, while GPU-facing arenas store physical indices. Doing
+    /// that remap in-place avoids a temporary allocation for every record kind and changed node.
+    pub(crate) fn write_mapped<U: Copy>(
+        &mut self,
+        id: ArenaAllocation,
+        source: &[U],
+        mut map: impl FnMut(U) -> T,
+    ) {
+        let allocation = self.allocations[&id];
+        assert_eq!(allocation.len, source.len());
+        for (target, source) in self.values[allocation.start..allocation.start + allocation.len]
+            .iter_mut()
+            .zip(source.iter().copied())
+        {
+            *target = map(source);
+        }
+        self.mark_dirty(allocation.start..allocation.start + allocation.capacity);
     }
 
     pub(crate) fn remove(&mut self, id: ArenaAllocation) -> bool {
@@ -299,6 +336,31 @@ mod tests {
         arena.replace(first, &[3, 4]);
         arena.replace(first, &[5, 6]);
         assert_eq!(arena.take_dirty_ranges(), vec![0..3]);
+    }
+
+    #[test]
+    fn mapped_write_transforms_directly_into_the_allocation() {
+        let mut arena = SceneArena::new(0u32);
+        let allocation = arena.insert(&[0; 3]);
+        let _ = arena.take_dirty_ranges();
+
+        arena.write_mapped(allocation, &[1u16, 2, 3], |value| u32::from(value) * 4);
+
+        assert_eq!(&arena.values()[arena.range(allocation)], &[4, 8, 12]);
+        assert_eq!(arena.take_dirty_ranges(), vec![0..4]);
+    }
+
+    #[test]
+    fn same_length_resize_preserves_allocation_and_live_length() {
+        let mut arena = SceneArena::new(0u32);
+        let allocation = arena.insert(&[1, 2, 3]);
+        let range = arena.range(allocation);
+        let live_len = arena.live_len();
+
+        assert!(!arena.resize(allocation, 3));
+        assert_eq!(arena.range(allocation), range);
+        assert_eq!(arena.live_len(), live_len);
+        assert_eq!(&arena.values()[range], &[1, 2, 3]);
     }
 
     #[test]

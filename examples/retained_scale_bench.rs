@@ -110,6 +110,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                 measured.arena_fragmentation / config.frames as f64 * 100.0,
                 measured.arena_compactions,
             );
+            if measured.materialize > std::time::Duration::ZERO {
+                println!(
+                    "  materialize detail: analysis {:.3} ms; chunks {:.3}; plan+sync {:.3}; frame {:.3} ms",
+                    ms(measured.materialize_analysis / n),
+                    ms(measured.materialize_chunks / n),
+                    ms(measured.materialize_plan_sync / n),
+                    ms(measured.materialize_frame / n),
+                );
+            }
             if measured.group_cache
                 + measured.group_children
                 + measured.group_mask

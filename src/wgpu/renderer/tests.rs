@@ -4276,6 +4276,54 @@ fn retained_profile_breaks_out_collection_materialization_and_damage() {
 }
 
 #[test]
+fn persistent_retained_profile_breaks_out_materialization_stages() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let root = RetainedNodeId::for_owner(302);
+    let child = RetainedNodeId::for_owner(303);
+    let leaf = |color| {
+        let mut canvas = Canvas::new(16, 16, 1.0);
+        canvas.push_rect(Rect::new(2.0, 2.0, 14.0, 14.0), crate::Radius::ZERO, color);
+        std::sync::Arc::new(canvas)
+    };
+    let mut scene = RetainedScene::new(16, 16, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            child,
+            leaf(Color::WHITE),
+            (0.0, 0.0),
+        )
+        .commit()
+        .unwrap();
+    let mut renderer = new_test_renderer(16, 16, Color::TRANSPARENT);
+    renderer.render_retained(&scene);
+    scene
+        .transaction()
+        .replace_scene(child, leaf(Color::BLACK))
+        .commit()
+        .unwrap();
+
+    renderer.start_profile();
+    renderer.render_retained(&scene);
+    let profile = renderer.end_profile().clone();
+
+    for stage in [
+        "retained.materialize",
+        "retained.materialize.analysis",
+        "retained.materialize.chunks",
+        "retained.materialize.plan_sync",
+        "retained.materialize.frame",
+    ] {
+        assert_profile_has(&profile, stage);
+    }
+}
+
+#[test]
 fn wgpu_renderer_rejects_copy_only_texture_without_storage() {
     if !run_wgpu_tests() {
         return;

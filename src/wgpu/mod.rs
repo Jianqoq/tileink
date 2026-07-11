@@ -20,6 +20,7 @@ pub use incremental::{
     FullRedrawReason, IncrementalOutputMode, IncrementalRenderConfig, IncrementalRenderMode,
     IncrementalRenderStats,
 };
+pub(crate) use profile::start_cpu_scope;
 pub use profile::{
     WgpuRenderProfile, WgpuRenderProfileEntry, WgpuRenderProfileEventSummary,
     WgpuRenderProfileReport,

@@ -1,9 +1,7 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::{collections::HashSet, sync::Arc};
 
 use peniko::kurbo::{Point, Rect};
+use rustc_hash::FxHashMap as HashMap;
 
 use super::{Canvas, SceneAppendMode, SceneOffset};
 use crate::{
@@ -436,8 +434,8 @@ fn snapshot_reorder_moves(
     current: &[RetainedNodeId],
     desired: &[RetainedNodeId],
 ) -> Vec<(RetainedNodeId, RetainedNodeId)> {
-    let mut previous = HashMap::with_capacity(current.len());
-    let mut next = HashMap::with_capacity(current.len());
+    let mut previous = HashMap::with_capacity_and_hasher(current.len(), Default::default());
+    let mut next = HashMap::with_capacity_and_hasher(current.len(), Default::default());
     for (index, &id) in current.iter().enumerate() {
         previous.insert(id, index.checked_sub(1).map(|index| current[index]));
         next.insert(id, current.get(index + 1).copied());

@@ -1063,19 +1063,6 @@ impl Canvas {
         match mode {
             SceneAppendMode::MergeCurrent => {
                 let child_list_offset = command_list_offset.saturating_sub(1);
-                let remapped_root_commands = other.command_lists[root_commands]
-                    .commands
-                    .iter()
-                    .map(|command| {
-                        Self::translated_remapped_command(
-                            command,
-                            draw_offset,
-                            child_list_offset,
-                            offset,
-                        )
-                    })
-                    .collect::<Vec<_>>();
-
                 for (list_ix, list) in other.command_lists.iter().enumerate() {
                     if list_ix == root_commands {
                         continue;
@@ -1091,7 +1078,16 @@ impl Canvas {
 
                 self.command_lists[target_commands]
                     .commands
-                    .extend(remapped_root_commands);
+                    .reserve(other.command_lists[root_commands].commands.len());
+                for command in &other.command_lists[root_commands].commands {
+                    let command = Self::translated_remapped_command(
+                        command,
+                        draw_offset,
+                        child_list_offset,
+                        offset,
+                    );
+                    self.command_lists[target_commands].commands.push(command);
+                }
                 None
             }
             SceneAppendMode::AppendAsCommandList => {
@@ -2623,8 +2619,12 @@ impl Canvas {
         self.text_glyphs.clear();
         self.text_runs.clear();
         self.scene_images.clear();
-        self.command_lists.clear();
-        self.command_lists.push(CommandList::default());
+        if let Some(root) = self.command_lists.first_mut() {
+            root.commands.clear();
+            self.command_lists.truncate(1);
+        } else {
+            self.command_lists.push(CommandList::default());
+        }
         self.root_commands = ROOT_COMMAND_LIST_ID;
         self.command_stack.clear();
         self.command_stack.push(self.root_commands);

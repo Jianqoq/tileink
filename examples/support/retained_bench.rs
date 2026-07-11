@@ -41,6 +41,10 @@ pub struct Measurements {
     pub cpu: Duration,
     pub collect: Duration,
     pub materialize: Duration,
+    pub materialize_analysis: Duration,
+    pub materialize_chunks: Duration,
+    pub materialize_plan_sync: Duration,
+    pub materialize_frame: Duration,
     pub damage: Duration,
     pub prepare: Duration,
     pub scan: Duration,
@@ -266,6 +270,10 @@ fn accumulate(
     measurements.cpu += profile.cpu_time();
     measurements.collect += stage(profile, "retained.collect");
     measurements.materialize += stage(profile, "retained.materialize");
+    measurements.materialize_analysis += stage(profile, "retained.materialize.analysis");
+    measurements.materialize_chunks += stage(profile, "retained.materialize.chunks");
+    measurements.materialize_plan_sync += stage(profile, "retained.materialize.plan_sync");
+    measurements.materialize_frame += stage(profile, "retained.materialize.frame");
     measurements.damage +=
         stage(profile, "retained.damage") + stage(profile, "retained.damage.propagate");
     measurements.prepare += stage(profile, "prepare");

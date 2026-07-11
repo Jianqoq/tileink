@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, VecDeque},
     error::Error,
     fmt,
     sync::{
@@ -12,6 +12,7 @@ use peniko::{
     Compose, Mix,
     kurbo::{Affine, BezPath, PathEl, Point, Rect},
 };
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 use crate::{
     Canvas, FillRule, Filter, Mask, Region, RetainedLayerKey, RetainedNodeId, SceneRevision, Sdf,
@@ -320,7 +321,9 @@ impl SceneChangeSet {
 
 struct SceneChunk {
     generation: u64,
-    canvas: Arc<Canvas>,
+    // Chunks have a single owner. Keeping their mutable encoding behind an Arc made every
+    // revision pay an atomic uniqueness check and made newly inserted chunks allocate twice.
+    canvas: Canvas,
     lines: ArenaAllocation,
     paths: ArenaAllocation,
     draws: ArenaAllocation,
@@ -331,7 +334,37 @@ struct SceneChunk {
     runs: Option<ArenaAllocation>,
     backdrops: ArenaAllocation,
     segments: ArenaAllocation,
+    plan_fingerprint: u64,
     plain_fragment: bool,
+}
+
+#[derive(Clone, Copy)]
+struct SceneChunkLengths {
+    lines: usize,
+    paths: usize,
+    draws: usize,
+    brushes: usize,
+    sdfs: usize,
+    shadows: usize,
+    runs: usize,
+    backdrops: usize,
+    segments: usize,
+}
+
+impl SceneChunkLengths {
+    fn from_canvas(canvas: &Canvas) -> Self {
+        Self {
+            lines: canvas.lines.len(),
+            paths: canvas.path_records.len(),
+            draws: canvas.draw_records.len(),
+            brushes: canvas.brush_blob.len(),
+            sdfs: canvas.sdf_blob.len(),
+            shadows: canvas.sdf_shadow_blob.len(),
+            runs: canvas.text_runs.len(),
+            backdrops: canvas.backdrop_pool_capacity as usize,
+            segments: canvas.tile_cnt as usize,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -436,25 +469,25 @@ impl PersistentSceneMaterializer {
                 scene.scale,
                 scene.root,
             )),
-            chunks: HashMap::new(),
+            chunks: HashMap::default(),
             arenas: MaterializedArenas::default(),
             nested_cache: RetainedSceneCache::default(),
             plan_cache_key: next_plan_cache_key(),
-            scene_command_locations: HashMap::new(),
-            layer_command_locations: HashMap::new(),
-            resource_refs: HashMap::new(),
+            scene_command_locations: HashMap::default(),
+            layer_command_locations: HashMap::default(),
+            resource_refs: HashMap::default(),
             dependency_free: false,
-            layer_nodes: HashSet::new(),
-            nonlocal_dependencies: HashSet::new(),
-            painter_bases: HashMap::new(),
-            painter_parents: HashMap::new(),
+            layer_nodes: HashSet::default(),
+            nonlocal_dependencies: HashSet::default(),
+            painter_bases: HashMap::default(),
+            painter_parents: HashMap::default(),
             flat_plan_has_draws: false,
-            node_bounds: HashMap::new(),
-            raw_node_bounds: HashMap::new(),
+            node_bounds: HashMap::default(),
+            raw_node_bounds: HashMap::default(),
             node_tiles: Vec::new(),
-            node_batches: HashMap::new(),
-            container_batches: HashMap::new(),
-            root_plan_fragments: HashMap::new(),
+            node_batches: HashMap::default(),
+            container_batches: HashMap::default(),
+            root_plan_fragments: HashMap::default(),
         };
         materializer.rebuild_all(scene);
         materializer
@@ -490,44 +523,53 @@ impl PersistentSceneMaterializer {
             self.rebuild_all(scene);
             return true;
         }
+        let analysis_profile = crate::wgpu::start_cpu_scope("retained.materialize.analysis");
         let previous_dependency_free = self.dependency_free;
         for id in &changes.removed_nodes {
             self.layer_nodes.remove(id);
             self.nonlocal_dependencies.remove(id);
         }
-        for &id in &changes.changed_nodes {
-            let node = scene.nodes.get(&id);
-            if node.is_some_and(|node| matches!(&node.kind, NodeKind::Layer(_))) {
-                self.layer_nodes.insert(id);
-            } else {
-                self.layer_nodes.remove(&id);
-            }
-            if node.is_some_and(|node| {
-                matches!(
-                    &node.kind,
-                    NodeKind::Layer(RetainedLayerDescriptor::Backdrop { .. })
-                )
-            }) {
-                self.nonlocal_dependencies.insert(id);
-            } else {
-                self.nonlocal_dependencies.remove(&id);
-            }
-        }
-        self.dependency_free = self.layer_nodes.is_empty();
-        let mut topology_changes = changes.clone();
-        if changes.hierarchy_changed {
+        if changes.topology_changed {
+            // Scene content and position changes cannot alter layer dependency membership. Layer
+            // insertions, removals, and descriptor updates are all topology changes, so only that
+            // journal class needs to touch these sets.
             for &id in &changes.changed_nodes {
-                if scene
-                    .nodes
-                    .get(&id)
-                    .is_some_and(|node| matches!(node.kind, NodeKind::Group | NodeKind::Layer(_)))
-                {
-                    let mut leaves = Vec::new();
-                    collect_scene_leaves(scene, id, &mut leaves);
-                    topology_changes.changed_nodes.extend(leaves);
+                let node = scene.nodes.get(&id);
+                if node.is_some_and(|node| matches!(&node.kind, NodeKind::Layer(_))) {
+                    self.layer_nodes.insert(id);
+                } else {
+                    self.layer_nodes.remove(&id);
+                }
+                if node.is_some_and(|node| {
+                    matches!(
+                        &node.kind,
+                        NodeKind::Layer(RetainedLayerDescriptor::Backdrop { .. })
+                    )
+                }) {
+                    self.nonlocal_dependencies.insert(id);
+                } else {
+                    self.nonlocal_dependencies.remove(&id);
                 }
             }
         }
+        self.dependency_free = self.layer_nodes.is_empty();
+        let expanded_topology_changes =
+            if changes.hierarchy_changed {
+                let mut topology_changes = changes.clone();
+                for &id in &changes.changed_nodes {
+                    if scene.nodes.get(&id).is_some_and(|node| {
+                        matches!(node.kind, NodeKind::Group | NodeKind::Layer(_))
+                    }) {
+                        let mut leaves = Vec::new();
+                        collect_scene_leaves(scene, id, &mut leaves);
+                        topology_changes.changed_nodes.extend(leaves);
+                    }
+                }
+                Some(topology_changes)
+            } else {
+                None
+            };
+        let topology_changes = expanded_topology_changes.as_ref().unwrap_or(&changes);
 
         let scene_data_changed = changes.topology_changed
             || !changes.changed_nodes.is_empty()
@@ -558,11 +600,15 @@ impl PersistentSceneMaterializer {
                         })
                 })
             });
-        let old_painter_bases = topology_changes
-            .changed_nodes
-            .iter()
-            .filter_map(|id| self.painter_bases.get(id).map(|base| (*id, base.clone())))
-            .collect::<HashMap<_, _>>();
+        let old_painter_bases = if root_reorder_candidate {
+            topology_changes
+                .changed_nodes
+                .iter()
+                .filter_map(|id| self.painter_bases.get(id).map(|base| (*id, base.clone())))
+                .collect::<HashMap<_, _>>()
+        } else {
+            HashMap::default()
+        };
         let layer_update_candidate = changes.topology_changed
             && !changes.hierarchy_changed
             && changes.removed_nodes.is_empty()
@@ -613,6 +659,8 @@ impl PersistentSceneMaterializer {
         let mut plan_layer_stack_changes = Vec::new();
         let mut layer_bounds_stable = true;
         let mut chunks_rebuilt = 0;
+        drop(analysis_profile);
+        let chunk_profile = crate::wgpu::start_cpu_scope("retained.materialize.chunks");
         for id in &changes.removed_nodes {
             if let Some(chunk) = self.chunks.remove(id) {
                 self.remove_chunk(chunk);
@@ -647,7 +695,8 @@ impl PersistentSceneMaterializer {
                 commands_dirty = true;
             }
         }
-
+        drop(chunk_profile);
+        let plan_profile = crate::wgpu::start_cpu_scope("retained.materialize.plan_sync");
         let mut plain_topology_candidate =
             changes.topology_changed && removed_plain_leaves && !root_reorder_candidate;
         let mut topology_batch_updates = Vec::new();
@@ -922,8 +971,8 @@ impl PersistentSceneMaterializer {
                 // stable batch membership. The plan fragment above already references the new
                 // hidden draw slot, so cloning the scene-wide metadata arrays would be wasted.
             } else {
-                self.update_painter_metadata(&changes.changed_nodes);
                 let stable_batches_remain = stable_batch_candidate
+                    && !plan_dirty
                     && changes.changed_nodes.iter().all(|id| {
                         scene.nodes.get(id).is_none_or(|node| {
                             matches!(node.kind, NodeKind::Group)
@@ -934,7 +983,13 @@ impl PersistentSceneMaterializer {
                         })
                     });
                 if stable_batches_remain && flat_plan_had_draws && self.flat_plan_has_draws {
+                    // Content-only updates with stable physical allocations cannot change painter
+                    // paths or BatchIds. The old path rewrote and compared every changed draw,
+                    // making an all-node revision pay a second O(changes) metadata walk after the
+                    // chunks had already been patched.
                     plan_dirty = false;
+                } else {
+                    self.update_painter_metadata(&changes.changed_nodes);
                 }
             }
         }
@@ -1021,6 +1076,8 @@ impl PersistentSceneMaterializer {
         if changes.hierarchy_changed {
             self.refresh_root_fragment_membership(scene, &changes.changed_nodes);
         }
+        drop(plan_profile);
+        let frame_profile = crate::wgpu::start_cpu_scope("retained.materialize.frame");
         Arc::make_mut(&mut self.canvas).plan_cache_key = Some(self.plan_cache_key);
         let canvas = Arc::make_mut(&mut self.canvas);
         canvas.invalidated_bounds.clear();
@@ -1044,7 +1101,7 @@ impl PersistentSceneMaterializer {
                 && self.patch_topology_frame_override(
                     scene,
                     previous_frame.clone(),
-                    &topology_changes,
+                    topology_changes,
                     &plain_topology_damage,
                 )
                 || (root_reorder_eligible
@@ -1059,6 +1116,7 @@ impl PersistentSceneMaterializer {
             self.rebuild_frame_override(scene);
             self.rebuild_spatial_index();
         }
+        drop(frame_profile);
         self.version = scene.version;
         scene_data_changed
     }
@@ -1126,53 +1184,77 @@ impl PersistentSceneMaterializer {
     /// Returns whether an allocation moved and command draw references must be rebuilt.
     fn rebuild_node(&mut self, scene: &RetainedScene, id: RetainedNodeId) -> bool {
         let node = &scene.nodes[&id];
-        let encoded = Arc::new(self.encode_node(scene, node));
-        if let Some(mut chunk) = self.chunks.remove(&id) {
-            self.remove_chunk_resources(&chunk.canvas.scene_images);
-            let old_plan = chunk.canvas.execution_plan_fingerprint();
-            let new_plan = encoded.execution_plan_fingerprint();
-            let mut moved = false;
-            moved |= self.arenas.lines.replace(chunk.lines, &encoded.lines);
-            moved |= self
-                .arenas
-                .paths
-                .replace(chunk.paths, &encoded.path_records);
-            moved |= self
-                .arenas
-                .draws
-                .replace(chunk.draws, &encoded.draw_records);
-            moved |= self
-                .arenas
-                .brushes
-                .replace(chunk.brushes, &encoded.brush_blob);
-            moved |= self.arenas.sdfs.replace(chunk.sdfs, &encoded.sdf_blob);
-            moved |= self
-                .arenas
-                .shadows
-                .replace(chunk.shadows, &encoded.sdf_shadow_blob);
-            moved |= self.replace_glyphs(&mut chunk.glyphs, &encoded.text_glyphs);
-            moved |= self
-                .arenas
-                .runs
-                .replace(chunk.runs.unwrap(), &encoded.text_runs);
-            moved |= self.arenas.backdrops.replace(
-                chunk.backdrops,
-                &vec![0; encoded.backdrop_pool_capacity as usize],
-            );
-            moved |= self
-                .arenas
-                .segments
-                .replace(chunk.segments, &vec![0; encoded.tile_cnt as usize]);
-            chunk.generation = node.generation;
-            chunk.canvas = encoded;
-            chunk.plain_fragment = is_plain_fragment(&chunk.canvas);
-            self.add_chunk_resources(&chunk.canvas.scene_images);
-            self.remap_chunk_data(&chunk);
-            self.chunks.insert(id, chunk);
-            return moved || old_plan != new_plan;
+        let updated = {
+            // Borrow the materializer fields independently so an existing chunk stays in its map
+            // slot while encoding, arena remapping, and resource refcounts are updated.
+            let Self {
+                canvas,
+                chunks,
+                arenas,
+                nested_cache,
+                resource_refs,
+                ..
+            } = self;
+            chunks.get_mut(&id).map(|chunk| {
+                Self::remove_chunk_resources(resource_refs, canvas, &chunk.canvas.scene_images);
+                let old_plan = chunk.plan_fingerprint;
+                let old_lengths = SceneChunkLengths::from_canvas(&chunk.canvas);
+                Self::encode_node_into(nested_cache, scene, node, &mut chunk.canvas);
+                let encoded = &chunk.canvas;
+                let new_lengths = SceneChunkLengths::from_canvas(encoded);
+                let new_plan = encoded.execution_plan_fingerprint();
+                let mut moved = false;
+                if old_lengths.lines != 0 || new_lengths.lines != 0 {
+                    moved |= arenas.lines.resize(chunk.lines, new_lengths.lines);
+                }
+                if old_lengths.paths != 0 || new_lengths.paths != 0 {
+                    moved |= arenas.paths.resize(chunk.paths, new_lengths.paths);
+                }
+                if old_lengths.draws != 0 || new_lengths.draws != 0 {
+                    moved |= arenas.draws.resize(chunk.draws, new_lengths.draws);
+                }
+                if old_lengths.brushes != 0 || new_lengths.brushes != 0 {
+                    moved |= arenas.brushes.replace(chunk.brushes, &encoded.brush_blob);
+                }
+                if old_lengths.sdfs != 0 || new_lengths.sdfs != 0 {
+                    moved |= arenas.sdfs.replace(chunk.sdfs, &encoded.sdf_blob);
+                }
+                if old_lengths.shadows != 0 || new_lengths.shadows != 0 {
+                    moved |= arenas
+                        .shadows
+                        .replace(chunk.shadows, &encoded.sdf_shadow_blob);
+                }
+                moved |= Self::replace_glyphs(arenas, &mut chunk.glyphs, &encoded.text_glyphs);
+                if old_lengths.runs != 0 || new_lengths.runs != 0 {
+                    moved |= arenas.runs.resize(chunk.runs.unwrap(), new_lengths.runs);
+                }
+                if old_lengths.backdrops != 0 || new_lengths.backdrops != 0 {
+                    moved |= arenas
+                        .backdrops
+                        .replace(chunk.backdrops, &vec![0; new_lengths.backdrops]);
+                }
+                if old_lengths.segments != 0 || new_lengths.segments != 0 {
+                    moved |= arenas
+                        .segments
+                        .replace(chunk.segments, &vec![0; new_lengths.segments]);
+                }
+                chunk.generation = node.generation;
+                if old_plan != new_plan {
+                    chunk.plain_fragment = is_plain_fragment(&chunk.canvas);
+                }
+                chunk.plan_fingerprint = new_plan;
+                Self::add_chunk_resources(resource_refs, canvas, &chunk.canvas.scene_images);
+                Self::remap_chunk_data(arenas, chunk);
+                moved || old_plan != new_plan
+            })
+        };
+        if let Some(updated) = updated {
+            return updated;
         }
 
-        let glyphs = self.insert_glyphs(&encoded.text_glyphs);
+        let encoded = Self::encode_node(&mut self.nested_cache, scene, node);
+        let glyphs = Self::insert_glyphs(&mut self.arenas, &encoded.text_glyphs);
+        let plan_fingerprint = encoded.execution_plan_fingerprint();
         let chunk = SceneChunk {
             generation: node.generation,
             lines: self.arenas.lines.insert(&encoded.lines),
@@ -1191,112 +1273,141 @@ impl PersistentSceneMaterializer {
                 .arenas
                 .segments
                 .insert(&vec![0; encoded.tile_cnt as usize]),
+            plan_fingerprint,
             plain_fragment: is_plain_fragment(&encoded),
             canvas: encoded,
         };
-        self.add_chunk_resources(&chunk.canvas.scene_images);
-        self.remap_chunk_data(&chunk);
+        Self::add_chunk_resources(
+            &mut self.resource_refs,
+            &mut self.canvas,
+            &chunk.canvas.scene_images,
+        );
+        Self::remap_chunk_data(&mut self.arenas, &chunk);
         self.chunks.insert(id, chunk);
         true
     }
 
-    fn remap_chunk_data(&mut self, chunk: &SceneChunk) {
-        let line_base = self.arenas.lines.range(chunk.lines).start as u32;
-        let path_base = self.arenas.paths.range(chunk.paths).start as u32;
-        let draw_base = self.arenas.draws.range(chunk.draws).start as u32;
-        let brush_base = self.arenas.brushes.range(chunk.brushes).start as u32;
-        let sdf_base = self.arenas.sdfs.range(chunk.sdfs).start as u32;
-        let shadow_base = self.arenas.shadows.range(chunk.shadows).start as u32;
+    fn remap_chunk_data(arenas: &mut MaterializedArenas, chunk: &SceneChunk) {
+        let line_base = if chunk.canvas.lines.is_empty() {
+            0
+        } else {
+            arenas.lines.range(chunk.lines).start as u32
+        };
+        let path_base = if chunk.canvas.path_records.is_empty() {
+            0
+        } else {
+            arenas.paths.range(chunk.paths).start as u32
+        };
+        let brush_base = if chunk.canvas.brush_blob.is_empty() {
+            0
+        } else {
+            arenas.brushes.range(chunk.brushes).start as u32
+        };
+        let sdf_base = if chunk.canvas.sdf_blob.is_empty() {
+            0
+        } else {
+            arenas.sdfs.range(chunk.sdfs).start as u32
+        };
+        let shadow_base = if chunk.canvas.sdf_shadow_blob.is_empty() {
+            0
+        } else {
+            arenas.shadows.range(chunk.shadows).start as u32
+        };
         let glyph_base = chunk.glyphs.map_or(0, |id| {
-            self.arenas.glyphs.as_ref().unwrap().range(id).start as u32
+            arenas.glyphs.as_ref().unwrap().range(id).start as u32
         });
         let run_base = chunk
             .runs
-            .map_or(0, |id| self.arenas.runs.range(id).start as u32);
-        let backdrop_base = self.arenas.backdrops.range(chunk.backdrops).start as u32;
-        let segment_base = self.arenas.segments.range(chunk.segments).start as u32;
+            .filter(|_| !chunk.canvas.text_runs.is_empty())
+            .map_or(0, |id| arenas.runs.range(id).start as u32);
+        let backdrop_base = if chunk.canvas.backdrop_pool_capacity == 0 {
+            0
+        } else {
+            arenas.backdrops.range(chunk.backdrops).start as u32
+        };
+        let segment_base = if chunk.canvas.tile_cnt == 0 {
+            0
+        } else {
+            arenas.segments.range(chunk.segments).start as u32
+        };
 
-        let lines = chunk
-            .canvas
-            .lines
-            .iter()
-            .copied()
-            .map(|mut line| {
-                line.path_id = line.path_id.saturating_add(path_base);
-                line
-            })
-            .collect::<Vec<_>>();
-        self.arenas.lines.replace(chunk.lines, &lines);
-
-        let paths = chunk
-            .canvas
-            .path_records
-            .iter()
-            .copied()
-            .map(|mut path| {
-                path.path_id = path.path_id.saturating_add(path_base);
-                path.line_start = path.line_start.saturating_add(line_base);
-                path.data_offset = path.data_offset.saturating_add(backdrop_base);
-                path.segment_start = path.segment_start.saturating_add(segment_base);
-                path
-            })
-            .collect::<Vec<_>>();
-        self.arenas.paths.replace(chunk.paths, &paths);
-
-        let draws = chunk
-            .canvas
-            .draw_records
-            .iter()
-            .copied()
-            .map(|mut draw| {
-                if draw.path_id != DrawRecord::NONE {
-                    draw.path_id = draw.path_id.saturating_add(path_base);
-                }
-                if draw.glyph_run_id != DrawRecord::NONE {
-                    draw.glyph_run_id = draw.glyph_run_id.saturating_add(run_base);
-                }
-                if draw.brush_offset != DrawRecord::NONE {
-                    draw.brush_offset = draw.brush_offset.saturating_add(brush_base);
-                }
-                if draw.sdf_offset != DrawRecord::NONE {
-                    draw.sdf_offset = draw.sdf_offset.saturating_add(sdf_base);
-                }
-                if draw.sdf_shadow_offset != DrawRecord::NONE {
-                    draw.sdf_shadow_offset = draw.sdf_shadow_offset.saturating_add(shadow_base);
-                }
-                draw
-            })
-            .collect::<Vec<_>>();
-        self.arenas.draws.replace(chunk.draws, &draws);
-
-        if let (Some(arena), Some(id)) = (&mut self.arenas.glyphs, chunk.glyphs) {
-            arena.replace(id, &chunk.canvas.text_glyphs);
+        if !chunk.canvas.lines.is_empty() {
+            arenas
+                .lines
+                .write_mapped(chunk.lines, &chunk.canvas.lines, |mut line| {
+                    line.path_id = line.path_id.saturating_add(path_base);
+                    line
+                });
         }
-        if let Some(run_allocation) = chunk.runs {
-            let remapped_runs = chunk
-                .canvas
-                .text_runs
-                .iter()
-                .copied()
-                .map(|run| TextRun {
+
+        if !chunk.canvas.path_records.is_empty() {
+            arenas
+                .paths
+                .write_mapped(chunk.paths, &chunk.canvas.path_records, |mut path| {
+                    path.path_id = path.path_id.saturating_add(path_base);
+                    path.line_start = path.line_start.saturating_add(line_base);
+                    path.data_offset = path.data_offset.saturating_add(backdrop_base);
+                    path.segment_start = path.segment_start.saturating_add(segment_base);
+                    path
+                });
+        }
+
+        if !chunk.canvas.draw_records.is_empty() {
+            arenas
+                .draws
+                .write_mapped(chunk.draws, &chunk.canvas.draw_records, |mut draw| {
+                    if draw.path_id != DrawRecord::NONE {
+                        draw.path_id = draw.path_id.saturating_add(path_base);
+                    }
+                    if draw.glyph_run_id != DrawRecord::NONE {
+                        draw.glyph_run_id = draw.glyph_run_id.saturating_add(run_base);
+                    }
+                    if draw.brush_offset != DrawRecord::NONE {
+                        draw.brush_offset = draw.brush_offset.saturating_add(brush_base);
+                    }
+                    if draw.sdf_offset != DrawRecord::NONE {
+                        draw.sdf_offset = draw.sdf_offset.saturating_add(sdf_base);
+                    }
+                    if draw.sdf_shadow_offset != DrawRecord::NONE {
+                        draw.sdf_shadow_offset = draw.sdf_shadow_offset.saturating_add(shadow_base);
+                    }
+                    draw
+                });
+        }
+        if let Some(run_allocation) = chunk.runs.filter(|_| !chunk.canvas.text_runs.is_empty()) {
+            arenas
+                .runs
+                .write_mapped(run_allocation, &chunk.canvas.text_runs, |run| TextRun {
                     glyph_start: run.glyph_start.saturating_add(glyph_base),
                     glyph_count: run.glyph_count,
-                })
-                .collect::<Vec<_>>();
-            self.arenas.runs.replace(run_allocation, &remapped_runs);
+                });
         }
-        let _ = draw_base;
     }
 
-    fn encode_node(&mut self, scene: &RetainedScene, node: &SceneNode) -> Canvas {
+    fn encode_node(
+        nested_cache: &mut RetainedSceneCache,
+        scene: &RetainedScene,
+        node: &SceneNode,
+    ) -> Canvas {
         let mut canvas = Canvas::new(scene.width, scene.height, scene.scale);
+        Self::encode_node_into(nested_cache, scene, node, &mut canvas);
+        canvas
+    }
+
+    fn encode_node_into(
+        nested_cache: &mut RetainedSceneCache,
+        scene: &RetainedScene,
+        node: &SceneNode,
+        canvas: &mut Canvas,
+    ) {
+        canvas.reset();
         match &node.kind {
             NodeKind::Scene {
                 canvas: child,
                 position,
             } => {
                 let materialized = if child.has_retained_scenes() {
-                    self.nested_cache.materialize_snapshot_shared(child)
+                    nested_cache.materialize_snapshot_shared(child)
                 } else {
                     child.clone()
                 };
@@ -1354,36 +1465,34 @@ impl PersistentSceneMaterializer {
             }
             NodeKind::Group => {}
         }
-        canvas
     }
 
-    fn insert_glyphs(&mut self, glyphs: &[CanvasGlyph]) -> Option<ArenaAllocation> {
+    fn insert_glyphs(
+        arenas: &mut MaterializedArenas,
+        glyphs: &[CanvasGlyph],
+    ) -> Option<ArenaAllocation> {
         let first = glyphs.first().copied()?;
-        let arena = self
-            .arenas
-            .glyphs
-            .get_or_insert_with(|| SceneArena::new(first));
+        let arena = arenas.glyphs.get_or_insert_with(|| SceneArena::new(first));
         Some(arena.insert(glyphs))
     }
 
     fn replace_glyphs(
-        &mut self,
+        arenas: &mut MaterializedArenas,
         allocation: &mut Option<ArenaAllocation>,
         glyphs: &[CanvasGlyph],
     ) -> bool {
         match (*allocation, glyphs.first().copied()) {
-            (Some(id), Some(first)) => self
-                .arenas
+            (Some(id), Some(first)) => arenas
                 .glyphs
                 .get_or_insert_with(|| SceneArena::new(first))
                 .replace(id, glyphs),
             (Some(id), None) => {
-                self.arenas.glyphs.as_mut().unwrap().remove(id);
+                arenas.glyphs.as_mut().unwrap().remove(id);
                 *allocation = None;
                 true
             }
             (None, Some(_)) => {
-                *allocation = self.insert_glyphs(glyphs);
+                *allocation = Self::insert_glyphs(arenas, glyphs);
                 true
             }
             (None, None) => false,
@@ -1391,7 +1500,11 @@ impl PersistentSceneMaterializer {
     }
 
     fn remove_chunk(&mut self, chunk: SceneChunk) {
-        self.remove_chunk_resources(&chunk.canvas.scene_images);
+        Self::remove_chunk_resources(
+            &mut self.resource_refs,
+            &mut self.canvas,
+            &chunk.canvas.scene_images,
+        );
         self.arenas.lines.remove(chunk.lines);
         self.arenas.paths.remove(chunk.paths);
         self.arenas.draws.remove(chunk.draws);
@@ -1406,29 +1519,36 @@ impl PersistentSceneMaterializer {
         self.arenas.segments.remove(chunk.segments);
     }
 
-    fn add_chunk_resources(&mut self, resources: &ImageResourceStore) {
+    fn add_chunk_resources(
+        resource_refs: &mut HashMap<ImageKey, (Arc<Image>, usize)>,
+        canvas: &mut Arc<Canvas>,
+        resources: &ImageResourceStore,
+    ) {
         for (key, image) in resources.iter() {
-            let entry = self
-                .resource_refs
+            let entry = resource_refs
                 .entry(key)
                 .or_insert_with(|| (image.clone(), 0));
             entry.0 = image.clone();
             entry.1 += 1;
-            Arc::make_mut(&mut self.canvas)
+            Arc::make_mut(canvas)
                 .scene_images
                 .insert(key, image.clone());
         }
     }
 
-    fn remove_chunk_resources(&mut self, resources: &ImageResourceStore) {
+    fn remove_chunk_resources(
+        resource_refs: &mut HashMap<ImageKey, (Arc<Image>, usize)>,
+        canvas: &mut Arc<Canvas>,
+        resources: &ImageResourceStore,
+    ) {
         for (key, _) in resources.iter() {
-            let remove = self.resource_refs.get_mut(&key).is_some_and(|(_, count)| {
+            let remove = resource_refs.get_mut(&key).is_some_and(|(_, count)| {
                 *count -= 1;
                 *count == 0
             });
             if remove {
-                self.resource_refs.remove(&key);
-                Arc::make_mut(&mut self.canvas).scene_images.remove(key);
+                resource_refs.remove(&key);
+                Arc::make_mut(canvas).scene_images.remove(key);
             }
         }
     }
@@ -1451,11 +1571,9 @@ impl PersistentSceneMaterializer {
     }
 
     fn remap_all_chunks(&mut self) {
-        let ids = self.chunks.keys().copied().collect::<Vec<_>>();
-        for id in ids {
-            let chunk = self.chunks.remove(&id).unwrap();
-            self.remap_chunk_data(&chunk);
-            self.chunks.insert(id, chunk);
+        let Self { chunks, arenas, .. } = self;
+        for chunk in chunks.values() {
+            Self::remap_chunk_data(arenas, chunk);
         }
     }
 
@@ -1937,7 +2055,10 @@ impl PersistentSceneMaterializer {
             return false;
         }
 
-        let mut commands = HashMap::with_capacity(canvas.command_lists[0].commands.len());
+        let mut commands = HashMap::with_capacity_and_hasher(
+            canvas.command_lists[0].commands.len(),
+            Default::default(),
+        );
         for command in &canvas.command_lists[0].commands {
             let id = match command {
                 Command::Layer {
@@ -2104,7 +2225,7 @@ impl PersistentSceneMaterializer {
             .keys()
             .flat_map(|id| self.node_physical_draws(*id))
             .collect::<Vec<_>>();
-        let mut moved_per_batch = HashMap::<u32, usize>::new();
+        let mut moved_per_batch = HashMap::<u32, usize>::default();
         for (&node, &batch) in &reassigned_batches {
             *moved_per_batch.entry(batch).or_default() += self.node_physical_draws(node).len();
         }
@@ -2311,7 +2432,7 @@ impl PersistentSceneMaterializer {
                     // still record reclaimable tail ranges.
                     command_lists: 0..0,
                     nodes: nodes.into_iter().collect(),
-                    reassigned_batches: HashMap::new(),
+                    reassigned_batches: HashMap::default(),
                     removed_batch: None,
                 },
             );
@@ -2574,7 +2695,7 @@ impl PersistentSceneMaterializer {
     ) -> (Vec<(RetainedNodeId, Bounds)>, Vec<RetainedNodeId>) {
         let canvas_bounds =
             Bounds::canvas(self.canvas.physical_width(), self.canvas.physical_height());
-        let mut damage = HashMap::<RetainedNodeId, Bounds>::new();
+        let mut damage = HashMap::<RetainedNodeId, Bounds>::default();
         let mut dirty = Vec::new();
         let mut pending = sources.to_vec();
         let mut backdrops = self
@@ -2700,30 +2821,35 @@ impl PersistentSceneMaterializer {
             self.rebuild_spatial_index();
             return;
         }
-        let mut source_damage = patches
-            .iter()
-            .map(|patch| {
-                let node = patch.new.or(patch.old).unwrap();
-                let bounds = match (patch.old, patch.new) {
-                    (Some(old), Some(new)) => old.bounds.union(new.bounds),
-                    (Some(old), None) => old.bounds,
-                    (None, Some(new)) => new.bounds,
-                    (None, None) => unreachable!("retained patch has a node"),
-                };
-                (Some(node.id), bounds)
-            })
-            .collect::<Vec<_>>();
-        source_damage.extend(
-            self.canvas
-                .invalidated_bounds
+        let (backdrop_damage, dirty_backdrops) = if self.nonlocal_dependencies.is_empty() {
+            (Vec::new(), Vec::new())
+        } else {
+            let source_damage = patches
                 .iter()
-                .copied()
-                .map(|bounds| (None, bounds)),
-        );
-        let (backdrop_damage, dirty_backdrops) =
-            self.incremental_backdrop_damage(scene, &source_damage);
+                .map(|patch| {
+                    let node = patch.new.or(patch.old).unwrap();
+                    let bounds = match (patch.old, patch.new) {
+                        (Some(old), Some(new)) => old.bounds.union(new.bounds),
+                        (Some(old), None) => old.bounds,
+                        (None, Some(new)) => new.bounds,
+                        (None, None) => unreachable!("retained patch has a node"),
+                    };
+                    (Some(node.id), bounds)
+                })
+                .chain(
+                    self.canvas
+                        .invalidated_bounds
+                        .iter()
+                        .copied()
+                        .map(|bounds| (None, bounds)),
+                )
+                .collect::<Vec<_>>();
+            self.incremental_backdrop_damage(scene, &source_damage)
+        };
         for patch in &patches {
-            self.set_node_bounds(patch.new.unwrap().id, patch.new.map(|node| node.bounds));
+            if patch.old.map(|node| node.bounds) != patch.new.map(|node| node.bounds) {
+                self.set_node_bounds(patch.new.unwrap().id, patch.new.map(|node| node.bounds));
+            }
         }
         frame.version = Some(scene.version.get());
         frame.delta = Some(Arc::new(RetainedFrameDelta {
@@ -2821,7 +2947,9 @@ impl PersistentSceneMaterializer {
         }
         for patch in &patches {
             let id = patch.new.or(patch.old).unwrap().id;
-            self.set_node_bounds(id, patch.new.map(|node| node.bounds));
+            if patch.old.map(|node| node.bounds) != patch.new.map(|node| node.bounds) {
+                self.set_node_bounds(id, patch.new.map(|node| node.bounds));
+            }
             if let Some(chunk) = self.chunks.get(&id) {
                 self.raw_node_bounds
                     .insert(id, chunk.canvas.visual_bounds());
@@ -2868,7 +2996,7 @@ impl PersistentSceneMaterializer {
         let tile_count = Arc::make_mut(&mut self.canvas).width_in_tiles() as usize
             * Arc::make_mut(&mut self.canvas).height_in_tiles() as usize;
         self.node_tiles.clear();
-        self.node_tiles.resize(tile_count, HashSet::new());
+        self.node_tiles.resize(tile_count, HashSet::default());
         let frame = Arc::make_mut(&mut self.canvas)
             .retained_frame_override
             .clone()
@@ -2883,16 +3011,36 @@ impl PersistentSceneMaterializer {
     }
 
     fn set_node_bounds(&mut self, id: RetainedNodeId, bounds: Option<Bounds>) {
-        if let Some(old) = self.node_bounds.remove(&id) {
+        let bounds = bounds.filter(|bounds| !bounds.is_empty());
+        let old = match self.node_bounds.entry(id) {
+            std::collections::hash_map::Entry::Occupied(mut entry) => {
+                let old = *entry.get();
+                if Some(old) == bounds {
+                    return;
+                }
+                if let Some(bounds) = bounds {
+                    *entry.get_mut() = bounds;
+                } else {
+                    entry.remove();
+                }
+                Some(old)
+            }
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                if let Some(bounds) = bounds {
+                    entry.insert(bounds);
+                }
+                None
+            }
+        };
+        if let Some(old) = old {
             for tile in self.tiles_for_bounds(old) {
                 self.node_tiles[tile].remove(&id);
             }
         }
-        if let Some(bounds) = bounds.filter(|bounds| !bounds.is_empty()) {
+        if let Some(bounds) = bounds {
             for tile in self.tiles_for_bounds(bounds) {
                 self.node_tiles[tile].insert(id);
             }
-            self.node_bounds.insert(id, bounds);
         }
     }
 
@@ -2918,7 +3066,7 @@ impl PersistentSceneMaterializer {
     }
 
     fn spatial_candidates(&self, bounds: Bounds) -> HashSet<RetainedNodeId> {
-        let mut candidates = HashSet::new();
+        let mut candidates = HashSet::default();
         for tile in self.tiles_for_bounds(bounds) {
             candidates.extend(self.node_tiles[tile].iter().copied());
         }
@@ -2930,7 +3078,7 @@ impl PersistentSceneMaterializer {
         old_bases: &HashMap<RetainedNodeId, Arc<[u128]>>,
         changed: &HashSet<RetainedNodeId>,
     ) -> Vec<(RetainedNodeId, Bounds)> {
-        let mut damage = HashMap::<RetainedNodeId, Bounds>::new();
+        let mut damage = HashMap::<RetainedNodeId, Bounds>::default();
         for &id in changed {
             let (Some(&bounds), Some(old), Some(new)) = (
                 self.node_bounds.get(&id),
@@ -3319,7 +3467,7 @@ impl RetainedScene {
         root: RetainedNodeId,
     ) -> Result<Self, RetainedSceneError> {
         validate_size(width, height, scale)?;
-        let mut nodes = HashMap::new();
+        let mut nodes = HashMap::default();
         nodes.insert(root, SceneNode::group(None));
         Ok(Self {
             id: NEXT_SCENE_ID.fetch_add(1, Ordering::Relaxed),
@@ -4273,6 +4421,10 @@ mod tests {
         Arc::new(canvas)
     }
 
+    fn empty_leaf() -> Arc<Canvas> {
+        Arc::new(Canvas::new(16, 16, 1.0))
+    }
+
     #[test]
     fn transaction_is_atomic_when_a_late_mutation_is_invalid() {
         let root = RetainedNodeId::for_owner(1);
@@ -4295,6 +4447,85 @@ mod tests {
         );
         assert_eq!(scene.version(), SceneVersion::INITIAL);
         assert!(!scene.nodes.contains_key(&child));
+    }
+
+    #[test]
+    fn content_revision_reuses_chunk_canvas_storage() {
+        let root = RetainedNodeId::for_owner(5);
+        let child = RetainedNodeId::for_owner(6);
+        let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
+        scene
+            .transaction()
+            .insert_scene(
+                RetainedParent::content(root),
+                None,
+                child,
+                leaf(Color::WHITE),
+                (8.0, 8.0),
+            )
+            .commit()
+            .unwrap();
+        let mut materializer = PersistentSceneMaterializer::new(&scene);
+        let chunk_storage = std::ptr::from_ref(&materializer.chunks[&child]);
+        let storage = std::ptr::from_ref(&materializer.chunks[&child].canvas);
+
+        scene
+            .transaction()
+            .replace_scene(child, leaf(Color::BLACK))
+            .commit()
+            .unwrap();
+        assert!(materializer.update(&scene));
+        assert_eq!(
+            std::ptr::from_ref(&materializer.chunks[&child]),
+            chunk_storage
+        );
+        assert_eq!(
+            std::ptr::from_ref(&materializer.chunks[&child].canvas),
+            storage
+        );
+        assert_eq!(materializer.chunks[&child].generation, 1);
+    }
+
+    #[test]
+    fn empty_chunk_allocations_grow_and_shrink_without_full_sync() {
+        let root = RetainedNodeId::for_owner(7);
+        let child = RetainedNodeId::for_owner(8);
+        let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
+        scene
+            .transaction()
+            .insert_scene(
+                RetainedParent::content(root),
+                None,
+                child,
+                empty_leaf(),
+                (4.0, 4.0),
+            )
+            .commit()
+            .unwrap();
+        let mut materializer = PersistentSceneMaterializer::new(&scene);
+        let chunk = &materializer.chunks[&child];
+        assert!(materializer.arenas.draws.range(chunk.draws).is_empty());
+        assert!(materializer.arenas.sdfs.range(chunk.sdfs).is_empty());
+
+        scene
+            .transaction()
+            .replace_scene(child, leaf(Color::WHITE))
+            .commit()
+            .unwrap();
+        assert!(materializer.update(&scene));
+        let chunk = &materializer.chunks[&child];
+        assert_eq!(materializer.arenas.draws.range(chunk.draws).len(), 1);
+        assert!(!materializer.arenas.sdfs.range(chunk.sdfs).is_empty());
+
+        scene
+            .transaction()
+            .replace_scene(child, empty_leaf())
+            .commit()
+            .unwrap();
+        assert!(materializer.update(&scene));
+        let chunk = &materializer.chunks[&child];
+        assert!(materializer.arenas.draws.range(chunk.draws).is_empty());
+        assert!(materializer.arenas.sdfs.range(chunk.sdfs).is_empty());
     }
 
     #[test]

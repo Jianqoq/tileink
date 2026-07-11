@@ -477,6 +477,53 @@ fn append_fast_path_translates_sdf_without_mutating_child() {
 }
 
 #[test]
+fn append_directly_remaps_root_commands_after_nested_lists() {
+    let mut child = test_scene();
+    child.push_rect(
+        Rect::new(0.0, 0.0, 8.0, 8.0),
+        Radius::ZERO,
+        Brush::Solid(rgb(255, 0, 0)),
+    );
+    child.push_opacity_layer(rect_path(0.0, 0.0, 16.0, 16.0), Affine::IDENTITY, 0.1, 0.5);
+    child.push_rect(
+        Rect::new(8.0, 0.0, 16.0, 8.0),
+        Radius::ZERO,
+        Brush::Solid(rgb(0, 255, 0)),
+    );
+    child.pop_layer();
+    child.push_rect(
+        Rect::new(0.0, 8.0, 8.0, 16.0),
+        Radius::ZERO,
+        Brush::Solid(rgb(0, 0, 255)),
+    );
+
+    let mut parent = test_scene();
+    parent.append(&child, Point::new(4.0, 6.0));
+
+    assert_eq!(parent.command_lists.len(), 2);
+    assert!(matches!(
+        parent.command_lists[0].commands[0],
+        Command::Draw(0)
+    ));
+    assert!(matches!(
+        parent.command_lists[0].commands[1],
+        Command::Layer {
+            draw: 1,
+            children: 1,
+            ..
+        }
+    ));
+    assert!(matches!(
+        parent.command_lists[0].commands[2],
+        Command::Draw(3)
+    ));
+    assert!(matches!(
+        parent.command_lists[1].commands[0],
+        Command::Draw(2)
+    ));
+}
+
+#[test]
 fn append_fast_path_offsets_text_runs_without_mutating_child() {
     let mut font_system = TextFontSystem::new();
     let mut context = TextContext::new();

@@ -33,6 +33,26 @@ fn reset_discards_cached_execution_plan() {
 }
 
 #[test]
+fn reset_reuses_root_command_storage() {
+    let mut canvas = test_scene();
+    canvas.push_rect(
+        Rect::new(0.0, 0.0, 8.0, 8.0),
+        Radius::ZERO,
+        Brush::Solid(rgb(255, 0, 0)),
+    );
+    let capacity = canvas.command_lists[0].commands.capacity();
+    let storage = canvas.command_lists[0].commands.as_ptr();
+    assert!(capacity > 0);
+
+    canvas.reset();
+
+    assert_eq!(canvas.command_lists.len(), 1);
+    assert!(canvas.command_lists[0].commands.is_empty());
+    assert_eq!(canvas.command_lists[0].commands.capacity(), capacity);
+    assert_eq!(canvas.command_lists[0].commands.as_ptr(), storage);
+}
+
+#[test]
 fn compile_coalesces_plain_draws_across_materialized_retained_scenes() {
     let mut canvas = Canvas::new_retained(64, 64, 1.0, RetainedNodeId::for_owner(1));
     for owner in 2..=4 {

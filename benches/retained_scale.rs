@@ -8,12 +8,44 @@ use std::time::Duration;
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use peniko::Color;
 use retained_bench::{
-    BenchConfig, HEIGHT, MutationPhase, WIDTH, bench_persistent, bench_persistent_phase,
+    BenchConfig, HEIGHT, Measurements, MutationPhase, WIDTH, bench_persistent,
+    bench_persistent_phase,
 };
 use retained_scale::{Scenario, Workload};
 use tileink::{IncrementalRenderMode, WgpuRenderer};
 
 const COUNTS: [usize; 5] = [100, 1_000, 5_000, 20_000, 100_000];
+
+fn retained_materialize_stage(
+    c: &mut Criterion,
+    seed: &WgpuRenderer,
+    name: &str,
+    duration: fn(&Measurements) -> Duration,
+) {
+    let scenario = Scenario::AllRevisions;
+    let mut group = c.benchmark_group(format!("retained_materialize/{name}"));
+    for count in COUNTS {
+        group.throughput(Throughput::Elements(count as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(count), &count, |b, &count| {
+            b.iter_custom(|iterations| {
+                let workload = Workload::new(count, scenario);
+                let measurements = bench_persistent(
+                    seed,
+                    BenchConfig {
+                        warmup: 3,
+                        frames: iterations as usize,
+                    },
+                    workload.build_scene(),
+                    IncrementalRenderMode::Auto,
+                    |scene, frame| workload.mutate(scene, frame),
+                )
+                .expect("retained materialization benchmark must render");
+                duration(&measurements)
+            });
+        });
+    }
+    group.finish();
+}
 
 fn retained_scale(c: &mut Criterion) {
     let seed = WgpuRenderer::new_default_device(WIDTH, HEIGHT, Color::TRANSPARENT);
@@ -44,6 +76,23 @@ fn retained_scale(c: &mut Criterion) {
             });
         }
         group.finish();
+    }
+
+    // The end-to-end groups above intentionally include submit and GPU completion. Keep a second
+    // permanent scale series for the dense revision hotspot so CPU materialization regressions are
+    // not hidden by GPU scheduling noise. Rendering still executes to preserve real renderer
+    // state, but Criterion receives only the profiled retained.materialize duration.
+    for (name, duration) in [
+        (
+            "all-revisions",
+            (|m: &Measurements| m.materialize) as fn(&Measurements) -> Duration,
+        ),
+        ("all-revisions-analysis", |m| m.materialize_analysis),
+        ("all-revisions-chunks", |m| m.materialize_chunks),
+        ("all-revisions-plan-sync", |m| m.materialize_plan_sync),
+        ("all-revisions-frame", |m| m.materialize_frame),
+    ] {
+        retained_materialize_stage(c, &seed, name, duration);
     }
 
     for (scenario, name) in [
