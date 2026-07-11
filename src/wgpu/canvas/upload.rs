@@ -896,6 +896,33 @@ impl WgpuSceneBuffers {
 
             self.paint_sdf_shadow_base = canvas.sdf_blob.len() as u32;
             self.paint_brush_base = (canvas.sdf_blob.len() + canvas.sdf_shadow_blob.len()) as u32;
+            if canvas.buffer_changes.is_none() {
+                // Immediate canvases have no dirty-allocation journal and are prepared as
+                // one-shot contiguous buffers. Writing the three existing slices directly is
+                // substantially cheaper than concatenating them, diffing a byte cache, and then
+                // discarding that work on the next full frame.
+                let words =
+                    canvas.sdf_blob.len() + canvas.sdf_shadow_blob.len() + scene_brush_blob.len();
+                self.paint_blob.resize_uninit::<u32>(
+                    device,
+                    "tileink wgpu canvas paint blob",
+                    words,
+                );
+                self.paint_blob.write_at(queue, 0, &canvas.sdf_blob);
+                self.paint_blob.write_at(
+                    queue,
+                    word_offset(self.paint_sdf_shadow_base as usize),
+                    &canvas.sdf_shadow_blob,
+                );
+                self.paint_blob.write_at(
+                    queue,
+                    word_offset(self.paint_brush_base as usize),
+                    scene_brush_blob,
+                );
+                staging.paint_blob.clear();
+                staging.paint_layout = (0, 0, 0);
+                return words * std::mem::size_of::<u32>();
+            }
             // SDF, SDF-shadow, and scene brushes share one storage buffer so coarse, fine,
             // and filter bind the same paint data. Keeping one staging vector
             // also lets retained uploads transmit only the changed range.

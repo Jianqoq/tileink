@@ -473,7 +473,7 @@ impl Renderer {
         }
     }
 
-    fn prepare_scratch_buffers(&mut self, count: usize) {
+    pub(super) fn prepare_scratch_buffers(&mut self, count: usize) {
         while self.scratch.len() < count {
             self.scratch
                 .push(WgpuTarget::new(&self.device, self.size.0, self.size.1));

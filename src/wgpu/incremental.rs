@@ -447,6 +447,9 @@ pub(crate) struct DamagePlan {
     pub(crate) retained_damage: RetainedDamage,
     pub(crate) stats: IncrementalRenderStats,
     pub(crate) frame: Option<RetainedFrame>,
+    /// `Some` means the consumed persistent delta already expanded backdrop output damage and
+    /// identified every retained backdrop surface that must be rerendered.
+    pub(crate) dirty_backdrops: Option<std::sync::Arc<[crate::RetainedNodeId]>>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -571,6 +574,16 @@ impl IncrementalState {
         };
 
         let reason = self.full_reason(frame.as_ref(), config.mode, history_valid);
+        let dirty_backdrops = frame.as_ref().and_then(|current| {
+            let previous_version = self.previous.as_ref()?.version?;
+            let delta = current.delta.as_ref()?;
+            (delta.backdrop_damage_complete
+                && delta.from_version == previous_version
+                && current.version == Some(delta.to_version)
+                && !current.invalidate_all
+                && current.invalidated_bounds.is_empty())
+            .then(|| delta.dirty_backdrops.clone())
+        });
         let (changed_tiles, retained_damage) = self.scene_damage(frame.as_ref(), size);
         let threshold_exceeded =
             reason.is_none() && tile_ratio(&changed_tiles) >= config.full_redraw_ratio;
@@ -597,6 +610,7 @@ impl IncrementalState {
             retained_damage,
             stats,
             frame,
+            dirty_backdrops,
         }
     }
 

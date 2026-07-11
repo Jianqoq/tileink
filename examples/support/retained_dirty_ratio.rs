@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use peniko::{Color, kurbo::Rect};
+use peniko::{
+    Color,
+    kurbo::{Affine, Rect, Shape},
+};
 use tileink::{Canvas, Radius, RetainedNodeId, RetainedParent, RetainedScene};
 
 use super::retained_bench::{HEIGHT, WIDTH};
@@ -28,6 +31,19 @@ impl Workload {
         [
             retained_frame(side, 0, &self.background, first),
             retained_frame(side, 1, &self.background, second),
+        ]
+    }
+
+    /// Exercises the remaining generic snapshot fallback by placing retained children inside a
+    /// direct Canvas layer. The flat snapshot adapter cannot journal this mixed command tree.
+    #[allow(dead_code)]
+    pub fn legacy_retained_frames(&self, ratio: f64) -> [Canvas; 2] {
+        let side = damage_side(ratio);
+        let first = rect_scene(WIDTH, HEIGHT, Color::from_rgb8(230, 80, 40));
+        let second = rect_scene(WIDTH, HEIGHT, Color::from_rgb8(40, 210, 90));
+        [
+            retained_frame_with_direct_layer(side, 0, &self.background, first),
+            retained_frame_with_direct_layer(side, 1, &self.background, second),
         ]
     }
 
@@ -122,6 +138,38 @@ fn retained_frame(
         clipped_scene(changing, damage_side),
         (0.0, 0.0),
     );
+    frame
+}
+
+#[allow(dead_code)]
+fn retained_frame_with_direct_layer(
+    damage_side: f64,
+    revision: u64,
+    background: &Arc<Canvas>,
+    changing: Arc<Canvas>,
+) -> Canvas {
+    let mut frame = Canvas::new_retained(WIDTH, HEIGHT, 1.0, RetainedNodeId::for_owner(1));
+    frame.push_opacity_layer(
+        Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64).to_path(0.1),
+        Affine::IDENTITY,
+        0.1,
+        1.0,
+    );
+    for index in 0..BACKGROUND_NODES {
+        frame.append_retained_scene(
+            RetainedNodeId::for_owner(index as u64 + 2),
+            0,
+            background.clone(),
+            ((index % 64) as f64 * 16.0, (index / 64) as f64 * 16.0),
+        );
+    }
+    frame.append_retained_scene(
+        changing_node(),
+        revision,
+        clipped_scene(changing, damage_side),
+        (0.0, 0.0),
+    );
+    frame.pop_layer();
     frame
 }
 

@@ -1420,6 +1420,7 @@ impl Renderer {
             return true;
         };
 
+        let root_filter_cursors = filter_cursors.clone();
         filter_cursors.advance_filter_layer(sample_region, children, filter);
         let surface_size = (
             filter_bounds.surface.width(),
@@ -1456,9 +1457,21 @@ impl Renderer {
             .as_ref()
             .filter(|(_, surface)| surface.secondary.is_some())
             .and_then(|_| self.local_damage_for_surface(filter_bounds.surface));
-        let local = profile_cpu("prepare.local_scene", || {
-            local_offscreen_scene(canvas, plan, children, filter_bounds.surface)
+        // A full-canvas filter already uses the local surface coordinate space. Borrowing its
+        // immutable scene and plan avoids cloning/translating every retained arena for one dirty
+        // allocation; cropped or offset surfaces still take the general translation path.
+        let translated_local = (filter_bounds.surface
+            != Bounds::canvas(canvas.physical_width(), canvas.physical_height()))
+        .then(|| {
+            profile_cpu("prepare.local_scene", || {
+                local_offscreen_scene(canvas, plan, children, filter_bounds.surface)
+            })
         });
+        let (local_canvas, local_plan, local_children) = translated_local
+            .as_ref()
+            .map_or((canvas, plan, children), |local| {
+                (&local.canvas, &local.plan, local.children.as_slice())
+            });
         let local_filter = profile_cpu("prepare.local_filter", || {
             local_filter(filter, filter_bounds.surface)
         });
@@ -1472,17 +1485,25 @@ impl Renderer {
         );
         let cache_surface = retained_id.is_some() && meta.is_some();
         let local_scratch_count = if cache_surface {
-            3 + required_scratch_count(&local.plan).max(filter_scratch_extra(&local_filter))
+            3 + required_scratch_count(local_plan).max(filter_scratch_extra(&local_filter))
         } else {
-            1 + required_scratch_count(&local.plan).max(filter_scratch_extra(&local_filter))
+            1 + required_scratch_count(local_plan).max(filter_scratch_extra(&local_filter))
         };
-        let saved = self.activate_local_scene_resources(
-            &local.canvas,
-            &local.plan,
-            &local_filter,
-            local_scratch_count,
-            local_origin,
-        );
+        let reuse_root_resources = translated_local.is_none()
+            && target == WgpuRenderTargetId::Main
+            && self.surface_origin == local_origin;
+        let mut saved = if reuse_root_resources {
+            self.prepare_scratch_buffers(local_scratch_count.max(1));
+            None
+        } else {
+            Some(self.activate_local_scene_resources(
+                local_canvas,
+                local_plan,
+                &local_filter,
+                local_scratch_count,
+                local_origin,
+            ))
+        };
 
         let source = WgpuRenderTargetId::Scratch(0);
         let filtered = WgpuRenderTargetId::Scratch(1);
@@ -1515,16 +1536,22 @@ impl Renderer {
                 self.clear_render_target(commands, source, 0);
                 None
             };
-        if !self.scan_and_cumsum(commands, &local.canvas) {
-            self.restore_root_scene_resources(saved);
+        if !self.scan_and_cumsum(commands, local_canvas) {
+            if let Some(saved) = saved.take() {
+                self.restore_root_scene_resources(saved);
+            }
             return false;
         }
-        let mut local_filter_cursors = WgpuFilterCursors::default();
+        let mut local_filter_cursors = if reuse_root_resources {
+            root_filter_cursors
+        } else {
+            WgpuFilterCursors::default()
+        };
         let mut ok = self.execute_ops(
             commands,
-            &local.canvas,
-            &local.plan,
-            &local.children,
+            local_canvas,
+            local_plan,
+            local_children,
             source,
             &mut local_filter_cursors,
             None,
@@ -1535,7 +1562,9 @@ impl Renderer {
                 .outset(filter_model::filter_dependency_outset(&local_filter))
                 .intersect(local_bounds);
             let Some(temp) = self.acquire_scratch() else {
-                self.restore_root_scene_resources(saved);
+                if let Some(saved) = saved.take() {
+                    self.restore_root_scene_resources(saved);
+                }
                 return false;
             };
             ok = ok
@@ -1592,8 +1621,12 @@ impl Renderer {
             let mut local_scratch = std::mem::take(&mut self.scratch);
             (local_scratch.remove(0), None)
         };
-        self.scratch_in_use.clear();
-        self.restore_root_scene_resources(saved);
+        if let Some(saved) = saved {
+            self.scratch_in_use.clear();
+            self.restore_root_scene_resources(saved);
+        } else {
+            self.scratch_in_use.fill(false);
+        }
         if retained_id.is_some() {
             let stats = self.retained.stats_mut();
             stats.rerendered_offscreen_surfaces += 1;

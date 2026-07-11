@@ -246,16 +246,21 @@ impl RetainedRenderState {
                 .plan(frame, physical_size, self.config, self.history_valid)
         });
         if plan.changed_tiles.len() < plan.changed_tiles.total_tiles()
-            && plan
-                .frame
-                .as_ref()
-                .is_none_or(|frame| frame.requires_damage_propagation)
+            && plan.frame.as_ref().is_none_or(|frame| {
+                frame.requires_damage_propagation
+                    || frame.invalidate_all
+                    || !frame.invalidated_bounds.is_empty()
+            })
         {
-            let propagated = profile_cpu("retained.damage.propagate", || {
-                scene.propagate_damage(&plan.retained_damage)
-            });
-            self.dirty_backdrop_nodes = propagated.dirty_backdrops;
-            plan.include_dependent_bounds(propagated.bounds, self.config);
+            if let Some(dirty) = &plan.dirty_backdrops {
+                self.dirty_backdrop_nodes = dirty.iter().copied().collect();
+            } else {
+                let propagated = profile_cpu("retained.damage.propagate", || {
+                    scene.propagate_damage(&plan.retained_damage)
+                });
+                self.dirty_backdrop_nodes = propagated.dirty_backdrops;
+                plan.include_dependent_bounds(propagated.bounds, self.config);
+            }
         } else {
             self.dirty_backdrop_nodes.clear();
         }

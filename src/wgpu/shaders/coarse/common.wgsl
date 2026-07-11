@@ -219,6 +219,8 @@ fn store_fine_tile_kind(tile_ix: u32, kind: u32) {
 
 const TILE_DRAW_PAGE_SIZE: u32 = 256u;
 const TILE_DRAW_PAGE_WORDS: u32 = 257u;
+const TILE_DRAW_FLAT_FLAG: u32 = 0x80000000u;
+const TILE_DRAW_FLAT_MASK: u32 = 0x7fffffffu;
 
 fn tile_draw_head_at(tile_ix: u32) -> u32 {
     return coarse_work[coarse_tile_draw_record_base(tile_ix)];
@@ -229,15 +231,24 @@ fn tile_draw_count_at(tile_ix: u32) -> u32 {
 }
 
 fn tile_draw_next_page(page: u32) -> u32 {
+    if ((page & TILE_DRAW_FLAT_FLAG) != 0u) {
+        return page + TILE_DRAW_PAGE_SIZE;
+    }
     return coarse_work[coarse_tile_draw_index_base() + page * TILE_DRAW_PAGE_WORDS];
 }
 
 fn tile_draw_index_in_page(page: u32, slot: u32) -> u32 {
+    if ((page & TILE_DRAW_FLAT_FLAG) != 0u) {
+        return coarse_work[coarse_tile_draw_index_base() + (page & TILE_DRAW_FLAT_MASK) + slot];
+    }
     return coarse_work[coarse_tile_draw_index_base() + page * TILE_DRAW_PAGE_WORDS + 1u + slot];
 }
 
 fn tile_draw_page_at(tile_ix: u32, local_page: u32) -> u32 {
     var page = tile_draw_head_at(tile_ix);
+    if ((page & TILE_DRAW_FLAT_FLAG) != 0u) {
+        return page + local_page * TILE_DRAW_PAGE_SIZE;
+    }
     var index = 0u;
     loop {
         if (page == INVALID || index >= local_page) {

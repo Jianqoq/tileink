@@ -128,6 +128,10 @@ pub(crate) struct RetainedFrameDelta {
     pub(crate) previous: Option<Arc<RetainedFrameDelta>>,
     pub(crate) depth: u16,
     pub(crate) damage: Arc<[(RetainedNodeId, Bounds)]>,
+    /// Backdrops affected by this persistent journal delta. When complete, the renderer can skip
+    /// the generic command-tree propagation pass because `damage` already contains their output.
+    pub(crate) dirty_backdrops: Arc<[RetainedNodeId]>,
+    pub(crate) backdrop_damage_complete: bool,
     pub(crate) index: Arc<HashMap<RetainedNodeId, usize>>,
 }
 
@@ -151,9 +155,9 @@ pub(crate) struct RetainedFrame {
     pub(crate) delta: Option<Arc<RetainedFrameDelta>>,
     /// No layer/filter/mask can propagate leaf damage outside the changed node bounds.
     pub(crate) dependency_free: bool,
-    /// Filter/backdrop dependencies require walking command ancestry after retained diffing.
-    /// Spatial-only layers can skip that walk even though they are not dependency-free for
-    /// materialization and painter-plan purposes.
+    /// Backdrops require walking command ancestry after retained diffing to discover changed
+    /// sampled background. Filter descendants already carry filter-expanded frame bounds; manual
+    /// invalidation is handled separately because it has no retained node attribution.
     pub(crate) requires_damage_propagation: bool,
 }
 

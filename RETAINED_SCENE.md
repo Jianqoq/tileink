@@ -60,7 +60,9 @@ scene materialization semantics.
 Existing `Canvas::new_retained` snapshots remain supported. Flat snapshot children are adapted to
 the same chunk backend after an O(N) metadata diff. Applications that need update cost proportional
 to their mutation count should keep one `RetainedScene` and commit transactions instead of creating
-a new snapshot Canvas every frame.
+a new snapshot Canvas every frame. Mixed snapshot command trees that combine direct Canvas
+draws/layers with retained children still use the generic legacy materialization fallback; it is
+kept for semantic compatibility and is measured separately as `legacy-fallback-*` in Criterion.
 
 WGPU output methods mirror the ordinary Canvas API:
 

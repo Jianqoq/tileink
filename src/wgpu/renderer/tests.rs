@@ -580,6 +580,92 @@ fn persistent_retained_filter_and_mask_updates_patch_offscreen_plan_fragments() 
 }
 
 #[test]
+fn persistent_retained_backdrop_background_revision_matches_force_full() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let root = RetainedNodeId::for_owner(50_226);
+    let background = RetainedNodeId::for_owner(50_227);
+    let backdrop = RetainedNodeId::for_owner(50_228);
+    let foreground = RetainedNodeId::for_owner(50_229);
+    let chained_backdrop = RetainedNodeId::for_owner(502_261);
+    let chained_foreground = RetainedNodeId::for_owner(502_262);
+    let region = Region::rect(Rect::new(0.0, 0.0, 32.0, 16.0), crate::Radius::ZERO);
+    let solid = |color| {
+        let mut canvas = Canvas::new(32, 16, 1.0);
+        canvas.push_rect(Rect::new(0.0, 0.0, 32.0, 16.0), crate::Radius::ZERO, color);
+        std::sync::Arc::new(canvas)
+    };
+    let mut scene = RetainedScene::new(32, 16, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            background,
+            solid(Color::from_rgb8(30, 70, 210)),
+            (0.0, 0.0),
+        )
+        .insert_layer(
+            RetainedParent::content(root),
+            None,
+            backdrop,
+            RetainedLayerDescriptor::Backdrop {
+                filter: Filter::Opacity(0.5),
+                sample_region: region,
+            },
+        )
+        .insert_scene(
+            RetainedParent::content(backdrop),
+            None,
+            foreground,
+            solid(Color::from_rgba8(230, 70, 30, 128)),
+            (0.0, 0.0),
+        )
+        .insert_layer(
+            RetainedParent::content(root),
+            None,
+            chained_backdrop,
+            RetainedLayerDescriptor::Backdrop {
+                filter: Filter::Opacity(0.75),
+                sample_region: Region::rect(Rect::new(0.0, 0.0, 32.0, 16.0), crate::Radius::ZERO),
+            },
+        )
+        .insert_scene(
+            RetainedParent::content(chained_backdrop),
+            None,
+            chained_foreground,
+            solid(Color::from_rgba8(40, 80, 230, 96)),
+            (0.0, 0.0),
+        )
+        .commit()
+        .unwrap();
+
+    let mut incremental = new_test_renderer(32, 16, Color::TRANSPARENT);
+    incremental.render_retained(&scene);
+    scene
+        .transaction()
+        .replace_scene(background, solid(Color::from_rgb8(30, 210, 80)))
+        .commit()
+        .unwrap();
+    incremental.render_retained(&scene);
+
+    let mut full = new_test_renderer(32, 16, Color::TRANSPARENT);
+    let mut config = full.incremental_render_config();
+    config.mode = crate::IncrementalRenderMode::ForceFull;
+    full.set_incremental_render_config(config);
+    full.render_retained(&scene);
+    assert_eq!(incremental.image().pixels, full.image().pixels);
+    assert!(
+        incremental
+            .incremental_render_stats()
+            .rerendered_offscreen_surfaces
+            > 0
+    );
+}
+
+#[test]
 fn persistent_retained_nested_layer_insert_rebuilds_only_offscreen_ancestor() {
     if !run_wgpu_tests() {
         return;

@@ -20,12 +20,12 @@ The complete run contains two suites:
 
 - `retained_scale`: static, revision, variable-length content, all revisions, move, scene and
   tail/middle/nested layer add/remove, reparent, reorder, single/many layer update, arena
-  fragmentation, and manual invalidation at 100, 1k, 5k, 20k, and 100k nodes. Middle and nested
-  layer insertion/removal also have separate phase benchmarks so one cheap phase cannot hide a
-  regression in the other.
+  fragmentation, filter-child revision, backdrop-background revision, and manual invalidation at
+  100, 1k, 5k, 20k, and 100k nodes. Middle and nested layer insertion/removal also have separate
+  phase benchmarks so one cheap phase cannot hide a regression in the other.
 - `retained_dirty_ratio`: 13 dirty ratios from 0.5% to 100%, each measured with persistent Auto
-  and ForceFull, the retained snapshot adapter, snapshot ForceFull, and the preflattened-immediate
-  lower bound.
+  and ForceFull, the flat retained snapshot adapter, the remaining mixed-command legacy fallback,
+  their ForceFull variants, and the preflattened-immediate lower bound.
 
 Use filters for focused development runs without deleting any matrix entries:
 

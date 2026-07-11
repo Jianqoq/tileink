@@ -25,6 +25,7 @@ pub(crate) const SCAN_CHUNK_SIZE: u32 = 256;
 pub(crate) const CUMSUM_CHUNK_SIZE: u32 = 256;
 pub(crate) const COARSE_CHUNK_SIZE: u32 = 256;
 pub(crate) const TILE_DRAW_PAGE_WORDS: usize = COARSE_CHUNK_SIZE as usize + 1;
+const TILE_DRAW_FLAT_FLAG: u32 = 1 << 31;
 pub(crate) const FINE_WORKGROUP_SIZE: u32 = 256;
 pub(crate) const FINE_LOCAL_CLIP_DEPTH: usize = 4;
 pub(crate) const FINE_LOCAL_GROUP_DEPTH: usize = 2;
@@ -128,6 +129,15 @@ impl GpuBufferLengths {
                 )
             });
         let tile_draw_counts = if updated {
+            TileDrawCounts {
+                index_count: bins.draw_indices.len(),
+                chunk_count: bins.active_pages,
+            }
+        } else if canvas.retained_root.is_none()
+            && canvas.buffer_changes.is_none()
+            && canvas.painter_keys.is_none()
+        {
+            bins.reset_transient(&canvas.draw_records, &plan.draw_order, tiles_size, cursors);
             TileDrawCounts {
                 index_count: bins.draw_indices.len(),
                 chunk_count: bins.active_pages,
@@ -345,6 +355,76 @@ impl TileDrawBins {
         for tile in 0..tile_count {
             self.rewrite_tile(tile);
         }
+        self.dirty_records.clear();
+        self.dirty_pages.clear();
+        self.full_upload = true;
+    }
+
+    /// Builds page-form tile bins for a one-shot immediate canvas without allocating persistent
+    /// per-draw ranks, bboxes, or per-tile vectors. Immediate canvases are rebuilt every frame, so
+    /// maintaining mutation indexes only adds CPU and allocation cost without enabling reuse.
+    fn reset_transient(
+        &mut self,
+        draw_records: &[DrawRecord],
+        draw_order: &[u32],
+        tiles_size: (u32, u32),
+        cursors: &mut Vec<u32>,
+    ) {
+        let tile_count = tiles_size.0 as usize * tiles_size.1 as usize;
+        self.records.clear();
+        self.records.resize(
+            tile_count,
+            TileDrawRecord {
+                start: u32::MAX,
+                end: 0,
+            },
+        );
+        self.draw_ptcl_capacity = 0;
+        for &draw in draw_order {
+            let record = &draw_records[draw as usize];
+            let bbox = record.tile_bbox(tiles_size.0, tiles_size.1);
+            self.draw_ptcl_capacity += draw_ptcl_capacity(record, bbox);
+            for_tile_in_bbox(bbox, tiles_size.0, |tile| {
+                self.records[tile].end += 1;
+            });
+        }
+
+        let mut next_index = 0u32;
+        let mut chunk_count = 0usize;
+        for record in &mut self.records {
+            let count = record.end;
+            record.start = if count == 0 {
+                u32::MAX
+            } else {
+                assert!(next_index < TILE_DRAW_FLAT_FLAG);
+                TILE_DRAW_FLAT_FLAG | next_index
+            };
+            next_index += count;
+            chunk_count += count.div_ceil(COARSE_CHUNK_SIZE) as usize;
+        }
+        self.draw_indices.clear();
+        self.draw_indices.resize(next_index as usize, u32::MAX);
+
+        cursors.clear();
+        cursors.resize(tile_count, 0);
+        for &draw in draw_order {
+            let bbox = draw_records[draw as usize].tile_bbox(tiles_size.0, tiles_size.1);
+            for_tile_in_bbox(bbox, tiles_size.0, |tile| {
+                let ordinal = cursors[tile];
+                let start = self.records[tile].start & !TILE_DRAW_FLAT_FLAG;
+                self.draw_indices[(start + ordinal) as usize] = draw;
+                cursors[tile] += 1;
+            });
+        }
+
+        self.tile_pages.clear();
+        self.tile_refs.clear();
+        self.free_pages.clear();
+        self.draw_bboxes.clear();
+        self.draw_ranks.clear();
+        self.draw_ptcl_capacities.clear();
+        self.tiles_size = tiles_size;
+        self.active_pages = chunk_count;
         self.dirty_records.clear();
         self.dirty_pages.clear();
         self.full_upload = true;

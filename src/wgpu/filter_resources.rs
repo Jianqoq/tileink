@@ -266,7 +266,7 @@ impl WgpuFilterPathBuffers {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(super) struct WgpuFilterCursors {
     transfer: usize,
     brush_offset: usize,

@@ -5,7 +5,8 @@ use peniko::{
     kurbo::{Affine, Rect, Shape},
 };
 use tileink::{
-    Canvas, Radius, RetainedLayerDescriptor, RetainedNodeId, RetainedParent, RetainedScene,
+    Canvas, Filter, Radius, Region, RetainedLayerDescriptor, RetainedNodeId, RetainedParent,
+    RetainedScene,
 };
 
 use super::retained_bench::{HEIGHT, WIDTH};
@@ -25,12 +26,14 @@ pub enum Scenario {
     Reorder,
     LayerUpdate,
     ManyLayerUpdate,
+    FilterChildRevision,
+    BackdropBackgroundRevision,
     ArenaFragmentation,
     ManualInvalidation,
 }
 
 impl Scenario {
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 17] = [
         Self::Static,
         Self::OneRevision,
         Self::VariableLength,
@@ -44,6 +47,8 @@ impl Scenario {
         Self::Reorder,
         Self::LayerUpdate,
         Self::ManyLayerUpdate,
+        Self::FilterChildRevision,
+        Self::BackdropBackgroundRevision,
         Self::ArenaFragmentation,
         Self::ManualInvalidation,
     ];
@@ -63,6 +68,8 @@ impl Scenario {
             Self::Reorder => "reorder",
             Self::LayerUpdate => "layer-update",
             Self::ManyLayerUpdate => "many-layer-update",
+            Self::FilterChildRevision => "filter-child-revision",
+            Self::BackdropBackgroundRevision => "backdrop-background-revision",
             Self::ArenaFragmentation => "arena-fragmentation",
             Self::ManualInvalidation => "manual-invalidation",
         }
@@ -126,15 +133,25 @@ impl Workload {
         let mut scene = RetainedScene::new(WIDTH, HEIGHT, 1.0, root).unwrap();
         let mut transaction = scene.transaction();
         transaction.insert_group(RetainedParent::content(root), None, group);
-        if matches!(self.scenario, Scenario::LayerUpdate) {
+        if matches!(
+            self.scenario,
+            Scenario::LayerUpdate | Scenario::FilterChildRevision
+        ) {
             transaction.insert_layer(
                 RetainedParent::content(root),
                 None,
                 layer,
-                opacity_layer(0.75),
+                if matches!(self.scenario, Scenario::FilterChildRevision) {
+                    filter_layer()
+                } else {
+                    opacity_layer(0.75)
+                },
             );
         }
-        let parent = if matches!(self.scenario, Scenario::LayerUpdate) {
+        let parent = if matches!(
+            self.scenario,
+            Scenario::LayerUpdate | Scenario::FilterChildRevision
+        ) {
             RetainedParent::content(layer)
         } else {
             RetainedParent::content(root)
@@ -163,6 +180,17 @@ impl Workload {
                     node_id(self.count + 7),
                     self.first.clone(),
                     (0.0, 0.0),
+                );
+        }
+        if matches!(self.scenario, Scenario::BackdropBackgroundRevision) {
+            transaction
+                .insert_layer(RetainedParent::content(root), None, layer, backdrop_layer())
+                .insert_scene(
+                    RetainedParent::content(layer),
+                    None,
+                    node_id(self.count + 8),
+                    self.second.clone(),
+                    (16.0, 16.0),
                 );
         }
         transaction.commit().unwrap();
@@ -302,6 +330,16 @@ impl Workload {
                     ),
                 );
             }
+            Scenario::FilterChildRevision | Scenario::BackdropBackgroundRevision => {
+                transaction.replace_scene(
+                    first_node,
+                    if even {
+                        self.first.clone()
+                    } else {
+                        self.second.clone()
+                    },
+                );
+            }
             Scenario::ArenaFragmentation => {
                 for index in (0..self.count).step_by(2) {
                     let id = node_id(index + 1);
@@ -349,6 +387,23 @@ fn isolate_layer_at(position: (f64, f64)) -> RetainedLayerDescriptor {
         path: Rect::new(position.0, position.1, position.0 + 48.0, position.1 + 48.0).to_path(0.1),
         transform: Affine::IDENTITY,
         tolerance: 0.1,
+    }
+}
+
+fn filter_layer() -> RetainedLayerDescriptor {
+    RetainedLayerDescriptor::Filter {
+        filter: Filter::Opacity(0.75),
+        sample_region: Region::rect(
+            Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),
+            Radius::ZERO,
+        ),
+    }
+}
+
+fn backdrop_layer() -> RetainedLayerDescriptor {
+    RetainedLayerDescriptor::Backdrop {
+        filter: Filter::Opacity(0.75),
+        sample_region: Region::rect(Rect::new(0.0, 0.0, 64.0, 64.0), Radius::ZERO),
     }
 }
 

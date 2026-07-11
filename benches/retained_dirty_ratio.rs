@@ -17,15 +17,19 @@ enum Mode {
     PersistentForceFull,
     Auto,
     ForceFull,
+    LegacyAuto,
+    LegacyForceFull,
     Immediate,
 }
 
 impl Mode {
-    const ALL: [Self; 5] = [
+    const ALL: [Self; 7] = [
         Self::PersistentAuto,
         Self::PersistentForceFull,
         Self::Auto,
         Self::ForceFull,
+        Self::LegacyAuto,
+        Self::LegacyForceFull,
         Self::Immediate,
     ];
 
@@ -35,6 +39,8 @@ impl Mode {
             Self::PersistentForceFull => "persistent-force-full",
             Self::Auto => "auto",
             Self::ForceFull => "force-full",
+            Self::LegacyAuto => "legacy-fallback-auto",
+            Self::LegacyForceFull => "legacy-fallback-force-full",
             Self::Immediate => "preflat-immediate",
         }
     }
@@ -73,14 +79,20 @@ fn retained_dirty_ratio(c: &mut Criterion) {
                         }
                         let frames = match mode {
                             Mode::Auto | Mode::ForceFull => workload.retained_frames(ratio),
+                            Mode::LegacyAuto | Mode::LegacyForceFull => {
+                                workload.legacy_retained_frames(ratio)
+                            }
                             Mode::Immediate => workload.immediate_frames(ratio),
                             Mode::PersistentAuto | Mode::PersistentForceFull => unreachable!(),
                         };
                         let render_mode = match mode {
-                            Mode::ForceFull => IncrementalRenderMode::ForceFull,
+                            Mode::ForceFull | Mode::LegacyForceFull => {
+                                IncrementalRenderMode::ForceFull
+                            }
                             Mode::PersistentAuto
                             | Mode::PersistentForceFull
                             | Mode::Auto
+                            | Mode::LegacyAuto
                             | Mode::Immediate => IncrementalRenderMode::Auto,
                         };
                         let measurements = bench(
