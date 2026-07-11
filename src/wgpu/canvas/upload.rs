@@ -54,6 +54,15 @@ impl WgpuSceneUploadStaging {
         self.tile_draw_bins.active_batch_ids(tiles, draw_batch_ids)
     }
 
+    pub(crate) fn draws_in_bounds(
+        &self,
+        bounds: crate::shared::bounds::Bounds,
+        plan: &ExecPlan,
+    ) -> Vec<u32> {
+        self.tile_draw_bins
+            .draws_in_bounds(bounds, &plan.draw_order)
+    }
+
     pub(crate) fn build_lengths(
         &mut self,
         canvas: &Canvas,

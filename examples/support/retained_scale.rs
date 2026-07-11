@@ -27,13 +27,14 @@ pub enum Scenario {
     LayerUpdate,
     ManyLayerUpdate,
     FilterChildRevision,
+    CroppedFilterChildRevision,
     BackdropBackgroundRevision,
     ArenaFragmentation,
     ManualInvalidation,
 }
 
 impl Scenario {
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 18] = [
         Self::Static,
         Self::OneRevision,
         Self::VariableLength,
@@ -48,6 +49,7 @@ impl Scenario {
         Self::LayerUpdate,
         Self::ManyLayerUpdate,
         Self::FilterChildRevision,
+        Self::CroppedFilterChildRevision,
         Self::BackdropBackgroundRevision,
         Self::ArenaFragmentation,
         Self::ManualInvalidation,
@@ -69,6 +71,7 @@ impl Scenario {
             Self::LayerUpdate => "layer-update",
             Self::ManyLayerUpdate => "many-layer-update",
             Self::FilterChildRevision => "filter-child-revision",
+            Self::CroppedFilterChildRevision => "cropped-filter-child-revision",
             Self::BackdropBackgroundRevision => "backdrop-background-revision",
             Self::ArenaFragmentation => "arena-fragmentation",
             Self::ManualInvalidation => "manual-invalidation",
@@ -135,22 +138,26 @@ impl Workload {
         transaction.insert_group(RetainedParent::content(root), None, group);
         if matches!(
             self.scenario,
-            Scenario::LayerUpdate | Scenario::FilterChildRevision
+            Scenario::LayerUpdate
+                | Scenario::FilterChildRevision
+                | Scenario::CroppedFilterChildRevision
         ) {
             transaction.insert_layer(
                 RetainedParent::content(root),
                 None,
                 layer,
-                if matches!(self.scenario, Scenario::FilterChildRevision) {
-                    filter_layer()
-                } else {
-                    opacity_layer(0.75)
+                match self.scenario {
+                    Scenario::FilterChildRevision => filter_layer(),
+                    Scenario::CroppedFilterChildRevision => cropped_filter_layer(),
+                    _ => opacity_layer(0.75),
                 },
             );
         }
         let parent = if matches!(
             self.scenario,
-            Scenario::LayerUpdate | Scenario::FilterChildRevision
+            Scenario::LayerUpdate
+                | Scenario::FilterChildRevision
+                | Scenario::CroppedFilterChildRevision
         ) {
             RetainedParent::content(layer)
         } else {
@@ -330,7 +337,9 @@ impl Workload {
                     ),
                 );
             }
-            Scenario::FilterChildRevision | Scenario::BackdropBackgroundRevision => {
+            Scenario::FilterChildRevision
+            | Scenario::CroppedFilterChildRevision
+            | Scenario::BackdropBackgroundRevision => {
                 transaction.replace_scene(
                     first_node,
                     if even {
@@ -397,6 +406,15 @@ fn filter_layer() -> RetainedLayerDescriptor {
             Rect::new(0.0, 0.0, WIDTH as f64, HEIGHT as f64),
             Radius::ZERO,
         ),
+    }
+}
+
+fn cropped_filter_layer() -> RetainedLayerDescriptor {
+    RetainedLayerDescriptor::Filter {
+        filter: Filter::Opacity(0.75),
+        // The non-zero origin forces the general local-surface path. Keeping the region fixed
+        // while node count scales exposes accidental full-scene translation or upload work.
+        sample_region: Region::rect(Rect::new(1.0, 1.0, 257.0, 257.0), Radius::ZERO),
     }
 }
 

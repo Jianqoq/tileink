@@ -267,20 +267,77 @@ impl TileDrawBins {
             .collect()
     }
 
-    #[cfg(test)]
     fn tile_draws(&self, tile: usize) -> Vec<u32> {
+        let mut draws = Vec::new();
+        self.for_each_tile_draw(tile, |draw| draws.push(draw));
+        draws
+    }
+
+    fn for_each_tile_draw(&self, tile: usize, mut visit: impl FnMut(u32)) {
         let record = self.records[tile];
+        if record.end == 0 {
+            return;
+        }
+        if record.start & TILE_DRAW_FLAT_FLAG != 0 {
+            let start = (record.start & !TILE_DRAW_FLAT_FLAG) as usize;
+            self.draw_indices[start..start + record.end as usize]
+                .iter()
+                .copied()
+                .for_each(&mut visit);
+            return;
+        }
         let mut page = record.start;
         let mut remaining = record.end as usize;
-        let mut draws = Vec::with_capacity(remaining);
         while page != u32::MAX && remaining != 0 {
             let base = page as usize * TILE_DRAW_PAGE_WORDS;
             let count = remaining.min(COARSE_CHUNK_SIZE as usize);
-            draws.extend_from_slice(&self.draw_indices[base + 1..base + 1 + count]);
+            self.draw_indices[base + 1..base + 1 + count]
+                .iter()
+                .copied()
+                .for_each(&mut visit);
             remaining -= count;
             page = self.draw_indices[base];
         }
-        draws
+    }
+
+    /// Returns painter-ordered draws touching a pixel region without scanning the scene draw
+    /// table. Persistent bins already maintain the spatial reverse index; transient bins use the
+    /// same uploaded page/flat representation so local offscreen extraction has one code path.
+    pub(crate) fn draws_in_bounds(&self, bounds: Bounds, draw_order: &[u32]) -> Vec<u32> {
+        let bbox = PixelBounds {
+            x0: bounds.x0,
+            y0: bounds.y0,
+            x1: bounds.x1,
+            y1: bounds.y1,
+        }
+        .tile_bbox(self.tiles_size.0, self.tiles_size.1);
+        let mut candidates = HashSet::new();
+        for_tile_in_bbox(bbox, self.tiles_size.0, |tile| {
+            self.for_each_tile_draw(tile, |draw| {
+                candidates.insert(draw);
+            });
+        });
+        if candidates.is_empty() {
+            return Vec::new();
+        }
+        let ranked = candidates.iter().all(|draw| {
+            self.draw_ranks
+                .get(*draw as usize)
+                .is_some_and(|rank| rank.path[0] != u128::MAX)
+        });
+        if ranked {
+            let mut draws = candidates.into_iter().collect::<Vec<_>>();
+            draws.sort_unstable_by(|a, b| {
+                self.draw_ranks[*a as usize].cmp(&self.draw_ranks[*b as usize])
+            });
+            draws
+        } else {
+            draw_order
+                .iter()
+                .copied()
+                .filter(|draw| candidates.contains(draw))
+                .collect()
+        }
     }
 
     fn reset(
@@ -1667,7 +1724,7 @@ mod tests {
         TileDrawBins, build_cumsum_plan, build_scan_chunks, build_tile_draw_bins,
         build_tile_draw_bins_into,
     };
-    use crate::{Canvas, FillRule};
+    use crate::{Bounds, Canvas, FillRule};
 
     #[test]
     fn scan_plan_records_are_gpu_word_layouts() {
@@ -1828,6 +1885,32 @@ mod tests {
 
         assert_eq!(bins.tile_draws(0), vec![0]);
         assert_eq!(bins.tile_draws(1), vec![0, 1]);
+    }
+
+    #[test]
+    fn tile_draw_bins_query_region_without_scanning_unrelated_tiles() {
+        let mut canvas = Canvas::new(crate::TILE_SIZE * 4, crate::TILE_SIZE * 2, 1.0);
+        canvas.push_rect(
+            Rect::new(0.0, 0.0, 48.0, 16.0),
+            crate::Radius::ZERO,
+            Color::BLACK,
+        );
+        canvas.push_rect(
+            Rect::new(80.0, 0.0, 96.0, 16.0),
+            crate::Radius::ZERO,
+            Color::WHITE,
+        );
+        let plan = canvas.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
+        let bins = build_tile_draw_bins(&canvas);
+
+        assert_eq!(
+            bins.draws_in_bounds(Bounds::new(32, 0, 64, 32), &plan.draw_order),
+            vec![0]
+        );
+        assert!(
+            bins.draws_in_bounds(Bounds::new(0, 32, 32, 64), &plan.draw_order)
+                .is_empty()
+        );
     }
 
     #[test]

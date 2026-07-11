@@ -1463,8 +1463,17 @@ impl Renderer {
         let translated_local = (filter_bounds.surface
             != Bounds::canvas(canvas.physical_width(), canvas.physical_height()))
         .then(|| {
+            let candidate_draws = self
+                .scene_upload
+                .draws_in_bounds(filter_bounds.surface, plan);
             profile_cpu("prepare.local_scene", || {
-                local_offscreen_scene(canvas, plan, children, filter_bounds.surface)
+                local_offscreen_scene(
+                    canvas,
+                    plan,
+                    children,
+                    filter_bounds.surface,
+                    &candidate_draws,
+                )
             })
         });
         let (local_canvas, local_plan, local_children) = translated_local
