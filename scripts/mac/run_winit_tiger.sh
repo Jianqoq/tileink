@@ -2,25 +2,15 @@
 set -euo pipefail
 
 build_only=0
-for arg in "$@"; do
-    case "$arg" in
-        --build-only)
-            build_only=1
-            ;;
-        *)
-            echo "usage: run_winit_tiger.sh [--build-only]" >&2
-            exit 2
-            ;;
-    esac
+for argument in "$@"; do
+    [[ "$argument" == --build-only ]] || { echo "usage: run_winit_tiger.sh [--build-only]" >&2; exit 2; }
+    build_only=1
 done
-
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-repo_root="$(cd "$script_dir/../.." && pwd)"
-
-cd "$repo_root"
-
-if [[ "$build_only" == "1" ]]; then
-    cargo build --release --example winit_svg_tiger
-else
-    cargo run --release --example winit_svg_tiger
-fi
+source "$script_dir/quiet_runner.sh"
+cd "$script_dir/../.."
+log_path="$(new_quiet_run_log winit-tiger)"
+if ((build_only)); then label="Build winit SVG tiger"; command=build; else label="Run winit SVG tiger"; command=run; fi
+write_quiet_progress "$label" 1 1
+invoke_quiet_command "$label" "$log_path" "" cargo "$command" --release --example winit_svg_tiger
+complete_quiet_run "winit SVG tiger" "$log_path"
