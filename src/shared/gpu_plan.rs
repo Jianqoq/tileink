@@ -917,7 +917,7 @@ fn coarse_glyph_capacity(
             text.run_glyph_indices(run_id)
                 .filter_map(|glyph_id| {
                     let glyph_bbox = bounds_tile_bbox(
-                        text.glyph_bounds(glyph_id)?,
+                        transformed_glyph_bounds(draw, text.glyph_bounds(glyph_id)?),
                         width_in_tiles,
                         height_in_tiles,
                     );
@@ -950,7 +950,11 @@ pub(crate) fn coarse_glyph_capacity_for_draw(
     let draw_bbox = draw.tile_bbox(width, height);
     text.run_glyph_indices(run_id)
         .filter_map(|glyph_id| {
-            let glyph_bbox = bounds_tile_bbox(text.glyph_bounds(glyph_id)?, width, height);
+            let glyph_bbox = bounds_tile_bbox(
+                transformed_glyph_bounds(draw, text.glyph_bounds(glyph_id)?),
+                width,
+                height,
+            );
             Some(tile_bbox_intersection_count(draw_bbox, glyph_bbox))
         })
         .sum()
@@ -993,6 +997,16 @@ fn bounds_tile_bbox(bounds: Bounds, width_in_tiles: u32, height_in_tiles: u32) -
         y1: bounds.y1,
     }
     .tile_bbox(width_in_tiles, height_in_tiles)
+}
+
+fn transformed_glyph_bounds(draw: &DrawRecord, bounds: Bounds) -> Bounds {
+    let bounds = draw.transform.transform_bounds(PixelBounds {
+        x0: bounds.x0,
+        y0: bounds.y0,
+        x1: bounds.x1,
+        y1: bounds.y1,
+    });
+    Bounds::new(bounds.x0, bounds.y0, bounds.x1, bounds.y1)
 }
 
 fn tile_bbox_intersection_count(a: TileBbox, b: TileBbox) -> usize {

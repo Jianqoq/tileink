@@ -1,13 +1,21 @@
 const SDF_NONE_REF: u32 = 0xffffffffu;
 
 fn sdf_coverage_from_draw(draw: DrawRecord, x: f32, y: f32) -> f32 {
+    let local = affine_record_point(draw.inverse_transform, vec2<f32>(x, y));
     if (draw.sdf_offset != SDF_NONE_REF) {
-        return sdf_coverage_from_blob(draw.sdf_offset, false, x, y);
+        return sdf_coverage_from_blob(draw.sdf_offset, false, local.x, local.y);
     }
     if (draw.sdf_shadow_offset != SDF_NONE_REF) {
-        return sdf_coverage_from_blob(draw.sdf_shadow_offset, true, x, y);
+        return sdf_coverage_from_blob(draw.sdf_shadow_offset, true, local.x, local.y);
     }
     return 0.0;
+}
+
+fn affine_record_point(transform: AffineRecord, point: vec2<f32>) -> vec2<f32> {
+    return vec2<f32>(
+        transform.a * point.x + transform.c * point.y + transform.e,
+        transform.b * point.x + transform.d * point.y + transform.f,
+    );
 }
 
 fn sdf_coverage_from_blob(base: u32, shadow_blob: bool, x: f32, y: f32) -> f32 {

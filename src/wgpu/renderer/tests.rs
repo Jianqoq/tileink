@@ -1,6 +1,6 @@
 use peniko::{
     Color, Compose, Extend, Gradient, Mix,
-    kurbo::{Affine, BezPath, Line, Point, Rect, Shape},
+    kurbo::{Affine, BezPath, Line, Rect, Shape},
 };
 
 use super::{Renderer, RendererOptions, WgpuRenderTargetId};
@@ -50,7 +50,7 @@ fn persistent_retained_scene_updates_incrementally_and_reuses_static_frames() {
         None,
         node,
         child(Color::from_rgb8(220, 30, 40)),
-        (0.0, 0.0),
+        Affine::translate((0.0, 0.0)),
     );
     transaction.commit().unwrap();
 
@@ -125,6 +125,176 @@ fn persistent_retained_scene_updates_incrementally_and_reuses_static_frames() {
 }
 
 #[test]
+fn persistent_affine_path_matches_immediate_geometry_and_updates_damage() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let shape = Rect::new(4.0, 6.0, 28.0, 18.0).to_path(0.1);
+    let color = Color::from_rgb8(35, 145, 230);
+    let mut leaf = Canvas::new(32, 24, 1.0);
+    leaf.push_path(
+        shape.clone(),
+        color,
+        Affine::IDENTITY,
+        FillRule::NonZero,
+        0.1,
+    );
+    let root = RetainedNodeId::for_owner(50_090);
+    let node = RetainedNodeId::for_owner(50_091);
+    let first = Affine::translate((40.0, 24.0))
+        * Affine::rotate(0.4)
+        * Affine::scale_non_uniform(1.25, 0.8);
+    let mut scene = RetainedScene::new(96, 80, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            node,
+            std::sync::Arc::new(leaf),
+            first,
+        )
+        .commit()
+        .unwrap();
+
+    let render_reference = |transform| {
+        let mut canvas = Canvas::new(96, 80, 1.0);
+        canvas.push_path(shape.clone(), color, transform, FillRule::NonZero, 0.1);
+        let mut renderer = new_test_renderer(96, 80, Color::TRANSPARENT);
+        renderer.render(&canvas);
+        renderer.image().pixels.clone()
+    };
+    let mut retained = new_test_renderer(96, 80, Color::TRANSPARENT);
+    retained.render_retained(&scene);
+    assert_eq!(retained.image().pixels, render_reference(first));
+
+    let second = Affine::translate((68.0, 46.0))
+        * Affine::rotate(-0.55)
+        * Affine::scale_non_uniform(0.75, 1.4);
+    scene
+        .transaction()
+        .set_transform(node, second)
+        .commit()
+        .unwrap();
+    retained.render_retained(&scene);
+    assert_eq!(retained.image().pixels, render_reference(second));
+    assert!(!retained.incremental_render_stats().full_redraw);
+    assert_eq!(retained.incremental_render_stats().chunks_rebuilt, 1);
+}
+
+#[test]
+fn persistent_node_affine_composes_with_canvas_draw_affine() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let shape = Rect::new(2.0, 3.0, 18.0, 11.0).to_path(0.1);
+    let color = Color::from_rgb8(180, 65, 225);
+    let draw_transform = Affine::translate((7.0, 5.0)) * Affine::rotate(0.3);
+    let node_transform = Affine::translate((42.0, 26.0))
+        * Affine::scale_non_uniform(1.2, 0.75)
+        * Affine::rotate(-0.2);
+    let mut leaf = Canvas::new(32, 24, 1.0);
+    leaf.push_path(shape.clone(), color, draw_transform, FillRule::NonZero, 0.1);
+    let root = RetainedNodeId::for_owner(50_096);
+    let node = RetainedNodeId::for_owner(50_097);
+    let mut scene = RetainedScene::new(96, 72, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            node,
+            std::sync::Arc::new(leaf),
+            node_transform,
+        )
+        .commit()
+        .unwrap();
+
+    let mut expected = Canvas::new(96, 72, 1.0);
+    expected.push_path(
+        shape,
+        color,
+        node_transform * draw_transform,
+        FillRule::NonZero,
+        0.1,
+    );
+    let mut expected_renderer = new_test_renderer(96, 72, Color::TRANSPARENT);
+    expected_renderer.render(&expected);
+    let mut actual_renderer = new_test_renderer(96, 72, Color::TRANSPARENT);
+    actual_renderer.render_retained(&scene);
+    assert_eq!(
+        actual_renderer.image().pixels,
+        expected_renderer.image().pixels
+    );
+}
+
+#[test]
+fn persistent_rotated_sdf_rect_does_not_fill_its_axis_aligned_bounds() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut leaf = Canvas::new(20, 20, 1.0);
+    let color = Color::from_rgb8(230, 70, 35);
+    leaf.push_rect(Rect::new(0.0, 0.0, 20.0, 20.0), crate::Radius::ZERO, color);
+    let root = RetainedNodeId::for_owner(50_092);
+    let node = RetainedNodeId::for_owner(50_093);
+    let transform = Affine::translate((40.0, 20.0))
+        * Affine::rotate(std::f64::consts::FRAC_PI_4)
+        * Affine::translate((-10.0, 0.0));
+    let mut scene = RetainedScene::new(80, 64, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            node,
+            std::sync::Arc::new(leaf),
+            transform,
+        )
+        .commit()
+        .unwrap();
+
+    let mut renderer = new_test_renderer(80, 64, Color::TRANSPARENT);
+    renderer.render_retained(&scene);
+    assert_eq!(renderer.image().rgba8_at(33, 27), [230, 70, 35, 255]);
+    assert_eq!(renderer.image().rgba8_at(20, 14), [0, 0, 0, 0]);
+}
+
+#[test]
+fn persistent_translated_sdf_rect_uses_world_coordinates() {
+    if !run_wgpu_tests() {
+        return;
+    }
+    let mut leaf = Canvas::new(16, 16, 1.0);
+    leaf.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(30, 210, 70),
+    );
+    let root = RetainedNodeId::for_owner(50_094);
+    let node = RetainedNodeId::for_owner(50_095);
+    let mut scene = RetainedScene::new(32, 16, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            node,
+            std::sync::Arc::new(leaf),
+            Affine::translate((8.0, 0.0)),
+        )
+        .commit()
+        .unwrap();
+    let mut renderer = new_test_renderer(32, 16, Color::TRANSPARENT);
+    renderer.render_retained(&scene);
+    assert_eq!(renderer.image().rgba8_at(4, 8), [0, 0, 0, 0]);
+    assert_eq!(renderer.image().rgba8_at(10, 8), [30, 210, 70, 255]);
+}
+
+#[test]
 fn persistent_surface_resize_matches_force_full_without_rebuilding_chunks() {
     if !run_wgpu_tests() {
         return;
@@ -148,7 +318,7 @@ fn persistent_surface_resize_matches_force_full_without_rebuilding_chunks() {
             None,
             node,
             std::sync::Arc::new(leaf),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -171,7 +341,7 @@ fn persistent_surface_resize_matches_force_full_without_rebuilding_chunks() {
 
     scene
         .transaction()
-        .set_position(node, (2.0, 0.0))
+        .set_transform(node, Affine::translate((2.0, 0.0)))
         .commit()
         .unwrap();
     incremental.render_retained(&scene);
@@ -229,14 +399,14 @@ fn persistent_move_preserves_backdrop_children_and_shadow() {
             None,
             background_id,
             std::sync::Arc::new(background),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .insert_scene(
             RetainedParent::content(root),
             None,
             card_id,
             std::sync::Arc::new(card),
-            (8.0, 8.0),
+            Affine::translate((8.0, 8.0)),
         )
         .commit()
         .unwrap();
@@ -245,7 +415,7 @@ fn persistent_move_preserves_backdrop_children_and_shadow() {
     incremental.render_retained(&scene);
     scene
         .transaction()
-        .set_position(card_id, (48.0, 8.0))
+        .set_transform(card_id, Affine::translate((48.0, 8.0)))
         .commit()
         .unwrap();
     incremental.render_retained(&scene);
@@ -299,7 +469,7 @@ fn persistent_filter_manual_invalidation_skips_command_tree_propagation() {
             None,
             leaf,
             std::sync::Arc::new(child),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -357,7 +527,7 @@ fn persistent_backdrop_manual_invalidation_uses_indexed_dependency_damage() {
             None,
             background,
             std::sync::Arc::new(child),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .insert_layer(
             RetainedParent::content(root),
@@ -444,7 +614,7 @@ fn persistent_many_layers_execute_only_batches_touching_damage() {
                 None,
                 RetainedNodeId::for_owner(50_100 + index),
                 leaf.clone(),
-                (x, y),
+                Affine::translate((x, y)),
             );
     }
     transaction.commit().unwrap();
@@ -514,7 +684,13 @@ fn persistent_retained_scene_rebuilds_plan_when_local_commands_change() {
     let mut scene = RetainedScene::new(16, 16, 1.0, root).unwrap();
     scene
         .transaction()
-        .insert_scene(RetainedParent::content(root), None, node, plain, (0.0, 0.0))
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            node,
+            plain,
+            Affine::IDENTITY,
+        )
         .commit()
         .unwrap();
 
@@ -559,14 +735,14 @@ fn persistent_retained_scene_preserves_order_after_variable_length_reallocation(
             None,
             back,
             solid(Color::from_rgb8(220, 30, 40)),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .insert_scene(
             RetainedParent::content(root),
             None,
             front,
             solid(Color::from_rgb8(30, 60, 220)),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         );
     transaction.commit().unwrap();
 
@@ -644,7 +820,7 @@ fn persistent_variable_length_update_uploads_only_changed_allocations() {
             None,
             RetainedNodeId::for_owner(50_201 + index),
             one_draw.clone(),
-            ((index % 32) as f64 * 8.0, (index / 32) as f64 * 8.0),
+            Affine::translate(((index % 32) as f64 * 8.0, (index / 32) as f64 * 8.0)),
         );
     }
     transaction.commit().unwrap();
@@ -722,7 +898,7 @@ fn persistent_resource_variable_length_update_is_local_and_matches_full_render()
             None,
             RetainedNodeId::for_owner(51_001 + index),
             one_draw.clone(),
-            ((index % 32) as f64 * 8.0, (index / 32) as f64 * 8.0),
+            Affine::translate(((index % 32) as f64 * 8.0, (index / 32) as f64 * 8.0)),
         );
     }
     transaction.commit().unwrap();
@@ -774,7 +950,7 @@ fn persistent_resource_brush_repatches_after_atlas_placement_changes() {
             None,
             RetainedNodeId::for_owner(52_001),
             std::sync::Arc::new(child),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -895,7 +1071,7 @@ fn persistent_resource_brush_membership_tracks_incremental_replacement() {
             None,
             leaf,
             solid.clone(),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -959,7 +1135,7 @@ fn persistent_retained_scene_recollects_layer_influence_after_leaf_change() {
             None,
             leaf,
             child(Color::from_rgb8(220, 30, 40)),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -1054,7 +1230,7 @@ fn persistent_retained_layer_descriptor_update_patches_only_the_layer_chunk() {
             None,
             leaf,
             std::sync::Arc::new(child),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -1137,7 +1313,7 @@ fn persistent_retained_filter_and_mask_updates_patch_offscreen_plan_fragments() 
             None,
             filter_leaf,
             solid(Color::from_rgb8(40, 120, 230)),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .insert_layer(
             RetainedParent::content(root),
@@ -1153,14 +1329,14 @@ fn persistent_retained_filter_and_mask_updates_patch_offscreen_plan_fragments() 
             None,
             content_leaf,
             solid(Color::from_rgb8(230, 80, 30)),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .insert_scene(
             RetainedParent::mask(mask),
             None,
             mask_leaf,
             solid(Color::from_rgb8(40, 220, 60)),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -1223,7 +1399,7 @@ fn persistent_retained_backdrop_background_revision_matches_force_full() {
             None,
             background,
             solid(Color::from_rgb8(30, 70, 210)),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .insert_layer(
             RetainedParent::content(root),
@@ -1239,7 +1415,7 @@ fn persistent_retained_backdrop_background_revision_matches_force_full() {
             None,
             foreground,
             solid(Color::from_rgba8(230, 70, 30, 128)),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .insert_layer(
             RetainedParent::content(root),
@@ -1255,7 +1431,7 @@ fn persistent_retained_backdrop_background_revision_matches_force_full() {
             None,
             chained_foreground,
             solid(Color::from_rgba8(40, 80, 230, 96)),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -1324,7 +1500,7 @@ fn persistent_scene_embedded_backdrop_tracks_earlier_moving_scene() {
             None,
             background,
             solid(96, 48, Color::from_rgb8(28, 48, 76)),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         // The card is painted before the panel, so the later backdrop must sample it.
         .insert_scene(
@@ -1332,7 +1508,7 @@ fn persistent_scene_embedded_backdrop_tracks_earlier_moving_scene() {
             None,
             card,
             solid(16, 16, Color::from_rgb8(235, 48, 38)),
-            (8.0, 16.0),
+            Affine::translate((8.0, 16.0)),
         )
         // This is deliberately a Scene node containing an ordinary backdrop command. Cached UI
         // widgets use this shape instead of a RetainedLayerDescriptor::Backdrop hierarchy node.
@@ -1341,7 +1517,7 @@ fn persistent_scene_embedded_backdrop_tracks_earlier_moving_scene() {
             None,
             panel,
             std::sync::Arc::new(panel_canvas),
-            (48.0, 8.0),
+            Affine::translate((48.0, 8.0)),
         )
         .commit()
         .unwrap();
@@ -1350,7 +1526,7 @@ fn persistent_scene_embedded_backdrop_tracks_earlier_moving_scene() {
     incremental.render_retained(&scene);
     scene
         .transaction()
-        .set_position(card, (56.0, 16.0))
+        .set_transform(card, Affine::translate((56.0, 16.0)))
         .commit()
         .unwrap();
     incremental.render_retained(&scene);
@@ -1444,21 +1620,21 @@ fn persistent_embedded_liquid_glass_updates_only_damaged_surface_tiles() {
             None,
             background,
             std::sync::Arc::new(background_canvas),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .insert_scene(
             RetainedParent::content(root),
             None,
             card,
             std::sync::Arc::new(card_canvas),
-            (128.0, 176.0),
+            Affine::translate((128.0, 176.0)),
         )
         .insert_scene(
             RetainedParent::content(root),
             None,
             panel,
             std::sync::Arc::new(panel_canvas),
-            (96.0, 64.0),
+            Affine::translate((96.0, 64.0)),
         )
         .commit()
         .unwrap();
@@ -1476,7 +1652,7 @@ fn persistent_embedded_liquid_glass_updates_only_damaged_surface_tiles() {
     for x in [160.0, 208.0, 256.0] {
         scene
             .transaction()
-            .set_position(card, (x, 176.0))
+            .set_transform(card, Affine::translate((x, 176.0)))
             .commit()
             .unwrap();
         incremental.render_retained(&scene);
@@ -1563,7 +1739,7 @@ fn persistent_retained_nested_layer_insert_rebuilds_only_offscreen_ancestor() {
                 Rect::new(0.0, 0.0, 28.0, 16.0),
                 Color::from_rgb8(30, 70, 180),
             ),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -1592,7 +1768,7 @@ fn persistent_retained_nested_layer_insert_rebuilds_only_offscreen_ancestor() {
                 Rect::new(12.0, 0.0, 44.0, 16.0),
                 Color::from_rgb8(240, 80, 30),
             ),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -1658,7 +1834,7 @@ fn persistent_retained_nested_mask_branch_insert_rebuilds_only_mask_ancestor() {
                 Rect::new(0.0, 0.0, 32.0, 16.0),
                 Color::from_rgb8(30, 70, 180),
             ),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -1684,7 +1860,7 @@ fn persistent_retained_nested_mask_branch_insert_rebuilds_only_mask_ancestor() {
             None,
             mask_leaf,
             solid(Rect::new(8.0, 0.0, 24.0, 16.0), Color::WHITE),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -1759,7 +1935,7 @@ fn persistent_retained_nested_layer_reorder_rebuilds_one_offscreen_ancestor() {
             None,
             back,
             solid(Color::from_rgb8(220, 30, 40)),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .insert_layer(RetainedParent::content(filter), None, front_layer, opacity)
         .insert_scene(
@@ -1767,7 +1943,7 @@ fn persistent_retained_nested_layer_reorder_rebuilds_one_offscreen_ancestor() {
             None,
             front,
             solid(Color::from_rgb8(30, 60, 220)),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -1842,7 +2018,7 @@ fn persistent_retained_layer_reparent_rebuilds_old_and_new_offscreen_ancestors()
             None,
             leaf,
             std::sync::Arc::new(child),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .insert_layer(
             RetainedParent::content(root),
@@ -1911,7 +2087,7 @@ fn persistent_root_offscreen_layer_reorder_reuses_child_fragments() {
             None,
             back,
             solid(Color::from_rgb8(220, 30, 40)),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .insert_layer(
             RetainedParent::content(root),
@@ -1924,7 +2100,7 @@ fn persistent_root_offscreen_layer_reorder_reuses_child_fragments() {
             None,
             front,
             solid(Color::from_rgb8(30, 60, 220)),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -1986,14 +2162,14 @@ fn persistent_retained_layer_reorder_reuses_plan_and_matches_force_full() {
             None,
             back,
             child(Color::from_rgb8(220, 30, 40)),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .insert_scene(
             RetainedParent::content(layer),
             None,
             front,
             child(Color::from_rgb8(30, 60, 220)),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -2057,7 +2233,7 @@ fn persistent_retained_layer_add_remove_reuses_empty_batch_context() {
             None,
             extra,
             child(Color::from_rgb8(30, 210, 70)),
-            (16.0, 0.0),
+            Affine::translate((16.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -2115,7 +2291,7 @@ fn persistent_retained_reparent_between_layers_reuses_stable_batches() {
             None,
             moving,
             child(Color::from_rgb8(220, 30, 40)),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .insert_layer(
             RetainedParent::content(root),
@@ -2177,14 +2353,14 @@ fn persistent_retained_reparent_across_mask_branches_reuses_plan() {
             None,
             content_anchor,
             child(Color::from_rgb8(30, 60, 220)),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .insert_scene(
             RetainedParent::content(mask_layer),
             None,
             moving,
             child(Color::WHITE),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -2229,7 +2405,7 @@ fn persistent_retained_scene_add_remove_reuses_pages_without_ghost_draws() {
             None,
             base,
             child(Color::from_rgb8(220, 30, 40)),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -2243,7 +2419,7 @@ fn persistent_retained_scene_add_remove_reuses_pages_without_ghost_draws() {
             None,
             extra,
             child(Color::from_rgb8(30, 210, 70)),
-            (16.0, 0.0),
+            Affine::translate((16.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -2261,7 +2437,7 @@ fn persistent_retained_scene_add_remove_reuses_pages_without_ghost_draws() {
             None,
             extra,
             child(Color::from_rgb8(20, 80, 230)),
-            (16.0, 0.0),
+            Affine::translate((16.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -2301,7 +2477,7 @@ fn persistent_retained_tail_layer_add_remove_patches_plan_without_ghost_draws() 
                 Rect::new(0.0, 0.0, 64.0, 16.0),
                 Color::from_rgb8(30, 70, 180),
             ),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -2338,7 +2514,7 @@ fn persistent_retained_tail_layer_add_remove_patches_plan_without_ghost_draws() 
                 Rect::new(16.0, 0.0, 32.0, 16.0),
                 Color::from_rgb8(240, 80, 30),
             ),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -2391,7 +2567,7 @@ fn persistent_retained_tail_layer_and_leaf_inserted_together_are_rendered() {
             None,
             base,
             child(Color::from_rgb8(30, 70, 180)),
-            (16.0, 0.0),
+            Affine::translate((16.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -2417,7 +2593,7 @@ fn persistent_retained_tail_layer_and_leaf_inserted_together_are_rendered() {
             None,
             leaf,
             child(Color::from_rgb8(240, 80, 30)),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -2463,7 +2639,7 @@ fn persistent_root_layer_insert_before_intersecting_scene_patches_plan() {
                 Rect::new(24.0, 0.0, 64.0, 16.0),
                 Color::from_rgb8(30, 70, 180),
             ),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -2492,7 +2668,7 @@ fn persistent_root_layer_insert_before_intersecting_scene_patches_plan() {
                 Rect::new(8.0, 0.0, 40.0, 16.0),
                 Color::from_rgb8(240, 80, 30),
             ),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -2558,7 +2734,7 @@ fn persistent_retained_removes_initial_middle_root_layer_without_recompiling_sce
                 Rect::new(8.0, 0.0, 40.0, 16.0),
                 Color::from_rgb8(240, 80, 30),
             ),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .insert_scene(
             RetainedParent::content(root),
@@ -2568,7 +2744,7 @@ fn persistent_retained_removes_initial_middle_root_layer_without_recompiling_sce
                 Rect::new(24.0, 0.0, 64.0, 16.0),
                 Color::from_rgb8(30, 70, 180),
             ),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -2626,7 +2802,7 @@ fn persistent_retained_inserts_layer_fragment_before_existing_layer() {
                 Rect::new(0.0, 0.0, 32.0, 16.0),
                 Color::from_rgb8(30, 70, 180),
             ),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -2650,7 +2826,7 @@ fn persistent_retained_inserts_layer_fragment_before_existing_layer() {
                 Rect::new(16.0, 0.0, 48.0, 16.0),
                 Color::from_rgb8(240, 80, 30),
             ),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -2708,7 +2884,7 @@ fn persistent_retained_text_updates_dirty_glyph_allocations_and_matches_force_fu
             None,
             leaf,
             make_child(4.0),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -2759,7 +2935,7 @@ fn persistent_retained_renderers_consume_independent_cursors_and_recover_after_j
             None,
             leaf,
             child(1),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -3450,7 +3626,7 @@ fn persistent_retained_profile_breaks_out_materialization_stages() {
             None,
             child,
             leaf(Color::WHITE),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -5934,7 +6110,7 @@ fn persistent_full_redraw_liquid_glass_uses_direct_composite() {
             None,
             crate::RetainedNodeId::for_owner(68_201),
             std::sync::Arc::new(background),
-            Point::ZERO,
+            Affine::IDENTITY,
         )
         .commit()
         .unwrap();
@@ -5987,7 +6163,7 @@ fn persistent_full_redraw_clipped_liquid_glass_skips_unused_source_history() {
             None,
             crate::RetainedNodeId::for_owner(68_211),
             std::sync::Arc::new(scene),
-            Point::ZERO,
+            Affine::IDENTITY,
         )
         .commit()
         .unwrap();
@@ -6460,7 +6636,7 @@ fn assert_profile_has(profile: &crate::WgpuRenderProfile, name: &'static str) {
     assert!(
         profile.entries().iter().any(|entry| entry.name == name),
         "profile missing {name}; entries: {:?}",
-        profile.entries()
+        profile.entries(),
     );
 }
 

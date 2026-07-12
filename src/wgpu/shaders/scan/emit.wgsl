@@ -28,10 +28,12 @@ fn scan_emit(@builtin(global_invocation_id) global_id: vec3<u32>) {
         return;
     }
 
-    let p0x = line.p0.x;
-    let p0y = line.p0.y;
-    let p1x = line.p1.x;
-    let p1y = line.p1.y;
+    let p0 = affine_point(path.transform, line.p0);
+    let p1 = affine_point(path.transform, line.p1);
+    let p0x = p0.x;
+    let p0y = p0.y;
+    let p1x = p1.x;
+    let p1y = p1.y;
     let is_down = p1y >= p0y;
     var xy0x = p0x;
     var xy0y = p0y;

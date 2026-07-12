@@ -316,52 +316,6 @@ pub(crate) fn encoded_brush_payload(blob: &[u32], offset: u32, len: u32) -> Opti
     record.get(start..end)
 }
 
-pub(crate) fn translate_encoded_brush(
-    blob: &mut [u32],
-    offset: u32,
-    len: u32,
-    dx: f32,
-    dy: f32,
-) -> bool {
-    let start = offset as usize;
-    let Some(record) = blob.get_mut(start..start.saturating_add(len as usize)) else {
-        return false;
-    };
-    if record.len() < ENCODED_BRUSH_HEADER_WORDS {
-        return false;
-    }
-    let kind = record[0];
-    let params = &mut record[GPU_BRUSH_U32_STRIDE..ENCODED_BRUSH_HEADER_WORDS];
-    let add = |word: &mut u32, delta: f32| *word = (f32::from_bits(*word) + delta).to_bits();
-    let translate_transform = |params: &mut [u32], start: usize| {
-        let a = f32::from_bits(params[start]);
-        let b = f32::from_bits(params[start + 1]);
-
-        let c = f32::from_bits(params[start + 2]);
-        let d = f32::from_bits(params[start + 3]);
-        add(&mut params[start + 4], -a * dx - c * dy);
-        add(&mut params[start + 5], -b * dx - d * dy);
-    };
-    match kind {
-        GPU_BRUSH_SOLID => {}
-        GPU_BRUSH_LINEAR => translate_transform(params, 4),
-        GPU_BRUSH_RADIAL => translate_transform(params, 6),
-        GPU_BRUSH_SWEEP => {
-            add(&mut params[0], dx);
-            add(&mut params[1], dy);
-        }
-        GPU_BRUSH_FOUR_CORNER => {
-            add(&mut params[0], dx);
-            add(&mut params[1], dy);
-            add(&mut params[2], dx);
-            add(&mut params[3], dy);
-        }
-        GPU_BRUSH_PATTERN_RESOURCE => translate_transform(params, 0),
-        _ => return false,
-    }
-    true
-}
-
 pub(crate) fn decode_encoded_brush(blob: &[u32], offset: u32, len: u32) -> Option<Brush> {
     let record = encoded_brush_words(blob, offset, len)?;
     let data: &[u32; GPU_BRUSH_U32_STRIDE] = record[..GPU_BRUSH_U32_STRIDE].try_into().ok()?;

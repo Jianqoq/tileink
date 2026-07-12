@@ -193,6 +193,9 @@ struct FilterConfig {
 };
 
 @group(0) @binding(0) var<uniform> config: FilterConfig;
+struct AffineRecord {
+    a: f32, b: f32, c: f32, d: f32, e: f32, f: f32,
+};
 struct DrawRecord {
     path_id: u32,
     glyph_run_id: u32,
@@ -208,7 +211,13 @@ struct DrawRecord {
     pixel_y0: i32,
     pixel_x1: i32,
     pixel_y1: i32,
+    local_pixel_x0: i32,
+    local_pixel_y0: i32,
+    local_pixel_x1: i32,
+    local_pixel_y1: i32,
     solid_rect: u32,
+    transform: AffineRecord,
+    inverse_transform: AffineRecord,
 };
 struct PathRecord {
     path_id: u32,
@@ -224,6 +233,7 @@ struct PathRecord {
     segment_start: u32,
     segment_capacity: u32,
     segment_count: u32,
+    transform: AffineRecord,
 };
 struct LineSegment {
     p0x: f32,

@@ -293,7 +293,7 @@ fn coarse_emit_chunk_particle_counts(
             let draw_tag = draw_tag_at(draw_ix);
             if (draw_has_glyph_at(draw_ix)) {
                 if (draw_tag == GPU_DRAW_BRUSH) {
-                    glyph_count = count_tile_glyphs_for_run(draw_records[draw_ix].glyph_run_id, tile_x, tile_y);
+                    glyph_count = count_tile_glyphs_for_run(draw_ix, tile_x, tile_y);
                     ptcl_count = select(0u, 1u, glyph_count > 0u);
                 }
             } else if (draw_has_sdf_at(draw_ix)) {
@@ -480,8 +480,10 @@ fn draw_tile_hit(draw_ix: u32, tile_x: u32, tile_y: u32) -> bool {
     return tile_x >= draw_x0 && tile_x < draw_x1 && tile_y >= draw_y0 && tile_y < draw_y1;
 }
 
-fn count_tile_glyphs_for_run(run_id: u32, tile_x: u32, tile_y: u32) -> u32 {
+fn count_tile_glyphs_for_run(draw_ix: u32, tile_x: u32, tile_y: u32) -> u32 {
     var count = 0u;
+    let draw = draw_records[draw_ix];
+    let run_id = draw.glyph_run_id;
     let run = text_run_at(run_id);
     var glyph_ix = run.glyph_start;
     let glyph_end = glyph_ix + run.glyph_count;
@@ -489,7 +491,7 @@ fn count_tile_glyphs_for_run(run_id: u32, tile_x: u32, tile_y: u32) -> u32 {
         if (glyph_ix >= glyph_end) {
             break;
         }
-        if (glyph_hits_tile(glyph_ix, tile_x, tile_y)) {
+        if (glyph_hits_tile(draw, glyph_ix, tile_x, tile_y)) {
             count += 1u;
         }
         glyph_ix += 1u;
@@ -497,7 +499,7 @@ fn count_tile_glyphs_for_run(run_id: u32, tile_x: u32, tile_y: u32) -> u32 {
     return count;
 }
 
-fn glyph_hits_tile(glyph_ix: u32, tile_x: u32, tile_y: u32) -> bool {
+fn glyph_hits_tile(draw: DrawRecord, glyph_ix: u32, tile_x: u32, tile_y: u32) -> bool {
     let glyph = glyph_at(glyph_ix);
     let image_id = glyph.image_id;
     if (image_id == INVALID) {
@@ -513,11 +515,7 @@ fn glyph_hits_tile(glyph_ix: u32, tile_x: u32, tile_y: u32) -> bool {
     let y0 = glyph.y - image.top;
     let x1 = x0 + i32(width);
     let y1 = y0 + i32(height);
-    let tile_x0 = i32(tile_x * 16u);
-    let tile_y0 = i32(tile_y * 16u);
-    let tile_x1 = tile_x0 + 16i;
-    let tile_y1 = tile_y0 + 16i;
-    return x0 < tile_x1 && x1 > tile_x0 && y0 < tile_y1 && y1 > tile_y0;
+    return transformed_rect_hits_tile(draw.transform, x0, y0, x1, y1, tile_x, tile_y);
 }
 
 fn draw_in_batch(draw_ix: u32) -> bool {

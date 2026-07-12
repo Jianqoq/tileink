@@ -245,6 +245,9 @@ mod tests {
             tag: DrawTagWord(0),
             fill_rule: FillRuleWord(FillRule::NonZero as u32),
             pixel_bounds: PixelBounds::default(),
+            local_pixel_bounds: PixelBounds::default(),
+            transform: crate::shared::affine::GpuAffine::IDENTITY,
+            inverse_transform: crate::shared::affine::GpuAffine::IDENTITY,
             solid_rect: 0,
         }
     }

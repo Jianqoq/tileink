@@ -11,20 +11,16 @@ use peniko::{
 };
 
 use crate::shared::{
+    affine::GpuAffine,
     bounds::{Bounds, PixelBounds},
-    brush::{
-        Brush, PatternSampling, decode_encoded_brush, push_encoded_brush, translate_encoded_brush,
-    },
+    brush::{Brush, PatternSampling, decode_encoded_brush, push_encoded_brush},
     draw_record::{DrawRecord, DrawTag},
     execution::{
         Command, CommandList, CommandListId, ExecOp, ExecPlan, LayerStackEntry,
         ROOT_COMMAND_LIST_ID, RetainedBatchBranch, RetainedBatchOwner,
     },
     fill::FillRule,
-    gpu_sdf::{
-        decode_sdf, decode_sdf_shadow, push_encoded_sdf, push_encoded_sdf_shadow,
-        translate_encoded_sdf,
-    },
+    gpu_sdf::{decode_sdf, decode_sdf_shadow, push_encoded_sdf, push_encoded_sdf_shadow},
     image::Image,
     image_resource::{ImageKey, ImageResourceStore},
     layer::{
@@ -103,6 +99,10 @@ pub struct Canvas {
     /// Live physical draw count per stable batch. Persistent plans may keep an empty placeholder
     /// or a stale shared draw list while membership moves through the stable ID table.
     pub(crate) stable_batch_counts: Option<Vec<u32>>,
+    /// Local-to-device transform installed by retained materialization. Immediate canvases keep
+    /// identity; retained transform edits use the previous value to patch command metadata by a
+    /// delta without ever walking path lines.
+    retained_transform: GpuAffine,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -530,6 +530,7 @@ impl Canvas {
             painter_keys: None,
             stable_batch_ids: None,
             stable_batch_counts: None,
+            retained_transform: GpuAffine::IDENTITY,
         }
     }
 
@@ -579,69 +580,58 @@ impl Canvas {
         self.logical_height = logical_height;
     }
 
-    /// Translates already-encoded scene data without decoding and appending the source Canvas.
-    /// This preserves record shape and command topology for retained position-only updates.
-    pub(crate) fn translate_scene(&mut self, logical_delta: Point) {
-        let offset = SceneOffset::new(self.physical_point(logical_delta));
-        if offset.is_zero() {
-            return;
-        }
-        for line in &mut self.lines {
-            offset.line(line);
-        }
-        for index in 0..self.draw_records.len() {
-            let draw = self.draw_records[index];
-            if draw.brush_offset != DrawRecord::NONE {
-                assert!(translate_encoded_brush(
-                    &mut self.brush_blob,
-                    draw.brush_offset,
-                    draw.brush_len,
-                    offset.dx as f32,
-                    offset.dy as f32,
-                ));
-            }
-            let pixel_bounds = if draw.sdf_offset != DrawRecord::NONE {
-                assert!(translate_encoded_sdf(
-                    &mut self.sdf_blob,
-                    draw.sdf_offset,
-                    draw.sdf_len,
-                    offset.dx as f32,
-                    offset.dy as f32,
-                ));
-                Self::pixel_bounds_from_bounds(
-                    decode_sdf(&self.sdf_blob, draw.sdf_offset, draw.sdf_len)
-                        .expect("translated SDF remains valid")
-                        .bounds(),
-                )
-            } else if draw.sdf_shadow_offset != DrawRecord::NONE {
-                assert!(translate_encoded_sdf(
-                    &mut self.sdf_shadow_blob,
-                    draw.sdf_shadow_offset,
-                    draw.sdf_shadow_len,
-                    offset.dx as f32,
-                    offset.dy as f32,
-                ));
-                Self::pixel_bounds_from_bounds(
-                    decode_sdf_shadow(
-                        &self.sdf_shadow_blob,
-                        draw.sdf_shadow_offset,
-                        draw.sdf_shadow_len,
-                    )
-                    .expect("translated SDF shadow remains valid")
-                    .bounds(),
-                )
-            } else {
-                offset.pixel_bounds(draw.pixel_bounds)
+    /// Installs a retained node transform without rewriting local geometry or paint blobs.
+    ///
+    /// Scan transforms path lines on the GPU; fine rendering maps device samples back into local
+    /// brush, SDF, image, and glyph coordinates. CPU work is limited to record bounds and scan
+    /// allocation metadata needed by damage and tile binning.
+    pub(crate) fn set_retained_transform(&mut self, logical_transform: Affine) {
+        let transform = GpuAffine::from_logical(logical_transform, self.scale_factor);
+        let inverse = transform
+            .inverse()
+            .expect("validated retained transforms are invertible");
+        let previous = self.retained_transform;
+        let delta = transform.compose(
+            previous
+                .inverse()
+                .expect("installed retained transforms are invertible"),
+        );
+        if previous.a == transform.a
+            && previous.b == transform.b
+            && previous.c == transform.c
+            && previous.d == transform.d
+        {
+            let offset = SceneOffset {
+                dx: (transform.e - previous.e) as f64,
+                dy: (transform.f - previous.f) as f64,
             };
-            self.draw_records[index].pixel_bounds = pixel_bounds;
-        }
-        for glyph in &mut self.text_glyphs {
-            *glyph = glyph.translated(offset.dx, offset.dy);
-        }
-        for list in &mut self.command_lists {
-            for command in &mut list.commands {
-                offset.command(command);
+            if !offset.is_zero() {
+                for list in &mut self.command_lists {
+                    for command in &mut list.commands {
+                        offset.command(command);
+                    }
+                }
             }
+        }
+        for path in &mut self.path_records {
+            path.transform = if path.transform == previous {
+                transform
+            } else {
+                delta.compose(path.transform)
+            };
+        }
+        for draw in &mut self.draw_records {
+            if draw.transform == previous {
+                draw.transform = transform;
+                draw.inverse_transform = inverse;
+            } else {
+                draw.transform = delta.compose(draw.transform);
+                draw.inverse_transform = draw
+                    .transform
+                    .inverse()
+                    .expect("composed retained transforms are invertible");
+            }
+            draw.pixel_bounds = draw.transform.transform_bounds(draw.local_pixel_bounds);
         }
         self.backdrop_pool_capacity = 0;
         self.tile_cnt = 0;
@@ -651,6 +641,7 @@ impl Canvas {
             0,
             self.draw_records.len(),
         );
+        self.retained_transform = transform;
     }
 
     /// Returns whether every layer and command list opened while recording has been closed.
@@ -1121,6 +1112,25 @@ impl Canvas {
         self.append_scene_ref_unchecked(other, SceneAppendMode::MergeCurrent, offset);
     }
 
+    /// Appends a reusable child with a logical-space affine transform.
+    ///
+    /// Geometry and paint remain in the child's local buffers. The scan and fine shaders apply
+    /// the transform, so rotation, scale, and shear do not require a CPU pass over path lines.
+    pub fn append_transformed(&mut self, other: &Canvas, transform: Affine) {
+        let coefficients = transform.as_coeffs();
+        assert!(
+            coefficients.iter().all(|value| value.is_finite())
+                && (coefficients[0] * coefficients[3] - coefficients[1] * coefficients[2]).abs()
+                    > f64::EPSILON,
+            "canvas append transform must be finite and invertible"
+        );
+        let mut transformed =
+            Canvas::new(self.logical_width, self.logical_height, self.scale_factor);
+        transformed.append(other, Point::ZERO);
+        transformed.set_retained_transform(transform);
+        self.append(&transformed, Point::ZERO);
+    }
+
     fn append_scene_ref_unchecked(
         &mut self,
         other: &Canvas,
@@ -1245,6 +1255,16 @@ impl Canvas {
         width_in_tiles: u32,
         height_in_tiles: u32,
     ) -> u32 {
+        if record.transform != GpuAffine::IDENTITY {
+            // A transformed line can visit at most every row and column in its clipped path box.
+            // This conservative O(1)-per-path bound lets GPU scan compute exact counts without a
+            // CPU pass over local lines when a retained transform changes.
+            return record.line_count.saturating_mul(
+                tile_bbox
+                    .tile_stride()
+                    .saturating_add(tile_bbox.tile_height()),
+            );
+        }
         self.lines[record.line_start as usize..(record.line_start + record.line_count) as usize]
             .iter()
             .fold(0u32, |capacity, &line| {
@@ -1323,7 +1343,8 @@ impl Canvas {
                 (draw.sdf_offset, draw.sdf_len) = self.push_sdf(sdf);
                 draw.sdf_shadow_offset = DrawRecord::NONE;
                 draw.sdf_shadow_len = 0;
-                draw.pixel_bounds = Self::pixel_bounds_from_bounds(sdf.bounds());
+                draw.local_pixel_bounds = Self::pixel_bounds_from_bounds(sdf.bounds());
+                draw.pixel_bounds = draw.transform.transform_bounds(draw.local_pixel_bounds);
             } else if let Some(sdf_shadow) = other.draw_sdf_shadow(&draw) {
                 let sdf_shadow = if offset.is_zero() {
                     sdf_shadow
@@ -1333,7 +1354,8 @@ impl Canvas {
                 (draw.sdf_shadow_offset, draw.sdf_shadow_len) = self.push_sdf_shadow(sdf_shadow);
                 draw.sdf_offset = DrawRecord::NONE;
                 draw.sdf_len = 0;
-                draw.pixel_bounds = Self::pixel_bounds_from_bounds(sdf_shadow.bounds());
+                draw.local_pixel_bounds = Self::pixel_bounds_from_bounds(sdf_shadow.bounds());
+                draw.pixel_bounds = draw.transform.transform_bounds(draw.local_pixel_bounds);
             } else {
                 draw.sdf_offset = DrawRecord::NONE;
                 draw.sdf_len = 0;
@@ -2188,7 +2210,15 @@ impl Canvas {
                 x1: bounds.x1,
                 y1: bounds.y1,
             },
+            local_pixel_bounds: PixelBounds {
+                x0: bounds.x0,
+                y0: bounds.y0,
+                x1: bounds.x1,
+                y1: bounds.y1,
+            },
             solid_rect: 0,
+            transform: Default::default(),
+            inverse_transform: Default::default(),
         });
         self.current_command_list_mut()
             .commands
@@ -2341,6 +2371,7 @@ impl Canvas {
             segment_start: 0,
             segment_capacity: 0,
             segment_count: 0,
+            transform: Default::default(),
         };
         let tile_bbox = pixel_bounds.tile_bbox(self.width_in_tiles(), self.height_in_tiles());
         let tile_stride = tile_bbox.tile_stride();
@@ -2379,7 +2410,10 @@ impl Canvas {
             tag: options.tag.into(),
             fill_rule: rule.into(),
             pixel_bounds,
+            local_pixel_bounds: pixel_bounds,
             solid_rect: 0,
+            transform: Default::default(),
+            inverse_transform: Default::default(),
         });
         if options.emit_draw_command {
             self.current_command_list_mut()
@@ -2462,7 +2496,15 @@ impl Canvas {
                 x1: bounds.x1,
                 y1: bounds.y1,
             },
+            local_pixel_bounds: PixelBounds {
+                x0: bounds.x0,
+                y0: bounds.y0,
+                x1: bounds.x1,
+                y1: bounds.y1,
+            },
             solid_rect: 0,
+            transform: Default::default(),
+            inverse_transform: Default::default(),
         });
         if emit_draw_command {
             self.current_command_list_mut()
@@ -2515,7 +2557,15 @@ impl Canvas {
                 x1: bounds.x1,
                 y1: bounds.y1,
             },
+            local_pixel_bounds: PixelBounds {
+                x0: bounds.x0,
+                y0: bounds.y0,
+                x1: bounds.x1,
+                y1: bounds.y1,
+            },
             solid_rect: 0,
+            transform: Default::default(),
+            inverse_transform: Default::default(),
         });
         if emit_draw_command {
             self.current_command_list_mut()
@@ -2554,6 +2604,7 @@ impl Canvas {
         self.painter_keys = None;
         self.stable_batch_ids = None;
         self.stable_batch_counts = None;
+        self.retained_transform = GpuAffine::IDENTITY;
         self.path_cnt = 0;
         self.backdrop_pool_capacity = 0;
         self.tile_cnt = 0;

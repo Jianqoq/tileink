@@ -104,6 +104,17 @@ fn retained_scale(c: &mut Criterion) {
     ] {
         retained_materialize_stage(c, &seed, Scenario::LiquidGlassMove, name, duration);
     }
+    for (name, duration) in [
+        (
+            "one-affine",
+            (|m: &Measurements| m.materialize) as fn(&Measurements) -> Duration,
+        ),
+        ("one-affine-chunks", |m| m.materialize_chunks),
+        ("one-affine-plan-sync", |m| m.materialize_plan_sync),
+        ("one-affine-frame", |m| m.materialize_frame),
+    ] {
+        retained_materialize_stage(c, &seed, Scenario::OneAffine, name, duration);
+    }
 
     for (scenario, name) in [
         (Scenario::LayerAddRemove, "tail-layer"),

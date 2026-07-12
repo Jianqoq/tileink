@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use peniko::{Color, kurbo::Rect};
+use peniko::{
+    Color,
+    kurbo::{Affine, Rect},
+};
 use tileink::{Canvas, Radius, RetainedNodeId, RetainedParent, RetainedScene};
 
 use super::retained_bench::{HEIGHT, WIDTH};
@@ -31,7 +34,7 @@ impl Workload {
                 None,
                 RetainedNodeId::for_owner(index as u64 + 2),
                 self.background.clone(),
-                ((index % 64) as f64 * 16.0, (index / 64) as f64 * 16.0),
+                Affine::translate(((index % 64) as f64 * 16.0, (index / 64) as f64 * 16.0)),
             );
         }
         transaction.insert_scene(
@@ -42,7 +45,7 @@ impl Workload {
                 rect_scene(WIDTH, HEIGHT, Color::from_rgb8(230, 80, 40)),
                 damage_side(ratio),
             ),
-            (0.0, 0.0),
+            Affine::IDENTITY,
         );
         transaction.commit().unwrap();
         scene

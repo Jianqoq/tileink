@@ -1,7 +1,7 @@
 use peniko::{Color, kurbo::Shape};
 
 use super::*;
-use crate::Radius;
+use crate::{Radius, shared::bounds::PixelBounds};
 
 fn leaf(color: Color) -> Arc<Canvas> {
     let mut canvas = Canvas::new(16, 16, 1.0);
@@ -23,6 +23,118 @@ fn backdrop_leaf() -> Arc<Canvas> {
     Arc::new(canvas)
 }
 
+fn path_leaf() -> Arc<Canvas> {
+    let mut canvas = Canvas::new(32, 32, 1.0);
+    canvas.push_path(
+        Rect::new(4.0, 6.0, 20.0, 18.0).to_path(0.1),
+        Color::WHITE,
+        Affine::IDENTITY,
+        FillRule::NonZero,
+        0.1,
+    );
+    Arc::new(canvas)
+}
+
+#[test]
+fn transaction_rejects_non_finite_and_singular_transforms_atomically() {
+    let root = RetainedNodeId::for_owner(70_000);
+    let child = RetainedNodeId::for_owner(70_001);
+    let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            child,
+            path_leaf(),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+    let version = scene.version();
+
+    for invalid in [
+        Affine::new([1.0, 0.0, 0.0, 1.0, f64::NAN, 0.0]),
+        Affine::scale_non_uniform(0.0, 1.0),
+    ] {
+        let mut transaction = scene.transaction();
+        transaction
+            .set_transform(child, invalid)
+            .invalidate_rect(Rect::new(0.0, 0.0, 8.0, 8.0));
+        assert_eq!(
+            transaction.commit(),
+            Err(RetainedSceneError::InvalidTransform)
+        );
+        assert_eq!(scene.version(), version);
+        let NodeKind::Scene { transform, .. } = &scene.nodes[&child].kind else {
+            unreachable!()
+        };
+        assert_eq!(*transform, Affine::IDENTITY);
+    }
+}
+
+#[test]
+fn transform_only_update_keeps_local_geometry_and_blobs_clean() {
+    let root = RetainedNodeId::for_owner(70_010);
+    let child = RetainedNodeId::for_owner(70_011);
+    let mut scene = RetainedScene::new(96, 96, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            child,
+            path_leaf(),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+    let mut materializer = PersistentSceneMaterializer::new(&scene);
+    let lines: Vec<_> = materializer.chunks[&child]
+        .canvas
+        .lines
+        .iter()
+        .map(|line| (line.p0, line.p1, line.path_id))
+        .collect();
+
+    let transform = Affine::translate((48.0, 24.0)) * Affine::rotate(std::f64::consts::FRAC_PI_2);
+    scene
+        .transaction()
+        .set_transform(child, transform)
+        .commit()
+        .unwrap();
+    assert!(materializer.update(&scene));
+
+    let chunk = &materializer.chunks[&child];
+    assert_eq!(
+        chunk
+            .canvas
+            .lines
+            .iter()
+            .map(|line| (line.p0, line.p1, line.path_id))
+            .collect::<Vec<_>>(),
+        lines
+    );
+    let materialized = materializer.canvas();
+    let changes = materialized.buffer_changes.as_ref().unwrap();
+    assert!(changes.lines.is_empty());
+    assert!(changes.brushes.is_empty());
+    assert!(changes.sdfs.is_empty());
+    assert!(changes.shadows.is_empty());
+    assert!(changes.glyphs.is_empty());
+    assert!(!changes.paths.is_empty());
+    assert!(!changes.draws.is_empty());
+    assert_eq!(
+        chunk.canvas.draw_records[0].pixel_bounds,
+        PixelBounds {
+            x0: 30,
+            y0: 28,
+            x1: 42,
+            y1: 44,
+        }
+    );
+}
+
 #[test]
 fn transaction_is_atomic_when_a_late_mutation_is_invalid() {
     let root = RetainedNodeId::for_owner(1);
@@ -36,7 +148,7 @@ fn transaction_is_atomic_when_a_late_mutation_is_invalid() {
             None,
             child,
             leaf(Color::WHITE),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .reparent(child, RetainedParent::content(missing), None);
     assert_eq!(
@@ -61,14 +173,14 @@ fn failed_transaction_restores_order_keys_after_rebalance() {
             None,
             first,
             leaf(Color::WHITE),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .insert_scene(
             RetainedParent::content(root),
             None,
             tail,
             leaf(Color::BLACK),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -88,7 +200,7 @@ fn failed_transaction_restores_order_keys_after_rebalance() {
                 Some(tail),
                 RetainedNodeId::for_owner(owner),
                 leaf(Color::WHITE),
-                (0.0, 0.0),
+                Affine::translate((0.0, 0.0)),
             )
             .commit()
             .unwrap();
@@ -105,7 +217,7 @@ fn failed_transaction_restores_order_keys_after_rebalance() {
             Some(tail),
             inserted,
             leaf(Color::WHITE),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .reparent(inserted, RetainedParent::content(missing), None);
 
@@ -140,7 +252,7 @@ fn content_revision_reuses_chunk_canvas_storage() {
             None,
             child,
             leaf(Color::WHITE),
-            (8.0, 8.0),
+            Affine::translate((8.0, 8.0)),
         )
         .commit()
         .unwrap();
@@ -197,7 +309,7 @@ fn surface_resize_reuses_chunks_and_refreshes_path_tile_bounds() {
             None,
             child,
             Arc::new(path_leaf),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -238,7 +350,7 @@ fn scene_content_replacement_refreshes_embedded_backdrop_index() {
             None,
             child,
             leaf(Color::WHITE),
-            (8.0, 12.0),
+            Affine::translate((8.0, 12.0)),
         )
         .commit()
         .unwrap();
@@ -284,7 +396,7 @@ fn empty_chunk_allocations_grow_and_shrink_without_full_sync() {
             None,
             child,
             empty_leaf(),
-            (4.0, 4.0),
+            Affine::translate((4.0, 4.0)),
         )
         .commit()
         .unwrap();
@@ -329,14 +441,14 @@ fn undo_log_restores_values_order_removals_and_surface_after_late_failure() {
             None,
             a,
             original.clone(),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .insert_scene(
             RetainedParent::content(root),
             None,
             b,
             leaf(Color::BLACK),
-            (16.0, 0.0),
+            Affine::translate((16.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -359,7 +471,7 @@ fn undo_log_restores_values_order_removals_and_surface_after_late_failure() {
             None,
             invalid,
             leaf(Color::WHITE),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit();
 
@@ -412,14 +524,14 @@ fn move_before_changes_materialized_painter_order() {
             None,
             a,
             leaf(Color::WHITE),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .insert_scene(
             RetainedParent::content(root),
             None,
             b,
             leaf(Color::BLACK),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         );
     transaction.commit().unwrap();
     let mut transaction = scene.transaction();
@@ -446,7 +558,7 @@ fn mask_branch_is_only_valid_for_masks() {
             None,
             child,
             leaf(Color::WHITE),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         );
     assert_eq!(
         transaction.commit(),
@@ -503,11 +615,11 @@ fn journal_merges_skipped_versions() {
         None,
         child,
         leaf(Color::WHITE),
-        (0.0, 0.0),
+        Affine::translate((0.0, 0.0)),
     );
     transaction.commit().unwrap();
     let mut transaction = scene.transaction();
-    transaction.set_position(child, (4.0, 5.0));
+    transaction.set_transform(child, Affine::translate((4.0, 5.0)));
     transaction.commit().unwrap();
     let changes = scene.changes_since(SceneVersion::INITIAL).unwrap();
     assert!(changes.changed_nodes.contains(&child));
@@ -545,7 +657,7 @@ fn journal_gap_detects_remove_and_reinsert_of_the_same_node_id() {
             None,
             child,
             first,
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -559,7 +671,7 @@ fn journal_gap_detects_remove_and_reinsert_of_the_same_node_id() {
             None,
             child,
             replacement.clone(),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -594,7 +706,7 @@ fn long_content_delta_chain_compacts_into_state_pages() {
             None,
             RetainedNodeId::for_owner(82_001 + index),
             content.clone(),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         );
     }
     transaction.commit().unwrap();
@@ -641,7 +753,7 @@ fn appended_root_layer_fragment_is_visible_in_cached_execution_plan() {
             None,
             base,
             leaf(Color::from_rgb8(20, 40, 220)),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();
@@ -666,7 +778,7 @@ fn appended_root_layer_fragment_is_visible_in_cached_execution_plan() {
             None,
             child,
             leaf(Color::from_rgb8(220, 40, 20)),
-            (0.0, 0.0),
+            Affine::translate((0.0, 0.0)),
         )
         .commit()
         .unwrap();

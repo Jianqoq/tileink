@@ -34,6 +34,37 @@ fn dispatched_tile_at(dispatch_ix: u32) -> u32 {
     return dispatch_ix;
 }
 
+struct AffineRecord {
+    a: f32, b: f32, c: f32, d: f32, e: f32, f: f32,
+};
+fn affine_record_point(transform: AffineRecord, point: vec2<f32>) -> vec2<f32> {
+    return vec2<f32>(
+        transform.a * point.x + transform.c * point.y + transform.e,
+        transform.b * point.x + transform.d * point.y + transform.f,
+    );
+}
+
+fn transformed_rect_hits_tile(
+    transform: AffineRecord,
+    x0: i32,
+    y0: i32,
+    x1: i32,
+    y1: i32,
+    tile_x: u32,
+    tile_y: u32,
+) -> bool {
+    let p0 = affine_record_point(transform, vec2<f32>(f32(x0), f32(y0)));
+    let p1 = affine_record_point(transform, vec2<f32>(f32(x1), f32(y0)));
+    let p2 = affine_record_point(transform, vec2<f32>(f32(x0), f32(y1)));
+    let p3 = affine_record_point(transform, vec2<f32>(f32(x1), f32(y1)));
+    let min_x = min(min(p0.x, p1.x), min(p2.x, p3.x));
+    let min_y = min(min(p0.y, p1.y), min(p2.y, p3.y));
+    let max_x = max(max(p0.x, p1.x), max(p2.x, p3.x));
+    let max_y = max(max(p0.y, p1.y), max(p2.y, p3.y));
+    let tile_x0 = f32(tile_x * 16u);
+    let tile_y0 = f32(tile_y * 16u);
+    return min_x < tile_x0 + 16.0 && max_x > tile_x0 && min_y < tile_y0 + 16.0 && max_y > tile_y0;
+}
 struct DrawRecord {
     path_id: u32,
     glyph_run_id: u32,
@@ -49,7 +80,13 @@ struct DrawRecord {
     pixel_y0: i32,
     pixel_x1: i32,
     pixel_y1: i32,
+    local_pixel_x0: i32,
+    local_pixel_y0: i32,
+    local_pixel_x1: i32,
+    local_pixel_y1: i32,
     solid_rect: u32,
+    transform: AffineRecord,
+    inverse_transform: AffineRecord,
 };
 struct PathRecord {
     path_id: u32,
@@ -65,6 +102,7 @@ struct PathRecord {
     segment_start: u32,
     segment_capacity: u32,
     segment_count: u32,
+    transform: AffineRecord,
 };
 struct GlyphRunRecord {
     glyph_start: u32,
@@ -295,10 +333,22 @@ fn draw_sdf_clip_fully_covers_tile_at(draw_ix: u32, tile_x: u32, tile_y: u32) ->
         draw.sdf_shadow_offset == INVALID &&
         draw.sdf_len >= 9u &&
         sdf_blob[draw.sdf_offset] == GPU_SDF_RECT &&
-        sdf_rect_fully_covers_tile(draw.sdf_offset, tile_x, tile_y);
+        sdf_rect_fully_covers_tile(draw, tile_x, tile_y);
 }
 
-fn sdf_rect_fully_covers_tile(sdf_base: u32, tile_x: u32, tile_y: u32) -> bool {
+fn sdf_rect_fully_covers_tile(draw: DrawRecord, tile_x: u32, tile_y: u32) -> bool {
+    // A full-tile particle bypasses fine coverage entirely, so its proof must use the same
+    // coordinate space as SDF evaluation. Translation preserves the axis-aligned tile shape and
+    // stays on this fast path. Other affine transforms conservatively use per-pixel coverage;
+    // treating their world AABB as an exact SDF rectangle would paint outside the transformed
+    // geometry.
+    if (
+        draw.transform.a != 1.0 || draw.transform.b != 0.0 ||
+        draw.transform.c != 0.0 || draw.transform.d != 1.0
+    ) {
+        return false;
+    }
+    let sdf_base = draw.sdf_offset;
     // Conservative full-coverage test: pixel centers must stay inside the rect eroded by the
     // coverage ramp, and rounded corners use squared distances so coarse avoids sqrt work.
     let rect_min = vec2<f32>(
@@ -309,7 +359,8 @@ fn sdf_rect_fully_covers_tile(sdf_base: u32, tile_x: u32, tile_y: u32) -> bool {
         max(sdf_float_at(sdf_base, 1u), sdf_float_at(sdf_base, 3u)),
         max(sdf_float_at(sdf_base, 2u), sdf_float_at(sdf_base, 4u)),
     );
-    let tile_min = vec2<f32>(f32(tile_x * 16u), f32(tile_y * 16u)) + vec2<f32>(0.5);
+    let tile_min = vec2<f32>(f32(tile_x * 16u), f32(tile_y * 16u)) + vec2<f32>(0.5) -
+        vec2<f32>(draw.transform.e, draw.transform.f);
     let tile_max = tile_min + vec2<f32>(15.0);
     let rect_size = rect_max - rect_min;
     let min_size = vec2<f32>(15.0 + 2.0 * FULL_TILE_SDF_SOLID_INSET);

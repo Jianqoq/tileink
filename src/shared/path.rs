@@ -1,3 +1,5 @@
+use crate::shared::affine::GpuAffine;
+
 /// GPU-visible per-path geometry and scan allocation metadata.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
@@ -16,4 +18,6 @@ pub struct PathRecord {
     pub segment_start: u32,
     pub segment_capacity: u32,
     pub segment_count: u32,
+    /// Local-to-physical transform applied by scan shaders before tile traversal.
+    pub transform: GpuAffine,
 }

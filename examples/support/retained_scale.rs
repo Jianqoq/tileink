@@ -20,6 +20,7 @@ pub enum Scenario {
     LateResourceRevision,
     AllRevisions,
     OneMove,
+    OneAffine,
     LiquidGlassMove,
     AddRemove,
     LayerAddRemove,
@@ -39,7 +40,7 @@ pub enum Scenario {
 }
 
 impl Scenario {
-    pub const ALL: [Self; 23] = [
+    pub const ALL: [Self; 24] = [
         Self::Static,
         Self::OneRevision,
         Self::VariableLength,
@@ -47,6 +48,7 @@ impl Scenario {
         Self::LateResourceRevision,
         Self::AllRevisions,
         Self::OneMove,
+        Self::OneAffine,
         Self::LiquidGlassMove,
         Self::AddRemove,
         Self::LayerAddRemove,
@@ -74,6 +76,7 @@ impl Scenario {
             Self::LateResourceRevision => "late-resource-revision",
             Self::AllRevisions => "all-revisions",
             Self::OneMove => "one-move",
+            Self::OneAffine => "one-affine",
             Self::LiquidGlassMove => "liquid-glass-move",
             Self::AddRemove => "add-remove",
             Self::LayerAddRemove => "layer-add-remove",
@@ -110,6 +113,7 @@ pub struct Workload {
     resource_first: Arc<Canvas>,
     resource_longer: Arc<Canvas>,
     liquid_glass: Arc<Canvas>,
+    affine_path: Arc<Canvas>,
 }
 
 impl Workload {
@@ -130,6 +134,7 @@ impl Workload {
             resource_first: image_scene(image.clone(), false),
             resource_longer: image_scene(image, true),
             liquid_glass: liquid_glass_scene(),
+            affine_path: affine_path_scene(),
         }
     }
 
@@ -153,7 +158,7 @@ impl Workload {
                         None,
                         many_layer_leaf_id(self.count, index),
                         self.first.clone(),
-                        position,
+                        Affine::translate(position),
                     );
             }
             transaction.commit().unwrap();
@@ -197,6 +202,8 @@ impl Workload {
         for index in 0..self.count {
             let child = if matches!(self.scenario, Scenario::LiquidGlassMove) && index == 0 {
                 self.liquid_glass.clone()
+            } else if matches!(self.scenario, Scenario::OneAffine) && index == 0 {
+                self.affine_path.clone()
             } else if matches!(self.scenario, Scenario::LateResourceRevision)
                 && index + 1 == self.count
             {
@@ -209,7 +216,7 @@ impl Workload {
                 None,
                 node_id(index + 1),
                 child,
-                position(index, self.count),
+                Affine::translate(position(index, self.count)),
             );
         }
         if matches!(self.scenario, Scenario::NestedLayerAddRemove) {
@@ -226,7 +233,7 @@ impl Workload {
                     None,
                     node_id(self.count + 7),
                     self.first.clone(),
-                    (0.0, 0.0),
+                    Affine::IDENTITY,
                 );
         }
         if matches!(
@@ -240,7 +247,7 @@ impl Workload {
                     None,
                     node_id(self.count + 8),
                     self.second.clone(),
-                    (16.0, 16.0),
+                    Affine::translate((16.0, 16.0)),
                 );
         }
         transaction.commit().unwrap();
@@ -312,7 +319,19 @@ impl Workload {
                 if !even {
                     position.0 += 16.0;
                 }
-                transaction.set_position(first_node, position);
+                transaction.set_transform(first_node, Affine::translate(position));
+            }
+            Scenario::OneAffine => {
+                let position = position(0, self.count);
+                let angle = if even { -0.35 } else { 0.35 };
+                let scale = if even { 0.85 } else { 1.15 };
+                transaction.set_transform(
+                    first_node,
+                    Affine::translate((position.0 + 4.0, position.1 + 4.0))
+                        * Affine::rotate(angle)
+                        * Affine::scale(scale)
+                        * Affine::translate((-4.0, -4.0)),
+                );
             }
             Scenario::AddRemove => {
                 if even {
@@ -321,7 +340,7 @@ impl Workload {
                         None,
                         extra,
                         self.second.clone(),
-                        (16.0, 16.0),
+                        Affine::translate((16.0, 16.0)),
                     );
                 } else {
                     transaction.remove_subtree(extra);
@@ -343,7 +362,7 @@ impl Workload {
                             None,
                             extra_layer_leaf,
                             self.second.clone(),
-                            (16.0, 16.0),
+                            Affine::translate((16.0, 16.0)),
                         );
                 } else {
                     transaction.remove_subtree(extra_layer);
@@ -363,7 +382,7 @@ impl Workload {
                             None,
                             extra_layer_leaf,
                             self.second.clone(),
-                            (16.0, 16.0),
+                            Affine::translate((16.0, 16.0)),
                         );
                 } else {
                     transaction.remove_subtree(extra_layer);
@@ -423,7 +442,7 @@ impl Workload {
                             (index + 1 < self.count).then(|| node_id(index + 2)),
                             id,
                             self.first.clone(),
-                            position(index, self.count),
+                            Affine::translate(position(index, self.count)),
                         );
                     }
                 }
@@ -509,6 +528,18 @@ fn many_layer_leaf_id(count: usize, index: usize) -> RetainedNodeId {
 fn rect_scene(color: Color) -> Arc<Canvas> {
     let mut scene = Canvas::new(8, 8, 1.0);
     scene.push_rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::ZERO, color);
+    Arc::new(scene)
+}
+
+fn affine_path_scene() -> Arc<Canvas> {
+    let mut scene = Canvas::new(8, 8, 1.0);
+    scene.push_path(
+        Rect::new(0.5, 0.5, 7.5, 7.5).to_path(0.1),
+        Color::from_rgb8(30, 130, 220),
+        Affine::IDENTITY,
+        tileink::FillRule::NonZero,
+        0.1,
+    );
     Arc::new(scene)
 }
 

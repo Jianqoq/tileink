@@ -139,7 +139,7 @@ impl StressWorkload {
                             None,
                             extra_leaf_id(),
                             canvas,
-                            (0.0, 0.0),
+                            Affine::IDENTITY,
                         )
                         .commit()
                         .unwrap();
@@ -171,7 +171,13 @@ impl StressWorkload {
             parent = RetainedParent::content(layer);
         }
         transaction
-            .insert_scene(parent, None, leaf_id(), self.first.clone(), (0.0, 0.0))
+            .insert_scene(
+                parent,
+                None,
+                leaf_id(),
+                self.first.clone(),
+                Affine::IDENTITY,
+            )
             .commit()
             .unwrap();
         scene
@@ -186,7 +192,7 @@ impl StressWorkload {
             None,
             leaf_id(),
             self.first.clone(),
-            (0.0, 0.0),
+            Affine::IDENTITY,
         );
         for index in 0..self.count {
             let layer = layer_id(index);
@@ -197,7 +203,7 @@ impl StressWorkload {
                     None,
                     layer_leaf_id(index),
                     self.first.clone(),
-                    (0.0, 0.0),
+                    Affine::IDENTITY,
                 );
         }
         transaction.commit().unwrap();
@@ -217,7 +223,7 @@ impl StressWorkload {
                     None,
                     layer_leaf_id(index),
                     self.first.clone(),
-                    (0.0, 0.0),
+                    Affine::IDENTITY,
                 );
         }
         transaction.commit().unwrap();
@@ -234,7 +240,7 @@ impl StressWorkload {
                 None,
                 leaf_id(),
                 self.first.clone(),
-                (0.0, 0.0),
+                Affine::IDENTITY,
             )
             .commit()
             .unwrap();
@@ -251,7 +257,7 @@ impl StressWorkload {
                 None,
                 flat_leaf_id(index),
                 self.first.clone(),
-                position(index, self.count),
+                Affine::translate(position(index, self.count)),
             );
         }
         transaction.commit().unwrap();

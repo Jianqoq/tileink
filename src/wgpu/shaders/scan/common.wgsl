@@ -19,6 +19,10 @@ struct Line {
     p1: vec2<f32>,
 };
 
+struct AffineRecord {
+    a: f32, b: f32, c: f32, d: f32, e: f32, f: f32,
+};
+
 struct PathRecord {
     path_id: u32,
     line_count: u32,
@@ -33,7 +37,15 @@ struct PathRecord {
     segment_start: u32,
     segment_capacity: u32,
     segment_count: u32,
+    transform: AffineRecord,
 };
+
+fn affine_point(transform: AffineRecord, point: vec2<f32>) -> vec2<f32> {
+    return vec2<f32>(
+        transform.a * point.x + transform.c * point.y + transform.e,
+        transform.b * point.x + transform.d * point.y + transform.f,
+    );
+}
 
 struct GpuScanChunk {
     path_id: u32,

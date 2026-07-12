@@ -1,3 +1,4 @@
+pub(crate) mod affine;
 pub(crate) mod bounds;
 pub(crate) mod brush;
 pub(crate) mod cpu_time;

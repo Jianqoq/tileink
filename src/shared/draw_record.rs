@@ -1,4 +1,5 @@
 use crate::shared::{
+    affine::GpuAffine,
     bounds::{PixelBounds, TileBbox},
     fill::FillRule,
 };
@@ -70,8 +71,13 @@ pub struct DrawRecord {
     pub tag: DrawTagWord,
     pub fill_rule: FillRuleWord,
     pub pixel_bounds: PixelBounds,
+    /// Bounds before the retained node transform; transform-only updates derive world bounds from
+    /// this stable local rectangle without touching geometry.
+    pub local_pixel_bounds: PixelBounds,
     /// Solid `FillRect` fast path: coarse emits `Color` only (no flatten/scan).
     pub solid_rect: u32,
+    pub transform: GpuAffine,
+    pub inverse_transform: GpuAffine,
 }
 
 impl DrawRecord {
@@ -154,7 +160,7 @@ mod tests {
         assert_eq!(DrawRecord::NONE, u32::MAX);
         assert_eq!(size_of::<DrawTagWord>(), size_of::<u32>());
         assert_eq!(size_of::<FillRuleWord>(), size_of::<u32>());
-        assert_eq!(size_of::<DrawRecord>(), 60);
+        assert_eq!(size_of::<DrawRecord>(), 124);
         assert_eq!(align_of::<DrawRecord>(), align_of::<u32>());
     }
 }

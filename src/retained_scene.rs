@@ -127,6 +127,7 @@ pub enum RetainedSceneError {
     ScaleMismatch,
     UnclosedCanvas,
     InvalidPosition,
+    InvalidTransform,
     InvalidSize,
 }
 
@@ -145,7 +146,10 @@ impl fmt::Display for RetainedSceneError {
                 write!(f, "retained child canvas scale does not match the scene")
             }
             Self::UnclosedCanvas => write!(f, "retained child canvas has unclosed layers"),
-            Self::InvalidPosition => write!(f, "retained node position must be finite"),
+            Self::InvalidPosition => write!(f, "retained geometry contains non-finite coordinates"),
+            Self::InvalidTransform => {
+                write!(f, "retained node transform must be finite and invertible")
+            }
             Self::InvalidSize => write!(
                 f,
                 "retained scene size and scale must be positive and finite"
@@ -161,7 +165,7 @@ enum NodeKind {
     Group,
     Scene {
         canvas: Arc<Canvas>,
-        position: Point,
+        transform: Affine,
     },
     Layer(RetainedLayerDescriptor),
 }
@@ -355,7 +359,7 @@ struct SceneChunk {
     instance: u64,
     generation: u64,
     source_canvas: Option<Arc<Canvas>>,
-    position_bits: Option<(u64, u64)>,
+    transform_bits: Option<[u64; 6]>,
     // Chunks have a single owner. Keeping their mutable encoding behind an Arc made every
     // revision pay an atomic uniqueness check and made newly inserted chunks allocate twice.
     canvas: Canvas,
@@ -411,7 +415,7 @@ impl BoundsInfluence {
 #[derive(Clone, Copy)]
 struct NodeRebuild {
     plan_dirty: bool,
-    position_only: bool,
+    transform_only: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -607,6 +611,7 @@ impl PersistentSceneMaterializer {
         };
         changes.invalidate_all |= journal_gap;
         let compactions_before = self.arena_compactions();
+        let immutable_remaps_before = self.immutable_remap_compactions();
         let surface_changed = changes.surface_changed;
         if surface_changed && self.canvas.scale_factor().to_bits() != scene.scale.to_bits() {
             self.rebuild_all(scene);
@@ -782,7 +787,7 @@ impl PersistentSceneMaterializer {
                 .flatten();
             let rebuilt = self.rebuild_node(scene, *id);
             plan_dirty |= rebuilt.plan_dirty;
-            if rebuilt.plan_dirty && rebuilt.position_only {
+            if rebuilt.plan_dirty && rebuilt.transform_only {
                 position_plan_patches.push(*id);
             } else {
                 unpatchable_plan_change |= rebuilt.plan_dirty;
@@ -903,7 +908,7 @@ impl PersistentSceneMaterializer {
         if compacted {
             // Compaction remaps every live physical allocation in the affected arena. Re-encode
             // all cross-arena offsets once, then rebuild command draw references atomically.
-            self.remap_all_chunks();
+            self.remap_all_chunks(self.immutable_remap_compactions() != immutable_remaps_before);
             commands_dirty = true;
             plan_dirty = true;
         }
@@ -1417,7 +1422,7 @@ impl PersistentSceneMaterializer {
                 arenas.segments.resize(chunk.segments, new_segments);
             }
             if !chunk.canvas.path_records.is_empty() {
-                Self::remap_chunk_data(arenas, chunk);
+                Self::remap_chunk_data(arenas, chunk, false);
             }
         }
     }
@@ -1425,7 +1430,7 @@ impl PersistentSceneMaterializer {
     /// Re-encodes one node and classifies whether its execution plan needs synchronization.
     fn rebuild_node(&mut self, scene: &RetainedScene, id: RetainedNodeId) -> NodeRebuild {
         let node = &scene.nodes[&id];
-        let (source_canvas, position_bits) = scene_node_placement(node);
+        let (source_canvas, transform_bits) = scene_node_placement(node);
         let updated = {
             // Borrow the materializer fields independently so an existing chunk stays in its map
             // slot while encoding, arena remapping, and resource refcounts are updated.
@@ -1437,43 +1442,19 @@ impl PersistentSceneMaterializer {
                 ..
             } = self;
             chunks.get_mut(&id).map(|chunk| {
-                let position_only = chunk
+                let transform_only = chunk
                     .source_canvas
                     .as_ref()
                     .zip(source_canvas.as_ref())
                     .is_some_and(|(old, new)| Arc::ptr_eq(old, new))
-                    && chunk.position_bits != position_bits
+                    && chunk.transform_bits != transform_bits
                     && source_canvas.is_some();
-                if position_only {
-                    let (old_x, old_y) = chunk.position_bits.unwrap();
-                    let (new_x, new_y) = position_bits.unwrap();
-                    chunk.canvas.translate_scene(Point::new(
-                        f64::from_bits(new_x) - f64::from_bits(old_x),
-                        f64::from_bits(new_y) - f64::from_bits(old_y),
-                    ));
+                if transform_only {
+                    let transform = Affine::new(transform_bits.unwrap().map(f64::from_bits));
+                    chunk.canvas.set_retained_transform(transform);
                     let old_plan = chunk.plan_fingerprint;
                     let new_plan = chunk.canvas.execution_plan_fingerprint();
                     let mut moved = false;
-                    if !chunk.canvas.brush_blob.is_empty() {
-                        arenas
-                            .brushes
-                            .write(chunk.brushes, &chunk.canvas.brush_blob);
-                    }
-                    if !chunk.canvas.sdf_blob.is_empty() {
-                        arenas.sdfs.write(chunk.sdfs, &chunk.canvas.sdf_blob);
-                    }
-                    if !chunk.canvas.sdf_shadow_blob.is_empty() {
-                        arenas
-                            .shadows
-                            .write(chunk.shadows, &chunk.canvas.sdf_shadow_blob);
-                    }
-                    if let Some(glyphs) = chunk.glyphs {
-                        arenas
-                            .glyphs
-                            .as_mut()
-                            .expect("glyph allocation requires a glyph arena")
-                            .write(glyphs, &chunk.canvas.text_glyphs);
-                    }
                     if !chunk.canvas.path_records.is_empty() {
                         moved |= arenas.backdrops.resize(
                             chunk.backdrops,
@@ -1485,7 +1466,7 @@ impl PersistentSceneMaterializer {
                     }
                     chunk.instance = node.instance;
                     chunk.generation = node.generation;
-                    chunk.position_bits = position_bits;
+                    chunk.transform_bits = transform_bits;
                     if old_plan != new_plan {
                         chunk.plain_fragment = is_plain_fragment(&chunk.canvas);
                     }
@@ -1493,11 +1474,13 @@ impl PersistentSceneMaterializer {
                     if !chunk.backdrop_dependencies.is_empty() {
                         chunk.backdrop_dependencies = backdrop_dependencies(&chunk.canvas);
                     }
-                    Self::remap_chunk_data(arenas, chunk);
+                    // Only transform-bearing path/draw records and scan allocation metadata
+                    // changed. Local lines, paint/SDF blobs, glyphs, and runs remain immutable.
+                    Self::remap_chunk_data(arenas, chunk, false);
                     return (
                         NodeRebuild {
                             plan_dirty: moved || old_plan != new_plan,
-                            position_only: !moved,
+                            transform_only: !moved,
                         },
                         false,
                     );
@@ -1548,18 +1531,18 @@ impl PersistentSceneMaterializer {
                 chunk.instance = node.instance;
                 chunk.generation = node.generation;
                 chunk.source_canvas = source_canvas.clone();
-                chunk.position_bits = position_bits;
+                chunk.transform_bits = transform_bits;
                 if old_plan != new_plan {
                     chunk.plain_fragment = is_plain_fragment(&chunk.canvas);
                 }
                 chunk.plan_fingerprint = new_plan;
                 chunk.backdrop_dependencies = backdrop_dependencies(&chunk.canvas);
                 Self::add_chunk_resources(resource_refs, canvas, &chunk.canvas.scene_images);
-                Self::remap_chunk_data(arenas, chunk);
+                Self::remap_chunk_data(arenas, chunk, true);
                 (
                     NodeRebuild {
                         plan_dirty: moved || old_plan != new_plan,
-                        position_only: false,
+                        transform_only: false,
                     },
                     true,
                 )
@@ -1579,7 +1562,7 @@ impl PersistentSceneMaterializer {
             instance: node.instance,
             generation: node.generation,
             source_canvas,
-            position_bits,
+            transform_bits,
             lines: self.arenas.lines.insert(&encoded.lines),
             paths: self.arenas.paths.insert(&encoded.path_records),
             draws: self.arenas.draws.insert(&encoded.draw_records),
@@ -1606,12 +1589,12 @@ impl PersistentSceneMaterializer {
             &mut self.canvas,
             &chunk.canvas.scene_images,
         );
-        Self::remap_chunk_data(&mut self.arenas, &chunk);
+        Self::remap_chunk_data(&mut self.arenas, &chunk, true);
         self.chunks.insert(id, chunk);
         self.refresh_chunk_dependencies(id);
         NodeRebuild {
             plan_dirty: true,
-            position_only: false,
+            transform_only: false,
         }
     }
 
@@ -1636,7 +1619,11 @@ impl PersistentSceneMaterializer {
         }
     }
 
-    fn remap_chunk_data(arenas: &mut MaterializedArenas, chunk: &SceneChunk) {
+    fn remap_chunk_data(
+        arenas: &mut MaterializedArenas,
+        chunk: &SceneChunk,
+        include_immutable_geometry: bool,
+    ) {
         let line_base = if chunk.canvas.lines.is_empty() {
             0
         } else {
@@ -1680,7 +1667,7 @@ impl PersistentSceneMaterializer {
             arenas.segments.range(chunk.segments).start as u32
         };
 
-        if !chunk.canvas.lines.is_empty() {
+        if include_immutable_geometry && !chunk.canvas.lines.is_empty() {
             arenas
                 .lines
                 .write_mapped(chunk.lines, &chunk.canvas.lines, |mut line| {
@@ -1723,7 +1710,9 @@ impl PersistentSceneMaterializer {
                     draw
                 });
         }
-        if let Some(run_allocation) = chunk.runs.filter(|_| !chunk.canvas.text_runs.is_empty()) {
+        if include_immutable_geometry
+            && let Some(run_allocation) = chunk.runs.filter(|_| !chunk.canvas.text_runs.is_empty())
+        {
             arenas
                 .runs
                 .write_mapped(run_allocation, &chunk.canvas.text_runs, |run| TextRun {
@@ -1745,9 +1734,10 @@ impl PersistentSceneMaterializer {
         match &node.kind {
             NodeKind::Scene {
                 canvas: child,
-                position,
+                transform,
             } => {
-                canvas.append(child, *position);
+                canvas.append(child, Point::ZERO);
+                canvas.set_retained_transform(*transform);
             }
             NodeKind::Layer(layer) => {
                 match layer {
@@ -1906,10 +1896,21 @@ impl PersistentSceneMaterializer {
             + self.arenas.segments.compactions()
     }
 
-    fn remap_all_chunks(&mut self) {
+    /// Path compaction changes line-to-path references, while glyph compaction changes run glyph
+    /// bases. Compaction of every other arena only requires path/draw record remapping.
+    fn immutable_remap_compactions(&self) -> u64 {
+        self.arenas.paths.compactions()
+            + self
+                .arenas
+                .glyphs
+                .as_ref()
+                .map_or(0, SceneArena::compactions)
+    }
+
+    fn remap_all_chunks(&mut self, include_immutable_geometry: bool) {
         let Self { chunks, arenas, .. } = self;
         for chunk in chunks.values() {
-            Self::remap_chunk_data(arenas, chunk);
+            Self::remap_chunk_data(arenas, chunk, include_immutable_geometry);
         }
     }
 
@@ -4181,7 +4182,10 @@ fn inactive_draw() -> DrawRecord {
         tag: DrawTagWord::default(),
         fill_rule: FillRuleWord::default(),
         pixel_bounds: Default::default(),
+        local_pixel_bounds: Default::default(),
         solid_rect: 0,
+        transform: Default::default(),
+        inverse_transform: Default::default(),
     }
 }
 
@@ -4194,11 +4198,11 @@ fn is_plain_fragment(canvas: &Canvas) -> bool {
             .all(|op| matches!(op, crate::shared::execution::ExecOp::DrawBatch { .. }))
 }
 
-fn scene_node_placement(node: &SceneNode) -> (Option<Arc<Canvas>>, Option<(u64, u64)>) {
+fn scene_node_placement(node: &SceneNode) -> (Option<Arc<Canvas>>, Option<[u64; 6]>) {
     match &node.kind {
-        NodeKind::Scene { canvas, position } => (
+        NodeKind::Scene { canvas, transform } => (
             Some(canvas.clone()),
-            Some((position.x.to_bits(), position.y.to_bits())),
+            Some(transform.as_coeffs().map(f64::to_bits)),
         ),
         _ => (None, None),
     }
@@ -4405,8 +4409,13 @@ impl RetainedScene {
             NodeKind::Group => self.append_children(canvas, RetainedParent::content(id)),
             NodeKind::Scene {
                 canvas: child,
-                position,
-            } => canvas.append(child, *position),
+                transform,
+            } => {
+                let mut transformed = Canvas::new(self.width, self.height, self.scale);
+                transformed.append(child, Point::ZERO);
+                transformed.set_retained_transform(*transform);
+                canvas.append(&transformed, Point::ZERO);
+            }
             NodeKind::Layer(layer) => {
                 match layer {
                     RetainedLayerDescriptor::ClipPath {
@@ -4536,14 +4545,14 @@ impl RetainedScene {
                     .nodes
                     .get_mut(&id)
                     .ok_or(RetainedSceneError::MissingNode(id))?;
-                let NodeKind::Scene { position, .. } = &node.kind else {
+                let NodeKind::Scene { transform, .. } = &node.kind else {
                     return Err(RetainedSceneError::MissingNode(id));
                 };
                 let old_kind = node.kind.clone();
                 let old_generation = node.generation;
                 node.kind = NodeKind::Scene {
                     canvas,
-                    position: *position,
+                    transform: *transform,
                 };
                 node.generation = node.generation.wrapping_add(1);
                 changes.changed_nodes.insert(id);
@@ -4553,25 +4562,25 @@ impl RetainedScene {
                     generation: old_generation,
                 })
             }
-            Mutation::SetPosition { id, position } => {
-                validate_position(position)?;
+            Mutation::SetTransform { id, transform } => {
+                validate_transform(transform)?;
                 let node = self
                     .nodes
                     .get_mut(&id)
                     .ok_or(RetainedSceneError::MissingNode(id))?;
                 let NodeKind::Scene {
                     canvas: current_canvas,
-                    position: current,
+                    transform: current,
                 } = &node.kind
                 else {
                     return Err(RetainedSceneError::MissingNode(id));
                 };
-                if *current != position {
+                if *current != transform {
                     let old_kind = node.kind.clone();
                     let old_generation = node.generation;
                     node.kind = NodeKind::Scene {
                         canvas: current_canvas.clone(),
-                        position,
+                        transform,
                     };
                     node.generation = node.generation.wrapping_add(1);
                     changes.changed_nodes.insert(id);
@@ -4900,9 +4909,9 @@ enum Mutation {
         id: RetainedNodeId,
         canvas: Arc<Canvas>,
     },
-    SetPosition {
+    SetTransform {
         id: RetainedNodeId,
-        position: Point,
+        transform: Affine,
     },
     UpdateLayer {
         id: RetainedNodeId,
@@ -4968,16 +4977,13 @@ impl RetainedSceneTransaction<'_> {
         before: Option<RetainedNodeId>,
         id: RetainedNodeId,
         canvas: Arc<Canvas>,
-        position: impl Into<Point>,
+        transform: Affine,
     ) -> &mut Self {
         self.mutations.push(Mutation::Insert {
             parent,
             before,
             id,
-            kind: NodeKind::Scene {
-                canvas,
-                position: position.into(),
-            },
+            kind: NodeKind::Scene { canvas, transform },
         });
         self
     }
@@ -5018,11 +5024,9 @@ impl RetainedSceneTransaction<'_> {
         self
     }
 
-    pub fn set_position(&mut self, id: RetainedNodeId, position: impl Into<Point>) -> &mut Self {
-        self.mutations.push(Mutation::SetPosition {
-            id,
-            position: position.into(),
-        });
+    pub fn set_transform(&mut self, id: RetainedNodeId, transform: Affine) -> &mut Self {
+        self.mutations
+            .push(Mutation::SetTransform { id, transform });
         self
     }
 
@@ -5087,10 +5091,13 @@ fn validate_size(width: u32, height: u32, scale: f32) -> Result<(), RetainedScen
         .ok_or(RetainedSceneError::InvalidSize)
 }
 
-fn validate_position(position: Point) -> Result<(), RetainedSceneError> {
-    (position.x.is_finite() && position.y.is_finite())
+fn validate_transform(transform: Affine) -> Result<(), RetainedSceneError> {
+    let coefficients = transform.as_coeffs();
+    (coefficients.iter().all(|value| value.is_finite())
+        && (coefficients[0] * coefficients[3] - coefficients[1] * coefficients[2]).abs()
+            > f64::EPSILON)
         .then_some(())
-        .ok_or(RetainedSceneError::InvalidPosition)
+        .ok_or(RetainedSceneError::InvalidTransform)
 }
 
 fn validate_canvas(canvas: &Canvas, scale: f32) -> Result<(), RetainedSceneError> {
@@ -5104,9 +5111,9 @@ fn validate_canvas(canvas: &Canvas, scale: f32) -> Result<(), RetainedSceneError
 
 fn validate_kind(kind: &NodeKind, scale: f32) -> Result<(), RetainedSceneError> {
     match kind {
-        NodeKind::Scene { canvas, position } => {
+        NodeKind::Scene { canvas, transform } => {
             validate_canvas(canvas, scale)?;
-            validate_position(*position)
+            validate_transform(*transform)
         }
         NodeKind::Layer(layer) => validate_layer(layer),
         NodeKind::Group => Ok(()),
