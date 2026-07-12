@@ -49,6 +49,10 @@ harness = false
 name = "retained_dirty_ratio"
 harness = false
 
+[[bench]]
+name = "retained_stress"
+harness = false
+
 [[example]]
 name = "wgpu_examples"
 path = "examples/wgpu/all.rs"

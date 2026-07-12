@@ -121,7 +121,7 @@ impl<T: Copy> SceneArena<T> {
         {
             *target = map(source);
         }
-        self.mark_dirty(allocation.start..allocation.start + allocation.capacity);
+        self.mark_dirty(allocation.start..allocation.start + allocation.len);
     }
 
     pub(crate) fn remove(&mut self, id: ArenaAllocation) -> bool {
@@ -130,6 +130,8 @@ impl<T: Copy> SceneArena<T> {
         };
         self.live_len -= allocation.len;
         self.values[allocation.start..allocation.start + allocation.capacity].fill(self.vacant);
+        // GPU consumers address the arena's physical high-water range. Clearing only the logical
+        // length leaves stale records in the released padding until that capacity is reused.
         self.mark_dirty(allocation.start..allocation.start + allocation.capacity);
         self.release_range(allocation.start..allocation.start + allocation.capacity);
         true
@@ -205,6 +207,9 @@ impl<T: Copy> SceneArena<T> {
         let start = self.values.len();
         let capacity = len.saturating_add(len / 2).max(len);
         self.values.resize(start + capacity, self.vacant);
+        // New GPU buffer bytes are not guaranteed to contain the arena's vacant sentinel. Upload
+        // the padding once; later same-size rewrites can continue dirtying only the logical range.
+        self.mark_dirty(start..start + capacity);
         Allocation {
             start,
             len,
@@ -217,7 +222,7 @@ impl<T: Copy> SceneArena<T> {
             return;
         }
         self.values[allocation.start..allocation.start + data.len()].copy_from_slice(data);
-        self.mark_dirty(allocation.start..allocation.start + allocation.capacity);
+        self.mark_dirty(allocation.start..allocation.start + allocation.len);
     }
 
     fn release_range(&mut self, range: Range<usize>) {
@@ -330,13 +335,23 @@ mod tests {
     }
 
     #[test]
-    fn allocation_reports_coalesced_dirty_ranges() {
+    fn fresh_allocation_marks_vacant_gpu_padding_dirty() {
+        let mut arena = SceneArena::new(0u32);
+        let allocation = arena.insert(&[1, 2]);
+
+        assert_eq!(arena.range(allocation), 0..2);
+        assert_eq!(arena.values(), &[1, 2, 0]);
+        assert_eq!(arena.take_dirty_ranges(), vec![0..3]);
+    }
+
+    #[test]
+    fn allocation_reports_only_coalesced_logical_dirty_ranges() {
         let mut arena = SceneArena::new(0u32);
         let first = arena.insert(&[1, 2]);
         let _ = arena.take_dirty_ranges();
         arena.replace(first, &[3, 4]);
         arena.replace(first, &[5, 6]);
-        assert_eq!(arena.take_dirty_ranges(), vec![0..3]);
+        assert_eq!(arena.take_dirty_ranges(), vec![0..2]);
     }
 
     #[test]
@@ -348,7 +363,7 @@ mod tests {
         arena.write_mapped(allocation, &[1u16, 2, 3], |value| u32::from(value) * 4);
 
         assert_eq!(&arena.values()[arena.range(allocation)], &[4, 8, 12]);
-        assert_eq!(arena.take_dirty_ranges(), vec![0..4]);
+        assert_eq!(arena.take_dirty_ranges(), vec![0..3]);
     }
 
     #[test]

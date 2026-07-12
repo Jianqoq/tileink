@@ -222,10 +222,15 @@ impl ExecPlan {
     /// Appends an already-compiled independent fragment and gives its batches fresh stable IDs.
     /// Draw-order arrays stay shared: persistent canvases provide painter keys and a separately
     /// patched physical-draw-to-batch table.
-    pub(crate) fn append_fragment(
+    /// Inserts an independently compiled root fragment without rebuilding unrelated plan ops.
+    /// Layer-stack storage remains append-only, while the small root op sequence preserves scene
+    /// painter order for middle insertion and reparenting.
+    pub(crate) fn insert_fragment(
         &mut self,
+        index: usize,
         mut fragment: ExecPlan,
     ) -> (Range<usize>, Vec<(usize, u32)>) {
+        assert!(index <= self.ops.len());
         let stack_base = self.layer_stack_data.len();
         offset_layer_stack_ranges(&mut fragment.ops, stack_base);
         self.layer_stack_data.extend(fragment.layer_stack_data);
@@ -233,12 +238,12 @@ impl ExecPlan {
         remap_fragment_batches(&mut fragment.ops, &mut next_batch);
         let mut draw_batches = Vec::new();
         collect_fragment_draw_batches(&fragment.ops, &mut draw_batches);
-        let start = self.ops.len();
-        self.ops.extend(fragment.ops);
+        let len = fragment.ops.len();
+        self.ops.splice(index..index, fragment.ops);
         self.refresh_retained_batch_ids();
         self.refresh_layer_stack_locations();
         self.refresh_direct_root_batch_ops();
-        (start..self.ops.len(), draw_batches)
+        (index..index + len, draw_batches)
     }
 
     /// Locates a separately compiled root subtree inside this plan. The retained content owner
@@ -296,17 +301,21 @@ impl ExecPlan {
         true
     }
 
-    pub(crate) fn append_plain_batch(&mut self, draws: Vec<usize>) -> Option<u32> {
+    pub(crate) fn insert_plain_batch(&mut self, index: usize, draws: Vec<usize>) -> Option<u32> {
         if draws.is_empty() {
             return None;
         }
+        assert!(index <= self.ops.len());
         let batch_id = max_batch_id(&self.ops).map_or(0, |batch| batch.saturating_add(1));
-        self.ops.push(ExecOp::DrawBatch {
-            draws: Arc::new(draws),
-            batch_id,
-            owners: Arc::new(Vec::new()),
-            layer_stack: 0..0,
-        });
+        self.ops.insert(
+            index,
+            ExecOp::DrawBatch {
+                draws: Arc::new(draws),
+                batch_id,
+                owners: Arc::new(Vec::new()),
+                layer_stack: 0..0,
+            },
+        );
         self.refresh_direct_root_batch_ops();
         Some(batch_id)
     }

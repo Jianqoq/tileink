@@ -77,10 +77,12 @@ pub(crate) struct GpuLengthOverrides {
 }
 
 impl GpuBufferLengths {
+    #[cfg(test)]
     pub(crate) fn from_scene(canvas: &Canvas) -> Self {
         Self::from_scene_with_text(canvas, None)
     }
 
+    #[cfg(test)]
     pub(crate) fn from_scene_with_text(canvas: &Canvas, text: Option<&PreparedTextData>) -> Self {
         let plan = canvas.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
         let tiles_width = canvas.width_in_tiles() as usize;
@@ -296,6 +298,7 @@ impl TileDrawBins {
         self.active_batches.clone()
     }
 
+    #[cfg(test)]
     fn tile_draws(&self, tile: usize) -> Vec<u32> {
         let mut draws = Vec::new();
         self.for_each_tile_draw(tile, |draw| draws.push(draw));
@@ -953,6 +956,7 @@ pub(crate) fn coarse_glyph_capacity_for_draw(
         .sum()
 }
 
+#[cfg(test)]
 fn tile_draw_counts_for_order(
     draw_records: &[DrawRecord],
     draw_order: &[u32],
@@ -1272,6 +1276,7 @@ pub(crate) struct GpuScanChunkRange {
 }
 
 #[cfg(test)]
+#[cfg(test)]
 pub(crate) fn build_scan_chunks(canvas: &Canvas) -> (Vec<GpuScanChunk>, Vec<GpuScanChunkRange>) {
     let lengths = GpuBufferLengths::from_scene(canvas);
     let mut chunks = Vec::with_capacity(lengths.scan_chunk_count);
@@ -1280,6 +1285,7 @@ pub(crate) fn build_scan_chunks(canvas: &Canvas) -> (Vec<GpuScanChunk>, Vec<GpuS
     (chunks, ranges)
 }
 
+#[cfg(test)]
 pub(crate) fn build_scan_chunks_into(
     canvas: &Canvas,
     scan_chunk_count: usize,
@@ -1706,6 +1712,7 @@ fn merge_range(target: &mut Vec<Range<usize>>, mut range: Range<usize>) {
 }
 
 #[cfg(test)]
+#[cfg(test)]
 pub(crate) fn build_cumsum_plan(canvas: &Canvas) -> GpuCumsumPlan {
     let lengths = GpuBufferLengths::from_scene(canvas);
     let mut plan = GpuCumsumPlan::default();
@@ -1713,6 +1720,7 @@ pub(crate) fn build_cumsum_plan(canvas: &Canvas) -> GpuCumsumPlan {
     plan
 }
 
+#[cfg(test)]
 pub(crate) fn build_cumsum_plan_into(
     canvas: &Canvas,
     lengths: GpuBufferLengths,

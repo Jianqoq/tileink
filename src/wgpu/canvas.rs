@@ -36,7 +36,7 @@ pub(crate) struct WgpuSceneBuffers {
     // Texture views bound through the large-image texture table.
     image_resource_texture_views: Vec<::wgpu::TextureView>,
     // 1x1 fallback texture used to pad unused texture-table slots.
-    image_resource_dummy_texture: ::wgpu::Texture,
+    _image_resource_dummy_texture: ::wgpu::Texture,
     // View for the dummy texture, shared by fallback and table padding bindings.
     image_resource_dummy_texture_view: ::wgpu::TextureView,
     image_resource_sampler: ::wgpu::Sampler,
@@ -91,7 +91,7 @@ impl WgpuSceneBuffers {
             image_resource_atlas_view,
             image_resource_textures: Vec::new(),
             image_resource_texture_views: Vec::new(),
-            image_resource_dummy_texture,
+            _image_resource_dummy_texture: image_resource_dummy_texture,
             image_resource_dummy_texture_view,
             image_resource_sampler: device.create_sampler(&::wgpu::SamplerDescriptor {
                 label: Some("tileink wgpu image resource sampler"),

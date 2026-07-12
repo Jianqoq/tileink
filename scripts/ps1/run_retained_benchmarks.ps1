@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("all", "scale", "dirty-ratio")]
+    [ValidateSet("all", "scale", "dirty-ratio", "stress")]
     [string]$Benchmark = "all",
 
     [string]$Filter = "",
@@ -22,7 +22,8 @@ $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "../..")
 $targets = @(switch ($Benchmark) {
     "scale" { @("retained_scale") }
     "dirty-ratio" { @("retained_dirty_ratio") }
-    default { @("retained_scale", "retained_dirty_ratio") }
+    "stress" { @("retained_stress") }
+    default { @("retained_scale", "retained_dirty_ratio", "retained_stress") }
 })
 $logPath = New-QuietRunLog -Name "retained-benchmarks"
 

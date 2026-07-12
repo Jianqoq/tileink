@@ -30,12 +30,16 @@ The complete run contains two suites:
   Criterion measures stable updates instead of rebuilding a cold arena for every sample.
 - `retained_dirty_ratio`: 13 dirty ratios from 0.5% to 100%, each measured with the persistent
   `RetainedScene` backend in Auto and ForceFull modes plus the preflattened-immediate lower bound.
+- `retained_stress`: permanent wall/materialization/transaction scale series for deep hierarchy,
+  many cascading backdrops, many root plan fragments, a single large variable-sized chunk, and
+  rotating changes that cross the 256-frame delta-overlay boundary.
 
 Use filters for focused development runs without deleting any matrix entries:
 
 ```powershell
 .\scripts\ps1\run_retained_benchmarks.ps1 -Benchmark scale -Filter "one-revision/5000"
 .\scripts\ps1\run_retained_benchmarks.ps1 -Benchmark dirty-ratio -Filter "persistent-auto/10.0%"
+.\scripts\ps1\run_retained_benchmarks.ps1 -Benchmark stress -Filter "many-backdrops-revision"
 ```
 
 The existing `retained_scale_bench` and `retained_dirty_ratio_bench` examples use the same workload

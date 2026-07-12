@@ -378,6 +378,7 @@ impl WgpuCoarsePipeline {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn run(
         &self,
         device: &::wgpu::Device,

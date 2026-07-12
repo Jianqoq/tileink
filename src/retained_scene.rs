@@ -172,6 +172,11 @@ struct ChildList {
     keys: HashMap<RetainedNodeId, u128>,
 }
 
+struct ChildInsertion {
+    key: u128,
+    before_rebalance: Option<ChildList>,
+}
+
 impl ChildList {
     fn key_of(&self, id: RetainedNodeId) -> Option<u128> {
         self.keys.get(&id).copied()
@@ -194,10 +199,13 @@ impl ChildList {
         &mut self,
         id: RetainedNodeId,
         before: Option<RetainedNodeId>,
-    ) -> Result<u128, RetainedSceneError> {
+    ) -> Result<ChildInsertion, RetainedSceneError> {
         if self.order.is_empty() {
             self.insert_at(ORDER_STEP, id);
-            return Ok(ORDER_STEP);
+            return Ok(ChildInsertion {
+                key: ORDER_STEP,
+                before_rebalance: None,
+            });
         }
         let (lower, upper) = if let Some(before) = before {
             let upper = self
@@ -213,12 +221,18 @@ impl ChildList {
             (None, Some(upper)) if upper > 1 => upper / 2,
             (Some(lower), None) if u128::MAX - lower >= ORDER_STEP => lower + ORDER_STEP,
             _ => {
+                let before_rebalance = self.clone();
                 self.rebalance();
-                return self.insert_before(id, before);
+                let mut inserted = self.insert_before(id, before)?;
+                inserted.before_rebalance = Some(before_rebalance);
+                return Ok(inserted);
             }
         };
         self.insert_at(key, id);
-        Ok(key)
+        Ok(ChildInsertion {
+            key,
+            before_rebalance: None,
+        })
     }
 
     fn remove(&mut self, id: RetainedNodeId) -> Option<u128> {
@@ -244,16 +258,18 @@ struct SceneNode {
     parent: Option<RetainedParent>,
     content: ChildList,
     mask: ChildList,
+    instance: u64,
     generation: u64,
 }
 
 impl SceneNode {
-    fn group(parent: Option<RetainedParent>) -> Self {
+    fn group(parent: Option<RetainedParent>, instance: u64) -> Self {
         Self {
             kind: NodeKind::Group,
             parent,
             content: ChildList::default(),
             mask: ChildList::default(),
+            instance,
             generation: 0,
         }
     }
@@ -319,7 +335,24 @@ impl SceneChangeSet {
     }
 }
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum NodeKindTag {
+    Group,
+    Scene,
+    Layer,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+struct MaterializedNodeMetadata {
+    instance: u64,
+    generation: u64,
+    parent: Option<RetainedParent>,
+    order_key: Option<u128>,
+    kind: NodeKindTag,
+}
+
 struct SceneChunk {
+    instance: u64,
     generation: u64,
     source_canvas: Option<Arc<Canvas>>,
     position_bits: Option<(u64, u64)>,
@@ -349,6 +382,30 @@ struct BackdropDependency {
     dependency: Bounds,
     output: Bounds,
     output_outset: i32,
+}
+
+#[derive(Clone, Copy)]
+struct BoundsInfluence {
+    outset: i32,
+    clip: Bounds,
+}
+
+impl BoundsInfluence {
+    fn apply(self, bounds: Bounds) -> Bounds {
+        if bounds.is_empty() {
+            bounds
+        } else {
+            bounds.outset(self.outset).intersect(self.clip)
+        }
+    }
+
+    /// Composes a nearer layer effect before this already accumulated ancestor effect.
+    fn with_nearer(self, nearer: Self) -> Self {
+        Self {
+            outset: nearer.outset.saturating_add(self.outset),
+            clip: nearer.clip.outset(self.outset).intersect(self.clip),
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -466,11 +523,14 @@ pub(crate) struct PersistentSceneMaterializer {
     node_bounds: HashMap<RetainedNodeId, Bounds>,
     raw_node_bounds: HashMap<RetainedNodeId, Bounds>,
     node_tiles: Vec<HashSet<RetainedNodeId>>,
+    spatial_nodes: HashSet<RetainedNodeId>,
     spatial_tiles_size: (u32, u32),
     surface_metadata_stale: bool,
     node_batches: HashMap<RetainedNodeId, u32>,
     container_batches: HashMap<RetainedParent, u32>,
     root_plan_fragments: HashMap<RetainedNodeId, RootPlanFragment>,
+    root_fragment_owners: HashMap<RetainedNodeId, RetainedNodeId>,
+    node_metadata: HashMap<RetainedNodeId, MaterializedNodeMetadata>,
 }
 
 static NEXT_PLAN_CACHE_KEY: AtomicU64 = AtomicU64::new(1);
@@ -506,11 +566,14 @@ impl PersistentSceneMaterializer {
             node_bounds: HashMap::default(),
             raw_node_bounds: HashMap::default(),
             node_tiles: Vec::new(),
+            spatial_nodes: HashSet::default(),
             spatial_tiles_size: (0, 0),
             surface_metadata_stale: false,
             node_batches: HashMap::default(),
             container_batches: HashMap::default(),
             root_plan_fragments: HashMap::default(),
+            root_fragment_owners: HashMap::default(),
+            node_metadata: HashMap::default(),
         };
         materializer.rebuild_all(scene);
         materializer
@@ -538,10 +601,11 @@ impl PersistentSceneMaterializer {
         if self.version == scene.version {
             return false;
         }
-        let Some(changes) = scene.changes_since(self.version) else {
-            self.rebuild_all(scene);
-            return true;
+        let (mut changes, journal_gap) = match scene.changes_since(self.version) {
+            Some(changes) => (changes, false),
+            None => (self.reconcile_scene_metadata(scene), true),
         };
+        changes.invalidate_all |= journal_gap;
         let compactions_before = self.arena_compactions();
         let surface_changed = changes.surface_changed;
         if surface_changed && self.canvas.scale_factor().to_bits() != scene.scale.to_bits() {
@@ -566,7 +630,6 @@ impl PersistentSceneMaterializer {
             self.rebuild_spatial_index();
         }
         let analysis_profile = crate::wgpu::start_cpu_scope("retained.materialize.analysis");
-        let previous_dependency_free = self.dependency_free;
         for id in &changes.removed_nodes {
             self.layer_nodes.remove(id);
             self.nonlocal_dependencies.remove(id);
@@ -708,10 +771,9 @@ impl PersistentSceneMaterializer {
                 continue;
             };
             if matches!(node.kind, NodeKind::Group)
-                || self
-                    .chunks
-                    .get(id)
-                    .is_some_and(|chunk| chunk.generation == node.generation)
+                || self.chunks.get(id).is_some_and(|chunk| {
+                    chunk.instance == node.instance && chunk.generation == node.generation
+                })
             {
                 continue;
             }
@@ -782,13 +844,7 @@ impl PersistentSceneMaterializer {
                     })
                 });
                 let id = *layers.next()?;
-                let is_tail = scene.nodes[&scene.root]
-                    .content
-                    .order
-                    .last_key_value()
-                    .is_some_and(|(_, tail)| *tail == id);
-                if (!previous_dependency_free && !is_tail)
-                    || layers.next().is_some()
+                if layers.next().is_some()
                     || !changes
                         .changed_nodes
                         .iter()
@@ -1133,9 +1189,19 @@ impl PersistentSceneMaterializer {
             } else {
                 0
             };
+            buffer_changes.full_scene_sync |= journal_gap;
+        } else if journal_gap {
+            Arc::make_mut(&mut self.canvas).buffer_changes = Some(SceneBufferChanges {
+                full_scene_sync: true,
+                ..Default::default()
+            });
         }
         if changes.hierarchy_changed {
-            self.refresh_root_fragment_membership(scene, &changes.changed_nodes);
+            self.refresh_root_fragment_membership(
+                scene,
+                &changes.changed_nodes,
+                &changes.removed_nodes,
+            );
         }
         drop(plan_profile);
         let frame_profile = crate::wgpu::start_cpu_scope("retained.materialize.frame");
@@ -1180,6 +1246,7 @@ impl PersistentSceneMaterializer {
             self.rebuild_spatial_index();
         }
         drop(frame_profile);
+        self.sync_node_metadata(scene, &changes);
         self.version = scene.version;
         scene_data_changed
     }
@@ -1198,11 +1265,14 @@ impl PersistentSceneMaterializer {
         self.node_bounds.clear();
         self.raw_node_bounds.clear();
         self.node_tiles.clear();
+        self.spatial_nodes.clear();
         self.spatial_tiles_size = (0, 0);
         self.surface_metadata_stale = false;
         self.node_batches.clear();
         self.container_batches.clear();
         self.root_plan_fragments.clear();
+        self.root_fragment_owners.clear();
+        self.node_metadata.clear();
         self.layer_nodes = scene
             .nodes
             .iter()
@@ -1234,6 +1304,96 @@ impl PersistentSceneMaterializer {
         Arc::make_mut(&mut self.canvas).plan_cache_key = Some(self.plan_cache_key);
         self.rebuild_frame_override(scene);
         self.rebuild_spatial_index();
+        self.node_metadata = scene
+            .nodes
+            .keys()
+            .copied()
+            .map(|id| (id, Self::scene_node_metadata(scene, id)))
+            .collect();
+    }
+
+    fn reconcile_scene_metadata(&self, scene: &RetainedScene) -> SceneChangeSet {
+        let mut changes = SceneChangeSet {
+            invalidate_all: true,
+            surface_changed: self.canvas.logical_width != scene.width
+                || self.canvas.logical_height != scene.height
+                || self.canvas.scale_factor().to_bits() != scene.scale.to_bits(),
+            ..Default::default()
+        };
+        changes.removed_nodes.extend(
+            self.node_metadata
+                .keys()
+                .filter(|id| !scene.nodes.contains_key(id))
+                .copied(),
+        );
+        if !changes.removed_nodes.is_empty() {
+            changes.topology_changed = true;
+            changes.hierarchy_changed = true;
+        }
+        for &id in scene.nodes.keys() {
+            let current = Self::scene_node_metadata(scene, id);
+            let Some(previous) = self.node_metadata.get(&id).copied() else {
+                changes.changed_nodes.insert(id);
+                changes.topology_changed = true;
+                changes.hierarchy_changed = true;
+                continue;
+            };
+            if current == previous {
+                continue;
+            }
+            changes.changed_nodes.insert(id);
+            if current.instance != previous.instance
+                || current.parent != previous.parent
+                || current.order_key != previous.order_key
+                || current.kind != previous.kind
+            {
+                changes.topology_changed = true;
+                changes.hierarchy_changed = true;
+            } else if current.kind == NodeKindTag::Layer
+                && current.generation != previous.generation
+            {
+                changes.changed_layers.insert(id);
+                changes.topology_changed = true;
+            }
+            if current.instance != previous.instance && current.kind == NodeKindTag::Layer {
+                changes.changed_layers.insert(id);
+            }
+        }
+        changes
+    }
+
+    fn sync_node_metadata(&mut self, scene: &RetainedScene, changes: &SceneChangeSet) {
+        for id in &changes.removed_nodes {
+            self.node_metadata.remove(id);
+        }
+        for &id in &changes.changed_nodes {
+            if scene.nodes.contains_key(&id) {
+                self.node_metadata
+                    .insert(id, Self::scene_node_metadata(scene, id));
+            }
+        }
+    }
+
+    fn scene_node_metadata(scene: &RetainedScene, id: RetainedNodeId) -> MaterializedNodeMetadata {
+        let node = &scene.nodes[&id];
+        let order_key = node.parent.map(|parent| {
+            scene.nodes[&parent.node]
+                .children(parent.branch)
+                .expect("validated retained branch")
+                .key_of(id)
+                .expect("retained child has an order key")
+        });
+        MaterializedNodeMetadata {
+            instance: node.instance,
+            generation: node.generation,
+            parent: node.parent,
+            order_key,
+            kind: match &node.kind {
+                NodeKind::Group => NodeKindTag::Group,
+                NodeKind::Scene { .. } => NodeKindTag::Scene,
+                NodeKind::Layer(_) => NodeKindTag::Layer,
+            },
+        }
     }
 
     /// Applies a same-scale viewport resize without re-encoding retained node geometry.
@@ -1323,6 +1483,7 @@ impl PersistentSceneMaterializer {
                             .segments
                             .resize(chunk.segments, chunk.canvas.tile_cnt as usize);
                     }
+                    chunk.instance = node.instance;
                     chunk.generation = node.generation;
                     chunk.position_bits = position_bits;
                     if old_plan != new_plan {
@@ -1384,6 +1545,7 @@ impl PersistentSceneMaterializer {
                         .segments
                         .replace(chunk.segments, &vec![0; new_lengths.segments]);
                 }
+                chunk.instance = node.instance;
                 chunk.generation = node.generation;
                 chunk.source_canvas = source_canvas.clone();
                 chunk.position_bits = position_bits;
@@ -1414,6 +1576,7 @@ impl PersistentSceneMaterializer {
         let glyphs = Self::insert_glyphs(&mut self.arenas, &encoded.text_glyphs);
         let plan_fingerprint = encoded.execution_plan_fingerprint();
         let chunk = SceneChunk {
+            instance: node.instance,
             generation: node.generation,
             source_canvas,
             position_bits,
@@ -1865,6 +2028,7 @@ impl PersistentSceneMaterializer {
         self.scene_command_locations.clear();
         self.layer_command_locations.clear();
         self.root_plan_fragments.clear();
+        self.root_fragment_owners.clear();
         self.append_children(scene, scene.root, RetainedChildBranch::Content, 0);
     }
 
@@ -2287,6 +2451,7 @@ impl PersistentSceneMaterializer {
             );
         }
         self.root_plan_fragments.clear();
+        self.root_fragment_owners.clear();
         true
     }
 
@@ -2372,6 +2537,7 @@ impl PersistentSceneMaterializer {
         id: RetainedNodeId,
         command_lists: std::ops::Range<usize>,
     ) -> bool {
+        let compile_profile = crate::wgpu::start_cpu_scope("retained.root_fragment.compile");
         let location = self.layer_command_locations[&id];
         if location.parent_list != 0 {
             return false;
@@ -2385,7 +2551,9 @@ impl PersistentSceneMaterializer {
             .push(command);
         let fragment = Arc::make_mut(&mut self.canvas).compile(temporary);
         let _ = Arc::make_mut(&mut self.canvas).command_lists.pop();
+        drop(compile_profile);
 
+        let spatial_profile = crate::wgpu::start_cpu_scope("retained.root_fragment.spatial");
         let mut nodes = Vec::new();
         scene.collect_subtree(id, &mut nodes);
         let node_set = nodes.iter().copied().collect::<HashSet<_>>();
@@ -2399,6 +2567,7 @@ impl PersistentSceneMaterializer {
             .into_iter()
             .filter_map(|node| {
                 if !matches!(scene.nodes.get(&node)?.kind, NodeKind::Scene { .. })
+                    || self.root_fragment_owners.contains_key(&node)
                     || self.painter_bases.get(&node)?.as_ref() <= layer_painter.as_ref()
                 {
                     return None;
@@ -2422,6 +2591,21 @@ impl PersistentSceneMaterializer {
         for (&node, &batch) in &reassigned_batches {
             *moved_per_batch.entry(batch).or_default() += self.node_physical_draws(node).len();
         }
+        drop(spatial_profile);
+        let plan_profile = crate::wgpu::start_cpu_scope("retained.root_fragment.plan");
+        let mut after_id = false;
+        let next_fragment_start = scene.nodes[&scene.root].content.values().find_map(|child| {
+            if *child == id {
+                after_id = true;
+                None
+            } else if after_id {
+                self.root_plan_fragments
+                    .get(child)
+                    .map(|fragment| fragment.ops.start)
+            } else {
+                None
+            }
+        });
         let Some(plan) = Arc::make_mut(&mut self.canvas).compiled_plan.as_mut() else {
             return false;
         };
@@ -2429,7 +2613,18 @@ impl PersistentSceneMaterializer {
         let removed_batch = (moved_per_batch.len() == 1)
             .then(|| moved_per_batch.into_iter().next().unwrap())
             .and_then(|(batch, moved)| plan.remove_batch_if_all_moved(batch, moved));
-        let (mut ops, draw_batches) = plan.append_fragment(fragment);
+        let mut insert_at = next_fragment_start.unwrap_or(plan.ops.len());
+        if removed_batch
+            .as_ref()
+            .is_some_and(|(index, _)| *index < insert_at)
+        {
+            insert_at -= 1;
+        }
+        let (mut ops, draw_batches) = plan.insert_fragment(insert_at, fragment);
+        let after_batch = plan.insert_plain_batch(ops.end, reassigned_draws);
+        if after_batch.is_some() {
+            ops.end += 1;
+        }
         let retained_batches = plan
             .retained_batch_ids
             .iter()
@@ -2447,8 +2642,22 @@ impl PersistentSceneMaterializer {
                 )
             })
             .collect::<Vec<_>>();
-        let after_batch = plan.append_plain_batch(reassigned_draws);
-        ops.end = plan.ops.len();
+        if let Some((removed, _)) = &removed_batch {
+            for fragment in self.root_plan_fragments.values_mut() {
+                if fragment.ops.start > *removed {
+                    fragment.ops.start -= 1;
+                    fragment.ops.end -= 1;
+                }
+            }
+        }
+        for fragment in self.root_plan_fragments.values_mut() {
+            if fragment.ops.start >= ops.start {
+                fragment.ops.start += ops.len();
+                fragment.ops.end += ops.len();
+            }
+        }
+        drop(plan_profile);
+        let metadata_profile = crate::wgpu::start_cpu_scope("retained.root_fragment.metadata");
         if let Some(batch) = after_batch {
             for &node in reassigned_batches.keys() {
                 self.node_batches.insert(node, batch);
@@ -2474,6 +2683,8 @@ impl PersistentSceneMaterializer {
         }
         collect_container_batches(scene, id, &self.node_batches, &mut self.container_batches);
         self.container_batches.extend(retained_batches);
+        self.root_fragment_owners
+            .extend(nodes.iter().copied().map(|node| (node, id)));
         self.root_plan_fragments.insert(
             id,
             RootPlanFragment {
@@ -2484,6 +2695,7 @@ impl PersistentSceneMaterializer {
                 removed_batch,
             },
         );
+        drop(metadata_profile);
         true
     }
 
@@ -2549,6 +2761,7 @@ impl PersistentSceneMaterializer {
             self.node_batches.insert(node, batch);
         }
         for node in fragment.nodes {
+            self.root_fragment_owners.remove(&node);
             self.scene_command_locations.remove(&node);
             self.layer_command_locations.remove(&node);
             self.node_batches.remove(&node);
@@ -2565,18 +2778,70 @@ impl PersistentSceneMaterializer {
         &mut self,
         scene: &RetainedScene,
         changed: &HashSet<RetainedNodeId>,
+        removed: &HashSet<RetainedNodeId>,
     ) {
-        for (&root, fragment) in &mut self.root_plan_fragments {
-            fragment.nodes.retain(|node| {
-                scene.nodes.contains_key(node) && is_descendant_or_self(scene, *node, root)
-            });
-            fragment.nodes.extend(
-                changed
-                    .iter()
-                    .copied()
-                    .filter(|node| is_descendant_or_self(scene, *node, root)),
-            );
+        for id in removed {
+            if let Some(owner) = self.root_fragment_owners.remove(id)
+                && let Some(fragment) = self.root_plan_fragments.get_mut(&owner)
+            {
+                fragment.nodes.remove(id);
+            }
         }
+        let mut affected = Vec::new();
+        for &id in changed {
+            let Some(node) = scene.nodes.get(&id) else {
+                continue;
+            };
+            if matches!(node.kind, NodeKind::Scene { .. }) {
+                affected.push(id);
+            } else {
+                scene.collect_subtree(id, &mut affected);
+            }
+        }
+        affected.sort_unstable();
+        affected.dedup();
+        let ownership = affected
+            .into_iter()
+            .map(|node| {
+                let old = self.root_fragment_owners.get(&node).copied();
+                let new = self.root_fragment_owner(scene, node);
+                (node, old, new)
+            })
+            .collect::<Vec<_>>();
+        for (node, old, new) in ownership {
+            if old == new {
+                continue;
+            }
+            if let Some(old) = old
+                && let Some(fragment) = self.root_plan_fragments.get_mut(&old)
+            {
+                fragment.nodes.remove(&node);
+            }
+            if let Some(new) = new {
+                self.root_plan_fragments
+                    .get_mut(&new)
+                    .expect("root fragment owner exists")
+                    .nodes
+                    .insert(node);
+                self.root_fragment_owners.insert(node, new);
+            } else {
+                self.root_fragment_owners.remove(&node);
+            }
+        }
+    }
+
+    fn root_fragment_owner(
+        &self,
+        scene: &RetainedScene,
+        mut id: RetainedNodeId,
+    ) -> Option<RetainedNodeId> {
+        while let Some(parent) = scene.nodes.get(&id)?.parent {
+            if parent.node == scene.root {
+                return self.root_plan_fragments.contains_key(&id).then_some(id);
+            }
+            id = parent.node;
+        }
+        None
     }
 
     fn index_root_plan_fragments(&mut self, scene: &RetainedScene) {
@@ -2616,6 +2881,8 @@ impl PersistentSceneMaterializer {
             };
             let mut nodes = Vec::new();
             scene.collect_subtree(id, &mut nodes);
+            self.root_fragment_owners
+                .extend(nodes.iter().copied().map(|node| (node, id)));
             self.root_plan_fragments.insert(
                 id,
                 RootPlanFragment {
@@ -2912,65 +3179,80 @@ impl PersistentSceneMaterializer {
     ) -> (Vec<(RetainedNodeId, Bounds)>, Vec<RetainedNodeId>) {
         let mut damage = HashMap::<RetainedNodeId, Bounds>::default();
         let mut dirty = Vec::new();
-        let mut pending = sources.to_vec();
+        let mut source_nodes = HashSet::default();
+        let mut ordered_sources = Vec::new();
+        let mut damage_tiles = HashMap::default();
+        for &(source, bounds) in sources {
+            let Some(source) = source else {
+                self.add_indexed_damage(&mut damage_tiles, bounds);
+                continue;
+            };
+            source_nodes.insert(source);
+            let Some(painter) = self.painter_bases.get(&source).cloned().or_else(|| {
+                scene
+                    .nodes
+                    .contains_key(&source)
+                    .then(|| painter_path(scene, source))
+            }) else {
+                continue;
+            };
+            ordered_sources.push((painter, bounds));
+        }
+        ordered_sources.sort_unstable_by(|left, right| left.0.as_ref().cmp(right.0.as_ref()));
+        let mut source_cursor = 0;
         let mut backdrops = self
             .nonlocal_dependencies
             .iter()
             .copied()
+            .map(|id| {
+                let painter = self
+                    .painter_bases
+                    .get(&id)
+                    .cloned()
+                    .unwrap_or_else(|| painter_path(scene, id));
+                (id, painter)
+            })
             .collect::<Vec<_>>();
-        backdrops.sort_unstable_by_key(|id| painter_path(scene, *id));
-        for backdrop in backdrops {
+        backdrops.sort_unstable_by(|left, right| left.1.as_ref().cmp(right.1.as_ref()));
+        for (backdrop, backdrop_painter) in backdrops {
             let Some(chunk) = self.chunks.get(&backdrop) else {
                 continue;
             };
-            let backdrop_painter = painter_path(scene, backdrop);
-            let mut affected_output = Bounds::new(0, 0, 0, 0);
+            while source_cursor < ordered_sources.len()
+                && ordered_sources[source_cursor].0.as_ref() < backdrop_painter.as_ref()
+            {
+                self.add_indexed_damage(&mut damage_tiles, ordered_sources[source_cursor].1);
+                source_cursor += 1;
+            }
+            let mut affected_output = if source_nodes.contains(&backdrop) {
+                self.node_bounds.get(&backdrop).copied().unwrap_or_else(|| {
+                    chunk
+                        .backdrop_dependencies
+                        .iter()
+                        .fold(Bounds::new(0, 0, 0, 0), |bounds, dependency| {
+                            bounds.union(dependency.output)
+                        })
+                })
+            } else {
+                Bounds::new(0, 0, 0, 0)
+            };
             for dependency in &chunk.backdrop_dependencies {
-                for &(source, bounds) in &pending {
-                    let affected = if source == Some(backdrop) {
-                        self.node_bounds
-                            .get(&backdrop)
-                            .copied()
-                            .unwrap_or(dependency.output)
-                    } else if let Some(source) = source {
-                        let Some(source_painter) =
-                            self.painter_bases.get(&source).cloned().or_else(|| {
-                                scene
-                                    .nodes
-                                    .contains_key(&source)
-                                    .then(|| painter_path(scene, source))
-                            })
-                        else {
-                            continue;
-                        };
-                        if source_painter.as_ref() >= backdrop_painter.as_ref() {
-                            continue;
-                        }
-                        let sampled = bounds.intersect(dependency.dependency);
-                        if sampled.is_empty() {
-                            continue;
-                        }
+                let sampled =
+                    self.indexed_damage_intersection(&damage_tiles, dependency.dependency);
+                if !sampled.is_empty() {
+                    affected_output = affected_output.union(
                         sampled
                             .outset(dependency.output_outset)
-                            .intersect(dependency.output)
-                    } else {
-                        // Manual invalidation is already expressed in root output coordinates but
-                        // has no painter owner. Any intersecting backdrop may sample those pixels.
-                        let sampled = bounds.intersect(dependency.dependency);
-                        if sampled.is_empty() {
-                            continue;
-                        }
-                        sampled
-                            .outset(dependency.output_outset)
-                            .intersect(dependency.output)
-                    };
-                    affected_output = affected_output.union(affected);
+                            .intersect(dependency.output),
+                    );
                 }
             }
             if !affected_output.is_empty() {
                 dirty.push(backdrop);
-                // A changed earlier backdrop becomes sampled background for later backdrops.
-                pending.push((Some(backdrop), affected_output));
+                // A changed earlier backdrop becomes sampled background for later backdrops. Tile
+                // unions keep cascade propagation proportional to affected pixels instead of the
+                // number of all earlier backdrop/source pairs.
+                self.add_indexed_damage(&mut damage_tiles, affected_output);
                 damage
                     .entry(backdrop)
                     .and_modify(|current| *current = current.union(affected_output))
@@ -2978,6 +3260,27 @@ impl PersistentSceneMaterializer {
             }
         }
         (damage.into_iter().collect(), dirty)
+    }
+
+    fn add_indexed_damage(&self, tiles: &mut HashMap<usize, Bounds>, bounds: Bounds) {
+        for tile in self.tiles_for_bounds(bounds) {
+            tiles
+                .entry(tile)
+                .and_modify(|current| *current = current.union(bounds))
+                .or_insert(bounds);
+        }
+    }
+
+    fn indexed_damage_intersection(
+        &self,
+        tiles: &HashMap<usize, Bounds>,
+        bounds: Bounds,
+    ) -> Bounds {
+        self.tiles_for_bounds(bounds)
+            .into_iter()
+            .filter_map(|tile| tiles.get(&tile).copied())
+            .map(|damage| damage.intersect(bounds))
+            .fold(Bounds::new(0, 0, 0, 0), Bounds::union)
     }
 
     fn patch_frame_override(
@@ -3027,11 +3330,6 @@ impl PersistentSceneMaterializer {
         }
         let index = retained_patch_index(&patches);
         let (previous, depth) = prune_shadowed_delta(frame.delta.clone(), &index);
-        if depth > 255 {
-            self.rebuild_frame_override(scene);
-            self.rebuild_spatial_index();
-            return;
-        }
         let (backdrop_damage, dirty_backdrops) = if self.nonlocal_dependencies.is_empty() {
             (Vec::new(), Vec::new())
         } else {
@@ -3063,7 +3361,7 @@ impl PersistentSceneMaterializer {
             }
         }
         frame.version = Some(scene.version.get());
-        frame.delta = Some(Arc::new(RetainedFrameDelta {
+        let mut delta = RetainedFrameDelta {
             from_version: self.version.get(),
             to_version: scene.version.get(),
             patches: patches.into(),
@@ -3073,12 +3371,70 @@ impl PersistentSceneMaterializer {
             dirty_backdrops: dirty_backdrops.into(),
             backdrop_damage_complete: true,
             index: Arc::new(index),
-        }));
+        };
+        if depth > 255 {
+            if !Self::compact_content_state_pages(&mut frame, &delta) {
+                self.rebuild_frame_override(scene);
+                self.rebuild_spatial_index();
+                return;
+            }
+            delta.previous = None;
+            delta.depth = 1;
+        }
+        frame.delta = Some(Arc::new(delta));
         frame.invalidated_bounds = Arc::make_mut(&mut self.canvas).invalidated_bounds.clone();
         frame.invalidate_all = Arc::make_mut(&mut self.canvas).invalidate_all;
         frame.dependency_free = self.dependency_free;
         frame.requires_damage_propagation = !self.nonlocal_dependencies.is_empty();
         Arc::make_mut(&mut self.canvas).persistent_frame = Some(frame);
+    }
+
+    fn compact_content_state_pages(
+        frame: &mut crate::canvas::RetainedFrame,
+        delta: &RetainedFrameDelta,
+    ) -> bool {
+        const PAGE_SIZE: usize = 256;
+        let mut resolved =
+            HashMap::<RetainedNodeId, (usize, crate::canvas::RetainedNodeState)>::default();
+        let mut current = Some(delta);
+        while let Some(delta) = current {
+            for patch in delta.patches.iter() {
+                let Some(node) = patch.new else {
+                    return false;
+                };
+                if resolved.contains_key(&node.id) {
+                    continue;
+                }
+                let Some(&index) = frame.node_index.get(&node.id) else {
+                    return false;
+                };
+                resolved.insert(node.id, (index, node));
+            }
+            current = delta.previous.as_deref();
+        }
+        let mut updates =
+            HashMap::<usize, Vec<(usize, crate::canvas::RetainedNodeState)>>::default();
+        for (_, (index, node)) in resolved {
+            updates
+                .entry(index / PAGE_SIZE)
+                .or_default()
+                .push((index % PAGE_SIZE, node));
+        }
+        let base = frame.nodes.clone();
+        let pages = Arc::make_mut(&mut frame.state_pages);
+        for (page_index, updates) in updates {
+            let start = page_index * PAGE_SIZE;
+            let end = (start + PAGE_SIZE).min(base.len());
+            let mut page = pages
+                .get(&page_index)
+                .map(|page| page.to_vec())
+                .unwrap_or_else(|| base[start..end].to_vec());
+            for (offset, node) in updates {
+                page[offset] = node;
+            }
+            pages.insert(page_index, page.into());
+        }
+        true
     }
 
     fn patch_surface_frame(
@@ -3210,8 +3566,38 @@ impl PersistentSceneMaterializer {
     }
 
     fn rebuild_frame_override(&mut self, scene: &RetainedScene) {
+        let canvas_bounds =
+            Bounds::canvas(self.canvas.physical_width(), self.canvas.physical_height());
+        let mut influences = HashMap::default();
+        self.collect_bounds_influences(
+            scene,
+            scene.root,
+            BoundsInfluence {
+                outset: 0,
+                clip: canvas_bounds,
+            },
+            &mut influences,
+        );
+        let leaf_bounds = scene
+            .nodes
+            .iter()
+            .filter(|(_, node)| matches!(node.kind, NodeKind::Scene { .. }))
+            .map(|(&id, _)| {
+                let chunk = &self.chunks[&id];
+                (id, influences[&id].apply(chunk.canvas.visual_bounds()))
+            })
+            .collect::<HashMap<_, _>>();
+        let mut subtree_leaf_bounds = HashMap::default();
+        self.collect_subtree_leaf_bounds(scene, scene.root, &leaf_bounds, &mut subtree_leaf_bounds);
         let mut nodes = Vec::with_capacity(self.chunks.len());
-        self.collect_frame_nodes(scene, RetainedParent::content(scene.root), &mut nodes);
+        self.collect_frame_nodes(
+            scene,
+            RetainedParent::content(scene.root),
+            &leaf_bounds,
+            &subtree_leaf_bounds,
+            &influences,
+            &mut nodes,
+        );
         let node_index = nodes
             .iter()
             .enumerate()
@@ -3225,6 +3611,7 @@ impl PersistentSceneMaterializer {
             scale_bits: scene.scale.to_bits(),
             nodes: nodes.into(),
             node_index: Arc::new(node_index),
+            state_pages: Arc::new(HashMap::default()),
             invalidated_bounds: canvas.invalidated_bounds.clone(),
             invalidate_all: canvas.invalidate_all,
             incremental_complete: true,
@@ -3239,6 +3626,9 @@ impl PersistentSceneMaterializer {
         &self,
         scene: &RetainedScene,
         parent: RetainedParent,
+        leaf_bounds: &HashMap<RetainedNodeId, Bounds>,
+        subtree_leaf_bounds: &HashMap<RetainedNodeId, Bounds>,
+        influences: &HashMap<RetainedNodeId, BoundsInfluence>,
         nodes: &mut Vec<crate::canvas::RetainedNodeState>,
     ) {
         let children = scene.nodes[&parent.node]
@@ -3248,37 +3638,48 @@ impl PersistentSceneMaterializer {
             let node = &scene.nodes[&id];
             match &node.kind {
                 NodeKind::Group => {
-                    self.collect_frame_nodes(scene, RetainedParent::content(id), nodes);
+                    self.collect_frame_nodes(
+                        scene,
+                        RetainedParent::content(id),
+                        leaf_bounds,
+                        subtree_leaf_bounds,
+                        influences,
+                        nodes,
+                    );
                 }
                 NodeKind::Scene { .. } => {
-                    let chunk = &self.chunks[&id];
                     nodes.push(crate::canvas::RetainedNodeState {
                         id,
                         revision: NodeGeneration::new(node.generation),
-                        bounds: self.influenced_bounds(scene, id, chunk.canvas.visual_bounds()),
+                        bounds: leaf_bounds[&id],
                         order: nodes.len() as u32,
                         kind: RetainedNodeKind::Scene,
                         placement_bits: None,
                     });
                 }
                 NodeKind::Layer(descriptor) => {
-                    self.collect_frame_nodes(scene, RetainedParent::content(id), nodes);
+                    self.collect_frame_nodes(
+                        scene,
+                        RetainedParent::content(id),
+                        leaf_bounds,
+                        subtree_leaf_bounds,
+                        influences,
+                        nodes,
+                    );
                     if matches!(descriptor, RetainedLayerDescriptor::Mask(_)) {
-                        self.collect_frame_nodes(scene, RetainedParent::mask(id), nodes);
+                        self.collect_frame_nodes(
+                            scene,
+                            RetainedParent::mask(id),
+                            leaf_bounds,
+                            subtree_leaf_bounds,
+                            influences,
+                            nodes,
+                        );
                     }
                     let chunk = &self.chunks[&id];
-                    let mut bounds =
-                        self.influenced_bounds(scene, id, chunk_layer_influence_bounds(chunk));
-                    let mut leaves = Vec::new();
-                    collect_scene_leaves(scene, id, &mut leaves);
-                    for leaf in leaves {
-                        let chunk = &self.chunks[&leaf];
-                        bounds = bounds.union(self.influenced_bounds(
-                            scene,
-                            leaf,
-                            chunk.canvas.visual_bounds(),
-                        ));
-                    }
+                    let bounds = influences[&id]
+                        .apply(chunk_layer_influence_bounds(chunk))
+                        .union(subtree_leaf_bounds[&id]);
                     nodes.push(crate::canvas::RetainedNodeState {
                         id,
                         revision: NodeGeneration::new(node.generation),
@@ -3292,6 +3693,100 @@ impl PersistentSceneMaterializer {
         }
     }
 
+    fn collect_bounds_influences(
+        &self,
+        scene: &RetainedScene,
+        id: RetainedNodeId,
+        inherited: BoundsInfluence,
+        influences: &mut HashMap<RetainedNodeId, BoundsInfluence>,
+    ) {
+        influences.insert(id, inherited);
+        let node = &scene.nodes[&id];
+        let child_influence = if let NodeKind::Layer(layer) = &node.kind {
+            inherited.with_nearer(self.local_bounds_influence(id, layer))
+        } else {
+            inherited
+        };
+        for child in node.content.values().chain(node.mask.values()) {
+            self.collect_bounds_influences(scene, *child, child_influence, influences);
+        }
+    }
+
+    fn local_bounds_influence(
+        &self,
+        id: RetainedNodeId,
+        layer: &RetainedLayerDescriptor,
+    ) -> BoundsInfluence {
+        let canvas_bounds =
+            Bounds::canvas(self.canvas.physical_width(), self.canvas.physical_height());
+        match layer {
+            RetainedLayerDescriptor::ClipPath { .. }
+            | RetainedLayerDescriptor::ClipSdf(_)
+            | RetainedLayerDescriptor::Isolate { .. }
+            | RetainedLayerDescriptor::Opacity { .. }
+            | RetainedLayerDescriptor::Blend { .. } => BoundsInfluence {
+                outset: 0,
+                clip: self.chunks[&id]
+                    .canvas
+                    .draw_records
+                    .first()
+                    .map_or(canvas_bounds, |draw| {
+                        let clip = draw.pixel_bounds;
+                        Bounds::new(clip.x0, clip.y0, clip.x1, clip.y1)
+                    }),
+            },
+            RetainedLayerDescriptor::Filter {
+                filter: value,
+                sample_region,
+            } => {
+                let outset = filter::filter_outset(value);
+                BoundsInfluence {
+                    outset,
+                    // This is a conservative summary for disjoint input and dependency bounds;
+                    // it may redraw an extra boundary tile but can never omit affected pixels.
+                    clip: filter::region_bounds(sample_region)
+                        .outset(filter::filter_dependency_outset(value))
+                        .outset(outset)
+                        .intersect(filter::unclipped_filtered_region_bounds(
+                            value,
+                            sample_region,
+                        ))
+                        .intersect(canvas_bounds),
+                }
+            }
+            RetainedLayerDescriptor::Mask(mask) => BoundsInfluence {
+                outset: 0,
+                clip: filter::region_bounds(&mask.region),
+            },
+            RetainedLayerDescriptor::Backdrop { .. } => BoundsInfluence {
+                outset: 0,
+                clip: canvas_bounds,
+            },
+        }
+    }
+
+    fn collect_subtree_leaf_bounds(
+        &self,
+        scene: &RetainedScene,
+        id: RetainedNodeId,
+        leaf_bounds: &HashMap<RetainedNodeId, Bounds>,
+        subtree: &mut HashMap<RetainedNodeId, Bounds>,
+    ) -> Bounds {
+        let node = &scene.nodes[&id];
+        let bounds = match &node.kind {
+            NodeKind::Scene { .. } => leaf_bounds[&id],
+            NodeKind::Group | NodeKind::Layer(_) => node
+                .content
+                .values()
+                .chain(node.mask.values())
+                .copied()
+                .map(|child| self.collect_subtree_leaf_bounds(scene, child, leaf_bounds, subtree))
+                .fold(Bounds::new(0, 0, 0, 0), Bounds::union),
+        };
+        subtree.insert(id, bounds);
+        bounds
+    }
+
     fn rebuild_spatial_index(&mut self) {
         self.node_bounds.clear();
         self.raw_node_bounds.clear();
@@ -3302,6 +3797,7 @@ impl PersistentSceneMaterializer {
         let tile_count = tiles_size.0 as usize * tiles_size.1 as usize;
         self.node_tiles.clear();
         self.node_tiles.resize(tile_count, HashSet::default());
+        self.spatial_nodes.clear();
         self.spatial_tiles_size = tiles_size;
         let frame = Arc::make_mut(&mut self.canvas)
             .persistent_frame
@@ -3318,6 +3814,7 @@ impl PersistentSceneMaterializer {
 
     fn set_node_bounds(&mut self, id: RetainedNodeId, bounds: Option<Bounds>) {
         let bounds = bounds.filter(|bounds| !bounds.is_empty());
+        let was_spatial = self.spatial_nodes.contains(&id);
         let old = match self.node_bounds.entry(id) {
             std::collections::hash_map::Entry::Occupied(mut entry) => {
                 let old = *entry.get();
@@ -3338,15 +3835,19 @@ impl PersistentSceneMaterializer {
                 None
             }
         };
-        if let Some(old) = old {
+        if was_spatial && let Some(old) = old {
             for tile in self.tiles_for_bounds(old) {
                 self.node_tiles[tile].remove(&id);
             }
         }
-        if let Some(bounds) = bounds {
+        let is_spatial = bounds.is_some() && self.painter_bases.contains_key(&id);
+        if is_spatial && let Some(bounds) = bounds {
             for tile in self.tiles_for_bounds(bounds) {
                 self.node_tiles[tile].insert(id);
             }
+            self.spatial_nodes.insert(id);
+        } else {
+            self.spatial_nodes.remove(&id);
         }
     }
 
@@ -3667,18 +4168,6 @@ fn is_descendant_or_self(
     }
 }
 
-fn first_command_list(command: &Command) -> usize {
-    match command {
-        Command::MaterializedRetainedScene { children, .. } | Command::Layer { children, .. } => {
-            *children
-        }
-        Command::MaskLayer { content, mask, .. } => (*content).min(*mask),
-        Command::Draw(_) => {
-            unreachable!("retained root layer command owns at least one child command list")
-        }
-    }
-}
-
 fn inactive_draw() -> DrawRecord {
     DrawRecord {
         path_id: DrawRecord::NONE,
@@ -3816,6 +4305,7 @@ pub struct RetainedScene {
     version: SceneVersion,
     nodes: HashMap<RetainedNodeId, SceneNode>,
     journal: VecDeque<JournalEntry>,
+    next_node_instance: u64,
 }
 
 impl RetainedScene {
@@ -3827,7 +4317,7 @@ impl RetainedScene {
     ) -> Result<Self, RetainedSceneError> {
         validate_size(width, height, scale)?;
         let mut nodes = HashMap::default();
-        nodes.insert(root, SceneNode::group(None));
+        nodes.insert(root, SceneNode::group(None, 1));
         Ok(Self {
             id: NEXT_SCENE_ID.fetch_add(1, Ordering::Relaxed),
             width,
@@ -3837,6 +4327,7 @@ impl RetainedScene {
             version: SceneVersion::INITIAL,
             nodes,
             journal: VecDeque::new(),
+            next_node_instance: 2,
         })
     }
 
@@ -3889,12 +4380,14 @@ impl RetainedScene {
         Some(changes)
     }
 
+    #[cfg(test)]
     pub(crate) fn to_canvas(&self) -> Canvas {
         let mut canvas = Canvas::new(self.width, self.height, self.scale);
         self.append_children(&mut canvas, RetainedParent::content(self.root));
         canvas
     }
 
+    #[cfg(test)]
     fn append_children(&self, canvas: &mut Canvas, parent: RetainedParent) {
         let node = &self.nodes[&parent.node];
         let children = node
@@ -3905,6 +4398,7 @@ impl RetainedScene {
         }
     }
 
+    #[cfg(test)]
     fn append_node(&self, canvas: &mut Canvas, id: RetainedNodeId) {
         let node = &self.nodes[&id];
         match &node.kind {
@@ -4013,7 +4507,9 @@ impl RetainedScene {
                     return Err(RetainedSceneError::DuplicateNode(id));
                 }
                 validate_kind(&kind, self.scale)?;
-                let key = self.insert_child(parent, before, id)?;
+                let insertion = self.insert_child(parent, before, id)?;
+                let instance = self.next_node_instance;
+                self.next_node_instance = self.next_node_instance.wrapping_add(1).max(2);
                 self.nodes.insert(
                     id,
                     SceneNode {
@@ -4021,13 +4517,18 @@ impl RetainedScene {
                         parent: Some(parent),
                         content: ChildList::default(),
                         mask: ChildList::default(),
+                        instance,
                         generation: 0,
                     },
                 );
                 changes.changed_nodes.insert(id);
                 changes.topology_changed = true;
                 changes.hierarchy_changed = true;
-                Ok(UndoMutation::Insert { parent, id, key })
+                Ok(UndoMutation::Insert {
+                    parent,
+                    id,
+                    insertion,
+                })
             }
             Mutation::ReplaceScene { id, canvas } => {
                 validate_canvas(&canvas, self.scale)?;
@@ -4121,7 +4622,7 @@ impl RetainedScene {
                     .expect("non-root node has parent");
                 self.validate_child_insert(parent, before, id)?;
                 let old_key = self.remove_child(old_parent, id)?;
-                let new_key = self.insert_child(parent, before, id)?;
+                let new_insertion = self.insert_child(parent, before, id)?;
                 self.nodes.get_mut(&id).unwrap().parent = Some(parent);
                 changes.changed_nodes.insert(id);
                 changes.topology_changed = true;
@@ -4131,7 +4632,7 @@ impl RetainedScene {
                     old_parent,
                     old_key,
                     new_parent: parent,
-                    new_key,
+                    new_insertion,
                 })
             }
             Mutation::MoveBefore { id, sibling } => {
@@ -4154,7 +4655,7 @@ impl RetainedScene {
                     return Err(RetainedSceneError::InvalidSibling(sibling));
                 }
                 let old_key = self.remove_child(parent, id)?;
-                let new_key = self.insert_child(parent, Some(sibling), id)?;
+                let new_insertion = self.insert_child(parent, Some(sibling), id)?;
                 changes.changed_nodes.insert(id);
                 changes.topology_changed = true;
                 changes.hierarchy_changed = true;
@@ -4163,7 +4664,7 @@ impl RetainedScene {
                     old_parent: parent,
                     old_key,
                     new_parent: parent,
-                    new_key,
+                    new_insertion,
                 })
             }
             Mutation::Remove { id } => {
@@ -4243,9 +4744,12 @@ impl RetainedScene {
     fn undo(&mut self, mutation: UndoMutation) {
         match mutation {
             UndoMutation::None => {}
-            UndoMutation::Insert { parent, id, key } => {
-                let removed = self.remove_child(parent, id);
-                debug_assert_eq!(removed, Ok(key));
+            UndoMutation::Insert {
+                parent,
+                id,
+                insertion,
+            } => {
+                self.undo_child_insertion(parent, id, insertion);
                 self.nodes.remove(&id).expect("undo inserted node exists");
             }
             UndoMutation::NodeValue {
@@ -4262,10 +4766,9 @@ impl RetainedScene {
                 old_parent,
                 old_key,
                 new_parent,
-                new_key,
+                new_insertion,
             } => {
-                let removed = self.remove_child(new_parent, id);
-                debug_assert_eq!(removed, Ok(new_key));
+                self.undo_child_insertion(new_parent, id, new_insertion);
                 self.insert_child_at(old_parent, old_key, id);
                 self.nodes.get_mut(&id).unwrap().parent = Some(old_parent);
             }
@@ -4289,12 +4792,31 @@ impl RetainedScene {
         parent: RetainedParent,
         before: Option<RetainedNodeId>,
         id: RetainedNodeId,
-    ) -> Result<u128, RetainedSceneError> {
+    ) -> Result<ChildInsertion, RetainedSceneError> {
         self.nodes
             .get_mut(&parent.node)
             .ok_or(RetainedSceneError::MissingNode(parent.node))?
             .children_mut(parent.node, parent.branch)?
             .insert_before(id, before)
+    }
+
+    fn undo_child_insertion(
+        &mut self,
+        parent: RetainedParent,
+        id: RetainedNodeId,
+        insertion: ChildInsertion,
+    ) {
+        if let Some(before_rebalance) = insertion.before_rebalance {
+            *self
+                .nodes
+                .get_mut(&parent.node)
+                .expect("undo parent exists")
+                .children_mut(parent.node, parent.branch)
+                .expect("undo branch is valid") = before_rebalance;
+        } else {
+            let removed = self.remove_child(parent, id);
+            debug_assert_eq!(removed, Ok(insertion.key));
+        }
     }
 
     fn validate_child_insert(
@@ -4412,7 +4934,7 @@ enum UndoMutation {
     Insert {
         parent: RetainedParent,
         id: RetainedNodeId,
-        key: u128,
+        insertion: ChildInsertion,
     },
     NodeValue {
         id: RetainedNodeId,
@@ -4424,7 +4946,7 @@ enum UndoMutation {
         old_parent: RetainedParent,
         old_key: u128,
         new_parent: RetainedParent,
-        new_key: u128,
+        new_insertion: ChildInsertion,
     },
     Remove {
         parent: RetainedParent,
@@ -4733,532 +5255,5 @@ fn validate_path(path: &BezPath) -> Result<(), RetainedSceneError> {
 }
 
 #[cfg(test)]
-mod tests {
-    use peniko::{Color, kurbo::Shape};
-
-    use super::*;
-    use crate::Radius;
-
-    fn leaf(color: Color) -> Arc<Canvas> {
-        let mut canvas = Canvas::new(16, 16, 1.0);
-        canvas.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::ZERO, color);
-        Arc::new(canvas)
-    }
-
-    fn empty_leaf() -> Arc<Canvas> {
-        Arc::new(Canvas::new(16, 16, 1.0))
-    }
-
-    fn backdrop_leaf() -> Arc<Canvas> {
-        let mut canvas = Canvas::new(16, 16, 1.0);
-        canvas.push_backdrop_layer(
-            Filter::Opacity(0.5),
-            Region::rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::ZERO),
-        );
-        canvas.pop_layer();
-        Arc::new(canvas)
-    }
-
-    #[test]
-    fn transaction_is_atomic_when_a_late_mutation_is_invalid() {
-        let root = RetainedNodeId::for_owner(1);
-        let child = RetainedNodeId::for_owner(2);
-        let missing = RetainedNodeId::for_owner(9);
-        let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
-        let mut transaction = scene.transaction();
-        transaction
-            .insert_scene(
-                RetainedParent::content(root),
-                None,
-                child,
-                leaf(Color::WHITE),
-                (0.0, 0.0),
-            )
-            .reparent(child, RetainedParent::content(missing), None);
-        assert_eq!(
-            transaction.commit(),
-            Err(RetainedSceneError::MissingNode(missing))
-        );
-        assert_eq!(scene.version(), SceneVersion::INITIAL);
-        assert!(!scene.nodes.contains_key(&child));
-    }
-
-    #[test]
-    fn content_revision_reuses_chunk_canvas_storage() {
-        let root = RetainedNodeId::for_owner(5);
-        let child = RetainedNodeId::for_owner(6);
-        let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
-        scene
-            .transaction()
-            .insert_scene(
-                RetainedParent::content(root),
-                None,
-                child,
-                leaf(Color::WHITE),
-                (8.0, 8.0),
-            )
-            .commit()
-            .unwrap();
-        let mut materializer = PersistentSceneMaterializer::new(&scene);
-        let chunk_storage = std::ptr::from_ref(&materializer.chunks[&child]);
-        let storage = std::ptr::from_ref(&materializer.chunks[&child].canvas);
-
-        scene
-            .transaction()
-            .replace_scene(child, leaf(Color::BLACK))
-            .commit()
-            .unwrap();
-        assert!(materializer.update(&scene));
-        assert_eq!(
-            std::ptr::from_ref(&materializer.chunks[&child]),
-            chunk_storage
-        );
-        assert_eq!(
-            std::ptr::from_ref(&materializer.chunks[&child].canvas),
-            storage
-        );
-        assert_eq!(materializer.chunks[&child].generation, 1);
-    }
-
-    #[test]
-    fn surface_resize_reuses_chunks_and_refreshes_path_tile_bounds() {
-        let root = RetainedNodeId::for_owner(62_000);
-        let clip = RetainedNodeId::for_owner(62_002);
-        let child = RetainedNodeId::for_owner(62_001);
-        let mut path_leaf = Canvas::new(96, 32, 1.0);
-        path_leaf.push_path(
-            Rect::new(8.0, 4.0, 88.0, 28.0).to_path(0.1),
-            Color::WHITE,
-            Affine::IDENTITY,
-            FillRule::NonZero,
-            0.1,
-        );
-        let mut scene = RetainedScene::new(32, 32, 1.0, root).unwrap();
-        scene
-            .transaction()
-            .insert_layer(
-                RetainedParent::content(root),
-                None,
-                clip,
-                RetainedLayerDescriptor::ClipPath {
-                    path: Rect::new(0.0, 0.0, 96.0, 32.0).to_path(0.1),
-                    transform: Affine::IDENTITY,
-                    rule: FillRule::NonZero,
-                    tolerance: 0.1,
-                },
-            )
-            .insert_scene(
-                RetainedParent::content(clip),
-                None,
-                child,
-                Arc::new(path_leaf),
-                (0.0, 0.0),
-            )
-            .commit()
-            .unwrap();
-        let mut materializer = PersistentSceneMaterializer::new(&scene);
-        let chunk_canvas = std::ptr::from_ref(&materializer.chunks[&child].canvas);
-        assert_eq!(
-            materializer.chunks[&child].canvas.path_records[0].tile_x1,
-            2
-        );
-
-        scene.transaction().resize(96, 32, 1.0).commit().unwrap();
-        assert!(materializer.update(&scene));
-
-        assert_eq!(
-            std::ptr::from_ref(&materializer.chunks[&child].canvas),
-            chunk_canvas
-        );
-        assert_eq!(
-            materializer.chunks[&child].canvas.path_records[0].tile_x1,
-            6
-        );
-        let canvas = materializer.canvas();
-        assert_eq!(canvas.logical_size(), (96, 32));
-        let changes = canvas.buffer_changes.as_ref().unwrap();
-        assert_eq!(changes.chunks_rebuilt, 0);
-        assert!(!changes.full_scene_sync);
-    }
-
-    #[test]
-    fn scene_content_replacement_refreshes_embedded_backdrop_index() {
-        let root = RetainedNodeId::for_owner(60_000);
-        let child = RetainedNodeId::for_owner(60_001);
-        let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
-        scene
-            .transaction()
-            .insert_scene(
-                RetainedParent::content(root),
-                None,
-                child,
-                leaf(Color::WHITE),
-                (8.0, 12.0),
-            )
-            .commit()
-            .unwrap();
-        let mut materializer = PersistentSceneMaterializer::new(&scene);
-        assert!(materializer.dependency_free);
-        assert!(!materializer.nonlocal_dependencies.contains(&child));
-        assert!(!materializer.surface_dependent_plans.contains(&child));
-
-        scene
-            .transaction()
-            .replace_scene(child, backdrop_leaf())
-            .commit()
-            .unwrap();
-        assert!(materializer.update(&scene));
-        assert!(!materializer.dependency_free);
-        assert!(materializer.nonlocal_dependencies.contains(&child));
-        assert!(materializer.surface_dependent_plans.contains(&child));
-        assert_eq!(
-            materializer.chunks[&child].backdrop_dependencies[0].output,
-            Bounds::new(8, 12, 24, 28)
-        );
-
-        scene
-            .transaction()
-            .replace_scene(child, leaf(Color::BLACK))
-            .commit()
-            .unwrap();
-        assert!(materializer.update(&scene));
-        assert!(materializer.dependency_free);
-        assert!(!materializer.nonlocal_dependencies.contains(&child));
-        assert!(!materializer.surface_dependent_plans.contains(&child));
-    }
-
-    #[test]
-    fn empty_chunk_allocations_grow_and_shrink_without_full_sync() {
-        let root = RetainedNodeId::for_owner(7);
-        let child = RetainedNodeId::for_owner(8);
-        let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
-        scene
-            .transaction()
-            .insert_scene(
-                RetainedParent::content(root),
-                None,
-                child,
-                empty_leaf(),
-                (4.0, 4.0),
-            )
-            .commit()
-            .unwrap();
-        let mut materializer = PersistentSceneMaterializer::new(&scene);
-        let chunk = &materializer.chunks[&child];
-        assert!(materializer.arenas.draws.range(chunk.draws).is_empty());
-        assert!(materializer.arenas.sdfs.range(chunk.sdfs).is_empty());
-
-        scene
-            .transaction()
-            .replace_scene(child, leaf(Color::WHITE))
-            .commit()
-            .unwrap();
-        assert!(materializer.update(&scene));
-        let chunk = &materializer.chunks[&child];
-        assert_eq!(materializer.arenas.draws.range(chunk.draws).len(), 1);
-        assert!(!materializer.arenas.sdfs.range(chunk.sdfs).is_empty());
-
-        scene
-            .transaction()
-            .replace_scene(child, empty_leaf())
-            .commit()
-            .unwrap();
-        assert!(materializer.update(&scene));
-        let chunk = &materializer.chunks[&child];
-        assert!(materializer.arenas.draws.range(chunk.draws).is_empty());
-        assert!(materializer.arenas.sdfs.range(chunk.sdfs).is_empty());
-    }
-
-    #[test]
-    fn undo_log_restores_values_order_removals_and_surface_after_late_failure() {
-        let root = RetainedNodeId::for_owner(10);
-        let a = RetainedNodeId::for_owner(11);
-        let b = RetainedNodeId::for_owner(12);
-        let invalid = RetainedNodeId::for_owner(13);
-        let original = leaf(Color::WHITE);
-        let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
-        scene
-            .transaction()
-            .insert_scene(
-                RetainedParent::content(root),
-                None,
-                a,
-                original.clone(),
-                (0.0, 0.0),
-            )
-            .insert_scene(
-                RetainedParent::content(root),
-                None,
-                b,
-                leaf(Color::BLACK),
-                (16.0, 0.0),
-            )
-            .commit()
-            .unwrap();
-        let version = scene.version();
-        let order = scene.nodes[&root]
-            .content
-            .order
-            .iter()
-            .map(|(&key, &id)| (key, id))
-            .collect::<Vec<_>>();
-
-        let result = scene
-            .transaction()
-            .replace_scene(a, leaf(Color::from_rgb8(20, 80, 220)))
-            .move_before(b, a)
-            .remove_subtree(b)
-            .resize(96, 80, 1.0)
-            .insert_scene(
-                RetainedParent::mask(root),
-                None,
-                invalid,
-                leaf(Color::WHITE),
-                (0.0, 0.0),
-            )
-            .commit();
-
-        assert_eq!(result, Err(RetainedSceneError::InvalidParentBranch(root)));
-        assert_eq!(scene.version(), version);
-        assert_eq!((scene.width, scene.height, scene.scale), (64, 64, 1.0));
-        assert!(scene.nodes.contains_key(&b));
-        assert!(!scene.nodes.contains_key(&invalid));
-        assert_eq!(
-            scene.nodes[&root]
-                .content
-                .order
-                .iter()
-                .map(|(&key, &id)| (key, id))
-                .collect::<Vec<_>>(),
-            order
-        );
-        let NodeKind::Scene { canvas, .. } = &scene.nodes[&a].kind else {
-            unreachable!()
-        };
-        assert!(Arc::ptr_eq(canvas, &original));
-    }
-
-    #[test]
-    fn reparent_rejects_cycles() {
-        let root = RetainedNodeId::for_owner(1);
-        let a = RetainedNodeId::for_owner(2);
-        let b = RetainedNodeId::for_owner(3);
-        let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
-        let mut transaction = scene.transaction();
-        transaction
-            .insert_group(RetainedParent::content(root), None, a)
-            .insert_group(RetainedParent::content(a), None, b);
-        transaction.commit().unwrap();
-        let mut transaction = scene.transaction();
-        transaction.reparent(a, RetainedParent::content(b), None);
-        assert_eq!(transaction.commit(), Err(RetainedSceneError::Cycle(a)));
-    }
-
-    #[test]
-    fn move_before_changes_materialized_painter_order() {
-        let root = RetainedNodeId::for_owner(1);
-        let a = RetainedNodeId::for_owner(2);
-        let b = RetainedNodeId::for_owner(3);
-        let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
-        let mut transaction = scene.transaction();
-        transaction
-            .insert_scene(
-                RetainedParent::content(root),
-                None,
-                a,
-                leaf(Color::WHITE),
-                (0.0, 0.0),
-            )
-            .insert_scene(
-                RetainedParent::content(root),
-                None,
-                b,
-                leaf(Color::BLACK),
-                (0.0, 0.0),
-            );
-        transaction.commit().unwrap();
-        let mut transaction = scene.transaction();
-        transaction.move_before(b, a).commit().unwrap();
-        let materializer = PersistentSceneMaterializer::new(&scene);
-        let frame = materializer.canvas.persistent_frame.as_ref().unwrap();
-        assert_eq!(
-            frame.nodes.iter().map(|node| node.id).collect::<Vec<_>>(),
-            vec![b, a]
-        );
-    }
-
-    #[test]
-    fn mask_branch_is_only_valid_for_masks() {
-        let root = RetainedNodeId::for_owner(1);
-        let group = RetainedNodeId::for_owner(2);
-        let child = RetainedNodeId::for_owner(3);
-        let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
-        let mut transaction = scene.transaction();
-        transaction
-            .insert_group(RetainedParent::content(root), None, group)
-            .insert_scene(
-                RetainedParent::mask(group),
-                None,
-                child,
-                leaf(Color::WHITE),
-                (0.0, 0.0),
-            );
-        assert_eq!(
-            transaction.commit(),
-            Err(RetainedSceneError::InvalidParentBranch(group))
-        );
-    }
-
-    #[test]
-    fn layer_geometry_rejects_non_finite_coordinates_atomically() {
-        let root = RetainedNodeId::for_owner(20);
-        let layer = RetainedNodeId::for_owner(21);
-        let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
-        let descriptor = RetainedLayerDescriptor::Opacity {
-            path: Rect::new(0.0, 0.0, f64::NAN, 16.0).to_path(0.1),
-            transform: Affine::IDENTITY,
-            tolerance: 0.1,
-            opacity: 0.5,
-        };
-
-        assert_eq!(
-            scene
-                .transaction()
-                .insert_layer(RetainedParent::content(root), None, layer, descriptor)
-                .commit(),
-            Err(RetainedSceneError::InvalidPosition)
-        );
-        assert_eq!(scene.version(), SceneVersion::INITIAL);
-        assert!(!scene.nodes.contains_key(&layer));
-
-        let descriptor =
-            RetainedLayerDescriptor::ClipSdf(Sdf::Circle(crate::shared::sdf::circle::Circle {
-                center: Point::new(f64::NAN, 8.0),
-                radius: 4.0,
-            }));
-        assert_eq!(
-            scene
-                .transaction()
-                .insert_layer(RetainedParent::content(root), None, layer, descriptor)
-                .commit(),
-            Err(RetainedSceneError::InvalidPosition)
-        );
-        assert_eq!(scene.version(), SceneVersion::INITIAL);
-        assert!(!scene.nodes.contains_key(&layer));
-    }
-
-    #[test]
-    fn journal_merges_skipped_versions() {
-        let root = RetainedNodeId::for_owner(1);
-        let child = RetainedNodeId::for_owner(2);
-        let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
-        let mut transaction = scene.transaction();
-        transaction.insert_scene(
-            RetainedParent::content(root),
-            None,
-            child,
-            leaf(Color::WHITE),
-            (0.0, 0.0),
-        );
-        transaction.commit().unwrap();
-        let mut transaction = scene.transaction();
-        transaction.set_position(child, (4.0, 5.0));
-        transaction.commit().unwrap();
-        let changes = scene.changes_since(SceneVersion::INITIAL).unwrap();
-        assert!(changes.changed_nodes.contains(&child));
-        assert!(changes.topology_changed);
-    }
-
-    #[test]
-    fn journal_gap_requires_one_full_resynchronization() {
-        let root = RetainedNodeId::for_owner(1);
-        let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
-        for _ in 0..=JOURNAL_CAPACITY {
-            scene
-                .transaction()
-                .invalidate_rect(Rect::new(0.0, 0.0, 1.0, 1.0))
-                .commit()
-                .unwrap();
-        }
-
-        assert!(scene.changes_since(SceneVersion::INITIAL).is_none());
-        let recent = SceneVersion(scene.version().get() - 1);
-        assert!(scene.changes_since(recent).is_some());
-    }
-
-    #[test]
-    fn appended_root_layer_fragment_is_visible_in_cached_execution_plan() {
-        let root = RetainedNodeId::for_owner(30);
-        let base = RetainedNodeId::for_owner(31);
-        let layer = RetainedNodeId::for_owner(32);
-        let child = RetainedNodeId::for_owner(33);
-        let mut scene = RetainedScene::new(64, 16, 1.0, root).unwrap();
-        scene
-            .transaction()
-            .insert_scene(
-                RetainedParent::content(root),
-                None,
-                base,
-                leaf(Color::from_rgb8(20, 40, 220)),
-                (0.0, 0.0),
-            )
-            .commit()
-            .unwrap();
-        let mut materializer = PersistentSceneMaterializer::new(&scene);
-        let base_batch = materializer.node_batches[&base];
-        let base_frame = materializer.canvas.persistent_frame.clone().unwrap();
-        scene
-            .transaction()
-            .insert_layer(
-                RetainedParent::content(root),
-                None,
-                layer,
-                RetainedLayerDescriptor::Opacity {
-                    path: Rect::new(0.0, 0.0, 16.0, 16.0).to_path(0.1),
-                    transform: Affine::IDENTITY,
-                    tolerance: 0.1,
-                    opacity: 0.5,
-                },
-            )
-            .insert_scene(
-                RetainedParent::content(layer),
-                None,
-                child,
-                leaf(Color::from_rgb8(220, 40, 20)),
-                (0.0, 0.0),
-            )
-            .commit()
-            .unwrap();
-
-        assert!(materializer.update(&scene));
-        assert_eq!(materializer.node_batches[&base], base_batch);
-        let plan = materializer
-            .canvas
-            .compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
-        assert_eq!(
-            plan.ops
-                .iter()
-                .filter(|op| matches!(op, crate::shared::execution::ExecOp::DrawBatch { .. }))
-                .count(),
-            2,
-            "patched root plan: {:#?}",
-            plan.ops
-        );
-        let inserted_frame = materializer.canvas.persistent_frame.clone().unwrap();
-        assert!(
-            Arc::ptr_eq(&base_frame.nodes, &inserted_frame.nodes),
-            "root layer insertion must patch the immutable frame instead of collecting every node"
-        );
-        assert!(inserted_frame.node_state(layer).is_some());
-        assert!(inserted_frame.node_state(child).is_some());
-        assert_eq!(inserted_frame.delta.as_ref().unwrap().depth, 1);
-
-        scene.transaction().remove_subtree(layer).commit().unwrap();
-        assert!(materializer.update(&scene));
-        let removed_frame = materializer.canvas.persistent_frame.clone().unwrap();
-        assert!(Arc::ptr_eq(&base_frame.nodes, &removed_frame.nodes));
-        assert!(removed_frame.node_state(layer).is_none());
-        assert!(removed_frame.node_state(child).is_none());
-        assert_eq!(removed_frame.delta.as_ref().unwrap().depth, 1);
-    }
-}
+#[path = "retained_scene/tests.rs"]
+mod tests;

@@ -2593,7 +2593,7 @@ fn persistent_retained_removes_initial_middle_root_layer_without_recompiling_sce
 }
 
 #[test]
-fn persistent_retained_appends_layer_fragment_after_existing_layer() {
+fn persistent_retained_inserts_layer_fragment_before_existing_layer() {
     if !run_wgpu_tests() {
         return;
     }
@@ -2638,7 +2638,7 @@ fn persistent_retained_appends_layer_fragment_after_existing_layer() {
         .transaction()
         .insert_layer(
             RetainedParent::content(root),
-            None,
+            Some(first_layer),
             second_layer,
             layer(0.4),
         )
@@ -2797,7 +2797,6 @@ fn persistent_retained_renderers_consume_independent_cursors_and_recover_after_j
 }
 const GPU_PTCL_END: u32 = 0;
 const GPU_PTCL_COLOR: u32 = 2;
-const GPU_PTCL_BEGIN_CLIP: u32 = 3;
 const GPU_PTCL_END_CLIP: u32 = 4;
 const GPU_PTCL_SDF: u32 = 9;
 const GPU_PTCL_BEGIN_SDF_CLIP: u32 = 12;
@@ -6564,32 +6563,6 @@ fn read_ptcl_records(renderer: &Renderer, len: usize) -> Vec<PtclRecord> {
         renderer.lengths.tile_count,
         len,
     )
-}
-
-fn create_test_target_texture(
-    renderer: &Renderer,
-    width: u32,
-    height: u32,
-    label: &str,
-) -> ::wgpu::Texture {
-    renderer
-        .device()
-        .create_texture(&::wgpu::TextureDescriptor {
-            label: Some(label),
-            size: ::wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: ::wgpu::TextureDimension::D2,
-            format: ::wgpu::TextureFormat::Rgba8Unorm,
-            usage: ::wgpu::TextureUsages::STORAGE_BINDING
-                | ::wgpu::TextureUsages::COPY_DST
-                | ::wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
-        })
 }
 
 fn read_texture_rgba8(

@@ -45,6 +45,10 @@ pub struct Measurements {
     pub materialize_chunks: Duration,
     pub materialize_plan_sync: Duration,
     pub materialize_frame: Duration,
+    pub root_fragment_compile: Duration,
+    pub root_fragment_spatial: Duration,
+    pub root_fragment_plan: Duration,
+    pub root_fragment_metadata: Duration,
     pub damage: Duration,
     pub prepare: Duration,
     pub scan: Duration,
@@ -274,6 +278,10 @@ fn accumulate(
     measurements.materialize_chunks += stage(profile, "retained.materialize.chunks");
     measurements.materialize_plan_sync += stage(profile, "retained.materialize.plan_sync");
     measurements.materialize_frame += stage(profile, "retained.materialize.frame");
+    measurements.root_fragment_compile += stage(profile, "retained.root_fragment.compile");
+    measurements.root_fragment_spatial += stage(profile, "retained.root_fragment.spatial");
+    measurements.root_fragment_plan += stage(profile, "retained.root_fragment.plan");
+    measurements.root_fragment_metadata += stage(profile, "retained.root_fragment.metadata");
     measurements.damage +=
         stage(profile, "retained.damage") + stage(profile, "retained.damage.propagate");
     measurements.prepare += stage(profile, "prepare");

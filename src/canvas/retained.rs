@@ -38,19 +38,8 @@ impl RetainedNodeId {
 pub(crate) struct NodeGeneration(u64);
 
 impl NodeGeneration {
-    pub const INITIAL: Self = Self(0);
-
     pub const fn new(value: u64) -> Self {
         Self(value)
-    }
-
-    pub const fn get(self) -> u64 {
-        self.0
-    }
-
-    pub fn advance(&mut self) -> Self {
-        self.0 = self.0.wrapping_add(1);
-        *self
     }
 }
 
@@ -130,6 +119,9 @@ pub(crate) struct RetainedFrame {
     pub(crate) scale_bits: u32,
     pub(crate) nodes: Arc<[RetainedNodeState]>,
     pub(crate) node_index: Arc<HashMap<RetainedNodeId, usize>>,
+    /// Copy-on-write state pages compact long content-only delta chains without cloning every
+    /// retained node. Topology overlays remain in `delta` until a hierarchy rebuild.
+    pub(crate) state_pages: Arc<HashMap<usize, Arc<[RetainedNodeState]>>>,
     pub(crate) invalidated_bounds: Vec<Bounds>,
     pub(crate) invalidate_all: bool,
     pub(crate) incremental_complete: bool,
@@ -180,7 +172,12 @@ impl RetainedFrame {
             }
             delta = current.previous.as_deref();
         }
-        self.node_index.get(&id).map(|&index| self.nodes[index])
+        self.node_index.get(&id).map(|&index| {
+            const PAGE_SIZE: usize = 256;
+            self.state_pages
+                .get(&(index / PAGE_SIZE))
+                .map_or(self.nodes[index], |page| page[index % PAGE_SIZE])
+        })
     }
 
     pub(crate) fn node_revision(&self, id: RetainedNodeId) -> Option<NodeGeneration> {

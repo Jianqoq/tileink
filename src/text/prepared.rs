@@ -8,7 +8,7 @@ use std::{
 use cosmic_text::SwashImage;
 use cosmic_text::{CacheKey, FontSystem, SwashContent};
 
-use crate::shared::{bounds::Bounds, pixel::TextCoverageParams};
+use crate::shared::bounds::Bounds;
 
 use super::{
     context::TextContext,
@@ -202,22 +202,6 @@ impl PreparedTextData {
     pub(crate) fn atlas_signature(&self) -> AtlasSignature {
         self.atlas_signature
     }
-
-    #[cfg(test)]
-    pub(crate) fn from_test_parts(
-        glyphs: Vec<PreparedGlyph>,
-        runs: Vec<TextRun>,
-        images: Vec<PreparedGlyphImage>,
-    ) -> Self {
-        Self {
-            runs,
-            glyphs,
-            images,
-            image_by_key: HashMap::new(),
-            atlas_signature: AtlasSignature::default(),
-            raster_options: TextRasterOptions::default(),
-        }
-    }
 }
 
 fn merge_ranges(ranges: &mut Vec<Range<usize>>) {
@@ -361,7 +345,6 @@ impl PreparedGlyph {
 pub(crate) struct PreparedGlyphImage {
     pub(crate) content: PreparedGlyphContent,
     pub(crate) composite_mode: TextCompositeMode,
-    pub(crate) coverage_params: TextCoverageParams,
     pub(crate) left: i32,
     pub(crate) top: i32,
     pub(crate) width: u32,
@@ -380,7 +363,6 @@ impl PreparedGlyphImage {
         Self {
             content,
             composite_mode: raster_options.composite_mode,
-            coverage_params: raster_options.coverage_params,
             left: pixels.left,
             top: image.placement.top,
             width: pixels.width,

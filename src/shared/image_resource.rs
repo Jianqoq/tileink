@@ -187,37 +187,6 @@ fn fnv_mix(mut hash: u64, value: u64) -> u64 {
     }
     hash
 }
-
-#[derive(Clone, Copy, Default)]
-pub(crate) struct ImageResourceResolver<'a> {
-    renderer: Option<&'a ImageResourceStore>,
-    scene: Option<&'a ImageResourceStore>,
-}
-
-impl<'a> ImageResourceResolver<'a> {
-    pub(crate) fn new(
-        renderer: Option<&'a ImageResourceStore>,
-        scene: Option<&'a ImageResourceStore>,
-    ) -> Self {
-        Self { renderer, scene }
-    }
-
-    pub(crate) fn resolve(self, id: ImageResourceId) -> Option<&'a Image> {
-        match id {
-            ImageResourceId::Renderer(key) => {
-                self.renderer.and_then(|resources| resources.get(key))
-            }
-            ImageResourceId::Scene(key) => self.scene.and_then(|resources| resources.get(key)),
-        }
-    }
-}
-
-impl<'a> From<Option<&'a ImageResourceStore>> for ImageResourceResolver<'a> {
-    fn from(renderer: Option<&'a ImageResourceStore>) -> Self {
-        Self::new(renderer, None)
-    }
-}
-
 struct ImageResourceEntry<'a> {
     id: ImageResourceId,
     image: &'a Arc<Image>,

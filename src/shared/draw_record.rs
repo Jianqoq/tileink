@@ -94,6 +94,7 @@ impl DrawRecord {
         (self.sdf_offset != Self::NONE).then_some(self.sdf_offset as usize..end as usize)
     }
 
+    #[cfg(test)]
     pub(crate) fn sdf_shadow_range(self) -> Option<std::ops::Range<usize>> {
         let end = self.sdf_shadow_offset.checked_add(self.sdf_shadow_len)?;
         (self.sdf_shadow_offset != Self::NONE)
@@ -108,6 +109,7 @@ impl DrawRecord {
         self.path_id != Self::NONE
     }
 
+    #[cfg(test)]
     pub(crate) fn solid_rect(self) -> bool {
         self.solid_rect != 0
     }

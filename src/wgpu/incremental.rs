@@ -283,10 +283,6 @@ impl DamageTiles {
         self.tiles_width.saturating_mul(self.tiles_height)
     }
 
-    pub(crate) fn tiles_width(&self) -> u32 {
-        self.tiles_width
-    }
-
     /// Decomposes dirty tiles into non-overlapping pixel rectangles.
     ///
     /// Horizontal runs with the same extent on adjacent tile rows are merged
@@ -552,11 +548,6 @@ pub(crate) struct IncrementalState {
 
 impl IncrementalState {
     pub(crate) fn invalidate_renderer_state(&mut self) {
-        self.renderer_state_invalid = true;
-    }
-
-    pub(crate) fn clear_history(&mut self) {
-        self.previous = None;
         self.renderer_state_invalid = true;
     }
 
@@ -911,6 +902,7 @@ mod tests {
             scale_bits: 1.0f32.to_bits(),
             nodes: nodes.into(),
             node_index: std::sync::Arc::new(node_index),
+            state_pages: std::sync::Arc::new(Default::default()),
             invalidated_bounds: Vec::new(),
             invalidate_all: false,
             incremental_complete: true,

@@ -1,7 +1,4 @@
-use peniko::kurbo::Point;
-
-use super::rect::{Radius, Rect};
-use crate::{TILE_SIZE, shared::bounds::Bounds};
+use crate::shared::bounds::Bounds;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -74,43 +71,6 @@ impl CandleStick {
         self
     }
 
-    pub(crate) fn tile_is_solid(self, _: Bounds) -> bool {
-        false
-    }
-
-    pub(crate) fn fine_area(
-        self,
-        area: &mut [f32; (TILE_SIZE * TILE_SIZE) as usize],
-        tile_bounds: Bounds,
-        pixel_bounds: Bounds,
-    ) {
-        let mut body = [0.0; (TILE_SIZE * TILE_SIZE) as usize];
-        self.wick_rect().fine_area(area, tile_bounds, pixel_bounds);
-        self.body_rect()
-            .fine_area(&mut body, tile_bounds, pixel_bounds);
-        for (dst, src) in area.iter_mut().zip(body) {
-            *dst = dst.max(src);
-        }
-    }
-
-    fn wick_rect(self) -> Rect {
-        let (x0, x1) = self.wick_x_bounds();
-        Rect {
-            start: Point::new(f64::from(x0), f64::from(self.high_y.min(self.low_y))),
-            end: Point::new(f64::from(x1), f64::from(self.high_y.max(self.low_y))),
-            radius: Radius::ZERO,
-        }
-    }
-
-    fn body_rect(self) -> Rect {
-        let (x0, y0, x1, y1) = self.body_axis_bounds();
-        Rect {
-            start: Point::new(f64::from(x0), f64::from(y0)),
-            end: Point::new(f64::from(x1), f64::from(y1)),
-            radius: Radius::ZERO,
-        }
-    }
-
     fn body_axis_bounds(self) -> (f32, f32, f32, f32) {
         let half_width = self.body_width as f32 * 0.5;
         let x0 = self.center_x - half_width;
@@ -150,8 +110,6 @@ mod tests {
         assert!(CandleStick::valid_wick_width(1));
         assert!(!CandleStick::valid_wick_width(0));
         assert_eq!(candle.bounds(), Bounds::new(12, 4, 21, 28));
-        assert_eq!(candle.wick_rect().start.x, 16.0);
-        assert_eq!(candle.wick_rect().end.x, 17.0);
     }
 
     #[test]
@@ -159,8 +117,6 @@ mod tests {
         let candle = CandleStick::new(16.5, 4.0, 28.0, 10.0, 22.0, 1, 6);
 
         assert_eq!(candle.bounds(), Bounds::new(13, 4, 20, 28));
-        assert_eq!(candle.wick_rect().start.x, 13.5);
-        assert_eq!(candle.wick_rect().end.x, 19.5);
     }
 
     #[test]

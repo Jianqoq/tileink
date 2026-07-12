@@ -1,3 +1,8 @@
+#![allow(
+    dead_code,
+    reason = "Rust-side binding constants share one schema with generated WGSL variants"
+)]
+
 pub(crate) mod brush {
     pub(crate) const GPU_BRUSH_U32_STRIDE: usize = 9;
     pub(crate) const GPU_BRUSH_PARAM_STRIDE: usize = 12;

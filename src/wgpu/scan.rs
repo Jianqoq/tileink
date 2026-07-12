@@ -200,6 +200,7 @@ impl WgpuScanPipeline {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn run(
         &self,
         device: &::wgpu::Device,
