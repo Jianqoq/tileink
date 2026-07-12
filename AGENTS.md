@@ -49,3 +49,4 @@ After each feature or bug fix:
 8. Every change related to rendering, must run full svg tests and examples, if there are diff in pngs, make sure the change make sense and reviewed by human
 9. Review your changes, do they make sense
 10. After benchmark running, individual performance regression must not greater than 2%
+11. Update website docs if needed

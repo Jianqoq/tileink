@@ -26,7 +26,7 @@ scene
         None,
         item,
         Arc::new(item_canvas),
-        (0.0, 0.0),
+        peniko::kurbo::Affine::IDENTITY,
     )
     .commit()?;
 
@@ -35,7 +35,7 @@ renderer.render_retained(&scene);
 
 scene
     .transaction()
-    .set_position(item, (16.0, 0.0))
+    .set_transform(item, peniko::kurbo::Affine::translate((16.0, 0.0)))
     .invalidate_rect(Rect::new(0.0, 0.0, 160.0, 100.0))
     .commit()?;
 renderer.render_retained(&scene);
