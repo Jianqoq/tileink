@@ -312,6 +312,46 @@ fn compile_fuses_sdf_clip_into_layer_stack() {
 }
 
 #[test]
+fn transformed_sdf_clip_keeps_local_geometry_and_gpu_transform() {
+    let mut canvas = test_scene();
+    let transform = Affine::translate((20.0, 12.0)) * Affine::rotate(0.25);
+    assert!(canvas.push_clip_sdf_layer_transformed(
+        Sdf::Rect(SdfRect {
+            start: Point::new(2.0, 3.0),
+            end: Point::new(18.0, 15.0),
+            radius: Radius::all(4.0),
+        }),
+        transform,
+    ));
+
+    let draw = canvas.draw_records[0];
+    assert_eq!(draw.transform, GpuAffine::from_logical(transform, 1.0));
+    match canvas.draw_sdf(&draw) {
+        Some(Sdf::Rect(rect)) => {
+            assert_eq!(rect.start, Point::new(2.0, 3.0));
+            assert_eq!(rect.end, Point::new(18.0, 15.0));
+            assert_eq!(rect.radius.top_left, 4.0);
+        }
+        sdf => panic!("expected local rectangular SDF, got {sdf:#?}"),
+    }
+    assert_eq!(
+        draw.pixel_bounds,
+        draw.transform.transform_bounds(draw.local_pixel_bounds)
+    );
+
+    let before = canvas.draw_records.len();
+    assert!(!canvas.push_clip_sdf_layer_transformed(
+        Sdf::Rect(SdfRect {
+            start: Point::ZERO,
+            end: Point::new(8.0, 8.0),
+            radius: Radius::ZERO,
+        }),
+        Affine::scale_non_uniform(0.0, 1.0),
+    ));
+    assert_eq!(canvas.draw_records.len(), before);
+}
+
+#[test]
 fn path_api_promotes_axis_aligned_rect_clip_without_path_storage() {
     let mut canvas = test_scene();
     canvas.push_clip_layer(

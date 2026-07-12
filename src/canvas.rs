@@ -1616,6 +1616,40 @@ impl Canvas {
         self.push_clip_sdf_layer_inner(sdf);
     }
 
+    /// Adds an affine-transformed clip while preserving the SDF as local GPU geometry.
+    ///
+    /// Rectangular UI clips use this path so their coverage exactly matches transformed SDF
+    /// rectangles instead of depending on a CPU-flattened path approximation. Returns `false`
+    /// for a non-invertible transform without mutating the canvas.
+    pub fn push_clip_sdf_layer_transformed(&mut self, sdf: Sdf, transform: Affine) -> bool {
+        let transform = GpuAffine::from_logical(transform, self.scale_factor);
+        let Some(inverse_transform) = transform.inverse() else {
+            return false;
+        };
+        self.ensure_command_root();
+        let sdf = self.physical_sdf(sdf);
+        let draw = self.push_physical_sdf_record(
+            sdf,
+            Brush::Solid(Color::TRANSPARENT),
+            DrawTag::Clip,
+            false,
+        );
+        let record = &mut self.draw_records[draw];
+        record.transform = transform;
+        record.inverse_transform = inverse_transform;
+        record.pixel_bounds = transform.transform_bounds(record.local_pixel_bounds);
+        let bounds = record.pixel_bounds;
+        self.push_layer_command(
+            draw,
+            Layer::ClipSdf {
+                bounds: Bounds::new(bounds.x0, bounds.y0, bounds.x1, bounds.y1),
+                sdf,
+            },
+            LayerKind::ClipSdf,
+        );
+        true
+    }
+
     fn push_clip_sdf_layer_inner(&mut self, sdf: Sdf) {
         self.ensure_command_root();
         let sdf = self.physical_sdf(sdf);

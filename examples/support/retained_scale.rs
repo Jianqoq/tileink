@@ -2,11 +2,11 @@ use std::sync::Arc;
 
 use peniko::{
     Color, Extend,
-    kurbo::{Affine, Rect, Shape},
+    kurbo::{Affine, Point, Rect, Shape},
 };
 use tileink::{
     Canvas, Filter, Image, PatternSampling, Radius, Region, RetainedLayerDescriptor,
-    RetainedNodeId, RetainedParent, RetainedScene,
+    RetainedNodeId, RetainedParent, RetainedScene, Sdf, SdfRect,
 };
 
 use super::retained_bench::{HEIGHT, WIDTH};
@@ -21,6 +21,7 @@ pub enum Scenario {
     AllRevisions,
     OneMove,
     OneAffine,
+    AffineClipUpdate,
     LiquidGlassMove,
     AddRemove,
     LayerAddRemove,
@@ -40,7 +41,7 @@ pub enum Scenario {
 }
 
 impl Scenario {
-    pub const ALL: [Self; 24] = [
+    pub const ALL: [Self; 25] = [
         Self::Static,
         Self::OneRevision,
         Self::VariableLength,
@@ -49,6 +50,7 @@ impl Scenario {
         Self::AllRevisions,
         Self::OneMove,
         Self::OneAffine,
+        Self::AffineClipUpdate,
         Self::LiquidGlassMove,
         Self::AddRemove,
         Self::LayerAddRemove,
@@ -77,6 +79,7 @@ impl Scenario {
             Self::AllRevisions => "all-revisions",
             Self::OneMove => "one-move",
             Self::OneAffine => "one-affine",
+            Self::AffineClipUpdate => "affine-clip-update",
             Self::LiquidGlassMove => "liquid-glass-move",
             Self::AddRemove => "add-remove",
             Self::LayerAddRemove => "layer-add-remove",
@@ -172,6 +175,7 @@ impl Workload {
         if matches!(
             self.scenario,
             Scenario::LayerUpdate
+                | Scenario::AffineClipUpdate
                 | Scenario::FilterChildRevision
                 | Scenario::CroppedFilterChildRevision
                 | Scenario::CroppedFilterManualInvalidation
@@ -181,6 +185,7 @@ impl Workload {
                 None,
                 layer,
                 match self.scenario {
+                    Scenario::AffineClipUpdate => affine_clip_layer(168.0),
                     Scenario::FilterChildRevision => filter_layer(),
                     Scenario::CroppedFilterChildRevision => cropped_filter_layer(),
                     Scenario::CroppedFilterManualInvalidation => cropped_filter_layer(),
@@ -191,6 +196,7 @@ impl Workload {
         let parent = if matches!(
             self.scenario,
             Scenario::LayerUpdate
+                | Scenario::AffineClipUpdate
                 | Scenario::FilterChildRevision
                 | Scenario::CroppedFilterChildRevision
                 | Scenario::CroppedFilterManualInvalidation
@@ -333,6 +339,10 @@ impl Workload {
                         * Affine::translate((-4.0, -4.0)),
                 );
             }
+            Scenario::AffineClipUpdate => {
+                transaction
+                    .update_layer(layer, affine_clip_layer(if even { 168.0 } else { 172.0 }));
+            }
             Scenario::AddRemove => {
                 if even {
                     transaction.insert_scene(
@@ -467,6 +477,17 @@ fn opacity_layer(opacity: f32) -> RetainedLayerDescriptor {
         transform: Affine::IDENTITY,
         tolerance: 0.1,
         opacity,
+    }
+}
+
+fn affine_clip_layer(height: f64) -> RetainedLayerDescriptor {
+    RetainedLayerDescriptor::ClipSdf {
+        sdf: Sdf::Rect(SdfRect {
+            start: Point::new(1.0, 1.0),
+            end: Point::new(167.0, height - 1.0),
+            radius: Radius::all(7.0),
+        }),
+        transform: Affine::translate((24.0, 16.0)),
     }
 }
 

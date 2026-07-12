@@ -86,7 +86,10 @@ pub enum RetainedLayerDescriptor {
         rule: FillRule,
         tolerance: f64,
     },
-    ClipSdf(Sdf),
+    ClipSdf {
+        sdf: Sdf,
+        transform: Affine,
+    },
     Isolate {
         path: BezPath,
         transform: Affine,
@@ -1747,7 +1750,9 @@ impl PersistentSceneMaterializer {
                         rule,
                         tolerance,
                     } => canvas.push_clip_layer(path.clone(), *transform, *rule, *tolerance),
-                    RetainedLayerDescriptor::ClipSdf(sdf) => canvas.push_clip_sdf_layer(*sdf),
+                    RetainedLayerDescriptor::ClipSdf { sdf, transform } => {
+                        assert!(canvas.push_clip_sdf_layer_transformed(*sdf, *transform));
+                    }
                     RetainedLayerDescriptor::Isolate {
                         path,
                         transform,
@@ -3129,7 +3134,7 @@ impl PersistentSceneMaterializer {
             if let NodeKind::Layer(layer) = &parent_node.kind {
                 bounds = match layer {
                     RetainedLayerDescriptor::ClipPath { .. }
-                    | RetainedLayerDescriptor::ClipSdf(_)
+                    | RetainedLayerDescriptor::ClipSdf { .. }
                     | RetainedLayerDescriptor::Isolate { .. }
                     | RetainedLayerDescriptor::Opacity { .. }
                     | RetainedLayerDescriptor::Blend { .. } => self.chunks[&parent.node]
@@ -3722,7 +3727,7 @@ impl PersistentSceneMaterializer {
             Bounds::canvas(self.canvas.physical_width(), self.canvas.physical_height());
         match layer {
             RetainedLayerDescriptor::ClipPath { .. }
-            | RetainedLayerDescriptor::ClipSdf(_)
+            | RetainedLayerDescriptor::ClipSdf { .. }
             | RetainedLayerDescriptor::Isolate { .. }
             | RetainedLayerDescriptor::Opacity { .. }
             | RetainedLayerDescriptor::Blend { .. } => BoundsInfluence {
@@ -4424,7 +4429,9 @@ impl RetainedScene {
                         rule,
                         tolerance,
                     } => canvas.push_clip_layer(path.clone(), *transform, *rule, *tolerance),
-                    RetainedLayerDescriptor::ClipSdf(sdf) => canvas.push_clip_sdf_layer(*sdf),
+                    RetainedLayerDescriptor::ClipSdf { sdf, transform } => {
+                        assert!(canvas.push_clip_sdf_layer_transformed(*sdf, *transform));
+                    }
                     RetainedLayerDescriptor::Isolate {
                         path,
                         transform,
@@ -5162,7 +5169,10 @@ fn validate_layer(layer: &RetainedLayerDescriptor) -> Result<(), RetainedSceneEr
         RetainedLayerDescriptor::Filter { sample_region, .. }
         | RetainedLayerDescriptor::Backdrop { sample_region, .. } => validate_region(sample_region),
         RetainedLayerDescriptor::Mask(mask) => validate_region(&mask.region),
-        RetainedLayerDescriptor::ClipSdf(sdf) => validate_sdf(*sdf),
+        RetainedLayerDescriptor::ClipSdf { sdf, transform } => {
+            validate_sdf(*sdf)?;
+            validate_transform(*transform)
+        }
     }
 }
 

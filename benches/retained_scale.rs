@@ -115,6 +115,17 @@ fn retained_scale(c: &mut Criterion) {
     ] {
         retained_materialize_stage(c, &seed, Scenario::OneAffine, name, duration);
     }
+    for (name, duration) in [
+        (
+            "affine-clip-update",
+            (|m: &Measurements| m.materialize) as fn(&Measurements) -> Duration,
+        ),
+        ("affine-clip-update-chunks", |m| m.materialize_chunks),
+        ("affine-clip-update-plan-sync", |m| m.materialize_plan_sync),
+        ("affine-clip-update-frame", |m| m.materialize_frame),
+    ] {
+        retained_materialize_stage(c, &seed, Scenario::AffineClipUpdate, name, duration);
+    }
 
     for (scenario, name) in [
         (Scenario::LayerAddRemove, "tail-layer"),

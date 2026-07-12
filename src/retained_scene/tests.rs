@@ -588,17 +588,37 @@ fn layer_geometry_rejects_non_finite_coordinates_atomically() {
     assert_eq!(scene.version(), SceneVersion::INITIAL);
     assert!(!scene.nodes.contains_key(&layer));
 
-    let descriptor =
-        RetainedLayerDescriptor::ClipSdf(Sdf::Circle(crate::shared::sdf::circle::Circle {
+    let descriptor = RetainedLayerDescriptor::ClipSdf {
+        sdf: Sdf::Circle(crate::shared::sdf::circle::Circle {
             center: Point::new(f64::NAN, 8.0),
             radius: 4.0,
-        }));
+        }),
+        transform: Affine::IDENTITY,
+    };
     assert_eq!(
         scene
             .transaction()
             .insert_layer(RetainedParent::content(root), None, layer, descriptor)
             .commit(),
         Err(RetainedSceneError::InvalidPosition)
+    );
+    assert_eq!(scene.version(), SceneVersion::INITIAL);
+    assert!(!scene.nodes.contains_key(&layer));
+
+    let descriptor = RetainedLayerDescriptor::ClipSdf {
+        sdf: Sdf::Rect(crate::SdfRect {
+            start: Point::new(0.0, 0.0),
+            end: Point::new(16.0, 16.0),
+            radius: crate::Radius::ZERO,
+        }),
+        transform: Affine::scale_non_uniform(0.0, 1.0),
+    };
+    assert_eq!(
+        scene
+            .transaction()
+            .insert_layer(RetainedParent::content(root), None, layer, descriptor)
+            .commit(),
+        Err(RetainedSceneError::InvalidTransform)
     );
     assert_eq!(scene.version(), SceneVersion::INITIAL);
     assert!(!scene.nodes.contains_key(&layer));

@@ -5276,6 +5276,41 @@ fn wgpu_renderer_clips_rect_liquid_glass_children_with_outer_sdf_clip_when_enabl
 }
 
 #[test]
+fn wgpu_renderer_applies_affine_to_sdf_clip_when_enabled() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut canvas = Canvas::new(64, 64, 1.0);
+    let transform = Affine::translate((32.0, 32.0))
+        * Affine::rotate(std::f64::consts::FRAC_PI_2)
+        * Affine::scale_non_uniform(1.0, 1.5);
+    assert!(canvas.push_clip_sdf_layer_transformed(
+        crate::Sdf::Rect(crate::SdfRect {
+            start: peniko::kurbo::Point::new(4.0, 4.0),
+            end: peniko::kurbo::Point::new(20.0, 12.0),
+            radius: crate::Radius::ZERO,
+        }),
+        transform,
+    ));
+    canvas.push_rect(
+        Rect::new(0.0, 0.0, 64.0, 64.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(30, 210, 70),
+    );
+    canvas.pop_layer();
+
+    let image = render_native_wgpu(&canvas);
+    let center = transform * peniko::kurbo::Point::new(12.0, 8.0);
+    assert_eq!(
+        image.rgba8_at(center.x as u32, center.y as u32),
+        [30, 210, 70, 255]
+    );
+    assert_eq!(image.rgba8_at(40, 44), [0, 0, 0, 0]);
+    assert_eq!(image.rgba8_at(24, 24), [0, 0, 0, 0]);
+}
+
+#[test]
 fn wgpu_renderer_merges_filter_graph_inputs_when_enabled() {
     if !run_wgpu_tests() {
         return;
