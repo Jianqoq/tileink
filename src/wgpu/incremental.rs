@@ -8,7 +8,7 @@ use crate::{
     canvas::{RetainedDamage, RetainedFrame, RetainedNodeState},
     shared::{
         bounds::Bounds,
-        gpu_plan::{CUMSUM_CHUNK_SIZE, GpuCumsumPlan, SCAN_CHUNK_SIZE},
+        gpu_plan::{CUMSUM_CHUNK_SIZE, GpuCumsumPlan},
     },
 };
 
@@ -364,16 +364,23 @@ pub(crate) struct ActiveScanPlan {
 }
 
 impl ActiveScanPlan {
-    pub(crate) fn new(canvas: &Canvas, damage: &DamageTiles) -> Self {
+    pub(crate) fn new(
+        canvas: &Canvas,
+        damage: &DamageTiles,
+        scan_ranges: &[crate::shared::gpu_plan::GpuScanChunkRange],
+    ) -> Self {
         let mut lines = Vec::new();
         let mut paths = Vec::new();
         let mut chunks = Vec::new();
         let mut backdrops = Vec::new();
         let mut cumsum = GpuCumsumPlan::default();
-        let mut chunk_cursor = 0u32;
-
-        for record in &canvas.path_records {
-            let chunk_count = record.data_len.div_ceil(SCAN_CHUNK_SIZE);
+        for (path_index, record) in canvas.path_records.iter().enumerate() {
+            // Retained path slots can contain holes, and their scan chunks live in a
+            // persistent variable-sized arena. Deriving chunk indices from current
+            // record order would address the wrong allocation after removals or growth.
+            if !record.is_live_at(path_index) {
+                continue;
+            }
             let active = damage.intersects_tile_rect(
                 record.tile_x0,
                 record.tile_y0,
@@ -384,12 +391,14 @@ impl ActiveScanPlan {
                 paths.push(record.path_id);
                 lines
                     .extend(record.line_start..record.line_start.saturating_add(record.line_count));
-                chunks.extend(chunk_cursor..chunk_cursor.saturating_add(chunk_count));
+                let range = scan_ranges
+                    .get(path_index)
+                    .expect("persistent scan range exists for every path slot");
+                chunks.extend(range.start..range.end);
                 backdrops
                     .extend(record.data_offset..record.data_offset.saturating_add(record.data_len));
                 append_cumsum_path(record, &mut cumsum);
             }
-            chunk_cursor = chunk_cursor.saturating_add(chunk_count);
         }
 
         let line_base = 0;
@@ -1232,6 +1241,42 @@ mod tests {
             vec![Bounds::new(0, 0, 48, 20)]
         );
         assert_eq!(damage.count_in_bounds(Bounds::new(16, 0, 32, 16)), 1);
+    }
+
+    #[test]
+    fn active_scan_uses_persistent_chunk_allocations_after_a_path_is_removed() {
+        use peniko::{
+            Color,
+            kurbo::{Affine, Rect, Shape},
+        };
+
+        use crate::{Canvas, FillRule, shared::gpu_plan::PersistentPathPlans};
+
+        let mut canvas = Canvas::new(64, 16, 1.0);
+        for x in [0.0, 16.0, 32.0] {
+            canvas.push_path(
+                Rect::new(x, 0.0, x + 12.0, 16.0).to_path(0.0),
+                Color::BLACK,
+                Affine::IDENTITY,
+                FillRule::NonZero,
+                0.0,
+            );
+        }
+        let mut plans = PersistentPathPlans::default();
+        plans.update(&canvas, None);
+        canvas.path_records[1] = Default::default();
+        plans.update(&canvas, Some(std::slice::from_ref(&(1..2))));
+
+        let mut damage = DamageTiles::new((64, 16));
+        damage.add_bounds(Bounds::new(32, 0, 48, 16));
+        let active = ActiveScanPlan::new(&canvas, &damage, plans.scan_ranges());
+        let chunks = &active.indices
+            [active.chunk_base as usize..(active.chunk_base + active.chunk_count) as usize];
+
+        assert_eq!(
+            chunks,
+            (plans.scan_ranges()[2].start..plans.scan_ranges()[2].end).collect::<Vec<_>>()
+        );
     }
 
     #[test]

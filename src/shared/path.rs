@@ -21,3 +21,14 @@ pub struct PathRecord {
     /// Local-to-physical transform applied by scan shaders before tile traversal.
     pub transform: GpuAffine,
 }
+
+impl PathRecord {
+    /// Returns whether this record owns the given physical path slot.
+    ///
+    /// Retained arenas represent removed paths as zeroed records. Checking both
+    /// slot ownership and allocated work prevents a hole from aliasing path zero.
+    pub(crate) fn is_live_at(&self, path_index: usize) -> bool {
+        self.path_id as usize == path_index
+            && (self.line_count != 0 || self.data_len != 0 || self.segment_capacity != 0)
+    }
+}

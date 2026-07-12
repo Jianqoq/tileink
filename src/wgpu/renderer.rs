@@ -691,7 +691,7 @@ impl Renderer {
         let active = self
             .retained
             .active_tiles()
-            .map(|damage| ActiveScanPlan::new(scene, damage));
+            .map(|damage| ActiveScanPlan::new(scene, damage, self.scene_upload.scan_ranges()));
         let stats = self.retained.stats_mut();
         if let Some(active) = &active {
             self.scan

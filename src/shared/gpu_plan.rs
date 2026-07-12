@@ -1493,11 +1493,7 @@ impl PersistentPathPlans {
     }
 
     fn update_path(&mut self, path_id: usize, record: &PathRecord) {
-        // A vacant PathRecord is all zeroes. A live record always owns its physical path slot;
-        // checking both properties prevents an arena hole from masquerading as path zero.
-        let live = record.path_id as usize == path_id
-            && (record.line_count != 0 || record.data_len != 0 || record.segment_capacity != 0);
-        if !live {
+        if !record.is_live_at(path_id) {
             if let Some(allocation) = self.allocations[path_id].take() {
                 self.remove_allocation(allocation);
             }

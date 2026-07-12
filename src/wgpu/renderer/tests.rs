@@ -31,6 +31,72 @@ use crate::{
 };
 
 #[test]
+fn retained_path_removal_preserves_sparse_scan_chunk_mapping() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let leaf = |x: f64, color: Color| {
+        let mut canvas = Canvas::new(64, 16, 1.0);
+        canvas.push_path(
+            Rect::new(x, 0.0, x + 12.0, 16.0).to_path(0.0),
+            color,
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.0,
+        );
+        std::sync::Arc::new(canvas)
+    };
+    let root = RetainedNodeId::for_owner(94_000);
+    let first = RetainedNodeId::for_owner(94_001);
+    let removed = RetainedNodeId::for_owner(94_002);
+    let changed = RetainedNodeId::for_owner(94_003);
+    let mut scene = RetainedScene::new(64, 16, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            first,
+            leaf(0.0, Color::from_rgb8(220, 40, 30)),
+            Affine::IDENTITY,
+        )
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            removed,
+            leaf(16.0, Color::from_rgb8(40, 220, 30)),
+            Affine::IDENTITY,
+        )
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            changed,
+            leaf(32.0, Color::from_rgb8(30, 40, 220)),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+
+    let mut incremental = new_test_renderer(64, 16, Color::TRANSPARENT);
+    incremental.render_retained(&scene);
+    scene
+        .transaction()
+        .remove_subtree(removed)
+        .replace_scene(changed, leaf(32.0, Color::from_rgb8(240, 180, 20)))
+        .commit()
+        .unwrap();
+    incremental.render_retained(&scene);
+
+    let mut full = new_test_renderer(64, 16, Color::TRANSPARENT);
+    let mut config = full.incremental_render_config();
+    config.mode = crate::IncrementalRenderMode::ForceFull;
+    full.set_incremental_render_config(config);
+    full.render_retained(&scene);
+    assert_eq!(incremental.image().pixels, full.image().pixels);
+}
+
+#[test]
 fn persistent_retained_scene_updates_incrementally_and_reuses_static_frames() {
     if !run_wgpu_tests() {
         return;

@@ -11,8 +11,9 @@ use crate::{
             coarse_work_tile_draw_index_word_offset, coarse_work_tile_draw_record_word_offset,
         },
         gpu_plan::{
-            GpuBufferLengths, GpuCumsumPlan, GpuLengthOverrides, PersistentPathPlans,
-            TILE_DRAW_PAGE_WORDS, TileDrawBins, coarse_glyph_capacity_for_draw,
+            GpuBufferLengths, GpuCumsumPlan, GpuLengthOverrides, GpuScanChunkRange,
+            PersistentPathPlans, TILE_DRAW_PAGE_WORDS, TileDrawBins,
+            coarse_glyph_capacity_for_draw,
         },
         gpu_text::{GlyphImageRecord, GlyphRecord, GlyphRunRecord, text_blob_word_len},
         gpu_types::{
@@ -56,6 +57,10 @@ pub(crate) struct WgpuSceneUploadStaging {
 }
 
 impl WgpuSceneUploadStaging {
+    pub(crate) fn scan_ranges(&self) -> &[GpuScanChunkRange] {
+        self.path_plans.scan_ranges()
+    }
+
     fn update_resource_brush_draws(&mut self, canvas: &Canvas) -> bool {
         let full = !self.resource_brush_draws_initialized
             || canvas.buffer_changes.is_none()
