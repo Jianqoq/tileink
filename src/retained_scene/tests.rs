@@ -339,6 +339,74 @@ fn surface_resize_reuses_chunks_and_refreshes_path_tile_bounds() {
 }
 
 #[test]
+fn resize_with_layer_updates_defers_full_frame_and_spatial_rebuild() {
+    let root = RetainedNodeId::for_owner(62_100);
+    let clip = RetainedNodeId::for_owner(62_101);
+    let child = RetainedNodeId::for_owner(62_102);
+    let descriptor = |width| RetainedLayerDescriptor::ClipSdf {
+        sdf: Sdf::Rect(crate::SdfRect {
+            start: Point::ZERO,
+            end: Point::new(width, 64.0),
+            radius: Radius::ZERO,
+        }),
+        transform: Affine::IDENTITY,
+    };
+    let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_layer(RetainedParent::content(root), None, clip, descriptor(64.0))
+        .insert_scene(
+            RetainedParent::content(clip),
+            None,
+            child,
+            leaf(Color::WHITE),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+    let mut materializer = PersistentSceneMaterializer::new(&scene);
+    let base_nodes = materializer
+        .canvas
+        .persistent_frame
+        .as_ref()
+        .unwrap()
+        .nodes
+        .clone();
+
+    scene
+        .transaction()
+        .resize(96, 64, 1.0)
+        .update_layer(clip, descriptor(96.0))
+        .set_transform(child, Affine::translate((8.0, 0.0)))
+        .commit()
+        .unwrap();
+    assert!(materializer.update(&scene));
+
+    let resized = materializer.canvas.persistent_frame.as_ref().unwrap();
+    assert!(Arc::ptr_eq(&resized.nodes, &base_nodes));
+    assert!(resized.invalidate_all);
+    assert_eq!(resized.logical_size, (96, 64));
+    assert!(materializer.surface_metadata_stale);
+
+    // The first later incremental edit rebuilds the deferred baseline before applying its delta,
+    // so damage and spatial queries observe the exact post-resize bounds.
+    scene
+        .transaction()
+        .set_transform(child, Affine::translate((24.0, 0.0)))
+        .commit()
+        .unwrap();
+    assert!(materializer.update(&scene));
+
+    let updated = materializer.canvas.persistent_frame.as_ref().unwrap();
+    assert!(!Arc::ptr_eq(&updated.nodes, &base_nodes));
+    assert_eq!(
+        updated.node_state(child).unwrap().bounds,
+        Bounds::new(24, 0, 40, 16)
+    );
+    assert!(!materializer.surface_metadata_stale);
+}
+
+#[test]
 fn scene_content_replacement_refreshes_embedded_backdrop_index() {
     let root = RetainedNodeId::for_owner(60_000);
     let child = RetainedNodeId::for_owner(60_001);

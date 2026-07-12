@@ -112,6 +112,7 @@ impl Renderer {
                 canvas.physical_height(),
             );
         });
+        let plan_metadata_profile = start_cpu_scope("prepare.plan_metadata");
         let plan_fingerprint = canvas.execution_plan_fingerprint();
         let structure_reused = canvas
             .buffer_changes
@@ -151,6 +152,7 @@ impl Renderer {
         } else {
             profile_cpu("prepare.stack_depths", || plan_stack_depths(&plan))
         };
+        drop(plan_metadata_profile);
         profile_cpu("prepare.upload_scene", || {
             self.prepare_image_resource_buffers(canvas.scene_image_resources(), false);
             let uploaded = self.scene_buffers.upload(
@@ -166,6 +168,7 @@ impl Renderer {
             );
             self.retained.stats_mut().gpu_uploaded_bytes += uploaded as u64;
         });
+        let transient_buffers_profile = start_cpu_scope("prepare.transient_buffers");
         profile_cpu("prepare.scan_buffers", || {
             self.scan.prepare_outputs(&self.device, lengths);
         });
@@ -213,6 +216,7 @@ impl Renderer {
                 self.filter_paths.upload(&self.device, &self.queue, &plan);
             });
         }
+        drop(transient_buffers_profile);
         profile_cpu("prepare.config", || {
             self.config.upload(
                 &self.device,
@@ -383,7 +387,7 @@ impl Renderer {
         self.plan = Some(std::sync::Arc::new(plan.clone()));
         profile_cpu("prepare.local.upload_scene", || {
             self.prepare_image_resource_buffers(canvas.scene_image_resources(), true);
-            let _ = self.scene_buffers.upload(
+            self.scene_buffers.upload(
                 &self.device,
                 &self.queue,
                 canvas,

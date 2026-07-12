@@ -114,7 +114,12 @@ impl GpuBufferLengths {
         let tiles_width = canvas.width_in_tiles() as usize;
         let tiles_height = canvas.height_in_tiles() as usize;
         let tiles_size = (tiles_width as u32, tiles_height as u32);
-        let updated = (incremental || canvas.painter_keys.is_some())
+        let surface_changed = canvas
+            .buffer_changes
+            .as_ref()
+            .is_some_and(|changes| changes.surface_changed);
+        let updated = !surface_changed
+            && (incremental || canvas.painter_keys.is_some())
             && canvas.buffer_changes.as_ref().is_some_and(|changes| {
                 let changed = changes
                     .draws
@@ -130,7 +135,17 @@ impl GpuBufferLengths {
                     &changed,
                 )
             });
-        let tile_draw_counts = if updated {
+        let tile_draw_counts = if surface_changed && canvas.persistent_root.is_some() {
+            // A resized target is fully redrawn and another resize invalidates the viewport index
+            // immediately. Build the compact GPU bins directly; `reset_transient` deliberately
+            // invalidates the reverse index so the first later incremental mutation rebuilds an
+            // exact persistent baseline before applying dirty ranges.
+            bins.reset_transient(&canvas.draw_records, &plan.draw_order, tiles_size, cursors);
+            TileDrawCounts {
+                index_count: bins.upload_index_count(),
+                chunk_count: bins.active_pages,
+            }
+        } else if updated {
             TileDrawCounts {
                 index_count: bins.upload_index_count(),
                 chunk_count: bins.active_pages,
@@ -548,7 +563,7 @@ impl TileDrawBins {
         tiles_size: (u32, u32),
         changed: &[std::ops::Range<usize>],
     ) -> bool {
-        if self.tiles_size != tiles_size {
+        if !self.page_arena_valid || self.tiles_size != tiles_size {
             return false;
         }
         if painter_keys.is_none()
@@ -1912,7 +1927,7 @@ mod tests {
         }
         let mut plans = PersistentPathPlans::default();
         plans.update(&canvas, None);
-        let _ = plans.take_dirty();
+        plans.take_dirty();
         let first = plans.scan_ranges()[0];
 
         canvas.path_records[1].data_offset += 7;
@@ -2174,6 +2189,67 @@ mod tests {
         assert_eq!(bins.tile_draws(1), [1]);
         assert_eq!(lengths.tile_draw_chunk_count, 2);
         assert_eq!(lengths.tile_draw_index_count, 2);
+    }
+
+    #[test]
+    fn retained_surface_resize_uses_dense_bins_then_restores_incremental_index() {
+        use crate::canvas::SceneBufferChanges;
+
+        let mut canvas = Canvas::new_persistent(
+            crate::TILE_SIZE * 2,
+            crate::TILE_SIZE,
+            1.0,
+            crate::RetainedNodeId::for_owner(70_002),
+        );
+        canvas.push_rect(
+            Rect::new(0.0, 0.0, 16.0, 16.0),
+            crate::Radius::ZERO,
+            Color::BLACK,
+        );
+        canvas.push_rect(
+            Rect::new(16.0, 0.0, 32.0, 16.0),
+            crate::Radius::ZERO,
+            Color::WHITE,
+        );
+        let plan = canvas.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
+        let mut bins = TileDrawBins::default();
+        let mut cursors = Vec::new();
+        canvas.buffer_changes = Some(SceneBufferChanges {
+            surface_changed: true,
+            ..Default::default()
+        });
+
+        GpuBufferLengths::from_scene_with_text_and_tile_draw_bins(
+            &canvas,
+            None,
+            &plan,
+            &mut bins,
+            &mut cursors,
+            true,
+            GpuLengthOverrides::default(),
+        );
+
+        assert!(!bins.page_arena_valid);
+        assert_eq!(bins.tile_draws(0), [0]);
+        assert_eq!(bins.tile_draws(1), [1]);
+
+        canvas.buffer_changes = Some(SceneBufferChanges {
+            draws: vec![0..1],
+            ..Default::default()
+        });
+        GpuBufferLengths::from_scene_with_text_and_tile_draw_bins(
+            &canvas,
+            None,
+            &plan,
+            &mut bins,
+            &mut cursors,
+            true,
+            GpuLengthOverrides::default(),
+        );
+
+        assert!(bins.page_arena_valid);
+        assert_eq!(bins.tile_draws(0), [0]);
+        assert_eq!(bins.tile_draws(1), [1]);
     }
 
     #[test]

@@ -620,10 +620,18 @@ impl PersistentSceneMaterializer {
         let surface_changed = changes.surface_changed;
         if surface_changed && self.canvas.scale_factor().to_bits() != scene.scale.to_bits() {
             self.rebuild_all(scene);
+            Arc::make_mut(&mut self.canvas)
+                .buffer_changes
+                .as_mut()
+                .expect("full rebuild records scene buffer changes")
+                .surface_changed = true;
             return true;
         }
         if surface_changed {
+            let resize_profile =
+                crate::wgpu::start_cpu_scope("retained.materialize.resize_surface");
             self.resize_surface(scene);
+            drop(resize_profile);
         } else if self.surface_metadata_stale {
             // Continuous resize already redraws the full target. Rebuild the deferred node/spatial
             // baseline once, immediately before the first later incremental mutation needs it.
@@ -631,13 +639,21 @@ impl PersistentSceneMaterializer {
             self.rebuild_spatial_index(scene);
             self.surface_metadata_stale = false;
         }
+        // A same-scale resize invalidates every output pixel, so exact frame bounds and the
+        // spatial index are not consulted for damage. Layer descriptor changes still set
+        // `topology_changed` because they can alter the execution plan, but they do not change
+        // node identity or hierarchy. Keep the old frame pages during continuous resize and
+        // rebuild their exact bounds once the next non-resize incremental edit needs them.
         let surface_metadata_reusable =
-            surface_changed && !changes.topology_changed && changes.removed_nodes.is_empty();
+            surface_changed && !changes.hierarchy_changed && changes.removed_nodes.is_empty();
         if !surface_metadata_reusable
             && self.spatial_tiles_size
                 != (self.canvas.width_in_tiles(), self.canvas.height_in_tiles())
         {
+            let spatial_profile =
+                crate::wgpu::start_cpu_scope("retained.materialize.spatial_index");
             self.rebuild_spatial_index(scene);
+            drop(spatial_profile);
         }
         let analysis_profile = crate::wgpu::start_cpu_scope("retained.materialize.analysis");
         for id in &changes.removed_nodes {
@@ -937,7 +953,15 @@ impl PersistentSceneMaterializer {
             plan_dirty = false;
         }
         if scene_data_changed {
+            let sync_profile =
+                crate::wgpu::start_cpu_scope("retained.materialize.sync_canvas_data");
             self.sync_canvas_data(chunks_rebuilt, false);
+            drop(sync_profile);
+            Arc::make_mut(&mut self.canvas)
+                .buffer_changes
+                .as_mut()
+                .expect("scene-data sync records buffer changes")
+                .surface_changed = surface_changed;
         } else {
             Arc::make_mut(&mut self.canvas).buffer_changes = None;
         }
@@ -2002,6 +2026,7 @@ impl PersistentSceneMaterializer {
             chunks_rebuilt,
             plan_fragments_rebuilt: 0,
             full_scene_sync,
+            surface_changed: false,
             cpu_copied_bytes,
             painter: Vec::new(),
             plan_structure_reused: false,

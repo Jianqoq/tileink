@@ -118,6 +118,12 @@ pub(crate) struct SceneBufferChanges {
     pub(crate) chunks_rebuilt: u32,
     pub(crate) plan_fragments_rebuilt: u32,
     pub(crate) full_scene_sync: bool,
+    /// The viewport changed and this frame necessarily redraws the full target.
+    ///
+    /// GPU preparation may use a dense one-frame spatial representation instead of rebuilding
+    /// mutation indexes that cannot survive another resize. The next ordinary retained mutation
+    /// restores those indexes before applying its dirty ranges.
+    pub(crate) surface_changed: bool,
     pub(crate) cpu_copied_bytes: u64,
     pub(crate) painter: Vec<Range<usize>>,
     /// The persistent plan object was patched without changing execution structure. Renderers

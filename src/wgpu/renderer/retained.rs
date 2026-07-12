@@ -172,12 +172,11 @@ impl RetainedRenderState {
         {
             frame.clone()
         } else if materialized_reused
-            && let Some((cached_id, _, cached)) = &self.persistent_frame
+            && let Some((cached_id, _, _)) = &self.persistent_frame
             && *cached_id == scene_id
         {
             // Raster-only invalidation installs an O(1) frame delta in the materialized Canvas.
             // Read that override so version cursors remain exact across later content commits.
-            let _ = cached;
             let frame = scene
                 .retained_frame()
                 .expect("persistent materialized scene has retained identity");
