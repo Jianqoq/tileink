@@ -30,6 +30,8 @@ use crate::{
     },
 };
 
+mod backdrop_resize;
+
 #[test]
 fn retained_path_removal_preserves_sparse_scan_chunk_mapping() {
     if !run_wgpu_tests() {

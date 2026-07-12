@@ -627,16 +627,24 @@ impl PersistentSceneMaterializer {
                 .surface_changed = true;
             return true;
         }
+        let rebuild_surface_metadata_after_update =
+            !surface_changed && self.surface_metadata_stale && changes.topology_changed;
         if surface_changed {
             let resize_profile =
                 crate::wgpu::start_cpu_scope("retained.materialize.resize_surface");
             self.resize_surface(scene);
             drop(resize_profile);
         } else if self.surface_metadata_stale {
-            // Continuous resize already redraws the full target. Rebuild the deferred node/spatial
-            // baseline once, immediately before the first later incremental mutation needs it.
-            self.rebuild_frame_override(scene);
-            self.rebuild_spatial_index(scene);
+            // Continuous resize already redraws the full target. Rebuild its exact baseline once,
+            // immediately before the first later incremental mutation needs it. The scene already
+            // contains that mutation, while chunks and node metadata still describe the rendered
+            // resize frame, so restore old revisions before computing the delta. Structural edits
+            // cannot be reconstructed against the new hierarchy and rebuild after materializing.
+            if !rebuild_surface_metadata_after_update {
+                self.rebuild_frame_override(scene);
+                self.restore_deferred_surface_baseline(&changes.changed_nodes);
+                self.rebuild_spatial_index(scene);
+            }
             self.surface_metadata_stale = false;
         }
         // A same-scale resize invalidates every output pixel, so exact frame bounds and the
@@ -1253,8 +1261,12 @@ impl PersistentSceneMaterializer {
             canvas.invalidate_rect(rect);
         }
         delta_eligible |= layer_plan_patched && layer_bounds_stable;
-        let frame_patched = if surface_metadata_reusable {
-            self.patch_surface_frame(scene, previous_frame.clone())
+        let frame_patched = if rebuild_surface_metadata_after_update {
+            self.rebuild_frame_override(scene);
+            self.rebuild_spatial_index(scene);
+            true
+        } else if surface_metadata_reusable {
+            self.patch_surface_frame(scene, previous_frame.clone(), &changes.changed_nodes)
         } else if layer_plan_patched
             && !layer_bounds_stable
             && self.patch_local_layer_frame_override(
@@ -3646,12 +3658,63 @@ impl PersistentSceneMaterializer {
         &mut self,
         scene: &RetainedScene,
         previous: Option<crate::canvas::RetainedFrame>,
+        changed: &HashSet<RetainedNodeId>,
     ) -> bool {
         let Some(mut frame) = previous else {
             return false;
         };
+        // Surface redraws do not need node damage, but retained filter caches created by that
+        // redraw are keyed by node revision. Patch changed nodes before publishing the resized
+        // frame so the next incremental edit can reuse its pre-backdrop source history instead of
+        // sampling already-filtered clean pixels from the root target.
+        let patches = changed
+            .iter()
+            .filter(|id| {
+                self.layer_nodes.contains(id)
+                    || self
+                        .chunks
+                        .get(id)
+                        .is_some_and(|chunk| !chunk.plain_fragment)
+            })
+            .filter_map(|&id| {
+                let old = frame.node_state(id)?;
+                let node = &scene.nodes[&id];
+                let new = crate::canvas::RetainedNodeState {
+                    revision: NodeGeneration::new(node.generation),
+                    ..old
+                };
+                (old != new).then_some(RetainedNodePatch {
+                    old: Some(old),
+                    new: Some(new),
+                })
+            })
+            .collect::<Vec<_>>();
+        if !patches.is_empty() {
+            let index = retained_patch_index(&patches);
+            let (previous, depth) = prune_shadowed_delta(frame.delta.clone(), &index);
+            let mut delta = RetainedFrameDelta {
+                from_version: self.version.get(),
+                to_version: scene.version.get(),
+                patches: patches.into(),
+                previous,
+                depth,
+                damage: Arc::new([]),
+                dirty_backdrops: Arc::new([]),
+                backdrop_damage_complete: false,
+                index: Arc::new(index),
+            };
+            if depth > 255 {
+                if !Self::compact_content_state_pages(&mut frame, &delta) {
+                    return false;
+                }
+                delta.previous = None;
+                delta.depth = 1;
+            }
+            frame.delta = Some(Arc::new(delta));
+        }
+        let physical_size = self.canvas.physical_size();
         frame.logical_size = (scene.width, scene.height);
-        frame.physical_size = self.canvas.physical_size();
+        frame.physical_size = physical_size;
         frame.scale_bits = scene.scale.to_bits();
         frame.version = Some(scene.version.get());
         let canvas = Arc::make_mut(&mut self.canvas);
@@ -3660,6 +3723,28 @@ impl PersistentSceneMaterializer {
         canvas.persistent_frame = Some(frame);
         self.surface_metadata_stale = true;
         true
+    }
+
+    /// Turns a lazily rebuilt post-resize frame into the actual pre-mutation baseline.
+    ///
+    /// At this point `scene` already exposes the incoming content generations, but the materialized
+    /// chunks still contain the pixels rendered by the resize frame. Keeping the incoming revisions
+    /// would make the first later edit compare equal and incorrectly produce zero damage.
+    fn restore_deferred_surface_baseline(&mut self, changed: &HashSet<RetainedNodeId>) {
+        let Some(frame) = Arc::make_mut(&mut self.canvas).persistent_frame.as_mut() else {
+            return;
+        };
+        frame.version = Some(self.version.get());
+        let nodes = Arc::make_mut(&mut frame.nodes);
+        for id in changed {
+            let Some(metadata) = self.node_metadata.get(id) else {
+                continue;
+            };
+            let Some(&index) = frame.node_index.get(id) else {
+                continue;
+            };
+            nodes[index].revision = NodeGeneration::new(metadata.generation);
+        }
     }
 
     fn patch_topology_frame_override(
