@@ -339,6 +339,65 @@ fn surface_resize_reuses_chunks_and_refreshes_path_tile_bounds() {
 }
 
 #[test]
+fn same_scale_resize_and_removal_rebuild_spatial_index_from_live_nodes() {
+    let root = RetainedNodeId::for_owner(62_050);
+    let removed = RetainedNodeId::for_owner(62_051);
+    let retained = RetainedNodeId::for_owner(62_052);
+    let leaf = |color| {
+        let mut canvas = Canvas::new(16, 16, 2.0);
+        canvas.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::ZERO, color);
+        Arc::new(canvas)
+    };
+    let mut scene = RetainedScene::new(64, 64, 2.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            removed,
+            leaf(Color::WHITE),
+            Affine::IDENTITY,
+        )
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            retained,
+            leaf(Color::BLACK),
+            Affine::translate((16.0, 0.0)),
+        )
+        .commit()
+        .unwrap();
+    let mut materializer = PersistentSceneMaterializer::new(&scene);
+
+    scene
+        .transaction()
+        .resize(96, 64, 2.0)
+        .remove_subtree(removed)
+        .commit()
+        .unwrap();
+    assert!(materializer.update(&scene));
+
+    assert!(!materializer.chunks.contains_key(&removed));
+    assert!(materializer.chunks.contains_key(&retained));
+    assert_eq!(
+        materializer.spatial_tiles_size,
+        (
+            materializer.canvas.width_in_tiles(),
+            materializer.canvas.height_in_tiles(),
+        )
+    );
+    assert!(
+        materializer
+            .canvas
+            .persistent_frame
+            .as_ref()
+            .unwrap()
+            .node_state(removed)
+            .is_none()
+    );
+}
+
+#[test]
 fn resize_with_layer_updates_defers_full_frame_and_spatial_rebuild() {
     let root = RetainedNodeId::for_owner(62_100);
     let clip = RetainedNodeId::for_owner(62_101);

@@ -4020,13 +4020,18 @@ impl PersistentSceneMaterializer {
         let raw_bounds = self
             .chunks
             .iter()
-            .map(|(&id, chunk)| {
-                let bounds = match scene.nodes[&id].kind {
+            .filter_map(|(&id, chunk)| {
+                // Removed chunks are reclaimed later in the update after their old plan metadata
+                // has been inspected. A resize can rebuild this index first, so derive it only
+                // from nodes that are live in the new scene. This fixes the update ordering at
+                // its source instead of special-casing resize transactions in callers.
+                let node = scene.nodes.get(&id)?;
+                let bounds = match node.kind {
                     NodeKind::Layer(_) => chunk_layer_influence_bounds(chunk),
                     NodeKind::Scene { .. } => chunk.canvas.visual_bounds(),
                     NodeKind::Group => unreachable!("groups do not own chunks"),
                 };
-                (id, bounds)
+                Some((id, bounds))
             })
             .collect::<Vec<_>>();
         for (id, bounds) in raw_bounds {
