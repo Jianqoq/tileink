@@ -1,6 +1,6 @@
 use crate::shared::bounds::Bounds;
 use crate::shared::sdf::{
-    arc::{Arc, ArcShadow},
+    arc::{ArcShadow, Rc},
     candlestick::CandleStick,
     circle::{Circle, CircleShadow, CircleStroke},
     line::{DashLine, Line, LineShadow},
@@ -21,7 +21,7 @@ pub enum Sdf {
     RectStroke(RectStroke),
     Circle(Circle),
     CircleStroke(CircleStroke),
-    Arc(Arc),
+    Rc(Rc),
     CandleStick(CandleStick),
     Line(Line),
     DashLine(DashLine),
@@ -32,7 +32,7 @@ pub enum Sdf {
 pub enum SdfShadow {
     Rect(RectShadow),
     Circle(CircleShadow),
-    Arc(ArcShadow),
+    Rc(ArcShadow),
     Line(LineShadow),
 }
 
@@ -43,7 +43,7 @@ impl Sdf {
             Self::RectStroke(stroke) => stroke.bounds(),
             Self::Circle(circle) => circle.bounds(),
             Self::CircleStroke(stroke) => stroke.bounds(),
-            Self::Arc(arc) => arc.bounds(),
+            Self::Rc(arc) => arc.bounds(),
             Self::CandleStick(candle) => candle.bounds(),
             Self::Line(line) => line.bounds(),
             Self::DashLine(line) => line.bounds(),
@@ -56,7 +56,7 @@ impl Sdf {
             Self::RectStroke(stroke) => Self::RectStroke(stroke.translated(dx, dy)),
             Self::Circle(circle) => Self::Circle(circle.translated(dx, dy)),
             Self::CircleStroke(stroke) => Self::CircleStroke(stroke.translated(dx, dy)),
-            Self::Arc(arc) => Self::Arc(arc.translated(dx, dy)),
+            Self::Rc(arc) => Self::Rc(arc.translated(dx, dy)),
             Self::CandleStick(candle) => Self::CandleStick(candle.translated(dx, dy)),
             Self::Line(line) => Self::Line(line.translated(dx, dy)),
             Self::DashLine(line) => Self::DashLine(line.translated(dx, dy)),
@@ -69,7 +69,7 @@ impl SdfShadow {
         match self {
             Self::Rect(shadow) => shadow.bounds(),
             Self::Circle(shadow) => shadow.bounds(),
-            Self::Arc(shadow) => shadow.bounds(),
+            Self::Rc(shadow) => shadow.bounds(),
             Self::Line(shadow) => shadow.bounds(),
         }
     }
@@ -78,7 +78,7 @@ impl SdfShadow {
         match self {
             Self::Rect(shadow) => Self::Rect(shadow.translated(dx, dy)),
             Self::Circle(shadow) => Self::Circle(shadow.translated(dx, dy)),
-            Self::Arc(shadow) => Self::Arc(shadow.translated(dx, dy)),
+            Self::Rc(shadow) => Self::Rc(shadow.translated(dx, dy)),
             Self::Line(shadow) => Self::Line(shadow.translated(dx, dy)),
         }
     }

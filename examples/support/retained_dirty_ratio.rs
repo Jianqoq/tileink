@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::rc::Rc;
 
 use peniko::{
     Color,
@@ -14,7 +14,7 @@ pub const RATIOS: [f64; 13] = [
 ];
 
 pub struct Workload {
-    background: Arc<Canvas>,
+    background: Rc<Canvas>,
 }
 
 impl Workload {
@@ -94,7 +94,7 @@ fn damage_side(ratio: f64) -> f64 {
     (ratio.sqrt() * WIDTH as f64).clamp(1.0, WIDTH as f64)
 }
 
-fn immediate_frame(background: &Arc<Canvas>, changing: Arc<Canvas>) -> Canvas {
+fn immediate_frame(background: &Rc<Canvas>, changing: Rc<Canvas>) -> Canvas {
     let mut frame = Canvas::new(WIDTH, HEIGHT, 1.0);
     for index in 0..BACKGROUND_NODES {
         frame.append(
@@ -106,20 +106,20 @@ fn immediate_frame(background: &Arc<Canvas>, changing: Arc<Canvas>) -> Canvas {
     frame
 }
 
-fn clipped_scene(scene: Arc<Canvas>, damage_side: f64) -> Arc<Canvas> {
+fn clipped_scene(scene: Rc<Canvas>, damage_side: f64) -> Rc<Canvas> {
     let mut clipped = Canvas::new(WIDTH, HEIGHT, 1.0);
     clipped.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, damage_side, damage_side), Radius::ZERO);
     clipped.append(&scene, (0.0, 0.0));
     clipped.pop_layer();
-    Arc::new(clipped)
+    Rc::new(clipped)
 }
 
-fn rect_scene(width: u32, height: u32, color: Color) -> Arc<Canvas> {
+fn rect_scene(width: u32, height: u32, color: Color) -> Rc<Canvas> {
     let mut scene = Canvas::new(width, height, 1.0);
     scene.push_rect(
         Rect::new(0.0, 0.0, width as f64, height as f64),
         Radius::ZERO,
         color,
     );
-    Arc::new(scene)
+    Rc::new(scene)
 }

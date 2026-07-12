@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, rc::Rc};
 
 use peniko::kurbo::Rect;
 use rustc_hash::FxHashMap as HashMap;
@@ -100,15 +100,15 @@ pub(crate) struct RetainedNodePatch {
 pub(crate) struct RetainedFrameDelta {
     pub(crate) from_version: u64,
     pub(crate) to_version: u64,
-    pub(crate) patches: Arc<[RetainedNodePatch]>,
-    pub(crate) previous: Option<Arc<RetainedFrameDelta>>,
+    pub(crate) patches: Rc<[RetainedNodePatch]>,
+    pub(crate) previous: Option<Rc<RetainedFrameDelta>>,
     pub(crate) depth: u16,
-    pub(crate) damage: Arc<[(RetainedNodeId, Bounds)]>,
+    pub(crate) damage: Rc<[(RetainedNodeId, Bounds)]>,
     /// Backdrops affected by this persistent journal delta. When complete, the renderer can skip
     /// the generic command-tree propagation pass because `damage` already contains their output.
-    pub(crate) dirty_backdrops: Arc<[RetainedNodeId]>,
+    pub(crate) dirty_backdrops: Rc<[RetainedNodeId]>,
     pub(crate) backdrop_damage_complete: bool,
-    pub(crate) index: Arc<HashMap<RetainedNodeId, usize>>,
+    pub(crate) index: Rc<HashMap<RetainedNodeId, usize>>,
 }
 
 #[derive(Clone, Debug)]
@@ -117,17 +117,17 @@ pub(crate) struct RetainedFrame {
     pub(crate) logical_size: (u32, u32),
     pub(crate) physical_size: (u32, u32),
     pub(crate) scale_bits: u32,
-    pub(crate) nodes: Arc<[RetainedNodeState]>,
-    pub(crate) node_index: Arc<HashMap<RetainedNodeId, usize>>,
+    pub(crate) nodes: Rc<[RetainedNodeState]>,
+    pub(crate) node_index: Rc<HashMap<RetainedNodeId, usize>>,
     /// Copy-on-write state pages compact long content-only delta chains without cloning every
     /// retained node. Topology overlays remain in `delta` until a hierarchy rebuild.
-    pub(crate) state_pages: Arc<HashMap<usize, Arc<[RetainedNodeState]>>>,
+    pub(crate) state_pages: Rc<HashMap<usize, Rc<[RetainedNodeState]>>>,
     pub(crate) invalidated_bounds: Vec<Bounds>,
     pub(crate) invalidate_all: bool,
     pub(crate) incremental_complete: bool,
     /// Persistent-scene version and immutable journal overlay.
     pub(crate) version: Option<u64>,
-    pub(crate) delta: Option<Arc<RetainedFrameDelta>>,
+    pub(crate) delta: Option<Rc<RetainedFrameDelta>>,
     /// No layer/filter/mask can propagate leaf damage outside the changed node bounds.
     pub(crate) dependency_free: bool,
     /// Backdrops require walking command ancestry after retained diffing to discover changed

@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::Arc,
+    rc::Rc,
 };
 
 use crate::{
@@ -474,7 +474,7 @@ pub(crate) struct DamagePlan {
     pub(crate) frame: Option<RetainedFrame>,
     /// `Some` means the consumed persistent delta already expanded backdrop output damage and
     /// identified every retained backdrop surface that must be rerendered.
-    pub(crate) dirty_backdrops: Option<std::sync::Arc<[crate::RetainedNodeId]>>,
+    pub(crate) dirty_backdrops: Option<std::rc::Rc<[crate::RetainedNodeId]>>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -689,7 +689,7 @@ impl IncrementalState {
 
         // A persistent scene version is collected once and shared by subsequent static frames.
         // Pointer identity makes static and raster-only invalidation independent of node count.
-        if Arc::ptr_eq(&previous.nodes, &current.nodes) {
+        if Rc::ptr_eq(&previous.nodes, &current.nodes) {
             let mut tiles = DamageTiles::new(physical_size);
             let mut retained = RetainedDamage::default();
             for &bounds in &current.invalidated_bounds {
@@ -927,8 +927,8 @@ mod tests {
             physical_size: (128, 64),
             scale_bits: 1.0f32.to_bits(),
             nodes: nodes.into(),
-            node_index: std::sync::Arc::new(node_index),
-            state_pages: std::sync::Arc::new(Default::default()),
+            node_index: std::rc::Rc::new(node_index),
+            state_pages: std::rc::Rc::new(Default::default()),
             invalidated_bounds: Vec::new(),
             invalidate_all: false,
             incremental_complete: true,
@@ -975,9 +975,9 @@ mod tests {
     #[test]
     fn retained_layer_revision_change_dirties_its_bounds() {
         let mut previous = frame(&[(2, 0, Bounds::new(16, 0, 32, 16))]);
-        Arc::make_mut(&mut previous.nodes)[0].kind = RetainedNodeKind::Layer;
+        Rc::make_mut(&mut previous.nodes)[0].kind = RetainedNodeKind::Layer;
         let mut current = previous.clone();
-        Arc::make_mut(&mut current.nodes)[0].revision = NodeGeneration::new(1);
+        Rc::make_mut(&mut current.nodes)[0].revision = NodeGeneration::new(1);
         let mut damage = DamageTiles::new(current.physical_size);
 
         diff_frames(

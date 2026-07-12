@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::rc::Rc;
 
 use peniko::{
     Extend, Gradient, GradientKind, InterpolationAlphaSpace,
@@ -41,7 +41,7 @@ pub struct LinearGradient {
     pub(crate) end: [f32; 2],
     pub(crate) transform: [f32; 6],
     pub(crate) extend: Extend,
-    pub(crate) ramp: Arc<[u32]>,
+    pub(crate) ramp: Rc<[u32]>,
 }
 
 #[derive(Clone, Debug)]
@@ -52,7 +52,7 @@ pub struct RadialGradient {
     pub(crate) end_radius: f32,
     pub(crate) transform: [f32; 6],
     pub(crate) extend: Extend,
-    pub(crate) ramp: Arc<[u32]>,
+    pub(crate) ramp: Rc<[u32]>,
 }
 
 #[derive(Clone, Debug)]
@@ -61,7 +61,7 @@ pub struct SweepGradient {
     pub(crate) start_angle: f32,
     pub(crate) end_angle: f32,
     pub(crate) extend: Extend,
-    pub(crate) ramp: Arc<[u32]>,
+    pub(crate) ramp: Rc<[u32]>,
 }
 
 #[derive(Clone, Debug)]
@@ -328,7 +328,7 @@ pub(crate) fn decode_encoded_brush(blob: &[u32], offset: u32, len: u32) -> Optio
             end: [params[2], params[3]],
             transform: params[4..10].try_into().ok()?,
             extend: decode_gpu_extend(data[1]),
-            ramp: Arc::from(payload),
+            ramp: Rc::from(payload),
         })),
         GPU_BRUSH_RADIAL => Some(Brush::Radial(RadialGradient {
             start_center: [params[0], params[1]],
@@ -337,14 +337,14 @@ pub(crate) fn decode_encoded_brush(blob: &[u32], offset: u32, len: u32) -> Optio
             end_radius: params[5],
             transform: params[6..12].try_into().ok()?,
             extend: decode_gpu_extend(data[1]),
-            ramp: Arc::from(payload),
+            ramp: Rc::from(payload),
         })),
         GPU_BRUSH_SWEEP => Some(Brush::Sweep(SweepGradient {
             center: [params[0], params[1]],
             start_angle: params[2],
             end_angle: params[3],
             extend: decode_gpu_extend(data[1]),
-            ramp: Arc::from(payload),
+            ramp: Rc::from(payload),
         })),
         GPU_BRUSH_FOUR_CORNER => Some(Brush::FourCorner(FourCornerGradient {
             bounds: params[0..4].try_into().ok()?,
@@ -546,11 +546,11 @@ fn rect_is_valid_image_target(rect: kurbo::Rect) -> bool {
 
 pub(crate) const IDENTITY_TRANSFORM: [f32; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
 
-fn build_ramp(gradient: &Gradient, ramp_size: usize) -> Arc<[u32]> {
+fn build_ramp(gradient: &Gradient, ramp_size: usize) -> Rc<[u32]> {
     let ramp_size = ramp_size.max(2);
     let mut ramp = vec![0_u32; ramp_size];
     if gradient.stops.is_empty() {
-        return Arc::from(ramp.into_boxed_slice());
+        return Rc::from(ramp.into_boxed_slice());
     }
     let mut stops = gradient.stops.iter().copied().collect::<Vec<_>>();
     stops.sort_by(|a, b| a.offset.total_cmp(&b.offset));
@@ -595,7 +595,7 @@ fn build_ramp(gradient: &Gradient, ramp_size: usize) -> Arc<[u32]> {
         };
         *output = premul_color_to_u32(color);
     }
-    Arc::from(ramp.into_boxed_slice())
+    Rc::from(ramp.into_boxed_slice())
 }
 
 #[inline]

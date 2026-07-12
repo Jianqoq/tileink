@@ -131,7 +131,7 @@ impl Renderer {
                 self.plan.take().expect("cached execution plan")
             } else {
                 // A patched persistent plan keeps the same topology and buffer lengths but may
-                // contain new offscreen bounds. Consume Canvas's new precompiled Arc instead of
+                // contain new offscreen bounds. Consume Canvas's new precompiled Rc instead of
                 // executing the renderer's stale cached plan.
                 canvas.compile_shared(ROOT_COMMAND_LIST_ID)
             }
@@ -384,7 +384,7 @@ impl Renderer {
         self.lengths = lengths;
         self.max_clip_depth = max_clip_depth;
         self.max_group_depth = max_group_depth;
-        self.plan = Some(std::sync::Arc::new(plan.clone()));
+        self.plan = Some(std::rc::Rc::new(plan.clone()));
         profile_cpu("prepare.local.upload_scene", || {
             self.prepare_image_resource_buffers(canvas.scene_image_resources(), true);
             self.scene_buffers.upload(

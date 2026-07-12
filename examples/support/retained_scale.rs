@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::rc::Rc;
 
 use peniko::{
     Color, Extend,
@@ -110,18 +110,18 @@ impl Scenario {
 pub struct Workload {
     count: usize,
     scenario: Scenario,
-    first: Arc<Canvas>,
-    second: Arc<Canvas>,
-    longer: Arc<Canvas>,
-    resource_first: Arc<Canvas>,
-    resource_longer: Arc<Canvas>,
-    liquid_glass: Arc<Canvas>,
-    affine_path: Arc<Canvas>,
+    first: Rc<Canvas>,
+    second: Rc<Canvas>,
+    longer: Rc<Canvas>,
+    resource_first: Rc<Canvas>,
+    resource_longer: Rc<Canvas>,
+    liquid_glass: Rc<Canvas>,
+    affine_path: Rc<Canvas>,
 }
 
 impl Workload {
     pub fn new(count: usize, scenario: Scenario) -> Self {
-        let image = Arc::new(Image::from_rgba8(
+        let image = Rc::new(Image::from_rgba8(
             2,
             2,
             [
@@ -546,13 +546,13 @@ fn many_layer_leaf_id(count: usize, index: usize) -> RetainedNodeId {
     node_id(count + index + 1)
 }
 
-fn rect_scene(color: Color) -> Arc<Canvas> {
+fn rect_scene(color: Color) -> Rc<Canvas> {
     let mut scene = Canvas::new(8, 8, 1.0);
     scene.push_rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::ZERO, color);
-    Arc::new(scene)
+    Rc::new(scene)
 }
 
-fn affine_path_scene() -> Arc<Canvas> {
+fn affine_path_scene() -> Rc<Canvas> {
     let mut scene = Canvas::new(8, 8, 1.0);
     scene.push_path(
         Rect::new(0.5, 0.5, 7.5, 7.5).to_path(0.1),
@@ -561,10 +561,10 @@ fn affine_path_scene() -> Arc<Canvas> {
         tileink::FillRule::NonZero,
         0.1,
     );
-    Arc::new(scene)
+    Rc::new(scene)
 }
 
-fn two_rect_scene() -> Arc<Canvas> {
+fn two_rect_scene() -> Rc<Canvas> {
     let mut scene = Canvas::new(8, 8, 1.0);
     scene.push_rect(
         Rect::new(0.0, 0.0, 4.0, 8.0),
@@ -576,13 +576,13 @@ fn two_rect_scene() -> Arc<Canvas> {
         Radius::ZERO,
         Color::from_rgb8(240, 210, 40),
     );
-    Arc::new(scene)
+    Rc::new(scene)
 }
 
 /// A retained leaf that straddles two batches around an offscreen backdrop layer. Moving this
 /// exact shape guards both the incremental plan/batch synchronization and the UI glass-card
 /// workload that originally exposed it.
-fn liquid_glass_scene() -> Arc<Canvas> {
+fn liquid_glass_scene() -> Rc<Canvas> {
     let mut scene = Canvas::new(8, 8, 1.0);
     let bounds = Rect::new(0.0, 0.0, 8.0, 8.0);
     scene.push_rect_shadow(
@@ -605,10 +605,10 @@ fn liquid_glass_scene() -> Arc<Canvas> {
         Color::from_rgba8(255, 255, 255, 48),
     );
     scene.pop_layer();
-    Arc::new(scene)
+    Rc::new(scene)
 }
 
-fn image_scene(image: Arc<Image>, two_draws: bool) -> Arc<Canvas> {
+fn image_scene(image: Rc<Image>, two_draws: bool) -> Rc<Canvas> {
     let mut scene = Canvas::new(8, 8, 1.0);
     let end = if two_draws { 4.0 } else { 8.0 };
     scene
@@ -629,7 +629,7 @@ fn image_scene(image: Arc<Image>, two_draws: bool) -> Arc<Canvas> {
             )
             .unwrap();
     }
-    Arc::new(scene)
+    Rc::new(scene)
 }
 
 fn position(index: usize, count: usize) -> (f64, f64) {

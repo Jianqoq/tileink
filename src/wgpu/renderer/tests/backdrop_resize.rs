@@ -168,7 +168,7 @@ fn portable_external_history_preserves_cached_backdrop_after_resize() {
     );
 }
 
-fn checkerboard(size: (u32, u32)) -> std::sync::Arc<Canvas> {
+fn checkerboard(size: (u32, u32)) -> std::rc::Rc<Canvas> {
     let mut canvas = Canvas::new(size.0, size.1, 1.0);
     for y in (0..size.1).step_by(16) {
         for x in (0..size.0).step_by(16) {
@@ -188,10 +188,10 @@ fn checkerboard(size: (u32, u32)) -> std::sync::Arc<Canvas> {
             );
         }
     }
-    std::sync::Arc::new(canvas)
+    std::rc::Rc::new(canvas)
 }
 
-fn liquid_glass_panel() -> std::sync::Arc<Canvas> {
+fn liquid_glass_panel() -> std::rc::Rc<Canvas> {
     let mut canvas = Canvas::new(96, 96, 1.0);
     let bounds = Rect::new(0.0, 0.0, 96.0, 96.0);
     canvas.push_backdrop_layer(
@@ -212,10 +212,10 @@ fn liquid_glass_panel() -> std::sync::Arc<Canvas> {
         Color::from_rgba8(14, 18, 26, 102),
     );
     canvas.pop_layer();
-    std::sync::Arc::new(canvas)
+    std::rc::Rc::new(canvas)
 }
 
-fn controls_canvas(thumb_x: f64) -> std::sync::Arc<Canvas> {
+fn controls_canvas(thumb_x: f64) -> std::rc::Rc<Canvas> {
     let mut canvas = Canvas::new(96, 96, 1.0);
     canvas.push_rect(
         Rect::new(12.0, 42.0, 84.0, 46.0),
@@ -227,7 +227,7 @@ fn controls_canvas(thumb_x: f64) -> std::sync::Arc<Canvas> {
         crate::Radius::all(6.0),
         Color::WHITE,
     );
-    std::sync::Arc::new(canvas)
+    std::rc::Rc::new(canvas)
 }
 
 fn external_target(

@@ -53,7 +53,7 @@ pub use shared::{
     pixel::TextCoverageParams,
     sdf::{
         Sdf, SdfShadow,
-        arc::{Arc as SdfArc, ArcShadow as SdfArcShadow},
+        arc::{ArcShadow as SdfArcShadow, Rc as SdfArc},
         candlestick::CandleStick,
         circle::{
             Circle as SdfCircle, CircleShadow as SdfCircleShadow, CircleStroke as SdfCircleStroke,

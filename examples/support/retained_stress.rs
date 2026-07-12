@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::rc::Rc;
 
 use peniko::{
     Color,
@@ -56,8 +56,8 @@ impl StressScenario {
 pub struct StressWorkload {
     count: usize,
     scenario: StressScenario,
-    first: Arc<Canvas>,
-    second: Arc<Canvas>,
+    first: Rc<Canvas>,
+    second: Rc<Canvas>,
 }
 
 impl StressWorkload {
@@ -281,13 +281,13 @@ fn backdrop_layer() -> RetainedLayerDescriptor {
     }
 }
 
-fn rect_scene(color: Color) -> Arc<Canvas> {
+fn rect_scene(color: Color) -> Rc<Canvas> {
     let mut canvas = Canvas::new(8, 8, 1.0);
     canvas.push_rect(Rect::new(0.0, 0.0, 8.0, 8.0), Radius::ZERO, color);
-    Arc::new(canvas)
+    Rc::new(canvas)
 }
 
-fn large_scene(count: usize, color: Color) -> Arc<Canvas> {
+fn large_scene(count: usize, color: Color) -> Rc<Canvas> {
     let mut canvas = Canvas::new(WIDTH, HEIGHT, 1.0);
     let columns = (count as f64).sqrt().ceil().max(1.0) as usize;
     for index in 0..count {
@@ -295,7 +295,7 @@ fn large_scene(count: usize, color: Color) -> Arc<Canvas> {
         let y = (index / columns) as f64 * 2.0;
         canvas.push_rect(Rect::new(x, y, x + 1.0, y + 1.0), Radius::ZERO, color);
     }
-    Arc::new(canvas)
+    Rc::new(canvas)
 }
 
 fn position(index: usize, count: usize) -> (f64, f64) {

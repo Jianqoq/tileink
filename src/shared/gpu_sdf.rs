@@ -6,7 +6,7 @@ use crate::shared::{
     },
     sdf::{
         Sdf, SdfShadow,
-        arc::{Arc, ArcShadow},
+        arc::{ArcShadow, Rc},
         candlestick::CandleStick,
         circle::{Circle, CircleShadow, CircleStroke},
         line::{DashLine, Line, LineCap, LineShadow},
@@ -90,7 +90,7 @@ pub(crate) fn encode_sdf(sdf: Sdf) -> EncodedSdf {
             stroke: [stroke.half_width; 4],
             ..EncodedSdf::NONE
         },
-        Sdf::Arc(arc) => EncodedSdf {
+        Sdf::Rc(arc) => EncodedSdf {
             kind: GPU_SDF_ARC,
             coords: [
                 arc.center.x as f32,
@@ -186,7 +186,7 @@ pub(crate) fn encode_sdf_shadow(sdf_shadow: SdfShadow) -> EncodedSdf {
             ],
             ..EncodedSdf::NONE
         },
-        SdfShadow::Arc(shadow) => EncodedSdf {
+        SdfShadow::Rc(shadow) => EncodedSdf {
             kind: GPU_SDF_ARC_SHADOW,
             coords: [
                 shadow.arc.center.x as f32,
@@ -269,7 +269,7 @@ pub(crate) fn decode_sdf(blob: &[u32], offset: u32, len: u32) -> Option<Sdf> {
             circle: circle_from_encoded(sdf),
             half_width: sdf.stroke[0],
         })),
-        GPU_SDF_ARC => Some(Sdf::Arc(arc_from_encoded(sdf))),
+        GPU_SDF_ARC => Some(Sdf::Rc(arc_from_encoded(sdf))),
         GPU_SDF_CANDLESTICK => Some(Sdf::CandleStick(CandleStick {
             center_x: sdf.coords[0],
             high_y: sdf.coords[1],
@@ -301,7 +301,7 @@ pub(crate) fn decode_sdf_shadow(blob: &[u32], offset: u32, len: u32) -> Option<S
             circle: circle_from_encoded(sdf),
             options: shadow_options_from_encoded(sdf),
         })),
-        GPU_SDF_ARC_SHADOW => Some(SdfShadow::Arc(ArcShadow {
+        GPU_SDF_ARC_SHADOW => Some(SdfShadow::Rc(ArcShadow {
             arc: arc_from_encoded(sdf),
             options: shadow_options_from_encoded(sdf),
         })),
@@ -364,8 +364,8 @@ fn line_from_encoded(sdf: EncodedSdf) -> Line {
     }
 }
 
-fn arc_from_encoded(sdf: EncodedSdf) -> Arc {
-    Arc {
+fn arc_from_encoded(sdf: EncodedSdf) -> Rc {
+    Rc {
         center: Point::new(f64::from(sdf.coords[0]), f64::from(sdf.coords[1])),
         radius: sdf.coords[2],
         width: sdf.coords[3],
@@ -440,8 +440,8 @@ mod tests {
                 },
                 options: ShadowOptions::new(2.0, 3.0, 4.0, 0.5),
             }),
-            SdfShadow::Arc(ArcShadow {
-                arc: Arc::new(
+            SdfShadow::Rc(ArcShadow {
+                arc: Rc::new(
                     Point::new(32.0, 32.0),
                     10.0,
                     0.0,

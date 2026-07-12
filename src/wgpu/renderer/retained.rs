@@ -3,7 +3,7 @@
 //! Keeping this state together prevents the GPU executor from independently mutating damage,
 //! scene, surface, and presentation history that must advance as one transaction per frame.
 
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, rc::Rc};
 
 use crate::{
     Canvas, SceneVersion,
@@ -152,7 +152,7 @@ impl RetainedRenderState {
 
     pub(super) fn select_materialized(
         &mut self,
-        scene: Arc<Canvas>,
+        scene: Rc<Canvas>,
         materialized_reused: bool,
         scene_id: u64,
         version: SceneVersion,
@@ -256,7 +256,7 @@ impl RetainedRenderState {
                 let same_nodes = self
                     .surface_frame
                     .as_ref()
-                    .is_some_and(|previous| Arc::ptr_eq(&previous.nodes, &frame.nodes));
+                    .is_some_and(|previous| Rc::ptr_eq(&previous.nodes, &frame.nodes));
                 let bridging_delta = self.surface_frame.as_ref().and_then(|previous| {
                     let delta = frame.delta.as_ref()?;
                     (previous.root == frame.root
@@ -400,7 +400,7 @@ pub(super) enum HistoryOwner {
 pub(super) enum SelectedScene<'a> {
     Borrowed(&'a Canvas),
     Retained {
-        scene: Arc<Canvas>,
+        scene: Rc<Canvas>,
         frame: RetainedFrame,
         materialized_reused: bool,
         materialization: u64,

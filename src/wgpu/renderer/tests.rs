@@ -47,7 +47,7 @@ fn retained_path_removal_preserves_sparse_scan_chunk_mapping() {
             FillRule::NonZero,
             0.0,
         );
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let root = RetainedNodeId::for_owner(94_000);
     let first = RetainedNodeId::for_owner(94_001);
@@ -107,7 +107,7 @@ fn persistent_retained_scene_updates_incrementally_and_reuses_static_frames() {
     let child = |color| {
         let mut canvas = Canvas::new(16, 16, 1.0);
         canvas.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let root = RetainedNodeId::for_owner(50_000);
     let node = RetainedNodeId::for_owner(50_001);
@@ -220,7 +220,7 @@ fn persistent_affine_path_matches_immediate_geometry_and_updates_damage() {
             RetainedParent::content(root),
             None,
             node,
-            std::sync::Arc::new(leaf),
+            std::rc::Rc::new(leaf),
             first,
         )
         .commit()
@@ -274,7 +274,7 @@ fn persistent_node_affine_composes_with_canvas_draw_affine() {
             RetainedParent::content(root),
             None,
             node,
-            std::sync::Arc::new(leaf),
+            std::rc::Rc::new(leaf),
             node_transform,
         )
         .commit()
@@ -319,7 +319,7 @@ fn persistent_rotated_sdf_rect_does_not_fill_its_axis_aligned_bounds() {
             RetainedParent::content(root),
             None,
             node,
-            std::sync::Arc::new(leaf),
+            std::rc::Rc::new(leaf),
             transform,
         )
         .commit()
@@ -351,7 +351,7 @@ fn persistent_translated_sdf_rect_uses_world_coordinates() {
             RetainedParent::content(root),
             None,
             node,
-            std::sync::Arc::new(leaf),
+            std::rc::Rc::new(leaf),
             Affine::translate((8.0, 0.0)),
         )
         .commit()
@@ -385,7 +385,7 @@ fn persistent_surface_resize_matches_force_full_without_rebuilding_chunks() {
             RetainedParent::content(root),
             None,
             node,
-            std::sync::Arc::new(leaf),
+            std::rc::Rc::new(leaf),
             Affine::translate((0.0, 0.0)),
         )
         .commit()
@@ -466,14 +466,14 @@ fn persistent_move_preserves_backdrop_children_and_shadow() {
             RetainedParent::content(root),
             None,
             background_id,
-            std::sync::Arc::new(background),
+            std::rc::Rc::new(background),
             Affine::translate((0.0, 0.0)),
         )
         .insert_scene(
             RetainedParent::content(root),
             None,
             card_id,
-            std::sync::Arc::new(card),
+            std::rc::Rc::new(card),
             Affine::translate((8.0, 8.0)),
         )
         .commit()
@@ -536,7 +536,7 @@ fn persistent_filter_manual_invalidation_skips_command_tree_propagation() {
             RetainedParent::content(layer),
             None,
             leaf,
-            std::sync::Arc::new(child),
+            std::rc::Rc::new(child),
             Affine::translate((0.0, 0.0)),
         )
         .commit()
@@ -594,7 +594,7 @@ fn persistent_backdrop_manual_invalidation_uses_indexed_dependency_damage() {
             RetainedParent::content(root),
             None,
             background,
-            std::sync::Arc::new(child),
+            std::rc::Rc::new(child),
             Affine::translate((0.0, 0.0)),
         )
         .insert_layer(
@@ -658,7 +658,7 @@ fn persistent_many_layers_execute_only_batches_touching_damage() {
         crate::Radius::ZERO,
         Color::WHITE,
     );
-    let leaf = std::sync::Arc::new(leaf);
+    let leaf = std::rc::Rc::new(leaf);
     let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
     let mut transaction = scene.transaction();
     for index in 0..16 {
@@ -731,7 +731,7 @@ fn persistent_retained_scene_rebuilds_plan_when_local_commands_change() {
             crate::Radius::ZERO,
             Color::from_rgb8(220, 30, 40),
         );
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let layered = {
         let mut canvas = Canvas::new(16, 16, 1.0);
@@ -747,7 +747,7 @@ fn persistent_retained_scene_rebuilds_plan_when_local_commands_change() {
             Color::from_rgb8(30, 210, 70),
         );
         canvas.pop_layer();
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let mut scene = RetainedScene::new(16, 16, 1.0, root).unwrap();
     scene
@@ -793,7 +793,7 @@ fn persistent_retained_scene_preserves_order_after_variable_length_reallocation(
     let solid = |color| {
         let mut canvas = Canvas::new(32, 16, 1.0);
         canvas.push_rect(Rect::new(0.0, 0.0, 32.0, 16.0), crate::Radius::ZERO, color);
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let mut scene = RetainedScene::new(32, 16, 1.0, root).unwrap();
     let mut transaction = scene.transaction();
@@ -828,7 +828,7 @@ fn persistent_retained_scene_preserves_order_after_variable_length_reallocation(
         Color::from_rgb8(240, 210, 40),
     );
     let mut transaction = scene.transaction();
-    transaction.replace_scene(back, std::sync::Arc::new(longer));
+    transaction.replace_scene(back, std::rc::Rc::new(longer));
     transaction.commit().unwrap();
     incremental.render_retained(&scene);
     assert_eq!(incremental.image().rgba8_at(8, 8), [30, 60, 220, 255]);
@@ -862,7 +862,7 @@ fn persistent_variable_length_update_uploads_only_changed_allocations() {
             crate::Radius::ZERO,
             Color::from_rgb8(30, 130, 220),
         );
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let two_draws = {
         let mut canvas = Canvas::new(8, 8, 1.0);
@@ -876,7 +876,7 @@ fn persistent_variable_length_update_uploads_only_changed_allocations() {
             crate::Radius::ZERO,
             Color::from_rgb8(240, 210, 40),
         );
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let root = RetainedNodeId::for_owner(50_200);
     let changed = RetainedNodeId::for_owner(50_201);
@@ -924,7 +924,7 @@ fn persistent_resource_variable_length_update_is_local_and_matches_full_render()
         return;
     }
 
-    let image = std::sync::Arc::new(Image::from_rgba8(
+    let image = std::rc::Rc::new(Image::from_rgba8(
         2,
         2,
         [
@@ -952,7 +952,7 @@ fn persistent_resource_variable_length_update_is_local_and_matches_full_render()
                 )
                 .unwrap();
         }
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let one_draw = child(false);
     let two_draws = child(true);
@@ -1017,7 +1017,7 @@ fn persistent_resource_brush_repatches_after_atlas_placement_changes() {
             RetainedParent::content(root),
             None,
             RetainedNodeId::for_owner(52_001),
-            std::sync::Arc::new(child),
+            std::rc::Rc::new(child),
             Affine::translate((0.0, 0.0)),
         )
         .commit()
@@ -1114,7 +1114,7 @@ fn persistent_resource_brush_membership_tracks_incremental_replacement() {
             crate::Radius::ZERO,
             Color::from_rgb8(30, 80, 220),
         );
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let key = ImageKey::new(30);
     let resource = {
@@ -1127,7 +1127,7 @@ fn persistent_resource_brush_membership_tracks_incremental_replacement() {
                 PatternSampling::Nearest,
             )
             .unwrap();
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let root = RetainedNodeId::for_owner(53_000);
     let leaf = RetainedNodeId::for_owner(53_001);
@@ -1182,7 +1182,7 @@ fn persistent_retained_scene_recollects_layer_influence_after_leaf_change() {
     let child = |color| {
         let mut canvas = Canvas::new(32, 16, 1.0);
         canvas.push_rect(Rect::new(0.0, 0.0, 32.0, 16.0), crate::Radius::ZERO, color);
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let mut scene = RetainedScene::new(32, 16, 1.0, root).unwrap();
     scene
@@ -1230,7 +1230,7 @@ fn persistent_retained_scene_recollects_layer_influence_after_leaf_change() {
     );
     scene
         .transaction()
-        .replace_scene(leaf, std::sync::Arc::new(longer))
+        .replace_scene(leaf, std::rc::Rc::new(longer))
         .commit()
         .unwrap();
     incremental.render_retained(&scene);
@@ -1248,7 +1248,7 @@ fn persistent_retained_scene_recollects_layer_influence_after_leaf_change() {
     );
     scene
         .transaction()
-        .replace_scene(leaf, std::sync::Arc::new(same_shape))
+        .replace_scene(leaf, std::rc::Rc::new(same_shape))
         .commit()
         .unwrap();
     incremental.render_retained(&scene);
@@ -1297,7 +1297,7 @@ fn persistent_retained_layer_descriptor_update_patches_only_the_layer_chunk() {
             RetainedParent::content(layer),
             None,
             leaf,
-            std::sync::Arc::new(child),
+            std::rc::Rc::new(child),
             Affine::translate((0.0, 0.0)),
         )
         .commit()
@@ -1362,7 +1362,7 @@ fn persistent_retained_filter_and_mask_updates_patch_offscreen_plan_fragments() 
     let solid = |color| {
         let mut canvas = Canvas::new(32, 16, 1.0);
         canvas.push_rect(Rect::new(0.0, 0.0, 32.0, 16.0), crate::Radius::ZERO, color);
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let mut scene = RetainedScene::new(32, 16, 1.0, root).unwrap();
     scene
@@ -1457,7 +1457,7 @@ fn persistent_retained_backdrop_background_revision_matches_force_full() {
     let solid = |color| {
         let mut canvas = Canvas::new(32, 16, 1.0);
         canvas.push_rect(Rect::new(0.0, 0.0, 32.0, 16.0), crate::Radius::ZERO, color);
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let mut scene = RetainedScene::new(32, 16, 1.0, root).unwrap();
     scene
@@ -1544,7 +1544,7 @@ fn persistent_scene_embedded_backdrop_tracks_earlier_moving_scene() {
             crate::Radius::ZERO,
             color,
         );
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let mut panel_canvas = Canvas::new(40, 32, 1.0);
     let panel_rect = Rect::new(0.0, 0.0, 40.0, 32.0);
@@ -1584,7 +1584,7 @@ fn persistent_scene_embedded_backdrop_tracks_earlier_moving_scene() {
             RetainedParent::content(root),
             None,
             panel,
-            std::sync::Arc::new(panel_canvas),
+            std::rc::Rc::new(panel_canvas),
             Affine::translate((48.0, 8.0)),
         )
         .commit()
@@ -1687,21 +1687,21 @@ fn persistent_embedded_liquid_glass_updates_only_damaged_surface_tiles() {
             RetainedParent::content(root),
             None,
             background,
-            std::sync::Arc::new(background_canvas),
+            std::rc::Rc::new(background_canvas),
             Affine::translate((0.0, 0.0)),
         )
         .insert_scene(
             RetainedParent::content(root),
             None,
             card,
-            std::sync::Arc::new(card_canvas),
+            std::rc::Rc::new(card_canvas),
             Affine::translate((128.0, 176.0)),
         )
         .insert_scene(
             RetainedParent::content(root),
             None,
             panel,
-            std::sync::Arc::new(panel_canvas),
+            std::rc::Rc::new(panel_canvas),
             Affine::translate((96.0, 64.0)),
         )
         .commit()
@@ -1790,7 +1790,7 @@ fn forced_coarse_binning_modes_render_the_same_incremental_frame() {
             crate::Radius::ZERO,
             color,
         );
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let mut scene = RetainedScene::new(128, 128, 1.0, root).unwrap();
     scene
@@ -1851,7 +1851,7 @@ fn persistent_retained_nested_layer_insert_rebuilds_only_offscreen_ancestor() {
     let solid = |rect: Rect, color| {
         let mut canvas = Canvas::new(48, 16, 1.0);
         canvas.push_rect(rect, crate::Radius::ZERO, color);
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let mut scene = RetainedScene::new(48, 16, 1.0, root).unwrap();
     scene
@@ -1946,7 +1946,7 @@ fn persistent_retained_nested_mask_branch_insert_rebuilds_only_mask_ancestor() {
     let solid = |rect: Rect, color| {
         let mut canvas = Canvas::new(32, 16, 1.0);
         canvas.push_rect(rect, crate::Radius::ZERO, color);
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let mut scene = RetainedScene::new(32, 16, 1.0, root).unwrap();
     scene
@@ -2044,7 +2044,7 @@ fn persistent_retained_nested_layer_reorder_rebuilds_one_offscreen_ancestor() {
     let solid = |color| {
         let mut canvas = Canvas::new(32, 16, 1.0);
         canvas.push_rect(Rect::new(0.0, 0.0, 32.0, 16.0), crate::Radius::ZERO, color);
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let mut scene = RetainedScene::new(32, 16, 1.0, root).unwrap();
     scene
@@ -2151,7 +2151,7 @@ fn persistent_retained_layer_reparent_rebuilds_old_and_new_offscreen_ancestors()
             RetainedParent::content(moving_layer),
             None,
             leaf,
-            std::sync::Arc::new(child),
+            std::rc::Rc::new(child),
             Affine::translate((0.0, 0.0)),
         )
         .insert_layer(
@@ -2205,7 +2205,7 @@ fn persistent_root_offscreen_layer_reorder_reuses_child_fragments() {
     let solid = |color| {
         let mut canvas = Canvas::new(32, 16, 1.0);
         canvas.push_rect(Rect::new(0.0, 0.0, 32.0, 16.0), crate::Radius::ZERO, color);
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let mut scene = RetainedScene::new(32, 16, 1.0, root).unwrap();
     scene
@@ -2275,7 +2275,7 @@ fn persistent_retained_layer_reorder_reuses_plan_and_matches_force_full() {
     let child = |color| {
         let mut canvas = Canvas::new(32, 16, 1.0);
         canvas.push_rect(Rect::new(0.0, 0.0, 32.0, 16.0), crate::Radius::ZERO, color);
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let mut scene = RetainedScene::new(32, 16, 1.0, root).unwrap();
     scene
@@ -2339,7 +2339,7 @@ fn persistent_retained_layer_add_remove_reuses_empty_batch_context() {
     let child = |color| {
         let mut canvas = Canvas::new(16, 16, 1.0);
         canvas.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let mut scene = RetainedScene::new(32, 16, 1.0, root).unwrap();
     scene
@@ -2403,7 +2403,7 @@ fn persistent_retained_reparent_between_layers_reuses_stable_batches() {
     let child = |color| {
         let mut canvas = Canvas::new(32, 16, 1.0);
         canvas.push_rect(Rect::new(0.0, 0.0, 32.0, 16.0), crate::Radius::ZERO, color);
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let opacity = |opacity| RetainedLayerDescriptor::Opacity {
         path: Rect::new(0.0, 0.0, 32.0, 16.0).to_path(0.1),
@@ -2468,7 +2468,7 @@ fn persistent_retained_reparent_across_mask_branches_reuses_plan() {
     let child = |color| {
         let mut canvas = Canvas::new(32, 16, 1.0);
         canvas.push_rect(Rect::new(0.0, 0.0, 32.0, 16.0), crate::Radius::ZERO, color);
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let mut scene = RetainedScene::new(32, 16, 1.0, root).unwrap();
     scene
@@ -2529,7 +2529,7 @@ fn persistent_retained_scene_add_remove_reuses_pages_without_ghost_draws() {
     let child = |color| {
         let mut canvas = Canvas::new(16, 16, 1.0);
         canvas.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let mut scene = RetainedScene::new(32, 16, 1.0, root).unwrap();
     scene
@@ -2598,7 +2598,7 @@ fn persistent_retained_tail_layer_add_remove_patches_plan_without_ghost_draws() 
     let solid = |rect: Rect, color| {
         let mut canvas = Canvas::new(64, 16, 1.0);
         canvas.push_rect(rect, crate::Radius::ZERO, color);
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let mut scene = RetainedScene::new(64, 16, 1.0, root).unwrap();
     scene
@@ -2691,7 +2691,7 @@ fn persistent_retained_tail_layer_and_leaf_inserted_together_are_rendered() {
     let child = |color| {
         let mut canvas = Canvas::new(32, 16, 1.0);
         canvas.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let mut scene = RetainedScene::new(32, 16, 1.0, root).unwrap();
     scene
@@ -2760,7 +2760,7 @@ fn persistent_root_layer_insert_before_intersecting_scene_patches_plan() {
     let solid = |rect: Rect, color| {
         let mut canvas = Canvas::new(64, 16, 1.0);
         canvas.push_rect(rect, crate::Radius::ZERO, color);
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let mut scene = RetainedScene::new(64, 16, 1.0, root).unwrap();
     scene
@@ -2844,7 +2844,7 @@ fn persistent_retained_removes_initial_middle_root_layer_without_recompiling_sce
     let solid = |rect: Rect, color| {
         let mut canvas = Canvas::new(64, 16, 1.0);
         canvas.push_rect(rect, crate::Radius::ZERO, color);
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let mut scene = RetainedScene::new(64, 16, 1.0, root).unwrap();
     scene
@@ -2922,7 +2922,7 @@ fn persistent_retained_inserts_layer_fragment_before_existing_layer() {
     let solid = |rect: Rect, color| {
         let mut canvas = Canvas::new(64, 16, 1.0);
         canvas.push_rect(rect, crate::Radius::ZERO, color);
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let mut scene = RetainedScene::new(64, 16, 1.0, root).unwrap();
     scene
@@ -3006,7 +3006,7 @@ fn persistent_retained_text_updates_dirty_glyph_allocations_and_matches_force_fu
     let make_child = |x| {
         let mut canvas = Canvas::new(160, 48, 1.0);
         canvas.push_text_layout(&layout, peniko::kurbo::Point::new(x, 30.0), Color::BLACK);
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let root = RetainedNodeId::for_owner(50_400);
     let leaf = RetainedNodeId::for_owner(50_401);
@@ -3059,7 +3059,7 @@ fn persistent_retained_renderers_consume_independent_cursors_and_recover_after_j
             crate::Radius::ZERO,
             Color::from_rgb8(value, 255 - value, value / 2),
         );
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let mut scene = RetainedScene::new(16, 16, 1.0, root).unwrap();
     scene
@@ -3750,7 +3750,7 @@ fn persistent_retained_profile_breaks_out_materialization_stages() {
     let leaf = |color| {
         let mut canvas = Canvas::new(16, 16, 1.0);
         canvas.push_rect(Rect::new(2.0, 2.0, 14.0, 14.0), crate::Radius::ZERO, color);
-        std::sync::Arc::new(canvas)
+        std::rc::Rc::new(canvas)
     };
     let mut scene = RetainedScene::new(16, 16, 1.0, root).unwrap();
     scene
@@ -6278,7 +6278,7 @@ fn persistent_full_redraw_liquid_glass_uses_direct_composite() {
             RetainedParent::content(root),
             None,
             crate::RetainedNodeId::for_owner(68_201),
-            std::sync::Arc::new(background),
+            std::rc::Rc::new(background),
             Affine::IDENTITY,
         )
         .commit()
@@ -6331,7 +6331,7 @@ fn persistent_full_redraw_clipped_liquid_glass_skips_unused_source_history() {
             RetainedParent::content(root),
             None,
             crate::RetainedNodeId::for_owner(68_211),
-            std::sync::Arc::new(scene),
+            std::rc::Rc::new(scene),
             Affine::IDENTITY,
         )
         .commit()

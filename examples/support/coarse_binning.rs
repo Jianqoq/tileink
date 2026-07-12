@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::rc::Rc;
 
 use peniko::{
     Color,
@@ -80,14 +80,14 @@ impl Workload {
                 RetainedParent::content(root),
                 None,
                 background,
-                Arc::new(background_canvas),
+                Rc::new(background_canvas),
                 Affine::IDENTITY,
             )
             .insert_scene(
                 RetainedParent::content(root),
                 None,
                 moving,
-                Arc::new(moving_canvas),
+                Rc::new(moving_canvas),
                 Affine::translate((127.0, 128.0)),
             )
             .commit()

@@ -519,14 +519,12 @@ fn translate_exec_ops_to_local(
                 layer_stack,
                 owners,
             } => ExecOp::DrawBatch {
-                draws: std::sync::Arc::new(batch_draws.get(batch_id).cloned().unwrap_or_else(
-                    || {
-                        draws
-                            .iter()
-                            .filter_map(|draw| draw_map.get(draw).copied())
-                            .collect()
-                    },
-                )),
+                draws: std::rc::Rc::new(batch_draws.get(batch_id).cloned().unwrap_or_else(|| {
+                    draws
+                        .iter()
+                        .filter_map(|draw| draw_map.get(draw).copied())
+                        .collect()
+                })),
                 batch_id: *batch_id,
                 layer_stack: layer_stack.clone(),
                 owners: owners.clone(),

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::rc::Rc;
 
 use rustc_hash::FxHashMap;
 
@@ -63,12 +63,12 @@ fn encode_key(scope: u32, key: ImageKey) -> (u32, u32, u32) {
 
 #[derive(Clone, Default)]
 pub(crate) struct ImageResourceStore {
-    images: FxHashMap<ImageKey, Arc<Image>>,
+    images: FxHashMap<ImageKey, Rc<Image>>,
     signature_hash: u64,
 }
 
 impl ImageResourceStore {
-    pub(crate) fn insert(&mut self, key: ImageKey, image: impl Into<Arc<Image>>) -> bool {
+    pub(crate) fn insert(&mut self, key: ImageKey, image: impl Into<Rc<Image>>) -> bool {
         let image = image.into();
         if image.width == 0 || image.height == 0 {
             return false;
@@ -81,7 +81,7 @@ impl ImageResourceStore {
     }
 
     pub(crate) fn get(&self, key: ImageKey) -> Option<&Image> {
-        self.images.get(&key).map(Arc::as_ref)
+        self.images.get(&key).map(Rc::as_ref)
     }
 
     pub(crate) fn remove(&mut self, key: ImageKey) -> bool {
@@ -139,7 +139,7 @@ impl ImageResourceStore {
         }
     }
 
-    pub(crate) fn iter(&self) -> impl Iterator<Item = (ImageKey, &Arc<Image>)> {
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (ImageKey, &Rc<Image>)> {
         self.images.iter().map(|(&key, image)| (key, image))
     }
 
@@ -151,13 +151,13 @@ impl ImageResourceStore {
     }
 }
 
-fn image_entry_hash(key: ImageKey, image: &Arc<Image>) -> u64 {
+fn image_entry_hash(key: ImageKey, image: &Rc<Image>) -> u64 {
     let mut hash = FNV_OFFSET;
     hash = fnv_mix(hash, key.0);
     hash = fnv_mix(hash, image.width as u64);
     hash = fnv_mix(hash, image.height as u64);
     hash = fnv_mix(hash, image.pixels.len() as u64);
-    hash = fnv_mix(hash, Arc::as_ptr(image) as usize as u64);
+    hash = fnv_mix(hash, Rc::as_ptr(image) as usize as u64);
     fnv_mix(hash, image.pixels.as_ptr() as usize as u64)
 }
 
@@ -189,7 +189,7 @@ fn fnv_mix(mut hash: u64, value: u64) -> u64 {
 }
 struct ImageResourceEntry<'a> {
     id: ImageResourceId,
-    image: &'a Arc<Image>,
+    image: &'a Rc<Image>,
     signature: ImageEntrySignature,
 }
 
@@ -334,14 +334,14 @@ struct ImageEntrySignature {
 }
 
 impl ImageEntrySignature {
-    fn new(id: ImageResourceId, image: &Arc<Image>) -> Self {
+    fn new(id: ImageResourceId, image: &Rc<Image>) -> Self {
         let mut hash = FNV_OFFSET;
         hash = fnv_mix(hash, image_resource_id_sort_key(id).0 as u64);
         hash = fnv_mix(hash, image_resource_id_sort_key(id).1);
         hash = fnv_mix(hash, image.width as u64);
         hash = fnv_mix(hash, image.height as u64);
         hash = fnv_mix(hash, image.pixels.len() as u64);
-        hash = fnv_mix(hash, Arc::as_ptr(image) as usize as u64);
+        hash = fnv_mix(hash, Rc::as_ptr(image) as usize as u64);
         hash = fnv_mix(hash, image.pixels.as_ptr() as usize as u64);
         Self { hash }
     }

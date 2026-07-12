@@ -1,6 +1,6 @@
 mod retained;
 
-use std::{ops::Range, sync::Arc as SharedArc};
+use std::{ops::Range, rc::Rc as SharedRc};
 
 use peniko::{
     Color, Compose, Extend, Mix,
@@ -37,7 +37,7 @@ use crate::shared::{
     scan_line::line_scanned_tile_count,
     sdf::{
         Sdf, SdfShadow,
-        arc::{Arc as SdfArc, ArcShadow as SdfArcShadow},
+        arc::{ArcShadow as SdfArcShadow, Rc as SdfArc},
         candlestick::CandleStick as SdfCandleStick,
         circle::{
             Circle as SdfCircle, CircleShadow as SdfCircleShadow, CircleStroke as SdfCircleStroke,
@@ -92,7 +92,7 @@ pub struct Canvas {
     /// only when topology or physical draw slots change, so buffer-only edits do not scan the
     /// whole command graph during prepare.
     pub(crate) plan_cache_key: Option<u64>,
-    pub(crate) compiled_plan: Option<SharedArc<ExecPlan>>,
+    pub(crate) compiled_plan: Option<SharedRc<ExecPlan>>,
     pub(crate) persistent_frame: Option<RetainedFrame>,
     pub(crate) painter_keys: Option<Vec<PainterKey>>,
     pub(crate) stable_batch_ids: Option<Vec<u32>>,
@@ -144,14 +144,14 @@ pub(crate) struct SceneBufferChanges {
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(crate) struct PainterKey {
-    pub(crate) path: SharedArc<[u128]>,
+    pub(crate) path: SharedRc<[u128]>,
     pub(crate) local: u32,
 }
 
 impl PainterKey {
     pub(crate) fn inactive() -> Self {
         Self {
-            path: SharedArc::from([u128::MAX]),
+            path: SharedRc::from([u128::MAX]),
             local: u32::MAX,
         }
     }
@@ -916,11 +916,11 @@ impl Canvas {
                 },
                 half_width: stroke.half_width * self.scale_f32(),
             }),
-            Sdf::Arc(mut arc) => {
+            Sdf::Rc(mut arc) => {
                 arc.center = self.physical_point(arc.center);
                 arc.radius *= self.scale_f32();
                 arc.width *= self.scale_f32();
-                Sdf::Arc(arc)
+                Sdf::Rc(arc)
             }
             Sdf::CandleStick(mut candle) => {
                 let scale = self.scale_f32();
@@ -957,12 +957,12 @@ impl Canvas {
                 },
                 options: self.physical_shadow_options(shadow.options),
             }),
-            SdfShadow::Arc(mut shadow) => {
+            SdfShadow::Rc(mut shadow) => {
                 shadow.arc.center = self.physical_point(shadow.arc.center);
                 shadow.arc.radius *= self.scale_f32();
                 shadow.arc.width *= self.scale_f32();
                 shadow.options = self.physical_shadow_options(shadow.options);
-                SdfShadow::Arc(shadow)
+                SdfShadow::Rc(shadow)
             }
             SdfShadow::Line(shadow) => SdfShadow::Line(SdfLineShadow {
                 line: self.physical_sdf_line(shadow.line),
@@ -1606,7 +1606,7 @@ impl Canvas {
     }
 
     pub fn push_clip_sdf_arc_layer(&mut self, arc: SdfArc) {
-        self.push_clip_sdf_layer(Sdf::Arc(arc));
+        self.push_clip_sdf_layer(Sdf::Rc(arc));
     }
 
     pub fn push_clip_sdf_line_layer(&mut self, line: SdfLine) {
@@ -1871,7 +1871,7 @@ impl Canvas {
     pub fn push_image(
         &mut self,
         rect: Rect,
-        image: impl Into<SharedArc<Image>>,
+        image: impl Into<SharedRc<Image>>,
         extend: Extend,
         sampling: PatternSampling,
     ) -> Option<DrawId> {
@@ -1904,10 +1904,10 @@ impl Canvas {
 
     pub(crate) fn register_scene_image(
         &mut self,
-        image: impl Into<SharedArc<Image>>,
+        image: impl Into<SharedRc<Image>>,
     ) -> Option<ImageKey> {
         let image = image.into();
-        let key = ImageKey::new(SharedArc::as_ptr(&image) as usize as u64);
+        let key = ImageKey::new(SharedRc::as_ptr(&image) as usize as u64);
         if self.scene_images.get(key).is_some() {
             return Some(key);
         }
@@ -2080,7 +2080,7 @@ impl Canvas {
         if arc.is_empty() {
             return None;
         }
-        let draw = self.push_sdf_draw(Sdf::Arc(arc), brush);
+        let draw = self.push_sdf_draw(Sdf::Rc(arc), brush);
         Some(self.draw_id_from_index(draw))
     }
 
@@ -2095,7 +2095,7 @@ impl Canvas {
         }
         let options = options.normalized()?;
         let shadow = SdfArcShadow { arc, options };
-        let draw = self.push_sdf_shadow_draw(SdfShadow::Arc(shadow), brush);
+        let draw = self.push_sdf_shadow_draw(SdfShadow::Rc(shadow), brush);
         Some(self.draw_id_from_index(draw))
     }
 
@@ -2720,13 +2720,13 @@ impl Canvas {
         self.compile_uncached(list_id)
     }
 
-    pub(crate) fn compile_shared(&self, list_id: CommandListId) -> SharedArc<ExecPlan> {
+    pub(crate) fn compile_shared(&self, list_id: CommandListId) -> SharedRc<ExecPlan> {
         if list_id == ROOT_COMMAND_LIST_ID
             && let Some(plan) = &self.compiled_plan
         {
             return plan.clone();
         }
-        SharedArc::new(self.compile_uncached(list_id))
+        SharedRc::new(self.compile_uncached(list_id))
     }
 
     fn compile_uncached(&self, list_id: CommandListId) -> ExecPlan {
@@ -2734,8 +2734,8 @@ impl Canvas {
         let mut plan = ExecPlan {
             ops: Vec::new(),
             layer_stack_data: Vec::new(),
-            draw_order: SharedArc::new(Vec::new()),
-            draw_batch_ids: SharedArc::new(Vec::new()),
+            draw_order: SharedRc::new(Vec::new()),
+            draw_batch_ids: SharedRc::new(Vec::new()),
             retained_batch_ids: std::collections::HashMap::new(),
             layer_stack_locations: std::collections::HashMap::new(),
             direct_root_batch_ops: None,
@@ -2851,9 +2851,9 @@ impl Canvas {
             let layer_end = plan.layer_stack_data.len();
 
             ops.push(ExecOp::DrawBatch {
-                draws: SharedArc::new(std::mem::take(pending_batch)),
+                draws: SharedRc::new(std::mem::take(pending_batch)),
                 batch_id: u32::MAX,
-                owners: SharedArc::new(batch_owner.into_iter().collect()),
+                owners: SharedRc::new(batch_owner.into_iter().collect()),
                 layer_stack: layer_start..layer_end,
             });
         };
@@ -3072,9 +3072,9 @@ impl Canvas {
             plan.layer_stack_data.extend_from_slice(layer_stack);
             let layer_end = plan.layer_stack_data.len();
             ops.push(ExecOp::DrawBatch {
-                draws: SharedArc::new(Vec::new()),
+                draws: SharedRc::new(Vec::new()),
                 batch_id: u32::MAX,
-                owners: SharedArc::new(vec![owner]),
+                owners: SharedRc::new(vec![owner]),
                 layer_stack: layer_start..layer_end,
             });
         }

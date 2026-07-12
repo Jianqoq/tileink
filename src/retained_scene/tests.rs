@@ -3,27 +3,27 @@ use peniko::{Color, kurbo::Shape};
 use super::*;
 use crate::{Radius, shared::bounds::PixelBounds};
 
-fn leaf(color: Color) -> Arc<Canvas> {
+fn leaf(color: Color) -> Rc<Canvas> {
     let mut canvas = Canvas::new(16, 16, 1.0);
     canvas.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::ZERO, color);
-    Arc::new(canvas)
+    Rc::new(canvas)
 }
 
-fn empty_leaf() -> Arc<Canvas> {
-    Arc::new(Canvas::new(16, 16, 1.0))
+fn empty_leaf() -> Rc<Canvas> {
+    Rc::new(Canvas::new(16, 16, 1.0))
 }
 
-fn backdrop_leaf() -> Arc<Canvas> {
+fn backdrop_leaf() -> Rc<Canvas> {
     let mut canvas = Canvas::new(16, 16, 1.0);
     canvas.push_backdrop_layer(
         Filter::Opacity(0.5),
         Region::rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::ZERO),
     );
     canvas.pop_layer();
-    Arc::new(canvas)
+    Rc::new(canvas)
 }
 
-fn path_leaf() -> Arc<Canvas> {
+fn path_leaf() -> Rc<Canvas> {
     let mut canvas = Canvas::new(32, 32, 1.0);
     canvas.push_path(
         Rect::new(4.0, 6.0, 20.0, 18.0).to_path(0.1),
@@ -32,7 +32,7 @@ fn path_leaf() -> Arc<Canvas> {
         FillRule::NonZero,
         0.1,
     );
-    Arc::new(canvas)
+    Rc::new(canvas)
 }
 
 #[test]
@@ -308,7 +308,7 @@ fn surface_resize_reuses_chunks_and_refreshes_path_tile_bounds() {
             RetainedParent::content(clip),
             None,
             child,
-            Arc::new(path_leaf),
+            Rc::new(path_leaf),
             Affine::translate((0.0, 0.0)),
         )
         .commit()
@@ -346,7 +346,7 @@ fn same_scale_resize_and_removal_rebuild_spatial_index_from_live_nodes() {
     let leaf = |color| {
         let mut canvas = Canvas::new(16, 16, 2.0);
         canvas.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::ZERO, color);
-        Arc::new(canvas)
+        Rc::new(canvas)
     };
     let mut scene = RetainedScene::new(64, 64, 2.0, root).unwrap();
     scene
@@ -442,7 +442,7 @@ fn resize_with_layer_updates_defers_full_frame_and_spatial_rebuild() {
     assert!(materializer.update(&scene));
 
     let resized = materializer.canvas.persistent_frame.as_ref().unwrap();
-    assert!(Arc::ptr_eq(&resized.nodes, &base_nodes));
+    assert!(Rc::ptr_eq(&resized.nodes, &base_nodes));
     assert!(resized.invalidate_all);
     assert_eq!(resized.logical_size, (96, 64));
     assert_eq!(
@@ -462,7 +462,7 @@ fn resize_with_layer_updates_defers_full_frame_and_spatial_rebuild() {
     assert!(materializer.update(&scene));
 
     let updated = materializer.canvas.persistent_frame.as_ref().unwrap();
-    assert!(!Arc::ptr_eq(&updated.nodes, &base_nodes));
+    assert!(!Rc::ptr_eq(&updated.nodes, &base_nodes));
     assert_eq!(
         updated.node_state(child).unwrap().bounds,
         Bounds::new(24, 0, 40, 16)
@@ -674,7 +674,7 @@ fn undo_log_restores_values_order_removals_and_surface_after_late_failure() {
     let NodeKind::Scene { canvas, .. } = &scene.nodes[&a].kind else {
         unreachable!()
     };
-    assert!(Arc::ptr_eq(canvas, &original));
+    assert!(Rc::ptr_eq(canvas, &original));
 }
 
 #[test]
@@ -882,7 +882,7 @@ fn journal_gap_detects_remove_and_reinsert_of_the_same_node_id() {
     }
 
     assert!(materializer.update(&scene));
-    assert!(Arc::ptr_eq(
+    assert!(Rc::ptr_eq(
         materializer.chunks[&child].source_canvas.as_ref().unwrap(),
         &replacement
     ));
@@ -931,7 +931,7 @@ fn long_content_delta_chain_compacts_into_state_pages() {
     }
 
     let frame = materializer.canvas.persistent_frame.as_ref().unwrap();
-    assert!(Arc::ptr_eq(&frame.nodes, &base_nodes));
+    assert!(Rc::ptr_eq(&frame.nodes, &base_nodes));
     assert!(!frame.state_pages.is_empty());
     assert_eq!(frame.delta.as_ref().unwrap().depth, 1);
     assert!(frame.delta.as_ref().unwrap().previous.is_none());
@@ -1002,7 +1002,7 @@ fn expanding_nested_clip_patches_newly_visible_raw_spatial_candidates() {
         .unwrap();
     assert!(materializer.update(&scene));
     let inserted_frame = materializer.canvas.persistent_frame.as_ref().unwrap();
-    assert!(Arc::ptr_eq(&base.nodes, &inserted_frame.nodes));
+    assert!(Rc::ptr_eq(&base.nodes, &inserted_frame.nodes));
     assert!(
         inserted_frame
             .node_state(inserted)
@@ -1019,7 +1019,7 @@ fn expanding_nested_clip_patches_newly_visible_raw_spatial_candidates() {
     assert!(materializer.update(&scene));
 
     let expanded = materializer.canvas.persistent_frame.clone().unwrap();
-    assert!(Arc::ptr_eq(&base.nodes, &expanded.nodes));
+    assert!(Rc::ptr_eq(&base.nodes, &expanded.nodes));
     assert!(!expanded.node_state(child).unwrap().bounds.is_empty());
     assert!(!expanded.node_state(inner).unwrap().bounds.is_empty());
     assert!(!expanded.node_state(inserted).unwrap().bounds.is_empty());
@@ -1044,7 +1044,7 @@ fn expanding_nested_clip_patches_newly_visible_raw_spatial_candidates() {
         .unwrap();
     assert!(materializer.update(&scene));
     let shrunk = materializer.canvas.persistent_frame.as_ref().unwrap();
-    assert!(Arc::ptr_eq(&base.nodes, &shrunk.nodes));
+    assert!(Rc::ptr_eq(&base.nodes, &shrunk.nodes));
     assert!(shrunk.node_state(child).unwrap().bounds.is_empty());
     assert!(shrunk.node_state(inner).unwrap().bounds.is_empty());
     assert!(shrunk.node_state(inserted).unwrap().bounds.is_empty());
@@ -1059,7 +1059,7 @@ fn expanding_nested_clip_patches_newly_visible_raw_spatial_candidates() {
         assert!(materializer.update(&scene));
     }
     let repeated = materializer.canvas.persistent_frame.as_ref().unwrap();
-    assert!(Arc::ptr_eq(&base.nodes, &repeated.nodes));
+    assert!(Rc::ptr_eq(&base.nodes, &repeated.nodes));
     assert_eq!(repeated.delta.as_ref().unwrap().depth, 1);
     assert!(repeated.delta.as_ref().unwrap().previous.is_none());
 }
@@ -1116,7 +1116,7 @@ fn clip_bounds_update_inside_filter_uses_full_frame_fallback() {
     assert!(materializer.update(&scene));
 
     let updated = materializer.canvas.persistent_frame.as_ref().unwrap();
-    assert!(!Arc::ptr_eq(&base.nodes, &updated.nodes));
+    assert!(!Rc::ptr_eq(&base.nodes, &updated.nodes));
     assert!(!updated.node_state(child).unwrap().bounds.is_empty());
 }
 
@@ -1180,7 +1180,7 @@ fn appended_root_layer_fragment_is_visible_in_cached_execution_plan() {
     );
     let inserted_frame = materializer.canvas.persistent_frame.clone().unwrap();
     assert!(
-        Arc::ptr_eq(&base_frame.nodes, &inserted_frame.nodes),
+        Rc::ptr_eq(&base_frame.nodes, &inserted_frame.nodes),
         "root layer insertion must patch the immutable frame instead of collecting every node"
     );
     assert!(inserted_frame.node_state(layer).is_some());
@@ -1190,7 +1190,7 @@ fn appended_root_layer_fragment_is_visible_in_cached_execution_plan() {
     scene.transaction().remove_subtree(layer).commit().unwrap();
     assert!(materializer.update(&scene));
     let removed_frame = materializer.canvas.persistent_frame.clone().unwrap();
-    assert!(Arc::ptr_eq(&base_frame.nodes, &removed_frame.nodes));
+    assert!(Rc::ptr_eq(&base_frame.nodes, &removed_frame.nodes));
     assert!(removed_frame.node_state(layer).is_none());
     assert!(removed_frame.node_state(child).is_none());
     assert_eq!(removed_frame.delta.as_ref().unwrap().depth, 1);

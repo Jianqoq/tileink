@@ -486,7 +486,7 @@ impl TileDrawBins {
         for (rank, &draw_ix) in ordered.iter().enumerate() {
             self.draw_ranks[draw_ix as usize] = painter_keys.map_or_else(
                 || PainterKey {
-                    path: std::sync::Arc::from([rank as u128]),
+                    path: std::rc::Rc::from([rank as u128]),
                     local: 0,
                 },
                 |keys| keys[draw_ix as usize].clone(),

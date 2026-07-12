@@ -6,7 +6,7 @@ use crate::{
         image_resource::{ImageKey, ImageResourceId},
     },
 };
-use std::sync::Arc;
+use std::rc::Rc;
 
 fn draw_sdf(canvas: &Canvas, index: usize) -> Option<Sdf> {
     canvas.draw_sdf(&canvas.draw_records[index])
@@ -171,12 +171,12 @@ fn push_image_records_pattern_rect_draw() {
 #[test]
 fn push_image_reuses_scene_resource_for_same_arc() {
     let mut canvas = test_scene();
-    let image = Arc::new(Image::from_rgba8(2, 1, [255, 0, 0, 255, 0, 0, 255, 255]));
+    let image = Rc::new(Image::from_rgba8(2, 1, [255, 0, 0, 255, 0, 0, 255, 255]));
 
     canvas
         .push_image(
             Rect::new(0.0, 0.0, 2.0, 1.0),
-            Arc::clone(&image),
+            Rc::clone(&image),
             Extend::Pad,
             PatternSampling::Bilinear,
         )
@@ -184,7 +184,7 @@ fn push_image_reuses_scene_resource_for_same_arc() {
     canvas
         .push_image(
             Rect::new(2.0, 0.0, 4.0, 1.0),
-            Arc::clone(&image),
+            Rc::clone(&image),
             Extend::Pad,
             PatternSampling::Bilinear,
         )
@@ -744,7 +744,7 @@ fn push_sdf_arc_records_sdf_without_path_storage() {
     assert!(canvas.path_records.is_empty());
     assert!(canvas.path_records.is_empty());
     match draw_sdf(&canvas, 0) {
-        Some(Sdf::Arc(arc)) => {
+        Some(Sdf::Rc(arc)) => {
             assert_eq!(arc.center, Point::new(32.0, 32.0));
             assert_eq!(arc.radius, 12.0);
             assert_eq!(arc.width, 4.0);
@@ -800,7 +800,7 @@ fn push_shape_shadows_record_sdf_shadow_without_path_storage() {
     ));
     assert!(matches!(
         draw_sdf_shadow(&canvas, 1),
-        Some(SdfShadow::Arc(_))
+        Some(SdfShadow::Rc(_))
     ));
     assert!(matches!(
         draw_sdf_shadow(&canvas, 2),

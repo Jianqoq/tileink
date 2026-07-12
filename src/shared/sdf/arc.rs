@@ -16,7 +16,7 @@ const ARC_FULL_SWEEP_EPSILON: f32 = 1.0e-4;
 /// usual screen coordinate system where y grows downward.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Arc {
+pub struct Rc {
     pub center: Point,
     pub radius: f32,
     pub start_angle: f32,
@@ -25,7 +25,7 @@ pub struct Arc {
     pub cap: LineCap,
 }
 
-impl Arc {
+impl Rc {
     pub fn new(
         center: Point,
         radius: f32,
@@ -146,7 +146,7 @@ impl Arc {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct ArcShadow {
-    pub arc: Arc,
+    pub arc: Rc,
     pub options: ShadowOptions,
 }
 
@@ -171,7 +171,7 @@ mod tests {
 
     #[test]
     fn arc_bounds_include_endpoints_quadrants_and_stroke_width() {
-        let arc = Arc::new(
+        let arc = Rc::new(
             Point::new(20.0, 20.0),
             10.0,
             0.0,

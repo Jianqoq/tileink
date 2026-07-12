@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ops::Range, sync::Arc};
+use std::{collections::HashMap, ops::Range, rc::Rc};
 
 use peniko::BlendMode;
 
@@ -69,9 +69,9 @@ pub(crate) struct ExecPlan {
     pub layer_stack_data: Vec<LayerStackEntry>,
     /// Physical draw slots in painter order. Retained arenas may keep stable slots that are not
     /// contiguous, so tile binning must not infer order from the draw-record buffer.
-    pub draw_order: Arc<Vec<u32>>,
+    pub draw_order: Rc<Vec<u32>>,
     /// Stable physical draw slot to coarse batch membership.
-    pub draw_batch_ids: Arc<Vec<u32>>,
+    pub draw_batch_ids: Rc<Vec<u32>>,
     /// Stable batch assigned to each retained layer branch, including empty branches.
     pub retained_batch_ids: HashMap<RetainedBatchOwner, u32>,
     /// Fused layer hidden draw to the stack entries that reference it. A descriptor update can
@@ -95,14 +95,14 @@ impl ExecPlan {
     }
 
     pub(crate) fn finalize_draw_batches(&mut self, draw_capacity: usize) {
-        Arc::make_mut(&mut self.draw_order).clear();
-        Arc::make_mut(&mut self.draw_batch_ids).clear();
-        Arc::make_mut(&mut self.draw_batch_ids).resize(draw_capacity, u32::MAX);
+        Rc::make_mut(&mut self.draw_order).clear();
+        Rc::make_mut(&mut self.draw_batch_ids).clear();
+        Rc::make_mut(&mut self.draw_batch_ids).resize(draw_capacity, u32::MAX);
         let mut next_batch = 0;
         finalize_draw_batches_in(
             &mut self.ops,
-            Arc::make_mut(&mut self.draw_order),
-            Arc::make_mut(&mut self.draw_batch_ids).as_mut_slice(),
+            Rc::make_mut(&mut self.draw_order),
+            Rc::make_mut(&mut self.draw_batch_ids).as_mut_slice(),
             &mut next_batch,
         );
         self.refresh_retained_batch_ids();
@@ -310,9 +310,9 @@ impl ExecPlan {
         self.ops.insert(
             index,
             ExecOp::DrawBatch {
-                draws: Arc::new(draws),
+                draws: Rc::new(draws),
                 batch_id,
-                owners: Arc::new(Vec::new()),
+                owners: Rc::new(Vec::new()),
                 layer_stack: 0..0,
             },
         );
@@ -462,14 +462,14 @@ impl ExecPlan {
         let mut order = Vec::new();
         let mut batches = vec![u32::MAX; self.draw_batch_ids.len()];
         collect_draw_metadata(&self.ops, &mut order, &mut batches);
-        self.draw_order = Arc::new(order);
-        self.draw_batch_ids = Arc::new(batches);
+        self.draw_order = Rc::new(order);
+        self.draw_batch_ids = Rc::new(batches);
     }
 
     /// Disables a batch whose complete membership moved into a later persistent fragment.
     ///
     /// Partial migration deliberately leaves the shared draw list untouched: GPU-side stable
-    /// batch IDs filter those members without cloning a potentially scene-sized `Arc<Vec<_>>`.
+    /// batch IDs filter those members without cloning a potentially scene-sized `Rc<Vec<_>>`.
     pub(crate) fn remove_batch_if_all_moved(
         &mut self,
         batch_id: u32,
@@ -1081,10 +1081,10 @@ fn coalesce_draw_batches_in(ops: &mut Vec<ExecOp>, layer_stacks: &[LayerStackEnt
             }) = coalesced.last_mut()
             && layer_stacks[previous_stack.clone()] == layer_stacks[layer_stack.clone()]
         {
-            Arc::make_mut(previous_draws).extend_from_slice(draws);
+            Rc::make_mut(previous_draws).extend_from_slice(draws);
             for &owner in owners.iter() {
                 if !previous_owners.contains(&owner) {
-                    Arc::make_mut(previous_owners).push(owner);
+                    Rc::make_mut(previous_owners).push(owner);
                 }
             }
             continue;
@@ -1097,9 +1097,9 @@ fn coalesce_draw_batches_in(ops: &mut Vec<ExecOp>, layer_stacks: &[LayerStackEnt
 #[derive(Clone, Debug)]
 pub(crate) enum ExecOp {
     DrawBatch {
-        draws: Arc<Vec<usize>>,
+        draws: Rc<Vec<usize>>,
         batch_id: u32,
-        owners: Arc<Vec<RetainedBatchOwner>>,
+        owners: Rc<Vec<RetainedBatchOwner>>,
         /// Active fused layer stack for this batch in nesting order. This is
         /// stack state, not coverage.
         layer_stack: Range<usize>,

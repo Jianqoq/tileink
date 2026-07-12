@@ -1,6 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
-use std::sync::Arc as SharedArc;
+use std::rc::Rc as SharedArc;
 
 use peniko::Color;
 
@@ -365,7 +365,7 @@ impl Renderer {
                 .changes_since(materializer.version())
                 .is_none_or(|changes| changes.topology_changed || changes.surface_changed);
         if plan_may_change {
-            // GPU submission no longer borrows the previous frame's plan. Releasing that Arc
+            // GPU submission no longer borrows the previous frame's plan. Releasing that Rc
             // lets the materializer patch layer fragments in place instead of cloning an
             // otherwise scene-sized ExecPlan for one changed layer.
             self.plan = None;
