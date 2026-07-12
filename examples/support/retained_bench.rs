@@ -6,7 +6,10 @@ use std::{
 };
 
 use peniko::Color;
-use tileink::{Canvas, IncrementalRenderMode, RetainedScene, WgpuRenderProfile, WgpuRenderer};
+use tileink::{
+    Canvas, IncrementalRenderConfig, IncrementalRenderMode, RetainedScene, WgpuRenderProfile,
+    WgpuRenderer,
+};
 
 pub const WIDTH: u32 = 1024;
 pub const HEIGHT: u32 = 1024;
@@ -53,6 +56,7 @@ pub struct Measurements {
     pub prepare: Duration,
     pub scan: Duration,
     pub raster: Duration,
+    pub coarse_gpu: Duration,
     pub plan_select: Duration,
     pub plan_execute: Duration,
     pub draw_batch: Duration,
@@ -86,8 +90,24 @@ pub struct Measurements {
 pub fn bench_persistent(
     seed: &WgpuRenderer,
     config: BenchConfig,
-    mut scene: RetainedScene,
+    scene: RetainedScene,
     mode: IncrementalRenderMode,
+    mutate: impl FnMut(&mut RetainedScene, usize),
+) -> Result<Measurements, Box<dyn Error>> {
+    let renderer_config = IncrementalRenderConfig {
+        mode,
+        ..Default::default()
+    };
+    bench_persistent_with_config(seed, config, scene, renderer_config, mutate)
+}
+
+/// Retained benchmark variant that exposes renderer policy knobs such as forced coarse kernels.
+#[allow(dead_code)]
+pub fn bench_persistent_with_config(
+    seed: &WgpuRenderer,
+    config: BenchConfig,
+    mut scene: RetainedScene,
+    renderer_config: IncrementalRenderConfig,
     mut mutate: impl FnMut(&mut RetainedScene, usize),
 ) -> Result<Measurements, Box<dyn Error>> {
     let mut renderer = WgpuRenderer::new(
@@ -97,8 +117,6 @@ pub fn bench_persistent(
         HEIGHT,
         Color::TRANSPARENT,
     );
-    let mut renderer_config = renderer.incremental_render_config();
-    renderer_config.mode = mode;
     renderer.set_incremental_render_config(renderer_config);
     let texture = output_texture(renderer.device());
     // Establish the renderer cursor before applying benchmark mutations. Otherwise the first
@@ -122,8 +140,9 @@ pub fn bench_persistent(
         renderer.start_profile();
         let started = Instant::now();
         renderer.render_retained_to_wgpu_texture(black_box(&scene), &texture)?;
-        let profile = renderer.end_profile().clone();
+        renderer.end_profile();
         wait_for_gpu(renderer.device(), renderer.queue())?;
+        let profile = renderer.poll_profile().clone();
         measurements.wall.push(started.elapsed());
         accumulate(&mut measurements, &renderer, &profile);
     }
@@ -172,9 +191,12 @@ pub fn bench_persistent_phase(
         }
         let started = Instant::now();
         renderer.render_retained_to_wgpu_texture(black_box(scene), &texture)?;
-        let profile = measured.then(|| renderer.end_profile().clone());
+        if measured {
+            renderer.end_profile();
+        }
         wait_for_gpu(renderer.device(), renderer.queue())?;
-        if let Some(profile) = profile {
+        if measured {
+            let profile = renderer.poll_profile().clone();
             measurements.wall.push(started.elapsed());
             accumulate(measurements, renderer, &profile);
         }
@@ -258,8 +280,9 @@ pub fn bench(
         renderer.start_profile();
         let started = Instant::now();
         renderer.render_to_wgpu_texture(black_box(frame), &texture)?;
-        let profile = renderer.end_profile().clone();
+        renderer.end_profile();
         wait_for_gpu(renderer.device(), renderer.queue())?;
+        let profile = renderer.poll_profile().clone();
         measurements.wall.push(started.elapsed());
         accumulate(&mut measurements, &renderer, &profile);
     }
@@ -287,6 +310,7 @@ fn accumulate(
     measurements.prepare += stage(profile, "prepare");
     measurements.scan += stage(profile, "scan") + stage(profile, "cumsum");
     measurements.raster += stage(profile, "coarse") + stage(profile, "fine");
+    measurements.coarse_gpu += gpu_stage(profile, "coarse");
     measurements.plan_select += stage(profile, "plan.active_batches");
     measurements.plan_execute += stage(profile, "plan.execute");
     measurements.draw_batch += stage(profile, "plan.draw_batch");
@@ -321,6 +345,15 @@ fn stage(profile: &WgpuRenderProfile, name: &str) -> Duration {
         .iter()
         .filter(|entry| entry.name == name)
         .filter_map(|entry| entry.cpu_duration)
+        .sum()
+}
+
+fn gpu_stage(profile: &WgpuRenderProfile, name: &str) -> Duration {
+    profile
+        .entries()
+        .iter()
+        .filter(|entry| entry.name == name)
+        .filter_map(|entry| entry.gpu_duration)
         .sum()
 }
 

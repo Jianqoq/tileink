@@ -2,7 +2,7 @@
 
 use crate::shared::{
     gpu_coarse::coarse_work_active_tile_list_word_offset,
-    gpu_plan::{COARSE_CHUNK_SIZE, GpuBufferLengths},
+    gpu_plan::{COARSE_BIN_TILES, COARSE_CHUNK_SIZE, CoarseBinningStats, GpuBufferLengths},
 };
 
 use super::canvas::{
@@ -30,6 +30,39 @@ pub(crate) struct WgpuCoarseBatch {
     pub(crate) layer_stack_start: u32,
     pub(crate) layer_stack_end: u32,
     pub(crate) active_tile_count: Option<u32>,
+}
+
+/// Selects the lower-cost native coarse kernel from dispatch and candidate-loop work.
+///
+/// The compact kernels dedicate a 256-lane workgroup to each dirty tile so candidate draws can
+/// be reduced in parallel. That is ideal for sparse damage, but a large soft shadow can dirty
+/// thousands of tiles containing only one or two draws. Dense bins assign one lane per tile and
+/// avoid launching hundreds of mostly idle workgroups while fine rasterization remains compact.
+/// Conversely, dense lanes scan candidates serially, so the longest tile list in every bin must
+/// be included instead of comparing dispatch counts alone.
+pub(crate) fn coarse_binning_costs(
+    lengths: GpuBufferLengths,
+    stats: CoarseBinningStats,
+) -> (u64, u64) {
+    let prefix_chunks = |tiles: u32| u64::from(tiles.div_ceil(WORKGROUP_SIZE));
+    let compact_dispatches =
+        u64::from(stats.active_tiles) * 2 + prefix_chunks(stats.active_tiles) * 4 + 2;
+    let dense_dispatches =
+        u64::from(coarse_bin_count(lengths)) * 2 + lengths.coarse_chunk_count as u64 * 4 + 2;
+    // Count and emit both traverse the candidate lists. A round represents one 256-lane shader
+    // loop: one page for compact, or one serial candidate ordinal for a dense bin.
+    (
+        compact_dispatches + stats.compact_candidate_rounds * 2,
+        dense_dispatches + stats.dense_candidate_rounds * 2,
+    )
+}
+
+pub(crate) fn prefer_dense_binning(lengths: GpuBufferLengths, stats: CoarseBinningStats) -> bool {
+    if stats.active_tiles == 0 {
+        return false;
+    }
+    let (compact, dense) = coarse_binning_costs(lengths, stats);
+    dense < compact
 }
 
 #[repr(C)]
@@ -940,8 +973,8 @@ pub(crate) fn force_coarse_emit_chunks_for_test(enabled: bool) -> bool {
 }
 
 fn coarse_bin_count(lengths: GpuBufferLengths) -> u32 {
-    let bins_x = (lengths.tiles_width as u32).div_ceil(16);
-    let bins_y = (lengths.tiles_height as u32).div_ceil(16);
+    let bins_x = (lengths.tiles_width as u32).div_ceil(COARSE_BIN_TILES);
+    let bins_y = (lengths.tiles_height as u32).div_ceil(COARSE_BIN_TILES);
     bins_x * bins_y
 }
 
@@ -1095,9 +1128,12 @@ const _: () = assert!(COARSE_CHUNK_SIZE == WORKGROUP_SIZE);
 
 #[cfg(test)]
 mod tests {
+    use crate::{Canvas, shared::gpu_plan::CoarseBinningStats};
+
     use super::{
-        COUNT_STORAGE_BINDING_COUNT, EMIT_STORAGE_BINDING_COUNT, PREFIX_STORAGE_BINDING_COUNT,
-        count_layout_entries, emit_layout_entries, prefix_layout_entries,
+        COUNT_STORAGE_BINDING_COUNT, EMIT_STORAGE_BINDING_COUNT, GpuBufferLengths,
+        PREFIX_STORAGE_BINDING_COUNT, coarse_binning_costs, count_layout_entries,
+        emit_layout_entries, prefer_dense_binning, prefix_layout_entries,
         profile_coarse_passes_value,
     };
 
@@ -1137,6 +1173,29 @@ mod tests {
         assert!(!profile_coarse_passes_value(None));
         assert!(!profile_coarse_passes_value(Some("true")));
         assert!(!profile_coarse_passes_value(Some("0")));
+    }
+
+    #[test]
+    fn dense_binning_replaces_many_mostly_idle_incremental_workgroups() {
+        let canvas = Canvas::new(3200, 2000, 1.0);
+        let lengths = GpuBufferLengths::from_scene(&canvas);
+        let stats =
+            |active_tiles, compact_candidate_rounds, dense_candidate_rounds| CoarseBinningStats {
+                active_tiles,
+                compact_candidate_rounds,
+                dense_candidate_rounds,
+            };
+
+        assert!(!prefer_dense_binning(lengths, stats(128, 128, 104)));
+        assert!(prefer_dense_binning(lengths, stats(4096, 4096, 104)));
+        assert!(!prefer_dense_binning(
+            lengths,
+            stats(4096, 4096 * 2, 104 * 512)
+        ));
+        assert!(!prefer_dense_binning(lengths, stats(0, 0, 104)));
+
+        let (compact, dense) = coarse_binning_costs(lengths, stats(4096, 4096, 104));
+        assert!(dense < compact);
     }
 
     fn assert_contiguous_bindings(entries: &[::wgpu::BindGroupLayoutEntry]) {

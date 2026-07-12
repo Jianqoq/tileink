@@ -1723,6 +1723,10 @@ fn persistent_embedded_liquid_glass_updates_only_damaged_surface_tiles() {
             .unwrap();
         incremental.render_retained(&scene);
         full.render_retained(&scene);
+        assert!(
+            incremental.incremental_render_stats().dense_coarse_batches > 0,
+            "dense backdrop damage should use bin-parallel coarse rendering"
+        );
         let active_bounds = incremental
             .incremental_render_stats()
             .active_tile_bounds
@@ -1766,6 +1770,68 @@ fn persistent_embedded_liquid_glass_updates_only_damaged_surface_tiles() {
             "a small source mutation must not rebuild all 20x16 panel tiles"
         );
     }
+}
+
+#[test]
+fn forced_coarse_binning_modes_render_the_same_incremental_frame() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let root = RetainedNodeId::for_owner(50_271);
+    let background = RetainedNodeId::for_owner(50_272);
+    let moving = RetainedNodeId::for_owner(50_273);
+    let solid = |width, height, color| {
+        let mut canvas = Canvas::new(width, height, 1.0);
+        canvas.push_rect(
+            Rect::new(0.0, 0.0, f64::from(width), f64::from(height)),
+            crate::Radius::ZERO,
+            color,
+        );
+        std::sync::Arc::new(canvas)
+    };
+    let mut scene = RetainedScene::new(128, 128, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            background,
+            solid(128, 128, Color::from_rgb8(24, 48, 96)),
+            Affine::IDENTITY,
+        )
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            moving,
+            solid(48, 48, Color::from_rgb8(224, 96, 32)),
+            Affine::translate((16.0, 24.0)),
+        )
+        .commit()
+        .unwrap();
+
+    let mut compact = new_test_renderer(128, 128, Color::TRANSPARENT);
+    let mut compact_config = compact.incremental_render_config();
+    compact_config.coarse_binning = crate::CoarseBinningMode::ForceCompact;
+    compact.set_incremental_render_config(compact_config);
+    let mut dense = new_test_renderer(128, 128, Color::TRANSPARENT);
+    let mut dense_config = dense.incremental_render_config();
+    dense_config.coarse_binning = crate::CoarseBinningMode::ForceDense;
+    dense.set_incremental_render_config(dense_config);
+    compact.render_retained(&scene);
+    dense.render_retained(&scene);
+
+    scene
+        .transaction()
+        .set_transform(moving, Affine::translate((48.0, 24.0)))
+        .commit()
+        .unwrap();
+    compact.render_retained(&scene);
+    dense.render_retained(&scene);
+
+    assert_eq!(compact.image().pixels, dense.image().pixels);
+    assert_eq!(compact.incremental_render_stats().dense_coarse_batches, 0);
+    assert!(dense.incremental_render_stats().dense_coarse_batches > 0);
 }
 
 #[test]
@@ -6284,12 +6350,14 @@ fn persistent_full_redraw_clipped_liquid_glass_skips_unused_source_history() {
         profile
             .entries()
             .iter()
-            .filter(|entry| entry.name == "filter.copy")
+            // GPU timestamp readback may or may not resolve before `end_profile` returns, so
+            // count the synchronous CPU scopes that represent encoded copy passes.
+            .filter(|entry| entry.name == "filter.copy" && entry.cpu_duration.is_some())
             .count(),
         immediate_profile
             .entries()
             .iter()
-            .filter(|entry| entry.name == "filter.copy")
+            .filter(|entry| entry.name == "filter.copy" && entry.cpu_duration.is_some())
             .count(),
         "full retained redraw must not add a copy for unused source history"
     );

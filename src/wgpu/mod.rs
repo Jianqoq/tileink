@@ -17,8 +17,8 @@ mod scan;
 mod target;
 
 pub use incremental::{
-    FullRedrawReason, IncrementalOutputMode, IncrementalRenderConfig, IncrementalRenderMode,
-    IncrementalRenderStats,
+    CoarseBinningMode, FullRedrawReason, IncrementalOutputMode, IncrementalRenderConfig,
+    IncrementalRenderMode, IncrementalRenderStats,
 };
 pub(crate) use profile::start_cpu_scope;
 pub use profile::{

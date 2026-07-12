@@ -11,8 +11,8 @@ use crate::{
             coarse_work_tile_draw_index_word_offset, coarse_work_tile_draw_record_word_offset,
         },
         gpu_plan::{
-            GpuBufferLengths, GpuCumsumPlan, GpuLengthOverrides, GpuScanChunkRange,
-            PersistentPathPlans, TILE_DRAW_PAGE_WORDS, TileDrawBins,
+            CoarseBinningStats, GpuBufferLengths, GpuCumsumPlan, GpuLengthOverrides,
+            GpuScanChunkRange, PersistentPathPlans, TILE_DRAW_PAGE_WORDS, TileDrawBins,
             coarse_glyph_capacity_for_draw,
         },
         gpu_text::{GlyphImageRecord, GlyphRecord, GlyphRunRecord, text_blob_word_len},
@@ -57,6 +57,10 @@ pub(crate) struct WgpuSceneUploadStaging {
 }
 
 impl WgpuSceneUploadStaging {
+    pub(crate) fn coarse_binning_stats(&self, tiles: &[u32]) -> CoarseBinningStats {
+        self.tile_draw_bins.coarse_binning_stats(tiles)
+    }
+
     pub(crate) fn scan_ranges(&self) -> &[GpuScanChunkRange] {
         self.path_plans.scan_ranges()
     }

@@ -53,6 +53,10 @@ harness = false
 name = "retained_stress"
 harness = false
 
+[[bench]]
+name = "coarse_binning"
+harness = false
+
 [[example]]
 name = "wgpu_examples"
 path = "examples/wgpu/all.rs"
@@ -98,4 +102,3 @@ required-features = ["vello-compare"]
 [[example]]
 name = "wgpu_batch"
 path = "examples/wgpu_batch.rs"
-

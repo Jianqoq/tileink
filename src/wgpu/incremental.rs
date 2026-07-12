@@ -19,9 +19,22 @@ pub enum IncrementalRenderMode {
     ForceFull,
 }
 
+/// Native coarse-kernel policy for incremental frames.
+///
+/// Forced modes support profiling and controlled deployments. Full redraws always use dense bins
+/// because compact dispatch requires an active-tile worklist.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum CoarseBinningMode {
+    #[default]
+    Auto,
+    ForceCompact,
+    ForceDense,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct IncrementalRenderConfig {
     pub mode: IncrementalRenderMode,
+    pub coarse_binning: CoarseBinningMode,
     /// Dirty-tile ratio that selects the full fast path and transient direct output.
     pub full_redraw_ratio: f32,
     /// Ratio below which transient direct rendering starts its history-rebuild countdown.
@@ -40,6 +53,7 @@ impl Default for IncrementalRenderConfig {
     fn default() -> Self {
         Self {
             mode: IncrementalRenderMode::Auto,
+            coarse_binning: CoarseBinningMode::Auto,
             full_redraw_ratio: 0.7,
             direct_render_exit_ratio: 0.4,
             direct_render_exit_frames: 2,
@@ -125,6 +139,9 @@ pub struct IncrementalRenderStats {
     pub retained_nodes: u32,
     /// Coarse/fine batches encoded across root and offscreen targets.
     pub draw_batches: u32,
+    /// Incremental batches whose coarse stage used dense 16x16-tile bins because its estimated
+    /// dispatch and serial candidate-loop cost was lower than compact tile-parallel execution.
+    pub dense_coarse_batches: u32,
     /// Coarse/fine batches that write the root target.
     pub root_draw_batches: u32,
     pub reused_offscreen_surfaces: u32,

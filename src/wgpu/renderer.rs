@@ -34,7 +34,7 @@ use crate::{
 
 use super::buffer::WgpuBuffer;
 use super::canvas::{WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers, WgpuSceneUploadStaging};
-use super::coarse::{WgpuCoarseBatch, WgpuCoarsePipeline};
+use super::coarse::{WgpuCoarseBatch, WgpuCoarsePipeline, prefer_dense_binning};
 use super::commands::WgpuCommandBatch;
 use super::cumsum::WgpuCumsumPipeline;
 use super::filter::{
@@ -49,7 +49,7 @@ use super::filter_work::{FilterTileWork, FilterTileWorkArena};
 use super::fine::{WgpuFinePipeline, premul_clear_color};
 use super::image_resources::large_texture_table_len;
 use super::incremental::{
-    ActiveScanPlan, DamageTiles, IncrementalRenderConfig, IncrementalRenderStats,
+    ActiveScanPlan, CoarseBinningMode, DamageTiles, IncrementalRenderConfig, IncrementalRenderStats,
 };
 use super::lazy::PipelineCompilationTracker;
 use super::profile::{WgpuRenderProfile, WgpuRenderProfiler, profile_cpu, start_cpu_scope};
@@ -1035,12 +1035,26 @@ impl Renderer {
         if self.coarse_pipeline.is_none() || self.fine.is_none() {
             return false;
         }
+        let binning_stats = self
+            .retained
+            .active_tiles()
+            .map(|active| self.scene_upload.coarse_binning_stats(active.list()));
+        let active_tile_count = binning_stats.map(|stats| stats.active_tiles);
+        let dense =
+            binning_stats.is_some_and(|stats| match self.retained.config().coarse_binning {
+                CoarseBinningMode::Auto => prefer_dense_binning(self.lengths, stats),
+                CoarseBinningMode::ForceCompact => false,
+                CoarseBinningMode::ForceDense => stats.active_tiles != 0,
+            });
+        if dense {
+            self.retained.stats_mut().dense_coarse_batches += 1;
+        }
         let batch = WgpuCoarseBatch {
             draw_start,
             draw_end,
             layer_stack_start,
             layer_stack_end,
-            active_tile_count: self.retained.active_tiles().map(DamageTiles::len),
+            active_tile_count: if dense { None } else { active_tile_count },
         };
         self.coarse_pipeline.as_ref().unwrap().encode_in(
             commands,

@@ -24,6 +24,7 @@ use crate::{
 pub(crate) const SCAN_CHUNK_SIZE: u32 = 256;
 pub(crate) const CUMSUM_CHUNK_SIZE: u32 = 256;
 pub(crate) const COARSE_CHUNK_SIZE: u32 = 256;
+pub(crate) const COARSE_BIN_TILES: u32 = 16;
 pub(crate) const TILE_DRAW_PAGE_WORDS: usize = COARSE_CHUNK_SIZE as usize + 1;
 const TILE_DRAW_FLAT_FLAG: u32 = 1 << 31;
 pub(crate) const FINE_WORKGROUP_SIZE: u32 = 256;
@@ -278,9 +279,36 @@ pub(crate) struct TileDrawBins {
     active_batch_marks: Vec<u32>,
     active_batch_generation: u32,
     active_batches: Vec<u32>,
+    dense_bin_max_candidates: Vec<u32>,
+    dense_candidate_rounds: u64,
+}
+
+/// Candidate-loop work executed by the two native coarse kernels.
+///
+/// Compact kernels process one 256-draw page per workgroup round. Dense kernels assign one lane
+/// to each tile in a 16x16-tile bin, so divergent serial loops make each bin run for its longest
+/// tile list. Keeping both measures lets kernel selection account for scene density instead of
+/// treating all dispatched workgroups as equally cheap.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct CoarseBinningStats {
+    pub(crate) active_tiles: u32,
+    pub(crate) compact_candidate_rounds: u64,
+    pub(crate) dense_candidate_rounds: u64,
 }
 
 impl TileDrawBins {
+    pub(crate) fn coarse_binning_stats(&self, tiles: &[u32]) -> CoarseBinningStats {
+        CoarseBinningStats {
+            active_tiles: tiles.len() as u32,
+            compact_candidate_rounds: tiles
+                .iter()
+                .filter_map(|&tile| self.records.get(tile as usize))
+                .map(|record| record.end.div_ceil(COARSE_CHUNK_SIZE) as u64)
+                .sum(),
+            dense_candidate_rounds: self.dense_candidate_rounds,
+        }
+    }
+
     pub(crate) fn active_batch_ids(&mut self, tiles: &[u32], draw_batch_ids: &[u32]) -> Vec<u32> {
         self.active_batch_generation = self.active_batch_generation.wrapping_add(1);
         if self.active_batch_generation == 0 {
@@ -475,6 +503,7 @@ impl TileDrawBins {
         for tile in 0..tile_count {
             self.rewrite_tile(tile);
         }
+        self.rebuild_dense_candidate_rounds();
         self.build_flat_full_upload();
         self.dirty_records.clear();
         self.dirty_pages.clear();
@@ -553,6 +582,7 @@ impl TileDrawBins {
         self.dirty_records.clear();
         self.dirty_pages.clear();
         self.full_upload = true;
+        self.rebuild_dense_candidate_rounds();
     }
 
     fn update_changed(
@@ -658,12 +688,17 @@ impl TileDrawBins {
                 self.tile_refs[tile].push(draw);
             });
         }
+        let affected_dense_bins = affected_tiles
+            .iter()
+            .map(|&tile| self.dense_bin_index(tile))
+            .collect::<HashSet<_>>();
         for tile in affected_tiles {
             self.tile_refs[tile].sort_unstable_by(|a, b| {
                 self.draw_ranks[*a as usize].cmp(&self.draw_ranks[*b as usize])
             });
             self.rewrite_tile(tile);
         }
+        self.refresh_dense_candidate_rounds(affected_dense_bins);
         self.draw_bboxes.truncate(new_len);
         self.draw_ranks.truncate(new_len);
         self.draw_ptcl_capacities.truncate(new_len);
@@ -711,6 +746,51 @@ impl TileDrawBins {
             self.draw_indices[base + 1..base + 1 + end - start]
                 .copy_from_slice(&self.tile_refs[tile][start..end]);
             self.dirty_pages.push(page);
+        }
+    }
+
+    fn dense_bin_index(&self, tile: usize) -> usize {
+        let tiles_width = self.tiles_size.0 as usize;
+        let bins_width = self.tiles_size.0.div_ceil(COARSE_BIN_TILES) as usize;
+        let x = tile % tiles_width;
+        let y = tile / tiles_width;
+        y / COARSE_BIN_TILES as usize * bins_width + x / COARSE_BIN_TILES as usize
+    }
+
+    fn dense_bin_max_candidates(&self, bin: usize) -> u32 {
+        let bins_width = self.tiles_size.0.div_ceil(COARSE_BIN_TILES) as usize;
+        let bin_x = bin % bins_width;
+        let bin_y = bin / bins_width;
+        let x0 = bin_x * COARSE_BIN_TILES as usize;
+        let y0 = bin_y * COARSE_BIN_TILES as usize;
+        let x1 = (x0 + COARSE_BIN_TILES as usize).min(self.tiles_size.0 as usize);
+        let y1 = (y0 + COARSE_BIN_TILES as usize).min(self.tiles_size.1 as usize);
+        (y0..y1)
+            .flat_map(|y| (x0..x1).map(move |x| y * self.tiles_size.0 as usize + x))
+            .map(|tile| self.records[tile].end)
+            .max()
+            .unwrap_or(0)
+    }
+
+    fn rebuild_dense_candidate_rounds(&mut self) {
+        let bin_count = self.tiles_size.0.div_ceil(COARSE_BIN_TILES) as usize
+            * self.tiles_size.1.div_ceil(COARSE_BIN_TILES) as usize;
+        self.dense_bin_max_candidates.clear();
+        self.dense_bin_max_candidates.reserve(bin_count);
+        self.dense_candidate_rounds = 0;
+        for bin in 0..bin_count {
+            let candidates = self.dense_bin_max_candidates(bin);
+            self.dense_bin_max_candidates.push(candidates);
+            self.dense_candidate_rounds += candidates as u64;
+        }
+    }
+
+    fn refresh_dense_candidate_rounds(&mut self, bins: impl IntoIterator<Item = usize>) {
+        for bin in bins {
+            let candidates = self.dense_bin_max_candidates(bin);
+            let previous = std::mem::replace(&mut self.dense_bin_max_candidates[bin], candidates);
+            self.dense_candidate_rounds =
+                self.dense_candidate_rounds + candidates as u64 - previous as u64;
         }
     }
 
@@ -2029,6 +2109,74 @@ mod tests {
     }
 
     #[test]
+    fn coarse_binning_stats_measure_compact_pages_and_dense_lane_divergence() {
+        let mut canvas = Canvas::new(crate::TILE_SIZE * 32, crate::TILE_SIZE, 1.0);
+        canvas.push_rect(
+            Rect::new(0.0, 0.0, f64::from(crate::TILE_SIZE * 32), 16.0),
+            crate::Radius::ZERO,
+            Color::BLACK,
+        );
+        canvas.push_rect(
+            Rect::new(0.0, 0.0, f64::from(crate::TILE_SIZE * 16), 16.0),
+            crate::Radius::ZERO,
+            Color::WHITE,
+        );
+
+        let bins = build_tile_draw_bins(&canvas);
+
+        // Both active tiles fit in one compact page. Dense processes two bins: the first runs for
+        // two serial candidate ordinals while the second runs for one.
+        assert_eq!(
+            bins.coarse_binning_stats(&[0, 16]),
+            super::CoarseBinningStats {
+                active_tiles: 2,
+                compact_candidate_rounds: 2,
+                dense_candidate_rounds: 3,
+            }
+        );
+    }
+
+    #[test]
+    fn incremental_tile_update_refreshes_only_changed_dense_candidate_maxima() {
+        let width = crate::TILE_SIZE * 32;
+        let mut initial = Canvas::new(width, crate::TILE_SIZE, 1.0);
+        initial.push_rect(
+            Rect::new(0.0, 0.0, f64::from(width), 16.0),
+            crate::Radius::ZERO,
+            Color::BLACK,
+        );
+        initial.push_rect(
+            Rect::new(0.0, 0.0, f64::from(width / 2), 16.0),
+            crate::Radius::ZERO,
+            Color::WHITE,
+        );
+        let plan = initial.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
+        let mut bins = build_tile_draw_bins(&initial);
+        assert_eq!(bins.coarse_binning_stats(&[]).dense_candidate_rounds, 3);
+
+        let mut moved = Canvas::new(width, crate::TILE_SIZE, 1.0);
+        moved.push_rect(
+            Rect::new(0.0, 0.0, f64::from(width), 16.0),
+            crate::Radius::ZERO,
+            Color::BLACK,
+        );
+        moved.push_rect(
+            Rect::new(f64::from(width), 0.0, f64::from(width + 16), 16.0),
+            crate::Radius::ZERO,
+            Color::WHITE,
+        );
+        assert!(bins.update_changed(
+            &moved.draw_records,
+            &plan.draw_order,
+            None,
+            (32, 1),
+            std::slice::from_ref(&(1..2)),
+        ));
+
+        assert_eq!(bins.coarse_binning_stats(&[]).dense_candidate_rounds, 2);
+    }
+
+    #[test]
     fn tile_draw_bins_query_region_without_scanning_unrelated_tiles() {
         let mut canvas = Canvas::new(crate::TILE_SIZE * 4, crate::TILE_SIZE * 2, 1.0);
         canvas.push_rect(
@@ -2230,7 +2378,7 @@ mod tests {
         assert_eq!(bins.tile_draws(1), [1]);
 
         canvas.buffer_changes = Some(SceneBufferChanges {
-            draws: vec![0..1],
+            draws: std::iter::once(0..1).collect(),
             ..Default::default()
         });
         GpuBufferLengths::from_scene_with_text_and_tile_draw_bins(
