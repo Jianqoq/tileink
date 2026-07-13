@@ -36,7 +36,6 @@ web-sys = { version = "0.3", features = ["Window", "Performance"] }
 bench-internals = []
 directwrite-reference = ["dep:windows", "dep:windows-numerics"]
 vello-compare = ["dep:vello"]
-wgpu = []
 
 [dev-dependencies]
 winit = "0.30"

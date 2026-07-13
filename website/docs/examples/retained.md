@@ -6,7 +6,7 @@ title: Retained 完整示例
 # Retained Scene 示例
 
 ```rust
-use std::sync::Arc;
+use std::rc::Rc;
 use peniko::{Color, kurbo::{Affine, Rect}};
 use tileink::{Canvas, Radius, RetainedNodeId, RetainedParent, RetainedScene, WgpuRenderer};
 
@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Radius::all(24.0),
         Color::from_rgb8(86, 76, 230),
     );
-    let card_canvas = Arc::new(card_canvas);
+    let card_canvas = Rc::new(card_canvas);
 
     scene.transaction()
         .insert_scene(

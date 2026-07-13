@@ -35,4 +35,4 @@ renderer.render_with_text(&canvas, &mut fonts, &mut text);
 
 ## Retained text
 
-把包含 text runs 的 Canvas 放入 `RetainedScene`，使用 `render_retained_with_text*`。替换文本时创建新的 `Arc<Canvas>` 并 `replace_scene`；仅移动文本时只调用 `set_transform`。
+把包含 text runs 的 Canvas 放入 `RetainedScene`，使用 `render_retained_with_text*`。替换文本时创建新的 `Rc<Canvas>` 并 `replace_scene`；仅移动文本时只调用 `set_transform`。

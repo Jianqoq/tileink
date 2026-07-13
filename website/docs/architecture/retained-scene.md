@@ -25,7 +25,7 @@ flowchart TB
 
 ## 节点模型
 
-- Scene node：一个不可变 `Arc<Canvas>` 加 `kurbo::Affine` placement。
+- Scene node：一个不可变 `Rc<Canvas>` 加 `kurbo::Affine` placement。
 - Group node：只提供层级与 sibling order。
 - Layer node：clip/isolate/opacity/blend/filter/backdrop/mask 语义。
 - `RetainedParent` 同时指定 parent node 和 `Content`/`Mask` branch。

@@ -16,7 +16,7 @@ renderer.insert_image(tileink::ImageKey::new(42), image);
 
 ## Direct image draw
 
-`Canvas::push_image` 把 `Arc<Image>` 直接记录进 scene；`push_image_key` 引用 renderer registry 中的 `ImageKey`。Key 方式更适合多个 retained nodes 共用大图和独立更新资源。
+`Canvas::push_image` 把 `Rc<Image>` 直接记录进 scene；`push_image_key` 引用 renderer registry 中的 `ImageKey`。Key 方式更适合多个 retained nodes 共用大图和独立更新资源。
 
 ## Brush
 

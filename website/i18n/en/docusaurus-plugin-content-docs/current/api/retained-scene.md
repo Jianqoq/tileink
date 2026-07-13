@@ -13,7 +13,7 @@ Transaction methods chain and mutate only on `commit()`:
 
 | Method | Purpose |
 |---|---|
-| `insert_scene(parent, before, id, Arc<Canvas>, Affine)` | Insert a leaf |
+| `insert_scene(parent, before, id, Rc<Canvas>, Affine)` | Insert a leaf |
 | `insert_group` / `insert_layer` | Insert hierarchy or visual boundary |
 | `replace_scene` | Replace content and advance generation |
 | `set_transform` | Full affine placement |

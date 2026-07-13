@@ -1,5 +1,3 @@
-#![cfg_attr(not(feature = "wgpu"), allow(dead_code))]
-
 use std::{collections::HashSet, ops::Range};
 
 use bytemuck::{Pod, Zeroable};

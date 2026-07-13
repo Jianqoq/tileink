@@ -37,10 +37,10 @@ Render 接受 `&RetainedScene`，transaction 持有 `&mut RetainedScene`，类�
 
 | 方法 | 语义与复杂度 |
 |---|---|
-| `insert_scene(parent, before, id, Arc<Canvas>, Affine)` | 插入 leaf；通常 O(log siblings) |
+| `insert_scene(parent, before, id, Rc<Canvas>, Affine)` | 插入 leaf；通常 O(log siblings) |
 | `insert_group(parent, before, id)` | 插入 container |
 | `insert_layer(parent, before, id, descriptor)` | 插入 layer boundary |
-| `replace_scene(id, Arc<Canvas>)` | 自动推进 generation |
+| `replace_scene(id, Rc<Canvas>)` | 自动推进 generation |
 | `set_transform(id, Affine)` | GPU affine placement；支持 rotate/scale/skew |
 | `update_layer(id, descriptor)` | 更新 layer semantics |
 | `reparent(id, new_parent, before)` | 移动 subtree，拒绝 cycle |

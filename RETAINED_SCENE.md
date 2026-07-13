@@ -5,7 +5,7 @@ large scene. The scene owns hierarchy, order, generations, and a bounded change 
 `WgpuRenderer` consumes that journal independently.
 
 ```rust
-use std::sync::Arc;
+use std::rc::Rc;
 use peniko::{Color, kurbo::Rect};
 use tileink::{Canvas, Radius, RetainedNodeId, RetainedParent, RetainedScene, WgpuRenderer};
 
@@ -25,7 +25,7 @@ scene
         RetainedParent::content(root),
         None,
         item,
-        Arc::new(item_canvas),
+        Rc::new(item_canvas),
         peniko::kurbo::Affine::IDENTITY,
     )
     .commit()?;
