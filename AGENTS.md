@@ -4,6 +4,10 @@
 
 - Run tests in release mode
 
+## Code Reading
+
+- check if `ra-lsp` available, if avalable, use it to read rust code. Check the `API.md` for usecase
+
 ## Engineering rules
 
 - Don't write code only to let tests pass, implement correct semantics and correct algorithms.
