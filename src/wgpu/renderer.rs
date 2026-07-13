@@ -1,6 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
-use std::rc::Rc as SharedArc;
+use std::rc::Rc;
 
 use peniko::Color;
 
@@ -32,7 +32,7 @@ use crate::{
     text::{PreparedTextData, TextContext},
 };
 
-use super::buffer::WgpuBuffer;
+use super::buffer::{WgpuBuffer, WgpuRangeScatterPipeline};
 use super::canvas::{WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers, WgpuSceneUploadStaging};
 use super::coarse::{WgpuCoarseBatch, WgpuCoarsePipeline, prefer_dense_binning};
 use super::commands::WgpuCommandBatch;
@@ -86,9 +86,10 @@ pub struct Renderer {
     device: ::wgpu::Device,
     queue: ::wgpu::Queue,
     lengths: GpuBufferLengths,
-    plan: Option<SharedArc<ExecPlan>>,
+    plan: Option<Rc<ExecPlan>>,
     config: WgpuBuffer,
     scene_buffers: WgpuSceneBuffers,
+    range_scatter_pipeline: Rc<WgpuRangeScatterPipeline>,
     scene_upload: WgpuSceneUploadStaging,
     scan: WgpuScanBuffers,
     coarse: WgpuCoarseBuffers,
@@ -137,7 +138,7 @@ pub struct Renderer {
 
 struct SavedRendererState {
     lengths: GpuBufferLengths,
-    plan: Option<SharedArc<ExecPlan>>,
+    plan: Option<Rc<ExecPlan>>,
     config: WgpuBuffer,
     scene_buffers: WgpuSceneBuffers,
     scene_upload: WgpuSceneUploadStaging,
@@ -204,13 +205,19 @@ impl Renderer {
     ) -> Self {
         let pipeline_cache = options.pipeline_cache.as_ref();
         let pipeline_compilations = PipelineCompilationTracker::default();
+        let range_scatter_pipeline = Rc::new(WgpuRangeScatterPipeline::new(
+            device,
+            pipeline_cache,
+            &pipeline_compilations,
+        ));
         Self {
             device: device.clone(),
             queue: queue.clone(),
             lengths: GpuBufferLengths::default(),
             plan: None,
             config: WgpuBuffer::new(device, "tileink wgpu canvas config"),
-            scene_buffers: WgpuSceneBuffers::new(device),
+            scene_buffers: WgpuSceneBuffers::new(device, range_scatter_pipeline.clone()),
+            range_scatter_pipeline,
             scene_upload: WgpuSceneUploadStaging::default(),
             scan: WgpuScanBuffers::new(device),
             coarse: WgpuCoarseBuffers::new(device),
@@ -340,10 +347,7 @@ impl Renderer {
         self.end_profile().clone()
     }
 
-    pub(crate) fn retained_scene_canvas(
-        &mut self,
-        scene: &RetainedScene,
-    ) -> (SharedArc<Canvas>, bool) {
+    pub(crate) fn retained_scene_canvas(&mut self, scene: &RetainedScene) -> (Rc<Canvas>, bool) {
         let id = scene.id();
         let switched = self
             .persistent_scene
@@ -388,7 +392,7 @@ impl Renderer {
         self.persistent_scene_rendered = Some((scene.id(), scene.version()));
     }
 
-    pub fn insert_image(&mut self, key: ImageKey, image: impl Into<SharedArc<Image>>) -> bool {
+    pub fn insert_image(&mut self, key: ImageKey, image: impl Into<Rc<Image>>) -> bool {
         let image = image.into();
         if !self.image_resources.insert(key, image.clone()) {
             return false;

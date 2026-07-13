@@ -30,6 +30,8 @@ pub use debug::{
     RenderDebugCapture, RenderDebugImage, RenderDebugOptions, RenderDebugText, RenderOptions,
     TileOverlayOptions, debug_capture_json,
 };
+#[cfg(feature = "bench-internals")]
+pub use retained_scene::RetainedMaterializerBenchmark;
 pub use retained_scene::{
     RetainedChildBranch, RetainedLayerDescriptor, RetainedParent, RetainedScene,
     RetainedSceneError, RetainedSceneTransaction, SceneVersion,

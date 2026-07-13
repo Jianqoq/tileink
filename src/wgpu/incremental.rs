@@ -664,13 +664,12 @@ impl IncrementalState {
             let mut retained = RetainedDamage::default();
             for patch in delta.patches.iter() {
                 if patch.old != patch.new {
-                    let bounds = match (patch.old, patch.new) {
-                        (Some(old), Some(new)) => old.bounds.union(new.bounds),
-                        (Some(old), None) => old.bounds,
-                        (None, Some(new)) => new.bounds,
-                        (None, None) => continue,
+                    for region in patch.damage_regions() {
+                        tiles.add_bounds(region);
+                    }
+                    let Some(bounds) = patch.damage_bounds() else {
+                        continue;
                     };
-                    tiles.add_bounds(bounds);
                     if let Some(node) = patch.new.or(patch.old) {
                         retained.add_node(node.id, bounds);
                     }

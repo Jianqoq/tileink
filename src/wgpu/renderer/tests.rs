@@ -6,6 +6,10 @@ use peniko::{
 use super::{Renderer, RendererOptions, WgpuRenderTargetId};
 use crate::wgpu::coarse::force_coarse_emit_chunks_for_test;
 use crate::wgpu::commands::WgpuCommandBatch;
+use crate::wgpu::{
+    buffer::{WgpuBuffer, WgpuRangeScatter, WgpuRangeScatterPipeline},
+    lazy::PipelineCompilationTracker,
+};
 use crate::{
     Canvas, FillRule, Image, ImageKey, PatternSampling, RetainedLayerDescriptor, RetainedNodeId,
     RetainedParent, RetainedScene, TextContext, TextFontSystem, TextLayoutOptions,
@@ -31,6 +35,50 @@ use crate::{
 };
 
 mod backdrop_resize;
+
+#[test]
+fn fragmented_buffer_upload_scatter_matches_the_source_ranges() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let renderer = new_test_renderer(16, 16, Color::TRANSPARENT);
+    let pipeline = std::rc::Rc::new(WgpuRangeScatterPipeline::new(
+        &renderer.device,
+        None,
+        &PipelineCompilationTracker::default(),
+    ));
+    let mut scatter = WgpuRangeScatter::new(pipeline);
+    let mut buffer = WgpuBuffer::new(&renderer.device, "range scatter test destination");
+    let mut data = vec![0u32; 1_200];
+    buffer.upload_ranges(
+        &renderer.device,
+        &renderer.queue,
+        &mut scatter,
+        "range scatter test destination",
+        &data,
+        &[],
+    );
+
+    let ranges = [0..1, 300..301, 600..601, 900..901];
+    for (value, range) in ranges.iter().enumerate() {
+        data[range.start] = value as u32 + 1;
+    }
+    buffer.upload_ranges(
+        &renderer.device,
+        &renderer.queue,
+        &mut scatter,
+        "range scatter test destination",
+        &data,
+        &ranges,
+    );
+    scatter.submit(&renderer.queue);
+
+    assert_eq!(
+        buffer.read::<u32>(&renderer.device, &renderer.queue, data.len()),
+        data
+    );
+}
 
 #[test]
 fn retained_path_removal_preserves_sparse_scan_chunk_mapping() {
@@ -249,6 +297,111 @@ fn persistent_affine_path_matches_immediate_geometry_and_updates_damage() {
     assert_eq!(retained.image().pixels, render_reference(second));
     assert!(!retained.incremental_render_stats().full_redraw);
     assert_eq!(retained.incremental_render_stats().chunks_rebuilt, 1);
+}
+
+#[test]
+fn persistent_bounded_translation_uses_fixed_damage_tiles() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let root = RetainedNodeId::for_owner(50_094);
+    let node = RetainedNodeId::for_owner(50_095);
+    let mut leaf = Canvas::new(64, 32, 1.0);
+    leaf.push_rect(
+        Rect::new(0.0, 0.0, 8.0, 8.0),
+        crate::Radius::ZERO,
+        Color::WHITE,
+    );
+    let damage = Rect::new(0.0, 0.0, 48.0, 16.0);
+    let mut scene = RetainedScene::new(64, 32, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_bounded_scene(
+            RetainedParent::content(root),
+            None,
+            node,
+            std::rc::Rc::new(leaf),
+            Affine::IDENTITY,
+            damage,
+        )
+        .commit()
+        .unwrap();
+
+    let mut renderer = new_test_renderer(64, 32, Color::TRANSPARENT);
+    renderer.render_retained(&scene);
+    scene
+        .transaction()
+        .set_bounded_translation(node, Affine::translate((8.0, 0.0)), damage)
+        .commit()
+        .unwrap();
+    renderer.render_retained(&scene);
+
+    let mut expected = Canvas::new(64, 32, 1.0);
+    expected.push_rect(
+        Rect::new(8.0, 0.0, 16.0, 8.0),
+        crate::Radius::ZERO,
+        Color::WHITE,
+    );
+    let mut reference = new_test_renderer(64, 32, Color::TRANSPARENT);
+    reference.render(&expected);
+    assert_eq!(renderer.image().pixels, reference.image().pixels);
+
+    let stats = renderer.incremental_render_stats();
+    assert!(!stats.full_redraw);
+    assert_eq!(stats.changed_tiles, 3);
+    assert_eq!(stats.dirty_tiles, 3);
+}
+
+#[test]
+fn persistent_bounded_translation_clears_the_previous_domain_when_bounds_change() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let root = RetainedNodeId::for_owner(50_096);
+    let node = RetainedNodeId::for_owner(50_097);
+    let mut leaf = Canvas::new(64, 16, 1.0);
+    leaf.push_rect(
+        Rect::new(0.0, 0.0, 8.0, 8.0),
+        crate::Radius::ZERO,
+        Color::WHITE,
+    );
+    let old_damage = Rect::new(0.0, 0.0, 16.0, 16.0);
+    let new_damage = Rect::new(32.0, 0.0, 48.0, 16.0);
+    let mut scene = RetainedScene::new(64, 16, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_bounded_scene(
+            RetainedParent::content(root),
+            None,
+            node,
+            std::rc::Rc::new(leaf),
+            Affine::IDENTITY,
+            old_damage,
+        )
+        .commit()
+        .unwrap();
+
+    let mut renderer = new_test_renderer(64, 16, Color::TRANSPARENT);
+    renderer.render_retained(&scene);
+    scene
+        .transaction()
+        .set_bounded_translation(node, Affine::translate((32.0, 0.0)), new_damage)
+        .commit()
+        .unwrap();
+    renderer.render_retained(&scene);
+
+    let mut expected = Canvas::new(64, 16, 1.0);
+    expected.push_rect(
+        Rect::new(32.0, 0.0, 40.0, 8.0),
+        crate::Radius::ZERO,
+        Color::WHITE,
+    );
+    let mut reference = new_test_renderer(64, 16, Color::TRANSPARENT);
+    reference.render(&expected);
+    assert_eq!(renderer.image().pixels, reference.image().pixels);
+    assert_eq!(renderer.incremental_render_stats().changed_tiles, 2);
 }
 
 #[test]

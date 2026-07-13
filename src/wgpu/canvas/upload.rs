@@ -650,16 +650,16 @@ fn changed_ranges(
             .into_iter()
             .collect();
     };
-    let mut result = ranges
+    let result = ranges
         .iter()
         .map(|range| range.start.min(new_len)..range.end.min(new_len))
         .filter(|range| !range.is_empty())
         .collect::<Vec<_>>();
     if new_len > old_len {
-        result.push(old_len..new_len);
+        merge_sorted_dirty_ranges(&result, std::slice::from_ref(&(old_len..new_len)))
+    } else {
+        result
     }
-    result.sort_unstable_by_key(|range| range.start);
-    result
 }
 
 fn patch_pod_ranges<T: bytemuck::Pod>(
@@ -714,15 +714,49 @@ fn contiguous_index_runs(indices: impl IntoIterator<Item = usize>) -> Vec<std::o
     runs
 }
 
+fn merge_sorted_dirty_ranges(
+    left: &[std::ops::Range<usize>],
+    right: &[std::ops::Range<usize>],
+) -> Vec<std::ops::Range<usize>> {
+    let mut merged = Vec::<std::ops::Range<usize>>::with_capacity(left.len() + right.len());
+    let (mut left_index, mut right_index) = (0, 0);
+    while left_index < left.len() || right_index < right.len() {
+        let range = if right_index == right.len()
+            || (left_index < left.len() && left[left_index].start <= right[right_index].start)
+        {
+            let range = left[left_index].clone();
+            left_index += 1;
+            range
+        } else {
+            let range = right[right_index].clone();
+            right_index += 1;
+            range
+        };
+        if range.is_empty() {
+            continue;
+        }
+        if let Some(previous) = merged.last_mut()
+            && range.start <= previous.end
+        {
+            previous.end = previous.end.max(range.end);
+        } else {
+            merged.push(range);
+        }
+    }
+    merged
+}
+
 fn upload_coarse_text_blob(
     device: &::wgpu::Device,
     queue: &::wgpu::Queue,
+    scatter: &mut super::super::buffer::WgpuRangeScatter,
     buffer: &mut WgpuBuffer,
     text: &TextUpload,
 ) -> usize {
     buffer.upload_ranges(
         device,
         queue,
+        scatter,
         "tileink wgpu canvas coarse text blob",
         &text.coarse_blob,
         &text.dirty_coarse,
@@ -732,12 +766,14 @@ fn upload_coarse_text_blob(
 fn upload_fine_text_blob(
     device: &::wgpu::Device,
     queue: &::wgpu::Queue,
+    scatter: &mut super::super::buffer::WgpuRangeScatter,
     buffer: &mut WgpuBuffer,
     text: &TextUpload,
 ) -> (u32, u32, usize) {
     let uploaded = buffer.upload_ranges(
         device,
         queue,
+        scatter,
         "tileink wgpu canvas fine text blob",
         &text.fine_blob,
         &text.dirty_fine,
@@ -926,16 +962,12 @@ impl WgpuSceneBuffers {
                     .buffer_changes
                     .as_ref()
                     .map_or_else(Vec::new, |changes| {
-                        changes
-                            .draws
-                            .iter()
-                            .cloned()
-                            .chain(changes.painter.iter().cloned())
-                            .collect()
+                        merge_sorted_dirty_ranges(&changes.draws, &changes.painter)
                     });
                 bytes += self.draw_batch_ids.upload_ranges(
                     device,
                     queue,
+                    &mut self.range_scatter,
                     "tileink wgpu canvas stable draw batch ids",
                     batch_ids,
                     &ranges,
@@ -983,6 +1015,7 @@ impl WgpuSceneBuffers {
         uploaded += profile_cpu("prepare.upload_scene.upload_cumsum_plan", || {
             self.upload_cumsum_plan(device, queue, staging.path_plans.cumsum_plan(), &path_dirty)
         });
+        self.range_scatter.submit(queue);
         uploaded
     }
 
@@ -999,12 +1032,14 @@ impl WgpuSceneBuffers {
                 self.lines.upload_ranges(
                     device,
                     queue,
+                    &mut self.range_scatter,
                     "tileink wgpu canvas lines",
                     &canvas.lines,
                     &changes.lines,
                 ) + self.path_records.upload_ranges(
                     device,
                     queue,
+                    &mut self.range_scatter,
                     "tileink wgpu canvas path records",
                     &canvas.path_records,
                     &changes.paths,
@@ -1203,6 +1238,7 @@ impl WgpuSceneBuffers {
             self.paint_blob.upload_ranges(
                 device,
                 queue,
+                &mut self.range_scatter,
                 "tileink wgpu canvas paint blob",
                 &staging.paint_blob,
                 &ranges,
@@ -1222,6 +1258,7 @@ impl WgpuSceneBuffers {
             self.draw_records.upload_ranges(
                 device,
                 queue,
+                &mut self.range_scatter,
                 "tileink wgpu canvas draw records",
                 draw_records,
                 ranges,
@@ -1275,6 +1312,7 @@ impl WgpuSceneBuffers {
         self.plan_layer_stack.upload_ranges(
             device,
             queue,
+            &mut self.range_scatter,
             "tileink wgpu canvas plan layer stack",
             &staging.layer_stack,
             ranges,
@@ -1301,14 +1339,25 @@ impl WgpuSceneBuffers {
             let mut uploaded = self.text_runs.upload_ranges(
                 device,
                 queue,
+                &mut self.range_scatter,
                 "tileink wgpu canvas text runs",
                 &staging.text.runs,
                 &staging.text.dirty_runs,
             );
-            uploaded +=
-                upload_coarse_text_blob(device, queue, &mut self.coarse_text_blob, &staging.text);
-            let (image_base, image_data_base, fine_uploaded) =
-                upload_fine_text_blob(device, queue, &mut self.fine_text_blob, &staging.text);
+            uploaded += upload_coarse_text_blob(
+                device,
+                queue,
+                &mut self.range_scatter,
+                &mut self.coarse_text_blob,
+                &staging.text,
+            );
+            let (image_base, image_data_base, fine_uploaded) = upload_fine_text_blob(
+                device,
+                queue,
+                &mut self.range_scatter,
+                &mut self.fine_text_blob,
+                &staging.text,
+            );
             uploaded += fine_uploaded;
             self.fine_text_image_base = image_base;
             self.fine_text_image_data_base = image_data_base;
@@ -1337,12 +1386,14 @@ impl WgpuSceneBuffers {
         self.scan_chunks.upload_ranges(
             device,
             queue,
+            &mut self.range_scatter,
             "tileink wgpu canvas scan chunks",
             plans.scan_chunks(),
             &dirty.scan_chunks,
         ) + self.scan_chunk_ranges.upload_ranges(
             device,
             queue,
+            &mut self.range_scatter,
             "tileink wgpu canvas scan chunk ranges",
             plans.scan_ranges(),
             &dirty.scan_ranges,
@@ -1359,24 +1410,28 @@ impl WgpuSceneBuffers {
         self.cumsum_chunk_backdrop_offsets.upload_ranges(
             device,
             queue,
+            &mut self.range_scatter,
             "tileink wgpu canvas cumsum chunk backdrop offsets",
             &plan.chunk_backdrop_offsets,
             &dirty.cumsum_chunks,
         ) + self.cumsum_chunk_lens.upload_ranges(
             device,
             queue,
+            &mut self.range_scatter,
             "tileink wgpu canvas cumsum chunk lens",
             &plan.chunk_lens,
             &dirty.cumsum_chunks,
         ) + self.cumsum_row_chunk_starts.upload_ranges(
             device,
             queue,
+            &mut self.range_scatter,
             "tileink wgpu canvas cumsum row chunk starts",
             &plan.row_chunk_starts,
             &dirty.cumsum_rows,
         ) + self.cumsum_row_chunk_ends.upload_ranges(
             device,
             queue,
+            &mut self.range_scatter,
             "tileink wgpu canvas cumsum row chunk ends",
             &plan.row_chunk_ends,
             &dirty.cumsum_rows,
@@ -1515,8 +1570,9 @@ impl WgpuCoarseBuffers {
 #[cfg(test)]
 mod tests {
     use super::{
-        WORK_CAPACITY_SHRINK_DELAY, contiguous_index_runs, grow_image_resource_atlas_capacity,
-        grow_paint_layout, stable_work_capacity,
+        WORK_CAPACITY_SHRINK_DELAY, changed_ranges, contiguous_index_runs,
+        grow_image_resource_atlas_capacity, grow_paint_layout, merge_sorted_dirty_ranges,
+        stable_work_capacity,
     };
 
     #[test]
@@ -1526,6 +1582,21 @@ mod tests {
             [2..5, 8..9, 10..12]
         );
         assert!(contiguous_index_runs([]).is_empty());
+    }
+
+    #[test]
+    fn sorted_draw_and_painter_ranges_merge_linearly() {
+        assert_eq!(
+            merge_sorted_dirty_ranges(&[0..4, 12..16], &[3..8, 20..24]),
+            [0..8, 12..16, 20..24]
+        );
+    }
+
+    #[test]
+    fn growing_text_ranges_merge_the_dirty_tail_upstream() {
+        let dirty = std::iter::once(2..6).collect::<Vec<_>>();
+        let expected = std::iter::once(2..8).collect::<Vec<_>>();
+        assert_eq!(changed_ranges(Some(&dirty), 4, 8), expected);
     }
 
     #[test]

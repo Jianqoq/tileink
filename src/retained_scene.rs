@@ -167,6 +167,12 @@ enum NodeKind {
     Scene {
         canvas: Rc<Canvas>,
         transform: Affine,
+        /// Fixed logical output region for translation-only animation.
+        ///
+        /// The caller must clip the scene to this region. Retained damage can then stay fixed
+        /// while the scene moves, avoiding old/new per-draw damage expansion. Ordinary
+        /// `set_transform` clears this hint so non-translation edits retain exact semantics.
+        translation_damage: Option<Rect>,
     },
     Layer(RetainedLayerDescriptor),
 }
@@ -527,6 +533,10 @@ pub(crate) struct PersistentSceneMaterializer {
     flat_plan_has_draws: bool,
     node_bounds: HashMap<RetainedNodeId, Bounds>,
     raw_node_bounds: HashMap<RetainedNodeId, Bounds>,
+    /// Conservative fixed domains for bounded translations. Keeping these out of every tile's
+    /// hash set avoids duplicating a chart-sized bound for each moving retained chunk.
+    bounded_node_bounds: HashMap<RetainedNodeId, Bounds>,
+    bounded_raw_node_bounds: HashMap<RetainedNodeId, Bounds>,
     node_tiles: Vec<HashSet<RetainedNodeId>>,
     spatial_nodes: HashSet<RetainedNodeId>,
     raw_node_tiles: Vec<HashSet<RetainedNodeId>>,
@@ -571,6 +581,8 @@ impl PersistentSceneMaterializer {
             flat_plan_has_draws: false,
             node_bounds: HashMap::default(),
             raw_node_bounds: HashMap::default(),
+            bounded_node_bounds: HashMap::default(),
+            bounded_raw_node_bounds: HashMap::default(),
             node_tiles: Vec::new(),
             spatial_nodes: HashSet::default(),
             raw_node_tiles: Vec::new(),
@@ -929,6 +941,7 @@ impl PersistentSceneMaterializer {
                 scene.nodes.get(id).is_none_or(|node| {
                     matches!(node.kind, NodeKind::Group)
                         || position_plan_patches.contains(id)
+                        || self.fixed_translation_bounds(scene, *id).is_some()
                         || self.chunks.get(id).is_some_and(|chunk| {
                             self.raw_node_bounds.get(id).copied()
                                 == Some(chunk.canvas.visual_bounds())
@@ -1302,7 +1315,36 @@ impl PersistentSceneMaterializer {
         };
         if !frame_patched {
             self.rebuild_frame_override(scene);
-            self.rebuild_spatial_index(scene);
+            let topology_spatial_patchable = changes.topology_changed
+                && topology_changes.changed_nodes.iter().all(|id| {
+                    scene
+                        .nodes
+                        .get(id)
+                        .is_none_or(|node| !matches!(node.kind, NodeKind::Layer(_)))
+                })
+                && changes.removed_nodes.iter().all(|id| {
+                    self.node_metadata
+                        .get(id)
+                        .is_none_or(|node| node.kind != NodeKindTag::Layer)
+                });
+            let spatial_patched = !surface_changed
+                && if changes.topology_changed {
+                    topology_spatial_patchable
+                        && self.patch_changed_spatial_index(
+                            scene,
+                            &topology_changes.changed_nodes,
+                            &changes.removed_nodes,
+                        )
+                } else {
+                    self.patch_changed_spatial_index(
+                        scene,
+                        &changes.changed_nodes,
+                        &changes.removed_nodes,
+                    )
+                };
+            if !spatial_patched {
+                self.rebuild_spatial_index(scene);
+            }
         }
         drop(frame_profile);
         self.sync_node_metadata(scene, &changes);
@@ -1323,6 +1365,8 @@ impl PersistentSceneMaterializer {
         self.flat_plan_has_draws = false;
         self.node_bounds.clear();
         self.raw_node_bounds.clear();
+        self.bounded_node_bounds.clear();
+        self.bounded_raw_node_bounds.clear();
         self.node_tiles.clear();
         self.spatial_nodes.clear();
         self.raw_node_tiles.clear();
@@ -1790,6 +1834,7 @@ impl PersistentSceneMaterializer {
             NodeKind::Scene {
                 canvas: child,
                 transform,
+                ..
             } => {
                 canvas.append(child, Point::ZERO);
                 canvas.set_retained_transform(*transform);
@@ -3226,6 +3271,42 @@ impl PersistentSceneMaterializer {
         bounds
     }
 
+    fn fixed_translation_bounds(
+        &self,
+        scene: &RetainedScene,
+        id: RetainedNodeId,
+    ) -> Option<Bounds> {
+        let NodeKind::Scene {
+            translation_damage: Some(rect),
+            ..
+        } = &scene.nodes.get(&id)?.kind
+        else {
+            return None;
+        };
+        let scale = f64::from(scene.scale);
+        Some(
+            Bounds::new(
+                (rect.x0 * scale).floor() as i32,
+                (rect.y0 * scale).floor() as i32,
+                (rect.x1 * scale).ceil() as i32,
+                (rect.y1 * scale).ceil() as i32,
+            )
+            .intersect(Bounds::canvas(
+                self.canvas.physical_width(),
+                self.canvas.physical_height(),
+            )),
+        )
+    }
+
+    fn retained_output_bounds(
+        &self,
+        scene: &RetainedScene,
+        id: RetainedNodeId,
+        natural: Bounds,
+    ) -> Bounds {
+        self.fixed_translation_bounds(scene, id).unwrap_or(natural)
+    }
+
     /// Resolves backdrop dependencies from the persistent hierarchy and painter index. Frame
     /// node bounds already include ordinary filter influence, while a backdrop additionally
     /// depends on earlier siblings intersecting its sample region.
@@ -3384,7 +3465,11 @@ impl PersistentSceneMaterializer {
                     let raw = self.chunks[&id].canvas.visual_bounds();
                     (
                         raw,
-                        self.influenced_bounds(scene, id, raw),
+                        self.retained_output_bounds(
+                            scene,
+                            id,
+                            self.influenced_bounds(scene, id, raw),
+                        ),
                         RetainedNodeKind::Scene,
                     )
                 }
@@ -3409,11 +3494,16 @@ impl PersistentSceneMaterializer {
                 placement_bits: None,
                 ..old
             };
-            self.set_raw_node_bounds(id, Some(raw_bounds));
+            self.set_raw_node_bounds_spatial(
+                id,
+                Some(raw_bounds),
+                self.fixed_translation_bounds(scene, id),
+            );
             if old != new {
                 patches.push(RetainedNodePatch {
                     old: Some(old),
                     new: Some(new),
+                    damage: self.fixed_translation_bounds(scene, id),
                 });
             }
         }
@@ -3446,7 +3536,11 @@ impl PersistentSceneMaterializer {
         for patch in &patches {
             let new = patch.new.unwrap();
             if patch.old.unwrap().bounds != new.bounds {
-                self.set_node_bounds(new.id, Some(new.bounds));
+                self.set_node_bounds_spatial(
+                    new.id,
+                    Some(new.bounds),
+                    self.fixed_translation_bounds(scene, new.id),
+                );
             }
         }
 
@@ -3517,13 +3611,29 @@ impl PersistentSceneMaterializer {
                 self.rebuild_frame_override(scene);
                 return;
             };
-            let raw_bounds = chunk.canvas.visual_bounds();
+            let fixed_bounds = self.fixed_translation_bounds(scene, id);
+            // A bounded translation already supplies the conservative output and spatial domain.
+            // Keep the last exact raw bound cached: walking every command in every translated
+            // child only to discard the result in `retained_output_bounds` made chart p95 scale
+            // with the number of cached candles.
+            let (raw_bounds, output_bounds) = if let Some(fixed) = fixed_bounds {
+                (
+                    self.raw_node_bounds.get(&id).copied().unwrap_or(fixed),
+                    fixed,
+                )
+            } else {
+                let raw = chunk.canvas.visual_bounds();
+                (
+                    raw,
+                    self.retained_output_bounds(scene, id, self.influenced_bounds(scene, id, raw)),
+                )
+            };
             let new = crate::canvas::RetainedNodeState {
                 revision: NodeGeneration::new(node.generation),
                 // Position-only patches in scenes with layers still need the new influenced
                 // bounds. Keeping `old.bounds` forced later frames to rebuild the full retained
                 // frame/spatial index and missed the moved node's new backdrop dependencies.
-                bounds: self.influenced_bounds(scene, id, raw_bounds),
+                bounds: output_bounds,
                 kind: match node.kind {
                     NodeKind::Layer(_) => RetainedNodeKind::Layer,
                     NodeKind::Scene { .. } => RetainedNodeKind::Scene,
@@ -3538,8 +3648,9 @@ impl PersistentSceneMaterializer {
             patches.push(RetainedNodePatch {
                 old: Some(old),
                 new: Some(new),
+                damage: fixed_bounds,
             });
-            self.set_raw_node_bounds(id, Some(raw_bounds));
+            self.set_raw_node_bounds_spatial(id, Some(raw_bounds), fixed_bounds);
         }
         let index = retained_patch_index(&patches);
         let (previous, depth) = prune_shadowed_delta(frame.delta.clone(), &index);
@@ -3550,12 +3661,9 @@ impl PersistentSceneMaterializer {
                 .iter()
                 .map(|patch| {
                     let node = patch.new.or(patch.old).unwrap();
-                    let bounds = match (patch.old, patch.new) {
-                        (Some(old), Some(new)) => old.bounds.union(new.bounds),
-                        (Some(old), None) => old.bounds,
-                        (None, Some(new)) => new.bounds,
-                        (None, None) => unreachable!("retained patch has a node"),
-                    };
+                    let bounds = patch
+                        .damage_bounds()
+                        .expect("retained patch has a node or explicit damage");
                     (Some(node.id), bounds)
                 })
                 .chain(
@@ -3570,7 +3678,12 @@ impl PersistentSceneMaterializer {
         };
         for patch in &patches {
             if patch.old.map(|node| node.bounds) != patch.new.map(|node| node.bounds) {
-                self.set_node_bounds(patch.new.unwrap().id, patch.new.map(|node| node.bounds));
+                let id = patch.new.unwrap().id;
+                self.set_node_bounds_spatial(
+                    id,
+                    patch.new.map(|node| node.bounds),
+                    self.fixed_translation_bounds(scene, id),
+                );
             }
         }
         frame.version = Some(scene.version.get());
@@ -3682,6 +3795,7 @@ impl PersistentSceneMaterializer {
                 (old != new).then_some(RetainedNodePatch {
                     old: Some(old),
                     new: Some(new),
+                    damage: None,
                 })
             })
             .collect::<Vec<_>>();
@@ -3759,6 +3873,7 @@ impl PersistentSceneMaterializer {
                 patches.push(RetainedNodePatch {
                     old: Some(old),
                     new: None,
+                    damage: None,
                 });
             }
         }
@@ -3769,10 +3884,13 @@ impl PersistentSceneMaterializer {
             let chunk = &self.chunks[&id];
             let old = frame.node_state(id);
             let (bounds, kind) = match &node.kind {
-                NodeKind::Scene { .. } => (
-                    self.influenced_bounds(scene, id, chunk.canvas.visual_bounds()),
-                    RetainedNodeKind::Scene,
-                ),
+                NodeKind::Scene { .. } => {
+                    let natural = self.influenced_bounds(scene, id, chunk.canvas.visual_bounds());
+                    (
+                        self.retained_output_bounds(scene, id, natural),
+                        RetainedNodeKind::Scene,
+                    )
+                }
                 NodeKind::Layer(_) => {
                     let mut bounds =
                         self.influenced_bounds(scene, id, chunk_layer_influence_bounds(chunk));
@@ -3780,11 +3898,9 @@ impl PersistentSceneMaterializer {
                     collect_scene_leaves(scene, id, &mut leaves);
                     for leaf_id in leaves {
                         let leaf = &self.chunks[&leaf_id];
-                        bounds = bounds.union(self.influenced_bounds(
-                            scene,
-                            leaf_id,
-                            leaf.canvas.visual_bounds(),
-                        ));
+                        let natural =
+                            self.influenced_bounds(scene, leaf_id, leaf.canvas.visual_bounds());
+                        bounds = bounds.union(self.retained_output_bounds(scene, leaf_id, natural));
                     }
                     (bounds, RetainedNodeKind::Layer)
                 }
@@ -3800,17 +3916,15 @@ impl PersistentSceneMaterializer {
                     kind,
                     placement_bits: None,
                 }),
+                damage: self.fixed_translation_bounds(scene, id),
             });
         }
         let mut explicit_damage = damage.to_vec();
         explicit_damage.extend(patches.iter().map(|patch| {
             let node = patch.new.or(patch.old).unwrap();
-            let bounds = match (patch.old, patch.new) {
-                (Some(old), Some(new)) => old.bounds.union(new.bounds),
-                (Some(old), None) => old.bounds,
-                (None, Some(new)) => new.bounds,
-                (None, None) => unreachable!("retained patch has at least one state"),
-            };
+            let bounds = patch
+                .damage_bounds()
+                .expect("retained patch has at least one state or explicit damage");
             (node.id, bounds)
         }));
         let index = retained_patch_index(&patches);
@@ -3821,7 +3935,11 @@ impl PersistentSceneMaterializer {
         for patch in &patches {
             let id = patch.new.or(patch.old).unwrap().id;
             if patch.old.map(|node| node.bounds) != patch.new.map(|node| node.bounds) {
-                self.set_node_bounds(id, patch.new.map(|node| node.bounds));
+                self.set_node_bounds_spatial(
+                    id,
+                    patch.new.map(|node| node.bounds),
+                    self.fixed_translation_bounds(scene, id),
+                );
             }
             if let Some(chunk) = self.chunks.get(&id) {
                 let raw_bounds = match scene.nodes[&id].kind {
@@ -3829,9 +3947,13 @@ impl PersistentSceneMaterializer {
                     NodeKind::Scene { .. } => chunk.canvas.visual_bounds(),
                     NodeKind::Group => unreachable!("groups do not own chunks"),
                 };
-                self.set_raw_node_bounds(id, Some(raw_bounds));
+                self.set_raw_node_bounds_spatial(
+                    id,
+                    Some(raw_bounds),
+                    self.fixed_translation_bounds(scene, id),
+                );
             } else {
-                self.set_raw_node_bounds(id, None);
+                self.set_raw_node_bounds_spatial(id, None, None);
             }
         }
         frame.version = Some(scene.version.get());
@@ -3874,7 +3996,8 @@ impl PersistentSceneMaterializer {
             .filter(|(_, node)| matches!(node.kind, NodeKind::Scene { .. }))
             .map(|(&id, _)| {
                 let chunk = &self.chunks[&id];
-                (id, influences[&id].apply(chunk.canvas.visual_bounds()))
+                let natural = influences[&id].apply(chunk.canvas.visual_bounds());
+                (id, self.retained_output_bounds(scene, id, natural))
             })
             .collect::<HashMap<_, _>>();
         let mut subtree_leaf_bounds = HashMap::default();
@@ -4080,6 +4203,8 @@ impl PersistentSceneMaterializer {
     fn rebuild_spatial_index(&mut self, scene: &RetainedScene) {
         self.node_bounds.clear();
         self.raw_node_bounds.clear();
+        self.bounded_node_bounds.clear();
+        self.bounded_raw_node_bounds.clear();
         let tiles_size = (
             Rc::make_mut(&mut self.canvas).width_in_tiles(),
             Rc::make_mut(&mut self.canvas).height_in_tiles(),
@@ -4096,7 +4221,11 @@ impl PersistentSceneMaterializer {
             .clone()
             .expect("persistent frame override");
         for &node in frame.nodes.iter() {
-            self.set_node_bounds(node.id, Some(node.bounds));
+            self.set_node_bounds_spatial(
+                node.id,
+                Some(node.bounds),
+                self.fixed_translation_bounds(scene, node.id),
+            );
         }
         let raw_bounds = self
             .chunks
@@ -4116,23 +4245,91 @@ impl PersistentSceneMaterializer {
             })
             .collect::<Vec<_>>();
         for (id, bounds) in raw_bounds {
-            self.set_raw_node_bounds(id, Some(bounds));
+            self.set_raw_node_bounds_spatial(
+                id,
+                Some(bounds),
+                self.fixed_translation_bounds(scene, id),
+            );
         }
     }
 
-    fn set_node_bounds(&mut self, id: RetainedNodeId, bounds: Option<Bounds>) {
+    /// Refreshes only changed spatial entries after a non-structural frame-state fallback.
+    ///
+    /// Rebuilding `RetainedFrame` can be cheaper than proving a dependency-aware delta, but that
+    /// does not invalidate the unchanged nodes' tile memberships. Reinitializing every tile
+    /// HashSet here made a full-screen bounded chart translation pay O(surface tiles) each frame.
+    fn patch_changed_spatial_index(
+        &mut self,
+        scene: &RetainedScene,
+        changed: &HashSet<RetainedNodeId>,
+        removed: &HashSet<RetainedNodeId>,
+    ) -> bool {
+        if self.spatial_tiles_size != (self.canvas.width_in_tiles(), self.canvas.height_in_tiles())
+        {
+            return false;
+        }
+        let Some(frame) = self.canvas.persistent_frame.clone() else {
+            return false;
+        };
+        for &id in removed {
+            self.set_node_bounds_spatial(id, None, None);
+            self.set_raw_node_bounds_spatial(id, None, None);
+        }
+        for &id in changed {
+            let Some(node) = scene.nodes.get(&id) else {
+                return false;
+            };
+            if matches!(node.kind, NodeKind::Group) {
+                continue;
+            }
+            let Some(state) = frame.node_state(id) else {
+                return false;
+            };
+            let Some(chunk) = self.chunks.get(&id) else {
+                return false;
+            };
+            let fixed = self.fixed_translation_bounds(scene, id);
+            let raw = if let Some(fixed) = fixed {
+                self.raw_node_bounds.get(&id).copied().unwrap_or(fixed)
+            } else {
+                match node.kind {
+                    NodeKind::Layer(_) => chunk_layer_influence_bounds(chunk),
+                    NodeKind::Scene { .. } => chunk.canvas.visual_bounds(),
+                    NodeKind::Group => unreachable!("groups do not own chunks"),
+                }
+            };
+            self.set_node_bounds_spatial(id, Some(state.bounds), fixed);
+            self.set_raw_node_bounds_spatial(id, Some(raw), fixed);
+        }
+        true
+    }
+
+    fn set_node_bounds_spatial(
+        &mut self,
+        id: RetainedNodeId,
+        bounds: Option<Bounds>,
+        fixed_spatial_bounds: Option<Bounds>,
+    ) {
         let bounds = bounds.filter(|bounds| !bounds.is_empty());
+        let fixed_spatial_bounds = fixed_spatial_bounds.filter(|bounds| !bounds.is_empty());
         let was_spatial = self.spatial_nodes.contains(&id);
+        let should_be_spatial = bounds.is_some() && self.painter_bases.contains_key(&id);
+        if self.node_bounds.get(&id).copied() == bounds
+            && self.bounded_node_bounds.get(&id).copied() == fixed_spatial_bounds
+            && was_spatial == should_be_spatial
+        {
+            return;
+        }
+        let old_fixed = self.bounded_node_bounds.remove(&id);
         let old = match self.node_bounds.entry(id) {
             std::collections::hash_map::Entry::Occupied(mut entry) => {
                 let old = *entry.get();
-                if Some(old) == bounds {
-                    return;
-                }
-                if let Some(bounds) = bounds {
-                    *entry.get_mut() = bounds;
-                } else {
-                    entry.remove();
+                if Some(old) != bounds {
+                    if let Some(bounds) = bounds {
+                        *entry.get_mut() = bounds;
+                    } else {
+                        entry.remove();
+                    }
                 }
                 Some(old)
             }
@@ -4143,15 +4340,22 @@ impl PersistentSceneMaterializer {
                 None
             }
         };
-        if was_spatial && let Some(old) = old {
+        if was_spatial
+            && old_fixed.is_none()
+            && let Some(old) = old
+        {
             for tile in self.tiles_for_bounds(old) {
                 self.node_tiles[tile].remove(&id);
             }
         }
-        let is_spatial = bounds.is_some() && self.painter_bases.contains_key(&id);
+        let is_spatial = should_be_spatial;
         if is_spatial && let Some(bounds) = bounds {
-            for tile in self.tiles_for_bounds(bounds) {
-                self.node_tiles[tile].insert(id);
+            if let Some(fixed) = fixed_spatial_bounds {
+                self.bounded_node_bounds.insert(id, fixed);
+            } else {
+                for tile in self.tiles_for_bounds(bounds) {
+                    self.node_tiles[tile].insert(id);
+                }
             }
             self.spatial_nodes.insert(id);
         } else {
@@ -4159,18 +4363,29 @@ impl PersistentSceneMaterializer {
         }
     }
 
-    fn set_raw_node_bounds(&mut self, id: RetainedNodeId, bounds: Option<Bounds>) {
+    fn set_raw_node_bounds_spatial(
+        &mut self,
+        id: RetainedNodeId,
+        bounds: Option<Bounds>,
+        fixed_spatial_bounds: Option<Bounds>,
+    ) {
         let bounds = bounds.filter(|bounds| !bounds.is_empty());
+        let fixed_spatial_bounds = fixed_spatial_bounds.filter(|bounds| !bounds.is_empty());
+        if self.raw_node_bounds.get(&id).copied() == bounds
+            && self.bounded_raw_node_bounds.get(&id).copied() == fixed_spatial_bounds
+        {
+            return;
+        }
+        let old_fixed = self.bounded_raw_node_bounds.remove(&id);
         let old = match self.raw_node_bounds.entry(id) {
             std::collections::hash_map::Entry::Occupied(mut entry) => {
                 let old = *entry.get();
-                if Some(old) == bounds {
-                    return;
-                }
-                if let Some(bounds) = bounds {
-                    *entry.get_mut() = bounds;
-                } else {
-                    entry.remove();
+                if Some(old) != bounds {
+                    if let Some(bounds) = bounds {
+                        *entry.get_mut() = bounds;
+                    } else {
+                        entry.remove();
+                    }
                 }
                 Some(old)
             }
@@ -4181,14 +4396,20 @@ impl PersistentSceneMaterializer {
                 None
             }
         };
-        if let Some(old) = old {
+        if old_fixed.is_none()
+            && let Some(old) = old
+        {
             for tile in self.tiles_for_bounds(old) {
                 self.raw_node_tiles[tile].remove(&id);
             }
         }
         if let Some(bounds) = bounds {
-            for tile in self.tiles_for_bounds(bounds) {
-                self.raw_node_tiles[tile].insert(id);
+            if let Some(fixed) = fixed_spatial_bounds {
+                self.bounded_raw_node_bounds.insert(id, fixed);
+            } else {
+                for tile in self.tiles_for_bounds(bounds) {
+                    self.raw_node_tiles[tile].insert(id);
+                }
             }
         }
     }
@@ -4219,6 +4440,11 @@ impl PersistentSceneMaterializer {
         for tile in self.tiles_for_bounds(bounds) {
             candidates.extend(self.node_tiles[tile].iter().copied());
         }
+        candidates.extend(
+            self.bounded_node_bounds
+                .iter()
+                .filter_map(|(&id, &fixed)| (!fixed.intersect(bounds).is_empty()).then_some(id)),
+        );
         candidates
     }
 
@@ -4227,6 +4453,11 @@ impl PersistentSceneMaterializer {
         for tile in self.tiles_for_bounds(bounds) {
             candidates.extend(self.raw_node_tiles[tile].iter().copied());
         }
+        candidates.extend(
+            self.bounded_raw_node_bounds
+                .iter()
+                .filter_map(|(&id, &fixed)| (!fixed.intersect(bounds).is_empty()).then_some(id)),
+        );
         candidates
     }
 
@@ -4274,6 +4505,28 @@ impl PersistentSceneMaterializer {
         let id = canvas.command_lists.len();
         canvas.command_lists.push(CommandList::default());
         id
+    }
+}
+
+/// CPU-only retained materializer access for Criterion benchmarks.
+///
+/// This deliberately exposes no render data and is omitted from normal builds.
+#[cfg(feature = "bench-internals")]
+#[doc(hidden)]
+pub struct RetainedMaterializerBenchmark {
+    materializer: PersistentSceneMaterializer,
+}
+
+#[cfg(feature = "bench-internals")]
+impl RetainedMaterializerBenchmark {
+    pub fn new(scene: &RetainedScene) -> Self {
+        Self {
+            materializer: PersistentSceneMaterializer::new(scene),
+        }
+    }
+
+    pub fn update(&mut self, scene: &RetainedScene) -> bool {
+        self.materializer.update(scene)
     }
 }
 
@@ -4560,7 +4813,9 @@ fn is_plain_fragment(canvas: &Canvas) -> bool {
 
 fn scene_node_placement(node: &SceneNode) -> (Option<Rc<Canvas>>, Option<[u64; 6]>) {
     match &node.kind {
-        NodeKind::Scene { canvas, transform } => (
+        NodeKind::Scene {
+            canvas, transform, ..
+        } => (
             Some(canvas.clone()),
             Some(transform.as_coeffs().map(f64::to_bits)),
         ),
@@ -4770,6 +5025,7 @@ impl RetainedScene {
             NodeKind::Scene {
                 canvas: child,
                 transform,
+                ..
             } => {
                 let mut transformed = Canvas::new(self.width, self.height, self.scale);
                 transformed.append(child, Point::ZERO);
@@ -4907,7 +5163,12 @@ impl RetainedScene {
                     .nodes
                     .get_mut(&id)
                     .ok_or(RetainedSceneError::MissingNode(id))?;
-                let NodeKind::Scene { transform, .. } = &node.kind else {
+                let NodeKind::Scene {
+                    transform,
+                    translation_damage,
+                    ..
+                } = &node.kind
+                else {
                     return Err(RetainedSceneError::MissingNode(id));
                 };
                 let old_kind = node.kind.clone();
@@ -4915,6 +5176,7 @@ impl RetainedScene {
                 node.kind = NodeKind::Scene {
                     canvas,
                     transform: *transform,
+                    translation_damage: *translation_damage,
                 };
                 node.generation = node.generation.wrapping_add(1);
                 changes.changed_nodes.insert(id);
@@ -4924,8 +5186,15 @@ impl RetainedScene {
                     generation: old_generation,
                 })
             }
-            Mutation::SetTransform { id, transform } => {
+            Mutation::SetTransform {
+                id,
+                transform,
+                translation_damage,
+            } => {
                 validate_transform(transform)?;
+                if let Some(damage) = translation_damage {
+                    validate_damage_rect(damage)?;
+                }
                 let node = self
                     .nodes
                     .get_mut(&id)
@@ -4933,16 +5202,21 @@ impl RetainedScene {
                 let NodeKind::Scene {
                     canvas: current_canvas,
                     transform: current,
+                    translation_damage: current_damage,
                 } = &node.kind
                 else {
                     return Err(RetainedSceneError::MissingNode(id));
                 };
-                if *current != transform {
+                if translation_damage.is_some() && !affine_linear_part_eq(*current, transform) {
+                    return Err(RetainedSceneError::InvalidTransform);
+                }
+                if *current != transform || *current_damage != translation_damage {
                     let old_kind = node.kind.clone();
                     let old_generation = node.generation;
                     node.kind = NodeKind::Scene {
                         canvas: current_canvas.clone(),
                         transform,
+                        translation_damage,
                     };
                     node.generation = node.generation.wrapping_add(1);
                     changes.changed_nodes.insert(id);
@@ -5274,6 +5548,7 @@ enum Mutation {
     SetTransform {
         id: RetainedNodeId,
         transform: Affine,
+        translation_damage: Option<Rect>,
     },
     UpdateLayer {
         id: RetainedNodeId,
@@ -5345,7 +5620,39 @@ impl RetainedSceneTransaction<'_> {
             parent,
             before,
             id,
-            kind: NodeKind::Scene { canvas, transform },
+            kind: NodeKind::Scene {
+                canvas,
+                transform,
+                translation_damage: None,
+            },
+        });
+        self
+    }
+
+    /// Inserts a retained scene whose translated output is constrained to a fixed logical region.
+    ///
+    /// Subsequent [`Self::set_bounded_translation`] calls keep retained damage fixed to `damage`.
+    /// The caller must ensure an ancestor clip or the content itself contains every changed output
+    /// pixel inside that region; this method does not insert a clip. Content, scale, rotation, or
+    /// clip changes must replace/reinsert the scene or use the normal transform path.
+    pub fn insert_bounded_scene(
+        &mut self,
+        parent: RetainedParent,
+        before: Option<RetainedNodeId>,
+        id: RetainedNodeId,
+        canvas: Rc<Canvas>,
+        transform: Affine,
+        damage: Rect,
+    ) -> &mut Self {
+        self.mutations.push(Mutation::Insert {
+            parent,
+            before,
+            id,
+            kind: NodeKind::Scene {
+                canvas,
+                transform,
+                translation_damage: Some(damage),
+            },
         });
         self
     }
@@ -5387,8 +5694,30 @@ impl RetainedSceneTransaction<'_> {
     }
 
     pub fn set_transform(&mut self, id: RetainedNodeId, transform: Affine) -> &mut Self {
-        self.mutations
-            .push(Mutation::SetTransform { id, transform });
+        self.mutations.push(Mutation::SetTransform {
+            id,
+            transform,
+            translation_damage: None,
+        });
+        self
+    }
+
+    /// Updates a retained scene translation while keeping its output damage fixed to `damage`.
+    ///
+    /// The affine linear coefficients must match the currently installed transform. Use
+    /// [`Self::set_transform`] for scale, rotation, or skew changes. The caller must keep every
+    /// changed output pixel within `damage`, normally with an ancestor clip.
+    pub fn set_bounded_translation(
+        &mut self,
+        id: RetainedNodeId,
+        transform: Affine,
+        damage: Rect,
+    ) -> &mut Self {
+        self.mutations.push(Mutation::SetTransform {
+            id,
+            transform,
+            translation_damage: Some(damage),
+        });
         self
     }
 
@@ -5462,6 +5791,21 @@ fn validate_transform(transform: Affine) -> Result<(), RetainedSceneError> {
         .ok_or(RetainedSceneError::InvalidTransform)
 }
 
+fn affine_linear_part_eq(left: Affine, right: Affine) -> bool {
+    left.as_coeffs()[..4] == right.as_coeffs()[..4]
+}
+
+fn validate_damage_rect(rect: Rect) -> Result<(), RetainedSceneError> {
+    (rect.x0.is_finite()
+        && rect.y0.is_finite()
+        && rect.x1.is_finite()
+        && rect.y1.is_finite()
+        && rect.width() > 0.0
+        && rect.height() > 0.0)
+        .then_some(())
+        .ok_or(RetainedSceneError::InvalidSize)
+}
+
 fn validate_canvas(canvas: &Canvas, scale: f32) -> Result<(), RetainedSceneError> {
     if !canvas.is_closed_for_append() {
         return Err(RetainedSceneError::UnclosedCanvas);
@@ -5473,9 +5817,17 @@ fn validate_canvas(canvas: &Canvas, scale: f32) -> Result<(), RetainedSceneError
 
 fn validate_kind(kind: &NodeKind, scale: f32) -> Result<(), RetainedSceneError> {
     match kind {
-        NodeKind::Scene { canvas, transform } => {
+        NodeKind::Scene {
+            canvas,
+            transform,
+            translation_damage,
+        } => {
             validate_canvas(canvas, scale)?;
-            validate_transform(*transform)
+            validate_transform(*transform)?;
+            if let Some(damage) = translation_damage {
+                validate_damage_rect(*damage)?;
+            }
+            Ok(())
         }
         NodeKind::Layer(layer) => validate_layer(layer),
         NodeKind::Group => Ok(()),

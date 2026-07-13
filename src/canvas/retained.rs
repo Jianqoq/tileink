@@ -94,6 +94,27 @@ pub(crate) struct RetainedNodeState {
 pub(crate) struct RetainedNodePatch {
     pub(crate) old: Option<RetainedNodeState>,
     pub(crate) new: Option<RetainedNodeState>,
+    /// Explicit output damage for bounded transforms. Raw geometry bounds remain exact, while
+    /// the retained output domain and its conservative spatial index stay fixed.
+    pub(crate) damage: Option<Bounds>,
+}
+
+impl RetainedNodePatch {
+    pub(crate) fn damage_regions(self) -> impl Iterator<Item = Bounds> {
+        let old = self.old.map(|state| state.bounds);
+        let new = self
+            .new
+            .map(|state| state.bounds)
+            .filter(|bounds| Some(*bounds) != old);
+        let explicit = self
+            .damage
+            .filter(|bounds| Some(*bounds) != old && Some(*bounds) != new);
+        [old, new, explicit].into_iter().flatten()
+    }
+
+    pub(crate) fn damage_bounds(self) -> Option<Bounds> {
+        self.damage_regions().reduce(Bounds::union)
+    }
 }
 
 #[derive(Clone, Debug)]

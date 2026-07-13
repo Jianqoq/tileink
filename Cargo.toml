@@ -33,6 +33,7 @@ windows-numerics = { version = "0.3.1", optional = true }
 web-sys = { version = "0.3", features = ["Window", "Performance"] }
 
 [features]
+bench-internals = []
 directwrite-reference = ["dep:windows", "dep:windows-numerics"]
 vello-compare = ["dep:vello"]
 wgpu = []
@@ -55,6 +56,15 @@ harness = false
 
 [[bench]]
 name = "coarse_binning"
+harness = false
+
+[[bench]]
+name = "bounded_translation"
+harness = false
+required-features = ["bench-internals"]
+
+[[bench]]
+name = "range_scatter"
 harness = false
 
 [[example]]

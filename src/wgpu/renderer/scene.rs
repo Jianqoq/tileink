@@ -288,7 +288,7 @@ impl Renderer {
             ),
             scene_buffers: std::mem::replace(
                 &mut self.scene_buffers,
-                WgpuSceneBuffers::new(&self.device),
+                WgpuSceneBuffers::new(&self.device, self.range_scatter_pipeline.clone()),
             ),
             scene_upload: std::mem::take(&mut self.scene_upload),
             scan: std::mem::replace(&mut self.scan, WgpuScanBuffers::new(&self.device)),

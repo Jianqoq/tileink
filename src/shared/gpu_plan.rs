@@ -119,7 +119,17 @@ impl GpuBufferLengths {
             .buffer_changes
             .as_ref()
             .is_some_and(|changes| changes.surface_changed);
+        let dense_spatial_change = !surface_changed
+            && canvas.persistent_root.is_some()
+            && canvas.buffer_changes.as_ref().is_some_and(|changes| {
+                bins.spatial_change_is_dense(
+                    &canvas.draw_records,
+                    (tiles_width as u32, tiles_height as u32),
+                    &changes.draws,
+                )
+            });
         let updated = !surface_changed
+            && !dense_spatial_change
             && (incremental || canvas.painter_keys.is_some())
             && canvas.buffer_changes.as_ref().is_some_and(|changes| {
                 let changed = changes
@@ -136,33 +146,48 @@ impl GpuBufferLengths {
                     &changed,
                 )
             });
-        let tile_draw_counts = if surface_changed && canvas.persistent_root.is_some() {
-            // A resized target is fully redrawn and another resize invalidates the viewport index
-            // immediately. Build the compact GPU bins directly; `reset_transient` deliberately
-            // invalidates the reverse index so the first later incremental mutation rebuilds an
-            // exact persistent baseline before applying dirty ranges.
-            bins.reset_transient(&canvas.draw_records, &plan.draw_order, tiles_size, cursors);
-            TileDrawCounts {
-                index_count: bins.upload_index_count(),
-                chunk_count: bins.active_pages,
-            }
-        } else if updated {
-            TileDrawCounts {
-                index_count: bins.upload_index_count(),
-                chunk_count: bins.active_pages,
-            }
-        } else if canvas.persistent_root.is_none()
-            && canvas.buffer_changes.is_none()
-            && canvas.painter_keys.is_none()
-        {
-            bins.reset_transient(&canvas.draw_records, &plan.draw_order, tiles_size, cursors);
-            TileDrawCounts {
-                index_count: bins.upload_index_count(),
-                chunk_count: bins.active_pages,
-            }
-        } else {
-            build_tile_draw_bins_into(canvas, plan, bins, cursors)
-        };
+        let tile_draw_counts =
+            if (surface_changed && canvas.persistent_root.is_some()) || dense_spatial_change {
+                // A resized target is fully redrawn and another resize invalidates the viewport index
+                // immediately. Build the compact GPU bins directly; `reset_transient` deliberately
+                // invalidates the reverse index so the first later incremental mutation rebuilds an
+                // exact persistent baseline before applying dirty ranges.
+                bins.reset_transient(
+                    &canvas.draw_records,
+                    &plan.draw_order,
+                    canvas.painter_keys.as_deref(),
+                    tiles_size,
+                    cursors,
+                    canvas.persistent_root.is_some(),
+                );
+                TileDrawCounts {
+                    index_count: bins.upload_index_count(),
+                    chunk_count: bins.active_pages,
+                }
+            } else if updated {
+                TileDrawCounts {
+                    index_count: bins.upload_index_count(),
+                    chunk_count: bins.active_pages,
+                }
+            } else if canvas.persistent_root.is_none()
+                && canvas.buffer_changes.is_none()
+                && canvas.painter_keys.is_none()
+            {
+                bins.reset_transient(
+                    &canvas.draw_records,
+                    &plan.draw_order,
+                    None,
+                    tiles_size,
+                    cursors,
+                    false,
+                );
+                TileDrawCounts {
+                    index_count: bins.upload_index_count(),
+                    chunk_count: bins.active_pages,
+                }
+            } else {
+                build_tile_draw_bins_into(canvas, plan, bins, cursors)
+            };
         overrides.coarse_ptcl_capacity =
             Some(bins.coarse_ptcl_capacity(plan, overrides.cached_stack_depths));
         Self::from_scene_with_text_and_tile_draw_counts(
@@ -279,6 +304,7 @@ pub(crate) struct TileDrawBins {
     active_batch_marks: Vec<u32>,
     active_batch_generation: u32,
     active_batches: Vec<u32>,
+    active_draws: Vec<u32>,
     dense_bin_max_candidates: Vec<u32>,
     dense_candidate_rounds: u64,
 }
@@ -317,26 +343,31 @@ impl TileDrawBins {
         }
         let generation = self.active_batch_generation;
         self.active_batches.clear();
-        for draw in tiles
-            .iter()
-            .filter_map(|&tile| self.tile_refs.get(tile as usize))
-            .flatten()
-        {
-            let Some(&batch) = draw_batch_ids.get(*draw as usize) else {
-                continue;
-            };
-            if batch == u32::MAX {
-                continue;
-            }
-            let index = batch as usize;
-            if index >= self.active_batch_marks.len() {
-                self.active_batch_marks.resize(index + 1, 0);
-            }
-            if self.active_batch_marks[index] != generation {
-                self.active_batch_marks[index] = generation;
-                self.active_batches.push(batch);
+        let mut transient_draws = std::mem::take(&mut self.active_draws);
+        transient_draws.clear();
+        if !self.page_arena_valid {
+            for &tile in tiles {
+                if (tile as usize) < self.records.len() {
+                    self.for_each_tile_draw(tile as usize, |draw| transient_draws.push(draw));
+                }
             }
         }
+        let marks = &mut self.active_batch_marks;
+        let batches = &mut self.active_batches;
+        if self.page_arena_valid {
+            for &draw in tiles
+                .iter()
+                .filter_map(|&tile| self.tile_refs.get(tile as usize))
+                .flatten()
+            {
+                mark_active_batch(draw, draw_batch_ids, generation, marks, batches);
+            }
+        } else {
+            for &draw in &transient_draws {
+                mark_active_batch(draw, draw_batch_ids, generation, marks, batches);
+            }
+        }
+        self.active_draws = transient_draws;
         self.active_batches.sort_unstable();
         self.active_batches.clone()
     }
@@ -517,8 +548,10 @@ impl TileDrawBins {
         &mut self,
         draw_records: &[DrawRecord],
         draw_order: &[u32],
+        painter_keys: Option<&[PainterKey]>,
         tiles_size: (u32, u32),
         cursors: &mut Vec<u32>,
+        preserve_draw_bboxes: bool,
     ) {
         let tile_count = tiles_size.0 as usize * tiles_size.1 as usize;
         self.records.clear();
@@ -530,7 +563,19 @@ impl TileDrawBins {
             },
         );
         self.draw_ptcl_capacity = 0;
-        for &draw in draw_order {
+        let mut stable_order = Vec::new();
+        let ordered = if let Some(keys) = painter_keys {
+            stable_order.extend(
+                keys.iter()
+                    .enumerate()
+                    .filter_map(|(draw, key)| (key.path[0] != u128::MAX).then_some(draw as u32)),
+            );
+            stable_order.sort_unstable_by(|a, b| keys[*a as usize].cmp(&keys[*b as usize]));
+            stable_order.as_slice()
+        } else {
+            draw_order
+        };
+        for &draw in ordered {
             let record = &draw_records[draw as usize];
             let bbox = record.tile_bbox(tiles_size.0, tiles_size.1);
             self.draw_ptcl_capacity += draw_ptcl_capacity(record, bbox);
@@ -557,7 +602,7 @@ impl TileDrawBins {
 
         cursors.clear();
         cursors.resize(tile_count, 0);
-        for &draw in draw_order {
+        for &draw in ordered {
             let bbox = draw_records[draw as usize].tile_bbox(tiles_size.0, tiles_size.1);
             for_tile_in_bbox(bbox, tiles_size.0, |tile| {
                 let ordinal = cursors[tile];
@@ -571,6 +616,13 @@ impl TileDrawBins {
         self.tile_refs.clear();
         self.free_pages.clear();
         self.draw_bboxes.clear();
+        if preserve_draw_bboxes {
+            self.draw_bboxes.extend(
+                draw_records
+                    .iter()
+                    .map(|draw| draw.tile_bbox(tiles_size.0, tiles_size.1)),
+            );
+        }
         self.draw_ranks.clear();
         self.draw_ptcl_capacities.clear();
         self.tiles_size = tiles_size;
@@ -583,6 +635,41 @@ impl TileDrawBins {
         self.dirty_pages.clear();
         self.full_upload = true;
         self.rebuild_dense_candidate_rounds();
+    }
+
+    fn spatial_change_is_dense(
+        &self,
+        draw_records: &[DrawRecord],
+        tiles_size: (u32, u32),
+        changed: &[std::ops::Range<usize>],
+    ) -> bool {
+        if self.tiles_size != tiles_size || draw_records.is_empty() || changed.is_empty() {
+            return false;
+        }
+        if self.draw_bboxes.len() != draw_records.len() {
+            return true;
+        }
+        let dense_tile_threshold = (tiles_size.0 as u64 * tiles_size.1 as u64)
+            .div_ceil(16)
+            .max(1);
+        let mut affected_tile_work = 0u64;
+        let mut previous_end = 0usize;
+        for range in changed {
+            let start = range.start.max(previous_end).min(draw_records.len());
+            let end = range.end.min(draw_records.len());
+            for (draw, record) in draw_records.iter().enumerate().take(end).skip(start) {
+                let bbox = record.tile_bbox(tiles_size.0, tiles_size.1);
+                if bbox != self.draw_bboxes[draw] {
+                    affected_tile_work +=
+                        u64::from(bbox.tile_count() + self.draw_bboxes[draw].tile_count());
+                    if affected_tile_work >= dense_tile_threshold {
+                        return true;
+                    }
+                }
+            }
+            previous_end = previous_end.max(end);
+        }
+        false
     }
 
     fn update_changed(
@@ -905,6 +992,29 @@ impl TileDrawBins {
         self.records.len()
             + self.draw_ptcl_capacity
             + self.records.len() * 2 * (clip_depth + group_depth)
+    }
+}
+
+fn mark_active_batch(
+    draw: u32,
+    draw_batch_ids: &[u32],
+    generation: u32,
+    marks: &mut Vec<u32>,
+    batches: &mut Vec<u32>,
+) {
+    let Some(&batch) = draw_batch_ids.get(draw as usize) else {
+        return;
+    };
+    if batch == u32::MAX {
+        return;
+    }
+    let index = batch as usize;
+    if index >= marks.len() {
+        marks.resize(index + 1, 0);
+    }
+    if marks[index] != generation {
+        marks[index] = generation;
+        batches.push(batch);
     }
 }
 
@@ -1945,7 +2055,7 @@ mod tests {
         TileDrawBins, build_cumsum_plan, build_scan_chunks, build_tile_draw_bins,
         build_tile_draw_bins_into,
     };
-    use crate::{Bounds, Canvas, FillRule};
+    use crate::{Bounds, Canvas, FillRule, RetainedNodeId, canvas::SceneBufferChanges};
 
     #[test]
     fn scan_plan_records_are_gpu_word_layouts() {
@@ -2508,6 +2618,109 @@ mod tests {
                 ..(unaffected_page as usize + 1) * TILE_DRAW_PAGE_WORDS],
             unaffected_words
         );
+    }
+
+    #[test]
+    fn dense_retained_spatial_change_stays_flat_only_while_geometry_keeps_moving() {
+        let mut initial = Canvas::new(crate::TILE_SIZE * 5, crate::TILE_SIZE, 1.0);
+        for tile in 0..4 {
+            initial.push_rect(
+                Rect::new(
+                    f64::from(tile * crate::TILE_SIZE),
+                    0.0,
+                    f64::from((tile + 1) * crate::TILE_SIZE),
+                    f64::from(crate::TILE_SIZE),
+                ),
+                crate::Radius::ZERO,
+                Color::BLACK,
+            );
+        }
+        initial.persistent_root = Some(RetainedNodeId::for_owner(71_000));
+        let initial_plan = initial.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
+        let mut bins = TileDrawBins::default();
+        let mut cursors = Vec::new();
+        build_tile_draw_bins_into(&initial, &initial_plan, &mut bins, &mut cursors);
+        let _ = bins.take_dirty();
+
+        let mut moved = Canvas::new(crate::TILE_SIZE * 5, crate::TILE_SIZE, 1.0);
+        for tile in 1..5 {
+            moved.push_rect(
+                Rect::new(
+                    f64::from(tile * crate::TILE_SIZE),
+                    0.0,
+                    f64::from((tile + 1) * crate::TILE_SIZE),
+                    f64::from(crate::TILE_SIZE),
+                ),
+                crate::Radius::ZERO,
+                Color::BLACK,
+            );
+        }
+        moved.persistent_root = initial.persistent_root;
+        moved.buffer_changes = Some(SceneBufferChanges {
+            draws: std::iter::once(0..moved.draw_records.len()).collect(),
+            ..Default::default()
+        });
+        let moved_plan = moved.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
+        let lengths = GpuBufferLengths::from_scene_with_text_and_tile_draw_bins(
+            &moved,
+            None,
+            &moved_plan,
+            &mut bins,
+            &mut cursors,
+            true,
+            GpuLengthOverrides::default(),
+        );
+
+        assert!(!bins.page_arena_valid);
+        assert_eq!(lengths.tile_draw_index_count, 4);
+        assert!(bins.take_dirty().0);
+        assert_eq!(bins.active_batch_ids(&[0, 1, 2, 3, 4], &[9; 4]), vec![9]);
+
+        let mut moved_again = Canvas::new(crate::TILE_SIZE * 5, crate::TILE_SIZE, 1.0);
+        for tile in 0..4 {
+            moved_again.push_rect(
+                Rect::new(
+                    f64::from(tile * crate::TILE_SIZE),
+                    0.0,
+                    f64::from((tile + 1) * crate::TILE_SIZE),
+                    f64::from(crate::TILE_SIZE),
+                ),
+                crate::Radius::ZERO,
+                Color::BLACK,
+            );
+        }
+        moved_again.persistent_root = initial.persistent_root;
+        moved_again.buffer_changes = Some(SceneBufferChanges {
+            draws: std::iter::once(0..moved_again.draw_records.len()).collect(),
+            ..Default::default()
+        });
+        let moved_again_plan = moved_again.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
+        let second_lengths = GpuBufferLengths::from_scene_with_text_and_tile_draw_bins(
+            &moved_again,
+            None,
+            &moved_again_plan,
+            &mut bins,
+            &mut cursors,
+            true,
+            GpuLengthOverrides::default(),
+        );
+        assert!(!bins.page_arena_valid);
+        assert_eq!(second_lengths.tile_draw_index_count, 4);
+        assert!(bins.take_dirty().0);
+
+        // When geometry stops moving (or only paint changes), rebuild the persistent reverse
+        // index once. Staying transient forever would turn all later retained edits into full
+        // tile-bin uploads and also prevents resize recovery.
+        GpuBufferLengths::from_scene_with_text_and_tile_draw_bins(
+            &moved_again,
+            None,
+            &moved_again_plan,
+            &mut bins,
+            &mut cursors,
+            true,
+            GpuLengthOverrides::default(),
+        );
+        assert!(bins.page_arena_valid);
     }
 
     #[test]

@@ -1,7 +1,10 @@
 use crate::text::AtlasSignature;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::{
+    rc::Rc,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
-use super::buffer::WgpuBuffer;
+use super::buffer::{WgpuBuffer, WgpuRangeScatter, WgpuRangeScatterPipeline};
 
 mod bindings;
 mod upload;
@@ -50,10 +53,14 @@ pub(crate) struct WgpuSceneBuffers {
     paint_brush_base: u32,
     fine_text_image_base: u32,
     fine_text_image_data_base: u32,
+    range_scatter: WgpuRangeScatter,
 }
 
 impl WgpuSceneBuffers {
-    pub(crate) fn new(device: &::wgpu::Device) -> Self {
+    pub(crate) fn new(
+        device: &::wgpu::Device,
+        range_scatter_pipeline: Rc<WgpuRangeScatterPipeline>,
+    ) -> Self {
         let image_resource_atlas = create_image_resource_atlas_texture(device, 1, 1, 1);
         let image_resource_atlas_view = create_image_resource_atlas_view(&image_resource_atlas);
         let image_resource_dummy_texture = create_image_resource_texture(
@@ -113,6 +120,7 @@ impl WgpuSceneBuffers {
             paint_brush_base: 0,
             fine_text_image_base: 0,
             fine_text_image_data_base: 0,
+            range_scatter: WgpuRangeScatter::new(range_scatter_pipeline),
         }
     }
 
