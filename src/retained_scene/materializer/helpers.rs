@@ -17,8 +17,9 @@ impl RetainedMaterializerBenchmark {
         }
     }
 
-    pub fn update(&mut self, scene: &RetainedScene) -> bool {
-        self.materializer.update(scene)
+    pub fn update_incremental(&mut self, scene: &RetainedScene) -> bool {
+        let changes = scene.changes_since(self.materializer.version());
+        self.materializer.update(scene, changes)
     }
 }
 

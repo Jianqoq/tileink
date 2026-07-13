@@ -192,9 +192,10 @@ impl Renderer {
         }
         let materializer = self.persistent_scene.as_mut().unwrap();
         let unchanged = materializer.version() == scene.version();
+        let changes = scene.changes_since(materializer.version());
         let plan_may_change = !unchanged
-            && scene
-                .changes_since(materializer.version())
+            && changes
+                .as_ref()
                 .is_none_or(|changes| changes.topology_changed || changes.surface_changed);
         if plan_may_change {
             // GPU submission no longer borrows the previous frame's plan. Releasing that Rc
@@ -202,7 +203,9 @@ impl Renderer {
             // otherwise scene-sized ExecPlan for one changed layer.
             self.plan = None;
         }
-        let scene_data_changed = profile_cpu("retained.materialize", || materializer.update(scene));
+        let scene_data_changed = profile_cpu("retained.materialize", || {
+            materializer.update(scene, changes)
+        });
         if materializer.version() != scene.version() {
             unreachable!("persistent materializer did not consume scene version");
         }

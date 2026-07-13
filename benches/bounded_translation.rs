@@ -96,7 +96,7 @@ fn bounded_translation(c: &mut Criterion) {
             b.iter(|| {
                 frame = frame.wrapping_add(1);
                 mutate_chart(&mut scene, frame, bounded);
-                black_box(materializer.update(black_box(&scene)))
+                black_box(materializer.update_incremental(black_box(&scene)))
             });
         });
     }

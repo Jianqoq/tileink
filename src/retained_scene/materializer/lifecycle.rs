@@ -58,7 +58,15 @@ impl PersistentSceneMaterializer {
 
     /// Consumes the scene journal and returns whether prepared CPU/GPU scene data became stale.
     /// Raster-only invalidation advances the version without forcing materialization or upload.
-    pub(crate) fn update(&mut self, scene: &RetainedScene) -> bool {
+    /// Applies a previously collected journal snapshot without scanning the journal again.
+    ///
+    /// The renderer also needs the change set to decide whether its compiled plan can be reused,
+    /// so accepting the snapshot here avoids merging the same journal entries twice per frame.
+    pub(crate) fn update(
+        &mut self,
+        scene: &RetainedScene,
+        changes: Option<SceneChangeSet>,
+    ) -> bool {
         if self.scene_id != scene.id {
             *self = Self::new(scene);
             return true;
@@ -66,7 +74,7 @@ impl PersistentSceneMaterializer {
         if self.version == scene.version {
             return false;
         }
-        let (mut changes, journal_gap) = match scene.changes_since(self.version) {
+        let (mut changes, journal_gap) = match changes {
             Some(changes) => (changes, false),
             None => (self.reconcile_scene_metadata(scene), true),
         };

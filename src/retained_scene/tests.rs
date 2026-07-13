@@ -3,6 +3,14 @@ use peniko::{Color, kurbo::Shape};
 use super::*;
 use crate::{Radius, shared::bounds::PixelBounds};
 
+fn update_materializer(
+    materializer: &mut PersistentSceneMaterializer,
+    scene: &RetainedScene,
+) -> bool {
+    let changes = scene.changes_since(materializer.version());
+    materializer.update(scene, changes)
+}
+
 fn leaf(color: Color) -> Rc<Canvas> {
     let mut canvas = Canvas::new(16, 16, 1.0);
     canvas.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::ZERO, color);
@@ -103,7 +111,7 @@ fn transform_only_update_keeps_local_geometry_and_blobs_clean() {
         .set_transform(child, transform)
         .commit()
         .unwrap();
-    assert!(materializer.update(&scene));
+    assert!(update_materializer(&mut materializer, &scene));
 
     let chunk = &materializer.chunks[&child];
     assert_eq!(
@@ -171,7 +179,7 @@ fn bounded_translation_keeps_fixed_output_domain_without_tile_duplication() {
         .set_bounded_translation(child, Affine::translate((40.0, 8.0)), damage)
         .commit()
         .unwrap();
-    assert!(materializer.update(&scene));
+    assert!(update_materializer(&mut materializer, &scene));
 
     let frame = materializer.canvas().persistent_frame.clone().unwrap();
     let state = frame.node_state(child).unwrap();
@@ -225,7 +233,7 @@ fn ordinary_transform_exits_fixed_damage_bounds() {
         .set_transform(child, Affine::translate((48.0, 24.0)))
         .commit()
         .unwrap();
-    assert!(materializer.update(&scene));
+    assert!(update_materializer(&mut materializer, &scene));
 
     let frame = materializer.canvas().persistent_frame.clone().unwrap();
     assert_ne!(
@@ -401,7 +409,7 @@ fn content_revision_reuses_chunk_canvas_storage() {
         .replace_scene(child, leaf(Color::BLACK))
         .commit()
         .unwrap();
-    assert!(materializer.update(&scene));
+    assert!(update_materializer(&mut materializer, &scene));
     assert_eq!(
         std::ptr::from_ref(&materializer.chunks[&child]),
         chunk_storage
@@ -457,7 +465,7 @@ fn surface_resize_reuses_chunks_and_refreshes_path_tile_bounds() {
     );
 
     scene.transaction().resize(96, 32, 1.0).commit().unwrap();
-    assert!(materializer.update(&scene));
+    assert!(update_materializer(&mut materializer, &scene));
 
     assert_eq!(
         std::ptr::from_ref(&materializer.chunks[&child].canvas),
@@ -511,7 +519,7 @@ fn same_scale_resize_and_removal_rebuild_spatial_index_from_live_nodes() {
         .remove_subtree(removed)
         .commit()
         .unwrap();
-    assert!(materializer.update(&scene));
+    assert!(update_materializer(&mut materializer, &scene));
 
     assert!(!materializer.chunks.contains_key(&removed));
     assert!(materializer.chunks.contains_key(&retained));
@@ -617,7 +625,7 @@ fn resize_with_layer_updates_defers_full_frame_and_spatial_rebuild() {
         .set_transform(child, Affine::translate((8.0, 0.0)))
         .commit()
         .unwrap();
-    assert!(materializer.update(&scene));
+    assert!(update_materializer(&mut materializer, &scene));
 
     let resized = materializer.canvas.persistent_frame.as_ref().unwrap();
     assert!(Rc::ptr_eq(&resized.nodes, &base_nodes));
@@ -637,7 +645,7 @@ fn resize_with_layer_updates_defers_full_frame_and_spatial_rebuild() {
         .set_transform(child, Affine::translate((24.0, 0.0)))
         .commit()
         .unwrap();
-    assert!(materializer.update(&scene));
+    assert!(update_materializer(&mut materializer, &scene));
 
     let updated = materializer.canvas.persistent_frame.as_ref().unwrap();
     assert!(!Rc::ptr_eq(&updated.nodes, &base_nodes));
@@ -668,7 +676,7 @@ fn structural_edit_after_resize_rebuilds_deferred_surface_metadata() {
     let mut materializer = PersistentSceneMaterializer::new(&scene);
 
     scene.transaction().resize(96, 64, 1.0).commit().unwrap();
-    assert!(materializer.update(&scene));
+    assert!(update_materializer(&mut materializer, &scene));
     assert!(materializer.surface_metadata_stale);
 
     scene
@@ -682,7 +690,7 @@ fn structural_edit_after_resize_rebuilds_deferred_surface_metadata() {
         )
         .commit()
         .unwrap();
-    assert!(materializer.update(&scene));
+    assert!(update_materializer(&mut materializer, &scene));
 
     let frame = materializer.canvas.persistent_frame.as_ref().unwrap();
     assert!(frame.node_state(existing).is_some());
@@ -724,7 +732,7 @@ fn scene_content_replacement_refreshes_embedded_backdrop_index() {
         .replace_scene(child, backdrop_leaf())
         .commit()
         .unwrap();
-    assert!(materializer.update(&scene));
+    assert!(update_materializer(&mut materializer, &scene));
     assert!(!materializer.dependency_free);
     assert!(materializer.nonlocal_dependencies.contains(&child));
     assert!(materializer.surface_dependent_plans.contains(&child));
@@ -738,7 +746,7 @@ fn scene_content_replacement_refreshes_embedded_backdrop_index() {
         .replace_scene(child, leaf(Color::BLACK))
         .commit()
         .unwrap();
-    assert!(materializer.update(&scene));
+    assert!(update_materializer(&mut materializer, &scene));
     assert!(materializer.dependency_free);
     assert!(!materializer.nonlocal_dependencies.contains(&child));
     assert!(!materializer.surface_dependent_plans.contains(&child));
@@ -770,7 +778,7 @@ fn empty_chunk_allocations_grow_and_shrink_without_full_sync() {
         .replace_scene(child, leaf(Color::WHITE))
         .commit()
         .unwrap();
-    assert!(materializer.update(&scene));
+    assert!(update_materializer(&mut materializer, &scene));
     let chunk = &materializer.chunks[&child];
     assert_eq!(materializer.arenas.draws.range(chunk.draws).len(), 1);
     assert!(!materializer.arenas.sdfs.range(chunk.sdfs).is_empty());
@@ -780,7 +788,7 @@ fn empty_chunk_allocations_grow_and_shrink_without_full_sync() {
         .replace_scene(child, empty_leaf())
         .commit()
         .unwrap();
-    assert!(materializer.update(&scene));
+    assert!(update_materializer(&mut materializer, &scene));
     let chunk = &materializer.chunks[&child];
     assert!(materializer.arenas.draws.range(chunk.draws).is_empty());
     assert!(materializer.arenas.sdfs.range(chunk.sdfs).is_empty());
@@ -1059,7 +1067,7 @@ fn journal_gap_detects_remove_and_reinsert_of_the_same_node_id() {
         scene.transaction().invalidate_all().commit().unwrap();
     }
 
-    assert!(materializer.update(&scene));
+    assert!(update_materializer(&mut materializer, &scene));
     assert!(Rc::ptr_eq(
         materializer.chunks[&child].source_canvas.as_ref().unwrap(),
         &replacement
@@ -1105,7 +1113,7 @@ fn long_content_delta_chain_compacts_into_state_pages() {
             .replace_scene(RetainedNodeId::for_owner(82_001 + index), content.clone())
             .commit()
             .unwrap();
-        assert!(materializer.update(&scene));
+        assert!(update_materializer(&mut materializer, &scene));
     }
 
     let frame = materializer.canvas.persistent_frame.as_ref().unwrap();
@@ -1178,7 +1186,7 @@ fn expanding_nested_clip_patches_newly_visible_raw_spatial_candidates() {
         )
         .commit()
         .unwrap();
-    assert!(materializer.update(&scene));
+    assert!(update_materializer(&mut materializer, &scene));
     let inserted_frame = materializer.canvas.persistent_frame.as_ref().unwrap();
     assert!(Rc::ptr_eq(&base.nodes, &inserted_frame.nodes));
     assert!(
@@ -1194,7 +1202,7 @@ fn expanding_nested_clip_patches_newly_visible_raw_spatial_candidates() {
         .update_layer(outer, clip(0.0, 40.0))
         .commit()
         .unwrap();
-    assert!(materializer.update(&scene));
+    assert!(update_materializer(&mut materializer, &scene));
 
     let expanded = materializer.canvas.persistent_frame.clone().unwrap();
     assert!(Rc::ptr_eq(&base.nodes, &expanded.nodes));
@@ -1220,7 +1228,7 @@ fn expanding_nested_clip_patches_newly_visible_raw_spatial_candidates() {
         .update_layer(outer, clip(0.0, 16.0))
         .commit()
         .unwrap();
-    assert!(materializer.update(&scene));
+    assert!(update_materializer(&mut materializer, &scene));
     let shrunk = materializer.canvas.persistent_frame.as_ref().unwrap();
     assert!(Rc::ptr_eq(&base.nodes, &shrunk.nodes));
     assert!(shrunk.node_state(child).unwrap().bounds.is_empty());
@@ -1234,7 +1242,7 @@ fn expanding_nested_clip_patches_newly_visible_raw_spatial_candidates() {
             .update_layer(outer, clip(0.0, if index % 2 == 0 { 40.0 } else { 16.0 }))
             .commit()
             .unwrap();
-        assert!(materializer.update(&scene));
+        assert!(update_materializer(&mut materializer, &scene));
     }
     let repeated = materializer.canvas.persistent_frame.as_ref().unwrap();
     assert!(Rc::ptr_eq(&base.nodes, &repeated.nodes));
@@ -1291,7 +1299,7 @@ fn clip_bounds_update_inside_filter_uses_full_frame_fallback() {
         .update_layer(clip, descriptor(32.0))
         .commit()
         .unwrap();
-    assert!(materializer.update(&scene));
+    assert!(update_materializer(&mut materializer, &scene));
 
     let updated = materializer.canvas.persistent_frame.as_ref().unwrap();
     assert!(!Rc::ptr_eq(&base.nodes, &updated.nodes));
@@ -1342,7 +1350,7 @@ fn appended_root_layer_fragment_is_visible_in_cached_execution_plan() {
         .commit()
         .unwrap();
 
-    assert!(materializer.update(&scene));
+    assert!(update_materializer(&mut materializer, &scene));
     assert_eq!(materializer.node_batches[&base], base_batch);
     let plan = materializer
         .canvas
@@ -1366,7 +1374,7 @@ fn appended_root_layer_fragment_is_visible_in_cached_execution_plan() {
     assert_eq!(inserted_frame.delta.as_ref().unwrap().depth, 1);
 
     scene.transaction().remove_subtree(layer).commit().unwrap();
-    assert!(materializer.update(&scene));
+    assert!(update_materializer(&mut materializer, &scene));
     let removed_frame = materializer.canvas.persistent_frame.clone().unwrap();
     assert!(Rc::ptr_eq(&base_frame.nodes, &removed_frame.nodes));
     assert!(removed_frame.node_state(layer).is_none());
