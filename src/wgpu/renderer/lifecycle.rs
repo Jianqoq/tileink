@@ -206,9 +206,11 @@ impl Renderer {
         let scene_data_changed = profile_cpu("retained.materialize", || {
             materializer.update(scene, changes)
         });
-        if materializer.version() != scene.version() {
-            unreachable!("persistent materializer did not consume scene version");
-        }
+        assert_eq!(
+            materializer.version(),
+            scene.version(),
+            "persistent materializer did not consume scene version"
+        );
         if scene_data_changed {
             self.retained.invalidate_prepared_scene();
         }
