@@ -47,7 +47,9 @@ pub(super) fn changed_value_ranges<T: PartialEq>(
     old: &[T],
     new: &[T],
 ) -> Vec<std::ops::Range<usize>> {
-    let len = old.len().max(new.len());
+    // These ranges are consumed as writes into `new`. A removed suffix is different from the old
+    // value, but there is no destination element to upload and no live draw can address it.
+    let len = new.len();
     let mut ranges = Vec::new();
     let mut start = None;
     for index in 0..len {
@@ -405,5 +407,23 @@ pub(super) fn chunk_layer_influence_bounds(chunk: &SceneChunk) -> Bounds {
         } => filter::unclipped_filtered_region_bounds(value, sample_region),
         Command::MaskLayer { layer, .. } => filter::region_bounds(&layer.region),
         _ => unreachable!("retained layer chunk has one root layer command"),
+    }
+}
+
+#[cfg(test)]
+mod changed_value_range_tests {
+    use super::changed_value_ranges;
+
+    #[test]
+    fn removed_suffix_does_not_emit_an_out_of_bounds_upload_range() {
+        assert!(changed_value_ranges(&[1, 2, 3], &[1]).is_empty());
+        let expected = std::iter::once(0..1).collect::<Vec<_>>();
+        assert_eq!(changed_value_ranges(&[1, 2, 3], &[9]), expected);
+    }
+
+    #[test]
+    fn appended_suffix_is_uploaded() {
+        let expected = std::iter::once(1..3).collect::<Vec<_>>();
+        assert_eq!(changed_value_ranges(&[1], &[1, 2, 3]), expected);
     }
 }

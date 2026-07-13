@@ -243,7 +243,7 @@ impl WgpuBuffer {
         }
 
         self.cached_upload.resize(bytes.len(), 0);
-        validate_upload_ranges(ranges, data.len());
+        validate_upload_ranges(label, ranges, data.len());
         if should_scatter_range_upload::<T>(ranges.len()) {
             if ranges.iter().all(std::ops::Range::is_empty) {
                 return 0;
@@ -450,10 +450,13 @@ impl WgpuBuffer {
     }
 }
 
-fn validate_upload_ranges(ranges: &[std::ops::Range<usize>], len: usize) {
+fn validate_upload_ranges(label: &str, ranges: &[std::ops::Range<usize>], len: usize) {
     let mut previous_end = 0;
     for range in ranges {
-        assert!(range.start <= range.end && range.end <= len);
+        assert!(
+            range.start <= range.end && range.end <= len,
+            "{label}: upload range {range:?} exceeds data length {len}"
+        );
         if range.is_empty() {
             continue;
         }
@@ -592,7 +595,7 @@ mod tests {
 
     #[test]
     fn scatter_ranges_accept_sorted_non_overlapping_input() {
-        validate_upload_ranges(&[0..4, 8..12, 20..24], 24);
+        validate_upload_ranges("test", &[0..4, 8..12, 20..24], 24);
     }
 
     #[test]
@@ -604,6 +607,6 @@ mod tests {
     #[test]
     #[should_panic(expected = "upload ranges must be sorted and non-overlapping")]
     fn scatter_ranges_reject_overlap_without_hashing_or_sorting() {
-        validate_upload_ranges(&[0..4, 3..12], 12);
+        validate_upload_ranges("test", &[0..4, 3..12], 12);
     }
 }
