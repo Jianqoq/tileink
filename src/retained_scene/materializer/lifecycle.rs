@@ -3,15 +3,16 @@ use super::*;
 
 impl PersistentSceneMaterializer {
     pub(crate) fn new(scene: &RetainedScene) -> Self {
+        let canvas = Rc::new(Canvas::new_persistent(
+            scene.width,
+            scene.height,
+            scene.scale,
+            scene.root,
+        ));
         let mut materializer = Self {
             scene_id: scene.id,
             version: SceneVersion::INITIAL,
-            canvas: Rc::new(Canvas::new_persistent(
-                scene.width,
-                scene.height,
-                scene.scale,
-                scene.root,
-            )),
+            canvas: Rc::clone(&canvas),
             chunks: HashMap::default(),
             arenas: MaterializedArenas::default(),
             plan_cache_key: next_plan_cache_key(),
@@ -40,7 +41,7 @@ impl PersistentSceneMaterializer {
             root_fragment_owners: HashMap::default(),
             node_metadata: HashMap::default(),
         };
-        materializer.rebuild_all(scene);
+        materializer.rebuild_all_with_canvas(scene, canvas);
         materializer
     }
 
@@ -807,6 +808,16 @@ impl PersistentSceneMaterializer {
     }
 
     pub(crate) fn rebuild_all(&mut self, scene: &RetainedScene) {
+        let canvas = Rc::new(Canvas::new_persistent(
+            scene.width,
+            scene.height,
+            scene.scale,
+            scene.root,
+        ));
+        self.rebuild_all_with_canvas(scene, canvas);
+    }
+
+    fn rebuild_all_with_canvas(&mut self, scene: &RetainedScene, canvas: Rc<Canvas>) {
         self.scene_id = scene.id;
         self.version = scene.version;
         self.chunks.clear();
@@ -831,6 +842,7 @@ impl PersistentSceneMaterializer {
         self.root_plan_fragments.clear();
         self.root_fragment_owners.clear();
         self.node_metadata.clear();
+        self.canvas = canvas;
         self.layer_nodes = scene
             .nodes
             .iter()
@@ -838,12 +850,6 @@ impl PersistentSceneMaterializer {
             .collect();
         self.nonlocal_dependencies.clear();
         self.surface_dependent_plans.clear();
-        self.canvas = Rc::new(Canvas::new_persistent(
-            scene.width,
-            scene.height,
-            scene.scale,
-            scene.root,
-        ));
         for (&id, node) in &scene.nodes {
             if !matches!(node.kind, NodeKind::Group) {
                 self.rebuild_node(scene, id);
