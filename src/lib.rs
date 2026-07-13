@@ -1,6 +1,5 @@
 mod canvas;
 mod debug;
-mod render;
 mod retained_scene;
 mod shared;
 mod svg;

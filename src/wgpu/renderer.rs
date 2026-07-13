@@ -8,7 +8,6 @@ use crate::{
     RetainedScene, SceneVersion, TextFontSystem,
     canvas::Canvas,
     debug::{DebugScanBuffers, RenderDebugCapture, RenderOptions, capture_render_debug},
-    render::Render,
     retained_scene::PersistentSceneMaterializer,
     shared::{
         bounds::Bounds,
@@ -168,15 +167,6 @@ struct SavedRendererState {
     filter_active_tile_work: Option<FilterTileWork>,
 }
 
-impl Render for Renderer {
-    fn render(&mut self, canvas: &Canvas) {
-        assert!(
-            self.render_native(canvas),
-            "wgpu renderer could not render scene natively"
-        );
-    }
-}
-
 impl Renderer {
     pub fn new(
         device: &::wgpu::Device,
@@ -298,7 +288,10 @@ impl Renderer {
     }
 
     pub fn render(&mut self, canvas: &Canvas) {
-        <Self as Render>::render(self, canvas);
+        assert!(
+            self.render_native(canvas),
+            "wgpu renderer could not render scene natively"
+        );
     }
 
     pub fn render_retained(&mut self, scene: &RetainedScene) {
