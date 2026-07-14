@@ -622,7 +622,7 @@ impl PersistentSceneMaterializer {
                 }
             }
         }
-        if topology_delta_eligible
+        let topology_delta_plan_reused = topology_delta_eligible
             && !root_layer_plan_patched
             && !root_layer_remove_patched
             && !nested_offscreen_plan_patched
@@ -630,12 +630,14 @@ impl PersistentSceneMaterializer {
             && !root_offscreen_reorder_patched
             && flat_plan_had_draws
             && self.flat_plan_has_draws
-            && !compacted
-        {
+            && !compacted;
+        if topology_delta_plan_reused {
             commands_dirty = false;
             plan_dirty = false;
         }
-        if (plain_topology_candidate || root_painter_update) && flat_plan_had_draws && !compacted {
+        let flat_topology_plan_reused =
+            (plain_topology_candidate || root_painter_update) && flat_plan_had_draws && !compacted;
+        if flat_topology_plan_reused {
             commands_dirty = false;
             plan_dirty = false;
             if let Some(frame) = &previous_frame {
@@ -650,6 +652,12 @@ impl PersistentSceneMaterializer {
                     plain_topology_damage.push((id, old.bounds.union(new)));
                 }
             }
+        }
+        if topology_delta_plan_reused || flat_topology_plan_reused {
+            // The execution plan reads current stable-batch membership directly, so it remains
+            // reusable. Rebuild only the command tree to install locations for inserted leaves;
+            // otherwise their first later content update cannot patch its materialized command.
+            self.rebuild_commands_preserving_plan(scene);
         }
         let root_reorder_eligible = root_reorder_candidate && chunks_rebuilt == 0 && !compacted;
         if root_reorder_eligible {

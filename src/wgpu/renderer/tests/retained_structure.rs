@@ -750,6 +750,62 @@ fn persistent_retained_scene_add_remove_reuses_pages_without_ghost_draws() {
 }
 
 #[test]
+fn persistent_plain_leaf_can_update_after_topology_fast_path_insertion() {
+    if !run_wgpu_tests() {
+        return;
+    }
+    let root = RetainedNodeId::for_owner(50_303);
+    let base = RetainedNodeId::for_owner(50_304);
+    let inserted = RetainedNodeId::for_owner(50_305);
+    let child = |color| {
+        let mut canvas = Canvas::new(32, 16, 1.0);
+        canvas.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), crate::Radius::ZERO, color);
+        std::rc::Rc::new(canvas)
+    };
+    let mut scene = RetainedScene::new(32, 16, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            base,
+            child(Color::from_rgb8(220, 30, 40)),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+    let mut incremental = new_test_renderer(32, 16, Color::TRANSPARENT);
+    incremental.render_retained(&scene);
+
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            inserted,
+            child(Color::from_rgb8(30, 210, 70)),
+            Affine::translate((16.0, 0.0)),
+        )
+        .commit()
+        .unwrap();
+    incremental.render_retained(&scene);
+    assert!(incremental.incremental_render_stats().reused_compiled_plan);
+
+    // Regression: this used to panic because the topology frame added stable batch membership
+    // without adding the new leaf to `scene_command_locations`.
+    scene
+        .transaction()
+        .replace_scene(inserted, child(Color::from_rgb8(30, 80, 220)))
+        .commit()
+        .unwrap();
+    incremental.render_retained(&scene);
+
+    let mut full = new_test_renderer(32, 16, Color::TRANSPARENT);
+    full.render_retained(&scene);
+    assert_eq!(incremental.image().pixels, full.image().pixels);
+}
+
+#[test]
 fn persistent_retained_tail_layer_add_remove_patches_plan_without_ghost_draws() {
     if !run_wgpu_tests() {
         return;
@@ -830,6 +886,23 @@ fn persistent_retained_tail_layer_add_remove_patches_plan_without_ghost_draws() 
     full.render_retained(&scene);
     assert_eq!(incremental.pixels, full.image().pixels);
     assert!(!renderer.incremental_render_stats().full_scene_sync);
+
+    // Regression: the flat topology fast path must still install the command location used by
+    // the leaf's next content update, including when the leaf belongs to an offscreen layer.
+    scene
+        .transaction()
+        .replace_scene(
+            leaf,
+            solid(
+                Rect::new(16.0, 0.0, 32.0, 16.0),
+                Color::from_rgb8(40, 220, 120),
+            ),
+        )
+        .commit()
+        .unwrap();
+    renderer.render_retained(&scene);
+    full.render_retained(&scene);
+    assert_eq!(renderer.image().pixels, full.image().pixels);
 
     scene.transaction().remove_subtree(layer).commit().unwrap();
     renderer.render_retained(&scene);
