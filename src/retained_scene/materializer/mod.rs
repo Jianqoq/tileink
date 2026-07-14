@@ -3,12 +3,14 @@ pub(crate) use super::prelude::*;
 pub(crate) use super::scene::RetainedScene;
 
 mod damage;
+mod draw_order;
 mod helpers;
 mod lifecycle;
 mod plan;
 mod spatial_tiles;
 mod storage;
 
+use self::draw_order::LocalDrawOrder;
 use self::helpers::inactive_draw;
 
 #[cfg(feature = "bench-internals")]
@@ -50,6 +52,7 @@ pub(crate) struct SceneChunk {
     segments: ArenaAllocation,
     plan_fingerprint: u64,
     plain_fragment: bool,
+    local_draw_order: LocalDrawOrder,
     // Persistent damage propagation cannot rediscover ordinary backdrop commands by walking the
     // materialized command tree every frame. Cache their translated dependency geometry with the
     // chunk so an earlier node mutation only visits actual backdrop owners.
@@ -188,6 +191,9 @@ pub(crate) struct PersistentSceneMaterializer {
     pub(crate) canvas: Rc<Canvas>,
     pub(crate) chunks: HashMap<RetainedNodeId, SceneChunk>,
     pub(crate) arenas: MaterializedArenas,
+    /// Range vectors are owned by the published canvas for one frame, then reclaimed before the
+    /// next mutation so arena synchronization retains peak capacity without copying ranges.
+    buffer_changes_scratch: SceneBufferChanges,
     plan_cache_key: u64,
     scene_command_locations: HashMap<RetainedNodeId, SceneCommandLocation>,
     layer_command_locations: HashMap<RetainedNodeId, LayerCommandLocation>,

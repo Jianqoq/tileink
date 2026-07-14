@@ -47,6 +47,18 @@ The complete run contains two suites:
 - `tiles_for_bounds`: CPU-only spatial tile traversal for empty, clipped, single-tile, row, medium,
   and full-canvas bounds. It detects temporary collection allocation and large-range iteration
   regressions in retained spatial-index updates and queries.
+- `node_draw_order`: CPU-only mapping from cached chunk-local painter order to current physical
+  draw-arena slots for small, large, and repeatedly queried nodes. It detects accidental chunk
+  recompilation, temporary draw vectors, and sequential-chunk traversal regressions.
+- `glyph_capacity`: CPU-only incremental text dependency updates for stable, single-glyph,
+  fragmented glyph, changed-run, changed-draw, and mixed edits. It detects temporary affected-draw
+  hash sets and materialized/sorted dirty-index vectors.
+- `arena_fill`: CPU-only insertion and replacement of zero-initialized scene scratch allocations
+  across small tile pools through one-megabyte buffers. It detects temporary zero-vector
+  allocation and the resulting second memory pass.
+- `dirty_ranges`: CPU-only repeated dirty-range collection for scene arenas, persistent path plans,
+  and tile bins. It detects capacity loss when upload-owned vectors are taken from long-lived
+  staging structures and then dropped.
 - `retained_scale/local-scene-resource-cycle` (with `bench-internals`): same-binary A/B of creating
   the fixed buffers/targets in a local offscreen scene allocation set versus recycling them from
   the renderer pool. This conservative microbenchmark excludes workload-dependent scratch targets;
@@ -79,5 +91,9 @@ cargo bench --bench damage_tiles --features bench-internals
 cargo bench --bench tile_draw_bins --features bench-internals
 cargo bench --bench frame_diff --features bench-internals
 cargo bench --bench tiles_for_bounds --features bench-internals
+cargo bench --bench node_draw_order --features bench-internals
+cargo bench --bench glyph_capacity --features bench-internals
+cargo bench --bench arena_fill --features bench-internals
+cargo bench --bench dirty_ranges --features bench-internals
 cargo bench --bench retained_scale --features bench-internals -- retained_scale/local-scene-resource
 ```

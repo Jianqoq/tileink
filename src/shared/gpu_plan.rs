@@ -23,7 +23,7 @@ use crate::{
 #[cfg(feature = "bench-internals")]
 mod benchmark;
 #[cfg(feature = "bench-internals")]
-pub use benchmark::TileDrawBinsBenchmark;
+pub use benchmark::{GpuDirtyRangesBenchmark, TileDrawBinsBenchmark};
 
 pub(crate) const SCAN_CHUNK_SIZE: u32 = 256;
 pub(crate) const CUMSUM_CHUNK_SIZE: u32 = 256;
@@ -31,6 +31,7 @@ pub(crate) const COARSE_CHUNK_SIZE: u32 = 256;
 pub(crate) const COARSE_BIN_TILES: u32 = 16;
 pub(crate) const TILE_DRAW_PAGE_WORDS: usize = COARSE_CHUNK_SIZE as usize + 1;
 const TILE_DRAW_FLAT_FLAG: u32 = 1 << 31;
+const RETAINED_TILE_DIRTY_CAPACITY: usize = 1_024;
 pub(crate) const FINE_WORKGROUP_SIZE: u32 = 256;
 pub(crate) const FINE_LOCAL_CLIP_DEPTH: usize = 4;
 pub(crate) const FINE_LOCAL_GROUP_DEPTH: usize = 2;
@@ -963,6 +964,20 @@ impl TileDrawBins {
         )
     }
 
+    /// Returns upload-consumed dirty-list storage so retained updates reuse its capacity.
+    pub(crate) fn recycle_dirty(&mut self, mut records: Vec<usize>, mut pages: Vec<u32>) {
+        debug_assert!(self.dirty_records.is_empty());
+        debug_assert!(self.dirty_pages.is_empty());
+        records.clear();
+        pages.clear();
+        if records.capacity() <= RETAINED_TILE_DIRTY_CAPACITY {
+            self.dirty_records = records;
+        }
+        if pages.capacity() <= RETAINED_TILE_DIRTY_CAPACITY {
+            self.dirty_pages = pages;
+        }
+    }
+
     pub(crate) fn active_page_count(&self) -> usize {
         self.active_pages
     }
@@ -1605,6 +1620,7 @@ pub(crate) struct PersistentPathPlans {
     dirty_scan_ranges: Vec<Range<usize>>,
     dirty_cumsum_chunks: Vec<Range<usize>>,
     dirty_cumsum_rows: Vec<Range<usize>>,
+    arena_dirty_ranges: Vec<Range<usize>>,
 }
 
 impl Default for PersistentPathPlans {
@@ -1622,6 +1638,7 @@ impl Default for PersistentPathPlans {
             dirty_scan_ranges: Vec::new(),
             dirty_cumsum_chunks: Vec::new(),
             dirty_cumsum_rows: Vec::new(),
+            arena_dirty_ranges: Vec::new(),
         }
     }
 }
@@ -1802,18 +1819,21 @@ impl PersistentPathPlans {
     }
 
     fn sync_dirty_outputs(&mut self) {
+        self.scan_chunks
+            .take_dirty_ranges_into(&mut self.arena_dirty_ranges);
         merge_ranges(
             &mut self.dirty_scan_chunks,
-            self.scan_chunks.take_dirty_ranges(),
+            self.arena_dirty_ranges.drain(..),
         );
-        let chunk_ranges = self.cumsum_chunks.take_dirty_ranges();
+        self.cumsum_chunks
+            .take_dirty_ranges_into(&mut self.arena_dirty_ranges);
         self.cumsum_plan
             .chunk_backdrop_offsets
             .resize(self.cumsum_chunks.values().len(), 0);
         self.cumsum_plan
             .chunk_lens
             .resize(self.cumsum_chunks.values().len(), 0);
-        for range in &chunk_ranges {
+        for range in &self.arena_dirty_ranges {
             for (index, chunk) in self.cumsum_chunks.values()[range.clone()]
                 .iter()
                 .enumerate()
@@ -1823,23 +1843,30 @@ impl PersistentPathPlans {
                 self.cumsum_plan.chunk_lens[index] = chunk.len;
             }
         }
-        merge_ranges(&mut self.dirty_cumsum_chunks, chunk_ranges);
+        merge_ranges(
+            &mut self.dirty_cumsum_chunks,
+            self.arena_dirty_ranges.drain(..),
+        );
 
-        let row_ranges = self.cumsum_rows.take_dirty_ranges();
+        self.cumsum_rows
+            .take_dirty_ranges_into(&mut self.arena_dirty_ranges);
         self.cumsum_plan
             .row_chunk_starts
             .resize(self.cumsum_rows.values().len(), 0);
         self.cumsum_plan
             .row_chunk_ends
             .resize(self.cumsum_rows.values().len(), 0);
-        for range in &row_ranges {
+        for range in &self.arena_dirty_ranges {
             for (index, row) in self.cumsum_rows.values()[range.clone()].iter().enumerate() {
                 let index = range.start + index;
                 self.cumsum_plan.row_chunk_starts[index] = row.chunk_start;
                 self.cumsum_plan.row_chunk_ends[index] = row.chunk_end;
             }
         }
-        merge_ranges(&mut self.dirty_cumsum_rows, row_ranges);
+        merge_ranges(
+            &mut self.dirty_cumsum_rows,
+            self.arena_dirty_ranges.drain(..),
+        );
     }
 
     pub(crate) fn counts(&self) -> GpuPathPlanCounts {
@@ -1869,6 +1896,22 @@ impl PersistentPathPlans {
             cumsum_chunks: std::mem::take(&mut self.dirty_cumsum_chunks),
             cumsum_rows: std::mem::take(&mut self.dirty_cumsum_rows),
         }
+    }
+
+    /// Returns upload-consumed range storage so each retained frame keeps its peak capacity.
+    pub(crate) fn recycle_dirty(&mut self, mut dirty: GpuPathPlanDirty) {
+        debug_assert!(self.dirty_scan_chunks.is_empty());
+        debug_assert!(self.dirty_scan_ranges.is_empty());
+        debug_assert!(self.dirty_cumsum_chunks.is_empty());
+        debug_assert!(self.dirty_cumsum_rows.is_empty());
+        dirty.scan_chunks.clear();
+        dirty.scan_ranges.clear();
+        dirty.cumsum_chunks.clear();
+        dirty.cumsum_rows.clear();
+        self.dirty_scan_chunks = dirty.scan_chunks;
+        self.dirty_scan_ranges = dirty.scan_ranges;
+        self.dirty_cumsum_chunks = dirty.cumsum_chunks;
+        self.dirty_cumsum_rows = dirty.cumsum_rows;
     }
 }
 
@@ -1915,7 +1958,7 @@ fn cumsum_for_record(record: &PathRecord) -> (Vec<GpuCumsumChunk>, Vec<u32>) {
     (chunks, rows)
 }
 
-fn merge_ranges(target: &mut Vec<Range<usize>>, ranges: Vec<Range<usize>>) {
+fn merge_ranges(target: &mut Vec<Range<usize>>, ranges: impl IntoIterator<Item = Range<usize>>) {
     for range in ranges {
         merge_range(target, range);
     }
@@ -2064,9 +2107,9 @@ mod tests {
 
     use super::{
         COARSE_CHUNK_SIZE, CUMSUM_CHUNK_SIZE, GpuBufferLengths, GpuLengthOverrides, GpuScanChunk,
-        GpuScanChunkRange, PersistentPathPlans, SCAN_CHUNK_SIZE, TILE_DRAW_PAGE_WORDS,
-        TileDrawBins, build_cumsum_plan, build_scan_chunks, build_tile_draw_bins,
-        build_tile_draw_bins_into,
+        GpuScanChunkRange, PersistentPathPlans, RETAINED_TILE_DIRTY_CAPACITY, SCAN_CHUNK_SIZE,
+        TILE_DRAW_PAGE_WORDS, TileDrawBins, build_cumsum_plan, build_scan_chunks,
+        build_tile_draw_bins, build_tile_draw_bins_into,
     };
     use crate::{Bounds, Canvas, FillRule, RetainedNodeId, canvas::SceneBufferChanges};
 
@@ -2141,6 +2184,68 @@ mod tests {
                 .all(|range| range.start >= first.end as usize)
         );
         assert_eq!(dirty.scan_ranges, Vec::<std::ops::Range<usize>>::new());
+    }
+
+    #[test]
+    fn persistent_path_plan_recycles_all_dirty_range_capacities() {
+        let mut plans = PersistentPathPlans::default();
+        for index in 0..64 {
+            let range = index * 2..index * 2 + 1;
+            plans.dirty_scan_chunks.push(range.clone());
+            plans.dirty_scan_ranges.push(range.clone());
+            plans.dirty_cumsum_chunks.push(range.clone());
+            plans.dirty_cumsum_rows.push(range);
+        }
+        let dirty = plans.take_dirty();
+        let capacities = [
+            dirty.scan_chunks.capacity(),
+            dirty.scan_ranges.capacity(),
+            dirty.cumsum_chunks.capacity(),
+            dirty.cumsum_rows.capacity(),
+        ];
+
+        plans.recycle_dirty(dirty);
+
+        assert_eq!(
+            [
+                plans.dirty_scan_chunks.capacity(),
+                plans.dirty_scan_ranges.capacity(),
+                plans.dirty_cumsum_chunks.capacity(),
+                plans.dirty_cumsum_rows.capacity(),
+            ],
+            capacities
+        );
+    }
+
+    #[test]
+    fn tile_bins_recycle_dirty_record_and_page_capacities() {
+        let mut bins = TileDrawBins::default();
+        bins.dirty_records.extend(0..64);
+        bins.dirty_pages.extend(0..64);
+        let (_, records, pages) = bins.take_dirty();
+        let capacities = (records.capacity(), pages.capacity());
+
+        bins.recycle_dirty(records, pages);
+
+        assert_eq!(
+            (bins.dirty_records.capacity(), bins.dirty_pages.capacity()),
+            capacities
+        );
+    }
+
+    #[test]
+    fn tile_bins_release_oversized_dirty_capacity() {
+        let mut bins = TileDrawBins::default();
+        bins.dirty_records
+            .extend(0..RETAINED_TILE_DIRTY_CAPACITY + 1);
+        bins.dirty_pages
+            .extend((0..RETAINED_TILE_DIRTY_CAPACITY + 1).map(|page| page as u32));
+        let (_, records, pages) = bins.take_dirty();
+
+        bins.recycle_dirty(records, pages);
+
+        assert_eq!(bins.dirty_records.capacity(), 0);
+        assert_eq!(bins.dirty_pages.capacity(), 0);
     }
 
     #[test]

@@ -4,6 +4,11 @@ use std::{
     ops::Range,
 };
 
+#[cfg(feature = "bench-internals")]
+mod benchmark;
+#[cfg(feature = "bench-internals")]
+pub use benchmark::{SceneArenaDirtyBenchmark, SceneArenaFillBenchmark};
+
 const COMPACTION_THRESHOLD: f32 = 0.30;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -51,18 +56,59 @@ impl<T: Copy> SceneArena<T> {
     }
 
     pub(crate) fn insert(&mut self, data: &[T]) -> ArenaAllocation {
+        let (id, allocation) = self.insert_allocation(data.len());
+        self.write_allocation(allocation, data);
+        id
+    }
+
+    /// Inserts an allocation initialized to one repeated value without a temporary `Vec`.
+    ///
+    /// Arena storage is already initialized to the vacant sentinel when it is appended or freed.
+    /// Reusing that storage avoids a second memory pass when `value` is the sentinel, but the
+    /// logical range is still dirtied because GPU scratch writes are not reflected in this CPU
+    /// copy.
+    pub(crate) fn insert_filled(&mut self, len: usize, value: T) -> ArenaAllocation
+    where
+        T: PartialEq,
+    {
+        let (id, allocation) = self.insert_allocation(len);
+        if value == self.vacant {
+            self.mark_dirty(allocation.start..allocation.start + allocation.len);
+        } else {
+            self.fill_allocation(allocation, value);
+        }
+        id
+    }
+
+    fn insert_allocation(&mut self, len: usize) -> (ArenaAllocation, Allocation) {
         let id = ArenaAllocation(self.next_id);
         self.next_id = self.next_id.wrapping_add(1).max(1);
-        let allocation = self.allocate(data.len());
+        let allocation = self.allocate(len);
         self.allocations.insert(id, allocation);
-        self.write_allocation(allocation, data);
-        self.live_len += data.len();
-        id
+        self.live_len += len;
+        (id, allocation)
     }
 
     pub(crate) fn replace(&mut self, id: ArenaAllocation, data: &[T]) -> bool {
         let moved = self.resize(id, data.len());
         self.write(id, data);
+        moved
+    }
+
+    /// Resizes and initializes an allocation in place, avoiding an allocated fill buffer and
+    /// `copy_from_slice` pass. The complete logical range is dirtied even when `value` equals the
+    /// CPU-side contents because GPU consumers may have used the allocation as writable scratch.
+    pub(crate) fn replace_filled(&mut self, id: ArenaAllocation, len: usize, value: T) -> bool
+    where
+        T: PartialEq,
+    {
+        let moved = self.resize(id, len);
+        let allocation = self.allocations[&id];
+        if moved && value == self.vacant {
+            self.mark_dirty(allocation.start..allocation.start + allocation.len);
+        } else {
+            self.fill_allocation(allocation, value);
+        }
         moved
     }
 
@@ -162,28 +208,31 @@ impl<T: Copy> SceneArena<T> {
         self.compactions
     }
 
-    /// return sorted merged dirty ranges
-    pub(crate) fn take_dirty_ranges(&mut self) -> Vec<Range<usize>> {
+    /// Moves sorted, clipped, coalesced dirty ranges into reusable caller storage.
+    ///
+    /// The previous output allocation becomes the arena's next accumulator while the current
+    /// accumulator becomes the output. Rotating those two buffers avoids copying ranges and keeps
+    /// both peak capacities across frames.
+    pub(crate) fn take_dirty_ranges_into(&mut self, merged: &mut Vec<Range<usize>>) {
         let len = self.values.len();
-        let mut dirty = std::mem::take(&mut self.dirty)
-            .into_iter()
-            .filter_map(|range| {
-                let range = range.start.min(len)..range.end.min(len);
-                (!range.is_empty()).then_some(range)
-            })
-            .collect::<Vec<_>>();
-        dirty.sort_unstable_by_key(|range| range.start);
-        let mut merged = Vec::<Range<usize>>::with_capacity(dirty.len());
-        for range in dirty {
-            if let Some(previous) = merged.last_mut()
-                && range.start <= previous.end
-            {
-                previous.end = previous.end.max(range.end);
+        merged.clear();
+        std::mem::swap(&mut self.dirty, merged);
+        merged.sort_unstable_by_key(|range| range.start);
+        let mut output_len = 0;
+        for index in 0..merged.len() {
+            let start = merged[index].start.min(len);
+            let end = merged[index].end.min(len);
+            if start >= end {
+                continue;
+            }
+            if output_len != 0 && start <= merged[output_len - 1].end {
+                merged[output_len - 1].end = merged[output_len - 1].end.max(end);
             } else {
-                merged.push(range);
+                merged[output_len] = start..end;
+                output_len += 1;
             }
         }
-        merged
+        merged.truncate(output_len);
     }
 
     fn allocate(&mut self, len: usize) -> Allocation {
@@ -223,6 +272,14 @@ impl<T: Copy> SceneArena<T> {
             return;
         }
         self.values[allocation.start..allocation.start + data.len()].copy_from_slice(data);
+        self.mark_dirty(allocation.start..allocation.start + allocation.len);
+    }
+
+    fn fill_allocation(&mut self, allocation: Allocation, value: T) {
+        if allocation.len == 0 {
+            return;
+        }
+        self.values[allocation.start..allocation.start + allocation.len].fill(value);
         self.mark_dirty(allocation.start..allocation.start + allocation.len);
     }
 
@@ -310,6 +367,12 @@ impl<T: Copy> SceneArena<T> {
 mod tests {
     use super::*;
 
+    fn take_dirty_ranges<T: Copy>(arena: &mut SceneArena<T>) -> Vec<Range<usize>> {
+        let mut ranges = Vec::new();
+        arena.take_dirty_ranges_into(&mut ranges);
+        ranges
+    }
+
     #[test]
     fn unrelated_allocations_keep_offsets_across_variable_length_updates() {
         let mut arena = SceneArena::new(0u32);
@@ -342,29 +405,134 @@ mod tests {
 
         assert_eq!(arena.range(allocation), 0..2);
         assert_eq!(arena.values(), &[1, 2, 0]);
-        assert_eq!(arena.take_dirty_ranges(), vec![0..3]);
+        assert_eq!(take_dirty_ranges(&mut arena), vec![0..3]);
     }
 
     #[test]
     fn allocation_reports_only_coalesced_logical_dirty_ranges() {
         let mut arena = SceneArena::new(0u32);
         let first = arena.insert(&[1, 2]);
-        let _ = arena.take_dirty_ranges();
+        let _ = take_dirty_ranges(&mut arena);
         arena.replace(first, &[3, 4]);
         arena.replace(first, &[5, 6]);
-        assert_eq!(arena.take_dirty_ranges(), vec![0..2]);
+        assert_eq!(take_dirty_ranges(&mut arena), vec![0..2]);
+    }
+
+    #[test]
+    fn dirty_range_buffers_exchange_capacities() {
+        let mut arena = SceneArena::new(0u8);
+        arena.values.resize(256, 0);
+        for index in 0..64 {
+            arena.mark_dirty(index * 2..index * 2 + 1);
+        }
+        let dirty_capacity = arena.dirty.capacity();
+        let mut ranges = Vec::with_capacity(8);
+        let output_capacity = ranges.capacity();
+
+        arena.take_dirty_ranges_into(&mut ranges);
+
+        assert_eq!(ranges.len(), 64);
+        assert!(arena.dirty.is_empty());
+        assert_eq!(ranges.capacity(), dirty_capacity);
+        assert_eq!(arena.dirty.capacity(), output_capacity);
+    }
+
+    #[test]
+    fn dirty_ranges_into_reuses_output_and_clips_ranges() {
+        let mut arena = SceneArena::new(0u8);
+        arena.values.resize(8, 0);
+        arena.mark_dirty(1..3);
+        arena.mark_dirty(2..6);
+        arena.mark_dirty(7..12);
+        arena.mark_dirty(9..10);
+        let dirty_capacity = arena.dirty.capacity();
+        let mut ranges = Vec::with_capacity(16);
+        let output_capacity = ranges.capacity();
+
+        arena.take_dirty_ranges_into(&mut ranges);
+
+        assert_eq!(ranges, vec![1..6, 7..8]);
+        assert_eq!(ranges.capacity(), dirty_capacity);
+        assert_eq!(arena.dirty.capacity(), output_capacity);
+    }
+
+    #[test]
+    fn filled_insert_initializes_without_exposing_padding() {
+        let mut arena = SceneArena::new(0u8);
+        let allocation = arena.insert_filled(4, 7);
+
+        assert_eq!(&arena.values()[arena.range(allocation)], &[7; 4]);
+        assert_eq!(arena.values(), &[7, 7, 7, 7, 0, 0]);
+        assert_eq!(take_dirty_ranges(&mut arena), vec![0..6]);
+    }
+
+    #[test]
+    fn vacant_insert_reuses_cleared_storage_but_marks_it_dirty_again() {
+        let mut arena = SceneArena::new(0u8);
+        let removed = arena.insert(&[9; 4]);
+        let range = arena.range(removed);
+        let _ = take_dirty_ranges(&mut arena);
+        assert!(arena.remove(removed));
+        let _ = take_dirty_ranges(&mut arena);
+
+        let allocation = arena.insert_filled(4, 0);
+
+        assert_eq!(arena.range(allocation), range);
+        assert_eq!(&arena.values()[range.clone()], &[0; 4]);
+        assert_eq!(take_dirty_ranges(&mut arena), vec![range]);
+    }
+
+    #[test]
+    fn filled_replace_resets_same_length_gpu_scratch() {
+        let mut arena = SceneArena::new(0u8);
+        let allocation = arena.insert(&[9; 4]);
+        let _ = take_dirty_ranges(&mut arena);
+
+        assert!(!arena.replace_filled(allocation, 4, 0));
+
+        assert_eq!(&arena.values()[arena.range(allocation)], &[0; 4]);
+        assert_eq!(take_dirty_ranges(&mut arena), vec![0..4]);
+    }
+
+    #[test]
+    fn filled_replace_initializes_growth_within_existing_capacity() {
+        let mut arena = SceneArena::new(0u8);
+        let allocation = arena.insert(&[9; 4]);
+        assert!(!arena.resize(allocation, 2));
+        arena.write(allocation, &[8; 2]);
+        let _ = take_dirty_ranges(&mut arena);
+
+        assert!(!arena.replace_filled(allocation, 6, 3));
+
+        assert_eq!(&arena.values()[arena.range(allocation)], &[3; 6]);
+        assert_eq!(take_dirty_ranges(&mut arena), vec![0..6]);
+    }
+
+    #[test]
+    fn vacant_replace_uses_initialized_storage_after_compaction_and_move() {
+        let mut arena = SceneArena::new(0u8);
+        let allocation = arena.insert(&[9; 4]);
+        let survivor = arena.insert(&[5; 4]);
+        let _ = take_dirty_ranges(&mut arena);
+
+        assert!(arena.replace_filled(allocation, 10, 0));
+
+        assert_eq!(&arena.values()[arena.range(allocation)], &[0; 10]);
+        assert_eq!(&arena.values()[arena.range(survivor)], &[5; 4]);
+        assert_eq!(arena.compactions(), 1);
+        assert_eq!(take_dirty_ranges(&mut arena), vec![0..19]);
     }
 
     #[test]
     fn mapped_write_transforms_directly_into_the_allocation() {
         let mut arena = SceneArena::new(0u32);
         let allocation = arena.insert(&[0; 3]);
-        let _ = arena.take_dirty_ranges();
+        let _ = take_dirty_ranges(&mut arena);
 
         arena.write_mapped(allocation, &[1u16, 2, 3], |value| u32::from(value) * 4);
 
         assert_eq!(&arena.values()[arena.range(allocation)], &[4, 8, 12]);
-        assert_eq!(arena.take_dirty_ranges(), vec![0..3]);
+        assert_eq!(take_dirty_ranges(&mut arena), vec![0..3]);
     }
 
     #[test]
@@ -403,10 +571,10 @@ mod tests {
         let mut arena = SceneArena::new(0u32);
         let first = arena.insert(&[1, 2]);
         let last = arena.insert(&[3, 4]);
-        let _ = arena.take_dirty_ranges();
+        let _ = take_dirty_ranges(&mut arena);
         arena.remove(last);
 
-        assert_eq!(arena.take_dirty_ranges(), vec![3..6]);
+        assert_eq!(take_dirty_ranges(&mut arena), vec![3..6]);
         assert_eq!(&arena.values()[arena.range(first)], &[1, 2]);
     }
 }

@@ -29,20 +29,35 @@ impl RetainedMaterializerBenchmark {
                 (count + 1, checksum.wrapping_add(tile))
             })
     }
+
+    pub fn visit_node_physical_draws(
+        &self,
+        id: RetainedNodeId,
+        repetitions: usize,
+    ) -> (usize, usize) {
+        let mut result = (0usize, 0usize);
+        for _ in 0..repetitions {
+            for draw in self.materializer.node_physical_draws(id) {
+                result.0 += 1;
+                result.1 = result.1.wrapping_add(draw);
+            }
+        }
+        result
+    }
 }
 
 pub(super) fn sync_arena<T: Copy>(
     dst: &mut Vec<T>,
     arena: &mut SceneArena<T>,
     vacant: T,
-) -> Vec<std::ops::Range<usize>> {
+    ranges: &mut Vec<std::ops::Range<usize>>,
+) {
     dst.resize(arena.values().len(), vacant);
-    let ranges = arena.take_dirty_ranges();
-    for range in &ranges {
+    arena.take_dirty_ranges_into(ranges);
+    for range in ranges.iter() {
         dst[range.clone()].copy_from_slice(&arena.values()[range.clone()]);
     }
     dst.truncate(arena.values().len());
-    ranges
 }
 
 pub(super) fn range_bytes<T>(ranges: &[std::ops::Range<usize>]) -> u64 {
@@ -312,13 +327,23 @@ pub(super) fn inactive_draw() -> DrawRecord {
     }
 }
 
-pub(super) fn is_plain_fragment(canvas: &Canvas) -> bool {
+pub(super) struct ChunkPlanMetadata {
+    pub(super) plain_fragment: bool,
+    pub(super) local_draw_order: LocalDrawOrder,
+}
+
+/// Compiles chunk-local execution metadata once and retains its draw-order allocation.
+pub(super) fn chunk_plan_metadata(canvas: &Canvas) -> ChunkPlanMetadata {
     let plan = canvas.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
-    plan.layer_stack_data.is_empty()
+    let plain_fragment = plan.layer_stack_data.is_empty()
         && plan
             .ops
             .iter()
-            .all(|op| matches!(op, crate::shared::execution::ExecOp::DrawBatch { .. }))
+            .all(|op| matches!(op, crate::shared::execution::ExecOp::DrawBatch { .. }));
+    ChunkPlanMetadata {
+        plain_fragment,
+        local_draw_order: LocalDrawOrder::from_compiled(plan.draw_order),
+    }
 }
 
 pub(super) fn scene_node_placement(node: &SceneNode) -> (Option<Rc<Canvas>>, Option<[u64; 6]>) {

@@ -93,3 +93,53 @@ impl TileDrawBinsBenchmark {
         dirty
     }
 }
+
+/// Exercises dirty-list ownership transfer independently from GPU upload timing.
+#[derive(Default)]
+#[doc(hidden)]
+pub struct GpuDirtyRangesBenchmark {
+    path_plans: PersistentPathPlans,
+    tile_bins: TileDrawBins,
+}
+
+impl GpuDirtyRangesBenchmark {
+    pub fn new() -> Self {
+        Self {
+            path_plans: PersistentPathPlans::default(),
+            tile_bins: TileDrawBins::default(),
+        }
+    }
+
+    pub fn path_plan_cycle(&mut self, count: usize) -> usize {
+        for index in 0..count {
+            let range = index * 2..index * 2 + 1;
+            self.path_plans.dirty_scan_chunks.push(range.clone());
+            self.path_plans.dirty_scan_ranges.push(range.clone());
+            self.path_plans.dirty_cumsum_chunks.push(range.clone());
+            self.path_plans.dirty_cumsum_rows.push(range);
+        }
+        let dirty = self.path_plans.take_dirty();
+        let count = dirty.scan_chunks.len()
+            + dirty.scan_ranges.len()
+            + dirty.cumsum_chunks.len()
+            + dirty.cumsum_rows.len();
+        self.path_plans.recycle_dirty(dirty);
+        count
+    }
+
+    pub fn tile_bin_cycle(&mut self, count: usize) -> usize {
+        for index in 0..count {
+            let value = if count == 0 {
+                0
+            } else {
+                index.wrapping_mul(7_919) % count
+            };
+            self.tile_bins.dirty_records.push(value);
+            self.tile_bins.dirty_pages.push(value as u32);
+        }
+        let (_, records, pages) = self.tile_bins.take_dirty();
+        let count = records.len() + pages.len();
+        self.tile_bins.recycle_dirty(records, pages);
+        count
+    }
+}

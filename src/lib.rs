@@ -36,7 +36,9 @@ pub use retained_scene::{
     RetainedSceneError, RetainedSceneTransaction, SceneVersion,
 };
 #[cfg(feature = "bench-internals")]
-pub use shared::gpu_plan::TileDrawBinsBenchmark;
+pub use shared::gpu_plan::{GpuDirtyRangesBenchmark, TileDrawBinsBenchmark};
+#[cfg(feature = "bench-internals")]
+pub use shared::scene_arena::{SceneArenaDirtyBenchmark, SceneArenaFillBenchmark};
 pub use shared::{
     bounds::Bounds,
     brush::{Brush, PatternBrush, PatternSampling},
@@ -78,6 +80,6 @@ pub use text::{
     TextSubpixelMode,
 };
 #[cfg(feature = "bench-internals")]
-pub use wgpu::DamageTilesBenchmark;
+pub use wgpu::{DamageTilesBenchmark, GlyphCapacityBenchmark, GlyphCapacityBenchmarkCase};
 #[cfg(feature = "bench-internals")]
 pub use wgpu::{FrameDiffBenchmark, FrameDiffBenchmarkCase};

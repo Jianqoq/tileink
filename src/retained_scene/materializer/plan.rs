@@ -2,6 +2,19 @@ use super::helpers::*;
 use super::*;
 
 impl PersistentSceneMaterializer {
+    /// Iterates cached local painter order at the chunk's current physical arena base.
+    ///
+    /// Local order changes only when the chunk execution fingerprint changes. The base is read on
+    /// every call because draw-arena compaction can relocate an otherwise unchanged chunk.
+    pub(crate) fn node_physical_draws(
+        &self,
+        id: RetainedNodeId,
+    ) -> impl ExactSizeIterator<Item = usize> + '_ {
+        let chunk = &self.chunks[&id];
+        let draw_base = self.arenas.draws.range(chunk.draws).start;
+        chunk.local_draw_order.physical(draw_base)
+    }
+
     pub(crate) fn rebuild_commands(&mut self, scene: &RetainedScene) {
         let canvas = Rc::make_mut(&mut self.canvas);
         canvas.compiled_plan = None;
@@ -483,13 +496,15 @@ impl PersistentSceneMaterializer {
             if !matches!(scene.nodes[&node].kind, NodeKind::Scene { .. }) {
                 continue;
             }
-            let physical = self.node_physical_draws(node);
-            let mut batches = physical
-                .iter()
-                .filter_map(|draw| physical_batches.get(draw).copied());
-            if let Some(batch) = batches.next()
-                && batches.all(|candidate| candidate == batch)
-            {
+            let batch = {
+                let mut batches = self
+                    .node_physical_draws(node)
+                    .filter_map(|draw| physical_batches.get(&draw).copied());
+                batches
+                    .next()
+                    .filter(|&batch| batches.all(|candidate| candidate == batch))
+            };
+            if let Some(batch) = batch {
                 self.node_batches.insert(node, batch);
             }
         }
@@ -663,13 +678,15 @@ impl PersistentSceneMaterializer {
             if !matches!(scene.nodes[&node_id].kind, NodeKind::Scene { .. }) {
                 continue;
             }
-            let physical = self.node_physical_draws(node_id);
-            let mut batches = physical
-                .iter()
-                .filter_map(|draw| physical_batches.get(draw).copied());
-            if let Some(batch) = batches.next()
-                && batches.all(|candidate| candidate == batch)
-            {
+            let batch = {
+                let mut batches = self
+                    .node_physical_draws(node_id)
+                    .filter_map(|draw| physical_batches.get(&draw).copied());
+                batches
+                    .next()
+                    .filter(|&batch| batches.all(|candidate| candidate == batch))
+            };
+            if let Some(batch) = batch {
                 self.node_batches.insert(node_id, batch);
             }
         }
@@ -922,13 +939,14 @@ impl PersistentSceneMaterializer {
         batches.resize(draw_capacity, u32::MAX);
         self.node_batches.clear();
         for id in leaves {
-            let physical = self.node_physical_draws(id);
-            let mut ids = physical
-                .iter()
-                .filter_map(|&draw| (batches[draw] != u32::MAX).then_some(batches[draw]));
-            if let Some(batch) = ids.next()
-                && ids.all(|candidate| candidate == batch)
-            {
+            let batch = {
+                let mut ids = self
+                    .node_physical_draws(id)
+                    .filter_map(|draw| (batches[draw] != u32::MAX).then_some(batches[draw]));
+                ids.next()
+                    .filter(|&batch| ids.all(|candidate| candidate == batch))
+            };
+            if let Some(batch) = batch {
                 self.node_batches.insert(id, batch);
             }
         }
@@ -1073,14 +1091,8 @@ impl PersistentSceneMaterializer {
         batches: &mut [u32],
         batch_counts: &mut Vec<u32>,
     ) -> bool {
-        let chunk = &self.chunks[&id];
-        let draw_base = self.arenas.draws.range(chunk.draws).start;
-        let plan = chunk
-            .canvas
-            .compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
         let mut changed = false;
-        for (local_order, local_draw) in plan.draw_order.iter().copied().enumerate() {
-            let physical = draw_base + local_draw as usize;
+        for (local_order, physical) in self.node_physical_draws(id).enumerate() {
             let key = PainterKey {
                 path: base.clone(),
                 local: local_order as u32,

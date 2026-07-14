@@ -203,75 +203,115 @@ impl PersistentSceneMaterializer {
             1.0 - arena_live_bytes as f32 / arena_capacity_bytes as f32
         };
         let arena_compactions = self.arena_compactions();
+        let mut changes = std::mem::take(&mut self.buffer_changes_scratch);
         let canvas = Rc::make_mut(&mut self.canvas);
-        let lines = sync_arena(&mut canvas.lines, &mut self.arenas.lines, Line::default());
-        let paths = sync_arena(
+        sync_arena(
+            &mut canvas.lines,
+            &mut self.arenas.lines,
+            Line::default(),
+            &mut changes.lines,
+        );
+        sync_arena(
             &mut canvas.path_records,
             &mut self.arenas.paths,
             PathRecord::default(),
+            &mut changes.paths,
         );
-        let draws = sync_arena(
+        sync_arena(
             &mut canvas.draw_records,
             &mut self.arenas.draws,
             inactive_draw(),
+            &mut changes.draws,
         );
-        let brushes = sync_arena(&mut canvas.brush_blob, &mut self.arenas.brushes, 0);
-        let sdfs = sync_arena(&mut canvas.sdf_blob, &mut self.arenas.sdfs, 0);
-        let shadows = sync_arena(&mut canvas.sdf_shadow_blob, &mut self.arenas.shadows, 0);
-        let glyphs = if let Some(glyphs) = &mut self.arenas.glyphs {
+        sync_arena(
+            &mut canvas.brush_blob,
+            &mut self.arenas.brushes,
+            0,
+            &mut changes.brushes,
+        );
+        sync_arena(
+            &mut canvas.sdf_blob,
+            &mut self.arenas.sdfs,
+            0,
+            &mut changes.sdfs,
+        );
+        sync_arena(
+            &mut canvas.sdf_shadow_blob,
+            &mut self.arenas.shadows,
+            0,
+            &mut changes.shadows,
+        );
+        if let Some(glyphs) = &mut self.arenas.glyphs {
             let vacant = glyphs
                 .values()
                 .first()
                 .copied()
                 .expect("glyph arena is initialized by a glyph");
-            sync_arena(&mut canvas.text_glyphs, glyphs, vacant)
+            sync_arena(&mut canvas.text_glyphs, glyphs, vacant, &mut changes.glyphs);
         } else {
             canvas.text_glyphs.clear();
-            Vec::new()
-        };
-        let text_runs = sync_arena(
+            changes.glyphs.clear();
+        }
+        sync_arena(
             &mut canvas.text_runs,
             &mut self.arenas.runs,
             TextRun {
                 glyph_start: 0,
                 glyph_count: 0,
             },
+            &mut changes.text_runs,
         );
         canvas.path_cnt = self.arenas.paths.values().len() as u32;
         canvas.backdrop_pool_capacity = self.arenas.backdrops.values().len() as u32;
         canvas.tile_cnt = self.arenas.segments.values().len() as u32;
-        let cpu_copied_bytes = range_bytes::<Line>(&lines)
-            + range_bytes::<PathRecord>(&paths)
-            + range_bytes::<DrawRecord>(&draws)
-            + range_bytes::<u32>(&brushes)
-            + range_bytes::<u32>(&sdfs)
-            + range_bytes::<u32>(&shadows)
-            + range_bytes::<CanvasGlyph>(&glyphs)
-            + range_bytes::<TextRun>(&text_runs);
-        canvas.buffer_changes = Some(SceneBufferChanges {
-            lines,
-            paths,
-            draws,
-            brushes,
-            sdfs,
-            shadows,
-            glyphs,
-            text_runs,
-            chunks_rebuilt,
-            plan_fragments_rebuilt: 0,
-            full_scene_sync,
-            surface_changed: false,
-            cpu_copied_bytes,
-            painter: Vec::new(),
-            plan_structure_reused: false,
-            plan_values_patched: false,
-            plan_layer_stack: Vec::new(),
-            filter_resources_changed: false,
-            arena_live_bytes,
-            arena_capacity_bytes,
-            arena_fragmentation,
-            arena_compactions,
-        });
+        changes.cpu_copied_bytes = range_bytes::<Line>(&changes.lines)
+            + range_bytes::<PathRecord>(&changes.paths)
+            + range_bytes::<DrawRecord>(&changes.draws)
+            + range_bytes::<u32>(&changes.brushes)
+            + range_bytes::<u32>(&changes.sdfs)
+            + range_bytes::<u32>(&changes.shadows)
+            + range_bytes::<CanvasGlyph>(&changes.glyphs)
+            + range_bytes::<TextRun>(&changes.text_runs);
+        changes.chunks_rebuilt = chunks_rebuilt;
+        changes.plan_fragments_rebuilt = 0;
+        changes.full_scene_sync = full_scene_sync;
+        changes.surface_changed = false;
+        changes.painter.clear();
+        changes.plan_structure_reused = false;
+        changes.plan_values_patched = false;
+        changes.plan_layer_stack.clear();
+        changes.filter_resources_changed = false;
+        changes.arena_live_bytes = arena_live_bytes;
+        changes.arena_capacity_bytes = arena_capacity_bytes;
+        changes.arena_fragmentation = arena_fragmentation;
+        changes.arena_compactions = arena_compactions;
+        canvas.buffer_changes = Some(changes);
+    }
+
+    /// Reclaims range-vector allocations from the previous published frame. Only capacities are
+    /// retained; all change values and scalar flags are rebuilt for the current update.
+    pub(crate) fn recycle_buffer_change_capacity(&mut self) {
+        let Some(mut previous) = Rc::make_mut(&mut self.canvas).buffer_changes.take() else {
+            return;
+        };
+        macro_rules! retain_larger {
+            ($field:ident) => {{
+                previous.$field.clear();
+                if previous.$field.capacity() > self.buffer_changes_scratch.$field.capacity() {
+                    self.buffer_changes_scratch.$field = previous.$field;
+                }
+            }};
+        }
+        retain_larger!(lines);
+        retain_larger!(paths);
+        retain_larger!(draws);
+        retain_larger!(brushes);
+        retain_larger!(sdfs);
+        retain_larger!(shadows);
+        retain_larger!(glyphs);
+        retain_larger!(text_runs);
+        retain_larger!(painter);
+        retain_larger!(plan_layer_stack);
     }
 
     pub(crate) fn arena_usage(&self) -> (u64, u64) {

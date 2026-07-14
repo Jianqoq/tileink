@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use crate::{
     canvas::{Canvas, SceneBufferChanges},
     shared::{
+        dense_set::DenseIndexSet,
         draw_record::DrawRecord,
         execution::{ExecPlan, LayerStackEntry},
         gpu_brush::GpuBrushUpload,
@@ -34,6 +35,11 @@ use super::{
     WgpuCoarseBuffers, WgpuSceneBuffers, create_image_resource_atlas_texture,
     create_image_resource_atlas_view, create_image_resource_texture,
 };
+
+#[cfg(feature = "bench-internals")]
+mod benchmark;
+#[cfg(feature = "bench-internals")]
+pub use benchmark::{GlyphCapacityBenchmark, GlyphCapacityBenchmarkCase};
 
 #[derive(Default)]
 pub(crate) struct WgpuSceneUploadStaging {
@@ -244,6 +250,7 @@ struct GlyphCapacityCache {
     run_draws: Vec<HashSet<usize>>,
     run_glyph_ranges: Vec<std::ops::Range<usize>>,
     glyph_runs: Vec<u32>,
+    affected_draws: DenseIndexSet,
     total: usize,
     tiles_size: (u32, u32),
     atlas_signature: AtlasSignature,
@@ -320,18 +327,22 @@ impl GlyphCapacityCache {
         text: &PreparedTextData,
         changes: &SceneBufferChanges,
     ) {
-        let mut affected = HashSet::new();
+        let old_draw_len = self.draw_runs.len();
+        self.affected_draws
+            .begin(old_draw_len.max(canvas.draw_records.len()));
 
         if canvas.text_glyphs.len() < self.glyph_runs.len() {
             for &run in &self.glyph_runs[canvas.text_glyphs.len()..] {
-                self.add_run_draws(run, &mut affected);
+                add_run_draws(&self.run_draws, run, &mut self.affected_draws);
             }
         }
         self.glyph_runs.resize(canvas.text_glyphs.len(), u32::MAX);
 
         if canvas.text_runs.len() < self.run_glyph_ranges.len() {
             for run in canvas.text_runs.len()..self.run_glyph_ranges.len() {
-                affected.extend(self.run_draws[run].iter().copied());
+                for &draw in &self.run_draws[run] {
+                    self.affected_draws.insert(draw);
+                }
                 let range = self.run_glyph_ranges[run].clone();
                 for glyph in
                     range.start.min(self.glyph_runs.len())..range.end.min(self.glyph_runs.len())
@@ -348,9 +359,10 @@ impl GlyphCapacityCache {
             .resize_with(canvas.text_runs.len(), HashSet::new);
         self.run_glyph_ranges.resize(canvas.text_runs.len(), 0..0);
 
-        let changed_runs = indices_from_ranges(&changes.text_runs, canvas.text_runs.len());
-        for run in changed_runs {
-            affected.extend(self.run_draws[run].iter().copied());
+        for run in indices_from_ranges(&changes.text_runs, canvas.text_runs.len()) {
+            for &draw in &self.run_draws[run] {
+                self.affected_draws.insert(draw);
+            }
             let old = self.run_glyph_ranges[run].clone();
             for glyph in old.start.min(self.glyph_runs.len())..old.end.min(self.glyph_runs.len()) {
                 if self.glyph_runs[glyph] == run as u32 {
@@ -372,15 +384,13 @@ impl GlyphCapacityCache {
                 }
             }
         }
-        let old_draw_len = self.draw_runs.len();
         self.draw_runs.resize(canvas.draw_records.len(), None);
         self.capacities.resize(canvas.draw_records.len(), 0);
-        let mut changed_draws = indices_from_ranges(&changes.draws, canvas.draw_records.len());
-        changed_draws.extend(old_draw_len..canvas.draw_records.len());
-        changed_draws.sort_unstable();
-        changed_draws.dedup();
+        let changed_draws = indices_from_ranges(&changes.draws, canvas.draw_records.len())
+            .filter(|&draw| draw < old_draw_len)
+            .chain(old_draw_len..canvas.draw_records.len());
         for draw in changed_draws {
-            affected.insert(draw);
+            self.affected_draws.insert(draw);
             if let Some(run) = self.draw_runs[draw]
                 && let Some(draws) = self.run_draws.get_mut(run as usize)
             {
@@ -394,9 +404,14 @@ impl GlyphCapacityCache {
         }
 
         for glyph in indices_from_ranges(&changes.glyphs, canvas.text_glyphs.len()) {
-            self.add_run_draws(self.glyph_runs[glyph], &mut affected);
+            add_run_draws(
+                &self.run_draws,
+                self.glyph_runs[glyph],
+                &mut self.affected_draws,
+            );
         }
-        for draw in affected {
+        for index in 0..self.affected_draws.len() {
+            let draw = self.affected_draws.get(index);
             if draw >= canvas.draw_records.len() {
                 continue;
             }
@@ -405,10 +420,12 @@ impl GlyphCapacityCache {
             self.total += self.capacities[draw];
         }
     }
+}
 
-    fn add_run_draws(&self, run: u32, draws: &mut HashSet<usize>) {
-        if let Some(run_draws) = self.run_draws.get(run as usize) {
-            draws.extend(run_draws.iter().copied());
+fn add_run_draws(run_draws: &[HashSet<usize>], run: u32, affected: &mut DenseIndexSet) {
+    if let Some(run_draws) = run_draws.get(run as usize) {
+        for &draw in run_draws {
+            affected.insert(draw);
         }
     }
 }
@@ -419,14 +436,14 @@ fn run_glyph_range(run: crate::text::TextRun, glyph_len: usize) -> std::ops::Ran
     start..end
 }
 
-fn indices_from_ranges(ranges: &[std::ops::Range<usize>], len: usize) -> Vec<usize> {
-    let mut indices = ranges
+fn indices_from_ranges(
+    ranges: &[std::ops::Range<usize>],
+    len: usize,
+) -> impl Iterator<Item = usize> + '_ {
+    debug_assert!(ranges.windows(2).all(|pair| pair[0].end < pair[1].start));
+    ranges
         .iter()
-        .flat_map(|range| range.start.min(len)..range.end.min(len))
-        .collect::<Vec<_>>();
-    indices.sort_unstable();
-    indices.dedup();
-    indices
+        .flat_map(move |range| range.start.min(len)..range.end.min(len))
 }
 
 #[derive(Default)]
@@ -1015,6 +1032,7 @@ impl WgpuSceneBuffers {
         uploaded += profile_cpu("prepare.upload_scene.upload_cumsum_plan", || {
             self.upload_cumsum_plan(device, queue, staging.path_plans.cumsum_plan(), &path_dirty)
         });
+        staging.path_plans.recycle_dirty(path_dirty);
         self.range_scatter.submit(queue);
         uploaded
     }
@@ -1513,7 +1531,7 @@ impl WgpuCoarseBuffers {
             profile_cpu(
                 "prepare.coarse_buffers.upload_tile_draw_bins.records",
                 || {
-                    for tiles in contiguous_index_runs(dirty_records) {
+                    for tiles in contiguous_index_runs(dirty_records.iter().copied()) {
                         let words: &[u32] = bytemuck::cast_slice(&bins.records[tiles.clone()]);
                         let source = self.tile_bin_staging_words.len();
                         self.tile_bin_staging_words.extend_from_slice(words);
@@ -1563,17 +1581,158 @@ impl WgpuCoarseBuffers {
         } else {
             dirty_pages.len()
         };
-        (rewritten, bins.compactions())
+        let compactions = bins.compactions();
+        staging
+            .tile_draw_bins
+            .recycle_dirty(dirty_records, dirty_pages);
+        (rewritten, compactions)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        WORK_CAPACITY_SHRINK_DELAY, changed_ranges, contiguous_index_runs,
-        grow_image_resource_atlas_capacity, grow_paint_layout, merge_sorted_dirty_ranges,
-        stable_work_capacity,
+        GlyphCapacityCache, WORK_CAPACITY_SHRINK_DELAY, changed_ranges, contiguous_index_runs,
+        grow_image_resource_atlas_capacity, grow_paint_layout, indices_from_ranges,
+        merge_sorted_dirty_ranges, stable_work_capacity,
     };
+    use crate::{
+        TextContext,
+        canvas::{Canvas, SceneBufferChanges},
+        shared::{
+            affine::GpuAffine,
+            bounds::PixelBounds,
+            draw_record::{DrawRecord, DrawTag, FillRuleWord},
+        },
+        text::{CanvasGlyph, PreparedTextData, TextRun},
+    };
+    use cosmic_text::{CacheKey, CacheKeyFlags, FontSystem};
+
+    fn glyph_draw(run: u32) -> DrawRecord {
+        DrawRecord {
+            path_id: DrawRecord::NONE,
+            glyph_run_id: run,
+            sdf_offset: DrawRecord::NONE,
+            sdf_len: 0,
+            sdf_shadow_offset: DrawRecord::NONE,
+            sdf_shadow_len: 0,
+            brush_offset: DrawRecord::NONE,
+            brush_len: 0,
+            tag: DrawTag::Brush.into(),
+            fill_rule: FillRuleWord::default(),
+            pixel_bounds: PixelBounds {
+                x0: 0,
+                y0: 0,
+                x1: 16,
+                y1: 16,
+            },
+            local_pixel_bounds: PixelBounds {
+                x0: 0,
+                y0: 0,
+                x1: 16,
+                y1: 16,
+            },
+            solid_rect: 0,
+            transform: GpuAffine::IDENTITY,
+            inverse_transform: GpuAffine::IDENTITY,
+        }
+    }
+
+    fn glyph_capacity_fixture() -> (GlyphCapacityCache, Canvas, PreparedTextData) {
+        let mut canvas = Canvas::new(64, 64, 1.0);
+        canvas.text_runs = vec![
+            TextRun {
+                glyph_start: 0,
+                glyph_count: 2,
+            },
+            TextRun {
+                glyph_start: 2,
+                glyph_count: 2,
+            },
+        ];
+        let (cache_key, x, y) = CacheKey::new(
+            fontdb::ID::dummy(),
+            0,
+            16.0,
+            (0.0, 0.0),
+            fontdb::Weight::NORMAL,
+            CacheKeyFlags::empty(),
+        );
+        canvas.text_glyphs = vec![CanvasGlyph { cache_key, x, y }; 4];
+        canvas.draw_records = vec![glyph_draw(0), glyph_draw(0), glyph_draw(1)];
+        let mut font_system = FontSystem::new();
+        let mut context = TextContext::new();
+        let text = PreparedTextData::new(&[], &[], &mut font_system, &mut context);
+        let mut cache = GlyphCapacityCache::default();
+        cache.rebuild(&canvas, &text);
+        (cache, canvas, text)
+    }
+
+    #[test]
+    fn changed_glyphs_collect_each_dependent_draw_once() {
+        let (mut cache, canvas, text) = glyph_capacity_fixture();
+        cache.update_incremental(
+            &canvas,
+            &text,
+            &SceneBufferChanges {
+                glyphs: std::iter::once(0..2).collect(),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(cache.affected_draws.len(), 2);
+        assert!(cache.affected_draws.contains(0));
+        assert!(cache.affected_draws.contains(1));
+    }
+
+    #[test]
+    fn changed_draw_rebinds_future_glyph_damage_to_its_new_run() {
+        let (mut cache, mut canvas, text) = glyph_capacity_fixture();
+        canvas.draw_records[0].glyph_run_id = 1;
+        cache.update_incremental(
+            &canvas,
+            &text,
+            &SceneBufferChanges {
+                draws: std::iter::once(0..1).collect(),
+                ..Default::default()
+            },
+        );
+        cache.update_incremental(
+            &canvas,
+            &text,
+            &SceneBufferChanges {
+                glyphs: std::iter::once(0..2).collect(),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(cache.affected_draws.len(), 1);
+        assert!(!cache.affected_draws.contains(0));
+        assert!(cache.affected_draws.contains(1));
+    }
+
+    #[test]
+    fn shrinking_text_state_removes_stale_run_and_draw_membership() {
+        let (mut cache, mut canvas, text) = glyph_capacity_fixture();
+        canvas.text_glyphs.truncate(2);
+        canvas.text_runs.truncate(1);
+        canvas.draw_records.truncate(2);
+
+        cache.update_incremental(&canvas, &text, &SceneBufferChanges::default());
+
+        assert_eq!(cache.glyph_runs.len(), 2);
+        assert_eq!(cache.run_draws.len(), 1);
+        assert_eq!(cache.draw_runs.len(), 2);
+        assert!(cache.run_draws[0].iter().all(|&draw| draw < 2));
+    }
+
+    #[test]
+    fn sorted_change_ranges_are_traversed_without_materializing_indices() {
+        assert_eq!(
+            indices_from_ranges(&[1..3, 5..10], 7).collect::<Vec<_>>(),
+            [1, 2, 5, 6]
+        );
+    }
 
     #[test]
     fn contiguous_dirty_indices_are_coalesced_without_bridging_gaps() {

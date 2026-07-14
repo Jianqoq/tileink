@@ -15,6 +15,8 @@ pub(crate) use bindings::{
     WgpuImageResourceBindings, WgpuScanBindings, WgpuTileFineBindings,
 };
 pub(crate) use upload::WgpuSceneUploadStaging;
+#[cfg(feature = "bench-internals")]
+pub use upload::{GlyphCapacityBenchmark, GlyphCapacityBenchmarkCase};
 pub(crate) use work_buffers::{WgpuCoarseBindGroups, WgpuCoarseBuffers, WgpuScanBuffers};
 static NEXT_SCENE_BUFFERS_ID: AtomicU64 = AtomicU64::new(1);
 

@@ -83,6 +83,26 @@ harness = false
 required-features = ["bench-internals"]
 
 [[bench]]
+name = "node_draw_order"
+harness = false
+required-features = ["bench-internals"]
+
+[[bench]]
+name = "glyph_capacity"
+harness = false
+required-features = ["bench-internals"]
+
+[[bench]]
+name = "arena_fill"
+harness = false
+required-features = ["bench-internals"]
+
+[[bench]]
+name = "dirty_ranges"
+harness = false
+required-features = ["bench-internals"]
+
+[[bench]]
 name = "range_scatter"
 harness = false
 

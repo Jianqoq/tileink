@@ -15,6 +15,7 @@ impl PersistentSceneMaterializer {
             canvas: Rc::clone(&canvas),
             chunks: HashMap::default(),
             arenas: MaterializedArenas::default(),
+            buffer_changes_scratch: SceneBufferChanges::default(),
             plan_cache_key: next_plan_cache_key(),
             scene_command_locations: HashMap::default(),
             layer_command_locations: HashMap::default(),
@@ -75,6 +76,7 @@ impl PersistentSceneMaterializer {
         if self.version == scene.version {
             return false;
         }
+        self.recycle_buffer_change_capacity();
         let (mut changes, journal_gap) = match changes {
             Some(changes) => (changes, false),
             None => (self.reconcile_scene_metadata(scene), true),
@@ -1034,7 +1036,9 @@ impl PersistentSceneMaterializer {
                     chunk.generation = node.generation;
                     chunk.transform_bits = transform_bits;
                     if old_plan != new_plan {
-                        chunk.plain_fragment = is_plain_fragment(&chunk.canvas);
+                        let metadata = chunk_plan_metadata(&chunk.canvas);
+                        chunk.plain_fragment = metadata.plain_fragment;
+                        chunk.local_draw_order = metadata.local_draw_order;
                     }
                     chunk.plan_fingerprint = new_plan;
                     if !chunk.backdrop_dependencies.is_empty() {
@@ -1085,21 +1089,25 @@ impl PersistentSceneMaterializer {
                     moved |= arenas.runs.resize(chunk.runs.unwrap(), new_lengths.runs);
                 }
                 if old_lengths.backdrops != 0 || new_lengths.backdrops != 0 {
-                    moved |= arenas
-                        .backdrops
-                        .replace(chunk.backdrops, &vec![0; new_lengths.backdrops]);
+                    moved |=
+                        arenas
+                            .backdrops
+                            .replace_filled(chunk.backdrops, new_lengths.backdrops, 0);
                 }
                 if old_lengths.segments != 0 || new_lengths.segments != 0 {
-                    moved |= arenas
-                        .segments
-                        .replace(chunk.segments, &vec![0; new_lengths.segments]);
+                    moved |=
+                        arenas
+                            .segments
+                            .replace_filled(chunk.segments, new_lengths.segments, 0);
                 }
                 chunk.instance = node.instance;
                 chunk.generation = node.generation;
                 chunk.source_canvas = source_canvas.clone();
                 chunk.transform_bits = transform_bits;
                 if old_plan != new_plan {
-                    chunk.plain_fragment = is_plain_fragment(&chunk.canvas);
+                    let metadata = chunk_plan_metadata(&chunk.canvas);
+                    chunk.plain_fragment = metadata.plain_fragment;
+                    chunk.local_draw_order = metadata.local_draw_order;
                 }
                 chunk.plan_fingerprint = new_plan;
                 chunk.backdrop_dependencies = backdrop_dependencies(&chunk.canvas);
@@ -1124,6 +1132,7 @@ impl PersistentSceneMaterializer {
         let encoded = Self::encode_node(scene, node);
         let glyphs = Self::insert_glyphs(&mut self.arenas, &encoded.text_glyphs);
         let plan_fingerprint = encoded.execution_plan_fingerprint();
+        let plan_metadata = chunk_plan_metadata(&encoded);
         let chunk = SceneChunk {
             instance: node.instance,
             generation: node.generation,
@@ -1140,13 +1149,14 @@ impl PersistentSceneMaterializer {
             backdrops: self
                 .arenas
                 .backdrops
-                .insert(&vec![0; encoded.backdrop_pool_capacity as usize]),
+                .insert_filled(encoded.backdrop_pool_capacity as usize, 0),
             segments: self
                 .arenas
                 .segments
-                .insert(&vec![0; encoded.tile_cnt as usize]),
+                .insert_filled(encoded.tile_cnt as usize, 0),
             plan_fingerprint,
-            plain_fragment: is_plain_fragment(&encoded),
+            plain_fragment: plan_metadata.plain_fragment,
+            local_draw_order: plan_metadata.local_draw_order,
             backdrop_dependencies: backdrop_dependencies(&encoded),
             canvas: encoded,
         };

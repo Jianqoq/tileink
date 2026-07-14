@@ -18,6 +18,8 @@ mod scan;
 mod target;
 
 #[cfg(feature = "bench-internals")]
+pub use canvas::{GlyphCapacityBenchmark, GlyphCapacityBenchmarkCase};
+#[cfg(feature = "bench-internals")]
 pub use damage_tiles::DamageTilesBenchmark;
 pub use incremental::{
     CoarseBinningMode, FullRedrawReason, IncrementalOutputMode, IncrementalRenderConfig,

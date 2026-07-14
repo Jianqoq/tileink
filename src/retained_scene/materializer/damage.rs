@@ -2,19 +2,6 @@ use super::helpers::*;
 use super::*;
 
 impl PersistentSceneMaterializer {
-    pub(crate) fn node_physical_draws(&self, id: RetainedNodeId) -> Vec<usize> {
-        let chunk = &self.chunks[&id];
-        let draw_base = self.arenas.draws.range(chunk.draws).start;
-        chunk
-            .canvas
-            .compile(crate::shared::execution::ROOT_COMMAND_LIST_ID)
-            .draw_order
-            .iter()
-            .copied()
-            .map(|draw| draw_base + draw as usize)
-            .collect()
-    }
-
     pub(crate) fn influenced_bounds(
         &self,
         scene: &RetainedScene,
