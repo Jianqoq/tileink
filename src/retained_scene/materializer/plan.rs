@@ -993,6 +993,11 @@ impl PersistentSceneMaterializer {
 
     pub(crate) fn update_painter_metadata(&mut self, changed: &HashSet<RetainedNodeId>) {
         let draw_capacity = self.arenas.draws.values().len();
+        let compiled_batches = self
+            .canvas
+            .compiled_plan
+            .as_ref()
+            .map(|plan| plan.draw_batch_ids.clone());
         let canvas = Rc::make_mut(&mut self.canvas);
         let mut keys = canvas
             .painter_keys
@@ -1038,14 +1043,29 @@ impl PersistentSceneMaterializer {
                 )
             };
             let batch = self.node_batches.get(&id).copied();
-            if self.write_node_painter_metadata(
+            let mut metadata_changed = self.write_node_painter_metadata(
                 id,
                 base,
                 batch,
                 &mut keys,
                 &mut batches,
                 &mut batch_counts,
-            ) {
+            );
+            if batch.is_none()
+                && let Some(compiled_batches) = &compiled_batches
+            {
+                // Layered leaves can span several batches and therefore have no single
+                // `node_batches` entry. A same-shape canvas replacement reuses the compiled
+                // plan, so restore its per-draw membership after dirty draw slots were cleared.
+                // Otherwise hover paint updates leave the rect/shadow draws inactive while the
+                // offscreen filter operation remains visible.
+                for physical in self.node_physical_draws(id) {
+                    let compiled = compiled_batches.get(physical).copied().unwrap_or(u32::MAX);
+                    metadata_changed |=
+                        set_stable_batch(&mut batches, &mut batch_counts, physical, compiled);
+                }
+            }
+            if metadata_changed {
                 dirty.push(self.arenas.draws.range(self.chunks[&id].draws));
             }
             let canvas = Rc::make_mut(&mut self.canvas);

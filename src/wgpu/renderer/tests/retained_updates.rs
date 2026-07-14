@@ -579,6 +579,92 @@ fn persistent_move_preserves_backdrop_children_and_shadow() {
 }
 
 #[test]
+fn persistent_paint_replacement_preserves_layered_draw_batch_membership() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let root = RetainedNodeId::for_owner(50_006);
+    let background_id = RetainedNodeId::for_owner(50_007);
+    let card_id = RetainedNodeId::for_owner(50_008);
+    let mut background = Canvas::new(96, 48, 1.0);
+    background.push_rect(
+        Rect::new(0.0, 0.0, 96.0, 48.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(35, 90, 180),
+    );
+    let card = |tint, border| {
+        let bounds = Rect::new(0.0, 0.0, 32.0, 24.0);
+        let mut canvas = Canvas::new(32, 32, 1.0);
+        canvas.push_rect_shadow(
+            bounds,
+            crate::Radius::all(6.0),
+            crate::RectShadowOptions::new(0.0, 3.0, 3.0, 0.8),
+            Color::BLACK,
+        );
+        canvas.push_backdrop_layer(
+            Filter::RectLiquidGlass(RectLiquidGlass {
+                blur_radius: 3,
+                tint: Color::from_rgba8(255, 255, 255, 32),
+                ..Default::default()
+            }),
+            Region::rect(bounds, crate::Radius::all(6.0)),
+        );
+        canvas.push_rect(bounds, crate::Radius::all(6.0), tint);
+        canvas.push_rect_stroke_widths(
+            bounds,
+            crate::Radius::all(6.0),
+            crate::StrokeWidths::all(1.0),
+            border,
+        );
+        canvas.pop_layer();
+        std::rc::Rc::new(canvas)
+    };
+    let mut scene = RetainedScene::new(96, 48, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            background_id,
+            std::rc::Rc::new(background),
+            Affine::IDENTITY,
+        )
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            card_id,
+            card(
+                Color::from_rgba8(255, 255, 255, 24),
+                Color::from_rgba8(255, 255, 255, 96),
+            ),
+            Affine::translate((32.0, 8.0)),
+        )
+        .commit()
+        .unwrap();
+
+    let mut incremental = new_test_renderer(96, 48, Color::TRANSPARENT);
+    incremental.render_retained(&scene);
+    scene
+        .transaction()
+        .replace_scene(
+            card_id,
+            card(
+                Color::from_rgba8(255, 255, 255, 40),
+                Color::from_rgba8(255, 255, 255, 220),
+            ),
+        )
+        .commit()
+        .unwrap();
+    incremental.render_retained(&scene);
+    assert!(incremental.incremental_render_stats().reused_compiled_plan);
+
+    let mut full = new_test_renderer(96, 48, Color::TRANSPARENT);
+    full.render_retained(&scene);
+    assert_eq!(incremental.image().pixels, full.image().pixels);
+}
+
+#[test]
 fn persistent_filter_manual_invalidation_skips_command_tree_propagation() {
     if !run_wgpu_tests() {
         return;
