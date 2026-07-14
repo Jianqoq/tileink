@@ -12,6 +12,8 @@ use crate::{
     },
 };
 
+use super::damage_tiles::DamageTiles;
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum IncrementalRenderMode {
     #[default]
@@ -176,190 +178,6 @@ pub struct IncrementalRenderStats {
     pub arena_capacity_bytes: u64,
     pub arena_fragmentation: f32,
     pub arena_compactions: u64,
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct DamageTiles {
-    tiles_width: u32,
-    tiles_height: u32,
-    bits: Vec<u64>,
-    list: Vec<u32>,
-}
-
-impl DamageTiles {
-    pub(crate) fn new(size: (u32, u32)) -> Self {
-        let tiles_width = size.0.div_ceil(TILE_SIZE);
-        let tiles_height = size.1.div_ceil(TILE_SIZE);
-        let tile_count = tiles_width.saturating_mul(tiles_height);
-        Self {
-            tiles_width,
-            tiles_height,
-            bits: vec![0; tile_count.div_ceil(64) as usize],
-            list: Vec::new(),
-        }
-    }
-
-    pub(crate) fn full(size: (u32, u32)) -> Self {
-        let mut damage = Self::new(size);
-        let count = damage.total_tiles();
-        damage.list.extend(0..count);
-        for tile in 0..count {
-            damage.bits[tile as usize / 64] |= 1 << (tile % 64);
-        }
-        damage
-    }
-
-    pub(crate) fn add_bounds(&mut self, bounds: Bounds) {
-        let canvas = Bounds::canvas(
-            self.tiles_width.saturating_mul(TILE_SIZE),
-            self.tiles_height.saturating_mul(TILE_SIZE),
-        );
-        let bounds = bounds.intersect(canvas);
-        if bounds.is_empty() {
-            return;
-        }
-        let x0 = bounds.x0.max(0) as u32 / TILE_SIZE;
-        let y0 = bounds.y0.max(0) as u32 / TILE_SIZE;
-        let x1 = (bounds.x1.max(0) as u32)
-            .div_ceil(TILE_SIZE)
-            .min(self.tiles_width);
-        let y1 = (bounds.y1.max(0) as u32)
-            .div_ceil(TILE_SIZE)
-            .min(self.tiles_height);
-        for y in y0..y1 {
-            for x in x0..x1 {
-                let tile = y * self.tiles_width + x;
-                let word = &mut self.bits[tile as usize / 64];
-                let mask = 1 << (tile % 64);
-                if *word & mask == 0 {
-                    *word |= mask;
-                    self.list.push(tile);
-                }
-            }
-        }
-    }
-
-    pub(crate) fn contains(&self, tile: u32) -> bool {
-        self.bits
-            .get(tile as usize / 64)
-            .is_some_and(|word| *word & (1 << (tile % 64)) != 0)
-    }
-
-    pub(crate) fn intersects_bounds(&self, bounds: Bounds) -> bool {
-        if bounds.is_empty() {
-            return false;
-        }
-        let x0 = bounds.x0.max(0) as u32 / TILE_SIZE;
-        let y0 = bounds.y0.max(0) as u32 / TILE_SIZE;
-        let x1 = (bounds.x1.max(0) as u32)
-            .div_ceil(TILE_SIZE)
-            .min(self.tiles_width);
-        let y1 = (bounds.y1.max(0) as u32)
-            .div_ceil(TILE_SIZE)
-            .min(self.tiles_height);
-        (y0..y1).any(|y| (x0..x1).any(|x| self.contains(y * self.tiles_width + x)))
-    }
-
-    pub(crate) fn intersects_tile_rect(&self, x0: u32, y0: u32, x1: u32, y1: u32) -> bool {
-        let x1 = x1.min(self.tiles_width);
-        let y1 = y1.min(self.tiles_height);
-        (y0.min(y1)..y1).any(|y| (x0.min(x1)..x1).any(|x| self.contains(y * self.tiles_width + x)))
-    }
-
-    pub(crate) fn count_in_bounds(&self, bounds: Bounds) -> u32 {
-        if bounds.is_empty() {
-            return 0;
-        }
-        let x0 = bounds.x0.max(0) as u32 / TILE_SIZE;
-        let y0 = bounds.y0.max(0) as u32 / TILE_SIZE;
-        let x1 = (bounds.x1.max(0) as u32)
-            .div_ceil(TILE_SIZE)
-            .min(self.tiles_width);
-        let y1 = (bounds.y1.max(0) as u32)
-            .div_ceil(TILE_SIZE)
-            .min(self.tiles_height);
-        (y0..y1)
-            .flat_map(|y| (x0..x1).map(move |x| y * self.tiles_width + x))
-            .filter(|tile| self.contains(*tile))
-            .count() as u32
-    }
-
-    pub(crate) fn list(&self) -> &[u32] {
-        &self.list
-    }
-
-    pub(crate) fn len(&self) -> u32 {
-        self.list.len() as u32
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.list.is_empty()
-    }
-
-    pub(crate) fn total_tiles(&self) -> u32 {
-        self.tiles_width.saturating_mul(self.tiles_height)
-    }
-
-    /// Decomposes dirty tiles into non-overlapping pixel rectangles.
-    ///
-    /// Horizontal runs with the same extent on adjacent tile rows are merged
-    /// vertically. GPU execution consumes `list` directly as one compact
-    /// dispatch; rectangles remain useful for CPU damage propagation, bounds
-    /// transforms, and diagnostics without expanding sparse damage to its
-    /// bounding box.
-    pub(crate) fn coalesced_rects(&self, physical_size: (u32, u32)) -> Vec<Bounds> {
-        let mut rects = Vec::<Bounds>::new();
-        let mut previous_row = HashMap::<(u32, u32), usize>::new();
-        for y in 0..self.tiles_height {
-            let mut current_row = HashMap::new();
-            let mut x = 0;
-            while x < self.tiles_width {
-                while x < self.tiles_width && !self.contains(y * self.tiles_width + x) {
-                    x += 1;
-                }
-                let start = x;
-                while x < self.tiles_width && self.contains(y * self.tiles_width + x) {
-                    x += 1;
-                }
-                if start < x {
-                    let key = (start, x);
-                    let y1 = ((y + 1) * TILE_SIZE).min(physical_size.1) as i32;
-                    let index = if let Some(&index) = previous_row.get(&key) {
-                        rects[index].y1 = y1;
-                        index
-                    } else {
-                        let index = rects.len();
-                        rects.push(Bounds::new(
-                            (start * TILE_SIZE) as i32,
-                            (y * TILE_SIZE) as i32,
-                            (x * TILE_SIZE).min(physical_size.0) as i32,
-                            y1,
-                        ));
-                        index
-                    };
-                    current_row.insert(key, index);
-                }
-            }
-            previous_row = current_row;
-        }
-        rects
-    }
-
-    /// Expands pixel damage while preserving the tile-grid representation.
-    ///
-    /// Offscreen filters use this to redraw source pixels outside the visible
-    /// output damage that can still be sampled into that output.
-    pub(crate) fn outset(&self, physical_size: (u32, u32), pixels: i32) -> Self {
-        if pixels <= 0 {
-            return self.clone();
-        }
-        let canvas = Bounds::canvas(physical_size.0, physical_size.1);
-        let mut expanded = Self::new(physical_size);
-        for rect in self.coalesced_rects(physical_size) {
-            expanded.add_bounds(rect.outset(pixels).intersect(canvas));
-        }
-        expanded
-    }
 }
 
 /// Compact scan/cumsum work derived from the paths that can affect active tiles.
@@ -543,10 +361,8 @@ impl DamagePlan {
         self.stats.changed_tiles = self.changed_tiles.len();
         self.stats.changed_ratio = tile_ratio(&self.changed_tiles);
         if !self.stats.full_redraw && self.stats.changed_ratio >= config.full_redraw_ratio {
-            let size = (
-                self.changed_tiles.tiles_width * TILE_SIZE,
-                self.changed_tiles.tiles_height * TILE_SIZE,
-            );
+            let (tiles_width, tiles_height) = self.changed_tiles.dimensions();
+            let size = (tiles_width * TILE_SIZE, tiles_height * TILE_SIZE);
             self.tiles = DamageTiles::full(size);
             self.stats.full_redraw = true;
             self.stats.full_redraw_reason = Some(FullRedrawReason::DirtyTileThreshold);
@@ -830,9 +646,10 @@ fn damage_reordered_nodes(
         .map(|id| old[id].bounds.union(new[id].bounds))
         .collect::<Vec<_>>();
     let mut buckets = vec![Vec::new(); damage.total_tiles() as usize];
+    let (tiles_width, tiles_height) = damage.dimensions();
     let canvas = Bounds::canvas(
-        damage.tiles_width.saturating_mul(TILE_SIZE),
-        damage.tiles_height.saturating_mul(TILE_SIZE),
+        tiles_width.saturating_mul(TILE_SIZE),
+        tiles_height.saturating_mul(TILE_SIZE),
     );
     for (index, bounds) in influence.iter().enumerate() {
         let bounds = bounds.intersect(canvas);
@@ -843,13 +660,13 @@ fn damage_reordered_nodes(
         let y0 = bounds.y0.max(0) as u32 / TILE_SIZE;
         let x1 = (bounds.x1.max(0) as u32)
             .div_ceil(TILE_SIZE)
-            .min(damage.tiles_width);
+            .min(tiles_width);
         let y1 = (bounds.y1.max(0) as u32)
             .div_ceil(TILE_SIZE)
-            .min(damage.tiles_height);
+            .min(tiles_height);
         for y in y0..y1 {
             for x in x0..x1 {
-                buckets[(y * damage.tiles_width + x) as usize].push(index);
+                buckets[(y * tiles_width + x) as usize].push(index);
             }
         }
     }
@@ -1249,17 +1066,6 @@ mod tests {
     }
 
     #[test]
-    fn coalesced_rects_merge_adjacent_dirty_tile_rows() {
-        let mut damage = DamageTiles::new((50, 20));
-        damage.add_bounds(Bounds::new(15, 0, 34, 17));
-        assert_eq!(
-            damage.coalesced_rects((50, 20)),
-            vec![Bounds::new(0, 0, 48, 20)]
-        );
-        assert_eq!(damage.count_in_bounds(Bounds::new(16, 0, 32, 16)), 1);
-    }
-
-    #[test]
     fn active_scan_uses_persistent_chunk_allocations_after_a_path_is_removed() {
         use peniko::{
             Color,
@@ -1293,32 +1099,5 @@ mod tests {
             chunks,
             (plans.scan_ranges()[2].start..plans.scan_ranges()[2].end).collect::<Vec<_>>()
         );
-    }
-
-    #[test]
-    fn coalesced_rects_keep_different_row_runs_separate() {
-        let mut damage = DamageTiles::new((64, 48));
-        damage.add_bounds(Bounds::new(0, 0, 32, 32));
-        damage.add_bounds(Bounds::new(32, 16, 48, 48));
-
-        assert_eq!(
-            damage.coalesced_rects((64, 48)),
-            vec![
-                Bounds::new(0, 0, 32, 16),
-                Bounds::new(0, 16, 48, 32),
-                Bounds::new(32, 32, 48, 48),
-            ]
-        );
-    }
-
-    #[test]
-    fn outset_includes_filter_source_tiles_beyond_visible_output() {
-        let mut output = DamageTiles::new((328, 200));
-        output.add_bounds(Bounds::new(112, 112, 256, 176));
-
-        let source = output.outset((328, 200), 24);
-
-        assert!(source.intersects_bounds(Bounds::new(112, 176, 256, 200)));
-        assert_eq!(source.coalesced_rects((328, 200)).last().unwrap().y1, 200);
     }
 }

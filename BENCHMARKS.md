@@ -33,6 +33,9 @@ The complete run contains two suites:
 - `retained_stress`: permanent wall/materialization/transaction scale series for deep hierarchy,
   many cascading backdrops, many root plan fragments, a single large variable-sized chunk, and
   rotating changes that cross the 256-frame delta-overlay boundary.
+- `damage_tiles`: CPU-only damage-mask construction and compact-list materialization across single
+  tiles, sparse/disjoint damage, repeated tiny overlap, threshold-width rows, medium rectangles,
+  wide strips, a 70%-dirty frame, and repeated large overlap.
 
 Use filters for focused development runs without deleting any matrix entries:
 
@@ -49,4 +52,10 @@ insert/remove scenarios can be profiled independently:
 
 ```powershell
 cargo run --release --example retained_scale_bench -- --counts 1000,100000 --frames 30 --warmup 3 --scenarios nested-layer-add-remove --phase insert
+```
+
+Run the damage-mask matrix directly; it requires the benchmark-only internal adapter:
+
+```powershell
+cargo bench --bench damage_tiles --features bench-internals
 ```

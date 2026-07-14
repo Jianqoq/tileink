@@ -12,8 +12,9 @@ use crate::{
 };
 
 use super::super::{
+    damage_tiles::DamageTiles,
     incremental::{
-        DamagePlan, DamageTiles, IncrementalRenderConfig, IncrementalRenderStats, IncrementalState,
+        DamagePlan, IncrementalRenderConfig, IncrementalRenderStats, IncrementalState,
         TransientOutputDecision, TransientOutputState,
     },
     retained_surfaces::{

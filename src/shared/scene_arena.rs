@@ -162,6 +162,7 @@ impl<T: Copy> SceneArena<T> {
         self.compactions
     }
 
+    /// return sorted merged dirty ranges
     pub(crate) fn take_dirty_ranges(&mut self) -> Vec<Range<usize>> {
         let len = self.values.len();
         let mut dirty = std::mem::take(&mut self.dirty)

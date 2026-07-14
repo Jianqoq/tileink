@@ -6,8 +6,8 @@ use crate::shared::{
 };
 
 use super::super::{
-    commands::WgpuCommandBatch, filter::encode_color_filter, filter_resources::WgpuFilterCursors,
-    filter_work::FilterTileWork, incremental::DamageTiles,
+    commands::WgpuCommandBatch, damage_tiles::DamageTiles, filter::encode_color_filter,
+    filter_resources::WgpuFilterCursors, filter_work::FilterTileWork,
 };
 use super::{Renderer, WgpuRenderTargetId, encode_morphology_operator, rect_liquid_glass_region};
 

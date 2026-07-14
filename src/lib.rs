@@ -75,3 +75,5 @@ pub use text::{
     TextCompositeMode, TextContext, TextLayout, TextLayoutOptions, TextRasterOptions,
     TextSubpixelMode,
 };
+#[cfg(feature = "bench-internals")]
+pub use wgpu::DamageTilesBenchmark;

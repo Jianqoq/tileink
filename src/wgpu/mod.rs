@@ -3,6 +3,7 @@ mod canvas;
 mod coarse;
 mod commands;
 mod cumsum;
+mod damage_tiles;
 mod filter;
 mod filter_resources;
 mod filter_work;
@@ -16,6 +17,8 @@ mod retained_surfaces;
 mod scan;
 mod target;
 
+#[cfg(feature = "bench-internals")]
+pub use damage_tiles::DamageTilesBenchmark;
 pub use incremental::{
     CoarseBinningMode, FullRedrawReason, IncrementalOutputMode, IncrementalRenderConfig,
     IncrementalRenderMode, IncrementalRenderStats,

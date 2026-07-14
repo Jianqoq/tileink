@@ -63,6 +63,11 @@ harness = false
 required-features = ["bench-internals"]
 
 [[bench]]
+name = "damage_tiles"
+harness = false
+required-features = ["bench-internals"]
+
+[[bench]]
 name = "range_scatter"
 harness = false
 

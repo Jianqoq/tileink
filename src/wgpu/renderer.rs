@@ -36,6 +36,7 @@ use super::canvas::{WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers, WgpuSc
 use super::coarse::{WgpuCoarseBatch, WgpuCoarsePipeline, prefer_dense_binning};
 use super::commands::WgpuCommandBatch;
 use super::cumsum::WgpuCumsumPipeline;
+use super::damage_tiles::DamageTiles;
 use super::filter::{
     FILTER_OPACITY, WgpuFilterBrushBindings, WgpuFilterPathBindings, WgpuFilterPipeline,
     WgpuFilterTurbulenceBindings, region_bounds,
@@ -48,7 +49,7 @@ use super::filter_work::{FilterTileWork, FilterTileWorkArena};
 use super::fine::{WgpuFinePipeline, premul_clear_color};
 use super::image_resources::large_texture_table_len;
 use super::incremental::{
-    ActiveScanPlan, CoarseBinningMode, DamageTiles, IncrementalRenderConfig, IncrementalRenderStats,
+    ActiveScanPlan, CoarseBinningMode, IncrementalRenderConfig, IncrementalRenderStats,
 };
 use super::lazy::PipelineCompilationTracker;
 use super::profile::{WgpuRenderProfile, WgpuRenderProfiler, profile_cpu, start_cpu_scope};
