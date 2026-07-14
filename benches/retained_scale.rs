@@ -78,6 +78,28 @@ fn retained_scale(c: &mut Criterion) {
         group.finish();
     }
 
+    // Isolate the fixed scene-bound GPU object churn removed by pooling. The retained end-to-end
+    // scenarios above also include workload-dependent scratch targets and complete frame cost.
+    #[cfg(feature = "bench-internals")]
+    {
+        let mut group = c.benchmark_group("retained_scale/local-scene-resource-cycle");
+        for (policy, reuse) in [("fresh", false), ("pooled", true)] {
+            group.bench_function(policy, |b| {
+                let mut renderer = WgpuRenderer::new(
+                    seed.device(),
+                    seed.queue(),
+                    WIDTH,
+                    HEIGHT,
+                    Color::TRANSPARENT,
+                );
+                renderer.set_local_scene_resource_reuse_for_benchmark(reuse);
+                renderer.cycle_local_scene_resources_for_benchmark((256, 256));
+                b.iter(|| renderer.cycle_local_scene_resources_for_benchmark((256, 256)));
+            });
+        }
+        group.finish();
+    }
+
     // The end-to-end groups above intentionally include submit and GPU completion. Keep a second
     // permanent scale series for the dense revision hotspot so CPU materialization regressions are
     // not hidden by GPU scheduling noise. Rendering still executes to preserve real renderer

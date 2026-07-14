@@ -617,6 +617,10 @@ fn persistent_filter_manual_invalidation_skips_command_tree_propagation() {
 
     let mut renderer = new_test_renderer(64, 64, Color::TRANSPARENT);
     renderer.render_retained(&scene);
+    assert_eq!(renderer.pending_local_scene_resources.len(), 1);
+    let pooled_config = renderer.pending_local_scene_resources[0]
+        .config
+        .binding_key();
     scene
         .transaction()
         .invalidate_rect(Rect::new(48.0, 48.0, 56.0, 56.0))
@@ -643,6 +647,14 @@ fn persistent_filter_manual_invalidation_skips_command_tree_propagation() {
     let profile = renderer.end_profile().clone();
     assert_eq!(renderer.incremental_render_stats().dirty_tiles, 1);
     assert_profile_missing(&profile, "retained.damage.propagate");
+    assert_eq!(renderer.pending_local_scene_resources.len(), 1);
+    assert_eq!(
+        renderer.pending_local_scene_resources[0]
+            .config
+            .binding_key(),
+        pooled_config,
+        "cropped filter updates must reuse their scene-bound GPU allocation set"
+    );
 }
 
 #[test]

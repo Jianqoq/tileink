@@ -65,6 +65,7 @@ mod layers;
 mod lifecycle;
 mod output;
 mod prepare;
+mod resources;
 mod retained;
 mod scene;
 mod targets;
@@ -134,6 +135,10 @@ pub struct Renderer {
     scratch: Vec<WgpuTarget>,
     scratch_spares: Vec<WgpuTarget>,
     scratch_in_use: Vec<bool>,
+    local_scene_resource_pool: Vec<SceneResources>,
+    pending_local_scene_resources: Vec<SceneResources>,
+    #[cfg(feature = "bench-internals")]
+    reuse_local_scene_resources: bool,
     clear_color: u32,
     profiler: WgpuRenderProfiler,
     last_frame_used_native: bool,
@@ -143,16 +148,17 @@ pub struct Renderer {
     persistent_scene_rendered: Option<(u64, SceneVersion)>,
 }
 
-struct SavedRendererState {
-    lengths: GpuBufferLengths,
-    plan: Option<Rc<ExecPlan>>,
+/// Scene-bound GPU allocations that are temporarily replaced while rendering an offscreen layer.
+///
+/// A renderer quarantines restored allocations until the current command batch is submitted, then
+/// makes them available at the start of the next frame. Buffers retain their grown capacities and
+/// fixed render targets are resized only when a later local scene has different dimensions.
+struct SceneResources {
     config: WgpuBuffer,
     scene_buffers: WgpuSceneBuffers,
     scene_upload: WgpuSceneUploadStaging,
     scan: WgpuScanBuffers,
     coarse: WgpuCoarseBuffers,
-    max_clip_depth: usize,
-    max_group_depth: usize,
     fine_spills: WgpuBuffer,
     fine_indirect_args: WgpuBuffer,
     filter_transfers: WgpuFilterTransferBuffers,
@@ -169,6 +175,14 @@ struct SavedRendererState {
     scratch: Vec<WgpuTarget>,
     scratch_spares: Vec<WgpuTarget>,
     scratch_in_use: Vec<bool>,
+}
+
+struct SavedRendererState {
+    lengths: GpuBufferLengths,
+    plan: Option<Rc<ExecPlan>>,
+    resources: SceneResources,
+    max_clip_depth: usize,
+    max_group_depth: usize,
     size: (u32, u32),
     surface_origin: (i32, i32),
     active_tiles: Option<DamageTiles>,

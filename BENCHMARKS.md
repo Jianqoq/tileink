@@ -38,6 +38,10 @@ The complete run contains two suites:
   materialization across single tiles, sparse/disjoint damage, repeated tiny overlap,
   threshold-width rows, medium rectangles, wide strips, dense frames, repeated large overlap, and
   fragmented masks.
+- `retained_scale/local-scene-resource-cycle` (with `bench-internals`): same-binary A/B of creating
+  the fixed buffers/targets in a local offscreen scene allocation set versus recycling them from
+  the renderer pool. This conservative microbenchmark excludes workload-dependent scratch targets;
+  the cropped-filter scale cases above remain the end-to-end frame measurement.
 
 Use filters for focused development runs without deleting any matrix entries:
 
@@ -60,4 +64,5 @@ Run the damage-mask matrix directly; it requires the benchmark-only internal ada
 
 ```powershell
 cargo bench --bench damage_tiles --features bench-internals
+cargo bench --bench retained_scale --features bench-internals -- retained_scale/local-scene-resource-cycle
 ```

@@ -111,6 +111,9 @@ impl Renderer {
         canvas: &Canvas,
         history_copy_dst: Option<&::wgpu::Texture>,
     ) -> bool {
+        // The preceding render call submitted its frame command batch before returning. Its
+        // quarantined local allocations can now safely receive queue writes ordered after it.
+        self.begin_local_scene_resource_frame();
         if self
             .retained
             .active_tiles()

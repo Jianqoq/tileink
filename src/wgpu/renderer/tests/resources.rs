@@ -1,6 +1,36 @@
 use super::*;
 
 #[test]
+fn local_scene_resources_are_quarantined_until_the_next_frame() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut renderer = new_test_renderer(32, 32, Color::TRANSPARENT);
+    let first = renderer.acquire_local_scene_resources((16, 16));
+    let first_key = first.config.binding_key();
+    renderer.recycle_local_scene_resources(first);
+
+    let sibling = renderer.acquire_local_scene_resources((16, 16));
+    let sibling_key = sibling.config.binding_key();
+    assert_ne!(
+        sibling_key, first_key,
+        "sibling commands in one batch must not share writable scene buffers"
+    );
+    renderer.recycle_local_scene_resources(sibling);
+    assert!(renderer.local_scene_resource_pool.is_empty());
+    assert_eq!(renderer.pending_local_scene_resources.len(), 2);
+
+    renderer.begin_local_scene_resource_frame();
+    assert!(renderer.pending_local_scene_resources.is_empty());
+    let reused_key = renderer
+        .acquire_local_scene_resources((16, 16))
+        .config
+        .binding_key();
+    assert!(reused_key == first_key || reused_key == sibling_key);
+}
+
+#[test]
 fn fragmented_buffer_upload_scatter_matches_the_source_ranges() {
     if !run_wgpu_tests() {
         return;

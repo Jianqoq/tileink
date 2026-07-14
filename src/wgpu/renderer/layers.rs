@@ -477,8 +477,9 @@ impl Renderer {
                 )
             }
         } else {
-            let mut local_scratch = std::mem::take(&mut self.scratch);
-            (local_scratch.remove(0), None)
+            // Keep the remaining scratch allocation set attached to the local resource pool.
+            // `take_scratch_target` replaces only the texture whose ownership escapes this render.
+            (self.take_scratch_target(source).unwrap(), None)
         };
         if let Some(saved) = saved {
             self.scratch_in_use.clear();

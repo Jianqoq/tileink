@@ -83,6 +83,10 @@ impl Renderer {
             scratch: Vec::new(),
             scratch_spares: Vec::new(),
             scratch_in_use: Vec::new(),
+            local_scene_resource_pool: Vec::new(),
+            pending_local_scene_resources: Vec::new(),
+            #[cfg(feature = "bench-internals")]
+            reuse_local_scene_resources: true,
             clear_color: premul_clear_color(clear),
             profiler: WgpuRenderProfiler::default(),
             last_frame_used_native: true,

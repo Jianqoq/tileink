@@ -23,13 +23,7 @@ use crate::{
 
 use super::{
     super::{
-        buffer::WgpuBuffer,
-        canvas::{WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers},
         filter::WgpuFilterPipeline,
-        filter_resources::{
-            WgpuFilterBrushBuffers, WgpuFilterConvolveBuffers, WgpuFilterPathBuffers,
-            WgpuFilterTransferBuffers, WgpuFilterTurbulenceBuffers,
-        },
         profile::{profile_cpu, start_cpu_scope},
         target::WgpuTarget,
     },
@@ -279,87 +273,15 @@ impl Renderer {
         surface_origin: (i32, i32),
     ) -> SavedRendererState {
         let _profile_scope = start_cpu_scope("prepare.local");
+        let local_size = (canvas.physical_width(), canvas.physical_height());
+        let local_resources = self.acquire_local_scene_resources(local_size);
+        let resources = local_resources.swap_with_renderer(self);
         let saved = SavedRendererState {
             lengths: self.lengths,
             plan: self.plan.take(),
-            config: std::mem::replace(
-                &mut self.config,
-                WgpuBuffer::new(&self.device, "tileink wgpu canvas config"),
-            ),
-            scene_buffers: std::mem::replace(
-                &mut self.scene_buffers,
-                WgpuSceneBuffers::new(&self.device, self.range_scatter_pipeline.clone()),
-            ),
-            scene_upload: std::mem::take(&mut self.scene_upload),
-            scan: std::mem::replace(&mut self.scan, WgpuScanBuffers::new(&self.device)),
-            coarse: std::mem::replace(&mut self.coarse, WgpuCoarseBuffers::new(&self.device)),
+            resources,
             max_clip_depth: self.max_clip_depth,
             max_group_depth: self.max_group_depth,
-            fine_spills: std::mem::replace(
-                &mut self.fine_spills,
-                WgpuBuffer::new(&self.device, "tileink wgpu fine spills"),
-            ),
-            fine_indirect_args: std::mem::replace(
-                &mut self.fine_indirect_args,
-                WgpuBuffer::new(&self.device, "tileink wgpu fine indirect args"),
-            ),
-            filter_transfers: std::mem::replace(
-                &mut self.filter_transfers,
-                WgpuFilterTransferBuffers::new(&self.device),
-            ),
-            filter_brushes: std::mem::replace(
-                &mut self.filter_brushes,
-                WgpuFilterBrushBuffers::new(&self.device),
-            ),
-            filter_convolves: std::mem::replace(
-                &mut self.filter_convolves,
-                WgpuFilterConvolveBuffers::new(&self.device),
-            ),
-            filter_turbulence: std::mem::replace(
-                &mut self.filter_turbulence,
-                WgpuFilterTurbulenceBuffers::new(&self.device),
-            ),
-            filter_paths: std::mem::replace(
-                &mut self.filter_paths,
-                WgpuFilterPathBuffers::new(&self.device),
-            ),
-            readback_target: std::mem::replace(
-                &mut self.readback_target,
-                WgpuTarget::new(
-                    &self.device,
-                    canvas.physical_width(),
-                    canvas.physical_height(),
-                ),
-            ),
-            fine_portable_source: std::mem::replace(
-                &mut self.fine_portable_source,
-                WgpuTarget::new(
-                    &self.device,
-                    canvas.physical_width(),
-                    canvas.physical_height(),
-                ),
-            ),
-            fine_portable_target: std::mem::replace(
-                &mut self.fine_portable_target,
-                WgpuTarget::new(
-                    &self.device,
-                    canvas.physical_width(),
-                    canvas.physical_height(),
-                ),
-            ),
-            filter_target_snapshot: std::mem::replace(
-                &mut self.filter_target_snapshot,
-                WgpuTarget::new(
-                    &self.device,
-                    canvas.physical_width(),
-                    canvas.physical_height(),
-                ),
-            ),
-            root_target_texture: std::mem::take(&mut self.root_target_texture),
-            root_target_view: std::mem::take(&mut self.root_target_view),
-            scratch: std::mem::take(&mut self.scratch),
-            scratch_spares: std::mem::take(&mut self.scratch_spares),
-            scratch_in_use: std::mem::take(&mut self.scratch_in_use),
             size: self.size,
             surface_origin: self.surface_origin,
             active_tiles: self.retained.take_active_tiles(),
@@ -385,6 +307,14 @@ impl Renderer {
         self.max_clip_depth = max_clip_depth;
         self.max_group_depth = max_group_depth;
         self.plan = Some(std::rc::Rc::new(plan.clone()));
+        profile_cpu("prepare.local.targets", || {
+            self.readback_target
+                .resize(&self.device, local_size.0, local_size.1);
+            self.fine_portable_source
+                .resize(&self.device, local_size.0, local_size.1);
+            self.fine_portable_target
+                .resize(&self.device, local_size.0, local_size.1);
+        });
         profile_cpu("prepare.local.upload_scene", || {
             self.prepare_image_resource_buffers(canvas.scene_image_resources(), true);
             self.scene_buffers.upload(
@@ -461,31 +391,12 @@ impl Renderer {
     }
 
     pub(super) fn restore_root_scene_resources(&mut self, saved: SavedRendererState) {
+        let local_resources = saved.resources.swap_with_renderer(self);
+        self.recycle_local_scene_resources(local_resources);
         self.lengths = saved.lengths;
         self.plan = saved.plan;
-        self.config = saved.config;
-        self.scene_buffers = saved.scene_buffers;
-        self.scene_upload = saved.scene_upload;
-        self.scan = saved.scan;
-        self.coarse = saved.coarse;
         self.max_clip_depth = saved.max_clip_depth;
         self.max_group_depth = saved.max_group_depth;
-        self.fine_spills = saved.fine_spills;
-        self.fine_indirect_args = saved.fine_indirect_args;
-        self.filter_transfers = saved.filter_transfers;
-        self.filter_brushes = saved.filter_brushes;
-        self.filter_convolves = saved.filter_convolves;
-        self.filter_turbulence = saved.filter_turbulence;
-        self.filter_paths = saved.filter_paths;
-        self.readback_target = saved.readback_target;
-        self.fine_portable_source = saved.fine_portable_source;
-        self.fine_portable_target = saved.fine_portable_target;
-        self.filter_target_snapshot = saved.filter_target_snapshot;
-        self.root_target_texture = saved.root_target_texture;
-        self.root_target_view = saved.root_target_view;
-        self.scratch = saved.scratch;
-        self.scratch_spares = saved.scratch_spares;
-        self.scratch_in_use = saved.scratch_in_use;
         self.size = saved.size;
         self.surface_origin = saved.surface_origin;
         self.retained.set_active_tiles(saved.active_tiles);
