@@ -155,6 +155,7 @@ pub struct Renderer {
 /// so sibling filters do not resize each other's textures; buffers retain their grown capacities
 /// when an exact size is unavailable.
 struct SceneResources {
+    target_size: (u32, u32),
     config: WgpuBuffer,
     scene_buffers: WgpuSceneBuffers,
     scene_upload: WgpuSceneUploadStaging,

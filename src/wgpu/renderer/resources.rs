@@ -9,6 +9,7 @@ impl SceneResources {
         size: (u32, u32),
     ) -> Self {
         Self {
+            target_size: size,
             config: WgpuBuffer::new(device, "tileink wgpu canvas config"),
             scene_buffers: WgpuSceneBuffers::new(device, range_scatter_pipeline),
             scene_upload: WgpuSceneUploadStaging::default(),
@@ -74,8 +75,9 @@ impl SceneResources {
         self
     }
 
-    fn target_size(&self) -> (u32, u32) {
-        self.readback_target.size()
+    fn for_target_size(mut self, size: (u32, u32)) -> Self {
+        self.target_size = size;
+        self
     }
 }
 
@@ -90,15 +92,15 @@ impl Renderer {
         };
         // One local scene and properly nested scenes naturally match LIFO order. Keep that path
         // O(1), and scan only when sibling traversal left another size at the back of the pool.
-        if self.local_scene_resource_pool.is_empty() || fallback.target_size() == size {
-            return fallback;
+        if self.local_scene_resource_pool.is_empty() || fallback.target_size == size {
+            return fallback.for_target_size(size);
         }
         let exact = self
             .local_scene_resource_pool
             .iter()
-            .rposition(|resources| resources.target_size() == size);
+            .rposition(|resources| resources.target_size == size);
         let Some(index) = exact else {
-            return fallback;
+            return fallback.for_target_size(size);
         };
         let resources = self.local_scene_resource_pool.swap_remove(index);
         self.local_scene_resource_pool.push(fallback);
@@ -151,6 +153,28 @@ impl Renderer {
             resources.prepare_minimum_targets_for_benchmark(&self.device, size);
             std::hint::black_box(resources.config.binding_key());
             self.recycle_local_scene_resources(resources);
+        }
+    }
+
+    /// Exercises the production fixed-target resize path without scene construction noise.
+    #[cfg(feature = "bench-internals")]
+    #[doc(hidden)]
+    pub fn resize_internal_targets_for_benchmark(&mut self, sizes: &[(u32, u32)]) {
+        for &size in sizes {
+            self.readback_target.resize(&self.device, size.0, size.1);
+            self.fine_portable_source
+                .resize(&self.device, size.0, size.1);
+            self.fine_portable_target
+                .resize(&self.device, size.0, size.1);
+            self.filter_target_snapshot
+                .resize(&self.device, size.0, size.1);
+            if self.scratch.is_empty() {
+                self.scratch
+                    .push(WgpuTarget::new(&self.device, size.0, size.1));
+            } else {
+                self.scratch[0].resize(&self.device, size.0, size.1);
+            }
+            std::hint::black_box(self.readback_target.byte_len());
         }
     }
 }

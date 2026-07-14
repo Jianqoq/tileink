@@ -15,6 +15,16 @@ use retained_scale::{Scenario, Workload};
 use tileink::{IncrementalRenderMode, WgpuRenderer};
 
 const COUNTS: [usize; 5] = [100, 1_000, 5_000, 20_000, 100_000];
+const RAPID_RESIZE_SIZES: [(u32, u32); 8] = [
+    (1600, 1000),
+    (1568, 982),
+    (1536, 964),
+    (1504, 946),
+    (1472, 928),
+    (1504, 946),
+    (1536, 964),
+    (1568, 982),
+];
 
 fn retained_materialize_stage(
     c: &mut Criterion,
@@ -82,6 +92,22 @@ fn retained_scale(c: &mut Criterion) {
     // scenarios above also include workload-dependent scratch targets and complete frame cost.
     #[cfg(feature = "bench-internals")]
     {
+        // This isolates the texture-allocation churn from a native interactive resize. The first
+        // call establishes capacity; measured iterations must reuse it while logical sizes vary.
+        let mut group = c.benchmark_group("retained_scale/internal-target-rapid-resize");
+        group.bench_function("shrink-expand", |b| {
+            let mut renderer = WgpuRenderer::new(
+                seed.device(),
+                seed.queue(),
+                WIDTH,
+                HEIGHT,
+                Color::TRANSPARENT,
+            );
+            renderer.resize_internal_targets_for_benchmark(&RAPID_RESIZE_SIZES);
+            b.iter(|| renderer.resize_internal_targets_for_benchmark(&RAPID_RESIZE_SIZES));
+        });
+        group.finish();
+
         let mut group = c.benchmark_group("retained_scale/local-scene-resource-cycle");
         for (policy, reuse) in [("fresh", false), ("pooled", true)] {
             group.bench_function(policy, |b| {

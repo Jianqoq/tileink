@@ -36,7 +36,7 @@ impl Renderer {
     }
 
     pub(super) fn install_scratch_target(&mut self, index: usize, target: WgpuTarget) {
-        debug_assert_eq!(target.size(), self.size);
+        debug_assert!(target.fits(self.size));
         let displaced = std::mem::replace(&mut self.scratch[index], target);
         self.scratch_spares.push(displaced);
         self.scratch_in_use[index] = true;

@@ -168,7 +168,7 @@ fn portable_external_history_preserves_cached_backdrop_after_resize() {
     );
 }
 
-fn checkerboard(size: (u32, u32)) -> std::rc::Rc<Canvas> {
+pub(super) fn checkerboard(size: (u32, u32)) -> std::rc::Rc<Canvas> {
     let mut canvas = Canvas::new(size.0, size.1, 1.0);
     for y in (0..size.1).step_by(16) {
         for x in (0..size.0).step_by(16) {
@@ -191,7 +191,7 @@ fn checkerboard(size: (u32, u32)) -> std::rc::Rc<Canvas> {
     std::rc::Rc::new(canvas)
 }
 
-fn liquid_glass_panel() -> std::rc::Rc<Canvas> {
+pub(super) fn liquid_glass_panel() -> std::rc::Rc<Canvas> {
     let mut canvas = Canvas::new(96, 96, 1.0);
     let bounds = Rect::new(0.0, 0.0, 96.0, 96.0);
     canvas.push_backdrop_layer(
@@ -230,7 +230,7 @@ fn controls_canvas(thumb_x: f64) -> std::rc::Rc<Canvas> {
     std::rc::Rc::new(canvas)
 }
 
-fn external_target(
+pub(super) fn external_target(
     device: &::wgpu::Device,
     size: (u32, u32),
     label: &'static str,

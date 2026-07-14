@@ -12,6 +12,7 @@ mod profiles;
 mod resources;
 mod retained_structure;
 mod retained_updates;
+mod target_capacity;
 mod targets;
 mod text;
 
