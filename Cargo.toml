@@ -73,6 +73,16 @@ harness = false
 required-features = ["bench-internals"]
 
 [[bench]]
+name = "frame_diff"
+harness = false
+required-features = ["bench-internals"]
+
+[[bench]]
+name = "tiles_for_bounds"
+harness = false
+required-features = ["bench-internals"]
+
+[[bench]]
 name = "range_scatter"
 harness = false
 

@@ -1,11 +1,11 @@
-use std::{
-    collections::{HashMap, HashSet},
-    rc::Rc,
-};
+use std::rc::Rc;
+
+#[cfg(test)]
+use std::collections::HashMap;
 
 use crate::{
     Canvas, TILE_SIZE,
-    canvas::{RetainedDamage, RetainedFrame, RetainedNodeState},
+    canvas::{RetainedDamage, RetainedFrame},
     shared::{
         bounds::Bounds,
         gpu_plan::{CUMSUM_CHUNK_SIZE, GpuCumsumPlan},
@@ -13,6 +13,11 @@ use crate::{
 };
 
 use super::damage_tiles::DamageTiles;
+
+#[cfg(feature = "bench-internals")]
+mod benchmark;
+#[cfg(feature = "bench-internals")]
+pub use benchmark::{FrameDiffBenchmark, FrameDiffBenchmarkCase};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum IncrementalRenderMode {
@@ -386,6 +391,26 @@ fn tile_ratio(tiles: &DamageTiles) -> f32 {
 pub(crate) struct IncrementalState {
     previous: Option<RetainedFrame>,
     renderer_state_invalid: bool,
+    frame_diff: FrameDiffScratch,
+}
+
+#[derive(Clone, Copy)]
+struct CommonNode {
+    new_index: usize,
+    influence: Bounds,
+}
+
+/// Reusable CPU storage for retained-frame comparison.
+///
+/// Frame indexes already live in `RetainedFrame`; this scratch only stores the common-node order
+/// and a flat tile adjacency while checking painter-order inversions. Keeping it on the renderer
+/// avoids rebuilding hash collections and thousands of per-tile vectors every frame.
+#[derive(Default)]
+struct FrameDiffScratch {
+    common: Vec<CommonNode>,
+    tile_offsets: Vec<usize>,
+    tile_cursors: Vec<usize>,
+    tile_nodes: Vec<usize>,
 }
 
 impl IncrementalState {
@@ -450,7 +475,7 @@ impl IncrementalState {
     }
 
     fn scene_damage(
-        &self,
+        &mut self,
         frame: Option<&RetainedFrame>,
         physical_size: (u32, u32),
     ) -> (DamageTiles, RetainedDamage) {
@@ -516,7 +541,13 @@ impl IncrementalState {
 
         let mut tiles = DamageTiles::new(physical_size);
         let mut retained = RetainedDamage::default();
-        diff_frames(previous, current, &mut tiles, &mut retained);
+        diff_frames_reusing(
+            previous,
+            current,
+            &mut tiles,
+            &mut retained,
+            &mut self.frame_diff,
+        );
         for bounds in &current.invalidated_bounds {
             tiles.add_bounds(*bounds);
             retained.add_unattributed(*bounds);
@@ -575,29 +606,20 @@ impl IncrementalState {
     }
 }
 
-fn diff_frames(
+fn diff_frames_reusing(
     previous: &RetainedFrame,
     current: &RetainedFrame,
     damage: &mut DamageTiles,
     retained: &mut RetainedDamage,
+    scratch: &mut FrameDiffScratch,
 ) {
-    let old = previous
-        .nodes
-        .iter()
-        .map(|node| (node.id, node))
-        .collect::<HashMap<_, _>>();
-    let new = current
-        .nodes
-        .iter()
-        .map(|node| (node.id, node))
-        .collect::<HashMap<_, _>>();
-
     for node in current.nodes.iter() {
-        let Some(previous) = old.get(&node.id) else {
+        let Some(&previous_index) = previous.node_index.get(&node.id) else {
             damage.add_bounds(node.bounds);
             retained.add_node(node.id, node.bounds);
             continue;
         };
+        let previous = previous.nodes[previous_index];
         if previous.revision != node.revision
             || previous.kind != node.kind
             || previous.placement_bits != node.placement_bits
@@ -608,8 +630,15 @@ fn diff_frames(
             retained.add_node(node.id, bounds);
         }
     }
+
+    scratch.common.clear();
     for node in previous.nodes.iter() {
-        if !new.contains_key(&node.id) {
+        if let Some(&new_index) = current.node_index.get(&node.id) {
+            scratch.common.push(CommonNode {
+                new_index,
+                influence: node.bounds.union(current.nodes[new_index].bounds),
+            });
+        } else {
             damage.add_bounds(node.bounds);
             // Removed commands have no insertion point in the current painter
             // order, so conservatively expose their old pixels to every
@@ -618,12 +647,29 @@ fn diff_frames(
         }
     }
 
-    let common = old.keys().copied().collect::<HashSet<_>>();
-    let old_order = common_order(&previous.nodes, &common, &new);
-    let new_order = common_order(&current.nodes, &common, &old);
-    if old_order != new_order {
-        damage_reordered_nodes(&old_order, &new_order, &old, &new, damage, retained);
+    if !scratch
+        .common
+        .windows(2)
+        .all(|pair| pair[0].new_index < pair[1].new_index)
+    {
+        damage_reordered_nodes(damage, retained, scratch);
     }
+}
+
+#[cfg(test)]
+fn diff_frames(
+    previous: &RetainedFrame,
+    current: &RetainedFrame,
+    damage: &mut DamageTiles,
+    retained: &mut RetainedDamage,
+) {
+    diff_frames_reusing(
+        previous,
+        current,
+        damage,
+        retained,
+        &mut FrameDiffScratch::default(),
+    );
 }
 
 /// Damages overlapping nodes whose painter order was inverted.
@@ -633,58 +679,74 @@ fn diff_frames(
 /// worst case is intentionally output-sensitive: mutually overlapping reordered nodes can have
 /// O(n²) real inversions, but processing stops as soon as every output tile is already dirty.
 fn damage_reordered_nodes(
-    old_order: &[crate::RetainedNodeId],
-    new_order: &[crate::RetainedNodeId],
-    old: &HashMap<crate::RetainedNodeId, &RetainedNodeState>,
-    new: &HashMap<crate::RetainedNodeId, &RetainedNodeState>,
     damage: &mut DamageTiles,
     retained: &mut RetainedDamage,
+    scratch: &mut FrameDiffScratch,
 ) {
-    let new_rank = ranks(new_order);
-    let influence = old_order
-        .iter()
-        .map(|id| old[id].bounds.union(new[id].bounds))
-        .collect::<Vec<_>>();
-    let mut buckets = vec![Vec::new(); damage.total_tiles() as usize];
     let (tiles_width, tiles_height) = damage.dimensions();
-    let canvas = Bounds::canvas(
-        tiles_width.saturating_mul(TILE_SIZE),
-        tiles_height.saturating_mul(TILE_SIZE),
-    );
-    for (index, bounds) in influence.iter().enumerate() {
-        let bounds = bounds.intersect(canvas);
-        if bounds.is_empty() {
-            continue;
+    let tile_count = damage.total_tiles() as usize;
+    scratch.tile_offsets.clear();
+    scratch.tile_offsets.resize(tile_count + 1, 0);
+
+    for node in &scratch.common {
+        if let Some(rect) = tile_rect(node.influence, tiles_width, tiles_height) {
+            for y in rect.y0..rect.y1 {
+                for x in rect.x0..rect.x1 {
+                    scratch.tile_offsets[(y * tiles_width + x) as usize + 1] += 1;
+                }
+            }
         }
-        let x0 = bounds.x0.max(0) as u32 / TILE_SIZE;
-        let y0 = bounds.y0.max(0) as u32 / TILE_SIZE;
-        let x1 = (bounds.x1.max(0) as u32)
-            .div_ceil(TILE_SIZE)
-            .min(tiles_width);
-        let y1 = (bounds.y1.max(0) as u32)
-            .div_ceil(TILE_SIZE)
-            .min(tiles_height);
-        for y in y0..y1 {
-            for x in x0..x1 {
-                buckets[(y * tiles_width + x) as usize].push(index);
+    }
+    for tile in 0..tile_count {
+        scratch.tile_offsets[tile + 1] += scratch.tile_offsets[tile];
+    }
+
+    scratch.tile_cursors.clear();
+    scratch
+        .tile_cursors
+        .extend_from_slice(&scratch.tile_offsets[..tile_count]);
+    scratch.tile_nodes.clear();
+    scratch
+        .tile_nodes
+        .resize(scratch.tile_offsets[tile_count], 0);
+    for (node_index, node) in scratch.common.iter().enumerate() {
+        if let Some(rect) = tile_rect(node.influence, tiles_width, tiles_height) {
+            for y in rect.y0..rect.y1 {
+                for x in rect.x0..rect.x1 {
+                    let tile = (y * tiles_width + x) as usize;
+                    let cursor = &mut scratch.tile_cursors[tile];
+                    scratch.tile_nodes[*cursor] = node_index;
+                    *cursor += 1;
+                }
             }
         }
     }
 
-    let mut compared = HashSet::new();
-    for bucket in buckets {
+    for tile in 0..tile_count {
+        let bucket =
+            &scratch.tile_nodes[scratch.tile_offsets[tile]..scratch.tile_offsets[tile + 1]];
         if bucket
             .windows(2)
-            .all(|pair| new_rank[&old_order[pair[0]]] < new_rank[&old_order[pair[1]]])
+            .all(|pair| scratch.common[pair[0]].new_index < scratch.common[pair[1]].new_index)
         {
             continue;
         }
         for (offset, &a) in bucket.iter().enumerate() {
             for &b in &bucket[offset + 1..] {
-                if new_rank[&old_order[a]] < new_rank[&old_order[b]] || !compared.insert((a, b)) {
+                if scratch.common[a].new_index < scratch.common[b].new_index {
                     continue;
                 }
-                let bounds = influence[a].intersect(influence[b]);
+                let bounds = scratch.common[a]
+                    .influence
+                    .intersect(scratch.common[b].influence);
+                let Some(rect) = tile_rect(bounds, tiles_width, tiles_height) else {
+                    continue;
+                };
+                // A pair can share many tile buckets. Its intersection's top-left tile is shared
+                // by both nodes and gives it one allocation-free canonical comparison site.
+                if tile != (rect.y0 * tiles_width + rect.x0) as usize {
+                    continue;
+                }
                 damage.add_bounds(bounds);
                 retained.add_unattributed(bounds);
                 if damage.len() == damage.total_tiles() {
@@ -695,29 +757,42 @@ fn damage_reordered_nodes(
     }
 }
 
-fn common_order(
-    nodes: &[RetainedNodeState],
-    candidates: &HashSet<crate::RetainedNodeId>,
-    other: &HashMap<crate::RetainedNodeId, &RetainedNodeState>,
-) -> Vec<crate::RetainedNodeId> {
-    nodes
-        .iter()
-        .filter(|node| candidates.contains(&node.id) && other.contains_key(&node.id))
-        .map(|node| node.id)
-        .collect()
+#[derive(Clone, Copy)]
+struct TileRect {
+    x0: u32,
+    y0: u32,
+    x1: u32,
+    y1: u32,
 }
 
-fn ranks(ids: &[crate::RetainedNodeId]) -> HashMap<crate::RetainedNodeId, usize> {
-    ids.iter()
-        .enumerate()
-        .map(|(rank, id)| (*id, rank))
-        .collect()
+#[inline]
+fn tile_rect(bounds: Bounds, tiles_width: u32, tiles_height: u32) -> Option<TileRect> {
+    let bounds = bounds.intersect(Bounds::canvas(
+        tiles_width.saturating_mul(TILE_SIZE),
+        tiles_height.saturating_mul(TILE_SIZE),
+    ));
+    if bounds.is_empty() {
+        return None;
+    }
+    Some(TileRect {
+        x0: bounds.x0.max(0) as u32 / TILE_SIZE,
+        y0: bounds.y0.max(0) as u32 / TILE_SIZE,
+        x1: (bounds.x1.max(0) as u32)
+            .div_ceil(TILE_SIZE)
+            .min(tiles_width),
+        y1: (bounds.y1.max(0) as u32)
+            .div_ceil(TILE_SIZE)
+            .min(tiles_height),
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{NodeGeneration, RetainedNodeId, canvas::RetainedNodeKind};
+    use crate::{
+        NodeGeneration, RetainedNodeId,
+        canvas::{RetainedNodeKind, RetainedNodeState},
+    };
 
     fn frame(nodes: &[(u64, u64, Bounds)]) -> RetainedFrame {
         let nodes = nodes
@@ -772,6 +847,7 @@ mod tests {
         let mut state = IncrementalState {
             previous: Some(previous),
             renderer_state_invalid: false,
+            frame_diff: Default::default(),
         };
 
         let plan = state.plan(
@@ -847,6 +923,66 @@ mod tests {
         let mut damage = DamageTiles::new(new.physical_size);
         diff_frames(&old, &new, &mut damage, &mut RetainedDamage::default());
         assert_eq!(damage.list(), &[1]);
+    }
+
+    #[test]
+    fn reordered_pair_spanning_many_tiles_is_recorded_once() {
+        let old = frame(&[
+            (2, 0, Bounds::new(0, 0, 64, 64)),
+            (3, 0, Bounds::new(16, 16, 80, 64)),
+        ]);
+        let new = frame(&[
+            (3, 0, Bounds::new(16, 16, 80, 64)),
+            (2, 0, Bounds::new(0, 0, 64, 64)),
+        ]);
+        let mut damage = DamageTiles::new(new.physical_size);
+        let mut retained = RetainedDamage::default();
+
+        diff_frames(&old, &new, &mut damage, &mut retained);
+
+        assert_eq!(retained.unattributed, [Bounds::new(16, 16, 64, 64)]);
+        assert_eq!(damage.len(), 9);
+    }
+
+    #[test]
+    fn reused_frame_diff_scratch_does_not_leak_old_tile_adjacency() {
+        let overlapping = frame(&[
+            (2, 0, Bounds::new(0, 0, 64, 64)),
+            (3, 0, Bounds::new(16, 16, 80, 64)),
+        ]);
+        let overlapping_reversed = frame(&[
+            (3, 0, Bounds::new(16, 16, 80, 64)),
+            (2, 0, Bounds::new(0, 0, 64, 64)),
+        ]);
+        let mut scratch = FrameDiffScratch::default();
+        diff_frames_reusing(
+            &overlapping,
+            &overlapping_reversed,
+            &mut DamageTiles::new((128, 64)),
+            &mut RetainedDamage::default(),
+            &mut scratch,
+        );
+
+        let disjoint = frame(&[
+            (2, 0, Bounds::new(0, 0, 16, 16)),
+            (3, 0, Bounds::new(32, 0, 48, 16)),
+        ]);
+        let disjoint_reversed = frame(&[
+            (3, 0, Bounds::new(32, 0, 48, 16)),
+            (2, 0, Bounds::new(0, 0, 16, 16)),
+        ]);
+        let mut damage = DamageTiles::new((128, 64));
+        let mut retained = RetainedDamage::default();
+        diff_frames_reusing(
+            &disjoint,
+            &disjoint_reversed,
+            &mut damage,
+            &mut retained,
+            &mut scratch,
+        );
+
+        assert!(damage.is_empty());
+        assert!(retained.unattributed.is_empty());
     }
 
     #[test]
@@ -937,6 +1073,7 @@ mod tests {
         let mut state = IncrementalState {
             previous: Some(old),
             renderer_state_invalid: false,
+            frame_diff: Default::default(),
         };
         let plan = state.plan(
             Some(new),
@@ -961,6 +1098,7 @@ mod tests {
         let mut state = IncrementalState {
             previous: Some(old),
             renderer_state_invalid: false,
+            frame_diff: Default::default(),
         };
 
         let plan = state.plan(
@@ -1033,6 +1171,7 @@ mod tests {
         let mut state = IncrementalState {
             previous: Some(old),
             renderer_state_invalid: false,
+            frame_diff: Default::default(),
         };
         let plan = state.plan(
             Some(resized),
@@ -1052,6 +1191,7 @@ mod tests {
         let mut state = IncrementalState {
             previous: Some(retained.clone()),
             renderer_state_invalid: true,
+            frame_diff: Default::default(),
         };
         let plan = state.plan(
             Some(retained),

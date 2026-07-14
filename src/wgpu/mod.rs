@@ -23,6 +23,8 @@ pub use incremental::{
     CoarseBinningMode, FullRedrawReason, IncrementalOutputMode, IncrementalRenderConfig,
     IncrementalRenderMode, IncrementalRenderStats,
 };
+#[cfg(feature = "bench-internals")]
+pub use incremental::{FrameDiffBenchmark, FrameDiffBenchmarkCase};
 pub(crate) use profile::start_cpu_scope;
 pub use profile::{
     WgpuRenderProfile, WgpuRenderProfileEntry, WgpuRenderProfileEventSummary,

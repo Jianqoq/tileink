@@ -79,3 +79,5 @@ pub use text::{
 };
 #[cfg(feature = "bench-internals")]
 pub use wgpu::DamageTilesBenchmark;
+#[cfg(feature = "bench-internals")]
+pub use wgpu::{FrameDiffBenchmark, FrameDiffBenchmarkCase};

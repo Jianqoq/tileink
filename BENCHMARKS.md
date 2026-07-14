@@ -41,6 +41,12 @@ The complete run contains two suites:
 - `tile_draw_bins`: CPU-only persistent tile-membership updates for stable bounds, contiguous
   spatial changes, overlapping change ranges, and large changed-draw sets. It isolates reusable
   generation marks and dense tile/bin bitsets from renderer and GPU timing.
+- `frame_diff`: CPU-only retained-frame comparison for static frames, one or many revisions,
+  disjoint or overlapping painter-order changes, and insertion/removal. It detects repeated frame
+  index construction, per-tile adjacency allocation, and duplicate reordered-pair comparisons.
+- `tiles_for_bounds`: CPU-only spatial tile traversal for empty, clipped, single-tile, row, medium,
+  and full-canvas bounds. It detects temporary collection allocation and large-range iteration
+  regressions in retained spatial-index updates and queries.
 - `retained_scale/local-scene-resource-cycle` (with `bench-internals`): same-binary A/B of creating
   the fixed buffers/targets in a local offscreen scene allocation set versus recycling them from
   the renderer pool. This conservative microbenchmark excludes workload-dependent scratch targets;
@@ -71,5 +77,7 @@ Run the damage-mask matrix directly; it requires the benchmark-only internal ada
 ```powershell
 cargo bench --bench damage_tiles --features bench-internals
 cargo bench --bench tile_draw_bins --features bench-internals
+cargo bench --bench frame_diff --features bench-internals
+cargo bench --bench tiles_for_bounds --features bench-internals
 cargo bench --bench retained_scale --features bench-internals -- retained_scale/local-scene-resource
 ```

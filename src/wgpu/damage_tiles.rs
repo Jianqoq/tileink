@@ -50,6 +50,13 @@ impl DamageTiles {
         damage
     }
 
+    #[cfg(feature = "bench-internals")]
+    pub(crate) fn clear_for_benchmark(&mut self) {
+        for tile in self.list.drain(..) {
+            self.bits[tile as usize / 64] &= !(1 << (tile % 64));
+        }
+    }
+
     pub(crate) fn add_bounds(&mut self, bounds: Bounds) {
         // Keep the scalar conversion in this hot path. Returning a TileBbox from the shared query
         // helper measurably regresses workloads that add thousands of tiny bounds.

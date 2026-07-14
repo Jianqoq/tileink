@@ -21,6 +21,14 @@ impl RetainedMaterializerBenchmark {
         let changes = scene.changes_since(self.materializer.version());
         self.materializer.update(scene, changes)
     }
+
+    pub fn visit_tiles_for_bounds(&self, bounds: Bounds) -> (usize, usize) {
+        self.materializer
+            .tiles_for_bounds(bounds)
+            .fold((0, 0), |(count, checksum), tile| {
+                (count + 1, checksum.wrapping_add(tile))
+            })
+    }
 }
 
 pub(super) fn sync_arena<T: Copy>(

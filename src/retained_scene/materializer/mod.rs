@@ -6,6 +6,7 @@ mod damage;
 mod helpers;
 mod lifecycle;
 mod plan;
+mod spatial_tiles;
 mod storage;
 
 use self::helpers::inactive_draw;

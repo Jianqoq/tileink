@@ -213,7 +213,6 @@ impl PersistentSceneMaterializer {
         bounds: Bounds,
     ) -> Bounds {
         self.tiles_for_bounds(bounds)
-            .into_iter()
             .filter_map(|tile| tiles.get(&tile).copied())
             .map(|damage| damage.intersect(bounds))
             .fold(Bounds::new(0, 0, 0, 0), Bounds::union)
@@ -1212,25 +1211,12 @@ impl PersistentSceneMaterializer {
         }
     }
 
-    pub(crate) fn tiles_for_bounds(&self, bounds: Bounds) -> Vec<usize> {
-        let canvas = &self.canvas;
-        let width = canvas.width_in_tiles();
-        let height = canvas.height_in_tiles();
-        let x0 = bounds.x0.max(0) as u32 / crate::TILE_SIZE;
-        let y0 = bounds.y0.max(0) as u32 / crate::TILE_SIZE;
-        let x1 = (bounds.x1.max(0) as u32)
-            .div_ceil(crate::TILE_SIZE)
-            .min(width);
-        let y1 = (bounds.y1.max(0) as u32)
-            .div_ceil(crate::TILE_SIZE)
-            .min(height);
-        let mut tiles = Vec::new();
-        for y in y0.min(height)..y1 {
-            for x in x0.min(width)..x1 {
-                tiles.push((y * width + x) as usize);
-            }
-        }
-        tiles
+    pub(crate) fn tiles_for_bounds(&self, bounds: Bounds) -> super::spatial_tiles::BoundsTileIter {
+        super::spatial_tiles::BoundsTileIter::new(
+            bounds,
+            self.canvas.width_in_tiles(),
+            self.canvas.height_in_tiles(),
+        )
     }
 
     pub(crate) fn spatial_candidates(&self, bounds: Bounds) -> HashSet<RetainedNodeId> {
