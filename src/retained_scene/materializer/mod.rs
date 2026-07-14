@@ -2,6 +2,7 @@ pub(crate) use super::model::*;
 pub(crate) use super::prelude::*;
 pub(crate) use super::scene::RetainedScene;
 
+mod command_topology;
 mod damage;
 mod draw_order;
 mod helpers;
@@ -197,6 +198,9 @@ pub(crate) struct PersistentSceneMaterializer {
     plan_cache_key: u64,
     scene_command_locations: HashMap<RetainedNodeId, SceneCommandLocation>,
     layer_command_locations: HashMap<RetainedNodeId, LayerCommandLocation>,
+    /// Detached plain-scene command-list ranges, reused by later topology insertions with the
+    /// same fragment shape so repeated conditional UI does not grow command storage forever.
+    vacant_command_fragments: Vec<std::ops::Range<usize>>,
     resource_refs: HashMap<ImageKey, (Rc<Image>, usize)>,
     pub(crate) dependency_free: bool,
     layer_nodes: HashSet<RetainedNodeId>,

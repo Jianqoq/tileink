@@ -35,6 +35,25 @@ fn empty_leaf() -> Rc<Canvas> {
     Rc::new(Canvas::new(16, 16, 1.0))
 }
 
+fn root_retained_commands(materializer: &PersistentSceneMaterializer) -> Vec<RetainedNodeId> {
+    materializer.canvas.command_lists[0]
+        .commands
+        .iter()
+        .map(|command| match command {
+            Command::MaterializedRetainedScene { id, .. } => *id,
+            Command::Layer {
+                retained: Some(key),
+                ..
+            }
+            | Command::MaskLayer {
+                retained: Some(key),
+                ..
+            } => key.id,
+            _ => unreachable!("persistent root only contains retained commands"),
+        })
+        .collect()
+}
+
 fn backdrop_leaf() -> Rc<Canvas> {
     let mut canvas = Canvas::new(16, 16, 1.0);
     canvas.push_backdrop_layer(
@@ -93,6 +112,92 @@ fn transaction_rejects_non_finite_and_singular_transforms_atomically() {
         };
         assert_eq!(*transform, Affine::IDENTITY);
     }
+}
+
+#[test]
+fn flat_topology_commands_patch_order_and_reuse_fragment_storage() {
+    let root = RetainedNodeId::for_owner(70_005);
+    let base = RetainedNodeId::for_owner(70_006);
+    let anchor = RetainedNodeId::for_owner(70_007);
+    let first = RetainedNodeId::for_owner(70_008);
+    let second = RetainedNodeId::for_owner(70_009);
+    let recycled = RetainedNodeId::for_owner(70_010);
+    let content = leaf(Color::WHITE);
+    let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            base,
+            content.clone(),
+            Affine::IDENTITY,
+        )
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            anchor,
+            content.clone(),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+    let mut materializer = PersistentSceneMaterializer::new(&scene);
+    let initial_command_lists = materializer.canvas.command_lists.len();
+
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            Some(anchor),
+            first,
+            content.clone(),
+            Affine::IDENTITY,
+        )
+        .insert_scene(
+            RetainedParent::content(root),
+            Some(anchor),
+            second,
+            content.clone(),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+    assert!(update_materializer(&mut materializer, &scene));
+    assert_eq!(
+        root_retained_commands(&materializer),
+        vec![base, first, second, anchor]
+    );
+
+    scene
+        .transaction()
+        .remove_subtree(first)
+        .insert_scene(
+            RetainedParent::content(root),
+            Some(second),
+            recycled,
+            content.clone(),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+    assert!(update_materializer(&mut materializer, &scene));
+    assert_eq!(
+        root_retained_commands(&materializer),
+        vec![base, recycled, second, anchor]
+    );
+    assert_eq!(
+        materializer.canvas.command_lists.len(),
+        initial_command_lists + 2,
+        "the replacement reuses the removed leaf's command fragment"
+    );
+
+    scene
+        .transaction()
+        .replace_scene(recycled, leaf(Color::BLACK))
+        .commit()
+        .unwrap();
+    assert!(update_materializer(&mut materializer, &scene));
 }
 
 #[test]

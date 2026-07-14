@@ -27,22 +27,10 @@ impl PersistentSceneMaterializer {
         canvas.persistent_root = Some(scene.root);
         self.scene_command_locations.clear();
         self.layer_command_locations.clear();
+        self.vacant_command_fragments.clear();
         self.root_plan_fragments.clear();
         self.root_fragment_owners.clear();
         self.append_children(scene, scene.root, RetainedChildBranch::Content, 0);
-    }
-
-    /// Synchronizes the retained command tree without discarding an execution plan whose flat
-    /// batch structure was updated in place.
-    ///
-    /// Plain-leaf topology updates can reuse the compiled plan because painter metadata owns the
-    /// live batch membership. The command tree still has to describe the new topology: later
-    /// content and transform updates patch commands through its stable node locations.
-    pub(crate) fn rebuild_commands_preserving_plan(&mut self, scene: &RetainedScene) {
-        let compiled_plan = self.canvas.compiled_plan.clone();
-        self.rebuild_commands(scene);
-        Rc::make_mut(&mut self.canvas).compiled_plan = compiled_plan;
-        self.index_root_plan_fragments(scene);
     }
 
     pub(crate) fn append_children(
@@ -726,6 +714,11 @@ impl PersistentSceneMaterializer {
             return false;
         };
         let location = self.layer_command_locations[&id];
+        if !fragment.command_lists.is_empty() {
+            // Appended root fragments may truncate the command-list tail. Discard recycled ranges
+            // before their indices can become invalid; the detached storage itself is harmless.
+            self.vacant_command_fragments.clear();
+        }
         let canvas = Rc::make_mut(&mut self.canvas);
         let Some(plan) = canvas.compiled_plan.as_mut() else {
             self.root_plan_fragments.insert(id, fragment);

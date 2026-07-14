@@ -611,6 +611,14 @@ fn persistent_retained_reparent_between_layers_reuses_stable_batches() {
     assert!(renderer.incremental_render_stats().reused_compiled_plan);
     assert_eq!(renderer.incremental_render_stats().root_draw_batches, 1);
 
+    // The moved leaf must retain a command location for its next independent paint update.
+    scene
+        .transaction()
+        .replace_scene(moving, child(Color::from_rgb8(30, 210, 70)))
+        .commit()
+        .unwrap();
+    renderer.render_retained(&scene);
+
     let reference = scene.to_canvas();
     let mut full = new_test_renderer(32, 16, Color::TRANSPARENT);
     let mut config = full.incremental_render_config();

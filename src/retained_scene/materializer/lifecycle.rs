@@ -19,6 +19,7 @@ impl PersistentSceneMaterializer {
             plan_cache_key: next_plan_cache_key(),
             scene_command_locations: HashMap::default(),
             layer_command_locations: HashMap::default(),
+            vacant_command_fragments: Vec::new(),
             resource_refs: HashMap::default(),
             dependency_free: false,
             layer_nodes: HashSet::default(),
@@ -653,11 +654,14 @@ impl PersistentSceneMaterializer {
                 }
             }
         }
-        if topology_delta_plan_reused || flat_topology_plan_reused {
-            // The execution plan reads current stable-batch membership directly, so it remains
-            // reusable. Rebuild only the command tree to install locations for inserted leaves;
-            // otherwise their first later content update cannot patch its materialized command.
-            self.rebuild_commands_preserving_plan(scene);
+        if (topology_delta_plan_reused || flat_topology_plan_reused)
+            && !self.sync_flat_topology_commands(scene, &changes)
+        {
+            // Candidate detection is intentionally conservative, but an unexpected layer/group
+            // shape must still take the authoritative full path instead of leaving stale command
+            // locations behind.
+            commands_dirty = true;
+            plan_dirty = true;
         }
         let root_reorder_eligible = root_reorder_candidate && chunks_rebuilt == 0 && !compacted;
         if root_reorder_eligible {

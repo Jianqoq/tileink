@@ -63,6 +63,11 @@ harness = false
 required-features = ["bench-internals"]
 
 [[bench]]
+name = "retained_topology"
+harness = false
+required-features = ["bench-internals"]
+
+[[bench]]
 name = "damage_tiles"
 harness = false
 required-features = ["bench-internals"]
