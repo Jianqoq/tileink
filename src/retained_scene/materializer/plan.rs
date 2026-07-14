@@ -909,7 +909,10 @@ impl PersistentSceneMaterializer {
     }
 
     pub(crate) fn rebuild_painter_metadata(&mut self, scene: &RetainedScene) {
-        let old_keys = Rc::make_mut(&mut self.canvas).painter_keys.clone();
+        let (old_keys, old_batches) = {
+            let canvas = Rc::make_mut(&mut self.canvas);
+            (canvas.painter_keys.clone(), canvas.stable_batch_ids.clone())
+        };
         self.painter_bases.clear();
         let mut leaves = Vec::new();
         collect_scene_leaves(scene, scene.root, &mut leaves);
@@ -973,7 +976,15 @@ impl PersistentSceneMaterializer {
         self.flat_plan_has_draws = exec_ops_have_batches(&plan.ops);
         let canvas = Rc::make_mut(&mut self.canvas);
         if let Some(changes) = &mut canvas.buffer_changes {
-            changes.painter = changed_value_ranges(old_keys.as_deref().unwrap_or(&[]), &keys);
+            let mut dirty = changed_value_ranges(old_keys.as_deref().unwrap_or(&[]), &keys);
+            dirty.extend(changed_value_ranges(
+                old_batches.as_deref().unwrap_or(&[]),
+                &batches,
+            ));
+            // Painter keys and stable batch IDs are uploaded through the same metadata path.
+            // A topology rebuild may renumber batches without changing painter order, so both
+            // arrays must contribute dirty ranges or the GPU keeps stale batch membership.
+            changes.painter = merge_index_ranges(dirty);
         }
         canvas.painter_keys = Some(keys);
         canvas.stable_batch_counts = Some(count_stable_batches(&batches));

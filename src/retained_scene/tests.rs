@@ -399,6 +399,80 @@ fn failed_transaction_restores_order_keys_after_rebalance() {
 }
 
 #[test]
+fn successful_rebalance_reports_every_sibling_with_a_new_order_key() {
+    let root = RetainedNodeId::for_owner(20);
+    let first = RetainedNodeId::for_owner(21);
+    let tail = RetainedNodeId::for_owner(22);
+    let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            first,
+            leaf(Color::WHITE),
+            Affine::IDENTITY,
+        )
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            tail,
+            leaf(Color::BLACK),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+
+    let mut owner = 23;
+    loop {
+        let children = &scene.nodes[&root].content;
+        let upper = children.key_of(tail).unwrap();
+        let lower = children.order.range(..upper).next_back().unwrap().0;
+        if upper - lower == 1 {
+            break;
+        }
+        scene
+            .transaction()
+            .insert_scene(
+                RetainedParent::content(root),
+                Some(tail),
+                RetainedNodeId::for_owner(owner),
+                leaf(Color::WHITE),
+                Affine::IDENTITY,
+            )
+            .commit()
+            .unwrap();
+        owner += 1;
+    }
+
+    let previous_version = scene.version();
+    let previous_siblings = scene.nodes[&root]
+        .content
+        .values()
+        .copied()
+        .collect::<Vec<_>>();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            Some(tail),
+            RetainedNodeId::for_owner(owner),
+            leaf(Color::WHITE),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+
+    let changes = scene.changes_since(previous_version).unwrap();
+    assert!(
+        previous_siblings
+            .iter()
+            .all(|id| changes.changed_nodes.contains(id)),
+        "rebalance changes every existing sibling order key"
+    );
+}
+
+#[test]
 fn content_revision_reuses_chunk_canvas_storage() {
     let root = RetainedNodeId::for_owner(5);
     let child = RetainedNodeId::for_owner(6);
@@ -594,6 +668,51 @@ fn painter_dirty_ranges_drop_removed_suffix_after_draw_arena_compaction() {
             .painter
             .iter()
             .all(|range| range.end <= batch_len)
+    );
+}
+
+#[test]
+fn painter_rebuild_uploads_batch_only_metadata_changes() {
+    let root = RetainedNodeId::for_owner(62_073);
+    let child = RetainedNodeId::for_owner(62_074);
+    let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            child,
+            leaf(Color::WHITE),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+    let mut materializer = PersistentSceneMaterializer::new(&scene);
+    let physical = materializer.canvas.stable_batch_ids.as_ref().unwrap()[..]
+        .iter()
+        .position(|batch| *batch != u32::MAX)
+        .unwrap();
+    Rc::make_mut(&mut materializer.canvas)
+        .stable_batch_ids
+        .as_mut()
+        .unwrap()[physical] = u32::MAX;
+
+    materializer.rebuild_painter_metadata(&scene);
+
+    let canvas = materializer.canvas();
+    assert_ne!(
+        canvas.stable_batch_ids.as_ref().unwrap()[physical],
+        u32::MAX
+    );
+    assert!(
+        canvas
+            .buffer_changes
+            .as_ref()
+            .unwrap()
+            .painter
+            .iter()
+            .any(|range| range.contains(&physical)),
+        "stable batch IDs share the painter metadata buffer and require the same upload tracking"
     );
 }
 

@@ -232,6 +232,7 @@ impl RetainedScene {
                 }
                 validate_kind(&kind, self.scale)?;
                 let insertion = self.insert_child(parent, before, id)?;
+                record_rebalanced_siblings(&insertion, changes);
                 let instance = self.next_node_instance;
                 self.next_node_instance = self.next_node_instance.wrapping_add(1).max(2);
                 self.nodes.insert(
@@ -365,6 +366,7 @@ impl RetainedScene {
                 self.validate_child_insert(parent, before, id)?;
                 let old_key = self.remove_child(old_parent, id)?;
                 let new_insertion = self.insert_child(parent, before, id)?;
+                record_rebalanced_siblings(&new_insertion, changes);
                 self.nodes.get_mut(&id).unwrap().parent = Some(parent);
                 changes.changed_nodes.insert(id);
                 changes.topology_changed = true;
@@ -398,6 +400,7 @@ impl RetainedScene {
                 }
                 let old_key = self.remove_child(parent, id)?;
                 let new_insertion = self.insert_child(parent, Some(sibling), id)?;
+                record_rebalanced_siblings(&new_insertion, changes);
                 changes.changed_nodes.insert(id);
                 changes.topology_changed = true;
                 changes.hierarchy_changed = true;
@@ -628,5 +631,13 @@ impl RetainedScene {
         for child in node.content.values().chain(node.mask.values()) {
             self.collect_subtree(*child, out);
         }
+    }
+}
+
+/// A sibling rebalance changes painter paths even though node values stay untouched.
+/// Reporting every affected sibling keeps retained materializers from reusing stale order keys.
+fn record_rebalanced_siblings(insertion: &ChildInsertion, changes: &mut SceneChangeSet) {
+    if let Some(previous) = &insertion.before_rebalance {
+        changes.changed_nodes.extend(previous.keys.keys().copied());
     }
 }
