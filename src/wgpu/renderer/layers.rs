@@ -377,9 +377,7 @@ impl Renderer {
                 self.install_scratch_target(0, source_history);
                 self.install_scratch_target(1, surface.primary);
                 let output_update = output_damage
-                    .coalesced_rects(surface_size)
-                    .into_iter()
-                    .reduce(Bounds::union)
+                    .bounds_union(surface_size)
                     .unwrap_or(local_bounds);
                 // Visible output damage can depend on source pixels outside the
                 // root target (for example, a shape below the bottom edge blurred

@@ -545,8 +545,8 @@ mod tests {
     use crate::shared::path::PathRecord;
 
     use super::{
-        changed_upload_range, required_storage_capacity, scatter_staging_capacity,
-        should_scatter_range_upload, validate_upload_ranges,
+        RANGE_SCATTER_THRESHOLD, changed_upload_range, required_storage_capacity,
+        scatter_staging_capacity, should_scatter_range_upload, validate_upload_ranges,
     };
 
     #[test]
@@ -587,10 +587,12 @@ mod tests {
     }
 
     #[test]
-    fn four_word_aligned_ranges_select_scatter() {
-        assert!(!should_scatter_range_upload::<u32>(3));
-        assert!(should_scatter_range_upload::<u32>(4));
-        assert!(!should_scatter_range_upload::<u8>(4));
+    fn aligned_ranges_select_scatter_at_the_configured_threshold() {
+        assert!(!should_scatter_range_upload::<u32>(
+            RANGE_SCATTER_THRESHOLD - 1
+        ));
+        assert!(should_scatter_range_upload::<u32>(RANGE_SCATTER_THRESHOLD));
+        assert!(!should_scatter_range_upload::<u8>(RANGE_SCATTER_THRESHOLD));
     }
 
     #[test]

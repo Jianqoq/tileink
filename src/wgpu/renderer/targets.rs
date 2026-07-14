@@ -54,11 +54,7 @@ impl Renderer {
     }
 
     pub(super) fn active_bounds_union(&self) -> Option<Bounds> {
-        self.retained
-            .active_tiles()?
-            .coalesced_rects(self.size)
-            .into_iter()
-            .reduce(Bounds::union)
+        self.retained.active_tiles()?.bounds_union(self.size)
     }
 
     pub(super) fn render_target_view(&self, target: WgpuRenderTargetId) -> &::wgpu::TextureView {
