@@ -1,6 +1,94 @@
 use super::*;
 
 #[test]
+fn transformed_sdf_rect_preserves_brush_and_device_space_coverage() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    const WIDTH: u32 = 224;
+    const HEIGHT: u32 = 224;
+    let solid = Color::from_rgb8(32, 160, 224);
+    let stops = [Color::from_rgb8(240, 48, 32), Color::from_rgb8(32, 96, 240)];
+
+    let mut direct = Canvas::new(WIDTH, HEIGHT, 1.0);
+    direct.push_rect(
+        Rect::new(12.0, 8.0, 212.0, 24.0),
+        crate::Radius::ZERO,
+        solid,
+    );
+    let direct_gradient = Gradient::new_linear((12.0, 0.0), (212.0, 0.0)).with_stops(stops);
+    direct.push_rect(
+        Rect::new(12.0, 40.0, 212.0, 56.0),
+        crate::Radius::ZERO,
+        Brush::from_gradient(&direct_gradient),
+    );
+    direct.push_rect(
+        Rect::new(100.0, 12.0, 116.0, 212.0),
+        crate::Radius::ZERO,
+        solid,
+    );
+    direct.push_rect(
+        Rect::new(156.25, 96.25, 164.25, 104.25),
+        crate::Radius::ZERO,
+        solid,
+    );
+
+    let mut solid_unit = Canvas::new(1, 16, 1.0);
+    solid_unit.push_rect(Rect::new(0.0, 0.0, 1.0, 16.0), crate::Radius::ZERO, solid);
+    let local_gradient = Gradient::new_linear((0.0, 0.0), (1.0, 0.0)).with_stops(stops);
+    let mut gradient_unit = Canvas::new(1, 16, 1.0);
+    gradient_unit.push_rect(
+        Rect::new(0.0, 0.0, 1.0, 16.0),
+        crate::Radius::ZERO,
+        Brush::from_gradient(&local_gradient),
+    );
+    let mut transformed = Canvas::new(WIDTH, HEIGHT, 1.0);
+    transformed.append_transformed(
+        &solid_unit,
+        Affine::translate((12.0, 8.0)) * Affine::scale_non_uniform(200.0, 1.0),
+    );
+    transformed.append_transformed(
+        &gradient_unit,
+        Affine::translate((12.0, 40.0)) * Affine::scale_non_uniform(200.0, 1.0),
+    );
+    transformed.append_transformed(
+        &solid_unit,
+        // x' = 116 - y, y' = 12 + 200x: exact rotation verifies Jacobian orientation.
+        Affine::new([0.0, 200.0, -1.0, 0.0, 116.0, 12.0]),
+    );
+    transformed
+        .push_line(
+            crate::SdfLine::new(
+                peniko::kurbo::Point::new(160.25, 100.25),
+                peniko::kurbo::Point::new(160.25, 100.25),
+                8.0,
+                crate::SdfLineCap::Square,
+            ),
+            solid,
+        )
+        .expect("zero-length square-cap line must be drawable");
+
+    let mut direct_renderer = new_test_renderer(WIDTH, HEIGHT, Color::TRANSPARENT);
+    direct_renderer.render(&direct);
+    let mut transformed_renderer = new_test_renderer(WIDTH, HEIGHT, Color::TRANSPARENT);
+    transformed_renderer.render(&transformed);
+
+    for y in 0..HEIGHT {
+        for x in 0..WIDTH {
+            let actual = transformed_renderer.image().rgba8_at(x, y);
+            let expected = direct_renderer.image().rgba8_at(x, y);
+            for channel in 0..4 {
+                assert!(
+                    actual[channel].abs_diff(expected[channel]) <= 1,
+                    "transformed pixel ({x}, {y}) differs: actual={actual:?}, expected={expected:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn forced_coarse_binning_modes_render_the_same_incremental_frame() {
     if !run_wgpu_tests() {
         return;
