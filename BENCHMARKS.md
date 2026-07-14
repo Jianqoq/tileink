@@ -42,6 +42,9 @@ The complete run contains two suites:
   the fixed buffers/targets in a local offscreen scene allocation set versus recycling them from
   the renderer pool. This conservative microbenchmark excludes workload-dependent scratch targets;
   the cropped-filter scale cases above remain the end-to-end frame measurement.
+- `retained_scale/local-scene-resource-mixed-sizes` (with `bench-internals`): two differently sized
+  sibling offscreen scenes per frame. It detects pool-order regressions that make stable filters
+  exchange allocation sets and recreate their fixed and minimum scratch targets every frame.
 
 Use filters for focused development runs without deleting any matrix entries:
 
@@ -64,5 +67,5 @@ Run the damage-mask matrix directly; it requires the benchmark-only internal ada
 
 ```powershell
 cargo bench --bench damage_tiles --features bench-internals
-cargo bench --bench retained_scale --features bench-internals -- retained_scale/local-scene-resource-cycle
+cargo bench --bench retained_scale --features bench-internals -- retained_scale/local-scene-resource
 ```

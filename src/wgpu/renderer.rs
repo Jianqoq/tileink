@@ -151,8 +151,9 @@ pub struct Renderer {
 /// Scene-bound GPU allocations that are temporarily replaced while rendering an offscreen layer.
 ///
 /// A renderer quarantines restored allocations until the current command batch is submitted, then
-/// makes them available at the start of the next frame. Buffers retain their grown capacities and
-/// fixed render targets are resized only when a later local scene has different dimensions.
+/// makes them available at the start of the next frame. Acquisition prefers matching target sizes
+/// so sibling filters do not resize each other's textures; buffers retain their grown capacities
+/// when an exact size is unavailable.
 struct SceneResources {
     config: WgpuBuffer,
     scene_buffers: WgpuSceneBuffers,

@@ -98,6 +98,24 @@ fn retained_scale(c: &mut Criterion) {
             });
         }
         group.finish();
+
+        let mut group = c.benchmark_group("retained_scale/local-scene-resource-mixed-sizes");
+        let sizes = [(128, 128), (320, 192)];
+        for (policy, reuse) in [("fresh", false), ("pooled", true)] {
+            group.bench_function(policy, |b| {
+                let mut renderer = WgpuRenderer::new(
+                    seed.device(),
+                    seed.queue(),
+                    WIDTH,
+                    HEIGHT,
+                    Color::TRANSPARENT,
+                );
+                renderer.set_local_scene_resource_reuse_for_benchmark(reuse);
+                renderer.cycle_mixed_local_scene_resources_for_benchmark(&sizes);
+                b.iter(|| renderer.cycle_mixed_local_scene_resources_for_benchmark(&sizes));
+            });
+        }
+        group.finish();
     }
 
     // The end-to-end groups above intentionally include submit and GPU completion. Keep a second

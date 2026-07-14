@@ -73,6 +73,10 @@ impl SceneResources {
         std::mem::swap(&mut self.scratch_in_use, &mut renderer.scratch_in_use);
         self
     }
+
+    fn target_size(&self) -> (u32, u32) {
+        self.readback_target.size()
+    }
 }
 
 impl Renderer {
@@ -81,9 +85,24 @@ impl Renderer {
         if !self.reuse_local_scene_resources {
             return SceneResources::new(&self.device, self.range_scatter_pipeline.clone(), size);
         }
-        self.local_scene_resource_pool.pop().unwrap_or_else(|| {
-            SceneResources::new(&self.device, self.range_scatter_pipeline.clone(), size)
-        })
+        let Some(fallback) = self.local_scene_resource_pool.pop() else {
+            return SceneResources::new(&self.device, self.range_scatter_pipeline.clone(), size);
+        };
+        // One local scene and properly nested scenes naturally match LIFO order. Keep that path
+        // O(1), and scan only when sibling traversal left another size at the back of the pool.
+        if self.local_scene_resource_pool.is_empty() || fallback.target_size() == size {
+            return fallback;
+        }
+        let exact = self
+            .local_scene_resource_pool
+            .iter()
+            .rposition(|resources| resources.target_size() == size);
+        let Some(index) = exact else {
+            return fallback;
+        };
+        let resources = self.local_scene_resource_pool.swap_remove(index);
+        self.local_scene_resource_pool.push(fallback);
+        resources
     }
 
     pub(super) fn recycle_local_scene_resources(&mut self, resources: SceneResources) {
@@ -120,5 +139,34 @@ impl Renderer {
         let resources = self.acquire_local_scene_resources(size);
         std::hint::black_box(resources.config.binding_key());
         self.recycle_local_scene_resources(resources);
+    }
+
+    /// Exercises differently sized sibling resources and their target preparation.
+    #[cfg(feature = "bench-internals")]
+    #[doc(hidden)]
+    pub fn cycle_mixed_local_scene_resources_for_benchmark(&mut self, sizes: &[(u32, u32)]) {
+        self.begin_local_scene_resource_frame();
+        for &size in sizes {
+            let mut resources = self.acquire_local_scene_resources(size);
+            resources.prepare_minimum_targets_for_benchmark(&self.device, size);
+            std::hint::black_box(resources.config.binding_key());
+            self.recycle_local_scene_resources(resources);
+        }
+    }
+}
+
+#[cfg(feature = "bench-internals")]
+impl SceneResources {
+    /// Mirrors the fixed targets plus the minimum scratch target prepared by a local filter.
+    fn prepare_minimum_targets_for_benchmark(&mut self, device: &::wgpu::Device, size: (u32, u32)) {
+        self.readback_target.resize(device, size.0, size.1);
+        self.fine_portable_source.resize(device, size.0, size.1);
+        self.fine_portable_target.resize(device, size.0, size.1);
+        self.filter_target_snapshot.resize(device, size.0, size.1);
+        if self.scratch.is_empty() {
+            self.scratch.push(WgpuTarget::new(device, size.0, size.1));
+        } else {
+            self.scratch[0].resize(device, size.0, size.1);
+        }
     }
 }

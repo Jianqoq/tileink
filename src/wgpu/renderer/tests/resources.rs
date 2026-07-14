@@ -31,6 +31,36 @@ fn local_scene_resources_are_quarantined_until_the_next_frame() {
 }
 
 #[test]
+fn local_scene_resource_pool_matches_sibling_sizes_across_frames() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut renderer = new_test_renderer(64, 64, Color::TRANSPARENT);
+    let small = renderer.acquire_local_scene_resources((16, 16));
+    let small_key = small.config.binding_key();
+    renderer.recycle_local_scene_resources(small);
+    let large = renderer.acquire_local_scene_resources((32, 32));
+    let large_key = large.config.binding_key();
+    renderer.recycle_local_scene_resources(large);
+
+    renderer.begin_local_scene_resource_frame();
+    let reused_small = renderer.acquire_local_scene_resources((16, 16));
+    let reused_large = renderer.acquire_local_scene_resources((32, 32));
+    assert_eq!(reused_small.config.binding_key(), small_key);
+    assert_eq!(reused_large.config.binding_key(), large_key);
+
+    renderer.recycle_local_scene_resources(reused_small);
+    renderer.recycle_local_scene_resources(reused_large);
+    renderer.begin_local_scene_resource_frame();
+    let fallback = renderer.acquire_local_scene_resources((24, 24));
+    assert!(
+        fallback.config.binding_key() == small_key || fallback.config.binding_key() == large_key,
+        "an inexact target size must still reuse grown scene buffers"
+    );
+}
+
+#[test]
 fn fragmented_buffer_upload_scatter_matches_the_source_ranges() {
     if !run_wgpu_tests() {
         return;
