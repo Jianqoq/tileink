@@ -38,6 +38,9 @@ The complete run contains two suites:
   materialization across single tiles, sparse/disjoint damage, repeated tiny overlap,
   threshold-width rows, medium rectangles, wide strips, dense frames, repeated large overlap, and
   fragmented masks.
+- `tile_draw_bins`: CPU-only persistent tile-membership updates for stable bounds, contiguous
+  spatial changes, overlapping change ranges, and large changed-draw sets. It isolates reusable
+  generation marks and dense tile/bin bitsets from renderer and GPU timing.
 - `retained_scale/local-scene-resource-cycle` (with `bench-internals`): same-binary A/B of creating
   the fixed buffers/targets in a local offscreen scene allocation set versus recycling them from
   the renderer pool. This conservative microbenchmark excludes workload-dependent scratch targets;
@@ -67,5 +70,6 @@ Run the damage-mask matrix directly; it requires the benchmark-only internal ada
 
 ```powershell
 cargo bench --bench damage_tiles --features bench-internals
+cargo bench --bench tile_draw_bins --features bench-internals
 cargo bench --bench retained_scale --features bench-internals -- retained_scale/local-scene-resource
 ```

@@ -6,6 +6,7 @@ use crate::{
     canvas::{Canvas, PainterKey},
     shared::{
         bounds::{Bounds, PixelBounds, TileBbox},
+        dense_set::{DenseIndexSet, GenerationMarks},
         draw_record::{DrawRecord, DrawTag},
         execution::{ExecOp, ExecPlan, LayerStackEntry},
         gpu_coarse::TileDrawRecord,
@@ -18,6 +19,11 @@ use crate::{
     },
     text::PreparedTextData,
 };
+
+#[cfg(feature = "bench-internals")]
+mod benchmark;
+#[cfg(feature = "bench-internals")]
+pub use benchmark::TileDrawBinsBenchmark;
 
 pub(crate) const SCAN_CHUNK_SIZE: u32 = 256;
 pub(crate) const CUMSUM_CHUNK_SIZE: u32 = 256;
@@ -305,6 +311,10 @@ pub(crate) struct TileDrawBins {
     active_draws: Vec<u32>,
     dense_bin_max_candidates: Vec<u32>,
     dense_candidate_rounds: u64,
+    visited_draws: GenerationMarks,
+    membership_changed: DenseIndexSet,
+    affected_tiles: DenseIndexSet,
+    affected_dense_bins: DenseIndexSet,
 }
 
 /// Candidate-loop work executed by the two native coarse kernels.
@@ -709,14 +719,18 @@ impl TileDrawBins {
         );
         self.draw_ranks.resize(working_len, PainterKey::inactive());
         self.draw_ptcl_capacities.resize(working_len, 0);
-        let mut visited_draws = HashSet::new();
-        let mut membership_changed = HashSet::new();
-        let mut affected_tiles = HashSet::new();
+        self.visited_draws.begin(working_len);
+        self.membership_changed.begin(working_len);
+        let tile_count = tiles_size.0 as usize * tiles_size.1 as usize;
+        self.affected_tiles.begin(tile_count);
+        let bin_count = tiles_size.0.div_ceil(COARSE_BIN_TILES) as usize
+            * tiles_size.1.div_ceil(COARSE_BIN_TILES) as usize;
+        self.affected_dense_bins.begin(bin_count);
         for draw in changed.iter().flat_map(|range| range.clone()) {
             if draw >= working_len {
                 continue;
             }
-            if !visited_draws.insert(draw) {
+            if !self.visited_draws.insert(draw) {
                 continue;
             }
             let old_bbox = self.draw_bboxes[draw];
@@ -744,46 +758,46 @@ impl TileDrawBins {
                 self.draw_ptcl_capacities[draw] = 0;
             }
             if old_bbox != self.draw_bboxes[draw] || old_rank != self.draw_ranks[draw] {
-                membership_changed.insert(draw);
+                self.membership_changed.insert(draw);
                 for_tile_in_bbox(old_bbox, tiles_size.0, |tile| {
-                    affected_tiles.insert(tile);
+                    self.affected_tiles.insert(tile);
                 });
                 for_tile_in_bbox(self.draw_bboxes[draw], tiles_size.0, |tile| {
-                    affected_tiles.insert(tile);
+                    self.affected_tiles.insert(tile);
                 });
             }
         }
-        let page_membership_changed = !affected_tiles.is_empty();
-        let mut changed_ids = membership_changed
-            .iter()
-            .filter_map(|&draw| (draw < new_len).then_some(draw as u32))
-            .collect::<Vec<_>>();
-        changed_ids.sort_unstable();
-        for &tile in &affected_tiles {
+        let page_membership_changed = !self.affected_tiles.is_empty();
+        let membership_changed = &self.membership_changed;
+        for index in 0..self.affected_tiles.len() {
+            let tile = self.affected_tiles.get(index);
             self.tile_refs[tile].retain(|draw| {
                 let draw = *draw as usize;
-                !membership_changed.contains(&draw)
+                !membership_changed.contains(draw)
             });
         }
-        for &draw in &changed_ids {
-            if self.draw_ranks[draw as usize].path[0] == u128::MAX {
+        for index in 0..self.membership_changed.len() {
+            let draw = self.membership_changed.get(index);
+            if draw >= new_len || self.draw_ranks[draw].path[0] == u128::MAX {
                 continue;
             }
-            for_tile_in_bbox(self.draw_bboxes[draw as usize], tiles_size.0, |tile| {
-                self.tile_refs[tile].push(draw);
+            for_tile_in_bbox(self.draw_bboxes[draw], tiles_size.0, |tile| {
+                self.tile_refs[tile].push(draw as u32);
             });
         }
-        let affected_dense_bins = affected_tiles
-            .iter()
-            .map(|&tile| self.dense_bin_index(tile))
-            .collect::<HashSet<_>>();
-        for tile in affected_tiles {
+        for index in 0..self.affected_tiles.len() {
+            let tile = self.affected_tiles.get(index);
+            let bin = self.dense_bin_index(tile);
+            self.affected_dense_bins.insert(bin);
+        }
+        for index in 0..self.affected_tiles.len() {
+            let tile = self.affected_tiles.get(index);
             self.tile_refs[tile].sort_unstable_by(|a, b| {
                 self.draw_ranks[*a as usize].cmp(&self.draw_ranks[*b as usize])
             });
             self.rewrite_tile(tile);
         }
-        self.refresh_dense_candidate_rounds(affected_dense_bins);
+        self.refresh_dense_candidate_rounds();
         self.draw_bboxes.truncate(new_len);
         self.draw_ranks.truncate(new_len);
         self.draw_ptcl_capacities.truncate(new_len);
@@ -870,8 +884,9 @@ impl TileDrawBins {
         }
     }
 
-    fn refresh_dense_candidate_rounds(&mut self, bins: impl IntoIterator<Item = usize>) {
-        for bin in bins {
+    fn refresh_dense_candidate_rounds(&mut self) {
+        for index in 0..self.affected_dense_bins.len() {
+            let bin = self.affected_dense_bins.get(index);
             let candidates = self.dense_bin_max_candidates(bin);
             let previous = std::mem::replace(&mut self.dense_bin_max_candidates[bin], candidates);
             self.dense_candidate_rounds =
@@ -2616,6 +2631,60 @@ mod tests {
                 ..(unaffected_page as usize + 1) * TILE_DRAW_PAGE_WORDS],
             unaffected_words
         );
+    }
+
+    #[test]
+    fn overlapping_changed_ranges_update_each_draw_and_tile_once() {
+        let mut initial = Canvas::new(crate::TILE_SIZE * 3, crate::TILE_SIZE, 1.0);
+        initial.push_rect(
+            Rect::new(0.0, 0.0, 16.0, 16.0),
+            crate::Radius::ZERO,
+            Color::BLACK,
+        );
+        initial.push_rect(
+            Rect::new(32.0, 0.0, 48.0, 16.0),
+            crate::Radius::ZERO,
+            Color::WHITE,
+        );
+        let plan = initial.compile(crate::shared::execution::ROOT_COMMAND_LIST_ID);
+        let mut bins = TileDrawBins::default();
+        let mut cursors = Vec::new();
+        build_tile_draw_bins_into(&initial, &plan, &mut bins, &mut cursors);
+        let _ = bins.take_dirty();
+
+        let mut moved = Canvas::new(crate::TILE_SIZE * 3, crate::TILE_SIZE, 1.0);
+        moved.push_rect(
+            Rect::new(16.0, 0.0, 32.0, 16.0),
+            crate::Radius::ZERO,
+            Color::BLACK,
+        );
+        moved.push_rect(
+            Rect::new(0.0, 0.0, 16.0, 16.0),
+            crate::Radius::ZERO,
+            Color::WHITE,
+        );
+        let overlapping = [0..2, 0..1, 1..2, 0..2];
+        assert!(bins.update_changed(
+            &moved.draw_records,
+            &plan.draw_order,
+            None,
+            (3, 1),
+            &overlapping,
+        ));
+        assert_eq!(bins.tile_draws(0), [1]);
+        assert_eq!(bins.tile_draws(1), [0]);
+        assert!(bins.tile_draws(2).is_empty());
+
+        assert!(bins.update_changed(
+            &initial.draw_records,
+            &plan.draw_order,
+            None,
+            (3, 1),
+            &overlapping,
+        ));
+        assert_eq!(bins.tile_draws(0), [0]);
+        assert!(bins.tile_draws(1).is_empty());
+        assert_eq!(bins.tile_draws(2), [1]);
     }
 
     #[test]

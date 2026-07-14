@@ -68,6 +68,11 @@ harness = false
 required-features = ["bench-internals"]
 
 [[bench]]
+name = "tile_draw_bins"
+harness = false
+required-features = ["bench-internals"]
+
+[[bench]]
 name = "range_scatter"
 harness = false
 

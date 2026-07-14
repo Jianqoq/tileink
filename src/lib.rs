@@ -35,6 +35,8 @@ pub use retained_scene::{
     RetainedChildBranch, RetainedLayerDescriptor, RetainedParent, RetainedScene,
     RetainedSceneError, RetainedSceneTransaction, SceneVersion,
 };
+#[cfg(feature = "bench-internals")]
+pub use shared::gpu_plan::TileDrawBinsBenchmark;
 pub use shared::{
     bounds::Bounds,
     brush::{Brush, PatternBrush, PatternSampling},
