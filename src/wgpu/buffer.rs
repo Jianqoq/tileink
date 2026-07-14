@@ -7,7 +7,7 @@ use std::{
 use super::lazy::{LazyComputePipeline, LazyShaderModule, PipelineCompilationTracker};
 
 static NEXT_BUFFER_ID: AtomicU64 = AtomicU64::new(1);
-const RANGE_SCATTER_THRESHOLD: usize = 4;
+const RANGE_SCATTER_THRESHOLD: usize = 128;
 
 pub(crate) struct WgpuRangeScatterPipeline {
     bind_group_layout: ::wgpu::BindGroupLayout,

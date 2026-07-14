@@ -6,7 +6,7 @@
 
 ## Code Reading
 
-- check if `ra-lsp` available, if avalable, use it to read rust code. Check the `API.md` for usecase
+- check if `ra-lsp` available, if avalable, you must use it to read rust code. Check the `API.md` for usecase
 
 ## Engineering rules
 
