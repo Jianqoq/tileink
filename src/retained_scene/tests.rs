@@ -676,6 +676,83 @@ fn surface_resize_reuses_chunks_and_refreshes_path_tile_bounds() {
 }
 
 #[test]
+fn surface_resize_preserves_painter_keys_when_backdrop_rebuilds_the_plan() {
+    let root = RetainedNodeId::for_owner(62_003);
+    let clip = RetainedNodeId::for_owner(62_004);
+    let background = RetainedNodeId::for_owner(62_005);
+    let panel = RetainedNodeId::for_owner(62_006);
+    let mut background_canvas = Canvas::new(96, 32, 1.0);
+    for y in [2.0, 14.0] {
+        background_canvas.push_path(
+            Rect::new(0.0, y, 96.0, y + 8.0).to_path(0.1),
+            Color::WHITE,
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.1,
+        );
+    }
+    let mut panel_canvas = Canvas::new(16, 16, 1.0);
+    panel_canvas.push_backdrop_layer(
+        Filter::Opacity(0.5),
+        Region::rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::ZERO),
+    );
+    panel_canvas.push_rect(Rect::new(0.0, 0.0, 16.0, 16.0), Radius::ZERO, Color::WHITE);
+    panel_canvas.pop_layer();
+    let mut scene = RetainedScene::new(32, 32, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_layer(
+            RetainedParent::content(root),
+            None,
+            clip,
+            RetainedLayerDescriptor::ClipPath {
+                path: Rect::new(0.0, 0.0, 96.0, 32.0).to_path(0.1),
+                transform: Affine::IDENTITY,
+                rule: FillRule::NonZero,
+                tolerance: 0.1,
+            },
+        )
+        .insert_scene(
+            RetainedParent::content(clip),
+            None,
+            background,
+            Rc::new(background_canvas),
+            Affine::IDENTITY,
+        )
+        .insert_scene(
+            RetainedParent::content(clip),
+            None,
+            panel,
+            Rc::new(panel_canvas),
+            Affine::translate((8.0, 8.0)),
+        )
+        .commit()
+        .unwrap();
+    let mut materializer = PersistentSceneMaterializer::new(&scene);
+    let before = materializer.canvas.painter_keys.clone().unwrap();
+    assert_eq!(
+        before.iter().filter(|key| key.path[0] != u128::MAX).count(),
+        3
+    );
+
+    scene.transaction().resize(96, 32, 1.0).commit().unwrap();
+    assert!(update_materializer(&mut materializer, &scene));
+
+    // Surface remapping dirties live draw records but does not change their painter ownership.
+    // Clearing those keys made the resize-only tile index omit every unchanged vector draw.
+    assert_eq!(materializer.canvas.painter_keys.as_ref().unwrap(), &before);
+    assert!(
+        materializer
+            .canvas
+            .buffer_changes
+            .as_ref()
+            .unwrap()
+            .plan_fragments_rebuilt
+            > 0
+    );
+}
+
+#[test]
 fn surface_resize_discards_removed_path_chunks_before_resizing_scan_allocations() {
     let path_grid = |count: usize, width: f64| {
         let mut canvas = Canvas::new(512, 32, 1.0);

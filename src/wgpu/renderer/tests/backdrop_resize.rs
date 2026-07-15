@@ -5,6 +5,118 @@ const INITIAL_SIZE: (u32, u32) = (128, 96);
 const RESIZED_SIZE: (u32, u32) = (192, 128);
 
 #[test]
+fn resize_with_backdrop_preserves_unchanged_vector_background() {
+    if !run_wgpu_tests() {
+        return;
+    }
+    let Some((device, queue)) = shared_wgpu_test_device(true) else {
+        return;
+    };
+    const WINDOW: (u32, u32) = (787, 632);
+    const RESIZED: (u32, u32) = (786, 632);
+    const PAGE_ORIGIN: (f64, f64) = (303.0, 151.0);
+    const PAGE_SIZE: (u32, u32) = (529, 454);
+    let root = RetainedNodeId::for_owner(94_800);
+    let clip = RetainedNodeId::for_owner(94_801);
+    let background = RetainedNodeId::for_owner(94_802);
+    let panel = RetainedNodeId::for_owner(94_803);
+    let clip_descriptor = RetainedLayerDescriptor::ClipPath {
+        path: Rect::new(
+            PAGE_ORIGIN.0,
+            PAGE_ORIGIN.1,
+            PAGE_ORIGIN.0 + f64::from(PAGE_SIZE.0),
+            PAGE_ORIGIN.1 + f64::from(PAGE_SIZE.1),
+        )
+        .to_path(0.1),
+        transform: Affine::IDENTITY,
+        rule: FillRule::NonZero,
+        tolerance: 0.1,
+    };
+    let mut scene = RetainedScene::new(WINDOW.0, WINDOW.1, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_layer(RetainedParent::content(root), None, clip, clip_descriptor)
+        .insert_scene(
+            RetainedParent::content(clip),
+            None,
+            background,
+            vector_background(PAGE_SIZE),
+            Affine::translate(PAGE_ORIGIN),
+        )
+        .insert_scene(
+            RetainedParent::content(clip),
+            None,
+            panel,
+            liquid_glass_panel(),
+            Affine::translate((332.0, 179.0)),
+        )
+        .commit()
+        .unwrap();
+
+    let mut incremental = Renderer::new(device, queue, WINDOW.0, WINDOW.1, Color::TRANSPARENT);
+    let initial = external_target(device, WINDOW, "clipped vector initial");
+    incremental
+        .render_retained_to_persistent_wgpu_texture(
+            &scene,
+            &initial,
+            ExternalTextureHistoryId::new(80),
+        )
+        .unwrap();
+
+    scene
+        .transaction()
+        .resize(RESIZED.0, RESIZED.1, 1.0)
+        .commit()
+        .unwrap();
+    let actual_target = external_target(device, RESIZED, "clipped vector resized");
+    incremental
+        .render_retained_to_persistent_wgpu_texture(
+            &scene,
+            &actual_target,
+            ExternalTextureHistoryId::new(81),
+        )
+        .unwrap();
+
+    let mut full = Renderer::new(device, queue, RESIZED.0, RESIZED.1, Color::TRANSPARENT);
+    let mut config = full.incremental_render_config();
+    config.mode = crate::IncrementalRenderMode::ForceFull;
+    full.set_incremental_render_config(config);
+    let expected_target = external_target(device, RESIZED, "clipped vector expected");
+    full.render_retained_to_persistent_wgpu_texture(
+        &scene,
+        &expected_target,
+        ExternalTextureHistoryId::new(82),
+    )
+    .unwrap();
+
+    let actual = read_texture_rgba8(
+        incremental.device(),
+        incremental.queue(),
+        &actual_target,
+        RESIZED.0,
+        RESIZED.1,
+    );
+    let expected = read_texture_rgba8(
+        full.device(),
+        full.queue(),
+        &expected_target,
+        RESIZED.0,
+        RESIZED.1,
+    );
+    let first_difference = actual
+        .chunks_exact(4)
+        .zip(expected.chunks_exact(4))
+        .position(|(actual, expected)| actual != expected);
+    assert_eq!(
+        first_difference,
+        None,
+        "an unchanged vector scene must survive a one-pixel viewport resize; actual_nonzero={}, expected_nonzero={}",
+        actual.iter().filter(|&&channel| channel != 0).count(),
+        expected.iter().filter(|&&channel| channel != 0).count(),
+    );
+}
+
+#[test]
 fn portable_external_history_preserves_cached_backdrop_after_resize() {
     if !run_wgpu_tests() {
         return;
@@ -187,6 +299,27 @@ pub(super) fn checkerboard(size: (u32, u32)) -> std::rc::Rc<Canvas> {
                 },
             );
         }
+    }
+    std::rc::Rc::new(canvas)
+}
+
+fn vector_background(size: (u32, u32)) -> std::rc::Rc<Canvas> {
+    let mut canvas = Canvas::new(size.0, size.1, 1.0);
+    for index in 0..18 {
+        let inset = f64::from(index * 3);
+        let right = (f64::from(size.0) - inset).max(inset + 1.0);
+        let bottom = (f64::from(size.1) - inset).max(inset + 1.0);
+        canvas.push_path(
+            Rect::new(inset, inset, right, bottom).to_path(0.1),
+            if index % 2 == 0 {
+                Color::from_rgb8(24, 142, 230)
+            } else {
+                Color::from_rgb8(220, 78, 180)
+            },
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.1,
+        );
     }
     std::rc::Rc::new(canvas)
 }

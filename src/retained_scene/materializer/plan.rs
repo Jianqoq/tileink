@@ -998,6 +998,14 @@ impl PersistentSceneMaterializer {
     }
 
     pub(crate) fn update_painter_metadata(&mut self, changed: &HashSet<RetainedNodeId>) {
+        self.update_painter_metadata_with_additional(changed, &HashSet::default());
+    }
+
+    pub(crate) fn update_painter_metadata_with_additional(
+        &mut self,
+        changed: &HashSet<RetainedNodeId>,
+        additional: &HashSet<RetainedNodeId>,
+    ) {
         let draw_capacity = self.arenas.draws.values().len();
         let compiled_batches = self
             .canvas
@@ -1036,7 +1044,13 @@ impl PersistentSceneMaterializer {
         canvas.stable_batch_ids = Some(batches);
         canvas.stable_batch_counts = Some(batch_counts);
 
-        for &id in changed {
+        // Iterating the set difference avoids allocating a merged set on resize while also
+        // preventing duplicate metadata writes for nodes changed by the same transaction.
+        for id in changed
+            .iter()
+            .chain(additional.difference(changed))
+            .copied()
+        {
             let Some(base) = self.painter_bases.get(&id).cloned() else {
                 continue;
             };

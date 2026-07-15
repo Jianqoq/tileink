@@ -305,12 +305,15 @@ impl PersistentSceneMaterializer {
             }
         }
         drop(chunk_profile);
-        if surface_changed {
+        let surface_resized_painter_nodes = if surface_changed {
             let resize_profile =
                 crate::wgpu::start_cpu_scope("retained.materialize.resize_surface");
-            self.resize_surface_chunks(scene);
+            let resized = self.resize_surface_chunks(scene);
             drop(resize_profile);
-        }
+            resized
+        } else {
+            HashSet::default()
+        };
         self.dependency_free = self.layer_nodes.is_empty() && self.nonlocal_dependencies.is_empty();
         let plan_profile = crate::wgpu::start_cpu_scope("retained.materialize.plan_sync");
         let mut plain_topology_candidate =
@@ -577,7 +580,10 @@ impl PersistentSceneMaterializer {
                         self.node_batches.entry(id).or_insert(0);
                     }
                 }
-                self.update_painter_metadata(&changes.changed_nodes);
+                self.update_painter_metadata_with_additional(
+                    &changes.changed_nodes,
+                    &surface_resized_painter_nodes,
+                );
             } else if root_layer_plan_patched
                 || nested_offscreen_plan_patched
                 || nested_offscreen_hierarchy_patched
@@ -593,9 +599,15 @@ impl PersistentSceneMaterializer {
                             .insert(id, node.parent.expect("retained leaf has parent"));
                     }
                 }
-                self.update_painter_metadata(&topology_changes.changed_nodes);
+                self.update_painter_metadata_with_additional(
+                    &topology_changes.changed_nodes,
+                    &surface_resized_painter_nodes,
+                );
             } else if root_layer_remove_patched {
-                self.update_painter_metadata(&changes.changed_nodes);
+                self.update_painter_metadata_with_additional(
+                    &changes.changed_nodes,
+                    &surface_resized_painter_nodes,
+                );
             } else if (changes.topology_changed && !layer_plan_patched) || compacted {
                 self.rebuild_painter_metadata(scene);
                 plan_compiled_during_update = true;
@@ -622,7 +634,10 @@ impl PersistentSceneMaterializer {
                     // chunks had already been patched.
                     plan_dirty = false;
                 } else {
-                    self.update_painter_metadata(&changes.changed_nodes);
+                    self.update_painter_metadata_with_additional(
+                        &changes.changed_nodes,
+                        &surface_resized_painter_nodes,
+                    );
                 }
             }
         }
@@ -988,9 +1003,13 @@ impl PersistentSceneMaterializer {
     /// geometry can shrink shared scan allocations before their replacement is installed and
     /// publish an internally inconsistent frame. The regular update tail recompiles the
     /// surface-dependent plan and damage metadata.
-    pub(crate) fn resize_surface_chunks(&mut self, scene: &RetainedScene) {
+    pub(crate) fn resize_surface_chunks(
+        &mut self,
+        scene: &RetainedScene,
+    ) -> HashSet<RetainedNodeId> {
         let Self { chunks, arenas, .. } = self;
-        for chunk in chunks.values_mut() {
+        let mut painter_nodes = HashSet::default();
+        for (&id, chunk) in chunks.iter_mut() {
             if chunk.canvas.logical_size() == (scene.width, scene.height) {
                 continue;
             }
@@ -1007,8 +1026,13 @@ impl PersistentSceneMaterializer {
             }
             if !chunk.canvas.path_records.is_empty() {
                 Self::remap_chunk_data(arenas, chunk, false);
+                // Resizing path scan allocations rewrites DrawRecord offsets without changing
+                // painter identity. Include the owner in the normal metadata restore pass so
+                // dirty GPU ranges are not mistaken for removed draws.
+                painter_nodes.insert(id);
             }
         }
+        painter_nodes
     }
 
     /// Re-encodes one node and classifies whether its execution plan needs synchronization.
