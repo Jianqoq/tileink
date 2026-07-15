@@ -36,7 +36,7 @@ fn oversized_internal_targets_preserve_filter_pixels_after_shrink() {
         .unwrap();
 
     let mut reused = Renderer::new(device, queue, LARGE.0, LARGE.1, Color::TRANSPARENT);
-    let large = backdrop_resize::external_target(device, LARGE, "large capacity frame");
+    let large = external_target(device, LARGE, "large capacity frame");
     reused
         .render_retained_to_persistent_wgpu_texture(
             &scene,
@@ -51,8 +51,7 @@ fn oversized_internal_targets_preserve_filter_pixels_after_shrink() {
         .replace_scene(background, backdrop_resize::checkerboard(SMALL))
         .commit()
         .unwrap();
-    let actual_target =
-        backdrop_resize::external_target(device, SMALL, "capacity reuse after shrink");
+    let actual_target = external_target(device, SMALL, "capacity reuse after shrink");
     reused
         .render_retained_to_persistent_wgpu_texture(
             &scene,
@@ -62,8 +61,7 @@ fn oversized_internal_targets_preserve_filter_pixels_after_shrink() {
         .unwrap();
 
     let mut fresh = Renderer::new(device, queue, SMALL.0, SMALL.1, Color::TRANSPARENT);
-    let expected_target =
-        backdrop_resize::external_target(device, SMALL, "fresh target after shrink");
+    let expected_target = external_target(device, SMALL, "fresh target after shrink");
     fresh
         .render_retained_to_persistent_wgpu_texture(
             &scene,

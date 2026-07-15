@@ -96,16 +96,13 @@ impl RetainedRenderState {
         self.active_tiles.as_ref()
     }
 
-    /// High-damage transient/forced frames cannot benefit from backdrop history on the next
-    /// equivalent frame. First-frame and surface-rebuild redraws are excluded because their
-    /// surfaces seed the cache used by the following incremental frame.
+    /// Explicit force-full rendering never consumes retained backdrop history. Dirty-threshold
+    /// redraws must still seed it: the next frame can return to incremental output and cannot
+    /// reconstruct clean pre-backdrop pixels from a root texture containing the final frame.
     pub(super) fn bypasses_backdrop_cache(&self) -> bool {
         matches!(
             self.stats.full_redraw_reason,
-            Some(
-                super::super::incremental::FullRedrawReason::Forced
-                    | super::super::incremental::FullRedrawReason::DirtyTileThreshold
-            )
+            Some(super::super::incremental::FullRedrawReason::Forced)
         )
     }
 
@@ -440,5 +437,25 @@ impl SelectedScene<'_> {
                 ..
             }
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::wgpu::incremental::FullRedrawReason;
+
+    #[test]
+    fn dirty_threshold_redraw_keeps_backdrop_history_for_the_next_incremental_frame() {
+        let mut retained = RetainedRenderState::new(IncrementalRenderConfig::default());
+
+        // Regression: a dirty-threshold frame can be followed immediately by sparse damage.
+        // Dropping its pre-backdrop source makes that next frame sample final root pixels that
+        // already contain the backdrop, producing edge stripes and locally missing blur.
+        retained.stats.full_redraw_reason = Some(FullRedrawReason::DirtyTileThreshold);
+        assert!(!retained.bypasses_backdrop_cache());
+
+        retained.stats.full_redraw_reason = Some(FullRedrawReason::Forced);
+        assert!(retained.bypasses_backdrop_cache());
     }
 }

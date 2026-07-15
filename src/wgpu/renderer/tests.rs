@@ -1,3 +1,4 @@
+mod backdrop_history;
 mod backdrop_resize;
 mod common;
 mod filters_color;
