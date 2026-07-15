@@ -5,13 +5,21 @@ mod retained_scale;
 
 use std::time::Duration;
 
+#[cfg(feature = "bench-internals")]
+use criterion::BatchSize;
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use peniko::Color;
+#[cfg(feature = "bench-internals")]
+use peniko::kurbo::{Affine, Rect, Shape};
 use retained_bench::{
     BenchConfig, HEIGHT, Measurements, MutationPhase, WIDTH, bench_persistent,
     bench_persistent_phase,
 };
 use retained_scale::{Scenario, Workload};
+#[cfg(feature = "bench-internals")]
+use tileink::{
+    Canvas, FillRule, RetainedMaterializerBenchmark, RetainedNodeId, RetainedParent, RetainedScene,
+};
 use tileink::{IncrementalRenderMode, WgpuRenderer};
 
 const COUNTS: [usize; 5] = [100, 1_000, 5_000, 20_000, 100_000];
@@ -25,6 +33,62 @@ const RAPID_RESIZE_SIZES: [(u32, u32); 8] = [
     (1536, 964),
     (1568, 982),
 ];
+
+#[cfg(feature = "bench-internals")]
+fn resize_removal_workload() -> (RetainedScene, RetainedMaterializerBenchmark, RetainedNodeId) {
+    let path_grid = |count: usize, width: f64| {
+        let mut canvas = Canvas::new(512, 32, 1.0);
+        for index in 0..count {
+            let y = (index % 16) as f64 * 2.0;
+            canvas.push_path(
+                Rect::new(0.0, y, width, y + 1.0).to_path(0.1),
+                Color::WHITE,
+                Affine::IDENTITY,
+                FillRule::NonZero,
+                0.1,
+            );
+        }
+        std::rc::Rc::new(canvas)
+    };
+    let root = RetainedNodeId::for_owner(200_000);
+    let fragmented = RetainedNodeId::for_owner(200_001);
+    let survivor = RetainedNodeId::for_owner(200_002);
+    let removed = RetainedNodeId::for_owner(200_003);
+    let mut scene = RetainedScene::new(32, 32, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            fragmented,
+            path_grid(64, 16.0),
+            Affine::IDENTITY,
+        )
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            survivor,
+            path_grid(1, 16.0),
+            Affine::IDENTITY,
+        )
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            removed,
+            path_grid(24, 512.0),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+    let mut materializer = RetainedMaterializerBenchmark::new(&scene);
+    scene
+        .transaction()
+        .remove_subtree(fragmented)
+        .commit()
+        .unwrap();
+    assert!(materializer.update_incremental(&scene));
+    (scene, materializer, removed)
+}
 
 fn retained_materialize_stage(
     c: &mut Criterion,
@@ -105,6 +169,27 @@ fn retained_scale(c: &mut Criterion) {
             );
             renderer.resize_internal_targets_for_benchmark(&RAPID_RESIZE_SIZES);
             b.iter(|| renderer.resize_internal_targets_for_benchmark(&RAPID_RESIZE_SIZES));
+        });
+        group.finish();
+
+        // Measures the exact materializer phase used by responsive vector UIs: old geometry is
+        // removed in the same transaction that expands the viewport. Setup is intentionally
+        // untimed so arena compaction and stale-chunk work remain visible in the sample.
+        let mut group = c.benchmark_group("retained_scale/materializer-resize-remove");
+        group.bench_function("expanded-stale-vector", |b| {
+            b.iter_batched(
+                resize_removal_workload,
+                |(mut scene, mut materializer, removed)| {
+                    scene
+                        .transaction()
+                        .resize(512, 32, 1.0)
+                        .remove_subtree(removed)
+                        .commit()
+                        .unwrap();
+                    std::hint::black_box(materializer.update_incremental(&scene));
+                },
+                BatchSize::SmallInput,
+            );
         });
         group.finish();
 

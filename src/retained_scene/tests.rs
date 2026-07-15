@@ -676,6 +676,78 @@ fn surface_resize_reuses_chunks_and_refreshes_path_tile_bounds() {
 }
 
 #[test]
+fn surface_resize_discards_removed_path_chunks_before_resizing_scan_allocations() {
+    let path_grid = |count: usize, width: f64| {
+        let mut canvas = Canvas::new(512, 32, 1.0);
+        for index in 0..count {
+            let y = (index % 16) as f64 * 2.0;
+            canvas.push_path(
+                Rect::new(0.0, y, width, y + 1.0).to_path(0.1),
+                Color::WHITE,
+                Affine::IDENTITY,
+                FillRule::NonZero,
+                0.1,
+            );
+        }
+        Rc::new(canvas)
+    };
+    let root = RetainedNodeId::for_owner(62_010);
+    let fragmented = RetainedNodeId::for_owner(62_011);
+    let survivor = RetainedNodeId::for_owner(62_012);
+    let removed_during_resize = RetainedNodeId::for_owner(62_013);
+    let mut scene = RetainedScene::new(32, 32, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            fragmented,
+            path_grid(64, 16.0),
+            Affine::IDENTITY,
+        )
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            survivor,
+            path_grid(1, 16.0),
+            Affine::IDENTITY,
+        )
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            removed_during_resize,
+            path_grid(24, 512.0),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+    let mut materializer = PersistentSceneMaterializer::new(&scene);
+
+    scene
+        .transaction()
+        .remove_subtree(fragmented)
+        .commit()
+        .unwrap();
+    assert!(update_materializer(&mut materializer, &scene));
+    let compactions = materializer.arena_compactions();
+
+    scene
+        .transaction()
+        .resize(512, 32, 1.0)
+        .remove_subtree(removed_during_resize)
+        .commit()
+        .unwrap();
+    assert!(update_materializer(&mut materializer, &scene));
+
+    // Removed previous-frame geometry must never be expanded to the new viewport. Besides wasted
+    // work, doing so can compact the shared scan arenas immediately before the allocation is
+    // deleted, which was the root cause of responsive SVG chunks disappearing during resize.
+    assert_eq!(materializer.arena_compactions(), compactions);
+    assert!(materializer.chunks.contains_key(&survivor));
+    assert!(!materializer.chunks.contains_key(&removed_during_resize));
+}
+
+#[test]
 fn same_scale_resize_and_removal_rebuild_spatial_index_from_live_nodes() {
     let root = RetainedNodeId::for_owner(62_050);
     let removed = RetainedNodeId::for_owner(62_051);

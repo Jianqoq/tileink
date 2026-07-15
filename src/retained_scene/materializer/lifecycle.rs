@@ -98,10 +98,7 @@ impl PersistentSceneMaterializer {
         let rebuild_surface_metadata_after_update =
             !surface_changed && self.surface_metadata_stale && changes.topology_changed;
         if surface_changed {
-            let resize_profile =
-                crate::wgpu::start_cpu_scope("retained.materialize.resize_surface");
-            self.resize_surface(scene);
-            drop(resize_profile);
+            Rc::make_mut(&mut self.canvas).set_surface_extent(scene.width, scene.height);
         } else if self.surface_metadata_stale {
             // Continuous resize already redraws the full target. Rebuild its exact baseline once,
             // immediately before the first later incremental mutation needs it. The scene already
@@ -307,8 +304,14 @@ impl PersistentSceneMaterializer {
                 commands_dirty = true;
             }
         }
-        self.dependency_free = self.layer_nodes.is_empty() && self.nonlocal_dependencies.is_empty();
         drop(chunk_profile);
+        if surface_changed {
+            let resize_profile =
+                crate::wgpu::start_cpu_scope("retained.materialize.resize_surface");
+            self.resize_surface_chunks(scene);
+            drop(resize_profile);
+        }
+        self.dependency_free = self.layer_nodes.is_empty() && self.nonlocal_dependencies.is_empty();
         let plan_profile = crate::wgpu::start_cpu_scope("retained.materialize.plan_sync");
         let mut plain_topology_candidate =
             changes.topology_changed && removed_plain_leaves && !root_reorder_candidate;
@@ -981,11 +984,16 @@ impl PersistentSceneMaterializer {
     ///
     /// Path backdrop and segment allocations depend on viewport clipping, so only those
     /// allocations are resized and remapped. SDF, image, and text chunks keep their stable slots.
-    /// The regular update tail recompiles the surface-dependent plan and damage metadata.
-    pub(crate) fn resize_surface(&mut self, scene: &RetainedScene) {
-        Rc::make_mut(&mut self.canvas).set_surface_extent(scene.width, scene.height);
+    /// Changed and removed chunks must be processed first: resizing their stale previous-frame
+    /// geometry can shrink shared scan allocations before their replacement is installed and
+    /// publish an internally inconsistent frame. The regular update tail recompiles the
+    /// surface-dependent plan and damage metadata.
+    pub(crate) fn resize_surface_chunks(&mut self, scene: &RetainedScene) {
         let Self { chunks, arenas, .. } = self;
         for chunk in chunks.values_mut() {
+            if chunk.canvas.logical_size() == (scene.width, scene.height) {
+                continue;
+            }
             let old_backdrops = chunk.canvas.backdrop_pool_capacity as usize;
             let old_segments = chunk.canvas.tile_cnt as usize;
             chunk.canvas.resize_surface(scene.width, scene.height);
