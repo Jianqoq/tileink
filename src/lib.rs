@@ -22,7 +22,7 @@ pub(crate) use canvas::{NodeGeneration, PersistentLayerKey};
 pub use cosmic_text::{
     Align as TextAlign, Attrs as TextAttrs, CacheKeyFlags as TextCacheKeyFlags,
     Family as TextFamily, FontSystem as TextFontSystem, Stretch as TextStretch, Style as TextStyle,
-    Weight as TextWeight,
+    Weight as TextWeight, Wrap as TextWrap,
 };
 pub use debug::{
     DebugLineSegment, DebugTileDump, DebugTilePath, DebugTilePathSummary, DebugTileSummary,

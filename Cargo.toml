@@ -111,6 +111,10 @@ required-features = ["bench-internals"]
 name = "range_scatter"
 harness = false
 
+[[bench]]
+name = "text_clip"
+harness = false
+
 [[example]]
 name = "wgpu_examples"
 path = "examples/wgpu/all.rs"

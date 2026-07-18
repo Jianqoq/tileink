@@ -366,8 +366,48 @@ impl Canvas {
         origin: Point,
         brush: impl Into<Brush>,
     ) -> Option<DrawId> {
+        self.push_text_layout_inner(layout, origin, None, brush.into())
+    }
+
+    /// Adds a laid-out text run whose output is hard-clipped to `clip`.
+    ///
+    /// Unlike a clip layer, this only restricts the text draw's pixel bounds. It therefore adds no
+    /// layer command or clip geometry and is intended for rectangular overflow clipping of one
+    /// text run. `clip` is expressed in the canvas's logical coordinate space.
+    pub fn push_text_layout_clipped(
+        &mut self,
+        layout: &TextLayout,
+        origin: Point,
+        clip: Rect,
+        brush: impl Into<Brush>,
+    ) -> Option<DrawId> {
+        let clip = logical_rect_pixel_bounds(clip, self.scale_factor)?;
+        self.push_text_layout_inner(layout, origin, Some(clip), brush.into())
+    }
+
+    fn push_text_layout_inner(
+        &mut self,
+        layout: &TextLayout,
+        origin: Point,
+        clip: Option<PixelBounds>,
+        brush: Brush,
+    ) -> Option<DrawId> {
         if layout.is_empty() {
             return None;
+        }
+
+        let layout_bounds = layout_bounds_at_scaled_origin(layout, origin, self.scale_factor);
+        let mut bounds = PixelBounds {
+            x0: layout_bounds.x0,
+            y0: layout_bounds.y0,
+            x1: layout_bounds.x1,
+            y1: layout_bounds.y1,
+        };
+        if let Some(clip) = clip {
+            bounds = bounds.intersect(clip);
+            if bounds.is_empty() {
+                return None;
+            }
         }
 
         self.ensure_command_root();
@@ -387,8 +427,7 @@ impl Canvas {
             glyph_count,
         };
         self.text_runs.push(run);
-        let bounds = layout_bounds_at_scaled_origin(layout, origin, self.scale_factor);
-        let (brush_offset, brush_len) = self.push_brush(brush.into());
+        let (brush_offset, brush_len) = self.push_brush(brush);
         let draw_ix = self.push_draw_record(DrawRecord {
             path_id: DrawRecord::NONE,
             glyph_run_id: run_id,
@@ -400,18 +439,8 @@ impl Canvas {
             brush_len,
             tag: DrawTag::Brush.into(),
             fill_rule: FillRule::NonZero.into(),
-            pixel_bounds: PixelBounds {
-                x0: bounds.x0,
-                y0: bounds.y0,
-                x1: bounds.x1,
-                y1: bounds.y1,
-            },
-            local_pixel_bounds: PixelBounds {
-                x0: bounds.x0,
-                y0: bounds.y0,
-                x1: bounds.x1,
-                y1: bounds.y1,
-            },
+            pixel_bounds: bounds,
+            local_pixel_bounds: bounds,
             solid_rect: 0,
             transform: Default::default(),
             inverse_transform: Default::default(),
@@ -463,4 +492,17 @@ impl Canvas {
         );
         Some(self.draw_id_from_index(draw))
     }
+}
+
+fn logical_rect_pixel_bounds(rect: Rect, scale_factor: f32) -> Option<PixelBounds> {
+    let coords = [rect.x0, rect.y0, rect.x1, rect.y1];
+    if coords.iter().any(|coord| !coord.is_finite()) || rect.x0 >= rect.x1 || rect.y0 >= rect.y1 {
+        return None;
+    }
+    Some(PixelBounds {
+        x0: (rect.x0 * scale_factor as f64).floor() as i32,
+        y0: (rect.y0 * scale_factor as f64).floor() as i32,
+        x1: (rect.x1 * scale_factor as f64).ceil() as i32,
+        y1: (rect.y1 * scale_factor as f64).ceil() as i32,
+    })
 }

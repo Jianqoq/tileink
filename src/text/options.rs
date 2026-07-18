@@ -1,4 +1,4 @@
-use cosmic_text::{Align, Attrs};
+use cosmic_text::{Align, Attrs, Wrap};
 
 use crate::shared::pixel::TextCoverageParams;
 
@@ -11,6 +11,7 @@ pub struct TextLayoutOptions<'a> {
     pub height: Option<f32>,
     pub attrs: Attrs<'a>,
     pub alignment: Option<Align>,
+    pub wrap: Wrap,
 }
 
 impl<'a> TextLayoutOptions<'a> {
@@ -23,6 +24,9 @@ impl<'a> TextLayoutOptions<'a> {
             height: None,
             attrs: Attrs::new(),
             alignment: None,
+            // Match `cosmic_text::Buffer::new`; adding explicit wrap control must not change
+            // existing callers that omit this option.
+            wrap: Wrap::WordOrGlyph,
         }
     }
 
@@ -44,6 +48,11 @@ impl<'a> TextLayoutOptions<'a> {
 
     pub fn with_alignment(mut self, alignment: Option<Align>) -> Self {
         self.alignment = alignment;
+        self
+    }
+
+    pub fn with_wrap(mut self, wrap: Wrap) -> Self {
+        self.wrap = wrap;
         self
     }
 }

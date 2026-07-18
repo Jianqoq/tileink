@@ -1,15 +1,18 @@
 use std::path::Path;
 
 use cosmic_text::{
-    Align, Attrs, CacheKeyFlags, Family, FontSystem, SwashContent, SwashImage, Weight,
+    Align, Attrs, CacheKeyFlags, Family, FontSystem, SwashContent, SwashImage, Weight, Wrap,
 };
 use peniko::{
     Color,
-    kurbo::{Affine, Point, Shape},
+    kurbo::{Affine, Point, Rect, Shape},
 };
 use swash::zeno::Placement;
 
-use crate::{Canvas, shared::draw_record::DrawTag};
+use crate::{
+    Canvas,
+    shared::{bounds::PixelBounds, draw_record::DrawTag},
+};
 
 use super::{
     raster::{
@@ -112,19 +115,49 @@ fn layout_options_pass_alignment_to_cosmic_buffer() {
     let mut context = TextContext::new();
     let left = context.layout(
         &mut font_system,
-        TextLayoutOptions::new("A", 20.0).with_size(Some(200.0), None),
+        TextLayoutOptions::new("A", 20.0)
+            .with_size(Some(200.0), None)
+            .with_wrap(Wrap::None),
     );
     let center = context.layout(
         &mut font_system,
         TextLayoutOptions::new("A", 20.0)
             .with_size(Some(200.0), None)
-            .with_alignment(Some(Align::Center)),
+            .with_alignment(Some(Align::Center))
+            .with_wrap(Wrap::None),
     );
     if left.glyphs.is_empty() || center.glyphs.is_empty() {
         return;
     }
 
     assert!(center.glyphs[0].x > left.glyphs[0].x);
+}
+
+#[test]
+fn layout_options_preserve_cosmic_text_default_wrap() {
+    assert_eq!(TextLayoutOptions::new("text", 16.0).wrap, Wrap::WordOrGlyph);
+}
+
+#[test]
+fn bounded_none_wrap_keeps_text_on_one_line() {
+    let mut font_system = FontSystem::new();
+    let mut context = TextContext::new();
+    let text = "one two three four";
+    let unbounded = context.layout(
+        &mut font_system,
+        TextLayoutOptions::new(text, 20.0).with_wrap(Wrap::None),
+    );
+    let options = TextLayoutOptions::new(text, 20.0)
+        .with_size(Some(35.0), None)
+        .with_wrap(Wrap::None);
+    let layout = context.layout(&mut font_system, options);
+    if layout.glyphs.is_empty() {
+        return;
+    }
+
+    let first_y = layout.glyphs[0].y;
+    assert!(layout.glyphs.iter().all(|glyph| glyph.y == first_y));
+    assert_eq!(layout.glyphs.len(), unbounded.glyphs.len());
 }
 
 #[test]
@@ -183,6 +216,83 @@ fn scene_path_text_uses_path_draws_not_glyph_atlas() {
     assert!(canvas.text_runs.is_empty());
     assert!(canvas.draw_records.iter().any(|draw| draw.has_path()));
     assert_eq!(canvas.draw_records[0].tag, DrawTag::PathGlyph);
+}
+
+#[test]
+fn clipped_text_draw_uses_scaled_pixel_bounds_without_a_clip_layer() {
+    let mut font_system = FontSystem::new();
+    let mut context = TextContext::new();
+    let layout = context.layout(
+        &mut font_system,
+        TextLayoutOptions::new("A long text run", 24.0).with_wrap(Wrap::None),
+    );
+    if layout.is_empty() {
+        return;
+    }
+
+    let origin = Point::new(0.0, 24.0);
+    let mut unclipped = Canvas::new(200, 80, 2.0);
+    unclipped.push_text_layout(&layout, origin, Color::BLACK);
+    let natural = unclipped.draw_records[0].pixel_bounds;
+    let expected = natural.intersect(PixelBounds {
+        x0: 20,
+        y0: -2_000,
+        x1: 60,
+        y1: 2_000,
+    });
+    assert!(!expected.is_empty());
+
+    let mut canvas = Canvas::new(200, 80, 2.0);
+    canvas.push_text_layout_clipped(
+        &layout,
+        origin,
+        Rect::new(10.0, -1_000.0, 30.0, 1_000.0),
+        Color::BLACK,
+    );
+
+    assert_eq!(canvas.draw_records.len(), 1);
+    assert_eq!(canvas.draw_records[0].tag, DrawTag::Brush);
+    assert_eq!(canvas.draw_records[0].pixel_bounds, expected);
+    assert_eq!(
+        canvas.draw_records[0].local_pixel_bounds,
+        canvas.draw_records[0].pixel_bounds
+    );
+    assert_eq!(canvas.text_glyphs.len(), layout.glyphs.len());
+    assert!(canvas.layer_stack.is_empty());
+}
+
+#[test]
+fn clipped_text_draw_rejects_empty_or_disjoint_bounds_without_appending_glyphs() {
+    let mut font_system = FontSystem::new();
+    let mut context = TextContext::new();
+    let layout = context.layout(&mut font_system, TextLayoutOptions::new("Text", 24.0));
+    if layout.is_empty() {
+        return;
+    }
+
+    let mut canvas = Canvas::new(100, 40, 1.0);
+    assert!(
+        canvas
+            .push_text_layout_clipped(
+                &layout,
+                Point::new(0.0, 24.0),
+                Rect::new(5.0, 5.0, 5.0, 20.0),
+                Color::BLACK,
+            )
+            .is_none()
+    );
+    assert!(
+        canvas
+            .push_text_layout_clipped(
+                &layout,
+                Point::new(0.0, 24.0),
+                Rect::new(200.0, 200.0, 220.0, 220.0),
+                Color::BLACK,
+            )
+            .is_none()
+    );
+    assert!(canvas.draw_records.is_empty());
+    assert!(canvas.text_glyphs.is_empty());
 }
 
 #[test]

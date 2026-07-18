@@ -55,6 +55,7 @@ impl TextContext {
         {
             let mut buffer = buffer.borrow_with(font_system);
             buffer.set_size(options.width, options.height);
+            buffer.set_wrap(options.wrap);
             buffer.set_text(
                 options.text,
                 &options.attrs,
