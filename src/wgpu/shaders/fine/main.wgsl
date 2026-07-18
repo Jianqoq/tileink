@@ -283,12 +283,15 @@ fn tile_pixel(tile_ix: u32, local_ix: u32) -> vec4<f32> {
                 }
             }
         } else if (tag == GPU_PTCL_GLYPH) {
-            if (clip_mask != 0u) {
+            let draw = draw_records[ptcl.color];
+            // Coarse bounds select whole 16px tiles; enforce the exact glyph draw domain here so
+            // an edge tile cannot leak past a draw-local text clip.
+            if (clip_mask != 0u && pixel_in_draw_bounds(draw, global_x, global_y)) {
                 pixel = composite_glyphs_at(
                     pixel,
                     ptcl.segment_start,
                     ptcl.segment_end,
-                    ptcl.color,
+                    draw,
                     global_x,
                     global_y,
                     clip_mask,
@@ -521,14 +524,13 @@ fn composite_glyphs_at(
     start_pixel: vec4<f32>,
     glyph_start: u32,
     glyph_end: u32,
-    draw_ix: u32,
+    draw: DrawRecord,
     global_x: u32,
     global_y: u32,
     clip_mask: u32,
 ) -> vec4<f32> {
     var pixel = start_pixel;
     var glyph_list_ix = glyph_start;
-    let draw = draw_records[draw_ix];
     let local = affine_record_point(
         draw.inverse_transform,
         vec2<f32>(f32(global_x) + 0.5, f32(global_y) + 0.5),

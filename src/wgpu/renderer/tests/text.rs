@@ -26,17 +26,14 @@ fn wgpu_renderer_draws_text_in_tile_fine_when_enabled() {
 }
 
 #[test]
-fn wgpu_renderer_hard_clips_a_text_draw_without_a_clip_layer() {
+fn text_clip_enforces_a_non_tile_aligned_pixel_boundary() {
     if !run_wgpu_tests() {
         return;
     }
 
     let mut font_system = TextFontSystem::new();
     let mut text_context = TextContext::new();
-    let layout = text_context.layout(
-        &mut font_system,
-        TextLayoutOptions::new("Text outside the cell", 28.0),
-    );
+    let layout = text_context.layout(&mut font_system, TextLayoutOptions::new("MMMMMMMM", 28.0));
     if layout.is_empty() {
         return;
     }
@@ -44,7 +41,7 @@ fn wgpu_renderer_hard_clips_a_text_draw_without_a_clip_layer() {
     canvas.push_text_layout_clipped(
         &layout,
         peniko::kurbo::Point::new(8.0, 32.0),
-        Rect::new(0.0, 0.0, 48.0, 64.0),
+        Rect::new(0.0, 0.0, 37.0, 64.0),
         Color::BLACK,
     );
     let mut renderer = new_test_renderer(160, 64, Color::TRANSPARENT);
@@ -52,8 +49,10 @@ fn wgpu_renderer_hard_clips_a_text_draw_without_a_clip_layer() {
     renderer.render_with_text(&canvas, &mut font_system, &mut text_context);
     let image = renderer.image();
 
-    assert!((0..64).any(|y| (0..48).any(|x| image.rgba8_at(x, y)[3] != 0)));
-    assert!((0..64).all(|y| (48..160).all(|x| image.rgba8_at(x, y)[3] == 0)));
+    assert!((0..64).any(|y| (0..37).any(|x| image.rgba8_at(x, y)[3] != 0)));
+    // Regression: coarse draw bounds select whole 16px tiles. Fine must still enforce a clip that
+    // ends inside a tile, otherwise a glyph leaks until that tile's right edge.
+    assert!((0..64).all(|y| (37..160).all(|x| image.rgba8_at(x, y)[3] == 0)));
 }
 
 #[test]

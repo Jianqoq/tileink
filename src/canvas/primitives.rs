@@ -384,9 +384,9 @@ impl Canvas {
 
     /// Adds a laid-out text run whose output is hard-clipped to `clip`.
     ///
-    /// Unlike a clip layer, this only restricts the text draw's pixel bounds. It therefore adds no
-    /// layer command or clip geometry and is intended for rectangular overflow clipping of one
-    /// text run. `clip` is expressed in the canvas's logical coordinate space.
+    /// Unlike a clip layer, this restricts the text draw's exact fine-composition pixel domain. It
+    /// therefore adds no layer command or clip geometry and is intended for rectangular overflow
+    /// clipping of one text run. `clip` is expressed in the canvas's logical coordinate space.
     pub fn push_text_layout_clipped(
         &mut self,
         layout: &TextLayout,

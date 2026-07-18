@@ -1935,3 +1935,61 @@ fn persistent_retained_text_updates_dirty_glyph_allocations_and_matches_force_fu
     full.render_with_text(&reference, &mut font_system, &mut text_context);
     assert_eq!(incremental.image().pixels, full.image().pixels);
 }
+
+#[test]
+fn text_clip_survives_retained_translation_and_surface_resize() {
+    if !run_wgpu_tests() {
+        return;
+    }
+    let mut font_system = TextFontSystem::new();
+    let mut text_context = TextContext::new();
+    let layout = text_context.layout(&mut font_system, TextLayoutOptions::new("MMMMMMMM", 28.0));
+    if layout.is_empty() {
+        return;
+    }
+
+    let origin = peniko::kurbo::Point::new(8.0, 32.0);
+    let clip = Rect::new(0.0, 0.0, 37.0, 48.0);
+    let mut child = Canvas::new(37, 48, 1.0);
+    child.push_text_layout_clipped(&layout, origin, clip, Color::BLACK);
+    let root = RetainedNodeId::for_owner(50_410);
+    let leaf = RetainedNodeId::for_owner(50_411);
+    let mut scene = RetainedScene::new(192, 64, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            leaf,
+            std::rc::Rc::new(child),
+            Affine::translate((41.0, 8.0)),
+        )
+        .commit()
+        .unwrap();
+
+    let mut retained = new_test_renderer(192, 64, Color::TRANSPARENT);
+    retained.render_retained_with_text(&scene, &mut font_system, &mut text_context);
+    assert!((0..64).all(|y| (78..192).all(|x| retained.image().rgba8_at(x, y)[3] == 0)));
+    scene
+        .transaction()
+        .resize(152, 64, 1.0)
+        .set_transform(leaf, Affine::translate((1.0, 8.0)))
+        .commit()
+        .unwrap();
+    retained.render_retained_with_text(&scene, &mut font_system, &mut text_context);
+    // Regression: translating a clipped retained text draw during resize must not make the
+    // visible suffix depend on the 16px tile containing the new right edge.
+    assert!((0..64).all(|y| (38..152).all(|x| retained.image().rgba8_at(x, y)[3] == 0)));
+
+    let mut expected = Canvas::new(152, 64, 1.0);
+    expected.push_text_layout_clipped(
+        &layout,
+        origin + (1.0, 8.0),
+        Rect::new(1.0, 8.0, 38.0, 56.0),
+        Color::BLACK,
+    );
+    let mut reference = new_test_renderer(152, 64, Color::TRANSPARENT);
+    reference.render_with_text(&expected, &mut font_system, &mut text_context);
+
+    assert_eq!(retained.image().pixels, reference.image().pixels);
+}
