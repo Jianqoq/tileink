@@ -3,6 +3,7 @@ use crate::shared::{
         GPU_SDF_ARC, GPU_SDF_ARC_SHADOW, GPU_SDF_CANDLESTICK, GPU_SDF_CIRCLE,
         GPU_SDF_CIRCLE_SHADOW, GPU_SDF_CIRCLE_STROKE, GPU_SDF_DASH_LINE, GPU_SDF_LINE,
         GPU_SDF_LINE_SHADOW, GPU_SDF_NONE, GPU_SDF_RECT, GPU_SDF_RECT_SHADOW, GPU_SDF_RECT_STROKE,
+        GPU_SDF_TRIANGLE,
     },
     sdf::{
         Sdf, SdfShadow,
@@ -143,6 +144,22 @@ pub(crate) fn encode_sdf(sdf: Sdf) -> EncodedSdf {
                 line.gap_length,
             ],
             stroke: [line.dash_offset, 0.0, 0.0, 0.0],
+            ..EncodedSdf::NONE
+        },
+        Sdf::Triangle(triangle) => EncodedSdf {
+            kind: GPU_SDF_TRIANGLE,
+            coords: [
+                triangle.a.x as f32,
+                triangle.a.y as f32,
+                triangle.b.x as f32,
+                triangle.b.y as f32,
+            ],
+            radii: [
+                triangle.c.x as f32,
+                triangle.c.y as f32,
+                triangle.corner_radius,
+                0.0,
+            ],
             ..EncodedSdf::NONE
         },
     }
@@ -286,6 +303,7 @@ pub(crate) fn decode_sdf(blob: &[u32], offset: u32, len: u32) -> Option<Sdf> {
             gap_length: sdf.radii[3],
             dash_offset: sdf.stroke[0],
         })),
+        GPU_SDF_TRIANGLE => Some(Sdf::Triangle(triangle_from_encoded(sdf))),
         _ => None,
     }
 }
@@ -352,6 +370,15 @@ fn circle_from_encoded(sdf: EncodedSdf) -> Circle {
     Circle {
         center: Point::new(f64::from(sdf.coords[0]), f64::from(sdf.coords[1])),
         radius: sdf.coords[2],
+    }
+}
+
+fn triangle_from_encoded(sdf: EncodedSdf) -> crate::shared::sdf::triangle::Triangle {
+    crate::shared::sdf::triangle::Triangle {
+        a: Point::new(f64::from(sdf.coords[0]), f64::from(sdf.coords[1])),
+        b: Point::new(f64::from(sdf.coords[2]), f64::from(sdf.coords[3])),
+        c: Point::new(f64::from(sdf.radii[0]), f64::from(sdf.radii[1])),
+        corner_radius: sdf.radii[2],
     }
 }
 
@@ -430,6 +457,12 @@ mod tests {
                 4.0,
                 3.0,
                 1.5,
+            )),
+            Sdf::Triangle(crate::shared::sdf::triangle::Triangle::new(
+                Point::new(4.0, 5.0),
+                Point::new(20.0, 12.0),
+                Point::new(7.0, 30.0),
+                2.5,
             )),
         ];
         let shadows = [

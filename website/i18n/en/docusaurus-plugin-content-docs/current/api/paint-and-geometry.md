@@ -13,6 +13,6 @@ title: Paint, geometry, and filters
 
 `Image` constructors are `new`, `from_rgba8`, and `from_premultiplied_rgba8`; read with `rgba8_at`/`rgba8_bytes` and write with `save`. `ImageKey::new` creates registry identity.
 
-`Sdf` represents Rect, Circle, strokes, CandleStick, Line, DashLine, and Arc; `SdfShadow` contains analytic shadow counterparts. Both expose `bounds`. Helpers include `Radius::all`, `StrokeWidths::all`, `ShadowOptions::new`, `SdfLine::new`, `SdfDashLine::new`, `SdfDashLine::with_offset`, `SdfArc::new`, and `CandleStick::new` plus width validators.
+`Sdf` represents Rect, Circle, strokes, CandleStick, Line, DashLine, Arc, and Triangle; `SdfShadow` contains analytic shadow counterparts. Both expose `bounds`. Helpers include `Radius::all`, `StrokeWidths::all`, `ShadowOptions::new`, `SdfLine::new`, `SdfDashLine::new`, `SdfDashLine::with_offset`, `SdfArc::new`, `SdfTriangle::new`, and `CandleStick::new` plus width validators. A triangle's `corner_radius` is a uniform analytic expansion of its three edges, producing rounded vertices without path tessellation.
 
 `Region::rect` and `Region::path` define filter/mask sampling regions. `Filter` covers blur, color transforms, shadows, convolution, morphology, displacement, turbulence, lighting, composite/blend, primitive graphs, and `RectLiquidGlass`; related public parameter types are re-exported from the crate root. `BlurSampling::downsampled(factor)` selects the reduced-resolution blur path; factors below one are normalized internally when evaluated.

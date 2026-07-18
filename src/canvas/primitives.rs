@@ -369,6 +369,19 @@ impl Canvas {
         self.push_text_layout_inner(layout, origin, None, brush.into())
     }
 
+    /// Adds a filled, optionally rounded triangle as analytic SDF geometry.
+    pub fn push_triangle(
+        &mut self,
+        triangle: SdfTriangle,
+        brush: impl Into<Brush>,
+    ) -> Option<DrawId> {
+        if triangle.is_empty() {
+            return None;
+        }
+        let draw = self.push_sdf_draw(Sdf::Triangle(triangle), brush);
+        Some(self.draw_id_from_index(draw))
+    }
+
     /// Adds a laid-out text run whose output is hard-clipped to `clip`.
     ///
     /// Unlike a clip layer, this only restricts the text draw's pixel bounds. It therefore adds no

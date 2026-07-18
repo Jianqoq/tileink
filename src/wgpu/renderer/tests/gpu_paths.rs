@@ -89,6 +89,41 @@ fn transformed_sdf_rect_preserves_brush_and_device_space_coverage() {
 }
 
 #[test]
+fn wgpu_renderer_draws_rounded_triangle_analytically_when_enabled() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    const SIZE: u32 = 48;
+    let points = (
+        peniko::kurbo::Point::new(12.0, 8.0),
+        peniko::kurbo::Point::new(40.0, 24.0),
+        peniko::kurbo::Point::new(12.0, 40.0),
+    );
+    let mut sharp = Canvas::new(SIZE, SIZE, 1.0);
+    sharp.push_triangle(
+        crate::SdfTriangle::new(points.0, points.1, points.2, 0.0),
+        Color::WHITE,
+    );
+    let mut rounded = Canvas::new(SIZE, SIZE, 1.0);
+    rounded.push_triangle(
+        crate::SdfTriangle::new(points.0, points.1, points.2, 4.0),
+        Color::WHITE,
+    );
+
+    let mut sharp_renderer = new_test_renderer(SIZE, SIZE, Color::TRANSPARENT);
+    sharp_renderer.render(&sharp);
+    let mut rounded_renderer = new_test_renderer(SIZE, SIZE, Color::TRANSPARENT);
+    rounded_renderer.render(&rounded);
+
+    assert_eq!(sharp_renderer.image().rgba8_at(20, 24), [255; 4]);
+    assert_eq!(rounded_renderer.image().rgba8_at(20, 24), [255; 4]);
+    assert_eq!(sharp_renderer.image().rgba8_at(9, 8)[3], 0);
+    assert!(rounded_renderer.image().rgba8_at(9, 8)[3] > 0);
+    assert_eq!(rounded_renderer.image().rgba8_at(46, 2)[3], 0);
+}
+
+#[test]
 fn forced_coarse_binning_modes_render_the_same_incremental_frame() {
     if !run_wgpu_tests() {
         return;

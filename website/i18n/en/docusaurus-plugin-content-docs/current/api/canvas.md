@@ -24,7 +24,7 @@ Path and analytic clips use `push_clip_layer`, `push_clip_sdf_rect_layer`, `push
 
 - Rects: `push_rect`, `push_rect_stroke`, `push_rect_stroke_widths`, `push_rect_shadow`.
 - Circles: `push_circle`, `push_circle_stroke`, `push_circle_shadow`.
-- Analytic forms: `push_sdf_arc`, `push_arc_shadow`, `push_candlestick`, `push_line`, `push_dash_line`, `push_line_shadow`.
+- Analytic forms: `push_sdf_arc`, `push_triangle`, `push_arc_shadow`, `push_candlestick`, `push_line`, `push_dash_line`, `push_line_shadow`.
 - Kurbo paths: `push_arc`, `push_stroke`, `push_path`.
 
 Most methods accept `impl Into<Brush>`; potentially empty or invalid analytic geometry returns `Option<DrawId>`.

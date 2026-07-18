@@ -76,6 +76,7 @@ pub fn append_transformed(&mut self, other: &Canvas, transform: Affine);
 | `push_circle_stroke(circle, kurbo::Stroke, brush)` | `Option<DrawId>` | circle stroke |
 | `push_circle_shadow(circle, options, brush)` | `DrawId` | circle shadow |
 | `push_sdf_arc(arc, brush)` | `Option<DrawId>` | arc；无效 geometry 返回 `None` |
+| `push_triangle(triangle, brush)` | `Option<DrawId>` | 解析式三角形，可选圆角顶点 |
 | `push_arc_shadow(arc, options, brush)` | `Option<DrawId>` | arc shadow |
 | `push_candlestick(candle, brush)` | `DrawId` | candlestick SDF |
 | `push_line(line, brush)` | `Option<DrawId>` | solid analytic line |

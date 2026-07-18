@@ -57,6 +57,81 @@ fn push_rect_records_sdf_rect_without_path_storage() {
 }
 
 #[test]
+fn push_triangle_records_rounded_sdf_without_path_storage() {
+    let mut canvas = test_scene();
+    let triangle = crate::SdfTriangle::new(
+        Point::new(8.0, 4.0),
+        Point::new(20.0, 16.0),
+        Point::new(8.0, 28.0),
+        2.0,
+    );
+
+    canvas.push_triangle(triangle, Brush::Solid(rgb(255, 0, 0)));
+
+    assert_eq!(canvas.draw_records.len(), 1);
+    assert!(canvas.path_records.is_empty());
+    assert_eq!(
+        canvas.draw_records[0].pixel_bounds,
+        PixelBounds {
+            x0: 6,
+            y0: 2,
+            x1: 22,
+            y1: 30,
+        }
+    );
+    match draw_sdf(&canvas, 0) {
+        Some(Sdf::Triangle(actual)) => assert_eq!(actual, triangle),
+        sdf => panic!("expected triangle SDF, got {sdf:?}"),
+    }
+}
+
+#[test]
+fn push_triangle_scales_points_radius_and_bounds_to_physical_pixels() {
+    let mut canvas = Canvas::new(64, 64, 2.0);
+    let logical = crate::SdfTriangle::new(
+        Point::new(8.0, 4.0),
+        Point::new(20.0, 16.0),
+        Point::new(8.0, 28.0),
+        2.0,
+    );
+
+    canvas.push_triangle(logical, Brush::Solid(rgb(255, 0, 0)));
+
+    assert_eq!(
+        canvas.draw_records[0].pixel_bounds,
+        PixelBounds {
+            x0: 12,
+            y0: 4,
+            x1: 44,
+            y1: 60,
+        }
+    );
+    match draw_sdf(&canvas, 0) {
+        Some(Sdf::Triangle(physical)) => {
+            assert_eq!(physical.a, Point::new(16.0, 8.0));
+            assert_eq!(physical.b, Point::new(40.0, 32.0));
+            assert_eq!(physical.c, Point::new(16.0, 56.0));
+            assert_eq!(physical.corner_radius, 4.0);
+        }
+        sdf => panic!("expected triangle SDF, got {sdf:?}"),
+    }
+}
+
+#[test]
+fn push_triangle_rejects_invalid_public_struct_literals_without_mutating_canvas() {
+    let mut canvas = test_scene();
+    let invalid = crate::SdfTriangle {
+        a: Point::new(0.0, 0.0),
+        b: Point::new(1.0, 1.0),
+        c: Point::new(2.0, 2.0),
+        corner_radius: 0.0,
+    };
+
+    assert_eq!(canvas.push_triangle(invalid, Color::WHITE), None);
+    assert_eq!(canvas.draw_count(), 0);
+}
+
+#[test]
 fn push_rect_records_sdf_rect_with_independent_radii() {
     let mut canvas = test_scene();
     let radius = Radius {

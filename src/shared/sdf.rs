@@ -13,6 +13,7 @@ pub mod circle;
 pub mod line;
 pub mod rect;
 pub mod shadow;
+pub mod triangle;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -25,6 +26,7 @@ pub enum Sdf {
     CandleStick(CandleStick),
     Line(Line),
     DashLine(DashLine),
+    Triangle(triangle::Triangle),
 }
 
 #[repr(C)]
@@ -47,6 +49,7 @@ impl Sdf {
             Self::CandleStick(candle) => candle.bounds(),
             Self::Line(line) => line.bounds(),
             Self::DashLine(line) => line.bounds(),
+            Self::Triangle(triangle) => triangle.bounds(),
         }
     }
 
@@ -60,6 +63,7 @@ impl Sdf {
             Self::CandleStick(candle) => Self::CandleStick(candle.translated(dx, dy)),
             Self::Line(line) => Self::Line(line.translated(dx, dy)),
             Self::DashLine(line) => Self::DashLine(line.translated(dx, dy)),
+            Self::Triangle(triangle) => Self::Triangle(triangle.translated(dx, dy)),
         }
     }
 }

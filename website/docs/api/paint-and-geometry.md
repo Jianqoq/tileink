@@ -50,6 +50,7 @@ title: Paint、Geometry 与 Filter
 | `SdfLine::new(start, end, width, cap)` | line |
 | `SdfDashLine::new(...)` / `with_offset(...)` | dashed line |
 | `SdfArc::new(...)` | arc geometry |
+| `SdfTriangle::new(a, b, c, corner_radius)` | 统一圆角的解析式三角形 |
 | `CandleStick::new(...)` | candlestick；width 可用 validation helpers 检查 |
 
 Circle/Rect/stroke/shadow structs 同时公开字段，适合 struct literal；详细字段运行 `cargo doc --open` 查看。

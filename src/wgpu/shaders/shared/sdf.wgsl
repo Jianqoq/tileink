@@ -197,6 +197,12 @@ fn sdf_coverage_from_blob(
             inverse_transform,
         );
     }
+    if (kind == GPU_SDF_TRIANGLE) {
+        return sdf_coverage_from_sample(
+            triangle_sdf_sample(x, y, x0, y0, x1, y1, r0, r1, r2),
+            inverse_transform,
+        );
+    }
     if (kind == GPU_SDF_LINE_SHADOW) {
         return sdf_shadow_coverage_from_sample(
             line_sdf_sample(

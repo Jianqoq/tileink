@@ -72,6 +72,7 @@ pub use shared::{
             RectStroke as SdfRectStroke, StrokeWidths,
         },
         shadow::ShadowOptions,
+        triangle::Triangle as SdfTriangle,
     },
 };
 pub use svg::{SvgError, SvgOptions};

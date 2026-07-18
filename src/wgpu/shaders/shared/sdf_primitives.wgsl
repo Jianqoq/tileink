@@ -368,6 +368,70 @@ fn distance_to_segment_sdf_sample(
     return SdfSample(length(delta), normalized_or(delta, fallback_normal));
 }
 
+fn cross_2d(a: vec2<f32>, b: vec2<f32>) -> f32 {
+    return a.x * b.y - a.y * b.x;
+}
+
+fn triangle_sdf_sample(
+    x: f32,
+    y: f32,
+    ax: f32,
+    ay: f32,
+    bx: f32,
+    by: f32,
+    cx: f32,
+    cy: f32,
+    corner_radius: f32,
+) -> SdfSample {
+    let p = vec2<f32>(x, y);
+    let a = vec2<f32>(ax, ay);
+    let b = vec2<f32>(bx, by);
+    let c = vec2<f32>(cx, cy);
+    let ab = b - a;
+    let bc = c - b;
+    let ca = a - c;
+    let orientation = select(-1.0, 1.0, cross_2d(ab, c - a) >= 0.0);
+    var sample = nearer_sdf_sample(
+        distance_to_segment_sdf_sample(
+            x,
+            y,
+            ax,
+            ay,
+            bx,
+            by,
+            normalized_or(vec2<f32>(ab.y, -ab.x) * orientation, vec2<f32>(1.0, 0.0)),
+        ),
+        distance_to_segment_sdf_sample(
+            x,
+            y,
+            bx,
+            by,
+            cx,
+            cy,
+            normalized_or(vec2<f32>(bc.y, -bc.x) * orientation, vec2<f32>(1.0, 0.0)),
+        ),
+    );
+    sample = nearer_sdf_sample(
+        sample,
+        distance_to_segment_sdf_sample(
+            x,
+            y,
+            cx,
+            cy,
+            ax,
+            ay,
+            normalized_or(vec2<f32>(ca.y, -ca.x) * orientation, vec2<f32>(1.0, 0.0)),
+        ),
+    );
+    let side_ab = cross_2d(ab, p - a) * orientation;
+    let side_bc = cross_2d(bc, p - b) * orientation;
+    let side_ca = cross_2d(ca, p - c) * orientation;
+    if (side_ab >= 0.0 && side_bc >= 0.0 && side_ca >= 0.0) {
+        sample = SdfSample(-sample.distance, -sample.normal);
+    }
+    return SdfSample(sample.distance - max(corner_radius, 0.0), sample.normal);
+}
+
 fn local_line_rect_distance(axis: f32, normal: f32, x0: f32, x1: f32, half_height: f32) -> f32 {
     return local_line_rect_sample(axis, normal, x0, x1, half_height).distance;
 }
@@ -468,5 +532,4 @@ fn rounded_box_sdf_sample(px: f32, py: f32, hx: f32, hy: f32, radius: f32) -> Sd
     }
     return SdfSample(distance, vec2<f32>(0.0, signs.y));
 }
-
 

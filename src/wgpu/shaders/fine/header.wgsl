@@ -12,6 +12,7 @@ const GPU_SDF_ARC_SHADOW: u32 = 9u;
 const GPU_SDF_CIRCLE_SHADOW: u32 = 10u;
 const GPU_SDF_LINE_SHADOW: u32 = 11u;
 const GPU_SDF_DASH_LINE: u32 = 12u;
+const GPU_SDF_TRIANGLE: u32 = 13u;
 const GPU_PTCL_END: u32 = 0u;
 const GPU_PTCL_FILL: u32 = 1u;
 const GPU_PTCL_COLOR: u32 = 2u;

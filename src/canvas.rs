@@ -55,6 +55,7 @@ use crate::shared::{
             Radius, Rect as SdfRect, RectShadow as SdfRectShadow, RectShadowOptions,
             RectStroke as SdfRectStroke, StrokeWidths,
         },
+        triangle::Triangle as SdfTriangle,
     },
 };
 use crate::text::{TextRun, layout_bounds_at_scaled_origin, scene_glyphs_at_scaled_origin};

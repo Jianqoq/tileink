@@ -441,6 +441,13 @@ impl Canvas {
                 line.dash_offset *= self.scale_f32();
                 Sdf::DashLine(line)
             }
+            Sdf::Triangle(mut triangle) => {
+                triangle.a = self.physical_point(triangle.a);
+                triangle.b = self.physical_point(triangle.b);
+                triangle.c = self.physical_point(triangle.c);
+                triangle.corner_radius *= self.scale_f32();
+                Sdf::Triangle(triangle)
+            }
         }
     }
 

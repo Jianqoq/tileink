@@ -34,11 +34,11 @@ use std::error::Error;
 use peniko::{
     Color, Compose, Gradient, Mix,
     color::palette::css,
-    kurbo::{Affine, BezPath, Circle, Rect, Shape, Stroke},
+    kurbo::{Affine, BezPath, Circle, Point, Rect, Shape, Stroke},
 };
 use tileink::{
-    Brush, Canvas, FillRule, Filter, Radius, StrokeWidths, TextContext, TextFontSystem,
-    WgpuRenderer,
+    Brush, Canvas, FillRule, Filter, Radius, SdfTriangle, StrokeWidths, TextContext,
+    TextFontSystem, WgpuRenderer,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -131,6 +131,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let (scene, _, _) = sdf_shape_shadows_scene::sdf_shape_shadows_scene();
     batch.render("sdf_shape_shadows", &scene, Color::WHITE)?;
+
+    batch.render("sdf_triangle", &sdf_triangle_scene(), Color::WHITE)?;
 
     batch.render("sepia", &sepia_scene(), Color::WHITE)?;
     batch.render("simple", &simple_scene(), Color::WHITE)?;
@@ -241,6 +243,29 @@ fn simple_scene() -> Canvas {
         Affine::IDENTITY,
         FillRule::NonZero,
         0.1,
+    );
+    scene
+}
+
+fn sdf_triangle_scene() -> Canvas {
+    let mut scene = Canvas::new(360, 220, 1.0);
+    scene.push_triangle(
+        SdfTriangle::new(
+            Point::new(48.0, 32.0),
+            Point::new(168.0, 110.0),
+            Point::new(48.0, 188.0),
+            0.0,
+        ),
+        Color::from_rgb8(37, 99, 235),
+    );
+    scene.push_triangle(
+        SdfTriangle::new(
+            Point::new(214.0, 40.0),
+            Point::new(330.0, 110.0),
+            Point::new(214.0, 180.0),
+            12.0,
+        ),
+        Color::from_rgb8(124, 58, 237),
     );
     scene
 }
