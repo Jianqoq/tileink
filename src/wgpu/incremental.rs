@@ -411,6 +411,12 @@ struct FrameDiffScratch {
     tile_offsets: Vec<usize>,
     tile_cursors: Vec<usize>,
     tile_nodes: Vec<usize>,
+    previous_overrides:
+        rustc_hash::FxHashMap<crate::RetainedNodeId, Option<crate::canvas::RetainedNodeState>>,
+    current_overrides:
+        rustc_hash::FxHashMap<crate::RetainedNodeId, Option<crate::canvas::RetainedNodeState>>,
+    previous_affected: Vec<u8>,
+    current_affected: Vec<u8>,
 }
 
 impl IncrementalState {
@@ -613,38 +619,32 @@ fn diff_frames_reusing(
     retained: &mut RetainedDamage,
     scratch: &mut FrameDiffScratch,
 ) {
-    for node in current.nodes.iter() {
-        let Some(&previous_index) = previous.node_index.get(&node.id) else {
-            damage.add_bounds(node.bounds);
-            retained.add_node(node.id, node.bounds);
-            continue;
-        };
-        let previous = previous.nodes[previous_index];
-        if previous.revision != node.revision
-            || previous.kind != node.kind
-            || previous.placement_bits != node.placement_bits
-            || previous.bounds != node.bounds
-        {
-            let bounds = previous.bounds.union(node.bounds);
-            damage.add_bounds(bounds);
-            retained.add_node(node.id, bounds);
+    scratch.common.clear();
+    if previous.delta.is_none()
+        && current.delta.is_none()
+        && previous.state_pages.is_empty()
+        && current.state_pages.is_empty()
+    {
+        diff_base_nodes(previous, current, damage, retained, &mut scratch.common);
+    } else {
+        collect_logical_overrides(previous, &mut scratch.previous_overrides);
+        collect_logical_overrides(current, &mut scratch.current_overrides);
+        if scratch.previous_overrides.is_empty() && scratch.current_overrides.is_empty() {
+            diff_base_nodes(previous, current, damage, retained, &mut scratch.common);
+        } else {
+            mark_affected_base_nodes(previous, current, scratch);
+            diff_unaffected_base_nodes(previous, current, damage, retained, scratch);
+            damage_overridden_nodes(previous, current, damage, retained, scratch);
         }
     }
 
-    scratch.common.clear();
-    for node in previous.nodes.iter() {
-        if let Some(&new_index) = current.node_index.get(&node.id) {
-            scratch.common.push(CommonNode {
-                new_index,
-                influence: node.bounds.union(current.nodes[new_index].bounds),
-            });
-        } else {
-            damage.add_bounds(node.bounds);
-            // Removed commands have no insertion point in the current painter
-            // order, so conservatively expose their old pixels to every
-            // backdrop dependency.
-            retained.add_unattributed(node.bounds);
+    let mut delta = current.delta.as_deref();
+    while let Some(current) = delta {
+        for &(id, bounds) in current.damage.iter() {
+            damage.add_bounds(bounds);
+            retained.add_node(id, bounds);
         }
+        delta = current.previous.as_deref();
     }
 
     if !scratch
@@ -654,6 +654,207 @@ fn diff_frames_reusing(
     {
         damage_reordered_nodes(damage, retained, scratch);
     }
+}
+
+fn diff_base_nodes(
+    previous: &RetainedFrame,
+    current: &RetainedFrame,
+    damage: &mut DamageTiles,
+    retained: &mut RetainedDamage,
+    common: &mut Vec<CommonNode>,
+) {
+    for node in current.nodes.iter() {
+        let Some(&previous_index) = previous.node_index.get(&node.id) else {
+            add_state_change_damage(damage, retained, None, Some(*node));
+            continue;
+        };
+        let old = previous.nodes[previous_index];
+        if node_output_changed(old, *node) {
+            add_state_change_damage(damage, retained, Some(old), Some(*node));
+        }
+    }
+    for node in previous.nodes.iter() {
+        if let Some(&new_index) = current.node_index.get(&node.id) {
+            common.push(CommonNode {
+                new_index,
+                influence: node.bounds.union(current.nodes[new_index].bounds),
+            });
+        } else {
+            add_state_change_damage(damage, retained, Some(*node), None);
+        }
+    }
+}
+
+fn mark_affected_base_nodes(
+    previous: &RetainedFrame,
+    current: &RetainedFrame,
+    scratch: &mut FrameDiffScratch,
+) {
+    scratch.previous_affected.resize(previous.nodes.len(), 0);
+    scratch.previous_affected.fill(0);
+    scratch.current_affected.resize(current.nodes.len(), 0);
+    scratch.current_affected.fill(0);
+    for &id in scratch
+        .previous_overrides
+        .keys()
+        .chain(scratch.current_overrides.keys())
+    {
+        if let Some(&index) = previous.node_index.get(&id) {
+            scratch.previous_affected[index] = 1;
+        }
+        if let Some(&index) = current.node_index.get(&id) {
+            scratch.current_affected[index] = 1;
+        }
+    }
+}
+
+fn diff_unaffected_base_nodes(
+    previous: &RetainedFrame,
+    current: &RetainedFrame,
+    damage: &mut DamageTiles,
+    retained: &mut RetainedDamage,
+    scratch: &mut FrameDiffScratch,
+) {
+    for (index, node) in current.nodes.iter().enumerate() {
+        if scratch.current_affected[index] != 0 {
+            continue;
+        }
+        let Some(&previous_index) = previous.node_index.get(&node.id) else {
+            add_state_change_damage(damage, retained, None, Some(*node));
+            continue;
+        };
+        let old = previous.nodes[previous_index];
+        if node_output_changed(old, *node) {
+            add_state_change_damage(damage, retained, Some(old), Some(*node));
+        }
+    }
+    for (index, node) in previous.nodes.iter().enumerate() {
+        if scratch.previous_affected[index] != 0 {
+            let Some(old) = resolved_node_state(previous, &scratch.previous_overrides, node.id)
+            else {
+                continue;
+            };
+            if let Some(&new_index) = current.node_index.get(&node.id)
+                && let Some(new) = resolved_node_state(current, &scratch.current_overrides, node.id)
+            {
+                scratch.common.push(CommonNode {
+                    new_index,
+                    influence: old.bounds.union(new.bounds),
+                });
+            }
+            continue;
+        }
+        if let Some(&new_index) = current.node_index.get(&node.id) {
+            scratch.common.push(CommonNode {
+                new_index,
+                influence: node.bounds.union(current.nodes[new_index].bounds),
+            });
+        } else {
+            add_state_change_damage(damage, retained, Some(*node), None);
+        }
+    }
+}
+
+fn node_output_changed(
+    old: crate::canvas::RetainedNodeState,
+    new: crate::canvas::RetainedNodeState,
+) -> bool {
+    old.revision != new.revision
+        || old.kind != new.kind
+        || old.placement_bits != new.placement_bits
+        || old.bounds != new.bounds
+}
+
+fn collect_logical_overrides(
+    frame: &RetainedFrame,
+    overrides: &mut rustc_hash::FxHashMap<
+        crate::RetainedNodeId,
+        Option<crate::canvas::RetainedNodeState>,
+    >,
+) {
+    overrides.clear();
+    let mut delta = frame.delta.as_deref();
+    while let Some(current) = delta {
+        for patch in current.patches.iter() {
+            let id = patch.new.or(patch.old).unwrap().id;
+            overrides.entry(id).or_insert(patch.new);
+        }
+        delta = current.previous.as_deref();
+    }
+    const PAGE_SIZE: usize = 256;
+    for (&page_index, page) in frame.state_pages.iter() {
+        let start = page_index * PAGE_SIZE;
+        for (offset, &state) in page.iter().enumerate() {
+            let base = frame.nodes[start + offset];
+            if state != base {
+                overrides.entry(state.id).or_insert(Some(state));
+            }
+        }
+    }
+}
+
+fn resolved_node_state(
+    frame: &RetainedFrame,
+    overrides: &rustc_hash::FxHashMap<
+        crate::RetainedNodeId,
+        Option<crate::canvas::RetainedNodeState>,
+    >,
+    id: crate::RetainedNodeId,
+) -> Option<crate::canvas::RetainedNodeState> {
+    overrides
+        .get(&id)
+        .copied()
+        .unwrap_or_else(|| frame.node_index.get(&id).map(|&index| frame.nodes[index]))
+}
+
+fn damage_overridden_nodes(
+    previous: &RetainedFrame,
+    current: &RetainedFrame,
+    damage: &mut DamageTiles,
+    retained: &mut RetainedDamage,
+    scratch: &FrameDiffScratch,
+) {
+    for &id in scratch.current_overrides.keys().chain(
+        scratch
+            .previous_overrides
+            .keys()
+            .filter(|id| !scratch.current_overrides.contains_key(id)),
+    ) {
+        let old = resolved_node_state(previous, &scratch.previous_overrides, id);
+        let new = resolved_node_state(current, &scratch.current_overrides, id);
+        if old.is_none_or(|old| new.is_none_or(|new| node_output_changed(old, new))) {
+            add_state_change_damage(damage, retained, old, new);
+        } else if let Some(state) = new
+            && (!previous.node_index.contains_key(&id) || !current.node_index.contains_key(&id))
+        {
+            // Overlay-only nodes have no stable base painter index. Redrawing their local
+            // influence is the conservative equivalent of including them in the order pass.
+            damage.add_bounds(state.bounds);
+            retained.add_node(id, state.bounds);
+        }
+    }
+}
+
+fn add_state_change_damage(
+    damage: &mut DamageTiles,
+    retained: &mut RetainedDamage,
+    old: Option<crate::canvas::RetainedNodeState>,
+    new: Option<crate::canvas::RetainedNodeState>,
+) {
+    let bounds = match (old, new) {
+        (Some(old), Some(new)) => old.bounds.union(new.bounds),
+        (Some(old), None) => {
+            damage.add_bounds(old.bounds);
+            // Removed commands have no insertion point in the current painter order, so expose
+            // their old pixels to every backdrop dependency.
+            retained.add_unattributed(old.bounds);
+            return;
+        }
+        (None, Some(new)) => new.bounds,
+        (None, None) => return,
+    };
+    damage.add_bounds(bounds);
+    retained.add_node(new.or(old).unwrap().id, bounds);
 }
 
 #[cfg(test)]
@@ -791,7 +992,7 @@ mod tests {
     use super::*;
     use crate::{
         NodeGeneration, RetainedNodeId,
-        canvas::{RetainedNodeKind, RetainedNodeState},
+        canvas::{RetainedFrameDelta, RetainedNodeKind, RetainedNodePatch, RetainedNodeState},
     };
 
     fn frame(nodes: &[(u64, u64, Bounds)]) -> RetainedFrame {
@@ -837,6 +1038,104 @@ mod tests {
         let mut damage = DamageTiles::new(new.physical_size);
         diff_frames(&old, &new, &mut damage, &mut RetainedDamage::default());
         assert_eq!(damage.list(), &[0, 1, 2]);
+    }
+
+    #[test]
+    fn removal_delta_is_resolved_before_the_same_id_is_reinserted() {
+        let mut removed = frame(&[(2, 0, Bounds::new(16, 0, 32, 16))]);
+        let old = removed.nodes[0];
+        removed.delta = Some(std::rc::Rc::new(RetainedFrameDelta {
+            from_version: 1,
+            to_version: 2,
+            patches: vec![RetainedNodePatch {
+                old: Some(old),
+                new: None,
+                damage: None,
+            }]
+            .into(),
+            previous: None,
+            depth: 1,
+            damage: std::rc::Rc::new([]),
+            dirty_backdrops: std::rc::Rc::new([]),
+            backdrop_damage_complete: false,
+            index: std::rc::Rc::new([(old.id, 0)].into_iter().collect()),
+        }));
+        let reinserted = frame(&[(2, 0, Bounds::new(16, 0, 32, 16))]);
+        let mut damage = DamageTiles::new(reinserted.physical_size);
+
+        diff_frames(
+            &removed,
+            &reinserted,
+            &mut damage,
+            &mut RetainedDamage::default(),
+        );
+
+        assert_eq!(damage.list(), &[1]);
+    }
+
+    #[test]
+    fn overlay_only_insertion_participates_in_fallback_damage() {
+        let previous = frame(&[]);
+        let mut current = frame(&[]);
+        let inserted = RetainedNodeState {
+            id: RetainedNodeId::for_owner(2),
+            revision: NodeGeneration::new(0),
+            bounds: Bounds::new(32, 0, 48, 16),
+            order: 0,
+            kind: RetainedNodeKind::Scene,
+            placement_bits: None,
+        };
+        current.delta = Some(std::rc::Rc::new(RetainedFrameDelta {
+            from_version: 1,
+            to_version: 2,
+            patches: vec![RetainedNodePatch {
+                old: None,
+                new: Some(inserted),
+                damage: None,
+            }]
+            .into(),
+            previous: None,
+            depth: 1,
+            damage: std::rc::Rc::new([]),
+            dirty_backdrops: std::rc::Rc::new([]),
+            backdrop_damage_complete: false,
+            index: std::rc::Rc::new([(inserted.id, 0)].into_iter().collect()),
+        }));
+        let mut damage = DamageTiles::new(current.physical_size);
+
+        diff_frames(
+            &previous,
+            &current,
+            &mut damage,
+            &mut RetainedDamage::default(),
+        );
+
+        assert_eq!(damage.list(), &[2]);
+    }
+
+    #[test]
+    fn compacted_state_equal_to_the_rebuilt_base_adds_no_damage() {
+        let mut previous = frame(&[(2, 0, Bounds::new(16, 0, 32, 16))]);
+        let logical = RetainedNodeState {
+            revision: NodeGeneration::new(1),
+            ..previous.nodes[0]
+        };
+        previous.state_pages = std::rc::Rc::new(
+            [(0, std::rc::Rc::<[RetainedNodeState]>::from(vec![logical]))]
+                .into_iter()
+                .collect(),
+        );
+        let current = frame(&[(2, 1, Bounds::new(16, 0, 32, 16))]);
+        let mut damage = DamageTiles::new(current.physical_size);
+
+        diff_frames(
+            &previous,
+            &current,
+            &mut damage,
+            &mut RetainedDamage::default(),
+        );
+
+        assert!(damage.is_empty());
     }
 
     #[test]

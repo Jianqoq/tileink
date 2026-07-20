@@ -27,6 +27,11 @@ fn frame_diff(c: &mut Criterion) {
             20_000,
             FrameDiffBenchmarkCase::InsertRemove,
         ),
+        (
+            "removal-delta-reinsert",
+            20_000,
+            FrameDiffBenchmarkCase::RemovalDeltaReinsert,
+        ),
     ];
     let mut group = c.benchmark_group("frame_diff");
     for (name, count, case) in cases {

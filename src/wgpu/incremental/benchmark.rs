@@ -15,6 +15,7 @@ pub enum FrameDiffBenchmarkCase {
     ReorderDisjoint,
     ReorderOverlapping,
     InsertRemove,
+    RemovalDeltaReinsert,
 }
 
 #[doc(hidden)]
@@ -58,12 +59,33 @@ impl FrameDiffBenchmark {
                     node
                 }));
             }
+            FrameDiffBenchmarkCase::RemovalDeltaReinsert => {}
         }
         for (order, node) in current.iter_mut().enumerate() {
             node.order = order as u32;
         }
+        let mut previous = frame(previous, size);
+        if matches!(case, FrameDiffBenchmarkCase::RemovalDeltaReinsert) {
+            let old = previous.nodes[count / 2];
+            previous.delta = Some(Rc::new(crate::canvas::RetainedFrameDelta {
+                from_version: 1,
+                to_version: 2,
+                patches: vec![crate::canvas::RetainedNodePatch {
+                    old: Some(old),
+                    new: None,
+                    damage: None,
+                }]
+                .into(),
+                previous: None,
+                depth: 1,
+                damage: Rc::new([]),
+                dirty_backdrops: Rc::new([]),
+                backdrop_damage_complete: false,
+                index: Rc::new([(old.id, 0)].into_iter().collect()),
+            }));
+        }
         Self {
-            previous: frame(previous, size),
+            previous,
             current: frame(current, size),
             damage: DamageTiles::new(size),
             retained: RetainedDamage::default(),

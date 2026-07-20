@@ -1,4 +1,146 @@
 use super::*;
+use crate::wgpu::renderer::ExternalTextureHistoryId;
+
+#[test]
+fn persistent_external_texture_repaints_a_reinserted_scene() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    const SIZE: (u32, u32) = (64, 64);
+    let root = RetainedNodeId::for_owner(50_220);
+    let filtered = RetainedNodeId::for_owner(50_221);
+    let background = RetainedNodeId::for_owner(50_222);
+    let popup = RetainedNodeId::for_owner(50_223);
+    let animated = RetainedNodeId::for_owner(50_224);
+    let solid = |rect: Rect, color| {
+        let mut canvas = Canvas::new(SIZE.0, SIZE.1, 1.0);
+        canvas.push_rect(rect, crate::Radius::ZERO, color);
+        std::rc::Rc::new(canvas)
+    };
+    let background_canvas = solid(
+        Rect::new(0.0, 0.0, SIZE.0 as f64, SIZE.1 as f64),
+        Color::from_rgb8(20, 30, 40),
+    );
+    let popup_canvas = solid(
+        Rect::new(0.0, 0.0, 20.0, 16.0),
+        Color::from_rgb8(230, 240, 250),
+    );
+    let popup_transform = Affine::translate((24.0, 20.0));
+    let mut scene = RetainedScene::new(SIZE.0, SIZE.1, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_layer(
+            RetainedParent::content(root),
+            None,
+            filtered,
+            RetainedLayerDescriptor::Opacity {
+                path: Rect::new(0.0, 0.0, SIZE.0 as f64, SIZE.1 as f64).to_path(0.1),
+                transform: Affine::IDENTITY,
+                tolerance: 0.1,
+                opacity: 1.0,
+            },
+        )
+        .insert_scene(
+            RetainedParent::content(filtered),
+            None,
+            background,
+            background_canvas,
+            Affine::IDENTITY,
+        )
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            popup,
+            popup_canvas.clone(),
+            popup_transform,
+        )
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            animated,
+            solid(Rect::new(0.0, 0.0, 8.0, 8.0), Color::from_rgb8(80, 90, 100)),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+
+    let mut incremental = new_test_renderer(SIZE.0, SIZE.1, Color::TRANSPARENT);
+    let target = external_target(
+        incremental.device(),
+        SIZE,
+        "reinserted scene external history",
+    );
+    incremental
+        .render_retained_to_persistent_wgpu_texture(
+            &scene,
+            &target,
+            ExternalTextureHistoryId::new(220),
+        )
+        .unwrap();
+    scene
+        .transaction()
+        .remove_subtree(popup)
+        .replace_scene(
+            animated,
+            solid(Rect::new(0.0, 0.0, 8.0, 8.0), Color::from_rgb8(81, 90, 100)),
+        )
+        .commit()
+        .unwrap();
+    incremental
+        .render_retained_to_persistent_wgpu_texture(
+            &scene,
+            &target,
+            ExternalTextureHistoryId::new(220),
+        )
+        .unwrap();
+    scene
+        .transaction()
+        .replace_scene(
+            animated,
+            solid(Rect::new(0.0, 0.0, 8.0, 8.0), Color::from_rgb8(82, 90, 100)),
+        )
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            popup,
+            popup_canvas,
+            popup_transform,
+        )
+        .commit()
+        .unwrap();
+    incremental
+        .render_retained_to_persistent_wgpu_texture(
+            &scene,
+            &target,
+            ExternalTextureHistoryId::new(220),
+        )
+        .unwrap();
+    assert!(!incremental.incremental_render_stats().full_redraw);
+
+    let mut full = new_test_renderer(SIZE.0, SIZE.1, Color::TRANSPARENT);
+    let mut config = full.incremental_render_config();
+    config.mode = crate::IncrementalRenderMode::ForceFull;
+    full.set_incremental_render_config(config);
+    let expected = external_target(full.device(), SIZE, "reinserted scene full reference");
+    full.render_retained_to_persistent_wgpu_texture(
+        &scene,
+        &expected,
+        ExternalTextureHistoryId::new(221),
+    )
+    .unwrap();
+
+    assert_eq!(
+        read_texture_rgba8(
+            incremental.device(),
+            incremental.queue(),
+            &target,
+            SIZE.0,
+            SIZE.1,
+        ),
+        read_texture_rgba8(full.device(), full.queue(), &expected, SIZE.0, SIZE.1),
+    );
+}
 
 #[test]
 fn persistent_retained_nested_layer_insert_rebuilds_only_offscreen_ancestor() {
