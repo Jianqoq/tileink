@@ -16,6 +16,7 @@ impl PersistentSceneMaterializer {
             chunks: HashMap::default(),
             arenas: MaterializedArenas::default(),
             buffer_changes_scratch: SceneBufferChanges::default(),
+            surface_resized_painter_nodes: Vec::new(),
             plan_cache_key: next_plan_cache_key(),
             scene_command_locations: HashMap::default(),
             layer_command_locations: HashMap::default(),
@@ -305,15 +306,15 @@ impl PersistentSceneMaterializer {
             }
         }
         drop(chunk_profile);
-        let surface_resized_painter_nodes = if surface_changed {
+        let mut surface_resized_painter_nodes =
+            std::mem::take(&mut self.surface_resized_painter_nodes);
+        surface_resized_painter_nodes.clear();
+        if surface_changed {
             let resize_profile =
                 crate::wgpu::start_cpu_scope("retained.materialize.resize_surface");
-            let resized = self.resize_surface_chunks(scene);
+            self.resize_surface_chunks(scene, &mut surface_resized_painter_nodes);
             drop(resize_profile);
-            resized
-        } else {
-            HashSet::default()
-        };
+        }
         self.dependency_free = self.layer_nodes.is_empty() && self.nonlocal_dependencies.is_empty();
         let plan_profile = crate::wgpu::start_cpu_scope("retained.materialize.plan_sync");
         let mut plain_topology_candidate =
@@ -835,6 +836,7 @@ impl PersistentSceneMaterializer {
         }
         drop(frame_profile);
         self.sync_node_metadata(scene, &changes);
+        self.surface_resized_painter_nodes = surface_resized_painter_nodes;
         self.version = scene.version;
         scene_data_changed
     }
@@ -1006,9 +1008,9 @@ impl PersistentSceneMaterializer {
     pub(crate) fn resize_surface_chunks(
         &mut self,
         scene: &RetainedScene,
-    ) -> HashSet<RetainedNodeId> {
+        painter_nodes: &mut Vec<RetainedNodeId>,
+    ) {
         let Self { chunks, arenas, .. } = self;
-        let mut painter_nodes = HashSet::default();
         for (&id, chunk) in chunks.iter_mut() {
             if chunk.canvas.logical_size() == (scene.width, scene.height) {
                 continue;
@@ -1029,10 +1031,9 @@ impl PersistentSceneMaterializer {
                 // Resizing path scan allocations rewrites DrawRecord offsets without changing
                 // painter identity. Include the owner in the normal metadata restore pass so
                 // dirty GPU ranges are not mistaken for removed draws.
-                painter_nodes.insert(id);
+                painter_nodes.push(id);
             }
         }
-        painter_nodes
     }
 
     /// Re-encodes one node and classifies whether its execution plan needs synchronization.

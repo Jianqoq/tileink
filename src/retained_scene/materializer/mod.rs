@@ -195,6 +195,9 @@ pub(crate) struct PersistentSceneMaterializer {
     /// Range vectors are owned by the published canvas for one frame, then reclaimed before the
     /// next mutation so arena synchronization retains peak capacity without copying ranges.
     buffer_changes_scratch: SceneBufferChanges,
+    /// Same-scale resize visits each retained chunk exactly once. Reuse a linear owner list across
+    /// frames instead of allocating and hashing every path owner on every interactive resize.
+    surface_resized_painter_nodes: Vec<RetainedNodeId>,
     plan_cache_key: u64,
     scene_command_locations: HashMap<RetainedNodeId, SceneCommandLocation>,
     layer_command_locations: HashMap<RetainedNodeId, LayerCommandLocation>,

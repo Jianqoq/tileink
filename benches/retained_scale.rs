@@ -3,6 +3,8 @@ mod retained_bench;
 #[path = "../examples/support/retained_scale.rs"]
 mod retained_scale;
 
+#[cfg(feature = "bench-internals")]
+use std::rc::Rc;
 use std::time::Duration;
 
 #[cfg(feature = "bench-internals")]
@@ -90,6 +92,33 @@ fn resize_removal_workload() -> (RetainedScene, RetainedMaterializerBenchmark, R
     (scene, materializer, removed)
 }
 
+#[cfg(feature = "bench-internals")]
+fn rapid_resize_workload(count: usize) -> (RetainedScene, RetainedMaterializerBenchmark, bool) {
+    let root = RetainedNodeId::for_owner(300_000);
+    let mut scene = RetainedScene::new(900, 650, 1.0, root).unwrap();
+    let mut transaction = scene.transaction();
+    for index in 0..count {
+        let mut canvas = Canvas::new(900, 650, 1.0);
+        canvas.push_path(
+            Rect::new(8.0, 8.0, 24.0, 24.0).to_path(0.5),
+            Color::WHITE,
+            Affine::IDENTITY,
+            FillRule::NonZero,
+            0.5,
+        );
+        transaction.insert_scene(
+            RetainedParent::content(root),
+            None,
+            RetainedNodeId::for_owner(300_001 + index as u64),
+            Rc::new(canvas),
+            Affine::IDENTITY,
+        );
+    }
+    transaction.commit().unwrap();
+    let materializer = RetainedMaterializerBenchmark::new(&scene);
+    (scene, materializer, false)
+}
+
 fn retained_materialize_stage(
     c: &mut Criterion,
     seed: &WgpuRenderer,
@@ -156,6 +185,28 @@ fn retained_scale(c: &mut Criterion) {
     // scenarios above also include workload-dependent scratch targets and complete frame cost.
     #[cfg(feature = "bench-internals")]
     {
+        // Large retained UIs resize every path chunk but each chunk ID is unique. Keep this
+        // permanent CPU benchmark so resize scratch collection cannot silently regress into
+        // per-frame hash allocation and rehashing.
+        let mut group = c.benchmark_group("retained_scale/materializer-rapid-resize");
+        for count in [100, 1_000, 5_000] {
+            group.throughput(Throughput::Elements(count as u64));
+            group.bench_with_input(BenchmarkId::from_parameter(count), &count, |b, &count| {
+                let (mut scene, mut materializer, mut expanded) = rapid_resize_workload(count);
+                b.iter(|| {
+                    expanded = !expanded;
+                    let (width, height) = if expanded { (1900, 1250) } else { (900, 650) };
+                    scene
+                        .transaction()
+                        .resize(width, height, 1.0)
+                        .commit()
+                        .unwrap();
+                    std::hint::black_box(materializer.update_incremental(&scene));
+                });
+            });
+        }
+        group.finish();
+
         // This isolates the texture-allocation churn from a native interactive resize. The first
         // call establishes capacity; measured iterations must reuse it while logical sizes vary.
         let mut group = c.benchmark_group("retained_scale/internal-target-rapid-resize");
