@@ -13,6 +13,51 @@ fn nearer_sdf_sample(a: SdfSample, b: SdfSample) -> SdfSample {
     return b;
 }
 
+fn farther_sdf_sample(a: SdfSample, b: SdfSample) -> SdfSample {
+    if (a.distance >= b.distance) {
+        return a;
+    }
+    return b;
+}
+
+fn checkerboard_sdf_sample(
+    x: f32,
+    y: f32,
+    x0: f32,
+    y0: f32,
+    x1: f32,
+    y1: f32,
+    cell_size_raw: f32,
+) -> SdfSample {
+    let left = min(x0, x1);
+    let top = min(y0, y1);
+    let right = max(x0, x1);
+    let bottom = max(y0, y1);
+    let outer = rect_sdf_sample(x, y, left, top, right, bottom, 0.0, 0.0, 0.0, 0.0);
+    let cell_size = max(cell_size_raw, 0.000001);
+    let cell_x = floor((x - left) / cell_size);
+    let cell_y = floor((y - top) / cell_size);
+    let local_x = rem_euclid_f32(x - left, cell_size);
+    let local_y = rem_euclid_f32(y - top, cell_size);
+    var edge_distance = local_x;
+    var normal = vec2<f32>(1.0, 0.0);
+    if (cell_size - local_x < edge_distance) {
+        edge_distance = cell_size - local_x;
+        normal = vec2<f32>(-1.0, 0.0);
+    }
+    if (local_y < edge_distance) {
+        edge_distance = local_y;
+        normal = vec2<f32>(0.0, 1.0);
+    }
+    if (cell_size - local_y < edge_distance) {
+        edge_distance = cell_size - local_y;
+        normal = vec2<f32>(0.0, -1.0);
+    }
+    let filled = (i32(cell_x) + i32(cell_y)) % 2 == 0;
+    let cell = SdfSample(select(edge_distance, -edge_distance, filled), normal);
+    return farther_sdf_sample(outer, cell);
+}
+
 fn line_local_to_canvas_sample(sample: SdfSample, ux: f32, uy: f32) -> SdfSample {
     return SdfSample(
         sample.distance,
@@ -532,4 +577,3 @@ fn rounded_box_sdf_sample(px: f32, py: f32, hx: f32, hy: f32, radius: f32) -> Sd
     }
     return SdfSample(distance, vec2<f32>(0.0, signs.y));
 }
-

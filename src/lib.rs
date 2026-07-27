@@ -60,6 +60,7 @@ pub use shared::{
         Sdf, SdfShadow,
         arc::{ArcShadow as SdfArcShadow, Rc as SdfArc},
         candlestick::CandleStick,
+        checkerboard::Checkerboard as SdfCheckerboard,
         circle::{
             Circle as SdfCircle, CircleShadow as SdfCircleShadow, CircleStroke as SdfCircleStroke,
         },

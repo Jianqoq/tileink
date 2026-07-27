@@ -1,6 +1,29 @@
 use super::*;
 
 impl Canvas {
+    /// Adds a two-color checkerboard with a constant two-draw SDF representation.
+    ///
+    /// The first draw fills the complete rectangle and the second analytically covers one
+    /// alternating cell parity. Invalid rectangles or cell sizes are ignored before either draw
+    /// is recorded, so callers never observe a partially constructed checkerboard.
+    pub fn push_checkerboard(
+        &mut self,
+        rect: Rect,
+        cell_size: f32,
+        first: impl Into<Brush>,
+        second: impl Into<Brush>,
+    ) -> Option<(DrawId, DrawId)> {
+        if !image_rect_is_valid(rect) || !cell_size.is_finite() || cell_size <= 0.0 {
+            return None;
+        }
+        let base = self.push_rect(rect, Radius::ZERO, second);
+        let cells = self.push_sdf_draw(
+            Sdf::Checkerboard(SdfCheckerboard::new(rect, cell_size)),
+            first,
+        );
+        Some((base, self.draw_id_from_index(cells)))
+    }
+
     /// Adds a filled rectangle as SDF geometry with independent corner radii.
     ///
     /// This keeps rounded rectangles on the SDF path instead of flattening them

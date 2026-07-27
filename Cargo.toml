@@ -115,6 +115,10 @@ harness = false
 name = "text_clip"
 harness = false
 
+[[bench]]
+name = "checkerboard"
+harness = false
+
 [[example]]
 name = "wgpu_examples"
 path = "examples/wgpu/all.rs"

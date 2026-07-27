@@ -162,6 +162,7 @@ pub(super) fn validate_sdf(sdf: Sdf) -> Result<(), RetainedSceneError> {
             line(value.line) && floats(&[value.dash_length, value.gap_length, value.dash_offset])
         }
         Sdf::Triangle(value) => !value.is_empty(),
+        Sdf::Checkerboard(value) => !value.is_empty(),
     };
     valid
         .then_some(())

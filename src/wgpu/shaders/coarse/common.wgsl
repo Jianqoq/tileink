@@ -195,6 +195,7 @@ const GPU_PTCL_BEGIN_SDF_CLIP: u32 = 12u;
 const GPU_PTCL_IMAGE: u32 = 13u;
 const GPU_SDF_RECT: u32 = 1u;
 const GPU_SDF_CANDLESTICK: u32 = 5u;
+const GPU_SDF_CHECKERBOARD: u32 = 14u;
 // `sdf_coverage_from_dist` reaches exactly 1.0 at distance -0.5. Using the
 // mathematical coverage threshold here lets a sharp rect aligned to a tile
 // take the analytic/image fast path without changing any edge pixels.

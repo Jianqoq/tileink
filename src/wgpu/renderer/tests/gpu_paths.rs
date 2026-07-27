@@ -1,6 +1,29 @@
 use super::*;
 
 #[test]
+fn wgpu_renderer_draws_checkerboard_from_constant_sdf_draws() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let first = Color::from_rgb8(194, 194, 194);
+    let second = Color::WHITE;
+    let mut canvas = Canvas::new(18, 18, 1.0);
+    canvas
+        .push_checkerboard(Rect::new(1.0, 1.0, 17.0, 17.0), 4.0, first, second)
+        .unwrap();
+    let mut renderer = new_test_renderer(18, 18, Color::TRANSPARENT);
+    renderer.render(&canvas);
+    let image = renderer.image();
+
+    assert_eq!(image.rgba8_at(2, 2), [194, 194, 194, 255]);
+    assert_eq!(image.rgba8_at(6, 2), [255; 4]);
+    assert_eq!(image.rgba8_at(2, 6), [255; 4]);
+    assert_eq!(image.rgba8_at(6, 6), [194, 194, 194, 255]);
+    assert_eq!(image.rgba8_at(0, 0), [0; 4]);
+}
+
+#[test]
 fn transformed_sdf_rect_preserves_brush_and_device_space_coverage() {
     if !run_wgpu_tests() {
         return;

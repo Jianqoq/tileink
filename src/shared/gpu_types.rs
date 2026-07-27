@@ -23,3 +23,4 @@ pub(crate) const GPU_SDF_CIRCLE_SHADOW: u32 = 10;
 pub(crate) const GPU_SDF_LINE_SHADOW: u32 = 11;
 pub(crate) const GPU_SDF_DASH_LINE: u32 = 12;
 pub(crate) const GPU_SDF_TRIANGLE: u32 = 13;
+pub(crate) const GPU_SDF_CHECKERBOARD: u32 = 14;

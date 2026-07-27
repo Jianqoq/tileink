@@ -1,6 +1,6 @@
 use crate::shared::{
     gpu_types::{
-        GPU_SDF_ARC, GPU_SDF_ARC_SHADOW, GPU_SDF_CANDLESTICK, GPU_SDF_CIRCLE,
+        GPU_SDF_ARC, GPU_SDF_ARC_SHADOW, GPU_SDF_CANDLESTICK, GPU_SDF_CHECKERBOARD, GPU_SDF_CIRCLE,
         GPU_SDF_CIRCLE_SHADOW, GPU_SDF_CIRCLE_STROKE, GPU_SDF_DASH_LINE, GPU_SDF_LINE,
         GPU_SDF_LINE_SHADOW, GPU_SDF_NONE, GPU_SDF_RECT, GPU_SDF_RECT_SHADOW, GPU_SDF_RECT_STROKE,
         GPU_SDF_TRIANGLE,
@@ -9,6 +9,7 @@ use crate::shared::{
         Sdf, SdfShadow,
         arc::{ArcShadow, Rc},
         candlestick::CandleStick,
+        checkerboard::Checkerboard,
         circle::{Circle, CircleShadow, CircleStroke},
         line::{DashLine, Line, LineCap, LineShadow},
         rect::{Radius, Rect, RectShadow, RectStroke, StrokeWidths},
@@ -162,6 +163,15 @@ pub(crate) fn encode_sdf(sdf: Sdf) -> EncodedSdf {
             ],
             ..EncodedSdf::NONE
         },
+        Sdf::Checkerboard(checkerboard) => {
+            let (x0, y0, x1, y1) = checkerboard.axis_bounds();
+            EncodedSdf {
+                kind: GPU_SDF_CHECKERBOARD,
+                coords: [x0 as f32, y0 as f32, x1 as f32, y1 as f32],
+                radii: [checkerboard.cell_size, 0.0, 0.0, 0.0],
+                ..EncodedSdf::NONE
+            }
+        }
     }
 }
 
@@ -304,6 +314,11 @@ pub(crate) fn decode_sdf(blob: &[u32], offset: u32, len: u32) -> Option<Sdf> {
             dash_offset: sdf.stroke[0],
         })),
         GPU_SDF_TRIANGLE => Some(Sdf::Triangle(triangle_from_encoded(sdf))),
+        GPU_SDF_CHECKERBOARD => Some(Sdf::Checkerboard(Checkerboard {
+            start: Point::new(sdf.coords[0] as f64, sdf.coords[1] as f64),
+            end: Point::new(sdf.coords[2] as f64, sdf.coords[3] as f64),
+            cell_size: sdf.radii[0],
+        })),
         _ => None,
     }
 }

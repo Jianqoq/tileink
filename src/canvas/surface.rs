@@ -448,6 +448,12 @@ impl Canvas {
                 triangle.corner_radius *= self.scale_f32();
                 Sdf::Triangle(triangle)
             }
+            Sdf::Checkerboard(mut checkerboard) => {
+                checkerboard.start = self.physical_point(checkerboard.start);
+                checkerboard.end = self.physical_point(checkerboard.end);
+                checkerboard.cell_size *= self.scale_f32();
+                Sdf::Checkerboard(checkerboard)
+            }
         }
     }
 

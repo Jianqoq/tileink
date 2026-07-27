@@ -615,7 +615,7 @@ fn draw_solid_supported_sdf_at(draw_ix: u32) -> bool {
         return false;
     }
     let kind = sdf_blob[draw.sdf_offset];
-    return kind == GPU_SDF_RECT || kind == GPU_SDF_CANDLESTICK;
+    return kind == GPU_SDF_RECT || kind == GPU_SDF_CANDLESTICK || kind == GPU_SDF_CHECKERBOARD;
 }
 
 fn draw_has_nontransparent_solid_brush_at(draw_ix: u32) -> bool {

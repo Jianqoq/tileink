@@ -56,6 +56,8 @@ The complete run contains two suites:
 - `arena_fill`: CPU-only insertion and replacement of zero-initialized scene scratch allocations
   across small tile pools through one-megabyte buffers. It detects temporary zero-vector
   allocation and the resulting second memory pass.
+- `checkerboard`: CPU-only recording comparison between the constant two-draw analytic
+  checkerboard and one SDF rectangle per visible cell.
 - `dirty_ranges`: CPU-only repeated dirty-range collection for scene arenas, persistent path plans,
   and tile bins. It detects capacity loss when upload-owned vectors are taken from long-lived
   staging structures and then dropped.
@@ -95,5 +97,6 @@ cargo bench --bench node_draw_order --features bench-internals
 cargo bench --bench glyph_capacity --features bench-internals
 cargo bench --bench arena_fill --features bench-internals
 cargo bench --bench dirty_ranges --features bench-internals
+cargo bench --bench checkerboard
 cargo bench --bench retained_scale --features bench-internals -- retained_scale/local-scene-resource
 ```

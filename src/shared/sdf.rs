@@ -2,6 +2,7 @@ use crate::shared::bounds::Bounds;
 use crate::shared::sdf::{
     arc::{ArcShadow, Rc},
     candlestick::CandleStick,
+    checkerboard::Checkerboard,
     circle::{Circle, CircleShadow, CircleStroke},
     line::{DashLine, Line, LineShadow},
     rect::{Rect, RectShadow, RectStroke},
@@ -9,6 +10,7 @@ use crate::shared::sdf::{
 
 pub mod arc;
 pub mod candlestick;
+pub mod checkerboard;
 pub mod circle;
 pub mod line;
 pub mod rect;
@@ -27,6 +29,7 @@ pub enum Sdf {
     Line(Line),
     DashLine(DashLine),
     Triangle(triangle::Triangle),
+    Checkerboard(Checkerboard),
 }
 
 #[repr(C)]
@@ -39,6 +42,11 @@ pub enum SdfShadow {
 }
 
 impl Sdf {
+    /// Creates analytic coverage for alternating cells inside `rect`.
+    pub fn checkerboard(rect: peniko::kurbo::Rect, cell_size: f32) -> Self {
+        Self::Checkerboard(Checkerboard::new(rect, cell_size))
+    }
+
     pub fn bounds(self) -> Bounds {
         match self {
             Self::Rect(rect) => rect.bounds(),
@@ -50,6 +58,7 @@ impl Sdf {
             Self::Line(line) => line.bounds(),
             Self::DashLine(line) => line.bounds(),
             Self::Triangle(triangle) => triangle.bounds(),
+            Self::Checkerboard(checkerboard) => checkerboard.bounds(),
         }
     }
 
@@ -64,6 +73,7 @@ impl Sdf {
             Self::Line(line) => Self::Line(line.translated(dx, dy)),
             Self::DashLine(line) => Self::DashLine(line.translated(dx, dy)),
             Self::Triangle(triangle) => Self::Triangle(triangle.translated(dx, dy)),
+            Self::Checkerboard(checkerboard) => Self::Checkerboard(checkerboard.translated(dx, dy)),
         }
     }
 }

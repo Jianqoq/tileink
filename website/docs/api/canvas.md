@@ -69,6 +69,7 @@ pub fn append_transformed(&mut self, other: &Canvas, transform: Affine);
 | 方法 | 返回 | 说明 |
 |---|---|---|
 | `push_rect(rect, radius, brush)` | `DrawId` | fill rounded rect |
+| `push_checkerboard(rect, cell_size, first, second)` | `Option<(DrawId, DrawId)>` | constant two-draw analytic checkerboard |
 | `push_rect_stroke(rect, radius, kurbo::Stroke, brush)` | `Option<DrawId>` | uniform/dashed stroke |
 | `push_rect_stroke_widths(rect, radius, widths, brush)` | `DrawId` | 四边独立宽度 |
 | `push_rect_shadow(rect, radius, options, brush)` | `DrawId` | analytic rect shadow |
