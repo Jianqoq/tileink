@@ -477,6 +477,109 @@ fn triangle_sdf_sample(
     return SdfSample(sample.distance - max(corner_radius, 0.0), sample.normal);
 }
 
+fn callout_sdf_sample(
+    x: f32,
+    y: f32,
+    x0_raw: f32,
+    y0_raw: f32,
+    x1_raw: f32,
+    y1_raw: f32,
+    body_radius: f32,
+    tail_offset: f32,
+    tail_width: f32,
+    tail_length: f32,
+    tail_radius: f32,
+    side: f32,
+    tail_visible: f32,
+) -> SdfSample {
+    let x0 = min(x0_raw, x1_raw);
+    let y0 = min(y0_raw, y1_raw);
+    let x1 = max(x0_raw, x1_raw);
+    let y1 = max(y0_raw, y1_raw);
+    let body = rect_sdf_sample(
+        x,
+        y,
+        x0,
+        y0,
+        x1,
+        y1,
+        body_radius,
+        body_radius,
+        body_radius,
+        body_radius,
+    );
+    if (tail_visible < 0.5) {
+        return body;
+    }
+    let vertical = side < 0.5 || (side >= 1.5 && side < 2.5);
+    let span = select(y1 - y0, x1 - x0, vertical);
+    let width = min(max(tail_width, 0.0), span);
+    let half_width = width * 0.5;
+    let center = clamp(tail_offset, half_width, max(span - half_width, half_width));
+    let radius = clamp(
+        tail_radius,
+        0.0,
+        min(max(half_width * 0.499, 0.0), max(tail_length * 0.499, 0.0)),
+    );
+    let source_half_width = max(half_width - radius, 0.0001);
+    let source_length = max(tail_length - radius, 0.0001);
+    var a = vec2<f32>(x0 + center - source_half_width, y0);
+    var b = vec2<f32>(x0 + center + source_half_width, y0);
+    var c = vec2<f32>(x0 + center, y0 - source_length);
+    if (side >= 0.5 && side < 1.5) {
+        a = vec2<f32>(x1, y0 + center - source_half_width);
+        b = vec2<f32>(x1, y0 + center + source_half_width);
+        c = vec2<f32>(x1 + source_length, y0 + center);
+    } else if (side >= 1.5 && side < 2.5) {
+        a = vec2<f32>(x0 + center - source_half_width, y1);
+        b = vec2<f32>(x0 + center + source_half_width, y1);
+        c = vec2<f32>(x0 + center, y1 + source_length);
+    } else if (side >= 2.5) {
+        a = vec2<f32>(x0, y0 + center - source_half_width);
+        b = vec2<f32>(x0, y0 + center + source_half_width);
+        c = vec2<f32>(x0 - source_length, y0 + center);
+    }
+    let tail = triangle_sdf_sample(x, y, a.x, a.y, b.x, b.y, c.x, c.y, radius);
+    return nearer_sdf_sample(body, tail);
+}
+
+fn callout_stroke_sdf_sample(
+    x: f32,
+    y: f32,
+    x0: f32,
+    y0: f32,
+    x1: f32,
+    y1: f32,
+    body_radius: f32,
+    tail_offset: f32,
+    tail_width: f32,
+    tail_length: f32,
+    tail_radius: f32,
+    side: f32,
+    half_width: f32,
+    tail_visible: f32,
+) -> SdfSample {
+    let callout = callout_sdf_sample(
+        x,
+        y,
+        x0,
+        y0,
+        x1,
+        y1,
+        body_radius,
+        tail_offset,
+        tail_width,
+        tail_length,
+        tail_radius,
+        side,
+        tail_visible,
+    );
+    return SdfSample(
+        abs(callout.distance) - max(half_width, 0.0),
+        select(-callout.normal, callout.normal, callout.distance >= 0.0),
+    );
+}
+
 fn star_vertex(index: u32, outer_radius: f32, inner_radius: f32) -> vec2<f32> {
     let radius = select(inner_radius, outer_radius, (index & 1u) == 0u);
     let angle = f32(index) * 0.6283185307179586;

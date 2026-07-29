@@ -59,6 +59,11 @@ pub use shared::{
     sdf::{
         Sdf, SdfShadow,
         arc::{ArcShadow as SdfArcShadow, Rc as SdfArc},
+        callout::{
+            Callout as SdfCallout, CalloutShadow as SdfCalloutShadow,
+            CalloutSide as SdfCalloutSide, CalloutStroke as SdfCalloutStroke,
+            CalloutTail as SdfCalloutTail,
+        },
         candlestick::CandleStick,
         checkerboard::Checkerboard as SdfCheckerboard,
         circle::{

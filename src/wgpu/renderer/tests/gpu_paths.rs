@@ -147,6 +147,74 @@ fn wgpu_renderer_draws_rounded_triangle_analytically_when_enabled() {
 }
 
 #[test]
+fn wgpu_renderer_draws_callout_as_one_union_and_can_hide_its_tail_when_enabled() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    const SIZE: u32 = 48;
+    let body = peniko::kurbo::Rect::new(10.0, 10.0, 38.0, 26.0);
+    let visible = crate::SdfCallout::new(
+        body,
+        6.0,
+        crate::SdfCalloutTail::new(crate::SdfCalloutSide::Bottom, 14.0, 10.0, 6.0, 1.5),
+    );
+    let hidden = crate::SdfCallout::new(body, 6.0, crate::SdfCalloutTail::hidden());
+    let mut visible_canvas = Canvas::new(SIZE, SIZE, 1.0);
+    visible_canvas.push_callout(visible, Color::WHITE).unwrap();
+    let mut hidden_canvas = Canvas::new(SIZE, SIZE, 1.0);
+    hidden_canvas.push_callout(hidden, Color::WHITE).unwrap();
+
+    let mut visible_renderer = new_test_renderer(SIZE, SIZE, Color::TRANSPARENT);
+    visible_renderer.render(&visible_canvas);
+    let mut hidden_renderer = new_test_renderer(SIZE, SIZE, Color::TRANSPARENT);
+    hidden_renderer.render(&hidden_canvas);
+
+    assert_eq!(visible_renderer.image().rgba8_at(24, 18), [255; 4]);
+    assert!(visible_renderer.image().rgba8_at(24, 29)[3] > 0);
+    assert_eq!(hidden_renderer.image().rgba8_at(24, 29)[3], 0);
+    assert_eq!(visible_renderer.image().rgba8_at(4, 4)[3], 0);
+}
+
+#[test]
+fn wgpu_renderer_draws_callout_stroke_and_shadow_around_the_complete_union_when_enabled() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    const SIZE: u32 = 48;
+    let body = peniko::kurbo::Rect::new(10.0, 10.0, 38.0, 26.0);
+    let callout = crate::SdfCallout::new(
+        body,
+        6.0,
+        crate::SdfCalloutTail::new(crate::SdfCalloutSide::Bottom, 14.0, 10.0, 6.0, 1.5),
+    );
+    let mut stroke = Canvas::new(SIZE, SIZE, 1.0);
+    stroke
+        .push_callout_stroke(crate::SdfCalloutStroke::new(callout, 2.0), Color::WHITE)
+        .unwrap();
+    let mut shadow = Canvas::new(SIZE, SIZE, 1.0);
+    shadow
+        .push_callout_shadow(
+            callout,
+            crate::ShadowOptions::new(0.0, 3.0, 2.0, 1.0),
+            Color::WHITE,
+        )
+        .unwrap();
+
+    let mut stroke_renderer = new_test_renderer(SIZE, SIZE, Color::TRANSPARENT);
+    stroke_renderer.render(&stroke);
+    let mut shadow_renderer = new_test_renderer(SIZE, SIZE, Color::TRANSPARENT);
+    shadow_renderer.render(&shadow);
+
+    assert_eq!(stroke_renderer.image().rgba8_at(24, 18)[3], 0);
+    assert!(stroke_renderer.image().rgba8_at(10, 18)[3] > 0);
+    assert!(stroke_renderer.image().rgba8_at(24, 31)[3] > 0);
+    assert!(shadow_renderer.image().rgba8_at(24, 35)[3] > 0);
+    assert_eq!(shadow_renderer.image().rgba8_at(2, 2)[3], 0);
+}
+
+#[test]
 fn wgpu_renderer_draws_rounded_star_fill_and_stroke_analytically_when_enabled() {
     if !run_wgpu_tests() {
         return;

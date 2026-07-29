@@ -204,6 +204,61 @@ fn push_triangle_rejects_invalid_public_struct_literals_without_mutating_canvas(
 }
 
 #[test]
+fn push_callout_records_unified_fill_stroke_and_shadow_without_paths() {
+    let mut canvas = test_scene();
+    let callout = crate::SdfCallout::new(
+        Rect::new(10.0, 20.0, 110.0, 60.0),
+        8.0,
+        crate::SdfCalloutTail::new(crate::SdfCalloutSide::Bottom, 50.0, 10.0, 6.0, 1.5),
+    );
+    let stroke = crate::SdfCalloutStroke::new(callout, 0.5);
+    let shadow = crate::ShadowOptions::new(0.0, 6.0, 4.0, 0.28);
+
+    canvas
+        .push_callout_shadow(callout, shadow, Color::BLACK)
+        .unwrap();
+    canvas.push_callout(callout, Color::BLACK).unwrap();
+    canvas.push_callout_stroke(stroke, Color::WHITE).unwrap();
+
+    assert_eq!(canvas.draw_count(), 3);
+    assert!(canvas.path_records.is_empty());
+    assert!(
+        matches!(draw_sdf_shadow(&canvas, 0), Some(SdfShadow::Callout(value)) if value.callout == callout)
+    );
+    assert!(matches!(draw_sdf(&canvas, 1), Some(Sdf::Callout(value)) if value == callout));
+    assert!(matches!(draw_sdf(&canvas, 2), Some(Sdf::CalloutStroke(value)) if value == stroke));
+}
+
+#[test]
+fn push_callout_scales_tail_geometry_and_can_hide_it() {
+    let mut canvas = Canvas::new(128, 128, 2.0);
+    let callout = crate::SdfCallout::new(
+        Rect::new(10.0, 20.0, 110.0, 60.0),
+        8.0,
+        crate::SdfCalloutTail::hidden(),
+    );
+
+    canvas.push_callout(callout, Color::BLACK).unwrap();
+
+    let Some(Sdf::Callout(physical)) = draw_sdf(&canvas, 0) else {
+        panic!("expected scaled callout");
+    };
+    assert_eq!(physical.start, Point::new(20.0, 40.0));
+    assert_eq!(physical.end, Point::new(220.0, 120.0));
+    assert_eq!(physical.body_radius, 16.0);
+    assert!(!physical.tail.visible);
+    assert_eq!(
+        canvas.draw_records[0].pixel_bounds,
+        PixelBounds {
+            x0: 20,
+            y0: 40,
+            x1: 220,
+            y1: 120,
+        }
+    );
+}
+
+#[test]
 fn push_star_fill_and_stroke_each_record_one_sdf_draw() {
     let mut canvas = test_scene();
     let star = crate::SdfStar::new(Point::new(20.0, 20.0), 8.0, 3.5, 1.0, 0.0);

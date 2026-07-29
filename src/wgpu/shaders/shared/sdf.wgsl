@@ -221,6 +221,69 @@ fn sdf_coverage_from_blob(
             inverse_transform,
         );
     }
+    if (kind == GPU_SDF_CALLOUT) {
+        return sdf_coverage_from_sample(
+            callout_sdf_sample(
+                x,
+                y,
+                x0,
+                y0,
+                x1,
+                y1,
+                r0,
+                r1,
+                r2,
+                r3,
+                stroke_top,
+                stroke_right,
+                stroke_left,
+            ),
+            inverse_transform,
+        );
+    }
+    if (kind == GPU_SDF_CALLOUT_STROKE) {
+        return sdf_coverage_from_sample(
+            callout_stroke_sdf_sample(
+                x,
+                y,
+                x0,
+                y0,
+                x1,
+                y1,
+                r0,
+                r1,
+                r2,
+                r3,
+                stroke_top,
+                stroke_right,
+                stroke_bottom,
+                stroke_left,
+            ),
+            inverse_transform,
+        );
+    }
+    if (kind == GPU_SDF_CALLOUT_SHADOW) {
+        return sdf_shadow_coverage_from_sample(
+            callout_sdf_sample(
+                x - shadow_offset_x,
+                y - shadow_offset_y,
+                x0,
+                y0,
+                x1,
+                y1,
+                r0,
+                r1,
+                r2,
+                r3,
+                stroke_top,
+                stroke_right,
+                stroke_left,
+            ),
+            inverse_transform,
+            shadow_expand,
+            shadow_intensity,
+        );
+    }
     if (kind == GPU_SDF_LINE_SHADOW) {
         return sdf_shadow_coverage_from_sample(
             line_sdf_sample(

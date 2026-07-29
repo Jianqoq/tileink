@@ -165,6 +165,8 @@ pub(super) fn validate_sdf(sdf: Sdf) -> Result<(), RetainedSceneError> {
         Sdf::Checkerboard(value) => !value.is_empty(),
         Sdf::Star(value) => !value.is_empty(),
         Sdf::StarStroke(value) => !value.is_empty(),
+        Sdf::Callout(value) => !value.is_empty(),
+        Sdf::CalloutStroke(value) => !value.is_empty(),
     };
     valid
         .then_some(())

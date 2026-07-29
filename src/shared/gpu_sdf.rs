@@ -1,6 +1,7 @@
 use crate::shared::{
     gpu_types::{
-        GPU_SDF_ARC, GPU_SDF_ARC_SHADOW, GPU_SDF_CANDLESTICK, GPU_SDF_CHECKERBOARD, GPU_SDF_CIRCLE,
+        GPU_SDF_ARC, GPU_SDF_ARC_SHADOW, GPU_SDF_CALLOUT, GPU_SDF_CALLOUT_SHADOW,
+        GPU_SDF_CALLOUT_STROKE, GPU_SDF_CANDLESTICK, GPU_SDF_CHECKERBOARD, GPU_SDF_CIRCLE,
         GPU_SDF_CIRCLE_SHADOW, GPU_SDF_CIRCLE_STROKE, GPU_SDF_DASH_LINE, GPU_SDF_LINE,
         GPU_SDF_LINE_SHADOW, GPU_SDF_NONE, GPU_SDF_RECT, GPU_SDF_RECT_SHADOW, GPU_SDF_RECT_STROKE,
         GPU_SDF_STAR, GPU_SDF_STAR_STROKE, GPU_SDF_TRIANGLE,
@@ -8,6 +9,7 @@ use crate::shared::{
     sdf::{
         Sdf, SdfShadow,
         arc::{ArcShadow, Rc},
+        callout::{Callout, CalloutShadow, CalloutSide, CalloutStroke, CalloutTail},
         candlestick::CandleStick,
         checkerboard::Checkerboard,
         circle::{Circle, CircleShadow, CircleStroke},
@@ -177,6 +179,10 @@ pub(crate) fn encode_sdf(sdf: Sdf) -> EncodedSdf {
         Sdf::StarStroke(stroke) => {
             encoded_star(stroke.star, GPU_SDF_STAR_STROKE, stroke.half_width)
         }
+        Sdf::Callout(callout) => encoded_callout(callout, GPU_SDF_CALLOUT, 0.0),
+        Sdf::CalloutStroke(stroke) => {
+            encoded_callout(stroke.callout, GPU_SDF_CALLOUT_STROKE, stroke.half_width)
+        }
     }
 }
 
@@ -257,6 +263,16 @@ pub(crate) fn encode_sdf_shadow(sdf_shadow: SdfShadow) -> EncodedSdf {
             ],
             ..EncodedSdf::NONE
         },
+        SdfShadow::Callout(shadow) => {
+            let mut encoded = encoded_callout(shadow.callout, GPU_SDF_CALLOUT_SHADOW, 0.0);
+            encoded.shadow = [
+                shadow.options.offset_x,
+                shadow.options.offset_y,
+                shadow.options.expand,
+                shadow.options.intensity,
+            ];
+            encoded
+        }
     }
 }
 
@@ -329,6 +345,11 @@ pub(crate) fn decode_sdf(blob: &[u32], offset: u32, len: u32) -> Option<Sdf> {
             star: star_from_encoded(sdf),
             half_width: sdf.stroke[0],
         })),
+        GPU_SDF_CALLOUT => Some(Sdf::Callout(callout_from_encoded(sdf))),
+        GPU_SDF_CALLOUT_STROKE => Some(Sdf::CalloutStroke(CalloutStroke {
+            callout: callout_from_encoded(sdf),
+            half_width: sdf.stroke[2],
+        })),
         _ => None,
     }
 }
@@ -350,6 +371,10 @@ pub(crate) fn decode_sdf_shadow(blob: &[u32], offset: u32, len: u32) -> Option<S
         })),
         GPU_SDF_LINE_SHADOW => Some(SdfShadow::Line(LineShadow {
             line: line_from_encoded(sdf),
+            options: shadow_options_from_encoded(sdf),
+        })),
+        GPU_SDF_CALLOUT_SHADOW => Some(SdfShadow::Callout(CalloutShadow {
+            callout: callout_from_encoded(sdf),
             options: shadow_options_from_encoded(sdf),
         })),
         _ => None,
@@ -419,6 +444,43 @@ fn encoded_star(star: Star, kind: u32, half_width: f32) -> EncodedSdf {
         radii: [star.corner_radius, star.rotation_radians, 0.0, 0.0],
         stroke: [half_width, 0.0, 0.0, 0.0],
         shadow: [0.0; 4],
+    }
+}
+
+fn encoded_callout(callout: Callout, kind: u32, half_width: f32) -> EncodedSdf {
+    let (x0, y0, x1, y1) = callout.axis_bounds();
+    EncodedSdf {
+        kind,
+        coords: [x0 as f32, y0 as f32, x1 as f32, y1 as f32],
+        radii: [
+            callout.body_radius,
+            callout.tail.offset,
+            callout.tail.width,
+            callout.tail.length,
+        ],
+        stroke: [
+            callout.tail.radius,
+            callout.tail.side.value(),
+            half_width,
+            if callout.tail.visible { 1.0 } else { 0.0 },
+        ],
+        shadow: [0.0; 4],
+    }
+}
+
+fn callout_from_encoded(sdf: EncodedSdf) -> Callout {
+    Callout {
+        start: Point::new(f64::from(sdf.coords[0]), f64::from(sdf.coords[1])),
+        end: Point::new(f64::from(sdf.coords[2]), f64::from(sdf.coords[3])),
+        body_radius: sdf.radii[0],
+        tail: CalloutTail {
+            visible: sdf.stroke[3] >= 0.5,
+            side: CalloutSide::from_value(sdf.stroke[1]),
+            offset: sdf.radii[1],
+            width: sdf.radii[2],
+            length: sdf.radii[3],
+            radius: sdf.stroke[0],
+        },
     }
 }
 
@@ -525,6 +587,19 @@ mod tests {
                 Star::new(Point::new(24.0, 25.0), 10.0, 4.6, 1.0, 0.2),
                 2.5,
             )),
+            Sdf::Callout(Callout::new(
+                peniko::kurbo::Rect::new(4.0, 5.0, 84.0, 45.0),
+                8.0,
+                CalloutTail::new(CalloutSide::Bottom, 38.0, 10.0, 6.0, 1.5),
+            )),
+            Sdf::CalloutStroke(CalloutStroke::new(
+                Callout::new(
+                    peniko::kurbo::Rect::new(8.0, 9.0, 92.0, 52.0),
+                    7.0,
+                    CalloutTail::hidden(),
+                ),
+                1.5,
+            )),
         ];
         let shadows = [
             SdfShadow::Circle(CircleShadow {
@@ -544,6 +619,14 @@ mod tests {
                     LineCap::Round,
                 ),
                 options: ShadowOptions::new(-1.0, 2.0, 5.0, 0.75),
+            }),
+            SdfShadow::Callout(CalloutShadow {
+                callout: Callout::new(
+                    peniko::kurbo::Rect::new(4.0, 5.0, 84.0, 45.0),
+                    8.0,
+                    CalloutTail::new(CalloutSide::Left, 18.0, 10.0, 6.0, 1.5),
+                ),
+                options: ShadowOptions::new(0.0, 6.0, 16.0, 0.28),
             }),
         ];
         let mut sdf_blob = Vec::new();

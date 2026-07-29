@@ -405,6 +405,49 @@ impl Canvas {
         Some(self.draw_id_from_index(draw))
     }
 
+    /// Adds a filled rounded body and directional tail as one analytic SDF union.
+    pub fn push_callout(&mut self, callout: SdfCallout, brush: impl Into<Brush>) -> Option<DrawId> {
+        if callout.is_empty() {
+            return None;
+        }
+        let draw = self.push_sdf_draw(Sdf::Callout(callout), brush);
+        Some(self.draw_id_from_index(draw))
+    }
+
+    /// Adds a centered stroke around a complete analytic callout union.
+    pub fn push_callout_stroke(
+        &mut self,
+        stroke: SdfCalloutStroke,
+        brush: impl Into<Brush>,
+    ) -> Option<DrawId> {
+        if stroke.is_empty() {
+            return None;
+        }
+        let draw = self.push_sdf_draw(Sdf::CalloutStroke(stroke), brush);
+        Some(self.draw_id_from_index(draw))
+    }
+
+    /// Adds a soft shadow around a complete analytic callout union.
+    ///
+    /// The shadow is a separate draw so callers retain painter-order control. Push it before the
+    /// fill and stroke when it should sit behind the surface.
+    pub fn push_callout_shadow(
+        &mut self,
+        callout: SdfCallout,
+        options: RectShadowOptions,
+        brush: impl Into<Brush>,
+    ) -> Option<DrawId> {
+        if callout.is_empty() {
+            return None;
+        }
+        let options = options.normalized()?;
+        let draw = self.push_sdf_shadow_draw(
+            SdfShadow::Callout(SdfCalloutShadow { callout, options }),
+            brush,
+        );
+        Some(self.draw_id_from_index(draw))
+    }
+
     /// Adds a filled, optionally rounded five-point star as one analytic SDF draw.
     pub fn push_star(&mut self, star: SdfStar, brush: impl Into<Brush>) -> Option<DrawId> {
         if star.is_empty() {

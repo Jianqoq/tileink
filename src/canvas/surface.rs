@@ -469,6 +469,8 @@ impl Canvas {
                 stroke.half_width *= self.scale_f32();
                 Sdf::StarStroke(stroke)
             }
+            Sdf::Callout(callout) => Sdf::Callout(callout.physical(self.scale_f32())),
+            Sdf::CalloutStroke(stroke) => Sdf::CalloutStroke(stroke.physical(self.scale_f32())),
         }
     }
 
@@ -496,6 +498,7 @@ impl Canvas {
                 line: self.physical_sdf_line(shadow.line),
                 options: self.physical_shadow_options(shadow.options),
             }),
+            SdfShadow::Callout(shadow) => SdfShadow::Callout(shadow.physical(self.scale_f32())),
         }
     }
 

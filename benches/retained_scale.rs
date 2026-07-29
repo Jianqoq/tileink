@@ -25,6 +25,7 @@ use tileink::{
 use tileink::{IncrementalRenderMode, WgpuRenderer};
 
 const COUNTS: [usize; 5] = [100, 1_000, 5_000, 20_000, 100_000];
+#[cfg(feature = "bench-internals")]
 const RAPID_RESIZE_SIZES: [(u32, u32); 8] = [
     (1600, 1000),
     (1568, 982),

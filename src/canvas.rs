@@ -46,6 +46,10 @@ use crate::shared::{
     sdf::{
         Sdf, SdfShadow,
         arc::{ArcShadow as SdfArcShadow, Rc as SdfArc},
+        callout::{
+            Callout as SdfCallout, CalloutShadow as SdfCalloutShadow,
+            CalloutStroke as SdfCalloutStroke,
+        },
         candlestick::CandleStick as SdfCandleStick,
         checkerboard::Checkerboard as SdfCheckerboard,
         circle::{

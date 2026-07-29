@@ -1,6 +1,7 @@
 use crate::shared::bounds::Bounds;
 use crate::shared::sdf::{
     arc::{ArcShadow, Rc},
+    callout::{Callout, CalloutShadow, CalloutStroke},
     candlestick::CandleStick,
     checkerboard::Checkerboard,
     circle::{Circle, CircleShadow, CircleStroke},
@@ -10,6 +11,7 @@ use crate::shared::sdf::{
 };
 
 pub mod arc;
+pub mod callout;
 pub mod candlestick;
 pub mod checkerboard;
 pub mod circle;
@@ -34,6 +36,8 @@ pub enum Sdf {
     Checkerboard(Checkerboard),
     Star(Star),
     StarStroke(StarStroke),
+    Callout(Callout),
+    CalloutStroke(CalloutStroke),
 }
 
 #[repr(C)]
@@ -43,6 +47,7 @@ pub enum SdfShadow {
     Circle(CircleShadow),
     Rc(ArcShadow),
     Line(LineShadow),
+    Callout(CalloutShadow),
 }
 
 impl Sdf {
@@ -65,6 +70,8 @@ impl Sdf {
             Self::Checkerboard(checkerboard) => checkerboard.bounds(),
             Self::Star(star) => star.bounds(),
             Self::StarStroke(stroke) => stroke.bounds(),
+            Self::Callout(callout) => callout.bounds(),
+            Self::CalloutStroke(stroke) => stroke.bounds(),
         }
     }
 
@@ -82,6 +89,8 @@ impl Sdf {
             Self::Checkerboard(checkerboard) => Self::Checkerboard(checkerboard.translated(dx, dy)),
             Self::Star(star) => Self::Star(star.translated(dx, dy)),
             Self::StarStroke(stroke) => Self::StarStroke(stroke.translated(dx, dy)),
+            Self::Callout(callout) => Self::Callout(callout.translated(dx, dy)),
+            Self::CalloutStroke(stroke) => Self::CalloutStroke(stroke.translated(dx, dy)),
         }
     }
 }
@@ -93,6 +102,7 @@ impl SdfShadow {
             Self::Circle(shadow) => shadow.bounds(),
             Self::Rc(shadow) => shadow.bounds(),
             Self::Line(shadow) => shadow.bounds(),
+            Self::Callout(shadow) => shadow.bounds(),
         }
     }
 
@@ -102,6 +112,7 @@ impl SdfShadow {
             Self::Circle(shadow) => Self::Circle(shadow.translated(dx, dy)),
             Self::Rc(shadow) => Self::Rc(shadow.translated(dx, dy)),
             Self::Line(shadow) => Self::Line(shadow.translated(dx, dy)),
+            Self::Callout(shadow) => Self::Callout(shadow.translated(dx, dy)),
         }
     }
 }
