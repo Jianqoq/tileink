@@ -204,6 +204,96 @@ fn push_triangle_rejects_invalid_public_struct_literals_without_mutating_canvas(
 }
 
 #[test]
+fn push_star_fill_and_stroke_each_record_one_sdf_draw() {
+    let mut canvas = test_scene();
+    let star = crate::SdfStar::new(Point::new(20.0, 20.0), 8.0, 3.5, 1.0, 0.0);
+
+    canvas.push_star(star, Color::WHITE).unwrap();
+    canvas
+        .push_star_stroke(crate::SdfStarStroke::new(star, 2.5), Color::BLACK)
+        .unwrap();
+
+    assert_eq!(canvas.draw_count(), 2);
+    assert!(canvas.path_records.is_empty());
+    assert_eq!(
+        canvas.draw_records[0].pixel_bounds,
+        PixelBounds {
+            x0: 12,
+            y0: 11,
+            x1: 29,
+            y1: 29,
+        }
+    );
+    assert_eq!(
+        canvas.draw_records[1].pixel_bounds,
+        PixelBounds {
+            x0: 11,
+            y0: 10,
+            x1: 31,
+            y1: 30,
+        }
+    );
+    assert!(matches!(draw_sdf(&canvas, 0), Some(Sdf::Star(value)) if value == star));
+    assert!(
+        matches!(draw_sdf(&canvas, 1), Some(Sdf::StarStroke(value)) if value == crate::SdfStarStroke::new(star, 2.5))
+    );
+}
+
+#[test]
+fn push_star_scales_radii_stroke_and_center_but_preserves_rotation() {
+    let mut canvas = Canvas::new(64, 64, 2.0);
+    let star = crate::SdfStar::new(
+        Point::new(12.0, 14.0),
+        7.0,
+        3.0,
+        1.25,
+        -std::f32::consts::FRAC_PI_2,
+    );
+
+    canvas
+        .push_star_stroke(crate::SdfStarStroke::new(star, 2.0), Color::WHITE)
+        .unwrap();
+
+    let Some(Sdf::StarStroke(stroke)) = draw_sdf(&canvas, 0) else {
+        panic!("expected scaled star stroke");
+    };
+    assert_eq!(stroke.star.center, Point::new(24.0, 28.0));
+    assert_eq!(stroke.star.outer_radius, 14.0);
+    assert_eq!(stroke.star.inner_radius, 6.0);
+    assert_eq!(stroke.star.corner_radius, 2.5);
+    assert_eq!(stroke.star.rotation_radians, star.rotation_radians);
+    assert_eq!(stroke.half_width, 2.0);
+}
+
+#[test]
+fn push_star_rejects_invalid_public_literals_without_mutating_canvas() {
+    let mut canvas = test_scene();
+    let invalid = crate::SdfStar {
+        center: Point::ZERO,
+        outer_radius: 8.0,
+        inner_radius: 9.0,
+        corner_radius: 0.0,
+        rotation_radians: 0.0,
+    };
+
+    assert_eq!(canvas.push_star(invalid, Color::WHITE), None);
+    assert_eq!(
+        canvas.push_star_stroke(
+            crate::SdfStarStroke {
+                star: crate::SdfStar {
+                    inner_radius: 3.0,
+                    ..invalid
+                },
+                half_width: f32::NAN,
+            },
+            Color::WHITE,
+        ),
+        None
+    );
+    assert_eq!(canvas.draw_count(), 0);
+}
+
+#[test]
 fn push_rect_records_sdf_rect_with_independent_radii() {
     let mut canvas = test_scene();
     let radius = Radius {

@@ -56,6 +56,7 @@ use crate::shared::{
             Radius, Rect as SdfRect, RectShadow as SdfRectShadow, RectShadowOptions,
             RectStroke as SdfRectStroke, StrokeWidths,
         },
+        star::{Star as SdfStar, StarStroke as SdfStarStroke},
         triangle::Triangle as SdfTriangle,
     },
 };

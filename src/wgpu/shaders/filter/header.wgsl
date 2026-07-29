@@ -25,6 +25,8 @@ const GPU_SDF_LINE_SHADOW: u32 = 11u;
 const GPU_SDF_DASH_LINE: u32 = 12u;
 const GPU_SDF_TRIANGLE: u32 = 13u;
 const GPU_SDF_CHECKERBOARD: u32 = 14u;
+const GPU_SDF_STAR: u32 = 15u;
+const GPU_SDF_STAR_STROKE: u32 = 16u;
 
 const FILTER_BRIGHTNESS: u32 = 1u;
 const FILTER_CONTRAST: u32 = 2u;

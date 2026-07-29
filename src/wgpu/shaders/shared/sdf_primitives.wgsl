@@ -477,6 +477,97 @@ fn triangle_sdf_sample(
     return SdfSample(sample.distance - max(corner_radius, 0.0), sample.normal);
 }
 
+fn star_vertex(index: u32, outer_radius: f32, inner_radius: f32) -> vec2<f32> {
+    let radius = select(inner_radius, outer_radius, (index & 1u) == 0u);
+    let angle = f32(index) * 0.6283185307179586;
+    return vec2<f32>(cos(angle), sin(angle)) * radius;
+}
+
+fn star_sdf_sample(
+    x: f32,
+    y: f32,
+    center_x: f32,
+    center_y: f32,
+    outer_radius: f32,
+    inner_radius: f32,
+    corner_radius: f32,
+    rotation_radians: f32,
+) -> SdfSample {
+    let cosine = cos(rotation_radians);
+    let sine = sin(rotation_radians);
+    let relative = vec2<f32>(x - center_x, y - center_y);
+    let point = vec2<f32>(
+        cosine * relative.x + sine * relative.y,
+        -sine * relative.x + cosine * relative.y,
+    );
+    var nearest = SdfSample(1.0e20, vec2<f32>(1.0, 0.0));
+    var inside = false;
+    var previous = star_vertex(9u, outer_radius, inner_radius);
+    for (var index = 0u; index < 10u; index = index + 1u) {
+        let current = star_vertex(index, outer_radius, inner_radius);
+        let edge = current - previous;
+        nearest = nearer_sdf_sample(
+            nearest,
+            distance_to_segment_sdf_sample(
+                point.x,
+                point.y,
+                previous.x,
+                previous.y,
+                current.x,
+                current.y,
+                normalized_or(vec2<f32>(edge.y, -edge.x), vec2<f32>(1.0, 0.0)),
+            ),
+        );
+        if ((previous.y > point.y) != (current.y > point.y)) {
+            let crossing_x = previous.x
+                + (point.y - previous.y) * (current.x - previous.x)
+                    / (current.y - previous.y);
+            if (point.x < crossing_x) {
+                inside = !inside;
+            }
+        }
+        previous = current;
+    }
+    if (inside) {
+        nearest = SdfSample(-nearest.distance, -nearest.normal);
+    }
+    let local = SdfSample(nearest.distance - max(corner_radius, 0.0), nearest.normal);
+    return SdfSample(
+        local.distance,
+        vec2<f32>(
+            cosine * local.normal.x - sine * local.normal.y,
+            sine * local.normal.x + cosine * local.normal.y,
+        ),
+    );
+}
+
+fn star_stroke_sdf_sample(
+    x: f32,
+    y: f32,
+    center_x: f32,
+    center_y: f32,
+    outer_radius: f32,
+    inner_radius: f32,
+    corner_radius: f32,
+    rotation_radians: f32,
+    half_width: f32,
+) -> SdfSample {
+    let star = star_sdf_sample(
+        x,
+        y,
+        center_x,
+        center_y,
+        outer_radius,
+        inner_radius,
+        corner_radius,
+        rotation_radians,
+    );
+    return SdfSample(
+        abs(star.distance) - max(half_width, 0.0),
+        select(-star.normal, star.normal, star.distance >= 0.0),
+    );
+}
+
 fn local_line_rect_distance(axis: f32, normal: f32, x0: f32, x1: f32, half_height: f32) -> f32 {
     return local_line_rect_sample(axis, normal, x0, x1, half_height).distance;
 }

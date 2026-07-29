@@ -147,6 +147,52 @@ fn wgpu_renderer_draws_rounded_triangle_analytically_when_enabled() {
 }
 
 #[test]
+fn wgpu_renderer_draws_rounded_star_fill_and_stroke_analytically_when_enabled() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    const SIZE: u32 = 48;
+    let sharp_star = crate::SdfStar::new(
+        peniko::kurbo::Point::new(24.0, 24.0),
+        14.0,
+        6.4,
+        0.0,
+        -std::f32::consts::FRAC_PI_2,
+    );
+    let mut sharp = Canvas::new(SIZE, SIZE, 1.0);
+    sharp.push_star(sharp_star, Color::WHITE).unwrap();
+    let mut rounded = Canvas::new(SIZE, SIZE, 1.0);
+    rounded
+        .push_star(
+            crate::SdfStar {
+                corner_radius: 2.5,
+                ..sharp_star
+            },
+            Color::WHITE,
+        )
+        .unwrap();
+    let mut stroke = Canvas::new(SIZE, SIZE, 1.0);
+    stroke
+        .push_star_stroke(crate::SdfStarStroke::new(sharp_star, 2.5), Color::WHITE)
+        .unwrap();
+
+    let mut sharp_renderer = new_test_renderer(SIZE, SIZE, Color::TRANSPARENT);
+    sharp_renderer.render(&sharp);
+    let mut rounded_renderer = new_test_renderer(SIZE, SIZE, Color::TRANSPARENT);
+    rounded_renderer.render(&rounded);
+    let mut stroke_renderer = new_test_renderer(SIZE, SIZE, Color::TRANSPARENT);
+    stroke_renderer.render(&stroke);
+
+    assert_eq!(sharp_renderer.image().rgba8_at(24, 24), [255; 4]);
+    assert_eq!(sharp_renderer.image().rgba8_at(32, 14)[3], 0);
+    assert_eq!(sharp_renderer.image().rgba8_at(24, 7)[3], 0);
+    assert!(rounded_renderer.image().rgba8_at(24, 7)[3] > 0);
+    assert_eq!(stroke_renderer.image().rgba8_at(24, 24)[3], 0);
+    assert!(stroke_renderer.image().rgba8_at(24, 10)[3] > 0);
+}
+
+#[test]
 fn forced_coarse_binning_modes_render_the_same_incremental_frame() {
     if !run_wgpu_tests() {
         return;

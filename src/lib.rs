@@ -73,6 +73,7 @@ pub use shared::{
             RectStroke as SdfRectStroke, StrokeWidths,
         },
         shadow::ShadowOptions,
+        star::{Star as SdfStar, StarStroke as SdfStarStroke},
         triangle::Triangle as SdfTriangle,
     },
 };

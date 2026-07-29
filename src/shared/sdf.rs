@@ -6,6 +6,7 @@ use crate::shared::sdf::{
     circle::{Circle, CircleShadow, CircleStroke},
     line::{DashLine, Line, LineShadow},
     rect::{Rect, RectShadow, RectStroke},
+    star::{Star, StarStroke},
 };
 
 pub mod arc;
@@ -15,6 +16,7 @@ pub mod circle;
 pub mod line;
 pub mod rect;
 pub mod shadow;
+pub mod star;
 pub mod triangle;
 
 #[repr(C)]
@@ -30,6 +32,8 @@ pub enum Sdf {
     DashLine(DashLine),
     Triangle(triangle::Triangle),
     Checkerboard(Checkerboard),
+    Star(Star),
+    StarStroke(StarStroke),
 }
 
 #[repr(C)]
@@ -59,6 +63,8 @@ impl Sdf {
             Self::DashLine(line) => line.bounds(),
             Self::Triangle(triangle) => triangle.bounds(),
             Self::Checkerboard(checkerboard) => checkerboard.bounds(),
+            Self::Star(star) => star.bounds(),
+            Self::StarStroke(stroke) => stroke.bounds(),
         }
     }
 
@@ -74,6 +80,8 @@ impl Sdf {
             Self::DashLine(line) => Self::DashLine(line.translated(dx, dy)),
             Self::Triangle(triangle) => Self::Triangle(triangle.translated(dx, dy)),
             Self::Checkerboard(checkerboard) => Self::Checkerboard(checkerboard.translated(dx, dy)),
+            Self::Star(star) => Self::Star(star.translated(dx, dy)),
+            Self::StarStroke(stroke) => Self::StarStroke(stroke.translated(dx, dy)),
         }
     }
 }

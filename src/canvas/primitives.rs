@@ -405,6 +405,28 @@ impl Canvas {
         Some(self.draw_id_from_index(draw))
     }
 
+    /// Adds a filled, optionally rounded five-point star as one analytic SDF draw.
+    pub fn push_star(&mut self, star: SdfStar, brush: impl Into<Brush>) -> Option<DrawId> {
+        if star.is_empty() {
+            return None;
+        }
+        let draw = self.push_sdf_draw(Sdf::Star(star), brush);
+        Some(self.draw_id_from_index(draw))
+    }
+
+    /// Adds a centered stroke around a rounded five-point star as one analytic SDF draw.
+    pub fn push_star_stroke(
+        &mut self,
+        stroke: SdfStarStroke,
+        brush: impl Into<Brush>,
+    ) -> Option<DrawId> {
+        if stroke.is_empty() {
+            return None;
+        }
+        let draw = self.push_sdf_draw(Sdf::StarStroke(stroke), brush);
+        Some(self.draw_id_from_index(draw))
+    }
+
     /// Adds a laid-out text run whose output is hard-clipped to `clip`.
     ///
     /// Unlike a clip layer, this restricts the text draw's exact fine-composition pixel domain. It

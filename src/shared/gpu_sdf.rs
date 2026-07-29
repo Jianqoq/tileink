@@ -3,7 +3,7 @@ use crate::shared::{
         GPU_SDF_ARC, GPU_SDF_ARC_SHADOW, GPU_SDF_CANDLESTICK, GPU_SDF_CHECKERBOARD, GPU_SDF_CIRCLE,
         GPU_SDF_CIRCLE_SHADOW, GPU_SDF_CIRCLE_STROKE, GPU_SDF_DASH_LINE, GPU_SDF_LINE,
         GPU_SDF_LINE_SHADOW, GPU_SDF_NONE, GPU_SDF_RECT, GPU_SDF_RECT_SHADOW, GPU_SDF_RECT_STROKE,
-        GPU_SDF_TRIANGLE,
+        GPU_SDF_STAR, GPU_SDF_STAR_STROKE, GPU_SDF_TRIANGLE,
     },
     sdf::{
         Sdf, SdfShadow,
@@ -14,6 +14,7 @@ use crate::shared::{
         line::{DashLine, Line, LineCap, LineShadow},
         rect::{Radius, Rect, RectShadow, RectStroke, StrokeWidths},
         shadow::ShadowOptions,
+        star::{Star, StarStroke},
     },
 };
 use peniko::kurbo::Point;
@@ -172,6 +173,10 @@ pub(crate) fn encode_sdf(sdf: Sdf) -> EncodedSdf {
                 ..EncodedSdf::NONE
             }
         }
+        Sdf::Star(star) => encoded_star(star, GPU_SDF_STAR, 0.0),
+        Sdf::StarStroke(stroke) => {
+            encoded_star(stroke.star, GPU_SDF_STAR_STROKE, stroke.half_width)
+        }
     }
 }
 
@@ -319,6 +324,11 @@ pub(crate) fn decode_sdf(blob: &[u32], offset: u32, len: u32) -> Option<Sdf> {
             end: Point::new(sdf.coords[2] as f64, sdf.coords[3] as f64),
             cell_size: sdf.radii[0],
         })),
+        GPU_SDF_STAR => Some(Sdf::Star(star_from_encoded(sdf))),
+        GPU_SDF_STAR_STROKE => Some(Sdf::StarStroke(StarStroke {
+            star: star_from_encoded(sdf),
+            half_width: sdf.stroke[0],
+        })),
         _ => None,
     }
 }
@@ -394,6 +404,31 @@ fn triangle_from_encoded(sdf: EncodedSdf) -> crate::shared::sdf::triangle::Trian
         b: Point::new(f64::from(sdf.coords[2]), f64::from(sdf.coords[3])),
         c: Point::new(f64::from(sdf.radii[0]), f64::from(sdf.radii[1])),
         corner_radius: sdf.radii[2],
+    }
+}
+
+fn encoded_star(star: Star, kind: u32, half_width: f32) -> EncodedSdf {
+    EncodedSdf {
+        kind,
+        coords: [
+            star.center.x as f32,
+            star.center.y as f32,
+            star.outer_radius,
+            star.inner_radius,
+        ],
+        radii: [star.corner_radius, star.rotation_radians, 0.0, 0.0],
+        stroke: [half_width, 0.0, 0.0, 0.0],
+        shadow: [0.0; 4],
+    }
+}
+
+fn star_from_encoded(sdf: EncodedSdf) -> Star {
+    Star {
+        center: Point::new(f64::from(sdf.coords[0]), f64::from(sdf.coords[1])),
+        outer_radius: sdf.coords[2],
+        inner_radius: sdf.coords[3],
+        corner_radius: sdf.radii[0],
+        rotation_radians: sdf.radii[1],
     }
 }
 
@@ -477,6 +512,17 @@ mod tests {
                 Point::new(4.0, 5.0),
                 Point::new(20.0, 12.0),
                 Point::new(7.0, 30.0),
+                2.5,
+            )),
+            Sdf::Star(Star::new(
+                Point::new(18.0, 19.0),
+                8.0,
+                3.5,
+                1.25,
+                -std::f32::consts::FRAC_PI_2,
+            )),
+            Sdf::StarStroke(StarStroke::new(
+                Star::new(Point::new(24.0, 25.0), 10.0, 4.6, 1.0, 0.2),
                 2.5,
             )),
         ];

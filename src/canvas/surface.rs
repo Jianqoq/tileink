@@ -454,6 +454,21 @@ impl Canvas {
                 checkerboard.cell_size *= self.scale_f32();
                 Sdf::Checkerboard(checkerboard)
             }
+            Sdf::Star(mut star) => {
+                star.center = self.physical_point(star.center);
+                star.outer_radius *= self.scale_f32();
+                star.inner_radius *= self.scale_f32();
+                star.corner_radius *= self.scale_f32();
+                Sdf::Star(star)
+            }
+            Sdf::StarStroke(mut stroke) => {
+                stroke.star.center = self.physical_point(stroke.star.center);
+                stroke.star.outer_radius *= self.scale_f32();
+                stroke.star.inner_radius *= self.scale_f32();
+                stroke.star.corner_radius *= self.scale_f32();
+                stroke.half_width *= self.scale_f32();
+                Sdf::StarStroke(stroke)
+            }
         }
     }
 
