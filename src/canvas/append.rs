@@ -74,20 +74,22 @@ impl Canvas {
     }
 
     fn append_transformed_prepared(&mut self, other: &Canvas, transform: Affine) {
-        let mut transformed =
-            Canvas::new(self.logical_width, self.logical_height, self.scale_factor);
-        // Zero-offset copying is valid for every nested transform and avoids recursively routing
-        // an already transformed child back through public `append`.
-        transformed.append_scene_ref_unchecked(
+        let transform = GpuAffine::from_logical(transform, self.scale_factor);
+        let command_offset =
+            if [transform.a, transform.b, transform.c, transform.d] == [1.0, 0.0, 0.0, 1.0] {
+                SceneOffset::new(Point::new(transform.e as f64, transform.f as f64))
+            } else {
+                SceneOffset::new(Point::ZERO)
+            };
+        // Compose directly while copying into the destination. Building an intermediate Canvas
+        // copied every path, draw, glyph, brush, and command twice for each transformed icon.
+        self.append_scene_ref_to_list_transformed_unchecked(
             other,
+            self.current_command_list_id(),
             SceneAppendMode::MergeCurrent,
             SceneOffset::new(Point::ZERO),
-        );
-        transformed.set_retained_transform(transform);
-        self.append_scene_ref_unchecked(
-            &transformed,
-            SceneAppendMode::MergeCurrent,
-            SceneOffset::new(Point::ZERO),
+            command_offset,
+            Some(transform),
         );
     }
 
@@ -107,7 +109,26 @@ impl Canvas {
         mode: SceneAppendMode,
         offset: SceneOffset,
     ) -> Option<CommandListId> {
-        let draw_offset = self.append_scene_data(other, offset);
+        self.append_scene_ref_to_list_transformed_unchecked(
+            other,
+            target_commands,
+            mode,
+            offset,
+            offset,
+            None,
+        )
+    }
+
+    fn append_scene_ref_to_list_transformed_unchecked(
+        &mut self,
+        other: &Canvas,
+        target_commands: CommandListId,
+        mode: SceneAppendMode,
+        data_offset: SceneOffset,
+        command_offset: SceneOffset,
+        transform: Option<GpuAffine>,
+    ) -> Option<CommandListId> {
+        let draw_offset = self.append_scene_data(other, data_offset, transform);
         let command_list_offset = self.command_lists.len();
         let root_commands = other.root_commands;
         match mode {
@@ -122,7 +143,7 @@ impl Canvas {
                             list,
                             draw_offset,
                             child_list_offset,
-                            offset,
+                            command_offset,
                         ));
                 }
 
@@ -134,7 +155,7 @@ impl Canvas {
                         command,
                         draw_offset,
                         child_list_offset,
-                        offset,
+                        command_offset,
                     );
                     self.command_lists[target_commands].commands.push(command);
                 }
@@ -147,7 +168,7 @@ impl Canvas {
                             list,
                             draw_offset,
                             command_list_offset,
-                            offset,
+                            command_offset,
                         ));
                 }
                 Some(command_list_offset + root_commands)
@@ -236,7 +257,12 @@ impl Canvas {
             })
     }
 
-    pub(super) fn append_scene_data(&mut self, other: &Canvas, offset: SceneOffset) -> usize {
+    pub(super) fn append_scene_data(
+        &mut self,
+        other: &Canvas,
+        offset: SceneOffset,
+        transform: Option<GpuAffine>,
+    ) -> usize {
         let line_offset = self.lines.len() as u32;
         let path_offset = self.path_cnt;
         let draw_offset = self.draw_records.len();
@@ -271,6 +297,9 @@ impl Canvas {
             record.segment_start = 0;
             record.segment_capacity = 0;
             record.segment_count = 0;
+            if let Some(transform) = transform {
+                record.transform = transform.compose(record.transform);
+            }
             self.path_records.push(record);
         }
 
@@ -324,6 +353,14 @@ impl Canvas {
             }
             if !offset.is_zero() {
                 Self::translate_draw_for_append(&mut draw, offset);
+            }
+            if let Some(transform) = transform {
+                draw.transform = transform.compose(draw.transform);
+                draw.inverse_transform = draw
+                    .transform
+                    .inverse()
+                    .expect("validated append transforms remain invertible");
+                draw.pixel_bounds = draw.transform.transform_bounds(draw.local_pixel_bounds);
             }
             self.draw_records.push(draw);
         }

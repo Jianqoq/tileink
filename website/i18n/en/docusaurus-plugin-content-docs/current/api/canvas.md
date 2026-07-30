@@ -10,7 +10,7 @@ title: Canvas API
 - `new(width, height, scale_factor)` creates a logical scene.
 - `scale_factor`, `logical_size`, `physical_size`, `physical_width`, and `physical_height` query extent.
 - `is_closed_for_append` verifies that every layer was popped; `reset` clears reusable storage, while `reset_for_surface` validates a finite positive scale and then retargets the logical extent and scale without discarding vector capacity. Validation failure leaves the Canvas unchanged.
-- `append(other, position)` translates a child; `append_transformed(other, Affine)` supports full affine placement. Pure translations use the single-pass merge when the child has no nested scale, rotation, or skew. Otherwise Tileink composes the parent translation after the nested transform so the child transform cannot scale or rotate that translation.
+- `append(other, position)` translates a child; `append_transformed(other, Affine)` supports full affine placement. Pure translations use the single-pass merge when the child has no nested scale, rotation, or skew. Otherwise Tileink composes the affine directly into destination records so the child transform cannot scale or rotate the parent translation, without allocating a temporary Canvas or copying the scene twice.
 
 ## Draw access
 
