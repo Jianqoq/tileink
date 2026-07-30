@@ -119,6 +119,10 @@ harness = false
 name = "checkerboard"
 harness = false
 
+[[bench]]
+name = "canvas_append"
+harness = false
+
 [[example]]
 name = "wgpu_examples"
 path = "examples/wgpu/all.rs"

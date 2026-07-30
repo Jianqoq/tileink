@@ -690,6 +690,52 @@ fn draw_id_from_before_reset_is_rejected() {
 }
 
 #[test]
+fn reset_for_surface_retargets_canvas_without_discarding_storage_capacity() {
+    let mut canvas = test_scene();
+    let stale = canvas.push_rect(
+        Rect::new(2.0, 3.0, 18.0, 19.0),
+        crate::Radius::ZERO,
+        Brush::Solid(rgb(255, 0, 0)),
+    );
+    let draw_capacity = canvas.draw_records.capacity();
+    let brush_capacity = canvas.brush_blob.capacity();
+    let sdf_capacity = canvas.sdf_blob.capacity();
+
+    canvas.reset_for_surface(80, 48, 2.0);
+
+    assert_eq!(canvas.logical_size(), (80, 48));
+    assert_eq!(canvas.physical_size(), (160, 96));
+    assert_eq!(canvas.scale_factor(), 2.0);
+    assert_eq!(canvas.draw_count(), 0);
+    assert!(canvas.is_closed_for_append());
+    assert!(canvas.draw_records.capacity() >= draw_capacity);
+    assert!(canvas.brush_blob.capacity() >= brush_capacity);
+    assert!(canvas.sdf_blob.capacity() >= sdf_capacity);
+    assert!(!canvas.set_draw_color(stale, rgb(0, 255, 0)));
+}
+
+// Regression: validating the replacement scale after clearing storage destroyed the last valid
+// scene when callers supplied an invalid scale. Rejection must leave the Canvas untouched.
+#[test]
+fn reset_for_surface_rejects_invalid_scale_without_mutating_canvas() {
+    let mut canvas = test_scene();
+    let draw = canvas.push_rect(
+        Rect::new(2.0, 3.0, 18.0, 19.0),
+        crate::Radius::ZERO,
+        Brush::Solid(rgb(255, 0, 0)),
+    );
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        canvas.reset_for_surface(80, 48, f32::NAN);
+    }));
+
+    assert!(result.is_err());
+    assert_eq!(canvas.logical_size(), (64, 64));
+    assert_eq!(canvas.scale_factor(), 1.0);
+    assert_eq!(canvas.draw_solid_color(draw), Some(rgb(255, 0, 0)));
+}
+
+#[test]
 fn no_op_sdf_primitive_returns_no_draw_id() {
     let mut canvas = test_scene();
     let draw = canvas.push_line(

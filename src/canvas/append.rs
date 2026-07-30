@@ -35,6 +35,14 @@ impl Canvas {
                     > f64::EPSILON,
             "canvas append transform must be finite and invertible"
         );
+        let [a, b, c, d, x, y] = coefficients;
+        if [a, b, c, d] == [1.0, 0.0, 0.0, 1.0] {
+            // Translation is already the native append operation. Routing it through the general
+            // retained-transform path would copy every child record into a temporary Canvas and
+            // then copy it again into the destination.
+            self.append(other, Point::new(x, y));
+            return;
+        }
         let mut transformed =
             Canvas::new(self.logical_width, self.logical_height, self.scale_factor);
         transformed.append(other, Point::ZERO);

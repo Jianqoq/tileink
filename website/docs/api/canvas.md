@@ -17,6 +17,7 @@ title: Canvas API
 | `physical_size()` / `physical_width()` / `physical_height()` | scale 后的物理输出尺寸 |
 | `is_closed_for_append()` | 所有 layer 是否已 pop，可否 append/retain |
 | `reset()` | 清空 scene 数据并保留 Canvas 对象供复用 |
+| `reset_for_surface(width, height, scale_factor)` | 校验正数有限 scale 后，清空内容、保留分配容量并切换到新的 logical surface；校验失败不改变 Canvas |
 
 ## Scene composition
 
@@ -25,7 +26,7 @@ pub fn append(&mut self, other: &Canvas, pos: impl Into<Point>);
 pub fn append_transformed(&mut self, other: &Canvas, transform: Affine);
 ```
 
-`append` 是 translation convenience；`append_transformed` 支持旋转、缩放、skew 和 translation。Source Canvas 必须已关闭 layers 且 scale compatible。
+`append` 是 translation convenience；`append_transformed` 支持旋转、缩放、skew 和 translation。纯平移会自动使用 `append` 的单次合并路径，不创建中间 Canvas。Source Canvas 必须已关闭 layers 且 scale compatible。
 
 ## Draw identity 与更新
 

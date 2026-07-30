@@ -1,6 +1,24 @@
 use super::*;
 
 impl Canvas {
+    /// Clears all recorded content and retargets this allocation to a new logical surface.
+    ///
+    /// Vector capacities are retained, making this the preferred frame boundary for immediate
+    /// renderers whose viewport can change. No recorded geometry survives the call, so changing
+    /// the scale factor cannot leave mixed-scale records behind.
+    pub fn reset_for_surface(
+        &mut self,
+        logical_width: u32,
+        logical_height: u32,
+        scale_factor: f32,
+    ) {
+        let scale_factor = valid_scale_factor(scale_factor);
+        self.reset();
+        self.logical_width = logical_width;
+        self.logical_height = logical_height;
+        self.scale_factor = scale_factor;
+    }
+
     pub fn reset(&mut self) {
         self.lines.clear();
         self.path_records.clear();

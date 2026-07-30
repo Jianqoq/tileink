@@ -9,8 +9,8 @@ title: Canvas API
 
 - `new(width, height, scale_factor)` creates a logical scene.
 - `scale_factor`, `logical_size`, `physical_size`, `physical_width`, and `physical_height` query extent.
-- `is_closed_for_append` verifies that every layer was popped; `reset` clears reusable storage.
-- `append(other, position)` translates a child; `append_transformed(other, Affine)` supports full affine placement.
+- `is_closed_for_append` verifies that every layer was popped; `reset` clears reusable storage, while `reset_for_surface` validates a finite positive scale and then retargets the logical extent and scale without discarding vector capacity. Validation failure leaves the Canvas unchanged.
+- `append(other, position)` translates a child; `append_transformed(other, Affine)` supports full affine placement and routes pure translations through the same single-pass merge without an intermediate Canvas.
 
 ## Draw access
 
