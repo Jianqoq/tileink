@@ -23,8 +23,16 @@ fn child_scene() -> Canvas {
     canvas
 }
 
+fn nested_transform_child_scene() -> Canvas {
+    let source = child_scene();
+    let mut canvas = Canvas::new(512, 512, 1.0);
+    canvas.append_transformed(&source, Affine::scale_non_uniform(0.75, 0.75));
+    canvas
+}
+
 fn canvas_append(c: &mut Criterion) {
     let child = child_scene();
+    let transformed_child = nested_transform_child_scene();
     let mut group = c.benchmark_group("canvas_append");
     group.throughput(Throughput::Elements(DRAWS as u64));
     group.bench_function("native-translation", |b| {
@@ -63,6 +71,16 @@ fn canvas_append(c: &mut Criterion) {
                     &child,
                     Affine::translate((32.0, 24.0)) * Affine::rotate(0.05),
                 );
+                black_box(target)
+            },
+            BatchSize::SmallInput,
+        )
+    });
+    group.bench_function("nested-transform-translation", |b| {
+        b.iter_batched(
+            || Canvas::new(1024, 768, 1.0),
+            |mut target| {
+                target.append(&transformed_child, (32.0, 24.0));
                 black_box(target)
             },
             BatchSize::SmallInput,

@@ -9,18 +9,19 @@ impl Canvas {
     /// callers that need clipping can open a clip layer around the append.
     /// The borrowed child canvas is not mutated and remains reusable.
     pub fn append(&mut self, other: &Canvas, pos: impl Into<Point>) {
-        self.ensure_command_root();
-        assert!(
-            other.command_stack.len() == 1 && other.layer_stack.is_empty(),
-            "cannot append a canvas with unclosed layers"
-        );
-        assert!(
-            (self.scale_factor - other.scale_factor).abs() <= f32::EPSILON,
-            "cannot append canvases with different scale factors"
-        );
+        self.prepare_append(other);
+        self.append_translation_prepared(other, pos.into());
+    }
 
-        let offset = SceneOffset::new(self.physical_point(pos.into()));
-        self.append_scene_ref_unchecked(other, SceneAppendMode::MergeCurrent, offset);
+    fn append_translation_prepared(&mut self, other: &Canvas, pos: Point) {
+        let offset = SceneOffset::new(self.physical_point(pos));
+        if offset.is_zero() || other.native_translation_is_safe() {
+            self.append_scene_ref_unchecked(other, SceneAppendMode::MergeCurrent, offset);
+        } else {
+            // A nested scale/rotation makes local-space geometry translation non-commutative.
+            // Compose the parent translation after that transform instead of scaling the offset.
+            self.append_transformed_prepared(other, Affine::translate((pos.x, pos.y)));
+        }
     }
 
     /// Appends a reusable child with a logical-space affine transform.
@@ -35,19 +36,59 @@ impl Canvas {
                     > f64::EPSILON,
             "canvas append transform must be finite and invertible"
         );
+        self.prepare_append(other);
         let [a, b, c, d, x, y] = coefficients;
         if [a, b, c, d] == [1.0, 0.0, 0.0, 1.0] {
-            // Translation is already the native append operation. Routing it through the general
-            // retained-transform path would copy every child record into a temporary Canvas and
-            // then copy it again into the destination.
-            self.append(other, Point::new(x, y));
+            self.append_translation_prepared(other, Point::new(x, y));
             return;
         }
+        self.append_transformed_prepared(other, transform);
+    }
+
+    fn prepare_append(&mut self, other: &Canvas) {
+        self.ensure_command_root();
+        assert!(
+            other.command_stack.len() == 1 && other.layer_stack.is_empty(),
+            "cannot append a canvas with unclosed layers"
+        );
+        assert!(
+            (self.scale_factor - other.scale_factor).abs() <= f32::EPSILON,
+            "cannot append canvases with different scale factors"
+        );
+    }
+
+    fn native_translation_is_safe(&self) -> bool {
+        fn has_identity_linear_part(transform: GpuAffine) -> bool {
+            [transform.a, transform.b, transform.c, transform.d] == [1.0, 0.0, 0.0, 1.0]
+        }
+
+        has_identity_linear_part(self.retained_transform)
+            && self
+                .path_records
+                .iter()
+                .all(|record| has_identity_linear_part(record.transform))
+            && self
+                .draw_records
+                .iter()
+                .all(|record| has_identity_linear_part(record.transform))
+    }
+
+    fn append_transformed_prepared(&mut self, other: &Canvas, transform: Affine) {
         let mut transformed =
             Canvas::new(self.logical_width, self.logical_height, self.scale_factor);
-        transformed.append(other, Point::ZERO);
+        // Zero-offset copying is valid for every nested transform and avoids recursively routing
+        // an already transformed child back through public `append`.
+        transformed.append_scene_ref_unchecked(
+            other,
+            SceneAppendMode::MergeCurrent,
+            SceneOffset::new(Point::ZERO),
+        );
         transformed.set_retained_transform(transform);
-        self.append(&transformed, Point::ZERO);
+        self.append_scene_ref_unchecked(
+            &transformed,
+            SceneAppendMode::MergeCurrent,
+            SceneOffset::new(Point::ZERO),
+        );
     }
 
     pub(super) fn append_scene_ref_unchecked(

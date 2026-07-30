@@ -22,6 +22,44 @@ fn draw_brush(canvas: &Canvas, index: usize) -> Brush {
         .unwrap()
 }
 
+// Regression: the pure-translation append fast path used to translate local SDF geometry before
+// applying an icon's nested view-box scale. That scaled the parent translation and displaced every
+// icon during gfx_ui's immediate resize-transition frame.
+#[test]
+fn translated_append_composes_after_an_icon_like_nested_scale() {
+    let mut source = Canvas::new(24, 24, 1.0);
+    source.push_rect(
+        Rect::new(4.0, 4.0, 20.0, 20.0),
+        crate::Radius::ZERO,
+        Brush::Solid(rgb(255, 0, 0)),
+    );
+    let mut icon = Canvas::new(24, 24, 1.0);
+    icon.push_rect(
+        Rect::new(0.0, 0.0, 2.0, 2.0),
+        crate::Radius::ZERO,
+        Brush::Solid(rgb(0, 0, 255)),
+    );
+    icon.append_transformed(&source, Affine::scale_non_uniform(0.5, 0.5));
+
+    for append in [
+        Canvas::append as fn(&mut Canvas, &Canvas, Point),
+        |target: &mut Canvas, child: &Canvas, position: Point| {
+            target.append_transformed(child, Affine::translate((position.x, position.y)));
+        },
+    ] {
+        let mut target = Canvas::new(256, 64, 1.0);
+        append(&mut target, &icon, Point::new(100.0, 8.0));
+
+        let bounds = target
+            .draw_records
+            .iter()
+            .map(|draw| draw.pixel_bounds)
+            .map(|bounds| (bounds.x0, bounds.y0, bounds.x1, bounds.y1))
+            .collect::<Vec<_>>();
+        assert_eq!(bounds, [(100, 8, 102, 10), (102, 10, 110, 18)]);
+    }
+}
+
 #[test]
 fn push_rect_records_sdf_rect_without_path_storage() {
     let mut canvas = test_scene();

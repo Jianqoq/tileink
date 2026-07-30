@@ -26,7 +26,7 @@ pub fn append(&mut self, other: &Canvas, pos: impl Into<Point>);
 pub fn append_transformed(&mut self, other: &Canvas, transform: Affine);
 ```
 
-`append` 是 translation convenience；`append_transformed` 支持旋转、缩放、skew 和 translation。纯平移会自动使用 `append` 的单次合并路径，不创建中间 Canvas。Source Canvas 必须已关闭 layers 且 scale compatible。
+`append` 是 translation convenience；`append_transformed` 支持旋转、缩放、skew 和 translation。没有嵌套 scale/rotation/skew 的纯平移会自动使用单次合并路径；带有这类嵌套变换的 child 会改用 affine composition，确保 parent translation 不会被 child transform 缩放或旋转。Source Canvas 必须已关闭 layers 且 scale compatible。
 
 ## Draw identity 与更新
 
