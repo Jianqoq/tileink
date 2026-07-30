@@ -208,6 +208,45 @@ fn retained_scale(c: &mut Criterion) {
         }
         group.finish();
 
+        // Responsive layouts can insert or remove controls in the same transaction that resizes
+        // the surface. The output is already a full redraw, so this benchmark guards against
+        // rebuilding scene-wide frame and spatial metadata that no resize frame can consume.
+        let mut group = c.benchmark_group("retained_scale/materializer-responsive-resize");
+        for count in [100, 1_000, 5_000] {
+            group.throughput(Throughput::Elements(count as u64));
+            group.bench_with_input(BenchmarkId::from_parameter(count), &count, |b, &count| {
+                let (mut scene, mut materializer, mut expanded) = rapid_resize_workload(count);
+                let responsive = RetainedNodeId::for_owner(399_999);
+                let mut canvas = Canvas::new(1900, 1250, 1.0);
+                canvas.push_path(
+                    Rect::new(8.0, 8.0, 24.0, 24.0).to_path(0.5),
+                    Color::WHITE,
+                    Affine::IDENTITY,
+                    FillRule::NonZero,
+                    0.5,
+                );
+                let canvas = Rc::new(canvas);
+                b.iter(|| {
+                    expanded = !expanded;
+                    let mut transaction = scene.transaction();
+                    if expanded {
+                        transaction.resize(1900, 1250, 1.0).insert_scene(
+                            RetainedParent::content(RetainedNodeId::for_owner(300_000)),
+                            None,
+                            responsive,
+                            canvas.clone(),
+                            Affine::IDENTITY,
+                        );
+                    } else {
+                        transaction.resize(900, 650, 1.0).remove_subtree(responsive);
+                    }
+                    transaction.commit().unwrap();
+                    std::hint::black_box(materializer.update_incremental(&scene));
+                });
+            });
+        }
+        group.finish();
+
         // This isolates the texture-allocation churn from a native interactive resize. The first
         // call establishes capacity; measured iterations must reuse it while logical sizes vary.
         let mut group = c.benchmark_group("retained_scale/internal-target-rapid-resize");

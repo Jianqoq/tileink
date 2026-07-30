@@ -113,13 +113,13 @@ impl PersistentSceneMaterializer {
             }
             self.surface_metadata_stale = false;
         }
-        // A same-scale resize invalidates every output pixel, so exact frame bounds and the
-        // spatial index are not consulted for damage. Layer descriptor changes still set
-        // `topology_changed` because they can alter the execution plan, but they do not change
-        // node identity or hierarchy. Keep the old frame pages during continuous resize and
-        // rebuild their exact bounds once the next non-resize incremental edit needs them.
-        let surface_metadata_reusable =
-            surface_changed && !changes.hierarchy_changed && changes.removed_nodes.is_empty();
+        // A same-scale resize invalidates every output pixel, so neither exact frame topology nor
+        // the spatial index is consulted for damage. Preserve their previous immutable pages even
+        // when responsive layout inserts or removes nodes, then rebuild the exact current
+        // hierarchy before the next non-resize incremental edit. This is the root fix for dense
+        // responsive resize: rebuilding metadata that the full redraw cannot consume duplicated
+        // the scene traversal and could let a topology delta publish the old surface extent.
+        let surface_metadata_reusable = surface_changed;
         if !surface_metadata_reusable
             && self.spatial_tiles_size
                 != (self.canvas.width_in_tiles(), self.canvas.height_in_tiles())

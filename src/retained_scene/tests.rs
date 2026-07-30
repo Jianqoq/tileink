@@ -825,7 +825,7 @@ fn surface_resize_discards_removed_path_chunks_before_resizing_scan_allocations(
 }
 
 #[test]
-fn same_scale_resize_and_removal_rebuild_spatial_index_from_live_nodes() {
+fn same_scale_resize_and_removal_restore_live_spatial_nodes_after_resize() {
     let root = RetainedNodeId::for_owner(62_050);
     let removed = RetainedNodeId::for_owner(62_051);
     let retained = RetainedNodeId::for_owner(62_052);
@@ -854,6 +854,7 @@ fn same_scale_resize_and_removal_rebuild_spatial_index_from_live_nodes() {
         .commit()
         .unwrap();
     let mut materializer = PersistentSceneMaterializer::new(&scene);
+    let previous_spatial_tiles_size = materializer.spatial_tiles_size;
 
     scene
         .transaction()
@@ -865,6 +866,26 @@ fn same_scale_resize_and_removal_rebuild_spatial_index_from_live_nodes() {
 
     assert!(!materializer.chunks.contains_key(&removed));
     assert!(materializer.chunks.contains_key(&retained));
+    assert!(materializer.surface_metadata_stale);
+    assert_eq!(materializer.spatial_tiles_size, previous_spatial_tiles_size);
+    assert!(
+        materializer
+            .canvas
+            .persistent_frame
+            .as_ref()
+            .unwrap()
+            .node_state(removed)
+            .is_some(),
+        "full redraw keeps the previous immutable damage metadata until incremental work resumes"
+    );
+
+    scene
+        .transaction()
+        .set_transform(retained, Affine::translate((32.0, 0.0)))
+        .commit()
+        .unwrap();
+    assert!(update_materializer(&mut materializer, &scene));
+
     assert_eq!(
         materializer.spatial_tiles_size,
         (
@@ -881,6 +902,7 @@ fn same_scale_resize_and_removal_rebuild_spatial_index_from_live_nodes() {
             .node_state(removed)
             .is_none()
     );
+    assert!(!materializer.surface_metadata_stale);
 }
 
 #[test]
@@ -1180,6 +1202,80 @@ fn resize_with_layer_updates_defers_full_frame_and_spatial_rebuild() {
     assert_eq!(
         updated.node_state(child).unwrap().bounds,
         Bounds::new(24, 0, 40, 16)
+    );
+    assert!(!materializer.surface_metadata_stale);
+}
+
+#[test]
+fn resize_with_hierarchy_changes_defers_full_frame_and_spatial_rebuild() {
+    let root = RetainedNodeId::for_owner(62_105);
+    let retained = RetainedNodeId::for_owner(62_106);
+    let removed = RetainedNodeId::for_owner(62_107);
+    let inserted = RetainedNodeId::for_owner(62_108);
+    let mut scene = RetainedScene::new(64, 64, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            retained,
+            leaf(Color::WHITE),
+            Affine::IDENTITY,
+        )
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            removed,
+            leaf(Color::BLACK),
+            Affine::translate((16.0, 0.0)),
+        )
+        .commit()
+        .unwrap();
+    let mut materializer = PersistentSceneMaterializer::new(&scene);
+    let base_nodes = materializer
+        .canvas
+        .persistent_frame
+        .as_ref()
+        .unwrap()
+        .nodes
+        .clone();
+
+    scene
+        .transaction()
+        .resize(96, 64, 1.0)
+        .remove_subtree(removed)
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            inserted,
+            leaf(Color::BLACK),
+            Affine::translate((48.0, 0.0)),
+        )
+        .commit()
+        .unwrap();
+    assert!(update_materializer(&mut materializer, &scene));
+
+    let resized = materializer.canvas.persistent_frame.as_ref().unwrap();
+    assert!(
+        Rc::ptr_eq(&resized.nodes, &base_nodes),
+        "a full redraw must defer hierarchy metadata that damage tracking does not consume"
+    );
+    assert!(resized.invalidate_all);
+    assert_eq!(resized.logical_size, (96, 64));
+    assert!(materializer.surface_metadata_stale);
+
+    scene
+        .transaction()
+        .set_transform(inserted, Affine::translate((64.0, 0.0)))
+        .commit()
+        .unwrap();
+    assert!(update_materializer(&mut materializer, &scene));
+
+    let updated = materializer.canvas.persistent_frame.as_ref().unwrap();
+    assert!(updated.node_state(removed).is_none());
+    assert_eq!(
+        updated.node_state(inserted).unwrap().bounds,
+        Bounds::new(64, 0, 80, 16)
     );
     assert!(!materializer.surface_metadata_stale);
 }

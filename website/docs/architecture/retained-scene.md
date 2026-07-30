@@ -53,6 +53,11 @@ Tile draw index 使用 page arena：`Tile → ordered page chain → draw slots`
 
 ## Resize fast path
 
+Responsive hierarchy changes committed with a resize preserve the previous immutable frame and
+spatial pages. Because the resize invalidates the whole output, those pages are unobservable during
+the resize frame; the first later non-resize mutation reconstructs the exact current hierarchy
+before incremental damage tracking resumes.
+
 Resize 必须 full redraw，但不等于需要重建场景数据。连续 resize 会：
 
 1. 保留 chunk geometry 和稳定 arenas；
