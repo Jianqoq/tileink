@@ -3,6 +3,15 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[path = "build/dxc.rs"]
+mod dxc;
+#[path = "build/dxil.rs"]
+mod dxil;
+#[path = "src/wgpu/dxil_manifest.rs"]
+mod dxil_manifest;
+#[path = "src/wgpu/shader_variants.rs"]
+mod shader_variants;
+
 const WGPU_SHADER_ENTRIES: [(&str, &str); 16] = [
     ("scan/clear.wgsl", "tileink_wgpu_scan_clear.wgsl"),
     ("scan/count.wgsl", "tileink_wgpu_scan_count.wgsl"),
@@ -33,14 +42,31 @@ const WGPU_SHADER_ENTRIES: [(&str, &str); 16] = [
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    for input in [
+        "build.rs",
+        "build/dxc.rs",
+        "build/dxil.rs",
+        "src/wgpu/dxil_manifest.rs",
+        "src/wgpu/shader_variants.rs",
+    ] {
+        println!(
+            "cargo:rerun-if-changed={}",
+            manifest_dir.join(input).display()
+        );
+    }
     let shader_dir = manifest_dir.join("src").join("wgpu").join("shaders");
     emit_rerun_if_changed(&shader_dir);
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let mut fine_portable_source = None;
     for (entry, output) in WGPU_SHADER_ENTRIES {
         let source = expand_shader(&shader_dir.join(entry), &mut Vec::new());
+        if entry == "fine_web.wgsl" {
+            fine_portable_source = Some(source.clone());
+        }
         fs::write(out_dir.join(output), source).unwrap();
     }
+    dxil::generate(&fine_portable_source.unwrap(), &out_dir);
 }
 
 fn emit_rerun_if_changed(path: &Path) {

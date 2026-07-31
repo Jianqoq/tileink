@@ -175,6 +175,155 @@ fn wgpu_renderer_portable_fine_preserves_previous_batches_when_enabled() {
 }
 
 #[test]
+fn portable_direct_root_batches_share_one_ping_pong_sequence() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let Some((device, queue)) = shared_wgpu_test_device(true) else {
+        return;
+    };
+    let mut canvas = Canvas::new(32, 16, 1.0);
+    canvas.push_rect(
+        Rect::new(0.0, 0.0, 32.0, 16.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(255, 0, 0),
+    );
+    canvas.push_clip_sdf_rect_layer(Rect::new(8.0, 0.0, 24.0, 16.0), crate::Radius::ZERO);
+    canvas.push_rect(
+        Rect::new(0.0, 0.0, 32.0, 16.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(0, 255, 0),
+    );
+    canvas.pop_layer();
+    canvas.push_clip_sdf_rect_layer(Rect::new(16.0, 0.0, 32.0, 16.0), crate::Radius::ZERO);
+    canvas.push_rect(
+        Rect::new(0.0, 0.0, 32.0, 16.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(0, 0, 255),
+    );
+    canvas.pop_layer();
+
+    let mut renderer = Renderer::new(device, queue, 32, 16, Color::TRANSPARENT);
+    renderer.render(&canvas);
+
+    let stats = renderer.incremental_render_stats();
+    assert!(
+        stats.root_draw_batches >= 3,
+        "the fixture must exercise multiple direct-root batches"
+    );
+    assert_eq!(
+        stats.portable_texture_copies, 2,
+        "direct-root portable rendering must copy once into and once out of its frame-wide ping-pong"
+    );
+    let image = renderer.image();
+    assert_eq!(image.rgba8_at(4, 8), [255, 0, 0, 255]);
+    assert_eq!(image.rgba8_at(12, 8), [0, 255, 0, 255]);
+    assert_eq!(image.rgba8_at(28, 8), [0, 0, 255, 255]);
+}
+
+#[test]
+fn portable_empty_root_skips_ping_pong_copies() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let Some((device, queue)) = shared_wgpu_test_device(true) else {
+        return;
+    };
+    let canvas = Canvas::new(32, 16, 1.0);
+    let mut renderer = Renderer::new(device, queue, 32, 16, Color::TRANSPARENT);
+
+    renderer.render(&canvas);
+
+    assert_eq!(renderer.incremental_render_stats().root_draw_batches, 0);
+    assert_eq!(
+        renderer.incremental_render_stats().portable_texture_copies,
+        0,
+        "the already-cleared root needs no portable textures when the plan has no live draws"
+    );
+}
+
+#[test]
+fn portable_direct_root_partial_frames_preserve_inactive_pixels() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    const SIZE: (u32, u32) = (128, 64);
+    let Some((device, queue)) = shared_wgpu_test_device(true) else {
+        return;
+    };
+    let root = RetainedNodeId::for_owner(98_000);
+    let changing = RetainedNodeId::for_owner(98_001);
+    let stable = RetainedNodeId::for_owner(98_002);
+    let solid = |rect, color| {
+        let mut canvas = Canvas::new(SIZE.0, SIZE.1, 1.0);
+        canvas.push_rect(rect, crate::Radius::ZERO, color);
+        std::rc::Rc::new(canvas)
+    };
+    let changing_rect = Rect::new(0.0, 0.0, 8.0, 8.0);
+    let stable_rect = Rect::new(96.0, 32.0, 120.0, 56.0);
+    let mut scene = RetainedScene::new(SIZE.0, SIZE.1, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            changing,
+            solid(changing_rect, Color::from_rgb8(255, 0, 0)),
+            Affine::IDENTITY,
+        )
+        .insert_scene(
+            RetainedParent::content(root),
+            None,
+            stable,
+            solid(stable_rect, Color::from_rgb8(0, 0, 255)),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+
+    let mut renderer = Renderer::new(device, queue, SIZE.0, SIZE.1, Color::TRANSPARENT);
+    let target = external_target(device, SIZE, "portable direct-root partial history");
+    renderer
+        .render_retained_to_persistent_wgpu_texture(
+            &scene,
+            &target,
+            crate::wgpu::renderer::ExternalTextureHistoryId::new(98),
+        )
+        .unwrap();
+    scene
+        .transaction()
+        .replace_scene(changing, solid(changing_rect, Color::from_rgb8(0, 255, 0)))
+        .commit()
+        .unwrap();
+    renderer
+        .render_retained_to_persistent_wgpu_texture(
+            &scene,
+            &target,
+            crate::wgpu::renderer::ExternalTextureHistoryId::new(98),
+        )
+        .unwrap();
+
+    let stats = renderer.incremental_render_stats();
+    assert!(!stats.full_redraw, "the small edit must stay incremental");
+    assert_eq!(
+        stats.portable_texture_copies, 3,
+        "partial ping-pong must seed both internal textures and copy the final result back"
+    );
+    let image = read_texture_rgba8(device, queue, &target, SIZE.0, SIZE.1);
+    assert_eq!(
+        &image[4 * (4 * SIZE.0 as usize + 4)..][..4],
+        &[0, 255, 0, 255]
+    );
+    assert_eq!(
+        &image[4 * (40 * SIZE.0 as usize + 104)..][..4],
+        &[0, 0, 255, 255]
+    );
+}
+
+#[test]
 fn wgpu_renderer_renders_offscreen_plan_directly_to_storage_texture() {
     if !run_wgpu_tests() {
         return;

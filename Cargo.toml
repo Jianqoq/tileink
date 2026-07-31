@@ -18,23 +18,32 @@ cosmic-text = "0.19.0"
 fontdb = { version = "0.23", default-features = false }
 swash = "0.2.6"
 vello = { version = "0.9.0", optional = true }
-windows = { version = "0.62.2", optional = true, features = [
-    "Win32_Foundation",
-    "Win32_Graphics_Direct2D",
-    "Win32_Graphics_Direct2D_Common",
-    "Win32_Graphics_DirectWrite",
-    "Win32_Graphics_Dxgi_Common",
-    "Win32_Graphics_Imaging",
-    "Win32_System_Com",
-] }
 windows-numerics = { version = "0.3.1", optional = true }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62.2", features = [
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D12",
+] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { version = "0.3", features = ["Window", "Performance"] }
 
+[build-dependencies]
+naga = { version = "30.0.0", features = ["hlsl-out", "wgsl-in"] }
+
 [features]
 bench-internals = []
-directwrite-reference = ["dep:windows", "dep:windows-numerics"]
+directwrite-reference = [
+    "windows/Win32_Foundation",
+    "windows/Win32_Graphics_Direct2D",
+    "windows/Win32_Graphics_Direct2D_Common",
+    "windows/Win32_Graphics_DirectWrite",
+    "windows/Win32_Graphics_Dxgi_Common",
+    "windows/Win32_Graphics_Imaging",
+    "windows/Win32_System_Com",
+    "dep:windows-numerics",
+]
 vello-compare = ["dep:vello"]
 
 [dev-dependencies]
@@ -126,6 +135,14 @@ required-features = ["bench-internals"]
 
 [[bench]]
 name = "checkerboard"
+harness = false
+
+[[bench]]
+name = "portable_root_batches"
+harness = false
+
+[[bench]]
+name = "dx12_precompiled_startup"
 harness = false
 
 [[bench]]

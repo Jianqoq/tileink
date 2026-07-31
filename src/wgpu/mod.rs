@@ -4,6 +4,8 @@ mod coarse;
 mod commands;
 mod cumsum;
 mod damage_tiles;
+mod dxil;
+mod dxil_manifest;
 mod filter;
 mod filter_resources;
 mod filter_work;
@@ -15,6 +17,7 @@ mod profile;
 mod renderer;
 mod retained_surfaces;
 mod scan;
+mod shader_variants;
 mod target;
 
 #[cfg(feature = "bench-internals")]

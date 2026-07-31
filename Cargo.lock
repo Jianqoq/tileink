@@ -2494,6 +2494,7 @@ dependencies = [
  "criterion",
  "fontdb",
  "image",
+ "naga 30.0.0",
  "peniko",
  "png 0.17.16",
  "pollster",

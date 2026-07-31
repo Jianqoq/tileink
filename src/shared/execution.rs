@@ -376,6 +376,17 @@ impl ExecPlan {
         Some(ops)
     }
 
+    pub(crate) fn all_direct_root_ops(&self) -> Option<Vec<usize>> {
+        let mut ops = self
+            .direct_root_batch_ops
+            .as_ref()?
+            .values()
+            .copied()
+            .collect::<Vec<_>>();
+        ops.sort_unstable();
+        Some(ops)
+    }
+
     pub(crate) fn contains_retained_offscreen(&self, id: RetainedNodeId) -> bool {
         find_retained_offscreen(&self.ops, id)
     }
