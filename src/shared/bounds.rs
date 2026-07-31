@@ -73,6 +73,24 @@ pub struct PixelBounds {
 }
 
 impl PixelBounds {
+    pub fn intersect(self, other: PixelBounds) -> PixelBounds {
+        let intersection = PixelBounds {
+            x0: self.x0.max(other.x0),
+            y0: self.y0.max(other.y0),
+            x1: self.x1.min(other.x1),
+            y1: self.y1.min(other.y1),
+        };
+        if intersection.is_empty() {
+            PixelBounds::default()
+        } else {
+            intersection
+        }
+    }
+
+    pub fn is_empty(self) -> bool {
+        self.x0 >= self.x1 || self.y0 >= self.y1
+    }
+
     pub fn union(self, other: PixelBounds) -> PixelBounds {
         PixelBounds {
             x0: self.x0.min(other.x0),
@@ -97,6 +115,56 @@ impl PixelBounds {
             x1: tile_x1,
             y1: tile_y1,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PixelBounds;
+
+    #[test]
+    fn pixel_bounds_intersection_is_canonical_when_disjoint() {
+        let a = PixelBounds {
+            x0: 0,
+            y0: 0,
+            x1: 10,
+            y1: 10,
+        };
+        let b = PixelBounds {
+            x0: 20,
+            y0: 2,
+            x1: 30,
+            y1: 8,
+        };
+
+        assert_eq!(a.intersect(b), PixelBounds::default());
+        assert!(a.intersect(b).is_empty());
+    }
+
+    #[test]
+    fn pixel_bounds_intersection_preserves_overlap() {
+        let a = PixelBounds {
+            x0: -5,
+            y0: 1,
+            x1: 20,
+            y1: 30,
+        };
+        let b = PixelBounds {
+            x0: 4,
+            y0: -2,
+            x1: 12,
+            y1: 8,
+        };
+
+        assert_eq!(
+            a.intersect(b),
+            PixelBounds {
+                x0: 4,
+                y0: 1,
+                x1: 12,
+                y1: 8,
+            }
+        );
     }
 }
 

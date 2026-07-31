@@ -1,10 +1,7 @@
 use peniko::kurbo::Point;
 
-use super::{
-    coverage_from_dist,
-    shadow::{ShadowOptions, shadow_alpha_from_distance, shadow_bounds},
-};
-use crate::{TILE_SIZE, shared::bounds::Bounds};
+use super::shadow::{ShadowOptions, shadow_bounds};
+use crate::shared::bounds::Bounds;
 
 const LINE_EPSILON: f32 = 1.0e-6;
 
@@ -91,31 +88,6 @@ impl Line {
         self
     }
 
-    pub(crate) fn tile_is_solid(self, _: Bounds) -> bool {
-        false
-    }
-
-    pub(crate) fn fine_area(
-        self,
-        area: &mut [f32; (TILE_SIZE * TILE_SIZE) as usize],
-        tile_bounds: Bounds,
-        pixel_bounds: Bounds,
-    ) {
-        if self.is_empty() {
-            return;
-        }
-
-        for y_px in pixel_bounds.y0..pixel_bounds.y1 {
-            let py = y_px as f32 + 0.5;
-            let row = (y_px - tile_bounds.y0) as usize * TILE_SIZE as usize;
-            for x_px in pixel_bounds.x0..pixel_bounds.x1 {
-                let px = x_px as f32 + 0.5;
-                let ix = row + (x_px - tile_bounds.x0) as usize;
-                area[ix] = coverage_from_dist(self.signed_distance(px, py));
-            }
-        }
-    }
-
     pub(crate) fn cap_value(self) -> f32 {
         self.cap as u32 as f32
     }
@@ -128,39 +100,6 @@ impl Line {
             None
         } else {
             Some((dx / len, dy / len))
-        }
-    }
-
-    pub(crate) fn signed_distance(self, x: f32, y: f32) -> f32 {
-        let half = self.width * 0.5;
-        let sx = self.start.x as f32;
-        let sy = self.start.y as f32;
-        let ex = self.end.x as f32;
-        let ey = self.end.y as f32;
-        let dx = ex - sx;
-        let dy = ey - sy;
-        let len = dx.hypot(dy);
-        if len <= LINE_EPSILON {
-            return match self.cap {
-                LineCap::Butt => f32::INFINITY,
-                LineCap::Round => (x - sx).hypot(y - sy) - half,
-                LineCap::Square => local_rect_distance(0.0, 0.0, -half, half, half),
-            };
-        }
-
-        let ux = dx / len;
-        let uy = dy / len;
-        let px = x - sx;
-        let py = y - sy;
-        let axis = px * ux + py * uy;
-        let normal = -px * uy + py * ux;
-        match self.cap {
-            LineCap::Butt => local_rect_distance(axis, normal, 0.0, len, half),
-            LineCap::Square => local_rect_distance(axis, normal, -half, len + half, half),
-            LineCap::Round => {
-                let nearest = axis.clamp(0.0, len);
-                (axis - nearest).hypot(normal) - half
-            }
         }
     }
 }
@@ -219,74 +158,11 @@ impl DashLine {
         self
     }
 
-    pub(crate) fn tile_is_solid(self, _: Bounds) -> bool {
-        false
-    }
-
-    pub(crate) fn fine_area(
-        self,
-        area: &mut [f32; (TILE_SIZE * TILE_SIZE) as usize],
-        tile_bounds: Bounds,
-        pixel_bounds: Bounds,
-    ) {
-        if self.is_empty() {
-            return;
-        }
-
-        for y_px in pixel_bounds.y0..pixel_bounds.y1 {
-            let py = y_px as f32 + 0.5;
-            let row = (y_px - tile_bounds.y0) as usize * TILE_SIZE as usize;
-            for x_px in pixel_bounds.x0..pixel_bounds.x1 {
-                let px = x_px as f32 + 0.5;
-                let ix = row + (x_px - tile_bounds.x0) as usize;
-                area[ix] = coverage_from_dist(self.signed_distance(px, py));
-            }
-        }
-    }
-
-    pub(crate) fn signed_distance(self, x: f32, y: f32) -> f32 {
-        if self.gap_length <= LINE_EPSILON {
-            return self.line.signed_distance(x, y);
-        }
-
-        let half = self.line.width * 0.5;
-        let Some((axis, normal, len)) = self.local_coords(x, y) else {
-            return self.line.signed_distance(x, y);
-        };
-
-        let cycle = self.cycle();
-        let offset = self.normalized_dash_offset(cycle);
-        let base = ((axis + offset) / cycle).floor() as i32;
-        let mut dist = f32::INFINITY;
-        for dash_ix in [base - 1, base, base + 1] {
-            dist = dist.min(self.dash_segment_distance(dash_ix, axis, normal, len, half));
-        }
-        dist
-    }
-
     fn line_len(self) -> Option<f32> {
         let dx = self.line.end.x as f32 - self.line.start.x as f32;
         let dy = self.line.end.y as f32 - self.line.start.y as f32;
         let len = dx.hypot(dy);
         (len > LINE_EPSILON).then_some(len)
-    }
-
-    fn local_coords(self, x: f32, y: f32) -> Option<(f32, f32, f32)> {
-        let sx = self.line.start.x as f32;
-        let sy = self.line.start.y as f32;
-        let ex = self.line.end.x as f32;
-        let ey = self.line.end.y as f32;
-        let dx = ex - sx;
-        let dy = ey - sy;
-        let len = dx.hypot(dy);
-        if len <= LINE_EPSILON {
-            return None;
-        }
-        let ux = dx / len;
-        let uy = dy / len;
-        let px = x - sx;
-        let py = y - sy;
-        Some((px * ux + py * uy, -px * uy + py * ux, len))
     }
 
     fn cycle(self) -> f32 {
@@ -303,61 +179,6 @@ impl DashLine {
         let first_ix = ((offset - self.dash_length) / cycle).floor() as i32 + 1;
         (first_ix as f32 * cycle - offset) < len
     }
-
-    fn dash_segment_distance(
-        self,
-        dash_ix: i32,
-        axis: f32,
-        normal: f32,
-        len: f32,
-        half: f32,
-    ) -> f32 {
-        let cycle = self.cycle();
-        let offset = self.normalized_dash_offset(cycle);
-        let start = dash_ix as f32 * cycle - offset;
-        let end = start + self.dash_length;
-        if end <= 0.0 || start >= len {
-            return f32::INFINITY;
-        }
-        let start = start.max(0.0);
-        let end = end.min(len);
-        if end <= start {
-            return f32::INFINITY;
-        }
-        line_segment_distance(axis, normal, start, end, half, self.line.cap)
-    }
-}
-
-fn line_segment_distance(
-    axis: f32,
-    normal: f32,
-    start: f32,
-    end: f32,
-    half: f32,
-    cap: LineCap,
-) -> f32 {
-    match cap {
-        LineCap::Butt => local_rect_distance(axis, normal, start, end, half),
-        LineCap::Square => local_rect_distance(axis, normal, start - half, end + half, half),
-        LineCap::Round => {
-            let nearest = axis.clamp(start, end);
-            (axis - nearest).hypot(normal) - half
-        }
-    }
-}
-
-pub(crate) fn local_rect_distance(
-    axis: f32,
-    normal: f32,
-    x0: f32,
-    x1: f32,
-    half_height: f32,
-) -> f32 {
-    let center = (x0 + x1) * 0.5;
-    let half_width = (x1 - x0) * 0.5;
-    let dx = (axis - center).abs() - half_width;
-    let dy = normal.abs() - half_height;
-    dx.max(0.0).hypot(dy.max(0.0)) + dx.max(dy).min(0.0)
 }
 
 #[repr(C)]
@@ -375,27 +196,6 @@ impl LineShadow {
     pub(crate) fn translated(mut self, dx: f32, dy: f32) -> Self {
         self.line = self.line.translated(dx, dy);
         self
-    }
-
-    pub(crate) fn fine_area(
-        self,
-        area: &mut [f32; (TILE_SIZE * TILE_SIZE) as usize],
-        tile_bounds: Bounds,
-        pixel_bounds: Bounds,
-    ) {
-        let Some(options) = self.options.normalized() else {
-            return;
-        };
-
-        for y_px in pixel_bounds.y0..pixel_bounds.y1 {
-            let py = y_px as f32 + 0.5 - options.offset_y;
-            let row = (y_px - tile_bounds.y0) as usize * TILE_SIZE as usize;
-            for x_px in pixel_bounds.x0..pixel_bounds.x1 {
-                let px = x_px as f32 + 0.5 - options.offset_x;
-                area[row + (x_px - tile_bounds.x0) as usize] =
-                    shadow_alpha_from_distance(self.line.signed_distance(px, py), options);
-            }
-        }
     }
 }
 

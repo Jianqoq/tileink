@@ -12,6 +12,13 @@ const GPU_SDF_ARC_SHADOW: u32 = 9u;
 const GPU_SDF_CIRCLE_SHADOW: u32 = 10u;
 const GPU_SDF_LINE_SHADOW: u32 = 11u;
 const GPU_SDF_DASH_LINE: u32 = 12u;
+const GPU_SDF_TRIANGLE: u32 = 13u;
+const GPU_SDF_CHECKERBOARD: u32 = 14u;
+const GPU_SDF_STAR: u32 = 15u;
+const GPU_SDF_STAR_STROKE: u32 = 16u;
+const GPU_SDF_CALLOUT: u32 = 17u;
+const GPU_SDF_CALLOUT_STROKE: u32 = 18u;
+const GPU_SDF_CALLOUT_SHADOW: u32 = 19u;
 const GPU_PTCL_END: u32 = 0u;
 const GPU_PTCL_FILL: u32 = 1u;
 const GPU_PTCL_COLOR: u32 = 2u;
@@ -94,9 +101,15 @@ struct FineConfig {
     text_image_data_base: u32,
     group_spill_base: u32,
     fine_tile_kind_base: u32,
+    active_tile_count: u32,
+    active_tile_list_base: u32,
+    incremental: u32,
 };
 
 @group(0) @binding(0) var<uniform> config: FineConfig;
+struct AffineRecord {
+    a: f32, b: f32, c: f32, d: f32, e: f32, f: f32,
+};
 struct DrawRecord {
     path_id: u32,
     glyph_run_id: u32,
@@ -112,7 +125,13 @@ struct DrawRecord {
     pixel_y0: i32,
     pixel_x1: i32,
     pixel_y1: i32,
+    local_pixel_x0: i32,
+    local_pixel_y0: i32,
+    local_pixel_x1: i32,
+    local_pixel_y1: i32,
     solid_rect: u32,
+    transform: AffineRecord,
+    inverse_transform: AffineRecord,
 };
 struct LineSegment {
     p0x: f32,
@@ -153,6 +172,13 @@ struct PtclRecord {
 @group(0) @binding(2) var<storage, read> draw_records: array<DrawRecord>;
 @group(0) @binding(3) var<storage, read> paint_blob: array<u32>;
 @group(0) @binding(4) var<storage, read_write> coarse_work: array<u32>;
+
+fn dispatched_tile_at(dispatch_ix: u32) -> u32 {
+    if (config.incremental != 0u) {
+        return coarse_work[config.active_tile_list_base + dispatch_ix];
+    }
+    return dispatch_ix;
+}
 @group(0) @binding(5) var<storage, read> segments: array<LineSegment>;
 @group(0) @binding(6) var<storage, read> text_blob: array<u32>;
 @group(0) @binding(7) var<storage, read_write> spills: array<u32>;

@@ -15,10 +15,56 @@ struct CoarseConfig {
     emit_chunk_capacity: u32,
     paint_brush_base: u32,
     text_enabled: u32,
+    active_tile_count: u32,
+    active_tile_list_base: u32,
+    incremental: u32,
 };
 
 @group(0) @binding(0) var<uniform> config: CoarseConfig;
 
+fn linear_workgroup_index(workgroup_id: vec3<u32>, num_workgroups: vec3<u32>) -> u32 {
+    return workgroup_id.x + workgroup_id.y * num_workgroups.x +
+        workgroup_id.z * num_workgroups.x * num_workgroups.y;
+}
+
+fn dispatched_tile_at(dispatch_ix: u32) -> u32 {
+    if (config.incremental != 0u) {
+        return coarse_work[config.active_tile_list_base + dispatch_ix];
+    }
+    return dispatch_ix;
+}
+
+struct AffineRecord {
+    a: f32, b: f32, c: f32, d: f32, e: f32, f: f32,
+};
+fn affine_record_point(transform: AffineRecord, point: vec2<f32>) -> vec2<f32> {
+    return vec2<f32>(
+        transform.a * point.x + transform.c * point.y + transform.e,
+        transform.b * point.x + transform.d * point.y + transform.f,
+    );
+}
+
+fn transformed_rect_hits_tile(
+    transform: AffineRecord,
+    x0: i32,
+    y0: i32,
+    x1: i32,
+    y1: i32,
+    tile_x: u32,
+    tile_y: u32,
+) -> bool {
+    let p0 = affine_record_point(transform, vec2<f32>(f32(x0), f32(y0)));
+    let p1 = affine_record_point(transform, vec2<f32>(f32(x1), f32(y0)));
+    let p2 = affine_record_point(transform, vec2<f32>(f32(x0), f32(y1)));
+    let p3 = affine_record_point(transform, vec2<f32>(f32(x1), f32(y1)));
+    let min_x = min(min(p0.x, p1.x), min(p2.x, p3.x));
+    let min_y = min(min(p0.y, p1.y), min(p2.y, p3.y));
+    let max_x = max(max(p0.x, p1.x), max(p2.x, p3.x));
+    let max_y = max(max(p0.y, p1.y), max(p2.y, p3.y));
+    let tile_x0 = f32(tile_x * 16u);
+    let tile_y0 = f32(tile_y * 16u);
+    return min_x < tile_x0 + 16.0 && max_x > tile_x0 && min_y < tile_y0 + 16.0 && max_y > tile_y0;
+}
 struct DrawRecord {
     path_id: u32,
     glyph_run_id: u32,
@@ -34,7 +80,13 @@ struct DrawRecord {
     pixel_y0: i32,
     pixel_x1: i32,
     pixel_y1: i32,
+    local_pixel_x0: i32,
+    local_pixel_y0: i32,
+    local_pixel_x1: i32,
+    local_pixel_y1: i32,
     solid_rect: u32,
+    transform: AffineRecord,
+    inverse_transform: AffineRecord,
 };
 struct PathRecord {
     path_id: u32,
@@ -50,6 +102,7 @@ struct PathRecord {
     segment_start: u32,
     segment_capacity: u32,
     segment_count: u32,
+    transform: AffineRecord,
 };
 struct GlyphRunRecord {
     glyph_start: u32,
@@ -142,7 +195,11 @@ const GPU_PTCL_BEGIN_SDF_CLIP: u32 = 12u;
 const GPU_PTCL_IMAGE: u32 = 13u;
 const GPU_SDF_RECT: u32 = 1u;
 const GPU_SDF_CANDLESTICK: u32 = 5u;
-const FULL_TILE_SDF_SOLID_INSET: f32 = 0.75;
+const GPU_SDF_CHECKERBOARD: u32 = 14u;
+// `sdf_coverage_from_dist` reaches exactly 1.0 at distance -0.5. Using the
+// mathematical coverage threshold here lets a sharp rect aligned to a tile
+// take the analytic/image fast path without changing any edge pixels.
+const FULL_TILE_SDF_SOLID_INSET: f32 = 0.5;
 const GLYPH_RUN_RECORD_WORDS: u32 = 2u;
 const GLYPH_RECORD_WORDS: u32 = 3u;
 const GLYPH_IMAGE_RECORD_WORDS: u32 = 6u;
@@ -199,16 +256,47 @@ fn store_fine_tile_kind(tile_ix: u32, kind: u32) {
     coarse_work[coarse_fine_tile_kind_base() + tile_ix] = kind;
 }
 
-fn tile_draw_start_at(tile_ix: u32) -> u32 {
+const TILE_DRAW_PAGE_SIZE: u32 = 256u;
+const TILE_DRAW_PAGE_WORDS: u32 = 257u;
+const TILE_DRAW_FLAT_FLAG: u32 = 0x80000000u;
+const TILE_DRAW_FLAT_MASK: u32 = 0x7fffffffu;
+
+fn tile_draw_head_at(tile_ix: u32) -> u32 {
     return coarse_work[coarse_tile_draw_record_base(tile_ix)];
 }
 
-fn tile_draw_end_at(tile_ix: u32) -> u32 {
+fn tile_draw_count_at(tile_ix: u32) -> u32 {
     return coarse_work[coarse_tile_draw_record_base(tile_ix) + 1u];
 }
 
-fn tile_draw_index_at(draw_ref_ix: u32) -> u32 {
-    return coarse_work[coarse_tile_draw_index_base() + draw_ref_ix];
+fn tile_draw_next_page(page: u32) -> u32 {
+    if ((page & TILE_DRAW_FLAT_FLAG) != 0u) {
+        return page + TILE_DRAW_PAGE_SIZE;
+    }
+    return coarse_work[coarse_tile_draw_index_base() + page * TILE_DRAW_PAGE_WORDS];
+}
+
+fn tile_draw_index_in_page(page: u32, slot: u32) -> u32 {
+    if ((page & TILE_DRAW_FLAT_FLAG) != 0u) {
+        return coarse_work[coarse_tile_draw_index_base() + (page & TILE_DRAW_FLAT_MASK) + slot];
+    }
+    return coarse_work[coarse_tile_draw_index_base() + page * TILE_DRAW_PAGE_WORDS + 1u + slot];
+}
+
+fn tile_draw_page_at(tile_ix: u32, local_page: u32) -> u32 {
+    var page = tile_draw_head_at(tile_ix);
+    if ((page & TILE_DRAW_FLAT_FLAG) != 0u) {
+        return page + local_page * TILE_DRAW_PAGE_SIZE;
+    }
+    var index = 0u;
+    loop {
+        if (page == INVALID || index >= local_page) {
+            return page;
+        }
+        page = tile_draw_next_page(page);
+        index += 1u;
+    }
+    return INVALID;
 }
 
 fn tile_emit_chunk_record_base(tile_ix: u32) -> u32 {
@@ -246,10 +334,22 @@ fn draw_sdf_clip_fully_covers_tile_at(draw_ix: u32, tile_x: u32, tile_y: u32) ->
         draw.sdf_shadow_offset == INVALID &&
         draw.sdf_len >= 9u &&
         sdf_blob[draw.sdf_offset] == GPU_SDF_RECT &&
-        sdf_rect_fully_covers_tile(draw.sdf_offset, tile_x, tile_y);
+        sdf_rect_fully_covers_tile(draw, tile_x, tile_y);
 }
 
-fn sdf_rect_fully_covers_tile(sdf_base: u32, tile_x: u32, tile_y: u32) -> bool {
+fn sdf_rect_fully_covers_tile(draw: DrawRecord, tile_x: u32, tile_y: u32) -> bool {
+    // A full-tile particle bypasses fine coverage entirely, so its proof must use the same
+    // coordinate space as SDF evaluation. Translation preserves the axis-aligned tile shape and
+    // stays on this fast path. Other affine transforms conservatively use per-pixel coverage;
+    // treating their world AABB as an exact SDF rectangle would paint outside the transformed
+    // geometry.
+    if (
+        draw.transform.a != 1.0 || draw.transform.b != 0.0 ||
+        draw.transform.c != 0.0 || draw.transform.d != 1.0
+    ) {
+        return false;
+    }
+    let sdf_base = draw.sdf_offset;
     // Conservative full-coverage test: pixel centers must stay inside the rect eroded by the
     // coverage ramp, and rounded corners use squared distances so coarse avoids sqrt work.
     let rect_min = vec2<f32>(
@@ -260,7 +360,8 @@ fn sdf_rect_fully_covers_tile(sdf_base: u32, tile_x: u32, tile_y: u32) -> bool {
         max(sdf_float_at(sdf_base, 1u), sdf_float_at(sdf_base, 3u)),
         max(sdf_float_at(sdf_base, 2u), sdf_float_at(sdf_base, 4u)),
     );
-    let tile_min = vec2<f32>(f32(tile_x * 16u), f32(tile_y * 16u)) + vec2<f32>(0.5);
+    let tile_min = vec2<f32>(f32(tile_x * 16u), f32(tile_y * 16u)) + vec2<f32>(0.5) -
+        vec2<f32>(draw.transform.e, draw.transform.f);
     let tile_max = tile_min + vec2<f32>(15.0);
     let rect_size = rect_max - rect_min;
     let min_size = vec2<f32>(15.0 + 2.0 * FULL_TILE_SDF_SOLID_INSET);

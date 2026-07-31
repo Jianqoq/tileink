@@ -4,15 +4,20 @@
 @group(0) @binding(2) var<storage, read_write> segment_ranges: array<TileSegmentRange>;
 @group(0) @binding(3) var<storage, read_write> segment_tile_counts: array<atomic<u32>>;
 @group(0) @binding(4) var<storage, read_write> chunk_totals: array<u32>;
+@group(0) @binding(5) var<storage, read> active_indices: array<u32>;
 
 var<workgroup> scan_scratch: array<u32, 256>;
 
 @compute @workgroup_size(256)
 fn scan_prefix_chunks(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
+    @builtin(num_workgroups) num_workgroups: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
 ) {
-    let chunk_ix = workgroup_id.x;
+    let chunk_ix = dispatched_index(
+        linear_workgroup_index(workgroup_id, num_workgroups),
+        config.chunk_base,
+    );
     let lane = local_id.x;
     let chunk = scan_chunks[chunk_ix];
     let chunk_offset = chunk.backdrop_offset;

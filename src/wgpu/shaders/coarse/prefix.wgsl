@@ -10,6 +10,7 @@
 @group(0) @binding(7) var<storage, read_write> coarse_work: array<u32>;
 @group(0) @binding(8) var<storage, read_write> chunk_records: array<CoarseChunkRecord>;
 @group(0) @binding(9) var<storage, read> sdf_blob: array<u32>;
+@group(0) @binding(10) var<storage, read> draw_batch_ids: array<u32>;
 
 @compute @workgroup_size(256)
 fn coarse_ptcl_prefix_chunks(
@@ -29,10 +30,11 @@ fn coarse_glyph_prefix_chunks(
 
 fn prefix_chunks(chunk_ix: u32, lane: u32, glyph: bool) {
     let chunk_offset = chunk_ix * 256u;
-    let chunk_len = min(config.tile_count - chunk_offset, 256u);
+    let item_count = select(config.tile_count, config.active_tile_count, config.incremental != 0u);
+    let chunk_len = min(item_count - chunk_offset, 256u);
     var count = 0u;
     if (lane < chunk_len) {
-        let tile_ix = chunk_offset + lane;
+        let tile_ix = dispatched_tile_at(chunk_offset + lane);
         count = coarse_tile_count(tile_ix, glyph);
     }
     coarse_scratch[lane] = count;
@@ -78,7 +80,7 @@ fn prefix_chunks(chunk_ix: u32, lane: u32, glyph: bool) {
     }
 
     if (lane < chunk_len) {
-        let tile_ix = chunk_offset + lane;
+        let tile_ix = dispatched_tile_at(chunk_offset + lane);
         let start = coarse_scratch[lane];
         coarse_store_tile_range(tile_ix, glyph, start, start + count);
     }
@@ -129,10 +131,12 @@ fn coarse_glyph_apply_chunk_offsets(
 }
 
 fn apply_chunk_offsets(chunk_ix: u32, lane: u32, glyph: bool) {
-    let tile_ix = chunk_ix * 256u + lane;
-    if (tile_ix >= config.tile_count) {
+    let item_ix = chunk_ix * 256u + lane;
+    let item_count = select(config.tile_count, config.active_tile_count, config.incremental != 0u);
+    if (item_ix >= item_count) {
         return;
     }
+    let tile_ix = dispatched_tile_at(item_ix);
     if (glyph) {
         let offset = chunk_records[chunk_ix].glyph_offset;
         coarse_add_tile_range_offset(tile_ix, true, offset);
@@ -151,7 +155,7 @@ fn coarse_emit_chunk_counts(
     if (tile_ix >= config.tile_count) {
         return;
     }
-    let draw_count = tile_draw_end_at(tile_ix) - tile_draw_start_at(tile_ix);
+    let draw_count = tile_draw_count_at(tile_ix);
     store_tile_emit_chunk_count(tile_ix, (draw_count + 255u) / 256u);
 }
 
@@ -268,26 +272,28 @@ fn coarse_emit_fill_refs(
 @compute @workgroup_size(256)
 fn coarse_emit_chunk_particle_counts(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
+    @builtin(num_workgroups) num_workgroups: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
 ) {
-    let ref_ix = workgroup_id.x;
+    let ref_ix = linear_workgroup_index(workgroup_id, num_workgroups);
     let lane = local_id.x;
     let chunk = emit_chunk_at(ref_ix);
     let tile_ix = chunk.tile;
     let tile_x = tile_ix % config.tiles_width;
     let tile_y = tile_ix / config.tiles_width;
-    let draw_ref_ix = tile_draw_start_at(tile_ix) + chunk.local_chunk * 256u + lane;
+    let draw_ordinal = chunk.local_chunk * TILE_DRAW_PAGE_SIZE + lane;
+    let page = tile_draw_page_at(tile_ix, chunk.local_chunk);
     var ptcl_count = 0u;
     var glyph_count = 0u;
     let wrapper_count = active_stack_count(tile_x, tile_y);
 
-    if (wrapper_count != INVALID && draw_ref_ix < tile_draw_end_at(tile_ix)) {
-        let draw_ix = tile_draw_index_at(draw_ref_ix);
+    if (wrapper_count != INVALID && page != INVALID && draw_ordinal < tile_draw_count_at(tile_ix)) {
+        let draw_ix = tile_draw_index_in_page(page, lane);
         if (draw_in_batch(draw_ix)) {
             let draw_tag = draw_tag_at(draw_ix);
             if (draw_has_glyph_at(draw_ix)) {
                 if (draw_tag == GPU_DRAW_BRUSH) {
-                    glyph_count = count_tile_glyphs_for_run(draw_records[draw_ix].glyph_run_id, tile_x, tile_y);
+                    glyph_count = count_tile_glyphs_for_run(draw_ix, tile_x, tile_y);
                     ptcl_count = select(0u, 1u, glyph_count > 0u);
                 }
             } else if (draw_has_sdf_at(draw_ix)) {
@@ -474,8 +480,10 @@ fn draw_tile_hit(draw_ix: u32, tile_x: u32, tile_y: u32) -> bool {
     return tile_x >= draw_x0 && tile_x < draw_x1 && tile_y >= draw_y0 && tile_y < draw_y1;
 }
 
-fn count_tile_glyphs_for_run(run_id: u32, tile_x: u32, tile_y: u32) -> u32 {
+fn count_tile_glyphs_for_run(draw_ix: u32, tile_x: u32, tile_y: u32) -> u32 {
     var count = 0u;
+    let draw = draw_records[draw_ix];
+    let run_id = draw.glyph_run_id;
     let run = text_run_at(run_id);
     var glyph_ix = run.glyph_start;
     let glyph_end = glyph_ix + run.glyph_count;
@@ -483,7 +491,7 @@ fn count_tile_glyphs_for_run(run_id: u32, tile_x: u32, tile_y: u32) -> u32 {
         if (glyph_ix >= glyph_end) {
             break;
         }
-        if (glyph_hits_tile(glyph_ix, tile_x, tile_y)) {
+        if (glyph_hits_tile(draw, glyph_ix, tile_x, tile_y)) {
             count += 1u;
         }
         glyph_ix += 1u;
@@ -491,7 +499,7 @@ fn count_tile_glyphs_for_run(run_id: u32, tile_x: u32, tile_y: u32) -> u32 {
     return count;
 }
 
-fn glyph_hits_tile(glyph_ix: u32, tile_x: u32, tile_y: u32) -> bool {
+fn glyph_hits_tile(draw: DrawRecord, glyph_ix: u32, tile_x: u32, tile_y: u32) -> bool {
     let glyph = glyph_at(glyph_ix);
     let image_id = glyph.image_id;
     if (image_id == INVALID) {
@@ -507,15 +515,11 @@ fn glyph_hits_tile(glyph_ix: u32, tile_x: u32, tile_y: u32) -> bool {
     let y0 = glyph.y - image.top;
     let x1 = x0 + i32(width);
     let y1 = y0 + i32(height);
-    let tile_x0 = i32(tile_x * 16u);
-    let tile_y0 = i32(tile_y * 16u);
-    let tile_x1 = tile_x0 + 16i;
-    let tile_y1 = tile_y0 + 16i;
-    return x0 < tile_x1 && x1 > tile_x0 && y0 < tile_y1 && y1 > tile_y0;
+    return transformed_rect_hits_tile(draw.transform, x0, y0, x1, y1, tile_x, tile_y);
 }
 
 fn draw_in_batch(draw_ix: u32) -> bool {
-    return draw_ix >= config.draw_start && draw_ix < config.draw_end;
+    return draw_ix < arrayLength(&draw_batch_ids) && draw_batch_ids[draw_ix] == config.draw_start;
 }
 
 fn draw_tag_at(draw_ix: u32) -> u32 {

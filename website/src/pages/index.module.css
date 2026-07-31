@@ -1,0 +1,8 @@
+.hero {padding: 7rem 1.5rem 5rem; background: radial-gradient(circle at 22% 15%, rgba(103,87,255,.30), transparent 35%), radial-gradient(circle at 78% 18%, rgba(49,230,197,.18), transparent 30%), linear-gradient(160deg,#0c1020,#151b35); color: white; text-align:center;}
+.hero h1 {font-size: clamp(3rem,8vw,6rem); margin:0; letter-spacing:-.06em;}
+.hero p {font-size: clamp(1.1rem,2vw,1.45rem); color:#cbd1ef; max-width:760px; margin:1.3rem auto 2rem;}
+.actions {display:flex; gap:1rem; justify-content:center; flex-wrap:wrap;}
+.features {display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1.25rem; max-width:1100px; margin:0 auto; padding:4rem 1.5rem;}
+.card {border:1px solid var(--ifm-color-emphasis-200); border-radius:18px; padding:1.6rem; background:var(--ifm-background-surface-color); box-shadow:0 16px 40px rgba(20,25,60,.08);}
+.card h2 {font-size:1.2rem;}
+@media (max-width: 760px) {.features {grid-template-columns:1fr;}.hero {padding-top:5rem;}}

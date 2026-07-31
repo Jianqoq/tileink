@@ -1,6 +1,7 @@
 use std::{
     error::Error,
-    sync::{Arc, mpsc},
+    rc::Rc,
+    sync::mpsc,
     time::{Duration, Instant},
 };
 
@@ -85,7 +86,7 @@ impl CaseKind {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let config = parse_config()?;
-    let image = Arc::new(test_image(config.image_size, config.image_size));
+    let image = Rc::new(test_image(config.image_size, config.image_size));
     let image_key = ImageKey::new(1);
     let cases = [
         CaseKind::Solid,
@@ -97,7 +98,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut renderer =
         WgpuRenderer::new_default_device(config.width, config.height, Color::TRANSPARENT);
-    assert!(renderer.insert_image(image_key, Arc::clone(&image)));
+    assert!(renderer.insert_image(image_key, Rc::clone(&image)));
     let texture = output_texture(renderer.device(), config.width, config.height);
 
     println!(
@@ -116,7 +117,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut baseline = None;
     for case in cases {
-        let scene = build_scene(config, case, image_key, Arc::clone(&image));
+        let scene = build_scene(config, case, image_key, Rc::clone(&image));
         let stats = bench(&mut renderer, &scene, &texture, config)?;
         let profile = profile(&mut renderer, &scene, &texture, config)?;
         let native = renderer.last_frame_used_native_gpu();
@@ -179,7 +180,7 @@ fn parse_config() -> Result<Config, Box<dyn Error>> {
     Ok(config)
 }
 
-fn build_scene(config: Config, case: CaseKind, image_key: ImageKey, image: Arc<Image>) -> Canvas {
+fn build_scene(config: Config, case: CaseKind, image_key: ImageKey, image: Rc<Image>) -> Canvas {
     let mut scene = Canvas::new(config.width, config.height, 1.0);
     let cell_w = config.width as f64 / config.cols as f64;
     let cell_h = config.height as f64 / config.rows as f64;
@@ -206,7 +207,7 @@ fn build_scene(config: Config, case: CaseKind, image_key: ImageKey, image: Arc<I
                     let _ = scene.push_image_key(rect, image_key, Extend::Pad, sampling);
                 }
                 CaseKind::SceneImage(sampling) => {
-                    let _ = scene.push_image(rect, Arc::clone(&image), Extend::Pad, sampling);
+                    let _ = scene.push_image(rect, Rc::clone(&image), Extend::Pad, sampling);
                 }
             }
         }

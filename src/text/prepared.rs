@@ -7,7 +7,7 @@ use std::{
 use cosmic_text::SwashImage;
 use cosmic_text::{CacheKey, FontSystem, SwashContent};
 
-use crate::shared::{bounds::Bounds, pixel::TextCoverageParams};
+use crate::shared::bounds::Bounds;
 
 use super::{
     context::TextContext,
@@ -16,6 +16,9 @@ use super::{
     raster::GlyphRasterImage,
 };
 
+mod reconcile;
+pub(crate) use reconcile::PreparedTextChanges;
+
 #[derive(Clone, Debug)]
 pub(crate) struct PreparedTextData {
     runs: Vec<TextRun>,
@@ -23,6 +26,9 @@ pub(crate) struct PreparedTextData {
     images: Vec<PreparedGlyphImage>,
     image_by_key: HashMap<CacheKey, u32>,
     atlas_signature: AtlasSignature,
+    raster_options: TextRasterOptions,
+    cache_generation: u64,
+    image_bytes: usize,
 }
 
 impl PreparedTextData {
@@ -37,14 +43,18 @@ impl PreparedTextData {
         let mut prepared_glyphs = Vec::with_capacity(glyphs.len());
         let mut atlas_hasher = StableAtlasHasher::new();
         let mut atlas_len = 0u32;
+        let mut image_bytes = 0;
         let raster_options = context.raster_options();
+        let cache_generation = context.cache_generation();
 
         for glyph in glyphs {
             let image = if let Some(&image) = image_by_key.get(&glyph.cache_key) {
                 Some(image)
             } else if let Some(image) = context.glyph_image(font_system, glyph.cache_key) {
                 let image_ix = images.len() as u32;
-                images.push(PreparedGlyphImage::from_raster(image, raster_options));
+                let image = PreparedGlyphImage::from_raster(image, raster_options);
+                image_bytes += image.data.len();
+                images.push(image);
                 image_by_key.insert(glyph.cache_key, image_ix);
                 glyph.cache_key.hash(&mut atlas_hasher);
                 raster_options.hash(&mut atlas_hasher);
@@ -54,11 +64,13 @@ impl PreparedTextData {
                 None
             };
             prepared_glyphs.push(PreparedGlyph {
+                cache_key: glyph.cache_key,
                 image,
                 x: glyph.x,
                 y: glyph.y,
             });
         }
+        atlas_hasher.write_u64(cache_generation);
 
         Self {
             runs: runs.to_vec(),
@@ -66,7 +78,31 @@ impl PreparedTextData {
             images,
             image_by_key,
             atlas_signature: AtlasSignature::from_hash(atlas_len, atlas_hasher.finish128()),
+            raster_options,
+            cache_generation,
+            image_bytes,
         }
+    }
+
+    fn rebuild_atlas_signature(&mut self) {
+        let mut hashes = self
+            .image_by_key
+            .keys()
+            .map(|key| {
+                let mut hasher = StableAtlasHasher::new();
+                key.hash(&mut hasher);
+                self.raster_options.hash(&mut hasher);
+                hasher.finish()
+            })
+            .collect::<Vec<_>>();
+        hashes.sort_unstable();
+        let mut hasher = StableAtlasHasher::new();
+        for hash in hashes {
+            hasher.write_u64(hash);
+        }
+        hasher.write_u64(self.cache_generation);
+        self.atlas_signature =
+            AtlasSignature::from_hash(self.image_by_key.len() as u32, hasher.finish128());
     }
 
     pub(crate) fn run_glyph_indices(&self, run_id: u32) -> std::ops::Range<u32> {
@@ -103,18 +139,8 @@ impl PreparedTextData {
     }
 
     #[cfg(test)]
-    pub(crate) fn from_test_parts(
-        glyphs: Vec<PreparedGlyph>,
-        runs: Vec<TextRun>,
-        images: Vec<PreparedGlyphImage>,
-    ) -> Self {
-        Self {
-            runs,
-            glyphs,
-            images,
-            image_by_key: HashMap::new(),
-            atlas_signature: AtlasSignature::default(),
-        }
+    pub(super) fn cache_generation(&self) -> u64 {
+        self.cache_generation
     }
 }
 
@@ -226,6 +252,7 @@ fn avalanche64(mut value: u64) -> u64 {
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PreparedGlyph {
+    pub(crate) cache_key: CacheKey,
     pub(crate) image: Option<u32>,
     pub(crate) x: i32,
     pub(crate) y: i32,
@@ -243,7 +270,6 @@ impl PreparedGlyph {
 pub(crate) struct PreparedGlyphImage {
     pub(crate) content: PreparedGlyphContent,
     pub(crate) composite_mode: TextCompositeMode,
-    pub(crate) coverage_params: TextCoverageParams,
     pub(crate) left: i32,
     pub(crate) top: i32,
     pub(crate) width: u32,
@@ -262,7 +288,6 @@ impl PreparedGlyphImage {
         Self {
             content,
             composite_mode: raster_options.composite_mode,
-            coverage_params: raster_options.coverage_params,
             left: pixels.left,
             top: image.placement.top,
             width: pixels.width,

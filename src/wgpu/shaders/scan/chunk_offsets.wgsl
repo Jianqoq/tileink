@@ -5,13 +5,14 @@
 @group(0) @binding(3) var<storage, read_write> segment_bumps: array<u32>;
 @group(0) @binding(4) var<storage, read_write> chunk_totals: array<u32>;
 @group(0) @binding(5) var<storage, read_write> chunk_offsets: array<u32>;
+@group(0) @binding(6) var<storage, read> active_indices: array<u32>;
 
 @compute @workgroup_size(256)
 fn scan_chunk_offsets(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    let path_id = global_id.x;
-    if (path_id >= config.path_count) {
+    if (global_id.x >= config.path_count) {
         return;
     }
+    let path_id = dispatched_index(global_id.x, config.path_base);
     let path = path_records[path_id];
     var next = path.segment_start;
     let chunk_range = scan_chunk_ranges[path_id];

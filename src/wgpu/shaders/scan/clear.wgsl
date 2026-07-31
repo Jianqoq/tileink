@@ -7,6 +7,7 @@
 @group(0) @binding(5) var<storage, read_write> segment_bumps: array<u32>;
 @group(0) @binding(6) var<storage, read_write> chunk_totals: array<u32>;
 @group(0) @binding(7) var<storage, read_write> chunk_offsets: array<u32>;
+@group(0) @binding(8) var<storage, read> active_indices: array<u32>;
 
 @compute @workgroup_size(256)
 fn scan_clear(@builtin(global_invocation_id) global_id: vec3<u32>) {
@@ -15,18 +16,20 @@ fn scan_clear(@builtin(global_invocation_id) global_id: vec3<u32>) {
         return;
     }
     if (ix < config.backdrop_len) {
-        atomicStore(&backdrops[ix], 0i);
-        segment_ranges[ix].start = 0u;
-        segment_ranges[ix].end = 0u;
-        atomicStore(&segment_tile_counts[ix], 0u);
-        atomicStore(&segment_tile_cursors[ix], 0u);
+        let backdrop_ix = dispatched_index(ix, config.backdrop_base);
+        atomicStore(&backdrops[backdrop_ix], 0i);
+        segment_ranges[backdrop_ix].start = 0u;
+        segment_ranges[backdrop_ix].end = 0u;
+        atomicStore(&segment_tile_counts[backdrop_ix], 0u);
+        atomicStore(&segment_tile_cursors[backdrop_ix], 0u);
     }
     if (ix < config.path_count) {
-        segment_bumps[ix] = 0u;
+        segment_bumps[dispatched_index(ix, config.path_base)] = 0u;
     }
     if (ix < config.scan_chunk_count) {
-        chunk_totals[ix] = 0u;
-        chunk_offsets[ix] = 0u;
+        let chunk_ix = dispatched_index(ix, config.chunk_base);
+        chunk_totals[chunk_ix] = 0u;
+        chunk_offsets[chunk_ix] = 0u;
     }
 }
 

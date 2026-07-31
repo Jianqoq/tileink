@@ -1,6 +1,8 @@
 use crate::shared::{
-    gpu_coarse::{CoarseChunkRecord, coarse_work_word_len},
-    gpu_plan::GpuBufferLengths,
+    gpu_coarse::{
+        CoarseChunkRecord, coarse_work_active_tile_list_word_offset, coarse_work_word_len,
+    },
+    gpu_plan::{GpuBufferLengths, GpuCumsumPlan},
     line_seg::LineSegment,
     tile_seg_range::TileSegmentRange,
 };
@@ -11,7 +13,25 @@ use crate::shared::gpu_coarse::{
     coarse_work_fine_tile_kind_word_offset, coarse_work_ptcl_word_offset,
 };
 
+use std::sync::Mutex;
+
 use super::super::buffer::WgpuBuffer;
+use super::bindings::WgpuCoarseBindingKey;
+
+const COARSE_BIND_GROUP_CACHE_SLOTS: usize = 256;
+
+#[derive(Clone)]
+pub(crate) struct WgpuCoarseBindGroups {
+    pub(crate) count: ::wgpu::BindGroup,
+    pub(crate) prefix: ::wgpu::BindGroup,
+    pub(crate) emit: ::wgpu::BindGroup,
+}
+
+#[derive(Default)]
+struct WgpuCoarseBindGroupCache {
+    key: Option<WgpuCoarseBindingKey>,
+    slots: Vec<Option<WgpuCoarseBindGroups>>,
+}
 
 pub(crate) struct WgpuScanBuffers {
     pub(crate) backdrops: WgpuBuffer,
@@ -24,6 +44,11 @@ pub(crate) struct WgpuScanBuffers {
     pub(crate) chunk_offsets: WgpuBuffer,
     pub(crate) cumsum_chunk_totals: WgpuBuffer,
     pub(crate) cumsum_chunk_offsets: WgpuBuffer,
+    pub(crate) active_indices: WgpuBuffer,
+    pub(crate) active_cumsum_chunk_backdrop_offsets: WgpuBuffer,
+    pub(crate) active_cumsum_chunk_lens: WgpuBuffer,
+    pub(crate) active_cumsum_row_chunk_starts: WgpuBuffer,
+    pub(crate) active_cumsum_row_chunk_ends: WgpuBuffer,
 }
 
 impl WgpuScanBuffers {
@@ -39,6 +64,23 @@ impl WgpuScanBuffers {
             chunk_offsets: WgpuBuffer::new(device, "tileink wgpu scan chunk offsets"),
             cumsum_chunk_totals: WgpuBuffer::new(device, "tileink wgpu scan cumsum chunk totals"),
             cumsum_chunk_offsets: WgpuBuffer::new(device, "tileink wgpu scan cumsum chunk offsets"),
+            active_indices: WgpuBuffer::new(device, "tileink wgpu scan active indices"),
+            active_cumsum_chunk_backdrop_offsets: WgpuBuffer::new(
+                device,
+                "tileink wgpu active cumsum chunk backdrop offsets",
+            ),
+            active_cumsum_chunk_lens: WgpuBuffer::new(
+                device,
+                "tileink wgpu active cumsum chunk lengths",
+            ),
+            active_cumsum_row_chunk_starts: WgpuBuffer::new(
+                device,
+                "tileink wgpu active cumsum row chunk starts",
+            ),
+            active_cumsum_row_chunk_ends: WgpuBuffer::new(
+                device,
+                "tileink wgpu active cumsum row chunk ends",
+            ),
         }
     }
 
@@ -94,11 +136,62 @@ impl WgpuScanBuffers {
             lengths.cumsum_chunk_count,
         );
     }
+
+    pub(crate) fn upload_active_indices(
+        &mut self,
+        device: &::wgpu::Device,
+        queue: &::wgpu::Queue,
+        indices: &[u32],
+    ) {
+        self.active_indices.upload_cached(
+            device,
+            queue,
+            "tileink wgpu scan active indices",
+            indices,
+        );
+    }
+
+    pub(crate) fn upload_active_cumsum_plan(
+        &mut self,
+        device: &::wgpu::Device,
+        queue: &::wgpu::Queue,
+        plan: &GpuCumsumPlan,
+    ) {
+        self.active_cumsum_chunk_backdrop_offsets.upload_cached(
+            device,
+            queue,
+            "tileink wgpu active cumsum chunk backdrop offsets",
+            &plan.chunk_backdrop_offsets,
+        );
+        self.active_cumsum_chunk_lens.upload_cached(
+            device,
+            queue,
+            "tileink wgpu active cumsum chunk lengths",
+            &plan.chunk_lens,
+        );
+        self.active_cumsum_row_chunk_starts.upload_cached(
+            device,
+            queue,
+            "tileink wgpu active cumsum row chunk starts",
+            &plan.row_chunk_starts,
+        );
+        self.active_cumsum_row_chunk_ends.upload_cached(
+            device,
+            queue,
+            "tileink wgpu active cumsum row chunk ends",
+            &plan.row_chunk_ends,
+        );
+    }
 }
 
 pub(crate) struct WgpuCoarseBuffers {
     pub(crate) work: WgpuBuffer,
     pub(crate) chunk_records: WgpuBuffer,
+    pub(crate) tile_bin_layout: Option<(u64, usize, usize, usize)>,
+    pub(crate) tile_bin_staging: WgpuBuffer,
+    pub(crate) tile_bin_staging_words: Vec<u32>,
+    pub(crate) pending_tile_bin_copies: Vec<(u64, u64, u64)>,
+    bind_group_cache: Mutex<WgpuCoarseBindGroupCache>,
 }
 
 impl WgpuCoarseBuffers {
@@ -106,7 +199,46 @@ impl WgpuCoarseBuffers {
         Self {
             work: WgpuBuffer::new(device, "tileink wgpu coarse work"),
             chunk_records: WgpuBuffer::new(device, "tileink wgpu coarse chunk records"),
+            tile_bin_layout: None,
+            tile_bin_staging: WgpuBuffer::new(device, "tileink wgpu tile bin staging"),
+            tile_bin_staging_words: Vec::new(),
+            pending_tile_bin_copies: Vec::new(),
+            bind_group_cache: Mutex::new(WgpuCoarseBindGroupCache::default()),
         }
+    }
+
+    pub(crate) fn encode_pending_tile_bin_copies(&mut self, encoder: &mut ::wgpu::CommandEncoder) {
+        for (source, target, size) in self.pending_tile_bin_copies.drain(..) {
+            encoder.copy_buffer_to_buffer(
+                self.tile_bin_staging.buffer(),
+                source,
+                self.work.buffer(),
+                target,
+                size,
+            );
+        }
+    }
+
+    pub(crate) fn cached_bind_groups(
+        &self,
+        key: WgpuCoarseBindingKey,
+        slot: usize,
+        create: impl FnOnce() -> WgpuCoarseBindGroups,
+    ) -> WgpuCoarseBindGroups {
+        // Config offsets repeat from zero in each command batch. Cache the common slots, while
+        // bounding driver objects for pathological plans with thousands of independent batches.
+        if slot >= COARSE_BIND_GROUP_CACHE_SLOTS {
+            return create();
+        }
+        let mut cache = self.bind_group_cache.lock().unwrap();
+        if cache.key != Some(key) {
+            cache.key = Some(key);
+            cache.slots.clear();
+        }
+        if cache.slots.len() <= slot {
+            cache.slots.resize_with(slot + 1, || None);
+        }
+        cache.slots[slot].get_or_insert_with(create).clone()
     }
 
     pub(crate) fn prepare_outputs(&mut self, device: &::wgpu::Device, lengths: GpuBufferLengths) {
@@ -126,6 +258,22 @@ impl WgpuCoarseBuffers {
             "tileink wgpu coarse chunk records",
             lengths.coarse_chunk_count,
         );
+    }
+
+    pub(crate) fn upload_active_tiles(
+        &mut self,
+        queue: &::wgpu::Queue,
+        lengths: GpuBufferLengths,
+        tiles: &[u32],
+    ) {
+        let offset = coarse_work_active_tile_list_word_offset(
+            lengths.tile_count,
+            lengths.coarse_ptcl_capacity,
+            lengths.coarse_glyph_capacity,
+            lengths.tile_draw_index_count,
+            lengths.tile_draw_chunk_count,
+        );
+        self.work.write_at(queue, (offset * 4) as u64, tiles);
     }
 
     #[cfg(test)]

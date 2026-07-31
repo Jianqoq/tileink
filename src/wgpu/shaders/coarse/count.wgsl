@@ -9,13 +9,17 @@
 @group(0) @binding(6) var<storage, read> layer_stack: array<LayerStackRecord>;
 @group(0) @binding(7) var<storage, read_write> coarse_work: array<u32>;
 @group(0) @binding(8) var<storage, read> sdf_blob: array<u32>;
+@group(0) @binding(9) var<storage, read> draw_batch_ids: array<u32>;
 
 @compute @workgroup_size(256)
 fn coarse_count(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
 ) {
-    let tile_ix = workgroup_id.x;
+    if (workgroup_id.x >= config.active_tile_count) {
+        return;
+    }
+    let tile_ix = dispatched_tile_at(workgroup_id.x);
     if (tile_ix >= config.tile_count) {
         return;
     }
@@ -28,19 +32,19 @@ fn coarse_count(
     var glyph_count = 0u;
 
     if (wrapper_count != INVALID) {
-        let tile_draw_start = tile_draw_start_at(tile_ix);
-        let tile_draw_end = tile_draw_end_at(tile_ix);
-        var draw_ref_ix = tile_draw_start + lane;
+        var page = tile_draw_head_at(tile_ix);
+        var remaining = tile_draw_count_at(tile_ix);
         loop {
-            if (draw_ref_ix >= tile_draw_end) {
+            if (page == INVALID || remaining == 0u) {
                 break;
             }
-            let draw_ix = tile_draw_index_at(draw_ref_ix);
-            if (draw_in_batch(draw_ix)) {
+            if (lane < min(remaining, TILE_DRAW_PAGE_SIZE)) {
+                let draw_ix = tile_draw_index_in_page(page, lane);
+                if (draw_in_batch(draw_ix)) {
                 let draw_tag = draw_tag_at(draw_ix);
                 if (draw_has_glyph_at(draw_ix)) {
                     if (draw_tag == GPU_DRAW_BRUSH) {
-                        let tile_glyphs = count_tile_glyphs_for_run(draw_records[draw_ix].glyph_run_id, tile_x, tile_y);
+                        let tile_glyphs = count_tile_glyphs_for_run(draw_ix, tile_x, tile_y);
                         if (tile_glyphs > 0u) {
                             count += 1u;
                             glyph_count += tile_glyphs;
@@ -61,8 +65,10 @@ fn coarse_count(
                         }
                     }
                 }
+                }
             }
-            draw_ref_ix += 256u;
+            remaining -= min(remaining, TILE_DRAW_PAGE_SIZE);
+            page = tile_draw_next_page(page);
         }
     }
 
@@ -106,18 +112,24 @@ fn coarse_count_bins(
     var count = 0u;
     var glyph_count = 0u;
     if (wrapper_count != INVALID) {
-        var draw_ref_ix = tile_draw_start_at(tile_ix);
-        let tile_draw_end = tile_draw_end_at(tile_ix);
+        var page = tile_draw_head_at(tile_ix);
+        var remaining = tile_draw_count_at(tile_ix);
         loop {
-            if (draw_ref_ix >= tile_draw_end) {
+            if (page == INVALID || remaining == 0u) {
                 break;
             }
-            let draw_ix = tile_draw_index_at(draw_ref_ix);
+            let page_count = min(remaining, TILE_DRAW_PAGE_SIZE);
+            var slot = 0u;
+            loop {
+                if (slot >= page_count) {
+                    break;
+                }
+                let draw_ix = tile_draw_index_in_page(page, slot);
             if (draw_in_batch(draw_ix)) {
                 let draw_tag = draw_tag_at(draw_ix);
                 if (draw_has_glyph_at(draw_ix)) {
                     if (draw_tag == GPU_DRAW_BRUSH) {
-                        let tile_glyphs = count_tile_glyphs_for_run(draw_records[draw_ix].glyph_run_id, tile_x, tile_y);
+                        let tile_glyphs = count_tile_glyphs_for_run(draw_ix, tile_x, tile_y);
                         if (tile_glyphs > 0u) {
                             count += 1u;
                             glyph_count += tile_glyphs;
@@ -139,8 +151,11 @@ fn coarse_count_bins(
                         }
                     }
                 }
+                }
+                slot += 1u;
             }
-            draw_ref_ix += 1u;
+            remaining -= page_count;
+            page = tile_draw_next_page(page);
         }
     }
 
@@ -244,8 +259,10 @@ fn draw_tile_hit(draw_ix: u32, tile_x: u32, tile_y: u32) -> bool {
     return tile_x >= draw_x0 && tile_x < draw_x1 && tile_y >= draw_y0 && tile_y < draw_y1;
 }
 
-fn count_tile_glyphs_for_run(run_id: u32, tile_x: u32, tile_y: u32) -> u32 {
+fn count_tile_glyphs_for_run(draw_ix: u32, tile_x: u32, tile_y: u32) -> u32 {
     var count = 0u;
+    let draw = draw_records[draw_ix];
+    let run_id = draw.glyph_run_id;
     let run = text_run_at(run_id);
     var glyph_ix = run.glyph_start;
     let glyph_end = glyph_ix + run.glyph_count;
@@ -253,7 +270,7 @@ fn count_tile_glyphs_for_run(run_id: u32, tile_x: u32, tile_y: u32) -> u32 {
         if (glyph_ix >= glyph_end) {
             break;
         }
-        if (glyph_hits_tile(glyph_ix, tile_x, tile_y)) {
+        if (glyph_hits_tile(draw, glyph_ix, tile_x, tile_y)) {
             count += 1u;
         }
         glyph_ix += 1u;
@@ -261,7 +278,7 @@ fn count_tile_glyphs_for_run(run_id: u32, tile_x: u32, tile_y: u32) -> u32 {
     return count;
 }
 
-fn glyph_hits_tile(glyph_ix: u32, tile_x: u32, tile_y: u32) -> bool {
+fn glyph_hits_tile(draw: DrawRecord, glyph_ix: u32, tile_x: u32, tile_y: u32) -> bool {
         let glyph = glyph_at(glyph_ix);
     let image_id = glyph.image_id;
     if (image_id == INVALID) {
@@ -277,15 +294,11 @@ fn glyph_hits_tile(glyph_ix: u32, tile_x: u32, tile_y: u32) -> bool {
     let y0 = glyph.y - image.top;
     let x1 = x0 + i32(width);
     let y1 = y0 + i32(height);
-    let tile_x0 = i32(tile_x * 16u);
-    let tile_y0 = i32(tile_y * 16u);
-    let tile_x1 = tile_x0 + 16i;
-    let tile_y1 = tile_y0 + 16i;
-    return x0 < tile_x1 && x1 > tile_x0 && y0 < tile_y1 && y1 > tile_y0;
+    return transformed_rect_hits_tile(draw.transform, x0, y0, x1, y1, tile_x, tile_y);
 }
 
 fn draw_in_batch(draw_ix: u32) -> bool {
-    return draw_ix >= config.draw_start && draw_ix < config.draw_end;
+    return draw_ix < arrayLength(&draw_batch_ids) && draw_batch_ids[draw_ix] == config.draw_start;
 }
 
 fn draw_tag_at(draw_ix: u32) -> u32 {

@@ -1,0 +1,22 @@
+{
+  "title": {
+    "message": "Tileink",
+    "description": "The title in the navbar"
+  },
+  "logo.alt": {
+    "message": "Tileink",
+    "description": "The alt text of navbar logo"
+  },
+  "item.label.文档": {
+    "message": "Documentation",
+    "description": "Navbar item with label 文档"
+  },
+  "item.label.架构": {
+    "message": "Architecture",
+    "description": "Navbar item with label 架构"
+  },
+  "item.label.API": {
+    "message": "API",
+    "description": "Navbar item with label API"
+  }
+}

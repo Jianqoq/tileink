@@ -1,15 +1,18 @@
 use std::path::Path;
 
 use cosmic_text::{
-    Align, Attrs, CacheKeyFlags, Family, FontSystem, SwashContent, SwashImage, Weight,
+    Align, Attrs, CacheKeyFlags, Family, FontSystem, SwashContent, SwashImage, Weight, Wrap,
 };
 use peniko::{
     Color,
-    kurbo::{Affine, Point, Shape},
+    kurbo::{Affine, Point, Rect, Shape},
 };
 use swash::zeno::Placement;
 
-use crate::{Canvas, shared::draw_record::DrawTag};
+use crate::{
+    Canvas,
+    shared::{bounds::PixelBounds, draw_record::DrawTag},
+};
 
 use super::{
     raster::{
@@ -112,19 +115,49 @@ fn layout_options_pass_alignment_to_cosmic_buffer() {
     let mut context = TextContext::new();
     let left = context.layout(
         &mut font_system,
-        TextLayoutOptions::new("A", 20.0).with_size(Some(200.0), None),
+        TextLayoutOptions::new("A", 20.0)
+            .with_size(Some(200.0), None)
+            .with_wrap(Wrap::None),
     );
     let center = context.layout(
         &mut font_system,
         TextLayoutOptions::new("A", 20.0)
             .with_size(Some(200.0), None)
-            .with_alignment(Some(Align::Center)),
+            .with_alignment(Some(Align::Center))
+            .with_wrap(Wrap::None),
     );
     if left.glyphs.is_empty() || center.glyphs.is_empty() {
         return;
     }
 
     assert!(center.glyphs[0].x > left.glyphs[0].x);
+}
+
+#[test]
+fn layout_options_preserve_cosmic_text_default_wrap() {
+    assert_eq!(TextLayoutOptions::new("text", 16.0).wrap, Wrap::WordOrGlyph);
+}
+
+#[test]
+fn bounded_none_wrap_keeps_text_on_one_line() {
+    let mut font_system = FontSystem::new();
+    let mut context = TextContext::new();
+    let text = "one two three four";
+    let unbounded = context.layout(
+        &mut font_system,
+        TextLayoutOptions::new(text, 20.0).with_wrap(Wrap::None),
+    );
+    let options = TextLayoutOptions::new(text, 20.0)
+        .with_size(Some(35.0), None)
+        .with_wrap(Wrap::None);
+    let layout = context.layout(&mut font_system, options);
+    if layout.glyphs.is_empty() {
+        return;
+    }
+
+    let first_y = layout.glyphs[0].y;
+    assert!(layout.glyphs.iter().all(|glyph| glyph.y == first_y));
+    assert_eq!(layout.glyphs.len(), unbounded.glyphs.len());
 }
 
 #[test]
@@ -186,6 +219,83 @@ fn scene_path_text_uses_path_draws_not_glyph_atlas() {
 }
 
 #[test]
+fn clipped_text_draw_uses_scaled_pixel_bounds_without_a_clip_layer() {
+    let mut font_system = FontSystem::new();
+    let mut context = TextContext::new();
+    let layout = context.layout(
+        &mut font_system,
+        TextLayoutOptions::new("A long text run", 24.0).with_wrap(Wrap::None),
+    );
+    if layout.is_empty() {
+        return;
+    }
+
+    let origin = Point::new(0.0, 24.0);
+    let mut unclipped = Canvas::new(200, 80, 2.0);
+    unclipped.push_text_layout(&layout, origin, Color::BLACK);
+    let natural = unclipped.draw_records[0].pixel_bounds;
+    let expected = natural.intersect(PixelBounds {
+        x0: 20,
+        y0: -2_000,
+        x1: 60,
+        y1: 2_000,
+    });
+    assert!(!expected.is_empty());
+
+    let mut canvas = Canvas::new(200, 80, 2.0);
+    canvas.push_text_layout_clipped(
+        &layout,
+        origin,
+        Rect::new(10.0, -1_000.0, 30.0, 1_000.0),
+        Color::BLACK,
+    );
+
+    assert_eq!(canvas.draw_records.len(), 1);
+    assert_eq!(canvas.draw_records[0].tag, DrawTag::Brush);
+    assert_eq!(canvas.draw_records[0].pixel_bounds, expected);
+    assert_eq!(
+        canvas.draw_records[0].local_pixel_bounds,
+        canvas.draw_records[0].pixel_bounds
+    );
+    assert_eq!(canvas.text_glyphs.len(), layout.glyphs.len());
+    assert!(canvas.layer_stack.is_empty());
+}
+
+#[test]
+fn clipped_text_draw_rejects_empty_or_disjoint_bounds_without_appending_glyphs() {
+    let mut font_system = FontSystem::new();
+    let mut context = TextContext::new();
+    let layout = context.layout(&mut font_system, TextLayoutOptions::new("Text", 24.0));
+    if layout.is_empty() {
+        return;
+    }
+
+    let mut canvas = Canvas::new(100, 40, 1.0);
+    assert!(
+        canvas
+            .push_text_layout_clipped(
+                &layout,
+                Point::new(0.0, 24.0),
+                Rect::new(5.0, 5.0, 5.0, 20.0),
+                Color::BLACK,
+            )
+            .is_none()
+    );
+    assert!(
+        canvas
+            .push_text_layout_clipped(
+                &layout,
+                Point::new(0.0, 24.0),
+                Rect::new(200.0, 200.0, 220.0, 220.0),
+                Color::BLACK,
+            )
+            .is_none()
+    );
+    assert!(canvas.draw_records.is_empty());
+    assert!(canvas.text_glyphs.is_empty());
+}
+
+#[test]
 fn prepared_text_keeps_color_emoji_glyphs_when_font_supports_them() {
     let mut font_system = FontSystem::new();
     let mut context = TextContext::new();
@@ -238,6 +348,258 @@ fn prepared_text_signature_changes_with_glyph_images() {
 }
 
 #[test]
+fn prepared_text_updates_only_dirty_glyph_slots_without_rebuilding_atlas() {
+    let mut font_system = FontSystem::new();
+    let mut context = TextContext::new();
+    let layout = context.layout(&mut font_system, TextLayoutOptions::new("AB", 20.0));
+    if layout.is_empty() {
+        return;
+    }
+    let mut glyphs: Vec<_> = scene_glyphs_at_origin(&layout, Point::new(0.0, 0.0)).collect();
+    let runs = [TextRun {
+        glyph_start: 0,
+        glyph_count: glyphs.len() as u32,
+    }];
+    let mut prepared = PreparedTextData::new(&glyphs, &runs, &mut font_system, &mut context);
+    let signature = prepared.atlas_signature();
+    let first = prepared.glyph(0).map(|glyph| (glyph.x, glyph.y));
+    let changed = glyphs.len() - 1;
+    glyphs[changed].x += 13;
+
+    prepared.update(
+        &glyphs,
+        &runs,
+        std::slice::from_ref(&(changed..changed + 1)),
+        &[],
+        &mut font_system,
+        &mut context,
+    );
+
+    assert_eq!(prepared.atlas_signature(), signature);
+    assert_eq!(prepared.glyph(0).map(|glyph| (glyph.x, glyph.y)), first);
+    assert_eq!(prepared.glyph(changed as u32).unwrap().x, glyphs[changed].x);
+}
+
+#[test]
+fn prepared_text_reconcile_reuses_images_for_position_only_flat_canvas() {
+    let mut font_system = FontSystem::new();
+    let mut context = TextContext::new();
+    let layout = context.layout(
+        &mut font_system,
+        TextLayoutOptions::new("Market Watch", 20.0),
+    );
+    if layout.is_empty() {
+        return;
+    }
+    let glyphs: Vec<_> = scene_glyphs_at_origin(&layout, Point::new(0.0, 0.0)).collect();
+    let mut moved = glyphs.clone();
+    for glyph in &mut moved {
+        glyph.x += 12;
+        glyph.y += 7;
+    }
+    let runs = [TextRun {
+        glyph_start: 0,
+        glyph_count: glyphs.len() as u32,
+    }];
+    let mut prepared = PreparedTextData::new(&glyphs, &runs, &mut font_system, &mut context);
+    let signature = prepared.atlas_signature();
+    let image_ids = (0..glyphs.len() as u32)
+        .map(|index| prepared.glyph(index).unwrap().image)
+        .collect::<Vec<_>>();
+
+    let changes = prepared
+        .reconcile(&moved, &runs, &mut font_system, &mut context)
+        .expect("position-only reconciliation should stay incremental");
+
+    assert_eq!(prepared.atlas_signature(), signature);
+    assert_eq!(changes.glyphs().len(), 1);
+    assert_eq!(changes.glyphs()[0], 0..moved.len());
+    assert!(changes.runs().is_empty());
+    for (index, glyph) in moved.iter().enumerate() {
+        let actual = prepared.glyph(index as u32).unwrap();
+        assert_eq!(actual.image, image_ids[index]);
+        assert_eq!((actual.x, actual.y), (glyph.x, glyph.y));
+    }
+}
+
+#[test]
+fn prepared_text_reconcile_adds_only_new_glyph_images() {
+    let mut font_system = FontSystem::new();
+    let mut context = TextContext::new();
+    let a = context.layout(&mut font_system, TextLayoutOptions::new("A", 20.0));
+    let ab = context.layout(&mut font_system, TextLayoutOptions::new("AB", 20.0));
+    if a.is_empty() || ab.glyphs.len() < 2 {
+        return;
+    }
+    let a_glyphs: Vec<_> = scene_glyphs_at_origin(&a, Point::new(0.0, 0.0)).collect();
+    let ab_glyphs: Vec<_> = scene_glyphs_at_origin(&ab, Point::new(0.0, 0.0)).collect();
+    let a_runs = [TextRun {
+        glyph_start: 0,
+        glyph_count: a_glyphs.len() as u32,
+    }];
+    let ab_runs = [TextRun {
+        glyph_start: 0,
+        glyph_count: ab_glyphs.len() as u32,
+    }];
+    let mut prepared = PreparedTextData::new(&a_glyphs, &a_runs, &mut font_system, &mut context);
+    let a_image = prepared.glyph(0).unwrap().image;
+    let old_image_count = prepared.images().len();
+
+    let _ = prepared.reconcile(&ab_glyphs, &ab_runs, &mut font_system, &mut context);
+
+    assert_eq!(prepared.glyph(0).unwrap().image, a_image);
+    assert!(prepared.images().len() >= old_image_count);
+    assert_eq!(prepared.run_glyph_indices(0), 0..ab_glyphs.len() as u32);
+}
+
+#[test]
+fn prepared_text_reconcile_reports_same_length_glyph_replacement() {
+    let mut font_system = FontSystem::new();
+    let mut context = TextContext::new();
+    let a = context.layout(&mut font_system, TextLayoutOptions::new("A", 20.0));
+    let b = context.layout(&mut font_system, TextLayoutOptions::new("B", 20.0));
+    if a.glyphs.len() != 1 || b.glyphs.len() != 1 {
+        return;
+    }
+    let a_glyphs: Vec<_> = scene_glyphs_at_origin(&a, Point::new(0.0, 0.0)).collect();
+    let b_glyphs: Vec<_> = scene_glyphs_at_origin(&b, Point::new(0.0, 0.0)).collect();
+    let runs = [TextRun {
+        glyph_start: 0,
+        glyph_count: 1,
+    }];
+    let mut prepared = PreparedTextData::new(&a_glyphs, &runs, &mut font_system, &mut context);
+
+    let changes = prepared
+        .reconcile(&b_glyphs, &runs, &mut font_system, &mut context)
+        .expect("same-length glyph replacement should stay incremental");
+
+    assert_eq!(changes.glyphs().len(), 1);
+    assert_eq!(changes.glyphs()[0], 0..1);
+    assert!(changes.runs().is_empty());
+    assert_eq!(prepared.glyph(0).unwrap().cache_key, b_glyphs[0].cache_key);
+}
+
+#[test]
+fn clearing_text_context_invalidates_prepared_atlas_generation() {
+    let mut font_system = FontSystem::new();
+    let mut context = TextContext::new();
+    let layout = context.layout(&mut font_system, TextLayoutOptions::new("A", 20.0));
+    if layout.is_empty() {
+        return;
+    }
+    let glyphs: Vec<_> = scene_glyphs_at_origin(&layout, Point::new(0.0, 0.0)).collect();
+    let runs = [TextRun {
+        glyph_start: 0,
+        glyph_count: glyphs.len() as u32,
+    }];
+    let mut prepared = PreparedTextData::new(&glyphs, &runs, &mut font_system, &mut context);
+    let generation = prepared.cache_generation();
+    let signature = prepared.atlas_signature();
+
+    context.clear_glyph_caches();
+    let changes = prepared.reconcile(&glyphs, &runs, &mut font_system, &mut context);
+
+    assert!(changes.is_none());
+    assert_ne!(prepared.cache_generation(), generation);
+    assert_ne!(prepared.atlas_signature(), signature);
+}
+
+#[test]
+fn prepared_text_reconcile_truncates_removed_glyphs_and_runs() {
+    let mut font_system = FontSystem::new();
+    let mut context = TextContext::new();
+    let layout = context.layout(&mut font_system, TextLayoutOptions::new("AB", 20.0));
+    if layout.glyphs.len() < 2 {
+        return;
+    }
+    let glyphs: Vec<_> = scene_glyphs_at_origin(&layout, Point::new(0.0, 0.0)).collect();
+    let runs = [
+        TextRun {
+            glyph_start: 0,
+            glyph_count: 1,
+        },
+        TextRun {
+            glyph_start: 1,
+            glyph_count: (glyphs.len() - 1) as u32,
+        },
+    ];
+    let mut prepared = PreparedTextData::new(&glyphs, &runs, &mut font_system, &mut context);
+
+    let _ = prepared.reconcile(&glyphs[..1], &runs[..1], &mut font_system, &mut context);
+
+    assert!(prepared.glyph(1).is_none());
+    assert_eq!(prepared.run_glyph_indices(1), 0..0);
+}
+
+#[test]
+fn prepared_text_reconcile_rebuilds_when_raster_options_change() {
+    let mut font_system = FontSystem::new();
+    let mut context = TextContext::new();
+    let layout = context.layout(&mut font_system, TextLayoutOptions::new("A", 20.0));
+    if layout.is_empty() {
+        return;
+    }
+    let glyphs: Vec<_> = scene_glyphs_at_origin(&layout, Point::new(0.0, 0.0)).collect();
+    let runs = [TextRun {
+        glyph_start: 0,
+        glyph_count: glyphs.len() as u32,
+    }];
+    let mut prepared = PreparedTextData::new(&glyphs, &runs, &mut font_system, &mut context);
+    let signature = prepared.atlas_signature();
+    context
+        .set_raster_options(TextRasterOptions::new().with_composite_mode(TextCompositeMode::Srgb));
+
+    let changes = prepared.reconcile(&glyphs, &runs, &mut font_system, &mut context);
+
+    assert!(changes.is_none());
+    assert_ne!(prepared.atlas_signature(), signature);
+}
+
+#[test]
+fn prepared_text_budget_rebuild_discards_replaced_glyph_images() {
+    let mut font_system = FontSystem::new();
+    let mut context = TextContext::new();
+    let a = context.layout(&mut font_system, TextLayoutOptions::new("A", 20.0));
+    let b = context.layout(&mut font_system, TextLayoutOptions::new("B", 20.0));
+    if a.glyphs.len() != 1 || b.glyphs.len() != 1 {
+        return;
+    }
+    let a_glyphs: Vec<_> = scene_glyphs_at_origin(&a, Point::new(0.0, 0.0)).collect();
+    let b_glyphs: Vec<_> = scene_glyphs_at_origin(&b, Point::new(0.0, 0.0)).collect();
+    let runs = [TextRun {
+        glyph_start: 0,
+        glyph_count: 1,
+    }];
+    let b_probe = PreparedTextData::new(&b_glyphs, &runs, &mut font_system, &mut context);
+    let mut prepared = PreparedTextData::new(&a_glyphs, &runs, &mut font_system, &mut context);
+    if prepared
+        .image_id_for_cache_key(a_glyphs[0].cache_key)
+        .is_none()
+        || b_probe
+            .image_id_for_cache_key(b_glyphs[0].cache_key)
+            .is_none()
+    {
+        return;
+    }
+
+    let changes =
+        prepared.reconcile_with_image_budget(&b_glyphs, &runs, &mut font_system, &mut context, 0);
+
+    assert!(changes.is_none());
+    assert!(
+        prepared
+            .image_id_for_cache_key(a_glyphs[0].cache_key)
+            .is_none()
+    );
+    assert!(
+        prepared
+            .image_id_for_cache_key(b_glyphs[0].cache_key)
+            .is_some()
+    );
+    assert_eq!(prepared.images().len(), 1);
+}
+
+#[test]
 fn prepared_text_signature_changes_with_composite_mode() {
     let mut font_system = FontSystem::new();
     let mut context = TextContext::new();
@@ -282,6 +644,53 @@ fn prepared_text_signature_changes_with_subpixel_mode() {
     let bgr = PreparedTextData::new(&glyphs, &runs, &mut font_system, &mut context);
 
     assert_ne!(rgb.atlas_signature(), bgr.atlas_signature());
+}
+
+fn assert_shaped_cosmic_buffer_matches_owned_layout(options: TextLayoutOptions<'_>) {
+    let mut font_system = FontSystem::new();
+    let mut context = TextContext::new();
+    let expected = context.layout(&mut font_system, options.clone());
+    let mut buffer = cosmic_text::Buffer::new(
+        &mut font_system,
+        cosmic_text::Metrics::new(options.font_size, options.line_height),
+    );
+    buffer.set_size(options.width, options.height);
+    buffer.set_wrap(options.wrap);
+    buffer.set_text(
+        options.text,
+        &options.attrs,
+        cosmic_text::Shaping::Advanced,
+        options.alignment,
+    );
+    let actual = context.layout_buffer(&mut font_system, &mut buffer);
+
+    assert_eq!(actual.bounds, expected.bounds);
+    assert_eq!(actual.glyphs.len(), expected.glyphs.len());
+    for (actual, expected) in actual.glyphs.iter().zip(&expected.glyphs) {
+        assert_eq!(actual.cache_key, expected.cache_key);
+        assert_eq!((actual.x, actual.y), (expected.x, expected.y));
+        assert_eq!(actual.outline_origin, expected.outline_origin);
+    }
+}
+
+#[test]
+fn shaped_cosmic_buffer_layout_matches_owned_layout() {
+    assert_shaped_cosmic_buffer_matches_owned_layout(
+        TextLayoutOptions::new("Market Watch", 12.0)
+            .with_line_height(16.0)
+            .with_size(Some(180.0), Some(24.0)),
+    );
+}
+
+#[test]
+fn shaped_cosmic_buffer_preserves_alignment_and_no_wrap() {
+    assert_shaped_cosmic_buffer_matches_owned_layout(
+        TextLayoutOptions::new("Market Watch", 12.0)
+            .with_line_height(16.0)
+            .with_size(Some(180.0), Some(24.0))
+            .with_alignment(Some(cosmic_text::Align::Center))
+            .with_wrap(cosmic_text::Wrap::None),
+    );
 }
 
 #[test]

@@ -1,0 +1,26 @@
+{
+  "version.label": {
+    "message": "Next",
+    "description": "The label for version current"
+  },
+  "sidebar.tutorialSidebar.category.api": {
+    "message": "API",
+    "description": "The label for category 'api' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.architecture": {
+    "message": "Architecture",
+    "description": "The label for category 'architecture' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.examples": {
+    "message": "Examples",
+    "description": "The label for category 'examples' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.getting-started": {
+    "message": "Getting started",
+    "description": "The label for category 'getting-started' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.guides": {
+    "message": "Guides",
+    "description": "The label for category 'guides' in sidebar 'tutorialSidebar'"
+  }
+}

@@ -136,10 +136,35 @@ fn composite_surface_with_stack(dst: u32, source: u32, x: u32, y: u32) -> u32 {
 }
 
 fn xy_for_region_ix(region_ix: u32) -> vec2<u32> {
+    if (config.compact_tiles != 0u) {
+        let tile_list_ix = region_ix / 256u;
+        let lane = region_ix % 256u;
+        let tile = active_tiles[tile_list_ix];
+        return vec2<u32>(
+            (tile % config.tiles_width) * 16u + lane % 16u,
+            (tile / config.tiles_width) * 16u + lane / 16u,
+        );
+    }
     return vec2<u32>(
         config.region_x0 + region_ix % config.region_width,
         config.region_y0 + region_ix / config.region_width,
     );
+}
+
+fn filter_region_ix_valid(region_ix: u32) -> bool {
+    if (region_ix >= config.pixel_count) {
+        return false;
+    }
+    if (config.compact_tiles == 0u) {
+        return true;
+    }
+    let xy = xy_for_region_ix(region_ix);
+    return xy.x < config.width &&
+        xy.y < config.height &&
+        xy.x >= config.region_x0 &&
+        xy.y >= config.region_y0 &&
+        xy.x < config.region_x0 + config.region_width &&
+        xy.y < config.region_y0 + config.region_height;
 }
 
 fn target_ix_for_region_ix(region_ix: u32) -> u32 {

@@ -56,6 +56,37 @@ impl<'a> PathFlatten<'a> {
     }
 }
 
+fn is_open_contour_close(start: Point, end: Point) -> bool {
+    let dx = start.x - end.x;
+    let dy = start.y - end.y;
+    dx * dx + dy * dy > 1.0e-6 * 1.0e-6
+}
+
+fn push_line_segment(out: &mut Vec<Line>, path_id: u32, p0: Point, p1: Point) {
+    if !is_non_degenerate_line(p0, p1) {
+        return;
+    }
+    push_flat_line(out, path_id, p0, p1);
+}
+
+fn push_flat_line(out: &mut Vec<Line>, path_id: u32, p0: Point, p1: Point) {
+    if !is_non_degenerate_line(p0, p1) {
+        return;
+    }
+    out.push(Line {
+        path_id,
+        _pad: 0.0,
+        p0: [p0.x as f32, p0.y as f32],
+        p1: [p1.x as f32, p1.y as f32],
+    });
+}
+
+fn is_non_degenerate_line(p0: Point, p1: Point) -> bool {
+    let dx = p0.x - p1.x;
+    let dy = p0.y - p1.y;
+    dx * dx + dy * dy > 1.0e-12 * 1.0e-12
+}
+
 #[cfg(test)]
 mod tests {
     use peniko::kurbo::{BezPath, Circle, PathEl, Shape};
@@ -143,36 +174,4 @@ mod tests {
             && line.p1[1] >= 9.0
             && line.p1[1] <= 31.0));
     }
-}
-
-fn is_open_contour_close(start: Point, end: Point) -> bool {
-    let dx = start.x - end.x;
-    let dy = start.y - end.y;
-    dx * dx + dy * dy > 1.0e-6 * 1.0e-6
-}
-
-fn push_line_segment(out: &mut Vec<Line>, path_id: u32, p0: Point, p1: Point) {
-    if !is_non_degenerate_line(p0, p1) {
-        return;
-    }
-    push_flat_line(out, path_id, p0, p1);
-}
-
-fn push_flat_line(out: &mut Vec<Line>, path_id: u32, p0: Point, p1: Point) {
-    if !is_non_degenerate_line(p0, p1) {
-        return;
-    }
-    let line = Line {
-        path_id,
-        _pad: 0.0,
-        p0: [p0.x as f32, p0.y as f32],
-        p1: [p1.x as f32, p1.y as f32],
-    };
-    out.push(line);
-}
-
-fn is_non_degenerate_line(p0: Point, p1: Point) -> bool {
-    let dx = p0.x - p1.x;
-    let dy = p0.y - p1.y;
-    dx * dx + dy * dy > 1.0e-12 * 1.0e-12
 }

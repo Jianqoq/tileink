@@ -1,3 +1,8 @@
+#![allow(
+    dead_code,
+    reason = "Rust-side binding constants share one schema with generated WGSL variants"
+)]
+
 pub(crate) mod brush {
     pub(crate) const GPU_BRUSH_U32_STRIDE: usize = 9;
     pub(crate) const GPU_BRUSH_PARAM_STRIDE: usize = 12;
@@ -27,7 +32,9 @@ pub(crate) mod fine {
 }
 
 pub(crate) mod filter {
-    pub(crate) const MAX_STORAGE_BUFFER_COUNT: u32 = 7;
+    // The retained filter path adds the compact active-tile worklist to the
+    // largest scene-stack kernel (seven scene buffers plus this worklist).
+    pub(crate) const MAX_STORAGE_BUFFER_COUNT: u32 = 8;
     pub(crate) const SOURCE_SAMPLE_TEXTURE_BINDING: u32 = 49;
     pub(crate) const AUX_SAMPLE_TEXTURE_BINDING: u32 = 50;
     pub(crate) const LINEAR_SAMPLER_BINDING: u32 = 51;

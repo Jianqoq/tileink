@@ -33,12 +33,104 @@ windows-numerics = { version = "0.3.1", optional = true }
 web-sys = { version = "0.3", features = ["Window", "Performance"] }
 
 [features]
+bench-internals = []
 directwrite-reference = ["dep:windows", "dep:windows-numerics"]
 vello-compare = ["dep:vello"]
-wgpu = []
 
 [dev-dependencies]
 winit = "0.30"
+criterion = "0.8.2"
+
+[[bench]]
+name = "retained_scale"
+harness = false
+
+[[bench]]
+name = "retained_dirty_ratio"
+harness = false
+
+[[bench]]
+name = "retained_stress"
+harness = false
+
+[[bench]]
+name = "coarse_binning"
+harness = false
+
+[[bench]]
+name = "bounded_translation"
+harness = false
+required-features = ["bench-internals"]
+
+[[bench]]
+name = "retained_topology"
+harness = false
+required-features = ["bench-internals"]
+
+[[bench]]
+name = "damage_tiles"
+harness = false
+required-features = ["bench-internals"]
+
+[[bench]]
+name = "tile_draw_bins"
+harness = false
+required-features = ["bench-internals"]
+
+[[bench]]
+name = "frame_diff"
+harness = false
+required-features = ["bench-internals"]
+
+[[bench]]
+name = "tiles_for_bounds"
+harness = false
+required-features = ["bench-internals"]
+
+[[bench]]
+name = "node_draw_order"
+harness = false
+required-features = ["bench-internals"]
+
+[[bench]]
+name = "glyph_capacity"
+harness = false
+required-features = ["bench-internals"]
+
+[[bench]]
+name = "arena_fill"
+harness = false
+required-features = ["bench-internals"]
+
+[[bench]]
+name = "dirty_ranges"
+harness = false
+required-features = ["bench-internals"]
+
+[[bench]]
+name = "range_scatter"
+harness = false
+
+[[bench]]
+name = "text_clip"
+harness = false
+
+[[bench]]
+name = "text_layout"
+harness = false
+
+[[bench]]
+name = "prepared_text"
+harness = false
+required-features = ["bench-internals"]
+
+[[bench]]
+name = "checkerboard"
+harness = false
+
+[[bench]]
+name = "canvas_append"
+harness = false
 
 [[example]]
 name = "wgpu_examples"
@@ -55,6 +147,14 @@ path = "examples/svg_tiger_bench.rs"
 [[example]]
 name = "image_key_bench"
 path = "examples/image_key_bench.rs"
+
+[[example]]
+name = "retained_scale_bench"
+path = "examples/retained_scale_bench.rs"
+
+[[example]]
+name = "retained_dirty_ratio_bench"
+path = "examples/retained_dirty_ratio_bench.rs"
 
 [[example]]
 name = "blur_pairing_bench"
@@ -77,4 +177,3 @@ required-features = ["vello-compare"]
 [[example]]
 name = "wgpu_batch"
 path = "examples/wgpu_batch.rs"
-

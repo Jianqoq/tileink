@@ -22,6 +22,9 @@ struct FineConfig {
     text_image_data_base: u32,
     group_spill_base: u32,
     fine_tile_kind_base: u32,
+    active_tile_count: u32,
+    active_tile_list_base: u32,
+    incremental: u32,
 };
 
 @group(0) @binding(0) var<uniform> config: FineConfig;
@@ -53,10 +56,14 @@ fn fine_clear_indirect_main() {
 fn fine_compact_tiles_main(
     @builtin(global_invocation_id) global_id: vec3<u32>,
 ) {
-    let tile_ix = global_id.x;
-    if (tile_ix >= config.tile_count) {
+    if (global_id.x >= config.active_tile_count) {
         return;
     }
+    let tile_ix = select(
+        global_id.x,
+        coarse_work[config.active_tile_list_base + global_id.x],
+        config.incremental != 0u,
+    );
 
     let sdf_base = fine_tile_list_base(FINE_TILE_LIST_SDF);
     let mixed_base = fine_tile_list_base(FINE_TILE_LIST_MIXED);

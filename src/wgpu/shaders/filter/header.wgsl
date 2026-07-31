@@ -23,6 +23,13 @@ const GPU_SDF_ARC_SHADOW: u32 = 9u;
 const GPU_SDF_CIRCLE_SHADOW: u32 = 10u;
 const GPU_SDF_LINE_SHADOW: u32 = 11u;
 const GPU_SDF_DASH_LINE: u32 = 12u;
+const GPU_SDF_TRIANGLE: u32 = 13u;
+const GPU_SDF_CHECKERBOARD: u32 = 14u;
+const GPU_SDF_STAR: u32 = 15u;
+const GPU_SDF_STAR_STROKE: u32 = 16u;
+const GPU_SDF_CALLOUT: u32 = 17u;
+const GPU_SDF_CALLOUT_STROKE: u32 = 18u;
+const GPU_SDF_CALLOUT_SHADOW: u32 = 19u;
 
 const FILTER_BRIGHTNESS: u32 = 1u;
 const FILTER_CONTRAST: u32 = 2u;
@@ -86,6 +93,10 @@ struct FilterConfig {
     region_width: u32,
     region_height: u32,
     pixel_count: u32,
+    active_tile_count: u32,
+    compact_tiles: u32,
+    active_tile_pad0: u32,
+    active_tile_pad1: u32,
     downsample: u32,
     downsample_filter: u32,
     upsample_filter: u32,
@@ -189,6 +200,9 @@ struct FilterConfig {
 };
 
 @group(0) @binding(0) var<uniform> config: FilterConfig;
+struct AffineRecord {
+    a: f32, b: f32, c: f32, d: f32, e: f32, f: f32,
+};
 struct DrawRecord {
     path_id: u32,
     glyph_run_id: u32,
@@ -204,7 +218,13 @@ struct DrawRecord {
     pixel_y0: i32,
     pixel_x1: i32,
     pixel_y1: i32,
+    local_pixel_x0: i32,
+    local_pixel_y0: i32,
+    local_pixel_x1: i32,
+    local_pixel_y1: i32,
     solid_rect: u32,
+    transform: AffineRecord,
+    inverse_transform: AffineRecord,
 };
 struct PathRecord {
     path_id: u32,
@@ -220,6 +240,7 @@ struct PathRecord {
     segment_start: u32,
     segment_capacity: u32,
     segment_count: u32,
+    transform: AffineRecord,
 };
 struct LineSegment {
     p0x: f32,
@@ -255,6 +276,7 @@ struct LayerStackRecord {
 @group(0) @binding(46) var<storage, read> path_p0y: array<i32>;
 @group(0) @binding(47) var<storage, read> path_p1x: array<i32>;
 @group(0) @binding(48) var<storage, read> path_p1y: array<i32>;
+@group(0) @binding(52) var<storage, read> active_tiles: array<u32>;
 @group(0) @binding(49) var filter_source_sample_texture: texture_2d<f32>;
 @group(0) @binding(50) var filter_aux_sample_texture: texture_2d<f32>;
 @group(0) @binding(51) var filter_linear_sampler: sampler;

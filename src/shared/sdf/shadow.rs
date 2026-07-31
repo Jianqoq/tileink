@@ -1,4 +1,3 @@
-use super::coverage_from_dist;
 use crate::shared::bounds::Bounds;
 
 #[repr(C)]
@@ -40,16 +39,4 @@ pub(crate) fn shadow_bounds(bounds: Bounds, options: ShadowOptions) -> Bounds {
         (bounds.x1 as f32 + options.offset_x + outset).ceil() as i32,
         (bounds.y1 as f32 + options.offset_y + outset).ceil() as i32,
     )
-}
-
-pub(crate) fn shadow_alpha_from_distance(dist: f32, options: ShadowOptions) -> f32 {
-    let Some(options) = options.normalized() else {
-        return 0.0;
-    };
-    let alpha = if options.expand <= 0.0 {
-        coverage_from_dist(dist) * options.intensity
-    } else {
-        (-dist.max(0.0) / options.expand).exp() * options.intensity
-    };
-    alpha.clamp(0.0, 1.0)
 }

@@ -1,22 +1,20 @@
 #![allow(clippy::too_many_arguments)]
 
-use std::sync::{Arc as SharedArc, mpsc};
+use std::rc::Rc;
 
 use peniko::Color;
 
 use crate::{
-    TextFontSystem,
+    RetainedScene, SceneVersion, TextFontSystem,
     canvas::Canvas,
     debug::{DebugScanBuffers, RenderDebugCapture, RenderOptions, capture_render_debug},
-    render::Render,
+    retained_scene::PersistentSceneMaterializer,
     shared::{
         bounds::Bounds,
-        execution::{ExecOp, ExecPlan, ROOT_COMMAND_LIST_ID},
-        gpu_coarse::{FINE_TILE_DISPATCH_WORDS, FINE_TILE_LIST_COUNT},
+        execution::{ExecOp, ExecPlan},
         gpu_plan::{
-            FINE_GROUP_SPILL_FIELDS, FINE_LOCAL_CLIP_DEPTH, FINE_LOCAL_GROUP_DEPTH,
-            FINE_WORKGROUP_SIZE, GpuBufferLengths, GpuCanvasConfig, filter_scratch_extra,
-            plan_stack_depths, required_scratch_count,
+            FINE_LOCAL_CLIP_DEPTH, FINE_LOCAL_GROUP_DEPTH, GpuBufferLengths, filter_scratch_extra,
+            required_scratch_count,
         },
         image::Image,
         image_resource::{
@@ -33,11 +31,12 @@ use crate::{
     text::{PreparedTextData, TextContext},
 };
 
-use super::buffer::WgpuBuffer;
+use super::buffer::{WgpuBuffer, WgpuRangeScatterPipeline};
 use super::canvas::{WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers, WgpuSceneUploadStaging};
-use super::coarse::{WgpuCoarseBatch, WgpuCoarsePipeline};
+use super::coarse::{WgpuCoarseBatch, WgpuCoarsePipeline, prefer_dense_binning};
 use super::commands::WgpuCommandBatch;
 use super::cumsum::WgpuCumsumPipeline;
+use super::damage_tiles::DamageTiles;
 use super::filter::{
     FILTER_OPACITY, WgpuFilterBrushBindings, WgpuFilterPathBindings, WgpuFilterPipeline,
     WgpuFilterTurbulenceBindings, region_bounds,
@@ -46,13 +45,33 @@ use super::filter_resources::{
     WgpuFilterBrushBuffers, WgpuFilterConvolveBuffers, WgpuFilterCursors, WgpuFilterPathBuffers,
     WgpuFilterTransferBuffers, WgpuFilterTurbulenceBuffers,
 };
+use super::filter_work::{FilterTileWork, FilterTileWorkArena};
 use super::fine::{WgpuFinePipeline, premul_clear_color};
 use super::image_resources::large_texture_table_len;
+use super::incremental::{
+    ActiveScanPlan, CoarseBinningMode, IncrementalRenderConfig, IncrementalRenderStats,
+};
+use super::lazy::PipelineCompilationTracker;
 use super::profile::{WgpuRenderProfile, WgpuRenderProfiler, profile_cpu, start_cpu_scope};
+use super::retained_surfaces::{RetainedSurface, RetainedSurfaceKind, RetainedSurfaceMeta};
 use super::scan::WgpuScanPipeline;
 use super::target::WgpuTarget;
 
+mod composite;
+mod debug;
+mod execute;
 mod filter_ops;
+mod layers;
+mod lifecycle;
+mod output;
+mod prepare;
+mod resources;
+mod retained;
+mod scene;
+mod targets;
+
+pub use output::{ExternalTextureHistoryId, WgpuTextureRenderError};
+use retained::{HistoryOwner, RetainedRenderState, SelectedScene};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum WgpuRenderTargetId {
@@ -60,65 +79,25 @@ enum WgpuRenderTargetId {
     Scratch(usize),
 }
 
-#[derive(Debug)]
-pub enum WgpuTextureRenderError {
-    DestinationTooSmall {
-        required_width: u32,
-        required_height: u32,
-        actual_width: u32,
-        actual_height: u32,
-    },
-    DestinationUsageMissing(::wgpu::TextureUsages),
-    DestinationStorageUsageMissing(::wgpu::TextureUsages),
-    UnsupportedDestination {
-        format: ::wgpu::TextureFormat,
-        dimension: ::wgpu::TextureDimension,
-        sample_count: u32,
-    },
+/// Wgpu-owned renderer target and native compute pipelines.
+#[derive(Clone, Debug, Default)]
+pub struct RendererOptions {
+    /// Shared backend pipeline cache used by every compute pipeline created by this renderer.
+    ///
+    /// The cache must have been created from `device`. The caller owns loading and persisting its
+    /// data because only the application knows the appropriate cache directory and lifetime.
+    pub pipeline_cache: Option<::wgpu::PipelineCache>,
 }
-
-impl std::fmt::Display for WgpuTextureRenderError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::DestinationTooSmall {
-                required_width,
-                required_height,
-                actual_width,
-                actual_height,
-            } => write!(
-                f,
-                "destination texture is {actual_width}x{actual_height}, but {required_width}x{required_height} is required"
-            ),
-            Self::DestinationUsageMissing(usage) => write!(
-                f,
-                "destination texture usage {usage:?} is missing wgpu::TextureUsages::COPY_DST"
-            ),
-            Self::DestinationStorageUsageMissing(usage) => write!(
-                f,
-                "destination texture usage {usage:?} is missing wgpu::TextureUsages::STORAGE_BINDING"
-            ),
-            Self::UnsupportedDestination {
-                format,
-                dimension,
-                sample_count,
-            } => write!(
-                f,
-                "unsupported destination texture format {format:?}, dimension {dimension:?}, sample_count {sample_count}; expected single-sample 2D Rgba8Unorm or Rgba8UnormSrgb"
-            ),
-        }
-    }
-}
-
-impl std::error::Error for WgpuTextureRenderError {}
 
 /// Wgpu-owned renderer target and native compute pipelines.
 pub struct Renderer {
     device: ::wgpu::Device,
     queue: ::wgpu::Queue,
     lengths: GpuBufferLengths,
-    plan: Option<ExecPlan>,
+    plan: Option<Rc<ExecPlan>>,
     config: WgpuBuffer,
     scene_buffers: WgpuSceneBuffers,
+    range_scatter_pipeline: Rc<WgpuRangeScatterPipeline>,
     scene_upload: WgpuSceneUploadStaging,
     scan: WgpuScanBuffers,
     coarse: WgpuCoarseBuffers,
@@ -132,8 +111,12 @@ pub struct Renderer {
     coarse_pipeline: Option<WgpuCoarsePipeline>,
     fine: Option<WgpuFinePipeline>,
     filter: Option<WgpuFilterPipeline>,
+    pipeline_compilations: PipelineCompilationTracker,
     filter_transfers: WgpuFilterTransferBuffers,
     filter_brushes: WgpuFilterBrushBuffers,
+    prepared_plan_fingerprint: Option<u64>,
+    retained: RetainedRenderState,
+    filter_tile_work_arena: FilterTileWorkArena,
     image_resources: ImageResourceStore,
     image_resource_upload: GpuImageResourceUpload,
     image_resource_upload_signature: ImageResourceUploadSignature,
@@ -150,24 +133,34 @@ pub struct Renderer {
     root_target_texture: Option<::wgpu::Texture>,
     root_target_view: Option<::wgpu::TextureView>,
     scratch: Vec<WgpuTarget>,
+    scratch_spares: Vec<WgpuTarget>,
     scratch_in_use: Vec<bool>,
+    local_scene_resource_pool: Vec<SceneResources>,
+    pending_local_scene_resources: Vec<SceneResources>,
+    #[cfg(feature = "bench-internals")]
+    reuse_local_scene_resources: bool,
     clear_color: u32,
     profiler: WgpuRenderProfiler,
     last_frame_used_native: bool,
     size: (u32, u32),
     surface_origin: (i32, i32),
+    persistent_scene: Option<PersistentSceneMaterializer>,
+    persistent_scene_rendered: Option<(u64, SceneVersion)>,
 }
 
-struct SavedRendererState {
-    lengths: GpuBufferLengths,
-    plan: Option<ExecPlan>,
+/// Scene-bound GPU allocations that are temporarily replaced while rendering an offscreen layer.
+///
+/// A renderer quarantines restored allocations until the current command batch is submitted, then
+/// makes them available at the start of the next frame. Acquisition prefers matching target sizes
+/// so sibling filters do not resize each other's textures; buffers retain their grown capacities
+/// when an exact size is unavailable.
+struct SceneResources {
+    target_size: (u32, u32),
     config: WgpuBuffer,
     scene_buffers: WgpuSceneBuffers,
     scene_upload: WgpuSceneUploadStaging,
     scan: WgpuScanBuffers,
     coarse: WgpuCoarseBuffers,
-    max_clip_depth: usize,
-    max_group_depth: usize,
     fine_spills: WgpuBuffer,
     fine_indirect_args: WgpuBuffer,
     filter_transfers: WgpuFilterTransferBuffers,
@@ -182,1949 +175,26 @@ struct SavedRendererState {
     root_target_texture: Option<::wgpu::Texture>,
     root_target_view: Option<::wgpu::TextureView>,
     scratch: Vec<WgpuTarget>,
+    scratch_spares: Vec<WgpuTarget>,
     scratch_in_use: Vec<bool>,
+}
+
+struct SavedRendererState {
+    lengths: GpuBufferLengths,
+    plan: Option<Rc<ExecPlan>>,
+    resources: SceneResources,
+    max_clip_depth: usize,
+    max_group_depth: usize,
     size: (u32, u32),
     surface_origin: (i32, i32),
-}
-
-impl Render for Renderer {
-    fn render(&mut self, canvas: &Canvas) {
-        assert!(
-            self.render_native(canvas),
-            "wgpu renderer could not render scene natively"
-        );
-    }
-}
-
-impl Renderer {
-    pub fn new(
-        device: &::wgpu::Device,
-        queue: &::wgpu::Queue,
-        width: u32,
-        height: u32,
-        clear: Color,
-    ) -> Self {
-        Self {
-            device: device.clone(),
-            queue: queue.clone(),
-            lengths: GpuBufferLengths::default(),
-            plan: None,
-            config: WgpuBuffer::new(device, "tileink wgpu canvas config"),
-            scene_buffers: WgpuSceneBuffers::new(device),
-            scene_upload: WgpuSceneUploadStaging::default(),
-            scan: WgpuScanBuffers::new(device),
-            coarse: WgpuCoarseBuffers::new(device),
-            max_clip_depth: 0,
-            max_group_depth: 0,
-            fine_spills: WgpuBuffer::new(device, "tileink wgpu fine spills"),
-            fine_indirect_args: WgpuBuffer::new(device, "tileink wgpu fine indirect args"),
-            text_data: None,
-            scan_pipeline: WgpuScanPipeline::new(device),
-            cumsum: WgpuCumsumPipeline::new(device),
-            coarse_pipeline: WgpuCoarsePipeline::new(device),
-            fine: WgpuFinePipeline::new(device),
-            filter: WgpuFilterPipeline::new(device),
-            filter_transfers: WgpuFilterTransferBuffers::new(device),
-            filter_brushes: WgpuFilterBrushBuffers::new(device),
-            image_resources: ImageResourceStore::default(),
-            image_resource_upload: GpuImageResourceUpload::default(),
-            image_resource_upload_signature: ImageResourceUploadSignature::default(),
-            image_resource_texture_table_len: large_texture_table_len(device),
-            image_resources_dirty: true,
-            filter_convolves: WgpuFilterConvolveBuffers::new(device),
-            filter_turbulence: WgpuFilterTurbulenceBuffers::new(device),
-            filter_paths: WgpuFilterPathBuffers::new(device),
-            readback_target: WgpuTarget::new(device, width, height),
-            fine_portable_source: WgpuTarget::new(device, width, height),
-            fine_portable_target: WgpuTarget::new(device, width, height),
-            filter_target_snapshot: WgpuTarget::new(device, width, height),
-            root_target_texture: None,
-            root_target_view: None,
-            scratch: Vec::new(),
-            scratch_in_use: Vec::new(),
-            clear_color: premul_clear_color(clear),
-            profiler: WgpuRenderProfiler::default(),
-            last_frame_used_native: true,
-            size: (width, height),
-            surface_origin: (0, 0),
-        }
-    }
-
-    pub fn new_default_device(width: u32, height: u32, clear: Color) -> Self {
-        let instance =
-            ::wgpu::Instance::new(::wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter =
-            pollster::block_on(instance.request_adapter(&::wgpu::RequestAdapterOptions {
-                power_preference: ::wgpu::PowerPreference::HighPerformance,
-                compatible_surface: None,
-                force_fallback_adapter: false,
-                apply_limit_buckets: false,
-            }))
-            .expect("request default wgpu adapter");
-        let required_features = adapter.features()
-            & (::wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
-                | ::wgpu::Features::TIMESTAMP_QUERY
-                | ::wgpu::Features::TEXTURE_BINDING_ARRAY
-                | ::wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING);
-        let (device, queue) =
-            pollster::block_on(adapter.request_device(&::wgpu::DeviceDescriptor {
-                label: Some("tileink default wgpu device"),
-                required_features,
-                required_limits: adapter.limits(),
-                memory_hints: ::wgpu::MemoryHints::MemoryUsage,
-                trace: ::wgpu::Trace::Off,
-                experimental_features: ::wgpu::ExperimentalFeatures::disabled(),
-            }))
-            .expect("request default wgpu device");
-        Self::new(&device, &queue, width, height, clear)
-    }
-
-    pub fn render(&mut self, canvas: &Canvas) {
-        <Self as Render>::render(self, canvas);
-    }
-
-    pub fn insert_image(&mut self, key: ImageKey, image: impl Into<SharedArc<Image>>) -> bool {
-        let image = image.into();
-        if !self.image_resources.insert(key, image.clone()) {
-            return false;
-        }
-        self.image_resources_dirty = true;
-        true
-    }
-
-    pub fn remove_image(&mut self, key: ImageKey) -> bool {
-        let removed = self.image_resources.remove(key);
-        if removed {
-            self.image_resources_dirty = true;
-            return true;
-        }
-        false
-    }
-
-    pub fn clear_images(&mut self) -> bool {
-        let removed = self.image_resources.clear();
-        if removed {
-            self.image_resources_dirty = true;
-            return true;
-        }
-        false
-    }
-
-    pub fn image_resource(&self, key: ImageKey) -> Option<&Image> {
-        self.image_resources.get(key)
-    }
-
-    pub fn render_profiled(&mut self, canvas: &Canvas) -> WgpuRenderProfile {
-        self.start_profile();
-        self.render(canvas);
-        self.end_profile().clone()
-    }
-
-    pub fn render_with_text_profiled(
-        &mut self,
-        canvas: &Canvas,
-        font_system: &mut TextFontSystem,
-        text_context: &mut TextContext,
-    ) -> WgpuRenderProfile {
-        self.start_profile();
-        self.render_with_text(canvas, font_system, text_context);
-        self.end_profile().clone()
-    }
-
-    /// Starts collecting CPU stage timings and GPU pass timestamps.
-    ///
-    /// GPU durations require a device created with `wgpu::Features::TIMESTAMP_QUERY`.
-    /// `new_default_device` requests that feature when the adapter supports it.
-    /// Any unresolved GPU timestamp readbacks from the previous profile are discarded so stale
-    /// async results cannot be attached to the wrong frame.
-    pub fn start_profile(&mut self) {
-        self.profiler.start(&self.device);
-    }
-
-    /// Stops profiling, starts async timestamp readback, and returns the latest CPU profile.
-    ///
-    /// GPU timestamp entries are merged by `poll_profile` after the device has made the mapped
-    /// readback buffers available. This keeps `end_profile` off the GPU completion path.
-    pub fn end_profile(&mut self) -> &WgpuRenderProfile {
-        self.profiler.end(&self.device, &self.queue)
-    }
-
-    /// Polls pending async GPU timestamp readbacks without blocking and returns the latest profile.
-    pub fn poll_profile(&mut self) -> &WgpuRenderProfile {
-        self.profiler.poll_ready(&self.device)
-    }
-
-    pub fn has_pending_profile_readbacks(&self) -> bool {
-        self.profiler.has_pending_readbacks()
-    }
-
-    pub fn profile(&self) -> &WgpuRenderProfile {
-        self.profiler.profile()
-    }
-
-    /// Whether the last `render*_to_wgpu_texture` call used native wgpu compute.
-    pub fn last_frame_used_native_gpu(&self) -> bool {
-        self.last_frame_used_native
-    }
-
-    /// Updates the clear color without rebuilding device-owned pipelines, so one renderer can
-    /// render multiple scenes/examples in a single process.
-    pub fn set_clear_color(&mut self, clear: Color) {
-        self.clear_color = premul_clear_color(clear);
-    }
-
-    /// Renders only through native wgpu compute pipelines.
-    ///
-    /// This is useful for tests that need to verify the native WGPU path directly.
-    pub fn render_native(&mut self, canvas: &Canvas) -> bool {
-        self.prepare_scene(canvas);
-        self.render_prepared_native(canvas)
-    }
-
-    /// Renders text scenes only through native wgpu compute pipelines.
-    ///
-    /// The caller supplies the text context so backend parity tests can compare
-    /// native wgpu against another backend using exactly the same glyph atlas.
-    pub fn render_native_with_text(
-        &mut self,
-        canvas: &Canvas,
-        font_system: &mut TextFontSystem,
-        text_context: &mut TextContext,
-    ) -> bool {
-        self.prepare_scene_with_text(canvas, font_system, text_context);
-        self.render_prepared_native(canvas)
-    }
-
-    fn render_prepared_native(&mut self, canvas: &Canvas) -> bool {
-        if self.render_prepared_tile_plan(canvas) {
-            self.size = (canvas.physical_width(), canvas.physical_height());
-            return true;
-        }
-        false
-    }
-
-    fn prepare_scene(&mut self, canvas: &Canvas) {
-        let _profile_scope = start_cpu_scope("prepare");
-        self.text_data = None;
-        self.prepare_scene_resources(canvas);
-    }
-
-    fn prepare_scene_with_text(
-        &mut self,
-        canvas: &Canvas,
-        font_system: &mut TextFontSystem,
-        text_context: &mut TextContext,
-    ) {
-        let _profile_scope = start_cpu_scope("prepare");
-        self.text_data = profile_cpu("prepare.text", || {
-            Some(PreparedTextData::new(
-                &canvas.text_glyphs,
-                &canvas.text_runs,
-                font_system,
-                text_context,
-            ))
-        });
-        self.prepare_scene_resources(canvas);
-    }
-
-    fn prepare_scene_resources(&mut self, canvas: &Canvas) {
-        self.size = (canvas.physical_width(), canvas.physical_height());
-        self.surface_origin = (0, 0);
-        profile_cpu("prepare.target", || {
-            if self.root_target_view.is_none() {
-                self.readback_target.resize(
-                    &self.device,
-                    canvas.physical_width(),
-                    canvas.physical_height(),
-                );
-            }
-            self.fine_portable_source.resize(
-                &self.device,
-                canvas.physical_width(),
-                canvas.physical_height(),
-            );
-            self.fine_portable_target.resize(
-                &self.device,
-                canvas.physical_width(),
-                canvas.physical_height(),
-            );
-        });
-        let lengths = profile_cpu("prepare.lengths", || {
-            self.scene_upload
-                .build_lengths(canvas, self.text_data.as_ref())
-        });
-        let plan = profile_cpu("prepare.compile", || canvas.compile(ROOT_COMMAND_LIST_ID));
-        let (max_clip_depth, max_group_depth) =
-            profile_cpu("prepare.stack_depths", || plan_stack_depths(&plan));
-        profile_cpu("prepare.upload_scene", || {
-            self.prepare_image_resource_buffers(canvas.scene_image_resources(), false);
-            self.scene_buffers.upload(
-                &self.device,
-                &self.queue,
-                canvas,
-                lengths,
-                &plan,
-                self.text_data.as_ref(),
-                Some(&self.image_resource_upload),
-                &mut self.scene_upload,
-            );
-        });
-        profile_cpu("prepare.scan_buffers", || {
-            self.scan.prepare_outputs(&self.device, lengths);
-        });
-        profile_cpu("prepare.coarse_buffers", || {
-            profile_cpu("prepare.coarse_buffers.resize", || {
-                self.coarse.prepare_outputs(&self.device, lengths);
-            });
-            profile_cpu("prepare.coarse_buffers.upload_tile_draw_bins", || {
-                self.coarse
-                    .upload_tile_draw_bins(&self.queue, lengths, &mut self.scene_upload);
-            });
-        });
-        profile_cpu("prepare.fine_spills", || {
-            self.prepare_fine_stack_spills(lengths, max_clip_depth, max_group_depth);
-        });
-        profile_cpu("prepare.scratch", || {
-            self.prepare_scratch_buffers(required_scratch_count(&plan));
-        });
-        profile_cpu("prepare.filter_uploads", || {
-            self.filter_transfers
-                .upload(&self.device, &self.queue, &plan);
-            self.filter_brushes.upload(
-                &self.device,
-                &self.queue,
-                &plan,
-                Some(&self.image_resource_upload),
-            );
-            self.filter_convolves
-                .upload(&self.device, &self.queue, &plan);
-            self.filter_turbulence
-                .upload(&self.device, &self.queue, &plan);
-            self.filter_paths.upload(&self.device, &self.queue, &plan);
-        });
-        profile_cpu("prepare.config", || {
-            self.config.upload(
-                &self.device,
-                &self.queue,
-                "tileink wgpu canvas config",
-                &[GpuCanvasConfig::new(canvas, lengths, self.clear_color)],
-            );
-        });
-        self.lengths = lengths;
-        self.max_clip_depth = max_clip_depth;
-        self.max_group_depth = max_group_depth;
-        self.plan = Some(plan);
-    }
-
-    fn prepare_image_resource_buffers(
-        &mut self,
-        scene_resources: &ImageResourceStore,
-        force_upload: bool,
-    ) {
-        let limits = self.device.limits();
-        let max_atlas_dimension = limits.max_texture_dimension_2d;
-        let max_atlas_pages = limits.max_texture_array_layers;
-        let signature = self.image_resources.upload_signature(
-            scene_resources,
-            max_atlas_dimension,
-            max_atlas_pages,
-            self.image_resource_texture_table_len,
-        );
-        let rebuild_upload =
-            self.image_resources_dirty || self.image_resource_upload_signature != signature;
-
-        if rebuild_upload {
-            self.image_resource_upload = self.image_resources.upload_merged(
-                scene_resources,
-                max_atlas_dimension,
-                max_atlas_pages,
-                self.image_resource_texture_table_len,
-                Some(&self.image_resource_upload),
-            );
-            self.image_resource_upload_signature = signature;
-            self.image_resources_dirty = false;
-        }
-
-        if force_upload || rebuild_upload {
-            self.scene_buffers.upload_image_resources(
-                &self.device,
-                &self.queue,
-                &self.image_resource_upload,
-                force_upload,
-            );
-        }
-    }
-
-    fn activate_local_scene_resources(
-        &mut self,
-        canvas: &Canvas,
-        plan: &ExecPlan,
-        parent_filter: &Filter,
-        scratch_count: usize,
-        surface_origin: (i32, i32),
-    ) -> SavedRendererState {
-        let _profile_scope = start_cpu_scope("prepare.local");
-        let saved = SavedRendererState {
-            lengths: self.lengths,
-            plan: self.plan.take(),
-            config: std::mem::replace(
-                &mut self.config,
-                WgpuBuffer::new(&self.device, "tileink wgpu canvas config"),
-            ),
-            scene_buffers: std::mem::replace(
-                &mut self.scene_buffers,
-                WgpuSceneBuffers::new(&self.device),
-            ),
-            scene_upload: std::mem::take(&mut self.scene_upload),
-            scan: std::mem::replace(&mut self.scan, WgpuScanBuffers::new(&self.device)),
-            coarse: std::mem::replace(&mut self.coarse, WgpuCoarseBuffers::new(&self.device)),
-            max_clip_depth: self.max_clip_depth,
-            max_group_depth: self.max_group_depth,
-            fine_spills: std::mem::replace(
-                &mut self.fine_spills,
-                WgpuBuffer::new(&self.device, "tileink wgpu fine spills"),
-            ),
-            fine_indirect_args: std::mem::replace(
-                &mut self.fine_indirect_args,
-                WgpuBuffer::new(&self.device, "tileink wgpu fine indirect args"),
-            ),
-            filter_transfers: std::mem::replace(
-                &mut self.filter_transfers,
-                WgpuFilterTransferBuffers::new(&self.device),
-            ),
-            filter_brushes: std::mem::replace(
-                &mut self.filter_brushes,
-                WgpuFilterBrushBuffers::new(&self.device),
-            ),
-            filter_convolves: std::mem::replace(
-                &mut self.filter_convolves,
-                WgpuFilterConvolveBuffers::new(&self.device),
-            ),
-            filter_turbulence: std::mem::replace(
-                &mut self.filter_turbulence,
-                WgpuFilterTurbulenceBuffers::new(&self.device),
-            ),
-            filter_paths: std::mem::replace(
-                &mut self.filter_paths,
-                WgpuFilterPathBuffers::new(&self.device),
-            ),
-            readback_target: std::mem::replace(
-                &mut self.readback_target,
-                WgpuTarget::new(
-                    &self.device,
-                    canvas.physical_width(),
-                    canvas.physical_height(),
-                ),
-            ),
-            fine_portable_source: std::mem::replace(
-                &mut self.fine_portable_source,
-                WgpuTarget::new(
-                    &self.device,
-                    canvas.physical_width(),
-                    canvas.physical_height(),
-                ),
-            ),
-            fine_portable_target: std::mem::replace(
-                &mut self.fine_portable_target,
-                WgpuTarget::new(
-                    &self.device,
-                    canvas.physical_width(),
-                    canvas.physical_height(),
-                ),
-            ),
-            filter_target_snapshot: std::mem::replace(
-                &mut self.filter_target_snapshot,
-                WgpuTarget::new(
-                    &self.device,
-                    canvas.physical_width(),
-                    canvas.physical_height(),
-                ),
-            ),
-            root_target_texture: std::mem::take(&mut self.root_target_texture),
-            root_target_view: std::mem::take(&mut self.root_target_view),
-            scratch: std::mem::take(&mut self.scratch),
-            scratch_in_use: std::mem::take(&mut self.scratch_in_use),
-            size: self.size,
-            surface_origin: self.surface_origin,
-        };
-
-        let lengths = profile_cpu("prepare.local.lengths", || {
-            self.scene_upload
-                .build_lengths(canvas, self.text_data.as_ref())
-        });
-        let (max_clip_depth, max_group_depth) =
-            profile_cpu("prepare.local.stack_depths", || plan_stack_depths(plan));
-        self.size = (canvas.physical_width(), canvas.physical_height());
-        self.surface_origin = surface_origin;
-        self.lengths = lengths;
-        self.max_clip_depth = max_clip_depth;
-        self.max_group_depth = max_group_depth;
-        self.plan = Some(plan.clone());
-        profile_cpu("prepare.local.upload_scene", || {
-            self.prepare_image_resource_buffers(canvas.scene_image_resources(), true);
-            self.scene_buffers.upload(
-                &self.device,
-                &self.queue,
-                canvas,
-                lengths,
-                plan,
-                self.text_data.as_ref(),
-                Some(&self.image_resource_upload),
-                &mut self.scene_upload,
-            );
-        });
-        profile_cpu("prepare.local.scan_buffers", || {
-            self.scan.prepare_outputs(&self.device, lengths);
-        });
-        profile_cpu("prepare.local.coarse_buffers", || {
-            profile_cpu("prepare.local.coarse_buffers.resize", || {
-                self.coarse.prepare_outputs(&self.device, lengths);
-            });
-            profile_cpu("prepare.local.coarse_buffers.upload_tile_draw_bins", || {
-                self.coarse
-                    .upload_tile_draw_bins(&self.queue, lengths, &mut self.scene_upload);
-            });
-        });
-        profile_cpu("prepare.local.fine_spills", || {
-            self.prepare_fine_stack_spills(lengths, max_clip_depth, max_group_depth);
-        });
-        profile_cpu("prepare.local.scratch", || {
-            self.prepare_scratch_buffers(scratch_count.max(1));
-        });
-        profile_cpu("prepare.local.filter_uploads", || {
-            self.filter_transfers.upload_for_ops_and_filter(
-                &self.device,
-                &self.queue,
-                &plan.ops,
-                parent_filter,
-            );
-            self.filter_brushes.upload_for_ops_and_filter(
-                &self.device,
-                &self.queue,
-                &plan.ops,
-                parent_filter,
-                Some(&self.image_resource_upload),
-            );
-            self.filter_convolves.upload_for_ops_and_filter(
-                &self.device,
-                &self.queue,
-                &plan.ops,
-                parent_filter,
-            );
-            self.filter_turbulence.upload_for_ops_and_filter(
-                &self.device,
-                &self.queue,
-                &plan.ops,
-                parent_filter,
-            );
-            self.filter_paths.upload(&self.device, &self.queue, plan);
-        });
-        profile_cpu("prepare.local.config", || {
-            self.config.upload(
-                &self.device,
-                &self.queue,
-                "tileink wgpu canvas config",
-                &[GpuCanvasConfig::new(canvas, lengths, self.clear_color)],
-            );
-        });
-        saved
-    }
-
-    fn restore_root_scene_resources(&mut self, saved: SavedRendererState) {
-        self.lengths = saved.lengths;
-        self.plan = saved.plan;
-        self.config = saved.config;
-        self.scene_buffers = saved.scene_buffers;
-        self.scene_upload = saved.scene_upload;
-        self.scan = saved.scan;
-        self.coarse = saved.coarse;
-        self.max_clip_depth = saved.max_clip_depth;
-        self.max_group_depth = saved.max_group_depth;
-        self.fine_spills = saved.fine_spills;
-        self.fine_indirect_args = saved.fine_indirect_args;
-        self.filter_transfers = saved.filter_transfers;
-        self.filter_brushes = saved.filter_brushes;
-        self.filter_convolves = saved.filter_convolves;
-        self.filter_turbulence = saved.filter_turbulence;
-        self.filter_paths = saved.filter_paths;
-        self.readback_target = saved.readback_target;
-        self.fine_portable_source = saved.fine_portable_source;
-        self.fine_portable_target = saved.fine_portable_target;
-        self.filter_target_snapshot = saved.filter_target_snapshot;
-        self.root_target_texture = saved.root_target_texture;
-        self.root_target_view = saved.root_target_view;
-        self.scratch = saved.scratch;
-        self.scratch_in_use = saved.scratch_in_use;
-        self.size = saved.size;
-        self.surface_origin = saved.surface_origin;
-    }
-
-    fn prepare_scratch_buffers(&mut self, count: usize) {
-        while self.scratch.len() < count {
-            self.scratch
-                .push(WgpuTarget::new(&self.device, self.size.0, self.size.1));
-        }
-        for scratch in &mut self.scratch {
-            scratch.resize(&self.device, self.size.0, self.size.1);
-        }
-        self.filter_target_snapshot
-            .resize(&self.device, self.size.0, self.size.1);
-        self.scratch_in_use.clear();
-        self.scratch_in_use.resize(self.scratch.len(), false);
-    }
-
-    fn prepare_fine_stack_spills(
-        &mut self,
-        lengths: GpuBufferLengths,
-        max_clip_depth: usize,
-        max_group_depth: usize,
-    ) {
-        let lane_count = lengths.tile_count * FINE_WORKGROUP_SIZE as usize;
-        let clip_spill_depth = max_clip_depth.saturating_sub(FINE_LOCAL_CLIP_DEPTH);
-        let group_spill_depth = max_group_depth.saturating_sub(FINE_LOCAL_GROUP_DEPTH);
-        self.fine_spills.resize_uninit::<u32>(
-            &self.device,
-            "tileink wgpu fine spills",
-            lane_count * clip_spill_depth
-                + lane_count * group_spill_depth * FINE_GROUP_SPILL_FIELDS,
-        );
-        self.fine_indirect_args.resize_uninit::<u32>(
-            &self.device,
-            "tileink wgpu fine indirect args",
-            FINE_TILE_LIST_COUNT * FINE_TILE_DISPATCH_WORDS,
-        );
-    }
-
-    fn scan_and_cumsum(&mut self, commands: &mut WgpuCommandBatch, _scene: &Canvas) -> bool {
-        let (Some(scan), Some(cumsum)) = (&self.scan_pipeline, &self.cumsum) else {
-            return false;
-        };
-        scan.run_in(commands, &self.scene_buffers, &mut self.scan, self.lengths);
-        cumsum.run_in(commands, &self.scene_buffers, &mut self.scan, self.lengths);
-        true
-    }
-
-    #[cfg(test)]
-    fn coarse_batch(
-        &mut self,
-        _canvas: &Canvas,
-        draw_start: u32,
-        draw_end: u32,
-        layer_stack_start: u32,
-        layer_stack_end: u32,
-    ) {
-        if let Some(coarse) = &self.coarse_pipeline {
-            coarse.run(
-                &self.device,
-                &self.queue,
-                &self.scene_buffers,
-                &self.scan,
-                &mut self.coarse,
-                self.lengths,
-                WgpuCoarseBatch {
-                    draw_start,
-                    draw_end,
-                    layer_stack_start,
-                    layer_stack_end,
-                },
-            );
-        }
-    }
-
-    #[cfg(test)]
-    fn scan_for_test(&mut self) {
-        if let Some(scan) = &self.scan_pipeline {
-            scan.run(
-                &self.device,
-                &self.queue,
-                &self.scene_buffers,
-                &mut self.scan,
-                self.lengths,
-            );
-        }
-    }
-
-    #[cfg(test)]
-    fn cumsum_for_test(&mut self) {
-        if let Some(cumsum) = &self.cumsum {
-            cumsum.run(
-                &self.device,
-                &self.queue,
-                &self.scene_buffers,
-                &mut self.scan,
-                self.lengths,
-            );
-        }
-    }
-
-    fn render_prepared_tile_plan(&mut self, canvas: &Canvas) -> bool {
-        if self.fine.is_none() || self.coarse_pipeline.is_none() || self.filter.is_none() {
-            return false;
-        }
-        let Some(plan) = self.plan.clone() else {
-            return false;
-        };
-
-        let mut commands = WgpuCommandBatch::new(&self.device, &self.queue, "tileink wgpu frame");
-        if !self.scan_and_cumsum(&mut commands, canvas) {
-            return false;
-        }
-        self.clear_render_target(&mut commands, WgpuRenderTargetId::Main, self.clear_color);
-        let mut filter_cursors = WgpuFilterCursors::default();
-        let ok = self.execute_ops(
-            &mut commands,
-            canvas,
-            &plan,
-            &plan.ops,
-            WgpuRenderTargetId::Main,
-            &mut filter_cursors,
-        );
-        commands.finish();
-        ok
-    }
-
-    fn execute_ops(
-        &mut self,
-        commands: &mut WgpuCommandBatch,
-        canvas: &Canvas,
-        plan: &ExecPlan,
-        ops: &[ExecOp],
-        target: WgpuRenderTargetId,
-        filter_cursors: &mut WgpuFilterCursors,
-    ) -> bool {
-        for op in ops {
-            let ok = match op {
-                ExecOp::DrawBatch { draws, layer_stack } => self.execute_draw_batch(
-                    commands,
-                    canvas,
-                    draws.clone(),
-                    layer_stack.clone(),
-                    target,
-                ),
-                ExecOp::BeginClip
-                | ExecOp::EndClip
-                | ExecOp::BeginOpacity
-                | ExecOp::EndOpacity
-                | ExecOp::BeginBlend
-                | ExecOp::EndBlend => true,
-                ExecOp::OffscreenLayer {
-                    draw,
-                    layer,
-                    outer_stack,
-                    children,
-                } => self.execute_offscreen_layer(
-                    commands,
-                    canvas,
-                    plan,
-                    *draw,
-                    layer,
-                    outer_stack.clone(),
-                    children,
-                    target,
-                    filter_cursors,
-                ),
-                ExecOp::OffscreenMaskLayer {
-                    layer,
-                    outer_stack,
-                    content,
-                    mask,
-                } => self.execute_mask_layer(
-                    commands,
-                    canvas,
-                    plan,
-                    layer,
-                    outer_stack.clone(),
-                    content,
-                    mask,
-                    target,
-                    filter_cursors,
-                ),
-            };
-            if !ok {
-                return false;
-            }
-        }
-        true
-    }
-
-    fn execute_draw_batch(
-        &mut self,
-        commands: &mut WgpuCommandBatch,
-        _scene: &Canvas,
-        draws: std::ops::Range<usize>,
-        layer_stack: std::ops::Range<usize>,
-        target: WgpuRenderTargetId,
-    ) -> bool {
-        if draws.start >= draws.end {
-            return true;
-        }
-        self.coarse_and_fine_batch_to(
-            commands,
-            draws.start as u32,
-            draws.end as u32,
-            layer_stack.start as u32,
-            layer_stack.end as u32,
-            target,
-        )
-    }
-
-    fn coarse_and_fine_batch_to(
-        &mut self,
-        commands: &mut WgpuCommandBatch,
-        draw_start: u32,
-        draw_end: u32,
-        layer_stack_start: u32,
-        layer_stack_end: u32,
-        target: WgpuRenderTargetId,
-    ) -> bool {
-        if self.coarse_pipeline.is_none() || self.fine.is_none() {
-            return false;
-        }
-        let batch = WgpuCoarseBatch {
-            draw_start,
-            draw_end,
-            layer_stack_start,
-            layer_stack_end,
-        };
-        self.coarse_pipeline.as_ref().unwrap().encode_in(
-            commands,
-            &self.scene_buffers,
-            &self.scan,
-            &mut self.coarse,
-            self.lengths,
-            batch,
-        );
-        self.fine_batch_to_in(commands, target)
-    }
-
-    fn fine_batch_to_in(
-        &mut self,
-        commands: &mut WgpuCommandBatch,
-        target: WgpuRenderTargetId,
-    ) -> bool {
-        let Some(fine) = &self.fine else {
-            return false;
-        };
-        if fine.uses_portable_textures() {
-            return self.fine_portable_batch_to_in(commands, target);
-        }
-        match target {
-            WgpuRenderTargetId::Main => {
-                if let Some(target) = &self.root_target_view {
-                    fine.render_tiles_to_view_in(
-                        commands,
-                        self.size.0,
-                        self.size.1,
-                        self.lengths,
-                        &self.scene_buffers,
-                        &self.scan,
-                        &self.coarse,
-                        &self.fine_spills,
-                        &self.fine_indirect_args,
-                        target,
-                        self.clear_color,
-                        true,
-                        self.max_clip_depth.saturating_sub(FINE_LOCAL_CLIP_DEPTH) as u32,
-                        self.max_group_depth.saturating_sub(FINE_LOCAL_GROUP_DEPTH) as u32,
-                    )
-                } else {
-                    fine.render_tiles_in(
-                        commands,
-                        self.size.0,
-                        self.size.1,
-                        self.lengths,
-                        &self.scene_buffers,
-                        &self.scan,
-                        &self.coarse,
-                        &self.fine_spills,
-                        &self.fine_indirect_args,
-                        &mut self.readback_target,
-                        self.clear_color,
-                        true,
-                        self.max_clip_depth.saturating_sub(FINE_LOCAL_CLIP_DEPTH) as u32,
-                        self.max_group_depth.saturating_sub(FINE_LOCAL_GROUP_DEPTH) as u32,
-                    )
-                }
-            }
-            WgpuRenderTargetId::Scratch(ix) => fine.render_tiles_in(
-                commands,
-                self.size.0,
-                self.size.1,
-                self.lengths,
-                &self.scene_buffers,
-                &self.scan,
-                &self.coarse,
-                &self.fine_spills,
-                &self.fine_indirect_args,
-                &mut self.scratch[ix],
-                self.clear_color,
-                true,
-                self.max_clip_depth.saturating_sub(FINE_LOCAL_CLIP_DEPTH) as u32,
-                self.max_group_depth.saturating_sub(FINE_LOCAL_GROUP_DEPTH) as u32,
-            ),
-        }
-    }
-
-    fn fine_portable_batch_to_in(
-        &mut self,
-        commands: &mut WgpuCommandBatch,
-        target: WgpuRenderTargetId,
-    ) -> bool {
-        let Some(fine) = &self.fine else {
-            return false;
-        };
-        let Some(target_texture) = self.render_target_texture(target).cloned() else {
-            return false;
-        };
-        self.fine_portable_source
-            .resize(commands.device(), self.size.0, self.size.1);
-        self.fine_portable_target
-            .resize(commands.device(), self.size.0, self.size.1);
-        copy_texture(
-            commands.encoder(),
-            &target_texture,
-            self.fine_portable_source.texture(),
-            self.size,
-        );
-        let ok = fine.render_tiles_to_views_in(
-            commands,
-            self.size.0,
-            self.size.1,
-            self.lengths,
-            &self.scene_buffers,
-            &self.scan,
-            &self.coarse,
-            &self.fine_spills,
-            &self.fine_indirect_args,
-            self.fine_portable_source.view(),
-            self.fine_portable_target.view(),
-            self.clear_color,
-            true,
-            self.max_clip_depth.saturating_sub(FINE_LOCAL_CLIP_DEPTH) as u32,
-            self.max_group_depth.saturating_sub(FINE_LOCAL_GROUP_DEPTH) as u32,
-        );
-        if ok {
-            copy_texture(
-                commands.encoder(),
-                self.fine_portable_target.texture(),
-                &target_texture,
-                self.size,
-            );
-        }
-        ok
-    }
-
-    fn execute_offscreen_layer(
-        &mut self,
-        commands: &mut WgpuCommandBatch,
-        canvas: &Canvas,
-        plan: &ExecPlan,
-        draw: usize,
-        layer: &Layer,
-        outer_stack: std::ops::Range<usize>,
-        children: &[ExecOp],
-        target: WgpuRenderTargetId,
-        filter_cursors: &mut WgpuFilterCursors,
-    ) -> bool {
-        match layer {
-            Layer::Isolate => self.execute_masked_group_layer(
-                commands,
-                canvas,
-                plan,
-                draw,
-                outer_stack,
-                children,
-                None,
-                None,
-                target,
-                filter_cursors,
-            ),
-            Layer::Opacity(opacity) => self.execute_masked_group_layer(
-                commands,
-                canvas,
-                plan,
-                draw,
-                outer_stack,
-                children,
-                Some(opacity.opacity),
-                None,
-                target,
-                filter_cursors,
-            ),
-            Layer::Blend(blend) => self.execute_masked_group_layer(
-                commands,
-                canvas,
-                plan,
-                draw,
-                outer_stack,
-                children,
-                None,
-                Some(blend.mode),
-                target,
-                filter_cursors,
-            ),
-            Layer::Filter {
-                filter,
-                sample_region,
-            } => self.execute_filter_layer(
-                commands,
-                canvas,
-                plan,
-                filter,
-                sample_region,
-                outer_stack,
-                children,
-                target,
-                filter_cursors,
-            ),
-            Layer::Backdrop {
-                filter,
-                sample_region,
-            } => self.execute_backdrop_layer(
-                commands,
-                canvas,
-                plan,
-                filter,
-                sample_region,
-                outer_stack,
-                children,
-                target,
-                filter_cursors,
-            ),
-            Layer::ClipSdf { .. } => false,
-            Layer::Clip => false,
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn execute_masked_group_layer(
-        &mut self,
-        commands: &mut WgpuCommandBatch,
-        canvas: &Canvas,
-        plan: &ExecPlan,
-        draw: usize,
-        outer_stack: std::ops::Range<usize>,
-        children: &[ExecOp],
-        opacity: Option<f32>,
-        blend: Option<peniko::BlendMode>,
-        target: WgpuRenderTargetId,
-        filter_cursors: &mut WgpuFilterCursors,
-    ) -> bool {
-        let bounds = draw_bounds(canvas, draw).intersect(Bounds::canvas(self.size.0, self.size.1));
-        if bounds.is_empty() {
-            return true;
-        }
-
-        let Some(source) =
-            self.render_ops_to_scratch(commands, canvas, plan, children, filter_cursors)
-        else {
-            return false;
-        };
-        if let Some(opacity) = opacity {
-            self.apply_color_filter_to_target(commands, source, bounds, FILTER_OPACITY, opacity);
-        }
-
-        let Some(mask) = self.acquire_scratch() else {
-            self.release_scratch(source);
-            return false;
-        };
-        self.build_layer_mask(commands, mask, draw as u32, bounds);
-        let ok = if let Some(mode) = blend {
-            self.composite_blend_with_stack(
-                commands,
-                target,
-                source,
-                mask,
-                bounds,
-                outer_stack,
-                mode,
-            )
-        } else {
-            self.composite_src_over_with_stack(
-                commands,
-                target,
-                source,
-                Some(mask),
-                bounds,
-                outer_stack,
-            )
-        };
-        self.release_scratch(mask);
-        self.release_scratch(source);
-        ok
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn execute_filter_layer(
-        &mut self,
-        commands: &mut WgpuCommandBatch,
-        canvas: &Canvas,
-        plan: &ExecPlan,
-        filter: &Filter,
-        sample_region: &crate::shared::layer::region::Region,
-        outer_stack: std::ops::Range<usize>,
-        children: &[ExecOp],
-        target: WgpuRenderTargetId,
-        filter_cursors: &mut WgpuFilterCursors,
-    ) -> bool {
-        let target_bounds = Bounds::canvas(self.size.0, self.size.1);
-        let Some(filter_bounds) =
-            filter_model::filter_surface_bounds(filter, sample_region, target_bounds)
-        else {
-            filter_cursors.advance_filter_layer(sample_region, children, filter);
-            return true;
-        };
-
-        filter_cursors.advance_filter_layer(sample_region, children, filter);
-        let local = profile_cpu("prepare.local_scene", || {
-            local_offscreen_scene(canvas, plan, children, filter_bounds.surface)
-        });
-        let local_filter = profile_cpu("prepare.local_filter", || {
-            local_filter(filter, filter_bounds.surface)
-        });
-        let local_bounds = Bounds::canvas(
-            filter_bounds.surface.width(),
-            filter_bounds.surface.height(),
-        );
-        let local_origin = (
-            self.surface_origin.0 + filter_bounds.surface.x0,
-            self.surface_origin.1 + filter_bounds.surface.y0,
-        );
-        let local_scratch_count =
-            1 + required_scratch_count(&local.plan).max(filter_scratch_extra(&local_filter));
-        let saved = self.activate_local_scene_resources(
-            &local.canvas,
-            &local.plan,
-            &local_filter,
-            local_scratch_count,
-            local_origin,
-        );
-
-        let source = WgpuRenderTargetId::Scratch(0);
-        self.scratch_in_use[0] = true;
-        self.clear_render_target(commands, source, 0);
-        if !self.scan_and_cumsum(commands, &local.canvas) {
-            self.restore_root_scene_resources(saved);
-            return false;
-        }
-        let mut local_filter_cursors = WgpuFilterCursors::default();
-        let ok = self.execute_ops(
-            commands,
-            &local.canvas,
-            &local.plan,
-            &local.children,
-            source,
-            &mut local_filter_cursors,
-        ) && self.apply_filter(
-            commands,
-            source,
-            local_bounds,
-            &local_filter,
-            None,
-            &mut local_filter_cursors,
-        );
-
-        let mut local_scratch = std::mem::take(&mut self.scratch);
-        let source_buffer = local_scratch.remove(0);
-        self.scratch_in_use.clear();
-        self.restore_root_scene_resources(saved);
-        ok && self.composite_surface_src_over_with_stack(
-            commands,
-            target,
-            &source_buffer,
-            (
-                filter_bounds.surface.width(),
-                filter_bounds.surface.height(),
-            ),
-            (filter_bounds.surface.x0, filter_bounds.surface.y0),
-            filter_bounds.output,
-            outer_stack,
-        )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn execute_backdrop_layer(
-        &mut self,
-        commands: &mut WgpuCommandBatch,
-        canvas: &Canvas,
-        plan: &ExecPlan,
-        filter: &Filter,
-        sample_region: &crate::shared::layer::region::Region,
-        outer_stack: std::ops::Range<usize>,
-        children: &[ExecOp],
-        target: WgpuRenderTargetId,
-        filter_cursors: &mut WgpuFilterCursors,
-    ) -> bool {
-        let bounds = filter_model::filtered_region_bounds(
-            filter,
-            sample_region,
-            Bounds::canvas(self.size.0, self.size.1),
-        );
-        if bounds.is_empty() {
-            filter_cursors.next_path_index(sample_region);
-            return true;
-        }
-        let path_index = filter_cursors.next_path_index(sample_region);
-
-        if outer_stack.is_empty()
-            && let Filter::Blur {
-                std_dev_x,
-                std_dev_y,
-                sampling,
-            } = filter
-            && self.apply_downsampled_blur_rect_composite(
-                commands,
-                target,
-                bounds,
-                *std_dev_x,
-                *std_dev_y,
-                *sampling,
-                sample_region,
-            )
-        {
-            return self.execute_ops(commands, canvas, plan, children, target, filter_cursors);
-        }
-
-        if outer_stack.is_empty()
-            && let Filter::RectLiquidGlass(glass) = filter
-            && self.apply_downsampled_liquid_glass_rect_composite(
-                commands,
-                target,
-                bounds,
-                *glass,
-                sample_region,
-            )
-        {
-            return self.execute_ops(commands, canvas, plan, children, target, filter_cursors);
-        }
-
-        let Some(backdrop) = self.acquire_scratch() else {
-            return false;
-        };
-        let filter_ok = match filter {
-            Filter::Blur {
-                std_dev_x,
-                std_dev_y,
-                sampling,
-            } => self.apply_blur_from_source(
-                commands, target, backdrop, bounds, *std_dev_x, *std_dev_y, *sampling,
-            ),
-            _ => {
-                self.copy_region_to_target(commands, target, backdrop, bounds)
-                    && self.apply_filter(
-                        commands,
-                        backdrop,
-                        bounds,
-                        filter,
-                        Some(sample_region),
-                        filter_cursors,
-                    )
-            }
-        };
-        if !filter_ok {
-            self.release_scratch(backdrop);
-            return false;
-        }
-
-        let ok = if outer_stack.is_empty() {
-            self.composite_src_over_rect_mask_direct(
-                commands,
-                target,
-                backdrop,
-                bounds,
-                sample_region,
-            )
-        } else {
-            false
-        };
-        let ok = if ok {
-            true
-        } else {
-            let Some(mask) = self.acquire_scratch() else {
-                self.release_scratch(backdrop);
-                return false;
-            };
-            let mask_ok = self.build_region_mask(commands, mask, sample_region, path_index, bounds);
-            if !mask_ok {
-                self.release_scratch(mask);
-                self.release_scratch(backdrop);
-                return false;
-            }
-
-            let ok = self.composite_src_over_with_stack(
-                commands,
-                target,
-                backdrop,
-                Some(mask),
-                bounds,
-                outer_stack,
-            );
-            self.release_scratch(mask);
-            ok
-        };
-        self.release_scratch(backdrop);
-        ok && self.execute_ops(commands, canvas, plan, children, target, filter_cursors)
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn execute_mask_layer(
-        &mut self,
-        commands: &mut WgpuCommandBatch,
-        canvas: &Canvas,
-        plan: &ExecPlan,
-        layer: &crate::shared::layer::mask::Mask,
-        outer_stack: std::ops::Range<usize>,
-        content: &[ExecOp],
-        mask_ops: &[ExecOp],
-        target: WgpuRenderTargetId,
-        filter_cursors: &mut WgpuFilterCursors,
-    ) -> bool {
-        let bounds =
-            region_bounds(&layer.region).intersect(Bounds::canvas(self.size.0, self.size.1));
-        if bounds.is_empty() {
-            filter_cursors.next_path_index(&layer.region);
-            return true;
-        }
-        let path_index = filter_cursors.next_path_index(&layer.region);
-
-        let Some(content_target) =
-            self.render_ops_to_scratch(commands, canvas, plan, content, filter_cursors)
-        else {
-            return false;
-        };
-        let Some(mask_source) =
-            self.render_ops_to_scratch(commands, canvas, plan, mask_ops, filter_cursors)
-        else {
-            self.release_scratch(content_target);
-            return false;
-        };
-
-        let Some(mask) = self.acquire_scratch() else {
-            self.release_scratch(mask_source);
-            self.release_scratch(content_target);
-            return false;
-        };
-        self.svg_mask_coverage(commands, mask_source, mask, bounds, layer.kind);
-        self.release_scratch(mask_source);
-
-        let Some(region_mask) = self.acquire_scratch() else {
-            self.release_scratch(mask);
-            self.release_scratch(content_target);
-            return false;
-        };
-        let region_ok =
-            self.build_region_mask(commands, region_mask, &layer.region, path_index, bounds);
-        if region_ok {
-            self.apply_region_mask(commands, region_mask, mask, bounds);
-        }
-        self.release_scratch(region_mask);
-        if !region_ok {
-            self.release_scratch(mask);
-            self.release_scratch(content_target);
-            return false;
-        }
-
-        let ok = self.composite_src_over_with_stack(
-            commands,
-            target,
-            content_target,
-            Some(mask),
-            bounds,
-            outer_stack,
-        );
-        self.release_scratch(mask);
-        self.release_scratch(content_target);
-        ok
-    }
-
-    fn render_ops_to_scratch(
-        &mut self,
-        commands: &mut WgpuCommandBatch,
-        canvas: &Canvas,
-        plan: &ExecPlan,
-        ops: &[ExecOp],
-        filter_cursors: &mut WgpuFilterCursors,
-    ) -> Option<WgpuRenderTargetId> {
-        let target = self.acquire_scratch()?;
-        self.clear_render_target(commands, target, 0);
-        if self.execute_ops(commands, canvas, plan, ops, target, filter_cursors) {
-            Some(target)
-        } else {
-            self.release_scratch(target);
-            None
-        }
-    }
-
-    fn build_layer_mask(
-        &self,
-        commands: &mut WgpuCommandBatch,
-        target: WgpuRenderTargetId,
-        draw_ix: u32,
-        bounds: Bounds,
-    ) {
-        if let Some(filter) = &self.filter {
-            let bindings = self.scene_buffers.filter_bindings(&self.scan);
-            filter.build_layer_mask(
-                commands,
-                self.render_target_view(target),
-                self.size,
-                self.lengths,
-                &bindings,
-                draw_ix,
-                bounds,
-            );
-        }
-    }
-
-    fn build_region_mask(
-        &self,
-        commands: &mut WgpuCommandBatch,
-        target: WgpuRenderTargetId,
-        region: &crate::shared::layer::region::Region,
-        path_index: Option<u32>,
-        bounds: Bounds,
-    ) -> bool {
-        let paths = self.filter_path_bindings();
-        self.filter.as_ref().is_some_and(|filter| {
-            filter.build_region_mask(
-                commands,
-                self.render_target_view(target),
-                self.size,
-                self.lengths,
-                region,
-                path_index,
-                &paths,
-                bounds,
-            )
-        })
-    }
-
-    fn svg_mask_coverage(
-        &self,
-        commands: &mut WgpuCommandBatch,
-        source: WgpuRenderTargetId,
-        target: WgpuRenderTargetId,
-        bounds: Bounds,
-        kind: crate::shared::layer::mask::MaskKind,
-    ) {
-        if let Some(filter) = &self.filter {
-            filter.svg_mask_coverage(
-                commands,
-                self.render_target_view(source),
-                self.render_target_view(target),
-                self.size,
-                self.lengths,
-                bounds,
-                kind,
-            );
-        }
-    }
-
-    fn apply_region_mask(
-        &self,
-        commands: &mut WgpuCommandBatch,
-        mask: WgpuRenderTargetId,
-        target: WgpuRenderTargetId,
-        bounds: Bounds,
-    ) {
-        if let Some(filter) = &self.filter {
-            let Some(target_read) = self.snapshot_filter_target(commands, target) else {
-                return;
-            };
-            filter.apply_region_mask(
-                commands,
-                self.render_target_view(mask),
-                self.render_target_view(target),
-                target_read,
-                self.size,
-                self.lengths,
-                bounds,
-            );
-        }
-    }
-
-    fn composite_src_over_with_stack(
-        &self,
-        commands: &mut WgpuCommandBatch,
-        target: WgpuRenderTargetId,
-        source: WgpuRenderTargetId,
-        mask: Option<WgpuRenderTargetId>,
-        bounds: Bounds,
-        layer_stack: std::ops::Range<usize>,
-    ) -> bool {
-        let Some(filter) = &self.filter else {
-            return false;
-        };
-        let bindings = self.scene_buffers.filter_bindings(&self.scan);
-        let Some(target_read) = self.snapshot_filter_target(commands, target) else {
-            return false;
-        };
-        filter.composite_src_over_with_stack(
-            commands,
-            self.render_target_view(target),
-            target_read,
-            self.render_target_view(source),
-            mask.map(|mask| self.render_target_view(mask)),
-            self.size,
-            self.lengths,
-            &bindings,
-            bounds,
-            layer_stack,
-        );
-        true
-    }
-
-    fn composite_src_over_rect_mask_direct(
-        &self,
-        commands: &mut WgpuCommandBatch,
-        target: WgpuRenderTargetId,
-        source: WgpuRenderTargetId,
-        bounds: Bounds,
-        region: &crate::shared::layer::region::Region,
-    ) -> bool {
-        let Some(filter) = &self.filter else {
-            return false;
-        };
-        let Some(target_read) = self.snapshot_filter_target(commands, target) else {
-            return false;
-        };
-        filter.composite_src_over_rect_mask_direct(
-            commands,
-            self.render_target_view(target),
-            target_read,
-            self.render_target_view(source),
-            self.size,
-            self.lengths,
-            bounds,
-            region,
-        )
-    }
-
-    fn composite_blend_with_stack(
-        &self,
-        commands: &mut WgpuCommandBatch,
-        target: WgpuRenderTargetId,
-        source: WgpuRenderTargetId,
-        mask: WgpuRenderTargetId,
-        bounds: Bounds,
-        layer_stack: std::ops::Range<usize>,
-        mode: peniko::BlendMode,
-    ) -> bool {
-        let Some(filter) = &self.filter else {
-            return false;
-        };
-        let bindings = self.scene_buffers.filter_bindings(&self.scan);
-        let Some(target_read) = self.snapshot_filter_target(commands, target) else {
-            return false;
-        };
-        filter.composite_blend_with_stack(
-            commands,
-            self.render_target_view(target),
-            target_read,
-            self.render_target_view(source),
-            self.render_target_view(mask),
-            self.size,
-            self.lengths,
-            &bindings,
-            bounds,
-            layer_stack,
-            mode,
-        );
-        true
-    }
-
-    fn composite_surface_src_over_with_stack(
-        &self,
-        commands: &mut WgpuCommandBatch,
-        target: WgpuRenderTargetId,
-        source: &WgpuTarget,
-        source_size: (u32, u32),
-        source_origin: (i32, i32),
-        bounds: Bounds,
-        layer_stack: std::ops::Range<usize>,
-    ) -> bool {
-        let Some(filter) = &self.filter else {
-            return false;
-        };
-        let bindings = self.scene_buffers.filter_bindings(&self.scan);
-        let Some(target_read) = self.snapshot_filter_target(commands, target) else {
-            return false;
-        };
-        filter.composite_src_over_surface_with_stack(
-            commands,
-            self.render_target_view(target),
-            target_read,
-            source.view(),
-            self.size,
-            source_size,
-            source_origin,
-            self.lengths,
-            &bindings,
-            bounds,
-            layer_stack,
-        );
-        true
-    }
-
-    fn acquire_scratch(&mut self) -> Option<WgpuRenderTargetId> {
-        for (ix, in_use) in self.scratch_in_use.iter_mut().enumerate() {
-            if !*in_use {
-                *in_use = true;
-                return Some(WgpuRenderTargetId::Scratch(ix));
-            }
-        }
-        None
-    }
-
-    fn release_scratch(&mut self, target: WgpuRenderTargetId) {
-        let WgpuRenderTargetId::Scratch(ix) = target else {
-            return;
-        };
-        self.scratch_in_use[ix] = false;
-    }
-
-    fn render_target_view(&self, target: WgpuRenderTargetId) -> &::wgpu::TextureView {
-        match target {
-            WgpuRenderTargetId::Main => self
-                .root_target_view
-                .as_ref()
-                .unwrap_or(self.readback_target.view()),
-            WgpuRenderTargetId::Scratch(ix) => self.scratch[ix].view(),
-        }
-    }
-
-    fn render_target_texture(&self, target: WgpuRenderTargetId) -> Option<&::wgpu::Texture> {
-        match target {
-            WgpuRenderTargetId::Main => Some(
-                self.root_target_texture
-                    .as_ref()
-                    .unwrap_or(self.readback_target.texture()),
-            ),
-            WgpuRenderTargetId::Scratch(ix) => Some(self.scratch.get(ix)?.texture()),
-        }
-    }
-
-    fn snapshot_filter_target(
-        &self,
-        commands: &mut WgpuCommandBatch,
-        target: WgpuRenderTargetId,
-    ) -> Option<&::wgpu::TextureView> {
-        copy_texture(
-            commands.encoder(),
-            self.render_target_texture(target)?,
-            self.filter_target_snapshot.texture(),
-            self.size,
-        );
-        Some(self.filter_target_snapshot.view())
-    }
-
-    fn filter_brush_bindings(&self) -> WgpuFilterBrushBindings<'_> {
-        let image_resources = self.scene_buffers.image_resource_bindings();
-        WgpuFilterBrushBindings {
-            blob: self.filter_brushes.blob.buffer(),
-            image_resource_atlas: image_resources.atlas,
-            image_resource_sampler: image_resources.sampler,
-            image_resource_texture_views: image_resources.texture_views,
-            image_resource_dummy_texture: image_resources.dummy_texture,
-        }
-    }
-
-    fn filter_turbulence_bindings(&self) -> WgpuFilterTurbulenceBindings<'_> {
-        WgpuFilterTurbulenceBindings {
-            selectors: self.filter_turbulence.selectors.buffer(),
-            gradients: self.filter_turbulence.gradients.buffer(),
-        }
-    }
-
-    fn filter_path_bindings(&self) -> WgpuFilterPathBindings<'_> {
-        WgpuFilterPathBindings {
-            range_starts: self.filter_paths.range_starts.buffer(),
-            range_ends: self.filter_paths.range_ends.buffer(),
-            p0x: self.filter_paths.p0x.buffer(),
-            p0y: self.filter_paths.p0y.buffer(),
-            p1x: self.filter_paths.p1x.buffer(),
-            p1y: self.filter_paths.p1y.buffer(),
-        }
-    }
-
-    pub fn render_with_text(
-        &mut self,
-        canvas: &Canvas,
-        font_system: &mut TextFontSystem,
-        text_context: &mut TextContext,
-    ) {
-        self.prepare_scene_with_text(canvas, font_system, text_context);
-        assert!(
-            self.render_prepared_tile_plan(canvas),
-            "wgpu renderer could not render text scene natively"
-        );
-        self.size = (canvas.physical_width(), canvas.physical_height());
-    }
-
-    pub fn render_with_options(
-        &mut self,
-        canvas: &Canvas,
-        options: &RenderOptions,
-    ) -> RenderDebugCapture {
-        self.prepare_scene(canvas);
-        let rendered_native = self.render_prepared_tile_plan(canvas);
-        if rendered_native {
-            self.size = (canvas.physical_width(), canvas.physical_height());
-            let image = self.image();
-            let debug = self.read_debug_scan_buffers();
-            return capture_render_debug(
-                "wgpu",
-                canvas,
-                &image,
-                DebugScanBuffers {
-                    backdrops: &debug.backdrops,
-                    tile_segment_ranges: &debug.tile_segment_ranges,
-                    segments: &debug.segments,
-                },
-                options,
-            );
-        }
-
-        panic!("wgpu renderer could not render debug scene natively")
-    }
-
-    fn read_debug_scan_buffers(&self) -> WgpuDebugScanReadback {
-        let backdrops =
-            self.scan
-                .backdrops
-                .read::<i32>(&self.device, &self.queue, self.lengths.backdrop_len);
-        let tile_segment_ranges = self.scan.tile_segment_ranges.read::<TileSegmentRange>(
-            &self.device,
-            &self.queue,
-            self.lengths.backdrop_len,
-        );
-        let segments = self.scan.segments.read::<LineSegment>(
-            &self.device,
-            &self.queue,
-            self.lengths.segment_capacity,
-        );
-        WgpuDebugScanReadback {
-            backdrops,
-            tile_segment_ranges,
-            segments,
-        }
-    }
-
-    pub fn image(&self) -> Image {
-        let byte_len = self.target_rgba8_byte_len();
-        if byte_len == 0 {
-            return Image {
-                width: self.size.0,
-                height: self.size.1,
-                pixels: Vec::new(),
-            };
-        }
-
-        let row_bytes = self.target_row_bytes();
-        let padded_row_bytes =
-            row_bytes.next_multiple_of(::wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as u64);
-        let readback = self.device.create_buffer(&::wgpu::BufferDescriptor {
-            label: Some("tileink wgpu target readback"),
-            size: padded_row_bytes * self.size.1 as u64,
-            usage: ::wgpu::BufferUsages::COPY_DST | ::wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
-        let mut encoder = self
-            .device
-            .create_command_encoder(&::wgpu::CommandEncoderDescriptor {
-                label: Some("tileink wgpu target readback copy"),
-            });
-        encoder.copy_texture_to_buffer(
-            self.readback_target.texture().as_image_copy(),
-            ::wgpu::TexelCopyBufferInfo {
-                buffer: &readback,
-                layout: ::wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(padded_row_bytes as u32),
-                    rows_per_image: None,
-                },
-            },
-            self.target_texture_extent(),
-        );
-        self.queue.submit([encoder.finish()]);
-
-        let (tx, rx) = mpsc::channel();
-        readback
-            .slice(..)
-            .map_async(::wgpu::MapMode::Read, move |result| {
-                tx.send(result).unwrap()
-            });
-        self.device
-            .poll(::wgpu::PollType::wait_indefinitely())
-            .expect("poll wgpu device for target readback");
-        rx.recv()
-            .expect("receive target readback map result")
-            .expect("map wgpu target readback buffer");
-
-        let mapped = readback
-            .slice(..)
-            .get_mapped_range()
-            .expect("read mapped wgpu target readback buffer");
-        let mut pixels = Vec::with_capacity(self.size.0 as usize * self.size.1 as usize);
-        for row in 0..self.size.1 as usize {
-            let start = row * padded_row_bytes as usize;
-            let row = &mapped[start..start + row_bytes as usize];
-            pixels.extend_from_slice(bytemuck::cast_slice(row));
-        }
-        drop(mapped);
-        readback.unmap();
-        Image {
-            width: self.size.0,
-            height: self.size.1,
-            pixels,
-        }
-    }
-
-    pub fn device(&self) -> &::wgpu::Device {
-        &self.device
-    }
-
-    pub fn queue(&self) -> &::wgpu::Queue {
-        &self.queue
-    }
-
-    pub fn target_rgba8_byte_len(&self) -> ::wgpu::BufferAddress {
-        rgba8_byte_len(self.size.0, self.size.1)
-    }
-
-    pub fn render_to_wgpu_texture(
-        &mut self,
-        canvas: &Canvas,
-        dst: &::wgpu::Texture,
-    ) -> Result<(), WgpuTextureRenderError> {
-        self.render_native_to_wgpu_texture(canvas, dst)?;
-        self.last_frame_used_native = true;
-        Ok(())
-    }
-
-    pub fn render_with_text_to_wgpu_texture(
-        &mut self,
-        canvas: &Canvas,
-        font_system: &mut TextFontSystem,
-        text_context: &mut TextContext,
-        dst: &::wgpu::Texture,
-    ) -> Result<(), WgpuTextureRenderError> {
-        self.render_native_with_text_to_wgpu_texture(canvas, font_system, text_context, dst)?;
-        self.last_frame_used_native = true;
-        Ok(())
-    }
-
-    fn render_native_to_wgpu_texture(
-        &mut self,
-        canvas: &Canvas,
-        dst: &::wgpu::Texture,
-    ) -> Result<(), WgpuTextureRenderError> {
-        self.render_native_to_wgpu_texture_with_prepare(canvas, dst, |renderer, canvas| {
-            renderer.prepare_scene(canvas);
-        })
-    }
-
-    fn render_native_with_text_to_wgpu_texture(
-        &mut self,
-        canvas: &Canvas,
-        font_system: &mut TextFontSystem,
-        text_context: &mut TextContext,
-        dst: &::wgpu::Texture,
-    ) -> Result<(), WgpuTextureRenderError> {
-        self.render_native_to_wgpu_texture_with_prepare(canvas, dst, |renderer, canvas| {
-            renderer.prepare_scene_with_text(canvas, font_system, text_context);
-        })
-    }
-
-    fn render_native_to_wgpu_texture_with_prepare(
-        &mut self,
-        canvas: &Canvas,
-        dst: &::wgpu::Texture,
-        prepare: impl FnOnce(&mut Self, &Canvas),
-    ) -> Result<(), WgpuTextureRenderError> {
-        self.validate_wgpu_storage_texture_destination(
-            dst,
-            canvas.physical_width(),
-            canvas.physical_height(),
-        )?;
-        self.root_target_texture = Some(dst.clone());
-        self.root_target_view = Some(dst.create_view(&::wgpu::TextureViewDescriptor::default()));
-        prepare(self, canvas);
-        let rendered = self.render_prepared_tile_plan(canvas);
-        self.root_target_view = None;
-        self.root_target_texture = None;
-        if rendered {
-            self.size = (canvas.physical_width(), canvas.physical_height());
-            return Ok(());
-        }
-        panic!("wgpu renderer could not render scene natively")
-    }
-
-    fn validate_wgpu_storage_texture_destination(
-        &self,
-        dst: &::wgpu::Texture,
-        width: u32,
-        height: u32,
-    ) -> Result<(), WgpuTextureRenderError> {
-        if dst.width() < width || dst.height() < height {
-            return Err(WgpuTextureRenderError::DestinationTooSmall {
-                required_width: width,
-                required_height: height,
-                actual_width: dst.width(),
-                actual_height: dst.height(),
-            });
-        }
-        if !dst.usage().contains(::wgpu::TextureUsages::STORAGE_BINDING) {
-            return Err(WgpuTextureRenderError::DestinationStorageUsageMissing(
-                dst.usage(),
-            ));
-        }
-        if self
-            .fine
-            .as_ref()
-            .is_some_and(WgpuFinePipeline::uses_portable_textures)
-            && !dst
-                .usage()
-                .contains(::wgpu::TextureUsages::COPY_SRC | ::wgpu::TextureUsages::COPY_DST)
-        {
-            return Err(WgpuTextureRenderError::DestinationUsageMissing(dst.usage()));
-        }
-        if dst.format() != ::wgpu::TextureFormat::Rgba8Unorm
-            || dst.dimension() != ::wgpu::TextureDimension::D2
-            || dst.sample_count() != 1
-        {
-            return Err(WgpuTextureRenderError::UnsupportedDestination {
-                format: dst.format(),
-                dimension: dst.dimension(),
-                sample_count: dst.sample_count(),
-            });
-        }
-        Ok(())
-    }
-
-    fn target_row_bytes(&self) -> ::wgpu::BufferAddress {
-        self.size.0 as ::wgpu::BufferAddress * std::mem::size_of::<u32>() as ::wgpu::BufferAddress
-    }
-
-    fn target_texture_extent(&self) -> ::wgpu::Extent3d {
-        ::wgpu::Extent3d {
-            width: self.size.0,
-            height: self.size.1,
-            depth_or_array_layers: 1,
-        }
-    }
+    active_tiles: Option<DamageTiles>,
+    filter_active_tile_work: Option<FilterTileWork>,
 }
 
 struct WgpuDebugScanReadback {
     backdrops: Vec<i32>,
     tile_segment_ranges: Vec<TileSegmentRange>,
     segments: Vec<LineSegment>,
-}
-
-fn rgba8_byte_len(width: u32, height: u32) -> ::wgpu::BufferAddress {
-    width as ::wgpu::BufferAddress
-        * height as ::wgpu::BufferAddress
-        * std::mem::size_of::<u32>() as ::wgpu::BufferAddress
 }
 
 fn copy_texture(
@@ -2139,6 +209,37 @@ fn copy_texture(
         ::wgpu::Extent3d {
             width: size.0.max(1),
             height: size.1.max(1),
+            depth_or_array_layers: 1,
+        },
+    );
+}
+
+fn copy_texture_region(
+    encoder: &mut ::wgpu::CommandEncoder,
+    source: &::wgpu::Texture,
+    target: &::wgpu::Texture,
+    size: (u32, u32),
+    bounds: Bounds,
+) {
+    let bounds = bounds.intersect(Bounds::canvas(size.0, size.1));
+    if bounds.is_empty() {
+        return;
+    }
+    let origin = ::wgpu::Origin3d {
+        x: bounds.x0 as u32,
+        y: bounds.y0 as u32,
+        z: 0,
+    };
+    let mut source_copy = source.as_image_copy();
+    source_copy.origin = origin;
+    let mut target_copy = target.as_image_copy();
+    target_copy.origin = origin;
+    encoder.copy_texture_to_texture(
+        source_copy,
+        target_copy,
+        ::wgpu::Extent3d {
+            width: bounds.width(),
+            height: bounds.height(),
             depth_or_array_layers: 1,
         },
     );
@@ -2166,6 +267,17 @@ fn rect_liquid_glass_region(
 fn draw_bounds(canvas: &Canvas, draw_ix: usize) -> Bounds {
     let bounds = canvas.draw_records[draw_ix].pixel_bounds;
     Bounds::new(bounds.x0, bounds.y0, bounds.x1, bounds.y1)
+}
+
+fn tile_count_for_bounds(bounds: Bounds) -> u32 {
+    if bounds.is_empty() {
+        return 0;
+    }
+    let width = (bounds.x1.max(0) as u32).div_ceil(crate::TILE_SIZE)
+        - (bounds.x0.max(0) as u32 / crate::TILE_SIZE);
+    let height = (bounds.y1.max(0) as u32).div_ceil(crate::TILE_SIZE)
+        - (bounds.y0.max(0) as u32 / crate::TILE_SIZE);
+    width.saturating_mul(height)
 }
 
 #[cfg(test)]

@@ -1,6 +1,8 @@
+pub(crate) mod affine;
 pub(crate) mod bounds;
 pub(crate) mod brush;
 pub(crate) mod cpu_time;
+pub(crate) mod dense_set;
 pub(crate) mod draw_record;
 pub(crate) mod execution;
 pub(crate) mod fill;
@@ -21,6 +23,6 @@ pub(crate) mod path;
 pub(crate) mod path_flatten;
 pub(crate) mod pixel;
 pub(crate) mod scan_line;
+pub(crate) mod scene_arena;
 pub(crate) mod sdf;
-pub(crate) mod tile_ptcl;
 pub(crate) mod tile_seg_range;

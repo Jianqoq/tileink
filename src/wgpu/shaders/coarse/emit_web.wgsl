@@ -9,13 +9,15 @@
 @group(0) @binding(6) var<storage, read> segment_ranges: array<TileSegmentRange>;
 @group(0) @binding(7) var<storage, read> layer_stack: array<LayerStackRecord>;
 @group(0) @binding(8) var<storage, read_write> coarse_work: array<u32>;
+@group(0) @binding(9) var<storage, read> draw_batch_ids: array<u32>;
 
 @compute @workgroup_size(256)
 fn coarse_emit(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
+    @builtin(num_workgroups) num_workgroups: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
 ) {
-    let ref_ix = workgroup_id.x;
+    let ref_ix = linear_workgroup_index(workgroup_id, num_workgroups);
     if (ref_ix >= config.emit_chunk_capacity) {
         return;
     }
@@ -38,9 +40,8 @@ fn coarse_emit(
     cursor += select(0u, wrapper_count, emit_wrappers) + chunk.ptcl_offset;
     glyph_cursor += chunk.glyph_offset;
 
-    let tile_draw_start = tile_draw_start_at(tile_ix);
-    let tile_draw_end = tile_draw_end_at(tile_ix);
-    let draw_ref_ix = tile_draw_start + chunk.local_chunk * 256u + lane;
+    let page = tile_draw_page_at(tile_ix, chunk.local_chunk);
+    let draw_ordinal = chunk.local_chunk * TILE_DRAW_PAGE_SIZE + lane;
     var draw_ix = INVALID;
     var valid = false;
     var glyph_count = 0u;
@@ -51,15 +52,15 @@ fn coarse_emit(
     var ptcl_segment_end = 0u;
     var ptcl_color = 0u;
 
-    if (draw_ref_ix < tile_draw_end) {
-        draw_ix = tile_draw_index_at(draw_ref_ix);
+    if (page != INVALID && draw_ordinal < tile_draw_count_at(tile_ix)) {
+        draw_ix = tile_draw_index_in_page(page, lane);
     }
 
     if (emit_wrappers && draw_in_batch(draw_ix)) {
         let draw_tag = draw_tag_at(draw_ix);
         if (draw_has_glyph_at(draw_ix)) {
             if (draw_tag == GPU_DRAW_BRUSH) {
-                glyph_count = count_tile_glyphs_for_run(draw_records[draw_ix].glyph_run_id, tile_x, tile_y);
+                glyph_count = count_tile_glyphs_for_run(draw_ix, tile_x, tile_y);
                 if (glyph_count > 0u) {
                     valid = true;
                     ptcl_tag = GPU_PTCL_GLYPH;
@@ -129,7 +130,7 @@ fn coarse_emit(
             ptcl_segment_start = glyph_cursor + glyph_offset;
             ptcl_segment_end = ptcl_segment_start + glyph_count;
             if (ptcl_segment_end <= glyph_range_end) {
-                store_tile_glyphs_for_run(ptcl_segment_start, draw_records[draw_ix].glyph_run_id, tile_x, tile_y);
+                store_tile_glyphs_for_run(ptcl_segment_start, draw_ix, tile_x, tile_y);
             }
         }
         store_particle(
@@ -370,8 +371,10 @@ fn draw_tile_hit(draw_ix: u32, tile_x: u32, tile_y: u32) -> bool {
     return tile_x >= draw_x0 && tile_x < draw_x1 && tile_y >= draw_y0 && tile_y < draw_y1;
 }
 
-fn count_tile_glyphs_for_run(run_id: u32, tile_x: u32, tile_y: u32) -> u32 {
+fn count_tile_glyphs_for_run(draw_ix: u32, tile_x: u32, tile_y: u32) -> u32 {
     var count = 0u;
+    let draw = draw_records[draw_ix];
+    let run_id = draw.glyph_run_id;
     let run = text_run_at(run_id);
     var glyph_ix = run.glyph_start;
     let glyph_end = glyph_ix + run.glyph_count;
@@ -379,7 +382,7 @@ fn count_tile_glyphs_for_run(run_id: u32, tile_x: u32, tile_y: u32) -> u32 {
         if (glyph_ix >= glyph_end) {
             break;
         }
-        if (glyph_hits_tile(glyph_ix, tile_x, tile_y)) {
+        if (glyph_hits_tile(draw, glyph_ix, tile_x, tile_y)) {
             count += 1u;
         }
         glyph_ix += 1u;
@@ -387,8 +390,10 @@ fn count_tile_glyphs_for_run(run_id: u32, tile_x: u32, tile_y: u32) -> u32 {
     return count;
 }
 
-fn store_tile_glyphs_for_run(dst_start: u32, run_id: u32, tile_x: u32, tile_y: u32) {
+fn store_tile_glyphs_for_run(dst_start: u32, draw_ix: u32, tile_x: u32, tile_y: u32) {
     var count = 0u;
+    let draw = draw_records[draw_ix];
+    let run_id = draw.glyph_run_id;
     let run = text_run_at(run_id);
     var glyph_ix = run.glyph_start;
     let glyph_end = glyph_ix + run.glyph_count;
@@ -396,7 +401,7 @@ fn store_tile_glyphs_for_run(dst_start: u32, run_id: u32, tile_x: u32, tile_y: u
         if (glyph_ix >= glyph_end) {
             break;
         }
-        if (glyph_hits_tile(glyph_ix, tile_x, tile_y)) {
+        if (glyph_hits_tile(draw, glyph_ix, tile_x, tile_y)) {
             let dst = dst_start + count;
             if (dst < config.glyph_capacity) {
                 coarse_store_glyph(dst, glyph_ix);
@@ -407,7 +412,7 @@ fn store_tile_glyphs_for_run(dst_start: u32, run_id: u32, tile_x: u32, tile_y: u
     }
 }
 
-fn glyph_hits_tile(glyph_ix: u32, tile_x: u32, tile_y: u32) -> bool {
+fn glyph_hits_tile(draw: DrawRecord, glyph_ix: u32, tile_x: u32, tile_y: u32) -> bool {
     let glyph = glyph_at(glyph_ix);
     let image_id = glyph.image_id;
     if (image_id == INVALID) {
@@ -423,15 +428,11 @@ fn glyph_hits_tile(glyph_ix: u32, tile_x: u32, tile_y: u32) -> bool {
     let y0 = glyph.y - image.top;
     let x1 = x0 + i32(width);
     let y1 = y0 + i32(height);
-    let tile_x0 = i32(tile_x * 16u);
-    let tile_y0 = i32(tile_y * 16u);
-    let tile_x1 = tile_x0 + 16i;
-    let tile_y1 = tile_y0 + 16i;
-    return x0 < tile_x1 && x1 > tile_x0 && y0 < tile_y1 && y1 > tile_y0;
+    return transformed_rect_hits_tile(draw.transform, x0, y0, x1, y1, tile_x, tile_y);
 }
 
 fn draw_in_batch(draw_ix: u32) -> bool {
-    return draw_ix >= config.draw_start && draw_ix < config.draw_end;
+    return draw_ix < arrayLength(&draw_batch_ids) && draw_batch_ids[draw_ix] == config.draw_start;
 }
 
 fn draw_tag_at(draw_ix: u32) -> u32 {
@@ -452,7 +453,9 @@ fn draw_has_glyph_at(draw_ix: u32) -> bool {
 }
 
 fn draw_solid_color_fast_path_at(draw_ix: u32) -> bool {
-    return draw_records[draw_ix].solid_rect != 0u && draw_has_nontransparent_solid_brush_at(draw_ix);
+    let draw = draw_records[draw_ix];
+    return draw.solid_rect != 0u && draw.transform.b == 0.0 && draw.transform.c == 0.0
+        && draw_has_nontransparent_solid_brush_at(draw_ix);
 }
 
 fn particle_class_flags(ptcl_tag: u32, draw_ix: u32) -> u32 {
@@ -492,7 +495,7 @@ fn draw_solid_supported_sdf_at(draw_ix: u32) -> bool {
         return false;
     }
     let kind = sdf_blob[draw.sdf_offset];
-    return kind == GPU_SDF_RECT || kind == GPU_SDF_CANDLESTICK;
+    return kind == GPU_SDF_RECT || kind == GPU_SDF_CANDLESTICK || kind == GPU_SDF_CHECKERBOARD;
 }
 
 fn draw_has_nontransparent_solid_brush_at(draw_ix: u32) -> bool {
@@ -518,7 +521,7 @@ fn draw_sdf_full_tile_solid_color_at(draw_ix: u32, tile_x: u32, tile_y: u32) -> 
         draw.sdf_shadow_offset == INVALID &&
         draw.sdf_len >= 9u &&
         sdf_blob[draw.sdf_offset] == GPU_SDF_RECT &&
-        sdf_rect_fully_covers_tile(draw.sdf_offset, tile_x, tile_y)
+        sdf_rect_fully_covers_tile(draw, tile_x, tile_y)
     ) {
         color = draw_solid_color_at(draw_ix);
     }
@@ -532,7 +535,7 @@ fn draw_sdf_full_tile_image_at(draw_ix: u32, tile_x: u32, tile_y: u32) -> bool {
         draw.sdf_shadow_offset == INVALID &&
         draw.sdf_len >= 9u &&
         sdf_blob[draw.sdf_offset] == GPU_SDF_RECT &&
-        sdf_rect_fully_covers_tile(draw.sdf_offset, tile_x, tile_y);
+        sdf_rect_fully_covers_tile(draw, tile_x, tile_y);
 }
 
 fn draw_has_opaque_image_brush_at(draw_ix: u32) -> bool {

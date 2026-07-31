@@ -146,9 +146,14 @@ fn push_path_reserves_segment_capacity_from_scan_tile_count() {
 
 #[test]
 fn push_layer_path_flattens_transformed_geometry() {
+    let mut triangle = BezPath::new();
+    triangle.move_to((0.0, 0.0));
+    triangle.line_to((10.0, 0.0));
+    triangle.line_to((5.0, 10.0));
+    triangle.close_path();
     let mut canvas = test_scene();
     canvas.push_clip_layer(
-        rect_path(0.0, 0.0, 10.0, 10.0),
+        triangle,
         Affine::translate((12.0, 6.0)),
         FillRule::NonZero,
         0.25,
@@ -231,4 +236,45 @@ fn append_preserves_path_geometry_for_scene_records_without_mutating_child() {
             (point[0] >= 8.0 && point[0] <= 30.0) && (point[1] >= 4.0 && point[1] <= 22.0)
         })
     }));
+}
+
+#[test]
+fn append_transformed_translation_uses_native_append_representation() {
+    let mut child = Canvas::new(64, 64, 2.0);
+    child.push_path(
+        rect_path(0.0, 0.0, 10.0, 10.0),
+        Brush::Solid(rgb(255, 0, 0)),
+        Affine::IDENTITY,
+        FillRule::NonZero,
+        0.25,
+    );
+    let translation = Point::new(8.5, -3.25);
+    let mut appended = Canvas::new(128, 96, 2.0);
+    appended.append(&child, translation);
+    let mut transformed = Canvas::new(128, 96, 2.0);
+    transformed.append_transformed(&child, Affine::translate((translation.x, translation.y)));
+
+    assert_eq!(
+        bytemuck::cast_slice::<_, u8>(&transformed.lines),
+        bytemuck::cast_slice::<_, u8>(&appended.lines)
+    );
+    assert_eq!(
+        bytemuck::cast_slice::<_, u8>(&transformed.path_records),
+        bytemuck::cast_slice::<_, u8>(&appended.path_records)
+    );
+    assert_eq!(
+        bytemuck::cast_slice::<_, u8>(&transformed.draw_records),
+        bytemuck::cast_slice::<_, u8>(&appended.draw_records)
+    );
+    assert_eq!(transformed.brush_blob, appended.brush_blob);
+    assert_eq!(
+        transformed.backdrop_pool_capacity,
+        appended.backdrop_pool_capacity
+    );
+    assert_eq!(transformed.tile_cnt, appended.tile_cnt);
+    assert_eq!(
+        transformed.draw_records[0].transform,
+        GpuAffine::IDENTITY,
+        "pure translation must not install a redundant shader transform"
+    );
 }

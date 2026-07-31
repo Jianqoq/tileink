@@ -1,4 +1,4 @@
-use super::super::buffer::WgpuBuffer;
+use super::super::buffer::{WgpuBuffer, WgpuBufferBindingKey};
 use super::{WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers};
 
 impl WgpuSceneBuffers {
@@ -20,6 +20,13 @@ impl WgpuSceneBuffers {
             sampler: &self.image_resource_sampler,
             texture_views: &self.image_resource_texture_views,
             dummy_texture: &self.image_resource_dummy_texture_view,
+        }
+    }
+
+    pub(crate) fn image_resource_binding_key(&self) -> WgpuImageResourceBindingKey {
+        WgpuImageResourceBindingKey {
+            owner: self.id,
+            generation: self.image_resource_binding_generation,
         }
     }
 
@@ -57,12 +64,29 @@ impl WgpuSceneBuffers {
     pub(crate) fn cumsum_bindings<'a>(
         &'a self,
         scan: &'a WgpuScanBuffers,
+        incremental: bool,
     ) -> WgpuCumsumBindings<'a> {
+        let (chunk_backdrop_offsets, chunk_lens, row_chunk_starts, row_chunk_ends) = if incremental
+        {
+            (
+                scan.active_cumsum_chunk_backdrop_offsets.buffer(),
+                scan.active_cumsum_chunk_lens.buffer(),
+                scan.active_cumsum_row_chunk_starts.buffer(),
+                scan.active_cumsum_row_chunk_ends.buffer(),
+            )
+        } else {
+            (
+                self.cumsum_chunk_backdrop_offsets.buffer(),
+                self.cumsum_chunk_lens.buffer(),
+                self.cumsum_row_chunk_starts.buffer(),
+                self.cumsum_row_chunk_ends.buffer(),
+            )
+        };
         WgpuCumsumBindings {
-            chunk_backdrop_offsets: self.cumsum_chunk_backdrop_offsets.buffer(),
-            chunk_lens: self.cumsum_chunk_lens.buffer(),
-            row_chunk_starts: self.cumsum_row_chunk_starts.buffer(),
-            row_chunk_ends: self.cumsum_row_chunk_ends.buffer(),
+            chunk_backdrop_offsets,
+            chunk_lens,
+            row_chunk_starts,
+            row_chunk_ends,
             backdrops: scan.backdrops.buffer(),
             chunk_totals: scan.cumsum_chunk_totals.buffer(),
             chunk_offsets: scan.cumsum_chunk_offsets.buffer(),
@@ -99,6 +123,7 @@ impl WgpuSceneBuffers {
             chunk_totals: scan.chunk_totals.buffer(),
             chunk_offsets: scan.chunk_offsets.buffer(),
             segments: scan.segments.buffer(),
+            active_indices: scan.active_indices.buffer(),
         }
     }
 
@@ -109,6 +134,7 @@ impl WgpuSceneBuffers {
     ) -> WgpuCoarseBindings<'a> {
         WgpuCoarseBindings {
             draw_records: self.draw_records.buffer(),
+            draw_batch_ids: self.draw_batch_ids.buffer(),
             text_blob: self.coarse_text_blob.buffer(),
             paint_blob: self.paint_blob.buffer(),
             path_records: self.path_records.buffer(),
@@ -117,6 +143,18 @@ impl WgpuSceneBuffers {
             layer_stack: self.plan_layer_stack.buffer(),
             coarse_work: coarse.work.buffer(),
             chunk_records: coarse.chunk_records.buffer(),
+            key: WgpuCoarseBindingKey([
+                self.draw_records.binding_key(),
+                self.draw_batch_ids.binding_key(),
+                self.coarse_text_blob.binding_key(),
+                self.paint_blob.binding_key(),
+                self.path_records.binding_key(),
+                scan.backdrops.binding_key(),
+                scan.tile_segment_ranges.binding_key(),
+                self.plan_layer_stack.binding_key(),
+                coarse.work.binding_key(),
+                coarse.chunk_records.binding_key(),
+            ]),
         }
     }
 }
@@ -131,6 +169,12 @@ pub(crate) struct WgpuImageResourceBindings<'a> {
     pub(crate) sampler: &'a ::wgpu::Sampler,
     pub(crate) texture_views: &'a [::wgpu::TextureView],
     pub(crate) dummy_texture: &'a ::wgpu::TextureView,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct WgpuImageResourceBindingKey {
+    owner: u64,
+    generation: u64,
 }
 
 pub(crate) struct WgpuTileFineBindings<'a> {
@@ -175,10 +219,12 @@ pub(crate) struct WgpuScanBindings<'a> {
     pub(crate) chunk_totals: &'a ::wgpu::Buffer,
     pub(crate) chunk_offsets: &'a ::wgpu::Buffer,
     pub(crate) segments: &'a ::wgpu::Buffer,
+    pub(crate) active_indices: &'a ::wgpu::Buffer,
 }
 
 pub(crate) struct WgpuCoarseBindings<'a> {
     pub(crate) draw_records: &'a ::wgpu::Buffer,
+    pub(crate) draw_batch_ids: &'a ::wgpu::Buffer,
     pub(crate) text_blob: &'a ::wgpu::Buffer,
     pub(crate) paint_blob: &'a ::wgpu::Buffer,
     pub(crate) path_records: &'a ::wgpu::Buffer,
@@ -187,4 +233,8 @@ pub(crate) struct WgpuCoarseBindings<'a> {
     pub(crate) layer_stack: &'a ::wgpu::Buffer,
     pub(crate) coarse_work: &'a ::wgpu::Buffer,
     pub(crate) chunk_records: &'a ::wgpu::Buffer,
+    pub(crate) key: WgpuCoarseBindingKey,
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct WgpuCoarseBindingKey([WgpuBufferBindingKey; 10]);

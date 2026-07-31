@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::rc::Rc;
 
 use rustc_hash::FxHashMap;
 
@@ -63,30 +63,39 @@ fn encode_key(scope: u32, key: ImageKey) -> (u32, u32, u32) {
 
 #[derive(Clone, Default)]
 pub(crate) struct ImageResourceStore {
-    images: FxHashMap<ImageKey, Arc<Image>>,
+    images: FxHashMap<ImageKey, Rc<Image>>,
+    signature_hash: u64,
 }
 
 impl ImageResourceStore {
-    pub(crate) fn insert(&mut self, key: ImageKey, image: impl Into<Arc<Image>>) -> bool {
+    pub(crate) fn insert(&mut self, key: ImageKey, image: impl Into<Rc<Image>>) -> bool {
         let image = image.into();
         if image.width == 0 || image.height == 0 {
             return false;
         }
-        self.images.insert(key, image);
+        if let Some(previous) = self.images.insert(key, image.clone()) {
+            self.signature_hash ^= image_entry_hash(key, &previous);
+        }
+        self.signature_hash ^= image_entry_hash(key, &image);
         true
     }
 
     pub(crate) fn get(&self, key: ImageKey) -> Option<&Image> {
-        self.images.get(&key).map(Arc::as_ref)
+        self.images.get(&key).map(Rc::as_ref)
     }
 
     pub(crate) fn remove(&mut self, key: ImageKey) -> bool {
-        self.images.remove(&key).is_some()
+        let Some(image) = self.images.remove(&key) else {
+            return false;
+        };
+        self.signature_hash ^= image_entry_hash(key, &image);
+        true
     }
 
     pub(crate) fn clear(&mut self) -> bool {
         let had_images = !self.images.is_empty();
         self.images.clear();
+        self.signature_hash = 0;
         had_images
     }
 
@@ -125,50 +134,31 @@ impl ImageResourceStore {
     }
 
     pub(crate) fn extend_from(&mut self, other: &ImageResourceStore) {
-        self.images.extend(
-            other
-                .images
-                .iter()
-                .map(|(&key, image)| (key, image.clone())),
-        );
+        for (&key, image) in &other.images {
+            self.insert(key, image.clone());
+        }
     }
 
-    fn iter(&self) -> impl Iterator<Item = (ImageKey, &Arc<Image>)> {
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (ImageKey, &Rc<Image>)> {
         self.images.iter().map(|(&key, image)| (key, image))
     }
 
     fn store_signature(&self) -> ImageResourceStoreSignature {
-        let mut entries = self
-            .images
-            .iter()
-            .map(|(&key, image)| {
-                (
-                    key,
-                    image.width,
-                    image.height,
-                    image.pixels.len() as u64,
-                    Arc::as_ptr(image) as usize as u64,
-                    image.pixels.as_ptr() as usize as u64,
-                )
-            })
-            .collect::<Vec<_>>();
-        entries.sort_by_key(|entry| entry.0.0);
-
-        let mut hash = FNV_OFFSET;
-        hash = fnv_mix(hash, entries.len() as u64);
-        for (key, width, height, pixel_len, image_ptr, pixels_ptr) in entries {
-            hash = fnv_mix(hash, key.0);
-            hash = fnv_mix(hash, width as u64);
-            hash = fnv_mix(hash, height as u64);
-            hash = fnv_mix(hash, pixel_len);
-            hash = fnv_mix(hash, image_ptr);
-            hash = fnv_mix(hash, pixels_ptr);
-        }
         ImageResourceStoreSignature {
             len: self.images.len() as u64,
-            hash,
+            hash: self.signature_hash,
         }
     }
+}
+
+fn image_entry_hash(key: ImageKey, image: &Rc<Image>) -> u64 {
+    let mut hash = FNV_OFFSET;
+    hash = fnv_mix(hash, key.0);
+    hash = fnv_mix(hash, image.width as u64);
+    hash = fnv_mix(hash, image.height as u64);
+    hash = fnv_mix(hash, image.pixels.len() as u64);
+    hash = fnv_mix(hash, Rc::as_ptr(image) as usize as u64);
+    fnv_mix(hash, image.pixels.as_ptr() as usize as u64)
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -197,40 +187,9 @@ fn fnv_mix(mut hash: u64, value: u64) -> u64 {
     }
     hash
 }
-
-#[derive(Clone, Copy, Default)]
-pub(crate) struct ImageResourceResolver<'a> {
-    renderer: Option<&'a ImageResourceStore>,
-    scene: Option<&'a ImageResourceStore>,
-}
-
-impl<'a> ImageResourceResolver<'a> {
-    pub(crate) fn new(
-        renderer: Option<&'a ImageResourceStore>,
-        scene: Option<&'a ImageResourceStore>,
-    ) -> Self {
-        Self { renderer, scene }
-    }
-
-    pub(crate) fn resolve(self, id: ImageResourceId) -> Option<&'a Image> {
-        match id {
-            ImageResourceId::Renderer(key) => {
-                self.renderer.and_then(|resources| resources.get(key))
-            }
-            ImageResourceId::Scene(key) => self.scene.and_then(|resources| resources.get(key)),
-        }
-    }
-}
-
-impl<'a> From<Option<&'a ImageResourceStore>> for ImageResourceResolver<'a> {
-    fn from(renderer: Option<&'a ImageResourceStore>) -> Self {
-        Self::new(renderer, None)
-    }
-}
-
 struct ImageResourceEntry<'a> {
     id: ImageResourceId,
-    image: &'a Arc<Image>,
+    image: &'a Rc<Image>,
     signature: ImageEntrySignature,
 }
 
@@ -272,6 +231,17 @@ impl GpuImageResourceUpload {
         self.placements.get(&id).copied()
     }
 
+    pub(crate) fn is_empty(&self) -> bool {
+        self.placements.is_empty()
+    }
+
+    /// Changes whenever resource placement data is rebuilt. Scene brush uploads use this to
+    /// distinguish a placement-table change, which requires repatching every image brush, from
+    /// an ordinary retained mutation, which only requires patching dirty brush allocations.
+    pub(crate) fn generation(&self) -> u64 {
+        self.generation
+    }
+
     pub(crate) fn atlas_page_size(&self) -> u32 {
         self.atlas_page_size
     }
@@ -296,6 +266,7 @@ impl GpuImageResourceUpload {
 
 #[derive(Clone, Default)]
 pub(crate) struct GpuImageResourceUpload {
+    generation: u64,
     atlas_page_size: u32,
     atlas_pages: Vec<GpuImageResourceAtlasPageUpload>,
     textures: Vec<GpuImageResourceTextureUpload>,
@@ -363,14 +334,14 @@ struct ImageEntrySignature {
 }
 
 impl ImageEntrySignature {
-    fn new(id: ImageResourceId, image: &Arc<Image>) -> Self {
+    fn new(id: ImageResourceId, image: &Rc<Image>) -> Self {
         let mut hash = FNV_OFFSET;
         hash = fnv_mix(hash, image_resource_id_sort_key(id).0 as u64);
         hash = fnv_mix(hash, image_resource_id_sort_key(id).1);
         hash = fnv_mix(hash, image.width as u64);
         hash = fnv_mix(hash, image.height as u64);
         hash = fnv_mix(hash, image.pixels.len() as u64);
-        hash = fnv_mix(hash, Arc::as_ptr(image) as usize as u64);
+        hash = fnv_mix(hash, Rc::as_ptr(image) as usize as u64);
         hash = fnv_mix(hash, image.pixels.as_ptr() as usize as u64);
         Self { hash }
     }
@@ -543,6 +514,7 @@ impl<'a> ImageResourceUploadBuilder<'a> {
         }
 
         GpuImageResourceUpload {
+            generation: previous.map_or(1, |upload| upload.generation.wrapping_add(1)),
             atlas_page_size: page_uploads.first().map_or(1, |page| page.size),
             atlas_pages: page_uploads,
             textures,

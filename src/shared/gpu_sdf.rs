@@ -1,17 +1,22 @@
 use crate::shared::{
     gpu_types::{
-        GPU_SDF_ARC, GPU_SDF_ARC_SHADOW, GPU_SDF_CANDLESTICK, GPU_SDF_CIRCLE,
+        GPU_SDF_ARC, GPU_SDF_ARC_SHADOW, GPU_SDF_CALLOUT, GPU_SDF_CALLOUT_SHADOW,
+        GPU_SDF_CALLOUT_STROKE, GPU_SDF_CANDLESTICK, GPU_SDF_CHECKERBOARD, GPU_SDF_CIRCLE,
         GPU_SDF_CIRCLE_SHADOW, GPU_SDF_CIRCLE_STROKE, GPU_SDF_DASH_LINE, GPU_SDF_LINE,
         GPU_SDF_LINE_SHADOW, GPU_SDF_NONE, GPU_SDF_RECT, GPU_SDF_RECT_SHADOW, GPU_SDF_RECT_STROKE,
+        GPU_SDF_STAR, GPU_SDF_STAR_STROKE, GPU_SDF_TRIANGLE,
     },
     sdf::{
         Sdf, SdfShadow,
-        arc::{Arc, ArcShadow},
+        arc::{ArcShadow, Rc},
+        callout::{Callout, CalloutShadow, CalloutSide, CalloutStroke, CalloutTail},
         candlestick::CandleStick,
+        checkerboard::Checkerboard,
         circle::{Circle, CircleShadow, CircleStroke},
         line::{DashLine, Line, LineCap, LineShadow},
         rect::{Radius, Rect, RectShadow, RectStroke, StrokeWidths},
         shadow::ShadowOptions,
+        star::{Star, StarStroke},
     },
 };
 use peniko::kurbo::Point;
@@ -90,7 +95,7 @@ pub(crate) fn encode_sdf(sdf: Sdf) -> EncodedSdf {
             stroke: [stroke.half_width; 4],
             ..EncodedSdf::NONE
         },
-        Sdf::Arc(arc) => EncodedSdf {
+        Sdf::Rc(arc) => EncodedSdf {
             kind: GPU_SDF_ARC,
             coords: [
                 arc.center.x as f32,
@@ -145,6 +150,39 @@ pub(crate) fn encode_sdf(sdf: Sdf) -> EncodedSdf {
             stroke: [line.dash_offset, 0.0, 0.0, 0.0],
             ..EncodedSdf::NONE
         },
+        Sdf::Triangle(triangle) => EncodedSdf {
+            kind: GPU_SDF_TRIANGLE,
+            coords: [
+                triangle.a.x as f32,
+                triangle.a.y as f32,
+                triangle.b.x as f32,
+                triangle.b.y as f32,
+            ],
+            radii: [
+                triangle.c.x as f32,
+                triangle.c.y as f32,
+                triangle.corner_radius,
+                0.0,
+            ],
+            ..EncodedSdf::NONE
+        },
+        Sdf::Checkerboard(checkerboard) => {
+            let (x0, y0, x1, y1) = checkerboard.axis_bounds();
+            EncodedSdf {
+                kind: GPU_SDF_CHECKERBOARD,
+                coords: [x0 as f32, y0 as f32, x1 as f32, y1 as f32],
+                radii: [checkerboard.cell_size, 0.0, 0.0, 0.0],
+                ..EncodedSdf::NONE
+            }
+        }
+        Sdf::Star(star) => encoded_star(star, GPU_SDF_STAR, 0.0),
+        Sdf::StarStroke(stroke) => {
+            encoded_star(stroke.star, GPU_SDF_STAR_STROKE, stroke.half_width)
+        }
+        Sdf::Callout(callout) => encoded_callout(callout, GPU_SDF_CALLOUT, 0.0),
+        Sdf::CalloutStroke(stroke) => {
+            encoded_callout(stroke.callout, GPU_SDF_CALLOUT_STROKE, stroke.half_width)
+        }
     }
 }
 
@@ -186,7 +224,7 @@ pub(crate) fn encode_sdf_shadow(sdf_shadow: SdfShadow) -> EncodedSdf {
             ],
             ..EncodedSdf::NONE
         },
-        SdfShadow::Arc(shadow) => EncodedSdf {
+        SdfShadow::Rc(shadow) => EncodedSdf {
             kind: GPU_SDF_ARC_SHADOW,
             coords: [
                 shadow.arc.center.x as f32,
@@ -225,6 +263,16 @@ pub(crate) fn encode_sdf_shadow(sdf_shadow: SdfShadow) -> EncodedSdf {
             ],
             ..EncodedSdf::NONE
         },
+        SdfShadow::Callout(shadow) => {
+            let mut encoded = encoded_callout(shadow.callout, GPU_SDF_CALLOUT_SHADOW, 0.0);
+            encoded.shadow = [
+                shadow.options.offset_x,
+                shadow.options.offset_y,
+                shadow.options.expand,
+                shadow.options.intensity,
+            ];
+            encoded
+        }
     }
 }
 
@@ -269,7 +317,7 @@ pub(crate) fn decode_sdf(blob: &[u32], offset: u32, len: u32) -> Option<Sdf> {
             circle: circle_from_encoded(sdf),
             half_width: sdf.stroke[0],
         })),
-        GPU_SDF_ARC => Some(Sdf::Arc(arc_from_encoded(sdf))),
+        GPU_SDF_ARC => Some(Sdf::Rc(arc_from_encoded(sdf))),
         GPU_SDF_CANDLESTICK => Some(Sdf::CandleStick(CandleStick {
             center_x: sdf.coords[0],
             high_y: sdf.coords[1],
@@ -286,6 +334,22 @@ pub(crate) fn decode_sdf(blob: &[u32], offset: u32, len: u32) -> Option<Sdf> {
             gap_length: sdf.radii[3],
             dash_offset: sdf.stroke[0],
         })),
+        GPU_SDF_TRIANGLE => Some(Sdf::Triangle(triangle_from_encoded(sdf))),
+        GPU_SDF_CHECKERBOARD => Some(Sdf::Checkerboard(Checkerboard {
+            start: Point::new(sdf.coords[0] as f64, sdf.coords[1] as f64),
+            end: Point::new(sdf.coords[2] as f64, sdf.coords[3] as f64),
+            cell_size: sdf.radii[0],
+        })),
+        GPU_SDF_STAR => Some(Sdf::Star(star_from_encoded(sdf))),
+        GPU_SDF_STAR_STROKE => Some(Sdf::StarStroke(StarStroke {
+            star: star_from_encoded(sdf),
+            half_width: sdf.stroke[0],
+        })),
+        GPU_SDF_CALLOUT => Some(Sdf::Callout(callout_from_encoded(sdf))),
+        GPU_SDF_CALLOUT_STROKE => Some(Sdf::CalloutStroke(CalloutStroke {
+            callout: callout_from_encoded(sdf),
+            half_width: sdf.stroke[2],
+        })),
         _ => None,
     }
 }
@@ -301,12 +365,16 @@ pub(crate) fn decode_sdf_shadow(blob: &[u32], offset: u32, len: u32) -> Option<S
             circle: circle_from_encoded(sdf),
             options: shadow_options_from_encoded(sdf),
         })),
-        GPU_SDF_ARC_SHADOW => Some(SdfShadow::Arc(ArcShadow {
+        GPU_SDF_ARC_SHADOW => Some(SdfShadow::Rc(ArcShadow {
             arc: arc_from_encoded(sdf),
             options: shadow_options_from_encoded(sdf),
         })),
         GPU_SDF_LINE_SHADOW => Some(SdfShadow::Line(LineShadow {
             line: line_from_encoded(sdf),
+            options: shadow_options_from_encoded(sdf),
+        })),
+        GPU_SDF_CALLOUT_SHADOW => Some(SdfShadow::Callout(CalloutShadow {
+            callout: callout_from_encoded(sdf),
             options: shadow_options_from_encoded(sdf),
         })),
         _ => None,
@@ -355,6 +423,77 @@ fn circle_from_encoded(sdf: EncodedSdf) -> Circle {
     }
 }
 
+fn triangle_from_encoded(sdf: EncodedSdf) -> crate::shared::sdf::triangle::Triangle {
+    crate::shared::sdf::triangle::Triangle {
+        a: Point::new(f64::from(sdf.coords[0]), f64::from(sdf.coords[1])),
+        b: Point::new(f64::from(sdf.coords[2]), f64::from(sdf.coords[3])),
+        c: Point::new(f64::from(sdf.radii[0]), f64::from(sdf.radii[1])),
+        corner_radius: sdf.radii[2],
+    }
+}
+
+fn encoded_star(star: Star, kind: u32, half_width: f32) -> EncodedSdf {
+    EncodedSdf {
+        kind,
+        coords: [
+            star.center.x as f32,
+            star.center.y as f32,
+            star.outer_radius,
+            star.inner_radius,
+        ],
+        radii: [star.corner_radius, star.rotation_radians, 0.0, 0.0],
+        stroke: [half_width, 0.0, 0.0, 0.0],
+        shadow: [0.0; 4],
+    }
+}
+
+fn encoded_callout(callout: Callout, kind: u32, half_width: f32) -> EncodedSdf {
+    let (x0, y0, x1, y1) = callout.axis_bounds();
+    EncodedSdf {
+        kind,
+        coords: [x0 as f32, y0 as f32, x1 as f32, y1 as f32],
+        radii: [
+            callout.body_radius,
+            callout.tail.offset,
+            callout.tail.width,
+            callout.tail.length,
+        ],
+        stroke: [
+            callout.tail.radius,
+            callout.tail.side.value(),
+            half_width,
+            if callout.tail.visible { 1.0 } else { 0.0 },
+        ],
+        shadow: [0.0; 4],
+    }
+}
+
+fn callout_from_encoded(sdf: EncodedSdf) -> Callout {
+    Callout {
+        start: Point::new(f64::from(sdf.coords[0]), f64::from(sdf.coords[1])),
+        end: Point::new(f64::from(sdf.coords[2]), f64::from(sdf.coords[3])),
+        body_radius: sdf.radii[0],
+        tail: CalloutTail {
+            visible: sdf.stroke[3] >= 0.5,
+            side: CalloutSide::from_value(sdf.stroke[1]),
+            offset: sdf.radii[1],
+            width: sdf.radii[2],
+            length: sdf.radii[3],
+            radius: sdf.stroke[0],
+        },
+    }
+}
+
+fn star_from_encoded(sdf: EncodedSdf) -> Star {
+    Star {
+        center: Point::new(f64::from(sdf.coords[0]), f64::from(sdf.coords[1])),
+        outer_radius: sdf.coords[2],
+        inner_radius: sdf.coords[3],
+        corner_radius: sdf.radii[0],
+        rotation_radians: sdf.radii[1],
+    }
+}
+
 fn line_from_encoded(sdf: EncodedSdf) -> Line {
     Line {
         start: Point::new(f64::from(sdf.coords[0]), f64::from(sdf.coords[1])),
@@ -364,8 +503,8 @@ fn line_from_encoded(sdf: EncodedSdf) -> Line {
     }
 }
 
-fn arc_from_encoded(sdf: EncodedSdf) -> Arc {
-    Arc {
+fn arc_from_encoded(sdf: EncodedSdf) -> Rc {
+    Rc {
         center: Point::new(f64::from(sdf.coords[0]), f64::from(sdf.coords[1])),
         radius: sdf.coords[2],
         width: sdf.coords[3],
@@ -431,6 +570,36 @@ mod tests {
                 3.0,
                 1.5,
             )),
+            Sdf::Triangle(crate::shared::sdf::triangle::Triangle::new(
+                Point::new(4.0, 5.0),
+                Point::new(20.0, 12.0),
+                Point::new(7.0, 30.0),
+                2.5,
+            )),
+            Sdf::Star(Star::new(
+                Point::new(18.0, 19.0),
+                8.0,
+                3.5,
+                1.25,
+                -std::f32::consts::FRAC_PI_2,
+            )),
+            Sdf::StarStroke(StarStroke::new(
+                Star::new(Point::new(24.0, 25.0), 10.0, 4.6, 1.0, 0.2),
+                2.5,
+            )),
+            Sdf::Callout(Callout::new(
+                peniko::kurbo::Rect::new(4.0, 5.0, 84.0, 45.0),
+                8.0,
+                CalloutTail::new(CalloutSide::Bottom, 38.0, 10.0, 6.0, 1.5),
+            )),
+            Sdf::CalloutStroke(CalloutStroke::new(
+                Callout::new(
+                    peniko::kurbo::Rect::new(8.0, 9.0, 92.0, 52.0),
+                    7.0,
+                    CalloutTail::hidden(),
+                ),
+                1.5,
+            )),
         ];
         let shadows = [
             SdfShadow::Circle(CircleShadow {
@@ -440,8 +609,8 @@ mod tests {
                 },
                 options: ShadowOptions::new(2.0, 3.0, 4.0, 0.5),
             }),
-            SdfShadow::Arc(ArcShadow {
-                arc: Arc::new(
+            SdfShadow::Rc(ArcShadow {
+                arc: Rc::new(
                     Point::new(32.0, 32.0),
                     10.0,
                     0.0,
@@ -450,6 +619,14 @@ mod tests {
                     LineCap::Round,
                 ),
                 options: ShadowOptions::new(-1.0, 2.0, 5.0, 0.75),
+            }),
+            SdfShadow::Callout(CalloutShadow {
+                callout: Callout::new(
+                    peniko::kurbo::Rect::new(4.0, 5.0, 84.0, 45.0),
+                    8.0,
+                    CalloutTail::new(CalloutSide::Left, 18.0, 10.0, 6.0, 1.5),
+                ),
+                options: ShadowOptions::new(0.0, 6.0, 16.0, 0.28),
             }),
         ];
         let mut sdf_blob = Vec::new();

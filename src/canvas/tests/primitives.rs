@@ -6,7 +6,7 @@ use crate::{
         image_resource::{ImageKey, ImageResourceId},
     },
 };
-use std::sync::Arc;
+use std::rc::Rc;
 
 fn draw_sdf(canvas: &Canvas, index: usize) -> Option<Sdf> {
     canvas.draw_sdf(&canvas.draw_records[index])
@@ -20,6 +20,44 @@ fn draw_brush(canvas: &Canvas, index: usize) -> Brush {
     canvas
         .draw_brush_for_record(&canvas.draw_records[index])
         .unwrap()
+}
+
+// Regression: the pure-translation append fast path used to translate local SDF geometry before
+// applying an icon's nested view-box scale. That scaled the parent translation and displaced every
+// icon during gfx_ui's immediate resize-transition frame.
+#[test]
+fn translated_append_composes_after_an_icon_like_nested_scale() {
+    let mut source = Canvas::new(24, 24, 1.0);
+    source.push_rect(
+        Rect::new(4.0, 4.0, 20.0, 20.0),
+        crate::Radius::ZERO,
+        Brush::Solid(rgb(255, 0, 0)),
+    );
+    let mut icon = Canvas::new(24, 24, 1.0);
+    icon.push_rect(
+        Rect::new(0.0, 0.0, 2.0, 2.0),
+        crate::Radius::ZERO,
+        Brush::Solid(rgb(0, 0, 255)),
+    );
+    icon.append_transformed(&source, Affine::scale_non_uniform(0.5, 0.5));
+
+    for append in [
+        Canvas::append as fn(&mut Canvas, &Canvas, Point),
+        |target: &mut Canvas, child: &Canvas, position: Point| {
+            target.append_transformed(child, Affine::translate((position.x, position.y)));
+        },
+    ] {
+        let mut target = Canvas::new(256, 64, 1.0);
+        append(&mut target, &icon, Point::new(100.0, 8.0));
+
+        let bounds = target
+            .draw_records
+            .iter()
+            .map(|draw| draw.pixel_bounds)
+            .map(|bounds| (bounds.x0, bounds.y0, bounds.x1, bounds.y1))
+            .collect::<Vec<_>>();
+        assert_eq!(bounds, [(100, 8, 102, 10), (102, 10, 110, 18)]);
+    }
 }
 
 #[test]
@@ -54,6 +92,298 @@ fn push_rect_records_sdf_rect_without_path_storage() {
         }
         sdf => panic!("expected rect SDF, got {sdf:?}"),
     }
+}
+
+#[test]
+fn push_checkerboard_records_two_sdf_draws_independent_of_area() {
+    let mut canvas = test_scene();
+    let draws = canvas
+        .push_checkerboard(
+            Rect::new(2.0, 3.0, 18.0, 35.0),
+            4.0,
+            rgb(194, 194, 194),
+            rgb(255, 255, 255),
+        )
+        .unwrap();
+
+    assert_eq!((draws.0.index(), draws.1.index()), (0, 1));
+    assert_eq!(canvas.draw_count(), 2);
+    assert!(canvas.path_records.is_empty());
+    assert!(matches!(draw_sdf(&canvas, 0), Some(Sdf::Rect(_))));
+    match draw_sdf(&canvas, 1) {
+        Some(Sdf::Checkerboard(checkerboard)) => {
+            assert_eq!(checkerboard.axis_bounds(), (2.0, 3.0, 18.0, 35.0));
+            assert_eq!(checkerboard.cell_size, 4.0);
+        }
+        sdf => panic!("expected checkerboard SDF, got {sdf:?}"),
+    }
+}
+
+#[test]
+fn push_checkerboard_scales_geometry_and_cell_size_to_physical_pixels() {
+    let mut canvas = Canvas::new(32, 32, 2.0);
+    canvas
+        .push_checkerboard(
+            Rect::new(1.0, 2.0, 9.0, 10.0),
+            3.0,
+            Color::BLACK,
+            Color::WHITE,
+        )
+        .unwrap();
+
+    match draw_sdf(&canvas, 1) {
+        Some(Sdf::Checkerboard(checkerboard)) => {
+            assert_eq!(checkerboard.axis_bounds(), (2.0, 4.0, 18.0, 20.0));
+            assert_eq!(checkerboard.cell_size, 6.0);
+        }
+        sdf => panic!("expected scaled checkerboard SDF, got {sdf:?}"),
+    }
+}
+
+#[test]
+fn push_checkerboard_rejects_invalid_inputs_without_partial_draws() {
+    let mut canvas = test_scene();
+    assert!(
+        canvas
+            .push_checkerboard(
+                Rect::new(0.0, 0.0, 16.0, 16.0),
+                f32::NAN,
+                Color::BLACK,
+                Color::WHITE,
+            )
+            .is_none()
+    );
+    assert!(
+        canvas
+            .push_checkerboard(
+                Rect::new(0.0, 0.0, 0.0, 16.0),
+                4.0,
+                Color::BLACK,
+                Color::WHITE,
+            )
+            .is_none()
+    );
+    assert_eq!(canvas.draw_count(), 0);
+}
+
+#[test]
+fn push_triangle_records_rounded_sdf_without_path_storage() {
+    let mut canvas = test_scene();
+    let triangle = crate::SdfTriangle::new(
+        Point::new(8.0, 4.0),
+        Point::new(20.0, 16.0),
+        Point::new(8.0, 28.0),
+        2.0,
+    );
+
+    canvas.push_triangle(triangle, Brush::Solid(rgb(255, 0, 0)));
+
+    assert_eq!(canvas.draw_records.len(), 1);
+    assert!(canvas.path_records.is_empty());
+    assert_eq!(
+        canvas.draw_records[0].pixel_bounds,
+        PixelBounds {
+            x0: 6,
+            y0: 2,
+            x1: 22,
+            y1: 30,
+        }
+    );
+    match draw_sdf(&canvas, 0) {
+        Some(Sdf::Triangle(actual)) => assert_eq!(actual, triangle),
+        sdf => panic!("expected triangle SDF, got {sdf:?}"),
+    }
+}
+
+#[test]
+fn push_triangle_scales_points_radius_and_bounds_to_physical_pixels() {
+    let mut canvas = Canvas::new(64, 64, 2.0);
+    let logical = crate::SdfTriangle::new(
+        Point::new(8.0, 4.0),
+        Point::new(20.0, 16.0),
+        Point::new(8.0, 28.0),
+        2.0,
+    );
+
+    canvas.push_triangle(logical, Brush::Solid(rgb(255, 0, 0)));
+
+    assert_eq!(
+        canvas.draw_records[0].pixel_bounds,
+        PixelBounds {
+            x0: 12,
+            y0: 4,
+            x1: 44,
+            y1: 60,
+        }
+    );
+    match draw_sdf(&canvas, 0) {
+        Some(Sdf::Triangle(physical)) => {
+            assert_eq!(physical.a, Point::new(16.0, 8.0));
+            assert_eq!(physical.b, Point::new(40.0, 32.0));
+            assert_eq!(physical.c, Point::new(16.0, 56.0));
+            assert_eq!(physical.corner_radius, 4.0);
+        }
+        sdf => panic!("expected triangle SDF, got {sdf:?}"),
+    }
+}
+
+#[test]
+fn push_triangle_rejects_invalid_public_struct_literals_without_mutating_canvas() {
+    let mut canvas = test_scene();
+    let invalid = crate::SdfTriangle {
+        a: Point::new(0.0, 0.0),
+        b: Point::new(1.0, 1.0),
+        c: Point::new(2.0, 2.0),
+        corner_radius: 0.0,
+    };
+
+    assert_eq!(canvas.push_triangle(invalid, Color::WHITE), None);
+    assert_eq!(canvas.draw_count(), 0);
+}
+
+#[test]
+fn push_callout_records_unified_fill_stroke_and_shadow_without_paths() {
+    let mut canvas = test_scene();
+    let callout = crate::SdfCallout::new(
+        Rect::new(10.0, 20.0, 110.0, 60.0),
+        8.0,
+        crate::SdfCalloutTail::new(crate::SdfCalloutSide::Bottom, 50.0, 10.0, 6.0, 1.5),
+    );
+    let stroke = crate::SdfCalloutStroke::new(callout, 0.5);
+    let shadow = crate::ShadowOptions::new(0.0, 6.0, 4.0, 0.28);
+
+    canvas
+        .push_callout_shadow(callout, shadow, Color::BLACK)
+        .unwrap();
+    canvas.push_callout(callout, Color::BLACK).unwrap();
+    canvas.push_callout_stroke(stroke, Color::WHITE).unwrap();
+
+    assert_eq!(canvas.draw_count(), 3);
+    assert!(canvas.path_records.is_empty());
+    assert!(
+        matches!(draw_sdf_shadow(&canvas, 0), Some(SdfShadow::Callout(value)) if value.callout == callout)
+    );
+    assert!(matches!(draw_sdf(&canvas, 1), Some(Sdf::Callout(value)) if value == callout));
+    assert!(matches!(draw_sdf(&canvas, 2), Some(Sdf::CalloutStroke(value)) if value == stroke));
+}
+
+#[test]
+fn push_callout_scales_tail_geometry_and_can_hide_it() {
+    let mut canvas = Canvas::new(128, 128, 2.0);
+    let callout = crate::SdfCallout::new(
+        Rect::new(10.0, 20.0, 110.0, 60.0),
+        8.0,
+        crate::SdfCalloutTail::hidden(),
+    );
+
+    canvas.push_callout(callout, Color::BLACK).unwrap();
+
+    let Some(Sdf::Callout(physical)) = draw_sdf(&canvas, 0) else {
+        panic!("expected scaled callout");
+    };
+    assert_eq!(physical.start, Point::new(20.0, 40.0));
+    assert_eq!(physical.end, Point::new(220.0, 120.0));
+    assert_eq!(physical.body_radius, 16.0);
+    assert!(!physical.tail.visible);
+    assert_eq!(
+        canvas.draw_records[0].pixel_bounds,
+        PixelBounds {
+            x0: 20,
+            y0: 40,
+            x1: 220,
+            y1: 120,
+        }
+    );
+}
+
+#[test]
+fn push_star_fill_and_stroke_each_record_one_sdf_draw() {
+    let mut canvas = test_scene();
+    let star = crate::SdfStar::new(Point::new(20.0, 20.0), 8.0, 3.5, 1.0, 0.0);
+
+    canvas.push_star(star, Color::WHITE).unwrap();
+    canvas
+        .push_star_stroke(crate::SdfStarStroke::new(star, 2.5), Color::BLACK)
+        .unwrap();
+
+    assert_eq!(canvas.draw_count(), 2);
+    assert!(canvas.path_records.is_empty());
+    assert_eq!(
+        canvas.draw_records[0].pixel_bounds,
+        PixelBounds {
+            x0: 12,
+            y0: 11,
+            x1: 29,
+            y1: 29,
+        }
+    );
+    assert_eq!(
+        canvas.draw_records[1].pixel_bounds,
+        PixelBounds {
+            x0: 11,
+            y0: 10,
+            x1: 31,
+            y1: 30,
+        }
+    );
+    assert!(matches!(draw_sdf(&canvas, 0), Some(Sdf::Star(value)) if value == star));
+    assert!(
+        matches!(draw_sdf(&canvas, 1), Some(Sdf::StarStroke(value)) if value == crate::SdfStarStroke::new(star, 2.5))
+    );
+}
+
+#[test]
+fn push_star_scales_radii_stroke_and_center_but_preserves_rotation() {
+    let mut canvas = Canvas::new(64, 64, 2.0);
+    let star = crate::SdfStar::new(
+        Point::new(12.0, 14.0),
+        7.0,
+        3.0,
+        1.25,
+        -std::f32::consts::FRAC_PI_2,
+    );
+
+    canvas
+        .push_star_stroke(crate::SdfStarStroke::new(star, 2.0), Color::WHITE)
+        .unwrap();
+
+    let Some(Sdf::StarStroke(stroke)) = draw_sdf(&canvas, 0) else {
+        panic!("expected scaled star stroke");
+    };
+    assert_eq!(stroke.star.center, Point::new(24.0, 28.0));
+    assert_eq!(stroke.star.outer_radius, 14.0);
+    assert_eq!(stroke.star.inner_radius, 6.0);
+    assert_eq!(stroke.star.corner_radius, 2.5);
+    assert_eq!(stroke.star.rotation_radians, star.rotation_radians);
+    assert_eq!(stroke.half_width, 2.0);
+}
+
+#[test]
+fn push_star_rejects_invalid_public_literals_without_mutating_canvas() {
+    let mut canvas = test_scene();
+    let invalid = crate::SdfStar {
+        center: Point::ZERO,
+        outer_radius: 8.0,
+        inner_radius: 9.0,
+        corner_radius: 0.0,
+        rotation_radians: 0.0,
+    };
+
+    assert_eq!(canvas.push_star(invalid, Color::WHITE), None);
+    assert_eq!(
+        canvas.push_star_stroke(
+            crate::SdfStarStroke {
+                star: crate::SdfStar {
+                    inner_radius: 3.0,
+                    ..invalid
+                },
+                half_width: f32::NAN,
+            },
+            Color::WHITE,
+        ),
+        None
+    );
+    assert_eq!(canvas.draw_count(), 0);
 }
 
 #[test]
@@ -171,12 +501,12 @@ fn push_image_records_pattern_rect_draw() {
 #[test]
 fn push_image_reuses_scene_resource_for_same_arc() {
     let mut canvas = test_scene();
-    let image = Arc::new(Image::from_rgba8(2, 1, [255, 0, 0, 255, 0, 0, 255, 255]));
+    let image = Rc::new(Image::from_rgba8(2, 1, [255, 0, 0, 255, 0, 0, 255, 255]));
 
     canvas
         .push_image(
             Rect::new(0.0, 0.0, 2.0, 1.0),
-            Arc::clone(&image),
+            Rc::clone(&image),
             Extend::Pad,
             PatternSampling::Bilinear,
         )
@@ -184,7 +514,7 @@ fn push_image_reuses_scene_resource_for_same_arc() {
     canvas
         .push_image(
             Rect::new(2.0, 0.0, 4.0, 1.0),
-            Arc::clone(&image),
+            Rc::clone(&image),
             Extend::Pad,
             PatternSampling::Bilinear,
         )
@@ -398,6 +728,52 @@ fn draw_id_from_before_reset_is_rejected() {
 }
 
 #[test]
+fn reset_for_surface_retargets_canvas_without_discarding_storage_capacity() {
+    let mut canvas = test_scene();
+    let stale = canvas.push_rect(
+        Rect::new(2.0, 3.0, 18.0, 19.0),
+        crate::Radius::ZERO,
+        Brush::Solid(rgb(255, 0, 0)),
+    );
+    let draw_capacity = canvas.draw_records.capacity();
+    let brush_capacity = canvas.brush_blob.capacity();
+    let sdf_capacity = canvas.sdf_blob.capacity();
+
+    canvas.reset_for_surface(80, 48, 2.0);
+
+    assert_eq!(canvas.logical_size(), (80, 48));
+    assert_eq!(canvas.physical_size(), (160, 96));
+    assert_eq!(canvas.scale_factor(), 2.0);
+    assert_eq!(canvas.draw_count(), 0);
+    assert!(canvas.is_closed_for_append());
+    assert!(canvas.draw_records.capacity() >= draw_capacity);
+    assert!(canvas.brush_blob.capacity() >= brush_capacity);
+    assert!(canvas.sdf_blob.capacity() >= sdf_capacity);
+    assert!(!canvas.set_draw_color(stale, rgb(0, 255, 0)));
+}
+
+// Regression: validating the replacement scale after clearing storage destroyed the last valid
+// scene when callers supplied an invalid scale. Rejection must leave the Canvas untouched.
+#[test]
+fn reset_for_surface_rejects_invalid_scale_without_mutating_canvas() {
+    let mut canvas = test_scene();
+    let draw = canvas.push_rect(
+        Rect::new(2.0, 3.0, 18.0, 19.0),
+        crate::Radius::ZERO,
+        Brush::Solid(rgb(255, 0, 0)),
+    );
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        canvas.reset_for_surface(80, 48, f32::NAN);
+    }));
+
+    assert!(result.is_err());
+    assert_eq!(canvas.logical_size(), (64, 64));
+    assert_eq!(canvas.scale_factor(), 1.0);
+    assert_eq!(canvas.draw_solid_color(draw), Some(rgb(255, 0, 0)));
+}
+
+#[test]
 fn no_op_sdf_primitive_returns_no_draw_id() {
     let mut canvas = test_scene();
     let draw = canvas.push_line(
@@ -443,7 +819,7 @@ fn append_fast_path_translates_sdf_without_mutating_child() {
         crate::Radius::ZERO,
         Brush::Solid(rgb(255, 0, 0)),
     );
-    let original_child_draw = child.draw_records[0].clone();
+    let original_child_draw = child.draw_records[0];
 
     let mut parent = test_scene();
     parent.append(&child, Point::new(10.0, 20.0));
@@ -474,6 +850,53 @@ fn append_fast_path_translates_sdf_without_mutating_child() {
             y1: 46,
         }
     );
+}
+
+#[test]
+fn append_directly_remaps_root_commands_after_nested_lists() {
+    let mut child = test_scene();
+    child.push_rect(
+        Rect::new(0.0, 0.0, 8.0, 8.0),
+        Radius::ZERO,
+        Brush::Solid(rgb(255, 0, 0)),
+    );
+    child.push_opacity_layer(rect_path(0.0, 0.0, 16.0, 16.0), Affine::IDENTITY, 0.1, 0.5);
+    child.push_rect(
+        Rect::new(8.0, 0.0, 16.0, 8.0),
+        Radius::ZERO,
+        Brush::Solid(rgb(0, 255, 0)),
+    );
+    child.pop_layer();
+    child.push_rect(
+        Rect::new(0.0, 8.0, 8.0, 16.0),
+        Radius::ZERO,
+        Brush::Solid(rgb(0, 0, 255)),
+    );
+
+    let mut parent = test_scene();
+    parent.append(&child, Point::new(4.0, 6.0));
+
+    assert_eq!(parent.command_lists.len(), 2);
+    assert!(matches!(
+        parent.command_lists[0].commands[0],
+        Command::Draw(0)
+    ));
+    assert!(matches!(
+        parent.command_lists[0].commands[1],
+        Command::Layer {
+            draw: 1,
+            children: 1,
+            ..
+        }
+    ));
+    assert!(matches!(
+        parent.command_lists[0].commands[2],
+        Command::Draw(3)
+    ));
+    assert!(matches!(
+        parent.command_lists[1].commands[0],
+        Command::Draw(2)
+    ));
 }
 
 #[test]
@@ -697,7 +1120,7 @@ fn push_sdf_arc_records_sdf_without_path_storage() {
     assert!(canvas.path_records.is_empty());
     assert!(canvas.path_records.is_empty());
     match draw_sdf(&canvas, 0) {
-        Some(Sdf::Arc(arc)) => {
+        Some(Sdf::Rc(arc)) => {
             assert_eq!(arc.center, Point::new(32.0, 32.0));
             assert_eq!(arc.radius, 12.0);
             assert_eq!(arc.width, 4.0);
@@ -753,7 +1176,7 @@ fn push_shape_shadows_record_sdf_shadow_without_path_storage() {
     ));
     assert!(matches!(
         draw_sdf_shadow(&canvas, 1),
-        Some(SdfShadow::Arc(_))
+        Some(SdfShadow::Rc(_))
     ));
     assert!(matches!(
         draw_sdf_shadow(&canvas, 2),
@@ -900,4 +1323,14 @@ fn push_dashed_circle_stroke_uses_path_storage() {
     assert!(canvas.draw_records[0].path_id().is_some());
     assert!(canvas.draw_records[0].sdf_range().is_none());
     assert!(canvas.draw_records[0].sdf_shadow_range().is_none());
+}
+
+#[test]
+fn canvas_reports_unclosed_layers_before_retained_installation() {
+    let mut canvas = Canvas::new(32, 32, 1.0);
+    assert!(canvas.is_closed_for_append());
+    canvas.push_clip_sdf_rect_layer(Rect::new(0.0, 0.0, 32.0, 32.0), Radius::ZERO);
+    assert!(!canvas.is_closed_for_append());
+    canvas.pop_layer();
+    assert!(canvas.is_closed_for_append());
 }

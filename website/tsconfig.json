@@ -1,0 +1,4 @@
+{
+  "extends": "@docusaurus/tsconfig",
+  "exclude": ["build", ".docusaurus", "node_modules"]
+}

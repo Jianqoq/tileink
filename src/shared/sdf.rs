@@ -1,25 +1,25 @@
+use crate::shared::bounds::Bounds;
 use crate::shared::sdf::{
-    arc::{Arc, ArcShadow},
+    arc::{ArcShadow, Rc},
+    callout::{Callout, CalloutShadow, CalloutStroke},
     candlestick::CandleStick,
+    checkerboard::Checkerboard,
     circle::{Circle, CircleShadow, CircleStroke},
     line::{DashLine, Line, LineShadow},
     rect::{Rect, RectShadow, RectStroke},
+    star::{Star, StarStroke},
 };
-use crate::{TILE_SIZE, shared::bounds::Bounds};
 
 pub mod arc;
+pub mod callout;
 pub mod candlestick;
+pub mod checkerboard;
 pub mod circle;
 pub mod line;
 pub mod rect;
 pub mod shadow;
-
-pub(super) const SOLID_DIST: f64 = -0.5;
-
-#[inline]
-pub(super) fn coverage_from_dist(dist: f32) -> f32 {
-    (0.5 - dist).clamp(0.0, 1.0)
-}
+pub mod star;
+pub mod triangle;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -28,10 +28,16 @@ pub enum Sdf {
     RectStroke(RectStroke),
     Circle(Circle),
     CircleStroke(CircleStroke),
-    Arc(Arc),
+    Rc(Rc),
     CandleStick(CandleStick),
     Line(Line),
     DashLine(DashLine),
+    Triangle(triangle::Triangle),
+    Checkerboard(Checkerboard),
+    Star(Star),
+    StarStroke(StarStroke),
+    Callout(Callout),
+    CalloutStroke(CalloutStroke),
 }
 
 #[repr(C)]
@@ -39,21 +45,33 @@ pub enum Sdf {
 pub enum SdfShadow {
     Rect(RectShadow),
     Circle(CircleShadow),
-    Arc(ArcShadow),
+    Rc(ArcShadow),
     Line(LineShadow),
+    Callout(CalloutShadow),
 }
 
 impl Sdf {
+    /// Creates analytic coverage for alternating cells inside `rect`.
+    pub fn checkerboard(rect: peniko::kurbo::Rect, cell_size: f32) -> Self {
+        Self::Checkerboard(Checkerboard::new(rect, cell_size))
+    }
+
     pub fn bounds(self) -> Bounds {
         match self {
             Self::Rect(rect) => rect.bounds(),
             Self::RectStroke(stroke) => stroke.bounds(),
             Self::Circle(circle) => circle.bounds(),
             Self::CircleStroke(stroke) => stroke.bounds(),
-            Self::Arc(arc) => arc.bounds(),
+            Self::Rc(arc) => arc.bounds(),
             Self::CandleStick(candle) => candle.bounds(),
             Self::Line(line) => line.bounds(),
             Self::DashLine(line) => line.bounds(),
+            Self::Triangle(triangle) => triangle.bounds(),
+            Self::Checkerboard(checkerboard) => checkerboard.bounds(),
+            Self::Star(star) => star.bounds(),
+            Self::StarStroke(stroke) => stroke.bounds(),
+            Self::Callout(callout) => callout.bounds(),
+            Self::CalloutStroke(stroke) => stroke.bounds(),
         }
     }
 
@@ -63,41 +81,16 @@ impl Sdf {
             Self::RectStroke(stroke) => Self::RectStroke(stroke.translated(dx, dy)),
             Self::Circle(circle) => Self::Circle(circle.translated(dx, dy)),
             Self::CircleStroke(stroke) => Self::CircleStroke(stroke.translated(dx, dy)),
-            Self::Arc(arc) => Self::Arc(arc.translated(dx, dy)),
+            Self::Rc(arc) => Self::Rc(arc.translated(dx, dy)),
             Self::CandleStick(candle) => Self::CandleStick(candle.translated(dx, dy)),
             Self::Line(line) => Self::Line(line.translated(dx, dy)),
             Self::DashLine(line) => Self::DashLine(line.translated(dx, dy)),
-        }
-    }
-
-    pub(crate) fn tile_is_solid(&self, bounds: Bounds) -> bool {
-        match self {
-            Self::Rect(rect) => rect.tile_is_solid(bounds),
-            Self::RectStroke(stroke) => stroke.tile_is_solid(bounds),
-            Self::Circle(circle) => circle.tile_is_solid(bounds),
-            Self::CircleStroke(stroke) => stroke.tile_is_solid(bounds),
-            Self::Arc(arc) => arc.tile_is_solid(bounds),
-            Self::CandleStick(candle) => candle.tile_is_solid(bounds),
-            Self::Line(line) => line.tile_is_solid(bounds),
-            Self::DashLine(line) => line.tile_is_solid(bounds),
-        }
-    }
-
-    pub(crate) fn fine_area(
-        &self,
-        area: &mut [f32; (TILE_SIZE * TILE_SIZE) as usize],
-        tile_bounds: Bounds,
-        pixel_bounds: Bounds,
-    ) {
-        match self {
-            Self::Rect(rect) => rect.fine_area(area, tile_bounds, pixel_bounds),
-            Self::RectStroke(stroke) => stroke.fine_area(area, tile_bounds, pixel_bounds),
-            Self::Circle(circle) => circle.fine_area(area, tile_bounds, pixel_bounds),
-            Self::CircleStroke(stroke) => stroke.fine_area(area, tile_bounds, pixel_bounds),
-            Self::Arc(arc) => arc.fine_area(area, tile_bounds, pixel_bounds),
-            Self::CandleStick(candle) => candle.fine_area(area, tile_bounds, pixel_bounds),
-            Self::Line(line) => line.fine_area(area, tile_bounds, pixel_bounds),
-            Self::DashLine(line) => line.fine_area(area, tile_bounds, pixel_bounds),
+            Self::Triangle(triangle) => Self::Triangle(triangle.translated(dx, dy)),
+            Self::Checkerboard(checkerboard) => Self::Checkerboard(checkerboard.translated(dx, dy)),
+            Self::Star(star) => Self::Star(star.translated(dx, dy)),
+            Self::StarStroke(stroke) => Self::StarStroke(stroke.translated(dx, dy)),
+            Self::Callout(callout) => Self::Callout(callout.translated(dx, dy)),
+            Self::CalloutStroke(stroke) => Self::CalloutStroke(stroke.translated(dx, dy)),
         }
     }
 }
@@ -107,8 +100,9 @@ impl SdfShadow {
         match self {
             Self::Rect(shadow) => shadow.bounds(),
             Self::Circle(shadow) => shadow.bounds(),
-            Self::Arc(shadow) => shadow.bounds(),
+            Self::Rc(shadow) => shadow.bounds(),
             Self::Line(shadow) => shadow.bounds(),
+            Self::Callout(shadow) => shadow.bounds(),
         }
     }
 
@@ -116,22 +110,9 @@ impl SdfShadow {
         match self {
             Self::Rect(shadow) => Self::Rect(shadow.translated(dx, dy)),
             Self::Circle(shadow) => Self::Circle(shadow.translated(dx, dy)),
-            Self::Arc(shadow) => Self::Arc(shadow.translated(dx, dy)),
+            Self::Rc(shadow) => Self::Rc(shadow.translated(dx, dy)),
             Self::Line(shadow) => Self::Line(shadow.translated(dx, dy)),
-        }
-    }
-
-    pub(crate) fn fine_area(
-        &self,
-        area: &mut [f32; (TILE_SIZE * TILE_SIZE) as usize],
-        tile_bounds: Bounds,
-        pixel_bounds: Bounds,
-    ) {
-        match self {
-            Self::Rect(shadow) => shadow.fine_area(area, tile_bounds, pixel_bounds),
-            Self::Circle(shadow) => shadow.fine_area(area, tile_bounds, pixel_bounds),
-            Self::Arc(shadow) => shadow.fine_area(area, tile_bounds, pixel_bounds),
-            Self::Line(shadow) => shadow.fine_area(area, tile_bounds, pixel_bounds),
+            Self::Callout(shadow) => Self::Callout(shadow.translated(dx, dy)),
         }
     }
 }

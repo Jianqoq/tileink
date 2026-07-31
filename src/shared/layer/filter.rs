@@ -160,31 +160,7 @@ impl FilterPrimitiveKind {
 }
 
 pub(crate) const LIQUID_GLASS_BLUR_STD_DEV_SCALE: f32 = 1.0 / 3.0;
-pub(crate) const LIQUID_GLASS_CHROMATIC_R: f32 = 0.98;
-pub(crate) const LIQUID_GLASS_CHROMATIC_G: f32 = 1.0;
-pub(crate) const LIQUID_GLASS_CHROMATIC_B: f32 = 1.02;
 pub(crate) const LIQUID_GLASS_REFRACTION_PIXEL_SCALE: f32 = std::f32::consts::SQRT_2 * 50.0;
-pub(crate) const LIQUID_GLASS_NORMAL_LENGTH_SCALE: f32 = std::f32::consts::SQRT_2 * 1000.0;
-pub(crate) const LIQUID_GLASS_ACTIVE_DISTANCE_NORM: f32 = 0.005;
-pub(crate) const LIQUID_GLASS_EDGE_BLEND_START: f32 = -0.001;
-pub(crate) const LIQUID_GLASS_EDGE_BLEND_END: f32 = 0.001;
-pub(crate) const LIQUID_GLASS_TINT_MIX: f32 = 0.8;
-pub(crate) const LIQUID_GLASS_TINT_BASE_MIX: f32 = 0.5;
-pub(crate) const LIQUID_GLASS_FRESNEL_LIGHTNESS_GAIN: f32 = 20.0;
-pub(crate) const LIQUID_GLASS_FRESNEL_MIX_SCALE: f32 = 0.7;
-pub(crate) const LIQUID_GLASS_GLARE_LIGHTNESS_GAIN: f32 = 150.0;
-pub(crate) const LIQUID_GLASS_GLARE_CHROMA_GAIN: f32 = 30.0;
-pub(crate) const LIQUID_GLASS_GLARE_SIDE_SCALE: f32 = 1.2;
-pub(crate) const LIQUID_GLASS_GLARE_POWER_BASE: f32 = 0.1;
-pub(crate) const LIQUID_GLASS_GLARE_POWER_SCALE: f32 = 2.0;
-pub(crate) const LIQUID_GLASS_GEOMETRY_DISTANCE_SCALE: f32 = 1500.0;
-pub(crate) const LIQUID_GLASS_GEOMETRY_RANGE_SCALE: f32 = 500.0;
-pub(crate) const LIQUID_GLASS_EPSILON: f32 = 1e-6;
-pub(crate) const LIQUID_GLASS_D65_X: f32 = 0.9504559;
-pub(crate) const LIQUID_GLASS_D65_Y: f32 = 1.0;
-pub(crate) const LIQUID_GLASS_D65_Z: f32 = 1.0890578;
-pub(crate) const LIQUID_GLASS_D65_WHITE: [f32; 3] =
-    [LIQUID_GLASS_D65_X, LIQUID_GLASS_D65_Y, LIQUID_GLASS_D65_Z];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BlurDownsampleFilter {
@@ -528,7 +504,7 @@ pub(crate) fn unclipped_filtered_region_bounds(filter: &Filter, sample_region: &
     region_bounds(sample_region).outset(filter_outset(filter))
 }
 
-fn filter_outset(filter: &Filter) -> i32 {
+pub(crate) fn filter_outset(filter: &Filter) -> i32 {
     match filter {
         Filter::Chain {
             filters,
@@ -566,7 +542,7 @@ fn filter_outset(filter: &Filter) -> i32 {
     }
 }
 
-fn filter_dependency_outset(filter: &Filter) -> i32 {
+pub(crate) fn filter_dependency_outset(filter: &Filter) -> i32 {
     match filter {
         Filter::Chain { filters, .. } => filters.iter().map(filter_dependency_outset).sum(),
         Filter::Graph { primitives, .. } => graph_dependency_outset(primitives),
@@ -604,7 +580,7 @@ fn bounds_distance(a: Bounds, b: Bounds) -> i32 {
         .max((a.y1 - b.y1).abs())
 }
 
-fn region_bounds(region: &Region) -> Bounds {
+pub(crate) fn region_bounds(region: &Region) -> Bounds {
     match region {
         Region::Rect { rect, .. } => rect_bounds(*rect),
         Region::Path {
