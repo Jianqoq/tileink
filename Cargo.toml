@@ -120,6 +120,11 @@ name = "text_layout"
 harness = false
 
 [[bench]]
+name = "prepared_text"
+harness = false
+required-features = ["bench-internals"]
+
+[[bench]]
 name = "checkerboard"
 harness = false
 

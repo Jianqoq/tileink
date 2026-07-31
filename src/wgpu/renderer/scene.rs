@@ -18,7 +18,7 @@ use crate::{
         image_resource::ImageResourceStore,
         layer::filter::Filter,
     },
-    text::{PreparedTextData, TextContext},
+    text::{PreparedTextChanges, PreparedTextData, TextContext},
 };
 
 use super::{
@@ -42,7 +42,7 @@ impl Renderer {
     pub(super) fn prepare_scene(&mut self, canvas: &Canvas) {
         let _profile_scope = start_cpu_scope("prepare");
         self.text_data = None;
-        self.prepare_scene_resources(canvas);
+        self.prepare_scene_resources(canvas, None);
     }
 
     pub(super) fn prepare_scene_with_text(
@@ -52,16 +52,26 @@ impl Renderer {
         text_context: &mut TextContext,
     ) {
         let _profile_scope = start_cpu_scope("prepare");
-        profile_cpu("prepare.text", || {
-            if let (Some(text), Some(changes)) = (&mut self.text_data, &canvas.buffer_changes) {
-                text.update(
-                    &canvas.text_glyphs,
-                    &canvas.text_runs,
-                    &changes.glyphs,
-                    &changes.text_runs,
-                    font_system,
-                    text_context,
-                );
+        let text_changes = profile_cpu("prepare.text", || {
+            if let Some(text) = &mut self.text_data {
+                if let Some(changes) = &canvas.buffer_changes {
+                    text.update(
+                        &canvas.text_glyphs,
+                        &canvas.text_runs,
+                        &changes.glyphs,
+                        &changes.text_runs,
+                        font_system,
+                        text_context,
+                    );
+                    None
+                } else {
+                    text.reconcile(
+                        &canvas.text_glyphs,
+                        &canvas.text_runs,
+                        font_system,
+                        text_context,
+                    )
+                }
             } else {
                 self.text_data = Some(PreparedTextData::new(
                     &canvas.text_glyphs,
@@ -69,12 +79,17 @@ impl Renderer {
                     font_system,
                     text_context,
                 ));
+                None
             }
         });
-        self.prepare_scene_resources(canvas);
+        self.prepare_scene_resources(canvas, text_changes.as_ref());
     }
 
-    fn prepare_scene_resources(&mut self, canvas: &Canvas) {
+    fn prepare_scene_resources(
+        &mut self,
+        canvas: &Canvas,
+        flat_text_changes: Option<&PreparedTextChanges>,
+    ) {
         if let Some(changes) = &canvas.buffer_changes {
             self.retained.stats_mut().chunks_rebuilt = changes.chunks_rebuilt;
             self.retained.stats_mut().plan_fragments_rebuilt = changes.plan_fragments_rebuilt;
@@ -137,6 +152,7 @@ impl Renderer {
                 &plan,
                 reused_plan_metadata,
                 reused_plan_metadata.then_some((self.max_clip_depth, self.max_group_depth)),
+                flat_text_changes,
             )
         });
         self.retained.stats_mut().reused_compiled_plan = reused_plan_metadata;
@@ -159,6 +175,7 @@ impl Renderer {
                 Some(&self.image_resource_upload),
                 &mut self.scene_upload,
                 !reused_plan_metadata,
+                flat_text_changes,
             );
             self.retained.stats_mut().gpu_uploaded_bytes += uploaded as u64;
         });
@@ -292,8 +309,14 @@ impl Renderer {
         };
 
         let lengths = profile_cpu("prepare.local.lengths", || {
-            self.scene_upload
-                .build_lengths(canvas, self.text_data.as_ref(), plan, false, None)
+            self.scene_upload.build_lengths(
+                canvas,
+                self.text_data.as_ref(),
+                plan,
+                false,
+                None,
+                None,
+            )
         });
         let (max_clip_depth, max_group_depth) =
             profile_cpu("prepare.local.stack_depths", || plan_stack_depths(plan));
@@ -327,6 +350,7 @@ impl Renderer {
                 Some(&self.image_resource_upload),
                 &mut self.scene_upload,
                 true,
+                None,
             );
         });
         profile_cpu("prepare.local.scan_buffers", || {

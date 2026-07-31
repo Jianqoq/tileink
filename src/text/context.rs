@@ -18,6 +18,7 @@ pub struct TextContext {
     image_cache: HashMap<RasterGlyphKey, Option<GlyphRasterImage>>,
     outline_cache: HashMap<CacheKey, Option<BezPath>>,
     raster_options: TextRasterOptions,
+    cache_generation: u64,
 }
 
 impl TextContext {
@@ -27,6 +28,7 @@ impl TextContext {
             image_cache: HashMap::new(),
             outline_cache: HashMap::new(),
             raster_options: TextRasterOptions::default(),
+            cache_generation: 0,
         }
     }
 
@@ -36,6 +38,10 @@ impl TextContext {
 
     pub fn set_raster_options(&mut self, options: TextRasterOptions) {
         self.raster_options = options;
+    }
+
+    pub(crate) fn cache_generation(&self) -> u64 {
+        self.cache_generation
     }
 
     /// Shapes text with the caller-owned font system and caches derived glyph data here.
@@ -192,6 +198,8 @@ impl TextContext {
     pub fn clear_glyph_caches(&mut self) {
         self.image_cache.clear();
         self.outline_cache.clear();
+        // Prepared renderer text must not keep pixels derived from the previous font database.
+        self.cache_generation = self.cache_generation.wrapping_add(1);
     }
 }
 

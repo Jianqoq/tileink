@@ -26,6 +26,38 @@ fn wgpu_renderer_draws_text_in_tile_fine_when_enabled() {
 }
 
 #[test]
+fn flat_canvas_position_only_text_reuse_and_device_reset_match_fresh_renderer() {
+    if !run_wgpu_tests() {
+        return;
+    }
+
+    let mut font_system = TextFontSystem::new();
+    let mut text_context = TextContext::new();
+    let layout = text_context.layout(&mut font_system, TextLayoutOptions::new("Text", 28.0));
+    if layout.is_empty() {
+        return;
+    }
+    let mut first = Canvas::new(160, 64, 1.0);
+    first.push_text_layout(&layout, peniko::kurbo::Point::new(8.0, 32.0), Color::BLACK);
+    let mut moved = Canvas::new(160, 64, 1.0);
+    moved.push_text_layout(&layout, peniko::kurbo::Point::new(27.0, 39.0), Color::BLACK);
+    let mut reused = new_test_renderer(160, 64, Color::TRANSPARENT);
+    reused.render_with_text(&first, &mut font_system, &mut text_context);
+    reused.render_with_text(&moved, &mut font_system, &mut text_context);
+    let reused_image = reused.image();
+
+    let mut fresh = new_test_renderer(160, 64, Color::TRANSPARENT);
+    assert!(fresh.text_data.is_none());
+    fresh.render_with_text(&moved, &mut font_system, &mut text_context);
+    assert!(fresh.text_data.is_some());
+    let fresh_image = fresh.image();
+
+    // Regression: flat Canvas frames update cached positions, while recreating a renderer after a
+    // device reset starts cold. Both paths must preserve exactly the same pixels.
+    assert_eq!(reused_image.pixels, fresh_image.pixels);
+}
+
+#[test]
 fn text_clip_enforces_a_non_tile_aligned_pixel_boundary() {
     if !run_wgpu_tests() {
         return;

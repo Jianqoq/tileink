@@ -83,6 +83,8 @@ pub use shared::{
     },
 };
 pub use svg::{SvgError, SvgOptions};
+#[cfg(feature = "bench-internals")]
+pub use text::PreparedTextBenchmark;
 pub use text::{
     TextCompositeMode, TextContext, TextLayout, TextLayoutOptions, TextRasterOptions,
     TextSubpixelMode,

@@ -69,7 +69,7 @@ impl TextGlyph {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct CanvasGlyph {
     pub(crate) cache_key: CacheKey,
     pub(crate) x: i32,
@@ -84,7 +84,7 @@ impl CanvasGlyph {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct TextRun {
     pub(crate) glyph_start: u32,
     pub(crate) glyph_count: u32,

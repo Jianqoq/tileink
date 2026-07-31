@@ -26,7 +26,10 @@ use crate::{
         image_resource::GpuImageResourceUpload,
         pixel::{mul_div255, opacity_f32_to_u8},
     },
-    text::{AtlasSignature, PreparedGlyphContent, PreparedTextData, TextCompositeMode},
+    text::{
+        AtlasSignature, PreparedGlyphContent, PreparedTextChanges, PreparedTextData,
+        TextCompositeMode,
+    },
 };
 
 use super::super::buffer::WgpuBuffer;
@@ -150,6 +153,7 @@ impl WgpuSceneUploadStaging {
         plan: &ExecPlan,
         reused_plan: bool,
         cached_stack_depths: Option<(usize, usize)>,
+        flat_text_changes: Option<&PreparedTextChanges>,
     ) -> GpuBufferLengths {
         // Lengths and tile draw bins must describe the same scene; building both here avoids
         // recounting every draw/tile intersection later in prepare.
@@ -160,9 +164,12 @@ impl WgpuSceneUploadStaging {
                 .as_ref()
                 .map(|changes| changes.paths.as_slice()),
         );
-        let glyph_capacity =
-            self.glyph_capacity
-                .update(canvas, text, canvas.buffer_changes.as_ref());
+        let glyph_capacity = self.glyph_capacity.update(
+            canvas,
+            text,
+            canvas.buffer_changes.as_ref(),
+            flat_text_changes,
+        );
         let mut lengths = GpuBufferLengths::from_scene_with_text_and_tile_draw_bins(
             canvas,
             text,
@@ -246,6 +253,7 @@ fn grow_paint_layout(
 #[derive(Default)]
 struct GlyphCapacityCache {
     capacities: Vec<usize>,
+    draw_records: Vec<DrawRecord>,
     draw_runs: Vec<Option<u32>>,
     run_draws: Vec<HashSet<usize>>,
     run_glyph_ranges: Vec<std::ops::Range<usize>>,
@@ -263,23 +271,44 @@ impl GlyphCapacityCache {
         canvas: &Canvas,
         text: Option<&PreparedTextData>,
         changes: Option<&SceneBufferChanges>,
+        flat_text_changes: Option<&PreparedTextChanges>,
     ) -> usize {
         let Some(text) = text else {
             *self = Self::default();
             return 0;
         };
         let tiles_size = (canvas.width_in_tiles(), canvas.height_in_tiles());
-        let resource_only_change = text.atlas_signature() != self.atlas_signature
-            && changes.is_some_and(|changes| changes.glyphs.is_empty());
-        if !self.initialized
-            || changes.is_none()
-            || self.tiles_size != tiles_size
-            || resource_only_change
-        {
+        let glyph_changes_empty = changes
+            .map(|changes| changes.glyphs.is_empty())
+            .or_else(|| flat_text_changes.map(|changes| changes.glyphs().is_empty()))
+            .unwrap_or(false);
+        let resource_only_change =
+            text.atlas_signature() != self.atlas_signature && glyph_changes_empty;
+        if !self.initialized || self.tiles_size != tiles_size || resource_only_change {
             self.rebuild(canvas, text);
             return self.total;
         }
-        self.update_incremental(canvas, text, changes.unwrap());
+        if let Some(changes) = changes {
+            self.update_ranges(
+                canvas,
+                text,
+                &changes.glyphs,
+                &changes.text_runs,
+                &changes.draws,
+            );
+        } else if let Some(text_changes) = flat_text_changes {
+            let draw_changes = self.flat_draw_changes(canvas);
+            self.update_ranges(
+                canvas,
+                text,
+                text_changes.glyphs(),
+                text_changes.runs(),
+                &draw_changes,
+            );
+        } else {
+            self.rebuild(canvas, text);
+            return self.total;
+        }
         self.atlas_signature = text.atlas_signature();
         self.total
     }
@@ -287,6 +316,8 @@ impl GlyphCapacityCache {
     fn rebuild(&mut self, canvas: &Canvas, text: &PreparedTextData) {
         self.capacities.clear();
         self.capacities.resize(canvas.draw_records.len(), 0);
+        self.draw_records.clear();
+        self.draw_records.extend_from_slice(&canvas.draw_records);
         self.draw_runs.clear();
         self.draw_runs.resize(canvas.draw_records.len(), None);
         self.run_draws.clear();
@@ -321,11 +352,35 @@ impl GlyphCapacityCache {
         self.initialized = true;
     }
 
-    fn update_incremental(
+    fn flat_draw_changes(&self, canvas: &Canvas) -> Vec<std::ops::Range<usize>> {
+        let shared_len = self.draw_records.len().min(canvas.draw_records.len());
+        let mut changes = Vec::new();
+        for index in 0..shared_len {
+            if bytemuck::bytes_of(&self.draw_records[index])
+                != bytemuck::bytes_of(&canvas.draw_records[index])
+            {
+                push_dirty_index(&mut changes, index);
+            }
+        }
+        if canvas.draw_records.len() > shared_len {
+            if let Some(last) = changes.last_mut()
+                && last.end == shared_len
+            {
+                last.end = canvas.draw_records.len();
+            } else {
+                changes.push(shared_len..canvas.draw_records.len());
+            }
+        }
+        changes
+    }
+
+    fn update_ranges(
         &mut self,
         canvas: &Canvas,
         text: &PreparedTextData,
-        changes: &SceneBufferChanges,
+        glyph_changes: &[std::ops::Range<usize>],
+        run_changes: &[std::ops::Range<usize>],
+        draw_changes: &[std::ops::Range<usize>],
     ) {
         let old_draw_len = self.draw_runs.len();
         self.affected_draws
@@ -359,7 +414,7 @@ impl GlyphCapacityCache {
             .resize_with(canvas.text_runs.len(), HashSet::new);
         self.run_glyph_ranges.resize(canvas.text_runs.len(), 0..0);
 
-        for run in indices_from_ranges(&changes.text_runs, canvas.text_runs.len()) {
+        for run in indices_from_ranges(run_changes, canvas.text_runs.len()) {
             for &draw in &self.run_draws[run] {
                 self.affected_draws.insert(draw);
             }
@@ -384,13 +439,15 @@ impl GlyphCapacityCache {
                 }
             }
         }
+        self.draw_records.truncate(canvas.draw_records.len());
         self.draw_runs.resize(canvas.draw_records.len(), None);
         self.capacities.resize(canvas.draw_records.len(), 0);
-        let changed_draws = indices_from_ranges(&changes.draws, canvas.draw_records.len())
-            .filter(|&draw| draw < old_draw_len)
-            .chain(old_draw_len..canvas.draw_records.len());
+        let changed_draw_ranges =
+            changed_ranges(Some(draw_changes), old_draw_len, canvas.draw_records.len());
+        let changed_draws = indices_from_ranges(&changed_draw_ranges, canvas.draw_records.len());
         for draw in changed_draws {
             self.affected_draws.insert(draw);
+            replace_or_push(&mut self.draw_records, draw, canvas.draw_records[draw]);
             if let Some(run) = self.draw_runs[draw]
                 && let Some(draws) = self.run_draws.get_mut(run as usize)
             {
@@ -403,7 +460,7 @@ impl GlyphCapacityCache {
             }
         }
 
-        for glyph in indices_from_ranges(&changes.glyphs, canvas.text_glyphs.len()) {
+        for glyph in indices_from_ranges(glyph_changes, canvas.text_glyphs.len()) {
             add_run_draws(
                 &self.run_draws,
                 self.glyph_runs[glyph],
@@ -419,6 +476,41 @@ impl GlyphCapacityCache {
             self.capacities[draw] = coarse_glyph_capacity_for_draw(canvas, Some(text), draw);
             self.total += self.capacities[draw];
         }
+    }
+
+    #[cfg(any(test, feature = "bench-internals"))]
+    fn update_incremental(
+        &mut self,
+        canvas: &Canvas,
+        text: &PreparedTextData,
+        changes: &SceneBufferChanges,
+    ) {
+        self.update_ranges(
+            canvas,
+            text,
+            &changes.glyphs,
+            &changes.text_runs,
+            &changes.draws,
+        );
+    }
+}
+
+fn replace_or_push<T>(values: &mut Vec<T>, index: usize, value: T) {
+    if index < values.len() {
+        values[index] = value;
+    } else {
+        debug_assert_eq!(index, values.len());
+        values.push(value);
+    }
+}
+
+fn push_dirty_index(ranges: &mut Vec<std::ops::Range<usize>>, index: usize) {
+    if let Some(last) = ranges.last_mut()
+        && last.end == index
+    {
+        last.end += 1;
+    } else {
+        ranges.push(index..index + 1);
     }
 }
 
@@ -470,6 +562,7 @@ impl TextUpload {
         text: Option<&PreparedTextData>,
         current_atlas_signature: AtlasSignature,
         changes: Option<&SceneBufferChanges>,
+        flat_changes: Option<&PreparedTextChanges>,
     ) {
         let Some(text) = text else {
             self.clear();
@@ -480,21 +573,19 @@ impl TextUpload {
         self.dirty_fine.clear();
         let old_run_len = self.runs.len();
         let old_glyph_len = self.glyphs.len();
-        let incremental = changes.is_some();
+        let incremental = changes.is_some() || flat_changes.is_some();
+        let changed_runs = changes
+            .map(|changes| changes.text_runs.as_slice())
+            .or_else(|| flat_changes.map(PreparedTextChanges::runs));
+        let changed_glyphs = changes
+            .map(|changes| changes.glyphs.as_slice())
+            .or_else(|| flat_changes.map(PreparedTextChanges::glyphs));
         self.runs
             .resize(canvas.text_runs.len(), GlyphRunRecord::default());
         self.glyphs
             .resize(canvas.text_glyphs.len(), GlyphRecord::default());
-        let run_ranges = changed_ranges(
-            changes.map(|changes| changes.text_runs.as_slice()),
-            old_run_len,
-            self.runs.len(),
-        );
-        let glyph_ranges = changed_ranges(
-            changes.map(|changes| changes.glyphs.as_slice()),
-            old_glyph_len,
-            self.glyphs.len(),
-        );
+        let run_ranges = changed_ranges(changed_runs, old_run_len, self.runs.len());
+        let glyph_ranges = changed_ranges(changed_glyphs, old_glyph_len, self.glyphs.len());
         for range in &run_ranges {
             for index in range.clone() {
                 let run = canvas.text_runs[index];
@@ -961,6 +1052,7 @@ impl WgpuSceneBuffers {
         image_resources: Option<&GpuImageResourceUpload>,
         staging: &mut WgpuSceneUploadStaging,
         upload_plan: bool,
+        flat_text_changes: Option<&PreparedTextChanges>,
     ) -> usize {
         let mut uploaded = 0;
         // Keep canvas upload profiling split between CPU-side plan construction and queue uploads.
@@ -1023,7 +1115,7 @@ impl WgpuSceneBuffers {
             });
         }
         uploaded += profile_cpu("prepare.upload_scene.upload_text", || {
-            self.upload_text(device, queue, canvas, text, staging)
+            self.upload_text(device, queue, canvas, text, staging, flat_text_changes)
         });
         let path_dirty = staging.path_plans.take_dirty();
         uploaded += profile_cpu("prepare.upload_scene.upload_scan_plan", || {
@@ -1344,6 +1436,7 @@ impl WgpuSceneBuffers {
         canvas: &Canvas,
         text: Option<&PreparedTextData>,
         staging: &mut WgpuSceneUploadStaging,
+        flat_text_changes: Option<&PreparedTextChanges>,
     ) -> usize {
         profile_cpu("prepare.upload_scene.text.refill", || {
             staging.text.refill(
@@ -1351,6 +1444,7 @@ impl WgpuSceneBuffers {
                 text,
                 self.glyph_atlas_signature,
                 canvas.buffer_changes.as_ref(),
+                flat_text_changes,
             );
         });
         let uploaded = profile_cpu("prepare.upload_scene.text.runs", || {
@@ -1592,9 +1686,9 @@ impl WgpuCoarseBuffers {
 #[cfg(test)]
 mod tests {
     use super::{
-        GlyphCapacityCache, WORK_CAPACITY_SHRINK_DELAY, changed_ranges, contiguous_index_runs,
-        grow_image_resource_atlas_capacity, grow_paint_layout, indices_from_ranges,
-        merge_sorted_dirty_ranges, stable_work_capacity,
+        GlyphCapacityCache, TextUpload, WORK_CAPACITY_SHRINK_DELAY, changed_ranges,
+        contiguous_index_runs, grow_image_resource_atlas_capacity, grow_paint_layout,
+        indices_from_ranges, merge_sorted_dirty_ranges, stable_work_capacity,
     };
     use crate::{
         TextContext,
@@ -1604,7 +1698,7 @@ mod tests {
             bounds::PixelBounds,
             draw_record::{DrawRecord, DrawTag, FillRuleWord},
         },
-        text::{CanvasGlyph, PreparedTextData, TextRun},
+        text::{AtlasSignature, CanvasGlyph, PreparedTextChanges, PreparedTextData, TextRun},
     };
     use cosmic_text::{CacheKey, CacheKeyFlags, FontSystem};
 
@@ -1666,6 +1760,63 @@ mod tests {
         let mut cache = GlyphCapacityCache::default();
         cache.rebuild(&canvas, &text);
         (cache, canvas, text)
+    }
+
+    #[test]
+    fn flat_text_changes_patch_only_changed_gpu_glyph_records() {
+        let (_, mut canvas, text) = glyph_capacity_fixture();
+        let mut upload = TextUpload::default();
+        upload.refill(&canvas, Some(&text), AtlasSignature::default(), None, None);
+        canvas.text_glyphs[1].x += 5;
+        let changes = PreparedTextChanges::from_ranges(std::iter::once(1..2).collect(), Vec::new());
+
+        upload.refill(
+            &canvas,
+            Some(&text),
+            text.atlas_signature(),
+            None,
+            Some(&changes),
+        );
+
+        assert!(upload.dirty_runs.is_empty());
+        assert!(!upload.dirty_coarse.is_empty());
+        assert!(
+            upload
+                .dirty_coarse
+                .iter()
+                .all(|range| range.len() < upload.coarse_blob.len())
+        );
+        assert!(
+            upload
+                .dirty_fine
+                .iter()
+                .all(|range| range.len() < upload.fine_blob.len())
+        );
+    }
+
+    #[test]
+    fn flat_text_changes_update_only_dependent_glyph_capacity_draws() {
+        let (mut cache, canvas, text) = glyph_capacity_fixture();
+        let changes = PreparedTextChanges::from_ranges(std::iter::once(0..1).collect(), Vec::new());
+
+        cache.update(&canvas, Some(&text), None, Some(&changes));
+
+        assert_eq!(cache.affected_draws.len(), 2);
+        assert!(cache.affected_draws.contains(0));
+        assert!(cache.affected_draws.contains(1));
+        assert!(!cache.affected_draws.contains(2));
+    }
+
+    #[test]
+    fn flat_draw_diff_coalesces_changed_tail_with_appended_draws() {
+        let (cache, mut canvas, _) = glyph_capacity_fixture();
+        canvas.draw_records[2].pixel_bounds.x1 += 1;
+        canvas.draw_records.push(glyph_draw(1));
+
+        let changes = cache.flat_draw_changes(&canvas);
+
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0], 2..4);
     }
 
     #[test]

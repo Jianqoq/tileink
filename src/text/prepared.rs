@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
     hash::{Hash, Hasher},
-    ops::Range,
 };
 
 #[cfg(test)]
@@ -17,6 +16,9 @@ use super::{
     raster::GlyphRasterImage,
 };
 
+mod reconcile;
+pub(crate) use reconcile::PreparedTextChanges;
+
 #[derive(Clone, Debug)]
 pub(crate) struct PreparedTextData {
     runs: Vec<TextRun>,
@@ -25,6 +27,8 @@ pub(crate) struct PreparedTextData {
     image_by_key: HashMap<CacheKey, u32>,
     atlas_signature: AtlasSignature,
     raster_options: TextRasterOptions,
+    cache_generation: u64,
+    image_bytes: usize,
 }
 
 impl PreparedTextData {
@@ -39,14 +43,18 @@ impl PreparedTextData {
         let mut prepared_glyphs = Vec::with_capacity(glyphs.len());
         let mut atlas_hasher = StableAtlasHasher::new();
         let mut atlas_len = 0u32;
+        let mut image_bytes = 0;
         let raster_options = context.raster_options();
+        let cache_generation = context.cache_generation();
 
         for glyph in glyphs {
             let image = if let Some(&image) = image_by_key.get(&glyph.cache_key) {
                 Some(image)
             } else if let Some(image) = context.glyph_image(font_system, glyph.cache_key) {
                 let image_ix = images.len() as u32;
-                images.push(PreparedGlyphImage::from_raster(image, raster_options));
+                let image = PreparedGlyphImage::from_raster(image, raster_options);
+                image_bytes += image.data.len();
+                images.push(image);
                 image_by_key.insert(glyph.cache_key, image_ix);
                 glyph.cache_key.hash(&mut atlas_hasher);
                 raster_options.hash(&mut atlas_hasher);
@@ -56,11 +64,13 @@ impl PreparedTextData {
                 None
             };
             prepared_glyphs.push(PreparedGlyph {
+                cache_key: glyph.cache_key,
                 image,
                 x: glyph.x,
                 y: glyph.y,
             });
         }
+        atlas_hasher.write_u64(cache_generation);
 
         Self {
             runs: runs.to_vec(),
@@ -69,84 +79,8 @@ impl PreparedTextData {
             image_by_key,
             atlas_signature: AtlasSignature::from_hash(atlas_len, atlas_hasher.finish128()),
             raster_options,
-        }
-    }
-
-    /// Applies retained arena edits without rerasterizing or walking unchanged glyphs.
-    pub(crate) fn update(
-        &mut self,
-        glyphs: &[CanvasGlyph],
-        runs: &[TextRun],
-        glyph_ranges: &[Range<usize>],
-        run_ranges: &[Range<usize>],
-        font_system: &mut FontSystem,
-        context: &mut TextContext,
-    ) {
-        let raster_options = context.raster_options();
-        if raster_options != self.raster_options {
-            *self = Self::new(glyphs, runs, font_system, context);
-            return;
-        }
-
-        let old_glyph_len = self.glyphs.len();
-        self.glyphs.resize(
-            glyphs.len(),
-            PreparedGlyph {
-                image: None,
-                x: 0,
-                y: 0,
-            },
-        );
-        let mut changed_glyphs = glyph_ranges.to_vec();
-        if glyphs.len() > old_glyph_len {
-            changed_glyphs.push(old_glyph_len..glyphs.len());
-        }
-        merge_ranges(&mut changed_glyphs);
-        let mut atlas_changed = false;
-        for range in changed_glyphs {
-            let range = range.start.min(glyphs.len())..range.end.min(glyphs.len());
-            for index in range {
-                let glyph = glyphs[index];
-                let image = if let Some(&image) = self.image_by_key.get(&glyph.cache_key) {
-                    Some(image)
-                } else if let Some(image) = context.glyph_image(font_system, glyph.cache_key) {
-                    let image_id = self.images.len() as u32;
-                    self.images
-                        .push(PreparedGlyphImage::from_raster(image, raster_options));
-                    self.image_by_key.insert(glyph.cache_key, image_id);
-                    atlas_changed = true;
-                    Some(image_id)
-                } else {
-                    None
-                };
-                self.glyphs[index] = PreparedGlyph {
-                    image,
-                    x: glyph.x,
-                    y: glyph.y,
-                };
-            }
-        }
-
-        let old_run_len = self.runs.len();
-        self.runs.resize(
-            runs.len(),
-            TextRun {
-                glyph_start: 0,
-                glyph_count: 0,
-            },
-        );
-        let mut changed_runs = run_ranges.to_vec();
-        if runs.len() > old_run_len {
-            changed_runs.push(old_run_len..runs.len());
-        }
-        merge_ranges(&mut changed_runs);
-        for range in changed_runs {
-            let range = range.start.min(runs.len())..range.end.min(runs.len());
-            self.runs[range.clone()].copy_from_slice(&runs[range]);
-        }
-
-        if atlas_changed {
-            self.rebuild_atlas_signature();
+            cache_generation,
+            image_bytes,
         }
     }
 
@@ -166,6 +100,7 @@ impl PreparedTextData {
         for hash in hashes {
             hasher.write_u64(hash);
         }
+        hasher.write_u64(self.cache_generation);
         self.atlas_signature =
             AtlasSignature::from_hash(self.image_by_key.len() as u32, hasher.finish128());
     }
@@ -202,22 +137,11 @@ impl PreparedTextData {
     pub(crate) fn atlas_signature(&self) -> AtlasSignature {
         self.atlas_signature
     }
-}
 
-fn merge_ranges(ranges: &mut Vec<Range<usize>>) {
-    ranges.retain(|range| !range.is_empty());
-    ranges.sort_unstable_by_key(|range| range.start);
-    let mut merged = Vec::<Range<usize>>::with_capacity(ranges.len());
-    for range in ranges.drain(..) {
-        if let Some(previous) = merged.last_mut()
-            && range.start <= previous.end
-        {
-            previous.end = previous.end.max(range.end);
-        } else {
-            merged.push(range);
-        }
+    #[cfg(test)]
+    pub(super) fn cache_generation(&self) -> u64 {
+        self.cache_generation
     }
-    *ranges = merged;
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -328,6 +252,7 @@ fn avalanche64(mut value: u64) -> u64 {
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PreparedGlyph {
+    pub(crate) cache_key: CacheKey,
     pub(crate) image: Option<u32>,
     pub(crate) x: i32,
     pub(crate) y: i32,

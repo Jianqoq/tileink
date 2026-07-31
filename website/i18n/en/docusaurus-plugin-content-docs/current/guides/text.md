@@ -21,3 +21,11 @@ buffer's existing layout state, avoiding the allocation and shaping cost of `lay
 temporary buffer. The buffer must have been created with the same font system.
 
 For retained text, insert the text Canvas as a leaf, call `replace_scene` for changed content, and use `set_transform` for movement only.
+
+The text-aware renderer also retains prepared glyph images across successive flat `Canvas` frames.
+Position-only changes reconcile glyph/run records without cloning cached bitmap data or rebuilding
+the atlas lookup. Contiguous glyph/run dirty ranges flow into GPU text upload, so unchanged records
+and blobs are not rebuilt. Changing raster options or calling `TextContext::clear_glyph_caches`
+invalidates that prepared atlas. The renderer rebuilds from the live frame after retained image
+data exceeds 32 MiB, discarding stale images. Recreating the renderer for a device reset starts
+with an empty prepared-text cache.
