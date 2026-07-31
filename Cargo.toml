@@ -116,6 +116,10 @@ name = "text_clip"
 harness = false
 
 [[bench]]
+name = "text_layout"
+harness = false
+
+[[bench]]
 name = "checkerboard"
 harness = false
 

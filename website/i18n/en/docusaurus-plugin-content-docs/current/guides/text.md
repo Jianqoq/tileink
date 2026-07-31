@@ -15,4 +15,9 @@ renderer.render_with_text(&canvas, &mut fonts, &mut text);
 
 `push_text_layout` records glyph/run data and supports bitmap/color glyphs through the text renderer. `push_text_layout_as_path` converts scalable outlines to ordinary paths and does not require a text-aware render call. `TextRasterOptions` selects subpixel and compositing behavior.
 
+If the application already retains a `cosmic_text::Buffer` for measurement or editing, call
+`TextContext::layout_buffer(&mut fonts, &mut buffer)`. It shapes pending changes and reuses the
+buffer's existing layout state, avoiding the allocation and shaping cost of `layout`'s owned
+temporary buffer. The buffer must have been created with the same font system.
+
 For retained text, insert the text Canvas as a leaf, call `replace_scene` for changed content, and use `set_transform` for movement only.

@@ -24,6 +24,11 @@ canvas.push_text_layout(&layout, Point::new(24.0, 52.0), Color::WHITE);
 renderer.render_with_text(&canvas, &mut fonts, &mut text);
 ```
 
+如果应用已经为测量或编辑保留了 `cosmic_text::Buffer`，使用
+`TextContext::layout_buffer(&mut fonts, &mut buffer)`。它会 shape pending changes 并复用
+buffer 已有的 layout state，避免 `layout` 再分配并 shaping 一个 temporary buffer。
+buffer 必须由同一个 font system 创建。
+
 ## 两种记录方式
 
 - `push_text_layout`：保留 glyph/run records，由 GPU text path 渲染；必须调用 `render_with_text*`。

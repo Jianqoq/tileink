@@ -24,6 +24,7 @@ title: Text 与 SVG API
 | `new()` | 创建 layout/raster caches |
 | `raster_options()` / `set_raster_options()` | 查询/修改 text raster 策略 |
 | `layout(font_system, options)` | 返回 `TextLayout` |
+| `layout_buffer(font_system, buffer)` | 复用 retained `cosmic_text::Buffer`，只 shape pending changes |
 | `layout_outline_path(font_system, layout, origin)` | 收集 glyph outlines |
 | `clear_glyph_caches()` | fonts/resources 发生外部重大变化时清理 |
 

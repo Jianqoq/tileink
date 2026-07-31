@@ -427,6 +427,53 @@ fn prepared_text_signature_changes_with_subpixel_mode() {
     assert_ne!(rgb.atlas_signature(), bgr.atlas_signature());
 }
 
+fn assert_shaped_cosmic_buffer_matches_owned_layout(options: TextLayoutOptions<'_>) {
+    let mut font_system = FontSystem::new();
+    let mut context = TextContext::new();
+    let expected = context.layout(&mut font_system, options.clone());
+    let mut buffer = cosmic_text::Buffer::new(
+        &mut font_system,
+        cosmic_text::Metrics::new(options.font_size, options.line_height),
+    );
+    buffer.set_size(options.width, options.height);
+    buffer.set_wrap(options.wrap);
+    buffer.set_text(
+        options.text,
+        &options.attrs,
+        cosmic_text::Shaping::Advanced,
+        options.alignment,
+    );
+    let actual = context.layout_buffer(&mut font_system, &mut buffer);
+
+    assert_eq!(actual.bounds, expected.bounds);
+    assert_eq!(actual.glyphs.len(), expected.glyphs.len());
+    for (actual, expected) in actual.glyphs.iter().zip(&expected.glyphs) {
+        assert_eq!(actual.cache_key, expected.cache_key);
+        assert_eq!((actual.x, actual.y), (expected.x, expected.y));
+        assert_eq!(actual.outline_origin, expected.outline_origin);
+    }
+}
+
+#[test]
+fn shaped_cosmic_buffer_layout_matches_owned_layout() {
+    assert_shaped_cosmic_buffer_matches_owned_layout(
+        TextLayoutOptions::new("Market Watch", 12.0)
+            .with_line_height(16.0)
+            .with_size(Some(180.0), Some(24.0)),
+    );
+}
+
+#[test]
+fn shaped_cosmic_buffer_preserves_alignment_and_no_wrap() {
+    assert_shaped_cosmic_buffer_matches_owned_layout(
+        TextLayoutOptions::new("Market Watch", 12.0)
+            .with_line_height(16.0)
+            .with_size(Some(180.0), Some(24.0))
+            .with_alignment(Some(cosmic_text::Align::Center))
+            .with_wrap(cosmic_text::Wrap::None),
+    );
+}
+
 #[test]
 fn text_context_uses_subpixel_raster_by_default() {
     let mut font_system = FontSystem::new();
