@@ -169,6 +169,12 @@ Tileink is designed around workloads that repeatedly update a small region of a 
 - **DX12 startup path.** Compatible Windows builds embed build-time DXIL for the primary portable
   fine shaders, with automatic WGSL fallback when the backend, device, or layout does not match.
 
+Windows builders can set `TILEINK_DXIL_CACHE_DIR` to a persistent directory to reuse generated
+DXIL across fresh Cargo `OUT_DIR`s and CI workspaces. Entries are content-addressed by the expanded
+shader, generator implementation, locked Naga version, and DXC toolchain files; restored binaries
+are checksum-verified before they are embedded. Set `TILEINK_DXIL_PRECOMPILE=0` to disable the
+build-time DXIL path entirely.
+
 These are architectural advantages for Tileink's target workload, not a claim that Tileink is
 universally faster than another renderer. Scene structure, dirty ratio, effects, resolution, GPU,
 driver, and output path all materially affect results.

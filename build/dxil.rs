@@ -16,7 +16,7 @@ use naga::{
 };
 
 use crate::{
-    dxc,
+    dxc, dxil_cache,
     dxil_manifest::{
         Dx12ResourceClass, FINE_DXIL_BINDINGS, FINE_DXIL_ENTRY_POINTS, FINE_DXIL_WORKGROUP_SIZE,
     },
@@ -25,6 +25,10 @@ use crate::{
 
 pub(crate) fn generate(fine_portable_source: &str, out_dir: &Path) {
     println!("cargo:rerun-if-env-changed=TILEINK_DXIL_PRECOMPILE");
+    println!(
+        "cargo:rerun-if-env-changed={}",
+        dxil_cache::CACHE_DIRECTORY_ENV
+    );
     dxc::emit_discovery_inputs();
 
     let generated = out_dir.join("tileink_dxil.rs");
@@ -44,10 +48,61 @@ pub(crate) fn generate(fine_portable_source: &str, out_dir: &Path) {
     };
     dxc::emit_toolchain_inputs(&dxc);
 
+    let cache = match cache_context(fine_portable_source, &dxc) {
+        Ok(cache) => cache,
+        Err(error) => {
+            println!("cargo:warning=could not fingerprint the Tileink DXIL cache: {error}");
+            None
+        }
+    };
+    if let Some((root, key)) = &cache {
+        match dxil_cache::restore(root, key, &FINE_DXIL_ENTRY_POINTS, out_dir) {
+            Ok(Some(outputs)) => {
+                write_generated(&generated, &outputs);
+                return;
+            }
+            Ok(None) => {}
+            Err(error) => {
+                println!("cargo:warning=could not restore the Tileink DXIL cache: {error}")
+            }
+        }
+    }
+
     match compile_fine_variants(fine_portable_source, out_dir, &dxc) {
-        Ok(outputs) => write_generated(&generated, &outputs),
+        Ok(outputs) => {
+            if let Some((root, key)) = cache
+                && let Err(error) = dxil_cache::store(&root, &key, &outputs)
+            {
+                println!("cargo:warning=could not store the Tileink DXIL cache: {error}");
+            }
+            write_generated(&generated, &outputs);
+        }
         Err(error) => panic!("failed to precompile Tileink DXIL: {error}"),
     }
+}
+
+fn cache_context(
+    fine_portable_source: &str,
+    dxc: &Path,
+) -> std::io::Result<Option<(PathBuf, String)>> {
+    let Some(root) = env::var_os(dxil_cache::CACHE_DIRECTORY_ENV) else {
+        return Ok(None);
+    };
+    let key = dxil_cache::fingerprint(
+        &[
+            fine_portable_source.as_bytes(),
+            include_bytes!("../build.rs"),
+            include_bytes!("dxc.rs"),
+            include_bytes!("dxil.rs"),
+            include_bytes!("dxil_cache.rs"),
+            include_bytes!("../Cargo.toml"),
+            include_bytes!("../Cargo.lock"),
+            include_bytes!("../src/wgpu/dxil_manifest.rs"),
+            include_bytes!("../src/wgpu/shader_variants.rs"),
+        ],
+        &dxc::toolchain_inputs(dxc),
+    )?;
+    Ok(Some((PathBuf::from(root), key)))
 }
 
 fn compile_fine_variants(
@@ -105,7 +160,7 @@ fn compile_fine_variants(
     }
 
     // DXC compilation dominates a clean build. Independent entry points are compiled concurrently;
-    // Cargo then reuses these OUT_DIR artifacts until shader sources or the compiler change.
+    // the content-addressed cache then survives fresh Cargo OUT_DIRs and CI workspaces.
     let results = thread::scope(|scope| {
         jobs.into_iter()
             .map(

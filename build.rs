@@ -7,6 +7,8 @@ use std::{
 mod dxc;
 #[path = "build/dxil.rs"]
 mod dxil;
+#[path = "build/dxil_cache.rs"]
+mod dxil_cache;
 #[path = "src/wgpu/dxil_manifest.rs"]
 mod dxil_manifest;
 #[path = "src/wgpu/shader_variants.rs"]
