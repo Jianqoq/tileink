@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+env:
+  TILEINK_DXIL_CACHE_DIR: ${{ github.workspace }}/.cache/tileink/dxil
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  formatting:
+    name: Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Select stable Rust
+        run: rustup default stable
+      - name: Install rustfmt
+        run: rustup component add rustfmt
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Cache Cargo and Clippy artifacts
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-clippy-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('build.rs', 'build/**/*.rs', 'src/wgpu/dxil_manifest.rs', 'src/wgpu/shader_variants.rs', 'src/wgpu/shaders/**/*.wgsl') }}
+          restore-keys: |
+            cargo-clippy-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
+            cargo-clippy-${{ runner.os }}-
+      - name: Select stable Rust
+        run: rustup default stable
+      - name: Install Clippy
+        run: rustup component add clippy
+      - name: Lint all targets
+        run: cargo clippy --release --all-targets -- -D warnings
+
+  tests:
+    name: Tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Cache Cargo test artifacts
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-tests-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('build.rs', 'build/**/*.rs', 'src/wgpu/dxil_manifest.rs', 'src/wgpu/shader_variants.rs', 'src/wgpu/shaders/**/*.wgsl') }}
+          restore-keys: |
+            cargo-tests-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
+            cargo-tests-${{ runner.os }}-
+      - name: Restore generated DXIL
+        if: runner.os == 'Windows'
+        id: dxil-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/tileink/dxil
+          key: tileink-dxil-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', 'build.rs', 'build/**/*.rs', 'src/wgpu/dxil_manifest.rs', 'src/wgpu/shader_variants.rs', 'src/wgpu/shaders/**/*.wgsl') }}-lookup
+          restore-keys: |
+            tileink-dxil-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', 'build.rs', 'build/**/*.rs', 'src/wgpu/dxil_manifest.rs', 'src/wgpu/shader_variants.rs', 'src/wgpu/shaders/**/*.wgsl') }}-
+      - name: Select stable Rust
+        run: rustup default stable
+      - name: Run release tests serially
+        run: cargo test --release -- --test-threads=1
+      - name: Resolve generated DXIL cache key
+        if: runner.os == 'Windows' && success() && hashFiles('.cache/tileink/dxil/**/manifest.sha256') != ''
+        id: dxil-cache-key
+        shell: pwsh
+        env:
+          DXIL_SOURCE_HASH: ${{ hashFiles('**/Cargo.lock', 'build.rs', 'build/**/*.rs', 'src/wgpu/dxil_manifest.rs', 'src/wgpu/shader_variants.rs', 'src/wgpu/shaders/**/*.wgsl') }}
+          DXIL_MANIFEST_HASH: ${{ hashFiles('.cache/tileink/dxil/**/manifest.sha256') }}
+        run: Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "key=tileink-dxil-$env:RUNNER_OS-$env:DXIL_SOURCE_HASH-$env:DXIL_MANIFEST_HASH" -Encoding utf8
+      - name: Save generated DXIL
+        if: runner.os == 'Windows' && success() && steps.dxil-cache.outputs.cache-matched-key != steps.dxil-cache-key.outputs.key
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/tileink/dxil
+          key: ${{ steps.dxil-cache-key.outputs.key }}

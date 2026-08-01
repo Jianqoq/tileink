@@ -66,7 +66,7 @@ fn windows_sdk_bin_root(program_files_x86: Option<OsString>) -> Option<PathBuf> 
     )
 }
 
-fn toolchain_inputs(dxc: &Path) -> Vec<PathBuf> {
+pub(crate) fn toolchain_inputs(dxc: &Path) -> Vec<PathBuf> {
     let mut inputs = vec![dxc.to_path_buf()];
     if let Some(directory) = dxc.parent() {
         for library in ["dxcompiler.dll", "dxil.dll"] {

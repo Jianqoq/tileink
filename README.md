@@ -1,5 +1,8 @@
 # Tileink
 
+[![CI](https://github.com/Jianqoq/tileink/actions/workflows/ci.yml/badge.svg)](https://github.com/Jianqoq/tileink/actions/workflows/ci.yml)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+
 Tileink is a tile-based, GPU-compute 2D renderer for Rust and WGPU. It combines an immediate
 `Canvas` with a transactional, incremental `RetainedScene` for interfaces and other large scenes
 where only a small part changes from frame to frame.
@@ -166,6 +169,12 @@ Tileink is designed around workloads that repeatedly update a small region of a 
 - **DX12 startup path.** Compatible Windows builds embed build-time DXIL for the primary portable
   fine shaders, with automatic WGSL fallback when the backend, device, or layout does not match.
 
+Windows builders can set `TILEINK_DXIL_CACHE_DIR` to a persistent directory to reuse generated
+DXIL across fresh Cargo `OUT_DIR`s and CI workspaces. Entries are content-addressed by the expanded
+shader, generator implementation, locked Naga version, and DXC toolchain files; restored binaries
+are checksum-verified before they are embedded. Set `TILEINK_DXIL_PRECOMPILE=0` to disable the
+build-time DXIL path entirely.
+
 These are architectural advantages for Tileink's target workload, not a claim that Tileink is
 universally faster than another renderer. Scene structure, dirty ratio, effects, resolution, GPU,
 driver, and output path all materially affect results.
@@ -254,6 +263,17 @@ Rust API rustdoc can be generated with `cargo doc --no-deps --open`. See
 [`RETAINED_SCENE.md`](RETAINED_SCENE.md) for the retained model and the English architecture guide
 under [`website/i18n/en/docusaurus-plugin-content-docs/current/architecture`](website/i18n/en/docusaurus-plugin-content-docs/current/architecture)
 for the pipeline and damage model.
+
+## Contributing and security
+
+Contributions are welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before opening a pull request.
+Please report security vulnerabilities privately as described in [`SECURITY.md`](SECURITY.md), not
+in a public issue.
+
+## License
+
+Tileink is licensed under either the [Apache License, Version 2.0](LICENSE-APACHE) or the
+[MIT license](LICENSE-MIT), at your option.
 
 ## Development
 
