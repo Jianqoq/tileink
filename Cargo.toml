@@ -8,6 +8,21 @@ repository = "https://github.com/Jianqoq/tileink"
 readme = "README.md"
 keywords = ["graphics", "renderer", "vector-graphics", "wgpu"]
 categories = ["graphics", "rendering"]
+# The registry artifact is a buildable library, not a mirror of repository-only examples,
+# benchmarks, website files, test fixtures, generated renders, or fonts.
+include = [
+    "/src/**/*.rs",
+    "!/src/**/tests.rs",
+    "!/src/**/tests/**",
+    "/src/wgpu/shaders/**/*.wgsl",
+    "/build.rs",
+    "/build/**/*.rs",
+    "/Cargo.toml",
+    "/Cargo.lock",
+    "/README.md",
+    "/LICENSE-MIT",
+    "/LICENSE-APACHE",
+]
 
 [dependencies]
 peniko = "0.6.1"
