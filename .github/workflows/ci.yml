@@ -41,8 +41,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-clippy-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          key: cargo-clippy-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('build.rs', 'build/**/*.rs', 'src/wgpu/dxil_manifest.rs', 'src/wgpu/shader_variants.rs', 'src/wgpu/shaders/**/*.wgsl') }}
           restore-keys: |
+            cargo-clippy-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
             cargo-clippy-${{ runner.os }}-
       - name: Select stable Rust
         run: rustup default stable
@@ -71,8 +72,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-tests-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          key: cargo-tests-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('build.rs', 'build/**/*.rs', 'src/wgpu/dxil_manifest.rs', 'src/wgpu/shader_variants.rs', 'src/wgpu/shaders/**/*.wgsl') }}
           restore-keys: |
+            cargo-tests-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
             cargo-tests-${{ runner.os }}-
       - name: Select stable Rust
         run: rustup default stable
