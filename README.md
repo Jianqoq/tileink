@@ -1,6 +1,7 @@
 # Tileink
 
 [![CI](https://github.com/Jianqoq/tileink/actions/workflows/ci.yml/badge.svg)](https://github.com/Jianqoq/tileink/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/tileink.svg)](https://crates.io/crates/tileink)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 
 Tileink is a tile-based, GPU-compute 2D renderer for Rust and WGPU. It combines an immediate
