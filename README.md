@@ -1,5 +1,8 @@
 # Tileink
 
+[![CI](https://github.com/Jianqoq/tileink/actions/workflows/ci.yml/badge.svg)](https://github.com/Jianqoq/tileink/actions/workflows/ci.yml)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+
 Tileink is a tile-based, GPU-compute 2D renderer for Rust and WGPU. It combines an immediate
 `Canvas` with a transactional, incremental `RetainedScene` for interfaces and other large scenes
 where only a small part changes from frame to frame.
@@ -254,6 +257,17 @@ Rust API rustdoc can be generated with `cargo doc --no-deps --open`. See
 [`RETAINED_SCENE.md`](RETAINED_SCENE.md) for the retained model and the English architecture guide
 under [`website/i18n/en/docusaurus-plugin-content-docs/current/architecture`](website/i18n/en/docusaurus-plugin-content-docs/current/architecture)
 for the pipeline and damage model.
+
+## Contributing and security
+
+Contributions are welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before opening a pull request.
+Please report security vulnerabilities privately as described in [`SECURITY.md`](SECURITY.md), not
+in a public issue.
+
+## License
+
+Tileink is licensed under either the [Apache License, Version 2.0](LICENSE-APACHE) or the
+[MIT license](LICENSE-MIT), at your option.
 
 ## Development
 
