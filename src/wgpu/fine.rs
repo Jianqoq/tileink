@@ -19,6 +19,7 @@ use super::{
     commands::{
         WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
     },
+    dxil::fine_dxil_set,
     image_resources::{
         create_image_resource_bind_group, create_image_resource_bind_group_layout,
         large_texture_table_len, patch_image_resource_shader_source,
@@ -100,6 +101,7 @@ impl WgpuFinePipeline {
                 entries: &layout_entries,
             });
         let large_texture_table_len = large_texture_table_len(device);
+        let precompiled_dxil = fine_dxil_set(device, portable_textures, large_texture_table_len);
         let image_bind_group_layout =
             create_image_resource_bind_group_layout(device, large_texture_table_len);
         let compact_bind_group_layout =
@@ -133,11 +135,12 @@ impl WgpuFinePipeline {
         Some(Self {
             fine_shader: LazyShaderModule::new("tileink wgpu fine shader"),
             compact_shader: LazyShaderModule::new("tileink wgpu fine compact shader"),
-            pipeline: LazyComputePipeline::new(
+            pipeline: LazyComputePipeline::new_with_dxil(
                 "tileink wgpu tile fine pipeline",
                 "fine_tile_main",
                 pipeline_cache,
                 compilation_tracker,
+                precompiled_dxil.for_entry_point("fine_tile_main"),
             ),
             clear_pipeline: LazyComputePipeline::new(
                 "tileink wgpu tile fine indirect clear pipeline",
@@ -151,23 +154,26 @@ impl WgpuFinePipeline {
                 pipeline_cache,
                 compilation_tracker,
             ),
-            sdf_pipeline: LazyComputePipeline::new(
+            sdf_pipeline: LazyComputePipeline::new_with_dxil(
                 "tileink wgpu tile fine sdf pipeline",
                 "fine_tile_sdf_list_main",
                 pipeline_cache,
                 compilation_tracker,
+                precompiled_dxil.for_entry_point("fine_tile_sdf_list_main"),
             ),
-            mixed_pipeline: LazyComputePipeline::new(
+            mixed_pipeline: LazyComputePipeline::new_with_dxil(
                 "tileink wgpu tile fine mixed pipeline",
                 "fine_tile_mixed_list_main",
                 pipeline_cache,
                 compilation_tracker,
+                precompiled_dxil.for_entry_point("fine_tile_mixed_list_main"),
             ),
-            full_pipeline: LazyComputePipeline::new(
+            full_pipeline: LazyComputePipeline::new_with_dxil(
                 "tileink wgpu tile fine full pipeline",
                 "fine_tile_full_list_main",
                 pipeline_cache,
                 compilation_tracker,
+                precompiled_dxil.for_entry_point("fine_tile_full_list_main"),
             ),
             bind_group_layout,
             image_bind_group_layout,
@@ -462,7 +468,7 @@ impl WgpuFinePipeline {
 
     fn pipeline(&self, device: &::wgpu::Device) -> &::wgpu::ComputePipeline {
         self.pipeline
-            .get(device, &self.pipeline_layout, self.fine_shader(device))
+            .get_with_fallback(device, &self.pipeline_layout, || self.fine_shader(device))
     }
 
     fn clear_pipeline(&self, device: &::wgpu::Device) -> &::wgpu::ComputePipeline {
@@ -483,17 +489,17 @@ impl WgpuFinePipeline {
 
     fn sdf_pipeline(&self, device: &::wgpu::Device) -> &::wgpu::ComputePipeline {
         self.sdf_pipeline
-            .get(device, &self.pipeline_layout, self.fine_shader(device))
+            .get_with_fallback(device, &self.pipeline_layout, || self.fine_shader(device))
     }
 
     fn mixed_pipeline(&self, device: &::wgpu::Device) -> &::wgpu::ComputePipeline {
         self.mixed_pipeline
-            .get(device, &self.pipeline_layout, self.fine_shader(device))
+            .get_with_fallback(device, &self.pipeline_layout, || self.fine_shader(device))
     }
 
     fn full_pipeline(&self, device: &::wgpu::Device) -> &::wgpu::ComputePipeline {
         self.full_pipeline
-            .get(device, &self.pipeline_layout, self.fine_shader(device))
+            .get_with_fallback(device, &self.pipeline_layout, || self.fine_shader(device))
     }
 
     #[cfg(test)]
@@ -725,6 +731,62 @@ mod tests {
         for portable_textures in [false, true] {
             let entries = tile_fine_layout_entries(portable_textures);
             assert_contiguous_bindings(&entries);
+        }
+    }
+
+    #[test]
+    fn precompiled_dxil_binding_manifest_matches_the_portable_pipeline_layout() {
+        use crate::wgpu::{
+            dxil_manifest::{
+                Dx12Binding, Dx12ResourceClass, FINE_DXIL_BINDINGS, FINE_DXIL_TEXTURE_TABLE_LEN,
+            },
+            image_resources::image_resource_layout_entries,
+        };
+
+        assert_eq!(
+            FINE_DXIL_TEXTURE_TABLE_LEN,
+            crate::shared::image_resource::MAX_IMAGE_RESOURCE_TEXTURES as u32
+        );
+
+        let actual = [
+            (0, tile_fine_layout_entries(true)),
+            (
+                1,
+                image_resource_layout_entries(FINE_DXIL_TEXTURE_TABLE_LEN),
+            ),
+        ]
+        .into_iter()
+        .flat_map(|(group, entries)| {
+            entries.into_iter().map(move |entry| Dx12Binding {
+                group,
+                binding: entry.binding,
+                class: resource_class(&entry.ty),
+                count: entry.count.map_or(1, std::num::NonZeroU32::get),
+            })
+        })
+        .collect::<Vec<_>>();
+
+        assert_eq!(actual, FINE_DXIL_BINDINGS);
+
+        fn resource_class(binding: &::wgpu::BindingType) -> Dx12ResourceClass {
+            match binding {
+                ::wgpu::BindingType::Buffer {
+                    ty: ::wgpu::BufferBindingType::Uniform,
+                    ..
+                } => Dx12ResourceClass::ConstantBuffer,
+                ::wgpu::BindingType::Buffer {
+                    ty: ::wgpu::BufferBindingType::Storage { read_only: true },
+                    ..
+                }
+                | ::wgpu::BindingType::Texture { .. } => Dx12ResourceClass::ShaderResource,
+                ::wgpu::BindingType::Buffer {
+                    ty: ::wgpu::BufferBindingType::Storage { read_only: false },
+                    ..
+                }
+                | ::wgpu::BindingType::StorageTexture { .. } => Dx12ResourceClass::UnorderedAccess,
+                ::wgpu::BindingType::Sampler(_) => Dx12ResourceClass::Sampler,
+                unexpected => panic!("unsupported fine DXIL binding: {unexpected:?}"),
+            }
         }
     }
 

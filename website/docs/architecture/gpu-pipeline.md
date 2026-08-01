@@ -37,3 +37,20 @@ Fine shader 每 workgroup 处理 tile pixels，组合 path coverage、SDF、text
 ## Native 与 portable
 
 两条 WGPU 路径共享场景数据和绝大多数 shader 语义。仓库的 examples/SVG scripts 会执行 native 与 portable pixel compare，确保 backend 一致。
+
+portable fine 对仅含 fused root layer 的执行计划使用整帧 ping-pong：full redraw 只复制一次进入中间纹理、一次复制回输出；partial redraw 额外初始化第二张中间纹理以保留 inactive pixels。递归 offscreen/filter 计划继续使用逐目标的保守路径。`IncrementalRenderStats::portable_texture_copies` 用于观测实际复制次数。
+
+## DX12 构建期 DXIL
+
+Windows 构建会把 portable fine 的四个主要 compute entry point 预编译为 Shader Model 6.0
+DXIL，并把 blob 嵌入库中。Cargo 以 WGSL、shader patch、binding manifest、构建脚本、DXC
+发现环境、Windows SDK bin 目录、DXC 可执行文件及同目录的 `dxcompiler.dll`/`dxil.dll`
+作为失效输入，因此安装或更新工具链也会重新生成产物。DX12 运行时只有在真实 D3D12
+device 支持 Shader Model 6.0，且 `PASSTHROUGH_SHADERS`、portable texture path、64-entry
+image texture table 和 entry point 全部匹配时才使用预编译模块；其他 device、backend 或
+layout 自动回退到现有 WGSL 路径。
+
+DXIL 与 GPU 厂商/型号无关，但驱动从 DXIL 生成的 PSO/机器码仍与 adapter 和 driver
+相关。`Renderer::precompiled_dxil_pipeline_count` 可证明实际初始化了多少条 DXIL pipeline，
+避免把输出等价的 WGSL 回退误判为缓存命中。`TILEINK_DXC_PATH` 可指定构建期 DXC；
+`TILEINK_DXIL_PRECOMPILE=0` 可用于验证回退路径。

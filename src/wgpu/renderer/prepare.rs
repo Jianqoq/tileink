@@ -167,9 +167,10 @@ impl Renderer {
         });
         let mut filter_cursors = WgpuFilterCursors::default();
         let ok = profile_cpu("plan.execute", || {
-            let direct_ops = active_batches
-                .as_ref()
-                .and_then(|active| plan.active_direct_root_ops(active));
+            let direct_ops = active_batches.as_ref().map_or_else(
+                || plan.all_direct_root_ops(),
+                |active| plan.active_direct_root_ops(active),
+            );
             if let Some(ops) = direct_ops {
                 self.execute_direct_root_batches(&mut commands, canvas, &plan, &ops)
             } else {

@@ -151,6 +151,11 @@ pub struct IncrementalRenderStats {
     pub dense_coarse_batches: u32,
     /// Coarse/fine batches that write the root target.
     pub root_draw_batches: u32,
+    /// Full render-target copies encoded by the portable fine path.
+    ///
+    /// Direct-root frames use one frame-wide ping-pong sequence, so this stays independent of
+    /// [`Self::root_draw_batches`]. Recursive offscreen plans may require additional copies.
+    pub portable_texture_copies: u32,
     pub reused_offscreen_surfaces: u32,
     pub rerendered_offscreen_surfaces: u32,
     pub rerendered_offscreen_tiles: u32,

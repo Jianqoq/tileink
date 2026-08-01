@@ -336,6 +336,14 @@ impl Renderer {
         self.pipeline_compilations.epoch()
     }
 
+    /// Number of initialized compute pipelines backed by embedded DXIL.
+    ///
+    /// This is observable so applications and GPU regressions can distinguish the startup cache
+    /// from the output-equivalent runtime WGSL fallback instead of inferring the source from time.
+    pub fn precompiled_dxil_pipeline_count(&self) -> u64 {
+        self.pipeline_compilations.precompiled_dxil_count()
+    }
+
     /// Invalidates the retained history after external state changes that the
     /// scene graph cannot associate with a specific node.
     pub fn invalidate_retained_history(&mut self) {
