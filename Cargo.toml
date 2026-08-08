@@ -28,15 +28,15 @@ include = [
 peniko = "0.6.1"
 bytemuck = "1.25.0"
 wgpu = "30.0.0"
-pollster = "0.4"
-usvg = "0.47.0"
+pollster = "1.0"
+usvg = "0.48.1"
 wide = "1.5.0"
 rayon = "1.12.0"
 rustc-hash = "2.1"
-png = "0.17"
+png = "0.18"
 image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "webp"] }
 cosmic-text = "0.19.0"
-fontdb = { version = "0.23", default-features = false }
+fontdb = { version = "0.24", default-features = false }
 swash = "0.2.6"
 vello = { version = "0.9.0", optional = true }
 windows-numerics = { version = "0.3.1", optional = true }
