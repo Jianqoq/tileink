@@ -16,8 +16,8 @@ use crate::{
 
 use super::{
     raster::{
-        FREETYPE_HARMONY_LCD_SHIFT, GlyphRasterImage, harmony_lcd_outline_shifts,
-        merge_harmony_lcd_masks,
+        FREETYPE_HARMONY_LCD_SHIFT, GlyphRasterImage, filter_harmony_lcd_mask,
+        harmony_lcd_outline_shifts, merge_harmony_lcd_masks,
     },
     *,
 };
@@ -756,7 +756,55 @@ fn harmony_lcd_merge_unions_shifted_channel_masks() {
 }
 
 #[test]
-fn prepared_glyph_image_keeps_harmony_subpixel_channels_without_filtering() {
+fn harmony_lcd_filter_applies_normalized_three_tap_kernel() {
+    let mut image = SwashImage::new();
+    image.content = SwashContent::SubpixelMask;
+    image.placement = Placement {
+        left: 4,
+        top: 1,
+        width: 1,
+        height: 1,
+    };
+    image.data = vec![0, 255, 0];
+    let unfiltered_coverage: u32 = image.data.iter().map(|&value| u32::from(value)).sum();
+
+    filter_harmony_lcd_mask(&mut image, TextSubpixelMode::Rgb);
+
+    let filtered_coverage: u32 = image.data.iter().map(|&value| u32::from(value)).sum();
+    assert_eq!(image.placement.left, 3);
+    assert_eq!(image.placement.width, 3);
+    assert_eq!(image.data, vec![0, 0, 0, 21, 213, 21, 0, 0, 0]);
+    assert_eq!(filtered_coverage, unfiltered_coverage);
+}
+
+#[test]
+fn harmony_lcd_filter_follows_bgr_physical_order() {
+    let image = |mode| {
+        let mut image = SwashImage::new();
+        image.content = SwashContent::SubpixelMask;
+        image.placement = Placement {
+            left: 4,
+            top: 1,
+            width: 1,
+            height: 1,
+        };
+        image.data = vec![255, 0, 0];
+        filter_harmony_lcd_mask(&mut image, mode);
+        image
+    };
+
+    assert_eq!(
+        image(TextSubpixelMode::Rgb).data,
+        vec![0, 0, 21, 213, 21, 0, 0, 0, 0]
+    );
+    assert_eq!(
+        image(TextSubpixelMode::Bgr).data,
+        vec![0, 0, 0, 213, 21, 0, 0, 0, 21]
+    );
+}
+
+#[test]
+fn prepared_glyph_image_preserves_filtered_harmony_subpixel_channels() {
     let mut image = SwashImage::new();
     image.content = SwashContent::SubpixelMask;
     image.placement = swash::zeno::Placement {

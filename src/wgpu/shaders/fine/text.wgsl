@@ -242,7 +242,7 @@ fn auto_text_coverage(
                 0.03,
             );
             let compensated = pow(f32(coverage_in) * (1.0 / 255.0), exponent);
-            out = apparent_axis_corrected_coverage(
+            let axis_corrected = apparent_axis_corrected_coverage(
                 compensated,
                 src_r,
                 src_g,
@@ -262,6 +262,20 @@ fn auto_text_coverage(
                 apparent_axis_strength,
                 apparent_axis_luma_limit,
             );
+            let axis_coverage = f32(axis_corrected) * (1.0 / 255.0);
+            if (destination_chroma_boost) {
+                // LCD masks benefit from a stronger stem core after filtering. Alpha masks keep
+                // their established coverage curve because they have no color fringe to trade.
+                let core_contrast = axis_coverage * (1.0 - axis_coverage) *
+                    (2.0 * axis_coverage - 1.0);
+                out = u32(clamp(
+                    axis_coverage + TEXT_DARK_ON_LIGHT_CORE_CONTRAST * core_contrast,
+                    0.0,
+                    1.0,
+                ) * 255.0 + 0.5);
+            } else {
+                out = axis_corrected;
+            }
         } else {
             let contrast = clamp(src_luma - dst_luma, 0.0, 1.0);
             let black_surface = clamp((TEXT_LIGHT_ON_DARK_BLACK_LUMA_LIMIT - dst_luma) / TEXT_LIGHT_ON_DARK_BLACK_LUMA_LIMIT, 0.0, 1.0);
@@ -491,4 +505,3 @@ fn linear_to_srgb_derivative(value: f32) -> f32 {
     }
     return out;
 }
-
