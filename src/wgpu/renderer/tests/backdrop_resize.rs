@@ -104,8 +104,10 @@ fn resize_with_backdrop_preserves_unchanged_vector_background() {
         RESIZED.1,
     );
     let first_difference = actual
-        .chunks_exact(4)
-        .zip(expected.chunks_exact(4))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .zip(expected.as_chunks::<4>().0.iter())
         .position(|(actual, expected)| actual != expected);
     assert_eq!(
         first_difference,

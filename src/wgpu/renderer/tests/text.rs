@@ -170,7 +170,7 @@ fn wgpu_renderer_renders_text_directly_to_storage_texture_when_enabled() {
     let bytes = read_texture_rgba8(renderer.device(), renderer.queue(), &texture, 160, 64);
 
     assert!(
-        bytes.chunks_exact(4).any(|px| px[3] != 0),
+        bytes.as_chunks::<4>().0.iter().any(|px| px[3] != 0),
         "expected direct text texture to contain non-transparent pixels"
     );
 }

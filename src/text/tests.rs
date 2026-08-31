@@ -322,7 +322,7 @@ fn prepared_text_keeps_color_emoji_glyphs_when_font_supports_them() {
         image.data.len(),
         image.width as usize * image.height as usize * 4
     );
-    assert!(image.data.chunks_exact(4).any(|px| px[3] != 0));
+    assert!(image.data.as_chunks::<4>().0.iter().any(|px| px[3] != 0));
 }
 
 #[test]
