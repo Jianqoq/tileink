@@ -198,22 +198,19 @@ fn surface_config(
     let width = size.width.max(1);
     let height = size.height.max(1);
     let capabilities = surface.get_capabilities(adapter);
-    let format = [
-        wgpu::TextureFormat::Rgba8Unorm,
-        wgpu::TextureFormat::Rgba8UnormSrgb,
-    ]
-    .into_iter()
-    .find(|format| capabilities.formats.contains(format))
-    .ok_or_else(|| {
+    let format = direct_surface_format(&capabilities.formats).ok_or_else(|| {
         std::io::Error::other(format!(
-            "surface does not support direct RGBA8 blit; formats: {:?}",
+            "surface does not support direct Rgba8Unorm rendering; formats: {:?}",
             capabilities.formats
         ))
     })?;
-    let usage = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::STORAGE_BINDING;
+    let usage = wgpu::TextureUsages::RENDER_ATTACHMENT
+        | wgpu::TextureUsages::STORAGE_BINDING
+        | wgpu::TextureUsages::COPY_SRC
+        | wgpu::TextureUsages::COPY_DST;
     if !capabilities.usages.contains(usage) {
         return Err(std::io::Error::other(format!(
-            "surface does not support STORAGE_BINDING usage; usages: {:?}",
+            "surface does not support required RENDER_ATTACHMENT | STORAGE_BINDING | COPY_SRC | COPY_DST usages; usages: {:?}",
             capabilities.usages
         ))
         .into());
@@ -237,4 +234,29 @@ fn surface_config(
         desired_maximum_frame_latency: 2,
         view_formats: vec![],
     })
+}
+
+fn direct_surface_format(formats: &[wgpu::TextureFormat]) -> Option<wgpu::TextureFormat> {
+    formats
+        .contains(&wgpu::TextureFormat::Rgba8Unorm)
+        .then_some(wgpu::TextureFormat::Rgba8Unorm)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn direct_surface_format_rejects_srgb_only_capability() {
+        assert_eq!(
+            super::direct_surface_format(&[wgpu::TextureFormat::Rgba8UnormSrgb]),
+            None
+        );
+    }
+
+    #[test]
+    fn direct_surface_format_accepts_linear_rgba8() {
+        assert_eq!(
+            super::direct_surface_format(&[wgpu::TextureFormat::Rgba8Unorm]),
+            Some(wgpu::TextureFormat::Rgba8Unorm)
+        );
+    }
 }

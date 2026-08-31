@@ -285,7 +285,9 @@ impl WgpuCoarseBuffers {
     ) -> Vec<TileCoarseRecord> {
         self.work
             .read::<u32>(device, queue, tile_count * TILE_COARSE_RECORD_WORDS)
-            .chunks_exact(TILE_COARSE_RECORD_WORDS)
+            .as_chunks::<TILE_COARSE_RECORD_WORDS>()
+            .0
+            .iter()
             .map(|words| TileCoarseRecord {
                 ptcl_count: words[0],
                 ptcl_start: words[1],
@@ -308,7 +310,9 @@ impl WgpuCoarseBuffers {
         let offset = coarse_work_ptcl_word_offset(tile_count);
         self.work
             .read::<u32>(device, queue, offset + len * PTCL_RECORD_WORDS)
-            .chunks_exact(PTCL_RECORD_WORDS)
+            .as_chunks::<PTCL_RECORD_WORDS>()
+            .0
+            .iter()
             .skip(offset / PTCL_RECORD_WORDS)
             .map(|words| PtclRecord {
                 tag: words[0],

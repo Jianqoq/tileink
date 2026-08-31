@@ -10,6 +10,9 @@ use super::{
 };
 
 pub(super) const FREETYPE_HARMONY_LCD_SHIFT: f32 = 21.0 / 64.0;
+const LCD_FILTER_SIDE_WEIGHT: u32 = 21;
+const LCD_FILTER_CENTER_WEIGHT: u32 = 214;
+const LCD_FILTER_DIVISOR: u32 = 256;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub(super) struct RasterGlyphKey {
@@ -148,7 +151,9 @@ fn raster_harmony_lcd_glyph_image(
         let red = render_channel(scaler, shifts[0])?;
         let green = render_channel(scaler, shifts[1])?;
         let blue = render_channel(scaler, shifts[2])?;
-        Some(merge_harmony_lcd_masks([red, green, blue]))
+        let mut image = merge_harmony_lcd_masks([red, green, blue]);
+        filter_harmony_lcd_mask(&mut image, subpixel_mode);
+        Some(image)
     })
     .flatten()
 }
@@ -158,8 +163,8 @@ pub(super) fn harmony_lcd_outline_shifts(mode: TextSubpixelMode) -> [f32; 3] {
         TextSubpixelMode::None => [0.0; 3],
         // FreeType Harmony's default geometry is RGB subpixels at -21/64, 0,
         // and +21/64 px. Each channel renders the outline shifted in the
-        // opposite direction so channel coverages stay integral and do not
-        // need ClearType-style FIR filtering.
+        // opposite direction; the light FIR pass below only damps residual
+        // color fringes rather than defining the LCD sampling geometry.
         TextSubpixelMode::Rgb => [FREETYPE_HARMONY_LCD_SHIFT, 0.0, -FREETYPE_HARMONY_LCD_SHIFT],
         TextSubpixelMode::Bgr => [-FREETYPE_HARMONY_LCD_SHIFT, 0.0, FREETYPE_HARMONY_LCD_SHIFT],
     }
@@ -220,4 +225,56 @@ pub(super) fn merge_harmony_lcd_masks(channels: [SwashImage; 3]) -> SwashImage {
     };
     image.data = data;
     image
+}
+
+/// Applies a center-weighted LCD FIR filter to the interleaved RGB coverage
+/// samples. One transparent pixel of horizontal padding preserves both filter
+/// tails instead of clipping them at the glyph bitmap boundary.
+pub(super) fn filter_harmony_lcd_mask(image: &mut SwashImage, mode: TextSubpixelMode) {
+    if image.content != SwashContent::SubpixelMask
+        || mode == TextSubpixelMode::None
+        || image.placement.width == 0
+        || image.placement.height == 0
+    {
+        return;
+    }
+
+    let input_width = image.placement.width as usize * 3;
+    if image.data.len() != input_width * image.placement.height as usize {
+        return;
+    }
+
+    let output_width = input_width + 6;
+    let mut filtered = vec![0; output_width * image.placement.height as usize];
+    let mut accumulated = vec![0_u32; output_width];
+    let physical_to_memory = match mode {
+        TextSubpixelMode::Rgb => [0, 1, 2],
+        TextSubpixelMode::Bgr => [2, 1, 0],
+        TextSubpixelMode::None => unreachable!(),
+    };
+    for row in 0..image.placement.height as usize {
+        let input = &image.data[row * input_width..(row + 1) * input_width];
+        let output = &mut filtered[row * output_width..(row + 1) * output_width];
+        accumulated.fill(0);
+        for pixel in 0..image.placement.width as usize {
+            for (physical_channel, &memory_channel) in physical_to_memory.iter().enumerate() {
+                let sample = u32::from(input[pixel * 3 + memory_channel]);
+                let sample_index = pixel * 3 + physical_channel;
+                accumulated[sample_index + 2] += LCD_FILTER_SIDE_WEIGHT * sample;
+                accumulated[sample_index + 3] += LCD_FILTER_CENTER_WEIGHT * sample;
+                accumulated[sample_index + 4] += LCD_FILTER_SIDE_WEIGHT * sample;
+            }
+        }
+        for pixel in 0..image.placement.width as usize + 2 {
+            for (physical_channel, &memory_channel) in physical_to_memory.iter().enumerate() {
+                output[pixel * 3 + memory_channel] =
+                    ((accumulated[pixel * 3 + physical_channel] + LCD_FILTER_DIVISOR / 2)
+                        / LCD_FILTER_DIVISOR) as u8;
+            }
+        }
+    }
+
+    image.placement.left -= 1;
+    image.placement.width += 2;
+    image.data = filtered;
 }

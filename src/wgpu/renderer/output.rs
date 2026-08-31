@@ -64,7 +64,7 @@ impl std::fmt::Display for WgpuTextureRenderError {
             ),
             Self::DestinationUsageMissing(usage) => write!(
                 f,
-                "destination texture usage {usage:?} is missing wgpu::TextureUsages::COPY_DST"
+                "destination texture usage {usage:?} is missing COPY_SRC | COPY_DST texture usages"
             ),
             Self::DestinationStorageUsageMissing(usage) => write!(
                 f,
@@ -76,7 +76,7 @@ impl std::fmt::Display for WgpuTextureRenderError {
                 sample_count,
             } => write!(
                 f,
-                "unsupported destination texture format {format:?}, dimension {dimension:?}, sample_count {sample_count}; expected single-sample 2D Rgba8Unorm or Rgba8UnormSrgb"
+                "unsupported destination texture format {format:?}, dimension {dimension:?}, sample_count {sample_count}; expected single-sample 2D Rgba8Unorm"
             ),
         }
     }
@@ -555,4 +555,30 @@ fn rgba8_byte_len(width: u32, height: u32) -> ::wgpu::BufferAddress {
     width as ::wgpu::BufferAddress
         * height as ::wgpu::BufferAddress
         * std::mem::size_of::<u32>() as ::wgpu::BufferAddress
+}
+
+#[cfg(test)]
+mod tests {
+    use super::WgpuTextureRenderError;
+
+    #[test]
+    fn unsupported_destination_names_only_the_supported_storage_format() {
+        let message = WgpuTextureRenderError::UnsupportedDestination {
+            format: ::wgpu::TextureFormat::Rgba8UnormSrgb,
+            dimension: ::wgpu::TextureDimension::D2,
+            sample_count: 1,
+        }
+        .to_string();
+
+        assert!(message.ends_with("expected single-sample 2D Rgba8Unorm"));
+    }
+
+    #[test]
+    fn portable_destination_error_names_both_required_copy_usages() {
+        let message =
+            WgpuTextureRenderError::DestinationUsageMissing(::wgpu::TextureUsages::STORAGE_BINDING)
+                .to_string();
+
+        assert!(message.contains("COPY_SRC | COPY_DST"));
+    }
 }

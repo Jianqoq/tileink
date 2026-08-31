@@ -13,6 +13,8 @@ backdrops, and SVG. Both scene models converge on the same coarse-to-fine tile p
 render to renderer-owned output, transient WGPU textures, or persistent WGPU textures with
 explicit output-history identity.
 
+Release notes are maintained in the [changelog](CHANGELOG.md).
+
 > [!IMPORTANT]
 > Tileink is an early-stage project. The public API, rendering behavior, and performance profile
 > are still evolving; evaluate it against your own scenes before adopting it in production.
@@ -44,6 +46,64 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 Canvas coordinates are logical pixels; the scale factor controls physical output size. Use
 `Canvas` for one-shot or fully rebuilt scenes and [`RetainedScene`](RETAINED_SCENE.md) when a large
 scene receives mostly local updates.
+
+### Present to a WGPU surface
+
+Interactive applications can construct `Renderer` from the same device and queue used by their
+surface, render directly into the acquired surface texture, and then present it:
+
+```rust
+use peniko::Color;
+use tileink::{Canvas, Renderer};
+
+fn create_renderer(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    width: u32,
+    height: u32,
+) -> Renderer {
+    Renderer::new(device, queue, width, height, Color::WHITE)
+}
+
+fn draw(
+    renderer: &mut Renderer,
+    scene: &Canvas,
+    surface: &wgpu::Surface<'_>,
+    device: &wgpu::Device,
+    config: &wgpu::SurfaceConfiguration,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let frame = match surface.get_current_texture() {
+        wgpu::CurrentSurfaceTexture::Success(frame)
+        | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,
+        wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
+            return Ok(());
+        }
+        wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+            surface.configure(device, config);
+            return Ok(());
+        }
+        wgpu::CurrentSurfaceTexture::Validation => {
+            return Err(std::io::Error::other("surface validation error").into());
+        }
+    };
+
+    renderer.render_to_wgpu_texture(scene, &frame.texture)?;
+    renderer.queue().present(frame);
+    Ok(())
+}
+```
+
+Direct surface rendering requires an `Rgba8Unorm` surface format. The complete example requests
+`RENDER_ATTACHMENT | STORAGE_BINDING | COPY_SRC | COPY_DST` so the same target works with Tileink's
+native and portable WGPU paths. If the surface cannot expose those usages, render to a compatible
+intermediate texture and copy or blit it to the acquired surface texture. The complete
+[`winit_svg_tiger` example](https://github.com/Jianqoq/tileink/blob/main/examples/winit_svg_tiger.rs)
+includes device creation, capability validation, resize handling, surface recovery, rendering, and
+presentation:
+
+```powershell
+cargo run --release --example winit_svg_tiger
+```
 
 ### Retained updates
 
