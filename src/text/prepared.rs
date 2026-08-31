@@ -323,7 +323,7 @@ fn prepared_glyph_image_data(
     let pixel_count = image.placement.width as usize * image.placement.height as usize;
     let data = if image.data.len() == pixel_count * 4 {
         let mut data = Vec::with_capacity(pixel_count * 3);
-        for pixel in image.data.chunks_exact(4) {
+        for pixel in image.data.as_chunks::<4>().0 {
             data.extend_from_slice(&pixel[..3]);
         }
         data

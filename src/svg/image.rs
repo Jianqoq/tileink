@@ -22,11 +22,15 @@ pub(super) fn decode_png_image(data: &[u8]) -> Result<RasterImage, SvgError> {
 
     let pixels = match info.color_type {
         png::ColorType::Rgba => bytes
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .map(|px| premul_rgba8_pack(px[0], px[1], px[2], px[3]))
             .collect(),
         png::ColorType::Rgb => bytes
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|px| premul_rgba8_pack(px[0], px[1], px[2], 255))
             .collect(),
         png::ColorType::Grayscale => bytes
@@ -34,7 +38,9 @@ pub(super) fn decode_png_image(data: &[u8]) -> Result<RasterImage, SvgError> {
             .map(|&gray| premul_rgba8_pack(gray, gray, gray, 255))
             .collect(),
         png::ColorType::GrayscaleAlpha => bytes
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|px| premul_rgba8_pack(px[0], px[0], px[0], px[1]))
             .collect(),
         png::ColorType::Indexed => {

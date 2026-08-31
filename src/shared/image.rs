@@ -41,7 +41,9 @@ impl Image {
             "rgba byte length must be width * height * 4"
         );
         let pixels = rgba
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .map(|px| premul_rgba8_pack(px[0], px[1], px[2], px[3]))
             .collect();
         Self {

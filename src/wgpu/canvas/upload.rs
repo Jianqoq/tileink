@@ -665,7 +665,7 @@ impl TextUpload {
                     }
                 }
                 PreparedGlyphContent::Color => {
-                    for pixel in image.data.chunks_exact(4) {
+                    for pixel in image.data.as_chunks::<4>().0 {
                         let a = pixel[3];
                         self.image_data.push(rgba8_pack([
                             mul_div255(pixel[0], a),
@@ -680,7 +680,7 @@ impl TextUpload {
                     }
                 }
                 PreparedGlyphContent::SubpixelMask => {
-                    for pixel in image.data.chunks_exact(3) {
+                    for pixel in image.data.as_chunks::<3>().0 {
                         self.image_data
                             .push(rgba8_pack([pixel[0], pixel[1], pixel[2], 0]));
                     }
