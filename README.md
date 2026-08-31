@@ -13,6 +13,8 @@ backdrops, and SVG. Both scene models converge on the same coarse-to-fine tile p
 render to renderer-owned output, transient WGPU textures, or persistent WGPU textures with
 explicit output-history identity.
 
+Release notes are maintained in the [changelog](CHANGELOG.md).
+
 > [!IMPORTANT]
 > Tileink is an early-stage project. The public API, rendering behavior, and performance profile
 > are still evolving; evaluate it against your own scenes before adopting it in production.

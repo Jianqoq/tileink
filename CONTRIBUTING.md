@@ -31,3 +31,18 @@ scenario and evidence that the result improved or remained within noise.
   stated otherwise.
 
 Security vulnerabilities must follow [`SECURITY.md`](SECURITY.md) instead of a public issue.
+
+## Releases
+
+1. Move the completed release notes from `Unreleased` into a dated entry in
+   [`CHANGELOG.md`](CHANGELOG.md).
+2. Update the package version in `Cargo.toml` and `Cargo.lock`.
+3. Run the complete release checks, SVG matrix, examples, Clippy, formatting, and
+   `cargo package` verification.
+4. Merge and push the exact release commit to `main` before publishing. Never publish from a
+   commit that is not reachable from the remote default branch.
+5. Tag that commit as `v<version>` and push the immutable release tag.
+6. Run `cargo publish` from a clean checkout, then confirm that crates.io resolves the new version.
+
+crates.io versions cannot be overwritten. If a published artifact is incomplete, yank it and
+publish a corrected patch version instead of attempting to reuse the version number.
