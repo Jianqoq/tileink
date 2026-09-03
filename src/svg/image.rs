@@ -14,7 +14,10 @@ pub(super) fn decode_png_image(data: &[u8]) -> Result<RasterImage, SvgError> {
     let mut reader = decoder
         .read_info()
         .map_err(|err| SvgError::unsupported(format!("invalid PNG image: {err}")))?;
-    let mut bytes = vec![0; reader.output_buffer_size()];
+    let output_size = reader
+        .output_buffer_size()
+        .ok_or_else(|| SvgError::unsupported("PNG image exceeds addressable memory"))?;
+    let mut bytes = vec![0; output_size];
     let info = reader
         .next_frame(&mut bytes)
         .map_err(|err| SvgError::unsupported(format!("invalid PNG image: {err}")))?;
@@ -100,6 +103,32 @@ pub(super) fn image_sampling(rendering: usvg::ImageRendering) -> PatternSampling
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn decode_png_image_preserves_rgba_pixels() {
+        let mut encoded = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(&mut encoded, 2, 1);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            encoder
+                .write_header()
+                .unwrap()
+                .write_image_data(&[255, 0, 0, 128, 0, 128, 255, 64])
+                .unwrap();
+        }
+
+        let image = decode_png_image(&encoded).unwrap();
+
+        assert_eq!((image.width, image.height), (2, 1));
+        assert_eq!(
+            image.pixels,
+            [
+                premul_rgba8_pack(255, 0, 0, 128),
+                premul_rgba8_pack(0, 128, 255, 64),
+            ]
+        );
+    }
 
     #[test]
     fn svg_image_raster_size_uses_axis_scale() {
