@@ -255,7 +255,7 @@ mod tests {
 
         let decoder = png::Decoder::new(BufReader::new(File::open(path).unwrap()));
         let mut reader = decoder.read_info().unwrap();
-        let mut data = vec![0; reader.output_buffer_size()];
+        let mut data = vec![0; reader.output_buffer_size().unwrap()];
         let info = reader.next_frame(&mut data).unwrap();
 
         assert_eq!((info.width, info.height), (2, 1));

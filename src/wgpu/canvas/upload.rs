@@ -1745,11 +1745,11 @@ mod tests {
             },
         ];
         let (cache_key, x, y) = CacheKey::new(
-            fontdb::ID::dummy(),
+            cosmic_text::fontdb::ID::dummy(),
             0,
             16.0,
             (0.0, 0.0),
-            fontdb::Weight::NORMAL,
+            cosmic_text::fontdb::Weight::NORMAL,
             CacheKeyFlags::empty(),
         );
         canvas.text_glyphs = vec![CanvasGlyph { cache_key, x, y }; 4];
