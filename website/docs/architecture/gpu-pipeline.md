@@ -54,3 +54,23 @@ DXIL 与 GPU 厂商/型号无关，但驱动从 DXIL 生成的 PSO/机器码仍�
 相关。`Renderer::precompiled_dxil_pipeline_count` 可证明实际初始化了多少条 DXIL pipeline，
 避免把输出等价的 WGSL 回退误判为缓存命中。`TILEINK_DXC_PATH` 可指定构建期 DXC；
 `TILEINK_DXIL_PRECOMPILE=0` 可用于验证回退路径。
+
+## 原生完整帧的提前提交
+
+较大的完整重绘会把首次 queue submission 提前到约四分之一的根绘制批次完成之后，让
+GPU 的 coarse/fine 工作与 CPU 后续编码及命令缓冲区完成重叠。这解决了整帧等待 CPU
+完成全部命令后才开始 GPU 工作的调度问题；没有改变 shader 或绘制顺序。
+
+当前采用保守条件：native texture path、完整重绘、至少 1024×1024 个目标像素、至少
+16 个非空根批次。首次提交预算为非空根批次数量除以 4，向下取整；例如 33 个批次时
+预算为 8。它是可通过 benchmark 调整的工作量策略，不是固定的第 8 批规则或通用最优值。
+小帧、局部更新和 portable ping-pong 继续使用原有提交时序。
+
+根批次包括 backdrop 内仍然绘制到主目标的前景；绘制到 scratch 的子层和空范围 backdrop 不计入。
+只有遇到下一个真实的根批次才提交前缀；空批次不消耗预算。整帧最多增加一次用于重叠的
+提交；如果 uniform arena 已经触发过提交，则不再额外切分。所有提交保持在同一个 queue
+上，uniform 写入、绘制、offscreen/filter/backdrop 和最终 history copy 保持依赖顺序。
+`IncrementalRenderStats::queue_submissions` 记录实际提交数。
+
+`cargo bench --bench root_batches` 比较不同尺寸和批次数量的 native/portable CPU+GPU
+完成时间。真实应用的 FPS、p95 和最长帧必须另外测量，不能用微基准耗时替代。

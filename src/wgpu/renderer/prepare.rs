@@ -141,6 +141,23 @@ impl Renderer {
         self.prepare_active_tile_buffers();
 
         let mut commands = WgpuCommandBatch::new(&self.device, &self.queue, "tileink wgpu frame");
+        // Start substantial native full frames before CPU encoding/completion reaches the
+        // end of the plan. A first-quarter submission overlaps real coarse/fine GPU work;
+        // scan alone is too small to amortize another submit. Keep small/partial frames and
+        // the portable ping-pong path on their existing single-submission schedule.
+        if self.retained.active_tiles().is_none()
+            && !self.fine.as_ref().unwrap().uses_portable_textures()
+            && u64::from(self.size.0) * u64::from(self.size.1) >= 1024 * 1024
+        {
+            let root_batches = execute::root_draw_batch_count(
+                canvas,
+                &plan.ops,
+                Bounds::canvas(self.size.0, self.size.1),
+            );
+            if root_batches >= 16 {
+                commands.set_initial_root_batch_budget(root_batches / 4);
+            }
+        }
         if !self.scan_and_cumsum(&mut commands, canvas) {
             self.retained.stats_mut().queue_submissions = commands.finish();
             return false;

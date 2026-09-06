@@ -160,7 +160,7 @@ name = "checkerboard"
 harness = false
 
 [[bench]]
-name = "portable_root_batches"
+name = "root_batches"
 harness = false
 
 [[bench]]

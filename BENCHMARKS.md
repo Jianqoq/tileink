@@ -100,3 +100,19 @@ cargo bench --bench dirty_ranges --features bench-internals
 cargo bench --bench checkerboard
 cargo bench --bench retained_scale --features bench-internals -- retained_scale/local-scene-resource
 ```
+
+## Root draw-batch submission
+
+`cargo bench --bench root_batches` covers native and portable rendering with small targets, few
+batches, multi-batch UI-sized frames, and larger frames. Each sample waits for GPU completion.
+The renderer is reused across cases, with warmup after each scene/size change; initialization and
+shader compilation are outside the measurement. The portable 1600×1000/18 case retains coverage of
+the frame-wide ping-pong path previously measured by `portable_root_batches`.
+
+```powershell
+cargo bench --bench root_batches -- --save-baseline before
+cargo bench --bench root_batches -- --baseline before
+```
+
+The early-submission regression tests compare translucent painter order with a single-batch image,
+check sparse/unchanged retained history, and compare backdrop dependencies with the portable path.

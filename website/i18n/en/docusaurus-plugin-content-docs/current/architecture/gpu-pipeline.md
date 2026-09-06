@@ -38,3 +38,26 @@ still adapter- and driver-specific. `Renderer::precompiled_dxil_pipeline_count` 
 pipeline source observable so output-equivalent WGSL cannot be mistaken for a cache hit.
 `TILEINK_DXC_PATH` selects the build-time compiler and `TILEINK_DXIL_PRECOMPILE=0` intentionally
 builds the fallback path.
+
+## Early submission for substantial native full frames
+
+Substantial full redraws submit the first quarter of root draw batches before the CPU finishes
+encoding and completing the remaining command buffers. This addresses the scheduling delay that
+otherwise keeps GPU coarse/fine work behind CPU completion of the entire frame; shaders and painter
+order are unchanged.
+
+The conservative eligibility conditions are the native texture path, a full redraw, at least
+1024×1024 target pixels, and at least 16 live root batches. The initial budget is the live root count
+divided by four, rounded down: 33 batches give a budget of eight. This is a workload heuristic to
+evaluate with benchmarks, not a fixed eighth-batch rule or a universal optimum. Small frames, partial
+updates, and portable ping-pong retain their existing submission schedule.
+
+Root batches include backdrop foreground that retains the main target; scratch-target children
+and empty-bound backdrops are excluded. The prefix is submitted only when another live root batch starts. Empty batches do not consume the
+budget. A frame adds at most one latency submission, and an earlier uniform-arena rollover cancels
+it. Uniform writes, draws, offscreen/filter/backdrop dependencies, and the final history copy remain
+ordered on the same queue. `IncrementalRenderStats::queue_submissions` reports actual submissions.
+
+`cargo bench --bench root_batches` measures CPU-plus-GPU completion time across native/portable
+paths, target sizes, and batch counts. Application FPS, p95, and longest-frame latency require a
+separate end-to-end benchmark; they cannot be inferred from this microbenchmark alone.

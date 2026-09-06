@@ -65,7 +65,10 @@ pub(super) fn shared_wgpu_test_device(
                 apply_limit_buckets: false,
             }))
             .ok()?;
-        let optional_native = ::wgpu::Features::TIMESTAMP_QUERY
+        // Match the production native device: omitting adapter-specific formats silently
+        // selects portable fine and leaves native rendering regressions untested.
+        let optional_native = ::wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
+            | ::wgpu::Features::TIMESTAMP_QUERY
             | ::wgpu::Features::TEXTURE_BINDING_ARRAY
             | ::wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING;
         pollster::block_on(adapter.request_device(&::wgpu::DeviceDescriptor {

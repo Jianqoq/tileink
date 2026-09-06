@@ -5,6 +5,7 @@ pub(crate) struct WgpuCommandBatch {
     uniform_writes: Vec<UniformWriteArena>,
     has_work: bool,
     submissions: u32,
+    root_batches_before_submit: Option<usize>,
     label: &'static str,
 }
 
@@ -31,6 +32,7 @@ impl WgpuCommandBatch {
             uniform_writes: Vec::new(),
             has_work: false,
             submissions: 0,
+            root_batches_before_submit: None,
             label,
         }
     }
@@ -95,6 +97,26 @@ impl WgpuCommandBatch {
         }
         arena.bytes[start..start + bytes.len()].copy_from_slice(bytes);
         offset
+    }
+
+    pub(crate) fn set_initial_root_batch_budget(&mut self, batches: usize) {
+        self.root_batches_before_submit = Some(batches);
+    }
+
+    pub(crate) fn begin_root_batch(&mut self) {
+        let Some(remaining) = self.root_batches_before_submit.take() else {
+            return;
+        };
+        // A uniform-arena rollover may already have started the GPU. Do not add another
+        // latency submission in that case. Wait for a real successor batch so a short frame
+        // never submits an otherwise-final encoder merely to create an empty successor.
+        if self.submissions == 0 {
+            if remaining == 0 {
+                self.submit_current();
+            } else {
+                self.root_batches_before_submit = Some(remaining - 1);
+            }
+        }
     }
 
     pub(crate) fn submit_current(&mut self) {
