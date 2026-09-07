@@ -15,6 +15,9 @@ explicit output-history identity.
 
 Release notes are maintained in the [changelog](CHANGELOG.md).
 
+The [native HLSL backend plan](NATIVE_BACKEND_PLAN.md) describes planned, opt-in DX12/Vulkan
+backends and exact pixel parity with wgpu. These backends are not implemented yet.
+
 > [!IMPORTANT]
 > Tileink is an early-stage project. The public API, rendering behavior, and performance profile
 > are still evolving; evaluate it against your own scenes before adopting it in production.
