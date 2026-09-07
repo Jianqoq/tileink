@@ -23,6 +23,20 @@ Native and portable WGPU paths share scene formats and most shader semantics; th
 
 For plans containing only fused root layers, portable fine uses one frame-wide ping-pong sequence: a full redraw copies into the intermediate textures once and copies the final result out once. A partial redraw also seeds the second intermediate texture so inactive pixels survive alternation. Recursive offscreen/filter plans keep the conservative per-target path. `IncrementalRenderStats::portable_texture_copies` reports the copies that were actually encoded.
 
+## Coarse allocation prefixes
+
+Particle and glyph tile counts share one integer prefix chain: `coarse_prefix_chunks` computes
+both local ranges, `coarse_chunk_offsets` scans chunk totals in parallel, and
+`coarse_apply_chunk_offsets` adds the global offsets to both ranges. This removes the duplicated
+allocation dispatches at their source, reducing six dispatches per batch to three. Chunk totals
+are scanned in blocks of 256 with a carry between blocks; tail lanes participate in barriers
+without writing past the valid records.
+
+Dense coarse passes allocate in tile order. Compact incremental coarse passes use active-list order and leave
+inactive tile records untouched. Normal, chunked-emit, and profiling paths retain the same
+count → prefix → emit dependencies, painter order, and particle/glyph formats. Dense/compact
+cost estimates account for the shared chain's workgroup count.
+
 ## Build-time DXIL on DX12
 
 Windows builds precompile the four primary portable-fine compute entry points to Shader Model 6.0

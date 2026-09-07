@@ -116,3 +116,15 @@ cargo bench --bench root_batches -- --baseline before
 
 The early-submission regression tests compare translucent painter order with a single-batch image,
 check sparse/unchanged retained history, and compare backdrop dependencies with the portable path.
+
+The same matrix covers coarse allocation-prefix dispatch overhead. The 1600×1000/32 and
+2560×1440/64 cases amplify per-batch prefix costs; 1601×1001/32 also exercises partial tiles and
+the final partial prefix chunk during resizing. Adapter details are printed so comparisons can
+verify that they used the same GPU and backend. Reuse this benchmark when changing shader
+scheduling rather than introducing a duplicate scene harness.
+
+`wgpu_coarse_prefix_preserves_ranges_across_chunk_boundaries` directly seeds coarse counts and
+checks GPU ranges/chunk totals against a sequential CPU reference. It covers empty and partial
+chunks, non-contiguous active tiles, untouched inactive records, and carry across 256/512 chunks
+without allocating a large render target. The normal single-threaded release script runs it with
+`TILEINK_RUN_WGPU_TESTS=1`.

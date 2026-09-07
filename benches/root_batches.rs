@@ -13,6 +13,7 @@ fn benchmark_device(portable: bool) -> (wgpu::Device, wgpu::Queue) {
         apply_limit_buckets: false,
     }))
     .expect("root-batch benchmark requires a GPU adapter");
+    eprintln!("root-batch adapter: {:?}", adapter.get_info());
     let native = wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
         | wgpu::Features::TEXTURE_BINDING_ARRAY
         | wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING;
@@ -77,6 +78,8 @@ fn root_batch_submission(c: &mut Criterion) {
             (1600, 1000, 4),
             (1600, 1000, 18),
             (1600, 1000, 32),
+            // Resize also exercises partial tiles and partial prefix chunks.
+            (1601, 1001, 32),
             (2560, 1440, 64),
         ] {
             let canvas = root_batches(width, height, batches);
