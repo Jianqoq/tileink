@@ -111,7 +111,7 @@ struct FilterConfig {
     pixel_count: u32,
     active_tile_count: u32,
     compact_tiles: u32,
-    active_tile_pad0: u32,
+    dispatch_width: u32,
     active_tile_pad1: u32,
     downsample: u32,
     downsample_filter: u32,
@@ -229,7 +229,7 @@ impl Default for FilterConfig {
             pixel_count: 0,
             active_tile_count: 0,
             compact_tiles: 0,
-            active_tile_pad0: 0,
+            dispatch_width: 0,
             active_tile_pad1: 0,
             downsample: 1,
             downsample_filter: 0,
@@ -2064,6 +2064,15 @@ impl WgpuFilterPipeline {
         }
 
         let kernel = self.kernel(commands.device(), pipeline);
+        let workgroups = self.dispatch_workgroups_for_pipeline(
+            kernel,
+            &config,
+            commands
+                .device()
+                .limits()
+                .max_compute_workgroups_per_dimension,
+        );
+        config.dispatch_width = workgroups.0;
         let config_offset = commands.write_uniform_slot(
             "filter.config",
             &self.config,
@@ -2100,7 +2109,6 @@ impl WgpuFilterPipeline {
             pass.set_pipeline(&kernel.pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
             pass.set_bind_group(1, &image_bind_group, &[]);
-            let workgroups = self.dispatch_workgroups_for_pipeline(kernel, &config);
             pass.dispatch_workgroups(workgroups.0, workgroups.1, workgroups.2);
         }
         finish_gpu_scope(encoder, gpu_scope);
@@ -2110,17 +2118,24 @@ impl WgpuFilterPipeline {
         &self,
         pipeline: &FilterKernel,
         config: &FilterConfig,
+        max_workgroups: u32,
     ) -> (u32, u32, u32) {
-        if config.compact_tiles != 0 {
-            (config.active_tile_count, 1, 1)
-        } else if pipeline.shared_workgroups {
+        if config.compact_tiles == 0 && pipeline.shared_workgroups {
             (
                 config.region_width.div_ceil(SHARED_BLUR_TILE_WIDTH),
                 config.region_height.div_ceil(SHARED_BLUR_TILE_HEIGHT),
                 1,
             )
         } else {
-            (config.pixel_count.div_ceil(WORKGROUP_SIZE), 1, 1)
+            // Linear filters have the same device limit as fine; a 4096-square clear
+            // already needs 65,536 groups. Split rows instead of issuing an invalid dispatch.
+            let groups = if config.compact_tiles != 0 {
+                config.active_tile_count
+            } else {
+                config.pixel_count.div_ceil(WORKGROUP_SIZE)
+            };
+            let (x, y) = super::dispatch_2d(groups, max_workgroups);
+            (x, y, 1)
         }
     }
 

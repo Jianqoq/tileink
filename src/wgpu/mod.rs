@@ -38,7 +38,7 @@ pub use profile::{
 pub use renderer::{ExternalTextureHistoryId, Renderer, RendererOptions, WgpuTextureRenderError};
 
 /// Linear compute workloads use two dimensions once one device dimension is exhausted. Shaders
-/// that use this helper must linearize `workgroup_id` with `num_workgroups` in the same order.
+/// that use this helper must linearize `workgroup_id` with the dispatched X width in the same order.
 fn dispatch_2d(workgroups: u32, maximum_dimension: u32) -> (u32, u32) {
     assert!(workgroups > 0 && maximum_dimension > 0);
     let x = workgroups.min(maximum_dimension);

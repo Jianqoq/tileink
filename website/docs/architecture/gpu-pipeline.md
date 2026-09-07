@@ -39,6 +39,28 @@ Dense coarse 按 tile 顺序分配；compact 增量 coarse 按 active tile 列�
 
 Fine shader 每 workgroup 处理 tile pixels，组合 path coverage、SDF、text coverage、brush sampling、clip/opacity/blend stack。native backend 可直接写 storage texture；portable backend 使用兼容的中间表示与 texture copy。
 
+Fine 始终使用 direct 派发，每 tile 一个 workgroup。每批只有一次 fine dispatch，删除了
+原先的参数清零、分类压缩和三条间接渲染链，从根源上去掉多批次场景的重复调度开销。
+不存在按场景切换的阈值或 `TILEINK_FINE_DIRECT` 开关；复杂矢量场景也使用相同路径。
+
+Coarse 仍生成每 tile 的类型，供单个 fine shader 内的 color／SDF／完整解释器分支使用。
+专用的三份分类 tile 列表、indirect 参数 buffer 和 compact shader 均已移除；active tile
+列表紧接类型数组存储。每 tile 少占用三个 u32，即 12 字节临时存储。
+
+超过 device 单维工作组上限时使用二维 direct dispatch。FineConfig 携带实际 X 宽度，
+shader 先恢复线性的 dispatch index，再查 active tile 列表；末行越界工作组立即返回。
+完整重绘、局部更新、resize 和 offscreen target 都遵循同一规则，必须保持相同的 RGBA
+像素、绘制顺序和 inactive pixel history。
+
+`cargo bench --bench root_batches` 覆盖 dense/sparse 批次、不同尺寸及单层/多层 Tiger。
+性能对照使用修改前后的独立 release binary；冷启动编译和预热不计入稳定帧耗时。
+减少 dispatch 有利于多批次场景，但复杂大图可能较慢，不能把微基准收益直接当作 FPS。
+
+线性 filter 同样按 device 上限分成二维派发，避免 4096×4096 清屏超过 65,535 个工作组。
+FilterConfig 的原 padding 字段保存 X 派发宽度；普通 kernel 恢复线性 invocation index，
+compact shared blur 则恢复 workgroup index，并在读取 active tile 前排除末行填充组。
+这是对超限派发的根因修复，dense shared blur 保留原有二维 tile 网格。
+
 ## Filters 与 offscreen surfaces
 
 不能 fuse 的 filter/mask/backdrop 变成 ExecPlan offscreen ops。持久 scene 用 `RetainedSurfaceId` 复用兼容 surface；revision、bounds、resource 或 dependency damage 决定是否重新渲染。
@@ -51,7 +73,7 @@ portable fine 对仅含 fused root layer 的执行计划使用整帧 ping-pong�
 
 ## DX12 构建期 DXIL
 
-Windows 构建会把 portable fine 的四个主要 compute entry point 预编译为 Shader Model 6.0
+Windows 构建会把 portable fine 的唯一 compute entry point 预编译为 Shader Model 6.0
 DXIL，并把 blob 嵌入库中。Cargo 以 WGSL、shader patch、binding manifest、构建脚本、DXC
 发现环境、Windows SDK bin 目录、DXC 可执行文件及同目录的 `dxcompiler.dll`/`dxil.dll`
 作为失效输入，因此安装或更新工具链也会重新生成产物。DX12 运行时只有在真实 D3D12

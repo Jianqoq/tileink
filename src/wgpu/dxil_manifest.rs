@@ -18,12 +18,7 @@ pub(crate) struct Dx12Binding {
 
 pub(crate) const FINE_DXIL_TEXTURE_TABLE_LEN: u32 = 64;
 pub(crate) const FINE_DXIL_WORKGROUP_SIZE: (u32, u32, u32) = (256, 1, 1);
-pub(crate) const FINE_DXIL_ENTRY_POINTS: [&str; 4] = [
-    "fine_tile_main",
-    "fine_tile_sdf_list_main",
-    "fine_tile_mixed_list_main",
-    "fine_tile_full_list_main",
-];
+pub(crate) const FINE_DXIL_ENTRY_POINTS: [&str; 1] = ["fine_tile_main"];
 
 // This is the exact binding sequence used by the portable fine pipeline. The build script applies
 // wgpu-hal's DX12 register-allocation rules to this list; a layout change must update this contract

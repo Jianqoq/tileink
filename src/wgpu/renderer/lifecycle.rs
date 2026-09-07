@@ -49,7 +49,6 @@ impl Renderer {
             max_clip_depth: 0,
             max_group_depth: 0,
             fine_spills: WgpuBuffer::new(device, "tileink wgpu fine spills"),
-            fine_indirect_args: WgpuBuffer::new(device, "tileink wgpu fine indirect args"),
             text_data: None,
             scan_pipeline: WgpuScanPipeline::new(device, pipeline_cache, &pipeline_compilations),
             cumsum: WgpuCumsumPipeline::new(device, pipeline_cache, &pipeline_compilations),

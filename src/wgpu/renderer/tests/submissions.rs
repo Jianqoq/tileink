@@ -231,3 +231,91 @@ fn root_batch_submission_preserves_backdrop_and_foreground_dependencies() {
         );
     }
 }
+
+#[test]
+fn direct_fine_preserves_pixels_across_geometry_and_size_changes() {
+    use peniko::kurbo::BezPath;
+
+    if !run_wgpu_tests() {
+        return;
+    }
+    let mut renderer = new_test_renderer(2049, 2049, Color::TRANSPARENT);
+    let mut reference = new_test_renderer(2049, 2049, Color::TRANSPARENT);
+    // Reuse one renderer across path/analytic geometry and partial edge tiles. The oracle draws
+    // the same integer-aligned L with two disjoint analytic rectangles, so every byte must match.
+    for (size, path) in [
+        (2049, false),
+        (2049, true),
+        (513, true),
+        (4096, false),
+        (2049, true),
+    ] {
+        let color = Color::from_rgba8(80, 160, 240, 192);
+        let mut canvas = layered_rects(size, 3, true);
+        let mut expected = canvas.clone();
+        for rect in [
+            Rect::new(3.0, 5.0, 83.0, 21.0),
+            Rect::new(3.0, 21.0, 17.0, 69.0),
+        ] {
+            expected.push_rect(rect, crate::Radius::ZERO, color);
+        }
+        if path {
+            let mut outline = BezPath::new();
+            outline.move_to((3.0, 5.0));
+            for point in [
+                (83.0, 5.0),
+                (83.0, 21.0),
+                (17.0, 21.0),
+                (17.0, 69.0),
+                (3.0, 69.0),
+            ] {
+                outline.line_to(point);
+            }
+            outline.close_path();
+            canvas.push_path(
+                outline,
+                color,
+                Affine::IDENTITY,
+                crate::FillRule::NonZero,
+                0.1,
+            );
+            assert!(!canvas.path_records.is_empty());
+        } else {
+            canvas = expected.clone();
+        }
+        if size == 4096 {
+            // Tile 65,535 is the first group on the second dispatch row. Different opaque
+            // colors on either side provide an oracle independent of the same-shader image.
+            for (x, color) in [
+                (4064.0, Color::from_rgb8(255, 0, 0)),
+                (4080.0, Color::from_rgb8(0, 255, 0)),
+            ] {
+                let rect = Rect::new(x, 4080.0, x + 16.0, 4096.0);
+                canvas.push_rect(rect, crate::Radius::ZERO, color);
+                expected.push_rect(rect, crate::Radius::ZERO, color);
+            }
+        }
+        renderer.render(&canvas);
+        assert_eq!(
+            renderer.fine.as_ref().unwrap().initialized_pipeline_count(),
+            1
+        );
+        reference.render(&expected);
+        let actual = renderer.image().rgba8_bytes();
+        assert!(
+            actual == reference.image().rgba8_bytes(),
+            "{size}, path={path}"
+        );
+        if size == 4096 {
+            for (x, color) in [(4072, [255, 0, 0, 255]), (4088, [0, 255, 0, 255])] {
+                let offset = (4095 * size as usize + x) * 4;
+                assert_eq!(&actual[offset..offset + 4], &color);
+            }
+            // The same size crosses the linear clear-filter limit. Clearing a previously
+            // green final pixel catches a missing second dispatch row without a GPU oracle.
+            renderer.render(&Canvas::new(size, size, 1.0));
+            let cleared = renderer.image().rgba8_bytes();
+            assert_eq!(&cleared[cleared.len() - 4..], &[0, 0, 0, 0]);
+        }
+    }
+}

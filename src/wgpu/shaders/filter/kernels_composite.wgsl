@@ -1,5 +1,5 @@
 fn filter_composite_drop_shadow_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -14,7 +14,7 @@ fn filter_composite_drop_shadow_region(@builtin(global_invocation_id) gid: vec3<
 
 @compute @workgroup_size(256)
 fn filter_layer_mask_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -25,7 +25,7 @@ fn filter_layer_mask_region(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 @compute @workgroup_size(256)
 fn filter_rect_mask_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -47,7 +47,7 @@ fn filter_rect_mask_region(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 @compute @workgroup_size(256)
 fn filter_path_mask_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -99,7 +99,7 @@ fn filter_path_mask_region(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 @compute @workgroup_size(256)
 fn filter_composite_direct_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -115,7 +115,7 @@ fn filter_composite_direct_region(@builtin(global_invocation_id) gid: vec3<u32>)
 
 @compute @workgroup_size(256)
 fn filter_composite_rect_direct_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -143,7 +143,7 @@ fn filter_composite_rect_direct_region(@builtin(global_invocation_id) gid: vec3<
 
 @compute @workgroup_size(256)
 fn filter_composite_stack_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -154,7 +154,7 @@ fn filter_composite_stack_region(@builtin(global_invocation_id) gid: vec3<u32>) 
 
 @compute @workgroup_size(256)
 fn filter_composite_blend_stack_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -165,7 +165,7 @@ fn filter_composite_blend_stack_region(@builtin(global_invocation_id) gid: vec3<
 
 @compute @workgroup_size(256)
 fn filter_composite_surface_direct_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -188,7 +188,7 @@ fn filter_composite_surface_direct_region(@builtin(global_invocation_id) gid: ve
 
 @compute @workgroup_size(256)
 fn filter_composite_surface_stack_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }

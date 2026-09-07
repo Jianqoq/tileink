@@ -37,9 +37,34 @@ inactive tile records untouched. Normal, chunked-emit, and profiling paths retai
 count → prefix → emit dependencies, painter order, and particle/glyph formats. Dense/compact
 cost estimates account for the shared chain's workgroup count.
 
+## Direct fine dispatch
+
+Fine always dispatches one workgroup per tile through a single compute entry point. Removing
+argument clearing, list compaction, and three indirect dispatches eliminates repeated scheduling
+work in multi-batch frames. There is no scene-selection threshold or `TILEINK_FINE_DIRECT` switch.
+Coarse still supplies tile kinds for the color, analytic, and full-interpreter branches inside fine.
+The three classified tile lists and indirect argument buffer are gone; the active-tile list follows
+the kind array directly, saving three u32 words (12 bytes) of temporary storage per tile.
+
+Work exceeding one device dispatch dimension uses two dimensions. FineConfig carries the actual
+X dispatch width so the shader reconstructs a linear index before looking up active tiles and
+rejects padded workgroups in the final row. Full redraws, retained damage, resizing, and offscreen
+targets share this path and must preserve exact RGBA pixels, painter order, and inactive history.
+
+`cargo bench --bench root_batches` covers dense/sparse batches and scaled/layered Tiger scenes.
+Compare separate release binaries from before and after the change, excluding compilation and
+warmup. Complex large vector scenes can regress despite fewer dispatches; application resize FPS
+must be measured separately from these completed-frame microbenchmarks.
+
+Linear filters also split work at the device limit: a 4096-square clear already exceeds
+65,535 groups. FilterConfig reuses a padding word for the X dispatch width. Linear kernels
+reconstruct invocation indices; compact shared blur reconstructs workgroup indices and rejects
+padded groups before reading active tiles. This fixes the oversized dispatch at its source;
+dense shared blur retains its existing two-dimensional tile grid.
+
 ## Build-time DXIL on DX12
 
-Windows builds precompile the four primary portable-fine compute entry points to Shader Model 6.0
+Windows builds precompile the single portable-fine compute entry point to Shader Model 6.0
 DXIL and embed the blobs in the library. Cargo invalidates those artifacts when the WGSL, shader
 patch, binding manifest, build logic, DXC discovery environment, Windows SDK bin directory, DXC
 executable, or its adjacent `dxcompiler.dll`/`dxil.dll` changes. At runtime Tileink uses a blob only

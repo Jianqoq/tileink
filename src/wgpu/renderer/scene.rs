@@ -9,7 +9,6 @@ use crate::{
     canvas::Canvas,
     shared::{
         execution::{ExecPlan, ROOT_COMMAND_LIST_ID},
-        gpu_coarse::{FINE_TILE_DISPATCH_WORDS, FINE_TILE_LIST_COUNT},
         gpu_plan::{
             FINE_GROUP_SPILL_FIELDS, FINE_LOCAL_CLIP_DEPTH, FINE_LOCAL_GROUP_DEPTH,
             FINE_WORKGROUP_SIZE, GpuBufferLengths, GpuCanvasConfig, plan_stack_depths,
@@ -460,11 +459,6 @@ impl Renderer {
             "tileink wgpu fine spills",
             lane_count * clip_spill_depth
                 + lane_count * group_spill_depth * FINE_GROUP_SPILL_FIELDS,
-        );
-        self.fine_indirect_args.resize_uninit::<u32>(
-            &self.device,
-            "tileink wgpu fine indirect args",
-            FINE_TILE_LIST_COUNT * FINE_TILE_DISPATCH_WORDS,
         );
     }
 }

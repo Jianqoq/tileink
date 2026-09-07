@@ -14,7 +14,7 @@ mod dxil_manifest;
 #[path = "src/wgpu/shader_variants.rs"]
 mod shader_variants;
 
-const WGPU_SHADER_ENTRIES: [(&str, &str); 16] = [
+const WGPU_SHADER_ENTRIES: [(&str, &str); 15] = [
     ("scan/clear.wgsl", "tileink_wgpu_scan_clear.wgsl"),
     ("scan/count.wgsl", "tileink_wgpu_scan_count.wgsl"),
     (
@@ -36,7 +36,6 @@ const WGPU_SHADER_ENTRIES: [(&str, &str); 16] = [
     ("coarse/emit.wgsl", "tileink_wgpu_coarse_emit.wgsl"),
     ("coarse/emit_web.wgsl", "tileink_wgpu_coarse_emit_web.wgsl"),
     ("fine.wgsl", "tileink_wgpu_fine.wgsl"),
-    ("fine_compact.wgsl", "tileink_wgpu_fine_compact.wgsl"),
     ("filter.wgsl", "tileink_wgpu_filter.wgsl"),
     ("fine_web.wgsl", "tileink_wgpu_fine_web.wgsl"),
     ("filter_web.wgsl", "tileink_wgpu_filter_web.wgsl"),

@@ -16,7 +16,6 @@ impl SceneResources {
             scan: WgpuScanBuffers::new(device),
             coarse: WgpuCoarseBuffers::new(device),
             fine_spills: WgpuBuffer::new(device, "tileink wgpu fine spills"),
-            fine_indirect_args: WgpuBuffer::new(device, "tileink wgpu fine indirect args"),
             filter_transfers: WgpuFilterTransferBuffers::new(device),
             filter_brushes: WgpuFilterBrushBuffers::new(device),
             filter_convolves: WgpuFilterConvolveBuffers::new(device),
@@ -42,10 +41,6 @@ impl SceneResources {
         std::mem::swap(&mut self.scan, &mut renderer.scan);
         std::mem::swap(&mut self.coarse, &mut renderer.coarse);
         std::mem::swap(&mut self.fine_spills, &mut renderer.fine_spills);
-        std::mem::swap(
-            &mut self.fine_indirect_args,
-            &mut renderer.fine_indirect_args,
-        );
         std::mem::swap(&mut self.filter_transfers, &mut renderer.filter_transfers);
         std::mem::swap(&mut self.filter_brushes, &mut renderer.filter_brushes);
         std::mem::swap(&mut self.filter_convolves, &mut renderer.filter_convolves);
