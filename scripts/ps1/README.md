@@ -5,6 +5,10 @@ log path. Complete stdout/stderr from Cargo and renderer executables is stored i
 `%TEMP%\tileink-*.log` file. On failure, the script prints the log path and the last 80 lines before
 returning a non-zero exit code.
 
+Child commands use the current PowerShell filesystem location, including `Push-Location` changes.
+This fixes inherited native working directories selecting another Cargo package or zero matching
+tests when an entrypoint is invoked from outside the repository.
+
 `run_tests.ps1` always runs release tests with exactly one test thread; callers do not pass a thread
 count. SVG category wrappers delegate to `run_svg_tests.ps1` and inherit the same logging policy.
 
