@@ -176,6 +176,11 @@ name = "wgpu_examples"
 path = "examples/wgpu/all.rs"
 
 [[example]]
+name = "compare_png_pixels"
+path = "examples/compare_png_pixels/main.rs"
+test = true
+
+[[example]]
 name = "svg_fixture_render"
 path = "examples/svg_fixture_render.rs"
 
