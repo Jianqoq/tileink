@@ -383,7 +383,6 @@ pub(crate) struct WgpuFilterPipeline {
     dummy_atlas_view: ::wgpu::TextureView,
     dummy_sampler: ::wgpu::Sampler,
     dummy_read: ::wgpu::Buffer,
-    dummy_read_write: ::wgpu::Buffer,
     image_bind_group_layout: ::wgpu::BindGroupLayout,
     shader_source: &'static str,
     portable_textures: bool,
@@ -520,12 +519,6 @@ impl WgpuFilterPipeline {
         });
         let dummy_read = device.create_buffer(&::wgpu::BufferDescriptor {
             label: Some("tileink wgpu filter read dummy buffer"),
-            size: DUMMY_STORAGE_BUFFER_SIZE,
-            usage: ::wgpu::BufferUsages::STORAGE,
-            mapped_at_creation: false,
-        });
-        let dummy_read_write = device.create_buffer(&::wgpu::BufferDescriptor {
-            label: Some("tileink wgpu filter read-write dummy buffer"),
             size: DUMMY_STORAGE_BUFFER_SIZE,
             usage: ::wgpu::BufferUsages::STORAGE,
             mapped_at_creation: false,
@@ -793,7 +786,6 @@ impl WgpuFilterPipeline {
             dummy_atlas_view,
             dummy_sampler,
             dummy_read,
-            dummy_read_write,
             image_bind_group_layout,
             shader_source,
             portable_textures,
@@ -2223,7 +2215,7 @@ impl WgpuFilterPipeline {
             paint_blob: &self.dummy_read,
             paint_sdf_shadow_base: 0,
             path_records: &self.dummy_read,
-            backdrops: &self.dummy_read_write,
+            backdrops: &self.dummy_read,
             segment_ranges: &self.dummy_read,
             segments: &self.dummy_read,
             layer_stack: &self.dummy_read,
@@ -2896,7 +2888,7 @@ fn filter_layout_entries(
     push_storage_entry_if(&mut entries, resources, FILTER_RES_DRAW_RECORDS, 4, true);
     push_storage_entry_if(&mut entries, resources, FILTER_RES_PAINT_BLOB, 10, true);
     push_storage_entry_if(&mut entries, resources, FILTER_RES_PATH_RECORDS, 28, true);
-    push_storage_entry_if(&mut entries, resources, FILTER_RES_BACKDROPS, 29, false);
+    push_storage_entry_if(&mut entries, resources, FILTER_RES_BACKDROPS, 29, true);
     push_storage_entry_if(&mut entries, resources, FILTER_RES_SEGMENT_RANGES, 30, true);
     push_storage_entry_if(&mut entries, resources, FILTER_RES_SEGMENTS, 32, true);
     push_storage_entry_if(&mut entries, resources, FILTER_RES_LAYER_STACK, 33, true);

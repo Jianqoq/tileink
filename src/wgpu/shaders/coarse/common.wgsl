@@ -1,3 +1,4 @@
+// Backdrops are complete after scan/cumsum; coarse only consumes their winding values.
 struct CoarseConfig {
     tile_count: u32,
     tiles_width: u32,
@@ -318,7 +319,7 @@ fn store_tile_emit_chunk_count(tile_ix: u32, count: u32) {
 fn path_backdrop_fully_covers_tile(backdrop_ix: u32, fill_rule: u32) -> bool {
     let segment_range = segment_ranges[backdrop_ix];
     return segment_range.start == segment_range.end &&
-        backdrop_value_is_full_alpha(atomicLoad(&backdrops[backdrop_ix]), fill_rule);
+        backdrop_value_is_full_alpha(backdrops[backdrop_ix], fill_rule);
 }
 
 fn backdrop_value_is_full_alpha(backdrop: i32, fill_rule: u32) -> bool {

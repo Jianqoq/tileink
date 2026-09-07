@@ -492,7 +492,7 @@ fn prefix_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         uniform_entry(0),
         storage_entry(1, true),
         storage_entry(2, false),
-        storage_entry(3, false),
+        storage_entry(3, true),
         storage_entry(4, false),
         storage_entry(5, true),
     ]

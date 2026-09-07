@@ -22,6 +22,14 @@ flowchart LR
 
 Path geometry 被 flatten 为 line records。scan shaders 计算每条 line 穿过哪些 tile/row，并通过 prefix/cumsum 分配 backdrop 与 segment 输出。解析 SDF 不需要 CPU tessellation；transform 作为 affine 数据进入 GPU。
 
+## 原子操作的边界
+
+原子操作只用于 scan count 的并发 winding/segment 计数和 scan emit 的并发 cursor 分配。
+clear、scan prefix、cursor 初始化、cumsum、coarse 和 filter 使用普通整数访问；只读的
+consumer 同时使用只读 storage binding。各阶段由有序 dispatch 建立依赖，完整与增量
+scan plan 的记录/chunk 不重叠，因此清零和前缀回写每个位置只有一个 writer。这从根源上
+移除了沿用共享 buffer 原子类型造成的多余操作，不是临时 workaround，也不保证 FPS 提升。
+
 ## Coarse
 
 Coarse 阶段只遍历该 tile 的 draw references，而不是扫描整个 draw table。它产生 fine particles、glyph work 和 layer-stack events。Retained scenes 用稳定 `BatchId`，物理 draw slot 可以在 arena 中不连续。

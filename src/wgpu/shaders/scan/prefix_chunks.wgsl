@@ -2,7 +2,7 @@
 
 @group(0) @binding(1) var<storage, read> scan_chunks: array<GpuScanChunk>;
 @group(0) @binding(2) var<storage, read_write> segment_ranges: array<TileSegmentRange>;
-@group(0) @binding(3) var<storage, read_write> segment_tile_counts: array<atomic<u32>>;
+@group(0) @binding(3) var<storage, read> segment_tile_counts: array<u32>;
 @group(0) @binding(4) var<storage, read_write> chunk_totals: array<u32>;
 @group(0) @binding(5) var<storage, read> active_indices: array<u32>;
 
@@ -25,7 +25,7 @@ fn scan_prefix_chunks(
 
     var count = 0u;
     if (lane < chunk_len) {
-        count = atomicLoad(&segment_tile_counts[chunk_offset + lane]);
+        count = segment_tile_counts[chunk_offset + lane];
     }
     scan_scratch[lane] = count;
     workgroupBarrier();

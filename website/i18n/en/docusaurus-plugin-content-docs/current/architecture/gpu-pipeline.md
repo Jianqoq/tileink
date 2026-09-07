@@ -23,6 +23,16 @@ Native and portable WGPU paths share scene formats and most shader semantics; th
 
 For plans containing only fused root layers, portable fine uses one frame-wide ping-pong sequence: a full redraw copies into the intermediate textures once and copies the final result out once. A partial redraw also seeds the second intermediate texture so inactive pixels survive alternation. Recursive offscreen/filter plans keep the conservative per-target path. `IncrementalRenderStats::portable_texture_copies` reports the copies that were actually encoded.
 
+## Atomic access boundaries
+
+Atomics are required only for concurrent winding/segment accumulation in scan count and cursor
+allocation in scan emit. Clear, scan prefix, cursor initialization, cumsum, coarse, and filters
+use ordinary integer access; read-only consumers also use read-only storage bindings. Ordered
+dispatches establish stage dependencies, and disjoint records/chunks in both full and active
+scan plans give each clear/prefix destination one writer. This removes unnecessary operations
+inherited from a shared buffer's atomic declaration at their source; it is not a workaround or
+a guarantee of higher FPS.
+
 ## Coarse allocation prefixes
 
 Particle and glyph tile counts share one integer prefix chain: `coarse_prefix_chunks` computes

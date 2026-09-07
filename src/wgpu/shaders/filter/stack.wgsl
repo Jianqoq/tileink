@@ -247,7 +247,7 @@ fn layer_stack_alpha_at(draw_ix: u32, x: u32, y: u32) -> u32 {
         if (backdrop_ix != INVALID) {
             let segment_range = segment_ranges[backdrop_ix];
             alpha = fill_alpha_at(
-                atomicLoad(&backdrops[backdrop_ix]),
+                backdrops[backdrop_ix],
                 draw_fill_rule_at(draw_ix),
                 segment_range.start,
                 segment_range.end,

@@ -261,7 +261,7 @@ struct LayerStackRecord {
 @group(0) @binding(4) var<storage, read> draw_records: array<DrawRecord>;
 @group(0) @binding(10) var<storage, read> paint_blob: array<u32>;
 @group(0) @binding(28) var<storage, read> path_records: array<PathRecord>;
-@group(0) @binding(29) var<storage, read_write> backdrops: array<atomic<i32>>;
+@group(0) @binding(29) var<storage, read> backdrops: array<i32>;
 @group(0) @binding(30) var<storage, read> segment_ranges: array<TileSegmentRange>;
 @group(0) @binding(32) var<storage, read> segments: array<LineSegment>;
 @group(0) @binding(33) var<storage, read> layer_stack: array<LayerStackRecord>;
