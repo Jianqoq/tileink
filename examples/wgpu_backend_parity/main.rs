@@ -134,3 +134,6 @@ fn compare_frame(
 
 #[cfg(all(test, windows))]
 mod numeric;
+
+#[cfg(all(test, windows))]
+mod filter_sequence;

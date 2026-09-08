@@ -1,3 +1,7 @@
+[workspace]
+resolver = "3"
+members = ["vendor/wgpu-hal"]
+
 [package]
 name = "tileink"
 version = "0.1.2"
@@ -20,6 +24,7 @@ include = [
     "/Cargo.toml",
     "/Cargo.lock",
     "/README.md",
+    "/WGPU_PATCHES.md",
     "/CHANGELOG.md",
     "/LICENSE-MIT",
     "/LICENSE-APACHE",
@@ -232,4 +237,12 @@ test = true
 
 [[bench]]
 name = "pattern_sampling"
+harness = false
+
+# Shared maintained backend; see WGPU_PATCHES.md.
+[patch.crates-io]
+wgpu-hal = { path = "vendor/wgpu-hal" }
+
+[[bench]]
+name = "dx12_texture_order"
 harness = false

@@ -11,7 +11,9 @@ The four-way exact-pixel contract in [the plan](NATIVE_BACKEND_PLAN.md) is uncha
   DX12/Vulkan LUID `bf3f010000000000`.
 - Drivers: DX12 `32.0.16.1062`; Vulkan NVIDIA `610.62`.
 - Runtime DXC: Windows SDK 10.0.26100.0 x64 `dxcompiler.dll`, version `1.8.2502.11`.
-- WGPU 30.0.1 with registry WGPU HAL 30.0.0. No vendored or patched HAL is used by the fix.
+- WGPU 30.0.1. The first fix batch used registry HAL 30.0.0; the current reference
+  selects the maintained HAL 30.0.0 in `vendor/wgpu-hal` for the DX12 synchronization fix.
+  See [shared HAL maintenance](WGPU_PATCHES.md) for consumer selection and provenance.
 
 The runner creates a fresh artifact directory for each run. It records the case manifest,
 expected frame/route counts, selected adapter identity, source/binary/DXC hashes, texture
@@ -77,8 +79,10 @@ above. The report correctly has `complete: true`, **`passed: false`**, 125 misma
 | WGPU DX12 portable texture | 1 | 144 | 255 |
 | WGPU Vulkan portable texture | 124 | 1897 | 2 |
 
-The portable DX12 failure is `filters/feMorphology/huge-radius.svg`; its cause has not yet
-been established. It was outside the first two-route probe, so the aggregate counts are
+The portable DX12 failure is `filters/feMorphology/huge-radius.svg`. Later repeated-frame
+investigation established a missing write-only UAV barrier, described below. This one-shot
+run's counts are historical: repeated runs can expose other nondeterministic large errors
+until the synchronization defect is fixed. It was outside the first two-route probe, so the aggregate counts are
 not directly comparable. The pattern cancellation SVG is identical in all four combinations.
 The remaining differences are retained as M0 investigation inputs, not waived or made into
 separate goldens. The run used the absolute SDK compiler path; subsequent path validation
@@ -131,3 +135,71 @@ full cross-API SVG gate above still fails and remains required for M0 completion
 See [the runner commands](scripts/ps1/README.md#explicit-wgpu-dx12vulkan-reference).
 Local diagnostic artifacts are under `target/backend-parity/` and are intentionally ignored
 by Git. Keep the manifest with each report; do not merge results from different runs.
+
+## DX12 texture ordering and shared HAL ownership
+
+Repeated original `huge-radius.svg` frames failed even when a fresh, isolated first frame
+matched. Minimization removed SVG parsing, geometry, filters and texture pooling: two
+successive writes to one texture were enough. Tileink's second-frame clear left 512 pixels
+nonzero. CPU parameters and uniform buffer identity were correct.
+
+The DX12 HAL discarded same-state texture dependencies unless the earlier usage was
+`STORAGE_READ_WRITE`. Write-only accesses also use D3D12's UAV state. The corrected condition
+emits the UAV barrier for dependencies that remain in `UNORDERED_ACCESS`, preserving the
+existing ordinary state-transition path. This fixes GPU write ordering; no extra CPU wait,
+submission, copy, shader branch or pixel tolerance was introduced.
+
+The hardware regression fails the original HAL in about 0.48 seconds with 2480 nonzero pixels
+in the first checked frame, then passes with the corrected condition. It keeps the resource
+in UAV state across ordinary submissions before inspecting all RGBA bytes. The Tileink
+filter regression repeats 32 original morphology/composite frames through all four WGPU
+combinations, checking temporal stability and cross-route equality; it passed with zero
+pixel differences. Each route reuses its own renderer throughout the sequence.
+
+Per the user's ownership decision, the single HAL copy, both upstream licenses, existing
+Vulkan patches, regression support and Criterion workload now belong to Tileink. gfx_ui's
+old vendor directory is removed and its root patch points to Tileink. The trading application's
+root patch follows the same source because Cargo patches do not propagate from dependencies.
+No private gfx_ui library code is required to build Tileink.
+
+The DX12 one-pair workload measured 90.28 to 87.66 microseconds (Criterion improved).
+Eight pairs measured 169.01 to 211.46 microseconds (**+25%, Criterion regressed**): the old
+implementation omitted required ordering and also failed the benchmark's final pixel check.
+This cost is recorded explicitly. The fix is required for pixel correctness, and this result
+**does not pass the no-performance-regression gate** or establish application/resize performance.
+Further performance work must preserve those dependencies. M0 remains in progress.
+
+### Complete SVG probe after the UAV fix
+
+`target/backend-parity/m0-uav-svg/report.json` completed all 1712 SVG frames through four
+WGPU combinations using the HAL selected from `tileink/vendor/wgpu-hal`:
+
+| Compared with WGPU DX12 native texture | Mismatched frames | Different pixels | Maximum channel delta |
+| --- | ---: | ---: | ---: |
+| WGPU Vulkan native texture | 124 | 1897 | 2 |
+| WGPU DX12 portable texture | 0 | 0 | 0 |
+| WGPU Vulkan portable texture | 124 | 1897 | 2 |
+
+The huge-radius failure is gone. The remaining cross-API differences are unchanged from
+the stable small differences in the historical probe. This run has `complete: true`,
+**`passed: false`**, and is retained as a failing M0 gate, not a tolerance waiver.
+The 32-frame filter sequence and the pure DX12 ordering regression pass independently.
+
+### Migration and synchronization regression results
+
+- HAL release unit tests: 15 passed. The relocated DX12 GPU ordering test passes.
+- Ordinary Tileink release matrix: 12 serial groups, 1208 passed executions, 0 failures;
+  8 ignored hardware-test occurrences are separate from the explicit GPU runs above.
+- Complete ordinary SVG matrix: 1712 inputs completed and native/portable comparisons passed.
+  All 45 ordinary example outputs matched between texture modes.
+- Repository PNG comparison against `083ca3ad`: all 3488 PNGs byte-identical, 0 failures.
+  No new golden-image changes were needed for this batch.
+- gfx_ui/component/gallery release tests and doctests: 1720 passed, 2 ignored.
+  Trading application tests: 1291 passed, 1 ignored. Its focused Cargo path-patch snapshot
+  regression also passed, confirming dynamic package snapshots retain the selected source.
+- Release Clippy and formatting passed in all three consumers; the HAL workspace was included
+  in Tileink's all-target check. `cargo package --no-verify` produced a 180-file library package.
+- The new workspace preserves Tileink's edition-2024 resolver 3. The locked workspace
+  dependency/feature tree is byte-identical across that explicit resolver selection.
+- Standards and Spec review found no new migration or synchronization defects. The known
+  cross-API pixel and eight-pair performance gates remain open as documented above.

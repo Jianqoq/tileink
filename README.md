@@ -19,6 +19,10 @@ The [native HLSL backend plan](NATIVE_BACKEND_PLAN.md) describes planned, opt-in
 backends and exact pixel parity with wgpu. [M0 reference validation](NATIVE_BACKEND_PROGRESS.md)
 is in progress; native API backends are not implemented yet.
 
+This repository maintains a [shared wgpu HAL patch](WGPU_PATCHES.md), including DX12
+write-only texture synchronization. Cargo patches are not transitive: consumers must select
+it in their own root workspace to receive the fix.
+
 > [!IMPORTANT]
 > Tileink is an early-stage project. The public API, rendering behavior, and performance profile
 > are still evolving; evaluate it against your own scenes before adopting it in production.
