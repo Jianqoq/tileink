@@ -128,3 +128,17 @@ checks GPU ranges/chunk totals against a sequential CPU reference. It covers emp
 chunks, non-contiguous active tiles, untouched inactive records, and carry across 256/512 chunks
 without allocating a large render target. The normal single-threaded release script runs it with
 `TILEINK_RUN_WGPU_TESTS=1`.
+
+## Pattern sampling
+
+`cargo bench --bench pattern_sampling` renders the existing rotated context-pattern SVG at
+300 and 1600 pixels in native/portable WGPU texture modes. It measures completed full frames
+into a transient external target. Parsing, pattern prerendering, shader compilation, warmup
+and diagnostic readback are outside the measured interval. The adapter is printed in the log.
+This guards the cost of the compensated pattern-coordinate calculation; it is not evidence
+of a native-API speedup. Save and compare Criterion baselines with identical benchmark sources:
+
+```powershell
+cargo bench --bench pattern_sampling -- --save-baseline before
+cargo bench --bench pattern_sampling -- --baseline before
+```

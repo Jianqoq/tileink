@@ -56,13 +56,22 @@ pub fn load_svg_scene(
 ) -> Result<(Canvas, u32, u32), Box<dyn std::error::Error>> {
     let input = input.as_ref();
     let data = fs::read(input)?;
-    let mut options = usvg::Options {
-        resources_dir: input.parent().map(Path::to_path_buf),
-        ..usvg::Options::default()
-    };
-    load_svg_fonts(&mut options);
-
+    let mut options = svg_options();
+    options.resources_dir = input.parent().map(Path::to_path_buf);
     let tree = usvg::Tree::from_data(&data, &options)?;
+    svg_tree_to_scene(&tree, target_width)
+}
+
+pub fn svg_options() -> usvg::Options<'static> {
+    let mut options = usvg::Options::default();
+    load_svg_fonts(&mut options);
+    options
+}
+
+pub fn svg_tree_to_scene(
+    tree: &usvg::Tree,
+    target_width: u32,
+) -> Result<(Canvas, u32, u32), Box<dyn std::error::Error>> {
     let size = tree
         .size()
         .to_int_size()
@@ -74,7 +83,7 @@ pub fn load_svg_scene(
     let scale_y = height as f64 / tree.size().height() as f64;
     let mut scene = Canvas::new(width, height, 1.0);
     scene.push_svg_with_options(
-        &tree,
+        tree,
         SvgOptions {
             transform: Affine::scale_non_uniform(scale_x, scale_y),
             ..SvgOptions::default()

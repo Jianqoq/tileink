@@ -113,3 +113,16 @@ GPU 的 coarse/fine 工作与 CPU 后续编码及命令缓冲区完成重叠。�
 
 `cargo bench --bench root_batches` 比较不同尺寸和批次数量的 native/portable CPU+GPU
 完成时间。真实应用的 FPS、p95 和最长帧必须另外测量，不能用微基准耗时替代。
+
+### Filter input resource states
+
+Both texture paths bind each filter source/aux input once as a sampled texture (SRV), shared by integer `textureLoad` and linear sampling. Only the output uses storage access; the portable path reads a separate previous target. A simultaneous read-only storage alias would require the illegal DX12 UAV | SRV resource state, causing command-list close failure and device invalidation. This fixes the resource declaration itself without a wgpu-hal patch, global wait, or pixel conversion change.
+
+## Pattern transform cancellation
+
+Pattern 坐标的两个乘积可能严格抵消。普通乘加的 contraction 或重排会留下微小残差，
+负残差经过 `floor` 后让 nearest/repeat 采到图像另一侧，导致很大的颜色差异。
+`shared/pattern_transform.wgsl` 用显式 `fma` 补回第二个乘积的舍入误差，再应用平移，
+修复这一数值根因；没有 epsilon、坐标吸附、fixture 分支或输出后处理。
+该修正不承诺所有浮点表达式在不同 API 上一致。参考运行器仍要求全部 RGBA 字节相等，
+独立数值测试和完整旋转 pattern 回归分别检查运算语义与实际渲染。

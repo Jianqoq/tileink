@@ -68,6 +68,9 @@ directwrite-reference = [
 vello-compare = ["dep:vello"]
 
 [dev-dependencies]
+env_logger = { version = "0.11", default-features = false }
+ash = "0.38"
+serde_json = "1"
 winit = "0.30"
 criterion = "0.8.2"
 sha2 = "0.11.0"
@@ -221,3 +224,12 @@ required-features = ["vello-compare"]
 [[example]]
 name = "wgpu_batch"
 path = "examples/wgpu_batch.rs"
+
+[[example]]
+name = "wgpu_backend_parity"
+path = "examples/wgpu_backend_parity/main.rs"
+test = true
+
+[[bench]]
+name = "pattern_sampling"
+harness = false

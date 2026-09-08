@@ -651,6 +651,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "91622ff5e7162018101f2fea40d6ebf4a78bbe5a49736a2020649edf9693679e"
 
 [[package]]
+name = "env_filter"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "900d271a03799a1ee8d1ca9b19893b48ca674a9284fefcfb85f05e74ed314217"
+dependencies = [
+ "log",
+ "regex",
+]
+
+[[package]]
+name = "env_logger"
+version = "0.11.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "de671bd27a75a797dc9ae289ba1e77276e75e2026408aab65185384e2d5cd3f6"
+dependencies = [
+ "env_filter",
+ "log",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2548,9 +2568,11 @@ dependencies = [
 name = "tileink"
 version = "0.1.2"
 dependencies = [
+ "ash",
  "bytemuck",
  "cosmic-text",
  "criterion",
+ "env_logger",
  "image",
  "naga 30.0.1",
  "peniko",
@@ -2558,6 +2580,7 @@ dependencies = [
  "pollster",
  "rayon",
  "rustc-hash 2.1.3",
+ "serde_json",
  "sha2",
  "swash",
  "usvg",

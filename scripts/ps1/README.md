@@ -50,3 +50,45 @@ cargo test --release --example compare_png_pixels -- --test-threads=1
 ```
 
 Its semantic and temporary-Git-repository tests also run with the regular `cargo test --release` suite.
+
+## Explicit WGPU DX12/Vulkan reference
+
+The M0 runner requires Windows and a hardware GPU exposed through both APIs with a matching
+LUID. `--textures` selects WGPU native/portable texture execution, not native API backends.
+Use a pinned DXC DLL for a reproducible DX12 reference. The output directory must not exist:
+
+```powershell
+cargo run --release --example wgpu_backend_parity -- `
+  --input src/svg/tests --textures both `
+  --dxc "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\dxcompiler.dll" `
+  --output target/backend-parity/svg-run-1
+```
+
+Omit `--input` for the three built-in probes, or pass one SVG/file directory. `--luid` accepts
+16 hex digits in the byte order reported by a prior run. Software/API fallback is rejected;
+missing outputs, duplicate frames, an unavailable route or any RGBA difference fail the run.
+The immutable `manifest.json` identifies cases, source/binary/compiler hashes and input
+resources (including externally referenced images and font directory membership). `report.json`
+tracks completion and exact differences. Each route saves raw premultiplied RGBA PNGs, preserving
+RGB under zero alpha; `Image::save` is deliberately not used because it unpremultiplies.
+Only `complete: true` together with `passed: true` means the requested input set matched.
+
+Without `--dxc`, WGPU uses its automatic compiler selection and the manifest explicitly marks
+the compiler as uncertified. Successful smoke tests or a subset do not certify the complete
+native backend matrix. Current scope and unresolved requirements are in
+[`NATIVE_BACKEND_PROGRESS.md`](../../NATIVE_BACKEND_PROGRESS.md).
+
+CPU/comparator tests and explicit hardware regressions:
+
+```powershell
+cargo test --release --example wgpu_backend_parity -- --test-threads=1
+$env:TILEINK_PARITY_DXCOMPILER = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\dxcompiler.dll"
+$env:TILEINK_RUN_WGPU_TESTS = "1"
+cargo test --release --example wgpu_backend_parity gpu::tests::wgpu_explicit_dx12_empty_scene_readback -- --test-threads=1
+cargo test --release --example wgpu_backend_parity -- --ignored --test-threads=1
+```
+
+Run GPU jobs serially. The ignored tests require actual DX12/Vulkan hardware and fail if the
+pinned compiler is missing; the ordinary empty-scene GPU test uses the repository's existing
+`TILEINK_RUN_WGPU_TESTS` opt-in. Large shaders can make first render/compilation take minutes;
+this is separate from measured steady-state frame time.

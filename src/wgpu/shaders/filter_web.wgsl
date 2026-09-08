@@ -4,6 +4,7 @@
 #include "shared/brush.wgsl"
 #include "shared/sdf.wgsl"
 #include "filter/textures_web.wgsl"
+#include "filter/textures.wgsl"
 #include "filter/kernels.wgsl"
 #include "filter/stack.wgsl"
 #include "filter/effects.wgsl"

@@ -277,8 +277,8 @@ struct LayerStackRecord {
 @group(0) @binding(47) var<storage, read> path_p1x: array<i32>;
 @group(0) @binding(48) var<storage, read> path_p1y: array<i32>;
 @group(0) @binding(52) var<storage, read> active_tiles: array<u32>;
-@group(0) @binding(49) var filter_source_sample_texture: texture_2d<f32>;
-@group(0) @binding(50) var filter_aux_sample_texture: texture_2d<f32>;
+@group(0) @binding(1) var source_texture: texture_2d<f32>;
+@group(0) @binding(2) var aux_texture: texture_2d<f32>;
 @group(0) @binding(51) var filter_linear_sampler: sampler;
 @group(1) @binding(0) var image_resource_atlas: texture_2d_array<f32>;
 @group(1) @binding(1) var image_resource_sampler: sampler;
