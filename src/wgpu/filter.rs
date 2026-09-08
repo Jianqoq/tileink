@@ -111,7 +111,7 @@ struct FilterConfig {
     pixel_count: u32,
     active_tile_count: u32,
     compact_tiles: u32,
-    active_tile_pad0: u32,
+    dispatch_width: u32,
     active_tile_pad1: u32,
     downsample: u32,
     downsample_filter: u32,
@@ -229,7 +229,7 @@ impl Default for FilterConfig {
             pixel_count: 0,
             active_tile_count: 0,
             compact_tiles: 0,
-            active_tile_pad0: 0,
+            dispatch_width: 0,
             active_tile_pad1: 0,
             downsample: 1,
             downsample_filter: 0,
@@ -383,7 +383,6 @@ pub(crate) struct WgpuFilterPipeline {
     dummy_atlas_view: ::wgpu::TextureView,
     dummy_sampler: ::wgpu::Sampler,
     dummy_read: ::wgpu::Buffer,
-    dummy_read_write: ::wgpu::Buffer,
     image_bind_group_layout: ::wgpu::BindGroupLayout,
     shader_source: &'static str,
     portable_textures: bool,
@@ -520,12 +519,6 @@ impl WgpuFilterPipeline {
         });
         let dummy_read = device.create_buffer(&::wgpu::BufferDescriptor {
             label: Some("tileink wgpu filter read dummy buffer"),
-            size: DUMMY_STORAGE_BUFFER_SIZE,
-            usage: ::wgpu::BufferUsages::STORAGE,
-            mapped_at_creation: false,
-        });
-        let dummy_read_write = device.create_buffer(&::wgpu::BufferDescriptor {
-            label: Some("tileink wgpu filter read-write dummy buffer"),
             size: DUMMY_STORAGE_BUFFER_SIZE,
             usage: ::wgpu::BufferUsages::STORAGE,
             mapped_at_creation: false,
@@ -793,7 +786,6 @@ impl WgpuFilterPipeline {
             dummy_atlas_view,
             dummy_sampler,
             dummy_read,
-            dummy_read_write,
             image_bind_group_layout,
             shader_source,
             portable_textures,
@@ -2064,6 +2056,15 @@ impl WgpuFilterPipeline {
         }
 
         let kernel = self.kernel(commands.device(), pipeline);
+        let workgroups = self.dispatch_workgroups_for_pipeline(
+            kernel,
+            &config,
+            commands
+                .device()
+                .limits()
+                .max_compute_workgroups_per_dimension,
+        );
+        config.dispatch_width = workgroups.0;
         let config_offset = commands.write_uniform_slot(
             "filter.config",
             &self.config,
@@ -2100,7 +2101,6 @@ impl WgpuFilterPipeline {
             pass.set_pipeline(&kernel.pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
             pass.set_bind_group(1, &image_bind_group, &[]);
-            let workgroups = self.dispatch_workgroups_for_pipeline(kernel, &config);
             pass.dispatch_workgroups(workgroups.0, workgroups.1, workgroups.2);
         }
         finish_gpu_scope(encoder, gpu_scope);
@@ -2110,17 +2110,24 @@ impl WgpuFilterPipeline {
         &self,
         pipeline: &FilterKernel,
         config: &FilterConfig,
+        max_workgroups: u32,
     ) -> (u32, u32, u32) {
-        if config.compact_tiles != 0 {
-            (config.active_tile_count, 1, 1)
-        } else if pipeline.shared_workgroups {
+        if config.compact_tiles == 0 && pipeline.shared_workgroups {
             (
                 config.region_width.div_ceil(SHARED_BLUR_TILE_WIDTH),
                 config.region_height.div_ceil(SHARED_BLUR_TILE_HEIGHT),
                 1,
             )
         } else {
-            (config.pixel_count.div_ceil(WORKGROUP_SIZE), 1, 1)
+            // Linear filters have the same device limit as fine; a 4096-square clear
+            // already needs 65,536 groups. Split rows instead of issuing an invalid dispatch.
+            let groups = if config.compact_tiles != 0 {
+                config.active_tile_count
+            } else {
+                config.pixel_count.div_ceil(WORKGROUP_SIZE)
+            };
+            let (x, y) = super::dispatch_2d(groups, max_workgroups);
+            (x, y, 1)
         }
     }
 
@@ -2208,7 +2215,7 @@ impl WgpuFilterPipeline {
             paint_blob: &self.dummy_read,
             paint_sdf_shadow_base: 0,
             path_records: &self.dummy_read,
-            backdrops: &self.dummy_read_write,
+            backdrops: &self.dummy_read,
             segment_ranges: &self.dummy_read,
             segments: &self.dummy_read,
             layer_stack: &self.dummy_read,
@@ -2230,8 +2237,8 @@ impl WgpuFilterPipeline {
         let path_p1y = path_bindings.map_or(&self.dummy_read, |bindings| bindings.p1y);
         let mut entries = vec![
             bind_config_buffer(0, &self.config, config_offset, self.config_size),
-            bind_texture(1, source),
-            bind_texture(2, aux),
+            bind_texture(filter_layout::SOURCE_TEXTURE_BINDING, source),
+            bind_texture(filter_layout::AUX_TEXTURE_BINDING, aux),
             bind_texture(3, target),
         ];
         push_buffer_if(
@@ -2369,22 +2376,6 @@ impl WgpuFilterPipeline {
                 .as_ref()
                 .map_or(&self.dummy_read, |work| &work.buffer),
         );
-        entries.push(bind_texture(
-            filter_binding(
-                kernel.portable_textures,
-                kernel.resources,
-                filter_layout::SOURCE_SAMPLE_TEXTURE_BINDING,
-            ),
-            source,
-        ));
-        entries.push(bind_texture(
-            filter_binding(
-                kernel.portable_textures,
-                kernel.resources,
-                filter_layout::AUX_SAMPLE_TEXTURE_BINDING,
-            ),
-            aux,
-        ));
         entries.push(bind_sampler(
             filter_binding(
                 kernel.portable_textures,
@@ -2872,16 +2863,18 @@ fn filter_layout_entries(
     portable_textures: bool,
     resources: u32,
 ) -> Vec<::wgpu::BindGroupLayoutEntry> {
+    // A single sampled input supports texel loads and filtering. Binding the
+    // same input as storage too would combine incompatible DX12 UAV/SRV states.
     let mut entries = vec![
         uniform_entry(0),
-        read_texture_entry(1, portable_textures),
-        read_texture_entry(2, portable_textures),
+        sampled_filterable_texture_entry(filter_layout::SOURCE_TEXTURE_BINDING),
+        sampled_filterable_texture_entry(filter_layout::AUX_TEXTURE_BINDING),
         write_texture_entry(3, portable_textures),
     ];
     push_storage_entry_if(&mut entries, resources, FILTER_RES_DRAW_RECORDS, 4, true);
     push_storage_entry_if(&mut entries, resources, FILTER_RES_PAINT_BLOB, 10, true);
     push_storage_entry_if(&mut entries, resources, FILTER_RES_PATH_RECORDS, 28, true);
-    push_storage_entry_if(&mut entries, resources, FILTER_RES_BACKDROPS, 29, false);
+    push_storage_entry_if(&mut entries, resources, FILTER_RES_BACKDROPS, 29, true);
     push_storage_entry_if(&mut entries, resources, FILTER_RES_SEGMENT_RANGES, 30, true);
     push_storage_entry_if(&mut entries, resources, FILTER_RES_SEGMENTS, 32, true);
     push_storage_entry_if(&mut entries, resources, FILTER_RES_LAYER_STACK, 33, true);
@@ -2939,16 +2932,6 @@ fn filter_layout_entries(
         ACTIVE_TILES_BINDING,
         true,
     );
-    entries.push(sampled_filterable_texture_entry(filter_binding(
-        portable_textures,
-        resources,
-        filter_layout::SOURCE_SAMPLE_TEXTURE_BINDING,
-    )));
-    entries.push(sampled_filterable_texture_entry(filter_binding(
-        portable_textures,
-        resources,
-        filter_layout::AUX_SAMPLE_TEXTURE_BINDING,
-    )));
     entries.push(filtering_sampler_entry(filter_binding(
         portable_textures,
         resources,
@@ -2986,12 +2969,6 @@ const FILTER_STORAGE_BINDINGS: [(u32, u32); 19] = [
     (FILTER_RES_ACTIVE_TILES, ACTIVE_TILES_BINDING),
 ];
 
-const FILTER_TEXTURE_BINDINGS: [u32; 3] = [
-    filter_layout::SOURCE_SAMPLE_TEXTURE_BINDING,
-    filter_layout::AUX_SAMPLE_TEXTURE_BINDING,
-    filter_layout::LINEAR_SAMPLER_BINDING,
-];
-
 fn filter_binding(portable_textures: bool, resources: u32, old_binding: u32) -> u32 {
     filter_binding_remaps(portable_textures, resources)
         .into_iter()
@@ -3006,18 +2983,11 @@ fn filter_binding_remaps(portable_textures: bool, resources: u32) -> Vec<(u32, u
             ordered.push(old_binding);
         }
     }
-    ordered.push(filter_layout::SOURCE_SAMPLE_TEXTURE_BINDING);
-    ordered.push(filter_layout::AUX_SAMPLE_TEXTURE_BINDING);
     ordered.push(filter_layout::LINEAR_SAMPLER_BINDING);
     if portable_textures {
         ordered.push(55);
     }
     for (_, old_binding) in FILTER_STORAGE_BINDINGS {
-        if !ordered.contains(&old_binding) {
-            ordered.push(old_binding);
-        }
-    }
-    for old_binding in FILTER_TEXTURE_BINDINGS {
         if !ordered.contains(&old_binding) {
             ordered.push(old_binding);
         }
@@ -3106,14 +3076,6 @@ fn storage_texture_entry(
             view_dimension: ::wgpu::TextureViewDimension::D2,
         },
         count: None,
-    }
-}
-
-fn read_texture_entry(binding: u32, portable_textures: bool) -> ::wgpu::BindGroupLayoutEntry {
-    if portable_textures {
-        sampled_texture_entry(binding)
-    } else {
-        storage_texture_entry(binding, ::wgpu::StorageTextureAccess::ReadOnly)
     }
 }
 
@@ -3261,17 +3223,23 @@ mod tests {
     fn filter_kernel_layouts_always_include_linear_sampling_resources() {
         for portable_textures in [false, true] {
             let entries = filter_layout_entries(portable_textures, 0);
+            // Input texel loads and linear samples must share an SRV. A storage
+            // alias causes an invalid UAV | SRV state transition on DX12.
+            for binding in [1, 2] {
+                let input = entries
+                    .iter()
+                    .find(|entry| entry.binding == binding)
+                    .unwrap();
+                assert!(matches!(
+                    input.ty,
+                    ::wgpu::BindingType::Texture {
+                        sample_type: ::wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: ::wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    }
+                ));
+            }
             let bindings: Vec<u32> = entries.iter().map(|entry| entry.binding).collect();
-            assert!(bindings.contains(&filter_binding(
-                portable_textures,
-                0,
-                filter_layout::SOURCE_SAMPLE_TEXTURE_BINDING
-            )));
-            assert!(bindings.contains(&filter_binding(
-                portable_textures,
-                0,
-                filter_layout::AUX_SAMPLE_TEXTURE_BINDING
-            )));
             assert!(bindings.contains(&filter_binding(
                 portable_textures,
                 0,

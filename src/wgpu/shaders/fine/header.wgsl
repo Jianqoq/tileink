@@ -103,6 +103,7 @@ struct FineConfig {
     group_spill_base: u32,
     fine_tile_kind_base: u32,
     active_tile_count: u32,
+    dispatch_width: u32,
     active_tile_list_base: u32,
     incremental: u32,
 };
@@ -197,9 +198,6 @@ const FINE_TILE_KIND_COLOR_ONLY_NO_STACK: u32 = 2u;
 const FINE_TILE_KIND_PURE_SDF_SOLID_NO_STACK: u32 = 3u;
 const FINE_TILE_KIND_MIXED_ANALYTIC_SOLID_NO_STACK: u32 = 4u;
 const FINE_TILE_KIND_ANALYTIC_WITH_STACK: u32 = 5u;
-const FINE_TILE_LIST_SDF: u32 = 0u;
-const FINE_TILE_LIST_MIXED: u32 = 1u;
-const FINE_TILE_LIST_FULL: u32 = 2u;
 
 fn coarse_tile_base(tile_ix: u32) -> u32 {
     return tile_ix * TILE_COARSE_RECORD_WORDS;
@@ -247,13 +245,7 @@ fn fine_tile_kind_at(tile_ix: u32) -> u32 {
     return coarse_work[config.fine_tile_kind_base + tile_ix];
 }
 
-fn fine_tile_list_base(list_ix: u32) -> u32 {
-    return config.fine_tile_kind_base + config.tile_count + list_ix * config.tile_count;
-}
 
-fn fine_tile_list_at(list_ix: u32, tile_list_ix: u32) -> u32 {
-    return coarse_work[fine_tile_list_base(list_ix) + tile_list_ix];
-}
 
 fn glyph_at(glyph_ix: u32) -> GlyphRecord {
     let base = glyph_ix * GLYPH_RECORD_WORDS;

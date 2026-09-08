@@ -1,3 +1,4 @@
+// Scan/cumsum dispatches are ordered; disjoint row chunks give each backdrop one writer.
 struct CumsumConfig {
     row_count: u32,
     _pad0: u32,
@@ -10,7 +11,7 @@ struct CumsumConfig {
 @group(0) @binding(2) var<storage, read> chunk_lens: array<u32>;
 @group(0) @binding(3) var<storage, read> row_chunk_starts: array<u32>;
 @group(0) @binding(4) var<storage, read> row_chunk_ends: array<u32>;
-@group(0) @binding(5) var<storage, read_write> backdrops: array<atomic<i32>>;
+@group(0) @binding(5) var<storage, read_write> backdrops: array<i32>;
 @group(0) @binding(6) var<storage, read_write> chunk_totals: array<i32>;
 @group(0) @binding(7) var<storage, read_write> chunk_offsets: array<i32>;
 
@@ -34,7 +35,7 @@ fn cumsum_prefix_chunks(
 
     var value = 0i;
     if (lane < chunk_len) {
-        value = atomicLoad(&backdrops[chunk_offset + lane]);
+        value = backdrops[chunk_offset + lane];
     }
     scratch[lane] = value;
     workgroupBarrier();
@@ -75,7 +76,7 @@ fn cumsum_prefix_chunks(
     }
 
     if (lane < chunk_len) {
-        atomicStore(&backdrops[chunk_offset + lane], scratch[lane] + value);
+        backdrops[chunk_offset + lane] = scratch[lane] + value;
     }
 }
 
@@ -113,5 +114,5 @@ fn cumsum_apply_chunk_offsets(
     }
 
     let ix = chunk_backdrop_offsets[chunk_ix] + lane;
-    atomicStore(&backdrops[ix], atomicLoad(&backdrops[ix]) + chunk_offsets[chunk_ix]);
+    backdrops[ix] += chunk_offsets[chunk_ix];
 }

@@ -5,7 +5,7 @@
 @group(0) @binding(2) var<storage, read> text_blob: array<u32>;
 @group(0) @binding(3) var<storage, read> sdf_blob: array<u32>;
 @group(0) @binding(4) var<storage, read> path_records: array<PathRecord>;
-@group(0) @binding(5) var<storage, read_write> backdrops: array<atomic<i32>>;
+@group(0) @binding(5) var<storage, read> backdrops: array<i32>;
 @group(0) @binding(6) var<storage, read> segment_ranges: array<TileSegmentRange>;
 @group(0) @binding(7) var<storage, read> layer_stack: array<LayerStackRecord>;
 @group(0) @binding(8) var<storage, read_write> coarse_work: array<u32>;
@@ -89,7 +89,7 @@ fn coarse_emit(
                 let segment_range = segment_ranges[backdrop_ix];
                 let segment_start = segment_range.start;
                 let segment_end = segment_range.end;
-                let backdrop = atomicLoad(&backdrops[backdrop_ix]);
+                let backdrop = backdrops[backdrop_ix];
                 if (
                     (draw_tag == GPU_DRAW_BRUSH || draw_tag == GPU_DRAW_PATH_GLYPH || draw_tag == GPU_DRAW_CLIP) &&
                     (segment_start != segment_end || backdrop != 0i)
@@ -227,7 +227,7 @@ fn active_stack_count(tile_x: u32, tile_y: u32) -> u32 {
                     let backdrop_ix = draw_backdrop_ix(draw_ix, tile_x, tile_y);
                     if (backdrop_ix == INVALID) {
                         valid = false;
-                    } else if (segment_ranges[backdrop_ix].start == segment_ranges[backdrop_ix].end && atomicLoad(&backdrops[backdrop_ix]) == 0i) {
+                    } else if (segment_ranges[backdrop_ix].start == segment_ranges[backdrop_ix].end && backdrops[backdrop_ix] == 0i) {
                         valid = false;
                     } else {
                         count += 1u;
@@ -272,7 +272,7 @@ fn emit_active_stack_begins(dst_start: u32, tile_x: u32, tile_y: u32) {
                     store_particle(
                         dst,
                         ptcl_tag,
-                        atomicLoad(&backdrops[backdrop_ix]),
+                        backdrops[backdrop_ix],
                         draw_fill_rule_at(draw_ix),
                         segment_ranges[backdrop_ix].start,
                         segment_ranges[backdrop_ix].end,

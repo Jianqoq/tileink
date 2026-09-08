@@ -7,6 +7,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- Added a same-GPU WGPU DX12/Vulkan reference runner with exact raw RGBA comparison,
+  immutable run manifests, input-resource hashes and failure artifacts. This is M0 of the
+  native HLSL backend plan; native API backends are not implemented yet.
+- Added a Criterion benchmark for rotated pattern sampling at two render sizes and both
+  WGPU texture paths.
+
+### Fixed
+
+- Bound filter source/auxiliary textures only as sampled resources, avoiding an illegal DX12
+  UAV/SRV state combination that could invalidate the device during rendering.
+- Compensated pattern transform product rounding so exact cancellation does not select a texel
+  from the opposite repeat edge. Pixel changes require the repository's human PNG review.
+
 ## [0.1.2] - 2026-08-31
 
 ### Added

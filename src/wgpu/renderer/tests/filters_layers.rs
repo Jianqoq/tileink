@@ -402,3 +402,62 @@ fn wgpu_renderer_applies_morphology_filter_to_offscreen_children_when_enabled() 
     assert_eq!(image.rgba8_at(5, 5), [255, 0, 0, 255]);
     assert_eq!(image.rgba8_at(2, 5), [0, 0, 0, 0]);
 }
+
+#[test]
+fn wgpu_compact_shared_blur_preserves_tiles_across_dispatch_rows() {
+    if !run_wgpu_tests() {
+        return;
+    }
+    const SIZE: u32 = 4096;
+    let mut renderer = new_test_renderer(SIZE, SIZE, Color::TRANSPARENT);
+    renderer.render(&Canvas::new(SIZE, SIZE, 1.0));
+    let device = renderer.device.clone();
+    let queue = renderer.queue.clone();
+    let source = external_target(&device, (SIZE, SIZE), "compact blur source");
+    let target = external_target(&device, (SIZE, SIZE), "compact blur target");
+    let source_view = source.create_view(&Default::default());
+    let target_view = target.create_view(&Default::default());
+    let lengths = renderer.lengths;
+    let mut commands =
+        crate::wgpu::commands::WgpuCommandBatch::new(&device, &queue, "compact blur boundary");
+    let filter = renderer.filter.as_mut().unwrap();
+    filter.clear_buffer(
+        &mut commands,
+        &source_view,
+        (SIZE, SIZE),
+        lengths,
+        0xff00ff00,
+    );
+    filter.clear_buffer(
+        &mut commands,
+        &target_view,
+        (SIZE, SIZE),
+        lengths,
+        0xff0000ff,
+    );
+    // Rotate the real worklist so tile zero is the first group of the second dispatch row.
+    // Repeating workgroup_id.x would leave that tile red while the other tiles turn green.
+    let mut tiles: Vec<u32> = (0..65536).collect();
+    tiles.rotate_left(1);
+    let work = renderer
+        .filter_tile_work_arena
+        .upload(&device, &queue, &tiles);
+    filter.restore_active_tile_work(Some(work));
+    filter.blur_region(
+        &mut commands,
+        &source_view,
+        &target_view,
+        (SIZE, SIZE),
+        lengths,
+        Bounds::canvas(SIZE, SIZE),
+        1.0,
+        0,
+    );
+    commands.submit_current();
+    assert_eq!(filter.dispatch_counts().1, 1);
+    let pixels = read_texture_rgba8(&device, &queue, &target, SIZE, SIZE);
+    for (x, y) in [(8, 8), (24, 8), (4088, 4088)] {
+        let offset = (y * SIZE as usize + x) * 4;
+        assert_eq!(&pixels[offset..offset + 4], &[0, 255, 0, 255], "{x},{y}");
+    }
+}

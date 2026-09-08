@@ -95,7 +95,7 @@ struct FilterConfig {
     pixel_count: u32,
     active_tile_count: u32,
     compact_tiles: u32,
-    active_tile_pad0: u32,
+    dispatch_width: u32,
     active_tile_pad1: u32,
     downsample: u32,
     downsample_filter: u32,
@@ -261,7 +261,7 @@ struct LayerStackRecord {
 @group(0) @binding(4) var<storage, read> draw_records: array<DrawRecord>;
 @group(0) @binding(10) var<storage, read> paint_blob: array<u32>;
 @group(0) @binding(28) var<storage, read> path_records: array<PathRecord>;
-@group(0) @binding(29) var<storage, read_write> backdrops: array<atomic<i32>>;
+@group(0) @binding(29) var<storage, read> backdrops: array<i32>;
 @group(0) @binding(30) var<storage, read> segment_ranges: array<TileSegmentRange>;
 @group(0) @binding(32) var<storage, read> segments: array<LineSegment>;
 @group(0) @binding(33) var<storage, read> layer_stack: array<LayerStackRecord>;
@@ -277,8 +277,8 @@ struct LayerStackRecord {
 @group(0) @binding(47) var<storage, read> path_p1x: array<i32>;
 @group(0) @binding(48) var<storage, read> path_p1y: array<i32>;
 @group(0) @binding(52) var<storage, read> active_tiles: array<u32>;
-@group(0) @binding(49) var filter_source_sample_texture: texture_2d<f32>;
-@group(0) @binding(50) var filter_aux_sample_texture: texture_2d<f32>;
+@group(0) @binding(1) var source_texture: texture_2d<f32>;
+@group(0) @binding(2) var aux_texture: texture_2d<f32>;
 @group(0) @binding(51) var filter_linear_sampler: sampler;
 @group(1) @binding(0) var image_resource_atlas: texture_2d_array<f32>;
 @group(1) @binding(1) var image_resource_sampler: sampler;
@@ -293,4 +293,9 @@ fn sdf_storage_word(index: u32, shadow_blob: bool) -> u32 {
         return paint_blob[config.paint_sdf_shadow_base + index];
     }
     return paint_blob[index];
+}
+
+// Dense and compact filters share a linear invocation order across dispatch rows.
+fn filter_region_index(gid: vec3<u32>) -> u32 {
+    return gid.x + gid.y * config.dispatch_width * 256u;
 }

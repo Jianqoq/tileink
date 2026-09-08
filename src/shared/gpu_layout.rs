@@ -35,8 +35,8 @@ pub(crate) mod filter {
     // The retained filter path adds the compact active-tile worklist to the
     // largest scene-stack kernel (seven scene buffers plus this worklist).
     pub(crate) const MAX_STORAGE_BUFFER_COUNT: u32 = 8;
-    pub(crate) const SOURCE_SAMPLE_TEXTURE_BINDING: u32 = 49;
-    pub(crate) const AUX_SAMPLE_TEXTURE_BINDING: u32 = 50;
+    pub(crate) const SOURCE_TEXTURE_BINDING: u32 = 1;
+    pub(crate) const AUX_TEXTURE_BINDING: u32 = 2;
     pub(crate) const LINEAR_SAMPLER_BINDING: u32 = 51;
     pub(crate) const IMAGE_RESOURCE_ATLAS_BINDING: u32 = 0;
     pub(crate) const IMAGE_RESOURCE_SAMPLER_BINDING: u32 = 1;
@@ -97,15 +97,15 @@ mod tests {
     fn image_resource_shader_bindings_match_rust_layout() {
         assert_wgsl_texture_binding(
             FILTER_HEADER,
-            filter::SOURCE_SAMPLE_TEXTURE_BINDING,
-            "filter_source_sample_texture",
+            filter::SOURCE_TEXTURE_BINDING,
+            "source_texture",
             0,
             "texture_2d<f32>",
         );
         assert_wgsl_texture_binding(
             FILTER_HEADER,
-            filter::AUX_SAMPLE_TEXTURE_BINDING,
-            "filter_aux_sample_texture",
+            filter::AUX_TEXTURE_BINDING,
+            "aux_texture",
             0,
             "texture_2d<f32>",
         );

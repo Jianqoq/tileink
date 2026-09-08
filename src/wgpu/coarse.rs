@@ -45,10 +45,11 @@ pub(crate) fn coarse_binning_costs(
     stats: CoarseBinningStats,
 ) -> (u64, u64) {
     let prefix_chunks = |tiles: u32| u64::from(tiles.div_ceil(WORKGROUP_SIZE));
+    // Both output ranges share one prefix/apply pair and one chunk-offset workgroup.
     let compact_dispatches =
-        u64::from(stats.active_tiles) * 2 + prefix_chunks(stats.active_tiles) * 4 + 2;
+        u64::from(stats.active_tiles) * 2 + prefix_chunks(stats.active_tiles) * 2 + 1;
     let dense_dispatches =
-        u64::from(coarse_bin_count(lengths)) * 2 + lengths.coarse_chunk_count as u64 * 4 + 2;
+        u64::from(coarse_bin_count(lengths)) * 2 + lengths.coarse_chunk_count as u64 * 2 + 1;
     // Count and emit both traverse the candidate lists. A round represents one 256-lane shader
     // loop: one page for compact, or one serial candidate ordinal for a dense bin.
     (
@@ -99,12 +100,9 @@ pub(crate) struct WgpuCoarsePipeline {
     emit_chunk_shader: LazyShaderModule,
     count_bins: LazyCoarseKernel,
     count_tiles: LazyCoarseKernel,
-    ptcl_prefix_chunks: LazyCoarseKernel,
-    ptcl_chunk_offsets: LazyCoarseKernel,
-    ptcl_apply_chunk_offsets: LazyCoarseKernel,
-    glyph_prefix_chunks: LazyCoarseKernel,
-    glyph_chunk_offsets: LazyCoarseKernel,
-    glyph_apply_chunk_offsets: LazyCoarseKernel,
+    prefix_chunks: LazyCoarseKernel,
+    chunk_offsets: LazyCoarseKernel,
+    apply_chunk_offsets: LazyCoarseKernel,
     emit_chunk_counts: LazyCoarseKernel,
     emit_prefix_chunks: LazyCoarseKernel,
     emit_chunk_offsets: LazyCoarseKernel,
@@ -254,33 +252,18 @@ impl WgpuCoarsePipeline {
                 CoarseShaderKind::Count,
                 CoarseLayoutKind::Count,
             ),
-            ptcl_prefix_chunks: kernel(
-                "coarse_ptcl_prefix_chunks",
+            prefix_chunks: kernel(
+                "coarse_prefix_chunks",
                 CoarseShaderKind::Prefix,
                 CoarseLayoutKind::Prefix,
             ),
-            ptcl_chunk_offsets: kernel(
-                "coarse_ptcl_chunk_offsets",
+            chunk_offsets: kernel(
+                "coarse_chunk_offsets",
                 CoarseShaderKind::Prefix,
                 CoarseLayoutKind::Prefix,
             ),
-            ptcl_apply_chunk_offsets: kernel(
-                "coarse_ptcl_apply_chunk_offsets",
-                CoarseShaderKind::Prefix,
-                CoarseLayoutKind::Prefix,
-            ),
-            glyph_prefix_chunks: kernel(
-                "coarse_glyph_prefix_chunks",
-                CoarseShaderKind::Prefix,
-                CoarseLayoutKind::Prefix,
-            ),
-            glyph_chunk_offsets: kernel(
-                "coarse_glyph_chunk_offsets",
-                CoarseShaderKind::Prefix,
-                CoarseLayoutKind::Prefix,
-            ),
-            glyph_apply_chunk_offsets: kernel(
-                "coarse_glyph_apply_chunk_offsets",
+            apply_chunk_offsets: kernel(
+                "coarse_apply_chunk_offsets",
                 CoarseShaderKind::Prefix,
                 CoarseLayoutKind::Prefix,
             ),
@@ -520,12 +503,9 @@ impl WgpuCoarsePipeline {
             && emit_chunk_count > 0;
         let device = commands.device();
         let max_workgroups = device.limits().max_compute_workgroups_per_dimension;
-        let ptcl_prefix_chunks = self.pipeline(device, &self.ptcl_prefix_chunks);
-        let ptcl_chunk_offsets = self.pipeline(device, &self.ptcl_chunk_offsets);
-        let ptcl_apply_chunk_offsets = self.pipeline(device, &self.ptcl_apply_chunk_offsets);
-        let glyph_prefix_chunks = self.pipeline(device, &self.glyph_prefix_chunks);
-        let glyph_chunk_offsets = self.pipeline(device, &self.glyph_chunk_offsets);
-        let glyph_apply_chunk_offsets = self.pipeline(device, &self.glyph_apply_chunk_offsets);
+        let prefix_chunks = self.pipeline(device, &self.prefix_chunks);
+        let chunk_offsets = self.pipeline(device, &self.chunk_offsets);
+        let apply_chunk_offsets = self.pipeline(device, &self.apply_chunk_offsets);
         let emit_chunk_counts =
             use_emit_chunks.then(|| self.pipeline(device, &self.emit_chunk_counts));
         let emit_prefix_chunks =
@@ -593,27 +573,6 @@ impl WgpuCoarsePipeline {
                 pass.dispatch_workgroups(x, y, 1);
                 pass.set_pipeline(tile_counts_from_emit_chunks.unwrap());
                 pass.dispatch_workgroups(chunk_count, 1, 1);
-                pass.set_pipeline(ptcl_prefix_chunks);
-                pass.dispatch_workgroups(prefix_chunk_count, 1, 1);
-                pass.set_pipeline(ptcl_chunk_offsets);
-                pass.dispatch_workgroups(1, 1, 1);
-                pass.set_pipeline(ptcl_apply_chunk_offsets);
-                pass.dispatch_workgroups(prefix_chunk_count, 1, 1);
-                pass.set_pipeline(glyph_prefix_chunks);
-                pass.dispatch_workgroups(prefix_chunk_count, 1, 1);
-                pass.set_pipeline(glyph_chunk_offsets);
-                pass.dispatch_workgroups(1, 1, 1);
-                pass.set_pipeline(glyph_apply_chunk_offsets);
-                pass.dispatch_workgroups(prefix_chunk_count, 1, 1);
-                pass.set_pipeline(emit_chunk_particle_offsets.unwrap());
-                pass.dispatch_workgroups(chunk_count, 1, 1);
-
-                pass.set_bind_group(0, &emit_bind_group, &[]);
-                pass.set_pipeline(emit_web.unwrap());
-                let (x, y) = dispatch_2d(emit_chunk_count, max_workgroups);
-                pass.dispatch_workgroups(x, y, 1);
-                pass.set_pipeline(emit_chunk_tile_kinds.unwrap());
-                pass.dispatch_workgroups(chunk_count, 1, 1);
             } else {
                 pass.set_bind_group(0, &count_bind_group, &[]);
                 pass.set_pipeline(count.unwrap());
@@ -626,33 +585,37 @@ impl WgpuCoarsePipeline {
                     1,
                     1,
                 );
-                pass.set_bind_group(0, &prefix_bind_group, &[]);
-                pass.set_pipeline(ptcl_prefix_chunks);
-                pass.dispatch_workgroups(prefix_chunk_count, 1, 1);
-                pass.set_pipeline(ptcl_chunk_offsets);
-                pass.dispatch_workgroups(1, 1, 1);
-                pass.set_pipeline(ptcl_apply_chunk_offsets);
-                pass.dispatch_workgroups(prefix_chunk_count, 1, 1);
-                pass.set_pipeline(glyph_prefix_chunks);
-                pass.dispatch_workgroups(prefix_chunk_count, 1, 1);
-                pass.set_pipeline(glyph_chunk_offsets);
-                pass.dispatch_workgroups(1, 1, 1);
-                pass.set_pipeline(glyph_apply_chunk_offsets);
-                pass.dispatch_workgroups(prefix_chunk_count, 1, 1);
+            }
+            pass.set_bind_group(0, &prefix_bind_group, &[]);
+            pass.set_pipeline(prefix_chunks);
+            pass.dispatch_workgroups(prefix_chunk_count, 1, 1);
+            pass.set_pipeline(chunk_offsets);
+            pass.dispatch_workgroups(1, 1, 1);
+            pass.set_pipeline(apply_chunk_offsets);
+            pass.dispatch_workgroups(prefix_chunk_count, 1, 1);
 
-                if let Some(emit) = emit {
-                    pass.set_bind_group(0, &emit_bind_group, &[]);
-                    pass.set_pipeline(emit);
-                    pass.dispatch_workgroups(
-                        if incremental {
-                            active_tile_count
-                        } else {
-                            bin_count
-                        },
-                        1,
-                        1,
-                    );
-                }
+            if use_emit_chunks {
+                pass.set_pipeline(emit_chunk_particle_offsets.unwrap());
+                pass.dispatch_workgroups(chunk_count, 1, 1);
+
+                pass.set_bind_group(0, &emit_bind_group, &[]);
+                pass.set_pipeline(emit_web.unwrap());
+                let (x, y) = dispatch_2d(emit_chunk_count, max_workgroups);
+                pass.dispatch_workgroups(x, y, 1);
+                pass.set_pipeline(emit_chunk_tile_kinds.unwrap());
+                pass.dispatch_workgroups(chunk_count, 1, 1);
+            } else if let Some(emit) = emit {
+                pass.set_bind_group(0, &emit_bind_group, &[]);
+                pass.set_pipeline(emit);
+                pass.dispatch_workgroups(
+                    if incremental {
+                        active_tile_count
+                    } else {
+                        bin_count
+                    },
+                    1,
+                    1,
+                );
             }
         }
         finish_gpu_scope(encoder, gpu_scope);
@@ -775,44 +738,23 @@ impl WgpuCoarsePipeline {
     ) {
         self.dispatch_profiled_kernel(
             commands,
-            "coarse.ptcl_prefix_chunks",
+            "coarse.prefix_chunks",
             prefix_bind_group,
-            &self.ptcl_prefix_chunks,
+            &self.prefix_chunks,
             chunk_count,
         );
         self.dispatch_profiled_kernel(
             commands,
-            "coarse.ptcl_chunk_offsets",
+            "coarse.chunk_offsets",
             prefix_bind_group,
-            &self.ptcl_chunk_offsets,
+            &self.chunk_offsets,
             1,
         );
         self.dispatch_profiled_kernel(
             commands,
-            "coarse.ptcl_apply_chunk_offsets",
+            "coarse.apply_chunk_offsets",
             prefix_bind_group,
-            &self.ptcl_apply_chunk_offsets,
-            chunk_count,
-        );
-        self.dispatch_profiled_kernel(
-            commands,
-            "coarse.glyph_prefix_chunks",
-            prefix_bind_group,
-            &self.glyph_prefix_chunks,
-            chunk_count,
-        );
-        self.dispatch_profiled_kernel(
-            commands,
-            "coarse.glyph_chunk_offsets",
-            prefix_bind_group,
-            &self.glyph_chunk_offsets,
-            1,
-        );
-        self.dispatch_profiled_kernel(
-            commands,
-            "coarse.glyph_apply_chunk_offsets",
-            prefix_bind_group,
-            &self.glyph_apply_chunk_offsets,
+            &self.apply_chunk_offsets,
             chunk_count,
         );
     }
@@ -919,12 +861,9 @@ impl WgpuCoarsePipeline {
         [
             &self.count_bins,
             &self.count_tiles,
-            &self.ptcl_prefix_chunks,
-            &self.ptcl_chunk_offsets,
-            &self.ptcl_apply_chunk_offsets,
-            &self.glyph_prefix_chunks,
-            &self.glyph_chunk_offsets,
-            &self.glyph_apply_chunk_offsets,
+            &self.prefix_chunks,
+            &self.chunk_offsets,
+            &self.apply_chunk_offsets,
             &self.emit_chunk_counts,
             &self.emit_prefix_chunks,
             &self.emit_chunk_offsets,
@@ -1035,7 +974,7 @@ fn count_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         storage_entry(1, true),
         storage_entry(2, true),
         storage_entry(3, true),
-        storage_entry(4, false),
+        storage_entry(4, true),
         storage_entry(5, true),
         storage_entry(6, true),
         storage_entry(7, false),
@@ -1050,7 +989,7 @@ fn prefix_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         storage_entry(1, true),
         storage_entry(2, true),
         storage_entry(3, true),
-        storage_entry(4, false),
+        storage_entry(4, true),
         storage_entry(5, true),
         storage_entry(6, true),
         storage_entry(7, false),
@@ -1067,7 +1006,7 @@ fn emit_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         storage_entry(2, true),
         storage_entry(3, true),
         storage_entry(4, true),
-        storage_entry(5, false),
+        storage_entry(5, true),
         storage_entry(6, true),
         storage_entry(7, true),
         storage_entry(8, false),
@@ -1127,94 +1066,4 @@ fn bind_config_buffer(
 const _: () = assert!(COARSE_CHUNK_SIZE == WORKGROUP_SIZE);
 
 #[cfg(test)]
-mod tests {
-    use crate::{Canvas, shared::gpu_plan::CoarseBinningStats};
-
-    use super::{
-        COUNT_STORAGE_BINDING_COUNT, EMIT_STORAGE_BINDING_COUNT, GpuBufferLengths,
-        PREFIX_STORAGE_BINDING_COUNT, coarse_binning_costs, count_layout_entries,
-        emit_layout_entries, prefer_dense_binning, prefix_layout_entries,
-        profile_coarse_passes_value,
-    };
-
-    #[test]
-    fn coarse_pipeline_storage_bindings_match_split_layouts() {
-        assert_eq!(
-            storage_count(&count_layout_entries()),
-            COUNT_STORAGE_BINDING_COUNT
-        );
-        assert_eq!(
-            storage_count(&prefix_layout_entries()),
-            PREFIX_STORAGE_BINDING_COUNT
-        );
-        assert_eq!(
-            storage_count(&emit_layout_entries()),
-            EMIT_STORAGE_BINDING_COUNT
-        );
-        assert_eq!(COUNT_STORAGE_BINDING_COUNT, 9);
-        assert_eq!(PREFIX_STORAGE_BINDING_COUNT, 10);
-        assert_eq!(EMIT_STORAGE_BINDING_COUNT, 9);
-    }
-
-    #[test]
-    fn coarse_layout_entries_are_contiguous() {
-        for entries in [
-            count_layout_entries(),
-            prefix_layout_entries(),
-            emit_layout_entries(),
-        ] {
-            assert_contiguous_bindings(&entries);
-        }
-    }
-
-    #[test]
-    fn profile_coarse_passes_only_accepts_one() {
-        assert!(profile_coarse_passes_value(Some("1")));
-        assert!(!profile_coarse_passes_value(None));
-        assert!(!profile_coarse_passes_value(Some("true")));
-        assert!(!profile_coarse_passes_value(Some("0")));
-    }
-
-    #[test]
-    fn dense_binning_replaces_many_mostly_idle_incremental_workgroups() {
-        let canvas = Canvas::new(3200, 2000, 1.0);
-        let lengths = GpuBufferLengths::from_scene(&canvas);
-        let stats =
-            |active_tiles, compact_candidate_rounds, dense_candidate_rounds| CoarseBinningStats {
-                active_tiles,
-                compact_candidate_rounds,
-                dense_candidate_rounds,
-            };
-
-        assert!(!prefer_dense_binning(lengths, stats(128, 128, 104)));
-        assert!(prefer_dense_binning(lengths, stats(4096, 4096, 104)));
-        assert!(!prefer_dense_binning(
-            lengths,
-            stats(4096, 4096 * 2, 104 * 512)
-        ));
-        assert!(!prefer_dense_binning(lengths, stats(0, 0, 104)));
-
-        let (compact, dense) = coarse_binning_costs(lengths, stats(4096, 4096, 104));
-        assert!(dense < compact);
-    }
-
-    fn assert_contiguous_bindings(entries: &[::wgpu::BindGroupLayoutEntry]) {
-        for (expected, entry) in entries.iter().enumerate() {
-            assert_eq!(entry.binding, expected as u32);
-        }
-    }
-
-    fn storage_count(entries: &[::wgpu::BindGroupLayoutEntry]) -> u32 {
-        entries.iter().filter(|entry| is_storage(entry)).count() as u32
-    }
-
-    fn is_storage(entry: &::wgpu::BindGroupLayoutEntry) -> bool {
-        matches!(
-            entry.ty,
-            ::wgpu::BindingType::Buffer {
-                ty: ::wgpu::BufferBindingType::Storage { .. },
-                ..
-            }
-        )
-    }
-}
+mod tests;

@@ -8,6 +8,42 @@ enum PreparedDrawBatch {
     Unavailable,
 }
 
+pub(super) fn draw_batch_is_live(scene: &Canvas, draws: &[usize], batch_id: u32) -> bool {
+    scene
+        .stable_batch_counts
+        .as_ref()
+        .map_or(!draws.is_empty(), |counts| {
+            counts.get(batch_id as usize).copied().unwrap_or(0) != 0
+        })
+}
+
+// Backdrop foreground executes on its parent's target. Other offscreen layers render
+// children into scratch, and an empty backdrop skips its children entirely. Mirror those
+// execution semantics so eligibility and the first-quarter budget count the same Main work.
+pub(super) fn root_draw_batch_count(canvas: &Canvas, ops: &[ExecOp], bounds: Bounds) -> usize {
+    ops.iter()
+        .map(|op| match op {
+            ExecOp::DrawBatch {
+                draws, batch_id, ..
+            } => usize::from(draw_batch_is_live(canvas, draws, *batch_id)),
+            ExecOp::OffscreenLayer {
+                layer:
+                    Layer::Backdrop {
+                        filter,
+                        sample_region,
+                    },
+                children,
+                ..
+            } if !filter_model::filtered_region_bounds(filter, sample_region, bounds)
+                .is_empty() =>
+            {
+                root_draw_batch_count(canvas, children, bounds)
+            }
+            _ => 0,
+        })
+        .sum()
+}
+
 impl Renderer {
     pub(super) fn execute_ops(
         &mut self,
@@ -114,14 +150,11 @@ impl Renderer {
         layer_stack: std::ops::Range<usize>,
         target: WgpuRenderTargetId,
     ) -> PreparedDrawBatch {
-        let live = scene
-            .stable_batch_counts
-            .as_ref()
-            .map_or(!draws.is_empty(), |counts| {
-                counts.get(batch_id as usize).copied().unwrap_or(0) != 0
-            });
-        if !live {
+        if !draw_batch_is_live(scene, draws, batch_id) {
             return PreparedDrawBatch::Skipped;
+        }
+        if target == WgpuRenderTargetId::Main {
+            commands.begin_root_batch();
         }
         let stats = self.retained.stats_mut();
         stats.draw_batches = stats.draw_batches.saturating_add(1);
@@ -363,7 +396,6 @@ impl Renderer {
                         &self.scan,
                         &self.coarse,
                         &self.fine_spills,
-                        &self.fine_indirect_args,
                         target,
                         self.clear_color,
                         true,
@@ -381,7 +413,6 @@ impl Renderer {
                         &self.scan,
                         &self.coarse,
                         &self.fine_spills,
-                        &self.fine_indirect_args,
                         &mut self.readback_target,
                         self.clear_color,
                         true,
@@ -400,7 +431,6 @@ impl Renderer {
                 &self.scan,
                 &self.coarse,
                 &self.fine_spills,
-                &self.fine_indirect_args,
                 &mut self.scratch[ix],
                 self.clear_color,
                 true,
@@ -465,7 +495,6 @@ impl Renderer {
             &self.scan,
             &self.coarse,
             &self.fine_spills,
-            &self.fine_indirect_args,
             source,
             target,
             self.clear_color,

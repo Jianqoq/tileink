@@ -1,39 +1,13 @@
 @compute @workgroup_size(256)
-fn fine_tile_sdf_list_main(
-    @builtin(workgroup_id) workgroup_id: vec3<u32>,
-    @builtin(local_invocation_id) local_id: vec3<u32>,
-) {
-    let tile_ix = fine_tile_list_at(FINE_TILE_LIST_SDF, workgroup_id.x);
-    render_list_tile(tile_ix, local_id.x, FINE_TILE_KIND_PURE_SDF_SOLID_NO_STACK);
-}
-
-@compute @workgroup_size(256)
-fn fine_tile_mixed_list_main(
-    @builtin(workgroup_id) workgroup_id: vec3<u32>,
-    @builtin(local_invocation_id) local_id: vec3<u32>,
-) {
-    let tile_ix = fine_tile_list_at(FINE_TILE_LIST_MIXED, workgroup_id.x);
-    render_list_tile(tile_ix, local_id.x, FINE_TILE_KIND_MIXED_ANALYTIC_SOLID_NO_STACK);
-}
-
-@compute @workgroup_size(256)
-fn fine_tile_full_list_main(
-    @builtin(workgroup_id) workgroup_id: vec3<u32>,
-    @builtin(local_invocation_id) local_id: vec3<u32>,
-) {
-    let tile_ix = fine_tile_list_at(FINE_TILE_LIST_FULL, workgroup_id.x);
-    render_list_tile(tile_ix, local_id.x, FINE_TILE_KIND_FULL_INTERPRETER);
-}
-
-@compute @workgroup_size(256)
 fn fine_tile_main(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
 ) {
-    if (workgroup_id.x >= config.active_tile_count) {
+    let dispatch_ix = workgroup_id.x + workgroup_id.y * config.dispatch_width;
+    if (dispatch_ix >= config.active_tile_count) {
         return;
     }
-    let tile_ix = dispatched_tile_at(workgroup_id.x);
+    let tile_ix = dispatched_tile_at(dispatch_ix);
 
     let local_ix = local_id.x;
     let local_x = local_ix % 16u;
@@ -57,33 +31,6 @@ fn fine_tile_main(
     } else if (kind == FINE_TILE_KIND_COLOR_ONLY_NO_STACK) {
         pixel = color_only_no_stack_tile_pixel(tile_ix, local_ix);
     } else if (
-        kind == FINE_TILE_KIND_PURE_SDF_SOLID_NO_STACK ||
-        kind == FINE_TILE_KIND_MIXED_ANALYTIC_SOLID_NO_STACK
-    ) {
-        pixel = analytic_solid_no_stack_tile_pixel(tile_ix, local_ix);
-    } else {
-        pixel = tile_pixel(tile_ix, local_ix);
-    }
-    target_store_unorm(global_x, global_y, pixel);
-}
-
-fn render_list_tile(tile_ix: u32, local_ix: u32, kind: u32) {
-    if (tile_ix >= config.tile_count) {
-        return;
-    }
-    let tile_x = tile_ix % config.tiles_width;
-    let tile_y = tile_ix / config.tiles_width;
-    if (tile_y >= config.tiles_height) {
-        return;
-    }
-    let global_x = tile_x * 16u + local_ix % 16u;
-    let global_y = tile_y * 16u + local_ix / 16u;
-    if (global_x >= config.width || global_y >= config.height) {
-        return;
-    }
-
-    var pixel = vec4<f32>(0.0);
-    if (
         kind == FINE_TILE_KIND_PURE_SDF_SOLID_NO_STACK ||
         kind == FINE_TILE_KIND_MIXED_ANALYTIC_SOLID_NO_STACK
     ) {

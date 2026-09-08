@@ -154,6 +154,8 @@ fn sample_four_corner(x: f32, y: f32, base: u32, payload_offset: u32) -> u32 {
     return lerp_premul_u8(top, bottom, v);
 }
 
+#include "pattern_transform.wgsl"
+
 fn sample_resource_pattern(
     x: f32,
     y: f32,
@@ -169,8 +171,8 @@ fn sample_resource_pattern(
 ) -> u32 {
     var color = 0u;
     if (width > 0u && height > 0u) {
-        let tx = (brush_param(base, 0u) * x + brush_param(base, 2u) * y + brush_param(base, 4u)) * f32(width);
-        let ty = (brush_param(base, 1u) * x + brush_param(base, 3u) * y + brush_param(base, 5u)) * f32(height);
+        let tx = pattern_transform_component(brush_param(base, 0u), brush_param(base, 2u), brush_param(base, 4u), x, y) * f32(width);
+        let ty = pattern_transform_component(brush_param(base, 1u), brush_param(base, 3u), brush_param(base, 5u), x, y) * f32(height);
         if ((placement & GPU_RESOURCE_TEXTURE_PLACEMENT_BIT) != 0u) {
             color = sample_resource_pattern_texture(
                 tx,

@@ -2,7 +2,7 @@
 
 @group(0) @binding(1) var<storage, read> scan_chunks: array<GpuScanChunk>;
 @group(0) @binding(2) var<storage, read_write> segment_ranges: array<TileSegmentRange>;
-@group(0) @binding(3) var<storage, read_write> segment_tile_cursors: array<atomic<u32>>;
+@group(0) @binding(3) var<storage, read_write> segment_tile_cursors: array<u32>;
 @group(0) @binding(4) var<storage, read_write> chunk_offsets: array<u32>;
 @group(0) @binding(5) var<storage, read> active_indices: array<u32>;
 
@@ -29,6 +29,7 @@ fn scan_apply_chunk_offsets(
     let end = segment_ranges[ix].end + base;
     segment_ranges[ix].start = start;
     segment_ranges[ix].end = end;
-    atomicStore(&segment_tile_cursors[ix], start);
+    // Scan chunks partition the records, so this cursor has a single writer.
+    segment_tile_cursors[ix] = start;
 }
 

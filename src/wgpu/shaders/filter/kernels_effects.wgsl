@@ -1,5 +1,5 @@
 fn filter_svg_mask_coverage_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -25,7 +25,7 @@ fn filter_svg_mask_coverage_region(@builtin(global_invocation_id) gid: vec3<u32>
 
 @compute @workgroup_size(256)
 fn filter_color_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -35,7 +35,7 @@ fn filter_color_region(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 @compute @workgroup_size(256)
 fn filter_color_matrix_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -45,7 +45,7 @@ fn filter_color_matrix_region(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 @compute @workgroup_size(256)
 fn filter_component_transfer_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -55,7 +55,7 @@ fn filter_component_transfer_region(@builtin(global_invocation_id) gid: vec3<u32
 
 @compute @workgroup_size(256)
 fn filter_blend_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -65,7 +65,7 @@ fn filter_blend_region(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 @compute @workgroup_size(256)
 fn filter_composite_inputs_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -83,7 +83,7 @@ fn filter_composite_inputs_region(@builtin(global_invocation_id) gid: vec3<u32>)
 
 @compute @workgroup_size(256)
 fn filter_displacement_map_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -103,7 +103,7 @@ fn filter_displacement_map_region(@builtin(global_invocation_id) gid: vec3<u32>)
 
 @compute @workgroup_size(256)
 fn filter_convolve_matrix_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -188,7 +188,7 @@ fn filter_convolve_matrix_region(@builtin(global_invocation_id) gid: vec3<u32>) 
 
 @compute @workgroup_size(256)
 fn filter_lighting_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -285,7 +285,7 @@ fn filter_lighting_region(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 @compute @workgroup_size(256)
 fn filter_liquid_glass_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -328,7 +328,7 @@ fn filter_liquid_glass_region(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 @compute @workgroup_size(256)
 fn filter_liquid_glass_rect_composite_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }

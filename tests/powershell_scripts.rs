@@ -37,3 +37,99 @@ fn powershell_entrypoints_route_external_output_through_quiet_runner() {
     assert!(runner.contains("Write-QuietFailure"));
     assert!(runner.contains("Get-Content -LiteralPath $LogPath -Tail"));
 }
+
+#[test]
+fn release_test_partitions_cover_nested_modules_once() {
+    let source = include_str!("../scripts/ps1/run_tests.ps1");
+    let argument = |text: &str, key: &str| {
+        text.split_once(&format!("{key} \""))
+            .map(|(_, rest)| rest.split('"').next().unwrap().to_owned())
+    };
+    let partitions: Vec<_> = source
+        .split("Invoke-CargoTest -Mode $Mode -Label ")
+        .skip(1)
+        .filter(|call| !call.starts_with("\"focused\""))
+        .map(|call| {
+            let filter = argument(call, "-Filter").unwrap_or_default();
+            let skips = call
+                .split_once("-HarnessArgs @(")
+                .map(|(_, rest)| {
+                    rest.split(')')
+                        .next()
+                        .unwrap()
+                        .split('"')
+                        .skip(1)
+                        .step_by(2)
+                        .filter(|value| *value != "--skip")
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            (filter, skips)
+        })
+        .collect();
+    assert_eq!(partitions.len(), 6);
+    // Submodules previously made renderer partitions run zero tests; broadening filters
+    // must also exclude those function groups from core/SVG to avoid executing them twice.
+    for module in [
+        "canvas::tests::",
+        "svg::tests::",
+        "wgpu::renderer::tests::",
+        "wgpu::renderer::tests::group::nested::",
+    ] {
+        for test in [
+            "draws_scene",
+            "persistent_target_history",
+            "wgpu_renderer_draws_scene",
+            "wgpu_renderer_samples_linear",
+            "persistent_wgpu_renderer_samples_history",
+        ] {
+            let name = format!("{module}{test}");
+            let matches = partitions
+                .iter()
+                .filter(|(filter, skips)| {
+                    name.contains(filter) && !skips.iter().any(|skip| name.contains(skip))
+                })
+                .count();
+            assert_eq!(matches, 1, "release partition count for {name}");
+        }
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn quiet_commands_follow_powershell_location() {
+    use std::{os::windows::process::CommandExt, process::Command};
+
+    // Push-Location does not update the process's inherited native directory.
+    // The runner must propagate it or Cargo can test a different crate (or zero tests).
+    let output = Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            r#"
+$ErrorActionPreference = 'Stop'
+. (Join-Path $env:TILEINK_TEST_REPO_DIR 'scripts/ps1/quiet_runner.ps1')
+$log = New-QuietRunLog -Name 'working-directory-regression'
+Push-Location (Join-Path $env:TILEINK_TEST_REPO_DIR 'scripts/ps1')
+try {
+    [void](Invoke-QuietCommand -Label 'pwd' -FilePath $env:ComSpec -ArgumentList @('/d','/c','cd') -LogPath $log)
+    (Get-Content -LiteralPath $log | Where-Object { $_.Trim() } | Select-Object -Last 1).Trim()
+} finally {
+    Pop-Location
+    Remove-Item -LiteralPath $log
+}
+"#,
+        ])
+        .env("TILEINK_TEST_REPO_DIR", env!("CARGO_MANIFEST_DIR"))
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .creation_flags(0x0800_0000)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{:?}", output);
+    let actual = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(
+        fs::canonicalize(actual.trim()).unwrap(),
+        fs::canonicalize(Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/ps1")).unwrap(),
+    );
+}

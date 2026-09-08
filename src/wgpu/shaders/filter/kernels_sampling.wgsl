@@ -1,5 +1,5 @@
 fn filter_morphology_axis_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -69,7 +69,7 @@ fn filter_morphology_axis_region(@builtin(global_invocation_id) gid: vec3<u32>) 
 
 @compute @workgroup_size(256)
 fn filter_downsample_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -140,7 +140,7 @@ fn upsampled_source_pixel_at(
 
 @compute @workgroup_size(256)
 fn filter_upsample_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -159,7 +159,7 @@ fn filter_upsample_region(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 @compute @workgroup_size(256)
 fn filter_upsample_rect_composite_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -480,7 +480,7 @@ fn filter_blur_pixel_shared(local_xy: vec2<u32>, half_width: i32, std_dev: f32) 
 
 @compute @workgroup_size(256)
 fn filter_blur_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -505,7 +505,11 @@ fn filter_blur_shared_region(
     var tile_x0 = config.region_x0 + workgroup_id.x * SHARED_BLUR_TILE_WIDTH;
     var tile_y0 = config.region_y0 + workgroup_id.y * SHARED_BLUR_TILE_HEIGHT;
     if (config.compact_tiles != 0u) {
-        let tile = active_tiles[workgroup_id.x];
+        let dispatch_ix = workgroup_id.x + workgroup_id.y * config.dispatch_width;
+        if (dispatch_ix >= config.active_tile_count) {
+            return;
+        }
+        let tile = active_tiles[dispatch_ix];
         tile_x0 = (tile % config.tiles_width) * SHARED_BLUR_TILE_WIDTH;
         tile_y0 = (tile / config.tiles_width) * SHARED_BLUR_TILE_HEIGHT;
     }

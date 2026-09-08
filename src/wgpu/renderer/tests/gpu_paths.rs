@@ -381,38 +381,58 @@ fn wgpu_cumsum_scans_backdrop_rows_when_enabled() {
         return;
     }
 
-    let mut canvas = Canvas::new(48, 32, 1.0);
-    canvas.push_path(
-        Rect::new(0.0, 0.0, 48.0, 32.0).to_path(0.0),
-        Color::BLACK,
-        Affine::IDENTITY,
-        FillRule::NonZero,
-        0.0,
-    );
-    let mut renderer = new_test_renderer(48, 32, Color::TRANSPARENT);
-    if renderer.cumsum.is_none() {
-        return;
+    // Ordinary backdrop writes rely on disjoint rows and chunks. Exercise a full
+    // chunk, a padded tail, and separate path allocations against a CPU prefix.
+    for row_tiles in [3, 256, 273] {
+        let width = row_tiles * crate::TILE_SIZE;
+        let height = 2 * crate::TILE_SIZE;
+        let mut canvas = Canvas::new(width, height, 1.0);
+        for _ in 0..2 {
+            canvas.push_path(
+                Rect::new(0.0, 0.0, f64::from(width), f64::from(height)).to_path(0.0),
+                Color::BLACK,
+                Affine::IDENTITY,
+                FillRule::NonZero,
+                0.0,
+            );
+        }
+        let mut renderer = new_test_renderer(width, height, Color::TRANSPARENT);
+        if renderer.cumsum.is_none() {
+            return;
+        }
+        renderer.prepare_scene(&canvas);
+        let values: Vec<i32> = (0..renderer.lengths.backdrop_len)
+            .map(|index| (index % 7) as i32 - 3)
+            .collect();
+        let expected: Vec<i32> = values
+            .chunks_exact(row_tiles as usize)
+            .flat_map(|row| {
+                row.iter().scan(0, |sum, value| {
+                    *sum += value;
+                    Some(*sum)
+                })
+            })
+            .collect();
+        let device = renderer.device().clone();
+        let queue = renderer.queue().clone();
+        renderer.scan.backdrops.upload(
+            &device,
+            &queue,
+            "tileink wgpu cumsum test backdrops",
+            &values,
+        );
+        renderer.cumsum_for_test();
+
+        assert_eq!(
+            renderer.scan.backdrops.read::<i32>(
+                renderer.device(),
+                renderer.queue(),
+                renderer.lengths.backdrop_len,
+            ),
+            expected,
+            "row_tiles={row_tiles}",
+        );
     }
-
-    renderer.prepare_scene(&canvas);
-    let device = renderer.device().clone();
-    let queue = renderer.queue().clone();
-    renderer.scan.backdrops.upload(
-        &device,
-        &queue,
-        "tileink wgpu cumsum test backdrops",
-        &[1, -1, 2, 3, 0, -2],
-    );
-    renderer.cumsum_for_test();
-
-    assert_eq!(
-        renderer.scan.backdrops.read::<i32>(
-            renderer.device(),
-            renderer.queue(),
-            renderer.lengths.backdrop_len
-        ),
-        vec![1, 0, 2, 3, 3, 1]
-    );
 }
 
 #[test]
@@ -836,57 +856,6 @@ fn wgpu_fine_tile_kind_keeps_partial_clip_image_rect_on_full_interpreter_when_en
             GPU_PTCL_END_CLIP,
             GPU_PTCL_END
         ]
-    );
-}
-
-#[test]
-fn wgpu_fine_indirect_dispatch_counts_match_tile_kinds_when_enabled() {
-    if !run_wgpu_tests() {
-        return;
-    }
-
-    let mut canvas = Canvas::new(96, 96, 1.0);
-    canvas.push_rect(
-        Rect::new(0.0, 0.0, 96.0, 96.0),
-        crate::Radius::ZERO,
-        Color::from_rgb8(32, 64, 96),
-    );
-    canvas.push_rect(
-        Rect::new(32.0, 32.0, 48.0, 48.0),
-        crate::Radius::ZERO,
-        Color::from_rgb8(255, 0, 0),
-    );
-    let mut renderer = new_test_renderer(96, 96, Color::TRANSPARENT);
-    if renderer.fine.is_none() {
-        return;
-    }
-
-    renderer.render(&canvas);
-
-    let kinds =
-        renderer
-            .coarse
-            .read_fine_tile_kinds(renderer.device(), renderer.queue(), renderer.lengths);
-    let sdf_count = kinds
-        .iter()
-        .filter(|&&kind| kind == FineTileKind::PureSdfSolidNoStack)
-        .count() as u32;
-    let mixed_count = kinds
-        .iter()
-        .filter(|&&kind| {
-            matches!(
-                kind,
-                FineTileKind::ColorOnlyNoStack | FineTileKind::MixedAnalyticSolidNoStack
-            )
-        })
-        .count() as u32;
-    let full_count = kinds.len() as u32 - sdf_count - mixed_count;
-    let args = renderer
-        .fine_indirect_args
-        .read::<u32>(renderer.device(), renderer.queue(), 9);
-    assert_eq!(
-        &args,
-        &[sdf_count, 1, 1, mixed_count, 1, 1, full_count, 1, 1]
     );
 }
 

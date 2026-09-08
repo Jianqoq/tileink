@@ -4,7 +4,7 @@
 @group(0) @binding(1) var<storage, read> draw_records: array<DrawRecord>;
 @group(0) @binding(2) var<storage, read> text_blob: array<u32>;
 @group(0) @binding(3) var<storage, read> path_records: array<PathRecord>;
-@group(0) @binding(4) var<storage, read_write> backdrops: array<atomic<i32>>;
+@group(0) @binding(4) var<storage, read> backdrops: array<i32>;
 @group(0) @binding(5) var<storage, read> segment_ranges: array<TileSegmentRange>;
 @group(0) @binding(6) var<storage, read> layer_stack: array<LayerStackRecord>;
 @group(0) @binding(7) var<storage, read_write> coarse_work: array<u32>;
@@ -12,138 +12,102 @@
 @group(0) @binding(9) var<storage, read> sdf_blob: array<u32>;
 @group(0) @binding(10) var<storage, read> draw_batch_ids: array<u32>;
 
-@compute @workgroup_size(256)
-fn coarse_ptcl_prefix_chunks(
-    @builtin(workgroup_id) workgroup_id: vec3<u32>,
-    @builtin(local_invocation_id) local_id: vec3<u32>,
-) {
-    prefix_chunks(workgroup_id.x, local_id.x, false);
-}
+// Particle and glyph counts share tile order, so scan them together instead of dispatching
+// two independent allocation chains. Integer offsets and inactive tiles keep their semantics.
+var<workgroup> tile_prefix_scratch: array<vec2<u32>, 256>;
+var<workgroup> tile_prefix_total: vec2<u32>;
 
-@compute @workgroup_size(256)
-fn coarse_glyph_prefix_chunks(
-    @builtin(workgroup_id) workgroup_id: vec3<u32>,
-    @builtin(local_invocation_id) local_id: vec3<u32>,
-) {
-    prefix_chunks(workgroup_id.x, local_id.x, true);
-}
-
-fn prefix_chunks(chunk_ix: u32, lane: u32, glyph: bool) {
-    let chunk_offset = chunk_ix * 256u;
-    let item_count = select(config.tile_count, config.active_tile_count, config.incremental != 0u);
-    let chunk_len = min(item_count - chunk_offset, 256u);
-    var count = 0u;
-    if (lane < chunk_len) {
-        let tile_ix = dispatched_tile_at(chunk_offset + lane);
-        count = coarse_tile_count(tile_ix, glyph);
-    }
-    coarse_scratch[lane] = count;
+fn tile_exclusive_prefix(value: vec2<u32>, lane: u32) -> vec2<u32> {
+    tile_prefix_scratch[lane] = value;
     workgroupBarrier();
-
     var step = 1u;
     loop {
-        if (step >= 256u) {
-            break;
-        }
+        if (step >= 256u) { break; }
         let ix = (lane + 1u) * step * 2u - 1u;
         if (ix < 256u) {
-            coarse_scratch[ix] += coarse_scratch[ix - step];
+            tile_prefix_scratch[ix] += tile_prefix_scratch[ix - step];
         }
         workgroupBarrier();
         step *= 2u;
     }
-
     if (lane == 0u) {
-        if (glyph) {
-            chunk_records[chunk_ix].glyph_total = coarse_scratch[255u];
-        } else {
-            chunk_records[chunk_ix].ptcl_total = coarse_scratch[255u];
-        }
-        coarse_scratch[255u] = 0u;
+        tile_prefix_total = tile_prefix_scratch[255u];
+        tile_prefix_scratch[255u] = vec2<u32>(0u);
     }
     workgroupBarrier();
-
     step = 128u;
     loop {
-        if (step == 0u) {
-            break;
-        }
+        if (step == 0u) { break; }
         let ix = (lane + 1u) * step * 2u - 1u;
         if (ix < 256u) {
             let left = ix - step;
-            let previous_left = coarse_scratch[left];
-            coarse_scratch[left] = coarse_scratch[ix];
-            coarse_scratch[ix] += previous_left;
+            let previous_left = tile_prefix_scratch[left];
+            tile_prefix_scratch[left] = tile_prefix_scratch[ix];
+            tile_prefix_scratch[ix] += previous_left;
         }
         workgroupBarrier();
         step /= 2u;
     }
-
-    if (lane < chunk_len) {
-        let tile_ix = dispatched_tile_at(chunk_offset + lane);
-        let start = coarse_scratch[lane];
-        coarse_store_tile_range(tile_ix, glyph, start, start + count);
-    }
-}
-
-@compute @workgroup_size(1)
-fn coarse_ptcl_chunk_offsets() {
-    var carry = 0u;
-    var chunk_ix = 0u;
-    loop {
-        if (chunk_ix >= config.chunk_count) {
-            break;
-        }
-        chunk_records[chunk_ix].ptcl_offset = carry;
-        carry += chunk_records[chunk_ix].ptcl_total;
-        chunk_ix += 1u;
-    }
-}
-
-@compute @workgroup_size(1)
-fn coarse_glyph_chunk_offsets() {
-    var carry = 0u;
-    var chunk_ix = 0u;
-    loop {
-        if (chunk_ix >= config.chunk_count) {
-            break;
-        }
-        chunk_records[chunk_ix].glyph_offset = carry;
-        carry += chunk_records[chunk_ix].glyph_total;
-        chunk_ix += 1u;
-    }
+    let offset = tile_prefix_scratch[lane];
+    workgroupBarrier();
+    return offset;
 }
 
 @compute @workgroup_size(256)
-fn coarse_ptcl_apply_chunk_offsets(
-    @builtin(workgroup_id) workgroup_id: vec3<u32>,
-    @builtin(local_invocation_id) local_id: vec3<u32>,
+fn coarse_prefix_chunks(
+    @builtin(workgroup_id) group: vec3<u32>,
+    @builtin(local_invocation_id) local: vec3<u32>,
 ) {
-    apply_chunk_offsets(workgroup_id.x, local_id.x, false);
-}
-
-@compute @workgroup_size(256)
-fn coarse_glyph_apply_chunk_offsets(
-    @builtin(workgroup_id) workgroup_id: vec3<u32>,
-    @builtin(local_invocation_id) local_id: vec3<u32>,
-) {
-    apply_chunk_offsets(workgroup_id.x, local_id.x, true);
-}
-
-fn apply_chunk_offsets(chunk_ix: u32, lane: u32, glyph: bool) {
-    let item_ix = chunk_ix * 256u + lane;
+    let item = group.x * 256u + local.x;
     let item_count = select(config.tile_count, config.active_tile_count, config.incremental != 0u);
-    if (item_ix >= item_count) {
-        return;
+    var count = vec2<u32>(0u);
+    var tile_ix = 0u;
+    if (item < item_count) {
+        tile_ix = dispatched_tile_at(item);
+        count = vec2<u32>(coarse_tile_count(tile_ix, false), coarse_tile_count(tile_ix, true));
     }
-    let tile_ix = dispatched_tile_at(item_ix);
-    if (glyph) {
-        let offset = chunk_records[chunk_ix].glyph_offset;
-        coarse_add_tile_range_offset(tile_ix, true, offset);
-    } else {
-        let offset = chunk_records[chunk_ix].ptcl_offset;
-        coarse_add_tile_range_offset(tile_ix, false, offset);
+    let start = tile_exclusive_prefix(count, local.x);
+    if (local.x == 0u) {
+        chunk_records[group.x].ptcl_total = tile_prefix_total.x;
+        chunk_records[group.x].glyph_total = tile_prefix_total.y;
     }
+    if (item < item_count) {
+        coarse_store_tile_range(tile_ix, false, start.x, start.x + count.x);
+        coarse_store_tile_range(tile_ix, true, start.y, start.y + count.y);
+    }
+}
+
+@compute @workgroup_size(256)
+fn coarse_chunk_offsets(@builtin(local_invocation_id) local: vec3<u32>) {
+    // Scan chunk totals in parallel; carry complete blocks to support arbitrary chunk counts.
+    // Each scan has uniform barriers, including lanes beyond a partial final block.
+    var carry = vec2<u32>(0u);
+    for (var block = 0u; block < config.chunk_count; block += 256u) {
+        let chunk = block + local.x;
+        var count = vec2<u32>(0u);
+        if (chunk < config.chunk_count) {
+            count = vec2<u32>(chunk_records[chunk].ptcl_total, chunk_records[chunk].glyph_total);
+        }
+        let offset = tile_exclusive_prefix(count, local.x);
+        if (chunk < config.chunk_count) {
+            chunk_records[chunk].ptcl_offset = carry.x + offset.x;
+            chunk_records[chunk].glyph_offset = carry.y + offset.y;
+        }
+        carry += tile_prefix_total;
+    }
+}
+
+@compute @workgroup_size(256)
+fn coarse_apply_chunk_offsets(
+    @builtin(workgroup_id) group: vec3<u32>,
+    @builtin(local_invocation_id) local: vec3<u32>,
+) {
+    let item = group.x * 256u + local.x;
+    let item_count = select(config.tile_count, config.active_tile_count, config.incremental != 0u);
+    if (item >= item_count) { return; }
+    let tile_ix = dispatched_tile_at(item);
+    coarse_add_tile_range_offset(tile_ix, false, chunk_records[group.x].ptcl_offset);
+    coarse_add_tile_range_offset(tile_ix, true, chunk_records[group.x].glyph_offset);
 }
 
 @compute @workgroup_size(256)
@@ -306,7 +270,7 @@ fn coarse_emit_chunk_particle_counts(
                     let segment_range = segment_ranges[backdrop_ix];
                     if (
                         (draw_tag == GPU_DRAW_BRUSH || draw_tag == GPU_DRAW_PATH_GLYPH || draw_tag == GPU_DRAW_CLIP) &&
-                        (segment_range.start != segment_range.end || atomicLoad(&backdrops[backdrop_ix]) != 0i)
+                        (segment_range.start != segment_range.end || backdrops[backdrop_ix] != 0i)
                     ) {
                         ptcl_count = 1u;
                     }
@@ -421,7 +385,7 @@ fn active_stack_count(tile_x: u32, tile_y: u32) -> u32 {
                         layer_tag == GPU_LAYER_CLIP &&
                         path_backdrop_fully_covers_tile(backdrop_ix, draw_records[draw_ix].fill_rule)
                     ) {
-                    } else if (segment_ranges[backdrop_ix].start == segment_ranges[backdrop_ix].end && atomicLoad(&backdrops[backdrop_ix]) == 0i) {
+                    } else if (segment_ranges[backdrop_ix].start == segment_ranges[backdrop_ix].end && backdrops[backdrop_ix] == 0i) {
                         valid = false;
                     } else {
                         count += 1u;
