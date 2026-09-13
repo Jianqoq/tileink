@@ -3,7 +3,7 @@ pub(super) use peniko::{
     kurbo::{Affine, BezPath, Line, Rect, Shape},
 };
 
-pub(super) use super::super::{Renderer, RendererOptions, WgpuRenderTargetId};
+pub(super) use super::super::{RenderTargetId, Renderer, RendererOptions};
 pub(super) use crate::wgpu::coarse::force_coarse_emit_chunks_for_test;
 pub(super) use crate::wgpu::commands::WgpuCommandBatch;
 pub(super) use crate::wgpu::{
@@ -51,10 +51,25 @@ pub(super) fn shared_wgpu_test_device(
 ) -> Option<&'static (::wgpu::Device, ::wgpu::Queue)> {
     use std::sync::OnceLock;
 
-    static NATIVE: OnceLock<Option<(::wgpu::Device, ::wgpu::Queue)>> = OnceLock::new();
-    static PORTABLE: OnceLock<Option<(::wgpu::Device, ::wgpu::Queue)>> = OnceLock::new();
-    let slot = if portable { &PORTABLE } else { &NATIVE };
+    static DEVICES: [OnceLock<Option<(::wgpu::Device, ::wgpu::Queue)>>; 6] =
+        [const { OnceLock::new() }; 6];
+    let requested = std::env::var("TILEINK_TEST_API");
+    let api = device_selection::TestApi::parse(match &requested {
+        Ok(value) => Some(value.as_str()),
+        Err(std::env::VarError::NotPresent) => None,
+        Err(error) => panic!("invalid TILEINK_TEST_API: {error}"),
+    })
+    .expect("invalid explicit GPU test API");
+    let slot = &DEVICES[api.slot(portable)];
     slot.get_or_init(|| {
+        if let Some(api) = api.explicit_name() {
+            // Reuse the audited physical-GPU and pinned-DXC selector. It rejects
+            // unavailable APIs/capabilities and never takes the default fallback.
+            // Test processes pin TILEINK_BENCH_GPU for their complete lifetime.
+            let (_, device, queue) =
+                explicit_gpu::device(api, portable, !portable, ::wgpu::MemoryHints::Performance);
+            return Some((device, queue));
+        }
         let instance =
             ::wgpu::Instance::new(::wgpu::InstanceDescriptor::new_without_display_handle());
         let adapter =
@@ -113,11 +128,21 @@ pub(super) fn test_turbulence(kind: TurbulenceKind, seed: i32, num_octaves: u32)
 }
 
 pub(super) fn render_native_wgpu(canvas: &Canvas) -> crate::shared::image::Image {
-    let mut renderer = Renderer::new_default_device(
-        canvas.physical_width(),
-        canvas.physical_height(),
-        Color::TRANSPARENT,
-    );
+    // The whole-canvas helper must honor the same explicit selector as direct
+    // renderer tests; otherwise filter tests silently run on the default API.
+    let mut renderer = if std::env::var_os("TILEINK_TEST_API").is_some() {
+        new_test_renderer(
+            canvas.physical_width(),
+            canvas.physical_height(),
+            Color::TRANSPARENT,
+        )
+    } else {
+        Renderer::new_default_device(
+            canvas.physical_width(),
+            canvas.physical_height(),
+            Color::TRANSPARENT,
+        )
+    };
     renderer.prepare_scene(canvas);
     assert!(
         renderer.render_prepared_tile_plan(canvas),
@@ -190,12 +215,12 @@ pub(super) fn initialized_compute_pipeline_counts(renderer: &Renderer) -> [usize
 
 pub(super) fn read_render_target_u32(
     renderer: &Renderer,
-    target: WgpuRenderTargetId,
+    target: RenderTargetId,
     len: usize,
 ) -> Vec<u32> {
     let texture = match target {
-        WgpuRenderTargetId::Main => renderer.readback_target.texture(),
-        WgpuRenderTargetId::Scratch(ix) => renderer.scratch[ix].texture(),
+        RenderTargetId::Main => renderer.readback_target.texture(),
+        RenderTargetId::Scratch(ix) => renderer.scratch[ix].texture(),
     };
     let bytes = read_texture_rgba8(
         renderer.device(),
@@ -346,3 +371,6 @@ pub(super) fn external_target(
         view_formats: &[],
     })
 }
+
+mod device_selection;
+use crate::wgpu::test_gpu as explicit_gpu;

@@ -37,7 +37,6 @@ pub(crate) mod filter {
     pub(crate) const MAX_STORAGE_BUFFER_COUNT: u32 = 8;
     pub(crate) const SOURCE_TEXTURE_BINDING: u32 = 1;
     pub(crate) const AUX_TEXTURE_BINDING: u32 = 2;
-    pub(crate) const LINEAR_SAMPLER_BINDING: u32 = 51;
     pub(crate) const IMAGE_RESOURCE_ATLAS_BINDING: u32 = 0;
     pub(crate) const IMAGE_RESOURCE_SAMPLER_BINDING: u32 = 1;
     pub(crate) const IMAGE_RESOURCE_TEXTURES_BINDING: u32 = 2;
@@ -108,12 +107,6 @@ mod tests {
             "aux_texture",
             0,
             "texture_2d<f32>",
-        );
-        assert_wgsl_sampler_binding(
-            FILTER_HEADER,
-            filter::LINEAR_SAMPLER_BINDING,
-            "filter_linear_sampler",
-            0,
         );
         assert_wgsl_texture_binding(
             FINE_HEADER,

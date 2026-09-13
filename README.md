@@ -17,7 +17,7 @@ Release notes are maintained in the [changelog](CHANGELOG.md).
 
 The [native HLSL backend plan](NATIVE_BACKEND_PLAN.md) describes planned, opt-in DX12/Vulkan
 backends and exact pixel parity with wgpu. [M0 reference validation](NATIVE_BACKEND_PROGRESS.md)
-is in progress; native API backends are not implemented yet.
+has completed baseline acquisition and implemented the M1 feature/shared-renderer boundary; native API backends are not implemented yet.
 
 This repository maintains a [shared wgpu HAL patch](WGPU_PATCHES.md), including DX12
 write-only texture synchronization. Cargo patches are not transitive: consumers must select
@@ -26,6 +26,27 @@ it in their own root workspace to receive the fix.
 > [!IMPORTANT]
 > Tileink is an early-stage project. The public API, rendering behavior, and performance profile
 > are still evolving; evaluate it against your own scenes before adopting it in production.
+
+## Feature flags
+
+`wgpu` is enabled by default. Disabling default features leaves the CPU scene,
+retained materializer, SVG and text APIs available without a WGPU runtime/build
+dependency. GPU rendering still requires the WGPU feature at this stage.
+
+| Configuration | Current behavior |
+| --- | --- |
+| Default / `wgpu` | Existing WGPU renderer and texture interop |
+| `default-features = false` | CPU scene construction and shared renderer contracts |
+| `native-dx12` | Windows DX12 dependency and explicit backend selection; renderer unavailable |
+| `native-vulkan` | Windows/Linux Vulkan dependency and explicit backend selection; renderer unavailable |
+| `native` | Both native feature selections |
+| `wgpu` plus a native feature | Both APIs compile; only WGPU renders yet |
+
+The native feature names reserve separate API adapters. Their constructors return
+explicit errors until the planned implementations are complete; they never fall
+back to WGPU. WGPU's existing **native/portable texture modes** are separate from
+these features. See [the API contract](NATIVE_API_CONTRACT.md) and
+[validation requirements](NATIVE_BACKEND_TESTING.md).
 
 ## Quick start
 

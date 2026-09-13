@@ -5,10 +5,7 @@ use std::sync::{
     atomic::{AtomicU32, Ordering},
 };
 
-use peniko::{
-    BlendMode, Compose, Mix,
-    kurbo::{Rect, Shape},
-};
+use peniko::{BlendMode, Compose, Mix};
 
 use crate::shared::{
     bounds::Bounds,
@@ -18,8 +15,8 @@ use crate::shared::{
         filter::{
             BlurDownsampleFilter, BlurSampling, BlurUpsampleFilter, ColorChannel,
             CompositeOperator, ConvolveEdgeMode, ConvolveMatrix, DiffuseLighting, DisplacementMap,
-            Filter, LightSource, RectLiquidGlass, RectLiquidGlassRegion, SpecularLighting,
-            Turbulence, TurbulenceKind,
+            LightSource, RectLiquidGlass, RectLiquidGlassRegion, SpecularLighting, Turbulence,
+            TurbulenceKind,
         },
         mask::MaskKind,
         region::Region,
@@ -335,6 +332,17 @@ impl Default for FilterConfig {
     }
 }
 
+const FILTER_KERNEL_RESOURCE_SETS: [u32; 8] = [
+    0,
+    FILTER_RES_BRUSH,
+    FILTER_RES_TRANSFER,
+    FILTER_RES_CONVOLVE,
+    FILTER_RES_TURBULENCE,
+    FILTER_RES_SCENE_ALPHA,
+    FILTER_RES_PATH_MASK,
+    FILTER_RES_SCENE_STACK,
+];
+
 pub(crate) struct WgpuFilterPipeline {
     clear_region: LazyFilterKernel,
     copy_region: LazyFilterKernel,
@@ -384,6 +392,12 @@ pub(crate) struct WgpuFilterPipeline {
     dummy_sampler: ::wgpu::Sampler,
     dummy_read: ::wgpu::Buffer,
     image_bind_group_layout: ::wgpu::BindGroupLayout,
+    // The owner fixes device, shader source, texture mode and image-table variant.
+    // Only resource remapping varies between its kernels. Sharing those modules
+    // fixes repeated WGSL parsing/validation without making pipelines eager.
+    shader_modules: [(u32, super::lazy::LazyShaderModule); 8],
+    #[cfg(test)]
+    created_shader_modules: AtomicU32,
     shader_source: &'static str,
     portable_textures: bool,
     large_texture_table_len: u32,
@@ -787,6 +801,14 @@ impl WgpuFilterPipeline {
             dummy_sampler,
             dummy_read,
             image_bind_group_layout,
+            shader_modules: FILTER_KERNEL_RESOURCE_SETS.map(|resources| {
+                (
+                    resources | FILTER_RES_ACTIVE_TILES,
+                    super::lazy::LazyShaderModule::new("tileink filter shared module"),
+                )
+            }),
+            #[cfg(test)]
+            created_shader_modules: AtomicU32::new(0),
             shader_source,
             portable_textures,
             large_texture_table_len,
@@ -829,12 +851,33 @@ impl WgpuFilterPipeline {
         lazy: &'a LazyFilterKernel,
     ) -> &'a FilterKernel {
         lazy.kernel.get_or_init(|| {
+            // This lookup runs only when a pipeline is first requested. A warm
+            // dispatch reads its kernel OnceLock without touching the module cache.
+            let module = self
+                .shader_modules
+                .iter()
+                .find(|(resources, _)| *resources == lazy.resources)
+                .expect("filter kernel resource set must have a module slot")
+                .1
+                .get(device, || {
+                    let source = patch_image_resource_shader_source(
+                        self.shader_source,
+                        self.large_texture_table_len > 0,
+                    );
+                    let source = remap_filter_shader_bindings(
+                        &source,
+                        self.portable_textures,
+                        lazy.resources,
+                    );
+                    #[cfg(test)]
+                    self.created_shader_modules.fetch_add(1, Ordering::Relaxed);
+                    ::wgpu::ShaderSource::Wgsl(source.into())
+                });
             let kernel = create_filter_kernel(
                 device,
-                self.shader_source,
+                module,
                 self.portable_textures,
                 &self.image_bind_group_layout,
-                self.large_texture_table_len > 0,
                 lazy.entry_point,
                 lazy.resources,
                 lazy.shared_workgroups,
@@ -2066,7 +2109,6 @@ impl WgpuFilterPipeline {
         );
         config.dispatch_width = workgroups.0;
         let config_offset = commands.write_uniform_slot(
-            "filter.config",
             &self.config,
             self.config_size,
             self.config_stride,
@@ -2126,7 +2168,7 @@ impl WgpuFilterPipeline {
             } else {
                 config.pixel_count.div_ceil(WORKGROUP_SIZE)
             };
-            let (x, y) = super::dispatch_2d(groups, max_workgroups);
+            let (x, y) = crate::render::dispatch::dispatch_2d(groups, max_workgroups);
             (x, y, 1)
         }
     }
@@ -2376,14 +2418,6 @@ impl WgpuFilterPipeline {
                 .as_ref()
                 .map_or(&self.dummy_read, |work| &work.buffer),
         );
-        entries.push(bind_sampler(
-            filter_binding(
-                kernel.portable_textures,
-                kernel.resources,
-                filter_layout::LINEAR_SAMPLER_BINDING,
-            ),
-            &self.dummy_sampler,
-        ));
         if kernel.portable_textures {
             entries.push(bind_texture(
                 filter_binding(kernel.portable_textures, kernel.resources, 55),
@@ -2577,19 +2611,6 @@ impl WgpuFilterPipeline {
             None,
             Some(target_read),
         );
-    }
-}
-pub(crate) fn encode_color_filter(filter: &Filter) -> Option<(u32, f32)> {
-    match filter {
-        Filter::Brightness(amount) => Some((FILTER_BRIGHTNESS, *amount)),
-        Filter::Contrast(amount) => Some((FILTER_CONTRAST, *amount)),
-        Filter::Grayscale(amount) => Some((FILTER_GRAYSCALE, *amount)),
-        Filter::HueRotate(amount) => Some((FILTER_HUE_ROTATE, *amount)),
-        Filter::Invert(amount) => Some((FILTER_INVERT, *amount)),
-        Filter::Opacity(amount) => Some((FILTER_OPACITY, *amount)),
-        Filter::Saturate(amount) => Some((FILTER_SATURATE, *amount)),
-        Filter::Sepia(amount) => Some((FILTER_SEPIA, *amount)),
-        _ => None,
     }
 }
 
@@ -2792,32 +2813,11 @@ fn encode_blend_mode(mode: BlendMode) -> u32 {
     mode.mix as u32 | ((mode.compose as u32) << 8)
 }
 
-pub(crate) fn region_bounds(region: &Region) -> Bounds {
-    match region {
-        Region::Rect { rect, .. } => rect_bounds(*rect),
-        Region::Path {
-            path,
-            transform,
-            tolerance: _,
-        } => rect_bounds(transform.transform_rect_bbox(path.bounding_box())),
-    }
-}
-
-fn rect_bounds(rect: Rect) -> Bounds {
-    Bounds::new(
-        rect.x0.floor() as i32,
-        rect.y0.floor() as i32,
-        rect.x1.ceil() as i32,
-        rect.y1.ceil() as i32,
-    )
-}
-
 fn create_filter_kernel(
     device: &::wgpu::Device,
-    shader_source: &'static str,
+    shader: &::wgpu::ShaderModule,
     portable_textures: bool,
     image_bind_group_layout: &::wgpu::BindGroupLayout,
-    large_texture_table_enabled: bool,
     entry_point: &'static str,
     resources: u32,
     shared_workgroups: bool,
@@ -2834,18 +2834,10 @@ fn create_filter_kernel(
         bind_group_layouts: &[Some(&bind_group_layout), Some(image_bind_group_layout)],
         immediate_size: 0,
     });
-    let shader_source =
-        patch_image_resource_shader_source(shader_source, large_texture_table_enabled);
-    let shader = device.create_shader_module(::wgpu::ShaderModuleDescriptor {
-        label: Some(entry_point),
-        source: ::wgpu::ShaderSource::Wgsl(
-            remap_filter_shader_bindings(&shader_source, portable_textures, resources).into(),
-        ),
-    });
     let pipeline = device.create_compute_pipeline(&::wgpu::ComputePipelineDescriptor {
         label: Some(entry_point),
         layout: Some(&pipeline_layout),
-        module: &shader,
+        module: shader,
         entry_point: Some(entry_point),
         compilation_options: ::wgpu::PipelineCompilationOptions::default(),
         cache: pipeline_cache,
@@ -2863,12 +2855,12 @@ fn filter_layout_entries(
     portable_textures: bool,
     resources: u32,
 ) -> Vec<::wgpu::BindGroupLayoutEntry> {
-    // A single sampled input supports texel loads and filtering. Binding the
+    // A single sampled input supports texel loads for every filter. Binding the
     // same input as storage too would combine incompatible DX12 UAV/SRV states.
     let mut entries = vec![
         uniform_entry(0),
-        sampled_filterable_texture_entry(filter_layout::SOURCE_TEXTURE_BINDING),
-        sampled_filterable_texture_entry(filter_layout::AUX_TEXTURE_BINDING),
+        sampled_texture_entry(filter_layout::SOURCE_TEXTURE_BINDING),
+        sampled_texture_entry(filter_layout::AUX_TEXTURE_BINDING),
         write_texture_entry(3, portable_textures),
     ];
     push_storage_entry_if(&mut entries, resources, FILTER_RES_DRAW_RECORDS, 4, true);
@@ -2932,11 +2924,6 @@ fn filter_layout_entries(
         ACTIVE_TILES_BINDING,
         true,
     );
-    entries.push(filtering_sampler_entry(filter_binding(
-        portable_textures,
-        resources,
-        filter_layout::LINEAR_SAMPLER_BINDING,
-    )));
     if portable_textures {
         entries.push(sampled_texture_entry(filter_binding(
             portable_textures,
@@ -2983,7 +2970,6 @@ fn filter_binding_remaps(portable_textures: bool, resources: u32) -> Vec<(u32, u
             ordered.push(old_binding);
         }
     }
-    ordered.push(filter_layout::LINEAR_SAMPLER_BINDING);
     if portable_textures {
         ordered.push(55);
     }
@@ -3103,28 +3089,6 @@ fn sampled_texture_entry(binding: u32) -> ::wgpu::BindGroupLayoutEntry {
     }
 }
 
-fn sampled_filterable_texture_entry(binding: u32) -> ::wgpu::BindGroupLayoutEntry {
-    ::wgpu::BindGroupLayoutEntry {
-        binding,
-        visibility: ::wgpu::ShaderStages::COMPUTE,
-        ty: ::wgpu::BindingType::Texture {
-            sample_type: ::wgpu::TextureSampleType::Float { filterable: true },
-            view_dimension: ::wgpu::TextureViewDimension::D2,
-            multisampled: false,
-        },
-        count: None,
-    }
-}
-
-fn filtering_sampler_entry(binding: u32) -> ::wgpu::BindGroupLayoutEntry {
-    ::wgpu::BindGroupLayoutEntry {
-        binding,
-        visibility: ::wgpu::ShaderStages::COMPUTE,
-        ty: ::wgpu::BindingType::Sampler(::wgpu::SamplerBindingType::Filtering),
-        count: None,
-    }
-}
-
 fn filter_shader_source(portable_textures: bool) -> &'static str {
     if portable_textures {
         include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_filter_web.wgsl"))
@@ -3178,30 +3142,15 @@ fn bind_texture(binding: u32, view: &::wgpu::TextureView) -> ::wgpu::BindGroupEn
     }
 }
 
-fn bind_sampler(binding: u32, sampler: &::wgpu::Sampler) -> ::wgpu::BindGroupEntry<'_> {
-    ::wgpu::BindGroupEntry {
-        binding,
-        resource: ::wgpu::BindingResource::Sampler(sampler),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn filter_kernel_storage_resource_sets_fit_wgpu_limit() {
-        let resource_sets = [
-            0,
-            FILTER_RES_TRANSFER,
-            FILTER_RES_BRUSH,
-            FILTER_RES_CONVOLVE,
-            FILTER_RES_TURBULENCE,
-            FILTER_RES_PATH_MASK,
-            FILTER_RES_SCENE_ALPHA,
-            FILTER_RES_SCENE_STACK,
-        ];
-        for resources in resource_sets.map(|resources| resources | FILTER_RES_ACTIVE_TILES) {
+        for resources in
+            FILTER_KERNEL_RESOURCE_SETS.map(|resources| resources | FILTER_RES_ACTIVE_TILES)
+        {
             assert!(
                 filter_storage_binding_count(resources) <= STORAGE_BINDING_COUNT,
                 "filter resource set has too many storage bindings: {resources:#x}"
@@ -3220,10 +3169,10 @@ mod tests {
     }
 
     #[test]
-    fn filter_kernel_layouts_always_include_linear_sampling_resources() {
+    fn filter_kernel_inputs_use_sampled_textures_without_storage_aliases() {
         for portable_textures in [false, true] {
             let entries = filter_layout_entries(portable_textures, 0);
-            // Input texel loads and linear samples must share an SRV. A storage
+            // Input texel loads use an SRV. A storage
             // alias causes an invalid UAV | SRV state transition on DX12.
             for binding in [1, 2] {
                 let input = entries
@@ -3233,18 +3182,13 @@ mod tests {
                 assert!(matches!(
                     input.ty,
                     ::wgpu::BindingType::Texture {
-                        sample_type: ::wgpu::TextureSampleType::Float { filterable: true },
+                        sample_type: ::wgpu::TextureSampleType::Float { filterable: false },
                         view_dimension: ::wgpu::TextureViewDimension::D2,
                         multisampled: false,
                     }
                 ));
             }
-            let bindings: Vec<u32> = entries.iter().map(|entry| entry.binding).collect();
-            assert!(bindings.contains(&filter_binding(
-                portable_textures,
-                0,
-                filter_layout::LINEAR_SAMPLER_BINDING
-            )));
+            assert_eq!(entries.len(), if portable_textures { 5 } else { 4 });
         }
     }
 
@@ -3321,3 +3265,12 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "filter/lazy_tests.rs"]
+mod lazy_tests;
+
+#[cfg(feature = "bench-internals")]
+mod benchmark;
+#[cfg(feature = "bench-internals")]
+pub use benchmark::FilterCompilationBenchmark;

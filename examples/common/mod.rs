@@ -2,6 +2,10 @@
 // a different subset of the shared scene/render utilities.
 #![allow(dead_code)]
 
+pub mod capture;
+pub mod fonts;
+pub mod liquid_glass_fast_path;
+
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -55,6 +59,9 @@ pub fn load_svg_scene(
     target_width: u32,
 ) -> Result<(Canvas, u32, u32), Box<dyn std::error::Error>> {
     let input = input.as_ref();
+    if let Some(tree) = capture::svg_tree(input) {
+        return svg_tree_to_scene(&tree?, target_width);
+    }
     let data = fs::read(input)?;
     let mut options = svg_options();
     options.resources_dir = input.parent().map(Path::to_path_buf);
@@ -142,6 +149,9 @@ pub fn render_to_png_wgpu_with(
     clear: Color,
     mut render: impl FnMut(&mut WgpuRenderer) -> Result<(), Box<dyn std::error::Error>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(result) = capture::render(name, width, height, clear, &mut render) {
+        return result;
+    }
     if wgpu_compare_portable_mode() {
         return render_to_png_wgpu_compare_portable(name, width, height, clear, render);
     }
@@ -206,6 +216,9 @@ fn new_wgpu_renderer_for_mode(
     clear: Color,
     mode: WgpuMode,
 ) -> WgpuRenderer {
+    if let Some(renderer) = capture::new_renderer(width, height, clear) {
+        return renderer;
+    }
     if mode == WgpuMode::Native {
         return WgpuRenderer::new_default_device(width, height, clear);
     }
@@ -348,4 +361,9 @@ pub fn canvas_region(width: u32, height: u32) -> Region {
         Rect::new(0.0, 0.0, width as f64, height as f64),
         Radius::ZERO,
     )
+}
+
+/// Use immutable captured font inputs when running explicit backend references.
+pub fn new_font_system() -> tileink::TextFontSystem {
+    capture::font_system().unwrap_or_else(tileink::TextFontSystem::new)
 }

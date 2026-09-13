@@ -495,8 +495,7 @@ pub(crate) fn filter_surface_bounds(
     // morphology, offset, drop-shadow, or graph tiling. The surface keeps only
     // pixels that can still influence the visible target, so very large source
     // bboxes outside the canvas do not turn into huge intermediate buffers.
-    let source_window = target_bounds.outset(filter_dependency_outset(filter));
-    let surface = full_output.intersect(source_window);
+    let surface = filter_dependency(filter).source_bounds(target_bounds, full_output);
     (!surface.is_empty()).then_some(FilterSurfaceBounds { surface, output })
 }
 
@@ -540,44 +539,6 @@ pub(crate) fn filter_outset(filter: &Filter) -> i32 {
         } => blur_outset(*std_dev) + offset_x.abs().ceil().max(offset_y.abs().ceil()) as i32,
         _ => 0,
     }
-}
-
-pub(crate) fn filter_dependency_outset(filter: &Filter) -> i32 {
-    match filter {
-        Filter::Chain { filters, .. } => filters.iter().map(filter_dependency_outset).sum(),
-        Filter::Graph { primitives, .. } => graph_dependency_outset(primitives),
-        _ => filter_outset(filter),
-    }
-}
-
-fn graph_dependency_outset(primitives: &[FilterPrimitive]) -> i32 {
-    primitives.iter().map(primitive_dependency_outset).sum()
-}
-
-fn primitive_dependency_outset(primitive: &FilterPrimitive) -> i32 {
-    match &primitive.kind {
-        FilterPrimitiveKind::Filter(filter) => filter_dependency_outset(filter),
-        FilterPrimitiveKind::DisplacementMap(map) => {
-            (map.scale_x.abs().max(map.scale_y.abs()) * 0.5).ceil() as i32
-        }
-        FilterPrimitiveKind::Tile { source_region } => {
-            bounds_distance(primitive.region, *source_region)
-        }
-        FilterPrimitiveKind::Identity
-        | FilterPrimitiveKind::Blend { .. }
-        | FilterPrimitiveKind::Composite { .. }
-        | FilterPrimitiveKind::Image { .. }
-        | FilterPrimitiveKind::Merge { .. } => 0,
-        FilterPrimitiveKind::Turbulence(_) => 0,
-    }
-}
-
-fn bounds_distance(a: Bounds, b: Bounds) -> i32 {
-    (a.x0 - b.x0)
-        .abs()
-        .max((a.y0 - b.y0).abs())
-        .max((a.x1 - b.x1).abs())
-        .max((a.y1 - b.y1).abs())
 }
 
 pub(crate) fn region_bounds(region: &Region) -> Bounds {
@@ -666,3 +627,9 @@ pub enum LightSource {
         limiting_cone_angle: Option<f32>,
     },
 }
+
+#[cfg(test)]
+mod tests;
+
+mod dependency;
+pub(crate) use dependency::{FilterDependency, filter_dependency, filter_input_bounds};

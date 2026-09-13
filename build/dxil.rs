@@ -35,7 +35,7 @@ pub(crate) fn generate(fine_portable_source: &str, out_dir: &Path) {
     if env::var_os("CARGO_CFG_TARGET_OS").as_deref() != Some("windows".as_ref())
         || env::var("TILEINK_DXIL_PRECOMPILE").ok().as_deref() == Some("0")
     {
-        write_generated(&generated, &[]);
+        write_generated(&generated, &[], None);
         return;
     }
 
@@ -43,22 +43,19 @@ pub(crate) fn generate(fine_portable_source: &str, out_dir: &Path) {
         println!(
             "cargo:warning=DXC was not found; Tileink will use runtime WGSL compilation on DX12"
         );
-        write_generated(&generated, &[]);
+        write_generated(&generated, &[], None);
         return;
     };
     dxc::emit_toolchain_inputs(&dxc);
 
-    let cache = match cache_context(fine_portable_source, &dxc) {
-        Ok(cache) => cache,
-        Err(error) => {
-            println!("cargo:warning=could not fingerprint the Tileink DXIL cache: {error}");
-            None
-        }
-    };
+    let key = build_fingerprint(fine_portable_source, &dxc)
+        .unwrap_or_else(|error| panic!("could not fingerprint the Tileink DXIL build: {error}"));
+    let cache =
+        env::var_os(dxil_cache::CACHE_DIRECTORY_ENV).map(|root| (PathBuf::from(root), key.clone()));
     if let Some((root, key)) = &cache {
         match dxil_cache::restore(root, key, &FINE_DXIL_ENTRY_POINTS, out_dir) {
             Ok(Some(outputs)) => {
-                write_generated(&generated, &outputs);
+                write_generated(&generated, &outputs, Some((key.as_str(), &dxc)));
                 return;
             }
             Ok(None) => {}
@@ -70,24 +67,18 @@ pub(crate) fn generate(fine_portable_source: &str, out_dir: &Path) {
 
     match compile_fine_variants(fine_portable_source, out_dir, &dxc) {
         Ok(outputs) => {
-            if let Some((root, key)) = cache
-                && let Err(error) = dxil_cache::store(&root, &key, &outputs)
+            if let Some((root, cache_key)) = cache
+                && let Err(error) = dxil_cache::store(&root, &cache_key, &outputs)
             {
                 println!("cargo:warning=could not store the Tileink DXIL cache: {error}");
             }
-            write_generated(&generated, &outputs);
+            write_generated(&generated, &outputs, Some((key.as_str(), &dxc)));
         }
         Err(error) => panic!("failed to precompile Tileink DXIL: {error}"),
     }
 }
 
-fn cache_context(
-    fine_portable_source: &str,
-    dxc: &Path,
-) -> std::io::Result<Option<(PathBuf, String)>> {
-    let Some(root) = env::var_os(dxil_cache::CACHE_DIRECTORY_ENV) else {
-        return Ok(None);
-    };
+fn build_fingerprint(fine_portable_source: &str, dxc: &Path) -> std::io::Result<String> {
     let key = dxil_cache::fingerprint(
         &[
             fine_portable_source.as_bytes(),
@@ -95,6 +86,7 @@ fn cache_context(
             include_bytes!("dxc.rs"),
             include_bytes!("dxil.rs"),
             include_bytes!("dxil_cache.rs"),
+            include_bytes!("dxil_provenance.rs"),
             include_bytes!("../Cargo.toml"),
             include_bytes!("../Cargo.lock"),
             include_bytes!("../src/wgpu/dxil_manifest.rs"),
@@ -102,7 +94,7 @@ fn cache_context(
         ],
         &dxc::toolchain_inputs(dxc),
     )?;
-    Ok(Some((PathBuf::from(root), key)))
+    Ok(key)
 }
 
 fn compile_fine_variants(
@@ -146,6 +138,13 @@ fn compile_fine_variants(
             .pop()
             .ok_or_else(|| format!("HLSL translation omitted {entry_point}"))?
             .map_err(|error| format!("HLSL reflection for {entry_point} failed: {error}"))?;
+        // The passthrough runtime and manifest address the declared entry point.
+        // Reject a renamed export rather than embedding bytecode under a wrong name.
+        if reflected_entry_point != entry_point {
+            return Err(format!(
+                "DXIL export {reflected_entry_point} differs from {entry_point}"
+            ));
+        }
         let stem = entry_point.replace('_', "-");
         let hlsl_path = out_dir.join(format!("tileink-{stem}-sm60.hlsl"));
         let dxil_path = out_dir.join(format!("tileink-{stem}-sm60.dxil"));
@@ -198,18 +197,9 @@ fn compile_with_dxc(
     dxil_path: &Path,
 ) -> Result<(), String> {
     let output = Command::new(dxc)
-        .args([
-            "-E",
-            reflected_entry_point,
-            "-T",
-            "cs_6_0",
-            "-HV",
-            "2018",
-            "-no-warnings",
-            "-Ges",
-            "-O3",
-            "-Fo",
-        ])
+        .args(["-E", reflected_entry_point])
+        .args(crate::dxil_provenance::DXC_FLAGS)
+        .arg("-Fo")
         .arg(dxil_path)
         .arg(hlsl_path)
         .output()
@@ -297,7 +287,36 @@ fn bind_target(register: u32, binding_array_size: Option<u32>) -> BindTarget {
     }
 }
 
-fn write_generated(path: &Path, outputs: &[(String, PathBuf)]) {
+fn write_generated(path: &Path, outputs: &[(String, PathBuf)], provenance: Option<(&str, &Path)>) {
+    let manifest = match provenance {
+        Some((key, dxc)) => {
+            let version = Command::new(dxc)
+                .arg("--version")
+                .output()
+                .ok()
+                .filter(|output| output.status.success())
+                .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+                .unwrap_or_default();
+            let mut manifest = crate::dxil_provenance::manifest(
+                key,
+                &version,
+                &dxc::toolchain_inputs(dxc),
+                outputs,
+            )
+            .expect("could not record precompiled DXIL provenance");
+            manifest["hlsl_options"] = serde_json::json!(format!("{:?}", fine_hlsl_options()));
+            manifest["workgroup_size"] = serde_json::json!(FINE_DXIL_WORKGROUP_SIZE);
+            manifest["texture_table_len"] =
+                serde_json::json!(crate::dxil_manifest::FINE_DXIL_TEXTURE_TABLE_LEN);
+            manifest
+        }
+        None => serde_json::Value::Null,
+    };
+    fs::write(
+        path.with_file_name("tileink-dxil-manifest.json"),
+        serde_json::to_vec_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
     let mut source = String::from("// @generated by build/dxil.rs\n");
     source.push_str("pub(crate) static PRECOMPILED_FINE_DXIL: &[PrecompiledDxil] = &[\n");
     for (entry_point, _) in outputs {

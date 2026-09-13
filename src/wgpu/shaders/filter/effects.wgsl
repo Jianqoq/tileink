@@ -337,7 +337,8 @@ fn filter_turbulence_gradient_dot(
     y: f32,
 ) -> f32 {
     let ix = gradient_offset + (channel * TURBULENCE_TABLE_LEN + selector) * 2u;
-    return turbulence_gradients[ix] * x + turbulence_gradients[ix + 1u] * y;
+    // Keep the gradient dot product on the same rounding path on both APIs.
+    return fma(turbulence_gradients[ix], x, turbulence_gradients[ix + 1u] * y);
 }
 
 fn liquid_glass_pixel(
@@ -458,14 +459,30 @@ fn liquid_glass_pixel(
 
 fn liquid_glass_edge(inside_distance: f32, refraction_thickness: f32, refraction_factor: f32) -> f32 {
     let thickness = max(refraction_thickness, LIQUID_GLASS_EPSILON);
-    var out = 0.0;
-    if (inside_distance < thickness) {
-        let ratio = 1.0 - inside_distance / thickness;
-        let theta_i = asin(clamp(pow(ratio, 2.0), -1.0, 1.0));
-        let theta_t = asin(clamp(sin(theta_i) / max(refraction_factor, 1.0), -1.0, 1.0));
-        out = max(-tan(theta_t - theta_i), 0.0);
+    let factor = max(refraction_factor, 1.0);
+    if (inside_distance >= thickness || factor == 1.0) {
+        return 0.0;
     }
-    return out;
+
+    // Snell's law gives sin(theta_t) directly. Compute tan(theta_i - theta_t)
+    // from sine/cosine products: the previous asin/sin/asin/tan chain varied
+    // between APIs and moved refracted samples across RGBA8 rounding boundaries.
+    // Explicit FMA fixes evaluation order; this removes the numerical root cause,
+    // without quantizing coordinates or changing the refraction model.
+    let ratio = clamp(1.0 - inside_distance / thickness, 0.0, 1.0);
+    let sin_i = ratio * ratio;
+    let sin_t = sin_i / factor;
+    let cos_t = sqrt(max(fma(-sin_t, sin_t, 1.0), 0.0));
+    if (sin_i == 1.0) {
+        // At grazing incidence tan(theta_i - theta_t) = factor * cos(theta_t).
+        // Avoid dividing by a subnormal sin(theta_t): even a finite factor can
+        // otherwise overflow the edge value and turn a zero normal into NaN.
+        return factor * cos_t;
+    }
+    let cos_i = sqrt(max(fma(-sin_i, sin_i, 1.0), 0.0));
+    let numerator = fma(sin_i, cos_t, -(cos_i * sin_t));
+    let denominator = fma(cos_i, cos_t, sin_i * sin_t);
+    return max(numerator / denominator, 0.0);
 }
 
 fn liquid_glass_fresnel(distance: f32, fresnel_range: f32, fresnel_hardness: f32) -> f32 {
@@ -532,8 +549,15 @@ fn liquid_glass_dispersion_channel(
     blur_mix: f32,
 ) -> f32 {
     let factor = 1.0 - (chromatic - 1.0) * config.liquid_refraction_dispersion;
-    let sx = x + offset_x * factor;
-    let sy = y + offset_y * factor;
+    // A finite refractive index can overflow its displacement. Zero chromatic
+    // scale means the original sample position, including when that displacement
+    // is infinite; evaluating infinity * zero would pass NaN to the sampler.
+    var offset = vec2<f32>(0.0);
+    if (factor != 0.0) {
+        offset = vec2<f32>(offset_x, offset_y) * factor;
+    }
+    let sx = x + offset.x;
+    let sy = y + offset.y;
     let src = liquid_glass_sample_straight_channel(0u, sx, sy, channel);
     let blur = liquid_glass_sample_straight_channel(1u, sx, sy, channel);
     return lerp_f32(src, blur, blur_mix);
@@ -844,6 +868,9 @@ fn liquid_glass_compand_rgb(a: f32) -> f32 {
     return out;
 }
 
+// Accumulate the Sobel differences in stored alpha units, where all weighted
+// sums are exact, and normalize once. Subtracting rounded alpha/255 samples
+// introduces backend-dependent cancellation before the surface normal is built.
 fn alpha_gradient_x(x: u32, y: u32) -> f32 {
     var out = 0.0;
     if (config.region_width >= 2u) {
@@ -858,7 +885,7 @@ fn alpha_gradient_x(x: u32, y: u32) -> f32 {
         if (one_sided) {
             edge_scale = 2.0;
         }
-        out = weighted_diff * edge_scale / max(weight_sum, 0.000001);
+        out = weighted_diff * edge_scale / (255.0 * weight_sum);
     }
     return out;
 }
@@ -877,7 +904,7 @@ fn alpha_gradient_y(x: u32, y: u32) -> f32 {
         if (one_sided) {
             edge_scale = 2.0;
         }
-        out = weighted_diff * edge_scale / max(weight_sum, 0.000001);
+        out = weighted_diff * edge_scale / (255.0 * weight_sum);
     }
     return out;
 }
@@ -907,14 +934,9 @@ fn alpha_gradient_x_sample(x: u32, y: u32, offset: i32, weight: f32) -> f32 {
         if (x < region_x1) {
             right = x + 1u;
         }
-        let center = source_alpha_at(x, syu);
-        var diff = source_alpha_at(right, syu) - source_alpha_at(left, syu);
-        if (x == config.region_x0) {
-            diff = source_alpha_at(right, syu) - center;
-        } else if (x == region_x1) {
-            diff = center - source_alpha_at(left, syu);
-        }
-        out = weight * diff;
+        let left_alpha = f32((source_pixel_at(left, syu) >> 24u) & 255u);
+        let right_alpha = f32((source_pixel_at(right, syu) >> 24u) & 255u);
+        out = weight * (right_alpha - left_alpha);
     }
     return out;
 }
@@ -934,16 +956,17 @@ fn alpha_gradient_y_sample(x: u32, y: u32, offset: i32, weight: f32) -> f32 {
         if (y < region_y1) {
             bottom = y + 1u;
         }
-        let center = source_alpha_at(sxu, y);
-        var diff = source_alpha_at(sxu, bottom) - source_alpha_at(sxu, top);
-        if (y == config.region_y0) {
-            diff = source_alpha_at(sxu, bottom) - center;
-        } else if (y == region_y1) {
-            diff = center - source_alpha_at(sxu, top);
-        }
-        out = weight * diff;
+        let top_alpha = f32((source_pixel_at(sxu, top) >> 24u) & 255u);
+        let bottom_alpha = f32((source_pixel_at(sxu, bottom) >> 24u) & 255u);
+        out = weight * (bottom_alpha - top_alpha);
     }
     return out;
+}
+
+// Share an explicit product and sum order for lighting vectors. Specular
+// lighting normalizes the completed dot to avoid per-component division error.
+fn lighting_dot3(a: vec3<f32>, b: vec3<f32>) -> f32 {
+    return fma(a.x, b.x, fma(a.y, b.y, fma(a.z, b.z, 0.0)));
 }
 
 fn composite_inputs_pixel(input1: u32, input2: u32, composite_operator: u32, k1: f32, k2: f32, k3: f32, k4: f32) -> u32 {
@@ -989,7 +1012,8 @@ fn svg_lum3(r: f32, g: f32, b: f32) -> f32 {
 }
 
 fn lerp_f32(a: f32, b: f32, t: f32) -> f32 {
-    return a + (b - a) * t;
+    // Explicit fusion prevents backend-dependent half-channel noise values.
+    return fma(b - a, t, a);
 }
 
 fn lerp_vec4(a: vec4<f32>, b: vec4<f32>, t: f32) -> vec4<f32> {

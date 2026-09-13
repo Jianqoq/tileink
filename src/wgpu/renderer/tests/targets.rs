@@ -164,9 +164,9 @@ fn wgpu_renderer_portable_fine_preserves_previous_batches_when_enabled() {
     let mut commands =
         WgpuCommandBatch::new(renderer.device(), renderer.queue(), "portable fine batches");
     assert!(renderer.scan_and_cumsum(&mut commands, &canvas));
-    assert!(renderer.clear_render_target(&mut commands, WgpuRenderTargetId::Main, 0));
-    assert!(renderer.coarse_and_fine_batch_to(&mut commands, 0, 1, 0, 0, WgpuRenderTargetId::Main));
-    assert!(renderer.coarse_and_fine_batch_to(&mut commands, 1, 2, 0, 0, WgpuRenderTargetId::Main));
+    assert!(renderer.clear_render_target(&mut commands, RenderTargetId::Main, 0));
+    assert!(renderer.coarse_and_fine_batch_to(&mut commands, 0, 1, 0, 0, RenderTargetId::Main));
+    assert!(renderer.coarse_and_fine_batch_to(&mut commands, 1, 2, 0, 0, RenderTargetId::Main));
     commands.finish();
 
     let image = renderer.image();
@@ -290,7 +290,7 @@ fn portable_direct_root_partial_frames_preserve_inactive_pixels() {
         .render_retained_to_persistent_wgpu_texture(
             &scene,
             &target,
-            crate::wgpu::renderer::ExternalTextureHistoryId::new(98),
+            crate::ExternalTextureHistoryId::new(98),
         )
         .unwrap();
     scene
@@ -302,7 +302,7 @@ fn portable_direct_root_partial_frames_preserve_inactive_pixels() {
         .render_retained_to_persistent_wgpu_texture(
             &scene,
             &target,
-            crate::wgpu::renderer::ExternalTextureHistoryId::new(98),
+            crate::ExternalTextureHistoryId::new(98),
         )
         .unwrap();
 
@@ -488,4 +488,269 @@ fn wgpu_renderer_accumulates_many_translucent_fine_particles_when_enabled() {
     let expected = render_native_wgpu(&canvas);
 
     assert_images_near(&image, &expected, 0, "f32 fine particle accumulation");
+}
+
+#[test]
+fn wgpu_backdrop_destination_missing_read_usages_returns_error() {
+    if !run_wgpu_tests() {
+        return;
+    }
+    let (canvas, scene) = backdrop_usage_scene();
+    let mut renderer = new_test_renderer(16, 16, Color::TRANSPARENT);
+    let usages = ::wgpu::TextureUsages::STORAGE_BINDING
+        | ::wgpu::TextureUsages::TEXTURE_BINDING
+        | ::wgpu::TextureUsages::COPY_SRC
+        | ::wgpu::TextureUsages::COPY_DST;
+    let texture = |usage| {
+        renderer
+            .device()
+            .create_texture(&::wgpu::TextureDescriptor {
+                label: Some("backdrop destination usage regression"),
+                size: ::wgpu::Extent3d {
+                    width: 16,
+                    height: 16,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: ::wgpu::TextureDimension::D2,
+                format: ::wgpu::TextureFormat::Rgba8Unorm,
+                usage,
+                view_formats: &[],
+            })
+    };
+    let invalid: Vec<_> = [
+        (::wgpu::TextureUsages::TEXTURE_BINDING, "TEXTURE_BINDING"),
+        (::wgpu::TextureUsages::COPY_SRC, "COPY_SRC"),
+    ]
+    .into_iter()
+    .map(|(missing, name)| (name, texture(usages - missing)))
+    .collect();
+    let valid = texture(usages);
+    for (missing_name, target) in invalid {
+        // Missing read access used to reach bind-group/copy validation and panic.
+        // Reject before advancing output history; a later valid render must work.
+        let error = renderer
+            .render_to_wgpu_texture(&canvas, &target)
+            .unwrap_err();
+        assert!(error.to_string().contains(missing_name));
+        renderer
+            .render_retained_to_persistent_wgpu_texture(
+                &scene,
+                &target,
+                crate::ExternalTextureHistoryId::new(1),
+            )
+            .unwrap_err();
+    }
+    renderer
+        .render_retained_to_persistent_wgpu_texture(
+            &scene,
+            &valid,
+            crate::ExternalTextureHistoryId::new(2),
+        )
+        .unwrap();
+    let bytes = read_texture_rgba8(renderer.device(), renderer.queue(), &valid, 16, 16);
+    assert_eq!(&bytes[0..4], &[40, 80, 120, 255]);
+}
+
+fn backdrop_usage_scene() -> (Canvas, crate::RetainedScene) {
+    let mut canvas = Canvas::new(16, 16, 1.0);
+    canvas.push_rect(
+        Rect::new(0.0, 0.0, 16.0, 16.0),
+        crate::Radius::ZERO,
+        Color::from_rgb8(40, 80, 120),
+    );
+    canvas.push_backdrop_layer(
+        Filter::Blur {
+            std_dev_x: 2.0,
+            std_dev_y: 2.0,
+            sampling: crate::BlurSampling::FULL_RES,
+        },
+        Region::rect(Rect::new(2.0, 2.0, 14.0, 14.0), crate::Radius::ZERO),
+    );
+    canvas.pop_layer();
+    let root = crate::RetainedNodeId::for_owner(883_000);
+    let mut scene = crate::RetainedScene::new(16, 16, 1.0, root).unwrap();
+    scene
+        .transaction()
+        .insert_scene(
+            crate::RetainedParent::content(root),
+            None,
+            crate::RetainedNodeId::for_owner(883_001),
+            std::rc::Rc::new(canvas.clone()),
+            Affine::IDENTITY,
+        )
+        .commit()
+        .unwrap();
+    (canvas, scene)
+}
+
+#[test]
+fn wgpu_retained_transient_backdrop_accepts_copy_output_without_read_usages() {
+    if !run_wgpu_tests() {
+        return;
+    }
+    let mut renderer = new_test_renderer(16, 16, Color::TRANSPARENT);
+    if !renderer
+        .device()
+        .features()
+        .contains(::wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
+    {
+        return;
+    }
+    let (_, scene) = backdrop_usage_scene();
+    let mut config = renderer.incremental_render_config();
+    config.mode = crate::IncrementalRenderMode::ForceFull;
+    renderer.set_incremental_render_config(config);
+    let texture = renderer
+        .device()
+        .create_texture(&::wgpu::TextureDescriptor {
+            label: Some("retained backdrop copy-only destination"),
+            size: ::wgpu::Extent3d {
+                width: 16,
+                height: 16,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: ::wgpu::TextureDimension::D2,
+            format: ::wgpu::TextureFormat::Rgba8Unorm,
+            usage: ::wgpu::TextureUsages::STORAGE_BINDING | ::wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+    // ForceFull reads internal history and only copies the result to this target.
+    // Rejecting root-effect read usages here would reject a legal output route.
+    for _ in 0..2 {
+        renderer
+            .render_retained_to_wgpu_texture(&scene, &texture)
+            .unwrap();
+        assert!(renderer.incremental_render_stats().history_copied_to_output);
+    }
+    let actual = renderer.image();
+    assert_eq!(actual.rgba8_at(0, 0), [40, 80, 120, 255]);
+}
+
+#[test]
+fn wgpu_retained_owned_recovers_after_resized_external_usage_error() {
+    assert_owned_recovers_after_resized_external(true);
+}
+
+#[test]
+fn wgpu_retained_owned_rebuilds_after_successful_resized_external_output() {
+    assert_owned_recovers_after_resized_external(false);
+}
+
+fn assert_owned_recovers_after_resized_external(reject: bool) {
+    if !run_wgpu_tests() {
+        return;
+    }
+    let mut renderer = new_test_renderer(8, 8, Color::TRANSPARENT);
+    let (_, scene) = backdrop_usage_scene();
+    let mut usage = ::wgpu::TextureUsages::STORAGE_BINDING
+        | ::wgpu::TextureUsages::COPY_SRC
+        | ::wgpu::TextureUsages::COPY_DST;
+    if !reject {
+        usage |= ::wgpu::TextureUsages::TEXTURE_BINDING;
+    }
+    let texture = renderer
+        .device()
+        .create_texture(&::wgpu::TextureDescriptor {
+            label: Some("invalid resized backdrop output"),
+            size: ::wgpu::Extent3d {
+                width: 16,
+                height: 16,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: ::wgpu::TextureDimension::D2,
+            format: ::wgpu::TextureFormat::Rgba8Unorm,
+            usage,
+            view_formats: &[],
+        });
+    let result = renderer.render_retained_to_persistent_wgpu_texture(
+        &scene,
+        &texture,
+        crate::ExternalTextureHistoryId::new(33),
+    );
+    if reject {
+        result.unwrap_err();
+    } else {
+        result.unwrap();
+    }
+    // External output can prepare a larger scene without allocating owned history.
+    // Switching back must select internal history and resize despite cached preparation.
+    renderer.render_retained(&scene);
+    let actual = renderer.image();
+    assert_eq!((actual.width, actual.height), (16, 16));
+    assert_eq!(actual.rgba8_at(15, 15), [40, 80, 120, 255]);
+    let mut fresh = new_test_renderer(16, 16, Color::TRANSPARENT);
+    fresh.render_retained(&scene);
+    assert_eq!(actual.pixels, fresh.image().pixels);
+}
+
+#[test]
+fn wgpu_renderer_rejects_array_storage_destination() {
+    rejects_multi_subresource_storage_destination(2, 1);
+}
+
+#[test]
+fn wgpu_renderer_rejects_mipmapped_storage_destination() {
+    rejects_multi_subresource_storage_destination(1, 2);
+}
+
+fn rejects_multi_subresource_storage_destination(array_layers: u32, mip_levels: u32) {
+    if !run_wgpu_tests() {
+        return;
+    }
+    let mut renderer = new_test_renderer(8, 8, Color::TRANSPARENT);
+    let texture = renderer
+        .device()
+        .create_texture(&::wgpu::TextureDescriptor {
+            label: Some("unsupported multi-subresource destination"),
+            size: ::wgpu::Extent3d {
+                width: 8,
+                height: 8,
+                depth_or_array_layers: array_layers,
+            },
+            mip_level_count: mip_levels,
+            sample_count: 1,
+            dimension: ::wgpu::TextureDimension::D2,
+            format: ::wgpu::TextureFormat::Rgba8Unorm,
+            usage: ::wgpu::TextureUsages::STORAGE_BINDING
+                | ::wgpu::TextureUsages::COPY_SRC
+                | ::wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+    let mut canvas = Canvas::new(8, 8, 1.0);
+    let error = renderer
+        .render_to_wgpu_texture(&canvas, &texture)
+        .expect_err("unsupported subresource ranges must fail before creating the GPU view");
+    assert!(matches!(
+        error,
+        crate::WgpuTextureRenderError::UnsupportedDestination {
+            depth_or_array_layers, mip_level_count, ..
+        } if depth_or_array_layers == array_layers && mip_level_count == mip_levels
+    ));
+    // A rejected target must leave the renderer usable for real owned rendering;
+    // an empty transparent scene would pass even if the recovery draw were skipped.
+    canvas.push_path(
+        Rect::new(1.0, 1.0, 7.0, 7.0).to_path(0.0),
+        Color::from_rgb8(23, 91, 197),
+        Affine::IDENTITY,
+        FillRule::NonZero,
+        0.0,
+    );
+    renderer.render(&canvas);
+    let image = renderer.image();
+    for y in 0..8 {
+        for x in 0..8 {
+            let expected = if (1..7).contains(&x) && (1..7).contains(&y) {
+                [23, 91, 197, 255]
+            } else {
+                [0; 4]
+            };
+            assert_eq!(image.rgba8_at(x, y), expected);
+        }
+    }
 }

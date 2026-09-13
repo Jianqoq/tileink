@@ -322,51 +322,5 @@ fn draw_fill_rule_at(draw_ix: u32) -> u32 {
     return draw_records[draw_ix].fill_rule;
 }
 
-fn fill_alpha_at(backdrop: i32, fill_rule: u32, segment_start: u32, segment_end: u32, x: u32, y: u32) -> u32 {
-    var coverage = f32(backdrop);
-    var segment_ix = segment_start;
-    loop {
-        if (segment_ix >= segment_end) {
-            break;
-        }
-        let segment = segments[segment_ix];
-        coverage += segment_coverage_at(segment.p0x, segment.p0y, segment.p1x, segment.p1y, segment.y_edge, x, y);
-        segment_ix += 1u;
-    }
-    return coverage_to_alpha(coverage, fill_rule);
-}
-
-fn segment_coverage_at(p0x: f32, p0y: f32, p1x: f32, p1y: f32, y_edge: f32, x: u32, y: u32) -> f32 {
-    let delta_x = p1x - p0x;
-    let delta_y = p1y - p0y;
-    let row_y = f32(y);
-    let local_y = p0y - row_y;
-    let y0 = clamp(local_y, 0.0, 1.0);
-    let y1 = clamp(local_y + delta_y, 0.0, 1.0);
-    let dy = y0 - y1;
-    let x_sign = signum_f32(delta_x);
-    var coverage = x_sign * clamp(row_y - y_edge + 1.0, 0.0, 1.0);
-
-    if (dy != 0.0) {
-        let recip = 1.0 / delta_y;
-        let t0 = (y0 - local_y) * recip;
-        let t1 = (y1 - local_y) * recip;
-        let sx0 = p0x + t0 * delta_x;
-        let sx1 = p0x + t1 * delta_x;
-        let pixel_x = f32(x);
-        let xmin = min(sx0, sx1) - pixel_x;
-        let xmax = max(sx0, sx1) - pixel_x;
-        var area = clamp(1.0 - xmin, 0.0, 1.0);
-        if (xmax - xmin > 0.000001) {
-            let a_min = min(xmin, 1.0) - 0.000001;
-            let b = min(xmax, 1.0);
-            let c = max(b, 0.0);
-            let d = max(a_min, 0.0);
-            area = (b + 0.5 * (d * d - c * c) - a_min) / (xmax - a_min);
-        }
-        coverage += area * dy;
-    }
-
-    return coverage;
-}
-
+// Keep filter clips and ordinary paths on the same coverage algorithm.
+#include "../shared/coverage.wgsl"

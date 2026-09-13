@@ -72,3 +72,53 @@ WGPU output methods mirror the ordinary Canvas API:
 
 See [BENCHMARKS.md](BENCHMARKS.md) for the scale/dirty-ratio matrix, profiler counters, and baseline
 commands.
+
+## Encoded geometry and scoped damage invariants
+
+Each materialized chunk owns its encoded Canvas. Its cached visual bounds describe
+that Canvas's unclipped output, before ancestor influences or final root clipping.
+Damage collection and frame construction reuse this result. `ChunkCanvas` exposes
+read-only Canvas access; every mutable access uses `edit()`, which clears the cache
+before returning the mutable reference. Content encoding, retained transforms and
+surface resizing all follow this rule. New chunks start with an empty cache. This
+removes repeated geometry traversal at its source rather than skipping required
+old or new damage extents.
+
+Scoped damage propagation uses one work buffer with a separate active range for
+each isolated input texture. Every child input is seeded with the same pending
+unattributed bounds and accumulates its own local sources; it does not inherit
+the work range accumulated by its parent or a mask sibling.
+Completed child output merges into its parent in painter order with the same
+exact-bound deduplication. Intermediate off-canvas extents remain available to
+enclosing filters; clipping occurs only when delivering root damage. This shares
+temporary storage without changing input-domain or dependency semantics.
+
+Shared damage-history steps own exact-length bounds arrays. Root clipping must
+not cause a retained event to keep a large, mostly empty work-buffer allocation.
+Resolving an immediate step borrows its payload; resolving multiple steps produces
+an owned merge. A caller that needs an independent snapshot explicitly takes an
+owned copy. Backdrop ID arrays remain shared with renderer plans.
+
+The permanent `scoped_damage` Criterion workload covers root layer changes,
+isolated layer changes and leaf revisions at small and large backdrop counts.
+Performance conclusions require formal forward/reverse comparisons and adjacent
+same-version controls, followed by scoped and full-corpus pixel checks. Short
+diagnostic probes cannot accept a production change.
+
+## Uniform batch identity and lookup
+
+Uniform arenas are keyed by the underlying resource allocation, including aliases
+through cloned handles. Stage names cannot identify allocations from different
+deferred renderers. Each batch keeps its arenas in a dense vector and uses a
+bounded linear search for up to 16 resources; larger batches build a resource-to-
+position index once and extend it on insertion. Indices are numeric positions,
+so vector reallocation cannot invalidate them. This avoids unconditional hashing
+for tiny batches without restoring quadratic lookup for large batches.
+
+The adapter copies all pending bytes before clearing the batch. Clearing drops
+each arena's byte buffer and removes index entries; only the outer arena vector
+and index retain their capacities. A later batch must not resolve an old
+resource to a reused position. Slot limits,
+layout validation, independent allocation identities, zero padding and upload
+contents remain identical on either side of the lookup boundary. Capacity checks
+and writes retain their existing separate operations.

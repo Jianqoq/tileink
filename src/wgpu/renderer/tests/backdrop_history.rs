@@ -1,5 +1,5 @@
 use super::*;
-use crate::wgpu::renderer::ExternalTextureHistoryId;
+use crate::ExternalTextureHistoryId;
 use crate::{FullRedrawReason, IncrementalRenderMode};
 
 const SIZE: (u32, u32) = (1180, 760);

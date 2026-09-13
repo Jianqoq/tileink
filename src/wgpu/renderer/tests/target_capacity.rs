@@ -1,5 +1,5 @@
 use super::*;
-use crate::wgpu::renderer::{ExternalTextureHistoryId, tests::backdrop_resize};
+use crate::{ExternalTextureHistoryId, wgpu::renderer::tests::backdrop_resize};
 
 const LARGE: (u32, u32) = (256, 192);
 const SMALL: (u32, u32) = (128, 96);

@@ -7,12 +7,11 @@ use peniko::{
 use usvg::{Node, Paint, PaintOrder, SpreadMethod, tiny_skia_path::PathSegment};
 
 use crate::{
-    Brush, Canvas, FillRule, Filter, Radius, Region, WgpuRenderer,
+    Brush, Canvas, FillRule, Filter, Radius, Region,
     shared::{
         bounds::Bounds,
         brush::{PatternBrush, PatternSampling},
-        image::Image as RasterImage,
-        image_resource::ImageResourceId,
+        image_resource::{ImageResourceId, ImageSource},
         layer::filter::{
             COMPONENT_TRANSFER_TABLE_LEN, COMPONENT_TRANSFER_TABLE_SIZE, ColorChannel,
             ComponentTransferTable, CompositeOperator, ConvolveEdgeMode, ConvolveMatrix,
@@ -251,24 +250,24 @@ impl SvgBuilder {
         let transform = self.base_transform * transform_to_affine(image.abs_transform());
         let size = image.size();
         let world_to_local = inverse_affine(transform, "image transform")?;
-        let raster = match image.kind() {
-            usvg::ImageKind::PNG(data) => decode_png_image(data)?,
+        let source: ImageSource = match image.kind() {
+            usvg::ImageKind::PNG(data) => decode_png_image(data)?.into(),
             usvg::ImageKind::JPEG(data) => {
-                decode_encoded_image(data, ::image::ImageFormat::Jpeg, "jpeg image")?
+                decode_encoded_image(data, ::image::ImageFormat::Jpeg, "jpeg image")?.into()
             }
             usvg::ImageKind::GIF(data) => {
-                decode_encoded_image(data, ::image::ImageFormat::Gif, "gif image")?
+                decode_encoded_image(data, ::image::ImageFormat::Gif, "gif image")?.into()
             }
             usvg::ImageKind::WEBP(data) => {
-                decode_encoded_image(data, ::image::ImageFormat::WebP, "webp image")?
+                decode_encoded_image(data, ::image::ImageFormat::WebP, "webp image")?.into()
             }
             usvg::ImageKind::SVG(tree) => {
                 let (width, height) = svg_image_raster_size(transform, size);
-                self.svg_image_to_raster(tree, width, height)?
+                self.svg_image_to_canvas(tree, width, height)?.into()
             }
         };
 
-        let Some(image_key) = canvas.register_scene_image(raster) else {
+        let Some(image_key) = canvas.register_scene_image(source) else {
             return Ok(());
         };
         let Some(pattern) = PatternBrush::new_resource(
@@ -301,12 +300,12 @@ impl SvgBuilder {
         Ok(())
     }
 
-    fn svg_image_to_raster(
+    fn svg_image_to_canvas(
         &self,
         tree: &usvg::Tree,
         width: u32,
         height: u32,
-    ) -> Result<RasterImage, SvgError> {
+    ) -> Result<Canvas, SvgError> {
         if self.image_depth >= MAX_IMAGE_DEPTH {
             return Err(SvgError::unsupported("recursive svg image"));
         }
@@ -330,9 +329,9 @@ impl SvgBuilder {
         }
         .push_tree(&mut canvas, tree)?;
 
-        let mut renderer = WgpuRenderer::new_default_device(width, height, Color::TRANSPARENT);
-        renderer.render(&canvas);
-        Ok(renderer.image().clone())
+        // Preserve the vector scene until the chosen executor can render it on
+        // its own device. SVG lowering must not create a hidden WGPU context.
+        Ok(canvas)
     }
 
     fn push_path(&self, canvas: &mut Canvas, path: &usvg::Path) -> Result<(), SvgError> {
@@ -700,14 +699,10 @@ impl SvgBuilder {
         }
         .push_group(&mut tile_scene, pattern.root())?;
 
-        let mut renderer =
-            WgpuRenderer::new_default_device(tile_width, tile_height, Color::TRANSPARENT);
-        renderer.render(&tile_scene);
-
         let Some(pattern_inverse) = pattern.transform().invert() else {
             return Err(SvgError::unsupported("non-invertible patternTransform"));
         };
-        let Some(image_key) = canvas.register_scene_image(renderer.image().clone()) else {
+        let Some(image_key) = canvas.register_scene_image(tile_scene) else {
             return Err(SvgError::unsupported("empty pattern image"));
         };
         let Some(pattern) = PatternBrush::new_resource(
@@ -780,9 +775,7 @@ impl SvgBuilder {
             .push_group(&mut filter_canvas, image.root())?;
         }
 
-        let mut renderer = WgpuRenderer::new_default_device(width, height, Color::TRANSPARENT);
-        renderer.render(&filter_canvas);
-        let Some(image_key) = canvas.register_scene_image(renderer.image().clone()) else {
+        let Some(image_key) = canvas.register_scene_image(filter_canvas) else {
             return Err(SvgError::unsupported("empty feImage"));
         };
         let Some(pattern) = PatternBrush::new_resource(
@@ -1942,3 +1935,6 @@ fn nonzero_rect_to_kurbo(rect: usvg::NonZeroRect) -> Rect {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod deferred_resources;

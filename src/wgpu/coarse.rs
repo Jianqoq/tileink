@@ -1,8 +1,10 @@
 #![allow(clippy::too_many_arguments)]
 
+use crate::render::binning::{WORKGROUP_SIZE, coarse_bin_count};
+
 use crate::shared::{
     gpu_coarse::coarse_work_active_tile_list_word_offset,
-    gpu_plan::{COARSE_BIN_TILES, COARSE_CHUNK_SIZE, CoarseBinningStats, GpuBufferLengths},
+    gpu_plan::{COARSE_CHUNK_SIZE, GpuBufferLengths},
 };
 
 use super::canvas::{
@@ -11,14 +13,13 @@ use super::canvas::{
 use super::commands::{
     WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
 };
-use super::dispatch_2d;
 use super::lazy::{LazyComputePipeline, LazyShaderModule, PipelineCompilationTracker};
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
+use crate::render::dispatch::dispatch_2d;
 
 #[cfg(test)]
 use std::sync::atomic::{AtomicBool, Ordering};
 
-const WORKGROUP_SIZE: u32 = 256;
 const COUNT_STORAGE_BINDING_COUNT: u32 = 9;
 const PREFIX_STORAGE_BINDING_COUNT: u32 = 10;
 const EMIT_STORAGE_BINDING_COUNT: u32 = 9;
@@ -30,40 +31,6 @@ pub(crate) struct WgpuCoarseBatch {
     pub(crate) layer_stack_start: u32,
     pub(crate) layer_stack_end: u32,
     pub(crate) active_tile_count: Option<u32>,
-}
-
-/// Selects the lower-cost native coarse kernel from dispatch and candidate-loop work.
-///
-/// The compact kernels dedicate a 256-lane workgroup to each dirty tile so candidate draws can
-/// be reduced in parallel. That is ideal for sparse damage, but a large soft shadow can dirty
-/// thousands of tiles containing only one or two draws. Dense bins assign one lane per tile and
-/// avoid launching hundreds of mostly idle workgroups while fine rasterization remains compact.
-/// Conversely, dense lanes scan candidates serially, so the longest tile list in every bin must
-/// be included instead of comparing dispatch counts alone.
-pub(crate) fn coarse_binning_costs(
-    lengths: GpuBufferLengths,
-    stats: CoarseBinningStats,
-) -> (u64, u64) {
-    let prefix_chunks = |tiles: u32| u64::from(tiles.div_ceil(WORKGROUP_SIZE));
-    // Both output ranges share one prefix/apply pair and one chunk-offset workgroup.
-    let compact_dispatches =
-        u64::from(stats.active_tiles) * 2 + prefix_chunks(stats.active_tiles) * 2 + 1;
-    let dense_dispatches =
-        u64::from(coarse_bin_count(lengths)) * 2 + lengths.coarse_chunk_count as u64 * 2 + 1;
-    // Count and emit both traverse the candidate lists. A round represents one 256-lane shader
-    // loop: one page for compact, or one serial candidate ordinal for a dense bin.
-    (
-        compact_dispatches + stats.compact_candidate_rounds * 2,
-        dense_dispatches + stats.dense_candidate_rounds * 2,
-    )
-}
-
-pub(crate) fn prefer_dense_binning(lengths: GpuBufferLengths, stats: CoarseBinningStats) -> bool {
-    if stats.active_tiles == 0 {
-        return false;
-    }
-    let (compact, dense) = coarse_binning_costs(lengths, stats);
-    dense < compact
 }
 
 #[repr(C)]
@@ -442,7 +409,6 @@ impl WgpuCoarsePipeline {
         ) as u32;
 
         let config_offset = commands.write_uniform_slot(
-            "coarse.config",
             &self.config,
             self.config_size,
             self.config_stride,
@@ -909,12 +875,6 @@ static FORCE_COARSE_EMIT_CHUNKS: AtomicBool = AtomicBool::new(false);
 #[cfg(test)]
 pub(crate) fn force_coarse_emit_chunks_for_test(enabled: bool) -> bool {
     FORCE_COARSE_EMIT_CHUNKS.swap(enabled, Ordering::Relaxed)
-}
-
-fn coarse_bin_count(lengths: GpuBufferLengths) -> u32 {
-    let bins_x = (lengths.tiles_width as u32).div_ceil(COARSE_BIN_TILES);
-    let bins_y = (lengths.tiles_height as u32).div_ceil(COARSE_BIN_TILES);
-    bins_x * bins_y
 }
 
 fn dispatch_profiled(

@@ -1,5 +1,6 @@
-use super::incremental::IncrementalRenderStats;
-use crate::shared::cpu_time::CpuInstant;
+use crate::render::incremental::IncrementalRenderStats;
+use crate::render::profile::cpu::{CpuProfiler, record_unavailable_gpu_scope};
+pub(crate) use crate::render::profile::cpu::{profile_cpu, start_cpu_scope};
 use std::{
     cell::{Cell, RefCell},
     fmt,
@@ -11,12 +12,7 @@ use std::{
 const TIMESTAMP_QUERY_PAIRS_PER_BATCH: u32 = 256;
 const TIMESTAMP_QUERY_COUNT_PER_BATCH: u32 = TIMESTAMP_QUERY_PAIRS_PER_BATCH * 2;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct WgpuRenderProfileEntry {
-    pub name: &'static str,
-    pub cpu_duration: Option<Duration>,
-    pub gpu_duration: Option<Duration>,
-}
+pub use crate::render::profile::RenderProfileEntry as WgpuRenderProfileEntry;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct WgpuRenderProfileEventSummary {
@@ -141,6 +137,7 @@ impl fmt::Display for WgpuRenderProfileReport {
 #[derive(Debug)]
 pub(crate) struct WgpuRenderProfiler {
     state: Rc<RefCell<ProfileState>>,
+    cpu: CpuProfiler,
     profile: WgpuRenderProfile,
     pending_readbacks: Vec<PendingGpuReadback>,
 }
@@ -149,6 +146,7 @@ impl Default for WgpuRenderProfiler {
     fn default() -> Self {
         Self {
             state: Rc::new(RefCell::new(ProfileState::default())),
+            cpu: CpuProfiler::default(),
             profile: WgpuRenderProfile::default(),
             pending_readbacks: Vec::new(),
         }
@@ -159,12 +157,11 @@ impl WgpuRenderProfiler {
     pub(crate) fn start(&mut self, device: &::wgpu::Device) {
         self.poll_ready(device);
         self.pending_readbacks.clear();
+        self.cpu.start();
         {
             let mut state = self.state.borrow_mut();
-            state.entries.clear();
             state.pending_gpu.clear();
             state.timestamp_batches.clear();
-            state.started = Some(CpuInstant::now());
             state.active = true;
         }
         self.profile = WgpuRenderProfile::default();
@@ -179,21 +176,15 @@ impl WgpuRenderProfiler {
         queue: &::wgpu::Queue,
         incremental: IncrementalRenderStats,
     ) -> &WgpuRenderProfile {
-        let (entries, pending_gpu, timestamp_batches, cpu_total) = {
+        let (pending_gpu, timestamp_batches) = {
             let mut state = self.state.borrow_mut();
             state.active = false;
-            let cpu_total = state
-                .started
-                .take()
-                .map(|started| started.elapsed())
-                .unwrap_or_default();
             (
-                std::mem::take(&mut state.entries),
                 std::mem::take(&mut state.pending_gpu),
                 std::mem::take(&mut state.timestamp_batches),
-                cpu_total,
             )
         };
+        let cpu_profile = self.cpu.finish();
 
         let timestamp_period = queue.get_timestamp_period();
         for batch in timestamp_batches {
@@ -215,8 +206,8 @@ impl WgpuRenderProfiler {
             }
         }
         self.profile = WgpuRenderProfile {
-            entries,
-            cpu_total,
+            entries: cpu_profile.entries,
+            cpu_total: cpu_profile.total,
             incremental: Some(incremental),
         };
         self.poll_ready(device);
@@ -268,51 +259,13 @@ impl WgpuRenderProfiler {
 
 #[derive(Debug, Default)]
 struct ProfileState {
-    entries: Vec<WgpuRenderProfileEntry>,
     pending_gpu: Vec<WgpuGpuProfileScope>,
     timestamp_batches: Vec<Rc<WgpuGpuProfileBatch>>,
-    started: Option<CpuInstant>,
     active: bool,
 }
 
 thread_local! {
     static ACTIVE_PROFILER: RefCell<Option<Rc<RefCell<ProfileState>>>> = const { RefCell::new(None) };
-}
-
-pub(crate) struct WgpuCpuProfileScope {
-    state: Rc<RefCell<ProfileState>>,
-    name: &'static str,
-    started: CpuInstant,
-}
-
-impl Drop for WgpuCpuProfileScope {
-    fn drop(&mut self) {
-        let mut state = self.state.borrow_mut();
-        if state.active {
-            state.entries.push(WgpuRenderProfileEntry {
-                name: self.name,
-                cpu_duration: Some(self.started.elapsed()),
-                gpu_duration: None,
-            });
-        }
-    }
-}
-
-pub(crate) fn start_cpu_scope(name: &'static str) -> Option<WgpuCpuProfileScope> {
-    let state = ACTIVE_PROFILER.with(|active| active.borrow().clone())?;
-    if !state.borrow().active {
-        return None;
-    }
-    Some(WgpuCpuProfileScope {
-        state,
-        name,
-        started: CpuInstant::now(),
-    })
-}
-
-pub(crate) fn profile_cpu<T>(name: &'static str, work: impl FnOnce() -> T) -> T {
-    let _scope = start_cpu_scope(name);
-    work()
 }
 
 #[derive(Debug)]
@@ -413,11 +366,7 @@ pub(crate) fn start_gpu_scope(
         .features()
         .contains(::wgpu::Features::TIMESTAMP_QUERY)
     {
-        state.borrow_mut().entries.push(WgpuRenderProfileEntry {
-            name,
-            cpu_duration: None,
-            gpu_duration: None,
-        });
+        record_unavailable_gpu_scope(name);
         return None;
     }
 

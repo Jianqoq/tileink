@@ -1,3 +1,5 @@
+#[path = "../examples/common/benchmark_gpu.rs"]
+mod benchmark_gpu;
 use std::time::Duration;
 
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
@@ -42,24 +44,9 @@ struct Gpu {
 
 impl Gpu {
     fn new(max_upload_words: usize) -> Self {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: false,
-            apply_limit_buckets: false,
-        }))
-        .expect("request upload experiment adapter");
-        eprintln!("range scatter benchmark adapter: {:?}", adapter.get_info());
-        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-            label: Some("tileink range scatter benchmark device"),
-            required_features: wgpu::Features::empty(),
-            required_limits: adapter.limits(),
-            memory_hints: wgpu::MemoryHints::Performance,
-            trace: wgpu::Trace::Off,
-            experimental_features: wgpu::ExperimentalFeatures::disabled(),
-        }))
-        .expect("request upload experiment device");
+        let api = std::env::var("TILEINK_BENCH_API").unwrap_or_else(|_| "vulkan".into());
+        let (_, device, queue) =
+            benchmark_gpu::device(&api, true, false, wgpu::MemoryHints::Performance);
         let destination = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("range scatter benchmark destination"),
             size: (TOTAL_WORDS * size_of::<u32>()) as u64,

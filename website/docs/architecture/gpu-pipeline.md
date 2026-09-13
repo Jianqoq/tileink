@@ -45,7 +45,7 @@ Dense coarse 按 tile 顺序分配；compact 增量 coarse 按 active tile 列�
 
 ## Fine
 
-Fine shader 每 workgroup 处理 tile pixels，组合 path coverage、SDF、text coverage、brush sampling、clip/opacity/blend stack。native backend 可直接写 storage texture；portable backend 使用兼容的中间表示与 texture copy。
+Fine shader 每 workgroup 处理 tile pixels，组合 path coverage、SDF、text coverage、brush sampling、clip/opacity/blend stack。WGPU native 纹理路径可直接写 storage texture；portable 纹理路径使用兼容的中间表示与 texture copy。
 
 Fine 始终使用 direct 派发，每 tile 一个 workgroup。每批只有一次 fine dispatch，删除了
 原先的参数清零、分类压缩和三条间接渲染链，从根源上去掉多批次场景的重复调度开销。
@@ -126,3 +126,138 @@ Pattern 坐标的两个乘积可能严格抵消。普通乘加的 contraction �
 修复这一数值根因；没有 epsilon、坐标吸附、fixture 分支或输出后处理。
 该修正不承诺所有浮点表达式在不同 API 上一致。参考运行器仍要求全部 RGBA 字节相等，
 独立数值测试和完整旋转 pattern 回归分别检查运算语义与实际渲染。
+
+## 8-bit 数值边界
+
+WGSL 的普通乘加可以被编译器收缩或重新结合。即使中间值只差一个浮点最低位，
+覆盖率、渐变或 filter 的结果在半通道边界附近也可能相差 1。当前实现针对已定位的
+根因约定计算顺序，而跨 API 验收仍检查最终所有 RGBA 字节。
+
+- Scan 的线段/tile 交点及线性、径向渐变变换使用显式 `fma`。
+- 渐变直接插值已存储的 premultiplied 0–255 通道，再舍入一次；不先除以 255
+  再乘回，避免丢失精确的半通道值。
+- 普通 fine 与 filter clip 共用 `shared/coverage.wgsl`。行交点以较近端点为锚；
+  像素覆盖率使用裁剪后的梯形积分，避免平方差相消及窄线段上的 epsilon 偏差。
+  CPU debug alpha 保持同样的计算语义。
+- 湍流梯度点积、标量插值与光照点积具有明确的融合顺序。光照 Sobel 梯度在
+  0–255 alpha 单位下累加后归一化，保留单边区域边界的权重。
+- 高斯模糊成对采样的三因子权重递推保留每个乘积的舍入边界。光照高光先求
+  点积、再统一归一化，避免逐分量除法后再相乘造成额外舍入。
+
+这些是数值计算的根因修复，没有增加生产 readback 或 GPU/CPU 同步。GPU/驱动覆盖、
+最终逐字节一致性和性能结论以仓库根目录 `NATIVE_BACKEND_PROGRESS.md` 中的实际验证
+为准；显式 FMA 本身不代表所有输入和设备已经通过认证。
+
+
+### 图片缓存的分配身份
+
+图片上传签名以不可变 `Rc<Image>` 的分配地址标识内容；缓存必须同时持有这些分配的
+弱引用。只保存地址或地址散列会在旧场景释放、分配地址复用后把新图片误认为旧图片，
+也无法识别资源移除后原地修改再插入的情况。弱引用让分配身份与缓存同寿命，并让
+`Rc::make_mut` 在修改前分离身份，同时不保留已经释放的源图片像素缓冲。这是缓存
+正确性的根因约束，适用于 renderer/scene 图片与 atlas/独立 texture 的两级复用。
+
+
+Portable fine 的部分绘制只保证 active tiles 内的临时纹理像素有效。
+带 offscreen 操作的一般执行路径将这些 tiles 合并为不重叠、裁剪到输出尺寸的矩形后拷回；
+不能把临时纹理的未写入区域覆盖到 retained history。全量帧仍整张拷回。
+这是未更新像素丢失的根因修复，不通过强制全量重绘保住背景。
+
+Retained journal 的删除 patch 必须将旧像素损伤作为无节点归属的范围传播，与完整帧 diff 一致。已删除节点不存在于新帧的 painter order，继续按旧节点 ID 归因会漏掉后续 backdrop 的依赖与缓存失效；普通 dirty tiles 不能替代这一依赖传播。
+
+Filter、Isolate 和 Mask 进入新的离屏依赖域时，同样保留无节点归属的损伤，以覆盖域内已删除节点对后续 backdrop 的影响。只复制这些无法归因的范围，不继承域外按 painter order 累积的普通节点损伤，保持隔离输入语义。
+
+双轴局部 blur 的 horizontal intermediate 使用独立的纵向 halo tile 列表；仅扩大 uniform 的输出矩形不能突破原 compact worklist。中间列表保留稀疏列和独立的上传 arena slot，随后恢复原列表，让 vertical pass 只更新真正的输出 dirty tiles。中间纹理的未初始化旧内容不得成为合法采样。
+
+
+### 外部输出纹理的子资源边界
+
+当前 wgpu 外部输出 API 接收一张完整的 `Rgba8Unorm` 二维图像，要求单 sample、单 layer、
+单 mip。数组纹理和 mip 链在创建 view、规划 history 或编码目标写入之前返回
+`UnsupportedDestination`，错误中包含实际层数和 mip 数。默认 view 会覆盖全部层和 mip，
+把这类纹理放入 D2 storage binding 会触发 wgpu 验证 panic；提前拒绝修复了验证缺口，
+不改变合法目标的像素算法，也不隐式选择调用方的第一个子资源。被拒绝后渲染器仍可使用自有目标。
+
+## 共享执行边界
+
+`src/render/` 保存 frame/layer/filter 的执行顺序、增量状态和资源生命周期合同。
+WGPU Adapter 负责实际 GPU 资源与命令；共享层先准备子场景，再执行根 scan/clear、
+选择活动 batch，并且只在执行成功后复制有效历史。空 damage 仍可按需复制历史，
+不会因此准备管线。原生 DX12/Vulkan Adapter 尚未实现，feature 构造会明确返回错误。
+
+### 滤镜采样与纹理容量
+
+Filter 的双线性采样在逻辑像素坐标中选择四个 texel，每个通道按水平、垂直顺序使用显式 FMA。
+两端采样坐标均限制在逻辑图像边缘，包括单行、单列和单像素图像；预乘颜色和 alpha 直接插值。
+这是容量复用导致 resize 像素变化的根因修复：按物理容量归一化 UV，再由硬件还原采样坐标，
+会在取整边界产生不同权重。中间纹理的增长与复用策略保持有效，不增加生产 readback 或等待。
+原始 source/aux 仍共用各自的 sampled texture，滤镜不再为这两者绑定线性 sampler；图片 atlas 的 sampler 独立保留。
+`filter_sampling` Criterion benchmark 覆盖大面积液态玻璃的固定尺寸和四步 resize，性能结果须单独验收。
+
+场景准备的 CPU 决策由 `render::prepare` 共享。每个 Renderer 保存独立的外层计划 key
+和栈深度缓存；描述符值修补会消费 Canvas 的新计划，只有拓扑尺寸元数据可以复用。
+局部 scratch 计划不会替换外层缓存。文字的首次准备、retained range 更新和 flat frame
+reconciliation 也共用同一入口。具体纹理、buffer、绑定和上传由各 Adapter 执行。
+
+滤镜内部的执行顺序由 `render::filter_program` 共享：它解析 Chain/Graph 输入、复用
+SourceAlpha、消耗资源 cursor，并管理临时目标和 blur/glass 的多 pass 生命周期。
+Adapter 接收有类型的单个 `FilterKernel`，负责实际纹理、绑定和命令编码。失败的 clear
+或颜色操作必须终止后续执行；无效图输入必须释放已取得的 scratch。局部 blur 的垂直
+halo、降采样工作列表和玻璃效果的增量状态在失败时也必须恢复，不额外提交或等待 GPU。
+
+### 按需收集损伤传播来源
+
+增量帧始终计算删除、插入、显式损伤和手动失效的目标 tile。只有确实需要命令树
+传播时，才收集按节点归属或无归属的损伤来源。版本精确衔接且已提供完整 indexed
+backdrop 损伤的 delta，以及无需依赖传播的帧，都不构建这份辅助数据。
+
+这修复了批量删除时对未消费的矩形列表逐项去重的多余开销。需要传播的删除节点仍
+保留无归属来源，保证其旧像素影响后续 backdrop；跨版本回退和历史恢复逻辑不变。
+`retained_scale` 的 `arena-fragmentation` Criterion 场景覆盖完整删除/插入周期。
+
+### 滤镜 shader module 的延迟复用
+
+wgpu 滤镜 owner 按完整资源掩码保存八个固定的延迟 module 槽，掩码包含 active tiles。
+device、shader 源码、native/portable 纹理模式和图片表变体属于该 owner，不跨设备共享。
+相同绑定重映射的入口复用 module，各入口的 compute pipeline 仍独立延迟创建。
+这修复了同一完整 WGSL 在多个滤镜入口首次调用时被重复解析和验证的问题。
+
+构造 Renderer 不创建这些 module 或 pipeline。槽查找、源码修补和绑定重映射只在
+入口首次初始化时发生；稳定调用直接复用现有 kernel，不增加逐帧哈希或全局缓存。
+`filter_compilation` Criterion 分别检查首次滤镜工厂与缓存调用，完整帧性能另行对照。
+
+### 玻璃折射的数值边界
+
+玻璃边缘位移直接用 Snell 关系计算入射与折射的正弦、余弦及角差正切，
+避免 `asin → sin → asin → tan` 在 DX12/Vulkan 上的舍入漂移。平方差和角差
+明确使用 FMA；掠射极限单独计算，避免有限但很大的折射率使分母下溢。
+色散系数恰好为零时保留原采样位置，避免已溢出的位移乘零产生 NaN。
+这是计算源头的修复，没有参数上限、像素吸附、生产 readback 或额外等待。
+
+永久回归调用生产 WGSL，覆盖真实玻璃场景、365 个折射输入和正常/极端色散坐标。
+几何值另与独立 f64 公式比较；该数值误差界不用于图像验收，跨 API 的 RGBA
+仍须逐字节相等。`filter_sampling` Criterion 覆盖固定尺寸与 resize 的生产玻璃
+路径，正确性通过不等于性能已通过，也不表示原生 API 后端已实现。
+
+
+### Backdrop 作用域分类的失效条件
+
+增量 materializer 缓存是否存在作用域内的 Backdrop。不涉及依赖拥有者、依赖内容或祖先关系的普通更新复用分类；依赖内容变化、新增或删除、祖先层级变化、surface 变化、journal
+断档和完整重建会重新分类。检查同时涵盖重建前后的依赖集合，空集合直接跳过。
+这消除了根级 Backdrop 场景每次更新都遍历全部依赖的重复工作。
+
+Layer 重挂载可以保持 generation 并复用 chunk，因此 live Scene/Layer 的非局部
+和 surface-dependent 索引成员必须保留到 chunk 重建刷新时。提前清除会让下一帧
+部分更新漏掉 Backdrop 输入，造成错误像素。永久测试同时对照新建 materializer
+的索引，以及移动后连续帧的 Auto/独立 ForceFull 全量 RGBA。
+
+
+根级 Backdrop 的绘制顺序也按上述失效条件缓存。普通更新继续遍历依赖并传播
+损伤，但复用已有 painter path 顺序，避免每帧重新分配路径和排序；存在 scoped
+依赖时清空这个根级专用索引。重排、重挂载和 journal 恢复后必须与当前层级一致。
+
+纯 layer 更新复用已经计算的旧边界，并将新边界同时用于 patch 稳定性判定和
+scoped damage 来源收集，避免重复查询同一 chunk。输入域检查还使用明确的不变量：
+Filter 和 Mask 始终读取独立目标，因此旧输入域已独立时可以省略其后续复查。
+旧域未知或 fused、其他 layer 类型仍保留完整前后比较，混合事务也必须先快照
+所有需要比较的旧域，再修改命令。不能将这条规则扩大为跳过损伤传播或渲染。

@@ -1,3 +1,5 @@
+#[path = "../examples/common/benchmark_gpu.rs"]
+mod benchmark_gpu;
 use std::time::{Duration, Instant};
 
 use criterion::{Criterion, criterion_group, criterion_main};
@@ -5,31 +7,10 @@ use peniko::{Color, kurbo::Rect};
 use tileink::{Canvas, Radius, Renderer};
 
 fn benchmark_device(portable: bool) -> (wgpu::Device, wgpu::Queue) {
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::HighPerformance,
-        compatible_surface: None,
-        force_fallback_adapter: false,
-        apply_limit_buckets: false,
-    }))
-    .expect("root-batch benchmark requires a GPU adapter");
-    eprintln!("root-batch adapter: {:?}", adapter.get_info());
-    let native = wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
-        | wgpu::Features::TEXTURE_BINDING_ARRAY
-        | wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING;
-    pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        label: Some("tileink root-batch benchmark device"),
-        required_features: if portable {
-            wgpu::Features::empty()
-        } else {
-            native
-        },
-        required_limits: adapter.limits(),
-        memory_hints: wgpu::MemoryHints::Performance,
-        trace: wgpu::Trace::Off,
-        experimental_features: wgpu::ExperimentalFeatures::disabled(),
-    }))
-    .expect("root-batch benchmark requires the requested texture path")
+    let api = std::env::var("TILEINK_BENCH_API").unwrap_or_else(|_| "vulkan".into());
+    let (_, device, queue) =
+        benchmark_gpu::device(&api, portable, false, wgpu::MemoryHints::Performance);
+    (device, queue)
 }
 
 fn root_batches(width: u32, height: u32, batches: u32, sparse: bool) -> Canvas {
@@ -146,9 +127,6 @@ fn root_batch_submission(c: &mut Criterion) {
         let (device, queue) = benchmark_device(portable);
         let mode = if portable { "portable" } else { "native" };
         let mut group = c.benchmark_group(format!("{mode}_root_batches"));
-        group.sample_size(20);
-        group.warm_up_time(Duration::from_secs(2));
-        group.measurement_time(Duration::from_secs(4));
         let mut renderer = Renderer::new(&device, &queue, 1600, 1000, Color::TRANSPARENT);
         for (name, canvas, batches) in benchmark_scenes() {
             let width = canvas.physical_width();
@@ -201,5 +179,12 @@ fn root_batch_submission(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, root_batch_submission);
+criterion_group! {
+    name = benches;
+    config = Criterion::default()
+        .sample_size(20)
+        .warm_up_time(Duration::from_secs(2))
+        .measurement_time(Duration::from_secs(4));
+    targets = root_batch_submission
+}
 criterion_main!(benches);

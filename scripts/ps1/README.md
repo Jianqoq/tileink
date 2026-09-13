@@ -73,6 +73,29 @@ tracks completion and exact differences. Each route saves raw premultiplied RGBA
 RGB under zero alpha; `Image::save` is deliberately not used because it unpremultiplies.
 Only `complete: true` together with `passed: true` means the requested input set matched.
 
+Run all current examples from the shared 38-module / 45-output catalog with:
+
+```powershell
+cargo run --release --example wgpu_backend_parity -- `
+  --suite examples --textures both `
+  --dxc "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\dxcompiler.dll" `
+  --output target/backend-parity/examples-run-1
+```
+
+`--suite` and `--input` cannot be combined. The example runner uses the selected
+route's device and queue for every renderer, including profile-only workloads.
+It captures raw images before ordinary PNG conversion. Unknown, duplicate or missing
+outputs fail; stale PNG files in the ordinary output directory are not counted.
+Before rendering, the runner freezes ordered font faces, collection indices, generic
+family mappings, locale and deduplicated font bytes under `fonts/`. All external
+example SVGs are parsed once with their actual image/font dependencies; routes share
+those immutable trees, and the original resources are checked again at completion.
+A new SVG file used by the suite must be registered in `suite::SVG_INPUTS`; an
+unregistered lookup fails instead of reopening an unrecorded file.
+`example-pipelines.json` records actual compiled and embedded-DXIL pipeline counts
+for all 45 outputs and the two profile workloads. These counts document compiler
+path use; they do not by themselves certify a complete compiler-mode matrix.
+
 Without `--dxc`, WGPU uses its automatic compiler selection and the manifest explicitly marks
 the compiler as uncertified. Successful smoke tests or a subset do not certify the complete
 native backend matrix. Current scope and unresolved requirements are in
@@ -92,3 +115,36 @@ Run GPU jobs serially. The ignored tests require actual DX12/Vulkan hardware and
 pinned compiler is missing; the ordinary empty-scene GPU test uses the repository's existing
 `TILEINK_RUN_WGPU_TESTS` opt-in. Large shaders can make first render/compilation take minutes;
 this is separate from measured steady-state frame time.
+
+
+#### Forced precompiled DXIL and retained reference
+
+`wgpu_backend_parity --dx12-fine precompiled --textures both` requires the DX12
+portable-texture route to actually initialize embedded fine DXIL. The capability
+request includes passthrough shaders and the complete texture-array contract;
+missing capabilities/artifacts or runtime fallback fail certification. The default
+`--dx12-fine runtime` omits passthrough. The manifest embeds build-time DXC version,
+tool hashes, input fingerprint, flags, HLSL options and DXIL hashes in addition to
+the separately pinned runtime compiler DLL. This remains the existing WGPU fine
+path, not the proposed maintained native HLSL implementation.
+
+`--suite retained` executes 29 deterministic transaction/history frames across
+three target kinds (owned, transient, persistent) and both Auto/ForceFull on each
+selected API/texture route: 24 independent renderer states with `--textures both`.
+It saves every raw frame and `retained-pipelines-and-stats.json`. Font bytes are
+frozen before execution. Designated changed frames must actually render a subset
+of tiles in Auto, while ForceFull must cover the entire target. An image is changed
+while the second external target is active before the older first image is reused.
+Final resource verification is inside the report's completion boundary.
+
+Example invocation after a release build:
+
+```powershell
+.\target\release\examples\wgpu_backend_parity.exe --suite retained --textures both `
+  --dx12-fine precompiled --dxc $DxcDll --luid $GpuLuid --output target/backend-parity/retained-unique-run
+```
+
+The 29-frame retained reference has passed both runtime and forced precompiled
+fine modes on the recorded NVIDIA device; see `NATIVE_BACKEND_PROGRESS.md` for
+complete-run evidence, required repeats and remaining M0 gates. Existing raw PNGs must not be
+replaced when repeating a run: choose a new output directory each time.

@@ -110,3 +110,118 @@ ordered on the same queue. `IncrementalRenderStats::queue_submissions` reports a
 `cargo bench --bench root_batches` measures CPU-plus-GPU completion time across native/portable
 paths, target sizes, and batch counts. Application FPS, p95, and longest-frame latency require a
 separate end-to-end benchmark; they cannot be inferred from this microbenchmark alone.
+
+## Shared execution boundary
+
+`src/render/` owns frame/layer/filter order, incremental state and resource-lifetime
+contracts. The WGPU adapter owns actual GPU resources and commands. Shared execution
+prepares child scenes before root scan/clear, selects active batches and copies valid
+history only after successful execution. Empty damage can still copy history without
+preparing pipelines. Native DX12/Vulkan adapters remain unimplemented and report
+explicit constructor errors.
+
+### Filter sampling and texture capacity
+
+Filter bilinear sampling selects four texels in logical pixel coordinates and uses explicit horizontal,
+then vertical FMA for each premultiplied color and alpha channel. Both taps clamp to logical image edges,
+including single rows, columns and texels. This fixes the allocation-dependent resize pixels at their source:
+normalizing UV by physical capacity and recovering sampler coordinates can change weights at rounding boundaries.
+Intermediate texture growth and reuse remain available, without production readbacks or waits.
+The source and auxiliary inputs retain their sampled textures but no longer bind a linear sampler;
+the image atlas sampler remains independent. The `filter_sampling` Criterion benchmark covers a large
+liquid-glass panel at fixed size and through a four-step resize cycle; performance requires separate acceptance.
+
+CPU scene preparation decisions are shared in `render::prepare`. Each renderer keeps
+an independent outer plan key and stack-depth cache. Patched descriptor values consume
+Canvas's current plan while reusing only topology size metadata; a localized scratch
+plan never replaces the outer cache. Initial text preparation, retained range updates
+and flat-frame reconciliation share the same entry. Each adapter owns concrete
+textures, buffers, bindings and uploads.
+
+`render::filter_program` shares the internal filter schedule: Chain/Graph input
+resolution, SourceAlpha reuse, resource cursors, scratch targets and multi-pass
+blur/glass lifetimes. Adapters encode individual typed `FilterKernel` operations
+using concrete textures and bindings. Failed clears or pointwise operations stop
+the schedule; invalid graph edges release acquired scratch. Partial blur halos,
+downsampled worklists and suspended glass work are restored on failure as well as
+success, without adding a GPU submission or wait.
+
+### Collect damage propagation sources on demand
+
+Incremental frames always calculate target tiles for removals, insertions, explicit
+damage and manual invalidation. Node-attributed and unattributed source rectangles
+are collected only when the command-tree propagation pass needs them. An exactly
+connected delta with complete indexed backdrop damage, or a frame requiring no
+dependency propagation, does not construct this auxiliary data.
+
+This removes repeated deduplication of unused rectangle lists during bulk removals.
+When propagation is needed, removed nodes still supply unattributed damage so their
+old pixels invalidate later backdrops. Cross-version fallback and history recovery
+are unchanged. The `retained_scale` Criterion `arena-fragmentation` case covers the
+complete removal/insertion cycle.
+
+### Lazy filter shader module reuse
+
+The wgpu filter owner keeps eight fixed lazy module slots keyed by the complete
+resource mask, including active tiles. Device, shader source, native/portable
+texture mode and image-table variant belong to that owner; modules are never shared
+across devices. Entry points with the same binding remap reuse a module while their
+compute pipelines remain independently lazy. This fixes repeated parsing and
+validation of the same full WGSL during first use of multiple filter entry points.
+
+Renderer construction creates none of these modules or pipelines. Slot lookup,
+source patching and binding remapping occur only during first kernel initialization;
+steady calls reuse the existing kernel without a per-frame hash or global cache.
+The `filter_compilation` Criterion benchmark checks first-filter factory work and
+cached calls separately; whole-frame performance requires its own comparison.
+
+### Numerical boundaries of glass refraction
+
+Glass edge displacement evaluates Snell's relation using incident/refracted sines,
+cosines and the tangent of their angle difference. This removes the cross-API rounding
+drift from `asin -> sin -> asin -> tan`. Squared differences and angle differences use
+explicit FMA. A separate grazing limit avoids denominator underflow for large finite
+refractive indices. An exactly zero dispersion coefficient preserves the original sample
+position, avoiding NaN from an overflowed displacement multiplied by zero.
+These fix the source calculations without parameter caps, pixel snapping, production
+readbacks or additional waits.
+
+Permanent regressions invoke production WGSL for a real glass scene, 365 refraction
+inputs and ordinary/extreme dispersion coordinates. Geometry also has an independent
+f64 oracle; its numerical error bounds never apply to image acceptance, which still
+requires byte-identical RGBA across APIs. The `filter_sampling` Criterion benchmark
+covers the production glass path at fixed size and during resize. Correctness does not
+establish performance acceptance or imply that native API backends are implemented.
+
+
+### Invalidating backdrop scope classification
+
+The incremental materializer caches whether any backdrop dependency is scoped.
+Ordinary updates that do not involve dependency owners, dependency contents or
+ancestry reuse this classification. Dependency
+content changes, insertion/removal, ancestor hierarchy changes, surface changes,
+journal gaps and full reconstruction refresh it. Checks cover both the old and
+rebuilt dependency sets, with an empty-set fast path. This removes repeated full
+dependency scans from root-backdrop updates.
+
+Reparenting a Layer may preserve its generation and reuse its chunk. Live Scene
+and Layer membership in the nonlocal and surface-dependent indexes must survive
+until chunk reconstruction refreshes it. Clearing membership early can omit a
+Backdrop input update on a later partial frame and produce incorrect pixels.
+Permanent tests compare indexes with a fresh materializer and compare complete
+RGBA from Auto and independent ForceFull rendering across post-move frames.
+
+
+Root Backdrop painter order uses the same invalidation conditions. Ordinary
+updates still visit dependencies and propagate damage, but reuse the ordered
+painter paths instead of allocating and sorting them every frame. A scoped
+dependency clears this root-only index. Reorder, reparent and journal recovery
+must restore order from the current hierarchy.
+
+Layer-only updates reuse their computed old bounds and share new bounds between
+patch stability and scoped damage-source collection. Input-domain checks also
+use an explicit invariant: Filter and Mask always read an isolated target, so
+an already isolated old domain needs no later recheck. Unknown or fused old
+domains and every other layer kind retain the complete old/new comparison.
+Mixed transactions snapshot every domain that still needs comparison before
+mutating commands. This rule never skips damage propagation or rendering.

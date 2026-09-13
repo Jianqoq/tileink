@@ -3,18 +3,16 @@
 //! These APIs choose where retained history lives, but delegate frame planning and cache
 //! ownership to `RetainedRenderState` instead of adding another state machine to `Renderer`.
 
+use crate::render::incremental::{IncrementalOutputMode, TransientOutputDecision};
+use crate::render::{
+    output::ExternalTextureHistoryId,
+    retained::{HistoryOwner, SelectedScene},
+};
 use std::sync::mpsc;
 
 use crate::{Canvas, RetainedScene, TextFontSystem, shared::image::Image, text::TextContext};
 
-use super::{
-    super::{
-        fine::WgpuFinePipeline,
-        incremental::{IncrementalOutputMode, TransientOutputDecision},
-    },
-    Renderer,
-    retained::{HistoryOwner, SelectedScene},
-};
+use super::{super::fine::WgpuFinePipeline, Renderer};
 
 #[derive(Debug)]
 pub enum WgpuTextureRenderError {
@@ -26,28 +24,17 @@ pub enum WgpuTextureRenderError {
     },
     DestinationUsageMissing(::wgpu::TextureUsages),
     DestinationStorageUsageMissing(::wgpu::TextureUsages),
+    DestinationReadUsageMissing {
+        actual: ::wgpu::TextureUsages,
+        required: ::wgpu::TextureUsages,
+    },
     UnsupportedDestination {
         format: ::wgpu::TextureFormat,
         dimension: ::wgpu::TextureDimension,
         sample_count: u32,
+        depth_or_array_layers: u32,
+        mip_level_count: u32,
     },
-}
-
-/// Stable identity for a caller-owned texture whose pixels persist between retained frames.
-///
-/// Reuse an ID only while passing the same texture with unmodified contents. Allocate a new ID
-/// after recreating, resizing, clearing, or otherwise mutating that texture outside tileink.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct ExternalTextureHistoryId(u64);
-
-impl ExternalTextureHistoryId {
-    pub const fn new(id: u64) -> Self {
-        Self(id)
-    }
-
-    pub const fn get(self) -> u64 {
-        self.0
-    }
 }
 
 impl std::fmt::Display for WgpuTextureRenderError {
@@ -70,13 +57,20 @@ impl std::fmt::Display for WgpuTextureRenderError {
                 f,
                 "destination texture usage {usage:?} is missing wgpu::TextureUsages::STORAGE_BINDING"
             ),
+            Self::DestinationReadUsageMissing { actual, required } => write!(
+                f,
+                "destination texture usage {actual:?} is missing {:?} required by root effects",
+                *required - *actual,
+            ),
             Self::UnsupportedDestination {
                 format,
                 dimension,
                 sample_count,
+                depth_or_array_layers,
+                mip_level_count,
             } => write!(
                 f,
-                "unsupported destination texture format {format:?}, dimension {dimension:?}, sample_count {sample_count}; expected single-sample 2D Rgba8Unorm"
+                "unsupported destination texture format {format:?}, dimension {dimension:?}, sample_count {sample_count}, depth_or_array_layers {depth_or_array_layers}, mip_level_count {mip_level_count}; expected single-sample, single-layer, single-mip 2D Rgba8Unorm"
             ),
         }
     }
@@ -478,6 +472,18 @@ impl Renderer {
             self.retained
                 .mark_scene_prepared(materialization, uses_text);
         }
+        if render_direct && !dst.usage().contains(self.prepared_output_read_usages) {
+            self.root_target_view = None;
+            self.root_target_texture = None;
+            // No destination dispatch/copy has been encoded. Abort the damage
+            // plan without committing its cursor; invalidate history so recovery
+            // cannot reuse output from a frame that was never rendered.
+            self.retained.finish_frame(plan, false, false);
+            return Err(WgpuTextureRenderError::DestinationReadUsageMissing {
+                actual: dst.usage(),
+                required: self.prepared_output_read_usages,
+            });
+        }
         let rendered = if has_work || copy_history {
             self.render_prepared_tile_plan_with_history_copy(scene, copy_history.then_some(dst))
         } else {
@@ -525,14 +531,21 @@ impl Renderer {
         {
             return Err(WgpuTextureRenderError::DestinationUsageMissing(dst.usage()));
         }
+        // The output API addresses one complete 2D image. Its direct view and all
+        // copy/history paths must agree on that subresource; reject arrays and mip
+        // chains here instead of allowing a later GPU bind-group validation panic.
         if dst.format() != ::wgpu::TextureFormat::Rgba8Unorm
             || dst.dimension() != ::wgpu::TextureDimension::D2
             || dst.sample_count() != 1
+            || dst.depth_or_array_layers() != 1
+            || dst.mip_level_count() != 1
         {
             return Err(WgpuTextureRenderError::UnsupportedDestination {
                 format: dst.format(),
                 dimension: dst.dimension(),
                 sample_count: dst.sample_count(),
+                depth_or_array_layers: dst.depth_or_array_layers(),
+                mip_level_count: dst.mip_level_count(),
             });
         }
         Ok(())
@@ -551,6 +564,31 @@ impl Renderer {
     }
 }
 
+/// Read access of the main prepared plan; nested effects use scratch targets.
+/// Cache with prepared plan metadata, never rescan or compile at output validation.
+pub(super) fn root_read_usages(plan: &crate::shared::execution::ExecPlan) -> ::wgpu::TextureUsages {
+    use crate::shared::execution::ExecOp;
+    let mut required = ::wgpu::TextureUsages::empty();
+    for op in &plan.ops {
+        if matches!(
+            op,
+            ExecOp::OffscreenLayer { .. } | ExecOp::OffscreenMaskLayer { .. }
+        ) {
+            required |= ::wgpu::TextureUsages::COPY_SRC;
+        }
+        if matches!(
+            op,
+            ExecOp::OffscreenLayer {
+                layer: crate::shared::layer::Layer::Backdrop { .. },
+                ..
+            }
+        ) {
+            required |= ::wgpu::TextureUsages::TEXTURE_BINDING;
+        }
+    }
+    required
+}
+
 fn rgba8_byte_len(width: u32, height: u32) -> ::wgpu::BufferAddress {
     width as ::wgpu::BufferAddress
         * height as ::wgpu::BufferAddress
@@ -567,10 +605,14 @@ mod tests {
             format: ::wgpu::TextureFormat::Rgba8UnormSrgb,
             dimension: ::wgpu::TextureDimension::D2,
             sample_count: 1,
+            depth_or_array_layers: 1,
+            mip_level_count: 1,
         }
         .to_string();
 
-        assert!(message.ends_with("expected single-sample 2D Rgba8Unorm"));
+        assert!(
+            message.ends_with("expected single-sample, single-layer, single-mip 2D Rgba8Unorm")
+        );
     }
 
     #[test]
@@ -580,5 +622,41 @@ mod tests {
                 .to_string();
 
         assert!(message.contains("COPY_SRC | COPY_DST"));
+    }
+
+    #[test]
+    fn root_effect_usages_do_not_leak_from_nested_scratch_targets() {
+        use peniko::kurbo::Rect;
+        let required = |scene: &crate::Canvas| {
+            super::root_read_usages(
+                &scene.compile_shared(crate::shared::execution::ROOT_COMMAND_LIST_ID),
+            )
+        };
+        let storage = ::wgpu::TextureUsages::STORAGE_BINDING;
+        let copy = storage | ::wgpu::TextureUsages::COPY_SRC;
+        let full = copy | ::wgpu::TextureUsages::TEXTURE_BINDING;
+        let region = || crate::Region::rect(Rect::new(0.0, 0.0, 8.0, 8.0), crate::Radius::ZERO);
+        let backdrop = crate::Filter::Blur {
+            std_dev_x: 2.0,
+            std_dev_y: 2.0,
+            sampling: crate::BlurSampling::FULL_RES,
+        };
+        let mut scene = crate::Canvas::new(8, 8, 1.0);
+        scene.push_rect(
+            Rect::new(0.0, 0.0, 8.0, 8.0),
+            crate::Radius::ZERO,
+            peniko::Color::WHITE,
+        );
+        assert!(storage.contains(required(&scene)));
+        scene.push_filter_layer(crate::Filter::Invert(1.0), region());
+        scene.push_backdrop_layer(backdrop.clone(), region());
+        scene.pop_layer();
+        scene.pop_layer();
+        assert!(!storage.contains(required(&scene)));
+        assert!(copy.contains(required(&scene)));
+        scene.push_backdrop_layer(backdrop, region());
+        scene.pop_layer();
+        assert!(!copy.contains(required(&scene)));
+        assert!(full.contains(required(&scene)));
     }
 }

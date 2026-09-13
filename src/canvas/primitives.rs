@@ -83,11 +83,11 @@ impl Canvas {
 
     pub(crate) fn register_scene_image(
         &mut self,
-        image: impl Into<SharedRc<Image>>,
+        image: impl Into<crate::shared::image_resource::ImageSource>,
     ) -> Option<ImageKey> {
         let image = image.into();
-        let key = ImageKey::new(SharedRc::as_ptr(&image) as usize as u64);
-        if self.scene_images.get(key).is_some() {
+        let key = ImageKey::new(image.identity().1);
+        if self.scene_images.contains(key) {
             return Some(key);
         }
         self.scene_images.insert(key, image).then_some(key)

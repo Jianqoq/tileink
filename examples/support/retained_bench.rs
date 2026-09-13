@@ -1,3 +1,15 @@
+#[path = "retained_measurements.rs"]
+mod retained_measurements;
+pub use retained_measurements::*;
+
+#[allow(dead_code)]
+#[path = "../common/benchmark_gpu.rs"]
+pub mod benchmark_gpu;
+
+#[path = "retained_bench/context.rs"]
+mod context;
+pub use context::BenchContext;
+
 use std::{
     error::Error,
     hint::black_box,
@@ -5,7 +17,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use peniko::Color;
 use tileink::{
     Canvas, IncrementalRenderConfig, IncrementalRenderMode, RetainedScene, WgpuRenderProfile,
     WgpuRenderer,
@@ -14,81 +25,41 @@ use tileink::{
 pub const WIDTH: u32 = 1024;
 pub const HEIGHT: u32 = 1024;
 
-#[derive(Clone, Copy)]
-pub struct BenchConfig {
-    pub warmup: usize,
-    pub frames: usize,
-}
-
-#[derive(Clone, Copy)]
-#[allow(dead_code)]
-pub enum MutationPhase {
-    Insert,
-    Remove,
-}
-
-impl Default for BenchConfig {
-    fn default() -> Self {
-        Self {
-            warmup: 3,
-            frames: 20,
+impl Measurements {
+    fn record_frame(
+        &mut self,
+        renderer: &mut WgpuRenderer,
+        started: Instant,
+        profile: bool,
+        render: impl FnOnce(&mut WgpuRenderer) -> Result<(), tileink::WgpuTextureRenderError>,
+    ) -> Result<(), Box<dyn Error>> {
+        // The old wall metric includes profiling overhead and excludes transaction work.
+        // Keep it for diagnosis; production timing must never trigger a profile readback.
+        let started = if profile {
+            renderer.start_profile();
+            Instant::now()
+        } else {
+            started
+        };
+        render(renderer)?;
+        if profile {
+            renderer.end_profile();
         }
+        wait_for_gpu(renderer.device(), renderer.queue())?;
+        let report = profile.then(|| renderer.poll_profile().clone());
+        self.wall.push(started.elapsed());
+        if let Some(report) = report {
+            accumulate(self, renderer, &report);
+        }
+        Ok(())
     }
-}
-
-#[allow(dead_code)]
-#[derive(Default)]
-pub struct Measurements {
-    pub wall: Vec<Duration>,
-    pub transaction: Duration,
-    pub cpu: Duration,
-    pub collect: Duration,
-    pub materialize: Duration,
-    pub materialize_analysis: Duration,
-    pub materialize_chunks: Duration,
-    pub materialize_plan_sync: Duration,
-    pub materialize_frame: Duration,
-    pub root_fragment_compile: Duration,
-    pub root_fragment_spatial: Duration,
-    pub root_fragment_plan: Duration,
-    pub root_fragment_metadata: Duration,
-    pub damage: Duration,
-    pub prepare: Duration,
-    pub scan: Duration,
-    pub raster: Duration,
-    pub coarse_gpu: Duration,
-    pub plan_select: Duration,
-    pub plan_execute: Duration,
-    pub draw_batch: Duration,
-    pub group_cache: Duration,
-    pub group_children: Duration,
-    pub group_scratch: Duration,
-    pub group_render: Duration,
-    pub group_mask: Duration,
-    pub group_composite: Duration,
-    pub dirty_tiles: u64,
-    pub changed_tiles: u64,
-    pub draw_batches: u64,
-    pub root_draw_batches: u64,
-    pub total_tiles: u32,
-    pub chunks_rebuilt: u64,
-    pub plan_fragments_rebuilt: u64,
-    pub full_scene_syncs: u64,
-    pub cpu_copied_bytes: u64,
-    pub gpu_uploaded_bytes: u64,
-    pub tile_pages_rewritten: u64,
-    pub tile_page_compactions: u64,
-    pub arena_live_bytes: u64,
-    pub arena_capacity_bytes: u64,
-    pub arena_fragmentation: f64,
-    pub arena_compactions: u64,
 }
 
 /// Measures the stateful retained API. `mutate` receives a monotonically increasing frame index
 /// and is timed separately from rendering, so journal/transaction work cannot hide in setup.
 #[allow(dead_code)]
 pub fn bench_persistent(
-    seed: &WgpuRenderer,
+    context: &BenchContext,
     config: BenchConfig,
     scene: RetainedScene,
     mode: IncrementalRenderMode,
@@ -98,25 +69,19 @@ pub fn bench_persistent(
         mode,
         ..Default::default()
     };
-    bench_persistent_with_config(seed, config, scene, renderer_config, mutate)
+    bench_persistent_with_config(context, config, scene, renderer_config, mutate)
 }
 
 /// Retained benchmark variant that exposes renderer policy knobs such as forced coarse kernels.
 #[allow(dead_code)]
 pub fn bench_persistent_with_config(
-    seed: &WgpuRenderer,
+    context: &BenchContext,
     config: BenchConfig,
     mut scene: RetainedScene,
     renderer_config: IncrementalRenderConfig,
     mut mutate: impl FnMut(&mut RetainedScene, usize),
 ) -> Result<Measurements, Box<dyn Error>> {
-    let mut renderer = WgpuRenderer::new(
-        seed.device(),
-        seed.queue(),
-        WIDTH,
-        HEIGHT,
-        Color::TRANSPARENT,
-    );
+    let mut renderer = context.renderer();
     renderer.set_incremental_render_config(renderer_config);
     let texture = output_texture(renderer.device());
     // Establish the renderer cursor before applying benchmark mutations. Otherwise the first
@@ -137,14 +102,12 @@ pub fn bench_persistent_with_config(
         let transaction_started = Instant::now();
         mutate(&mut scene, frame);
         measurements.transaction += transaction_started.elapsed();
-        renderer.start_profile();
-        let started = Instant::now();
-        renderer.render_retained_to_wgpu_texture(black_box(&scene), &texture)?;
-        renderer.end_profile();
-        wait_for_gpu(renderer.device(), renderer.queue())?;
-        let profile = renderer.poll_profile().clone();
-        measurements.wall.push(started.elapsed());
-        accumulate(&mut measurements, &renderer, &profile);
+        measurements.record_frame(
+            &mut renderer,
+            transaction_started,
+            config.profile,
+            |renderer| renderer.render_retained_to_wgpu_texture(black_box(&scene), &texture),
+        )?;
     }
     Ok(measurements)
 }
@@ -154,20 +117,14 @@ pub fn bench_persistent_with_config(
 /// from hiding a regressed removal (or vice versa) in their combined average.
 #[allow(dead_code)]
 pub fn bench_persistent_phase(
-    seed: &WgpuRenderer,
+    context: &BenchContext,
     config: BenchConfig,
     mut scene: RetainedScene,
     mode: IncrementalRenderMode,
     phase: MutationPhase,
     mut mutate: impl FnMut(&mut RetainedScene, usize),
 ) -> Result<Measurements, Box<dyn Error>> {
-    let mut renderer = WgpuRenderer::new(
-        seed.device(),
-        seed.queue(),
-        WIDTH,
-        HEIGHT,
-        Color::TRANSPARENT,
-    );
+    let mut renderer = context.renderer();
     let mut renderer_config = renderer.incremental_render_config();
     renderer_config.mode = mode;
     renderer.set_incremental_render_config(renderer_config);
@@ -187,18 +144,15 @@ pub fn bench_persistent_phase(
         let transaction = transaction_started.elapsed();
         if measured {
             measurements.transaction += transaction;
-            renderer.start_profile();
-        }
-        let started = Instant::now();
-        renderer.render_retained_to_wgpu_texture(black_box(scene), &texture)?;
-        if measured {
-            renderer.end_profile();
-        }
-        wait_for_gpu(renderer.device(), renderer.queue())?;
-        if measured {
-            let profile = renderer.poll_profile().clone();
-            measurements.wall.push(started.elapsed());
-            accumulate(measurements, renderer, &profile);
+            measurements.record_frame(
+                renderer,
+                transaction_started,
+                config.profile,
+                |renderer| renderer.render_retained_to_wgpu_texture(black_box(scene), &texture),
+            )?;
+        } else {
+            renderer.render_retained_to_wgpu_texture(black_box(scene), &texture)?;
+            wait_for_gpu(renderer.device(), renderer.queue())?;
         }
         Ok(())
     };
@@ -252,18 +206,12 @@ pub fn bench_persistent_phase(
 
 #[allow(dead_code)]
 pub fn bench(
-    seed: &WgpuRenderer,
+    context: &BenchContext,
     config: BenchConfig,
     frames: &[Canvas; 2],
     mode: IncrementalRenderMode,
 ) -> Result<Measurements, Box<dyn Error>> {
-    let mut renderer = WgpuRenderer::new(
-        seed.device(),
-        seed.queue(),
-        WIDTH,
-        HEIGHT,
-        Color::TRANSPARENT,
-    );
+    let mut renderer = context.renderer();
     let mut renderer_config = renderer.incremental_render_config();
     renderer_config.mode = mode;
     renderer.set_incremental_render_config(renderer_config);
@@ -277,14 +225,9 @@ pub fn bench(
     measurements.wall.reserve(config.frames);
     for index in 0..config.frames {
         let frame = &frames[(config.warmup + index) % frames.len()];
-        renderer.start_profile();
-        let started = Instant::now();
-        renderer.render_to_wgpu_texture(black_box(frame), &texture)?;
-        renderer.end_profile();
-        wait_for_gpu(renderer.device(), renderer.queue())?;
-        let profile = renderer.poll_profile().clone();
-        measurements.wall.push(started.elapsed());
-        accumulate(&mut measurements, &renderer, &profile);
+        measurements.record_frame(&mut renderer, Instant::now(), config.profile, |renderer| {
+            renderer.render_to_wgpu_texture(black_box(frame), &texture)
+        })?;
     }
     Ok(measurements)
 }
@@ -301,10 +244,19 @@ fn accumulate(
     measurements.materialize_chunks += stage(profile, "retained.materialize.chunks");
     measurements.materialize_plan_sync += stage(profile, "retained.materialize.plan_sync");
     measurements.materialize_frame += stage(profile, "retained.materialize.frame");
-    measurements.root_fragment_compile += stage(profile, "retained.root_fragment.compile");
-    measurements.root_fragment_spatial += stage(profile, "retained.root_fragment.spatial");
-    measurements.root_fragment_plan += stage(profile, "retained.root_fragment.plan");
-    measurements.root_fragment_metadata += stage(profile, "retained.root_fragment.metadata");
+    for (observation, stage) in measurements
+        .root_fragment_stages
+        .iter_mut()
+        .zip(RootFragmentStage::ALL)
+    {
+        observation.record_frame(
+            profile
+                .entries()
+                .iter()
+                .filter(|entry| entry.name == stage.scope())
+                .map(|entry| entry.cpu_duration),
+        );
+    }
     measurements.damage +=
         stage(profile, "retained.damage") + stage(profile, "retained.damage.propagate");
     measurements.prepare += stage(profile, "prepare");

@@ -1,5 +1,5 @@
 use super::*;
-use crate::wgpu::renderer::ExternalTextureHistoryId;
+use crate::ExternalTextureHistoryId;
 
 #[test]
 fn persistent_external_texture_repaints_a_reinserted_scene() {

@@ -1,19 +1,29 @@
+#[cfg(feature = "wgpu")]
 use std::{
     env, fs,
     path::{Path, PathBuf},
 };
 
+#[cfg(feature = "wgpu")]
 #[path = "build/dxc.rs"]
 mod dxc;
+#[cfg(feature = "wgpu")]
 #[path = "build/dxil.rs"]
 mod dxil;
+#[cfg(feature = "wgpu")]
 #[path = "build/dxil_cache.rs"]
 mod dxil_cache;
+#[cfg(feature = "wgpu")]
 #[path = "src/wgpu/dxil_manifest.rs"]
 mod dxil_manifest;
+#[cfg(feature = "wgpu")]
+#[path = "build/dxil_provenance.rs"]
+mod dxil_provenance;
+#[cfg(feature = "wgpu")]
 #[path = "src/wgpu/shader_variants.rs"]
 mod shader_variants;
 
+#[cfg(feature = "wgpu")]
 const WGPU_SHADER_ENTRIES: [(&str, &str); 15] = [
     ("scan/clear.wgsl", "tileink_wgpu_scan_clear.wgsl"),
     ("scan/count.wgsl", "tileink_wgpu_scan_count.wgsl"),
@@ -41,12 +51,14 @@ const WGPU_SHADER_ENTRIES: [(&str, &str); 15] = [
     ("filter_web.wgsl", "tileink_wgpu_filter_web.wgsl"),
 ];
 
-fn main() {
+#[cfg(feature = "wgpu")]
+fn build_wgpu() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     for input in [
         "build.rs",
         "build/dxc.rs",
         "build/dxil.rs",
+        "build/dxil_provenance.rs",
         "src/wgpu/dxil_manifest.rs",
         "src/wgpu/shader_variants.rs",
     ] {
@@ -70,6 +82,7 @@ fn main() {
     dxil::generate(&fine_portable_source.unwrap(), &out_dir);
 }
 
+#[cfg(feature = "wgpu")]
 fn emit_rerun_if_changed(path: &Path) {
     println!("cargo:rerun-if-changed={}", path.display());
     if let Ok(entries) = fs::read_dir(path) {
@@ -84,6 +97,7 @@ fn emit_rerun_if_changed(path: &Path) {
     }
 }
 
+#[cfg(feature = "wgpu")]
 fn expand_shader(path: &Path, stack: &mut Vec<PathBuf>) -> String {
     let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     if stack.contains(&canonical) {
@@ -109,8 +123,15 @@ fn expand_shader(path: &Path, stack: &mut Vec<PathBuf>) -> String {
     expanded
 }
 
+#[cfg(feature = "wgpu")]
 fn parse_include(line: &str) -> Option<&str> {
     let trimmed = line.trim();
     let rest = trimmed.strip_prefix("#include")?.trim();
     rest.strip_prefix('"')?.strip_suffix('"')
+}
+
+fn main() {
+    println!("cargo:rerun-if-changed=build.rs");
+    #[cfg(feature = "wgpu")]
+    build_wgpu();
 }

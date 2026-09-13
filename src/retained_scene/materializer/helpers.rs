@@ -111,14 +111,30 @@ pub(super) fn merge_index_ranges(
     merged
 }
 
+/// Empty and singleton indexes can be validated in constant time. Reuse their
+/// immutable mapping independently of patch revisions and bounds. Larger maps
+/// rebuild directly: probing all slots before a late mismatch duplicated the
+/// linear indexing work. Version nodes and patch payloads remain independent.
 pub(super) fn retained_patch_index(
     patches: &[RetainedNodePatch],
-) -> HashMap<RetainedNodeId, usize> {
-    patches
-        .iter()
-        .enumerate()
-        .map(|(index, patch)| (patch.new.or(patch.old).unwrap().id, index))
-        .collect()
+    previous: Option<&Rc<HashMap<RetainedNodeId, usize>>>,
+) -> Rc<HashMap<RetainedNodeId, usize>> {
+    if patches.len() <= 1
+        && let Some(previous) = previous
+        && previous.len() == patches.len()
+        && patches.iter().enumerate().all(|(index, patch)| {
+            previous.get(&patch.new.or(patch.old).unwrap().id) == Some(&index)
+        })
+    {
+        return Rc::clone(previous);
+    }
+    Rc::new(
+        patches
+            .iter()
+            .enumerate()
+            .map(|(index, patch)| (patch.new.or(patch.old).unwrap().id, index))
+            .collect(),
+    )
 }
 
 pub(super) fn prune_shadowed_delta(
@@ -383,32 +399,45 @@ pub(super) fn chunk_has_surface_dependent_plan(canvas: &Canvas) -> bool {
 }
 
 pub(super) fn backdrop_dependencies(canvas: &Canvas) -> Vec<BackdropDependency> {
-    let canvas_bounds = Bounds::canvas(canvas.physical_width(), canvas.physical_height());
-    canvas
-        .command_lists
-        .iter()
-        .flat_map(|list| &list.commands)
-        .filter_map(|command| {
-            let Command::Layer {
-                layer:
-                    Layer::Backdrop {
+    fn collect(canvas: &Canvas, list: usize, scoped: bool, result: &mut Vec<BackdropDependency>) {
+        for command in &canvas.command_lists[list].commands {
+            match command {
+                Command::Layer {
+                    layer, children, ..
+                } => {
+                    if let Layer::Backdrop {
                         filter: value,
                         sample_region,
-                    },
-                ..
-            } = command
-            else {
-                return None;
-            };
-            Some(BackdropDependency {
-                dependency: filter::region_bounds(sample_region)
-                    .outset(filter::filter_dependency_outset(value)),
-                output: filter::unclipped_filtered_region_bounds(value, sample_region)
-                    .intersect(canvas_bounds),
-                output_outset: filter::filter_outset(value),
-            })
-        })
-        .collect()
+                    } = layer
+                    {
+                        result.push(BackdropDependency {
+                            scoped,
+                            dependency: filter::filter_input_bounds(value, sample_region),
+                            output: filter::unclipped_filtered_region_bounds(value, sample_region),
+                            read: filter::filter_dependency(value),
+                        });
+                    }
+                    collect(
+                        canvas,
+                        *children,
+                        scoped || !matches!(layer, Layer::Backdrop { .. }),
+                        result,
+                    );
+                }
+                Command::MaskLayer { content, mask, .. } => {
+                    collect(canvas, *content, true, result);
+                    collect(canvas, *mask, true, result);
+                }
+                Command::MaterializedRetainedScene { children, .. } => {
+                    collect(canvas, *children, scoped, result)
+                }
+                Command::Draw(_) => {}
+            }
+        }
+    }
+    let mut result = Vec::new();
+    collect(canvas, canvas.root_commands, false, &mut result);
+    result
 }
 
 pub(super) fn chunk_layer_influence_bounds(chunk: &SceneChunk) -> Bounds {
@@ -442,6 +471,17 @@ pub(super) fn chunk_layer_influence_bounds(chunk: &SceneChunk) -> Bounds {
         Command::MaskLayer { layer, .. } => filter::region_bounds(&layer.region),
         _ => unreachable!("retained layer chunk has one root layer command"),
     }
+}
+
+/// Version bridges still own separate delta nodes. Reuse only empty immutable
+/// payloads to remove repeated allocations without coalescing version history.
+pub(super) fn reuse_empty_slice<T>(values: Vec<T>, previous: Option<&Rc<[T]>>) -> Rc<[T]> {
+    if values.is_empty()
+        && let Some(previous) = previous.filter(|previous| previous.is_empty())
+    {
+        return Rc::clone(previous);
+    }
+    values.into()
 }
 
 #[cfg(test)]

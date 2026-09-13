@@ -97,6 +97,7 @@ pub fn create_manifest(
     cases: &[String],
     inputs: &[PathBuf],
     corpus: &super::svg::Corpus,
+    fonts: Option<&Value>,
 ) -> Result<Value> {
     let binary = std::env::current_exe()?;
     let compiler = match &options.dxc {
@@ -109,15 +110,34 @@ pub fn create_manifest(
             json!({"requested": "Auto", "actual_compiler": "not certified; provide --dxc for a reproducible DX12 reference"})
         }
     };
+    let precompiled_dxil: Value = serde_json::from_str(include_str!(concat!(
+        env!("OUT_DIR"),
+        "/tileink-dxil-manifest.json"
+    )))?;
+    if options.dx12_fine == super::options::Dx12Fine::Precompiled
+        && (precompiled_dxil["compiler_version"]
+            .as_str()
+            .is_none_or(str::is_empty)
+            || precompiled_dxil["artifacts"]
+                .as_array()
+                .is_none_or(Vec::is_empty))
+    {
+        return Err("precompiled DXIL certification requires embedded build provenance; rebuild with DXC enabled".into());
+    }
     let manifest = json!({
+        "precompiled_dxil_build": precompiled_dxil,
+        "suite": format!("{:?}", options.suite),
         "schema": 1, "source_commit": String::from_utf8(git(&["rev-parse", "HEAD"])?)?.trim(),
         "source_status": String::from_utf8(git(&["status", "--porcelain"])?)?,
         "binary": {"path": binary, "sha256": digest_file(&binary)?},
         "compiler": compiler, "instance_flags": format!("{:?}", wgpu::InstanceFlags::default()),
-        "cases": cases.iter().enumerate().map(|(index, id)| json!({"id": id, "svg_source": inputs.get(index)})).collect::<Vec<_>>(), "expected_frames": cases.len(),
+        "cases": cases.iter().enumerate().map(|(index, id)| json!({"id": id, "svg_source": if options.input.is_some() { inputs.get(index) } else { None }})).collect::<Vec<_>>(), "expected_frames": cases.len(),
         "texture_modes": options.textures.iter().map(|portable| if *portable { "portable" } else { "native" }).collect::<Vec<_>>(),
         "sources_and_resources": source_snapshot(&corpus.resources, &options.output)?,
+        "svg_inputs": inputs,
         "runtime_resources": corpus.snapshot,
+        "runtime_fonts": fonts,
+        "requested_dx12_fine": options.dx12_fine.name(),
         "format": "Rgba8Unorm premultiplied RGBA, all four raw channels, row padding excluded",
     });
     write_new_json(&options.output.join("manifest.json"), &manifest)?;

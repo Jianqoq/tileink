@@ -7,12 +7,11 @@ use std::time::Duration;
 
 use coarse_binning::{Case, Workload};
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use peniko::Color;
-use retained_bench::{BenchConfig, HEIGHT, WIDTH, bench_persistent_with_config};
-use tileink::{CoarseBinningMode, IncrementalRenderConfig, WgpuRenderer};
+use retained_bench::{BenchConfig, bench_persistent_with_config};
+use tileink::{CoarseBinningMode, IncrementalRenderConfig};
 
 fn coarse_binning(c: &mut Criterion) {
-    let seed = WgpuRenderer::new_default_device(WIDTH, HEIGHT, Color::TRANSPARENT);
+    let context = retained_bench::BenchContext::default_device();
     for case in Case::ALL {
         let mut group = c.benchmark_group(format!("coarse_binning/{}", case.name()));
         for (name, mode) in [
@@ -29,10 +28,11 @@ fn coarse_binning(c: &mut Criterion) {
                         ..Default::default()
                     };
                     let measurements = bench_persistent_with_config(
-                        &seed,
+                        &context,
                         BenchConfig {
                             warmup: 3,
                             frames: iterations as usize,
+                            profile: true,
                         },
                         workload.scene,
                         config,

@@ -240,10 +240,9 @@ impl WgpuFinePipeline {
             return true;
         }
         let (dispatch_x, dispatch_y) =
-            super::dispatch_2d(dispatch_tile_count, self.max_dispatch_workgroups);
+            crate::render::dispatch::dispatch_2d(dispatch_tile_count, self.max_dispatch_workgroups);
 
         let config_offset = commands.write_uniform_slot(
-            "fine.config",
             &self.config,
             self.config_size,
             self.config_stride,

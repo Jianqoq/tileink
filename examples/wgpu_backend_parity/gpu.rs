@@ -1,3 +1,7 @@
+#[path = "../common/gpu_identity.rs"]
+mod gpu_identity;
+use gpu_identity::physical_identity;
+
 use peniko::Color;
 use serde_json::json;
 use tileink::WgpuRenderer;
@@ -9,13 +13,31 @@ pub struct Route {
     pub renderer: WgpuRenderer,
     pub identity: String,
     pub metadata: serde_json::Value,
+    require_precompiled_fine: bool,
 }
 
+#[cfg(all(test, windows))]
 pub fn create(
     instance: &wgpu::Instance,
     backend: wgpu::Backend,
     portable: bool,
     luid: Option<&str>,
+) -> Result<Route> {
+    create_with_fine(
+        instance,
+        backend,
+        portable,
+        luid,
+        super::options::Dx12Fine::Runtime,
+    )
+}
+
+pub fn create_with_fine(
+    instance: &wgpu::Instance,
+    backend: wgpu::Backend,
+    portable: bool,
+    luid: Option<&str>,
+    fine: super::options::Dx12Fine,
 ) -> Result<Route> {
     let backends = match backend {
         wgpu::Backend::Dx12 => wgpu::Backends::DX12,
@@ -40,7 +62,7 @@ pub fn create(
     });
     let mut failures = Vec::new();
     for adapter in adapters {
-        match create_on_adapter(&adapter, backend, portable) {
+        match create_on_adapter(&adapter, backend, portable, fine) {
             Ok(route) if luid.is_none_or(|expected| route.identity == expected) => {
                 return Ok(route);
             }
@@ -55,31 +77,54 @@ pub fn create(
     .into())
 }
 
+fn requested_features(
+    available: wgpu::Features,
+    backend: wgpu::Backend,
+    portable: bool,
+    fine: super::options::Dx12Fine,
+) -> Result<(wgpu::Features, bool)> {
+    let optional = wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
+        | wgpu::Features::TIMESTAMP_QUERY
+        | wgpu::Features::TEXTURE_BINDING_ARRAY
+        | wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING;
+    if !portable && !available.contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES) {
+        return Err("native texture path unavailable; refusing portable fallback".into());
+    }
+    let mut required_features = if portable {
+        wgpu::Features::empty()
+    } else {
+        available & optional
+    };
+    let require_precompiled_fine =
+        fine == super::options::Dx12Fine::Precompiled && backend == wgpu::Backend::Dx12 && portable;
+    if require_precompiled_fine {
+        // Embedded fine DXIL has a 64-entry image table. Passthrough alone leaves
+        // that table disabled and silently selects runtime WGSL instead.
+        let dxil_features = wgpu::Features::PASSTHROUGH_SHADERS
+            | wgpu::Features::TEXTURE_BINDING_ARRAY
+            | wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING;
+        if !available.contains(dxil_features) {
+            return Err(
+                "selected adapter lacks the precompiled DXIL texture-table contract".into(),
+            );
+        }
+        required_features |= dxil_features;
+    }
+    Ok((required_features, require_precompiled_fine))
+}
+
 fn create_on_adapter(
     adapter: &wgpu::Adapter,
     backend: wgpu::Backend,
     portable: bool,
+    fine: super::options::Dx12Fine,
 ) -> Result<Route> {
     let info = adapter.get_info();
     if info.backend != backend {
         return Err("adapter API differs from explicit request".into());
     }
-    let optional = wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
-        | wgpu::Features::TIMESTAMP_QUERY
-        | wgpu::Features::TEXTURE_BINDING_ARRAY
-        | wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING;
-    if !portable
-        && !adapter
-            .features()
-            .contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
-    {
-        return Err("native texture path unavailable; refusing portable fallback".into());
-    }
-    let required_features = if portable {
-        wgpu::Features::empty()
-    } else {
-        adapter.features() & optional
-    };
+    let (required_features, require_precompiled_fine) =
+        requested_features(adapter.features(), backend, portable, fine)?;
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: Some("tileink explicit backend parity device"),
         required_features,
@@ -107,6 +152,7 @@ fn create_on_adapter(
         "vendor": info.vendor, "device": info.device, "driver": info.driver,
         "driver_info": info.driver_info, "physical_identity": identity,
         "requested_features": format!("{required_features:?}"),
+        "precompiled_fine_required": require_precompiled_fine,
         "limits": format!("{:?}", device.limits()),
         "rgba8unorm_features": format!("{:?}", adapter.get_texture_format_features(wgpu::TextureFormat::Rgba8Unorm)),
     });
@@ -115,46 +161,8 @@ fn create_on_adapter(
         renderer: WgpuRenderer::new(&device, &queue, 1, 1, Color::TRANSPARENT),
         identity,
         metadata,
+        require_precompiled_fine,
     })
-}
-
-#[cfg(windows)]
-fn physical_identity(adapter: &wgpu::Adapter, device: &wgpu::Device) -> Result<String> {
-    let luid = match adapter.get_info().backend {
-        wgpu::Backend::Dx12 => {
-            // Read-only query through a live guard; no ownership is transferred or destroyed.
-            let hal =
-                unsafe { device.as_hal::<wgpu::hal::api::Dx12>() }.ok_or("missing DX12 device")?;
-            let luid = unsafe { hal.raw_device().GetAdapterLuid() };
-            let mut bytes = [0; 8];
-            bytes[..4].copy_from_slice(&luid.LowPart.to_le_bytes());
-            bytes[4..].copy_from_slice(&luid.HighPart.to_le_bytes());
-            bytes
-        }
-        wgpu::Backend::Vulkan => {
-            // Keep the adapter/instance alive throughout the physical-device property query.
-            let hal = unsafe { adapter.as_hal::<wgpu::hal::api::Vulkan>() }
-                .ok_or("missing Vulkan adapter")?;
-            let mut id = ash::vk::PhysicalDeviceIDProperties::default();
-            let mut properties = ash::vk::PhysicalDeviceProperties2::default().push_next(&mut id);
-            unsafe {
-                hal.shared_instance()
-                    .raw_instance()
-                    .get_physical_device_properties2(hal.raw_physical_device(), &mut properties)
-            };
-            if id.device_luid_valid == 0 {
-                return Err("Vulkan did not provide a valid device LUID; same-GPU parity cannot be certified".into());
-            }
-            id.device_luid
-        }
-        _ => return Err("unsupported identity query".into()),
-    };
-    Ok(luid.iter().map(|byte| format!("{byte:02x}")).collect())
-}
-
-#[cfg(not(windows))]
-fn physical_identity(_adapter: &wgpu::Adapter, _device: &wgpu::Device) -> Result<String> {
-    Err("the DX12/Vulkan reference pair requires Windows".into())
 }
 
 #[cfg(all(test, windows))]
@@ -227,5 +235,60 @@ mod tests {
         assert_eq!((image.width, image.height), (17, 15));
         assert_eq!(image.pixels, vec![0; 17 * 15]);
         Ok(())
+    }
+}
+
+impl Route {
+    pub fn verify_fine_compiler(&self, initialized_precompiled: bool) -> Result<()> {
+        // Retained variants own separate renderers; inspect the one actually executed.
+        if self.require_precompiled_fine && !initialized_precompiled {
+            return Err(format!(
+                "{} requires embedded fine DXIL, but no precompiled pipeline was initialized",
+                self.name
+            )
+            .into());
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod compiler_tests {
+    use super::super::options::Dx12Fine;
+    use super::*;
+
+    #[test]
+    fn precompiled_fine_requires_the_complete_texture_table_contract() {
+        let arrays = wgpu::Features::TEXTURE_BINDING_ARRAY
+            | wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING;
+        let required = arrays | wgpu::Features::PASSTHROUGH_SHADERS;
+        let (features, certify) =
+            requested_features(required, wgpu::Backend::Dx12, true, Dx12Fine::Precompiled).unwrap();
+        assert_eq!(features, required);
+        assert!(certify);
+        for missing in [
+            wgpu::Features::PASSTHROUGH_SHADERS,
+            wgpu::Features::TEXTURE_BINDING_ARRAY,
+            wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
+        ] {
+            assert!(
+                requested_features(
+                    required - missing,
+                    wgpu::Backend::Dx12,
+                    true,
+                    Dx12Fine::Precompiled
+                )
+                .is_err()
+            );
+        }
+        for (backend, mode) in [
+            (wgpu::Backend::Dx12, Dx12Fine::Runtime),
+            (wgpu::Backend::Vulkan, Dx12Fine::Precompiled),
+        ] {
+            assert_eq!(
+                requested_features(required, backend, true, mode).unwrap(),
+                (wgpu::Features::empty(), false)
+            );
+        }
     }
 }

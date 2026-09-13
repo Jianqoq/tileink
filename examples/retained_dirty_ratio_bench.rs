@@ -5,14 +5,13 @@ mod retained_dirty_ratio;
 
 use std::error::Error;
 
-use peniko::Color;
 use retained_bench::{BenchConfig, HEIGHT, WIDTH, bench, bench_persistent, median_ms, ms};
 use retained_dirty_ratio::{BACKGROUND_NODES, RATIOS, Workload};
-use tileink::{IncrementalRenderMode, WgpuRenderer};
+use tileink::IncrementalRenderMode;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let config = parse_config()?;
-    let seed = WgpuRenderer::new_default_device(WIDTH, HEIGHT, Color::TRANSPARENT);
+    let context = retained_bench::BenchContext::default_device();
     let workload = Workload::new();
     println!(
         "retained dirty-ratio bench: {WIDTH}x{HEIGHT}, {BACKGROUND_NODES} unchanged background nodes, warmup {}, measured frames {}",
@@ -31,21 +30,21 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     for requested_ratio in RATIOS {
         let persistent = bench_persistent(
-            &seed,
+            &context,
             config,
             workload.persistent_scene(requested_ratio),
             IncrementalRenderMode::Auto,
             |scene, frame| workload.mutate_persistent(scene, requested_ratio, frame),
         )?;
         let persistent_full = bench_persistent(
-            &seed,
+            &context,
             config,
             workload.persistent_scene(requested_ratio),
             IncrementalRenderMode::ForceFull,
             |scene, frame| workload.mutate_persistent(scene, requested_ratio, frame),
         )?;
         let immediate = workload.immediate_frames(requested_ratio);
-        let non_retained = bench(&seed, config, &immediate, IncrementalRenderMode::Auto)?;
+        let non_retained = bench(&context, config, &immediate, IncrementalRenderMode::Auto)?;
         let changed_ratio =
             persistent.changed_tiles as f64 / config.frames as f64 / persistent.total_tiles as f64;
         println!(

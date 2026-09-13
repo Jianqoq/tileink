@@ -203,10 +203,9 @@ fn filter_lighting_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let z = alpha * config.surface_scale;
     let dx = alpha_gradient_x(xy.x, xy.y) * config.surface_scale;
     let dy = alpha_gradient_y(xy.x, xy.y) * config.surface_scale;
-    let normal_len = sqrt(dx * dx + dy * dy + 1.0);
-    let nx = -dx / normal_len;
-    let ny = -dy / normal_len;
-    let nz = 1.0 / normal_len;
+    // Explicit dot-product order prevents backend contraction from moving lighting
+    // across an 8-bit rounding boundary; the same order applies to each direction.
+    let normal_len = sqrt(lighting_dot3(vec3<f32>(dx, dy, 1.0), vec3<f32>(dx, dy, 1.0)));
 
     let world_x = f32(config.surface_origin_x) + f32(xy.x) + 0.5;
     let world_y = f32(config.surface_origin_y) + f32(xy.y) + 0.5;
@@ -223,7 +222,7 @@ fn filter_lighting_region(@builtin(global_invocation_id) gid: vec3<u32>) {
         ly = sin(azimuth) * cos(elevation);
         lz = sin(elevation);
     } else {
-        let len = sqrt(lx * lx + ly * ly + lz * lz);
+        let len = sqrt(lighting_dot3(vec3<f32>(lx, ly, lz), vec3<f32>(lx, ly, lz)));
         if (len <= eps) {
             target_store_ix(dst_ix, no_light);
             return;
@@ -236,7 +235,7 @@ fn filter_lighting_region(@builtin(global_invocation_id) gid: vec3<u32>) {
             var sx = config.light_p3 - config.light_p0;
             var sy = config.light_p4 - config.light_p1;
             var sz = config.light_p5 - config.light_p2;
-            let slen = sqrt(sx * sx + sy * sy + sz * sz);
+            let slen = sqrt(lighting_dot3(vec3<f32>(sx, sy, sz), vec3<f32>(sx, sy, sz)));
             if (slen <= eps) {
                 target_store_ix(dst_ix, no_light);
                 return;
@@ -244,7 +243,7 @@ fn filter_lighting_region(@builtin(global_invocation_id) gid: vec3<u32>) {
             sx = sx / slen;
             sy = sy / slen;
             sz = sz / slen;
-            let focus = max(-(lx * sx + ly * sy + lz * sz), 0.0);
+            let focus = max(-(lighting_dot3(vec3<f32>(lx, ly, lz), vec3<f32>(sx, sy, sz))), 0.0);
             if (config.light_p7 >= 0.0 && focus < cos(config.light_p7 * 0.017453292)) {
                 target_store_ix(dst_ix, no_light);
                 return;
@@ -254,7 +253,10 @@ fn filter_lighting_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
 
     if (config.lighting_output_kind == 0u) {
-        let amount = config.light_constant * attenuation * max(nx * lx + ny * ly + nz * lz, 0.0);
+        let nx = -dx / normal_len;
+        let ny = -dy / normal_len;
+        let nz = 1.0 / normal_len;
+        let amount = config.light_constant * attenuation * max(lighting_dot3(vec3<f32>(nx, ny, nz), vec3<f32>(lx, ly, lz)), 0.0);
         target_store_ix(dst_ix, pack_premul_rgba8(
             clamp(config.light_r * amount, 0.0, 1.0),
             clamp(config.light_g * amount, 0.0, 1.0),
@@ -262,19 +264,20 @@ fn filter_lighting_region(@builtin(global_invocation_id) gid: vec3<u32>) {
             1.0,
         ));
     } else {
-        var hx = lx;
-        var hy = ly;
-        var hz = lz + 1.0;
-        let hlen = sqrt(hx * hx + hy * hy + hz * hz);
+        let hx = lx;
+        let hy = ly;
+        let hz = lz + 1.0;
+        let hlen = sqrt(lighting_dot3(vec3<f32>(hx, hy, hz), vec3<f32>(hx, hy, hz)));
         if (hlen <= eps) {
             target_store_ix(dst_ix, no_light);
             return;
         }
-        hx = hx / hlen;
-        hy = hy / hlen;
-        hz = hz / hlen;
-
-        let normal_dot_half = max(nx * hx + ny * hy + nz * hz, 0.0);
+        // Normalize the dot once: dividing both vectors component by component
+        // adds rounding and lets compilers reassociate the subsequent products.
+        // The equivalent scalar expression also avoids six component divisions.
+        let normal_dot_half = max(lighting_dot3(
+            vec3<f32>(-dx, -dy, 1.0), vec3<f32>(hx, hy, hz),
+        ) / (normal_len * hlen), 0.0);
         let amount = config.light_constant * attenuation * pow(normal_dot_half, max(config.specular_exponent, 0.0));
         let r = clamp(config.light_r * amount, 0.0, 1.0);
         let g = clamp(config.light_g * amount, 0.0, 1.0);

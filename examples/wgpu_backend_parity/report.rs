@@ -96,6 +96,17 @@ impl Report {
         Ok(equal)
     }
 
+    /// Final validation is part of certification: an error must leave a failed
+    /// checkpoint even when every rendered frame already matched.
+    #[cfg(any(windows, test))]
+    pub fn finish_checked(&self, validation: Result<()>) -> Result<()> {
+        if let Err(error) = validation {
+            self.fail(&error.to_string())?;
+            return Err(error);
+        }
+        self.finish()
+    }
+
     pub fn finish(&self) -> Result<()> {
         if self.frames.len() != self.expected.len() {
             return Err(format!(
@@ -131,6 +142,41 @@ impl Report {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn final_validation_error_cannot_leave_a_passing_report() -> Result<()> {
+        let output = std::env::temp_dir().join(format!(
+            "tileink-parity-final-validation-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_nanos()
+        ));
+        std::fs::create_dir(&output)?;
+        let mut report = Report::new(
+            &output,
+            &["frame".into()],
+            vec![json!({"route": "a"}), json!({"route": "b"})],
+        )?;
+        let image = Image {
+            width: 1,
+            height: 1,
+            pixels: vec![0],
+        };
+        report.record("frame", &[image.clone(), image])?;
+        assert!(
+            report
+                .finish_checked(Err("resource changed".into()))
+                .is_err()
+        );
+        let value: Value = serde_json::from_slice(&std::fs::read(output.join("report.json"))?)?;
+        assert_eq!(value["complete"], false);
+        assert_eq!(value["passed"], false);
+        assert_eq!(value["completed_frames"], 1);
+        assert_eq!(value["error"], "resource changed");
+        std::fs::remove_dir_all(output)?;
+        Ok(())
+    }
+
     #[test]
     fn missing_duplicate_and_wrong_route_outputs_cannot_pass() -> Result<()> {
         let output = std::env::temp_dir().join(format!(

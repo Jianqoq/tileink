@@ -7,14 +7,39 @@ use std::{
 use super::Result;
 
 pub const HELP: &str =
-    "wgpu_backend_parity [--input SVG_FILE_OR_DIR] [--textures native|portable|both]
-    [--dxc PATH_TO_DXCOMPILER_DLL] [--output NEW_DIRECTORY] [--luid HEX_LUID]
-Without --input, render the built-in semantic probes. Requires hardware DX12 and Vulkan
+    "wgpu_backend_parity [--input SVG_FILE_OR_DIR | --suite smoke|examples|retained] [--textures native|portable|both]
+    [--dx12-fine runtime|precompiled] [--dxc PATH_TO_DXCOMPILER_DLL] [--output NEW_DIRECTORY] [--luid HEX_LUID]
+By default render built-in probes; --suite examples runs the complete shared example catalog. Requires hardware DX12 and Vulkan
 on the same Windows GPU. Compares all RGBA bytes without tolerance. Output must be new.";
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Dx12Fine {
+    #[default]
+    Runtime,
+    Precompiled,
+}
+impl Dx12Fine {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Runtime => "runtime",
+            Self::Precompiled => "precompiled",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Suite {
+    #[default]
+    Smoke,
+    Examples,
+    Retained,
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Options {
     pub input: Option<PathBuf>,
+    pub suite: Suite,
+    pub dx12_fine: Dx12Fine,
     pub output: PathBuf,
     pub dxc: Option<PathBuf>,
     pub textures: Vec<bool>,
@@ -38,6 +63,8 @@ impl Options {
 
     pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Option<Self>> {
         let mut input = None;
+        let mut suite = None;
+        let mut dx12_fine = Dx12Fine::Runtime;
         let mut output = None;
         let mut dxc = None;
         let mut textures = None;
@@ -54,7 +81,13 @@ impl Options {
             }
             if !matches!(
                 flag,
-                "--input" | "--output" | "--dxc" | "--textures" | "--luid"
+                "--input"
+                    | "--output"
+                    | "--dxc"
+                    | "--textures"
+                    | "--luid"
+                    | "--suite"
+                    | "--dx12-fine"
             ) {
                 return Err(format!("unknown argument {flag}").into());
             }
@@ -66,6 +99,21 @@ impl Options {
             }
             match flag {
                 "--input" => input = Some(PathBuf::from(value)),
+                "--dx12-fine" => {
+                    dx12_fine = match value.to_str() {
+                        Some("runtime") => Dx12Fine::Runtime,
+                        Some("precompiled") => Dx12Fine::Precompiled,
+                        _ => return Err("--dx12-fine must be runtime or precompiled".into()),
+                    }
+                }
+                "--suite" => {
+                    suite = Some(match value.to_str() {
+                        Some("smoke") => Suite::Smoke,
+                        Some("examples") => Suite::Examples,
+                        Some("retained") => Suite::Retained,
+                        _ => return Err("--suite must be smoke, examples, or retained".into()),
+                    })
+                }
                 "--output" => output = Some(PathBuf::from(value)),
                 "--dxc" => dxc = Some(PathBuf::from(value)),
                 "--textures" => {
@@ -88,6 +136,15 @@ impl Options {
                 _ => unreachable!(),
             }
         }
+        if suite.is_some() && input.is_some() {
+            return Err(
+                "--suite and --input select different corpora and cannot be combined".into(),
+            );
+        }
+        let textures = textures.unwrap_or_else(|| vec![false, true]);
+        if dx12_fine == Dx12Fine::Precompiled && !textures.contains(&true) {
+            return Err("precompiled DX12 fine requires a portable texture route".into());
+        }
         let output = output.unwrap_or_else(|| {
             PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("target/backend-parity")
@@ -102,9 +159,11 @@ impl Options {
         });
         Ok(Some(Self {
             input,
+            suite: suite.unwrap_or_default(),
+            dx12_fine,
             output,
             dxc,
-            textures: textures.unwrap_or_else(|| vec![false, true]),
+            textures,
             luid,
         }))
     }
@@ -155,6 +214,41 @@ mod tests {
     use super::*;
     fn parse(args: &[&str]) -> Result<Option<Options>> {
         Options::parse(args.iter().map(OsString::from))
+    }
+
+    #[test]
+    fn example_suite_is_explicit_and_cannot_be_mixed_with_svg_input() {
+        assert_eq!(
+            parse(&["--suite", "examples"]).unwrap().unwrap().suite,
+            Suite::Examples
+        );
+        assert_eq!(
+            parse(&["--suite", "smoke"]).unwrap().unwrap().suite,
+            Suite::Smoke
+        );
+        assert_eq!(
+            parse(&["--suite", "retained"]).unwrap().unwrap().suite,
+            Suite::Retained
+        );
+        assert!(parse(&["--suite", "retained", "--input", "a.svg"]).is_err());
+        assert!(parse(&["--suite", "invalid"]).is_err());
+        assert!(parse(&["--suite", "examples", "--input", "a.svg"]).is_err());
+        assert!(parse(&["--suite", "smoke", "--input", "a.svg"]).is_err());
+    }
+
+    #[test]
+    fn precompiled_fine_requires_an_eligible_texture_route() {
+        assert_eq!(parse(&[]).unwrap().unwrap().dx12_fine, Dx12Fine::Runtime);
+        assert_eq!(
+            parse(&["--dx12-fine", "precompiled"])
+                .unwrap()
+                .unwrap()
+                .dx12_fine,
+            Dx12Fine::Precompiled
+        );
+        assert!(parse(&["--dx12-fine", "precompiled", "--textures", "portable"]).is_ok());
+        assert!(parse(&["--dx12-fine", "precompiled", "--textures", "native"]).is_err());
+        assert!(parse(&["--dx12-fine", "auto"]).is_err());
     }
 
     #[test]

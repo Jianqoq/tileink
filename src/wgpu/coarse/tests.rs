@@ -1,9 +1,6 @@
-use crate::{Canvas, shared::gpu_plan::CoarseBinningStats};
-
 use super::{
-    COUNT_STORAGE_BINDING_COUNT, EMIT_STORAGE_BINDING_COUNT, GpuBufferLengths,
-    PREFIX_STORAGE_BINDING_COUNT, coarse_binning_costs, count_layout_entries, emit_layout_entries,
-    prefer_dense_binning, prefix_layout_entries, profile_coarse_passes_value,
+    COUNT_STORAGE_BINDING_COUNT, EMIT_STORAGE_BINDING_COUNT, PREFIX_STORAGE_BINDING_COUNT,
+    count_layout_entries, emit_layout_entries, prefix_layout_entries, profile_coarse_passes_value,
 };
 
 #[test]
@@ -42,29 +39,6 @@ fn profile_coarse_passes_only_accepts_one() {
     assert!(!profile_coarse_passes_value(None));
     assert!(!profile_coarse_passes_value(Some("true")));
     assert!(!profile_coarse_passes_value(Some("0")));
-}
-
-#[test]
-fn dense_binning_replaces_many_mostly_idle_incremental_workgroups() {
-    let canvas = Canvas::new(3200, 2000, 1.0);
-    let lengths = GpuBufferLengths::from_scene(&canvas);
-    let stats =
-        |active_tiles, compact_candidate_rounds, dense_candidate_rounds| CoarseBinningStats {
-            active_tiles,
-            compact_candidate_rounds,
-            dense_candidate_rounds,
-        };
-
-    assert!(!prefer_dense_binning(lengths, stats(128, 128, 104)));
-    assert!(prefer_dense_binning(lengths, stats(4096, 4096, 104)));
-    assert!(!prefer_dense_binning(
-        lengths,
-        stats(4096, 4096 * 2, 104 * 512)
-    ));
-    assert!(!prefer_dense_binning(lengths, stats(0, 0, 104)));
-
-    let (compact, dense) = coarse_binning_costs(lengths, stats(4096, 4096, 104));
-    assert!(dense < compact);
 }
 
 fn assert_contiguous_bindings(entries: &[::wgpu::BindGroupLayoutEntry]) {
@@ -236,19 +210,4 @@ fn wgpu_coarse_prefix_preserves_ranges_across_chunk_boundaries() {
             );
         }
     }
-}
-
-#[test]
-fn dense_binning_accounts_for_the_shared_prefix_chain() {
-    // Sharing offsets makes dense binning cheaper at this boundary; the former duplicated
-    // prefix cost incorrectly keeps these moderately sparse tiles on the compact path.
-    let lengths = GpuBufferLengths::from_scene(&Canvas::new(3200, 2000, 1.0));
-    assert!(prefer_dense_binning(
-        lengths,
-        CoarseBinningStats {
-            active_tiles: 160,
-            compact_candidate_rounds: 160,
-            dense_candidate_rounds: 104,
-        }
-    ));
 }

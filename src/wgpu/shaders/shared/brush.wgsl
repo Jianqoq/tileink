@@ -12,8 +12,10 @@ fn sample_brush(brush_offset: u32, x: f32, y: f32) -> u32 {
     var color = brush_word(data_base + 4u);
 
     if (kind == GPU_BRUSH_LINEAR) {
-        let tx = brush_param(base, 4u) * x + brush_param(base, 6u) * y + brush_param(base, 8u);
-        let ty = brush_param(base, 5u) * x + brush_param(base, 7u) * y + brush_param(base, 9u);
+        // Fix the transform's evaluation order before ramp lookup: a one-ulp
+        // coordinate change can cross a half-channel interpolation boundary.
+        let tx = fma(brush_param(base, 4u), x, fma(brush_param(base, 6u), y, brush_param(base, 8u)));
+        let ty = fma(brush_param(base, 5u), x, fma(brush_param(base, 7u), y, brush_param(base, 9u)));
         let sx = brush_param(base, 0u);
         let sy = brush_param(base, 1u);
         let ex = brush_param(base, 2u);
@@ -74,8 +76,8 @@ fn sample_brush(brush_offset: u32, x: f32, y: f32) -> u32 {
 }
 
 fn sample_radial(x: f32, y: f32, base: u32, extend: u32, payload_offset: u32, payload_len: u32) -> u32 {
-    let tx = brush_param(base, 6u) * x + brush_param(base, 8u) * y + brush_param(base, 10u);
-    let ty = brush_param(base, 7u) * x + brush_param(base, 9u) * y + brush_param(base, 11u);
+    let tx = fma(brush_param(base, 6u), x, fma(brush_param(base, 8u), y, brush_param(base, 10u)));
+    let ty = fma(brush_param(base, 7u), x, fma(brush_param(base, 9u), y, brush_param(base, 11u)));
     let sx = brush_param(base, 0u);
     let sy = brush_param(base, 1u);
     let ex = brush_param(base, 2u);

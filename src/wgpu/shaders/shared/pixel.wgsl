@@ -120,21 +120,18 @@ fn pack_premul_rgba8(r: f32, g: f32, b: f32, a: f32) -> u32 {
 }
 
 fn lerp_premul_u8(a: u32, b: u32, t: f32) -> u32 {
-    let inv = 1.0 / 255.0;
-    let ar = f32(a & 255u) * inv;
-    let ag = f32((a >> 8u) & 255u) * inv;
-    let ab = f32((a >> 16u) & 255u) * inv;
-    let aa = f32((a >> 24u) & 255u) * inv;
-    let br = f32(b & 255u) * inv;
-    let bg = f32((b >> 8u) & 255u) * inv;
-    let bb = f32((b >> 16u) & 255u) * inv;
-    let ba = f32((b >> 24u) & 255u) * inv;
-    return rgba8_pack(
-        u32(clamp(ar + (br - ar) * t, 0.0, 1.0) * 255.0 + 0.5),
-        u32(clamp(ag + (bg - ag) * t, 0.0, 1.0) * 255.0 + 0.5),
-        u32(clamp(ab + (bb - ab) * t, 0.0, 1.0) * 255.0 + 0.5),
-        u32(clamp(aa + (ba - aa) * t, 0.0, 1.0) * 255.0 + 0.5),
+    // Interpolate in the stored channel domain and round once. Normalizing by
+    // 255 and rescaling loses exact half-channel values on some shader targets.
+    let left = vec4<f32>(
+        f32(a & 255u), f32((a >> 8u) & 255u),
+        f32((a >> 16u) & 255u), f32((a >> 24u) & 255u),
     );
+    let right = vec4<f32>(
+        f32(b & 255u), f32((b >> 8u) & 255u),
+        f32((b >> 16u) & 255u), f32((b >> 24u) & 255u),
+    );
+    let value = clamp(fma(right - left, vec4<f32>(t), left) + vec4<f32>(0.5), vec4<f32>(0.0), vec4<f32>(255.0));
+    return rgba8_pack(u32(value.r), u32(value.g), u32(value.b), u32(value.a));
 }
 
 fn rem_euclid_f32(value: f32, modulus: f32) -> f32 {

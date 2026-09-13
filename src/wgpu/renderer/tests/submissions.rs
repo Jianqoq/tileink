@@ -145,7 +145,7 @@ fn root_batch_submission_keeps_partial_and_unchanged_history_incremental() {
     let device = renderer.device.clone();
     let queue = renderer.queue.clone();
     let target = external_target(&device, (SIZE, SIZE), "early submission history");
-    let history = crate::wgpu::renderer::ExternalTextureHistoryId::new(99);
+    let history = crate::ExternalTextureHistoryId::new(99);
     renderer
         .render_retained_to_persistent_wgpu_texture(&scene, &target, history)
         .unwrap();
@@ -317,5 +317,34 @@ fn direct_fine_preserves_pixels_across_geometry_and_size_changes() {
             let cleared = renderer.image().rgba8_bytes();
             assert_eq!(&cleared[cleared.len() - 4..], &[0, 0, 0, 0]);
         }
+    }
+}
+
+#[test]
+fn dropping_or_aborting_a_batch_does_not_write_the_render_target() {
+    if !run_wgpu_tests() {
+        return;
+    }
+    let mut renderer = new_test_renderer(17, 19, Color::from_rgb8(17, 34, 51));
+    renderer.render(&Canvas::new(17, 19, 1.0));
+    for abort in [false, true] {
+        let mut commands = crate::wgpu::commands::WgpuCommandBatch::new(
+            &renderer.device,
+            &renderer.queue,
+            "unsubmitted target clear",
+        );
+        assert!(renderer.clear_render_target(&mut commands, RenderTargetId::Main, 0xff00_ff00));
+        if abort {
+            assert_eq!(commands.finish_with_status(false), 0);
+        } else {
+            drop(commands);
+        }
+        let image = renderer.image();
+        assert!(
+            image
+                .pixels
+                .iter()
+                .all(|pixel| *pixel == u32::from_le_bytes([17, 34, 51, 255]))
+        );
     }
 }

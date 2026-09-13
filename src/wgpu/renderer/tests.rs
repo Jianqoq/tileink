@@ -8,9 +8,12 @@ mod filters_graph_inputs;
 mod filters_layers;
 mod filters_masks;
 mod gpu_paths;
+mod image_atlas;
 mod pipelines;
+mod portable_history;
 mod profiles;
 mod resources;
+mod retained_reorder;
 mod retained_structure;
 mod retained_updates;
 mod submissions;
@@ -45,3 +48,23 @@ impl Drop for ForceCoarseChunksGuard {
         force_coarse_emit_chunks_for_test(self.previous);
     }
 }
+
+mod retained_removal;
+
+mod vector_images;
+
+mod empty_layers;
+
+mod filter_scheduling;
+
+mod backdrop_scheduling;
+
+mod backdrop_cache;
+
+mod filter_dependencies;
+
+mod backdrop_damage;
+
+mod backdrop_order;
+
+mod filter_sampling;

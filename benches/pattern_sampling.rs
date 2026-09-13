@@ -3,45 +3,19 @@ use peniko::Color;
 use std::time::{Duration, Instant};
 use tileink::WgpuRenderer;
 
+#[path = "../examples/common/benchmark_gpu.rs"]
+mod benchmark_gpu;
+
 #[path = "../examples/common/mod.rs"]
 mod common;
 
 fn pattern_sampling(c: &mut Criterion) {
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::HighPerformance,
-        compatible_surface: None,
-        force_fallback_adapter: false,
-        apply_limit_buckets: false,
-    }))
-    .expect("pattern benchmark requires a hardware GPU");
-    eprintln!("pattern sampling adapter: {:?}", adapter.get_info());
-    let native = wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
-        | wgpu::Features::TEXTURE_BINDING_ARRAY
-        | wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING;
-    assert!(
-        adapter.features().contains(native),
-        "benchmark must cover the native texture path without fallback"
-    );
+    let api = std::env::var("TILEINK_BENCH_API").unwrap_or_else(|_| "vulkan".into());
     for portable in [false, true] {
-        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-            label: Some("pattern sampling benchmark"),
-            required_features: if portable {
-                wgpu::Features::empty()
-            } else {
-                native
-            },
-            required_limits: adapter.limits(),
-            memory_hints: wgpu::MemoryHints::Performance,
-            trace: wgpu::Trace::Off,
-            experimental_features: wgpu::ExperimentalFeatures::disabled(),
-        }))
-        .unwrap();
+        let (_, device, queue) =
+            benchmark_gpu::device(&api, portable, false, wgpu::MemoryHints::Performance);
         let mode = if portable { "portable" } else { "native" };
-        let mut group = c.benchmark_group(format!("{mode}_pattern_sampling"));
-        group.sample_size(20);
-        group.warm_up_time(Duration::from_secs(2));
-        group.measurement_time(Duration::from_secs(4));
+        let mut group = c.benchmark_group(format!("{api}_{mode}_pattern_sampling"));
         for width in [300, 1600] {
             let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("src/svg/tests/painting/context/with-pattern-and-transform-in-use.svg");
@@ -83,5 +57,12 @@ fn pattern_sampling(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, pattern_sampling);
+criterion_group! {
+    name = benches;
+    config = Criterion::default()
+        .sample_size(20)
+        .warm_up_time(Duration::from_secs(2))
+        .measurement_time(Duration::from_secs(4));
+    targets = pattern_sampling
+}
 criterion_main!(benches);

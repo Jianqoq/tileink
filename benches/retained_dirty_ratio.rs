@@ -1,3 +1,7 @@
+#[path = "support/calibration.rs"]
+mod calibration;
+
+use retained_bench::benchmark_gpu;
 #[path = "../examples/support/retained_bench.rs"]
 mod retained_bench;
 #[path = "../examples/support/retained_dirty_ratio.rs"]
@@ -6,10 +10,9 @@ mod retained_dirty_ratio;
 use std::time::Duration;
 
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
-use peniko::Color;
-use retained_bench::{BenchConfig, HEIGHT, WIDTH, bench, bench_persistent};
+use retained_bench::{BenchConfig, bench, bench_persistent};
 use retained_dirty_ratio::{BACKGROUND_NODES, RATIOS, Workload};
-use tileink::{IncrementalRenderMode, WgpuRenderer};
+use tileink::IncrementalRenderMode;
 
 #[derive(Clone, Copy)]
 enum Mode {
@@ -35,54 +38,57 @@ impl Mode {
 }
 
 fn retained_dirty_ratio(c: &mut Criterion) {
-    let seed = WgpuRenderer::new_default_device(WIDTH, HEIGHT, Color::TRANSPARENT);
+    let api = std::env::var("TILEINK_BENCH_API").unwrap_or_else(|_| "vulkan".into());
+    let (_, device, queue) =
+        benchmark_gpu::device(&api, false, true, wgpu::MemoryHints::MemoryUsage);
+    let context = retained_bench::BenchContext::new(&device, &queue);
     let workload = Workload::new();
-    let mut group = c.benchmark_group("retained_dirty_ratio");
-    group.throughput(Throughput::Elements(BACKGROUND_NODES as u64));
-    for mode in Mode::ALL {
-        for ratio in RATIOS {
-            group.bench_with_input(
-                BenchmarkId::new(mode.name(), format!("{:.1}%", ratio * 100.0)),
-                &ratio,
-                |b, &ratio| {
-                    b.iter_custom(|iterations| {
-                        if matches!(mode, Mode::PersistentAuto | Mode::PersistentForceFull) {
-                            let render_mode = if matches!(mode, Mode::PersistentForceFull) {
-                                IncrementalRenderMode::ForceFull
-                            } else {
-                                IncrementalRenderMode::Auto
-                            };
-                            let measurements = bench_persistent(
-                                &seed,
-                                BenchConfig {
-                                    warmup: 1,
-                                    frames: iterations as usize,
-                                },
-                                workload.persistent_scene(ratio),
-                                render_mode,
-                                |scene, frame| workload.mutate_persistent(scene, ratio, frame),
+    for (prefix, profile) in [
+        ("retained_dirty_ratio_cycles", true),
+        ("retained_dirty_ratio_production", false),
+    ] {
+        let mut group = c.benchmark_group(prefix);
+        group.throughput(Throughput::Elements(BACKGROUND_NODES as u64 * 2));
+        for mode in Mode::ALL {
+            for ratio in RATIOS {
+                let mut warmed = false;
+                group.bench_with_input(
+                    BenchmarkId::new(mode.name(), format!("{:.1}%", ratio * 100.0)),
+                    &ratio,
+                    |b, &ratio| {
+                        b.iter_custom(calibration::warm_once(&mut warmed, |iterations| {
+                            if matches!(mode, Mode::PersistentAuto | Mode::PersistentForceFull) {
+                                let render_mode = if matches!(mode, Mode::PersistentForceFull) {
+                                    IncrementalRenderMode::ForceFull
+                                } else {
+                                    IncrementalRenderMode::Auto
+                                };
+                                let measurements = bench_persistent(
+                                    &context,
+                                    BenchConfig::paired_cycles(1, iterations, profile),
+                                    workload.persistent_scene(ratio),
+                                    render_mode,
+                                    |scene, frame| workload.mutate_persistent(scene, ratio, frame),
+                                )
+                                .expect("persistent dirty-ratio Criterion benchmark must render");
+                                return measurements.wall.into_iter().sum::<Duration>();
+                            }
+                            let frames = workload.immediate_frames(ratio);
+                            let measurements = bench(
+                                &context,
+                                BenchConfig::paired_cycles(1, iterations, profile),
+                                &frames,
+                                IncrementalRenderMode::Auto,
                             )
-                            .expect("persistent dirty-ratio Criterion benchmark must render");
-                            return measurements.wall.into_iter().sum::<Duration>();
-                        }
-                        let frames = workload.immediate_frames(ratio);
-                        let measurements = bench(
-                            &seed,
-                            BenchConfig {
-                                warmup: 1,
-                                frames: iterations as usize,
-                            },
-                            &frames,
-                            IncrementalRenderMode::Auto,
-                        )
-                        .expect("dirty-ratio Criterion benchmark must render");
-                        measurements.wall.into_iter().sum::<Duration>()
-                    });
-                },
-            );
+                            .expect("dirty-ratio Criterion benchmark must render");
+                            measurements.wall.into_iter().sum::<Duration>()
+                        }));
+                    },
+                );
+            }
         }
+        group.finish();
     }
-    group.finish();
 }
 
 criterion_group! {

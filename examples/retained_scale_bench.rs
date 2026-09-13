@@ -5,13 +5,12 @@ mod retained_scale;
 
 use std::error::Error;
 
-use peniko::Color;
 use retained_bench::{
     BenchConfig, HEIGHT, MutationPhase, WIDTH, bench_persistent, bench_persistent_phase, median_ms,
     ms,
 };
 use retained_scale::{Scenario, Workload};
-use tileink::{IncrementalRenderMode, WgpuRenderer};
+use tileink::IncrementalRenderMode;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let RunConfig {
@@ -20,7 +19,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         scenarios,
         phase,
     } = parse_config()?;
-    let seed = WgpuRenderer::new_default_device(WIDTH, HEIGHT, Color::TRANSPARENT);
+    let context = retained_bench::BenchContext::default_device();
     println!(
         "persistent retained scale bench: {WIDTH}x{HEIGHT}, warmup {}, measured frames {}",
         config.warmup, config.frames
@@ -64,7 +63,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let scene = workload.build_scene();
             let measured = if let Some(phase) = phase {
                 bench_persistent_phase(
-                    &seed,
+                    &context,
                     config,
                     scene,
                     IncrementalRenderMode::Auto,
@@ -73,7 +72,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 )?
             } else {
                 bench_persistent(
-                    &seed,
+                    &context,
                     config,
                     scene,
                     IncrementalRenderMode::Auto,

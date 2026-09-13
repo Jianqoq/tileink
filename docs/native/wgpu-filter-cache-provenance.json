@@ -1,0 +1,163 @@
+{
+  "scope": "Supplement to frozen pre-cache M1 reflection; no new reflection run is claimed. Shader algorithms, binding-remap algorithms and ABI are unchanged; module lifetime is shared per resource-mask slot.",
+  "frozen_reflection_sha256": "d7efc125237a68c4f9f063abab067430c38e8be4da3bffb244a40aadc4b7bb1b",
+  "historical_provenance_sha256": "380876fc96956f335552e6a7f330cb66422c1862a32914584f12477d0bc57f15",
+  "changed_inputs": {
+    "Cargo.toml": {
+      "before": "0ecddbbd2d77afc17fa5418898ef18c64b942b76908c8d62b160a7bdc2983af0",
+      "after": "34c1d208b7919a33f991e1a7cbd097cbfa8b6329f98b3562c742dd2d1f875ae1"
+    },
+    "src/wgpu/filter.rs": {
+      "before": "34f8af8ff94e132e03aaf3062cccfa20e0d3a75e24df6e1740f270a10aef3e62",
+      "after": "d67a6257722d7ad2a983888006ca243bf4ef774d9cbabc7e59fea2e5b87feecf"
+    }
+  },
+  "current_shipping_source_sha256": {
+    "Cargo.lock": "ebb0632a3849bb33953a9b75594ecfa1126dde01ad59ca2bbe1c161fcdb7fcca",
+    "Cargo.toml": "34c1d208b7919a33f991e1a7cbd097cbfa8b6329f98b3562c742dd2d1f875ae1",
+    "build.rs": "c7f60e13b8f7738a6f184fce31a89b25e8c325540c05b284b052360d640c574b",
+    "build/dxc.rs": "27024c9c0940162446077a62ce50e7fd79f73e6c7db47b2e03255af500158ff5",
+    "build/dxil.rs": "81c65f707b0dfdd9d58f293c95e5388ead7f608a45cb428d723605e5cba269ca",
+    "build/dxil_cache.rs": "e1ffa9999e9fbdb872c76f6cef58319d2088cb43ae75d88bc1d1ed8bc1e3fd4c",
+    "build/dxil_provenance.rs": "7b9e8178a6cce8175458e51cfde1d1e5ce234101807cf6ee494d5422e8eb08e8",
+    "src/shared/gpu_layout.rs": "d7b9d3d19f23972601a66cf4b533f4d50fd873fd0b4dbc2ee63392d82b6bbd17",
+    "src/shared/gpu_types.rs": "20da3bd189fd8fd8135a1080714d74f5a1cd5185baab9df03566243150244462",
+    "src/wgpu/buffer.rs": "4459f3fa6d76de1a4558fdc02ad9c74bc89b967e3b59665dd932d17b2b1761fc",
+    "src/wgpu/coarse.rs": "55ee8690633b9b1e0086bab8bc5229ead9fb30522dc2f6b5653319f635e93b67",
+    "src/wgpu/cumsum.rs": "de0ab93463e0154fd2942b9488c771d2fcd7dc267066d24f2acb3ad8cea49e1c",
+    "src/wgpu/filter.rs": "d67a6257722d7ad2a983888006ca243bf4ef774d9cbabc7e59fea2e5b87feecf",
+    "src/wgpu/fine.rs": "394f36a0e015d1f296617c35995e6d79993ec8e657539ea5d6a54fb6a5567d3c",
+    "src/wgpu/scan.rs": "7ed9ed2c5e829b098d1021c442db6f7c55896e62a1dd405abb79d1867e27fb6c",
+    "src/wgpu/shader_variants.rs": "6732983e8f75e79f5518ad6122939f93bb3b7f12cde6fd8abcf68fa663aa45df",
+    "src/wgpu/shaders/coarse/common.wgsl": "a84723c707f66fc40490ccfc27e1a119ae8bc12751585b0252cc5ba5edc422b8",
+    "src/wgpu/shaders/coarse/count.wgsl": "bf93aa70a44573810b2c189e9b1581c8caa2d1dd1754a0c64ad49352f5522baf",
+    "src/wgpu/shaders/coarse/emit.wgsl": "c4db697d1ea9de448b4ef6174ab98ff341cf9b4b253f6df7877cd6e6a99562cf",
+    "src/wgpu/shaders/coarse/emit_web.wgsl": "48b9ae0642d211cb538516ae82fa0a42553fb40a1e1a44d736ef15596eee2832",
+    "src/wgpu/shaders/coarse/prefix.wgsl": "58a9c9770571c6390ad07aa231465b088b8f7a1180fb44e3a7bd8dc8d6ff54f5",
+    "src/wgpu/shaders/coarse/text_input.wgsl": "9f0169c65a93ce6238a22352d4c07d4bf81a47c6fdbc7dd42545603f3a919815",
+    "src/wgpu/shaders/cumsum.wgsl": "050f9107d106cf4ad3f0e8f4246cd45172216994e157452397faf133b33bd451",
+    "src/wgpu/shaders/filter.wgsl": "a1cd952d95af13d523805d95f4a37869d64e7b6aad98a1ca3e507d128f75857a",
+    "src/wgpu/shaders/filter/effects.wgsl": "8e5a6458d6f50b249d806ea04462c52099ea62df0de8382736693e2f15241c21",
+    "src/wgpu/shaders/filter/header.wgsl": "276e739ebe56eec61ad51e11fc053c58da68c2fc64ff7f8172d19996b3b6bad3",
+    "src/wgpu/shaders/filter/kernels.wgsl": "06384d676daaae5abb96a4f0aef0b36725698c25e24cce1681f3ecf8c01890be",
+    "src/wgpu/shaders/filter/kernels_basic.wgsl": "0c7e7081dc857f9088283b1bde9b2f231e12adba8d7b3b8d46910b47381a6ef0",
+    "src/wgpu/shaders/filter/kernels_composite.wgsl": "4cbb62bdc7828e7eeb67d13cfcb279c296afee2144e9028fc993fba97d18d018",
+    "src/wgpu/shaders/filter/kernels_effects.wgsl": "69a65b35d05b8126b703e9f9fd7b6be97515b7de26f30a85009ef0b972ccf9ff",
+    "src/wgpu/shaders/filter/kernels_sampling.wgsl": "911d47641821990b2eaa0392f3cd2e2923ad680e390f1e307bcf900bd4082bac",
+    "src/wgpu/shaders/filter/stack.wgsl": "327c76d937d9da48070b53afd7d3c608a3178ae365bdd156fbb6d7bfd77ba1ae",
+    "src/wgpu/shaders/filter/textures.wgsl": "06720b09866a744b3310da00e277b90cbc78b52706de97ab875169781c9f13a1",
+    "src/wgpu/shaders/filter/textures_native.wgsl": "dfa04e8f5887af7a795c0c040489174d135fdbbac2d3cb3d03a734aeed810e4d",
+    "src/wgpu/shaders/filter/textures_web.wgsl": "1b69136b40dafd1ba4da363978f60043b71e9de302d8441f374b957f16909174",
+    "src/wgpu/shaders/filter_web.wgsl": "d626b2aa736184cae3141f78035f95107017fc6f5ed13abb575a493cd4faeaae",
+    "src/wgpu/shaders/fine.wgsl": "060481ae3882a479911bbc293b47fb8f487a94ec40d2f81f16571eef5b1850fe",
+    "src/wgpu/shaders/fine/extra.wgsl": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+    "src/wgpu/shaders/fine/header.wgsl": "2c5ccf0b23522f5e03178e0c60b4a04ade228bde73ab33d0e77c05903c8f6f66",
+    "src/wgpu/shaders/fine/main.wgsl": "74fc8887ca36d0ee771e9b8145115b63d9356f379fee3a8bb8a4cccfed095b17",
+    "src/wgpu/shaders/fine/target_native.wgsl": "d63c31f84db1696c6dced57546b78c845edd362b6e3982f43417de057e1d02a2",
+    "src/wgpu/shaders/fine/target_web.wgsl": "bc5d31efd95b46cf37100ee1d9f079990ef0d618c303b2220ae648cd6305713f",
+    "src/wgpu/shaders/fine/text.wgsl": "2aae6f9938223368bb3411a2895087ec75cdde6881e58a963acf7023e23e5b27",
+    "src/wgpu/shaders/fine_web.wgsl": "436e1ca066104959c1791b3b1b32a169a7842a9985adc5867d1c9277ed46c3f4",
+    "src/wgpu/shaders/range_scatter.wgsl": "2974a1d8606aa5f11cbc8a16dc622832821645e2f1740c45fc5a7828ada7a60d",
+    "src/wgpu/shaders/scan/apply_chunk_offsets.wgsl": "9feb4ef5891a64fffd9dddf0e721e3c7f70d6ffd03c8f49b2806126055721486",
+    "src/wgpu/shaders/scan/chunk_offsets.wgsl": "03c64075fd3864c2feb610ac5e7d4e58bcbc53b375305f514f2d582b45446414",
+    "src/wgpu/shaders/scan/clear.wgsl": "71b7ffb80bdf83df18c480a827738cc8da5554d5d0ddbf5696a806eac25afb0d",
+    "src/wgpu/shaders/scan/common.wgsl": "45d68a85f73a59668ae05738a5ede9ce2ecb0823f2c718ab473cc0af9fe590b2",
+    "src/wgpu/shaders/scan/count.wgsl": "b828c78877b85c707247664720941e690ad37964796c5f5cecf74b2617ebaf19",
+    "src/wgpu/shaders/scan/emit.wgsl": "9ad3fafdc17c5c21b9917e79612b872e50a4d82b31df276d06433196940a94a1",
+    "src/wgpu/shaders/scan/prefix_chunks.wgsl": "2efb885ff620fab81e3723e2d617d3d81eb30ff3d5a8683ecd7508b7301ae897",
+    "src/wgpu/shaders/shared/blend.wgsl": "d45b48600f7adbc791a1c85868d63f1072cf72e1134002ef8228ee25be65ba56",
+    "src/wgpu/shaders/shared/brush.wgsl": "9f486bb95022fd113bca23e09814f13838d2b33359f6bc7a547b87be55b187ee",
+    "src/wgpu/shaders/shared/coverage.wgsl": "9c37b3af344efd4aae51455b1cc28b819a6fb6be43c65de1412fffd741244491",
+    "src/wgpu/shaders/shared/pattern_transform.wgsl": "a1e02952f92d582afb8b31ddc25c86b456e4621295cfa811fbe3a593649d2bd0",
+    "src/wgpu/shaders/shared/pixel.wgsl": "9402bb614be529aab4eaedeb4969428dab365816fb9b590d64d72f57f04fe582",
+    "src/wgpu/shaders/shared/sdf.wgsl": "744c1aa4592453d22acf89fd474151ab4062f1348c26eaf31ef3e43992f2be54",
+    "src/wgpu/shaders/shared/sdf_primitives.wgsl": "c39dbe3fb18b4742389ce89965d6754524158faec795a7359bd233fa7900e0a8"
+  },
+  "cache_files": {
+    "src/wgpu/filter.rs": "d67a6257722d7ad2a983888006ca243bf4ef774d9cbabc7e59fea2e5b87feecf",
+    "src/wgpu/filter/lazy_tests.rs": "f883ac70bc478106423f3a5d9f0e40dcdf468ed08296f5882bb7c41c745dd66e",
+    "src/wgpu/filter/benchmark.rs": "790d92309d2b02e2b18b6a89b9300aa554b2020a50ce315ed57fe8826f85ed3c",
+    "src/wgpu/mod.rs": "2c07d672d45f849576faaa74ae38b6b9f1c7abfb52534d10c047de7513974750",
+    "src/wgpu/renderer/tests/common.rs": "db84534ef349f748d917e57bfecdef210c1eedabeacd47dc5fb2aa399b9f2f93",
+    "src/lib.rs": "e89707a6426e203a7fdf648ab039a119e5087592781693d405735b3829e1f8c5",
+    "benches/filter_compilation.rs": "c745aa1c54c81931bb0b7c9d803bb669f72711d549320e0e943f59de7146239a",
+    "Cargo.toml": "09debfdf34df99520e59c6c77edf33faba0c25c982e1e194fc73064a1366a756"
+  },
+  "validation": {
+    "factory": "902 release library tests; 37 resource-mask entries; lazy module reuse across two devices on each API/texture route",
+    "pixels": "See M1 completion report for final exact full-corpus gate",
+    "build": "build-consistency-2 plus build-consistency-tools-1: code/data identical; parsed linker metadata changes retained"
+  },
+  "cache_files_scope": "Frozen cache-delta files before the later scoped benchmark manifest addition; final reflection inputs are current_shipping_source_sha256.",
+  "later_scoped_delta": {
+    "manifest_before": "09debfdf34df99520e59c6c77edf33faba0c25c982e1e194fc73064a1366a756",
+    "manifest_after": "34c1d208b7919a33f991e1a7cbd097cbfa8b6329f98b3562c742dd2d1f875ae1",
+    "files": {
+      "src/retained_scene/materializer/mod.rs": "ecb6e53189d41af5cbe640657c5928914d845b535dd47233ffda6f1963ea03cd",
+      "src/retained_scene/materializer/lifecycle.rs": "b7e893d7da6d9a5325fd1830dc9e1e392788286bb3e2a4722d7a93d3941b7b09",
+      "src/retained_scene/materializer/scoped_damage.rs": "2413b50b380693d20b97d176105438fe9af4162ad7551c483122dd772b03f63a",
+      "src/retained_scene/materializer/scoped_damage/tests.rs": "1f0d1241ff775c18a4915ae89b9fd7defadcef11fb3b40cbefc3d01a6b54f628",
+      "src/wgpu/renderer/tests/backdrop_damage.rs": "2dcceb7530b1bbffddd6386c479a046927b81cda8caee2d821669b2280d25d18",
+      "benches/scoped_damage.rs": "8d95ca964b9152e2f3f653615ef45082a9c0eed41dd64b8fc0b51aaad6f41247",
+      "Cargo.toml": "34c1d208b7919a33f991e1a7cbd097cbfa8b6329f98b3562c742dd2d1f875ae1"
+    },
+    "scope": "Classification cache, retained Layer dependency indexes, semantic tests and a CPU Criterion benchmark; shader source and ABI unchanged."
+  },
+  "later_materializer_delta": {
+    "before": {
+      "src/retained_scene/materializer/damage.rs": "ed2bad3070c9f7d7914f9dd0f65d06e991299ba427d2a1898a65f36d9237cc85",
+      "src/retained_scene/materializer/lifecycle.rs": "b7e893d7da6d9a5325fd1830dc9e1e392788286bb3e2a4722d7a93d3941b7b09",
+      "src/retained_scene/materializer/mod.rs": "ecb6e53189d41af5cbe640657c5928914d845b535dd47233ffda6f1963ea03cd",
+      "src/retained_scene/materializer/scoped_damage.rs": "2413b50b380693d20b97d176105438fe9af4162ad7551c483122dd772b03f63a",
+      "src/retained_scene/materializer/scoped_damage/tests.rs": "1f0d1241ff775c18a4915ae89b9fd7defadcef11fb3b40cbefc3d01a6b54f628"
+    },
+    "after": {
+      "src/retained_scene/materializer/damage.rs": "2a26e8e387b7d001b4545fc072bcf9b8357a0a20afb3d7875972931ab0c1b919",
+      "src/retained_scene/materializer/lifecycle.rs": "62a9a8687981202c6614f50759d78eac9014d4ed3c7e6a26cedc16d71a511a94",
+      "src/retained_scene/materializer/mod.rs": "9b292fd21a72aaed967146db7302a6217074040a8c7fde32d87fb3ade60a04ca",
+      "src/retained_scene/materializer/scoped_damage.rs": "c3826abc956f5524be986f4d4149e271ec813b32d01ac9cdbbfe90a664d6d037",
+      "src/retained_scene/materializer/scoped_damage/tests.rs": "2e1c8444295cd5df4aed6beef23a26e6c6fc1628d033117e7cbf5804c8f0add4"
+    },
+    "scope": "Root dependency order cache, shared old/new layer bounds and fixed Filter/Mask input-domain checks. Historical reflection, cache and scoped deltas stay unchanged. No shader, binding, ABI or Cargo change."
+  },
+  "scoped_leaf_delta": {
+    "before": {
+      "src/canvas/damage_history.rs": "07c049591cde26eb22e9e2b1260ce741869254c6d7722b00caac3ecf4ec471f9",
+      "src/canvas/retained.rs": "83138b9a318668acce1f6b9c9a10030a00f43b1fb01bc5a986a5f7d0c7a48ddd",
+      "src/canvas/retained/damage.rs": "e41f633326e6403acf662d5bafc1113810718c5707b0b80d831ded78feea80b1",
+      "src/canvas/retained/damage_buffer.rs": null,
+      "src/retained_scene/materializer/chunk_canvas.rs": null,
+      "src/retained_scene/materializer/lifecycle.rs": "62a9a8687981202c6614f50759d78eac9014d4ed3c7e6a26cedc16d71a511a94",
+      "src/retained_scene/materializer/mod.rs": "9b292fd21a72aaed967146db7302a6217074040a8c7fde32d87fb3ade60a04ca",
+      "src/retained_scene/materializer/scoped_damage.rs": "c3826abc956f5524be986f4d4149e271ec813b32d01ac9cdbbfe90a664d6d037",
+      "src/retained_scene/materializer/structural_damage.rs": "7bd38a97b286ccd5f65ae93ff7fbc985816c8a630b50a05bacc3887753cd2d3e"
+    },
+    "after": {
+      "src/canvas/damage_history.rs": "53942ceefada47102e9ae7e40e4f918181192012a75b33d012f26cb6de152d74",
+      "src/canvas/retained.rs": "5fbfd86f683e1c1ed97d7b4eb0764c8cddd7eaa53f06c63052f52a34290ef7d8",
+      "src/canvas/retained/damage.rs": "e5c593ce5753933b1e8b957e6366ba8d5c34c42e1ca478736568b6a1a31bc415",
+      "src/canvas/retained/damage_buffer.rs": "967b602c06d0dea8b9168871d008a760918042d895e51cb05707ad36c30f2e50",
+      "src/retained_scene/materializer/chunk_canvas.rs": "b22b7e1ae4f1a492720377dc2fee8fb1cfa576446e2d5e750c9fa276e06427f7",
+      "src/retained_scene/materializer/lifecycle.rs": "56796b10a5e54a74f9dc4a0b1124d86eba5bce37bd7ae6e458bf2d18fc8aa7f8",
+      "src/retained_scene/materializer/mod.rs": "bdd5344c105a7249e598911a1ab2dcd215bb46c48194f7ceee6c8e41ba49f4ba",
+      "src/retained_scene/materializer/scoped_damage.rs": "37bd70bb752991e0d5009b23d154e292d74cdd0f268a6e80d0db8fe6fa4573dc",
+      "src/retained_scene/materializer/structural_damage.rs": "9e40ef80a39a040a5e6ad3c9f2360d12cc310bafbc312c429fc0477cd8e061c2"
+    },
+    "acceptance": "G:\\Code\\tileink\\target\\backend-parity\\m1-chunk-bounds-1\\acceptance-1\\summary.json",
+    "acceptance_sha256": "e7876b6896bea5dd1b95638a148d3eee2641abd6951dd37771af382d8f633e47",
+    "scope": "Compact/borrowed history, isolated work-buffer reuse, reused chunk lookups and mutation-invalidated chunk visual bounds. This follows the historical materializer delta; no shader, binding, ABI or Cargo change."
+  },
+  "uniform_aggregation_delta": {
+    "before": {
+      "src/render/upload/uniforms.rs": "fe52596298e8451058f08fbe86d1b4e7e3806a7699e0d9bcc7436fc9ece11edb",
+      "src/render/upload/uniforms/tests.rs": "857e5d3199f51e3607a923081038238bd3c5cf2af2493d0f917b8949a29fb59e"
+    },
+    "after": {
+      "src/render/upload/uniforms.rs": "d6a78683ece527e613894894b935994fcf2dbdf17dc316f7070fbb0419438924",
+      "src/render/upload/uniforms/tests.rs": "56233e6844044b4a11624213c428c499ac155a0ec7af3cfd64c0b2f041994f31"
+    },
+    "acceptance": "G:\\Code\\tileink\\target\\backend-parity\\m1-uniform-small-1\\acceptance-1\\summary.json",
+    "acceptance_sha256": "42214f551ee4df3074237d6b3617f6c2ca6ea70e0c0d6cb0ab36ea40998ae001",
+    "scope": "Dense uniform arenas with bounded linear lookup and a lazy allocation-identity index. Two Rust files; no shader, binding, ABI or Cargo changes."
+  }
+}

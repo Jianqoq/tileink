@@ -4,10 +4,10 @@ use super::canvas::{WgpuScanBindings, WgpuScanBuffers, WgpuSceneBuffers};
 use super::commands::{
     WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
 };
-use super::dispatch_2d;
-use super::incremental::ActiveScanPlan;
 use super::lazy::{LazyComputePipeline, LazyShaderModule, PipelineCompilationTracker};
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
+use crate::render::dispatch::dispatch_2d;
+use crate::render::incremental::ActiveScanPlan;
 
 const WORKGROUP_SIZE: u32 = 256;
 const CLEAR_STORAGE_BINDING_COUNT: u32 = 8;
@@ -231,7 +231,6 @@ impl WgpuScanPipeline {
         let segment_capacity = lengths.segment_capacity as u32;
         let clear_len = backdrop_len.max(path_count).max(scan_chunk_count);
         let config_offset = commands.write_uniform_slot(
-            "scan.config",
             &self.config,
             self.config_size,
             self.config_stride,

@@ -1,3 +1,5 @@
+use crate::render::target_capacity::resized_capacity;
+
 pub(crate) struct WgpuTarget {
     texture: ::wgpu::Texture,
     view: ::wgpu::TextureView,
@@ -53,38 +55,6 @@ impl WgpuTarget {
     }
 }
 
-fn resized_capacity(
-    current: (u32, u32),
-    required: (u32, u32),
-    limit: impl FnOnce() -> u32,
-) -> Option<(u32, u32)> {
-    let fits = required.0 <= current.0 && required.1 <= current.1;
-    if fits {
-        let excessively_wide = required.0.saturating_mul(2) < current.0;
-        let excessively_tall = required.1.saturating_mul(2) < current.1;
-        return (excessively_wide || excessively_tall).then_some(required);
-    }
-    let limit = limit();
-    Some((
-        if required.0 > current.0 {
-            grown_dimension(current.0, required.0, limit)
-        } else {
-            current.0
-        },
-        if required.1 > current.1 {
-            grown_dimension(current.1, required.1, limit)
-        } else {
-            current.1
-        },
-    ))
-}
-
-fn grown_dimension(current: u32, required: u32, limit: u32) -> u32 {
-    debug_assert!(current > 0);
-    debug_assert!(required > current);
-    required.max(current.saturating_add(current / 2).min(limit))
-}
-
 fn create_target_texture(
     device: &::wgpu::Device,
     width: u32,
@@ -111,32 +81,8 @@ fn create_target_texture(
     (texture, view)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{grown_dimension, resized_capacity};
-
-    #[test]
-    fn target_capacity_grows_geometrically() {
-        assert_eq!(grown_dimension(100, 101, 4096), 150);
-        assert_eq!(grown_dimension(100, 240, 4096), 240);
-    }
-
-    #[test]
-    fn target_capacity_does_not_grow_past_device_limit() {
-        assert_eq!(grown_dimension(3000, 3500, 4096), 4096);
-    }
-
-    #[test]
-    fn target_capacity_reuses_interactive_shrink_range() {
-        assert_eq!(resized_capacity((1600, 1000), (1472, 928), || 4096), None);
-        assert_eq!(resized_capacity((256, 192), (128, 96), || 4096), None);
-    }
-
-    #[test]
-    fn target_capacity_releases_disproportionate_allocations() {
-        assert_eq!(
-            resized_capacity((4096, 2160), (1280, 720), || 8192),
-            Some((1280, 720))
-        );
+impl crate::render::retained_surfaces::SurfaceAllocation for WgpuTarget {
+    fn byte_len(&self) -> u64 {
+        WgpuTarget::byte_len(self)
     }
 }

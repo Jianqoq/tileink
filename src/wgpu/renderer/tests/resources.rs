@@ -8,23 +8,24 @@ fn local_scene_resources_are_quarantined_until_the_next_frame() {
 
     let mut renderer = new_test_renderer(32, 32, Color::TRANSPARENT);
     let first = renderer.acquire_local_scene_resources((16, 16));
-    let first_key = first.config.binding_key();
+    let first_key = first.allocation.config.binding_key();
     renderer.recycle_local_scene_resources(first);
 
     let sibling = renderer.acquire_local_scene_resources((16, 16));
-    let sibling_key = sibling.config.binding_key();
+    let sibling_key = sibling.allocation.config.binding_key();
     assert_ne!(
         sibling_key, first_key,
         "sibling commands in one batch must not share writable scene buffers"
     );
     renderer.recycle_local_scene_resources(sibling);
-    assert!(renderer.local_scene_resource_pool.is_empty());
-    assert_eq!(renderer.pending_local_scene_resources.len(), 2);
+    assert!(renderer.local_scene_resources.available().is_empty());
+    assert_eq!(renderer.local_scene_resources.pending().len(), 2);
 
-    renderer.begin_local_scene_resource_frame();
-    assert!(renderer.pending_local_scene_resources.is_empty());
+    renderer.local_scene_resources.begin_frame();
+    assert!(renderer.local_scene_resources.pending().is_empty());
     let reused_key = renderer
         .acquire_local_scene_resources((16, 16))
+        .allocation
         .config
         .binding_key();
     assert!(reused_key == first_key || reused_key == sibling_key);
@@ -38,24 +39,25 @@ fn local_scene_resource_pool_matches_sibling_sizes_across_frames() {
 
     let mut renderer = new_test_renderer(64, 64, Color::TRANSPARENT);
     let small = renderer.acquire_local_scene_resources((16, 16));
-    let small_key = small.config.binding_key();
+    let small_key = small.allocation.config.binding_key();
     renderer.recycle_local_scene_resources(small);
     let large = renderer.acquire_local_scene_resources((32, 32));
-    let large_key = large.config.binding_key();
+    let large_key = large.allocation.config.binding_key();
     renderer.recycle_local_scene_resources(large);
 
-    renderer.begin_local_scene_resource_frame();
+    renderer.local_scene_resources.begin_frame();
     let reused_small = renderer.acquire_local_scene_resources((16, 16));
     let reused_large = renderer.acquire_local_scene_resources((32, 32));
-    assert_eq!(reused_small.config.binding_key(), small_key);
-    assert_eq!(reused_large.config.binding_key(), large_key);
+    assert_eq!(reused_small.allocation.config.binding_key(), small_key);
+    assert_eq!(reused_large.allocation.config.binding_key(), large_key);
 
     renderer.recycle_local_scene_resources(reused_small);
     renderer.recycle_local_scene_resources(reused_large);
-    renderer.begin_local_scene_resource_frame();
+    renderer.local_scene_resources.begin_frame();
     let fallback = renderer.acquire_local_scene_resources((24, 24));
     assert!(
-        fallback.config.binding_key() == small_key || fallback.config.binding_key() == large_key,
+        fallback.allocation.config.binding_key() == small_key
+            || fallback.allocation.config.binding_key() == large_key,
         "an inexact target size must still reuse grown scene buffers"
     );
 }

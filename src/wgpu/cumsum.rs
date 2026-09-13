@@ -4,10 +4,10 @@ use super::canvas::{WgpuCumsumBindings, WgpuScanBuffers, WgpuSceneBuffers};
 use super::commands::{
     WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
 };
-use super::dispatch_2d;
-use super::incremental::ActiveScanPlan;
 use super::lazy::{LazyComputePipeline, LazyShaderModule, PipelineCompilationTracker};
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
+use crate::render::dispatch::dispatch_2d;
+use crate::render::incremental::ActiveScanPlan;
 
 const WORKGROUP_SIZE: u32 = 256;
 const STORAGE_BINDING_COUNT: u32 = 7;
@@ -124,7 +124,6 @@ impl WgpuCumsumPipeline {
         }
 
         let config_offset = commands.write_uniform_slot(
-            "cumsum.config",
             &self.config,
             self.config_size,
             self.config_stride,

@@ -23,6 +23,16 @@ impl PersistentSceneMaterializer {
             vacant_command_fragments: Vec::new(),
             resource_refs: HashMap::default(),
             dependency_free: false,
+            scoped_backdrop: false,
+            backdrop_order: Vec::new(),
+            #[cfg(test)]
+            scoped_backdrop_scans: std::cell::Cell::new(0),
+            #[cfg(test)]
+            backdrop_order_sorts: std::cell::Cell::new(0),
+            #[cfg(test)]
+            local_output_bounds_reads: std::cell::Cell::new(0),
+            #[cfg(test)]
+            input_domain_snapshots: std::cell::Cell::new(0),
             layer_nodes: HashSet::default(),
             nonlocal_dependencies: HashSet::default(),
             surface_dependent_plans: HashSet::default(),
@@ -125,11 +135,25 @@ impl PersistentSceneMaterializer {
                 != (self.canvas.width_in_tiles(), self.canvas.height_in_tiles())
         {
             let spatial_profile =
-                crate::wgpu::start_cpu_scope("retained.materialize.spatial_index");
+                crate::render::profile::cpu::start_cpu_scope("retained.materialize.spatial_index");
             self.rebuild_spatial_index(scene);
             drop(spatial_profile);
         }
-        let analysis_profile = crate::wgpu::start_cpu_scope("retained.materialize.analysis");
+        let analysis_profile =
+            crate::render::profile::cpu::start_cpu_scope("retained.materialize.analysis");
+        // Scoped membership depends on chunk dependencies and ancestry, not ordinary
+        // parameter revisions. Snapshot affected OLD members before editing the
+        // index; checking the new members after rebuild avoids an O(backdrops)
+        // classification pass for unchanged dependency domains.
+        let scoped_dependencies_changed = surface_changed
+            || journal_gap
+            || changes.hierarchy_changed
+            || (!self.nonlocal_dependencies.is_empty()
+                && changes
+                    .changed_nodes
+                    .iter()
+                    .chain(&changes.removed_nodes)
+                    .any(|id| self.nonlocal_dependencies.contains(id)));
         for id in &changes.removed_nodes {
             self.layer_nodes.remove(id);
             self.nonlocal_dependencies.remove(id);
@@ -143,9 +167,12 @@ impl PersistentSceneMaterializer {
                 } else {
                     self.layer_nodes.remove(&id);
                 }
-                // Scene chunks may contain ordinary backdrop commands. Keep their existing
-                // membership until rebuild_node refreshes it from the newly encoded chunk.
-                if !node.is_some_and(|node| matches!(&node.kind, NodeKind::Scene { .. })) {
+                // Reparenting can preserve a layer chunk's generation and skip rebuilding it.
+                // Keep both scene and layer dependencies until rebuild_node refreshes them;
+                // eagerly removing a live layer here lost its backdrop and surface indexes.
+                if !node.is_some_and(|node| {
+                    matches!(&node.kind, NodeKind::Scene { .. } | NodeKind::Layer(_))
+                }) {
                     self.nonlocal_dependencies.remove(&id);
                     self.surface_dependent_plans.remove(&id);
                 }
@@ -219,17 +246,7 @@ impl PersistentSceneMaterializer {
                 })
             })
             .flatten();
-        let stable_batch_candidate = !changes.topology_changed
-            && changes.changed_nodes.iter().all(|id| {
-                scene.nodes.get(id).is_none_or(|node| {
-                    matches!(node.kind, NodeKind::Group)
-                        || (self.node_batches.contains_key(id)
-                            && self
-                                .chunks
-                                .get(id)
-                                .is_some_and(|chunk| chunk.plain_fragment))
-                })
-            });
+        let mut stable_batch_candidate = !changes.topology_changed;
         let mut reorder_damage = Vec::new();
         let mut plain_topology_damage = Vec::new();
         let root_painter_update = changes.topology_changed
@@ -256,11 +273,55 @@ impl PersistentSceneMaterializer {
         let mut layer_bounds_changes = Vec::new();
         let mut plan_layer_stack_changes = Vec::new();
         let mut layer_bounds_stable = true;
+        let capture_scoped_damage = previous_frame
+            .as_ref()
+            .is_some_and(|frame| frame.damage_history.is_scoped())
+            && !surface_changed
+            && !changes.invalidate_all
+            && !journal_gap;
+        let old_structural_damage = (capture_scoped_damage && changes.hierarchy_changed)
+            .then(|| self.old_structural_damage(&changes));
+        let mut scoped_sources = (capture_scoped_damage && !changes.hierarchy_changed)
+            .then(crate::canvas::RetainedDamage::default);
+        // Snapshot every changed layer before ANY command is modified. Mixed
+        // transactions do not use the layer-only patch path, and chunk shells
+        // have no child tree from which to classify opacity/blend fusion.
+        let old_input_domains = if scoped_sources.is_some() {
+            changes
+                .changed_layers
+                .iter()
+                .filter_map(|&id| {
+                    let old = self.layer_input_isolated(id);
+                    // Filter and mask inputs always use isolated scratch. If the
+                    // old input already did too, no command/child mutation can
+                    // change this domain. Avoid retaining and rechecking that
+                    // invariant on every parameter update; transitions from a
+                    // fused input and all other layer kinds keep the full check.
+                    let fixed_isolated = old == Some(true)
+                        && scene.nodes.get(&id).is_some_and(|node| {
+                            matches!(
+                                &node.kind,
+                                NodeKind::Layer(
+                                    RetainedLayerDescriptor::Filter { .. }
+                                        | RetainedLayerDescriptor::Mask(_)
+                                )
+                            )
+                        });
+                    (!fixed_isolated).then_some((id, old))
+                })
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        #[cfg(test)]
+        self.input_domain_snapshots
+            .set(self.input_domain_snapshots.get() + old_input_domains.len());
         let mut chunks_rebuilt = 0;
         let mut position_plan_patches = Vec::new();
         let mut unpatchable_plan_change = changes.topology_changed || surface_plan_changed;
         drop(analysis_profile);
-        let chunk_profile = crate::wgpu::start_cpu_scope("retained.materialize.chunks");
+        let chunk_profile =
+            crate::render::profile::cpu::start_cpu_scope("retained.materialize.chunks");
         for id in &changes.removed_nodes {
             if let Some(chunk) = self.chunks.remove(id) {
                 self.remove_chunk(chunk);
@@ -271,17 +332,46 @@ impl PersistentSceneMaterializer {
             let Some(node) = scene.nodes.get(id) else {
                 continue;
             };
-            if matches!(node.kind, NodeKind::Group)
-                || self.chunks.get(id).is_some_and(|chunk| {
-                    chunk.instance == node.instance && chunk.generation == node.generation
-                })
-            {
+            if matches!(node.kind, NodeKind::Group) {
+                continue;
+            }
+            let old_chunk = self.chunks.get(id);
+            // Classify the OLD batch before rebuilding or skipping an unchanged chunk.
+            // Reuse this lookup instead of walking every changed node again in analysis.
+            stable_batch_candidate = stable_batch_candidate
+                && self.node_batches.contains_key(id)
+                && old_chunk.is_some_and(|chunk| chunk.plain_fragment);
+            if old_chunk.is_some_and(|chunk| {
+                chunk.instance == node.instance && chunk.generation == node.generation
+            }) {
                 continue;
             }
             let old_layer_bounds = layer_update_candidate
-                .then(|| self.chunks.get(id).map(chunk_layer_influence_bounds))
+                .then(|| old_chunk.map(chunk_layer_influence_bounds))
                 .flatten();
+            // Reuse the chunk and node already located for revision checking.
+            // Repeating their hash lookups just to collect bounds added work to
+            // every scoped leaf edit. This removes those redundant lookups.
+            // Bounded-translation spatial caches can lag. Snapshot actual local
+            // output before rebuilding, only for dependency domains that need it.
+            if let Some(sources) = &mut scoped_sources
+                && let Some(bounds) = old_layer_bounds.or_else(|| {
+                    old_chunk.and_then(|chunk| self.local_output_bounds(&node.kind, chunk))
+                })
+            {
+                sources.add_node(*id, bounds);
+            }
             let rebuilt = self.rebuild_node(scene, *id);
+            // Reuse the layer patch's old domain and share its new domain with
+            // damage collection. Recomputing both duplicated chunk lookups and
+            // bounds work on every scoped layer parameter update.
+            let new_local_bounds = scoped_sources
+                .as_ref()
+                .and_then(|_| self.chunks.get(id))
+                .and_then(|chunk| self.local_output_bounds(&node.kind, chunk));
+            if let (Some(sources), Some(bounds)) = (&mut scoped_sources, new_local_bounds) {
+                sources.add_node(*id, bounds);
+            }
             plan_dirty |= rebuilt.plan_dirty;
             if rebuilt.plan_dirty && rebuilt.transform_only {
                 position_plan_patches.push(*id);
@@ -294,7 +384,8 @@ impl PersistentSceneMaterializer {
             } else if layer_update_candidate && matches!(node.kind, NodeKind::Layer(_)) {
                 let (old, new) = self.patch_layer_command(scene, *id);
                 layer_plan_patches.push((*id, old, new));
-                let new_layer_bounds = self.chunks.get(id).map(chunk_layer_influence_bounds);
+                let new_layer_bounds = new_local_bounds
+                    .or_else(|| self.chunks.get(id).map(chunk_layer_influence_bounds));
                 layer_bounds_stable &= old_layer_bounds == new_layer_bounds;
                 if let (Some(old), Some(new)) = (old_layer_bounds, new_layer_bounds)
                     && old != new
@@ -311,12 +402,23 @@ impl PersistentSceneMaterializer {
         surface_resized_painter_nodes.clear();
         if surface_changed {
             let resize_profile =
-                crate::wgpu::start_cpu_scope("retained.materialize.resize_surface");
+                crate::render::profile::cpu::start_cpu_scope("retained.materialize.resize_surface");
             self.resize_surface_chunks(scene, &mut surface_resized_painter_nodes);
             drop(resize_profile);
         }
         self.dependency_free = self.layer_nodes.is_empty() && self.nonlocal_dependencies.is_empty();
-        let plan_profile = crate::wgpu::start_cpu_scope("retained.materialize.plan_sync");
+        if scoped_dependencies_changed
+            || (!self.nonlocal_dependencies.is_empty()
+                && changes
+                    .changed_nodes
+                    .iter()
+                    .any(|id| self.nonlocal_dependencies.contains(id)))
+        {
+            self.scoped_backdrop = self.has_scoped_backdrop(scene);
+            self.rebuild_backdrop_order(scene);
+        }
+        let plan_profile =
+            crate::render::profile::cpu::start_cpu_scope("retained.materialize.plan_sync");
         let mut plain_topology_candidate =
             changes.topology_changed && removed_plain_leaves && !root_reorder_candidate;
         let mut topology_batch_updates = Vec::new();
@@ -347,29 +449,29 @@ impl PersistentSceneMaterializer {
         if plain_topology_candidate {
             self.node_batches.extend(topology_batch_updates);
         }
-        let root_layer_add_candidate = changes
-            .removed_nodes
-            .is_empty()
-            .then(|| {
-                let mut layers = changes.changed_nodes.iter().filter(|id| {
-                    scene.nodes.get(id).is_some_and(|node| {
-                        matches!(node.kind, NodeKind::Layer(_))
-                            && !self.layer_command_locations.contains_key(id)
-                            && node.parent == Some(RetainedParent::content(scene.root))
-                    })
-                });
-                let id = *layers.next()?;
-                if layers.next().is_some()
-                    || !changes
-                        .changed_nodes
-                        .iter()
-                        .all(|changed| is_descendant_or_self(scene, *changed, id))
-                {
-                    return None;
-                }
-                Some(id)
-            })
-            .flatten();
+        // Only topology changes can introduce a layer. Avoid rescanning content-only updates.
+        let root_layer_add_candidate = (changes.topology_changed
+            && changes.removed_nodes.is_empty())
+        .then(|| {
+            let mut layers = changes.changed_nodes.iter().filter(|id| {
+                scene.nodes.get(id).is_some_and(|node| {
+                    matches!(node.kind, NodeKind::Layer(_))
+                        && !self.layer_command_locations.contains_key(id)
+                        && node.parent == Some(RetainedParent::content(scene.root))
+                })
+            });
+            let id = *layers.next()?;
+            if layers.next().is_some()
+                || !changes
+                    .changed_nodes
+                    .iter()
+                    .all(|changed| is_descendant_or_self(scene, *changed, id))
+            {
+                return None;
+            }
+            Some(id)
+        })
+        .flatten();
         let nested_offscreen_add_candidate = root_layer_add_candidate
             .is_none()
             .then(|| self.nested_offscreen_add_candidate(scene, &changes))
@@ -437,8 +539,9 @@ impl PersistentSceneMaterializer {
             plan_dirty = false;
         }
         if scene_data_changed {
-            let sync_profile =
-                crate::wgpu::start_cpu_scope("retained.materialize.sync_canvas_data");
+            let sync_profile = crate::render::profile::cpu::start_cpu_scope(
+                "retained.materialize.sync_canvas_data",
+            );
             self.sync_canvas_data(chunks_rebuilt, false);
             drop(sync_profile);
             Rc::make_mut(&mut self.canvas)
@@ -617,17 +720,10 @@ impl PersistentSceneMaterializer {
                 // stable batch membership. The plan fragment above already references the new
                 // hidden draw slot, so cloning the scene-wide metadata arrays would be wasted.
             } else {
-                let stable_batches_remain = stable_batch_candidate
-                    && !plan_dirty
-                    && changes.changed_nodes.iter().all(|id| {
-                        scene.nodes.get(id).is_none_or(|node| {
-                            matches!(node.kind, NodeKind::Group)
-                                || self
-                                    .chunks
-                                    .get(id)
-                                    .is_some_and(|chunk| chunk.plain_fragment)
-                        })
-                    });
+                // OLD batch classification is sufficient in this branch: a changed NEW
+                // classification leaves the plan dirty, or a patch/compaction branch above
+                // has already handled it. Avoid repeating both node and chunk hash lookups.
+                let stable_batches_remain = stable_batch_candidate && !plan_dirty;
                 if stable_batches_remain && flat_plan_had_draws && self.flat_plan_has_draws {
                     // Content-only updates with stable physical allocations cannot change painter
                     // paths or BatchIds. The old path rewrote and compared every changed draw,
@@ -751,7 +847,17 @@ impl PersistentSceneMaterializer {
             );
         }
         drop(plan_profile);
-        let frame_profile = crate::wgpu::start_cpu_scope("retained.materialize.frame");
+        if old_input_domains
+            .iter()
+            .any(|&(id, old)| old.is_none() || old != self.layer_input_isolated(id))
+        {
+            // A matching child cache cannot preserve contents when its input
+            // switches between the parent target and isolated scratch. Check
+            // after both patch and full command-rebuild paths have converged.
+            scoped_sources = None;
+        }
+        let frame_profile =
+            crate::render::profile::cpu::start_cpu_scope("retained.materialize.frame");
         Rc::make_mut(&mut self.canvas).plan_cache_key = Some(self.plan_cache_key);
         let canvas = Rc::make_mut(&mut self.canvas);
         canvas.invalidated_bounds.clear();
@@ -834,6 +940,13 @@ impl PersistentSceneMaterializer {
                 self.rebuild_spatial_index(scene);
             }
         }
+        self.publish_scoped_damage(
+            scene,
+            previous_frame.as_ref(),
+            &changes,
+            scoped_sources,
+            old_structural_damage,
+        );
         drop(frame_profile);
         self.sync_node_metadata(scene, &changes);
         self.surface_resized_painter_nodes = surface_resized_painter_nodes;
@@ -890,6 +1003,8 @@ impl PersistentSceneMaterializer {
             }
         }
         self.dependency_free = self.layer_nodes.is_empty() && self.nonlocal_dependencies.is_empty();
+        self.scoped_backdrop = self.has_scoped_backdrop(scene);
+        self.rebuild_backdrop_order(scene);
         self.sync_canvas_data(self.chunks.len() as u32, true);
         self.rebuild_commands(scene);
         self.rebuild_painter_metadata(scene);
@@ -1017,7 +1132,10 @@ impl PersistentSceneMaterializer {
             }
             let old_backdrops = chunk.canvas.backdrop_pool_capacity as usize;
             let old_segments = chunk.canvas.tile_cnt as usize;
-            chunk.canvas.resize_surface(scene.width, scene.height);
+            chunk
+                .canvas
+                .edit()
+                .resize_surface(scene.width, scene.height);
             let new_backdrops = chunk.canvas.backdrop_pool_capacity as usize;
             let new_segments = chunk.canvas.tile_cnt as usize;
             if old_backdrops != 0 || new_backdrops != 0 {
@@ -1064,7 +1182,7 @@ impl PersistentSceneMaterializer {
                     && source_canvas.is_some();
                 if transform_only {
                     let transform = Affine::new(transform_bits.unwrap().map(f64::from_bits));
-                    chunk.canvas.set_retained_transform(transform);
+                    chunk.canvas.edit().set_retained_transform(transform);
                     let old_plan = chunk.plan_fingerprint;
                     let new_plan = chunk.canvas.execution_plan_fingerprint();
                     let mut moved = false;
@@ -1104,7 +1222,7 @@ impl PersistentSceneMaterializer {
                 let old_plan = chunk.plan_fingerprint;
                 let old_lengths = SceneChunkLengths::from_canvas(&chunk.canvas);
                 Self::remove_chunk_resources(resource_refs, canvas, &chunk.canvas.scene_images);
-                Self::encode_node_into(scene, node, &mut chunk.canvas);
+                Self::encode_node_into(scene, node, chunk.canvas.edit());
                 let encoded = &chunk.canvas;
                 let new_lengths = SceneChunkLengths::from_canvas(encoded);
                 let new_plan = encoded.execution_plan_fingerprint();
@@ -1203,7 +1321,7 @@ impl PersistentSceneMaterializer {
             plain_fragment: plan_metadata.plain_fragment,
             local_draw_order: plan_metadata.local_draw_order,
             backdrop_dependencies: backdrop_dependencies(&encoded),
-            canvas: encoded,
+            canvas: encoded.into(),
         };
         Self::add_chunk_resources(
             &mut self.resource_refs,

@@ -310,11 +310,13 @@ fn write_clipped_segment(
 }
 
 fn x_at_y(x0: f32, y0: f32, x1: f32, y1: f32, y: f32) -> f32 {
-    return x0 + (x1 - x0) * ((y - y0) / (y1 - y0));
+    // A single rounding at the intersection prevents backend-dependent multiply/add
+    // contraction from moving the clipped edge across an 8-bit coverage boundary.
+    return fma(x1 - x0, (y - y0) / (y1 - y0), x0);
 }
 
 fn y_at_x(x0: f32, y0: f32, x1: f32, y1: f32, x: f32) -> f32 {
-    return y0 + (y1 - y0) * ((x - x0) / (x1 - x0));
+    return fma(y1 - y0, (x - x0) / (x1 - x0), y0);
 }
 
 fn clip_y_at_x(x0: f32, y0: f32, x1: f32, y1: f32, x: f32, tile_min_y: f32, tile_max_y: f32) -> f32 {

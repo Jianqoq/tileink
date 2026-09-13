@@ -1,12 +1,12 @@
-# Tileink 原生 HLSL 后端实施计划
+# Tileink 原生 GPU 后端实施计划（HLSL / MSL）
 
-状态：**M0 实施中，原生后端尚未实现**。已开始建立 wgpu 的严格跨 API 参考运行器并修正基线缺陷；进度、实测差异与剩余门槛见 [实施记录](NATIVE_BACKEND_PROGRESS.md)。下面的 native feature、接口和目录仍为待实现设计。
+状态：**M0 基线与调查已完成；M1 共享模块实现、正确性验证和最终工作树集成检查已完成；原生后端尚未实现**。用户于 2026-09-13 明确要求“不用比较性能了”，本轮 M0/M1 不再以性能比较作为完成门槛，已有性能记录保留且不宣称通过。M2 保留独立 MSL（`.metal`）及 HLSL 工具链计划，M3–M6 尚未实施。见 [实施记录](NATIVE_BACKEND_PROGRESS.md)。
 
 日期：2026-09-07。代码调研基线：`eabbe0b97b392582d663206c1f2aad51f76695aa`。
 
 ## 1. 目标与不可放宽的验收条件
 
-在 Tileink 中增加可选的原生 GPU 后端，与现有 wgpu 后端共存。原生后端以同一套受版本管理的 HLSL 为源码，通过 DXC 分别生成 DXIL 和 SPIR-V，直接调用 DX12 与 Vulkan。默认构建和默认渲染选择仍为 wgpu。
+在 Tileink 中增加可选的原生 GPU 后端，与现有 wgpu 后端共存。DX12 与 Vulkan 共用受版本管理的 HLSL，通过 DXC 分别生成 DXIL 和 SPIR-V。macOS 原生 Metal 使用独立维护的 MSL（`.metal`）源码，按共同算法规格实现，并使用 Metal 工具链生成产物。默认构建和默认渲染选择仍为 wgpu。
 
 用户已确认：**wgpu-DX12、wgpu-Vulkan、原生 DX12、原生 Vulkan 四种输出必须互相逐像素、逐通道完全一致。** 同一测试帧的四份有效像素字节必须相等，差异像素数和最大通道差值都必须为 0。不能用容差、SSIM、忽略透明像素、按后端保存不同 golden，或更新基准图来代替这个条件。
 
@@ -20,7 +20,7 @@
 - Windows：原生 DX12 和 Vulkan；允许一个构建同时包含 wgpu 和两条原生路径，并显式选择实例使用的后端。
 - 保留 Linux、macOS 上现有 wgpu 构建与行为。原生 Vulkan 在 Linux 上的构建和适用测试也纳入验证；Windows 的四路门槛不能被 Linux 的两路结果替代。
 - 原生渲染支持自有离屏目标和调用方提供的兼容纹理，为之后 gfx_ui 接入提供设备、目标及同步接口。
-- 为未来 Metal/macOS 留出清晰 Adapter 边界；本轮不实现 Metal，也不以 MoltenVK 的可运行性宣称完成原生 Metal 支持。
+- M2 增加 macOS 专属 MSL 源码、Metal shader 产物与 ABI 验证；MSL 不由 HLSL 转译生成。M0/M1 不增加 Metal 运行时实现；原生 Metal Adapter 的完整渲染验收另列里程碑，不能以 MoltenVK 代替。
 
 本计划只安排 Tileink 内的工作。gfx_ui、trading app 的迁移另外安排。Tileink 渲染器不接管应用的窗口事件或生产用 swapchain 策略；后续 gfx_ui 仍需单独处理 acquire、resize、present 的等待。因此原生 Tileink 的收益不能直接当作应用 Surface 配置等待的收益。
 
@@ -38,13 +38,13 @@
 | `src/wgpu/renderer/output.rs` 已有 `ExternalTextureHistoryId` 及 transient/persistent 输出语义 | 原生外部目标必须保留相同的内容有效性、失效和设备归属规则 |
 | `scripts/ps1/run_tests.ps1` 用串行子进程分组运行 GPU 测试 | 延续单线程、进程隔离和实际启用 GPU 测试的约定，不能只运行默认跳过 GPU 的测试命令 |
 | `compare_png_pixels` 已支持严格解码像素比较 | 复用比较语义；新增四路同一帧比较和运行清单，不再造一个宽松的比较器 |
-| crate 的 `include` 使用明确的文件白名单 | 新 HLSL、include 和 ABI 描述必须加入打包规则，验证包内可以构建原生 feature |
+| crate 的 `include` 使用明确的文件白名单 | 新 HLSL/MSL、各自 include 和 ABI 描述必须加入打包规则，验证包内可以构建原生 feature |
 
 开发要求以 [AGENTS.md](AGENTS.md)、[CONTRIBUTING.md](CONTRIBUTING.md)、[GPU 管线文档](website/docs/architecture/gpu-pipeline.md)、[RetainedScene 架构](website/docs/architecture/retained-scene.md) 和 [BENCHMARKS.md](BENCHMARKS.md) 为准。下面的四路零差异条件比外部 resvg 参考图的比较规则更严格，两者分别执行。
 
 ## 3. Feature 与运行时选择
 
-采用 Cargo 的加法式 feature，不用互斥 feature 选择唯一后端。拟定名称和依赖关系如下；表格不是已存在的 Cargo 配置。
+采用 Cargo 的加法式 feature，不用互斥 feature 选择唯一后端。M1 已实现下列 feature 名称及依赖拆分；表中 HLSL 编译和实际原生 Adapter 属于后续里程碑。
 
 | Feature | 作用 | 平台 |
 | --- | --- | --- |
@@ -76,12 +76,15 @@ flowchart TD
     Seam --> D[原生 DX12 Adapter]
     Seam --> V[原生 Vulkan Adapter]
     WGSL[现有 WGSL] --> W
-    HLSL[同一套 HLSL] --> DXC[固定版本 DXC]
+    HLSL[DX12 / Vulkan 共用 HLSL] --> DXC[固定版本 DXC]
     DXC --> DXIL[DXIL]
     DXC --> SPIRV[SPIR-V]
     DXIL --> D
     SPIRV --> V
-    Seam -. 未来实现 .-> M[Metal Adapter]
+    MSL[macOS 独立 MSL 源码] --> MC[Metal 工具链]
+    MC --> ML[Metal library]
+    ML -. 后续渲染接入 .-> M[Metal Adapter]
+    Seam -. 未来实现 .-> M
 ```
 
 ### 拟定职责分布
@@ -96,7 +99,8 @@ flowchart TD
 | `src/native/dx12/` | windows bindings、device/queue、资源分配、descriptor、root signature、PSO、resource state、fence、readback |
 | `src/native/vulkan/` | ash、instance/device/queue、资源分配、descriptor、pipeline layout、pipeline、image layout、barrier、同步、readback |
 | `src/shaders/hlsl/` | 共享 HLSL 算法与 include；差异仅限必要的绑定或能力适配，不复制 DX12/Vulkan 算法主体 |
-| `build/shaders/` | shader 清单、DXC 调用、ABI 检查、缓存键、产物元数据；与运行时 device 生命周期无关 |
+| `src/shaders/metal/` | macOS 专属 `.metal` 算法与 include，独立维护；遵守与 HLSL/WGSL 相同的数值、采样和输出语义 |
+| `build/shaders/` | 公共 program/variant 清单、ABI 与缓存协议；DXC 和 Metal 编译/反射/诊断分别由目标模块负责；与运行时 device 生命周期无关 |
 | `tests/support/` | 共用场景序列、执行清单、设备匹配、readback 与零差异断言；后端差异藏在测试 Adapter 内 |
 
 文件按实际职责再拆分，不一次建立大量空文件。Metal 只通过这些现有边界扩展，不提交永远返回 unsupported 的空实现，也不预先设计多队列图形引擎。
@@ -125,9 +129,9 @@ flowchart TD
 - 正常 render/resize 不无条件调用 `device.wait_idle` 或全队列等待；readback、资源真正不可安全复用和销毁时的等待必须可观察、可解释。设备丢失后不能继续复用旧目标历史。
 - swapchain 的创建与 present 位于原生示例或未来宿主。Tileink 接收已取得的目标，不把窗口、present mode、DXGI resize 或 Vulkan surface 扩展写进共享渲染接口。
 
-## 5. HLSL、ABI 与构建产物
+## 5. HLSL / MSL、ABI 与构建产物
 
-原生 HLSL 是受版本管理的第一等源码；WGSL 保留为 wgpu 的独立实现及回归参照。两种语言按同一算法规格维护，修复共享语义时配套更新测试。不能将四条路径全部改为调用同一个 wgpu 实现来获得相等输出。
+HLSL（DX12/Vulkan）和 MSL（macOS Metal）分别是受版本管理的第一等源码；WGSL 保留为 wgpu 的独立实现及回归参照。三种实现按同一算法、数值、采样及颜色规格维护；共享语义修复须同步更新各语言的适用实现和测试，保留独立 shader 源码。不能将四条路径全部改为调用同一个 wgpu 实现来获得相等输出。
 
 ### 移植清单
 
@@ -143,12 +147,12 @@ flowchart TD
 
 ### ABI 和编译约定
 
-1. 建立单一、明确的 shader ABI 描述，复用现有 `src/shared/gpu_layout.rs`、`gpu_types.rs` 等布局事实；从中生成或验证 Rust/HLSL 的 offset、size、alignment、array stride 和绑定映射。以哨兵值往返测试覆盖结构体数组、嵌套结构、向量、动态 offset 和纹理表边界。
+1. 建立单一、明确的 shader ABI 描述，复用现有 `src/shared/gpu_layout.rs`、`gpu_types.rs` 等布局事实；从中生成或验证 Rust/HLSL/MSL 的 offset、size、alignment、array stride 和绑定映射。以哨兵值往返测试覆盖结构体数组、嵌套结构、向量、动态 offset 和纹理表边界。
 2. 同一 HLSL 经 DXC 输出 DXIL / SPIR-V。固定并记录 DXC 版本及文件摘要、target profile、SPIR-V target environment、所有编译参数；选择最低可满足现有算法的能力集，而非默认要求最新 Shader Model 或 Vulkan 扩展。
 3. 固定 register/space 与 set/binding 映射，用编译产物的反射/验证检查 root signature 和 descriptor layout。不要假设 DXIL 和 SPIR-V 默认采用相同结构体布局。
 4. 不盲目打开 `-fvk-use-dx-layout`：DXC 文档指出该布局依赖 scalar block layout 支持。优先明确并验证公共布局；若使用相关能力，创建 device 时查询/启用，并列入支持矩阵。[DXC SPIR-V 文档](https://github.com/microsoft/DirectXShaderCompiler/blob/main/docs/SPIR-V.rst)
 5. shader 缓存键涵盖全部源/include、ABI、variant、编译器及其依赖、flags、目标。原生 pipeline 缓存另含 GPU/driver/API 标识并校验兼容性；错误或陈旧缓存不得被接受。shader 产物缓存与驱动 pipeline 缓存分开管理。
-6. 默认构建不下载工具。原生开发和 CI 使用明确安装的 DXC；若使用预编译产物，必须验证其完整缓存键，不能只按文件名加载。native-only 构建跳过不需要的 WGSL 工作，wgpu-only 构建跳过原生 shader 工作。
+6. 默认构建不下载工具。DX12/Vulkan 开发和 CI 使用明确安装的 DXC，Metal 使用明确记录的 Apple 工具链及 SDK；若使用预编译产物，必须验证其完整缓存键，不能只按文件名加载。native-only 构建跳过不需要的 WGSL 工作，wgpu-only 构建跳过原生 shader 工作。
 7. 更新 Cargo 打包白名单并对打包后的源码做构建验证，检查 include 文件没有漏包。编译失败包含 shader/entry/target/flags 和诊断；不能产生看似成功的空 shader 或 fallback 标记。
 
 ## 6. 四路完全一致的测试设计
@@ -219,6 +223,8 @@ PNG 工件使用现有严格解码比较语义，保留失败的四张输出、�
 
 ## 7. 性能验证与观测
 
+> 本节保留原性能方法及后续阶段设计背景。2026-09-13 用户明确要求“不用比较性能了”：本轮 M0/M1 停止性能比较、resize 计时及遥测，性能门槛不再阻塞交付；已有异常记录不改为通过。正确性、像素一致性及构建检查继续执行。
+
 原生 API 只提供优化空间，不保证自动更快。先通过像素和语义门槛，再报告收益；绝不以快但错误的图像参与性能结论。
 
 扩展现有 Criterion 场景使其选择后端，共用场景和采样条件。至少包含 `retained_scale`、`retained_dirty_ratio`、`retained_stress`、`root_batches`、range scatter/上传，以及新增的持续 resize/目标重建场景。CPU 算法基准保持独立，避免给本来不使用 GPU 的测试套上设备初始化。
@@ -238,31 +244,35 @@ Tileink 层 resize benchmark 覆盖渲染目标变化。窗口 swapchain 的 acq
 
 ### M0 — 固定基线并验证现有两路 wgpu
 
-- [ ] 固定实现开始时的提交、完整 case/frame manifest、字体/图片/SVG 资源摘要、编译器和 GPU/驱动记录，保存不可被后续运行覆盖的基线。
-- [ ] 建立明确选择 DX12/Vulkan 及物理 GPU 的参考运行器；复用现有测试分组、PNG 比较和示例场景。
-- [ ] 跑现有 wgpu 两路全量 SVG/示例、关键 retained 帧序列与纹理执行变体，统计所有差异。
-- [ ] 对差异先加入聚焦测试，定位 shader、采样、舍入或同步根因；记录公共数值语义和能力要求，修正并重跑。
-- [ ] 保存默认 wgpu Criterion 基线和 resize 阶段数据，盘点完整 pipeline/ABI 与设备能力。
+- [x] 固定实现开始时的提交、完整 case/frame manifest、字体/图片/SVG 资源摘要、编译器和 GPU/驱动记录，保存不可被后续运行覆盖的基线。
+- [x] 建立明确选择 DX12/Vulkan 及物理 GPU 的参考运行器；复用现有测试分组、PNG 比较和示例场景。
+- [x] 跑现有 wgpu 两路全量 SVG/示例、关键 retained 帧序列与纹理执行变体，统计所有差异。
+- [x] 对差异先加入聚焦测试，定位 shader、采样、舍入或同步根因；记录公共数值语义和能力要求，修正并重跑。
+- [x] 保存默认 wgpu Criterion 基线和 resize 阶段数据，盘点完整 pipeline/ABI 与设备能力。证据和历史缺陷边界见 [M0 阶段记录](docs/native/m0-baseline-closeout.md)。
 
 **退出条件：** 两路 wgpu 的规定输入零差异且已有正确性保障；产出可重跑命令、manifest、设备矩阵和差异调查结论。如果现有两路不能满足要求，继续定位并明确记录阻塞原因；不开始大规模原生管线移植，也不把验收降为同 API 比较。
 
 ### M1 — Feature 拆分与共享渲染边界
 
-- [ ] 实现第 3 节 feature 图与平台 cfg，清理 CPU/shared 对 wgpu 类型的依赖。
-- [ ] 抽取准备、增量和执行调度，以 wgpu 为第一个实际 Adapter；保持既有目标、历史、延迟编译和输出语义。
-- [ ] 定稿原生上下文、外部目标、完成令牌和错误合同，为后续两条 Adapter 提供明确 Seam。
-- [ ] 为共享状态迁移加入语义与边界测试；运行 feature 组合构建、默认 wgpu 全量回归及 Criterion 对照。
+- [x] 实现第 3 节 feature 图与平台 cfg，清理 CPU/shared 对 wgpu 类型的依赖。
+- [x] 抽取准备、增量和执行调度，以 wgpu 为第一个实际 Adapter；保持既有目标、历史、延迟编译和输出语义。
+- [x] 定稿原生上下文、外部目标、完成令牌和错误合同，为后续两条 Adapter 提供明确 Seam。
+- [x] 为共享状态迁移加入语义与边界测试；feature 组合构建、默认 wgpu 全量回归及最终集成检查已通过。性能对照按用户要求停止；CPU-only 额外严格 warning 检查的限制见 [M1 阶段记录](docs/native/m1-closeout.md)。
 
-**退出条件：** 原生单后端可有独立依赖图；本阶段尚未完成的 native 构造返回明确不可用状态，不能伪装成功。既有 wgpu 输出与性能不退化，CPU 功能可独立构建。中间状态仅用于开发，不作为原生 feature 的发布完成状态。
+**退出条件：** 原生单后端可有独立依赖图；本阶段尚未完成的 native 构造返回明确不可用状态，不能伪装成功。既有 wgpu 输出保持严格一致，CPU 功能可独立构建。本轮性能比较按用户 2026-09-13 的指示取消，不宣称性能无退化。中间状态仅用于开发，不作为原生 feature 的发布完成状态。
 
-### M2 — HLSL 构建、ABI 与产物验证
+### M2 — HLSL / 独立 MSL 构建、ABI 与三种原生产物验证
 
 - [ ] 实现固定 DXC 的 DXIL/SPIR-V 编译和能力记录，包含版本发现、有效缓存、include 追踪与失败诊断。
 - [ ] 建立全部 program/variant 清单、公共 ABI 和反射检查；先覆盖 clear/copy/简单像素与数据布局探针。
 - [ ] 加入错误缓存、缺失编译器、绑定/stride 不匹配、native-only/wgpu-only 构建测试。
-- [ ] 验证 Cargo 打包产物包含所有必需源文件，普通 wgpu 构建不额外要求 DXC。
+- [ ] 验证 Cargo 打包产物包含所有必需源文件，普通 wgpu 构建不额外要求 DXC 或 Apple shader 工具。
+- [ ] 建立独立维护的 `src/shaders/metal/` MSL 源码与 include；在 macOS 上用 Apple Metal 工具链编译并验证产物，记录工具/SDK 版本、语言版本、目标 GPU/系统、全部 flags、能力与分发条件。
+- [ ] 将编译目标分为 DXIL、SPIR-V、Metal，以独立目标模块承载编译、反射和诊断；公共逻辑 program / variant、ABI 与缓存协议共用；HLSL/MSL 分别追踪源文件和 include 图，缓存键包含源语言、目标平台、完整工具链及 SDK 身份。
+- [ ] 对 Metal 产物验证入口、资源绑定、buffer layout / stride、纹理访问与数值语义；在实际 Mac GPU 上执行最小 clear / copy / layout / sampling 探针，与同机 wgpu-Metal 逐字节比较。工具或设备缺失时保留未完成，不能只凭交叉编译通过。
+- [ ] 加入 macOS shader 打包与构建测试，覆盖缺失工具、过期缓存、错误 ABI 和不支持能力；默认 wgpu 用户无需安装原生 shader 工具链。
 
-**退出条件：** 相同 HLSL 可生成两种可验证产物，布局和缓存错误被可靠拒绝，不依赖运行时 WGSL 转译。
+**退出条件：** 共用 HLSL 可生成 DXIL/SPIR-V，独立 MSL 可生成已在实际 Mac 上验证的 Metal 产物；三种目标通过规定的最小语义与 ABI 探针。布局和缓存错误被可靠拒绝，macOS shader 构建不依赖 HLSL 转译，原生路径不依赖运行时 WGSL 转译。Metal shader 支持不等于原生 Metal 渲染器完成；Windows 四路零差异要求保持不变。
 
 ### M3 — 两个原生 Adapter 的最小纵向切片
 
@@ -326,11 +336,11 @@ feature 检查除了默认组合，还须执行无默认、两个原生单选、
 4. 同 API 的 wgpu/原生 Criterion 对照、默认 wgpu 重构前后对照、resize PMax 帧及时间占比。
 5. feature/打包结果、文档及两个审查维度：仓库规范、用户需求。任何 required 项缺失时不能标记完成。
 
-## 10. 后续 macOS 扩展
+## 10. M2 macOS shader 支持与后续 Metal Adapter
 
 未来新增 `native-metal` 时，复用 `src/render/`、scene/materializer、数据 ABI、测试输入和比较器，仅增加 Metal 的资源/命令/同步 Adapter 与 shader 产物路径。公共接口不出现 descriptor heap、queue family、root signature 等仅某个 API 需要的概念；这些信息仅存在于有类型的 interop 和 Adapter 内。
 
-HLSL→Metal 的工具链、支持的 shader 能力、分发条件、数值语义和与 wgpu-Metal 的相等要求，需要届时做独立验证。当前只锁定 DXIL/SPIR-V 两条已计划的产物路线，不声称 DXC 能直接提供完整 Metal 后端。将来若第三目标需要更改 ABI/采样实现，仍必须重新通过现有四路测试，不能以新增平台为由放宽它们。
+用户于 2026-09-13 明确：macOS 使用专属 Metal Shading Language（MSL）源码，不使用 HLSL。此前同一 HLSL 转换到 Metal 的设想被本要求取代。M2 维护独立 MSL 实现、Apple 工具链、能力和分发记录，并验证公共数值语义及同机 wgpu-Metal 零差异，见第 8 节 M2 里程碑。新增目标若需要更改 ABI / 采样实现，必须重新通过现有 Windows 四路测试，不能以新增平台为由放宽它们。跨不同 GPU / 操作系统的全局字节相等仍不自动纳入当前合同。
 
 ## 参考
 
@@ -338,3 +348,5 @@ HLSL→Metal 的工具链、支持的 shader 能力、分发条件、数值语�
 - [DirectX Shader Compiler](https://github.com/microsoft/DirectXShaderCompiler)：HLSL 编译工具链；本计划固定版本后再确定具体 target/flags。
 - [DXC SPIR-V 映射与布局](https://github.com/microsoft/DirectXShaderCompiler/blob/main/docs/SPIR-V.rst)：绑定、布局及对应 Vulkan 能力约束。
 - [HLSL precise 指令约束](https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/precise)：浮点优化控制的适用范围；不构成四路像素一致性保证。
+
+M2 的独立 MSL 源码、工具链边界与验证条件见 [Metal shader 工具链补充](docs/native/m2-metal-toolchain-notes.md)。当前是计划约束，尚未实现或完成实际 Mac 验证。
