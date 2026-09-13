@@ -15,9 +15,11 @@ explicit output-history identity.
 
 Release notes are maintained in the [changelog](CHANGELOG.md).
 
-The [native HLSL backend plan](NATIVE_BACKEND_PLAN.md) describes planned, opt-in DX12/Vulkan
-backends and exact pixel parity with wgpu. [M0 reference validation](NATIVE_BACKEND_PROGRESS.md)
-has completed baseline acquisition and implemented the M1 feature/shared-renderer boundary; production native API backends are not implemented yet. The [Windows M2 shader toolchain](docs/native/m2-windows-shaders.md) now embeds cached HLSL products and validates minimum probes on four real APIs; Metal verification remains pending.
+The [native HLSL backend plan](NATIVE_BACKEND_PLAN.md) adds opt-in DX12/Vulkan
+backends with exact pixel parity. M0/M1 and the Windows M2 shader toolchain are
+complete. [Windows M3](docs/native/m3-completion.md) provides shared native batches,
+resource ownership, cached shaders/pipelines and four-API exact texture/numerical
+probes. The complete Canvas renderer remains M4; Metal hardware verification is deferred.
 
 This repository maintains a [shared wgpu HAL patch](WGPU_PATCHES.md), including DX12
 write-only texture synchronization. Cargo patches are not transitive: consumers must select
@@ -40,7 +42,7 @@ dependency. GPU rendering still requires the WGPU feature at this stage.
 | `native-dx12` | Windows DX12 dependency and explicit backend selection; renderer unavailable |
 | `native-vulkan` | Windows/Linux Vulkan dependency and explicit backend selection; renderer unavailable |
 | `native` | Both native feature selections |
-| `wgpu` plus a native feature | Both APIs compile; only WGPU renders yet |
+| `wgpu` plus a native feature | Shared native minimum programs compile; full Canvas rendering still uses WGPU |
 
 The native feature names reserve separate API adapters. Their constructors return
 explicit errors until the planned implementations are complete; they never fall

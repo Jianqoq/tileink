@@ -1,5 +1,7 @@
 # Windows native shader toolchain and probes
 
+> M2 toolchain receipt; current Windows runtime is M3. See [current M3 closeout](m3-completion.md) for current module paths, commands and completed scope.
+
 M0/M1 delivery `90151cbdc7047e8b1eb14e41f62b4690b416ede9` was confirmed on the
 configured Git remote after the user's push on 2026-09-13. This document records
 the next Windows build/ABI/probe slice, not completion of the native renderer.

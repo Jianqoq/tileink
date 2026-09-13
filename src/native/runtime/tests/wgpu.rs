@@ -31,7 +31,7 @@ impl Reference {
             if gpu_identity::physical_identity(&adapter, &device)? != identity {
                 continue;
             }
-            let entries = [
+            let mut entries = [
                 wgpu::BufferBindingType::Storage { read_only: false },
                 wgpu::BufferBindingType::Storage { read_only: true },
                 wgpu::BufferBindingType::Uniform,
@@ -49,6 +49,16 @@ impl Reference {
                 count: None,
             })
             .collect::<Vec<_>>();
+            entries.push(wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            });
             let bindings = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("native probe reference ABI"),
                 entries: &entries,
@@ -111,7 +121,7 @@ impl Reference {
                 usage: wgpu::BufferUsages::UNIFORM,
             });
         let buffers = [&destination, &source, &params];
-        let entries: Vec<_> = buffers
+        let mut entries: Vec<_> = buffers
             .iter()
             .enumerate()
             .map(|(binding, b)| wgpu::BindGroupEntry {
@@ -119,6 +129,54 @@ impl Reference {
                 resource: b.as_entire_binding(),
             })
             .collect();
+        let width = if case.entry == "sample_words" {
+            case.params.value[2]
+        } else {
+            1
+        };
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: None,
+            size: wgpu::Extent3d {
+                width,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let start = if case.entry == "sample_words" {
+            case.params.source_offset as usize
+        } else {
+            0
+        };
+        self.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &case.source[start..start + width as usize * 4],
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(width * 4),
+                rows_per_image: Some(1),
+            },
+            wgpu::Extent3d {
+                width,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+        );
+        let view = texture.create_view(&Default::default());
+        entries.push(wgpu::BindGroupEntry {
+            binding: 3,
+            resource: wgpu::BindingResource::TextureView(&view),
+        });
         let group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &self.bindings,

@@ -52,7 +52,7 @@ pub fn validate(bytes: &[u8], entry: &str, abi: &serde_json::Value) -> io::Resul
             (72, [id, member, 35, offset]) => {
                 r.offsets.insert((*id, *member), *offset);
             }
-            (21 | 23 | 29 | 30 | 32, [id, value @ ..]) => {
+            (21 | 22 | 23 | 25 | 29 | 30 | 32, [id, value @ ..]) => {
                 r.types.insert(*id, (opcode, value.to_vec()));
             }
             (59, [ty, id, _storage]) => {
@@ -80,7 +80,14 @@ pub fn validate(bytes: &[u8], entry: &str, abi: &serde_json::Value) -> io::Resul
         r.groups.get(&r.entries[0].0) == Some(&expected_group),
         "SPIR-V workgroup",
     )?;
-    let expected: &[(&str, u32)] = if matches!(entry, "copy_words" | "sample_words") {
+    let expected: &[(&str, u32)] = if entry == "sample_words" {
+        &[
+            ("destination", 0),
+            ("source", 1),
+            ("params", 2),
+            ("texels", 3),
+        ]
+    } else if entry == "copy_words" {
         &[("destination", 0), ("source", 1), ("params", 2)]
     } else {
         &[("destination", 0), ("params", 2)]
@@ -113,6 +120,27 @@ pub fn validate(bytes: &[u8], entry: &str, abi: &serde_json::Value) -> io::Resul
             .types
             .get(&pointer)
             .ok_or_else(|| invalid("SPIR-V pointer type"))?;
+        if name == "texels" {
+            require(
+                *op == 32 && args.len() == 2 && args[0] == 0,
+                "SPIR-V image pointer",
+            )?;
+            let image = r
+                .types
+                .get(&args[1])
+                .ok_or_else(|| invalid("SPIR-V image type"))?;
+            require(
+                image.0 == 25 && image.1.len() == 7 && image.1[1..] == [1, 2, 0, 0, 1, 0],
+                "SPIR-V sampled 2D image",
+            )?;
+            require(
+                r.types
+                    .get(&image.1[0])
+                    .is_some_and(|ty| ty.0 == 22 && ty.1 == [32]),
+                "SPIR-V sampled float32",
+            )?;
+            continue;
+        }
         require(
             *op == 32 && args.len() == 2 && args[0] == 2,
             "SPIR-V uniform storage pointer",

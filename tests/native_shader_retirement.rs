@@ -1,2 +1,2 @@
-#[path = "native_shader_gpu/retirement.rs"]
+#[path = "../src/native/runtime/dx12/retirement.rs"]
 mod retirement;

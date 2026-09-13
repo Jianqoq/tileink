@@ -9,3 +9,5 @@ struct ProbeParams {
 RWByteAddressBuffer destination : register(u0, space0);
 ByteAddressBuffer source : register(t1, space0);
 ConstantBuffer<ProbeParams> params : register(b2, space0);
+
+Texture2D<float4> texels : register(t3, space0);

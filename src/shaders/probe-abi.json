@@ -22,7 +22,8 @@
   "bindings": {
     "destination": 0,
     "source": 1,
-    "params": 2
+    "params": 2,
+    "texels": 3
   },
   "descriptor_set": 0,
   "buffer_offsets_alignment": 4,
@@ -30,5 +31,5 @@
   "integer_arithmetic": "uint32 wrap",
   "status": "M2 minimum probes; full renderer program inventory remains in docs/native/wgpu-reference-inventory.json",
   "parameter_alignment": 16,
-  "sampling": "manual linear RGBA8 texels in byte buffer; finite coordinates; floor, clamp-to-edge, round-half-up; no hardware sampler"
+  "sampling": "Q16 binary32 coordinates rounded ties away from zero, integer linear RGBA8 interpolation and half-up output quantization; value.w=0 byte buffer, value.w=1 RGBA8 UNORM Texture2D loads; finite bounded coordinates and checked signed32 arithmetic; clamp-to-edge"
 }

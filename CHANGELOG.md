@@ -9,6 +9,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- Complete the Windows M3 minimum native adapter: shared command batches/uniforms,
+  context-owning receipts, DX12/Vulkan texture modules and strict input validation.
+  Native module roots use named `.rs` files. Repeated four-API exact probes cover
+  hardware RGBA8 loads and canonical Q16 interpolation, fixing the reproduced
+  floating contraction mismatch. Vulkan OOM retries preserve confirmed prefixes;
+  unknown submissions retain leases and stop safely. Full Canvas rendering remains M4.
+
 - Extend native verification adapters with queued per-frame ownership, explicit
   completion/readback tickets and bounded teardown. Exact reverse-order results,
   foreign-ticket rejection and failure cleanup have permanent regressions.

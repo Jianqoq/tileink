@@ -148,3 +148,13 @@ The 29-frame retained reference has passed both runtime and forced precompiled
 fine modes on the recorded NVIDIA device; see `NATIVE_BACKEND_PROGRESS.md` for
 complete-run evidence, required repeats and remaining M0 gates. Existing raw PNGs must not be
 replaced when repeating a run: choose a new output directory each time.
+
+## Native M3 correctness validation
+
+With the explicit GPU/compiler/layer environment in
+[`m3-completion.md`](../../docs/native/m3-completion.md), run
+`cargo test --release --features native --lib native::runtime -- --include-ignored --test-threads=1 --nocapture`.
+The old `--test native_shader_gpu` target was moved into the production native
+module with separate test fixtures. `TILEINK_NATIVE_GPU_REPORT` optionally writes
+the per-case four-route hashes and exact comparison report. This runs correctness
+checks, not performance comparisons.

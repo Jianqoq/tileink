@@ -175,3 +175,16 @@ mod tests {
 
 mod shaders;
 pub use shaders::{NativeShaderArtifact, SHADER_ARTIFACTS};
+
+#[cfg(all(
+    target_os = "windows",
+    any(feature = "native-dx12", feature = "native-vulkan")
+))]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "M3 native runtime is assembled into the full Renderer during M4"
+    )
+)]
+mod runtime;

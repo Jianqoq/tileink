@@ -276,15 +276,15 @@ Tileink 层 resize benchmark 覆盖渲染目标变化。窗口 swapchain 的 acq
 
 ### M3 — 两个原生 Adapter 的最小纵向切片
 
-当前已验证的子切片：[Windows 连续提交与资源生命周期](docs/native/m3-queued-submissions.md)。
-两条原生测试适配器可先排队 42 批次再逆序 readback，验证上下文绑定令牌与完成后回收。
-生产 `BatchAdapter` 接入、硬件纹理/数值探针和恢复语义仍未完成，以下整项继续保持待办。
+Windows 最小纵向切片已实现并完成四路 GPU 验证，见 [M3 closeout](docs/native/m3-completion.md)。
+原生执行代码已接入共享 `BatchAdapter`，DX12/Vulkan 分目录，模块入口使用同名 `.rs` 而非 `mod.rs`。
+306 组 clear/copy/layout/硬件 RGBA8 与数值探针重复三轮四路逐字节一致；完整 Canvas shader 移植仍属于 M4。
+Mac 按用户决定延期，不计入本轮 Windows M3 验收；性能比较仍按用户要求停用。
 
-
-- [ ] 先接通 DX12 的 device、资源、pipeline、dispatch、提交、完成、readback；尽早用相同 Interface 接通 Vulkan，验证边界确实容纳两种 API。
-- [ ] 执行 clear/copy、布局哨兵、简单着色以及采样/量化/运算顺序风险探针；加入资源状态、GPU 生命周期与错误 device 测试。
-- [ ] 四路同 GPU、同一帧序列零差异运行，重复检查确定性；使用 DX12 debug layer 和 Vulkan validation 检查原生路径。
-- [ ] 基础 submit/readback 外不引入无条件全局等待，并保留阶段诊断。
+- [x] 先接通 DX12 的 device、资源、pipeline、dispatch、提交、完成、readback；尽早用相同 Interface 接通 Vulkan，验证边界确实容纳两种 API。
+- [x] 执行 clear/copy、布局哨兵、简单着色以及采样/量化/运算顺序风险探针；加入资源状态、GPU 生命周期与错误 device 测试。
+- [x] 四路同 GPU、同一帧序列零差异运行，重复检查确定性；使用 DX12 debug layer 和 Vulkan validation 检查原生路径。
+- [x] 基础 submit/readback 外不引入无条件全局等待，并保留阶段诊断。
 
 **退出条件：** 最小切片的四路像素全部相等，API 验证没有未解释错误。跨编译目标的数值问题在这里定位；未通过前不进入完整 shader 移植。
 

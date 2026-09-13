@@ -1,19 +1,14 @@
-#[repr(C, align(16))]
-#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct Params {
-    pub count: u32,
-    pub source_offset: u32,
-    pub destination_offset: u32,
-    pub stride: u32,
-    pub value: [u32; 4],
-}
+use crate::native::runtime::program::{Dispatch, Params};
 
 pub struct Case {
-    pub entry: &'static str,
-    pub params: Params,
-    pub source: Vec<u8>,
-    pub destination: Vec<u8>,
+    pub dispatch: Dispatch,
     pub expected: Vec<u8>,
+}
+impl std::ops::Deref for Case {
+    type Target = Dispatch;
+    fn deref(&self) -> &Dispatch {
+        &self.dispatch
+    }
 }
 
 pub fn cases() -> Vec<Case> {
@@ -53,22 +48,46 @@ pub fn cases() -> Vec<Case> {
                 }
             }
             cases.push(Case {
-                entry,
-                params,
-                source,
-                destination,
+                dispatch: Dispatch {
+                    entry,
+                    params,
+                    source,
+                    destination,
+                },
                 expected,
             });
         }
     }
     cases.extend(sampling_cases());
+    let texture_cases: Vec<_> = cases
+        .iter()
+        .filter(|c| c.entry == "sample_words")
+        .map(|case| {
+            let mut dispatch = case.dispatch.clone();
+            dispatch.params.value[3] = 1;
+            Case {
+                dispatch,
+                expected: case.expected.clone(),
+            }
+        })
+        .collect();
+    cases.extend(texture_cases);
     cases
 }
 
 fn sampling_cases() -> Vec<Case> {
     let mut cases = Vec::new();
-    for width in [1u32, 17] {
-        for (origin, step) in [(-1.5f32, 0.5f32), (16.75, -0.25)] {
+    for width in [1u32, 17, 256] {
+        for (origin, step) in [
+            (-1.5f32, 0.5f32),
+            (16.75, -0.25),
+            (f32::from_bits(0x3effffff), 0.0),
+            (0.5, 0.0),
+            (f32::from_bits(0x3f000001), 0.0),
+            (64.0, -0.5),
+            (-0.0, f32::MIN_POSITIVE),
+            (0.1, 0.1),
+        ] {
             for count in [0, 1, 63, 64, 65, 129] {
                 let params = Params {
                     count,
@@ -83,12 +102,14 @@ fn sampling_cases() -> Vec<Case> {
                 let destination = vec![0xa5; (count as usize + 4) * 4];
                 let mut expected = destination.clone();
                 for id in 0..count as usize {
-                    // Independent f64 reference; all coordinates and weights are dyadic,
-                    // so these boundary/rounding cases are exactly representable in f32.
-                    let x = origin as f64 + id as f64 * step as f64;
-                    let fraction = x - x.floor();
-                    let left = x.floor().clamp(0.0, (width - 1) as f64) as usize;
-                    let right = (x.floor() + 1.0).clamp(0.0, (width - 1) as f64) as usize;
+                    // Independent f64/i64 oracle; no shader bit-decoding or
+                    // integer packed-channel operations are reused here.
+                    let x = (origin as f64 * 65536.0).round() as i64
+                        + id as i64 * (step as f64 * 65536.0).round() as i64;
+                    let base = x.div_euclid(65536);
+                    let fraction = x.rem_euclid(65536) as f64 / 65536.0;
+                    let left = base.clamp(0, (width - 1) as i64) as usize;
+                    let right = (base + 1).clamp(0, (width - 1) as i64) as usize;
                     for lane in 0..4 {
                         let a = source[4 + left * 4 + lane] as f64;
                         let b = source[4 + right * 4 + lane] as f64;
@@ -97,10 +118,12 @@ fn sampling_cases() -> Vec<Case> {
                     }
                 }
                 cases.push(Case {
-                    entry: "sample_words",
-                    params,
-                    source,
-                    destination,
+                    dispatch: Dispatch {
+                        entry: "sample_words",
+                        params,
+                        source,
+                        destination,
+                    },
                     expected,
                 });
             }

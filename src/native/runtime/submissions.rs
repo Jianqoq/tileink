@@ -69,6 +69,16 @@ impl<T> Pending<T> {
         self.confirmed = ticket.serial;
         Ok(())
     }
+    /// Only native errors guaranteeing no state change may use this path.
+    /// Consume the serial as a no-work point so no stale ticket can alias a retry.
+    pub fn reject_unsubmitted(&mut self, ticket: &Ticket) -> Result<T, SubmissionError> {
+        self.get(ticket)?;
+        if ticket.serial != self.last || self.last != self.confirmed + 1 {
+            return Err(SubmissionError::Unconfirmed);
+        }
+        self.confirmed = self.last;
+        Ok(self.frames.remove(&ticket.serial).unwrap())
+    }
     pub fn get(&self, ticket: &Ticket) -> Result<&T, SubmissionError> {
         if !Arc::ptr_eq(&self.owner, &ticket.owner) {
             return Err(SubmissionError::WrongDevice);
@@ -110,6 +120,21 @@ pub fn can_release_after_wait<E>(failed: bool, wait: impl FnOnce() -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn rejected_attempt_releases_only_its_lease_and_never_reuses_its_ticket() {
+        let mut queue = Pending::new();
+        let prefix = queue.track(1).unwrap();
+        queue.confirm(&prefix).unwrap();
+        assert!(queue.reject_unsubmitted(&prefix).is_err());
+        let rejected = queue.track(2).unwrap();
+        assert_eq!(queue.reject_unsubmitted(&rejected), Ok(2));
+        assert_eq!(queue.get(&prefix), Ok(&1));
+        let retry = queue.track(3).unwrap();
+        queue.confirm(&retry).unwrap();
+        assert!(retry.serial() > rejected.serial());
+        assert_eq!(queue.get(&rejected), Err(SubmissionError::UnknownTicket));
+        assert_eq!(queue.take_completed(&prefix, retry.serial()), Ok(1));
+    }
     #[test]
     fn tickets_never_release_gpu_owners_and_only_observed_work_can_retire() {
         let resource = Arc::new(());

@@ -1,10 +1,11 @@
 //! Per-submission D3D12 command and resource ownership.
-use super::{Case, Result};
+use super::{Dispatch, Result};
 use std::mem::ManuallyDrop;
 use windows::Win32::Graphics::{Direct3D12::*, Dxgi::Common::DXGI_SAMPLE_DESC};
 
 #[derive(Clone)]
 pub struct Frame {
+    descriptors: Vec<ID3D12DescriptorHeap>,
     device: ID3D12Device,
     _allocator: ID3D12CommandAllocator,
     pub list: ID3D12GraphicsCommandList,
@@ -17,7 +18,7 @@ impl Frame {
         device: &ID3D12Device,
         signature: &ID3D12RootSignature,
         pipeline: &ID3D12PipelineState,
-        case: &Case,
+        case: &Dispatch,
     ) -> Result<Self> {
         unsafe {
             let allocator = device.CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT)?;
@@ -28,6 +29,7 @@ impl Frame {
                 _allocator: allocator,
                 list,
                 buffers: Vec::new(),
+                descriptors: Vec::new(),
                 readback: None,
                 size: case.destination.len(),
             };
@@ -84,6 +86,11 @@ impl Frame {
             );
             frame.list.SetComputeRootSignature(signature);
             frame.list.SetPipelineState(pipeline);
+            if case.entry == "sample_words" {
+                let start = case.params.source_offset as usize;
+                let end = start + case.params.value[2] as usize * 4;
+                frame.record_texture(case.params.value[2], &case.source[start..end])?;
+            }
             frame
                 .list
                 .SetComputeRootUnorderedAccessView(0, destination.GetGPUVirtualAddress());
@@ -205,3 +212,6 @@ impl Frame {
         }
     }
 }
+
+#[path = "texture.rs"]
+mod texture;

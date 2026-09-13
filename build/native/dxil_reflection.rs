@@ -45,7 +45,14 @@ pub fn validate(text: &str, entry: &str, abi: &serde_json::Value) -> io::Result<
             "DXIL parameter offset/type",
         )?;
     }
-    let expected: &[(&str, &str, u64)] = if matches!(entry, "copy_words" | "sample_words") {
+    let expected: &[(&str, &str, u64)] = if entry == "sample_words" {
+        &[
+            ("destination", "u0", 0),
+            ("source", "t1", 1),
+            ("params", "cb2", 2),
+            ("texels", "t3", 3),
+        ]
+    } else if entry == "copy_words" {
         &[
             ("destination", "u0", 0),
             ("source", "t1", 1),
@@ -85,6 +92,7 @@ pub fn validate(text: &str, entry: &str, abi: &serde_json::Value) -> io::Result<
                         && b[5] == register
                         && match name {
                             "params" => b[1..4] == ["cbuffer", "NA", "NA"],
+                            "texels" => b[1..4] == ["texture", "f32", "2d"],
                             "source" => b[1..4] == ["texture", "byte", "r/o"],
                             "destination" => b[1..4] == ["UAV", "byte", "r/w"],
                             _ => false,

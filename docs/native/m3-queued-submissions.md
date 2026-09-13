@@ -1,5 +1,7 @@
 # M3 Windows queued native submission slice
 
+> Archived M3 queued slice at 70087c66. See [current M3 closeout](m3-completion.md) for current module paths, commands and completed scope.
+
 Status: **minimum native execution/lifetime validation extended; M3 is not complete**.
 The M2 toolchain/cache delivery `e8631bf52f48752ec9df2c3cd896090bb0e96e65` has
 been pushed and the remote branch was verified. This slice continues Windows work;

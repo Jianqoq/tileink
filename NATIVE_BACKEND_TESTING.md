@@ -1,5 +1,21 @@
 # Native backend validation
 
+## Windows M3 minimum native programs
+
+The runtime now lives in `src/native/runtime/` with named `.rs` roots and separate
+DX12/Vulkan directories. The current native test entrypoint is a library filter:
+
+```powershell
+cargo test --release --features native --lib native::runtime -- --include-ignored --test-threads=1 --nocapture
+```
+
+Use the explicit compiler/GPU/validation-layer settings documented in
+[M3 closeout](docs/native/m3-completion.md). `TILEINK_NATIVE_GPU_REPORT` optionally
+writes the three-repetition four-route case manifest, hashes and exact differences.
+Full wgpu SVG/example regressions remain separate from the minimum native programs.
+No performance comparisons are required for this continuation per user instruction.
+
+
 ## M0/M1 delivery scope (2026-09-13)
 
 On 2026-09-13 the user instructed: **“不用比较性能了”** (stop performance comparisons). For this M0/M1 closeout, no further Criterion comparisons, resize timing or telemetry are required. Performance is not an acceptance gate for this delivery, and `performance_accepted` remains false. Historical regressions, rejected experiments and incomplete timing runs remain preserved. This does not waive functionality, exact pixels, feature/dependency checks, release tests or code review.

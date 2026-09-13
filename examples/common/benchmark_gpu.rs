@@ -1,7 +1,7 @@
 //! Explicit API and physical GPU selection for reproducible GPU benchmarks.
 
 #[path = "gpu_identity.rs"]
-mod gpu_identity;
+pub(crate) mod gpu_identity;
 
 pub fn device(
     api: &str,

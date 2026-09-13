@@ -1,8 +1,9 @@
 //! Vulkan command/descriptors/buffers owned by one pending queue submission.
-use super::{Buffer, Case, Result};
+use super::{Dispatch, Result};
 use ash::vk;
 
 pub struct Frame {
+    images: Vec<texture::Image>,
     device: ash::Device,
     memory: vk::PhysicalDeviceMemoryProperties,
     pool: vk::CommandPool,
@@ -20,7 +21,7 @@ impl Frame {
         bindings: vk::DescriptorSetLayout,
         layout: vk::PipelineLayout,
         pipeline: vk::Pipeline,
-        case: &Case,
+        case: &Dispatch,
     ) -> Result<Self> {
         unsafe {
             let mut frame = Self {
@@ -31,6 +32,7 @@ impl Frame {
                 fence: vk::Fence::null(),
                 command: vk::CommandBuffer::null(),
                 buffers: Vec::new(),
+                images: Vec::new(),
                 size: case.destination.len(),
             };
             frame.pool = frame.device.create_command_pool(
@@ -38,6 +40,10 @@ impl Frame {
                 None,
             )?;
             let sizes = [
+                vk::DescriptorPoolSize {
+                    ty: vk::DescriptorType::SAMPLED_IMAGE,
+                    descriptor_count: 1,
+                },
                 vk::DescriptorPoolSize {
                     ty: vk::DescriptorType::STORAGE_BUFFER,
                     descriptor_count: 2,
@@ -113,6 +119,25 @@ impl Frame {
             frame
                 .device
                 .begin_command_buffer(command, &vk::CommandBufferBeginInfo::default())?;
+            if case.entry == "sample_words" {
+                let start = case.params.source_offset as usize;
+                let end = start + case.params.value[2] as usize * 4;
+                let view = frame.record_texture(
+                    command,
+                    case.params.value[2],
+                    &case.source[start..end],
+                )?;
+                frame.device.update_descriptor_sets(
+                    &[vk::WriteDescriptorSet::default()
+                        .dst_set(set)
+                        .dst_binding(3)
+                        .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+                        .image_info(&[vk::DescriptorImageInfo::default()
+                            .image_view(view)
+                            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)])],
+                    &[],
+                );
+            }
             frame
                 .device
                 .cmd_bind_pipeline(command, vk::PipelineBindPoint::COMPUTE, pipeline);
@@ -218,6 +243,11 @@ impl Frame {
 impl Drop for Frame {
     fn drop(&mut self) {
         unsafe {
+            for image in self.images.drain(..) {
+                self.device.destroy_image_view(image.view, None);
+                self.device.destroy_image(image.image, None);
+                self.device.free_memory(image.memory, None);
+            }
             self.clear_buffers();
             self.device.destroy_descriptor_pool(self.descriptors, None);
             self.device.destroy_command_pool(self.pool, None);
@@ -225,3 +255,11 @@ impl Drop for Frame {
         }
     }
 }
+
+struct Buffer {
+    buffer: vk::Buffer,
+    memory: vk::DeviceMemory,
+}
+
+#[path = "texture.rs"]
+mod texture;

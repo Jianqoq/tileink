@@ -1,8 +1,13 @@
 # Native backend implementation record
 
-Status: **M0 baseline acquisition is complete. M1 implementation, selected-source correctness validation and final working-tree
-integration checks are complete.
-Native DX12/Vulkan rendering is not implemented.**
+Status: **M0/M1 complete. Windows M2 toolchain and M3 minimum native adapters complete.
+The full NativeRenderer/Canvas shader inventory remains M4; Mac hardware validation is deferred.**
+
+Current Windows M3 record: [implementation and exact acceptance](docs/native/m3-completion.md),
+[verification receipt](docs/native/m3-completion-verification.json). Shared batches, owning receipts,
+native textures, pre-recording validation and failure containment execute on both APIs.
+All 306 minimum cases repeat three times across four real APIs with exact bytes.
+Older continuation entries below are historical snapshots, not the current milestone status.
 
 On 2026-09-13 the user instructed: **“不用比较性能了”** (stop performance comparisons). For this M0/M1 closeout, no further Criterion comparisons, resize timing or telemetry are required. Performance is not an acceptance gate for this delivery, and `performance_accepted` remains false. Historical regressions, rejected experiments and incomplete timing runs remain preserved. This does not waive functionality, exact pixels, feature/dependency checks, release tests or code review.
 

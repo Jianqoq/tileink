@@ -1,7 +1,7 @@
 //! Opaque driver pipeline data is distinct from portable DXIL/SPIR-V artifacts.
 //! Driver/API/device identity and the shader+layout contract are part of its key.
 #[allow(dead_code)] // Reuse the build cache's framing/locking; this consumer validates driver blobs.
-#[path = "../../build/native/cache.rs"]
+#[path = "../../../build/native/cache.rs"]
 mod storage;
 use std::{io, path::PathBuf};
 use storage::{CacheKey, ShaderCache};
@@ -18,19 +18,10 @@ pub fn load_or_create(
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/native-probe-pipelines")
         });
     let key = CacheKey::new(&[
-        b"native-probe-pipeline-layout-v1",
+        b"native-probe-pipeline-layout-v2-texture",
         identity,
         shader_key.as_bytes(),
     ]);
     let result = ShaderCache::new(root).get_or_compile_validated(&key, accept, create)?;
     Ok(result.hit)
-}
-
-pub fn vulkan_header_matches(bytes: &[u8], vendor: u32, device: u32, uuid: &[u8; 16]) -> bool {
-    bytes.len() >= 32
-        && u32::from_le_bytes(bytes[0..4].try_into().unwrap()) == 32
-        && u32::from_le_bytes(bytes[4..8].try_into().unwrap()) == 1
-        && u32::from_le_bytes(bytes[8..12].try_into().unwrap()) == vendor
-        && u32::from_le_bytes(bytes[12..16].try_into().unwrap()) == device
-        && bytes[16..32] == *uuid
 }

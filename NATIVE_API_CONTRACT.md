@@ -1,5 +1,17 @@
 # Native context, target and completion contract
 
+## Current M3 implementation boundary
+
+The minimum Windows runtime implements shared `BatchAdapter` dispatch/uniform
+staging, owning context-generation receipts, bounded readback/teardown and strict
+pre-recording validation. API-specific device, pipeline, texture and frame code is
+separate under `src/native/runtime/dx12/` and `vulkan/`; named `.rs` files are the
+module roots. See [M3 closeout](docs/native/m3-completion.md) for the executable
+checks and Q16 numerical contract. The full public NativeRenderer remains unavailable
+until M4; external targets, retained history and automatic device-loss reconstruction
+below remain M5. Fail-stop quarantine does not claim automatic recovery.
+
+
 Status: M1 native API contract. The current native constructor returns `BackendUnavailable`; the operations below are implementation
 requirements for the adapters, not claims that native rendering is available.
 M1 requires executable coverage of the shared state and scheduling contracts, and

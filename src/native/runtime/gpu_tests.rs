@@ -1,25 +1,9 @@
-#![cfg(windows)]
-#[path = "native_shader_gpu/cases.rs"]
+use super::{Result, dx12, submissions, vulkan};
+#[path = "tests/cases.rs"]
 mod cases;
-#[path = "native_shader_gpu/dx12.rs"]
-mod dx12;
-#[path = "../examples/common/gpu_identity.rs"]
-mod gpu_identity;
-#[path = "native_shader_gpu/pipeline_cache.rs"]
-mod pipeline_cache;
-#[path = "native_shader_gpu/wgpu.rs"]
+use crate::wgpu::test_gpu::gpu_identity;
+#[path = "tests/wgpu.rs"]
 mod reference;
-#[path = "native_shader_gpu/retirement.rs"]
-mod retirement;
-#[path = "native_shader_gpu/submissions.rs"]
-mod submissions;
-#[path = "native_shader_gpu/vulkan.rs"]
-mod vulkan;
-
-#[path = "native_shader_gpu/isolation.rs"]
-mod isolation;
-
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
@@ -31,26 +15,52 @@ fn four_api_probes_match_independent_cpu_results() -> Result<()> {
     let wgpu_vulkan = reference::Reference::new(wgpu::Backends::VULKAN, &identity)?;
     let vulkan_messages = vulkan.validation_messages();
     let dx12_messages = dx12.validation_queue();
-    for case in cases::cases() {
-        let actual = vulkan.execute(&case)?;
-        let directx = dx12.execute(&case)?;
-        let reference_dx12 = wgpu_dx12.execute(&case)?;
-        let reference_vulkan = wgpu_vulkan.execute(&case)?;
-        assert_eq!(reference_dx12, directx, "wgpu DX12/native DX12");
-        assert_eq!(reference_vulkan, directx, "wgpu Vulkan/native DX12");
-        assert_eq!(directx, case.expected, "native DX12");
-        assert_eq!(directx, actual, "native DX12/Vulkan equality");
-        assert_eq!(
-            actual, case.expected,
-            "native Vulkan {}/{}",
-            case.entry, case.params.count
-        );
+    use sha2::Digest;
+    let mut report = Vec::new();
+    for repetition in 0..3 {
+        for (index, case) in cases::cases().into_iter().enumerate() {
+            let outputs = [
+                vulkan.execute(&case)?,
+                dx12.execute(&case)?,
+                wgpu_dx12.execute(&case)?,
+                wgpu_vulkan.execute(&case)?,
+            ];
+            let mut hashes = Vec::new();
+            for (route, bytes) in ["native-vulkan", "native-dx12", "wgpu-dx12", "wgpu-vulkan"]
+                .into_iter()
+                .zip(&outputs)
+            {
+                let difference = bytes.iter().zip(&case.expected).position(|(a, b)| a != b);
+                assert!(
+                    bytes.len() == case.expected.len() && difference.is_none(),
+                    "{route} case {index} repetition {repetition} {:?}: first different byte {difference:?}",
+                    case.params
+                );
+                hashes.push(serde_json::json!({"route":route, "sha256":sha2::Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect::<String>()}));
+            }
+            report.push(serde_json::json!({"case":index,"repetition":repetition,"entry":case.entry,
+                "parameters":bytemuck::bytes_of(&case.params),"bytes":case.expected.len(),"outputs":hashes,
+                "different_pixels":0,"max_channel_delta":0}));
+        }
     }
     drop(dx12);
     drop(vulkan);
     dx12::assert_valid(&dx12_messages)?;
     let messages = vulkan_messages.lock().unwrap();
     assert!(messages.is_empty(), "Vulkan validation: {messages:?}");
+    eprintln!(
+        "M3 four-API exact: {} cases x 3 repetitions x 4 APIs; zero differing bytes",
+        report.len() / 3
+    );
+    if let Some(path) = std::env::var_os("TILEINK_NATIVE_GPU_REPORT") {
+        std::fs::write(
+            path,
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "physical_gpu_luid":identity,"cases":report.len()/3,"repetitions":3,"routes":4,
+                "native_validation":"passed including teardown","frames":report
+            }))?,
+        )?;
+    }
     Ok(())
 }
 
@@ -101,3 +111,6 @@ fn queued_native_submissions_keep_leases_and_reject_wrong_devices() -> Result<()
     assert!(vulkan_messages.lock().unwrap().is_empty());
     Ok(())
 }
+
+#[path = "tests/batches.rs"]
+mod batches;
