@@ -1,3 +1,12 @@
+#[allow(dead_code)]
+#[path = "../build/native/abi.rs"]
+mod abi;
+#[allow(dead_code)]
+#[path = "../build/gpu_constants.rs"]
+mod gpu_constants;
+#[allow(dead_code)]
+#[path = "../build/native/interfaces.rs"]
+mod interfaces;
 #[cfg(all(
     feature = "native-vulkan",
     any(target_os = "windows", target_os = "linux")
@@ -15,12 +24,11 @@ fn actual_spirv_rejects_wrong_entry_layout_binding_stride_and_workgroup() {
         .iter()
         .find(|a| a.format == "spirv" && a.entry == "copy_words")
         .unwrap();
-    let abi: serde_json::Value =
-        serde_json::from_str(include_str!("../src/shaders/probe-abi.json")).unwrap();
+    let abi = interfaces::get("probe").unwrap();
     spirv::validate(artifact.bytes, "copy_words", &abi).unwrap();
     assert!(spirv::validate(artifact.bytes, "wrong_entry", &abi).is_err());
     let mut wrong = abi.clone();
-    wrong["parameter_offsets"]["value"] = serde_json::json!(20);
+    wrong.resources.get_mut("params").unwrap().fields[4].offset = 20;
     assert!(spirv::validate(artifact.bytes, "copy_words", &wrong).is_err());
     for decoration in [6, 33] {
         let mut words: Vec<u32> = artifact
@@ -41,7 +49,7 @@ fn actual_spirv_rejects_wrong_entry_layout_binding_stride_and_workgroup() {
         assert!(spirv::validate(&bytes, "copy_words", &abi).is_err());
     }
     let mut wrong = abi.clone();
-    wrong["workgroup"] = serde_json::json!([32, 1, 1]);
+    wrong.workgroup = [32, 1, 1];
     assert!(spirv::validate(artifact.bytes, "copy_words", &wrong).is_err());
     for length in [0, 4, 20, artifact.bytes.len() - 1] {
         assert!(spirv::validate(&artifact.bytes[..length], "copy_words", &abi).is_err());
@@ -58,8 +66,7 @@ fn actual_spirv_texture_dimension_array_sample_type_and_binding_are_checked() {
         .iter()
         .find(|a| a.format == "spirv" && a.entry == "sample_words")
         .unwrap();
-    let abi: serde_json::Value =
-        serde_json::from_str(include_str!("../src/shaders/probe-abi.json")).unwrap();
+    let abi = interfaces::get("probe").unwrap();
     spirv::validate(artifact.bytes, "sample_words", &abi).unwrap();
     for (operand, wrong_value) in [(3, 2), (5, 1), (6, 1), (7, 2), (8, 4)] {
         let mut words: Vec<_> = artifact
@@ -77,7 +84,7 @@ fn actual_spirv_texture_dimension_array_sample_type_and_binding_are_checked() {
         assert!(spirv::validate(&bytes, "sample_words", &abi).is_err());
     }
     let mut wrong = abi.clone();
-    wrong["bindings"]["texels"] = serde_json::json!(4);
+    wrong.resources.get_mut("texels").unwrap().binding = 4;
     assert!(spirv::validate(artifact.bytes, "sample_words", &wrong).is_err());
 }
 
@@ -91,15 +98,14 @@ fn actual_range_scatter_spirv_uses_the_production_dispatch_shape() {
         .iter()
         .find(|a| a.format == "spirv" && a.entry == "range_scatter")
         .unwrap();
-    let abi: serde_json::Value =
-        serde_json::from_str(include_str!("../src/shaders/range-scatter-abi.json")).unwrap();
+    let abi = interfaces::get("range-scatter").unwrap();
     spirv::validate(artifact.bytes, "range_scatter", &abi).unwrap();
     assert_eq!(artifact.workgroup, [256, 1, 1]);
     let mut wrong = abi.clone();
-    wrong["workgroup"] = serde_json::json!([64, 1, 1]);
+    wrong.workgroup = [64, 1, 1];
     assert!(spirv::validate(artifact.bytes, "range_scatter", &wrong).is_err());
     let mut wrong = abi.clone();
-    wrong["bindings"]["source"] = serde_json::json!(0);
+    wrong.resources.get_mut("source").unwrap().binding = 0;
     assert!(spirv::validate(artifact.bytes, "range_scatter", &wrong).is_err());
 }
 
@@ -109,29 +115,24 @@ fn actual_range_scatter_spirv_uses_the_production_dispatch_shape() {
 ))]
 #[test]
 fn actual_cumsum_spirv_checks_each_uniform_block_and_shared_workgroup() {
-    let abi: serde_json::Value =
-        serde_json::from_str(include_str!("../src/shaders/cumsum-abi.json")).unwrap();
+    let abi = interfaces::get("cumsum").unwrap();
     for artifact in tileink::NATIVE_SHADER_ARTIFACTS
         .iter()
         .filter(|a| a.format == "spirv" && a.entry.starts_with("cumsum_"))
     {
         spirv::validate(artifact.bytes, artifact.entry, &abi).unwrap();
         for path in ["config", "dispatch_grid"] {
-            if !abi["entry_resources"][artifact.entry]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|v| v == path)
-            {
+            if !abi.entries[artifact.entry].iter().any(|v| v == path) {
                 continue;
             }
             for field in ["offset", "name"] {
                 let mut wrong = abi.clone();
-                wrong["resources"][path]["fields"][0][field] = if field == "offset" {
-                    serde_json::json!(4)
+                let member = &mut wrong.resources.get_mut(path).unwrap().fields[0];
+                if field == "offset" {
+                    member.offset = 4;
                 } else {
-                    serde_json::json!("different_field")
-                };
+                    member.name = "different_field".into();
+                }
                 assert!(
                     spirv::validate(artifact.bytes, artifact.entry, &wrong).is_err(),
                     "{} {path} {field}",
@@ -139,11 +140,11 @@ fn actual_cumsum_spirv_checks_each_uniform_block_and_shared_workgroup() {
                 );
             }
             let mut wrong = abi.clone();
-            wrong["resources"][path]["binding"] = serde_json::json!(30);
+            wrong.resources.get_mut(path).unwrap().binding = 30;
             assert!(spirv::validate(artifact.bytes, artifact.entry, &wrong).is_err());
         }
         let mut wrong = abi.clone();
-        wrong["workgroup"] = serde_json::json!([32, 1, 1]);
+        wrong.workgroup = [32, 1, 1];
         assert!(spirv::validate(artifact.bytes, artifact.entry, &wrong).is_err());
     }
 }

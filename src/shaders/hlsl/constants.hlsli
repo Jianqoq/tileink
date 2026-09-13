@@ -1,4 +1,6 @@
-#pragma once
+#ifndef TILEINK_HLSL_CONSTANTS_HLSLI_INCLUDED
+#define TILEINK_HLSL_CONSTANTS_HLSLI_INCLUDED
+
 // Canonical GPU algorithm constants. Rust and WGSL are generated from this file.
 // Keep declarations to uint literals, prior constant names and multiplication.
 
@@ -15,3 +17,5 @@ static const uint FILTER_WORKGROUP_SIZE = 256u;
 static const uint SHARED_BLUR_TILE_WIDTH = TILE_SIZE;
 static const uint SHARED_BLUR_TILE_HEIGHT = TILE_SIZE;
 static const uint SHARED_BLUR_MAX_RADIUS = 16u;
+
+#endif // TILEINK_HLSL_CONSTANTS_HLSLI_INCLUDED

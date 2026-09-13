@@ -1,5 +1,7 @@
 #include "constants.hlsli"
 #include "dispatch.hlsli"
+
+ConstantBuffer<DispatchGrid> dispatch_grid : register(b31, space0);
 struct CumsumConfig { uint row_count; uint chunk_count; uint _pad0; uint _pad1; };
 ConstantBuffer<CumsumConfig> config : register(b0, space0);
 ByteAddressBuffer chunk_backdrop_offsets : register(t1, space0);
@@ -13,7 +15,7 @@ groupshared int scratch[CUMSUM_CHUNK_SIZE];
 
 [numthreads(CUMSUM_CHUNK_SIZE,1,1)]
 void cumsum_prefix_chunks(uint3 group:SV_GroupID, uint3 local:SV_GroupThreadID) {
-    uint chunk = linear_group(group);
+    uint chunk = linear_group(group, uint2(dispatch_grid.x, dispatch_grid.y));
     // WGSL robust access discards padded groups. Native raw buffers require an
     // explicit uniform guard before any memory access or workgroup barrier.
     if (chunk >= config.chunk_count) return;
@@ -60,7 +62,7 @@ void cumsum_chunk_offsets(uint3 id:SV_DispatchThreadID) {
 
 [numthreads(CUMSUM_CHUNK_SIZE,1,1)]
 void cumsum_apply_chunk_offsets(uint3 group:SV_GroupID,uint3 local:SV_GroupThreadID) {
-    uint chunk=linear_group(group);
+    uint chunk=linear_group(group, uint2(dispatch_grid.x, dispatch_grid.y));
     if (chunk>=config.chunk_count) return;
     uint lane=local.x;
     if (lane>=chunk_lens.Load(chunk*4u)) return;

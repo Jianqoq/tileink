@@ -2,11 +2,15 @@
 //! Reject unsupported syntax instead of letting host and shader interpretation silently diverge.
 use std::{collections::BTreeMap, env, fs, io, path::Path, sync::OnceLock};
 
+#[path = "hlsl_source.rs"]
+pub mod syntax;
+
 pub fn parse(source: &str) -> io::Result<BTreeMap<String, u32>> {
     let mut constants = BTreeMap::<String, u32>::new();
-    for (index, line) in source.lines().enumerate() {
-        let line = line.split("//").next().unwrap().trim();
-        if line.is_empty() || line == "#pragma once" {
+    let (lines, _) = syntax::parse(source)?;
+    for (index, line) in lines.iter().enumerate() {
+        let line = line.trim();
+        if line.is_empty() {
             continue;
         }
         let invalid = || {

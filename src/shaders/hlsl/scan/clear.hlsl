@@ -1,7 +1,10 @@
 #include "../scene_records.hlsli"
 #include "../constants.hlsli"
+#include "config.hlsli"
+#include "index.hlsli"
+
 ByteAddressBuffer active_indices:register(t8,space0);
-#include "common.hlsli"
+ConstantBuffer<ScanConfig> config : register(b0, space0);
 RWByteAddressBuffer backdrops:register(u1,space0);
 RWByteAddressBuffer segment_ranges:register(u2,space0);
 RWByteAddressBuffer segment_tile_counts:register(u3,space0);
@@ -15,15 +18,15 @@ void scan_clear(uint3 id:SV_DispatchThreadID) {
     uint index=id.x;
     if(index>=config.clear_len) return;
     if(index<config.backdrop_len) {
-        uint backdrop=dispatched_index(index,config.backdrop_base);
+        uint backdrop=dispatched_index(active_indices, config.incremental, index,config.backdrop_base);
         backdrops.Store(backdrop*4u,0u);
         segment_ranges.Store2(backdrop*TILE_SEGMENT_RANGE_STRIDE,uint2(0u,0u));
         segment_tile_counts.Store(backdrop*4u,0u);
         segment_tile_cursors.Store(backdrop*4u,0u);
     }
-    if(index<config.path_count) segment_bumps.Store(dispatched_index(index,config.path_base)*4u,0u);
+    if(index<config.path_count) segment_bumps.Store(dispatched_index(active_indices, config.incremental, index,config.path_base)*4u,0u);
     if(index<config.scan_chunk_count) {
-        uint chunk=dispatched_index(index,config.chunk_base);
+        uint chunk=dispatched_index(active_indices, config.incremental, index,config.chunk_base);
         chunk_totals.Store(chunk*4u,0u);chunk_offsets.Store(chunk*4u,0u);
     }
 }

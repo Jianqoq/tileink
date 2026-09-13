@@ -180,6 +180,7 @@ mod gpu_constants;
 
 fn main() {
     println!("cargo:rerun-if-changed=build/gpu_constants.rs");
+    println!("cargo:rerun-if-changed=build/hlsl_source.rs");
     println!("cargo:rerun-if-changed=src/shaders/hlsl/constants.hlsli");
     gpu_constants::write_rust(&std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap()))
         .expect("generate host GPU constants");

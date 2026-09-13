@@ -1,17 +1,20 @@
 #include "../constants.hlsli"
+#include "config.hlsli"
+#include "index.hlsli"
+#include "geometry.hlsli"
+
 ByteAddressBuffer active_indices:register(t5,space0);
-#include "common.hlsli"
+ConstantBuffer<ScanConfig> config : register(b0, space0);
 ByteAddressBuffer lines:register(t1,space0);
 ByteAddressBuffer path_records:register(t2,space0);
 RWByteAddressBuffer backdrops:register(u3,space0);
 RWByteAddressBuffer segment_tile_counts:register(u4,space0);
-#include "geometry.hlsli"
 
 [numthreads(SCAN_CHUNK_SIZE,1,1)]
 void scan_count(uint3 id:SV_DispatchThreadID) {
     if(id.x>=config.line_count) return;
     ScanTraversal scan;
-    if(!scan_geometry(dispatched_index(id.x,config.line_base),scan)) return;
+    if(!scan_geometry(lines, path_records, dispatched_index(active_indices, config.incremental, id.x,config.line_base),scan)) return;
     int delta=1;if(scan.down) delta=-1;
     uint ignored;
     for(int y=scan.ymin;y<scan.ymax;y++) {

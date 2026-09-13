@@ -1,3 +1,6 @@
+#[allow(dead_code)]
+#[path = "../build/gpu_constants.rs"]
+mod gpu_constants;
 #[path = "../build/native/source.rs"]
 mod source;
 use source::SourceGraph;
@@ -80,7 +83,7 @@ fn missing_macro_and_escaping_includes_are_rejected() {
 }
 
 #[test]
-fn pragma_once_tracks_diamond_dependencies_and_guarded_self_includes() {
+fn include_guards_track_diamond_dependencies_and_guarded_self_includes() {
     let root = std::env::temp_dir().join(format!("tileink-shader-once-{}", std::process::id()));
     fs::create_dir(&root).unwrap();
     fs::write(
@@ -104,9 +107,11 @@ fn pragma_once_tracks_diamond_dependencies_and_guarded_self_includes() {
     .unwrap();
     fs::write(
         root.join("shared.hlsli"),
-        r#"#pragma once
+        r#"#ifndef SHARED_INCLUDED
+#define SHARED_INCLUDED
 #include "shared.hlsli"
 static const uint STRIDE = 16u;
+#endif
 "#,
     )
     .unwrap();
@@ -116,15 +121,54 @@ static const uint STRIDE = 16u;
         graph.expanded.matches("static const uint STRIDE").count(),
         1
     );
-    assert!(!graph.expanded.contains("#pragma"));
+    assert!(!graph.expanded.contains("#ifndef"));
     fs::write(
         root.join("shared.hlsli"),
-        "#pragma once\nstatic const uint STRIDE = 32u;\n",
+        "#ifndef SHARED_INCLUDED\n#define SHARED_INCLUDED\nstatic const uint STRIDE = 32u;\n#endif\n",
     )
     .unwrap();
     assert_ne!(
         graph.expanded,
         SourceGraph::load(&root, "main.hlsl").unwrap().expanded
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn malformed_and_reused_include_guards_are_rejected() {
+    let root = std::env::temp_dir().join(format!("tileink-guard-invalid-{}", std::process::id()));
+    fs::create_dir(&root).unwrap();
+    for source in [
+        "#ifndef HEADER\n#define OTHER\n#endif",
+        "#ifndef HEADER\n#define HEADER\nuint x;",
+        "#ifndef HEADER\n#endif",
+    ] {
+        fs::write(root.join("main.hlsl"), source).unwrap();
+        assert!(SourceGraph::load(&root, "main.hlsl").is_err());
+    }
+    fs::write(
+        root.join("a.hlsli"),
+        "#ifndef SAME\n#define SAME\nuint a;\n#endif",
+    )
+    .unwrap();
+    fs::write(
+        root.join("b.hlsli"),
+        "#ifndef SAME\n#define SAME\nuint b;\n#endif",
+    )
+    .unwrap();
+    fs::write(
+        root.join("main.hlsl"),
+        r#"#include "a.hlsli"
+#include "b.hlsli"
+"#,
+    )
+    .unwrap();
+    assert!(
+        SourceGraph::load(&root, "main.hlsl")
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("duplicate include guard")
     );
     fs::remove_dir_all(root).unwrap();
 }

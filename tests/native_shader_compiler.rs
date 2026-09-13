@@ -1,6 +1,9 @@
 #[allow(dead_code)]
 #[path = "../build/native/dxc.rs"]
 mod dxc;
+#[allow(dead_code)]
+#[path = "../build/gpu_constants.rs"]
+mod gpu_constants;
 
 #[test]
 fn unavailable_compilers_and_unknown_targets_fail_explicitly() {
@@ -44,4 +47,123 @@ fn pinned_dxc_reports_invalid_source_for_both_targets() {
         assert!(!work.join(target).join(format!("shader.{target}")).exists());
     }
     std::fs::remove_dir_all(work).unwrap();
+}
+
+#[path = "../build/native/source.rs"]
+mod source;
+
+fn headers(root: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut files = Vec::new();
+    for entry in std::fs::read_dir(root).unwrap() {
+        let entry = entry.unwrap();
+        if entry.file_type().unwrap().is_dir() {
+            files.extend(headers(&entry.path()));
+        } else if entry
+            .path()
+            .extension()
+            .is_some_and(|extension| extension == "hlsli")
+        {
+            files.push(entry.path());
+        }
+    }
+    files.sort();
+    files
+}
+
+#[test]
+#[ignore = "requires explicitly pinned TILEINK_NATIVE_DXC_PATH"]
+fn every_hlsl_header_compiles_without_callers_globals() {
+    let compiler =
+        dxc::Dxc::discover(std::env::var_os("TILEINK_NATIVE_DXC_PATH").unwrap().into()).unwrap();
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/shaders/hlsl");
+    let work = std::env::temp_dir().join(format!("tileink-header-contract-{}", std::process::id()));
+    std::fs::create_dir(&work).unwrap();
+    for (index, file) in headers(&root).iter().enumerate() {
+        let name = file.strip_prefix(&root).unwrap().to_str().unwrap();
+        let graph = source::SourceGraph::load(&root, name).unwrap();
+        // A reusable header must declare its dependencies itself; no caller resource/config
+        // declarations precede it. Actual entry tests separately validate argument wiring.
+        let text = format!(
+            "{}\n[numthreads(1,1,1)] void header_probe() {{}}",
+            graph.expanded
+        );
+        for target in ["dxil", "spirv"] {
+            compiler
+                .compile(
+                    &text,
+                    &dxc::Dxc::flags(target, "header_probe").unwrap(),
+                    &work.join(format!("{index}-{target}")),
+                    target,
+                )
+                .unwrap_or_else(|error| panic!("{name} ({target}): {error}"));
+        }
+    }
+    std::fs::remove_dir_all(work).unwrap();
+}
+
+#[test]
+fn entry_resource_bindings_are_not_hidden_in_headers() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/shaders/hlsl");
+    let mut guards = std::collections::BTreeSet::new();
+    for file in headers(&root) {
+        let name = file.strip_prefix(&root).unwrap().to_str().unwrap();
+        let (_, guard) = hlsl_syntax::parse(&std::fs::read_to_string(&file).unwrap()).unwrap();
+        assert!(
+            guards.insert(guard.expect("every header requires a conventional include guard")),
+            "reused guard in {name}"
+        );
+        let graph = source::SourceGraph::load(&root, name).unwrap();
+        assert!(
+            !graph
+                .expanded
+                .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+                .any(|token| token == "register"),
+            "entry resource binding hidden in {name}"
+        );
+    }
+}
+
+use gpu_constants::syntax as hlsl_syntax;
+
+// Shader Tools reserves these type names even where DXC accepts them as identifiers.
+// Check declaration positions rather than banning legitimate matrix/vector types.
+fn reserved_declaration(source: &str) -> Option<&str> {
+    let tokens: Vec<_> = source
+        .split(|c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '>')
+        .filter(|token| !token.is_empty())
+        .collect();
+    tokens.windows(2).find_map(|pair| {
+        let typed = pair[0].ends_with('>')
+            || ["float", "half", "double", "int", "uint", "bool"]
+                .iter()
+                .any(|base| {
+                    pair[0]
+                        .strip_prefix(base)
+                        .is_some_and(|tail| tail.chars().all(|c| c.is_ascii_digit() || c == 'x'))
+                });
+        (typed && matches!(pair[1], "matrix" | "vector" | "texture")).then_some(pair[1])
+    })
+}
+
+#[test]
+fn hlsl_declarations_avoid_editor_type_keywords() {
+    assert_eq!(
+        reserved_declaration("float4 matrix = asfloat(bits);"),
+        Some("matrix")
+    );
+    assert_eq!(
+        reserved_declaration("Texture2D<float4> texture,"),
+        Some("texture")
+    );
+    assert_eq!(reserved_declaration("float3 vector;"), Some("vector"));
+    assert_eq!(
+        reserved_declaration("matrix<float, 4, 4> transform; float4 affine_linear;"),
+        None
+    );
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/shaders/hlsl");
+    for file in headers(&root) {
+        let name = file.strip_prefix(&root).unwrap().to_str().unwrap();
+        let graph = source::SourceGraph::load(&root, name).unwrap();
+        assert_eq!(reserved_declaration(&graph.expanded), None, "{name}");
+    }
 }

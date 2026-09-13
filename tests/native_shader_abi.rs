@@ -1,39 +1,55 @@
+#[allow(dead_code)]
 #[path = "../build/native/abi.rs"]
 mod abi;
 #[path = "../build/native/dxil_reflection.rs"]
 mod dxil_reflection;
+#[allow(dead_code)]
+#[path = "../build/gpu_constants.rs"]
+mod gpu_constants;
+#[allow(dead_code)]
+#[path = "../build/native/interfaces.rs"]
+mod interfaces;
 
 #[test]
-fn incomplete_duplicate_or_incompatible_probe_inventory_is_rejected() {
-    let valid: serde_json::Value =
-        serde_json::from_str(include_str!("../src/shaders/probe-abi.json")).unwrap();
+fn invalid_typed_interfaces_are_rejected_and_invalidate_cache_keys() {
+    let valid = interfaces::get("probe").unwrap();
     abi::validate(&valid).unwrap();
-    for programs in [
-        serde_json::json!([]),
-        serde_json::json!(["clear_words"]),
-        serde_json::json!(["clear_words", "copy_words", "copy_words"]),
-    ] {
+    let mut wrong = valid.clone();
+    wrong.entries.clear();
+    assert!(abi::validate(&wrong).is_err());
+    let mut wrong = valid.clone();
+    wrong
+        .entries
+        .get_mut("copy_words")
+        .unwrap()
+        .push("source".into());
+    assert!(abi::validate(&wrong).is_err());
+    let mut wrong = valid.clone();
+    wrong
+        .entries
+        .get_mut("copy_words")
+        .unwrap()
+        .push("missing".into());
+    assert!(abi::validate(&wrong).is_err());
+    for group in [[0, 1, 1], [1025, 1, 1], [32, 64, 1]] {
         let mut wrong = valid.clone();
-        wrong["programs"] = programs;
+        wrong.workgroup = group;
         assert!(abi::validate(&wrong).is_err());
+        assert_ne!(valid.cache_bytes(), wrong.cache_bytes());
     }
-    for field in [
-        "schema",
-        "descriptor_set",
-        "parameter_size",
-        "buffer_offsets_alignment",
-    ] {
-        let mut wrong = valid.clone();
-        wrong[field] = serde_json::json!(99);
-        assert!(abi::validate(&wrong).is_err());
-    }
+    let mut changed = valid.clone();
+    changed.resources.get_mut("source").unwrap().binding = 4;
+    assert_ne!(valid.cache_bytes(), changed.cache_bytes());
+    let mut changed = valid.clone();
+    changed.resources.get_mut("params").unwrap().fields[0].name = "changed".into();
+    assert_ne!(valid.cache_bytes(), changed.cache_bytes());
+    assert!(interfaces::get("unknown").is_err());
 }
 
 #[test]
 fn dxil_resource_kind_and_parameter_layout_must_match_byte_buffer_abi() {
-    let abi: serde_json::Value =
-        serde_json::from_str(include_str!("../src/shaders/probe-abi.json")).unwrap();
-    let reflection = "; EntryFunctionName: copy_words\n; NumThreads=(64,1,1)\n; uint count; ; Offset: 0\n; uint source_offset; ; Offset: 4\n; uint destination_offset; ; Offset: 8\n; uint stride; ; Offset: 12\n; uint4 value; ; Offset: 16\n; } params; ; Offset: 0 Size: 32\n; Resource Bindings:\n; params cbuffer NA NA CB0 cb2 1\n; destination UAV byte r/w U0 u0 1\n; source texture byte r/o T0 t1 1\ntarget datalayout = \"irrelevant\"\n";
+    let abi = interfaces::get("probe").unwrap();
+    let reflection = "; EntryFunctionName: copy_words\n; NumThreads=(64,1,1)\n; cbuffer params\n; uint count; ; Offset: 0\n; uint source_offset; ; Offset: 4\n; uint destination_offset; ; Offset: 8\n; uint stride; ; Offset: 12\n; uint4 value; ; Offset: 16\n; } params; ; Offset: 0\n; } params; ; Offset: 0 Size: 32\n; Resource Bindings:\n; params cbuffer NA NA CB0 cb2 1\n; destination UAV byte r/w U0 u0 1\n; source texture byte r/o T0 t1 1\ntarget datalayout = \"irrelevant\"\n";
     dxil_reflection::validate(reflection, "copy_words", &abi).unwrap();
     for (from, to) in [
         ("UAV byte r/w", "UAV float 2d"),
@@ -54,25 +70,14 @@ fn dxil_resource_kind_and_parameter_layout_must_match_byte_buffer_abi() {
         assert!(dxil_reflection::validate(&extra, "copy_words", &abi).is_err());
     }
     let mut wrong = abi.clone();
-    wrong["descriptor_set"] = serde_json::json!(1);
+    wrong.descriptor_set = 1;
     assert!(dxil_reflection::validate(reflection, "copy_words", &wrong).is_err());
 }
 
 #[test]
 fn range_scatter_has_two_buffers_no_uniforms_and_256_threads() {
-    let valid: serde_json::Value =
-        serde_json::from_str(include_str!("../src/shaders/range-scatter-abi.json")).unwrap();
+    let valid = interfaces::get("range-scatter").unwrap();
     abi::validate(&valid).unwrap();
-    for field in [
-        "parameter_size",
-        "upload_header_words",
-        "descriptor_words",
-        "descriptor_set",
-    ] {
-        let mut wrong = valid.clone();
-        wrong[field] = serde_json::json!(99);
-        assert!(abi::validate(&wrong).is_err());
-    }
     let reflection = "; EntryFunctionName: range_scatter\n; NumThreads=(256,1,1)\n; Resource Bindings:\n; destination UAV byte r/w U0 u0 1\n; source texture byte r/o T0 t1 1\ntarget datalayout = irrelevant\n";
     dxil_reflection::validate(reflection, "range_scatter", &valid).unwrap();
     for (from, to) in [
@@ -94,8 +99,7 @@ fn range_scatter_has_two_buffers_no_uniforms_and_256_threads() {
 
 #[test]
 fn compute_layout_rejects_duplicate_slots_and_invalid_uniform_fields() {
-    let valid: serde_json::Value =
-        serde_json::from_str(include_str!("../src/shaders/cumsum-abi.json")).unwrap();
+    let valid = interfaces::get("cumsum").unwrap();
     abi::validate(&valid).unwrap();
     assert!(
         abi::binding_declarations(&valid, "cumsum_prefix_chunks")
@@ -103,12 +107,29 @@ fn compute_layout_rejects_duplicate_slots_and_invalid_uniform_fields() {
             .contains("slot: 31")
     );
     let mut wrong = valid.clone();
-    wrong["resources"]["backdrops"]["binding"] = serde_json::json!(1);
+    wrong.resources.get_mut("backdrops").unwrap().binding = 1;
     assert!(abi::validate(&wrong).is_err());
     let mut wrong = valid.clone();
-    wrong["resources"]["config"]["fields"][1]["offset"] = serde_json::json!(8);
+    wrong.resources.get_mut("config").unwrap().fields[1].offset = 8;
     assert!(abi::validate(&wrong).is_err());
     let mut wrong = valid.clone();
-    wrong["resources"]["dispatch_grid"]["internal"] = serde_json::json!(false);
+    wrong.resources.get_mut("dispatch_grid").unwrap().internal = false;
     assert!(abi::validate(&wrong).is_err());
+}
+
+#[test]
+fn shader_interfaces_do_not_depend_on_abi_json_files() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/shaders");
+    for entry in std::fs::read_dir(root).unwrap() {
+        let path = entry.unwrap().path();
+        assert!(
+            !path
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .ends_with("-abi.json"),
+            "{}",
+            path.display()
+        );
+    }
 }

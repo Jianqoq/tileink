@@ -1,4 +1,7 @@
-#pragma once
+#ifndef TILEINK_HLSL_SCAN_CLIP_HLSLI_INCLUDED
+#define TILEINK_HLSL_SCAN_CLIP_HLSLI_INCLUDED
+
+#include "geometry.hlsli"
 #include "../constants.hlsli"
 #include "../scene_records.hlsli"
 // Explicit mad corresponds to the reference shader's intersection fma. HLSL
@@ -22,7 +25,7 @@ float clip_y_at_x(float4 points,float x,float tile_min_y,float tile_max_y) {
     return clamp(y,tile_min_y+TILE_CLIP_NUDGE,tile_max_y);
 }
 
-void write_clipped_segment(uint dst,ScanTraversal scan,uint sub_index,float z,int2 tile) {
+void write_clipped_segment(RWByteAddressBuffer output_segments, uint dst,ScanTraversal scan,uint sub_index,float z,int2 tile) {
     float tile_size=float(TILE_SIZE);
     float2 tile_min=float2(tile)*tile_size;
     float2 tile_max=tile_min+tile_size;
@@ -69,6 +72,8 @@ void write_clipped_segment(uint dst,ScanTraversal scan,uint sub_index,float z,in
     if(floor(p0x)==p0x && p0x!=0.0) p0x-=SCAN_EPSILON;
     if(floor(p1x)==p1x && p1x!=0.0) p1x-=SCAN_EPSILON;
     if(!scan.down) {float x=p0x;float y=p0y;p0x=p1x;p0y=p1y;p1x=x;p1y=y;}
-    segments.Store4(dst*LINE_SEGMENT_STRIDE,asuint(float4(p0x,p0y,p1x,p1y)));
-    segments.Store(dst*LINE_SEGMENT_STRIDE+LINE_SEGMENT_Y_EDGE,asuint(edge));
+    output_segments.Store4(dst*LINE_SEGMENT_STRIDE,asuint(float4(p0x,p0y,p1x,p1y)));
+    output_segments.Store(dst*LINE_SEGMENT_STRIDE+LINE_SEGMENT_Y_EDGE,asuint(edge));
 }
+
+#endif // TILEINK_HLSL_SCAN_CLIP_HLSLI_INCLUDED

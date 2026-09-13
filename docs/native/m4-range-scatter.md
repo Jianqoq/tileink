@@ -23,7 +23,7 @@ currently uses the existing batch adapter's owned upload/readback frames.
   block, and cannot borrow probe parameters or the probes' 64-thread launch rule.
   `program/probe.rs` retains the M3 numerical probes separately.
 - Native source/destination use binding 1/0 (t1/u0); the original WGSL uses 0/1.
-  `range-scatter-abi.json` records the explicit remapping. No source layout or
+  `build/native/interfaces.rs` records the explicit remapping. No source layout or
   shader arithmetic is changed to make tests pass.
 - Existing DX12/Vulkan modules record the stage; allocation and synchronization
   remain in their own API folders. Shared batch ownership and receipts preserve

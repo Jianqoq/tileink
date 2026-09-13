@@ -1,5 +1,6 @@
 //! Reflection of the native integer-probe ABI, not a replacement for SPIR-V
 //! validation. Numeric opcodes/decorations follow Khronos SPIRV-Headers.
+use super::abi::{Interface, Kind};
 use std::{collections::BTreeMap, io};
 
 #[derive(Default)]
@@ -14,11 +15,8 @@ struct Reflection {
     groups: BTreeMap<u32, Vec<u32>>,
 }
 
-pub fn validate(bytes: &[u8], entry: &str, abi: &serde_json::Value) -> io::Result<()> {
-    require(
-        abi["descriptor_set"].as_u64() == Some(0),
-        "SPIR-V descriptor set ABI",
-    )?;
+pub fn validate(bytes: &[u8], entry: &str, abi: &Interface) -> io::Result<()> {
+    super::abi::validate(abi)?;
     let words: Vec<u32> = bytes
         .chunks_exact(4)
         .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
@@ -70,69 +68,24 @@ pub fn validate(bytes: &[u8], entry: &str, abi: &serde_json::Value) -> io::Resul
         r.entries.len() == 1 && r.entries[0].1 == entry,
         "SPIR-V compute entry",
     )?;
-    let expected_group: Vec<u32> = abi["workgroup"]
-        .as_array()
-        .ok_or_else(|| invalid("ABI workgroup"))?
-        .iter()
-        .map(|v| {
-            v.as_u64()
-                .and_then(|v| v.try_into().ok())
-                .ok_or_else(|| invalid("ABI workgroup dimension"))
-        })
-        .collect::<Result<_, _>>()?;
     require(
-        r.groups.get(&r.entries[0].0) == Some(&expected_group),
+        r.groups.get(&r.entries[0].0).map(Vec::as_slice) == Some(abi.workgroup.as_slice()),
         "SPIR-V workgroup",
     )?;
-    let expected: Vec<(&str, u32)> = if abi["schema"] == 2 {
-        abi["entry_resources"][entry]
-            .as_array()
-            .ok_or_else(|| invalid("ABI entry resources"))?
-            .iter()
-            .map(|v| {
-                let name = v.as_str().ok_or_else(|| invalid("ABI resource name"))?;
-                let slot = abi["resources"][name]["binding"]
-                    .as_u64()
-                    .and_then(|v| u32::try_from(v).ok())
-                    .ok_or_else(|| invalid("ABI binding"))?;
-                Ok((name, slot))
-            })
-            .collect::<io::Result<_>>()?
-    } else if entry == "range_scatter" {
-        vec![("destination", 0), ("source", 1)]
-    } else if entry == "sample_words" {
-        vec![
-            ("destination", 0),
-            ("source", 1),
-            ("params", 2),
-            ("texels", 3),
-        ]
-    } else if entry == "copy_words" {
-        vec![("destination", 0), ("source", 1), ("params", 2)]
-    } else {
-        vec![("destination", 0), ("params", 2)]
-    };
+    let expected = abi.resources_for(entry)?;
     require(
         r.decorations.keys().filter(|(_, dec)| *dec == 33).count() == expected.len(),
         "SPIR-V binding count",
     )?;
-    for &(name, binding) in &expected {
+    for &(name, resource) in &expected {
+        let binding = resource.binding;
         let id = *r
             .names
             .iter()
             .find(|(_, n)| n.as_str() == name)
             .ok_or_else(|| invalid("SPIR-V resource name"))?
             .0;
-        require(
-            (if abi["schema"] == 2 {
-                &abi["resources"][name]["binding"]
-            } else {
-                &abi["bindings"][name]
-            })
-            .as_u64()
-                == Some(binding as u64),
-            "ABI binding",
-        )?;
+
         require(
             r.decorations.get(&(id, 33)).map(Vec::as_slice) == Some(&[binding])
                 && r.decorations.get(&(id, 34)).map(Vec::as_slice) == Some(&[0]),
@@ -146,7 +99,7 @@ pub fn validate(bytes: &[u8], entry: &str, abi: &serde_json::Value) -> io::Resul
             .types
             .get(&pointer)
             .ok_or_else(|| invalid("SPIR-V pointer type"))?;
-        if name == "texels" {
+        if resource.kind == Kind::Texture {
             require(
                 *op == 32 && args.len() == 2 && args[0] == 0,
                 "SPIR-V image pointer",
@@ -177,67 +130,37 @@ pub fn validate(bytes: &[u8], entry: &str, abi: &serde_json::Value) -> io::Resul
             .get(&structure)
             .ok_or_else(|| invalid("SPIR-V resource structure"))?;
         require(*op == 30, "SPIR-V resource structure")?;
-        if abi["schema"] == 2 && abi["resources"][name]["kind"] == "uniform" {
-            let fields = abi["resources"][name]["fields"]
-                .as_array()
-                .ok_or_else(|| invalid("ABI uniform fields"))?;
+        if resource.kind == Kind::Uniform {
             require(
-                members.len() == fields.len() && r.decorations.contains_key(&(structure, 2)),
+                members.len() == resource.fields.len()
+                    && r.decorations.contains_key(&(structure, 2)),
                 "SPIR-V uniform block",
             )?;
-            for (index, field) in fields.iter().enumerate() {
+            for (index, field) in resource.fields.iter().enumerate() {
                 require(
-                    r.offsets.get(&(structure, index as u32)).map(|v| *v as u64)
-                        == field["offset"].as_u64()
+                    r.offsets.get(&(structure, index as u32)) == Some(&field.offset)
                         && r.member_names
                             .get(&(structure, index as u32))
                             .map(String::as_str)
-                            == field["name"].as_str()
-                        && r.types.get(&members[index]).is_some_and(is_uint),
-                    "SPIR-V uniform field layout/type",
-                )?;
-            }
-        } else if name == "params" {
-            require(
-                members.len() == 5 && r.decorations.contains_key(&(structure, 2)),
-                "SPIR-V parameter block",
-            )?;
-            for (index, field) in [
-                "count",
-                "source_offset",
-                "destination_offset",
-                "stride",
-                "value",
-            ]
-            .iter()
-            .enumerate()
-            {
-                require(
-                    r.offsets.get(&(structure, index as u32)).map(|v| *v as u64)
-                        == abi["parameter_offsets"][field].as_u64(),
-                    "SPIR-V parameter offset",
+                            == Some(field.name.as_str()),
+                    "SPIR-V uniform field layout",
                 )?;
                 let ty = r
                     .types
                     .get(&members[index])
-                    .ok_or_else(|| invalid("SPIR-V parameter type"))?;
-                if index < 4 {
+                    .ok_or_else(|| invalid("SPIR-V uniform field type"))?;
+                if field.lanes == 1 {
                     require(is_uint(ty), "SPIR-V uint parameter")?;
                 } else {
                     require(
-                        ty.0 == 23 && ty.1.len() == 2 && ty.1[1] == 4,
-                        "SPIR-V uint4 parameter",
-                    )?;
-                    require(
-                        r.types.get(&ty.1[0]).is_some_and(is_uint),
-                        "SPIR-V uint4 component",
+                        ty.0 == 23
+                            && ty.1.len() == 2
+                            && ty.1[1] == field.lanes
+                            && r.types.get(&ty.1[0]).is_some_and(is_uint),
+                        "SPIR-V uint vector parameter",
                     )?;
                 }
             }
-            require(
-                abi["parameter_size"].as_u64() == Some(32),
-                "ABI parameter size",
-            )?;
         } else {
             require(
                 members.len() == 1

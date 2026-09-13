@@ -1,9 +1,10 @@
-//! Load a closed, literal include graph and compile the exact expanded bytes.
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     fs, io,
     path::{Path, PathBuf},
 };
+
+use crate::gpu_constants::syntax;
 
 pub struct SourceGraph {
     pub expanded: String,
@@ -21,7 +22,7 @@ impl SourceGraph {
             &root,
             &root.join(entry),
             &mut Vec::new(),
-            &mut BTreeSet::new(),
+            &mut BTreeMap::new(),
         )?;
         Ok(graph)
     }
@@ -31,7 +32,7 @@ impl SourceGraph {
         root: &Path,
         path: &Path,
         stack: &mut Vec<PathBuf>,
-        once: &mut BTreeSet<PathBuf>,
+        guards: &mut BTreeMap<String, PathBuf>,
     ) -> io::Result<String> {
         let path = path.canonicalize()?;
         let name = path
@@ -39,29 +40,31 @@ impl SourceGraph {
             .map_err(|_| io::Error::other("shader include escapes source root"))?
             .to_string_lossy()
             .replace('\\', "/");
-        if once.contains(&path) {
-            return Ok(String::new());
+        let source = fs::read_to_string(&path)?;
+        let (lines, guard) =
+            syntax::parse(&source).map_err(|error| io::Error::other(format!("{name}: {error}")))?;
+        if let Some(guard) = guard {
+            if let Some(previous) = guards.get(&guard) {
+                if previous == &path {
+                    return Ok(String::new());
+                }
+                // Reusing a macro in another header would silently hide that header in DXC.
+                return Err(io::Error::other(format!(
+                    "duplicate include guard {guard}: {} and {name}",
+                    previous.display()
+                )));
+            }
+            guards.insert(guard, path.clone());
         }
         if stack.contains(&path) {
             return Err(io::Error::other(format!("cyclic shader include: {name}")));
         }
-        let source = fs::read_to_string(&path)?;
-        self.files.insert(name.clone(), source.clone());
+        self.files.insert(name.clone(), source);
         stack.push(path.clone());
         let mut expanded = format!("#line 1 \"{name}\"\n");
-        let mut block_comment = false;
-        for (index, line) in source.lines().enumerate() {
-            let visible = visible_line(line, &mut block_comment);
+        for (index, visible) in lines.iter().enumerate() {
             let directive = visible.trim();
-            // Resolve include-once in the tracked source graph, matching direct DXC includes.
-            if directive == "#pragma once" {
-                once.insert(path.clone());
-                expanded.push('\n');
-                continue;
-            }
-            // This first native source format deliberately supports literal
-            // includes only. Never pass an untracked preprocessor directive or
-            // line splice through to a compiler with a different lexer.
+            // Only literal includes and the validated whole-file guard are supported.
             if directive.ends_with('\\')
                 || (directive.starts_with('#') && !directive.starts_with("#include "))
             {
@@ -72,8 +75,7 @@ impl SourceGraph {
             }
             if let Some(include) = directive.strip_prefix("#include ") {
                 let include = include.trim();
-                // The Metal standard library belongs to the pinned SDK, not the
-                // project graph; target-specific tool identity covers that SDK.
+                // The pinned Metal SDK owns this standard-library dependency.
                 if include == "<metal_stdlib>" {
                     expanded.push_str(directive);
                     expanded.push('\n');
@@ -93,55 +95,15 @@ impl SourceGraph {
                     root,
                     &path.parent().unwrap().join(relative),
                     stack,
-                    once,
+                    guards,
                 )?);
                 expanded.push_str(&format!("#line {} \"{name}\"\n", index + 2));
             } else {
-                expanded.push_str(&visible);
+                expanded.push_str(visible);
                 expanded.push('\n');
             }
-        }
-        if block_comment {
-            return Err(io::Error::other(format!(
-                "unterminated shader comment: {name}"
-            )));
         }
         stack.pop();
         Ok(expanded)
     }
-}
-
-fn visible_line(line: &str, block: &mut bool) -> String {
-    let mut out = String::new();
-    let mut chars = line.chars().peekable();
-    let mut quoted = false;
-    while let Some(c) = chars.next() {
-        if *block {
-            if c == '*' && chars.peek() == Some(&'/') {
-                chars.next();
-                *block = false;
-            }
-        } else if quoted {
-            out.push(c);
-            if c == '\\' {
-                if let Some(next) = chars.next() {
-                    out.push(next);
-                }
-            } else if c == '"' {
-                quoted = false;
-            }
-        } else if c == '/' && chars.peek() == Some(&'/') {
-            break;
-        } else if c == '/' && chars.peek() == Some(&'*') {
-            chars.next();
-            *block = true;
-            out.push(' ');
-        } else {
-            out.push(c);
-            if c == '"' {
-                quoted = true;
-            }
-        }
-    }
-    out
 }

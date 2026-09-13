@@ -1,4 +1,6 @@
-#pragma once
+#ifndef TILEINK_HLSL_COARSE_RECORDS_HLSLI_INCLUDED
+#define TILEINK_HLSL_COARSE_RECORDS_HLSLI_INCLUDED
+
 // Raw buffer layout, verified against Rust size_of!/offset_of! in GPU ABI tests.
 static const uint COARSE_TILE_RECORD_STRIDE = 24u;
 static const uint COARSE_TILE_GLYPH_COUNT = 12u;
@@ -14,3 +16,5 @@ static const uint COARSE_TILE_EMIT_RECORD_STRIDE = 8u;
 static const uint COARSE_EMIT_RECORD_STRIDE = 28u;
 static const uint COARSE_TILE_DRAW_COUNT = 4u;
 static const uint COARSE_EMIT_CLASS_FLAGS = 24u;
+
+#endif // TILEINK_HLSL_COARSE_RECORDS_HLSLI_INCLUDED

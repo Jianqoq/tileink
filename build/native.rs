@@ -8,6 +8,8 @@ mod cache;
 mod dxc;
 #[path = "native/dxil_reflection.rs"]
 mod dxil_reflection;
+#[path = "native/interfaces.rs"]
+mod interfaces;
 #[path = "native/program.rs"]
 mod program;
 #[path = "native/source.rs"]
@@ -36,16 +38,15 @@ pub fn generate() -> io::Result<()> {
     for file in [
         "build/native.rs",
         "build/native/abi.rs",
-        "build/native/compute_abi.rs",
+        "build/native/interfaces.rs",
+        "build/native/interfaces/scan.rs",
+        "build/native/interfaces/coarse.rs",
         "build/native/cache.rs",
         "build/native/source.rs",
         "build/native/program.rs",
         "build/native/dxc.rs",
         "build/native/spirv.rs",
         "build/native/dxil_reflection.rs",
-        "src/shaders/probe-abi.json",
-        "src/shaders/range-scatter-abi.json",
-        "src/shaders/cumsum-abi.json",
     ] {
         println!("cargo:rerun-if-changed={}", root.join(file).display());
     }
@@ -78,24 +79,14 @@ pub fn generate() -> io::Result<()> {
         } else {
             root.join(cache_root)
         });
-        for &(family, source, abi_path) in program::FAMILIES {
+        for &(family, source) in program::FAMILIES {
             let program::Prepared {
                 graph,
                 description,
                 abi,
-            } = program::prepare(&root, family, source, abi_path)?;
-            let programs = description["programs"]
-                .as_array()
-                .ok_or_else(|| io::Error::other("missing native program inventory"))?;
+            } = program::prepare(&root, family, source)?;
             for &target in &targets {
-                for program in programs {
-                    let entry = program
-                        .as_str()
-                        .filter(|s| {
-                            !s.is_empty()
-                                && s.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
-                        })
-                        .ok_or_else(|| io::Error::other("invalid native program name"))?;
+                for entry in description.entries.keys().map(String::as_str) {
                     let flags = Dxc::flags(target, entry)?;
                     let recipe = serde_json::json!({"schema":1,"language":"hlsl","target":target,"target_triple":target_triple,
                     "entry":entry,"variant":family,"flags":flags,"abi_sha256":digest(&abi),
@@ -115,8 +106,8 @@ pub fn generate() -> io::Result<()> {
                     }
                     let output = out.join(format!("native-{entry}.{target}"));
                     write_changed(&output, &artifact.bytes)?;
-                    let workgroup = &description["workgroup"];
-                    let bindings = if description["schema"] == 2 {
+                    let workgroup = format!("{:?}", description.workgroup);
+                    let bindings = if family != "probe" && family != "range-scatter" {
                         abi::binding_declarations(&description, entry)?
                     } else {
                         "&[]".into()

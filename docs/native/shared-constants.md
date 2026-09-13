@@ -8,7 +8,7 @@ that generated file and asserts algorithm invariants; it contains no values.
 CPU-only builds generate the same host definitions without requiring DXC.
 
 Supported declarations use decimal uint literals, earlier constant names and
-multiplication, with `#pragma once` for shared headers. Unknown names, duplicate definitions, overflow and unsupported
+multiplication, with standard `#ifndef/#define/#endif` guards for shared headers. Unknown names, duplicate definitions, overflow and unsupported
 syntax fail the build, preventing host/shader interpretation from diverging.
 The file is a Cargo rebuild input and a native HLSL source/cache dependency.
 Native ABI workgroup numbers remain independently checked reflection contracts.
@@ -29,7 +29,7 @@ Raw scene and coarse layout facts are defined in `scene_records.hlsli` and
 scan prefix/geometry/clip and coarse allocation helpers. No ABI JSON-to-HLSL
 constant prelude is injected. Rust size/offset tests parse these same HLSLI
 values and verify the binary layout; native source/cache tracking follows the
-literal includes. Include-once semantics avoid duplicate declarations through
+literal includes. Include-guard semantics avoid duplicate declarations through
 multiple helpers while preserving dependency tracking and rejecting unguarded cycles.
 
 Direct DXC compilation of repository scan prefix/count/emit and coarse prefix
@@ -38,7 +38,7 @@ sources succeeds without build-script preprocessing or constant injection.
 This refactor does not complete M4: the accepted native kernel inventory remains
 18/179 and production NativeRenderer/Canvas integration is still outstanding.
 
-## Verification
+## Earlier constants checkpoint
 
 [Receipt](shared-constants-verification.json): full release suite (964 library
 tests), strict all-target release Clippy and both review axes pass. All 44 native
@@ -48,3 +48,64 @@ constants, dependency changes, guarded diamonds/self-includes and rejected
 unguarded cycles. The filter GPU row regression passes at 32/64/256 lanes.
 Existing wgpu SVG/examples preserve all 3471 PNG hashes; full native renderer
 SVG acceptance remains part of the unfinished M4 work.
+
+## Explicit helper dependencies
+
+Reusable HLSLI headers are self-contained and declare no register-bound resource.
+Resource bindings live in entry HLSL files. Geometry receives line/path buffers;
+clipping receives the segment output buffer; active-index helpers receive their
+buffer/mode; packed coarse addressing receives its layout config; probe sampling
+receives source/texture/parameters. Dispatch linearization receives grid dimensions.
+Headers are included before entry resources, so compile success cannot depend on
+caller declaration order. Scan config/index and probe/active-tile helpers have
+separate focused headers.
+
+The coarse prefix helper owns its workgroup scratch internally and returns both
+prefix and total explicitly. Callers do not read that scratch or a hidden total;
+the total is captured before the final barrier. All lanes must participate in a
+scan call uniformly, as required by its workgroup barriers.
+
+The compiler regression discovers every HLSLI automatically and compiles each
+with no caller declarations for both DXIL and SPIR-V. A second check rejects
+register bindings hidden in headers. These prevent the original external-global
+and include-order dependency from returning; this is a structural fix.
+
+Standard guards are used instead of `#pragma once` so editor preprocessors and DXC can resolve diamond includes consistently. Reusing a guard name across different files is rejected instead of silently hiding a dependency.
+
+Shader Tools compatibility is checked separately from DXC: its parser treats
+`matrix` as a type keyword, producing cascading errors at the following `asfloat`
+expression when used as a local name. The traversal now uses `affine_linear`;
+texture arguments use `image_texture`. This fixes the source naming conflict,
+without changing arithmetic. A declaration regression checks these reserved type
+names while still permitting their use as types. Config helper arguments retain
+explicit `ConstantBuffer<T>` types instead of relying on conversion to `T`.
+
+
+The remaining twelve shader ABI JSON files have been removed. Typed host contracts
+live in `build/native/abi.rs` and the modular `build/native/interfaces.rs` catalog
+(with scan/coarse submodules). They do not generate HLSL declarations or constants.
+Both DXIL and SPIR-V reflection validate the same resource kinds, register slots,
+uniform field names/types/offsets, and workgroup dimensions. Probe and compute
+interfaces share this path rather than separate schema versions. Interface cache
+keys use a versioned deterministic binary encoding; shader source and compiler
+identity remain part of the key. JSON verification receipts and cache reports are
+output records, not interface inputs. Historical receipts retain their original
+file hashes, including paths deleted by this migration.
+
+## Explicit interface verification (2026-09-13)
+
+- Full release suite: 1,072 tests passed, including 964 library tests.
+- Focused interface/reflection/source/compiler/inventory checks: 20 passed,
+  including independent DXIL and SPIR-V compilation of all 14 HLSLI headers.
+- Raw repository HLSL files: all 22 entries compiled directly for both targets
+  (44 checks), without source expansion or ABI metadata injection.
+- Native runtime: 44 tests passed, including four-API exact-output regressions;
+  the same 44 passed with missing DXC executable paths and zero native pipeline
+  compiles after warming the cache.
+- Shader Tools 1.1.303: reproduced the `matrix` parse failure, then confirmed
+  those diagnostics disappear after renaming. Declaration-name regression added.
+- Strict all-target release Clippy, formatting, and both review axes passed.
+- Full wgpu SVG and examples checks passed; all 3,471 PNG hashes are unchanged.
+
+This verifies the explicit-interface refactor; it does not add M4 kernels or
+claim production native renderer completion.

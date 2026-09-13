@@ -17,7 +17,7 @@
       "msl": "unported",
       "native_entry": "scan_clear",
       "hlsl_source": "src/shaders/hlsl/scan/clear.hlsl",
-      "native_abi": "src/shaders/scan-clear-abi.json",
+      "native_abi": "build/native/interfaces.rs",
       "verification": "docs/native/m4-scan.md"
     },
     {
@@ -33,7 +33,7 @@
       "msl": "unported",
       "native_entry": "scan_count",
       "hlsl_source": "src/shaders/hlsl/scan/count.hlsl",
-      "native_abi": "src/shaders/scan-count-abi.json",
+      "native_abi": "build/native/interfaces.rs",
       "verification": "docs/native/m4-scan.md"
     },
     {
@@ -49,7 +49,7 @@
       "msl": "unported",
       "native_entry": "scan_prefix_chunks",
       "hlsl_source": "src/shaders/hlsl/scan/prefix_chunks.hlsl",
-      "native_abi": "src/shaders/scan-prefix-chunks-abi.json",
+      "native_abi": "build/native/interfaces.rs",
       "verification": "docs/native/m4-scan.md"
     },
     {
@@ -65,7 +65,7 @@
       "msl": "unported",
       "native_entry": "scan_chunk_offsets",
       "hlsl_source": "src/shaders/hlsl/scan/chunk_offsets.hlsl",
-      "native_abi": "src/shaders/scan-chunk-offsets-abi.json",
+      "native_abi": "build/native/interfaces.rs",
       "verification": "docs/native/m4-scan.md"
     },
     {
@@ -81,7 +81,7 @@
       "msl": "unported",
       "native_entry": "scan_apply_chunk_offsets",
       "hlsl_source": "src/shaders/hlsl/scan/apply_chunk_offsets.hlsl",
-      "native_abi": "src/shaders/scan-apply-chunk-offsets-abi.json",
+      "native_abi": "build/native/interfaces.rs",
       "verification": "docs/native/m4-scan.md"
     },
     {
@@ -97,7 +97,7 @@
       "msl": "unported",
       "native_entry": "scan_emit",
       "hlsl_source": "src/shaders/hlsl/scan/emit.hlsl",
-      "native_abi": "src/shaders/scan-emit-abi.json",
+      "native_abi": "build/native/interfaces.rs",
       "verification": "docs/native/m4-scan.md"
     },
     {
@@ -113,7 +113,7 @@
       "msl": "unported",
       "native_entry": "cumsum_prefix_chunks",
       "hlsl_source": "src/shaders/hlsl/cumsum.hlsl",
-      "native_abi": "src/shaders/cumsum-abi.json",
+      "native_abi": "build/native/interfaces.rs",
       "verification": "docs/native/m4-cumsum.md"
     },
     {
@@ -129,7 +129,7 @@
       "msl": "unported",
       "native_entry": "cumsum_chunk_offsets",
       "hlsl_source": "src/shaders/hlsl/cumsum.hlsl",
-      "native_abi": "src/shaders/cumsum-abi.json",
+      "native_abi": "build/native/interfaces.rs",
       "verification": "docs/native/m4-cumsum.md"
     },
     {
@@ -145,7 +145,7 @@
       "msl": "unported",
       "native_entry": "cumsum_apply_chunk_offsets",
       "hlsl_source": "src/shaders/hlsl/cumsum.hlsl",
-      "native_abi": "src/shaders/cumsum-abi.json",
+      "native_abi": "build/native/interfaces.rs",
       "verification": "docs/native/m4-cumsum.md"
     },
     {
@@ -185,7 +185,7 @@
       "msl": "unported",
       "native_entry": "coarse_prefix_chunks",
       "hlsl_source": "src/shaders/hlsl/coarse/prefix.hlsl",
-      "native_abi": "src/shaders/coarse-prefix-abi.json",
+      "native_abi": "build/native/interfaces.rs",
       "verification": "docs/native/m4-coarse-allocation.md"
     },
     {
@@ -201,7 +201,7 @@
       "msl": "unported",
       "native_entry": "coarse_chunk_offsets",
       "hlsl_source": "src/shaders/hlsl/coarse/prefix.hlsl",
-      "native_abi": "src/shaders/coarse-prefix-abi.json",
+      "native_abi": "build/native/interfaces.rs",
       "verification": "docs/native/m4-coarse-allocation.md"
     },
     {
@@ -217,7 +217,7 @@
       "msl": "unported",
       "native_entry": "coarse_apply_chunk_offsets",
       "hlsl_source": "src/shaders/hlsl/coarse/prefix.hlsl",
-      "native_abi": "src/shaders/coarse-prefix-abi.json",
+      "native_abi": "build/native/interfaces.rs",
       "verification": "docs/native/m4-coarse-allocation.md"
     },
     {
@@ -233,7 +233,7 @@
       "msl": "unported",
       "native_entry": "coarse_emit_chunk_counts",
       "hlsl_source": "src/shaders/hlsl/coarse/emit_allocation.hlsl",
-      "native_abi": "src/shaders/coarse-emit-allocation-abi.json",
+      "native_abi": "build/native/interfaces.rs",
       "verification": "docs/native/m4-coarse-allocation.md"
     },
     {
@@ -249,7 +249,7 @@
       "msl": "unported",
       "native_entry": "coarse_emit_prefix_chunks",
       "hlsl_source": "src/shaders/hlsl/coarse/emit_allocation.hlsl",
-      "native_abi": "src/shaders/coarse-emit-allocation-abi.json",
+      "native_abi": "build/native/interfaces.rs",
       "verification": "docs/native/m4-coarse-allocation.md"
     },
     {
@@ -265,7 +265,7 @@
       "msl": "unported",
       "native_entry": "coarse_emit_chunk_offsets",
       "hlsl_source": "src/shaders/hlsl/coarse/emit_allocation.hlsl",
-      "native_abi": "src/shaders/coarse-emit-offsets-abi.json",
+      "native_abi": "build/native/interfaces.rs",
       "verification": "docs/native/m4-coarse-allocation.md"
     },
     {
@@ -281,7 +281,7 @@
       "msl": "unported",
       "native_entry": "coarse_emit_apply_chunk_offsets",
       "hlsl_source": "src/shaders/hlsl/coarse/emit_allocation.hlsl",
-      "native_abi": "src/shaders/coarse-emit-allocation-abi.json",
+      "native_abi": "build/native/interfaces.rs",
       "verification": "docs/native/m4-coarse-allocation.md"
     },
     {
@@ -297,7 +297,7 @@
       "msl": "unported",
       "native_entry": "coarse_emit_fill_refs",
       "hlsl_source": "src/shaders/hlsl/coarse/emit_allocation.hlsl",
-      "native_abi": "src/shaders/coarse-emit-allocation-abi.json",
+      "native_abi": "build/native/interfaces.rs",
       "verification": "docs/native/m4-coarse-allocation.md"
     },
     {
@@ -2221,7 +2221,7 @@
       "msl": "unported",
       "native_entry": "range_scatter",
       "hlsl_source": "src/shaders/hlsl/range_scatter.hlsl",
-      "native_abi": "src/shaders/range-scatter-abi.json",
+      "native_abi": "build/native/interfaces.rs",
       "verification": "docs/native/m4-range-scatter.md"
     }
   ],

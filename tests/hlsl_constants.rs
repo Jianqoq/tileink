@@ -4,7 +4,7 @@ mod gpu_constants;
 
 #[test]
 fn constants_resolve_hlsl_literals_aliases_and_products() {
-    let constants = gpu_constants::parse("#pragma once\n// source\nstatic const uint TILE = 16u;\nstatic const uint LANES = TILE * TILE; // pixels\nstatic const uint ALIAS = LANES;\nstatic const uint MAXIMUM = 4294967295u;\n").unwrap();
+    let constants = gpu_constants::parse("// source\nstatic const uint TILE = 16u;\nstatic const uint LANES = TILE * TILE; // pixels\nstatic const uint ALIAS = LANES;\nstatic const uint MAXIMUM = 4294967295u;\n").unwrap();
     assert_eq!(constants["TILE"], 16);
     assert_eq!(constants["LANES"], 256);
     assert_eq!(constants["ALIAS"], 256);

@@ -1,3 +1,6 @@
+#ifndef TILEINK_HLSL_PROBE_ABI_HLSLI_INCLUDED
+#define TILEINK_HLSL_PROBE_ABI_HLSLI_INCLUDED
+
 // Explicit 32-byte constant layout shared with the independent Metal probe.
 struct ProbeParams {
     uint count;
@@ -6,8 +9,5 @@ struct ProbeParams {
     uint stride;
     uint4 value;
 };
-RWByteAddressBuffer destination : register(u0, space0);
-ByteAddressBuffer source : register(t1, space0);
-ConstantBuffer<ProbeParams> params : register(b2, space0);
 
-Texture2D<float4> texels : register(t3, space0);
+#endif // TILEINK_HLSL_PROBE_ABI_HLSLI_INCLUDED

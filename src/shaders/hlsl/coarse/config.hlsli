@@ -1,3 +1,6 @@
+#ifndef TILEINK_HLSL_COARSE_CONFIG_HLSLI_INCLUDED
+#define TILEINK_HLSL_COARSE_CONFIG_HLSLI_INCLUDED
+
 struct CoarseConfig {
     uint tile_count;
     uint tiles_width;
@@ -19,4 +22,5 @@ struct CoarseConfig {
     uint active_tile_list_base;
     uint incremental;
 };
-ConstantBuffer<CoarseConfig> config : register(b0, space0);
+
+#endif // TILEINK_HLSL_COARSE_CONFIG_HLSLI_INCLUDED

@@ -61,7 +61,7 @@ SPIRV-Tools `spirv-val --target-env vulkan1.1`.
 
 ## Probe ABI and exact output
 
-`src/shaders/probe-abi.json` defines the minimum ABI: a 32-byte, 16-byte-aligned
+`build/native/interfaces.rs` defines the minimum ABI: a 32-byte, 16-byte-aligned
 parameter structure, four scalar fields at offsets 0/4/8/12 and a uint4 at 16.
 Byte-buffer offsets are multiples of four. Set/register space is zero;
 destination/source/params use bindings 0/1/2. Dispatch size is 64×1×1.
