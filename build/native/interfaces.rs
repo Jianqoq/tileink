@@ -3,6 +3,8 @@
 mod coarse;
 #[path = "interfaces/scan.rs"]
 mod scan;
+#[path = "interfaces/validation.rs"]
+mod validation;
 use super::abi::{Field, Interface, Kind, Resource};
 use crate::gpu_constants as constants;
 use std::{collections::BTreeMap, io};
@@ -119,6 +121,7 @@ pub fn get(family: &str) -> io::Result<Interface> {
         | "coarse-emit-allocation"
         | "coarse-emit-offsets"
         | "coarse-prefix" => coarse::get(family, &constants)?,
+        "pixel-math" | "geometry-math" | "fill-coverage" => validation::get(family, &constants),
         "cumsum" => interface(
             [constants["CUMSUM_CHUNK_SIZE"], 1, 1],
             &[

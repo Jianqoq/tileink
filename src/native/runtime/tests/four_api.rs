@@ -1,4 +1,8 @@
-use super::*;
+use super::reference;
+use crate::native::{
+    NativeBackend,
+    runtime::{Result, adapter::Adapter, compute::ComputeBatch},
+};
 
 pub(super) struct Routes {
     native: [Adapter; 2],
@@ -17,6 +21,9 @@ impl Routes {
             reference::Reference::new(wgpu::Backends::VULKAN, &identity)?,
         ];
         Ok(Self { native, reference })
+    }
+    pub(super) fn reference_output(&self, batch: &ComputeBatch) -> Result<Vec<Vec<u8>>> {
+        self.reference[0].execute_compute(batch)
     }
     pub(super) fn check(
         &self,
@@ -45,7 +52,8 @@ impl Routes {
                 let first = a.iter().zip(b).position(|(a, b)| a != b);
                 assert!(
                     a.len() == b.len() && first.is_none(),
-                    "{case} route {route} buffer {buffer} first mismatch {first:?}"
+                    "{case} route {route} buffer {buffer} first mismatch {first:?}, actual/expected {:?}",
+                    first.map(|i| (a[i], b[i]))
                 );
             }
         }

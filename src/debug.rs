@@ -44,7 +44,8 @@ fn debug_segment_row_parts(segment: &LineSegment, y: u32) -> (f32, f32, f32, f32
     let row_y = y as f32;
     let local_y = segment.p0y - row_y;
     let y0 = local_y.clamp(0.0, 1.0);
-    let y1 = (local_y + delta_y).clamp(0.0, 1.0);
+    // Use the endpoint directly: subtract/add cancellation changes half-alpha pixels.
+    let y1 = (segment.p1y - row_y).clamp(0.0, 1.0);
     let dy = y0 - y1;
     let y_edge = delta_x.signum() * (row_y - segment.y_edge + 1.0).clamp(0.0, 1.0);
 
@@ -1222,4 +1223,18 @@ mod tests {
         let alpha = super::build_tile_alpha(&segments, 0, super::FillRule::NonZero);
         assert_eq!(alpha[2 * 16 + 3], 142);
     }
+}
+
+#[test]
+fn debug_row_endpoint_keeps_half_alpha_residual() {
+    let segment = LineSegment {
+        p0x: -0.0,
+        p0y: 7.75,
+        p1x: 1.0000001,
+        p1y: 0.50000006,
+        y_edge: -0.5,
+    };
+    let (_, dy, _, _) = debug_segment_row_parts(&segment, 0);
+    assert_eq!(dy, 1.0 - segment.p1y);
+    assert_eq!((dy * 255.0 + 0.5) as u32, 127);
 }

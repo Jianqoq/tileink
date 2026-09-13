@@ -45,7 +45,8 @@ fn segment_row_parts(p0x: f32, p0y: f32, p1x: f32, p1y: f32, y_edge: f32, y: u32
     let row_y = f32(y);
     let local_y = p0y - row_y;
     let y0 = clamp(local_y, 0.0, 1.0);
-    let y1 = clamp(local_y + delta_y, 0.0, 1.0);
+    // Direct endpoint evaluation avoids cancellation at half-alpha boundaries.
+    let y1 = clamp(p1y - row_y, 0.0, 1.0);
     let dy = y0 - y1;
     let x_sign = signum_f32(delta_x);
     let row_edge = x_sign * clamp(row_y - y_edge + 1.0, 0.0, 1.0);

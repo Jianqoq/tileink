@@ -23,7 +23,46 @@ impl Reference {
             .collect();
         let mut encoder = self.device.create_command_encoder(&Default::default());
         for stage in batch.passes() {
+            let pixel_source;
             let source = match stage.shader.entry {
+                "geometry_math_words" | "fill_coverage_words" => {
+                    pixel_source = format!(
+                        "const FINE_WORKGROUP_SIZE:u32={}u;\n{}\n{}\n{}\n{}",
+                        crate::shared::gpu_constants::FINE_WORKGROUP_SIZE,
+                        include_str!(concat!(
+                            env!("CARGO_MANIFEST_DIR"),
+                            "/src/wgpu/shaders/shared/pixel.wgsl"
+                        )),
+                        include_str!(concat!(
+                            env!("CARGO_MANIFEST_DIR"),
+                            "/src/wgpu/shaders/shared/coverage.wgsl"
+                        )),
+                        include_str!(concat!(
+                            env!("CARGO_MANIFEST_DIR"),
+                            "/src/wgpu/shaders/shared/pattern_transform.wgsl"
+                        )),
+                        include_str!(concat!(
+                            env!("CARGO_MANIFEST_DIR"),
+                            "/tests/shaders/geometry_math.wgsl"
+                        ))
+                    );
+                    pixel_source.as_str()
+                }
+                "pixel_math_words" => {
+                    pixel_source = format!(
+                        "const FINE_WORKGROUP_SIZE:u32={}u;\n{}\n{}",
+                        crate::shared::gpu_constants::FINE_WORKGROUP_SIZE,
+                        include_str!(concat!(
+                            env!("CARGO_MANIFEST_DIR"),
+                            "/src/wgpu/shaders/shared/pixel.wgsl"
+                        )),
+                        include_str!(concat!(
+                            env!("CARGO_MANIFEST_DIR"),
+                            "/tests/shaders/pixel_math.wgsl"
+                        ))
+                    );
+                    pixel_source.as_str()
+                }
                 "coarse_emit_chunks" | "coarse_emit_chunk_tile_kinds" => include_str!(concat!(
                     env!("OUT_DIR"),
                     "/tileink_wgpu_coarse_emit_web.wgsl"

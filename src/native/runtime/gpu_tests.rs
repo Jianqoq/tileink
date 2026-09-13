@@ -145,3 +145,11 @@ mod hlsl_constants;
 
 #[path = "tests/coarse_count_gpu.rs"]
 mod coarse_count;
+
+#[path = "tests/four_api.rs"]
+mod four_api;
+#[path = "tests/pixel_math_gpu.rs"]
+mod pixel_math;
+
+#[path = "tests/geometry_math_gpu.rs"]
+mod geometry_math;

@@ -1590,3 +1590,12 @@ Clippy 已通过；3471 张既有 PNG 无变化。运行时禁用 DXC 可执行�
   run pass, the latter with zero pipeline compiles. All 3471 PNG hashes are unchanged.
 - See [coarse emission evidence](docs/native/m4-coarse-emission.md). M4 remains
   incomplete; performance comparisons are waived and real Mac validation deferred.
+
+
+### M4 fine shared math (in progress)
+
+Pixel, coverage and pattern-transform HLSL helpers now have four-API byte tests.
+The direct endpoint correction is shared with WGSL and CPU debug; see
+[the math contract and test corpus](docs/native/m4-fine-math.md).
+The production inventory remains **27/179**; helper adapters are not production
+fine entries. Full release, GPU, shader/editor, Clippy and SVG/examples checks passed; all 3,471 PNGs remain unchanged. Three helper tests also passed after review and without DXC, with zero runtime pipeline compilations. M4 work continues with blend modes.

@@ -1,15 +1,9 @@
-use super::reference;
-use crate::native::{
-    NativeBackend,
-    runtime::{Result, adapter::Adapter, compute::ComputeBatch},
-};
+use crate::native::runtime::{Result, compute::ComputeBatch};
 use crate::shared::gpu_constants::COARSE_WORKGROUP_SIZE;
 
-#[path = "coarse_count/routes.rs"]
-mod routes;
 #[path = "coarse_count/scene.rs"]
 mod scene;
-use routes::Routes;
+use super::four_api::Routes;
 use scene::{CountScene, bytes, count_scene};
 
 #[test]
