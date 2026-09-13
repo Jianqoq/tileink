@@ -50,6 +50,28 @@ mod tests {
     const FILTER_HEADER: &str = include_str!("../wgpu/shaders/filter/header.wgsl");
 
     #[test]
+    fn native_brush_constants_match_serialized_layout() {
+        let source = include_str!("../shaders/hlsl/shared/brush/constants.hlsli");
+        let compact: String = source.chars().filter(|c| !c.is_whitespace()).collect();
+        for (name, expected) in [
+            ("BRUSH_HEADER_WORDS", brush::GPU_BRUSH_U32_STRIDE as u32),
+            ("BRUSH_PARAM_WORDS", brush::GPU_BRUSH_PARAM_STRIDE as u32),
+            ("BRUSH_SOLID", brush::GPU_BRUSH_SOLID),
+            ("BRUSH_LINEAR", brush::GPU_BRUSH_LINEAR),
+            ("BRUSH_RADIAL", brush::GPU_BRUSH_RADIAL),
+            ("BRUSH_SWEEP", brush::GPU_BRUSH_SWEEP),
+            ("BRUSH_FOUR_CORNER", brush::GPU_BRUSH_FOUR_CORNER),
+            ("BRUSH_PATTERN", brush::GPU_BRUSH_PATTERN),
+            ("BRUSH_PATTERN_RESOURCE", brush::GPU_BRUSH_PATTERN_RESOURCE),
+            ("BRUSH_EXTEND_REPEAT", brush::GPU_EXTEND_REPEAT),
+            ("BRUSH_EXTEND_REFLECT", brush::GPU_EXTEND_REFLECT),
+        ] {
+            let declaration = format!("staticconstuint{name}={expected}u;");
+
+            assert!(compact.contains(&declaration), "HLSL brush layout {name}");
+        }
+    }
+    #[test]
     fn brush_shader_constants_match_rust_layout() {
         for source in [FINE_HEADER, FILTER_HEADER] {
             assert_wgsl_const(

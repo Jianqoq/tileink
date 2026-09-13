@@ -17,6 +17,7 @@ fn native_build_embeds_each_expected_nonempty_program() {
         "coarse_emit_chunk_particle_offsets",
         "coarse_tile_counts_from_emit_chunks",
         "coarse_emit_chunk_tile_kinds",
+        "gradient_words",
         "blend_math_words",
         "fill_coverage_words",
         "geometry_math_words",

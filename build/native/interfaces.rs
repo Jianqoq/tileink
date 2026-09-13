@@ -1,6 +1,8 @@
 //! Host expectations for compiled shader interfaces; never injected into HLSL.
 #[path = "interfaces/coarse.rs"]
 mod coarse;
+#[path = "interfaces/fine.rs"]
+mod fine;
 #[path = "interfaces/scan.rs"]
 mod scan;
 #[path = "interfaces/validation.rs"]
@@ -124,6 +126,7 @@ pub fn get(family: &str) -> io::Result<Interface> {
         "pixel-math" | "geometry-math" | "fill-coverage" | "blend-math" => {
             validation::get(family, &constants)
         }
+        "fine-gradient" => fine::gradient(&constants),
         "cumsum" => interface(
             [constants["CUMSUM_CHUNK_SIZE"], 1, 1],
             &[

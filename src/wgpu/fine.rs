@@ -46,33 +46,7 @@ pub(crate) struct WgpuFinePipeline {
         std::sync::Mutex<Option<(WgpuImageResourceBindingKey, ::wgpu::BindGroup)>>,
 }
 
-#[repr(C)]
-#[derive(Clone, Copy)]
-struct FineConfig {
-    width: u32,
-    height: u32,
-    clear_color: u32,
-    tile_count: u32,
-    tiles_width: u32,
-    tiles_height: u32,
-    load_target: u32,
-    clip_spill_depth: u32,
-    group_spill_depth: u32,
-    ptcl_capacity: u32,
-    paint_sdf_shadow_base: u32,
-    paint_brush_base: u32,
-    text_image_base: u32,
-    text_image_data_base: u32,
-    group_spill_base: u32,
-    fine_tile_kind_base: u32,
-    active_tile_count: u32,
-    dispatch_width: u32,
-    active_tile_list_base: u32,
-    incremental: u32,
-}
-
-unsafe impl bytemuck::Zeroable for FineConfig {}
-unsafe impl bytemuck::Pod for FineConfig {}
+use crate::shared::fine_config::FineConfig;
 
 impl WgpuFinePipeline {
     pub(crate) fn new(

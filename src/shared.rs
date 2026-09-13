@@ -27,3 +27,8 @@ pub(crate) mod scan_line;
 pub(crate) mod scene_arena;
 pub(crate) mod sdf;
 pub(crate) mod tile_seg_range;
+
+pub(crate) mod fine_config;
+// SAFETY: repr(C) and twenty contiguous u32 fields contain no padding.
+unsafe impl bytemuck::Zeroable for fine_config::FineConfig {}
+unsafe impl bytemuck::Pod for fine_config::FineConfig {}

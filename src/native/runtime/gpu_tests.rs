@@ -156,3 +156,6 @@ mod geometry_math;
 
 #[path = "tests/blend_math_gpu.rs"]
 mod blend_math;
+
+#[path = "tests/gradient_gpu.rs"]
+mod gradient;

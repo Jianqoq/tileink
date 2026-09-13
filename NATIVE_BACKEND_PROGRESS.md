@@ -1608,3 +1608,16 @@ Independent review found and corrected shared Dodge/Burn endpoint precedence;
 explicit luminosity FMA also fixes a pre-existing wgpu DX12/Vulkan byte difference.
 See [blend implementation and verification](docs/native/m4-fine-blend.md).
 Full release, 64 native runtime tests, shader/editor, Clippy and SVG/examples passed; all 3,471 PNGs are unchanged. Four math GPU tests passed without DXC with zero runtime recompilations. The production inventory stays at 27/179; gradient work follows.
+
+
+### M4 gradient helpers (in progress)
+
+Linear, radial, sweep and four-corner HLSL now pass 10,315 four-route packed-pixel
+cases. Explicit fused evaluation removes demonstrated half-channel differences;
+the sweep center has a defined zero angle. Production FineConfig is shared by
+wgpu/native and its actual field offsets define the native uniform interface.
+See [gradient implementation and verification](docs/native/m4-fine-gradients.md).
+Full release, 65 native runtime tests, shader/editor checks, strict Clippy and
+SVG/examples passed; all 3,471 PNG hashes remain unchanged. No-DXC gradient replay
+passed with zero new runtime pipeline compilations. The production inventory is
+still 27/179; general texture resources and full fine/effects integration follow.

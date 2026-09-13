@@ -14,7 +14,7 @@ mod lazy;
 mod profile;
 mod renderer;
 mod scan;
-mod shader_variants;
+pub(crate) mod shader_variants;
 mod target;
 
 pub use profile::{

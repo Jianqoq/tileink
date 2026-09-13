@@ -70,20 +70,18 @@ fn linear_gradient_affine_rounding_is_pixel_exact() -> Result<()> {
     ];
     input.extend_from_slice(&GRAYSCALE_RAMP);
     let brush = include_str!("../../src/wgpu/shaders/shared/brush.wgsl");
-    let (_, linear) = brush.split_once("if (kind == GPU_BRUSH_LINEAR) {").unwrap();
-    let (linear, _) = linear
-        .split_once("} else if (kind == GPU_BRUSH_RADIAL)")
-        .unwrap();
+    let (_, linear) = brush.split_once("fn sample_linear(").unwrap();
+    let (linear, _) = linear.split_once("fn sample_sweep(").unwrap();
     let (_, ramp) = brush.split_once("fn sample_ramp(").unwrap();
     let source = format!(
-        "{}\nconst GPU_EXTEND_REPEAT: u32 = 1u;\nconst GPU_EXTEND_REFLECT: u32 = 2u;\n{}\nfn sample_ramp({ramp}\nfn sample_linear(x: f32, y: f32) -> u32 {{\nlet base = 9u; let payload_offset = 21u; let payload_len = 64u; let extend = 0u; var color = 0u;\n{linear}\nreturn color;\n}}\n{}",
+        "{}\nconst GPU_EXTEND_REPEAT: u32 = 1u;\nconst GPU_EXTEND_REFLECT: u32 = 2u;\n{}\nfn sample_ramp({ramp}\nfn sample_linear({linear}\n{}",
         include_str!("../../src/wgpu/shaders/shared/pixel.wgsl"),
         r#"@group(0) @binding(0) var<storage, read> input: array<u32>;
 @group(0) @binding(1) var<storage, read_write> output: array<u32>;
 fn brush_word(index: u32) -> u32 { return input[index]; }
 fn brush_param(base: u32, index: u32) -> f32 { return bitcast<f32>(input[base + index]); }"#,
         r#"@compute @workgroup_size(16, 16) fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-    output[id.x + 240u * id.y] = sample_linear(f32(id.x) + 30.5, f32(id.y) + 30.5);
+    output[id.x + 240u * id.y] = sample_linear(f32(id.x) + 30.5, f32(id.y) + 30.5, 9u, 0u, 21u, 64u);
 }"#,
     );
     let mut luid = None;

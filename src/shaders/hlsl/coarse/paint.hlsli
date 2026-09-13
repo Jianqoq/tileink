@@ -5,11 +5,8 @@
 #include "draw.hlsli"
 #include "sdf_clip.hlsli"
 #include "particle.hlsli"
+#include "../shared/brush/constants.hlsli"
 
-static const uint BRUSH_SOLID = 1u;
-static const uint BRUSH_PATTERN_RESOURCE = 7u;
-static const uint BRUSH_COLOR_OFFSET = 16u;
-static const uint BRUSH_IMAGE_ALPHA_OFFSET = 28u;
 static const uint SDF_CANDLESTICK = 5u;
 static const uint SDF_CHECKERBOARD = 14u;
 
