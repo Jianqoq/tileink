@@ -15,7 +15,7 @@ import unittest
 
 
 class ShaderEditorTest(unittest.TestCase):
-    def test_prefix_scans_have_no_editor_diagnostics(self):
+    def test_hlsl_sources_have_no_editor_diagnostics(self):
         server = os.environ.get("TILEINK_HLSL_LANGUAGE_SERVER")
         if not server:
             self.skipTest("requires TILEINK_HLSL_LANGUAGE_SERVER")
@@ -68,7 +68,7 @@ class ShaderEditorTest(unittest.TestCase):
             initialized = wait(lambda message: message.get("id") == 1)
             self.assertNotIn("error", initialized)
             send({"method": "initialized", "params": {}})
-            for relative in ["cumsum.hlsl", "coarse/prefix_scan.hlsli"]:
+            for relative in sorted(path.relative_to(root) for path in root.rglob("*") if path.suffix in (".hlsl", ".hlsli")):
                 with self.subTest(shader=relative):
                     path = root / relative
                     uri = path.as_uri()

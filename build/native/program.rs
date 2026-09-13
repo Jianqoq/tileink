@@ -3,6 +3,10 @@ use super::{abi, source::SourceGraph};
 use std::{io, path::Path};
 
 pub const FAMILIES: &[(&str, &str)] = &[
+    ("coarse-particle-counts", "coarse/particle_counts.hlsl"),
+    ("coarse-tile-kinds", "coarse/tile_kinds.hlsl"),
+    ("coarse-tile-counts", "coarse/tile_counts.hlsl"),
+    ("coarse-count", "coarse/count.hlsl"),
     ("coarse-emit-allocation", "coarse/emit_allocation.hlsl"),
     ("coarse-emit-offsets", "coarse/emit_allocation.hlsl"),
     ("coarse-prefix", "coarse/prefix.hlsl"),

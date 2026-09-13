@@ -17,4 +17,9 @@ static const uint COARSE_EMIT_RECORD_STRIDE = 28u;
 static const uint COARSE_TILE_DRAW_COUNT = 4u;
 static const uint COARSE_EMIT_CLASS_FLAGS = 24u;
 
+static const uint COARSE_EMIT_PTCL_COUNT = 8u;
+static const uint COARSE_EMIT_PTCL_OFFSET = 12u;
+static const uint COARSE_EMIT_GLYPH_COUNT = 16u;
+static const uint COARSE_EMIT_GLYPH_OFFSET = 20u;
+
 #endif // TILEINK_HLSL_COARSE_RECORDS_HLSLI_INCLUDED

@@ -110,9 +110,13 @@ pub fn get(family: &str) -> io::Result<Interface> {
         | "scan-count"
         | "scan-emit"
         | "scan-prefix-chunks" => scan::get(family, &constants)?,
-        "coarse-emit-allocation" | "coarse-emit-offsets" | "coarse-prefix" => {
-            coarse::get(family, &constants)?
-        }
+        "coarse-particle-counts"
+        | "coarse-tile-kinds"
+        | "coarse-tile-counts"
+        | "coarse-count"
+        | "coarse-emit-allocation"
+        | "coarse-emit-offsets"
+        | "coarse-prefix" => coarse::get(family, &constants)?,
         "cumsum" => interface(
             [constants["CUMSUM_CHUNK_SIZE"], 1, 1],
             &[

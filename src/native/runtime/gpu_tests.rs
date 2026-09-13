@@ -142,3 +142,6 @@ mod coarse_emit;
 #[allow(dead_code)]
 #[path = "../../../build/gpu_constants.rs"]
 mod hlsl_constants;
+
+#[path = "tests/coarse_count_gpu.rs"]
+mod coarse_count;

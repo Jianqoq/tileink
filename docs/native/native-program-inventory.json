@@ -157,8 +157,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "coarse_count",
+      "hlsl_source": "src/shaders/hlsl/coarse/count.hlsl",
+      "native_abi": "build/native/interfaces/coarse.rs",
+      "verification": "docs/native/m4-coarse-count.md"
     },
     {
       "source": "coarse/count.wgsl",
@@ -169,8 +173,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "coarse_count_bins",
+      "hlsl_source": "src/shaders/hlsl/coarse/count.hlsl",
+      "native_abi": "build/native/interfaces/coarse.rs",
+      "verification": "docs/native/m4-coarse-count.md"
     },
     {
       "source": "coarse/prefix.wgsl",
@@ -309,8 +317,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "coarse_emit_chunk_particle_counts",
+      "hlsl_source": "src/shaders/hlsl/coarse/particle_counts.hlsl",
+      "native_abi": "build/native/interfaces/coarse.rs",
+      "verification": "docs/native/m4-coarse-count.md"
     },
     {
       "source": "coarse/prefix.wgsl",
@@ -321,8 +333,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "coarse_emit_chunk_particle_offsets",
+      "hlsl_source": "src/shaders/hlsl/coarse/emit_allocation.hlsl",
+      "native_abi": "build/native/interfaces/coarse.rs",
+      "verification": "docs/native/m4-coarse-count.md"
     },
     {
       "source": "coarse/prefix.wgsl",
@@ -333,8 +349,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "coarse_tile_counts_from_emit_chunks",
+      "hlsl_source": "src/shaders/hlsl/coarse/tile_counts.hlsl",
+      "native_abi": "build/native/interfaces/coarse.rs",
+      "verification": "docs/native/m4-coarse-count.md"
     },
     {
       "source": "coarse/emit.wgsl",
@@ -381,8 +401,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "coarse_emit_chunk_tile_kinds",
+      "hlsl_source": "src/shaders/hlsl/coarse/tile_kinds.hlsl",
+      "native_abi": "build/native/interfaces/coarse.rs",
+      "verification": "docs/native/m4-coarse-count.md"
     },
     {
       "source": "fine.wgsl",

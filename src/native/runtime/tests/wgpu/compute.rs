@@ -24,11 +24,21 @@ impl Reference {
         let mut encoder = self.device.create_command_encoder(&Default::default());
         for stage in batch.passes() {
             let source = match stage.shader.entry {
+                "coarse_emit_chunk_tile_kinds" => include_str!(concat!(
+                    env!("OUT_DIR"),
+                    "/tileink_wgpu_coarse_emit_web.wgsl"
+                )),
+                "coarse_count" | "coarse_count_bins" => {
+                    include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_coarse_count.wgsl"))
+                }
                 "coarse_emit_chunk_counts"
                 | "coarse_emit_prefix_chunks"
                 | "coarse_emit_chunk_offsets"
                 | "coarse_emit_apply_chunk_offsets"
-                | "coarse_emit_fill_refs" => {
+                | "coarse_emit_fill_refs"
+                | "coarse_emit_chunk_particle_counts"
+                | "coarse_emit_chunk_particle_offsets"
+                | "coarse_tile_counts_from_emit_chunks" => {
                     include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_coarse_prefix.wgsl"))
                 }
                 "coarse_prefix_chunks" | "coarse_chunk_offsets" | "coarse_apply_chunk_offsets" => {

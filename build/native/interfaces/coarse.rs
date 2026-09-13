@@ -1,8 +1,139 @@
-use super::{COARSE_CONFIG, Interface, Kind, buffer, interface, uniform};
+use super::{COARSE_CONFIG, DISPATCH_GRID, Interface, Kind, buffer, interface, uniform};
 use std::{collections::BTreeMap, io};
 
 pub(super) fn get(family: &str, constants: &BTreeMap<String, u32>) -> io::Result<Interface> {
     Ok(match family {
+        "coarse-particle-counts" => interface(
+            [constants["COARSE_WORKGROUP_SIZE"], 1, 1],
+            &[
+                ("config", uniform(0, COARSE_CONFIG, false)),
+                ("dispatch_grid", uniform(31, DISPATCH_GRID, true)),
+                ("draw_records", buffer(1, Kind::Read)),
+                ("text_blob", buffer(2, Kind::Read)),
+                ("path_records", buffer(3, Kind::Read)),
+                ("backdrops", buffer(4, Kind::Read)),
+                ("segment_ranges", buffer(5, Kind::Read)),
+                ("layer_stack", buffer(6, Kind::Read)),
+                ("coarse_work", buffer(7, Kind::Write)),
+                ("sdf_blob", buffer(9, Kind::Read)),
+                ("draw_batch_ids", buffer(10, Kind::Read)),
+            ],
+            &[(
+                "coarse_emit_chunk_particle_counts",
+                &[
+                    "config",
+                    "dispatch_grid",
+                    "draw_records",
+                    "text_blob",
+                    "path_records",
+                    "backdrops",
+                    "segment_ranges",
+                    "layer_stack",
+                    "coarse_work",
+                    "sdf_blob",
+                    "draw_batch_ids",
+                ],
+            )],
+        ),
+        "coarse-tile-kinds" => interface(
+            [constants["COARSE_WORKGROUP_SIZE"], 1, 1],
+            &[
+                ("config", uniform(0, COARSE_CONFIG, false)),
+                ("draw_records", buffer(1, Kind::Read)),
+                ("sdf_blob", buffer(3, Kind::Read)),
+                ("path_records", buffer(4, Kind::Read)),
+                ("backdrops", buffer(5, Kind::Read)),
+                ("segment_ranges", buffer(6, Kind::Read)),
+                ("layer_stack", buffer(7, Kind::Read)),
+                ("coarse_work", buffer(8, Kind::Write)),
+            ],
+            &[(
+                "coarse_emit_chunk_tile_kinds",
+                &[
+                    "config",
+                    "draw_records",
+                    "sdf_blob",
+                    "path_records",
+                    "backdrops",
+                    "segment_ranges",
+                    "layer_stack",
+                    "coarse_work",
+                ],
+            )],
+        ),
+        "coarse-tile-counts" => interface(
+            [constants["COARSE_WORKGROUP_SIZE"], 1, 1],
+            &[
+                ("config", uniform(0, COARSE_CONFIG, false)),
+                ("draw_records", buffer(1, Kind::Read)),
+                ("path_records", buffer(3, Kind::Read)),
+                ("backdrops", buffer(4, Kind::Read)),
+                ("segment_ranges", buffer(5, Kind::Read)),
+                ("layer_stack", buffer(6, Kind::Read)),
+                ("coarse_work", buffer(7, Kind::Write)),
+                ("sdf_blob", buffer(9, Kind::Read)),
+            ],
+            &[(
+                "coarse_tile_counts_from_emit_chunks",
+                &[
+                    "config",
+                    "draw_records",
+                    "path_records",
+                    "backdrops",
+                    "segment_ranges",
+                    "layer_stack",
+                    "coarse_work",
+                    "sdf_blob",
+                ],
+            )],
+        ),
+        "coarse-count" => interface(
+            [constants["COARSE_WORKGROUP_SIZE"], 1, 1],
+            &[
+                ("config", uniform(0, COARSE_CONFIG, false)),
+                ("draw_records", buffer(1, Kind::Read)),
+                ("text_blob", buffer(2, Kind::Read)),
+                ("path_records", buffer(3, Kind::Read)),
+                ("backdrops", buffer(4, Kind::Read)),
+                ("segment_ranges", buffer(5, Kind::Read)),
+                ("layer_stack", buffer(6, Kind::Read)),
+                ("coarse_work", buffer(7, Kind::Write)),
+                ("sdf_blob", buffer(8, Kind::Read)),
+                ("draw_batch_ids", buffer(9, Kind::Read)),
+            ],
+            &[
+                (
+                    "coarse_count",
+                    &[
+                        "config",
+                        "draw_records",
+                        "text_blob",
+                        "path_records",
+                        "backdrops",
+                        "segment_ranges",
+                        "layer_stack",
+                        "coarse_work",
+                        "sdf_blob",
+                        "draw_batch_ids",
+                    ],
+                ),
+                (
+                    "coarse_count_bins",
+                    &[
+                        "config",
+                        "draw_records",
+                        "text_blob",
+                        "path_records",
+                        "backdrops",
+                        "segment_ranges",
+                        "layer_stack",
+                        "coarse_work",
+                        "sdf_blob",
+                        "draw_batch_ids",
+                    ],
+                ),
+            ],
+        ),
         "coarse-emit-allocation" => interface(
             [constants["COARSE_WORKGROUP_SIZE"], 1, 1],
             &[
@@ -21,6 +152,10 @@ pub(super) fn get(family: &str, constants: &BTreeMap<String, u32>) -> io::Result
                     &["config", "coarse_work", "chunk_records"],
                 ),
                 ("coarse_emit_fill_refs", &["config", "coarse_work"]),
+                (
+                    "coarse_emit_chunk_particle_offsets",
+                    &["config", "coarse_work"],
+                ),
             ],
         ),
         "coarse-emit-offsets" => interface(

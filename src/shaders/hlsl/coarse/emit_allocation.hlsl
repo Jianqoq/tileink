@@ -58,3 +58,19 @@ void coarse_emit_fill_refs(uint3 id : SV_DispatchThreadID) {
         }
     }
 }
+
+[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]
+void coarse_emit_chunk_particle_offsets(uint3 id : SV_DispatchThreadID) {
+    if (id.x >= config.tile_count) return;
+    uint2 range = coarse_work.Load2(tile_emit_base(config, id.x));
+    uint2 carry = uint2(0u, 0u);
+    // Each tile owns an ordered, disjoint reference range. Preserve wrapping-u32
+    // accumulation and all other record fields; no inter-tile synchronization.
+    for (uint local_chunk = 0u; local_chunk < range.x; local_chunk++) {
+        uint base = emit_base(config, range.y + local_chunk);
+        uint2 count = uint2(coarse_work.Load(base + COARSE_EMIT_PTCL_COUNT), coarse_work.Load(base + COARSE_EMIT_GLYPH_COUNT));
+        coarse_work.Store(base + COARSE_EMIT_PTCL_OFFSET, carry.x);
+        coarse_work.Store(base + COARSE_EMIT_GLYPH_OFFSET, carry.y);
+        carry += count;
+    }
+}

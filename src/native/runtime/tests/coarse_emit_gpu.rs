@@ -142,3 +142,105 @@ fn four_api_coarse_emit_allocation_preserves_capacity_and_record_guards() -> Res
     vulkan.assert_valid()?;
     Ok(())
 }
+
+fn particle_offset_case(tiles: u32) -> Result<(ComputeBatch, Vec<Vec<u8>>)> {
+    let bytes = |words: &[u32]| {
+        words
+            .iter()
+            .flat_map(|w| w.to_le_bytes())
+            .collect::<Vec<_>>()
+    };
+    let counts: Vec<u32> = (0..tiles)
+        .map(|tile| [0, 1, 2, 255, 256, 257][tile as usize % 6])
+        .collect();
+    let total: u32 = counts.iter().sum();
+    let tile_base = tiles * 8 + 13 * 6 + 11 + 17;
+    let emit_base = tile_base + tiles * 2;
+    let mut work = vec![0x43434343; (emit_base + (total + 3) * 7 + tiles + 7) as usize];
+    // Reverse physical chunk ranges to prove offsets reset per tile and follow
+    // each tile's explicit range rather than incidental record allocation order.
+    let mut end = total;
+    for (tile, &count) in counts.iter().enumerate() {
+        end -= count;
+        work[tile_base as usize + tile * 2] = count;
+        work[tile_base as usize + tile * 2 + 1] = end;
+        for local in 0..count {
+            let base = (emit_base + (end + local) * 7) as usize;
+            work[base + 2] = [0, 1, u32::MAX, 0x80000001, 257][local as usize % 5];
+            work[base + 4] = [u32::MAX, 3, 0, 7][local as usize % 4];
+        }
+    }
+    let mut expected = work.clone();
+    for tile in 0..tiles {
+        let count = work[(tile_base + tile * 2) as usize];
+        let start = work[(tile_base + tile * 2 + 1) as usize];
+        let mut carry = [0u32; 2];
+        for index in start..start + count {
+            let base = (emit_base + index * 7) as usize;
+            for kind in 0..2 {
+                expected[base + 3 + kind * 2] = carry[kind];
+                carry[kind] = carry[kind].wrapping_add(work[base + 2 + kind * 2]);
+            }
+        }
+    }
+    let mut config = [0; 19];
+    config[0] = tiles;
+    config[7] = 13;
+    config[8] = 11;
+    config[12] = 17;
+    config[13] = total + 3;
+    let mut batch = ComputeBatch::new();
+    let config = batch.buffer(bytes(&config))?;
+    let work = batch.buffer(bytes(&work))?;
+    // SAFETY: nonoverlapping per-tile ranges fit in the packed work buffer.
+    // One extra workgroup deliberately exercises the logical tile-count guard.
+    unsafe {
+        batch.dispatch(
+            "coarse_emit_chunk_particle_offsets",
+            &[(0, config), (7, work)],
+            [tiles.div_ceil(COARSE_WORKGROUP_SIZE) + 1, 1, 1],
+        )?;
+    }
+    batch.readback(work)?;
+    Ok((batch, vec![bytes(&expected)]))
+}
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn four_api_coarse_particle_offsets_match_wrapping_counts_and_tile_ranges() -> Result<()> {
+    let identity = std::env::var("TILEINK_NATIVE_GPU")?;
+    let dx12 = Adapter::new(NativeBackend::Dx12, &identity)?;
+    let vulkan = Adapter::new(NativeBackend::Vulkan, &identity)?;
+    let references = [
+        reference::Reference::new(wgpu::Backends::DX12, &identity)?,
+        reference::Reference::new(wgpu::Backends::VULKAN, &identity)?,
+    ];
+    for tiles in [0, 1, 255, 256, 257, 513] {
+        let (batch, expected) = particle_offset_case(tiles)?;
+        for repetition in 0..3 {
+            for (route, actual) in references
+                .iter()
+                .map(|r| r.execute_compute(&batch))
+                .chain([&dx12, &vulkan].into_iter().map(|r| {
+                    r.submit_compute(&batch)
+                        .map_err(|e| format!("{e:?}").into())
+                        .and_then(|s| s.readback())
+                }))
+                .enumerate()
+            {
+                let actual = actual?;
+                assert_eq!(actual.len(), expected.len());
+                for (buffer, (a, b)) in actual.iter().zip(&expected).enumerate() {
+                    let first = a.iter().zip(b).position(|(a, b)| a != b);
+                    assert!(
+                        a.len() == b.len() && first.is_none(),
+                        "tiles {tiles} repetition {repetition} route {route} buffer {buffer} first {first:?}"
+                    );
+                }
+            }
+        }
+    }
+    dx12.assert_valid()?;
+    vulkan.assert_valid()?;
+    Ok(())
+}

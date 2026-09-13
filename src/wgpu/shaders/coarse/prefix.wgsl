@@ -239,7 +239,17 @@ fn coarse_emit_chunk_particle_counts(
     @builtin(num_workgroups) num_workgroups: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
 ) {
+    if (config.tile_count == 0u) {
+        return;
+    }
     let ref_ix = linear_workgroup_index(workgroup_id, num_workgroups);
+    // Prefix allocation is contiguous; capacity may contain stale pooled records.
+    // Reject padded groups uniformly before any record access or workgroup barrier.
+    let last_tile = config.tile_count - 1u;
+    let live_refs = tile_emit_chunk_offset_at(last_tile) + tile_emit_chunk_count_at(last_tile);
+    if (ref_ix >= live_refs) {
+        return;
+    }
     let lane = local_id.x;
     let chunk = emit_chunk_at(ref_ix);
     let tile_ix = chunk.tile;

@@ -1556,3 +1556,20 @@ Clippy 已通过；3471 张既有 PNG 无变化。运行时禁用 DXC 可执行�
   checks pass. All 3471 existing SVG/example PNG hashes are unchanged.
 - See [coarse allocation scope and receipt](docs/native/m4-coarse-allocation.md).
   Performance comparisons remain waived; Mac hardware validation remains deferred.
+
+
+## Windows M4 coarse counting/classification — 2026-09-13
+
+- Six further maintained HLSL entries pass four-route exact-byte tests; inventory
+  is now 24/179. Full particle emission, fine/effects, shared resource pools and
+  NativeRenderer/Canvas remain pending. M4 is not complete.
+- Fixed demonstrated stale-capacity writes in padded WGSL particle-count groups;
+  both languages guard the live contiguous reference total before reads/barriers.
+- Tests cover paged draws, glyph geometry, analytic clips, wrapping totals, sparse
+  17x19 grids, final empty ranges and classification precedence. Shared execution
+  is separated from independent CPU oracles; HLSL helpers have explicit dependencies.
+- All 52 runtime tests pass, including a no-DXC repeat with zero pipeline compiles.
+  Full release, strict Clippy, header/editor/SPIR-V checks, SVG/examples and both
+  reviews pass; 3471 existing PNG hashes remain unchanged.
+- See [implementation and receipt](docs/native/m4-coarse-count.md). Performance
+  comparisons remain waived and real Mac MSL validation remains deferred.
