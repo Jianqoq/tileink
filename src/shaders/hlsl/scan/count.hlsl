@@ -1,3 +1,4 @@
+#include "../constants.hlsli"
 ByteAddressBuffer active_indices:register(t5,space0);
 #include "common.hlsli"
 ByteAddressBuffer lines:register(t1,space0);
@@ -23,7 +24,7 @@ void scan_count(uint3 id:SV_DispatchThreadID) {
         int2 tile=scan_tile(scan,i,z);
         if(scan_tile_inside(scan,tile)) {
             bool top=last_z==z;
-            if(i==0u) top=abs(scan.y0-scan.points.y*(1.0/float(SCAN_TILE_SIZE)))<=SCAN_EPSILON;
+            if(i==0u) top=abs(scan.y0-scan.points.y*(1.0/float(TILE_SIZE)))<=SCAN_EPSILON;
             if(top && tile.x+1<int(scan.bbox.z)) {
                 int x=max(tile.x+1,int(scan.bbox.x));
                 uint local=uint((tile.y-int(scan.bbox.y))*int(scan.bbox.z-scan.bbox.x)+x-int(scan.bbox.x));

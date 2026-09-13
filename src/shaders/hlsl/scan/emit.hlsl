@@ -1,3 +1,4 @@
+#include "../constants.hlsli"
 ByteAddressBuffer active_indices:register(t5,space0);
 #include "common.hlsli"
 ByteAddressBuffer lines:register(t1,space0);

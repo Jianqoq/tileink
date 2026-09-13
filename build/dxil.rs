@@ -17,9 +17,7 @@ use naga::{
 
 use crate::{
     dxc, dxil_cache,
-    dxil_manifest::{
-        Dx12ResourceClass, FINE_DXIL_BINDINGS, FINE_DXIL_ENTRY_POINTS, FINE_DXIL_WORKGROUP_SIZE,
-    },
+    dxil_manifest::{Dx12ResourceClass, FINE_DXIL_BINDINGS, FINE_DXIL_ENTRY_POINTS},
     shader_variants::patch_image_resource_shader_source,
 };
 
@@ -120,9 +118,10 @@ fn compile_fine_variants(
             })
             .map(|candidate| tuple(candidate.workgroup_size))
             .ok_or_else(|| format!("WGSL compute entry point {entry_point} is missing"))?;
-        if workgroup_size != FINE_DXIL_WORKGROUP_SIZE {
+        let expected = fine_workgroup_size();
+        if workgroup_size != expected {
             return Err(format!(
-                "WGSL entry point {entry_point} has workgroup size {workgroup_size:?}, expected {FINE_DXIL_WORKGROUP_SIZE:?}"
+                "WGSL entry point {entry_point} has workgroup size {workgroup_size:?}, expected {expected:?}"
             ));
         }
         let pipeline_options = PipelineOptions {
@@ -305,7 +304,7 @@ fn write_generated(path: &Path, outputs: &[(String, PathBuf)], provenance: Optio
             )
             .expect("could not record precompiled DXIL provenance");
             manifest["hlsl_options"] = serde_json::json!(format!("{:?}", fine_hlsl_options()));
-            manifest["workgroup_size"] = serde_json::json!(FINE_DXIL_WORKGROUP_SIZE);
+            manifest["workgroup_size"] = serde_json::json!(fine_workgroup_size());
             manifest["texture_table_len"] =
                 serde_json::json!(crate::dxil_manifest::FINE_DXIL_TEXTURE_TABLE_LEN);
             manifest
@@ -322,9 +321,13 @@ fn write_generated(path: &Path, outputs: &[(String, PathBuf)], provenance: Optio
     for (entry_point, _) in outputs {
         let stem = entry_point.replace('_', "-");
         source.push_str(&format!(
-            "    PrecompiledDxil {{ entry_point: {entry_point:?}, workgroup_size: crate::wgpu::dxil_manifest::FINE_DXIL_WORKGROUP_SIZE, bytes: include_bytes!(concat!(env!(\"OUT_DIR\"), \"/tileink-{stem}-sm60.dxil\")) }},\n"
+            "    PrecompiledDxil {{ entry_point: {entry_point:?}, workgroup_size: (crate::shared::gpu_constants::FINE_WORKGROUP_SIZE, 1, 1), bytes: include_bytes!(concat!(env!(\"OUT_DIR\"), \"/tileink-{stem}-sm60.dxil\")) }},\n"
         ));
     }
     source.push_str("];\n");
     fs::write(path, source).unwrap();
+}
+
+fn fine_workgroup_size() -> (u32, u32, u32) {
+    (crate::gpu_constants::get("FINE_WORKGROUP_SIZE"), 1, 1)
 }

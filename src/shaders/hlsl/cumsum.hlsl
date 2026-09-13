@@ -1,3 +1,4 @@
+#include "constants.hlsli"
 #include "dispatch.hlsli"
 struct CumsumConfig { uint row_count; uint chunk_count; uint _pad0; uint _pad1; };
 ConstantBuffer<CumsumConfig> config : register(b0, space0);

@@ -14,8 +14,8 @@ remain unfinished. No performance comparison was run, as requested by the user.
 - `program/cumsum.rs` validates non-overlapping backdrop intervals, chunk capacity,
   and exact row ownership. Three passes retain totals/carries on the GPU in one
   submission. One-chunk rows omit the carry passes, matching production WGSL.
-- `shared/gpu_constants.rs` is the algorithm constant source. Rust planning and
-  generated HLSL/WGSL preludes use `CUMSUM_CHUNK_SIZE`; scratch lengths, tree bounds,
+- `src/shaders/hlsl/constants.hlsli` is the [algorithm constant source](shared-constants.md).
+  HLSL includes it; Rust/WGSL use generated `CUMSUM_CHUNK_SIZE`. Scratch lengths, tree bounds,
   last-element indices and workgroup attributes derive from it. The ABI reflection
   contract is checked against it and it participates in native shader cache keys.
   API alignments are separate: DX12 uses its SDK constant and Vulkan queries the

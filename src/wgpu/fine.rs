@@ -264,7 +264,7 @@ impl WgpuFinePipeline {
                 text_image_data_base: scene_buffers.fine_text_image_data_base(),
                 group_spill_base: (lengths.tile_count
                     * clip_spill_depth as usize
-                    * crate::shared::gpu_plan::FINE_WORKGROUP_SIZE as usize)
+                    * crate::shared::gpu_constants::FINE_WORKGROUP_SIZE as usize)
                     as u32,
                 fine_tile_kind_base: coarse_work_fine_tile_kind_word_offset(
                     lengths.tile_count,

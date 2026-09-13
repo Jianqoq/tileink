@@ -18,12 +18,12 @@ encoders, resource reuse and full NativeRenderer/Canvas remain unfinished.
 - Emit reference writes explicitly respect `emit_chunk_capacity`. Logical-tail
   guards precede native raw reads; partial workgroups still participate uniformly
   in the shared-memory prefix scan.
-- `shared/gpu_constants.rs::COARSE_WORKGROUP_SIZE` feeds host dispatch/planning
-  and generated HLSL/WGSL. Tree bounds, scratch arrays, page size and page metadata
+- `src/shaders/hlsl/constants.hlsli::COARSE_WORKGROUP_SIZE` feeds HLSL directly
+  and [generated Rust/WGSL](shared-constants.md) for host dispatch/planning. Tree bounds, scratch arrays, page size and page metadata
   length derive from that value. The host retains the bin-area invariant. Color
   alpha 255 and API alignment requirements are separate semantic constants.
-- The build preparation module accepts coarse record layouts and validates each
-  actual entry's workgroup/resources through DXIL/SPIR-V reflection. The serial
+- The native build validates each entry's workgroup/resources through DXIL/SPIR-V
+  reflection. Record layouts are explicit HLSLI includes. The serial
   emit carry entry has one thread; the parallel allocation entries use the shared
   workgroup size. No unused scan tile constant is injected into coarse programs.
 

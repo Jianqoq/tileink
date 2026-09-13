@@ -1,3 +1,5 @@
+#pragma once
+#include "../constants.hlsli"
 // Particle and glyph allocation use the same ordered, wrapping-u32 scan.
 groupshared uint2 scratch[COARSE_WORKGROUP_SIZE];
 groupshared uint2 block_total;
@@ -29,4 +31,3 @@ uint2 exclusive_prefix(uint2 value, uint lane) {
     GroupMemoryBarrierWithGroupSync();
     return result;
 }
-

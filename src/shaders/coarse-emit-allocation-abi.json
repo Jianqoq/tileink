@@ -146,6 +146,5 @@
       "coarse_work"
     ]
   },
-  "reference": "coarse/prefix.wgsl",
-  "record_abi": "coarse-records-abi.json"
+  "reference": "coarse/prefix.wgsl"
 }

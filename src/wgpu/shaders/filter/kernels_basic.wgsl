@@ -1,10 +1,7 @@
-const SHARED_BLUR_TILE_WIDTH: u32 = 16u;
-const SHARED_BLUR_TILE_HEIGHT: u32 = 16u;
-const SHARED_BLUR_MAX_RADIUS: u32 = 16u;
 const SHARED_BLUR_WORKGROUP_SIZE: u32 = SHARED_BLUR_TILE_WIDTH * SHARED_BLUR_TILE_HEIGHT;
-var<workgroup> shared_blur_pixels: array<u32, 768>;
+var<workgroup> shared_blur_pixels: array<u32, max(SHARED_BLUR_TILE_WIDTH * (SHARED_BLUR_TILE_HEIGHT + 2u * SHARED_BLUR_MAX_RADIUS), SHARED_BLUR_TILE_HEIGHT * (SHARED_BLUR_TILE_WIDTH + 2u * SHARED_BLUR_MAX_RADIUS))>;
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_clear_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -13,7 +10,7 @@ fn filter_clear_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     target_store_ix(target_ix_for_region_ix(region_ix), config.clear_color);
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_copy_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -23,7 +20,7 @@ fn filter_copy_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     target_store_ix(ix, source_pixel_ix(ix));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_source_alpha_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -33,7 +30,7 @@ fn filter_source_alpha_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     target_store_ix(ix, source_pixel_ix(ix) & 0xff000000u);
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_source_over_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -43,7 +40,7 @@ fn filter_source_over_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     target_store_ix(ix, blend_premul_u8(target_load_ix(ix), source_pixel_ix(ix), 3u << 8u));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_tile_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -62,7 +59,7 @@ fn filter_tile_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     target_store_at(xy.x, xy.y, source_pixel_at(sx, sy));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_offset_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -85,7 +82,7 @@ fn filter_offset_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     target_store_at(xy.x, xy.y, pixel);
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_turbulence_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -95,7 +92,7 @@ fn filter_turbulence_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     target_store_at(xy.x, xy.y, filter_turbulence_pixel(f32(xy.x), f32(xy.y)));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_flood_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -105,7 +102,7 @@ fn filter_flood_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     target_store_at(xy.x, xy.y, sample_brush(config.brush_offset, f32(xy.x) + 0.5, f32(xy.y) + 0.5));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_drop_shadow_mask_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -132,4 +129,4 @@ fn filter_drop_shadow_mask_region(@builtin(global_invocation_id) gid: vec3<u32>)
     }
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)

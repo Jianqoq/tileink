@@ -1,3 +1,6 @@
+#pragma once
+#include "../constants.hlsli"
+#include "../scene_records.hlsli"
 // Explicit mad corresponds to the reference shader's intersection fma. HLSL
 // permits device-specific mad implementations, so exact results remain gated by
 // the same-physical-GPU four-route tests, not assumed from the intrinsic name.
@@ -20,7 +23,7 @@ float clip_y_at_x(float4 points,float x,float tile_min_y,float tile_max_y) {
 }
 
 void write_clipped_segment(uint dst,ScanTraversal scan,uint sub_index,float z,int2 tile) {
-    float tile_size=float(SCAN_TILE_SIZE);
+    float tile_size=float(TILE_SIZE);
     float2 tile_min=float2(tile)*tile_size;
     float2 tile_max=tile_min+tile_size;
     float4 points=scan.points;
@@ -66,6 +69,6 @@ void write_clipped_segment(uint dst,ScanTraversal scan,uint sub_index,float z,in
     if(floor(p0x)==p0x && p0x!=0.0) p0x-=SCAN_EPSILON;
     if(floor(p1x)==p1x && p1x!=0.0) p1x-=SCAN_EPSILON;
     if(!scan.down) {float x=p0x;float y=p0y;p0x=p1x;p0y=p1y;p1x=x;p1y=y;}
-    segments.Store4(dst*SCAN_SEGMENT_STRIDE,asuint(float4(p0x,p0y,p1x,p1y)));
-    segments.Store(dst*SCAN_SEGMENT_STRIDE+SCAN_SEGMENT_Y_EDGE,asuint(edge));
+    segments.Store4(dst*LINE_SEGMENT_STRIDE,asuint(float4(p0x,p0y,p1x,p1y)));
+    segments.Store(dst*LINE_SEGMENT_STRIDE+LINE_SEGMENT_Y_EDGE,asuint(edge));
 }

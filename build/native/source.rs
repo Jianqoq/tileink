@@ -1,6 +1,6 @@
 //! Load a closed, literal include graph and compile the exact expanded bytes.
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs, io,
     path::{Path, PathBuf},
 };
@@ -17,17 +17,31 @@ impl SourceGraph {
             expanded: String::new(),
             files: BTreeMap::new(),
         };
-        graph.expanded = graph.expand(&root, &root.join(entry), &mut Vec::new())?;
+        graph.expanded = graph.expand(
+            &root,
+            &root.join(entry),
+            &mut Vec::new(),
+            &mut BTreeSet::new(),
+        )?;
         Ok(graph)
     }
 
-    fn expand(&mut self, root: &Path, path: &Path, stack: &mut Vec<PathBuf>) -> io::Result<String> {
+    fn expand(
+        &mut self,
+        root: &Path,
+        path: &Path,
+        stack: &mut Vec<PathBuf>,
+        once: &mut BTreeSet<PathBuf>,
+    ) -> io::Result<String> {
         let path = path.canonicalize()?;
         let name = path
             .strip_prefix(root)
             .map_err(|_| io::Error::other("shader include escapes source root"))?
             .to_string_lossy()
             .replace('\\', "/");
+        if once.contains(&path) {
+            return Ok(String::new());
+        }
         if stack.contains(&path) {
             return Err(io::Error::other(format!("cyclic shader include: {name}")));
         }
@@ -39,6 +53,12 @@ impl SourceGraph {
         for (index, line) in source.lines().enumerate() {
             let visible = visible_line(line, &mut block_comment);
             let directive = visible.trim();
+            // Resolve include-once in the tracked source graph, matching direct DXC includes.
+            if directive == "#pragma once" {
+                once.insert(path.clone());
+                expanded.push('\n');
+                continue;
+            }
             // This first native source format deliberately supports literal
             // includes only. Never pass an untracked preprocessor directive or
             // line splice through to a compiler with a different lexer.
@@ -73,6 +93,7 @@ impl SourceGraph {
                     root,
                     &path.parent().unwrap().join(relative),
                     stack,
+                    once,
                 )?);
                 expanded.push_str(&format!("#line {} \"{name}\"\n", index + 2));
             } else {

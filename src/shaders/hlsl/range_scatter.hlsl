@@ -1,3 +1,4 @@
+#include "constants.hlsli"
 // Production range_scatter.wgsl layout, with explicit native binding remapping:
 // WGSL upload binding 0 -> native source t1 / binding 1;
 // WGSL destination binding 1 -> native destination u0 / binding 0.

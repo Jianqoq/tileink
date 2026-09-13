@@ -1,3 +1,4 @@
+#include "constants.hlsli"
 #include "probe_abi.hlsli"
 
 [numthreads(64, 1, 1)]

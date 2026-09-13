@@ -1,3 +1,6 @@
+#pragma once
+#include "../constants.hlsli"
+#include "../scene_records.hlsli"
 // Shared DDA traversal for count and emit; arithmetic order follows the renderer
 // geometry contract. Top-touch tolerance and tile snapping are distinct policies.
 static const float SCAN_EPSILON=1.0e-6;
@@ -20,24 +23,24 @@ uint span(float a,float b) {float hi=ceil(a);if(b>a) hi=ceil(b);float lo=floor(a
 
 bool scan_geometry(uint line_index,out ScanTraversal scan) {
     scan=(ScanTraversal)0;
-    uint line_base=line_index*SCAN_LINE_STRIDE;
+    uint line_base=line_index*LINE_STRIDE;
     uint path_id=lines.Load(line_base);
     uint path_bytes;path_records.GetDimensions(path_bytes);
-    if(path_id>=path_bytes/SCAN_PATH_RECORD_STRIDE) return false;
-    uint path_base=path_id*SCAN_PATH_RECORD_STRIDE;
-    scan.bbox=path_records.Load4(path_base+SCAN_PATH_BBOX);
-    scan.data_offset=path_records.Load(path_base+SCAN_PATH_DATA_OFFSET);
+    if(path_id>=path_bytes/PATH_RECORD_STRIDE) return false;
+    uint path_base=path_id*PATH_RECORD_STRIDE;
+    scan.bbox=path_records.Load4(path_base+PATH_BBOX);
+    scan.data_offset=path_records.Load(path_base+PATH_DATA_OFFSET);
     if(scan.bbox.z-scan.bbox.x==0u || scan.bbox.y>=scan.bbox.w) return false;
-    float4 matrix=asfloat(path_records.Load4(path_base+SCAN_PATH_TRANSFORM));
-    float2 translation=asfloat(path_records.Load2(path_base+SCAN_PATH_TRANSFORM+16u));
-    float2 local0=asfloat(lines.Load2(line_base+SCAN_LINE_P0));
-    float2 local1=asfloat(lines.Load2(line_base+SCAN_LINE_P1));
+    float4 matrix=asfloat(path_records.Load4(path_base+PATH_TRANSFORM));
+    float2 translation=asfloat(path_records.Load2(path_base+PATH_TRANSFORM+AFFINE_TRANSLATION));
+    float2 local0=asfloat(lines.Load2(line_base+LINE_P0));
+    float2 local1=asfloat(lines.Load2(line_base+LINE_P1));
     float2 p0=float2(matrix.x*local0.x+matrix.z*local0.y+translation.x,matrix.y*local0.x+matrix.w*local0.y+translation.y);
     float2 p1=float2(matrix.x*local1.x+matrix.z*local1.y+translation.x,matrix.y*local1.x+matrix.w*local1.y+translation.y);
     scan.down=p1.y>=p0.y;
     scan.points=float4(p0,p1);
     if(!scan.down) scan.points=float4(p1,p0);
-    float tile_scale=1.0/float(SCAN_TILE_SIZE);
+    float tile_scale=1.0/float(TILE_SIZE);
     float4 s=scan.points*tile_scale;
     uint count_x=span(s.x,s.z)-1u;
     scan.count=count_x+span(s.y,s.w);

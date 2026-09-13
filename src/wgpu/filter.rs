@@ -48,10 +48,9 @@ pub(crate) const FILTER_SEPIA: u32 = 8;
 pub(crate) const SVG_MASK_ALPHA: u32 = 0;
 pub(crate) const SVG_MASK_LUMINANCE: u32 = 1;
 
-const WORKGROUP_SIZE: u32 = 256;
-const SHARED_BLUR_TILE_WIDTH: u32 = 16;
-const SHARED_BLUR_TILE_HEIGHT: u32 = 16;
-const SHARED_BLUR_MAX_RADIUS: u32 = 16;
+use crate::shared::gpu_constants::{
+    FILTER_WORKGROUP_SIZE, SHARED_BLUR_MAX_RADIUS, SHARED_BLUR_TILE_HEIGHT, SHARED_BLUR_TILE_WIDTH,
+};
 const STORAGE_BINDING_COUNT: u32 = filter_layout::MAX_STORAGE_BUFFER_COUNT;
 
 const FILTER_RES_DRAW_RECORDS: u32 = 1 << 0;
@@ -2080,7 +2079,7 @@ impl WgpuFilterPipeline {
         if config.compact_tiles != 0 {
             if let Some(work) = &self.active_tile_work {
                 config.active_tile_count = work.count;
-                config.pixel_count = work.count.saturating_mul(WORKGROUP_SIZE);
+                config.pixel_count = work.count.saturating_mul(FILTER_WORKGROUP_SIZE);
             } else {
                 config.compact_tiles = 0;
             }
@@ -2166,7 +2165,7 @@ impl WgpuFilterPipeline {
             let groups = if config.compact_tiles != 0 {
                 config.active_tile_count
             } else {
-                config.pixel_count.div_ceil(WORKGROUP_SIZE)
+                config.pixel_count.div_ceil(FILTER_WORKGROUP_SIZE)
             };
             let (x, y) = crate::render::dispatch::dispatch_2d(groups, max_workgroups);
             (x, y, 1)

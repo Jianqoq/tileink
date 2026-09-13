@@ -294,7 +294,8 @@ fn sdf_storage_word(index: u32, shadow_blob: bool) -> u32 {
     return paint_blob[index];
 }
 
+// Use the dispatch lane width for row strides so changing the workgroup cannot skip pixels.
 // Dense and compact filters share a linear invocation order across dispatch rows.
 fn filter_region_index(gid: vec3<u32>) -> u32 {
-    return gid.x + gid.y * config.dispatch_width * 256u;
+    return gid.x + gid.y * config.dispatch_width * FILTER_WORKGROUP_SIZE;
 }

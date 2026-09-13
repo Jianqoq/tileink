@@ -1,3 +1,5 @@
+#include "../scene_records.hlsli"
+#include "../constants.hlsli"
 ByteAddressBuffer active_indices:register(t5,space0);
 #include "common.hlsli"
 ByteAddressBuffer scan_chunks:register(t1,space0);
@@ -25,7 +27,7 @@ void scan_prefix_chunks(uint3 group:SV_GroupID,uint3 local:SV_GroupThreadID) {
     }
     if(lane<chunk.w) {
         uint inclusive=scratch[lane];
-        segment_ranges.Store2((chunk.y+lane)*SCAN_TILE_RANGE_STRIDE,uint2(inclusive-count,inclusive));
+        segment_ranges.Store2((chunk.y+lane)*TILE_SEGMENT_RANGE_STRIDE,uint2(inclusive-count,inclusive));
     }
     if(lane+1u==chunk.w) chunk_totals.Store(index*4u,scratch[lane]);
 }

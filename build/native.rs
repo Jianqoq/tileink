@@ -99,7 +99,7 @@ pub fn generate() -> io::Result<()> {
                     let flags = Dxc::flags(target, entry)?;
                     let recipe = serde_json::json!({"schema":1,"language":"hlsl","target":target,"target_triple":target_triple,
                     "entry":entry,"variant":family,"flags":flags,"abi_sha256":digest(&abi),
-                    "toolchain":compiler.identity,"sources":graph.files,"cumsum_chunk_size":crate::gpu_constants::CUMSUM_CHUNK_SIZE});
+                    "toolchain":compiler.identity,"sources":graph.files,"cumsum_chunk_size":crate::gpu_constants::get("CUMSUM_CHUNK_SIZE")});
                     let recipe_bytes = serde_json::to_vec(&recipe)?;
                     let key = CacheKey::new(&[&recipe_bytes, graph.expanded.as_bytes()]);
                     let work = out.join("native-work").join(key.hex());

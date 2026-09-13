@@ -17,7 +17,6 @@ pub(crate) struct Dx12Binding {
 }
 
 pub(crate) const FINE_DXIL_TEXTURE_TABLE_LEN: u32 = 64;
-pub(crate) const FINE_DXIL_WORKGROUP_SIZE: (u32, u32, u32) = (256, 1, 1);
 pub(crate) const FINE_DXIL_ENTRY_POINTS: [&str; 1] = ["fine_tile_main"];
 
 // This is the exact binding sequence used by the portable fine pipeline. The build script applies

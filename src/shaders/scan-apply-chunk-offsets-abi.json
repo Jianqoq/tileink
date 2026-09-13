@@ -137,6 +137,5 @@
       "dispatch_grid"
     ]
   },
-  "record_abi": "scan-records-abi.json",
   "reference": "scan/apply_chunk_offsets.wgsl"
 }

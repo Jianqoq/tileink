@@ -9,9 +9,10 @@ use crate::{
     canvas::Canvas,
     shared::{
         execution::ExecPlan,
+        gpu_constants::FINE_WORKGROUP_SIZE,
         gpu_plan::{
             FINE_GROUP_SPILL_FIELDS, FINE_LOCAL_CLIP_DEPTH, FINE_LOCAL_GROUP_DEPTH,
-            FINE_WORKGROUP_SIZE, GpuBufferLengths, GpuCanvasConfig, plan_stack_depths,
+            GpuBufferLengths, GpuCanvasConfig, plan_stack_depths,
         },
         image_resource::ImageResourceStore,
         layer::filter::Filter,

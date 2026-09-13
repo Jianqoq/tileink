@@ -78,3 +78,53 @@ fn missing_macro_and_escaping_includes_are_rejected() {
     );
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn pragma_once_tracks_diamond_dependencies_and_guarded_self_includes() {
+    let root = std::env::temp_dir().join(format!("tileink-shader-once-{}", std::process::id()));
+    fs::create_dir(&root).unwrap();
+    fs::write(
+        root.join("main.hlsl"),
+        r#"#include "left.hlsli"
+#include "right.hlsli"
+"#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("left.hlsli"),
+        r#"#include "shared.hlsli"
+"#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("right.hlsli"),
+        r#"#include "shared.hlsli"
+"#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("shared.hlsli"),
+        r#"#pragma once
+#include "shared.hlsli"
+static const uint STRIDE = 16u;
+"#,
+    )
+    .unwrap();
+    let graph = SourceGraph::load(&root, "main.hlsl").unwrap();
+    assert_eq!(graph.files.len(), 4);
+    assert_eq!(
+        graph.expanded.matches("static const uint STRIDE").count(),
+        1
+    );
+    assert!(!graph.expanded.contains("#pragma"));
+    fs::write(
+        root.join("shared.hlsli"),
+        "#pragma once\nstatic const uint STRIDE = 32u;\n",
+    )
+    .unwrap();
+    assert_ne!(
+        graph.expanded,
+        SourceGraph::load(&root, "main.hlsl").unwrap().expanded
+    );
+    fs::remove_dir_all(root).unwrap();
+}

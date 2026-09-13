@@ -67,7 +67,7 @@ fn filter_morphology_axis_region(@builtin(global_invocation_id) gid: vec3<u32>) 
     target_store_ix(ix, pack_premul_rgba8(out_r * out_a, out_g * out_a, out_b * out_a, out_a));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_downsample_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -138,7 +138,7 @@ fn upsampled_source_pixel_at(
     return pack_premul_rgba8(sample.r, sample.g, sample.b, sample.a);
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_upsample_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -157,7 +157,7 @@ fn filter_upsample_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     target_store_at(xy.x, xy.y, upsampled_source_pixel_at(xy, source_x0, source_y0, source_x1, source_y1));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_upsample_rect_composite_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -514,7 +514,7 @@ fn filter_blur_pixel_shared(local_xy: vec2<u32>, half_width: i32, std_dev: f32) 
     return filter_blur_pack_average(accumulator, sum);
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_blur_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -532,7 +532,7 @@ fn filter_blur_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     target_store_ix(dst_ix, filter_blur_pixel(xy, dst_ix, std_dev));
 }
 
-@compute @workgroup_size(16, 16)
+@compute @workgroup_size(SHARED_BLUR_TILE_WIDTH, SHARED_BLUR_TILE_HEIGHT)
 fn filter_blur_shared_region(
     @builtin(local_invocation_id) local_id: vec3<u32>,
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
@@ -627,4 +627,4 @@ fn filter_blur_shared_region(
     );
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)

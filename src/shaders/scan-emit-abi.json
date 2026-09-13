@@ -108,6 +108,5 @@
       "active_indices"
     ]
   },
-  "record_abi": "scan-records-abi.json",
   "reference": "scan/emit.wgsl"
 }

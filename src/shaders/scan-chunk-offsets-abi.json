@@ -114,6 +114,5 @@
       "active_indices"
     ]
   },
-  "record_abi": "scan-records-abi.json",
   "reference": "scan/chunk_offsets.wgsl"
 }

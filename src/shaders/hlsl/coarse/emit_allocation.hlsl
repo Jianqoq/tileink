@@ -1,3 +1,5 @@
+#include "../coarse_records.hlsli"
+#include "../constants.hlsli"
 #include "config.hlsli"
 RWByteAddressBuffer coarse_work : register(u7, space0);
 RWByteAddressBuffer chunk_records : register(u8, space0);

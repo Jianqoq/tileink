@@ -1,3 +1,5 @@
+#include "../scene_records.hlsli"
+#include "../constants.hlsli"
 ByteAddressBuffer active_indices:register(t5,space0);
 #include "common.hlsli"
 ByteAddressBuffer scan_chunks:register(t1,space0);
@@ -14,7 +16,7 @@ void scan_apply_chunk_offsets(uint3 group:SV_GroupID,uint3 local:SV_GroupThreadI
     if(local.x>=chunk.w) return;
     uint index=chunk.y+local.x;
     uint base=chunk_offsets.Load(chunk_index*4u);
-    uint2 range=segment_ranges.Load2(index*SCAN_TILE_RANGE_STRIDE)+base;
-    segment_ranges.Store2(index*SCAN_TILE_RANGE_STRIDE,range);
+    uint2 range=segment_ranges.Load2(index*TILE_SEGMENT_RANGE_STRIDE)+base;
+    segment_ranges.Store2(index*TILE_SEGMENT_RANGE_STRIDE,range);
     segment_tile_cursors.Store(index*4u,range.x);
 }

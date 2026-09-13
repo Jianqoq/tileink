@@ -12,7 +12,7 @@ fn filter_composite_drop_shadow_region(@builtin(global_invocation_id) gid: vec3<
     target_store_ix(ix, src_over_premul_u8(shadow, target_load_ix(ix)));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_layer_mask_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -23,7 +23,7 @@ fn filter_layer_mask_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     target_store_at(xy.x, xy.y, gray_alpha(alpha));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_rect_mask_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -45,7 +45,7 @@ fn filter_rect_mask_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     target_store_at(xy.x, xy.y, gray_alpha(coverage_to_u8(sdf_coverage_from_dist(dist))));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_path_mask_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -97,7 +97,7 @@ fn filter_path_mask_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     target_store_at(xy.x, xy.y, gray_alpha(alpha));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_composite_direct_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -113,7 +113,7 @@ fn filter_composite_direct_region(@builtin(global_invocation_id) gid: vec3<u32>)
     target_store_ix(ix, src_over_premul_u8(target_load_ix(ix), source));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_composite_rect_direct_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -141,7 +141,7 @@ fn filter_composite_rect_direct_region(@builtin(global_invocation_id) gid: vec3<
     target_store_ix(ix, src_over_premul_u8(target_load_ix(ix), source));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_composite_stack_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -152,7 +152,7 @@ fn filter_composite_stack_region(@builtin(global_invocation_id) gid: vec3<u32>) 
     target_store_ix(ix, composite_with_stack(target_load_ix(ix), source_pixel_ix(ix), aux_pixel_ix(ix), xy.x, xy.y, false));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_composite_blend_stack_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -163,7 +163,7 @@ fn filter_composite_blend_stack_region(@builtin(global_invocation_id) gid: vec3<
     target_store_ix(ix, composite_with_stack(target_load_ix(ix), source_pixel_ix(ix), aux_pixel_ix(ix), xy.x, xy.y, true));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_composite_surface_direct_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -186,7 +186,7 @@ fn filter_composite_surface_direct_region(@builtin(global_invocation_id) gid: ve
     target_store_ix(ix, src_over_premul_u8(target_load_ix(ix), source));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_composite_surface_stack_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {

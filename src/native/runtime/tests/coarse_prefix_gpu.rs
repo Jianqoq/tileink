@@ -130,8 +130,9 @@ fn coarse_raw_record_abi_matches_host_layout() {
         TileEmitChunkRecord,
     };
     use std::mem::{offset_of, size_of};
-    let abi: serde_json::Value =
-        serde_json::from_str(include_str!("../../../shaders/coarse-records-abi.json")).unwrap();
+    let abi =
+        super::hlsl_constants::parse(include_str!("../../../shaders/hlsl/coarse_records.hlsli"))
+            .unwrap();
     let expected = [
         ("COARSE_PTCL_RECORD_STRIDE", size_of::<PtclRecord>()),
         (
@@ -175,8 +176,8 @@ fn coarse_raw_record_abi_matches_host_layout() {
             offset_of!(CoarseChunkRecord, glyph_offset),
         ),
     ];
-    assert_eq!(abi.as_object().unwrap().len(), expected.len());
+    assert_eq!(abi.len(), expected.len());
     for (name, value) in expected {
-        assert_eq!(abi[name], value, "{name}");
+        assert_eq!(abi[name] as usize, value, "{name}");
     }
 }

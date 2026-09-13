@@ -126,6 +126,5 @@
       "active_indices"
     ]
   },
-  "record_abi": "scan-records-abi.json",
   "reference": "scan/clear.wgsl"
 }

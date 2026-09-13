@@ -138,3 +138,7 @@ mod coarse_prefix;
 
 #[path = "tests/coarse_emit_gpu.rs"]
 mod coarse_emit;
+
+#[allow(dead_code)]
+#[path = "../../../build/gpu_constants.rs"]
+mod hlsl_constants;

@@ -23,7 +23,7 @@ fn filter_svg_mask_coverage_region(@builtin(global_invocation_id) gid: vec3<u32>
     target_store_ix(ix, gray_alpha(mask_alpha));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_color_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -33,7 +33,7 @@ fn filter_color_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     target_store_ix(ix, apply_color_filter_pixel(target_load_ix(ix), config.filter_kind, config.amount));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_color_matrix_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -43,7 +43,7 @@ fn filter_color_matrix_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     target_store_ix(ix, apply_color_matrix_pixel(target_load_ix(ix)));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_component_transfer_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -53,7 +53,7 @@ fn filter_component_transfer_region(@builtin(global_invocation_id) gid: vec3<u32
     target_store_ix(ix, apply_component_transfer_pixel(target_load_ix(ix), config.table_index));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_blend_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -63,7 +63,7 @@ fn filter_blend_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     target_store_ix(ix, blend_premul_u8(aux_pixel_ix(ix), source_pixel_ix(ix), config.blend_mode));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_composite_inputs_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -81,7 +81,7 @@ fn filter_composite_inputs_region(@builtin(global_invocation_id) gid: vec3<u32>)
     ));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_displacement_map_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -101,7 +101,7 @@ fn filter_displacement_map_region(@builtin(global_invocation_id) gid: vec3<u32>)
     target_store_ix(ix, out);
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_convolve_matrix_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -186,7 +186,7 @@ fn filter_convolve_matrix_region(@builtin(global_invocation_id) gid: vec3<u32>) 
     target_store_ix(dst_ix, pack_premul_rgba8(r * alpha, g * alpha, b * alpha, alpha));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_lighting_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -286,7 +286,7 @@ fn filter_lighting_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_liquid_glass_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -329,7 +329,7 @@ fn filter_liquid_glass_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     ));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_liquid_glass_rect_composite_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
@@ -389,4 +389,4 @@ fn filter_liquid_glass_rect_composite_region(@builtin(global_invocation_id) gid:
     target_store_ix(ix, src_over_premul_u8(target_load_ix(ix), source));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)

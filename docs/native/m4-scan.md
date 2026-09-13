@@ -9,13 +9,13 @@ Mac MSL hardware validation is deferred. Performance comparisons remain waived.
 
 ## Implementation and invariants
 
-- `shared/gpu_constants.rs` owns scan/cumsum chunk sizes, range-scatter workgroup
-  size and physical tile size. Rust planning and generated WGSL/HLSL preludes
-  consume them. Scratch sizes and loop bounds derive from the algorithm constants.
+- `src/shaders/hlsl/constants.hlsli` owns scan/cumsum chunk sizes, range-scatter
+  workgroup size and physical tile size. HLSL includes it directly; Rust and WGSL
+  consume generated definitions (see [shared constants](shared-constants.md)). Scratch sizes and loop bounds derive from the algorithm constants.
   Native ABI workgroup declarations are independently checked during compilation.
   Equal-valued API alignment requirements remain API constants/device queries.
 - `build/native/program.rs` owns the program catalog and source/ABI preparation.
-  Each scan family references the common record ABI; all 13 raw offsets/strides
+  Each scan family references the shared scene record ABI; all 15 raw offsets/strides
   are checked against Rust `size_of!`/`offset_of!`. Source includes, resolved ABI,
   constants and compiler identity participate in shader cache identity.
 - `geometry.hlsli` shares DDA traversal between count and emit. `clip.hlsli` owns

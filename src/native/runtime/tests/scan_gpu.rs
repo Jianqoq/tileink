@@ -322,28 +322,34 @@ fn four_api_scan_clear_preserves_unselected_records_and_dispatch_tail() -> Resul
 fn scan_record_abi_matches_the_shared_host_records() {
     use crate::shared::{line::Line, line_seg::LineSegment, tile_seg_range::TileSegmentRange};
     use std::mem::{offset_of, size_of};
-    let abi: serde_json::Value =
-        serde_json::from_str(include_str!("../../../shaders/scan-records-abi.json")).unwrap();
+    let abi =
+        super::hlsl_constants::parse(include_str!("../../../shaders/hlsl/scene_records.hlsli"))
+            .unwrap();
     let expected = [
-        ("SCAN_PATH_RECORD_STRIDE", size_of::<PathRecord>()),
         (
-            "SCAN_PATH_SEGMENT_START",
-            offset_of!(PathRecord, segment_start),
+            "AFFINE_STRIDE",
+            size_of::<crate::shared::affine::GpuAffine>(),
         ),
-        ("SCAN_PATH_DATA_OFFSET", offset_of!(PathRecord, data_offset)),
-        ("SCAN_PATH_BBOX", offset_of!(PathRecord, tile_x0)),
-        ("SCAN_PATH_TRANSFORM", offset_of!(PathRecord, transform)),
+        (
+            "AFFINE_TRANSLATION",
+            offset_of!(crate::shared::affine::GpuAffine, e),
+        ),
+        ("PATH_RECORD_STRIDE", size_of::<PathRecord>()),
+        ("PATH_SEGMENT_START", offset_of!(PathRecord, segment_start)),
+        ("PATH_DATA_OFFSET", offset_of!(PathRecord, data_offset)),
+        ("PATH_BBOX", offset_of!(PathRecord, tile_x0)),
+        ("PATH_TRANSFORM", offset_of!(PathRecord, transform)),
         ("SCAN_CHUNK_STRIDE", size_of::<GpuScanChunk>()),
         ("SCAN_CHUNK_RANGE_STRIDE", size_of::<GpuScanChunkRange>()),
-        ("SCAN_TILE_RANGE_STRIDE", size_of::<TileSegmentRange>()),
-        ("SCAN_LINE_STRIDE", size_of::<Line>()),
-        ("SCAN_LINE_P0", offset_of!(Line, p0)),
-        ("SCAN_LINE_P1", offset_of!(Line, p1)),
-        ("SCAN_SEGMENT_STRIDE", size_of::<LineSegment>()),
-        ("SCAN_SEGMENT_Y_EDGE", offset_of!(LineSegment, y_edge)),
+        ("TILE_SEGMENT_RANGE_STRIDE", size_of::<TileSegmentRange>()),
+        ("LINE_STRIDE", size_of::<Line>()),
+        ("LINE_P0", offset_of!(Line, p0)),
+        ("LINE_P1", offset_of!(Line, p1)),
+        ("LINE_SEGMENT_STRIDE", size_of::<LineSegment>()),
+        ("LINE_SEGMENT_Y_EDGE", offset_of!(LineSegment, y_edge)),
     ];
-    assert_eq!(abi.as_object().unwrap().len(), expected.len());
+    assert_eq!(abi.len(), expected.len());
     for (name, value) in expected {
-        assert_eq!(abi[name], value, "{name}");
+        assert_eq!(abi[name] as usize, value, "{name}");
     }
 }

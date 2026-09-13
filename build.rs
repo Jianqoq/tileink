@@ -78,26 +78,41 @@ fn build_wgpu() {
         if entry == "range_scatter.wgsl" {
             source = format!(
                 "const RANGE_SCATTER_WORKGROUP_SIZE: u32 = {}u;\n{source}",
-                gpu_constants::RANGE_SCATTER_WORKGROUP_SIZE
+                gpu_constants::get("RANGE_SCATTER_WORKGROUP_SIZE")
             );
         }
         if entry == "cumsum.wgsl" {
             source = format!(
                 "const CUMSUM_CHUNK_SIZE: u32 = {}u;\n{source}",
-                gpu_constants::CUMSUM_CHUNK_SIZE
+                gpu_constants::get("CUMSUM_CHUNK_SIZE")
             );
         }
         if entry.starts_with("coarse/") {
             source = format!(
                 "const COARSE_WORKGROUP_SIZE: u32 = {}u;\n{source}",
-                gpu_constants::COARSE_WORKGROUP_SIZE
+                gpu_constants::get("COARSE_WORKGROUP_SIZE")
             );
         }
         if entry.starts_with("scan/") {
             source = format!(
                 "const SCAN_CHUNK_SIZE: u32 = {}u;\nconst SCAN_TILE_SIZE: u32 = {}u;\n{source}",
-                gpu_constants::SCAN_CHUNK_SIZE,
-                gpu_constants::TILE_SIZE
+                gpu_constants::get("SCAN_CHUNK_SIZE"),
+                gpu_constants::get("TILE_SIZE")
+            );
+        }
+        if entry.starts_with("fine") {
+            source = format!(
+                "const FINE_WORKGROUP_SIZE: u32 = {}u;\n{source}",
+                gpu_constants::get("FINE_WORKGROUP_SIZE")
+            );
+        }
+        if entry.starts_with("filter") {
+            source = format!(
+                "const FILTER_WORKGROUP_SIZE: u32 = {}u;\nconst SHARED_BLUR_TILE_WIDTH: u32 = {}u;\nconst SHARED_BLUR_TILE_HEIGHT: u32 = {}u;\nconst SHARED_BLUR_MAX_RADIUS: u32 = {}u;\n{source}",
+                gpu_constants::get("FILTER_WORKGROUP_SIZE"),
+                gpu_constants::get("SHARED_BLUR_TILE_WIDTH"),
+                gpu_constants::get("SHARED_BLUR_TILE_HEIGHT"),
+                gpu_constants::get("SHARED_BLUR_MAX_RADIUS")
             );
         }
         if entry == "fine_web.wgsl" {
@@ -160,11 +175,14 @@ fn parse_include(line: &str) -> Option<&str> {
 #[path = "build/native.rs"]
 mod native_shaders;
 
-#[path = "src/shared/gpu_constants.rs"]
+#[path = "build/gpu_constants.rs"]
 mod gpu_constants;
 
 fn main() {
-    println!("cargo:rerun-if-changed=src/shared/gpu_constants.rs");
+    println!("cargo:rerun-if-changed=build/gpu_constants.rs");
+    println!("cargo:rerun-if-changed=src/shaders/hlsl/constants.hlsli");
+    gpu_constants::write_rust(&std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap()))
+        .expect("generate host GPU constants");
     #[cfg(any(feature = "native-dx12", feature = "native-vulkan"))]
     native_shaders::generate()
         .unwrap_or_else(|error| panic!("native shader build failed: {error}"));

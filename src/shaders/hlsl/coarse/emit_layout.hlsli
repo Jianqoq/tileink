@@ -1,3 +1,4 @@
+#include "../coarse_records.hlsli"
 // Byte offsets through the packed coarse work buffer; preceding regions remain intact.
 uint tile_draw_base(uint tile) {
     return config.tile_count * COARSE_TILE_RECORD_STRIDE + config.ptcl_capacity * COARSE_PTCL_RECORD_STRIDE +

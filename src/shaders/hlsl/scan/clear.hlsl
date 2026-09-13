@@ -1,3 +1,5 @@
+#include "../scene_records.hlsli"
+#include "../constants.hlsli"
 ByteAddressBuffer active_indices:register(t8,space0);
 #include "common.hlsli"
 RWByteAddressBuffer backdrops:register(u1,space0);
@@ -15,7 +17,7 @@ void scan_clear(uint3 id:SV_DispatchThreadID) {
     if(index<config.backdrop_len) {
         uint backdrop=dispatched_index(index,config.backdrop_base);
         backdrops.Store(backdrop*4u,0u);
-        segment_ranges.Store2(backdrop*SCAN_TILE_RANGE_STRIDE,uint2(0u,0u));
+        segment_ranges.Store2(backdrop*TILE_SEGMENT_RANGE_STRIDE,uint2(0u,0u));
         segment_tile_counts.Store(backdrop*4u,0u);
         segment_tile_cursors.Store(backdrop*4u,0u);
     }

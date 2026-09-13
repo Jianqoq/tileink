@@ -1,4 +1,4 @@
-@compute @workgroup_size(256)
+@compute @workgroup_size(FINE_WORKGROUP_SIZE)
 fn fine_tile_main(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
