@@ -36,6 +36,20 @@ program/variant inventory remains explicitly unported. M3 production adapters an
 texture/numerical coverage, M4–M6 still require implementation and acceptance.
 No performance comparison was resumed.
 
+## Windows M3 queued execution continuation — 2026-09-13
+
+M2 commit `e8631bf5` is pushed and the remote was confirmed. The executing native
+verification adapters now separate submit/readback and keep each frame's command,
+descriptor and buffer resources until completion. Both native APIs pass 42 queued
+cases with reverse-order readback, ticket/device rejection and unread-frame
+teardown; the four-API minimum output contract remains exact. Details and current
+limitations are in [M3 queued submissions](docs/native/m3-queued-submissions.md).
+
+This is a tested M3 execution/lifetime slice, not production NativeRenderer or full
+M3 completion. Production shared-adapter integration, texture/numerical probes and
+error recovery remain open. Mac verification is still deferred; no timing work
+was resumed.
+
 ## Historical evidence
 
 The current boot's recorded RTX 4090 LUID is `9f3f010000000000`; historical

@@ -1,6 +1,10 @@
 #[path = "dx12_validation.rs"]
 mod validation;
 use validation::cache_retryable;
+#[path = "dx12_frame.rs"]
+mod frame;
+use super::submissions::{Pending, Ticket};
+use frame::Frame;
 pub use validation::{Validation, assert_valid};
 // Native D3D12 execution of the same compiled probe contract.
 use super::{Result, cases::Case, retirement::Retirement};
@@ -8,11 +12,7 @@ use std::{collections::BTreeMap, mem::ManuallyDrop};
 use windows::{
     Win32::{
         Foundation::{CloseHandle, HANDLE, WAIT_OBJECT_0},
-        Graphics::{
-            Direct3D::*,
-            Direct3D12::*,
-            Dxgi::{Common::*, *},
-        },
+        Graphics::{Direct3D::*, Direct3D12::*, Dxgi::*},
         System::Threading::{CreateEventW, WaitForSingleObject},
     },
     core::Interface,
@@ -25,18 +25,15 @@ struct GpuOwners {
     device: ID3D12Device,
     messages: Validation,
     queue: ID3D12CommandQueue,
-    allocator: ID3D12CommandAllocator,
-    list: ID3D12GraphicsCommandList,
     signature: ID3D12RootSignature,
     pipelines: BTreeMap<&'static str, ID3D12PipelineState>,
     fence: ID3D12Fence,
-    buffers: Vec<ID3D12Resource>,
+    pending: Pending<Frame>,
 }
 
 pub struct Dx12 {
     gpu: GpuOwners,
     event: HANDLE,
-    submitted: u64,
     retirement: Retirement,
 }
 
@@ -76,11 +73,6 @@ impl Dx12 {
                     Type: D3D12_COMMAND_LIST_TYPE_DIRECT,
                     ..Default::default()
                 })?;
-            let allocator: ID3D12CommandAllocator =
-                device.CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT)?;
-            let list: ID3D12GraphicsCommandList =
-                device.CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, &allocator, None)?;
-            list.Close()?;
             let parameters = [
                 (D3D12_ROOT_PARAMETER_TYPE_UAV, 0),
                 (D3D12_ROOT_PARAMETER_TYPE_SRV, 1),
@@ -194,15 +186,12 @@ impl Dx12 {
                     device,
                     messages,
                     queue,
-                    allocator,
-                    list,
                     signature,
                     pipelines,
                     fence,
-                    buffers: Vec::new(),
+                    pending: Pending::new(),
                 },
                 event,
-                submitted: 0,
                 retirement: Retirement::Idle,
             })
         }
@@ -212,200 +201,59 @@ impl Dx12 {
         self.gpu.messages.clone()
     }
 
-    fn buffer(
-        &mut self,
-        size: usize,
-        heap: D3D12_HEAP_TYPE,
-        state: D3D12_RESOURCE_STATES,
-        flags: D3D12_RESOURCE_FLAGS,
-        contents: Option<&[u8]>,
-    ) -> Result<ID3D12Resource> {
+    pub fn submit(&mut self, case: &Case) -> Result<Ticket> {
+        self.retirement.wait_value()?; // Reject a previously unconfirmed/failed attempt; do not wait.
+        let frame = Frame::record(
+            &self.gpu.device,
+            &self.gpu.signature,
+            &self.gpu.pipelines[case.entry],
+            case,
+        )?;
+        let ticket = self.gpu.pending.track(frame)?;
         unsafe {
-            let desc = D3D12_RESOURCE_DESC {
-                Dimension: D3D12_RESOURCE_DIMENSION_BUFFER,
-                Width: size as u64,
-                Height: 1,
-                DepthOrArraySize: 1,
-                MipLevels: 1,
-                SampleDesc: DXGI_SAMPLE_DESC {
-                    Count: 1,
-                    Quality: 0,
-                },
-                Layout: D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
-                Flags: flags,
-                ..Default::default()
-            };
-            let properties = D3D12_HEAP_PROPERTIES {
-                Type: heap,
-                CreationNodeMask: 1,
-                VisibleNodeMask: 1,
-                ..Default::default()
-            };
-            let mut resource = None;
-            self.gpu.device.CreateCommittedResource(
-                &properties,
-                D3D12_HEAP_FLAG_NONE,
-                &desc,
-                state,
-                None,
-                &mut resource,
-            )?;
-            let resource: ID3D12Resource = resource.unwrap();
-            if let Some(contents) = contents {
-                let mut pointer = std::ptr::null_mut();
-                resource.Map(
-                    0,
-                    Some(&D3D12_RANGE { Begin: 0, End: 0 }),
-                    Some(&mut pointer),
-                )?;
-                std::ptr::copy_nonoverlapping(contents.as_ptr(), pointer.cast(), contents.len());
-                resource.Unmap(0, None);
-            }
-            self.gpu.buffers.push(resource.clone());
-            Ok(resource)
+            let list: ID3D12CommandList = self.gpu.pending.get(&ticket)?.list.cast()?;
+            self.retirement = Retirement::Unfenced;
+            self.gpu.queue.ExecuteCommandLists(&[Some(list)]);
+            self.gpu.queue.Signal(&self.gpu.fence, ticket.serial())?;
         }
+        self.gpu.pending.confirm(&ticket)?;
+        self.retirement = Retirement::Signaled(ticket.serial());
+        Ok(ticket)
+    }
+
+    pub fn readback(&mut self, ticket: &Ticket) -> Result<Vec<u8>> {
+        self.gpu.pending.get(ticket)?; // Validate device identity before touching its fence.
+        let latest = self.retirement.wait_value()?;
+        let completed = match self.wait_until(ticket.serial()) {
+            Ok(value) => value,
+            Err(error) => {
+                self.retirement = Retirement::Failed;
+                return Err(error);
+            }
+        };
+        if latest.is_some_and(|value| completed >= value) {
+            self.retirement = Retirement::Idle;
+        }
+        self.gpu
+            .pending
+            .take_completed(ticket, completed)?
+            .readback()
     }
 
     pub fn execute(&mut self, case: &Case) -> Result<Vec<u8>> {
-        unsafe {
-            self.wait()?;
-            self.gpu.buffers.clear();
-            let size = case.destination.len();
-            let destination = self.buffer(
-                size,
-                D3D12_HEAP_TYPE_DEFAULT,
-                D3D12_RESOURCE_STATE_COMMON,
-                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                None,
-            )?;
-            let initial = self.buffer(
-                size,
-                D3D12_HEAP_TYPE_UPLOAD,
-                D3D12_RESOURCE_STATE_GENERIC_READ,
-                D3D12_RESOURCE_FLAG_NONE,
-                Some(&case.destination),
-            )?;
-            let source = self.buffer(
-                case.source.len(),
-                D3D12_HEAP_TYPE_UPLOAD,
-                D3D12_RESOURCE_STATE_GENERIC_READ,
-                D3D12_RESOURCE_FLAG_NONE,
-                Some(&case.source),
-            )?;
-            let params = self.buffer(
-                256,
-                D3D12_HEAP_TYPE_UPLOAD,
-                D3D12_RESOURCE_STATE_GENERIC_READ,
-                D3D12_RESOURCE_FLAG_NONE,
-                Some(bytemuck::bytes_of(&case.params)),
-            )?;
-            let readback = self.buffer(
-                size,
-                D3D12_HEAP_TYPE_READBACK,
-                D3D12_RESOURCE_STATE_COPY_DEST,
-                D3D12_RESOURCE_FLAG_NONE,
-                None,
-            )?;
-            self.gpu.allocator.Reset()?;
-            self.gpu.list.Reset(&self.gpu.allocator, None)?;
-            // Default-heap buffers start COMMON; an explicit transition avoids
-            // relying on the initial state ignored by current D3D12 runtimes.
-            self.transition(
-                &destination,
-                D3D12_RESOURCE_STATE_COMMON,
-                D3D12_RESOURCE_STATE_COPY_DEST,
-            );
-            self.gpu
-                .list
-                .CopyBufferRegion(&destination, 0, &initial, 0, size as u64);
-            self.transition(
-                &destination,
-                D3D12_RESOURCE_STATE_COPY_DEST,
-                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-            );
-            self.gpu.list.SetComputeRootSignature(&self.gpu.signature);
-            self.gpu
-                .list
-                .SetPipelineState(&self.gpu.pipelines[case.entry]);
-            self.gpu
-                .list
-                .SetComputeRootUnorderedAccessView(0, destination.GetGPUVirtualAddress());
-            self.gpu
-                .list
-                .SetComputeRootShaderResourceView(1, source.GetGPUVirtualAddress());
-            self.gpu
-                .list
-                .SetComputeRootConstantBufferView(2, params.GetGPUVirtualAddress());
-            self.gpu
-                .list
-                .Dispatch(case.params.count.div_ceil(64).max(1), 1, 1);
-            self.transition(
-                &destination,
-                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                D3D12_RESOURCE_STATE_COPY_SOURCE,
-            );
-            self.gpu
-                .list
-                .CopyBufferRegion(&readback, 0, &destination, 0, size as u64);
-            self.gpu.list.Close()?;
-            let list: ID3D12CommandList = self.gpu.list.cast()?;
-            self.retirement = Retirement::Unfenced;
-            self.gpu.queue.ExecuteCommandLists(&[Some(list)]);
-            self.submitted += 1;
-            self.gpu.queue.Signal(&self.gpu.fence, self.submitted)?;
-            self.retirement = Retirement::Signaled(self.submitted);
-            self.wait()?;
-            let mut pointer = std::ptr::null_mut();
-            readback.Map(
-                0,
-                Some(&D3D12_RANGE {
-                    Begin: 0,
-                    End: size,
-                }),
-                Some(&mut pointer),
-            )?;
-            let bytes = std::slice::from_raw_parts(pointer.cast::<u8>(), size).to_vec();
-            readback.Unmap(0, Some(&D3D12_RANGE { Begin: 0, End: 0 }));
-            Ok(bytes)
-        }
+        let ticket = self.submit(case)?;
+        self.readback(&ticket)
     }
 
-    fn transition(
-        &self,
-        resource: &ID3D12Resource,
-        before: D3D12_RESOURCE_STATES,
-        after: D3D12_RESOURCE_STATES,
-    ) {
-        unsafe {
-            let mut barrier = D3D12_RESOURCE_BARRIER {
-                Type: D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
-                Anonymous: D3D12_RESOURCE_BARRIER_0 {
-                    Transition: ManuallyDrop::new(D3D12_RESOURCE_TRANSITION_BARRIER {
-                        pResource: ManuallyDrop::new(Some(resource.clone())),
-                        Subresource: D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-                        StateBefore: before,
-                        StateAfter: after,
-                    }),
-                },
-                ..Default::default()
-            };
-            self.gpu
-                .list
-                .ResourceBarrier(std::slice::from_ref(&barrier));
-            ManuallyDrop::drop(&mut (*barrier.Anonymous.Transition).pResource);
-        }
+    pub fn pending_count(&self) -> usize {
+        self.gpu.pending.len()
     }
 
-    fn wait(&mut self) -> Result<()> {
-        let Some(value) = self.retirement.wait_value()? else {
-            return Ok(());
-        };
+    fn wait_until(&self, value: u64) -> Result<u64> {
         unsafe {
             if self.gpu.fence.GetCompletedValue() == u64::MAX {
-                self.retirement = Retirement::Failed;
                 return Err("DX12 device removed".into());
             }
-            self.retirement = Retirement::Failed;
             if self.gpu.fence.GetCompletedValue() < value {
                 self.gpu.fence.SetEventOnCompletion(value, self.event)?;
                 if WaitForSingleObject(self.event, 30_000) != WAIT_OBJECT_0 {
@@ -413,15 +261,38 @@ impl Dx12 {
                 }
             }
             self.gpu.device.GetDeviceRemovedReason()?;
-            self.retirement = Retirement::Idle;
-            Ok(())
+            let completed = self.gpu.fence.GetCompletedValue();
+            if completed == u64::MAX || completed < value {
+                return Err("DX12 invalid completion".into());
+            }
+            Ok(completed)
         }
+    }
+
+    fn wait(&mut self) -> Result<()> {
+        if let Some(value) = self.retirement.wait_value()? {
+            self.retirement = Retirement::Failed;
+            self.wait_until(value)?;
+            self.retirement = Retirement::Idle;
+        }
+        Ok(())
     }
 }
 
 impl Drop for Dx12 {
     fn drop(&mut self) {
-        if self.wait().is_err() {
+        if let Err(error) = self.wait() {
+            eprintln!("native DX12 cleanup could not confirm completion: {error}");
+            unsafe {
+                let _ = self.gpu.messages.queue.AddMessage(
+                    D3D12_MESSAGE_CATEGORY_EXECUTION,
+                    D3D12_MESSAGE_SEVERITY_ERROR,
+                    D3D12_MESSAGE_ID_UNKNOWN,
+                    windows::core::s!(
+                        "native DX12 cleanup could not confirm completion; resources quarantined"
+                    ),
+                );
+            }
             // This is a disposable verification device. Unknown in-flight work
             // cannot be freed safely or waited on a fabricated fence. Quarantine
             // all owners until process teardown, preserving the original error.
@@ -437,7 +308,7 @@ impl Drop for Dx12 {
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn failed_retirement_retains_fence_owner_until_process_exit() -> Result<()> {
-    if isolated_fault_test("dx12::failed_retirement_retains_fence_owner_until_process_exit")? {
+    if super::isolation::run("dx12::failed_retirement_retains_fence_owner_until_process_exit")? {
         return Ok(());
     }
     // COM reference counts are used only in this isolated lifetime regression.
@@ -458,8 +329,16 @@ fn failed_retirement_retains_fence_owner_until_process_exit() -> Result<()> {
         let mut context = Dx12::new(&std::env::var("TILEINK_NATIVE_GPU")?)?;
         let observer: windows::core::IUnknown = context.gpu.fence.cast()?;
         let before = references(&observer);
+        let report = context.validation_queue();
+        let message_count = unsafe { report.queue.GetNumStoredMessages() };
         context.retirement = state;
         drop(context);
+        if released == 0 {
+            assert!(
+                unsafe { report.queue.GetNumStoredMessages() } > message_count,
+                "failed teardown must be observable"
+            );
+        }
         assert_eq!(references(&observer), before - released);
     }
     Ok(())
@@ -468,7 +347,7 @@ fn failed_retirement_retains_fence_owner_until_process_exit() -> Result<()> {
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn rejected_cache_diagnostics_do_not_hide_other_attempts() -> Result<()> {
-    if isolated_fault_test("dx12::rejected_cache_diagnostics_do_not_hide_other_attempts")? {
+    if super::isolation::run("dx12::rejected_cache_diagnostics_do_not_hide_other_attempts")? {
         return Ok(());
     }
     let context = Dx12::new(&std::env::var("TILEINK_NATIVE_GPU")?)?;
@@ -492,27 +371,4 @@ fn rejected_cache_diagnostics_do_not_hide_other_attempts() -> Result<()> {
         assert!(assert_valid(&report).is_err());
     }
     Ok(())
-}
-
-fn isolated_fault_test(name: &str) -> Result<bool> {
-    if std::env::var("TILEINK_NATIVE_FAULT_WORKER").ok().as_deref() == Some(name) {
-        return Ok(false);
-    }
-    // D3D12 may share device/InfoQueue objects between contexts. Deliberate
-    // diagnostic injection and quarantined owners must die with a child process
-    // before ordinary validation runs, without clearing any validation messages.
-    let status = std::process::Command::new(std::env::current_exe()?)
-        .args([
-            "--ignored",
-            "--exact",
-            name,
-            "--test-threads=1",
-            "--nocapture",
-        ])
-        .env("TILEINK_NATIVE_FAULT_WORKER", name)
-        .status()?;
-    if !status.success() {
-        return Err(format!("isolated GPU fault test failed: {name}: {status}").into());
-    }
-    Ok(true)
 }

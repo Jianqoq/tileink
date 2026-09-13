@@ -9,6 +9,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- Extend native verification adapters with queued per-frame ownership, explicit
+  completion/readback tickets and bounded teardown. Exact reverse-order results,
+  foreign-ticket rejection and failure cleanup have permanent regressions.
+
 - Add opt-in native HLSL builds with persistent content-addressed DXIL/SPIR-V
   artifacts, include/toolchain invalidation, strict minimum ABI reflection and
   independent MSL probe source. Default wgpu builds require no new tools.

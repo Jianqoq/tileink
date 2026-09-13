@@ -276,6 +276,11 @@ Tileink 层 resize benchmark 覆盖渲染目标变化。窗口 swapchain 的 acq
 
 ### M3 — 两个原生 Adapter 的最小纵向切片
 
+当前已验证的子切片：[Windows 连续提交与资源生命周期](docs/native/m3-queued-submissions.md)。
+两条原生测试适配器可先排队 42 批次再逆序 readback，验证上下文绑定令牌与完成后回收。
+生产 `BatchAdapter` 接入、硬件纹理/数值探针和恢复语义仍未完成，以下整项继续保持待办。
+
+
 - [ ] 先接通 DX12 的 device、资源、pipeline、dispatch、提交、完成、readback；尽早用相同 Interface 接通 Vulkan，验证边界确实容纳两种 API。
 - [ ] 执行 clear/copy、布局哨兵、简单着色以及采样/量化/运算顺序风险探针；加入资源状态、GPU 生命周期与错误 device 测试。
 - [ ] 四路同 GPU、同一帧序列零差异运行，重复检查确定性；使用 DX12 debug layer 和 Vulkan validation 检查原生路径。

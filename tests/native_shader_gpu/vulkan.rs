@@ -1,4 +1,8 @@
-//! Real native Vulkan compute execution for the M2 ABI probes.
+#[path = "vulkan_frame.rs"]
+mod frame;
+use super::submissions::{Pending, Ticket};
+use frame::Frame;
+// Real native Vulkan compute execution for the M2 ABI probes.
 use super::{Result, cases::Case};
 use ash::{Entry, vk};
 use std::{collections::BTreeMap, ffi::CString};
@@ -17,12 +21,12 @@ pub struct Vulkan {
     device: ash::Device,
     memory: vk::PhysicalDeviceMemoryProperties,
     queue: vk::Queue,
-    pool: vk::CommandPool,
-    descriptors: vk::DescriptorPool,
     bindings: vk::DescriptorSetLayout,
     layout: vk::PipelineLayout,
     pipelines: BTreeMap<&'static str, vk::Pipeline>,
-    buffers: Vec<Buffer>,
+    pending: Pending<Frame>,
+    family: u32,
+    failed: bool,
 }
 
 impl Vulkan {
@@ -110,18 +114,14 @@ impl Vulkan {
                 device,
                 memory,
                 queue,
-                pool: vk::CommandPool::null(),
-                descriptors: vk::DescriptorPool::null(),
                 bindings: vk::DescriptorSetLayout::null(),
                 layout: vk::PipelineLayout::null(),
                 pipelines: BTreeMap::new(),
-                buffers: Vec::new(),
+                pending: Pending::new(),
+                family,
+                failed: false,
             };
             this.messenger = this.debug.create_debug_utils_messenger(&debug_info, None)?;
-            this.pool = this.device.create_command_pool(
-                &vk::CommandPoolCreateInfo::default().queue_family_index(family),
-                None,
-            )?;
             let bindings = [
                 vk::DescriptorSetLayoutBinding::default()
                     .binding(0)
@@ -146,22 +146,6 @@ impl Vulkan {
             let layouts = [this.bindings];
             this.layout = this.device.create_pipeline_layout(
                 &vk::PipelineLayoutCreateInfo::default().set_layouts(&layouts),
-                None,
-            )?;
-            let sizes = [
-                vk::DescriptorPoolSize {
-                    ty: vk::DescriptorType::STORAGE_BUFFER,
-                    descriptor_count: 2,
-                },
-                vk::DescriptorPoolSize {
-                    ty: vk::DescriptorType::UNIFORM_BUFFER,
-                    descriptor_count: 1,
-                },
-            ];
-            this.descriptors = this.device.create_descriptor_pool(
-                &vk::DescriptorPoolCreateInfo::default()
-                    .max_sets(1)
-                    .pool_sizes(&sizes),
                 None,
             )?;
             for artifact in tileink::NATIVE_SHADER_ARTIFACTS
@@ -270,192 +254,94 @@ impl Vulkan {
         self.messages.clone()
     }
 
-    fn buffer(&mut self, bytes: &[u8], usage: vk::BufferUsageFlags) -> Result<vk::Buffer> {
-        unsafe {
-            let buffer = self.device.create_buffer(
-                &vk::BufferCreateInfo::default()
-                    .size(bytes.len() as u64)
-                    .usage(usage)
-                    .sharing_mode(vk::SharingMode::EXCLUSIVE),
-                None,
-            )?;
-            self.buffers.push(Buffer {
-                buffer,
-                memory: vk::DeviceMemory::null(),
-            });
-            let requirements = self.device.get_buffer_memory_requirements(buffer);
-            let index = (0..self.memory.memory_type_count)
-                .find(|i| {
-                    requirements.memory_type_bits & (1 << i) != 0
-                        && self.memory.memory_types[*i as usize]
-                            .property_flags
-                            .contains(
-                                vk::MemoryPropertyFlags::HOST_VISIBLE
-                                    | vk::MemoryPropertyFlags::HOST_COHERENT,
-                            )
-                })
-                .ok_or("host coherent memory unavailable")?;
-            let memory = self.device.allocate_memory(
-                &vk::MemoryAllocateInfo::default()
-                    .allocation_size(requirements.size)
-                    .memory_type_index(index),
-                None,
-            )?;
-            self.buffers.last_mut().unwrap().memory = memory;
-            self.device.bind_buffer_memory(buffer, memory, 0)?;
-            let pointer = self.device.map_memory(
-                memory,
-                0,
-                bytes.len() as u64,
-                vk::MemoryMapFlags::empty(),
-            )?;
-            std::ptr::copy_nonoverlapping(bytes.as_ptr(), pointer.cast(), bytes.len());
-            self.device.unmap_memory(memory);
-            Ok(buffer)
+    pub fn submit(&mut self, case: &Case) -> Result<Ticket> {
+        if self.failed {
+            return Err("Vulkan context failed".into());
         }
-    }
-
-    pub fn execute(&mut self, case: &Case) -> Result<Vec<u8>> {
+        let frame = Frame::record(
+            &self.device,
+            self.memory,
+            self.family,
+            self.bindings,
+            self.layout,
+            self.pipelines[case.entry],
+            case,
+        )?;
+        let ticket = self.pending.track(frame)?;
+        let frame = self.pending.get(&ticket)?;
+        let commands = [frame.command];
         unsafe {
-            self.device
-                .reset_command_pool(self.pool, vk::CommandPoolResetFlags::empty())?;
-            self.device
-                .reset_descriptor_pool(self.descriptors, vk::DescriptorPoolResetFlags::empty())?;
-            self.clear_buffers();
-            let destination =
-                self.buffer(&case.destination, vk::BufferUsageFlags::STORAGE_BUFFER)?;
-            let source = self.buffer(&case.source, vk::BufferUsageFlags::STORAGE_BUFFER)?;
-            let params = self.buffer(
-                bytemuck::bytes_of(&case.params),
-                vk::BufferUsageFlags::UNIFORM_BUFFER,
-            )?;
-            let layouts = [self.bindings];
-            let set = self.device.allocate_descriptor_sets(
-                &vk::DescriptorSetAllocateInfo::default()
-                    .descriptor_pool(self.descriptors)
-                    .set_layouts(&layouts),
-            )?[0];
-            let infos = [
-                [vk::DescriptorBufferInfo {
-                    buffer: destination,
-                    offset: 0,
-                    range: case.destination.len() as u64,
-                }],
-                [vk::DescriptorBufferInfo {
-                    buffer: source,
-                    offset: 0,
-                    range: case.source.len() as u64,
-                }],
-                [vk::DescriptorBufferInfo {
-                    buffer: params,
-                    offset: 0,
-                    range: 32,
-                }],
-            ];
-            let writes = [
-                vk::WriteDescriptorSet::default()
-                    .dst_set(set)
-                    .dst_binding(0)
-                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                    .buffer_info(&infos[0]),
-                vk::WriteDescriptorSet::default()
-                    .dst_set(set)
-                    .dst_binding(1)
-                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                    .buffer_info(&infos[1]),
-                vk::WriteDescriptorSet::default()
-                    .dst_set(set)
-                    .dst_binding(2)
-                    .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                    .buffer_info(&infos[2]),
-            ];
-            self.device.update_descriptor_sets(&writes, &[]);
-            let command = self.device.allocate_command_buffers(
-                &vk::CommandBufferAllocateInfo::default()
-                    .command_pool(self.pool)
-                    .level(vk::CommandBufferLevel::PRIMARY)
-                    .command_buffer_count(1),
-            )?[0];
-            self.device
-                .begin_command_buffer(command, &vk::CommandBufferBeginInfo::default())?;
-            self.device.cmd_bind_pipeline(
-                command,
-                vk::PipelineBindPoint::COMPUTE,
-                self.pipelines[case.entry],
-            );
-            self.device.cmd_bind_descriptor_sets(
-                command,
-                vk::PipelineBindPoint::COMPUTE,
-                self.layout,
-                0,
-                &[set],
-                &[],
-            );
-            self.device
-                .cmd_dispatch(command, case.params.count.div_ceil(64).max(1), 1, 1);
-            let barrier = [vk::BufferMemoryBarrier::default()
-                .src_access_mask(vk::AccessFlags::SHADER_WRITE)
-                .dst_access_mask(vk::AccessFlags::HOST_READ)
-                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .buffer(destination)
-                .offset(0)
-                .size(vk::WHOLE_SIZE)];
-            self.device.cmd_pipeline_barrier(
-                command,
-                vk::PipelineStageFlags::COMPUTE_SHADER,
-                vk::PipelineStageFlags::HOST,
-                vk::DependencyFlags::empty(),
-                &[],
-                &barrier,
-                &[],
-            );
-            self.device.end_command_buffer(command)?;
-            let commands = [command];
-            self.device.queue_submit(
+            if let Err(error) = self.device.queue_submit(
                 self.queue,
                 &[vk::SubmitInfo::default().command_buffers(&commands)],
-                vk::Fence::null(),
-            )?;
-            self.device.queue_wait_idle(self.queue)?;
-            let memory = self.buffers[0].memory;
-            let pointer = self.device.map_memory(
-                memory,
-                0,
-                case.destination.len() as u64,
-                vk::MemoryMapFlags::empty(),
-            )?;
-            let output =
-                std::slice::from_raw_parts(pointer.cast::<u8>(), case.destination.len()).to_vec();
-            self.device.unmap_memory(memory);
-            self.device.free_command_buffers(self.pool, &commands);
-            Ok(output)
-        }
-    }
-
-    fn clear_buffers(&mut self) {
-        unsafe {
-            for buffer in self.buffers.drain(..) {
-                self.device.destroy_buffer(buffer.buffer, None);
-                self.device.free_memory(buffer.memory, None);
+                frame.fence,
+            ) {
+                self.failed = true;
+                return Err(error.into());
             }
         }
+        self.pending.confirm(&ticket)?;
+        Ok(ticket)
+    }
+    pub fn readback(&mut self, ticket: &Ticket) -> Result<Vec<u8>> {
+        let frame = self.pending.get(ticket)?;
+        if self.failed {
+            return Err("Vulkan context failed".into());
+        }
+        unsafe {
+            if let Err(error) = self
+                .device
+                .wait_for_fences(&[frame.fence], true, 30_000_000_000)
+            {
+                self.failed = true;
+                return Err(error.into());
+            }
+        }
+        self.pending
+            .take_completed(ticket, ticket.serial())?
+            .readback()
+    }
+    pub fn execute(&mut self, case: &Case) -> Result<Vec<u8>> {
+        let ticket = self.submit(case)?;
+        self.readback(&ticket)
+    }
+    pub fn pending_count(&self) -> usize {
+        self.pending.len()
     }
 }
 
 impl Drop for Vulkan {
     fn drop(&mut self) {
         unsafe {
-            let _ = self.device.device_wait_idle();
-            self.clear_buffers();
+            if !super::submissions::can_release_after_wait(self.failed, || {
+                let fences: Vec<_> = self.pending.values().map(|frame| frame.fence).collect();
+                if fences.is_empty() {
+                    Ok(())
+                } else {
+                    self.device.wait_for_fences(&fences, true, 30_000_000_000)
+                }
+            }) {
+                // Unknown completion cannot release frame owners or callback data.
+                // This disposable verification process releases quarantined objects
+                // at exit; no production device-loss recovery is claimed here.
+                self.messages
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .push(
+                        "native Vulkan cleanup could not confirm completion; resources quarantined"
+                            .into(),
+                    );
+                self.pending.quarantine();
+                std::mem::forget((self._entry.clone(), self.messages.clone()));
+                return;
+            }
+            self.pending.clear_after_completion();
             for pipeline in self.pipelines.values() {
                 self.device.destroy_pipeline(*pipeline, None);
             }
-            self.device.destroy_descriptor_pool(self.descriptors, None);
             self.device.destroy_pipeline_layout(self.layout, None);
             self.device
                 .destroy_descriptor_set_layout(self.bindings, None);
-            self.device.destroy_command_pool(self.pool, None);
             self.device.destroy_device(None);
             self.debug
                 .destroy_debug_utils_messenger(self.messenger, None);
@@ -484,4 +370,24 @@ unsafe extern "system" fn validation_callback(
         }
     }
     vk::FALSE
+}
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn failed_teardown_is_reported() -> Result<()> {
+    if super::isolation::run("vulkan::failed_teardown_is_reported")? {
+        return Ok(());
+    }
+    let mut context = Vulkan::new(&std::env::var("TILEINK_NATIVE_GPU")?)?;
+    let messages = context.validation_messages();
+    context.failed = true;
+    drop(context);
+    assert!(
+        messages
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|m| m.contains("cleanup could not confirm completion"))
+    );
+    Ok(())
 }
