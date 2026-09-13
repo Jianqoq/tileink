@@ -25,8 +25,8 @@ mod benchmark;
 #[cfg(feature = "bench-internals")]
 pub use benchmark::{GpuDirtyRangesBenchmark, TileDrawBinsBenchmark};
 
-pub(crate) const SCAN_CHUNK_SIZE: u32 = 256;
 use super::gpu_constants::CUMSUM_CHUNK_SIZE;
+use super::gpu_constants::SCAN_CHUNK_SIZE;
 pub(crate) const COARSE_CHUNK_SIZE: u32 = 256;
 pub(crate) const COARSE_BIN_TILES: u32 = 16;
 pub(crate) const TILE_DRAW_PAGE_WORDS: usize = COARSE_CHUNK_SIZE as usize + 1;

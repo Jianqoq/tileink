@@ -24,7 +24,7 @@ mod dxil_provenance;
 mod shader_variants;
 
 #[cfg(feature = "wgpu")]
-const WGPU_SHADER_ENTRIES: [(&str, &str); 15] = [
+const WGPU_SHADER_ENTRIES: [(&str, &str); 16] = [
     ("scan/clear.wgsl", "tileink_wgpu_scan_clear.wgsl"),
     ("scan/count.wgsl", "tileink_wgpu_scan_count.wgsl"),
     (
@@ -41,6 +41,7 @@ const WGPU_SHADER_ENTRIES: [(&str, &str); 15] = [
     ),
     ("scan/emit.wgsl", "tileink_wgpu_scan_emit.wgsl"),
     ("cumsum.wgsl", "tileink_wgpu_cumsum.wgsl"),
+    ("range_scatter.wgsl", "tileink_wgpu_range_scatter.wgsl"),
     ("coarse/count.wgsl", "tileink_wgpu_coarse_count.wgsl"),
     ("coarse/prefix.wgsl", "tileink_wgpu_coarse_prefix.wgsl"),
     ("coarse/emit.wgsl", "tileink_wgpu_coarse_emit.wgsl"),
@@ -74,10 +75,23 @@ fn build_wgpu() {
     let mut fine_portable_source = None;
     for (entry, output) in WGPU_SHADER_ENTRIES {
         let mut source = expand_shader(&shader_dir.join(entry), &mut Vec::new());
+        if entry == "range_scatter.wgsl" {
+            source = format!(
+                "const RANGE_SCATTER_WORKGROUP_SIZE: u32 = {}u;\n{source}",
+                gpu_constants::RANGE_SCATTER_WORKGROUP_SIZE
+            );
+        }
         if entry == "cumsum.wgsl" {
             source = format!(
                 "const CUMSUM_CHUNK_SIZE: u32 = {}u;\n{source}",
                 gpu_constants::CUMSUM_CHUNK_SIZE
+            );
+        }
+        if entry.starts_with("scan/") {
+            source = format!(
+                "const SCAN_CHUNK_SIZE: u32 = {}u;\nconst SCAN_TILE_SIZE: u32 = {}u;\n{source}",
+                gpu_constants::SCAN_CHUNK_SIZE,
+                gpu_constants::TILE_SIZE
             );
         }
         if entry == "fine_web.wgsl" {

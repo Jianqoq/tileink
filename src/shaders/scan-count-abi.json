@@ -1,0 +1,113 @@
+{
+  "schema": 2,
+  "programs": [
+    "scan_count"
+  ],
+  "workgroup": [
+    256,
+    1,
+    1
+  ],
+  "descriptor_set": 0,
+  "resources": {
+    "config": {
+      "binding": 0,
+      "kind": "uniform",
+      "size": 44,
+      "fields": [
+        {
+          "name": "clear_len",
+          "offset": 0,
+          "type": "u32"
+        },
+        {
+          "name": "backdrop_len",
+          "offset": 4,
+          "type": "u32"
+        },
+        {
+          "name": "path_count",
+          "offset": 8,
+          "type": "u32"
+        },
+        {
+          "name": "scan_chunk_count",
+          "offset": 12,
+          "type": "u32"
+        },
+        {
+          "name": "line_count",
+          "offset": 16,
+          "type": "u32"
+        },
+        {
+          "name": "segment_capacity",
+          "offset": 20,
+          "type": "u32"
+        },
+        {
+          "name": "incremental",
+          "offset": 24,
+          "type": "u32"
+        },
+        {
+          "name": "line_base",
+          "offset": 28,
+          "type": "u32"
+        },
+        {
+          "name": "path_base",
+          "offset": 32,
+          "type": "u32"
+        },
+        {
+          "name": "chunk_base",
+          "offset": 36,
+          "type": "u32"
+        },
+        {
+          "name": "backdrop_base",
+          "offset": 40,
+          "type": "u32"
+        }
+      ]
+    },
+    "lines": {
+      "binding": 1,
+      "kind": "read",
+      "size": 4
+    },
+    "path_records": {
+      "binding": 2,
+      "kind": "read",
+      "size": 4
+    },
+    "backdrops": {
+      "binding": 3,
+      "kind": "write",
+      "size": 4
+    },
+    "segment_tile_counts": {
+      "binding": 4,
+      "kind": "write",
+      "size": 4
+    },
+    "active_indices": {
+      "binding": 5,
+      "kind": "read",
+      "size": 4
+    }
+  },
+  "entry_resources": {
+    "scan_count": [
+      "config",
+      "lines",
+      "path_records",
+      "backdrops",
+      "segment_tile_counts",
+      "active_indices"
+    ]
+  },
+  "record_abi": "scan-records-abi.json",
+  "reference": "scan/count.wgsl"
+}

@@ -1,9 +1,9 @@
 // Scan/cumsum dispatches are ordered; disjoint row chunks give each backdrop one writer.
 struct CumsumConfig {
     row_count: u32,
+    chunk_count: u32,
     _pad0: u32,
     _pad1: u32,
-    _pad2: u32,
 };
 
 @group(0) @binding(0) var<uniform> config: CumsumConfig;
@@ -29,6 +29,10 @@ fn cumsum_prefix_chunks(
     @builtin(local_invocation_id) local_id: vec3<u32>,
 ) {
     let chunk_ix = linear_workgroup_index(workgroup_id, num_workgroups);
+    // Buffer capacity can contain stale chunks: guard the logical count before lookup.
+    if (chunk_ix >= config.chunk_count) {
+        return;
+    }
     let lane = local_id.x;
     let chunk_offset = chunk_backdrop_offsets[chunk_ix];
     let chunk_len = chunk_lens[chunk_ix];
@@ -107,6 +111,10 @@ fn cumsum_apply_chunk_offsets(
     @builtin(local_invocation_id) local_id: vec3<u32>,
 ) {
     let chunk_ix = linear_workgroup_index(workgroup_id, num_workgroups);
+    // Buffer capacity can contain stale chunks: guard the logical count before lookup.
+    if (chunk_ix >= config.chunk_count) {
+        return;
+    }
     let lane = local_id.x;
     let chunk_len = chunk_lens[chunk_ix];
     if (lane >= chunk_len) {

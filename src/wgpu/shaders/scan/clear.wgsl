@@ -9,7 +9,7 @@
 @group(0) @binding(7) var<storage, read_write> chunk_offsets: array<u32>;
 @group(0) @binding(8) var<storage, read> active_indices: array<u32>;
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(SCAN_CHUNK_SIZE)
 // Dense and active scan plans assign each cleared record to exactly one invocation.
 fn scan_clear(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let ix = global_id.x;

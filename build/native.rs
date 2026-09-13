@@ -8,6 +8,8 @@ mod cache;
 mod dxc;
 #[path = "native/dxil_reflection.rs"]
 mod dxil_reflection;
+#[path = "native/program.rs"]
+mod program;
 #[path = "native/source.rs"]
 mod source;
 #[path = "native/spirv.rs"]
@@ -15,7 +17,6 @@ mod spirv;
 
 use cache::{CacheKey, ShaderCache};
 use dxc::{Dxc, digest};
-use source::SourceGraph;
 use std::{
     env, fs, io,
     path::{Path, PathBuf},
@@ -38,6 +39,7 @@ pub fn generate() -> io::Result<()> {
         "build/native/compute_abi.rs",
         "build/native/cache.rs",
         "build/native/source.rs",
+        "build/native/program.rs",
         "build/native/dxc.rs",
         "build/native/spirv.rs",
         "build/native/dxil_reflection.rs",
@@ -76,39 +78,12 @@ pub fn generate() -> io::Result<()> {
         } else {
             root.join(cache_root)
         });
-        for (family, source, abi_path) in [
-            ("probe", "probes.hlsl", "src/shaders/probe-abi.json"),
-            (
-                "range-scatter",
-                "range_scatter.hlsl",
-                "src/shaders/range-scatter-abi.json",
-            ),
-            ("cumsum", "cumsum.hlsl", "src/shaders/cumsum-abi.json"),
-        ] {
-            let mut graph = SourceGraph::load(&root.join("src/shaders/hlsl"), source)?;
-            for name in graph.files.keys() {
-                println!(
-                    "cargo:rerun-if-changed={}",
-                    root.join("src/shaders/hlsl").join(name).display()
-                );
-            }
-            if family == "cumsum" {
-                graph.expanded = format!(
-                    "static const uint CUMSUM_CHUNK_SIZE = {}u;\n{}",
-                    crate::gpu_constants::CUMSUM_CHUNK_SIZE,
-                    graph.expanded
-                );
-            }
-            let abi = fs::read(root.join(abi_path))?;
-            let description: serde_json::Value = serde_json::from_slice(&abi)?;
-            abi::validate(&description)?;
-            if family == "cumsum"
-                && description["workgroup"][0] != crate::gpu_constants::CUMSUM_CHUNK_SIZE
-            {
-                return Err(io::Error::other(
-                    "cumsum ABI workgroup differs from shared algorithm constant",
-                ));
-            }
+        for &(family, source, abi_path) in program::FAMILIES {
+            let program::Prepared {
+                graph,
+                description,
+                abi,
+            } = program::prepare(&root, family, source, abi_path)?;
             let programs = description["programs"]
                 .as_array()
                 .ok_or_else(|| io::Error::other("missing native program inventory"))?;

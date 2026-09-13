@@ -13,8 +13,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "scan_clear",
+      "hlsl_source": "src/shaders/hlsl/scan/clear.hlsl",
+      "native_abi": "src/shaders/scan-clear-abi.json",
+      "verification": "docs/native/m4-scan.md"
     },
     {
       "source": "scan/count.wgsl",
@@ -25,8 +29,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "scan_count",
+      "hlsl_source": "src/shaders/hlsl/scan/count.hlsl",
+      "native_abi": "src/shaders/scan-count-abi.json",
+      "verification": "docs/native/m4-scan.md"
     },
     {
       "source": "scan/prefix_chunks.wgsl",
@@ -37,8 +45,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "scan_prefix_chunks",
+      "hlsl_source": "src/shaders/hlsl/scan/prefix_chunks.hlsl",
+      "native_abi": "src/shaders/scan-prefix-chunks-abi.json",
+      "verification": "docs/native/m4-scan.md"
     },
     {
       "source": "scan/chunk_offsets.wgsl",
@@ -49,8 +61,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "scan_chunk_offsets",
+      "hlsl_source": "src/shaders/hlsl/scan/chunk_offsets.hlsl",
+      "native_abi": "src/shaders/scan-chunk-offsets-abi.json",
+      "verification": "docs/native/m4-scan.md"
     },
     {
       "source": "scan/apply_chunk_offsets.wgsl",
@@ -61,8 +77,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "scan_apply_chunk_offsets",
+      "hlsl_source": "src/shaders/hlsl/scan/apply_chunk_offsets.hlsl",
+      "native_abi": "src/shaders/scan-apply-chunk-offsets-abi.json",
+      "verification": "docs/native/m4-scan.md"
     },
     {
       "source": "scan/emit.wgsl",
@@ -73,8 +93,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "scan_emit",
+      "hlsl_source": "src/shaders/hlsl/scan/emit.hlsl",
+      "native_abi": "src/shaders/scan-emit-abi.json",
+      "verification": "docs/native/m4-scan.md"
     },
     {
       "source": "cumsum.wgsl",

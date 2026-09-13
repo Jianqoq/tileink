@@ -1531,3 +1531,15 @@ Clippy 已通过；3471 张既有 PNG 无变化。运行时禁用 DXC 可执行�
 - 33 个原生 runtime 测试含实际 GPU 均通过；移除 DXC 可执行路径后同样通过，pipeline 编译数为零。
 - 全 SVG 与 examples native/portable 通过，3471 张 PNG 文件摘要与旧基线一致。
 - 详见 [cumsum 实现和验证](docs/native/m4-cumsum.md)。共享资源池与完整 NativeRenderer 接入仍在 M4 后续范围。
+
+## Windows M4 scan continuation — 2026-09-13
+
+- Six scan HLSL entries pass actual four-route exact-byte tests; current inventory
+  is 10/179 kernel-validated, with 169 entries and full NativeRenderer integration
+  remaining. See [scan scope and verification](docs/native/m4-scan.md).
+- Algorithm constants now share one Rust source across host planning and generated
+  HLSL/WGSL. API alignments retain their own SDK/device definitions.
+- Fixed scan/cumsum stale-metadata accesses in padded WGSL groups with red/green
+  four-route regressions. All 41 runtime tests and the no-DXC executable run pass.
+- Full release/CPU-only tests, feature checks, strict Clippy and review pass. Full
+  existing SVG/examples preserve all 3471 PNG hashes. No performance run was made.

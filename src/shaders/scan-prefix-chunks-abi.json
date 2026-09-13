@@ -1,9 +1,7 @@
 {
   "schema": 2,
   "programs": [
-    "cumsum_prefix_chunks",
-    "cumsum_chunk_offsets",
-    "cumsum_apply_chunk_offsets"
+    "scan_prefix_chunks"
   ],
   "workgroup": [
     256,
@@ -15,69 +13,95 @@
     "config": {
       "binding": 0,
       "kind": "uniform",
-      "size": 16,
+      "size": 44,
       "fields": [
         {
-          "name": "row_count",
+          "name": "clear_len",
           "offset": 0,
           "type": "u32"
         },
         {
-          "name": "chunk_count",
+          "name": "backdrop_len",
           "offset": 4,
           "type": "u32"
         },
         {
-          "name": "_pad0",
+          "name": "path_count",
           "offset": 8,
           "type": "u32"
         },
         {
-          "name": "_pad1",
+          "name": "scan_chunk_count",
           "offset": 12,
+          "type": "u32"
+        },
+        {
+          "name": "line_count",
+          "offset": 16,
+          "type": "u32"
+        },
+        {
+          "name": "segment_capacity",
+          "offset": 20,
+          "type": "u32"
+        },
+        {
+          "name": "incremental",
+          "offset": 24,
+          "type": "u32"
+        },
+        {
+          "name": "line_base",
+          "offset": 28,
+          "type": "u32"
+        },
+        {
+          "name": "path_base",
+          "offset": 32,
+          "type": "u32"
+        },
+        {
+          "name": "chunk_base",
+          "offset": 36,
+          "type": "u32"
+        },
+        {
+          "name": "backdrop_base",
+          "offset": 40,
           "type": "u32"
         }
       ]
     },
-    "chunk_backdrop_offsets": {
+    "scan_chunks": {
       "binding": 1,
       "kind": "read",
       "size": 4
     },
-    "chunk_lens": {
+    "segment_ranges": {
       "binding": 2,
-      "kind": "read",
+      "kind": "write",
       "size": 4
     },
-    "row_chunk_starts": {
+    "segment_tile_counts": {
       "binding": 3,
       "kind": "read",
       "size": 4
     },
-    "row_chunk_ends": {
-      "binding": 4,
-      "kind": "read",
-      "size": 4
-    },
-    "backdrops": {
-      "binding": 5,
-      "kind": "write",
-      "size": 4
-    },
     "chunk_totals": {
-      "binding": 6,
+      "binding": 4,
       "kind": "write",
       "size": 4
     },
-    "chunk_offsets": {
-      "binding": 7,
-      "kind": "write",
+    "active_indices": {
+      "binding": 5,
+      "kind": "read",
       "size": 4
     },
     "dispatch_grid": {
       "binding": 31,
       "kind": "uniform",
       "size": 16,
+      "internal": true,
       "fields": [
         {
           "name": "x",
@@ -99,35 +123,20 @@
           "offset": 12,
           "type": "u32"
         }
-      ],
-      "internal": true
+      ]
     }
   },
   "entry_resources": {
-    "cumsum_prefix_chunks": [
+    "scan_prefix_chunks": [
       "config",
-      "chunk_backdrop_offsets",
-      "chunk_lens",
-      "backdrops",
+      "scan_chunks",
+      "segment_ranges",
+      "segment_tile_counts",
       "chunk_totals",
-      "dispatch_grid"
-    ],
-    "cumsum_chunk_offsets": [
-      "config",
-      "row_chunk_starts",
-      "row_chunk_ends",
-      "chunk_totals",
-      "chunk_offsets"
-    ],
-    "cumsum_apply_chunk_offsets": [
-      "config",
-      "chunk_backdrop_offsets",
-      "chunk_lens",
-      "backdrops",
-      "chunk_offsets",
+      "active_indices",
       "dispatch_grid"
     ]
   },
-  "reference": "cumsum.wgsl",
-  "notes": "Native and WGSL configs share row_count and chunk_count. Logical chunk-count guards prevent padded dispatch groups from processing stale metadata within retained buffer capacity."
+  "record_abi": "scan-records-abi.json",
+  "reference": "scan/prefix_chunks.wgsl"
 }

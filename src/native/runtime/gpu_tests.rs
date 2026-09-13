@@ -120,3 +120,15 @@ mod scatter;
 
 #[path = "tests/cumsum_gpu.rs"]
 mod cumsum;
+
+#[path = "tests/scan_gpu.rs"]
+mod scan;
+
+#[path = "tests/scan_count_gpu.rs"]
+mod scan_count;
+
+#[path = "tests/scan_emit_gpu.rs"]
+mod scan_emit;
+
+#[path = "tests/padded_tail.rs"]
+mod padded_tail;

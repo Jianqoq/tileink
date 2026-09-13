@@ -6,7 +6,7 @@
 @group(0) @binding(4) var<storage, read_write> segments: array<LineSegment>;
 @group(0) @binding(5) var<storage, read> active_indices: array<u32>;
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(SCAN_CHUNK_SIZE)
 fn scan_emit(@builtin(global_invocation_id) global_id: vec3<u32>) {
     if (global_id.x >= config.line_count) {
         return;
@@ -46,7 +46,7 @@ fn scan_emit(@builtin(global_invocation_id) global_id: vec3<u32>) {
         xy1y = p0y;
     }
 
-    let tile_scale = 0.0625;
+    let tile_scale = 1.0 / f32(SCAN_TILE_SIZE);
     let s0x = xy0x * tile_scale;
     let s0y = xy0y * tile_scale;
     let s1x = xy1x * tile_scale;
@@ -198,7 +198,7 @@ fn write_clipped_segment(
     tile_x: i32,
     tile_y: i32,
 ) {
-    let tile_size = 16.0;
+    let tile_size = f32(SCAN_TILE_SIZE);
     let tile_min_x = f32(tile_x) * tile_size;
     let tile_min_y = f32(tile_y) * tile_size;
     let tile_max_x = tile_min_x + tile_size;

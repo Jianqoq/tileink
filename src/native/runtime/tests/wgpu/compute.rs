@@ -27,6 +27,27 @@ impl Reference {
                 "cumsum_prefix_chunks" | "cumsum_chunk_offsets" | "cumsum_apply_chunk_offsets" => {
                     include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_cumsum.wgsl"))
                 }
+                "scan_prefix_chunks" => include_str!(concat!(
+                    env!("OUT_DIR"),
+                    "/tileink_wgpu_scan_prefix_chunks.wgsl"
+                )),
+                "scan_chunk_offsets" => include_str!(concat!(
+                    env!("OUT_DIR"),
+                    "/tileink_wgpu_scan_chunk_offsets.wgsl"
+                )),
+                "scan_apply_chunk_offsets" => include_str!(concat!(
+                    env!("OUT_DIR"),
+                    "/tileink_wgpu_scan_apply_chunk_offsets.wgsl"
+                )),
+                "scan_clear" => {
+                    include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_scan_clear.wgsl"))
+                }
+                "scan_count" => {
+                    include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_scan_count.wgsl"))
+                }
+                "scan_emit" => {
+                    include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_scan_emit.wgsl"))
+                }
                 _ => return Err("missing independent WGSL compute reference".into()),
             };
             let module = self

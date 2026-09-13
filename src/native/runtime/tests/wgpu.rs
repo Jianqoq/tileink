@@ -116,7 +116,8 @@ impl Reference {
             let scatter_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("unmodified production range scatter WGSL"),
                 source: wgpu::ShaderSource::Wgsl(
-                    include_str!("../../../wgpu/shaders/range_scatter.wgsl").into(),
+                    include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_range_scatter.wgsl"))
+                        .into(),
                 ),
             });
             let scatter_pipeline =

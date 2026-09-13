@@ -6,16 +6,18 @@
 @group(0) @binding(4) var<storage, read_write> chunk_offsets: array<u32>;
 @group(0) @binding(5) var<storage, read> active_indices: array<u32>;
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(SCAN_CHUNK_SIZE)
 fn scan_apply_chunk_offsets(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
     @builtin(num_workgroups) num_workgroups: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
 ) {
-    let chunk_ix = dispatched_index(
-        linear_workgroup_index(workgroup_id, num_workgroups),
-        config.chunk_base,
-    );
+    let local_chunk = linear_workgroup_index(workgroup_id, num_workgroups);
+    // Buffer capacity can contain stale chunks: guard the logical count before lookup.
+    if (local_chunk >= config.scan_chunk_count) {
+        return;
+    }
+    let chunk_ix = dispatched_index(local_chunk, config.chunk_base);
     let lane = local_id.x;
     let chunk = scan_chunks[chunk_ix];
     let chunk_len = chunk.len;

@@ -20,10 +20,11 @@ remain unfinished. No performance comparison was run, as requested by the user.
   contract is checked against it and it participates in native shader cache keys.
   API alignments are separate: DX12 uses its SDK constant and Vulkan queries the
   physical device's uniform-buffer alignment.
-- WGSL's original padded-grid accesses rely on robust buffer access. Native raw
-  buffers explicitly reject groups beyond `chunk_count`, before reads/barriers.
-  The native config uses the formerly unused second word for that count. This is
-  an explicit ABI difference, not a numerical tolerance or a fixture workaround.
+- Native and WGSL configs share the logical `chunk_count` in the second word.
+  Prefix/apply stages reject padded groups before metadata reads and barriers.
+  Buffer capacity is not a logical bound: retained allocations can hold stale
+  valid chunks. Two four-route regressions reproduce and fix this root cause for
+  cumsum and sparse scan, preserving all inactive records.
 - DX12 and Vulkan own separate allocation, descriptors, pipelines and command
   implementations. Both upload once per batch and keep intermediates device-local.
   Vulkan binds logical buffers into one device-memory arena plus upload/readback
@@ -46,8 +47,8 @@ inputs/chunks, one/multiple rows, 255/256/257 boundaries, multiple chunks, signe
 overflow, padded two-dimensional grids and reverse observation of queued tickets.
 
 The production WGSL algorithm is independently executed through wgpu-DX12 and
-wgpu-Vulkan. Only its literal algorithm constants were replaced with the common
-build prelude. The original PNG baseline is independently retained: full SVG and
+wgpu-Vulkan. The original receipt below predates the subsequent logical chunk-count
+guard fix; algorithm constants are supplied by the common build prelude. The original PNG baseline is independently retained: full SVG and
 example native/portable runs produced 3471 PNG files with identical file hashes,
 no additions and no missing files.
 

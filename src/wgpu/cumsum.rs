@@ -15,9 +15,9 @@ const STORAGE_BINDING_COUNT: u32 = 7;
 #[derive(Clone, Copy)]
 struct CumsumConfig {
     row_count: u32,
+    chunk_count: u32,
     _pad0: u32,
     _pad1: u32,
-    _pad2: u32,
 }
 
 unsafe impl bytemuck::Zeroable for CumsumConfig {}
@@ -131,9 +131,9 @@ impl WgpuCumsumPipeline {
                 row_count: active.map_or(lengths.cumsum_row_count as u32, |plan| {
                     plan.cumsum.row_chunk_starts.len() as u32
                 }),
+                chunk_count,
                 _pad0: 0,
                 _pad1: 0,
-                _pad2: 0,
             }),
         );
         let bindings = canvas.cumsum_bindings(scan, active.is_some());
