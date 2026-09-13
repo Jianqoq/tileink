@@ -167,3 +167,46 @@ fn hlsl_declarations_avoid_editor_type_keywords() {
         assert_eq!(reserved_declaration(&graph.expanded), None, "{name}");
     }
 }
+
+#[test]
+fn hlsl_blend_modes_match_serialized_scene_modes() {
+    use peniko::{Compose, Mix};
+    let constants =
+        gpu_constants::parse(include_str!("../src/shaders/hlsl/shared/blend/modes.hlsli")).unwrap();
+    let expected = [
+        ("MIX_NORMAL", Mix::Normal as u32),
+        ("MIX_MULTIPLY", Mix::Multiply as u32),
+        ("MIX_SCREEN", Mix::Screen as u32),
+        ("MIX_OVERLAY", Mix::Overlay as u32),
+        ("MIX_DARKEN", Mix::Darken as u32),
+        ("MIX_LIGHTEN", Mix::Lighten as u32),
+        ("MIX_COLOR_DODGE", Mix::ColorDodge as u32),
+        ("MIX_COLOR_BURN", Mix::ColorBurn as u32),
+        ("MIX_HARD_LIGHT", Mix::HardLight as u32),
+        ("MIX_SOFT_LIGHT", Mix::SoftLight as u32),
+        ("MIX_DIFFERENCE", Mix::Difference as u32),
+        ("MIX_EXCLUSION", Mix::Exclusion as u32),
+        ("MIX_HUE", Mix::Hue as u32),
+        ("MIX_SATURATION", Mix::Saturation as u32),
+        ("MIX_COLOR", Mix::Color as u32),
+        ("MIX_LUMINOSITY", Mix::Luminosity as u32),
+        ("COMPOSE_CLEAR", Compose::Clear as u32),
+        ("COMPOSE_COPY", Compose::Copy as u32),
+        ("COMPOSE_DEST", Compose::Dest as u32),
+        ("COMPOSE_SRC_OVER", Compose::SrcOver as u32),
+        ("COMPOSE_DEST_OVER", Compose::DestOver as u32),
+        ("COMPOSE_SRC_IN", Compose::SrcIn as u32),
+        ("COMPOSE_DEST_IN", Compose::DestIn as u32),
+        ("COMPOSE_SRC_OUT", Compose::SrcOut as u32),
+        ("COMPOSE_DEST_OUT", Compose::DestOut as u32),
+        ("COMPOSE_SRC_ATOP", Compose::SrcAtop as u32),
+        ("COMPOSE_DEST_ATOP", Compose::DestAtop as u32),
+        ("COMPOSE_XOR", Compose::Xor as u32),
+        ("COMPOSE_PLUS", Compose::Plus as u32),
+        ("COMPOSE_PLUS_LIGHTER", Compose::PlusLighter as u32),
+    ];
+    assert_eq!(constants.len(), expected.len());
+    for (name, value) in expected {
+        assert_eq!(constants[name], value, "{name}");
+    }
+}

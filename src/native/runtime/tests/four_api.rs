@@ -31,6 +31,7 @@ impl Routes {
         expected: &[Vec<u8>],
         case: &str,
     ) -> Result<()> {
+        let mut mismatches = Vec::new();
         for (route, result) in self
             .reference
             .iter()
@@ -50,13 +51,12 @@ impl Routes {
             );
             for (buffer, (a, b)) in actual.iter().zip(expected).enumerate() {
                 let first = a.iter().zip(b).position(|(a, b)| a != b);
-                assert!(
-                    a.len() == b.len() && first.is_none(),
-                    "{case} route {route} buffer {buffer} first mismatch {first:?}, actual/expected {:?}",
-                    first.map(|i| (a[i], b[i]))
-                );
+                if a.len() != b.len() || first.is_some() {
+                    mismatches.push(format!("{case} route {route} buffer {buffer} first mismatch {first:?}, actual/expected {:?}",first.map(|i|(a[i],b[i]))));
+                }
             }
         }
+        assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
         Ok(())
     }
     pub(super) fn validate(&self) -> Result<()> {

@@ -1,0 +1,96 @@
+{
+  "schema": 1,
+  "milestone": "M4 blend helpers; not M4 completion",
+  "base": "02842007",
+  "inventory_validated": 27,
+  "inventory_total": 179,
+  "gpu_luid": "9f3f010000000000",
+  "routes": [
+    "wgpu DX12",
+    "wgpu Vulkan",
+    "native DX12",
+    "native Vulkan"
+  ],
+  "blend_records": 428517,
+  "source_sha256": {
+    "NATIVE_BACKEND_PROGRESS.md": "055e634e90bd6c0954e6c0d4687a46ba6e07f03009fe94656b2c31bf16fb3cf1",
+    "build/native/interfaces.rs": "dbb8e7bc8dc99ee4fd15b703ee426b2e095087438061035b1dac1518636b2c48",
+    "build/native/interfaces/validation.rs": "68bb28f6e7bc64f98ee3d6b12b5b2ab11dfcc56b47fcea32e73633c73ea42f3f",
+    "build/native/program.rs": "a48845551194ee061a87ea89dfa671d524f39ebcfc8438c1c4e4e53e7eec8431",
+    "docs/native/m4-fine-blend.md": "712c6171551ad1f88d42c7aacc9407241d69c8755d40e465cd2ecf5c8d76ee61",
+    "src/native/runtime/gpu_tests.rs": "2c5550d8dbfd982496b6d81e286acdef2fca390cd69af6aeb4bcf5e39814b657",
+    "src/native/runtime/tests/blend_math_gpu.rs": "507907036fa0064419440706c602e0f647cad06f1bf50c5e865f80c23db66e7f",
+    "src/native/runtime/tests/four_api.rs": "b235c91ea12d4980c68ac02c6f960aee5efc54236950169195365d078f491fa4",
+    "src/native/runtime/tests/wgpu/compute.rs": "66dfff5d21ed7a18482e79bd08622b299e5d460108762485686b78268c4c08de",
+    "src/shaders/hlsl/shared/blend.hlsli": "fba71cb1d5b0f3b2abd794e6f69bcf1616bf1a4b55e15f170010cdf8b081bf3d",
+    "src/shaders/hlsl/shared/blend/compose.hlsli": "0e93be0b3469f62b8b0ff37967fc85f89533c218f3853554b4f319e229fae79c",
+    "src/shaders/hlsl/shared/blend/modes.hlsli": "3caaf86c16490ad4e7693d493a58e62ab429a490c7f3f1cf6d21db37e37e38ba",
+    "src/shaders/hlsl/shared/blend/nonseparable.hlsli": "fa9b55a29ee4490cb95f883cbce94800c0a142dda1eb49a132399b57fa835803",
+    "src/shaders/hlsl/shared/blend/separable.hlsli": "cfcdf932cbb990f28618639071368e18430e7aade9d895b9f1616bc344f777e2",
+    "src/shaders/hlsl/validation/blend.hlsl": "635f2bcbac1df26bdf0d4be7c07333279ba2d4caf6dd56f6528500d24a5eb30f",
+    "src/wgpu/shaders/shared/blend.wgsl": "0bb61e302f3e9f777294296a09c830a6f049e870d71125a640a86360a6c6f2bc",
+    "tests/native_shader_artifacts.rs": "6e95b090bb65a7a57d35746d1c0f3f776525751e7974839e24df460f69b55c7d",
+    "tests/native_shader_compiler.rs": "ed0a79c444bedfc28a15289e6ac58c571069713647e032422fb726f00dfda772",
+    "tests/shaders/blend_math.wgsl": "98e6d5e74373c47546624f94ecd0a8b4556ae161bc75e043e82e01c8ff224787"
+  },
+  "logs": {
+    "m4-blend-full-release.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-blend-full-release.log",
+      "sha256": "5d447d68cfe298c64d0a410bc834e5a38316b807ee9df3ddcd61cabb7810723a"
+    },
+    "m4-blend-runtime.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-blend-runtime.log",
+      "sha256": "188007685d6f02455a12d16666b31d47503db7f0836c6ba1f77436dd8af2dc0e"
+    },
+    "m4-blend-clippy.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-blend-clippy.log",
+      "sha256": "960069d02d39e3e86c5818b77e2af87244fc8d62580a34ea4ccb67ef6dd704ab"
+    },
+    "m4-blend-svg.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-blend-svg.log",
+      "sha256": "f47c6df169a04d921ee29f100c84d04f85391adaee876c205da8a2eebf76f960"
+    },
+    "m4-blend-examples.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-blend-examples.log",
+      "sha256": "e70a6fca9bce2fa20bb0a11c6d71cdb2b69606267313ef89ed38c7d7d56c07eb"
+    },
+    "m4-blend-shader.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-blend-shader.log",
+      "sha256": "096c723460792f8ebe7062aeb9b4bdf7bc27e82926a38a610f91bb95cc5d6a34"
+    },
+    "m4-blend-editor-final.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-blend-editor-final.log",
+      "sha256": "b300decff3e9634b9a93f7033f9f96d06e21923214edcbbd9d06d0a8b29f00e9"
+    },
+    "m4-blend-no-dxc.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-blend-no-dxc.log",
+      "sha256": "10c46bb91120f172d7d977719db7a59298cf328c338e75e12132270d3e32595e"
+    },
+    "m4-blend-repro.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-blend-repro.log",
+      "sha256": "08448b11058dcbbb2b6b2dbc1ffc5d4c0f719d6611205bf59f255f9883c826b1"
+    },
+    "m4-blend-endpoints-red.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-blend-endpoints-red.log",
+      "sha256": "dad90788317f782ba7f2b486141ba8f97fe05d953f392da3f5108e3dbf909ac5"
+    },
+    "m4-blend-endpoints-green.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-blend-endpoints-green.log",
+      "sha256": "6a63dcba0bc75b4d906a1f99837c7407fba1fb462e29f28bbe121144195cd1ea"
+    }
+  },
+  "png": {
+    "before": 3471,
+    "after": 3471,
+    "changed": [],
+    "missing": [],
+    "added": []
+  },
+  "spirv_validated": 35,
+  "runtime_cache_new_compilations": 0,
+  "reviews": "spec and standards closed",
+  "artifacts": {
+    "native-blend_math_words.dxil": "5642b0924f6a164e248cfd6367a8ca03897663e752b047d4bc7905d6ce0c22e8",
+    "native-blend_math_words.spirv": "36d17a17800e867230a285c4bc920af5d924f26a0e10aa73458347ee67272d56"
+  }
+}

@@ -121,7 +121,9 @@ pub fn get(family: &str) -> io::Result<Interface> {
         | "coarse-emit-allocation"
         | "coarse-emit-offsets"
         | "coarse-prefix" => coarse::get(family, &constants)?,
-        "pixel-math" | "geometry-math" | "fill-coverage" => validation::get(family, &constants),
+        "pixel-math" | "geometry-math" | "fill-coverage" | "blend-math" => {
+            validation::get(family, &constants)
+        }
         "cumsum" => interface(
             [constants["CUMSUM_CHUNK_SIZE"], 1, 1],
             &[

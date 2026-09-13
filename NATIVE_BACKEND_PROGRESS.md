@@ -1599,3 +1599,12 @@ The direct endpoint correction is shared with WGSL and CPU debug; see
 [the math contract and test corpus](docs/native/m4-fine-math.md).
 The production inventory remains **27/179**; helper adapters are not production
 fine entries. Full release, GPU, shader/editor, Clippy and SVG/examples checks passed; all 3,471 PNGs remain unchanged. Three helper tests also passed after review and without DXC, with zero runtime pipeline compilations. M4 work continues with blend modes.
+
+
+### M4 blend helpers (in progress)
+
+All mix/compose HLSL helpers are implemented and first four-route tests passed.
+Independent review found and corrected shared Dodge/Burn endpoint precedence;
+explicit luminosity FMA also fixes a pre-existing wgpu DX12/Vulkan byte difference.
+See [blend implementation and verification](docs/native/m4-fine-blend.md).
+Full release, 64 native runtime tests, shader/editor, Clippy and SVG/examples passed; all 3,471 PNGs are unchanged. Four math GPU tests passed without DXC with zero runtime recompilations. The production inventory stays at 27/179; gradient work follows.

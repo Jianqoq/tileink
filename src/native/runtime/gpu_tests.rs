@@ -153,3 +153,6 @@ mod pixel_math;
 
 #[path = "tests/geometry_math_gpu.rs"]
 mod geometry_math;
+
+#[path = "tests/blend_math_gpu.rs"]
+mod blend_math;

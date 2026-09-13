@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 
 pub(super) fn get(family: &str, constants: &BTreeMap<String, u32>) -> Interface {
     let entry = match family {
+        "blend-math" => "blend_math_words",
         "pixel-math" => "pixel_math_words",
         "geometry-math" => "geometry_math_words",
         "fill-coverage" => "fill_coverage_words",
