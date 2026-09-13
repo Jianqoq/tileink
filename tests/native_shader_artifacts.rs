@@ -9,7 +9,7 @@ fn native_build_embeds_each_expected_nonempty_probe() {
     ));
     assert_eq!(
         artifacts.len(),
-        5 * (usize::from(dxil) + usize::from(spirv))
+        8 * (usize::from(dxil) + usize::from(spirv))
     );
     for format in ["dxil", "spirv"] {
         if (format == "dxil" && !dxil) || (format == "spirv" && !spirv) {
@@ -21,6 +21,9 @@ fn native_build_embeds_each_expected_nonempty_probe() {
             "layout_words",
             "sample_words",
             "range_scatter",
+            "cumsum_prefix_chunks",
+            "cumsum_chunk_offsets",
+            "cumsum_apply_chunk_offsets",
         ] {
             let matches: Vec<_> = artifacts
                 .iter()

@@ -15,14 +15,14 @@ struct CumsumConfig {
 @group(0) @binding(6) var<storage, read_write> chunk_totals: array<i32>;
 @group(0) @binding(7) var<storage, read_write> chunk_offsets: array<i32>;
 
-var<workgroup> scratch: array<i32, 256>;
+var<workgroup> scratch: array<i32, CUMSUM_CHUNK_SIZE>;
 
 fn linear_workgroup_index(workgroup_id: vec3<u32>, num_workgroups: vec3<u32>) -> u32 {
     return workgroup_id.x + workgroup_id.y * num_workgroups.x +
         workgroup_id.z * num_workgroups.x * num_workgroups.y;
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(CUMSUM_CHUNK_SIZE)
 fn cumsum_prefix_chunks(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
     @builtin(num_workgroups) num_workgroups: vec3<u32>,
@@ -42,11 +42,11 @@ fn cumsum_prefix_chunks(
 
     var step = 1u;
     loop {
-        if (step >= 256u) {
+        if (step >= CUMSUM_CHUNK_SIZE) {
             break;
         }
         let ix = (lane + 1u) * step * 2u - 1u;
-        if (ix < 256u) {
+        if (ix < CUMSUM_CHUNK_SIZE) {
             scratch[ix] += scratch[ix - step];
         }
         workgroupBarrier();
@@ -54,18 +54,18 @@ fn cumsum_prefix_chunks(
     }
 
     if (lane == 0u) {
-        chunk_totals[chunk_ix] = scratch[255u];
-        scratch[255u] = 0i;
+        chunk_totals[chunk_ix] = scratch[CUMSUM_CHUNK_SIZE - 1u];
+        scratch[CUMSUM_CHUNK_SIZE - 1u] = 0i;
     }
     workgroupBarrier();
 
-    step = 128u;
+    step = CUMSUM_CHUNK_SIZE / 2u;
     loop {
         if (step == 0u) {
             break;
         }
         let ix = (lane + 1u) * step * 2u - 1u;
-        if (ix < 256u) {
+        if (ix < CUMSUM_CHUNK_SIZE) {
             let left = ix - step;
             let previous_left = scratch[left];
             scratch[left] = scratch[ix];
@@ -80,7 +80,7 @@ fn cumsum_prefix_chunks(
     }
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(CUMSUM_CHUNK_SIZE)
 fn cumsum_chunk_offsets(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let row_ix = global_id.x;
     if (row_ix >= config.row_count) {
@@ -100,7 +100,7 @@ fn cumsum_chunk_offsets(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(CUMSUM_CHUNK_SIZE)
 fn cumsum_apply_chunk_offsets(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
     @builtin(num_workgroups) num_workgroups: vec3<u32>,

@@ -73,7 +73,13 @@ fn build_wgpu() {
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let mut fine_portable_source = None;
     for (entry, output) in WGPU_SHADER_ENTRIES {
-        let source = expand_shader(&shader_dir.join(entry), &mut Vec::new());
+        let mut source = expand_shader(&shader_dir.join(entry), &mut Vec::new());
+        if entry == "cumsum.wgsl" {
+            source = format!(
+                "const CUMSUM_CHUNK_SIZE: u32 = {}u;\n{source}",
+                gpu_constants::CUMSUM_CHUNK_SIZE
+            );
+        }
         if entry == "fine_web.wgsl" {
             fine_portable_source = Some(source.clone());
         }
@@ -134,7 +140,11 @@ fn parse_include(line: &str) -> Option<&str> {
 #[path = "build/native.rs"]
 mod native_shaders;
 
+#[path = "src/shared/gpu_constants.rs"]
+mod gpu_constants;
+
 fn main() {
+    println!("cargo:rerun-if-changed=src/shared/gpu_constants.rs");
     #[cfg(any(feature = "native-dx12", feature = "native-vulkan"))]
     native_shaders::generate()
         .unwrap_or_else(|error| panic!("native shader build failed: {error}"));

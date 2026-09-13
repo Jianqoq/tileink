@@ -302,3 +302,6 @@ impl Reference {
         Ok(output)
     }
 }
+
+#[path = "wgpu/compute.rs"]
+mod compute;

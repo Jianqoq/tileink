@@ -290,7 +290,7 @@ Mac 按用户决定延期，不计入本轮 Windows M3 验收；性能比较仍�
 
 ### M4 — 完整计算管线和绘制效果
 
-2026-09-13：已完成 Windows range scatter 内核切片的四 API 逐字节验证，见 [实现与证据](docs/native/m4-range-scatter.md)。179 项程序中当前仅此 1 项 HLSL 内核已验收；其余 178 项、完整 Canvas 与 M4 退出条件仍未完成。用户已取消性能比较，后续不运行 Criterion/resize 性能对照。
+2026-09-13：Windows range scatter 与 cumsum 三个入口已完成四 API 逐字节验证，见 [range scatter](docs/native/m4-range-scatter.md) 与 [cumsum](docs/native/m4-cumsum.md)。179 项程序中当前 4 项 HLSL 内核已验收；其余 175 项、完整 Canvas 与 M4 退出条件仍未完成。用户已取消性能比较，后续不运行 Criterion/resize 性能对照。
 
 - [ ] 按 range scatter → scan/cumsum → coarse → fine → layer/mask/filter/backdrop 逐项移植，两条原生 Adapter 每项一起验收。
 - [ ] 每一项先补语义/边界测试，再实现 HLSL 与绑定；检查中间结果和最终四路像素。

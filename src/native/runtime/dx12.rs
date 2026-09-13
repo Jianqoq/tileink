@@ -29,7 +29,9 @@ struct GpuOwners {
     signature: ID3D12RootSignature,
     pipelines: BTreeMap<&'static str, ID3D12PipelineState>,
     fence: ID3D12Fence,
-    pending: Pending<Vec<Frame>>,
+    pending: Pending<work::Work>,
+    compute_pipelines: BTreeMap<&'static str, compute_pipeline::Pipeline>,
+    cache_identity: Vec<u8>,
 }
 
 pub struct Dx12 {
@@ -89,6 +91,8 @@ impl Dx12 {
                     pipelines,
                     fence,
                     pending: Pending::new(),
+                    compute_pipelines: BTreeMap::new(),
+                    cache_identity: compute_pipeline::identity(&adapter, identity)?,
                 },
                 event,
                 retirement: Retirement::Idle,
@@ -116,13 +120,27 @@ impl Dx12 {
                 )
             })
             .collect::<Result<Vec<_>>>()?;
-        // Cast/allocate before registering the attempted submission. Every list
-        // and its resources remain retained even if Signal fails after Execute.
-        let lists = frames
-            .iter()
-            .map(|frame| frame.list.cast().map(Some))
-            .collect::<windows::core::Result<Vec<Option<ID3D12CommandList>>>>()?;
-        let ticket = self.gpu.pending.track(frames)?;
+        self.submit_work(work::Work::Probes(frames))
+    }
+    pub fn submit_compute(&mut self, batch: &super::compute::ComputeBatch) -> Result<Ticket> {
+        self.retirement.wait_value()?;
+        for pass in batch.passes() {
+            compute_pipeline::ensure(
+                &self.gpu.device,
+                &self.gpu.cache_identity,
+                &self.gpu.messages,
+                &mut self.gpu.compute_pipelines,
+                pass.shader.entry,
+            )?;
+        }
+        let frame = compute::Frame::record(&self.gpu.device, batch, &self.gpu.compute_pipelines)?;
+        self.submit_work(work::Work::Compute(frame))
+    }
+    fn submit_work(&mut self, work: work::Work) -> Result<Ticket> {
+        // Record/allocate before registering; both work types use the same
+        // uncertain-submission quarantine and completion contract.
+        let lists = work.lists()?;
+        let ticket = self.gpu.pending.track(work)?;
         unsafe {
             self.retirement = Retirement::Unfenced;
             self.gpu.queue.ExecuteCommandLists(&lists);
@@ -162,9 +180,7 @@ impl Dx12 {
         self.gpu
             .pending
             .take_completed(ticket, completed)?
-            .iter()
-            .map(Frame::readback)
-            .collect()
+            .readback()
     }
 
     #[cfg(test)]
@@ -244,3 +260,13 @@ impl Drop for Dx12 {
 
 #[cfg(test)]
 mod tests;
+
+#[path = "dx12/buffer.rs"]
+mod buffer;
+#[path = "dx12/compute.rs"]
+mod compute;
+mod compute_bindings;
+#[path = "dx12/compute_pipeline.rs"]
+mod compute_pipeline;
+#[path = "dx12/work.rs"]
+mod work;

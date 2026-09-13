@@ -69,7 +69,7 @@ pub(super) fn create(
         let mut pipelines = BTreeMap::new();
         for artifact in crate::NATIVE_SHADER_ARTIFACTS
             .iter()
-            .filter(|a| a.format == "dxil")
+            .filter(|a| a.format == "dxil" && a.bindings.is_empty())
         {
             let desc = adapter.GetDesc1()?;
             let driver = adapter.CheckInterfaceSupport(&IDXGIDevice::IID)?;

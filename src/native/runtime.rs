@@ -19,3 +19,6 @@ mod submissions;
 #[cfg(feature = "native-vulkan")]
 mod vulkan;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+#[path = "runtime/compute.rs"]
+mod compute;

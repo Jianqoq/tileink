@@ -85,8 +85,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "cumsum_prefix_chunks",
+      "hlsl_source": "src/shaders/hlsl/cumsum.hlsl",
+      "native_abi": "src/shaders/cumsum-abi.json",
+      "verification": "docs/native/m4-cumsum.md"
     },
     {
       "source": "cumsum.wgsl",
@@ -97,8 +101,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "cumsum_chunk_offsets",
+      "hlsl_source": "src/shaders/hlsl/cumsum.hlsl",
+      "native_abi": "src/shaders/cumsum-abi.json",
+      "verification": "docs/native/m4-cumsum.md"
     },
     {
       "source": "cumsum.wgsl",
@@ -109,8 +117,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "cumsum_apply_chunk_offsets",
+      "hlsl_source": "src/shaders/hlsl/cumsum.hlsl",
+      "native_abi": "src/shaders/cumsum-abi.json",
+      "verification": "docs/native/m4-cumsum.md"
     },
     {
       "source": "coarse/count.wgsl",

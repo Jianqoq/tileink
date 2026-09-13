@@ -91,3 +91,24 @@ fn range_scatter_has_two_buffers_no_uniforms_and_256_threads() {
     );
     assert!(dxil_reflection::validate(&extra, "range_scatter", &valid).is_err());
 }
+
+#[test]
+fn compute_layout_rejects_duplicate_slots_and_invalid_uniform_fields() {
+    let valid: serde_json::Value =
+        serde_json::from_str(include_str!("../src/shaders/cumsum-abi.json")).unwrap();
+    abi::validate(&valid).unwrap();
+    assert!(
+        abi::binding_declarations(&valid, "cumsum_prefix_chunks")
+            .unwrap()
+            .contains("slot: 31")
+    );
+    let mut wrong = valid.clone();
+    wrong["resources"]["backdrops"]["binding"] = serde_json::json!(1);
+    assert!(abi::validate(&wrong).is_err());
+    let mut wrong = valid.clone();
+    wrong["resources"]["config"]["fields"][1]["offset"] = serde_json::json!(8);
+    assert!(abi::validate(&wrong).is_err());
+    let mut wrong = valid.clone();
+    wrong["resources"]["dispatch_grid"]["internal"] = serde_json::json!(false);
+    assert!(abi::validate(&wrong).is_err());
+}

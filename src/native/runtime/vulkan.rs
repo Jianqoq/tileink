@@ -1,7 +1,11 @@
+mod compute;
+mod compute_memory;
+mod compute_pipeline;
 mod frame;
 mod limits;
 mod pipeline;
 mod validation;
+mod work;
 use super::submissions::{Pending, Ticket};
 use frame::Frame;
 // Real native Vulkan compute execution for the M2 ABI probes.
@@ -21,7 +25,9 @@ pub struct Vulkan {
     bindings: vk::DescriptorSetLayout,
     layout: vk::PipelineLayout,
     pipelines: BTreeMap<&'static str, vk::Pipeline>,
-    pending: Pending<Vec<Frame>>,
+    pending: Pending<work::Work>,
+    properties: vk::PhysicalDeviceProperties,
+    compute_pipelines: BTreeMap<&'static str, compute_pipeline::Pipeline>,
     family: u32,
     max_storage_buffer_bytes: u32,
     max_image_width: u32,
@@ -104,7 +110,8 @@ impl Vulkan {
                 }
             };
             let memory = instance.get_physical_device_memory_properties(physical);
-            let limits = instance.get_physical_device_properties(physical).limits;
+            let properties = instance.get_physical_device_properties(physical);
+            let limits = properties.limits;
             let queue = device.get_device_queue(family, 0);
             let debug = ash::ext::debug_utils::Instance::new(&entry, &instance);
             let mut this = Self {
@@ -120,6 +127,8 @@ impl Vulkan {
                 layout: vk::PipelineLayout::null(),
                 pipelines: BTreeMap::new(),
                 pending: Pending::new(),
+                properties,
+                compute_pipelines: BTreeMap::new(),
                 family,
                 max_storage_buffer_bytes: limits.max_storage_buffer_range,
                 max_image_width: limits.max_image_dimension2_d,
@@ -159,9 +168,34 @@ impl Vulkan {
                 )
             })
             .collect::<Result<Vec<_>>>()?;
-        let buffers: Vec<_> = frames.iter().map(|frame| frame.command).collect();
-        let fence = frames.last().ok_or("empty native submission")?.fence;
-        let ticket = self.pending.track(frames)?;
+        self.submit_work(work::Work::Probes(frames))
+    }
+    pub fn submit_compute(&mut self, batch: &super::compute::ComputeBatch) -> Result<Ticket> {
+        if self.failed {
+            return Err("Vulkan context failed".into());
+        }
+        for pass in batch.passes() {
+            compute_pipeline::ensure(
+                &self.device,
+                &self.properties,
+                &mut self.compute_pipelines,
+                pass.shader.entry,
+            )?;
+        }
+        let frame = compute::Frame::record(
+            &self.device,
+            &self.memory,
+            &self.properties,
+            self.family,
+            batch,
+            &self.compute_pipelines,
+        )?;
+        self.submit_work(work::Work::Compute(Box::new(frame)))
+    }
+    fn submit_work(&mut self, work: work::Work) -> Result<Ticket> {
+        let buffers = work.commands();
+        let fence = work.fence()?;
+        let ticket = self.pending.track(work)?;
         unsafe {
             let submit = || {
                 self.device.queue_submit(
@@ -202,8 +236,7 @@ impl Vulkan {
         self.submit_batch(&[command.clone().into()])
     }
     pub fn readback_batch(&mut self, ticket: &Ticket) -> Result<Vec<Vec<u8>>> {
-        let frames = self.pending.get(ticket)?;
-        let fence = frames.last().ok_or("empty native submission")?.fence;
+        let fence = self.pending.get(ticket)?.fence()?;
         if self.failed {
             return Err("Vulkan context failed".into());
         }
@@ -215,9 +248,7 @@ impl Vulkan {
         }
         self.pending
             .take_completed(ticket, ticket.serial())?
-            .iter()
-            .map(Frame::readback)
-            .collect()
+            .readback()
     }
     #[cfg(test)]
     pub fn readback(&mut self, ticket: &Ticket) -> Result<Vec<u8>> {
@@ -244,7 +275,7 @@ impl Drop for Vulkan {
                 let fences: Vec<_> = self
                     .pending
                     .values()
-                    .filter_map(|frames| frames.last().map(|frame| frame.fence))
+                    .filter_map(|work| work.fence().ok())
                     .collect();
                 if fences.is_empty() {
                     Ok(())
@@ -263,10 +294,12 @@ impl Drop for Vulkan {
                             .into(),
                     );
                 self.pending.quarantine();
+                std::mem::forget(std::mem::take(&mut self.compute_pipelines));
                 std::mem::forget((self._entry.clone(), self.messages.clone()));
                 return;
             }
             self.pending.clear_after_completion();
+            self.compute_pipelines.clear();
             for pipeline in self.pipelines.values() {
                 self.device.destroy_pipeline(*pipeline, None);
             }

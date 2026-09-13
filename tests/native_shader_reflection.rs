@@ -102,3 +102,48 @@ fn actual_range_scatter_spirv_uses_the_production_dispatch_shape() {
     wrong["bindings"]["source"] = serde_json::json!(0);
     assert!(spirv::validate(artifact.bytes, "range_scatter", &wrong).is_err());
 }
+
+#[cfg(all(
+    feature = "native-vulkan",
+    any(target_os = "windows", target_os = "linux")
+))]
+#[test]
+fn actual_cumsum_spirv_checks_each_uniform_block_and_shared_workgroup() {
+    let abi: serde_json::Value =
+        serde_json::from_str(include_str!("../src/shaders/cumsum-abi.json")).unwrap();
+    for artifact in tileink::NATIVE_SHADER_ARTIFACTS
+        .iter()
+        .filter(|a| a.format == "spirv" && a.entry.starts_with("cumsum_"))
+    {
+        spirv::validate(artifact.bytes, artifact.entry, &abi).unwrap();
+        for path in ["config", "dispatch_grid"] {
+            if !abi["entry_resources"][artifact.entry]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|v| v == path)
+            {
+                continue;
+            }
+            for field in ["offset", "name"] {
+                let mut wrong = abi.clone();
+                wrong["resources"][path]["fields"][0][field] = if field == "offset" {
+                    serde_json::json!(4)
+                } else {
+                    serde_json::json!("different_field")
+                };
+                assert!(
+                    spirv::validate(artifact.bytes, artifact.entry, &wrong).is_err(),
+                    "{} {path} {field}",
+                    artifact.entry
+                );
+            }
+            let mut wrong = abi.clone();
+            wrong["resources"][path]["binding"] = serde_json::json!(30);
+            assert!(spirv::validate(artifact.bytes, artifact.entry, &wrong).is_err());
+        }
+        let mut wrong = abi.clone();
+        wrong["workgroup"] = serde_json::json!([32, 1, 1]);
+        assert!(spirv::validate(artifact.bytes, artifact.entry, &wrong).is_err());
+    }
+}

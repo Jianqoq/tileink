@@ -1,4 +1,4 @@
-use crate::shared::gpu_plan::{CUMSUM_CHUNK_SIZE, GpuBufferLengths};
+use crate::shared::{gpu_constants::CUMSUM_CHUNK_SIZE, gpu_plan::GpuBufferLengths};
 
 use super::canvas::{WgpuCumsumBindings, WgpuScanBuffers, WgpuSceneBuffers};
 use super::commands::{
@@ -9,7 +9,6 @@ use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
 use crate::render::dispatch::dispatch_2d;
 use crate::render::incremental::ActiveScanPlan;
 
-const WORKGROUP_SIZE: u32 = 256;
 const STORAGE_BINDING_COUNT: u32 = 7;
 
 #[repr(C)]
@@ -168,7 +167,7 @@ impl WgpuCumsumPipeline {
                 (chunk_offsets, apply_chunk_offsets)
             {
                 pass.set_pipeline(chunk_offsets);
-                pass.dispatch_workgroups(row_count.div_ceil(WORKGROUP_SIZE), 1, 1);
+                pass.dispatch_workgroups(row_count.div_ceil(CUMSUM_CHUNK_SIZE), 1, 1);
                 pass.set_pipeline(apply_chunk_offsets);
                 let (x, y) = dispatch_2d(chunk_count, max_workgroups);
                 pass.dispatch_workgroups(x, y, 1);
@@ -292,5 +291,3 @@ fn bind_config_buffer(
         }),
     }
 }
-
-const _: () = assert!(CUMSUM_CHUNK_SIZE == WORKGROUP_SIZE);

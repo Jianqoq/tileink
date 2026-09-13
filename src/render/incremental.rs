@@ -6,10 +6,7 @@ use std::collections::HashMap;
 use crate::{
     Canvas, TILE_SIZE,
     canvas::{RetainedDamage, RetainedFrame},
-    shared::{
-        bounds::Bounds,
-        gpu_plan::{CUMSUM_CHUNK_SIZE, GpuCumsumPlan},
-    },
+    shared::{bounds::Bounds, gpu_constants::CUMSUM_CHUNK_SIZE, gpu_plan::GpuCumsumPlan},
 };
 
 use super::damage_tiles::DamageTiles;

@@ -42,7 +42,7 @@ impl Receipt {
 
 enum Device {
     #[cfg(feature = "native-dx12")]
-    Dx12(super::dx12::Dx12),
+    Dx12(Box<super::dx12::Dx12>),
     #[cfg(feature = "native-vulkan")]
     Vulkan(Box<super::vulkan::Vulkan>),
 }
@@ -98,7 +98,7 @@ impl Adapter {
     pub fn new(backend: NativeBackend, identity: &str) -> Result<Self> {
         let device = match backend {
             #[cfg(feature = "native-dx12")]
-            NativeBackend::Dx12 => Device::Dx12(super::dx12::Dx12::new(identity)?),
+            NativeBackend::Dx12 => Device::Dx12(Box::new(super::dx12::Dx12::new(identity)?)),
             #[cfg(feature = "native-vulkan")]
             NativeBackend::Vulkan => {
                 Device::Vulkan(Box::new(super::vulkan::Vulkan::new(identity)?))
@@ -107,6 +107,30 @@ impl Adapter {
             _ => return Err("native API feature is disabled".into()),
         };
         Ok(Self(Rc::new(RefCell::new(device))))
+    }
+    pub fn submit_compute(
+        &self,
+        batch: &super::compute::ComputeBatch,
+    ) -> std::result::Result<Receipt, SubmitError<Box<dyn std::error::Error>>> {
+        let mut device = self.0.borrow_mut();
+        let (result, unconfirmed) = match &mut *device {
+            #[cfg(feature = "native-dx12")]
+            Device::Dx12(device) => (device.submit_compute(batch), device.unconfirmed()),
+            #[cfg(feature = "native-vulkan")]
+            Device::Vulkan(device) => (device.submit_compute(batch), device.unconfirmed()),
+        };
+        result
+            .map(|ticket| Receipt {
+                owner: self.clone(),
+                ticket,
+            })
+            .map_err(|error| {
+                if unconfirmed {
+                    SubmitError::Unconfirmed(error)
+                } else {
+                    SubmitError::Rejected(error)
+                }
+            })
     }
     pub fn uniform_buffer(&self) -> UniformBuffer {
         UniformBuffer {

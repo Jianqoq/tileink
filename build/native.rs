@@ -35,6 +35,7 @@ pub fn generate() -> io::Result<()> {
     for file in [
         "build/native.rs",
         "build/native/abi.rs",
+        "build/native/compute_abi.rs",
         "build/native/cache.rs",
         "build/native/source.rs",
         "build/native/dxc.rs",
@@ -42,6 +43,7 @@ pub fn generate() -> io::Result<()> {
         "build/native/dxil_reflection.rs",
         "src/shaders/probe-abi.json",
         "src/shaders/range-scatter-abi.json",
+        "src/shaders/cumsum-abi.json",
     ] {
         println!("cargo:rerun-if-changed={}", root.join(file).display());
     }
@@ -81,17 +83,32 @@ pub fn generate() -> io::Result<()> {
                 "range_scatter.hlsl",
                 "src/shaders/range-scatter-abi.json",
             ),
+            ("cumsum", "cumsum.hlsl", "src/shaders/cumsum-abi.json"),
         ] {
-            let graph = SourceGraph::load(&root.join("src/shaders/hlsl"), source)?;
+            let mut graph = SourceGraph::load(&root.join("src/shaders/hlsl"), source)?;
             for name in graph.files.keys() {
                 println!(
                     "cargo:rerun-if-changed={}",
                     root.join("src/shaders/hlsl").join(name).display()
                 );
             }
+            if family == "cumsum" {
+                graph.expanded = format!(
+                    "static const uint CUMSUM_CHUNK_SIZE = {}u;\n{}",
+                    crate::gpu_constants::CUMSUM_CHUNK_SIZE,
+                    graph.expanded
+                );
+            }
             let abi = fs::read(root.join(abi_path))?;
             let description: serde_json::Value = serde_json::from_slice(&abi)?;
             abi::validate(&description)?;
+            if family == "cumsum"
+                && description["workgroup"][0] != crate::gpu_constants::CUMSUM_CHUNK_SIZE
+            {
+                return Err(io::Error::other(
+                    "cumsum ABI workgroup differs from shared algorithm constant",
+                ));
+            }
             let programs = description["programs"]
                 .as_array()
                 .ok_or_else(|| io::Error::other("missing native program inventory"))?;
@@ -107,7 +124,7 @@ pub fn generate() -> io::Result<()> {
                     let flags = Dxc::flags(target, entry)?;
                     let recipe = serde_json::json!({"schema":1,"language":"hlsl","target":target,"target_triple":target_triple,
                     "entry":entry,"variant":family,"flags":flags,"abi_sha256":digest(&abi),
-                    "toolchain":compiler.identity,"sources":graph.files});
+                    "toolchain":compiler.identity,"sources":graph.files,"cumsum_chunk_size":crate::gpu_constants::CUMSUM_CHUNK_SIZE});
                     let recipe_bytes = serde_json::to_vec(&recipe)?;
                     let key = CacheKey::new(&[&recipe_bytes, graph.expanded.as_bytes()]);
                     let work = out.join("native-work").join(key.hex());
@@ -124,7 +141,12 @@ pub fn generate() -> io::Result<()> {
                     let output = out.join(format!("native-{entry}.{target}"));
                     write_changed(&output, &artifact.bytes)?;
                     let workgroup = &description["workgroup"];
-                    declarations.push_str(&format!("NativeShaderArtifact {{ format: {target:?}, entry: {entry:?}, cache_key: {:?}, workgroup: {workgroup}, bytes: include_bytes!({:?}) }},\n",key.hex(),output));
+                    let bindings = if description["schema"] == 2 {
+                        abi::binding_declarations(&description, entry)?
+                    } else {
+                        "&[]".into()
+                    };
+                    declarations.push_str(&format!("NativeShaderArtifact {{ format: {target:?}, entry: {entry:?}, cache_key: {:?}, workgroup: {workgroup}, bindings: {bindings}, bytes: include_bytes!({:?}) }},\n",key.hex(),output));
                     manifest.push(serde_json::json!({"key":key.hex(),"artifact_sha256":digest(&artifact.bytes),"recipe":recipe}));
                     println!(
                         "cargo:warning=native shader {target}/{entry}: {}",

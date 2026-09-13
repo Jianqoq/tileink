@@ -5,6 +5,7 @@ use std::{collections::BTreeMap, io};
 #[derive(Default)]
 struct Reflection {
     names: BTreeMap<u32, String>,
+    member_names: BTreeMap<(u32, u32), String>,
     decorations: BTreeMap<(u32, u32), Vec<u32>>,
     offsets: BTreeMap<(u32, u32), u32>,
     types: BTreeMap<u32, (u32, Vec<u32>)>,
@@ -39,6 +40,9 @@ pub fn validate(bytes: &[u8], entry: &str, abi: &serde_json::Value) -> io::Resul
         match (opcode, args) {
             (5, [id, name @ ..]) => {
                 r.names.insert(*id, string(name)?);
+            }
+            (6, [id, member, name @ ..]) => {
+                r.member_names.insert((*id, *member), string(name)?);
             }
             (15, [5, id, name @ ..]) => {
                 r.entries.push((*id, string(name)?));
@@ -80,25 +84,39 @@ pub fn validate(bytes: &[u8], entry: &str, abi: &serde_json::Value) -> io::Resul
         r.groups.get(&r.entries[0].0) == Some(&expected_group),
         "SPIR-V workgroup",
     )?;
-    let expected: &[(&str, u32)] = if entry == "range_scatter" {
-        &[("destination", 0), ("source", 1)]
+    let expected: Vec<(&str, u32)> = if abi["schema"] == 2 {
+        abi["entry_resources"][entry]
+            .as_array()
+            .ok_or_else(|| invalid("ABI entry resources"))?
+            .iter()
+            .map(|v| {
+                let name = v.as_str().ok_or_else(|| invalid("ABI resource name"))?;
+                let slot = abi["resources"][name]["binding"]
+                    .as_u64()
+                    .and_then(|v| u32::try_from(v).ok())
+                    .ok_or_else(|| invalid("ABI binding"))?;
+                Ok((name, slot))
+            })
+            .collect::<io::Result<_>>()?
+    } else if entry == "range_scatter" {
+        vec![("destination", 0), ("source", 1)]
     } else if entry == "sample_words" {
-        &[
+        vec![
             ("destination", 0),
             ("source", 1),
             ("params", 2),
             ("texels", 3),
         ]
     } else if entry == "copy_words" {
-        &[("destination", 0), ("source", 1), ("params", 2)]
+        vec![("destination", 0), ("source", 1), ("params", 2)]
     } else {
-        &[("destination", 0), ("params", 2)]
+        vec![("destination", 0), ("params", 2)]
     };
     require(
         r.decorations.keys().filter(|(_, dec)| *dec == 33).count() == expected.len(),
         "SPIR-V binding count",
     )?;
-    for &(name, binding) in expected {
+    for &(name, binding) in &expected {
         let id = *r
             .names
             .iter()
@@ -106,7 +124,13 @@ pub fn validate(bytes: &[u8], entry: &str, abi: &serde_json::Value) -> io::Resul
             .ok_or_else(|| invalid("SPIR-V resource name"))?
             .0;
         require(
-            abi["bindings"][name].as_u64() == Some(binding as u64),
+            (if abi["schema"] == 2 {
+                &abi["resources"][name]["binding"]
+            } else {
+                &abi["bindings"][name]
+            })
+            .as_u64()
+                == Some(binding as u64),
             "ABI binding",
         )?;
         require(
@@ -153,7 +177,27 @@ pub fn validate(bytes: &[u8], entry: &str, abi: &serde_json::Value) -> io::Resul
             .get(&structure)
             .ok_or_else(|| invalid("SPIR-V resource structure"))?;
         require(*op == 30, "SPIR-V resource structure")?;
-        if name == "params" {
+        if abi["schema"] == 2 && abi["resources"][name]["kind"] == "uniform" {
+            let fields = abi["resources"][name]["fields"]
+                .as_array()
+                .ok_or_else(|| invalid("ABI uniform fields"))?;
+            require(
+                members.len() == fields.len() && r.decorations.contains_key(&(structure, 2)),
+                "SPIR-V uniform block",
+            )?;
+            for (index, field) in fields.iter().enumerate() {
+                require(
+                    r.offsets.get(&(structure, index as u32)).map(|v| *v as u64)
+                        == field["offset"].as_u64()
+                        && r.member_names
+                            .get(&(structure, index as u32))
+                            .map(String::as_str)
+                            == field["name"].as_str()
+                        && r.types.get(&members[index]).is_some_and(is_uint),
+                    "SPIR-V uniform field layout/type",
+                )?;
+            }
+        } else if name == "params" {
             require(
                 members.len() == 5 && r.decorations.contains_key(&(structure, 2)),
                 "SPIR-V parameter block",

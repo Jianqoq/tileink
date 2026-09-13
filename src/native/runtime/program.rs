@@ -83,3 +83,6 @@ impl Dispatch {
         }
     }
 }
+
+#[path = "program/cumsum.rs"]
+pub mod cumsum;

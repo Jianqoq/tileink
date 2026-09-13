@@ -1,0 +1,133 @@
+{
+  "schema": 2,
+  "programs": [
+    "cumsum_prefix_chunks",
+    "cumsum_chunk_offsets",
+    "cumsum_apply_chunk_offsets"
+  ],
+  "workgroup": [
+    256,
+    1,
+    1
+  ],
+  "descriptor_set": 0,
+  "resources": {
+    "config": {
+      "binding": 0,
+      "kind": "uniform",
+      "size": 16,
+      "fields": [
+        {
+          "name": "row_count",
+          "offset": 0,
+          "type": "u32"
+        },
+        {
+          "name": "chunk_count",
+          "offset": 4,
+          "type": "u32"
+        },
+        {
+          "name": "_pad0",
+          "offset": 8,
+          "type": "u32"
+        },
+        {
+          "name": "_pad1",
+          "offset": 12,
+          "type": "u32"
+        }
+      ]
+    },
+    "chunk_backdrop_offsets": {
+      "binding": 1,
+      "kind": "read",
+      "size": 4
+    },
+    "chunk_lens": {
+      "binding": 2,
+      "kind": "read",
+      "size": 4
+    },
+    "row_chunk_starts": {
+      "binding": 3,
+      "kind": "read",
+      "size": 4
+    },
+    "row_chunk_ends": {
+      "binding": 4,
+      "kind": "read",
+      "size": 4
+    },
+    "backdrops": {
+      "binding": 5,
+      "kind": "write",
+      "size": 4
+    },
+    "chunk_totals": {
+      "binding": 6,
+      "kind": "write",
+      "size": 4
+    },
+    "chunk_offsets": {
+      "binding": 7,
+      "kind": "write",
+      "size": 4
+    },
+    "dispatch_grid": {
+      "binding": 31,
+      "kind": "uniform",
+      "size": 16,
+      "fields": [
+        {
+          "name": "x",
+          "offset": 0,
+          "type": "u32"
+        },
+        {
+          "name": "y",
+          "offset": 4,
+          "type": "u32"
+        },
+        {
+          "name": "z",
+          "offset": 8,
+          "type": "u32"
+        },
+        {
+          "name": "_pad",
+          "offset": 12,
+          "type": "u32"
+        }
+      ],
+      "internal": true
+    }
+  },
+  "entry_resources": {
+    "cumsum_prefix_chunks": [
+      "config",
+      "chunk_backdrop_offsets",
+      "chunk_lens",
+      "backdrops",
+      "chunk_totals",
+      "dispatch_grid"
+    ],
+    "cumsum_chunk_offsets": [
+      "config",
+      "row_chunk_starts",
+      "row_chunk_ends",
+      "chunk_totals",
+      "chunk_offsets"
+    ],
+    "cumsum_apply_chunk_offsets": [
+      "config",
+      "chunk_backdrop_offsets",
+      "chunk_lens",
+      "backdrops",
+      "chunk_offsets",
+      "dispatch_grid"
+    ]
+  },
+  "reference": "cumsum.wgsl",
+  "notes": "Native config uses WGSL padding word 1 for chunk_count to guard padded groups; other fields and buffer indices retain the reference layout."
+}

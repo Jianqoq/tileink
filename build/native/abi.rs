@@ -1,8 +1,14 @@
 //! Versioned minimum-probe contract. A partial inventory must not produce a
 //! successful native build; expanding this contract requires a new schema.
+#[path = "compute_abi.rs"]
+mod compute;
+pub use compute::declarations as binding_declarations;
 use std::{collections::BTreeSet, io};
 
 pub fn validate(abi: &serde_json::Value) -> io::Result<()> {
+    if abi["schema"] == 2 {
+        return compute::validate(abi);
+    }
     if abi["programs"] == serde_json::json!(["range_scatter"]) {
         let expected = serde_json::json!({
             "schema":1,"programs":["range_scatter"],"workgroup":[256,1,1],

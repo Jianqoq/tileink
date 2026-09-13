@@ -37,7 +37,7 @@ pub(super) fn create(this: &mut Vulkan, physical: vk::PhysicalDevice) -> Result<
         )?;
         for artifact in crate::NATIVE_SHADER_ARTIFACTS
             .iter()
-            .filter(|a| a.format == "spirv")
+            .filter(|a| a.format == "spirv" && a.bindings.is_empty())
         {
             let properties = this.instance.get_physical_device_properties(physical);
             super::limits::workgroup(
@@ -140,7 +140,12 @@ pub(super) fn create(this: &mut Vulkan, physical: vk::PhysicalDevice) -> Result<
     }
 }
 
-fn cache_header_matches(bytes: &[u8], vendor: u32, device: u32, uuid: &[u8; 16]) -> bool {
+pub(super) fn cache_header_matches(
+    bytes: &[u8],
+    vendor: u32,
+    device: u32,
+    uuid: &[u8; 16],
+) -> bool {
     bytes.len() >= 32
         && u32::from_le_bytes(bytes[0..4].try_into().unwrap()) == 32
         && u32::from_le_bytes(bytes[4..8].try_into().unwrap()) == 1

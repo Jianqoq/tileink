@@ -1520,3 +1520,14 @@ Clippy 已通过；3471 张既有 PNG 无变化。运行时禁用 DXC 可执行�
 公开 NativeRenderer、共享 GPU 阶段资源与后续 M5/M6 尚未完成。用户取消性能
 比较；Mac 独立 MSL 和真实硬件验收仍延期。详见
 [本次合同和验证证据](docs/native/m4-range-scatter.md)。
+
+
+## 2026-09-13 — M4 cumsum / GPU batch progress
+
+- cumsum 的 prefix/chunk offsets/apply 三个 HLSL 入口已在 DX12、Vulkan 和两条 wgpu 参考路径通过 144 份严格字节对照；累计 4/179 HLSL 程序已验收，M4 尚未完成。
+- 原生多 buffer batch 保持中间结果在 GPU，一个批次提交整条链；DX12/Vulkan 分目录，新增模块均不使用 mod.rs。
+- 按用户要求集中 CUMSUM_CHUNK_SIZE，Rust/HLSL/WGSL 共用；DX12 对齐使用 SDK 常量，Vulkan 查询设备对齐。
+- 修复只读 CBV/SRV 别名的 DX12 状态合并根因，直接回归先失败再通过；两项独立审查已关闭该发现。
+- 33 个原生 runtime 测试含实际 GPU 均通过；移除 DXC 可执行路径后同样通过，pipeline 编译数为零。
+- 全 SVG 与 examples native/portable 通过，3471 张 PNG 文件摘要与旧基线一致。
+- 详见 [cumsum 实现和验证](docs/native/m4-cumsum.md)。共享资源池与完整 NativeRenderer 接入仍在 M4 后续范围。

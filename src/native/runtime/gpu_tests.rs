@@ -117,3 +117,6 @@ mod batches;
 
 #[path = "tests/scatter.rs"]
 mod scatter;
+
+#[path = "tests/cumsum_gpu.rs"]
+mod cumsum;
