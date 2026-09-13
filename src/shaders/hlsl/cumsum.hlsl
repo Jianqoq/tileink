@@ -26,9 +26,9 @@ void cumsum_prefix_chunks(uint3 group:SV_GroupID, uint3 local:SV_GroupThreadID) 
     if (lane < len) value=asint(backdrops.Load((offset+lane)*4u));
     scratch[lane]=value;
     GroupMemoryBarrierWithGroupSync();
-    for (uint step=1u; step<CUMSUM_CHUNK_SIZE; step*=2u) {
-        uint ix=(lane+1u)*step*2u-1u;
-        if (ix<CUMSUM_CHUNK_SIZE) scratch[ix]+=scratch[ix-step];
+    for (uint upsweep_step=1u; upsweep_step<CUMSUM_CHUNK_SIZE; upsweep_step*=2u) {
+        uint ix=(lane+1u)*upsweep_step*2u-1u;
+        if (ix<CUMSUM_CHUNK_SIZE) scratch[ix]+=scratch[ix-upsweep_step];
         GroupMemoryBarrierWithGroupSync();
     }
     if (lane==0u) {
@@ -36,11 +36,11 @@ void cumsum_prefix_chunks(uint3 group:SV_GroupID, uint3 local:SV_GroupThreadID) 
         scratch[CUMSUM_CHUNK_SIZE-1u]=0;
     }
     GroupMemoryBarrierWithGroupSync();
-    for (uint step=CUMSUM_CHUNK_SIZE/2u; step!=0u; step/=2u) {
-        uint ix=(lane+1u)*step*2u-1u;
+    for (uint downsweep_step=CUMSUM_CHUNK_SIZE/2u; downsweep_step!=0u; downsweep_step/=2u) {
+        uint ix=(lane+1u)*downsweep_step*2u-1u;
         if (ix<CUMSUM_CHUNK_SIZE) {
-            int previous=scratch[ix-step];
-            scratch[ix-step]=scratch[ix];
+            int previous=scratch[ix-downsweep_step];
+            scratch[ix-downsweep_step]=scratch[ix];
             scratch[ix]+=previous;
         }
         GroupMemoryBarrierWithGroupSync();

@@ -10,9 +10,9 @@ groupshared uint2 coarse_prefix_total;
 uint2 exclusive_prefix(uint2 value, uint lane, out uint2 total) {
     coarse_prefix_scratch[lane] = value;
     GroupMemoryBarrierWithGroupSync();
-    for (uint step = 1u; step < COARSE_WORKGROUP_SIZE; step *= 2u) {
-        uint index = (lane + 1u) * step * 2u - 1u;
-        if (index < COARSE_WORKGROUP_SIZE) coarse_prefix_scratch[index] += coarse_prefix_scratch[index - step];
+    for (uint upsweep_step = 1u; upsweep_step < COARSE_WORKGROUP_SIZE; upsweep_step *= 2u) {
+        uint index = (lane + 1u) * upsweep_step * 2u - 1u;
+        if (index < COARSE_WORKGROUP_SIZE) coarse_prefix_scratch[index] += coarse_prefix_scratch[index - upsweep_step];
         GroupMemoryBarrierWithGroupSync();
     }
     if (lane == 0u) {
@@ -20,10 +20,10 @@ uint2 exclusive_prefix(uint2 value, uint lane, out uint2 total) {
         coarse_prefix_scratch[COARSE_WORKGROUP_SIZE - 1u] = uint2(0u, 0u);
     }
     GroupMemoryBarrierWithGroupSync();
-    for (uint step = COARSE_WORKGROUP_SIZE / 2u; step > 0u; step /= 2u) {
-        uint index = (lane + 1u) * step * 2u - 1u;
+    for (uint downsweep_step = COARSE_WORKGROUP_SIZE / 2u; downsweep_step > 0u; downsweep_step /= 2u) {
+        uint index = (lane + 1u) * downsweep_step * 2u - 1u;
         if (index < COARSE_WORKGROUP_SIZE) {
-            uint left = index - step;
+            uint left = index - downsweep_step;
             uint2 previous = coarse_prefix_scratch[left];
             coarse_prefix_scratch[left] = coarse_prefix_scratch[index];
             coarse_prefix_scratch[index] += previous;

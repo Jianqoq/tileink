@@ -109,3 +109,21 @@ file hashes, including paths deleted by this migration.
 
 This verifies the explicit-interface refactor; it does not add M4 kernels or
 claim production native renderer completion.
+### Prefix scan loop scopes
+
+Cumsum and coarse `exclusive_prefix` use distinct `upsweep_step` and
+`downsweep_step` names. Shader Tools applies an older for-loop scope rule and
+reported HLSL0047 for a second `step` declaration in the same function. This fixes
+the source/editor naming conflict; no scan arithmetic or barriers changed.
+All 44 directly compiled DXIL/SPIR-V artifacts are byte-identical to the previous
+revision. The real-editor regression verifies both files and requires an explicit
+empty diagnostic publication after a deliberately invalid document is corrected:
+
+```powershell
+$env:TILEINK_HLSL_LANGUAGE_SERVER = '<path>/ShaderTools.LanguageServer.exe'
+python tests/hlsl_editor_test.py
+```
+
+The compiler suite remains authoritative for executable shaders; this additional
+check exercises the separate editor parser which DXC cannot validate.
+Validation: the editor regression fails with HLSL0047 in both prior sources and passes after renaming; 1,072 release tests, 44 native runtime tests, strict Clippy and full SVG/examples checks pass. All 3,471 PNG hashes remain unchanged.
