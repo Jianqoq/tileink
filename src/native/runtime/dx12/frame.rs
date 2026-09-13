@@ -31,9 +31,9 @@ impl Frame {
                 buffers: Vec::new(),
                 descriptors: Vec::new(),
                 readback: None,
-                size: case.destination.len(),
+                size: case.destination().len(),
             };
-            let size = case.destination.len();
+            let size = case.destination().len();
             let destination = frame.buffer(
                 size,
                 D3D12_HEAP_TYPE_DEFAULT,
@@ -46,22 +46,26 @@ impl Frame {
                 D3D12_HEAP_TYPE_UPLOAD,
                 D3D12_RESOURCE_STATE_GENERIC_READ,
                 D3D12_RESOURCE_FLAG_NONE,
-                Some(&case.destination),
+                Some(case.destination()),
             )?;
             let source = frame.buffer(
-                case.source.len(),
+                case.source().len(),
                 D3D12_HEAP_TYPE_UPLOAD,
                 D3D12_RESOURCE_STATE_GENERIC_READ,
                 D3D12_RESOURCE_FLAG_NONE,
-                Some(&case.source),
+                Some(case.source()),
             )?;
-            let params = frame.buffer(
-                256,
-                D3D12_HEAP_TYPE_UPLOAD,
-                D3D12_RESOURCE_STATE_GENERIC_READ,
-                D3D12_RESOURCE_FLAG_NONE,
-                Some(bytemuck::bytes_of(&case.params)),
-            )?;
+            let params = if let Some(params) = case.params() {
+                Some(frame.buffer(
+                    256,
+                    D3D12_HEAP_TYPE_UPLOAD,
+                    D3D12_RESOURCE_STATE_GENERIC_READ,
+                    D3D12_RESOURCE_FLAG_NONE,
+                    Some(bytemuck::bytes_of(params)),
+                )?)
+            } else {
+                None
+            };
             let readback = frame.buffer(
                 size,
                 D3D12_HEAP_TYPE_READBACK,
@@ -86,10 +90,8 @@ impl Frame {
             );
             frame.list.SetComputeRootSignature(signature);
             frame.list.SetPipelineState(pipeline);
-            if case.entry == "sample_words" {
-                let start = case.params.source_offset as usize;
-                let end = start + case.params.value[2] as usize * 4;
-                frame.record_texture(case.params.value[2], &case.source[start..end])?;
+            if let Some((width, bytes)) = case.texture() {
+                frame.record_texture(width, bytes)?;
             }
             frame
                 .list
@@ -97,12 +99,16 @@ impl Frame {
             frame
                 .list
                 .SetComputeRootShaderResourceView(1, source.GetGPUVirtualAddress());
-            frame
-                .list
-                .SetComputeRootConstantBufferView(2, params.GetGPUVirtualAddress());
-            frame
-                .list
-                .Dispatch(case.params.count.div_ceil(64).max(1), 1, 1);
+            if let Some(params) = params {
+                frame
+                    .list
+                    .SetComputeRootConstantBufferView(2, params.GetGPUVirtualAddress());
+            }
+            // An empty upload preserves the destination without issuing a zero
+            // Dispatch (which the D3D12 validation layer reports as a warning).
+            if case.workgroups() != 0 {
+                frame.list.Dispatch(case.workgroups(), 1, 1);
+            }
             frame.transition(
                 &destination,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS,

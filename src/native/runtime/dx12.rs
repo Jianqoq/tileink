@@ -111,7 +111,7 @@ impl Dx12 {
                 Frame::record(
                     &self.gpu.device,
                     &self.gpu.signature,
-                    &self.gpu.pipelines[command.entry],
+                    &self.gpu.pipelines[command.entry()],
                     command,
                 )
             })
@@ -142,8 +142,8 @@ impl Dx12 {
     }
 
     #[cfg(test)]
-    pub fn submit(&mut self, command: &Dispatch) -> Result<Ticket> {
-        self.submit_batch(std::slice::from_ref(command))
+    pub fn submit(&mut self, command: &super::program::Probe) -> Result<Ticket> {
+        self.submit_batch(&[command.clone().into()])
     }
 
     pub fn readback_batch(&mut self, ticket: &Ticket) -> Result<Vec<Vec<u8>>> {
@@ -177,7 +177,7 @@ impl Dx12 {
     }
 
     #[cfg(test)]
-    pub fn execute(&mut self, case: &Dispatch) -> Result<Vec<u8>> {
+    pub fn execute(&mut self, case: &super::program::Probe) -> Result<Vec<u8>> {
         let ticket = self.submit(case)?;
         self.readback(&ticket)
     }

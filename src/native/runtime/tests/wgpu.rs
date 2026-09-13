@@ -7,6 +7,8 @@ pub struct Reference {
     device: wgpu::Device,
     queue: wgpu::Queue,
     bindings: wgpu::BindGroupLayout,
+    scatter_bindings: wgpu::BindGroupLayout,
+    scatter_pipeline: wgpu::ComputePipeline,
     pipelines: BTreeMap<&'static str, wgpu::ComputePipeline>,
 }
 
@@ -88,11 +90,51 @@ impl Reference {
                     )
                 })
                 .collect();
+            let scatter_bindings =
+                device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("production range scatter reference bindings"),
+                    entries: &[true, false]
+                        .into_iter()
+                        .enumerate()
+                        .map(|(binding, read_only)| wgpu::BindGroupLayoutEntry {
+                            binding: binding as u32,
+                            visibility: wgpu::ShaderStages::COMPUTE,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Storage { read_only },
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
+                            },
+                            count: None,
+                        })
+                        .collect::<Vec<_>>(),
+                });
+            let scatter_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: None,
+                bind_group_layouts: &[Some(&scatter_bindings)],
+                immediate_size: 0,
+            });
+            let scatter_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("unmodified production range scatter WGSL"),
+                source: wgpu::ShaderSource::Wgsl(
+                    include_str!("../../../wgpu/shaders/range_scatter.wgsl").into(),
+                ),
+            });
+            let scatter_pipeline =
+                device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                    label: None,
+                    layout: Some(&scatter_layout),
+                    module: &scatter_module,
+                    entry_point: Some("main"),
+                    compilation_options: Default::default(),
+                    cache: None,
+                });
             return Ok(Self {
                 device,
                 queue,
                 bindings,
                 pipelines,
+                scatter_bindings,
+                scatter_pipeline,
             });
         }
         Err("requested wgpu reference physical GPU unavailable".into())
@@ -182,12 +224,6 @@ impl Reference {
             layout: &self.bindings,
             entries: &entries,
         });
-        let readback = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: None,
-            size: case.destination.len() as u64,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
         let mut encoder = self.device.create_command_encoder(&Default::default());
         {
             let mut pass = encoder.begin_compute_pass(&Default::default());
@@ -195,7 +231,63 @@ impl Reference {
             pass.set_bind_group(0, &group, &[]);
             pass.dispatch_workgroups(case.params.count.div_ceil(64).max(1), 1, 1);
         }
-        encoder.copy_buffer_to_buffer(&destination, 0, &readback, 0, case.destination.len() as u64);
+        self.read_output(encoder, &destination, case.destination.len())
+    }
+
+    pub fn execute_scatter(&self, case: &super::super::program::Scatter) -> Result<Vec<u8>> {
+        let source = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: None,
+                contents: case.source(),
+                usage: wgpu::BufferUsages::STORAGE,
+            });
+        let destination = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: None,
+                contents: case.destination(),
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            });
+        let group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &self.scatter_bindings,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: source.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: destination.as_entire_binding(),
+                },
+            ],
+        });
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        {
+            let mut pass = encoder.begin_compute_pass(&Default::default());
+            pass.set_pipeline(&self.scatter_pipeline);
+            pass.set_bind_group(0, &group, &[]);
+            if case.workgroups() != 0 {
+                pass.dispatch_workgroups(case.workgroups(), 1, 1);
+            }
+        }
+        self.read_output(encoder, &destination, case.destination().len())
+    }
+
+    fn read_output(
+        &self,
+        mut encoder: wgpu::CommandEncoder,
+        destination: &wgpu::Buffer,
+        size: usize,
+    ) -> Result<Vec<u8>> {
+        let readback = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: size as u64,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        encoder.copy_buffer_to_buffer(destination, 0, &readback, 0, size as u64);
         self.queue.submit([encoder.finish()]);
         let (send, receive) = std::sync::mpsc::channel();
         readback

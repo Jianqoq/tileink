@@ -1504,3 +1504,19 @@ M1 仍在性能修复和验收。候选3已经通过931项默认库测试、613�
 ## 2026-09-13 — macOS shader 源码策略更正
 
 用户明确 macOS 使用独立 Metal Shading Language（MSL）源码，不使用 HLSL。本条取代此前 M2 的 HLSL→Metal 设想：DX12/Vulkan 共用 HLSL，macOS 独立维护 `.metal`；共享算法/数值规格、ABI、逻辑 program/variant 和测试合同。PLAN 第 4/5/8/10 节和 Metal 工具链补充已同步修正。M0/M1 验证继续，M2 仍未实现或在 Mac 上验收。
+
+
+## 2026-09-13 — 当前状态：M4 range scatter 内核切片
+
+以上条目为历史过程记录，不代表当前待办。Windows M3 已完成并推送
+`78717916939326456f5df7819929768d094c699b`，见
+[阶段记录](docs/native/m3-completion.md)。本次完成 M4 的 range scatter HLSL
+内核，两种原生 API 与原生产 wgpu shader 在同 GPU 上共 684 份输出逐字节一致。
+完整原生 runtime 25 项测试、956 项 release 库测试、全量 SVG/示例及严格
+Clippy 已通过；3471 张既有 PNG 无变化。运行时禁用 DXC 可执行路径仍通过，
+120 次原生 pipeline 缓存命中、零 pipeline 编译。
+
+179 项迁移清单目前仅 1 项 HLSL 内核验收，下一项为 scan/cumsum。完整 M4、
+公开 NativeRenderer、共享 GPU 阶段资源与后续 M5/M6 尚未完成。用户取消性能
+比较；Mac 独立 MSL 和真实硬件验收仍延期。详见
+[本次合同和验证证据](docs/native/m4-range-scatter.md)。

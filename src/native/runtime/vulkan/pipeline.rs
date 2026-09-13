@@ -39,6 +39,12 @@ pub(super) fn create(this: &mut Vulkan, physical: vk::PhysicalDevice) -> Result<
             .iter()
             .filter(|a| a.format == "spirv")
         {
+            let properties = this.instance.get_physical_device_properties(physical);
+            super::limits::workgroup(
+                artifact.workgroup,
+                properties.limits.max_compute_work_group_size,
+                properties.limits.max_compute_work_group_invocations,
+            )?;
             let words: Vec<u32> = artifact
                 .bytes
                 .chunks_exact(4)
@@ -52,7 +58,6 @@ pub(super) fn create(this: &mut Vulkan, physical: vk::PhysicalDevice) -> Result<
                 .stage(vk::ShaderStageFlags::COMPUTE)
                 .module(shader)
                 .name(&name);
-            let properties = this.instance.get_physical_device_properties(physical);
             let identity = serde_json::to_vec(
                 &serde_json::json!({"api":"vulkan","version":properties.api_version,"vendor":properties.vendor_id,"device":properties.device_id,"driver":properties.driver_version,"uuid":properties.pipeline_cache_uuid}),
             )?;

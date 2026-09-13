@@ -3,6 +3,23 @@
 use std::{collections::BTreeSet, io};
 
 pub fn validate(abi: &serde_json::Value) -> io::Result<()> {
+    if abi["programs"] == serde_json::json!(["range_scatter"]) {
+        let expected = serde_json::json!({
+            "schema":1,"programs":["range_scatter"],"workgroup":[256,1,1],
+            "parameter_size":0,"bindings":{"destination":0,"source":1},
+            "descriptor_set":0,"buffer_offsets_alignment":4,
+            "upload_header_words":4,"descriptor_words":4,
+            "reference_bindings":{"source":0,"destination":1}
+        });
+        for (field, value) in expected.as_object().unwrap() {
+            if &abi[field] != value {
+                return Err(io::Error::other(format!(
+                    "native scatter ABI mismatch: {field}"
+                )));
+            }
+        }
+        return Ok(());
+    }
     let expected = serde_json::json!({
         "schema":1,"workgroup":[64,1,1],"parameter_size":32,"parameter_alignment":16,
         "parameter_offsets":{"count":0,"source_offset":4,"destination_offset":8,"stride":12,"value":16},

@@ -80,3 +80,25 @@ fn actual_spirv_texture_dimension_array_sample_type_and_binding_are_checked() {
     wrong["bindings"]["texels"] = serde_json::json!(4);
     assert!(spirv::validate(artifact.bytes, "sample_words", &wrong).is_err());
 }
+
+#[cfg(all(
+    feature = "native-vulkan",
+    any(target_os = "windows", target_os = "linux")
+))]
+#[test]
+fn actual_range_scatter_spirv_uses_the_production_dispatch_shape() {
+    let artifact = tileink::NATIVE_SHADER_ARTIFACTS
+        .iter()
+        .find(|a| a.format == "spirv" && a.entry == "range_scatter")
+        .unwrap();
+    let abi: serde_json::Value =
+        serde_json::from_str(include_str!("../src/shaders/range-scatter-abi.json")).unwrap();
+    spirv::validate(artifact.bytes, "range_scatter", &abi).unwrap();
+    assert_eq!(artifact.workgroup, [256, 1, 1]);
+    let mut wrong = abi.clone();
+    wrong["workgroup"] = serde_json::json!([64, 1, 1]);
+    assert!(spirv::validate(artifact.bytes, "range_scatter", &wrong).is_err());
+    let mut wrong = abi.clone();
+    wrong["bindings"]["source"] = serde_json::json!(0);
+    assert!(spirv::validate(artifact.bytes, "range_scatter", &wrong).is_err());
+}

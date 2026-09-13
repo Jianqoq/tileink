@@ -15,37 +15,47 @@ pub fn validate(text: &str, entry: &str, abi: &serde_json::Value) -> io::Result<
         "DXIL entry",
     )?;
     require(
-        lines.contains(&"NumThreads=(64,1,1)") && abi["workgroup"] == serde_json::json!([64, 1, 1]),
+        lines.contains(
+            &format!(
+                "NumThreads=({},{},{})",
+                abi["workgroup"][0], abi["workgroup"][1], abi["workgroup"][2]
+            )
+            .as_str(),
+        ),
         "DXIL workgroup",
     )?;
-    require(
-        lines.iter().any(|l| {
-            l.starts_with("} params;")
-                && l.split_whitespace()
-                    .collect::<Vec<_>>()
-                    .ends_with(&["Size:", "32"])
-        }) && abi["parameter_size"].as_u64() == Some(32),
-        "DXIL parameter size",
-    )?;
-    for (field, ty) in [
-        ("count", "uint"),
-        ("source_offset", "uint"),
-        ("destination_offset", "uint"),
-        ("stride", "uint"),
-        ("value", "uint4"),
-    ] {
-        let prefix = format!("{ty} {field};");
-        let offset = lines
-            .iter()
-            .find(|l| l.starts_with(&prefix))
-            .and_then(|l| l.split("Offset:").nth(1))
-            .and_then(|s| s.trim().parse::<u64>().ok());
+    if entry != "range_scatter" {
         require(
-            offset.is_some() && offset == abi["parameter_offsets"][field].as_u64(),
-            "DXIL parameter offset/type",
+            lines.iter().any(|l| {
+                l.starts_with("} params;")
+                    && l.split_whitespace()
+                        .collect::<Vec<_>>()
+                        .ends_with(&["Size:", "32"])
+            }) && abi["parameter_size"].as_u64() == Some(32),
+            "DXIL parameter size",
         )?;
+        for (field, ty) in [
+            ("count", "uint"),
+            ("source_offset", "uint"),
+            ("destination_offset", "uint"),
+            ("stride", "uint"),
+            ("value", "uint4"),
+        ] {
+            let prefix = format!("{ty} {field};");
+            let offset = lines
+                .iter()
+                .find(|l| l.starts_with(&prefix))
+                .and_then(|l| l.split("Offset:").nth(1))
+                .and_then(|s| s.trim().parse::<u64>().ok());
+            require(
+                offset.is_some() && offset == abi["parameter_offsets"][field].as_u64(),
+                "DXIL parameter offset/type",
+            )?;
+        }
     }
-    let expected: &[(&str, &str, u64)] = if entry == "sample_words" {
+    let expected: &[(&str, &str, u64)] = if entry == "range_scatter" {
+        &[("destination", "u0", 0), ("source", "t1", 1)]
+    } else if entry == "sample_words" {
         &[
             ("destination", "u0", 0),
             ("source", "t1", 1),

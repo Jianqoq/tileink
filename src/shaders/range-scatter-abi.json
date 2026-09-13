@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "programs": [
+    "range_scatter"
+  ],
+  "workgroup": [
+    256,
+    1,
+    1
+  ],
+  "parameter_size": 0,
+  "bindings": {
+    "destination": 0,
+    "source": 1
+  },
+  "descriptor_set": 0,
+  "buffer_offsets_alignment": 4,
+  "upload_header_words": 4,
+  "descriptor_words": 4,
+  "dispatch": "one workgroup per descriptor; zero descriptors dispatch zero groups",
+  "reference": "src/wgpu/shaders/range_scatter.wgsl",
+  "reference_bindings": {
+    "source": 0,
+    "destination": 1
+  }
+}

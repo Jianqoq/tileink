@@ -131,7 +131,7 @@ fn parse_include(line: &str) -> Option<&str> {
 }
 
 #[cfg(any(feature = "native-dx12", feature = "native-vulkan"))]
-#[path = "build/native/mod.rs"]
+#[path = "build/native.rs"]
 mod native_shaders;
 
 fn main() {

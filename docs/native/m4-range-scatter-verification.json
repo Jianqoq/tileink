@@ -1,0 +1,5157 @@
+{
+  "schema": 1,
+  "baseline_commit": "78717916939326456f5df7819929768d094c699b",
+  "scope": "M4 Windows range scatter kernel only; full M4 remains incomplete",
+  "gpu": {
+    "cases": 57,
+    "frames": [
+      {
+        "bytes": 528404,
+        "case": 56,
+        "expected_sha256": "301577a7302716b4f32dabe48c9388fea782a02a654522af9c9a7f05fb48d6bd",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "301577a7302716b4f32dabe48c9388fea782a02a654522af9c9a7f05fb48d6bd"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "301577a7302716b4f32dabe48c9388fea782a02a654522af9c9a7f05fb48d6bd"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "301577a7302716b4f32dabe48c9388fea782a02a654522af9c9a7f05fb48d6bd"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "301577a7302716b4f32dabe48c9388fea782a02a654522af9c9a7f05fb48d6bd"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 257
+      },
+      {
+        "bytes": 265236,
+        "case": 55,
+        "expected_sha256": "cbb560e7d781fe0dafc833d83f78536bd530e07d5edb5571ecbbe61ebac31d4c",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "cbb560e7d781fe0dafc833d83f78536bd530e07d5edb5571ecbbe61ebac31d4c"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "cbb560e7d781fe0dafc833d83f78536bd530e07d5edb5571ecbbe61ebac31d4c"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "cbb560e7d781fe0dafc833d83f78536bd530e07d5edb5571ecbbe61ebac31d4c"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "cbb560e7d781fe0dafc833d83f78536bd530e07d5edb5571ecbbe61ebac31d4c"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 257
+      },
+      {
+        "bytes": 264208,
+        "case": 54,
+        "expected_sha256": "61496e2e4f896d352ee249f46105c7c120a01d49cc3f3b2a6d392060b7bc5cdb",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "61496e2e4f896d352ee249f46105c7c120a01d49cc3f3b2a6d392060b7bc5cdb"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "61496e2e4f896d352ee249f46105c7c120a01d49cc3f3b2a6d392060b7bc5cdb"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "61496e2e4f896d352ee249f46105c7c120a01d49cc3f3b2a6d392060b7bc5cdb"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "61496e2e4f896d352ee249f46105c7c120a01d49cc3f3b2a6d392060b7bc5cdb"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 257
+      },
+      {
+        "bytes": 263180,
+        "case": 53,
+        "expected_sha256": "b0805577173fc15eac4c29041ed4318f4614889e82c1c8cb9a65a85e4c612f65",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "b0805577173fc15eac4c29041ed4318f4614889e82c1c8cb9a65a85e4c612f65"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "b0805577173fc15eac4c29041ed4318f4614889e82c1c8cb9a65a85e4c612f65"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "b0805577173fc15eac4c29041ed4318f4614889e82c1c8cb9a65a85e4c612f65"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "b0805577173fc15eac4c29041ed4318f4614889e82c1c8cb9a65a85e4c612f65"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 257
+      },
+      {
+        "bytes": 2068,
+        "case": 52,
+        "expected_sha256": "9afd9fb752342a9d26d0c449e849b0186ffd9fd5bf84130248898c245929f638",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "9afd9fb752342a9d26d0c449e849b0186ffd9fd5bf84130248898c245929f638"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "9afd9fb752342a9d26d0c449e849b0186ffd9fd5bf84130248898c245929f638"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "9afd9fb752342a9d26d0c449e849b0186ffd9fd5bf84130248898c245929f638"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "9afd9fb752342a9d26d0c449e849b0186ffd9fd5bf84130248898c245929f638"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 257
+      },
+      {
+        "bytes": 1040,
+        "case": 51,
+        "expected_sha256": "4eb57dbffd732ea2565f2975900bf3426f43ea29e4cb28cb14362e72665dbd3a",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "4eb57dbffd732ea2565f2975900bf3426f43ea29e4cb28cb14362e72665dbd3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "4eb57dbffd732ea2565f2975900bf3426f43ea29e4cb28cb14362e72665dbd3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "4eb57dbffd732ea2565f2975900bf3426f43ea29e4cb28cb14362e72665dbd3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "4eb57dbffd732ea2565f2975900bf3426f43ea29e4cb28cb14362e72665dbd3a"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 257
+      },
+      {
+        "bytes": 265236,
+        "case": 50,
+        "expected_sha256": "4d68d1c6570bb35fee2467855d6bbd8528a0451a1bd2788011fe78713d248f91",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "4d68d1c6570bb35fee2467855d6bbd8528a0451a1bd2788011fe78713d248f91"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "4d68d1c6570bb35fee2467855d6bbd8528a0451a1bd2788011fe78713d248f91"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "4d68d1c6570bb35fee2467855d6bbd8528a0451a1bd2788011fe78713d248f91"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "4d68d1c6570bb35fee2467855d6bbd8528a0451a1bd2788011fe78713d248f91"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 129
+      },
+      {
+        "bytes": 133140,
+        "case": 49,
+        "expected_sha256": "e9ffe7e5df0b16df499afa1419d21883a52c8f2b301bad4feab5f92f73976a8f",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "e9ffe7e5df0b16df499afa1419d21883a52c8f2b301bad4feab5f92f73976a8f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "e9ffe7e5df0b16df499afa1419d21883a52c8f2b301bad4feab5f92f73976a8f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "e9ffe7e5df0b16df499afa1419d21883a52c8f2b301bad4feab5f92f73976a8f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "e9ffe7e5df0b16df499afa1419d21883a52c8f2b301bad4feab5f92f73976a8f"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 129
+      },
+      {
+        "bytes": 132624,
+        "case": 48,
+        "expected_sha256": "cde6058a99e440f0c897f999b6c46bfe5be6f58735cf25e099868949cb76b06d",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "cde6058a99e440f0c897f999b6c46bfe5be6f58735cf25e099868949cb76b06d"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "cde6058a99e440f0c897f999b6c46bfe5be6f58735cf25e099868949cb76b06d"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "cde6058a99e440f0c897f999b6c46bfe5be6f58735cf25e099868949cb76b06d"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "cde6058a99e440f0c897f999b6c46bfe5be6f58735cf25e099868949cb76b06d"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 129
+      },
+      {
+        "bytes": 132108,
+        "case": 47,
+        "expected_sha256": "a78274d127d260ceb9529c980008b2fe40c14c0a899c34d9caa0c13bb9506c3a",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "a78274d127d260ceb9529c980008b2fe40c14c0a899c34d9caa0c13bb9506c3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "a78274d127d260ceb9529c980008b2fe40c14c0a899c34d9caa0c13bb9506c3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "a78274d127d260ceb9529c980008b2fe40c14c0a899c34d9caa0c13bb9506c3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "a78274d127d260ceb9529c980008b2fe40c14c0a899c34d9caa0c13bb9506c3a"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 129
+      },
+      {
+        "bytes": 1044,
+        "case": 46,
+        "expected_sha256": "df552adf6638c2d25cf14a4485d402986ac19782806aaa405402edc7b49a15c7",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "df552adf6638c2d25cf14a4485d402986ac19782806aaa405402edc7b49a15c7"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "df552adf6638c2d25cf14a4485d402986ac19782806aaa405402edc7b49a15c7"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "df552adf6638c2d25cf14a4485d402986ac19782806aaa405402edc7b49a15c7"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "df552adf6638c2d25cf14a4485d402986ac19782806aaa405402edc7b49a15c7"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 129
+      },
+      {
+        "bytes": 528,
+        "case": 45,
+        "expected_sha256": "597e7cd4c1611885c3ac0f7b2e40ff272945048bf2b4209cb2ed223eab11c009",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "597e7cd4c1611885c3ac0f7b2e40ff272945048bf2b4209cb2ed223eab11c009"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "597e7cd4c1611885c3ac0f7b2e40ff272945048bf2b4209cb2ed223eab11c009"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "597e7cd4c1611885c3ac0f7b2e40ff272945048bf2b4209cb2ed223eab11c009"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "597e7cd4c1611885c3ac0f7b2e40ff272945048bf2b4209cb2ed223eab11c009"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 129
+      },
+      {
+        "bytes": 263180,
+        "case": 44,
+        "expected_sha256": "8ea746e3ed6fde80b6d6e7dc1a7d4ea080771786d6aca2d527721965331f7c55",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "8ea746e3ed6fde80b6d6e7dc1a7d4ea080771786d6aca2d527721965331f7c55"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "8ea746e3ed6fde80b6d6e7dc1a7d4ea080771786d6aca2d527721965331f7c55"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "8ea746e3ed6fde80b6d6e7dc1a7d4ea080771786d6aca2d527721965331f7c55"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "8ea746e3ed6fde80b6d6e7dc1a7d4ea080771786d6aca2d527721965331f7c55"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 128
+      },
+      {
+        "bytes": 132108,
+        "case": 43,
+        "expected_sha256": "d7065ff69b1cde61d94482980571ee9134f028c574b281fbb404147175775280",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "d7065ff69b1cde61d94482980571ee9134f028c574b281fbb404147175775280"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "d7065ff69b1cde61d94482980571ee9134f028c574b281fbb404147175775280"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "d7065ff69b1cde61d94482980571ee9134f028c574b281fbb404147175775280"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "d7065ff69b1cde61d94482980571ee9134f028c574b281fbb404147175775280"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 128
+      },
+      {
+        "bytes": 131596,
+        "case": 42,
+        "expected_sha256": "79a3f643ac999c40378ae7c698d47c09d63757181456d09f5600841014436bc5",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "79a3f643ac999c40378ae7c698d47c09d63757181456d09f5600841014436bc5"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "79a3f643ac999c40378ae7c698d47c09d63757181456d09f5600841014436bc5"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "79a3f643ac999c40378ae7c698d47c09d63757181456d09f5600841014436bc5"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "79a3f643ac999c40378ae7c698d47c09d63757181456d09f5600841014436bc5"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 128
+      },
+      {
+        "bytes": 131084,
+        "case": 41,
+        "expected_sha256": "27b182cebf80b30d2713fb1f185a2215d491d87f6ff6819b79cc6f4662e31158",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "27b182cebf80b30d2713fb1f185a2215d491d87f6ff6819b79cc6f4662e31158"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "27b182cebf80b30d2713fb1f185a2215d491d87f6ff6819b79cc6f4662e31158"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "27b182cebf80b30d2713fb1f185a2215d491d87f6ff6819b79cc6f4662e31158"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "27b182cebf80b30d2713fb1f185a2215d491d87f6ff6819b79cc6f4662e31158"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 128
+      },
+      {
+        "bytes": 1036,
+        "case": 40,
+        "expected_sha256": "b29157862c47813a86abd3fc09d0d20f8c300e2b21dfc0a35d8b4d983979758f",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "b29157862c47813a86abd3fc09d0d20f8c300e2b21dfc0a35d8b4d983979758f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "b29157862c47813a86abd3fc09d0d20f8c300e2b21dfc0a35d8b4d983979758f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "b29157862c47813a86abd3fc09d0d20f8c300e2b21dfc0a35d8b4d983979758f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "b29157862c47813a86abd3fc09d0d20f8c300e2b21dfc0a35d8b4d983979758f"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 128
+      },
+      {
+        "bytes": 524,
+        "case": 39,
+        "expected_sha256": "1e939908117e726dfc2fa956e1b58b12f83aafeb575515bef84cb17409f1dedc",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "1e939908117e726dfc2fa956e1b58b12f83aafeb575515bef84cb17409f1dedc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "1e939908117e726dfc2fa956e1b58b12f83aafeb575515bef84cb17409f1dedc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "1e939908117e726dfc2fa956e1b58b12f83aafeb575515bef84cb17409f1dedc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "1e939908117e726dfc2fa956e1b58b12f83aafeb575515bef84cb17409f1dedc"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 128
+      },
+      {
+        "bytes": 261124,
+        "case": 38,
+        "expected_sha256": "8f0623fab5b9096c9abfa303da0a6e230fa2a555fdd0b069fd1d76d8a6e4de2e",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "8f0623fab5b9096c9abfa303da0a6e230fa2a555fdd0b069fd1d76d8a6e4de2e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "8f0623fab5b9096c9abfa303da0a6e230fa2a555fdd0b069fd1d76d8a6e4de2e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "8f0623fab5b9096c9abfa303da0a6e230fa2a555fdd0b069fd1d76d8a6e4de2e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "8f0623fab5b9096c9abfa303da0a6e230fa2a555fdd0b069fd1d76d8a6e4de2e"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 127
+      },
+      {
+        "bytes": 131076,
+        "case": 37,
+        "expected_sha256": "6e14a8e62113b1e9b49f1cb8c87bac058e20f6bbf9f70500820d8fa2b93901de",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "6e14a8e62113b1e9b49f1cb8c87bac058e20f6bbf9f70500820d8fa2b93901de"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "6e14a8e62113b1e9b49f1cb8c87bac058e20f6bbf9f70500820d8fa2b93901de"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "6e14a8e62113b1e9b49f1cb8c87bac058e20f6bbf9f70500820d8fa2b93901de"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "6e14a8e62113b1e9b49f1cb8c87bac058e20f6bbf9f70500820d8fa2b93901de"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 127
+      },
+      {
+        "bytes": 130568,
+        "case": 36,
+        "expected_sha256": "43faeb61f77ceec835da9f2c6fdb55faab8c24ab08d73498ec16a821b0d9ec19",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "43faeb61f77ceec835da9f2c6fdb55faab8c24ab08d73498ec16a821b0d9ec19"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "43faeb61f77ceec835da9f2c6fdb55faab8c24ab08d73498ec16a821b0d9ec19"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "43faeb61f77ceec835da9f2c6fdb55faab8c24ab08d73498ec16a821b0d9ec19"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "43faeb61f77ceec835da9f2c6fdb55faab8c24ab08d73498ec16a821b0d9ec19"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 127
+      },
+      {
+        "bytes": 130060,
+        "case": 35,
+        "expected_sha256": "ad6c41dfea2cd8e4320e4e4960aa7c9720f9fbcd0e9a31a1f79c57101bca972b",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "ad6c41dfea2cd8e4320e4e4960aa7c9720f9fbcd0e9a31a1f79c57101bca972b"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "ad6c41dfea2cd8e4320e4e4960aa7c9720f9fbcd0e9a31a1f79c57101bca972b"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "ad6c41dfea2cd8e4320e4e4960aa7c9720f9fbcd0e9a31a1f79c57101bca972b"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "ad6c41dfea2cd8e4320e4e4960aa7c9720f9fbcd0e9a31a1f79c57101bca972b"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 127
+      },
+      {
+        "bytes": 1028,
+        "case": 34,
+        "expected_sha256": "8bdc8c89c5efbfc5c48897b8d775273a4b0600ab26ea6df14b017a91b873f858",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "8bdc8c89c5efbfc5c48897b8d775273a4b0600ab26ea6df14b017a91b873f858"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "8bdc8c89c5efbfc5c48897b8d775273a4b0600ab26ea6df14b017a91b873f858"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "8bdc8c89c5efbfc5c48897b8d775273a4b0600ab26ea6df14b017a91b873f858"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "8bdc8c89c5efbfc5c48897b8d775273a4b0600ab26ea6df14b017a91b873f858"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 127
+      },
+      {
+        "bytes": 520,
+        "case": 33,
+        "expected_sha256": "70fc909ecb341114454f1e3a61cc175e71ce23045bdcdbf332073504af335fa8",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "70fc909ecb341114454f1e3a61cc175e71ce23045bdcdbf332073504af335fa8"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "70fc909ecb341114454f1e3a61cc175e71ce23045bdcdbf332073504af335fa8"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "70fc909ecb341114454f1e3a61cc175e71ce23045bdcdbf332073504af335fa8"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "70fc909ecb341114454f1e3a61cc175e71ce23045bdcdbf332073504af335fa8"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 127
+      },
+      {
+        "bytes": 133652,
+        "case": 32,
+        "expected_sha256": "cc42d36d37790342f68502151449a47f4a0970261d9437eb0fda1dddefb8ba64",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "cc42d36d37790342f68502151449a47f4a0970261d9437eb0fda1dddefb8ba64"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "cc42d36d37790342f68502151449a47f4a0970261d9437eb0fda1dddefb8ba64"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "cc42d36d37790342f68502151449a47f4a0970261d9437eb0fda1dddefb8ba64"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "cc42d36d37790342f68502151449a47f4a0970261d9437eb0fda1dddefb8ba64"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 65
+      },
+      {
+        "bytes": 67092,
+        "case": 31,
+        "expected_sha256": "562e43d6da3eda88a8bb4cb7f1e2a4019a4736857011005fce474a45ad2f6cce",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "562e43d6da3eda88a8bb4cb7f1e2a4019a4736857011005fce474a45ad2f6cce"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "562e43d6da3eda88a8bb4cb7f1e2a4019a4736857011005fce474a45ad2f6cce"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "562e43d6da3eda88a8bb4cb7f1e2a4019a4736857011005fce474a45ad2f6cce"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "562e43d6da3eda88a8bb4cb7f1e2a4019a4736857011005fce474a45ad2f6cce"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 65
+      },
+      {
+        "bytes": 66832,
+        "case": 30,
+        "expected_sha256": "e6cfaa197f8ddc36b8e4f801a43fd4d6c5d9e557420ee84b62421093ec809d33",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "e6cfaa197f8ddc36b8e4f801a43fd4d6c5d9e557420ee84b62421093ec809d33"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "e6cfaa197f8ddc36b8e4f801a43fd4d6c5d9e557420ee84b62421093ec809d33"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "e6cfaa197f8ddc36b8e4f801a43fd4d6c5d9e557420ee84b62421093ec809d33"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "e6cfaa197f8ddc36b8e4f801a43fd4d6c5d9e557420ee84b62421093ec809d33"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 65
+      },
+      {
+        "bytes": 66572,
+        "case": 29,
+        "expected_sha256": "e3f4690d185955a32695ccae5b83fcf445c17c6ff3300d740d6ae46eccaa0e34",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "e3f4690d185955a32695ccae5b83fcf445c17c6ff3300d740d6ae46eccaa0e34"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "e3f4690d185955a32695ccae5b83fcf445c17c6ff3300d740d6ae46eccaa0e34"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "e3f4690d185955a32695ccae5b83fcf445c17c6ff3300d740d6ae46eccaa0e34"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "e3f4690d185955a32695ccae5b83fcf445c17c6ff3300d740d6ae46eccaa0e34"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 65
+      },
+      {
+        "bytes": 532,
+        "case": 28,
+        "expected_sha256": "3c11b193c1aee1ff8ec47d91e91721cf4adfcd9ddaf7d06efeef382c01c54149",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "3c11b193c1aee1ff8ec47d91e91721cf4adfcd9ddaf7d06efeef382c01c54149"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "3c11b193c1aee1ff8ec47d91e91721cf4adfcd9ddaf7d06efeef382c01c54149"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "3c11b193c1aee1ff8ec47d91e91721cf4adfcd9ddaf7d06efeef382c01c54149"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "3c11b193c1aee1ff8ec47d91e91721cf4adfcd9ddaf7d06efeef382c01c54149"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 65
+      },
+      {
+        "bytes": 272,
+        "case": 27,
+        "expected_sha256": "b083ec332b1c6c357dfc87c3b7bd9a1a41610912dff80c14f56ba0f0a16a8633",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "b083ec332b1c6c357dfc87c3b7bd9a1a41610912dff80c14f56ba0f0a16a8633"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "b083ec332b1c6c357dfc87c3b7bd9a1a41610912dff80c14f56ba0f0a16a8633"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "b083ec332b1c6c357dfc87c3b7bd9a1a41610912dff80c14f56ba0f0a16a8633"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "b083ec332b1c6c357dfc87c3b7bd9a1a41610912dff80c14f56ba0f0a16a8633"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 65
+      },
+      {
+        "bytes": 131596,
+        "case": 26,
+        "expected_sha256": "bf5047c6db95378601c74088bf31bfbf31c0749c3cf225f20de5fd7c5e7008af",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "bf5047c6db95378601c74088bf31bfbf31c0749c3cf225f20de5fd7c5e7008af"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "bf5047c6db95378601c74088bf31bfbf31c0749c3cf225f20de5fd7c5e7008af"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "bf5047c6db95378601c74088bf31bfbf31c0749c3cf225f20de5fd7c5e7008af"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "bf5047c6db95378601c74088bf31bfbf31c0749c3cf225f20de5fd7c5e7008af"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 64
+      },
+      {
+        "bytes": 66060,
+        "case": 25,
+        "expected_sha256": "d855d1fc7c08774196710bf1c417f1775e76a8c2d779322fb8229b76093af2bc",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "d855d1fc7c08774196710bf1c417f1775e76a8c2d779322fb8229b76093af2bc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "d855d1fc7c08774196710bf1c417f1775e76a8c2d779322fb8229b76093af2bc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "d855d1fc7c08774196710bf1c417f1775e76a8c2d779322fb8229b76093af2bc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "d855d1fc7c08774196710bf1c417f1775e76a8c2d779322fb8229b76093af2bc"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 64
+      },
+      {
+        "bytes": 65804,
+        "case": 24,
+        "expected_sha256": "7f0d57b50850b95b58d20d5673c05057b7370c7632e47b495736aac926e1f499",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "7f0d57b50850b95b58d20d5673c05057b7370c7632e47b495736aac926e1f499"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "7f0d57b50850b95b58d20d5673c05057b7370c7632e47b495736aac926e1f499"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "7f0d57b50850b95b58d20d5673c05057b7370c7632e47b495736aac926e1f499"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "7f0d57b50850b95b58d20d5673c05057b7370c7632e47b495736aac926e1f499"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 64
+      },
+      {
+        "bytes": 65548,
+        "case": 23,
+        "expected_sha256": "c8651023786e8a460b359a61f0bd301913b4566f23fbcd58fd673a3168c00c5d",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "c8651023786e8a460b359a61f0bd301913b4566f23fbcd58fd673a3168c00c5d"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "c8651023786e8a460b359a61f0bd301913b4566f23fbcd58fd673a3168c00c5d"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "c8651023786e8a460b359a61f0bd301913b4566f23fbcd58fd673a3168c00c5d"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "c8651023786e8a460b359a61f0bd301913b4566f23fbcd58fd673a3168c00c5d"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 64
+      },
+      {
+        "bytes": 524,
+        "case": 22,
+        "expected_sha256": "5cedfd7b84717de422d7c0ee63cc25145c283064be331ce492a6533c308d8707",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "5cedfd7b84717de422d7c0ee63cc25145c283064be331ce492a6533c308d8707"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "5cedfd7b84717de422d7c0ee63cc25145c283064be331ce492a6533c308d8707"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "5cedfd7b84717de422d7c0ee63cc25145c283064be331ce492a6533c308d8707"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "5cedfd7b84717de422d7c0ee63cc25145c283064be331ce492a6533c308d8707"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 64
+      },
+      {
+        "bytes": 268,
+        "case": 21,
+        "expected_sha256": "e469da9c7b9abcfcb8389520dc7eb3a106542fdca7430f0dae34ec9d8334a5a3",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "e469da9c7b9abcfcb8389520dc7eb3a106542fdca7430f0dae34ec9d8334a5a3"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "e469da9c7b9abcfcb8389520dc7eb3a106542fdca7430f0dae34ec9d8334a5a3"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "e469da9c7b9abcfcb8389520dc7eb3a106542fdca7430f0dae34ec9d8334a5a3"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "e469da9c7b9abcfcb8389520dc7eb3a106542fdca7430f0dae34ec9d8334a5a3"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 64
+      },
+      {
+        "bytes": 129540,
+        "case": 20,
+        "expected_sha256": "b30af0deca517d9fd53fee805b30262a6296e95fe15b5406d25799533a1d8e58",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "b30af0deca517d9fd53fee805b30262a6296e95fe15b5406d25799533a1d8e58"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "b30af0deca517d9fd53fee805b30262a6296e95fe15b5406d25799533a1d8e58"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "b30af0deca517d9fd53fee805b30262a6296e95fe15b5406d25799533a1d8e58"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "b30af0deca517d9fd53fee805b30262a6296e95fe15b5406d25799533a1d8e58"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 63
+      },
+      {
+        "bytes": 65028,
+        "case": 19,
+        "expected_sha256": "9150b5f6e390fc1f5345ad642d640635a569cf65190f77f143dcfd2dec34b8fc",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "9150b5f6e390fc1f5345ad642d640635a569cf65190f77f143dcfd2dec34b8fc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "9150b5f6e390fc1f5345ad642d640635a569cf65190f77f143dcfd2dec34b8fc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "9150b5f6e390fc1f5345ad642d640635a569cf65190f77f143dcfd2dec34b8fc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "9150b5f6e390fc1f5345ad642d640635a569cf65190f77f143dcfd2dec34b8fc"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 63
+      },
+      {
+        "bytes": 64776,
+        "case": 18,
+        "expected_sha256": "a03ed86c3f8c2b59fd4732642ec4c86eb0b02e656cbd0b18056510cf7c0b71a6",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "a03ed86c3f8c2b59fd4732642ec4c86eb0b02e656cbd0b18056510cf7c0b71a6"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "a03ed86c3f8c2b59fd4732642ec4c86eb0b02e656cbd0b18056510cf7c0b71a6"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "a03ed86c3f8c2b59fd4732642ec4c86eb0b02e656cbd0b18056510cf7c0b71a6"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "a03ed86c3f8c2b59fd4732642ec4c86eb0b02e656cbd0b18056510cf7c0b71a6"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 63
+      },
+      {
+        "bytes": 64524,
+        "case": 17,
+        "expected_sha256": "180a69d8bdf92eabdc65d16dca0e8dce13c737b75128d91a66ebe5ffcc1d0b78",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "180a69d8bdf92eabdc65d16dca0e8dce13c737b75128d91a66ebe5ffcc1d0b78"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "180a69d8bdf92eabdc65d16dca0e8dce13c737b75128d91a66ebe5ffcc1d0b78"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "180a69d8bdf92eabdc65d16dca0e8dce13c737b75128d91a66ebe5ffcc1d0b78"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "180a69d8bdf92eabdc65d16dca0e8dce13c737b75128d91a66ebe5ffcc1d0b78"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 63
+      },
+      {
+        "bytes": 516,
+        "case": 16,
+        "expected_sha256": "33fb165c5c3058aced99c316a400626b47f1462caea2b9a36c2277d1b7820678",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "33fb165c5c3058aced99c316a400626b47f1462caea2b9a36c2277d1b7820678"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "33fb165c5c3058aced99c316a400626b47f1462caea2b9a36c2277d1b7820678"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "33fb165c5c3058aced99c316a400626b47f1462caea2b9a36c2277d1b7820678"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "33fb165c5c3058aced99c316a400626b47f1462caea2b9a36c2277d1b7820678"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 63
+      },
+      {
+        "bytes": 264,
+        "case": 15,
+        "expected_sha256": "b6e6c1244f8c238cbaa247024a9a8ce55c51f173ee6069e4cdf23400ba459da3",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "b6e6c1244f8c238cbaa247024a9a8ce55c51f173ee6069e4cdf23400ba459da3"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "b6e6c1244f8c238cbaa247024a9a8ce55c51f173ee6069e4cdf23400ba459da3"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "b6e6c1244f8c238cbaa247024a9a8ce55c51f173ee6069e4cdf23400ba459da3"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "b6e6c1244f8c238cbaa247024a9a8ce55c51f173ee6069e4cdf23400ba459da3"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 63
+      },
+      {
+        "bytes": 4124,
+        "case": 14,
+        "expected_sha256": "8ef302928ae3f1b947d631156580a6d6044a7715c807d854d18ce0e38eb77f10",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "8ef302928ae3f1b947d631156580a6d6044a7715c807d854d18ce0e38eb77f10"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "8ef302928ae3f1b947d631156580a6d6044a7715c807d854d18ce0e38eb77f10"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "8ef302928ae3f1b947d631156580a6d6044a7715c807d854d18ce0e38eb77f10"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "8ef302928ae3f1b947d631156580a6d6044a7715c807d854d18ce0e38eb77f10"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 2
+      },
+      {
+        "bytes": 2076,
+        "case": 13,
+        "expected_sha256": "162dbb141fbba90e30925bc06bcc4c0e9741b3eaed92775d74cd224c4613ec03",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "162dbb141fbba90e30925bc06bcc4c0e9741b3eaed92775d74cd224c4613ec03"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "162dbb141fbba90e30925bc06bcc4c0e9741b3eaed92775d74cd224c4613ec03"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "162dbb141fbba90e30925bc06bcc4c0e9741b3eaed92775d74cd224c4613ec03"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "162dbb141fbba90e30925bc06bcc4c0e9741b3eaed92775d74cd224c4613ec03"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 2
+      },
+      {
+        "bytes": 2068,
+        "case": 12,
+        "expected_sha256": "5d7a6e11fc94dc4b7371b35732006829f9a59ec12d3510a6de9dfeef1c5a2c3a",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "5d7a6e11fc94dc4b7371b35732006829f9a59ec12d3510a6de9dfeef1c5a2c3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "5d7a6e11fc94dc4b7371b35732006829f9a59ec12d3510a6de9dfeef1c5a2c3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "5d7a6e11fc94dc4b7371b35732006829f9a59ec12d3510a6de9dfeef1c5a2c3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "5d7a6e11fc94dc4b7371b35732006829f9a59ec12d3510a6de9dfeef1c5a2c3a"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 2
+      },
+      {
+        "bytes": 2060,
+        "case": 11,
+        "expected_sha256": "38e8c8cae2056c476bdde4ddc207c562007ade62eace87eceaef0aa39f05f39e",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "38e8c8cae2056c476bdde4ddc207c562007ade62eace87eceaef0aa39f05f39e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "38e8c8cae2056c476bdde4ddc207c562007ade62eace87eceaef0aa39f05f39e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "38e8c8cae2056c476bdde4ddc207c562007ade62eace87eceaef0aa39f05f39e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "38e8c8cae2056c476bdde4ddc207c562007ade62eace87eceaef0aa39f05f39e"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 2
+      },
+      {
+        "bytes": 28,
+        "case": 10,
+        "expected_sha256": "767deb8e535a9b0191ee1cf676a826a5f91fb274456f613feab6b389bd28e534",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "767deb8e535a9b0191ee1cf676a826a5f91fb274456f613feab6b389bd28e534"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "767deb8e535a9b0191ee1cf676a826a5f91fb274456f613feab6b389bd28e534"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "767deb8e535a9b0191ee1cf676a826a5f91fb274456f613feab6b389bd28e534"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "767deb8e535a9b0191ee1cf676a826a5f91fb274456f613feab6b389bd28e534"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 2
+      },
+      {
+        "bytes": 20,
+        "case": 9,
+        "expected_sha256": "2377b28dd2e297ff3368fc8b24321546bb84925199f96f19b8b75e181856543a",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "2377b28dd2e297ff3368fc8b24321546bb84925199f96f19b8b75e181856543a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "2377b28dd2e297ff3368fc8b24321546bb84925199f96f19b8b75e181856543a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "2377b28dd2e297ff3368fc8b24321546bb84925199f96f19b8b75e181856543a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "2377b28dd2e297ff3368fc8b24321546bb84925199f96f19b8b75e181856543a"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 2
+      },
+      {
+        "bytes": 2068,
+        "case": 8,
+        "expected_sha256": "948a79dcc23576a589e21f08ab0d6f5ab3f7bcc739b3df202a674ea5c8b97650",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "948a79dcc23576a589e21f08ab0d6f5ab3f7bcc739b3df202a674ea5c8b97650"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "948a79dcc23576a589e21f08ab0d6f5ab3f7bcc739b3df202a674ea5c8b97650"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "948a79dcc23576a589e21f08ab0d6f5ab3f7bcc739b3df202a674ea5c8b97650"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "948a79dcc23576a589e21f08ab0d6f5ab3f7bcc739b3df202a674ea5c8b97650"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 1
+      },
+      {
+        "bytes": 1044,
+        "case": 7,
+        "expected_sha256": "6fa7770ec09cbbf789534ab9f39b2cbbea5a5c5a558755c7c17bb7938f690f31",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "6fa7770ec09cbbf789534ab9f39b2cbbea5a5c5a558755c7c17bb7938f690f31"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "6fa7770ec09cbbf789534ab9f39b2cbbea5a5c5a558755c7c17bb7938f690f31"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "6fa7770ec09cbbf789534ab9f39b2cbbea5a5c5a558755c7c17bb7938f690f31"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "6fa7770ec09cbbf789534ab9f39b2cbbea5a5c5a558755c7c17bb7938f690f31"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 1
+      },
+      {
+        "bytes": 1040,
+        "case": 6,
+        "expected_sha256": "41c7dd541218c2c0167760abcde1389fdd68b9a2d629a3f42e3f013b72167e56",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "41c7dd541218c2c0167760abcde1389fdd68b9a2d629a3f42e3f013b72167e56"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "41c7dd541218c2c0167760abcde1389fdd68b9a2d629a3f42e3f013b72167e56"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "41c7dd541218c2c0167760abcde1389fdd68b9a2d629a3f42e3f013b72167e56"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "41c7dd541218c2c0167760abcde1389fdd68b9a2d629a3f42e3f013b72167e56"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 1
+      },
+      {
+        "bytes": 1036,
+        "case": 5,
+        "expected_sha256": "cf273348293de4ef9d12751b4b79631f0e2fabd3312d8967deb3a4ed2bdeae4e",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "cf273348293de4ef9d12751b4b79631f0e2fabd3312d8967deb3a4ed2bdeae4e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "cf273348293de4ef9d12751b4b79631f0e2fabd3312d8967deb3a4ed2bdeae4e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "cf273348293de4ef9d12751b4b79631f0e2fabd3312d8967deb3a4ed2bdeae4e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "cf273348293de4ef9d12751b4b79631f0e2fabd3312d8967deb3a4ed2bdeae4e"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 1
+      },
+      {
+        "bytes": 20,
+        "case": 4,
+        "expected_sha256": "ddfa9a8c5d96427a5b2bc9092e78e1be8bd2ad298e0e979e47c139dd5ea4641a",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "ddfa9a8c5d96427a5b2bc9092e78e1be8bd2ad298e0e979e47c139dd5ea4641a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "ddfa9a8c5d96427a5b2bc9092e78e1be8bd2ad298e0e979e47c139dd5ea4641a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "ddfa9a8c5d96427a5b2bc9092e78e1be8bd2ad298e0e979e47c139dd5ea4641a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "ddfa9a8c5d96427a5b2bc9092e78e1be8bd2ad298e0e979e47c139dd5ea4641a"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 1
+      },
+      {
+        "bytes": 16,
+        "case": 3,
+        "expected_sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 1
+      },
+      {
+        "bytes": 5172,
+        "case": 2,
+        "expected_sha256": "a70aae7493526c58aad3cf1d6ded435ed48369acc587fa15d0a83bbbf0213846",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "a70aae7493526c58aad3cf1d6ded435ed48369acc587fa15d0a83bbbf0213846"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "a70aae7493526c58aad3cf1d6ded435ed48369acc587fa15d0a83bbbf0213846"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "a70aae7493526c58aad3cf1d6ded435ed48369acc587fa15d0a83bbbf0213846"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "a70aae7493526c58aad3cf1d6ded435ed48369acc587fa15d0a83bbbf0213846"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 8
+      },
+      {
+        "bytes": 16,
+        "case": 1,
+        "expected_sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 1
+      },
+      {
+        "bytes": 12,
+        "case": 0,
+        "expected_sha256": "1bbfcdb48f8ec9db2c673609239241e6b90813ef31ae06e0874161c71f596069",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "1bbfcdb48f8ec9db2c673609239241e6b90813ef31ae06e0874161c71f596069"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "1bbfcdb48f8ec9db2c673609239241e6b90813ef31ae06e0874161c71f596069"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "1bbfcdb48f8ec9db2c673609239241e6b90813ef31ae06e0874161c71f596069"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "1bbfcdb48f8ec9db2c673609239241e6b90813ef31ae06e0874161c71f596069"
+          }
+        ],
+        "repetition": 2,
+        "workgroups": 0
+      },
+      {
+        "bytes": 528404,
+        "case": 56,
+        "expected_sha256": "301577a7302716b4f32dabe48c9388fea782a02a654522af9c9a7f05fb48d6bd",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "301577a7302716b4f32dabe48c9388fea782a02a654522af9c9a7f05fb48d6bd"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "301577a7302716b4f32dabe48c9388fea782a02a654522af9c9a7f05fb48d6bd"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "301577a7302716b4f32dabe48c9388fea782a02a654522af9c9a7f05fb48d6bd"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "301577a7302716b4f32dabe48c9388fea782a02a654522af9c9a7f05fb48d6bd"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 257
+      },
+      {
+        "bytes": 265236,
+        "case": 55,
+        "expected_sha256": "cbb560e7d781fe0dafc833d83f78536bd530e07d5edb5571ecbbe61ebac31d4c",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "cbb560e7d781fe0dafc833d83f78536bd530e07d5edb5571ecbbe61ebac31d4c"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "cbb560e7d781fe0dafc833d83f78536bd530e07d5edb5571ecbbe61ebac31d4c"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "cbb560e7d781fe0dafc833d83f78536bd530e07d5edb5571ecbbe61ebac31d4c"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "cbb560e7d781fe0dafc833d83f78536bd530e07d5edb5571ecbbe61ebac31d4c"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 257
+      },
+      {
+        "bytes": 264208,
+        "case": 54,
+        "expected_sha256": "61496e2e4f896d352ee249f46105c7c120a01d49cc3f3b2a6d392060b7bc5cdb",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "61496e2e4f896d352ee249f46105c7c120a01d49cc3f3b2a6d392060b7bc5cdb"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "61496e2e4f896d352ee249f46105c7c120a01d49cc3f3b2a6d392060b7bc5cdb"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "61496e2e4f896d352ee249f46105c7c120a01d49cc3f3b2a6d392060b7bc5cdb"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "61496e2e4f896d352ee249f46105c7c120a01d49cc3f3b2a6d392060b7bc5cdb"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 257
+      },
+      {
+        "bytes": 263180,
+        "case": 53,
+        "expected_sha256": "b0805577173fc15eac4c29041ed4318f4614889e82c1c8cb9a65a85e4c612f65",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "b0805577173fc15eac4c29041ed4318f4614889e82c1c8cb9a65a85e4c612f65"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "b0805577173fc15eac4c29041ed4318f4614889e82c1c8cb9a65a85e4c612f65"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "b0805577173fc15eac4c29041ed4318f4614889e82c1c8cb9a65a85e4c612f65"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "b0805577173fc15eac4c29041ed4318f4614889e82c1c8cb9a65a85e4c612f65"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 257
+      },
+      {
+        "bytes": 2068,
+        "case": 52,
+        "expected_sha256": "9afd9fb752342a9d26d0c449e849b0186ffd9fd5bf84130248898c245929f638",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "9afd9fb752342a9d26d0c449e849b0186ffd9fd5bf84130248898c245929f638"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "9afd9fb752342a9d26d0c449e849b0186ffd9fd5bf84130248898c245929f638"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "9afd9fb752342a9d26d0c449e849b0186ffd9fd5bf84130248898c245929f638"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "9afd9fb752342a9d26d0c449e849b0186ffd9fd5bf84130248898c245929f638"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 257
+      },
+      {
+        "bytes": 1040,
+        "case": 51,
+        "expected_sha256": "4eb57dbffd732ea2565f2975900bf3426f43ea29e4cb28cb14362e72665dbd3a",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "4eb57dbffd732ea2565f2975900bf3426f43ea29e4cb28cb14362e72665dbd3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "4eb57dbffd732ea2565f2975900bf3426f43ea29e4cb28cb14362e72665dbd3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "4eb57dbffd732ea2565f2975900bf3426f43ea29e4cb28cb14362e72665dbd3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "4eb57dbffd732ea2565f2975900bf3426f43ea29e4cb28cb14362e72665dbd3a"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 257
+      },
+      {
+        "bytes": 265236,
+        "case": 50,
+        "expected_sha256": "4d68d1c6570bb35fee2467855d6bbd8528a0451a1bd2788011fe78713d248f91",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "4d68d1c6570bb35fee2467855d6bbd8528a0451a1bd2788011fe78713d248f91"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "4d68d1c6570bb35fee2467855d6bbd8528a0451a1bd2788011fe78713d248f91"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "4d68d1c6570bb35fee2467855d6bbd8528a0451a1bd2788011fe78713d248f91"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "4d68d1c6570bb35fee2467855d6bbd8528a0451a1bd2788011fe78713d248f91"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 129
+      },
+      {
+        "bytes": 133140,
+        "case": 49,
+        "expected_sha256": "e9ffe7e5df0b16df499afa1419d21883a52c8f2b301bad4feab5f92f73976a8f",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "e9ffe7e5df0b16df499afa1419d21883a52c8f2b301bad4feab5f92f73976a8f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "e9ffe7e5df0b16df499afa1419d21883a52c8f2b301bad4feab5f92f73976a8f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "e9ffe7e5df0b16df499afa1419d21883a52c8f2b301bad4feab5f92f73976a8f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "e9ffe7e5df0b16df499afa1419d21883a52c8f2b301bad4feab5f92f73976a8f"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 129
+      },
+      {
+        "bytes": 132624,
+        "case": 48,
+        "expected_sha256": "cde6058a99e440f0c897f999b6c46bfe5be6f58735cf25e099868949cb76b06d",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "cde6058a99e440f0c897f999b6c46bfe5be6f58735cf25e099868949cb76b06d"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "cde6058a99e440f0c897f999b6c46bfe5be6f58735cf25e099868949cb76b06d"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "cde6058a99e440f0c897f999b6c46bfe5be6f58735cf25e099868949cb76b06d"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "cde6058a99e440f0c897f999b6c46bfe5be6f58735cf25e099868949cb76b06d"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 129
+      },
+      {
+        "bytes": 132108,
+        "case": 47,
+        "expected_sha256": "a78274d127d260ceb9529c980008b2fe40c14c0a899c34d9caa0c13bb9506c3a",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "a78274d127d260ceb9529c980008b2fe40c14c0a899c34d9caa0c13bb9506c3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "a78274d127d260ceb9529c980008b2fe40c14c0a899c34d9caa0c13bb9506c3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "a78274d127d260ceb9529c980008b2fe40c14c0a899c34d9caa0c13bb9506c3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "a78274d127d260ceb9529c980008b2fe40c14c0a899c34d9caa0c13bb9506c3a"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 129
+      },
+      {
+        "bytes": 1044,
+        "case": 46,
+        "expected_sha256": "df552adf6638c2d25cf14a4485d402986ac19782806aaa405402edc7b49a15c7",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "df552adf6638c2d25cf14a4485d402986ac19782806aaa405402edc7b49a15c7"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "df552adf6638c2d25cf14a4485d402986ac19782806aaa405402edc7b49a15c7"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "df552adf6638c2d25cf14a4485d402986ac19782806aaa405402edc7b49a15c7"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "df552adf6638c2d25cf14a4485d402986ac19782806aaa405402edc7b49a15c7"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 129
+      },
+      {
+        "bytes": 528,
+        "case": 45,
+        "expected_sha256": "597e7cd4c1611885c3ac0f7b2e40ff272945048bf2b4209cb2ed223eab11c009",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "597e7cd4c1611885c3ac0f7b2e40ff272945048bf2b4209cb2ed223eab11c009"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "597e7cd4c1611885c3ac0f7b2e40ff272945048bf2b4209cb2ed223eab11c009"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "597e7cd4c1611885c3ac0f7b2e40ff272945048bf2b4209cb2ed223eab11c009"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "597e7cd4c1611885c3ac0f7b2e40ff272945048bf2b4209cb2ed223eab11c009"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 129
+      },
+      {
+        "bytes": 263180,
+        "case": 44,
+        "expected_sha256": "8ea746e3ed6fde80b6d6e7dc1a7d4ea080771786d6aca2d527721965331f7c55",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "8ea746e3ed6fde80b6d6e7dc1a7d4ea080771786d6aca2d527721965331f7c55"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "8ea746e3ed6fde80b6d6e7dc1a7d4ea080771786d6aca2d527721965331f7c55"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "8ea746e3ed6fde80b6d6e7dc1a7d4ea080771786d6aca2d527721965331f7c55"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "8ea746e3ed6fde80b6d6e7dc1a7d4ea080771786d6aca2d527721965331f7c55"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 128
+      },
+      {
+        "bytes": 132108,
+        "case": 43,
+        "expected_sha256": "d7065ff69b1cde61d94482980571ee9134f028c574b281fbb404147175775280",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "d7065ff69b1cde61d94482980571ee9134f028c574b281fbb404147175775280"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "d7065ff69b1cde61d94482980571ee9134f028c574b281fbb404147175775280"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "d7065ff69b1cde61d94482980571ee9134f028c574b281fbb404147175775280"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "d7065ff69b1cde61d94482980571ee9134f028c574b281fbb404147175775280"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 128
+      },
+      {
+        "bytes": 131596,
+        "case": 42,
+        "expected_sha256": "79a3f643ac999c40378ae7c698d47c09d63757181456d09f5600841014436bc5",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "79a3f643ac999c40378ae7c698d47c09d63757181456d09f5600841014436bc5"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "79a3f643ac999c40378ae7c698d47c09d63757181456d09f5600841014436bc5"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "79a3f643ac999c40378ae7c698d47c09d63757181456d09f5600841014436bc5"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "79a3f643ac999c40378ae7c698d47c09d63757181456d09f5600841014436bc5"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 128
+      },
+      {
+        "bytes": 131084,
+        "case": 41,
+        "expected_sha256": "27b182cebf80b30d2713fb1f185a2215d491d87f6ff6819b79cc6f4662e31158",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "27b182cebf80b30d2713fb1f185a2215d491d87f6ff6819b79cc6f4662e31158"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "27b182cebf80b30d2713fb1f185a2215d491d87f6ff6819b79cc6f4662e31158"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "27b182cebf80b30d2713fb1f185a2215d491d87f6ff6819b79cc6f4662e31158"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "27b182cebf80b30d2713fb1f185a2215d491d87f6ff6819b79cc6f4662e31158"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 128
+      },
+      {
+        "bytes": 1036,
+        "case": 40,
+        "expected_sha256": "b29157862c47813a86abd3fc09d0d20f8c300e2b21dfc0a35d8b4d983979758f",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "b29157862c47813a86abd3fc09d0d20f8c300e2b21dfc0a35d8b4d983979758f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "b29157862c47813a86abd3fc09d0d20f8c300e2b21dfc0a35d8b4d983979758f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "b29157862c47813a86abd3fc09d0d20f8c300e2b21dfc0a35d8b4d983979758f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "b29157862c47813a86abd3fc09d0d20f8c300e2b21dfc0a35d8b4d983979758f"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 128
+      },
+      {
+        "bytes": 524,
+        "case": 39,
+        "expected_sha256": "1e939908117e726dfc2fa956e1b58b12f83aafeb575515bef84cb17409f1dedc",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "1e939908117e726dfc2fa956e1b58b12f83aafeb575515bef84cb17409f1dedc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "1e939908117e726dfc2fa956e1b58b12f83aafeb575515bef84cb17409f1dedc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "1e939908117e726dfc2fa956e1b58b12f83aafeb575515bef84cb17409f1dedc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "1e939908117e726dfc2fa956e1b58b12f83aafeb575515bef84cb17409f1dedc"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 128
+      },
+      {
+        "bytes": 261124,
+        "case": 38,
+        "expected_sha256": "8f0623fab5b9096c9abfa303da0a6e230fa2a555fdd0b069fd1d76d8a6e4de2e",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "8f0623fab5b9096c9abfa303da0a6e230fa2a555fdd0b069fd1d76d8a6e4de2e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "8f0623fab5b9096c9abfa303da0a6e230fa2a555fdd0b069fd1d76d8a6e4de2e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "8f0623fab5b9096c9abfa303da0a6e230fa2a555fdd0b069fd1d76d8a6e4de2e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "8f0623fab5b9096c9abfa303da0a6e230fa2a555fdd0b069fd1d76d8a6e4de2e"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 127
+      },
+      {
+        "bytes": 131076,
+        "case": 37,
+        "expected_sha256": "6e14a8e62113b1e9b49f1cb8c87bac058e20f6bbf9f70500820d8fa2b93901de",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "6e14a8e62113b1e9b49f1cb8c87bac058e20f6bbf9f70500820d8fa2b93901de"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "6e14a8e62113b1e9b49f1cb8c87bac058e20f6bbf9f70500820d8fa2b93901de"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "6e14a8e62113b1e9b49f1cb8c87bac058e20f6bbf9f70500820d8fa2b93901de"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "6e14a8e62113b1e9b49f1cb8c87bac058e20f6bbf9f70500820d8fa2b93901de"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 127
+      },
+      {
+        "bytes": 130568,
+        "case": 36,
+        "expected_sha256": "43faeb61f77ceec835da9f2c6fdb55faab8c24ab08d73498ec16a821b0d9ec19",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "43faeb61f77ceec835da9f2c6fdb55faab8c24ab08d73498ec16a821b0d9ec19"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "43faeb61f77ceec835da9f2c6fdb55faab8c24ab08d73498ec16a821b0d9ec19"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "43faeb61f77ceec835da9f2c6fdb55faab8c24ab08d73498ec16a821b0d9ec19"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "43faeb61f77ceec835da9f2c6fdb55faab8c24ab08d73498ec16a821b0d9ec19"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 127
+      },
+      {
+        "bytes": 130060,
+        "case": 35,
+        "expected_sha256": "ad6c41dfea2cd8e4320e4e4960aa7c9720f9fbcd0e9a31a1f79c57101bca972b",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "ad6c41dfea2cd8e4320e4e4960aa7c9720f9fbcd0e9a31a1f79c57101bca972b"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "ad6c41dfea2cd8e4320e4e4960aa7c9720f9fbcd0e9a31a1f79c57101bca972b"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "ad6c41dfea2cd8e4320e4e4960aa7c9720f9fbcd0e9a31a1f79c57101bca972b"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "ad6c41dfea2cd8e4320e4e4960aa7c9720f9fbcd0e9a31a1f79c57101bca972b"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 127
+      },
+      {
+        "bytes": 1028,
+        "case": 34,
+        "expected_sha256": "8bdc8c89c5efbfc5c48897b8d775273a4b0600ab26ea6df14b017a91b873f858",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "8bdc8c89c5efbfc5c48897b8d775273a4b0600ab26ea6df14b017a91b873f858"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "8bdc8c89c5efbfc5c48897b8d775273a4b0600ab26ea6df14b017a91b873f858"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "8bdc8c89c5efbfc5c48897b8d775273a4b0600ab26ea6df14b017a91b873f858"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "8bdc8c89c5efbfc5c48897b8d775273a4b0600ab26ea6df14b017a91b873f858"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 127
+      },
+      {
+        "bytes": 520,
+        "case": 33,
+        "expected_sha256": "70fc909ecb341114454f1e3a61cc175e71ce23045bdcdbf332073504af335fa8",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "70fc909ecb341114454f1e3a61cc175e71ce23045bdcdbf332073504af335fa8"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "70fc909ecb341114454f1e3a61cc175e71ce23045bdcdbf332073504af335fa8"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "70fc909ecb341114454f1e3a61cc175e71ce23045bdcdbf332073504af335fa8"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "70fc909ecb341114454f1e3a61cc175e71ce23045bdcdbf332073504af335fa8"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 127
+      },
+      {
+        "bytes": 133652,
+        "case": 32,
+        "expected_sha256": "cc42d36d37790342f68502151449a47f4a0970261d9437eb0fda1dddefb8ba64",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "cc42d36d37790342f68502151449a47f4a0970261d9437eb0fda1dddefb8ba64"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "cc42d36d37790342f68502151449a47f4a0970261d9437eb0fda1dddefb8ba64"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "cc42d36d37790342f68502151449a47f4a0970261d9437eb0fda1dddefb8ba64"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "cc42d36d37790342f68502151449a47f4a0970261d9437eb0fda1dddefb8ba64"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 65
+      },
+      {
+        "bytes": 67092,
+        "case": 31,
+        "expected_sha256": "562e43d6da3eda88a8bb4cb7f1e2a4019a4736857011005fce474a45ad2f6cce",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "562e43d6da3eda88a8bb4cb7f1e2a4019a4736857011005fce474a45ad2f6cce"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "562e43d6da3eda88a8bb4cb7f1e2a4019a4736857011005fce474a45ad2f6cce"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "562e43d6da3eda88a8bb4cb7f1e2a4019a4736857011005fce474a45ad2f6cce"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "562e43d6da3eda88a8bb4cb7f1e2a4019a4736857011005fce474a45ad2f6cce"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 65
+      },
+      {
+        "bytes": 66832,
+        "case": 30,
+        "expected_sha256": "e6cfaa197f8ddc36b8e4f801a43fd4d6c5d9e557420ee84b62421093ec809d33",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "e6cfaa197f8ddc36b8e4f801a43fd4d6c5d9e557420ee84b62421093ec809d33"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "e6cfaa197f8ddc36b8e4f801a43fd4d6c5d9e557420ee84b62421093ec809d33"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "e6cfaa197f8ddc36b8e4f801a43fd4d6c5d9e557420ee84b62421093ec809d33"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "e6cfaa197f8ddc36b8e4f801a43fd4d6c5d9e557420ee84b62421093ec809d33"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 65
+      },
+      {
+        "bytes": 66572,
+        "case": 29,
+        "expected_sha256": "e3f4690d185955a32695ccae5b83fcf445c17c6ff3300d740d6ae46eccaa0e34",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "e3f4690d185955a32695ccae5b83fcf445c17c6ff3300d740d6ae46eccaa0e34"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "e3f4690d185955a32695ccae5b83fcf445c17c6ff3300d740d6ae46eccaa0e34"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "e3f4690d185955a32695ccae5b83fcf445c17c6ff3300d740d6ae46eccaa0e34"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "e3f4690d185955a32695ccae5b83fcf445c17c6ff3300d740d6ae46eccaa0e34"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 65
+      },
+      {
+        "bytes": 532,
+        "case": 28,
+        "expected_sha256": "3c11b193c1aee1ff8ec47d91e91721cf4adfcd9ddaf7d06efeef382c01c54149",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "3c11b193c1aee1ff8ec47d91e91721cf4adfcd9ddaf7d06efeef382c01c54149"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "3c11b193c1aee1ff8ec47d91e91721cf4adfcd9ddaf7d06efeef382c01c54149"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "3c11b193c1aee1ff8ec47d91e91721cf4adfcd9ddaf7d06efeef382c01c54149"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "3c11b193c1aee1ff8ec47d91e91721cf4adfcd9ddaf7d06efeef382c01c54149"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 65
+      },
+      {
+        "bytes": 272,
+        "case": 27,
+        "expected_sha256": "b083ec332b1c6c357dfc87c3b7bd9a1a41610912dff80c14f56ba0f0a16a8633",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "b083ec332b1c6c357dfc87c3b7bd9a1a41610912dff80c14f56ba0f0a16a8633"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "b083ec332b1c6c357dfc87c3b7bd9a1a41610912dff80c14f56ba0f0a16a8633"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "b083ec332b1c6c357dfc87c3b7bd9a1a41610912dff80c14f56ba0f0a16a8633"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "b083ec332b1c6c357dfc87c3b7bd9a1a41610912dff80c14f56ba0f0a16a8633"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 65
+      },
+      {
+        "bytes": 131596,
+        "case": 26,
+        "expected_sha256": "bf5047c6db95378601c74088bf31bfbf31c0749c3cf225f20de5fd7c5e7008af",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "bf5047c6db95378601c74088bf31bfbf31c0749c3cf225f20de5fd7c5e7008af"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "bf5047c6db95378601c74088bf31bfbf31c0749c3cf225f20de5fd7c5e7008af"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "bf5047c6db95378601c74088bf31bfbf31c0749c3cf225f20de5fd7c5e7008af"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "bf5047c6db95378601c74088bf31bfbf31c0749c3cf225f20de5fd7c5e7008af"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 64
+      },
+      {
+        "bytes": 66060,
+        "case": 25,
+        "expected_sha256": "d855d1fc7c08774196710bf1c417f1775e76a8c2d779322fb8229b76093af2bc",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "d855d1fc7c08774196710bf1c417f1775e76a8c2d779322fb8229b76093af2bc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "d855d1fc7c08774196710bf1c417f1775e76a8c2d779322fb8229b76093af2bc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "d855d1fc7c08774196710bf1c417f1775e76a8c2d779322fb8229b76093af2bc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "d855d1fc7c08774196710bf1c417f1775e76a8c2d779322fb8229b76093af2bc"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 64
+      },
+      {
+        "bytes": 65804,
+        "case": 24,
+        "expected_sha256": "7f0d57b50850b95b58d20d5673c05057b7370c7632e47b495736aac926e1f499",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "7f0d57b50850b95b58d20d5673c05057b7370c7632e47b495736aac926e1f499"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "7f0d57b50850b95b58d20d5673c05057b7370c7632e47b495736aac926e1f499"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "7f0d57b50850b95b58d20d5673c05057b7370c7632e47b495736aac926e1f499"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "7f0d57b50850b95b58d20d5673c05057b7370c7632e47b495736aac926e1f499"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 64
+      },
+      {
+        "bytes": 65548,
+        "case": 23,
+        "expected_sha256": "c8651023786e8a460b359a61f0bd301913b4566f23fbcd58fd673a3168c00c5d",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "c8651023786e8a460b359a61f0bd301913b4566f23fbcd58fd673a3168c00c5d"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "c8651023786e8a460b359a61f0bd301913b4566f23fbcd58fd673a3168c00c5d"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "c8651023786e8a460b359a61f0bd301913b4566f23fbcd58fd673a3168c00c5d"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "c8651023786e8a460b359a61f0bd301913b4566f23fbcd58fd673a3168c00c5d"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 64
+      },
+      {
+        "bytes": 524,
+        "case": 22,
+        "expected_sha256": "5cedfd7b84717de422d7c0ee63cc25145c283064be331ce492a6533c308d8707",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "5cedfd7b84717de422d7c0ee63cc25145c283064be331ce492a6533c308d8707"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "5cedfd7b84717de422d7c0ee63cc25145c283064be331ce492a6533c308d8707"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "5cedfd7b84717de422d7c0ee63cc25145c283064be331ce492a6533c308d8707"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "5cedfd7b84717de422d7c0ee63cc25145c283064be331ce492a6533c308d8707"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 64
+      },
+      {
+        "bytes": 268,
+        "case": 21,
+        "expected_sha256": "e469da9c7b9abcfcb8389520dc7eb3a106542fdca7430f0dae34ec9d8334a5a3",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "e469da9c7b9abcfcb8389520dc7eb3a106542fdca7430f0dae34ec9d8334a5a3"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "e469da9c7b9abcfcb8389520dc7eb3a106542fdca7430f0dae34ec9d8334a5a3"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "e469da9c7b9abcfcb8389520dc7eb3a106542fdca7430f0dae34ec9d8334a5a3"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "e469da9c7b9abcfcb8389520dc7eb3a106542fdca7430f0dae34ec9d8334a5a3"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 64
+      },
+      {
+        "bytes": 129540,
+        "case": 20,
+        "expected_sha256": "b30af0deca517d9fd53fee805b30262a6296e95fe15b5406d25799533a1d8e58",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "b30af0deca517d9fd53fee805b30262a6296e95fe15b5406d25799533a1d8e58"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "b30af0deca517d9fd53fee805b30262a6296e95fe15b5406d25799533a1d8e58"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "b30af0deca517d9fd53fee805b30262a6296e95fe15b5406d25799533a1d8e58"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "b30af0deca517d9fd53fee805b30262a6296e95fe15b5406d25799533a1d8e58"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 63
+      },
+      {
+        "bytes": 65028,
+        "case": 19,
+        "expected_sha256": "9150b5f6e390fc1f5345ad642d640635a569cf65190f77f143dcfd2dec34b8fc",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "9150b5f6e390fc1f5345ad642d640635a569cf65190f77f143dcfd2dec34b8fc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "9150b5f6e390fc1f5345ad642d640635a569cf65190f77f143dcfd2dec34b8fc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "9150b5f6e390fc1f5345ad642d640635a569cf65190f77f143dcfd2dec34b8fc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "9150b5f6e390fc1f5345ad642d640635a569cf65190f77f143dcfd2dec34b8fc"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 63
+      },
+      {
+        "bytes": 64776,
+        "case": 18,
+        "expected_sha256": "a03ed86c3f8c2b59fd4732642ec4c86eb0b02e656cbd0b18056510cf7c0b71a6",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "a03ed86c3f8c2b59fd4732642ec4c86eb0b02e656cbd0b18056510cf7c0b71a6"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "a03ed86c3f8c2b59fd4732642ec4c86eb0b02e656cbd0b18056510cf7c0b71a6"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "a03ed86c3f8c2b59fd4732642ec4c86eb0b02e656cbd0b18056510cf7c0b71a6"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "a03ed86c3f8c2b59fd4732642ec4c86eb0b02e656cbd0b18056510cf7c0b71a6"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 63
+      },
+      {
+        "bytes": 64524,
+        "case": 17,
+        "expected_sha256": "180a69d8bdf92eabdc65d16dca0e8dce13c737b75128d91a66ebe5ffcc1d0b78",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "180a69d8bdf92eabdc65d16dca0e8dce13c737b75128d91a66ebe5ffcc1d0b78"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "180a69d8bdf92eabdc65d16dca0e8dce13c737b75128d91a66ebe5ffcc1d0b78"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "180a69d8bdf92eabdc65d16dca0e8dce13c737b75128d91a66ebe5ffcc1d0b78"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "180a69d8bdf92eabdc65d16dca0e8dce13c737b75128d91a66ebe5ffcc1d0b78"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 63
+      },
+      {
+        "bytes": 516,
+        "case": 16,
+        "expected_sha256": "33fb165c5c3058aced99c316a400626b47f1462caea2b9a36c2277d1b7820678",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "33fb165c5c3058aced99c316a400626b47f1462caea2b9a36c2277d1b7820678"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "33fb165c5c3058aced99c316a400626b47f1462caea2b9a36c2277d1b7820678"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "33fb165c5c3058aced99c316a400626b47f1462caea2b9a36c2277d1b7820678"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "33fb165c5c3058aced99c316a400626b47f1462caea2b9a36c2277d1b7820678"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 63
+      },
+      {
+        "bytes": 264,
+        "case": 15,
+        "expected_sha256": "b6e6c1244f8c238cbaa247024a9a8ce55c51f173ee6069e4cdf23400ba459da3",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "b6e6c1244f8c238cbaa247024a9a8ce55c51f173ee6069e4cdf23400ba459da3"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "b6e6c1244f8c238cbaa247024a9a8ce55c51f173ee6069e4cdf23400ba459da3"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "b6e6c1244f8c238cbaa247024a9a8ce55c51f173ee6069e4cdf23400ba459da3"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "b6e6c1244f8c238cbaa247024a9a8ce55c51f173ee6069e4cdf23400ba459da3"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 63
+      },
+      {
+        "bytes": 4124,
+        "case": 14,
+        "expected_sha256": "8ef302928ae3f1b947d631156580a6d6044a7715c807d854d18ce0e38eb77f10",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "8ef302928ae3f1b947d631156580a6d6044a7715c807d854d18ce0e38eb77f10"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "8ef302928ae3f1b947d631156580a6d6044a7715c807d854d18ce0e38eb77f10"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "8ef302928ae3f1b947d631156580a6d6044a7715c807d854d18ce0e38eb77f10"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "8ef302928ae3f1b947d631156580a6d6044a7715c807d854d18ce0e38eb77f10"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 2
+      },
+      {
+        "bytes": 2076,
+        "case": 13,
+        "expected_sha256": "162dbb141fbba90e30925bc06bcc4c0e9741b3eaed92775d74cd224c4613ec03",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "162dbb141fbba90e30925bc06bcc4c0e9741b3eaed92775d74cd224c4613ec03"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "162dbb141fbba90e30925bc06bcc4c0e9741b3eaed92775d74cd224c4613ec03"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "162dbb141fbba90e30925bc06bcc4c0e9741b3eaed92775d74cd224c4613ec03"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "162dbb141fbba90e30925bc06bcc4c0e9741b3eaed92775d74cd224c4613ec03"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 2
+      },
+      {
+        "bytes": 2068,
+        "case": 12,
+        "expected_sha256": "5d7a6e11fc94dc4b7371b35732006829f9a59ec12d3510a6de9dfeef1c5a2c3a",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "5d7a6e11fc94dc4b7371b35732006829f9a59ec12d3510a6de9dfeef1c5a2c3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "5d7a6e11fc94dc4b7371b35732006829f9a59ec12d3510a6de9dfeef1c5a2c3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "5d7a6e11fc94dc4b7371b35732006829f9a59ec12d3510a6de9dfeef1c5a2c3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "5d7a6e11fc94dc4b7371b35732006829f9a59ec12d3510a6de9dfeef1c5a2c3a"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 2
+      },
+      {
+        "bytes": 2060,
+        "case": 11,
+        "expected_sha256": "38e8c8cae2056c476bdde4ddc207c562007ade62eace87eceaef0aa39f05f39e",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "38e8c8cae2056c476bdde4ddc207c562007ade62eace87eceaef0aa39f05f39e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "38e8c8cae2056c476bdde4ddc207c562007ade62eace87eceaef0aa39f05f39e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "38e8c8cae2056c476bdde4ddc207c562007ade62eace87eceaef0aa39f05f39e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "38e8c8cae2056c476bdde4ddc207c562007ade62eace87eceaef0aa39f05f39e"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 2
+      },
+      {
+        "bytes": 28,
+        "case": 10,
+        "expected_sha256": "767deb8e535a9b0191ee1cf676a826a5f91fb274456f613feab6b389bd28e534",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "767deb8e535a9b0191ee1cf676a826a5f91fb274456f613feab6b389bd28e534"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "767deb8e535a9b0191ee1cf676a826a5f91fb274456f613feab6b389bd28e534"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "767deb8e535a9b0191ee1cf676a826a5f91fb274456f613feab6b389bd28e534"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "767deb8e535a9b0191ee1cf676a826a5f91fb274456f613feab6b389bd28e534"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 2
+      },
+      {
+        "bytes": 20,
+        "case": 9,
+        "expected_sha256": "2377b28dd2e297ff3368fc8b24321546bb84925199f96f19b8b75e181856543a",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "2377b28dd2e297ff3368fc8b24321546bb84925199f96f19b8b75e181856543a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "2377b28dd2e297ff3368fc8b24321546bb84925199f96f19b8b75e181856543a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "2377b28dd2e297ff3368fc8b24321546bb84925199f96f19b8b75e181856543a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "2377b28dd2e297ff3368fc8b24321546bb84925199f96f19b8b75e181856543a"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 2
+      },
+      {
+        "bytes": 2068,
+        "case": 8,
+        "expected_sha256": "948a79dcc23576a589e21f08ab0d6f5ab3f7bcc739b3df202a674ea5c8b97650",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "948a79dcc23576a589e21f08ab0d6f5ab3f7bcc739b3df202a674ea5c8b97650"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "948a79dcc23576a589e21f08ab0d6f5ab3f7bcc739b3df202a674ea5c8b97650"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "948a79dcc23576a589e21f08ab0d6f5ab3f7bcc739b3df202a674ea5c8b97650"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "948a79dcc23576a589e21f08ab0d6f5ab3f7bcc739b3df202a674ea5c8b97650"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 1
+      },
+      {
+        "bytes": 1044,
+        "case": 7,
+        "expected_sha256": "6fa7770ec09cbbf789534ab9f39b2cbbea5a5c5a558755c7c17bb7938f690f31",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "6fa7770ec09cbbf789534ab9f39b2cbbea5a5c5a558755c7c17bb7938f690f31"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "6fa7770ec09cbbf789534ab9f39b2cbbea5a5c5a558755c7c17bb7938f690f31"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "6fa7770ec09cbbf789534ab9f39b2cbbea5a5c5a558755c7c17bb7938f690f31"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "6fa7770ec09cbbf789534ab9f39b2cbbea5a5c5a558755c7c17bb7938f690f31"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 1
+      },
+      {
+        "bytes": 1040,
+        "case": 6,
+        "expected_sha256": "41c7dd541218c2c0167760abcde1389fdd68b9a2d629a3f42e3f013b72167e56",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "41c7dd541218c2c0167760abcde1389fdd68b9a2d629a3f42e3f013b72167e56"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "41c7dd541218c2c0167760abcde1389fdd68b9a2d629a3f42e3f013b72167e56"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "41c7dd541218c2c0167760abcde1389fdd68b9a2d629a3f42e3f013b72167e56"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "41c7dd541218c2c0167760abcde1389fdd68b9a2d629a3f42e3f013b72167e56"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 1
+      },
+      {
+        "bytes": 1036,
+        "case": 5,
+        "expected_sha256": "cf273348293de4ef9d12751b4b79631f0e2fabd3312d8967deb3a4ed2bdeae4e",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "cf273348293de4ef9d12751b4b79631f0e2fabd3312d8967deb3a4ed2bdeae4e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "cf273348293de4ef9d12751b4b79631f0e2fabd3312d8967deb3a4ed2bdeae4e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "cf273348293de4ef9d12751b4b79631f0e2fabd3312d8967deb3a4ed2bdeae4e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "cf273348293de4ef9d12751b4b79631f0e2fabd3312d8967deb3a4ed2bdeae4e"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 1
+      },
+      {
+        "bytes": 20,
+        "case": 4,
+        "expected_sha256": "ddfa9a8c5d96427a5b2bc9092e78e1be8bd2ad298e0e979e47c139dd5ea4641a",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "ddfa9a8c5d96427a5b2bc9092e78e1be8bd2ad298e0e979e47c139dd5ea4641a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "ddfa9a8c5d96427a5b2bc9092e78e1be8bd2ad298e0e979e47c139dd5ea4641a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "ddfa9a8c5d96427a5b2bc9092e78e1be8bd2ad298e0e979e47c139dd5ea4641a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "ddfa9a8c5d96427a5b2bc9092e78e1be8bd2ad298e0e979e47c139dd5ea4641a"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 1
+      },
+      {
+        "bytes": 16,
+        "case": 3,
+        "expected_sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 1
+      },
+      {
+        "bytes": 5172,
+        "case": 2,
+        "expected_sha256": "a70aae7493526c58aad3cf1d6ded435ed48369acc587fa15d0a83bbbf0213846",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "a70aae7493526c58aad3cf1d6ded435ed48369acc587fa15d0a83bbbf0213846"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "a70aae7493526c58aad3cf1d6ded435ed48369acc587fa15d0a83bbbf0213846"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "a70aae7493526c58aad3cf1d6ded435ed48369acc587fa15d0a83bbbf0213846"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "a70aae7493526c58aad3cf1d6ded435ed48369acc587fa15d0a83bbbf0213846"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 8
+      },
+      {
+        "bytes": 16,
+        "case": 1,
+        "expected_sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 1
+      },
+      {
+        "bytes": 12,
+        "case": 0,
+        "expected_sha256": "1bbfcdb48f8ec9db2c673609239241e6b90813ef31ae06e0874161c71f596069",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "1bbfcdb48f8ec9db2c673609239241e6b90813ef31ae06e0874161c71f596069"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "1bbfcdb48f8ec9db2c673609239241e6b90813ef31ae06e0874161c71f596069"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "1bbfcdb48f8ec9db2c673609239241e6b90813ef31ae06e0874161c71f596069"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "1bbfcdb48f8ec9db2c673609239241e6b90813ef31ae06e0874161c71f596069"
+          }
+        ],
+        "repetition": 1,
+        "workgroups": 0
+      },
+      {
+        "bytes": 528404,
+        "case": 56,
+        "expected_sha256": "301577a7302716b4f32dabe48c9388fea782a02a654522af9c9a7f05fb48d6bd",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "301577a7302716b4f32dabe48c9388fea782a02a654522af9c9a7f05fb48d6bd"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "301577a7302716b4f32dabe48c9388fea782a02a654522af9c9a7f05fb48d6bd"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "301577a7302716b4f32dabe48c9388fea782a02a654522af9c9a7f05fb48d6bd"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "301577a7302716b4f32dabe48c9388fea782a02a654522af9c9a7f05fb48d6bd"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 257
+      },
+      {
+        "bytes": 265236,
+        "case": 55,
+        "expected_sha256": "cbb560e7d781fe0dafc833d83f78536bd530e07d5edb5571ecbbe61ebac31d4c",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "cbb560e7d781fe0dafc833d83f78536bd530e07d5edb5571ecbbe61ebac31d4c"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "cbb560e7d781fe0dafc833d83f78536bd530e07d5edb5571ecbbe61ebac31d4c"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "cbb560e7d781fe0dafc833d83f78536bd530e07d5edb5571ecbbe61ebac31d4c"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "cbb560e7d781fe0dafc833d83f78536bd530e07d5edb5571ecbbe61ebac31d4c"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 257
+      },
+      {
+        "bytes": 264208,
+        "case": 54,
+        "expected_sha256": "61496e2e4f896d352ee249f46105c7c120a01d49cc3f3b2a6d392060b7bc5cdb",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "61496e2e4f896d352ee249f46105c7c120a01d49cc3f3b2a6d392060b7bc5cdb"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "61496e2e4f896d352ee249f46105c7c120a01d49cc3f3b2a6d392060b7bc5cdb"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "61496e2e4f896d352ee249f46105c7c120a01d49cc3f3b2a6d392060b7bc5cdb"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "61496e2e4f896d352ee249f46105c7c120a01d49cc3f3b2a6d392060b7bc5cdb"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 257
+      },
+      {
+        "bytes": 263180,
+        "case": 53,
+        "expected_sha256": "b0805577173fc15eac4c29041ed4318f4614889e82c1c8cb9a65a85e4c612f65",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "b0805577173fc15eac4c29041ed4318f4614889e82c1c8cb9a65a85e4c612f65"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "b0805577173fc15eac4c29041ed4318f4614889e82c1c8cb9a65a85e4c612f65"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "b0805577173fc15eac4c29041ed4318f4614889e82c1c8cb9a65a85e4c612f65"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "b0805577173fc15eac4c29041ed4318f4614889e82c1c8cb9a65a85e4c612f65"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 257
+      },
+      {
+        "bytes": 2068,
+        "case": 52,
+        "expected_sha256": "9afd9fb752342a9d26d0c449e849b0186ffd9fd5bf84130248898c245929f638",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "9afd9fb752342a9d26d0c449e849b0186ffd9fd5bf84130248898c245929f638"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "9afd9fb752342a9d26d0c449e849b0186ffd9fd5bf84130248898c245929f638"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "9afd9fb752342a9d26d0c449e849b0186ffd9fd5bf84130248898c245929f638"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "9afd9fb752342a9d26d0c449e849b0186ffd9fd5bf84130248898c245929f638"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 257
+      },
+      {
+        "bytes": 1040,
+        "case": 51,
+        "expected_sha256": "4eb57dbffd732ea2565f2975900bf3426f43ea29e4cb28cb14362e72665dbd3a",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "4eb57dbffd732ea2565f2975900bf3426f43ea29e4cb28cb14362e72665dbd3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "4eb57dbffd732ea2565f2975900bf3426f43ea29e4cb28cb14362e72665dbd3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "4eb57dbffd732ea2565f2975900bf3426f43ea29e4cb28cb14362e72665dbd3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "4eb57dbffd732ea2565f2975900bf3426f43ea29e4cb28cb14362e72665dbd3a"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 257
+      },
+      {
+        "bytes": 265236,
+        "case": 50,
+        "expected_sha256": "4d68d1c6570bb35fee2467855d6bbd8528a0451a1bd2788011fe78713d248f91",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "4d68d1c6570bb35fee2467855d6bbd8528a0451a1bd2788011fe78713d248f91"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "4d68d1c6570bb35fee2467855d6bbd8528a0451a1bd2788011fe78713d248f91"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "4d68d1c6570bb35fee2467855d6bbd8528a0451a1bd2788011fe78713d248f91"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "4d68d1c6570bb35fee2467855d6bbd8528a0451a1bd2788011fe78713d248f91"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 129
+      },
+      {
+        "bytes": 133140,
+        "case": 49,
+        "expected_sha256": "e9ffe7e5df0b16df499afa1419d21883a52c8f2b301bad4feab5f92f73976a8f",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "e9ffe7e5df0b16df499afa1419d21883a52c8f2b301bad4feab5f92f73976a8f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "e9ffe7e5df0b16df499afa1419d21883a52c8f2b301bad4feab5f92f73976a8f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "e9ffe7e5df0b16df499afa1419d21883a52c8f2b301bad4feab5f92f73976a8f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "e9ffe7e5df0b16df499afa1419d21883a52c8f2b301bad4feab5f92f73976a8f"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 129
+      },
+      {
+        "bytes": 132624,
+        "case": 48,
+        "expected_sha256": "cde6058a99e440f0c897f999b6c46bfe5be6f58735cf25e099868949cb76b06d",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "cde6058a99e440f0c897f999b6c46bfe5be6f58735cf25e099868949cb76b06d"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "cde6058a99e440f0c897f999b6c46bfe5be6f58735cf25e099868949cb76b06d"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "cde6058a99e440f0c897f999b6c46bfe5be6f58735cf25e099868949cb76b06d"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "cde6058a99e440f0c897f999b6c46bfe5be6f58735cf25e099868949cb76b06d"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 129
+      },
+      {
+        "bytes": 132108,
+        "case": 47,
+        "expected_sha256": "a78274d127d260ceb9529c980008b2fe40c14c0a899c34d9caa0c13bb9506c3a",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "a78274d127d260ceb9529c980008b2fe40c14c0a899c34d9caa0c13bb9506c3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "a78274d127d260ceb9529c980008b2fe40c14c0a899c34d9caa0c13bb9506c3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "a78274d127d260ceb9529c980008b2fe40c14c0a899c34d9caa0c13bb9506c3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "a78274d127d260ceb9529c980008b2fe40c14c0a899c34d9caa0c13bb9506c3a"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 129
+      },
+      {
+        "bytes": 1044,
+        "case": 46,
+        "expected_sha256": "df552adf6638c2d25cf14a4485d402986ac19782806aaa405402edc7b49a15c7",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "df552adf6638c2d25cf14a4485d402986ac19782806aaa405402edc7b49a15c7"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "df552adf6638c2d25cf14a4485d402986ac19782806aaa405402edc7b49a15c7"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "df552adf6638c2d25cf14a4485d402986ac19782806aaa405402edc7b49a15c7"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "df552adf6638c2d25cf14a4485d402986ac19782806aaa405402edc7b49a15c7"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 129
+      },
+      {
+        "bytes": 528,
+        "case": 45,
+        "expected_sha256": "597e7cd4c1611885c3ac0f7b2e40ff272945048bf2b4209cb2ed223eab11c009",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "597e7cd4c1611885c3ac0f7b2e40ff272945048bf2b4209cb2ed223eab11c009"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "597e7cd4c1611885c3ac0f7b2e40ff272945048bf2b4209cb2ed223eab11c009"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "597e7cd4c1611885c3ac0f7b2e40ff272945048bf2b4209cb2ed223eab11c009"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "597e7cd4c1611885c3ac0f7b2e40ff272945048bf2b4209cb2ed223eab11c009"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 129
+      },
+      {
+        "bytes": 263180,
+        "case": 44,
+        "expected_sha256": "8ea746e3ed6fde80b6d6e7dc1a7d4ea080771786d6aca2d527721965331f7c55",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "8ea746e3ed6fde80b6d6e7dc1a7d4ea080771786d6aca2d527721965331f7c55"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "8ea746e3ed6fde80b6d6e7dc1a7d4ea080771786d6aca2d527721965331f7c55"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "8ea746e3ed6fde80b6d6e7dc1a7d4ea080771786d6aca2d527721965331f7c55"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "8ea746e3ed6fde80b6d6e7dc1a7d4ea080771786d6aca2d527721965331f7c55"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 128
+      },
+      {
+        "bytes": 132108,
+        "case": 43,
+        "expected_sha256": "d7065ff69b1cde61d94482980571ee9134f028c574b281fbb404147175775280",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "d7065ff69b1cde61d94482980571ee9134f028c574b281fbb404147175775280"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "d7065ff69b1cde61d94482980571ee9134f028c574b281fbb404147175775280"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "d7065ff69b1cde61d94482980571ee9134f028c574b281fbb404147175775280"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "d7065ff69b1cde61d94482980571ee9134f028c574b281fbb404147175775280"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 128
+      },
+      {
+        "bytes": 131596,
+        "case": 42,
+        "expected_sha256": "79a3f643ac999c40378ae7c698d47c09d63757181456d09f5600841014436bc5",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "79a3f643ac999c40378ae7c698d47c09d63757181456d09f5600841014436bc5"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "79a3f643ac999c40378ae7c698d47c09d63757181456d09f5600841014436bc5"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "79a3f643ac999c40378ae7c698d47c09d63757181456d09f5600841014436bc5"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "79a3f643ac999c40378ae7c698d47c09d63757181456d09f5600841014436bc5"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 128
+      },
+      {
+        "bytes": 131084,
+        "case": 41,
+        "expected_sha256": "27b182cebf80b30d2713fb1f185a2215d491d87f6ff6819b79cc6f4662e31158",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "27b182cebf80b30d2713fb1f185a2215d491d87f6ff6819b79cc6f4662e31158"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "27b182cebf80b30d2713fb1f185a2215d491d87f6ff6819b79cc6f4662e31158"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "27b182cebf80b30d2713fb1f185a2215d491d87f6ff6819b79cc6f4662e31158"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "27b182cebf80b30d2713fb1f185a2215d491d87f6ff6819b79cc6f4662e31158"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 128
+      },
+      {
+        "bytes": 1036,
+        "case": 40,
+        "expected_sha256": "b29157862c47813a86abd3fc09d0d20f8c300e2b21dfc0a35d8b4d983979758f",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "b29157862c47813a86abd3fc09d0d20f8c300e2b21dfc0a35d8b4d983979758f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "b29157862c47813a86abd3fc09d0d20f8c300e2b21dfc0a35d8b4d983979758f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "b29157862c47813a86abd3fc09d0d20f8c300e2b21dfc0a35d8b4d983979758f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "b29157862c47813a86abd3fc09d0d20f8c300e2b21dfc0a35d8b4d983979758f"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 128
+      },
+      {
+        "bytes": 524,
+        "case": 39,
+        "expected_sha256": "1e939908117e726dfc2fa956e1b58b12f83aafeb575515bef84cb17409f1dedc",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "1e939908117e726dfc2fa956e1b58b12f83aafeb575515bef84cb17409f1dedc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "1e939908117e726dfc2fa956e1b58b12f83aafeb575515bef84cb17409f1dedc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "1e939908117e726dfc2fa956e1b58b12f83aafeb575515bef84cb17409f1dedc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "1e939908117e726dfc2fa956e1b58b12f83aafeb575515bef84cb17409f1dedc"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 128
+      },
+      {
+        "bytes": 261124,
+        "case": 38,
+        "expected_sha256": "8f0623fab5b9096c9abfa303da0a6e230fa2a555fdd0b069fd1d76d8a6e4de2e",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "8f0623fab5b9096c9abfa303da0a6e230fa2a555fdd0b069fd1d76d8a6e4de2e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "8f0623fab5b9096c9abfa303da0a6e230fa2a555fdd0b069fd1d76d8a6e4de2e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "8f0623fab5b9096c9abfa303da0a6e230fa2a555fdd0b069fd1d76d8a6e4de2e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "8f0623fab5b9096c9abfa303da0a6e230fa2a555fdd0b069fd1d76d8a6e4de2e"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 127
+      },
+      {
+        "bytes": 131076,
+        "case": 37,
+        "expected_sha256": "6e14a8e62113b1e9b49f1cb8c87bac058e20f6bbf9f70500820d8fa2b93901de",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "6e14a8e62113b1e9b49f1cb8c87bac058e20f6bbf9f70500820d8fa2b93901de"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "6e14a8e62113b1e9b49f1cb8c87bac058e20f6bbf9f70500820d8fa2b93901de"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "6e14a8e62113b1e9b49f1cb8c87bac058e20f6bbf9f70500820d8fa2b93901de"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "6e14a8e62113b1e9b49f1cb8c87bac058e20f6bbf9f70500820d8fa2b93901de"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 127
+      },
+      {
+        "bytes": 130568,
+        "case": 36,
+        "expected_sha256": "43faeb61f77ceec835da9f2c6fdb55faab8c24ab08d73498ec16a821b0d9ec19",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "43faeb61f77ceec835da9f2c6fdb55faab8c24ab08d73498ec16a821b0d9ec19"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "43faeb61f77ceec835da9f2c6fdb55faab8c24ab08d73498ec16a821b0d9ec19"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "43faeb61f77ceec835da9f2c6fdb55faab8c24ab08d73498ec16a821b0d9ec19"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "43faeb61f77ceec835da9f2c6fdb55faab8c24ab08d73498ec16a821b0d9ec19"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 127
+      },
+      {
+        "bytes": 130060,
+        "case": 35,
+        "expected_sha256": "ad6c41dfea2cd8e4320e4e4960aa7c9720f9fbcd0e9a31a1f79c57101bca972b",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "ad6c41dfea2cd8e4320e4e4960aa7c9720f9fbcd0e9a31a1f79c57101bca972b"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "ad6c41dfea2cd8e4320e4e4960aa7c9720f9fbcd0e9a31a1f79c57101bca972b"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "ad6c41dfea2cd8e4320e4e4960aa7c9720f9fbcd0e9a31a1f79c57101bca972b"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "ad6c41dfea2cd8e4320e4e4960aa7c9720f9fbcd0e9a31a1f79c57101bca972b"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 127
+      },
+      {
+        "bytes": 1028,
+        "case": 34,
+        "expected_sha256": "8bdc8c89c5efbfc5c48897b8d775273a4b0600ab26ea6df14b017a91b873f858",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "8bdc8c89c5efbfc5c48897b8d775273a4b0600ab26ea6df14b017a91b873f858"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "8bdc8c89c5efbfc5c48897b8d775273a4b0600ab26ea6df14b017a91b873f858"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "8bdc8c89c5efbfc5c48897b8d775273a4b0600ab26ea6df14b017a91b873f858"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "8bdc8c89c5efbfc5c48897b8d775273a4b0600ab26ea6df14b017a91b873f858"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 127
+      },
+      {
+        "bytes": 520,
+        "case": 33,
+        "expected_sha256": "70fc909ecb341114454f1e3a61cc175e71ce23045bdcdbf332073504af335fa8",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "70fc909ecb341114454f1e3a61cc175e71ce23045bdcdbf332073504af335fa8"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "70fc909ecb341114454f1e3a61cc175e71ce23045bdcdbf332073504af335fa8"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "70fc909ecb341114454f1e3a61cc175e71ce23045bdcdbf332073504af335fa8"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "70fc909ecb341114454f1e3a61cc175e71ce23045bdcdbf332073504af335fa8"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 127
+      },
+      {
+        "bytes": 133652,
+        "case": 32,
+        "expected_sha256": "cc42d36d37790342f68502151449a47f4a0970261d9437eb0fda1dddefb8ba64",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "cc42d36d37790342f68502151449a47f4a0970261d9437eb0fda1dddefb8ba64"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "cc42d36d37790342f68502151449a47f4a0970261d9437eb0fda1dddefb8ba64"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "cc42d36d37790342f68502151449a47f4a0970261d9437eb0fda1dddefb8ba64"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "cc42d36d37790342f68502151449a47f4a0970261d9437eb0fda1dddefb8ba64"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 65
+      },
+      {
+        "bytes": 67092,
+        "case": 31,
+        "expected_sha256": "562e43d6da3eda88a8bb4cb7f1e2a4019a4736857011005fce474a45ad2f6cce",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "562e43d6da3eda88a8bb4cb7f1e2a4019a4736857011005fce474a45ad2f6cce"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "562e43d6da3eda88a8bb4cb7f1e2a4019a4736857011005fce474a45ad2f6cce"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "562e43d6da3eda88a8bb4cb7f1e2a4019a4736857011005fce474a45ad2f6cce"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "562e43d6da3eda88a8bb4cb7f1e2a4019a4736857011005fce474a45ad2f6cce"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 65
+      },
+      {
+        "bytes": 66832,
+        "case": 30,
+        "expected_sha256": "e6cfaa197f8ddc36b8e4f801a43fd4d6c5d9e557420ee84b62421093ec809d33",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "e6cfaa197f8ddc36b8e4f801a43fd4d6c5d9e557420ee84b62421093ec809d33"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "e6cfaa197f8ddc36b8e4f801a43fd4d6c5d9e557420ee84b62421093ec809d33"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "e6cfaa197f8ddc36b8e4f801a43fd4d6c5d9e557420ee84b62421093ec809d33"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "e6cfaa197f8ddc36b8e4f801a43fd4d6c5d9e557420ee84b62421093ec809d33"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 65
+      },
+      {
+        "bytes": 66572,
+        "case": 29,
+        "expected_sha256": "e3f4690d185955a32695ccae5b83fcf445c17c6ff3300d740d6ae46eccaa0e34",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "e3f4690d185955a32695ccae5b83fcf445c17c6ff3300d740d6ae46eccaa0e34"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "e3f4690d185955a32695ccae5b83fcf445c17c6ff3300d740d6ae46eccaa0e34"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "e3f4690d185955a32695ccae5b83fcf445c17c6ff3300d740d6ae46eccaa0e34"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "e3f4690d185955a32695ccae5b83fcf445c17c6ff3300d740d6ae46eccaa0e34"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 65
+      },
+      {
+        "bytes": 532,
+        "case": 28,
+        "expected_sha256": "3c11b193c1aee1ff8ec47d91e91721cf4adfcd9ddaf7d06efeef382c01c54149",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "3c11b193c1aee1ff8ec47d91e91721cf4adfcd9ddaf7d06efeef382c01c54149"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "3c11b193c1aee1ff8ec47d91e91721cf4adfcd9ddaf7d06efeef382c01c54149"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "3c11b193c1aee1ff8ec47d91e91721cf4adfcd9ddaf7d06efeef382c01c54149"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "3c11b193c1aee1ff8ec47d91e91721cf4adfcd9ddaf7d06efeef382c01c54149"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 65
+      },
+      {
+        "bytes": 272,
+        "case": 27,
+        "expected_sha256": "b083ec332b1c6c357dfc87c3b7bd9a1a41610912dff80c14f56ba0f0a16a8633",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "b083ec332b1c6c357dfc87c3b7bd9a1a41610912dff80c14f56ba0f0a16a8633"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "b083ec332b1c6c357dfc87c3b7bd9a1a41610912dff80c14f56ba0f0a16a8633"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "b083ec332b1c6c357dfc87c3b7bd9a1a41610912dff80c14f56ba0f0a16a8633"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "b083ec332b1c6c357dfc87c3b7bd9a1a41610912dff80c14f56ba0f0a16a8633"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 65
+      },
+      {
+        "bytes": 131596,
+        "case": 26,
+        "expected_sha256": "bf5047c6db95378601c74088bf31bfbf31c0749c3cf225f20de5fd7c5e7008af",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "bf5047c6db95378601c74088bf31bfbf31c0749c3cf225f20de5fd7c5e7008af"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "bf5047c6db95378601c74088bf31bfbf31c0749c3cf225f20de5fd7c5e7008af"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "bf5047c6db95378601c74088bf31bfbf31c0749c3cf225f20de5fd7c5e7008af"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "bf5047c6db95378601c74088bf31bfbf31c0749c3cf225f20de5fd7c5e7008af"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 64
+      },
+      {
+        "bytes": 66060,
+        "case": 25,
+        "expected_sha256": "d855d1fc7c08774196710bf1c417f1775e76a8c2d779322fb8229b76093af2bc",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "d855d1fc7c08774196710bf1c417f1775e76a8c2d779322fb8229b76093af2bc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "d855d1fc7c08774196710bf1c417f1775e76a8c2d779322fb8229b76093af2bc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "d855d1fc7c08774196710bf1c417f1775e76a8c2d779322fb8229b76093af2bc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "d855d1fc7c08774196710bf1c417f1775e76a8c2d779322fb8229b76093af2bc"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 64
+      },
+      {
+        "bytes": 65804,
+        "case": 24,
+        "expected_sha256": "7f0d57b50850b95b58d20d5673c05057b7370c7632e47b495736aac926e1f499",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "7f0d57b50850b95b58d20d5673c05057b7370c7632e47b495736aac926e1f499"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "7f0d57b50850b95b58d20d5673c05057b7370c7632e47b495736aac926e1f499"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "7f0d57b50850b95b58d20d5673c05057b7370c7632e47b495736aac926e1f499"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "7f0d57b50850b95b58d20d5673c05057b7370c7632e47b495736aac926e1f499"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 64
+      },
+      {
+        "bytes": 65548,
+        "case": 23,
+        "expected_sha256": "c8651023786e8a460b359a61f0bd301913b4566f23fbcd58fd673a3168c00c5d",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "c8651023786e8a460b359a61f0bd301913b4566f23fbcd58fd673a3168c00c5d"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "c8651023786e8a460b359a61f0bd301913b4566f23fbcd58fd673a3168c00c5d"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "c8651023786e8a460b359a61f0bd301913b4566f23fbcd58fd673a3168c00c5d"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "c8651023786e8a460b359a61f0bd301913b4566f23fbcd58fd673a3168c00c5d"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 64
+      },
+      {
+        "bytes": 524,
+        "case": 22,
+        "expected_sha256": "5cedfd7b84717de422d7c0ee63cc25145c283064be331ce492a6533c308d8707",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "5cedfd7b84717de422d7c0ee63cc25145c283064be331ce492a6533c308d8707"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "5cedfd7b84717de422d7c0ee63cc25145c283064be331ce492a6533c308d8707"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "5cedfd7b84717de422d7c0ee63cc25145c283064be331ce492a6533c308d8707"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "5cedfd7b84717de422d7c0ee63cc25145c283064be331ce492a6533c308d8707"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 64
+      },
+      {
+        "bytes": 268,
+        "case": 21,
+        "expected_sha256": "e469da9c7b9abcfcb8389520dc7eb3a106542fdca7430f0dae34ec9d8334a5a3",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "e469da9c7b9abcfcb8389520dc7eb3a106542fdca7430f0dae34ec9d8334a5a3"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "e469da9c7b9abcfcb8389520dc7eb3a106542fdca7430f0dae34ec9d8334a5a3"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "e469da9c7b9abcfcb8389520dc7eb3a106542fdca7430f0dae34ec9d8334a5a3"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "e469da9c7b9abcfcb8389520dc7eb3a106542fdca7430f0dae34ec9d8334a5a3"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 64
+      },
+      {
+        "bytes": 129540,
+        "case": 20,
+        "expected_sha256": "b30af0deca517d9fd53fee805b30262a6296e95fe15b5406d25799533a1d8e58",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "b30af0deca517d9fd53fee805b30262a6296e95fe15b5406d25799533a1d8e58"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "b30af0deca517d9fd53fee805b30262a6296e95fe15b5406d25799533a1d8e58"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "b30af0deca517d9fd53fee805b30262a6296e95fe15b5406d25799533a1d8e58"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "b30af0deca517d9fd53fee805b30262a6296e95fe15b5406d25799533a1d8e58"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 63
+      },
+      {
+        "bytes": 65028,
+        "case": 19,
+        "expected_sha256": "9150b5f6e390fc1f5345ad642d640635a569cf65190f77f143dcfd2dec34b8fc",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "9150b5f6e390fc1f5345ad642d640635a569cf65190f77f143dcfd2dec34b8fc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "9150b5f6e390fc1f5345ad642d640635a569cf65190f77f143dcfd2dec34b8fc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "9150b5f6e390fc1f5345ad642d640635a569cf65190f77f143dcfd2dec34b8fc"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "9150b5f6e390fc1f5345ad642d640635a569cf65190f77f143dcfd2dec34b8fc"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 63
+      },
+      {
+        "bytes": 64776,
+        "case": 18,
+        "expected_sha256": "a03ed86c3f8c2b59fd4732642ec4c86eb0b02e656cbd0b18056510cf7c0b71a6",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "a03ed86c3f8c2b59fd4732642ec4c86eb0b02e656cbd0b18056510cf7c0b71a6"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "a03ed86c3f8c2b59fd4732642ec4c86eb0b02e656cbd0b18056510cf7c0b71a6"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "a03ed86c3f8c2b59fd4732642ec4c86eb0b02e656cbd0b18056510cf7c0b71a6"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "a03ed86c3f8c2b59fd4732642ec4c86eb0b02e656cbd0b18056510cf7c0b71a6"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 63
+      },
+      {
+        "bytes": 64524,
+        "case": 17,
+        "expected_sha256": "180a69d8bdf92eabdc65d16dca0e8dce13c737b75128d91a66ebe5ffcc1d0b78",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "180a69d8bdf92eabdc65d16dca0e8dce13c737b75128d91a66ebe5ffcc1d0b78"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "180a69d8bdf92eabdc65d16dca0e8dce13c737b75128d91a66ebe5ffcc1d0b78"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "180a69d8bdf92eabdc65d16dca0e8dce13c737b75128d91a66ebe5ffcc1d0b78"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "180a69d8bdf92eabdc65d16dca0e8dce13c737b75128d91a66ebe5ffcc1d0b78"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 63
+      },
+      {
+        "bytes": 516,
+        "case": 16,
+        "expected_sha256": "33fb165c5c3058aced99c316a400626b47f1462caea2b9a36c2277d1b7820678",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "33fb165c5c3058aced99c316a400626b47f1462caea2b9a36c2277d1b7820678"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "33fb165c5c3058aced99c316a400626b47f1462caea2b9a36c2277d1b7820678"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "33fb165c5c3058aced99c316a400626b47f1462caea2b9a36c2277d1b7820678"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "33fb165c5c3058aced99c316a400626b47f1462caea2b9a36c2277d1b7820678"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 63
+      },
+      {
+        "bytes": 264,
+        "case": 15,
+        "expected_sha256": "b6e6c1244f8c238cbaa247024a9a8ce55c51f173ee6069e4cdf23400ba459da3",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "b6e6c1244f8c238cbaa247024a9a8ce55c51f173ee6069e4cdf23400ba459da3"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "b6e6c1244f8c238cbaa247024a9a8ce55c51f173ee6069e4cdf23400ba459da3"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "b6e6c1244f8c238cbaa247024a9a8ce55c51f173ee6069e4cdf23400ba459da3"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "b6e6c1244f8c238cbaa247024a9a8ce55c51f173ee6069e4cdf23400ba459da3"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 63
+      },
+      {
+        "bytes": 4124,
+        "case": 14,
+        "expected_sha256": "8ef302928ae3f1b947d631156580a6d6044a7715c807d854d18ce0e38eb77f10",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "8ef302928ae3f1b947d631156580a6d6044a7715c807d854d18ce0e38eb77f10"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "8ef302928ae3f1b947d631156580a6d6044a7715c807d854d18ce0e38eb77f10"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "8ef302928ae3f1b947d631156580a6d6044a7715c807d854d18ce0e38eb77f10"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "8ef302928ae3f1b947d631156580a6d6044a7715c807d854d18ce0e38eb77f10"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 2
+      },
+      {
+        "bytes": 2076,
+        "case": 13,
+        "expected_sha256": "162dbb141fbba90e30925bc06bcc4c0e9741b3eaed92775d74cd224c4613ec03",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "162dbb141fbba90e30925bc06bcc4c0e9741b3eaed92775d74cd224c4613ec03"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "162dbb141fbba90e30925bc06bcc4c0e9741b3eaed92775d74cd224c4613ec03"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "162dbb141fbba90e30925bc06bcc4c0e9741b3eaed92775d74cd224c4613ec03"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "162dbb141fbba90e30925bc06bcc4c0e9741b3eaed92775d74cd224c4613ec03"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 2
+      },
+      {
+        "bytes": 2068,
+        "case": 12,
+        "expected_sha256": "5d7a6e11fc94dc4b7371b35732006829f9a59ec12d3510a6de9dfeef1c5a2c3a",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "5d7a6e11fc94dc4b7371b35732006829f9a59ec12d3510a6de9dfeef1c5a2c3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "5d7a6e11fc94dc4b7371b35732006829f9a59ec12d3510a6de9dfeef1c5a2c3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "5d7a6e11fc94dc4b7371b35732006829f9a59ec12d3510a6de9dfeef1c5a2c3a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "5d7a6e11fc94dc4b7371b35732006829f9a59ec12d3510a6de9dfeef1c5a2c3a"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 2
+      },
+      {
+        "bytes": 2060,
+        "case": 11,
+        "expected_sha256": "38e8c8cae2056c476bdde4ddc207c562007ade62eace87eceaef0aa39f05f39e",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "38e8c8cae2056c476bdde4ddc207c562007ade62eace87eceaef0aa39f05f39e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "38e8c8cae2056c476bdde4ddc207c562007ade62eace87eceaef0aa39f05f39e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "38e8c8cae2056c476bdde4ddc207c562007ade62eace87eceaef0aa39f05f39e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "38e8c8cae2056c476bdde4ddc207c562007ade62eace87eceaef0aa39f05f39e"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 2
+      },
+      {
+        "bytes": 28,
+        "case": 10,
+        "expected_sha256": "767deb8e535a9b0191ee1cf676a826a5f91fb274456f613feab6b389bd28e534",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "767deb8e535a9b0191ee1cf676a826a5f91fb274456f613feab6b389bd28e534"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "767deb8e535a9b0191ee1cf676a826a5f91fb274456f613feab6b389bd28e534"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "767deb8e535a9b0191ee1cf676a826a5f91fb274456f613feab6b389bd28e534"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "767deb8e535a9b0191ee1cf676a826a5f91fb274456f613feab6b389bd28e534"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 2
+      },
+      {
+        "bytes": 20,
+        "case": 9,
+        "expected_sha256": "2377b28dd2e297ff3368fc8b24321546bb84925199f96f19b8b75e181856543a",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "2377b28dd2e297ff3368fc8b24321546bb84925199f96f19b8b75e181856543a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "2377b28dd2e297ff3368fc8b24321546bb84925199f96f19b8b75e181856543a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "2377b28dd2e297ff3368fc8b24321546bb84925199f96f19b8b75e181856543a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "2377b28dd2e297ff3368fc8b24321546bb84925199f96f19b8b75e181856543a"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 2
+      },
+      {
+        "bytes": 2068,
+        "case": 8,
+        "expected_sha256": "948a79dcc23576a589e21f08ab0d6f5ab3f7bcc739b3df202a674ea5c8b97650",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "948a79dcc23576a589e21f08ab0d6f5ab3f7bcc739b3df202a674ea5c8b97650"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "948a79dcc23576a589e21f08ab0d6f5ab3f7bcc739b3df202a674ea5c8b97650"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "948a79dcc23576a589e21f08ab0d6f5ab3f7bcc739b3df202a674ea5c8b97650"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "948a79dcc23576a589e21f08ab0d6f5ab3f7bcc739b3df202a674ea5c8b97650"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 1
+      },
+      {
+        "bytes": 1044,
+        "case": 7,
+        "expected_sha256": "6fa7770ec09cbbf789534ab9f39b2cbbea5a5c5a558755c7c17bb7938f690f31",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "6fa7770ec09cbbf789534ab9f39b2cbbea5a5c5a558755c7c17bb7938f690f31"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "6fa7770ec09cbbf789534ab9f39b2cbbea5a5c5a558755c7c17bb7938f690f31"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "6fa7770ec09cbbf789534ab9f39b2cbbea5a5c5a558755c7c17bb7938f690f31"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "6fa7770ec09cbbf789534ab9f39b2cbbea5a5c5a558755c7c17bb7938f690f31"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 1
+      },
+      {
+        "bytes": 1040,
+        "case": 6,
+        "expected_sha256": "41c7dd541218c2c0167760abcde1389fdd68b9a2d629a3f42e3f013b72167e56",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "41c7dd541218c2c0167760abcde1389fdd68b9a2d629a3f42e3f013b72167e56"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "41c7dd541218c2c0167760abcde1389fdd68b9a2d629a3f42e3f013b72167e56"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "41c7dd541218c2c0167760abcde1389fdd68b9a2d629a3f42e3f013b72167e56"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "41c7dd541218c2c0167760abcde1389fdd68b9a2d629a3f42e3f013b72167e56"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 1
+      },
+      {
+        "bytes": 1036,
+        "case": 5,
+        "expected_sha256": "cf273348293de4ef9d12751b4b79631f0e2fabd3312d8967deb3a4ed2bdeae4e",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "cf273348293de4ef9d12751b4b79631f0e2fabd3312d8967deb3a4ed2bdeae4e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "cf273348293de4ef9d12751b4b79631f0e2fabd3312d8967deb3a4ed2bdeae4e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "cf273348293de4ef9d12751b4b79631f0e2fabd3312d8967deb3a4ed2bdeae4e"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "cf273348293de4ef9d12751b4b79631f0e2fabd3312d8967deb3a4ed2bdeae4e"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 1
+      },
+      {
+        "bytes": 20,
+        "case": 4,
+        "expected_sha256": "ddfa9a8c5d96427a5b2bc9092e78e1be8bd2ad298e0e979e47c139dd5ea4641a",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "ddfa9a8c5d96427a5b2bc9092e78e1be8bd2ad298e0e979e47c139dd5ea4641a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "ddfa9a8c5d96427a5b2bc9092e78e1be8bd2ad298e0e979e47c139dd5ea4641a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "ddfa9a8c5d96427a5b2bc9092e78e1be8bd2ad298e0e979e47c139dd5ea4641a"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "ddfa9a8c5d96427a5b2bc9092e78e1be8bd2ad298e0e979e47c139dd5ea4641a"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 1
+      },
+      {
+        "bytes": 16,
+        "case": 3,
+        "expected_sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 1
+      },
+      {
+        "bytes": 5172,
+        "case": 2,
+        "expected_sha256": "a70aae7493526c58aad3cf1d6ded435ed48369acc587fa15d0a83bbbf0213846",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "a70aae7493526c58aad3cf1d6ded435ed48369acc587fa15d0a83bbbf0213846"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "a70aae7493526c58aad3cf1d6ded435ed48369acc587fa15d0a83bbbf0213846"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "a70aae7493526c58aad3cf1d6ded435ed48369acc587fa15d0a83bbbf0213846"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "a70aae7493526c58aad3cf1d6ded435ed48369acc587fa15d0a83bbbf0213846"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 8
+      },
+      {
+        "bytes": 16,
+        "case": 1,
+        "expected_sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "57f52e8a0c54a7f08350c602fa6852ff59e4e246fbe38aa369bdd7b7e89e013f"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 1
+      },
+      {
+        "bytes": 12,
+        "case": 0,
+        "expected_sha256": "1bbfcdb48f8ec9db2c673609239241e6b90813ef31ae06e0874161c71f596069",
+        "outputs": [
+          {
+            "different_bytes": 0,
+            "route": "native-dx12",
+            "sha256": "1bbfcdb48f8ec9db2c673609239241e6b90813ef31ae06e0874161c71f596069"
+          },
+          {
+            "different_bytes": 0,
+            "route": "native-vulkan",
+            "sha256": "1bbfcdb48f8ec9db2c673609239241e6b90813ef31ae06e0874161c71f596069"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-dx12",
+            "sha256": "1bbfcdb48f8ec9db2c673609239241e6b90813ef31ae06e0874161c71f596069"
+          },
+          {
+            "different_bytes": 0,
+            "route": "wgpu-vulkan",
+            "sha256": "1bbfcdb48f8ec9db2c673609239241e6b90813ef31ae06e0874161c71f596069"
+          }
+        ],
+        "repetition": 0,
+        "workgroups": 0
+      }
+    ],
+    "physical_gpu_luid": "9f3f010000000000",
+    "repetitions": 3,
+    "routes": 4
+  },
+  "native_runtime": {
+    "passed": 25,
+    "dxc_executable_paths": "nonexistent",
+    "pipeline_cache_hits": 120,
+    "pipeline_compilations": 0
+  },
+  "release_library": {
+    "passed": 956,
+    "ignored_opt_in": 10
+  },
+  "png_regression": {
+    "before": 3471,
+    "after": 3471,
+    "changed": [],
+    "missing": [],
+    "added": []
+  },
+  "package": {
+    "files": 288,
+    "sha256": "911e832fa18a11f051d304b261788846096bb4aeac64fb49179202775a2dd408",
+    "native_only": "passed",
+    "default_without_dxc": "passed"
+  },
+  "spirv_validator": [
+    {
+      "entry": "clear_words",
+      "sha256": "d77229ead0bf6b4f8ddbafecc56a5d16c0d1a0da2a37f748d14df486b6c4bd5f",
+      "status": "passed"
+    },
+    {
+      "entry": "copy_words",
+      "sha256": "a2338e39bc4c533b17c99245a7bb82ed631f6b179c0d51bcf756e5ebb4699442",
+      "status": "passed"
+    },
+    {
+      "entry": "layout_words",
+      "sha256": "f2129fddbdb61c811face9ea0dc6c0646ea2f3743e99f283c1ef7116156d3885",
+      "status": "passed"
+    },
+    {
+      "entry": "sample_words",
+      "sha256": "a924f50bbe552fad554df3d5ea1d408df14d53a4f61546c9e0c10d3fc4c70aff",
+      "status": "passed"
+    },
+    {
+      "entry": "range_scatter",
+      "sha256": "5d9d4d6d6372fec32c91fea05319bffd26740a894c8aa5b7d155211819b86bae",
+      "status": "passed"
+    }
+  ],
+  "artifacts": [
+    {
+      "artifact_sha256": "278e7ce58380252fbd52975eb1dd019eb9b5637e83001160ae247857dd2905da",
+      "key": "cbaf0620aaa17553fd02cb6ceb3f9c1572abb7d09685e00771a7fa513fb99419",
+      "recipe": {
+        "abi_sha256": "fe6445bf20fa3854cf9322d74237f5d6228cb7360374e1daadaa31006be0eb3b",
+        "entry": "range_scatter",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "range_scatter",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "range_scatter.hlsl": "// Production range_scatter.wgsl layout, with explicit native binding remapping:\n// WGSL upload binding 0 -> native source t1 / binding 1;\n// WGSL destination binding 1 -> native destination u0 / binding 0.\nByteAddressBuffer source : register(t1);\nRWByteAddressBuffer destination : register(u0);\n\n[numthreads(256, 1, 1)]\nvoid range_scatter(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {\n    uint descriptor = 4u + group.x * 4u;\n    uint payload = source.Load(0);\n    uint dst = source.Load(descriptor * 4u);\n    uint src = source.Load((descriptor + 1u) * 4u);\n    uint len = source.Load((descriptor + 2u) * 4u);\n    for (uint offset = local.x; offset < len; offset += 256u) {\n        destination.Store((dst + offset) * 4u, source.Load((payload + src + offset) * 4u));\n    }\n}\n"
+        },
+        "target": "dxil",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "range-scatter"
+      }
+    },
+    {
+      "artifact_sha256": "5d9d4d6d6372fec32c91fea05319bffd26740a894c8aa5b7d155211819b86bae",
+      "key": "26ebcab3d9b9af5adb328c153a6252086bd67b8320d983e2a6809c8a011cbe17",
+      "recipe": {
+        "abi_sha256": "fe6445bf20fa3854cf9322d74237f5d6228cb7360374e1daadaa31006be0eb3b",
+        "entry": "range_scatter",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "range_scatter",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis",
+          "-spirv",
+          "-fspv-target-env=vulkan1.1"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "range_scatter.hlsl": "// Production range_scatter.wgsl layout, with explicit native binding remapping:\n// WGSL upload binding 0 -> native source t1 / binding 1;\n// WGSL destination binding 1 -> native destination u0 / binding 0.\nByteAddressBuffer source : register(t1);\nRWByteAddressBuffer destination : register(u0);\n\n[numthreads(256, 1, 1)]\nvoid range_scatter(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {\n    uint descriptor = 4u + group.x * 4u;\n    uint payload = source.Load(0);\n    uint dst = source.Load(descriptor * 4u);\n    uint src = source.Load((descriptor + 1u) * 4u);\n    uint len = source.Load((descriptor + 2u) * 4u);\n    for (uint offset = local.x; offset < len; offset += 256u) {\n        destination.Store((dst + offset) * 4u, source.Load((payload + src + offset) * 4u));\n    }\n}\n"
+        },
+        "target": "spirv",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "range-scatter"
+      }
+    }
+  ],
+  "source_sha256_utf8_lf": {
+    "build.rs": "e713d37167cadb0c7aa63e51f011680fd26e26bb0963668bbc9669c792789f4d",
+    "build/native.rs": "a59d003d2677c194b835a8dffef51d8ab13e9f126f03e18d7c2a8d297705973f",
+    "build/native/abi.rs": "a06bc5f616fe3aaef468bacd1ce0645c9f051b33a1c57efe8f2cc027ca0960b5",
+    "build/native/dxil_reflection.rs": "1c8e452f0720301e822b3ded3f951181b87a0dea318603848f2a0b407609dfa1",
+    "build/native/spirv.rs": "13910060d0335653aa77bd34c7374e987376e0395a67ca197a2545d5a75282a8",
+    "docs/native/native-program-inventory.json": "9d522ca4daf3c9970fceb2e6cb4312d1f54c76b6dac074d8445a35bd1a8ead22",
+    "src/native/runtime/adapter.rs": "28374252cdfadc080fb85f852443d44dda475472a5126faf45a895bda9dc520e",
+    "src/native/runtime/dx12.rs": "0647a734a4667c68396e97a62fd36cedc1942d4cba0b38d3a26a5994741cfbf5",
+    "src/native/runtime/dx12/frame.rs": "72ecda6e32328a852a1cd9ef7fd55f60f15be2903aeba583e5a2292b75a9c1f3",
+    "src/native/runtime/dx12/tests.rs": "a06083c6c65834041155368771fa626a6c8a1c8b66c780e1549d6c9786e19c1b",
+    "src/native/runtime/gpu_tests.rs": "6286837abfde39faab211524765a8204f67b9010d8868a3293d944c70c96fc18",
+    "src/native/runtime/program.rs": "175be3e878c898cb58e75a9a6f47b20bfe8862cb56ce71089514b66c27413a4c",
+    "src/native/runtime/program/probe.rs": "b577bb8bb8fe865ea57394cd52909943ac8de1972f27004a467020f4f5138081",
+    "src/native/runtime/program/scatter.rs": "b0fc0ee01e85e4969befebec483633f17e57ae55b0c88b731141582dcf0a483b",
+    "src/native/runtime/tests/cases.rs": "d7f92618f293b096eaf143c4f3ff886debb2c3e1760d07f45b0ec0b1f4321e7d",
+    "src/native/runtime/tests/program.rs": "006fab3d3160574fabccaa58e44540e511989ea8dafd598f1fe7506000d34ac3",
+    "src/native/runtime/tests/scatter.rs": "7d4bf8da243638463eb5a5df308ad10359325698f68759e7aee79202411a2d83",
+    "src/native/runtime/tests/wgpu.rs": "9eb5a5906ef23e06eba1fa14516189110a329daf946886fb2ba134ce0d86637e",
+    "src/native/runtime/vulkan.rs": "1ac679d6957a8d4c754f4001f6800855e3e25465c4eed551c046c9f1c3b77731",
+    "src/native/runtime/vulkan/frame.rs": "d5f5f13911fc0e1877125f90979bf203a2d07a35bf88e8769813016476d52cd3",
+    "src/native/runtime/vulkan/limits.rs": "4c59be64131aa54bf67d312287613fb8d17072d777296e58eac86c62b950f06e",
+    "src/native/runtime/vulkan/pipeline.rs": "bf38f3780abbed956751c2ed564849002fd1a29b2b7368856f9a01032faf8763",
+    "src/native/runtime/vulkan/tests.rs": "deee1c89eb38d3b79db62ea0f6aab8963429aa9074c2fbaaeb712854d0339285",
+    "src/native/shaders.rs": "6327efe21fa9b6fbbc767aaeb7f0415bc0de1a7b339c6381f613483593d1fbcb",
+    "src/shaders/hlsl/range_scatter.hlsl": "003ec633f08f4e3cad81ad7bd621326bf5d2862d4be8f8cc5b18ccd05bda2364",
+    "src/shaders/range-scatter-abi.json": "fe6445bf20fa3854cf9322d74237f5d6228cb7360374e1daadaa31006be0eb3b",
+    "tests/native_range_scatter.rs": "036cb00f319236d2af55047ecf513f53cfe1d721e665cafba25070b37ecd4387",
+    "tests/native_shader_abi.rs": "8d1d0881fede6af1e26763ec0eefbd0f61d3ceb02f185b42307d1cb13612e2c0",
+    "tests/native_shader_artifacts.rs": "af875111fd2d54497441480b3d077988d86eca2f5d0bf5847077cda804803ee0",
+    "tests/native_shader_inventory.rs": "664f01d5e682bd93d5e3a5e931e9b7dfefa5b1a53f185de3dd0c045fbe523172",
+    "tests/native_shader_reflection.rs": "53951f7b6ce69e333a6fe3a7eaccfae81417177e8688e7068d256077a4ac321e"
+  },
+  "local_log_sha256": {
+    "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-full-release.log": "9941f6c8ace365d2dc89b88b010bfcfe35e1548d9b123a397adf8db1c8201270",
+    "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-final-focused.log": "8b747c57d5f1bb7e503287a00a2c236a120d9c8ba8fb0705bc9210cd9ea9fa21",
+    "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-no-runtime-dxc.log": "8beaf375cb69d791d3fc73d0b7e86e0cf13b00cfd7aadea2c35d823dd4dd79d6",
+    "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-clippy.log": "510e42e54b8ec31b48c06393f438e325be695e010b759ce993897ee777454d18",
+    "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-full-svg.log": "10b719f10e2d469a72c18eb5b2ce57aaf1d0dccf8cc065d9d5fe424863e9e5cb",
+    "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-full-examples.log": "1511db39e21a492ef9ff163408e99cbaa6549776e0a970f0d4fc87d5a45094ae",
+    "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-feature-native-dx12.log": "c3e4bd7e6c3a75c675b9ad532e82284cb84b082aeceb137e09301a6469548be7",
+    "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-feature-native-vulkan.log": "e8b0558ba212c85be834370184008934e40925630732a7b55558623912a61b83",
+    "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-feature-native-only.log": "4bee643d3b440442ffc0c8dc0a77df95af8f4bebee7ea01750e3e0b0e72da70c",
+    "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-feature-cpu.log": "b3674f5ab96ecd024aba5ca957a9117458030c6d498c29071a3616da5292e94d",
+    "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-feature-default.log": "692e519ebedac4adb1fc204edbe1495e02038c6dcb86b7c67d65adaef381bc0c",
+    "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-package-native.log": "ceeff8c4bc317ec4a20fad5155b8990677ddbac4f392b9449731741ea2a3e7e5",
+    "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-package-default.log": "48834c963e1cadf018dce7f131c79467b5637a9f1bbf0b04b03f93d4c43d66ef"
+  },
+  "reviews": {
+    "standards": "no blocking findings",
+    "spec": "no blocking findings"
+  },
+  "deferred": [
+    "178 remaining HLSL program/variants",
+    "full native Canvas and shared GPU stage resources",
+    "MSL and real Mac verification",
+    "M5/M6"
+  ],
+  "performance": "comparison waived by user"
+}

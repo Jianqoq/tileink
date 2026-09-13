@@ -9,13 +9,19 @@ fn native_build_embeds_each_expected_nonempty_probe() {
     ));
     assert_eq!(
         artifacts.len(),
-        4 * (usize::from(dxil) + usize::from(spirv))
+        5 * (usize::from(dxil) + usize::from(spirv))
     );
     for format in ["dxil", "spirv"] {
         if (format == "dxil" && !dxil) || (format == "spirv" && !spirv) {
             continue;
         }
-        for entry in ["clear_words", "copy_words", "layout_words", "sample_words"] {
+        for entry in [
+            "clear_words",
+            "copy_words",
+            "layout_words",
+            "sample_words",
+            "range_scatter",
+        ] {
             let matches: Vec<_> = artifacts
                 .iter()
                 .filter(|a| a.format == format && a.entry == entry)

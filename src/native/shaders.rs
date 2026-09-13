@@ -6,6 +6,7 @@ pub struct NativeShaderArtifact {
     pub format: &'static str,
     pub entry: &'static str,
     pub cache_key: &'static str,
+    pub workgroup: [u32; 3],
     pub bytes: &'static [u8],
 }
 

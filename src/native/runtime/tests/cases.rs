@@ -1,4 +1,4 @@
-use crate::native::runtime::program::{Dispatch, Params};
+use crate::native::runtime::program::{Params, Probe as Dispatch};
 
 pub struct Case {
     pub dispatch: Dispatch,

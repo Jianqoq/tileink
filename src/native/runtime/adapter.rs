@@ -75,15 +75,20 @@ struct Command {
     uniform: Option<(UniformBuffer, u64)>,
 }
 impl Encoder {
-    pub fn dispatch(&mut self, dispatch: Dispatch) {
+    pub fn dispatch(&mut self, dispatch: impl Into<Dispatch>) {
         self.commands.push(Command {
-            dispatch,
+            dispatch: dispatch.into(),
             uniform: None,
         });
     }
-    pub fn dispatch_uniform(&mut self, dispatch: Dispatch, buffer: UniformBuffer, offset: u64) {
+    pub fn dispatch_uniform(
+        &mut self,
+        dispatch: impl Into<Dispatch>,
+        buffer: UniformBuffer,
+        offset: u64,
+    ) {
         self.commands.push(Command {
-            dispatch,
+            dispatch: dispatch.into(),
             uniform: Some((buffer, offset)),
         });
     }
@@ -178,7 +183,10 @@ impl Adapter {
                         .find(|(key, _)| **key == buffer)
                         .ok_or("uniform not staged")?
                         .1;
-                    command.dispatch.params = bytemuck::pod_read_unaligned(
+                    let Dispatch::Probe(probe) = &mut command.dispatch else {
+                        return Err("program has no uniform block".into());
+                    };
+                    probe.params = bytemuck::pod_read_unaligned(
                         data.get(start..end).ok_or("uniform range out of bounds")?,
                     );
                 }

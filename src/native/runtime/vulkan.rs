@@ -154,7 +154,7 @@ impl Vulkan {
                     self.family,
                     self.bindings,
                     self.layout,
-                    self.pipelines[command.entry],
+                    self.pipelines[command.entry()],
                     command,
                 )
             })
@@ -198,8 +198,8 @@ impl Vulkan {
         self.failed
     }
     #[cfg(test)]
-    pub fn submit(&mut self, command: &Dispatch) -> Result<Ticket> {
-        self.submit_batch(std::slice::from_ref(command))
+    pub fn submit(&mut self, command: &super::program::Probe) -> Result<Ticket> {
+        self.submit_batch(&[command.clone().into()])
     }
     pub fn readback_batch(&mut self, ticket: &Ticket) -> Result<Vec<Vec<u8>>> {
         let frames = self.pending.get(ticket)?;
@@ -228,7 +228,7 @@ impl Vulkan {
         Ok(outputs.remove(0))
     }
     #[cfg(test)]
-    pub fn execute(&mut self, case: &Dispatch) -> Result<Vec<u8>> {
+    pub fn execute(&mut self, case: &super::program::Probe) -> Result<Vec<u8>> {
         let ticket = self.submit(case)?;
         self.readback(&ticket)
     }

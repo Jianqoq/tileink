@@ -1,3 +1,4 @@
+use super::Probe as Dispatch;
 use super::*;
 
 fn command() -> Dispatch {
@@ -54,7 +55,7 @@ fn bounds_and_alignment_are_checked_before_native_recording() {
     c.params.stride = 12;
     assert!(c.validate().is_err());
     assert!(validate_batch(&[]).is_err());
-    assert!(validate_batch(&vec![command(); 4097]).is_err());
+    assert!(validate_batch(&vec![command().into(); 4097]).is_err());
 }
 
 #[test]

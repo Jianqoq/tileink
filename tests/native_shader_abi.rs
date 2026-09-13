@@ -57,3 +57,37 @@ fn dxil_resource_kind_and_parameter_layout_must_match_byte_buffer_abi() {
     wrong["descriptor_set"] = serde_json::json!(1);
     assert!(dxil_reflection::validate(reflection, "copy_words", &wrong).is_err());
 }
+
+#[test]
+fn range_scatter_has_two_buffers_no_uniforms_and_256_threads() {
+    let valid: serde_json::Value =
+        serde_json::from_str(include_str!("../src/shaders/range-scatter-abi.json")).unwrap();
+    abi::validate(&valid).unwrap();
+    for field in [
+        "parameter_size",
+        "upload_header_words",
+        "descriptor_words",
+        "descriptor_set",
+    ] {
+        let mut wrong = valid.clone();
+        wrong[field] = serde_json::json!(99);
+        assert!(abi::validate(&wrong).is_err());
+    }
+    let reflection = "; EntryFunctionName: range_scatter\n; NumThreads=(256,1,1)\n; Resource Bindings:\n; destination UAV byte r/w U0 u0 1\n; source texture byte r/o T0 t1 1\ntarget datalayout = irrelevant\n";
+    dxil_reflection::validate(reflection, "range_scatter", &valid).unwrap();
+    for (from, to) in [
+        ("256,1,1", "64,1,1"),
+        ("t1 1", "t0 1"),
+        ("texture byte r/o", "UAV byte r/w"),
+    ] {
+        assert!(
+            dxil_reflection::validate(&reflection.replace(from, to), "range_scatter", &valid)
+                .is_err()
+        );
+    }
+    let extra = reflection.replace(
+        "target datalayout",
+        "; params cbuffer NA NA CB0 cb2 1\ntarget datalayout",
+    );
+    assert!(dxil_reflection::validate(&extra, "range_scatter", &valid).is_err());
+}

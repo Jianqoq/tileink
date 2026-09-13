@@ -25,7 +25,32 @@ fn migration_inventory_covers_every_reference_entry_and_texture_variant() {
     let mut actual = BTreeSet::new();
     for program in inventory["programs"].as_array().unwrap() {
         assert!(actual.insert(key(&program["source"], &program["texture_table"], program)));
-        assert_eq!(program["hlsl"], "unported");
+        match program["hlsl"].as_str().unwrap() {
+            "unported" => {}
+            "windows-kernel-validated" => {
+                for field in ["hlsl_source", "native_abi", "verification"] {
+                    let path = program[field]
+                        .as_str()
+                        .expect("validated stage needs source/ABI/evidence");
+                    assert!(
+                        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                            .join(path)
+                            .is_file()
+                    );
+                }
+                assert!(
+                    program["native_entry"]
+                        .as_str()
+                        .is_some_and(|entry| !entry.is_empty())
+                );
+                #[cfg(all(
+                    target_os = "windows",
+                    any(feature = "native-dx12", feature = "native-vulkan")
+                ))]
+                assert!(tileink::NATIVE_SHADER_ARTIFACTS.iter().any(|artifact| artifact.entry == program["native_entry"].as_str().unwrap()));
+            }
+            status => panic!("unknown HLSL migration status: {status}"),
+        }
         assert_eq!(program["msl"], "unported");
     }
     assert_eq!(actual, expected);

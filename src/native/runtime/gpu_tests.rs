@@ -114,3 +114,6 @@ fn queued_native_submissions_keep_leases_and_reject_wrong_devices() -> Result<()
 
 #[path = "tests/batches.rs"]
 mod batches;
+
+#[path = "tests/scatter.rs"]
+mod scatter;

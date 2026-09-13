@@ -33,7 +33,7 @@ impl Frame {
                 command: vk::CommandBuffer::null(),
                 buffers: Vec::new(),
                 images: Vec::new(),
-                size: case.destination.len(),
+                size: case.destination().len(),
             };
             frame.pool = frame.device.create_command_pool(
                 &vk::CommandPoolCreateInfo::default().queue_family_index(family),
@@ -63,12 +63,16 @@ impl Frame {
                 .device
                 .create_fence(&vk::FenceCreateInfo::default(), None)?;
             let destination =
-                frame.buffer(&case.destination, vk::BufferUsageFlags::STORAGE_BUFFER)?;
-            let source = frame.buffer(&case.source, vk::BufferUsageFlags::STORAGE_BUFFER)?;
-            let params = frame.buffer(
-                bytemuck::bytes_of(&case.params),
-                vk::BufferUsageFlags::UNIFORM_BUFFER,
-            )?;
+                frame.buffer(case.destination(), vk::BufferUsageFlags::STORAGE_BUFFER)?;
+            let source = frame.buffer(case.source(), vk::BufferUsageFlags::STORAGE_BUFFER)?;
+            let params = if let Some(params) = case.params() {
+                Some(frame.buffer(
+                    bytemuck::bytes_of(params),
+                    vk::BufferUsageFlags::UNIFORM_BUFFER,
+                )?)
+            } else {
+                None
+            };
             let layouts = [bindings];
             let set = frame.device.allocate_descriptor_sets(
                 &vk::DescriptorSetAllocateInfo::default()
@@ -79,15 +83,15 @@ impl Frame {
                 [vk::DescriptorBufferInfo {
                     buffer: destination,
                     offset: 0,
-                    range: case.destination.len() as u64,
+                    range: case.destination().len() as u64,
                 }],
                 [vk::DescriptorBufferInfo {
                     buffer: source,
                     offset: 0,
-                    range: case.source.len() as u64,
+                    range: case.source().len() as u64,
                 }],
                 [vk::DescriptorBufferInfo {
-                    buffer: params,
+                    buffer: params.unwrap_or(vk::Buffer::null()),
                     offset: 0,
                     range: 32,
                 }],
@@ -109,7 +113,9 @@ impl Frame {
                     .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
                     .buffer_info(&infos[2]),
             ];
-            frame.device.update_descriptor_sets(&writes, &[]);
+            frame
+                .device
+                .update_descriptor_sets(&writes[..if params.is_some() { 3 } else { 2 }], &[]);
             let command = frame.device.allocate_command_buffers(
                 &vk::CommandBufferAllocateInfo::default()
                     .command_pool(frame.pool)
@@ -119,14 +125,8 @@ impl Frame {
             frame
                 .device
                 .begin_command_buffer(command, &vk::CommandBufferBeginInfo::default())?;
-            if case.entry == "sample_words" {
-                let start = case.params.source_offset as usize;
-                let end = start + case.params.value[2] as usize * 4;
-                let view = frame.record_texture(
-                    command,
-                    case.params.value[2],
-                    &case.source[start..end],
-                )?;
+            if let Some((width, bytes)) = case.texture() {
+                let view = frame.record_texture(command, width, bytes)?;
                 frame.device.update_descriptor_sets(
                     &[vk::WriteDescriptorSet::default()
                         .dst_set(set)
@@ -149,9 +149,9 @@ impl Frame {
                 &[set],
                 &[],
             );
-            frame
-                .device
-                .cmd_dispatch(command, case.params.count.div_ceil(64).max(1), 1, 1);
+            if case.workgroups() != 0 {
+                frame.device.cmd_dispatch(command, case.workgroups(), 1, 1);
+            }
             let barrier = [vk::BufferMemoryBarrier::default()
                 .src_access_mask(vk::AccessFlags::SHADER_WRITE)
                 .dst_access_mask(vk::AccessFlags::HOST_READ)

@@ -80,7 +80,9 @@ pub fn validate(bytes: &[u8], entry: &str, abi: &serde_json::Value) -> io::Resul
         r.groups.get(&r.entries[0].0) == Some(&expected_group),
         "SPIR-V workgroup",
     )?;
-    let expected: &[(&str, u32)] = if entry == "sample_words" {
+    let expected: &[(&str, u32)] = if entry == "range_scatter" {
+        &[("destination", 0), ("source", 1)]
+    } else if entry == "sample_words" {
         &[
             ("destination", 0),
             ("source", 1),

@@ -2,7 +2,7 @@
   "schema": 1,
   "reference": "wgpu-reference-inventory.json",
   "reference_sha256": "23b630d24ae56d13f00675aaec25ecdd72e0f8c7d738325a6391ef0bd69bea1e",
-  "contract": "Bindings, strides, types and filter runtime remaps are inherited by reference; these are migration rows, not available native renderer programs.",
+  "contract": "Source memory layouts are inherited by reference; explicit native binding remaps live in each stage ABI. A validated kernel is not an available full native renderer.",
   "programs": [
     {
       "source": "scan/clear.wgsl",
@@ -2149,8 +2149,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "range_scatter",
+      "hlsl_source": "src/shaders/hlsl/range_scatter.hlsl",
+      "native_abi": "src/shaders/range-scatter-abi.json",
+      "verification": "docs/native/m4-range-scatter.md"
     }
   ],
   "reference_digest_format": "sha256-utf8-lf"

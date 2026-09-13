@@ -81,7 +81,7 @@ fn signal_failure_after_execute_retains_the_attempt_and_blocks_reuse() -> Result
         return Ok(());
     }
     let mut device = Dx12::new(&std::env::var("TILEINK_NATIVE_GPU")?)?;
-    let command = Dispatch {
+    let command = super::super::program::Probe {
         entry: "clear_words",
         params: super::super::program::Params {
             count: 1,
