@@ -19,6 +19,10 @@ include = [
     "!/src/**/tests.rs",
     "!/src/**/tests/**",
     "/src/wgpu/shaders/**/*.wgsl",
+    "/src/shaders/**/*.hlsl",
+    "/src/shaders/**/*.hlsli",
+    "/src/shaders/**/*.metal",
+    "/src/shaders/**/*.json",
     "/build.rs",
     "/build/**/*.rs",
     "/Cargo.toml",
@@ -65,7 +69,7 @@ sha2 = "0.11.0"
 [features]
 default = ["wgpu"]
 wgpu = ["dep:wgpu", "dep:pollster", "dep:naga", "dep:windows"]
-native-dx12 = ["dep:windows"]
+native-dx12 = ["dep:windows", "windows/Win32_Graphics_Dxgi", "windows/Win32_Graphics_Dxgi_Common", "windows/Win32_System_Threading", "windows/Win32_Security"]
 native-vulkan = ["dep:ash"]
 native = ["native-dx12", "native-vulkan"]
 bench-internals = []
@@ -344,3 +348,7 @@ required-features = ["wgpu", "bench-internals"]
 name = "retained_frame_delta"
 harness = false
 required-features = ["bench-internals"]
+
+[[test]]
+name = 'native_shader_gpu'
+required-features = ['native', 'wgpu']

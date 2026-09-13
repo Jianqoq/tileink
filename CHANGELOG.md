@@ -9,6 +9,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- Add opt-in native HLSL builds with persistent content-addressed DXIL/SPIR-V
+  artifacts, include/toolchain invalidation, strict minimum ABI reflection and
+  independent MSL probe source. Default wgpu builds require no new tools.
+- Add exact four-API clear/copy/layout/manual RGBA8 sampling probes, native driver
+  pipeline caches and validation-layer checks. Production native rendering and
+  Metal compiler/GPU acceptance remain unfinished.
+
 - Split the default WGPU feature from CPU scene/materializer code and reserved
   opt-in DX12/Vulkan feature selections. Native constructors explicitly report
   unavailable backends; actual native rendering remains planned.

@@ -1,0 +1,2157 @@
+{
+  "schema": 1,
+  "reference": "wgpu-reference-inventory.json",
+  "reference_sha256": "23b630d24ae56d13f00675aaec25ecdd72e0f8c7d738325a6391ef0bd69bea1e",
+  "contract": "Bindings, strides, types and filter runtime remaps are inherited by reference; these are migration rows, not available native renderer programs.",
+  "programs": [
+    {
+      "source": "scan/clear.wgsl",
+      "texture_table": false,
+      "entry": "scan_clear",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "scan/count.wgsl",
+      "texture_table": false,
+      "entry": "scan_count",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "scan/prefix_chunks.wgsl",
+      "texture_table": false,
+      "entry": "scan_prefix_chunks",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "scan/chunk_offsets.wgsl",
+      "texture_table": false,
+      "entry": "scan_chunk_offsets",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "scan/apply_chunk_offsets.wgsl",
+      "texture_table": false,
+      "entry": "scan_apply_chunk_offsets",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "scan/emit.wgsl",
+      "texture_table": false,
+      "entry": "scan_emit",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "cumsum.wgsl",
+      "texture_table": false,
+      "entry": "cumsum_prefix_chunks",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "cumsum.wgsl",
+      "texture_table": false,
+      "entry": "cumsum_chunk_offsets",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "cumsum.wgsl",
+      "texture_table": false,
+      "entry": "cumsum_apply_chunk_offsets",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "coarse/count.wgsl",
+      "texture_table": false,
+      "entry": "coarse_count",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "coarse/count.wgsl",
+      "texture_table": false,
+      "entry": "coarse_count_bins",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "coarse/prefix.wgsl",
+      "texture_table": false,
+      "entry": "coarse_prefix_chunks",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "coarse/prefix.wgsl",
+      "texture_table": false,
+      "entry": "coarse_chunk_offsets",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "coarse/prefix.wgsl",
+      "texture_table": false,
+      "entry": "coarse_apply_chunk_offsets",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "coarse/prefix.wgsl",
+      "texture_table": false,
+      "entry": "coarse_emit_chunk_counts",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "coarse/prefix.wgsl",
+      "texture_table": false,
+      "entry": "coarse_emit_prefix_chunks",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "coarse/prefix.wgsl",
+      "texture_table": false,
+      "entry": "coarse_emit_chunk_offsets",
+      "workgroup": [
+        1,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "coarse/prefix.wgsl",
+      "texture_table": false,
+      "entry": "coarse_emit_apply_chunk_offsets",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "coarse/prefix.wgsl",
+      "texture_table": false,
+      "entry": "coarse_emit_fill_refs",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "coarse/prefix.wgsl",
+      "texture_table": false,
+      "entry": "coarse_emit_chunk_particle_counts",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "coarse/prefix.wgsl",
+      "texture_table": false,
+      "entry": "coarse_emit_chunk_particle_offsets",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "coarse/prefix.wgsl",
+      "texture_table": false,
+      "entry": "coarse_tile_counts_from_emit_chunks",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "coarse/emit.wgsl",
+      "texture_table": false,
+      "entry": "coarse_emit",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "coarse/emit.wgsl",
+      "texture_table": false,
+      "entry": "coarse_emit_bins",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "coarse/emit_web.wgsl",
+      "texture_table": false,
+      "entry": "coarse_emit",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "coarse/emit_web.wgsl",
+      "texture_table": false,
+      "entry": "coarse_emit_chunk_tile_kinds",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "fine.wgsl",
+      "texture_table": false,
+      "entry": "fine_tile_main",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "fine.wgsl",
+      "texture_table": true,
+      "entry": "fine_tile_main",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_clear_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_copy_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_source_alpha_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_source_over_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_tile_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_offset_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_turbulence_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_flood_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_drop_shadow_mask_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_morphology_axis_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_downsample_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_upsample_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_upsample_rect_composite_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_blur_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_blur_shared_region",
+      "workgroup": [
+        16,
+        16,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_svg_mask_coverage_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_color_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_color_matrix_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_component_transfer_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_blend_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_composite_inputs_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_displacement_map_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_convolve_matrix_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_lighting_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_liquid_glass_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_liquid_glass_rect_composite_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_composite_drop_shadow_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_layer_mask_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_rect_mask_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_path_mask_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_composite_direct_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_composite_rect_direct_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_composite_stack_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_composite_blend_stack_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_composite_surface_direct_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_composite_surface_stack_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": false,
+      "entry": "filter_apply_region_mask",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_clear_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_copy_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_source_alpha_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_source_over_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_tile_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_offset_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_turbulence_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_flood_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_drop_shadow_mask_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_morphology_axis_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_downsample_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_upsample_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_upsample_rect_composite_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_blur_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_blur_shared_region",
+      "workgroup": [
+        16,
+        16,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_svg_mask_coverage_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_color_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_color_matrix_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_component_transfer_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_blend_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_composite_inputs_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_displacement_map_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_convolve_matrix_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_lighting_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_liquid_glass_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_liquid_glass_rect_composite_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_composite_drop_shadow_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_layer_mask_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_rect_mask_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_path_mask_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_composite_direct_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_composite_rect_direct_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_composite_stack_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_composite_blend_stack_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_composite_surface_direct_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_composite_surface_stack_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter.wgsl",
+      "texture_table": true,
+      "entry": "filter_apply_region_mask",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "fine_web.wgsl",
+      "texture_table": false,
+      "entry": "fine_tile_main",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "fine_web.wgsl",
+      "texture_table": true,
+      "entry": "fine_tile_main",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_clear_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_copy_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_source_alpha_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_source_over_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_tile_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_offset_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_turbulence_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_flood_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_drop_shadow_mask_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_morphology_axis_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_downsample_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_upsample_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_upsample_rect_composite_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_blur_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_blur_shared_region",
+      "workgroup": [
+        16,
+        16,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_svg_mask_coverage_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_color_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_color_matrix_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_component_transfer_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_blend_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_composite_inputs_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_displacement_map_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_convolve_matrix_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_lighting_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_liquid_glass_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_liquid_glass_rect_composite_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_composite_drop_shadow_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_layer_mask_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_rect_mask_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_path_mask_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_composite_direct_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_composite_rect_direct_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_composite_stack_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_composite_blend_stack_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_composite_surface_direct_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_composite_surface_stack_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": false,
+      "entry": "filter_apply_region_mask",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_clear_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_copy_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_source_alpha_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_source_over_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_tile_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_offset_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_turbulence_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_flood_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_drop_shadow_mask_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_morphology_axis_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_downsample_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_upsample_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_upsample_rect_composite_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_blur_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_blur_shared_region",
+      "workgroup": [
+        16,
+        16,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_svg_mask_coverage_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_color_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_color_matrix_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_component_transfer_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_blend_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_composite_inputs_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_displacement_map_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_convolve_matrix_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_lighting_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_liquid_glass_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_liquid_glass_rect_composite_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_composite_drop_shadow_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_layer_mask_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_rect_mask_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_path_mask_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_composite_direct_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_composite_rect_direct_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_composite_stack_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_composite_blend_stack_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_composite_surface_direct_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_composite_surface_stack_region",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "filter_web.wgsl",
+      "texture_table": true,
+      "entry": "filter_apply_region_mask",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    },
+    {
+      "source": "range_scatter.wgsl",
+      "texture_table": false,
+      "entry": "main",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "hlsl": "unported",
+      "msl": "unported"
+    }
+  ],
+  "reference_digest_format": "sha256-utf8-lf"
+}

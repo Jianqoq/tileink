@@ -1,6 +1,6 @@
 # Tileink 原生 GPU 后端实施计划（HLSL / MSL）
 
-状态：**M0 基线与调查已完成；M1 共享模块实现、正确性验证和最终工作树集成检查已完成；原生后端尚未实现**。用户于 2026-09-13 明确要求“不用比较性能了”，本轮 M0/M1 不再以性能比较作为完成门槛，已有性能记录保留且不宣称通过。M2 保留独立 MSL（`.metal`）及 HLSL 工具链计划，M3–M6 尚未实施。见 [实施记录](NATIVE_BACKEND_PROGRESS.md)。
+状态：**M0 基线与调查已完成；M1 共享模块实现、正确性验证和最终工作树集成检查已完成；原生后端尚未实现**。用户于 2026-09-13 明确要求“不用比较性能了”，本轮 M0/M1 不再以性能比较作为完成门槛，已有性能记录保留且不宣称通过。M2 Windows HLSL 工具链、shader 缓存、最小 ABI/四 API 探针已实现；独立 MSL 已有源码，但无 Mac，编译与实机验证待完成。M3 生产 Adapter 接入及 M4–M6 仍待实施。见 [M2 Windows 记录](docs/native/m2-windows-shaders.md)。见 [实施记录](NATIVE_BACKEND_PROGRESS.md)。
 
 日期：2026-09-07。代码调研基线：`eabbe0b97b392582d663206c1f2aad51f76695aa`。
 
@@ -263,10 +263,10 @@ Tileink 层 resize benchmark 覆盖渲染目标变化。窗口 swapchain 的 acq
 
 ### M2 — HLSL / 独立 MSL 构建、ABI 与三种原生产物验证
 
-- [ ] 实现固定 DXC 的 DXIL/SPIR-V 编译和能力记录，包含版本发现、有效缓存、include 追踪与失败诊断。
-- [ ] 建立全部 program/variant 清单、公共 ABI 和反射检查；先覆盖 clear/copy/简单像素与数据布局探针。
-- [ ] 加入错误缓存、缺失编译器、绑定/stride 不匹配、native-only/wgpu-only 构建测试。
-- [ ] 验证 Cargo 打包产物包含所有必需源文件，普通 wgpu 构建不额外要求 DXC 或 Apple shader 工具。
+- [x] 实现显式选择、完整身份记录的 DXC DXIL/SPIR-V 编译、有效缓存、include 追踪与失败诊断（Windows 已验证）。
+- [x] 建立 179 项 program/variant 移植清单、最小公共 ABI 和 DXIL/SPIR-V 反射检查；clear/copy/layout/手动 RGBA8 sampling 四 API 探针已通过。完整渲染 ABI 随 M4 各项移植验收。
+- [x] 加入错误缓存、缺失编译器、绑定/stride 不匹配、native-only/wgpu-only 构建测试（Windows）。
+- [x] 从实际 Cargo 包验证 Windows native/default 构建和 HLSL/MSL/ABI 文件包含；普通 wgpu 构建不额外要求原生编译器。
 - [ ] 建立独立维护的 `src/shaders/metal/` MSL 源码与 include；在 macOS 上用 Apple Metal 工具链编译并验证产物，记录工具/SDK 版本、语言版本、目标 GPU/系统、全部 flags、能力与分发条件。
 - [ ] 将编译目标分为 DXIL、SPIR-V、Metal，以独立目标模块承载编译、反射和诊断；公共逻辑 program / variant、ABI 与缓存协议共用；HLSL/MSL 分别追踪源文件和 include 图，缓存键包含源语言、目标平台、完整工具链及 SDK 身份。
 - [ ] 对 Metal 产物验证入口、资源绑定、buffer layout / stride、纹理访问与数值语义；在实际 Mac GPU 上执行最小 clear / copy / layout / sampling 探针，与同机 wgpu-Metal 逐字节比较。工具或设备缺失时保留未完成，不能只凭交叉编译通过。

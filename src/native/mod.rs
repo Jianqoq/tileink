@@ -172,3 +172,6 @@ mod tests {
         );
     }
 }
+
+mod shaders;
+pub use shaders::{NativeShaderArtifact, SHADER_ARTIFACTS};

@@ -130,7 +130,14 @@ fn parse_include(line: &str) -> Option<&str> {
     rest.strip_prefix('"')?.strip_suffix('"')
 }
 
+#[cfg(any(feature = "native-dx12", feature = "native-vulkan"))]
+#[path = "build/native/mod.rs"]
+mod native_shaders;
+
 fn main() {
+    #[cfg(any(feature = "native-dx12", feature = "native-vulkan"))]
+    native_shaders::generate()
+        .unwrap_or_else(|error| panic!("native shader build failed: {error}"));
     println!("cargo:rerun-if-changed=build.rs");
     #[cfg(feature = "wgpu")]
     build_wgpu();

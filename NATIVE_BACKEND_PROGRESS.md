@@ -22,6 +22,20 @@ older pending/candidate statements below describe archived snapshots.
 | Final integration and release/fmt/Clippy | Complete; extra CPU-only `-D warnings` limitation disclosed in closeout |
 | Final review and commit/push | Review complete; delivery commit is the commit containing this record |
 
+## Windows M2 continuation — 2026-09-13
+
+The user-confirmed M0/M1 push resolves to `90151cbd`. Windows HLSL→DXIL/SPIR-V
+builds now use persistent content-addressed shader artifacts, ABI reflection and
+include/toolchain invalidation. Four minimum probes (42 cases) execute on all four
+real APIs with exact bytes; native pipeline caches also hit across processes.
+See [build/cache contract and current scope](docs/native/m2-windows-shaders.md).
+
+This does not complete the full native renderer. M2 Metal compile/GPU validation
+is deferred because the user has no Mac; Windows comes first. The 179 full renderer
+program/variant inventory remains explicitly unported. M3 production adapters and
+texture/numerical coverage, M4–M6 still require implementation and acceptance.
+No performance comparison was resumed.
+
 ## Historical evidence
 
 The current boot's recorded RTX 4090 LUID is `9f3f010000000000`; historical

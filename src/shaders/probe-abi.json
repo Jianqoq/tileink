@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "programs": [
+    "clear_words",
+    "copy_words",
+    "layout_words",
+    "sample_words"
+  ],
+  "workgroup": [
+    64,
+    1,
+    1
+  ],
+  "parameter_size": 32,
+  "parameter_offsets": {
+    "count": 0,
+    "source_offset": 4,
+    "destination_offset": 8,
+    "stride": 12,
+    "value": 16
+  },
+  "bindings": {
+    "destination": 0,
+    "source": 1,
+    "params": 2
+  },
+  "descriptor_set": 0,
+  "buffer_offsets_alignment": 4,
+  "layout_output_stride_minimum": 16,
+  "integer_arithmetic": "uint32 wrap",
+  "status": "M2 minimum probes; full renderer program inventory remains in docs/native/wgpu-reference-inventory.json",
+  "parameter_alignment": 16,
+  "sampling": "manual linear RGBA8 texels in byte buffer; finite coordinates; floor, clamp-to-edge, round-half-up; no hardware sampler"
+}

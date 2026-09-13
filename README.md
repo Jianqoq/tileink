@@ -17,7 +17,7 @@ Release notes are maintained in the [changelog](CHANGELOG.md).
 
 The [native HLSL backend plan](NATIVE_BACKEND_PLAN.md) describes planned, opt-in DX12/Vulkan
 backends and exact pixel parity with wgpu. [M0 reference validation](NATIVE_BACKEND_PROGRESS.md)
-has completed baseline acquisition and implemented the M1 feature/shared-renderer boundary; native API backends are not implemented yet.
+has completed baseline acquisition and implemented the M1 feature/shared-renderer boundary; production native API backends are not implemented yet. The [Windows M2 shader toolchain](docs/native/m2-windows-shaders.md) now embeds cached HLSL products and validates minimum probes on four real APIs; Metal verification remains pending.
 
 This repository maintains a [shared wgpu HAL patch](WGPU_PATCHES.md), including DX12
 write-only texture synchronization. Cargo patches are not transitive: consumers must select

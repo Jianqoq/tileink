@@ -109,7 +109,10 @@ pub use render::upload::uniforms::benchmark::UniformWriteBenchmark;
 #[cfg(any(feature = "native-dx12", feature = "native-vulkan"))]
 mod native;
 #[cfg(any(feature = "native-dx12", feature = "native-vulkan"))]
-pub use native::{BackendUnavailable, BackendUnavailableReason, NativeBackend, NativeRenderer};
+pub use native::{
+    BackendUnavailable, BackendUnavailableReason, NativeBackend, NativeRenderer,
+    NativeShaderArtifact, SHADER_ARTIFACTS as NATIVE_SHADER_ARTIFACTS,
+};
 
 #[cfg(all(feature = "wgpu", feature = "bench-internals"))]
 #[doc(hidden)]
