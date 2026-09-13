@@ -9,7 +9,7 @@ fn native_build_embeds_each_expected_nonempty_probe() {
     ));
     assert_eq!(
         artifacts.len(),
-        14 * (usize::from(dxil) + usize::from(spirv))
+        22 * (usize::from(dxil) + usize::from(spirv))
     );
     for format in ["dxil", "spirv"] {
         if (format == "dxil" && !dxil) || (format == "spirv" && !spirv) {
@@ -24,6 +24,14 @@ fn native_build_embeds_each_expected_nonempty_probe() {
             "cumsum_prefix_chunks",
             "cumsum_chunk_offsets",
             "cumsum_apply_chunk_offsets",
+            "coarse_emit_chunk_counts",
+            "coarse_emit_prefix_chunks",
+            "coarse_emit_chunk_offsets",
+            "coarse_emit_apply_chunk_offsets",
+            "coarse_emit_fill_refs",
+            "coarse_prefix_chunks",
+            "coarse_chunk_offsets",
+            "coarse_apply_chunk_offsets",
             "scan_clear",
             "scan_count",
             "scan_emit",

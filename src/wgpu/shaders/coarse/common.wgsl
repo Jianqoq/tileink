@@ -257,8 +257,8 @@ fn store_fine_tile_kind(tile_ix: u32, kind: u32) {
     coarse_work[coarse_fine_tile_kind_base() + tile_ix] = kind;
 }
 
-const TILE_DRAW_PAGE_SIZE: u32 = 256u;
-const TILE_DRAW_PAGE_WORDS: u32 = 257u;
+const TILE_DRAW_PAGE_SIZE: u32 = COARSE_WORKGROUP_SIZE;
+const TILE_DRAW_PAGE_WORDS: u32 = TILE_DRAW_PAGE_SIZE + 1u;
 const TILE_DRAW_FLAT_FLAG: u32 = 0x80000000u;
 const TILE_DRAW_FLAT_MASK: u32 = 0x7fffffffu;
 
@@ -547,7 +547,7 @@ fn coarse_store_glyph(glyph_ix: u32, source_glyph_ix: u32) {
     coarse_work[coarse_glyph_base(glyph_ix)] = source_glyph_ix;
 }
 
-var<workgroup> coarse_scratch: array<u32, 256>;
+var<workgroup> coarse_scratch: array<u32, COARSE_WORKGROUP_SIZE>;
 var<workgroup> coarse_total: u32;
 
 fn workgroup_sum(value: u32, lane: u32) -> u32 {
@@ -561,11 +561,11 @@ fn workgroup_exclusive_prefix(value: u32, lane: u32) -> u32 {
 
     var step = 1u;
     loop {
-        if (step >= 256u) {
+        if (step >= COARSE_WORKGROUP_SIZE) {
             break;
         }
         let ix = (lane + 1u) * step * 2u - 1u;
-        if (ix < 256u) {
+        if (ix < COARSE_WORKGROUP_SIZE) {
             coarse_scratch[ix] += coarse_scratch[ix - step];
         }
         workgroupBarrier();
@@ -573,18 +573,18 @@ fn workgroup_exclusive_prefix(value: u32, lane: u32) -> u32 {
     }
 
     if (lane == 0u) {
-        coarse_total = coarse_scratch[255u];
-        coarse_scratch[255u] = 0u;
+        coarse_total = coarse_scratch[(COARSE_WORKGROUP_SIZE - 1u)];
+        coarse_scratch[(COARSE_WORKGROUP_SIZE - 1u)] = 0u;
     }
     workgroupBarrier();
 
-    step = 128u;
+    step = (COARSE_WORKGROUP_SIZE / 2u);
     loop {
         if (step == 0u) {
             break;
         }
         let ix = (lane + 1u) * step * 2u - 1u;
-        if (ix < 256u) {
+        if (ix < COARSE_WORKGROUP_SIZE) {
             let left = ix - step;
             let previous_left = coarse_scratch[left];
             coarse_scratch[left] = coarse_scratch[ix];

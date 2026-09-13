@@ -181,8 +181,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "coarse_prefix_chunks",
+      "hlsl_source": "src/shaders/hlsl/coarse/prefix.hlsl",
+      "native_abi": "src/shaders/coarse-prefix-abi.json",
+      "verification": "docs/native/m4-coarse-allocation.md"
     },
     {
       "source": "coarse/prefix.wgsl",
@@ -193,8 +197,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "coarse_chunk_offsets",
+      "hlsl_source": "src/shaders/hlsl/coarse/prefix.hlsl",
+      "native_abi": "src/shaders/coarse-prefix-abi.json",
+      "verification": "docs/native/m4-coarse-allocation.md"
     },
     {
       "source": "coarse/prefix.wgsl",
@@ -205,8 +213,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "coarse_apply_chunk_offsets",
+      "hlsl_source": "src/shaders/hlsl/coarse/prefix.hlsl",
+      "native_abi": "src/shaders/coarse-prefix-abi.json",
+      "verification": "docs/native/m4-coarse-allocation.md"
     },
     {
       "source": "coarse/prefix.wgsl",
@@ -217,8 +229,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "coarse_emit_chunk_counts",
+      "hlsl_source": "src/shaders/hlsl/coarse/emit_allocation.hlsl",
+      "native_abi": "src/shaders/coarse-emit-allocation-abi.json",
+      "verification": "docs/native/m4-coarse-allocation.md"
     },
     {
       "source": "coarse/prefix.wgsl",
@@ -229,8 +245,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "coarse_emit_prefix_chunks",
+      "hlsl_source": "src/shaders/hlsl/coarse/emit_allocation.hlsl",
+      "native_abi": "src/shaders/coarse-emit-allocation-abi.json",
+      "verification": "docs/native/m4-coarse-allocation.md"
     },
     {
       "source": "coarse/prefix.wgsl",
@@ -241,8 +261,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "coarse_emit_chunk_offsets",
+      "hlsl_source": "src/shaders/hlsl/coarse/emit_allocation.hlsl",
+      "native_abi": "src/shaders/coarse-emit-offsets-abi.json",
+      "verification": "docs/native/m4-coarse-allocation.md"
     },
     {
       "source": "coarse/prefix.wgsl",
@@ -253,8 +277,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "coarse_emit_apply_chunk_offsets",
+      "hlsl_source": "src/shaders/hlsl/coarse/emit_allocation.hlsl",
+      "native_abi": "src/shaders/coarse-emit-allocation-abi.json",
+      "verification": "docs/native/m4-coarse-allocation.md"
     },
     {
       "source": "coarse/prefix.wgsl",
@@ -265,8 +293,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "coarse_emit_fill_refs",
+      "hlsl_source": "src/shaders/hlsl/coarse/emit_allocation.hlsl",
+      "native_abi": "src/shaders/coarse-emit-allocation-abi.json",
+      "verification": "docs/native/m4-coarse-allocation.md"
     },
     {
       "source": "coarse/prefix.wgsl",

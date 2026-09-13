@@ -87,6 +87,12 @@ fn build_wgpu() {
                 gpu_constants::CUMSUM_CHUNK_SIZE
             );
         }
+        if entry.starts_with("coarse/") {
+            source = format!(
+                "const COARSE_WORKGROUP_SIZE: u32 = {}u;\n{source}",
+                gpu_constants::COARSE_WORKGROUP_SIZE
+            );
+        }
         if entry.starts_with("scan/") {
             source = format!(
                 "const SCAN_CHUNK_SIZE: u32 = {}u;\nconst SCAN_TILE_SIZE: u32 = {}u;\n{source}",

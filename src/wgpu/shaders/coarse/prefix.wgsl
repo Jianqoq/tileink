@@ -14,7 +14,7 @@
 
 // Particle and glyph counts share tile order, so scan them together instead of dispatching
 // two independent allocation chains. Integer offsets and inactive tiles keep their semantics.
-var<workgroup> tile_prefix_scratch: array<vec2<u32>, 256>;
+var<workgroup> tile_prefix_scratch: array<vec2<u32>, COARSE_WORKGROUP_SIZE>;
 var<workgroup> tile_prefix_total: vec2<u32>;
 
 fn tile_exclusive_prefix(value: vec2<u32>, lane: u32) -> vec2<u32> {
@@ -22,24 +22,24 @@ fn tile_exclusive_prefix(value: vec2<u32>, lane: u32) -> vec2<u32> {
     workgroupBarrier();
     var step = 1u;
     loop {
-        if (step >= 256u) { break; }
+        if (step >= COARSE_WORKGROUP_SIZE) { break; }
         let ix = (lane + 1u) * step * 2u - 1u;
-        if (ix < 256u) {
+        if (ix < COARSE_WORKGROUP_SIZE) {
             tile_prefix_scratch[ix] += tile_prefix_scratch[ix - step];
         }
         workgroupBarrier();
         step *= 2u;
     }
     if (lane == 0u) {
-        tile_prefix_total = tile_prefix_scratch[255u];
-        tile_prefix_scratch[255u] = vec2<u32>(0u);
+        tile_prefix_total = tile_prefix_scratch[(COARSE_WORKGROUP_SIZE - 1u)];
+        tile_prefix_scratch[(COARSE_WORKGROUP_SIZE - 1u)] = vec2<u32>(0u);
     }
     workgroupBarrier();
-    step = 128u;
+    step = (COARSE_WORKGROUP_SIZE / 2u);
     loop {
         if (step == 0u) { break; }
         let ix = (lane + 1u) * step * 2u - 1u;
-        if (ix < 256u) {
+        if (ix < COARSE_WORKGROUP_SIZE) {
             let left = ix - step;
             let previous_left = tile_prefix_scratch[left];
             tile_prefix_scratch[left] = tile_prefix_scratch[ix];
@@ -53,12 +53,12 @@ fn tile_exclusive_prefix(value: vec2<u32>, lane: u32) -> vec2<u32> {
     return offset;
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(COARSE_WORKGROUP_SIZE)
 fn coarse_prefix_chunks(
     @builtin(workgroup_id) group: vec3<u32>,
     @builtin(local_invocation_id) local: vec3<u32>,
 ) {
-    let item = group.x * 256u + local.x;
+    let item = group.x * COARSE_WORKGROUP_SIZE + local.x;
     let item_count = select(config.tile_count, config.active_tile_count, config.incremental != 0u);
     var count = vec2<u32>(0u);
     var tile_ix = 0u;
@@ -77,12 +77,12 @@ fn coarse_prefix_chunks(
     }
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(COARSE_WORKGROUP_SIZE)
 fn coarse_chunk_offsets(@builtin(local_invocation_id) local: vec3<u32>) {
     // Scan chunk totals in parallel; carry complete blocks to support arbitrary chunk counts.
     // Each scan has uniform barriers, including lanes beyond a partial final block.
     var carry = vec2<u32>(0u);
-    for (var block = 0u; block < config.chunk_count; block += 256u) {
+    for (var block = 0u; block < config.chunk_count; block += COARSE_WORKGROUP_SIZE) {
         let chunk = block + local.x;
         var count = vec2<u32>(0u);
         if (chunk < config.chunk_count) {
@@ -97,12 +97,12 @@ fn coarse_chunk_offsets(@builtin(local_invocation_id) local: vec3<u32>) {
     }
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(COARSE_WORKGROUP_SIZE)
 fn coarse_apply_chunk_offsets(
     @builtin(workgroup_id) group: vec3<u32>,
     @builtin(local_invocation_id) local: vec3<u32>,
 ) {
-    let item = group.x * 256u + local.x;
+    let item = group.x * COARSE_WORKGROUP_SIZE + local.x;
     let item_count = select(config.tile_count, config.active_tile_count, config.incremental != 0u);
     if (item >= item_count) { return; }
     let tile_ix = dispatched_tile_at(item);
@@ -110,28 +110,28 @@ fn coarse_apply_chunk_offsets(
     coarse_add_tile_range_offset(tile_ix, true, chunk_records[group.x].glyph_offset);
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(COARSE_WORKGROUP_SIZE)
 fn coarse_emit_chunk_counts(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
 ) {
-    let tile_ix = workgroup_id.x * 256u + local_id.x;
+    let tile_ix = workgroup_id.x * COARSE_WORKGROUP_SIZE + local_id.x;
     if (tile_ix >= config.tile_count) {
         return;
     }
     let draw_count = tile_draw_count_at(tile_ix);
-    store_tile_emit_chunk_count(tile_ix, (draw_count + 255u) / 256u);
+    store_tile_emit_chunk_count(tile_ix, (draw_count + TILE_DRAW_PAGE_SIZE - 1u) / TILE_DRAW_PAGE_SIZE);
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(COARSE_WORKGROUP_SIZE)
 fn coarse_emit_prefix_chunks(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
 ) {
     let chunk_ix = workgroup_id.x;
     let lane = local_id.x;
-    let chunk_offset = chunk_ix * 256u;
-    let chunk_len = min(config.tile_count - chunk_offset, 256u);
+    let chunk_offset = chunk_ix * COARSE_WORKGROUP_SIZE;
+    let chunk_len = min(config.tile_count - chunk_offset, COARSE_WORKGROUP_SIZE);
     var count = 0u;
     if (lane < chunk_len) {
         count = tile_emit_chunk_count_at(chunk_offset + lane);
@@ -141,11 +141,11 @@ fn coarse_emit_prefix_chunks(
 
     var step = 1u;
     loop {
-        if (step >= 256u) {
+        if (step >= COARSE_WORKGROUP_SIZE) {
             break;
         }
         let ix = (lane + 1u) * step * 2u - 1u;
-        if (ix < 256u) {
+        if (ix < COARSE_WORKGROUP_SIZE) {
             coarse_scratch[ix] += coarse_scratch[ix - step];
         }
         workgroupBarrier();
@@ -153,18 +153,18 @@ fn coarse_emit_prefix_chunks(
     }
 
     if (lane == 0u) {
-        chunk_records[chunk_ix].ptcl_total = coarse_scratch[255u];
-        coarse_scratch[255u] = 0u;
+        chunk_records[chunk_ix].ptcl_total = coarse_scratch[(COARSE_WORKGROUP_SIZE - 1u)];
+        coarse_scratch[(COARSE_WORKGROUP_SIZE - 1u)] = 0u;
     }
     workgroupBarrier();
 
-    step = 128u;
+    step = (COARSE_WORKGROUP_SIZE / 2u);
     loop {
         if (step == 0u) {
             break;
         }
         let ix = (lane + 1u) * step * 2u - 1u;
-        if (ix < 256u) {
+        if (ix < COARSE_WORKGROUP_SIZE) {
             let left = ix - step;
             let previous_left = coarse_scratch[left];
             coarse_scratch[left] = coarse_scratch[ix];
@@ -193,28 +193,28 @@ fn coarse_emit_chunk_offsets() {
     }
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(COARSE_WORKGROUP_SIZE)
 fn coarse_emit_apply_chunk_offsets(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
 ) {
-    let tile_ix = workgroup_id.x * 256u + local_id.x;
+    let tile_ix = workgroup_id.x * COARSE_WORKGROUP_SIZE + local_id.x;
     if (tile_ix >= config.tile_count) {
         return;
     }
-    let coarse_chunk_ix = tile_ix / 256u;
+    let coarse_chunk_ix = tile_ix / COARSE_WORKGROUP_SIZE;
     store_tile_emit_chunk_offset(
         tile_ix,
         tile_emit_chunk_offset_at(tile_ix) + chunk_records[coarse_chunk_ix].ptcl_offset,
     );
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(COARSE_WORKGROUP_SIZE)
 fn coarse_emit_fill_refs(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
 ) {
-    let tile_ix = workgroup_id.x * 256u + local_id.x;
+    let tile_ix = workgroup_id.x * COARSE_WORKGROUP_SIZE + local_id.x;
     if (tile_ix >= config.tile_count) {
         return;
     }
@@ -233,7 +233,7 @@ fn coarse_emit_fill_refs(
     }
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(COARSE_WORKGROUP_SIZE)
 fn coarse_emit_chunk_particle_counts(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
     @builtin(num_workgroups) num_workgroups: vec3<u32>,
@@ -286,12 +286,12 @@ fn coarse_emit_chunk_particle_counts(
     }
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(COARSE_WORKGROUP_SIZE)
 fn coarse_emit_chunk_particle_offsets(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
 ) {
-    let tile_ix = workgroup_id.x * 256u + local_id.x;
+    let tile_ix = workgroup_id.x * COARSE_WORKGROUP_SIZE + local_id.x;
     if (tile_ix >= config.tile_count) {
         return;
     }
@@ -313,12 +313,12 @@ fn coarse_emit_chunk_particle_offsets(
     }
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(COARSE_WORKGROUP_SIZE)
 fn coarse_tile_counts_from_emit_chunks(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
 ) {
-    let tile_ix = workgroup_id.x * 256u + local_id.x;
+    let tile_ix = workgroup_id.x * COARSE_WORKGROUP_SIZE + local_id.x;
     if (tile_ix >= config.tile_count) {
         return;
     }

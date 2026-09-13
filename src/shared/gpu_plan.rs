@@ -27,8 +27,9 @@ pub use benchmark::{GpuDirtyRangesBenchmark, TileDrawBinsBenchmark};
 
 use super::gpu_constants::CUMSUM_CHUNK_SIZE;
 use super::gpu_constants::SCAN_CHUNK_SIZE;
-pub(crate) const COARSE_CHUNK_SIZE: u32 = 256;
+pub(crate) const COARSE_CHUNK_SIZE: u32 = crate::shared::gpu_constants::COARSE_WORKGROUP_SIZE;
 pub(crate) const COARSE_BIN_TILES: u32 = 16;
+const _: () = assert!(COARSE_CHUNK_SIZE == COARSE_BIN_TILES * COARSE_BIN_TILES);
 pub(crate) const TILE_DRAW_PAGE_WORDS: usize = COARSE_CHUNK_SIZE as usize + 1;
 const TILE_DRAW_FLAT_FLAG: u32 = 1 << 31;
 const RETAINED_TILE_DIRTY_CAPACITY: usize = 1_024;

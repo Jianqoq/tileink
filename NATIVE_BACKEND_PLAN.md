@@ -1,6 +1,6 @@
 # Tileink 原生 GPU 后端实施计划（HLSL / MSL）
 
-状态：**M0 基线与调查已完成；M1 共享模块实现、正确性验证和最终工作树集成检查已完成；原生后端尚未实现**。用户于 2026-09-13 明确要求“不用比较性能了”，本轮 M0/M1 不再以性能比较作为完成门槛，已有性能记录保留且不宣称通过。M2 Windows HLSL 工具链、shader 缓存、最小 ABI/四 API 探针已实现；独立 MSL 已有源码，但无 Mac，编译与实机验证待完成。M3 生产 Adapter 接入及 M4–M6 仍待实施。见 [M2 Windows 记录](docs/native/m2-windows-shaders.md)。见 [实施记录](NATIVE_BACKEND_PROGRESS.md)。
+状态：**M0/M1、Windows M2 工具链和 M3 最小原生 Adapter 已完成；M4 进行中，完整 NativeRenderer/Canvas 尚未完成。Mac MSL 编译与实机验证延后。** 当前验收记录见 [M3](docs/native/m3-completion.md)、[M4 coarse allocation](docs/native/m4-coarse-allocation.md) 和 [实施记录](NATIVE_BACKEND_PROGRESS.md)。
 
 日期：2026-09-07。代码调研基线：`eabbe0b97b392582d663206c1f2aad51f76695aa`。
 
@@ -290,7 +290,7 @@ Mac 按用户决定延期，不计入本轮 Windows M3 验收；性能比较仍�
 
 ### M4 — 完整计算管线和绘制效果
 
-2026-09-13：Windows range scatter 与 cumsum 三个入口已完成四 API 逐字节验证，见 [range scatter](docs/native/m4-range-scatter.md) 与 [cumsum](docs/native/m4-cumsum.md)。[scan 六阶段](docs/native/m4-scan.md)也已通过四路验证。179 项程序中当前 10 项 HLSL 内核已验收；其余 169 项、完整 Canvas 与 M4 退出条件仍未完成。用户已取消性能比较，后续不运行 Criterion/resize 性能对照。
+2026-09-13：Windows range scatter 与 cumsum 三个入口已完成四 API 逐字节验证，见 [range scatter](docs/native/m4-range-scatter.md) 与 [cumsum](docs/native/m4-cumsum.md)。[scan 六阶段](docs/native/m4-scan.md)也已通过四路验证。[coarse 分配链的 8 个入口](docs/native/m4-coarse-allocation.md)也已通过验收。179 项程序中当前 18 项 HLSL 内核已验收；其余 161 项、完整 Canvas 与 M4 退出条件仍未完成。用户已取消性能比较，后续不运行 Criterion/resize 性能对照。
 
 - [ ] 按 range scatter → scan/cumsum → coarse → fine → layer/mask/filter/backdrop 逐项移植，两条原生 Adapter 每项一起验收。
 - [ ] 每一项先补语义/边界测试，再实现 HLSL 与绑定；检查中间结果和最终四路像素。

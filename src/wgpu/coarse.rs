@@ -1,6 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
-use crate::render::binning::{WORKGROUP_SIZE, coarse_bin_count};
+use crate::render::binning::coarse_bin_count;
+use crate::shared::gpu_constants::COARSE_WORKGROUP_SIZE;
 
 use crate::shared::{
     gpu_coarse::coarse_work_active_tile_list_word_offset,
@@ -396,7 +397,7 @@ impl WgpuCoarsePipeline {
         let active_tile_count = batch.active_tile_count.unwrap_or(tile_count);
         let incremental = batch.active_tile_count.is_some();
         let prefix_chunk_count = if incremental {
-            active_tile_count.div_ceil(WORKGROUP_SIZE)
+            active_tile_count.div_ceil(COARSE_WORKGROUP_SIZE)
         } else {
             chunk_count
         };
@@ -1023,7 +1024,7 @@ fn bind_config_buffer(
     }
 }
 
-const _: () = assert!(COARSE_CHUNK_SIZE == WORKGROUP_SIZE);
+const _: () = assert!(COARSE_CHUNK_SIZE == COARSE_WORKGROUP_SIZE);
 
 #[cfg(test)]
 mod tests;

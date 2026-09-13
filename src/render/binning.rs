@@ -2,7 +2,7 @@
 
 use crate::shared::gpu_plan::{COARSE_BIN_TILES, CoarseBinningStats, GpuBufferLengths};
 
-pub(crate) const WORKGROUP_SIZE: u32 = 256;
+use crate::shared::gpu_constants::COARSE_WORKGROUP_SIZE;
 
 /// Selects the lower-cost coarse kernel from dispatch and candidate-loop work.
 ///
@@ -16,7 +16,7 @@ pub(crate) fn coarse_binning_costs(
     lengths: GpuBufferLengths,
     stats: CoarseBinningStats,
 ) -> (u64, u64) {
-    let prefix_chunks = |tiles: u32| u64::from(tiles.div_ceil(WORKGROUP_SIZE));
+    let prefix_chunks = |tiles: u32| u64::from(tiles.div_ceil(COARSE_WORKGROUP_SIZE));
     // Both output ranges share one prefix/apply pair and one chunk-offset workgroup.
     let compact_dispatches =
         u64::from(stats.active_tiles) * 2 + prefix_chunks(stats.active_tiles) * 2 + 1;

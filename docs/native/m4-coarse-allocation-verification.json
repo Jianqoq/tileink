@@ -1,0 +1,726 @@
+{
+  "schema": 1,
+  "scope": "M4 coarse allocation kernel slice; not complete coarse or NativeRenderer",
+  "gpu_luid": "9f3f010000000000",
+  "routes": [
+    "wgpu-dx12",
+    "wgpu-vulkan",
+    "native-dx12",
+    "native-vulkan"
+  ],
+  "comparison": "Every selected output byte exactly equals an independent CPU oracle, including inactive fields and capacity guards. No tolerance.",
+  "output_executions": {
+    "paired_prefix_carry_apply": 144,
+    "emit_reference_allocation_chain": 144
+  },
+  "runtime_tests": 44,
+  "release_library_tests": {
+    "passed": 964,
+    "ignored": 21
+  },
+  "cpu_only_library_tests": 620,
+  "no_dxc": {
+    "tests_passed": 44,
+    "pipeline_compiles": 0,
+    "cache_hits": 290,
+    "wgpu_reference_dxc_dll_retained": true
+  },
+  "png_regression": {
+    "scope": "existing wgpu native/portable texture SVG and example regressions",
+    "before": 3471,
+    "after": 3471,
+    "changed": [],
+    "missing": [],
+    "added": []
+  },
+  "log_sha256": {
+    "m4-coarse-full-release.log": "af81a1cb416055cbb83e5cc0693ea607a0abc87c67ef93487cbd25cde8a89c99",
+    "m4-coarse-runtime-all.log": "639628a945aad5fb55567657ee0f76324e66ce9bd2067dad46884e99c4b4eab9",
+    "m4-coarse-no-dxc.log": "edc664493d691849b41214201e8f61eb60ca8b67b21c82a955e0d3417a77b9c3",
+    "m4-coarse-clippy.log": "afa67dceeb16ffc631b1e5a2265feeb24af1a03934c8ce5b930e41a3b323d8a1",
+    "m4-coarse-svg.log": "f53611e8ab0aa9f179923aa271cb739ac6343823e892c2d9ba2f202219df882f",
+    "m4-coarse-examples.log": "4e219742a8d26d19de62799e63392739fee24b58627396f7fe23268478670292",
+    "m4-coarse-cpu-only.log": "ebc221a13bc178998d3d759248455810d9d09faf463069418b858349811b57a5",
+    "m4-coarse-feature-native-dx12.log": "3c72a2c347c67ffe4fcf4e4282d78a8e56a9d232c2b70e10006c2f5822a84e8d",
+    "m4-coarse-feature-native-vulkan.log": "96033d0b05e92d111449fab8d272b1c7963527042ece18fe7d9a7cb610c88b7a",
+    "m4-coarse-feature-native.log": "a5ec6cc469d9fa4fa8669e6521e26de52352b71ee915de9572f8e3e9478c7919"
+  },
+  "source_sha256": {
+    "src/shaders/hlsl/coarse/config.hlsli": "d8faaa395b6e8207767446c5df1cf8b8b669e9641d563b0713cfa4ccbbe8f0cc",
+    "src/shaders/hlsl/coarse/emit_allocation.hlsl": "751a5fe474b0d5ce26786cf1471e1e416614a2b2363553c07a8df2fceadf274c",
+    "src/shaders/hlsl/coarse/emit_layout.hlsli": "67ed003f2d8f9a2b8800223b3fd971ab9ebb334dce16457e877663f831ef5b44",
+    "src/shaders/hlsl/coarse/prefix.hlsl": "0374d21dbf0b0018dcc79cbbbe10337eab68d2b8d7ea985b7b2fd1003c3df103",
+    "src/shaders/hlsl/coarse/prefix_scan.hlsli": "da237ef249ff385c6dc67c44d66643bf2d47b7a432ae772798dd815d0b08ad01",
+    "src/shaders/coarse-emit-allocation-abi.json": "a6e675e145ab6dbe561f2fa3413247716805b40139cc1b0a2c8b8be24c2fc5e0",
+    "src/shaders/coarse-emit-offsets-abi.json": "11d276226b7ab6fe850cb46dc08c48354ee2c4cc624e07041922c5e36437d257",
+    "src/shaders/coarse-prefix-abi.json": "34e7c3997ccb98781b67982a4970a6446882e52f67a773f4c5a4a688add4f59d",
+    "src/shaders/coarse-records-abi.json": "6f3bf761b5c050964d1ec0646a2ac5a676c25d6656a87f3e83bf5bf3e707ae88",
+    "src/wgpu/shaders/coarse/common.wgsl": "bf33e9b222cedb414f55a09e511c944b723d5ca14f188e1e7ece4f51fc4daa56",
+    "src/wgpu/shaders/coarse/count.wgsl": "8b5664c56d60e46ac5eafa6691d728fd74d1b84d13cddf3d94df028e6cee0454",
+    "src/wgpu/shaders/coarse/emit.wgsl": "8f87ebffda1c85a67c4051dc1d4de3971bd9bdbcb35006ccd95c27fb6c0d3a30",
+    "src/wgpu/shaders/coarse/emit_web.wgsl": "ce3a1ca61581d14e66035bf6b677bea9de4380e98dc1ac1d87e1e3562040f565",
+    "src/wgpu/shaders/coarse/prefix.wgsl": "e47fc3f101f7d148b7ddd85afd1f8d27894b90a96043fce7c5e13520a03cea93",
+    "src/wgpu/shaders/coarse/text_input.wgsl": "9f0169c65a93ce6238a22352d4c07d4bf81a47c6fdbc7dd42545603f3a919815",
+    "src/shared/gpu_constants.rs": "5886da8550f9d7db96491cbd5a69582613fb2dc41688e891a919b50801acb36c",
+    "build/native/program.rs": "ea9afea694508f90c40af40f22629a9a1ebf575fafec9cc928a7eedcc5f23d6e"
+  },
+  "artifacts": [
+    {
+      "artifact_sha256": "578e649b931f7e39d663b177f43d33b21707896525a2babf10800fd3228474b2",
+      "key": "c2d636cb698bc27d9849adcacc4f675b803f07731f40587d1168eb66322617f4",
+      "recipe": {
+        "abi_sha256": "b80b1d4de9322dcd2d6a4a47ee076c6f3d54a11e9f78bc99c778e42bf82d1de3",
+        "cumsum_chunk_size": 256,
+        "entry": "coarse_emit_chunk_counts",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "coarse_emit_chunk_counts",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "coarse/config.hlsli": "struct CoarseConfig {\r\n    uint tile_count;\r\n    uint tiles_width;\r\n    uint tiles_height;\r\n    uint draw_start;\r\n    uint draw_end;\r\n    uint layer_stack_start;\r\n    uint layer_stack_end;\r\n    uint ptcl_capacity;\r\n    uint glyph_capacity;\r\n    uint chunk_count;\r\n    uint text_run_count;\r\n    uint text_glyph_count;\r\n    uint tile_draw_index_count;\r\n    uint emit_chunk_capacity;\r\n    uint paint_brush_base;\r\n    uint text_enabled;\r\n    uint active_tile_count;\r\n    uint active_tile_list_base;\r\n    uint incremental;\r\n};\r\nConstantBuffer<CoarseConfig> config : register(b0, space0);\r\n",
+          "coarse/emit_allocation.hlsl": "#include \"config.hlsli\"\r\nRWByteAddressBuffer coarse_work : register(u7, space0);\r\nRWByteAddressBuffer chunk_records : register(u8, space0);\r\n#include \"prefix_scan.hlsli\"\r\n#include \"emit_layout.hlsli\"\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_chunk_counts(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint count = coarse_work.Load(tile_draw_base(id.x) + COARSE_TILE_DRAW_COUNT);\r\n    coarse_work.Store(tile_emit_base(id.x), (count + COARSE_WORKGROUP_SIZE - 1u) / COARSE_WORKGROUP_SIZE);\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_prefix_chunks(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {\r\n    if (group.x >= config.chunk_count) return;\r\n    uint tile = group.x * COARSE_WORKGROUP_SIZE + local.x;\r\n    uint count = 0u;\n    if (tile < config.tile_count) count = coarse_work.Load(tile_emit_base(tile));\r\n    uint2 offset = exclusive_prefix(uint2(count, 0u), local.x);\r\n    if (local.x == 0u) chunk_records.Store(group.x * COARSE_CHUNK_RECORD_STRIDE, block_total.x);\r\n    if (tile < config.tile_count) coarse_work.Store(tile_emit_base(tile) + 4u, offset.x);\r\n}\r\n\r\n[numthreads(1, 1, 1)]\r\nvoid coarse_emit_chunk_offsets() {\r\n    uint carry = 0u;\r\n    for (uint chunk = 0u; chunk < config.chunk_count; chunk++) {\r\n        uint base = chunk * COARSE_CHUNK_RECORD_STRIDE;\r\n        chunk_records.Store(base + COARSE_CHUNK_PTCL_OFFSET, carry);\r\n        carry += chunk_records.Load(base);\r\n    }\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_apply_chunk_offsets(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint base = tile_emit_base(id.x) + 4u;\r\n    uint chunk_base = (id.x / COARSE_WORKGROUP_SIZE) * COARSE_CHUNK_RECORD_STRIDE;\r\n    coarse_work.Store(base, coarse_work.Load(base) + chunk_records.Load(chunk_base + COARSE_CHUNK_PTCL_OFFSET));\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_fill_refs(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint2 record = coarse_work.Load2(tile_emit_base(id.x));\r\n    for (uint local = 0u; local < record.x; local++) {\r\n        uint reference = record.y + local;\r\n        if (reference < config.emit_chunk_capacity) {\r\n            uint base = emit_base(reference);\r\n            coarse_work.Store2(base, uint2(id.x, local));\r\n            coarse_work.Store(base + COARSE_EMIT_CLASS_FLAGS, 0u);\r\n        }\r\n    }\r\n}\r\n",
+          "coarse/emit_layout.hlsli": "// Byte offsets through the packed coarse work buffer; preceding regions remain intact.\r\nuint tile_draw_base(uint tile) {\r\n    return config.tile_count * COARSE_TILE_RECORD_STRIDE + config.ptcl_capacity * COARSE_PTCL_RECORD_STRIDE +\r\n        config.glyph_capacity * 4u + tile * COARSE_TILE_DRAW_RECORD_STRIDE;\r\n}\r\nuint tile_emit_base(uint tile) {\r\n    return tile_draw_base(config.tile_count) + config.tile_draw_index_count * 4u + tile * COARSE_TILE_EMIT_RECORD_STRIDE;\r\n}\r\nuint emit_base(uint reference) {\r\n    return tile_emit_base(config.tile_count) + reference * COARSE_EMIT_RECORD_STRIDE;\r\n}\r\n",
+          "coarse/prefix_scan.hlsli": "// Particle and glyph allocation use the same ordered, wrapping-u32 scan.\r\ngroupshared uint2 scratch[COARSE_WORKGROUP_SIZE];\r\ngroupshared uint2 block_total;\r\n\r\nuint2 exclusive_prefix(uint2 value, uint lane) {\r\n    scratch[lane] = value;\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = 1u; step < COARSE_WORKGROUP_SIZE; step *= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) scratch[index] += scratch[index - step];\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    if (lane == 0u) {\r\n        block_total = scratch[COARSE_WORKGROUP_SIZE - 1u];\r\n        scratch[COARSE_WORKGROUP_SIZE - 1u] = uint2(0u, 0u);\r\n    }\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = COARSE_WORKGROUP_SIZE / 2u; step > 0u; step /= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) {\r\n            uint left = index - step;\r\n            uint2 previous = scratch[left];\r\n            scratch[left] = scratch[index];\r\n            scratch[index] += previous;\r\n        }\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    uint2 result = scratch[lane];\r\n    GroupMemoryBarrierWithGroupSync();\r\n    return result;\r\n}\r\n\r\n"
+        },
+        "target": "dxil",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "coarse-emit-allocation"
+      }
+    },
+    {
+      "artifact_sha256": "f6d374a36e8cd2895a75ef88fd26b1204e603d0f102a326737195e22c1c582f0",
+      "key": "b7dccc0e83423a423699eb0d5e5c808ad404969928490db2cd96dde46234bc94",
+      "recipe": {
+        "abi_sha256": "b80b1d4de9322dcd2d6a4a47ee076c6f3d54a11e9f78bc99c778e42bf82d1de3",
+        "cumsum_chunk_size": 256,
+        "entry": "coarse_emit_prefix_chunks",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "coarse_emit_prefix_chunks",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "coarse/config.hlsli": "struct CoarseConfig {\r\n    uint tile_count;\r\n    uint tiles_width;\r\n    uint tiles_height;\r\n    uint draw_start;\r\n    uint draw_end;\r\n    uint layer_stack_start;\r\n    uint layer_stack_end;\r\n    uint ptcl_capacity;\r\n    uint glyph_capacity;\r\n    uint chunk_count;\r\n    uint text_run_count;\r\n    uint text_glyph_count;\r\n    uint tile_draw_index_count;\r\n    uint emit_chunk_capacity;\r\n    uint paint_brush_base;\r\n    uint text_enabled;\r\n    uint active_tile_count;\r\n    uint active_tile_list_base;\r\n    uint incremental;\r\n};\r\nConstantBuffer<CoarseConfig> config : register(b0, space0);\r\n",
+          "coarse/emit_allocation.hlsl": "#include \"config.hlsli\"\r\nRWByteAddressBuffer coarse_work : register(u7, space0);\r\nRWByteAddressBuffer chunk_records : register(u8, space0);\r\n#include \"prefix_scan.hlsli\"\r\n#include \"emit_layout.hlsli\"\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_chunk_counts(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint count = coarse_work.Load(tile_draw_base(id.x) + COARSE_TILE_DRAW_COUNT);\r\n    coarse_work.Store(tile_emit_base(id.x), (count + COARSE_WORKGROUP_SIZE - 1u) / COARSE_WORKGROUP_SIZE);\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_prefix_chunks(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {\r\n    if (group.x >= config.chunk_count) return;\r\n    uint tile = group.x * COARSE_WORKGROUP_SIZE + local.x;\r\n    uint count = 0u;\n    if (tile < config.tile_count) count = coarse_work.Load(tile_emit_base(tile));\r\n    uint2 offset = exclusive_prefix(uint2(count, 0u), local.x);\r\n    if (local.x == 0u) chunk_records.Store(group.x * COARSE_CHUNK_RECORD_STRIDE, block_total.x);\r\n    if (tile < config.tile_count) coarse_work.Store(tile_emit_base(tile) + 4u, offset.x);\r\n}\r\n\r\n[numthreads(1, 1, 1)]\r\nvoid coarse_emit_chunk_offsets() {\r\n    uint carry = 0u;\r\n    for (uint chunk = 0u; chunk < config.chunk_count; chunk++) {\r\n        uint base = chunk * COARSE_CHUNK_RECORD_STRIDE;\r\n        chunk_records.Store(base + COARSE_CHUNK_PTCL_OFFSET, carry);\r\n        carry += chunk_records.Load(base);\r\n    }\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_apply_chunk_offsets(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint base = tile_emit_base(id.x) + 4u;\r\n    uint chunk_base = (id.x / COARSE_WORKGROUP_SIZE) * COARSE_CHUNK_RECORD_STRIDE;\r\n    coarse_work.Store(base, coarse_work.Load(base) + chunk_records.Load(chunk_base + COARSE_CHUNK_PTCL_OFFSET));\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_fill_refs(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint2 record = coarse_work.Load2(tile_emit_base(id.x));\r\n    for (uint local = 0u; local < record.x; local++) {\r\n        uint reference = record.y + local;\r\n        if (reference < config.emit_chunk_capacity) {\r\n            uint base = emit_base(reference);\r\n            coarse_work.Store2(base, uint2(id.x, local));\r\n            coarse_work.Store(base + COARSE_EMIT_CLASS_FLAGS, 0u);\r\n        }\r\n    }\r\n}\r\n",
+          "coarse/emit_layout.hlsli": "// Byte offsets through the packed coarse work buffer; preceding regions remain intact.\r\nuint tile_draw_base(uint tile) {\r\n    return config.tile_count * COARSE_TILE_RECORD_STRIDE + config.ptcl_capacity * COARSE_PTCL_RECORD_STRIDE +\r\n        config.glyph_capacity * 4u + tile * COARSE_TILE_DRAW_RECORD_STRIDE;\r\n}\r\nuint tile_emit_base(uint tile) {\r\n    return tile_draw_base(config.tile_count) + config.tile_draw_index_count * 4u + tile * COARSE_TILE_EMIT_RECORD_STRIDE;\r\n}\r\nuint emit_base(uint reference) {\r\n    return tile_emit_base(config.tile_count) + reference * COARSE_EMIT_RECORD_STRIDE;\r\n}\r\n",
+          "coarse/prefix_scan.hlsli": "// Particle and glyph allocation use the same ordered, wrapping-u32 scan.\r\ngroupshared uint2 scratch[COARSE_WORKGROUP_SIZE];\r\ngroupshared uint2 block_total;\r\n\r\nuint2 exclusive_prefix(uint2 value, uint lane) {\r\n    scratch[lane] = value;\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = 1u; step < COARSE_WORKGROUP_SIZE; step *= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) scratch[index] += scratch[index - step];\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    if (lane == 0u) {\r\n        block_total = scratch[COARSE_WORKGROUP_SIZE - 1u];\r\n        scratch[COARSE_WORKGROUP_SIZE - 1u] = uint2(0u, 0u);\r\n    }\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = COARSE_WORKGROUP_SIZE / 2u; step > 0u; step /= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) {\r\n            uint left = index - step;\r\n            uint2 previous = scratch[left];\r\n            scratch[left] = scratch[index];\r\n            scratch[index] += previous;\r\n        }\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    uint2 result = scratch[lane];\r\n    GroupMemoryBarrierWithGroupSync();\r\n    return result;\r\n}\r\n\r\n"
+        },
+        "target": "dxil",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "coarse-emit-allocation"
+      }
+    },
+    {
+      "artifact_sha256": "ae6601de1e1f627cf1e0c28912ddf664a3549d07c945586f2ee4ea648a54f180",
+      "key": "7211ce4c647cc40792637dedf8fd96573498aa41353b98ee9bb0575c341ec368",
+      "recipe": {
+        "abi_sha256": "b80b1d4de9322dcd2d6a4a47ee076c6f3d54a11e9f78bc99c778e42bf82d1de3",
+        "cumsum_chunk_size": 256,
+        "entry": "coarse_emit_apply_chunk_offsets",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "coarse_emit_apply_chunk_offsets",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "coarse/config.hlsli": "struct CoarseConfig {\r\n    uint tile_count;\r\n    uint tiles_width;\r\n    uint tiles_height;\r\n    uint draw_start;\r\n    uint draw_end;\r\n    uint layer_stack_start;\r\n    uint layer_stack_end;\r\n    uint ptcl_capacity;\r\n    uint glyph_capacity;\r\n    uint chunk_count;\r\n    uint text_run_count;\r\n    uint text_glyph_count;\r\n    uint tile_draw_index_count;\r\n    uint emit_chunk_capacity;\r\n    uint paint_brush_base;\r\n    uint text_enabled;\r\n    uint active_tile_count;\r\n    uint active_tile_list_base;\r\n    uint incremental;\r\n};\r\nConstantBuffer<CoarseConfig> config : register(b0, space0);\r\n",
+          "coarse/emit_allocation.hlsl": "#include \"config.hlsli\"\r\nRWByteAddressBuffer coarse_work : register(u7, space0);\r\nRWByteAddressBuffer chunk_records : register(u8, space0);\r\n#include \"prefix_scan.hlsli\"\r\n#include \"emit_layout.hlsli\"\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_chunk_counts(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint count = coarse_work.Load(tile_draw_base(id.x) + COARSE_TILE_DRAW_COUNT);\r\n    coarse_work.Store(tile_emit_base(id.x), (count + COARSE_WORKGROUP_SIZE - 1u) / COARSE_WORKGROUP_SIZE);\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_prefix_chunks(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {\r\n    if (group.x >= config.chunk_count) return;\r\n    uint tile = group.x * COARSE_WORKGROUP_SIZE + local.x;\r\n    uint count = 0u;\n    if (tile < config.tile_count) count = coarse_work.Load(tile_emit_base(tile));\r\n    uint2 offset = exclusive_prefix(uint2(count, 0u), local.x);\r\n    if (local.x == 0u) chunk_records.Store(group.x * COARSE_CHUNK_RECORD_STRIDE, block_total.x);\r\n    if (tile < config.tile_count) coarse_work.Store(tile_emit_base(tile) + 4u, offset.x);\r\n}\r\n\r\n[numthreads(1, 1, 1)]\r\nvoid coarse_emit_chunk_offsets() {\r\n    uint carry = 0u;\r\n    for (uint chunk = 0u; chunk < config.chunk_count; chunk++) {\r\n        uint base = chunk * COARSE_CHUNK_RECORD_STRIDE;\r\n        chunk_records.Store(base + COARSE_CHUNK_PTCL_OFFSET, carry);\r\n        carry += chunk_records.Load(base);\r\n    }\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_apply_chunk_offsets(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint base = tile_emit_base(id.x) + 4u;\r\n    uint chunk_base = (id.x / COARSE_WORKGROUP_SIZE) * COARSE_CHUNK_RECORD_STRIDE;\r\n    coarse_work.Store(base, coarse_work.Load(base) + chunk_records.Load(chunk_base + COARSE_CHUNK_PTCL_OFFSET));\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_fill_refs(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint2 record = coarse_work.Load2(tile_emit_base(id.x));\r\n    for (uint local = 0u; local < record.x; local++) {\r\n        uint reference = record.y + local;\r\n        if (reference < config.emit_chunk_capacity) {\r\n            uint base = emit_base(reference);\r\n            coarse_work.Store2(base, uint2(id.x, local));\r\n            coarse_work.Store(base + COARSE_EMIT_CLASS_FLAGS, 0u);\r\n        }\r\n    }\r\n}\r\n",
+          "coarse/emit_layout.hlsli": "// Byte offsets through the packed coarse work buffer; preceding regions remain intact.\r\nuint tile_draw_base(uint tile) {\r\n    return config.tile_count * COARSE_TILE_RECORD_STRIDE + config.ptcl_capacity * COARSE_PTCL_RECORD_STRIDE +\r\n        config.glyph_capacity * 4u + tile * COARSE_TILE_DRAW_RECORD_STRIDE;\r\n}\r\nuint tile_emit_base(uint tile) {\r\n    return tile_draw_base(config.tile_count) + config.tile_draw_index_count * 4u + tile * COARSE_TILE_EMIT_RECORD_STRIDE;\r\n}\r\nuint emit_base(uint reference) {\r\n    return tile_emit_base(config.tile_count) + reference * COARSE_EMIT_RECORD_STRIDE;\r\n}\r\n",
+          "coarse/prefix_scan.hlsli": "// Particle and glyph allocation use the same ordered, wrapping-u32 scan.\r\ngroupshared uint2 scratch[COARSE_WORKGROUP_SIZE];\r\ngroupshared uint2 block_total;\r\n\r\nuint2 exclusive_prefix(uint2 value, uint lane) {\r\n    scratch[lane] = value;\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = 1u; step < COARSE_WORKGROUP_SIZE; step *= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) scratch[index] += scratch[index - step];\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    if (lane == 0u) {\r\n        block_total = scratch[COARSE_WORKGROUP_SIZE - 1u];\r\n        scratch[COARSE_WORKGROUP_SIZE - 1u] = uint2(0u, 0u);\r\n    }\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = COARSE_WORKGROUP_SIZE / 2u; step > 0u; step /= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) {\r\n            uint left = index - step;\r\n            uint2 previous = scratch[left];\r\n            scratch[left] = scratch[index];\r\n            scratch[index] += previous;\r\n        }\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    uint2 result = scratch[lane];\r\n    GroupMemoryBarrierWithGroupSync();\r\n    return result;\r\n}\r\n\r\n"
+        },
+        "target": "dxil",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "coarse-emit-allocation"
+      }
+    },
+    {
+      "artifact_sha256": "dd6566f8d5cd1ee24ff0a0114fb1c0b9ad80e4190eefac1c584331e7faa0cb61",
+      "key": "e9c6cfae1dfd6f93bc5ee6b2ad3bcd5aeac967140ba1750a695ac780fcea20cf",
+      "recipe": {
+        "abi_sha256": "b80b1d4de9322dcd2d6a4a47ee076c6f3d54a11e9f78bc99c778e42bf82d1de3",
+        "cumsum_chunk_size": 256,
+        "entry": "coarse_emit_fill_refs",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "coarse_emit_fill_refs",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "coarse/config.hlsli": "struct CoarseConfig {\r\n    uint tile_count;\r\n    uint tiles_width;\r\n    uint tiles_height;\r\n    uint draw_start;\r\n    uint draw_end;\r\n    uint layer_stack_start;\r\n    uint layer_stack_end;\r\n    uint ptcl_capacity;\r\n    uint glyph_capacity;\r\n    uint chunk_count;\r\n    uint text_run_count;\r\n    uint text_glyph_count;\r\n    uint tile_draw_index_count;\r\n    uint emit_chunk_capacity;\r\n    uint paint_brush_base;\r\n    uint text_enabled;\r\n    uint active_tile_count;\r\n    uint active_tile_list_base;\r\n    uint incremental;\r\n};\r\nConstantBuffer<CoarseConfig> config : register(b0, space0);\r\n",
+          "coarse/emit_allocation.hlsl": "#include \"config.hlsli\"\r\nRWByteAddressBuffer coarse_work : register(u7, space0);\r\nRWByteAddressBuffer chunk_records : register(u8, space0);\r\n#include \"prefix_scan.hlsli\"\r\n#include \"emit_layout.hlsli\"\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_chunk_counts(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint count = coarse_work.Load(tile_draw_base(id.x) + COARSE_TILE_DRAW_COUNT);\r\n    coarse_work.Store(tile_emit_base(id.x), (count + COARSE_WORKGROUP_SIZE - 1u) / COARSE_WORKGROUP_SIZE);\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_prefix_chunks(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {\r\n    if (group.x >= config.chunk_count) return;\r\n    uint tile = group.x * COARSE_WORKGROUP_SIZE + local.x;\r\n    uint count = 0u;\n    if (tile < config.tile_count) count = coarse_work.Load(tile_emit_base(tile));\r\n    uint2 offset = exclusive_prefix(uint2(count, 0u), local.x);\r\n    if (local.x == 0u) chunk_records.Store(group.x * COARSE_CHUNK_RECORD_STRIDE, block_total.x);\r\n    if (tile < config.tile_count) coarse_work.Store(tile_emit_base(tile) + 4u, offset.x);\r\n}\r\n\r\n[numthreads(1, 1, 1)]\r\nvoid coarse_emit_chunk_offsets() {\r\n    uint carry = 0u;\r\n    for (uint chunk = 0u; chunk < config.chunk_count; chunk++) {\r\n        uint base = chunk * COARSE_CHUNK_RECORD_STRIDE;\r\n        chunk_records.Store(base + COARSE_CHUNK_PTCL_OFFSET, carry);\r\n        carry += chunk_records.Load(base);\r\n    }\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_apply_chunk_offsets(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint base = tile_emit_base(id.x) + 4u;\r\n    uint chunk_base = (id.x / COARSE_WORKGROUP_SIZE) * COARSE_CHUNK_RECORD_STRIDE;\r\n    coarse_work.Store(base, coarse_work.Load(base) + chunk_records.Load(chunk_base + COARSE_CHUNK_PTCL_OFFSET));\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_fill_refs(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint2 record = coarse_work.Load2(tile_emit_base(id.x));\r\n    for (uint local = 0u; local < record.x; local++) {\r\n        uint reference = record.y + local;\r\n        if (reference < config.emit_chunk_capacity) {\r\n            uint base = emit_base(reference);\r\n            coarse_work.Store2(base, uint2(id.x, local));\r\n            coarse_work.Store(base + COARSE_EMIT_CLASS_FLAGS, 0u);\r\n        }\r\n    }\r\n}\r\n",
+          "coarse/emit_layout.hlsli": "// Byte offsets through the packed coarse work buffer; preceding regions remain intact.\r\nuint tile_draw_base(uint tile) {\r\n    return config.tile_count * COARSE_TILE_RECORD_STRIDE + config.ptcl_capacity * COARSE_PTCL_RECORD_STRIDE +\r\n        config.glyph_capacity * 4u + tile * COARSE_TILE_DRAW_RECORD_STRIDE;\r\n}\r\nuint tile_emit_base(uint tile) {\r\n    return tile_draw_base(config.tile_count) + config.tile_draw_index_count * 4u + tile * COARSE_TILE_EMIT_RECORD_STRIDE;\r\n}\r\nuint emit_base(uint reference) {\r\n    return tile_emit_base(config.tile_count) + reference * COARSE_EMIT_RECORD_STRIDE;\r\n}\r\n",
+          "coarse/prefix_scan.hlsli": "// Particle and glyph allocation use the same ordered, wrapping-u32 scan.\r\ngroupshared uint2 scratch[COARSE_WORKGROUP_SIZE];\r\ngroupshared uint2 block_total;\r\n\r\nuint2 exclusive_prefix(uint2 value, uint lane) {\r\n    scratch[lane] = value;\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = 1u; step < COARSE_WORKGROUP_SIZE; step *= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) scratch[index] += scratch[index - step];\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    if (lane == 0u) {\r\n        block_total = scratch[COARSE_WORKGROUP_SIZE - 1u];\r\n        scratch[COARSE_WORKGROUP_SIZE - 1u] = uint2(0u, 0u);\r\n    }\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = COARSE_WORKGROUP_SIZE / 2u; step > 0u; step /= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) {\r\n            uint left = index - step;\r\n            uint2 previous = scratch[left];\r\n            scratch[left] = scratch[index];\r\n            scratch[index] += previous;\r\n        }\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    uint2 result = scratch[lane];\r\n    GroupMemoryBarrierWithGroupSync();\r\n    return result;\r\n}\r\n\r\n"
+        },
+        "target": "dxil",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "coarse-emit-allocation"
+      }
+    },
+    {
+      "artifact_sha256": "b12f897ac09cda683042f8549bcf208e1afa20aa8061512b4c4354002f8ed140",
+      "key": "f3b89b6cc3d61a57e39f2d14f083ab15cdeb431c5ae5b6a265d6270908db4a19",
+      "recipe": {
+        "abi_sha256": "b80b1d4de9322dcd2d6a4a47ee076c6f3d54a11e9f78bc99c778e42bf82d1de3",
+        "cumsum_chunk_size": 256,
+        "entry": "coarse_emit_chunk_counts",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "coarse_emit_chunk_counts",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis",
+          "-spirv",
+          "-fspv-target-env=vulkan1.1"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "coarse/config.hlsli": "struct CoarseConfig {\r\n    uint tile_count;\r\n    uint tiles_width;\r\n    uint tiles_height;\r\n    uint draw_start;\r\n    uint draw_end;\r\n    uint layer_stack_start;\r\n    uint layer_stack_end;\r\n    uint ptcl_capacity;\r\n    uint glyph_capacity;\r\n    uint chunk_count;\r\n    uint text_run_count;\r\n    uint text_glyph_count;\r\n    uint tile_draw_index_count;\r\n    uint emit_chunk_capacity;\r\n    uint paint_brush_base;\r\n    uint text_enabled;\r\n    uint active_tile_count;\r\n    uint active_tile_list_base;\r\n    uint incremental;\r\n};\r\nConstantBuffer<CoarseConfig> config : register(b0, space0);\r\n",
+          "coarse/emit_allocation.hlsl": "#include \"config.hlsli\"\r\nRWByteAddressBuffer coarse_work : register(u7, space0);\r\nRWByteAddressBuffer chunk_records : register(u8, space0);\r\n#include \"prefix_scan.hlsli\"\r\n#include \"emit_layout.hlsli\"\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_chunk_counts(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint count = coarse_work.Load(tile_draw_base(id.x) + COARSE_TILE_DRAW_COUNT);\r\n    coarse_work.Store(tile_emit_base(id.x), (count + COARSE_WORKGROUP_SIZE - 1u) / COARSE_WORKGROUP_SIZE);\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_prefix_chunks(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {\r\n    if (group.x >= config.chunk_count) return;\r\n    uint tile = group.x * COARSE_WORKGROUP_SIZE + local.x;\r\n    uint count = 0u;\n    if (tile < config.tile_count) count = coarse_work.Load(tile_emit_base(tile));\r\n    uint2 offset = exclusive_prefix(uint2(count, 0u), local.x);\r\n    if (local.x == 0u) chunk_records.Store(group.x * COARSE_CHUNK_RECORD_STRIDE, block_total.x);\r\n    if (tile < config.tile_count) coarse_work.Store(tile_emit_base(tile) + 4u, offset.x);\r\n}\r\n\r\n[numthreads(1, 1, 1)]\r\nvoid coarse_emit_chunk_offsets() {\r\n    uint carry = 0u;\r\n    for (uint chunk = 0u; chunk < config.chunk_count; chunk++) {\r\n        uint base = chunk * COARSE_CHUNK_RECORD_STRIDE;\r\n        chunk_records.Store(base + COARSE_CHUNK_PTCL_OFFSET, carry);\r\n        carry += chunk_records.Load(base);\r\n    }\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_apply_chunk_offsets(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint base = tile_emit_base(id.x) + 4u;\r\n    uint chunk_base = (id.x / COARSE_WORKGROUP_SIZE) * COARSE_CHUNK_RECORD_STRIDE;\r\n    coarse_work.Store(base, coarse_work.Load(base) + chunk_records.Load(chunk_base + COARSE_CHUNK_PTCL_OFFSET));\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_fill_refs(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint2 record = coarse_work.Load2(tile_emit_base(id.x));\r\n    for (uint local = 0u; local < record.x; local++) {\r\n        uint reference = record.y + local;\r\n        if (reference < config.emit_chunk_capacity) {\r\n            uint base = emit_base(reference);\r\n            coarse_work.Store2(base, uint2(id.x, local));\r\n            coarse_work.Store(base + COARSE_EMIT_CLASS_FLAGS, 0u);\r\n        }\r\n    }\r\n}\r\n",
+          "coarse/emit_layout.hlsli": "// Byte offsets through the packed coarse work buffer; preceding regions remain intact.\r\nuint tile_draw_base(uint tile) {\r\n    return config.tile_count * COARSE_TILE_RECORD_STRIDE + config.ptcl_capacity * COARSE_PTCL_RECORD_STRIDE +\r\n        config.glyph_capacity * 4u + tile * COARSE_TILE_DRAW_RECORD_STRIDE;\r\n}\r\nuint tile_emit_base(uint tile) {\r\n    return tile_draw_base(config.tile_count) + config.tile_draw_index_count * 4u + tile * COARSE_TILE_EMIT_RECORD_STRIDE;\r\n}\r\nuint emit_base(uint reference) {\r\n    return tile_emit_base(config.tile_count) + reference * COARSE_EMIT_RECORD_STRIDE;\r\n}\r\n",
+          "coarse/prefix_scan.hlsli": "// Particle and glyph allocation use the same ordered, wrapping-u32 scan.\r\ngroupshared uint2 scratch[COARSE_WORKGROUP_SIZE];\r\ngroupshared uint2 block_total;\r\n\r\nuint2 exclusive_prefix(uint2 value, uint lane) {\r\n    scratch[lane] = value;\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = 1u; step < COARSE_WORKGROUP_SIZE; step *= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) scratch[index] += scratch[index - step];\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    if (lane == 0u) {\r\n        block_total = scratch[COARSE_WORKGROUP_SIZE - 1u];\r\n        scratch[COARSE_WORKGROUP_SIZE - 1u] = uint2(0u, 0u);\r\n    }\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = COARSE_WORKGROUP_SIZE / 2u; step > 0u; step /= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) {\r\n            uint left = index - step;\r\n            uint2 previous = scratch[left];\r\n            scratch[left] = scratch[index];\r\n            scratch[index] += previous;\r\n        }\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    uint2 result = scratch[lane];\r\n    GroupMemoryBarrierWithGroupSync();\r\n    return result;\r\n}\r\n\r\n"
+        },
+        "target": "spirv",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "coarse-emit-allocation"
+      }
+    },
+    {
+      "artifact_sha256": "ea1c42b0fd9b9f1bef164cf8ea7afef2ec4a6fa7faecd6b2a65b08e8359d31c9",
+      "key": "7010999a9a7314dc21d5ed44216eb0d5e3c6dde0158ebcb06d286bb28f47e539",
+      "recipe": {
+        "abi_sha256": "b80b1d4de9322dcd2d6a4a47ee076c6f3d54a11e9f78bc99c778e42bf82d1de3",
+        "cumsum_chunk_size": 256,
+        "entry": "coarse_emit_prefix_chunks",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "coarse_emit_prefix_chunks",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis",
+          "-spirv",
+          "-fspv-target-env=vulkan1.1"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "coarse/config.hlsli": "struct CoarseConfig {\r\n    uint tile_count;\r\n    uint tiles_width;\r\n    uint tiles_height;\r\n    uint draw_start;\r\n    uint draw_end;\r\n    uint layer_stack_start;\r\n    uint layer_stack_end;\r\n    uint ptcl_capacity;\r\n    uint glyph_capacity;\r\n    uint chunk_count;\r\n    uint text_run_count;\r\n    uint text_glyph_count;\r\n    uint tile_draw_index_count;\r\n    uint emit_chunk_capacity;\r\n    uint paint_brush_base;\r\n    uint text_enabled;\r\n    uint active_tile_count;\r\n    uint active_tile_list_base;\r\n    uint incremental;\r\n};\r\nConstantBuffer<CoarseConfig> config : register(b0, space0);\r\n",
+          "coarse/emit_allocation.hlsl": "#include \"config.hlsli\"\r\nRWByteAddressBuffer coarse_work : register(u7, space0);\r\nRWByteAddressBuffer chunk_records : register(u8, space0);\r\n#include \"prefix_scan.hlsli\"\r\n#include \"emit_layout.hlsli\"\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_chunk_counts(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint count = coarse_work.Load(tile_draw_base(id.x) + COARSE_TILE_DRAW_COUNT);\r\n    coarse_work.Store(tile_emit_base(id.x), (count + COARSE_WORKGROUP_SIZE - 1u) / COARSE_WORKGROUP_SIZE);\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_prefix_chunks(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {\r\n    if (group.x >= config.chunk_count) return;\r\n    uint tile = group.x * COARSE_WORKGROUP_SIZE + local.x;\r\n    uint count = 0u;\n    if (tile < config.tile_count) count = coarse_work.Load(tile_emit_base(tile));\r\n    uint2 offset = exclusive_prefix(uint2(count, 0u), local.x);\r\n    if (local.x == 0u) chunk_records.Store(group.x * COARSE_CHUNK_RECORD_STRIDE, block_total.x);\r\n    if (tile < config.tile_count) coarse_work.Store(tile_emit_base(tile) + 4u, offset.x);\r\n}\r\n\r\n[numthreads(1, 1, 1)]\r\nvoid coarse_emit_chunk_offsets() {\r\n    uint carry = 0u;\r\n    for (uint chunk = 0u; chunk < config.chunk_count; chunk++) {\r\n        uint base = chunk * COARSE_CHUNK_RECORD_STRIDE;\r\n        chunk_records.Store(base + COARSE_CHUNK_PTCL_OFFSET, carry);\r\n        carry += chunk_records.Load(base);\r\n    }\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_apply_chunk_offsets(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint base = tile_emit_base(id.x) + 4u;\r\n    uint chunk_base = (id.x / COARSE_WORKGROUP_SIZE) * COARSE_CHUNK_RECORD_STRIDE;\r\n    coarse_work.Store(base, coarse_work.Load(base) + chunk_records.Load(chunk_base + COARSE_CHUNK_PTCL_OFFSET));\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_fill_refs(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint2 record = coarse_work.Load2(tile_emit_base(id.x));\r\n    for (uint local = 0u; local < record.x; local++) {\r\n        uint reference = record.y + local;\r\n        if (reference < config.emit_chunk_capacity) {\r\n            uint base = emit_base(reference);\r\n            coarse_work.Store2(base, uint2(id.x, local));\r\n            coarse_work.Store(base + COARSE_EMIT_CLASS_FLAGS, 0u);\r\n        }\r\n    }\r\n}\r\n",
+          "coarse/emit_layout.hlsli": "// Byte offsets through the packed coarse work buffer; preceding regions remain intact.\r\nuint tile_draw_base(uint tile) {\r\n    return config.tile_count * COARSE_TILE_RECORD_STRIDE + config.ptcl_capacity * COARSE_PTCL_RECORD_STRIDE +\r\n        config.glyph_capacity * 4u + tile * COARSE_TILE_DRAW_RECORD_STRIDE;\r\n}\r\nuint tile_emit_base(uint tile) {\r\n    return tile_draw_base(config.tile_count) + config.tile_draw_index_count * 4u + tile * COARSE_TILE_EMIT_RECORD_STRIDE;\r\n}\r\nuint emit_base(uint reference) {\r\n    return tile_emit_base(config.tile_count) + reference * COARSE_EMIT_RECORD_STRIDE;\r\n}\r\n",
+          "coarse/prefix_scan.hlsli": "// Particle and glyph allocation use the same ordered, wrapping-u32 scan.\r\ngroupshared uint2 scratch[COARSE_WORKGROUP_SIZE];\r\ngroupshared uint2 block_total;\r\n\r\nuint2 exclusive_prefix(uint2 value, uint lane) {\r\n    scratch[lane] = value;\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = 1u; step < COARSE_WORKGROUP_SIZE; step *= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) scratch[index] += scratch[index - step];\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    if (lane == 0u) {\r\n        block_total = scratch[COARSE_WORKGROUP_SIZE - 1u];\r\n        scratch[COARSE_WORKGROUP_SIZE - 1u] = uint2(0u, 0u);\r\n    }\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = COARSE_WORKGROUP_SIZE / 2u; step > 0u; step /= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) {\r\n            uint left = index - step;\r\n            uint2 previous = scratch[left];\r\n            scratch[left] = scratch[index];\r\n            scratch[index] += previous;\r\n        }\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    uint2 result = scratch[lane];\r\n    GroupMemoryBarrierWithGroupSync();\r\n    return result;\r\n}\r\n\r\n"
+        },
+        "target": "spirv",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "coarse-emit-allocation"
+      }
+    },
+    {
+      "artifact_sha256": "49e1062a1582fb2d349c4632e8b39d812c02dc336679a919200db8188b2c9380",
+      "key": "e5b077cb2c2cfaa54acb62b118f4c8f81a6fbf4a09055aa81e77eff165e2248f",
+      "recipe": {
+        "abi_sha256": "b80b1d4de9322dcd2d6a4a47ee076c6f3d54a11e9f78bc99c778e42bf82d1de3",
+        "cumsum_chunk_size": 256,
+        "entry": "coarse_emit_apply_chunk_offsets",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "coarse_emit_apply_chunk_offsets",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis",
+          "-spirv",
+          "-fspv-target-env=vulkan1.1"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "coarse/config.hlsli": "struct CoarseConfig {\r\n    uint tile_count;\r\n    uint tiles_width;\r\n    uint tiles_height;\r\n    uint draw_start;\r\n    uint draw_end;\r\n    uint layer_stack_start;\r\n    uint layer_stack_end;\r\n    uint ptcl_capacity;\r\n    uint glyph_capacity;\r\n    uint chunk_count;\r\n    uint text_run_count;\r\n    uint text_glyph_count;\r\n    uint tile_draw_index_count;\r\n    uint emit_chunk_capacity;\r\n    uint paint_brush_base;\r\n    uint text_enabled;\r\n    uint active_tile_count;\r\n    uint active_tile_list_base;\r\n    uint incremental;\r\n};\r\nConstantBuffer<CoarseConfig> config : register(b0, space0);\r\n",
+          "coarse/emit_allocation.hlsl": "#include \"config.hlsli\"\r\nRWByteAddressBuffer coarse_work : register(u7, space0);\r\nRWByteAddressBuffer chunk_records : register(u8, space0);\r\n#include \"prefix_scan.hlsli\"\r\n#include \"emit_layout.hlsli\"\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_chunk_counts(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint count = coarse_work.Load(tile_draw_base(id.x) + COARSE_TILE_DRAW_COUNT);\r\n    coarse_work.Store(tile_emit_base(id.x), (count + COARSE_WORKGROUP_SIZE - 1u) / COARSE_WORKGROUP_SIZE);\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_prefix_chunks(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {\r\n    if (group.x >= config.chunk_count) return;\r\n    uint tile = group.x * COARSE_WORKGROUP_SIZE + local.x;\r\n    uint count = 0u;\n    if (tile < config.tile_count) count = coarse_work.Load(tile_emit_base(tile));\r\n    uint2 offset = exclusive_prefix(uint2(count, 0u), local.x);\r\n    if (local.x == 0u) chunk_records.Store(group.x * COARSE_CHUNK_RECORD_STRIDE, block_total.x);\r\n    if (tile < config.tile_count) coarse_work.Store(tile_emit_base(tile) + 4u, offset.x);\r\n}\r\n\r\n[numthreads(1, 1, 1)]\r\nvoid coarse_emit_chunk_offsets() {\r\n    uint carry = 0u;\r\n    for (uint chunk = 0u; chunk < config.chunk_count; chunk++) {\r\n        uint base = chunk * COARSE_CHUNK_RECORD_STRIDE;\r\n        chunk_records.Store(base + COARSE_CHUNK_PTCL_OFFSET, carry);\r\n        carry += chunk_records.Load(base);\r\n    }\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_apply_chunk_offsets(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint base = tile_emit_base(id.x) + 4u;\r\n    uint chunk_base = (id.x / COARSE_WORKGROUP_SIZE) * COARSE_CHUNK_RECORD_STRIDE;\r\n    coarse_work.Store(base, coarse_work.Load(base) + chunk_records.Load(chunk_base + COARSE_CHUNK_PTCL_OFFSET));\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_fill_refs(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint2 record = coarse_work.Load2(tile_emit_base(id.x));\r\n    for (uint local = 0u; local < record.x; local++) {\r\n        uint reference = record.y + local;\r\n        if (reference < config.emit_chunk_capacity) {\r\n            uint base = emit_base(reference);\r\n            coarse_work.Store2(base, uint2(id.x, local));\r\n            coarse_work.Store(base + COARSE_EMIT_CLASS_FLAGS, 0u);\r\n        }\r\n    }\r\n}\r\n",
+          "coarse/emit_layout.hlsli": "// Byte offsets through the packed coarse work buffer; preceding regions remain intact.\r\nuint tile_draw_base(uint tile) {\r\n    return config.tile_count * COARSE_TILE_RECORD_STRIDE + config.ptcl_capacity * COARSE_PTCL_RECORD_STRIDE +\r\n        config.glyph_capacity * 4u + tile * COARSE_TILE_DRAW_RECORD_STRIDE;\r\n}\r\nuint tile_emit_base(uint tile) {\r\n    return tile_draw_base(config.tile_count) + config.tile_draw_index_count * 4u + tile * COARSE_TILE_EMIT_RECORD_STRIDE;\r\n}\r\nuint emit_base(uint reference) {\r\n    return tile_emit_base(config.tile_count) + reference * COARSE_EMIT_RECORD_STRIDE;\r\n}\r\n",
+          "coarse/prefix_scan.hlsli": "// Particle and glyph allocation use the same ordered, wrapping-u32 scan.\r\ngroupshared uint2 scratch[COARSE_WORKGROUP_SIZE];\r\ngroupshared uint2 block_total;\r\n\r\nuint2 exclusive_prefix(uint2 value, uint lane) {\r\n    scratch[lane] = value;\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = 1u; step < COARSE_WORKGROUP_SIZE; step *= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) scratch[index] += scratch[index - step];\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    if (lane == 0u) {\r\n        block_total = scratch[COARSE_WORKGROUP_SIZE - 1u];\r\n        scratch[COARSE_WORKGROUP_SIZE - 1u] = uint2(0u, 0u);\r\n    }\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = COARSE_WORKGROUP_SIZE / 2u; step > 0u; step /= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) {\r\n            uint left = index - step;\r\n            uint2 previous = scratch[left];\r\n            scratch[left] = scratch[index];\r\n            scratch[index] += previous;\r\n        }\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    uint2 result = scratch[lane];\r\n    GroupMemoryBarrierWithGroupSync();\r\n    return result;\r\n}\r\n\r\n"
+        },
+        "target": "spirv",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "coarse-emit-allocation"
+      }
+    },
+    {
+      "artifact_sha256": "99a3d5e05a0701e281b08810e9fbad861514e439076e87883391c6962536f960",
+      "key": "9799f1538d051781f011f052d77a3eea2570a02a6316a41917749b6772dd9ef2",
+      "recipe": {
+        "abi_sha256": "b80b1d4de9322dcd2d6a4a47ee076c6f3d54a11e9f78bc99c778e42bf82d1de3",
+        "cumsum_chunk_size": 256,
+        "entry": "coarse_emit_fill_refs",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "coarse_emit_fill_refs",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis",
+          "-spirv",
+          "-fspv-target-env=vulkan1.1"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "coarse/config.hlsli": "struct CoarseConfig {\r\n    uint tile_count;\r\n    uint tiles_width;\r\n    uint tiles_height;\r\n    uint draw_start;\r\n    uint draw_end;\r\n    uint layer_stack_start;\r\n    uint layer_stack_end;\r\n    uint ptcl_capacity;\r\n    uint glyph_capacity;\r\n    uint chunk_count;\r\n    uint text_run_count;\r\n    uint text_glyph_count;\r\n    uint tile_draw_index_count;\r\n    uint emit_chunk_capacity;\r\n    uint paint_brush_base;\r\n    uint text_enabled;\r\n    uint active_tile_count;\r\n    uint active_tile_list_base;\r\n    uint incremental;\r\n};\r\nConstantBuffer<CoarseConfig> config : register(b0, space0);\r\n",
+          "coarse/emit_allocation.hlsl": "#include \"config.hlsli\"\r\nRWByteAddressBuffer coarse_work : register(u7, space0);\r\nRWByteAddressBuffer chunk_records : register(u8, space0);\r\n#include \"prefix_scan.hlsli\"\r\n#include \"emit_layout.hlsli\"\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_chunk_counts(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint count = coarse_work.Load(tile_draw_base(id.x) + COARSE_TILE_DRAW_COUNT);\r\n    coarse_work.Store(tile_emit_base(id.x), (count + COARSE_WORKGROUP_SIZE - 1u) / COARSE_WORKGROUP_SIZE);\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_prefix_chunks(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {\r\n    if (group.x >= config.chunk_count) return;\r\n    uint tile = group.x * COARSE_WORKGROUP_SIZE + local.x;\r\n    uint count = 0u;\n    if (tile < config.tile_count) count = coarse_work.Load(tile_emit_base(tile));\r\n    uint2 offset = exclusive_prefix(uint2(count, 0u), local.x);\r\n    if (local.x == 0u) chunk_records.Store(group.x * COARSE_CHUNK_RECORD_STRIDE, block_total.x);\r\n    if (tile < config.tile_count) coarse_work.Store(tile_emit_base(tile) + 4u, offset.x);\r\n}\r\n\r\n[numthreads(1, 1, 1)]\r\nvoid coarse_emit_chunk_offsets() {\r\n    uint carry = 0u;\r\n    for (uint chunk = 0u; chunk < config.chunk_count; chunk++) {\r\n        uint base = chunk * COARSE_CHUNK_RECORD_STRIDE;\r\n        chunk_records.Store(base + COARSE_CHUNK_PTCL_OFFSET, carry);\r\n        carry += chunk_records.Load(base);\r\n    }\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_apply_chunk_offsets(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint base = tile_emit_base(id.x) + 4u;\r\n    uint chunk_base = (id.x / COARSE_WORKGROUP_SIZE) * COARSE_CHUNK_RECORD_STRIDE;\r\n    coarse_work.Store(base, coarse_work.Load(base) + chunk_records.Load(chunk_base + COARSE_CHUNK_PTCL_OFFSET));\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_fill_refs(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint2 record = coarse_work.Load2(tile_emit_base(id.x));\r\n    for (uint local = 0u; local < record.x; local++) {\r\n        uint reference = record.y + local;\r\n        if (reference < config.emit_chunk_capacity) {\r\n            uint base = emit_base(reference);\r\n            coarse_work.Store2(base, uint2(id.x, local));\r\n            coarse_work.Store(base + COARSE_EMIT_CLASS_FLAGS, 0u);\r\n        }\r\n    }\r\n}\r\n",
+          "coarse/emit_layout.hlsli": "// Byte offsets through the packed coarse work buffer; preceding regions remain intact.\r\nuint tile_draw_base(uint tile) {\r\n    return config.tile_count * COARSE_TILE_RECORD_STRIDE + config.ptcl_capacity * COARSE_PTCL_RECORD_STRIDE +\r\n        config.glyph_capacity * 4u + tile * COARSE_TILE_DRAW_RECORD_STRIDE;\r\n}\r\nuint tile_emit_base(uint tile) {\r\n    return tile_draw_base(config.tile_count) + config.tile_draw_index_count * 4u + tile * COARSE_TILE_EMIT_RECORD_STRIDE;\r\n}\r\nuint emit_base(uint reference) {\r\n    return tile_emit_base(config.tile_count) + reference * COARSE_EMIT_RECORD_STRIDE;\r\n}\r\n",
+          "coarse/prefix_scan.hlsli": "// Particle and glyph allocation use the same ordered, wrapping-u32 scan.\r\ngroupshared uint2 scratch[COARSE_WORKGROUP_SIZE];\r\ngroupshared uint2 block_total;\r\n\r\nuint2 exclusive_prefix(uint2 value, uint lane) {\r\n    scratch[lane] = value;\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = 1u; step < COARSE_WORKGROUP_SIZE; step *= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) scratch[index] += scratch[index - step];\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    if (lane == 0u) {\r\n        block_total = scratch[COARSE_WORKGROUP_SIZE - 1u];\r\n        scratch[COARSE_WORKGROUP_SIZE - 1u] = uint2(0u, 0u);\r\n    }\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = COARSE_WORKGROUP_SIZE / 2u; step > 0u; step /= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) {\r\n            uint left = index - step;\r\n            uint2 previous = scratch[left];\r\n            scratch[left] = scratch[index];\r\n            scratch[index] += previous;\r\n        }\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    uint2 result = scratch[lane];\r\n    GroupMemoryBarrierWithGroupSync();\r\n    return result;\r\n}\r\n\r\n"
+        },
+        "target": "spirv",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "coarse-emit-allocation"
+      }
+    },
+    {
+      "artifact_sha256": "1cb898306846e2aa397c959e66dfc03614664073fb4238d4a9d8d351e1392d9c",
+      "key": "ba41817ba07bdc72c2f2076d943ce882276119c27ba281a8cdcbc33cc69ffb68",
+      "recipe": {
+        "abi_sha256": "16a09a365c7d649cba6331d98d46dd7c5c31fab9d221a242a318e843e5df0aea",
+        "cumsum_chunk_size": 256,
+        "entry": "coarse_emit_chunk_offsets",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "coarse_emit_chunk_offsets",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "coarse/config.hlsli": "struct CoarseConfig {\r\n    uint tile_count;\r\n    uint tiles_width;\r\n    uint tiles_height;\r\n    uint draw_start;\r\n    uint draw_end;\r\n    uint layer_stack_start;\r\n    uint layer_stack_end;\r\n    uint ptcl_capacity;\r\n    uint glyph_capacity;\r\n    uint chunk_count;\r\n    uint text_run_count;\r\n    uint text_glyph_count;\r\n    uint tile_draw_index_count;\r\n    uint emit_chunk_capacity;\r\n    uint paint_brush_base;\r\n    uint text_enabled;\r\n    uint active_tile_count;\r\n    uint active_tile_list_base;\r\n    uint incremental;\r\n};\r\nConstantBuffer<CoarseConfig> config : register(b0, space0);\r\n",
+          "coarse/emit_allocation.hlsl": "#include \"config.hlsli\"\r\nRWByteAddressBuffer coarse_work : register(u7, space0);\r\nRWByteAddressBuffer chunk_records : register(u8, space0);\r\n#include \"prefix_scan.hlsli\"\r\n#include \"emit_layout.hlsli\"\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_chunk_counts(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint count = coarse_work.Load(tile_draw_base(id.x) + COARSE_TILE_DRAW_COUNT);\r\n    coarse_work.Store(tile_emit_base(id.x), (count + COARSE_WORKGROUP_SIZE - 1u) / COARSE_WORKGROUP_SIZE);\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_prefix_chunks(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {\r\n    if (group.x >= config.chunk_count) return;\r\n    uint tile = group.x * COARSE_WORKGROUP_SIZE + local.x;\r\n    uint count = 0u;\n    if (tile < config.tile_count) count = coarse_work.Load(tile_emit_base(tile));\r\n    uint2 offset = exclusive_prefix(uint2(count, 0u), local.x);\r\n    if (local.x == 0u) chunk_records.Store(group.x * COARSE_CHUNK_RECORD_STRIDE, block_total.x);\r\n    if (tile < config.tile_count) coarse_work.Store(tile_emit_base(tile) + 4u, offset.x);\r\n}\r\n\r\n[numthreads(1, 1, 1)]\r\nvoid coarse_emit_chunk_offsets() {\r\n    uint carry = 0u;\r\n    for (uint chunk = 0u; chunk < config.chunk_count; chunk++) {\r\n        uint base = chunk * COARSE_CHUNK_RECORD_STRIDE;\r\n        chunk_records.Store(base + COARSE_CHUNK_PTCL_OFFSET, carry);\r\n        carry += chunk_records.Load(base);\r\n    }\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_apply_chunk_offsets(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint base = tile_emit_base(id.x) + 4u;\r\n    uint chunk_base = (id.x / COARSE_WORKGROUP_SIZE) * COARSE_CHUNK_RECORD_STRIDE;\r\n    coarse_work.Store(base, coarse_work.Load(base) + chunk_records.Load(chunk_base + COARSE_CHUNK_PTCL_OFFSET));\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_fill_refs(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint2 record = coarse_work.Load2(tile_emit_base(id.x));\r\n    for (uint local = 0u; local < record.x; local++) {\r\n        uint reference = record.y + local;\r\n        if (reference < config.emit_chunk_capacity) {\r\n            uint base = emit_base(reference);\r\n            coarse_work.Store2(base, uint2(id.x, local));\r\n            coarse_work.Store(base + COARSE_EMIT_CLASS_FLAGS, 0u);\r\n        }\r\n    }\r\n}\r\n",
+          "coarse/emit_layout.hlsli": "// Byte offsets through the packed coarse work buffer; preceding regions remain intact.\r\nuint tile_draw_base(uint tile) {\r\n    return config.tile_count * COARSE_TILE_RECORD_STRIDE + config.ptcl_capacity * COARSE_PTCL_RECORD_STRIDE +\r\n        config.glyph_capacity * 4u + tile * COARSE_TILE_DRAW_RECORD_STRIDE;\r\n}\r\nuint tile_emit_base(uint tile) {\r\n    return tile_draw_base(config.tile_count) + config.tile_draw_index_count * 4u + tile * COARSE_TILE_EMIT_RECORD_STRIDE;\r\n}\r\nuint emit_base(uint reference) {\r\n    return tile_emit_base(config.tile_count) + reference * COARSE_EMIT_RECORD_STRIDE;\r\n}\r\n",
+          "coarse/prefix_scan.hlsli": "// Particle and glyph allocation use the same ordered, wrapping-u32 scan.\r\ngroupshared uint2 scratch[COARSE_WORKGROUP_SIZE];\r\ngroupshared uint2 block_total;\r\n\r\nuint2 exclusive_prefix(uint2 value, uint lane) {\r\n    scratch[lane] = value;\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = 1u; step < COARSE_WORKGROUP_SIZE; step *= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) scratch[index] += scratch[index - step];\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    if (lane == 0u) {\r\n        block_total = scratch[COARSE_WORKGROUP_SIZE - 1u];\r\n        scratch[COARSE_WORKGROUP_SIZE - 1u] = uint2(0u, 0u);\r\n    }\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = COARSE_WORKGROUP_SIZE / 2u; step > 0u; step /= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) {\r\n            uint left = index - step;\r\n            uint2 previous = scratch[left];\r\n            scratch[left] = scratch[index];\r\n            scratch[index] += previous;\r\n        }\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    uint2 result = scratch[lane];\r\n    GroupMemoryBarrierWithGroupSync();\r\n    return result;\r\n}\r\n\r\n"
+        },
+        "target": "dxil",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "coarse-emit-offsets"
+      }
+    },
+    {
+      "artifact_sha256": "e01f99704c64118ac4fb4ebaea7bc5cfc311c4f6ad3694d5010e6b61937dfd56",
+      "key": "0fdd7da2e36da9b2788e06ffcb5d49feb0f7c059b2a40db9f4d4fe69e1e3c1b9",
+      "recipe": {
+        "abi_sha256": "16a09a365c7d649cba6331d98d46dd7c5c31fab9d221a242a318e843e5df0aea",
+        "cumsum_chunk_size": 256,
+        "entry": "coarse_emit_chunk_offsets",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "coarse_emit_chunk_offsets",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis",
+          "-spirv",
+          "-fspv-target-env=vulkan1.1"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "coarse/config.hlsli": "struct CoarseConfig {\r\n    uint tile_count;\r\n    uint tiles_width;\r\n    uint tiles_height;\r\n    uint draw_start;\r\n    uint draw_end;\r\n    uint layer_stack_start;\r\n    uint layer_stack_end;\r\n    uint ptcl_capacity;\r\n    uint glyph_capacity;\r\n    uint chunk_count;\r\n    uint text_run_count;\r\n    uint text_glyph_count;\r\n    uint tile_draw_index_count;\r\n    uint emit_chunk_capacity;\r\n    uint paint_brush_base;\r\n    uint text_enabled;\r\n    uint active_tile_count;\r\n    uint active_tile_list_base;\r\n    uint incremental;\r\n};\r\nConstantBuffer<CoarseConfig> config : register(b0, space0);\r\n",
+          "coarse/emit_allocation.hlsl": "#include \"config.hlsli\"\r\nRWByteAddressBuffer coarse_work : register(u7, space0);\r\nRWByteAddressBuffer chunk_records : register(u8, space0);\r\n#include \"prefix_scan.hlsli\"\r\n#include \"emit_layout.hlsli\"\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_chunk_counts(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint count = coarse_work.Load(tile_draw_base(id.x) + COARSE_TILE_DRAW_COUNT);\r\n    coarse_work.Store(tile_emit_base(id.x), (count + COARSE_WORKGROUP_SIZE - 1u) / COARSE_WORKGROUP_SIZE);\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_prefix_chunks(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {\r\n    if (group.x >= config.chunk_count) return;\r\n    uint tile = group.x * COARSE_WORKGROUP_SIZE + local.x;\r\n    uint count = 0u;\n    if (tile < config.tile_count) count = coarse_work.Load(tile_emit_base(tile));\r\n    uint2 offset = exclusive_prefix(uint2(count, 0u), local.x);\r\n    if (local.x == 0u) chunk_records.Store(group.x * COARSE_CHUNK_RECORD_STRIDE, block_total.x);\r\n    if (tile < config.tile_count) coarse_work.Store(tile_emit_base(tile) + 4u, offset.x);\r\n}\r\n\r\n[numthreads(1, 1, 1)]\r\nvoid coarse_emit_chunk_offsets() {\r\n    uint carry = 0u;\r\n    for (uint chunk = 0u; chunk < config.chunk_count; chunk++) {\r\n        uint base = chunk * COARSE_CHUNK_RECORD_STRIDE;\r\n        chunk_records.Store(base + COARSE_CHUNK_PTCL_OFFSET, carry);\r\n        carry += chunk_records.Load(base);\r\n    }\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_apply_chunk_offsets(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint base = tile_emit_base(id.x) + 4u;\r\n    uint chunk_base = (id.x / COARSE_WORKGROUP_SIZE) * COARSE_CHUNK_RECORD_STRIDE;\r\n    coarse_work.Store(base, coarse_work.Load(base) + chunk_records.Load(chunk_base + COARSE_CHUNK_PTCL_OFFSET));\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_emit_fill_refs(uint3 id : SV_DispatchThreadID) {\r\n    if (id.x >= config.tile_count) return;\r\n    uint2 record = coarse_work.Load2(tile_emit_base(id.x));\r\n    for (uint local = 0u; local < record.x; local++) {\r\n        uint reference = record.y + local;\r\n        if (reference < config.emit_chunk_capacity) {\r\n            uint base = emit_base(reference);\r\n            coarse_work.Store2(base, uint2(id.x, local));\r\n            coarse_work.Store(base + COARSE_EMIT_CLASS_FLAGS, 0u);\r\n        }\r\n    }\r\n}\r\n",
+          "coarse/emit_layout.hlsli": "// Byte offsets through the packed coarse work buffer; preceding regions remain intact.\r\nuint tile_draw_base(uint tile) {\r\n    return config.tile_count * COARSE_TILE_RECORD_STRIDE + config.ptcl_capacity * COARSE_PTCL_RECORD_STRIDE +\r\n        config.glyph_capacity * 4u + tile * COARSE_TILE_DRAW_RECORD_STRIDE;\r\n}\r\nuint tile_emit_base(uint tile) {\r\n    return tile_draw_base(config.tile_count) + config.tile_draw_index_count * 4u + tile * COARSE_TILE_EMIT_RECORD_STRIDE;\r\n}\r\nuint emit_base(uint reference) {\r\n    return tile_emit_base(config.tile_count) + reference * COARSE_EMIT_RECORD_STRIDE;\r\n}\r\n",
+          "coarse/prefix_scan.hlsli": "// Particle and glyph allocation use the same ordered, wrapping-u32 scan.\r\ngroupshared uint2 scratch[COARSE_WORKGROUP_SIZE];\r\ngroupshared uint2 block_total;\r\n\r\nuint2 exclusive_prefix(uint2 value, uint lane) {\r\n    scratch[lane] = value;\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = 1u; step < COARSE_WORKGROUP_SIZE; step *= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) scratch[index] += scratch[index - step];\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    if (lane == 0u) {\r\n        block_total = scratch[COARSE_WORKGROUP_SIZE - 1u];\r\n        scratch[COARSE_WORKGROUP_SIZE - 1u] = uint2(0u, 0u);\r\n    }\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = COARSE_WORKGROUP_SIZE / 2u; step > 0u; step /= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) {\r\n            uint left = index - step;\r\n            uint2 previous = scratch[left];\r\n            scratch[left] = scratch[index];\r\n            scratch[index] += previous;\r\n        }\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    uint2 result = scratch[lane];\r\n    GroupMemoryBarrierWithGroupSync();\r\n    return result;\r\n}\r\n\r\n"
+        },
+        "target": "spirv",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "coarse-emit-offsets"
+      }
+    },
+    {
+      "artifact_sha256": "533c21be6d3c2b31b0b0e14daf19c94a45aecd69e7f6681eafe1a4bba060c086",
+      "key": "e999c2ffb00ed48a07f4ec5db898b51250903d22554b3494e01cdca807c22363",
+      "recipe": {
+        "abi_sha256": "52d6988f60363258c26c626a599d2cbc96b49f3c0f07e3d7d1f16f97dc53a6de",
+        "cumsum_chunk_size": 256,
+        "entry": "coarse_prefix_chunks",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "coarse_prefix_chunks",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "coarse/config.hlsli": "struct CoarseConfig {\r\n    uint tile_count;\r\n    uint tiles_width;\r\n    uint tiles_height;\r\n    uint draw_start;\r\n    uint draw_end;\r\n    uint layer_stack_start;\r\n    uint layer_stack_end;\r\n    uint ptcl_capacity;\r\n    uint glyph_capacity;\r\n    uint chunk_count;\r\n    uint text_run_count;\r\n    uint text_glyph_count;\r\n    uint tile_draw_index_count;\r\n    uint emit_chunk_capacity;\r\n    uint paint_brush_base;\r\n    uint text_enabled;\r\n    uint active_tile_count;\r\n    uint active_tile_list_base;\r\n    uint incremental;\r\n};\r\nConstantBuffer<CoarseConfig> config : register(b0, space0);\r\n",
+          "coarse/prefix.hlsl": "#include \"config.hlsli\"\r\nRWByteAddressBuffer coarse_work : register(u7, space0);\r\nRWByteAddressBuffer chunk_records : register(u8, space0);\r\n\r\n#include \"prefix_scan.hlsli\"\r\n\r\nuint item_count() { return config.incremental != 0u ? config.active_tile_count : config.tile_count; }\r\nuint tile_at(uint item) {\r\n    return config.incremental != 0u ? coarse_work.Load((config.active_tile_list_base + item) * 4u) : item;\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_prefix_chunks(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {\r\n    // Logical chunks bound raw metadata independently of retained capacity.\r\n    if (group.x >= config.chunk_count) return;\r\n    uint item = group.x * COARSE_WORKGROUP_SIZE + local.x;\r\n    uint tile_base = 0u;\r\n    uint2 count = uint2(0u, 0u);\r\n    if (item < item_count()) {\r\n        tile_base = tile_at(item) * COARSE_TILE_RECORD_STRIDE;\r\n        count = uint2(coarse_work.Load(tile_base), coarse_work.Load(tile_base + COARSE_TILE_GLYPH_COUNT));\r\n    }\r\n    uint2 start = exclusive_prefix(count, local.x);\r\n    uint chunk_base = group.x * COARSE_CHUNK_RECORD_STRIDE;\r\n    if (local.x == 0u) {\r\n        chunk_records.Store(chunk_base, block_total.x);\r\n        chunk_records.Store(chunk_base + COARSE_CHUNK_GLYPH_TOTAL, block_total.y);\r\n    }\r\n    if (item < item_count()) {\r\n        coarse_work.Store2(tile_base + COARSE_TILE_PTCL_START, uint2(start.x, start.x + count.x));\r\n        coarse_work.Store2(tile_base + COARSE_TILE_GLYPH_START, uint2(start.y, start.y + count.y));\r\n    }\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_chunk_offsets(uint3 local : SV_GroupThreadID) {\r\n    uint2 carry = uint2(0u, 0u);\r\n    for (uint block = 0u; block < config.chunk_count; block += COARSE_WORKGROUP_SIZE) {\r\n        uint chunk = block + local.x;\r\n        uint base = chunk * COARSE_CHUNK_RECORD_STRIDE;\r\n        uint2 count = uint2(0u, 0u);\r\n        if (chunk < config.chunk_count) count = uint2(chunk_records.Load(base), chunk_records.Load(base + COARSE_CHUNK_GLYPH_TOTAL));\r\n        uint2 offset = exclusive_prefix(count, local.x);\r\n        if (chunk < config.chunk_count) {\r\n            chunk_records.Store(base + COARSE_CHUNK_PTCL_OFFSET, carry.x + offset.x);\r\n            chunk_records.Store(base + COARSE_CHUNK_GLYPH_OFFSET, carry.y + offset.y);\r\n        }\r\n        carry += block_total;\r\n    }\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_apply_chunk_offsets(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {\r\n    uint item = group.x * COARSE_WORKGROUP_SIZE + local.x;\r\n    if (item >= item_count()) return;\r\n    uint tile_base = tile_at(item) * COARSE_TILE_RECORD_STRIDE;\r\n    uint chunk_base = group.x * COARSE_CHUNK_RECORD_STRIDE;\r\n    uint ptcl = chunk_records.Load(chunk_base + COARSE_CHUNK_PTCL_OFFSET);\r\n    uint glyph = chunk_records.Load(chunk_base + COARSE_CHUNK_GLYPH_OFFSET);\r\n    coarse_work.Store2(tile_base + COARSE_TILE_PTCL_START, coarse_work.Load2(tile_base + COARSE_TILE_PTCL_START) + ptcl);\r\n    coarse_work.Store2(tile_base + COARSE_TILE_GLYPH_START, coarse_work.Load2(tile_base + COARSE_TILE_GLYPH_START) + glyph);\r\n}\r\n",
+          "coarse/prefix_scan.hlsli": "// Particle and glyph allocation use the same ordered, wrapping-u32 scan.\r\ngroupshared uint2 scratch[COARSE_WORKGROUP_SIZE];\r\ngroupshared uint2 block_total;\r\n\r\nuint2 exclusive_prefix(uint2 value, uint lane) {\r\n    scratch[lane] = value;\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = 1u; step < COARSE_WORKGROUP_SIZE; step *= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) scratch[index] += scratch[index - step];\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    if (lane == 0u) {\r\n        block_total = scratch[COARSE_WORKGROUP_SIZE - 1u];\r\n        scratch[COARSE_WORKGROUP_SIZE - 1u] = uint2(0u, 0u);\r\n    }\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = COARSE_WORKGROUP_SIZE / 2u; step > 0u; step /= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) {\r\n            uint left = index - step;\r\n            uint2 previous = scratch[left];\r\n            scratch[left] = scratch[index];\r\n            scratch[index] += previous;\r\n        }\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    uint2 result = scratch[lane];\r\n    GroupMemoryBarrierWithGroupSync();\r\n    return result;\r\n}\r\n\r\n"
+        },
+        "target": "dxil",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "coarse-prefix"
+      }
+    },
+    {
+      "artifact_sha256": "cd847cb35ac68a92fbbdd6ec82354db551e923b8e64710eb553b044f183cc42a",
+      "key": "33e76e140da1ddc6c1f90f33459dfcd46ba4713033816c6273bbac12744c4529",
+      "recipe": {
+        "abi_sha256": "52d6988f60363258c26c626a599d2cbc96b49f3c0f07e3d7d1f16f97dc53a6de",
+        "cumsum_chunk_size": 256,
+        "entry": "coarse_chunk_offsets",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "coarse_chunk_offsets",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "coarse/config.hlsli": "struct CoarseConfig {\r\n    uint tile_count;\r\n    uint tiles_width;\r\n    uint tiles_height;\r\n    uint draw_start;\r\n    uint draw_end;\r\n    uint layer_stack_start;\r\n    uint layer_stack_end;\r\n    uint ptcl_capacity;\r\n    uint glyph_capacity;\r\n    uint chunk_count;\r\n    uint text_run_count;\r\n    uint text_glyph_count;\r\n    uint tile_draw_index_count;\r\n    uint emit_chunk_capacity;\r\n    uint paint_brush_base;\r\n    uint text_enabled;\r\n    uint active_tile_count;\r\n    uint active_tile_list_base;\r\n    uint incremental;\r\n};\r\nConstantBuffer<CoarseConfig> config : register(b0, space0);\r\n",
+          "coarse/prefix.hlsl": "#include \"config.hlsli\"\r\nRWByteAddressBuffer coarse_work : register(u7, space0);\r\nRWByteAddressBuffer chunk_records : register(u8, space0);\r\n\r\n#include \"prefix_scan.hlsli\"\r\n\r\nuint item_count() { return config.incremental != 0u ? config.active_tile_count : config.tile_count; }\r\nuint tile_at(uint item) {\r\n    return config.incremental != 0u ? coarse_work.Load((config.active_tile_list_base + item) * 4u) : item;\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_prefix_chunks(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {\r\n    // Logical chunks bound raw metadata independently of retained capacity.\r\n    if (group.x >= config.chunk_count) return;\r\n    uint item = group.x * COARSE_WORKGROUP_SIZE + local.x;\r\n    uint tile_base = 0u;\r\n    uint2 count = uint2(0u, 0u);\r\n    if (item < item_count()) {\r\n        tile_base = tile_at(item) * COARSE_TILE_RECORD_STRIDE;\r\n        count = uint2(coarse_work.Load(tile_base), coarse_work.Load(tile_base + COARSE_TILE_GLYPH_COUNT));\r\n    }\r\n    uint2 start = exclusive_prefix(count, local.x);\r\n    uint chunk_base = group.x * COARSE_CHUNK_RECORD_STRIDE;\r\n    if (local.x == 0u) {\r\n        chunk_records.Store(chunk_base, block_total.x);\r\n        chunk_records.Store(chunk_base + COARSE_CHUNK_GLYPH_TOTAL, block_total.y);\r\n    }\r\n    if (item < item_count()) {\r\n        coarse_work.Store2(tile_base + COARSE_TILE_PTCL_START, uint2(start.x, start.x + count.x));\r\n        coarse_work.Store2(tile_base + COARSE_TILE_GLYPH_START, uint2(start.y, start.y + count.y));\r\n    }\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_chunk_offsets(uint3 local : SV_GroupThreadID) {\r\n    uint2 carry = uint2(0u, 0u);\r\n    for (uint block = 0u; block < config.chunk_count; block += COARSE_WORKGROUP_SIZE) {\r\n        uint chunk = block + local.x;\r\n        uint base = chunk * COARSE_CHUNK_RECORD_STRIDE;\r\n        uint2 count = uint2(0u, 0u);\r\n        if (chunk < config.chunk_count) count = uint2(chunk_records.Load(base), chunk_records.Load(base + COARSE_CHUNK_GLYPH_TOTAL));\r\n        uint2 offset = exclusive_prefix(count, local.x);\r\n        if (chunk < config.chunk_count) {\r\n            chunk_records.Store(base + COARSE_CHUNK_PTCL_OFFSET, carry.x + offset.x);\r\n            chunk_records.Store(base + COARSE_CHUNK_GLYPH_OFFSET, carry.y + offset.y);\r\n        }\r\n        carry += block_total;\r\n    }\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_apply_chunk_offsets(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {\r\n    uint item = group.x * COARSE_WORKGROUP_SIZE + local.x;\r\n    if (item >= item_count()) return;\r\n    uint tile_base = tile_at(item) * COARSE_TILE_RECORD_STRIDE;\r\n    uint chunk_base = group.x * COARSE_CHUNK_RECORD_STRIDE;\r\n    uint ptcl = chunk_records.Load(chunk_base + COARSE_CHUNK_PTCL_OFFSET);\r\n    uint glyph = chunk_records.Load(chunk_base + COARSE_CHUNK_GLYPH_OFFSET);\r\n    coarse_work.Store2(tile_base + COARSE_TILE_PTCL_START, coarse_work.Load2(tile_base + COARSE_TILE_PTCL_START) + ptcl);\r\n    coarse_work.Store2(tile_base + COARSE_TILE_GLYPH_START, coarse_work.Load2(tile_base + COARSE_TILE_GLYPH_START) + glyph);\r\n}\r\n",
+          "coarse/prefix_scan.hlsli": "// Particle and glyph allocation use the same ordered, wrapping-u32 scan.\r\ngroupshared uint2 scratch[COARSE_WORKGROUP_SIZE];\r\ngroupshared uint2 block_total;\r\n\r\nuint2 exclusive_prefix(uint2 value, uint lane) {\r\n    scratch[lane] = value;\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = 1u; step < COARSE_WORKGROUP_SIZE; step *= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) scratch[index] += scratch[index - step];\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    if (lane == 0u) {\r\n        block_total = scratch[COARSE_WORKGROUP_SIZE - 1u];\r\n        scratch[COARSE_WORKGROUP_SIZE - 1u] = uint2(0u, 0u);\r\n    }\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = COARSE_WORKGROUP_SIZE / 2u; step > 0u; step /= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) {\r\n            uint left = index - step;\r\n            uint2 previous = scratch[left];\r\n            scratch[left] = scratch[index];\r\n            scratch[index] += previous;\r\n        }\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    uint2 result = scratch[lane];\r\n    GroupMemoryBarrierWithGroupSync();\r\n    return result;\r\n}\r\n\r\n"
+        },
+        "target": "dxil",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "coarse-prefix"
+      }
+    },
+    {
+      "artifact_sha256": "abb9b4e3a9173ba7b014bb5767acd33ca77b7844dae154c08989f6d9506a9475",
+      "key": "376f1658ba7541b33637afe08722f7c508d006f0ee479fb5ebc72ae630750a66",
+      "recipe": {
+        "abi_sha256": "52d6988f60363258c26c626a599d2cbc96b49f3c0f07e3d7d1f16f97dc53a6de",
+        "cumsum_chunk_size": 256,
+        "entry": "coarse_apply_chunk_offsets",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "coarse_apply_chunk_offsets",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "coarse/config.hlsli": "struct CoarseConfig {\r\n    uint tile_count;\r\n    uint tiles_width;\r\n    uint tiles_height;\r\n    uint draw_start;\r\n    uint draw_end;\r\n    uint layer_stack_start;\r\n    uint layer_stack_end;\r\n    uint ptcl_capacity;\r\n    uint glyph_capacity;\r\n    uint chunk_count;\r\n    uint text_run_count;\r\n    uint text_glyph_count;\r\n    uint tile_draw_index_count;\r\n    uint emit_chunk_capacity;\r\n    uint paint_brush_base;\r\n    uint text_enabled;\r\n    uint active_tile_count;\r\n    uint active_tile_list_base;\r\n    uint incremental;\r\n};\r\nConstantBuffer<CoarseConfig> config : register(b0, space0);\r\n",
+          "coarse/prefix.hlsl": "#include \"config.hlsli\"\r\nRWByteAddressBuffer coarse_work : register(u7, space0);\r\nRWByteAddressBuffer chunk_records : register(u8, space0);\r\n\r\n#include \"prefix_scan.hlsli\"\r\n\r\nuint item_count() { return config.incremental != 0u ? config.active_tile_count : config.tile_count; }\r\nuint tile_at(uint item) {\r\n    return config.incremental != 0u ? coarse_work.Load((config.active_tile_list_base + item) * 4u) : item;\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_prefix_chunks(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {\r\n    // Logical chunks bound raw metadata independently of retained capacity.\r\n    if (group.x >= config.chunk_count) return;\r\n    uint item = group.x * COARSE_WORKGROUP_SIZE + local.x;\r\n    uint tile_base = 0u;\r\n    uint2 count = uint2(0u, 0u);\r\n    if (item < item_count()) {\r\n        tile_base = tile_at(item) * COARSE_TILE_RECORD_STRIDE;\r\n        count = uint2(coarse_work.Load(tile_base), coarse_work.Load(tile_base + COARSE_TILE_GLYPH_COUNT));\r\n    }\r\n    uint2 start = exclusive_prefix(count, local.x);\r\n    uint chunk_base = group.x * COARSE_CHUNK_RECORD_STRIDE;\r\n    if (local.x == 0u) {\r\n        chunk_records.Store(chunk_base, block_total.x);\r\n        chunk_records.Store(chunk_base + COARSE_CHUNK_GLYPH_TOTAL, block_total.y);\r\n    }\r\n    if (item < item_count()) {\r\n        coarse_work.Store2(tile_base + COARSE_TILE_PTCL_START, uint2(start.x, start.x + count.x));\r\n        coarse_work.Store2(tile_base + COARSE_TILE_GLYPH_START, uint2(start.y, start.y + count.y));\r\n    }\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_chunk_offsets(uint3 local : SV_GroupThreadID) {\r\n    uint2 carry = uint2(0u, 0u);\r\n    for (uint block = 0u; block < config.chunk_count; block += COARSE_WORKGROUP_SIZE) {\r\n        uint chunk = block + local.x;\r\n        uint base = chunk * COARSE_CHUNK_RECORD_STRIDE;\r\n        uint2 count = uint2(0u, 0u);\r\n        if (chunk < config.chunk_count) count = uint2(chunk_records.Load(base), chunk_records.Load(base + COARSE_CHUNK_GLYPH_TOTAL));\r\n        uint2 offset = exclusive_prefix(count, local.x);\r\n        if (chunk < config.chunk_count) {\r\n            chunk_records.Store(base + COARSE_CHUNK_PTCL_OFFSET, carry.x + offset.x);\r\n            chunk_records.Store(base + COARSE_CHUNK_GLYPH_OFFSET, carry.y + offset.y);\r\n        }\r\n        carry += block_total;\r\n    }\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_apply_chunk_offsets(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {\r\n    uint item = group.x * COARSE_WORKGROUP_SIZE + local.x;\r\n    if (item >= item_count()) return;\r\n    uint tile_base = tile_at(item) * COARSE_TILE_RECORD_STRIDE;\r\n    uint chunk_base = group.x * COARSE_CHUNK_RECORD_STRIDE;\r\n    uint ptcl = chunk_records.Load(chunk_base + COARSE_CHUNK_PTCL_OFFSET);\r\n    uint glyph = chunk_records.Load(chunk_base + COARSE_CHUNK_GLYPH_OFFSET);\r\n    coarse_work.Store2(tile_base + COARSE_TILE_PTCL_START, coarse_work.Load2(tile_base + COARSE_TILE_PTCL_START) + ptcl);\r\n    coarse_work.Store2(tile_base + COARSE_TILE_GLYPH_START, coarse_work.Load2(tile_base + COARSE_TILE_GLYPH_START) + glyph);\r\n}\r\n",
+          "coarse/prefix_scan.hlsli": "// Particle and glyph allocation use the same ordered, wrapping-u32 scan.\r\ngroupshared uint2 scratch[COARSE_WORKGROUP_SIZE];\r\ngroupshared uint2 block_total;\r\n\r\nuint2 exclusive_prefix(uint2 value, uint lane) {\r\n    scratch[lane] = value;\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = 1u; step < COARSE_WORKGROUP_SIZE; step *= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) scratch[index] += scratch[index - step];\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    if (lane == 0u) {\r\n        block_total = scratch[COARSE_WORKGROUP_SIZE - 1u];\r\n        scratch[COARSE_WORKGROUP_SIZE - 1u] = uint2(0u, 0u);\r\n    }\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = COARSE_WORKGROUP_SIZE / 2u; step > 0u; step /= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) {\r\n            uint left = index - step;\r\n            uint2 previous = scratch[left];\r\n            scratch[left] = scratch[index];\r\n            scratch[index] += previous;\r\n        }\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    uint2 result = scratch[lane];\r\n    GroupMemoryBarrierWithGroupSync();\r\n    return result;\r\n}\r\n\r\n"
+        },
+        "target": "dxil",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "coarse-prefix"
+      }
+    },
+    {
+      "artifact_sha256": "15d489248aa289de9c08b2c0f470988ef5954bb11f6e2a453d1ea6ce78aa9555",
+      "key": "2cca72a7f085727d6a822ec4e569cd8f05e7805a87f87ee3266fa5216ffe8ae0",
+      "recipe": {
+        "abi_sha256": "52d6988f60363258c26c626a599d2cbc96b49f3c0f07e3d7d1f16f97dc53a6de",
+        "cumsum_chunk_size": 256,
+        "entry": "coarse_prefix_chunks",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "coarse_prefix_chunks",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis",
+          "-spirv",
+          "-fspv-target-env=vulkan1.1"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "coarse/config.hlsli": "struct CoarseConfig {\r\n    uint tile_count;\r\n    uint tiles_width;\r\n    uint tiles_height;\r\n    uint draw_start;\r\n    uint draw_end;\r\n    uint layer_stack_start;\r\n    uint layer_stack_end;\r\n    uint ptcl_capacity;\r\n    uint glyph_capacity;\r\n    uint chunk_count;\r\n    uint text_run_count;\r\n    uint text_glyph_count;\r\n    uint tile_draw_index_count;\r\n    uint emit_chunk_capacity;\r\n    uint paint_brush_base;\r\n    uint text_enabled;\r\n    uint active_tile_count;\r\n    uint active_tile_list_base;\r\n    uint incremental;\r\n};\r\nConstantBuffer<CoarseConfig> config : register(b0, space0);\r\n",
+          "coarse/prefix.hlsl": "#include \"config.hlsli\"\r\nRWByteAddressBuffer coarse_work : register(u7, space0);\r\nRWByteAddressBuffer chunk_records : register(u8, space0);\r\n\r\n#include \"prefix_scan.hlsli\"\r\n\r\nuint item_count() { return config.incremental != 0u ? config.active_tile_count : config.tile_count; }\r\nuint tile_at(uint item) {\r\n    return config.incremental != 0u ? coarse_work.Load((config.active_tile_list_base + item) * 4u) : item;\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_prefix_chunks(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {\r\n    // Logical chunks bound raw metadata independently of retained capacity.\r\n    if (group.x >= config.chunk_count) return;\r\n    uint item = group.x * COARSE_WORKGROUP_SIZE + local.x;\r\n    uint tile_base = 0u;\r\n    uint2 count = uint2(0u, 0u);\r\n    if (item < item_count()) {\r\n        tile_base = tile_at(item) * COARSE_TILE_RECORD_STRIDE;\r\n        count = uint2(coarse_work.Load(tile_base), coarse_work.Load(tile_base + COARSE_TILE_GLYPH_COUNT));\r\n    }\r\n    uint2 start = exclusive_prefix(count, local.x);\r\n    uint chunk_base = group.x * COARSE_CHUNK_RECORD_STRIDE;\r\n    if (local.x == 0u) {\r\n        chunk_records.Store(chunk_base, block_total.x);\r\n        chunk_records.Store(chunk_base + COARSE_CHUNK_GLYPH_TOTAL, block_total.y);\r\n    }\r\n    if (item < item_count()) {\r\n        coarse_work.Store2(tile_base + COARSE_TILE_PTCL_START, uint2(start.x, start.x + count.x));\r\n        coarse_work.Store2(tile_base + COARSE_TILE_GLYPH_START, uint2(start.y, start.y + count.y));\r\n    }\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_chunk_offsets(uint3 local : SV_GroupThreadID) {\r\n    uint2 carry = uint2(0u, 0u);\r\n    for (uint block = 0u; block < config.chunk_count; block += COARSE_WORKGROUP_SIZE) {\r\n        uint chunk = block + local.x;\r\n        uint base = chunk * COARSE_CHUNK_RECORD_STRIDE;\r\n        uint2 count = uint2(0u, 0u);\r\n        if (chunk < config.chunk_count) count = uint2(chunk_records.Load(base), chunk_records.Load(base + COARSE_CHUNK_GLYPH_TOTAL));\r\n        uint2 offset = exclusive_prefix(count, local.x);\r\n        if (chunk < config.chunk_count) {\r\n            chunk_records.Store(base + COARSE_CHUNK_PTCL_OFFSET, carry.x + offset.x);\r\n            chunk_records.Store(base + COARSE_CHUNK_GLYPH_OFFSET, carry.y + offset.y);\r\n        }\r\n        carry += block_total;\r\n    }\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_apply_chunk_offsets(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {\r\n    uint item = group.x * COARSE_WORKGROUP_SIZE + local.x;\r\n    if (item >= item_count()) return;\r\n    uint tile_base = tile_at(item) * COARSE_TILE_RECORD_STRIDE;\r\n    uint chunk_base = group.x * COARSE_CHUNK_RECORD_STRIDE;\r\n    uint ptcl = chunk_records.Load(chunk_base + COARSE_CHUNK_PTCL_OFFSET);\r\n    uint glyph = chunk_records.Load(chunk_base + COARSE_CHUNK_GLYPH_OFFSET);\r\n    coarse_work.Store2(tile_base + COARSE_TILE_PTCL_START, coarse_work.Load2(tile_base + COARSE_TILE_PTCL_START) + ptcl);\r\n    coarse_work.Store2(tile_base + COARSE_TILE_GLYPH_START, coarse_work.Load2(tile_base + COARSE_TILE_GLYPH_START) + glyph);\r\n}\r\n",
+          "coarse/prefix_scan.hlsli": "// Particle and glyph allocation use the same ordered, wrapping-u32 scan.\r\ngroupshared uint2 scratch[COARSE_WORKGROUP_SIZE];\r\ngroupshared uint2 block_total;\r\n\r\nuint2 exclusive_prefix(uint2 value, uint lane) {\r\n    scratch[lane] = value;\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = 1u; step < COARSE_WORKGROUP_SIZE; step *= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) scratch[index] += scratch[index - step];\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    if (lane == 0u) {\r\n        block_total = scratch[COARSE_WORKGROUP_SIZE - 1u];\r\n        scratch[COARSE_WORKGROUP_SIZE - 1u] = uint2(0u, 0u);\r\n    }\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = COARSE_WORKGROUP_SIZE / 2u; step > 0u; step /= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) {\r\n            uint left = index - step;\r\n            uint2 previous = scratch[left];\r\n            scratch[left] = scratch[index];\r\n            scratch[index] += previous;\r\n        }\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    uint2 result = scratch[lane];\r\n    GroupMemoryBarrierWithGroupSync();\r\n    return result;\r\n}\r\n\r\n"
+        },
+        "target": "spirv",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "coarse-prefix"
+      }
+    },
+    {
+      "artifact_sha256": "a438088eb09fb632974cc269bfeefaa326825dc7671b8094094654a84a2b528f",
+      "key": "688b46e004a5a68c7affda7722474a46ff6f1b1071a3efb2ec3b4e7e5814ceee",
+      "recipe": {
+        "abi_sha256": "52d6988f60363258c26c626a599d2cbc96b49f3c0f07e3d7d1f16f97dc53a6de",
+        "cumsum_chunk_size": 256,
+        "entry": "coarse_chunk_offsets",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "coarse_chunk_offsets",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis",
+          "-spirv",
+          "-fspv-target-env=vulkan1.1"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "coarse/config.hlsli": "struct CoarseConfig {\r\n    uint tile_count;\r\n    uint tiles_width;\r\n    uint tiles_height;\r\n    uint draw_start;\r\n    uint draw_end;\r\n    uint layer_stack_start;\r\n    uint layer_stack_end;\r\n    uint ptcl_capacity;\r\n    uint glyph_capacity;\r\n    uint chunk_count;\r\n    uint text_run_count;\r\n    uint text_glyph_count;\r\n    uint tile_draw_index_count;\r\n    uint emit_chunk_capacity;\r\n    uint paint_brush_base;\r\n    uint text_enabled;\r\n    uint active_tile_count;\r\n    uint active_tile_list_base;\r\n    uint incremental;\r\n};\r\nConstantBuffer<CoarseConfig> config : register(b0, space0);\r\n",
+          "coarse/prefix.hlsl": "#include \"config.hlsli\"\r\nRWByteAddressBuffer coarse_work : register(u7, space0);\r\nRWByteAddressBuffer chunk_records : register(u8, space0);\r\n\r\n#include \"prefix_scan.hlsli\"\r\n\r\nuint item_count() { return config.incremental != 0u ? config.active_tile_count : config.tile_count; }\r\nuint tile_at(uint item) {\r\n    return config.incremental != 0u ? coarse_work.Load((config.active_tile_list_base + item) * 4u) : item;\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_prefix_chunks(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {\r\n    // Logical chunks bound raw metadata independently of retained capacity.\r\n    if (group.x >= config.chunk_count) return;\r\n    uint item = group.x * COARSE_WORKGROUP_SIZE + local.x;\r\n    uint tile_base = 0u;\r\n    uint2 count = uint2(0u, 0u);\r\n    if (item < item_count()) {\r\n        tile_base = tile_at(item) * COARSE_TILE_RECORD_STRIDE;\r\n        count = uint2(coarse_work.Load(tile_base), coarse_work.Load(tile_base + COARSE_TILE_GLYPH_COUNT));\r\n    }\r\n    uint2 start = exclusive_prefix(count, local.x);\r\n    uint chunk_base = group.x * COARSE_CHUNK_RECORD_STRIDE;\r\n    if (local.x == 0u) {\r\n        chunk_records.Store(chunk_base, block_total.x);\r\n        chunk_records.Store(chunk_base + COARSE_CHUNK_GLYPH_TOTAL, block_total.y);\r\n    }\r\n    if (item < item_count()) {\r\n        coarse_work.Store2(tile_base + COARSE_TILE_PTCL_START, uint2(start.x, start.x + count.x));\r\n        coarse_work.Store2(tile_base + COARSE_TILE_GLYPH_START, uint2(start.y, start.y + count.y));\r\n    }\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_chunk_offsets(uint3 local : SV_GroupThreadID) {\r\n    uint2 carry = uint2(0u, 0u);\r\n    for (uint block = 0u; block < config.chunk_count; block += COARSE_WORKGROUP_SIZE) {\r\n        uint chunk = block + local.x;\r\n        uint base = chunk * COARSE_CHUNK_RECORD_STRIDE;\r\n        uint2 count = uint2(0u, 0u);\r\n        if (chunk < config.chunk_count) count = uint2(chunk_records.Load(base), chunk_records.Load(base + COARSE_CHUNK_GLYPH_TOTAL));\r\n        uint2 offset = exclusive_prefix(count, local.x);\r\n        if (chunk < config.chunk_count) {\r\n            chunk_records.Store(base + COARSE_CHUNK_PTCL_OFFSET, carry.x + offset.x);\r\n            chunk_records.Store(base + COARSE_CHUNK_GLYPH_OFFSET, carry.y + offset.y);\r\n        }\r\n        carry += block_total;\r\n    }\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_apply_chunk_offsets(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {\r\n    uint item = group.x * COARSE_WORKGROUP_SIZE + local.x;\r\n    if (item >= item_count()) return;\r\n    uint tile_base = tile_at(item) * COARSE_TILE_RECORD_STRIDE;\r\n    uint chunk_base = group.x * COARSE_CHUNK_RECORD_STRIDE;\r\n    uint ptcl = chunk_records.Load(chunk_base + COARSE_CHUNK_PTCL_OFFSET);\r\n    uint glyph = chunk_records.Load(chunk_base + COARSE_CHUNK_GLYPH_OFFSET);\r\n    coarse_work.Store2(tile_base + COARSE_TILE_PTCL_START, coarse_work.Load2(tile_base + COARSE_TILE_PTCL_START) + ptcl);\r\n    coarse_work.Store2(tile_base + COARSE_TILE_GLYPH_START, coarse_work.Load2(tile_base + COARSE_TILE_GLYPH_START) + glyph);\r\n}\r\n",
+          "coarse/prefix_scan.hlsli": "// Particle and glyph allocation use the same ordered, wrapping-u32 scan.\r\ngroupshared uint2 scratch[COARSE_WORKGROUP_SIZE];\r\ngroupshared uint2 block_total;\r\n\r\nuint2 exclusive_prefix(uint2 value, uint lane) {\r\n    scratch[lane] = value;\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = 1u; step < COARSE_WORKGROUP_SIZE; step *= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) scratch[index] += scratch[index - step];\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    if (lane == 0u) {\r\n        block_total = scratch[COARSE_WORKGROUP_SIZE - 1u];\r\n        scratch[COARSE_WORKGROUP_SIZE - 1u] = uint2(0u, 0u);\r\n    }\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = COARSE_WORKGROUP_SIZE / 2u; step > 0u; step /= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) {\r\n            uint left = index - step;\r\n            uint2 previous = scratch[left];\r\n            scratch[left] = scratch[index];\r\n            scratch[index] += previous;\r\n        }\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    uint2 result = scratch[lane];\r\n    GroupMemoryBarrierWithGroupSync();\r\n    return result;\r\n}\r\n\r\n"
+        },
+        "target": "spirv",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "coarse-prefix"
+      }
+    },
+    {
+      "artifact_sha256": "99783927e2230666ef9ca203c0fa166503fe68012a231dda1201af9425ba4ece",
+      "key": "f19edd08b451f145bff501a6e717009d27565d41ed1198e6f7ac4ff0cbd9e96c",
+      "recipe": {
+        "abi_sha256": "52d6988f60363258c26c626a599d2cbc96b49f3c0f07e3d7d1f16f97dc53a6de",
+        "cumsum_chunk_size": 256,
+        "entry": "coarse_apply_chunk_offsets",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "coarse_apply_chunk_offsets",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis",
+          "-spirv",
+          "-fspv-target-env=vulkan1.1"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "coarse/config.hlsli": "struct CoarseConfig {\r\n    uint tile_count;\r\n    uint tiles_width;\r\n    uint tiles_height;\r\n    uint draw_start;\r\n    uint draw_end;\r\n    uint layer_stack_start;\r\n    uint layer_stack_end;\r\n    uint ptcl_capacity;\r\n    uint glyph_capacity;\r\n    uint chunk_count;\r\n    uint text_run_count;\r\n    uint text_glyph_count;\r\n    uint tile_draw_index_count;\r\n    uint emit_chunk_capacity;\r\n    uint paint_brush_base;\r\n    uint text_enabled;\r\n    uint active_tile_count;\r\n    uint active_tile_list_base;\r\n    uint incremental;\r\n};\r\nConstantBuffer<CoarseConfig> config : register(b0, space0);\r\n",
+          "coarse/prefix.hlsl": "#include \"config.hlsli\"\r\nRWByteAddressBuffer coarse_work : register(u7, space0);\r\nRWByteAddressBuffer chunk_records : register(u8, space0);\r\n\r\n#include \"prefix_scan.hlsli\"\r\n\r\nuint item_count() { return config.incremental != 0u ? config.active_tile_count : config.tile_count; }\r\nuint tile_at(uint item) {\r\n    return config.incremental != 0u ? coarse_work.Load((config.active_tile_list_base + item) * 4u) : item;\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_prefix_chunks(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {\r\n    // Logical chunks bound raw metadata independently of retained capacity.\r\n    if (group.x >= config.chunk_count) return;\r\n    uint item = group.x * COARSE_WORKGROUP_SIZE + local.x;\r\n    uint tile_base = 0u;\r\n    uint2 count = uint2(0u, 0u);\r\n    if (item < item_count()) {\r\n        tile_base = tile_at(item) * COARSE_TILE_RECORD_STRIDE;\r\n        count = uint2(coarse_work.Load(tile_base), coarse_work.Load(tile_base + COARSE_TILE_GLYPH_COUNT));\r\n    }\r\n    uint2 start = exclusive_prefix(count, local.x);\r\n    uint chunk_base = group.x * COARSE_CHUNK_RECORD_STRIDE;\r\n    if (local.x == 0u) {\r\n        chunk_records.Store(chunk_base, block_total.x);\r\n        chunk_records.Store(chunk_base + COARSE_CHUNK_GLYPH_TOTAL, block_total.y);\r\n    }\r\n    if (item < item_count()) {\r\n        coarse_work.Store2(tile_base + COARSE_TILE_PTCL_START, uint2(start.x, start.x + count.x));\r\n        coarse_work.Store2(tile_base + COARSE_TILE_GLYPH_START, uint2(start.y, start.y + count.y));\r\n    }\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_chunk_offsets(uint3 local : SV_GroupThreadID) {\r\n    uint2 carry = uint2(0u, 0u);\r\n    for (uint block = 0u; block < config.chunk_count; block += COARSE_WORKGROUP_SIZE) {\r\n        uint chunk = block + local.x;\r\n        uint base = chunk * COARSE_CHUNK_RECORD_STRIDE;\r\n        uint2 count = uint2(0u, 0u);\r\n        if (chunk < config.chunk_count) count = uint2(chunk_records.Load(base), chunk_records.Load(base + COARSE_CHUNK_GLYPH_TOTAL));\r\n        uint2 offset = exclusive_prefix(count, local.x);\r\n        if (chunk < config.chunk_count) {\r\n            chunk_records.Store(base + COARSE_CHUNK_PTCL_OFFSET, carry.x + offset.x);\r\n            chunk_records.Store(base + COARSE_CHUNK_GLYPH_OFFSET, carry.y + offset.y);\r\n        }\r\n        carry += block_total;\r\n    }\r\n}\r\n\r\n[numthreads(COARSE_WORKGROUP_SIZE, 1, 1)]\r\nvoid coarse_apply_chunk_offsets(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) {\r\n    uint item = group.x * COARSE_WORKGROUP_SIZE + local.x;\r\n    if (item >= item_count()) return;\r\n    uint tile_base = tile_at(item) * COARSE_TILE_RECORD_STRIDE;\r\n    uint chunk_base = group.x * COARSE_CHUNK_RECORD_STRIDE;\r\n    uint ptcl = chunk_records.Load(chunk_base + COARSE_CHUNK_PTCL_OFFSET);\r\n    uint glyph = chunk_records.Load(chunk_base + COARSE_CHUNK_GLYPH_OFFSET);\r\n    coarse_work.Store2(tile_base + COARSE_TILE_PTCL_START, coarse_work.Load2(tile_base + COARSE_TILE_PTCL_START) + ptcl);\r\n    coarse_work.Store2(tile_base + COARSE_TILE_GLYPH_START, coarse_work.Load2(tile_base + COARSE_TILE_GLYPH_START) + glyph);\r\n}\r\n",
+          "coarse/prefix_scan.hlsli": "// Particle and glyph allocation use the same ordered, wrapping-u32 scan.\r\ngroupshared uint2 scratch[COARSE_WORKGROUP_SIZE];\r\ngroupshared uint2 block_total;\r\n\r\nuint2 exclusive_prefix(uint2 value, uint lane) {\r\n    scratch[lane] = value;\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = 1u; step < COARSE_WORKGROUP_SIZE; step *= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) scratch[index] += scratch[index - step];\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    if (lane == 0u) {\r\n        block_total = scratch[COARSE_WORKGROUP_SIZE - 1u];\r\n        scratch[COARSE_WORKGROUP_SIZE - 1u] = uint2(0u, 0u);\r\n    }\r\n    GroupMemoryBarrierWithGroupSync();\r\n    for (uint step = COARSE_WORKGROUP_SIZE / 2u; step > 0u; step /= 2u) {\r\n        uint index = (lane + 1u) * step * 2u - 1u;\r\n        if (index < COARSE_WORKGROUP_SIZE) {\r\n            uint left = index - step;\r\n            uint2 previous = scratch[left];\r\n            scratch[left] = scratch[index];\r\n            scratch[index] += previous;\r\n        }\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    uint2 result = scratch[lane];\r\n    GroupMemoryBarrierWithGroupSync();\r\n    return result;\r\n}\r\n\r\n"
+        },
+        "target": "spirv",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "coarse-prefix"
+      }
+    }
+  ],
+  "spirv_validation": {
+    "validator": "Vulkan SDK 1.4.357.0 spirv-val",
+    "target_env": "vulkan1.1",
+    "passed_entries": 8
+  },
+  "performance_comparison": "waived by user",
+  "metal_hardware_validation": "deferred; no Mac"
+}

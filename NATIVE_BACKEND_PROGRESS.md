@@ -1543,3 +1543,16 @@ Clippy 已通过；3471 张既有 PNG 无变化。运行时禁用 DXC 可执行�
   four-route regressions. All 41 runtime tests and the no-DXC executable run pass.
 - Full release/CPU-only tests, feature checks, strict Clippy and review pass. Full
   existing SVG/examples preserve all 3471 PNG hashes. No performance run was made.
+
+## Windows M4 coarse allocation continuation — 2026-09-13
+
+- Eight coarse allocation entries now pass both native APIs and both wgpu routes
+  against independent CPU byte oracles (288 output executions). Current inventory
+  is 18/179; complete coarse/NativeRenderer and M4 exit remain unfinished.
+- Host and both shader languages share the coarse workgroup constant. Raw packed
+  layouts are checked against 14 host layout facts; allocation preserves guards.
+- All 44 runtime tests and their no-DXC repeat pass, with zero pipeline compiles
+  on the repeat. Full release, CPU-only, feature, strict Clippy, SPIR-V and review
+  checks pass. All 3471 existing SVG/example PNG hashes are unchanged.
+- See [coarse allocation scope and receipt](docs/native/m4-coarse-allocation.md).
+  Performance comparisons remain waived; Mac hardware validation remains deferred.

@@ -132,3 +132,9 @@ mod scan_emit;
 
 #[path = "tests/padded_tail.rs"]
 mod padded_tail;
+
+#[path = "tests/coarse_prefix_gpu.rs"]
+mod coarse_prefix;
+
+#[path = "tests/coarse_emit_gpu.rs"]
+mod coarse_emit;

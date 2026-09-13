@@ -11,7 +11,7 @@
 @group(0) @binding(8) var<storage, read_write> coarse_work: array<u32>;
 @group(0) @binding(9) var<storage, read> draw_batch_ids: array<u32>;
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(COARSE_WORKGROUP_SIZE)
 fn coarse_emit(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
     @builtin(num_workgroups) num_workgroups: vec3<u32>,
@@ -163,12 +163,12 @@ fn coarse_emit(
     }
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(COARSE_WORKGROUP_SIZE)
 fn coarse_emit_chunk_tile_kinds(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
 ) {
-    let tile_ix = workgroup_id.x * 256u + local_id.x;
+    let tile_ix = workgroup_id.x * COARSE_WORKGROUP_SIZE + local_id.x;
     if (tile_ix >= config.tile_count) {
         return;
     }

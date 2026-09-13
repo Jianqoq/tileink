@@ -11,7 +11,7 @@
 @group(0) @binding(8) var<storage, read> sdf_blob: array<u32>;
 @group(0) @binding(9) var<storage, read> draw_batch_ids: array<u32>;
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(COARSE_WORKGROUP_SIZE)
 fn coarse_count(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
@@ -87,7 +87,7 @@ fn coarse_count(
     }
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(COARSE_WORKGROUP_SIZE)
 fn coarse_count_bins(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,

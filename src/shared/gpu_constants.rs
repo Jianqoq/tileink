@@ -12,3 +12,7 @@ pub const TILE_SIZE: u32 = 16;
 /// Threads cooperatively copying one uploaded range.
 pub(crate) const RANGE_SCATTER_WORKGROUP_SIZE: u32 = 256;
 const _: () = assert!(RANGE_SCATTER_WORKGROUP_SIZE > 0 && RANGE_SCATTER_WORKGROUP_SIZE <= 1024);
+
+/// Lanes in the coarse allocation scan and cooperative tile interpreter.
+pub(crate) const COARSE_WORKGROUP_SIZE: u32 = 256;
+const _: () = assert!(COARSE_WORKGROUP_SIZE.is_power_of_two() && COARSE_WORKGROUP_SIZE <= 1024);
