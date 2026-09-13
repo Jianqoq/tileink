@@ -3,6 +3,7 @@
 #include "config.hlsli"
 #include "classify.hlsli"
 #include "draw_list.hlsli"
+#include "tile_classification.hlsli"
 
 ConstantBuffer<CoarseConfig> config : register(b0, space0);
 ByteAddressBuffer draw_records : register(t1, space0);
@@ -28,9 +29,7 @@ void coarse_emit_chunk_tile_kinds(uint3 id : SV_DispatchThreadID) {
             for (uint chunk = 0u; chunk < range.x; chunk++)
                 flags |= coarse_work.Load(emit_base(config, range.y + chunk) + COARSE_EMIT_CLASS_FLAGS);
         }
-        if ((flags & CHUNK_CLASS_OTHER) != 0u) kind = TILE_KIND_INTERPRETER;
-        else if ((flags & CHUNK_CLASS_SDF) != 0u) kind = (flags & CHUNK_CLASS_COLOR) != 0u ? TILE_KIND_MIXED : TILE_KIND_SDF;
-        else if ((flags & CHUNK_CLASS_COLOR) != 0u) kind = TILE_KIND_COLOR;
+        kind = classify_tile_flags(flags);
     }
     coarse_work.Store(emit_base(config, config.emit_chunk_capacity) + id.x * 4u, kind);
 }

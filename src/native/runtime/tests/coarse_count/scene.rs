@@ -255,6 +255,101 @@ impl CountScene {
         batch.readback(bindings[7].1)?;
         Ok(batch)
     }
+    pub(super) fn reserve_streams(&mut self, particles: u32, glyphs: u32) {
+        let old_base = (self.config[0] * 6 + self.config[7] * 6 + self.config[8]) as usize;
+        let new_base = (self.config[0] * 6 + particles * 6 + glyphs) as usize;
+        let mut work = vec![0x45454545; new_base];
+        work[..self.config[0] as usize * 6]
+            .copy_from_slice(&self.work[..self.config[0] as usize * 6]);
+        work.extend_from_slice(&self.work[old_base..]);
+        self.kind_base = self.kind_base + new_base - old_base;
+        if self.config[17] != 0 {
+            self.config[17] = (self.config[17] as usize + new_base - old_base) as u32;
+        }
+        self.work = work;
+        self.config[7] = particles;
+        self.config[8] = glyphs;
+        self.expected = self.work.clone();
+    }
+    pub(super) fn emit_batch(&self, entry: &'static str) -> Result<ComputeBatch> {
+        self.emit_batch_grid(entry, [2, 1, 1])
+    }
+    pub(super) fn emit_batch_grid(
+        &self,
+        entry: &'static str,
+        grid: [u32; 3],
+    ) -> Result<ComputeBatch> {
+        let mut batch = ComputeBatch::new();
+        let data: [(u32, &[u32]); 10] = [
+            (0, &self.config),
+            (1, &self.draws),
+            (2, &self.text),
+            (3, &self.sdf),
+            (4, &self.paths),
+            (5, &self.backdrops),
+            (6, &self.ranges),
+            (7, &self.layers),
+            (8, &self.work),
+            (9, &self.batches),
+        ];
+        let bindings = data
+            .iter()
+            .map(|(slot, words)| Ok((*slot, batch.buffer(bytes(words))?)))
+            .collect::<Result<Vec<_>>>()?;
+        // SAFETY: all source references are initialized; store helpers enforce
+        // physical stream capacities even when the logical range is truncated.
+        unsafe {
+            batch.dispatch(entry, &bindings, grid)?;
+        }
+        batch.readback(bindings[8].1)?;
+        Ok(batch)
+    }
+    pub(super) fn emit_chunks_batch(&self) -> Result<ComputeBatch> {
+        let mut batch = ComputeBatch::new();
+        let data: [&[u32]; 10] = [
+            &self.config,
+            &self.draws,
+            &self.text,
+            &self.sdf,
+            &self.paths,
+            &self.backdrops,
+            &self.ranges,
+            &self.layers,
+            &self.work,
+            &self.batches,
+        ];
+        let buffers = data
+            .iter()
+            .map(|words| batch.buffer(bytes(words)))
+            .collect::<Result<Vec<_>>>()?;
+        let count_slots = [0u32, 1, 2, 9, 3, 4, 5, 6, 7, 10];
+        let count_bindings: Vec<_> = count_slots
+            .into_iter()
+            .zip(buffers.iter().copied())
+            .collect();
+        let emit_bindings: Vec<_> = buffers
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(slot, id)| (slot as u32, id))
+            .collect();
+        let live = self.config[13] - 2;
+        let grid = [2, live.div_ceil(2).max(1) + 1, 1];
+        // SAFETY: contiguous live references have initialized scene ranges. Spare
+        // capacity deliberately retains valid-looking stale references; padded
+        // groups must ignore them. Intermediate counts/offsets stay on the GPU.
+        unsafe {
+            batch.dispatch("coarse_emit_chunk_particle_counts", &count_bindings, grid)?;
+            batch.dispatch(
+                "coarse_emit_chunk_particle_offsets",
+                &[(0, buffers[0]), (7, buffers[8])],
+                [self.config[0].div_ceil(COARSE_WORKGROUP_SIZE) + 1, 1, 1],
+            )?;
+            batch.dispatch("coarse_emit_chunks", &emit_bindings, grid)?;
+        }
+        batch.readback(buffers[8])?;
+        Ok(batch)
+    }
     pub(super) fn expect_counts(&mut self, particles: u32, glyphs: u32) {
         self.expected = self.work.clone();
         self.expected[0] = particles;

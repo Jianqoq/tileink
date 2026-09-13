@@ -7,7 +7,7 @@
 #include "tags.hlsli"
 
 struct CoarseDraw {
-    uint path_id, glyph_run_id, sdf_offset, sdf_len, shadow_offset, tag, fill_rule;
+    uint path_id, glyph_run_id, sdf_offset, sdf_len, shadow_offset, tag, fill_rule, brush_offset, solid_rect;
     int4 pixel_bounds;
     float4 affine_linear;
     float2 translation;
@@ -20,6 +20,8 @@ CoarseDraw load_draw(ByteAddressBuffer records, uint index) {
     draw.sdf_offset = records.Load(base + DRAW_SDF);
     draw.sdf_len = records.Load(base + DRAW_SDF_LEN);
     draw.shadow_offset = records.Load(base + DRAW_SHADOW);
+    draw.brush_offset = records.Load(base + DRAW_BRUSH_OFFSET);
+    draw.solid_rect = records.Load(base + DRAW_SOLID_RECT);
     draw.tag = records.Load(base + DRAW_TAG);
     draw.fill_rule = records.Load(base + DRAW_FILL_RULE);
     draw.pixel_bounds = asint(records.Load4(base + DRAW_PIXEL_BOUNDS));

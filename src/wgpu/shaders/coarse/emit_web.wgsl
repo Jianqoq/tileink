@@ -17,8 +17,15 @@ fn coarse_emit(
     @builtin(num_workgroups) num_workgroups: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
 ) {
+    if (config.tile_count == 0u) {
+        return;
+    }
     let ref_ix = linear_workgroup_index(workgroup_id, num_workgroups);
-    if (ref_ix >= config.emit_chunk_capacity) {
+    // Capacity includes stale pooled records. A rounded dispatch may only visit
+    // the contiguous live reference prefix, before any reads or barriers.
+    let last_tile = config.tile_count - 1u;
+    let live_refs = tile_emit_chunk_offset_at(last_tile) + tile_emit_chunk_count_at(last_tile);
+    if (ref_ix >= config.emit_chunk_capacity || ref_ix >= live_refs) {
         return;
     }
 

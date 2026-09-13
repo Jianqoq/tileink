@@ -1573,3 +1573,20 @@ Clippy 已通过；3471 张既有 PNG 无变化。运行时禁用 DXC 可执行�
   reviews pass; 3471 existing PNG hashes remain unchanged.
 - See [implementation and receipt](docs/native/m4-coarse-count.md). Performance
   comparisons remain waived and real Mac MSL validation remains deferred.
+
+
+## Windows M4 coarse emission — 2026-09-13
+
+- Tile, bin and chunk particle output now pass four-route complete-buffer tests;
+  all coarse inventory entries are kernel-validated. Total is 27/179; fine/effects,
+  shared production resources and NativeRenderer/Canvas remain pending.
+- Painter order, physical capacities, logical glyph limits, nonzero brush offsets,
+  negative winding, nested stack payload/order, cross-page glyph carry and sparse
+  17x19 grids are covered. The count/offset/chunk-output chain stays on the GPU.
+- Fixed demonstrated stale-capacity accesses in padded WGSL chunk output. Native
+  chunk dispatch has a distinct entry and an explicit production-reference mapping.
+- Full release, 60 runtime tests, strict Clippy, header/editor/SPIR-V checks, both
+  reviews and SVG/examples pass. A post-review 17-test coarse run and 60-test no-DXC
+  run pass, the latter with zero pipeline compiles. All 3471 PNG hashes are unchanged.
+- See [coarse emission evidence](docs/native/m4-coarse-emission.md). M4 remains
+  incomplete; performance comparisons are waived and real Mac validation deferred.

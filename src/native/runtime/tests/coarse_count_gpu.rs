@@ -209,3 +209,12 @@ mod grid;
 
 #[path = "coarse_count/kinds.rs"]
 mod kinds;
+
+#[path = "coarse_count/emit.rs"]
+mod emit;
+
+#[path = "coarse_count/emit_chunks.rs"]
+mod emit_chunks;
+
+#[path = "coarse_count/emit_scene.rs"]
+mod emit_scene;

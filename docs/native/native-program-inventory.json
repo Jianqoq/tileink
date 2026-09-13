@@ -365,8 +365,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "coarse_emit",
+      "hlsl_source": "src/shaders/hlsl/coarse/emit.hlsl",
+      "native_abi": "build/native/interfaces/coarse.rs",
+      "verification": "docs/native/m4-coarse-emission.md"
     },
     {
       "source": "coarse/emit.wgsl",
@@ -377,8 +381,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "coarse_emit_bins",
+      "hlsl_source": "src/shaders/hlsl/coarse/emit.hlsl",
+      "native_abi": "build/native/interfaces/coarse.rs",
+      "verification": "docs/native/m4-coarse-emission.md"
     },
     {
       "source": "coarse/emit_web.wgsl",
@@ -389,8 +397,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "coarse_emit_chunks",
+      "hlsl_source": "src/shaders/hlsl/coarse/emit_chunks.hlsl",
+      "native_abi": "build/native/interfaces/coarse.rs",
+      "verification": "docs/native/m4-coarse-emission.md"
     },
     {
       "source": "coarse/emit_web.wgsl",

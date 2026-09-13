@@ -113,6 +113,8 @@ pub fn get(family: &str) -> io::Result<Interface> {
         "coarse-particle-counts"
         | "coarse-tile-kinds"
         | "coarse-tile-counts"
+        | "coarse-emit-chunks"
+        | "coarse-emit"
         | "coarse-count"
         | "coarse-emit-allocation"
         | "coarse-emit-offsets"

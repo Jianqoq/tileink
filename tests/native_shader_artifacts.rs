@@ -8,6 +8,9 @@ fn native_build_embeds_each_expected_nonempty_program() {
         any(target_os = "windows", target_os = "linux")
     ));
     let entries = [
+        "coarse_emit",
+        "coarse_emit_bins",
+        "coarse_emit_chunks",
         "coarse_count",
         "coarse_count_bins",
         "coarse_emit_chunk_particle_counts",

@@ -2,7 +2,7 @@ use super::*;
 
 // Non-square grid crosses both bin axes; the empty final tile still carries
 // the total live reference offset produced by prefix allocation.
-fn grid_scene() -> (CountScene, Vec<u32>, usize) {
+pub(super) fn grid_scene() -> (CountScene, Vec<u32>, usize) {
     let mut scene = count_scene(1, false, 0);
     let tiles = 17usize * 19;
     let counts: Vec<u32> = (0..tiles)

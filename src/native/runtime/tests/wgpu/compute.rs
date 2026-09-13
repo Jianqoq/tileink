@@ -24,10 +24,13 @@ impl Reference {
         let mut encoder = self.device.create_command_encoder(&Default::default());
         for stage in batch.passes() {
             let source = match stage.shader.entry {
-                "coarse_emit_chunk_tile_kinds" => include_str!(concat!(
+                "coarse_emit_chunks" | "coarse_emit_chunk_tile_kinds" => include_str!(concat!(
                     env!("OUT_DIR"),
                     "/tileink_wgpu_coarse_emit_web.wgsl"
                 )),
+                "coarse_emit" | "coarse_emit_bins" => {
+                    include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_coarse_emit.wgsl"))
+                }
                 "coarse_count" | "coarse_count_bins" => {
                     include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_coarse_count.wgsl"))
                 }
@@ -69,6 +72,13 @@ impl Reference {
                     include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_scan_emit.wgsl"))
                 }
                 _ => return Err("missing independent WGSL compute reference".into()),
+            };
+            // The two production modules both name their entry coarse_emit.
+            // Native entries distinguish their tile and chunk dispatch contracts.
+            let entry = if stage.shader.entry == "coarse_emit_chunks" {
+                "coarse_emit"
+            } else {
+                stage.shader.entry
             };
             let module = self
                 .device
@@ -117,7 +127,7 @@ impl Reference {
                     label: Some(stage.shader.entry),
                     layout: Some(&layout),
                     module: &module,
-                    entry_point: Some(stage.shader.entry),
+                    entry_point: Some(entry),
                     compilation_options: Default::default(),
                     cache: None,
                 });

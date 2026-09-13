@@ -217,6 +217,8 @@ fn draw_raw_record_abi_matches_host_layout() {
         ("DRAW_SDF", offset_of!(DrawRecord, sdf_offset)),
         ("DRAW_SDF_LEN", offset_of!(DrawRecord, sdf_len)),
         ("DRAW_SHADOW", offset_of!(DrawRecord, sdf_shadow_offset)),
+        ("DRAW_BRUSH_OFFSET", offset_of!(DrawRecord, brush_offset)),
+        ("DRAW_SOLID_RECT", offset_of!(DrawRecord, solid_rect)),
         ("DRAW_TAG", offset_of!(DrawRecord, tag)),
         ("DRAW_FILL_RULE", offset_of!(DrawRecord, fill_rule)),
         ("DRAW_PIXEL_BOUNDS", offset_of!(DrawRecord, pixel_bounds)),
