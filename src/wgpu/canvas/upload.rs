@@ -1,6 +1,6 @@
-use crate::render::upload::paint::{PaintData, PaintUploadState};
+use crate::render::upload::paint::PaintData;
+use crate::render::upload::scene::SceneUploadStaging;
 use crate::render::upload::{
-    glyph_capacity::GlyphCapacityCache,
     ranges::{contiguous_index_runs, merge_sorted_dirty_ranges},
     text::TextUpload,
 };
@@ -14,10 +14,7 @@ use crate::{
         gpu_coarse::{
             coarse_work_tile_draw_index_word_offset, coarse_work_tile_draw_record_word_offset,
         },
-        gpu_plan::{
-            CoarseBinningStats, GpuBufferLengths, GpuCumsumPlan, GpuLengthOverrides,
-            GpuScanChunkRange, PersistentPathPlans, TILE_DRAW_PAGE_WORDS, TileDrawBins,
-        },
+        gpu_plan::{GpuBufferLengths, GpuCumsumPlan, PersistentPathPlans, TILE_DRAW_PAGE_WORDS},
         gpu_types::{GPU_LAYER_BLEND, GPU_LAYER_CLIP, GPU_LAYER_OPACITY},
         image_resource::GpuImageResourceUpload,
         pixel::opacity_f32_to_u8,
@@ -31,124 +28,6 @@ use super::{
     WgpuCoarseBuffers, WgpuSceneBuffers, create_image_resource_atlas_texture,
     create_image_resource_atlas_view, create_image_resource_texture,
 };
-
-#[derive(Default)]
-pub(crate) struct WgpuSceneUploadStaging {
-    text: TextUpload,
-    path_plans: PersistentPathPlans,
-    glyph_capacity: GlyphCapacityCache,
-    coarse_ptcl_capacity: usize,
-    coarse_ptcl_underused_frames: u16,
-    coarse_glyph_capacity: usize,
-    coarse_glyph_underused_frames: u16,
-    tile_draw_bins: TileDrawBins,
-    tile_draw_cursors: Vec<u32>,
-    layer_stack: Vec<LayerStackRecord>,
-    paint: PaintUploadState,
-}
-
-impl WgpuSceneUploadStaging {
-    pub(crate) fn coarse_binning_stats(&self, tiles: &[u32]) -> CoarseBinningStats {
-        self.tile_draw_bins.coarse_binning_stats(tiles)
-    }
-
-    pub(crate) fn scan_ranges(&self) -> &[GpuScanChunkRange] {
-        self.path_plans.scan_ranges()
-    }
-
-    pub(crate) fn active_batch_ids(&mut self, tiles: &[u32], draw_batch_ids: &[u32]) -> Vec<u32> {
-        self.tile_draw_bins.active_batch_ids(tiles, draw_batch_ids)
-    }
-
-    pub(crate) fn draws_in_bounds(
-        &self,
-        bounds: crate::shared::bounds::Bounds,
-        plan: &ExecPlan,
-    ) -> Vec<u32> {
-        self.tile_draw_bins
-            .draws_in_bounds(bounds, &plan.draw_order)
-    }
-
-    pub(crate) fn build_lengths(
-        &mut self,
-        canvas: &Canvas,
-        text: Option<&PreparedTextData>,
-        plan: &ExecPlan,
-        reused_plan: bool,
-        cached_stack_depths: Option<(usize, usize)>,
-        flat_text_changes: Option<&PreparedTextChanges>,
-    ) -> GpuBufferLengths {
-        // Lengths and tile draw bins must describe the same scene; building both here avoids
-        // recounting every draw/tile intersection later in prepare.
-        let path_counts = self.path_plans.update(
-            canvas,
-            canvas
-                .buffer_changes
-                .as_ref()
-                .map(|changes| changes.paths.as_slice()),
-        );
-        let glyph_capacity = self.glyph_capacity.update(
-            canvas,
-            text,
-            canvas.buffer_changes.as_ref(),
-            flat_text_changes,
-        );
-        let mut lengths = GpuBufferLengths::from_scene_with_text_and_tile_draw_bins(
-            canvas,
-            text,
-            plan,
-            &mut self.tile_draw_bins,
-            &mut self.tile_draw_cursors,
-            reused_plan,
-            GpuLengthOverrides {
-                path_plan_counts: Some(path_counts),
-                coarse_glyph_capacity: Some(glyph_capacity),
-                cached_stack_depths,
-                ..Default::default()
-            },
-        );
-        if canvas.buffer_changes.is_some() {
-            lengths.coarse_ptcl_capacity = stable_work_capacity(
-                &mut self.coarse_ptcl_capacity,
-                &mut self.coarse_ptcl_underused_frames,
-                lengths.coarse_ptcl_capacity,
-            );
-            lengths.coarse_glyph_capacity = stable_work_capacity(
-                &mut self.coarse_glyph_capacity,
-                &mut self.coarse_glyph_underused_frames,
-                lengths.coarse_glyph_capacity,
-            );
-        } else {
-            self.coarse_ptcl_capacity = lengths.coarse_ptcl_capacity;
-            self.coarse_ptcl_underused_frames = 0;
-            self.coarse_glyph_capacity = lengths.coarse_glyph_capacity;
-            self.coarse_glyph_underused_frames = 0;
-        }
-        lengths
-    }
-}
-
-const WORK_CAPACITY_SHRINK_DELAY: u16 = 120;
-
-fn stable_work_capacity(capacity: &mut usize, underused_frames: &mut u16, live: usize) -> usize {
-    if live > *capacity {
-        *capacity = live.saturating_add(live / 2).max(live);
-        *underused_frames = 0;
-    } else if capacity.saturating_mul(10) > live.saturating_mul(18) {
-        // Shrinking immediately makes alternating layer depth or glyph workloads move every
-        // following work-buffer section twice per pair of frames. Require sustained low usage so
-        // temporary topology changes retain stable offsets while genuinely smaller scenes still
-        // release excess capacity.
-        *underused_frames = underused_frames.saturating_add(1);
-        if *underused_frames >= WORK_CAPACITY_SHRINK_DELAY {
-            *capacity = live.saturating_add(live / 2).max(live);
-            *underused_frames = 0;
-        }
-    } else {
-        *underused_frames = 0;
-    }
-    *capacity
-}
 
 fn word_offset(words: usize) -> ::wgpu::BufferAddress {
     words as ::wgpu::BufferAddress * std::mem::size_of::<u32>() as ::wgpu::BufferAddress
@@ -355,7 +234,7 @@ impl WgpuSceneBuffers {
         plan: &ExecPlan,
         text: Option<&PreparedTextData>,
         image_resources: Option<&GpuImageResourceUpload>,
-        staging: &mut WgpuSceneUploadStaging,
+        staging: &mut SceneUploadStaging,
         upload_plan: bool,
         flat_text_changes: Option<&PreparedTextChanges>,
     ) -> usize {
@@ -440,7 +319,7 @@ impl WgpuSceneBuffers {
         queue: &::wgpu::Queue,
         canvas: &Canvas,
         image_resources: Option<&GpuImageResourceUpload>,
-        staging: &mut WgpuSceneUploadStaging,
+        staging: &mut SceneUploadStaging,
     ) -> usize {
         let geometry = profile_cpu("prepare.upload_scene.records.geometry", || {
             if let Some(changes) = &canvas.buffer_changes {
@@ -543,7 +422,7 @@ impl WgpuSceneBuffers {
         device: &::wgpu::Device,
         queue: &::wgpu::Queue,
         layer_stack: &[LayerStackEntry],
-        staging: &mut WgpuSceneUploadStaging,
+        staging: &mut SceneUploadStaging,
     ) -> usize {
         staging.layer_stack.clear();
         staging.layer_stack.reserve(layer_stack.len());
@@ -564,7 +443,7 @@ impl WgpuSceneBuffers {
         queue: &::wgpu::Queue,
         layer_stack: &[LayerStackEntry],
         ranges: &[std::ops::Range<usize>],
-        staging: &mut WgpuSceneUploadStaging,
+        staging: &mut SceneUploadStaging,
     ) -> usize {
         if staging.layer_stack.len() != layer_stack.len() {
             return self.upload_plan_layer_stack(device, queue, layer_stack, staging);
@@ -590,7 +469,7 @@ impl WgpuSceneBuffers {
         queue: &::wgpu::Queue,
         canvas: &Canvas,
         text: Option<&PreparedTextData>,
-        staging: &mut WgpuSceneUploadStaging,
+        staging: &mut SceneUploadStaging,
         flat_text_changes: Option<&PreparedTextChanges>,
     ) -> usize {
         profile_cpu("prepare.upload_scene.text.refill", || {
@@ -740,7 +619,7 @@ impl WgpuCoarseBuffers {
         device: &::wgpu::Device,
         queue: &::wgpu::Queue,
         lengths: crate::shared::gpu_plan::GpuBufferLengths,
-        staging: &mut WgpuSceneUploadStaging,
+        staging: &mut SceneUploadStaging,
     ) -> (usize, u64) {
         let record_word_offset = coarse_work_tile_draw_record_word_offset(
             lengths.tile_count,
@@ -840,49 +719,7 @@ impl WgpuCoarseBuffers {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        WORK_CAPACITY_SHRINK_DELAY, grow_image_resource_atlas_capacity, stable_work_capacity,
-    };
-
-    #[test]
-    fn work_capacity_does_not_thrash_under_alternating_layer_depth() {
-        let mut capacity = 1_000;
-        let mut underused = 0;
-        for _ in 0..WORK_CAPACITY_SHRINK_DELAY * 2 {
-            assert_eq!(
-                stable_work_capacity(&mut capacity, &mut underused, 400),
-                1_000
-            );
-            assert_eq!(
-                stable_work_capacity(&mut capacity, &mut underused, 900),
-                1_000
-            );
-            assert_eq!(underused, 0);
-        }
-    }
-
-    #[test]
-    fn work_capacity_releases_sustained_excess_capacity() {
-        let mut capacity = 1_000;
-        let mut underused = 0;
-        for _ in 1..WORK_CAPACITY_SHRINK_DELAY {
-            assert_eq!(
-                stable_work_capacity(&mut capacity, &mut underused, 400),
-                1_000
-            );
-        }
-        assert_eq!(
-            stable_work_capacity(&mut capacity, &mut underused, 400),
-            600
-        );
-        assert_eq!(underused, 0);
-
-        assert_eq!(
-            stable_work_capacity(&mut capacity, &mut underused, 800),
-            1_200
-        );
-        assert_eq!(underused, 0);
-    }
+    use super::grow_image_resource_atlas_capacity;
 
     #[test]
     fn image_resource_atlas_capacity_reuses_existing_texture_when_it_fits() {

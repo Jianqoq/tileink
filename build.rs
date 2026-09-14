@@ -87,6 +87,15 @@ fn build_wgpu() {
                 gpu_constants::get("CUMSUM_CHUNK_SIZE")
             );
         }
+        if entry.starts_with("coarse/") || entry.starts_with("fine") {
+            let mut tags = String::new();
+            for (name, value) in
+                gpu_constants::read_hlsl("shared/particle_tags.hlsli").expect("read particle tags")
+            {
+                tags.push_str(&format!("const GPU_{name}: u32 = {value}u;\n"));
+            }
+            source = tags + &source;
+        }
         if entry.starts_with("coarse/") {
             source = format!(
                 "const COARSE_WORKGROUP_SIZE: u32 = {}u;\n{source}",
@@ -101,9 +110,19 @@ fn build_wgpu() {
             );
         }
         if entry.starts_with("fine") {
-            source = gpu_constants::read_float_wgsl("fine/text/constants.hlsli")
-                .expect("read perceptual text constants")
-                + &source;
+            let mut constants = gpu_constants::read_float_wgsl("fine/text/constants.hlsli")
+                .expect("read perceptual text constants");
+            for (name, value) in
+                gpu_constants::read_hlsl("fine/constants.hlsli").expect("read fine constants")
+            {
+                let name = if name.starts_with("GLYPH_") {
+                    format!("GPU_{name}")
+                } else {
+                    name
+                };
+                constants.push_str(&format!("const {name}: u32 = {value}u;\n"));
+            }
+            source = constants + &source;
             source = format!(
                 "const FINE_WORKGROUP_SIZE: u32 = {}u;\n{source}",
                 gpu_constants::get("FINE_WORKGROUP_SIZE")

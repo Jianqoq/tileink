@@ -43,7 +43,7 @@ impl Renderer {
             config: WgpuBuffer::new(device, "tileink wgpu canvas config"),
             scene_buffers: WgpuSceneBuffers::new(device, range_scatter_pipeline.clone()),
             range_scatter_pipeline,
-            scene_upload: WgpuSceneUploadStaging::default(),
+            scene_upload: SceneUploadStaging::default(),
             scan: WgpuScanBuffers::new(device),
             coarse: WgpuCoarseBuffers::new(device),
             max_clip_depth: 0,

@@ -1,4 +1,5 @@
 #![allow(clippy::too_many_arguments)]
+use crate::render::upload::scene::SceneUploadStaging;
 
 use crate::render::output::RenderTargetId;
 use crate::render::scene_resources::SceneResourcePool;
@@ -29,7 +30,7 @@ use crate::{
 };
 
 use super::buffer::{WgpuBuffer, WgpuRangeScatterPipeline};
-use super::canvas::{WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers, WgpuSceneUploadStaging};
+use super::canvas::{WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers};
 use super::coarse::{WgpuCoarseBatch, WgpuCoarsePipeline};
 use super::commands::WgpuCommandBatch;
 use super::cumsum::WgpuCumsumPipeline;
@@ -91,7 +92,7 @@ pub struct Renderer {
     config: WgpuBuffer,
     scene_buffers: WgpuSceneBuffers,
     range_scatter_pipeline: Rc<WgpuRangeScatterPipeline>,
-    scene_upload: WgpuSceneUploadStaging,
+    scene_upload: SceneUploadStaging,
     scan: WgpuScanBuffers,
     coarse: WgpuCoarseBuffers,
     max_clip_depth: usize,
@@ -144,7 +145,7 @@ pub struct Renderer {
 struct WgpuSceneAllocation {
     config: WgpuBuffer,
     scene_buffers: WgpuSceneBuffers,
-    scene_upload: WgpuSceneUploadStaging,
+    scene_upload: SceneUploadStaging,
     scan: WgpuScanBuffers,
     coarse: WgpuCoarseBuffers,
     fine_spills: WgpuBuffer,

@@ -58,6 +58,7 @@ fn native_build_embeds_each_expected_nonempty_program() {
         "gradient_words",
         "brush_words",
         "text_words",
+        "fine_tile_main",
         "pattern_words",
         "texture_table_words",
         "texture_flip",

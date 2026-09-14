@@ -13,7 +13,7 @@ impl SceneResources {
             allocation: WgpuSceneAllocation {
                 config: WgpuBuffer::new(device, "tileink wgpu canvas config"),
                 scene_buffers: WgpuSceneBuffers::new(device, range_scatter_pipeline),
-                scene_upload: WgpuSceneUploadStaging::default(),
+                scene_upload: SceneUploadStaging::default(),
                 scan: WgpuScanBuffers::new(device),
                 coarse: WgpuCoarseBuffers::new(device),
                 fine_spills: WgpuBuffer::new(device, "tileink wgpu fine spills"),

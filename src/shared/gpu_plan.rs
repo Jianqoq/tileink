@@ -34,9 +34,12 @@ pub(crate) const TILE_DRAW_PAGE_WORDS: usize = COARSE_CHUNK_SIZE as usize + 1;
 const TILE_DRAW_FLAT_FLAG: u32 = 1 << 31;
 const RETAINED_TILE_DIRTY_CAPACITY: usize = 1_024;
 
-pub(crate) const FINE_LOCAL_CLIP_DEPTH: usize = 4;
-pub(crate) const FINE_LOCAL_GROUP_DEPTH: usize = 2;
-pub(crate) const FINE_GROUP_SPILL_FIELDS: usize = 5;
+pub(crate) const FINE_LOCAL_CLIP_DEPTH: usize =
+    super::gpu_constants::FINE_LOCAL_CLIP_DEPTH as usize;
+pub(crate) const FINE_LOCAL_GROUP_DEPTH: usize =
+    super::gpu_constants::FINE_LOCAL_GROUP_DEPTH as usize;
+pub(crate) const FINE_GROUP_SPILL_FIELDS: usize =
+    super::gpu_constants::FINE_GROUP_SPILL_FIELDS as usize;
 
 /// Canvas-derived fixed capacities for GPU buffers.
 ///

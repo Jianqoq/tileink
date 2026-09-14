@@ -15,7 +15,7 @@ pub(crate) use bindings::{
     WgpuCoarseBindings, WgpuCumsumBindings, WgpuFilterBindings, WgpuImageResourceBindingKey,
     WgpuImageResourceBindings, WgpuScanBindings, WgpuTileFineBindings,
 };
-pub(crate) use upload::WgpuSceneUploadStaging;
+
 pub(crate) use work_buffers::{WgpuCoarseBindGroups, WgpuCoarseBuffers, WgpuScanBuffers};
 static NEXT_SCENE_BUFFERS_ID: AtomicU64 = AtomicU64::new(1);
 

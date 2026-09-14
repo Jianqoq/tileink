@@ -185,3 +185,44 @@ pub(super) fn text(constants: &BTreeMap<String, u32>) -> Interface {
         &[("text_words", &["requests", "output", "request_config"])],
     )
 }
+
+pub(super) fn main(constants: &BTreeMap<String, u32>) -> Interface {
+    let mut sampler = buffer(13, Kind::Sampler);
+    sampler.size = 0;
+    let table = super::texture::table(constants)
+        .resources
+        .remove("texture_table")
+        .unwrap();
+    interface(
+        [constants["FINE_WORKGROUP_SIZE"], 1, 1],
+        &[
+            ("config", uniform(0, FINE_CONFIG, false)),
+            ("target", buffer(1, Kind::TextureWrite)),
+            ("draws", buffer(2, Kind::Read)),
+            ("paint", buffer(3, Kind::Read)),
+            ("coarse", buffer(4, Kind::Write)),
+            ("segments", buffer(5, Kind::Read)),
+            ("text", buffer(6, Kind::Read)),
+            ("spills", buffer(7, Kind::Write)),
+            ("atlas", buffer(12, Kind::TextureArray)),
+            ("image_sampler", sampler),
+            ("images", table),
+        ],
+        &[(
+            "fine_tile_main",
+            &[
+                "config",
+                "target",
+                "draws",
+                "paint",
+                "coarse",
+                "segments",
+                "text",
+                "spills",
+                "atlas",
+                "image_sampler",
+                "images",
+            ],
+        )],
+    )
+}

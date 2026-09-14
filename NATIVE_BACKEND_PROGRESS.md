@@ -1824,3 +1824,25 @@ See [text implementation and scope](docs/native/m4-fine-text.md) and its
 [verification receipt](docs/native/m4-fine-text-verification.json).
 The production inventory remains 175/179; fine main and NativeRenderer/Canvas
 integration remain unfinished. No performance comparison was run.
+
+
+## M4 fine interpreter — 2026-09-14
+
+All 179/179 production HLSL program variants now have kernel acceptance. Fine
+supports complete particle interpretation, specialization, all glyph formats,
+images, clipping and local/spilled groups. Host/WGSL constants are generated from
+canonical HLSLI. CPU scene staging is shared with the existing wgpu adapter.
+
+Six fine GPU tests and the complete 151-test native runtime pass, supplemented by
+final image and 19 coarse tests. Ordinary release (992), strict Clippy, shader
+reflection/editor, 82 SPIR-V modules, all SVG/examples and no-DXC cache replay pass.
+The fixed 3,471-PNG baseline has only the already accepted turbulence difference.
+Independent image semantics account for permitted final UNORM conversion while
+all APIs and texture variants still compare exact bytes. Both reviews are closed.
+
+See [implementation](docs/native/m4-fine-interpreter.md) and
+[receipt](docs/native/m4-fine-interpreter-verification.json).
+**M4 remains incomplete:** public NativeRenderer/Canvas assembly, shared GPU
+resource/submission integration and all immediate SVG/example four-route runs
+are still required. Existing SVG/example results validate wgpu regression, not
+an unavailable full native renderer. No performance comparisons were run.

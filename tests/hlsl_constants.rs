@@ -56,3 +56,40 @@ fn float_constants_preserve_literals_and_reject_ambiguous_input() {
         );
     }
 }
+
+#[test]
+fn fine_stack_host_layout_uses_shader_owned_constants() {
+    let generated = include_str!(concat!(env!("OUT_DIR"), "/tileink_gpu_constants.rs"));
+    let constants = gpu_constants::read_hlsl("fine/constants.hlsli").unwrap();
+    for name in [
+        "FINE_LOCAL_CLIP_DEPTH",
+        "FINE_LOCAL_GROUP_DEPTH",
+        "FINE_GROUP_SPILL_FIELDS",
+    ] {
+        assert!(
+            generated.contains(&format!("const {name}: u32 = {};", constants[name])),
+            "missing shader-owned host constant {name}"
+        );
+    }
+}
+
+#[cfg(feature = "wgpu")]
+#[test]
+fn coarse_and_fine_share_shader_owned_particle_tags() {
+    let tags = gpu_constants::read_hlsl("shared/particle_tags.hlsli").unwrap();
+    let coarse = include_str!("../src/wgpu/shaders/coarse/common.wgsl");
+    let fine = include_str!("../src/wgpu/shaders/fine/header.wgsl");
+    for (name, value) in tags {
+        let declaration = format!("const GPU_{name}:");
+        assert!(
+            !coarse.contains(&declaration) && !fine.contains(&declaration),
+            "duplicated particle tag {name}"
+        );
+        for generated in [
+            include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_coarse_emit.wgsl")),
+            include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_fine.wgsl")),
+        ] {
+            assert!(generated.contains(&format!("const GPU_{name}: u32 = {value}u;")));
+        }
+    }
+}

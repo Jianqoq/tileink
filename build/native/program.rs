@@ -33,6 +33,7 @@ pub const FAMILIES: &[(&str, &str)] = &[
     ("filter-blur-shared", "filter/blur_shared.hlsl"),
     ("fine-gradient", "validation/gradient.hlsl"),
     ("fine-pattern", "validation/pattern.hlsl"),
+    ("fine-main", "fine/main.hlsl"),
     ("fine-text", "validation/text.hlsl"),
     ("fine-brush", "validation/brush.hlsl"),
     ("texture-validation", "validation/texture.hlsl"),

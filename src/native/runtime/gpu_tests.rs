@@ -234,3 +234,23 @@ mod filter_brush;
 
 #[path = "tests/text_gpu.rs"]
 mod text;
+
+#[path = "tests/fine_gpu.rs"]
+mod fine;
+
+#[path = "tests/fine_fixture.rs"]
+mod fine_fixture;
+#[path = "tests/fine_glyph_gpu.rs"]
+mod fine_glyph;
+
+#[path = "tests/fine_stack_gpu.rs"]
+mod fine_stack;
+
+#[path = "tests/fine_geometry_gpu.rs"]
+mod fine_geometry;
+
+#[path = "tests/fine_spill_address_gpu.rs"]
+mod fine_spill_address;
+
+#[path = "tests/fine_images_gpu.rs"]
+mod fine_images;

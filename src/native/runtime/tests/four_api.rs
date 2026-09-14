@@ -50,11 +50,41 @@ impl Routes {
         case: &str,
         variant: Option<reference::FilterVariant>,
     ) -> Result<()> {
+        self.check_selected(batch, expected, case, variant, None)
+    }
+    pub(super) fn fine_reference(
+        &self,
+        batch: &ComputeBatch,
+        variant: reference::FineVariant,
+    ) -> Result<Vec<Vec<u8>>> {
+        self.reference[0].execute_fine_variant(batch, variant)
+    }
+
+    pub(super) fn check_fine(
+        &self,
+        batch: &ComputeBatch,
+        expected: &[Vec<u8>],
+        case: &str,
+        variant: reference::FineVariant,
+    ) -> Result<()> {
+        self.check_selected(batch, expected, case, None, Some(variant))
+    }
+    fn check_selected(
+        &self,
+        batch: &ComputeBatch,
+        expected: &[Vec<u8>],
+        case: &str,
+        variant: Option<reference::FilterVariant>,
+        fine: Option<reference::FineVariant>,
+    ) -> Result<()> {
         let mut mismatches = Vec::new();
         for (route, result) in self
             .reference
             .iter()
-            .map(|r| r.execute_variant(batch, variant))
+            .map(|r| match fine {
+                Some(v) => r.execute_fine_variant(batch, v),
+                None => r.execute_variant(batch, variant),
+            })
             .chain(self.native.iter().map(|r| {
                 r.submit_compute(batch)
                     .map_err(|e| format!("{e:?}").into())
@@ -77,6 +107,15 @@ impl Routes {
         }
         assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
         Ok(())
+    }
+    pub(super) fn assert_reference_pipeline_builds(&self, expected: usize) {
+        for reference in &self.reference {
+            assert_eq!(
+                reference.compute_pipeline_builds(),
+                expected,
+                "reference variants compile exactly once per device"
+            );
+        }
     }
     pub(super) fn validate(&self) -> Result<()> {
         for adapter in &self.native {

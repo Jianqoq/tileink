@@ -1,6 +1,6 @@
 //! Execute production WGSL independently with the same logical input buffers.
 use super::compute_resources::{self, GpuResource};
-use super::{FilterVariant, Reference};
+use super::{FilterVariant, FineVariant, Reference};
 use crate::native::runtime::{Result, compute::ComputeBatch};
 impl Reference {
     pub fn execute_compute(&self, batch: &ComputeBatch) -> Result<Vec<Vec<u8>>> {
@@ -10,6 +10,14 @@ impl Reference {
         &self,
         batch: &ComputeBatch,
         filter: Option<FilterVariant>,
+    ) -> Result<Vec<Vec<u8>>> {
+        self.execute_selected(batch, filter, None)
+    }
+    pub(super) fn execute_selected(
+        &self,
+        batch: &ComputeBatch,
+        filter: Option<FilterVariant>,
+        fine: Option<FineVariant>,
     ) -> Result<Vec<Vec<u8>>> {
         let resources: Vec<_> = batch
             .resources()
@@ -39,6 +47,8 @@ impl Reference {
             .collect();
         let mut encoder = self.device.create_command_encoder(&Default::default());
         for stage in batch.passes() {
+            let fine_portable =
+                stage.shader.entry == "fine_tile_main" && fine.is_some_and(|v| v.portable);
             let helper_source;
             let source = match stage.shader.entry {
                 "sdf_coverage_words" => {
@@ -178,6 +188,12 @@ impl Reference {
                     );
                     helper_source.as_str()
                 }
+                "fine_tile_main" => {
+                    helper_source = fine
+                        .ok_or("fine reference variant must be explicit")?
+                        .source();
+                    helper_source.as_str()
+                }
                 "text_words" => {
                     helper_source = format!(
                         "{}\n{}",
@@ -296,21 +312,18 @@ impl Reference {
             } else {
                 stage.shader.entry
             };
-            let module = self
-                .device
-                .create_shader_module(wgpu::ShaderModuleDescriptor {
-                    label: Some("production WGSL compute reference"),
-                    source: wgpu::ShaderSource::Wgsl(source.into()),
-                });
             let mut entries: Vec<_> = stage
                 .bindings
                 .iter()
                 .map(|(b, _)| wgpu::BindGroupLayoutEntry {
                     binding: b.slot,
                     visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: if stage.shader.entry.starts_with("filter_")
-                        && b.slot == 3
-                        && filter.is_some_and(|v| !v.portable)
+                    ty: if fine_portable && b.slot == 1 {
+                        compute_resources::layout(crate::native::shaders::BindingKind::Texture)
+                    } else if (stage.shader.entry == "fine_tile_main" && b.slot == 1)
+                        || (stage.shader.entry.starts_with("filter_")
+                            && b.slot == 3
+                            && filter.is_some_and(|v| !v.portable))
                     {
                         wgpu::BindingType::StorageTexture {
                             access: wgpu::StorageTextureAccess::ReadWrite,
@@ -327,7 +340,18 @@ impl Reference {
                     },
                 })
                 .collect();
-            let snapshot = if filter.is_some_and(|v| v.portable)
+            let snapshot = if fine_portable {
+                let target = stage.bindings.iter().find(|(b, _)| b.slot == 1).unwrap().1;
+                entries.push(wgpu::BindGroupLayoutEntry {
+                    binding: 8,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: compute_resources::layout(
+                        crate::native::shaders::BindingKind::TextureWrite,
+                    ),
+                    count: None,
+                });
+                Some(resources[target.index()].snapshot(&self.device, &mut encoder))
+            } else if filter.is_some_and(|v| v.portable)
                 && matches!(
                     stage.shader.entry,
                     "filter_composite_drop_shadow_region"
@@ -344,7 +368,8 @@ impl Reference {
                         | "filter_composite_surface_stack_region"
                         | "filter_composite_rect_direct_region"
                         | "filter_upsample_rect_composite_region"
-                ) {
+                )
+            {
                 let target = stage.bindings.iter().find(|(b, _)| b.slot == 3).unwrap().1;
                 let snapshot = resources[target.index()].snapshot(&self.device, &mut encoder);
                 entries.push(wgpu::BindGroupLayoutEntry {
@@ -365,45 +390,19 @@ impl Reference {
                 .filter(|(b, _)| b.kind == crate::native::shaders::BindingKind::TextureTable)
                 .map(|(b, _)| b.slot)
                 .collect();
-            let group_count = if table_slots.is_empty() { 1 } else { 2 };
-            let layouts: Vec<_> = (0..group_count)
-                .map(|group| {
-                    let entries: Vec<_> = entries
-                        .iter()
-                        .copied()
-                        .filter(|e| usize::from(table_slots.contains(&e.binding)) == group)
-                        .collect();
-                    self.device
-                        .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                            label: None,
-                            entries: &entries,
-                        })
-                })
-                .collect();
-            let layout_refs: Vec<_> = layouts.iter().map(Some).collect();
-            let layout = self
-                .device
-                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                    label: None,
-                    bind_group_layouts: &layout_refs,
-                    immediate_size: 0,
-                });
-            let pipeline = self
-                .device
-                .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                    label: Some(stage.shader.entry),
-                    layout: Some(&layout),
-                    module: &module,
-                    entry_point: Some(entry),
-                    compilation_options: Default::default(),
-                    cache: None,
-                });
+            let compiled =
+                self.compute_cache
+                    .pipeline(&self.device, source, entry, &entries, &table_slots);
+            let layouts = compiled.layouts;
+            let pipeline = compiled.pipeline;
             let mut entries: Vec<_> = stage
                 .bindings
                 .iter()
                 .map(|(b, id)| wgpu::BindGroupEntry {
                     binding: b.slot,
-                    resource: if let Some(views) = &tables[id.index()] {
+                    resource: if fine_portable && b.slot == 1 {
+                        snapshot.as_ref().unwrap().binding()
+                    } else if let Some(views) = &tables[id.index()] {
                         wgpu::BindingResource::TextureViewArray(views)
                     } else {
                         resources[id.index()].binding()
@@ -411,10 +410,13 @@ impl Reference {
                 })
                 .collect();
             if let Some(snapshot) = &snapshot {
-                entries.push(wgpu::BindGroupEntry {
-                    binding: 9,
-                    resource: snapshot.binding(),
-                });
+                let (binding, resource) = if fine_portable {
+                    let target = stage.bindings.iter().find(|(b, _)| b.slot == 1).unwrap().1;
+                    (8, resources[target.index()].binding())
+                } else {
+                    (9, snapshot.binding())
+                };
+                entries.push(wgpu::BindGroupEntry { binding, resource });
             }
             let groups: Vec<_> = layouts
                 .iter()

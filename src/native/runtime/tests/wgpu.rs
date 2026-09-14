@@ -10,6 +10,7 @@ pub struct Reference {
     scatter_bindings: wgpu::BindGroupLayout,
     scatter_pipeline: wgpu::ComputePipeline,
     pipelines: BTreeMap<&'static str, wgpu::ComputePipeline>,
+    compute_cache: compute_cache::ComputeCache,
 }
 
 impl Reference {
@@ -138,6 +139,7 @@ impl Reference {
                     cache: None,
                 });
             return Ok(Self {
+                compute_cache: Default::default(),
                 device,
                 queue,
                 bindings,
@@ -354,5 +356,17 @@ impl FilterVariant {
             .replace("@group(1) @binding(0)", "@group(0) @binding(12)")
             .replace("@group(1) @binding(1)", "@group(0) @binding(13)")
             .replace("@group(1) @binding(2)", "@group(1) @binding(30)")
+    }
+}
+
+#[path = "wgpu/fine.rs"]
+mod fine;
+pub use fine::FineVariant;
+
+#[path = "wgpu/compute_cache.rs"]
+mod compute_cache;
+impl Reference {
+    pub fn compute_pipeline_builds(&self) -> usize {
+        self.compute_cache.builds()
     }
 }
