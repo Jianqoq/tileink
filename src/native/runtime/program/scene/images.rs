@@ -18,6 +18,13 @@ impl SceneImages {
         if !upload.vectors().is_empty() {
             return Err("native vector images require frame rendering before sampling".into());
         }
+        Self::allocate(batch, upload)
+    }
+
+    pub(super) fn allocate(
+        batch: &mut ComputeBatch,
+        upload: &GpuImageResourceUpload,
+    ) -> Result<Self> {
         let pages = upload.atlas_pages();
         let atlas = if pages.is_empty() {
             batch.texture_array_rgba8([1, 1, 1], vec![0; 4])?
@@ -54,10 +61,22 @@ impl SceneImages {
             let slot = textures
                 .get_mut(texture.index as usize)
                 .ok_or("native image texture index exceeds shader table")?;
-            *slot = batch.texture_rgba8(
-                [texture.width, texture.height],
-                bytemuck::cast_slice(&texture.pixels).to_vec(),
-            )?;
+            // Vector texture uploads intentionally have no CPU pixels. Allocate
+            // their full extent before the child renderer fills it on the GPU.
+            let pixels = if texture.pixels.is_empty() && upload.vectors().iter().any(|vector|
+                matches!(vector.placement, crate::shared::image_resource::ImageResourcePlacement::Texture(rect)
+                    if rect.index == texture.index)) {
+                if [texture.width, texture.height].into_iter().any(|n| n == 0 || n > i32::MAX as u32) {
+                    return Err("native vector texture dimensions exceed texture limits".into());
+                }
+                let bytes = (texture.width as usize).checked_mul(texture.height as usize)
+                    .and_then(|n| n.checked_mul(4)).ok_or("native vector texture size overflow")?;
+                let mut pixels = Vec::new();
+                pixels.try_reserve_exact(bytes)?;
+                pixels.resize(bytes, 0);
+                pixels
+            } else { bytemuck::cast_slice(&texture.pixels).to_vec() };
+            *slot = batch.texture_rgba8([texture.width, texture.height], pixels)?;
         }
         Ok(Self {
             atlas,

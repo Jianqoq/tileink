@@ -108,3 +108,100 @@ fn malformed_atlas_pages_are_rejected_before_recording() {
         assert!(batch.resources().is_empty());
     }
 }
+
+#[test]
+fn fresh_vector_targets_are_filled_even_with_clean_cached_placements() -> Result<()> {
+    let mut store = ImageResourceStore::default();
+    let canvas = Rc::new(Canvas::new(4, 4, 1.0));
+    store.insert(ImageKey(1), canvas.clone());
+    let original = store.upload_merged(&ImageResourceStore::default(), 8, 4, 0, None);
+    let cached = store.upload_merged(&ImageResourceStore::default(), 8, 4, 0, Some(&original));
+    assert!(!cached.vectors()[0].dirty);
+    let mut batch = ComputeBatch::new();
+    let mut rendered = 0;
+    SceneImages::record_with_vectors(&mut batch, &cached, |batch, child| {
+        assert!(Rc::ptr_eq(child, &canvas));
+        rendered += 1;
+        batch.texture_rgba8([4, 4], vec![0; 4 * 4 * 4])
+    })?;
+    assert_eq!(rendered, 1);
+    assert_eq!(batch.commands().len(), 9);
+    assert!(batch.outputs().is_empty());
+    Ok(())
+}
+
+#[test]
+fn vector_output_failures_never_return_ready_image_handles() {
+    let mut store = ImageResourceStore::default();
+    store.insert(ImageKey(1), Rc::new(Canvas::new(4, 4, 1.0)));
+    let upload = store.upload_merged(&ImageResourceStore::default(), 8, 4, 0, None);
+    let mut batch = ComputeBatch::new();
+    assert!(
+        SceneImages::record_with_vectors(&mut batch, &upload, |_, _| Err(
+            "child render failed".into()
+        ))
+        .is_err()
+    );
+    assert!(batch.commands().is_empty());
+    for invalid in 0..3 {
+        let mut batch = ComputeBatch::new();
+        let result =
+            SceneImages::record_with_vectors(&mut batch, &upload, |batch, _| match invalid {
+                0 => batch.texture_rgba8([1, 1], vec![0; 4]),
+                1 => ComputeBatch::new().texture_rgba8([4, 4], vec![0; 64]),
+                _ => batch.texture_array_rgba8([4, 4, 1], vec![0; 64]),
+            });
+        assert!(result.is_err());
+        assert!(batch.commands().is_empty());
+    }
+}
+
+#[test]
+fn vector_texture_without_cpu_pixels_gets_complete_gpu_storage() -> Result<()> {
+    let mut store = ImageResourceStore::default();
+    store.insert(ImageKey(1), Rc::new(Canvas::new(2050, 1, 1.0)));
+    let upload = store.upload_merged(
+        &ImageResourceStore::default(),
+        4096,
+        4,
+        NATIVE_TEXTURE_TABLE_CAPACITY,
+        None,
+    );
+    assert_eq!(upload.textures().len(), 1);
+    assert!(upload.textures()[0].pixels.is_empty());
+    let mut batch = ComputeBatch::new();
+    let images = SceneImages::record_with_vectors(&mut batch, &upload, |batch, _| {
+        batch.texture_rgba8([2050, 1], vec![0; 2050 * 4])
+    })?;
+    let Resource::TextureTable(table) = &batch.resources()[images.table.index()] else {
+        panic!()
+    };
+    let Resource::Texture(texture) =
+        &batch.resources()[table[upload.textures()[0].index as usize].index()]
+    else {
+        panic!()
+    };
+    assert_eq!(texture.bytes.len(), 2050 * 4);
+    assert_eq!(batch.commands().len(), 1);
+    Ok(())
+}
+
+#[test]
+fn oversized_vector_dimensions_are_rejected_before_pixel_allocation() {
+    // Empty Canvas construction and vector placement create metadata only. This
+    // must fail dimension validation before attempting a 16 GiB pixel allocation.
+    let mut store = ImageResourceStore::default();
+    store.insert(ImageKey(1), Rc::new(Canvas::new(u32::MAX, 1, 1.0)));
+    let upload = store.upload_merged(
+        &ImageResourceStore::default(),
+        u32::MAX,
+        1,
+        NATIVE_TEXTURE_TABLE_CAPACITY,
+        None,
+    );
+    assert_eq!(upload.textures()[0].width, u32::MAX);
+    let result = SceneImages::record_with_vectors(&mut ComputeBatch::new(), &upload, |_, _| {
+        panic!("invalid destination cannot invoke child rendering")
+    });
+    assert!(result.is_err());
+}

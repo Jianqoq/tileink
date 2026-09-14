@@ -304,3 +304,6 @@ mod images;
 
 #[path = "scene/layers.rs"]
 mod layers;
+
+#[path = "scene/vector_images.rs"]
+mod vector_images;

@@ -69,10 +69,23 @@ fn render_canvas(
     upload: &crate::shared::image_resource::GpuImageResourceUpload,
     chunked: bool,
 ) -> Result<ComputeBatch> {
-    let (width, height) = canvas.physical_size();
     let mut batch = ComputeBatch::new();
     let images = SceneImages::record(&mut batch, upload)?;
-    let scene = cache.record(&mut batch, canvas, None, Some(upload), 65535)?;
+    let target = encode_canvas(cache, &mut batch, canvas, upload, &images, chunked)?;
+    batch.readback(target)?;
+    Ok(batch)
+}
+
+pub(super) fn encode_canvas(
+    cache: &mut SceneCache,
+    batch: &mut ComputeBatch,
+    canvas: &Canvas,
+    upload: &crate::shared::image_resource::GpuImageResourceUpload,
+    images: &SceneImages,
+    chunked: bool,
+) -> Result<crate::native::runtime::compute::ResourceId> {
+    let (width, height) = canvas.physical_size();
+    let scene = cache.record(batch, canvas, None, Some(upload), 65535)?;
     let target = batch.texture_rgba8([width, height], vec![0; (width * height * 4) as usize])?;
     let indices = scene
         .plan()
@@ -88,7 +101,7 @@ fn render_canvas(
             unreachable!()
         };
         scene.encode_coarse(
-            &mut batch,
+            batch,
             *batch_id..batch_id.saturating_add(1),
             layer_stack.start as u32..layer_stack.end as u32,
             chunked,
@@ -97,11 +110,10 @@ fn render_canvas(
         // SAFETY: paint and image resources use the same placement upload;
         // coarse for this exact scene/batch precedes fine on the live target.
         unsafe {
-            scene.encode_fine(&mut batch, target, &images, 0, true, 65535)?;
+            scene.encode_fine(batch, target, images, 0, true, 65535)?;
         }
     }
-    batch.readback(target)?;
-    Ok(batch)
+    Ok(target)
 }
 
 #[test]

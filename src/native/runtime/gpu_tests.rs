@@ -263,3 +263,6 @@ mod scene_coarse;
 
 #[path = "tests/texture_copy_gpu.rs"]
 mod texture_copy;
+
+#[path = "tests/scene_vector_gpu.rs"]
+mod scene_vector;

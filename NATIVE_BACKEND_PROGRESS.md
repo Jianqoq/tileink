@@ -1940,3 +1940,17 @@ Both reviews are closed. See [texture transfers](docs/native/m4-texture-copy.md)
 M4 remains incomplete: full frame/vector/effect assembly, remaining resource/
 submission integration and complete immediate four-renderer acceptance remain.
 No performance comparison was run.
+
+## M4 native vector image uploads — 2026-09-14
+
+Vector child outputs now populate shared atlas/table placements on GPU in the
+parent command batch, including raster-equivalent clamp borders. Fresh allocations
+are populated even when CPU metadata is clean. A release-reproduced empty-vector-
+pixel allocation failure is fixed; invalid sizes are rejected before allocation.
+Actual child/parent Canvas four-API pixels and full image bytes pass (124.64s).
+Release (1,026), integrations, lint, native-only and full SVG/examples pass, with
+only the approved PNG delta. Reviews are closed. See
+[vector image uploads](docs/native/m4-vector-images.md). M4 remains incomplete:
+full renderer/frame/effect orchestration, remaining GPU resource/submission
+integration and complete four-renderer immediate acceptance remain. No performance
+comparison was run.
