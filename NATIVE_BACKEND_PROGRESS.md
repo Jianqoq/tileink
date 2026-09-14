@@ -1812,3 +1812,15 @@ Release (992), native runtime (144), final focused (21), strict Clippy, editor,
 with pipeline cache hits. No new PNG differences beyond approved turbulence.
 Reviews are closed; see [brush filters](docs/native/m4-filter-brush.md).
 Inventory reaches **175/179**. Fine and NativeRenderer/Canvas integration keep M4 open.
+
+## M4 fine text helpers — 2026-09-14
+
+The five maintained HLSL text blending paths now pass four-API exact packed
+output checks, independent integer LCD and f64 linear-light semantic oracles.
+Perceptual parameters are canonical HLSLI shared with the WGSL build. Full
+release/runtime, SVG/examples, editor, Clippy and persistent cache replay pass;
+only the previously accepted turbulence PNG differs from the fixed baseline.
+See [text implementation and scope](docs/native/m4-fine-text.md) and its
+[verification receipt](docs/native/m4-fine-text-verification.json).
+The production inventory remains 175/179; fine main and NativeRenderer/Canvas
+integration remain unfinished. No performance comparison was run.

@@ -178,6 +178,20 @@ impl Reference {
                     );
                     helper_source.as_str()
                 }
+                "text_words" => {
+                    helper_source = format!(
+                        "{}\n{}",
+                        crate::wgpu::shader_variants::patch_image_resource_shader_source(
+                            include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_fine_web.wgsl")),
+                            false
+                        ),
+                        include_str!(concat!(
+                            env!("CARGO_MANIFEST_DIR"),
+                            "/tests/shaders/text.wgsl"
+                        ))
+                    );
+                    helper_source.as_str()
+                }
                 "gradient_words" => {
                     helper_source = format!(
                         "{}\n{}",

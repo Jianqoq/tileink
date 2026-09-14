@@ -161,3 +161,27 @@ pub(super) fn brush(constants: &BTreeMap<String, u32>) -> Interface {
     result.entries.insert("brush_words".into(), bindings);
     result
 }
+
+pub(super) fn text(constants: &BTreeMap<String, u32>) -> Interface {
+    interface(
+        [constants["FINE_WORKGROUP_SIZE"], 1, 1],
+        &[
+            ("requests", buffer(9, Kind::Read)),
+            ("output", buffer(10, Kind::Write)),
+            (
+                "request_config",
+                uniform(
+                    11,
+                    &[
+                        ("count", 0, 1),
+                        ("pad0", 4, 1),
+                        ("pad1", 8, 1),
+                        ("pad2", 12, 1),
+                    ],
+                    false,
+                ),
+            ),
+        ],
+        &[("text_words", &["requests", "output", "request_config"])],
+    )
+}

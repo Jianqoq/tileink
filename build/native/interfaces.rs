@@ -155,6 +155,7 @@ pub fn get(family: &str) -> io::Result<Interface> {
         "filter-blur-shared" => filter::blur(&constants, true),
         "fine-gradient" => fine::gradient(&constants),
         "fine-pattern" => fine::pattern(&constants),
+        "fine-text" => fine::text(&constants),
         "fine-brush" => fine::brush(&constants),
         "texture-validation" => texture::validation(&constants),
         "texture-array-validation" => texture::array(&constants),

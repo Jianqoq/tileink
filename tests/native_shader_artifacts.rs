@@ -57,6 +57,7 @@ fn native_build_embeds_each_expected_nonempty_program() {
         "filter_drop_shadow_mask_region",
         "gradient_words",
         "brush_words",
+        "text_words",
         "pattern_words",
         "texture_table_words",
         "texture_flip",

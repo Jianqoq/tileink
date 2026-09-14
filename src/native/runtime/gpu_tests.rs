@@ -231,3 +231,6 @@ mod brush;
 
 #[path = "tests/filter_brush_gpu.rs"]
 mod filter_brush;
+
+#[path = "tests/text_gpu.rs"]
+mod text;

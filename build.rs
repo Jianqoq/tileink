@@ -101,6 +101,9 @@ fn build_wgpu() {
             );
         }
         if entry.starts_with("fine") {
+            source = gpu_constants::read_float_wgsl("fine/text/constants.hlsli")
+                .expect("read perceptual text constants")
+                + &source;
             source = format!(
                 "const FINE_WORKGROUP_SIZE: u32 = {}u;\n{source}",
                 gpu_constants::get("FINE_WORKGROUP_SIZE")
