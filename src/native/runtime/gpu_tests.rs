@@ -168,3 +168,6 @@ mod sampler;
 
 #[path = "tests/pattern_gpu.rs"]
 mod pattern;
+
+#[path = "tests/filter_gpu.rs"]
+mod filter;

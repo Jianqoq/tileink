@@ -206,3 +206,38 @@ fn array_texture_reflection_rejects_nonarray_and_wrong_access() {
         assert!(spirv::validate(&bytes, "texture_layer", &interface).is_err());
     }
 }
+
+#[cfg(all(
+    feature = "native-vulkan",
+    any(target_os = "windows", target_os = "linux")
+))]
+#[test]
+fn filter_uniform_spirv_preserves_signed_float_and_vector_types() {
+    let interface = interfaces::get("filter-basic").unwrap();
+    let artifact = tileink::NATIVE_SHADER_ARTIFACTS
+        .iter()
+        .find(|a| a.format == "spirv" && a.entry == "filter_offset_region")
+        .unwrap();
+    spirv::validate(artifact.bytes, artifact.entry, &interface).unwrap();
+    for name in ["offset_x", "amount", "matrix_r", "width"] {
+        let mut wrong = interface.clone();
+        let field = wrong
+            .resources
+            .get_mut("config")
+            .unwrap()
+            .fields
+            .iter_mut()
+            .find(|f| f.name == name)
+            .unwrap();
+        field.scalar = if field.scalar == abi::Scalar::U32 {
+            abi::Scalar::F32
+        } else {
+            abi::Scalar::U32
+        };
+        assert_ne!(interface.cache_bytes(), wrong.cache_bytes());
+        assert!(
+            spirv::validate(artifact.bytes, artifact.entry, &wrong).is_err(),
+            "{name}"
+        );
+    }
+}

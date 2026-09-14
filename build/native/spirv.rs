@@ -180,14 +180,16 @@ pub fn validate(bytes: &[u8], entry: &str, abi: &Interface) -> io::Result<()> {
                     .get(&members[index])
                     .ok_or_else(|| invalid("SPIR-V uniform field type"))?;
                 if field.lanes == 1 {
-                    require(is_uint(ty), "SPIR-V uint parameter")?;
+                    require(is_scalar(ty, field.scalar), "SPIR-V scalar parameter")?;
                 } else {
                     require(
                         ty.0 == 23
                             && ty.1.len() == 2
                             && ty.1[1] == field.lanes
-                            && r.types.get(&ty.1[0]).is_some_and(is_uint),
-                        "SPIR-V uint vector parameter",
+                            && r.types
+                                .get(&ty.1[0])
+                                .is_some_and(|ty| is_scalar(ty, field.scalar)),
+                        "SPIR-V vector parameter",
                     )?;
                 }
             }
@@ -214,6 +216,14 @@ pub fn validate(bytes: &[u8], entry: &str, abi: &Interface) -> io::Result<()> {
         }
     }
     Ok(())
+}
+
+fn is_scalar(ty: &(u32, Vec<u32>), scalar: super::abi::Scalar) -> bool {
+    match scalar {
+        super::abi::Scalar::U32 => is_uint(ty),
+        super::abi::Scalar::I32 => ty.0 == 21 && ty.1 == [32, 1],
+        super::abi::Scalar::F32 => ty.0 == 22 && ty.1 == [32],
+    }
 }
 
 fn is_uint(ty: &(u32, Vec<u32>)) -> bool {

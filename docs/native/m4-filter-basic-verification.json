@@ -1,0 +1,116 @@
+{
+  "schema": 1,
+  "milestone": "M4 basic filters; not M4 completion",
+  "base": "e279d1d7",
+  "inventory_validated": 51,
+  "inventory_total": 179,
+  "gpu_luid": "9f3f010000000000",
+  "routes": [
+    "wgpu DX12",
+    "wgpu Vulkan",
+    "native DX12",
+    "native Vulkan"
+  ],
+  "production_variants": [
+    "native/table-off",
+    "native/table-on",
+    "web/table-off",
+    "web/table-on"
+  ],
+  "source_sha256": {
+    "NATIVE_BACKEND_PROGRESS.md": "939edad22b4ff8a3cf735fc3284e0a5f68066a993bd38e3836eda673a9d98cd5",
+    "build/native/abi.rs": "42f34f1f84d11076e807e2c26b46b062cd6723e8c1dc307eb42721220988039e",
+    "build/native/dxil_reflection.rs": "165b1b05f05fc75a60bd5f69ee2967c6dbd621a4cabe5ee5605844dfe2a628f8",
+    "build/native/interfaces.rs": "0698e90977c175f5efb7a733fce8c2760303417c05817880af7967109f20e80b",
+    "build/native/program.rs": "62a5474711c00ec2199e7b6accab47ed2d40a7a940206a733fc9963d23d78a7e",
+    "build/native/spirv.rs": "32f7160929a701d3dae09068b40de542a6b9f29cd55ffec090a920bf3b3a5631",
+    "src/native/runtime/gpu_tests.rs": "11f72da2fd7770b48a3e8be6b433cf2a5447f45f16b5101e19cb07e4ac4492e0",
+    "src/native/runtime/program.rs": "56c4bf6b377dac6fcdbaec18185588fb23313750ca1ed1844cb07b8396f69df0",
+    "src/native/runtime/tests/four_api.rs": "0c8fe89454d734cd5d27dcba4853e6e20fb2e580bbb4fb3531c0309492d07fd0",
+    "src/native/runtime/tests/wgpu.rs": "9790bfb14e7d394502a30d785cde6e2da90f649b085f599bb1100a9c80aa491c",
+    "src/native/runtime/tests/wgpu/compute.rs": "1cf185743e8f672049019b76c1aa521ca1b573a9f0466f9fdd32139fceb625b0",
+    "src/shared.rs": "8cce51cc77932f452fc70a05f0d195d0bab03a974eb4936bd5c05ae89523d97c",
+    "src/wgpu/filter.rs": "2fddab190e02ce1223f6ac87b0ae3225c4587f5da8f8442c76c56e6089ddc2f5",
+    "tests/native_shader_abi.rs": "3bb9f7fdf7296b57bdb3b6d5aff526dd34adea8f28cc1dc1f23c66e071b859cf",
+    "tests/native_shader_artifacts.rs": "0897b61ce7593860a87ef1a60b7992be83790213da938db0d40d7990bd1e55ac",
+    "tests/native_shader_reflection.rs": "a235cfa6014c493a02bcaa3fc347d85930acf86038361b31414df098c7bd2c2b",
+    "build/native/interfaces/filter.rs": "af80588ea7f7d50ac46218d6cc5dd1b1f477e3dd2f7da7522896ab7aaee0fc44",
+    "docs/native/m4-filter-basic.md": "15e4f2542c2d85419679eb80557535a7a0d8c0d136a9c928445e540744f9a192",
+    "src/native/runtime/program/filter.rs": "646bcf648d18299ea951286881059b774c9dab7e508d31a49d31bc3e44bca7a9",
+    "src/native/runtime/tests/filter_gpu.rs": "72fed94a062844933b677fb6fd7941480e9aeb1eeb6974bb5bd052bc719171ae",
+    "src/shaders/hlsl/filter/basic.hlsl": "1967d01d6709f3280fb35aeb6eb53d656cf168dd97f4bcf12e3f90515720e667",
+    "src/shaders/hlsl/filter/config.hlsli": "b670bc4ec85a9f63b381f4cd2e4f6f0fdfbec873817072c65ada6d9b8ecf8907",
+    "src/shaders/hlsl/filter/region.hlsli": "95bb8a9e74c2be7b8c877ad602409f90c6c75480d06be458a1ab20ea00f98976",
+    "src/shared/filter_config.rs": "937d933e9828c878f25ea90298ca979af7d657c74cf5ee8247a809a51b031eb8"
+  },
+  "logs": {
+    "m4-filter-build.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-filter-build.log",
+      "sha256": "750a12a867afdcb7b8dacbb3734b0094d7f3ba146f0b1f041e40f2f5bcfe13f4"
+    },
+    "m4-filter-clippy.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-filter-clippy.log",
+      "sha256": "3f6543e0fcb1053e79d425e427d16fbacf1d57e91acb067e079ff76d35c324e6"
+    },
+    "m4-filter-editor-red.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-filter-editor-red.log",
+      "sha256": "6220417cb6053fb17234cf5be3460f06b3abf721e5e2ad55e78b7c3c6471ae14"
+    },
+    "m4-filter-editor.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-filter-editor.log",
+      "sha256": "1b3c86a236151d6cfe6c2e74438a82740d93a82ac00bf11372d455614ed4fdde"
+    },
+    "m4-filter-examples.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-filter-examples.log",
+      "sha256": "a338d3511de9c760922bda7c9ab16cf846281043b3b38cb2c73e19e1ecd8b6ee"
+    },
+    "m4-filter-full-release.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-filter-full-release.log",
+      "sha256": "6b800a938838ed0be5bcb374bdaab7aabb69c60e9748b34c3e08ae9d32e4f7b6"
+    },
+    "m4-filter-gpu.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-filter-gpu.log",
+      "sha256": "8dc0b9be5d1eaa0c9097e76f0fb10eb48677abe408a1fcd1df66e9fb66047a2c"
+    },
+    "m4-filter-no-dxc.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-filter-no-dxc.log",
+      "sha256": "4872a2e1192906bf6118148a9732ca617f0adef32b2ddc8d657b67ee64323d77"
+    },
+    "m4-filter-row-green.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-filter-row-green.log",
+      "sha256": "af4313a6831d6309fadc6f35c9494a19e090050f324f94fe3c2e7697378a3e20"
+    },
+    "m4-filter-row-red.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-filter-row-red.log",
+      "sha256": "ef4a72f3e218c9572a18fd9b7d8f69bffe53217665e9bbdf05a42f845e8809a8"
+    },
+    "m4-filter-runtime.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-filter-runtime.log",
+      "sha256": "7da5ad36ffbaef91ad59df62c6226062ca0c39fe5aa66cbcd33118d8fec802eb"
+    },
+    "m4-filter-shader.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-filter-shader.log",
+      "sha256": "36f1efe5548c2cf9d84308ecfb23ec64fbd62d94cdc8f358b8c3ba147a4246f5"
+    },
+    "m4-filter-svg.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-filter-svg.log",
+      "sha256": "7cf23c8350b759a3c4bc57a9f386b1be2cb93e00e6374ccbfbe2ec7b30ca5183"
+    },
+    "m4-filter-types-red.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-filter-types-red.log",
+      "sha256": "715b8d651484966a3881aefcccb6b81edc7ab9585ae88133b1fbd977694cb635"
+    }
+  },
+  "png": {
+    "before": 3471,
+    "after": 3471,
+    "changed": [],
+    "missing": [],
+    "added": []
+  },
+  "reviews": {
+    "spec": "closed",
+    "standards": "closed"
+  },
+  "spirv_modules_validated": 46
+}

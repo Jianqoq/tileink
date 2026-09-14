@@ -44,7 +44,16 @@ pub fn validate(text: &str, entry: &str, abi: &Interface) -> io::Result<()> {
             "DXIL uniform size",
         )?;
         for field in &resource.fields {
-            let ty = if field.lanes == 1 { "uint" } else { "uint4" };
+            let scalar = match field.scalar {
+                super::abi::Scalar::U32 => "uint",
+                super::abi::Scalar::I32 => "int",
+                super::abi::Scalar::F32 => "float",
+            };
+            let ty = if field.lanes == 1 {
+                scalar.to_owned()
+            } else {
+                format!("{scalar}4")
+            };
             let prefix = format!("{ty} {};", field.name);
             let offset = lines[start..=end]
                 .iter()

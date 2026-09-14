@@ -1665,3 +1665,15 @@ Full release, 73 runtime tests, strict Clippy, shader/editor/SPIR-V and SVG/exam
 pass; 3,471 PNGs remain unchanged. No-DXC replay compiles no pipelines. Both reviews
 are closed. See [pattern validation](docs/native/m4-fine-patterns.md). Production
 inventory remains 27/179; M4 continues with production filter kernels.
+
+
+### M4 basic filter kernels
+
+Six production HLSL kernels match CPU pixels and all four production WGSL variants
+on all four GPU routes. Kernel-validated inventory advances to **51/179**.
+Shared FilterConfig has typed signed/float/vector reflection and versioned cache
+keys. The encoder derives live counts and validates region bounds and unique tile
+writes. Full release (971), runtime (75), strict Clippy, shader/editor/SPIR-V and
+SVG/examples pass; 3,471 PNGs are unchanged. No-DXC replay compiles no pipelines.
+Both independent reviews are closed. See [basic filter evidence](docs/native/m4-filter-basic.md).
+M4 continues with other filters, full fine and NativeRenderer/Canvas integration.

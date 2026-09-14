@@ -1,9 +1,16 @@
 //! Execute production WGSL independently with the same logical input buffers.
-use super::Reference;
 use super::compute_resources::{self, GpuResource};
+use super::{FilterVariant, Reference};
 use crate::native::runtime::{Result, compute::ComputeBatch};
 impl Reference {
     pub fn execute_compute(&self, batch: &ComputeBatch) -> Result<Vec<Vec<u8>>> {
+        self.execute_variant(batch, None)
+    }
+    pub fn execute_variant(
+        &self,
+        batch: &ComputeBatch,
+        filter: Option<FilterVariant>,
+    ) -> Result<Vec<Vec<u8>>> {
         let resources: Vec<_> = batch
             .resources()
             .iter()
@@ -13,6 +20,12 @@ impl Reference {
         for stage in batch.passes() {
             let helper_source;
             let source = match stage.shader.entry {
+                entry if entry.starts_with("filter_") => {
+                    helper_source = filter
+                        .ok_or("filter reference variant must be explicit")?
+                        .source();
+                    helper_source.as_str()
+                }
                 "geometry_math_words" | "fill_coverage_words" => {
                     helper_source = format!(
                         "const FINE_WORKGROUP_SIZE:u32={}u;\n{}\n{}\n{}\n{}",
@@ -209,7 +222,18 @@ impl Reference {
                 .map(|(b, _)| wgpu::BindGroupLayoutEntry {
                     binding: b.slot,
                     visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: compute_resources::layout(b.kind),
+                    ty: if stage.shader.entry.starts_with("filter_")
+                        && b.slot == 3
+                        && filter.is_some_and(|v| !v.portable)
+                    {
+                        wgpu::BindingType::StorageTexture {
+                            access: wgpu::StorageTextureAccess::ReadWrite,
+                            format: wgpu::TextureFormat::Rgba8Unorm,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                        }
+                    } else {
+                        compute_resources::layout(b.kind)
+                    },
                     count: None,
                 })
                 .collect();

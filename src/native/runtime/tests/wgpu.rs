@@ -14,6 +14,13 @@ pub struct Reference {
 
 impl Reference {
     pub fn new(backend: wgpu::Backends, identity: &str) -> Result<Self> {
+        Self::with_features(backend, identity, wgpu::Features::empty())
+    }
+    pub fn with_features(
+        backend: wgpu::Backends,
+        identity: &str,
+        features: wgpu::Features,
+    ) -> Result<Self> {
         let mut descriptor = wgpu::InstanceDescriptor {
             backends: backend,
             ..wgpu::InstanceDescriptor::new_without_display_handle()
@@ -28,6 +35,7 @@ impl Reference {
             let (device, queue) =
                 pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
                     required_limits: adapter.limits(),
+                    required_features: features,
                     ..Default::default()
                 }))?;
             if gpu_identity::physical_identity(&adapter, &device)? != identity {
@@ -309,3 +317,21 @@ mod compute;
 
 #[path = "wgpu/compute_resources.rs"]
 mod compute_resources;
+
+#[derive(Clone, Copy, Debug)]
+pub struct FilterVariant {
+    pub portable: bool,
+    pub texture_table: bool,
+}
+impl FilterVariant {
+    fn source(self) -> String {
+        let source = if self.portable {
+            include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_filter_web.wgsl"))
+        } else {
+            include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_filter.wgsl"))
+        };
+        // Only the active-tile binding moves. All production algorithms and variants remain intact.
+        crate::wgpu::shader_variants::patch_image_resource_shader_source(source, self.texture_table)
+            .replace("@binding(52)", "@binding(8)")
+    }
+}

@@ -10,6 +10,9 @@ pub(super) struct Routes {
 }
 impl Routes {
     pub(super) fn new() -> Result<Self> {
+        Self::with_features(wgpu::Features::empty())
+    }
+    pub(super) fn with_features(features: wgpu::Features) -> Result<Self> {
         let identity = std::env::var("TILEINK_NATIVE_GPU")?;
         // Enable native debug validation before creating the corresponding wgpu devices.
         let native = [
@@ -17,8 +20,8 @@ impl Routes {
             Adapter::new(NativeBackend::Vulkan, &identity)?,
         ];
         let reference = [
-            reference::Reference::new(wgpu::Backends::DX12, &identity)?,
-            reference::Reference::new(wgpu::Backends::VULKAN, &identity)?,
+            reference::Reference::with_features(wgpu::Backends::DX12, &identity, features)?,
+            reference::Reference::with_features(wgpu::Backends::VULKAN, &identity, features)?,
         ];
         Ok(Self { native, reference })
     }
@@ -31,11 +34,20 @@ impl Routes {
         expected: &[Vec<u8>],
         case: &str,
     ) -> Result<()> {
+        self.check_variant(batch, expected, case, None)
+    }
+    pub(super) fn check_variant(
+        &self,
+        batch: &ComputeBatch,
+        expected: &[Vec<u8>],
+        case: &str,
+        variant: Option<reference::FilterVariant>,
+    ) -> Result<()> {
         let mut mismatches = Vec::new();
         for (route, result) in self
             .reference
             .iter()
-            .map(|r| r.execute_compute(batch))
+            .map(|r| r.execute_variant(batch, variant))
             .chain(self.native.iter().map(|r| {
                 r.submit_compute(batch)
                     .map_err(|e| format!("{e:?}").into())

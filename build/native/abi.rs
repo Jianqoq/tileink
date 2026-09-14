@@ -15,11 +15,19 @@ pub enum Kind {
     TextureArray,
     Sampler,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Scalar {
+    U32,
+    I32,
+    F32,
+}
+
 #[derive(Clone, Debug)]
 pub struct Field {
     pub name: String,
     pub offset: u32,
     pub lanes: u32,
+    pub scalar: Scalar,
 }
 #[derive(Clone, Debug)]
 pub struct Resource {
@@ -59,7 +67,7 @@ impl Interface {
             out.extend(s.as_bytes());
             out.push(0);
         }
-        let mut out = b"tileink-interface-v1\0".to_vec();
+        let mut out = b"tileink-interface-v2\0".to_vec();
         for n in self.workgroup {
             word(&mut out, n);
         }
@@ -87,6 +95,14 @@ impl Interface {
                 text(&mut out, &f.name);
                 word(&mut out, f.offset);
                 word(&mut out, f.lanes);
+                word(
+                    &mut out,
+                    match f.scalar {
+                        Scalar::U32 => 0,
+                        Scalar::I32 => 1,
+                        Scalar::F32 => 2,
+                    },
+                );
             }
         }
         word(&mut out, self.entries.len() as u32);

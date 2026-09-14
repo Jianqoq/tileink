@@ -133,3 +133,27 @@ fn shader_interfaces_do_not_depend_on_abi_json_files() {
         );
     }
 }
+
+#[test]
+fn uniform_scalar_types_are_reflected_and_invalidate_shader_cache_keys() {
+    // Signed offsets and floating filter parameters must never alias uint metadata.
+    let base = interfaces::get("probe").unwrap();
+    let mut typed = base.clone();
+    typed.resources.get_mut("params").unwrap().fields[0].scalar = abi::Scalar::I32;
+    typed.resources.get_mut("params").unwrap().fields[4].scalar = abi::Scalar::F32;
+    abi::validate(&typed).unwrap();
+    assert_ne!(base.cache_bytes(), typed.cache_bytes());
+    let reflection = "; EntryFunctionName: clear_words\n; NumThreads=(64,1,1)\n; cbuffer params\n; int count; ; Offset: 0\n; uint source_offset; ; Offset: 4\n; uint destination_offset; ; Offset: 8\n; uint stride; ; Offset: 12\n; float4 value; ; Offset: 16\n; } params; ; Offset: 0 Size: 32\n; Resource Bindings:\n; params cbuffer NA NA CB0 cb2 1\n; destination UAV byte r/w U0 u0 1\ntarget datalayout = irrelevant\n";
+    dxil_reflection::validate(reflection, "clear_words", &typed).unwrap();
+    for (from, to) in [("int count", "uint count"), ("float4 value", "uint4 value")] {
+        assert!(
+            dxil_reflection::validate(&reflection.replace(from, to), "clear_words", &typed)
+                .is_err()
+        );
+    }
+    for scalar in [abi::Scalar::U32, abi::Scalar::I32] {
+        let mut changed = typed.clone();
+        changed.resources.get_mut("params").unwrap().fields[4].scalar = scalar;
+        assert_ne!(typed.cache_bytes(), changed.cache_bytes());
+    }
+}

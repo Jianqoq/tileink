@@ -86,3 +86,6 @@ impl Dispatch {
 
 #[path = "program/cumsum.rs"]
 pub mod cumsum;
+
+#[path = "program/filter.rs"]
+pub mod filter;

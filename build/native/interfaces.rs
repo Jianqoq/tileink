@@ -1,6 +1,8 @@
 //! Host expectations for compiled shader interfaces; never injected into HLSL.
 #[path = "interfaces/coarse.rs"]
 mod coarse;
+#[path = "interfaces/filter.rs"]
+mod filter;
 #[path = "interfaces/fine.rs"]
 mod fine;
 #[path = "interfaces/scan.rs"]
@@ -83,6 +85,7 @@ fn uniform(binding: u32, fields: &[(&str, u32, u32)], internal: bool) -> Resourc
                 name: name.into(),
                 offset,
                 lanes,
+                scalar: super::abi::Scalar::U32,
             })
             .collect(),
         internal,
@@ -128,6 +131,7 @@ pub fn get(family: &str) -> io::Result<Interface> {
         "pixel-math" | "geometry-math" | "fill-coverage" | "blend-math" => {
             validation::get(family, &constants)
         }
+        "filter-basic" => filter::basic(&constants),
         "fine-gradient" => fine::gradient(&constants),
         "fine-pattern" => fine::pattern(&constants),
         "texture-validation" => texture::validation(&constants),
