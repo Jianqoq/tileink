@@ -117,3 +117,9 @@ pub mod displacement;
 
 #[path = "filter/transfer.rs"]
 pub mod transfer;
+
+#[path = "filter/convolve.rs"]
+pub mod convolve;
+
+#[path = "filter/resample.rs"]
+pub mod resample;

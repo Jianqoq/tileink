@@ -3,17 +3,14 @@
 #include "constants.hlsli"
 #include "data.hlsli"
 #include "../pixel.hlsli"
+#include "../integer.hlsli"
 #include "../pattern_transform.hlsli"
 
 uint extend_coord_i32(int value, uint size, uint extend) {
     if (size <= 1u) return 0u;
     if (extend == BRUSH_EXTEND_REPEAT || extend == BRUSH_EXTEND_REFLECT) {
-        // HLSL mixed-sign % is not defined. Use an unsigned magnitude so negative
-        // coordinates (including INT_MIN) have portable Euclidean extension.
         uint period = size * (extend == BRUSH_EXTEND_REFLECT ? 2u : 1u);
-        uint magnitude = value < 0 ? 0u - asuint(value) : asuint(value);
-        uint coord = magnitude % period;
-        if (value < 0 && coord != 0u) coord = period - coord;
+        uint coord = euclidean_remainder_i32(value, period);
         return coord < size ? coord : period - coord - 1u;
     }
     return uint(clamp(value, 0, int(size) - 1));

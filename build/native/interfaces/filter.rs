@@ -290,3 +290,48 @@ pub(super) fn transfer(constants: &BTreeMap<String, u32>) -> Interface {
         )],
     )
 }
+
+pub(super) fn convolve(constants: &BTreeMap<String, u32>) -> Interface {
+    interface(
+        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        &[
+            ("config", config()),
+            ("source_texture", buffer(1, Kind::Texture)),
+            ("target_texture", buffer(3, Kind::TextureWrite)),
+            ("convolve_kernels", buffer(6, Kind::Read)),
+            ("active_tiles", buffer(8, Kind::Read)),
+        ],
+        &[(
+            "filter_convolve_matrix_region",
+            &[
+                "config",
+                "source_texture",
+                "target_texture",
+                "convolve_kernels",
+                "active_tiles",
+            ],
+        )],
+    )
+}
+
+pub(super) fn resample(constants: &BTreeMap<String, u32>) -> Interface {
+    interface(
+        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        &[
+            ("config", config()),
+            ("source_texture", buffer(1, Kind::Texture)),
+            ("target_texture", buffer(3, Kind::TextureWrite)),
+            ("active_tiles", buffer(8, Kind::Read)),
+        ],
+        &[
+            (
+                "filter_downsample_region",
+                &["config", "source_texture", "target_texture", "active_tiles"],
+            ),
+            (
+                "filter_upsample_region",
+                &["config", "source_texture", "target_texture", "active_tiles"],
+            ),
+        ],
+    )
+}

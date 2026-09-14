@@ -136,6 +136,8 @@ pub fn get(family: &str) -> io::Result<Interface> {
         "filter-morphology" => filter::morphology(&constants),
         "filter-displacement" => filter::displacement(&constants),
         "filter-transfer" => filter::transfer(&constants),
+        "filter-convolve" => filter::convolve(&constants),
+        "filter-resample" => filter::resample(&constants),
         "fine-gradient" => fine::gradient(&constants),
         "fine-pattern" => fine::pattern(&constants),
         "texture-validation" => texture::validation(&constants),

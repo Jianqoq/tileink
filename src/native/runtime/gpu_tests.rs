@@ -186,3 +186,9 @@ mod filter_displacement;
 
 #[path = "tests/filter_transfer_gpu.rs"]
 mod filter_transfer;
+
+#[path = "tests/filter_convolve_gpu.rs"]
+mod filter_convolve;
+
+#[path = "tests/filter_resample_gpu.rs"]
+mod filter_resample;

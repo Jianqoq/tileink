@@ -1688,3 +1688,15 @@ Full release (975), native runtime (91), strict Clippy, shader/editor/SPIR-V che
 and SVG/examples pass; 3,471 PNGs stay unchanged. No-DXC replay passes 13 filter
 GPU tests with no compilation. See [sampling evidence](docs/native/m4-filter-sampling.md).
 Remaining filters, full fine and NativeRenderer/Canvas integration keep M4 open.
+
+### M4 convolution and resampling
+
+The three entries pass all four APIs and production variants, bringing the
+validated inventory to **103/179**. Reversed kernels, alpha/bias, signed wrapping,
+fractional/empty rectangles, single-pixel and 2D interpolation semantics have
+independent CPU oracles. Shared Euclidean remainder fixes a reproduced Vulkan
+negative-wrap error. Full release (977), native runtime (99), strict Clippy,
+shader/editor/SPIR-V and SVG/examples pass; 3,471 PNGs remain unchanged. No-DXC
+replay passes 19 GPU filter tests without compilation. Both reviews are closed.
+See [convolution/resample evidence](docs/native/m4-filter-convolve-resample.md).
+M4 continues with blur and the other remaining filters, full fine and renderer integration.

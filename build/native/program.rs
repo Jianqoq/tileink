@@ -17,6 +17,8 @@ pub const FAMILIES: &[(&str, &str)] = &[
     ("filter-morphology", "filter/morphology.hlsl"),
     ("filter-displacement", "filter/displacement.hlsl"),
     ("filter-transfer", "filter/transfer.hlsl"),
+    ("filter-convolve", "filter/convolve.hlsl"),
+    ("filter-resample", "filter/resample.hlsl"),
     ("fine-gradient", "validation/gradient.hlsl"),
     ("fine-pattern", "validation/pattern.hlsl"),
     ("texture-validation", "validation/texture.hlsl"),
