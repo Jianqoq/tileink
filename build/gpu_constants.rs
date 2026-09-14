@@ -79,6 +79,9 @@ pub fn write_rust(out: &Path) -> io::Result<()> {
     validation.push_str(&rust_constants(&read_hlsl(
         "shared/texture_table_constants.hlsli",
     )?));
+    let mut brush = read_hlsl("shared/brush/constants.hlsli")?;
+    brush.retain(|name, _| name == "BRUSH_TEXTURE_PLACEMENT_BIT");
+    validation.push_str(&rust_constants(&brush));
     fs::write(out.join("tileink_native_test_constants.rs"), validation)
 }
 

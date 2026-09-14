@@ -146,3 +146,18 @@ pub(super) fn pattern(constants: &BTreeMap<String, u32>) -> Interface {
     result.entries.insert("pattern_words".into(), bindings);
     result
 }
+
+pub(super) fn brush(constants: &BTreeMap<String, u32>) -> Interface {
+    let mut result = pattern(constants);
+    let mut bindings = result.entries.remove("pattern_words").unwrap();
+    let table = super::texture::table(constants)
+        .resources
+        .remove("texture_table")
+        .unwrap();
+    result
+        .resources
+        .insert("image_resource_textures".into(), table);
+    bindings.push("image_resource_textures".into());
+    result.entries.insert("brush_words".into(), bindings);
+    result
+}

@@ -565,8 +565,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_flood_region",
+      "hlsl_source": "src/shaders/hlsl/filter/brush.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-brush.md"
     },
     {
       "source": "filter.wgsl",
@@ -865,8 +869,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_composite_drop_shadow_region",
+      "hlsl_source": "src/shaders/hlsl/filter/brush.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-brush.md"
     },
     {
       "source": "filter.wgsl",
@@ -1149,8 +1157,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_flood_region",
+      "hlsl_source": "src/shaders/hlsl/filter/brush.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-brush.md"
     },
     {
       "source": "filter.wgsl",
@@ -1449,8 +1461,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_composite_drop_shadow_region",
+      "hlsl_source": "src/shaders/hlsl/filter/brush.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-brush.md"
     },
     {
       "source": "filter.wgsl",
@@ -1757,8 +1773,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_flood_region",
+      "hlsl_source": "src/shaders/hlsl/filter/brush.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-brush.md"
     },
     {
       "source": "filter_web.wgsl",
@@ -2057,8 +2077,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_composite_drop_shadow_region",
+      "hlsl_source": "src/shaders/hlsl/filter/brush.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-brush.md"
     },
     {
       "source": "filter_web.wgsl",
@@ -2341,8 +2365,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_flood_region",
+      "hlsl_source": "src/shaders/hlsl/filter/brush.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-brush.md"
     },
     {
       "source": "filter_web.wgsl",
@@ -2641,8 +2669,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_composite_drop_shadow_region",
+      "hlsl_source": "src/shaders/hlsl/filter/brush.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-brush.md"
     },
     {
       "source": "filter_web.wgsl",

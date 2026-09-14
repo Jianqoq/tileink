@@ -1798,3 +1798,17 @@ unavailable and pipeline cache hits. No additional PNG differences beyond the
 accepted turbulence image. Both reviews are closed. See [texture-table evidence](docs/native/m4-texture-table.md).
 Production inventory remains **167/179**; remaining brush effects, fine and actual
 NativeRenderer/Canvas integration still keep M4 open.
+
+### M4 unified brushes and brush-dependent filters
+
+Flood and drop-shadow composition now share explicit-resource HLSL brush sampling.
+All brush kinds, atlas/table placement, every texture slot, non-power-of-two and
+single-axis sizes, alpha interpolation, extend modes, regions/compact tiles and
+padding pass exact four-API checks with independent pixel oracles. The reference
+keeps binding arrays separate from uniforms and snapshots portable composition.
+
+Release (992), native runtime (144), final focused (21), strict Clippy, editor,
+80 SPIR-V modules and full SVG/examples pass. Three GPU tests replay without DXC
+with pipeline cache hits. No new PNG differences beyond approved turbulence.
+Reviews are closed; see [brush filters](docs/native/m4-filter-brush.md).
+Inventory reaches **175/179**. Fine and NativeRenderer/Canvas integration keep M4 open.

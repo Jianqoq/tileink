@@ -341,6 +341,7 @@ impl FilterVariant {
             .replace("@binding(52)", "@binding(8)")
             .replace("@binding(55)", "@binding(9)")
             .replace("@binding(36)", "@binding(7)")
+            .replace("@binding(37)", "@binding(10)")
             .replace("@binding(40)", "@binding(6)")
             .replace("@binding(41)", "@binding(5)")
             .replace("@binding(42)", "@binding(6)")
@@ -350,5 +351,8 @@ impl FilterVariant {
             .replace("@binding(46)", "@binding(12)")
             .replace("@binding(47)", "@binding(13)")
             .replace("@binding(48)", "@binding(14)")
+            .replace("@group(1) @binding(0)", "@group(0) @binding(12)")
+            .replace("@group(1) @binding(1)", "@group(0) @binding(13)")
+            .replace("@group(1) @binding(2)", "@group(1) @binding(30)")
     }
 }

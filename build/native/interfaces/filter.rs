@@ -560,3 +560,41 @@ pub(super) fn glass(constants: &BTreeMap<String, u32>) -> Interface {
         .insert("filter_liquid_glass_rect_composite_region".into(), bindings);
     result
 }
+
+pub(super) fn brush(constants: &BTreeMap<String, u32>) -> Interface {
+    let mut sampler = buffer(13, Kind::Sampler);
+    sampler.size = 0;
+    let table = super::texture::table(constants)
+        .resources
+        .remove("texture_table")
+        .unwrap();
+    let common = &[
+        "config",
+        "target_texture",
+        "active_tiles",
+        "brush_blob",
+        "image_resource_atlas",
+        "image_resource_sampler",
+        "image_resource_textures",
+    ];
+    let mut result = interface(
+        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        &[
+            ("config", config()),
+            ("target_texture", buffer(3, Kind::TextureWrite)),
+            ("active_tiles", buffer(8, Kind::Read)),
+            ("brush_blob", buffer(10, Kind::Read)),
+            ("image_resource_atlas", buffer(12, Kind::TextureArray)),
+            ("image_resource_sampler", sampler),
+            ("image_resource_textures", table),
+            ("aux_texture", buffer(2, Kind::Texture)),
+        ],
+        &[("filter_flood_region", common)],
+    );
+    let mut shadow = common.iter().map(|s| (*s).into()).collect::<Vec<_>>();
+    shadow.push("aux_texture".into());
+    result
+        .entries
+        .insert("filter_composite_drop_shadow_region".into(), shadow);
+    result
+}

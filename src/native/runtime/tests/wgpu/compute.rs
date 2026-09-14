@@ -159,6 +159,25 @@ impl Reference {
                     );
                     helper_source.as_str()
                 }
+                "brush_words" => {
+                    let production =
+                        crate::wgpu::shader_variants::patch_image_resource_shader_source(
+                            include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_fine_web.wgsl")),
+                            true,
+                        )
+                        .replace("@group(1) @binding(0)", "@group(0) @binding(12)")
+                        .replace("@group(1) @binding(1)", "@group(0) @binding(13)")
+                        .replace("@group(1) @binding(2)", "@group(1) @binding(30)");
+                    helper_source = format!(
+                        "{}\n{}",
+                        production,
+                        include_str!(concat!(
+                            env!("CARGO_MANIFEST_DIR"),
+                            "/tests/shaders/brush.wgsl"
+                        ))
+                    );
+                    helper_source.as_str()
+                }
                 "gradient_words" => {
                     helper_source = format!(
                         "{}\n{}",
@@ -297,7 +316,8 @@ impl Reference {
             let snapshot = if filter.is_some_and(|v| v.portable)
                 && matches!(
                     stage.shader.entry,
-                    "filter_source_over_region"
+                    "filter_composite_drop_shadow_region"
+                        | "filter_source_over_region"
                         | "filter_color_region"
                         | "filter_color_matrix_region"
                         | "filter_apply_region_mask"
@@ -323,17 +343,35 @@ impl Reference {
             } else {
                 None
             };
-            let bindings = self
-                .device
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: None,
-                    entries: &entries,
-                });
+            // wgpu forbids uniform buffers in a bind group containing a binding array.
+            // Keep table bindings in a separate group without changing shader algorithms.
+            let table_slots: Vec<_> = stage
+                .bindings
+                .iter()
+                .filter(|(b, _)| b.kind == crate::native::shaders::BindingKind::TextureTable)
+                .map(|(b, _)| b.slot)
+                .collect();
+            let group_count = if table_slots.is_empty() { 1 } else { 2 };
+            let layouts: Vec<_> = (0..group_count)
+                .map(|group| {
+                    let entries: Vec<_> = entries
+                        .iter()
+                        .copied()
+                        .filter(|e| usize::from(table_slots.contains(&e.binding)) == group)
+                        .collect();
+                    self.device
+                        .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                            label: None,
+                            entries: &entries,
+                        })
+                })
+                .collect();
+            let layout_refs: Vec<_> = layouts.iter().map(Some).collect();
             let layout = self
                 .device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: None,
-                    bind_group_layouts: &[Some(&bindings)],
+                    bind_group_layouts: &layout_refs,
                     immediate_size: 0,
                 });
             let pipeline = self
@@ -364,14 +402,27 @@ impl Reference {
                     resource: snapshot.binding(),
                 });
             }
-            let group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: None,
-                layout: &bindings,
-                entries: &entries,
-            });
+            let groups: Vec<_> = layouts
+                .iter()
+                .enumerate()
+                .map(|(group, layout)| {
+                    let entries: Vec<_> = entries
+                        .iter()
+                        .filter(|e| usize::from(table_slots.contains(&e.binding)) == group)
+                        .cloned()
+                        .collect();
+                    self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: None,
+                        layout,
+                        entries: &entries,
+                    })
+                })
+                .collect();
             let mut pass = encoder.begin_compute_pass(&Default::default());
             pass.set_pipeline(&pipeline);
-            pass.set_bind_group(0, &group, &[]);
+            for (index, group) in groups.iter().enumerate() {
+                pass.set_bind_group(index as u32, group, &[]);
+            }
             pass.dispatch_workgroups(stage.grid[0], stage.grid[1], stage.grid[2]);
         }
         let readbacks: Vec<_> = batch

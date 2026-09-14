@@ -1,4 +1,4 @@
-@group(0) @binding(30) var texture_table:binding_array<texture_2d<f32>,NATIVE_TEXTURE_TABLE_CAPACITY>;
+@group(1) @binding(30) var texture_table:binding_array<texture_2d<f32>,NATIVE_TEXTURE_TABLE_CAPACITY>;
 @group(0) @binding(0) var<storage,read> requests:array<u32>;
 @group(0) @binding(1) var output:texture_storage_2d<rgba8unorm,write>;
 @compute @workgroup_size(FINE_WORKGROUP_SIZE)
