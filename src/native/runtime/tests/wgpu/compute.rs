@@ -216,7 +216,7 @@ impl Reference {
                     label: Some("production WGSL compute reference"),
                     source: wgpu::ShaderSource::Wgsl(source.into()),
                 });
-            let entries: Vec<_> = stage
+            let mut entries: Vec<_> = stage
                 .bindings
                 .iter()
                 .map(|(b, _)| wgpu::BindGroupLayoutEntry {
@@ -237,6 +237,25 @@ impl Reference {
                     count: None,
                 })
                 .collect();
+            let snapshot = if filter.is_some_and(|v| v.portable)
+                && matches!(
+                    stage.shader.entry,
+                    "filter_source_over_region"
+                        | "filter_color_region"
+                        | "filter_color_matrix_region"
+                ) {
+                let target = stage.bindings.iter().find(|(b, _)| b.slot == 3).unwrap().1;
+                let snapshot = resources[target.index()].snapshot(&self.device, &mut encoder);
+                entries.push(wgpu::BindGroupLayoutEntry {
+                    binding: 9,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: compute_resources::layout(crate::native::shaders::BindingKind::Texture),
+                    count: None,
+                });
+                Some(snapshot)
+            } else {
+                None
+            };
             let bindings = self
                 .device
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -260,7 +279,7 @@ impl Reference {
                     compilation_options: Default::default(),
                     cache: None,
                 });
-            let entries: Vec<_> = stage
+            let mut entries: Vec<_> = stage
                 .bindings
                 .iter()
                 .map(|(b, id)| wgpu::BindGroupEntry {
@@ -268,6 +287,12 @@ impl Reference {
                     resource: resources[id.index()].binding(),
                 })
                 .collect();
+            if let Some(snapshot) = &snapshot {
+                entries.push(wgpu::BindGroupEntry {
+                    binding: 9,
+                    resource: snapshot.binding(),
+                });
+            }
             let group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: None,
                 layout: &bindings,

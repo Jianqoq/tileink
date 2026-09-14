@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "status": "windows-kernel-validated",
+  "inventory_entries": 16,
+  "total_validated": 67,
+  "gpu": "RTX 4090; LUID 9f3f010000000000",
+  "routes": [
+    "wgpu-DX12",
+    "wgpu-Vulkan",
+    "native-DX12",
+    "native-Vulkan"
+  ],
+  "variants": "native/portable x texture_table false/true",
+  "ordinary_release_passed": 971,
+  "native_runtime_passed": 80,
+  "no_dxc_gpu_passed": 6,
+  "spirv_modules_validated": 50,
+  "editor": "Shader Tools invalid/correct roundtrip passed",
+  "clippy": "release native all-targets -D warnings passed",
+  "pngs": {
+    "before": 3471,
+    "after": 3471,
+    "changed": [],
+    "missing": [],
+    "added": []
+  },
+  "reviews": {
+    "spec": "closed",
+    "standards": "closed"
+  },
+  "source_sha256": {
+    "src/shaders/hlsl/filter/basic.hlsl": "164cb918b6879e9674ae71197447474cb1f1acd4c959f477c6f1c57d52ed2740",
+    "src/shaders/hlsl/filter/color.hlsli": "0fe4a30687d0aaf9485115278a39c34e8fc9fc563330589a72192e8c56e47f0e",
+    "src/shaders/hlsl/filter/constants.hlsli": "77f28e133e00303f33ba15a098ff846e2e176e89835c2ad7d99fc115456ddc4e",
+    "src/wgpu/shaders/filter/effects.wgsl": "eada298bcebc2af5f034f5e8ee91229988789ab8b6e38c48cb2e5f37aa8fbcad",
+    "src/native/runtime/tests/filter_color_gpu.rs": "0e5f40227956dd91546286d7e658434085f0c217ba329b7ce27f495636da54d7",
+    "src/native/runtime/program/filter.rs": "df9cecbbca6e0709954b6e8e81599a088b6bb7624971e740cb6f7adc9af7578d"
+  },
+  "log_sha256": {
+    "m4-filter-point-full-release.log": "587440adb4f271d0170d0518643496c2612fd3098d43d139dc78515e2b21d025",
+    "m4-filter-point-runtime.log": "0ab6f343e374bd24e17536fa6fed600098230d6005e4f5a499e69b432177e172",
+    "m4-filter-point-clippy.log": "c501ed2f1443fd9a4a1a35b6bc6544b328eb709e12cc3eda3569ce32c0e36387",
+    "m4-filter-point-svg.log": "9f2cbb15e5f71f7940ac10f94fcc6608802da400cc7fbcd57a528889b7d58333",
+    "m4-filter-point-examples.log": "79931c6adbf7624cbf63c9121a443cb4ee38503fc81368e07a07c609cfdddbb5",
+    "m4-filter-point-no-dxc.log": "36be1481eba53d55245be77736f44cf9897fe04046e3ed82c360f8d0f3e2e9cd",
+    "m4-filter-point-shader.log": "fcc4dbbb86351b8d27229bbf1e20cf3bff509926c8dc7f5006864eac9ee590f6"
+  },
+  "m4_complete": false
+}

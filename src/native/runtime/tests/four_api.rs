@@ -25,6 +25,13 @@ impl Routes {
         ];
         Ok(Self { native, reference })
     }
+    pub(super) fn filter_reference_output(
+        &self,
+        batch: &ComputeBatch,
+        variant: reference::FilterVariant,
+    ) -> Result<Vec<Vec<u8>>> {
+        self.reference[0].execute_variant(batch, Some(variant))
+    }
     pub(super) fn reference_output(&self, batch: &ComputeBatch) -> Result<Vec<Vec<u8>>> {
         self.reference[0].execute_compute(batch)
     }
@@ -64,7 +71,7 @@ impl Routes {
             for (buffer, (a, b)) in actual.iter().zip(expected).enumerate() {
                 let first = a.iter().zip(b).position(|(a, b)| a != b);
                 if a.len() != b.len() || first.is_some() {
-                    mismatches.push(format!("{case} route {route} buffer {buffer} first mismatch {first:?}, actual/expected {:?}",first.map(|i|(a[i],b[i]))));
+                    mismatches.push(format!("{case} route {route} buffer {buffer} first mismatch {first:?}, actual/expected {:?}",first.map(|i|(&a[i/4*4..(i/4*4+4).min(a.len())],&b[i/4*4..(i/4*4+4).min(b.len())]))));
                 }
             }
         }

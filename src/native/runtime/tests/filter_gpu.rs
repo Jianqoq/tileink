@@ -58,7 +58,36 @@ fn basic_filter_encoder_rejects_invalid_regions_tiles_aliases_and_coordinates() 
             ..valid
         },
     ] {
-        assert!(filter::encode(&mut batch, BasicFilter::Tile, c, None, source, target).is_err());
+        assert!(
+            filter::encode(&mut batch, BasicFilter::Tile, c, None, Some(source), target).is_err()
+        );
+    }
+    for amount in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        assert!(
+            filter::encode(
+                &mut batch,
+                BasicFilter::Color,
+                FilterConfig { amount, ..valid },
+                None,
+                Some(source),
+                target
+            )
+            .is_err()
+        );
+        assert!(
+            filter::encode(
+                &mut batch,
+                BasicFilter::ColorMatrix,
+                FilterConfig {
+                    matrix_bias: [amount; 4],
+                    ..valid
+                },
+                None,
+                Some(source),
+                target
+            )
+            .is_err()
+        );
     }
     for tiles in [&[0, 0][..], &[4][..], &[u32::MAX][..]] {
         assert!(
@@ -67,21 +96,41 @@ fn basic_filter_encoder_rejects_invalid_regions_tiles_aliases_and_coordinates() 
                 BasicFilter::Copy,
                 valid,
                 Some(tiles),
-                source,
+                Some(source),
                 target
             )
             .is_err()
         );
     }
-    assert!(filter::encode(&mut batch, BasicFilter::Copy, valid, None, source, source).is_err());
+    assert!(
+        filter::encode(
+            &mut batch,
+            BasicFilter::Copy,
+            valid,
+            None,
+            Some(source),
+            source
+        )
+        .is_err()
+    );
     let wrong = batch.buffer(vec![0; 16])?;
-    assert!(filter::encode(&mut batch, BasicFilter::Copy, valid, None, wrong, target).is_err());
+    assert!(
+        filter::encode(
+            &mut batch,
+            BasicFilter::Copy,
+            valid,
+            None,
+            Some(wrong),
+            target
+        )
+        .is_err()
+    );
     filter::encode(
         &mut batch,
         BasicFilter::Copy,
         valid,
         Some(&[]),
-        source,
+        Some(source),
         target,
     )?;
     filter::encode(
@@ -92,10 +141,22 @@ fn basic_filter_encoder_rejects_invalid_regions_tiles_aliases_and_coordinates() 
             ..valid
         },
         None,
-        source,
+        Some(source),
         target,
     )?;
     assert!(batch.passes().is_empty());
+    assert!(filter::encode(&mut batch, BasicFilter::Copy, valid, None, None, target).is_err());
+    filter::encode(&mut batch, BasicFilter::Color, valid, None, None, target)?;
+    filter::encode(
+        &mut batch,
+        BasicFilter::ColorMatrix,
+        valid,
+        None,
+        None,
+        target,
+    )?;
+    assert_eq!(batch.passes().len(), 2);
+
     Ok(())
 }
 
@@ -120,6 +181,33 @@ fn expected(
             match kernel {
                 BasicFilter::Clear => pixel = c.clear_color.to_le_bytes(),
                 BasicFilter::Copy => (),
+                BasicFilter::Color | BasicFilter::ColorMatrix => {
+                    unreachable!("color has a separate numeric corpus")
+                }
+                BasicFilter::SourceOver => {
+                    let alpha = u32::from(pixel[3]);
+                    for lane in 0..4 {
+                        pixel[lane] = (u32::from(pixel[lane])
+                            + (u32::from(initial[index + lane]) * (255 - alpha) + 127) / 255)
+                            .min(255) as u8;
+                    }
+                }
+                BasicFilter::SvgMask => {
+                    let alpha = u32::from(pixel[3]);
+                    let safe = alpha.max(1);
+                    let straight = pixel[..3]
+                        .iter()
+                        .map(|v| (u32::from(*v) * 255 + safe / 2) / safe)
+                        .collect::<Vec<_>>();
+                    let mask = if c.mask_kind == 1 {
+                        ((2126 * straight[0] + 7152 * straight[1] + 722 * straight[2]) * alpha
+                            + 1275000)
+                            / 2550000
+                    } else {
+                        alpha
+                    };
+                    pixel = [mask as u8; 4];
+                }
                 BasicFilter::SourceAlpha => pixel = [0, 0, 0, pixel[3]],
                 BasicFilter::Tile => {
                     let w = c.rect_x1 as i64 - c.rect_x0 as i64;
@@ -198,6 +286,7 @@ fn four_api_basic_filters_match_all_production_variants_and_cpu_pixels() -> Resu
                 let mut c = config(width, height);
                 c.offset_x = offset[0];
                 c.offset_y = offset[1];
+                c.mask_kind = u32::from(offset != [0, 0]);
                 if offset != [0, 0] {
                     c.region_x0 = width / 3;
                     c.region_y0 = 1;
@@ -221,18 +310,48 @@ fn four_api_basic_filters_match_all_production_variants_and_cpu_pixels() -> Resu
                     BasicFilter::Clear,
                     BasicFilter::Copy,
                     BasicFilter::SourceAlpha,
+                    BasicFilter::SourceOver,
+                    BasicFilter::SvgMask,
                     BasicFilter::Tile,
                     BasicFilter::Offset,
                     BasicFilter::DropShadowMask,
                 ] {
                     let target = batch.texture_rgba8([width, height], initial.clone())?;
                     let active = compact.then_some(tiles.as_slice());
-                    filter::encode(&mut batch, kernel, c, active, input, target)?;
+                    filter::encode(
+                        &mut batch,
+                        kernel,
+                        c,
+                        active,
+                        kernel.reads_source().then_some(input),
+                        target,
+                    )?;
                     batch.readback(target)?;
                     outputs.push(expected(kernel, c, active, &source, &initial));
                 }
             }
         }
+        // Repeated same-pixel target reads must observe preceding GPU writes, not initial uploads.
+        let c = config(width, height);
+        let target = batch.texture_rgba8([width, height], initial.clone())?;
+        let mut chained = initial.clone();
+        for kernel in [
+            BasicFilter::Clear,
+            BasicFilter::SourceOver,
+            BasicFilter::SourceOver,
+        ] {
+            filter::encode(
+                &mut batch,
+                kernel,
+                c,
+                None,
+                kernel.reads_source().then_some(input),
+                target,
+            )?;
+            chained = expected(kernel, c, None, &source, &chained);
+        }
+        batch.readback(target)?;
+        outputs.push(chained);
         for portable in [false, true] {
             for texture_table in [false, true] {
                 let variant = FilterVariant {

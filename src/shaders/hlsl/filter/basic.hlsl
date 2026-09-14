@@ -1,5 +1,8 @@
 #include "region.hlsli"
+#include "constants.hlsli"
+#include "color.hlsli"
 #include "../shared/pixel.hlsli"
+#include "../shared/blend.hlsli"
 
 ConstantBuffer<FilterConfig> config : register(b0);
 Texture2D<float4> source_texture : register(t1);
@@ -56,4 +59,44 @@ void filter_drop_shadow_mask_region(uint3 gid:SV_DispatchThreadID) {
     if (alpha == 0) return;
     int2 destination = int2(xy) + int2(config.offset_x, config.offset_y);
     if (filter_contains(config, destination)) target_texture[destination] = alpha.xxxx;
+}
+
+[numthreads(FILTER_WORKGROUP_SIZE,1,1)]
+void filter_source_over_region(uint3 gid:SV_DispatchThreadID) {
+    uint2 xy;
+    if (!filter_position(config, active_tiles, gid, xy)) return;
+    uint source = unorm_to_rgba8(source_texture.Load(int3(xy,0)));
+    uint destination = unorm_to_rgba8(target_texture[xy]);
+    target_texture[xy] = rgba8_to_unorm(blend_premul_u8(destination, source, COMPOSE_SRC_OVER << 8u));
+}
+
+[numthreads(FILTER_WORKGROUP_SIZE,1,1)]
+void filter_svg_mask_coverage_region(uint3 gid:SV_DispatchThreadID) {
+    uint2 xy;
+    if (!filter_position(config, active_tiles, gid, xy)) return;
+    uint pixel = unorm_to_rgba8(source_texture.Load(int3(xy,0)));
+    uint alpha = pixel >> 24u;
+    uint mask_alpha = alpha;
+    if (config.mask_kind == SVG_MASK_LUMINANCE) {
+        uint safe_alpha = max(alpha,1u);
+        uint3 straight = (uint3(pixel & 255u, (pixel >> 8u) & 255u, (pixel >> 16u) & 255u) * 255u + safe_alpha/2u) / safe_alpha;
+        mask_alpha = ((2126u*straight.r + 7152u*straight.g + 722u*straight.b)*alpha + 1275000u)/2550000u;
+    }
+    target_texture[xy] = float(mask_alpha).xxxx * CHANNEL_SCALE;
+}
+
+[numthreads(FILTER_WORKGROUP_SIZE,1,1)]
+void filter_color_region(uint3 gid:SV_DispatchThreadID) {
+    uint2 xy;
+    if (!filter_position(config, active_tiles, gid, xy)) return;
+    uint pixel=unorm_to_rgba8(target_texture[xy]);
+    target_texture[xy]=rgba8_to_unorm(filter_color_pixel(pixel,config.filter_kind,config.amount));
+}
+
+[numthreads(FILTER_WORKGROUP_SIZE,1,1)]
+void filter_color_matrix_region(uint3 gid:SV_DispatchThreadID) {
+    uint2 xy;
+    if (!filter_position(config, active_tiles, gid, xy)) return;
+    uint pixel=unorm_to_rgba8(target_texture[xy]);
+    target_texture[xy]=rgba8_to_unorm(filter_color_matrix_pixel(config,pixel));
 }

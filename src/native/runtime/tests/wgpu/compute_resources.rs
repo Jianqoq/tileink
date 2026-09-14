@@ -81,6 +81,29 @@ impl GpuResource {
             }
         }
     }
+    pub fn snapshot(&self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder) -> Self {
+        let Self::Texture(texture, _) = self else {
+            panic!("snapshot requires a texture")
+        };
+        let copy = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("portable filter target snapshot"),
+            size: texture.size(),
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: texture.format(),
+            usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        encoder.copy_texture_to_texture(
+            texture.as_image_copy(),
+            copy.as_image_copy(),
+            texture.size(),
+        );
+        let view = copy.create_view(&Default::default());
+        Self::Texture(copy, view)
+    }
+
     pub fn binding(&self) -> wgpu::BindingResource<'_> {
         match self {
             Self::Sampler(sampler) => wgpu::BindingResource::Sampler(sampler),

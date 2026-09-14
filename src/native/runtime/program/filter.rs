@@ -13,15 +13,26 @@ pub enum BasicFilter {
     Clear,
     Copy,
     SourceAlpha,
+    SourceOver,
+    SvgMask,
+    Color,
+    ColorMatrix,
     Tile,
     Offset,
     DropShadowMask,
 }
 impl BasicFilter {
+    pub fn reads_source(self) -> bool {
+        !matches!(self, Self::Clear | Self::Color | Self::ColorMatrix)
+    }
     pub fn entry(self) -> &'static str {
         match self {
             Self::Clear => "filter_clear_region",
             Self::Copy => "filter_copy_region",
+            Self::SourceOver => "filter_source_over_region",
+            Self::Color => "filter_color_region",
+            Self::ColorMatrix => "filter_color_matrix_region",
+            Self::SvgMask => "filter_svg_mask_coverage_region",
             Self::SourceAlpha => "filter_source_alpha_region",
             Self::Tile => "filter_tile_region",
             Self::Offset => "filter_offset_region",
@@ -37,10 +48,15 @@ pub fn encode(
     kernel: BasicFilter,
     mut config: FilterConfig,
     tiles: Option<&[u32]>,
-    source: ResourceId,
+    source: Option<ResourceId>,
     target: ResourceId,
 ) -> Result<()> {
-    for id in [source, target] {
+    let source = if kernel.reads_source() {
+        Some(source.ok_or("filter source texture is required")?)
+    } else {
+        None
+    };
+    for id in std::iter::once(target).chain(source) {
         batch.size(id)?;
         match &batch.resources()[id.index()] {
             Resource::Texture(texture)
@@ -48,7 +64,7 @@ pub fn encode(
             _ => return Err("filter requires matching 2D RGBA8 textures".into()),
         }
     }
-    if source == target {
+    if source == Some(target) {
         return Err("filter source and destination must be distinct".into());
     }
     let x1 = config
@@ -70,6 +86,23 @@ pub fn encode(
         if i64::from(extent) + i64::from(offset).abs() > i64::from(i32::MAX) {
             return Err("filter signed coordinate overflow".into());
         }
+    }
+    if kernel == BasicFilter::Color && !config.amount.is_finite() {
+        return Err("nonfinite filter color amount".into());
+    }
+    if kernel == BasicFilter::ColorMatrix
+        && [
+            config.matrix_r,
+            config.matrix_g,
+            config.matrix_b,
+            config.matrix_a,
+            config.matrix_bias,
+        ]
+        .iter()
+        .flatten()
+        .any(|v| !v.is_finite())
+    {
+        return Err("nonfinite filter color matrix".into());
     }
     if kernel == BasicFilter::Tile {
         let rect = [
@@ -140,7 +173,7 @@ pub fn encode(
             .collect(),
     )?;
     let mut bindings = vec![(0, uniform), (3, target), (8, active)];
-    if kernel != BasicFilter::Clear {
+    if let Some(source) = source {
         bindings.push((1, source));
     }
     // SAFETY: region/source bounds and integer arithmetic are checked above. Distinct textures,

@@ -171,3 +171,6 @@ mod pattern;
 
 #[path = "tests/filter_gpu.rs"]
 mod filter;
+
+#[path = "tests/filter_color_gpu.rs"]
+mod filter_color;

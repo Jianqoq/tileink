@@ -1,4 +1,17 @@
 fn apply_color_filter_pixel(px: u32, filter_kind: u32, amount: f32) -> u32 {
+    // Byte channels preserve exact invert/sepia halves across shader backends.
+    if ((filter_kind == FILTER_INVERT || filter_kind == FILTER_SEPIA) && (px>>24u)!=0u) {
+        let channels=vec3<f32>(f32(px&255u),f32((px>>8u)&255u),f32((px>>16u)&255u));
+        let alpha=f32(px>>24u);
+        var mapped=vec3<f32>(alpha)-channels;
+        if (filter_kind == FILTER_SEPIA) {
+            mapped=vec3<f32>(fma(0.393,channels.r,fma(0.769,channels.g,0.189*channels.b)),
+                fma(0.349,channels.r,fma(0.686,channels.g,0.168*channels.b)),
+                fma(0.272,channels.r,fma(0.534,channels.g,0.131*channels.b)));
+        }
+        let result=vec3<u32>(clamp(fma(mapped-channels,vec3<f32>(clamp(amount,0.0,1.0)),channels),vec3<f32>(0.0),vec3<f32>(alpha))+vec3<f32>(0.5));
+        return result.r | (result.g<<8u) | (result.b<<16u) | (px & 0xff000000u);
+    }
     let inv_255 = 1.0 / 255.0;
     var r = f32(px & 255u) * inv_255;
     var g = f32((px >> 8u) & 255u) * inv_255;
@@ -47,24 +60,11 @@ fn apply_color_filter_pixel(px: u32, filter_kind: u32, amount: f32) -> u32 {
             ur = nr;
             ug = ng;
             ub = nb;
-        } else if (filter_kind == FILTER_INVERT) {
-            let t = clamp(amount, 0.0, 1.0);
-            ur = lerp_f32(ur, 1.0 - ur, t);
-            ug = lerp_f32(ug, 1.0 - ug, t);
-            ub = lerp_f32(ub, 1.0 - ub, t);
         } else if (filter_kind == FILTER_SATURATE) {
             let l = svg_lum3(ur, ug, ub);
             ur = l + (ur - l) * amount;
             ug = l + (ug - l) * amount;
             ub = l + (ub - l) * amount;
-        } else if (filter_kind == FILTER_SEPIA) {
-            let t = clamp(amount, 0.0, 1.0);
-            let sr = ur * 0.393 + ug * 0.769 + ub * 0.189;
-            let sg = ur * 0.349 + ug * 0.686 + ub * 0.168;
-            let sb = ur * 0.272 + ug * 0.534 + ub * 0.131;
-            ur = lerp_f32(ur, sr, t);
-            ug = lerp_f32(ug, sg, t);
-            ub = lerp_f32(ub, sb, t);
         }
 
         r = clamp(ur, 0.0, 1.0) * alpha;
@@ -75,33 +75,29 @@ fn apply_color_filter_pixel(px: u32, filter_kind: u32, amount: f32) -> u32 {
     return pack_premul_rgba8(r, g, b, a);
 }
 
+fn filter_dot4(a:vec4<f32>,b:vec4<f32>)->f32 { return fma(a.x,b.x,fma(a.y,b.y,fma(a.z,b.z,a.w*b.w))); }
+
 fn apply_color_matrix_pixel(px: u32) -> u32 {
-    let inv_255 = 1.0 / 255.0;
-    let premul_r = f32(px & 255u) * inv_255;
-    let premul_g = f32((px >> 8u) & 255u) * inv_255;
-    let premul_b = f32((px >> 16u) & 255u) * inv_255;
-    let alpha = f32((px >> 24u) & 255u) * inv_255;
-
-    var r = 0.0;
-    var g = 0.0;
-    var b = 0.0;
-    if (alpha > 0.0) {
-        r = premul_r / alpha;
-        g = premul_g / alpha;
-        b = premul_b / alpha;
-    }
-
-    let rgba = vec4<f32>(r, g, b, alpha);
-    let out_r = dot(config.matrix_r, rgba) + config.matrix_bias.x;
-    let out_g = dot(config.matrix_g, rgba) + config.matrix_bias.y;
-    let out_b = dot(config.matrix_b, rgba) + config.matrix_bias.z;
-    let out_a = clamp(dot(config.matrix_a, rgba) + config.matrix_bias.w, 0.0, 1.0);
-    return pack_premul_rgba8(
-        clamp(out_r, 0.0, 1.0) * out_a,
-        clamp(out_g, 0.0, 1.0) * out_a,
-        clamp(out_b, 0.0, 1.0) * out_a,
-        out_a,
-    );
+    // Preserve exact half channels by applying RGB coefficients in premultiplied byte units.
+    let alpha=f32(px>>24u);
+    let channels=vec3<f32>(f32(px&255u),f32((px>>8u)&255u),f32((px>>16u)&255u));
+    var straight=vec3<f32>(0.0);
+    // Branch before division to retain the exact opaque identity on every backend.
+    if ((px>>24u)==255u) { straight=channels; }
+    else if (alpha>0.0) { straight=channels*(255.0/alpha); }
+    let output_alpha=clamp(filter_dot4(config.matrix_a,vec4<f32>(straight,alpha))+config.matrix_bias.w*255.0,0.0,255.0);
+    var result:vec3<f32>;
+    if (alpha>0.0) {
+        let scaled=vec4<f32>(channels,alpha*alpha*(1.0/255.0));
+        let mapped=fma(config.matrix_bias.rgb,vec3<f32>(alpha),vec3<f32>(filter_dot4(config.matrix_r,scaled),filter_dot4(config.matrix_g,scaled),filter_dot4(config.matrix_b,scaled)));
+        // Preserve the exact identity when the matrix leaves alpha unchanged.
+        let alpha_scale=select(output_alpha/alpha,1.0,output_alpha==alpha);
+        result=clamp(mapped,vec3<f32>(0.0),vec3<f32>(alpha))*alpha_scale;
+        // Saturated straight RGB equals one; preserve its exact output alpha.
+        result=select(result,vec3<f32>(output_alpha),mapped>=vec3<f32>(alpha));
+    } else { result=clamp(config.matrix_bias.rgb,vec3<f32>(0.0),vec3<f32>(1.0))*output_alpha; }
+    let bytes=vec4<u32>(clamp(vec4<f32>(result,output_alpha),vec4<f32>(0.0),vec4<f32>(255.0))+vec4<f32>(0.5));
+    return bytes.r | (bytes.g<<8u) | (bytes.b<<16u) | (bytes.a<<24u);
 }
 
 fn apply_component_transfer_pixel(px: u32, table_index: u32) -> u32 {

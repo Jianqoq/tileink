@@ -149,11 +149,27 @@ pub(super) fn basic(constants: &BTreeMap<String, u32>) -> Interface {
         ],
         &[
             (
+                "filter_color_region",
+                &["config", "target_texture", "active_tiles"],
+            ),
+            (
+                "filter_color_matrix_region",
+                &["config", "target_texture", "active_tiles"],
+            ),
+            (
                 "filter_clear_region",
                 &["config", "target_texture", "active_tiles"],
             ),
             (
                 "filter_copy_region",
+                &["config", "source_texture", "target_texture", "active_tiles"],
+            ),
+            (
+                "filter_source_over_region",
+                &["config", "source_texture", "target_texture", "active_tiles"],
+            ),
+            (
+                "filter_svg_mask_coverage_region",
                 &["config", "source_texture", "target_texture", "active_tiles"],
             ),
             (
