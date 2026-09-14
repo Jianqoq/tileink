@@ -544,3 +544,18 @@ pub(super) fn stack(constants: &BTreeMap<String, u32>) -> Interface {
         .insert("filter_composite_blend_stack_region".into(), common);
     result
 }
+
+pub(super) fn glass(constants: &BTreeMap<String, u32>) -> Interface {
+    let mut result = displacement(constants);
+    let bindings = result
+        .entries
+        .remove("filter_displacement_map_region")
+        .unwrap();
+    result
+        .entries
+        .insert("filter_liquid_glass_region".into(), bindings.clone());
+    result
+        .entries
+        .insert("filter_liquid_glass_rect_composite_region".into(), bindings);
+    result
+}

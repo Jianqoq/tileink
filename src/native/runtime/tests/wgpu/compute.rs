@@ -264,6 +264,7 @@ impl Reference {
                         | "filter_composite_direct_region"
                         | "filter_composite_surface_direct_region"
                         | "filter_composite_stack_region"
+                        | "filter_liquid_glass_rect_composite_region"
                         | "filter_composite_blend_stack_region"
                         | "filter_composite_surface_stack_region"
                         | "filter_composite_rect_direct_region"

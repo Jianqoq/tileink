@@ -219,3 +219,6 @@ mod filter_layer;
 
 #[path = "tests/filter_stack_gpu.rs"]
 mod filter_stack;
+
+#[path = "tests/filter_glass_gpu.rs"]
+mod filter_glass;

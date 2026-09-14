@@ -393,8 +393,13 @@ fn liquid_glass_pixel(
             a = lerp_f32(a, 1.0, tint_mix);
         }
     } else {
-        let offset_x = -nx * edge * LIQUID_GLASS_REFRACTION_PIXEL_SCALE;
-        let offset_y = -ny * edge * LIQUID_GLASS_REFRACTION_PIXEL_SCALE;
+        // A zero normal component has exactly zero displacement even when the
+        // other component overflows. Guard before multiplication so compiler
+        // reassociation cannot turn zero * infinity into a NaN sample coordinate.
+        var offset_x = 0.0;
+        var offset_y = 0.0;
+        if (nx != 0.0) { offset_x = -nx * edge * LIQUID_GLASS_REFRACTION_PIXEL_SCALE; }
+        if (ny != 0.0) { offset_y = -ny * edge * LIQUID_GLASS_REFRACTION_PIXEL_SCALE; }
         if (abs(config.liquid_refraction_dispersion) <= LIQUID_GLASS_EPSILON) {
             let sx = pixel_x + offset_x;
             let sy = pixel_y + offset_y;
@@ -425,7 +430,7 @@ fn liquid_glass_pixel(
         }
 
         if (config.liquid_fresnel_factor > 0.0) {
-            let fresnel = liquid_glass_fresnel(distance, config.liquid_fresnel_range, config.liquid_fresnel_hardness);
+            let fresnel = liquid_glass_highlight_geometry(distance, config.liquid_fresnel_range, config.liquid_fresnel_hardness);
             let fresnel_base_r = lerp_f32(1.0, config.liquid_tint_r, tint_base_mix);
             let fresnel_base_g = lerp_f32(1.0, config.liquid_tint_g, tint_base_mix);
             let fresnel_base_b = lerp_f32(1.0, config.liquid_tint_b, tint_base_mix);
@@ -441,7 +446,7 @@ fn liquid_glass_pixel(
         }
 
         if (config.liquid_glare_factor > 0.0) {
-            let glare_geo = liquid_glass_glare_geometry(distance, config.liquid_glare_range, config.liquid_glare_hardness);
+            let glare_geo = liquid_glass_highlight_geometry(distance, config.liquid_glare_range, config.liquid_glare_hardness);
             let glare_angle_factor = liquid_glass_glare_angle(nx, ny);
             let glare_base_r = lerp_f32(blurred_r, config.liquid_tint_r, tint_base_mix);
             let glare_base_g = lerp_f32(blurred_g, config.liquid_tint_g, tint_base_mix);
@@ -495,31 +500,15 @@ fn liquid_glass_edge(inside_distance: f32, refraction_thickness: f32, refraction
     return max(numerator / denominator, 0.0);
 }
 
-fn liquid_glass_fresnel(distance: f32, fresnel_range: f32, fresnel_hardness: f32) -> f32 {
-    return clamp(
-        pow(
-            1.0 + distance / LIQUID_GLASS_GEOMETRY_DISTANCE_SCALE *
-            pow(LIQUID_GLASS_GEOMETRY_RANGE_SCALE / max(fresnel_range, LIQUID_GLASS_EPSILON), 2.0) +
-            fresnel_hardness,
-            5.0,
-        ),
-        0.0,
-        1.0,
-    );
+fn liquid_glass_highlight_geometry(distance: f32, fresnel_range: f32, fresnel_hardness: f32) -> f32 {
+    // Fifth power is monotonic: clamping the base first preserves the final
+    // clamp while avoiding undefined pow(negative, 5) behavior on native APIs.
+    let base = 1.0 + distance / LIQUID_GLASS_GEOMETRY_DISTANCE_SCALE *
+        pow(LIQUID_GLASS_GEOMETRY_RANGE_SCALE / max(fresnel_range, LIQUID_GLASS_EPSILON), 2.0) + fresnel_hardness;
+    return pow(clamp(base, 0.0, 1.0), 5.0);
 }
 
-fn liquid_glass_glare_geometry(distance: f32, glare_range: f32, glare_hardness: f32) -> f32 {
-    return clamp(
-        pow(
-            1.0 + distance / LIQUID_GLASS_GEOMETRY_DISTANCE_SCALE *
-            pow(LIQUID_GLASS_GEOMETRY_RANGE_SCALE / max(glare_range, LIQUID_GLASS_EPSILON), 2.0) +
-            glare_hardness,
-            5.0,
-        ),
-        0.0,
-        1.0,
-    );
-}
+
 
 fn liquid_glass_glare_angle(nx: f32, ny: f32) -> f32 {
     let angle = (liquid_glass_vec2_angle(nx, ny) - LIQUID_GLASS_PI * 0.25 + config.liquid_glare_angle) * 2.0;

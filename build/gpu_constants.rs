@@ -94,9 +94,20 @@ fn rust_constants(constants: &BTreeMap<String, u32>) -> String {
 
 /// Read a shader-owned constant header without exporting shader-only values to Rust.
 pub fn read_hlsl(source: &str) -> io::Result<BTreeMap<String, u32>> {
+    parse(&read_source(source)?)
+}
+
+#[path = "gpu_constants/floats.rs"]
+pub mod floats;
+
+pub fn read_float_wgsl(source: &str) -> io::Result<String> {
+    floats::parse_wgsl(&read_source(source)?)
+}
+
+fn read_source(source: &str) -> io::Result<String> {
     let path = Path::new(&env::var_os("CARGO_MANIFEST_DIR").unwrap())
         .join("src/shaders/hlsl")
         .join(source);
     println!("cargo:rerun-if-changed={}", path.display());
-    parse(&fs::read_to_string(path)?)
+    fs::read_to_string(path)
 }

@@ -1767,3 +1767,19 @@ complete SVG/examples pass. Both GPU tests replay with DXC unavailable and disk
 pipeline cache hits. There are no new PNG differences beyond accepted turbulence.
 Both review axes are closed. Inventory is **159/179**; remaining effects, fine and
 NativeRenderer/Canvas integration keep M4 open. See [stack](docs/native/m4-filter-stack.md).
+
+### M4 liquid glass
+
+Both liquid glass entries pass exact four-API comparison in all four variants.
+HLSLI owns the float constants; native helpers have explicit inputs and separate
+geometry, sampling, color and shading modules. Extreme refraction now guards zero
+normal components before multiplication in both WGSL and HLSL; highlight fifth
+powers have defined negative-base behavior. Host validation enforces documented
+normalized controls and finite arithmetic bounds.
+
+Release (989), runtime (137), strict Clippy, editor, 76 SPIR-V modules, SVG/examples
+and four GPU tests without DXC pass. Independent integer sampling and zero-highlight
+oracles supplement the production WGSL comparison. No new PNG differences beyond
+accepted turbulence. Reviews are closed; see [glass](docs/native/m4-filter-glass.md).
+Inventory reaches **167/179**. Brush-dependent effects, fine and NativeRenderer/
+Canvas integration still keep M4 open.

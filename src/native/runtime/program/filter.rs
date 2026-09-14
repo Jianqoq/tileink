@@ -147,3 +147,6 @@ pub mod layer;
 
 #[path = "filter/stack.rs"]
 pub mod stack;
+
+#[path = "filter/glass.rs"]
+pub mod glass;

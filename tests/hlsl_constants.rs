@@ -32,3 +32,27 @@ fn constants_reject_ambiguous_or_unsupported_definitions() {
         assert!(gpu_constants::parse(source).is_err(), "{source}");
     }
 }
+
+#[test]
+fn float_constants_preserve_literals_and_reject_ambiguous_input() {
+    let source = "static const float EDGE = -0.001;\nstatic const float EPS = 1.0e-6;\n";
+    assert_eq!(
+        gpu_constants::floats::parse_wgsl(source).unwrap(),
+        "const EDGE: f32 = -0.001;\nconst EPS: f32 = 1.0e-6;\n"
+    );
+    for source in [
+        "",
+        "static const float VALUE = NaN;",
+        "static const float VALUE = 1e99;",
+        "static const float VALUE = 1.0 + 2.0;",
+        "static const float value = 1.0;",
+        "static const float VALUE = 1.0;\nstatic const float VALUE = 2.0;",
+        "static const float VALUE = 1;",
+        "static const float VALUE = +1.0;",
+    ] {
+        assert!(
+            gpu_constants::floats::parse_wgsl(source).is_err(),
+            "{source}"
+        );
+    }
+}

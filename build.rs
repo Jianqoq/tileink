@@ -107,6 +107,9 @@ fn build_wgpu() {
             );
         }
         if entry.starts_with("filter") {
+            source = gpu_constants::read_float_wgsl("filter/glass/constants.hlsli")
+                .expect("read liquid glass constants")
+                + &source;
             source = format!(
                 "const FILTER_GROUP_STACK_CAPACITY: u32 = {}u;\nconst FILTER_WORKGROUP_SIZE: u32 = {}u;\nconst SHARED_BLUR_TILE_WIDTH: u32 = {}u;\nconst SHARED_BLUR_TILE_HEIGHT: u32 = {}u;\nconst SHARED_BLUR_MAX_RADIUS: u32 = {}u;\nconst COMPONENT_TRANSFER_TABLE_SIZE: u32 = {}u;\nconst COMPONENT_TRANSFER_TABLE_LEN: u32 = {}u;\nconst PATH_MASK_COORDINATE_SCALE: u32 = {}u;\nconst TURBULENCE_TABLE_LEN: u32 = {}u;\nconst TURBULENCE_GRADIENT_LEN: u32 = {}u;\nconst TURBULENCE_COORDINATE_OFFSET: u32 = {}u;\n{source}",
                 gpu_constants::read_hlsl("shared/stack_constants.hlsli")

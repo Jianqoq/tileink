@@ -146,6 +146,7 @@ pub fn get(family: &str) -> io::Result<Interface> {
         "filter-surface" => filter::surface(&constants),
         "filter-layer" => filter::layer(&constants),
         "filter-stack" => filter::stack(&constants),
+        "filter-glass" => filter::glass(&constants),
         "sdf-coverage" => validation::sdf(&constants),
         "filter-blur-shared" => filter::blur(&constants, true),
         "fine-gradient" => fine::gradient(&constants),

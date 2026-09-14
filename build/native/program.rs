@@ -27,6 +27,7 @@ pub const FAMILIES: &[(&str, &str)] = &[
     ("filter-surface", "filter/surface.hlsl"),
     ("filter-layer", "filter/layer.hlsl"),
     ("filter-stack", "filter/stack.hlsl"),
+    ("filter-glass", "filter/glass.hlsl"),
     ("sdf-coverage", "validation/sdf.hlsl"),
     ("filter-blur-shared", "filter/blur_shared.hlsl"),
     ("fine-gradient", "validation/gradient.hlsl"),
