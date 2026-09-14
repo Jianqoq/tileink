@@ -1899,3 +1899,17 @@ SVG/examples pass; only the approved turbulence PNG differs. Reviews are closed.
 See [scene recording](docs/native/m4-scene-record.md). M4 remains incomplete:
 full native frame/effect and image assembly, GPU resource/submission integration,
 and immediate four-renderer acceptance remain. No performance comparison.
+
+## M4 native scene raster images — 2026-09-14
+
+SceneImages now materializes the shared atlas/table placements. Four-API Canvas
+pixels match for nearest/bilinear sampling, table-enabled and atlas-only variants,
+and multiple atlas pages; independent expected colors also pass. Capacity comes
+from canonical HLSLI for production wgpu/native host code. See
+[scene images](docs/native/m4-scene-images.md).
+
+Release (1,018), integration, formatting, strict Clippy, native-only checks and
+full SVG/examples pass. The 3,471 PNG set still has only the approved turbulence
+difference. Standards and Spec reviews are closed. No performance comparison.
+M4 remains incomplete: full native frame/effect/vector assembly, GPU resource/
+submission integration and complete immediate four-renderer acceptance remain.

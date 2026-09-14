@@ -78,12 +78,16 @@ pub fn write_rust(out: &Path) -> io::Result<()> {
             return Err(io::Error::other("duplicate fine host constant"));
         }
     }
+    // Texture table capacity now also sizes production native descriptors.
+    // Keep HLSLI authoritative for wgpu, native and validation consumers.
+    for (name, value) in read_hlsl("shared/texture_table_constants.hlsli")? {
+        if host.insert(name, value).is_some() {
+            return Err(io::Error::other("duplicate texture table host constant"));
+        }
+    }
     fs::write(out.join("tileink_gpu_constants.rs"), rust_constants(&host))?;
     let mut validation = rust_constants(&read_hlsl("validation/sdf_config.hlsli")?);
     validation.push_str(&rust_constants(&read_hlsl("shared/stack_constants.hlsli")?));
-    validation.push_str(&rust_constants(&read_hlsl(
-        "shared/texture_table_constants.hlsli",
-    )?));
     let mut brush = read_hlsl("shared/brush/constants.hlsli")?;
     brush.retain(|name, _| name == "BRUSH_TEXTURE_PLACEMENT_BIT");
     validation.push_str(&rust_constants(&brush));

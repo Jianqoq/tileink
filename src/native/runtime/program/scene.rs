@@ -289,3 +289,6 @@ impl Scene {
 #[cfg(test)]
 #[path = "../tests/scene.rs"]
 mod tests;
+
+#[path = "scene/images.rs"]
+mod images;

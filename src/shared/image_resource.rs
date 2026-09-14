@@ -586,7 +586,8 @@ impl<'a> ImageResourceUploadBuilder<'a> {
 
 const DEFAULT_IMAGE_RESOURCE_ATLAS_PAGE_SIZE: u32 = 2048;
 const LARGE_IMAGE_AREA_THRESHOLD: u64 = 2048 * 2048;
-pub(crate) const MAX_IMAGE_RESOURCE_TEXTURES: usize = 64;
+pub(crate) const MAX_IMAGE_RESOURCE_TEXTURES: usize =
+    crate::shared::gpu_constants::NATIVE_TEXTURE_TABLE_CAPACITY as usize;
 
 fn should_use_texture_table(image: &ImageSource, max_atlas_dimension: u32) -> bool {
     if image.width() > max_atlas_dimension || image.height() > max_atlas_dimension {

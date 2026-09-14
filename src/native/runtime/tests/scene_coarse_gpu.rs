@@ -2,10 +2,10 @@ use super::{Result, fine_fixture::routes, reference::FineVariant};
 use crate::{
     Canvas,
     native::runtime::{
-        compute::{ComputeBatch, SamplerFilter},
+        compute::ComputeBatch,
         program::scene::{SceneCache, SceneImages},
     },
-    shared::{execution::ExecOp, gpu_constants::NATIVE_TEXTURE_TABLE_CAPACITY},
+    shared::execution::ExecOp,
 };
 
 fn scene_batch(
@@ -60,18 +60,20 @@ fn scene_batch(
     for _ in 0..depth * 2 {
         canvas.pop_layer();
     }
+    render_canvas(cache, &canvas, &Default::default(), chunked)
+}
+
+fn render_canvas(
+    cache: &mut SceneCache,
+    canvas: &Canvas,
+    upload: &crate::shared::image_resource::GpuImageResourceUpload,
+    chunked: bool,
+) -> Result<ComputeBatch> {
+    let (width, height) = canvas.physical_size();
     let mut batch = ComputeBatch::new();
-    let scene = cache.record(&mut batch, &canvas, None, None, 65535)?;
+    let images = SceneImages::record(&mut batch, upload)?;
+    let scene = cache.record(&mut batch, canvas, None, Some(upload), 65535)?;
     let target = batch.texture_rgba8([width, height], vec![0; (width * height * 4) as usize])?;
-    let atlas = batch.texture_array_rgba8([1, 1, 1], vec![0; 4])?;
-    let image = batch.texture_rgba8([1, 1], vec![0; 4])?;
-    let table = batch.texture_table(&vec![image; NATIVE_TEXTURE_TABLE_CAPACITY as usize])?;
-    let sampler = batch.sampler(SamplerFilter::Linear)?;
-    let images = SceneImages {
-        atlas,
-        table,
-        sampler,
-    };
     let indices = scene
         .plan
         .all_direct_root_ops()
@@ -92,8 +94,8 @@ fn scene_batch(
             chunked,
             65535,
         )?;
-        // SAFETY: this Canvas has no external images; coarse for this exact
-        // prepared scene/batch precedes fine, and the initialized target is live.
+        // SAFETY: paint and image resources use the same placement upload;
+        // coarse for this exact scene/batch precedes fine on the live target.
         unsafe {
             scene.encode_fine(&mut batch, target, &images, 0, true, 65535)?;
         }
@@ -139,6 +141,117 @@ fn four_api_canvas_scan_coarse_fine_preserves_pixels() -> Result<()> {
                     variant,
                 )?;
             }
+        }
+    }
+    routes.validate()
+}
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn four_api_canvas_image_resources_preserve_pixels() -> Result<()> {
+    use crate::shared::{
+        gpu_constants::NATIVE_TEXTURE_TABLE_CAPACITY,
+        image_resource::{ImageKey, ImageResourceStore},
+    };
+    use crate::{Image, PatternSampling};
+    use peniko::{Extend, kurbo::Rect};
+    let routes = routes()?;
+    let mut store = ImageResourceStore::default();
+    store.insert(
+        ImageKey(1),
+        Image::from_rgba8(2, 1, [255, 0, 0, 255, 0, 255, 0, 255]),
+    );
+    let mut wide = [0, 0, 255, 255].repeat(1025);
+    wide.extend([255, 255, 0, 255].repeat(1025));
+    store.insert(ImageKey(2), Image::from_rgba8(2050, 1, wide));
+    let upload = store.upload_merged(
+        &ImageResourceStore::default(),
+        4096,
+        4,
+        NATIVE_TEXTURE_TABLE_CAPACITY,
+        None,
+    );
+    assert_eq!(upload.atlas_page_count(), 1);
+    assert_eq!(upload.textures().len(), 1);
+    let mut cache = SceneCache::default();
+    for sampling in [PatternSampling::Nearest, PatternSampling::Bilinear] {
+        let mut canvas = Canvas::new(2, 2, 1.0);
+        canvas
+            .push_image_key(
+                Rect::new(0.0, 0.0, 2.0, 1.0),
+                ImageKey(1),
+                Extend::Pad,
+                sampling,
+            )
+            .unwrap();
+        canvas
+            .push_image_key(
+                Rect::new(0.0, 1.0, 2.0, 2.0),
+                ImageKey(2),
+                Extend::Pad,
+                sampling,
+            )
+            .unwrap();
+        let batch = render_canvas(&mut cache, &canvas, &upload, false)?;
+        let expected = routes.fine_reference(&batch, FineVariant::ALL[1])?;
+        assert_eq!(
+            expected[0],
+            [
+                255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 0, 255
+            ]
+        );
+        for chunked in [false, true] {
+            for variant in FineVariant::ALL {
+                let upload = store.upload_merged(
+                    &ImageResourceStore::default(),
+                    4096,
+                    4,
+                    if variant.texture_table {
+                        NATIVE_TEXTURE_TABLE_CAPACITY
+                    } else {
+                        0
+                    },
+                    None,
+                );
+                let batch = render_canvas(&mut cache, &canvas, &upload, chunked)?;
+                routes.check_fine(&batch, &expected, "Canvas atlas and table", variant)?;
+            }
+        }
+    }
+    // Distinct pages exercise the placement layer index, not only array creation.
+    let mut store = ImageResourceStore::default();
+    store.insert(
+        ImageKey(1),
+        Image::from_rgba8(4, 4, [255, 0, 0, 255].repeat(16)),
+    );
+    store.insert(
+        ImageKey(2),
+        Image::from_rgba8(4, 4, [0, 255, 0, 255].repeat(16)),
+    );
+    let upload = store.upload_merged(&ImageResourceStore::default(), 8, 4, 0, None);
+    assert_eq!(upload.atlas_page_count(), 2);
+    let mut canvas = Canvas::new(2, 1, 1.0);
+    canvas
+        .push_image_key(
+            Rect::new(0.0, 0.0, 1.0, 1.0),
+            ImageKey(1),
+            Extend::Pad,
+            PatternSampling::Nearest,
+        )
+        .unwrap();
+    canvas
+        .push_image_key(
+            Rect::new(1.0, 0.0, 2.0, 1.0),
+            ImageKey(2),
+            Extend::Pad,
+            PatternSampling::Nearest,
+        )
+        .unwrap();
+    let expected = vec![vec![255, 0, 0, 255, 0, 255, 0, 255]];
+    for chunked in [false, true] {
+        let batch = render_canvas(&mut cache, &canvas, &upload, chunked)?;
+        for variant in FineVariant::ALL {
+            routes.check_fine(&batch, &expected, "Canvas atlas page selection", variant)?;
         }
     }
     routes.validate()
