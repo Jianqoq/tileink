@@ -1887,3 +1887,15 @@ native-only and full SVG/examples pass, with no additional PNG change. Reviews
 are closed; see [fine assembly](docs/native/m4-scene-fine.md). M4 remains incomplete:
 full native scene/frame and effect assembly, GPU resource/submission integration,
 and all immediate cases on four full renderers remain. No performance comparison.
+
+## M4 native Canvas scene recording — 2026-09-14
+
+Production SceneCache now owns scene preparation and scan/coarse/fine resources,
+including text/paint, tile bins, layers and spill allocations. The real Canvas
+four-API test uses it, including empty output and six clip/opacity levels.
+Shared layer conversion removes the separate wgpu encoding implementation.
+Release (1,014), integration, formatting, strict Clippy, native-only and complete
+SVG/examples pass; only the approved turbulence PNG differs. Reviews are closed.
+See [scene recording](docs/native/m4-scene-record.md). M4 remains incomplete:
+full native frame/effect and image assembly, GPU resource/submission integration,
+and immediate four-renderer acceptance remain. No performance comparison.

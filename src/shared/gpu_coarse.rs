@@ -300,3 +300,49 @@ mod tests {
         assert_eq!(coarse_work_word_len(3, 5, 7, 11, 13), 175);
     }
 }
+
+impl From<super::execution::LayerStackEntry> for LayerStackRecord {
+    fn from(entry: super::execution::LayerStackEntry) -> Self {
+        use super::{execution::LayerStackEntry, gpu_types::*, pixel::opacity_f32_to_u8};
+        let (tag, draw, payload) = match entry {
+            LayerStackEntry::Clip { draw } => (GPU_LAYER_CLIP, draw, 0),
+            LayerStackEntry::Opacity { draw, opacity } => (
+                GPU_LAYER_OPACITY,
+                draw,
+                u32::from(opacity_f32_to_u8(opacity)),
+            ),
+            LayerStackEntry::Blend { draw, mode } => (
+                GPU_LAYER_BLEND,
+                draw,
+                mode.mix as u32 | ((mode.compose as u32) << 8),
+            ),
+        };
+        Self { tag, draw, payload }
+    }
+}
+
+#[cfg(test)]
+mod layer_encoding_tests {
+    use super::*;
+    use crate::shared::{execution::LayerStackEntry, gpu_types::*};
+    #[test]
+    fn layer_records_preserve_draw_identity_opacity_and_blend_bytes() {
+        let clip = LayerStackRecord::from(LayerStackEntry::Clip { draw: 73 });
+        assert_eq!((clip.tag, clip.draw, clip.payload), (GPU_LAYER_CLIP, 73, 0));
+        for (opacity, payload) in [(0.0, 0), (0.5, 128), (1.0, 255)] {
+            let record = LayerStackRecord::from(LayerStackEntry::Opacity { draw: 19, opacity });
+            assert_eq!(
+                (record.tag, record.draw, record.payload),
+                (GPU_LAYER_OPACITY, 19, payload)
+            );
+        }
+        let mode = peniko::BlendMode {
+            mix: peniko::Mix::Multiply,
+            compose: peniko::Compose::SrcIn,
+        };
+        let record = LayerStackRecord::from(LayerStackEntry::Blend { draw: 11, mode });
+        assert_eq!((record.tag, record.draw), (GPU_LAYER_BLEND, 11));
+        assert_eq!(record.payload & 255, mode.mix as u32);
+        assert_eq!(record.payload >> 8, mode.compose as u32);
+    }
+}

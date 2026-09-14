@@ -15,9 +15,7 @@ use crate::{
             coarse_work_tile_draw_index_word_offset, coarse_work_tile_draw_record_word_offset,
         },
         gpu_plan::{GpuBufferLengths, GpuCumsumPlan, PersistentPathPlans, TILE_DRAW_PAGE_WORDS},
-        gpu_types::{GPU_LAYER_BLEND, GPU_LAYER_CLIP, GPU_LAYER_OPACITY},
         image_resource::GpuImageResourceUpload,
-        pixel::opacity_f32_to_u8,
     },
     text::{AtlasSignature, PreparedTextChanges, PreparedTextData},
 };
@@ -66,30 +64,6 @@ fn upload_fine_text_blob(
         &text.dirty_fine,
     );
     (text.fine_image_base, text.fine_image_data_base, uploaded)
-}
-
-fn encode_layer_payload(entry: LayerStackEntry) -> u32 {
-    match entry {
-        LayerStackEntry::Clip { .. } => 0,
-        LayerStackEntry::Opacity { opacity, .. } => opacity_f32_to_u8(opacity) as u32,
-        LayerStackEntry::Blend { mode, .. } => mode.mix as u32 | ((mode.compose as u32) << 8),
-    }
-}
-
-fn layer_stack_record(entry: LayerStackEntry) -> LayerStackRecord {
-    LayerStackRecord {
-        tag: match entry {
-            LayerStackEntry::Clip { .. } => GPU_LAYER_CLIP,
-            LayerStackEntry::Opacity { .. } => GPU_LAYER_OPACITY,
-            LayerStackEntry::Blend { .. } => GPU_LAYER_BLEND,
-        },
-        draw: match entry {
-            LayerStackEntry::Clip { draw }
-            | LayerStackEntry::Opacity { draw, .. }
-            | LayerStackEntry::Blend { draw, .. } => draw,
-        },
-        payload: encode_layer_payload(entry),
-    }
 }
 
 impl WgpuSceneBuffers {
@@ -428,7 +402,7 @@ impl WgpuSceneBuffers {
         staging.layer_stack.reserve(layer_stack.len());
         staging
             .layer_stack
-            .extend(layer_stack.iter().copied().map(layer_stack_record));
+            .extend(layer_stack.iter().copied().map(LayerStackRecord::from));
         self.plan_layer_stack.upload_cached(
             device,
             queue,
@@ -450,7 +424,7 @@ impl WgpuSceneBuffers {
         }
         for range in ranges {
             for index in range.clone() {
-                staging.layer_stack[index] = layer_stack_record(layer_stack[index]);
+                staging.layer_stack[index] = LayerStackRecord::from(layer_stack[index]);
             }
         }
         self.plan_layer_stack.upload_ranges(

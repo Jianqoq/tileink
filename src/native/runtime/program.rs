@@ -98,3 +98,9 @@ pub mod coarse;
 
 #[path = "program/fine.rs"]
 pub mod fine;
+
+#[path = "program/resources.rs"]
+mod resources;
+
+#[path = "program/scene.rs"]
+pub mod scene;

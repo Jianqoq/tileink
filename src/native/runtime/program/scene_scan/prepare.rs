@@ -35,3 +35,33 @@ impl<'a> PreparedScan<'a> {
         }
     }
 }
+
+impl<'a> PreparedScan<'a> {
+    pub(in crate::native::runtime::program) fn for_scene(
+        canvas: &'a Canvas,
+        staging: &'a mut crate::render::upload::scene::SceneUploadStaging,
+        text: Option<&crate::text::PreparedTextData>,
+        prepared: &crate::render::prepare::PreparedPlan,
+    ) -> (Self, crate::shared::gpu_plan::GpuBufferLengths) {
+        let lengths = staging.build_lengths(
+            canvas,
+            text,
+            &prepared.plan,
+            prepared.reused_metadata,
+            Some(prepared.stack_depths),
+            None,
+        );
+        let scan = Self {
+            canvas,
+            plans: &staging.path_plans,
+            lengths: ScanLengths {
+                line_count: lengths.line_count,
+                path_count: lengths.path_count,
+                scan_chunk_count: lengths.scan_chunk_count,
+                backdrop_len: lengths.backdrop_len,
+                segment_capacity: lengths.segment_capacity,
+            },
+        };
+        (scan, lengths)
+    }
+}

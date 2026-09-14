@@ -7,6 +7,7 @@ use super::super::{
     compute::{ComputeBatch, ResourceId},
 };
 use super::cumsum::CumsumPlan;
+use super::resources::{allocate, allocation_size, upload};
 #[path = "scene_scan/prepare.rs"]
 mod prepare;
 use crate::shared::{
@@ -219,30 +220,6 @@ fn grid(count: u32, limit: u32) -> Result<[u32; 3]> {
         return Err("native scan chunks exceed device grid".into());
     }
     Ok([x, y, 1])
-}
-
-fn allocation_size(count: usize, stride: usize) -> Result<usize> {
-    count
-        .max(1)
-        .checked_mul(stride)
-        .filter(|&size| size <= u32::MAX as usize)
-        .ok_or_else(|| "native scan allocation exceeds raw-buffer address space".into())
-}
-
-fn allocate(batch: &mut ComputeBatch, count: usize, stride: usize) -> Result<ResourceId> {
-    let size = allocation_size(count, stride)?;
-    let mut bytes = Vec::new();
-    bytes.try_reserve_exact(size)?;
-    bytes.resize(size, 0);
-    batch.buffer(bytes)
-}
-
-fn upload<T: bytemuck::Pod>(batch: &mut ComputeBatch, records: &[T]) -> Result<ResourceId> {
-    if records.is_empty() {
-        allocate(batch, 1, size_of::<T>())
-    } else {
-        batch.buffer(bytemuck::cast_slice(records).to_vec())
-    }
 }
 
 #[cfg(test)]
