@@ -24,3 +24,15 @@ pub(super) fn validation(constants: &BTreeMap<String, u32>) -> Interface {
         &[("texture_flip", &["config", "source", "destination"])],
     )
 }
+
+pub(super) fn array(constants: &BTreeMap<String, u32>) -> Interface {
+    let mut result = validation(constants);
+    result.resources.get_mut("config").unwrap().fields[2].name = "layer".into();
+    result.resources.get_mut("source").unwrap().kind = Kind::TextureArray;
+    result.entries = [(
+        "texture_layer".into(),
+        vec!["config".into(), "source".into(), "destination".into()],
+    )]
+    .into();
+    result
+}

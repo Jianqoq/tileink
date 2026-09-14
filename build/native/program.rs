@@ -14,6 +14,7 @@ pub const FAMILIES: &[(&str, &str)] = &[
     ("coarse-prefix", "coarse/prefix.hlsl"),
     ("fine-gradient", "validation/gradient.hlsl"),
     ("texture-validation", "validation/texture.hlsl"),
+    ("texture-array-validation", "validation/texture_array.hlsl"),
     ("blend-math", "validation/blend.hlsl"),
     ("fill-coverage", "validation/geometry.hlsl"),
     ("geometry-math", "validation/geometry.hlsl"),

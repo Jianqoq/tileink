@@ -19,6 +19,7 @@ fn native_build_embeds_each_expected_nonempty_program() {
         "coarse_emit_chunk_tile_kinds",
         "gradient_words",
         "texture_flip",
+        "texture_layer",
         "blend_math_words",
         "fill_coverage_words",
         "geometry_math_words",

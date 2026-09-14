@@ -60,6 +60,7 @@ impl Frame {
                         .size
                         .iter()
                         .any(|&n| n > limits.max_image_dimension2_d)
+                        || texture.layers > limits.max_image_array_layers
                     {
                         return Err("native Vulkan texture exceeds device dimensions".into());
                     }
@@ -191,7 +192,7 @@ impl Frame {
                     let i = match b.kind {
                         BindingKind::Uniform => 0,
                         BindingKind::Read | BindingKind::Write => 1,
-                        BindingKind::Texture => 2,
+                        BindingKind::Texture | BindingKind::TextureArray => 2,
                         BindingKind::TextureWrite => 3,
                     };
                     counts[i] = counts[i]
@@ -263,7 +264,9 @@ impl Frame {
                 for binding in pass.shader.bindings {
                     if matches!(
                         binding.kind,
-                        BindingKind::Texture | BindingKind::TextureWrite
+                        BindingKind::Texture
+                            | BindingKind::TextureWrite
+                            | BindingKind::TextureArray
                     ) {
                         let id = pass
                             .bindings

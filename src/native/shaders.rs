@@ -20,6 +20,7 @@ pub(crate) enum BindingKind {
     Write,
     Texture,
     TextureWrite,
+    TextureArray,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct Binding {

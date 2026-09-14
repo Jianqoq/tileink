@@ -82,6 +82,7 @@ pub fn validate(text: &str, entry: &str, abi: &Interface) -> io::Result<()> {
             Kind::Write => ("u", ["UAV", "byte", "r/w"]),
             Kind::Texture => ("t", ["texture", "f32", "2d"]),
             Kind::TextureWrite => ("u", ["UAV", "f32", "2d"]),
+            Kind::TextureArray => ("t", ["texture", "f32", "2darray"]),
         };
         let register = format!("{prefix}{}", resource.binding);
         require(

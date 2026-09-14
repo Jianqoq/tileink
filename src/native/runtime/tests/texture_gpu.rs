@@ -88,3 +88,44 @@ fn four_api_textures_preserve_multiline_uploads_and_read_after_write() -> Result
     routes.check(&batch, &[bytes], "upload-only texture without buffer arena")?;
     routes.validate()
 }
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn four_api_texture_arrays_preserve_layers_and_single_layer_views() -> Result<()> {
+    let routes = Routes::new()?;
+    for [width, height, layers] in [[1u32, 3u32, 3u32], [3, 7, 1], [65, 9, 4]] {
+        let source: Vec<u8> = (0..width * height * layers * 4)
+            .map(|i| (i.wrapping_mul(37) ^ (i / (width * height * 4)).wrapping_mul(83)) as u8)
+            .collect();
+        let mut batch = ComputeBatch::new();
+        let input = batch.texture_array_rgba8([width, height, layers], source.clone())?;
+        batch.readback(input)?;
+        let mut expected = vec![source.clone()];
+        for layer in (0..layers).rev() {
+            let config = batch.buffer(
+                [width, height, layer, 0]
+                    .into_iter()
+                    .flat_map(u32::to_le_bytes)
+                    .collect(),
+            )?;
+            let output =
+                batch.texture_rgba8([width, height], vec![0; (width * height * 4) as usize])?;
+            // SAFETY: selected layer is in range; each bounded invocation owns one destination pixel.
+            unsafe {
+                batch.dispatch(
+                    "texture_layer",
+                    &[(0, config), (1, input), (2, output)],
+                    [width.div_ceil(FINE_WORKGROUP_SIZE), height, 1],
+                )?;
+            }
+            batch.readback(output)?;
+            let start = (layer * width * height * 4) as usize;
+            expected.push(source[start..start + (width * height * 4) as usize].to_vec());
+        }
+        routes.check(
+            &batch,
+            &expected,
+            "array layers and explicit single-layer array view",
+        )?;
+    }
+    routes.validate()
+}

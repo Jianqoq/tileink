@@ -47,6 +47,17 @@ impl Reference {
                     );
                     helper_source.as_str()
                 }
+                "texture_layer" => {
+                    helper_source = format!(
+                        "const FINE_WORKGROUP_SIZE:u32={}u;\n{}",
+                        crate::shared::gpu_constants::FINE_WORKGROUP_SIZE,
+                        include_str!(concat!(
+                            env!("CARGO_MANIFEST_DIR"),
+                            "/tests/shaders/texture_array.wgsl"
+                        ))
+                    );
+                    helper_source.as_str()
+                }
                 "gradient_words" => {
                     helper_source = format!(
                         "{}\n{}",

@@ -9,63 +9,84 @@ use windows::Win32::Graphics::{Direct3D12::*, Dxgi::Common::*};
 pub(super) struct Readback {
     resource: ID3D12Resource,
     size: usize,
+    layout: Option<TextureLayout>,
+}
+#[derive(Clone)]
+struct TextureLayout {
+    footprints: Vec<D3D12_PLACED_SUBRESOURCE_FOOTPRINT>,
+    size: usize,
     rows: usize,
     row_bytes: usize,
-    pitch: usize,
+}
+impl TextureLayout {
+    fn new(device: &ID3D12Device, desc: &D3D12_RESOURCE_DESC) -> Result<Self> {
+        let mut footprints =
+            vec![D3D12_PLACED_SUBRESOURCE_FOOTPRINT::default(); desc.DepthOrArraySize as usize];
+        let mut total = 0;
+        unsafe {
+            device.GetCopyableFootprints(
+                desc,
+                0,
+                footprints.len() as u32,
+                0,
+                Some(footprints.as_mut_ptr()),
+                None,
+                None,
+                Some(&mut total),
+            );
+        }
+        if total == u64::MAX {
+            return Err("invalid native DX12 texture footprints".into());
+        }
+        Ok(Self {
+            footprints,
+            size: usize::try_from(total)?,
+            rows: desc.Height as usize,
+            row_bytes: desc.Width as usize * 4,
+        })
+    }
+    fn rows(&self) -> impl Iterator<Item = (usize, usize)> + '_ {
+        // Array subresources have independent device footprints, including layer gaps.
+        self.footprints
+            .iter()
+            .enumerate()
+            .flat_map(move |(layer, footprint)| {
+                (0..self.rows).map(move |row| {
+                    (
+                        footprint.Offset as usize + row * footprint.Footprint.RowPitch as usize,
+                        (layer * self.rows + row) * self.row_bytes,
+                    )
+                })
+            })
+    }
 }
 impl Readback {
     pub fn buffer(resource: ID3D12Resource, size: usize) -> Self {
         Self {
             resource,
             size,
-            rows: 1,
-            row_bytes: size,
-            pitch: size,
+            layout: None,
         }
     }
     pub fn read(&self) -> Result<Vec<u8>> {
         let bytes = buffer::read(&self.resource, self.size)?;
-        // Buffer readback already owns tightly packed bytes; preserve that allocation.
-        if self.pitch == self.row_bytes {
+        let Some(layout) = &self.layout else {
             return Ok(bytes);
-        }
-        let mut packed = Vec::with_capacity(self.rows * self.row_bytes);
-        for row in 0..self.rows {
-            packed.extend_from_slice(&bytes[row * self.pitch..row * self.pitch + self.row_bytes]);
+        };
+        let mut packed = vec![0; layout.footprints.len() * layout.rows * layout.row_bytes];
+        for (source, destination) in layout.rows() {
+            packed[destination..destination + layout.row_bytes]
+                .copy_from_slice(&bytes[source..source + layout.row_bytes]);
         }
         Ok(packed)
     }
 }
-
-fn footprint(
-    device: &ID3D12Device,
-    desc: &D3D12_RESOURCE_DESC,
-) -> Result<(D3D12_PLACED_SUBRESOURCE_FOOTPRINT, usize)> {
-    let mut layout = D3D12_PLACED_SUBRESOURCE_FOOTPRINT::default();
-    let mut total = 0;
-    unsafe {
-        device.GetCopyableFootprints(
-            desc,
-            0,
-            1,
-            0,
-            Some(&mut layout),
-            None,
-            None,
-            Some(&mut total),
-        );
-    }
-    if total == u64::MAX {
-        return Err("invalid native DX12 texture footprint".into());
-    }
-    Ok((layout, usize::try_from(total)?))
-}
-
 unsafe fn copy(
     list: &ID3D12GraphicsCommandList,
     texture: &ID3D12Resource,
     transfer: &ID3D12Resource,
     layout: D3D12_PLACED_SUBRESOURCE_FOOTPRINT,
+    layer: u32,
     upload: bool,
 ) {
     unsafe {
@@ -73,7 +94,7 @@ unsafe fn copy(
             pResource: ManuallyDrop::new(Some(texture.clone())),
             Type: D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
             Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
-                SubresourceIndex: 0,
+                SubresourceIndex: layer,
             },
         };
         let mut buffer = D3D12_TEXTURE_COPY_LOCATION {
@@ -104,7 +125,7 @@ pub(super) fn upload(
             Dimension: D3D12_RESOURCE_DIMENSION_TEXTURE2D,
             Width: u64::from(input.size[0]),
             Height: input.size[1],
-            DepthOrArraySize: 1,
+            DepthOrArraySize: u16::try_from(input.layers)?,
             MipLevels: 1,
             Format: DXGI_FORMAT_R8G8B8A8_UNORM,
             SampleDesc: DXGI_SAMPLE_DESC {
@@ -129,13 +150,12 @@ pub(super) fn upload(
             &mut resource,
         )?;
         let texture: ID3D12Resource = resource.unwrap();
-        let (layout, size) = footprint(device, &desc)?;
-        let row_bytes = input.size[0] as usize * 4;
-        let pitch = layout.Footprint.RowPitch as usize;
+        let layout = TextureLayout::new(device, &desc)?;
+        let size = layout.size;
         let mut bytes = vec![0u8; size];
-        for row in 0..input.size[1] as usize {
-            bytes[row * pitch..row * pitch + row_bytes]
-                .copy_from_slice(&input.bytes[row * row_bytes..(row + 1) * row_bytes]);
+        for (destination, source) in layout.rows() {
+            bytes[destination..destination + layout.row_bytes]
+                .copy_from_slice(&input.bytes[source..source + layout.row_bytes]);
         }
         let upload = buffer::create(
             device,
@@ -145,7 +165,9 @@ pub(super) fn upload(
             D3D12_RESOURCE_FLAG_NONE,
             Some(&bytes),
         )?;
-        copy(list, &texture, &upload, layout, true);
+        for (layer, footprint) in layout.footprints.iter().enumerate() {
+            copy(list, &texture, &upload, *footprint, layer as u32, true);
+        }
         Ok((texture, upload))
     }
 }
@@ -157,7 +179,8 @@ pub(super) fn readback(
 ) -> Result<Readback> {
     unsafe {
         let desc = texture.GetDesc();
-        let (layout, size) = footprint(device, &desc)?;
+        let layout = TextureLayout::new(device, &desc)?;
+        let size = layout.size;
         let resource = buffer::create(
             device,
             size,
@@ -166,13 +189,13 @@ pub(super) fn readback(
             D3D12_RESOURCE_FLAG_NONE,
             None,
         )?;
-        copy(list, texture, &resource, layout, false);
+        for (layer, footprint) in layout.footprints.iter().enumerate() {
+            copy(list, texture, &resource, *footprint, layer as u32, false);
+        }
         Ok(Readback {
             resource,
             size,
-            rows: desc.Height as usize,
-            row_bytes: desc.Width as usize * 4,
-            pitch: layout.Footprint.RowPitch as usize,
+            layout: Some(layout),
         })
     }
 }

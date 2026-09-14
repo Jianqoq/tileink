@@ -91,3 +91,51 @@ fn texture_resources_reject_invalid_extent_kind_owner_and_writable_alias() {
     assert!(other.readback(source).is_err());
     assert!(batch.passes().is_empty());
 }
+#[test]
+fn texture_array_dimensions_and_binding_views_are_explicit() {
+    let mut batch = ComputeBatch::new();
+    for size in [
+        [1, 1, 0],
+        [1, 1, 65536],
+        [0, 1, 1],
+        [u32::MAX, u32::MAX, u32::MAX],
+    ] {
+        assert!(batch.texture_array_rgba8(size, vec![]).is_err());
+    }
+    assert!(batch.texture_array_rgba8([1, 1, 2], vec![0; 4]).is_err());
+    let array = batch.texture_array_rgba8([1, 1, 1], vec![0; 4]).unwrap();
+    let plain = batch.texture_rgba8([1, 1], vec![0; 4]).unwrap();
+    let target = batch.texture_rgba8([1, 1], vec![0; 4]).unwrap();
+    let config = batch.buffer(vec![0; 16]).unwrap();
+    // SAFETY: wrong view dimensions are rejected before any GPU work is recorded.
+    unsafe {
+        assert!(
+            batch
+                .dispatch(
+                    "texture_flip",
+                    &[(0, config), (1, array), (2, target)],
+                    [1, 1, 1]
+                )
+                .is_err()
+        );
+        assert!(
+            batch
+                .dispatch(
+                    "texture_layer",
+                    &[(0, config), (1, plain), (2, target)],
+                    [1, 1, 1]
+                )
+                .is_err()
+        );
+        assert!(
+            batch
+                .dispatch(
+                    "texture_layer",
+                    &[(0, config), (1, array), (2, array)],
+                    [1, 1, 1]
+                )
+                .is_err()
+        );
+    }
+    assert!(batch.passes().is_empty());
+}

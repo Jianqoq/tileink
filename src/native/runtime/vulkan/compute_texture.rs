@@ -7,6 +7,7 @@ pub(super) struct Image {
     memory: vk::DeviceMemory,
     pub view: vk::ImageView,
     extent: vk::Extent3D,
+    layers: u32,
 }
 impl Image {
     pub fn new(
@@ -16,6 +17,7 @@ impl Image {
     ) -> Result<Self> {
         let mut this = Self {
             device: device.clone(),
+            layers: texture.layers,
             image: vk::Image::null(),
             memory: vk::DeviceMemory::null(),
             view: vk::ImageView::null(),
@@ -32,7 +34,7 @@ impl Image {
                     .format(vk::Format::R8G8B8A8_UNORM)
                     .extent(this.extent)
                     .mip_levels(1)
-                    .array_layers(1)
+                    .array_layers(texture.layers)
                     .samples(vk::SampleCountFlags::TYPE_1)
                     .tiling(vk::ImageTiling::OPTIMAL)
                     .usage(
@@ -63,19 +65,23 @@ impl Image {
             this.view = device.create_image_view(
                 &vk::ImageViewCreateInfo::default()
                     .image(this.image)
-                    .view_type(vk::ImageViewType::TYPE_2D)
+                    .view_type(if texture.array {
+                        vk::ImageViewType::TYPE_2D_ARRAY
+                    } else {
+                        vk::ImageViewType::TYPE_2D
+                    })
                     .format(vk::Format::R8G8B8A8_UNORM)
-                    .subresource_range(Self::range()),
+                    .subresource_range(this.range()),
                 None,
             )?;
         }
         Ok(this)
     }
-    fn range() -> vk::ImageSubresourceRange {
+    fn range(&self) -> vk::ImageSubresourceRange {
         vk::ImageSubresourceRange::default()
             .aspect_mask(vk::ImageAspectFlags::COLOR)
             .level_count(1)
-            .layer_count(1)
+            .layer_count(self.layers)
     }
     fn region(&self, offset: u64) -> vk::BufferImageCopy {
         vk::BufferImageCopy::default()
@@ -83,7 +89,7 @@ impl Image {
             .image_subresource(
                 vk::ImageSubresourceLayers::default()
                     .aspect_mask(vk::ImageAspectFlags::COLOR)
-                    .layer_count(1),
+                    .layer_count(self.layers),
             )
             .image_extent(self.extent)
     }
@@ -124,7 +130,7 @@ impl Image {
                 &[],
                 &[vk::ImageMemoryBarrier::default()
                     .image(self.image)
-                    .subresource_range(Self::range())
+                    .subresource_range(self.range())
                     .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                     .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                     .old_layout(before)

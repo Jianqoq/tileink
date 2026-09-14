@@ -52,7 +52,19 @@ impl ComputeBatch {
         Ok(id)
     }
     pub fn texture_rgba8(&mut self, size: [u32; 2], bytes: Vec<u8>) -> Result<ResourceId> {
-        let texture = Texture::new(size, bytes)?;
+        self.texture(size, 1, false, bytes)
+    }
+    pub fn texture_array_rgba8(&mut self, size: [u32; 3], bytes: Vec<u8>) -> Result<ResourceId> {
+        self.texture([size[0], size[1]], size[2], true, bytes)
+    }
+    fn texture(
+        &mut self,
+        size: [u32; 2],
+        layers: u32,
+        array: bool,
+        bytes: Vec<u8>,
+    ) -> Result<ResourceId> {
+        let texture = Texture::new(size, layers, array, bytes)?;
         let id = ResourceId {
             owner: self.owner,
             index: self.resources.len(),
@@ -101,10 +113,15 @@ impl ComputeBatch {
             }
             let texture_binding = matches!(
                 binding.kind,
-                BindingKind::Texture | BindingKind::TextureWrite
+                BindingKind::Texture | BindingKind::TextureWrite | BindingKind::TextureArray
             );
             if texture_binding != matches!(self.resources[id.index], Resource::Texture(_)) {
                 return Err("native compute resource kind mismatch".into());
+            }
+            if let Resource::Texture(texture) = &self.resources[id.index]
+                && texture.array != (binding.kind == BindingKind::TextureArray)
+            {
+                return Err("native compute texture view dimension mismatch".into());
             }
             if ordered
                 .iter()

@@ -29,6 +29,22 @@ pub(super) unsafe fn write(
                 }),
                 handle,
             ),
+            BindingKind::TextureArray => device.CreateShaderResourceView(
+                resource,
+                Some(&D3D12_SHADER_RESOURCE_VIEW_DESC {
+                    Format: windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R8G8B8A8_UNORM,
+                    ViewDimension: D3D12_SRV_DIMENSION_TEXTURE2DARRAY,
+                    Shader4ComponentMapping: D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+                    Anonymous: D3D12_SHADER_RESOURCE_VIEW_DESC_0 {
+                        Texture2DArray: D3D12_TEX2D_ARRAY_SRV {
+                            MipLevels: 1,
+                            ArraySize: u32::from(resource.GetDesc().DepthOrArraySize),
+                            ..Default::default()
+                        },
+                    },
+                }),
+                handle,
+            ),
             BindingKind::TextureWrite => device.CreateUnorderedAccessView(
                 resource,
                 None,
@@ -97,7 +113,7 @@ pub(super) fn required_states(
     for (binding, id) in &pass.bindings {
         let state = match binding.kind {
             BindingKind::Uniform => D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
-            BindingKind::Read | BindingKind::Texture => {
+            BindingKind::Read | BindingKind::Texture | BindingKind::TextureArray => {
                 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
             }
             BindingKind::Write | BindingKind::TextureWrite => D3D12_RESOURCE_STATE_UNORDERED_ACCESS,

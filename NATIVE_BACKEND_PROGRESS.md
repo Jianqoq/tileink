@@ -1632,3 +1632,13 @@ batches. Full release, 67 runtime tests, shader/editor checks, strict Clippy and
 SVG/examples pass; all 3,471 PNGs remain unchanged. No-DXC replay compiles no new
 pipelines. See [texture validation](docs/native/m4-compute-textures.md).
 Production inventory remains 27/179; M4 is still incomplete.
+
+
+### M4 sampled texture arrays
+
+Explicit single/multiple-layer array views, DX12 per-layer footprints and Vulkan
+array copies now match all four routes. Complete array readback and reverse layer
+selection have independent byte oracles. Full release, 69 runtime tests, Clippy,
+shader/editor checks and SVG/examples pass; all 3,471 PNGs remain unchanged.
+No-DXC texture replay compiles no pipelines. See [array validation](docs/native/m4-compute-arrays.md).
+M4 remains incomplete at 27/179; explicit sampler resources follow.

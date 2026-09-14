@@ -21,7 +21,7 @@ impl GpuResource {
                 let size = wgpu::Extent3d {
                     width: input.size[0],
                     height: input.size[1],
-                    depth_or_array_layers: 1,
+                    depth_or_array_layers: input.layers,
                 };
                 let texture = device.create_texture(&wgpu::TextureDescriptor {
                     label: None,
@@ -51,7 +51,14 @@ impl GpuResource {
                     },
                     size,
                 );
-                let view = texture.create_view(&Default::default());
+                let view = texture.create_view(&wgpu::TextureViewDescriptor {
+                    dimension: Some(if input.array {
+                        wgpu::TextureViewDimension::D2Array
+                    } else {
+                        wgpu::TextureViewDimension::D2
+                    }),
+                    ..Default::default()
+                });
                 Self::Texture(texture, view)
             }
         }
@@ -75,8 +82,10 @@ impl GpuResource {
                 let pitch = row_bytes.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
                     * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
                 (
-                    u64::from(pitch) * u64::from(texture.height()),
-                    texture.height() as usize,
+                    u64::from(pitch)
+                        * u64::from(texture.height())
+                        * u64::from(texture.depth_or_array_layers()),
+                    texture.height() as usize * texture.depth_or_array_layers() as usize,
                     row_bytes as usize,
                     pitch as usize,
                 )
@@ -102,7 +111,7 @@ impl GpuResource {
                     layout: wgpu::TexelCopyBufferLayout {
                         offset: 0,
                         bytes_per_row: Some(pitch as u32),
-                        rows_per_image: Some(rows as u32),
+                        rows_per_image: Some(texture.height()),
                     },
                 },
                 texture.size(),
@@ -133,9 +142,13 @@ impl Readback {
 }
 pub(super) fn layout(kind: BindingKind) -> wgpu::BindingType {
     match kind {
-        BindingKind::Texture => wgpu::BindingType::Texture {
+        BindingKind::Texture | BindingKind::TextureArray => wgpu::BindingType::Texture {
             sample_type: wgpu::TextureSampleType::Float { filterable: true },
-            view_dimension: wgpu::TextureViewDimension::D2,
+            view_dimension: if kind == BindingKind::TextureArray {
+                wgpu::TextureViewDimension::D2Array
+            } else {
+                wgpu::TextureViewDimension::D2
+            },
             multisampled: false,
         },
         BindingKind::TextureWrite => wgpu::BindingType::StorageTexture {

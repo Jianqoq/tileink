@@ -13,7 +13,7 @@ pub struct Pipeline {
 pub fn descriptor(kind: BindingKind) -> vk::DescriptorType {
     match kind {
         BindingKind::Uniform => vk::DescriptorType::UNIFORM_BUFFER,
-        BindingKind::Texture => vk::DescriptorType::SAMPLED_IMAGE,
+        BindingKind::Texture | BindingKind::TextureArray => vk::DescriptorType::SAMPLED_IMAGE,
         BindingKind::TextureWrite => vk::DescriptorType::STORAGE_IMAGE,
         BindingKind::Read | BindingKind::Write => vk::DescriptorType::STORAGE_BUFFER,
     }

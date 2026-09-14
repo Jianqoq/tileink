@@ -12,6 +12,7 @@ pub enum Kind {
     Uniform,
     Texture,
     TextureWrite,
+    TextureArray,
 }
 #[derive(Clone, Debug)]
 pub struct Field {
@@ -74,6 +75,7 @@ impl Interface {
                     Kind::Uniform => 2,
                     Kind::Texture => 3,
                     Kind::TextureWrite => 4,
+                    Kind::TextureArray => 5,
                 },
             );
             word(&mut out, r.size);
@@ -178,6 +180,7 @@ pub fn binding_declarations(abi: &Interface, entry: &str) -> io::Result<String> 
                 Kind::Uniform => "Uniform",
                 Kind::Texture => "Texture",
                 Kind::TextureWrite => "TextureWrite",
+                Kind::TextureArray => "TextureArray",
             };
             Ok(format!(
                 "Binding {{ slot: {}, kind: BindingKind::{kind}, size: {}, internal: {} }}",
