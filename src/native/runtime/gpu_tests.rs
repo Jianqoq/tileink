@@ -216,3 +216,6 @@ mod sdf;
 
 #[path = "tests/filter_layer_gpu.rs"]
 mod filter_layer;
+
+#[path = "tests/filter_stack_gpu.rs"]
+mod filter_stack;

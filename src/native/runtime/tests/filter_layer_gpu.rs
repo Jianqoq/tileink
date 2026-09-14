@@ -14,7 +14,7 @@ use crate::shared::{
 };
 use bytemuck::Zeroable;
 
-fn path_draw(fill: u32) -> DrawRecord {
+pub(super) fn path_draw(fill: u32) -> DrawRecord {
     DrawRecord {
         path_id: 0,
         glyph_run_id: u32::MAX,

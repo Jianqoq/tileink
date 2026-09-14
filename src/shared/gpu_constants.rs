@@ -9,4 +9,7 @@ const _: () = assert!(FILTER_WORKGROUP_SIZE > 0 && FILTER_WORKGROUP_SIZE <= 1024
 
 // Validation layouts are not part of the production renderer constants.
 #[cfg(all(test, feature = "native", target_os = "windows"))]
-include!(concat!(env!("OUT_DIR"), "/tileink_sdf_probe_constants.rs"));
+include!(concat!(
+    env!("OUT_DIR"),
+    "/tileink_native_test_constants.rs"
+));

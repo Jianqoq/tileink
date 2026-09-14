@@ -144,3 +144,6 @@ pub mod turbulence;
 
 #[path = "filter/layer.rs"]
 pub mod layer;
+
+#[path = "filter/stack.rs"]
+pub mod stack;

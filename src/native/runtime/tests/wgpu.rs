@@ -337,6 +337,7 @@ impl FilterVariant {
             .replace("@binding(29)", "@binding(22)")
             .replace("@binding(30)", "@binding(23)")
             .replace("@binding(32)", "@binding(24)")
+            .replace("@binding(33)", "@binding(25)")
             .replace("@binding(52)", "@binding(8)")
             .replace("@binding(55)", "@binding(9)")
             .replace("@binding(36)", "@binding(7)")

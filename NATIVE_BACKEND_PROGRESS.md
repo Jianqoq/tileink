@@ -1756,3 +1756,14 @@ There are no new PNG differences beyond the accepted turbulence stitch image.
 Both reviews are closed. See [layer masks](docs/native/m4-filter-layer.md) and
 [SDF coverage](docs/native/m4-sdf.md). Remaining 32 entries and full NativeRenderer/
 Canvas integration keep M4 open.
+
+### M4 stack composition
+
+The ordinary, blend and translated-surface stack entries pass four-API exact pixel
+comparison in all four production variants. Capacity constants derive from HLSLI;
+logical ranges, byte opacity and optional masks are validated at the host boundary.
+Release (987), native runtime (131), strict Clippy, editor, 74 SPIR-V modules and
+complete SVG/examples pass. Both GPU tests replay with DXC unavailable and disk
+pipeline cache hits. There are no new PNG differences beyond accepted turbulence.
+Both review axes are closed. Inventory is **159/179**; remaining effects, fine and
+NativeRenderer/Canvas integration keep M4 open. See [stack](docs/native/m4-filter-stack.md).

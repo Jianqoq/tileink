@@ -263,6 +263,9 @@ impl Reference {
                         | "filter_component_transfer_region"
                         | "filter_composite_direct_region"
                         | "filter_composite_surface_direct_region"
+                        | "filter_composite_stack_region"
+                        | "filter_composite_blend_stack_region"
+                        | "filter_composite_surface_stack_region"
                         | "filter_composite_rect_direct_region"
                         | "filter_upsample_rect_composite_region"
                 ) {

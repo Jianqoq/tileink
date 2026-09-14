@@ -12,6 +12,7 @@ use crate::{
 
 /// Immutable scene geometry whose raw shader addresses have been checked before upload.
 /// Scan-produced geometry will enter through its stage-owned allocation contract.
+#[derive(Clone, Copy)]
 pub struct Geometry {
     bindings: [(u32, ResourceId); 6],
     shadow_base: u32,
@@ -31,6 +32,16 @@ pub struct Scene<'a> {
 }
 
 impl Geometry {
+    pub(super) fn bindings(&self) -> &[(u32, ResourceId)] {
+        &self.bindings
+    }
+    pub(super) fn shadow_base(&self) -> u32 {
+        self.shadow_base
+    }
+    pub(super) fn draw_count(&self) -> u32 {
+        self.draw_count
+    }
+
     pub fn upload(batch: &mut ComputeBatch, scene: Scene<'_>) -> Result<Self> {
         let Scene {
             draws,

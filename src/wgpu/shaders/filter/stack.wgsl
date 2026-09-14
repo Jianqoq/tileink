@@ -2,11 +2,11 @@ fn composite_with_stack(dst: u32, source: u32, mask: u32, x: u32, y: u32, force_
     var pixel = dst;
     var clip_mask = 255u;
     var group_depth = 0u;
-    var group_kinds: array<u32, 64>;
-    var group_parent_pixels: array<u32, 64>;
-    var group_parent_clips: array<u32, 64>;
-    var group_layer_alphas: array<u32, 64>;
-    var group_payloads: array<u32, 64>;
+    var group_kinds: array<u32, FILTER_GROUP_STACK_CAPACITY>;
+    var group_parent_pixels: array<u32, FILTER_GROUP_STACK_CAPACITY>;
+    var group_parent_clips: array<u32, FILTER_GROUP_STACK_CAPACITY>;
+    var group_layer_alphas: array<u32, FILTER_GROUP_STACK_CAPACITY>;
+    var group_payloads: array<u32, FILTER_GROUP_STACK_CAPACITY>;
 
     var stack_ix = config.layer_stack_start;
     loop {
@@ -76,11 +76,11 @@ fn composite_surface_with_stack(dst: u32, source: u32, x: u32, y: u32) -> u32 {
     var pixel = dst;
     var clip_mask = 255u;
     var group_depth = 0u;
-    var group_kinds: array<u32, 64>;
-    var group_parent_pixels: array<u32, 64>;
-    var group_parent_clips: array<u32, 64>;
-    var group_layer_alphas: array<u32, 64>;
-    var group_payloads: array<u32, 64>;
+    var group_kinds: array<u32, FILTER_GROUP_STACK_CAPACITY>;
+    var group_parent_pixels: array<u32, FILTER_GROUP_STACK_CAPACITY>;
+    var group_parent_clips: array<u32, FILTER_GROUP_STACK_CAPACITY>;
+    var group_layer_alphas: array<u32, FILTER_GROUP_STACK_CAPACITY>;
+    var group_payloads: array<u32, FILTER_GROUP_STACK_CAPACITY>;
 
     var stack_ix = config.layer_stack_start;
     loop {

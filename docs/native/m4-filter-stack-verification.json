@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "status": "windows-kernel-validated",
+  "inventory_entries": 12,
+  "total_validated": 159,
+  "gpu": "RTX 4090; LUID 9f3f010000000000",
+  "routes": [
+    "wgpu-DX12",
+    "wgpu-Vulkan",
+    "native-DX12",
+    "native-Vulkan"
+  ],
+  "variants": "native/portable x texture_table false/true",
+  "ordinary_release_passed": 987,
+  "native_runtime_passed": 131,
+  "no_dxc_gpu_passed": 2,
+  "spirv_modules_validated": 74,
+  "pngs": {
+    "before": 3471,
+    "after": 3471,
+    "changed": [
+      "src/svg/tests/filters/feTurbulence/stitchTiles=stitch.wgpu.png"
+    ],
+    "missing": [],
+    "added": []
+  },
+  "png_human_review": "Only turbulence baseline change; accepted by user 2026-09-14",
+  "reviews": {
+    "spec": "closed",
+    "standards": "closed"
+  },
+  "m4_complete": false,
+  "source_sha256": {
+    "build.rs": "7abee79e58cbcf6241a350f49e557dfe5889a7a8510754214a9a046feaf7ea31",
+    "build/gpu_constants.rs": "995da932ac69dcd0bf05cf45f256bd8c8e2e8e81db574f06c92dc5fc68730166",
+    "build/native/interfaces.rs": "942869948b511227d19b34a7bd2cb6554498f55aeef0c34d73e1b64cbb87dd76",
+    "build/native/interfaces/filter.rs": "dbb02eab0b03f8d6ea97c50ee1f37a18af2a76145415945c86959eaa7e8db97b",
+    "build/native/program.rs": "e717e6a81e1073fa11f9a98055ec696e8be7d4fece199504bb0961ba63544b6d",
+    "src/native/runtime/gpu_tests.rs": "4012d8cfc78a8eb03355fa9a078ed8ed818149c1cd877f2aa500344a9368f77f",
+    "src/native/runtime/program/filter.rs": "d073b6489e06270e87520e3cab206379403d6d7e0eaa5498698c0219916eff03",
+    "src/native/runtime/program/filter/layer.rs": "f5d2a99eb15ddb4c5e4c62754765a1b1647c66fd4667b90c88b178834fb6606e",
+    "src/native/runtime/program/filter/surface.rs": "6c9917ed0269cad9eafbe2b865818bf6ca9590dd6b11f501ab87bf9513038789",
+    "src/native/runtime/tests/filter_layer_gpu.rs": "b41ca344eea37f08f20f9a42ffb25ce094cda399a1a8e472d939be98ca35fc3b",
+    "src/native/runtime/tests/wgpu.rs": "0c73e4d283c2b07a716ea04a940853f8fc7d0fcbaba1b1d0e4d9d1549596a2a3",
+    "src/native/runtime/tests/wgpu/compute.rs": "4dc0f1c49ec18c15e2969cecfdd904ac4362809462f409a04da33ae8844c0578",
+    "src/shared/gpu_constants.rs": "d619263bdac94e8cbfbb50888c36f78c5cbfe65108123dbf3e15938c51754638",
+    "src/wgpu/shaders/filter/header.wgsl": "15c336bd3790d0204ea9c50ff2b8a7bb361e5e407283ec1208a969270c93127e",
+    "src/wgpu/shaders/filter/stack.wgsl": "937b2f48b1294e9258ad6d41ccec06111bc8ec13e9ee30c331cc726f10c30d19",
+    "tests/native_shader_artifacts.rs": "87a5f0e360bcbecb9a3ef611a0313a6e6062749261110010a23a686514cb5126",
+    "src/native/runtime/program/filter/stack.rs": "802454fac2f1f85b9f963f66360058645a7fe35cf06a3dafbdaa77dc52f12bb1",
+    "src/native/runtime/tests/filter_stack_gpu.rs": "b99fc8481fa7d96792074df65f6a3137be0506ea2d827f29fd08bce6c1e9436d",
+    "src/shaders/hlsl/filter/stack.hlsl": "e9e85a459336b2d509a845659600d8cf4e87595f4a5ea67e93885ebbcbcf2f85",
+    "src/shaders/hlsl/shared/composite_stack.hlsli": "a4c6dcb2cee64cb6fc0fea3094fb6d73e1a6a17ce61164aece8026723032190b",
+    "src/shaders/hlsl/shared/stack_constants.hlsli": "b5ac220c05e064d0d2c2e0a2ae4ec6d66794b5cbc3d524575afb0a0fcae07ddc"
+  },
+  "log_sha256": {
+    "m4-stack-full-release.log": "b02abeca4a44fd4aa275877063819dd6db15fcab9a99c25cce70add03a5ccafe",
+    "m4-stack-runtime.log": "d549d3fd803da05fddd4d9ee683c50ab9e3a517d2bfa172e01d1e5938dff4e74",
+    "m4-stack-fixed.log": "67cd7dd8e6a603c3e1a865b8a9cd8d44bb666030c65a22367f98356bf73c0189",
+    "m4-stack-clippy.log": "ca4b59c01e3afbf048de1f6a20a90f113a59b9f6dffba2c427c7bd1efff91780",
+    "m4-stack-svg.log": "2a09c4966216288baf8024246518b3671499a394f9254fd5f18136e1c456842c",
+    "m4-stack-examples.log": "fd312ecb59782715c5ca5b5ee9027c63512209442bfb11b5b152decfa1b7e91c",
+    "m4-stack-no-dxc.log": "c0802151ad60ebea4d9fa82ee9b3e283393ec246a79599e87e994fb8c254a8a9",
+    "m4-stack-shader.log": "73c96a8b2bc13a3e3b6aeeb5e3cefc464b5153b9016bc57f9a8e7eeab265a842",
+    "m4-stack-editor.log": "343957d9c0f91377d7b790128106996082a89f0941ce6c339c6192ececa2f97f",
+    "m4-stack-spirv.log": "f3c4fc7ab58ea74275590d578052ab89ca6be449e77effa836b6dd4fd4b2e993"
+  }
+}

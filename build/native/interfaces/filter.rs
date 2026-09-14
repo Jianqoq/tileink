@@ -519,3 +519,28 @@ pub(super) fn layer(constants: &BTreeMap<String, u32>) -> Interface {
         )],
     )
 }
+
+pub(super) fn stack(constants: &BTreeMap<String, u32>) -> Interface {
+    let mut result = layer(constants);
+    for (name, slot, kind) in [
+        ("source_texture", 1, Kind::Texture),
+        ("aux_texture", 2, Kind::Texture),
+        ("layers", 25, Kind::Read),
+    ] {
+        result.resources.insert(name.into(), buffer(slot, kind));
+    }
+    let mut common = result.entries.remove("filter_layer_mask_region").unwrap();
+    common.extend(["source_texture".into(), "layers".into()]);
+    result.entries.insert(
+        "filter_composite_surface_stack_region".into(),
+        common.clone(),
+    );
+    common.push("aux_texture".into());
+    result
+        .entries
+        .insert("filter_composite_stack_region".into(), common.clone());
+    result
+        .entries
+        .insert("filter_composite_blend_stack_region".into(), common);
+    result
+}

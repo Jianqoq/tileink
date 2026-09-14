@@ -9,6 +9,19 @@ pub fn encode(
     source: ResourceId,
     target: ResourceId,
 ) -> Result<()> {
+    validate(&config)?;
+    region::record(
+        batch,
+        "filter_composite_surface_direct_region",
+        region::Geometry::Pixels,
+        config,
+        tiles,
+        region::ReadBindings::textures(&[(1, source)], [config.kernel_columns, config.kernel_rows]),
+        target,
+    )
+}
+
+pub(super) fn validate(config: &FilterConfig) -> Result<()> {
     for (extent, offset, source_extent) in [
         (config.width, config.offset_x, config.kernel_columns),
         (config.height, config.offset_y, config.kernel_rows),
@@ -19,13 +32,5 @@ pub fn encode(
             return Err("surface composite signed coordinate overflow".into());
         }
     }
-    region::record(
-        batch,
-        "filter_composite_surface_direct_region",
-        region::Geometry::Pixels,
-        config,
-        tiles,
-        region::ReadBindings::textures(&[(1, source)], [config.kernel_columns, config.kernel_rows]),
-        target,
-    )
+    Ok(())
 }

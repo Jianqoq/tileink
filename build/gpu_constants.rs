@@ -60,12 +60,7 @@ pub fn parse(source: &str) -> io::Result<BTreeMap<String, u32>> {
 
 fn definitions() -> &'static BTreeMap<String, u32> {
     static CONSTANTS: OnceLock<BTreeMap<String, u32>> = OnceLock::new();
-    CONSTANTS.get_or_init(|| {
-        let path = Path::new(&env::var_os("CARGO_MANIFEST_DIR").unwrap())
-            .join("src/shaders/hlsl/constants.hlsli");
-        let source = fs::read_to_string(&path).expect("read shared HLSL constants");
-        parse(&source).unwrap_or_else(|error| panic!("{}: {error}", path.display()))
-    })
+    CONSTANTS.get_or_init(|| read_hlsl("constants.hlsli").expect("read shared HLSL constants"))
 }
 
 pub fn get(name: &str) -> u32 {
@@ -79,14 +74,9 @@ pub fn write_rust(out: &Path) -> io::Result<()> {
         out.join("tileink_gpu_constants.rs"),
         rust_constants(definitions()),
     )?;
-    let path = Path::new(&env::var_os("CARGO_MANIFEST_DIR").unwrap())
-        .join("src/shaders/hlsl/validation/sdf_config.hlsli");
-    println!("cargo:rerun-if-changed={}", path.display());
-    let validation = parse(&fs::read_to_string(path)?)?;
-    fs::write(
-        out.join("tileink_sdf_probe_constants.rs"),
-        rust_constants(&validation),
-    )
+    let mut validation = rust_constants(&read_hlsl("validation/sdf_config.hlsli")?);
+    validation.push_str(&rust_constants(&read_hlsl("shared/stack_constants.hlsli")?));
+    fs::write(out.join("tileink_native_test_constants.rs"), validation)
 }
 
 fn rust_constants(constants: &BTreeMap<String, u32>) -> String {
@@ -100,4 +90,13 @@ fn rust_constants(constants: &BTreeMap<String, u32>) -> String {
         source.push_str(&format!("{visibility} const {name}: u32 = {value};\n"));
     }
     source
+}
+
+/// Read a shader-owned constant header without exporting shader-only values to Rust.
+pub fn read_hlsl(source: &str) -> io::Result<BTreeMap<String, u32>> {
+    let path = Path::new(&env::var_os("CARGO_MANIFEST_DIR").unwrap())
+        .join("src/shaders/hlsl")
+        .join(source);
+    println!("cargo:rerun-if-changed={}", path.display());
+    parse(&fs::read_to_string(path)?)
 }
