@@ -127,3 +127,9 @@ pub mod resample;
 
 #[path = "filter/blur.rs"]
 pub mod blur;
+
+#[path = "filter/lighting.rs"]
+pub mod lighting;
+
+#[path = "filter/rectangle.rs"]
+pub mod rectangle;

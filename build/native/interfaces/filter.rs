@@ -365,3 +365,56 @@ pub(super) fn blur(constants: &BTreeMap<String, u32>, shared: bool) -> Interface
         )],
     )
 }
+
+pub(super) fn lighting(constants: &BTreeMap<String, u32>) -> Interface {
+    interface(
+        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        &[
+            ("config", config()),
+            ("source_texture", buffer(1, Kind::Texture)),
+            ("target_texture", buffer(3, Kind::TextureWrite)),
+            ("active_tiles", buffer(8, Kind::Read)),
+        ],
+        &[(
+            "filter_lighting_region",
+            &["config", "source_texture", "target_texture", "active_tiles"],
+        )],
+    )
+}
+
+pub(super) fn rectangle(constants: &BTreeMap<String, u32>) -> Interface {
+    interface(
+        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        &[
+            ("config", config()),
+            ("source_texture", buffer(1, Kind::Texture)),
+            ("aux_texture", buffer(2, Kind::Texture)),
+            ("target_texture", buffer(3, Kind::TextureWrite)),
+            ("active_tiles", buffer(8, Kind::Read)),
+        ],
+        &[
+            (
+                "filter_rect_mask_region",
+                &["config", "target_texture", "active_tiles"],
+            ),
+            (
+                "filter_composite_direct_region",
+                &[
+                    "config",
+                    "source_texture",
+                    "aux_texture",
+                    "target_texture",
+                    "active_tiles",
+                ],
+            ),
+            (
+                "filter_composite_rect_direct_region",
+                &["config", "source_texture", "target_texture", "active_tiles"],
+            ),
+            (
+                "filter_upsample_rect_composite_region",
+                &["config", "source_texture", "target_texture", "active_tiles"],
+            ),
+        ],
+    )
+}

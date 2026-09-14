@@ -959,6 +959,13 @@ fn alpha_gradient_y_sample(x: u32, y: u32, offset: i32, weight: f32) -> f32 {
     return out;
 }
 
+// Root fix: zero/negative exponents are unit intensity, including at zero focus.
+// Explicit control flow avoids the undefined pow(0, 0) corner in shader targets.
+fn lighting_power(base: f32, exponent: f32) -> f32 {
+    if (exponent <= 0.0) { return 1.0; }
+    return pow(base, exponent);
+}
+
 // Share an explicit product and sum order for lighting vectors. Specular
 // lighting normalizes the completed dot to avoid per-component division error.
 fn lighting_dot3(a: vec3<f32>, b: vec3<f32>) -> f32 {

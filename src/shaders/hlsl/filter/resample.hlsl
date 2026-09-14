@@ -18,5 +18,5 @@ void filter_upsample_region(uint3 gid:SV_DispatchThreadID) {
     uint2 xy;
     if (!filter_position(config,active_tiles,gid,xy)) return;
     if (uint(config.rect_x0)>=uint(config.rect_x1) || uint(config.rect_y0)>=uint(config.rect_y1)) return;
-    target_texture[xy]=rgba8_to_unorm(filter_upsample_pixel(config,source_texture,xy));
+    target_texture[xy]=rgba8_to_unorm(filter_upsample_pixel(config,source_texture,xy,uint4(config.rect_x0,config.rect_y0,config.rect_x1,config.rect_y1)));
 }

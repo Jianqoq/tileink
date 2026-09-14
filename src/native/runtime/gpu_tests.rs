@@ -195,3 +195,9 @@ mod filter_resample;
 
 #[path = "tests/filter_blur_gpu.rs"]
 mod filter_blur;
+
+#[path = "tests/filter_lighting_gpu.rs"]
+mod filter_lighting;
+
+#[path = "tests/filter_rectangle_gpu.rs"]
+mod filter_rectangle;

@@ -1710,3 +1710,14 @@ Full release (978), native runtime (103), strict Clippy, shader/editor/SPIR-V an
 SVG/examples pass; 3,471 PNGs are unchanged. No-DXC replay passes 22 filter GPU tests
 without compilation. Both reviews are closed. See [blur evidence](docs/native/m4-filter-blur.md).
 Lighting and remaining filters, full fine and NativeRenderer integration continue.
+
+### M4 lighting and rectangle composition
+
+Five entries advance validated inventory to **131/179**. Explicit zero-exponent
+lighting and signed spot direction fix a shared numerical corner. Rectangle
+composition uses optional mask resources and source bounds independent of SDF
+coverage. Independent geometry/sampling/lighting oracles and all four API variants
+pass. Full release (980), runtime (111), strict Clippy, editor/shader/SPIR-V and
+SVG/examples pass; 3,471 PNGs unchanged. No-DXC replay passes 28 filter GPU tests.
+Both reviews closed. See [evidence](docs/native/m4-filter-lighting-rectangle.md).
+M4 continues with remaining filters, fine and NativeRenderer/Canvas integration.

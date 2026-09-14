@@ -245,6 +245,9 @@ impl Reference {
                         | "filter_color_matrix_region"
                         | "filter_apply_region_mask"
                         | "filter_component_transfer_region"
+                        | "filter_composite_direct_region"
+                        | "filter_composite_rect_direct_region"
+                        | "filter_upsample_rect_composite_region"
                 ) {
                 let target = stage.bindings.iter().find(|(b, _)| b.slot == 3).unwrap().1;
                 let snapshot = resources[target.index()].snapshot(&self.device, &mut encoder);

@@ -22,10 +22,10 @@ uint filter_downsample_pixel(ConstantBuffer<FilterConfig> config, Texture2D<floa
     float4 average=sum/count;
     return pack_premul_rgba8(average.r,average.g,average.b,average.a);
 }
-uint filter_upsample_pixel(ConstantBuffer<FilterConfig> config, Texture2D<float4> source, uint2 xy) {
+uint filter_upsample_pixel(ConstantBuffer<FilterConfig> config, Texture2D<float4> source, uint2 xy, uint4 source_bounds) {
     float factor=float(max(config.downsample,1u));
-    float2 lower=float2(uint2(config.rect_x0,config.rect_y0));
-    float2 upper=float2(uint2(config.rect_x1,config.rect_y1)-1u);
+    float2 lower=float2(source_bounds.xy);
+    float2 upper=float2(source_bounds.zw-1u);
     float2 position=clamp((float2(xy)+0.5)/factor-0.5,lower,upper);
     if (config.upsample_filter==0u) return unorm_to_rgba8(source.Load(int3(int2(round(position)),0)));
     float4 pixel=filter_sample_premul(source,uint2(config.width,config.height),position);

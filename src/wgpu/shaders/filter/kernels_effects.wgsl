@@ -245,12 +245,16 @@ fn filter_lighting_region(@builtin(global_invocation_id) gid: vec3<u32>) {
             sx = sx / slen;
             sy = sy / slen;
             sz = sz / slen;
-            let focus = max(-(lighting_dot3(vec3<f32>(lx, ly, lz), vec3<f32>(sx, sy, sz))), 0.0);
+            let focus = -lighting_dot3(vec3<f32>(lx, ly, lz), vec3<f32>(sx, sy, sz));
+            if (focus < 0.0) {
+                target_store_ix(dst_ix, no_light);
+                return;
+            }
             if (config.light_p7 >= 0.0 && focus < cos(config.light_p7 * 0.017453292)) {
                 target_store_ix(dst_ix, no_light);
                 return;
             }
-            attenuation = pow(focus, max(config.light_p6, 0.0));
+            attenuation = lighting_power(focus, config.light_p6);
         }
     }
 
@@ -280,7 +284,7 @@ fn filter_lighting_region(@builtin(global_invocation_id) gid: vec3<u32>) {
         let normal_dot_half = max(lighting_dot3(
             vec3<f32>(-dx, -dy, 1.0), vec3<f32>(hx, hy, hz),
         ) / (normal_len * hlen), 0.0);
-        let amount = config.light_constant * attenuation * pow(normal_dot_half, max(config.specular_exponent, 0.0));
+        let amount = config.light_constant * attenuation * lighting_power(normal_dot_half, config.specular_exponent);
         let r = clamp(config.light_r * amount, 0.0, 1.0);
         let g = clamp(config.light_g * amount, 0.0, 1.0);
         let b = clamp(config.light_b * amount, 0.0, 1.0);

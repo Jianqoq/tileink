@@ -139,6 +139,8 @@ pub fn get(family: &str) -> io::Result<Interface> {
         "filter-convolve" => filter::convolve(&constants),
         "filter-resample" => filter::resample(&constants),
         "filter-blur" => filter::blur(&constants, false),
+        "filter-lighting" => filter::lighting(&constants),
+        "filter-rectangle" => filter::rectangle(&constants),
         "filter-blur-shared" => filter::blur(&constants, true),
         "fine-gradient" => fine::gradient(&constants),
         "fine-pattern" => fine::pattern(&constants),

@@ -637,8 +637,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_upsample_rect_composite_region",
+      "hlsl_source": "src/shaders/hlsl/filter/rectangle.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-lighting-rectangle.md"
     },
     {
       "source": "filter.wgsl",
@@ -809,8 +813,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_lighting_region",
+      "hlsl_source": "src/shaders/hlsl/filter/lighting.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-lighting-rectangle.md"
     },
     {
       "source": "filter.wgsl",
@@ -869,8 +877,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_rect_mask_region",
+      "hlsl_source": "src/shaders/hlsl/filter/rectangle.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-lighting-rectangle.md"
     },
     {
       "source": "filter.wgsl",
@@ -893,8 +905,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_composite_direct_region",
+      "hlsl_source": "src/shaders/hlsl/filter/rectangle.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-lighting-rectangle.md"
     },
     {
       "source": "filter.wgsl",
@@ -905,8 +921,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_composite_rect_direct_region",
+      "hlsl_source": "src/shaders/hlsl/filter/rectangle.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-lighting-rectangle.md"
     },
     {
       "source": "filter.wgsl",
@@ -1165,8 +1185,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_upsample_rect_composite_region",
+      "hlsl_source": "src/shaders/hlsl/filter/rectangle.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-lighting-rectangle.md"
     },
     {
       "source": "filter.wgsl",
@@ -1337,8 +1361,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_lighting_region",
+      "hlsl_source": "src/shaders/hlsl/filter/lighting.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-lighting-rectangle.md"
     },
     {
       "source": "filter.wgsl",
@@ -1397,8 +1425,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_rect_mask_region",
+      "hlsl_source": "src/shaders/hlsl/filter/rectangle.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-lighting-rectangle.md"
     },
     {
       "source": "filter.wgsl",
@@ -1421,8 +1453,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_composite_direct_region",
+      "hlsl_source": "src/shaders/hlsl/filter/rectangle.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-lighting-rectangle.md"
     },
     {
       "source": "filter.wgsl",
@@ -1433,8 +1469,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_composite_rect_direct_region",
+      "hlsl_source": "src/shaders/hlsl/filter/rectangle.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-lighting-rectangle.md"
     },
     {
       "source": "filter.wgsl",
@@ -1717,8 +1757,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_upsample_rect_composite_region",
+      "hlsl_source": "src/shaders/hlsl/filter/rectangle.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-lighting-rectangle.md"
     },
     {
       "source": "filter_web.wgsl",
@@ -1889,8 +1933,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_lighting_region",
+      "hlsl_source": "src/shaders/hlsl/filter/lighting.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-lighting-rectangle.md"
     },
     {
       "source": "filter_web.wgsl",
@@ -1949,8 +1997,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_rect_mask_region",
+      "hlsl_source": "src/shaders/hlsl/filter/rectangle.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-lighting-rectangle.md"
     },
     {
       "source": "filter_web.wgsl",
@@ -1973,8 +2025,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_composite_direct_region",
+      "hlsl_source": "src/shaders/hlsl/filter/rectangle.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-lighting-rectangle.md"
     },
     {
       "source": "filter_web.wgsl",
@@ -1985,8 +2041,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_composite_rect_direct_region",
+      "hlsl_source": "src/shaders/hlsl/filter/rectangle.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-lighting-rectangle.md"
     },
     {
       "source": "filter_web.wgsl",
@@ -2245,8 +2305,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_upsample_rect_composite_region",
+      "hlsl_source": "src/shaders/hlsl/filter/rectangle.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-lighting-rectangle.md"
     },
     {
       "source": "filter_web.wgsl",
@@ -2417,8 +2481,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_lighting_region",
+      "hlsl_source": "src/shaders/hlsl/filter/lighting.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-lighting-rectangle.md"
     },
     {
       "source": "filter_web.wgsl",
@@ -2477,8 +2545,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_rect_mask_region",
+      "hlsl_source": "src/shaders/hlsl/filter/rectangle.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-lighting-rectangle.md"
     },
     {
       "source": "filter_web.wgsl",
@@ -2501,8 +2573,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_composite_direct_region",
+      "hlsl_source": "src/shaders/hlsl/filter/rectangle.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-lighting-rectangle.md"
     },
     {
       "source": "filter_web.wgsl",
@@ -2513,8 +2589,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_composite_rect_direct_region",
+      "hlsl_source": "src/shaders/hlsl/filter/rectangle.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-lighting-rectangle.md"
     },
     {
       "source": "filter_web.wgsl",
