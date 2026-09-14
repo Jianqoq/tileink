@@ -172,3 +172,23 @@ fn malformed_and_reused_include_guards_are_rejected() {
     );
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn spirv_format_attribute_is_explicit_and_cannot_hide_shader_dependencies() {
+    let root = std::env::temp_dir().join(format!("tileink-image-format-{}", std::process::id()));
+    fs::create_dir_all(&root).unwrap();
+    let valid = "#ifdef __spirv__\n[[vk::image_format(\"rgba8\")]]\n#endif\nRWTexture2D<float4> target : register(u2);\n";
+    fs::write(root.join("main.hlsl"), valid).unwrap();
+    let graph = SourceGraph::load(&root, "main.hlsl").unwrap();
+    assert!(graph.expanded.contains(valid));
+    for invalid in [
+        "#ifdef __spirv__\n#include \"hidden.hlsli\"\n#endif",
+        "#ifdef __spirv__\nuint hidden;\n#endif",
+        "#ifdef USER_FLAG\n[[vk::image_format(\"rgba8\")]]\n#endif",
+        "#ifdef __spirv__\n[[vk::image_format(\"rgba8\")]]",
+    ] {
+        fs::write(root.join("main.hlsl"), invalid).unwrap();
+        assert!(SourceGraph::load(&root, "main.hlsl").is_err());
+    }
+    fs::remove_dir_all(root).unwrap();
+}

@@ -43,6 +43,7 @@ pub fn generate() -> io::Result<()> {
         "build/native/interfaces/coarse.rs",
         "build/native/interfaces/validation.rs",
         "build/native/interfaces/fine.rs",
+        "build/native/interfaces/texture.rs",
         "src/shared/fine_config.rs",
         "build/native/cache.rs",
         "build/native/source.rs",

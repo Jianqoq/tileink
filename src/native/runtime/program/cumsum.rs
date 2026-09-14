@@ -2,7 +2,7 @@
 //! same batch without reading it back to the CPU or changing the shared scene layout.
 use crate::native::runtime::{
     Result,
-    compute::{BufferId, ComputeBatch},
+    compute::{ComputeBatch, ResourceId},
 };
 use crate::shared::gpu_constants::CUMSUM_CHUNK_SIZE;
 
@@ -14,8 +14,8 @@ pub struct CumsumPlan {
     backdrop_words: usize,
 }
 pub struct CumsumOutput {
-    pub totals: BufferId,
-    pub offsets: BufferId,
+    pub totals: ResourceId,
+    pub offsets: ResourceId,
 }
 impl CumsumPlan {
     pub fn new(
@@ -75,7 +75,7 @@ impl CumsumPlan {
     pub fn encode(
         &self,
         batch: &mut ComputeBatch,
-        backdrops: BufferId,
+        backdrops: ResourceId,
         maximum_dimension: u32,
     ) -> Result<Option<CumsumOutput>> {
         if batch.size(backdrops)? < self.backdrop_words * 4 {

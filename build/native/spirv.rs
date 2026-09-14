@@ -99,7 +99,7 @@ pub fn validate(bytes: &[u8], entry: &str, abi: &Interface) -> io::Result<()> {
             .types
             .get(&pointer)
             .ok_or_else(|| invalid("SPIR-V pointer type"))?;
-        if resource.kind == Kind::Texture {
+        if matches!(resource.kind, Kind::Texture | Kind::TextureWrite) {
             require(
                 *op == 32 && args.len() == 2 && args[0] == 0,
                 "SPIR-V image pointer",
@@ -109,7 +109,14 @@ pub fn validate(bytes: &[u8], entry: &str, abi: &Interface) -> io::Result<()> {
                 .get(&args[1])
                 .ok_or_else(|| invalid("SPIR-V image type"))?;
             require(
-                image.0 == 25 && image.1.len() == 7 && image.1[1..] == [1, 2, 0, 0, 1, 0],
+                image.0 == 25
+                    && image.1.len() == 7
+                    && image.1[1..]
+                        == if resource.kind == Kind::Texture {
+                            [1, 2, 0, 0, 1, 0]
+                        } else {
+                            [1, 2, 0, 0, 2, 4]
+                        },
                 "SPIR-V sampled 2D image",
             )?;
             require(

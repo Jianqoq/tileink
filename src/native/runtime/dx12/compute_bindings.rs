@@ -14,6 +14,33 @@ pub(super) unsafe fn write(
 ) {
     unsafe {
         match binding.kind {
+            BindingKind::Texture => device.CreateShaderResourceView(
+                resource,
+                Some(&D3D12_SHADER_RESOURCE_VIEW_DESC {
+                    Format: windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R8G8B8A8_UNORM,
+                    ViewDimension: D3D12_SRV_DIMENSION_TEXTURE2D,
+                    Shader4ComponentMapping: D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+                    Anonymous: D3D12_SHADER_RESOURCE_VIEW_DESC_0 {
+                        Texture2D: D3D12_TEX2D_SRV {
+                            MipLevels: 1,
+                            ..Default::default()
+                        },
+                    },
+                }),
+                handle,
+            ),
+            BindingKind::TextureWrite => device.CreateUnorderedAccessView(
+                resource,
+                None,
+                Some(&D3D12_UNORDERED_ACCESS_VIEW_DESC {
+                    Format: windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R8G8B8A8_UNORM,
+                    ViewDimension: D3D12_UAV_DIMENSION_TEXTURE2D,
+                    Anonymous: D3D12_UNORDERED_ACCESS_VIEW_DESC_0 {
+                        Texture2D: D3D12_TEX2D_UAV::default(),
+                    },
+                }),
+                handle,
+            ),
             BindingKind::Uniform => device.CreateConstantBufferView(
                 Some(&D3D12_CONSTANT_BUFFER_VIEW_DESC {
                     BufferLocation: resource.GetGPUVirtualAddress(),
@@ -70,8 +97,10 @@ pub(super) fn required_states(
     for (binding, id) in &pass.bindings {
         let state = match binding.kind {
             BindingKind::Uniform => D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
-            BindingKind::Read => D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-            BindingKind::Write => D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            BindingKind::Read | BindingKind::Texture => {
+                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+            }
+            BindingKind::Write | BindingKind::TextureWrite => D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
         };
         // A resource may be both CBV and SRV in one pass. Preserve every read state;
         // replacing it per descriptor loses one access class (root-cause fix).

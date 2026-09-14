@@ -1,3 +1,5 @@
+use super::super::compute::Resource;
+use super::compute_texture::{self, Readback};
 use super::{Result, buffer, compute_pipeline::Pipeline};
 use crate::native::runtime::compute::ComputeBatch;
 use std::collections::BTreeMap;
@@ -9,7 +11,7 @@ pub struct Frame {
     _buffers: Vec<ID3D12Resource>,
     _heap: Option<ID3D12DescriptorHeap>,
     _pipelines: Vec<Pipeline>,
-    readbacks: Vec<(ID3D12Resource, usize)>,
+    readbacks: Vec<Readback>,
 }
 impl Frame {
     pub fn record(
@@ -30,9 +32,15 @@ impl Frame {
                 readbacks: Vec::new(),
             };
             let mut gpu = Vec::new();
-            for input in batch.buffers() {
+            for input in batch.resources() {
+                if let Resource::Texture(input) = input {
+                    let (texture, upload) = compute_texture::upload(device, &frame.list, input)?;
+                    frame._buffers.extend([texture.clone(), upload]);
+                    gpu.push(texture);
+                    continue;
+                }
                 let size = input
-                    .bytes
+                    .bytes()
                     .len()
                     .div_ceil(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT as usize)
                     * D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT as usize;
@@ -46,11 +54,11 @@ impl Frame {
                 )?;
                 let upload = buffer::create(
                     device,
-                    input.bytes.len(),
+                    input.bytes().len(),
                     D3D12_HEAP_TYPE_UPLOAD,
                     D3D12_RESOURCE_STATE_GENERIC_READ,
                     D3D12_RESOURCE_FLAG_NONE,
-                    Some(&input.bytes),
+                    Some(input.bytes()),
                 )?;
                 buffer::transition(
                     &frame.list,
@@ -60,7 +68,7 @@ impl Frame {
                 );
                 frame
                     .list
-                    .CopyBufferRegion(&resource, 0, &upload, 0, input.bytes.len() as u64);
+                    .CopyBufferRegion(&resource, 0, &upload, 0, input.bytes().len() as u64);
                 frame._buffers.extend([resource.clone(), upload]);
                 gpu.push(resource);
             }
@@ -113,7 +121,7 @@ impl Frame {
                             device,
                             binding,
                             resource,
-                            (batch.buffers()[id].bytes.len() / 4) as u32,
+                            (batch.resources()[id].bytes().len() / 4) as u32,
                             handle,
                         );
                         index += 1;
@@ -138,7 +146,22 @@ impl Frame {
             }
             for id in batch.outputs() {
                 let id = id.index();
-                let size = batch.buffers()[id].bytes.len();
+                let size = batch.resources()[id].bytes().len();
+                if matches!(batch.resources()[id], Resource::Texture(_)) {
+                    if states[id] != D3D12_RESOURCE_STATE_COPY_SOURCE {
+                        buffer::transition(
+                            &frame.list,
+                            &gpu[id],
+                            states[id],
+                            D3D12_RESOURCE_STATE_COPY_SOURCE,
+                        );
+                        states[id] = D3D12_RESOURCE_STATE_COPY_SOURCE;
+                    }
+                    frame
+                        .readbacks
+                        .push(compute_texture::readback(device, &frame.list, &gpu[id])?);
+                    continue;
+                }
                 let readback = buffer::create(
                     device,
                     size,
@@ -159,16 +182,13 @@ impl Frame {
                 frame
                     .list
                     .CopyBufferRegion(&readback, 0, &gpu[id], 0, size as u64);
-                frame.readbacks.push((readback, size));
+                frame.readbacks.push(Readback::buffer(readback, size));
             }
             frame.list.Close()?;
             Ok(frame)
         }
     }
     pub fn readback(&self) -> Result<Vec<Vec<u8>>> {
-        self.readbacks
-            .iter()
-            .map(|(resource, size)| buffer::read(resource, *size))
-            .collect()
+        self.readbacks.iter().map(Readback::read).collect()
     }
 }

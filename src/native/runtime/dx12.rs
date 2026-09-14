@@ -270,3 +270,6 @@ mod compute_bindings;
 mod compute_pipeline;
 #[path = "dx12/work.rs"]
 mod work;
+
+#[path = "dx12/compute_texture.rs"]
+mod compute_texture;

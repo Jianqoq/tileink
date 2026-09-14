@@ -1,4 +1,18 @@
 //! One command buffer retains GPU intermediates across every pass in a batch.
+use super::super::compute::Resource;
+use super::compute_texture::Image;
+enum GpuResource {
+    Buffer(vk::Buffer),
+    Image(Image),
+}
+impl GpuResource {
+    fn buffer(&self) -> vk::Buffer {
+        match self {
+            Self::Buffer(buffer) => *buffer,
+            Self::Image(_) => unreachable!("validated buffer binding"),
+        }
+    }
+}
 use super::super::{Result, compute::ComputeBatch};
 use super::{
     compute_memory::{Arena, align},
@@ -15,6 +29,7 @@ pub struct Frame {
     pub fence: vk::Fence,
     pub command: vk::CommandBuffer,
     gpu: Option<Arena>,
+    resources: Vec<GpuResource>,
     upload: Option<Arena>,
     readback: Option<Arena>,
     outputs: Vec<(usize, usize)>,
@@ -40,6 +55,16 @@ impl Frame {
                 return Err("native Vulkan dispatch exceeds device limit".into());
             }
             for (binding, id) in &pass.bindings {
+                if let Resource::Texture(texture) = &batch.resources()[id.index()] {
+                    if texture
+                        .size
+                        .iter()
+                        .any(|&n| n > limits.max_image_dimension2_d)
+                    {
+                        return Err("native Vulkan texture exceeds device dimensions".into());
+                    }
+                    continue;
+                }
                 let size = if binding.kind == BindingKind::Uniform {
                     binding.size as usize
                 } else {
@@ -62,6 +87,7 @@ impl Frame {
             fence: vk::Fence::null(),
             command: vk::CommandBuffer::null(),
             gpu: None,
+            resources: Vec::new(),
             upload: None,
             readback: None,
             outputs: Vec::new(),
@@ -70,9 +96,9 @@ impl Frame {
         let mut upload = Vec::new();
         let mut source_offsets = Vec::new();
         let mut grids = Vec::new();
-        for buffer in batch.buffers() {
+        for buffer in batch.resources() {
             source_offsets.push(upload.len() as u64);
-            upload.extend_from_slice(&buffer.bytes);
+            upload.extend_from_slice(buffer.bytes());
         }
         for pass in batch.passes() {
             let offset = usize::try_from(align(
@@ -98,9 +124,15 @@ impl Frame {
             device,
             memory,
             &batch
-                .buffers()
+                .resources()
                 .iter()
-                .map(|b| b.bytes.len() as u64)
+                .filter_map(|b| {
+                    if let Resource::Buffer(bytes) = b {
+                        Some(bytes.len() as u64)
+                    } else {
+                        None
+                    }
+                })
                 .collect::<Vec<_>>(),
             vk::BufferUsageFlags::STORAGE_BUFFER
                 | vk::BufferUsageFlags::UNIFORM_BUFFER
@@ -108,6 +140,18 @@ impl Frame {
                 | vk::BufferUsageFlags::TRANSFER_DST,
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
         )?);
+        let mut buffers = this.gpu.as_ref().unwrap().buffers.iter();
+        let mut image_device = None;
+        for resource in batch.resources() {
+            this.resources.push(match resource {
+                Resource::Buffer(_) => GpuResource::Buffer(*buffers.next().unwrap()),
+                Resource::Texture(texture) => {
+                    let shared =
+                        image_device.get_or_insert_with(|| std::rc::Rc::new(device.clone()));
+                    GpuResource::Image(Image::new(shared, memory, texture)?)
+                }
+            });
+        }
         if !upload.is_empty() {
             let arena = Arena::new(
                 device,
@@ -141,10 +185,15 @@ impl Frame {
                     .command_buffer_count(1),
             )?[0];
             let command = this.command;
-            let mut counts = [0u32; 2];
+            let mut counts = [0u32; 4];
             for pass in batch.passes() {
                 for b in pass.shader.bindings {
-                    let i = usize::from(b.kind != BindingKind::Uniform);
+                    let i = match b.kind {
+                        BindingKind::Uniform => 0,
+                        BindingKind::Read | BindingKind::Write => 1,
+                        BindingKind::Texture => 2,
+                        BindingKind::TextureWrite => 3,
+                    };
                     counts[i] = counts[i]
                         .checked_add(1)
                         .ok_or("native Vulkan descriptor count overflow")?;
@@ -154,6 +203,8 @@ impl Frame {
                 let sizes: Vec<_> = [
                     vk::DescriptorType::UNIFORM_BUFFER,
                     vk::DescriptorType::STORAGE_BUFFER,
+                    vk::DescriptorType::SAMPLED_IMAGE,
+                    vk::DescriptorType::STORAGE_IMAGE,
                 ]
                 .into_iter()
                 .zip(counts)
@@ -171,16 +222,24 @@ impl Frame {
                 )?;
             }
             device.begin_command_buffer(command, &vk::CommandBufferBeginInfo::default())?;
-            let gpu = &this.gpu.as_ref().unwrap().buffers;
-            for (i, buffer) in batch.buffers().iter().enumerate() {
+            let gpu = &this.resources;
+            for (i, buffer) in batch.resources().iter().enumerate() {
+                if let GpuResource::Image(image) = &gpu[i] {
+                    image.upload(
+                        command,
+                        this.upload.as_ref().unwrap().buffers[0],
+                        source_offsets[i],
+                    );
+                    continue;
+                }
                 device.cmd_copy_buffer(
                     command,
                     this.upload.as_ref().unwrap().buffers[0],
-                    gpu[i],
+                    gpu[i].buffer(),
                     &[vk::BufferCopy {
                         src_offset: source_offsets[i],
                         dst_offset: 0,
-                        size: buffer.bytes.len() as u64,
+                        size: buffer.bytes().len() as u64,
                     }],
                 );
             }
@@ -202,6 +261,31 @@ impl Frame {
                         .set_layouts(&[pipeline.bindings]),
                 )?[0];
                 for binding in pass.shader.bindings {
+                    if matches!(
+                        binding.kind,
+                        BindingKind::Texture | BindingKind::TextureWrite
+                    ) {
+                        let id = pass
+                            .bindings
+                            .iter()
+                            .find(|(b, _)| b.slot == binding.slot)
+                            .unwrap()
+                            .1;
+                        let GpuResource::Image(image) = &gpu[id.index()] else {
+                            unreachable!("validated image binding")
+                        };
+                        device.update_descriptor_sets(
+                            &[vk::WriteDescriptorSet::default()
+                                .dst_set(set)
+                                .dst_binding(binding.slot)
+                                .descriptor_type(descriptor(binding.kind))
+                                .image_info(&[vk::DescriptorImageInfo::default()
+                                    .image_view(image.view)
+                                    .image_layout(vk::ImageLayout::GENERAL)])],
+                            &[],
+                        );
+                        continue;
+                    }
                     let (buffer, offset, range) = if binding.internal {
                         (
                             this.upload.as_ref().unwrap().buffers[0],
@@ -216,7 +300,7 @@ impl Frame {
                             .unwrap()
                             .1;
                         (
-                            gpu[id.index()],
+                            gpu[id.index()].buffer(),
                             0,
                             if binding.kind == BindingKind::Uniform {
                                 binding.size as u64
@@ -273,9 +357,13 @@ impl Frame {
                     vk::AccessFlags::TRANSFER_READ,
                 );
                 for (id, (offset, size)) in batch.outputs().iter().zip(&this.outputs) {
+                    if let GpuResource::Image(image) = &gpu[id.index()] {
+                        image.readback(command, readback.buffers[0], *offset as u64);
+                        continue;
+                    }
                     device.cmd_copy_buffer(
                         command,
-                        gpu[id.index()],
+                        gpu[id.index()].buffer(),
                         readback.buffers[0],
                         &[vk::BufferCopy {
                             src_offset: 0,

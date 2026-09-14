@@ -56,3 +56,38 @@ fn compute_launch_rejects_layout_aliases_and_oversized_grids() {
     }
     assert!(batch.passes().is_empty());
 }
+
+#[test]
+fn texture_resources_reject_invalid_extent_kind_owner_and_writable_alias() {
+    let mut batch = ComputeBatch::new();
+    for (size, bytes) in [
+        ([0, 1], vec![]),
+        ([1, 0], vec![]),
+        ([2, 2], vec![0; 4]),
+        ([u32::MAX, 2], vec![0; 4]),
+    ] {
+        assert!(batch.texture_rgba8(size, bytes).is_err());
+    }
+    let config = batch.buffer(vec![0; 16]).unwrap();
+    let source = batch.texture_rgba8([2, 2], vec![0; 16]).unwrap();
+    let target = batch.texture_rgba8([2, 2], vec![0; 16]).unwrap();
+    let wrong = batch.buffer(vec![0; 16]).unwrap();
+    // SAFETY: each call is rejected by resource validation before being recorded.
+    unsafe {
+        for bindings in [
+            [(0, config), (1, wrong), (2, target)],
+            [(0, source), (1, source), (2, target)],
+            [(0, config), (1, source), (2, wrong)],
+            [(0, config), (1, source), (2, source)],
+        ] {
+            assert!(
+                batch
+                    .dispatch("texture_flip", &bindings, [1, 1, 1])
+                    .is_err()
+            );
+        }
+    }
+    let mut other = ComputeBatch::new();
+    assert!(other.readback(source).is_err());
+    assert!(batch.passes().is_empty());
+}

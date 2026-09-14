@@ -11,6 +11,7 @@ pub enum Kind {
     Write,
     Uniform,
     Texture,
+    TextureWrite,
 }
 #[derive(Clone, Debug)]
 pub struct Field {
@@ -72,6 +73,7 @@ impl Interface {
                     Kind::Write => 1,
                     Kind::Uniform => 2,
                     Kind::Texture => 3,
+                    Kind::TextureWrite => 4,
                 },
             );
             word(&mut out, r.size);
@@ -174,7 +176,8 @@ pub fn binding_declarations(abi: &Interface, entry: &str) -> io::Result<String> 
                 Kind::Read => "Read",
                 Kind::Write => "Write",
                 Kind::Uniform => "Uniform",
-                Kind::Texture => return Err(invalid("texture requires texture pipeline")),
+                Kind::Texture => "Texture",
+                Kind::TextureWrite => "TextureWrite",
             };
             Ok(format!(
                 "Binding {{ slot: {}, kind: BindingKind::{kind}, size: {}, internal: {} }}",

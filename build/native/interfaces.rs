@@ -5,6 +5,8 @@ mod coarse;
 mod fine;
 #[path = "interfaces/scan.rs"]
 mod scan;
+#[path = "interfaces/texture.rs"]
+mod texture;
 #[path = "interfaces/validation.rs"]
 mod validation;
 use super::abi::{Field, Interface, Kind, Resource};
@@ -127,6 +129,7 @@ pub fn get(family: &str) -> io::Result<Interface> {
             validation::get(family, &constants)
         }
         "fine-gradient" => fine::gradient(&constants),
+        "texture-validation" => texture::validation(&constants),
         "cumsum" => interface(
             [constants["CUMSUM_CHUNK_SIZE"], 1, 1],
             &[

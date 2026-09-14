@@ -55,8 +55,10 @@ fn create(
             .map(|(index, b)| D3D12_DESCRIPTOR_RANGE {
                 RangeType: match b.kind {
                     BindingKind::Uniform => D3D12_DESCRIPTOR_RANGE_TYPE_CBV,
-                    BindingKind::Read => D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
-                    BindingKind::Write => D3D12_DESCRIPTOR_RANGE_TYPE_UAV,
+                    BindingKind::Read | BindingKind::Texture => D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
+                    BindingKind::Write | BindingKind::TextureWrite => {
+                        D3D12_DESCRIPTOR_RANGE_TYPE_UAV
+                    }
                 },
                 NumDescriptors: 1,
                 BaseShaderRegister: b.slot,

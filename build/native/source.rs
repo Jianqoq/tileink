@@ -62,11 +62,14 @@ impl SourceGraph {
         self.files.insert(name.clone(), source);
         stack.push(path.clone());
         let mut expanded = format!("#line 1 \"{name}\"\n");
+        let attributes = spirv_format_directives(&lines)?;
         for (index, visible) in lines.iter().enumerate() {
             let directive = visible.trim();
-            // Only literal includes and the validated whole-file guard are supported.
+            // Dependencies remain unconditional; only the explicit target format attribute is conditional.
             if directive.ends_with('\\')
-                || (directive.starts_with('#') && !directive.starts_with("#include "))
+                || (directive.starts_with('#')
+                    && !directive.starts_with("#include ")
+                    && !attributes.contains(&index))
             {
                 return Err(io::Error::other(format!(
                     "unsupported shader preprocessor syntax: {name}:{}",
@@ -106,4 +109,25 @@ impl SourceGraph {
         stack.pop();
         Ok(expanded)
     }
+}
+
+// DXIL obtains the typed UAV format from its descriptor. SPIR-V encodes it in
+// OpTypeImage. Permit this compiler-owned annotation without conditional code or
+// includes, which could otherwise make the tracked dependency graph incomplete.
+fn spirv_format_directives(lines: &[String]) -> io::Result<std::collections::BTreeSet<usize>> {
+    let mut directives = std::collections::BTreeSet::new();
+    for (index, line) in lines.iter().enumerate() {
+        if line.trim() != "#ifdef __spirv__" {
+            continue;
+        }
+        if lines.get(index + 1).map(|s| s.trim()) != Some("[[vk::image_format(\"rgba8\")]]")
+            || lines.get(index + 2).map(|s| s.trim()) != Some("#endif")
+        {
+            return Err(io::Error::other(
+                "only an explicit RGBA8 image attribute may depend on __spirv__",
+            ));
+        }
+        directives.extend([index, index + 2]);
+    }
+    Ok(directives)
 }

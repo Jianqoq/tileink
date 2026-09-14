@@ -306,3 +306,6 @@ impl Reference {
 
 #[path = "wgpu/compute.rs"]
 mod compute;
+
+#[path = "wgpu/compute_resources.rs"]
+mod compute_resources;

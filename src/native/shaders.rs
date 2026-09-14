@@ -18,6 +18,8 @@ pub(crate) enum BindingKind {
     Uniform,
     Read,
     Write,
+    Texture,
+    TextureWrite,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct Binding {
@@ -25,4 +27,10 @@ pub(crate) struct Binding {
     pub kind: BindingKind,
     pub size: u32,
     pub internal: bool,
+}
+
+impl BindingKind {
+    pub(crate) fn writable(self) -> bool {
+        matches!(self, Self::Write | Self::TextureWrite)
+    }
 }

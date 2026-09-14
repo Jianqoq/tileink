@@ -13,6 +13,7 @@ pub const FAMILIES: &[(&str, &str)] = &[
     ("coarse-emit-offsets", "coarse/emit_allocation.hlsl"),
     ("coarse-prefix", "coarse/prefix.hlsl"),
     ("fine-gradient", "validation/gradient.hlsl"),
+    ("texture-validation", "validation/texture.hlsl"),
     ("blend-math", "validation/blend.hlsl"),
     ("fill-coverage", "validation/geometry.hlsl"),
     ("geometry-math", "validation/geometry.hlsl"),

@@ -148,3 +148,32 @@ fn actual_cumsum_spirv_checks_each_uniform_block_and_shared_workgroup() {
         assert!(spirv::validate(artifact.bytes, artifact.entry, &wrong).is_err());
     }
 }
+
+#[cfg(all(
+    feature = "native-vulkan",
+    any(target_os = "windows", target_os = "linux")
+))]
+#[test]
+fn storage_texture_reflection_rejects_wrong_format_dimension_and_access() {
+    let artifact = tileink::NATIVE_SHADER_ARTIFACTS
+        .iter()
+        .find(|a| a.format == "spirv" && a.entry == "texture_flip")
+        .unwrap();
+    let interface = interfaces::get("texture-validation").unwrap();
+    spirv::validate(artifact.bytes, "texture_flip", &interface).unwrap();
+    for (operand, value) in [(3, 2), (5, 1), (6, 1), (7, 1), (8, 1)] {
+        let mut words: Vec<u32> = artifact
+            .bytes
+            .chunks_exact(4)
+            .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
+            .collect();
+        let mut index = 5;
+        while index < words.len() && !(words[index] & 65535 == 25 && words[index + 7] == 2) {
+            index += (words[index] >> 16) as usize;
+        }
+        assert!(index < words.len());
+        words[index + operand] = value;
+        let bytes: Vec<u8> = words.into_iter().flat_map(u32::to_le_bytes).collect();
+        assert!(spirv::validate(&bytes, "texture_flip", &interface).is_err());
+    }
+}

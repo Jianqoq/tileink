@@ -5,28 +5,28 @@ use crate::native::shaders::{Binding, BindingKind, NativeShaderArtifact};
 use std::sync::atomic::{AtomicU64, Ordering};
 static NEXT_BATCH: AtomicU64 = AtomicU64::new(1);
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-pub struct BufferId {
+pub struct ResourceId {
     owner: u64,
     index: usize,
 }
-impl BufferId {
+impl ResourceId {
     pub fn index(self) -> usize {
         self.index
     }
 }
-pub struct Buffer {
-    pub bytes: Vec<u8>,
-}
+#[path = "compute/resource.rs"]
+mod resource;
+pub use resource::{Resource, Texture};
 pub struct Pass {
     pub shader: &'static NativeShaderArtifact,
-    pub bindings: Vec<(Binding, BufferId)>,
+    pub bindings: Vec<(Binding, ResourceId)>,
     pub grid: [u32; 3],
 }
 pub struct ComputeBatch {
     owner: u64,
-    buffers: Vec<Buffer>,
+    resources: Vec<Resource>,
     passes: Vec<Pass>,
-    outputs: Vec<BufferId>,
+    outputs: Vec<ResourceId>,
 }
 impl ComputeBatch {
     pub fn new() -> Self {
@@ -35,30 +35,39 @@ impl ComputeBatch {
             .expect("native batch identity exhausted");
         Self {
             owner,
-            buffers: Vec::new(),
+            resources: Vec::new(),
             passes: Vec::new(),
             outputs: Vec::new(),
         }
     }
-    pub fn buffer(&mut self, bytes: Vec<u8>) -> Result<BufferId> {
+    pub fn buffer(&mut self, bytes: Vec<u8>) -> Result<ResourceId> {
         if bytes.is_empty() || !bytes.len().is_multiple_of(4) || bytes.len() > u32::MAX as usize {
             return Err("invalid native compute buffer size/alignment".into());
         }
-        let id = BufferId {
+        let id = ResourceId {
             owner: self.owner,
-            index: self.buffers.len(),
+            index: self.resources.len(),
         };
-        self.buffers.push(Buffer { bytes });
+        self.resources.push(Resource::Buffer(bytes));
         Ok(id)
     }
-    pub fn size(&self, id: BufferId) -> Result<usize> {
+    pub fn texture_rgba8(&mut self, size: [u32; 2], bytes: Vec<u8>) -> Result<ResourceId> {
+        let texture = Texture::new(size, bytes)?;
+        let id = ResourceId {
+            owner: self.owner,
+            index: self.resources.len(),
+        };
+        self.resources.push(Resource::Texture(texture));
+        Ok(id)
+    }
+    pub fn size(&self, id: ResourceId) -> Result<usize> {
         if id.owner != self.owner {
-            return Err("buffer belongs to another compute batch".into());
+            return Err("resource belongs to another compute batch".into());
         }
-        self.buffers
+        self.resources
             .get(id.index)
-            .map(|b| b.bytes.len())
-            .ok_or_else(|| "invalid compute buffer".into())
+            .map(|resource| resource.bytes().len())
+            .ok_or_else(|| "invalid compute resource".into())
     }
     /// # Safety
     /// The stage encoder must validate data-dependent indices, write ownership
@@ -67,7 +76,7 @@ impl ComputeBatch {
     pub unsafe fn dispatch(
         &mut self,
         entry: &str,
-        bindings: &[(u32, BufferId)],
+        bindings: &[(u32, ResourceId)],
         grid: [u32; 3],
     ) -> Result<()> {
         let shader = crate::NATIVE_SHADER_ARTIFACTS
@@ -90,11 +99,17 @@ impl ComputeBatch {
             if matches.next().is_some() || self.size(id)? < (binding.size as usize) {
                 return Err("duplicate or undersized native compute binding".into());
             }
+            let texture_binding = matches!(
+                binding.kind,
+                BindingKind::Texture | BindingKind::TextureWrite
+            );
+            if texture_binding != matches!(self.resources[id.index], Resource::Texture(_)) {
+                return Err("native compute resource kind mismatch".into());
+            }
             if ordered
                 .iter()
-                .any(|(other, other_id): &(Binding, BufferId)| {
-                    *other_id == id
-                        && (binding.kind == BindingKind::Write || other.kind == BindingKind::Write)
+                .any(|(other, other_id): &(Binding, ResourceId)| {
+                    *other_id == id && (binding.kind.writable() || other.kind.writable())
                 })
             {
                 return Err("aliased native writable bindings".into());
@@ -111,7 +126,7 @@ impl ComputeBatch {
         });
         Ok(())
     }
-    pub fn readback(&mut self, id: BufferId) -> Result<usize> {
+    pub fn readback(&mut self, id: ResourceId) -> Result<usize> {
         self.size(id)?;
         if let Some(index) = self.outputs.iter().position(|old| *old == id) {
             return Ok(index);
@@ -120,13 +135,13 @@ impl ComputeBatch {
         self.outputs.push(id);
         Ok(index)
     }
-    pub fn buffers(&self) -> &[Buffer] {
-        &self.buffers
+    pub fn resources(&self) -> &[Resource] {
+        &self.resources
     }
     pub fn passes(&self) -> &[Pass] {
         &self.passes
     }
-    pub fn outputs(&self) -> &[BufferId] {
+    pub fn outputs(&self) -> &[ResourceId] {
         &self.outputs
     }
 }

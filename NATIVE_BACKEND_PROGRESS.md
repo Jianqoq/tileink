@@ -1621,3 +1621,14 @@ Full release, 65 native runtime tests, shader/editor checks, strict Clippy and
 SVG/examples passed; all 3,471 PNG hashes remain unchanged. No-DXC gradient replay
 passed with zero new runtime pipeline compilations. The production inventory is
 still 27/179; general texture resources and full fine/effects integration follow.
+
+
+### M4 compute textures
+
+Typed RGBA8 textures now share compute batches with buffers in native DX12 and
+Vulkan. Multirow uploads, storage writes, subsequent sampled reads and tightly
+packed readbacks match both wgpu routes, including mixed outputs and upload-only
+batches. Full release, 67 runtime tests, shader/editor checks, strict Clippy and
+SVG/examples pass; all 3,471 PNGs remain unchanged. No-DXC replay compiles no new
+pipelines. See [texture validation](docs/native/m4-compute-textures.md).
+Production inventory remains 27/179; M4 is still incomplete.

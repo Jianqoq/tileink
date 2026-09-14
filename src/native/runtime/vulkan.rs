@@ -316,3 +316,5 @@ impl Drop for Vulkan {
 
 #[cfg(test)]
 mod tests;
+
+mod compute_texture;
