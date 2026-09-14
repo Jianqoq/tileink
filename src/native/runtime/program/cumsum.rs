@@ -12,6 +12,7 @@ pub struct CumsumPlan {
     starts: Vec<u32>,
     ends: Vec<u32>,
     backdrop_words: usize,
+    needs_offsets: bool,
 }
 pub struct CumsumOutput {
     pub totals: ResourceId,
@@ -48,28 +49,41 @@ impl CumsumPlan {
         }
         let mut rows = Vec::new();
         for (&start, &end) in starts.iter().zip(&ends) {
-            if start >= end || end as usize > offsets.len() {
+            if start > end || end as usize > offsets.len() {
                 return Err("invalid cumsum row chunk range".into());
             }
-            rows.push((start, end));
+            if start != end {
+                rows.push((start, end));
+            }
         }
         rows.sort_unstable();
         let mut next = 0;
         for (start, end) in rows {
-            if start != next {
-                return Err("cumsum rows must partition all chunks".into());
+            if start < next
+                || lengths[next as usize..start as usize]
+                    .iter()
+                    .any(|&len| len != 0)
+            {
+                return Err("cumsum rows overlap or omit live chunks".into());
             }
             next = end;
         }
-        if next as usize != offsets.len() {
+        if lengths[next as usize..].iter().any(|&len| len != 0) {
             return Err("cumsum chunks missing row ownership".into());
         }
+        // Shared scene arenas retain empty rows/chunks. Table cardinality cannot
+        // establish the single-chunk fast path when those holes are present.
+        let needs_offsets = starts
+            .iter()
+            .zip(&ends)
+            .any(|(&start, &end)| end - start > 1);
         Ok(Self {
             offsets,
             lengths,
             starts,
             ends,
             backdrop_words,
+            needs_offsets,
         })
     }
     pub fn encode(
@@ -97,7 +111,11 @@ impl CumsumPlan {
         }
         let grid = [x, y, 1];
         let add = |batch: &mut ComputeBatch, words: &[u32]| {
-            batch.buffer(words.iter().flat_map(|w| w.to_le_bytes()).collect())
+            batch.buffer(if words.is_empty() {
+                vec![0; 4]
+            } else {
+                words.iter().flat_map(|w| w.to_le_bytes()).collect()
+            })
         };
         let config = add(batch, &[self.starts.len() as u32, chunks, 0, 0])?;
         let offsets = add(batch, &self.offsets)?;
@@ -107,7 +125,7 @@ impl CumsumPlan {
         let totals = batch.buffer(vec![0; chunks as usize * 4])?;
         let carries = batch.buffer(vec![0; chunks as usize * 4])?;
         // SAFETY: construction validates disjoint backdrop writes, bounded chunk lanes,
-        // bounded metadata and exactly one row owner per chunk. The native shader
+        // bounded metadata and exactly one row owner per live chunk; unused chunks have zero length. The native shader
         // guards padded groups using the actual chunk_count in the uniform.
         unsafe {
             batch.dispatch(
@@ -121,7 +139,7 @@ impl CumsumPlan {
                 ],
                 grid,
             )?;
-            if self.starts.len() != self.offsets.len() {
+            if self.needs_offsets {
                 batch.dispatch(
                     "cumsum_chunk_offsets",
                     &[

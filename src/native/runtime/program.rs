@@ -89,3 +89,6 @@ pub mod cumsum;
 
 #[path = "program/filter.rs"]
 pub mod filter;
+
+#[path = "program/scene_scan.rs"]
+pub mod scene_scan;

@@ -1846,3 +1846,17 @@ See [implementation](docs/native/m4-fine-interpreter.md) and
 resource/submission integration and all immediate SVG/example four-route runs
 are still required. Existing SVG/example results validate wgpu regression, not
 an unavailable full native renderer. No performance comparisons were run.
+
+## M4 Canvas geometry assembly — 2026-09-14
+
+Real Canvas geometry now records scan and cumsum together using shared path plans.
+PreparedScan prevents stale plan reuse; cumsum handles empty arena slots and
+selects cross-chunk offsets from actual row spans. Four API tests include filled
+and wide paths with nonzero backdrops, plus an independent carry/guard oracle.
+
+Release (998), focused scan/cumsum (15), final wide-scene tests (6), strict Clippy,
+formatting, native-only checking and all SVG/examples pass. Only the previously
+approved turbulence PNG differs. Reviews are closed; see
+[geometry assembly](docs/native/m4-scene-geometry.md). M4 remains incomplete:
+coarse/fine scene assembly, GPU resource/submission integration and final immediate
+four-route acceptance remain. No performance comparison was run.

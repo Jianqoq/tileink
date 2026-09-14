@@ -195,3 +195,37 @@ fn receipt(case: usize, repetition: u32, route: &str, outputs: &[Vec<u8>]) -> se
         serde_json::json!({"bytes":bytes.len(),"sha256":sha2::Sha256::digest(bytes).iter().map(|byte|format!("{byte:02x}")).collect::<String>()})
     }).collect::<Vec<_>>()})
 }
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn four_api_cumsum_empty_arena_slots_preserve_carries_and_guards() -> Result<()> {
+    let routes = super::four_api::Routes::new()?;
+    let words = |values: &[u32]| {
+        values
+            .iter()
+            .flat_map(|v| v.to_le_bytes())
+            .collect::<Vec<_>>()
+    };
+    let mut batch = ComputeBatch::new();
+    let backdrops = batch.buffer(words(&[0x12345678, 3, 7, 0x12345678]))?;
+    let plan = CumsumPlan::new(
+        vec![0, 1, 2, 0],
+        vec![0, 1, 1, 0],
+        vec![0, 1, 0, 0],
+        vec![0, 3, 0, 0],
+        4,
+    )?;
+    let output = plan.encode(&mut batch, backdrops, 3)?.unwrap();
+    for id in [backdrops, output.totals, output.offsets] {
+        batch.readback(id)?;
+    }
+    routes.check(
+        &batch,
+        &[
+            words(&[0x12345678, 3, 10, 0x12345678]),
+            words(&[0, 3, 7, 0]),
+            words(&[0, 0, 3, 0]),
+        ],
+        "empty arena rows/chunks with a live two-chunk row",
+    )
+}

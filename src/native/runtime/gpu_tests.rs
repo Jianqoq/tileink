@@ -254,3 +254,6 @@ mod fine_spill_address;
 
 #[path = "tests/fine_images_gpu.rs"]
 mod fine_images;
+
+#[path = "tests/scene_scan_gpu.rs"]
+mod scene_scan;

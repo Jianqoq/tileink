@@ -40,3 +40,28 @@ fn cumsum_encodes_ordered_stages_and_guards_padded_two_dimensional_groups() {
     plan.encode(&mut batch, backdrops, 65535).unwrap();
     assert_eq!(batch.passes().len(), 1);
 }
+
+#[test]
+fn cumsum_accepts_empty_arena_rows_and_unowned_empty_chunks() {
+    let plan = CumsumPlan::new(
+        vec![0, 0, 1, 0],
+        vec![0, 1, 1, 0],
+        vec![0, 1, 0, 0],
+        vec![0, 3, 0, 0],
+        2,
+    )
+    .unwrap();
+    let mut batch = ComputeBatch::new();
+    let backdrops = batch.buffer(vec![0; 8]).unwrap();
+    plan.encode(&mut batch, backdrops, 65535).unwrap();
+    assert_eq!(
+        batch.passes().len(),
+        3,
+        "equal table lengths do not imply one chunk per live row"
+    );
+    let empty = CumsumPlan::new(vec![0], vec![0], vec![], vec![], 0).unwrap();
+    let mut batch = ComputeBatch::new();
+    let backdrops = batch.buffer(vec![0; 4]).unwrap();
+    empty.encode(&mut batch, backdrops, 65535).unwrap();
+    assert_eq!(batch.passes().len(), 1);
+}
