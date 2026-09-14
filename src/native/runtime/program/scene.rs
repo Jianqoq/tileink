@@ -35,7 +35,9 @@ pub(crate) struct SceneCache {
 }
 
 pub(crate) struct Scene {
-    pub(crate) plan: Rc<ExecPlan>,
+    draw_count: u32,
+    plan: Rc<ExecPlan>,
+    layer_count: u32,
     lengths: GpuBufferLengths,
     scan: ScanOutput,
     draws: ResourceId,
@@ -165,6 +167,8 @@ impl SceneCache {
         let spills = allocate(batch, spill_words, size_of::<u32>())?;
         self.plan = Some(prepared.plan.clone());
         Ok(Scene {
+            layer_count: u32::try_from(prepared.plan.layer_stack_data.len())?,
+            draw_count: u32::try_from(canvas.draw_records.len())?,
             plan: prepared.plan,
             lengths,
             scan,
@@ -193,6 +197,10 @@ impl SceneCache {
 }
 
 impl Scene {
+    pub(crate) fn plan(&self) -> &ExecPlan {
+        &self.plan
+    }
+
     /// Select a logical batch ID, not a physical draw-record interval. Tile bins
     /// own physical indices; sparse retained IDs may exceed the draw count.
     pub(crate) fn encode_coarse(
@@ -203,7 +211,8 @@ impl Scene {
         chunked: bool,
         limit: u32,
     ) -> Result<()> {
-        if layers.end as usize > self.plan.layer_stack_data.len() {
+        // Bound against the uploaded allocation, never replaceable plan metadata.
+        if layers.end > self.layer_count {
             return Err("native coarse layer range exceeds prepared scene".into());
         }
         let plan = CoarsePlan::new(
@@ -292,3 +301,6 @@ mod tests;
 
 #[path = "scene/images.rs"]
 mod images;
+
+#[path = "scene/layers.rs"]
+mod layers;

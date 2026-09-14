@@ -75,7 +75,7 @@ fn render_canvas(
     let scene = cache.record(&mut batch, canvas, None, Some(upload), 65535)?;
     let target = batch.texture_rgba8([width, height], vec![0; (width * height * 4) as usize])?;
     let indices = scene
-        .plan
+        .plan()
         .all_direct_root_ops()
         .ok_or("fixture must have direct root batches")?;
     for index in indices {
@@ -83,7 +83,7 @@ fn render_canvas(
             batch_id,
             layer_stack,
             ..
-        } = &scene.plan.ops[index]
+        } = &scene.plan().ops[index]
         else {
             unreachable!()
         };
@@ -253,6 +253,121 @@ fn four_api_canvas_image_resources_preserve_pixels() -> Result<()> {
         for variant in FineVariant::ALL {
             routes.check_fine(&batch, &expected, "Canvas atlas page selection", variant)?;
         }
+    }
+    routes.validate()
+}
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn four_api_canvas_scan_geometry_feeds_layer_filters() -> Result<()> {
+    use crate::native::runtime::program::filter::stack::{Composite, Textures};
+    use crate::shared::filter_config::FilterConfig;
+    use peniko::kurbo::{Affine, BezPath, Rect, Shape};
+    let routes = routes()?;
+    let mut canvas = Canvas::new(33, 29, 1.0);
+    let mut path = BezPath::new();
+    path.move_to((2.125, 3.5));
+    path.line_to((30.375, 6.25));
+    path.line_to((7.75, 25.875));
+    path.close_path();
+    canvas.push_clip_layer(path, Affine::IDENTITY, crate::FillRule::NonZero, 0.25);
+    canvas.push_path(
+        Rect::new(0.0, 0.0, 33.0, 29.0).to_path(0.25),
+        crate::Brush::Solid(peniko::Color::from_rgb8(255, 0, 0)),
+        Affine::IDENTITY,
+        crate::FillRule::NonZero,
+        0.25,
+    );
+    canvas.pop_layer();
+    let mut batch = ComputeBatch::new();
+    let upload = Default::default();
+    let images = SceneImages::record(&mut batch, &upload)?;
+    let scene = SceneCache::default().record(&mut batch, &canvas, None, Some(&upload), 65535)?;
+    let target = batch.texture_rgba8([33, 29], vec![0; 33 * 29 * 4])?;
+    for index in scene.plan().all_direct_root_ops().unwrap() {
+        let ExecOp::DrawBatch {
+            batch_id,
+            layer_stack,
+            ..
+        } = &scene.plan().ops[index]
+        else {
+            unreachable!()
+        };
+        scene.encode_coarse(
+            &mut batch,
+            *batch_id..batch_id.saturating_add(1),
+            layer_stack.start as u32..layer_stack.end as u32,
+            false,
+            65535,
+        )?;
+        // SAFETY: associated images, scene and coarse precede fine in this batch.
+        unsafe {
+            scene.encode_fine(&mut batch, target, &images, 0, true, 65535)?;
+        }
+    }
+    let mask = batch.texture_rgba8([33, 29], vec![0; 33 * 29 * 4])?;
+    let config = FilterConfig {
+        width: 33,
+        height: 29,
+        region_width: 33,
+        region_height: 29,
+        ..Default::default()
+    };
+    scene
+        .filter_geometry()
+        .mask(&mut batch, config, None, mask)?;
+    let source = batch.texture_rgba8([33, 29], [0, 0, 255, 255].repeat(33 * 29))?;
+    let composite = batch.texture_rgba8([33, 29], vec![0; 33 * 29 * 4])?;
+    assert_eq!(scene.plan().layer_stack_data.len(), 1);
+    scene.filter_stack().encode(
+        &mut batch,
+        Composite::Over,
+        FilterConfig {
+            layer_stack_end: 1,
+            ..config
+        },
+        None,
+        Textures {
+            source,
+            auxiliary: None,
+            target: composite,
+        },
+    )?;
+    assert!(
+        batch.outputs().is_empty(),
+        "geometry stays on GPU through mask/composite"
+    );
+    batch.readback(target)?;
+    batch.readback(mask)?;
+    batch.readback(composite)?;
+    let expected = routes.render_reference(
+        &batch,
+        super::reference::FilterVariant {
+            portable: false,
+            texture_table: false,
+        },
+        FineVariant::ALL[0],
+    )?;
+    assert!(expected[0].chunks_exact(4).any(|p| p[3] > 0 && p[3] < 255));
+    for ((fine, mask), composite) in expected[0]
+        .chunks_exact(4)
+        .zip(expected[1].chunks_exact(4))
+        .zip(expected[2].chunks_exact(4))
+    {
+        assert_eq!(mask, [fine[3]; 4]);
+        assert_eq!(composite, [0, 0, fine[3], fine[3]]);
+    }
+    for variant in FineVariant::ALL {
+        routes.check_render(
+            &batch,
+            &expected,
+            "Canvas GPU geometry mask and stack",
+            super::reference::FilterVariant {
+                portable: variant.portable,
+                texture_table: variant.texture_table,
+            },
+            variant,
+        )?;
     }
     routes.validate()
 }

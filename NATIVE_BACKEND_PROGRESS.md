@@ -1913,3 +1913,17 @@ full SVG/examples pass. The 3,471 PNG set still has only the approved turbulence
 difference. Standards and Spec reviews are closed. No performance comparison.
 M4 remains incomplete: full native frame/effect/vector assembly, GPU resource/
 submission integration and complete immediate four-renderer acceptance remain.
+
+## M4 scene geometry in layer filters — 2026-09-14
+
+Layer mask and stack composite now share the scene's GPU scan/paint/layer resources
+without geometry readback or duplicate upload. Mixed fine/filter reference batches
+explicitly choose both variants. A reproduced metadata/allocation bounds bug is
+fixed by private read-only plan access and upload-bound layer_count checks.
+
+Canvas fine/mask/stack coverage and four-API bytes pass (111.86 seconds). Focused
+scene tests (60), ordinary release (1,020), integrations, formatting, strict Clippy,
+native-only and full SVG/examples pass, with only the approved PNG delta. See
+[scene layers](docs/native/m4-scene-layers.md). M4 remains incomplete: full frame/
+effect/vector orchestration, GPU resource/submission integration and complete
+immediate four-renderer acceptance remain. No performance comparison was run.

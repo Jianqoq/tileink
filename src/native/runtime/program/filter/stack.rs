@@ -27,6 +27,21 @@ pub struct Stack {
     count: u32,
 }
 impl Stack {
+    /// # Safety
+    /// `layers` must contain `count` valid records for this geometry, with byte
+    /// opacity payloads and bounded draw indices, in the geometry's batch.
+    pub(in crate::native::runtime::program) unsafe fn from_gpu(
+        geometry: Geometry,
+        layers: ResourceId,
+        count: u32,
+    ) -> Self {
+        Self {
+            geometry,
+            layers,
+            count,
+        }
+    }
+
     pub fn upload(
         batch: &mut ComputeBatch,
         geometry: Geometry,

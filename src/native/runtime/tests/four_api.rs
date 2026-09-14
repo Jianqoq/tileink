@@ -69,6 +69,26 @@ impl Routes {
     ) -> Result<()> {
         self.check_selected(batch, expected, case, None, Some(variant))
     }
+    pub(super) fn render_reference(
+        &self,
+        batch: &ComputeBatch,
+        filter: reference::FilterVariant,
+        fine: reference::FineVariant,
+    ) -> Result<Vec<Vec<u8>>> {
+        self.reference[0].execute_selected(batch, Some(filter), Some(fine))
+    }
+
+    pub(super) fn check_render(
+        &self,
+        batch: &ComputeBatch,
+        expected: &[Vec<u8>],
+        case: &str,
+        filter: reference::FilterVariant,
+        fine: reference::FineVariant,
+    ) -> Result<()> {
+        self.check_selected(batch, expected, case, Some(filter), Some(fine))
+    }
+
     fn check_selected(
         &self,
         batch: &ComputeBatch,
@@ -81,10 +101,7 @@ impl Routes {
         for (route, result) in self
             .reference
             .iter()
-            .map(|r| match fine {
-                Some(v) => r.execute_fine_variant(batch, v),
-                None => r.execute_variant(batch, variant),
-            })
+            .map(|r| r.execute_selected(batch, variant, fine))
             .chain(self.native.iter().map(|r| {
                 r.submit_compute(batch)
                     .map_err(|e| format!("{e:?}").into())

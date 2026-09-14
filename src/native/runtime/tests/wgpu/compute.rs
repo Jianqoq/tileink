@@ -13,7 +13,7 @@ impl Reference {
     ) -> Result<Vec<Vec<u8>>> {
         self.execute_selected(batch, filter, None)
     }
-    pub(super) fn execute_selected(
+    pub fn execute_selected(
         &self,
         batch: &ComputeBatch,
         filter: Option<FilterVariant>,

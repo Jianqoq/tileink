@@ -80,3 +80,129 @@ fn scene_batch_ids_are_not_physical_draw_ranges() -> Result<()> {
     scene.encode_coarse(&mut batch, 77..78, 0..0, false, 65535)?;
     Ok(())
 }
+
+#[test]
+fn scene_filters_reuse_scan_buffers_and_reject_foreign_batches() -> Result<()> {
+    use crate::native::runtime::program::filter::stack::{Composite, Textures};
+    use crate::shared::filter_config::FilterConfig;
+    let mut batch = ComputeBatch::new();
+    let scene = SceneCache::default().record(&mut batch, &canvas(32, 32), None, None, 65535)?;
+    let geometry = scene.filter_geometry();
+    let stack = scene.filter_stack();
+    let target = batch.texture_rgba8([32, 32], vec![0; 32 * 32 * 4])?;
+    let config = FilterConfig {
+        width: 32,
+        height: 32,
+        region_width: 32,
+        region_height: 32,
+        ..Default::default()
+    };
+    let resources = batch.resources().len();
+    geometry.mask(&mut batch, config, None, target)?;
+    assert_eq!(
+        batch.resources().len(),
+        resources + 2,
+        "only uniform and active-list placeholders are uploaded"
+    );
+    let pass = batch.passes().last().unwrap();
+    assert!(
+        pass.bindings
+            .iter()
+            .any(|(binding, id)| binding.slot == 24 && *id == scene.scan.segments)
+    );
+    assert!(batch.outputs().is_empty());
+    let mut foreign = ComputeBatch::new();
+    let foreign_target = foreign.texture_rgba8([32, 32], vec![0; 32 * 32 * 4])?;
+    assert!(
+        geometry
+            .mask(&mut foreign, config, None, foreign_target)
+            .is_err()
+    );
+    assert!(foreign.passes().is_empty());
+    let passes = batch.passes().len();
+    assert!(
+        stack
+            .encode(
+                &mut batch,
+                Composite::Over,
+                FilterConfig {
+                    layer_stack_end: 1,
+                    ..config
+                },
+                None,
+                Textures {
+                    source: target,
+                    auxiliary: None,
+                    target
+                }
+            )
+            .is_err()
+    );
+    assert_eq!(batch.passes().len(), passes);
+    Ok(())
+}
+
+#[test]
+fn scene_layer_bounds_follow_uploaded_records_not_replaced_metadata() -> Result<()> {
+    use crate::native::runtime::program::filter::stack::{Composite, Textures};
+    use crate::shared::filter_config::FilterConfig;
+    use peniko::kurbo::{Affine, Rect, Shape};
+    let mut batch = ComputeBatch::new();
+    let mut cache = SceneCache::default();
+    let mut scene = cache.record(&mut batch, &canvas(32, 32), None, None, 65535)?;
+    let mut changed = Canvas::new(32, 32, 1.0);
+    let path = Rect::new(1.0, 1.0, 31.0, 31.0).to_path(0.25);
+    changed.push_clip_layer(
+        path.clone(),
+        Affine::IDENTITY,
+        crate::FillRule::NonZero,
+        0.25,
+    );
+    changed.push_path(
+        path,
+        crate::Brush::Solid(peniko::Color::from_rgb8(255, 0, 0)),
+        Affine::IDENTITY,
+        crate::FillRule::NonZero,
+        0.25,
+    );
+    changed.pop_layer();
+    let replacement = cache.record(&mut ComputeBatch::new(), &changed, None, None, 65535)?;
+    assert_eq!(replacement.plan.layer_stack_data.len(), 1);
+    // Simulate the formerly permitted metadata replacement. Actual GPU storage
+    // must bound accesses even if internal metadata is changed independently.
+    scene.plan = replacement.plan;
+    let passes = batch.passes().len();
+    assert!(
+        scene
+            .encode_coarse(&mut batch, 0..1, 0..1, false, 65535)
+            .is_err()
+    );
+    assert_eq!(batch.passes().len(), passes);
+    let source = batch.texture_rgba8([32, 32], vec![0; 32 * 32 * 4])?;
+    let target = batch.texture_rgba8([32, 32], vec![0; 32 * 32 * 4])?;
+    assert!(
+        scene
+            .filter_stack()
+            .encode(
+                &mut batch,
+                Composite::Over,
+                FilterConfig {
+                    width: 32,
+                    height: 32,
+                    region_width: 32,
+                    region_height: 32,
+                    layer_stack_end: 1,
+                    ..Default::default()
+                },
+                None,
+                Textures {
+                    source,
+                    auxiliary: None,
+                    target
+                }
+            )
+            .is_err()
+    );
+    assert_eq!(batch.passes().len(), passes);
+    Ok(())
+}
