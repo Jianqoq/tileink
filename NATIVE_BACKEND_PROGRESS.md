@@ -1860,3 +1860,17 @@ approved turbulence PNG differs. Reviews are closed; see
 [geometry assembly](docs/native/m4-scene-geometry.md). M4 remains incomplete:
 coarse/fine scene assembly, GPU resource/submission integration and final immediate
 four-route acceptance remain. No performance comparison was run.
+
+## M4 shared coarse and Canvas pixel chain — 2026-09-14
+
+Coarse scheduling is now shared by wgpu and both native APIs, including dense,
+compact-active, chunked and profiling paths. Real Canvas geometry reaches fine
+pixels in one batch using shared lengths, bins and paint data. Four API exact
+pixel checks pass across all fine texture variants and dense/chunked emission.
+Release (1,003), integration tests, strict Clippy, native-only checks and all
+SVG/examples pass; no additional PNG difference. Both review axes are closed.
+See [coarse assembly](docs/native/m4-scene-coarse.md).
+
+M4 remains incomplete: public NativeRenderer, full layer/filter frame assembly,
+GPU resource/submission integration and complete immediate four-renderer acceptance
+are still required. No performance comparison was run.

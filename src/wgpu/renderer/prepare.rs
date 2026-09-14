@@ -69,7 +69,7 @@ impl Renderer {
                 &self.scan,
                 &mut self.coarse,
                 self.lengths,
-                WgpuCoarseBatch {
+                CoarseBatch {
                     draw_start,
                     draw_end,
                     layer_stack_start,

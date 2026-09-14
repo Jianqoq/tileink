@@ -42,3 +42,5 @@ pub(crate) mod layers;
 pub(crate) mod prepare;
 
 pub(crate) mod filter_program;
+
+pub(crate) mod coarse;

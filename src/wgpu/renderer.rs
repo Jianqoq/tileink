@@ -31,7 +31,7 @@ use crate::{
 
 use super::buffer::{WgpuBuffer, WgpuRangeScatterPipeline};
 use super::canvas::{WgpuCoarseBuffers, WgpuScanBuffers, WgpuSceneBuffers};
-use super::coarse::{WgpuCoarseBatch, WgpuCoarsePipeline};
+use super::coarse::WgpuCoarsePipeline;
 use super::commands::WgpuCommandBatch;
 use super::cumsum::WgpuCumsumPipeline;
 use super::filter::{
@@ -50,6 +50,7 @@ use super::profile::{WgpuRenderProfile, WgpuRenderProfiler, profile_cpu, start_c
 use super::scan::WgpuScanPipeline;
 use super::target::WgpuTarget;
 use crate::render::binning::prefer_dense_binning;
+use crate::render::coarse::CoarseBatch;
 use crate::render::damage_tiles::DamageTiles;
 use crate::render::filter_resources::cursors::FilterCursors;
 use crate::render::incremental::{

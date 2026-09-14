@@ -100,7 +100,7 @@ impl Renderer {
         if dense {
             self.retained.stats_mut().dense_coarse_batches += 1;
         }
-        let batch = WgpuCoarseBatch {
+        let batch = CoarseBatch {
             draw_start,
             draw_end,
             layer_stack_start,

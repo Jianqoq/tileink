@@ -92,3 +92,6 @@ pub mod filter;
 
 #[path = "program/scene_scan.rs"]
 pub mod scene_scan;
+
+#[path = "program/coarse.rs"]
+pub mod coarse;

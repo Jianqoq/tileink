@@ -257,3 +257,6 @@ mod fine_images;
 
 #[path = "tests/scene_scan_gpu.rs"]
 mod scene_scan;
+
+#[path = "tests/scene_coarse_gpu.rs"]
+mod scene_coarse;
