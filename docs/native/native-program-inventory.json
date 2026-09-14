@@ -549,8 +549,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_turbulence_region",
+      "hlsl_source": "src/shaders/hlsl/filter/turbulence.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-turbulence.md"
     },
     {
       "source": "filter.wgsl",
@@ -965,8 +969,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_composite_surface_direct_region",
+      "hlsl_source": "src/shaders/hlsl/filter/surface.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-surface.md"
     },
     {
       "source": "filter.wgsl",
@@ -1101,8 +1109,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_turbulence_region",
+      "hlsl_source": "src/shaders/hlsl/filter/turbulence.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-turbulence.md"
     },
     {
       "source": "filter.wgsl",
@@ -1517,8 +1529,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_composite_surface_direct_region",
+      "hlsl_source": "src/shaders/hlsl/filter/surface.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-surface.md"
     },
     {
       "source": "filter.wgsl",
@@ -1677,8 +1693,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_turbulence_region",
+      "hlsl_source": "src/shaders/hlsl/filter/turbulence.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-turbulence.md"
     },
     {
       "source": "filter_web.wgsl",
@@ -2093,8 +2113,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_composite_surface_direct_region",
+      "hlsl_source": "src/shaders/hlsl/filter/surface.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-surface.md"
     },
     {
       "source": "filter_web.wgsl",
@@ -2229,8 +2253,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_turbulence_region",
+      "hlsl_source": "src/shaders/hlsl/filter/turbulence.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-turbulence.md"
     },
     {
       "source": "filter_web.wgsl",
@@ -2645,8 +2673,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_composite_surface_direct_region",
+      "hlsl_source": "src/shaders/hlsl/filter/surface.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-surface.md"
     },
     {
       "source": "filter_web.wgsl",

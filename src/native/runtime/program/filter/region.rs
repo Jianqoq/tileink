@@ -14,12 +14,14 @@ pub(super) enum Geometry {
 #[derive(Default)]
 pub(super) struct ReadBindings<'a> {
     pub textures: &'a [(u32, ResourceId)],
+    pub texture_extent: [u32; 2],
     pub buffers: &'a [(u32, ResourceId)],
 }
 impl<'a> ReadBindings<'a> {
-    pub fn textures(textures: &'a [(u32, ResourceId)]) -> Self {
+    pub fn textures(textures: &'a [(u32, ResourceId)], extent: [u32; 2]) -> Self {
         Self {
             textures,
+            texture_extent: extent,
             buffers: &[],
         }
     }
@@ -36,13 +38,9 @@ pub(super) fn record(
     reads: ReadBindings<'_>,
     target: ResourceId,
 ) -> Result<()> {
-    for id in std::iter::once(target).chain(reads.textures.iter().map(|(_, id)| *id)) {
-        batch.size(id)?;
-        match &batch.resources()[id.index()] {
-            Resource::Texture(texture)
-                if !texture.array && texture.size == [config.width, config.height] => {}
-            _ => return Err("filter requires matching 2D RGBA8 textures".into()),
-        }
+    validate_texture(batch, target, [config.width, config.height])?;
+    for (_, id) in reads.textures {
+        validate_texture(batch, *id, reads.texture_extent)?;
     }
     for (_, id) in reads.buffers {
         batch.size(*id)?;
@@ -142,4 +140,18 @@ pub(super) fn record(
     // SAFETY: region/source bounds are checked above; each stage validates its table addresses. Distinct textures,
     // unique tiles and injective offset translation give every written pixel exactly one owner.
     unsafe { batch.dispatch(entry, &bindings, [config.dispatch_width, rows, 1]) }
+}
+
+// Validate the logical image against its allocation, independently for each pass's
+// source and target. Pooled padding is storage, never part of the sampled domain.
+fn validate_texture(batch: &ComputeBatch, id: ResourceId, extent: [u32; 2]) -> Result<()> {
+    batch.size(id)?;
+    match &batch.resources()[id.index()] {
+        Resource::Texture(texture)
+            if !texture.array && texture.size[0] >= extent[0] && texture.size[1] >= extent[1] =>
+        {
+            Ok(())
+        }
+        _ => Err("filter requires a 2D RGBA8 texture containing its logical domain".into()),
+    }
 }

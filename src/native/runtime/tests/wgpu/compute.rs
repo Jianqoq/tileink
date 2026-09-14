@@ -246,6 +246,7 @@ impl Reference {
                         | "filter_apply_region_mask"
                         | "filter_component_transfer_region"
                         | "filter_composite_direct_region"
+                        | "filter_composite_surface_direct_region"
                         | "filter_composite_rect_direct_region"
                         | "filter_upsample_rect_composite_region"
                 ) {

@@ -142,6 +142,8 @@ pub fn get(family: &str) -> io::Result<Interface> {
         "filter-lighting" => filter::lighting(&constants),
         "filter-rectangle" => filter::rectangle(&constants),
         "filter-path-mask" => filter::path_mask(&constants),
+        "filter-turbulence" => filter::turbulence(&constants),
+        "filter-surface" => filter::surface(&constants),
         "filter-blur-shared" => filter::blur(&constants, true),
         "fine-gradient" => fine::gradient(&constants),
         "fine-pattern" => fine::pattern(&constants),

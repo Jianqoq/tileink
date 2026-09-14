@@ -108,7 +108,7 @@ pub fn encode(
         region::Geometry::Pixels,
         config,
         tiles,
-        region::ReadBindings::textures(reads.as_slice()),
+        region::ReadBindings::textures(reads.as_slice(), [config.width, config.height]),
         target,
     )
 }
@@ -136,3 +136,8 @@ pub mod rectangle;
 
 #[path = "filter/path_mask.rs"]
 pub mod path_mask;
+
+#[path = "filter/surface.rs"]
+pub mod surface;
+#[path = "filter/turbulence.rs"]
+pub mod turbulence;

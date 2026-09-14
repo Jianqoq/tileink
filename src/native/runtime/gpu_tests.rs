@@ -204,3 +204,9 @@ mod filter_rectangle;
 
 #[path = "tests/filter_path_mask_gpu.rs"]
 mod filter_path_mask;
+
+#[path = "tests/filter_turbulence_gpu.rs"]
+mod filter_turbulence;
+
+#[path = "tests/filter_surface_gpu.rs"]
+mod filter_surface;

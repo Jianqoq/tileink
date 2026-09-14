@@ -60,7 +60,7 @@ pub fn encode(
         region::Geometry::Pixels,
         config,
         tiles,
-        region::ReadBindings::textures(&[(1, source)]),
+        region::ReadBindings::textures(&[(1, source)], [config.width, config.height]),
         target,
     )
 }

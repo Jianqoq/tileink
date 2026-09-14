@@ -1731,3 +1731,15 @@ windings and compact clipping. Full release (981), runtime (115), strict Clippy,
 editor/shader/SPIR-V and SVG/examples pass; 3,471 PNGs unchanged. No-DXC replay
 passes 31 filter GPU tests. Both reviews closed. See [evidence](docs/native/m4-filter-path-mask.md).
 M4 continues with remaining filters, fine and NativeRenderer/Canvas integration.
+
+### M4 turbulence and translated surfaces
+
+Validated inventory advances to **143/179**. Turbulence fixes fixed-origin periodic
+wrapping, signed/scaled lattice boundaries and constant-output overflow. Its sole
+changed SVG PNG was reviewed and accepted by the user on 2026-09-14. Surface
+composition supports independent logical extents and preserves allocation padding.
+Release (983), runtime (122), strict Clippy, editor, 69 SPIR-V modules and full
+SVG/examples pass; no-DXC replay passes all 36 filter GPU tests. Both reviews closed.
+See [turbulence](docs/native/m4-filter-turbulence.md) and
+[surface evidence](docs/native/m4-filter-surface.md). M4 remains open for the last
+36 inventory entries and full NativeRenderer/Canvas integration.

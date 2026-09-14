@@ -159,16 +159,30 @@ fn filter_linear_rgb_to_srgb(value: f32) -> f32 {
     return out;
 }
 
+fn filter_turbulence_pack(value:vec4<f32>,kind:u32,linear_rgb:u32)->u32 {
+    var out=value;
+    if(kind==1u) {out=out*0.5+0.5;}
+    out=clamp(out,vec4<f32>(0.0),vec4<f32>(1.0));
+    if(linear_rgb==1u) {
+        out.r=filter_linear_rgb_to_srgb(out.r);
+        out.g=filter_linear_rgb_to_srgb(out.g);
+        out.b=filter_linear_rgb_to_srgb(out.b);
+    }
+    return pack_premul_rgba8(out.r*out.a,out.g*out.a,out.b*out.a,out.a);
+}
+
 fn filter_turbulence_pixel(x: f32, y: f32) -> u32 {
     var result = 0u;
     if (
         abs(config.turbulence_scale_x) > 0.00000011920929 &&
         abs(config.turbulence_scale_y) > 0.00000011920929
     ) {
+        // These constant-noise cases must bypass coordinate conversion entirely.
+        if(config.turbulence_num_octaves==0u || (config.turbulence_base_frequency_x==0.0 && config.turbulence_base_frequency_y==0.0)) {
+            return filter_turbulence_pack(vec4<f32>(0.0),config.turbulence_kind,config.turbulence_linear_rgb);
+        }
         let sample_base_x = (x - config.turbulence_transform_x) / config.turbulence_scale_x;
         let sample_base_y = (y - config.turbulence_transform_y) / config.turbulence_scale_y;
-        let local_tile_x = x - config.turbulence_tile_x;
-        let local_tile_y = y - config.turbulence_tile_y;
         var frequency_x = config.turbulence_base_frequency_x;
         var frequency_y = config.turbulence_base_frequency_y;
         var stitch_width = 0i;
@@ -176,14 +190,21 @@ fn filter_turbulence_pixel(x: f32, y: f32) -> u32 {
         var stitch_wrap_x = 0i;
         var stitch_wrap_y = 0i;
         if (config.turbulence_stitch_tiles == 1u) {
-            let tw = max(config.turbulence_tile_width, 1.0);
-            let th = max(config.turbulence_tile_height, 1.0);
+            // Fixed tile bounds use the same noise coordinate space as the samples.
+            let tile_origin_x=(config.turbulence_tile_x-config.turbulence_transform_x)/config.turbulence_scale_x;
+            let tile_origin_y=(config.turbulence_tile_y-config.turbulence_transform_y)/config.turbulence_scale_y;
+            let tile_delta_x=config.turbulence_tile_width/config.turbulence_scale_x;
+            let tile_delta_y=config.turbulence_tile_height/config.turbulence_scale_y;
+            let tile_lower_x=min(tile_origin_x,tile_origin_x+tile_delta_x);
+            let tile_lower_y=min(tile_origin_y,tile_origin_y+tile_delta_y);
+            let tw=abs(tile_delta_x);
+            let th=abs(tile_delta_y);
             frequency_x = filter_stitch_frequency(frequency_x, tw);
             frequency_y = filter_stitch_frequency(frequency_y, th);
             stitch_width = i32(tw * frequency_x + 0.5);
             stitch_height = i32(th * frequency_y + 0.5);
-            stitch_wrap_x = i32(local_tile_x * frequency_x + 4096.0 + f32(stitch_width));
-            stitch_wrap_y = i32(local_tile_y * frequency_y + 4096.0 + f32(stitch_height));
+            stitch_wrap_x = i32(floor(tile_lower_x * frequency_x + f32(TURBULENCE_COORDINATE_OFFSET) + f32(stitch_width)));
+            stitch_wrap_y = i32(floor(tile_lower_y * frequency_y + f32(TURBULENCE_COORDINATE_OFFSET) + f32(stitch_height)));
         }
 
         let selector_offset = config.table_index * TURBULENCE_TABLE_LEN;
@@ -195,9 +216,6 @@ fn filter_turbulence_pixel(x: f32, y: f32) -> u32 {
         var out_a = 0.0;
         var octave = 0u;
         loop {
-            if (octave >= config.turbulence_num_octaves) {
-                break;
-            }
             let sample_x = sample_base_x * frequency_x;
             let sample_y = sample_base_y * frequency_y;
             let r = filter_turbulence_noise2(0u, sample_x, sample_y, stitch_wrap_x, stitch_width, stitch_wrap_y, stitch_height, selector_offset, gradient_offset);
@@ -215,34 +233,21 @@ fn filter_turbulence_pixel(x: f32, y: f32) -> u32 {
                 out_b += b * ratio;
                 out_a += a * ratio;
             }
+            octave += 1u;
+            if(octave>=config.turbulence_num_octaves) {break;}
+            ratio *= 0.5;
+            if(ratio==0.0) {break;}
             frequency_x *= 2.0;
             frequency_y *= 2.0;
-            ratio *= 0.5;
             if (config.turbulence_stitch_tiles == 1u) {
                 stitch_width *= 2i;
                 stitch_height *= 2i;
-                stitch_wrap_x = 2i * stitch_wrap_x - 4096i;
-                stitch_wrap_y = 2i * stitch_wrap_y - 4096i;
+                stitch_wrap_x = 2i * stitch_wrap_x - i32(TURBULENCE_COORDINATE_OFFSET);
+                stitch_wrap_y = 2i * stitch_wrap_y - i32(TURBULENCE_COORDINATE_OFFSET);
             }
-            octave += 1u;
         }
 
-        if (config.turbulence_kind == 1u) {
-            out_r = out_r * 0.5 + 0.5;
-            out_g = out_g * 0.5 + 0.5;
-            out_b = out_b * 0.5 + 0.5;
-            out_a = out_a * 0.5 + 0.5;
-        }
-        out_r = clamp(out_r, 0.0, 1.0);
-        out_g = clamp(out_g, 0.0, 1.0);
-        out_b = clamp(out_b, 0.0, 1.0);
-        out_a = clamp(out_a, 0.0, 1.0);
-        if (config.turbulence_linear_rgb == 1u) {
-            out_r = filter_linear_rgb_to_srgb(out_r);
-            out_g = filter_linear_rgb_to_srgb(out_g);
-            out_b = filter_linear_rgb_to_srgb(out_b);
-        }
-        result = pack_premul_rgba8(out_r * out_a, out_g * out_a, out_b * out_a, out_a);
+        result=filter_turbulence_pack(vec4<f32>(out_r,out_g,out_b,out_a),config.turbulence_kind,config.turbulence_linear_rgb);
     }
     return result;
 }
@@ -261,6 +266,23 @@ fn filter_stitch_frequency(frequency: f32, tile_size: f32) -> f32 {
     return out;
 }
 
+// Unsigned magnitude gives Euclidean coordinates even for INT_MIN.
+fn turbulence_remainder(value:i32,period:u32)->u32 {
+    let magnitude=select(bitcast<u32>(value),0u-bitcast<u32>(value),value<0i);
+    let remainder=magnitude%period;
+    if(value<0i && remainder!=0u) {return period-remainder;}
+    return remainder;
+}
+fn turbulence_wrap(value:i32,wrap:i32,period:i32)->i32 {
+    if(period==0i) {return value;}
+    let base=wrap-period;
+    let a=turbulence_remainder(value,u32(period));
+    let b=turbulence_remainder(base,u32(period));
+    var relative=a-b;
+    if(a<b) {relative=u32(period)-(b-a);}
+    return base+i32(relative);
+}
+
 fn filter_turbulence_noise2(
     channel: u32,
     x: f32,
@@ -272,8 +294,8 @@ fn filter_turbulence_noise2(
     selector_offset: u32,
     gradient_offset: u32,
 ) -> f32 {
-    let tx = x + 4096.0;
-    let ty = y + 4096.0;
+    let tx = x + f32(TURBULENCE_COORDINATE_OFFSET);
+    let ty = y + f32(TURBULENCE_COORDINATE_OFFSET);
     var bx0 = i32(floor(tx));
     var bx1 = bx0 + 1i;
     var by0 = i32(floor(ty));
@@ -282,19 +304,11 @@ fn filter_turbulence_noise2(
     let rx1 = rx0 - 1.0;
     let ry0 = ty - f32(by0);
     let ry1 = ry0 - 1.0;
-    if (config.turbulence_stitch_tiles == 1u) {
-        if (bx0 >= stitch_wrap_x) {
-            bx0 -= stitch_width;
-        }
-        if (bx1 >= stitch_wrap_x) {
-            bx1 -= stitch_width;
-        }
-        if (by0 >= stitch_wrap_y) {
-            by0 -= stitch_height;
-        }
-        if (by1 >= stitch_wrap_y) {
-            by1 -= stitch_height;
-        }
+    if(config.turbulence_stitch_tiles==1u) {
+        bx0=turbulence_wrap(bx0,stitch_wrap_x,stitch_width);
+        bx1=turbulence_wrap(bx1,stitch_wrap_x,stitch_width);
+        by0=turbulence_wrap(by0,stitch_wrap_y,stitch_height);
+        by1=turbulence_wrap(by1,stitch_wrap_y,stitch_height);
     }
     let ubx0 = u32(bx0 & 255i);
     let ubx1 = u32(bx1 & 255i);

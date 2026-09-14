@@ -79,6 +79,7 @@ pub fn encode(
         tiles,
         region::ReadBindings {
             textures: &[(1, source)],
+            texture_extent: [config.width, config.height],
             buffers: &[(6, kernels.buffer)],
         },
         target,

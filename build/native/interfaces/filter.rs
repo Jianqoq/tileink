@@ -449,3 +449,42 @@ pub(super) fn path_mask(constants: &BTreeMap<String, u32>) -> Interface {
         )],
     )
 }
+
+pub(super) fn turbulence(constants: &BTreeMap<String, u32>) -> Interface {
+    interface(
+        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        &[
+            ("config", config()),
+            ("target_texture", buffer(3, Kind::TextureWrite)),
+            ("active_tiles", buffer(8, Kind::Read)),
+            ("turbulence_selectors", buffer(5, Kind::Read)),
+            ("turbulence_gradients", buffer(6, Kind::Read)),
+        ],
+        &[(
+            "filter_turbulence_region",
+            &[
+                "config",
+                "target_texture",
+                "active_tiles",
+                "turbulence_selectors",
+                "turbulence_gradients",
+            ],
+        )],
+    )
+}
+
+pub(super) fn surface(constants: &BTreeMap<String, u32>) -> Interface {
+    interface(
+        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        &[
+            ("config", config()),
+            ("source_texture", buffer(1, Kind::Texture)),
+            ("target_texture", buffer(3, Kind::TextureWrite)),
+            ("active_tiles", buffer(8, Kind::Read)),
+        ],
+        &[(
+            "filter_composite_surface_direct_region",
+            &["config", "source_texture", "target_texture", "active_tiles"],
+        )],
+    )
+}

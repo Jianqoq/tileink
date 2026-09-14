@@ -10,12 +10,14 @@ pub const COMPONENT_TRANSFER_TABLE_SIZE: usize =
 const _: () = assert!(crate::shared::gpu_constants::COMPONENT_TRANSFER_CHANNELS == 4);
 pub const COMPONENT_TRANSFER_TABLE_LEN: usize =
     crate::shared::gpu_constants::COMPONENT_TRANSFER_TABLE_LEN as usize;
-pub const TURBULENCE_LATTICE_SIZE: usize = 256;
-pub const TURBULENCE_TABLE_LEN: usize = TURBULENCE_LATTICE_SIZE * 2 + 2;
-pub const TURBULENCE_CHANNELS: usize = 4;
-pub const TURBULENCE_GRADIENT_COMPONENTS: usize = 2;
+pub const TURBULENCE_LATTICE_SIZE: usize =
+    crate::shared::gpu_constants::TURBULENCE_LATTICE_SIZE as usize;
+pub const TURBULENCE_TABLE_LEN: usize = crate::shared::gpu_constants::TURBULENCE_TABLE_LEN as usize;
+pub const TURBULENCE_CHANNELS: usize = crate::shared::gpu_constants::TURBULENCE_CHANNELS as usize;
+pub const TURBULENCE_GRADIENT_COMPONENTS: usize =
+    crate::shared::gpu_constants::TURBULENCE_GRADIENT_COMPONENTS as usize;
 pub const TURBULENCE_GRADIENT_LEN: usize =
-    TURBULENCE_CHANNELS * TURBULENCE_TABLE_LEN * TURBULENCE_GRADIENT_COMPONENTS;
+    crate::shared::gpu_constants::TURBULENCE_GRADIENT_LEN as usize;
 /// Fixed RGBA lookup table for SVG `feComponentTransfer`.
 ///
 /// Each channel owns 256 u32 entries in R, G, B, A order. Values are stored as
