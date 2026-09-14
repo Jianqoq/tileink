@@ -126,3 +126,23 @@ pub(super) fn gradient(constants: &BTreeMap<String, u32>) -> Interface {
         )],
     )
 }
+
+pub(super) fn pattern(constants: &BTreeMap<String, u32>) -> Interface {
+    let mut result = gradient(constants);
+    result.resources.insert(
+        "image_resource_atlas".into(),
+        buffer(12, Kind::TextureArray),
+    );
+    let mut sampler = buffer(13, Kind::Sampler);
+    sampler.size = 0;
+    result
+        .resources
+        .insert("image_resource_sampler".into(), sampler);
+    let mut bindings = result.entries.remove("gradient_words").unwrap();
+    bindings.extend([
+        "image_resource_atlas".into(),
+        "image_resource_sampler".into(),
+    ]);
+    result.entries.insert("pattern_words".into(), bindings);
+    result
+}

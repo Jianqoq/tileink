@@ -18,6 +18,7 @@ fn native_build_embeds_each_expected_nonempty_program() {
         "coarse_tile_counts_from_emit_chunks",
         "coarse_emit_chunk_tile_kinds",
         "gradient_words",
+        "pattern_words",
         "texture_flip",
         "texture_layer",
         "sampler_words",

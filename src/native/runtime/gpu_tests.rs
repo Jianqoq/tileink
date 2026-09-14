@@ -165,3 +165,6 @@ mod texture;
 
 #[path = "tests/sampler_gpu.rs"]
 mod sampler;
+
+#[path = "tests/pattern_gpu.rs"]
+mod pattern;

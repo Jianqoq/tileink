@@ -9,6 +9,7 @@ static const uint BRUSH_SWEEP=4u;
 static const uint BRUSH_FOUR_CORNER=5u;
 static const uint BRUSH_PATTERN=6u;
 static const uint BRUSH_PATTERN_RESOURCE=7u;
+static const uint BRUSH_PATTERN_BILINEAR=1u;
 static const uint BRUSH_COLOR_WORD=4u;
 static const uint BRUSH_IMAGE_ALPHA_WORD=7u;
 static const uint BRUSH_COLOR_OFFSET=BRUSH_COLOR_WORD*4u;

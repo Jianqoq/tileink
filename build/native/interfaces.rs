@@ -129,6 +129,7 @@ pub fn get(family: &str) -> io::Result<Interface> {
             validation::get(family, &constants)
         }
         "fine-gradient" => fine::gradient(&constants),
+        "fine-pattern" => fine::pattern(&constants),
         "texture-validation" => texture::validation(&constants),
         "texture-array-validation" => texture::array(&constants),
         "sampler-validation" => texture::sampler(&constants),

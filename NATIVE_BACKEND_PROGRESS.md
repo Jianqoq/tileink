@@ -1654,3 +1654,14 @@ Full release, 71 runtime tests, shader/editor checks, strict Clippy and SVG/exam
 pass; 3,471 PNGs are unchanged. No-DXC replay adds no pipeline compilations.
 See [sampler validation](docs/native/m4-compute-samplers.md). M4 remains incomplete
 at 27/179; production atlas pattern sampling follows.
+
+
+### M4 atlas pattern sampling
+
+Maintained HLSL atlas sampling matches production WGSL and independent CPU bytes
+for 89,046 requests. Non-power-of-two repeat coverage exposed undefined mixed-sign
+HLSL remainder; unsigned Euclidean correction fixes the minimal Vulkan regression.
+Full release, 73 runtime tests, strict Clippy, shader/editor/SPIR-V and SVG/examples
+pass; 3,471 PNGs remain unchanged. No-DXC replay compiles no pipelines. Both reviews
+are closed. See [pattern validation](docs/native/m4-fine-patterns.md). Production
+inventory remains 27/179; M4 continues with production filter kernels.

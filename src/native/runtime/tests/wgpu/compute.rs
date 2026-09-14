@@ -73,6 +73,26 @@ impl Reference {
                     );
                     helper_source.as_str()
                 }
+                "pattern_words" => {
+                    // The production atlas functions are unchanged; only bind-group locations
+                    // are relocated to the explicit flat native interface for this reference.
+                    let production =
+                        crate::wgpu::shader_variants::patch_image_resource_shader_source(
+                            include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_fine_web.wgsl")),
+                            false,
+                        )
+                        .replace("@group(1) @binding(0)", "@group(0) @binding(12)")
+                        .replace("@group(1) @binding(1)", "@group(0) @binding(13)");
+                    helper_source = format!(
+                        "{}\n{}",
+                        production,
+                        include_str!(concat!(
+                            env!("CARGO_MANIFEST_DIR"),
+                            "/tests/shaders/pattern.wgsl"
+                        ))
+                    );
+                    helper_source.as_str()
+                }
                 "gradient_words" => {
                     helper_source = format!(
                         "{}\n{}",
