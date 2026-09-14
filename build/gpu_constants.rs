@@ -85,6 +85,12 @@ pub fn write_rust(out: &Path) -> io::Result<()> {
             return Err(io::Error::other("duplicate texture table host constant"));
         }
     }
+    // Frame effect dispatch uses the same shader-owned operation tags on every API.
+    for (name, value) in read_hlsl("filter/constants.hlsli")? {
+        if host.insert(name, value).is_some() {
+            return Err(io::Error::other("duplicate filter host constant"));
+        }
+    }
     fs::write(out.join("tileink_gpu_constants.rs"), rust_constants(&host))?;
     let mut validation = rust_constants(&read_hlsl("validation/sdf_config.hlsli")?);
     validation.push_str(&rust_constants(&read_hlsl("shared/stack_constants.hlsli")?));

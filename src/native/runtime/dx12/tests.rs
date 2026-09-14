@@ -106,3 +106,49 @@ fn signal_failure_after_execute_retains_the_attempt_and_blocks_reuse() -> Result
     assert!(unsafe { report.queue.GetNumStoredMessages() } > before);
     Ok(())
 }
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn wgpu_clear_advisory_never_hides_correctness_errors() -> Result<()> {
+    if super::super::isolation::run(
+        "native::runtime::dx12::tests::wgpu_clear_advisory_never_hides_correctness_errors",
+    )? {
+        return Ok(());
+    }
+    let context = Dx12::new(&std::env::var("TILEINK_NATIVE_GPU")?)?;
+    let report = context.validation_queue();
+    unsafe {
+        report.queue.AddMessage(
+            D3D12_MESSAGE_CATEGORY_EXECUTION,
+            D3D12_MESSAGE_SEVERITY_WARNING,
+            D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE,
+            windows::core::s!("reference optimized-clear advisory"),
+        )?;
+        assert!(
+            assert_valid(&report).is_err(),
+            "ordinary validation stays strict"
+        );
+        super::assert_valid_with_wgpu_clears(&report)?;
+        assert_eq!(
+            report.queue.GetNumStoredMessages(),
+            1,
+            "keep original messages"
+        );
+        report.queue.AddMessage(
+            D3D12_MESSAGE_CATEGORY_EXECUTION,
+            D3D12_MESSAGE_SEVERITY_ERROR,
+            D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE,
+            windows::core::s!("even this ID is fatal at error severity"),
+        )?;
+        assert!(super::assert_valid_with_wgpu_clears(&report).is_err());
+        report.queue.ClearStoredMessages();
+        report.queue.AddMessage(
+            D3D12_MESSAGE_CATEGORY_EXECUTION,
+            D3D12_MESSAGE_SEVERITY_WARNING,
+            D3D12_MESSAGE_ID_UNKNOWN,
+            windows::core::s!("unrelated correctness warning"),
+        )?;
+        assert!(super::assert_valid_with_wgpu_clears(&report).is_err());
+    }
+    Ok(())
+}

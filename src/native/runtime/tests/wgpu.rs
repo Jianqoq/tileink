@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use wgpu::util::DeviceExt;
 
 pub struct Reference {
+    renderers: std::cell::RefCell<BTreeMap<(u32, u32), crate::wgpu::Renderer>>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     bindings: wgpu::BindGroupLayout,
@@ -139,6 +140,7 @@ impl Reference {
                     cache: None,
                 });
             return Ok(Self {
+                renderers: Default::default(),
                 compute_cache: Default::default(),
                 device,
                 queue,
@@ -370,3 +372,6 @@ impl Reference {
         self.compute_cache.builds()
     }
 }
+
+#[path = "wgpu/renderer.rs"]
+mod renderer;

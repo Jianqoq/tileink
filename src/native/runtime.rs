@@ -22,3 +22,4 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 #[path = "runtime/compute.rs"]
 mod compute;
+mod renderer;

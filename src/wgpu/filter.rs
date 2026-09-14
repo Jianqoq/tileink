@@ -37,16 +37,16 @@ use super::{
     profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope},
 };
 
-pub(crate) const FILTER_BRIGHTNESS: u32 = 1;
-pub(crate) const FILTER_CONTRAST: u32 = 2;
-pub(crate) const FILTER_GRAYSCALE: u32 = 3;
-pub(crate) const FILTER_HUE_ROTATE: u32 = 4;
-pub(crate) const FILTER_INVERT: u32 = 5;
-pub(crate) const FILTER_OPACITY: u32 = 6;
-pub(crate) const FILTER_SATURATE: u32 = 7;
-pub(crate) const FILTER_SEPIA: u32 = 8;
+pub(crate) const FILTER_BRIGHTNESS: u32 = crate::shared::gpu_constants::FILTER_BRIGHTNESS;
+pub(crate) const FILTER_CONTRAST: u32 = crate::shared::gpu_constants::FILTER_CONTRAST;
+pub(crate) const FILTER_GRAYSCALE: u32 = crate::shared::gpu_constants::FILTER_GRAYSCALE;
+pub(crate) const FILTER_HUE_ROTATE: u32 = crate::shared::gpu_constants::FILTER_HUE_ROTATE;
+pub(crate) const FILTER_INVERT: u32 = crate::shared::gpu_constants::FILTER_INVERT;
+pub(crate) const FILTER_OPACITY: u32 = crate::shared::gpu_constants::FILTER_OPACITY;
+pub(crate) const FILTER_SATURATE: u32 = crate::shared::gpu_constants::FILTER_SATURATE;
+pub(crate) const FILTER_SEPIA: u32 = crate::shared::gpu_constants::FILTER_SEPIA;
 pub(crate) const SVG_MASK_ALPHA: u32 = 0;
-pub(crate) const SVG_MASK_LUMINANCE: u32 = 1;
+pub(crate) const SVG_MASK_LUMINANCE: u32 = crate::shared::gpu_constants::SVG_MASK_LUMINANCE;
 
 use crate::shared::gpu_constants::{
     FILTER_WORKGROUP_SIZE, SHARED_BLUR_MAX_RADIUS, SHARED_BLUR_TILE_HEIGHT, SHARED_BLUR_TILE_WIDTH,

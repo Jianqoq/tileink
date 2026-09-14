@@ -278,3 +278,6 @@ mod compute_texture;
 mod compute_tables;
 
 mod compute_copy;
+
+#[cfg(test)]
+pub use validation::assert_valid_with_wgpu_clears;

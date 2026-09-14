@@ -3,7 +3,7 @@ use crate::{
     Canvas, Image, PatternSampling,
     native::runtime::{
         compute::{ComputeBatch, Resource},
-        program::scene::{SceneCache, SceneImages},
+        program::scene::SceneCache,
     },
     shared::{
         gpu_constants::NATIVE_TEXTURE_TABLE_CAPACITY,
@@ -67,18 +67,15 @@ fn vector_batch(wide: bool, sampling: PatternSampling) -> Result<(ComputeBatch, 
         bytemuck::cast_slice::<_, u8>(&raster_upload.atlas_pages()[0].pixels).to_vec()
     };
     let mut batch = ComputeBatch::new();
-    let images = SceneImages::record_with_vectors(&mut batch, &upload, |batch, child| {
-        let empty = Default::default();
-        let images = SceneImages::record(batch, &empty)?;
-        encode_canvas(
-            &mut SceneCache::default(),
-            batch,
-            child,
-            &empty,
-            &images,
-            false,
-        )
-    })?;
+    let images = crate::native::runtime::renderer::Images::record_with_vectors(
+        &mut batch,
+        &upload,
+        |batch, child| {
+            let empty = Default::default();
+            let images = crate::native::runtime::renderer::Images::record(batch, &empty)?;
+            encode_canvas(&mut SceneCache::default(), batch, child, &images, false)
+        },
+    )?;
     let mut parent = Canvas::new(2, 2, 1.0);
     parent
         .push_image_key(
@@ -92,19 +89,19 @@ fn vector_batch(wide: bool, sampling: PatternSampling) -> Result<(ComputeBatch, 
         &mut SceneCache::default(),
         &mut batch,
         &parent,
-        &upload,
         &images,
         false,
     )?;
     assert!(batch.outputs().is_empty());
     batch.readback(target)?;
     let image = if wide {
-        let Resource::TextureTable(table) = &batch.resources()[images.table.index()] else {
+        let Resource::TextureTable(table) = &batch.resources()[images.textures().table.index()]
+        else {
             unreachable!()
         };
         table[upload.textures()[0].index as usize]
     } else {
-        images.atlas
+        images.textures().atlas
     };
     batch.readback(image)?;
     Ok((

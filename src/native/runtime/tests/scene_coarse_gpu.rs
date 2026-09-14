@@ -70,8 +70,8 @@ fn render_canvas(
     chunked: bool,
 ) -> Result<ComputeBatch> {
     let mut batch = ComputeBatch::new();
-    let images = SceneImages::record(&mut batch, upload)?;
-    let target = encode_canvas(cache, &mut batch, canvas, upload, &images, chunked)?;
+    let images = crate::native::runtime::renderer::Images::record(&mut batch, upload)?;
+    let target = encode_canvas(cache, &mut batch, canvas, &images, chunked)?;
     batch.readback(target)?;
     Ok(batch)
 }
@@ -80,40 +80,12 @@ pub(super) fn encode_canvas(
     cache: &mut SceneCache,
     batch: &mut ComputeBatch,
     canvas: &Canvas,
-    upload: &crate::shared::image_resource::GpuImageResourceUpload,
-    images: &SceneImages,
+    images: &crate::native::runtime::renderer::Images<'_>,
     chunked: bool,
 ) -> Result<crate::native::runtime::compute::ResourceId> {
-    let (width, height) = canvas.physical_size();
-    let scene = cache.record(batch, canvas, None, Some(upload), 65535)?;
-    let target = batch.texture_rgba8([width, height], vec![0; (width * height * 4) as usize])?;
-    let indices = scene
-        .plan()
-        .all_direct_root_ops()
-        .ok_or("fixture must have direct root batches")?;
-    for index in indices {
-        let ExecOp::DrawBatch {
-            batch_id,
-            layer_stack,
-            ..
-        } = &scene.plan().ops[index]
-        else {
-            unreachable!()
-        };
-        scene.encode_coarse(
-            batch,
-            *batch_id..batch_id.saturating_add(1),
-            layer_stack.start as u32..layer_stack.end as u32,
-            chunked,
-            65535,
-        )?;
-        // SAFETY: paint and image resources use the same placement upload;
-        // coarse for this exact scene/batch precedes fine on the live target.
-        unsafe {
-            scene.encode_fine(batch, target, images, 0, true, 65535)?;
-        }
-    }
-    Ok(target)
+    crate::native::runtime::renderer::Execution::record(
+        cache, batch, canvas, images, chunked, 65535,
+    )
 }
 
 #[test]

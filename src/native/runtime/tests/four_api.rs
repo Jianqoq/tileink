@@ -5,10 +5,22 @@ use crate::native::{
 };
 
 pub(super) struct Routes {
+    used_canvas_reference: std::cell::Cell<bool>,
     native: [Adapter; 2],
     reference: [reference::Reference; 2],
 }
 impl Routes {
+    pub(super) fn canvas_reference(&self, canvas: &crate::Canvas) -> Result<Vec<Vec<u8>>> {
+        self.used_canvas_reference.set(true);
+        let expected = self.reference[0].render_canvas(canvas)?;
+        assert_eq!(
+            self.reference[1].render_canvas(canvas)?,
+            expected,
+            "production wgpu DX12/Vulkan Canvas pixels"
+        );
+        Ok(vec![expected])
+    }
+
     pub(super) fn new() -> Result<Self> {
         Self::with_features(wgpu::Features::empty())
     }
@@ -23,7 +35,11 @@ impl Routes {
             reference::Reference::with_features(wgpu::Backends::DX12, &identity, features)?,
             reference::Reference::with_features(wgpu::Backends::VULKAN, &identity, features)?,
         ];
-        Ok(Self { native, reference })
+        Ok(Self {
+            native,
+            reference,
+            used_canvas_reference: Default::default(),
+        })
     }
     pub(super) fn filter_reference_output(
         &self,
@@ -136,7 +152,11 @@ impl Routes {
     }
     pub(super) fn validate(&self) -> Result<()> {
         for adapter in &self.native {
-            adapter.assert_valid()?;
+            if self.used_canvas_reference.get() {
+                adapter.assert_valid_with_wgpu_clears()?;
+            } else {
+                adapter.assert_valid()?;
+            }
         }
         Ok(())
     }

@@ -1954,3 +1954,21 @@ only the approved PNG delta. Reviews are closed. See
 full renderer/frame/effect orchestration, remaining GPU resource/submission
 integration and complete four-renderer immediate acceptance remain. No performance
 comparison was run.
+
+## M4 native frame groups and masks — 2026-09-14
+
+Production native execution now follows shared recursive draw/group/mask scheduling.
+A per-batch target registry reuses logical scratch without retiring referenced GPU
+allocations. Private image/upload pairs fix the safe frame association boundary.
+Native and wgpu host dispatch share shader-owned HLSLI operation constants.
+Full group/mask pixels equal production wgpu DX12/Vulkan and both native APIs,
+including colored luminance, triangular path coverage, nested/sibling scratch,
+and all fine/filter variants (167.87s). Four prior Canvas/image/vector GPU tests
+also pass (483.98s). A real DX12 info-queue regression confirms the explicit test-
+only optimized-clear advisory exception cannot hide errors or other warnings.
+Release (1,030), integrations, lint, native-only, full SVG/examples and PNG checks
+pass; only the already approved turbulence delta remains. Reviews are closed. See
+[frame groups and masks](docs/native/m4-frame-groups.md). M4 remains incomplete:
+full filter/backdrop/text and public frame assembly, remaining GPU resource and
+submission integration, and complete four-renderer immediate acceptance remain.
+No performance comparison was run.

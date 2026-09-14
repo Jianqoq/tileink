@@ -266,3 +266,6 @@ mod texture_copy;
 
 #[path = "tests/scene_vector_gpu.rs"]
 mod scene_vector;
+
+#[path = "tests/frame_groups_gpu.rs"]
+mod frame_groups;

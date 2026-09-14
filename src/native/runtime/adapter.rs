@@ -260,3 +260,14 @@ impl BatchAdapter for Adapter {
             })
     }
 }
+
+#[cfg(test)]
+impl Adapter {
+    pub fn assert_valid_with_wgpu_clears(&self) -> Result<()> {
+        #[cfg(feature = "native-dx12")]
+        if let Device::Dx12(device) = &*self.0.borrow() {
+            return super::dx12::assert_valid_with_wgpu_clears(&device.validation_queue());
+        }
+        self.assert_valid()
+    }
+}
