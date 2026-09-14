@@ -60,6 +60,9 @@ uint lerp_premul_u8(uint a, uint b, float t) {
     uint4 value = uint4(clamp(mad(right - left, t, left) + 0.5, 0.0, 255.0));
     return rgba8_pack(value.x, value.y, value.z, value.w);
 }
-float rem_euclid_f32(float value, float modulus) { return value - floor(value / modulus) * modulus; }
+float rem_euclid_f32(float value, float modulus) {
+    // Keep the fused remainder residual before half-alpha quantization.
+    return mad(-floor(value / modulus), modulus, value);
+}
 
 #endif // TILEINK_HLSL_SHARED_PIXEL_HLSLI_INCLUDED

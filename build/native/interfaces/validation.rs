@@ -39,3 +39,19 @@ pub(super) fn get(family: &str, constants: &BTreeMap<String, u32>) -> Interface 
         &[(entry, &names)],
     )
 }
+
+pub(super) fn sdf(constants: &BTreeMap<String, u32>) -> Interface {
+    interface(
+        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        &[
+            ("config", super::filter::config()),
+            ("sdf_requests", buffer(5, Kind::Read)),
+            ("sdf_output", buffer(6, Kind::Write)),
+            ("paint", buffer(7, Kind::Read)),
+        ],
+        &[(
+            "sdf_coverage_words",
+            &["config", "sdf_requests", "sdf_output", "paint"],
+        )],
+    )
+}

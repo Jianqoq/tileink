@@ -6,3 +6,7 @@ const _: () = assert!(SCAN_CHUNK_SIZE.is_power_of_two() && SCAN_CHUNK_SIZE <= 10
 const _: () = assert!(RANGE_SCATTER_WORKGROUP_SIZE > 0 && RANGE_SCATTER_WORKGROUP_SIZE <= 1024);
 const _: () = assert!(COARSE_WORKGROUP_SIZE.is_power_of_two() && COARSE_WORKGROUP_SIZE <= 1024);
 const _: () = assert!(FILTER_WORKGROUP_SIZE > 0 && FILTER_WORKGROUP_SIZE <= 1024);
+
+// Validation layouts are not part of the production renderer constants.
+#[cfg(all(test, feature = "native", target_os = "windows"))]
+include!(concat!(env!("OUT_DIR"), "/tileink_sdf_probe_constants.rs"));

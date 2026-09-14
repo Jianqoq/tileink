@@ -135,5 +135,6 @@ fn lerp_premul_u8(a: u32, b: u32, t: f32) -> u32 {
 }
 
 fn rem_euclid_f32(value: f32, modulus: f32) -> f32 {
-    return value - floor(value / modulus) * modulus;
+    // Keep the remainder residual before half-alpha quantization (not a rounded product).
+    return fma(-floor(value / modulus), modulus, value);
 }

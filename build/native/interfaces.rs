@@ -144,6 +144,7 @@ pub fn get(family: &str) -> io::Result<Interface> {
         "filter-path-mask" => filter::path_mask(&constants),
         "filter-turbulence" => filter::turbulence(&constants),
         "filter-surface" => filter::surface(&constants),
+        "sdf-coverage" => validation::sdf(&constants),
         "filter-blur-shared" => filter::blur(&constants, true),
         "fine-gradient" => fine::gradient(&constants),
         "fine-pattern" => fine::pattern(&constants),

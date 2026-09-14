@@ -210,3 +210,6 @@ mod filter_turbulence;
 
 #[path = "tests/filter_surface_gpu.rs"]
 mod filter_surface;
+
+#[path = "tests/sdf_gpu.rs"]
+mod sdf;

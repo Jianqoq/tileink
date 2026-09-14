@@ -20,6 +20,22 @@ impl Reference {
         for stage in batch.passes() {
             let helper_source;
             let source = match stage.shader.entry {
+                "sdf_coverage_words" => {
+                    helper_source = format!(
+                        "{}\nconst SDF_PROBE_REQUEST_WORDS:u32={}u;\nconst SDF_PROBE_AFFINE_WORD:u32={}u;\n{}",
+                        filter
+                            .ok_or("SDF reference variant must be explicit")?
+                            .source()
+                            .replace("@binding(10)", "@binding(7)"),
+                        crate::shared::gpu_constants::SDF_PROBE_REQUEST_WORDS,
+                        crate::shared::gpu_constants::SDF_PROBE_AFFINE_WORD,
+                        include_str!(concat!(
+                            env!("CARGO_MANIFEST_DIR"),
+                            "/tests/shaders/sdf.wgsl"
+                        ))
+                    );
+                    helper_source.as_str()
+                }
                 entry if entry.starts_with("filter_") => {
                     helper_source = filter
                         .ok_or("filter reference variant must be explicit")?

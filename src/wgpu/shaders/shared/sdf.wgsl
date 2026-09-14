@@ -11,10 +11,11 @@ fn sdf_coverage_from_draw(draw: DrawRecord, x: f32, y: f32) -> f32 {
     return 0.0;
 }
 
+// Fix affine evaluation order before the half-alpha coverage boundary.
 fn affine_record_point(transform: AffineRecord, point: vec2<f32>) -> vec2<f32> {
     return vec2<f32>(
-        transform.a * point.x + transform.c * point.y + transform.e,
-        transform.b * point.x + transform.d * point.y + transform.f,
+        fma(transform.a,point.x,fma(transform.c,point.y,transform.e)),
+        fma(transform.b,point.x,fma(transform.d,point.y,transform.f)),
     );
 }
 
@@ -29,8 +30,8 @@ struct SdfSample {
 // scale factor is correct for every boundary orientation.
 fn sdf_device_distance(sample: SdfSample, inverse_transform: AffineRecord) -> f32 {
     let device_gradient = vec2<f32>(
-        inverse_transform.a * sample.normal.x + inverse_transform.b * sample.normal.y,
-        inverse_transform.c * sample.normal.x + inverse_transform.d * sample.normal.y,
+        fma(inverse_transform.a,sample.normal.x,inverse_transform.b*sample.normal.y),
+        fma(inverse_transform.c,sample.normal.x,inverse_transform.d*sample.normal.y),
     );
     return sample.distance / max(length(device_gradient), 0.000001);
 }

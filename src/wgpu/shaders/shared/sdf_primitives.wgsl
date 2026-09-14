@@ -671,10 +671,6 @@ fn star_stroke_sdf_sample(
     );
 }
 
-fn local_line_rect_distance(axis: f32, normal: f32, x0: f32, x1: f32, half_height: f32) -> f32 {
-    return local_line_rect_sample(axis, normal, x0, x1, half_height).distance;
-}
-
 fn local_line_rect_sample(axis: f32, normal: f32, x0: f32, x1: f32, half_height: f32) -> SdfSample {
     let center = (x0 + x1) * 0.5;
     let half_width = (x1 - x0) * 0.5;
@@ -683,10 +679,6 @@ fn local_line_rect_sample(axis: f32, normal: f32, x0: f32, x1: f32, half_height:
 
 fn sdf_coverage_from_dist(dist: f32) -> f32 {
     return clamp(0.5 - dist, 0.0, 1.0);
-}
-
-fn circle_sdf_distance(x: f32, y: f32, cx: f32, cy: f32, radius: f32) -> f32 {
-    return circle_sdf_sample(x, y, cx, cy, radius).distance;
 }
 
 fn circle_sdf_sample(x: f32, y: f32, cx: f32, cy: f32, radius: f32) -> SdfSample {

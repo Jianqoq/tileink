@@ -75,9 +75,23 @@ pub fn get(name: &str) -> u32 {
 }
 
 pub fn write_rust(out: &Path) -> io::Result<()> {
-    let mut source =
-        String::from("// Generated from src/shaders/hlsl/constants.hlsli. Do not edit.\n");
-    for (name, value) in definitions() {
+    fs::write(
+        out.join("tileink_gpu_constants.rs"),
+        rust_constants(definitions()),
+    )?;
+    let path = Path::new(&env::var_os("CARGO_MANIFEST_DIR").unwrap())
+        .join("src/shaders/hlsl/validation/sdf_config.hlsli");
+    println!("cargo:rerun-if-changed={}", path.display());
+    let validation = parse(&fs::read_to_string(path)?)?;
+    fs::write(
+        out.join("tileink_sdf_probe_constants.rs"),
+        rust_constants(&validation),
+    )
+}
+
+fn rust_constants(constants: &BTreeMap<String, u32>) -> String {
+    let mut source = String::from("// Generated from maintained HLSLI constants. Do not edit.\n");
+    for (name, value) in constants {
         let visibility = if name == "TILE_SIZE" {
             "pub"
         } else {
@@ -85,5 +99,5 @@ pub fn write_rust(out: &Path) -> io::Result<()> {
         };
         source.push_str(&format!("{visibility} const {name}: u32 = {value};\n"));
     }
-    fs::write(out.join("tileink_gpu_constants.rs"), source)
+    source
 }
