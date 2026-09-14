@@ -1677,3 +1677,14 @@ writes. Full release (971), runtime (75), strict Clippy, shader/editor/SPIR-V an
 SVG/examples pass; 3,471 PNGs are unchanged. No-DXC replay compiles no pipelines.
 Both independent reviews are closed. See [basic filter evidence](docs/native/m4-filter-basic.md).
 M4 continues with other filters, full fine and NativeRenderer/Canvas integration.
+
+### M4 point, input and sampling filters
+
+Validated inventory is **91/179** after the point/color, input-combination and
+morphology/displacement/component-transfer groups. Explicit FMA and opaque-alpha
+contracts resolve actual four-route byte differences. Stage-owned typed buffers
+validate transfer indices, values and ownership; HLSLI owns table constants.
+Full release (975), native runtime (91), strict Clippy, shader/editor/SPIR-V checks
+and SVG/examples pass; 3,471 PNGs stay unchanged. No-DXC replay passes 13 filter
+GPU tests with no compilation. See [sampling evidence](docs/native/m4-filter-sampling.md).
+Remaining filters, full fine and NativeRenderer/Canvas integration keep M4 open.

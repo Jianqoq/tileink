@@ -3,6 +3,22 @@ use crate::native::runtime::compute::Resource;
 use crate::shared::gpu_constants::{FILTER_WORKGROUP_SIZE, FINE_WORKGROUP_SIZE, TILE_SIZE};
 use std::collections::BTreeSet;
 
+// Texture extent checks and raw-buffer checks are separate. Stage-owned typed data
+// validates buffer contents/address ranges before supplying these read bindings.
+#[derive(Default)]
+pub(super) struct ReadBindings<'a> {
+    pub textures: &'a [(u32, ResourceId)],
+    pub buffers: &'a [(u32, ResourceId)],
+}
+impl<'a> ReadBindings<'a> {
+    pub fn textures(textures: &'a [(u32, ResourceId)]) -> Self {
+        Self {
+            textures,
+            buffers: &[],
+        }
+    }
+}
+
 // Shared logical bounds and write ownership for all filter stages. Resource capacities
 // never define live pixels; only validated region/list counts do.
 pub(super) fn record(
@@ -10,10 +26,10 @@ pub(super) fn record(
     entry: &'static str,
     mut config: FilterConfig,
     tiles: Option<&[u32]>,
-    reads: &[(u32, ResourceId)],
+    reads: ReadBindings<'_>,
     target: ResourceId,
 ) -> Result<()> {
-    for id in std::iter::once(target).chain(reads.iter().map(|(_, id)| *id)) {
+    for id in std::iter::once(target).chain(reads.textures.iter().map(|(_, id)| *id)) {
         batch.size(id)?;
         match &batch.resources()[id.index()] {
             Resource::Texture(texture)
@@ -21,7 +37,13 @@ pub(super) fn record(
             _ => return Err("filter requires matching 2D RGBA8 textures".into()),
         }
     }
-    if reads.iter().any(|(_, id)| *id == target) {
+    for (_, id) in reads.buffers {
+        batch.size(*id)?;
+        if !matches!(&batch.resources()[id.index()], Resource::Buffer(_)) {
+            return Err("filter table binding requires a buffer".into());
+        }
+    }
+    if reads.textures.iter().any(|(_, id)| *id == target) {
         return Err("filter source and destination must be distinct".into());
     }
     let x1 = config
@@ -88,8 +110,9 @@ pub(super) fn record(
             .collect(),
     )?;
     let mut bindings = vec![(0, uniform), (3, target), (8, active)];
-    bindings.extend_from_slice(reads);
-    // SAFETY: region/source bounds and integer arithmetic are checked above. Distinct textures,
+    bindings.extend_from_slice(reads.textures);
+    bindings.extend_from_slice(reads.buffers);
+    // SAFETY: region/source bounds are checked above; each stage validates its table addresses. Distinct textures,
     // unique tiles and injective offset translation give every written pixel exactly one owner.
     unsafe { batch.dispatch(entry, &bindings, [config.dispatch_width, rows, 1]) }
 }

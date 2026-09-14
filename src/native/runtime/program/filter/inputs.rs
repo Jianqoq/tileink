@@ -38,5 +38,12 @@ pub fn encode(
         }
         InputFilter::Mask { mask } => ("filter_apply_region_mask", vec![(2, mask)]),
     };
-    region::record(batch, entry, config, tiles, &reads, target)
+    region::record(
+        batch,
+        entry,
+        config,
+        tiles,
+        region::ReadBindings::textures(&reads),
+        target,
+    )
 }

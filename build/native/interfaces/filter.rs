@@ -230,3 +230,63 @@ pub(super) fn inputs(constants: &BTreeMap<String, u32>) -> Interface {
         ],
     )
 }
+
+pub(super) fn morphology(constants: &BTreeMap<String, u32>) -> Interface {
+    interface(
+        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        &[
+            ("config", config()),
+            ("source_texture", buffer(1, Kind::Texture)),
+            ("target_texture", buffer(3, Kind::TextureWrite)),
+            ("active_tiles", buffer(8, Kind::Read)),
+        ],
+        &[(
+            "filter_morphology_axis_region",
+            &["config", "source_texture", "target_texture", "active_tiles"],
+        )],
+    )
+}
+
+pub(super) fn displacement(constants: &BTreeMap<String, u32>) -> Interface {
+    interface(
+        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        &[
+            ("config", config()),
+            ("source_texture", buffer(1, Kind::Texture)),
+            ("aux_texture", buffer(2, Kind::Texture)),
+            ("target_texture", buffer(3, Kind::TextureWrite)),
+            ("active_tiles", buffer(8, Kind::Read)),
+        ],
+        &[(
+            "filter_displacement_map_region",
+            &[
+                "config",
+                "source_texture",
+                "aux_texture",
+                "target_texture",
+                "active_tiles",
+            ],
+        )],
+    )
+}
+
+pub(super) fn transfer(constants: &BTreeMap<String, u32>) -> Interface {
+    interface(
+        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        &[
+            ("config", config()),
+            ("target_texture", buffer(3, Kind::TextureWrite)),
+            ("transfer_tables", buffer(7, Kind::Read)),
+            ("active_tiles", buffer(8, Kind::Read)),
+        ],
+        &[(
+            "filter_component_transfer_region",
+            &[
+                "config",
+                "target_texture",
+                "transfer_tables",
+                "active_tiles",
+            ],
+        )],
+    )
+}

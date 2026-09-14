@@ -4,10 +4,12 @@ use crate::shared::bounds::Bounds;
 use crate::shared::brush::Brush;
 use crate::shared::layer::region::Region;
 
-pub const COMPONENT_TRANSFER_TABLE_SIZE: usize = 256;
-pub const COMPONENT_TRANSFER_CHANNELS: usize = 4;
+pub const COMPONENT_TRANSFER_TABLE_SIZE: usize =
+    crate::shared::gpu_constants::COMPONENT_TRANSFER_TABLE_SIZE as usize;
+// The packed pixel and channel lookup contract is RGBA; reject incompatible headers.
+const _: () = assert!(crate::shared::gpu_constants::COMPONENT_TRANSFER_CHANNELS == 4);
 pub const COMPONENT_TRANSFER_TABLE_LEN: usize =
-    COMPONENT_TRANSFER_TABLE_SIZE * COMPONENT_TRANSFER_CHANNELS;
+    crate::shared::gpu_constants::COMPONENT_TRANSFER_TABLE_LEN as usize;
 pub const TURBULENCE_LATTICE_SIZE: usize = 256;
 pub const TURBULENCE_TABLE_LEN: usize = TURBULENCE_LATTICE_SIZE * 2 + 2;
 pub const TURBULENCE_CHANNELS: usize = 4;

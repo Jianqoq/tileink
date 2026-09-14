@@ -127,3 +127,8 @@ python tests/hlsl_editor_test.py
 The compiler suite remains authoritative for executable shaders; this additional
 check exercises the separate editor parser which DXC cannot validate.
 Validation: the editor regression fails with HLSL0047 in both prior sources and passes after renaming; 1,072 release tests, 44 native runtime tests, strict Clippy and full SVG/examples checks pass. All 3,471 PNG hashes remain unchanged.
+
+Component-transfer table size, channel count and length also originate in
+`src/shaders/hlsl/constants.hlsli`. Public host usize constants are aliases of the
+generated values; the filter WGSL assembly injects the same size and length.
+The upload contract requires 0..255 table values and checked logical indices.

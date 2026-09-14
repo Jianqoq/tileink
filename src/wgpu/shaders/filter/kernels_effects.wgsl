@@ -92,10 +92,12 @@ fn filter_displacement_map_region(@builtin(global_invocation_id) gid: vec3<u32>)
     let map = aux_pixel_ix(ix);
     let dx = filter_displacement_channel(map, config.kernel_edge_mode, config.lighting_output_kind) - 0.5;
     let dy = filter_displacement_channel(map, config.kernel_preserve_alpha, config.lighting_output_kind) - 0.5;
-    let sx = i32(round(f32(xy.x) + dx * config.amount));
-    let sy = i32(round(f32(xy.y) + dy * config.rect_x0));
+    // Match native coordinate fusion before rounding at half-pixel boundaries.
+    let sx = round(fma(dx, config.amount, f32(xy.x)));
+    let sy = round(fma(dy, config.rect_x0, f32(xy.y)));
     var out = 0u;
-    if (sx >= 0 && sx < i32(config.width) && sy >= 0 && sy < i32(config.height)) {
+    // Test floating bounds before conversion, including overflow from finite scales.
+    if (sx >= 0.0 && sx < f32(config.width) && sy >= 0.0 && sy < f32(config.height)) {
         out = source_pixel_at(u32(sx), u32(sy));
     }
     target_store_ix(ix, out);

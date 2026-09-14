@@ -330,9 +330,10 @@ impl FilterVariant {
         } else {
             include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_filter.wgsl"))
         };
-        // Only the active-tile binding moves. All production algorithms and variants remain intact.
+        // Remap resource slots only; all production algorithms and variants remain intact.
         crate::wgpu::shader_variants::patch_image_resource_shader_source(source, self.texture_table)
             .replace("@binding(52)", "@binding(8)")
             .replace("@binding(55)", "@binding(9)")
+            .replace("@binding(36)", "@binding(7)")
     }
 }

@@ -589,8 +589,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_morphology_axis_region",
+      "hlsl_source": "src/shaders/hlsl/filter/morphology.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-sampling.md"
     },
     {
       "source": "filter.wgsl",
@@ -709,8 +713,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_component_transfer_region",
+      "hlsl_source": "src/shaders/hlsl/filter/transfer.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-sampling.md"
     },
     {
       "source": "filter.wgsl",
@@ -753,8 +761,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_displacement_map_region",
+      "hlsl_source": "src/shaders/hlsl/filter/displacement.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-sampling.md"
     },
     {
       "source": "filter.wgsl",
@@ -1085,8 +1097,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_morphology_axis_region",
+      "hlsl_source": "src/shaders/hlsl/filter/morphology.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-sampling.md"
     },
     {
       "source": "filter.wgsl",
@@ -1205,8 +1221,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_component_transfer_region",
+      "hlsl_source": "src/shaders/hlsl/filter/transfer.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-sampling.md"
     },
     {
       "source": "filter.wgsl",
@@ -1249,8 +1269,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_displacement_map_region",
+      "hlsl_source": "src/shaders/hlsl/filter/displacement.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-sampling.md"
     },
     {
       "source": "filter.wgsl",
@@ -1605,8 +1629,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_morphology_axis_region",
+      "hlsl_source": "src/shaders/hlsl/filter/morphology.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-sampling.md"
     },
     {
       "source": "filter_web.wgsl",
@@ -1725,8 +1753,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_component_transfer_region",
+      "hlsl_source": "src/shaders/hlsl/filter/transfer.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-sampling.md"
     },
     {
       "source": "filter_web.wgsl",
@@ -1769,8 +1801,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_displacement_map_region",
+      "hlsl_source": "src/shaders/hlsl/filter/displacement.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-sampling.md"
     },
     {
       "source": "filter_web.wgsl",
@@ -2101,8 +2137,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_morphology_axis_region",
+      "hlsl_source": "src/shaders/hlsl/filter/morphology.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-sampling.md"
     },
     {
       "source": "filter_web.wgsl",
@@ -2221,8 +2261,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_component_transfer_region",
+      "hlsl_source": "src/shaders/hlsl/filter/transfer.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-sampling.md"
     },
     {
       "source": "filter_web.wgsl",
@@ -2265,8 +2309,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_displacement_map_region",
+      "hlsl_source": "src/shaders/hlsl/filter/displacement.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-sampling.md"
     },
     {
       "source": "filter_web.wgsl",

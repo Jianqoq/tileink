@@ -177,3 +177,12 @@ mod filter_color;
 
 #[path = "tests/filter_inputs_gpu.rs"]
 mod filter_inputs;
+
+#[path = "tests/filter_morphology_gpu.rs"]
+mod filter_morphology;
+
+#[path = "tests/filter_displacement_gpu.rs"]
+mod filter_displacement;
+
+#[path = "tests/filter_transfer_gpu.rs"]
+mod filter_transfer;

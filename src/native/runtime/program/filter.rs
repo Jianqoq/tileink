@@ -6,6 +6,8 @@ use crate::shared::filter_config::FilterConfig;
 
 #[path = "filter/inputs.rs"]
 pub mod inputs;
+#[path = "filter/morphology.rs"]
+pub mod morphology;
 #[path = "filter/region.rs"]
 mod region;
 
@@ -105,7 +107,13 @@ pub fn encode(
         kernel.entry(),
         config,
         tiles,
-        reads.as_slice(),
+        region::ReadBindings::textures(reads.as_slice()),
         target,
     )
 }
+
+#[path = "filter/displacement.rs"]
+pub mod displacement;
+
+#[path = "filter/transfer.rs"]
+pub mod transfer;

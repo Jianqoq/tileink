@@ -18,4 +18,9 @@ static const uint SHARED_BLUR_TILE_WIDTH = TILE_SIZE;
 static const uint SHARED_BLUR_TILE_HEIGHT = TILE_SIZE;
 static const uint SHARED_BLUR_MAX_RADIUS = 16u;
 
+// Quantized RGBA component-transfer table layout, shared with host and WGSL.
+static const uint COMPONENT_TRANSFER_TABLE_SIZE = 256u;
+static const uint COMPONENT_TRANSFER_CHANNELS = 4u;
+static const uint COMPONENT_TRANSFER_TABLE_LEN = COMPONENT_TRANSFER_TABLE_SIZE * COMPONENT_TRANSFER_CHANNELS;
+
 #endif // TILEINK_HLSL_CONSTANTS_HLSLI_INCLUDED
