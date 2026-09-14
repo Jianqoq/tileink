@@ -95,3 +95,6 @@ pub mod scene_scan;
 
 #[path = "program/coarse.rs"]
 pub mod coarse;
+
+#[path = "program/fine.rs"]
+pub mod fine;

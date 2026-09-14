@@ -38,8 +38,6 @@ pub(crate) const FINE_LOCAL_CLIP_DEPTH: usize =
     super::gpu_constants::FINE_LOCAL_CLIP_DEPTH as usize;
 pub(crate) const FINE_LOCAL_GROUP_DEPTH: usize =
     super::gpu_constants::FINE_LOCAL_GROUP_DEPTH as usize;
-pub(crate) const FINE_GROUP_SPILL_FIELDS: usize =
-    super::gpu_constants::FINE_GROUP_SPILL_FIELDS as usize;
 
 /// Canvas-derived fixed capacities for GPU buffers.
 ///

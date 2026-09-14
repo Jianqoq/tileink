@@ -1874,3 +1874,16 @@ See [coarse assembly](docs/native/m4-scene-coarse.md).
 M4 remains incomplete: public NativeRenderer, full layer/filter frame assembly,
 GPU resource/submission integration and complete immediate four-renderer acceptance
 are still required. No performance comparison was run.
+
+## M4 shared fine and native recording — 2026-09-14
+
+Fine dispatch, uniforms and spill layout are now shared. The native encoder checks
+physical target/spill capacity before recording. Real Canvas four-API pixel tests
+use it directly. A reproduced release arithmetic-wrap bug is fixed by checked
+coarse-layout validation before either stage computes raw buffer offsets.
+
+Focused CPU (11), real Canvas GPU, release (1,009), integration, strict Clippy,
+native-only and full SVG/examples pass, with no additional PNG change. Reviews
+are closed; see [fine assembly](docs/native/m4-scene-fine.md). M4 remains incomplete:
+full native scene/frame and effect assembly, GPU resource/submission integration,
+and all immediate cases on four full renderers remain. No performance comparison.

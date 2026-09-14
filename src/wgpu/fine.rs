@@ -1,12 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use crate::shared::{
-    gpu_coarse::{
-        coarse_work_active_tile_list_word_offset, coarse_work_fine_tile_kind_word_offset,
-    },
-    gpu_layout::fine as fine_layout,
-    gpu_plan::GpuBufferLengths,
-    image::premul_color_to_rgba8_pack,
+    gpu_layout::fine as fine_layout, gpu_plan::GpuBufferLengths, image::premul_color_to_rgba8_pack,
 };
 
 use super::{
@@ -206,58 +201,34 @@ impl WgpuFinePipeline {
         active_tile_count: Option<u32>,
     ) -> bool {
         let _profile_scope = start_cpu_scope("fine");
-        if lengths.tile_count == 0 {
+        let plan = crate::render::fine::FinePlan::new(
+            lengths,
+            crate::render::fine::FineParams {
+                width,
+                height,
+                clear_color,
+                load_target,
+                clip_spill_depth,
+                group_spill_depth,
+                active_tile_count,
+                paint_sdf_shadow_base: scene_buffers.paint_sdf_shadow_base(),
+                paint_brush_base: scene_buffers.paint_brush_base(),
+                text_image_base: scene_buffers.fine_text_image_base(),
+                text_image_data_base: scene_buffers.fine_text_image_data_base(),
+            },
+            self.max_dispatch_workgroups,
+        )
+        .expect("valid prepared fine scene");
+        let [dispatch_x, dispatch_y, _] = plan.grid();
+        if dispatch_x == 0 {
             return true;
         }
-        let dispatch_tile_count = active_tile_count.unwrap_or(lengths.tile_count as u32);
-        if dispatch_tile_count == 0 {
-            return true;
-        }
-        let (dispatch_x, dispatch_y) =
-            crate::render::dispatch::dispatch_2d(dispatch_tile_count, self.max_dispatch_workgroups);
-
         let config_offset = commands.write_uniform_slot(
             &self.config,
             self.config_size,
             self.config_stride,
             WGPU_CONFIG_SLOTS,
-            bytemuck::bytes_of(&FineConfig {
-                width,
-                height,
-                clear_color,
-                tile_count: lengths.tile_count as u32,
-                tiles_width: lengths.tiles_width as u32,
-                tiles_height: lengths.tiles_height as u32,
-                load_target: u32::from(load_target),
-                clip_spill_depth,
-                group_spill_depth,
-                ptcl_capacity: lengths.coarse_ptcl_capacity as u32,
-                paint_sdf_shadow_base: scene_buffers.paint_sdf_shadow_base(),
-                paint_brush_base: scene_buffers.paint_brush_base(),
-                text_image_base: scene_buffers.fine_text_image_base(),
-                text_image_data_base: scene_buffers.fine_text_image_data_base(),
-                group_spill_base: (lengths.tile_count
-                    * clip_spill_depth as usize
-                    * crate::shared::gpu_constants::FINE_WORKGROUP_SIZE as usize)
-                    as u32,
-                fine_tile_kind_base: coarse_work_fine_tile_kind_word_offset(
-                    lengths.tile_count,
-                    lengths.coarse_ptcl_capacity,
-                    lengths.coarse_glyph_capacity,
-                    lengths.tile_draw_index_count,
-                    lengths.tile_draw_chunk_count,
-                ) as u32,
-                active_tile_count: dispatch_tile_count,
-                dispatch_width: dispatch_x,
-                active_tile_list_base: coarse_work_active_tile_list_word_offset(
-                    lengths.tile_count,
-                    lengths.coarse_ptcl_capacity,
-                    lengths.coarse_glyph_capacity,
-                    lengths.tile_draw_index_count,
-                    lengths.tile_draw_chunk_count,
-                ) as u32,
-                incremental: u32::from(active_tile_count.is_some()),
-            }),
+            bytemuck::bytes_of(plan.config()),
         );
 
         let (bind_group, image_bind_group) = {

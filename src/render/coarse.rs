@@ -107,6 +107,7 @@ impl CoarsePlan {
         if limit == 0 || limit > 65535 {
             return Err("invalid coarse dispatch limit");
         }
+        validate_work_layout(lengths)?;
         let word = |v: usize| u32::try_from(v).map_err(|_| "coarse size exceeds u32");
         let tile_count = word(lengths.tile_count)?;
         let tiles_width = word(lengths.tiles_width)?;
@@ -269,3 +270,7 @@ impl CoarsePlan {
 #[cfg(test)]
 #[path = "coarse/tests.rs"]
 mod tests;
+
+#[path = "coarse/layout.rs"]
+mod layout;
+pub(crate) use layout::validate_work_layout;

@@ -1,4 +1,6 @@
 use super::{Result, fine_fixture::routes, reference::FineVariant};
+use crate::native::runtime::program::fine::{self, FineBindings};
+use crate::render::fine::{FineParams, FinePlan};
 use crate::{
     Canvas,
     native::runtime::{
@@ -13,10 +15,8 @@ use crate::{
         upload::{paint::PaintData, scene::SceneUploadStaging},
     },
     shared::{
-        execution::ROOT_COMMAND_LIST_ID,
-        fine_config::FineConfig,
-        gpu_coarse::*,
-        gpu_constants::{NATIVE_TEXTURE_TABLE_CAPACITY, TILE_SIZE},
+        execution::ROOT_COMMAND_LIST_ID, gpu_coarse::*,
+        gpu_constants::NATIVE_TEXTURE_TABLE_CAPACITY,
     },
 };
 
@@ -140,29 +140,19 @@ fn scene_batch(
             },
         )?;
     }
-    let config = FineConfig {
-        width,
-        height,
-        tiles_width: lengths.tiles_width as u32,
-        tiles_height: lengths.tiles_height as u32,
-        tile_count: lengths.tile_count as u32,
-        active_tile_count: lengths.tile_count as u32,
-        dispatch_width: lengths.tiles_width as u32,
-        ptcl_capacity: lengths.coarse_ptcl_capacity as u32,
-        paint_sdf_shadow_base: shadow_base,
-        paint_brush_base: brush_base,
-        fine_tile_kind_base: coarse_work_fine_tile_kind_word_offset(
-            lengths.tile_count,
-            lengths.coarse_ptcl_capacity,
-            lengths.coarse_glyph_capacity,
-            lengths.tile_draw_index_count,
-            lengths.tile_draw_chunk_count,
-        ) as u32,
-        ..Default::default()
-    };
-    let config = upload(&mut batch, &[config])?;
+    let fine_plan = FinePlan::new(
+        lengths,
+        FineParams {
+            width,
+            height,
+            paint_sdf_shadow_base: shadow_base,
+            paint_brush_base: brush_base,
+            ..Default::default()
+        },
+        65535,
+    )?;
     let target = batch.texture_rgba8([width, height], vec![0; (width * height * 4) as usize])?;
-    let spills = upload(&mut batch, &[0u32])?;
+    let spills = upload(&mut batch, &vec![0u32; fine_plan.spill_words().max(1)])?;
     let atlas = batch.texture_array_rgba8([1, 1, 1], vec![0; 4])?;
     let image = batch.texture_rgba8([1, 1], vec![0; 4])?;
     let images = batch.texture_table(&vec![image; NATIVE_TEXTURE_TABLE_CAPACITY as usize])?;
@@ -170,22 +160,21 @@ fn scene_batch(
     // SAFETY: this harness has one root draw batch, no text/images/layers/spills;
     // fine consumes the complete coarse stream and scan segment allocation.
     unsafe {
-        batch.dispatch(
-            "fine_tile_main",
-            &[
-                (0, config),
-                (1, target),
-                (2, draws),
-                (3, paint),
-                (4, work),
-                (5, scan.segments),
-                (6, text),
-                (7, spills),
-                (12, atlas),
-                (13, sampler),
-                (30, images),
-            ],
-            [width.div_ceil(TILE_SIZE), height.div_ceil(TILE_SIZE), 1],
+        fine::encode(
+            &mut batch,
+            &fine_plan,
+            &FineBindings {
+                target,
+                draws,
+                paint,
+                coarse: work,
+                segments: scan.segments,
+                text,
+                spills,
+                atlas,
+                images,
+                sampler,
+            },
         )?;
     }
     batch.readback(target)?;

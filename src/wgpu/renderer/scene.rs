@@ -9,10 +9,9 @@ use crate::{
     canvas::Canvas,
     shared::{
         execution::ExecPlan,
-        gpu_constants::FINE_WORKGROUP_SIZE,
         gpu_plan::{
-            FINE_GROUP_SPILL_FIELDS, FINE_LOCAL_CLIP_DEPTH, FINE_LOCAL_GROUP_DEPTH,
-            GpuBufferLengths, GpuCanvasConfig, plan_stack_depths,
+            FINE_LOCAL_CLIP_DEPTH, FINE_LOCAL_GROUP_DEPTH, GpuBufferLengths, GpuCanvasConfig,
+            plan_stack_depths,
         },
         image_resource::ImageResourceStore,
         layer::filter::Filter,
@@ -413,14 +412,17 @@ impl Renderer {
         max_clip_depth: usize,
         max_group_depth: usize,
     ) {
-        let lane_count = lengths.tile_count * FINE_WORKGROUP_SIZE as usize;
-        let clip_spill_depth = max_clip_depth.saturating_sub(FINE_LOCAL_CLIP_DEPTH);
-        let group_spill_depth = max_group_depth.saturating_sub(FINE_LOCAL_GROUP_DEPTH);
-        self.fine_spills.resize_uninit::<u32>(
-            &self.device,
-            "tileink wgpu fine spills",
-            lane_count * clip_spill_depth
-                + lane_count * group_spill_depth * FINE_GROUP_SPILL_FIELDS,
-        );
+        let clip_depth = u32::try_from(max_clip_depth.saturating_sub(FINE_LOCAL_CLIP_DEPTH))
+            .expect("bounded clip depth");
+        let group_depth = u32::try_from(max_group_depth.saturating_sub(FINE_LOCAL_GROUP_DEPTH))
+            .expect("bounded group depth");
+        let (_, words) = crate::render::fine::spill_layout(
+            u32::try_from(lengths.tile_count).expect("bounded tile count"),
+            clip_depth,
+            group_depth,
+        )
+        .expect("bounded fine spill allocation");
+        self.fine_spills
+            .resize_uninit::<u32>(&self.device, "tileink wgpu fine spills", words);
     }
 }
