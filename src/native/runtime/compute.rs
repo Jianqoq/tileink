@@ -16,7 +16,7 @@ impl ResourceId {
 }
 #[path = "compute/resource.rs"]
 mod resource;
-pub use resource::{Resource, Texture};
+pub use resource::{Resource, SamplerFilter, Texture};
 pub struct Pass {
     pub shader: &'static NativeShaderArtifact,
     pub bindings: Vec<(Binding, ResourceId)>,
@@ -72,6 +72,14 @@ impl ComputeBatch {
         self.resources.push(Resource::Texture(texture));
         Ok(id)
     }
+    pub fn sampler(&mut self, filter: SamplerFilter) -> Result<ResourceId> {
+        let id = ResourceId {
+            owner: self.owner,
+            index: self.resources.len(),
+        };
+        self.resources.push(Resource::Sampler(filter));
+        Ok(id)
+    }
     pub fn size(&self, id: ResourceId) -> Result<usize> {
         if id.owner != self.owner {
             return Err("resource belongs to another compute batch".into());
@@ -111,6 +119,11 @@ impl ComputeBatch {
             if matches.next().is_some() || self.size(id)? < (binding.size as usize) {
                 return Err("duplicate or undersized native compute binding".into());
             }
+            if (binding.kind == BindingKind::Sampler)
+                != matches!(self.resources[id.index], Resource::Sampler(_))
+            {
+                return Err("native compute sampler kind mismatch".into());
+            }
             let texture_binding = matches!(
                 binding.kind,
                 BindingKind::Texture | BindingKind::TextureWrite | BindingKind::TextureArray
@@ -145,6 +158,9 @@ impl ComputeBatch {
     }
     pub fn readback(&mut self, id: ResourceId) -> Result<usize> {
         self.size(id)?;
+        if matches!(self.resources[id.index], Resource::Sampler(_)) {
+            return Err("samplers have no byte readback".into());
+        }
         if let Some(index) = self.outputs.iter().position(|old| *old == id) {
             return Ok(index);
         }

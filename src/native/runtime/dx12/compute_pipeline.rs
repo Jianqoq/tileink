@@ -12,7 +12,9 @@ use windows::{
 pub struct Pipeline {
     pub signature: ID3D12RootSignature,
     pub state: ID3D12PipelineState,
-    pub grid: bool,
+    pub resources: Option<u32>,
+    pub samplers: Option<u32>,
+    pub grid: Option<u32>,
 }
 pub fn identity(adapter: &IDXGIAdapter1, luid: &str) -> Result<Vec<u8>> {
     unsafe {
@@ -47,39 +49,54 @@ fn create(
     shader: &NativeShaderArtifact,
 ) -> Result<Pipeline> {
     unsafe {
-        let ranges = shader
-            .bindings
-            .iter()
-            .filter(|b| !b.internal)
-            .enumerate()
-            .map(|(index, b)| D3D12_DESCRIPTOR_RANGE {
-                RangeType: match b.kind {
-                    BindingKind::Uniform => D3D12_DESCRIPTOR_RANGE_TYPE_CBV,
-                    BindingKind::Read | BindingKind::Texture | BindingKind::TextureArray => {
-                        D3D12_DESCRIPTOR_RANGE_TYPE_SRV
-                    }
-                    BindingKind::Write | BindingKind::TextureWrite => {
-                        D3D12_DESCRIPTOR_RANGE_TYPE_UAV
-                    }
+        let table = |sampler: bool| {
+            shader
+                .bindings
+                .iter()
+                .filter(|b| !b.internal && (b.kind == BindingKind::Sampler) == sampler)
+                .enumerate()
+                .map(|(index, b)| D3D12_DESCRIPTOR_RANGE {
+                    RangeType: match b.kind {
+                        BindingKind::Sampler => D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER,
+                        BindingKind::Uniform => D3D12_DESCRIPTOR_RANGE_TYPE_CBV,
+                        BindingKind::Read | BindingKind::Texture | BindingKind::TextureArray => {
+                            D3D12_DESCRIPTOR_RANGE_TYPE_SRV
+                        }
+                        BindingKind::Write | BindingKind::TextureWrite => {
+                            D3D12_DESCRIPTOR_RANGE_TYPE_UAV
+                        }
+                    },
+                    NumDescriptors: 1,
+                    BaseShaderRegister: b.slot,
+                    RegisterSpace: 0,
+                    OffsetInDescriptorsFromTableStart: index as u32,
+                })
+                .collect::<Vec<_>>()
+        };
+        let resource_ranges = table(false);
+        let sampler_ranges = table(true);
+        let mut parameters = Vec::new();
+        let mut add_table = |ranges: &[D3D12_DESCRIPTOR_RANGE]| {
+            if ranges.is_empty() {
+                return None;
+            }
+            let index = parameters.len() as u32;
+            parameters.push(D3D12_ROOT_PARAMETER {
+                ParameterType: D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
+                Anonymous: D3D12_ROOT_PARAMETER_0 {
+                    DescriptorTable: D3D12_ROOT_DESCRIPTOR_TABLE {
+                        NumDescriptorRanges: ranges.len() as u32,
+                        pDescriptorRanges: ranges.as_ptr(),
+                    },
                 },
-                NumDescriptors: 1,
-                BaseShaderRegister: b.slot,
-                RegisterSpace: 0,
-                OffsetInDescriptorsFromTableStart: index as u32,
-            })
-            .collect::<Vec<_>>();
-        let grid = shader.bindings.iter().any(|b| b.internal);
-        let mut parameters = vec![D3D12_ROOT_PARAMETER {
-            ParameterType: D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
-            Anonymous: D3D12_ROOT_PARAMETER_0 {
-                DescriptorTable: D3D12_ROOT_DESCRIPTOR_TABLE {
-                    NumDescriptorRanges: ranges.len() as u32,
-                    pDescriptorRanges: ranges.as_ptr(),
-                },
-            },
-            ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
-        }];
-        if grid {
+                ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
+            });
+            Some(index)
+        };
+        let resources = add_table(&resource_ranges);
+        let samplers = add_table(&sampler_ranges);
+        let grid = if shader.bindings.iter().any(|b| b.internal) {
+            let index = parameters.len() as u32;
             parameters.push(D3D12_ROOT_PARAMETER {
                 ParameterType: D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS,
                 Anonymous: D3D12_ROOT_PARAMETER_0 {
@@ -91,7 +108,10 @@ fn create(
                 },
                 ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
             });
-        }
+            Some(index)
+        } else {
+            None
+        };
         let desc = D3D12_ROOT_SIGNATURE_DESC {
             NumParameters: parameters.len() as u32,
             pParameters: parameters.as_ptr(),
@@ -140,7 +160,11 @@ fn create(
         let hit = super::super::pipeline_cache::load_or_create_for_layout(
             identity,
             shader.cache_key,
-            b"native-compute-buffer-table-v1",
+            if samplers.is_some() {
+                b"native-compute-sampler-table-v1"
+            } else {
+                b"native-compute-buffer-table-v1"
+            },
             |bytes| {
                 let start = messages.queue.GetNumStoredMessages();
                 match build(bytes) {
@@ -171,6 +195,8 @@ fn create(
         Ok(Pipeline {
             signature,
             state: pipeline.into_inner().unwrap(),
+            resources,
+            samplers,
             grid,
         })
     }

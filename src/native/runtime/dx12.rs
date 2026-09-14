@@ -273,3 +273,6 @@ mod work;
 
 #[path = "dx12/compute_texture.rs"]
 mod compute_texture;
+
+#[path = "dx12/compute_tables.rs"]
+mod compute_tables;

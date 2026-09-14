@@ -36,6 +36,21 @@ impl Reference {
                     );
                     helper_source.as_str()
                 }
+                "sampler_words" => {
+                    helper_source = format!(
+                        "const FINE_WORKGROUP_SIZE:u32={}u;\n{}\n{}",
+                        crate::shared::gpu_constants::FINE_WORKGROUP_SIZE,
+                        include_str!(concat!(
+                            env!("CARGO_MANIFEST_DIR"),
+                            "/src/wgpu/shaders/shared/pixel.wgsl"
+                        )),
+                        include_str!(concat!(
+                            env!("CARGO_MANIFEST_DIR"),
+                            "/tests/shaders/sampler.wgsl"
+                        ))
+                    );
+                    helper_source.as_str()
+                }
                 "texture_flip" => {
                     helper_source = format!(
                         "const FINE_WORKGROUP_SIZE:u32={}u;\n{}",

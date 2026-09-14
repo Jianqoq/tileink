@@ -20,6 +20,7 @@ fn native_build_embeds_each_expected_nonempty_program() {
         "gradient_words",
         "texture_flip",
         "texture_layer",
+        "sampler_words",
         "blend_math_words",
         "fill_coverage_words",
         "geometry_math_words",

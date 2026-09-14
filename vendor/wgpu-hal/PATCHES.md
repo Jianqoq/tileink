@@ -114,3 +114,17 @@ The ownership move preserved all 83 existing files. Apart from this record and t
 barrier fix, rustfmt only changed whitespace in `src/vulkan/descriptor.rs` and
 `src/vulkan/swapchain/native.rs`; the remaining 79 files are byte-identical to the gfx_ui
 source revision recorded in the maintenance guide.
+
+
+## DX12 ordinary sampler comparison field
+
+`src/dx12/device.rs` uses `CompareFunction::Never` when `desc.compare` is absent.
+The previous enum default was Always, which emits a DX12 validation warning for
+ordinary nearest/linear filters. The field is ignored for non-comparison filters;
+explicit comparison samplers still keep the requested comparison function. This
+fixes the descriptor root cause without changing pixels or filtering.
+
+The four-API sampler regression in `src/native/runtime/tests/sampler_gpu.rs`
+failed on the warning before this fix and checks all output bytes plus clean
+validation. On HAL upgrades, recheck this default against upstream and keep the
+regression until equivalent behavior is present.

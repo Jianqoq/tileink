@@ -1642,3 +1642,15 @@ selection have independent byte oracles. Full release, 69 runtime tests, Clippy,
 shader/editor checks and SVG/examples pass; all 3,471 PNGs remain unchanged.
 No-DXC texture replay compiles no pipelines. See [array validation](docs/native/m4-compute-arrays.md).
 M4 remains incomplete at 27/179; explicit sampler resources follow.
+
+
+### M4 explicit sampler resources
+
+Nearest/linear clamp samplers are explicit batch resources. Separate DX12 tables
+and Vulkan sampler descriptors preserve per-pass bindings and frame ownership.
+The four-route regression also found and fixed the maintained wgpu HAL ordinary
+sampler comparison-field warning; explicit comparisons keep their semantics.
+Full release, 71 runtime tests, shader/editor checks, strict Clippy and SVG/examples
+pass; 3,471 PNGs are unchanged. No-DXC replay adds no pipeline compilations.
+See [sampler validation](docs/native/m4-compute-samplers.md). M4 remains incomplete
+at 27/179; production atlas pattern sampling follows.

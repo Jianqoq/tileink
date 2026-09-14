@@ -162,3 +162,6 @@ mod gradient;
 
 #[path = "tests/texture_gpu.rs"]
 mod texture;
+
+#[path = "tests/sampler_gpu.rs"]
+mod sampler;

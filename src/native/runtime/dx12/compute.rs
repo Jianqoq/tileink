@@ -9,7 +9,7 @@ pub struct Frame {
     pub list: ID3D12GraphicsCommandList,
     _allocator: ID3D12CommandAllocator,
     _buffers: Vec<ID3D12Resource>,
-    _heap: Option<ID3D12DescriptorHeap>,
+    _heaps: Vec<ID3D12DescriptorHeap>,
     _pipelines: Vec<Pipeline>,
     readbacks: Vec<Readback>,
 }
@@ -27,16 +27,20 @@ impl Frame {
                 list,
                 _allocator: allocator,
                 _buffers: Vec::new(),
-                _heap: None,
+                _heaps: Vec::new(),
                 _pipelines: Vec::new(),
                 readbacks: Vec::new(),
             };
             let mut gpu = Vec::new();
             for input in batch.resources() {
+                if matches!(input, Resource::Sampler(_)) {
+                    gpu.push(None);
+                    continue;
+                }
                 if let Resource::Texture(input) = input {
                     let (texture, upload) = compute_texture::upload(device, &frame.list, input)?;
                     frame._buffers.extend([texture.clone(), upload]);
-                    gpu.push(texture);
+                    gpu.push(Some(texture));
                     continue;
                 }
                 let size = input
@@ -70,80 +74,37 @@ impl Frame {
                     .list
                     .CopyBufferRegion(&resource, 0, &upload, 0, input.bytes().len() as u64);
                 frame._buffers.extend([resource.clone(), upload]);
-                gpu.push(resource);
-            }
-            let count = batch
-                .passes()
-                .iter()
-                .try_fold(0usize, |n, p| n.checked_add(p.bindings.len()))
-                .ok_or("native descriptor count overflow")?;
-            if count > 1_000_000 {
-                return Err("native DX12 shader-visible heap capacity exceeded".into());
+                gpu.push(Some(resource));
             }
             let mut states = vec![D3D12_RESOURCE_STATE_COPY_DEST; gpu.len()];
-            if count != 0 {
-                let heap: ID3D12DescriptorHeap =
-                    device.CreateDescriptorHeap(&D3D12_DESCRIPTOR_HEAP_DESC {
-                        Type: D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
-                        NumDescriptors: count as u32,
-                        Flags: D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE,
-                        NodeMask: 0,
-                    })?;
-                frame.list.SetDescriptorHeaps(&[Some(heap.clone())]);
-                let step = device
-                    .GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)
-                    as usize;
-                let base = heap.GetCPUDescriptorHandleForHeapStart();
-                let visible = heap.GetGPUDescriptorHandleForHeapStart();
-                let mut index = 0;
-                for pass in batch.passes() {
-                    let pipeline = &pipelines[pass.shader.entry];
-                    frame._pipelines.push(pipeline.clone());
-                    frame.list.SetComputeRootSignature(&pipeline.signature);
-                    frame.list.SetPipelineState(&pipeline.state);
-                    for (id, state) in super::compute_bindings::required_states(pass) {
-                        let resource = &gpu[id];
-                        if states[id] != state {
-                            buffer::transition(&frame.list, resource, states[id], state);
-                            states[id] = state;
-                        } else if state == D3D12_RESOURCE_STATE_UNORDERED_ACCESS {
-                            buffer::uav_barrier(&frame.list, resource);
-                        }
+            let mut tables =
+                super::compute_tables::Tables::new(device, &frame.list, batch.passes())?;
+            for pass in batch.passes() {
+                let pipeline = &pipelines[pass.shader.entry];
+                frame._pipelines.push(pipeline.clone());
+                frame.list.SetComputeRootSignature(&pipeline.signature);
+                frame.list.SetPipelineState(&pipeline.state);
+                for (id, state) in super::compute_bindings::required_states(pass) {
+                    let resource = gpu[id].as_ref().unwrap();
+                    if states[id] != state {
+                        buffer::transition(&frame.list, resource, states[id], state);
+                        states[id] = state;
+                    } else if state == D3D12_RESOURCE_STATE_UNORDERED_ACCESS {
+                        buffer::uav_barrier(&frame.list, resource);
                     }
-                    let start = index;
-                    for (binding, id) in &pass.bindings {
-                        let id = id.index();
-                        let resource = &gpu[id];
-                        let handle = D3D12_CPU_DESCRIPTOR_HANDLE {
-                            ptr: base.ptr + index * step,
-                        };
-                        super::compute_bindings::write(
-                            device,
-                            binding,
-                            resource,
-                            (batch.resources()[id].bytes().len() / 4) as u32,
-                            handle,
-                        );
-                        index += 1;
-                    }
-                    frame.list.SetComputeRootDescriptorTable(
-                        0,
-                        D3D12_GPU_DESCRIPTOR_HANDLE {
-                            ptr: visible.ptr + (start * step) as u64,
-                        },
-                    );
-                    if pipeline.grid {
-                        let grid = [pass.grid[0], pass.grid[1], pass.grid[2], 0];
-                        frame
-                            .list
-                            .SetComputeRoot32BitConstants(1, 4, grid.as_ptr().cast(), 0);
-                    }
+                }
+                tables.write(device, &frame.list, pass, batch.resources(), &gpu, pipeline);
+                if let Some(root) = pipeline.grid {
+                    let grid = [pass.grid[0], pass.grid[1], pass.grid[2], 0];
                     frame
                         .list
-                        .Dispatch(pass.grid[0], pass.grid[1], pass.grid[2]);
+                        .SetComputeRoot32BitConstants(root, 4, grid.as_ptr().cast(), 0);
                 }
-                frame._heap = Some(heap);
+                frame
+                    .list
+                    .Dispatch(pass.grid[0], pass.grid[1], pass.grid[2]);
             }
+            frame._heaps = tables.into_heaps();
             for id in batch.outputs() {
                 let id = id.index();
                 let size = batch.resources()[id].bytes().len();
@@ -151,15 +112,17 @@ impl Frame {
                     if states[id] != D3D12_RESOURCE_STATE_COPY_SOURCE {
                         buffer::transition(
                             &frame.list,
-                            &gpu[id],
+                            gpu[id].as_ref().unwrap(),
                             states[id],
                             D3D12_RESOURCE_STATE_COPY_SOURCE,
                         );
                         states[id] = D3D12_RESOURCE_STATE_COPY_SOURCE;
                     }
-                    frame
-                        .readbacks
-                        .push(compute_texture::readback(device, &frame.list, &gpu[id])?);
+                    frame.readbacks.push(compute_texture::readback(
+                        device,
+                        &frame.list,
+                        gpu[id].as_ref().unwrap(),
+                    )?);
                     continue;
                 }
                 let readback = buffer::create(
@@ -173,15 +136,19 @@ impl Frame {
                 if states[id] != D3D12_RESOURCE_STATE_COPY_SOURCE {
                     buffer::transition(
                         &frame.list,
-                        &gpu[id],
+                        gpu[id].as_ref().unwrap(),
                         states[id],
                         D3D12_RESOURCE_STATE_COPY_SOURCE,
                     );
                     states[id] = D3D12_RESOURCE_STATE_COPY_SOURCE;
                 }
-                frame
-                    .list
-                    .CopyBufferRegion(&readback, 0, &gpu[id], 0, size as u64);
+                frame.list.CopyBufferRegion(
+                    &readback,
+                    0,
+                    gpu[id].as_ref().unwrap(),
+                    0,
+                    size as u64,
+                );
                 frame.readbacks.push(Readback::buffer(readback, size));
             }
             frame.list.Close()?;

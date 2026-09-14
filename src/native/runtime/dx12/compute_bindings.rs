@@ -14,6 +14,7 @@ pub(super) unsafe fn write(
 ) {
     unsafe {
         match binding.kind {
+            BindingKind::Sampler => unreachable!("sampler descriptors use their own heap"),
             BindingKind::Texture => device.CreateShaderResourceView(
                 resource,
                 Some(&D3D12_SHADER_RESOURCE_VIEW_DESC {
@@ -112,6 +113,7 @@ pub(super) fn required_states(
     let mut states = BTreeMap::new();
     for (binding, id) in &pass.bindings {
         let state = match binding.kind {
+            BindingKind::Sampler => continue,
             BindingKind::Uniform => D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
             BindingKind::Read | BindingKind::Texture | BindingKind::TextureArray => {
                 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE

@@ -3,13 +3,14 @@ use super::super::compute::Resource;
 use super::compute_texture::Image;
 enum GpuResource {
     Buffer(vk::Buffer),
+    Sampler(super::compute_sampler::Sampler),
     Image(Image),
 }
 impl GpuResource {
     fn buffer(&self) -> vk::Buffer {
         match self {
             Self::Buffer(buffer) => *buffer,
-            Self::Image(_) => unreachable!("validated buffer binding"),
+            Self::Image(_) | Self::Sampler(_) => unreachable!("validated buffer binding"),
         }
     }
 }
@@ -55,6 +56,9 @@ impl Frame {
                 return Err("native Vulkan dispatch exceeds device limit".into());
             }
             for (binding, id) in &pass.bindings {
+                if binding.kind == BindingKind::Sampler {
+                    continue;
+                }
                 if let Resource::Texture(texture) = &batch.resources()[id.index()] {
                     if texture
                         .size
@@ -142,13 +146,18 @@ impl Frame {
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
         )?);
         let mut buffers = this.gpu.as_ref().unwrap().buffers.iter();
-        let mut image_device = None;
+        let mut resource_device = None;
         for resource in batch.resources() {
             this.resources.push(match resource {
                 Resource::Buffer(_) => GpuResource::Buffer(*buffers.next().unwrap()),
+                Resource::Sampler(filter) => {
+                    let shared =
+                        resource_device.get_or_insert_with(|| std::rc::Rc::new(device.clone()));
+                    GpuResource::Sampler(super::compute_sampler::Sampler::new(shared, *filter)?)
+                }
                 Resource::Texture(texture) => {
                     let shared =
-                        image_device.get_or_insert_with(|| std::rc::Rc::new(device.clone()));
+                        resource_device.get_or_insert_with(|| std::rc::Rc::new(device.clone()));
                     GpuResource::Image(Image::new(shared, memory, texture)?)
                 }
             });
@@ -186,10 +195,11 @@ impl Frame {
                     .command_buffer_count(1),
             )?[0];
             let command = this.command;
-            let mut counts = [0u32; 4];
+            let mut counts = [0u32; 5];
             for pass in batch.passes() {
                 for b in pass.shader.bindings {
                     let i = match b.kind {
+                        BindingKind::Sampler => 4,
                         BindingKind::Uniform => 0,
                         BindingKind::Read | BindingKind::Write => 1,
                         BindingKind::Texture | BindingKind::TextureArray => 2,
@@ -206,6 +216,7 @@ impl Frame {
                     vk::DescriptorType::STORAGE_BUFFER,
                     vk::DescriptorType::SAMPLED_IMAGE,
                     vk::DescriptorType::STORAGE_IMAGE,
+                    vk::DescriptorType::SAMPLER,
                 ]
                 .into_iter()
                 .zip(counts)
@@ -225,6 +236,9 @@ impl Frame {
             device.begin_command_buffer(command, &vk::CommandBufferBeginInfo::default())?;
             let gpu = &this.resources;
             for (i, buffer) in batch.resources().iter().enumerate() {
+                if matches!(buffer, Resource::Sampler(_)) {
+                    continue;
+                }
                 if let GpuResource::Image(image) = &gpu[i] {
                     image.upload(
                         command,
@@ -262,6 +276,28 @@ impl Frame {
                         .set_layouts(&[pipeline.bindings]),
                 )?[0];
                 for binding in pass.shader.bindings {
+                    if binding.kind == BindingKind::Sampler {
+                        let id = pass
+                            .bindings
+                            .iter()
+                            .find(|(b, _)| b.slot == binding.slot)
+                            .unwrap()
+                            .1;
+                        let GpuResource::Sampler(sampler) = &gpu[id.index()] else {
+                            unreachable!("validated sampler")
+                        };
+                        device.update_descriptor_sets(
+                            &[vk::WriteDescriptorSet::default()
+                                .dst_set(set)
+                                .dst_binding(binding.slot)
+                                .descriptor_type(vk::DescriptorType::SAMPLER)
+                                .image_info(&[
+                                    vk::DescriptorImageInfo::default().sampler(sampler.handle)
+                                ])],
+                            &[],
+                        );
+                        continue;
+                    }
                     if matches!(
                         binding.kind,
                         BindingKind::Texture

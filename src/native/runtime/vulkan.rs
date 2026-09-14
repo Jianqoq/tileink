@@ -318,3 +318,6 @@ impl Drop for Vulkan {
 mod tests;
 
 mod compute_texture;
+
+#[path = "vulkan/compute_sampler.rs"]
+mod compute_sampler;

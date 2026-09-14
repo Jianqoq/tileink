@@ -2,12 +2,14 @@ use super::super::Result;
 
 pub enum Resource {
     Buffer(Vec<u8>),
+    Sampler(SamplerFilter),
     Texture(Texture),
 }
 impl Resource {
     pub fn bytes(&self) -> &[u8] {
         match self {
             Self::Buffer(bytes) => bytes,
+            Self::Sampler(_) => &[],
             Self::Texture(texture) => &texture.bytes,
         }
     }
@@ -41,4 +43,11 @@ impl Texture {
             bytes,
         })
     }
+}
+
+/// Filtering for a single-mip clamp-to-edge sampler.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SamplerFilter {
+    Nearest,
+    Linear,
 }

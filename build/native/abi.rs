@@ -13,6 +13,7 @@ pub enum Kind {
     Texture,
     TextureWrite,
     TextureArray,
+    Sampler,
 }
 #[derive(Clone, Debug)]
 pub struct Field {
@@ -76,6 +77,7 @@ impl Interface {
                     Kind::Texture => 3,
                     Kind::TextureWrite => 4,
                     Kind::TextureArray => 5,
+                    Kind::Sampler => 6,
                 },
             );
             word(&mut out, r.size);
@@ -138,7 +140,7 @@ pub fn validate(abi: &Interface) -> io::Result<()> {
             if end != r.size {
                 return Err(invalid("invalid uniform size"));
             }
-        } else if r.size != 4 || !r.fields.is_empty() {
+        } else if r.size != if r.kind == Kind::Sampler { 0 } else { 4 } || !r.fields.is_empty() {
             return Err(invalid("invalid resource size"));
         }
         if r.internal
@@ -181,6 +183,7 @@ pub fn binding_declarations(abi: &Interface, entry: &str) -> io::Result<String> 
                 Kind::Texture => "Texture",
                 Kind::TextureWrite => "TextureWrite",
                 Kind::TextureArray => "TextureArray",
+                Kind::Sampler => "Sampler",
             };
             Ok(format!(
                 "Binding {{ slot: {}, kind: BindingKind::{kind}, size: {}, internal: {} }}",

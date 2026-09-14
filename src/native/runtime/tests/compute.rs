@@ -139,3 +139,46 @@ fn texture_array_dimensions_and_binding_views_are_explicit() {
     }
     assert!(batch.passes().is_empty());
 }
+
+#[test]
+fn sampler_resources_reject_foreign_handles_byte_readback_and_wrong_bindings() {
+    use super::SamplerFilter;
+    let mut batch = ComputeBatch::new();
+    let sampler = batch.sampler(SamplerFilter::Linear).unwrap();
+    assert!(batch.readback(sampler).is_err());
+    let mut foreign = ComputeBatch::new();
+    let other = foreign.sampler(SamplerFilter::Nearest).unwrap();
+    assert!(batch.size(other).is_err());
+    let config = batch.buffer(vec![0; 16]).unwrap();
+    let source = batch.texture_array_rgba8([1, 1, 1], vec![0; 4]).unwrap();
+    let requests = batch.buffer(vec![0; 16]).unwrap();
+    let output = batch.buffer(vec![0; 4]).unwrap();
+    let valid = [
+        (0, config),
+        (1, source),
+        (2, sampler),
+        (3, requests),
+        (4, output),
+    ];
+    // SAFETY: each wrong resource is rejected before recording or memory access.
+    unsafe {
+        for (slot, id) in [
+            (0, sampler),
+            (1, sampler),
+            (2, requests),
+            (2, source),
+            (2, other),
+            (3, sampler),
+            (4, sampler),
+        ] {
+            let mut bindings = valid;
+            bindings[slot].1 = id;
+            assert!(
+                batch
+                    .dispatch("sampler_words", &bindings, [1, 1, 1])
+                    .is_err()
+            );
+        }
+    }
+    assert!(batch.passes().is_empty());
+}

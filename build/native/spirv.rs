@@ -54,7 +54,7 @@ pub fn validate(bytes: &[u8], entry: &str, abi: &Interface) -> io::Result<()> {
             (72, [id, member, 35, offset]) => {
                 r.offsets.insert((*id, *member), *offset);
             }
-            (21 | 22 | 23 | 25 | 29 | 30 | 32, [id, value @ ..]) => {
+            (21 | 22 | 23 | 25 | 26 | 29 | 30 | 32, [id, value @ ..]) => {
                 r.types.insert(*id, (opcode, value.to_vec()));
             }
             (59, [ty, id, _storage]) => {
@@ -99,6 +99,19 @@ pub fn validate(bytes: &[u8], entry: &str, abi: &Interface) -> io::Result<()> {
             .types
             .get(&pointer)
             .ok_or_else(|| invalid("SPIR-V pointer type"))?;
+        if resource.kind == Kind::Sampler {
+            require(
+                *op == 32 && args.len() == 2 && args[0] == 0,
+                "SPIR-V sampler pointer",
+            )?;
+            require(
+                r.types
+                    .get(&args[1])
+                    .is_some_and(|ty| ty.0 == 26 && ty.1.is_empty()),
+                "SPIR-V sampler type",
+            )?;
+            continue;
+        }
         if matches!(
             resource.kind,
             Kind::Texture | Kind::TextureWrite | Kind::TextureArray

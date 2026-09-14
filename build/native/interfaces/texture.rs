@@ -36,3 +36,42 @@ pub(super) fn array(constants: &BTreeMap<String, u32>) -> Interface {
     .into();
     result
 }
+
+pub(super) fn sampler(constants: &BTreeMap<String, u32>) -> Interface {
+    let mut sampler = buffer(2, Kind::Sampler);
+    sampler.size = 0;
+    interface(
+        [constants["FINE_WORKGROUP_SIZE"], 1, 1],
+        &[
+            (
+                "config",
+                uniform(
+                    0,
+                    &[
+                        ("count", 0, 1),
+                        ("pad0", 4, 1),
+                        ("pad1", 8, 1),
+                        ("pad2", 12, 1),
+                    ],
+                    false,
+                ),
+            ),
+            ("source", buffer(1, Kind::TextureArray)),
+            ("image_sampler", sampler),
+            ("requests", buffer(3, Kind::Read)),
+            ("destination", buffer(4, Kind::Write)),
+            ("dispatch_grid", uniform(31, super::DISPATCH_GRID, true)),
+        ],
+        &[(
+            "sampler_words",
+            &[
+                "config",
+                "source",
+                "image_sampler",
+                "requests",
+                "destination",
+                "dispatch_grid",
+            ],
+        )],
+    )
+}

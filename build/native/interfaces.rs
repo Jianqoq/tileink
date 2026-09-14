@@ -131,6 +131,7 @@ pub fn get(family: &str) -> io::Result<Interface> {
         "fine-gradient" => fine::gradient(&constants),
         "texture-validation" => texture::validation(&constants),
         "texture-array-validation" => texture::array(&constants),
+        "sampler-validation" => texture::sampler(&constants),
         "cumsum" => interface(
             [constants["CUMSUM_CHUNK_SIZE"], 1, 1],
             &[

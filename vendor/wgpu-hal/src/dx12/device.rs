@@ -774,7 +774,11 @@ impl crate::Device for super::Device {
             MipLODBias: 0f32,
             MaxAnisotropy: desc.anisotropy_clamp as u32,
 
-            ComparisonFunc: conv::map_comparison(desc.compare.unwrap_or_default()),
+            // A non-comparison filter ignores this field, but ALWAYS triggers the DX12
+            // validation warning. NEVER expresses the disabled comparison (root-cause fix).
+            ComparisonFunc: conv::map_comparison(
+                desc.compare.unwrap_or(wgt::CompareFunction::Never),
+            ),
             BorderColor: border_color,
             MinLOD: desc.lod_clamp.start,
             MaxLOD: desc.lod_clamp.end,
