@@ -157,3 +157,45 @@ fn uniform_scalar_types_are_reflected_and_invalidate_shader_cache_keys() {
         assert_ne!(typed.cache_bytes(), changed.cache_bytes());
     }
 }
+
+#[test]
+fn texture_table_count_and_register_ranges_are_explicit() {
+    let mut description = interfaces::get("texture-table-validation").unwrap();
+    abi::validate(&description).unwrap();
+    let count = description.resources["texture_table"].count;
+    let original = description.cache_bytes();
+    description
+        .resources
+        .get_mut("texture_table")
+        .unwrap()
+        .count = 1;
+    assert_ne!(description.cache_bytes(), original);
+    abi::validate(&description).unwrap();
+    description
+        .resources
+        .get_mut("texture_table")
+        .unwrap()
+        .count = 0;
+    assert!(abi::validate(&description).is_err());
+    description
+        .resources
+        .get_mut("texture_table")
+        .unwrap()
+        .count = count;
+    description
+        .resources
+        .get_mut("texture_table")
+        .unwrap()
+        .binding = 0;
+    assert!(abi::validate(&description).is_err());
+    description
+        .resources
+        .get_mut("texture_table")
+        .unwrap()
+        .binding = 29;
+    description.resources.get_mut("requests").unwrap().binding = 30;
+    assert!(
+        abi::validate(&description).is_err(),
+        "SRV ranges overlap even when starting bindings differ"
+    );
+}

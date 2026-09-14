@@ -1783,3 +1783,18 @@ oracles supplement the production WGSL comparison. No new PNG differences beyond
 accepted turbulence. Reviews are closed; see [glass](docs/native/m4-filter-glass.md).
 Inventory reaches **167/179**. Brush-dependent effects, fine and NativeRenderer/
 Canvas integration still keep M4 open.
+
+### M4 native texture descriptor tables
+
+Independently sized texture tables now bind directly on DX12 and Vulkan, with
+explicit descriptor counts, reflected array types, versioned cache keys, hidden
+write-alias rejection and expanded member state tracking. Register-range overlap
+and device limits are validated before native layout creation. Constants remain
+canonical HLSLI; Vulkan descriptor writes are separated from command recording.
+
+Release (992), native runtime (141), strict Clippy, editor, 77 SPIR-V modules and
+full SVG/examples pass. The texture-table GPU test passes all four APIs with DXC
+unavailable and pipeline cache hits. No additional PNG differences beyond the
+accepted turbulence image. Both reviews are closed. See [texture-table evidence](docs/native/m4-texture-table.md).
+Production inventory remains **167/179**; remaining brush effects, fine and actual
+NativeRenderer/Canvas integration still keep M4 open.

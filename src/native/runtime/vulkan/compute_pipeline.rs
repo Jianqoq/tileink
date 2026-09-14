@@ -14,7 +14,9 @@ pub fn descriptor(kind: BindingKind) -> vk::DescriptorType {
     match kind {
         BindingKind::Sampler => vk::DescriptorType::SAMPLER,
         BindingKind::Uniform => vk::DescriptorType::UNIFORM_BUFFER,
-        BindingKind::Texture | BindingKind::TextureArray => vk::DescriptorType::SAMPLED_IMAGE,
+        BindingKind::Texture | BindingKind::TextureArray | BindingKind::TextureTable => {
+            vk::DescriptorType::SAMPLED_IMAGE
+        }
         BindingKind::TextureWrite => vk::DescriptorType::STORAGE_IMAGE,
         BindingKind::Read | BindingKind::Write => vk::DescriptorType::STORAGE_BUFFER,
     }
@@ -32,6 +34,7 @@ pub fn ensure(
         .iter()
         .find(|a| a.format == "spirv" && a.entry == entry && !a.bindings.is_empty())
         .ok_or("missing native SPIR-V compute artifact")?;
+    super::limits::descriptors(artifact.bindings, &properties.limits)?;
     super::limits::workgroup(
         artifact.workgroup,
         properties.limits.max_compute_work_group_size,
@@ -51,7 +54,7 @@ pub fn ensure(
                 vk::DescriptorSetLayoutBinding::default()
                     .binding(b.slot)
                     .descriptor_type(descriptor(b.kind))
-                    .descriptor_count(1)
+                    .descriptor_count(b.count)
                     .stage_flags(vk::ShaderStageFlags::COMPUTE)
             })
             .collect();

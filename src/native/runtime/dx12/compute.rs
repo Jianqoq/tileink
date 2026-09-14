@@ -33,7 +33,7 @@ impl Frame {
             };
             let mut gpu = Vec::new();
             for input in batch.resources() {
-                if matches!(input, Resource::Sampler(_)) {
+                if matches!(input, Resource::Sampler(_) | Resource::TextureTable(_)) {
                     gpu.push(None);
                     continue;
                 }
@@ -84,7 +84,8 @@ impl Frame {
                 frame._pipelines.push(pipeline.clone());
                 frame.list.SetComputeRootSignature(&pipeline.signature);
                 frame.list.SetPipelineState(&pipeline.state);
-                for (id, state) in super::compute_bindings::required_states(pass) {
+                for (id, state) in super::compute_bindings::required_states(pass, batch.resources())
+                {
                     let resource = gpu[id].as_ref().unwrap();
                     if states[id] != state {
                         buffer::transition(&frame.list, resource, states[id], state);

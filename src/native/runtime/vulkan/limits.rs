@@ -65,3 +65,76 @@ fn shader_workgroup_must_fit_both_axis_and_invocation_limits() {
     assert!(workgroup([0, 1, 1], [256, 256, 64], 256).is_err());
     assert!(workgroup([u32::MAX; 3], [u32::MAX; 3], u32::MAX).is_err());
 }
+
+/// Count every array element before creating Vulkan layouts. One array binding
+/// can exceed the device limit even when the number of bindings is small.
+pub(super) fn descriptors(
+    bindings: &[crate::native::shaders::Binding],
+    limits: &ash::vk::PhysicalDeviceLimits,
+) -> Result<()> {
+    use crate::native::shaders::BindingKind;
+    let mut counts = [0u64; 5];
+    for binding in bindings {
+        let index = match binding.kind {
+            BindingKind::Uniform => 0,
+            BindingKind::Read | BindingKind::Write => 1,
+            BindingKind::Texture | BindingKind::TextureArray | BindingKind::TextureTable => 2,
+            BindingKind::TextureWrite => 3,
+            BindingKind::Sampler => 4,
+        };
+        counts[index] += u64::from(binding.count);
+    }
+    let maxima = [
+        limits
+            .max_per_stage_descriptor_uniform_buffers
+            .min(limits.max_descriptor_set_uniform_buffers),
+        limits
+            .max_per_stage_descriptor_storage_buffers
+            .min(limits.max_descriptor_set_storage_buffers),
+        limits
+            .max_per_stage_descriptor_sampled_images
+            .min(limits.max_descriptor_set_sampled_images),
+        limits
+            .max_per_stage_descriptor_storage_images
+            .min(limits.max_descriptor_set_storage_images),
+        limits
+            .max_per_stage_descriptor_samplers
+            .min(limits.max_descriptor_set_samplers),
+    ];
+    if counts
+        .into_iter()
+        .zip(maxima)
+        .any(|(count, maximum)| count > u64::from(maximum))
+        || counts[..4].iter().sum::<u64>() > u64::from(limits.max_per_stage_resources)
+    {
+        return Err("native Vulkan descriptors exceed physical device limits".into());
+    }
+    Ok(())
+}
+
+#[test]
+fn texture_table_elements_count_toward_stage_and_set_limits() {
+    use crate::native::shaders::{Binding, BindingKind};
+    let bindings = [Binding {
+        slot: 0,
+        kind: BindingKind::TextureTable,
+        size: 4,
+        count: 8,
+        internal: false,
+    }];
+    let mut limits = ash::vk::PhysicalDeviceLimits {
+        max_per_stage_descriptor_sampled_images: 8,
+        max_descriptor_set_sampled_images: 8,
+        max_per_stage_resources: 8,
+        ..Default::default()
+    };
+    assert!(descriptors(&bindings, &limits).is_ok());
+    limits.max_per_stage_descriptor_sampled_images = 7;
+    assert!(descriptors(&bindings, &limits).is_err());
+    limits.max_per_stage_descriptor_sampled_images = 8;
+    limits.max_descriptor_set_sampled_images = 7;
+    assert!(descriptors(&bindings, &limits).is_err());
+    limits.max_descriptor_set_sampled_images = 8;
+    limits.max_per_stage_resources = 7;
+    assert!(descriptors(&bindings, &limits).is_err());
+}

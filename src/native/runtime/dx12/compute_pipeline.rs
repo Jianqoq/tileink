@@ -49,32 +49,39 @@ fn create(
     shader: &NativeShaderArtifact,
 ) -> Result<Pipeline> {
     unsafe {
-        let table = |sampler: bool| {
-            shader
+        let table = |sampler: bool| -> Result<Vec<D3D12_DESCRIPTOR_RANGE>> {
+            let mut ranges = Vec::new();
+            let mut offset = 0u32;
+            for b in shader
                 .bindings
                 .iter()
                 .filter(|b| !b.internal && (b.kind == BindingKind::Sampler) == sampler)
-                .enumerate()
-                .map(|(index, b)| D3D12_DESCRIPTOR_RANGE {
+            {
+                ranges.push(D3D12_DESCRIPTOR_RANGE {
                     RangeType: match b.kind {
                         BindingKind::Sampler => D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER,
                         BindingKind::Uniform => D3D12_DESCRIPTOR_RANGE_TYPE_CBV,
-                        BindingKind::Read | BindingKind::Texture | BindingKind::TextureArray => {
-                            D3D12_DESCRIPTOR_RANGE_TYPE_SRV
-                        }
+                        BindingKind::Read
+                        | BindingKind::Texture
+                        | BindingKind::TextureArray
+                        | BindingKind::TextureTable => D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
                         BindingKind::Write | BindingKind::TextureWrite => {
                             D3D12_DESCRIPTOR_RANGE_TYPE_UAV
                         }
                     },
-                    NumDescriptors: 1,
+                    NumDescriptors: b.count,
                     BaseShaderRegister: b.slot,
                     RegisterSpace: 0,
-                    OffsetInDescriptorsFromTableStart: index as u32,
-                })
-                .collect::<Vec<_>>()
+                    OffsetInDescriptorsFromTableStart: offset,
+                });
+                offset = offset
+                    .checked_add(b.count)
+                    .ok_or("native root descriptor count overflow")?;
+            }
+            Ok(ranges)
         };
-        let resource_ranges = table(false);
-        let sampler_ranges = table(true);
+        let resource_ranges = table(false)?;
+        let sampler_ranges = table(true)?;
         let mut parameters = Vec::new();
         let mut add_table = |ranges: &[D3D12_DESCRIPTOR_RANGE]| {
             if ranges.is_empty() {

@@ -241,3 +241,27 @@ fn filter_uniform_spirv_preserves_signed_float_and_vector_types() {
         );
     }
 }
+
+#[cfg(all(
+    feature = "native-vulkan",
+    any(target_os = "windows", target_os = "linux")
+))]
+#[test]
+fn texture_table_reflection_checks_descriptor_count_and_image_kind() {
+    let artifact = tileink::NATIVE_SHADER_ARTIFACTS
+        .iter()
+        .find(|a| a.format == "spirv" && a.entry == "texture_table_words")
+        .unwrap();
+    let interface = interfaces::get("texture-table-validation").unwrap();
+    spirv::validate(artifact.bytes, artifact.entry, &interface).unwrap();
+    let mut wrong = interface.clone();
+    wrong.resources.get_mut("texture_table").unwrap().count -= 1;
+    assert!(spirv::validate(artifact.bytes, artifact.entry, &wrong).is_err());
+    for kind in [abi::Kind::Texture, abi::Kind::TextureArray] {
+        let mut wrong = interface.clone();
+        let table = wrong.resources.get_mut("texture_table").unwrap();
+        table.count = 1;
+        table.kind = kind;
+        assert!(spirv::validate(artifact.bytes, artifact.entry, &wrong).is_err());
+    }
+}

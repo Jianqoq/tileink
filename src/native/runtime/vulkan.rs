@@ -32,6 +32,7 @@ pub struct Vulkan {
     max_storage_buffer_bytes: u32,
     max_image_width: u32,
     failed: bool,
+    texture_tables: bool,
     #[cfg(test)]
     injected_submit_error: Option<vk::Result>,
 }
@@ -98,11 +99,35 @@ impl Vulkan {
             let queues = [vk::DeviceQueueCreateInfo::default()
                 .queue_family_index(family)
                 .queue_priorities(&priorities)];
-            let device = match instance.create_device(
-                physical,
-                &vk::DeviceCreateInfo::default().queue_create_infos(&queues),
-                None,
-            ) {
+            let mut indexing = vk::PhysicalDeviceDescriptorIndexingFeatures::default();
+            let mut features = vk::PhysicalDeviceFeatures2::default().push_next(&mut indexing);
+            instance.get_physical_device_features2(physical, &mut features);
+            let extensions = match instance.enumerate_device_extension_properties(physical) {
+                Ok(extensions) => extensions,
+                Err(error) => {
+                    instance.destroy_instance(None);
+                    return Err(error.into());
+                }
+            };
+            let texture_tables = indexing.shader_sampled_image_array_non_uniform_indexing != 0
+                && extensions.iter().any(|ext| {
+                    std::ffi::CStr::from_ptr(ext.extension_name.as_ptr())
+                        == ash::ext::descriptor_indexing::NAME
+                });
+            let table_extensions = if texture_tables {
+                vec![ash::ext::descriptor_indexing::NAME.as_ptr()]
+            } else {
+                Vec::new()
+            };
+            let mut indexing = vk::PhysicalDeviceDescriptorIndexingFeatures::default()
+                .shader_sampled_image_array_non_uniform_indexing(texture_tables);
+            let mut device_info = vk::DeviceCreateInfo::default()
+                .queue_create_infos(&queues)
+                .enabled_extension_names(&table_extensions);
+            if texture_tables {
+                device_info = device_info.push_next(&mut indexing);
+            }
+            let device = match instance.create_device(physical, &device_info, None) {
                 Ok(v) => v,
                 Err(e) => {
                     instance.destroy_instance(None);
@@ -133,6 +158,7 @@ impl Vulkan {
                 max_storage_buffer_bytes: limits.max_storage_buffer_range,
                 max_image_width: limits.max_image_dimension2_d,
                 failed: false,
+                texture_tables,
                 #[cfg(test)]
                 injected_submit_error: None,
             };
@@ -175,6 +201,15 @@ impl Vulkan {
             return Err("Vulkan context failed".into());
         }
         for pass in batch.passes() {
+            if !self.texture_tables
+                && pass
+                    .shader
+                    .bindings
+                    .iter()
+                    .any(|b| b.kind == crate::native::shaders::BindingKind::TextureTable)
+            {
+                return Err("native Vulkan nonuniform texture indexing is unavailable".into());
+            }
             compute_pipeline::ensure(
                 &self.device,
                 &self.properties,

@@ -16,6 +16,7 @@ pub(super) fn config() -> Resource {
         };
     }
     Resource {
+        count: 1,
         binding: 0,
         kind: Kind::Uniform,
         size: std::mem::size_of::<FilterConfig>() as u32,

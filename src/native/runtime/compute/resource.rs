@@ -1,7 +1,9 @@
 use super::super::Result;
+use super::ResourceId;
 
 pub enum Resource {
     Buffer(Vec<u8>),
+    TextureTable(Vec<ResourceId>),
     Sampler(SamplerFilter),
     Texture(Texture),
 }
@@ -9,7 +11,7 @@ impl Resource {
     pub fn bytes(&self) -> &[u8] {
         match self {
             Self::Buffer(bytes) => bytes,
-            Self::Sampler(_) => &[],
+            Self::Sampler(_) | Self::TextureTable(_) => &[],
             Self::Texture(texture) => &texture.bytes,
         }
     }

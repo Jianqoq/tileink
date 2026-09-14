@@ -2,6 +2,7 @@ use crate::native::{runtime::compute::Resource, shaders::BindingKind};
 use wgpu::util::DeviceExt;
 
 pub(super) enum GpuResource {
+    TextureTable,
     Buffer(wgpu::Buffer),
     Sampler(wgpu::Sampler),
     Texture(wgpu::Texture, wgpu::TextureView),
@@ -9,6 +10,7 @@ pub(super) enum GpuResource {
 impl GpuResource {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, input: &Resource) -> Self {
         match input {
+            Resource::TextureTable(_) => Self::TextureTable,
             Resource::Sampler(filter) => {
                 let filter = match filter {
                     crate::native::runtime::compute::SamplerFilter::Nearest => {
@@ -106,6 +108,7 @@ impl GpuResource {
 
     pub fn binding(&self) -> wgpu::BindingResource<'_> {
         match self {
+            Self::TextureTable => unreachable!("table bindings require member views"),
             Self::Sampler(sampler) => wgpu::BindingResource::Sampler(sampler),
             Self::Buffer(buffer) => buffer.as_entire_binding(),
             Self::Texture(_, view) => wgpu::BindingResource::TextureView(view),
@@ -113,7 +116,9 @@ impl GpuResource {
     }
     pub fn readback(&self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder) -> Readback {
         let (size, rows, row_bytes, pitch) = match self {
-            Self::Sampler(_) => unreachable!("samplers cannot be read back"),
+            Self::Sampler(_) | Self::TextureTable => {
+                unreachable!("descriptor-only resources cannot be read back")
+            }
             Self::Buffer(buffer) => (
                 buffer.size(),
                 1,
@@ -141,7 +146,9 @@ impl GpuResource {
             mapped_at_creation: false,
         });
         match self {
-            Self::Sampler(_) => unreachable!("samplers cannot be read back"),
+            Self::Sampler(_) | Self::TextureTable => {
+                unreachable!("descriptor-only resources cannot be read back")
+            }
             Self::Buffer(source) => encoder.copy_buffer_to_buffer(source, 0, &buffer, 0, size),
             Self::Texture(texture, _) => encoder.copy_texture_to_buffer(
                 wgpu::TexelCopyTextureInfo {
@@ -187,15 +194,17 @@ impl Readback {
 pub(super) fn layout(kind: BindingKind) -> wgpu::BindingType {
     match kind {
         BindingKind::Sampler => wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-        BindingKind::Texture | BindingKind::TextureArray => wgpu::BindingType::Texture {
-            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-            view_dimension: if kind == BindingKind::TextureArray {
-                wgpu::TextureViewDimension::D2Array
-            } else {
-                wgpu::TextureViewDimension::D2
-            },
-            multisampled: false,
-        },
+        BindingKind::Texture | BindingKind::TextureArray | BindingKind::TextureTable => {
+            wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                view_dimension: if kind == BindingKind::TextureArray {
+                    wgpu::TextureViewDimension::D2Array
+                } else {
+                    wgpu::TextureViewDimension::D2
+                },
+                multisampled: false,
+            }
+        }
         BindingKind::TextureWrite => wgpu::BindingType::StorageTexture {
             access: wgpu::StorageTextureAccess::WriteOnly,
             format: wgpu::TextureFormat::Rgba8Unorm,

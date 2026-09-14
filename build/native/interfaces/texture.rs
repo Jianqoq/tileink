@@ -75,3 +75,23 @@ pub(super) fn sampler(constants: &BTreeMap<String, u32>) -> Interface {
         )],
     )
 }
+
+pub(super) fn table(constants: &BTreeMap<String, u32>) -> Interface {
+    let mut table = buffer(30, Kind::TextureTable);
+    table.count = crate::gpu_constants::parse(include_str!(
+        "../../../src/shaders/hlsl/shared/texture_table_constants.hlsli"
+    ))
+    .expect("texture table constants")["NATIVE_TEXTURE_TABLE_CAPACITY"];
+    interface(
+        [constants["FINE_WORKGROUP_SIZE"], 1, 1],
+        &[
+            ("requests", buffer(0, Kind::Read)),
+            ("output", buffer(1, Kind::TextureWrite)),
+            ("texture_table", table),
+        ],
+        &[(
+            "texture_table_words",
+            &["requests", "output", "texture_table"],
+        )],
+    )
+}

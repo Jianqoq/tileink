@@ -34,6 +34,7 @@ pub const FAMILIES: &[(&str, &str)] = &[
     ("fine-pattern", "validation/pattern.hlsl"),
     ("texture-validation", "validation/texture.hlsl"),
     ("texture-array-validation", "validation/texture_array.hlsl"),
+    ("texture-table-validation", "validation/texture_table.hlsl"),
     ("sampler-validation", "validation/sampler.hlsl"),
     ("blend-math", "validation/blend.hlsl"),
     ("fill-coverage", "validation/geometry.hlsl"),

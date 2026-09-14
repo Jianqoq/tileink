@@ -16,6 +16,27 @@ impl Reference {
             .iter()
             .map(|input| GpuResource::new(&self.device, &self.queue, input))
             .collect();
+        let tables: Vec<Option<Vec<&wgpu::TextureView>>> = batch
+            .resources()
+            .iter()
+            .map(|resource| {
+                if let crate::native::runtime::compute::Resource::TextureTable(images) = resource {
+                    Some(
+                        images
+                            .iter()
+                            .map(|id| {
+                                let GpuResource::Texture(_, view) = &resources[id.index()] else {
+                                    unreachable!("validated table image")
+                                };
+                                view
+                            })
+                            .collect(),
+                    )
+                } else {
+                    None
+                }
+            })
+            .collect();
         let mut encoder = self.device.create_command_encoder(&Default::default());
         for stage in batch.passes() {
             let helper_source;
@@ -87,6 +108,22 @@ impl Reference {
                         include_str!(concat!(
                             env!("CARGO_MANIFEST_DIR"),
                             "/tests/shaders/texture.wgsl"
+                        ))
+                    );
+                    helper_source.as_str()
+                }
+                "texture_table_words" => {
+                    helper_source = format!(
+                        "enable wgpu_binding_array;\nconst NATIVE_TEXTURE_TABLE_CAPACITY:u32={}u;\nconst FINE_WORKGROUP_SIZE:u32={}u;\n{}\n{}",
+                        crate::shared::gpu_constants::NATIVE_TEXTURE_TABLE_CAPACITY,
+                        crate::shared::gpu_constants::FINE_WORKGROUP_SIZE,
+                        include_str!(concat!(
+                            env!("CARGO_MANIFEST_DIR"),
+                            "/src/wgpu/shaders/shared/pixel.wgsl"
+                        )),
+                        include_str!(concat!(
+                            env!("CARGO_MANIFEST_DIR"),
+                            "/tests/shaders/texture_table.wgsl"
                         ))
                     );
                     helper_source.as_str()
@@ -250,7 +287,11 @@ impl Reference {
                     } else {
                         compute_resources::layout(b.kind)
                     },
-                    count: None,
+                    count: if b.kind == crate::native::shaders::BindingKind::TextureTable {
+                        std::num::NonZeroU32::new(b.count)
+                    } else {
+                        None
+                    },
                 })
                 .collect();
             let snapshot = if filter.is_some_and(|v| v.portable)
@@ -310,7 +351,11 @@ impl Reference {
                 .iter()
                 .map(|(b, id)| wgpu::BindGroupEntry {
                     binding: b.slot,
-                    resource: resources[id.index()].binding(),
+                    resource: if let Some(views) = &tables[id.index()] {
+                        wgpu::BindingResource::TextureViewArray(views)
+                    } else {
+                        resources[id.index()].binding()
+                    },
                 })
                 .collect();
             if let Some(snapshot) = &snapshot {

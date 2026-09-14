@@ -21,6 +21,7 @@ pub(crate) enum BindingKind {
     Texture,
     TextureWrite,
     TextureArray,
+    TextureTable,
     Sampler,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -28,6 +29,7 @@ pub(crate) struct Binding {
     pub slot: u32,
     pub kind: BindingKind,
     pub size: u32,
+    pub count: u32,
     pub internal: bool,
 }
 

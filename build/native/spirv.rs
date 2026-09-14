@@ -9,6 +9,7 @@ struct Reflection {
     member_names: BTreeMap<(u32, u32), String>,
     decorations: BTreeMap<(u32, u32), Vec<u32>>,
     offsets: BTreeMap<(u32, u32), u32>,
+    constants: BTreeMap<u32, u32>,
     types: BTreeMap<u32, (u32, Vec<u32>)>,
     variables: BTreeMap<u32, u32>,
     entries: Vec<(u32, String)>,
@@ -54,8 +55,11 @@ pub fn validate(bytes: &[u8], entry: &str, abi: &Interface) -> io::Result<()> {
             (72, [id, member, 35, offset]) => {
                 r.offsets.insert((*id, *member), *offset);
             }
-            (21 | 22 | 23 | 25 | 26 | 29 | 30 | 32, [id, value @ ..]) => {
+            (21 | 22 | 23 | 25 | 26 | 28 | 29 | 30 | 32, [id, value @ ..]) => {
                 r.types.insert(*id, (opcode, value.to_vec()));
+            }
+            (43, [_ty, id, value]) => {
+                r.constants.insert(*id, *value);
             }
             (59, [ty, id, _storage]) => {
                 r.variables.insert(*id, *ty);
@@ -114,15 +118,32 @@ pub fn validate(bytes: &[u8], entry: &str, abi: &Interface) -> io::Result<()> {
         }
         if matches!(
             resource.kind,
-            Kind::Texture | Kind::TextureWrite | Kind::TextureArray
+            Kind::Texture | Kind::TextureWrite | Kind::TextureArray | Kind::TextureTable
         ) {
             require(
                 *op == 32 && args.len() == 2 && args[0] == 0,
                 "SPIR-V image pointer",
             )?;
+            let image_type = if resource.kind == Kind::TextureTable {
+                let array = r
+                    .types
+                    .get(&args[1])
+                    .ok_or_else(|| invalid("SPIR-V descriptor array"))?;
+                require(
+                    array.0 == 28 && array.1.len() == 2,
+                    "SPIR-V descriptor array type",
+                )?;
+                require(
+                    r.constants.get(&array.1[1]) == Some(&resource.count),
+                    "SPIR-V descriptor array count",
+                )?;
+                array.1[0]
+            } else {
+                args[1]
+            };
             let image = r
                 .types
-                .get(&args[1])
+                .get(&image_type)
                 .ok_or_else(|| invalid("SPIR-V image type"))?;
             require(
                 image.0 == 25

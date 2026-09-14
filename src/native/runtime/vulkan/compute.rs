@@ -1,7 +1,10 @@
 //! One command buffer retains GPU intermediates across every pass in a batch.
+#[path = "compute_bindings.rs"]
+mod bindings;
 use super::super::compute::Resource;
 use super::compute_texture::Image;
 enum GpuResource {
+    TextureTable,
     Buffer(vk::Buffer),
     Sampler(super::compute_sampler::Sampler),
     Image(Image),
@@ -10,7 +13,9 @@ impl GpuResource {
     fn buffer(&self) -> vk::Buffer {
         match self {
             Self::Buffer(buffer) => *buffer,
-            Self::Image(_) | Self::Sampler(_) => unreachable!("validated buffer binding"),
+            Self::Image(_) | Self::Sampler(_) | Self::TextureTable => {
+                unreachable!("validated buffer binding")
+            }
         }
     }
 }
@@ -46,6 +51,18 @@ impl Frame {
         pipelines: &BTreeMap<&'static str, Pipeline>,
     ) -> Result<Self> {
         let limits = &properties.limits;
+        // Every owned image is allocated, including images reachable only through a table.
+        for resource in batch.resources() {
+            if let Resource::Texture(texture) = resource
+                && (texture
+                    .size
+                    .iter()
+                    .any(|&n| n > limits.max_image_dimension2_d)
+                    || texture.layers > limits.max_image_array_layers)
+            {
+                return Err("native Vulkan texture exceeds device dimensions".into());
+            }
+        }
         for pass in batch.passes() {
             if pass
                 .grid
@@ -56,18 +73,13 @@ impl Frame {
                 return Err("native Vulkan dispatch exceeds device limit".into());
             }
             for (binding, id) in &pass.bindings {
-                if binding.kind == BindingKind::Sampler {
+                if matches!(
+                    binding.kind,
+                    BindingKind::Sampler | BindingKind::TextureTable
+                ) {
                     continue;
                 }
-                if let Resource::Texture(texture) = &batch.resources()[id.index()] {
-                    if texture
-                        .size
-                        .iter()
-                        .any(|&n| n > limits.max_image_dimension2_d)
-                        || texture.layers > limits.max_image_array_layers
-                    {
-                        return Err("native Vulkan texture exceeds device dimensions".into());
-                    }
+                if matches!(&batch.resources()[id.index()], Resource::Texture(_)) {
                     continue;
                 }
                 let size = if binding.kind == BindingKind::Uniform {
@@ -149,6 +161,7 @@ impl Frame {
         let mut resource_device = None;
         for resource in batch.resources() {
             this.resources.push(match resource {
+                Resource::TextureTable(_) => GpuResource::TextureTable,
                 Resource::Buffer(_) => GpuResource::Buffer(*buffers.next().unwrap()),
                 Resource::Sampler(filter) => {
                     let shared =
@@ -202,11 +215,13 @@ impl Frame {
                         BindingKind::Sampler => 4,
                         BindingKind::Uniform => 0,
                         BindingKind::Read | BindingKind::Write => 1,
-                        BindingKind::Texture | BindingKind::TextureArray => 2,
+                        BindingKind::Texture
+                        | BindingKind::TextureArray
+                        | BindingKind::TextureTable => 2,
                         BindingKind::TextureWrite => 3,
                     };
                     counts[i] = counts[i]
-                        .checked_add(1)
+                        .checked_add(b.count)
                         .ok_or("native Vulkan descriptor count overflow")?;
                 }
             }
@@ -236,7 +251,7 @@ impl Frame {
             device.begin_command_buffer(command, &vk::CommandBufferBeginInfo::default())?;
             let gpu = &this.resources;
             for (i, buffer) in batch.resources().iter().enumerate() {
-                if matches!(buffer, Resource::Sampler(_)) {
+                if matches!(buffer, Resource::Sampler(_) | Resource::TextureTable(_)) {
                     continue;
                 }
                 if let GpuResource::Image(image) = &gpu[i] {
@@ -275,92 +290,7 @@ impl Frame {
                         .descriptor_pool(this.descriptors)
                         .set_layouts(&[pipeline.bindings]),
                 )?[0];
-                for binding in pass.shader.bindings {
-                    if binding.kind == BindingKind::Sampler {
-                        let id = pass
-                            .bindings
-                            .iter()
-                            .find(|(b, _)| b.slot == binding.slot)
-                            .unwrap()
-                            .1;
-                        let GpuResource::Sampler(sampler) = &gpu[id.index()] else {
-                            unreachable!("validated sampler")
-                        };
-                        device.update_descriptor_sets(
-                            &[vk::WriteDescriptorSet::default()
-                                .dst_set(set)
-                                .dst_binding(binding.slot)
-                                .descriptor_type(vk::DescriptorType::SAMPLER)
-                                .image_info(&[
-                                    vk::DescriptorImageInfo::default().sampler(sampler.handle)
-                                ])],
-                            &[],
-                        );
-                        continue;
-                    }
-                    if matches!(
-                        binding.kind,
-                        BindingKind::Texture
-                            | BindingKind::TextureWrite
-                            | BindingKind::TextureArray
-                    ) {
-                        let id = pass
-                            .bindings
-                            .iter()
-                            .find(|(b, _)| b.slot == binding.slot)
-                            .unwrap()
-                            .1;
-                        let GpuResource::Image(image) = &gpu[id.index()] else {
-                            unreachable!("validated image binding")
-                        };
-                        device.update_descriptor_sets(
-                            &[vk::WriteDescriptorSet::default()
-                                .dst_set(set)
-                                .dst_binding(binding.slot)
-                                .descriptor_type(descriptor(binding.kind))
-                                .image_info(&[vk::DescriptorImageInfo::default()
-                                    .image_view(image.view)
-                                    .image_layout(vk::ImageLayout::GENERAL)])],
-                            &[],
-                        );
-                        continue;
-                    }
-                    let (buffer, offset, range) = if binding.internal {
-                        (
-                            this.upload.as_ref().unwrap().buffers[0],
-                            grids[index],
-                            binding.size as u64,
-                        )
-                    } else {
-                        let id = pass
-                            .bindings
-                            .iter()
-                            .find(|(b, _)| b.slot == binding.slot)
-                            .unwrap()
-                            .1;
-                        (
-                            gpu[id.index()].buffer(),
-                            0,
-                            if binding.kind == BindingKind::Uniform {
-                                binding.size as u64
-                            } else {
-                                batch.size(id)? as u64
-                            },
-                        )
-                    };
-                    device.update_descriptor_sets(
-                        &[vk::WriteDescriptorSet::default()
-                            .dst_set(set)
-                            .dst_binding(binding.slot)
-                            .descriptor_type(descriptor(binding.kind))
-                            .buffer_info(&[vk::DescriptorBufferInfo {
-                                buffer,
-                                offset,
-                                range,
-                            }])],
-                        &[],
-                    );
-                }
+                this.write_bindings(batch, pass, set, grids[index])?;
                 device.cmd_bind_pipeline(
                     command,
                     vk::PipelineBindPoint::COMPUTE,

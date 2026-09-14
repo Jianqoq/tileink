@@ -13,6 +13,7 @@ pub enum Kind {
     Texture,
     TextureWrite,
     TextureArray,
+    TextureTable,
     Sampler,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,6 +35,7 @@ pub struct Resource {
     pub binding: u32,
     pub kind: Kind,
     pub size: u32,
+    pub count: u32,
     pub fields: Vec<Field>,
     pub internal: bool,
 }
@@ -67,7 +69,7 @@ impl Interface {
             out.extend(s.as_bytes());
             out.push(0);
         }
-        let mut out = b"tileink-interface-v2\0".to_vec();
+        let mut out = b"tileink-interface-v3\0".to_vec();
         for n in self.workgroup {
             word(&mut out, n);
         }
@@ -86,9 +88,11 @@ impl Interface {
                     Kind::TextureWrite => 4,
                     Kind::TextureArray => 5,
                     Kind::Sampler => 6,
+                    Kind::TextureTable => 7,
                 },
             );
             word(&mut out, r.size);
+            word(&mut out, r.count);
             word(&mut out, u32::from(r.internal));
             word(&mut out, r.fields.len() as u32);
             for f in &r.fields {
@@ -136,6 +140,12 @@ pub fn validate(abi: &Interface) -> io::Result<()> {
         if !identifier(name) || r.binding > 31 || !slots.insert(r.binding) {
             return Err(invalid("invalid resource binding"));
         }
+        if r.count == 0
+            || (r.kind != Kind::TextureTable && r.count != 1)
+            || r.binding.checked_add(r.count).is_none()
+        {
+            return Err(invalid("invalid descriptor count"));
+        }
         if r.kind == Kind::Uniform {
             let mut end = 0;
             let mut names = BTreeSet::new();
@@ -169,6 +179,25 @@ pub fn validate(abi: &Interface) -> io::Result<()> {
             return Err(invalid("invalid internal dispatch binding"));
         }
     }
+    // DX12 arrays occupy a register range, unlike Vulkan's single array binding.
+    // Reject overlapping ranges at the source interface, before either backend builds a layout.
+    let register_class = |kind| match kind {
+        Kind::Read | Kind::Texture | Kind::TextureArray | Kind::TextureTable => 0,
+        Kind::Write | Kind::TextureWrite => 1,
+        Kind::Uniform => 2,
+        Kind::Sampler => 3,
+    };
+    let resources: Vec<_> = abi.resources.values().collect();
+    for (index, left) in resources.iter().enumerate() {
+        for right in &resources[index + 1..] {
+            if register_class(left.kind) == register_class(right.kind)
+                && left.binding < right.binding + right.count
+                && right.binding < left.binding + left.count
+            {
+                return Err(invalid("overlapping descriptor register ranges"));
+            }
+        }
+    }
     if abi.entries.is_empty() {
         return Err(invalid("empty shader inventory"));
     }
@@ -200,10 +229,11 @@ pub fn binding_declarations(abi: &Interface, entry: &str) -> io::Result<String> 
                 Kind::TextureWrite => "TextureWrite",
                 Kind::TextureArray => "TextureArray",
                 Kind::Sampler => "Sampler",
+                Kind::TextureTable => "TextureTable",
             };
             Ok(format!(
-                "Binding {{ slot: {}, kind: BindingKind::{kind}, size: {}, internal: {} }}",
-                r.binding, r.size, r.internal
+                "Binding {{ slot: {}, kind: BindingKind::{kind}, size: {}, count: {}, internal: {} }}",
+                r.binding, r.size, r.count, r.internal
             ))
         })
         .collect::<io::Result<Vec<_>>>()?;

@@ -71,7 +71,7 @@ impl Tables {
             for (binding, _) in &pass.bindings {
                 let index = usize::from(binding.kind == BindingKind::Sampler);
                 counts[index] = counts[index]
-                    .checked_add(1)
+                    .checked_add(binding.count as usize)
                     .ok_or("native descriptor count overflow")?;
             }
         }
@@ -111,7 +111,17 @@ impl Tables {
             }
             for (binding, id) in &pass.bindings {
                 let index = id.index();
-                if let Resource::Sampler(filter) = inputs[index] {
+                if let Resource::TextureTable(images) = &inputs[index] {
+                    for image in images {
+                        super::compute_bindings::write(
+                            device,
+                            binding,
+                            gpu[image.index()].as_ref().unwrap(),
+                            0,
+                            self.resources.as_mut().unwrap().allocate(),
+                        );
+                    }
+                } else if let Resource::Sampler(filter) = inputs[index] {
                     let handle = self.samplers.as_mut().unwrap().allocate();
                     device.CreateSampler(
                         &D3D12_SAMPLER_DESC {

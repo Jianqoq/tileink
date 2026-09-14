@@ -182,3 +182,20 @@ fn sampler_resources_reject_foreign_handles_byte_readback_and_wrong_bindings() {
     }
     assert!(batch.passes().is_empty());
 }
+
+#[test]
+fn texture_tables_require_owned_2d_images_and_have_no_readback() {
+    let mut batch = ComputeBatch::new();
+    let image = batch.texture_rgba8([1, 1], vec![0; 4]).unwrap();
+    let array = batch.texture_array_rgba8([1, 1, 1], vec![0; 4]).unwrap();
+    let buffer = batch.buffer(vec![0; 4]).unwrap();
+    let mut foreign = ComputeBatch::new();
+    let foreign_image = foreign.texture_rgba8([1, 1], vec![0; 4]).unwrap();
+    assert!(batch.texture_table(&[]).is_err());
+    for invalid in [array, buffer, foreign_image] {
+        assert!(batch.texture_table(&[invalid]).is_err());
+    }
+    let table = batch.texture_table(&[image, image]).unwrap();
+    assert!(batch.readback(table).is_err());
+    assert!(batch.texture_table(&[table]).is_err());
+}

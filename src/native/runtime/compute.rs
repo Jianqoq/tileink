@@ -51,6 +51,25 @@ impl ComputeBatch {
         self.resources.push(Resource::Buffer(bytes));
         Ok(id)
     }
+    /// Descriptor tables reference owned images; they neither copy texels nor own a second GPU allocation.
+    pub fn texture_table(&mut self, images: &[ResourceId]) -> Result<ResourceId> {
+        if images.is_empty() || images.len() > u32::MAX as usize {
+            return Err("invalid native texture table length".into());
+        }
+        for &image in images {
+            self.size(image)?;
+            if !matches!(&self.resources[image.index], Resource::Texture(texture) if !texture.array)
+            {
+                return Err("texture tables require owned 2D images".into());
+            }
+        }
+        let id = ResourceId {
+            owner: self.owner,
+            index: self.resources.len(),
+        };
+        self.resources.push(Resource::TextureTable(images.to_vec()));
+        Ok(id)
+    }
     pub fn texture_rgba8(&mut self, size: [u32; 2], bytes: Vec<u8>) -> Result<ResourceId> {
         self.texture(size, 1, false, bytes)
     }
@@ -116,30 +135,52 @@ impl ComputeBatch {
         for &binding in expected {
             let mut matches = bindings.iter().filter(|(slot, _)| *slot == binding.slot);
             let id = matches.next().ok_or("missing native compute binding")?.1;
-            if matches.next().is_some() || self.size(id)? < (binding.size as usize) {
+            let size = self.size(id)?;
+            if matches.next().is_some()
+                || (binding.kind != BindingKind::TextureTable && size < binding.size as usize)
+            {
                 return Err("duplicate or undersized native compute binding".into());
             }
-            if (binding.kind == BindingKind::Sampler)
-                != matches!(self.resources[id.index], Resource::Sampler(_))
-            {
-                return Err("native compute sampler kind mismatch".into());
-            }
-            let texture_binding = matches!(
-                binding.kind,
-                BindingKind::Texture | BindingKind::TextureWrite | BindingKind::TextureArray
-            );
-            if texture_binding != matches!(self.resources[id.index], Resource::Texture(_)) {
-                return Err("native compute resource kind mismatch".into());
-            }
-            if let Resource::Texture(texture) = &self.resources[id.index]
-                && texture.array != (binding.kind == BindingKind::TextureArray)
-            {
-                return Err("native compute texture view dimension mismatch".into());
+            if binding.kind == BindingKind::TextureTable {
+                if !matches!(&self.resources[id.index], Resource::TextureTable(images) if images.len() == binding.count as usize)
+                {
+                    return Err("native texture table descriptor count mismatch".into());
+                }
+            } else {
+                if matches!(&self.resources[id.index], Resource::TextureTable(_)) {
+                    return Err("unexpected native texture table".into());
+                }
+                if (binding.kind == BindingKind::Sampler)
+                    != matches!(self.resources[id.index], Resource::Sampler(_))
+                {
+                    return Err("native compute sampler kind mismatch".into());
+                }
+                let texture_binding = matches!(
+                    binding.kind,
+                    BindingKind::Texture | BindingKind::TextureWrite | BindingKind::TextureArray
+                );
+                if texture_binding != matches!(self.resources[id.index], Resource::Texture(_)) {
+                    return Err("native compute resource kind mismatch".into());
+                }
+                if let Resource::Texture(texture) = &self.resources[id.index]
+                    && texture.array != (binding.kind == BindingKind::TextureArray)
+                {
+                    return Err("native compute texture view dimension mismatch".into());
+                }
             }
             if ordered
                 .iter()
                 .any(|(other, other_id): &(Binding, ResourceId)| {
-                    *other_id == id && (binding.kind.writable() || other.kind.writable())
+                    let images = match &self.resources[id.index] {
+                        Resource::TextureTable(images) => images.as_slice(),
+                        _ => std::slice::from_ref(&id),
+                    };
+                    let other_images = match &self.resources[other_id.index] {
+                        Resource::TextureTable(images) => images.as_slice(),
+                        _ => std::slice::from_ref(other_id),
+                    };
+                    (binding.kind.writable() || other.kind.writable())
+                        && images.iter().any(|image| other_images.contains(image))
                 })
             {
                 return Err("aliased native writable bindings".into());
@@ -158,8 +199,11 @@ impl ComputeBatch {
     }
     pub fn readback(&mut self, id: ResourceId) -> Result<usize> {
         self.size(id)?;
-        if matches!(self.resources[id.index], Resource::Sampler(_)) {
-            return Err("samplers have no byte readback".into());
+        if matches!(
+            self.resources[id.index],
+            Resource::Sampler(_) | Resource::TextureTable(_)
+        ) {
+            return Err("descriptor-only resources have no byte readback".into());
         }
         if let Some(index) = self.outputs.iter().position(|old| *old == id) {
             return Ok(index);

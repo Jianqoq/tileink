@@ -15,7 +15,7 @@ pub(super) unsafe fn write(
     unsafe {
         match binding.kind {
             BindingKind::Sampler => unreachable!("sampler descriptors use their own heap"),
-            BindingKind::Texture => device.CreateShaderResourceView(
+            BindingKind::Texture | BindingKind::TextureTable => device.CreateShaderResourceView(
                 resource,
                 Some(&D3D12_SHADER_RESOURCE_VIEW_DESC {
                     Format: windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R8G8B8A8_UNORM,
@@ -109,22 +109,30 @@ pub(super) unsafe fn write(
 
 pub(super) fn required_states(
     pass: &super::super::compute::Pass,
+    resources: &[super::super::compute::Resource],
 ) -> BTreeMap<usize, D3D12_RESOURCE_STATES> {
     let mut states = BTreeMap::new();
     for (binding, id) in &pass.bindings {
         let state = match binding.kind {
             BindingKind::Sampler => continue,
             BindingKind::Uniform => D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
-            BindingKind::Read | BindingKind::Texture | BindingKind::TextureArray => {
-                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
-            }
+            BindingKind::Read
+            | BindingKind::Texture
+            | BindingKind::TextureArray
+            | BindingKind::TextureTable => D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
             BindingKind::Write | BindingKind::TextureWrite => D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
         };
         // A resource may be both CBV and SRV in one pass. Preserve every read state;
         // replacing it per descriptor loses one access class (root-cause fix).
-        *states
-            .entry(id.index())
-            .or_insert(D3D12_RESOURCE_STATE_COMMON) |= state;
+        let images = match &resources[id.index()] {
+            super::super::compute::Resource::TextureTable(images) => images.as_slice(),
+            _ => std::slice::from_ref(id),
+        };
+        for image in images {
+            *states
+                .entry(image.index())
+                .or_insert(D3D12_RESOURCE_STATE_COMMON) |= state;
+        }
     }
     states
 }
@@ -152,7 +160,7 @@ fn readonly_alias_requires_union_of_descriptor_access_states() {
             )
             .unwrap();
     }
-    let states = required_states(&batch.passes()[0]);
+    let states = required_states(&batch.passes()[0], batch.resources());
     assert_eq!(
         states[&shared.index()],
         D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER

@@ -312,7 +312,7 @@ Mac 按用户决定延期，不计入本轮 Windows M3 验收；性能比较仍�
 
 - [ ] 串行 release 语义/边界/回归测试、全部 SVG、全部示例和完整 feature/平台构建矩阵通过。
 - [ ] required GPU 矩阵实际完成四路运行；生成完整 manifest、像素报告、失败工件和设备覆盖记录，缺项仍记未完成。
-- [ ] 重跑 Criterion 与 resize 对照，报告平均、P95/PMax、阶段占比和内存；修复显著退化，不以降低视觉质量换速度。
+- 性能比较已由用户取消：不运行 Criterion 或 resize 性能对照，也不将其作为 M6 退出门槛。
 - [ ] 完成格式、clippy、打包验证和代码审查；每个发现的问题补测试、修复、再验证。
 - [ ] 更新 README、website 架构/GPU 管线文档、测试脚本说明、BENCHMARKS、CHANGELOG、原生 API 安全合同和支持矩阵。
 

@@ -222,3 +222,6 @@ mod filter_stack;
 
 #[path = "tests/filter_glass_gpu.rs"]
 mod filter_glass;
+
+#[path = "tests/texture_table_gpu.rs"]
+mod texture_table;

@@ -76,6 +76,9 @@ pub fn write_rust(out: &Path) -> io::Result<()> {
     )?;
     let mut validation = rust_constants(&read_hlsl("validation/sdf_config.hlsli")?);
     validation.push_str(&rust_constants(&read_hlsl("shared/stack_constants.hlsli")?));
+    validation.push_str(&rust_constants(&read_hlsl(
+        "shared/texture_table_constants.hlsli",
+    )?));
     fs::write(out.join("tileink_native_test_constants.rs"), validation)
 }
 

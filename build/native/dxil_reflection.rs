@@ -89,16 +89,19 @@ pub fn validate(text: &str, entry: &str, abi: &Interface) -> io::Result<()> {
             Kind::Uniform => ("cb", ["cbuffer", "NA", "NA"]),
             Kind::Read => ("t", ["texture", "byte", "r/o"]),
             Kind::Write => ("u", ["UAV", "byte", "r/w"]),
-            Kind::Texture => ("t", ["texture", "f32", "2d"]),
+            Kind::Texture | Kind::TextureTable => ("t", ["texture", "f32", "2d"]),
             Kind::TextureWrite => ("u", ["UAV", "f32", "2d"]),
             Kind::TextureArray => ("t", ["texture", "f32", "2darray"]),
             Kind::Sampler => ("s", ["sampler", "NA", "NA"]),
         };
         let register = format!("{prefix}{}", resource.binding);
         require(
-            bindings
-                .iter()
-                .any(|b| b[0] == name && b[6] == "1" && b[5] == register && b[1..4] == kind),
+            bindings.iter().any(|b| {
+                b[0] == name
+                    && b[6] == resource.count.to_string()
+                    && b[5] == register
+                    && b[1..4] == kind
+            }),
             "DXIL register/space/type",
         )?;
     }

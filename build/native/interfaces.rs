@@ -65,6 +65,7 @@ const SCAN_CONFIG: &[(&str, u32, u32)] = &[
 ];
 fn buffer(binding: u32, kind: Kind) -> Resource {
     Resource {
+        count: 1,
         binding,
         kind,
         size: 4,
@@ -74,6 +75,7 @@ fn buffer(binding: u32, kind: Kind) -> Resource {
 }
 fn uniform(binding: u32, fields: &[(&str, u32, u32)], internal: bool) -> Resource {
     Resource {
+        count: 1,
         binding,
         kind: Kind::Uniform,
         size: fields
@@ -147,6 +149,7 @@ pub fn get(family: &str) -> io::Result<Interface> {
         "filter-layer" => filter::layer(&constants),
         "filter-stack" => filter::stack(&constants),
         "filter-glass" => filter::glass(&constants),
+        "texture-table-validation" => texture::table(&constants),
         "sdf-coverage" => validation::sdf(&constants),
         "filter-blur-shared" => filter::blur(&constants, true),
         "fine-gradient" => fine::gradient(&constants),
