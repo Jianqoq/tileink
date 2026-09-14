@@ -1700,3 +1700,13 @@ shader/editor/SPIR-V and SVG/examples pass; 3,471 PNGs remain unchanged. No-DXC
 replay passes 19 GPU filter tests without compilation. Both reviews are closed.
 See [convolution/resample evidence](docs/native/m4-filter-convolve-resample.md).
 M4 continues with blur and the other remaining filters, full fine and renderer integration.
+
+### M4 global and shared blur
+
+Two blur entries advance the validated inventory to **111/179**. Explicit Pixels/
+Tiles geometry preserves dispatch and barrier contracts. Independent Gaussian and
+source-domain regressions exposed and fixed a shared WGSL/HLSL center-tap leak.
+Full release (978), native runtime (103), strict Clippy, shader/editor/SPIR-V and
+SVG/examples pass; 3,471 PNGs are unchanged. No-DXC replay passes 22 filter GPU tests
+without compilation. Both reviews are closed. See [blur evidence](docs/native/m4-filter-blur.md).
+Lighting and remaining filters, full fine and NativeRenderer integration continue.

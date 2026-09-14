@@ -28,6 +28,7 @@ pub fn encode(
     region::record(
         batch,
         "filter_morphology_axis_region",
+        region::Geometry::Pixels,
         config,
         tiles,
         region::ReadBindings::textures(&[(1, source)]),

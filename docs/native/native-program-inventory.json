@@ -649,8 +649,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_blur_region",
+      "hlsl_source": "src/shaders/hlsl/filter/blur.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-blur.md"
     },
     {
       "source": "filter.wgsl",
@@ -661,8 +665,12 @@
         16,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_blur_shared_region",
+      "hlsl_source": "src/shaders/hlsl/filter/blur_shared.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-blur.md"
     },
     {
       "source": "filter.wgsl",
@@ -1169,8 +1177,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_blur_region",
+      "hlsl_source": "src/shaders/hlsl/filter/blur.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-blur.md"
     },
     {
       "source": "filter.wgsl",
@@ -1181,8 +1193,12 @@
         16,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_blur_shared_region",
+      "hlsl_source": "src/shaders/hlsl/filter/blur_shared.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-blur.md"
     },
     {
       "source": "filter.wgsl",
@@ -1713,8 +1729,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_blur_region",
+      "hlsl_source": "src/shaders/hlsl/filter/blur.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-blur.md"
     },
     {
       "source": "filter_web.wgsl",
@@ -1725,8 +1745,12 @@
         16,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_blur_shared_region",
+      "hlsl_source": "src/shaders/hlsl/filter/blur_shared.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-blur.md"
     },
     {
       "source": "filter_web.wgsl",
@@ -2233,8 +2257,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_blur_region",
+      "hlsl_source": "src/shaders/hlsl/filter/blur.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-blur.md"
     },
     {
       "source": "filter_web.wgsl",
@@ -2245,8 +2273,12 @@
         16,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_blur_shared_region",
+      "hlsl_source": "src/shaders/hlsl/filter/blur_shared.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-blur.md"
     },
     {
       "source": "filter_web.wgsl",

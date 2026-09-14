@@ -335,3 +335,33 @@ pub(super) fn resample(constants: &BTreeMap<String, u32>) -> Interface {
         ],
     )
 }
+
+pub(super) fn blur(constants: &BTreeMap<String, u32>, shared: bool) -> Interface {
+    let size = if shared {
+        [
+            constants["SHARED_BLUR_TILE_WIDTH"],
+            constants["SHARED_BLUR_TILE_HEIGHT"],
+            1,
+        ]
+    } else {
+        [constants["FILTER_WORKGROUP_SIZE"], 1, 1]
+    };
+    let entry = if shared {
+        "filter_blur_shared_region"
+    } else {
+        "filter_blur_region"
+    };
+    interface(
+        size,
+        &[
+            ("config", config()),
+            ("source_texture", buffer(1, Kind::Texture)),
+            ("target_texture", buffer(3, Kind::TextureWrite)),
+            ("active_tiles", buffer(8, Kind::Read)),
+        ],
+        &[(
+            entry,
+            &["config", "source_texture", "target_texture", "active_tiles"],
+        )],
+    )
+}

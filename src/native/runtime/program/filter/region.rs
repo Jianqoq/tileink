@@ -3,6 +3,12 @@ use crate::native::runtime::compute::Resource;
 use crate::shared::gpu_constants::{FILTER_WORKGROUP_SIZE, FINE_WORKGROUP_SIZE, TILE_SIZE};
 use std::collections::BTreeSet;
 
+#[derive(Clone, Copy)]
+pub(super) enum Geometry {
+    Pixels,
+    Tiles,
+}
+
 // Texture extent checks and raw-buffer checks are separate. Stage-owned typed data
 // validates buffer contents/address ranges before supplying these read bindings.
 #[derive(Default)]
@@ -24,6 +30,7 @@ impl<'a> ReadBindings<'a> {
 pub(super) fn record(
     batch: &mut ComputeBatch,
     entry: &'static str,
+    geometry: Geometry,
     mut config: FilterConfig,
     tiles: Option<&[u32]>,
     reads: ReadBindings<'_>,
@@ -83,23 +90,43 @@ pub(super) fn record(
     if config.region_width == 0 || config.region_height == 0 || config.pixel_count == 0 {
         return Ok(());
     }
-    // Bound padded linear invocation arithmetic as well as hardware dispatch dimensions.
-    let groups = config.pixel_count.div_ceil(FILTER_WORKGROUP_SIZE);
     if config.dispatch_width > 65535 {
         return Err("filter dispatch width exceeds hardware limit".into());
     }
-    config.dispatch_width = if config.dispatch_width == 0 {
-        groups.min(65535)
-    } else {
-        groups.min(config.dispatch_width)
+    let (columns, rows, lanes) = match geometry {
+        Geometry::Tiles if tiles.is_none() => (
+            config.region_width.div_ceil(TILE_SIZE),
+            config.region_height.div_ceil(TILE_SIZE),
+            1u64,
+        ),
+        _ => {
+            let groups = match geometry {
+                Geometry::Pixels => config.pixel_count.div_ceil(FILTER_WORKGROUP_SIZE),
+                Geometry::Tiles => config.active_tile_count,
+            };
+            let columns = groups.min(if config.dispatch_width == 0 {
+                65535
+            } else {
+                config.dispatch_width
+            });
+            (
+                columns,
+                groups.div_ceil(columns),
+                if matches!(geometry, Geometry::Pixels) {
+                    u64::from(FILTER_WORKGROUP_SIZE)
+                } else {
+                    1
+                },
+            )
+        }
     };
-    let rows = groups.div_ceil(config.dispatch_width);
-    if rows > 65535
-        || u64::from(config.dispatch_width) * u64::from(rows) * u64::from(FILTER_WORKGROUP_SIZE)
-            > u64::from(u32::MAX)
+    if columns > 65535
+        || rows > 65535
+        || u64::from(columns) * u64::from(rows) * lanes > u64::from(u32::MAX)
     {
         return Err("filter padded dispatch addressing overflow".into());
     }
+    config.dispatch_width = columns;
     let uniform = batch.buffer(bytemuck::bytes_of(&config).to_vec())?;
     let active = batch.buffer(
         tiles

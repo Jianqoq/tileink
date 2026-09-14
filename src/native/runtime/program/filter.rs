@@ -105,6 +105,7 @@ pub fn encode(
     region::record(
         batch,
         kernel.entry(),
+        region::Geometry::Pixels,
         config,
         tiles,
         region::ReadBindings::textures(reads.as_slice()),
@@ -123,3 +124,6 @@ pub mod convolve;
 
 #[path = "filter/resample.rs"]
 pub mod resample;
+
+#[path = "filter/blur.rs"]
+pub mod blur;

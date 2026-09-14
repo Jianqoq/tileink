@@ -299,7 +299,12 @@ fn filter_blur_pixel_global(xy: vec2<u32>, dst_ix: u32, std_dev: f32) -> u32 {
     let base_x = i32(xy.x);
     let base_y = i32(xy.y);
 
-    let center = source_pixel_ix(dst_ix);
+    // Root fix: the center must obey the same source domain as every other tap.
+    // Otherwise global blur leaks pixels that shared blur correctly treats as transparent.
+    var center = 0u;
+    if (base_x >= region_x0 && base_x < region_x1 && base_y >= region_y0 && base_y < region_y1) {
+        center = source_pixel_ix(dst_ix);
+    }
     var sum = 1.0;
     var accumulator = filter_blur_channels(center);
 

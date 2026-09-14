@@ -19,6 +19,8 @@ pub const FAMILIES: &[(&str, &str)] = &[
     ("filter-transfer", "filter/transfer.hlsl"),
     ("filter-convolve", "filter/convolve.hlsl"),
     ("filter-resample", "filter/resample.hlsl"),
+    ("filter-blur", "filter/blur.hlsl"),
+    ("filter-blur-shared", "filter/blur_shared.hlsl"),
     ("fine-gradient", "validation/gradient.hlsl"),
     ("fine-pattern", "validation/pattern.hlsl"),
     ("texture-validation", "validation/texture.hlsl"),

@@ -192,3 +192,6 @@ mod filter_convolve;
 
 #[path = "tests/filter_resample_gpu.rs"]
 mod filter_resample;
+
+#[path = "tests/filter_blur_gpu.rs"]
+mod filter_blur;

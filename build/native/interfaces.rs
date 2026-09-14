@@ -138,6 +138,8 @@ pub fn get(family: &str) -> io::Result<Interface> {
         "filter-transfer" => filter::transfer(&constants),
         "filter-convolve" => filter::convolve(&constants),
         "filter-resample" => filter::resample(&constants),
+        "filter-blur" => filter::blur(&constants, false),
+        "filter-blur-shared" => filter::blur(&constants, true),
         "fine-gradient" => fine::gradient(&constants),
         "fine-pattern" => fine::pattern(&constants),
         "texture-validation" => texture::validation(&constants),

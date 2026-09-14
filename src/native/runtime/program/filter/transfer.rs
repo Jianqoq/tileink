@@ -46,6 +46,7 @@ pub fn encode(
     region::record(
         batch,
         "filter_component_transfer_region",
+        region::Geometry::Pixels,
         config,
         tiles,
         region::ReadBindings {

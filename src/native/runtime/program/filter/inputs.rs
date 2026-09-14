@@ -41,6 +41,7 @@ pub fn encode(
     region::record(
         batch,
         entry,
+        region::Geometry::Pixels,
         config,
         tiles,
         region::ReadBindings::textures(&reads),

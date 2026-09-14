@@ -25,6 +25,8 @@ fn native_build_embeds_each_expected_nonempty_program() {
         "filter_convolve_matrix_region",
         "filter_downsample_region",
         "filter_upsample_region",
+        "filter_blur_region",
+        "filter_blur_shared_region",
         "filter_composite_inputs_region",
         "filter_apply_region_mask",
         "filter_color_region",

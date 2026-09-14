@@ -17,6 +17,7 @@ pub fn encode(
     region::record(
         batch,
         "filter_displacement_map_region",
+        region::Geometry::Pixels,
         config,
         tiles,
         region::ReadBindings::textures(&[(1, source), (2, map)]),
