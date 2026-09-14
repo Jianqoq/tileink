@@ -174,3 +174,6 @@ mod filter;
 
 #[path = "tests/filter_color_gpu.rs"]
 mod filter_color;
+
+#[path = "tests/filter_inputs_gpu.rs"]
+mod filter_inputs;

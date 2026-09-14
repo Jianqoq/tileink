@@ -243,6 +243,7 @@ impl Reference {
                     "filter_source_over_region"
                         | "filter_color_region"
                         | "filter_color_matrix_region"
+                        | "filter_apply_region_mask"
                 ) {
                 let target = stage.bindings.iter().find(|(b, _)| b.slot == 3).unwrap().1;
                 let snapshot = resources[target.index()].snapshot(&self.device, &mut encoder);

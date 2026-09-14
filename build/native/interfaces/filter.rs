@@ -191,3 +191,42 @@ pub(super) fn basic(constants: &BTreeMap<String, u32>) -> Interface {
         ],
     )
 }
+
+pub(super) fn inputs(constants: &BTreeMap<String, u32>) -> Interface {
+    interface(
+        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        &[
+            ("config", config()),
+            ("source_texture", buffer(1, Kind::Texture)),
+            ("aux_texture", buffer(2, Kind::Texture)),
+            ("target_texture", buffer(3, Kind::TextureWrite)),
+            ("active_tiles", buffer(8, Kind::Read)),
+        ],
+        &[
+            (
+                "filter_blend_region",
+                &[
+                    "config",
+                    "source_texture",
+                    "aux_texture",
+                    "target_texture",
+                    "active_tiles",
+                ],
+            ),
+            (
+                "filter_composite_inputs_region",
+                &[
+                    "config",
+                    "source_texture",
+                    "aux_texture",
+                    "target_texture",
+                    "active_tiles",
+                ],
+            ),
+            (
+                "filter_apply_region_mask",
+                &["config", "aux_texture", "target_texture", "active_tiles"],
+            ),
+        ],
+    )
+}

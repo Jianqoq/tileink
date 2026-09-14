@@ -67,9 +67,10 @@ fn blend_premul_u8(dst: u32, src: u32, mode: u32) -> u32 {
         let mixed_r = mix_rgb_channel(dst_r, dst_g, dst_b, src_r, src_g, src_b, mix, 0u);
         let mixed_g = mix_rgb_channel(dst_r, dst_g, dst_b, src_r, src_g, src_b, mix, 1u);
         let mixed_b = mix_rgb_channel(dst_r, dst_g, dst_b, src_r, src_g, src_b, mix, 2u);
-        let effective_r = src_alpha * ((1.0 - dst_alpha) * src_r + dst_alpha * mixed_r);
-        let effective_g = src_alpha * ((1.0 - dst_alpha) * src_g + dst_alpha * mixed_g);
-        let effective_b = src_alpha * ((1.0 - dst_alpha) * src_b + dst_alpha * mixed_b);
+        // Match native effective-color fusion; Hue + SourceOut exposed an implicit-order mismatch.
+        let effective_r = src_alpha * fma(dst_alpha, mixed_r, (1.0 - dst_alpha) * src_r);
+        let effective_g = src_alpha * fma(dst_alpha, mixed_g, (1.0 - dst_alpha) * src_g);
+        let effective_b = src_alpha * fma(dst_alpha, mixed_b, (1.0 - dst_alpha) * src_b);
         let src_factor = compose_src_factor(compose, src_alpha, dst_alpha);
         let dst_factor = compose_dst_factor(compose, src_alpha, dst_alpha);
         out_r = effective_r * src_factor + dr * dst_factor;

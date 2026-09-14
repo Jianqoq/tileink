@@ -35,7 +35,8 @@ uint blend_premul_u8(uint destination,uint source,uint mode) {
         if (src_alpha>0.0) straight_src=src.rgb/src_alpha;
         if (dst_alpha>0.0) straight_dst=dst.rgb/dst_alpha;
         float3 mixed=mix_rgb(straight_dst,straight_src,mix);
-        float3 effective=src_alpha*((1.0-dst_alpha)*straight_src+dst_alpha*mixed);
+        // Explicit fusion keeps scalar/vector backends on the same half-channel boundary.
+        float3 effective=src_alpha*mad(dst_alpha,mixed,(1.0-dst_alpha)*straight_src);
         float src_factor=compose_src_factor(compose,dst_alpha), dst_factor=compose_dst_factor(compose,src_alpha);
         result.rgb=effective*src_factor+dst.rgb*dst_factor;
         result.a=src_alpha*src_factor+dst_alpha*dst_factor;
