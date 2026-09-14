@@ -1,0 +1,27 @@
+#ifndef TILEINK_FILTER_GLASS_CONSTANTS_HLSLI
+#define TILEINK_FILTER_GLASS_CONSTANTS_HLSLI
+static const float LIQUID_GLASS_CHROMATIC_R = 0.98;
+static const float LIQUID_GLASS_CHROMATIC_G = 1.0;
+static const float LIQUID_GLASS_CHROMATIC_B = 1.02;
+static const float LIQUID_GLASS_PI = 3.1415927;
+static const float LIQUID_GLASS_REFRACTION_PIXEL_SCALE = 70.71068;
+static const float LIQUID_GLASS_NORMAL_LENGTH_SCALE = 1414.2136;
+static const float LIQUID_GLASS_ACTIVE_DISTANCE_NORM = 0.005;
+static const float LIQUID_GLASS_EDGE_BLEND_START = -0.001;
+static const float LIQUID_GLASS_EDGE_BLEND_END = 0.001;
+static const float LIQUID_GLASS_TINT_MIX = 0.8;
+static const float LIQUID_GLASS_TINT_BASE_MIX = 0.5;
+static const float LIQUID_GLASS_FRESNEL_LIGHTNESS_GAIN = 20.0;
+static const float LIQUID_GLASS_FRESNEL_MIX_SCALE = 0.7;
+static const float LIQUID_GLASS_GLARE_LIGHTNESS_GAIN = 150.0;
+static const float LIQUID_GLASS_GLARE_CHROMA_GAIN = 30.0;
+static const float LIQUID_GLASS_GLARE_SIDE_SCALE = 1.2;
+static const float LIQUID_GLASS_GLARE_POWER_BASE = 0.1;
+static const float LIQUID_GLASS_GLARE_POWER_SCALE = 2.0;
+static const float LIQUID_GLASS_GEOMETRY_DISTANCE_SCALE = 1500.0;
+static const float LIQUID_GLASS_GEOMETRY_RANGE_SCALE = 500.0;
+static const float LIQUID_GLASS_EPSILON = 0.000001;
+static const float LIQUID_GLASS_D65_X = 0.9504559;
+static const float LIQUID_GLASS_D65_Y = 1.0;
+static const float LIQUID_GLASS_D65_Z = 1.0890578;
+#endif

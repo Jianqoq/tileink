@@ -1,0 +1,567 @@
+{
+  "schema": 1,
+  "scope": "M4 scan kernel slice, not complete NativeRenderer or four-route SVG acceptance",
+  "gpu_luid": "9f3f010000000000",
+  "routes": [
+    "wgpu-dx12",
+    "wgpu-vulkan",
+    "native-dx12",
+    "native-vulkan"
+  ],
+  "comparisons": "Exact bytes of every selected output buffer; float segment bits and guards included. No tolerance or channel masking.",
+  "scan_output_executions": {
+    "clear": 144,
+    "prefix_offsets_apply": 72,
+    "count": 3072,
+    "single_line_full_chain": 768,
+    "affine_multi_path_full_chain": 40
+  },
+  "tail_regression_route_executions": 8,
+  "runtime_tests": 41,
+  "release_library_tests": {
+    "passed": 963,
+    "ignored": 19
+  },
+  "cpu_only_library_tests": 620,
+  "no_dxc": {
+    "tests_passed": 41,
+    "pipeline_compiles": 0,
+    "cache_hits": 254,
+    "wgpu_reference_dxc_dll_retained": true
+  },
+  "png_regression": {
+    "scope": "existing wgpu native-texture/portable-texture SVG and examples; not native API renderer",
+    "before": 3471,
+    "after": 3471,
+    "changed": [],
+    "missing": [],
+    "added": []
+  },
+  "log_sha256": {
+    "m4-scan-full-release.log": "7eb38d20b2cdd6dda993c1dd094b8df724453c9b17716d92a9506994187c9214",
+    "m4-scan-runtime-all.log": "279f73a3bcdcfe7da21c77215b357c24b278eca8e62bc332ae308117bb8705cc",
+    "m4-scan-no-dxc.log": "c70e065c8029daf92f02ae9c84f601c6d982110812dd20f5a38c838baa2bcc70",
+    "m4-scan-clippy.log": "a213aa57ab0e786422533c18142c12bb33e3e7956ef8a1d09e1e3d43209b1a39",
+    "m4-scan-svg.log": "8c9bdd8bd781a5d6e4c35947b3d9db9d25ba68934785e7a3008b8747c5a262e5",
+    "m4-scan-examples.log": "67bd5b19a99c521739286c86e0b6edf0b72132db93b054323a1c8f3c68d08201",
+    "m4-scan-cpu-only.log": "f250104f344742442dd3b00d282665ff2e3c64f23a6b0100a31931a0070517cb",
+    "m4-scan-feature-native-dx12.log": "1e8221837bec355ad1806b775c0185acd9fe0d827a7402775ed585dd17723548",
+    "m4-scan-feature-native-vulkan.log": "36f55725785cda91a9bd3dbff108000369657a3f4074021a4eabb44ee63c29ba",
+    "m4-scan-feature-native.log": "cf3fc666a1963d48f30821ffa7c7dd39b74154b132595ed8cd7428210c11e033"
+  },
+  "source_sha256": {
+    "src/shaders/hlsl/scan/apply_chunk_offsets.hlsl": "4208372eee6a80ddcd1a8e530712ededde5656b08bd319db3548c3d132e2a253",
+    "src/shaders/hlsl/scan/chunk_offsets.hlsl": "7f19badcb482e2b63d974f0ac91ebad68507afdd20e6b6938c07de82c8263440",
+    "src/shaders/hlsl/scan/clear.hlsl": "e6f54757c1279c9b55b9757f05d271162e6bd636a19aa43cb2a07952d39166b1",
+    "src/shaders/hlsl/scan/clip.hlsli": "31b77ef1f76175a3bc913e214e39f4d9a5a61e64ec2eb226c8c61188631d7d81",
+    "src/shaders/hlsl/scan/common.hlsli": "923e2d06317eb3877a4ccd184a80feeddab25d1dd333e58e3cb4170c89f8827c",
+    "src/shaders/hlsl/scan/count.hlsl": "257d77370f08d38e5f3ae9de7766026052a2bd35b8bd09498cadab25a1aa0919",
+    "src/shaders/hlsl/scan/emit.hlsl": "e352f2c12ad7e49368ae369d009ebb593cadf20b4473c71b7d63ca802b482c90",
+    "src/shaders/hlsl/scan/geometry.hlsli": "497b1ba7268f91a728109f267b7f860f5bef3efec30470d1557f03f2d9d9cab0",
+    "src/shaders/hlsl/scan/prefix_chunks.hlsl": "eb684152d4a4fc3f50a44a4435ad2c3c458fc230054f936993ca161d6a4e9c59",
+    "src/shaders/scan-apply-chunk-offsets-abi.json": "a582bccb3c0ae26f28a343487b7cfb268e67b2981093711f1eee97cf6101d52c",
+    "src/shaders/scan-chunk-offsets-abi.json": "6fea40177d787cf3865e394d2c7d04dbdef4675829d9258b941fdae33fe1e7e2",
+    "src/shaders/scan-clear-abi.json": "73114c4db6c9494c8593bd9eceeb1a7118ac264498679c4eda6eb9dcf295c247",
+    "src/shaders/scan-count-abi.json": "45e4e0e7c602a2d5b8738d2157021f36e749ab4b52a8ecc099310dc8ecd49d82",
+    "src/shaders/scan-emit-abi.json": "20231cdd57145710477175cca36e89a04cccdab1c60d5675d66a2763739ced65",
+    "src/shaders/scan-prefix-chunks-abi.json": "c253e43a6495ea4c0853799629e86021af9ec58d6962e7048fdd6b94445917f2",
+    "src/shaders/scan-records-abi.json": "aeeacba1e9eac9686bc45fd1d001fc4413af5e2c9720a2914d9a112e59f72bb3",
+    "src/shared/gpu_constants.rs": "dc2b32df2251e326cc4016b80cba66ac34e3b1989ccc498f58ebd41951a3dd3f",
+    "build/native/program.rs": "6e0abfba559797b3a779811267308b2f0c6d01eb3a7a761dbef6bccd5e6e2e60"
+  },
+  "artifacts": [
+    {
+      "artifact_sha256": "1d5995127aca948222120e02df0496018834babd4bbc9f59852128c2634d8a21",
+      "key": "ba3cf8e6d5c5b19bc49c78f999100719ae9bb227ca8fe0ce261d432a480c2fd0",
+      "recipe": {
+        "abi_sha256": "c6267cd917042bd13b7ec7db46ab03dd99a225e1b217477ff91c1bd91bebdf0d",
+        "cumsum_chunk_size": 256,
+        "entry": "scan_prefix_chunks",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "scan_prefix_chunks",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "dispatch.hlsli": "// HLSL has no num_workgroups builtin. The adapter supplies the actual grid.\nstruct DispatchGrid { uint x; uint y; uint z; uint _pad; };\nConstantBuffer<DispatchGrid> dispatch_grid : register(b31, space0);\nuint linear_group(uint3 group) {\n    return group.x + group.y * dispatch_grid.x + group.z * dispatch_grid.x * dispatch_grid.y;\n}\n",
+          "scan/common.hlsli": "#include \"../dispatch.hlsli\"\r\nstruct ScanConfig {\r\n    uint clear_len; uint backdrop_len; uint path_count; uint scan_chunk_count;\r\n    uint line_count; uint segment_capacity; uint incremental; uint line_base;\r\n    uint path_base; uint chunk_base; uint backdrop_base;\r\n};\r\nConstantBuffer<ScanConfig> config:register(b0,space0);\r\n// Each entry declares its active-index buffer before including this shared code.\r\nuint dispatched_index(uint index,uint base) {\r\n    if (config.incremental != 0u) return active_indices.Load((base+index)*4u);\r\n    return index;\r\n}\r\n",
+          "scan/prefix_chunks.hlsl": "ByteAddressBuffer active_indices:register(t5,space0);\r\n#include \"common.hlsli\"\r\nByteAddressBuffer scan_chunks:register(t1,space0);\r\nRWByteAddressBuffer segment_ranges:register(u2,space0);\r\nByteAddressBuffer segment_tile_counts:register(t3,space0);\r\nRWByteAddressBuffer chunk_totals:register(u4,space0);\r\ngroupshared uint scratch[SCAN_CHUNK_SIZE];\r\n\r\n[numthreads(SCAN_CHUNK_SIZE,1,1)]\r\nvoid scan_prefix_chunks(uint3 group:SV_GroupID,uint3 local:SV_GroupThreadID) {\r\n    uint local_chunk=linear_group(group);\r\n    // Raw native buffers cannot inherit WGSL's robust out-of-range reads.\r\n    if (local_chunk>=config.scan_chunk_count) return;\r\n    uint index=dispatched_index(local_chunk,config.chunk_base);\r\n    uint4 chunk=scan_chunks.Load4(index*SCAN_CHUNK_STRIDE);\r\n    uint lane=local.x;\r\n    uint count=0u;\r\n    if(lane<chunk.w) count=segment_tile_counts.Load((chunk.y+lane)*4u);\r\n    scratch[lane]=count;GroupMemoryBarrierWithGroupSync();\r\n    for(uint step=1u;step<SCAN_CHUNK_SIZE;step*=2u) {\r\n        uint add=0u;if(lane>=step) add=scratch[lane-step];\r\n        GroupMemoryBarrierWithGroupSync();\r\n        if(lane>=step) scratch[lane]+=add;\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    if(lane<chunk.w) {\r\n        uint inclusive=scratch[lane];\r\n        segment_ranges.Store2((chunk.y+lane)*SCAN_TILE_RANGE_STRIDE,uint2(inclusive-count,inclusive));\r\n    }\r\n    if(lane+1u==chunk.w) chunk_totals.Store(index*4u,scratch[lane]);\r\n}\r\n"
+        },
+        "target": "dxil",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "scan-prefix_chunks"
+      }
+    },
+    {
+      "artifact_sha256": "fff9c476e5b6c773d19725538ada9379a5f9b79210a3c4a6ed56e620853faa39",
+      "key": "e47ff47b37390c146985f404a5bec6501ed62a0abec8facc7541505d61bbaa05",
+      "recipe": {
+        "abi_sha256": "c6267cd917042bd13b7ec7db46ab03dd99a225e1b217477ff91c1bd91bebdf0d",
+        "cumsum_chunk_size": 256,
+        "entry": "scan_prefix_chunks",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "scan_prefix_chunks",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis",
+          "-spirv",
+          "-fspv-target-env=vulkan1.1"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "dispatch.hlsli": "// HLSL has no num_workgroups builtin. The adapter supplies the actual grid.\nstruct DispatchGrid { uint x; uint y; uint z; uint _pad; };\nConstantBuffer<DispatchGrid> dispatch_grid : register(b31, space0);\nuint linear_group(uint3 group) {\n    return group.x + group.y * dispatch_grid.x + group.z * dispatch_grid.x * dispatch_grid.y;\n}\n",
+          "scan/common.hlsli": "#include \"../dispatch.hlsli\"\r\nstruct ScanConfig {\r\n    uint clear_len; uint backdrop_len; uint path_count; uint scan_chunk_count;\r\n    uint line_count; uint segment_capacity; uint incremental; uint line_base;\r\n    uint path_base; uint chunk_base; uint backdrop_base;\r\n};\r\nConstantBuffer<ScanConfig> config:register(b0,space0);\r\n// Each entry declares its active-index buffer before including this shared code.\r\nuint dispatched_index(uint index,uint base) {\r\n    if (config.incremental != 0u) return active_indices.Load((base+index)*4u);\r\n    return index;\r\n}\r\n",
+          "scan/prefix_chunks.hlsl": "ByteAddressBuffer active_indices:register(t5,space0);\r\n#include \"common.hlsli\"\r\nByteAddressBuffer scan_chunks:register(t1,space0);\r\nRWByteAddressBuffer segment_ranges:register(u2,space0);\r\nByteAddressBuffer segment_tile_counts:register(t3,space0);\r\nRWByteAddressBuffer chunk_totals:register(u4,space0);\r\ngroupshared uint scratch[SCAN_CHUNK_SIZE];\r\n\r\n[numthreads(SCAN_CHUNK_SIZE,1,1)]\r\nvoid scan_prefix_chunks(uint3 group:SV_GroupID,uint3 local:SV_GroupThreadID) {\r\n    uint local_chunk=linear_group(group);\r\n    // Raw native buffers cannot inherit WGSL's robust out-of-range reads.\r\n    if (local_chunk>=config.scan_chunk_count) return;\r\n    uint index=dispatched_index(local_chunk,config.chunk_base);\r\n    uint4 chunk=scan_chunks.Load4(index*SCAN_CHUNK_STRIDE);\r\n    uint lane=local.x;\r\n    uint count=0u;\r\n    if(lane<chunk.w) count=segment_tile_counts.Load((chunk.y+lane)*4u);\r\n    scratch[lane]=count;GroupMemoryBarrierWithGroupSync();\r\n    for(uint step=1u;step<SCAN_CHUNK_SIZE;step*=2u) {\r\n        uint add=0u;if(lane>=step) add=scratch[lane-step];\r\n        GroupMemoryBarrierWithGroupSync();\r\n        if(lane>=step) scratch[lane]+=add;\r\n        GroupMemoryBarrierWithGroupSync();\r\n    }\r\n    if(lane<chunk.w) {\r\n        uint inclusive=scratch[lane];\r\n        segment_ranges.Store2((chunk.y+lane)*SCAN_TILE_RANGE_STRIDE,uint2(inclusive-count,inclusive));\r\n    }\r\n    if(lane+1u==chunk.w) chunk_totals.Store(index*4u,scratch[lane]);\r\n}\r\n"
+        },
+        "target": "spirv",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "scan-prefix_chunks"
+      }
+    },
+    {
+      "artifact_sha256": "7e75a9b2120952ff8ca01466932293e47f064260f246d565e7c9ffb1984c8c4b",
+      "key": "d1db56067126e58cf8ae8a0d2f4a7f58fa62e754ee3dfa9061e5b2e00db76690",
+      "recipe": {
+        "abi_sha256": "fdcd251a2abcf7388ad17020082f6af693d9848e26c8b2a7fe24c19d5a7e8ce6",
+        "cumsum_chunk_size": 256,
+        "entry": "scan_chunk_offsets",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "scan_chunk_offsets",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "dispatch.hlsli": "// HLSL has no num_workgroups builtin. The adapter supplies the actual grid.\nstruct DispatchGrid { uint x; uint y; uint z; uint _pad; };\nConstantBuffer<DispatchGrid> dispatch_grid : register(b31, space0);\nuint linear_group(uint3 group) {\n    return group.x + group.y * dispatch_grid.x + group.z * dispatch_grid.x * dispatch_grid.y;\n}\n",
+          "scan/chunk_offsets.hlsl": "ByteAddressBuffer active_indices:register(t6,space0);\r\n#include \"common.hlsli\"\r\nByteAddressBuffer path_records:register(t1,space0);\r\nByteAddressBuffer scan_chunk_ranges:register(t2,space0);\r\nRWByteAddressBuffer segment_bumps:register(u3,space0);\r\nRWByteAddressBuffer chunk_totals:register(u4,space0);\r\nRWByteAddressBuffer chunk_offsets:register(u5,space0);\r\n\r\n[numthreads(SCAN_CHUNK_SIZE,1,1)]\r\nvoid scan_chunk_offsets(uint3 id:SV_DispatchThreadID) {\r\n    if(id.x>=config.path_count) return;\r\n    uint path=dispatched_index(id.x,config.path_base);\r\n    uint start=path_records.Load(path*SCAN_PATH_RECORD_STRIDE+SCAN_PATH_SEGMENT_START);\r\n    uint next=start;\r\n    uint2 range=scan_chunk_ranges.Load2(path*SCAN_CHUNK_RANGE_STRIDE);\r\n    for(uint chunk=range.x;chunk<range.y;chunk++) {\r\n        chunk_offsets.Store(chunk*4u,next);\r\n        next+=chunk_totals.Load(chunk*4u);\r\n    }\r\n    segment_bumps.Store(path*4u,next-start);\r\n}\r\n",
+          "scan/common.hlsli": "#include \"../dispatch.hlsli\"\r\nstruct ScanConfig {\r\n    uint clear_len; uint backdrop_len; uint path_count; uint scan_chunk_count;\r\n    uint line_count; uint segment_capacity; uint incremental; uint line_base;\r\n    uint path_base; uint chunk_base; uint backdrop_base;\r\n};\r\nConstantBuffer<ScanConfig> config:register(b0,space0);\r\n// Each entry declares its active-index buffer before including this shared code.\r\nuint dispatched_index(uint index,uint base) {\r\n    if (config.incremental != 0u) return active_indices.Load((base+index)*4u);\r\n    return index;\r\n}\r\n"
+        },
+        "target": "dxil",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "scan-chunk_offsets"
+      }
+    },
+    {
+      "artifact_sha256": "92df92e8dae749a007f44bb3f23e8b51f64e72a95f35e78cca51a26a1cd2bfe9",
+      "key": "db282dd51f7336571a4d4528c61ade2fe0419bcefeb7b089081abf0bbb216886",
+      "recipe": {
+        "abi_sha256": "fdcd251a2abcf7388ad17020082f6af693d9848e26c8b2a7fe24c19d5a7e8ce6",
+        "cumsum_chunk_size": 256,
+        "entry": "scan_chunk_offsets",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "scan_chunk_offsets",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis",
+          "-spirv",
+          "-fspv-target-env=vulkan1.1"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "dispatch.hlsli": "// HLSL has no num_workgroups builtin. The adapter supplies the actual grid.\nstruct DispatchGrid { uint x; uint y; uint z; uint _pad; };\nConstantBuffer<DispatchGrid> dispatch_grid : register(b31, space0);\nuint linear_group(uint3 group) {\n    return group.x + group.y * dispatch_grid.x + group.z * dispatch_grid.x * dispatch_grid.y;\n}\n",
+          "scan/chunk_offsets.hlsl": "ByteAddressBuffer active_indices:register(t6,space0);\r\n#include \"common.hlsli\"\r\nByteAddressBuffer path_records:register(t1,space0);\r\nByteAddressBuffer scan_chunk_ranges:register(t2,space0);\r\nRWByteAddressBuffer segment_bumps:register(u3,space0);\r\nRWByteAddressBuffer chunk_totals:register(u4,space0);\r\nRWByteAddressBuffer chunk_offsets:register(u5,space0);\r\n\r\n[numthreads(SCAN_CHUNK_SIZE,1,1)]\r\nvoid scan_chunk_offsets(uint3 id:SV_DispatchThreadID) {\r\n    if(id.x>=config.path_count) return;\r\n    uint path=dispatched_index(id.x,config.path_base);\r\n    uint start=path_records.Load(path*SCAN_PATH_RECORD_STRIDE+SCAN_PATH_SEGMENT_START);\r\n    uint next=start;\r\n    uint2 range=scan_chunk_ranges.Load2(path*SCAN_CHUNK_RANGE_STRIDE);\r\n    for(uint chunk=range.x;chunk<range.y;chunk++) {\r\n        chunk_offsets.Store(chunk*4u,next);\r\n        next+=chunk_totals.Load(chunk*4u);\r\n    }\r\n    segment_bumps.Store(path*4u,next-start);\r\n}\r\n",
+          "scan/common.hlsli": "#include \"../dispatch.hlsli\"\r\nstruct ScanConfig {\r\n    uint clear_len; uint backdrop_len; uint path_count; uint scan_chunk_count;\r\n    uint line_count; uint segment_capacity; uint incremental; uint line_base;\r\n    uint path_base; uint chunk_base; uint backdrop_base;\r\n};\r\nConstantBuffer<ScanConfig> config:register(b0,space0);\r\n// Each entry declares its active-index buffer before including this shared code.\r\nuint dispatched_index(uint index,uint base) {\r\n    if (config.incremental != 0u) return active_indices.Load((base+index)*4u);\r\n    return index;\r\n}\r\n"
+        },
+        "target": "spirv",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "scan-chunk_offsets"
+      }
+    },
+    {
+      "artifact_sha256": "5d38e1d9edfbdf2a15feefc940b51fab46618f5dd50d1b1f14d9cf9c2b50a0c7",
+      "key": "10afbf2a727fcf739e713743dd6e0121e62756b739253c0a97daaa41ea6fd648",
+      "recipe": {
+        "abi_sha256": "e3c73e34e247e16b5855c29a2753897fa8f313d9e7e7b1631ac78eab1aeb24d1",
+        "cumsum_chunk_size": 256,
+        "entry": "scan_apply_chunk_offsets",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "scan_apply_chunk_offsets",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "dispatch.hlsli": "// HLSL has no num_workgroups builtin. The adapter supplies the actual grid.\nstruct DispatchGrid { uint x; uint y; uint z; uint _pad; };\nConstantBuffer<DispatchGrid> dispatch_grid : register(b31, space0);\nuint linear_group(uint3 group) {\n    return group.x + group.y * dispatch_grid.x + group.z * dispatch_grid.x * dispatch_grid.y;\n}\n",
+          "scan/apply_chunk_offsets.hlsl": "ByteAddressBuffer active_indices:register(t5,space0);\r\n#include \"common.hlsli\"\r\nByteAddressBuffer scan_chunks:register(t1,space0);\r\nRWByteAddressBuffer segment_ranges:register(u2,space0);\r\nRWByteAddressBuffer segment_tile_cursors:register(u3,space0);\r\nRWByteAddressBuffer chunk_offsets:register(u4,space0);\r\n\r\n[numthreads(SCAN_CHUNK_SIZE,1,1)]\r\nvoid scan_apply_chunk_offsets(uint3 group:SV_GroupID,uint3 local:SV_GroupThreadID) {\r\n    uint local_chunk=linear_group(group);\r\n    if(local_chunk>=config.scan_chunk_count) return;\r\n    uint chunk_index=dispatched_index(local_chunk,config.chunk_base);\r\n    uint4 chunk=scan_chunks.Load4(chunk_index*SCAN_CHUNK_STRIDE);\r\n    if(local.x>=chunk.w) return;\r\n    uint index=chunk.y+local.x;\r\n    uint base=chunk_offsets.Load(chunk_index*4u);\r\n    uint2 range=segment_ranges.Load2(index*SCAN_TILE_RANGE_STRIDE)+base;\r\n    segment_ranges.Store2(index*SCAN_TILE_RANGE_STRIDE,range);\r\n    segment_tile_cursors.Store(index*4u,range.x);\r\n}\r\n",
+          "scan/common.hlsli": "#include \"../dispatch.hlsli\"\r\nstruct ScanConfig {\r\n    uint clear_len; uint backdrop_len; uint path_count; uint scan_chunk_count;\r\n    uint line_count; uint segment_capacity; uint incremental; uint line_base;\r\n    uint path_base; uint chunk_base; uint backdrop_base;\r\n};\r\nConstantBuffer<ScanConfig> config:register(b0,space0);\r\n// Each entry declares its active-index buffer before including this shared code.\r\nuint dispatched_index(uint index,uint base) {\r\n    if (config.incremental != 0u) return active_indices.Load((base+index)*4u);\r\n    return index;\r\n}\r\n"
+        },
+        "target": "dxil",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "scan-apply_chunk_offsets"
+      }
+    },
+    {
+      "artifact_sha256": "efda304e857efd2a76d4abfba248afa771a5e0ff2195e8c0fe8db4571279b3e9",
+      "key": "575bae0874275622b3d9ddcce2e60cee4c7ea6ddd02589c80aa734fa65cfac63",
+      "recipe": {
+        "abi_sha256": "e3c73e34e247e16b5855c29a2753897fa8f313d9e7e7b1631ac78eab1aeb24d1",
+        "cumsum_chunk_size": 256,
+        "entry": "scan_apply_chunk_offsets",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "scan_apply_chunk_offsets",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis",
+          "-spirv",
+          "-fspv-target-env=vulkan1.1"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "dispatch.hlsli": "// HLSL has no num_workgroups builtin. The adapter supplies the actual grid.\nstruct DispatchGrid { uint x; uint y; uint z; uint _pad; };\nConstantBuffer<DispatchGrid> dispatch_grid : register(b31, space0);\nuint linear_group(uint3 group) {\n    return group.x + group.y * dispatch_grid.x + group.z * dispatch_grid.x * dispatch_grid.y;\n}\n",
+          "scan/apply_chunk_offsets.hlsl": "ByteAddressBuffer active_indices:register(t5,space0);\r\n#include \"common.hlsli\"\r\nByteAddressBuffer scan_chunks:register(t1,space0);\r\nRWByteAddressBuffer segment_ranges:register(u2,space0);\r\nRWByteAddressBuffer segment_tile_cursors:register(u3,space0);\r\nRWByteAddressBuffer chunk_offsets:register(u4,space0);\r\n\r\n[numthreads(SCAN_CHUNK_SIZE,1,1)]\r\nvoid scan_apply_chunk_offsets(uint3 group:SV_GroupID,uint3 local:SV_GroupThreadID) {\r\n    uint local_chunk=linear_group(group);\r\n    if(local_chunk>=config.scan_chunk_count) return;\r\n    uint chunk_index=dispatched_index(local_chunk,config.chunk_base);\r\n    uint4 chunk=scan_chunks.Load4(chunk_index*SCAN_CHUNK_STRIDE);\r\n    if(local.x>=chunk.w) return;\r\n    uint index=chunk.y+local.x;\r\n    uint base=chunk_offsets.Load(chunk_index*4u);\r\n    uint2 range=segment_ranges.Load2(index*SCAN_TILE_RANGE_STRIDE)+base;\r\n    segment_ranges.Store2(index*SCAN_TILE_RANGE_STRIDE,range);\r\n    segment_tile_cursors.Store(index*4u,range.x);\r\n}\r\n",
+          "scan/common.hlsli": "#include \"../dispatch.hlsli\"\r\nstruct ScanConfig {\r\n    uint clear_len; uint backdrop_len; uint path_count; uint scan_chunk_count;\r\n    uint line_count; uint segment_capacity; uint incremental; uint line_base;\r\n    uint path_base; uint chunk_base; uint backdrop_base;\r\n};\r\nConstantBuffer<ScanConfig> config:register(b0,space0);\r\n// Each entry declares its active-index buffer before including this shared code.\r\nuint dispatched_index(uint index,uint base) {\r\n    if (config.incremental != 0u) return active_indices.Load((base+index)*4u);\r\n    return index;\r\n}\r\n"
+        },
+        "target": "spirv",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "scan-apply_chunk_offsets"
+      }
+    },
+    {
+      "artifact_sha256": "9fac29202f20dbca7b668a495a83bb308d0487fc05e29c6af4b100b7341be681",
+      "key": "f6ec28c949e91d548baeda9eff9d42e2355fcc9cb1c09b2a1b6fd5ca81214fb3",
+      "recipe": {
+        "abi_sha256": "865a160f5359db24855bc46d4b238cc863491700854ab23b36614021bb8b9ed3",
+        "cumsum_chunk_size": 256,
+        "entry": "scan_clear",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "scan_clear",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "dispatch.hlsli": "// HLSL has no num_workgroups builtin. The adapter supplies the actual grid.\nstruct DispatchGrid { uint x; uint y; uint z; uint _pad; };\nConstantBuffer<DispatchGrid> dispatch_grid : register(b31, space0);\nuint linear_group(uint3 group) {\n    return group.x + group.y * dispatch_grid.x + group.z * dispatch_grid.x * dispatch_grid.y;\n}\n",
+          "scan/clear.hlsl": "ByteAddressBuffer active_indices:register(t8,space0);\r\n#include \"common.hlsli\"\r\nRWByteAddressBuffer backdrops:register(u1,space0);\r\nRWByteAddressBuffer segment_ranges:register(u2,space0);\r\nRWByteAddressBuffer segment_tile_counts:register(u3,space0);\r\nRWByteAddressBuffer segment_tile_cursors:register(u4,space0);\r\nRWByteAddressBuffer segment_bumps:register(u5,space0);\r\nRWByteAddressBuffer chunk_totals:register(u6,space0);\r\nRWByteAddressBuffer chunk_offsets:register(u7,space0);\r\n\r\n[numthreads(SCAN_CHUNK_SIZE,1,1)]\r\nvoid scan_clear(uint3 id:SV_DispatchThreadID) {\r\n    uint index=id.x;\r\n    if(index>=config.clear_len) return;\r\n    if(index<config.backdrop_len) {\r\n        uint backdrop=dispatched_index(index,config.backdrop_base);\r\n        backdrops.Store(backdrop*4u,0u);\r\n        segment_ranges.Store2(backdrop*SCAN_TILE_RANGE_STRIDE,uint2(0u,0u));\r\n        segment_tile_counts.Store(backdrop*4u,0u);\r\n        segment_tile_cursors.Store(backdrop*4u,0u);\r\n    }\r\n    if(index<config.path_count) segment_bumps.Store(dispatched_index(index,config.path_base)*4u,0u);\r\n    if(index<config.scan_chunk_count) {\r\n        uint chunk=dispatched_index(index,config.chunk_base);\r\n        chunk_totals.Store(chunk*4u,0u);chunk_offsets.Store(chunk*4u,0u);\r\n    }\r\n}\r\n",
+          "scan/common.hlsli": "#include \"../dispatch.hlsli\"\r\nstruct ScanConfig {\r\n    uint clear_len; uint backdrop_len; uint path_count; uint scan_chunk_count;\r\n    uint line_count; uint segment_capacity; uint incremental; uint line_base;\r\n    uint path_base; uint chunk_base; uint backdrop_base;\r\n};\r\nConstantBuffer<ScanConfig> config:register(b0,space0);\r\n// Each entry declares its active-index buffer before including this shared code.\r\nuint dispatched_index(uint index,uint base) {\r\n    if (config.incremental != 0u) return active_indices.Load((base+index)*4u);\r\n    return index;\r\n}\r\n"
+        },
+        "target": "dxil",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "scan-clear"
+      }
+    },
+    {
+      "artifact_sha256": "e26e3c0d80e2c8c996a16671a60a630ffdeae4b9d1bd502ed21c76f4fa44f4fb",
+      "key": "59ceeefe24b496bfe7a583d163b79525fc6fea189c29d5a8d69b7d57b7590cf4",
+      "recipe": {
+        "abi_sha256": "865a160f5359db24855bc46d4b238cc863491700854ab23b36614021bb8b9ed3",
+        "cumsum_chunk_size": 256,
+        "entry": "scan_clear",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "scan_clear",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis",
+          "-spirv",
+          "-fspv-target-env=vulkan1.1"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "dispatch.hlsli": "// HLSL has no num_workgroups builtin. The adapter supplies the actual grid.\nstruct DispatchGrid { uint x; uint y; uint z; uint _pad; };\nConstantBuffer<DispatchGrid> dispatch_grid : register(b31, space0);\nuint linear_group(uint3 group) {\n    return group.x + group.y * dispatch_grid.x + group.z * dispatch_grid.x * dispatch_grid.y;\n}\n",
+          "scan/clear.hlsl": "ByteAddressBuffer active_indices:register(t8,space0);\r\n#include \"common.hlsli\"\r\nRWByteAddressBuffer backdrops:register(u1,space0);\r\nRWByteAddressBuffer segment_ranges:register(u2,space0);\r\nRWByteAddressBuffer segment_tile_counts:register(u3,space0);\r\nRWByteAddressBuffer segment_tile_cursors:register(u4,space0);\r\nRWByteAddressBuffer segment_bumps:register(u5,space0);\r\nRWByteAddressBuffer chunk_totals:register(u6,space0);\r\nRWByteAddressBuffer chunk_offsets:register(u7,space0);\r\n\r\n[numthreads(SCAN_CHUNK_SIZE,1,1)]\r\nvoid scan_clear(uint3 id:SV_DispatchThreadID) {\r\n    uint index=id.x;\r\n    if(index>=config.clear_len) return;\r\n    if(index<config.backdrop_len) {\r\n        uint backdrop=dispatched_index(index,config.backdrop_base);\r\n        backdrops.Store(backdrop*4u,0u);\r\n        segment_ranges.Store2(backdrop*SCAN_TILE_RANGE_STRIDE,uint2(0u,0u));\r\n        segment_tile_counts.Store(backdrop*4u,0u);\r\n        segment_tile_cursors.Store(backdrop*4u,0u);\r\n    }\r\n    if(index<config.path_count) segment_bumps.Store(dispatched_index(index,config.path_base)*4u,0u);\r\n    if(index<config.scan_chunk_count) {\r\n        uint chunk=dispatched_index(index,config.chunk_base);\r\n        chunk_totals.Store(chunk*4u,0u);chunk_offsets.Store(chunk*4u,0u);\r\n    }\r\n}\r\n",
+          "scan/common.hlsli": "#include \"../dispatch.hlsli\"\r\nstruct ScanConfig {\r\n    uint clear_len; uint backdrop_len; uint path_count; uint scan_chunk_count;\r\n    uint line_count; uint segment_capacity; uint incremental; uint line_base;\r\n    uint path_base; uint chunk_base; uint backdrop_base;\r\n};\r\nConstantBuffer<ScanConfig> config:register(b0,space0);\r\n// Each entry declares its active-index buffer before including this shared code.\r\nuint dispatched_index(uint index,uint base) {\r\n    if (config.incremental != 0u) return active_indices.Load((base+index)*4u);\r\n    return index;\r\n}\r\n"
+        },
+        "target": "spirv",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "scan-clear"
+      }
+    },
+    {
+      "artifact_sha256": "cb57f02eda4a6d8f25fdbb6326301495cb2533d0153add81925584ed6a6d9617",
+      "key": "3cc871b18aec6ea4ae84f18803ade4b6787caff951c0db8856ecd1c286c36619",
+      "recipe": {
+        "abi_sha256": "adc91deacff7951f7cc1d09488d81933f20da3bbe113e741f87b95573dcc1214",
+        "cumsum_chunk_size": 256,
+        "entry": "scan_count",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "scan_count",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "dispatch.hlsli": "// HLSL has no num_workgroups builtin. The adapter supplies the actual grid.\nstruct DispatchGrid { uint x; uint y; uint z; uint _pad; };\nConstantBuffer<DispatchGrid> dispatch_grid : register(b31, space0);\nuint linear_group(uint3 group) {\n    return group.x + group.y * dispatch_grid.x + group.z * dispatch_grid.x * dispatch_grid.y;\n}\n",
+          "scan/common.hlsli": "#include \"../dispatch.hlsli\"\r\nstruct ScanConfig {\r\n    uint clear_len; uint backdrop_len; uint path_count; uint scan_chunk_count;\r\n    uint line_count; uint segment_capacity; uint incremental; uint line_base;\r\n    uint path_base; uint chunk_base; uint backdrop_base;\r\n};\r\nConstantBuffer<ScanConfig> config:register(b0,space0);\r\n// Each entry declares its active-index buffer before including this shared code.\r\nuint dispatched_index(uint index,uint base) {\r\n    if (config.incremental != 0u) return active_indices.Load((base+index)*4u);\r\n    return index;\r\n}\r\n",
+          "scan/count.hlsl": "ByteAddressBuffer active_indices:register(t5,space0);\r\n#include \"common.hlsli\"\r\nByteAddressBuffer lines:register(t1,space0);\r\nByteAddressBuffer path_records:register(t2,space0);\r\nRWByteAddressBuffer backdrops:register(u3,space0);\r\nRWByteAddressBuffer segment_tile_counts:register(u4,space0);\r\n#include \"geometry.hlsli\"\r\n\r\n[numthreads(SCAN_CHUNK_SIZE,1,1)]\r\nvoid scan_count(uint3 id:SV_DispatchThreadID) {\r\n    if(id.x>=config.line_count) return;\r\n    ScanTraversal scan;\r\n    if(!scan_geometry(dispatched_index(id.x,config.line_base),scan)) return;\r\n    int delta=1;if(scan.down) delta=-1;\r\n    uint ignored;\r\n    for(int y=scan.ymin;y<scan.ymax;y++) {\r\n        uint local=uint((y-int(scan.bbox.y))*int(scan.bbox.z-scan.bbox.x));\r\n        backdrops.InterlockedAdd((scan.data_offset+local)*4u,asuint(delta),ignored);\r\n    }\r\n    float last_z=floor(scan.a*(float(scan.imin)-1.0)+scan.b);\r\n    for(uint i=scan.imin;i<scan.imax;i++) {\r\n        float z=floor(scan.a*float(i)+scan.b);\r\n        int2 tile=scan_tile(scan,i,z);\r\n        if(scan_tile_inside(scan,tile)) {\r\n            bool top=last_z==z;\r\n            if(i==0u) top=abs(scan.y0-scan.points.y*(1.0/float(SCAN_TILE_SIZE)))<=SCAN_EPSILON;\r\n            if(top && tile.x+1<int(scan.bbox.z)) {\r\n                int x=max(tile.x+1,int(scan.bbox.x));\r\n                uint local=uint((tile.y-int(scan.bbox.y))*int(scan.bbox.z-scan.bbox.x)+x-int(scan.bbox.x));\r\n                backdrops.InterlockedAdd((scan.data_offset+local)*4u,asuint(delta),ignored);\r\n            }\r\n            segment_tile_counts.InterlockedAdd(scan_tile_offset(scan,tile)*4u,1u,ignored);\r\n        }\r\n        last_z=z;\r\n    }\r\n}\r\n",
+          "scan/geometry.hlsli": "// Shared DDA traversal for count and emit; arithmetic order follows the renderer\r\n// geometry contract. Top-touch tolerance and tile snapping are distinct policies.\r\nstatic const float SCAN_EPSILON=1.0e-6;\r\nstatic const float TOP_TOUCH_EPSILON=1.0e-12;\r\nstatic const float TILE_CLIP_NUDGE=1.0e-3;\r\n\r\nstruct ScanTraversal {\r\n    uint4 bbox;\r\n    uint data_offset;\r\n    float4 points;\r\n    bool down;\r\n    uint count;\r\n    float a,b,sign,x0,y0;\r\n    uint imin,imax;\r\n    int ymin,ymax;\r\n};\r\nbool is_tile_boundary_y(float value) {return abs(value-floor(value))<=TOP_TOUCH_EPSILON;}\r\nint ceil_tile_boundary_y(float value) {if(is_tile_boundary_y(value)) return int(floor(value));return int(ceil(value));}\r\nuint span(float a,float b) {float hi=ceil(a);if(b>a) hi=ceil(b);float lo=floor(a);if(b<a) lo=floor(b);float value=hi-lo;if(value<1.0) value=1.0;return uint(value);}\r\n\r\nbool scan_geometry(uint line_index,out ScanTraversal scan) {\r\n    scan=(ScanTraversal)0;\r\n    uint line_base=line_index*SCAN_LINE_STRIDE;\r\n    uint path_id=lines.Load(line_base);\r\n    uint path_bytes;path_records.GetDimensions(path_bytes);\r\n    if(path_id>=path_bytes/SCAN_PATH_RECORD_STRIDE) return false;\r\n    uint path_base=path_id*SCAN_PATH_RECORD_STRIDE;\r\n    scan.bbox=path_records.Load4(path_base+SCAN_PATH_BBOX);\r\n    scan.data_offset=path_records.Load(path_base+SCAN_PATH_DATA_OFFSET);\r\n    if(scan.bbox.z-scan.bbox.x==0u || scan.bbox.y>=scan.bbox.w) return false;\r\n    float4 matrix=asfloat(path_records.Load4(path_base+SCAN_PATH_TRANSFORM));\r\n    float2 translation=asfloat(path_records.Load2(path_base+SCAN_PATH_TRANSFORM+16u));\r\n    float2 local0=asfloat(lines.Load2(line_base+SCAN_LINE_P0));\r\n    float2 local1=asfloat(lines.Load2(line_base+SCAN_LINE_P1));\r\n    float2 p0=float2(matrix.x*local0.x+matrix.z*local0.y+translation.x,matrix.y*local0.x+matrix.w*local0.y+translation.y);\r\n    float2 p1=float2(matrix.x*local1.x+matrix.z*local1.y+translation.x,matrix.y*local1.x+matrix.w*local1.y+translation.y);\r\n    scan.down=p1.y>=p0.y;\r\n    scan.points=float4(p0,p1);\r\n    if(!scan.down) scan.points=float4(p1,p0);\r\n    float tile_scale=1.0/float(SCAN_TILE_SIZE);\r\n    float4 s=scan.points*tile_scale;\r\n    uint count_x=span(s.x,s.z)-1u;\r\n    scan.count=count_x+span(s.y,s.w);\r\n    float dx=abs(s.z-s.x);\r\n    float dy=s.w-s.y;\r\n    if(dx+dy==0.0 || (dy==0.0 && floor(s.y)==s.y)) return false;\r\n    float reciprocal=1.0/(dx+dy);\r\n    scan.a=dx*reciprocal;\r\n    bool positive=s.z>=s.x;\r\n    scan.sign=-1.0;if(positive) scan.sign=1.0;\r\n    float xt0=floor(s.x*scan.sign);\r\n    float c=s.x*scan.sign-xt0;\r\n    scan.y0=floor(s.y);\r\n    float ytop=scan.y0+1.0;if(s.y==s.w) ytop=ceil(s.y);\r\n    scan.b=min((dy*c+dx*(ytop-s.y))*reciprocal,0.99999994);\r\n    float error=floor(scan.a*(float(scan.count)-1.0)+scan.b)-float(count_x);\r\n    if(error!=0.0) {if(error>0.0) scan.a-=0.0000002;else scan.a+=0.0000002;}\r\n    scan.x0=xt0*scan.sign-1.0;if(positive) scan.x0=xt0*scan.sign;\r\n    float xmin=min(s.x,s.z);\r\n    if(s.y>=float(scan.bbox.w) || s.w<=float(scan.bbox.y)+TOP_TOUCH_EPSILON || xmin>=float(scan.bbox.z)) return false;\r\n    scan.imin=0u;\r\n    if(s.y<float(scan.bbox.y)) {\r\n        float first=round((float(scan.bbox.y)-scan.y0+scan.b-scan.a)/(1.0-scan.a))-1.0;\r\n        if(scan.y0+first-floor(scan.a*first+scan.b)<float(scan.bbox.y)) first+=1.0;\r\n        scan.imin=uint(first);\r\n    }\r\n    scan.imax=scan.count;\r\n    if(s.w>float(scan.bbox.w)) {\r\n        float last=round((float(scan.bbox.w)-scan.y0+scan.b-scan.a)/(1.0-scan.a))-1.0;\r\n        if(scan.y0+last-floor(scan.a*last+scan.b)<float(scan.bbox.w)) last+=1.0;\r\n        scan.imax=uint(last);\r\n    }\r\n    scan.ymin=0;scan.ymax=0;\r\n    if(max(s.x,s.z)<float(scan.bbox.x)) {\r\n        scan.ymin=ceil_tile_boundary_y(s.y);scan.ymax=ceil_tile_boundary_y(s.w);\r\n        scan.imax=scan.imin;\r\n    } else {\r\n        float fudge=1.0;if(positive) fudge=0.0;\r\n        if(xmin<float(scan.bbox.x)) {\r\n            float cut=round((scan.sign*(float(scan.bbox.x)-scan.x0)-scan.b+fudge)/scan.a);\r\n            if((scan.x0+scan.sign*floor(scan.a*cut+scan.b)<float(scan.bbox.x))==positive) cut+=1.0;\r\n            int ynext=int(scan.y0+cut-floor(scan.a*cut+scan.b)+1.0);\r\n            if(positive) {\r\n                if(uint(cut)>scan.imin) {\r\n                    float ystart=scan.y0+1.0;if(is_tile_boundary_y(s.y)) ystart=scan.y0;\r\n                    scan.ymin=int(ystart);scan.ymax=ynext;scan.imin=uint(cut);\r\n                }\r\n            } else if(uint(cut)<scan.imax) {scan.ymin=ynext;scan.ymax=ceil_tile_boundary_y(s.w);scan.imax=uint(cut);}\r\n        }\r\n        if(max(s.x,s.z)>float(scan.bbox.z)) {\r\n            float cut=round((scan.sign*(float(scan.bbox.z)-scan.x0)-scan.b+fudge)/scan.a);\r\n            if((scan.x0+scan.sign*floor(scan.a*cut+scan.b)<float(scan.bbox.z))==positive) cut+=1.0;\r\n            if(positive) scan.imax=min(scan.imax,uint(cut));else scan.imin=max(scan.imin,uint(cut));\r\n        }\r\n    }\r\n    scan.imax=max(scan.imin,scan.imax);\r\n    scan.ymin=max(scan.ymin,int(scan.bbox.y));scan.ymax=min(scan.ymax,int(scan.bbox.w));\r\n    return true;\r\n}\r\n\r\nint2 scan_tile(ScanTraversal scan,uint index,float z) {\r\n    return int2(int(scan.x0+scan.sign*z),int(scan.y0+float(index)-z));\r\n}\r\nbool scan_tile_inside(ScanTraversal scan,int2 tile) {\r\n    return tile.y>=int(scan.bbox.y) && tile.y<int(scan.bbox.w) && tile.x>=int(scan.bbox.x) && tile.x<int(scan.bbox.z);\r\n}\r\nuint scan_tile_offset(ScanTraversal scan,int2 tile) {\r\n    return scan.data_offset+(uint(tile.y)-scan.bbox.y)*(scan.bbox.z-scan.bbox.x)+uint(tile.x)-scan.bbox.x;\r\n}\r\n"
+        },
+        "target": "dxil",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "scan-count"
+      }
+    },
+    {
+      "artifact_sha256": "c2fa46392c7e0b318ae8ecd9dc471eb0f70d16b3538da9625b7f3dcb1d631994",
+      "key": "70811c8049c668fdc4a36d3d69cb149b516085b7aa0922356972ce4626bb3bbe",
+      "recipe": {
+        "abi_sha256": "adc91deacff7951f7cc1d09488d81933f20da3bbe113e741f87b95573dcc1214",
+        "cumsum_chunk_size": 256,
+        "entry": "scan_count",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "scan_count",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis",
+          "-spirv",
+          "-fspv-target-env=vulkan1.1"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "dispatch.hlsli": "// HLSL has no num_workgroups builtin. The adapter supplies the actual grid.\nstruct DispatchGrid { uint x; uint y; uint z; uint _pad; };\nConstantBuffer<DispatchGrid> dispatch_grid : register(b31, space0);\nuint linear_group(uint3 group) {\n    return group.x + group.y * dispatch_grid.x + group.z * dispatch_grid.x * dispatch_grid.y;\n}\n",
+          "scan/common.hlsli": "#include \"../dispatch.hlsli\"\r\nstruct ScanConfig {\r\n    uint clear_len; uint backdrop_len; uint path_count; uint scan_chunk_count;\r\n    uint line_count; uint segment_capacity; uint incremental; uint line_base;\r\n    uint path_base; uint chunk_base; uint backdrop_base;\r\n};\r\nConstantBuffer<ScanConfig> config:register(b0,space0);\r\n// Each entry declares its active-index buffer before including this shared code.\r\nuint dispatched_index(uint index,uint base) {\r\n    if (config.incremental != 0u) return active_indices.Load((base+index)*4u);\r\n    return index;\r\n}\r\n",
+          "scan/count.hlsl": "ByteAddressBuffer active_indices:register(t5,space0);\r\n#include \"common.hlsli\"\r\nByteAddressBuffer lines:register(t1,space0);\r\nByteAddressBuffer path_records:register(t2,space0);\r\nRWByteAddressBuffer backdrops:register(u3,space0);\r\nRWByteAddressBuffer segment_tile_counts:register(u4,space0);\r\n#include \"geometry.hlsli\"\r\n\r\n[numthreads(SCAN_CHUNK_SIZE,1,1)]\r\nvoid scan_count(uint3 id:SV_DispatchThreadID) {\r\n    if(id.x>=config.line_count) return;\r\n    ScanTraversal scan;\r\n    if(!scan_geometry(dispatched_index(id.x,config.line_base),scan)) return;\r\n    int delta=1;if(scan.down) delta=-1;\r\n    uint ignored;\r\n    for(int y=scan.ymin;y<scan.ymax;y++) {\r\n        uint local=uint((y-int(scan.bbox.y))*int(scan.bbox.z-scan.bbox.x));\r\n        backdrops.InterlockedAdd((scan.data_offset+local)*4u,asuint(delta),ignored);\r\n    }\r\n    float last_z=floor(scan.a*(float(scan.imin)-1.0)+scan.b);\r\n    for(uint i=scan.imin;i<scan.imax;i++) {\r\n        float z=floor(scan.a*float(i)+scan.b);\r\n        int2 tile=scan_tile(scan,i,z);\r\n        if(scan_tile_inside(scan,tile)) {\r\n            bool top=last_z==z;\r\n            if(i==0u) top=abs(scan.y0-scan.points.y*(1.0/float(SCAN_TILE_SIZE)))<=SCAN_EPSILON;\r\n            if(top && tile.x+1<int(scan.bbox.z)) {\r\n                int x=max(tile.x+1,int(scan.bbox.x));\r\n                uint local=uint((tile.y-int(scan.bbox.y))*int(scan.bbox.z-scan.bbox.x)+x-int(scan.bbox.x));\r\n                backdrops.InterlockedAdd((scan.data_offset+local)*4u,asuint(delta),ignored);\r\n            }\r\n            segment_tile_counts.InterlockedAdd(scan_tile_offset(scan,tile)*4u,1u,ignored);\r\n        }\r\n        last_z=z;\r\n    }\r\n}\r\n",
+          "scan/geometry.hlsli": "// Shared DDA traversal for count and emit; arithmetic order follows the renderer\r\n// geometry contract. Top-touch tolerance and tile snapping are distinct policies.\r\nstatic const float SCAN_EPSILON=1.0e-6;\r\nstatic const float TOP_TOUCH_EPSILON=1.0e-12;\r\nstatic const float TILE_CLIP_NUDGE=1.0e-3;\r\n\r\nstruct ScanTraversal {\r\n    uint4 bbox;\r\n    uint data_offset;\r\n    float4 points;\r\n    bool down;\r\n    uint count;\r\n    float a,b,sign,x0,y0;\r\n    uint imin,imax;\r\n    int ymin,ymax;\r\n};\r\nbool is_tile_boundary_y(float value) {return abs(value-floor(value))<=TOP_TOUCH_EPSILON;}\r\nint ceil_tile_boundary_y(float value) {if(is_tile_boundary_y(value)) return int(floor(value));return int(ceil(value));}\r\nuint span(float a,float b) {float hi=ceil(a);if(b>a) hi=ceil(b);float lo=floor(a);if(b<a) lo=floor(b);float value=hi-lo;if(value<1.0) value=1.0;return uint(value);}\r\n\r\nbool scan_geometry(uint line_index,out ScanTraversal scan) {\r\n    scan=(ScanTraversal)0;\r\n    uint line_base=line_index*SCAN_LINE_STRIDE;\r\n    uint path_id=lines.Load(line_base);\r\n    uint path_bytes;path_records.GetDimensions(path_bytes);\r\n    if(path_id>=path_bytes/SCAN_PATH_RECORD_STRIDE) return false;\r\n    uint path_base=path_id*SCAN_PATH_RECORD_STRIDE;\r\n    scan.bbox=path_records.Load4(path_base+SCAN_PATH_BBOX);\r\n    scan.data_offset=path_records.Load(path_base+SCAN_PATH_DATA_OFFSET);\r\n    if(scan.bbox.z-scan.bbox.x==0u || scan.bbox.y>=scan.bbox.w) return false;\r\n    float4 matrix=asfloat(path_records.Load4(path_base+SCAN_PATH_TRANSFORM));\r\n    float2 translation=asfloat(path_records.Load2(path_base+SCAN_PATH_TRANSFORM+16u));\r\n    float2 local0=asfloat(lines.Load2(line_base+SCAN_LINE_P0));\r\n    float2 local1=asfloat(lines.Load2(line_base+SCAN_LINE_P1));\r\n    float2 p0=float2(matrix.x*local0.x+matrix.z*local0.y+translation.x,matrix.y*local0.x+matrix.w*local0.y+translation.y);\r\n    float2 p1=float2(matrix.x*local1.x+matrix.z*local1.y+translation.x,matrix.y*local1.x+matrix.w*local1.y+translation.y);\r\n    scan.down=p1.y>=p0.y;\r\n    scan.points=float4(p0,p1);\r\n    if(!scan.down) scan.points=float4(p1,p0);\r\n    float tile_scale=1.0/float(SCAN_TILE_SIZE);\r\n    float4 s=scan.points*tile_scale;\r\n    uint count_x=span(s.x,s.z)-1u;\r\n    scan.count=count_x+span(s.y,s.w);\r\n    float dx=abs(s.z-s.x);\r\n    float dy=s.w-s.y;\r\n    if(dx+dy==0.0 || (dy==0.0 && floor(s.y)==s.y)) return false;\r\n    float reciprocal=1.0/(dx+dy);\r\n    scan.a=dx*reciprocal;\r\n    bool positive=s.z>=s.x;\r\n    scan.sign=-1.0;if(positive) scan.sign=1.0;\r\n    float xt0=floor(s.x*scan.sign);\r\n    float c=s.x*scan.sign-xt0;\r\n    scan.y0=floor(s.y);\r\n    float ytop=scan.y0+1.0;if(s.y==s.w) ytop=ceil(s.y);\r\n    scan.b=min((dy*c+dx*(ytop-s.y))*reciprocal,0.99999994);\r\n    float error=floor(scan.a*(float(scan.count)-1.0)+scan.b)-float(count_x);\r\n    if(error!=0.0) {if(error>0.0) scan.a-=0.0000002;else scan.a+=0.0000002;}\r\n    scan.x0=xt0*scan.sign-1.0;if(positive) scan.x0=xt0*scan.sign;\r\n    float xmin=min(s.x,s.z);\r\n    if(s.y>=float(scan.bbox.w) || s.w<=float(scan.bbox.y)+TOP_TOUCH_EPSILON || xmin>=float(scan.bbox.z)) return false;\r\n    scan.imin=0u;\r\n    if(s.y<float(scan.bbox.y)) {\r\n        float first=round((float(scan.bbox.y)-scan.y0+scan.b-scan.a)/(1.0-scan.a))-1.0;\r\n        if(scan.y0+first-floor(scan.a*first+scan.b)<float(scan.bbox.y)) first+=1.0;\r\n        scan.imin=uint(first);\r\n    }\r\n    scan.imax=scan.count;\r\n    if(s.w>float(scan.bbox.w)) {\r\n        float last=round((float(scan.bbox.w)-scan.y0+scan.b-scan.a)/(1.0-scan.a))-1.0;\r\n        if(scan.y0+last-floor(scan.a*last+scan.b)<float(scan.bbox.w)) last+=1.0;\r\n        scan.imax=uint(last);\r\n    }\r\n    scan.ymin=0;scan.ymax=0;\r\n    if(max(s.x,s.z)<float(scan.bbox.x)) {\r\n        scan.ymin=ceil_tile_boundary_y(s.y);scan.ymax=ceil_tile_boundary_y(s.w);\r\n        scan.imax=scan.imin;\r\n    } else {\r\n        float fudge=1.0;if(positive) fudge=0.0;\r\n        if(xmin<float(scan.bbox.x)) {\r\n            float cut=round((scan.sign*(float(scan.bbox.x)-scan.x0)-scan.b+fudge)/scan.a);\r\n            if((scan.x0+scan.sign*floor(scan.a*cut+scan.b)<float(scan.bbox.x))==positive) cut+=1.0;\r\n            int ynext=int(scan.y0+cut-floor(scan.a*cut+scan.b)+1.0);\r\n            if(positive) {\r\n                if(uint(cut)>scan.imin) {\r\n                    float ystart=scan.y0+1.0;if(is_tile_boundary_y(s.y)) ystart=scan.y0;\r\n                    scan.ymin=int(ystart);scan.ymax=ynext;scan.imin=uint(cut);\r\n                }\r\n            } else if(uint(cut)<scan.imax) {scan.ymin=ynext;scan.ymax=ceil_tile_boundary_y(s.w);scan.imax=uint(cut);}\r\n        }\r\n        if(max(s.x,s.z)>float(scan.bbox.z)) {\r\n            float cut=round((scan.sign*(float(scan.bbox.z)-scan.x0)-scan.b+fudge)/scan.a);\r\n            if((scan.x0+scan.sign*floor(scan.a*cut+scan.b)<float(scan.bbox.z))==positive) cut+=1.0;\r\n            if(positive) scan.imax=min(scan.imax,uint(cut));else scan.imin=max(scan.imin,uint(cut));\r\n        }\r\n    }\r\n    scan.imax=max(scan.imin,scan.imax);\r\n    scan.ymin=max(scan.ymin,int(scan.bbox.y));scan.ymax=min(scan.ymax,int(scan.bbox.w));\r\n    return true;\r\n}\r\n\r\nint2 scan_tile(ScanTraversal scan,uint index,float z) {\r\n    return int2(int(scan.x0+scan.sign*z),int(scan.y0+float(index)-z));\r\n}\r\nbool scan_tile_inside(ScanTraversal scan,int2 tile) {\r\n    return tile.y>=int(scan.bbox.y) && tile.y<int(scan.bbox.w) && tile.x>=int(scan.bbox.x) && tile.x<int(scan.bbox.z);\r\n}\r\nuint scan_tile_offset(ScanTraversal scan,int2 tile) {\r\n    return scan.data_offset+(uint(tile.y)-scan.bbox.y)*(scan.bbox.z-scan.bbox.x)+uint(tile.x)-scan.bbox.x;\r\n}\r\n"
+        },
+        "target": "spirv",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "scan-count"
+      }
+    },
+    {
+      "artifact_sha256": "bc1c306ab6e2b05b78451556dc1addcbb5f0d3c926a0255692ed0132a60a671e",
+      "key": "1ab7c752cea9f77378cc3c4c78e02bc993d8fba4464b18cf273ca9fa5c07ff16",
+      "recipe": {
+        "abi_sha256": "bd847ab7f46efa4e146805fe2bdb3eaab5efb67d54270e3b6a5c7c079e2542ad",
+        "cumsum_chunk_size": 256,
+        "entry": "scan_emit",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "scan_emit",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "dispatch.hlsli": "// HLSL has no num_workgroups builtin. The adapter supplies the actual grid.\nstruct DispatchGrid { uint x; uint y; uint z; uint _pad; };\nConstantBuffer<DispatchGrid> dispatch_grid : register(b31, space0);\nuint linear_group(uint3 group) {\n    return group.x + group.y * dispatch_grid.x + group.z * dispatch_grid.x * dispatch_grid.y;\n}\n",
+          "scan/clip.hlsli": "// Explicit mad corresponds to the reference shader's intersection fma. HLSL\r\n// permits device-specific mad implementations, so exact results remain gated by\r\n// the same-physical-GPU four-route tests, not assumed from the intrinsic name.\r\nfloat x_at_y(float4 points,float y) {\r\n    precise float result=mad(points.z-points.x,(y-points.y)/(points.w-points.y),points.x);\r\n    return result;\r\n}\r\nfloat y_at_x(float4 points,float x) {\r\n    precise float result=mad(points.w-points.y,(x-points.x)/(points.z-points.x),points.y);\r\n    return result;\r\n}\r\nfloat clip_y_at_x(float4 points,float x,float tile_min_y,float tile_max_y) {\r\n    float y=y_at_x(points,x);\r\n    if(y<=tile_min_y+SCAN_EPSILON) {\r\n        float top_x=x_at_y(points,tile_min_y);\r\n        if(abs(top_x-x)>TILE_CLIP_NUDGE) return tile_min_y;\r\n        return tile_min_y+TILE_CLIP_NUDGE;\r\n    }\r\n    return clamp(y,tile_min_y+TILE_CLIP_NUDGE,tile_max_y);\r\n}\r\n\r\nvoid write_clipped_segment(uint dst,ScanTraversal scan,uint sub_index,float z,int2 tile) {\r\n    float tile_size=float(SCAN_TILE_SIZE);\r\n    float2 tile_min=float2(tile)*tile_size;\r\n    float2 tile_max=tile_min+tile_size;\r\n    float4 points=scan.points;\r\n    if(sub_index>0u) {\r\n        float previous=floor(scan.a*(float(sub_index)-1.0)+scan.b);\r\n        if(z==previous) {\r\n            float x=x_at_y(scan.points,tile_min.y);\r\n            x=clamp(x,tile_min.x+TILE_CLIP_NUDGE,tile_max.x);\r\n            points.xy=float2(x,tile_min.y);\r\n        } else {\r\n            float x_clip=tile_max.x;if(scan.sign>0.0) x_clip=tile_min.x;\r\n            points.xy=float2(x_clip,clip_y_at_x(scan.points,x_clip,tile_min.y,tile_max.y));\r\n        }\r\n    }\r\n    if(sub_index<scan.count-1u) {\r\n        float next=floor(scan.a*(float(sub_index)+1.0)+scan.b);\r\n        if(z==next) {\r\n            float x=x_at_y(scan.points,tile_max.y);\r\n            x=clamp(x,tile_min.x+TILE_CLIP_NUDGE,tile_max.x);\r\n            points.zw=float2(x,tile_max.y);\r\n        } else {\r\n            float x_clip=tile_min.x;if(scan.sign>0.0) x_clip=tile_max.x;\r\n            points.zw=float2(x_clip,clip_y_at_x(scan.points,x_clip,tile_min.y,tile_max.y));\r\n        }\r\n    }\r\n    float edge=1000000000.0;\r\n    float p0x=clamp(points.x-tile_min.x,0.0,tile_size);\r\n    float p0y=clamp(points.y-tile_min.y,0.0,tile_size);\r\n    float p1x=clamp(points.z-tile_min.x,0.0,tile_size);\r\n    float p1y=clamp(points.w-tile_min.y,0.0,tile_size);\r\n    if(p0x<=SCAN_EPSILON) p0x=0.0;else if(tile_size-p0x<=SCAN_EPSILON) p0x=tile_size;\r\n    if(p0y<=SCAN_EPSILON) p0y=0.0;else if(tile_size-p0y<=SCAN_EPSILON) p0y=tile_size;\r\n    if(p1x<=SCAN_EPSILON) p1x=0.0;else if(tile_size-p1x<=SCAN_EPSILON) p1x=tile_size;\r\n    if(p1y<=SCAN_EPSILON) p1y=0.0;else if(tile_size-p1y<=SCAN_EPSILON) p1y=tile_size;\r\n    if(p0x==0.0) {\r\n        if(p1x==0.0) {\r\n            p0x=SCAN_EPSILON;\r\n            if(p0y==0.0) {p1x=SCAN_EPSILON;p1y=tile_size;}\r\n            else {p1x=2.0*SCAN_EPSILON;p1y=p0y;}\r\n        } else if(p0y==0.0) p0x=SCAN_EPSILON;\r\n        else edge=p0y;\r\n    } else if(p1x==0.0) {if(p1y==0.0) p1x=SCAN_EPSILON;else edge=p1y;}\r\n    if(floor(p0x)==p0x && p0x!=0.0) p0x-=SCAN_EPSILON;\r\n    if(floor(p1x)==p1x && p1x!=0.0) p1x-=SCAN_EPSILON;\r\n    if(!scan.down) {float x=p0x;float y=p0y;p0x=p1x;p0y=p1y;p1x=x;p1y=y;}\r\n    segments.Store4(dst*SCAN_SEGMENT_STRIDE,asuint(float4(p0x,p0y,p1x,p1y)));\r\n    segments.Store(dst*SCAN_SEGMENT_STRIDE+SCAN_SEGMENT_Y_EDGE,asuint(edge));\r\n}\r\n",
+          "scan/common.hlsli": "#include \"../dispatch.hlsli\"\r\nstruct ScanConfig {\r\n    uint clear_len; uint backdrop_len; uint path_count; uint scan_chunk_count;\r\n    uint line_count; uint segment_capacity; uint incremental; uint line_base;\r\n    uint path_base; uint chunk_base; uint backdrop_base;\r\n};\r\nConstantBuffer<ScanConfig> config:register(b0,space0);\r\n// Each entry declares its active-index buffer before including this shared code.\r\nuint dispatched_index(uint index,uint base) {\r\n    if (config.incremental != 0u) return active_indices.Load((base+index)*4u);\r\n    return index;\r\n}\r\n",
+          "scan/emit.hlsl": "ByteAddressBuffer active_indices:register(t5,space0);\r\n#include \"common.hlsli\"\r\nByteAddressBuffer lines:register(t1,space0);\r\nByteAddressBuffer path_records:register(t2,space0);\r\nRWByteAddressBuffer segment_tile_cursors:register(u3,space0);\r\nRWByteAddressBuffer segments:register(u4,space0);\r\n#include \"geometry.hlsli\"\r\n#include \"clip.hlsli\"\r\n\r\n[numthreads(SCAN_CHUNK_SIZE,1,1)]\r\nvoid scan_emit(uint3 id:SV_DispatchThreadID) {\r\n    if(id.x>=config.line_count) return;\r\n    ScanTraversal scan;\r\n    if(!scan_geometry(dispatched_index(id.x,config.line_base),scan)) return;\r\n    for(uint i=scan.imin;i<scan.imax;i++) {\r\n        float z=floor(scan.a*float(i)+scan.b);\r\n        int2 tile=scan_tile(scan,i,z);\r\n        if(scan_tile_inside(scan,tile)) {\r\n            uint dst;\r\n            segment_tile_cursors.InterlockedAdd(scan_tile_offset(scan,tile)*4u,1u,dst);\r\n            if(dst<config.segment_capacity) write_clipped_segment(dst,scan,i,z,tile);\r\n        }\r\n    }\r\n}\r\n",
+          "scan/geometry.hlsli": "// Shared DDA traversal for count and emit; arithmetic order follows the renderer\r\n// geometry contract. Top-touch tolerance and tile snapping are distinct policies.\r\nstatic const float SCAN_EPSILON=1.0e-6;\r\nstatic const float TOP_TOUCH_EPSILON=1.0e-12;\r\nstatic const float TILE_CLIP_NUDGE=1.0e-3;\r\n\r\nstruct ScanTraversal {\r\n    uint4 bbox;\r\n    uint data_offset;\r\n    float4 points;\r\n    bool down;\r\n    uint count;\r\n    float a,b,sign,x0,y0;\r\n    uint imin,imax;\r\n    int ymin,ymax;\r\n};\r\nbool is_tile_boundary_y(float value) {return abs(value-floor(value))<=TOP_TOUCH_EPSILON;}\r\nint ceil_tile_boundary_y(float value) {if(is_tile_boundary_y(value)) return int(floor(value));return int(ceil(value));}\r\nuint span(float a,float b) {float hi=ceil(a);if(b>a) hi=ceil(b);float lo=floor(a);if(b<a) lo=floor(b);float value=hi-lo;if(value<1.0) value=1.0;return uint(value);}\r\n\r\nbool scan_geometry(uint line_index,out ScanTraversal scan) {\r\n    scan=(ScanTraversal)0;\r\n    uint line_base=line_index*SCAN_LINE_STRIDE;\r\n    uint path_id=lines.Load(line_base);\r\n    uint path_bytes;path_records.GetDimensions(path_bytes);\r\n    if(path_id>=path_bytes/SCAN_PATH_RECORD_STRIDE) return false;\r\n    uint path_base=path_id*SCAN_PATH_RECORD_STRIDE;\r\n    scan.bbox=path_records.Load4(path_base+SCAN_PATH_BBOX);\r\n    scan.data_offset=path_records.Load(path_base+SCAN_PATH_DATA_OFFSET);\r\n    if(scan.bbox.z-scan.bbox.x==0u || scan.bbox.y>=scan.bbox.w) return false;\r\n    float4 matrix=asfloat(path_records.Load4(path_base+SCAN_PATH_TRANSFORM));\r\n    float2 translation=asfloat(path_records.Load2(path_base+SCAN_PATH_TRANSFORM+16u));\r\n    float2 local0=asfloat(lines.Load2(line_base+SCAN_LINE_P0));\r\n    float2 local1=asfloat(lines.Load2(line_base+SCAN_LINE_P1));\r\n    float2 p0=float2(matrix.x*local0.x+matrix.z*local0.y+translation.x,matrix.y*local0.x+matrix.w*local0.y+translation.y);\r\n    float2 p1=float2(matrix.x*local1.x+matrix.z*local1.y+translation.x,matrix.y*local1.x+matrix.w*local1.y+translation.y);\r\n    scan.down=p1.y>=p0.y;\r\n    scan.points=float4(p0,p1);\r\n    if(!scan.down) scan.points=float4(p1,p0);\r\n    float tile_scale=1.0/float(SCAN_TILE_SIZE);\r\n    float4 s=scan.points*tile_scale;\r\n    uint count_x=span(s.x,s.z)-1u;\r\n    scan.count=count_x+span(s.y,s.w);\r\n    float dx=abs(s.z-s.x);\r\n    float dy=s.w-s.y;\r\n    if(dx+dy==0.0 || (dy==0.0 && floor(s.y)==s.y)) return false;\r\n    float reciprocal=1.0/(dx+dy);\r\n    scan.a=dx*reciprocal;\r\n    bool positive=s.z>=s.x;\r\n    scan.sign=-1.0;if(positive) scan.sign=1.0;\r\n    float xt0=floor(s.x*scan.sign);\r\n    float c=s.x*scan.sign-xt0;\r\n    scan.y0=floor(s.y);\r\n    float ytop=scan.y0+1.0;if(s.y==s.w) ytop=ceil(s.y);\r\n    scan.b=min((dy*c+dx*(ytop-s.y))*reciprocal,0.99999994);\r\n    float error=floor(scan.a*(float(scan.count)-1.0)+scan.b)-float(count_x);\r\n    if(error!=0.0) {if(error>0.0) scan.a-=0.0000002;else scan.a+=0.0000002;}\r\n    scan.x0=xt0*scan.sign-1.0;if(positive) scan.x0=xt0*scan.sign;\r\n    float xmin=min(s.x,s.z);\r\n    if(s.y>=float(scan.bbox.w) || s.w<=float(scan.bbox.y)+TOP_TOUCH_EPSILON || xmin>=float(scan.bbox.z)) return false;\r\n    scan.imin=0u;\r\n    if(s.y<float(scan.bbox.y)) {\r\n        float first=round((float(scan.bbox.y)-scan.y0+scan.b-scan.a)/(1.0-scan.a))-1.0;\r\n        if(scan.y0+first-floor(scan.a*first+scan.b)<float(scan.bbox.y)) first+=1.0;\r\n        scan.imin=uint(first);\r\n    }\r\n    scan.imax=scan.count;\r\n    if(s.w>float(scan.bbox.w)) {\r\n        float last=round((float(scan.bbox.w)-scan.y0+scan.b-scan.a)/(1.0-scan.a))-1.0;\r\n        if(scan.y0+last-floor(scan.a*last+scan.b)<float(scan.bbox.w)) last+=1.0;\r\n        scan.imax=uint(last);\r\n    }\r\n    scan.ymin=0;scan.ymax=0;\r\n    if(max(s.x,s.z)<float(scan.bbox.x)) {\r\n        scan.ymin=ceil_tile_boundary_y(s.y);scan.ymax=ceil_tile_boundary_y(s.w);\r\n        scan.imax=scan.imin;\r\n    } else {\r\n        float fudge=1.0;if(positive) fudge=0.0;\r\n        if(xmin<float(scan.bbox.x)) {\r\n            float cut=round((scan.sign*(float(scan.bbox.x)-scan.x0)-scan.b+fudge)/scan.a);\r\n            if((scan.x0+scan.sign*floor(scan.a*cut+scan.b)<float(scan.bbox.x))==positive) cut+=1.0;\r\n            int ynext=int(scan.y0+cut-floor(scan.a*cut+scan.b)+1.0);\r\n            if(positive) {\r\n                if(uint(cut)>scan.imin) {\r\n                    float ystart=scan.y0+1.0;if(is_tile_boundary_y(s.y)) ystart=scan.y0;\r\n                    scan.ymin=int(ystart);scan.ymax=ynext;scan.imin=uint(cut);\r\n                }\r\n            } else if(uint(cut)<scan.imax) {scan.ymin=ynext;scan.ymax=ceil_tile_boundary_y(s.w);scan.imax=uint(cut);}\r\n        }\r\n        if(max(s.x,s.z)>float(scan.bbox.z)) {\r\n            float cut=round((scan.sign*(float(scan.bbox.z)-scan.x0)-scan.b+fudge)/scan.a);\r\n            if((scan.x0+scan.sign*floor(scan.a*cut+scan.b)<float(scan.bbox.z))==positive) cut+=1.0;\r\n            if(positive) scan.imax=min(scan.imax,uint(cut));else scan.imin=max(scan.imin,uint(cut));\r\n        }\r\n    }\r\n    scan.imax=max(scan.imin,scan.imax);\r\n    scan.ymin=max(scan.ymin,int(scan.bbox.y));scan.ymax=min(scan.ymax,int(scan.bbox.w));\r\n    return true;\r\n}\r\n\r\nint2 scan_tile(ScanTraversal scan,uint index,float z) {\r\n    return int2(int(scan.x0+scan.sign*z),int(scan.y0+float(index)-z));\r\n}\r\nbool scan_tile_inside(ScanTraversal scan,int2 tile) {\r\n    return tile.y>=int(scan.bbox.y) && tile.y<int(scan.bbox.w) && tile.x>=int(scan.bbox.x) && tile.x<int(scan.bbox.z);\r\n}\r\nuint scan_tile_offset(ScanTraversal scan,int2 tile) {\r\n    return scan.data_offset+(uint(tile.y)-scan.bbox.y)*(scan.bbox.z-scan.bbox.x)+uint(tile.x)-scan.bbox.x;\r\n}\r\n"
+        },
+        "target": "dxil",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "scan-emit"
+      }
+    },
+    {
+      "artifact_sha256": "7318bba1215c27280a3be35be5f65d4b2082512e75b01c69aa355fe407d57c11",
+      "key": "853538ae4cc0df6709b3a40842de65becf2020ba6864dac2fbffbdef06686541",
+      "recipe": {
+        "abi_sha256": "bd847ab7f46efa4e146805fe2bdb3eaab5efb67d54270e3b6a5c7c079e2542ad",
+        "cumsum_chunk_size": 256,
+        "entry": "scan_emit",
+        "flags": [
+          "-T",
+          "cs_6_0",
+          "-E",
+          "scan_emit",
+          "-HV",
+          "2021",
+          "-Ges",
+          "-WX",
+          "-O3",
+          "-Gis",
+          "-spirv",
+          "-fspv-target-env=vulkan1.1"
+        ],
+        "language": "hlsl",
+        "schema": 1,
+        "sources": {
+          "dispatch.hlsli": "// HLSL has no num_workgroups builtin. The adapter supplies the actual grid.\nstruct DispatchGrid { uint x; uint y; uint z; uint _pad; };\nConstantBuffer<DispatchGrid> dispatch_grid : register(b31, space0);\nuint linear_group(uint3 group) {\n    return group.x + group.y * dispatch_grid.x + group.z * dispatch_grid.x * dispatch_grid.y;\n}\n",
+          "scan/clip.hlsli": "// Explicit mad corresponds to the reference shader's intersection fma. HLSL\r\n// permits device-specific mad implementations, so exact results remain gated by\r\n// the same-physical-GPU four-route tests, not assumed from the intrinsic name.\r\nfloat x_at_y(float4 points,float y) {\r\n    precise float result=mad(points.z-points.x,(y-points.y)/(points.w-points.y),points.x);\r\n    return result;\r\n}\r\nfloat y_at_x(float4 points,float x) {\r\n    precise float result=mad(points.w-points.y,(x-points.x)/(points.z-points.x),points.y);\r\n    return result;\r\n}\r\nfloat clip_y_at_x(float4 points,float x,float tile_min_y,float tile_max_y) {\r\n    float y=y_at_x(points,x);\r\n    if(y<=tile_min_y+SCAN_EPSILON) {\r\n        float top_x=x_at_y(points,tile_min_y);\r\n        if(abs(top_x-x)>TILE_CLIP_NUDGE) return tile_min_y;\r\n        return tile_min_y+TILE_CLIP_NUDGE;\r\n    }\r\n    return clamp(y,tile_min_y+TILE_CLIP_NUDGE,tile_max_y);\r\n}\r\n\r\nvoid write_clipped_segment(uint dst,ScanTraversal scan,uint sub_index,float z,int2 tile) {\r\n    float tile_size=float(SCAN_TILE_SIZE);\r\n    float2 tile_min=float2(tile)*tile_size;\r\n    float2 tile_max=tile_min+tile_size;\r\n    float4 points=scan.points;\r\n    if(sub_index>0u) {\r\n        float previous=floor(scan.a*(float(sub_index)-1.0)+scan.b);\r\n        if(z==previous) {\r\n            float x=x_at_y(scan.points,tile_min.y);\r\n            x=clamp(x,tile_min.x+TILE_CLIP_NUDGE,tile_max.x);\r\n            points.xy=float2(x,tile_min.y);\r\n        } else {\r\n            float x_clip=tile_max.x;if(scan.sign>0.0) x_clip=tile_min.x;\r\n            points.xy=float2(x_clip,clip_y_at_x(scan.points,x_clip,tile_min.y,tile_max.y));\r\n        }\r\n    }\r\n    if(sub_index<scan.count-1u) {\r\n        float next=floor(scan.a*(float(sub_index)+1.0)+scan.b);\r\n        if(z==next) {\r\n            float x=x_at_y(scan.points,tile_max.y);\r\n            x=clamp(x,tile_min.x+TILE_CLIP_NUDGE,tile_max.x);\r\n            points.zw=float2(x,tile_max.y);\r\n        } else {\r\n            float x_clip=tile_min.x;if(scan.sign>0.0) x_clip=tile_max.x;\r\n            points.zw=float2(x_clip,clip_y_at_x(scan.points,x_clip,tile_min.y,tile_max.y));\r\n        }\r\n    }\r\n    float edge=1000000000.0;\r\n    float p0x=clamp(points.x-tile_min.x,0.0,tile_size);\r\n    float p0y=clamp(points.y-tile_min.y,0.0,tile_size);\r\n    float p1x=clamp(points.z-tile_min.x,0.0,tile_size);\r\n    float p1y=clamp(points.w-tile_min.y,0.0,tile_size);\r\n    if(p0x<=SCAN_EPSILON) p0x=0.0;else if(tile_size-p0x<=SCAN_EPSILON) p0x=tile_size;\r\n    if(p0y<=SCAN_EPSILON) p0y=0.0;else if(tile_size-p0y<=SCAN_EPSILON) p0y=tile_size;\r\n    if(p1x<=SCAN_EPSILON) p1x=0.0;else if(tile_size-p1x<=SCAN_EPSILON) p1x=tile_size;\r\n    if(p1y<=SCAN_EPSILON) p1y=0.0;else if(tile_size-p1y<=SCAN_EPSILON) p1y=tile_size;\r\n    if(p0x==0.0) {\r\n        if(p1x==0.0) {\r\n            p0x=SCAN_EPSILON;\r\n            if(p0y==0.0) {p1x=SCAN_EPSILON;p1y=tile_size;}\r\n            else {p1x=2.0*SCAN_EPSILON;p1y=p0y;}\r\n        } else if(p0y==0.0) p0x=SCAN_EPSILON;\r\n        else edge=p0y;\r\n    } else if(p1x==0.0) {if(p1y==0.0) p1x=SCAN_EPSILON;else edge=p1y;}\r\n    if(floor(p0x)==p0x && p0x!=0.0) p0x-=SCAN_EPSILON;\r\n    if(floor(p1x)==p1x && p1x!=0.0) p1x-=SCAN_EPSILON;\r\n    if(!scan.down) {float x=p0x;float y=p0y;p0x=p1x;p0y=p1y;p1x=x;p1y=y;}\r\n    segments.Store4(dst*SCAN_SEGMENT_STRIDE,asuint(float4(p0x,p0y,p1x,p1y)));\r\n    segments.Store(dst*SCAN_SEGMENT_STRIDE+SCAN_SEGMENT_Y_EDGE,asuint(edge));\r\n}\r\n",
+          "scan/common.hlsli": "#include \"../dispatch.hlsli\"\r\nstruct ScanConfig {\r\n    uint clear_len; uint backdrop_len; uint path_count; uint scan_chunk_count;\r\n    uint line_count; uint segment_capacity; uint incremental; uint line_base;\r\n    uint path_base; uint chunk_base; uint backdrop_base;\r\n};\r\nConstantBuffer<ScanConfig> config:register(b0,space0);\r\n// Each entry declares its active-index buffer before including this shared code.\r\nuint dispatched_index(uint index,uint base) {\r\n    if (config.incremental != 0u) return active_indices.Load((base+index)*4u);\r\n    return index;\r\n}\r\n",
+          "scan/emit.hlsl": "ByteAddressBuffer active_indices:register(t5,space0);\r\n#include \"common.hlsli\"\r\nByteAddressBuffer lines:register(t1,space0);\r\nByteAddressBuffer path_records:register(t2,space0);\r\nRWByteAddressBuffer segment_tile_cursors:register(u3,space0);\r\nRWByteAddressBuffer segments:register(u4,space0);\r\n#include \"geometry.hlsli\"\r\n#include \"clip.hlsli\"\r\n\r\n[numthreads(SCAN_CHUNK_SIZE,1,1)]\r\nvoid scan_emit(uint3 id:SV_DispatchThreadID) {\r\n    if(id.x>=config.line_count) return;\r\n    ScanTraversal scan;\r\n    if(!scan_geometry(dispatched_index(id.x,config.line_base),scan)) return;\r\n    for(uint i=scan.imin;i<scan.imax;i++) {\r\n        float z=floor(scan.a*float(i)+scan.b);\r\n        int2 tile=scan_tile(scan,i,z);\r\n        if(scan_tile_inside(scan,tile)) {\r\n            uint dst;\r\n            segment_tile_cursors.InterlockedAdd(scan_tile_offset(scan,tile)*4u,1u,dst);\r\n            if(dst<config.segment_capacity) write_clipped_segment(dst,scan,i,z,tile);\r\n        }\r\n    }\r\n}\r\n",
+          "scan/geometry.hlsli": "// Shared DDA traversal for count and emit; arithmetic order follows the renderer\r\n// geometry contract. Top-touch tolerance and tile snapping are distinct policies.\r\nstatic const float SCAN_EPSILON=1.0e-6;\r\nstatic const float TOP_TOUCH_EPSILON=1.0e-12;\r\nstatic const float TILE_CLIP_NUDGE=1.0e-3;\r\n\r\nstruct ScanTraversal {\r\n    uint4 bbox;\r\n    uint data_offset;\r\n    float4 points;\r\n    bool down;\r\n    uint count;\r\n    float a,b,sign,x0,y0;\r\n    uint imin,imax;\r\n    int ymin,ymax;\r\n};\r\nbool is_tile_boundary_y(float value) {return abs(value-floor(value))<=TOP_TOUCH_EPSILON;}\r\nint ceil_tile_boundary_y(float value) {if(is_tile_boundary_y(value)) return int(floor(value));return int(ceil(value));}\r\nuint span(float a,float b) {float hi=ceil(a);if(b>a) hi=ceil(b);float lo=floor(a);if(b<a) lo=floor(b);float value=hi-lo;if(value<1.0) value=1.0;return uint(value);}\r\n\r\nbool scan_geometry(uint line_index,out ScanTraversal scan) {\r\n    scan=(ScanTraversal)0;\r\n    uint line_base=line_index*SCAN_LINE_STRIDE;\r\n    uint path_id=lines.Load(line_base);\r\n    uint path_bytes;path_records.GetDimensions(path_bytes);\r\n    if(path_id>=path_bytes/SCAN_PATH_RECORD_STRIDE) return false;\r\n    uint path_base=path_id*SCAN_PATH_RECORD_STRIDE;\r\n    scan.bbox=path_records.Load4(path_base+SCAN_PATH_BBOX);\r\n    scan.data_offset=path_records.Load(path_base+SCAN_PATH_DATA_OFFSET);\r\n    if(scan.bbox.z-scan.bbox.x==0u || scan.bbox.y>=scan.bbox.w) return false;\r\n    float4 matrix=asfloat(path_records.Load4(path_base+SCAN_PATH_TRANSFORM));\r\n    float2 translation=asfloat(path_records.Load2(path_base+SCAN_PATH_TRANSFORM+16u));\r\n    float2 local0=asfloat(lines.Load2(line_base+SCAN_LINE_P0));\r\n    float2 local1=asfloat(lines.Load2(line_base+SCAN_LINE_P1));\r\n    float2 p0=float2(matrix.x*local0.x+matrix.z*local0.y+translation.x,matrix.y*local0.x+matrix.w*local0.y+translation.y);\r\n    float2 p1=float2(matrix.x*local1.x+matrix.z*local1.y+translation.x,matrix.y*local1.x+matrix.w*local1.y+translation.y);\r\n    scan.down=p1.y>=p0.y;\r\n    scan.points=float4(p0,p1);\r\n    if(!scan.down) scan.points=float4(p1,p0);\r\n    float tile_scale=1.0/float(SCAN_TILE_SIZE);\r\n    float4 s=scan.points*tile_scale;\r\n    uint count_x=span(s.x,s.z)-1u;\r\n    scan.count=count_x+span(s.y,s.w);\r\n    float dx=abs(s.z-s.x);\r\n    float dy=s.w-s.y;\r\n    if(dx+dy==0.0 || (dy==0.0 && floor(s.y)==s.y)) return false;\r\n    float reciprocal=1.0/(dx+dy);\r\n    scan.a=dx*reciprocal;\r\n    bool positive=s.z>=s.x;\r\n    scan.sign=-1.0;if(positive) scan.sign=1.0;\r\n    float xt0=floor(s.x*scan.sign);\r\n    float c=s.x*scan.sign-xt0;\r\n    scan.y0=floor(s.y);\r\n    float ytop=scan.y0+1.0;if(s.y==s.w) ytop=ceil(s.y);\r\n    scan.b=min((dy*c+dx*(ytop-s.y))*reciprocal,0.99999994);\r\n    float error=floor(scan.a*(float(scan.count)-1.0)+scan.b)-float(count_x);\r\n    if(error!=0.0) {if(error>0.0) scan.a-=0.0000002;else scan.a+=0.0000002;}\r\n    scan.x0=xt0*scan.sign-1.0;if(positive) scan.x0=xt0*scan.sign;\r\n    float xmin=min(s.x,s.z);\r\n    if(s.y>=float(scan.bbox.w) || s.w<=float(scan.bbox.y)+TOP_TOUCH_EPSILON || xmin>=float(scan.bbox.z)) return false;\r\n    scan.imin=0u;\r\n    if(s.y<float(scan.bbox.y)) {\r\n        float first=round((float(scan.bbox.y)-scan.y0+scan.b-scan.a)/(1.0-scan.a))-1.0;\r\n        if(scan.y0+first-floor(scan.a*first+scan.b)<float(scan.bbox.y)) first+=1.0;\r\n        scan.imin=uint(first);\r\n    }\r\n    scan.imax=scan.count;\r\n    if(s.w>float(scan.bbox.w)) {\r\n        float last=round((float(scan.bbox.w)-scan.y0+scan.b-scan.a)/(1.0-scan.a))-1.0;\r\n        if(scan.y0+last-floor(scan.a*last+scan.b)<float(scan.bbox.w)) last+=1.0;\r\n        scan.imax=uint(last);\r\n    }\r\n    scan.ymin=0;scan.ymax=0;\r\n    if(max(s.x,s.z)<float(scan.bbox.x)) {\r\n        scan.ymin=ceil_tile_boundary_y(s.y);scan.ymax=ceil_tile_boundary_y(s.w);\r\n        scan.imax=scan.imin;\r\n    } else {\r\n        float fudge=1.0;if(positive) fudge=0.0;\r\n        if(xmin<float(scan.bbox.x)) {\r\n            float cut=round((scan.sign*(float(scan.bbox.x)-scan.x0)-scan.b+fudge)/scan.a);\r\n            if((scan.x0+scan.sign*floor(scan.a*cut+scan.b)<float(scan.bbox.x))==positive) cut+=1.0;\r\n            int ynext=int(scan.y0+cut-floor(scan.a*cut+scan.b)+1.0);\r\n            if(positive) {\r\n                if(uint(cut)>scan.imin) {\r\n                    float ystart=scan.y0+1.0;if(is_tile_boundary_y(s.y)) ystart=scan.y0;\r\n                    scan.ymin=int(ystart);scan.ymax=ynext;scan.imin=uint(cut);\r\n                }\r\n            } else if(uint(cut)<scan.imax) {scan.ymin=ynext;scan.ymax=ceil_tile_boundary_y(s.w);scan.imax=uint(cut);}\r\n        }\r\n        if(max(s.x,s.z)>float(scan.bbox.z)) {\r\n            float cut=round((scan.sign*(float(scan.bbox.z)-scan.x0)-scan.b+fudge)/scan.a);\r\n            if((scan.x0+scan.sign*floor(scan.a*cut+scan.b)<float(scan.bbox.z))==positive) cut+=1.0;\r\n            if(positive) scan.imax=min(scan.imax,uint(cut));else scan.imin=max(scan.imin,uint(cut));\r\n        }\r\n    }\r\n    scan.imax=max(scan.imin,scan.imax);\r\n    scan.ymin=max(scan.ymin,int(scan.bbox.y));scan.ymax=min(scan.ymax,int(scan.bbox.w));\r\n    return true;\r\n}\r\n\r\nint2 scan_tile(ScanTraversal scan,uint index,float z) {\r\n    return int2(int(scan.x0+scan.sign*z),int(scan.y0+float(index)-z));\r\n}\r\nbool scan_tile_inside(ScanTraversal scan,int2 tile) {\r\n    return tile.y>=int(scan.bbox.y) && tile.y<int(scan.bbox.w) && tile.x>=int(scan.bbox.x) && tile.x<int(scan.bbox.z);\r\n}\r\nuint scan_tile_offset(ScanTraversal scan,int2 tile) {\r\n    return scan.data_offset+(uint(tile.y)-scan.bbox.y)*(scan.bbox.z-scan.bbox.x)+uint(tile.x)-scan.bbox.x;\r\n}\r\n"
+        },
+        "target": "spirv",
+        "target_triple": "x86_64-pc-windows-msvc",
+        "toolchain": {
+          "files": {
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxc.exe": "ae4bf100b8c64ab03cdc0ee5996d5f212e96c59d6d37340359342d714ac6c004",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxcompiler.dll": "f79943b02f73b621421b58a569fd6ee120d0023fb6bfa23844ecad6b00d6a295",
+            "\\\\?\\G:\\Code\\tileink\\target\\toolchains\\dxc-v1.8.2502\\bin\\x64\\dxil.dll": "62736e99aa534a942873f92b881a71b2cb6ad62b8d7481ea7a8ad8e9888a8056"
+          },
+          "version": "dxcompiler.dll: 1.8 - 1.8.2502.8 (b4711839e); dxil.dll: 1.8(1.8.2502.8)\r\n"
+        },
+        "variant": "scan-emit"
+      }
+    }
+  ],
+  "spirv_validation": {
+    "validator": "Vulkan SDK 1.4.357.0 spirv-val",
+    "target_env": "vulkan1.1",
+    "passed_entries": 6
+  },
+  "performance_comparison": "waived by user",
+  "metal_hardware_validation": "deferred; no Mac available"
+}

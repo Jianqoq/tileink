@@ -1,3 +1,10 @@
+#[path = "support/calibration.rs"]
+mod calibration;
+
+#[cfg(feature = "bench-internals")]
+use peniko::Color;
+
+use retained_bench::benchmark_gpu;
 #[path = "../examples/support/retained_bench.rs"]
 mod retained_bench;
 #[path = "../examples/support/retained_scale.rs"]
@@ -10,19 +17,17 @@ use std::time::Duration;
 #[cfg(feature = "bench-internals")]
 use criterion::BatchSize;
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
-use peniko::Color;
 #[cfg(feature = "bench-internals")]
 use peniko::kurbo::{Affine, Rect, Shape};
 use retained_bench::{
-    BenchConfig, HEIGHT, Measurements, MutationPhase, WIDTH, bench_persistent,
-    bench_persistent_phase,
+    BenchConfig, Measurements, MutationPhase, bench_persistent, bench_persistent_phase,
 };
 use retained_scale::{Scenario, Workload};
+use tileink::IncrementalRenderMode;
 #[cfg(feature = "bench-internals")]
 use tileink::{
     Canvas, FillRule, RetainedMaterializerBenchmark, RetainedNodeId, RetainedParent, RetainedScene,
 };
-use tileink::{IncrementalRenderMode, WgpuRenderer};
 
 const COUNTS: [usize; 5] = [100, 1_000, 5_000, 20_000, 100_000];
 #[cfg(feature = "bench-internals")]
@@ -122,64 +127,43 @@ fn rapid_resize_workload(count: usize) -> (RetainedScene, RetainedMaterializerBe
 
 fn retained_materialize_stage(
     c: &mut Criterion,
-    seed: &WgpuRenderer,
+    context: &retained_bench::BenchContext,
     scenario: Scenario,
     name: &str,
     duration: fn(&Measurements) -> Duration,
 ) {
-    let mut group = c.benchmark_group(format!("retained_materialize/{name}"));
+    let mut group = c.benchmark_group(format!("retained_materialize_cycles/{name}"));
     for count in COUNTS {
-        group.throughput(Throughput::Elements(count as u64));
+        group.throughput(Throughput::Elements(count as u64 * 2));
+        let mut warmed = false;
         group.bench_with_input(BenchmarkId::from_parameter(count), &count, |b, &count| {
-            b.iter_custom(|iterations| {
+            b.iter_custom(calibration::warm_once(&mut warmed, |iterations| {
                 let workload = Workload::new(count, scenario);
                 let measurements = bench_persistent(
-                    seed,
-                    BenchConfig {
-                        warmup: 3,
-                        frames: iterations as usize,
-                    },
+                    context,
+                    BenchConfig::paired_cycles(3, iterations, true),
                     workload.build_scene(),
                     IncrementalRenderMode::Auto,
                     |scene, frame| workload.mutate(scene, frame),
                 )
                 .expect("retained materialization benchmark must render");
                 duration(&measurements)
-            });
+            }));
         });
     }
     group.finish();
 }
 
 fn retained_scale(c: &mut Criterion) {
-    let seed = WgpuRenderer::new_default_device(WIDTH, HEIGHT, Color::TRANSPARENT);
-    for scenario in Scenario::ALL {
-        let mut group = c.benchmark_group(format!("retained_scale/{}", scenario.name()));
-        for count in COUNTS {
-            group.throughput(Throughput::Elements(count as u64));
-            group.bench_with_input(BenchmarkId::from_parameter(count), &count, |b, &count| {
-                b.iter_custom(|iterations| {
-                    let workload = Workload::new(count, scenario);
-                    let scene = workload.build_scene();
-                    let measurements = bench_persistent(
-                        &seed,
-                        BenchConfig {
-                            // Exercise both sides of alternating workloads before Criterion
-                            // samples. One warmup frame leaves variable-length/add-remove cases
-                            // measuring first-use arena growth in every newly constructed sample.
-                            warmup: 3,
-                            frames: iterations as usize,
-                        },
-                        scene,
-                        IncrementalRenderMode::Auto,
-                        |scene, frame| workload.mutate(scene, frame),
-                    )
-                    .expect("retained Criterion benchmark must render");
-                    measurements.wall.into_iter().sum::<Duration>()
-                });
-            });
-        }
-        group.finish();
+    let api = std::env::var("TILEINK_BENCH_API").unwrap_or_else(|_| "vulkan".into());
+    let (_, device, queue) =
+        benchmark_gpu::device(&api, false, true, wgpu::MemoryHints::MemoryUsage);
+    let context = retained_bench::BenchContext::new(&device, &queue);
+    for (prefix, profile) in [
+        ("retained_scale", true),
+        ("retained_scale_production", false),
+    ] {
+        retained_frame_cycles(c, &context, prefix, profile);
     }
 
     // Isolate the fixed scene-bound GPU object churn removed by pooling. The retained end-to-end
@@ -251,13 +235,7 @@ fn retained_scale(c: &mut Criterion) {
         // call establishes capacity; measured iterations must reuse it while logical sizes vary.
         let mut group = c.benchmark_group("retained_scale/internal-target-rapid-resize");
         group.bench_function("shrink-expand", |b| {
-            let mut renderer = WgpuRenderer::new(
-                seed.device(),
-                seed.queue(),
-                WIDTH,
-                HEIGHT,
-                Color::TRANSPARENT,
-            );
+            let mut renderer = context.renderer();
             renderer.resize_internal_targets_for_benchmark(&RAPID_RESIZE_SIZES);
             b.iter(|| renderer.resize_internal_targets_for_benchmark(&RAPID_RESIZE_SIZES));
         });
@@ -287,13 +265,7 @@ fn retained_scale(c: &mut Criterion) {
         let mut group = c.benchmark_group("retained_scale/local-scene-resource-cycle");
         for (policy, reuse) in [("fresh", false), ("pooled", true)] {
             group.bench_function(policy, |b| {
-                let mut renderer = WgpuRenderer::new(
-                    seed.device(),
-                    seed.queue(),
-                    WIDTH,
-                    HEIGHT,
-                    Color::TRANSPARENT,
-                );
+                let mut renderer = context.renderer();
                 renderer.set_local_scene_resource_reuse_for_benchmark(reuse);
                 renderer.cycle_local_scene_resources_for_benchmark((256, 256));
                 b.iter(|| renderer.cycle_local_scene_resources_for_benchmark((256, 256)));
@@ -305,13 +277,7 @@ fn retained_scale(c: &mut Criterion) {
         let sizes = [(128, 128), (320, 192)];
         for (policy, reuse) in [("fresh", false), ("pooled", true)] {
             group.bench_function(policy, |b| {
-                let mut renderer = WgpuRenderer::new(
-                    seed.device(),
-                    seed.queue(),
-                    WIDTH,
-                    HEIGHT,
-                    Color::TRANSPARENT,
-                );
+                let mut renderer = context.renderer();
                 renderer.set_local_scene_resource_reuse_for_benchmark(reuse);
                 renderer.cycle_mixed_local_scene_resources_for_benchmark(&sizes);
                 b.iter(|| renderer.cycle_mixed_local_scene_resources_for_benchmark(&sizes));
@@ -334,7 +300,7 @@ fn retained_scale(c: &mut Criterion) {
         ("all-revisions-plan-sync", |m| m.materialize_plan_sync),
         ("all-revisions-frame", |m| m.materialize_frame),
     ] {
-        retained_materialize_stage(c, &seed, Scenario::AllRevisions, name, duration);
+        retained_materialize_stage(c, &context, Scenario::AllRevisions, name, duration);
     }
     for (name, duration) in [
         (
@@ -344,7 +310,7 @@ fn retained_scale(c: &mut Criterion) {
         ("liquid-glass-move-plan-sync", |m| m.materialize_plan_sync),
         ("liquid-glass-move-frame", |m| m.materialize_frame),
     ] {
-        retained_materialize_stage(c, &seed, Scenario::LiquidGlassMove, name, duration);
+        retained_materialize_stage(c, &context, Scenario::LiquidGlassMove, name, duration);
     }
     for (name, duration) in [
         (
@@ -355,7 +321,7 @@ fn retained_scale(c: &mut Criterion) {
         ("one-affine-plan-sync", |m| m.materialize_plan_sync),
         ("one-affine-frame", |m| m.materialize_frame),
     ] {
-        retained_materialize_stage(c, &seed, Scenario::OneAffine, name, duration);
+        retained_materialize_stage(c, &context, Scenario::OneAffine, name, duration);
     }
     for (name, duration) in [
         (
@@ -366,7 +332,43 @@ fn retained_scale(c: &mut Criterion) {
         ("affine-clip-update-plan-sync", |m| m.materialize_plan_sync),
         ("affine-clip-update-frame", |m| m.materialize_frame),
     ] {
-        retained_materialize_stage(c, &seed, Scenario::AffineClipUpdate, name, duration);
+        retained_materialize_stage(c, &context, Scenario::AffineClipUpdate, name, duration);
+    }
+}
+
+fn retained_frame_cycles(
+    c: &mut Criterion,
+    context: &retained_bench::BenchContext,
+    prefix: &str,
+    profile: bool,
+) {
+    for scenario in Scenario::ALL {
+        let mut group = c.benchmark_group(format!(
+            "{}{}/{}",
+            prefix,
+            if profile { "_cycles" } else { "" },
+            scenario.name()
+        ));
+        for count in COUNTS {
+            group.throughput(Throughput::Elements(count as u64 * 2));
+            let mut warmed = false;
+            group.bench_with_input(BenchmarkId::from_parameter(count), &count, |b, &count| {
+                b.iter_custom(calibration::warm_once(&mut warmed, |iterations| {
+                    let workload = Workload::new(count, scenario);
+                    let scene = workload.build_scene();
+                    let measurements = bench_persistent(
+                        context,
+                        BenchConfig::paired_cycles(3, iterations, profile),
+                        scene,
+                        IncrementalRenderMode::Auto,
+                        |scene, frame| workload.mutate(scene, frame),
+                    )
+                    .expect("retained Criterion benchmark must render");
+                    measurements.wall.into_iter().sum::<Duration>()
+                }));
+            });
+        }
+        group.finish();
     }
 
     for (scenario, name) in [
@@ -378,17 +380,19 @@ fn retained_scale(c: &mut Criterion) {
             (MutationPhase::Insert, "insert"),
             (MutationPhase::Remove, "remove"),
         ] {
-            let mut group = c.benchmark_group(format!("retained_scale/{name}-{phase_name}"));
+            let mut group = c.benchmark_group(format!("{prefix}/{name}-{phase_name}"));
             for count in COUNTS {
                 group.throughput(Throughput::Elements(count as u64));
+                let mut warmed = false;
                 group.bench_with_input(BenchmarkId::from_parameter(count), &count, |b, &count| {
-                    b.iter_custom(|iterations| {
+                    b.iter_custom(calibration::warm_once(&mut warmed, |iterations| {
                         let workload = Workload::new(count, scenario);
                         let measurements = bench_persistent_phase(
-                            &seed,
+                            context,
                             BenchConfig {
                                 warmup: 1,
                                 frames: iterations as usize,
+                                profile,
                             },
                             workload.build_scene(),
                             IncrementalRenderMode::Auto,
@@ -397,7 +401,7 @@ fn retained_scale(c: &mut Criterion) {
                         )
                         .expect("retained phase Criterion benchmark must render");
                         measurements.wall.into_iter().sum::<Duration>()
-                    });
+                    }));
                 });
             }
             group.finish();

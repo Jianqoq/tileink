@@ -1,0 +1,252 @@
+{
+  "schema": 1,
+  "milestone": "M3 Windows minimum native vertical slice",
+  "status": "complete",
+  "base_commit": "70087c66edbbdd1df2eea8b0522ff5c02c94ac6d",
+  "recorded_utc": "2026-09-13T16:01:06.519091+00:00",
+  "scope": {
+    "windows_dx12_vulkan": true,
+    "full_canvas_m4": false,
+    "metal_gpu_validated": false,
+    "performance_comparisons": "waived by user; not run"
+  },
+  "physical_gpu": {
+    "name": "NVIDIA GeForce RTX 4090",
+    "windows_luid": "9f3f010000000000"
+  },
+  "exact_pixels": {
+    "cases": 306,
+    "repetitions": 3,
+    "actual_routes": [
+      "wgpu-dx12",
+      "wgpu-vulkan",
+      "native-dx12",
+      "native-vulkan"
+    ],
+    "route_outputs": 3672,
+    "different_pixels": 0,
+    "max_channel_delta": 0,
+    "cpu_oracle": "independent f64/i64",
+    "fresh_process_report": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m3c-four-api-no-runtime-dxc.json",
+    "report_sha256": "d79d93726dd2caf9f68d4311d30abd06b14e3b4e76b43eab06d2194bf1ac5654"
+  },
+  "gpu_runtime": {
+    "tests_passed": 23,
+    "native_dxc_paths": "both configured to a nonexistent executable; direct binary run",
+    "pipeline_cache_hits": 88,
+    "pipeline_compiles": 0,
+    "debug_layers": "DX12 debug layer and Vulkan validation; normal paths including teardown passed",
+    "injected_errors": "DX12 after real Execute; Vulkan returned error at queue-call boundary; not physical device removal"
+  },
+  "release_library": {
+    "passed": 955,
+    "ignored_gpu_opt_in": 9,
+    "all_integration_suites_passed": true
+  },
+  "quality": {
+    "strict_native_all_target_clippy": "passed",
+    "format": "passed",
+    "git_diff_check": "passed",
+    "reviews": {
+      "standards": "no remaining findings",
+      "spec": "OOM classification and Q16 limits reviewed; no remaining findings"
+    }
+  },
+  "feature_checks": [
+    "default",
+    "cpu-only",
+    "native-dx12-only",
+    "native-vulkan-only",
+    "native-only",
+    "wgpu+native"
+  ],
+  "packaging": {
+    "crate_sha256": "6e20cb31428cbd598d9e1cbae3cc57d5726813d352ec449c1e492486e21e475d",
+    "files": 284,
+    "required_files": [
+      "src/native.rs",
+      "src/native/runtime.rs",
+      "src/native/runtime/dx12.rs",
+      "src/native/runtime/vulkan.rs",
+      "src/native/runtime/dx12/texture.rs",
+      "src/native/runtime/vulkan/texture.rs",
+      "src/shaders/hlsl/probes.hlsl",
+      "src/shaders/metal/probes.metal",
+      "build/native/cache.rs"
+    ],
+    "extracted_root": "C:\\Users\\JIANJI~1\\AppData\\Local\\Temp\\tileink-m3-package-3y07ei4n\\tileink-0.1.2",
+    "native_only_build": "passed",
+    "default_build_without_native_dxc": "passed",
+    "native_only_normal_build_dependencies": "no wgpu or naga",
+    "note": "Package created before a trailing blank line was removed from Cargo.toml; code and manifest semantics unchanged."
+  },
+  "existing_renderer_regression": {
+    "before": 3471,
+    "after": 3471,
+    "changed": [],
+    "missing": [],
+    "added": [],
+    "full_svg_native_portable": "passed",
+    "full_examples_native_portable": "passed"
+  },
+  "spirv": {
+    "validator_sha256": "55b0bde93c20d427a95d6deb95181ab6621d9bb18e6f1519d30ceba8d3f1de17",
+    "manifest": "G:\\Code\\tileink\\target\\native-m1-backdrop-build\\release\\build\\tileink-89b49c11090d5c7d\\out\\tileink_native_artifacts.json",
+    "results": [
+      {
+        "entry": "clear_words",
+        "artifact_sha256": "d77229ead0bf6b4f8ddbafecc56a5d16c0d1a0da2a37f748d14df486b6c4bd5f",
+        "cache_key": "33048a9361dc71dbfeb30e2527ecfdc16fe36b35a323047fcf53f911dc03d400",
+        "exit_code": 0
+      },
+      {
+        "entry": "copy_words",
+        "artifact_sha256": "a2338e39bc4c533b17c99245a7bb82ed631f6b179c0d51bcf756e5ebb4699442",
+        "cache_key": "e28beaf59bcbb7a363d5f75558ba44f4b29c6bb3b7cfaeb8de4879e7a5dde5cc",
+        "exit_code": 0
+      },
+      {
+        "entry": "layout_words",
+        "artifact_sha256": "f2129fddbdb61c811face9ea0dc6c0646ea2f3743e99f283c1ef7116156d3885",
+        "cache_key": "97ee0aebd00c7d9f5c1b849e27a5cd54eb2b07642fd6227e19c83bb401c427c7",
+        "exit_code": 0
+      },
+      {
+        "entry": "sample_words",
+        "artifact_sha256": "a924f50bbe552fad554df3d5ea1d408df14d53a4f61546c9e0c10d3fc4c70aff",
+        "cache_key": "328176f1c52f72956b13cf2a75a2999d37eaa4a23d59506a45d280f6b0c13663",
+        "exit_code": 0
+      }
+    ]
+  },
+  "source_sha256_utf8_lf": {
+    "build/native/abi.rs": "9ca5f80295cadcd17e4c09eab1f6c153f6676b532d48221164d9641cec50fc6a",
+    "build/native/cache.rs": "78bb6cc5782a7a688e86fbbae80f0c7c7196b812c5373c44768f20dd9cffdf80",
+    "build/native/dxc.rs": "3723cf453f42d42766e37fd0c6f1ee25c207fd02503ebc725dec3ac51248bb84",
+    "build/native/dxil_reflection.rs": "70e8018017476391b63fe060a3e3529c995daf49d6ed6897b376dda713e2bbd8",
+    "build/native/mod.rs": "b5b082402e6fd71d671527869c683ddc4dad457d4d6bb98ecf1674c7f717d31e",
+    "build/native/source.rs": "790e6a38d383d48a912c0f67bbc6a461740f707937e3d55f51bb2dfc16edf911",
+    "build/native/spirv.rs": "ef1b0bbf249f3a9fd1e015c1664055f592d0c3b5ec47a95af7b890c3548a7aa7",
+    "Cargo.toml": "b7153e2dc0afca06319c3b561a20b439079df50677ee1f50442bbf3228c27923",
+    "examples/common/benchmark_gpu.rs": "d5165f51afbe570af4142a9ed1243de27b7e0f63610013b18b8abbd1c8bd5379",
+    "src/native/runtime/adapter.rs": "8b330efabc1099027aed506cd50c641223fa36802ee3c94be21dd9056b3cbe70",
+    "src/native/runtime/dx12/frame.rs": "e6516669ed7555787c6c57667ad54181752e955cc7bc819de9eeea5322b6c5bc",
+    "src/native/runtime/dx12/pipeline.rs": "e6ff7a35b961f9d0250e3c06009102888323ad844ef3021a33c3813c923100dd",
+    "src/native/runtime/dx12/retirement.rs": "23e832f705f910983b71ec6f0dfe16d24c0d0b2dc6776b7d265ed9c418c19714",
+    "src/native/runtime/dx12/tests.rs": "162967dfea9d448be636f54ab1186474be7eb076dce1e68cf1c46541c86fc5d4",
+    "src/native/runtime/dx12/texture.rs": "7f3cc26699667730fef0917a016862aa49ec7b0b2ed84ef048d0430533e69248",
+    "src/native/runtime/dx12/validation.rs": "7cb3ae91ae716edc75ff178dc9c3c0b471f5f2785159478f867382ffb4d7972c",
+    "src/native/runtime/dx12.rs": "e5c828193efd3187a5d97161b06c0be73bf2821e198f45b93756bd58ff7f81d1",
+    "src/native/runtime/gpu_tests.rs": "e6c1cdf07e48d49cc05af7b02f9268005a6bb3759001f7ae8caba3a8dcb98a5a",
+    "src/native/runtime/pipeline_cache.rs": "e9d910e6cfbc8d0e842470de2b872635240954f598f98e80ef364f7a8d9a8998",
+    "src/native/runtime/program.rs": "e407f70531c7ad0305f1755f860bf4feb56de61682d6d16de6a80b4e8e3fe63d",
+    "src/native/runtime/submissions.rs": "25857bd4f3f4d1bd586ec707c2cba90f1c258b29641686ad0d04713baf258bd0",
+    "src/native/runtime/tests/batches.rs": "261f18b958ece8019d16713f26241fce78420a579243816965a137109f13e590",
+    "src/native/runtime/tests/cases.rs": "dd419fbf420c9d10fae2e41e893819dd6108f5789a27ef05d583cc10d6a94ae5",
+    "src/native/runtime/tests/isolation.rs": "eb54a3658591dab879ddba915de82ab0988c031ef432cfb49764825fbf4d24fa",
+    "src/native/runtime/tests/program.rs": "781b3c20b36dcc5135a72f8e666fad5f22e5561703f31aca034c4d28a941129d",
+    "src/native/runtime/tests/reference.wgsl": "242039522c9f4e86d9d4519186e2a976d8e209bec80520dc26883475244f1940",
+    "src/native/runtime/tests/wgpu.rs": "ad446ed343235dff4c095175359b659284af84c969a8106af9915a5ddfc9cde4",
+    "src/native/runtime/vulkan/frame.rs": "439f4abc70f9f25abe1d8092ddc157744f5886801fc3ca47fb334083e200871e",
+    "src/native/runtime/vulkan/limits.rs": "27be1f8d98a7de9db91fb9f4f9b78678ec536b27e0fed8cfec16e6ba47abcee6",
+    "src/native/runtime/vulkan/pipeline.rs": "1125dbeea37c7b3c702a218faef12f85b90b03c95d3864b188d1f282d67d9d24",
+    "src/native/runtime/vulkan/tests.rs": "ac76c0b8da77fe4dd65405fccb36d0f07d7f9d7275e82f7295336fea70c7fd60",
+    "src/native/runtime/vulkan/texture.rs": "c2f521076ce961964062b14b4cf5e6ff1e6cb167d175d464ca492dfcb13501ce",
+    "src/native/runtime/vulkan/validation.rs": "9a359d0c515257cae52a9cffeeeb25cf7660382e780a3bfd489c46bfe1ea5686",
+    "src/native/runtime/vulkan.rs": "6014375080a363e4965f8bfa5611ec68b1216ab00768ae07e467d7782a16b5b5",
+    "src/native/runtime.rs": "566df9d31e89baf390b7b7cb689504d90f92262f36cc599701ad708e95b9261e",
+    "src/native.rs": "a90f699d3065263adb1c62076e3decd86946d47dd7de8571aec2fc44b549fa51",
+    "src/shaders/hlsl/probe_abi.hlsli": "f174931f4d875601fa44cfe4fa15f469a34fade4abcf3f441fd5982125f37332",
+    "src/shaders/hlsl/probes.hlsl": "9f6ab3bb66e96c7c89ebcaefb76ef7453a8c1419e97b87a21d8bb4f16bdfee54",
+    "src/shaders/metal/probes.metal": "0da405d689fec585cd868660202d556b60211e65ffef9c4f9cd8142a84b4ae5b",
+    "src/shaders/probe-abi.json": "7568256938beaae0da4575f33310870fac4a9ec95ddad5924fe2c3fb9d6d54b1",
+    "tests/native_shader_reflection.rs": "c834068deae6d938a829d7a70b822d72cec9dcbac21efde3e3b5c622d9fcb8c4",
+    "tests/native_shader_retirement.rs": "6731fe142eb1b6aadf4a67268c3c8328ba22df22761d52d9fdec2f41ea909fca"
+  },
+  "logs": {
+    "m3c-full-release-1.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m3c-full-release-1.log",
+      "sha256": "02f292a67a76f71afc3e7e5e57acc886082686e6a63d5c8229358726d7d46de6"
+    },
+    "m3c-final-release.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m3c-final-release.log",
+      "sha256": "d79d334aa1db9524d6950bb980421312ad713eaf87f277ad8e72f0214c145f5d"
+    },
+    "m3c-runtime-no-dxc.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m3c-runtime-no-dxc.log",
+      "sha256": "ccd1775425f49301d8ab2ae3da577c3417c6383be4c683ca49ec9b9c31196737"
+    },
+    "m3c-final-gpu.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m3c-final-gpu.log",
+      "sha256": "772703a203cb4745a3ee9c20566d6aa8085372e8be094fbed90b8e88e9f36729"
+    },
+    "m3c-closeout-clippy.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m3c-closeout-clippy.log",
+      "sha256": "a70f750da6f09f67f46ec2042d09723197a82a6fad056a7c212d2b367ab196e9"
+    },
+    "m3c-full-svg.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m3c-full-svg.log",
+      "sha256": "e325806fb2b6e4dc307100f4be03d0ee48332129a97ece7b58ade898c49bf67f"
+    },
+    "m3c-full-examples.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m3c-full-examples.log",
+      "sha256": "4ff6b86bff6a16dcc075a3c7cf5aa80b64d6b34969232ec6b86f8fb6970273e7"
+    },
+    "m3c-image-reflection.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m3c-image-reflection.log",
+      "sha256": "f59a3ec5bcd88ec6bfc5d12ffecbab5077a54f3ddd011e4d788dc49a348f7a23"
+    },
+    "m3c-limits.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m3c-limits.log",
+      "sha256": "484e7b0c390b65ec2b82303394e7f75de1ab070d1f9e8c74e015f8b26e23ba54"
+    },
+    "m3c-package.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m3c-package.log",
+      "sha256": "3d0c1a5813ae27908a3bd2703b5dc8a18806302367c69a1294ac1b50815b3cb9"
+    },
+    "m3c-package-native-2.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m3c-package-native-2.log",
+      "sha256": "3e2cf203ba9c001db35ab901bcc1ca698351da7bb127db0b002ddd14ebf1c32b"
+    },
+    "m3c-package-default.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m3c-package-default.log",
+      "sha256": "bea96818e6e0c77ecc6f35d947539847b2c70367454a81022535b8df31dff2ef"
+    },
+    "m3c-package-native-deps.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m3c-package-native-deps.log",
+      "sha256": "de3d513fba31daf1faa9c1fc2345520aa5678e1c15fddcb631d696e4299bbc80"
+    },
+    "m3c-feature-vulkan-closeout.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m3c-feature-vulkan-closeout.log",
+      "sha256": "470c0a08b2b985aa27bfbe23ae1999ac83450f3a06f605acaa28c3bf7c05f362"
+    },
+    "m3c-texture-gpu-1.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m3c-texture-gpu-1.log",
+      "sha256": "02c75da2e3e7b570847772375d31dc2b3ef1482192be66dcd74b21f2bd6dd2e3"
+    },
+    "m3c-feature-default.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m3c-feature-default.log",
+      "sha256": "7b5fafcbb89f349834f469c8725b1e2a46da0e8760eb7b62b90a333c8fd20c79"
+    },
+    "m3c-feature-cpu.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m3c-feature-cpu.log",
+      "sha256": "dc706d8a3bbad84d0e097f42f8e85fd69c209ca7d38f19e301629e1a82d5f47c"
+    },
+    "m3c-feature-dx12.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m3c-feature-dx12.log",
+      "sha256": "6936dbe629af2b8101f8cfd4dbf559904c8440ea8065bf06edc00e66013d520d"
+    },
+    "m3c-feature-vulkan.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m3c-feature-vulkan.log",
+      "sha256": "0c783a1ab12dfae7b16ade1697bdf037328e6ddf46e3694dd30577b691fcafe0"
+    },
+    "m3c-feature-native.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m3c-feature-native.log",
+      "sha256": "96b5180971148202d7a0609410ef00b7993a72b80e818e894bd12e8b7ad9672b"
+    },
+    "m3c-feature-coexist.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m3c-feature-coexist.log",
+      "sha256": "33abf7ebdde6e709adc791759a98a34c254a232363e31e9145f8a929acefaa11"
+    }
+  }
+}

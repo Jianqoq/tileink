@@ -129,7 +129,7 @@ impl PersistentSceneMaterializer {
     }
 
     pub(crate) fn add_chunk_resources(
-        resource_refs: &mut HashMap<ImageKey, (Rc<Image>, usize)>,
+        resource_refs: &mut HashMap<ImageKey, (ImageSource, usize)>,
         canvas: &mut Rc<Canvas>,
         resources: &ImageResourceStore,
     ) {
@@ -144,7 +144,7 @@ impl PersistentSceneMaterializer {
     }
 
     pub(crate) fn remove_chunk_resources(
-        resource_refs: &mut HashMap<ImageKey, (Rc<Image>, usize)>,
+        resource_refs: &mut HashMap<ImageKey, (ImageSource, usize)>,
         canvas: &mut Rc<Canvas>,
         resources: &ImageResourceStore,
     ) {

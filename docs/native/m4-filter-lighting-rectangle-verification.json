@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "status": "windows-kernel-validated",
+  "inventory_entries": 20,
+  "total_validated": 131,
+  "gpu": "RTX 4090; LUID 9f3f010000000000",
+  "routes": [
+    "wgpu-DX12",
+    "wgpu-Vulkan",
+    "native-DX12",
+    "native-Vulkan"
+  ],
+  "variants": "native/portable x texture_table false/true",
+  "ordinary_release_passed": 980,
+  "native_runtime_passed": 111,
+  "no_dxc_gpu_passed": 28,
+  "spirv_modules_validated": 66,
+  "editor": "Shader Tools invalid/correct roundtrip passed",
+  "clippy": "release native all-targets -D warnings passed",
+  "pngs": {
+    "before": 3471,
+    "after": 3471,
+    "changed": [],
+    "missing": [],
+    "added": []
+  },
+  "reviews": {
+    "spec": "closed",
+    "standards": "closed"
+  },
+  "source_sha256": {
+    "src/shaders/hlsl/filter/lighting.hlsl": "e92b55ec61c374df25f711420052ffb9d3f233fd793f480c17e5fa2d8f683b1c",
+    "src/shaders/hlsl/filter/lighting.hlsli": "f3a8428107a74f224eedaf5046ecd19f49c336febeb94e6dee40f3ca5e9bbed5",
+    "src/shaders/hlsl/filter/rectangle.hlsl": "bc37293546c8635cc6d3414dbedc269b2fdb24c256dc424d35d7001031ac8f34",
+    "src/shaders/hlsl/filter/resample.hlsli": "751d22a82d39bb150f5870f3afe8ba762759dc73de5980b9306c5f1bf63dccd1",
+    "src/shaders/hlsl/shared/sdf/rect.hlsli": "bf6b930e3e39c2c4afb8cb959b73307a3aae583b01aac2a9a57c1f8d5f83c2b9",
+    "src/native/runtime/program/filter/lighting.rs": "cf82d54e327c2747f8ed7c0a95ef5d7e5ca64538e38e4d4616b2f24f352679b0",
+    "src/native/runtime/program/filter/rectangle.rs": "456b969408423d703b234e1379366467ac3ed823d6a7ef66a1ba7737d108c178",
+    "src/native/runtime/program/filter/resample.rs": "978dd977bd9dc1afbeffe333cf724546a048cadd7b0b8952163909deb8f1f5aa",
+    "src/native/runtime/tests/filter_lighting_gpu.rs": "76680cbab25ceb90a221de2d34b5f6faa7ef98a418eb94668ae4b9a45e7e469b",
+    "src/native/runtime/tests/filter_rectangle_gpu.rs": "8bb35c1e35db342abd30a6b44839cf61f0e98f401ec75dcd2a1ea549b45ce873",
+    "src/wgpu/shaders/filter/effects.wgsl": "9693affaad8af3540b7d2e4f7303eb63de4032e74a508fcc93c369addbe937a4",
+    "src/wgpu/shaders/filter/kernels_effects.wgsl": "48fd2b5e96b5414b89916f7bb598c17061da3e1130e6aa7e6856012dd495bf44"
+  },
+  "log_sha256": {
+    "m4-filter-lighting-rectangle-full-release.log": "b63ec082fedf67cb8d18fdaffc72245f3b16352ec4d3f8680dc7e11653cde171",
+    "m4-filter-lighting-rectangle-runtime.log": "702ba8dbe565af3c2439c5362c8c0d48f618fce606de81ba1ef3fdfcdcc20bcb",
+    "m4-filter-lighting-rectangle-clippy.log": "0321163d88b07887da0ea1c8111306e8e653543b2ff4240d7e60dbfc8a99c141",
+    "m4-filter-lighting-rectangle-svg.log": "79bd17b5dac88c7b99bbe08dba70834a5ee450389ffbfcd8628d42c0bd8f3e81",
+    "m4-filter-lighting-rectangle-examples.log": "65c1f5cd6dde3f499a278cd44ecb6ef8d4568dc5bba529a5d594657122ff5644",
+    "m4-filter-lighting-rectangle-no-dxc.log": "3b1bb22451b372a8547462d79983a387a94ff2202e57fa5f025ad2d2057a51e0",
+    "m4-filter-lighting-rectangle-shader.log": "11933e5da70986756be649a6b439f9b164731776af45def567e19d79245a13b8",
+    "m4-filter-lighting-rectangle-editor.log": "bb96a0271f605879e8ac24a765da9232f813c53121f13981c279731c0f64f5e8"
+  },
+  "m4_complete": false
+}

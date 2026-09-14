@@ -67,9 +67,10 @@ fn blend_premul_u8(dst: u32, src: u32, mode: u32) -> u32 {
         let mixed_r = mix_rgb_channel(dst_r, dst_g, dst_b, src_r, src_g, src_b, mix, 0u);
         let mixed_g = mix_rgb_channel(dst_r, dst_g, dst_b, src_r, src_g, src_b, mix, 1u);
         let mixed_b = mix_rgb_channel(dst_r, dst_g, dst_b, src_r, src_g, src_b, mix, 2u);
-        let effective_r = src_alpha * ((1.0 - dst_alpha) * src_r + dst_alpha * mixed_r);
-        let effective_g = src_alpha * ((1.0 - dst_alpha) * src_g + dst_alpha * mixed_g);
-        let effective_b = src_alpha * ((1.0 - dst_alpha) * src_b + dst_alpha * mixed_b);
+        // Match native effective-color fusion; Hue + SourceOut exposed an implicit-order mismatch.
+        let effective_r = src_alpha * fma(dst_alpha, mixed_r, (1.0 - dst_alpha) * src_r);
+        let effective_g = src_alpha * fma(dst_alpha, mixed_g, (1.0 - dst_alpha) * src_g);
+        let effective_b = src_alpha * fma(dst_alpha, mixed_b, (1.0 - dst_alpha) * src_b);
         let src_factor = compose_src_factor(compose, src_alpha, dst_alpha);
         let dst_factor = compose_dst_factor(compose, src_alpha, dst_alpha);
         out_r = effective_r * src_factor + dr * dst_factor;
@@ -224,6 +225,8 @@ fn overlay(dst: f32, src: f32) -> f32 {
 }
 
 fn color_dodge(dst: f32, src: f32) -> f32 {
+    // The backdrop endpoint wins even when the source is the division singularity.
+    if (dst == 0.0) { return 0.0; }
     var out = 1.0;
     if (src < 1.0) {
         out = min(dst / (1.0 - src), 1.0);
@@ -232,6 +235,8 @@ fn color_dodge(dst: f32, src: f32) -> f32 {
 }
 
 fn color_burn(dst: f32, src: f32) -> f32 {
+    // Keep an exactly white backdrop white, including an exactly black source.
+    if (dst == 1.0) { return 1.0; }
     var out = 0.0;
     if (src > 0.0) {
         out = 1.0 - min((1.0 - dst) / src, 1.0);
@@ -280,7 +285,9 @@ fn soft_light(dst: f32, src: f32) -> f32 {
 }
 
 fn lum3(r: f32, g: f32, b: f32) -> f32 {
-    return 0.3 * r + 0.59 * g + 0.11 * b;
+    // Fix the luminosity evaluation order: implicit fusion differed between
+    // DX12 and Vulkan and crossed a half-channel after Color + DestOver.
+    return fma(0.3, r, fma(0.59, g, 0.11 * b));
 }
 
 fn sat3(r: f32, g: f32, b: f32) -> f32 {

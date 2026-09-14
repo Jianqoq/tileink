@@ -1,3 +1,8 @@
+#[path = "tests/reorder.rs"]
+mod reorder;
+#[path = "tests/resources.rs"]
+mod resources;
+
 use peniko::{Color, kurbo::Shape};
 
 use super::*;
@@ -2005,3 +2010,9 @@ fn appended_root_layer_fragment_is_visible_in_cached_execution_plan() {
     assert!(removed_frame.node_state(child).is_none());
     assert_eq!(removed_frame.delta.as_ref().unwrap().depth, 1);
 }
+
+#[path = "tests/batch_classification.rs"]
+mod batch_classification;
+
+#[path = "tests/root_layer_classification.rs"]
+mod root_layer_classification;

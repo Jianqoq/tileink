@@ -12,44 +12,11 @@ fn sample_brush(brush_offset: u32, x: f32, y: f32) -> u32 {
     var color = brush_word(data_base + 4u);
 
     if (kind == GPU_BRUSH_LINEAR) {
-        let tx = brush_param(base, 4u) * x + brush_param(base, 6u) * y + brush_param(base, 8u);
-        let ty = brush_param(base, 5u) * x + brush_param(base, 7u) * y + brush_param(base, 9u);
-        let sx = brush_param(base, 0u);
-        let sy = brush_param(base, 1u);
-        let ex = brush_param(base, 2u);
-        let ey = brush_param(base, 3u);
-        let dx = ex - sx;
-        let dy = ey - sy;
-        let denominator = dx * dx + dy * dy;
-        var t = 0.0;
-        if (denominator > 0.00000011920929) {
-            t = ((tx - sx) * dx + (ty - sy) * dy) / denominator;
-        }
-        color = sample_ramp(payload_offset, payload_len, t, extend);
+        color = sample_linear(x, y, base, extend, payload_offset, payload_len);
     } else if (kind == GPU_BRUSH_RADIAL) {
         color = sample_radial(x, y, base, extend, payload_offset, payload_len);
     } else if (kind == GPU_BRUSH_SWEEP) {
-        let cx = brush_param(base, 0u);
-        let cy = brush_param(base, 1u);
-        let start_angle = brush_param(base, 2u);
-        let end_angle = brush_param(base, 3u);
-        let span = end_angle - start_angle;
-        var t = 0.0;
-        if (abs(span) > 0.00000011920929) {
-            let tau = 6.2831855;
-            var angle = atan2(y - cy, x - cx);
-            if (span > 0.0) {
-                while (angle < start_angle) {
-                    angle = angle + tau;
-                }
-            } else {
-                while (angle > start_angle) {
-                    angle = angle - tau;
-                }
-            }
-            t = (angle - start_angle) / span;
-        }
-        color = sample_ramp(payload_offset, payload_len, t, extend);
+        color = sample_sweep(x, y, base, extend, payload_offset, payload_len);
     } else if (kind == GPU_BRUSH_FOUR_CORNER) {
         color = sample_four_corner(x, y, base, payload_offset);
     } else if (kind == GPU_BRUSH_PATTERN) {
@@ -73,9 +40,54 @@ fn sample_brush(brush_offset: u32, x: f32, y: f32) -> u32 {
     return color;
 }
 
+fn sample_linear(x: f32, y: f32, base: u32, extend: u32, payload_offset: u32, payload_len: u32) -> u32 {
+    // Fix the transform's evaluation order before ramp lookup: a one-ulp
+    // coordinate change can cross a half-channel interpolation boundary.
+    let tx = fma(brush_param(base, 4u), x, fma(brush_param(base, 6u), y, brush_param(base, 8u)));
+    let ty = fma(brush_param(base, 5u), x, fma(brush_param(base, 7u), y, brush_param(base, 9u)));
+    let sx = brush_param(base, 0u);
+    let sy = brush_param(base, 1u);
+    let ex = brush_param(base, 2u);
+    let ey = brush_param(base, 3u);
+    let dx = ex - sx;
+    let dy = ey - sy;
+    let denominator = dx * dx + dy * dy;
+    var t = 0.0;
+    if (denominator > 0.00000011920929) {
+        t = fma(tx - sx, dx, (ty - sy) * dy) / denominator;
+    }
+    return sample_ramp(payload_offset, payload_len, t, extend);
+}
+
+fn sample_sweep(x: f32, y: f32, base: u32, extend: u32, payload_offset: u32, payload_len: u32) -> u32 {
+    let cx = brush_param(base, 0u);
+    let cy = brush_param(base, 1u);
+    let start_angle = brush_param(base, 2u);
+    let end_angle = brush_param(base, 3u);
+    let span = end_angle - start_angle;
+    var t = 0.0;
+    if (abs(span) > 0.00000011920929) {
+        let tau = 6.2831855;
+        // The sweep center has no direction; define zero before atan2(0,0).
+        var angle = 0.0;
+        if (x != cx || y != cy) { angle = atan2(y - cy, x - cx); }
+        if (span > 0.0) {
+            while (angle < start_angle) {
+                angle = angle + tau;
+            }
+        } else {
+            while (angle > start_angle) {
+                angle = angle - tau;
+            }
+        }
+        t = (angle - start_angle) / span;
+    }
+    return sample_ramp(payload_offset, payload_len, t, extend);
+}
+
 fn sample_radial(x: f32, y: f32, base: u32, extend: u32, payload_offset: u32, payload_len: u32) -> u32 {
-    let tx = brush_param(base, 6u) * x + brush_param(base, 8u) * y + brush_param(base, 10u);
-    let ty = brush_param(base, 7u) * x + brush_param(base, 9u) * y + brush_param(base, 11u);
+    let tx = fma(brush_param(base, 6u), x, fma(brush_param(base, 8u), y, brush_param(base, 10u)));
+    let ty = fma(brush_param(base, 7u), x, fma(brush_param(base, 9u), y, brush_param(base, 11u)));
     let sx = brush_param(base, 0u);
     let sy = brush_param(base, 1u);
     let ex = brush_param(base, 2u);
@@ -87,28 +99,28 @@ fn sample_radial(x: f32, y: f32, base: u32, extend: u32, payload_offset: u32, pa
     let dcx = ex - sx;
     let dcy = ey - sy;
     let dr = end_radius - start_radius;
-    let a = dcx * dcx + dcy * dcy - dr * dr;
-    let b = -2.0 * (qx * dcx + qy * dcy + start_radius * dr);
-    let c = qx * qx + qy * qy - start_radius * start_radius;
+    let a = fma(dcx, dcx, fma(dcy, dcy, -dr * dr));
+    let b = -2.0 * fma(qx, dcx, fma(qy, dcy, start_radius * dr));
+    let c = fma(qx, qx, fma(qy, qy, -start_radius * start_radius));
     var has_t = false;
     var t = 0.0;
 
     if (abs(a) <= 0.000001) {
         if (abs(b) > 0.000001) {
             let candidate = -c / b;
-            if (start_radius + candidate * dr >= 0.0) {
+            if (fma(candidate, dr, start_radius) >= 0.0) {
                 has_t = true;
                 t = candidate;
             }
         }
     } else {
-        let discriminant = b * b - 4.0 * a * c;
+        let discriminant = fma(b, b, -4.0 * a * c);
         if (discriminant >= 0.0) {
             let root = sqrt(discriminant);
             let t0 = (-b - root) / (2.0 * a);
             let t1 = (-b + root) / (2.0 * a);
-            let valid0 = start_radius + t0 * dr >= 0.0;
-            let valid1 = start_radius + t1 * dr >= 0.0;
+            let valid0 = fma(t0, dr, start_radius) >= 0.0;
+            let valid1 = fma(t1, dr, start_radius) >= 0.0;
             if (valid0) {
                 has_t = true;
                 if (valid1) {
@@ -154,6 +166,8 @@ fn sample_four_corner(x: f32, y: f32, base: u32, payload_offset: u32) -> u32 {
     return lerp_premul_u8(top, bottom, v);
 }
 
+#include "pattern_transform.wgsl"
+
 fn sample_resource_pattern(
     x: f32,
     y: f32,
@@ -169,8 +183,8 @@ fn sample_resource_pattern(
 ) -> u32 {
     var color = 0u;
     if (width > 0u && height > 0u) {
-        let tx = (brush_param(base, 0u) * x + brush_param(base, 2u) * y + brush_param(base, 4u)) * f32(width);
-        let ty = (brush_param(base, 1u) * x + brush_param(base, 3u) * y + brush_param(base, 5u)) * f32(height);
+        let tx = pattern_transform_component(brush_param(base, 0u), brush_param(base, 2u), brush_param(base, 4u), x, y) * f32(width);
+        let ty = pattern_transform_component(brush_param(base, 1u), brush_param(base, 3u), brush_param(base, 5u), x, y) * f32(height);
         if ((placement & GPU_RESOURCE_TEXTURE_PLACEMENT_BIT) != 0u) {
             color = sample_resource_pattern_texture(
                 tx,

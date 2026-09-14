@@ -25,17 +25,19 @@ mod benchmark;
 #[cfg(feature = "bench-internals")]
 pub use benchmark::{GpuDirtyRangesBenchmark, TileDrawBinsBenchmark};
 
-pub(crate) const SCAN_CHUNK_SIZE: u32 = 256;
-pub(crate) const CUMSUM_CHUNK_SIZE: u32 = 256;
-pub(crate) const COARSE_CHUNK_SIZE: u32 = 256;
+use super::gpu_constants::CUMSUM_CHUNK_SIZE;
+use super::gpu_constants::SCAN_CHUNK_SIZE;
+pub(crate) const COARSE_CHUNK_SIZE: u32 = crate::shared::gpu_constants::COARSE_WORKGROUP_SIZE;
 pub(crate) const COARSE_BIN_TILES: u32 = 16;
+const _: () = assert!(COARSE_CHUNK_SIZE == COARSE_BIN_TILES * COARSE_BIN_TILES);
 pub(crate) const TILE_DRAW_PAGE_WORDS: usize = COARSE_CHUNK_SIZE as usize + 1;
 const TILE_DRAW_FLAT_FLAG: u32 = 1 << 31;
 const RETAINED_TILE_DIRTY_CAPACITY: usize = 1_024;
-pub(crate) const FINE_WORKGROUP_SIZE: u32 = 256;
-pub(crate) const FINE_LOCAL_CLIP_DEPTH: usize = 4;
-pub(crate) const FINE_LOCAL_GROUP_DEPTH: usize = 2;
-pub(crate) const FINE_GROUP_SPILL_FIELDS: usize = 5;
+
+pub(crate) const FINE_LOCAL_CLIP_DEPTH: usize =
+    super::gpu_constants::FINE_LOCAL_CLIP_DEPTH as usize;
+pub(crate) const FINE_LOCAL_GROUP_DEPTH: usize =
+    super::gpu_constants::FINE_LOCAL_GROUP_DEPTH as usize;
 
 /// Canvas-derived fixed capacities for GPU buffers.
 ///

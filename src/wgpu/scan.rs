@@ -1,15 +1,14 @@
-use crate::shared::gpu_plan::{GpuBufferLengths, SCAN_CHUNK_SIZE};
+use crate::shared::{gpu_constants::SCAN_CHUNK_SIZE, gpu_plan::GpuBufferLengths};
 
 use super::canvas::{WgpuScanBindings, WgpuScanBuffers, WgpuSceneBuffers};
 use super::commands::{
     WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
 };
-use super::dispatch_2d;
-use super::incremental::ActiveScanPlan;
 use super::lazy::{LazyComputePipeline, LazyShaderModule, PipelineCompilationTracker};
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
+use crate::render::dispatch::dispatch_2d;
+use crate::render::incremental::ActiveScanPlan;
 
-const WORKGROUP_SIZE: u32 = 256;
 const CLEAR_STORAGE_BINDING_COUNT: u32 = 8;
 const COUNT_STORAGE_BINDING_COUNT: u32 = 5;
 const PREFIX_STORAGE_BINDING_COUNT: u32 = 5;
@@ -231,7 +230,6 @@ impl WgpuScanPipeline {
         let segment_capacity = lengths.segment_capacity as u32;
         let clear_len = backdrop_len.max(path_count).max(scan_chunk_count);
         let config_offset = commands.write_uniform_slot(
-            "scan.config",
             &self.config,
             self.config_size,
             self.config_stride,
@@ -289,12 +287,12 @@ impl WgpuScanPipeline {
             if let Some(clear_pipeline) = clear_pipeline {
                 pass.set_bind_group(0, &clear_bind_group, &[]);
                 pass.set_pipeline(clear_pipeline);
-                pass.dispatch_workgroups(clear_len.div_ceil(WORKGROUP_SIZE), 1, 1);
+                pass.dispatch_workgroups(clear_len.div_ceil(SCAN_CHUNK_SIZE), 1, 1);
             }
             if let Some(count_pipeline) = count_pipeline {
                 pass.set_bind_group(0, &count_bind_group, &[]);
                 pass.set_pipeline(count_pipeline);
-                pass.dispatch_workgroups(line_count.div_ceil(WORKGROUP_SIZE), 1, 1);
+                pass.dispatch_workgroups(line_count.div_ceil(SCAN_CHUNK_SIZE), 1, 1);
             }
             if let Some(prefix_chunks_pipeline) = prefix_chunks_pipeline {
                 pass.set_bind_group(0, &prefix_bind_group, &[]);
@@ -305,7 +303,7 @@ impl WgpuScanPipeline {
             if let Some(chunk_offsets_pipeline) = chunk_offsets_pipeline {
                 pass.set_bind_group(0, &chunk_offsets_bind_group, &[]);
                 pass.set_pipeline(chunk_offsets_pipeline);
-                pass.dispatch_workgroups(path_count.div_ceil(WORKGROUP_SIZE), 1, 1);
+                pass.dispatch_workgroups(path_count.div_ceil(SCAN_CHUNK_SIZE), 1, 1);
             }
             if let Some(apply_chunk_offsets_pipeline) = apply_chunk_offsets_pipeline {
                 pass.set_bind_group(0, &apply_chunk_offsets_bind_group, &[]);
@@ -316,7 +314,7 @@ impl WgpuScanPipeline {
             if let Some(emit_pipeline) = emit_pipeline {
                 pass.set_bind_group(0, &emit_bind_group, &[]);
                 pass.set_pipeline(emit_pipeline);
-                pass.dispatch_workgroups(line_count.div_ceil(WORKGROUP_SIZE), 1, 1);
+                pass.dispatch_workgroups(line_count.div_ceil(SCAN_CHUNK_SIZE), 1, 1);
             }
         }
         finish_gpu_scope(encoder, gpu_scope);
@@ -492,7 +490,7 @@ fn prefix_layout_entries() -> Vec<::wgpu::BindGroupLayoutEntry> {
         uniform_entry(0),
         storage_entry(1, true),
         storage_entry(2, false),
-        storage_entry(3, false),
+        storage_entry(3, true),
         storage_entry(4, false),
         storage_entry(5, true),
     ]
@@ -584,8 +582,6 @@ fn bind_config_buffer(
 fn max_storage_binding_count() -> u32 {
     STORAGE_BINDING_COUNTS.into_iter().max().unwrap_or(0)
 }
-
-const _: () = assert!(SCAN_CHUNK_SIZE == WORKGROUP_SIZE);
 
 #[cfg(test)]
 mod tests {

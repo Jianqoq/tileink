@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "status": "windows-kernel-validated",
+  "production_inventory": 175,
+  "m4_complete": false,
+  "routes": [
+    "wgpu-DX12",
+    "wgpu-Vulkan",
+    "native-DX12",
+    "native-Vulkan"
+  ],
+  "gpu": "RTX 4090; LUID 9f3f010000000000",
+  "ordinary_release_passed": 992,
+  "native_runtime_passed": 144,
+  "no_dxc_gpu_passed": 3,
+  "spirv_modules_validated": 80,
+  "pngs": {
+    "before": 3471,
+    "after": 3471,
+    "changed": [
+      "src/svg/tests/filters/feTurbulence/stitchTiles=stitch.wgpu.png"
+    ],
+    "missing": [],
+    "added": []
+  },
+  "png_human_review": "Only turbulence baseline change; accepted by user 2026-09-14",
+  "reviews": {
+    "spec": "closed",
+    "standards": "closed"
+  },
+  "source_sha256": {
+    "NATIVE_BACKEND_PLAN.md": "66aaa163c52c75db0e1585a7526cfca2c1aeb864b1c058a92376f27d57150029",
+    "NATIVE_BACKEND_PROGRESS.md": "96ef2db018fe66f22acb55a7f257e5d65e136f377a387db43f4f50e9da8bf3e4",
+    "build/gpu_constants.rs": "43f269b0adc39c9e506e7f82d55b1ed6f3f3b329dfbab8cbb748f5707d00348f",
+    "build/native/interfaces.rs": "db4206296b642afe6aa45bcd8d144c9cd639868aa1c1ffe9787b84f00f0f27c6",
+    "build/native/interfaces/filter.rs": "cc57b7d38df2d080f4811ed419567dbf3d73faf134bfdc254c13e81d358e2598",
+    "build/native/interfaces/fine.rs": "28f90ff69ecfd86e3c5d2e65a0a6d734d221b172b46f58bfb73fd182991e178b",
+    "build/native/program.rs": "f4387f5c930d69c46935732faeb4702f672387d361b09069e23e206c5edf9791",
+    "src/native/runtime/gpu_tests.rs": "854e58cc35ee0596c8a99d86217b237b2d63f12516f83e26db371e79b8c2a45c",
+    "src/native/runtime/tests/brush_gpu.rs": "d22d40a97b06b2cc5ad5d41d353e66e659e21b26b99fb0332a8d20ce2faa9f45",
+    "src/native/runtime/tests/filter_brush_gpu.rs": "a2fb87f53759e65496e453ab22fe31a8146c9b000bcecf363d86ec0c76a31f0d",
+    "src/native/runtime/tests/wgpu.rs": "c643b75b3bcfef34099b19c25696dae713e5dfd15df6b41a62fa089e879f0c10",
+    "src/native/runtime/tests/wgpu/compute.rs": "81dad2184f75d4193c4936c2b63793b3eec8350f708953d4c1d5937d25a47dd2",
+    "src/shaders/hlsl/filter/brush.hlsl": "4787ce93f28f9e398ee09f4f13d6b32167e0f0f648d4f00e527621fd6cfb5e61",
+    "src/shaders/hlsl/shared/brush/constants.hlsli": "377bf95c576afdf124b729afa9cd3c821c962d8e51e063ad8a4d57b45663fe0b",
+    "src/shaders/hlsl/shared/brush/sample.hlsli": "079a2bb39e5a30fedc743c467137c7b30745a0bc687b61fa96f76689c3fb84d0",
+    "src/shaders/hlsl/shared/brush/texture.hlsli": "b2131937b0bff32aeb8d3f7831f1ce7fc8af6a23c12dd680bb1dac81019dc3a6",
+    "src/shaders/hlsl/validation/brush.hlsl": "7993af800cb059c26b0ef9eb678f5829c8b4fc9feacd95ec1ee76c8304b5e154",
+    "tests/native_shader_artifacts.rs": "7c39079428ad3006b67de22c81340de6a90f79268ad7fe870b590c83d85ce106",
+    "tests/shaders/brush.wgsl": "a8c53742e41ae3d54499e0d9bfd16e3d9f8c2604e7213f5de9826d50673a2f27",
+    "tests/shaders/texture_table.wgsl": "58d69df7e5090085f13ea5cf571f4a68abf34f74b2255db5c714ed58de143715"
+  },
+  "log_sha256": {
+    "m4-brush-full-release.log": "218c8728aafebb4e58e7bf32cf222e5347c87c4a18d9e9360e2984d16e158551",
+    "m4-brush-runtime.log": "01ec025476d52344b9739514f89c8df645eec56bc4a62ae6e33be0f4bcb6a83c",
+    "m4-brush-clippy.log": "915844decbdfd7d81785663f1d81eae66f844ffe40b92671d947e9493b3f3c97",
+    "m4-brush-svg.log": "d135d2041e4b784dd6ad7b3dea41b144d47884b59bfd7eb3eea754ee1030e37f",
+    "m4-brush-examples.log": "a674d1dca49ed30b0f9d7610785cfac7a4836a4d02ed14ca506a409543c48cab",
+    "m4-brush-no-dxc.log": "e6694576d162970f6fc2197994599892a5ec4283e462520a06fccb20ec2a265e",
+    "m4-brush-shader.log": "799717b26d476b84bbf0fe718d7151c85fd7a47a42d31269ea02e6aa29c987e1",
+    "m4-brush-editor.log": "04d021df34160b9c49364b83bb7fb47071f2de082c163a716d66b133458ffec0",
+    "m4-brush-final-focused.log": "b5c4b82ab8d27628762543dabd1885601c8f5255305d321812eef5568e29b580"
+  }
+}

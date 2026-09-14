@@ -40,9 +40,7 @@ const FILTER_OPACITY: u32 = 6u;
 const FILTER_SATURATE: u32 = 7u;
 const FILTER_SEPIA: u32 = 8u;
 const SVG_MASK_LUMINANCE: u32 = 1u;
-const FILTER_GROUP_STACK_CAPACITY: u32 = 64u;
-const COMPONENT_TRANSFER_TABLE_SIZE: u32 = 256u;
-const COMPONENT_TRANSFER_TABLE_LEN: u32 = 1024u;
+
 const GPU_BRUSH_U32_STRIDE: u32 = 9u;
 const GPU_BRUSH_PARAM_STRIDE: u32 = 12u;
 const GPU_BRUSH_LINEAR: u32 = 2u;
@@ -56,32 +54,6 @@ const GPU_RESOURCE_TEXTURE_INDEX_MASK: u32 = 2147483647u;
 const GPU_PATTERN_BILINEAR: u32 = 1u;
 const GPU_EXTEND_REPEAT: u32 = 1u;
 const GPU_EXTEND_REFLECT: u32 = 2u;
-const TURBULENCE_TABLE_LEN: u32 = 514u;
-const TURBULENCE_GRADIENT_LEN: u32 = 4112u;
-const LIQUID_GLASS_CHROMATIC_R: f32 = 0.98;
-const LIQUID_GLASS_CHROMATIC_G: f32 = 1.0;
-const LIQUID_GLASS_CHROMATIC_B: f32 = 1.02;
-const LIQUID_GLASS_PI: f32 = 3.1415927;
-const LIQUID_GLASS_REFRACTION_PIXEL_SCALE: f32 = 70.71068;
-const LIQUID_GLASS_NORMAL_LENGTH_SCALE: f32 = 1414.2136;
-const LIQUID_GLASS_ACTIVE_DISTANCE_NORM: f32 = 0.005;
-const LIQUID_GLASS_EDGE_BLEND_START: f32 = -0.001;
-const LIQUID_GLASS_EDGE_BLEND_END: f32 = 0.001;
-const LIQUID_GLASS_TINT_MIX: f32 = 0.8;
-const LIQUID_GLASS_TINT_BASE_MIX: f32 = 0.5;
-const LIQUID_GLASS_FRESNEL_LIGHTNESS_GAIN: f32 = 20.0;
-const LIQUID_GLASS_FRESNEL_MIX_SCALE: f32 = 0.7;
-const LIQUID_GLASS_GLARE_LIGHTNESS_GAIN: f32 = 150.0;
-const LIQUID_GLASS_GLARE_CHROMA_GAIN: f32 = 30.0;
-const LIQUID_GLASS_GLARE_SIDE_SCALE: f32 = 1.2;
-const LIQUID_GLASS_GLARE_POWER_BASE: f32 = 0.1;
-const LIQUID_GLASS_GLARE_POWER_SCALE: f32 = 2.0;
-const LIQUID_GLASS_GEOMETRY_DISTANCE_SCALE: f32 = 1500.0;
-const LIQUID_GLASS_GEOMETRY_RANGE_SCALE: f32 = 500.0;
-const LIQUID_GLASS_EPSILON: f32 = 0.000001;
-const LIQUID_GLASS_D65_X: f32 = 0.9504559;
-const LIQUID_GLASS_D65_Y: f32 = 1.0;
-const LIQUID_GLASS_D65_Z: f32 = 1.0890578;
 
 struct FilterConfig {
     width: u32,
@@ -95,7 +67,7 @@ struct FilterConfig {
     pixel_count: u32,
     active_tile_count: u32,
     compact_tiles: u32,
-    active_tile_pad0: u32,
+    dispatch_width: u32,
     active_tile_pad1: u32,
     downsample: u32,
     downsample_filter: u32,
@@ -261,7 +233,7 @@ struct LayerStackRecord {
 @group(0) @binding(4) var<storage, read> draw_records: array<DrawRecord>;
 @group(0) @binding(10) var<storage, read> paint_blob: array<u32>;
 @group(0) @binding(28) var<storage, read> path_records: array<PathRecord>;
-@group(0) @binding(29) var<storage, read_write> backdrops: array<atomic<i32>>;
+@group(0) @binding(29) var<storage, read> backdrops: array<i32>;
 @group(0) @binding(30) var<storage, read> segment_ranges: array<TileSegmentRange>;
 @group(0) @binding(32) var<storage, read> segments: array<LineSegment>;
 @group(0) @binding(33) var<storage, read> layer_stack: array<LayerStackRecord>;
@@ -277,9 +249,8 @@ struct LayerStackRecord {
 @group(0) @binding(47) var<storage, read> path_p1x: array<i32>;
 @group(0) @binding(48) var<storage, read> path_p1y: array<i32>;
 @group(0) @binding(52) var<storage, read> active_tiles: array<u32>;
-@group(0) @binding(49) var filter_source_sample_texture: texture_2d<f32>;
-@group(0) @binding(50) var filter_aux_sample_texture: texture_2d<f32>;
-@group(0) @binding(51) var filter_linear_sampler: sampler;
+@group(0) @binding(1) var source_texture: texture_2d<f32>;
+@group(0) @binding(2) var aux_texture: texture_2d<f32>;
 @group(1) @binding(0) var image_resource_atlas: texture_2d_array<f32>;
 @group(1) @binding(1) var image_resource_sampler: sampler;
 // TILEINK_IMAGE_RESOURCE_TEXTURE_TABLE_BINDING
@@ -293,4 +264,10 @@ fn sdf_storage_word(index: u32, shadow_blob: bool) -> u32 {
         return paint_blob[config.paint_sdf_shadow_base + index];
     }
     return paint_blob[index];
+}
+
+// Use the dispatch lane width for row strides so changing the workgroup cannot skip pixels.
+// Dense and compact filters share a linear invocation order across dispatch rows.
+fn filter_region_index(gid: vec3<u32>) -> u32 {
+    return gid.x + gid.y * config.dispatch_width * FILTER_WORKGROUP_SIZE;
 }

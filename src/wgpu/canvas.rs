@@ -8,15 +8,14 @@ use super::buffer::{WgpuBuffer, WgpuRangeScatter, WgpuRangeScatterPipeline};
 
 mod bindings;
 mod upload;
+mod vector_images;
 mod work_buffers;
 
 pub(crate) use bindings::{
     WgpuCoarseBindings, WgpuCumsumBindings, WgpuFilterBindings, WgpuImageResourceBindingKey,
     WgpuImageResourceBindings, WgpuScanBindings, WgpuTileFineBindings,
 };
-pub(crate) use upload::WgpuSceneUploadStaging;
-#[cfg(feature = "bench-internals")]
-pub use upload::{GlyphCapacityBenchmark, GlyphCapacityBenchmarkCase};
+
 pub(crate) use work_buffers::{WgpuCoarseBindGroups, WgpuCoarseBuffers, WgpuScanBuffers};
 static NEXT_SCENE_BUFFERS_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -47,6 +46,7 @@ pub(crate) struct WgpuSceneBuffers {
     image_resource_sampler: ::wgpu::Sampler,
     image_resource_atlas_size: (u32, u32, u32),
     image_resource_binding_generation: u64,
+    vector_image_upload: Option<vector_images::VectorImageUpload>,
     text_runs: WgpuBuffer,
     coarse_text_blob: WgpuBuffer,
     fine_text_blob: WgpuBuffer,
@@ -114,6 +114,7 @@ impl WgpuSceneBuffers {
             }),
             image_resource_atlas_size: (1, 1, 1),
             image_resource_binding_generation: 1,
+            vector_image_upload: None,
             text_runs: WgpuBuffer::new(device, "tileink wgpu canvas text runs"),
             coarse_text_blob: WgpuBuffer::new(device, "tileink wgpu canvas coarse text blob"),
             fine_text_blob: WgpuBuffer::new(device, "tileink wgpu canvas fine text blob"),

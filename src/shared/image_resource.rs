@@ -1,3 +1,7 @@
+mod source;
+use source::ImageIdentityGuard;
+pub(crate) use source::ImageSource;
+
 use std::rc::Rc;
 
 use rustc_hash::FxHashMap;
@@ -63,14 +67,14 @@ fn encode_key(scope: u32, key: ImageKey) -> (u32, u32, u32) {
 
 #[derive(Clone, Default)]
 pub(crate) struct ImageResourceStore {
-    images: FxHashMap<ImageKey, Rc<Image>>,
+    images: FxHashMap<ImageKey, ImageSource>,
     signature_hash: u64,
 }
 
 impl ImageResourceStore {
-    pub(crate) fn insert(&mut self, key: ImageKey, image: impl Into<Rc<Image>>) -> bool {
+    pub(crate) fn insert(&mut self, key: ImageKey, image: impl Into<ImageSource>) -> bool {
         let image = image.into();
-        if image.width == 0 || image.height == 0 {
+        if image.width() == 0 || image.height() == 0 {
             return false;
         }
         if let Some(previous) = self.images.insert(key, image.clone()) {
@@ -80,8 +84,12 @@ impl ImageResourceStore {
         true
     }
 
+    pub(crate) fn contains(&self, key: ImageKey) -> bool {
+        self.images.contains_key(&key)
+    }
+
     pub(crate) fn get(&self, key: ImageKey) -> Option<&Image> {
-        self.images.get(&key).map(Rc::as_ref)
+        self.images.get(&key).and_then(ImageSource::raster)
     }
 
     pub(crate) fn remove(&mut self, key: ImageKey) -> bool {
@@ -139,7 +147,7 @@ impl ImageResourceStore {
         }
     }
 
-    pub(crate) fn iter(&self) -> impl Iterator<Item = (ImageKey, &Rc<Image>)> {
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (ImageKey, &ImageSource)> {
         self.images.iter().map(|(&key, image)| (key, image))
     }
 
@@ -151,14 +159,14 @@ impl ImageResourceStore {
     }
 }
 
-fn image_entry_hash(key: ImageKey, image: &Rc<Image>) -> u64 {
+fn image_entry_hash(key: ImageKey, image: &ImageSource) -> u64 {
     let mut hash = FNV_OFFSET;
     hash = fnv_mix(hash, key.0);
-    hash = fnv_mix(hash, image.width as u64);
-    hash = fnv_mix(hash, image.height as u64);
-    hash = fnv_mix(hash, image.pixels.len() as u64);
-    hash = fnv_mix(hash, Rc::as_ptr(image) as usize as u64);
-    fnv_mix(hash, image.pixels.as_ptr() as usize as u64)
+    hash = fnv_mix(hash, image.width() as u64);
+    hash = fnv_mix(hash, image.height() as u64);
+    let (kind, identity) = image.identity();
+    hash = fnv_mix(hash, kind);
+    fnv_mix(hash, identity)
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -189,7 +197,7 @@ fn fnv_mix(mut hash: u64, value: u64) -> u64 {
 }
 struct ImageResourceEntry<'a> {
     id: ImageResourceId,
-    image: &'a Rc<Image>,
+    image: &'a ImageSource,
     signature: ImageEntrySignature,
 }
 
@@ -259,6 +267,10 @@ impl GpuImageResourceUpload {
         &mut self.atlas_pages
     }
 
+    pub(crate) fn vectors(&self) -> &[GpuVectorImageUpload] {
+        &self.vectors
+    }
+
     pub(crate) fn textures(&self) -> &[GpuImageResourceTextureUpload] {
         &self.textures
     }
@@ -266,11 +278,25 @@ impl GpuImageResourceUpload {
 
 #[derive(Clone, Default)]
 pub(crate) struct GpuImageResourceUpload {
+    // Signatures use Rc addresses, so their allocation identities must outlive the cache.
+    // Weak guards prevent address reuse and in-place mutation after a scene is dropped,
+    // without retaining its pixel buffers. This fixes stale-image reuse at its source.
+    _image_identities: Vec<ImageIdentityGuard>,
     generation: u64,
     atlas_page_size: u32,
     atlas_pages: Vec<GpuImageResourceAtlasPageUpload>,
     textures: Vec<GpuImageResourceTextureUpload>,
+    vectors: Vec<GpuVectorImageUpload>,
     placements: FxHashMap<ImageResourceId, ImageResourcePlacement>,
+}
+
+/// Work the selected GPU executor must resolve before sampling the placement.
+/// Atlas destinations include a duplicated one-pixel border outside the inner rect.
+#[derive(Clone)]
+pub(crate) struct GpuVectorImageUpload {
+    pub(crate) canvas: Rc<crate::Canvas>,
+    pub(crate) placement: ImageResourcePlacement,
+    pub(crate) dirty: bool,
 }
 
 #[derive(Clone)]
@@ -334,16 +360,14 @@ struct ImageEntrySignature {
 }
 
 impl ImageEntrySignature {
-    fn new(id: ImageResourceId, image: &Rc<Image>) -> Self {
-        let mut hash = FNV_OFFSET;
-        hash = fnv_mix(hash, image_resource_id_sort_key(id).0 as u64);
-        hash = fnv_mix(hash, image_resource_id_sort_key(id).1);
-        hash = fnv_mix(hash, image.width as u64);
-        hash = fnv_mix(hash, image.height as u64);
-        hash = fnv_mix(hash, image.pixels.len() as u64);
-        hash = fnv_mix(hash, Rc::as_ptr(image) as usize as u64);
-        hash = fnv_mix(hash, image.pixels.as_ptr() as usize as u64);
-        Self { hash }
+    fn new(id: ImageResourceId, image: &ImageSource) -> Self {
+        let (namespace, key) = image_resource_id_sort_key(id);
+        Self {
+            hash: fnv_mix(
+                image_entry_hash(ImageKey::new(key), image),
+                namespace as u64,
+            ),
+        }
     }
 }
 
@@ -442,14 +466,15 @@ impl<'a> ImageResourceUploadBuilder<'a> {
                 };
                 if dirty {
                     for item in &page.items {
-                        let image = self.entries[item.entry_index].image;
-                        copy_image_with_pad_border(
-                            &mut pixels,
-                            self.page_size,
-                            item.x,
-                            item.y,
-                            image,
-                        );
+                        if let Some(image) = self.entries[item.entry_index].image.raster() {
+                            copy_image_with_pad_border(
+                                &mut pixels,
+                                self.page_size,
+                                item.x,
+                                item.y,
+                                image,
+                            );
+                        }
                     }
                 }
                 for item in page.items {
@@ -477,47 +502,83 @@ impl<'a> ImageResourceUploadBuilder<'a> {
         let mut textures = Vec::with_capacity(self.texture_entry_indices.len());
         for (texture_index, &entry_index) in self.texture_entry_indices.iter().enumerate() {
             let entry = &self.entries[entry_index];
-            if entry.image.width > self.max_atlas_dimension
-                || entry.image.height > self.max_atlas_dimension
+            if entry.image.width() > self.max_atlas_dimension
+                || entry.image.height() > self.max_atlas_dimension
             {
                 continue;
             }
             let previous_texture = previous.and_then(|prev| prev.textures.get(texture_index));
             let dirty = previous_texture.is_none_or(|prev| {
-                prev.width != entry.image.width
-                    || prev.height != entry.image.height
+                prev.width != entry.image.width()
+                    || prev.height != entry.image.height()
                     || prev.signature != entry.signature
             });
             let pixels = if dirty {
-                entry.image.pixels.clone()
+                entry
+                    .image
+                    .raster()
+                    .map(|image| image.pixels.clone())
+                    .unwrap_or_default()
             } else {
                 previous_texture
                     .map(|prev| prev.pixels.clone())
-                    .unwrap_or_else(|| entry.image.pixels.clone())
+                    .unwrap_or_else(|| {
+                        entry
+                            .image
+                            .raster()
+                            .map(|image| image.pixels.clone())
+                            .unwrap_or_default()
+                    })
             };
             placements.insert(
                 entry.id,
                 ImageResourcePlacement::Texture(TextureRect {
                     index: texture_index as u32,
-                    width: entry.image.width,
-                    height: entry.image.height,
+                    width: entry.image.width(),
+                    height: entry.image.height(),
                 }),
             );
             textures.push(GpuImageResourceTextureUpload {
                 index: texture_index as u32,
-                width: entry.image.width,
-                height: entry.image.height,
+                width: entry.image.width(),
+                height: entry.image.height(),
                 pixels,
                 dirty,
                 signature: entry.signature,
             });
         }
 
+        let vectors = self
+            .entries
+            .iter()
+            .filter_map(|entry| {
+                let ImageSource::Vector(canvas) = entry.image else {
+                    return None;
+                };
+                let placement = *placements.get(&entry.id)?;
+                let dirty = match placement {
+                    ImageResourcePlacement::Atlas(rect) => page_uploads[rect.page as usize].dirty,
+                    ImageResourcePlacement::Texture(rect) => textures[rect.index as usize].dirty,
+                };
+                Some(GpuVectorImageUpload {
+                    canvas: Rc::clone(canvas),
+                    placement,
+                    dirty,
+                })
+            })
+            .collect();
+
         GpuImageResourceUpload {
+            _image_identities: self
+                .entries
+                .iter()
+                .map(|entry| entry.image.guard())
+                .collect(),
             generation: previous.map_or(1, |upload| upload.generation.wrapping_add(1)),
             atlas_page_size: page_uploads.first().map_or(1, |page| page.size),
             atlas_pages: page_uploads,
             textures,
+            vectors,
             placements,
         }
     }
@@ -525,22 +586,23 @@ impl<'a> ImageResourceUploadBuilder<'a> {
 
 const DEFAULT_IMAGE_RESOURCE_ATLAS_PAGE_SIZE: u32 = 2048;
 const LARGE_IMAGE_AREA_THRESHOLD: u64 = 2048 * 2048;
-pub(crate) const MAX_IMAGE_RESOURCE_TEXTURES: usize = 64;
+pub(crate) const MAX_IMAGE_RESOURCE_TEXTURES: usize =
+    crate::shared::gpu_constants::NATIVE_TEXTURE_TABLE_CAPACITY as usize;
 
-fn should_use_texture_table(image: &Image, max_atlas_dimension: u32) -> bool {
-    if image.width > max_atlas_dimension || image.height > max_atlas_dimension {
+fn should_use_texture_table(image: &ImageSource, max_atlas_dimension: u32) -> bool {
+    if image.width() > max_atlas_dimension || image.height() > max_atlas_dimension {
         return false;
     }
-    let padded_width = image.width.saturating_add(2);
-    let padded_height = image.height.saturating_add(2);
+    let padded_width = image.width().saturating_add(2);
+    let padded_height = image.height().saturating_add(2);
     padded_width > DEFAULT_IMAGE_RESOURCE_ATLAS_PAGE_SIZE
         || padded_height > DEFAULT_IMAGE_RESOURCE_ATLAS_PAGE_SIZE
-        || (image.width as u64 * image.height as u64) > LARGE_IMAGE_AREA_THRESHOLD
+        || (image.width() as u64 * image.height() as u64) > LARGE_IMAGE_AREA_THRESHOLD
 }
 
-fn can_use_atlas(image: &Image, max_atlas_dimension: u32) -> bool {
-    image.width.saturating_add(2) <= max_atlas_dimension
-        && image.height.saturating_add(2) <= max_atlas_dimension
+fn can_use_atlas(image: &ImageSource, max_atlas_dimension: u32) -> bool {
+    image.width().saturating_add(2) <= max_atlas_dimension
+        && image.height().saturating_add(2) <= max_atlas_dimension
 }
 
 fn atlas_page_size(
@@ -553,9 +615,9 @@ fn atlas_page_size(
         .map(|&index| {
             let image = entries[index].image;
             image
-                .width
+                .width()
                 .saturating_add(2)
-                .max(image.height.saturating_add(2))
+                .max(image.height().saturating_add(2))
         })
         .max()
         .unwrap_or(1);
@@ -587,8 +649,8 @@ fn pack_images_into_pages(
             (
                 entry.id,
                 entry_index,
-                entry.image.width.saturating_add(2),
-                entry.image.height.saturating_add(2),
+                entry.image.width().saturating_add(2),
+                entry.image.height().saturating_add(2),
             )
         })
         .filter(|(_, _, width, height)| *width <= page_size && *height <= page_size)
@@ -970,3 +1032,10 @@ mod tests {
         Image::from_rgba8(width, height, rgba)
     }
 }
+
+#[cfg(test)]
+#[path = "image_resource/tests/identity.rs"]
+mod identity_tests;
+
+#[cfg(test)]
+mod vector_tests;

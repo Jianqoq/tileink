@@ -3,10 +3,10 @@ use crate::common;
 #[path = "../common/text_scene.rs"]
 mod text_scene;
 
-use tileink::{TextContext, TextFontSystem};
+use tileink::TextContext;
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let mut font_system = TextFontSystem::new();
+    let mut font_system = common::new_font_system();
     let mut text_context = TextContext::new();
     for case in &text_scene::CASES {
         let scene = text_scene::scene(&mut font_system, &mut text_context, case);

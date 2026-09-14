@@ -1,39 +1,13 @@
-@compute @workgroup_size(256)
-fn fine_tile_sdf_list_main(
-    @builtin(workgroup_id) workgroup_id: vec3<u32>,
-    @builtin(local_invocation_id) local_id: vec3<u32>,
-) {
-    let tile_ix = fine_tile_list_at(FINE_TILE_LIST_SDF, workgroup_id.x);
-    render_list_tile(tile_ix, local_id.x, FINE_TILE_KIND_PURE_SDF_SOLID_NO_STACK);
-}
-
-@compute @workgroup_size(256)
-fn fine_tile_mixed_list_main(
-    @builtin(workgroup_id) workgroup_id: vec3<u32>,
-    @builtin(local_invocation_id) local_id: vec3<u32>,
-) {
-    let tile_ix = fine_tile_list_at(FINE_TILE_LIST_MIXED, workgroup_id.x);
-    render_list_tile(tile_ix, local_id.x, FINE_TILE_KIND_MIXED_ANALYTIC_SOLID_NO_STACK);
-}
-
-@compute @workgroup_size(256)
-fn fine_tile_full_list_main(
-    @builtin(workgroup_id) workgroup_id: vec3<u32>,
-    @builtin(local_invocation_id) local_id: vec3<u32>,
-) {
-    let tile_ix = fine_tile_list_at(FINE_TILE_LIST_FULL, workgroup_id.x);
-    render_list_tile(tile_ix, local_id.x, FINE_TILE_KIND_FULL_INTERPRETER);
-}
-
-@compute @workgroup_size(256)
+@compute @workgroup_size(FINE_WORKGROUP_SIZE)
 fn fine_tile_main(
     @builtin(workgroup_id) workgroup_id: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
 ) {
-    if (workgroup_id.x >= config.active_tile_count) {
+    let dispatch_ix = workgroup_id.x + workgroup_id.y * config.dispatch_width;
+    if (dispatch_ix >= config.active_tile_count) {
         return;
     }
-    let tile_ix = dispatched_tile_at(workgroup_id.x);
+    let tile_ix = dispatched_tile_at(dispatch_ix);
 
     let local_ix = local_id.x;
     let local_x = local_ix % 16u;
@@ -57,33 +31,6 @@ fn fine_tile_main(
     } else if (kind == FINE_TILE_KIND_COLOR_ONLY_NO_STACK) {
         pixel = color_only_no_stack_tile_pixel(tile_ix, local_ix);
     } else if (
-        kind == FINE_TILE_KIND_PURE_SDF_SOLID_NO_STACK ||
-        kind == FINE_TILE_KIND_MIXED_ANALYTIC_SOLID_NO_STACK
-    ) {
-        pixel = analytic_solid_no_stack_tile_pixel(tile_ix, local_ix);
-    } else {
-        pixel = tile_pixel(tile_ix, local_ix);
-    }
-    target_store_unorm(global_x, global_y, pixel);
-}
-
-fn render_list_tile(tile_ix: u32, local_ix: u32, kind: u32) {
-    if (tile_ix >= config.tile_count) {
-        return;
-    }
-    let tile_x = tile_ix % config.tiles_width;
-    let tile_y = tile_ix / config.tiles_width;
-    if (tile_y >= config.tiles_height) {
-        return;
-    }
-    let global_x = tile_x * 16u + local_ix % 16u;
-    let global_y = tile_y * 16u + local_ix / 16u;
-    if (global_x >= config.width || global_y >= config.height) {
-        return;
-    }
-
-    var pixel = vec4<f32>(0.0);
-    if (
         kind == FINE_TILE_KIND_PURE_SDF_SOLID_NO_STACK ||
         kind == FINE_TILE_KIND_MIXED_ANALYTIC_SOLID_NO_STACK
     ) {
@@ -621,81 +568,4 @@ fn push_clip(
     }
 }
 
-fn fill_alpha_at(
-    backdrop: i32,
-    fill_rule: u32,
-    segment_start: u32,
-    segment_end: u32,
-    x: u32,
-    y: u32,
-) -> u32 {
-    // Mirrors the CPU row-sweep accumulation order so edge pixels quantize identically.
-    var base = f32(backdrop);
-    var running = 0.0;
-    var partial = 0.0;
-    var segment_ix = segment_start;
-    loop {
-        if (segment_ix >= segment_end) {
-            break;
-        }
-        let segment = segments[segment_ix];
-        let parts = segment_row_parts(segment.p0x, segment.p0y, segment.p1x, segment.p1y, segment.y_edge, y);
-        let y_edge = parts.x;
-        let dy = parts.y;
-        let xmin = parts.z;
-        let xmax = parts.w;
-        base += y_edge;
-        if (dy != 0.0) {
-            let full_start = clamp(i32(ceil(xmax)), 0, 16);
-            if (full_start < 16 && i32(x) >= full_start) {
-                running += dy;
-            }
-            let partial_start = clamp(i32(floor(xmin)), 0, 16);
-            let partial_end = clamp(i32(ceil(xmax)), 0, 16);
-            if (i32(x) >= partial_start && i32(x) < partial_end) {
-                partial += segment_area_at(xmin, xmax, x) * dy;
-            }
-        }
-        segment_ix += 1u;
-    }
-    let coverage = base + running + partial;
-    return coverage_to_alpha(coverage, fill_rule);
-}
-
-fn segment_row_parts(p0x: f32, p0y: f32, p1x: f32, p1y: f32, y_edge: f32, y: u32) -> vec4<f32> {
-    let delta_x = p1x - p0x;
-    let delta_y = p1y - p0y;
-    let row_y = f32(y);
-    let local_y = p0y - row_y;
-    let y0 = clamp(local_y, 0.0, 1.0);
-    let y1 = clamp(local_y + delta_y, 0.0, 1.0);
-    let dy = y0 - y1;
-    let x_sign = signum_f32(delta_x);
-    let row_edge = x_sign * clamp(row_y - y_edge + 1.0, 0.0, 1.0);
-
-    if (dy == 0.0) {
-        return vec4<f32>(row_edge, dy, 0.0, 0.0);
-    }
-
-    let recip = 1.0 / delta_y;
-    let t0 = (y0 - local_y) * recip;
-    let t1 = (y1 - local_y) * recip;
-    let sx0 = p0x + t0 * delta_x;
-    let sx1 = p0x + t1 * delta_x;
-    return vec4<f32>(row_edge, dy, min(sx0, sx1), max(sx0, sx1));
-}
-
-fn segment_area_at(xmin_abs: f32, xmax_abs: f32, x: u32) -> f32 {
-    let pixel_x = f32(x);
-    let xmin = xmin_abs - pixel_x;
-    let xmax = xmax_abs - pixel_x;
-    var area = clamp(1.0 - xmin, 0.0, 1.0);
-    if (xmax - xmin > FINE_AREA_EPSILON) {
-        let a_min = min(xmin, 1.0) - FINE_AREA_EPSILON;
-        let b = min(xmax, 1.0);
-        let c = max(b, 0.0);
-        let d = max(a_min, 0.0);
-        area = (b + 0.5 * (d * d - c * c) - a_min) / (xmax - a_min);
-    }
-    return area;
-}
+#include "../shared/coverage.wgsl"

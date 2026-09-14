@@ -1,24 +1,23 @@
-use crate::shared::gpu_plan::{CUMSUM_CHUNK_SIZE, GpuBufferLengths};
+use crate::shared::{gpu_constants::CUMSUM_CHUNK_SIZE, gpu_plan::GpuBufferLengths};
 
 use super::canvas::{WgpuCumsumBindings, WgpuScanBuffers, WgpuSceneBuffers};
 use super::commands::{
     WGPU_CONFIG_SLOTS, WgpuCommandBatch, aligned_uniform_stride, uniform_slots_buffer_size,
 };
-use super::dispatch_2d;
-use super::incremental::ActiveScanPlan;
 use super::lazy::{LazyComputePipeline, LazyShaderModule, PipelineCompilationTracker};
 use super::profile::{finish_gpu_scope, start_cpu_scope, start_gpu_scope};
+use crate::render::dispatch::dispatch_2d;
+use crate::render::incremental::ActiveScanPlan;
 
-const WORKGROUP_SIZE: u32 = 256;
 const STORAGE_BINDING_COUNT: u32 = 7;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct CumsumConfig {
     row_count: u32,
+    chunk_count: u32,
     _pad0: u32,
     _pad1: u32,
-    _pad2: u32,
 }
 
 unsafe impl bytemuck::Zeroable for CumsumConfig {}
@@ -124,7 +123,6 @@ impl WgpuCumsumPipeline {
         }
 
         let config_offset = commands.write_uniform_slot(
-            "cumsum.config",
             &self.config,
             self.config_size,
             self.config_stride,
@@ -133,9 +131,9 @@ impl WgpuCumsumPipeline {
                 row_count: active.map_or(lengths.cumsum_row_count as u32, |plan| {
                     plan.cumsum.row_chunk_starts.len() as u32
                 }),
+                chunk_count,
                 _pad0: 0,
                 _pad1: 0,
-                _pad2: 0,
             }),
         );
         let bindings = canvas.cumsum_bindings(scan, active.is_some());
@@ -169,7 +167,7 @@ impl WgpuCumsumPipeline {
                 (chunk_offsets, apply_chunk_offsets)
             {
                 pass.set_pipeline(chunk_offsets);
-                pass.dispatch_workgroups(row_count.div_ceil(WORKGROUP_SIZE), 1, 1);
+                pass.dispatch_workgroups(row_count.div_ceil(CUMSUM_CHUNK_SIZE), 1, 1);
                 pass.set_pipeline(apply_chunk_offsets);
                 let (x, y) = dispatch_2d(chunk_count, max_workgroups);
                 pass.dispatch_workgroups(x, y, 1);
@@ -293,5 +291,3 @@ fn bind_config_buffer(
         }),
     }
 }
-
-const _: () = assert!(CUMSUM_CHUNK_SIZE == WORKGROUP_SIZE);

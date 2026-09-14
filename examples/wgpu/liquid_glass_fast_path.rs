@@ -5,8 +5,7 @@ use tileink::{Canvas, WgpuRenderProfileReport};
 
 use crate::common;
 
-#[path = "../common/liquid_glass_fast_path.rs"]
-mod fast_path;
+use crate::common::liquid_glass_fast_path as fast_path;
 
 const WARMUP_FRAMES: usize = 8;
 const PROFILE_FRAMES: usize = 64;
@@ -70,6 +69,7 @@ fn profile_scene(
         report.push(&profile);
     }
 
+    common::capture::record_pipelines(name, &renderer);
     println!("\n{name}");
     for summary in report.profile().summary() {
         if summary.name.starts_with("filter.") {

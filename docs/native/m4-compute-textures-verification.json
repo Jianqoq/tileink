@@ -1,0 +1,100 @@
+{
+  "schema": 1,
+  "milestone": "M4 compute textures; not M4 completion",
+  "base": "e9457b85",
+  "inventory_validated": 27,
+  "inventory_total": 179,
+  "gpu_luid": "9f3f010000000000",
+  "routes": [
+    "wgpu DX12",
+    "wgpu Vulkan",
+    "native DX12",
+    "native Vulkan"
+  ],
+  "source_sha256": {
+    "NATIVE_BACKEND_PROGRESS.md": "984934f0565d639394cd341c8e60dee5076fb53d1a944fead3dcd4a71c7cf8c1",
+    "build/native.rs": "dabe595fa0c219e5276f351943fd73d6ad59770b09e7bdd0d79b4e32085cad0b",
+    "build/native/abi.rs": "e84357d522ed918927f0c2a4917ee0ead7182ff91a6b92e675ac5864492347b3",
+    "build/native/dxil_reflection.rs": "c4b907de84e8318fea08ba3398136fba224ed59a249179941b2159b98f054f99",
+    "build/native/interfaces.rs": "d00ba4cb521f70444c31f2b631e95b0399206e103852d55e2e1ea8c7c3aa3e1b",
+    "build/native/program.rs": "a4e031847c4adf4381c6e4c841bc0d8792d41e669fd53de6b5f3a60974137d6f",
+    "build/native/source.rs": "6d0170b4875f60237617da819859c7740f570ff3bd57eb46c15929e618761388",
+    "build/native/spirv.rs": "f6f701fd39b6cf39520b250f7377bc5cde19721dd65e693578735aed8d00b9cd",
+    "src/native/runtime/compute.rs": "933357e58932eb3e5083aafcb4974c65e17910c365b39aaefbf80742a30dbd40",
+    "src/native/runtime/dx12.rs": "a65de6c586a768d05ddde0448188ae5647dcc197deca1ec6e5580f177f143012",
+    "src/native/runtime/dx12/compute.rs": "ee891657e02313218fc5fa0b591a34172f9b48192d703acdb8b0670a9ab611b1",
+    "src/native/runtime/dx12/compute_bindings.rs": "4446517ead5fa0a44d6520390e2e66feae7df7a831b1340ca53be0479252b7e6",
+    "src/native/runtime/dx12/compute_pipeline.rs": "c1cca7fb208169f9c462a3a3a78f600e5423ccfffa55a217f084ccb49a57c806",
+    "src/native/runtime/gpu_tests.rs": "040d5c4986a9fb75b23dfb6faa81552b7a5d3a5f05d0a75d1ac5a129a4a578a1",
+    "src/native/runtime/program/cumsum.rs": "68fff6d853eb684cd034a1d2b0bb793785b0484644878bf878b08679eb7b02d1",
+    "src/native/runtime/tests/compute.rs": "017f45f2c59ee2b684fbe078e158db915c14676bf9b00fbaa04b77ab39edb50f",
+    "src/native/runtime/tests/wgpu.rs": "78db9a6719c9adc9d9852178eb4c2bf05740bfee9a67caab0f97aa14b0cb30e8",
+    "src/native/runtime/tests/wgpu/compute.rs": "a4f05f9fb9744f4187f2634f95deea754b5308e3e62e553aca4bf15c3c9a6aeb",
+    "src/native/runtime/vulkan.rs": "fdf09229b289ec7d69971382f50355c5fb6b42582ac66ef12da8eb6967004f18",
+    "src/native/runtime/vulkan/compute.rs": "4290c3d20b1bdd1f2d6acc9623ac68b008a633c00a21ca1c1b5bc342ef70ca00",
+    "src/native/runtime/vulkan/compute_pipeline.rs": "e8788086fc8af07468a8dd73aa434c8dc9586e89ed3ac44ec27a111e848eed5d",
+    "src/native/shaders.rs": "0415e4d45d071f2f09a7f4a89550904248ce77908ba90d1f0716cf07311790d5",
+    "tests/native_shader_artifacts.rs": "ee5eb80cbdf9b2733a7b123572ab24130a512ce2fbc2138755bb4e2c16573844",
+    "tests/native_shader_reflection.rs": "a1b797e0c70966990ab0ad6c4f160df3a014a06fdd8a694de4c7f0c98eff783a",
+    "tests/native_shader_source.rs": "d0f47b0294b91787c87b73055c5647838596591eb6d9d137c67e931992a3c30b",
+    "build/native/interfaces/texture.rs": "e7eb9f222f499f137965b25a7b27fc9df64ee1c2e4220bc15bb3909847125788",
+    "docs/native/m4-compute-textures.md": "6542480ed4150fbf3b27c9d20b941562eb426a122c5aeab30bb6828b2dc9d14d",
+    "src/native/runtime/compute/resource.rs": "1e43664492e0b7ef20f44fbe5dfd42627f772d3cace8a1f95dbd32f66b6251de",
+    "src/native/runtime/dx12/compute_texture.rs": "541ee1eda57ce4308175f1d3be05ef9991567460a234fcbf26422776acee0432",
+    "src/native/runtime/tests/texture_gpu.rs": "e3b623bd37585664c541fd7efcbb79f3c25c5bfbad08edaa9e57ee622b732a6c",
+    "src/native/runtime/tests/wgpu/compute_resources.rs": "d6a083425b72c0e7e7a54796fe0b75e5a0c3a7a4c11555fd20058c95f7a4a470",
+    "src/native/runtime/vulkan/compute_texture.rs": "13beb45c551194f2033b97880bb2f0ab5d5edaf4b399aa05128c4347d4bce913",
+    "src/shaders/hlsl/validation/texture.hlsl": "85f2db0dab5b5ac6c0207cb0d96727cfaa9b12891407750ae34b1a6f40e08e13",
+    "tests/shaders/texture.wgsl": "4191eacb49d5358456d62fe86080134ec5cddd7a2254fb47b696e4cc7c0f26d3"
+  },
+  "logs": {
+    "m4-texture-clippy.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-texture-clippy.log",
+      "sha256": "6d18c731f49f5168309b4651de9f3fb8bdf14bc6f670e616443b049a182a43e9"
+    },
+    "m4-texture-editor.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-texture-editor.log",
+      "sha256": "fc4e174efe3c75190d6fa38b0776b1017d052a2d38764d3c65c28bce425a0484"
+    },
+    "m4-texture-examples.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-texture-examples.log",
+      "sha256": "a2df8137b22dcbad170e78ff224159d98e9cb6216b098d451f957f88389126de"
+    },
+    "m4-texture-full-release.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-texture-full-release.log",
+      "sha256": "4955c605efa7e7b904ed6dde5661b41ad3a008177feb44987217f548335f9272"
+    },
+    "m4-texture-no-dxc.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-texture-no-dxc.log",
+      "sha256": "2c5337fc522ff8c959b8ba1944fc70946d036ad7cb2b3a94098c1a98534488ca"
+    },
+    "m4-texture-review-cases.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-texture-review-cases.log",
+      "sha256": "b7013731fa62252f64e2ddbd0b9da5f54bdb6962db7734495abd5e0040efda40"
+    },
+    "m4-texture-runtime.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-texture-runtime.log",
+      "sha256": "809c34acf1ef26e0e748c7eeec7f89578c34b7a4ae72cde4d9c4a0797512c712"
+    },
+    "m4-texture-shader.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-texture-shader.log",
+      "sha256": "a252377d82bf89fc95a7baea4dc2bf1440f679ba8d5846c7cbc47dc5f8bb1f2c"
+    },
+    "m4-texture-svg.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-texture-svg.log",
+      "sha256": "27966f5e1c26ce524cc10d0a3a1f34490eeba3b2cbd29850e12bc023613115f6"
+    }
+  },
+  "png": {
+    "before": 3471,
+    "after": 3471,
+    "changed": [],
+    "missing": [],
+    "added": []
+  },
+  "reviews": {
+    "spec": "closed",
+    "standards": "closed"
+  },
+  "spirv_modules_validated": 37
+}

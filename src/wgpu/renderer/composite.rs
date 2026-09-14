@@ -3,28 +3,10 @@
 use super::*;
 
 impl Renderer {
-    pub(super) fn render_ops_to_scratch(
-        &mut self,
-        commands: &mut WgpuCommandBatch,
-        canvas: &Canvas,
-        plan: &ExecPlan,
-        ops: &[ExecOp],
-        filter_cursors: &mut WgpuFilterCursors,
-    ) -> Option<WgpuRenderTargetId> {
-        let target = self.acquire_scratch()?;
-        self.clear_render_target(commands, target, 0);
-        if self.execute_ops(commands, canvas, plan, ops, target, filter_cursors, None) {
-            Some(target)
-        } else {
-            self.release_scratch(target);
-            None
-        }
-    }
-
     pub(super) fn build_layer_mask(
         &self,
         commands: &mut WgpuCommandBatch,
-        target: WgpuRenderTargetId,
+        target: RenderTargetId,
         draw_ix: u32,
         bounds: Bounds,
     ) {
@@ -45,7 +27,7 @@ impl Renderer {
     pub(super) fn build_region_mask(
         &self,
         commands: &mut WgpuCommandBatch,
-        target: WgpuRenderTargetId,
+        target: RenderTargetId,
         region: &crate::shared::layer::region::Region,
         path_index: Option<u32>,
         bounds: Bounds,
@@ -68,8 +50,8 @@ impl Renderer {
     pub(super) fn svg_mask_coverage(
         &self,
         commands: &mut WgpuCommandBatch,
-        source: WgpuRenderTargetId,
-        target: WgpuRenderTargetId,
+        source: RenderTargetId,
+        target: RenderTargetId,
         bounds: Bounds,
         kind: crate::shared::layer::mask::MaskKind,
     ) {
@@ -89,8 +71,8 @@ impl Renderer {
     pub(super) fn apply_region_mask(
         &self,
         commands: &mut WgpuCommandBatch,
-        mask: WgpuRenderTargetId,
-        target: WgpuRenderTargetId,
+        mask: RenderTargetId,
+        target: RenderTargetId,
         bounds: Bounds,
     ) {
         if let Some(filter) = &self.filter {
@@ -112,9 +94,9 @@ impl Renderer {
     pub(super) fn composite_src_over_with_stack(
         &self,
         commands: &mut WgpuCommandBatch,
-        target: WgpuRenderTargetId,
-        source: WgpuRenderTargetId,
-        mask: Option<WgpuRenderTargetId>,
+        target: RenderTargetId,
+        source: RenderTargetId,
+        mask: Option<RenderTargetId>,
         bounds: Bounds,
         layer_stack: std::ops::Range<usize>,
     ) -> bool {
@@ -148,20 +130,13 @@ impl Renderer {
         }
     }
 
-    pub(super) fn active_tile_count(&self, bounds: Bounds) -> u32 {
-        self.retained.active_tiles().map_or_else(
-            || tile_count_for_bounds(bounds),
-            |tiles| tiles.count_in_bounds(bounds),
-        )
-    }
-
     #[allow(clippy::too_many_arguments)]
     pub(super) fn composite_group_targets(
         &self,
         commands: &mut WgpuCommandBatch,
-        target: WgpuRenderTargetId,
-        source: WgpuRenderTargetId,
-        mask: WgpuRenderTargetId,
+        target: RenderTargetId,
+        source: RenderTargetId,
+        mask: RenderTargetId,
         bounds: Bounds,
         layer_stack: std::ops::Range<usize>,
         blend: Option<peniko::BlendMode>,
@@ -194,7 +169,7 @@ impl Renderer {
     pub(super) fn composite_cached_group(
         &self,
         commands: &mut WgpuCommandBatch,
-        target: WgpuRenderTargetId,
+        target: RenderTargetId,
         source: &WgpuTarget,
         mask: Option<&WgpuTarget>,
         bounds: Bounds,
@@ -247,8 +222,8 @@ impl Renderer {
     pub(super) fn composite_src_over_rect_mask_direct(
         &self,
         commands: &mut WgpuCommandBatch,
-        target: WgpuRenderTargetId,
-        source: WgpuRenderTargetId,
+        target: RenderTargetId,
+        source: RenderTargetId,
         bounds: Bounds,
         region: &crate::shared::layer::region::Region,
     ) -> bool {
@@ -270,27 +245,14 @@ impl Renderer {
         )
     }
 
-    pub(super) fn composite_cached_backdrop(
+    pub(super) fn composite_cached_backdrop_rect(
         &self,
         commands: &mut WgpuCommandBatch,
-        target: WgpuRenderTargetId,
+        target: RenderTargetId,
         source: &WgpuTarget,
-        mask: Option<&WgpuTarget>,
         bounds: Bounds,
         region: &crate::shared::layer::region::Region,
-        layer_stack: std::ops::Range<usize>,
     ) -> bool {
-        if !layer_stack.is_empty() {
-            return self.composite_cached_group(
-                commands,
-                target,
-                source,
-                mask,
-                bounds,
-                layer_stack,
-                None,
-            );
-        }
         let Some(filter) = &self.filter else {
             return false;
         };
@@ -314,9 +276,9 @@ impl Renderer {
     pub(super) fn composite_blend_with_stack(
         &self,
         commands: &mut WgpuCommandBatch,
-        target: WgpuRenderTargetId,
-        source: WgpuRenderTargetId,
-        mask: WgpuRenderTargetId,
+        target: RenderTargetId,
+        source: RenderTargetId,
+        mask: RenderTargetId,
         bounds: Bounds,
         layer_stack: std::ops::Range<usize>,
         mode: peniko::BlendMode,
@@ -347,7 +309,7 @@ impl Renderer {
     pub(super) fn composite_surface_src_over_with_stack(
         &self,
         commands: &mut WgpuCommandBatch,
-        target: WgpuRenderTargetId,
+        target: RenderTargetId,
         source: &WgpuTarget,
         source_size: (u32, u32),
         source_origin: (i32, i32),
@@ -381,7 +343,7 @@ impl Renderer {
     pub(super) fn composite_cached_filter_surface(
         &self,
         commands: &mut WgpuCommandBatch,
-        target: WgpuRenderTargetId,
+        target: RenderTargetId,
         source: &WgpuTarget,
         source_size: (u32, u32),
         source_origin: (i32, i32),

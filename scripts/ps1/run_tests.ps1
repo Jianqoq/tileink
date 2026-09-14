@@ -75,14 +75,26 @@ function Invoke-ReleaseTests {
         # These partitions still run strictly serially, but release each process's driver state.
         Invoke-CargoTest -Mode $Mode -Label "core" -HarnessArgs @(
             "--skip", "svg::tests::",
-            "--skip", "wgpu::renderer::tests::"
+            "--skip", "wgpu::renderer::tests::",
+            "--skip", "persistent_",
+            "--skip", "wgpu_"
         )
-        Invoke-CargoTest -Mode $Mode -Label "svg-unit" -Filter "svg::tests::"
-        Invoke-CargoTest -Mode $Mode -Label "persistent-renderer" -Filter "wgpu::renderer::tests::persistent_"
-        Invoke-CargoTest -Mode $Mode -Label "low-level-renderer" -Filter "wgpu::renderer::tests::wgpu_" -HarnessArgs @(
+        Invoke-CargoTest -Mode $Mode -Label "svg-unit" -Filter "svg::tests::" -HarnessArgs @(
+            "--skip", "persistent_",
+            "--skip", "wgpu_"
+        )
+        # Test submodules sit between the renderer namespace and function name. Match the
+        # function prefix so reorganizing tests cannot silently empty these partitions.
+        # Core/SVG exclude these groups, and persistent takes precedence over other prefixes,
+        # so each test runs once even when its name matches more than one function group.
+        Invoke-CargoTest -Mode $Mode -Label "persistent-renderer" -Filter "persistent_"
+        Invoke-CargoTest -Mode $Mode -Label "low-level-renderer" -Filter "wgpu_" -HarnessArgs @(
+            "--skip", "persistent_",
             "--skip", "wgpu_renderer_samples_"
         )
-        Invoke-CargoTest -Mode $Mode -Label "renderer-sampling" -Filter "wgpu::renderer::tests::wgpu_renderer_samples_"
+        Invoke-CargoTest -Mode $Mode -Label "renderer-sampling" -Filter "wgpu_renderer_samples_" -HarnessArgs @(
+            "--skip", "persistent_"
+        )
         Invoke-CargoTest -Mode $Mode -Label "renderer-misc" -Filter "wgpu::renderer::tests::" -HarnessArgs @(
             "--skip", "persistent_",
             "--skip", "wgpu_"

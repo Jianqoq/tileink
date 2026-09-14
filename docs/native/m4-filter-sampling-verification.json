@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "status": "windows-kernel-validated",
+  "inventory_entries": 12,
+  "total_validated": 91,
+  "gpu": "RTX 4090; LUID 9f3f010000000000",
+  "routes": [
+    "wgpu-DX12",
+    "wgpu-Vulkan",
+    "native-DX12",
+    "native-Vulkan"
+  ],
+  "variants": "native/portable x texture_table false/true",
+  "ordinary_release_passed": 975,
+  "native_runtime_passed": 91,
+  "no_dxc_gpu_passed": 13,
+  "spirv_modules_validated": 56,
+  "editor": "Shader Tools invalid/correct roundtrip passed",
+  "clippy": "release native all-targets -D warnings passed",
+  "pngs": {
+    "before": 3471,
+    "after": 3471,
+    "changed": [],
+    "missing": [],
+    "added": []
+  },
+  "reviews": {
+    "spec": "closed",
+    "standards": "closed"
+  },
+  "source_sha256": {
+    "src/shaders/hlsl/filter/morphology.hlsl": "0732be2f2cebf48e34fabe2b00b0e2358c7478530c194b123e96a6da14a27302",
+    "src/shaders/hlsl/filter/morphology.hlsli": "8a2778f32e58323316eb6696dc9d6a21c1c0ad623ccfe45d8a32f5e1622554ad",
+    "src/shaders/hlsl/filter/displacement.hlsl": "7c905cdc8123366c3d3ee351a9c2e80b459452d72c3d475c2903008ce31e0347",
+    "src/shaders/hlsl/filter/displacement.hlsli": "90ffd91746cdd24d276793285ad16ab400e0260c34af2696afeaa901d86b3d5a",
+    "src/shaders/hlsl/filter/transfer.hlsl": "78653157d1c6cb3f873deefe0f95d05df9a2533ba883b02c33b4272547577ffa",
+    "src/shaders/hlsl/filter/transfer.hlsli": "9cbc93ab11837c07095dc1d7c43f1fad64c61e739ea09e6f882e3cb948bf3301",
+    "src/shaders/hlsl/filter/color_space.hlsli": "897f6429bc8289290556a5d1d9cbddda8fae527afe10f0cc5180587a99df875e",
+    "src/shaders/hlsl/constants.hlsli": "26d4c504f74b03d633d91ffd4fb4fb12d7644998408ad7cf2c7e507e23e155db",
+    "src/shared/layer/filter.rs": "bef43f2735015740c6c606e76ae115a2f3b8c099dbf25d222fe9b06d2d901813",
+    "src/wgpu/shaders/filter/kernels_effects.wgsl": "469c484c85b5d868fc254c436760e89d555bcbe6f3cf50209a6e419b54ba8447",
+    "src/native/runtime/program/filter/region.rs": "b76bdc73f77973dfeeae7a2b0df342e21c2ae8783d0a8e6d88eb2fcd0f239a3a",
+    "src/native/runtime/program/filter/morphology.rs": "5071618e58b449703f93ec68f6e5f4c260dbdde54c72154a2a59a6e469a4b8ff",
+    "src/native/runtime/program/filter/displacement.rs": "0e0aa2cff7f087e24ddb5a852ac6448ff36e99b96ba845b56fa79098d6e1747e",
+    "src/native/runtime/program/filter/transfer.rs": "75a0d5ca81cbbeecc5854a83f3a51c673e71b4740d59c392ccdd830e63aa245e",
+    "src/native/runtime/tests/filter_morphology_gpu.rs": "5168adea07b6b30ec69ceaaf899d02da5819fde6de358f4952325553ce4fd65e",
+    "src/native/runtime/tests/filter_displacement_gpu.rs": "1a37730ff5b7f44e5182a866353f7ce610dcfa4b8518d89271db0775411ecb7b",
+    "src/native/runtime/tests/filter_transfer_gpu.rs": "54ef0d196b2866e5b649a9fd5f2cc87aed49fd563fbd3ca8360a0040ae242fd2"
+  },
+  "log_sha256": {
+    "m4-filter-sampling-full-release.log": "d1207e23563e70c9458e13bb21c70ed77c89a7a8186c79643d697145996f4991",
+    "m4-filter-sampling-runtime.log": "a6fe808772995b6a8d061bf08faa204f671fb55de55d341c0de8ec2d1de1ea15",
+    "m4-filter-sampling-clippy.log": "424e63b27f757f82cb2f167ca5029f6c65f52702fa970736af94dbcd6edb2c1e",
+    "m4-filter-sampling-svg.log": "022db8bd752eced82c50b77ccabc65370449cda9f66df1d359ed517e0dbb64cc",
+    "m4-filter-sampling-examples.log": "789725052c6561234eac3c8d46fa94301726232056bb4f98c390b602edb098f7",
+    "m4-filter-sampling-no-dxc.log": "907545fa41ad34b93a4782112475d3360a7dca24f86ddb228b40b3695cb90a2e",
+    "m4-filter-sampling-shader.log": "963455e9bb3b6eea6e66baa110903e636092264bc3344334b75f9382c908824f",
+    "m4-filter-sampling-editor.log": "8f4a6b2859f96eae90c54a614838aea967b4e3db62d3ba856c0f5c0a9cf46c3a"
+  },
+  "m4_complete": false
+}

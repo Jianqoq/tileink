@@ -1,5 +1,5 @@
 use super::*;
-use crate::wgpu::renderer::ExternalTextureHistoryId;
+use crate::ExternalTextureHistoryId;
 
 const INITIAL_SIZE: (u32, u32) = (128, 96);
 const RESIZED_SIZE: (u32, u32) = (192, 128);

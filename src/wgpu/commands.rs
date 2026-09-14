@@ -1,135 +1,116 @@
-pub(crate) struct WgpuCommandBatch {
+use crate::render::{
+    backend::{BatchAdapter, SubmitError},
+    commands::{CommandBatch, CommandError},
+    upload::uniforms::UniformWrites,
+};
+use std::convert::Infallible;
+
+pub(crate) type WgpuCommandBatch = CommandBatch<WgpuCommands>;
+
+pub(crate) struct WgpuCommands {
     device: ::wgpu::Device,
     queue: ::wgpu::Queue,
-    encoder: Option<::wgpu::CommandEncoder>,
-    uniform_writes: Vec<UniformWriteArena>,
-    has_work: bool,
-    submissions: u32,
-    label: &'static str,
 }
 
-pub(crate) const WGPU_CONFIG_SLOTS: u64 = 4096;
+impl BatchAdapter for WgpuCommands {
+    type Buffer = ::wgpu::Buffer;
+    type Encoder = ::wgpu::CommandEncoder;
+    type Submission = ::wgpu::SubmissionIndex;
+    // WGPU's enqueue API is infallible; asynchronous device errors continue to
+    // use its existing error reporting. Native adapters return their API errors.
+    type Error = Infallible;
 
-struct UniformWriteArena {
-    key: &'static str,
-    buffer: ::wgpu::Buffer,
-    size: ::wgpu::BufferAddress,
-    stride: ::wgpu::BufferAddress,
-    slots: u64,
-    used_slots: u64,
-    bytes: Vec<u8>,
-}
+    fn create_encoder(&mut self, label: &'static str) -> Result<Self::Encoder, Self::Error> {
+        Ok(self
+            .device
+            .create_command_encoder(&::wgpu::CommandEncoderDescriptor { label: Some(label) }))
+    }
 
-impl WgpuCommandBatch {
-    pub(crate) fn new(device: &::wgpu::Device, queue: &::wgpu::Queue, label: &'static str) -> Self {
-        Self {
-            device: device.clone(),
-            queue: queue.clone(),
-            // Allocate on first encoded command. A submitted batch must not create an unused
-            // successor encoder merely so `finish` or `Drop` can discard it.
-            encoder: None,
-            uniform_writes: Vec::new(),
-            has_work: false,
-            submissions: 0,
-            label,
+    fn submit(
+        &mut self,
+        encoder: Self::Encoder,
+        uniforms: &UniformWrites<Self::Buffer>,
+    ) -> Result<Self::Submission, SubmitError<Self::Error>> {
+        for (buffer, bytes) in uniforms.iter() {
+            self.queue.write_buffer(buffer, 0, bytes);
         }
+        Ok(self.queue.submit([encoder.finish()]))
+    }
+}
+
+// The WGPU-specific methods expose its infallible recording API. Scheduling,
+// uploads, completion bookkeeping and abort semantics live in CommandBatch.
+impl CommandBatch<WgpuCommands> {
+    pub(crate) fn new(device: &::wgpu::Device, queue: &::wgpu::Queue, label: &'static str) -> Self {
+        Self::from_adapter(
+            WgpuCommands {
+                device: device.clone(),
+                queue: queue.clone(),
+            },
+            label,
+        )
     }
 
     pub(crate) fn device(&self) -> &::wgpu::Device {
-        &self.device
+        &self.adapter().device
     }
 
     pub(crate) fn encoder(&mut self) -> &mut ::wgpu::CommandEncoder {
-        self.has_work = true;
-        self.encoder
-            .get_or_insert_with(|| create_encoder(&self.device, self.label))
+        infallible(self.try_encoder())
     }
 
     pub(crate) fn write_uniform_slot(
         &mut self,
-        key: &'static str,
         buffer: &::wgpu::Buffer,
         size: ::wgpu::BufferAddress,
         stride: ::wgpu::BufferAddress,
         slots: u64,
         bytes: &[u8],
     ) -> ::wgpu::BufferAddress {
-        debug_assert!(bytes.len() as ::wgpu::BufferAddress <= size);
-        if let Some(ix) = self
-            .uniform_writes
-            .iter()
-            .position(|arena| arena.key == key)
-            && self.uniform_writes[ix].used_slots >= self.uniform_writes[ix].slots
-        {
-            self.submit_current();
-        }
-
-        let arena = match self
-            .uniform_writes
-            .iter()
-            .position(|arena| arena.key == key)
-        {
-            Some(ix) => &mut self.uniform_writes[ix],
-            None => {
-                self.uniform_writes.push(UniformWriteArena {
-                    key,
-                    buffer: buffer.clone(),
-                    size,
-                    stride,
-                    slots,
-                    used_slots: 0,
-                    bytes: Vec::with_capacity((stride * 8) as usize),
-                });
-                self.uniform_writes.last_mut().unwrap()
-            }
-        };
-        debug_assert_eq!(arena.size, size);
-        debug_assert_eq!(arena.stride, stride);
-
-        let offset = arena.used_slots * arena.stride;
-        arena.used_slots += 1;
-        let start = offset as usize;
-        let end = start + arena.size as usize;
-        if arena.bytes.len() < end {
-            arena.bytes.resize(end, 0);
-        }
-        arena.bytes[start..start + bytes.len()].copy_from_slice(bytes);
-        offset
+        infallible(self.try_write_uniform_slot(buffer, size, stride, slots, bytes))
     }
 
+    pub(crate) fn begin_root_batch(&mut self) {
+        infallible(self.try_begin_root_batch());
+    }
+
+    #[cfg(test)]
     pub(crate) fn submit_current(&mut self) {
-        if !self.has_work {
-            self.uniform_writes.clear();
-            return;
+        infallible(self.try_submit());
+    }
+
+    #[cfg(test)]
+    pub(crate) fn finish(self) -> u32 {
+        self.finish_with_status(true)
+    }
+
+    pub(crate) fn finish_with_status(self, succeeded: bool) -> u32 {
+        if succeeded {
+            infallible(
+                self.try_finish()
+                    .map(|outcome| outcome.submissions)
+                    .map_err(|failure| failure.error),
+            )
+        } else {
+            self.abort().submissions
         }
-        for arena in &self.uniform_writes {
-            self.queue.write_buffer(&arena.buffer, 0, &arena.bytes);
+    }
+}
+
+fn infallible<T>(result: Result<T, CommandError<Infallible>>) -> T {
+    match result {
+        Ok(value) => value,
+        Err(CommandError::Recording(error))
+        | Err(CommandError::Submission(
+            SubmitError::Rejected(error) | SubmitError::Unconfirmed(error),
+        )) => match error {},
+        Err(CommandError::Aborted) => {
+            unreachable!("infallible WGPU recording cannot poison a batch")
         }
-        self.uniform_writes.clear();
-        let encoder = self
-            .encoder
-            .take()
-            .expect("wgpu command batch encoder exists while submitting");
-        self.queue.submit([encoder.finish()]);
-        self.submissions += 1;
-        self.has_work = false;
-    }
-
-    pub(crate) fn finish(mut self) -> u32 {
-        self.submit_current();
-        self.submissions
     }
 }
 
-impl Drop for WgpuCommandBatch {
-    fn drop(&mut self) {
-        self.submit_current();
-    }
-}
-
-fn create_encoder(device: &::wgpu::Device, label: &'static str) -> ::wgpu::CommandEncoder {
-    device.create_command_encoder(&::wgpu::CommandEncoderDescriptor { label: Some(label) })
-}
+pub(crate) const WGPU_CONFIG_SLOTS: u64 = 4096;
 
 pub(crate) fn aligned_uniform_stride(
     device: &::wgpu::Device,

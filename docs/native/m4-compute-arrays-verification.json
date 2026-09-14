@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "milestone": "M4 sampled texture arrays; not M4 completion",
+  "base": "0d9bca34",
+  "inventory_validated": 27,
+  "inventory_total": 179,
+  "gpu_luid": "9f3f010000000000",
+  "routes": [
+    "wgpu DX12",
+    "wgpu Vulkan",
+    "native DX12",
+    "native Vulkan"
+  ],
+  "source_sha256": {
+    "NATIVE_BACKEND_PROGRESS.md": "2ab30fdeaaac0c199823cc927fa6f8c498a566b71fb4ce07a91fe27dd290b01a",
+    "build/native/abi.rs": "8a93a40e684d8d5b42938e77ec09fa886cd57250d5dd33b05cc3d82a2ad9b330",
+    "build/native/dxil_reflection.rs": "a7ad3d93f5e1de6b3d33d302dafb2427c5b83979dbd4beaebf4d15fdfc1a10cb",
+    "build/native/interfaces.rs": "0c7c239831bf049ab0827d98b51a681ca019fcd61025e3eada8ab7b594cc6ca7",
+    "build/native/interfaces/texture.rs": "2c56fb778512f3eba4bff77f079343cf3b4cbe364fa2d869e303d222649c5164",
+    "build/native/program.rs": "01de4ba05520da16525fe5cc20090545d43f283034c5e883d6b07bb704eb4da2",
+    "build/native/spirv.rs": "4475804932276797d5d64bcbc32aa52fbabb5b2c3d93c98368e34c92a4d301cd",
+    "src/native/runtime/compute.rs": "87b301a3952e294809d2f610e46ae69dbc6edfe26815198c109aa982b2fe2c09",
+    "src/native/runtime/compute/resource.rs": "48c79761aa2bc36e7c92963b12f0d828a11da382bc209566099cc1c217719cd9",
+    "src/native/runtime/dx12/compute_bindings.rs": "bca5d5eb6448539a7ab336544d0d2fabb7d3872afdc3e022533d810cfda4deaa",
+    "src/native/runtime/dx12/compute_pipeline.rs": "411fde5954c30b6a2e74429a3d125b04f8161fe582b68d316c1659d0e6904219",
+    "src/native/runtime/dx12/compute_texture.rs": "332be5c2b3e98d7d3ae79bc924a06dfb8c84e8de1a8cd01f5ca29b57682e03b3",
+    "src/native/runtime/tests/compute.rs": "6e65665a14be7b5ea1bc89b9a8dc1b9f82d2946f4d83821eb70a0b24b770560a",
+    "src/native/runtime/tests/texture_gpu.rs": "6879eb5974642dec4f6d0d4b6123ff742698338fb9e9e358eda9cf90398aae46",
+    "src/native/runtime/tests/wgpu/compute.rs": "27bdf4fcc93e3c96b57dbadc3768373df45282c17cfde85106c566883bdcff32",
+    "src/native/runtime/tests/wgpu/compute_resources.rs": "1fb014bbaf2d1fe067755c00e07534b430380abfb5ae3d71a0ff970623bb06a0",
+    "src/native/runtime/vulkan/compute.rs": "562808faeccafd719de3137ebe1b228d5aae10627612df471af11df7df4398e0",
+    "src/native/runtime/vulkan/compute_pipeline.rs": "4aa2fff08e7ef5ac9740163dcc3b670dfd71b07139c2fa92933b80a2162b5fe9",
+    "src/native/runtime/vulkan/compute_texture.rs": "686f5e406f9770a0b6bccafdd24f95bb54b32ccc6bbae8fe994407f805151bb7",
+    "src/native/shaders.rs": "d684bcc038c302d59d24432ca9e5f9fc7bc12633350530053bca6467e333b218",
+    "tests/native_shader_artifacts.rs": "b9576fd70c1eae19683285b4466ab4889d537ebd8f1049152a0094ca1dd4cbc4",
+    "tests/native_shader_reflection.rs": "73c69853296f38acc0761378db3addb2045ee88d0945e04e587459c1a3668f13",
+    "docs/native/m4-compute-arrays.md": "5bb38322ee1f3e34efd33c1aa80ce4bac2cc6ee7b045734691fabe834bccb7d7",
+    "src/shaders/hlsl/validation/texture_array.hlsl": "f3426fbdccc3055eeadeba1109fc5fc98e63357feafb92d58517d5f2befcc07f",
+    "tests/shaders/texture_array.wgsl": "a37652213256ed8b25f02ae317b89e95866b81b9fdc2933757452f573e4cd1d2"
+  },
+  "logs": {
+    "m4-array-clippy.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-array-clippy.log",
+      "sha256": "9b960f6e25e658fcfb8f54c6936489aa2af889cd731272cd6c1b48fbfdf778a5"
+    },
+    "m4-array-editor.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-array-editor.log",
+      "sha256": "b93461906584da2d14161c7902db06adc5d4b4ba9d419d475dc4bf7a41ac299b"
+    },
+    "m4-array-examples.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-array-examples.log",
+      "sha256": "323701dafb7f2524022ea301bf9d11a9bcf341d1c1f822b9c884452cc564d000"
+    },
+    "m4-array-full-release.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-array-full-release.log",
+      "sha256": "96f1cc9c92f445bd057c05f81f94b051b5f087034d7a3fe212307a3035b30376"
+    },
+    "m4-array-no-dxc.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-array-no-dxc.log",
+      "sha256": "8b319becfe22d6b4ae14a96fc3abe3c2124d0a9b84701b2cfc372939cd4e0d26"
+    },
+    "m4-array-runtime.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-array-runtime.log",
+      "sha256": "d3f743264ef2127e46185397bbb116625c15a8dfa5c313b05e7b6441b14c991d"
+    },
+    "m4-array-shader.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-array-shader.log",
+      "sha256": "76ad5d0a9512a862099f70f86404e1ba29a3f9a0a55ee3541c2da137fc8ea95f"
+    },
+    "m4-array-svg.log": {
+      "path": "G:\\Code\\northstar-trading-app\\target\\agent-work\\m4-array-svg.log",
+      "sha256": "efab26a760cec34b6de4481c03b94e8f5d3a1b29abf50e8484894333d8e92d02"
+    }
+  },
+  "png": {
+    "before": 3471,
+    "after": 3471,
+    "changed": [],
+    "missing": [],
+    "added": []
+  },
+  "reviews": {
+    "spec": "closed",
+    "standards": "closed"
+  },
+  "spirv_modules_validated": 38
+}

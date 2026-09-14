@@ -24,8 +24,6 @@ use crate::{
     },
 };
 
-const DEBUG_AREA_EPSILON: f32 = 1.0e-6;
-
 #[inline]
 fn debug_apply_fill_rule(value: f32, fill_rule: FillRule) -> f32 {
     match fill_rule {
@@ -46,7 +44,8 @@ fn debug_segment_row_parts(segment: &LineSegment, y: u32) -> (f32, f32, f32, f32
     let row_y = y as f32;
     let local_y = segment.p0y - row_y;
     let y0 = local_y.clamp(0.0, 1.0);
-    let y1 = (local_y + delta_y).clamp(0.0, 1.0);
+    // Use the endpoint directly: subtract/add cancellation changes half-alpha pixels.
+    let y1 = (segment.p1y - row_y).clamp(0.0, 1.0);
     let dy = y0 - y1;
     let y_edge = delta_x.signum() * (row_y - segment.y_edge + 1.0).clamp(0.0, 1.0);
 
@@ -54,28 +53,35 @@ fn debug_segment_row_parts(segment: &LineSegment, y: u32) -> (f32, f32, f32, f32
         return (y_edge, dy, 0.0, 0.0);
     }
 
-    let recip = 1.0 / delta_y;
-    let t0 = (y0 - local_y) * recip;
-    let t1 = (y1 - local_y) * recip;
-    let sx0 = segment.p0x + t0 * delta_x;
-    let sx1 = segment.p0x + t1 * delta_x;
+    // Keep debug alpha on the production shader's nearest-endpoint intersection path.
+    let slope = delta_x / delta_y;
+    let (anchor_x, anchor_y) = if (local_y - 0.5).abs() <= (segment.p1y - row_y - 0.5).abs() {
+        (segment.p0x, local_y)
+    } else {
+        (segment.p1x, segment.p1y - row_y)
+    };
+    let sx0 = (y0 - anchor_y).mul_add(slope, anchor_x);
+    let sx1 = (y1 - anchor_y).mul_add(slope, anchor_x);
 
     (y_edge, dy, sx0.min(sx1), sx0.max(sx1))
 }
 
 #[inline]
 fn debug_segment_area_at(xmin: f32, xmax: f32, x: u32) -> f32 {
-    let pixel_x = x as f32;
-    let xmin = xmin - pixel_x;
-    let xmax = xmax - pixel_x;
-    if xmax - xmin <= DEBUG_AREA_EPSILON {
+    let xmin = xmin - x as f32;
+    let xmax = xmax - x as f32;
+    let width = xmax - xmin;
+    if width == 0.0 {
         return (1.0 - xmin).clamp(0.0, 1.0);
     }
-    let a_min = xmin.min(1.0) - DEBUG_AREA_EPSILON;
-    let b = xmax.min(1.0);
-    let c = b.max(0.0);
-    let d = a_min.max(0.0);
-    (b + 0.5 * (d * d - c * c) - a_min) / (xmax - a_min)
+    // Match the GPU's stable trapezoid integral without perturbing the endpoints.
+    if xmin >= 0.0 && xmax <= 1.0 {
+        return (-0.5_f32).mul_add(xmin + xmax, 1.0);
+    }
+    let left = xmin.clamp(0.0, 1.0);
+    let right = xmax.clamp(0.0, 1.0);
+    let full = (-xmin).clamp(0.0, width);
+    (right - left).mul_add((-0.5_f32).mul_add(left + right, 1.0), full) / width
 }
 
 fn debug_row_coverages(segments: &[LineSegment], backdrop: i32, y: u32) -> [f32; 16] {
@@ -1059,16 +1065,17 @@ fn escape_json(value: &str) -> String {
 mod tests {
     use std::{fs, path::PathBuf};
 
-    use peniko::{
-        Color,
-        kurbo::{Affine, Rect, Shape},
-    };
+    use super::RenderDebugOptions;
 
-    use super::{RenderDebugOptions, RenderOptions};
-    use crate::{Canvas, FillRule, WgpuRenderer};
-
+    #[cfg(feature = "wgpu")]
     #[test]
     fn wgpu_render_with_options_captures_tile_debug_outputs_when_enabled() {
+        use super::RenderOptions;
+        use crate::{Canvas, FillRule, WgpuRenderer};
+        use peniko::{
+            Color,
+            kurbo::{Affine, Rect, Shape},
+        };
         if std::env::var("TILEINK_RUN_WGPU_TESTS").as_deref() != Ok("1") {
             return;
         }
@@ -1177,4 +1184,57 @@ mod tests {
 
         assert!(RenderDebugOptions::try_new(file).is_err());
     }
+
+    #[test]
+    fn debug_narrow_edge_coverage_uses_a_stable_area() {
+        // A nearly vertical edge has analytic alpha 124.4966. Subtracting
+        // squared endpoints and dividing by its short span incorrectly yields 125.
+        let [p0x, p0y, p1x, p1y, y_edge] =
+            [1093157568, 1098907648, 1093150976, 0, 1315859240].map(f32::from_bits);
+        let segment = super::LineSegment {
+            p0x,
+            p0y,
+            p1x,
+            p1y,
+            y_edge,
+        };
+        let alpha = super::build_tile_alpha(&[segment], 0, super::FillRule::NonZero);
+        assert_eq!(alpha[4 * 16 + 10], 124);
+    }
+
+    #[test]
+    fn debug_diagonal_coverage_keeps_the_rounding_boundary() {
+        // The scan output of a fractional diagonal must quantize below 142.5,
+        // matching the analytic coverage rather than rounding a reciprocal twice.
+        let segments = [
+            [1078190592, 0, 1098907647, 1095698320, 1315859240],
+            [1098907647, 1097922688, 1064335488, 0, 1315859240],
+        ]
+        .map(|bits| {
+            let [p0x, p0y, p1x, p1y, y_edge] = bits.map(f32::from_bits);
+            super::LineSegment {
+                p0x,
+                p0y,
+                p1x,
+                p1y,
+                y_edge,
+            }
+        });
+        let alpha = super::build_tile_alpha(&segments, 0, super::FillRule::NonZero);
+        assert_eq!(alpha[2 * 16 + 3], 142);
+    }
+}
+
+#[test]
+fn debug_row_endpoint_keeps_half_alpha_residual() {
+    let segment = LineSegment {
+        p0x: -0.0,
+        p0y: 7.75,
+        p1x: 1.0000001,
+        p1y: 0.50000006,
+        y_edge: -0.5,
+    };
+    let (_, dy, _, _) = debug_segment_row_parts(&segment, 0);
+    assert_eq!(dy, 1.0 - segment.p1y);
+    assert_eq!((dy * 255.0 + 0.5) as u32, 127);
 }

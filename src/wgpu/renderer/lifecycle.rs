@@ -43,13 +43,12 @@ impl Renderer {
             config: WgpuBuffer::new(device, "tileink wgpu canvas config"),
             scene_buffers: WgpuSceneBuffers::new(device, range_scatter_pipeline.clone()),
             range_scatter_pipeline,
-            scene_upload: WgpuSceneUploadStaging::default(),
+            scene_upload: SceneUploadStaging::default(),
             scan: WgpuScanBuffers::new(device),
             coarse: WgpuCoarseBuffers::new(device),
             max_clip_depth: 0,
             max_group_depth: 0,
             fine_spills: WgpuBuffer::new(device, "tileink wgpu fine spills"),
-            fine_indirect_args: WgpuBuffer::new(device, "tileink wgpu fine indirect args"),
             text_data: None,
             scan_pipeline: WgpuScanPipeline::new(device, pipeline_cache, &pipeline_compilations),
             cumsum: WgpuCumsumPipeline::new(device, pipeline_cache, &pipeline_compilations),
@@ -63,7 +62,8 @@ impl Renderer {
             pipeline_compilations,
             filter_transfers: WgpuFilterTransferBuffers::new(device),
             filter_brushes: WgpuFilterBrushBuffers::new(device),
-            prepared_plan_fingerprint: None,
+            scene_preparation: Default::default(),
+            prepared_output_read_usages: ::wgpu::TextureUsages::empty(),
             retained: RetainedRenderState::new(IncrementalRenderConfig::default()),
             filter_tile_work_arena: FilterTileWorkArena::default(),
             image_resources: ImageResourceStore::default(),
@@ -83,8 +83,7 @@ impl Renderer {
             scratch: Vec::new(),
             scratch_spares: Vec::new(),
             scratch_in_use: Vec::new(),
-            local_scene_resource_pool: Vec::new(),
-            pending_local_scene_resources: Vec::new(),
+            local_scene_resources: SceneResourcePool::default(),
             #[cfg(feature = "bench-internals")]
             reuse_local_scene_resources: true,
             clear_color: premul_clear_color(clear),
@@ -94,6 +93,8 @@ impl Renderer {
             surface_origin: (0, 0),
             persistent_scene: None,
             persistent_scene_rendered: None,
+            options,
+            vector_images: crate::render::vector_images::VectorImageCache::default(),
         }
     }
 
@@ -364,8 +365,6 @@ impl Renderer {
     ///
     /// This is useful for tests that need to verify the native WGPU path directly.
     pub fn render_native(&mut self, canvas: &Canvas) -> bool {
-        self.retained.set_history_owner(HistoryOwner::Internal);
-        self.retained.reset_transient_output();
         let selected = SelectedScene::Borrowed(canvas);
         self.render_native_selected(selected, false, None)
     }
@@ -376,6 +375,10 @@ impl Renderer {
         uses_text: bool,
         text: Option<(&mut TextFontSystem, &mut TextContext)>,
     ) -> bool {
+        // Every owned entry, including retained/text output, owns internal history.
+        // Switching from persistent external output must regenerate these pixels.
+        self.retained.set_history_owner(HistoryOwner::Internal);
+        self.retained.reset_transient_output();
         let frame = selected.frame();
         let materialization = selected.materialization();
         let materialized_reused = selected.materialized_reused();
@@ -415,48 +418,11 @@ impl Renderer {
         font_system: &mut TextFontSystem,
         text_context: &mut TextContext,
     ) -> bool {
-        self.retained.set_history_owner(HistoryOwner::Internal);
-        self.retained.reset_transient_output();
-        let selected = SelectedScene::Borrowed(canvas);
-        let frame = selected.frame();
-        let materialization = selected.materialization();
-        let materialized_reused = selected.materialized_reused();
-        let scene = selected.scene();
-        let plan = self
-            .retained
-            .begin_frame(frame, scene, self.profiler.is_active());
-        self.retained.stats_mut().materialized_scene_reused = materialized_reused;
-        let has_work = !plan.tiles.is_empty();
-        // Keep plan/resource cursors current even when this commit has no raster work.
-        if self
-            .retained
-            .scene_needs_prepare(materialization, true, self.image_resources_dirty)
-        {
-            self.prepare_scene_with_text(scene, font_system, text_context);
-            self.retained.mark_scene_prepared(materialization, true);
-        }
-        let rendered = !has_work || self.render_prepared_native(scene);
-        self.retained.finish_frame(plan, rendered, true);
-        rendered
-    }
-
-    pub(super) fn retained_surface_meta(
-        &self,
-        id: crate::canvas::RetainedSurfaceId,
-        kind: RetainedSurfaceKind,
-        size: (u32, u32),
-        origin: (i32, i32),
-        bounds: Bounds,
-    ) -> Option<RetainedSurfaceMeta> {
-        self.retained.surface_meta(id, kind, size, origin, bounds)
-    }
-
-    pub(super) fn retained_surface_is_dirty(&self, bounds: Bounds) -> bool {
-        self.retained.surface_is_dirty(bounds)
-    }
-
-    pub(super) fn local_damage_for_surface(&self, surface: Bounds) -> Option<DamageTiles> {
-        self.retained.local_damage_for_surface(surface, self.size)
+        self.render_native_selected(
+            SelectedScene::Borrowed(canvas),
+            true,
+            Some((font_system, text_context)),
+        )
     }
 
     pub(super) fn prepare_active_tile_buffers(&mut self) {
@@ -509,25 +475,5 @@ impl Renderer {
         if let Some(filter) = self.filter.as_mut() {
             filter.restore_active_tile_work(Some(work));
         }
-    }
-
-    pub(super) fn take_matching_retained_surface(
-        &mut self,
-        id: Option<crate::canvas::RetainedSurfaceId>,
-        meta: Option<RetainedSurfaceMeta>,
-    ) -> Option<(crate::canvas::RetainedSurfaceId, RetainedSurface)> {
-        self.retained.take_matching_surface(id, meta)
-    }
-
-    pub(super) fn cache_retained_surface(
-        &mut self,
-        id: Option<crate::canvas::RetainedSurfaceId>,
-        meta: Option<RetainedSurfaceMeta>,
-        primary: WgpuTarget,
-        secondary: Option<WgpuTarget>,
-        backdrop_source: Option<WgpuTarget>,
-    ) {
-        self.retained
-            .cache_surface(id, meta, primary, secondary, backdrop_source);
     }
 }

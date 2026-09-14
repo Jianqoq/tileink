@@ -96,6 +96,9 @@ function Invoke-QuietCommand {
         $command = Get-Command -Name $FilePath -CommandType Application -ErrorAction Stop
         $start = [System.Diagnostics.ProcessStartInfo]::new()
         $start.FileName = $command.Source
+        # Push-Location does not change the native process directory. Propagate it
+        # explicitly so Cargo and renderers run in the selected repository.
+        $start.WorkingDirectory = (Get-Location).ProviderPath
         $start.Arguments = ($ArgumentList | ForEach-Object {
             ConvertTo-QuietNativeArgument -Value $_
         }) -join ' '

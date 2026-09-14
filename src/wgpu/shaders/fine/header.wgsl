@@ -19,31 +19,6 @@ const GPU_SDF_STAR_STROKE: u32 = 16u;
 const GPU_SDF_CALLOUT: u32 = 17u;
 const GPU_SDF_CALLOUT_STROKE: u32 = 18u;
 const GPU_SDF_CALLOUT_SHADOW: u32 = 19u;
-const GPU_PTCL_END: u32 = 0u;
-const GPU_PTCL_FILL: u32 = 1u;
-const GPU_PTCL_COLOR: u32 = 2u;
-const GPU_PTCL_BEGIN_CLIP: u32 = 3u;
-const GPU_PTCL_END_CLIP: u32 = 4u;
-const GPU_PTCL_BEGIN_OPACITY: u32 = 5u;
-const GPU_PTCL_END_OPACITY: u32 = 6u;
-const GPU_PTCL_BEGIN_BLEND: u32 = 7u;
-const GPU_PTCL_END_BLEND: u32 = 8u;
-const GPU_PTCL_SDF: u32 = 9u;
-const GPU_PTCL_GLYPH: u32 = 10u;
-const GPU_PTCL_PATH_GLYPH: u32 = 11u;
-const GPU_PTCL_BEGIN_SDF_CLIP: u32 = 12u;
-const GPU_PTCL_IMAGE: u32 = 13u;
-const GPU_GLYPH_MASK: u32 = 0u;
-const GPU_GLYPH_COLOR: u32 = 1u;
-const GPU_GLYPH_SUBPIXEL_MASK: u32 = 2u;
-const GPU_GLYPH_LINEAR_MASK: u32 = 3u;
-const GPU_GLYPH_LINEAR_COLOR: u32 = 4u;
-const GPU_GLYPH_LINEAR_SUBPIXEL_MASK: u32 = 5u;
-const FINE_LOCAL_CLIP_DEPTH: u32 = 4u;
-const FINE_LOCAL_GROUP_DEPTH: u32 = 2u;
-const FINE_GROUP_SPILL_FIELDS: u32 = 5u;
-const FINE_WORKGROUP_SIZE: u32 = 256u;
-const FINE_AREA_EPSILON: f32 = 1.0e-6;
 
 const GPU_BRUSH_U32_STRIDE: u32 = 9u;
 const GPU_BRUSH_PARAM_STRIDE: u32 = 12u;
@@ -60,30 +35,6 @@ const GPU_PATTERN_BILINEAR: u32 = 1u;
 const GPU_EXTEND_REPEAT: u32 = 1u;
 const GPU_EXTEND_REFLECT: u32 = 2u;
 
-const TEXT_DARK_ON_LIGHT_COVERAGE_STRENGTH: f32 = 0.95;
-const TEXT_DARK_ON_LIGHT_LUMA_BASE: f32 = 1.5728465;
-const TEXT_DARK_ON_LIGHT_LUMA_TAPER: f32 = 1.15;
-const TEXT_DARK_ON_LIGHT_CHROMA_BOOST: f32 = 0.3656558;
-const TEXT_DARK_ON_LIGHT_CORE_CONTRAST: f32 = 0.8;
-const TEXT_SOURCE_CHROMA_COVERAGE_BOOST: f32 = 0.0;
-const TEXT_SOURCE_CHROMA_COVERAGE_CONTRAST_LIMIT: f32 = 0.23100804;
-const TEXT_LIGHT_ON_DARK_COVERAGE_REDUCTION: f32 = 0.20662805;
-const TEXT_LIGHT_ON_DARK_BLACK_LUMA_LIMIT: f32 = 0.02875403;
-const TEXT_LIGHT_ON_DARK_CHROMA_REDUCTION: f32 = 0.11479953;
-const TEXT_LIGHT_ON_DARK_HIGH_LUMA_CHROMA_REDUCTION: f32 = 0.4492354;
-const TEXT_LIGHT_ON_DARK_HIGH_LUMA_THRESHOLD: f32 = 0.26129702;
-const TEXT_LIGHT_ON_COLORED_DARK_CHROMA_REDUCTION: f32 = 0.48728964;
-const TEXT_LIGHT_ON_COLORED_DARK_LUMA_LIMIT: f32 = 0.11519971;
-const TEXT_ALPHA_MASK_CHROMA_SCALE: f32 = 1.3566802;
-const TEXT_SUBPIXEL_MASK_CHROMA_SCALE: f32 = 0.9483659;
-const TEXT_ALPHA_MASK_APPARENT_AXIS_STRENGTH: f32 = 1.036124;
-const TEXT_ALPHA_MASK_APPARENT_AXIS_LUMA_LIMIT: f32 = 0.6887328;
-const TEXT_SUBPIXEL_MASK_APPARENT_AXIS_STRENGTH: f32 = 1.447765;
-const TEXT_SUBPIXEL_MASK_APPARENT_AXIS_LUMA_LIMIT: f32 = 0.1682842;
-const TEXT_ALPHA_MASK_LOW_LUMA_CHROMA_REDUCTION: f32 = 0.41302064;
-const TEXT_ALPHA_MASK_LOW_LUMA_CONTRAST_LIMIT: f32 = 0.10123872;
-const TEXT_SUBPIXEL_MASK_LOW_LUMA_CHROMA_REDUCTION: f32 = 0.0;
-const TEXT_SUBPIXEL_MASK_LOW_LUMA_CONTRAST_LIMIT: f32 = 0.06385561;
 
 struct FineConfig {
     width: u32,
@@ -103,6 +54,7 @@ struct FineConfig {
     group_spill_base: u32,
     fine_tile_kind_base: u32,
     active_tile_count: u32,
+    dispatch_width: u32,
     active_tile_list_base: u32,
     incremental: u32,
 };
@@ -197,9 +149,6 @@ const FINE_TILE_KIND_COLOR_ONLY_NO_STACK: u32 = 2u;
 const FINE_TILE_KIND_PURE_SDF_SOLID_NO_STACK: u32 = 3u;
 const FINE_TILE_KIND_MIXED_ANALYTIC_SOLID_NO_STACK: u32 = 4u;
 const FINE_TILE_KIND_ANALYTIC_WITH_STACK: u32 = 5u;
-const FINE_TILE_LIST_SDF: u32 = 0u;
-const FINE_TILE_LIST_MIXED: u32 = 1u;
-const FINE_TILE_LIST_FULL: u32 = 2u;
 
 fn coarse_tile_base(tile_ix: u32) -> u32 {
     return tile_ix * TILE_COARSE_RECORD_WORDS;
@@ -247,13 +196,7 @@ fn fine_tile_kind_at(tile_ix: u32) -> u32 {
     return coarse_work[config.fine_tile_kind_base + tile_ix];
 }
 
-fn fine_tile_list_base(list_ix: u32) -> u32 {
-    return config.fine_tile_kind_base + config.tile_count + list_ix * config.tile_count;
-}
 
-fn fine_tile_list_at(list_ix: u32, tile_list_ix: u32) -> u32 {
-    return coarse_work[fine_tile_list_base(list_ix) + tile_list_ix];
-}
 
 fn glyph_at(glyph_ix: u32) -> GlyphRecord {
     let base = glyph_ix * GLYPH_RECORD_WORDS;

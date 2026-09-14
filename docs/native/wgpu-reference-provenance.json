@@ -1,0 +1,164 @@
+{
+  "source_sha256": {
+    "Cargo.lock": "ebb0632a3849bb33953a9b75594ecfa1126dde01ad59ca2bbe1c161fcdb7fcca",
+    "Cargo.toml": "0ecddbbd2d77afc17fa5418898ef18c64b942b76908c8d62b160a7bdc2983af0",
+    "build.rs": "c7f60e13b8f7738a6f184fce31a89b25e8c325540c05b284b052360d640c574b",
+    "build/dxc.rs": "27024c9c0940162446077a62ce50e7fd79f73e6c7db47b2e03255af500158ff5",
+    "build/dxil.rs": "81c65f707b0dfdd9d58f293c95e5388ead7f608a45cb428d723605e5cba269ca",
+    "build/dxil_cache.rs": "e1ffa9999e9fbdb872c76f6cef58319d2088cb43ae75d88bc1d1ed8bc1e3fd4c",
+    "build/dxil_provenance.rs": "7b9e8178a6cce8175458e51cfde1d1e5ce234101807cf6ee494d5422e8eb08e8",
+    "src/shared/gpu_layout.rs": "d7b9d3d19f23972601a66cf4b533f4d50fd873fd0b4dbc2ee63392d82b6bbd17",
+    "src/shared/gpu_types.rs": "20da3bd189fd8fd8135a1080714d74f5a1cd5185baab9df03566243150244462",
+    "src/wgpu/buffer.rs": "4459f3fa6d76de1a4558fdc02ad9c74bc89b967e3b59665dd932d17b2b1761fc",
+    "src/wgpu/coarse.rs": "55ee8690633b9b1e0086bab8bc5229ead9fb30522dc2f6b5653319f635e93b67",
+    "src/wgpu/cumsum.rs": "de0ab93463e0154fd2942b9488c771d2fcd7dc267066d24f2acb3ad8cea49e1c",
+    "src/wgpu/filter.rs": "34f8af8ff94e132e03aaf3062cccfa20e0d3a75e24df6e1740f270a10aef3e62",
+    "src/wgpu/fine.rs": "394f36a0e015d1f296617c35995e6d79993ec8e657539ea5d6a54fb6a5567d3c",
+    "src/wgpu/scan.rs": "7ed9ed2c5e829b098d1021c442db6f7c55896e62a1dd405abb79d1867e27fb6c",
+    "src/wgpu/shader_variants.rs": "6732983e8f75e79f5518ad6122939f93bb3b7f12cde6fd8abcf68fa663aa45df",
+    "src/wgpu/shaders/coarse/common.wgsl": "a84723c707f66fc40490ccfc27e1a119ae8bc12751585b0252cc5ba5edc422b8",
+    "src/wgpu/shaders/coarse/count.wgsl": "bf93aa70a44573810b2c189e9b1581c8caa2d1dd1754a0c64ad49352f5522baf",
+    "src/wgpu/shaders/coarse/emit.wgsl": "c4db697d1ea9de448b4ef6174ab98ff341cf9b4b253f6df7877cd6e6a99562cf",
+    "src/wgpu/shaders/coarse/emit_web.wgsl": "48b9ae0642d211cb538516ae82fa0a42553fb40a1e1a44d736ef15596eee2832",
+    "src/wgpu/shaders/coarse/prefix.wgsl": "58a9c9770571c6390ad07aa231465b088b8f7a1180fb44e3a7bd8dc8d6ff54f5",
+    "src/wgpu/shaders/coarse/text_input.wgsl": "9f0169c65a93ce6238a22352d4c07d4bf81a47c6fdbc7dd42545603f3a919815",
+    "src/wgpu/shaders/cumsum.wgsl": "050f9107d106cf4ad3f0e8f4246cd45172216994e157452397faf133b33bd451",
+    "src/wgpu/shaders/filter.wgsl": "a1cd952d95af13d523805d95f4a37869d64e7b6aad98a1ca3e507d128f75857a",
+    "src/wgpu/shaders/filter/effects.wgsl": "8e5a6458d6f50b249d806ea04462c52099ea62df0de8382736693e2f15241c21",
+    "src/wgpu/shaders/filter/header.wgsl": "276e739ebe56eec61ad51e11fc053c58da68c2fc64ff7f8172d19996b3b6bad3",
+    "src/wgpu/shaders/filter/kernels.wgsl": "06384d676daaae5abb96a4f0aef0b36725698c25e24cce1681f3ecf8c01890be",
+    "src/wgpu/shaders/filter/kernels_basic.wgsl": "0c7e7081dc857f9088283b1bde9b2f231e12adba8d7b3b8d46910b47381a6ef0",
+    "src/wgpu/shaders/filter/kernels_composite.wgsl": "4cbb62bdc7828e7eeb67d13cfcb279c296afee2144e9028fc993fba97d18d018",
+    "src/wgpu/shaders/filter/kernels_effects.wgsl": "69a65b35d05b8126b703e9f9fd7b6be97515b7de26f30a85009ef0b972ccf9ff",
+    "src/wgpu/shaders/filter/kernels_sampling.wgsl": "911d47641821990b2eaa0392f3cd2e2923ad680e390f1e307bcf900bd4082bac",
+    "src/wgpu/shaders/filter/stack.wgsl": "327c76d937d9da48070b53afd7d3c608a3178ae365bdd156fbb6d7bfd77ba1ae",
+    "src/wgpu/shaders/filter/textures.wgsl": "06720b09866a744b3310da00e277b90cbc78b52706de97ab875169781c9f13a1",
+    "src/wgpu/shaders/filter/textures_native.wgsl": "dfa04e8f5887af7a795c0c040489174d135fdbbac2d3cb3d03a734aeed810e4d",
+    "src/wgpu/shaders/filter/textures_web.wgsl": "1b69136b40dafd1ba4da363978f60043b71e9de302d8441f374b957f16909174",
+    "src/wgpu/shaders/filter_web.wgsl": "d626b2aa736184cae3141f78035f95107017fc6f5ed13abb575a493cd4faeaae",
+    "src/wgpu/shaders/fine.wgsl": "060481ae3882a479911bbc293b47fb8f487a94ec40d2f81f16571eef5b1850fe",
+    "src/wgpu/shaders/fine/extra.wgsl": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+    "src/wgpu/shaders/fine/header.wgsl": "2c5ccf0b23522f5e03178e0c60b4a04ade228bde73ab33d0e77c05903c8f6f66",
+    "src/wgpu/shaders/fine/main.wgsl": "74fc8887ca36d0ee771e9b8145115b63d9356f379fee3a8bb8a4cccfed095b17",
+    "src/wgpu/shaders/fine/target_native.wgsl": "d63c31f84db1696c6dced57546b78c845edd362b6e3982f43417de057e1d02a2",
+    "src/wgpu/shaders/fine/target_web.wgsl": "bc5d31efd95b46cf37100ee1d9f079990ef0d618c303b2220ae648cd6305713f",
+    "src/wgpu/shaders/fine/text.wgsl": "2aae6f9938223368bb3411a2895087ec75cdde6881e58a963acf7023e23e5b27",
+    "src/wgpu/shaders/fine_web.wgsl": "436e1ca066104959c1791b3b1b32a169a7842a9985adc5867d1c9277ed46c3f4",
+    "src/wgpu/shaders/range_scatter.wgsl": "2974a1d8606aa5f11cbc8a16dc622832821645e2f1740c45fc5a7828ada7a60d",
+    "src/wgpu/shaders/scan/apply_chunk_offsets.wgsl": "9feb4ef5891a64fffd9dddf0e721e3c7f70d6ffd03c8f49b2806126055721486",
+    "src/wgpu/shaders/scan/chunk_offsets.wgsl": "03c64075fd3864c2feb610ac5e7d4e58bcbc53b375305f514f2d582b45446414",
+    "src/wgpu/shaders/scan/clear.wgsl": "71b7ffb80bdf83df18c480a827738cc8da5554d5d0ddbf5696a806eac25afb0d",
+    "src/wgpu/shaders/scan/common.wgsl": "45d68a85f73a59668ae05738a5ede9ce2ecb0823f2c718ab473cc0af9fe590b2",
+    "src/wgpu/shaders/scan/count.wgsl": "b828c78877b85c707247664720941e690ad37964796c5f5cecf74b2617ebaf19",
+    "src/wgpu/shaders/scan/emit.wgsl": "9ad3fafdc17c5c21b9917e79612b872e50a4d82b31df276d06433196940a94a1",
+    "src/wgpu/shaders/scan/prefix_chunks.wgsl": "2efb885ff620fab81e3723e2d617d3d81eb30ff3d5a8683ecd7508b7301ae897",
+    "src/wgpu/shaders/shared/blend.wgsl": "d45b48600f7adbc791a1c85868d63f1072cf72e1134002ef8228ee25be65ba56",
+    "src/wgpu/shaders/shared/brush.wgsl": "9f486bb95022fd113bca23e09814f13838d2b33359f6bc7a547b87be55b187ee",
+    "src/wgpu/shaders/shared/coverage.wgsl": "9c37b3af344efd4aae51455b1cc28b819a6fb6be43c65de1412fffd741244491",
+    "src/wgpu/shaders/shared/pattern_transform.wgsl": "a1e02952f92d582afb8b31ddc25c86b456e4621295cfa811fbe3a593649d2bd0",
+    "src/wgpu/shaders/shared/pixel.wgsl": "9402bb614be529aab4eaedeb4969428dab365816fb9b590d64d72f57f04fe582",
+    "src/wgpu/shaders/shared/sdf.wgsl": "744c1aa4592453d22acf89fd474151ab4062f1348c26eaf31ef3e43992f2be54",
+    "src/wgpu/shaders/shared/sdf_primitives.wgsl": "c39dbe3fb18b4742389ce89965d6754524158faec795a7359bd233fa7900e0a8"
+  },
+  "reflection_shaders": {
+    "scan/clear.wgsl": {
+      "filename": "tileink_wgpu_scan_clear.wgsl",
+      "sha256": "63975e6c94d6ea8adb5e1035e9f46b81fb482f2cd4bfca6a1d653793051f75e2",
+      "expanded": true
+    },
+    "scan/count.wgsl": {
+      "filename": "tileink_wgpu_scan_count.wgsl",
+      "sha256": "f8287e62845a77deba3ba84103d82b35c2ce0c265676fddde45755b49b461927",
+      "expanded": true
+    },
+    "scan/prefix_chunks.wgsl": {
+      "filename": "tileink_wgpu_scan_prefix_chunks.wgsl",
+      "sha256": "61855731a81d755a2d3682ec87eb268032c82d311bb491c3926270ee1a5e734e",
+      "expanded": true
+    },
+    "scan/chunk_offsets.wgsl": {
+      "filename": "tileink_wgpu_scan_chunk_offsets.wgsl",
+      "sha256": "d18534e52164d3daccedd2c7e2d9165adf72054f3e97b8d2590d0308890f1f6d",
+      "expanded": true
+    },
+    "scan/apply_chunk_offsets.wgsl": {
+      "filename": "tileink_wgpu_scan_apply_chunk_offsets.wgsl",
+      "sha256": "7ba09fe76fe15a9d7b619991eb2769a519fbd5e3e69dd999ea4245a2caac4391",
+      "expanded": true
+    },
+    "scan/emit.wgsl": {
+      "filename": "tileink_wgpu_scan_emit.wgsl",
+      "sha256": "e2b048a713ab9585f8726c20abb494a2fbb49ac33562fff320fe6ec84a519626",
+      "expanded": true
+    },
+    "cumsum.wgsl": {
+      "filename": "tileink_wgpu_cumsum.wgsl",
+      "sha256": "050f9107d106cf4ad3f0e8f4246cd45172216994e157452397faf133b33bd451",
+      "expanded": true
+    },
+    "coarse/count.wgsl": {
+      "filename": "tileink_wgpu_coarse_count.wgsl",
+      "sha256": "6d4ca520414653e426dbc85993112467fa60162132d49fdc1677400fe80b0942",
+      "expanded": true
+    },
+    "coarse/prefix.wgsl": {
+      "filename": "tileink_wgpu_coarse_prefix.wgsl",
+      "sha256": "eb8788c68a7bb292f9b76a084acf3dfd0f3ed97afc43c1be4139cf24b32f3b4d",
+      "expanded": true
+    },
+    "coarse/emit.wgsl": {
+      "filename": "tileink_wgpu_coarse_emit.wgsl",
+      "sha256": "0951656a33b6f2abeec3c479d2726e9732eae88ad299ced812e7115ba79563b6",
+      "expanded": true
+    },
+    "coarse/emit_web.wgsl": {
+      "filename": "tileink_wgpu_coarse_emit_web.wgsl",
+      "sha256": "569670e22340928c4cb6f880cef9d97be85424557deaa6f885992c07f9336a17",
+      "expanded": true
+    },
+    "fine.wgsl": {
+      "filename": "tileink_wgpu_fine.wgsl",
+      "sha256": "c6505fa22ee5418ab86a3eb25d92b322baf5dbd393d705f27be9135d231c874a",
+      "expanded": true
+    },
+    "filter.wgsl": {
+      "filename": "tileink_wgpu_filter.wgsl",
+      "sha256": "edda16a6d1633961d52d1c9a500cc041009b61f82bbea0bf20736a8ea1e7a761",
+      "expanded": true
+    },
+    "fine_web.wgsl": {
+      "filename": "tileink_wgpu_fine_web.wgsl",
+      "sha256": "5963e9fff5b6c80065d3cb05d68aff06aa4de89334ed2c864d4fe1c7c6428d58",
+      "expanded": true
+    },
+    "filter_web.wgsl": {
+      "filename": "tileink_wgpu_filter_web.wgsl",
+      "sha256": "798cdc8c312a3a4d41d0bc05666aa0202421b043daa60c156156cfa6d99efe31",
+      "expanded": true
+    },
+    "range_scatter.wgsl": {
+      "filename": "tileink_range_scatter.wgsl",
+      "sha256": "2974a1d8606aa5f11cbc8a16dc622832821645e2f1740c45fc5a7828ada7a60d",
+      "expanded": false
+    }
+  },
+  "schema": 1,
+  "inventory": {
+    "filename": "wgpu-reference-inventory.json",
+    "sha256": "d7efc125237a68c4f9f063abab067430c38e8be4da3bffb244a40aadc4b7bb1b"
+  },
+  "evidence": {
+    "target/backend-parity/m1-glass-final-1/verification-tools-1/sources.json": "558ea750f607f83fd737cf5c959ba7d72889a2bc7f6ed2f3a43e81dda658a6de",
+    "target/backend-parity/m1-glass-final-1/verification-tools-1/reflection-inputs.json": "d69062b529ef4ac1da12df2b009b00b2200a5b779c44b2eb1ff3e4d74f5a5afb",
+    "target/backend-parity/m1-glass-final-1/shader-inventory-1/inputs.json": "bb2132a0c860ee0d849af5f0efa80ad9f19c702a0032bc13b5d9552f20c6617f"
+  },
+  "audit_tools_sha256": {
+    "G:/Code/northstar-trading-app/target/agent-work/reflect_m1_glass_final_shaders.py": "ed969f4934013bf8b28ac75ec3de6dbe153d1a51f3a781dea36ff959b2e631dc",
+    "target/backend-parity/m0-shader-inventory-final/reflect.rs": "f1ad5b30fe8399c3a9df576c683a68d688c457baee55d3ba82d68be2bb3940dd",
+    "G:/Code/northstar-trading-app/target/agent-work/m1_validation_host_v2.py": "2b181d185c7747e79e9210cac3f9b3819d38afa20e950c04cf5c0fb4c7ff1e3e",
+    "G:/Code/northstar-trading-app/target/agent-work/m1_validation_host.py": "2543cc775417374e1604a9ee2bbdd16542679aae869a84e000dc1dcc2a21f67c",
+    "target/backend-parity/m1-glass-final-1/shader-inventory-1/reflect.rs": "6a0144a4a9bdd61158cf3834f878a4cfd088c11bfbff47bf904d67ca86c22743",
+    "target/backend-parity/m1-glass-final-1/shader-inventory-1/filter-remaps.rs": "2c8f682c65af9d992184e6b2fc029322921ad9620477792a8700277eee7f4187"
+  },
+  "scope": "Static WGPU provenance only; complete build closure is bound by the sources snapshot. No GPU, performance, or native HLSL certification."
+}

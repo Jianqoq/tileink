@@ -8,17 +8,15 @@ use crate::{
     TextFontSystem,
     canvas::Canvas,
     shared::{
-        execution::{ExecPlan, ROOT_COMMAND_LIST_ID},
-        gpu_coarse::{FINE_TILE_DISPATCH_WORDS, FINE_TILE_LIST_COUNT},
+        execution::ExecPlan,
         gpu_plan::{
-            FINE_GROUP_SPILL_FIELDS, FINE_LOCAL_CLIP_DEPTH, FINE_LOCAL_GROUP_DEPTH,
-            FINE_WORKGROUP_SIZE, GpuBufferLengths, GpuCanvasConfig, plan_stack_depths,
-            required_scratch_count,
+            FINE_LOCAL_CLIP_DEPTH, FINE_LOCAL_GROUP_DEPTH, GpuBufferLengths, GpuCanvasConfig,
+            plan_stack_depths,
         },
         image_resource::ImageResourceStore,
         layer::filter::Filter,
     },
-    text::{PreparedTextChanges, PreparedTextData, TextContext},
+    text::{PreparedTextChanges, TextContext},
 };
 
 use super::{
@@ -32,6 +30,14 @@ use super::{
 
 impl Renderer {
     pub(super) fn render_prepared_native(&mut self, canvas: &Canvas) -> bool {
+        // Direct external output can prepare a larger scene without resizing owned
+        // history. Allocation follows the actual output route, even after an error
+        // or when unchanged retained scene preparation is reused.
+        self.readback_target.resize(
+            &self.device,
+            canvas.physical_width(),
+            canvas.physical_height(),
+        );
         if self.render_prepared_tile_plan(canvas) {
             self.size = (canvas.physical_width(), canvas.physical_height());
             return true;
@@ -52,36 +58,12 @@ impl Renderer {
         text_context: &mut TextContext,
     ) {
         let _profile_scope = start_cpu_scope("prepare");
-        let text_changes = profile_cpu("prepare.text", || {
-            if let Some(text) = &mut self.text_data {
-                if let Some(changes) = &canvas.buffer_changes {
-                    text.update(
-                        &canvas.text_glyphs,
-                        &canvas.text_runs,
-                        &changes.glyphs,
-                        &changes.text_runs,
-                        font_system,
-                        text_context,
-                    );
-                    None
-                } else {
-                    text.reconcile(
-                        &canvas.text_glyphs,
-                        &canvas.text_runs,
-                        font_system,
-                        text_context,
-                    )
-                }
-            } else {
-                self.text_data = Some(PreparedTextData::new(
-                    &canvas.text_glyphs,
-                    &canvas.text_runs,
-                    font_system,
-                    text_context,
-                ));
-                None
-            }
-        });
+        let text_changes = crate::render::prepare::prepare_text(
+            &mut self.text_data,
+            canvas,
+            font_system,
+            text_context,
+        );
         self.prepare_scene_resources(canvas, text_changes.as_ref());
     }
 
@@ -122,55 +104,41 @@ impl Renderer {
             );
         });
         let plan_metadata_profile = start_cpu_scope("prepare.plan_metadata");
-        let plan_fingerprint = canvas.execution_plan_fingerprint();
-        let structure_reused = canvas
-            .buffer_changes
-            .as_ref()
-            .is_some_and(|changes| changes.plan_structure_reused);
-        let values_patched = canvas
-            .buffer_changes
-            .as_ref()
-            .is_some_and(|changes| changes.plan_values_patched);
-        let exact_plan_reuse = (self.prepared_plan_fingerprint == Some(plan_fingerprint)
-            || structure_reused)
-            && self.plan.is_some();
-        let reused_plan_metadata = (exact_plan_reuse || values_patched) && self.plan.is_some();
-        let plan = profile_cpu("prepare.compile", || {
-            if exact_plan_reuse {
-                self.plan.take().expect("cached execution plan")
-            } else {
-                // A patched persistent plan keeps the same topology and buffer lengths but may
-                // contain new offscreen bounds. Consume Canvas's new precompiled Rc instead of
-                // executing the renderer's stale cached plan.
-                canvas.compile_shared(ROOT_COMMAND_LIST_ID)
-            }
-        });
+        let prepared = self.scene_preparation.prepare_plan(canvas, &mut self.plan);
+        let plan = &prepared.plan;
+        let reused_plan_metadata = prepared.reused_metadata;
+        let (max_clip_depth, max_group_depth) = prepared.stack_depths;
         let lengths = profile_cpu("prepare.lengths", || {
             self.scene_upload.build_lengths(
                 canvas,
                 self.text_data.as_ref(),
-                &plan,
+                plan,
                 reused_plan_metadata,
-                reused_plan_metadata.then_some((self.max_clip_depth, self.max_group_depth)),
+                reused_plan_metadata.then_some(prepared.stack_depths),
                 flat_text_changes,
             )
         });
         self.retained.stats_mut().reused_compiled_plan = reused_plan_metadata;
-        self.prepared_plan_fingerprint = Some(plan_fingerprint);
-        let (max_clip_depth, max_group_depth) = if reused_plan_metadata {
-            (self.max_clip_depth, self.max_group_depth)
-        } else {
-            profile_cpu("prepare.stack_depths", || plan_stack_depths(&plan))
-        };
+        if !reused_plan_metadata {
+            // Like the fingerprint, this describes the outer prepared scene;
+            // temporary localized scratch plans do not replace its metadata.
+            self.prepared_output_read_usages = super::output::root_read_usages(plan);
+        }
         drop(plan_metadata_profile);
         profile_cpu("prepare.upload_scene", || {
             self.prepare_image_resource_buffers(canvas.scene_image_resources(), false);
+            self.vector_images.retain_sources(
+                self.image_resource_upload
+                    .vectors()
+                    .iter()
+                    .map(|image| &image.canvas),
+            );
             let uploaded = self.scene_buffers.upload(
                 &self.device,
                 &self.queue,
                 canvas,
                 lengths,
-                &plan,
+                plan,
                 self.text_data.as_ref(),
                 Some(&self.image_resource_upload),
                 &mut self.scene_upload,
@@ -201,30 +169,22 @@ impl Renderer {
         profile_cpu("prepare.fine_spills", || {
             self.prepare_fine_stack_spills(lengths, max_clip_depth, max_group_depth);
         });
-        if !reused_plan_metadata {
-            profile_cpu("prepare.scratch", || {
-                self.prepare_scratch_buffers(required_scratch_count(&plan));
-            });
-        }
-        let filter_resources_changed = canvas
-            .buffer_changes
-            .as_ref()
-            .is_some_and(|changes| changes.filter_resources_changed);
-        if !reused_plan_metadata || filter_resources_changed {
+        prepared.prepare_scratch(|count| self.prepare_scratch_buffers(count));
+        if prepared.upload_filters {
             profile_cpu("prepare.filter_uploads", || {
                 self.filter_transfers
-                    .upload(&self.device, &self.queue, &plan);
+                    .upload(&self.device, &self.queue, plan);
                 self.filter_brushes.upload(
                     &self.device,
                     &self.queue,
-                    &plan,
+                    plan,
                     Some(&self.image_resource_upload),
                 );
                 self.filter_convolves
-                    .upload(&self.device, &self.queue, &plan);
+                    .upload(&self.device, &self.queue, plan);
                 self.filter_turbulence
-                    .upload(&self.device, &self.queue, &plan);
-                self.filter_paths.upload(&self.device, &self.queue, &plan);
+                    .upload(&self.device, &self.queue, plan);
+                self.filter_paths.upload(&self.device, &self.queue, plan);
             });
         }
         drop(transient_buffers_profile);
@@ -239,7 +199,7 @@ impl Renderer {
         self.lengths = lengths;
         self.max_clip_depth = max_clip_depth;
         self.max_group_depth = max_group_depth;
-        self.plan = Some(plan);
+        self.plan = Some(prepared.plan);
     }
 
     pub(super) fn prepare_image_resource_buffers(
@@ -452,19 +412,17 @@ impl Renderer {
         max_clip_depth: usize,
         max_group_depth: usize,
     ) {
-        let lane_count = lengths.tile_count * FINE_WORKGROUP_SIZE as usize;
-        let clip_spill_depth = max_clip_depth.saturating_sub(FINE_LOCAL_CLIP_DEPTH);
-        let group_spill_depth = max_group_depth.saturating_sub(FINE_LOCAL_GROUP_DEPTH);
-        self.fine_spills.resize_uninit::<u32>(
-            &self.device,
-            "tileink wgpu fine spills",
-            lane_count * clip_spill_depth
-                + lane_count * group_spill_depth * FINE_GROUP_SPILL_FIELDS,
-        );
-        self.fine_indirect_args.resize_uninit::<u32>(
-            &self.device,
-            "tileink wgpu fine indirect args",
-            FINE_TILE_LIST_COUNT * FINE_TILE_DISPATCH_WORDS,
-        );
+        let clip_depth = u32::try_from(max_clip_depth.saturating_sub(FINE_LOCAL_CLIP_DEPTH))
+            .expect("bounded clip depth");
+        let group_depth = u32::try_from(max_group_depth.saturating_sub(FINE_LOCAL_GROUP_DEPTH))
+            .expect("bounded group depth");
+        let (_, words) = crate::render::fine::spill_layout(
+            u32::try_from(lengths.tile_count).expect("bounded tile count"),
+            clip_depth,
+            group_depth,
+        )
+        .expect("bounded fine spill allocation");
+        self.fine_spills
+            .resize_uninit::<u32>(&self.device, "tileink wgpu fine spills", words);
     }
 }

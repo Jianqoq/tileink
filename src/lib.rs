@@ -1,19 +1,20 @@
 mod canvas;
 mod debug;
+mod render;
 mod retained_scene;
 mod shared;
 mod svg;
 mod text;
+#[cfg(feature = "wgpu")]
 mod wgpu;
 
-pub const TILE_SIZE: u32 = 16;
+pub use shared::gpu_constants::TILE_SIZE;
 pub const TILE_SCALE: f32 = 1.0 / TILE_SIZE as f32;
 pub const BLOCK_SIZE: u32 = 16 * 16;
 
+#[cfg(feature = "wgpu")]
 pub use crate::wgpu::{
-    CoarseBinningMode, ExternalTextureHistoryId, FullRedrawReason, IncrementalOutputMode,
-    IncrementalRenderConfig, IncrementalRenderMode, IncrementalRenderStats, Renderer,
-    Renderer as WgpuRenderer, RendererOptions, RendererOptions as WgpuRendererOptions,
+    Renderer, Renderer as WgpuRenderer, RendererOptions, RendererOptions as WgpuRendererOptions,
     WgpuRenderProfile, WgpuRenderProfileEntry, WgpuRenderProfileEventSummary,
     WgpuRenderProfileReport, WgpuTextureRenderError,
 };
@@ -29,6 +30,17 @@ pub use debug::{
     RenderDebugCapture, RenderDebugImage, RenderDebugOptions, RenderDebugText, RenderOptions,
     TileOverlayOptions, debug_capture_json,
 };
+#[cfg(feature = "bench-internals")]
+pub use render::damage_tiles::DamageTilesBenchmark;
+pub use render::incremental::{
+    CoarseBinningMode, FullRedrawReason, IncrementalOutputMode, IncrementalRenderConfig,
+    IncrementalRenderMode, IncrementalRenderStats,
+};
+#[cfg(feature = "bench-internals")]
+pub use render::incremental::{FrameDiffBenchmark, FrameDiffBenchmarkCase};
+pub use render::output::ExternalTextureHistoryId;
+#[cfg(feature = "bench-internals")]
+pub use render::upload::glyph_capacity::{GlyphCapacityBenchmark, GlyphCapacityBenchmarkCase};
 #[cfg(feature = "bench-internals")]
 pub use retained_scene::RetainedMaterializerBenchmark;
 pub use retained_scene::{
@@ -89,7 +101,22 @@ pub use text::{
     TextCompositeMode, TextContext, TextLayout, TextLayoutOptions, TextRasterOptions,
     TextSubpixelMode,
 };
+
 #[cfg(feature = "bench-internals")]
-pub use wgpu::{DamageTilesBenchmark, GlyphCapacityBenchmark, GlyphCapacityBenchmarkCase};
-#[cfg(feature = "bench-internals")]
-pub use wgpu::{FrameDiffBenchmark, FrameDiffBenchmarkCase};
+#[doc(hidden)]
+pub use render::upload::uniforms::benchmark::UniformWriteBenchmark;
+
+#[cfg(any(feature = "native-dx12", feature = "native-vulkan"))]
+mod native;
+#[cfg(any(feature = "native-dx12", feature = "native-vulkan"))]
+pub use native::{
+    BackendUnavailable, BackendUnavailableReason, NativeBackend, NativeRenderer,
+    NativeShaderArtifact, SHADER_ARTIFACTS as NATIVE_SHADER_ARTIFACTS,
+};
+
+#[cfg(all(feature = "wgpu", feature = "bench-internals"))]
+#[doc(hidden)]
+pub use wgpu::{ImageResourceUploadBenchmark, PreparedImageResourceUpload};
+
+#[cfg(all(feature = "wgpu", feature = "bench-internals"))]
+pub use wgpu::FilterCompilationBenchmark;

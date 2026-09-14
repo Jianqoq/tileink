@@ -68,6 +68,8 @@ use crate::text::{TextRun, layout_bounds_at_scaled_origin, scene_glyphs_at_scale
 use crate::{TextContext, TextFontSystem, TextLayout};
 
 pub use retained::RetainedNodeId;
+pub(crate) mod damage_history;
+
 pub(crate) use retained::{
     NodeGeneration, PersistentLayerKey, RetainedDamage, RetainedFrame, RetainedFrameDelta,
     RetainedNodeKind, RetainedNodePatch, RetainedNodeState, RetainedSurfaceId,

@@ -1,5 +1,5 @@
 fn filter_svg_mask_coverage_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -23,9 +23,9 @@ fn filter_svg_mask_coverage_region(@builtin(global_invocation_id) gid: vec3<u32>
     target_store_ix(ix, gray_alpha(mask_alpha));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_color_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -33,9 +33,9 @@ fn filter_color_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     target_store_ix(ix, apply_color_filter_pixel(target_load_ix(ix), config.filter_kind, config.amount));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_color_matrix_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -43,9 +43,9 @@ fn filter_color_matrix_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     target_store_ix(ix, apply_color_matrix_pixel(target_load_ix(ix)));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_component_transfer_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -53,9 +53,9 @@ fn filter_component_transfer_region(@builtin(global_invocation_id) gid: vec3<u32
     target_store_ix(ix, apply_component_transfer_pixel(target_load_ix(ix), config.table_index));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_blend_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -63,9 +63,9 @@ fn filter_blend_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     target_store_ix(ix, blend_premul_u8(aux_pixel_ix(ix), source_pixel_ix(ix), config.blend_mode));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_composite_inputs_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -81,9 +81,9 @@ fn filter_composite_inputs_region(@builtin(global_invocation_id) gid: vec3<u32>)
     ));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_displacement_map_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -92,18 +92,20 @@ fn filter_displacement_map_region(@builtin(global_invocation_id) gid: vec3<u32>)
     let map = aux_pixel_ix(ix);
     let dx = filter_displacement_channel(map, config.kernel_edge_mode, config.lighting_output_kind) - 0.5;
     let dy = filter_displacement_channel(map, config.kernel_preserve_alpha, config.lighting_output_kind) - 0.5;
-    let sx = i32(round(f32(xy.x) + dx * config.amount));
-    let sy = i32(round(f32(xy.y) + dy * config.rect_x0));
+    // Match native coordinate fusion before rounding at half-pixel boundaries.
+    let sx = round(fma(dx, config.amount, f32(xy.x)));
+    let sy = round(fma(dy, config.rect_x0, f32(xy.y)));
     var out = 0u;
-    if (sx >= 0 && sx < i32(config.width) && sy >= 0 && sy < i32(config.height)) {
+    // Test floating bounds before conversion, including overflow from finite scales.
+    if (sx >= 0.0 && sx < f32(config.width) && sy >= 0.0 && sy < f32(config.height)) {
         out = source_pixel_at(u32(sx), u32(sy));
     }
     target_store_ix(ix, out);
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_convolve_matrix_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -186,9 +188,9 @@ fn filter_convolve_matrix_region(@builtin(global_invocation_id) gid: vec3<u32>) 
     target_store_ix(dst_ix, pack_premul_rgba8(r * alpha, g * alpha, b * alpha, alpha));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_lighting_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -203,10 +205,9 @@ fn filter_lighting_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let z = alpha * config.surface_scale;
     let dx = alpha_gradient_x(xy.x, xy.y) * config.surface_scale;
     let dy = alpha_gradient_y(xy.x, xy.y) * config.surface_scale;
-    let normal_len = sqrt(dx * dx + dy * dy + 1.0);
-    let nx = -dx / normal_len;
-    let ny = -dy / normal_len;
-    let nz = 1.0 / normal_len;
+    // Explicit dot-product order prevents backend contraction from moving lighting
+    // across an 8-bit rounding boundary; the same order applies to each direction.
+    let normal_len = sqrt(lighting_dot3(vec3<f32>(dx, dy, 1.0), vec3<f32>(dx, dy, 1.0)));
 
     let world_x = f32(config.surface_origin_x) + f32(xy.x) + 0.5;
     let world_y = f32(config.surface_origin_y) + f32(xy.y) + 0.5;
@@ -223,7 +224,7 @@ fn filter_lighting_region(@builtin(global_invocation_id) gid: vec3<u32>) {
         ly = sin(azimuth) * cos(elevation);
         lz = sin(elevation);
     } else {
-        let len = sqrt(lx * lx + ly * ly + lz * lz);
+        let len = sqrt(lighting_dot3(vec3<f32>(lx, ly, lz), vec3<f32>(lx, ly, lz)));
         if (len <= eps) {
             target_store_ix(dst_ix, no_light);
             return;
@@ -236,7 +237,7 @@ fn filter_lighting_region(@builtin(global_invocation_id) gid: vec3<u32>) {
             var sx = config.light_p3 - config.light_p0;
             var sy = config.light_p4 - config.light_p1;
             var sz = config.light_p5 - config.light_p2;
-            let slen = sqrt(sx * sx + sy * sy + sz * sz);
+            let slen = sqrt(lighting_dot3(vec3<f32>(sx, sy, sz), vec3<f32>(sx, sy, sz)));
             if (slen <= eps) {
                 target_store_ix(dst_ix, no_light);
                 return;
@@ -244,17 +245,24 @@ fn filter_lighting_region(@builtin(global_invocation_id) gid: vec3<u32>) {
             sx = sx / slen;
             sy = sy / slen;
             sz = sz / slen;
-            let focus = max(-(lx * sx + ly * sy + lz * sz), 0.0);
+            let focus = -lighting_dot3(vec3<f32>(lx, ly, lz), vec3<f32>(sx, sy, sz));
+            if (focus < 0.0) {
+                target_store_ix(dst_ix, no_light);
+                return;
+            }
             if (config.light_p7 >= 0.0 && focus < cos(config.light_p7 * 0.017453292)) {
                 target_store_ix(dst_ix, no_light);
                 return;
             }
-            attenuation = pow(focus, max(config.light_p6, 0.0));
+            attenuation = lighting_power(focus, config.light_p6);
         }
     }
 
     if (config.lighting_output_kind == 0u) {
-        let amount = config.light_constant * attenuation * max(nx * lx + ny * ly + nz * lz, 0.0);
+        let nx = -dx / normal_len;
+        let ny = -dy / normal_len;
+        let nz = 1.0 / normal_len;
+        let amount = config.light_constant * attenuation * max(lighting_dot3(vec3<f32>(nx, ny, nz), vec3<f32>(lx, ly, lz)), 0.0);
         target_store_ix(dst_ix, pack_premul_rgba8(
             clamp(config.light_r * amount, 0.0, 1.0),
             clamp(config.light_g * amount, 0.0, 1.0),
@@ -262,20 +270,21 @@ fn filter_lighting_region(@builtin(global_invocation_id) gid: vec3<u32>) {
             1.0,
         ));
     } else {
-        var hx = lx;
-        var hy = ly;
-        var hz = lz + 1.0;
-        let hlen = sqrt(hx * hx + hy * hy + hz * hz);
+        let hx = lx;
+        let hy = ly;
+        let hz = lz + 1.0;
+        let hlen = sqrt(lighting_dot3(vec3<f32>(hx, hy, hz), vec3<f32>(hx, hy, hz)));
         if (hlen <= eps) {
             target_store_ix(dst_ix, no_light);
             return;
         }
-        hx = hx / hlen;
-        hy = hy / hlen;
-        hz = hz / hlen;
-
-        let normal_dot_half = max(nx * hx + ny * hy + nz * hz, 0.0);
-        let amount = config.light_constant * attenuation * pow(normal_dot_half, max(config.specular_exponent, 0.0));
+        // Normalize the dot once: dividing both vectors component by component
+        // adds rounding and lets compilers reassociate the subsequent products.
+        // The equivalent scalar expression also avoids six component divisions.
+        let normal_dot_half = max(lighting_dot3(
+            vec3<f32>(-dx, -dy, 1.0), vec3<f32>(hx, hy, hz),
+        ) / (normal_len * hlen), 0.0);
+        let amount = config.light_constant * attenuation * lighting_power(normal_dot_half, config.specular_exponent);
         let r = clamp(config.light_r * amount, 0.0, 1.0);
         let g = clamp(config.light_g * amount, 0.0, 1.0);
         let b = clamp(config.light_b * amount, 0.0, 1.0);
@@ -283,9 +292,9 @@ fn filter_lighting_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_liquid_glass_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -326,9 +335,9 @@ fn filter_liquid_glass_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     ));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_liquid_glass_rect_composite_region(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }
@@ -386,4 +395,4 @@ fn filter_liquid_glass_rect_composite_region(@builtin(global_invocation_id) gid:
     target_store_ix(ix, src_over_premul_u8(target_load_ix(ix), source));
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)

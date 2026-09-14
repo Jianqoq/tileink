@@ -68,7 +68,9 @@ impl WgpuRangeScatterPipeline {
 
     fn pipeline(&self, device: &::wgpu::Device) -> &::wgpu::ComputePipeline {
         let shader = self.shader.get(device, || {
-            ::wgpu::ShaderSource::Wgsl(include_str!("shaders/range_scatter.wgsl").into())
+            ::wgpu::ShaderSource::Wgsl(
+                include_str!(concat!(env!("OUT_DIR"), "/tileink_wgpu_range_scatter.wgsl")).into(),
+            )
         });
         self.pipeline.get(device, &self.pipeline_layout, shader)
     }
@@ -500,7 +502,6 @@ fn create_buffer(
         label: Some(label),
         size,
         usage: ::wgpu::BufferUsages::STORAGE
-            | ::wgpu::BufferUsages::INDIRECT
             | ::wgpu::BufferUsages::COPY_DST
             | ::wgpu::BufferUsages::COPY_SRC,
         mapped_at_creation: false,

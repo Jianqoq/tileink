@@ -8,6 +8,10 @@ impl Renderer {
         commands: &mut WgpuCommandBatch,
         scene: &Canvas,
     ) -> bool {
+        // Local offscreen resource sets have their own atlas allocations too.
+        if !self.encode_vector_images(commands) {
+            return false;
+        }
         let (Some(scan), Some(cumsum)) = (&self.scan_pipeline, &self.cumsum) else {
             return false;
         };
@@ -65,7 +69,7 @@ impl Renderer {
                 &self.scan,
                 &mut self.coarse,
                 self.lengths,
-                WgpuCoarseBatch {
+                CoarseBatch {
                     draw_start,
                     draw_end,
                     layer_stack_start,
@@ -111,91 +115,28 @@ impl Renderer {
         canvas: &Canvas,
         history_copy_dst: Option<&::wgpu::Texture>,
     ) -> bool {
-        // The preceding render call submitted its frame command batch before returning. Its
-        // quarantined local allocations can now safely receive queue writes ordered after it.
-        self.begin_local_scene_resource_frame();
-        if self
-            .retained
-            .active_tiles()
-            .is_some_and(DamageTiles::is_empty)
-        {
-            if let Some(dst) = history_copy_dst {
-                let mut commands =
-                    WgpuCommandBatch::new(&self.device, &self.queue, "tileink wgpu frame");
-                self.encode_history_copy(&mut commands, dst);
-                self.retained.stats_mut().queue_submissions = commands.finish();
-            }
-            return true;
-        }
-        if self.fine.is_none() || self.coarse_pipeline.is_none() || self.filter.is_none() {
-            return false;
-        }
-        let Some(plan) = self.plan.clone() else {
-            return false;
-        };
-
-        if let Some(filter) = &self.filter {
-            filter.reset_dispatch_counts();
-        }
-        self.filter_tile_work_arena.reset();
-        self.prepare_active_tile_buffers();
-
         let mut commands = WgpuCommandBatch::new(&self.device, &self.queue, "tileink wgpu frame");
-        if !self.scan_and_cumsum(&mut commands, canvas) {
-            self.retained.stats_mut().queue_submissions = commands.finish();
-            return false;
-        }
-        if self.retained.active_tiles().is_some() {
-            self.clear_render_region(
-                &mut commands,
-                WgpuRenderTargetId::Main,
-                Bounds::canvas(self.size.0, self.size.1),
-                self.clear_color,
-            );
-        } else {
-            self.clear_render_target(&mut commands, WgpuRenderTargetId::Main, self.clear_color);
-        }
-        let draw_batch_ids = canvas
-            .stable_batch_ids
-            .as_deref()
-            .unwrap_or(&plan.draw_batch_ids);
-        let active_batches = profile_cpu("plan.active_batches", || {
-            self.retained.active_tiles().map(|tiles| {
-                self.scene_upload
-                    .active_batch_ids(tiles.list(), draw_batch_ids)
-            })
-        });
-        let mut filter_cursors = WgpuFilterCursors::default();
-        let ok = profile_cpu("plan.execute", || {
-            let direct_ops = active_batches.as_ref().map_or_else(
-                || plan.all_direct_root_ops(),
-                |active| plan.active_direct_root_ops(active),
-            );
-            if let Some(ops) = direct_ops {
-                self.execute_direct_root_batches(&mut commands, canvas, &plan, &ops)
-            } else {
-                self.execute_ops(
-                    &mut commands,
-                    canvas,
-                    &plan,
-                    &plan.ops,
-                    WgpuRenderTargetId::Main,
-                    &mut filter_cursors,
-                    active_batches.as_deref(),
-                )
-            }
-        });
-        if ok && let Some(dst) = history_copy_dst {
-            self.encode_history_copy(&mut commands, dst);
-        }
-        self.retained.stats_mut().queue_submissions = commands.finish();
-        if let Some(filter) = &self.filter {
-            let (dispatches, compact_dispatches) = filter.dispatch_counts();
-            let stats = self.retained.stats_mut();
-            stats.filter_dispatches = dispatches;
-            stats.compact_filter_dispatches = compact_dispatches;
-        }
+        let ok = self.encode_prepared_tile_plan(&mut commands, canvas, history_copy_dst, true);
+        self.retained.stats_mut().queue_submissions = commands.finish_with_status(ok);
         ok
+    }
+
+    pub(super) fn encode_prepared_tile_plan(
+        &mut self,
+        commands: &mut WgpuCommandBatch,
+        canvas: &Canvas,
+        history_copy_dst: Option<&::wgpu::Texture>,
+        allow_early_submit: bool,
+    ) -> bool {
+        let mut adapter =
+            super::frame_adapter::WgpuFrameAdapter::new(self, commands, history_copy_dst);
+        crate::render::frame::encode(
+            &mut adapter,
+            canvas,
+            history_copy_dst.is_some(),
+            allow_early_submit,
+        )
+        .is_ok()
     }
 
     pub(super) fn encode_history_copy(

@@ -24,7 +24,7 @@ impl Renderer {
         self.retained.reset_transient_output();
         let mode = self
             .retained
-            .replace_mode(super::super::incremental::IncrementalRenderMode::ForceFull);
+            .replace_mode(crate::render::incremental::IncrementalRenderMode::ForceFull);
         let selected = SelectedScene::Borrowed(canvas);
         let frame = selected.frame();
         let materialization = selected.materialization();

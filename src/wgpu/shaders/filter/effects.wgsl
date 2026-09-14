@@ -1,4 +1,17 @@
 fn apply_color_filter_pixel(px: u32, filter_kind: u32, amount: f32) -> u32 {
+    // Byte channels preserve exact invert/sepia halves across shader backends.
+    if ((filter_kind == FILTER_INVERT || filter_kind == FILTER_SEPIA) && (px>>24u)!=0u) {
+        let channels=vec3<f32>(f32(px&255u),f32((px>>8u)&255u),f32((px>>16u)&255u));
+        let alpha=f32(px>>24u);
+        var mapped=vec3<f32>(alpha)-channels;
+        if (filter_kind == FILTER_SEPIA) {
+            mapped=vec3<f32>(fma(0.393,channels.r,fma(0.769,channels.g,0.189*channels.b)),
+                fma(0.349,channels.r,fma(0.686,channels.g,0.168*channels.b)),
+                fma(0.272,channels.r,fma(0.534,channels.g,0.131*channels.b)));
+        }
+        let result=vec3<u32>(clamp(fma(mapped-channels,vec3<f32>(clamp(amount,0.0,1.0)),channels),vec3<f32>(0.0),vec3<f32>(alpha))+vec3<f32>(0.5));
+        return result.r | (result.g<<8u) | (result.b<<16u) | (px & 0xff000000u);
+    }
     let inv_255 = 1.0 / 255.0;
     var r = f32(px & 255u) * inv_255;
     var g = f32((px >> 8u) & 255u) * inv_255;
@@ -47,24 +60,11 @@ fn apply_color_filter_pixel(px: u32, filter_kind: u32, amount: f32) -> u32 {
             ur = nr;
             ug = ng;
             ub = nb;
-        } else if (filter_kind == FILTER_INVERT) {
-            let t = clamp(amount, 0.0, 1.0);
-            ur = lerp_f32(ur, 1.0 - ur, t);
-            ug = lerp_f32(ug, 1.0 - ug, t);
-            ub = lerp_f32(ub, 1.0 - ub, t);
         } else if (filter_kind == FILTER_SATURATE) {
             let l = svg_lum3(ur, ug, ub);
             ur = l + (ur - l) * amount;
             ug = l + (ug - l) * amount;
             ub = l + (ub - l) * amount;
-        } else if (filter_kind == FILTER_SEPIA) {
-            let t = clamp(amount, 0.0, 1.0);
-            let sr = ur * 0.393 + ug * 0.769 + ub * 0.189;
-            let sg = ur * 0.349 + ug * 0.686 + ub * 0.168;
-            let sb = ur * 0.272 + ug * 0.534 + ub * 0.131;
-            ur = lerp_f32(ur, sr, t);
-            ug = lerp_f32(ug, sg, t);
-            ub = lerp_f32(ub, sb, t);
         }
 
         r = clamp(ur, 0.0, 1.0) * alpha;
@@ -75,33 +75,29 @@ fn apply_color_filter_pixel(px: u32, filter_kind: u32, amount: f32) -> u32 {
     return pack_premul_rgba8(r, g, b, a);
 }
 
+fn filter_dot4(a:vec4<f32>,b:vec4<f32>)->f32 { return fma(a.x,b.x,fma(a.y,b.y,fma(a.z,b.z,a.w*b.w))); }
+
 fn apply_color_matrix_pixel(px: u32) -> u32 {
-    let inv_255 = 1.0 / 255.0;
-    let premul_r = f32(px & 255u) * inv_255;
-    let premul_g = f32((px >> 8u) & 255u) * inv_255;
-    let premul_b = f32((px >> 16u) & 255u) * inv_255;
-    let alpha = f32((px >> 24u) & 255u) * inv_255;
-
-    var r = 0.0;
-    var g = 0.0;
-    var b = 0.0;
-    if (alpha > 0.0) {
-        r = premul_r / alpha;
-        g = premul_g / alpha;
-        b = premul_b / alpha;
-    }
-
-    let rgba = vec4<f32>(r, g, b, alpha);
-    let out_r = dot(config.matrix_r, rgba) + config.matrix_bias.x;
-    let out_g = dot(config.matrix_g, rgba) + config.matrix_bias.y;
-    let out_b = dot(config.matrix_b, rgba) + config.matrix_bias.z;
-    let out_a = clamp(dot(config.matrix_a, rgba) + config.matrix_bias.w, 0.0, 1.0);
-    return pack_premul_rgba8(
-        clamp(out_r, 0.0, 1.0) * out_a,
-        clamp(out_g, 0.0, 1.0) * out_a,
-        clamp(out_b, 0.0, 1.0) * out_a,
-        out_a,
-    );
+    // Preserve exact half channels by applying RGB coefficients in premultiplied byte units.
+    let alpha=f32(px>>24u);
+    let channels=vec3<f32>(f32(px&255u),f32((px>>8u)&255u),f32((px>>16u)&255u));
+    var straight=vec3<f32>(0.0);
+    // Branch before division to retain the exact opaque identity on every backend.
+    if ((px>>24u)==255u) { straight=channels; }
+    else if (alpha>0.0) { straight=channels*(255.0/alpha); }
+    let output_alpha=clamp(filter_dot4(config.matrix_a,vec4<f32>(straight,alpha))+config.matrix_bias.w*255.0,0.0,255.0);
+    var result:vec3<f32>;
+    if (alpha>0.0) {
+        let scaled=vec4<f32>(channels,alpha*alpha*(1.0/255.0));
+        let mapped=fma(config.matrix_bias.rgb,vec3<f32>(alpha),vec3<f32>(filter_dot4(config.matrix_r,scaled),filter_dot4(config.matrix_g,scaled),filter_dot4(config.matrix_b,scaled)));
+        // Preserve the exact identity when the matrix leaves alpha unchanged.
+        let alpha_scale=select(output_alpha/alpha,1.0,output_alpha==alpha);
+        result=clamp(mapped,vec3<f32>(0.0),vec3<f32>(alpha))*alpha_scale;
+        // Saturated straight RGB equals one; preserve its exact output alpha.
+        result=select(result,vec3<f32>(output_alpha),mapped>=vec3<f32>(alpha));
+    } else { result=clamp(config.matrix_bias.rgb,vec3<f32>(0.0),vec3<f32>(1.0))*output_alpha; }
+    let bytes=vec4<u32>(clamp(vec4<f32>(result,output_alpha),vec4<f32>(0.0),vec4<f32>(255.0))+vec4<f32>(0.5));
+    return bytes.r | (bytes.g<<8u) | (bytes.b<<16u) | (bytes.a<<24u);
 }
 
 fn apply_component_transfer_pixel(px: u32, table_index: u32) -> u32 {
@@ -163,16 +159,30 @@ fn filter_linear_rgb_to_srgb(value: f32) -> f32 {
     return out;
 }
 
+fn filter_turbulence_pack(value:vec4<f32>,kind:u32,linear_rgb:u32)->u32 {
+    var out=value;
+    if(kind==1u) {out=out*0.5+0.5;}
+    out=clamp(out,vec4<f32>(0.0),vec4<f32>(1.0));
+    if(linear_rgb==1u) {
+        out.r=filter_linear_rgb_to_srgb(out.r);
+        out.g=filter_linear_rgb_to_srgb(out.g);
+        out.b=filter_linear_rgb_to_srgb(out.b);
+    }
+    return pack_premul_rgba8(out.r*out.a,out.g*out.a,out.b*out.a,out.a);
+}
+
 fn filter_turbulence_pixel(x: f32, y: f32) -> u32 {
     var result = 0u;
     if (
         abs(config.turbulence_scale_x) > 0.00000011920929 &&
         abs(config.turbulence_scale_y) > 0.00000011920929
     ) {
+        // These constant-noise cases must bypass coordinate conversion entirely.
+        if(config.turbulence_num_octaves==0u || (config.turbulence_base_frequency_x==0.0 && config.turbulence_base_frequency_y==0.0)) {
+            return filter_turbulence_pack(vec4<f32>(0.0),config.turbulence_kind,config.turbulence_linear_rgb);
+        }
         let sample_base_x = (x - config.turbulence_transform_x) / config.turbulence_scale_x;
         let sample_base_y = (y - config.turbulence_transform_y) / config.turbulence_scale_y;
-        let local_tile_x = x - config.turbulence_tile_x;
-        let local_tile_y = y - config.turbulence_tile_y;
         var frequency_x = config.turbulence_base_frequency_x;
         var frequency_y = config.turbulence_base_frequency_y;
         var stitch_width = 0i;
@@ -180,14 +190,21 @@ fn filter_turbulence_pixel(x: f32, y: f32) -> u32 {
         var stitch_wrap_x = 0i;
         var stitch_wrap_y = 0i;
         if (config.turbulence_stitch_tiles == 1u) {
-            let tw = max(config.turbulence_tile_width, 1.0);
-            let th = max(config.turbulence_tile_height, 1.0);
+            // Fixed tile bounds use the same noise coordinate space as the samples.
+            let tile_origin_x=(config.turbulence_tile_x-config.turbulence_transform_x)/config.turbulence_scale_x;
+            let tile_origin_y=(config.turbulence_tile_y-config.turbulence_transform_y)/config.turbulence_scale_y;
+            let tile_delta_x=config.turbulence_tile_width/config.turbulence_scale_x;
+            let tile_delta_y=config.turbulence_tile_height/config.turbulence_scale_y;
+            let tile_lower_x=min(tile_origin_x,tile_origin_x+tile_delta_x);
+            let tile_lower_y=min(tile_origin_y,tile_origin_y+tile_delta_y);
+            let tw=abs(tile_delta_x);
+            let th=abs(tile_delta_y);
             frequency_x = filter_stitch_frequency(frequency_x, tw);
             frequency_y = filter_stitch_frequency(frequency_y, th);
             stitch_width = i32(tw * frequency_x + 0.5);
             stitch_height = i32(th * frequency_y + 0.5);
-            stitch_wrap_x = i32(local_tile_x * frequency_x + 4096.0 + f32(stitch_width));
-            stitch_wrap_y = i32(local_tile_y * frequency_y + 4096.0 + f32(stitch_height));
+            stitch_wrap_x = i32(floor(tile_lower_x * frequency_x + f32(TURBULENCE_COORDINATE_OFFSET) + f32(stitch_width)));
+            stitch_wrap_y = i32(floor(tile_lower_y * frequency_y + f32(TURBULENCE_COORDINATE_OFFSET) + f32(stitch_height)));
         }
 
         let selector_offset = config.table_index * TURBULENCE_TABLE_LEN;
@@ -199,9 +216,6 @@ fn filter_turbulence_pixel(x: f32, y: f32) -> u32 {
         var out_a = 0.0;
         var octave = 0u;
         loop {
-            if (octave >= config.turbulence_num_octaves) {
-                break;
-            }
             let sample_x = sample_base_x * frequency_x;
             let sample_y = sample_base_y * frequency_y;
             let r = filter_turbulence_noise2(0u, sample_x, sample_y, stitch_wrap_x, stitch_width, stitch_wrap_y, stitch_height, selector_offset, gradient_offset);
@@ -219,34 +233,21 @@ fn filter_turbulence_pixel(x: f32, y: f32) -> u32 {
                 out_b += b * ratio;
                 out_a += a * ratio;
             }
+            octave += 1u;
+            if(octave>=config.turbulence_num_octaves) {break;}
+            ratio *= 0.5;
+            if(ratio==0.0) {break;}
             frequency_x *= 2.0;
             frequency_y *= 2.0;
-            ratio *= 0.5;
             if (config.turbulence_stitch_tiles == 1u) {
                 stitch_width *= 2i;
                 stitch_height *= 2i;
-                stitch_wrap_x = 2i * stitch_wrap_x - 4096i;
-                stitch_wrap_y = 2i * stitch_wrap_y - 4096i;
+                stitch_wrap_x = 2i * stitch_wrap_x - i32(TURBULENCE_COORDINATE_OFFSET);
+                stitch_wrap_y = 2i * stitch_wrap_y - i32(TURBULENCE_COORDINATE_OFFSET);
             }
-            octave += 1u;
         }
 
-        if (config.turbulence_kind == 1u) {
-            out_r = out_r * 0.5 + 0.5;
-            out_g = out_g * 0.5 + 0.5;
-            out_b = out_b * 0.5 + 0.5;
-            out_a = out_a * 0.5 + 0.5;
-        }
-        out_r = clamp(out_r, 0.0, 1.0);
-        out_g = clamp(out_g, 0.0, 1.0);
-        out_b = clamp(out_b, 0.0, 1.0);
-        out_a = clamp(out_a, 0.0, 1.0);
-        if (config.turbulence_linear_rgb == 1u) {
-            out_r = filter_linear_rgb_to_srgb(out_r);
-            out_g = filter_linear_rgb_to_srgb(out_g);
-            out_b = filter_linear_rgb_to_srgb(out_b);
-        }
-        result = pack_premul_rgba8(out_r * out_a, out_g * out_a, out_b * out_a, out_a);
+        result=filter_turbulence_pack(vec4<f32>(out_r,out_g,out_b,out_a),config.turbulence_kind,config.turbulence_linear_rgb);
     }
     return result;
 }
@@ -265,6 +266,23 @@ fn filter_stitch_frequency(frequency: f32, tile_size: f32) -> f32 {
     return out;
 }
 
+// Unsigned magnitude gives Euclidean coordinates even for INT_MIN.
+fn turbulence_remainder(value:i32,period:u32)->u32 {
+    let magnitude=select(bitcast<u32>(value),0u-bitcast<u32>(value),value<0i);
+    let remainder=magnitude%period;
+    if(value<0i && remainder!=0u) {return period-remainder;}
+    return remainder;
+}
+fn turbulence_wrap(value:i32,wrap:i32,period:i32)->i32 {
+    if(period==0i) {return value;}
+    let base=wrap-period;
+    let a=turbulence_remainder(value,u32(period));
+    let b=turbulence_remainder(base,u32(period));
+    var relative=a-b;
+    if(a<b) {relative=u32(period)-(b-a);}
+    return base+i32(relative);
+}
+
 fn filter_turbulence_noise2(
     channel: u32,
     x: f32,
@@ -276,8 +294,8 @@ fn filter_turbulence_noise2(
     selector_offset: u32,
     gradient_offset: u32,
 ) -> f32 {
-    let tx = x + 4096.0;
-    let ty = y + 4096.0;
+    let tx = x + f32(TURBULENCE_COORDINATE_OFFSET);
+    let ty = y + f32(TURBULENCE_COORDINATE_OFFSET);
     var bx0 = i32(floor(tx));
     var bx1 = bx0 + 1i;
     var by0 = i32(floor(ty));
@@ -286,19 +304,11 @@ fn filter_turbulence_noise2(
     let rx1 = rx0 - 1.0;
     let ry0 = ty - f32(by0);
     let ry1 = ry0 - 1.0;
-    if (config.turbulence_stitch_tiles == 1u) {
-        if (bx0 >= stitch_wrap_x) {
-            bx0 -= stitch_width;
-        }
-        if (bx1 >= stitch_wrap_x) {
-            bx1 -= stitch_width;
-        }
-        if (by0 >= stitch_wrap_y) {
-            by0 -= stitch_height;
-        }
-        if (by1 >= stitch_wrap_y) {
-            by1 -= stitch_height;
-        }
+    if(config.turbulence_stitch_tiles==1u) {
+        bx0=turbulence_wrap(bx0,stitch_wrap_x,stitch_width);
+        bx1=turbulence_wrap(bx1,stitch_wrap_x,stitch_width);
+        by0=turbulence_wrap(by0,stitch_wrap_y,stitch_height);
+        by1=turbulence_wrap(by1,stitch_wrap_y,stitch_height);
     }
     let ubx0 = u32(bx0 & 255i);
     let ubx1 = u32(bx1 & 255i);
@@ -337,7 +347,8 @@ fn filter_turbulence_gradient_dot(
     y: f32,
 ) -> f32 {
     let ix = gradient_offset + (channel * TURBULENCE_TABLE_LEN + selector) * 2u;
-    return turbulence_gradients[ix] * x + turbulence_gradients[ix + 1u] * y;
+    // Keep the gradient dot product on the same rounding path on both APIs.
+    return fma(turbulence_gradients[ix], x, turbulence_gradients[ix + 1u] * y);
 }
 
 fn liquid_glass_pixel(
@@ -382,8 +393,13 @@ fn liquid_glass_pixel(
             a = lerp_f32(a, 1.0, tint_mix);
         }
     } else {
-        let offset_x = -nx * edge * LIQUID_GLASS_REFRACTION_PIXEL_SCALE;
-        let offset_y = -ny * edge * LIQUID_GLASS_REFRACTION_PIXEL_SCALE;
+        // A zero normal component has exactly zero displacement even when the
+        // other component overflows. Guard before multiplication so compiler
+        // reassociation cannot turn zero * infinity into a NaN sample coordinate.
+        var offset_x = 0.0;
+        var offset_y = 0.0;
+        if (nx != 0.0) { offset_x = -nx * edge * LIQUID_GLASS_REFRACTION_PIXEL_SCALE; }
+        if (ny != 0.0) { offset_y = -ny * edge * LIQUID_GLASS_REFRACTION_PIXEL_SCALE; }
         if (abs(config.liquid_refraction_dispersion) <= LIQUID_GLASS_EPSILON) {
             let sx = pixel_x + offset_x;
             let sy = pixel_y + offset_y;
@@ -414,7 +430,7 @@ fn liquid_glass_pixel(
         }
 
         if (config.liquid_fresnel_factor > 0.0) {
-            let fresnel = liquid_glass_fresnel(distance, config.liquid_fresnel_range, config.liquid_fresnel_hardness);
+            let fresnel = liquid_glass_highlight_geometry(distance, config.liquid_fresnel_range, config.liquid_fresnel_hardness);
             let fresnel_base_r = lerp_f32(1.0, config.liquid_tint_r, tint_base_mix);
             let fresnel_base_g = lerp_f32(1.0, config.liquid_tint_g, tint_base_mix);
             let fresnel_base_b = lerp_f32(1.0, config.liquid_tint_b, tint_base_mix);
@@ -430,7 +446,7 @@ fn liquid_glass_pixel(
         }
 
         if (config.liquid_glare_factor > 0.0) {
-            let glare_geo = liquid_glass_glare_geometry(distance, config.liquid_glare_range, config.liquid_glare_hardness);
+            let glare_geo = liquid_glass_highlight_geometry(distance, config.liquid_glare_range, config.liquid_glare_hardness);
             let glare_angle_factor = liquid_glass_glare_angle(nx, ny);
             let glare_base_r = lerp_f32(blurred_r, config.liquid_tint_r, tint_base_mix);
             let glare_base_g = lerp_f32(blurred_g, config.liquid_tint_g, tint_base_mix);
@@ -458,41 +474,41 @@ fn liquid_glass_pixel(
 
 fn liquid_glass_edge(inside_distance: f32, refraction_thickness: f32, refraction_factor: f32) -> f32 {
     let thickness = max(refraction_thickness, LIQUID_GLASS_EPSILON);
-    var out = 0.0;
-    if (inside_distance < thickness) {
-        let ratio = 1.0 - inside_distance / thickness;
-        let theta_i = asin(clamp(pow(ratio, 2.0), -1.0, 1.0));
-        let theta_t = asin(clamp(sin(theta_i) / max(refraction_factor, 1.0), -1.0, 1.0));
-        out = max(-tan(theta_t - theta_i), 0.0);
+    let factor = max(refraction_factor, 1.0);
+    if (inside_distance >= thickness || factor == 1.0) {
+        return 0.0;
     }
-    return out;
+
+    // Snell's law gives sin(theta_t) directly. Compute tan(theta_i - theta_t)
+    // from sine/cosine products: the previous asin/sin/asin/tan chain varied
+    // between APIs and moved refracted samples across RGBA8 rounding boundaries.
+    // Explicit FMA fixes evaluation order; this removes the numerical root cause,
+    // without quantizing coordinates or changing the refraction model.
+    let ratio = clamp(1.0 - inside_distance / thickness, 0.0, 1.0);
+    let sin_i = ratio * ratio;
+    let sin_t = sin_i / factor;
+    let cos_t = sqrt(max(fma(-sin_t, sin_t, 1.0), 0.0));
+    if (sin_i == 1.0) {
+        // At grazing incidence tan(theta_i - theta_t) = factor * cos(theta_t).
+        // Avoid dividing by a subnormal sin(theta_t): even a finite factor can
+        // otherwise overflow the edge value and turn a zero normal into NaN.
+        return factor * cos_t;
+    }
+    let cos_i = sqrt(max(fma(-sin_i, sin_i, 1.0), 0.0));
+    let numerator = fma(sin_i, cos_t, -(cos_i * sin_t));
+    let denominator = fma(cos_i, cos_t, sin_i * sin_t);
+    return max(numerator / denominator, 0.0);
 }
 
-fn liquid_glass_fresnel(distance: f32, fresnel_range: f32, fresnel_hardness: f32) -> f32 {
-    return clamp(
-        pow(
-            1.0 + distance / LIQUID_GLASS_GEOMETRY_DISTANCE_SCALE *
-            pow(LIQUID_GLASS_GEOMETRY_RANGE_SCALE / max(fresnel_range, LIQUID_GLASS_EPSILON), 2.0) +
-            fresnel_hardness,
-            5.0,
-        ),
-        0.0,
-        1.0,
-    );
+fn liquid_glass_highlight_geometry(distance: f32, fresnel_range: f32, fresnel_hardness: f32) -> f32 {
+    // Fifth power is monotonic: clamping the base first preserves the final
+    // clamp while avoiding undefined pow(negative, 5) behavior on native APIs.
+    let base = 1.0 + distance / LIQUID_GLASS_GEOMETRY_DISTANCE_SCALE *
+        pow(LIQUID_GLASS_GEOMETRY_RANGE_SCALE / max(fresnel_range, LIQUID_GLASS_EPSILON), 2.0) + fresnel_hardness;
+    return pow(clamp(base, 0.0, 1.0), 5.0);
 }
 
-fn liquid_glass_glare_geometry(distance: f32, glare_range: f32, glare_hardness: f32) -> f32 {
-    return clamp(
-        pow(
-            1.0 + distance / LIQUID_GLASS_GEOMETRY_DISTANCE_SCALE *
-            pow(LIQUID_GLASS_GEOMETRY_RANGE_SCALE / max(glare_range, LIQUID_GLASS_EPSILON), 2.0) +
-            glare_hardness,
-            5.0,
-        ),
-        0.0,
-        1.0,
-    );
-}
+
 
 fn liquid_glass_glare_angle(nx: f32, ny: f32) -> f32 {
     let angle = (liquid_glass_vec2_angle(nx, ny) - LIQUID_GLASS_PI * 0.25 + config.liquid_glare_angle) * 2.0;
@@ -532,8 +548,15 @@ fn liquid_glass_dispersion_channel(
     blur_mix: f32,
 ) -> f32 {
     let factor = 1.0 - (chromatic - 1.0) * config.liquid_refraction_dispersion;
-    let sx = x + offset_x * factor;
-    let sy = y + offset_y * factor;
+    // A finite refractive index can overflow its displacement. Zero chromatic
+    // scale means the original sample position, including when that displacement
+    // is infinite; evaluating infinity * zero would pass NaN to the sampler.
+    var offset = vec2<f32>(0.0);
+    if (factor != 0.0) {
+        offset = vec2<f32>(offset_x, offset_y) * factor;
+    }
+    let sx = x + offset.x;
+    let sy = y + offset.y;
     let src = liquid_glass_sample_straight_channel(0u, sx, sy, channel);
     let blur = liquid_glass_sample_straight_channel(1u, sx, sy, channel);
     return lerp_f32(src, blur, blur_mix);
@@ -844,6 +867,9 @@ fn liquid_glass_compand_rgb(a: f32) -> f32 {
     return out;
 }
 
+// Accumulate the Sobel differences in stored alpha units, where all weighted
+// sums are exact, and normalize once. Subtracting rounded alpha/255 samples
+// introduces backend-dependent cancellation before the surface normal is built.
 fn alpha_gradient_x(x: u32, y: u32) -> f32 {
     var out = 0.0;
     if (config.region_width >= 2u) {
@@ -858,7 +884,7 @@ fn alpha_gradient_x(x: u32, y: u32) -> f32 {
         if (one_sided) {
             edge_scale = 2.0;
         }
-        out = weighted_diff * edge_scale / max(weight_sum, 0.000001);
+        out = weighted_diff * edge_scale / (255.0 * weight_sum);
     }
     return out;
 }
@@ -877,7 +903,7 @@ fn alpha_gradient_y(x: u32, y: u32) -> f32 {
         if (one_sided) {
             edge_scale = 2.0;
         }
-        out = weighted_diff * edge_scale / max(weight_sum, 0.000001);
+        out = weighted_diff * edge_scale / (255.0 * weight_sum);
     }
     return out;
 }
@@ -907,14 +933,9 @@ fn alpha_gradient_x_sample(x: u32, y: u32, offset: i32, weight: f32) -> f32 {
         if (x < region_x1) {
             right = x + 1u;
         }
-        let center = source_alpha_at(x, syu);
-        var diff = source_alpha_at(right, syu) - source_alpha_at(left, syu);
-        if (x == config.region_x0) {
-            diff = source_alpha_at(right, syu) - center;
-        } else if (x == region_x1) {
-            diff = center - source_alpha_at(left, syu);
-        }
-        out = weight * diff;
+        let left_alpha = f32((source_pixel_at(left, syu) >> 24u) & 255u);
+        let right_alpha = f32((source_pixel_at(right, syu) >> 24u) & 255u);
+        out = weight * (right_alpha - left_alpha);
     }
     return out;
 }
@@ -934,16 +955,24 @@ fn alpha_gradient_y_sample(x: u32, y: u32, offset: i32, weight: f32) -> f32 {
         if (y < region_y1) {
             bottom = y + 1u;
         }
-        let center = source_alpha_at(sxu, y);
-        var diff = source_alpha_at(sxu, bottom) - source_alpha_at(sxu, top);
-        if (y == config.region_y0) {
-            diff = source_alpha_at(sxu, bottom) - center;
-        } else if (y == region_y1) {
-            diff = center - source_alpha_at(sxu, top);
-        }
-        out = weight * diff;
+        let top_alpha = f32((source_pixel_at(sxu, top) >> 24u) & 255u);
+        let bottom_alpha = f32((source_pixel_at(sxu, bottom) >> 24u) & 255u);
+        out = weight * (bottom_alpha - top_alpha);
     }
     return out;
+}
+
+// Root fix: zero/negative exponents are unit intensity, including at zero focus.
+// Explicit control flow avoids the undefined pow(0, 0) corner in shader targets.
+fn lighting_power(base: f32, exponent: f32) -> f32 {
+    if (exponent <= 0.0) { return 1.0; }
+    return pow(base, exponent);
+}
+
+// Share an explicit product and sum order for lighting vectors. Specular
+// lighting normalizes the completed dot to avoid per-component division error.
+fn lighting_dot3(a: vec3<f32>, b: vec3<f32>) -> f32 {
+    return fma(a.x, b.x, fma(a.y, b.y, fma(a.z, b.z, 0.0)));
 }
 
 fn composite_inputs_pixel(input1: u32, input2: u32, composite_operator: u32, k1: f32, k2: f32, k3: f32, k4: f32) -> u32 {
@@ -989,16 +1018,17 @@ fn svg_lum3(r: f32, g: f32, b: f32) -> f32 {
 }
 
 fn lerp_f32(a: f32, b: f32, t: f32) -> f32 {
-    return a + (b - a) * t;
+    // Explicit fusion prevents backend-dependent half-channel noise values.
+    return fma(b - a, t, a);
 }
 
 fn lerp_vec4(a: vec4<f32>, b: vec4<f32>, t: f32) -> vec4<f32> {
     return a + (b - a) * t;
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_apply_region_mask(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let region_ix = gid.x;
+    let region_ix = filter_region_index(gid);
     if (!filter_region_ix_valid(region_ix)) {
         return;
     }

@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "status": "windows-kernel-validated",
+  "inventory_entries": 12,
+  "total_validated": 103,
+  "gpu": "RTX 4090; LUID 9f3f010000000000",
+  "routes": [
+    "wgpu-DX12",
+    "wgpu-Vulkan",
+    "native-DX12",
+    "native-Vulkan"
+  ],
+  "variants": "native/portable x texture_table false/true",
+  "ordinary_release_passed": 977,
+  "native_runtime_passed": 99,
+  "no_dxc_gpu_passed": 19,
+  "spirv_modules_validated": 59,
+  "editor": "Shader Tools invalid/correct roundtrip passed",
+  "clippy": "release native all-targets -D warnings passed",
+  "pngs": {
+    "before": 3471,
+    "after": 3471,
+    "changed": [],
+    "missing": [],
+    "added": []
+  },
+  "reviews": {
+    "spec": "closed",
+    "standards": "closed"
+  },
+  "source_sha256": {
+    "src/shaders/hlsl/shared/integer.hlsli": "bebe17fb41ac252bb611b82c6a82ed2120e07fbc99216f173695db5b01d88783",
+    "src/shaders/hlsl/shared/brush/pattern.hlsli": "7e5032e219a4bee224a6ef214cee7d3e2989a3978f80ee70a39a460b2d59c141",
+    "src/shaders/hlsl/filter/sample.hlsli": "bc37c70d1a5b3c9455dff225f95c9e75eac4d510066059b11b7b37bb5fa605d2",
+    "src/shaders/hlsl/filter/convolve.hlsl": "2e11c52173ed4f82211fec09cced0b8b657acf3f8385c659b7f993b7a47ed243",
+    "src/shaders/hlsl/filter/convolve.hlsli": "9d925bcfaab71086241ac5af81f2deb337c08aa30fc6ecdb9bfc8f7f6e27cf66",
+    "src/shaders/hlsl/filter/resample.hlsl": "0234a0218e508e7cb0b6949ea0e62f0567d26c9547e06689f26b391e35211de2",
+    "src/shaders/hlsl/filter/resample.hlsli": "9a1c056588684487648578073ad978eaa7e6288fcde0458efef09ae3aea84639",
+    "src/native/runtime/program/filter/convolve.rs": "ce3f5163f7cbc6efab017bf93a76618c248530eb038722b030904c6162391da4",
+    "src/native/runtime/program/filter/resample.rs": "e0e349b5e1ca0b4877122fe046288ada76c3a7188d015fa519ccb2e544edd43c",
+    "src/native/runtime/tests/filter_convolve_gpu.rs": "40fc1d3fa5c4ae59faf7fcf0313169ab02626e8da7caf72ec4bed8b6679c34f4",
+    "src/native/runtime/tests/filter_resample_gpu.rs": "d6cf67570a4a4d04a11578328affcaf00996bb815358381bcfaf9e1ebd70b5ae"
+  },
+  "log_sha256": {
+    "m4-filter-convolve-resample-full-release.log": "b295dfca23dfc8a661861c79662e2d4bcce02bf3a5f68fe611071c8c1d602a75",
+    "m4-filter-convolve-resample-runtime.log": "e96183a01dd8c44624ae10e13cf6666debd19c932d14a3538843576ce9043d84",
+    "m4-filter-convolve-resample-clippy.log": "a24f2ddc3205245ba02c10dd0b92fec7d76bd7859d870aa096f178d0403b6c0a",
+    "m4-filter-convolve-resample-svg.log": "74febbf6b7d6cb091b019aaad5e1fe66d02c0b52f54d0c16358cc761cafbdeb3",
+    "m4-filter-convolve-resample-examples.log": "4f8e34b3ecd980a78886b41c28bc4b7420a01c9124505ee1fcd78d16cac57198",
+    "m4-filter-convolve-resample-no-dxc.log": "79d5d65a26e60adb1c9188734b9477f6b1b882f9c6e8129ece8765e679bf2024",
+    "m4-filter-convolve-resample-shader.log": "a74fbd2c81b361a450599bc152e7c46aef602af10ab6561f8de05b75d90745fd",
+    "m4-filter-convolve-resample-editor.log": "12dc4ea9713be70cbad4994f7acdaa19ba2f3cf727a7cb101a5ca00246f4b4fa"
+  },
+  "m4_complete": false
+}

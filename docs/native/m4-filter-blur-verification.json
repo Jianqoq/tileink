@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "status": "windows-kernel-validated",
+  "inventory_entries": 8,
+  "total_validated": 111,
+  "gpu": "RTX 4090; LUID 9f3f010000000000",
+  "routes": [
+    "wgpu-DX12",
+    "wgpu-Vulkan",
+    "native-DX12",
+    "native-Vulkan"
+  ],
+  "variants": "native/portable x texture_table false/true",
+  "ordinary_release_passed": 978,
+  "native_runtime_passed": 103,
+  "no_dxc_gpu_passed": 22,
+  "spirv_modules_validated": 61,
+  "editor": "Shader Tools invalid/correct roundtrip passed",
+  "clippy": "release native all-targets -D warnings passed",
+  "pngs": {
+    "before": 3471,
+    "after": 3471,
+    "changed": [],
+    "missing": [],
+    "added": []
+  },
+  "reviews": {
+    "spec": "closed",
+    "standards": "closed"
+  },
+  "source_sha256": {
+    "src/shaders/hlsl/filter/blur.hlsl": "4db2777733af68a014dd570b1e76f47726b6e65768e7b44f20be858a702ca055",
+    "src/shaders/hlsl/filter/blur_shared.hlsl": "15b422fe42add8874c6484a4d03b61ff2f53c84133db8b30cb9027edce2aad7b",
+    "src/shaders/hlsl/filter/blur.hlsli": "903e9b11353d00936e59deec7e5382782dcd46bf93d9d8227a15f788bc28c76e",
+    "src/native/runtime/program/filter/blur.rs": "5abd23dcb035d58ea105276bc0082b2ae782daffdd63c1e909aeae72a32d7518",
+    "src/native/runtime/program/filter/region.rs": "154a4de66de2864fafcaf7a4537984d053c7bee8166afc4e3f959aef11804aaa",
+    "src/native/runtime/tests/filter_blur_gpu.rs": "1e18aa904b7963962e7ec5a152ae00e64f3c60c14e32015cdad4aab299656aa1",
+    "src/wgpu/shaders/filter/kernels_sampling.wgsl": "55368da728f8fbcfe8c1c55333679dfc90b88bfd0978c7671c7b262632535572"
+  },
+  "log_sha256": {
+    "m4-filter-blur-full-release.log": "4c6581e51197a1eec943f102d1e33a4853ffb7798db42b3a9eeb1c73a23e9cde",
+    "m4-filter-blur-runtime.log": "e0e04296210fce236ab337cfd84f1bc46570148bb94d53e0d66e9649d0ca7d55",
+    "m4-filter-blur-clippy.log": "721b4daccb58350f3097ef7baf07012c4d8aa9be4873a9b10d7e7bcffdff0ccc",
+    "m4-filter-blur-svg.log": "756979eb8bc823279cb2cba43a5368f0926609d912bd3c4cf5762e2f3f70f449",
+    "m4-filter-blur-examples.log": "8a7a6a6a1715e464f3fa06f340fbf5dc3c23f934a13574229d90b27e3fc3d046",
+    "m4-filter-blur-no-dxc.log": "f15953352e16c4afe04045e5bc5f38d11d15e4552e3c1cf2c444a668617f7d7c",
+    "m4-filter-blur-shader.log": "dda4c58d0aa10e6bb4169911b277a6206e2790030acdce1fd1f66128806cc159",
+    "m4-filter-blur-editor.log": "05893c07ad570618faf40de92262a67fe4fc5e81d6279c9e95c8135800be05b3"
+  },
+  "m4_complete": false
+}
