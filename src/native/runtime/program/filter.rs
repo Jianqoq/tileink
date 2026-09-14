@@ -133,3 +133,6 @@ pub mod lighting;
 
 #[path = "filter/rectangle.rs"]
 pub mod rectangle;
+
+#[path = "filter/path_mask.rs"]
+pub mod path_mask;

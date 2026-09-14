@@ -28,6 +28,7 @@ fn native_build_embeds_each_expected_nonempty_program() {
         "filter_blur_region",
         "filter_lighting_region",
         "filter_rect_mask_region",
+        "filter_path_mask_region",
         "filter_composite_direct_region",
         "filter_composite_rect_direct_region",
         "filter_upsample_rect_composite_region",

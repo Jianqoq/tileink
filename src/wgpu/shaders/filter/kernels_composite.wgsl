@@ -52,41 +52,21 @@ fn filter_path_mask_region(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
     let xy = xy_for_region_ix(region_ix);
-    let px = f32(xy.x) + 0.5;
-    let py = f32(xy.y) + 0.5;
-    let path_index = config.table_index;
-    var winding = 0i;
-    if (path_index < arrayLength(&path_range_starts)) {
-        var line_ix = path_range_starts[path_index];
-        let line_end = path_range_ends[path_index];
+    let position=vec2<i32>(xy*PATH_MASK_COORDINATE_SCALE+vec2<u32>(PATH_MASK_COORDINATE_SCALE/2u));
+    let path_index=config.table_index;
+    var winding=0i;
+    if(path_index<arrayLength(&path_range_starts)) {
+        var line_ix=path_range_starts[path_index];
+        let line_end=path_range_ends[path_index];
         loop {
-            if (line_ix >= line_end) {
-                break;
-            }
-            let inv_scale = 0.00390625;
-            let y0 = f32(path_p0y[line_ix]) * inv_scale;
-            let y1 = f32(path_p1y[line_ix]) * inv_scale;
-            var winding_delta = 0i;
-            if (y0 <= py) {
-                if (y1 > py) {
-                    winding_delta = 1i;
-                }
-            }
-            if (y1 <= py) {
-                if (y0 > py) {
-                    winding_delta = -1i;
-                }
-            }
-            if (winding_delta != 0i) {
-                let x0 = f32(path_p0x[line_ix]) * inv_scale;
-                let x1 = f32(path_p1x[line_ix]) * inv_scale;
-                let t = (py - y0) / (y1 - y0);
-                let x_cross = x0 + (x1 - x0) * t;
-                if (x_cross > px) {
-                    winding += winding_delta;
-                }
-            }
-            line_ix += 1u;
+            if(line_ix>=line_end) {break;}
+            let start=vec2<i32>(path_p0x[line_ix],path_p0y[line_ix]);
+            let end=vec2<i32>(path_p1x[line_ix],path_p1y[line_ix]);
+            var delta=0i;
+            if(start.y<=position.y && end.y>position.y) {delta=1i;}
+            if(end.y<=position.y && start.y>position.y) {delta=-1i;}
+            if(delta!=0i && path_mask_orientation(start,end,position)==delta) {winding+=delta;}
+            line_ix+=1u;
         }
     }
 

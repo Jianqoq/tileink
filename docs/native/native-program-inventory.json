@@ -893,8 +893,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_path_mask_region",
+      "hlsl_source": "src/shaders/hlsl/filter/path_mask.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-path-mask.md"
     },
     {
       "source": "filter.wgsl",
@@ -1441,8 +1445,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_path_mask_region",
+      "hlsl_source": "src/shaders/hlsl/filter/path_mask.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-path-mask.md"
     },
     {
       "source": "filter.wgsl",
@@ -2013,8 +2021,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_path_mask_region",
+      "hlsl_source": "src/shaders/hlsl/filter/path_mask.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-path-mask.md"
     },
     {
       "source": "filter_web.wgsl",
@@ -2561,8 +2573,12 @@
         1,
         1
       ],
-      "hlsl": "unported",
-      "msl": "unported"
+      "hlsl": "windows-kernel-validated",
+      "msl": "unported",
+      "native_entry": "filter_path_mask_region",
+      "hlsl_source": "src/shaders/hlsl/filter/path_mask.hlsl",
+      "native_abi": "build/native/interfaces/filter.rs",
+      "verification": "docs/native/m4-filter-path-mask.md"
     },
     {
       "source": "filter_web.wgsl",

@@ -8,3 +8,4 @@
 #include "filter/kernels.wgsl"
 #include "filter/stack.wgsl"
 #include "filter/effects.wgsl"
+#include "filter/path_mask.wgsl"

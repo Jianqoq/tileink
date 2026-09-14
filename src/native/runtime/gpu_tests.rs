@@ -201,3 +201,6 @@ mod filter_lighting;
 
 #[path = "tests/filter_rectangle_gpu.rs"]
 mod filter_rectangle;
+
+#[path = "tests/filter_path_mask_gpu.rs"]
+mod filter_path_mask;

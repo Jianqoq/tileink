@@ -418,3 +418,34 @@ pub(super) fn rectangle(constants: &BTreeMap<String, u32>) -> Interface {
         ],
     )
 }
+
+pub(super) fn path_mask(constants: &BTreeMap<String, u32>) -> Interface {
+    interface(
+        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        &[
+            ("config", config()),
+            ("target_texture", buffer(3, Kind::TextureWrite)),
+            ("active_tiles", buffer(8, Kind::Read)),
+            ("path_range_starts", buffer(9, Kind::Read)),
+            ("path_range_ends", buffer(10, Kind::Read)),
+            ("path_p0x", buffer(11, Kind::Read)),
+            ("path_p0y", buffer(12, Kind::Read)),
+            ("path_p1x", buffer(13, Kind::Read)),
+            ("path_p1y", buffer(14, Kind::Read)),
+        ],
+        &[(
+            "filter_path_mask_region",
+            &[
+                "config",
+                "target_texture",
+                "active_tiles",
+                "path_range_starts",
+                "path_range_ends",
+                "path_p0x",
+                "path_p0y",
+                "path_p1x",
+                "path_p1y",
+            ],
+        )],
+    )
+}

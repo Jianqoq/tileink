@@ -1721,3 +1721,13 @@ pass. Full release (980), runtime (111), strict Clippy, editor/shader/SPIR-V and
 SVG/examples pass; 3,471 PNGs unchanged. No-DXC replay passes 28 filter GPU tests.
 Both reviews closed. See [evidence](docs/native/m4-filter-lighting-rectangle.md).
 M4 continues with remaining filters, fine and NativeRenderer/Canvas integration.
+
+### M4 exact path masks
+
+Path masks advance validated inventory to **135/179**. A shared floating-point
+crossing error is fixed using exact signed-product comparison without GPU int64.
+Independent rational geometry tests cover extreme coordinates, fractional edges,
+windings and compact clipping. Full release (981), runtime (115), strict Clippy,
+editor/shader/SPIR-V and SVG/examples pass; 3,471 PNGs unchanged. No-DXC replay
+passes 31 filter GPU tests. Both reviews closed. See [evidence](docs/native/m4-filter-path-mask.md).
+M4 continues with remaining filters, fine and NativeRenderer/Canvas integration.
