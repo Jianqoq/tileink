@@ -4,7 +4,7 @@
 #include "classify.hlsli"
 #include "particle.hlsli"
 
-bool noop_stack_clip(ConstantBuffer<CoarseConfig> settings, uint2 layer, CoarseDraw draw, ByteAddressBuffer paths,
+bool noop_stack_clip(ConstantBuffer<CoarseConfig> settings, uint2 layer, DrawData draw, ByteAddressBuffer paths,
     ByteAddressBuffer backdrops, ByteAddressBuffer ranges, ByteAddressBuffer paint, uint2 tile) {
     if (layer.x != LAYER_CLIP) return false;
     if (draw_has_sdf(draw)) return sdf_clip_covers(paint, draw, tile);
@@ -20,7 +20,7 @@ void emit_stack_begins(ConstantBuffer<CoarseConfig> settings, RWByteAddressBuffe
     for (uint index = settings.layer_stack_start; index < settings.layer_stack_end; index++) {
         uint3 layer = layers.Load3(index * LAYER_RECORD_STRIDE);
         if (layer.x > LAYER_BLEND) continue;
-        CoarseDraw draw = load_draw(draws, layer.y);
+        DrawData draw = load_draw(draws, layer.y);
         if (noop_stack_clip(settings, layer.xy, draw, paths, backdrops, ranges, paint, tile)) continue;
         if (layer.x == LAYER_CLIP && draw_has_sdf(draw)) {
             store_particle(work, settings, destination++, PTCL_BEGIN_SDF_CLIP, 0u, 0u, uint2(0u,0u), layer.y);
@@ -38,7 +38,7 @@ void emit_stack_ends(ConstantBuffer<CoarseConfig> settings, RWByteAddressBuffer 
     for (uint index = settings.layer_stack_end; index > settings.layer_stack_start;) {
         uint3 layer = layers.Load3(--index * LAYER_RECORD_STRIDE);
         if (layer.x > LAYER_BLEND) continue;
-        CoarseDraw draw = load_draw(draws, layer.y);
+        DrawData draw = load_draw(draws, layer.y);
         if (noop_stack_clip(settings, layer.xy, draw, paths, backdrops, ranges, paint, tile)) continue;
         uint tag = layer.x == LAYER_OPACITY ? PTCL_END_OPACITY : (layer.x == LAYER_BLEND ? PTCL_END_BLEND : PTCL_END_CLIP);
         store_particle(work, settings, destination++, tag, 0u, 0u, uint2(0u,0u), 0u);

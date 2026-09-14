@@ -1,3 +1,4 @@
+#include "tags.hlsli"
 #include "../constants.hlsli"
 #include "config.hlsli"
 #include "active_tiles.hlsli"
@@ -80,7 +81,7 @@ void coarse_emit_bins(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID) 
         uint draw_index = draw_page_index(coarse_work, config, page, slot);
         Particle particle = draw_particle(config, draw_records, text_blob, sdf_blob, path_records, backdrops, segment_ranges, draw_batch_ids, draw_index, position);
         if (particle.valid) {
-            CoarseDraw draw = load_draw(draw_records, draw_index);
+            DrawData draw = load_draw(draw_records, draw_index);
             flags |= particle_class_flags(sdf_blob, config, draw, particle.tag);
             if (particle.tag == PTCL_GLYPH) {
                 particle.segments = uint2(glyphs.x, glyphs.x + particle.glyph_count);

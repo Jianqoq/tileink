@@ -52,7 +52,7 @@ void coarse_emit_chunks(uint3 group : SV_GroupID, uint3 local : SV_GroupThreadID
     uint2 offset = exclusive_prefix(uint2(particle.valid ? 1u : 0u, particle.glyph_count), local.x, total);
     uint flags = 0u;
     if (particle.valid) {
-        CoarseDraw draw = load_draw(draw_records, draw_index);
+        DrawData draw = load_draw(draw_records, draw_index);
         flags = particle_class_flags(sdf_blob, config, draw, particle.tag);
         if (particle.tag == PTCL_GLYPH) {
             particle.segments = uint2(glyphs.x + offset.y, glyphs.x + offset.y + particle.glyph_count);

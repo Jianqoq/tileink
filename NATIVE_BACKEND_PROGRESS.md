@@ -1743,3 +1743,16 @@ SVG/examples pass; no-DXC replay passes all 36 filter GPU tests. Both reviews cl
 See [turbulence](docs/native/m4-filter-turbulence.md) and
 [surface evidence](docs/native/m4-filter-surface.md). M4 remains open for the last
 36 inventory entries and full NativeRenderer/Canvas integration.
+
+### M4 analytic SDF and layer masks
+
+Validated inventory advances to **147/179**. Shared HLSL SDF coverage supports all
+19 encoded kinds and exact transformed antialiasing; layer masks now reuse it and
+path coverage with explicit scene resources. Native draw/affine decoding is shared
+between coarse and layers. The path logical-span regression is fixed at upload.
+Release (984), runtime (126), strict Clippy, editor, 71 SPIR-V modules and complete
+SVG/examples pass. Both layer GPU tests replay without DXC and hit pipeline caches.
+There are no new PNG differences beyond the accepted turbulence stitch image.
+Both reviews are closed. See [layer masks](docs/native/m4-filter-layer.md) and
+[SDF coverage](docs/native/m4-sdf.md). Remaining 32 entries and full NativeRenderer/
+Canvas integration keep M4 open.

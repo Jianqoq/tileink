@@ -1,3 +1,4 @@
+#include "tags.hlsli"
 #include "../coarse_records.hlsli"
 #include "../constants.hlsli"
 #include "config.hlsli"

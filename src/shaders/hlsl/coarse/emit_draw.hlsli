@@ -2,7 +2,7 @@
 #define TILEINK_HLSL_COARSE_EMIT_DRAW_HLSLI_INCLUDED
 
 #include "config.hlsli"
-#include "draw.hlsli"
+#include "../shared/draw.hlsli"
 #include "text.hlsli"
 #include "paint.hlsli"
 #include "particle.hlsli"
@@ -13,7 +13,7 @@ Particle draw_particle(ConstantBuffer<CoarseConfig> settings, ByteAddressBuffer 
     Particle result = empty_particle();
     uint batch_bytes; batches.GetDimensions(batch_bytes);
     if (draw_index >= batch_bytes / 4u || batches.Load(draw_index * 4u) != settings.draw_start) return result;
-    CoarseDraw draw = load_draw(draws, draw_index);
+    DrawData draw = load_draw(draws, draw_index);
     if (settings.text_enabled != 0u && draw.glyph_run_id != INVALID_INDEX) {
         if (draw.tag == DRAW_BRUSH) {
             result.glyph_count = count_draw_glyphs(text, settings, draw, tile);

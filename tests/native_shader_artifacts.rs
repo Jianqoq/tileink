@@ -31,6 +31,7 @@ fn native_build_embeds_each_expected_nonempty_program() {
         "filter_path_mask_region",
         "filter_turbulence_region",
         "filter_composite_surface_direct_region",
+        "filter_layer_mask_region",
         "sdf_coverage_words",
         "filter_composite_direct_region",
         "filter_composite_rect_direct_region",

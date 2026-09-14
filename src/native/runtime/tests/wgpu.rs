@@ -332,6 +332,11 @@ impl FilterVariant {
         };
         // Remap resource slots only; all production algorithms and variants remain intact.
         crate::wgpu::shader_variants::patch_image_resource_shader_source(source, self.texture_table)
+            .replace("@binding(4)", "@binding(20)")
+            .replace("@binding(28)", "@binding(21)")
+            .replace("@binding(29)", "@binding(22)")
+            .replace("@binding(30)", "@binding(23)")
+            .replace("@binding(32)", "@binding(24)")
             .replace("@binding(52)", "@binding(8)")
             .replace("@binding(55)", "@binding(9)")
             .replace("@binding(36)", "@binding(7)")

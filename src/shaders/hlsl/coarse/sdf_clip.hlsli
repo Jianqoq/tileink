@@ -1,7 +1,8 @@
 #ifndef TILEINK_HLSL_COARSE_SDF_CLIP_HLSLI_INCLUDED
 #define TILEINK_HLSL_COARSE_SDF_CLIP_HLSLI_INCLUDED
 
-#include "draw.hlsli"
+#include "tags.hlsli"
+#include "../shared/draw.hlsli"
 
 static const float FULL_TILE_SDF_INSET = 0.5;
 bool rounded_corner_covers(float2 position, float2 corner, float2 center, float radius) {
@@ -10,7 +11,7 @@ bool rounded_corner_covers(float2 position, float2 corner, float2 center, float 
     float2 delta = position - center;
     return !in_square || (inner_radius > 0.0 && dot(delta, delta) <= inner_radius * inner_radius);
 }
-bool sdf_clip_covers(ByteAddressBuffer sdf, CoarseDraw draw, uint2 tile) {
+bool sdf_clip_covers(ByteAddressBuffer sdf, DrawData draw, uint2 tile) {
     if (draw.sdf_offset == INVALID_INDEX || draw.shadow_offset != INVALID_INDEX || draw.sdf_len < 9u) return false;
     uint base = draw.sdf_offset * 4u;
     if (sdf.Load(base) != SDF_RECT || any(draw.affine_linear != float4(1.0, 0.0, 0.0, 1.0))) return false;

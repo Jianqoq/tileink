@@ -488,3 +488,34 @@ pub(super) fn surface(constants: &BTreeMap<String, u32>) -> Interface {
         )],
     )
 }
+
+pub(super) fn layer(constants: &BTreeMap<String, u32>) -> Interface {
+    interface(
+        [constants["FILTER_WORKGROUP_SIZE"], 1, 1],
+        &[
+            ("config", config()),
+            ("target_texture", buffer(3, Kind::TextureWrite)),
+            ("active_tiles", buffer(8, Kind::Read)),
+            ("paint", buffer(10, Kind::Read)),
+            ("draws", buffer(20, Kind::Read)),
+            ("paths", buffer(21, Kind::Read)),
+            ("backdrops", buffer(22, Kind::Read)),
+            ("ranges", buffer(23, Kind::Read)),
+            ("segments", buffer(24, Kind::Read)),
+        ],
+        &[(
+            "filter_layer_mask_region",
+            &[
+                "config",
+                "target_texture",
+                "active_tiles",
+                "paint",
+                "draws",
+                "paths",
+                "backdrops",
+                "ranges",
+                "segments",
+            ],
+        )],
+    )
+}

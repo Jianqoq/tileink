@@ -223,6 +223,10 @@ fn draw_raw_record_abi_matches_host_layout() {
         ("DRAW_FILL_RULE", offset_of!(DrawRecord, fill_rule)),
         ("DRAW_PIXEL_BOUNDS", offset_of!(DrawRecord, pixel_bounds)),
         ("DRAW_TRANSFORM", offset_of!(DrawRecord, transform)),
+        (
+            "DRAW_INVERSE_TRANSFORM",
+            offset_of!(DrawRecord, inverse_transform),
+        ),
         ("LAYER_RECORD_STRIDE", size_of::<LayerStackRecord>()),
         ("GLYPH_RUN_STRIDE", size_of::<GlyphRunRecord>()),
         ("GLYPH_RECORD_STRIDE", size_of::<GlyphRecord>()),

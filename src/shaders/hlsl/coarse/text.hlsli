@@ -3,9 +3,9 @@
 
 #include "../coarse_records.hlsli"
 #include "config.hlsli"
-#include "draw.hlsli"
+#include "../shared/draw.hlsli"
 
-bool glyph_hits_tile(ByteAddressBuffer text, ConstantBuffer<CoarseConfig> settings, CoarseDraw draw, uint index, uint2 tile) {
+bool glyph_hits_tile(ByteAddressBuffer text, ConstantBuffer<CoarseConfig> settings, DrawData draw, uint index, uint2 tile) {
     uint glyph_base = settings.text_run_count * GLYPH_RUN_STRIDE;
     uint image_base = glyph_base + settings.text_glyph_count * GLYPH_RECORD_STRIDE;
     uint3 glyph = text.Load3(glyph_base + index * GLYPH_RECORD_STRIDE);
@@ -15,7 +15,7 @@ bool glyph_hits_tile(ByteAddressBuffer text, ConstantBuffer<CoarseConfig> settin
     int2 lower = int2(asint(glyph.y) + asint(image_record.x), asint(glyph.z) - asint(image_record.y));
     return transformed_rect_hits_tile(draw, int4(lower, lower + int2(image_record.zw)), tile);
 }
-uint count_draw_glyphs(ByteAddressBuffer text, ConstantBuffer<CoarseConfig> settings, CoarseDraw draw, uint2 tile) {
+uint count_draw_glyphs(ByteAddressBuffer text, ConstantBuffer<CoarseConfig> settings, DrawData draw, uint2 tile) {
     uint2 run = text.Load2(draw.glyph_run_id * GLYPH_RUN_STRIDE);
     uint count = 0u;
     for (uint index = run.x; index < run.x + run.y; index++) {
@@ -23,7 +23,7 @@ uint count_draw_glyphs(ByteAddressBuffer text, ConstantBuffer<CoarseConfig> sett
     }
     return count;
 }
-void store_draw_glyphs(RWByteAddressBuffer work, ByteAddressBuffer text, ConstantBuffer<CoarseConfig> settings, CoarseDraw draw, uint2 tile, uint destination) {
+void store_draw_glyphs(RWByteAddressBuffer work, ByteAddressBuffer text, ConstantBuffer<CoarseConfig> settings, DrawData draw, uint2 tile, uint destination) {
     uint2 run = text.Load2(draw.glyph_run_id * GLYPH_RUN_STRIDE);
     uint base = settings.tile_count * COARSE_TILE_RECORD_STRIDE + settings.ptcl_capacity * COARSE_PTCL_RECORD_STRIDE;
     for (uint index = run.x; index < run.x + run.y; index++) {

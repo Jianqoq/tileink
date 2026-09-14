@@ -141,3 +141,6 @@ pub mod path_mask;
 pub mod surface;
 #[path = "filter/turbulence.rs"]
 pub mod turbulence;
+
+#[path = "filter/layer.rs"]
+pub mod layer;

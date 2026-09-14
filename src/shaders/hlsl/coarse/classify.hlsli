@@ -2,7 +2,7 @@
 #define TILEINK_HLSL_COARSE_CLASSIFY_HLSLI_INCLUDED
 
 #include "config.hlsli"
-#include "draw.hlsli"
+#include "../shared/draw.hlsli"
 #include "text.hlsli"
 #include "sdf_clip.hlsli"
 
@@ -13,7 +13,7 @@ uint stack_wrapper_count(ConstantBuffer<CoarseConfig> settings, ByteAddressBuffe
     for (uint index = settings.layer_stack_start; index < settings.layer_stack_end; index++) {
         uint2 layer = layers.Load2(index * LAYER_RECORD_STRIDE);
         if (layer.x > LAYER_BLEND) return INVALID_INDEX;
-        CoarseDraw draw = load_draw(draws, layer.y);
+        DrawData draw = load_draw(draws, layer.y);
         if (draw_has_sdf(draw)) {
             if (layer.x == LAYER_CLIP && sdf_clip_covers(sdf, draw, tile)) continue;
             if (!draw_hits_tile(draw, tile, dimensions)) return INVALID_INDEX;
@@ -34,7 +34,7 @@ uint2 draw_particle_count(ConstantBuffer<CoarseConfig> settings, ByteAddressBuff
     ByteAddressBuffer paths, ByteAddressBuffer backdrops, ByteAddressBuffer ranges, ByteAddressBuffer batches, uint draw_index, uint2 tile) {
     uint batch_bytes; batches.GetDimensions(batch_bytes);
     if (draw_index >= batch_bytes / 4u || batches.Load(draw_index * 4u) != settings.draw_start) return uint2(0u,0u);
-    CoarseDraw draw = load_draw(draws, draw_index);
+    DrawData draw = load_draw(draws, draw_index);
     if (settings.text_enabled != 0u && draw.glyph_run_id != INVALID_INDEX) {
         if (draw.tag != DRAW_BRUSH) return uint2(0u,0u);
         uint glyphs = count_draw_glyphs(text, settings, draw, tile);

@@ -1,3 +1,4 @@
+#include "tags.hlsli"
 #include "../constants.hlsli"
 #include "config.hlsli"
 #include "classify.hlsli"

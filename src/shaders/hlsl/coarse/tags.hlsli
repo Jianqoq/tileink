@@ -1,14 +1,7 @@
 #ifndef TILEINK_HLSL_COARSE_TAGS_HLSLI_INCLUDED
 #define TILEINK_HLSL_COARSE_TAGS_HLSLI_INCLUDED
+#include "../shared/draw_tags.hlsli"
 
-static const uint INVALID_INDEX = 4294967295u;
-static const uint DRAW_BRUSH = 0u;
-static const uint DRAW_CLIP = 1u;
-static const uint DRAW_PATH_GLYPH = 5u;
-static const uint LAYER_CLIP = 0u;
-static const uint LAYER_OPACITY = 1u;
-static const uint LAYER_BLEND = 2u;
-static const uint FILL_EVEN_ODD = 1u;
 static const uint SDF_RECT = 1u;
 static const uint TILE_KIND_INTERPRETER = 0u;
 static const uint TILE_KIND_EMPTY = 1u;

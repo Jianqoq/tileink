@@ -2,13 +2,6 @@
 #define TILEINK_HLSL_SDF_BASE_HLSLI_INCLUDED
 #include "types.hlsli"
 
-// Fix affine evaluation order before the half-alpha coverage boundary.
-float2 affine_record_point(AffineRecord transform, float2 sample_point) {
-    return float2(
-        mad(transform.a,sample_point.x,mad(transform.c,sample_point.y,transform.e)),
-        mad(transform.b,sample_point.x,mad(transform.d,sample_point.y,transform.f)));
-}
-
 float2 normalized_or(float2 value, float2 fallback) {
     float magnitude = length(value);
     if (magnitude > 0.000001) {
