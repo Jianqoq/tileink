@@ -188,3 +188,66 @@ impl Drop for Image {
         }
     }
 }
+
+impl Image {
+    pub(super) fn copy_to(
+        &self,
+        command: vk::CommandBuffer,
+        destination: &Image,
+        copy: &crate::native::runtime::compute::TextureCopy,
+    ) {
+        self.transition(
+            command,
+            vk::ImageLayout::GENERAL,
+            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+        );
+        destination.transition(
+            command,
+            vk::ImageLayout::GENERAL,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+        );
+        let layers = |base_array_layer| {
+            vk::ImageSubresourceLayers::default()
+                .aspect_mask(vk::ImageAspectFlags::COLOR)
+                .base_array_layer(base_array_layer)
+                .layer_count(copy.extent[2])
+        };
+        unsafe {
+            self.device.cmd_copy_image(
+                command,
+                self.image,
+                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                destination.image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &[vk::ImageCopy::default()
+                    .src_subresource(layers(copy.source_origin[2]))
+                    .dst_subresource(layers(copy.destination_origin[2]))
+                    .src_offset(vk::Offset3D {
+                        x: copy.source_origin[0] as i32,
+                        y: copy.source_origin[1] as i32,
+                        z: 0,
+                    })
+                    .dst_offset(vk::Offset3D {
+                        x: copy.destination_origin[0] as i32,
+                        y: copy.destination_origin[1] as i32,
+                        z: 0,
+                    })
+                    .extent(vk::Extent3D {
+                        width: copy.extent[0],
+                        height: copy.extent[1],
+                        depth: 1,
+                    })],
+            );
+        }
+        self.transition(
+            command,
+            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+            vk::ImageLayout::GENERAL,
+        );
+        destination.transition(
+            command,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            vk::ImageLayout::GENERAL,
+        );
+    }
+}

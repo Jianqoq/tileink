@@ -79,7 +79,35 @@ impl Frame {
             let mut states = vec![D3D12_RESOURCE_STATE_COPY_DEST; gpu.len()];
             let mut tables =
                 super::compute_tables::Tables::new(device, &frame.list, batch.passes())?;
-            for pass in batch.passes() {
+            for command in batch.commands() {
+                let pass = match command {
+                    crate::native::runtime::compute::Command::Dispatch(index) => {
+                        &batch.passes()[*index]
+                    }
+                    crate::native::runtime::compute::Command::CopyTexture(copy) => {
+                        for (id, state) in [
+                            (copy.source.index(), D3D12_RESOURCE_STATE_COPY_SOURCE),
+                            (copy.destination.index(), D3D12_RESOURCE_STATE_COPY_DEST),
+                        ] {
+                            if states[id] != state {
+                                buffer::transition(
+                                    &frame.list,
+                                    gpu[id].as_ref().unwrap(),
+                                    states[id],
+                                    state,
+                                );
+                                states[id] = state;
+                            }
+                        }
+                        super::compute_copy::record(
+                            &frame.list,
+                            gpu[copy.source.index()].as_ref().unwrap(),
+                            gpu[copy.destination.index()].as_ref().unwrap(),
+                            copy,
+                        );
+                        continue;
+                    }
+                };
                 let pipeline = &pipelines[pass.shader.entry];
                 frame._pipelines.push(pipeline.clone());
                 frame.list.SetComputeRootSignature(&pipeline.signature);

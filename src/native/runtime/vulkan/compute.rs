@@ -283,7 +283,21 @@ impl Frame {
                     | vk::AccessFlags::SHADER_WRITE
                     | vk::AccessFlags::UNIFORM_READ,
             );
-            for (index, pass) in batch.passes().iter().enumerate() {
+            for operation in batch.commands() {
+                let index = match operation {
+                    crate::native::runtime::compute::Command::Dispatch(index) => *index,
+                    crate::native::runtime::compute::Command::CopyTexture(copy) => {
+                        let GpuResource::Image(source) = &gpu[copy.source.index()] else {
+                            unreachable!("validated copy image")
+                        };
+                        let GpuResource::Image(destination) = &gpu[copy.destination.index()] else {
+                            unreachable!("validated copy image")
+                        };
+                        source.copy_to(command, destination, copy);
+                        continue;
+                    }
+                };
+                let pass = &batch.passes()[index];
                 let pipeline = &pipelines[pass.shader.entry];
                 let set = device.allocate_descriptor_sets(
                     &vk::DescriptorSetAllocateInfo::default()

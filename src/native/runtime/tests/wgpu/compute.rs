@@ -46,7 +46,46 @@ impl Reference {
             })
             .collect();
         let mut encoder = self.device.create_command_encoder(&Default::default());
-        for stage in batch.passes() {
+        for command in batch.commands() {
+            let stage = match command {
+                crate::native::runtime::compute::Command::Dispatch(index) => {
+                    &batch.passes()[*index]
+                }
+                crate::native::runtime::compute::Command::CopyTexture(copy) => {
+                    let GpuResource::Texture(source, _) = &resources[copy.source.index()] else {
+                        unreachable!("validated copy image")
+                    };
+                    let GpuResource::Texture(destination, _) = &resources[copy.destination.index()]
+                    else {
+                        unreachable!("validated copy image")
+                    };
+                    let origin = |xyz: [u32; 3]| wgpu::Origin3d {
+                        x: xyz[0],
+                        y: xyz[1],
+                        z: xyz[2],
+                    };
+                    encoder.copy_texture_to_texture(
+                        wgpu::TexelCopyTextureInfo {
+                            texture: source,
+                            mip_level: 0,
+                            origin: origin(copy.source_origin),
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        wgpu::TexelCopyTextureInfo {
+                            texture: destination,
+                            mip_level: 0,
+                            origin: origin(copy.destination_origin),
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        wgpu::Extent3d {
+                            width: copy.extent[0],
+                            height: copy.extent[1],
+                            depth_or_array_layers: copy.extent[2],
+                        },
+                    );
+                    continue;
+                }
+            };
             let fine_portable =
                 stage.shader.entry == "fine_tile_main" && fine.is_some_and(|v| v.portable);
             let helper_source;

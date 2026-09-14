@@ -26,6 +26,7 @@ pub struct ComputeBatch {
     owner: u64,
     resources: Vec<Resource>,
     passes: Vec<Pass>,
+    commands: Vec<Command>,
     outputs: Vec<ResourceId>,
 }
 impl ComputeBatch {
@@ -37,6 +38,7 @@ impl ComputeBatch {
             owner,
             resources: Vec::new(),
             passes: Vec::new(),
+            commands: Vec::new(),
             outputs: Vec::new(),
         }
     }
@@ -190,6 +192,7 @@ impl ComputeBatch {
         if grid.contains(&0) {
             return Ok(());
         }
+        self.commands.push(Command::Dispatch(self.passes.len()));
         self.passes.push(Pass {
             shader,
             bindings: ordered,
@@ -225,3 +228,7 @@ impl ComputeBatch {
 #[cfg(test)]
 #[path = "tests/compute.rs"]
 mod tests;
+
+#[path = "compute/copy.rs"]
+mod copy;
+pub use copy::{Command, TextureCopy};

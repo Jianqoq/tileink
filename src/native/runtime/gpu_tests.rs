@@ -260,3 +260,6 @@ mod scene_scan;
 
 #[path = "tests/scene_coarse_gpu.rs"]
 mod scene_coarse;
+
+#[path = "tests/texture_copy_gpu.rs"]
+mod texture_copy;

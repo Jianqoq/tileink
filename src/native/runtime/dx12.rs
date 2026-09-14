@@ -276,3 +276,5 @@ mod compute_texture;
 
 #[path = "dx12/compute_tables.rs"]
 mod compute_tables;
+
+mod compute_copy;

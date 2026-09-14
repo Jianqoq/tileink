@@ -1927,3 +1927,16 @@ native-only and full SVG/examples pass, with only the approved PNG delta. See
 [scene layers](docs/native/m4-scene-layers.md). M4 remains incomplete: full frame/
 effect/vector orchestration, GPU resource/submission integration and complete
 immediate four-renderer acceptance remain. No performance comparison was run.
+
+## M4 ordered GPU texture copies — 2026-09-14
+
+ComputeBatch now interleaves texture copies and dispatches in recording order.
+DX12/Vulkan implement native resource-state transitions; the independent wgpu
+reference follows the same explicit command ordering. Four-API tests cover pure
+copies, array layers/subrectangles and compute/transfer interleaving with exact
+raw bytes (2 tests, 2.53 seconds). Release (1,022), integration, lint, native-only,
+full SVG/examples and PNG review pass; only the approved turbulence PNG differs.
+Both reviews are closed. See [texture transfers](docs/native/m4-texture-copy.md).
+M4 remains incomplete: full frame/vector/effect assembly, remaining resource/
+submission integration and complete immediate four-renderer acceptance remain.
+No performance comparison was run.
