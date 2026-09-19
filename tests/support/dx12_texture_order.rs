@@ -1,3 +1,6 @@
+#[path = "../../src/wgpu/texture_order.rs"]
+mod texture_order;
+
 use wgpu::util::DeviceExt;
 
 const SIZE: u32 = 64;
@@ -115,6 +118,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         let mut encoder = self.device.create_command_encoder(&Default::default());
         for _ in 0..pairs {
             for binding in &self.bindings {
+                texture_order::prepare_write(&mut encoder, &self.texture);
                 let mut pass = encoder.begin_compute_pass(&Default::default());
                 pass.set_pipeline(&self.pipeline);
                 pass.set_bind_group(0, binding, &[]);
@@ -125,7 +129,32 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 
     pub fn assert_cleared(&self, pairs: u32, frame: u32) {
-        let mut encoder = self.encode(pairs);
+        self.check_readback(self.encode(pairs), pairs, frame);
+    }
+
+    pub fn assert_split_submissions_cleared(&self, frame: u32) {
+        for _ in 0..64 {
+            for binding in &self.bindings {
+                let mut encoder = self.device.create_command_encoder(&Default::default());
+                texture_order::prepare_write(&mut encoder, &self.texture);
+                {
+                    let mut pass = encoder.begin_compute_pass(&Default::default());
+                    pass.set_pipeline(&self.pipeline);
+                    pass.set_bind_group(0, binding, &[]);
+                    pass.dispatch_workgroups(SIZE / 16, SIZE / 16, 1);
+                }
+                self.queue.submit([encoder.finish()]);
+            }
+        }
+        // No writes, readbacks or CPU waits between these separately submitted colors.
+        self.check_readback(
+            self.device.create_command_encoder(&Default::default()),
+            64,
+            frame,
+        );
+    }
+
+    fn check_readback(&self, mut encoder: wgpu::CommandEncoder, pairs: u32, frame: u32) {
         let readback = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("write-only ordering readback"),
             size: u64::from(ROW_BYTES * SIZE),

@@ -105,8 +105,8 @@ remain in the suite. Experiment results are retained in
   DX12/Vulkan LUID `bf3f010000000000`.
 - Drivers: DX12 `32.0.16.1062`, Vulkan NVIDIA `610.62`.
 - DXC: Windows SDK 10.0.26100.0 x64, `dxcompiler.dll` version `1.8.2502.11`.
-- WGPU 30.0.1, maintained HAL 30.0.0 at `vendor/wgpu-hal`.
-  [Shared HAL maintenance](WGPU_PATCHES.md) describes provenance and consumers.
+- WGPU 30.0.1 with upstream crates.io HAL 30.0.1; no vendor copy or root patch.
+  [Upstream backend](WGPU_BACKEND.md) documents DX12 command-boundary ordering.
 
 In M0, four routes mean **WGPU DX12/Vulkan × native/portable texture execution**.
 They do not mean the future four native/WGPU API implementations. Native feature

@@ -212,6 +212,7 @@ struct FilterKernel {
     resources: u32,
     shared_workgroups: bool,
     portable_textures: bool,
+    order_write_only: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -1865,6 +1866,9 @@ impl WgpuFilterPipeline {
         let gpu_scope = start_gpu_scope(commands.device(), profile_name);
         let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
         let encoder = commands.encoder();
+        if kernel.order_write_only {
+            super::texture_order::prepare_write(encoder, target.texture());
+        }
         {
             let mut pass = encoder.begin_compute_pass(&::wgpu::ComputePassDescriptor {
                 label: Some(profile_name),
@@ -2452,6 +2456,8 @@ fn create_filter_kernel(
         resources,
         shared_workgroups,
         portable_textures,
+        order_write_only: portable_textures
+            && device.adapter_info().backend == ::wgpu::Backend::Dx12,
     }
 }
 

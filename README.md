@@ -26,9 +26,9 @@ images with exact six-route parity on the recorded GPU/driver. Native retained r
 host device/target interop are documented in [M5](docs/native/m5-implementation.md).
 Metal hardware verification is deferred.
 
-This repository maintains a [shared wgpu HAL patch](WGPU_PATCHES.md), including DX12
-write-only texture synchronization. Cargo patches are not transitive: consumers must select
-it in their own root workspace to receive the fix.
+This repository uses [upstream wgpu](WGPU_BACKEND.md), without a vendored HAL or
+consumer Cargo patches. DX12 write-only texture ordering is handled at Tileink's
+command boundary through wgpu's public synchronization API.
 
 > [!IMPORTANT]
 > Tileink is an early-stage project. The public API, rendering behavior, and performance profile

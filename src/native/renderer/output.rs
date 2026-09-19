@@ -62,10 +62,11 @@ impl<'a> OutputRoute<'a> {
             }
         }
         let copy = output.filter(|target| {
-            matches!(target.history, History::Transient)
-                || target.origin != [0; 2]
-                || target.texture.size() != size
+            matches!(target.history, History::Transient) || target.origin != [0; 2]
         });
+        // A persistent target may have spare capacity. Kernels use the logical
+        // canvas bounds, so its top-left rectangle can be rendered directly;
+        // allocating an exact-sized intermediate would defeat resize reuse.
         let owns_target = output.is_none() || copy.is_some();
         let render_target = if owns_target {
             match &renderer.target {

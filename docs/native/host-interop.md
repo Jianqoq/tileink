@@ -63,7 +63,9 @@ continued context reuse; it does not publish successful history.
 - `From<&NativeTexture>` tracks one persistent allocation and its accepted write
   version. Same-sized output can be rendered directly without a root copy.
 - `persistent(texture, ExternalTextureHistoryId)` additionally tracks the host's
-  explicit content/history identity. Changing it invalidates retained history.
+  explicit content/history identity. At origin zero, a larger-capacity target is
+  rendered directly within the logical canvas bounds without an intermediate copy;
+  spare pixels remain unchanged. Changing it invalidates retained history.
 - `transient(texture)` uses renderer-owned history and copies the completed frame
   to the output. Rotating swapchain images cannot inherit unrelated old pixels.
 - `with_origin(x,y)` writes a validated subrectangle and preserves pixels outside

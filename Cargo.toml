@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["vendor/wgpu-hal"]
+members = []
 
 [package]
 name = "tileink"
@@ -28,7 +28,7 @@ include = [
     "/Cargo.toml",
     "/Cargo.lock",
     "/README.md",
-    "/WGPU_PATCHES.md",
+    "/WGPU_BACKEND.md",
     "/CHANGELOG.md",
     "/LICENSE-MIT",
     "/LICENSE-APACHE",
@@ -94,6 +94,16 @@ serde_json = "1"
 winit = "0.30"
 criterion = "0.8.2"
 sha2 = "0.11.0"
+
+[[bench]]
+name = "native_target_capacity_dx12"
+required-features = ["dx12"]
+harness = false
+
+[[bench]]
+name = "native_target_capacity_vulkan"
+required-features = ["vulkan"]
+harness = false
 
 [[bench]]
 name = "retained_scale"
@@ -272,9 +282,6 @@ name = "pattern_sampling"
 required-features = ["wgpu"]
 harness = false
 
-# Shared maintained backend; see WGPU_PATCHES.md.
-[patch.crates-io]
-wgpu-hal = { path = "vendor/wgpu-hal" }
 
 [[bench]]
 name = "dx12_texture_order"

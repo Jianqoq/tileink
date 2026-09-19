@@ -10,6 +10,7 @@ fn write_only_texture_dispatches_preserve_submission_order() {
     // Reuse the resource across submissions; automatic first-use initialization
     // can hide the missing same-state barrier on the very first frame.
     for frame in 0..16 {
+        writes.assert_split_submissions_cleared(frame);
         for pairs in [1, 8] {
             // Readback changes the texture to COPY_SOURCE. Keep it in UAV state
             // across normal submissions before checking: readback after every

@@ -84,3 +84,19 @@ fn invalid_surface_contexts_fail_without_changing_live_slots() -> Result<()> {
     assert!(targets.take(RenderTargetId::Scratch(99)).is_err());
     Ok(())
 }
+
+#[test]
+fn capacity_target_keeps_logical_scratch_extent_and_rejects_invalid_bounds() {
+    let mut batch = ComputeBatch::new();
+    let image = batch.texture_rgba8([24, 20], vec![0; 24 * 20 * 4]).unwrap();
+    let mut targets = Targets::from_image(&batch, image, [17, 13]).unwrap();
+    assert_eq!(targets.size(), (17, 13));
+    let scratch = targets.acquire(&mut batch).unwrap();
+    assert_eq!(targets.get(scratch).unwrap().size, [17, 13]);
+    for size in [[25, 13], [17, 21], [0, 13], [17, 0]] {
+        assert!(
+            Targets::from_image(&batch, image, size).is_err(),
+            "{size:?}"
+        );
+    }
+}

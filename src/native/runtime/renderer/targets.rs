@@ -90,8 +90,13 @@ impl Targets {
         else {
             return Err("native frame target must be a texture".into());
         };
-        if texture.size != size || texture.array || texture.layers != 1 {
-            return Err("native frame target dimensions differ from canvas".into());
+        if size.contains(&0)
+            || texture.size[0] < size[0]
+            || texture.size[1] < size[1]
+            || texture.array
+            || texture.layers != 1
+        {
+            return Err("native frame target cannot contain the canvas".into());
         }
         Ok(Self {
             main: Surface {

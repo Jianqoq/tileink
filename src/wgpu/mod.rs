@@ -33,3 +33,5 @@ pub use filter::FilterCompilationBenchmark;
 #[cfg(test)]
 #[path = "../../examples/common/benchmark_gpu.rs"]
 pub(crate) mod test_gpu;
+
+mod texture_order;

@@ -35,6 +35,7 @@ pub(crate) struct WgpuFinePipeline {
     config_size: ::wgpu::BufferAddress,
     config_stride: ::wgpu::BufferAddress,
     portable_textures: bool,
+    order_write_only: bool,
     max_dispatch_workgroups: u32,
     large_texture_table_len: u32,
     image_bind_group_cache:
@@ -95,6 +96,8 @@ impl WgpuFinePipeline {
             config_size,
             config_stride,
             portable_textures,
+            order_write_only: portable_textures
+                && device.adapter_info().backend == ::wgpu::Backend::Dx12,
             max_dispatch_workgroups: device.limits().max_compute_workgroups_per_dimension,
             large_texture_table_len,
             image_bind_group_cache: std::sync::Mutex::new(None),
@@ -255,6 +258,9 @@ impl WgpuFinePipeline {
         let gpu_scope = start_gpu_scope(&device, "fine");
         let timestamp_writes = gpu_scope.as_ref().map(|scope| scope.timestamp_writes());
         let encoder = commands.encoder();
+        if self.order_write_only {
+            super::texture_order::prepare_write(encoder, target.texture());
+        }
         let mut pass = encoder.begin_compute_pass(&::wgpu::ComputePassDescriptor {
             label: Some("tileink wgpu tile fine pass"),
             timestamp_writes,
