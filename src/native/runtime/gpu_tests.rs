@@ -269,3 +269,6 @@ mod scene_vector;
 
 #[path = "tests/frame_groups_gpu.rs"]
 mod frame_groups;
+
+#[path = "tests/frame_filters_gpu.rs"]
+mod frame_filters;

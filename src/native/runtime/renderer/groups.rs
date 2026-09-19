@@ -28,11 +28,10 @@ impl GroupAdapter for Execution<'_> {
             return Ok(());
         };
         config.draw_ix = draw;
-        self.scene.filter_geometry().mask(
-            self.batch,
-            config,
-            None,
-            self.targets.get(target)?.image(),
-        )
+        self.scene
+            .as_ref()
+            .ok_or("native scene has not been scanned")?
+            .filter_geometry()
+            .mask(self.batch, config, None, self.targets.get(target)?.image())
     }
 }

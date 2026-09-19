@@ -56,7 +56,12 @@ fn filter_tile_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
     let sx = source_x0 + (xy.x + source_width - (source_x0 % source_width)) % source_width;
     let sy = source_y0 + (xy.y + source_height - (source_y0 % source_height)) % source_height;
-    target_store_at(xy.x, xy.y, source_pixel_at(sx, sy));
+    // Pooled textures can exceed the logical surface. Their padding is not input.
+    var pixel = 0u;
+    if (sx < config.width && sy < config.height) {
+        pixel = source_pixel_at(sx, sy);
+    }
+    target_store_at(xy.x, xy.y, pixel);
 }
 
 @compute @workgroup_size(FILTER_WORKGROUP_SIZE)

@@ -1972,3 +1972,18 @@ pass; only the already approved turbulence delta remains. Reviews are closed. Se
 full filter/backdrop/text and public frame assembly, remaining GPU resource and
 submission integration, and complete four-renderer immediate acceptance remain.
 No performance comparison was run.
+
+## M4 native frame filters and backdrops — 2026-09-19
+
+Shared recursive layer/filter scheduling now records all native filter kernels,
+including localized nested filter tables, brush images, lighting and backdrops.
+Explicit scene plans invalidate stale Canvas fingerprints. Tile inputs clamp to
+logical dimensions in both shader implementations, preventing pooled padding reads.
+Twenty-one complete Canvas cases pass exact four-API comparisons across all fine/
+filter variants. Two independent tile boundary/padding GPU regressions also pass.
+Release (1,035), integrations, strict lint, native-only, full SVG/examples and PNG
+comparison pass; only the approved turbulence difference remains. Both reviews
+are closed. See [frame filters](docs/native/m4-frame-filters.md).
+M4 remains incomplete: text/public frame preparation, pooled uniform/submission
+integration and complete immediate four-renderer acceptance remain. No performance
+comparison was run.

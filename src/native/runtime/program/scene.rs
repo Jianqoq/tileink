@@ -70,6 +70,44 @@ impl SceneCache {
         limit: u32,
     ) -> Result<Scene> {
         let prepared = self.preparation.prepare_plan(canvas, &mut self.plan);
+        self.record_prepared(batch, canvas, text, images, limit, prepared)
+    }
+
+    // Localized plans carry remapped physical indices. Compiling the Canvas again
+    // would sever that association and select unrelated draws or filter resources.
+    /// # Safety
+    /// The plan must be compiled for this Canvas or returned with it by the
+    /// shared localizer; its physical draw/path/layer indices must remain paired.
+    pub(crate) unsafe fn record_with_plan(
+        &mut self,
+        batch: &mut ComputeBatch,
+        canvas: &Canvas,
+        text: Option<&PreparedTextData>,
+        images: Option<&GpuImageResourceUpload>,
+        limit: u32,
+        plan: Rc<ExecPlan>,
+    ) -> Result<Scene> {
+        // Root cause: explicit local metadata has no Canvas fingerprint. Retaining
+        // the previous fingerprint would reuse this plan for an unrelated root.
+        self.preparation = ScenePreparation::default();
+        let prepared = crate::render::prepare::PreparedPlan {
+            stack_depths: crate::shared::gpu_plan::plan_stack_depths(&plan),
+            plan,
+            reused_metadata: false,
+            upload_filters: true,
+        };
+        self.record_prepared(batch, canvas, text, images, limit, prepared)
+    }
+
+    fn record_prepared(
+        &mut self,
+        batch: &mut ComputeBatch,
+        canvas: &Canvas,
+        text: Option<&PreparedTextData>,
+        images: Option<&GpuImageResourceUpload>,
+        limit: u32,
+        prepared: crate::render::prepare::PreparedPlan,
+    ) -> Result<Scene> {
         let (scan, lengths) = PreparedScan::for_scene(canvas, &mut self.staging, text, &prepared);
         let work_words = validate_work_layout(lengths)?;
         let scan = scene_scan::encode_scene(batch, &scan, limit)?;
@@ -197,6 +235,10 @@ impl SceneCache {
 }
 
 impl Scene {
+    pub(crate) fn plan_handle(&self) -> Rc<ExecPlan> {
+        self.plan.clone()
+    }
+
     pub(crate) fn plan(&self) -> &ExecPlan {
         &self.plan
     }

@@ -16,6 +16,7 @@ pub(super) struct ReadBindings<'a> {
     pub textures: &'a [(u32, ResourceId)],
     pub texture_extent: [u32; 2],
     pub buffers: &'a [(u32, ResourceId)],
+    pub images: Option<&'a crate::native::runtime::program::scene::SceneImages>,
 }
 impl<'a> ReadBindings<'a> {
     pub fn textures(textures: &'a [(u32, ResourceId)], extent: [u32; 2]) -> Self {
@@ -23,6 +24,7 @@ impl<'a> ReadBindings<'a> {
             textures,
             texture_extent: extent,
             buffers: &[],
+            images: None,
         }
     }
 }
@@ -46,6 +48,19 @@ pub(super) fn record(
         batch.size(*id)?;
         if !matches!(&batch.resources()[id.index()], Resource::Buffer(_)) {
             return Err("filter table binding requires a buffer".into());
+        }
+    }
+    if let Some(images) = reads.images {
+        for id in [images.atlas, images.table, images.sampler] {
+            batch.size(id)?;
+        }
+        if let Resource::TextureTable(textures) = &batch.resources()[images.table.index()]
+            && textures.contains(&target)
+        {
+            return Err("filter image table aliases destination".into());
+        }
+        if images.atlas == target {
+            return Err("filter atlas aliases destination".into());
         }
     }
     if reads.textures.iter().any(|(_, id)| *id == target) {
@@ -137,6 +152,9 @@ pub(super) fn record(
     let mut bindings = vec![(0, uniform), (3, target), (8, active)];
     bindings.extend_from_slice(reads.textures);
     bindings.extend_from_slice(reads.buffers);
+    if let Some(images) = reads.images {
+        bindings.extend([(12, images.atlas), (13, images.sampler), (30, images.table)]);
+    }
     // SAFETY: region/source bounds are checked above; each stage validates its table addresses. Distinct textures,
     // unique tiles and injective offset translation give every written pixel exactly one owner.
     unsafe { batch.dispatch(entry, &bindings, [config.dispatch_width, rows, 1]) }

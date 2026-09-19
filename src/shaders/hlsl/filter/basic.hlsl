@@ -34,11 +34,16 @@ void filter_source_alpha_region(uint3 gid:SV_DispatchThreadID) {
 void filter_tile_region(uint3 gid:SV_DispatchThreadID) {
     uint2 xy;
     if (!filter_position(config, active_tiles, gid, xy)) return;
-    uint2 origin = uint2(config.rect_x0, config.rect_y0);
-    uint2 size = uint2(config.rect_x1, config.rect_y1) - origin;
+    // Localized cells can extend outside the surface. Match WGSL's saturating
+    // float-to-u32 conversion explicitly; an out-of-domain texel is transparent.
+    uint2 origin = uint2(max(float2(config.rect_x0, config.rect_y0), 0.0));
+    uint2 size = uint2(max(float2(config.rect_x1, config.rect_y1), 0.0)) - origin;
     if (any(size == 0u)) return;
     uint2 source_xy = origin + (xy + size - origin % size) % size;
-    target_texture[xy] = source_texture.Load(int3(source_xy,0));
+    float4 pixel = 0;
+    if (source_xy.x < config.width && source_xy.y < config.height)
+        pixel = source_texture.Load(int3(source_xy,0));
+    target_texture[xy] = pixel;
 }
 
 [numthreads(FILTER_WORKGROUP_SIZE,1,1)]

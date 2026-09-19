@@ -50,7 +50,7 @@ fn basic_filter_encoder_rejects_invalid_regions_tiles_aliases_and_coordinates() 
             ..valid
         },
         FilterConfig {
-            rect_y1: 20.0,
+            rect_y1: f32::MAX,
             ..valid
         },
         FilterConfig {
@@ -365,6 +365,141 @@ fn four_api_basic_filters_match_all_production_variants_and_cpu_pixels() -> Resu
                     Some(variant),
                 )?;
             }
+        }
+    }
+    routes.validate()
+}
+#[test]
+fn tile_filter_accepts_cells_crossing_the_local_surface_boundary() -> Result<()> {
+    let mut batch = ComputeBatch::new();
+    let source = batch.texture_rgba8([17, 19], vec![0; 17 * 19 * 4])?;
+    let target = batch.texture_rgba8([17, 19], vec![0; 17 * 19 * 4])?;
+    filter::encode(
+        &mut batch,
+        BasicFilter::Tile,
+        FilterConfig {
+            rect_x0: -3.0,
+            rect_y0: -2.0,
+            rect_x1: 20.0,
+            rect_y1: 22.0,
+            ..config(17, 19)
+        },
+        None,
+        Some(source),
+        target,
+    )?;
+    assert_eq!(batch.passes().len(), 1);
+    Ok(())
+}
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn four_api_tile_cells_outside_local_surface_match_zero_reads() -> Result<()> {
+    let routes = super::fine_fixture::routes()?;
+    let mut batch = ComputeBatch::new();
+    let source: Vec<u8> = (0..20u8).flat_map(|i| [i * 7, i * 3, i * 5, 255]).collect();
+    let input = batch.texture_rgba8([5, 4], source.clone())?;
+    let mut expected = Vec::new();
+    for rect in [
+        [-2.0, -1.0, 7.0, 5.0],
+        [3.0, 2.0, 7.0, 6.0],
+        [-8.0, -7.0, -1.0, -2.0],
+        [6.0, 5.0, 8.0, 7.0],
+    ] {
+        let target = batch.texture_rgba8([5, 4], vec![0x39; 80])?;
+        let c = FilterConfig {
+            rect_x0: rect[0],
+            rect_y0: rect[1],
+            rect_x1: rect[2],
+            rect_y1: rect[3],
+            ..config(5, 4)
+        };
+        filter::encode(&mut batch, BasicFilter::Tile, c, None, Some(input), target)?;
+        let mut pixels = vec![0x39; 80];
+        let [left, top, right, bottom] = rect.map(|v| v.max(0.0) as i32);
+        if right > left && bottom > top {
+            for y in 0..4i32 {
+                for x in 0..5i32 {
+                    let sx = left + (x - left).rem_euclid(right - left);
+                    let sy = top + (y - top).rem_euclid(bottom - top);
+                    let pixel = if (0..5).contains(&sx) && (0..4).contains(&sy) {
+                        &source[((sy * 5 + sx) * 4) as usize..((sy * 5 + sx) * 4 + 4) as usize]
+                    } else {
+                        &[0, 0, 0, 0]
+                    };
+                    let i = ((y * 5 + x) * 4) as usize;
+                    pixels[i..i + 4].copy_from_slice(pixel);
+                }
+            }
+        }
+        batch.readback(target)?;
+        expected.push(pixels);
+    }
+    for portable in [false, true] {
+        for texture_table in [false, true] {
+            routes.check_variant(
+                &batch,
+                &expected,
+                "tile cells outside logical surface",
+                Some(FilterVariant {
+                    portable,
+                    texture_table,
+                }),
+            )?;
+        }
+    }
+    routes.validate()
+}
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn four_api_tile_cells_do_not_read_pooled_padding() -> Result<()> {
+    let routes = super::fine_fixture::routes()?;
+    let mut batch = ComputeBatch::new();
+    let pixels: Vec<_> = (0..5)
+        .flat_map(|y| {
+            (0..6).flat_map(move |x| {
+                if x < 5 && y < 4 {
+                    [33, 33, 33, 255]
+                } else {
+                    [231, 231, 231, 255]
+                }
+            })
+        })
+        .collect();
+    let source = batch.texture_rgba8([6, 5], pixels)?;
+    let target = batch.texture_rgba8([5, 4], vec![0; 80])?;
+    let c = FilterConfig {
+        rect_x0: 3.0,
+        rect_y0: 2.0,
+        rect_x1: 7.0,
+        rect_y1: 6.0,
+        ..config(5, 4)
+    };
+    filter::encode(&mut batch, BasicFilter::Tile, c, None, Some(source), target)?;
+    batch.readback(target)?;
+    let expected: Vec<_> = (0..4i32)
+        .flat_map(|y| {
+            (0..5i32).flat_map(move |x| {
+                let sx = 3 + (x - 3).rem_euclid(4);
+                let sy = 2 + (y - 2).rem_euclid(4);
+                if sx < 5 && sy < 4 {
+                    [33, 33, 33, 255]
+                } else {
+                    [0, 0, 0, 0]
+                }
+            })
+        })
+        .collect();
+    for portable in [false, true] {
+        for texture_table in [false, true] {
+            routes.check_variant(
+                &batch,
+                std::slice::from_ref(&expected),
+                "tile cell must not expose pooled texture padding",
+                Some(FilterVariant {
+                    portable,
+                    texture_table,
+                }),
+            )?;
         }
     }
     routes.validate()

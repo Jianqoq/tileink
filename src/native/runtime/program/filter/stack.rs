@@ -140,6 +140,7 @@ impl Stack {
             config,
             tiles,
             region::ReadBindings {
+                images: None,
                 textures: &reads,
                 texture_extent: extent,
                 buffers: &buffers,

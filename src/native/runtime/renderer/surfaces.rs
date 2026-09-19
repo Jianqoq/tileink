@@ -23,21 +23,25 @@ impl Execution<'_> {
         if let Some(mode) = blend {
             config.blend_mode = mode.mix as u32 | ((mode.compose as u32) << 8);
         }
-        self.scene.filter_stack().encode(
-            self.batch,
-            if blend.is_some() {
-                Composite::Blend
-            } else {
-                Composite::Over
-            },
-            config,
-            None,
-            Textures {
-                source,
-                auxiliary: mask,
-                target,
-            },
-        )
+        self.scene
+            .as_ref()
+            .ok_or("native scene has not been scanned")?
+            .filter_stack()
+            .encode(
+                self.batch,
+                if blend.is_some() {
+                    Composite::Blend
+                } else {
+                    Composite::Over
+                },
+                config,
+                None,
+                Textures {
+                    source,
+                    auxiliary: mask,
+                    target,
+                },
+            )
     }
 }
 
@@ -47,7 +51,7 @@ impl SurfaceAdapter for Execution<'_> {
         self.targets.size()
     }
     fn origin(&self) -> (i32, i32) {
-        (0, 0)
+        self.origin
     }
     fn retained(&self) -> &RetainedRenderState<Surface> {
         &self.retained

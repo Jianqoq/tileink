@@ -18,6 +18,11 @@ use crate::{
 };
 use std::ops::Range;
 
+mod backdrops;
+mod filter_encoding;
+mod filter_kernels;
+mod filter_resources;
+mod filters;
 mod images;
 mod targets;
 pub(crate) use images::Images;
@@ -31,7 +36,10 @@ use targets::{Surface, Targets};
 /// stay associated through recursive operations; errors invalidate the whole batch.
 pub(crate) struct Execution<'a> {
     batch: &'a mut ComputeBatch,
-    scene: Scene,
+    scene: Option<Scene>,
+    pending_plan: Option<std::rc::Rc<crate::shared::execution::ExecPlan>>,
+    filters: filter_resources::FilterResources,
+    origin: (i32, i32),
     images: &'a Images<'a>,
     targets: Targets,
     paths: Option<path_mask::Paths>,
@@ -49,36 +57,12 @@ impl<'a> Execution<'a> {
         chunked: bool,
         limit: u32,
     ) -> Result<ResourceId> {
-        images.validate(batch)?;
-        let size = canvas.physical_size();
-        let targets = Targets::new(batch, [size.0, size.1])?;
-        let scene = cache.record(batch, canvas, None, Some(images.upload()), limit)?;
-        let paths = FilterPathUpload::from_plan(scene.plan());
-        let paths = if paths.range_starts.is_empty() {
-            None
-        } else {
-            let ranges: Vec<_> = paths
-                .range_starts
-                .iter()
-                .zip(&paths.range_ends)
-                .map(|(&start, &end)| start..end)
-                .collect();
-            let lines: Vec<_> = (0..paths.p0x.len())
-                .map(|i| [paths.p0x[i], paths.p0y[i], paths.p1x[i], paths.p1y[i]])
-                .collect();
-            Some(path_mask::upload(batch, &ranges, &lines)?)
-        };
-        let plan = scene.plan().clone();
-        let mut execution = Self {
-            batch,
-            scene,
-            images,
-            targets,
-            paths,
-            retained: RetainedRenderState::new(Default::default()),
-            chunked,
-            limit,
-        };
+        let mut execution = Self::prepare(cache, batch, canvas, images, chunked, limit)?;
+        let plan = execution
+            .scene
+            .as_ref()
+            .expect("prepared root scene")
+            .plan_handle();
         shared_operations::execute_ops(
             &mut execution,
             canvas,
@@ -89,6 +73,35 @@ impl<'a> Execution<'a> {
             None,
         )?;
         Ok(execution.targets.get(RenderTargetId::Main)?.image())
+    }
+
+    fn prepare(
+        cache: &mut SceneCache,
+        batch: &'a mut ComputeBatch,
+        canvas: &Canvas,
+        images: &'a Images<'a>,
+        chunked: bool,
+        limit: u32,
+    ) -> Result<Self> {
+        images.validate(batch)?;
+        let size = canvas.physical_size();
+        let targets = Targets::new(batch, [size.0, size.1])?;
+        let scene = cache.record(batch, canvas, None, Some(images.upload()), limit)?;
+        let filters = filter_resources::FilterResources::record(batch, scene.plan(), None, images)?;
+        let paths = prepare_paths(batch, scene.plan())?;
+        Ok(Self {
+            batch,
+            scene: Some(scene),
+            pending_plan: None,
+            filters,
+            origin: (0, 0),
+            images,
+            targets,
+            paths,
+            retained: RetainedRenderState::new(Default::default()),
+            chunked,
+            limit,
+        })
     }
 
     fn config(&self, bounds: Bounds) -> Option<FilterConfig> {
@@ -116,6 +129,8 @@ impl DrawBatchAdapter for Execution<'_> {
     }
     fn coarse(&mut self, batches: Range<u32>, layers: Range<u32>) -> Result<()> {
         self.scene
+            .as_ref()
+            .ok_or("native scene has not been scanned")?
             .encode_coarse(self.batch, batches, layers, self.chunked, self.limit)
     }
     fn fine(&mut self, target: RenderTargetId) -> Result<()> {
@@ -123,14 +138,17 @@ impl DrawBatchAdapter for Execution<'_> {
         // SAFETY: record owns the Scene/upload association, and the shared draw
         // scheduler records coarse immediately before this fine pass.
         unsafe {
-            self.scene.encode_fine(
-                self.batch,
-                target,
-                self.images.textures(),
-                0,
-                true,
-                self.limit,
-            )
+            self.scene
+                .as_ref()
+                .ok_or("native scene has not been scanned")?
+                .encode_fine(
+                    self.batch,
+                    target,
+                    self.images.textures(),
+                    0,
+                    true,
+                    self.limit,
+                )
         }
     }
 }
@@ -138,3 +156,23 @@ impl DrawBatchAdapter for Execution<'_> {
 #[cfg(test)]
 #[path = "tests/frame_execution.rs"]
 mod tests;
+
+fn prepare_paths(
+    batch: &mut ComputeBatch,
+    plan: &crate::shared::execution::ExecPlan,
+) -> Result<Option<path_mask::Paths>> {
+    let paths = FilterPathUpload::from_plan(plan);
+    if paths.range_starts.is_empty() {
+        return Ok(None);
+    }
+    let ranges: Vec<_> = paths
+        .range_starts
+        .iter()
+        .zip(&paths.range_ends)
+        .map(|(&start, &end)| start..end)
+        .collect();
+    let lines: Vec<_> = (0..paths.p0x.len())
+        .map(|i| [paths.p0x[i], paths.p0y[i], paths.p1x[i], paths.p1y[i]])
+        .collect();
+    Ok(Some(path_mask::upload(batch, &ranges, &lines)?))
+}

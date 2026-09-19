@@ -198,6 +198,7 @@ impl Geometry {
             config,
             tiles,
             region::ReadBindings {
+                images: None,
                 buffers: &self.bindings,
                 ..Default::default()
             },

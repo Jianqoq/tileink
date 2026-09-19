@@ -34,3 +34,12 @@ SPIR-V modules, shader header/editor/artifact checks and both reviews pass. No-D
 replay compiles zero pipelines. Full SVG/examples preserve all 3,471 PNG hashes.
 M4 remains incomplete at 51/179 production inventory entries; these are kernel
 checks, not native full-frame renderer acceptance.
+
+The frame-filter integration additionally accepts tile cells crossing the local
+surface boundary. HLSL now explicitly saturates negative floating endpoints before
+unsigned conversion, matching WGSL, and returns transparent texels outside the
+logical source. The host bounds positive endpoints and wrap arithmetic rather
+than requiring the entire cell inside the texture. This fixes rejection/undefined
+conversion after localization; it is not a fixture exception. A focused CPU test
+first reproduced the rejection; four-route tests cover negative, oversized, empty
+and wholly external cells against an independent integer pixel oracle.

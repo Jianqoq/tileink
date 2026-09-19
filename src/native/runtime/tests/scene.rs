@@ -206,3 +206,29 @@ fn scene_layer_bounds_follow_uploaded_records_not_replaced_metadata() -> Result<
     assert_eq!(batch.passes().len(), passes);
     Ok(())
 }
+#[test]
+fn explicit_scene_plan_does_not_poison_cached_canvas_metadata() -> Result<()> {
+    let mut cache = SceneCache::default();
+    let root = canvas(32, 32);
+    let a = cache.record(&mut ComputeBatch::new(), &root, None, None, 65535)?;
+    let mut local = canvas(32, 32);
+    local.push_rect(
+        peniko::kurbo::Rect::new(3.0, 3.0, 7.0, 7.0),
+        crate::Radius::ZERO,
+        peniko::Color::from_rgb8(255, 0, 0),
+    );
+    let plan = SceneCache::default()
+        .record(&mut ComputeBatch::new(), &local, None, None, 65535)?
+        .plan_handle();
+    // SAFETY: the plan above was compiled from the same unchanged Canvas.
+    unsafe {
+        cache.record_with_plan(&mut ComputeBatch::new(), &local, None, None, 65535, plan)?;
+    }
+    let b = cache.record(&mut ComputeBatch::new(), &root, None, None, 65535)?;
+    assert_eq!(
+        a.plan.draw_order.len(),
+        b.plan.draw_order.len(),
+        "local metadata must not be reused for the root Canvas"
+    );
+    Ok(())
+}

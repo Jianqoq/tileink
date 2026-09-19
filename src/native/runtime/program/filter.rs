@@ -85,6 +85,9 @@ pub fn encode(
     {
         return Err("nonfinite filter color matrix".into());
     }
+    // Localized tile cells may cross the surface boundary. Preserve their period;
+    // the shader saturates negative endpoints like WGSL and zeros out-of-domain reads.
+    // Signed-range endpoints also bound the wrapping sum to u32 without overflow.
     if kernel == BasicFilter::Tile {
         let rect = [
             config.rect_x0,
@@ -92,11 +95,11 @@ pub fn encode(
             config.rect_x1,
             config.rect_y1,
         ];
-        if rect.iter().any(|v| !v.is_finite() || *v < 0.0)
+        if rect
+            .iter()
+            .any(|v| !v.is_finite() || f64::from(*v) > f64::from(i32::MAX))
             || config.rect_x0 > config.rect_x1
             || config.rect_y0 > config.rect_y1
-            || f64::from(config.rect_x1) > f64::from(config.width)
-            || f64::from(config.rect_y1) > f64::from(config.height)
         {
             return Err("invalid filter tile source rectangle".into());
         }
@@ -150,3 +153,6 @@ pub mod stack;
 
 #[path = "filter/glass.rs"]
 pub mod glass;
+
+#[path = "filter/brush.rs"]
+pub(crate) mod brush;
