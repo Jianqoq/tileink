@@ -268,6 +268,7 @@ mod compute;
 mod compute_bindings;
 #[path = "dx12/compute_pipeline.rs"]
 mod compute_pipeline;
+mod compute_resources;
 #[path = "dx12/work.rs"]
 mod work;
 

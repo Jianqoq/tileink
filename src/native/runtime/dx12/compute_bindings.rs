@@ -9,6 +9,7 @@ pub(super) unsafe fn write(
     device: &ID3D12Device,
     binding: &Binding,
     resource: &ID3D12Resource,
+    uniform_offset: u64,
     word_count: u32,
     handle: D3D12_CPU_DESCRIPTOR_HANDLE,
 ) {
@@ -60,7 +61,7 @@ pub(super) unsafe fn write(
             ),
             BindingKind::Uniform => device.CreateConstantBufferView(
                 Some(&D3D12_CONSTANT_BUFFER_VIEW_DESC {
-                    BufferLocation: resource.GetGPUVirtualAddress(),
+                    BufferLocation: resource.GetGPUVirtualAddress() + uniform_offset,
                     SizeInBytes: binding
                         .size
                         .div_ceil(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT)

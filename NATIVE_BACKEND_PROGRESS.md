@@ -2000,3 +2000,16 @@ full SVG/examples and PNG checks pass, with only the approved turbulence delta.
 Reviews closed. See [frame text](docs/native/m4-frame-text.md). M4 remains incomplete:
 public renderer/frame assembly, pooled uniform/submission integration and complete
 immediate four-renderer SVG/example acceptance remain. No performance comparison.
+
+## M4 native uniform aggregation — 2026-09-19
+
+Both native APIs now share immutable-uniform classification and aligned packing.
+Storage aliases and explicit readbacks remain independent; all backing allocations
+stay owned through submission completion. DX12 allocation responsibilities are
+separate from command ordering. Focused four-API constants/readback and all three
+full-frame GPU suites pass (489.05s for filters, groups/masks and text). Release
+(1,039), integrations, strict lint, native-only, SVG/examples and PNG checks pass;
+only the approved turbulence difference remains. Both reviews closed. See
+[uniform aggregation](docs/native/m4-uniform-aggregation.md). No performance
+comparison was run. M4 still requires shared full-frame/public renderer assembly
+and complete immediate four-renderer SVG/example acceptance.

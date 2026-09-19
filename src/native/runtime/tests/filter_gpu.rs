@@ -504,3 +504,50 @@ fn four_api_tile_cells_do_not_read_pooled_padding() -> Result<()> {
     }
     routes.validate()
 }
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn four_api_packed_uniforms_preserve_distinct_dispatches_and_explicit_readback() -> Result<()> {
+    let routes = super::fine_fixture::routes()?;
+    let mut batch = ComputeBatch::new();
+    let sentinel = [23, 67, 109, 255];
+    let target = batch.texture_rgba8([3, 2], sentinel.repeat(6))?;
+    for (x, y, height) in [(0, 0, 2), (1, 0, 1), (2, 1, 1)] {
+        let c = FilterConfig {
+            region_x0: x,
+            region_y0: y,
+            region_width: 1,
+            region_height: height,
+            clear_color: 0,
+            ..config(3, 2)
+        };
+        filter::encode(&mut batch, BasicFilter::Clear, c, None, None, target)?;
+    }
+    let first = batch.passes()[0]
+        .bindings
+        .iter()
+        .find(|(binding, _)| binding.kind == crate::native::shaders::BindingKind::Uniform)
+        .unwrap()
+        .1;
+    let constants = batch.resources()[first.index()].bytes().to_vec();
+    batch.readback(target)?;
+    batch.readback(first)?;
+    let expected = vec![
+        [[0; 4], [0; 4], sentinel, [0; 4], sentinel, [0; 4]].concat(),
+        constants,
+    ];
+    for portable in [false, true] {
+        for texture_table in [false, true] {
+            routes.check_variant(
+                &batch,
+                &expected,
+                "packed constants and independent uniform readback",
+                Some(FilterVariant {
+                    portable,
+                    texture_table,
+                }),
+            )?;
+        }
+    }
+    routes.validate()
+}

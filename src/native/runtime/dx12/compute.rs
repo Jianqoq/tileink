@@ -31,52 +31,8 @@ impl Frame {
                 _pipelines: Vec::new(),
                 readbacks: Vec::new(),
             };
-            let mut gpu = Vec::new();
-            for input in batch.resources() {
-                if matches!(input, Resource::Sampler(_) | Resource::TextureTable(_)) {
-                    gpu.push(None);
-                    continue;
-                }
-                if let Resource::Texture(input) = input {
-                    let (texture, upload) = compute_texture::upload(device, &frame.list, input)?;
-                    frame._buffers.extend([texture.clone(), upload]);
-                    gpu.push(Some(texture));
-                    continue;
-                }
-                let size = input
-                    .bytes()
-                    .len()
-                    .div_ceil(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT as usize)
-                    * D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT as usize;
-                let resource = buffer::create(
-                    device,
-                    size,
-                    D3D12_HEAP_TYPE_DEFAULT,
-                    D3D12_RESOURCE_STATE_COMMON,
-                    D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-                    None,
-                )?;
-                let upload = buffer::create(
-                    device,
-                    input.bytes().len(),
-                    D3D12_HEAP_TYPE_UPLOAD,
-                    D3D12_RESOURCE_STATE_GENERIC_READ,
-                    D3D12_RESOURCE_FLAG_NONE,
-                    Some(input.bytes()),
-                )?;
-                buffer::transition(
-                    &frame.list,
-                    &resource,
-                    D3D12_RESOURCE_STATE_COMMON,
-                    D3D12_RESOURCE_STATE_COPY_DEST,
-                );
-                frame
-                    .list
-                    .CopyBufferRegion(&resource, 0, &upload, 0, input.bytes().len() as u64);
-                frame._buffers.extend([resource.clone(), upload]);
-                gpu.push(Some(resource));
-            }
-            let mut states = vec![D3D12_RESOURCE_STATE_COPY_DEST; gpu.len()];
+            let gpu = super::compute_resources::Resources::record(device, &frame.list, batch)?;
+            let mut states = vec![D3D12_RESOURCE_STATE_COPY_DEST; batch.resources().len()];
             let mut tables =
                 super::compute_tables::Tables::new(device, &frame.list, batch.passes())?;
             for command in batch.commands() {
@@ -90,19 +46,14 @@ impl Frame {
                             (copy.destination.index(), D3D12_RESOURCE_STATE_COPY_DEST),
                         ] {
                             if states[id] != state {
-                                buffer::transition(
-                                    &frame.list,
-                                    gpu[id].as_ref().unwrap(),
-                                    states[id],
-                                    state,
-                                );
+                                buffer::transition(&frame.list, gpu.get(id), states[id], state);
                                 states[id] = state;
                             }
                         }
                         super::compute_copy::record(
                             &frame.list,
-                            gpu[copy.source.index()].as_ref().unwrap(),
-                            gpu[copy.destination.index()].as_ref().unwrap(),
+                            gpu.get(copy.source.index()),
+                            gpu.get(copy.destination.index()),
                             copy,
                         );
                         continue;
@@ -114,7 +65,11 @@ impl Frame {
                 frame.list.SetPipelineState(&pipeline.state);
                 for (id, state) in super::compute_bindings::required_states(pass, batch.resources())
                 {
-                    let resource = gpu[id].as_ref().unwrap();
+                    // Upload heaps stay in GENERIC_READ; packed constants are immutable.
+                    if gpu.uniform_offset(id).is_some() {
+                        continue;
+                    }
+                    let resource = gpu.get(id);
                     if states[id] != state {
                         buffer::transition(&frame.list, resource, states[id], state);
                         states[id] = state;
@@ -141,7 +96,7 @@ impl Frame {
                     if states[id] != D3D12_RESOURCE_STATE_COPY_SOURCE {
                         buffer::transition(
                             &frame.list,
-                            gpu[id].as_ref().unwrap(),
+                            gpu.get(id),
                             states[id],
                             D3D12_RESOURCE_STATE_COPY_SOURCE,
                         );
@@ -150,7 +105,7 @@ impl Frame {
                     frame.readbacks.push(compute_texture::readback(
                         device,
                         &frame.list,
-                        gpu[id].as_ref().unwrap(),
+                        gpu.get(id),
                     )?);
                     continue;
                 }
@@ -165,21 +120,18 @@ impl Frame {
                 if states[id] != D3D12_RESOURCE_STATE_COPY_SOURCE {
                     buffer::transition(
                         &frame.list,
-                        gpu[id].as_ref().unwrap(),
+                        gpu.get(id),
                         states[id],
                         D3D12_RESOURCE_STATE_COPY_SOURCE,
                     );
                     states[id] = D3D12_RESOURCE_STATE_COPY_SOURCE;
                 }
-                frame.list.CopyBufferRegion(
-                    &readback,
-                    0,
-                    gpu[id].as_ref().unwrap(),
-                    0,
-                    size as u64,
-                );
+                frame
+                    .list
+                    .CopyBufferRegion(&readback, 0, gpu.get(id), 0, size as u64);
                 frame.readbacks.push(Readback::buffer(readback, size));
             }
+            frame._buffers = gpu.into_owners();
             frame.list.Close()?;
             Ok(frame)
         }

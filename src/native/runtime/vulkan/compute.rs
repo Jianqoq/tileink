@@ -40,6 +40,7 @@ pub struct Frame {
     readback: Option<Arena>,
     outputs: Vec<(usize, usize)>,
     readback_size: usize,
+    uniform_offsets: Vec<Option<u64>>,
 }
 impl Frame {
     pub fn record(
@@ -109,11 +110,21 @@ impl Frame {
             readback: None,
             outputs: Vec::new(),
             readback_size: 0,
+            uniform_offsets: Vec::new(),
         };
-        let mut upload = Vec::new();
+        let uniforms = crate::native::runtime::compute::uniforms::Uniforms::new(
+            batch,
+            usize::try_from(limits.min_uniform_buffer_offset_alignment.max(4))?,
+        )?;
+        this.uniform_offsets = uniforms.offsets;
+        let mut upload = uniforms.bytes;
         let mut source_offsets = Vec::new();
         let mut grids = Vec::new();
-        for buffer in batch.resources() {
+        for (index, buffer) in batch.resources().iter().enumerate() {
+            if let Some(offset) = this.uniform_offsets[index] {
+                source_offsets.push(offset);
+                continue;
+            }
             source_offsets.push(upload.len() as u64);
             upload.extend_from_slice(buffer.bytes());
         }
@@ -137,13 +148,28 @@ impl Frame {
                 .ok_or("native readback size overflow")?;
         }
         let host = vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT;
+        if !upload.is_empty() {
+            let arena = Arena::new(
+                device,
+                memory,
+                &[upload.len() as u64],
+                vk::BufferUsageFlags::TRANSFER_SRC | vk::BufferUsageFlags::UNIFORM_BUFFER,
+                host,
+            )?;
+            arena.write(&upload)?;
+            this.upload = Some(arena);
+        }
         this.gpu = Some(Arena::new(
             device,
             memory,
             &batch
                 .resources()
                 .iter()
-                .filter_map(|b| {
+                .enumerate()
+                .filter_map(|(index, b)| {
+                    if this.uniform_offsets[index].is_some() {
+                        return None;
+                    }
                     if let Resource::Buffer(bytes) = b {
                         Some(bytes.len() as u64)
                     } else {
@@ -159,10 +185,16 @@ impl Frame {
         )?);
         let mut buffers = this.gpu.as_ref().unwrap().buffers.iter();
         let mut resource_device = None;
-        for resource in batch.resources() {
+        for (index, resource) in batch.resources().iter().enumerate() {
             this.resources.push(match resource {
                 Resource::TextureTable(_) => GpuResource::TextureTable,
-                Resource::Buffer(_) => GpuResource::Buffer(*buffers.next().unwrap()),
+                Resource::Buffer(_) => {
+                    GpuResource::Buffer(if this.uniform_offsets[index].is_some() {
+                        this.upload.as_ref().unwrap().buffers[0]
+                    } else {
+                        *buffers.next().unwrap()
+                    })
+                }
                 Resource::Sampler(filter) => {
                     let shared =
                         resource_device.get_or_insert_with(|| std::rc::Rc::new(device.clone()));
@@ -174,17 +206,6 @@ impl Frame {
                     GpuResource::Image(Image::new(shared, memory, texture)?)
                 }
             });
-        }
-        if !upload.is_empty() {
-            let arena = Arena::new(
-                device,
-                memory,
-                &[upload.len() as u64],
-                vk::BufferUsageFlags::TRANSFER_SRC | vk::BufferUsageFlags::UNIFORM_BUFFER,
-                host,
-            )?;
-            arena.write(&upload)?;
-            this.upload = Some(arena);
         }
         if this.readback_size != 0 {
             this.readback = Some(Arena::new(
@@ -251,7 +272,9 @@ impl Frame {
             device.begin_command_buffer(command, &vk::CommandBufferBeginInfo::default())?;
             let gpu = &this.resources;
             for (i, buffer) in batch.resources().iter().enumerate() {
-                if matches!(buffer, Resource::Sampler(_) | Resource::TextureTable(_)) {
+                if this.uniform_offsets[i].is_some()
+                    || matches!(buffer, Resource::Sampler(_) | Resource::TextureTable(_))
+                {
                     continue;
                 }
                 if let GpuResource::Image(image) = &gpu[i] {

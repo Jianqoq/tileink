@@ -98,7 +98,7 @@ impl Frame {
                     let id = id.unwrap();
                     (
                         gpu[id.index()].buffer(),
-                        0,
+                        self.uniform_offsets[id.index()].unwrap_or(0),
                         if binding.kind == BindingKind::Uniform {
                             binding.size as u64
                         } else {

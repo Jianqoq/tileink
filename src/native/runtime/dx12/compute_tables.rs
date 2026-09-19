@@ -96,7 +96,7 @@ impl Tables {
         list: &ID3D12GraphicsCommandList,
         pass: &Pass,
         inputs: &[Resource],
-        gpu: &[Option<ID3D12Resource>],
+        gpu: &super::compute_resources::Resources,
         pipeline: &super::compute_pipeline::Pipeline,
     ) {
         unsafe {
@@ -116,7 +116,8 @@ impl Tables {
                         super::compute_bindings::write(
                             device,
                             binding,
-                            gpu[image.index()].as_ref().unwrap(),
+                            gpu.get(image.index()),
+                            0,
                             0,
                             self.resources.as_mut().unwrap().allocate(),
                         );
@@ -144,7 +145,8 @@ impl Tables {
                     super::compute_bindings::write(
                         device,
                         binding,
-                        gpu[index].as_ref().unwrap(),
+                        gpu.get(index),
+                        gpu.uniform_offset(index).unwrap_or(0),
                         (inputs[index].bytes().len() / 4) as u32,
                         self.resources.as_mut().unwrap().allocate(),
                     );

@@ -16,6 +16,8 @@ impl ResourceId {
 }
 #[path = "compute/resource.rs"]
 mod resource;
+#[path = "compute/uniforms.rs"]
+pub(crate) mod uniforms;
 pub use resource::{Resource, SamplerFilter, Texture};
 pub struct Pass {
     pub shader: &'static NativeShaderArtifact,
