@@ -41,8 +41,14 @@ fn local_filter_context_restores_parent_after_scan_failure() -> Result<()> {
     let images = Images::record(&mut batch, &upload)?;
     let canvas = Canvas::new(4, 4, 1.0);
     let mut cache = SceneCache::default();
-    let mut execution =
-        Execution::prepare(&mut cache, &mut batch, &canvas, &images, None, false, 65535)?;
+    let mut execution = Execution::prepare(
+        cache.prepare(&canvas),
+        &mut batch,
+        &images,
+        None,
+        false,
+        65535,
+    )?;
     let parent = execution.targets.get(RenderTargetId::Main)?.image();
     let plan = execution.scene.as_ref().unwrap().plan_handle();
     let state =
@@ -71,8 +77,14 @@ fn failed_filter_context_preparation_keeps_parent_active() -> Result<()> {
     let images = Images::record(&mut batch, &upload)?;
     let canvas = Canvas::new(4, 4, 1.0);
     let mut cache = SceneCache::default();
-    let mut execution =
-        Execution::prepare(&mut cache, &mut batch, &canvas, &images, None, false, 65535)?;
+    let mut execution = Execution::prepare(
+        cache.prepare(&canvas),
+        &mut batch,
+        &images,
+        None,
+        false,
+        65535,
+    )?;
     let parent = execution.targets.get(RenderTargetId::Main)?.image();
     let plan = execution.scene.as_ref().unwrap().plan_handle();
     let invalid = Filter::ConvolveMatrix(ConvolveMatrix {

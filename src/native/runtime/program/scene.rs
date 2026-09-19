@@ -34,6 +34,33 @@ pub(crate) struct SceneCache {
     plan: Option<Rc<ExecPlan>>,
 }
 
+/// Keeps compiled metadata paired with its Canvas and cache until scan consumes it.
+/// Dropping preparation leaves no uploaded plan falsely marked as reusable.
+pub(crate) struct PreparedScene<'a> {
+    cache: &'a mut SceneCache,
+    canvas: &'a Canvas,
+    plan: crate::render::prepare::PreparedPlan,
+}
+
+impl PreparedScene<'_> {
+    pub(crate) fn plan_handle(&self) -> Rc<ExecPlan> {
+        self.plan.plan.clone()
+    }
+    pub(crate) fn size(&self) -> (u32, u32) {
+        self.canvas.physical_size()
+    }
+    pub(crate) fn record(
+        self,
+        batch: &mut ComputeBatch,
+        text: Option<&PreparedTextData>,
+        images: Option<&GpuImageResourceUpload>,
+        limit: u32,
+    ) -> Result<Scene> {
+        self.cache
+            .record_prepared(batch, self.canvas, text, images, limit, self.plan)
+    }
+}
+
 pub(crate) struct Scene {
     draw_count: u32,
     plan: Rc<ExecPlan>,
@@ -61,6 +88,18 @@ pub(crate) struct SceneImages {
 }
 
 impl SceneCache {
+    pub(crate) fn prepare<'a>(&'a mut self, canvas: &'a Canvas) -> PreparedScene<'a> {
+        // Preparation updates the fingerprint even when it compiles a new plan.
+        // Move the old plan out first: cancellation or recording failure must not
+        // pair that old plan with the new fingerprint on the next attempt.
+        let mut cached = self.plan.take();
+        let plan = self.preparation.prepare_plan(canvas, &mut cached);
+        PreparedScene {
+            cache: self,
+            canvas,
+            plan,
+        }
+    }
     pub(crate) fn record(
         &mut self,
         batch: &mut ComputeBatch,
@@ -69,8 +108,7 @@ impl SceneCache {
         images: Option<&GpuImageResourceUpload>,
         limit: u32,
     ) -> Result<Scene> {
-        let prepared = self.preparation.prepare_plan(canvas, &mut self.plan);
-        self.record_prepared(batch, canvas, text, images, limit, prepared)
+        self.prepare(canvas).record(batch, text, images, limit)
     }
 
     // Localized plans carry remapped physical indices. Compiling the Canvas again
@@ -90,6 +128,7 @@ impl SceneCache {
         // Root cause: explicit local metadata has no Canvas fingerprint. Retaining
         // the previous fingerprint would reuse this plan for an unrelated root.
         self.preparation = ScenePreparation::default();
+        self.plan = None;
         let prepared = crate::render::prepare::PreparedPlan {
             stack_depths: crate::shared::gpu_plan::plan_stack_depths(&plan),
             plan,

@@ -2013,3 +2013,16 @@ only the approved turbulence difference remains. Both reviews closed. See
 [uniform aggregation](docs/native/m4-uniform-aggregation.md). No performance
 comparison was run. M4 still requires shared full-frame/public renderer assembly
 and complete immediate four-renderer SVG/example acceptance.
+
+## M4 shared native frame scheduling — 2026-09-19
+
+Native frames now use the same frame scheduler and in-place root draw loop as
+wgpu. Consumed scene preparation preserves Canvas/plan ownership across scan.
+Two reproduced cancellation/failure retry bugs now install cached plans only
+after successful recording. Three complete-frame GPU suites pass exact four-API
+comparisons (489.15s), including an empty frame after groups. Release (1,041),
+integrations, strict lint, native-only, full SVG/examples and PNG checks pass;
+only the approved turbulence difference remains. Both reviews closed. See
+[shared frame scheduling](docs/native/m4-shared-frame.md). No performance comparison.
+M4 still requires public renderer/resource assembly and complete immediate
+four-renderer SVG/example acceptance.

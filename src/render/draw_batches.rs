@@ -126,15 +126,7 @@ pub(crate) fn execute_direct_root_batches<A: RootBatchAdapter>(
         return Ok(());
     }
     let RootBatchMode::Portable { partial } = mode else {
-        for &index in indices {
-            execute_draw_batch(
-                adapter,
-                canvas,
-                DrawBatch::from_op(&ops[index]),
-                RenderTargetId::Main,
-            )?;
-        }
-        return Ok(());
+        return execute_in_place_root_batches(adapter, canvas, ops, indices);
     };
     adapter.prepare_portable_targets()?;
     adapter.copy_root_to(PingPongSide::Source)?;
@@ -165,6 +157,24 @@ pub(crate) fn execute_direct_root_batches<A: RootBatchAdapter>(
     if encoded_any {
         adapter.copy_to_root(latest)?;
         adapter.stats_mut().portable_texture_copies += 1;
+    }
+    Ok(())
+}
+
+/// In-place roots need only the common draw adapter, not portable ping-pong.
+pub(crate) fn execute_in_place_root_batches<A: DrawBatchAdapter>(
+    adapter: &mut A,
+    canvas: &Canvas,
+    ops: &[ExecOp],
+    indices: &[usize],
+) -> Result<(), A::Error> {
+    for &index in indices {
+        execute_draw_batch(
+            adapter,
+            canvas,
+            DrawBatch::from_op(&ops[index]),
+            RenderTargetId::Main,
+        )?;
     }
     Ok(())
 }

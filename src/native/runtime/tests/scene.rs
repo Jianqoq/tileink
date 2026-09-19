@@ -232,3 +232,55 @@ fn explicit_scene_plan_does_not_poison_cached_canvas_metadata() -> Result<()> {
     );
     Ok(())
 }
+
+#[test]
+fn discarded_scene_preparation_never_claims_unrecorded_metadata_is_uploaded() -> Result<()> {
+    let mut cache = SceneCache::default();
+    let root = canvas(32, 32);
+    let original = cache.record(&mut ComputeBatch::new(), &root, None, None, 65535)?;
+    let mut changed = canvas(32, 32);
+    changed.push_rect(
+        peniko::kurbo::Rect::new(3.0, 3.0, 7.0, 7.0),
+        crate::Radius::ZERO,
+        peniko::Color::BLACK,
+    );
+    let prepared = cache.prepare(&changed);
+    assert!(prepared.plan_handle().draw_order.len() > original.plan.draw_order.len());
+    drop(prepared);
+    let retried = cache.record(&mut ComputeBatch::new(), &changed, None, None, 65535)?;
+    assert!(
+        retried.plan.draw_order.len() > original.plan.draw_order.len(),
+        "retry must use B rather than A's stale plan"
+    );
+    let restored = cache.record(&mut ComputeBatch::new(), &root, None, None, 65535)?;
+    assert_eq!(
+        restored.plan.draw_order.len(),
+        original.plan.draw_order.len()
+    );
+    let changed = cache
+        .prepare(&changed)
+        .record(&mut ComputeBatch::new(), None, None, 65535)?;
+    assert!(changed.plan.draw_order.len() > restored.plan.draw_order.len());
+    Ok(())
+}
+
+#[test]
+fn failed_scene_recording_does_not_reuse_the_previous_canvas_plan() -> Result<()> {
+    let mut cache = SceneCache::default();
+    let root = canvas(32, 32);
+    let original = cache.record(&mut ComputeBatch::new(), &root, None, None, 65535)?;
+    let mut changed = canvas(32, 32);
+    changed.push_rect(
+        peniko::kurbo::Rect::new(3.0, 3.0, 7.0, 7.0),
+        crate::Radius::ZERO,
+        peniko::Color::BLACK,
+    );
+    assert!(
+        cache
+            .record(&mut ComputeBatch::new(), &changed, None, None, 0)
+            .is_err()
+    );
+    let retried = cache.record(&mut ComputeBatch::new(), &changed, None, None, 65535)?;
+    assert!(retried.plan.draw_order.len() > original.plan.draw_order.len());
+    Ok(())
+}

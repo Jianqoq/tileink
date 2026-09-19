@@ -23,6 +23,7 @@ mod filter_encoding;
 mod filter_kernels;
 mod filter_resources;
 mod filters;
+mod frame;
 mod images;
 mod targets;
 pub(crate) use images::Images;
@@ -59,37 +60,20 @@ impl<'a> Execution<'a> {
         chunked: bool,
         limit: u32,
     ) -> Result<ResourceId> {
-        let mut execution = Self::prepare(cache, batch, canvas, images, text, chunked, limit)?;
-        let plan = execution
-            .scene
-            .as_ref()
-            .expect("prepared root scene")
-            .plan_handle();
-        shared_operations::execute_ops(
-            &mut execution,
-            canvas,
-            &plan,
-            &plan.ops,
-            RenderTargetId::Main,
-            &mut FilterCursors::default(),
-            None,
-        )?;
-        Ok(execution.targets.get(RenderTargetId::Main)?.image())
+        frame::record(cache, batch, canvas, images, text, chunked, limit)
     }
 
     fn prepare(
-        cache: &mut SceneCache,
+        prepared: crate::native::runtime::program::scene::PreparedScene<'_>,
         batch: &'a mut ComputeBatch,
-        canvas: &Canvas,
         images: &'a Images<'a>,
         text: Option<&'a crate::text::PreparedTextData>,
         chunked: bool,
         limit: u32,
     ) -> Result<Self> {
-        images.validate(batch)?;
-        let size = canvas.physical_size();
+        let size = prepared.size();
         let targets = Targets::new(batch, [size.0, size.1])?;
-        let scene = cache.record(batch, canvas, text, Some(images.upload()), limit)?;
+        let scene = prepared.record(batch, text, Some(images.upload()), limit)?;
         let filters = filter_resources::FilterResources::record(batch, scene.plan(), None, images)?;
         let paths = prepare_paths(batch, scene.plan())?;
         Ok(Self {
