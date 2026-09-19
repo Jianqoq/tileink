@@ -1,4 +1,4 @@
-//! Explicit DXC toolchain and target-specific recipes. No downloads or fallback.
+//! Validated DXC toolchain and target-specific recipes. Discovery never downloads tools.
 use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
@@ -15,7 +15,7 @@ pub struct Dxc {
 impl Dxc {
     pub fn discover(path: PathBuf) -> io::Result<Self> {
         if !path.is_absolute() {
-            return Err(io::Error::other("TILEINK_DXC_PATH must be absolute"));
+            return Err(io::Error::other("native DXC path must be absolute"));
         }
         let executable = path.canonicalize()?;
         let version = run(Command::new(&executable).arg("--version"), "DXC version")?;

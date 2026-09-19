@@ -16,6 +16,8 @@ mod program;
 mod source;
 #[path = "native/spirv.rs"]
 mod spirv;
+#[path = "native/toolchain.rs"]
+mod toolchain;
 
 use cache::{CacheKey, ShaderCache};
 use dxc::{Dxc, digest};
@@ -32,6 +34,9 @@ pub fn generate() -> io::Result<()> {
         "TILEINK_DXC_PATH",
         "TILEINK_NATIVE_SHADER_CACHE_DIR",
         "CARGO_TARGET_DIR",
+        "LOCALAPPDATA",
+        "XDG_CACHE_HOME",
+        "HOME",
     ] {
         println!("cargo:rerun-if-env-changed={variable}");
     }
@@ -49,6 +54,7 @@ pub fn generate() -> io::Result<()> {
         "build/native/source.rs",
         "build/native/program.rs",
         "build/native/dxc.rs",
+        "build/native/toolchain.rs",
         "build/native/spirv.rs",
         "build/native/dxil_reflection.rs",
     ] {
@@ -66,9 +72,18 @@ pub fn generate() -> io::Result<()> {
         String::from("pub static SHADER_ARTIFACTS: &[NativeShaderArtifact] = &[\n");
     let mut manifest = Vec::new();
     if !targets.is_empty() {
-        let path=env::var_os("TILEINK_NATIVE_DXC_PATH").or_else(|| env::var_os("TILEINK_DXC_PATH")).ok_or_else(||io::Error::other(
-            "native shaders require an explicit TILEINK_NATIVE_DXC_PATH (or TILEINK_DXC_PATH); ordinary wgpu builds do not"))?;
-        let compiler = Dxc::discover(PathBuf::from(path))?;
+        let user_cache = if cfg!(windows) {
+            env::var_os("LOCALAPPDATA").map(PathBuf::from)
+        } else {
+            env::var_os("XDG_CACHE_HOME")
+                .map(PathBuf::from)
+                .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
+        };
+        let roots = toolchain::cache_roots(&root, &out, &env::var("TARGET").unwrap(), user_cache);
+        let explicit = env::var_os("TILEINK_NATIVE_DXC_PATH")
+            .or_else(|| env::var_os("TILEINK_DXC_PATH"))
+            .map(PathBuf::from);
+        let compiler = Dxc::discover(toolchain::resolve(explicit, &roots)?)?;
         let target_triple = env::var("TARGET").unwrap();
         let cache_root = env::var_os("TILEINK_NATIVE_SHADER_CACHE_DIR")
             .map(PathBuf::from)
@@ -119,7 +134,7 @@ pub fn generate() -> io::Result<()> {
                     declarations.push_str(&format!("NativeShaderArtifact {{ format: {target:?}, entry: {entry:?}, cache_key: {:?}, workgroup: {workgroup}, bindings: {bindings}, bytes: include_bytes!({:?}) }},\n",key.hex(),output));
                     manifest.push(serde_json::json!({"key":key.hex(),"artifact_sha256":digest(&artifact.bytes),"recipe":recipe}));
                     println!(
-                        "cargo:warning=native shader {target}/{entry}: {}",
+                        "native shader {target}/{entry}: {}",
                         if artifact.hit {
                             "cache hit"
                         } else {

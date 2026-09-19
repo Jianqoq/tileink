@@ -119,8 +119,10 @@ pub fn read_hlsl(source: &str) -> io::Result<BTreeMap<String, u32>> {
 }
 
 #[path = "gpu_constants/floats.rs"]
+#[cfg(any(feature = "wgpu", test))]
 pub mod floats;
 
+#[cfg(any(feature = "wgpu", test))]
 pub fn read_float_wgsl(source: &str) -> io::Result<String> {
     floats::parse_wgsl(&read_source(source)?)
 }

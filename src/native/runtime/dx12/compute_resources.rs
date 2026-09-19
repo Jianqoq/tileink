@@ -50,11 +50,8 @@ impl Resources {
                     continue;
                 }
                 if let Resource::PersistentBuffer(input) = input {
-                    let resource = match &input.buffer.state.allocation {
-                        crate::native::runtime::buffer::Allocation::Dx12(resource) => resource,
-                        #[cfg(feature = "vulkan")]
-                        _ => return Err("non-DX12 persistent buffer".into()),
-                    };
+                    let crate::native::runtime::buffer::Allocation::Dx12(resource) =
+                        &input.buffer.state.allocation;
                     if !input.bytes.is_empty() {
                         let upload = buffer::create(
                             device,
@@ -80,13 +77,8 @@ impl Resources {
                 }
                 if let Resource::Texture(input) = input {
                     if let Some(texture) = &input.persistent {
-                        let texture = match &texture.state.allocation {
-                            crate::native::runtime::texture::Allocation::Dx12(texture) => texture,
-                            #[cfg(feature = "vulkan")]
-                            crate::native::runtime::texture::Allocation::Vulkan(_) => {
-                                return Err("non-DX12 persistent texture".into());
-                            }
-                        };
+                        let crate::native::runtime::texture::Allocation::Dx12(texture) =
+                            &texture.state.allocation;
                         this.handles.push(Some(texture.resource.clone()));
                         continue;
                     }

@@ -12,15 +12,16 @@ Performance comparisons remain stopped by the user's instruction.
 ## Build and cache contract
 
 Default `wgpu` builds do not invoke the new native compiler path. Windows
-`native-dx12` builds DXIL; `native-vulkan` builds SPIR-V; `native` builds both.
-An explicit absolute `TILEINK_NATIVE_DXC_PATH` is required, with `TILEINK_DXC_PATH`
-as a fallback. The tested native tool is DXC 1.8.2502.8 (b4711839e). The Windows
+`dx12` builds DXIL; `vulkan` builds SPIR-V. These features are mutually exclusive.
+`TILEINK_NATIVE_DXC_PATH` overrides the compiler, with `TILEINK_DXC_PATH` next,
+then the [default toolchain caches](toolchain-discovery.md).
+The tested native tool is DXC 1.8.2502.8 (b4711839e). The Windows
 SDK DXC used by the existing wgpu reference does not support SPIR-V; configure
 these two compiler paths separately. Missing/unsupported tools fail explicitly.
 
 ```powershell
 $env:TILEINK_NATIVE_DXC_PATH = 'G:\Code\tileink\target\toolchains\dxc-v1.8.2502\bin\x64\dxc.exe'
-cargo build --release --no-default-features --features native
+cargo build --release --no-default-features --features vulkan
 ```
 
 `build/native/` separates source expansion, storage, DXC execution, ABI checking,

@@ -52,6 +52,10 @@ there are no compatibility aliases. Backend parity runs use separate builds.
 See the [backend feature contract](docs/native/backend-features.md) for current
 commands and the status of test-harness migration.
 
+Native builds find DXC in the [default toolchain caches](docs/native/toolchain-discovery.md)
+when `TILEINK_NATIVE_DXC_PATH` / `TILEINK_DXC_PATH` are unset. Explicit paths take
+precedence; built applications use embedded shaders and do not need DXC installed.
+
 Native constructors return explicit errors for unsupported platforms, unavailable
 adapters or insufficient capabilities; they never fall back to WGPU. Persistent owned targets, retained rendering, typed host device/target imports
 and nonblocking completion queries are available; see the

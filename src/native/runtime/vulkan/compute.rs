@@ -199,13 +199,8 @@ impl Frame {
             this.resources.push(match resource {
                 Resource::TextureTable(_) => GpuResource::TextureTable,
                 Resource::PersistentBuffer(upload) => {
-                    let allocation = match &upload.buffer.state.allocation {
-                        crate::native::runtime::buffer::Allocation::Vulkan(allocation) => {
-                            allocation
-                        }
-                        #[cfg(feature = "dx12")]
-                        _ => return Err("non-Vulkan persistent buffer".into()),
-                    };
+                    let crate::native::runtime::buffer::Allocation::Vulkan(allocation) =
+                        &upload.buffer.state.allocation;
                     this.persistent_buffers.push(allocation.clone());
                     GpuResource::Buffer(allocation.buffers[0])
                 }
@@ -223,13 +218,8 @@ impl Frame {
                 }
                 Resource::Texture(texture) => {
                     if let Some(texture) = &texture.persistent {
-                        let image = match &texture.state.allocation {
-                            crate::native::runtime::texture::Allocation::Vulkan(image) => image,
-                            #[cfg(feature = "dx12")]
-                            crate::native::runtime::texture::Allocation::Dx12(_) => {
-                                return Err("non-Vulkan persistent texture".into());
-                            }
-                        };
+                        let crate::native::runtime::texture::Allocation::Vulkan(image) =
+                            &texture.state.allocation;
                         this.resources.push(GpuResource::Image(image.clone()));
                         continue;
                     }

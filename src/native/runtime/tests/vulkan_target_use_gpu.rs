@@ -279,9 +279,7 @@ fn vulkan_target_use_transfers_ownership_and_consumes_binary_or_timeline_waits()
         let host = Host::new(timeline)?;
         let context = host.context(timeline)?;
         let texture = context.create_texture(7, 3)?;
-        let Allocation::Vulkan(image) = &texture.state.allocation else {
-            unreachable!()
-        };
+        let Allocation::Vulkan(image) = &texture.state.allocation;
         let raw = image.image;
         let scene = RetainedScene::new(7, 3, 1.0, RetainedNodeId::for_owner(870_002))?;
         let mut renderer = NativeRenderer::with_context(&context, 7, 3)?;

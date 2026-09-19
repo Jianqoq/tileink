@@ -385,9 +385,11 @@ impl BatchAdapter for Adapter {
 impl Adapter {
     pub fn assert_valid_with_wgpu_clears(&self) -> Result<()> {
         #[cfg(feature = "dx12")]
-        if let Device::Dx12(device) = &*self.0.borrow() {
-            return super::dx12::assert_valid_with_wgpu_clears(&device.validation_queue());
+        {
+            let Device::Dx12(device) = &*self.0.borrow();
+            super::dx12::assert_valid_with_wgpu_clears(&device.validation_queue())
         }
+        #[cfg(feature = "vulkan")]
         self.assert_valid()
     }
 }
