@@ -117,8 +117,9 @@ fn four_api_frame_groups_masks_and_scratch_reuse_preserve_pixels() -> Result<()>
                 let mut batch = ComputeBatch::new();
                 let upload = Default::default();
                 let images = Images::record(&mut batch, &upload)?;
-                let target =
-                    Execution::record(&mut cache, &mut batch, &canvas, &images, chunked, 65535)?;
+                let target = Execution::record(
+                    &mut cache, &mut batch, &canvas, &images, None, chunked, 65535,
+                )?;
                 assert!(
                     batch.outputs().is_empty(),
                     "all intermediate surfaces stay on GPU"

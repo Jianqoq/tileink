@@ -272,3 +272,5 @@ mod frame_groups;
 
 #[path = "tests/frame_filters_gpu.rs"]
 mod frame_filters;
+#[path = "tests/frame_text_gpu.rs"]
+mod frame_text;

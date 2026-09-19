@@ -21,6 +21,22 @@ impl Routes {
         Ok(vec![expected])
     }
 
+    pub(super) fn text_reference(
+        &self,
+        canvas: &crate::Canvas,
+        fonts: &mut crate::TextFontSystem,
+        context: &mut crate::TextContext,
+    ) -> Result<Vec<Vec<u8>>> {
+        self.used_canvas_reference.set(true);
+        let expected = self.reference[0].render_canvas_with_text(canvas, Some((fonts, context)))?;
+        assert_eq!(
+            self.reference[1].render_canvas_with_text(canvas, Some((fonts, context)))?,
+            expected,
+            "production wgpu DX12/Vulkan text pixels"
+        );
+        Ok(vec![expected])
+    }
+
     pub(super) fn new() -> Result<Self> {
         Self::with_features(wgpu::Features::empty())
     }

@@ -41,6 +41,7 @@ pub(crate) struct Execution<'a> {
     filters: filter_resources::FilterResources,
     origin: (i32, i32),
     images: &'a Images<'a>,
+    text: Option<&'a crate::text::PreparedTextData>,
     targets: Targets,
     paths: Option<path_mask::Paths>,
     retained: RetainedRenderState<Surface>,
@@ -54,10 +55,11 @@ impl<'a> Execution<'a> {
         batch: &'a mut ComputeBatch,
         canvas: &Canvas,
         images: &'a Images<'a>,
+        text: Option<&'a crate::text::PreparedTextData>,
         chunked: bool,
         limit: u32,
     ) -> Result<ResourceId> {
-        let mut execution = Self::prepare(cache, batch, canvas, images, chunked, limit)?;
+        let mut execution = Self::prepare(cache, batch, canvas, images, text, chunked, limit)?;
         let plan = execution
             .scene
             .as_ref()
@@ -80,13 +82,14 @@ impl<'a> Execution<'a> {
         batch: &'a mut ComputeBatch,
         canvas: &Canvas,
         images: &'a Images<'a>,
+        text: Option<&'a crate::text::PreparedTextData>,
         chunked: bool,
         limit: u32,
     ) -> Result<Self> {
         images.validate(batch)?;
         let size = canvas.physical_size();
         let targets = Targets::new(batch, [size.0, size.1])?;
-        let scene = cache.record(batch, canvas, None, Some(images.upload()), limit)?;
+        let scene = cache.record(batch, canvas, text, Some(images.upload()), limit)?;
         let filters = filter_resources::FilterResources::record(batch, scene.plan(), None, images)?;
         let paths = prepare_paths(batch, scene.plan())?;
         Ok(Self {
@@ -96,6 +99,7 @@ impl<'a> Execution<'a> {
             filters,
             origin: (0, 0),
             images,
+            text,
             targets,
             paths,
             retained: RetainedRenderState::new(Default::default()),

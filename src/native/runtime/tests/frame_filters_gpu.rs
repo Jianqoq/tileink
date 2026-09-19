@@ -113,6 +113,7 @@ fn four_api_frame_filters_backdrops_and_local_contexts_preserve_pixels() -> Resu
                 &mut batch,
                 &canvas,
                 &images,
+                None,
                 kind % 2 == 0,
                 65535,
             )?;

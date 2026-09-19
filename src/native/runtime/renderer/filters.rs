@@ -104,11 +104,13 @@ impl FilterAdapter for Execution<'_> {
             .ok_or("native filter scene already scanned")?;
         // SAFETY: begin_filter_scene receives the matched Canvas/plan from the
         // shared PreparedFilterScene and neither is changed before scan.
+        // Localized draws retain root glyph/run indices, so they must use the
+        // same prepared text data rather than rebuilding a local glyph atlas.
         self.scene = Some(unsafe {
             SceneCache::default().record_with_plan(
                 self.batch,
                 canvas,
-                None,
+                self.text,
                 Some(self.images.upload()),
                 self.limit,
                 plan,

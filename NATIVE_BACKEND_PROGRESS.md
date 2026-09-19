@@ -1987,3 +1987,16 @@ are closed. See [frame filters](docs/native/m4-frame-filters.md).
 M4 remains incomplete: text/public frame preparation, pooled uniform/submission
 integration and complete immediate four-renderer acceptance remain. No performance
 comparison was run.
+
+## M4 complete-frame prepared text — 2026-09-19
+
+Native frame recording now supplies caller-prepared glyphs to root and localized
+filter scenes, retaining glyph/run indices and independent GPU uploads. Complete
+Canvas text passes exact four-API comparisons across all fine/filter variants,
+None/RGB/BGR coverage, sRGB/linear, chunked coarse, clipping and disabling text on
+reused scene caches (156.42s). A CPU assertion verifies real color/subpixel glyph
+coverage from checked-in fonts. Release tests/integrations, strict lint, native-only,
+full SVG/examples and PNG checks pass, with only the approved turbulence delta.
+Reviews closed. See [frame text](docs/native/m4-frame-text.md). M4 remains incomplete:
+public renderer/frame assembly, pooled uniform/submission integration and complete
+immediate four-renderer SVG/example acceptance remain. No performance comparison.
