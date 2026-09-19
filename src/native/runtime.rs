@@ -1,6 +1,6 @@
 //! Native execution modules for the M3 minimum vertical slice.
 //! Full Canvas program coverage and the NativeRenderer facade follow in M4.
-mod adapter;
+pub(super) mod adapter;
 #[cfg(feature = "native-dx12")]
 mod dx12;
 #[cfg(all(
@@ -20,6 +20,11 @@ mod submissions;
 mod vulkan;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
+#[cfg(feature = "native-dx12")]
+pub(super) unsafe fn enable_dx12_validation() -> Result<()> {
+    unsafe { dx12::enable_validation() }
+}
+
 #[path = "runtime/compute.rs"]
-mod compute;
-mod renderer;
+pub(super) mod compute;
+pub(super) mod renderer;

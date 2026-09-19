@@ -9,6 +9,22 @@ native textures, pre-recording validation and failure containment execute on bot
 All 306 minimum cases repeat three times across four real APIs with exact bytes.
 Older continuation entries below are historical snapshots, not the current milestone status.
 
+## Windows M4 public renderer continuation — 2026-09-19
+
+Owned `NativeContext` / `NativeRenderer` now submit Canvas and text frames through
+the native adapters, with explicit completion and premultiplied RGBA8 readback.
+See [API, ownership and validation rules](docs/native/m4-public-renderer.md).
+Public-entry four-API GPU parity passes with validation both enabled and disabled;
+focused real-device tests cover shared contexts, reverse readback, lifetime pins,
+late DX12 validation rejection, no-debug quarantine and lazy probe rollback/retry.
+
+Validation: 1,044 release library tests plus integrations pass; single DX12,
+single Vulkan and combined native-only feature builds pass; formatting and strict
+all-target native Clippy pass. Full SVG and example regressions pass. Of 3,471 PNGs,
+only the previously human-approved turbulence stitch output differs; no additions
+or missing images. This is not yet full native corpus acceptance: configurable
+background clearing and the four-renderer SVG/example run remain M4 work.
+
 On 2026-09-13 the user instructed: **“不用比较性能了”** (stop performance comparisons). For this M0/M1 closeout, no further Criterion comparisons, resize timing or telemetry are required. Performance is not an acceptance gate for this delivery, and `performance_accepted` remains false. Historical regressions, rejected experiments and incomplete timing runs remain preserved. This does not waive functionality, exact pixels, feature/dependency checks, release tests or code review.
 
 Selected source: `target/backend-parity/m1-new-batch-walk-1/current/source`.

@@ -173,7 +173,7 @@ fn create(
                 b"native-compute-buffer-table-v1"
             },
             |bytes| {
-                let start = messages.queue.GetNumStoredMessages();
+                let start = messages.count();
                 match build(bytes) {
                     Ok((state, _)) => {
                         *pipeline.borrow_mut() = Some(state);

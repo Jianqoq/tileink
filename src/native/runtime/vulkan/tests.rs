@@ -2,6 +2,43 @@ use super::*;
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn probe_pipelines_are_lazy_and_partial_initialization_can_retry() -> Result<()> {
+    if super::super::isolation::run(
+        "native::runtime::vulkan::tests::probe_pipelines_are_lazy_and_partial_initialization_can_retry",
+    )? {
+        return Ok(());
+    }
+    let mut device = Vulkan::new(&std::env::var("TILEINK_NATIVE_GPU")?)?;
+    assert_eq!(device.layout, vk::PipelineLayout::null());
+    assert!(device.pipelines.is_empty());
+    assert!(device.compute_pipelines.is_empty());
+    let command = super::super::program::Probe {
+        entry: "clear_words",
+        params: super::super::program::Params {
+            count: 1,
+            source_offset: 0,
+            destination_offset: 0,
+            stride: 4,
+            value: [0x12345678, 0, 0, 0],
+        },
+        source: vec![0; 4],
+        destination: vec![0; 4],
+    };
+    device.inject_probe_init_failure = true;
+    assert!(device.submit(&command).is_err());
+    assert!(device.pipelines.is_empty());
+    assert_eq!(device.layout, vk::PipelineLayout::null());
+    assert_eq!(device.bindings, vk::DescriptorSetLayout::null());
+    assert_eq!(device.pending_count(), 0);
+    let ticket = device.submit(&command)?;
+    assert!(!device.pipelines.is_empty());
+    device.readback(&ticket)?;
+    assert!(device.validation_messages().lock().unwrap().is_empty());
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn failed_teardown_is_reported() -> Result<()> {
     if super::super::isolation::run("native::runtime::vulkan::tests::failed_teardown_is_reported")?
     {

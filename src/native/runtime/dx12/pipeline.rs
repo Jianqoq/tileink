@@ -109,7 +109,7 @@ pub(super) fn create(
                 &identity,
                 artifact.cache_key,
                 |data| {
-                    let start = messages.queue.GetNumStoredMessages();
+                    let start = messages.count();
                     match build(data) {
                         Ok((handle, _)) => {
                             *pipeline.borrow_mut() = Some(handle);

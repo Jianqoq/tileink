@@ -1,6 +1,7 @@
 mod compute;
 mod compute_memory;
 mod compute_pipeline;
+mod context;
 mod frame;
 mod limits;
 mod pipeline;
@@ -35,139 +36,11 @@ pub struct Vulkan {
     texture_tables: bool,
     #[cfg(test)]
     injected_submit_error: Option<vk::Result>,
+    #[cfg(test)]
+    inject_probe_init_failure: bool,
 }
 
 impl Vulkan {
-    pub fn new(identity: &str) -> Result<Self> {
-        // All native handles remain owned by this context until GPU completion.
-        unsafe {
-            let entry = Entry::load()?;
-            let messages = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
-            let layers = [c"VK_LAYER_KHRONOS_validation".as_ptr()];
-            let extensions = [ash::ext::debug_utils::NAME.as_ptr()];
-            let mut debug_info = vk::DebugUtilsMessengerCreateInfoEXT::default()
-                .message_severity(
-                    vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-                        | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
-                )
-                .message_type(
-                    vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
-                        | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
-                        | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
-                )
-                .pfn_user_callback(Some(validation::callback))
-                .user_data(std::sync::Arc::as_ptr(&messages).cast_mut().cast());
-            let info = vk::ApplicationInfo::default().api_version(vk::API_VERSION_1_1);
-            let instance = entry.create_instance(
-                &vk::InstanceCreateInfo::default()
-                    .application_info(&info)
-                    .enabled_layer_names(&layers)
-                    .enabled_extension_names(&extensions)
-                    .push_next(&mut debug_info),
-                None,
-            )?;
-            let selection = (|| -> Result<_> {
-                for physical in instance.enumerate_physical_devices()? {
-                    let mut id = vk::PhysicalDeviceIDProperties::default();
-                    let mut props = vk::PhysicalDeviceProperties2::default().push_next(&mut id);
-                    instance.get_physical_device_properties2(physical, &mut props);
-                    if id.device_luid_valid == 0 {
-                        continue;
-                    }
-                    let actual: String =
-                        id.device_luid.iter().map(|b| format!("{b:02x}")).collect();
-                    if actual != identity {
-                        continue;
-                    }
-                    let family = instance
-                        .get_physical_device_queue_family_properties(physical)
-                        .iter()
-                        .position(|p| p.queue_flags.contains(vk::QueueFlags::COMPUTE))
-                        .ok_or("no compute queue")? as u32;
-                    return Ok((physical, family));
-                }
-                Err("requested native Vulkan physical GPU unavailable".into())
-            })();
-            let (physical, family) = match selection {
-                Ok(v) => v,
-                Err(e) => {
-                    instance.destroy_instance(None);
-                    return Err(e);
-                }
-            };
-            let priorities = [1.0];
-            let queues = [vk::DeviceQueueCreateInfo::default()
-                .queue_family_index(family)
-                .queue_priorities(&priorities)];
-            let mut indexing = vk::PhysicalDeviceDescriptorIndexingFeatures::default();
-            let mut features = vk::PhysicalDeviceFeatures2::default().push_next(&mut indexing);
-            instance.get_physical_device_features2(physical, &mut features);
-            let extensions = match instance.enumerate_device_extension_properties(physical) {
-                Ok(extensions) => extensions,
-                Err(error) => {
-                    instance.destroy_instance(None);
-                    return Err(error.into());
-                }
-            };
-            let texture_tables = indexing.shader_sampled_image_array_non_uniform_indexing != 0
-                && extensions.iter().any(|ext| {
-                    std::ffi::CStr::from_ptr(ext.extension_name.as_ptr())
-                        == ash::ext::descriptor_indexing::NAME
-                });
-            let table_extensions = if texture_tables {
-                vec![ash::ext::descriptor_indexing::NAME.as_ptr()]
-            } else {
-                Vec::new()
-            };
-            let mut indexing = vk::PhysicalDeviceDescriptorIndexingFeatures::default()
-                .shader_sampled_image_array_non_uniform_indexing(texture_tables);
-            let mut device_info = vk::DeviceCreateInfo::default()
-                .queue_create_infos(&queues)
-                .enabled_extension_names(&table_extensions);
-            if texture_tables {
-                device_info = device_info.push_next(&mut indexing);
-            }
-            let device = match instance.create_device(physical, &device_info, None) {
-                Ok(v) => v,
-                Err(e) => {
-                    instance.destroy_instance(None);
-                    return Err(e.into());
-                }
-            };
-            let memory = instance.get_physical_device_memory_properties(physical);
-            let properties = instance.get_physical_device_properties(physical);
-            let limits = properties.limits;
-            let queue = device.get_device_queue(family, 0);
-            let debug = ash::ext::debug_utils::Instance::new(&entry, &instance);
-            let mut this = Self {
-                _entry: entry,
-                debug,
-                messenger: vk::DebugUtilsMessengerEXT::null(),
-                messages,
-                instance,
-                device,
-                memory,
-                queue,
-                bindings: vk::DescriptorSetLayout::null(),
-                layout: vk::PipelineLayout::null(),
-                pipelines: BTreeMap::new(),
-                pending: Pending::new(),
-                properties,
-                compute_pipelines: BTreeMap::new(),
-                family,
-                max_storage_buffer_bytes: limits.max_storage_buffer_range,
-                max_image_width: limits.max_image_dimension2_d,
-                failed: false,
-                texture_tables,
-                #[cfg(test)]
-                injected_submit_error: None,
-            };
-            this.messenger = this.debug.create_debug_utils_messenger(&debug_info, None)?;
-            pipeline::create(&mut this, physical)?;
-            Ok(this)
-        }
-    }
-
     pub fn validation_messages(&self) -> std::sync::Arc<std::sync::Mutex<Vec<String>>> {
         self.messages.clone()
     }
@@ -179,6 +52,9 @@ impl Vulkan {
         super::program::validate_batch(commands)?;
         for command in commands {
             limits::validate(command, self.max_storage_buffer_bytes, self.max_image_width)?;
+        }
+        if !commands.is_empty() {
+            pipeline::ensure(self)?;
         }
         let frames = commands
             .iter()
@@ -270,6 +146,7 @@ impl Vulkan {
     pub fn submit(&mut self, command: &super::program::Probe) -> Result<Ticket> {
         self.submit_batch(&[command.clone().into()])
     }
+
     pub fn readback_batch(&mut self, ticket: &Ticket) -> Result<Vec<Vec<u8>>> {
         let fence = self.pending.get(ticket)?.fence()?;
         if self.failed {
@@ -342,8 +219,10 @@ impl Drop for Vulkan {
             self.device
                 .destroy_descriptor_set_layout(self.bindings, None);
             self.device.destroy_device(None);
-            self.debug
-                .destroy_debug_utils_messenger(self.messenger, None);
+            if self.messenger != vk::DebugUtilsMessengerEXT::null() {
+                self.debug
+                    .destroy_debug_utils_messenger(self.messenger, None);
+            }
             self.instance.destroy_instance(None);
         }
     }

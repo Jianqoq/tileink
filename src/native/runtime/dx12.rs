@@ -1,5 +1,8 @@
+mod context;
+mod debug;
 mod retirement;
 mod validation;
+pub(super) use debug::enable_validation;
 use validation::cache_retryable;
 mod frame;
 mod pipeline;
@@ -24,9 +27,11 @@ use windows::{
 #[derive(Clone)]
 struct GpuOwners {
     device: ID3D12Device,
+    adapter: IDXGIAdapter1,
+    physical_identity: String,
     messages: Validation,
     queue: ID3D12CommandQueue,
-    signature: ID3D12RootSignature,
+    signature: Option<ID3D12RootSignature>,
     pipelines: BTreeMap<&'static str, ID3D12PipelineState>,
     fence: ID3D12Fence,
     pending: Pending<work::Work>,
@@ -43,65 +48,6 @@ pub struct Dx12 {
 }
 
 impl Dx12 {
-    pub fn new(identity: &str) -> Result<Self> {
-        unsafe {
-            let mut debug = None;
-            D3D12GetDebugInterface(&mut debug)?;
-            let debug: ID3D12Debug = debug.unwrap();
-            debug.EnableDebugLayer();
-            let factory: IDXGIFactory4 = CreateDXGIFactory2(DXGI_CREATE_FACTORY_FLAGS(0))?;
-            let mut selected = None;
-            for index in 0.. {
-                let adapter = match factory.EnumAdapters1(index) {
-                    Ok(a) => a,
-                    Err(e) if e.code() == DXGI_ERROR_NOT_FOUND => break,
-                    Err(e) => return Err(e.into()),
-                };
-                let desc = adapter.GetDesc1()?;
-                let bytes = [
-                    desc.AdapterLuid.LowPart.to_le_bytes(),
-                    desc.AdapterLuid.HighPart.to_le_bytes(),
-                ]
-                .concat();
-                let actual: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
-                if actual == identity {
-                    selected = Some(adapter);
-                    break;
-                }
-            }
-            let adapter = selected.ok_or("requested native DX12 physical GPU unavailable")?;
-            let mut device = None;
-            D3D12CreateDevice(&adapter, D3D_FEATURE_LEVEL_11_0, &mut device)?;
-            let device: ID3D12Device = device.unwrap();
-            let queue: ID3D12CommandQueue =
-                device.CreateCommandQueue(&D3D12_COMMAND_QUEUE_DESC {
-                    Type: D3D12_COMMAND_LIST_TYPE_DIRECT,
-                    ..Default::default()
-                })?;
-            let messages = Validation::new(device.cast()?);
-            let (signature, pipelines) = pipeline::create(&device, &adapter, identity, &messages)?;
-            let fence: ID3D12Fence = device.CreateFence(0, D3D12_FENCE_FLAG_NONE)?;
-            let event = CreateEventW(None, false, false, None)?;
-            Ok(Self {
-                gpu: GpuOwners {
-                    device,
-                    messages,
-                    queue,
-                    signature,
-                    pipelines,
-                    fence,
-                    pending: Pending::new(),
-                    compute_pipelines: BTreeMap::new(),
-                    cache_identity: compute_pipeline::identity(&adapter, identity)?,
-                },
-                event,
-                retirement: Retirement::Idle,
-                #[cfg(test)]
-                inject_signal_failure: false,
-            })
-        }
-    }
-
     pub fn validation_queue(&self) -> Validation {
         self.gpu.messages.clone()
     }
@@ -109,12 +55,25 @@ impl Dx12 {
     pub fn submit_batch(&mut self, commands: &[Dispatch]) -> Result<Ticket> {
         self.retirement.wait_value()?;
         super::program::validate_batch(commands)?;
+        if !commands.is_empty() && self.gpu.signature.is_none() {
+            let (signature, pipelines) = pipeline::create(
+                &self.gpu.device,
+                &self.gpu.adapter,
+                &self.gpu.physical_identity,
+                &self.gpu.messages,
+            )?;
+            self.gpu.signature = Some(signature);
+            self.gpu.pipelines = pipelines;
+        }
         let frames = commands
             .iter()
             .map(|command| {
                 Frame::record(
                     &self.gpu.device,
-                    &self.gpu.signature,
+                    self.gpu
+                        .signature
+                        .as_ref()
+                        .expect("probe pipeline initialized"),
                     &self.gpu.pipelines[command.entry()],
                     command,
                 )
@@ -236,8 +195,11 @@ impl Drop for Dx12 {
     fn drop(&mut self) {
         if let Err(error) = self.wait() {
             eprintln!("native DX12 cleanup could not confirm completion: {error}");
-            unsafe {
-                let _ = self.gpu.messages.queue.AddMessage(
+            // Reporting is optional; preserving unknown in-flight owners is not.
+            // This fixes teardown panics when ordinary contexts have no info queue.
+            if let Some(queue) = &self.gpu.messages.queue {
+                unsafe {
+                    let _ = queue.AddMessage(
                     D3D12_MESSAGE_CATEGORY_EXECUTION,
                     D3D12_MESSAGE_SEVERITY_ERROR,
                     D3D12_MESSAGE_ID_UNKNOWN,
@@ -245,9 +207,9 @@ impl Drop for Dx12 {
                         "native DX12 cleanup could not confirm completion; resources quarantined"
                     ),
                 );
+                }
             }
-            // This is a disposable verification device. Unknown in-flight work
-            // cannot be freed safely or waited on a fabricated fence. Quarantine
+            // Unknown in-flight work cannot be freed safely or waited on a fabricated fence. Quarantine
             // all owners until process teardown, preserving the original error.
             std::mem::forget(self.gpu.clone());
             return;
@@ -280,5 +242,4 @@ mod compute_tables;
 
 mod compute_copy;
 
-#[cfg(test)]
 pub use validation::assert_valid_with_wgpu_clears;

@@ -69,107 +69,32 @@ impl fmt::Display for BackendUnavailable {
 
 impl Error for BackendUnavailable {}
 
-/// Native construction entry for the feature-split milestone.
-///
-/// No native renderer exists yet: construction reports the requested backend's
-/// precise unavailable reason. The empty type prevents a partially initialized
-/// instance from looking like a working renderer.
-#[derive(Debug)]
-pub enum NativeRenderer {}
-
-impl NativeRenderer {
-    pub fn new(
-        backend: NativeBackend,
-        _width: u32,
-        _height: u32,
-    ) -> Result<Self, BackendUnavailable> {
-        Err(backend.unavailable())
-    }
-}
+mod context;
+mod renderer;
+mod submission;
+pub use context::{NativeContext, NativeContextOptions, NativeError};
+pub use renderer::NativeRenderer;
+pub use submission::{NativeImageSubmission, NativeSubmission};
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn a_forced_backend_never_falls_back_or_returns_a_renderer() {
+    fn unavailable_backends_never_fall_back() {
         for backend in [NativeBackend::Dx12, NativeBackend::Vulkan] {
+            let expected = backend.unavailable();
+            if expected.reason == BackendUnavailableReason::AdapterNotImplemented
+                && cfg!(target_os = "windows")
+            {
+                continue;
+            }
             let error = NativeRenderer::new(backend, 17, 19).unwrap_err();
-            assert_eq!(error.backend, backend);
-            assert!(error.to_string().contains(&backend.to_string()));
+            let NativeError::Unavailable(actual) = error else {
+                panic!("unexpected initialization")
+            };
+            assert_eq!(actual, expected);
         }
-    }
-
-    #[cfg(not(feature = "native-dx12"))]
-    #[test]
-    fn requesting_disabled_dx12_reports_its_feature() {
-        assert_eq!(
-            NativeRenderer::new(NativeBackend::Dx12, 17, 19)
-                .unwrap_err()
-                .reason,
-            BackendUnavailableReason::FeatureDisabled
-        );
-    }
-
-    #[cfg(not(feature = "native-vulkan"))]
-    #[test]
-    fn requesting_disabled_vulkan_reports_its_feature() {
-        assert_eq!(
-            NativeRenderer::new(NativeBackend::Vulkan, 17, 19)
-                .unwrap_err()
-                .reason,
-            BackendUnavailableReason::FeatureDisabled
-        );
-    }
-
-    #[cfg(all(feature = "native-dx12", not(target_os = "windows")))]
-    #[test]
-    fn dx12_is_unavailable_on_other_platforms() {
-        assert_eq!(
-            NativeRenderer::new(NativeBackend::Dx12, 17, 19)
-                .unwrap_err()
-                .reason,
-            BackendUnavailableReason::UnsupportedPlatform
-        );
-    }
-
-    #[cfg(all(
-        feature = "native-vulkan",
-        not(any(target_os = "windows", target_os = "linux"))
-    ))]
-    #[test]
-    fn vulkan_is_unavailable_outside_its_supported_platforms() {
-        assert_eq!(
-            NativeRenderer::new(NativeBackend::Vulkan, 17, 19)
-                .unwrap_err()
-                .reason,
-            BackendUnavailableReason::UnsupportedPlatform
-        );
-    }
-
-    #[cfg(all(feature = "native-dx12", target_os = "windows"))]
-    #[test]
-    fn enabled_dx12_still_reports_the_unimplemented_adapter() {
-        assert_eq!(
-            NativeRenderer::new(NativeBackend::Dx12, 17, 19)
-                .unwrap_err()
-                .reason,
-            BackendUnavailableReason::AdapterNotImplemented
-        );
-    }
-
-    #[cfg(all(
-        feature = "native-vulkan",
-        any(target_os = "windows", target_os = "linux")
-    ))]
-    #[test]
-    fn enabled_vulkan_still_reports_the_unimplemented_adapter() {
-        assert_eq!(
-            NativeRenderer::new(NativeBackend::Vulkan, 17, 19)
-                .unwrap_err()
-                .reason,
-            BackendUnavailableReason::AdapterNotImplemented
-        );
     }
 }
 
@@ -184,7 +109,7 @@ pub use shaders::{NativeShaderArtifact, SHADER_ARTIFACTS};
     not(test),
     expect(
         dead_code,
-        reason = "M3 native runtime is assembled into the full Renderer during M4"
+        reason = "Low-level conformance entry points are exercised by the native GPU matrix"
     )
 )]
 mod runtime;

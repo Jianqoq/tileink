@@ -2,7 +2,31 @@
 use super::*;
 use std::ffi::CString;
 
-pub(super) fn create(this: &mut Vulkan, physical: vk::PhysicalDevice) -> Result<()> {
+// Probe pipelines are initialized only by probe submissions. Ordinary rendering
+// uses its own lazily compiled kernels and never creates these verification PSOs.
+pub(super) fn ensure(this: &mut Vulkan) -> Result<()> {
+    if this.layout != vk::PipelineLayout::null() {
+        return Ok(());
+    }
+    let result = create(this);
+    if result.is_err() {
+        // These handles have never been submitted. Roll back the partial bundle so
+        // a later retry cannot mistake an incomplete layout for a ready pipeline set.
+        unsafe {
+            for (_, pipeline) in std::mem::take(&mut this.pipelines) {
+                this.device.destroy_pipeline(pipeline, None);
+            }
+            this.device.destroy_pipeline_layout(this.layout, None);
+            this.device
+                .destroy_descriptor_set_layout(this.bindings, None);
+        }
+        this.layout = vk::PipelineLayout::null();
+        this.bindings = vk::DescriptorSetLayout::null();
+    }
+    result
+}
+
+fn create(this: &mut Vulkan) -> Result<()> {
     unsafe {
         let bindings = [
             vk::DescriptorSetLayoutBinding::default()
@@ -39,7 +63,7 @@ pub(super) fn create(this: &mut Vulkan, physical: vk::PhysicalDevice) -> Result<
             .iter()
             .filter(|a| a.format == "spirv" && a.bindings.is_empty())
         {
-            let properties = this.instance.get_physical_device_properties(physical);
+            let properties = this.properties;
             super::limits::workgroup(
                 artifact.workgroup,
                 properties.limits.max_compute_work_group_size,
@@ -129,6 +153,10 @@ pub(super) fn create(this: &mut Vulkan, physical: vk::PhysicalDevice) -> Result<
                         if hit { "cache hit" } else { "compiled" }
                     );
                     this.pipelines.insert(artifact.entry, pipeline.get());
+                    #[cfg(test)]
+                    if std::mem::take(&mut this.inject_probe_init_failure) {
+                        return Err("injected probe initialization failure".into());
+                    }
                 }
                 Err(error) => {
                     this.device.destroy_pipeline(pipeline.get(), None);

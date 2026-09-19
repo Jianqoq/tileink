@@ -12,22 +12,32 @@ use windows::{
 
 #[derive(Clone)]
 pub struct Validation {
-    pub queue: ID3D12InfoQueue,
+    pub queue: Option<ID3D12InfoQueue>,
     rejected_cache_messages: RefCell<BTreeSet<u64>>,
 }
 
 impl Validation {
-    pub fn new(queue: ID3D12InfoQueue) -> Self {
+    pub fn new(queue: Option<ID3D12InfoQueue>) -> Self {
         Self {
             queue,
             rejected_cache_messages: RefCell::new(BTreeSet::new()),
         }
     }
 
-    pub fn record_cache_rejection(&self, start: u64) -> Result<()> {
+    pub fn count(&self) -> u64 {
         unsafe {
-            for index in start..self.queue.GetNumStoredMessages() {
-                let (id, _, description) = message(&self.queue, index)?;
+            self.queue
+                .as_ref()
+                .map_or(0, |queue| queue.GetNumStoredMessages())
+        }
+    }
+    pub fn record_cache_rejection(&self, start: u64) -> Result<()> {
+        let Some(queue) = &self.queue else {
+            return Ok(());
+        };
+        unsafe {
+            for index in start..queue.GetNumStoredMessages() {
+                let (id, _, description) = message(queue, index)?;
                 if cache_message(id) {
                     // Keep the original queue intact and exempt only known cache
                     // diagnostics from this failed creation attempt. All unrelated
@@ -85,18 +95,20 @@ pub fn assert_valid(validation: &Validation) -> Result<()> {
     validate(validation, false)
 }
 
-// Only whole-renderer parity tests opt in. wgpu's RTV initialization can emit
+// Public contexts and whole-renderer parity tests opt in. wgpu's RTV initialization can emit
 // this optimization advisory through the shared DX12 device info queue. Keep
 // every message and all correctness warnings/errors; native validation is strict.
-#[cfg(test)]
 pub fn assert_valid_with_wgpu_clears(validation: &Validation) -> Result<()> {
     validate(validation, true)
 }
 
 fn validate(validation: &Validation, wgpu_clears: bool) -> Result<()> {
+    let Some(queue) = &validation.queue else {
+        return Ok(());
+    };
     unsafe {
-        for index in 0..validation.queue.GetNumStoredMessages() {
-            let (id, severity, description) = message(&validation.queue, index)?;
+        for index in 0..queue.GetNumStoredMessages() {
+            let (id, severity, description) = message(queue, index)?;
             if wgpu_clears
                 && id == D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE
                 && severity == D3D12_MESSAGE_SEVERITY_WARNING

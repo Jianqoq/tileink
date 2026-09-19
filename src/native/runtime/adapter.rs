@@ -95,18 +95,48 @@ impl Encoder {
 }
 
 impl Adapter {
+    #[cfg(test)]
     pub fn new(backend: NativeBackend, identity: &str) -> Result<Self> {
+        #[cfg(feature = "native-dx12")]
+        if backend == NativeBackend::Dx12 {
+            // Verification enters native construction before its wgpu references.
+            unsafe {
+                super::enable_dx12_validation()?;
+            }
+        }
+        Self::with_options(
+            backend,
+            &crate::native::NativeContextOptions {
+                physical_adapter: Some(identity.to_owned()),
+                validation: true,
+            },
+        )
+    }
+    pub fn with_options(
+        backend: NativeBackend,
+        options: &crate::native::NativeContextOptions,
+    ) -> Result<Self> {
         let device = match backend {
             #[cfg(feature = "native-dx12")]
-            NativeBackend::Dx12 => Device::Dx12(Box::new(super::dx12::Dx12::new(identity)?)),
+            NativeBackend::Dx12 => {
+                Device::Dx12(Box::new(super::dx12::Dx12::with_options(options)?))
+            }
             #[cfg(feature = "native-vulkan")]
             NativeBackend::Vulkan => {
-                Device::Vulkan(Box::new(super::vulkan::Vulkan::new(identity)?))
+                Device::Vulkan(Box::new(super::vulkan::Vulkan::with_options(options)?))
             }
             #[cfg(not(all(feature = "native-dx12", feature = "native-vulkan")))]
             _ => return Err("native API feature is disabled".into()),
         };
         Ok(Self(Rc::new(RefCell::new(device))))
+    }
+    pub fn limits(&self) -> super::renderer::recording::Limits {
+        match &*self.0.borrow() {
+            #[cfg(feature = "native-dx12")]
+            Device::Dx12(device) => device.limits(),
+            #[cfg(feature = "native-vulkan")]
+            Device::Vulkan(device) => device.limits(),
+        }
     }
     pub fn submit_compute(
         &self,
@@ -261,7 +291,6 @@ impl BatchAdapter for Adapter {
     }
 }
 
-#[cfg(test)]
 impl Adapter {
     pub fn assert_valid_with_wgpu_clears(&self) -> Result<()> {
         #[cfg(feature = "native-dx12")]
