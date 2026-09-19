@@ -2026,3 +2026,15 @@ only the approved turbulence difference remains. Both reviews closed. See
 [shared frame scheduling](docs/native/m4-shared-frame.md). No performance comparison.
 M4 still requires public renderer/resource assembly and complete immediate
 four-renderer SVG/example acceptance.
+
+## M4 native immediate resource preparation — 2026-09-19
+
+One recorder now merges image namespaces, resolves nested vector children in the
+root command batch, reuses child CPU caches and prepares root/localized text through
+the shared lifecycle. Colliding renderer/scene image keys retain distinct pixels.
+Four-API nested images/cache/namespace coverage (157.24s) and assembled text frames
+(159.63s) pass. Release (1,042), integrations, strict lint, native-only, full SVG/
+examples and PNG checks pass with only the approved turbulence delta; reviews are
+closed. See [frame preparation](docs/native/m4-frame-preparation.md). No performance
+comparison. M4 still requires public context/renderer integration and full immediate
+four-renderer SVG/example acceptance.

@@ -25,6 +25,7 @@ mod filter_resources;
 mod filters;
 mod frame;
 mod images;
+pub(crate) mod recording;
 mod targets;
 pub(crate) use images::Images;
 mod groups;

@@ -274,3 +274,5 @@ mod frame_groups;
 mod frame_filters;
 #[path = "tests/frame_text_gpu.rs"]
 mod frame_text;
+#[path = "tests/recording_gpu.rs"]
+mod recording;

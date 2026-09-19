@@ -2,8 +2,7 @@ use super::reference::{FilterVariant, FineVariant};
 use crate::native::runtime::{
     Result,
     compute::ComputeBatch,
-    program::scene::SceneCache,
-    renderer::{Execution, Images},
+    renderer::recording::{Limits, Recording},
 };
 use crate::shared::layer::{filter::Filter, region::Region};
 use crate::{Canvas, Radius, TextContext, TextFontSystem, TextLayoutOptions};
@@ -54,7 +53,14 @@ fn four_api_frame_text_preserves_root_and_local_glyphs() -> Result<()> {
     let routes = super::fine_fixture::routes()?;
     let mut fonts = frame_fonts();
     let mut context = TextContext::new();
-    let mut cache = SceneCache::default();
+    let mut recording = Recording::default();
+    let resources = crate::shared::image_resource::ImageResourceStore::default();
+    let limits = Limits {
+        image_dimension: 4096,
+        atlas_pages: 4,
+        texture_table_len: 0,
+        dispatch_dimension: 65535,
+    };
     for (mode_index, mode) in [
         crate::TextSubpixelMode::None,
         crate::TextSubpixelMode::Rgb,
@@ -111,23 +117,15 @@ fn four_api_frame_text_preserves_root_and_local_glyphs() -> Result<()> {
                     .any(|pixel| pixel != [213, 227, 239, 255])
             );
             let mut batch = ComputeBatch::new();
-            let upload = Default::default();
-            let images = Images::record(&mut batch, &upload)?;
-            let text = crate::text::PreparedTextData::new(
-                &canvas.text_glyphs,
-                &canvas.text_runs,
-                &mut fonts,
-                &mut context,
-            );
-            let target = Execution::record(
-                &mut cache,
+            let target = recording.record(
                 &mut batch,
                 &canvas,
-                &images,
-                Some(&text),
+                &resources,
+                Some((&mut fonts, &mut context)),
+                limits,
                 mode_index == 1,
-                65535,
             )?;
+            assert!(batch.outputs().is_empty());
             batch.readback(target)?;
             for fine in FineVariant::ALL {
                 routes.check_render(
@@ -145,15 +143,13 @@ fn four_api_frame_text_preserves_root_and_local_glyphs() -> Result<()> {
             // and clear old text uploads, including inside localized filters.
             let expected = routes.canvas_reference(&canvas)?;
             let mut batch = ComputeBatch::new();
-            let images = Images::record(&mut batch, &upload)?;
-            let target = Execution::record(
-                &mut cache,
+            let target = recording.record(
                 &mut batch,
                 &canvas,
-                &images,
+                &resources,
                 None,
+                limits,
                 mode_index == 1,
-                65535,
             )?;
             batch.readback(target)?;
             for fine in FineVariant::ALL {
