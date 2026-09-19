@@ -19,7 +19,11 @@ The [native HLSL backend plan](NATIVE_BACKEND_PLAN.md) adds opt-in DX12/Vulkan
 backends with exact pixel parity. M0/M1 and the Windows M2 shader toolchain are
 complete. [Windows M3](docs/native/m3-completion.md) provides shared native batches,
 resource ownership, cached shaders/pipelines and four-API exact texture/numerical
-probes. The complete Canvas renderer remains M4; Metal hardware verification is deferred.
+probes. Windows now exposes owned `NativeContext` / `NativeRenderer` for immediate
+Canvas and text rendering, explicit completion/readback and configurable background
+clearing. [Windows M4](docs/native/m4-completion.md) passes 1,712 SVGs and 45 example
+images with exact six-route parity on the recorded GPU/driver. Native retained and
+external-target support remain M5; Metal hardware verification is deferred.
 
 This repository maintains a [shared wgpu HAL patch](WGPU_PATCHES.md), including DX12
 write-only texture synchronization. Cargo patches are not transitive: consumers must select
@@ -33,20 +37,22 @@ it in their own root workspace to receive the fix.
 
 `wgpu` is enabled by default. Disabling default features leaves the CPU scene,
 retained materializer, SVG and text APIs available without a WGPU runtime/build
-dependency. GPU rendering still requires the WGPU feature at this stage.
+dependency. GPU rendering requires `wgpu` or a supported native feature.
 
 | Configuration | Current behavior |
 | --- | --- |
 | Default / `wgpu` | Existing WGPU renderer and texture interop |
 | `default-features = false` | CPU scene construction and shared renderer contracts |
-| `native-dx12` | Windows DX12 dependency and explicit backend selection; renderer unavailable |
-| `native-vulkan` | Windows/Linux Vulkan dependency and explicit backend selection; renderer unavailable |
+| `native-dx12` | Owned Windows DX12 immediate renderer using cached HLSL/DXIL |
+| `native-vulkan` | Owned Windows Vulkan immediate renderer using cached HLSL/SPIR-V; Linux runtime remains unavailable |
 | `native` | Both native feature selections |
-| `wgpu` plus a native feature | Shared native minimum programs compile; full Canvas rendering still uses WGPU |
+| `wgpu` plus a native feature | Both renderers coexist; backend selection is explicit |
 
-The native feature names reserve separate API adapters. Their constructors return
-explicit errors until the planned implementations are complete; they never fall
-back to WGPU. WGPU's existing **native/portable texture modes** are separate from
+Native constructors return explicit errors for unsupported platforms, unavailable
+adapters or insufficient capabilities; they never fall back to WGPU. Native retained
+rendering and imported targets remain M5. See the [owned API contract](docs/native/m4-public-renderer.md)
+and [four-API corpus runner](docs/native/m4-corpus-runner.md).
+WGPU's existing **native/portable texture modes** are separate from
 these features. See [the API contract](NATIVE_API_CONTRACT.md) and
 [validation requirements](NATIVE_BACKEND_TESTING.md).
 

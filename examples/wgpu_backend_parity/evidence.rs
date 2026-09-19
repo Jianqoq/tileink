@@ -138,6 +138,7 @@ pub fn create_manifest(
         "runtime_resources": corpus.snapshot,
         "runtime_fonts": fonts,
         "requested_dx12_fine": options.dx12_fine.name(),
+        "native_routes_requested": options.native,
         "format": "Rgba8Unorm premultiplied RGBA, all four raw channels, row padding excluded",
     });
     write_new_json(&options.output.join("manifest.json"), &manifest)?;

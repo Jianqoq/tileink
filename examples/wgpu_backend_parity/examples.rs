@@ -4,6 +4,7 @@ use std::{path::Path, rc::Rc};
 pub fn render(
     inputs: Rc<capture::Inputs>,
     routes: &mut [gpu::Route],
+    native_routes: &super::native::Routes,
     report: &mut Report,
     output: &Path,
 ) -> Result<()> {
@@ -20,6 +21,10 @@ pub fn render(
         )?;
         route.verify_fine_compiler(frames.precompiled_dxil_seen)?;
         pipelines.push(serde_json::json!({"route":route.name,"workloads":frames.pipelines}));
+        captured.push(frames.images);
+    }
+    for (name, frames) in native_routes.examples(inputs)? {
+        pipelines.push(serde_json::json!({"route": name, "workloads": frames.pipelines}));
         captured.push(frames.images);
     }
     evidence::write_new_json(
@@ -63,8 +68,12 @@ mod tests {
                 15,
                 peniko::Color::TRANSPARENT,
                 |renderer| {
-                    assert_eq!(renderer.device(), device);
-                    renderer.render(&tileink::Canvas::new(17, 15, 1.0));
+                    assert_eq!(
+                        super::super::common::new_wgpu_renderer(1, 1, peniko::Color::TRANSPARENT)
+                            .device(),
+                        device
+                    );
+                    renderer.render(&tileink::Canvas::new(17, 15, 1.0))?;
                     Ok(())
                 },
             )
@@ -82,7 +91,7 @@ mod tests {
                 1,
                 peniko::Color::TRANSPARENT,
                 |renderer| {
-                    renderer.render(&tileink::Canvas::new(1, 1, 1.0));
+                    renderer.render(&tileink::Canvas::new(1, 1, 1.0))?;
                     Ok(())
                 },
             )

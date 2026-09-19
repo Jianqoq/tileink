@@ -7,10 +7,11 @@ use std::{
 use super::Result;
 
 pub const HELP: &str =
-    "wgpu_backend_parity [--input SVG_FILE_OR_DIR | --suite smoke|examples|retained] [--textures native|portable|both]
+    "wgpu_backend_parity [--input SVG_FILE_OR_DIR | --suite smoke|examples|retained] [--textures native|portable|both] [--native]
     [--dx12-fine runtime|precompiled] [--dxc PATH_TO_DXCOMPILER_DLL] [--output NEW_DIRECTORY] [--luid HEX_LUID]
 By default render built-in probes; --suite examples runs the complete shared example catalog. Requires hardware DX12 and Vulkan
-on the same Windows GPU. Compares all RGBA bytes without tolerance. Output must be new.";
+on the same Windows GPU. --native adds owned HLSL DX12 and Vulkan routes (requires --features native).
+Compares all RGBA bytes without tolerance. Output must be new.";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Dx12Fine {
@@ -37,6 +38,7 @@ pub enum Suite {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Options {
+    pub native: bool,
     pub input: Option<PathBuf>,
     pub suite: Suite,
     pub dx12_fine: Dx12Fine,
@@ -63,6 +65,7 @@ impl Options {
 
     pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Option<Self>> {
         let mut input = None;
+        let mut native = false;
         let mut suite = None;
         let mut dx12_fine = Dx12Fine::Runtime;
         let mut output = None;
@@ -78,6 +81,10 @@ impl Options {
             let flag = flag.to_str().ok_or("argument name is not UTF-8")?;
             if !seen.insert(flag.to_owned()) {
                 return Err(format!("duplicate argument {flag}").into());
+            }
+            if flag == "--native" {
+                native = true;
+                continue;
             }
             if !matches!(
                 flag,
@@ -142,6 +149,11 @@ impl Options {
             );
         }
         let textures = textures.unwrap_or_else(|| vec![false, true]);
+        if native && suite == Some(Suite::Retained) {
+            return Err(
+                "--native certifies immediate frames; retained native routes remain M5".into(),
+            );
+        }
         if dx12_fine == Dx12Fine::Precompiled && !textures.contains(&true) {
             return Err("precompiled DX12 fine requires a portable texture route".into());
         }
@@ -158,6 +170,7 @@ impl Options {
                 ))
         });
         Ok(Some(Self {
+            native,
             input,
             suite: suite.unwrap_or_default(),
             dx12_fine,
@@ -249,6 +262,21 @@ mod tests {
         assert!(parse(&["--dx12-fine", "precompiled", "--textures", "portable"]).is_ok());
         assert!(parse(&["--dx12-fine", "precompiled", "--textures", "native"]).is_err());
         assert!(parse(&["--dx12-fine", "auto"]).is_err());
+    }
+
+    #[test]
+    fn native_routes_are_explicit_and_reject_retained_or_duplicate_requests() {
+        assert!(!parse(&[]).unwrap().unwrap().native);
+        assert!(parse(&["--native"]).unwrap().unwrap().native);
+        assert!(
+            parse(&["--native", "--input", "a.svg"])
+                .unwrap()
+                .unwrap()
+                .native
+        );
+        assert!(parse(&["--native", "--suite", "examples"]).is_ok());
+        assert!(parse(&["--native", "--suite", "retained"]).is_err());
+        assert!(parse(&["--native", "--native"]).is_err());
     }
 
     #[test]

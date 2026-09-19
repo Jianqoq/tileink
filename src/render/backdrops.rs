@@ -39,14 +39,14 @@ pub(crate) struct BackdropPass<'a> {
 
 pub(crate) trait BackdropAdapter: MaskAdapter + FilterPassAdapter {
     type WorkState;
-    /// False leaves the target unchanged and permits the ordinary filter path.
+    /// Ok(false) permits the ordinary path; recording failures abort the frame.
     fn try_direct_backdrop(
         &mut self,
         target: RenderTargetId,
         bounds: Bounds,
         filter: &Filter,
         region: &Region,
-    ) -> bool;
+    ) -> Result<bool, Self::Error>;
     fn suspend_backdrop_work(&mut self) -> Self::WorkState;
     fn restore_backdrop_work(&mut self, state: Self::WorkState);
     fn filter_backdrop(
@@ -147,7 +147,7 @@ pub(crate) fn execute<A: BackdropAdapter>(
     let bypass = a.retained().bypasses_backdrop_cache();
     if (layer.retained_id.is_none() || bypass)
         && direct_rect
-        && a.try_direct_backdrop(target, bounds, layer.filter, layer.region)
+        && a.try_direct_backdrop(target, bounds, layer.filter, layer.region)?
     {
         cursors.advance_filter(layer.filter);
         return operations::execute_ops(a, canvas, plan, layer.children, target, cursors, None);

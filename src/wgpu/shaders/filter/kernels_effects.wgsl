@@ -103,6 +103,27 @@ fn filter_displacement_map_region(@builtin(global_invocation_id) gid: vec3<u32>)
     target_store_ix(ix, out);
 }
 
+// Exponent-bit scaling prevents fast-math from constructing 1/subnormal.
+fn convolve_scale_24(value: f32) -> f32 {
+    let bits = bitcast<u32>(value);
+    let magnitude = bits & 0x7fffffffu;
+    let exponent = magnitude >> 23u;
+    if (exponent == 0u) {
+        let scaled = f32(magnitude) * bitcast<f32>(0x01000000u);
+        return select(scaled, -scaled, (bits & 0x80000000u) != 0u);
+    }
+    if (exponent >= 231u) { return bitcast<f32>((bits & 0x80000000u) | 0x7f800000u); }
+    return bitcast<f32>(bits + (24u << 23u));
+}
+
+// Preserve a visible quotient when a large divisor's reciprocal would flush.
+fn convolve_unscale_24(value: f32) -> f32 {
+    let bits = bitcast<u32>(value);
+    let exponent = (bits & 0x7fffffffu) >> 23u;
+    if (exponent <= 24u) { return 0.0; }
+    return bitcast<f32>(bits - (24u << 23u));
+}
+
 @compute @workgroup_size(FILTER_WORKGROUP_SIZE)
 fn filter_convolve_matrix_region(@builtin(global_invocation_id) gid: vec3<u32>) {
     let region_ix = filter_region_index(gid);
@@ -112,7 +133,8 @@ fn filter_convolve_matrix_region(@builtin(global_invocation_id) gid: vec3<u32>) 
     let xy = xy_for_region_ix(region_ix);
     let dst_ix = target_ix_at(xy.x, xy.y);
     let divisor = config.amount;
-    if (config.kernel_columns == 0u || config.kernel_rows == 0u || divisor == 0.0) {
+    let divisor_magnitude = bitcast<u32>(divisor) & 0x7fffffffu;
+    if (config.kernel_columns == 0u || config.kernel_rows == 0u || divisor_magnitude == 0u) {
         target_store_ix(dst_ix, source_pixel_ix(dst_ix));
         return;
     }
@@ -168,24 +190,46 @@ fn filter_convolve_matrix_region(@builtin(global_invocation_id) gid: vec3<u32>) 
             }
 
             let alpha = (sample >> 24u) & 255u;
-            out_r += straight_channel(sample & 255u, alpha) * weight;
-            out_g += straight_channel((sample >> 8u) & 255u, alpha) * weight;
-            out_b += straight_channel((sample >> 16u) & 255u, alpha) * weight;
-            out_a += (f32(alpha) / 255.0) * weight;
+            out_r = fma(straight_channel(sample & 255u, alpha), weight, out_r);
+            out_g = fma(straight_channel((sample >> 8u) & 255u, alpha), weight, out_g);
+            out_b = fma(straight_channel((sample >> 16u) & 255u, alpha), weight, out_b);
+            out_a = fma(f32(alpha), weight, out_a);
             kx += 1u;
         }
         ky += 1u;
     }
 
-    let base_alpha = f32((source_pixel_ix(dst_ix) >> 24u) & 255u) / 255.0;
-    var alpha = clamp(out_a / divisor + config.rect_x0, 0.0, 1.0);
-    if (config.kernel_preserve_alpha == 1u) {
-        alpha = base_alpha;
+    // Match native convolution's byte-domain alpha and explicit fused order.
+    // Avoid normalizing every tap then rescaling at a half-byte boundary.
+    let reciprocal = 1.0 / divisor;
+    var alpha: f32;
+    var straight: vec3<f32>;
+    let sum = vec3<f32>(out_r, out_g, out_b);
+    if (divisor_magnitude < 0x00800000u) {
+        // Decode the subnormal divisor and scale both sides by 2^24 before FTZ.
+        var scaled_divisor = f32(divisor_magnitude) * bitcast<f32>(0x01000000u);
+        if ((bitcast<u32>(divisor) & 0x80000000u) != 0u) { scaled_divisor = -scaled_divisor; }
+        straight = clamp(vec3<f32>(convolve_scale_24(out_r), convolve_scale_24(out_g), convolve_scale_24(out_b)) / scaled_divisor + vec3<f32>(config.rect_x0), vec3<f32>(0.0), vec3<f32>(1.0));
+        alpha = clamp(convolve_scale_24(out_a) / (scaled_divisor * 255.0) + config.rect_x0, 0.0, 1.0) * 255.0;
+    } else if (divisor_magnitude > 0x7e800000u) {
+        let inverse = 1.0 / convolve_unscale_24(divisor);
+        let reduced = vec3<f32>(convolve_unscale_24(out_r), convolve_unscale_24(out_g), convolve_unscale_24(out_b));
+        straight = clamp(fma(reduced, vec3<f32>(inverse), vec3<f32>(config.rect_x0)), vec3<f32>(0.0), vec3<f32>(1.0));
+        alpha = clamp(fma(convolve_unscale_24(out_a), inverse, config.rect_x0 * 255.0), 0.0, 255.0);
+    } else if (abs(config.rect_x0) > bitcast<f32>(0x7f7fffffu) / 255.0) {
+        // Keep a finite bias finite until its addition to the normalized quotient.
+        straight = clamp(sum / divisor + vec3<f32>(config.rect_x0), vec3<f32>(0.0), vec3<f32>(1.0));
+        alpha = clamp((out_a / 255.0) / divisor + config.rect_x0, 0.0, 1.0) * 255.0;
+    } else {
+        straight = clamp(fma(sum, vec3<f32>(reciprocal), vec3<f32>(config.rect_x0)), vec3<f32>(0.0), vec3<f32>(1.0));
+        alpha = clamp(fma(out_a, reciprocal, config.rect_x0 * 255.0), 0.0, 255.0);
     }
-    let r = clamp(out_r / divisor + config.rect_x0, 0.0, 1.0);
-    let g = clamp(out_g / divisor + config.rect_x0, 0.0, 1.0);
-    let b = clamp(out_b / divisor + config.rect_x0, 0.0, 1.0);
-    target_store_ix(dst_ix, pack_premul_rgba8(r * alpha, g * alpha, b * alpha, alpha));
+    if (config.kernel_preserve_alpha == 1u) {
+        alpha = f32((source_pixel_ix(dst_ix) >> 24u) & 255u);
+    }
+    target_store_ix(dst_ix, u32(fma(straight.r, alpha, 0.5)) |
+        (u32(fma(straight.g, alpha, 0.5)) << 8u) | (u32(fma(straight.b, alpha, 0.5)) << 16u) |
+        (u32(alpha + 0.5) << 24u));
 }
 
 @compute @workgroup_size(FILTER_WORKGROUP_SIZE)

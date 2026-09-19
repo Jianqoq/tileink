@@ -16,7 +16,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             text_scene::HEIGHT,
             case.background,
             |renderer| {
-                renderer.render_with_text(&scene, &mut font_system, &mut text_context);
+                renderer.render_with_text(&scene, &mut font_system, &mut text_context)?;
                 Ok(())
             },
         )?;

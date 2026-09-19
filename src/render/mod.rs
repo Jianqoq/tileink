@@ -26,6 +26,7 @@ pub(crate) mod groups;
 pub(crate) mod operations;
 
 pub(crate) mod masks;
+pub(crate) mod scratch_slots;
 pub(crate) mod surfaces;
 
 pub(crate) mod filter_scene;

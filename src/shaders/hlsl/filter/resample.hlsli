@@ -12,15 +12,17 @@ uint filter_downsample_pixel(ConstantBuffer<FilterConfig> config, Texture2D<floa
         uint2 position=clamp((begin+end-1u)/2u,lower,upper-1u);
         return unorm_to_rgba8(source.Load(int3(position,0)));
     }
-    float4 sum=0.0; float count=0.0;
+    // Accumulate stored bytes, avoiding normalization error before half-byte rounding.
+    float4 sum=0.0;
     for (uint sy=begin.y;sy<end.y;++sy) {
         for (uint sx=begin.x;sx<end.x;++sx) {
-            sum+=rgba8_to_unorm(unorm_to_rgba8(source.Load(int3(sx,sy,0))));
-            count+=1.0;
+            uint pixel=unorm_to_rgba8(source.Load(int3(sx,sy,0)));
+            sum+=float4(pixel&255u,(pixel>>8u)&255u,(pixel>>16u)&255u,pixel>>24u);
         }
     }
-    float4 average=sum/count;
-    return pack_premul_rgba8(average.r,average.g,average.b,average.a);
+    float count=float((end.x-begin.x)*(end.y-begin.y));
+    uint4 average=uint4(clamp(mad(sum,1.0/count,0.5),0.0,255.0));
+    return rgba8_pack(average.r,average.g,average.b,average.a);
 }
 uint filter_upsample_pixel(ConstantBuffer<FilterConfig> config, Texture2D<float4> source, uint2 xy, uint4 source_bounds) {
     float factor=float(max(config.downsample,1u));

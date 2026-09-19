@@ -90,7 +90,7 @@ fn four_api_resample_regions_modes_and_independent_nearest() -> Result<()> {
     let mut nearest = Vec::new();
     let mut index = 0;
     for down in [false, true] {
-        for factor in [0u32, 1, 2, 3, 5] {
+        for factor in [0u32, 1, 2, 3, 4, 5, 8] {
             for mode in [0, 1] {
                 for compact in [false, true] {
                     let c = FilterConfig {
@@ -367,6 +367,178 @@ fn four_api_resample_fractional_rectangles_and_two_dimensional_oracle() -> Resul
                 &batch,
                 &expected,
                 "resample fractional rectangle and 2D oracle",
+                Some(FilterVariant {
+                    portable,
+                    texture_table,
+                }),
+            )?;
+        }
+    }
+    routes.validate()
+}
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn four_api_resample_half_byte_box_means() -> Result<()> {
+    let routes = Routes::with_features(
+        wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
+            | wgpu::Features::TEXTURE_BINDING_ARRAY
+            | wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
+    )?;
+    let mut batch = ComputeBatch::new();
+    let mut pixels = Vec::new();
+    let mut expected = vec![0; 512 * 4];
+    for i in 0..256usize {
+        let a = [i as u8, (i * 17) as u8, (i * 71) as u8, 255];
+        let b = [
+            i.saturating_add(1).min(255) as u8,
+            (i * 31 + 1) as u8,
+            (i * 43 + 2) as u8,
+            255,
+        ];
+        pixels.extend(a);
+        pixels.extend(b);
+        for lane in 0..4 {
+            expected[i * 4 + lane] = (u16::from(a[lane]) + u16::from(b[lane])).div_ceil(2) as u8;
+        }
+    }
+    let source = batch.texture_rgba8([512, 1], pixels)?;
+    let target = batch.texture_rgba8([512, 1], vec![0; 512 * 4])?;
+    let config = FilterConfig {
+        width: 512,
+        height: 1,
+        region_width: 512,
+        region_height: 1,
+        rect_x1: 512.0,
+        rect_y1: 1.0,
+        downsample: 2,
+        downsample_filter: 1,
+        ..Default::default()
+    };
+    resample::encode(
+        &mut batch,
+        Resample::Downsample,
+        config,
+        None,
+        source,
+        target,
+    )?;
+    batch.readback(target)?;
+    for portable in [false, true] {
+        for texture_table in [false, true] {
+            routes.check_variant(
+                &batch,
+                std::slice::from_ref(&expected),
+                "box mean half-byte oracle",
+                Some(FilterVariant {
+                    portable,
+                    texture_table,
+                }),
+            )?;
+        }
+    }
+    routes.validate()
+}
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn four_api_resample_blur_chain_large_coordinates() -> Result<()> {
+    use crate::native::runtime::program::filter::blur::{self, Blur};
+    let routes = Routes::with_features(
+        wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
+            | wgpu::Features::TEXTURE_BINDING_ARRAY
+            | wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
+    )?;
+    let mut batch = ComputeBatch::new();
+    let extent = [1024, 64];
+    let pixels: Vec<u8> = (0..extent[0] * extent[1])
+        .flat_map(|i| {
+            [
+                (i * 17) as u8,
+                (i * 31 + 37) as u8,
+                (i * 71 + 113) as u8,
+                255,
+            ]
+        })
+        .collect();
+    let mut source = batch.texture_rgba8(extent, pixels.clone())?;
+    let low = FilterConfig {
+        width: extent[0],
+        height: extent[1],
+        region_width: extent[0] / 4,
+        region_height: extent[1] / 4,
+        rect_x1: extent[0] as f32,
+        rect_y1: extent[1] as f32,
+        downsample: 4,
+        downsample_filter: 1,
+        upsample_filter: 1,
+        amount: 7.0,
+        ..Default::default()
+    };
+    for stage in 0..4 {
+        let target = batch.texture_rgba8(extent, vec![0; (extent[0] * extent[1] * 4) as usize])?;
+        match stage {
+            0 => resample::encode(&mut batch, Resample::Downsample, low, None, source, target)?,
+            1 | 2 => blur::encode(
+                &mut batch,
+                Blur::Global,
+                FilterConfig {
+                    blur_axis: stage - 1,
+                    ..low
+                },
+                None,
+                source,
+                target,
+            )?,
+            _ => resample::encode(
+                &mut batch,
+                Resample::Upsample,
+                FilterConfig {
+                    region_width: extent[0],
+                    region_height: extent[1],
+                    rect_x1: low.region_width as f32,
+                    rect_y1: low.region_height as f32,
+                    ..low
+                },
+                None,
+                source,
+                target,
+            )?,
+        }
+        batch.readback(target)?;
+        source = target;
+    }
+    let expected = routes.filter_reference_output(
+        &batch,
+        FilterVariant {
+            portable: false,
+            texture_table: false,
+        },
+    )?;
+    let mut mean = vec![0u8; pixels.len()];
+    for y in 0..low.region_height {
+        for x in 0..low.region_width {
+            for lane in 0..4 {
+                let mut sum = 0u32;
+                for sy in y * 4..(y + 1) * 4 {
+                    for sx in x * 4..(x + 1) * 4 {
+                        sum += u32::from(pixels[((sy * extent[0] + sx) * 4) as usize + lane]);
+                    }
+                }
+                mean[((y * extent[0] + x) * 4) as usize + lane] = ((sum + 8) / 16) as u8;
+            }
+        }
+    }
+    assert_eq!(
+        expected[0], mean,
+        "box stage must match the integer mean oracle"
+    );
+    for portable in [false, true] {
+        for texture_table in [false, true] {
+            routes.check_variant(
+                &batch,
+                &expected,
+                "downsample/blur-X/blur-Y/upsample stage",
                 Some(FilterVariant {
                     portable,
                     texture_table,

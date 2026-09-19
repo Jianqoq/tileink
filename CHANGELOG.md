@@ -9,12 +9,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- Expose owned Windows native contexts and immediate Canvas/text renderers with
+  explicit submission completion, premultiplied image readback and configurable
+  root backgrounds. Native pipelines use persistent caches; conformance-only
+  pipelines initialize lazily. Reject late DX12 debug-layer activation and preserve
+  resource quarantine when no debug queue exists.
+- Extend the existing SVG/example parity runner with `--native`, sharing scene
+  callbacks and frozen fonts/resources across wgpu and native DX12/Vulkan routes.
+  Complete Windows M4 acceptance: 1,712 SVGs and 45 example images match exactly
+  across six routes on the recorded GPU/driver. Native retained/interop is M5.
+
 - Complete the Windows M3 minimum native adapter: shared command batches/uniforms,
   context-owning receipts, DX12/Vulkan texture modules and strict input validation.
   Native module roots use named `.rs` files. Repeated four-API exact probes cover
   hardware RGBA8 loads and canonical Q16 interpolation, fixing the reproduced
   floating contraction mismatch. Vulkan OOM retries preserve confirmed prefixes;
-  unknown submissions retain leases and stop safely. Full Canvas rendering remains M4.
+  unknown submissions retain leases and stop safely. Complete immediate corpus acceptance remains M4.
 
 - Extend native verification adapters with queued per-frame ownership, explicit
   completion/readback tickets and bounded teardown. Exact reverse-order results,
@@ -24,12 +34,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   artifacts, include/toolchain invalidation, strict minimum ABI reflection and
   independent MSL probe source. Default wgpu builds require no new tools.
 - Add exact four-API clear/copy/layout/manual RGBA8 sampling probes, native driver
-  pipeline caches and validation-layer checks. Production native rendering and
+  pipeline caches and validation-layer checks. Native retained/interop and
   Metal compiler/GPU acceptance remain unfinished.
 
-- Split the default WGPU feature from CPU scene/materializer code and reserved
-  opt-in DX12/Vulkan feature selections. Native constructors explicitly report
-  unavailable backends; actual native rendering remains planned.
+- Split the default WGPU feature from CPU scene/materializer code and opt-in
+  DX12/Vulkan feature selections. Native constructors explicitly report unavailable
+  backends or unsupported capabilities.
 - Share frame/layer/filter scheduling, incremental state and resource-lifetime
   contracts with WGPU as the first executing adapter.
 - Plan independently maintained MSL source and Apple toolchain validation for M2

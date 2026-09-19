@@ -30,7 +30,7 @@ impl SceneResources {
                 root_target_view: None,
                 scratch: Vec::new(),
                 scratch_spares: Vec::new(),
-                scratch_in_use: Vec::new(),
+                scratch_slots: Default::default(),
             },
         }
     }
@@ -99,8 +99,8 @@ impl SceneResources {
             &mut renderer.scratch_spares,
         );
         std::mem::swap(
-            &mut self.allocation.scratch_in_use,
-            &mut renderer.scratch_in_use,
+            &mut self.allocation.scratch_slots,
+            &mut renderer.scratch_slots,
         );
         self
     }

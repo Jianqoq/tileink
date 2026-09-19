@@ -1,6 +1,6 @@
 # Tileink 原生 GPU 后端实施计划（HLSL / MSL）
 
-状态：**M0/M1、Windows M2 工具链和 M3 最小原生 Adapter 已完成；M4 进行中，完整 NativeRenderer/Canvas 尚未完成。Mac MSL 编译与实机验证延后。** 当前验收记录见 [M3](docs/native/m3-completion.md)、[M4 coarse emission](docs/native/m4-coarse-emission.md) 和 [实施记录](NATIVE_BACKEND_PROGRESS.md)。
+状态：**M0/M1、Windows M2 工具链、M3 和 Windows M4 已完成。完整 immediate 语料通过六路逐字节验收；native retained、外部目标和持续帧属于 M5。Mac MSL 编译与实机验证延后。** 当前验收记录见 [M4 完成记录](docs/native/m4-completion.md) 和 [实施记录](NATIVE_BACKEND_PROGRESS.md)。
 
 日期：2026-09-07。代码调研基线：`eabbe0b97b392582d663206c1f2aad51f76695aa`。
 
@@ -12,7 +12,7 @@
 
 首期四路验收在 Windows 上进行：每次比较使用同一物理 GPU、相同输入、输出格式、分辨率和颜色语义。再在声明支持的 GPU/驱动矩阵上逐项重复验证。该要求不自动扩大为不同 GPU、不同操作系统、任意驱动版本之间的全局字节一致；支持范围必须由实际测试记录界定。
 
-跨 API 的精确一致性目前**未经验证**。先验证现有两条 wgpu 路径，再验证两条原生路径的最小渲染切片。如果有差异，先修正算法、精度约定或资源语义；不能把“看起来一样”当作通过，也不能预先保证换成 HLSL 就会一致。
+跨 API 的精确一致性由分阶段实测验收，实际 GPU/驱动与语料覆盖见 [实施记录](NATIVE_BACKEND_PROGRESS.md)。如果有差异，先修正算法、精度约定或资源语义；不能把“看起来一样”当作通过，也不能将单一设备的结果推广到未验证设备。
 
 ### 首期范围
 
@@ -290,12 +290,15 @@ Mac 按用户决定延期，不计入本轮 Windows M3 验收；性能比较仍�
 
 ### M4 — 完整计算管线和绘制效果
 
-2026-09-13：Windows range scatter 与 cumsum 三个入口已完成四 API 逐字节验证，见 [range scatter](docs/native/m4-range-scatter.md) 与 [cumsum](docs/native/m4-cumsum.md)。[scan 六阶段](docs/native/m4-scan.md)也已通过四路验证。[coarse 分配链的 8 个入口](docs/native/m4-coarse-allocation.md)也已通过验收。[coarse 计数、偏移与类型归类的 6 个入口](docs/native/m4-coarse-count.md)已通过四路内核验证。[coarse 三种粒子输出](docs/native/m4-coarse-emission.md)也已通过四路内核验证。2026-09-14：最后四项 fine 变体已验收，179/179 项 Windows HLSL 内核全部通过四 API 对比，见 [fine interpreter](docs/native/m4-fine-interpreter.md)。完整 NativeRenderer/Canvas 接入、共享提交/资源复用和 immediate 四路场景验收仍未完成，M4 保持进行中。用户已取消性能比较，后续不运行 Criterion/resize 性能对照。
+2026-09-13：Windows range scatter 与 cumsum 三个入口已完成四 API 逐字节验证，见 [range scatter](docs/native/m4-range-scatter.md) 与 [cumsum](docs/native/m4-cumsum.md)。[scan 六阶段](docs/native/m4-scan.md)也已通过四路验证。[coarse 分配链的 8 个入口](docs/native/m4-coarse-allocation.md)也已通过验收。[coarse 计数、偏移与类型归类的 6 个入口](docs/native/m4-coarse-count.md)已通过四路内核验证。[coarse 三种粒子输出](docs/native/m4-coarse-emission.md)也已通过四路内核验证。2026-09-14：最后四项 fine 变体已验收，179/179 项 Windows HLSL 内核全部通过四 API 对比，见 [fine interpreter](docs/native/m4-fine-interpreter.md).
 
-- [ ] 按 range scatter → scan/cumsum → coarse → fine → layer/mask/filter/backdrop 逐项移植，两条原生 Adapter 每项一起验收。
-- [ ] 每一项先补语义/边界测试，再实现 HLSL 与绑定；检查中间结果和最终四路像素。
-- [ ] 对文字、图片、gradient、所有 SDF/混合/采样执行变体完成清单，保留 painter order、dispatch tail 和资源边界。
-- [ ] 共享资源池、uniform 聚合和提交策略；仅将 API 特有分配/同步保留在 Adapter 中。
+2026-09-19: Windows M4 complete. See [M4 closeout](docs/native/m4-completion.md): 1,712 SVGs and 45 example images pass all six routes exactly. Native retained/interop remains M5. No performance comparison was run.
+
+
+- [x] 按 range scatter → scan/cumsum → coarse → fine → layer/mask/filter/backdrop 逐项移植，两条原生 Adapter 每项一起验收。
+- [x] 每一项先补语义/边界测试，再实现 HLSL 与绑定；检查中间结果和最终四路像素。
+- [x] 对文字、图片、gradient、所有 SDF/混合/采样执行变体完成清单，保留 painter order、dispatch tail 和资源边界。
+- [x] 共享资源池、uniform 聚合和提交策略；仅将 API 特有分配/同步保留在 Adapter 中。
 
 **退出条件：** program 清单无遗漏，全部 immediate SVG/示例在四路中通过。性能比较已由用户取消，不再作为退出门槛。
 

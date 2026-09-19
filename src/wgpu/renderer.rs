@@ -129,7 +129,7 @@ pub struct Renderer {
     root_target_view: Option<::wgpu::TextureView>,
     scratch: Vec<WgpuTarget>,
     scratch_spares: Vec<WgpuTarget>,
-    scratch_in_use: Vec<bool>,
+    scratch_slots: crate::render::scratch_slots::ScratchSlots,
     local_scene_resources: SceneResourcePool<WgpuSceneAllocation>,
     #[cfg(feature = "bench-internals")]
     reuse_local_scene_resources: bool,
@@ -163,7 +163,7 @@ struct WgpuSceneAllocation {
     root_target_view: Option<::wgpu::TextureView>,
     scratch: Vec<WgpuTarget>,
     scratch_spares: Vec<WgpuTarget>,
-    scratch_in_use: Vec<bool>,
+    scratch_slots: crate::render::scratch_slots::ScratchSlots,
 }
 
 type SceneResources = crate::render::scene_resources::SceneResources<WgpuSceneAllocation>;

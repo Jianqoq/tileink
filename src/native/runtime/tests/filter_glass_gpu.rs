@@ -517,3 +517,78 @@ fn four_api_glass_downsampled_blur_matches_integer_sampling_oracle() -> Result<(
     }
     routes.validate()
 }
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn four_api_glass_nonuniform_low_resolution_refraction() -> Result<()> {
+    let routes = Routes::with_features(
+        wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
+            | wgpu::Features::TEXTURE_BINDING_ARRAY
+            | wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
+    )?;
+    let size = [769u32, 257u32];
+    let pixels: Vec<u8> = (0..size[0] * size[1])
+        .flat_map(|i| [(i * 17) as u8, (i * 37) as u8, (i * 71) as u8, 255])
+        .collect();
+    let blurred_pixels: Vec<u8> = (0..size[0] * size[1])
+        .flat_map(|i| {
+            [
+                (i * 11 + 31) as u8,
+                (i * 23 + 67) as u8,
+                (i * 13 + 93) as u8,
+                255,
+            ]
+        })
+        .collect();
+    let mut batch = ComputeBatch::new();
+    let source = batch.texture_rgba8(size, pixels.clone())?;
+    let blurred = batch.texture_rgba8(size, blurred_pixels)?;
+    for mode in [Glass::Effect, Glass::RectangleComposite] {
+        let target = batch.texture_rgba8(size, pixels.clone())?;
+        let c = FilterConfig {
+            width: size[0],
+            height: size[1],
+            region_width: size[0],
+            region_height: size[1],
+            rect_x0: 100.0,
+            rect_y0: 32.0,
+            rect_x1: 700.0,
+            rect_y1: 220.0,
+            radius_top_left: 32.0,
+            radius_top_right: 32.0,
+            radius_bottom_left: 32.0,
+            radius_bottom_right: 32.0,
+            liquid_refraction_factor: 1.4,
+            liquid_refraction_thickness: 20.0,
+            mask_enabled: 1,
+            downsample: 4,
+            upsample_filter: 1,
+            source_x1: size[0].div_ceil(4),
+            source_y1: size[1].div_ceil(4),
+            ..Default::default()
+        };
+        glass::encode(&mut batch, mode, c, None, source, blurred, target)?;
+        batch.readback(target)?;
+    }
+    let expected = routes.filter_reference_output(
+        &batch,
+        FilterVariant {
+            portable: false,
+            texture_table: false,
+        },
+    )?;
+    for portable in [false, true] {
+        for texture_table in [false, true] {
+            routes.check_variant(
+                &batch,
+                &expected,
+                "nonuniform downsampled refraction",
+                Some(FilterVariant {
+                    portable,
+                    texture_table,
+                }),
+            )?;
+        }
+    }
+    routes.validate()
+}

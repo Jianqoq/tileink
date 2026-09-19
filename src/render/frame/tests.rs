@@ -1,3 +1,4 @@
+use super::SubmissionPolicy;
 use super::*;
 use crate::shared::{bounds::Bounds, execution::ExecOp, layer::Layer};
 use peniko::{Color, kurbo::Rect};
@@ -167,7 +168,15 @@ fn empty_damage_preserves_required_output_copy_without_preparing_gpu_work() {
         adapter.damage = Some(DamageTiles::new(adapter.size));
         adapter.plan = None;
         adapter.fail = Some("prepare");
-        assert_eq!(encode(&mut adapter, &canvas, copy, true), Ok(()));
+        assert_eq!(
+            encode(
+                &mut adapter,
+                &canvas,
+                copy,
+                SubmissionPolicy::EarlyRootBatches
+            ),
+            Ok(())
+        );
         assert_eq!(
             adapter.events,
             if copy {
@@ -187,7 +196,12 @@ fn empty_damage_copy_failure_is_reported_without_inventing_render_work() {
     adapter.plan = None;
     adapter.fail = Some("copy");
     assert_eq!(
-        encode(&mut adapter, &canvas, true, true),
+        encode(
+            &mut adapter,
+            &canvas,
+            true,
+            SubmissionPolicy::EarlyRootBatches
+        ),
         Err(FrameError::Adapter("copy"))
     );
     assert_eq!(adapter.events, vec![Event::Recycle, Event::Copy]);
@@ -199,7 +213,12 @@ fn missing_nonempty_plan_fails_before_target_work_or_history_copy() {
     let mut adapter = Adapter::new(&plan);
     adapter.plan = None;
     assert_eq!(
-        encode(&mut adapter, &canvas, true, true),
+        encode(
+            &mut adapter,
+            &canvas,
+            true,
+            SubmissionPolicy::EarlyRootBatches
+        ),
         Err(FrameError::MissingPlan)
     );
     assert_eq!(adapter.events, vec![Event::Recycle]);
@@ -209,7 +228,13 @@ fn missing_nonempty_plan_fails_before_target_work_or_history_copy() {
 fn large_full_direct_frame_preserves_child_scan_clear_draw_copy_order_and_budget() {
     let (canvas, plan) = fixture(16, false);
     let mut adapter = Adapter::new(&plan);
-    encode(&mut adapter, &canvas, true, true).unwrap();
+    encode(
+        &mut adapter,
+        &canvas,
+        true,
+        SubmissionPolicy::EarlyRootBatches,
+    )
+    .unwrap();
     assert_eq!(
         adapter.events,
         vec![
@@ -240,7 +265,17 @@ fn portable_partial_small_and_disallowed_frames_do_not_enable_early_root_submit(
         if mode == 2 {
             adapter.size = (512, 512);
         }
-        encode(&mut adapter, &canvas, false, mode != 3).unwrap();
+        encode(
+            &mut adapter,
+            &canvas,
+            false,
+            if mode != 3 {
+                SubmissionPolicy::EarlyRootBatches
+            } else {
+                SubmissionPolicy::Single
+            },
+        )
+        .unwrap();
         assert!(!adapter.events.iter().any(|e| matches!(e, Event::Budget(_))));
         assert!(adapter.events.contains(&Event::Clear(mode == 1)));
         assert!(!adapter.events.contains(&Event::Copy));
@@ -255,7 +290,13 @@ fn retained_batch_selection_uses_stable_membership_but_executes_in_painter_order
     adapter.expected_batch_ids = vec![700, 800, 900];
     adapter.selected = vec![98, 100];
     adapter.partial();
-    encode(&mut adapter, &canvas, false, true).unwrap();
+    encode(
+        &mut adapter,
+        &canvas,
+        false,
+        SubmissionPolicy::EarlyRootBatches,
+    )
+    .unwrap();
     assert!(adapter.events.contains(&Event::Direct(vec![0, 2])));
     assert!(adapter.events.contains(&Event::Clear(true)));
 }
@@ -265,7 +306,13 @@ fn recursive_frame_receives_root_selection_without_skipping_its_layer_execution(
     let (canvas, plan) = fixture(1, true);
     let mut adapter = Adapter::new(&plan);
     adapter.partial();
-    encode(&mut adapter, &canvas, true, true).unwrap();
+    encode(
+        &mut adapter,
+        &canvas,
+        true,
+        SubmissionPolicy::EarlyRootBatches,
+    )
+    .unwrap();
     assert!(adapter.events.contains(&Event::Recursive(Some(Vec::new()))));
     assert_eq!(
         &adapter.events[adapter.events.len() - 2..],
@@ -288,7 +335,12 @@ fn preparation_failures_stop_before_any_dependent_work() {
         let mut adapter = Adapter::new(&plan);
         adapter.fail = Some(stage);
         assert_eq!(
-            encode(&mut adapter, &canvas, true, true),
+            encode(
+                &mut adapter,
+                &canvas,
+                true,
+                SubmissionPolicy::EarlyRootBatches
+            ),
             Err(FrameError::Adapter(stage))
         );
         assert_eq!(adapter.events, prefix[..index + 2]);
@@ -302,7 +354,12 @@ fn either_execution_failure_records_stats_but_never_copies_failed_history() {
         let mut adapter = Adapter::new(&plan);
         adapter.fail = Some("execute");
         assert_eq!(
-            encode(&mut adapter, &canvas, true, true),
+            encode(
+                &mut adapter,
+                &canvas,
+                true,
+                SubmissionPolicy::EarlyRootBatches
+            ),
             Err(FrameError::Adapter("execute"))
         );
         assert_eq!(adapter.events.last(), Some(&Event::Stats));
@@ -316,7 +373,12 @@ fn output_copy_failure_keeps_recorded_execution_statistics_and_returns_failure()
     let mut adapter = Adapter::new(&plan);
     adapter.fail = Some("copy");
     assert_eq!(
-        encode(&mut adapter, &canvas, true, true),
+        encode(
+            &mut adapter,
+            &canvas,
+            true,
+            SubmissionPolicy::EarlyRootBatches
+        ),
         Err(FrameError::Adapter("copy"))
     );
     assert_eq!(

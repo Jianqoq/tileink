@@ -5,6 +5,7 @@
 pub mod capture;
 pub mod fonts;
 pub mod liquid_glass_fast_path;
+pub mod rendering;
 
 use std::{
     cell::RefCell,
@@ -137,8 +138,7 @@ pub fn render_to_png_wgpu(
     clear: Color,
 ) -> Result<(), Box<dyn std::error::Error>> {
     render_to_png_wgpu_with(name, width, height, clear, |renderer| {
-        renderer.render(scene);
-        Ok(())
+        renderer.render(scene)
     })
 }
 
@@ -147,7 +147,7 @@ pub fn render_to_png_wgpu_with(
     width: u32,
     height: u32,
     clear: Color,
-    mut render: impl FnMut(&mut WgpuRenderer) -> Result<(), Box<dyn std::error::Error>>,
+    mut render: impl FnMut(&mut dyn rendering::SceneRenderer) -> Result<(), Box<dyn std::error::Error>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(result) = capture::render(name, width, height, clear, &mut render) {
         return result;
@@ -179,7 +179,7 @@ fn render_to_png_wgpu_compare_portable(
     width: u32,
     height: u32,
     clear: Color,
-    mut render: impl FnMut(&mut WgpuRenderer) -> Result<(), Box<dyn std::error::Error>>,
+    mut render: impl FnMut(&mut dyn rendering::SceneRenderer) -> Result<(), Box<dyn std::error::Error>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Native is the example artifact; portable renders in memory to catch WebGPU regressions
     // without producing a second set of PNGs.

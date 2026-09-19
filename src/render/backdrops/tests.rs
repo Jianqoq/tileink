@@ -20,12 +20,12 @@ impl BackdropAdapter for Adapter {
         _: Bounds,
         filter: &Filter,
         _: &Region,
-    ) -> bool {
+    ) -> Result<bool, Self::Error> {
         if matches!(filter, Filter::Blur { sampling, .. } if sampling.factor() > 1) {
-            self.events.push(Event::DirectBackdrop);
-            true
+            self.record(Event::DirectBackdrop, "direct")?;
+            Ok(true)
         } else {
-            false
+            Ok(false)
         }
     }
     fn suspend_backdrop_work(&mut self) -> Self::WorkState {
@@ -527,6 +527,32 @@ fn downsampled_rect_shortcut_preserves_foreground_and_obeys_cache_and_clip_rules
         assert_eq!(a.filter_transfer_indices, vec![0]);
         idle(&a);
     }
+}
+
+#[test]
+fn direct_backdrop_failure_aborts_without_fallback_or_foreground() {
+    let (canvas, plan) = fixture();
+    let mut a = Adapter::new(&canvas, RetainedSurfaceKind::Backdrop);
+    a.fail = Some("direct");
+    let filter = Filter::Blur {
+        std_dev_x: 2.0,
+        std_dev_y: 2.0,
+        sampling: BlurSampling {
+            factor: 2,
+            ..Default::default()
+        },
+    };
+    // A failed direct recording may already contain passes; retrying the ordinary
+    // schedule would hide the failure and publish a partially modified frame.
+    assert!(matches!(
+        render(&mut a, &canvas, &plan, &filter, &rect(), false, 0..0),
+        Err("direct")
+    ));
+    assert!(!a.events.iter().any(|e| matches!(
+        e,
+        Event::Acquire(_) | Event::BackdropPass(..) | Event::Draw(_)
+    )));
+    idle(&a);
 }
 
 #[test]

@@ -3,6 +3,8 @@
 //! The ordinary PNG runner keeps its own cache. A reference run captures raw
 //! pixels, pins font bytes, and rejects incomplete or ambiguous output catalogs.
 use super::fonts::Snapshot;
+use super::rendering::{Backend, Renderer, SceneRenderer};
+
 use peniko::Color;
 use std::{
     cell::RefCell,
@@ -19,10 +21,9 @@ thread_local! {
 }
 
 struct Session {
-    device: wgpu::Device,
-    queue: wgpu::Queue,
+    backend: Backend,
     inputs: Rc<Inputs>,
-    renderers: HashMap<(u32, u32), WgpuRenderer>,
+    renderers: HashMap<(u32, u32), Renderer>,
     frames: Frames,
     pipelines: Vec<serde_json::Value>,
     precompiled_dxil_seen: bool,
@@ -64,6 +65,33 @@ pub fn run(
     names: &[&str],
     render: impl FnOnce() -> Result<()>,
 ) -> Result<Captured> {
+    run_backend(
+        Backend::Wgpu {
+            device: device.clone(),
+            queue: queue.clone(),
+        },
+        inputs,
+        names,
+        render,
+    )
+}
+
+#[cfg(all(windows, feature = "native"))]
+pub fn run_native(
+    context: &tileink::NativeContext,
+    inputs: Rc<Inputs>,
+    names: &[&str],
+    render: impl FnOnce() -> Result<()>,
+) -> Result<Captured> {
+    run_backend(Backend::Native(context.clone()), inputs, names, render)
+}
+
+fn run_backend(
+    backend: Backend,
+    inputs: Rc<Inputs>,
+    names: &[&str],
+    render: impl FnOnce() -> Result<()>,
+) -> Result<Captured> {
     let frames = Frames::new(names)?;
     SESSION.with(|slot| -> Result<()> {
         let mut slot = slot.borrow_mut();
@@ -71,8 +99,7 @@ pub fn run(
             return Err("nested example capture is not allowed".into());
         }
         *slot = Some(Session {
-            device: device.clone(),
-            queue: queue.clone(),
+            backend,
             inputs,
             renderers: HashMap::new(),
             frames,
@@ -93,9 +120,15 @@ pub fn run(
 
 pub(super) fn new_renderer(width: u32, height: u32, clear: Color) -> Option<WgpuRenderer> {
     SESSION.with(|slot| {
-        slot.borrow()
-            .as_ref()
-            .map(|s| WgpuRenderer::new(&s.device, &s.queue, width, height, clear))
+        slot.borrow().as_ref().map(|s| match &s.backend {
+            Backend::Wgpu { device, queue } => {
+                WgpuRenderer::new(device, queue, width, height, clear)
+            }
+            #[cfg(all(windows, feature = "native"))]
+            Backend::Native(_) => {
+                panic!("a native capture cannot create an implicit wgpu renderer")
+            }
+        })
     })
 }
 
@@ -125,27 +158,30 @@ pub(super) fn render(
     width: u32,
     height: u32,
     clear: Color,
-    render: &mut impl FnMut(&mut WgpuRenderer) -> Result<()>,
+    render: &mut impl FnMut(&mut dyn SceneRenderer) -> Result<()>,
 ) -> Option<Result<()>> {
     let renderer = SESSION.with(|slot| {
         let mut slot = slot.borrow_mut();
         let session = slot.as_mut()?;
-        Some(session.frames.check_name(name).map(|()| {
-            session
-                .renderers
-                .remove(&(width, height))
-                .unwrap_or_else(|| {
-                    WgpuRenderer::new(&session.device, &session.queue, width, height, clear)
-                })
-        }))
+        Some((|| {
+            session.frames.check_name(name)?;
+            match session.renderers.remove(&(width, height)) {
+                Some(renderer) => Ok(renderer),
+                None => session.backend.create(width, height),
+            }
+        })())
     })?;
     Some((|| {
         let mut renderer = renderer?;
         renderer.set_clear_color(clear);
         // Release the session borrow before executing user scene/text closures.
-        render(&mut renderer)?;
-        let image = renderer.image();
-        record_pipelines(name, &renderer);
+        render(renderer.scene_renderer())?;
+        let image = renderer.image()?;
+        match &renderer {
+            Renderer::Wgpu(renderer) => record_pipelines(name, renderer),
+            #[cfg(all(windows, feature = "native"))]
+            Renderer::Native(_) => {}
+        }
         SESSION.with(|slot| -> Result<()> {
             let mut slot = slot.borrow_mut();
             let session = slot.as_mut().unwrap();

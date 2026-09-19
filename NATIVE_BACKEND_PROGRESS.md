@@ -2061,3 +2061,20 @@ examples and PNG checks pass with only the approved turbulence delta; reviews ar
 closed. See [frame preparation](docs/native/m4-frame-preparation.md). No performance
 comparison. M4 still requires public context/renderer integration and full immediate
 four-renderer SVG/example acceptance.
+
+## Windows M4 completion — 2026-09-19
+
+M4 is complete for Windows immediate rendering on the recorded RTX 4090/driver.
+All 1,712 SVGs and 45 example images pass six routes with zero pixel/channel
+differences: wgpu DX12/Vulkan native and portable textures, native DX12/Vulkan.
+The final glass mismatch was a scheduling discrepancy: native declined the shared
+direct backdrop path and introduced an extra upsample quantization. The exact
+scene regression reproduced 12,683 changed pixels and now passes all four APIs.
+
+Release (1,048 library tests), integrations, feature checks, strict lint and
+formatting pass. User-approved PNG changes are recorded with immutable review
+artifacts; standards and spec reviews have no outstanding findings. Shared scratch
+leasing/submission policy and the complete corpus runner close the M4 structural
+and acceptance gates. See [M4 closeout](docs/native/m4-completion.md) for hashes,
+device scope and reproduction commands. No performance comparisons were run.
+Native retained/interop remains M5; Mac compilation/GPU validation remains deferred.

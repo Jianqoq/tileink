@@ -184,7 +184,7 @@ fn check_removal_history(
                 .scratch
                 .iter()
                 .enumerate()
-                .filter(|(index, _)| !incremental.scratch_in_use[*index])
+                .filter(|(index, _)| !incremental.scratch_slots.is_occupied(*index))
                 .map(|(_, target)| target)
                 .chain(incremental.scratch_spares.iter())
             {

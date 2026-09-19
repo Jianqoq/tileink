@@ -2,6 +2,7 @@ use super::super::{
     Result,
     compute::{ComputeBatch, ResourceId},
 };
+use crate::render::scratch_slots::ScratchSlots;
 use crate::render::{output::RenderTargetId, retained_surfaces::SurfaceAllocation};
 
 /// A logical surface lease. ComputeBatch and then the submitted API frame own
@@ -51,16 +52,12 @@ impl SurfaceAllocation for Surface {
     }
 }
 
-struct Slot {
-    surface: Option<Surface>,
-    occupied: bool,
-}
-
 /// Scratch reuse is confined to one ordered batch. A new frame creates a new
 /// registry; batch-qualified image IDs prevent importing another frame's pixels.
 pub(crate) struct Targets {
     main: Surface,
-    scratch: Vec<Slot>,
+    scratch: Vec<Option<Surface>>,
+    slots: ScratchSlots,
 }
 
 impl Targets {
@@ -68,6 +65,7 @@ impl Targets {
         Ok(Self {
             main: Surface::allocate(batch, size, clear_color)?,
             scratch: Vec::new(),
+            slots: ScratchSlots::default(),
         })
     }
 
@@ -81,42 +79,40 @@ impl Targets {
             RenderTargetId::Scratch(index) => self
                 .scratch
                 .get(index)
-                .filter(|slot| slot.occupied)
-                .and_then(|slot| slot.surface.as_ref())
+                .filter(|_| self.slots.is_occupied(index))
+                .and_then(Option::as_ref)
                 .ok_or_else(|| "native scratch target is not occupied".into()),
         }
     }
 
     pub(crate) fn acquire(&mut self, batch: &mut ComputeBatch) -> Result<RenderTargetId> {
         batch.size(self.main.image)?;
-        let index = self
-            .scratch
-            .iter()
-            .position(|slot| !slot.occupied)
-            .unwrap_or(self.scratch.len());
-        if index == self.scratch.len() {
-            let surface = Surface::allocate(batch, self.main.size, 0)?;
-            self.scratch.push(Slot {
-                surface: Some(surface),
-                occupied: true,
-            });
-        } else {
-            let slot = &mut self.scratch[index];
-            if slot.surface.is_none() {
-                slot.surface = Some(Surface::allocate(batch, self.main.size, 0)?);
+        let index = if let Some(index) = self.slots.acquire() {
+            if self.scratch[index].is_none() {
+                match Surface::allocate(batch, self.main.size, 0) {
+                    Ok(surface) => self.scratch[index] = Some(surface),
+                    Err(error) => {
+                        self.slots.release(index);
+                        return Err(error);
+                    }
+                }
             }
-            slot.occupied = true;
-        }
+            index
+        } else {
+            let surface = Surface::allocate(batch, self.main.size, 0)?;
+            self.scratch.push(Some(surface));
+            self.slots.push_occupied()
+        };
         Ok(RenderTargetId::Scratch(index))
     }
 
-    fn slot_mut(&mut self, target: RenderTargetId) -> Result<&mut Slot> {
+    fn slot_index(&self, target: RenderTargetId) -> Result<usize> {
         let RenderTargetId::Scratch(index) = target else {
             return Err("main surface is not a scratch slot".into());
         };
-        self.scratch
-            .get_mut(index)
-            .filter(|slot| slot.occupied)
+        self.slots
+            .is_occupied(index)
+            .then_some(index)
             .ok_or_else(|| "native scratch target is not occupied".into())
     }
 
@@ -131,22 +127,23 @@ impl Targets {
         if surface.size != self.main.size {
             return Err("native scratch surface dimensions do not match context".into());
         }
-        self.slot_mut(target)?.surface = Some(surface);
+        let index = self.slot_index(target)?;
+        self.scratch[index] = Some(surface);
         Ok(())
     }
 
     pub(crate) fn take(&mut self, target: RenderTargetId) -> Result<Surface> {
-        let slot = self.slot_mut(target)?;
-        let surface = slot
-            .surface
+        let index = self.slot_index(target)?;
+        let surface = self.scratch[index]
             .take()
             .ok_or("native scratch surface missing")?;
-        slot.occupied = false;
+        self.slots.release(index);
         Ok(surface)
     }
 
     pub(crate) fn release(&mut self, target: RenderTargetId) -> Result<()> {
-        self.slot_mut(target)?.occupied = false;
+        let index = self.slot_index(target)?;
+        self.slots.release(index);
         Ok(())
     }
 }

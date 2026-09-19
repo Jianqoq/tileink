@@ -134,7 +134,11 @@ impl Renderer {
             &mut adapter,
             canvas,
             history_copy_dst.is_some(),
-            allow_early_submit,
+            if allow_early_submit {
+                crate::render::frame::SubmissionPolicy::EarlyRootBatches
+            } else {
+                crate::render::frame::SubmissionPolicy::Single
+            },
         )
         .is_ok()
     }

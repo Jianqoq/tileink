@@ -82,7 +82,7 @@ impl Renderer {
             root_target_view: None,
             scratch: Vec::new(),
             scratch_spares: Vec::new(),
-            scratch_in_use: Vec::new(),
+            scratch_slots: Default::default(),
             local_scene_resources: SceneResourcePool::default(),
             #[cfg(feature = "bench-internals")]
             reuse_local_scene_resources: true,

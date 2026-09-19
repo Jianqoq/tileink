@@ -9,10 +9,32 @@
 int convolve_wrap(int coordinate, int origin, int length) {
     return origin+int(euclidean_remainder_i32(coordinate-origin,uint(length)));
 }
+// Scale by 2^24 through exponent bits so fast-math cannot fold this into
+// an overflowing reciprocal of a subnormal divisor.
+float convolve_scale_24(float value) {
+    uint bits=asuint(value);
+    uint magnitude=bits&0x7fffffffu;
+    uint exponent=magnitude>>23u;
+    if (exponent==0u) {
+        float scaled=float(magnitude)*asfloat(0x01000000u);
+        return (bits&0x80000000u)!=0u ? -scaled : scaled;
+    }
+    if (exponent>=231u) return asfloat((bits&0x80000000u)|0x7f800000u);
+    return asfloat(bits+(24u<<23u));
+}
+// Large divisors need the inverse normalization: their reciprocal can flush
+// to zero although numerator/divisor has a representable, visible result.
+float convolve_unscale_24(float value) {
+    uint bits=asuint(value);
+    uint exponent=(bits&0x7fffffffu)>>23u;
+    if (exponent<=24u) return 0.0;
+    return asfloat(bits-(24u<<23u));
+}
 uint filter_convolve_pixel(ConstantBuffer<FilterConfig> config, Texture2D<float4> source,
     ByteAddressBuffer kernels, uint2 xy) {
     uint center=unorm_to_rgba8(source.Load(int3(xy,0)));
-    if (config.kernel_columns==0u || config.kernel_rows==0u || config.amount==0.0) return center;
+    uint divisor_magnitude=asuint(config.amount)&0x7fffffffu;
+    if (config.kernel_columns==0u || config.kernel_rows==0u || divisor_magnitude==0u) return center;
     int2 lower=int2(config.region_x0,config.region_y0);
     int2 size=int2(config.region_width,config.region_height);
     int2 upper=lower+size;
@@ -35,12 +57,37 @@ uint filter_convolve_pixel(ConstantBuffer<FilterConfig> config, Texture2D<float4
             }
             uint alpha=pixel>>24u;
             float4 value=float4(straight_channel(pixel&255u,alpha),straight_channel((pixel>>8u)&255u,alpha),
-                straight_channel((pixel>>16u)&255u,alpha),float(alpha)/255.0);
-            sum+=value*weight;
+                straight_channel((pixel>>16u)&255u,alpha),float(alpha));
+            sum=mad(value,weight,sum);
         }
     }
-    float4 result=clamp(sum/config.amount+config.rect_x0,0.0,1.0);
-    if (config.kernel_preserve_alpha==1u) result.a=float(center>>24u)/255.0;
-    return pack_premul_rgba8(result.r*result.a,result.g*result.a,result.b*result.a,result.a);
+    // Keep alpha in its stored byte domain. Normalizing each tap and rescaling
+    // after bias crosses half-byte boundaries differently between shader targets.
+    float reciprocal=1.0/config.amount;
+    float alpha;
+    float3 straight;
+    if (divisor_magnitude<0x00800000u) {
+        // Decode subnormal divisors before GPU flush-to-zero can erase them.
+        // Scaling both sides by 2^24 puts every nonzero divisor in normal range.
+        float scaled_divisor=float(divisor_magnitude)*asfloat(0x01000000u);
+        if ((asuint(config.amount)&0x80000000u)!=0u) scaled_divisor=-scaled_divisor;
+        straight=clamp(float3(convolve_scale_24(sum.r),convolve_scale_24(sum.g),convolve_scale_24(sum.b))/scaled_divisor+config.rect_x0,0.0,1.0);
+        alpha=clamp(convolve_scale_24(sum.a)/(scaled_divisor*255.0)+config.rect_x0,0.0,1.0)*255.0;
+    } else if (divisor_magnitude>0x7e800000u) {
+        float inverse=1.0/convolve_unscale_24(config.amount);
+        float3 reduced=float3(convolve_unscale_24(sum.r),convolve_unscale_24(sum.g),convolve_unscale_24(sum.b));
+        straight=clamp(mad(reduced,inverse,config.rect_x0),0.0,1.0);
+        alpha=clamp(mad(convolve_unscale_24(sum.a),inverse,config.rect_x0*255.0),0.0,255.0);
+    } else if (abs(config.rect_x0)>asfloat(0x7f7fffffu)/255.0) {
+        // Do not overflow bias*255 before adding a potentially opposing quotient.
+        straight=clamp(sum.rgb/config.amount+config.rect_x0,0.0,1.0);
+        alpha=clamp((sum.a/255.0)/config.amount+config.rect_x0,0.0,1.0)*255.0;
+    } else {
+        straight=clamp(mad(sum.rgb,reciprocal,config.rect_x0),0.0,1.0);
+        alpha=clamp(mad(sum.a,reciprocal,config.rect_x0*255.0),0.0,255.0);
+    }
+    if (config.kernel_preserve_alpha==1u) alpha=float(center>>24u);
+    uint3 rgb=uint3(mad(straight,alpha,0.5));
+    return rgba8_pack(rgb.r,rgb.g,rgb.b,uint(alpha+0.5));
 }
 #endif

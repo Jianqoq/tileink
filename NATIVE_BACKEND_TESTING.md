@@ -1,5 +1,17 @@
 # Native backend validation
 
+## Windows M4 immediate corpus
+
+The existing `wgpu_backend_parity` example supports `--native` to compare complete
+SVG and example inputs through both wgpu APIs and both owned native renderers.
+See [commands and evidence contract](docs/native/m4-corpus-runner.md). It shares
+frozen scene/font resources, uses exact premultiplied RGBA8 comparison and rejects
+incomplete output catalogs. This complements the focused kernel/lifecycle tests;
+a successful minimum probe is not complete corpus acceptance.
+
+The 2026-09-19 [M4 closeout](docs/native/m4-completion.md) records the complete
+1,712 SVG / 45 example six-route pass, device scope and immutable evidence hashes.
+
 ## Windows M3 minimum native programs
 
 The runtime now lives in `src/native/runtime/` with named `.rs` roots and separate
@@ -36,7 +48,7 @@ API and texture mode. Pin these environment settings for each test process; do n
 change the GPU identity or compiler while a process owns cached devices.
 
 `TILEINK_WGPU_MODE=native|portable` is still only the WGPU texture mode. These unit
-tests do not use the unimplemented native DX12 or Vulkan renderer. Without
+tests do not use the separate native DX12 or Vulkan renderer. Without
 `TILEINK_TEST_API`, the existing default device selection remains available.
 
 The SVG/debug/coarse suites have other device constructors; this setting alone

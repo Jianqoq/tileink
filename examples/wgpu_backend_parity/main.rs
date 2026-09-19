@@ -8,6 +8,9 @@ mod examples;
 mod gpu;
 #[path = "../common/layer_filter_scenes.rs"]
 mod layer_filter_scenes;
+mod native;
+#[cfg(all(test, windows, feature = "native"))]
+mod native_tests;
 mod options;
 mod pixels;
 mod report;
@@ -28,6 +31,7 @@ fn main() -> Result<()> {
         return Ok(());
     };
     options.resolve_dxc()?;
+    native::initialize_validation(options.native)?;
     let mut inputs = Vec::new();
     if let Some(input) = &options.input {
         cases::collect_svgs(&input.canonicalize()?, &mut inputs)?;
@@ -141,22 +145,39 @@ fn main() -> Result<()> {
         #[cfg(not(windows))]
         return Err("retained cross-API certification requires Windows DX12 and Vulkan".into());
     }
-    let mut report = report::Report::new(
-        &options.output,
-        &case_names,
-        routes.iter().map(|route| route.metadata.clone()).collect(),
+    let mut native_routes = native::Routes::new(
+        options.native,
+        luid.as_deref().ok_or("missing physical GPU identity")?,
     )?;
+    let mut metadata: Vec<_> = routes.iter().map(|route| route.metadata.clone()).collect();
+    metadata.extend(native_routes.metadata());
+    let mut report = report::Report::new(&options.output, &case_names, metadata)?;
     let result = if let Some(inputs) = example_inputs {
-        examples::render(inputs, &mut routes, &mut report, &options.output)
+        examples::render(
+            inputs,
+            &mut routes,
+            &native_routes,
+            &mut report,
+            &options.output,
+        )
     } else {
-        render_cases(&inputs, &corpus.trees, smoke, &mut routes, &mut report).and_then(|()| {
+        render_cases(
+            &inputs,
+            &corpus.trees,
+            smoke,
+            &mut routes,
+            &mut native_routes,
+            &mut report,
+        )
+        .and_then(|()| {
             for route in &routes {
                 route.verify_fine_compiler(route.renderer.precompiled_dxil_pipeline_count() > 0)?;
             }
             Ok(())
         })
     }
-    .and_then(|()| corpus.verify_unchanged());
+    .and_then(|()| corpus.verify_unchanged())
+    .and_then(|()| native_routes.validate());
     if let Err(error) = result {
         report.fail(&error.to_string())?;
         return Err(error);
@@ -177,14 +198,21 @@ fn render_cases(
     trees: &[usvg::Tree],
     smoke: Vec<(&str, Canvas)>,
     routes: &mut [gpu::Route],
+    native_routes: &mut native::Routes,
     report: &mut report::Report,
 ) -> Result<()> {
     for (case, scene) in smoke {
-        compare_frame(case, &scene, routes, report)?;
+        compare_frame(case, &scene, routes, native_routes, report)?;
     }
     for (index, (file, tree)) in inputs.iter().zip(trees).enumerate() {
         let (scene, _, _) = common::svg_tree_to_scene(tree, 300)?;
-        compare_frame(&cases::svg_case(index, file), &scene, routes, report)?;
+        compare_frame(
+            &cases::svg_case(index, file),
+            &scene,
+            routes,
+            native_routes,
+            report,
+        )?;
         if (index + 1) % 25 == 0 {
             println!("Compared {} / {} SVGs", index + 1, inputs.len());
         }
@@ -196,6 +224,7 @@ fn compare_frame(
     case: &str,
     scene: &Canvas,
     routes: &mut [gpu::Route],
+    native_routes: &mut native::Routes,
     report: &mut report::Report,
 ) -> Result<()> {
     let mut images = Vec::new();
@@ -204,6 +233,7 @@ fn compare_frame(
         route.renderer.render(scene);
         images.push(route.renderer.image());
     }
+    native_routes.render(scene, &mut images)?;
     report.record(case, &images)?;
     Ok(())
 }

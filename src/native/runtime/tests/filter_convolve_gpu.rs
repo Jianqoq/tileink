@@ -5,6 +5,169 @@ use crate::{
 };
 
 #[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn four_api_convolution_fractional_weights_negative_bias_rounding() -> Result<()> {
+    let routes = Routes::with_features(
+        wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
+            | wgpu::Features::TEXTURE_BINDING_ARRAY
+            | wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
+    )?;
+    let mut batch = ComputeBatch::new();
+    let pixels: Vec<u8> = (0..=255u8).flat_map(|a| [a, a / 2, 0, a]).collect();
+    let source = batch.texture_rgba8([256, 1], pixels)?;
+    let weights = [0.1f32; 9];
+    let kernels = convolve::upload(&mut batch, &weights)?;
+    for divisor in [0.9, weights.iter().sum()] {
+        let c = FilterConfig {
+            width: 256,
+            height: 1,
+            region_width: 256,
+            region_height: 1,
+            kernel_columns: 1,
+            kernel_rows: 9,
+            kernel_target_y: 4,
+            kernel_edge_mode: 1,
+            amount: divisor,
+            rect_x0: -0.5,
+            ..Default::default()
+        };
+        let target = batch.texture_rgba8([256, 1], vec![0; 1024])?;
+        convolve::encode(&mut batch, c, None, kernels, source, target)?;
+        batch.readback(target)?;
+    }
+    let expected = routes.filter_reference_output(
+        &batch,
+        FilterVariant {
+            portable: false,
+            texture_table: false,
+        },
+    )?;
+    for portable in [false, true] {
+        for texture_table in [false, true] {
+            routes.check_variant(
+                &batch,
+                &expected,
+                "convolution fractional weight half-byte boundary",
+                Some(FilterVariant {
+                    portable,
+                    texture_table,
+                }),
+            )?;
+        }
+    }
+    routes.validate()
+}
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn four_api_convolution_extreme_finite_parameters() -> Result<()> {
+    let routes = Routes::with_features(
+        wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
+            | wgpu::Features::TEXTURE_BINDING_ARRAY
+            | wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
+    )?;
+    let mut batch = ComputeBatch::new();
+    let source = batch.texture_rgba8([1, 1], vec![21, 31, 51, 191])?;
+    let kernels = convolve::upload(&mut batch, &[0.0])?;
+    let mut expected = Vec::new();
+    for divisor in [f32::from_bits(1), f32::MIN_POSITIVE / 4.0, 1.0] {
+        for bias in [-f32::MAX, 0.5, f32::MAX] {
+            let c = FilterConfig {
+                width: 1,
+                height: 1,
+                region_width: 1,
+                region_height: 1,
+                kernel_columns: 1,
+                kernel_rows: 1,
+                amount: divisor,
+                rect_x0: bias,
+                ..Default::default()
+            };
+            let target = batch.texture_rgba8([1, 1], vec![0; 4])?;
+            convolve::encode(&mut batch, c, None, kernels, source, target)?;
+            batch.readback(target)?;
+            let straight = f64::from(bias).clamp(0.0, 1.0);
+            let rgb = (straight * straight * 255.0).round() as u8;
+            expected.push(vec![rgb, rgb, rgb, (straight * 255.0).round() as u8]);
+        }
+    }
+    let tiny_source = batch.texture_rgba8([1, 1], vec![1, 0, 0, 1])?;
+    for sign in [-1.0, 1.0] {
+        let kernels = convolve::upload(&mut batch, &[sign * f32::MIN_POSITIVE])?;
+        for preserve in [0, 1] {
+            let c = FilterConfig {
+                width: 1,
+                height: 1,
+                region_width: 1,
+                region_height: 1,
+                kernel_columns: 1,
+                kernel_rows: 1,
+                kernel_preserve_alpha: preserve,
+                amount: sign * f32::MIN_POSITIVE / 4.0,
+                ..Default::default()
+            };
+            let target = batch.texture_rgba8([1, 1], vec![0; 4])?;
+            convolve::encode(&mut batch, c, None, kernels, tiny_source, target)?;
+            batch.readback(target)?;
+            let alpha = if preserve == 0 { 4 } else { 1 };
+            expected.push(vec![alpha, 0, 0, alpha]);
+        }
+    }
+    // A finite normalized alpha quotient must cancel the opposite bias before
+    // clamping; scaling byte-alpha too far first would overflow to infinity.
+    let white = batch.texture_rgba8([1, 1], vec![255; 4])?;
+    let unit_kernel = convolve::upload(&mut batch, &[1.0])?;
+    let cancellation = FilterConfig {
+        width: 1,
+        height: 1,
+        region_width: 1,
+        region_height: 1,
+        kernel_columns: 1,
+        kernel_rows: 1,
+        amount: f32::from_bits(0x00400000),
+        rect_x0: -f32::from_bits(0x7f000000),
+        ..Default::default()
+    };
+    let target = batch.texture_rgba8([1, 1], vec![0; 4])?;
+    convolve::encode(&mut batch, cancellation, None, unit_kernel, white, target)?;
+    batch.readback(target)?;
+    expected.push(vec![0; 4]);
+    // Large divisors must not erase a representable quotient by flushing their
+    // reciprocal to zero before multiplication by a correspondingly large sum.
+    let large_kernel = convolve::upload(&mut batch, &[f32::from_bits(0x7b000000)])?;
+    for preserve in [0, 1] {
+        let c = FilterConfig {
+            amount: f32::from_bits(0x7f000000),
+            rect_x0: 0.0,
+            kernel_preserve_alpha: preserve,
+            ..cancellation
+        };
+        let target = batch.texture_rgba8([1, 1], vec![0; 4])?;
+        convolve::encode(&mut batch, c, None, large_kernel, white, target)?;
+        batch.readback(target)?;
+        expected.push(if preserve == 0 {
+            vec![0, 0, 0, 1]
+        } else {
+            vec![1, 1, 1, 255]
+        });
+    }
+    for portable in [false, true] {
+        for texture_table in [false, true] {
+            routes.check_variant(
+                &batch,
+                &expected,
+                "convolution with finite extreme bias/divisor",
+                Some(FilterVariant {
+                    portable,
+                    texture_table,
+                }),
+            )?;
+        }
+    }
+    routes.validate()
+}
+
+#[test]
 fn convolution_validates_storage_shapes_coordinates_and_modes() -> Result<()> {
     let mut batch = ComputeBatch::new();
     for data in [&[][..], &[f32::NAN], &[f32::INFINITY], &[f32::MAX]] {

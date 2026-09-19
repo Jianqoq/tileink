@@ -44,6 +44,14 @@ pub(crate) enum FrameError<E> {
     Adapter(E),
 }
 
+/// Shared submission policy. Native immediate recordings are one ordered batch;
+/// wgpu may submit a completed root prefix when its caller permits it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SubmissionPolicy {
+    Single,
+    EarlyRootBatches,
+}
+
 /// Preserve the empty-frame copy, stage order, first-quarter submission budget and
 /// success-only history copy in one place. This is the production scheduler, not
 /// an API-specific reimplementation or a second scene representation.
@@ -51,7 +59,7 @@ pub(crate) fn encode<A: FrameAdapter>(
     adapter: &mut A,
     canvas: &Canvas,
     copy_history: bool,
-    allow_early_submit: bool,
+    submission_policy: SubmissionPolicy,
 ) -> Result<(), FrameError<A::Error>> {
     adapter.recycle_previous_frame();
     if adapter.active_tiles().is_some_and(DamageTiles::is_empty) {
@@ -75,7 +83,7 @@ pub(crate) fn encode<A: FrameAdapter>(
         canvas,
         &plan.ops,
         adapter.size(),
-        allow_early_submit,
+        submission_policy == SubmissionPolicy::EarlyRootBatches,
         partial,
         adapter.portable_textures(),
     ) {

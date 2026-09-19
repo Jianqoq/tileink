@@ -209,6 +209,19 @@ impl FilterEncoding<'_, '_> {
                 source_region,
                 ..
             } => {
+                // A disjoint graph input has no repeatable cells. Clear the output
+                // instead of passing inverted bounds to raw tile-coordinate math.
+                if source_region.is_empty() {
+                    c.clear_color = 0;
+                    return filter::encode(
+                        e.batch,
+                        BasicFilter::Clear,
+                        c,
+                        tiles,
+                        None,
+                        image(target)?,
+                    );
+                }
                 set_rect(&mut c, source_region);
                 filter::encode(
                     e.batch,
@@ -381,7 +394,9 @@ impl FilterEncoding<'_, '_> {
                     model::MorphologyOperator::Erode => 0,
                     model::MorphologyOperator::Dilate => 1,
                 };
-                c.blur_axis = axis;
+                // Morphology has its own uniform field; writing blur_axis silently
+                // repeated the horizontal pass instead of eroding/dilating in Y.
+                c.morphology_axis = axis;
                 morphology::encode(e.batch, c, tiles, image(source)?, image(target)?)
             }
             ApplyColorFilterToTarget {

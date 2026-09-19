@@ -44,14 +44,18 @@ pub(super) fn record<'gpu>(
         options,
         limit,
     };
-    crate::render::frame::encode(&mut frame, canvas, false, false).map_err(
-        |error| match error {
-            FrameError::MissingPlan => {
-                Box::<dyn std::error::Error>::from("native frame has no prepared plan")
-            }
-            FrameError::Adapter(error) => error,
-        },
-    )?;
+    crate::render::frame::encode(
+        &mut frame,
+        canvas,
+        false,
+        crate::render::frame::SubmissionPolicy::Single,
+    )
+    .map_err(|error| match error {
+        FrameError::MissingPlan => {
+            Box::<dyn std::error::Error>::from("native frame has no prepared plan")
+        }
+        FrameError::Adapter(error) => error,
+    })?;
     Ok(frame
         .execution
         .as_ref()

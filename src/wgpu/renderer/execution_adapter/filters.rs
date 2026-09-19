@@ -64,7 +64,7 @@ impl FilterAdapter for WgpuExecutionAdapter<'_> {
             && crate::shared::layer::filter::filter_dependency(filter)
                 != crate::shared::layer::filter::FilterDependency::Local(0);
         // Resetting an occupied pool would also discard the caller's live slots.
-        if reuse_root && !changes_active_work && !renderer.scratch_in_use.iter().any(|used| *used) {
+        if reuse_root && !changes_active_work && !renderer.scratch_slots.any_occupied() {
             let state = FilterSceneState {
                 local: None,
                 damage: renderer.retained.active_tiles().cloned(),
@@ -87,7 +87,7 @@ impl FilterAdapter for WgpuExecutionAdapter<'_> {
     }
     fn end_filter_scene(&mut self, state: FilterSceneState) {
         let renderer = &mut self.renderer;
-        renderer.scratch_in_use.fill(false);
+        renderer.scratch_slots.release_all();
         if let Some(local) = state.local {
             renderer.restore_root_scene_resources(local);
         } else {

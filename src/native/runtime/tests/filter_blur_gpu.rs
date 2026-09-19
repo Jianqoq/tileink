@@ -85,7 +85,7 @@ fn four_api_blur_shared_global_sparse_and_radius_boundary() -> Result<()> {
     let mut index = 0;
     for stage in [Blur::Global, Blur::Shared] {
         for axis in [0, 1] {
-            for sigma in [-1.0, 0.0, 0.1, 0.4, 1.0, 5.3, 5.34, 8.0] {
+            for sigma in [-1.0, 0.0, 0.1, 0.4, 1.0, 4.0, 5.3, 5.34, 7.0, 8.0, 28.0] {
                 for compact in [false, true] {
                     for separate_source in [false, true] {
                         let c = FilterConfig {

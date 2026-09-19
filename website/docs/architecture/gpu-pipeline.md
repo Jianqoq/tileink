@@ -183,7 +183,16 @@ Filter、Isolate 和 Mask 进入新的离屏依赖域时，同样保留无节点
 `src/render/` 保存 frame/layer/filter 的执行顺序、增量状态和资源生命周期合同。
 WGPU Adapter 负责实际 GPU 资源与命令；共享层先准备子场景，再执行根 scan/clear、
 选择活动 batch，并且只在执行成功后复制有效历史。空 damage 仍可按需复制历史，
-不会因此准备管线。原生 DX12/Vulkan Adapter 尚未实现，feature 构造会明确返回错误。
+不会因此准备管线。Windows 原生 DX12/Vulkan Adapter 已接入同一完整帧调度，使用
+HLSL 编译的 DXIL/SPIR-V 和持久化 shader/pipeline 缓存。`NativeContext` 共享设备与提交
+所有权，各 `NativeRenderer` 独立保存场景、图片和文字准备缓存。`render` 返回提交凭据，
+显式 `wait` 等待；`render_to_image` 仅在请求时记录读回拷贝，随后通过凭据读回预乘 RGBA8。
+新根表面按共享规则初始化背景色，滤镜临时表面与矢量子画布保持透明。
+
+当前原生接口支持自有目标的 immediate 帧。Windows M4 已在记录的 RTX 4090/驱动上
+完成 1,712 个 SVG 和 45 张示例图的六路逐字节验收（wgpu 两种纹理模式及原生
+DX12/Vulkan），像素和通道差异均为零。具体证据见仓库 `docs/native/m4-completion.md`。
+Retained、导入外部目标、持续帧回收与设备重建属于后续 M5；Mac 硬件验证另行进行。
 
 ### 滤镜采样与纹理容量
 

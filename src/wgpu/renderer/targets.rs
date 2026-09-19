@@ -4,20 +4,14 @@ use super::*;
 
 impl Renderer {
     pub(super) fn acquire_scratch(&mut self) -> Option<RenderTargetId> {
-        for (ix, in_use) in self.scratch_in_use.iter_mut().enumerate() {
-            if !*in_use {
-                *in_use = true;
-                return Some(RenderTargetId::Scratch(ix));
-            }
-        }
-        None
+        self.scratch_slots.acquire().map(RenderTargetId::Scratch)
     }
 
     pub(super) fn release_scratch(&mut self, target: RenderTargetId) {
         let RenderTargetId::Scratch(ix) = target else {
             return;
         };
-        self.scratch_in_use[ix] = false;
+        self.scratch_slots.release(ix);
     }
 
     pub(super) fn take_scratch_target(&mut self, target: RenderTargetId) -> Option<WgpuTarget> {
@@ -31,7 +25,7 @@ impl Renderer {
             .scratch_spares
             .pop()
             .unwrap_or_else(|| WgpuTarget::new(&self.device, self.size.0, self.size.1));
-        self.scratch_in_use[ix] = false;
+        self.scratch_slots.release(ix);
         Some(std::mem::replace(&mut self.scratch[ix], replacement))
     }
 
@@ -39,7 +33,7 @@ impl Renderer {
         debug_assert!(target.fits(self.size));
         let displaced = std::mem::replace(&mut self.scratch[index], target);
         self.scratch_spares.push(displaced);
-        self.scratch_in_use[index] = true;
+        self.scratch_slots.occupy(index);
     }
 
     pub(super) fn install_scratch_render_target(

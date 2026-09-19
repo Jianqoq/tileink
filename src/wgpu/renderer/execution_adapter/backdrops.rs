@@ -17,8 +17,8 @@ impl BackdropAdapter for WgpuExecutionAdapter<'_> {
         bounds: Bounds,
         filter: &Filter,
         region: &Region,
-    ) -> bool {
-        match filter {
+    ) -> Result<bool, Self::Error> {
+        Ok(match filter {
             Filter::Blur {
                 std_dev_x,
                 std_dev_y,
@@ -42,7 +42,7 @@ impl BackdropAdapter for WgpuExecutionAdapter<'_> {
                 )
             }
             _ => false,
-        }
+        })
     }
 
     fn suspend_backdrop_work(&mut self) -> Self::WorkState {

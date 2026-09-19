@@ -158,3 +158,9 @@ The old `--test native_shader_gpu` target was moved into the production native
 module with separate test fixtures. `TILEINK_NATIVE_GPU_REPORT` optionally writes
 the per-case four-route hashes and exact comparison report. This runs correctness
 checks, not performance comparisons.
+# Native immediate four-API corpus
+
+The release `wgpu_backend_parity` example now accepts `--native` when built with
+`--features native`. It compares the same SVG/example inputs across wgpu DX12,
+wgpu Vulkan, native DX12 and native Vulkan on one explicitly selected GPU.
+See [commands, validation prerequisites and evidence contract](../../docs/native/m4-corpus-runner.md).

@@ -402,8 +402,7 @@ impl Renderer {
         }
         self.filter_target_snapshot
             .resize(&self.device, self.size.0, self.size.1);
-        self.scratch_in_use.clear();
-        self.scratch_in_use.resize(self.scratch.len(), false);
+        self.scratch_slots.reset(self.scratch.len());
     }
 
     fn prepare_fine_stack_spills(

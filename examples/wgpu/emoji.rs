@@ -15,7 +15,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         emoji_scene::HEIGHT,
         emoji_scene::CLEAR,
         |renderer| {
-            renderer.render_with_text(&scene, &mut font_system, &mut text_context);
+            renderer.render_with_text(&scene, &mut font_system, &mut text_context)?;
             Ok(())
         },
     )

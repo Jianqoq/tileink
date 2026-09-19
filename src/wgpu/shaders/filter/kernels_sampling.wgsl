@@ -96,8 +96,8 @@ fn filter_downsample_region(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
 
+    // Keep the average in stored channel units and quantize once, as in HLSL.
     var acc = vec4<f32>(0.0);
-    var count = 0.0;
     var sy = cell_y0;
     loop {
         if (sy >= cell_y1) {
@@ -108,15 +108,18 @@ fn filter_downsample_region(@builtin(global_invocation_id) gid: vec3<u32>) {
             if (sx >= cell_x1) {
                 break;
             }
-            acc += rgba8_to_unorm(source_pixel_at(sx, sy));
-            count += 1.0;
+            let pixel = source_pixel_at(sx, sy);
+            acc += vec4<f32>(f32(pixel & 255u), f32((pixel >> 8u) & 255u),
+                f32((pixel >> 16u) & 255u), f32(pixel >> 24u));
             sx += 1u;
         }
         sy += 1u;
     }
 
-    let avg = acc / count;
-    target_store_at(xy.x, xy.y, pack_premul_rgba8(avg.r, avg.g, avg.b, avg.a));
+    let count = f32((cell_x1 - cell_x0) * (cell_y1 - cell_y0));
+    let avg = vec4<u32>(clamp(fma(acc, vec4<f32>(1.0 / count), vec4<f32>(0.5)),
+        vec4<f32>(0.0), vec4<f32>(255.0)));
+    target_store_at(xy.x, xy.y, avg.r | (avg.g << 8u) | (avg.b << 16u) | (avg.a << 24u));
 }
 
 fn upsampled_source_pixel_at(

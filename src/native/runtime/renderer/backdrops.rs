@@ -11,12 +11,37 @@ impl BackdropAdapter for Execution<'_> {
     type WorkState = Option<DamageTiles>;
     fn try_direct_backdrop(
         &mut self,
-        _target: RenderTargetId,
-        _bounds: Bounds,
-        _filter: &Filter,
-        _region: &Region,
-    ) -> bool {
-        false
+        target: RenderTargetId,
+        bounds: Bounds,
+        filter: &Filter,
+        region: &Region,
+    ) -> Result<bool> {
+        use super::filter_encoding::FilterEncoding;
+        use crate::render::filter_program::FilterExecutor;
+        let mut encoding = FilterEncoding {
+            execution: self,
+            work: None,
+            error: None,
+        };
+        // Use the shared direct schedule: materializing low-resolution glass first
+        // changes interpolation/rounding and cannot preserve identical pixels.
+        let mut executor = FilterExecutor::new(&mut encoding);
+        let applied = match filter {
+            Filter::Blur {
+                std_dev_x,
+                std_dev_y,
+                sampling,
+            } => executor.apply_downsampled_blur_rect_composite(
+                target, bounds, *std_dev_x, *std_dev_y, *sampling, region,
+            ),
+            Filter::RectLiquidGlass(glass) => executor
+                .apply_downsampled_liquid_glass_rect_composite(target, bounds, *glass, region),
+            _ => false,
+        };
+        match encoding.error {
+            Some(error) => Err(error),
+            None => Ok(applied),
+        }
     }
     fn suspend_backdrop_work(&mut self) -> Self::WorkState {
         let previous = self.retained.active_tiles().cloned();
