@@ -26,6 +26,8 @@ pub(crate) struct FineParams {
 pub(crate) struct FinePlan {
     config: FineConfig,
     grid: [u32; 3],
+    // Native raw-buffer validation needs the total; wgpu only consumes the config.
+    #[cfg(any(test, feature = "dx12", feature = "vulkan"))]
     spill_words: usize,
 }
 impl FinePlan {
@@ -62,7 +64,7 @@ impl FinePlan {
             }
             [x, y, 1]
         };
-        let (group_base, spill_words) = spill_layout(
+        let (group_base, _spill_words) = spill_layout(
             tile_count,
             params.clip_spill_depth,
             params.group_spill_depth,
@@ -107,7 +109,8 @@ impl FinePlan {
                 incremental: u32::from(params.active_tile_count.is_some()),
             },
             grid,
-            spill_words,
+            #[cfg(any(test, feature = "dx12", feature = "vulkan"))]
+            spill_words: _spill_words,
         })
     }
     pub(crate) fn config(&self) -> &FineConfig {
@@ -116,6 +119,7 @@ impl FinePlan {
     pub(crate) fn grid(&self) -> [u32; 3] {
         self.grid
     }
+    #[cfg(any(test, feature = "dx12", feature = "vulkan"))]
     pub(crate) fn spill_words(&self) -> usize {
         self.spill_words
     }
