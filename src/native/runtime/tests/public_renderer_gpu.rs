@@ -54,8 +54,20 @@ fn native_public_completion_poll_preserves_queued_images_until_readback() -> Res
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn four_api_public_persistent_targets_reject_foreign_devices_and_replace_frames() -> Result<()> {
     let routes = routes()?;
+    let mut filtered = scene(23, 17, Color::from_rgba8(17, 51, 83, 193));
+    filtered.push_filter_layer(
+        crate::shared::layer::filter::Filter::Opacity(0.7),
+        crate::Region::rect(Rect::new(2.0, 1.0, 21.0, 16.0), Radius::ZERO),
+    );
+    filtered.push_rect(
+        Rect::new(1.0, 2.0, 19.0, 15.0),
+        Radius::ZERO,
+        Color::from_rgba8(191, 33, 79, 117),
+    );
+    filtered.pop_layer();
     let scenes = [
         scene(23, 17, Color::from_rgba8(71, 191, 33, 127)),
+        filtered,
         Canvas::new(23, 17, 1.0),
     ];
     let expected = scenes
@@ -79,7 +91,12 @@ fn four_api_public_persistent_targets_reject_foreign_devices_and_replace_frames(
                 .is_err()
         );
         assert_eq!(context.adapter.pending_count(), 0);
-        for (canvas, expected) in scenes.iter().zip(&expected) {
+        for (canvas, expected) in scenes
+            .iter()
+            .cycle()
+            .zip(expected.iter().cycle())
+            .take(scenes.len() * 2)
+        {
             let submitted = renderer.render_to_texture(canvas, &target)?;
             let image = target.readback()?.readback()?;
             assert_eq!(bytemuck::cast_slice::<_, u8>(&image.pixels), expected[0]);

@@ -8,6 +8,97 @@ use crate::{NativeBackend, NativeContext, NativeContextOptions};
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn native_surface_pool_reuses_only_resolved_batches_and_clears_old_pixels() -> Result<()> {
+    use crate::native::runtime::compute::{Resource, SurfacePool};
+    use std::{cell::RefCell, rc::Rc};
+    unsafe {
+        NativeContext::enable_dx12_validation()?;
+    }
+    for backend in [NativeBackend::Dx12, NativeBackend::Vulkan] {
+        let context = NativeContext::new(
+            backend,
+            &NativeContextOptions {
+                physical_adapter: Some(std::env::var("TILEINK_NATIVE_GPU")?),
+                validation: true,
+            },
+        )?;
+        let pool = Rc::new(RefCell::new(SurfacePool::new(&context)));
+        let mut first = ComputeBatch::with_surfaces(pool.clone());
+        let a = first.reusable_surface([3, 2], 0xff231347)?.unwrap();
+        let b = first.reusable_surface([3, 2], 0xff1d710b)?.unwrap();
+        let allocation = |batch: &ComputeBatch, id: super::super::compute::ResourceId| {
+            let Resource::Texture(texture) = &batch.resources()[id.index()] else {
+                panic!("surface texture")
+            };
+            texture.persistent.as_ref().unwrap().state.clone()
+        };
+        let original = [allocation(&first, a), allocation(&first, b)];
+        assert!(
+            !Rc::ptr_eq(&original[0], &original[1]),
+            "siblings must not alias"
+        );
+        first.readback(a)?;
+        first.readback(b)?;
+        let first_receipt = context
+            .adapter
+            .submit_compute(&first)
+            .map_err(|e| format!("{e:?}"))?;
+        drop(first);
+        let mut second = ComputeBatch::with_surfaces(pool.clone());
+        for _ in 0..2 {
+            let image = second.reusable_surface([3, 2], 0)?.unwrap();
+            let reused = allocation(&second, image);
+            assert!(
+                original.iter().any(|old| Rc::ptr_eq(old, &reused)),
+                "must reuse GPU storage"
+            );
+            second.readback(image)?;
+        }
+        let second_receipt = context
+            .adapter
+            .submit_compute(&second)
+            .map_err(|e| format!("{e:?}"))?;
+        drop(second);
+        assert_eq!(second_receipt.readback()?, vec![vec![0; 24]; 2]);
+        let expected = [0xff231347u32, 0xff1d710b].map(|color| color.to_le_bytes().repeat(6));
+        assert_eq!(first_receipt.readback()?, expected);
+        let mut abandoned = ComputeBatch::with_surfaces(pool.clone());
+        let resized = abandoned.reusable_surface([9, 4], 0xff123456)?.unwrap();
+        let unsubmitted = allocation(&abandoned, resized);
+        // A later recording error discards all commands, including initialization.
+        // The next resolved boundary may reuse storage, but cannot publish pixels
+        // or initialization from this abandoned batch.
+        assert!(
+            abandoned
+                .copy_texture(super::super::compute::TextureCopy {
+                    source: resized,
+                    destination: resized,
+                    source_origin: [0; 3],
+                    destination_origin: [0; 3],
+                    extent: [9, 4, 1],
+                })
+                .is_err()
+        );
+        drop(abandoned);
+        assert!(!unsubmitted.initialized.get());
+        let mut retry = ComputeBatch::with_surfaces(pool.clone());
+        let resized = retry.reusable_surface([9, 4], 0)?.unwrap();
+        assert!(Rc::ptr_eq(&unsubmitted, &allocation(&retry, resized)));
+        retry.readback(resized)?;
+        let retried = context
+            .adapter
+            .submit_compute(&retry)
+            .map_err(|e| format!("{e:?}"))?;
+        drop(retry);
+        drop(pool);
+        assert_eq!(retried.readback()?, vec![vec![0; 9 * 4 * 4]]);
+        context.check_validation()?;
+    }
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn native_persistent_texture_preserves_untouched_pixels_across_submissions() -> Result<()> {
     unsafe {
         NativeContext::enable_dx12_validation()?;

@@ -18,6 +18,11 @@ pub struct NativeRenderer {
         target_os = "windows",
         any(feature = "native-dx12", feature = "native-vulkan")
     ))]
+    surfaces: Rc<std::cell::RefCell<super::runtime::compute::SurfacePool>>,
+    #[cfg(all(
+        target_os = "windows",
+        any(feature = "native-dx12", feature = "native-vulkan")
+    ))]
     recording: super::runtime::renderer::recording::Recording,
 }
 
@@ -46,6 +51,9 @@ impl NativeRenderer {
                 size: (width, height),
                 images: ImageResourceStore::default(),
                 target: None,
+                surfaces: Rc::new(std::cell::RefCell::new(
+                    super::runtime::compute::SurfacePool::new(context),
+                )),
                 recording: Default::default(),
             })
         }
@@ -182,7 +190,8 @@ impl NativeRenderer {
                 None
             };
             let output = output.or(owned_target.as_ref());
-            let mut batch = super::runtime::compute::ComputeBatch::new();
+            let mut batch =
+                super::runtime::compute::ComputeBatch::with_surfaces(self.surfaces.clone());
             let output = output
                 .map(|target| batch.import_texture(target))
                 .transpose()

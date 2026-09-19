@@ -70,8 +70,31 @@ hashes also match the corresponding M4 outputs; there are no new visual changes.
 Reports: `m5-foundation-svg/report.json`, `m5-foundation-examples/report.json`.
 
 This is only the allocation/output foundation. Retained damage, incremental buffer
-uploads, persistent scratch/offscreen history, imported host contexts/targets and
+uploads, retained offscreen history, imported host contexts/targets and
 window presentation remain pending; no M5 completion is claimed.
+
+### Scratch allocation reuse
+
+Native public recording now uses the shared `SceneResourcePool` for scratch and
+local offscreen allocations. Sibling scenes cannot acquire pending storage from
+the same batch. The next submitted/discarded batch boundary enables reuse without
+a CPU completion wait, and each new lease explicitly clears its GPU pixels.
+These are scratch leases, not retained pixel history; cached retained surfaces
+must keep separate leases rather than returning their contents to this pool.
+
+`m5-surface-pool-recovery.log` passes on both APIs: physical allocation reuse,
+nonaliasing siblings, ordered in-flight reuse, reverse readback, size changes and
+discard-after-recording-error followed by reuse with correct initialization.
+`m5-surface-pool-public.log` verifies repeated ordinary/filtered/empty frames on
+all four APIs. Release tests, independent native feature checks, formatting and
+strict native all-target Clippy pass (`m5-pool-*.log`). Standards and spec reviews
+have no outstanding findings after the discard/retry regression was added.
+
+The full six-route SVG (1,712) and example-image (45) corpora also pass with zero
+different pixels and unchanged PNG hashes relative to the foundation and M4.
+Evidence: `m5-pool-svg/report.json`, `m5-pool-examples/report.json`. No performance
+comparison was run, as requested. This completes scratch allocation reuse, not
+the retained pixel-history or buffer-upload portions of M5.
 
 Evidence goes under `G:/Code/northstar-trading-app/target/agent-work/m5-*` while work
 is in progress. M5 is not complete until all four plan checkboxes and its native

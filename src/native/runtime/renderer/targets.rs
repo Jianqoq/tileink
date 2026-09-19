@@ -26,6 +26,13 @@ impl Surface {
             .checked_mul(size[1] as usize)
             .and_then(|n| n.checked_mul(4))
             .ok_or("native surface size overflow")?;
+        if let Some(image) = batch.reusable_surface(size, clear_color)? {
+            return Ok(Self {
+                image,
+                size,
+                bytes: bytes as u64,
+            });
+        }
         let mut pixels = Vec::new();
         pixels.try_reserve_exact(bytes)?;
         pixels.resize(bytes, 0);

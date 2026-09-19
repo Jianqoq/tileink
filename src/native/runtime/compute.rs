@@ -16,6 +16,9 @@ impl ResourceId {
 }
 #[path = "compute/persistent.rs"]
 mod persistent;
+#[path = "compute/surfaces.rs"]
+mod surfaces;
+pub(crate) use surfaces::SurfacePool;
 #[path = "compute/resource.rs"]
 mod resource;
 #[path = "compute/uniforms.rs"]
@@ -28,6 +31,7 @@ pub struct Pass {
     pub grid: [u32; 3],
 }
 pub struct ComputeBatch {
+    surface_pool: Option<std::rc::Rc<std::cell::RefCell<SurfacePool>>>,
     owner: u64,
     resources: Vec<Resource>,
     passes: Vec<Pass>,
@@ -40,6 +44,7 @@ impl ComputeBatch {
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
             .expect("native batch identity exhausted");
         Self {
+            surface_pool: None,
             owner,
             resources: Vec::new(),
             passes: Vec::new(),

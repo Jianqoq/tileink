@@ -50,8 +50,11 @@ dependency. GPU rendering requires `wgpu` or a supported native feature.
 
 Native constructors return explicit errors for unsupported platforms, unavailable
 adapters or insufficient capabilities; they never fall back to WGPU. Native retained
-rendering and imported targets remain M5. See the [owned API contract](docs/native/m4-public-renderer.md)
-and [four-API corpus runner](docs/native/m4-corpus-runner.md).
+rendering and imported targets remain M5. Persistent owned targets, direct target
+rendering and nonblocking completion queries are available; see the
+[owned target guide](docs/native/owned-targets.md),
+[owned API contract](docs/native/m4-public-renderer.md) and
+[four-API corpus runner](docs/native/m4-corpus-runner.md).
 WGPU's existing **native/portable texture modes** are separate from
 these features. See [the API contract](NATIVE_API_CONTRACT.md) and
 [validation requirements](NATIVE_BACKEND_TESTING.md).
