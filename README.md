@@ -36,18 +36,21 @@ it in their own root workspace to receive the fix.
 
 ## Feature flags
 
-`wgpu` is enabled by default. Disabling default features leaves the CPU scene,
-retained materializer, SVG and text APIs available without a WGPU runtime/build
-dependency. GPU rendering requires `wgpu` or a supported native feature.
+Exactly one renderer feature must be enabled: `wgpu` (default), `dx12`, or
+`vulkan`. To use a native backend, pass `--no-default-features --features dx12`
+or `--no-default-features --features vulkan`. Missing or conflicting selections
+are compile errors, including feature conflicts introduced by dependencies.
 
 | Configuration | Current behavior |
 | --- | --- |
 | Default / `wgpu` | Existing WGPU renderer and texture interop |
-| `default-features = false` | CPU scene construction and shared renderer contracts |
-| `native-dx12` | Windows DX12 immediate/retained renderer and host interop using cached HLSL/DXIL |
-| `native-vulkan` | Windows Vulkan immediate/retained renderer and host interop using cached HLSL/SPIR-V; Linux runtime remains unavailable |
-| `native` | Both native feature selections |
-| `wgpu` plus a native feature | Both renderers coexist; backend selection is explicit |
+| `dx12` | Windows DX12 immediate/retained renderer and host interop using cached HLSL/DXIL |
+| `vulkan` | Windows Vulkan immediate/retained renderer and host interop using cached HLSL/SPIR-V; Linux runtime remains unavailable |
+
+The former `native`, `native-dx12`, and `native-vulkan` feature names were removed;
+there are no compatibility aliases. Backend parity runs use separate builds.
+See the [backend feature contract](docs/native/backend-features.md) for current
+commands and the status of test-harness migration.
 
 Native constructors return explicit errors for unsupported platforms, unavailable
 adapters or insufficient capabilities; they never fall back to WGPU. Persistent owned targets, retained rendering, typed host device/target imports

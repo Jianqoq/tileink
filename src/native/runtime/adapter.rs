@@ -34,9 +34,9 @@ impl std::fmt::Debug for Receipt {
 impl Receipt {
     pub fn is_complete(&self) -> Result<bool> {
         match &mut *self.owner.0.borrow_mut() {
-            #[cfg(feature = "native-dx12")]
+            #[cfg(feature = "dx12")]
             Device::Dx12(device) => device.is_complete(&self.ticket),
-            #[cfg(feature = "native-vulkan")]
+            #[cfg(feature = "vulkan")]
             Device::Vulkan(device) => device.is_complete(&self.ticket),
         }
     }
@@ -49,9 +49,9 @@ impl Receipt {
 }
 
 enum Device {
-    #[cfg(feature = "native-dx12")]
+    #[cfg(feature = "dx12")]
     Dx12(Box<super::dx12::Dx12>),
-    #[cfg(feature = "native-vulkan")]
+    #[cfg(feature = "vulkan")]
     Vulkan(Box<super::vulkan::Vulkan>),
 }
 
@@ -103,19 +103,19 @@ impl Encoder {
 }
 
 impl Adapter {
-    #[cfg(feature = "native-dx12")]
+    #[cfg(feature = "dx12")]
     pub fn import_dx12_texture(
         &self,
         descriptor: crate::native::interop::dx12::TextureDescriptor,
     ) -> Result<(super::texture::Allocation, [u32; 2])> {
         match &*self.0.borrow() {
             Device::Dx12(device) => device.import_texture(descriptor),
-            #[cfg(feature = "native-vulkan")]
+            #[cfg(feature = "vulkan")]
             _ => Err("DX12 image requires a DX12 context".into()),
         }
     }
 
-    #[cfg(feature = "native-vulkan")]
+    #[cfg(feature = "vulkan")]
     pub fn from_vulkan(
         descriptor: crate::native::interop::vulkan::ContextDescriptor,
     ) -> Result<Self> {
@@ -124,7 +124,7 @@ impl Adapter {
         ))))))
     }
 
-    #[cfg(feature = "native-dx12")]
+    #[cfg(feature = "dx12")]
     pub fn from_dx12(descriptor: crate::native::interop::dx12::ContextDescriptor) -> Result<Self> {
         Ok(Self(Rc::new(RefCell::new(Device::Dx12(Box::new(
             super::dx12::Dx12::from_imported(descriptor)?,
@@ -136,20 +136,20 @@ impl Adapter {
     }
     pub fn allocate_buffer(&self, size: usize) -> Result<super::buffer::Allocation> {
         match &*self.0.borrow() {
-            #[cfg(feature = "native-dx12")]
+            #[cfg(feature = "dx12")]
             Device::Dx12(device) => device.allocate_buffer(size),
-            #[cfg(feature = "native-vulkan")]
+            #[cfg(feature = "vulkan")]
             Device::Vulkan(device) => device.allocate_buffer(size),
         }
     }
-    #[cfg(feature = "native-vulkan")]
+    #[cfg(feature = "vulkan")]
     pub fn import_vulkan_texture(
         &self,
         descriptor: crate::native::interop::vulkan::TextureDescriptor,
     ) -> Result<super::texture::Allocation> {
         match &*self.0.borrow() {
             Device::Vulkan(device) => device.import_texture(descriptor),
-            #[cfg(feature = "native-dx12")]
+            #[cfg(feature = "dx12")]
             _ => Err("Vulkan image requires a Vulkan context".into()),
         }
     }
@@ -160,15 +160,15 @@ impl Adapter {
         array: bool,
     ) -> Result<super::texture::Allocation> {
         match &*self.0.borrow() {
-            #[cfg(feature = "native-dx12")]
+            #[cfg(feature = "dx12")]
             Device::Dx12(device) => device.allocate_texture(size, layers, array),
-            #[cfg(feature = "native-vulkan")]
+            #[cfg(feature = "vulkan")]
             Device::Vulkan(device) => device.allocate_texture(size, layers, array),
         }
     }
     #[cfg(test)]
     pub fn new(backend: NativeBackend, identity: &str) -> Result<Self> {
-        #[cfg(feature = "native-dx12")]
+        #[cfg(feature = "dx12")]
         if backend == NativeBackend::Dx12 {
             // Verification enters native construction before its wgpu references.
             unsafe {
@@ -188,24 +188,24 @@ impl Adapter {
         options: &crate::native::NativeContextOptions,
     ) -> Result<Self> {
         let device = match backend {
-            #[cfg(feature = "native-dx12")]
+            #[cfg(feature = "dx12")]
             NativeBackend::Dx12 => {
                 Device::Dx12(Box::new(super::dx12::Dx12::with_options(options)?))
             }
-            #[cfg(feature = "native-vulkan")]
+            #[cfg(feature = "vulkan")]
             NativeBackend::Vulkan => {
                 Device::Vulkan(Box::new(super::vulkan::Vulkan::with_options(options)?))
             }
-            #[cfg(not(all(feature = "native-dx12", feature = "native-vulkan")))]
+            #[cfg(not(all(feature = "dx12", feature = "vulkan")))]
             _ => return Err("native API feature is disabled".into()),
         };
         Ok(Self(Rc::new(RefCell::new(device))))
     }
     pub fn limits(&self) -> super::renderer::recording::Limits {
         match &*self.0.borrow() {
-            #[cfg(feature = "native-dx12")]
+            #[cfg(feature = "dx12")]
             Device::Dx12(device) => device.limits(),
-            #[cfg(feature = "native-vulkan")]
+            #[cfg(feature = "vulkan")]
             Device::Vulkan(device) => device.limits(),
         }
     }
@@ -232,9 +232,9 @@ impl Adapter {
         }
         let mut device = self.0.borrow_mut();
         let (result, unconfirmed) = match &mut *device {
-            #[cfg(feature = "native-dx12")]
+            #[cfg(feature = "dx12")]
             Device::Dx12(device) => (device.submit_compute(batch), device.unconfirmed()),
-            #[cfg(feature = "native-vulkan")]
+            #[cfg(feature = "vulkan")]
             Device::Vulkan(device) => (device.submit_compute(batch), device.unconfirmed()),
         };
         result
@@ -265,25 +265,25 @@ impl Adapter {
         }
         let ticket = &receipt.ticket;
         match &mut *self.0.borrow_mut() {
-            #[cfg(feature = "native-dx12")]
+            #[cfg(feature = "dx12")]
             Device::Dx12(device) => device.readback_batch(ticket),
-            #[cfg(feature = "native-vulkan")]
+            #[cfg(feature = "vulkan")]
             Device::Vulkan(device) => device.readback_batch(ticket),
         }
     }
     pub fn pending_count(&self) -> usize {
         match &*self.0.borrow() {
-            #[cfg(feature = "native-dx12")]
+            #[cfg(feature = "dx12")]
             Device::Dx12(device) => device.pending_count(),
-            #[cfg(feature = "native-vulkan")]
+            #[cfg(feature = "vulkan")]
             Device::Vulkan(device) => device.pending_count(),
         }
     }
     pub fn assert_valid(&self) -> Result<()> {
         match &*self.0.borrow() {
-            #[cfg(feature = "native-dx12")]
+            #[cfg(feature = "dx12")]
             Device::Dx12(device) => super::dx12::assert_valid(&device.validation_queue()),
-            #[cfg(feature = "native-vulkan")]
+            #[cfg(feature = "vulkan")]
             Device::Vulkan(device) => {
                 let messages = device.validation_messages();
                 let messages = messages.lock().unwrap_or_else(|e| e.into_inner());
@@ -362,9 +362,9 @@ impl BatchAdapter for Adapter {
             .map_err(SubmitError::Rejected)?;
         let mut device = self.0.borrow_mut();
         let (result, unconfirmed) = match &mut *device {
-            #[cfg(feature = "native-dx12")]
+            #[cfg(feature = "dx12")]
             Device::Dx12(device) => (device.submit_batch(&commands), device.unconfirmed()),
-            #[cfg(feature = "native-vulkan")]
+            #[cfg(feature = "vulkan")]
             Device::Vulkan(device) => (device.submit_batch(&commands), device.unconfirmed()),
         };
         result
@@ -384,7 +384,7 @@ impl BatchAdapter for Adapter {
 
 impl Adapter {
     pub fn assert_valid_with_wgpu_clears(&self) -> Result<()> {
-        #[cfg(feature = "native-dx12")]
+        #[cfg(feature = "dx12")]
         if let Device::Dx12(device) = &*self.0.borrow() {
             return super::dx12::assert_valid_with_wgpu_clears(&device.validation_queue());
         }
@@ -392,16 +392,18 @@ impl Adapter {
     }
 }
 
-#[cfg(all(test, feature = "native-dx12", feature = "native-vulkan"))]
+#[cfg(test)]
 impl Adapter {
     pub(crate) fn import_context_for_test(
         host: &crate::NativeContext,
     ) -> Result<crate::NativeContext> {
         unsafe {
             match &*host.adapter.0.borrow() {
+                #[cfg(feature = "dx12")]
                 Device::Dx12(device) => {
                     Ok(crate::NativeContext::from_dx12(device.import_descriptor())?)
                 }
+                #[cfg(feature = "vulkan")]
                 Device::Vulkan(device) => Ok(crate::NativeContext::from_vulkan(
                     device.import_descriptor(Rc::new(host.clone())),
                 )?),
@@ -410,36 +412,33 @@ impl Adapter {
     }
 }
 
-#[cfg(all(test, feature = "native-dx12", feature = "native-vulkan"))]
+#[cfg(all(test, feature = "dx12"))]
 impl Adapter {
     pub(crate) fn dx12_device_for_test(
         &self,
     ) -> windows::Win32::Graphics::Direct3D12::ID3D12Device {
         match &*self.0.borrow() {
             Device::Dx12(device) => device.import_descriptor().device,
-            _ => panic!("expected DX12 context"),
         }
     }
 }
 
-#[cfg(all(test, feature = "native-dx12", feature = "native-vulkan"))]
+#[cfg(all(test, feature = "vulkan"))]
 impl Adapter {
     pub(crate) fn vulkan_descriptor_for_test(
         host: &crate::NativeContext,
     ) -> crate::native::interop::vulkan::ContextDescriptor {
         match &*host.adapter.0.borrow() {
             Device::Vulkan(device) => device.import_descriptor(Rc::new(host.clone())),
-            _ => panic!("expected Vulkan context"),
         }
     }
 }
 
-#[cfg(all(test, feature = "native-dx12", feature = "native-vulkan"))]
+#[cfg(all(test, feature = "dx12"))]
 impl Adapter {
     pub(crate) fn inject_dx12_signal_failure_for_test(&self) {
         match &mut *self.0.borrow_mut() {
             Device::Dx12(device) => device.inject_signal_failure_for_test(),
-            _ => panic!("expected DX12 context"),
         }
     }
 }

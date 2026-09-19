@@ -56,10 +56,10 @@ pub fn generate() -> io::Result<()> {
     }
     let os = env::var("CARGO_CFG_TARGET_OS").unwrap();
     let mut targets = Vec::new();
-    if cfg!(feature = "native-dx12") && os == "windows" {
+    if cfg!(feature = "dx12") && os == "windows" {
         targets.push("dxil");
     }
-    if cfg!(feature = "native-vulkan") && (os == "windows" || os == "linux") {
+    if cfg!(feature = "vulkan") && (os == "windows" || os == "linux") {
         targets.push("spirv");
     }
     let mut declarations =

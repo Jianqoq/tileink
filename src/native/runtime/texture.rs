@@ -2,9 +2,9 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 pub(crate) enum Allocation {
-    #[cfg(feature = "native-dx12")]
+    #[cfg(feature = "dx12")]
     Dx12(Rc<Dx12Allocation>),
-    #[cfg(feature = "native-vulkan")]
+    #[cfg(feature = "vulkan")]
     Vulkan(Rc<super::vulkan::compute_texture::Image>),
 }
 
@@ -15,7 +15,7 @@ pub(crate) struct State {
     pub content_version: Cell<u64>,
 }
 
-#[cfg(feature = "native-dx12")]
+#[cfg(feature = "dx12")]
 pub(crate) struct Dx12Allocation {
     pub resource: windows::Win32::Graphics::Direct3D12::ID3D12Resource,
     pub state: Cell<windows::Win32::Graphics::Direct3D12::D3D12_RESOURCE_STATES>,

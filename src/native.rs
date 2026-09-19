@@ -12,9 +12,9 @@ pub enum NativeBackend {
 impl NativeBackend {
     fn unavailable(self) -> BackendUnavailable {
         let (enabled, platform) = match self {
-            Self::Dx12 => (cfg!(feature = "native-dx12"), cfg!(target_os = "windows")),
+            Self::Dx12 => (cfg!(feature = "dx12"), cfg!(target_os = "windows")),
             Self::Vulkan => (
-                cfg!(feature = "native-vulkan"),
+                cfg!(feature = "vulkan"),
                 cfg!(any(target_os = "windows", target_os = "linux")),
             ),
         };
@@ -105,10 +105,7 @@ mod tests {
 mod shaders;
 pub use shaders::{NativeShaderArtifact, SHADER_ARTIFACTS};
 
-#[cfg(all(
-    target_os = "windows",
-    any(feature = "native-dx12", feature = "native-vulkan")
-))]
+#[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
 #[cfg_attr(
     not(test),
     expect(

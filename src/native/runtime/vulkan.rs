@@ -139,7 +139,7 @@ impl Vulkan {
                     &self.families,
                     self.timeline_semaphores,
                 )?,
-                #[cfg(feature = "native-dx12")]
+                #[cfg(feature = "dx12")]
                 _ => return Err("DX12 synchronization requires a DX12 context".into()),
             }
         }

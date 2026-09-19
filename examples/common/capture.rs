@@ -76,7 +76,7 @@ pub fn run(
     )
 }
 
-#[cfg(all(windows, feature = "native"))]
+#[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
 pub fn run_native(
     context: &tileink::NativeContext,
     inputs: Rc<Inputs>,
@@ -124,7 +124,7 @@ pub(super) fn new_renderer(width: u32, height: u32, clear: Color) -> Option<Wgpu
             Backend::Wgpu { device, queue } => {
                 WgpuRenderer::new(device, queue, width, height, clear)
             }
-            #[cfg(all(windows, feature = "native"))]
+            #[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
             Backend::Native(_) => {
                 panic!("a native capture cannot create an implicit wgpu renderer")
             }
@@ -179,7 +179,7 @@ pub(super) fn render(
         let image = renderer.image()?;
         match &renderer {
             Renderer::Wgpu(renderer) => record_pipelines(name, renderer),
-            #[cfg(all(windows, feature = "native"))]
+            #[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
             Renderer::Native(_) => {}
         }
         SESSION.with(|slot| -> Result<()> {

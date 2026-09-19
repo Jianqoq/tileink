@@ -44,18 +44,20 @@
 
 ## 3. Feature 与运行时选择
 
-采用 Cargo 的加法式 feature，不用互斥 feature 选择唯一后端。M1 已实现下列 feature 名称及依赖拆分；表中 HLSL 编译和实际原生 Adapter 属于后续里程碑。
+2026-09-19 更新：三个后端 feature 互斥，每次构建必须且只能选择一个，默认 wgpu。
+已删除 native 聚合项及 native-* 旧名称，不保留别名。此前里程碑报告保留当时的配置记录。
 
 | Feature | 作用 | 平台 |
 | --- | --- | --- |
 | `wgpu` | 启用可选 wgpu 依赖、WGSL 构建和现有 WgpuRenderer | 保留目前支持范围；列入 `default` |
-| `native-dx12` | 启用原生 DX12 Adapter、HLSL→DXIL 构建 | DX12 实现仅编译于 Windows |
-| `native-vulkan` | 启用原生 Vulkan Adapter、HLSL→SPIR-V 构建 | 首期 Windows/Linux |
-| `native` | 聚合启用 `native-dx12` 和 `native-vulkan` | Windows 上一次启用两个原生后端；各 Adapter 仍按目标平台编译 |
+| `dx12` | 启用原生 DX12 Adapter、HLSL→DXIL 构建 | Windows |
+| `vulkan` | 启用原生 Vulkan Adapter、HLSL→SPIR-V 构建 | 当前 Windows，其他平台尚未完成 |
 
-必须验证这些组合：默认 wgpu、默认加 `native`、无默认加 `native-dx12`、无默认加 `native-vulkan`、无默认加 `native`、无默认且无渲染后端。最后一种只暴露可用的场景/CPU 功能，不伪造可运行的渲染器。
+必须验证默认 wgpu、无默认加 dx12、无默认加 vulkan；无后端、三个两两组合及全部启用均必须编译失败。
+四路像素验证分别构建各后端，导出相同输入的规范像素后跨进程比较，不为测试放开互斥约束。
 
-平台不支持的 Adapter 不编译原生 API 代码；显式请求不可用的运行时后端返回明确的 `BackendUnavailable`/能力错误。`native-dx12` 在非 Windows 上不会变成另一种后端。`--all-features` 的平台兼容性也要测试，不能靠在所有平台无条件链接 DX12 来实现聚合 feature。
+平台不支持的 Adapter 不编译原生 API 代码；请求不可用后端返回明确的 `BackendUnavailable`/能力错误。
+dx12 在非 Windows 上不会变成另一种后端。`--all-features` 是非法配置，不能用于成功构建验收。
 
 默认 `Renderer`/`WgpuRenderer` 入口在启用 `wgpu` 时保持其既有含义。新增显式 `NativeRenderer` 和 `NativeBackend::{Dx12, Vulkan}` 入口；不根据是否安装了某个驱动悄悄改变默认后端。强制选择的后端不可用时失败，测试中绝不自动回退。
 
@@ -338,7 +340,7 @@ cargo clippy --release --all-targets -- -D warnings
 
 上述命令不代表已经覆盖新后端。M0/M3 扩展测试运行器，另提供带显式 API、Adapter、feature 和 case manifest 的四路入口；每个执行实例保持单线程并按已有 GPU 分组运行。将实际可执行命令和所需工具写入脚本 README，不把本计划中的拟定参数当作现有命令。
 
-feature 检查除了默认组合，还须执行无默认、两个原生单选、原生聚合和共存组合的 `cargo check --release`、相关 release 测试及 clippy；检查 examples/benches 的 required-features。`cargo package`/包内构建使用对应 native feature 和准备好的 DXC 验证。平台矩阵包含 Windows、Linux、macOS 的适用组合，能力错误测试不能替代实际渲染。
+feature 检查覆盖默认 wgpu、关闭默认后的 dx12 和 vulkan 单选构建、相关 release 测试及 clippy；无后端、两两组合、全部开启均须拒绝。检查 examples/benches 的 required-features，跨后端验证分别编译执行后比较输出，不为测试放开互斥。`cargo package`/包内构建使用选定后端和准备好的 DXC 验证。平台矩阵包含 Windows、Linux、macOS 的适用组合，能力错误测试不能替代实际渲染。
 
 最后交付以下证据，而非仅报告“测试通过”：
 
@@ -350,7 +352,7 @@ feature 检查除了默认组合，还须执行无默认、两个原生单选、
 
 ## 10. M2 macOS shader 支持与后续 Metal Adapter
 
-未来新增 `native-metal` 时，复用 `src/render/`、scene/materializer、数据 ABI、测试输入和比较器，仅增加 Metal 的资源/命令/同步 Adapter 与 shader 产物路径。公共接口不出现 descriptor heap、queue family、root signature 等仅某个 API 需要的概念；这些信息仅存在于有类型的 interop 和 Adapter 内。
+未来新增 `metal` 时，复用 `src/render/`、scene/materializer、数据 ABI、测试输入和比较器，仅增加 Metal 的资源/命令/同步 Adapter 与 shader 产物路径。公共接口不出现 descriptor heap、queue family、root signature 等仅某个 API 需要的概念；这些信息仅存在于有类型的 interop 和 Adapter 内。
 
 用户于 2026-09-13 明确：macOS 使用专属 Metal Shading Language（MSL）源码，不使用 HLSL。此前同一 HLSL 转换到 Metal 的设想被本要求取代。M2 维护独立 MSL 实现、Apple 工具链、能力和分发记录，并验证公共数值语义及同机 wgpu-Metal 零差异，见第 8 节 M2 里程碑。新增目标若需要更改 ABI / 采样实现，必须重新通过现有 Windows 四路测试，不能以新增平台为由放宽它们。跨不同 GPU / 操作系统的全局字节相等仍不自动纳入当前合同。
 

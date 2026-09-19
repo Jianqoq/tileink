@@ -23,7 +23,7 @@ impl Frame {
         let synchronization = match &batch.synchronization {
             Some((id, crate::native::interop::Synchronization::Dx12(sync))) => Some((*id, sync)),
             None => None,
-            #[cfg(feature = "native-vulkan")]
+            #[cfg(feature = "vulkan")]
             _ => return Err("Vulkan synchronization requires a Vulkan context".into()),
         };
         if let Some((id, sync)) = synchronization {
@@ -35,7 +35,7 @@ impl Frame {
                 crate::native::runtime::texture::Allocation::Dx12(allocation) => {
                     super::synchronization::validate(device, &allocation.resource, sync)?
                 }
-                #[cfg(feature = "native-vulkan")]
+                #[cfg(feature = "vulkan")]
                 _ => return Err("non-DX12 target synchronization".into()),
             }
         }
@@ -62,7 +62,7 @@ impl Frame {
                         crate::native::runtime::texture::Allocation::Dx12(allocation) => {
                             states[index] = allocation.state.get()
                         }
-                        #[cfg(feature = "native-vulkan")]
+                        #[cfg(feature = "vulkan")]
                         _ => unreachable!("validated DX12 allocation"),
                     }
                 }
@@ -186,7 +186,7 @@ impl Frame {
                             crate::native::runtime::texture::Allocation::Dx12(allocation) => {
                                 Some(allocation.final_state)
                             }
-                            #[cfg(feature = "native-vulkan")]
+                            #[cfg(feature = "vulkan")]
                             _ => unreachable!("validated DX12 allocation"),
                         }
                     }

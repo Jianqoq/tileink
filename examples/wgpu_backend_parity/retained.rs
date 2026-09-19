@@ -317,9 +317,9 @@ pub fn render(
             }
         }
     }
-    #[cfg(feature = "native")]
+    #[cfg(any(feature = "dx12", feature = "vulkan"))]
     let mut native_variants = native.retained_variants(fonts)?;
-    #[cfg(feature = "native")]
+    #[cfg(any(feature = "dx12", feature = "vulkan"))]
     metadata.extend(
         native_variants
             .iter()
@@ -337,7 +337,7 @@ pub fn render(
                 images.push(image);
                 evidence_rows.push(row);
             }
-            #[cfg(feature = "native")]
+            #[cfg(any(feature = "dx12", feature = "vulkan"))]
             for variant in &mut native_variants {
                 println!("Rendering {name} through {}", variant.name);
                 let (image, row) = variant.render(&sequence, frame)?;

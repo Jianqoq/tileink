@@ -1,5 +1,8 @@
 use super::super::{adapter::Adapter, compute::ComputeBatch, texture::Allocation};
-use crate::{NativeBackend, NativeContext, NativeContextOptions};
+#[cfg(feature = "dx12")]
+use crate::NativeBackend;
+use crate::{NativeContext, NativeContextOptions};
+#[cfg(feature = "vulkan")]
 use std::rc::Rc;
 
 type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -7,10 +10,11 @@ type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn imported_contexts_preserve_host_images_and_restore_declared_states() -> Result {
+    #[cfg(feature = "dx12")]
     unsafe {
         NativeContext::enable_dx12_validation()?;
     }
-    for backend in [NativeBackend::Dx12, NativeBackend::Vulkan] {
+    for backend in [super::backend()] {
         let host = NativeContext::new(
             backend,
             &NativeContextOptions {
@@ -31,6 +35,7 @@ fn imported_contexts_preserve_host_images_and_restore_declared_states() -> Resul
         let imported = Adapter::import_context_for_test(&host)?;
         let image = unsafe {
             match &texture.state.allocation {
+                #[cfg(feature = "dx12")]
                 Allocation::Dx12(allocation) => {
                     // Import defaults must reject impossible states before ordinary
                     // rendering can record an invalid resource barrier.
@@ -68,6 +73,7 @@ fn imported_contexts_preserve_host_images_and_restore_declared_states() -> Resul
                             windows::Win32::Graphics::Direct3D12::D3D12_RESOURCE_STATE_COPY_SOURCE,
                     })?
                 }
+                #[cfg(feature = "vulkan")]
                 Allocation::Vulkan(allocation) => imported.import_vulkan_texture(
                     crate::native_interop::vulkan::TextureDescriptor {
                         image: allocation.image,
@@ -119,9 +125,11 @@ fn imported_contexts_preserve_host_images_and_restore_declared_states() -> Resul
     Ok(())
 }
 
+#[cfg(feature = "dx12")]
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn dx12_target_use_orders_external_queues_even_without_damage() -> Result {
+    #[cfg(feature = "dx12")]
     unsafe {
         NativeContext::enable_dx12_validation()?;
     }
@@ -216,14 +224,16 @@ fn dx12_target_use_orders_external_queues_even_without_damage() -> Result {
     Ok(())
 }
 
+#[cfg(feature = "dx12")]
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn dx12_target_use_signal_failure_does_not_publish_state_or_history() -> Result {
     if super::super::isolation::run(
-        "native::runtime::gpu_tests::interop::dx12_target_use_signal_failure_does_not_publish_state_or_history",
+        "native::runtime::lifecycle_gpu_tests::interop::dx12_target_use_signal_failure_does_not_publish_state_or_history",
     )? {
         return Ok(());
     }
+    #[cfg(feature = "dx12")]
     unsafe {
         NativeContext::enable_dx12_validation()?;
     }

@@ -7,10 +7,10 @@ use std::{
 use super::Result;
 
 pub const HELP: &str =
-    "wgpu_backend_parity [--input SVG_FILE_OR_DIR | --suite smoke|examples|retained] [--textures native|portable|both] [--native]
+    "wgpu_backend_parity [--input SVG_FILE_OR_DIR | --suite smoke|examples|retained] [--textures native|portable|both]
     [--dx12-fine runtime|precompiled] [--dxc PATH_TO_DXCOMPILER_DLL] [--output NEW_DIRECTORY] [--luid HEX_LUID]
 By default render built-in probes; --suite examples runs the complete shared example catalog. Requires hardware DX12 and Vulkan
-on the same Windows GPU. --native adds owned HLSL DX12 and Vulkan routes (requires --features native).
+on the same Windows GPU. Native API comparisons require separate backend builds; see docs/native/backend-features.md.
 Compares all RGBA bytes without tolerance. Output must be new.";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -65,7 +65,7 @@ impl Options {
 
     pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Option<Self>> {
         let mut input = None;
-        let mut native = false;
+        let native = false;
         let mut suite = None;
         let mut dx12_fine = Dx12Fine::Runtime;
         let mut output = None;
@@ -83,8 +83,7 @@ impl Options {
                 return Err(format!("duplicate argument {flag}").into());
             }
             if flag == "--native" {
-                native = true;
-                continue;
+                return Err("native comparisons require separate backend builds; see docs/native/backend-features.md".into());
             }
             if !matches!(
                 flag,
@@ -260,18 +259,17 @@ mod tests {
     }
 
     #[test]
-    fn native_routes_are_explicit_and_reject_duplicate_requests() {
+    fn native_routes_require_separate_backend_builds() {
         assert!(!parse(&[]).unwrap().unwrap().native);
-        assert!(parse(&["--native"]).unwrap().unwrap().native);
-        assert!(
-            parse(&["--native", "--input", "a.svg"])
-                .unwrap()
-                .unwrap()
-                .native
-        );
-        assert!(parse(&["--native", "--suite", "examples"]).is_ok());
-        assert!(parse(&["--native", "--suite", "retained"]).is_ok());
-        assert!(parse(&["--native", "--native"]).is_err());
+        for args in [
+            &["--native"][..],
+            &["--native", "--input", "a.svg"],
+            &["--native", "--suite", "examples"],
+            &["--native", "--suite", "retained"],
+        ] {
+            let error = parse(args).unwrap_err().to_string();
+            assert!(error.contains("separate backend builds"), "{error}");
+        }
     }
 
     #[test]

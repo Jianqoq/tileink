@@ -1,10 +1,10 @@
-#[cfg(any(feature = "native-dx12", feature = "native-vulkan"))]
+#[cfg(any(feature = "dx12", feature = "vulkan"))]
 #[test]
 fn native_build_embeds_each_expected_nonempty_program() {
     let artifacts = tileink::NATIVE_SHADER_ARTIFACTS;
-    let dxil = cfg!(all(feature = "native-dx12", target_os = "windows"));
+    let dxil = cfg!(all(feature = "dx12", target_os = "windows"));
     let spirv = cfg!(all(
-        feature = "native-vulkan",
+        feature = "vulkan",
         any(target_os = "windows", target_os = "linux")
     ));
     let entries = [

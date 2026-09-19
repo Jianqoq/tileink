@@ -1,13 +1,14 @@
 use crate::native::runtime::{Result, buffer::Buffer, compute::ComputeBatch};
-use crate::{NativeBackend, NativeContext, NativeContextOptions};
+use crate::{NativeContext, NativeContextOptions};
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn native_persistent_buffers_patch_ranges_and_keep_inflight_allocations_alive() -> Result<()> {
+    #[cfg(feature = "dx12")]
     unsafe {
         NativeContext::enable_dx12_validation()?;
     }
-    for backend in [NativeBackend::Dx12, NativeBackend::Vulkan] {
+    for backend in [super::backend()] {
         let options = NativeContextOptions {
             physical_adapter: Some(std::env::var("TILEINK_NATIVE_GPU")?),
             validation: true,
@@ -72,10 +73,11 @@ fn native_cached_buffer_rebuilds_after_discarded_dirty_upload() -> Result<()> {
         program::cached_buffer::CachedBuffer,
     };
     use std::{cell::RefCell, rc::Rc};
+    #[cfg(feature = "dx12")]
     unsafe {
         NativeContext::enable_dx12_validation()?;
     }
-    for backend in [NativeBackend::Dx12, NativeBackend::Vulkan] {
+    for backend in [super::backend()] {
         let context = NativeContext::new(
             backend,
             &NativeContextOptions {

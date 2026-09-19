@@ -3,16 +3,17 @@ use crate::native::runtime::{
     compute::{ComputeBatch, Resource, SurfacePool},
     renderer::images::Images,
 };
-use crate::{NativeBackend, NativeContext, NativeContextOptions};
+use crate::{NativeContext, NativeContextOptions};
 use std::{cell::RefCell, rc::Rc};
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn native_image_cache_reuses_initialized_arrays_without_upload() -> Result<()> {
+    #[cfg(feature = "dx12")]
     unsafe {
         NativeContext::enable_dx12_validation()?;
     }
-    for backend in [NativeBackend::Dx12, NativeBackend::Vulkan] {
+    for backend in [super::backend()] {
         let context = NativeContext::new(
             backend,
             &NativeContextOptions {
@@ -94,7 +95,7 @@ fn native_vector_aliases_share_one_recording_per_batch() -> Result<()> {
             )
             .unwrap();
     }
-    for backend in [NativeBackend::Dx12, NativeBackend::Vulkan] {
+    for backend in [super::backend()] {
         let context = NativeContext::new(
             backend,
             &NativeContextOptions {

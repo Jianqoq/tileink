@@ -18,10 +18,7 @@ impl NativeRenderer {
         output: Option<crate::NativeRenderTarget<'_>>,
         synchronization: Option<crate::native::interop::Synchronization>,
     ) -> Result<NativeSubmission, NativeError> {
-        #[cfg(all(
-            target_os = "windows",
-            any(feature = "native-dx12", feature = "native-vulkan")
-        ))]
+        #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
         {
             let canvas = selected.scene();
             let limits = self.context.adapter.limits();
@@ -120,10 +117,7 @@ impl NativeRenderer {
             self.size = size;
             Ok(submission)
         }
-        #[cfg(not(all(
-            target_os = "windows",
-            any(feature = "native-dx12", feature = "native-vulkan")
-        )))]
+        #[cfg(not(all(target_os = "windows", any(feature = "dx12", feature = "vulkan"))))]
         {
             let _ = (selected, text, readback, output, synchronization);
             Err(NativeError::Unavailable(

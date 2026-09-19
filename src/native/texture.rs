@@ -6,10 +6,7 @@ use super::{NativeBackend, NativeContext};
 pub struct NativeTexture {
     // Allocation drops before its last device owner. Submitted frames separately
     // retain the raw allocation without creating a context/queue ownership cycle.
-    #[cfg(all(
-        target_os = "windows",
-        any(feature = "native-dx12", feature = "native-vulkan")
-    ))]
+    #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
     pub(super) state: std::rc::Rc<super::runtime::texture::State>,
     pub(super) context: NativeContext,
     pub(super) size: [u32; 2],
@@ -27,10 +24,7 @@ impl NativeTexture {
             ));
         }
 
-        #[cfg(all(
-            target_os = "windows",
-            any(feature = "native-dx12", feature = "native-vulkan")
-        ))]
+        #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
         {
             let mut batch = super::runtime::compute::ComputeBatch::new();
             let image = batch
@@ -44,10 +38,7 @@ impl NativeTexture {
                 self.size(),
             ))
         }
-        #[cfg(not(all(
-            target_os = "windows",
-            any(feature = "native-dx12", feature = "native-vulkan")
-        )))]
+        #[cfg(not(all(target_os = "windows", any(feature = "dx12", feature = "vulkan"))))]
         {
             Err(super::NativeError::Unavailable(
                 self.backend().unavailable(),

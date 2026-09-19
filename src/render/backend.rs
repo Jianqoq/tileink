@@ -11,10 +11,7 @@ use std::hash::Hash;
     all(
         not(test),
         feature = "wgpu",
-        not(all(
-            target_os = "windows",
-            any(feature = "native-dx12", feature = "native-vulkan")
-        ))
+        not(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))
     ),
     expect(
         dead_code,

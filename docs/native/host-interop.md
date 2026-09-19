@@ -1,7 +1,8 @@
 # Native host devices, targets and presentation
 
-Enable `native-dx12`, `native-vulkan`, or `native` independently of the default
-`wgpu` feature. `tileink::native_interop::{dx12,vulkan}` contains typed host
+Enable exactly one of `dx12` or `vulkan`, with default features disabled.
+These features are mutually exclusive with each other and with default `wgpu`.
+`tileink::native_interop::{dx12,vulkan}` contains typed host
 context and texture descriptors. These are unsafe imports: Tileink validates the
 queryable device, format, dimensions and usage, while the host must provide
 accurate Vulkan handle metadata and synchronize accesses on the imported queue.
@@ -77,11 +78,11 @@ These concern Tileink work; later host copy/present operations need a host fence
 The runnable Windows `native_present` example separates DX12 and Vulkan modules:
 
 ```powershell
-cargo run --release --features native --example native_present -- dx12
-cargo run --release --features native --example native_present -- vulkan
+cargo run --release --no-default-features --features dx12 --example native_present -- dx12
+cargo run --release --no-default-features --features vulkan --example native_present -- vulkan
 # Hidden, bounded acquire/render/present/resize smoke verification:
-cargo run --release --features native --example native_present -- dx12 --smoke
-cargo run --release --features native --example native_present -- vulkan --smoke
+cargo run --release --no-default-features --features dx12 --example native_present -- dx12 --smoke
+cargo run --release --no-default-features --features vulkan --example native_present -- vulkan --smoke
 ```
 
 Both use existing host devices and queues. DX12 renders directly into an imported

@@ -103,7 +103,7 @@ impl Frame {
         let synchronization = match &batch.synchronization {
             Some((id, crate::native::interop::Synchronization::Vulkan(sync))) => Some((*id, sync)),
             None => None,
-            #[cfg(feature = "native-dx12")]
+            #[cfg(feature = "dx12")]
             _ => return Err("DX12 synchronization requires a DX12 context".into()),
         };
         let mut this = Self {
@@ -203,7 +203,7 @@ impl Frame {
                         crate::native::runtime::buffer::Allocation::Vulkan(allocation) => {
                             allocation
                         }
-                        #[cfg(feature = "native-dx12")]
+                        #[cfg(feature = "dx12")]
                         _ => return Err("non-Vulkan persistent buffer".into()),
                     };
                     this.persistent_buffers.push(allocation.clone());
@@ -225,7 +225,7 @@ impl Frame {
                     if let Some(texture) = &texture.persistent {
                         let image = match &texture.state.allocation {
                             crate::native::runtime::texture::Allocation::Vulkan(image) => image,
-                            #[cfg(feature = "native-dx12")]
+                            #[cfg(feature = "dx12")]
                             crate::native::runtime::texture::Allocation::Dx12(_) => {
                                 return Err("non-Vulkan persistent texture".into());
                             }

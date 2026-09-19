@@ -43,10 +43,7 @@ fn migration_inventory_covers_every_reference_entry_and_texture_variant() {
                         .as_str()
                         .is_some_and(|entry| !entry.is_empty())
                 );
-                #[cfg(all(
-                    target_os = "windows",
-                    any(feature = "native-dx12", feature = "native-vulkan")
-                ))]
+                #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
                 assert!(tileink::NATIVE_SHADER_ARTIFACTS.iter().any(|artifact| artifact.entry == program["native_entry"].as_str().unwrap()));
             }
             status => panic!("unknown HLSL migration status: {status}"),

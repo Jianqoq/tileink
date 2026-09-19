@@ -1,5 +1,5 @@
 //! Native routes for the shared corpus and exact byte comparator.
-#[cfg(all(windows, feature = "native"))]
+#[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
 pub mod retained;
 use super::{Result, common::capture};
 use std::rc::Rc;
@@ -7,11 +7,11 @@ use tileink::{Canvas, Image};
 
 #[derive(Default)]
 pub struct Routes {
-    #[cfg(all(windows, feature = "native"))]
+    #[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
     routes: Vec<Route>,
 }
 
-#[cfg(all(windows, feature = "native"))]
+#[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
 struct Route {
     name: String,
     renderer: tileink::NativeRenderer,
@@ -22,7 +22,7 @@ pub fn initialize_validation(enabled: bool) -> Result<()> {
     if !enabled {
         return Ok(());
     }
-    #[cfg(all(windows, feature = "native"))]
+    #[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
     {
         // SAFETY: main calls this before any wgpu instance/device or native context.
         // This standalone verifier has no concurrent external device creation.
@@ -31,8 +31,11 @@ pub fn initialize_validation(enabled: bool) -> Result<()> {
         }
         Ok(())
     }
-    #[cfg(not(all(windows, feature = "native")))]
-    Err("--native requires Windows and --features native".into())
+    #[cfg(not(all(windows, any(feature = "dx12", feature = "vulkan"))))]
+    Err(
+        "native comparisons require separate backend builds; see docs/native/backend-features.md"
+            .into(),
+    )
 }
 
 impl Routes {
@@ -40,7 +43,7 @@ impl Routes {
         if !enabled {
             return Ok(Self::default());
         }
-        #[cfg(all(windows, feature = "native"))]
+        #[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
         {
             let mut routes = Vec::new();
             for (backend, name) in [
@@ -64,34 +67,37 @@ impl Routes {
             }
             Ok(Self { routes })
         }
-        #[cfg(not(all(windows, feature = "native")))]
+        #[cfg(not(all(windows, any(feature = "dx12", feature = "vulkan"))))]
         {
             let _ = luid;
-            Err("--native requires Windows and --features native".into())
+            Err(
+                "native comparisons require separate backend builds; see docs/native/backend-features.md"
+                    .into(),
+            )
         }
     }
 
     pub fn metadata(&self) -> Vec<serde_json::Value> {
-        #[cfg(all(windows, feature = "native"))]
+        #[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
         {
             self.routes
                 .iter()
                 .map(|route| route.metadata.clone())
                 .collect()
         }
-        #[cfg(not(all(windows, feature = "native")))]
+        #[cfg(not(all(windows, any(feature = "dx12", feature = "vulkan"))))]
         {
             Vec::new()
         }
     }
 
     pub fn render(&mut self, canvas: &Canvas, images: &mut Vec<Image>) -> Result<()> {
-        #[cfg(all(windows, feature = "native"))]
+        #[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
         for route in &mut self.routes {
             println!("Rendering through {}", route.name);
             images.push(route.renderer.render_to_image(canvas)?.readback()?);
         }
-        #[cfg(not(all(windows, feature = "native")))]
+        #[cfg(not(all(windows, any(feature = "dx12", feature = "vulkan"))))]
         let _ = (canvas, images);
         Ok(())
     }
@@ -100,7 +106,7 @@ impl Routes {
         &self,
         inputs: Rc<capture::Inputs>,
     ) -> Result<Vec<(String, capture::Captured)>> {
-        #[cfg(all(windows, feature = "native"))]
+        #[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
         {
             self.routes
                 .iter()
@@ -118,7 +124,7 @@ impl Routes {
                 })
                 .collect()
         }
-        #[cfg(not(all(windows, feature = "native")))]
+        #[cfg(not(all(windows, any(feature = "dx12", feature = "vulkan"))))]
         {
             let _ = inputs;
             Ok(Vec::new())
@@ -126,7 +132,7 @@ impl Routes {
     }
 
     pub fn validate(&self) -> Result<()> {
-        #[cfg(all(windows, feature = "native"))]
+        #[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
         for route in &self.routes {
             route.renderer.context().check_validation()?;
         }

@@ -204,7 +204,7 @@ fn parse_include(line: &str) -> Option<&str> {
     rest.strip_prefix('"')?.strip_suffix('"')
 }
 
-#[cfg(any(feature = "native-dx12", feature = "native-vulkan"))]
+#[cfg(any(feature = "dx12", feature = "vulkan"))]
 #[path = "build/native.rs"]
 mod native_shaders;
 
@@ -217,10 +217,13 @@ fn main() {
     println!("cargo:rerun-if-changed=src/shaders/hlsl/constants.hlsli");
     gpu_constants::write_rust(&std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap()))
         .expect("generate host GPU constants");
-    #[cfg(any(feature = "native-dx12", feature = "native-vulkan"))]
+    #[cfg(any(feature = "dx12", feature = "vulkan"))]
     native_shaders::generate()
         .unwrap_or_else(|error| panic!("native shader build failed: {error}"));
     println!("cargo:rerun-if-changed=build.rs");
     #[cfg(feature = "wgpu")]
     build_wgpu();
 }
+
+#[path = "src/backend_features.rs"]
+mod backend_features;

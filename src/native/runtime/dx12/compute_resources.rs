@@ -52,7 +52,7 @@ impl Resources {
                 if let Resource::PersistentBuffer(input) = input {
                     let resource = match &input.buffer.state.allocation {
                         crate::native::runtime::buffer::Allocation::Dx12(resource) => resource,
-                        #[cfg(feature = "native-vulkan")]
+                        #[cfg(feature = "vulkan")]
                         _ => return Err("non-DX12 persistent buffer".into()),
                     };
                     if !input.bytes.is_empty() {
@@ -82,7 +82,7 @@ impl Resources {
                     if let Some(texture) = &input.persistent {
                         let texture = match &texture.state.allocation {
                             crate::native::runtime::texture::Allocation::Dx12(texture) => texture,
-                            #[cfg(feature = "native-vulkan")]
+                            #[cfg(feature = "vulkan")]
                             crate::native::runtime::texture::Allocation::Vulkan(_) => {
                                 return Err("non-DX12 persistent texture".into());
                             }

@@ -7,17 +7,11 @@ mod gpu_constants;
 #[allow(dead_code)]
 #[path = "../build/native/interfaces.rs"]
 mod interfaces;
-#[cfg(all(
-    feature = "native-vulkan",
-    any(target_os = "windows", target_os = "linux")
-))]
+#[cfg(all(feature = "vulkan", any(target_os = "windows", target_os = "linux")))]
 #[path = "../build/native/spirv.rs"]
 mod spirv;
 
-#[cfg(all(
-    feature = "native-vulkan",
-    any(target_os = "windows", target_os = "linux")
-))]
+#[cfg(all(feature = "vulkan", any(target_os = "windows", target_os = "linux")))]
 #[test]
 fn actual_spirv_rejects_wrong_entry_layout_binding_stride_and_workgroup() {
     let artifact = tileink::NATIVE_SHADER_ARTIFACTS
@@ -56,10 +50,7 @@ fn actual_spirv_rejects_wrong_entry_layout_binding_stride_and_workgroup() {
     }
 }
 
-#[cfg(all(
-    feature = "native-vulkan",
-    any(target_os = "windows", target_os = "linux")
-))]
+#[cfg(all(feature = "vulkan", any(target_os = "windows", target_os = "linux")))]
 #[test]
 fn actual_spirv_texture_dimension_array_sample_type_and_binding_are_checked() {
     let artifact = tileink::NATIVE_SHADER_ARTIFACTS
@@ -88,10 +79,7 @@ fn actual_spirv_texture_dimension_array_sample_type_and_binding_are_checked() {
     assert!(spirv::validate(artifact.bytes, "sample_words", &wrong).is_err());
 }
 
-#[cfg(all(
-    feature = "native-vulkan",
-    any(target_os = "windows", target_os = "linux")
-))]
+#[cfg(all(feature = "vulkan", any(target_os = "windows", target_os = "linux")))]
 #[test]
 fn actual_range_scatter_spirv_uses_the_production_dispatch_shape() {
     let artifact = tileink::NATIVE_SHADER_ARTIFACTS
@@ -109,10 +97,7 @@ fn actual_range_scatter_spirv_uses_the_production_dispatch_shape() {
     assert!(spirv::validate(artifact.bytes, "range_scatter", &wrong).is_err());
 }
 
-#[cfg(all(
-    feature = "native-vulkan",
-    any(target_os = "windows", target_os = "linux")
-))]
+#[cfg(all(feature = "vulkan", any(target_os = "windows", target_os = "linux")))]
 #[test]
 fn actual_cumsum_spirv_checks_each_uniform_block_and_shared_workgroup() {
     let abi = interfaces::get("cumsum").unwrap();
@@ -149,10 +134,7 @@ fn actual_cumsum_spirv_checks_each_uniform_block_and_shared_workgroup() {
     }
 }
 
-#[cfg(all(
-    feature = "native-vulkan",
-    any(target_os = "windows", target_os = "linux")
-))]
+#[cfg(all(feature = "vulkan", any(target_os = "windows", target_os = "linux")))]
 #[test]
 fn storage_texture_reflection_rejects_wrong_format_dimension_and_access() {
     let artifact = tileink::NATIVE_SHADER_ARTIFACTS
@@ -178,10 +160,7 @@ fn storage_texture_reflection_rejects_wrong_format_dimension_and_access() {
     }
 }
 
-#[cfg(all(
-    feature = "native-vulkan",
-    any(target_os = "windows", target_os = "linux")
-))]
+#[cfg(all(feature = "vulkan", any(target_os = "windows", target_os = "linux")))]
 #[test]
 fn array_texture_reflection_rejects_nonarray_and_wrong_access() {
     let artifact = tileink::NATIVE_SHADER_ARTIFACTS
@@ -207,10 +186,7 @@ fn array_texture_reflection_rejects_nonarray_and_wrong_access() {
     }
 }
 
-#[cfg(all(
-    feature = "native-vulkan",
-    any(target_os = "windows", target_os = "linux")
-))]
+#[cfg(all(feature = "vulkan", any(target_os = "windows", target_os = "linux")))]
 #[test]
 fn filter_uniform_spirv_preserves_signed_float_and_vector_types() {
     let interface = interfaces::get("filter-basic").unwrap();
@@ -242,10 +218,7 @@ fn filter_uniform_spirv_preserves_signed_float_and_vector_types() {
     }
 }
 
-#[cfg(all(
-    feature = "native-vulkan",
-    any(target_os = "windows", target_os = "linux")
-))]
+#[cfg(all(feature = "vulkan", any(target_os = "windows", target_os = "linux")))]
 #[test]
 fn texture_table_reflection_checks_descriptor_count_and_image_kind() {
     let artifact = tileink::NATIVE_SHADER_ARTIFACTS

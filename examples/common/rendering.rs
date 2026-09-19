@@ -35,7 +35,7 @@ pub(super) enum Backend {
         device: wgpu::Device,
         queue: wgpu::Queue,
     },
-    #[cfg(all(windows, feature = "native"))]
+    #[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
     Native(tileink::NativeContext),
 }
 
@@ -49,7 +49,7 @@ impl Backend {
                 height,
                 Color::TRANSPARENT,
             ))),
-            #[cfg(all(windows, feature = "native"))]
+            #[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
             Self::Native(context) => Renderer::Native(Box::new(NativeFrame {
                 renderer: tileink::NativeRenderer::with_context(context, width, height)?,
                 image: None,
@@ -60,7 +60,7 @@ impl Backend {
 
 pub(super) enum Renderer {
     Wgpu(Box<WgpuRenderer>),
-    #[cfg(all(windows, feature = "native"))]
+    #[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
     Native(Box<NativeFrame>),
 }
 
@@ -68,21 +68,21 @@ impl Renderer {
     pub fn scene_renderer(&mut self) -> &mut dyn SceneRenderer {
         match self {
             Self::Wgpu(renderer) => renderer.as_mut(),
-            #[cfg(all(windows, feature = "native"))]
+            #[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
             Self::Native(frame) => frame.as_mut(),
         }
     }
     pub fn set_clear_color(&mut self, clear: Color) {
         match self {
             Self::Wgpu(renderer) => renderer.set_clear_color(clear),
-            #[cfg(all(windows, feature = "native"))]
+            #[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
             Self::Native(frame) => frame.renderer.set_clear_color(clear),
         }
     }
     pub fn image(&mut self) -> Result<Image> {
         match self {
             Self::Wgpu(renderer) => Ok(renderer.image()),
-            #[cfg(all(windows, feature = "native"))]
+            #[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
             Self::Native(frame) => frame
                 .image
                 .take()
@@ -91,13 +91,13 @@ impl Renderer {
     }
 }
 
-#[cfg(all(windows, feature = "native"))]
+#[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
 pub(super) struct NativeFrame {
     renderer: tileink::NativeRenderer,
     image: Option<Image>,
 }
 
-#[cfg(all(windows, feature = "native"))]
+#[cfg(all(windows, any(feature = "dx12", feature = "vulkan")))]
 impl SceneRenderer for NativeFrame {
     fn render(&mut self, canvas: &Canvas) -> Result<()> {
         self.image = Some(self.renderer.render_to_image(canvas)?.readback()?);

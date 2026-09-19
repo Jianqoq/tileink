@@ -9,7 +9,7 @@ mod gpu;
 #[path = "../common/layer_filter_scenes.rs"]
 mod layer_filter_scenes;
 mod native;
-#[cfg(all(test, windows, feature = "native"))]
+#[cfg(all(test, windows, any(feature = "dx12", feature = "vulkan")))]
 mod native_tests;
 mod options;
 mod pixels;

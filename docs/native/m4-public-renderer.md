@@ -1,6 +1,6 @@
 # M4 owned native renderer
 
-The Windows `native-dx12` and `native-vulkan` features now expose an owned
+The Windows `dx12` and `vulkan` features now expose an owned
 `NativeContext` and `NativeRenderer`. Construction selects the requested API and
 optionally an exact physical adapter LUID; an unavailable backend, unmatched LUID,
 or insufficient texture-table capacity returns an error without fallback.

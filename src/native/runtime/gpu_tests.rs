@@ -1,4 +1,4 @@
-use super::{Result, dx12, submissions, vulkan};
+use super::{Result, dx12, vulkan};
 #[path = "tests/cases.rs"]
 mod cases;
 use crate::wgpu::test_gpu::gpu_identity;
@@ -63,57 +63,6 @@ fn four_api_probes_match_independent_cpu_results() -> Result<()> {
     }
     Ok(())
 }
-
-#[test]
-#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
-fn queued_native_submissions_keep_leases_and_reject_wrong_devices() -> Result<()> {
-    let identity = std::env::var("TILEINK_NATIVE_GPU")?;
-    let mut dx12 = dx12::Dx12::new(&identity)?;
-    let mut vulkan = vulkan::Vulkan::new(&identity)?;
-    let dx12_messages = dx12.validation_queue();
-    let vulkan_messages = vulkan.validation_messages();
-    let cases = cases::cases();
-    let mut tickets = Vec::new();
-    for case in &cases {
-        tickets.push((dx12.submit(case)?, vulkan.submit(case)?));
-    }
-    assert_eq!(dx12.pending_count(), cases.len());
-    assert_eq!(vulkan.pending_count(), cases.len());
-    let wrong = dx12.readback(&tickets[0].1).unwrap_err();
-    assert_eq!(
-        wrong.downcast_ref::<submissions::SubmissionError>(),
-        Some(&submissions::SubmissionError::WrongDevice)
-    );
-    let wrong = vulkan.readback(&tickets[0].0).unwrap_err();
-    assert_eq!(
-        wrong.downcast_ref::<submissions::SubmissionError>(),
-        Some(&submissions::SubmissionError::WrongDevice)
-    );
-    // Read the newest frame first: waiting for it must not overwrite or discard
-    // earlier unread outputs. Each submitted case owns distinct staging state.
-    for (case, (d, v)) in cases.iter().zip(tickets.iter()).rev() {
-        assert_eq!(dx12.readback(d)?, case.expected);
-        assert_eq!(vulkan.readback(v)?, case.expected);
-    }
-    assert_eq!(dx12.pending_count(), 0);
-    assert_eq!(vulkan.pending_count(), 0);
-    assert!(dx12.readback(&tickets[0].0).is_err());
-    assert!(vulkan.readback(&tickets[0].1).is_err());
-    // Dropping an observation does not retire in-flight work. Context teardown
-    // must still wait safely and release that unobserved final batch.
-    drop(dx12.submit(&cases[0])?);
-    drop(vulkan.submit(&cases[0])?);
-    assert_eq!(dx12.pending_count(), 1);
-    assert_eq!(vulkan.pending_count(), 1);
-    drop(dx12);
-    drop(vulkan);
-    dx12::assert_valid(&dx12_messages)?;
-    assert!(vulkan_messages.lock().unwrap().is_empty());
-    Ok(())
-}
-
-#[path = "tests/batches.rs"]
-mod batches;
 
 #[path = "tests/scatter.rs"]
 mod scatter;
@@ -276,23 +225,9 @@ mod frame_filters;
 mod frame_svg;
 #[path = "tests/frame_text_gpu.rs"]
 mod frame_text;
-#[path = "tests/persistent_texture_gpu.rs"]
-mod persistent_texture;
 #[path = "tests/public_renderer_gpu.rs"]
 mod public_renderer;
 #[path = "tests/recording_gpu.rs"]
 mod recording;
 #[path = "tests/retained_renderer_gpu.rs"]
 mod retained_renderer;
-
-#[path = "tests/persistent_buffer_gpu.rs"]
-mod persistent_buffer;
-
-#[path = "tests/persistent_image_gpu.rs"]
-mod persistent_image;
-
-#[path = "tests/interop_gpu.rs"]
-mod interop;
-
-#[path = "tests/vulkan_target_use_gpu.rs"]
-mod vulkan_target_use;

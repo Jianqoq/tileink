@@ -12,30 +12,15 @@ pub struct NativeRenderer {
     context: NativeContext,
     size: (u32, u32),
     images: ImageResourceStore,
-    #[cfg(all(
-        target_os = "windows",
-        any(feature = "native-dx12", feature = "native-vulkan")
-    ))]
+    #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
     target: Option<super::NativeTexture>,
-    #[cfg(all(
-        target_os = "windows",
-        any(feature = "native-dx12", feature = "native-vulkan")
-    ))]
+    #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
     surfaces: Rc<std::cell::RefCell<super::runtime::compute::SurfacePool>>,
-    #[cfg(all(
-        target_os = "windows",
-        any(feature = "native-dx12", feature = "native-vulkan")
-    ))]
+    #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
     recording: super::runtime::renderer::recording::Recording,
-    #[cfg(all(
-        target_os = "windows",
-        any(feature = "native-dx12", feature = "native-vulkan")
-    ))]
+    #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
     persistent_scene: Option<crate::retained_scene::PersistentSceneMaterializer>,
-    #[cfg(all(
-        target_os = "windows",
-        any(feature = "native-dx12", feature = "native-vulkan")
-    ))]
+    #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
     history: Option<output::HistoryRecord>,
 }
 
@@ -53,10 +38,7 @@ impl NativeRenderer {
         width: u32,
         height: u32,
     ) -> Result<Self, NativeError> {
-        #[cfg(all(
-            target_os = "windows",
-            any(feature = "native-dx12", feature = "native-vulkan")
-        ))]
+        #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
         {
             validate_size((width, height), context.adapter.limits().image_dimension)?;
             Ok(Self {
@@ -72,10 +54,7 @@ impl NativeRenderer {
                 history: None,
             })
         }
-        #[cfg(not(all(
-            target_os = "windows",
-            any(feature = "native-dx12", feature = "native-vulkan")
-        )))]
+        #[cfg(not(all(target_os = "windows", any(feature = "dx12", feature = "vulkan"))))]
         {
             let _ = (width, height);
             Err(NativeError::Unavailable(context.backend().unavailable()))
@@ -88,6 +67,12 @@ impl NativeRenderer {
     pub fn size(&self) -> (u32, u32) {
         self.size
     }
+    /// Inspect a registered raster image without submitting GPU work. Hosts use this
+    /// to populate independent recording destinations without repeating decoded uploads.
+    pub fn image_resource(&self, key: ImageKey) -> Option<&Image> {
+        self.images.get(key)
+    }
+
     pub fn insert_image(&mut self, key: ImageKey, image: impl Into<Rc<Image>>) -> bool {
         let changed = self.images.insert(key, image.into());
         if changed {
@@ -105,10 +90,7 @@ impl NativeRenderer {
     /// Set the premultiplied background for subsequent root frames. Child canvases
     /// and filter intermediates retain transparent initial contents.
     pub fn set_clear_color(&mut self, clear: peniko::Color) {
-        #[cfg(all(
-            target_os = "windows",
-            any(feature = "native-dx12", feature = "native-vulkan")
-        ))]
+        #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
         {
             let clear = crate::shared::image::premul_color_to_rgba8_pack(clear);
             if self.recording.clear_color != clear {
@@ -116,10 +98,7 @@ impl NativeRenderer {
                 self.invalidate_retained_history();
             }
         }
-        #[cfg(not(all(
-            target_os = "windows",
-            any(feature = "native-dx12", feature = "native-vulkan")
-        )))]
+        #[cfg(not(all(target_os = "windows", any(feature = "dx12", feature = "vulkan"))))]
         {
             let _ = clear;
         }
@@ -229,10 +208,7 @@ impl NativeRenderer {
 
 #[cfg(any(
     test,
-    all(
-        target_os = "windows",
-        any(feature = "native-dx12", feature = "native-vulkan")
-    )
+    all(target_os = "windows", any(feature = "dx12", feature = "vulkan"))
 ))]
 pub(super) fn validate_size(size: (u32, u32), max_dimension: u32) -> Result<(), NativeError> {
     if size.0 == 0 || size.1 == 0 || size.0 > max_dimension || size.1 > max_dimension {
@@ -278,8 +254,5 @@ mod tests {
     }
 }
 
-#[cfg(all(
-    target_os = "windows",
-    any(feature = "native-dx12", feature = "native-vulkan")
-))]
+#[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
 mod output;

@@ -71,9 +71,11 @@ impl App {
                 .with_inner_size(winit::dpi::PhysicalSize::new(640, 360)),
         )?;
         let host: Box<dyn Host> = match self.backend.as_str() {
+            #[cfg(feature = "dx12")]
             "dx12" => Box::new(super::dx12::Host::new(&window)?),
+            #[cfg(feature = "vulkan")]
             "vulkan" => Box::new(super::vulkan::Host::new(&window)?),
-            _ => return Err("expected dx12 or vulkan".into()),
+            _ => return Err("requested backend was not compiled".into()),
         };
         let size = window.inner_size();
         let size = [size.width, size.height];
@@ -175,7 +177,13 @@ pub fn run() -> Result {
     let args: Vec<_> = std::env::args().skip(1).collect();
     let mut app = App {
         state: None,
-        backend: args.first().cloned().unwrap_or_else(|| "vulkan".into()),
+        backend: args.first().cloned().unwrap_or_else(|| {
+            if cfg!(feature = "dx12") {
+                "dx12".into()
+            } else {
+                "vulkan".into()
+            }
+        }),
         smoke: args.iter().any(|s| s == "--smoke"),
         frames: 0,
         error: None,

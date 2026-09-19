@@ -17,41 +17,6 @@ fn scene(width: u32, height: u32, color: Color) -> Canvas {
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
-fn native_public_completion_poll_preserves_queued_images_until_readback() -> Result<()> {
-    // Continuous hosts must inspect progress without waiting or consuming an image.
-    // Completing a later submission also proves completion of its earlier prefix.
-    unsafe {
-        NativeContext::enable_dx12_validation()?;
-    }
-    let canvas = scene(19, 13, Color::from_rgba8(73, 191, 37, 127));
-    for backend in [NativeBackend::Dx12, NativeBackend::Vulkan] {
-        let context = NativeContext::new(
-            backend,
-            &NativeContextOptions {
-                physical_adapter: Some(std::env::var("TILEINK_NATIVE_GPU")?),
-                validation: true,
-            },
-        )?;
-        let mut renderer = NativeRenderer::with_context(&context, 19, 13)?;
-        let first = renderer.render_to_image(&canvas)?;
-        let _ = first.is_complete()?;
-        let last = renderer.render(&canvas)?;
-        let _ = last.is_complete()?;
-        assert_eq!(context.adapter.pending_count(), 2);
-        last.wait()?;
-        assert!(first.is_complete()?);
-        assert!(first.is_complete()?);
-        assert_eq!(context.adapter.pending_count(), 1);
-        let image = first.readback()?;
-        assert_eq!((image.width, image.height), (19, 13));
-        assert_eq!(context.adapter.pending_count(), 0);
-        context.check_validation()?;
-    }
-    Ok(())
-}
-
-#[test]
-#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn four_api_public_persistent_targets_reject_foreign_devices_and_replace_frames() -> Result<()> {
     let routes = routes()?;
     let mut filtered = scene(23, 17, Color::from_rgba8(17, 51, 83, 193));

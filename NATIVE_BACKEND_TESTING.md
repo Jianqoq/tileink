@@ -2,9 +2,13 @@
 
 ## Windows M4 immediate corpus
 
-The existing `wgpu_backend_parity` example supports `--native` to compare complete
-SVG and example inputs through both wgpu APIs and both owned native renderers.
-See [commands and evidence contract](docs/native/m4-corpus-runner.md). It shares
+The recorded M4 `wgpu_backend_parity --native` run compared complete SVG and
+example inputs through both wgpu APIs and both owned native renderers. That
+combined build is no longer legal under the single-backend feature contract.
+The separate-build corpus harness migration is in progress; do not use the old
+combined command as current acceptance evidence. See the
+[current feature contract](docs/native/backend-features.md) and historical
+[commands and evidence contract](docs/native/m4-corpus-runner.md). The corpus shares
 frozen scene/font resources, uses exact premultiplied RGBA8 comparison and rejects
 incomplete output catalogs. This complements the focused kernel/lifecycle tests;
 a successful minimum probe is not complete corpus acceptance.
@@ -15,15 +19,16 @@ The 2026-09-19 [M4 closeout](docs/native/m4-completion.md) records the complete
 ## Windows M3 minimum native programs
 
 The runtime now lives in `src/native/runtime/` with named `.rs` roots and separate
-DX12/Vulkan directories. The current native test entrypoint is a library filter:
+DX12/Vulkan directories. Lifetime and interop tests run once per selected backend:
 
 ```powershell
-cargo test --release --features native --lib native::runtime -- --include-ignored --test-threads=1 --nocapture
+cargo test --release --no-default-features --features dx12 --lib native::runtime::lifecycle_gpu_tests -- --ignored --test-threads=1
+cargo test --release --no-default-features --features vulkan --lib native::runtime::lifecycle_gpu_tests -- --ignored --test-threads=1
 ```
 
 Use the explicit compiler/GPU/validation-layer settings documented in
-[M3 closeout](docs/native/m3-completion.md). `TILEINK_NATIVE_GPU_REPORT` optionally
-writes the three-repetition four-route case manifest, hashes and exact differences.
+[M3 closeout](docs/native/m3-completion.md). The old four-route kernel report runner
+also needs separate-build migration; the lifetime tests above do not claim that coverage.
 Full wgpu SVG/example regressions remain separate from the minimum native programs.
 No performance comparisons are required for this continuation per user instruction.
 

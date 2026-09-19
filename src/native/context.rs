@@ -58,18 +58,12 @@ impl Error for NativeError {
 #[derive(Clone)]
 pub struct NativeContext {
     backend: NativeBackend,
-    #[cfg(all(
-        target_os = "windows",
-        any(feature = "native-dx12", feature = "native-vulkan")
-    ))]
+    #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
     pub(super) adapter: super::runtime::adapter::Adapter,
 }
 
 impl NativeContext {
-    #[cfg(all(
-        target_os = "windows",
-        any(feature = "native-dx12", feature = "native-vulkan")
-    ))]
+    #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
     pub(super) fn from_adapter(
         backend: NativeBackend,
         adapter: super::runtime::adapter::Adapter,
@@ -77,10 +71,7 @@ impl NativeContext {
         Self { backend, adapter }
     }
 
-    #[cfg(all(
-        target_os = "windows",
-        any(feature = "native-dx12", feature = "native-vulkan")
-    ))]
+    #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
     pub(super) fn submit_compute(
         &self,
         batch: &super::runtime::compute::ComputeBatch,
@@ -94,10 +85,7 @@ impl NativeContext {
                 SubmitError::Unconfirmed(error) => NativeError::SubmissionUnconfirmed(error),
             })
     }
-    #[cfg(all(
-        target_os = "windows",
-        any(feature = "native-dx12", feature = "native-vulkan")
-    ))]
+    #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
     pub(crate) fn create_texture_kind(
         &self,
         size: [u32; 2],
@@ -142,17 +130,11 @@ impl NativeContext {
         width: u32,
         height: u32,
     ) -> Result<super::NativeTexture, NativeError> {
-        #[cfg(all(
-            target_os = "windows",
-            any(feature = "native-dx12", feature = "native-vulkan")
-        ))]
+        #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
         {
             self.create_texture_kind([width, height], 1, false)
         }
-        #[cfg(not(all(
-            target_os = "windows",
-            any(feature = "native-dx12", feature = "native-vulkan")
-        )))]
+        #[cfg(not(all(target_os = "windows", any(feature = "dx12", feature = "vulkan"))))]
         {
             let _ = (width, height);
             Err(NativeError::Unavailable(self.backend.unavailable()))
@@ -165,11 +147,11 @@ impl NativeContext {
     /// Before the first successful call, no DX12 device created outside Tileink may
     /// exist, and external device creation must not run concurrently with this call.
     pub unsafe fn enable_dx12_validation() -> Result<(), NativeError> {
-        #[cfg(all(target_os = "windows", feature = "native-dx12"))]
+        #[cfg(all(target_os = "windows", feature = "dx12"))]
         {
             unsafe { super::runtime::enable_dx12_validation().map_err(NativeError::Initialization) }
         }
-        #[cfg(not(all(target_os = "windows", feature = "native-dx12")))]
+        #[cfg(not(all(target_os = "windows", feature = "dx12")))]
         {
             Err(NativeError::Unavailable(NativeBackend::Dx12.unavailable()))
         }
@@ -182,20 +164,14 @@ impl NativeContext {
         if unavailable.reason != BackendUnavailableReason::AdapterNotImplemented {
             return Err(NativeError::Unavailable(unavailable));
         }
-        #[cfg(all(
-            target_os = "windows",
-            any(feature = "native-dx12", feature = "native-vulkan")
-        ))]
+        #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
         {
             let adapter = super::runtime::adapter::Adapter::with_options(backend, options)
                 .map_err(NativeError::Initialization)?;
             validate_texture_table_capacity(adapter.limits().texture_table_len)?;
             Ok(Self { backend, adapter })
         }
-        #[cfg(not(all(
-            target_os = "windows",
-            any(feature = "native-dx12", feature = "native-vulkan")
-        )))]
+        #[cfg(not(all(target_os = "windows", any(feature = "dx12", feature = "vulkan"))))]
         {
             let _ = options;
             Err(NativeError::Unavailable(unavailable))
@@ -210,19 +186,13 @@ impl NativeContext {
     /// clear advisory from coexisting wgpu rendering is reported but is nonfatal;
     /// its error-severity form and all correctness warnings/errors still fail.
     pub fn check_validation(&self) -> Result<(), NativeError> {
-        #[cfg(all(
-            target_os = "windows",
-            any(feature = "native-dx12", feature = "native-vulkan")
-        ))]
+        #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
         {
             self.adapter
                 .assert_valid_with_wgpu_clears()
                 .map_err(NativeError::Validation)
         }
-        #[cfg(not(all(
-            target_os = "windows",
-            any(feature = "native-dx12", feature = "native-vulkan")
-        )))]
+        #[cfg(not(all(target_os = "windows", any(feature = "dx12", feature = "vulkan"))))]
         {
             Err(NativeError::Unavailable(self.backend.unavailable()))
         }
@@ -231,10 +201,7 @@ impl NativeContext {
 
 #[cfg(any(
     test,
-    all(
-        target_os = "windows",
-        any(feature = "native-dx12", feature = "native-vulkan")
-    )
+    all(target_os = "windows", any(feature = "dx12", feature = "vulkan"))
 ))]
 fn validate_texture_table_capacity(capacity: u32) -> Result<(), NativeError> {
     let required = crate::shared::gpu_constants::NATIVE_TEXTURE_TABLE_CAPACITY;

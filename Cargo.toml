@@ -71,9 +71,8 @@ sha2 = "0.11.0"
 [features]
 default = ["wgpu"]
 wgpu = ["dep:wgpu", "dep:pollster", "dep:naga", "dep:windows"]
-native-dx12 = ["dep:serde_json", "dep:sha2", "dep:windows", "windows/Win32_Graphics_Dxgi", "windows/Win32_Graphics_Dxgi_Common", "windows/Win32_System_Threading", "windows/Win32_Security"]
-native-vulkan = ["dep:serde_json", "dep:sha2", "dep:ash"]
-native = ["native-dx12", "native-vulkan"]
+dx12 = ["dep:serde_json", "dep:sha2", "dep:windows", "windows/Win32_Graphics_Dxgi", "windows/Win32_Graphics_Dxgi_Common", "windows/Win32_System_Threading", "windows/Win32_Security"]
+vulkan = ["dep:serde_json", "dep:sha2", "dep:ash"]
 bench-internals = []
 directwrite-reference = [
     "wgpu",
@@ -355,4 +354,3 @@ required-features = ["bench-internals"]
 name = "native_present"
 test = true
 path = "examples/native_window/main.rs"
-required-features = ["native"]

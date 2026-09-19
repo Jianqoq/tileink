@@ -4,17 +4,18 @@ use super::super::{
     program::filter::{self, BasicFilter},
 };
 use crate::shared::filter_config::FilterConfig;
-use crate::{NativeBackend, NativeContext, NativeContextOptions};
+use crate::{NativeContext, NativeContextOptions};
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn native_surface_pool_reuses_only_resolved_batches_and_clears_old_pixels() -> Result<()> {
     use crate::native::runtime::compute::{Resource, SurfacePool};
     use std::{cell::RefCell, rc::Rc};
+    #[cfg(feature = "dx12")]
     unsafe {
         NativeContext::enable_dx12_validation()?;
     }
-    for backend in [NativeBackend::Dx12, NativeBackend::Vulkan] {
+    for backend in [super::backend()] {
         let context = NativeContext::new(
             backend,
             &NativeContextOptions {
@@ -105,10 +106,11 @@ fn native_surface_pool_reuses_only_resolved_batches_and_clears_old_pixels() -> R
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn native_persistent_texture_preserves_untouched_pixels_across_submissions() -> Result<()> {
+    #[cfg(feature = "dx12")]
     unsafe {
         NativeContext::enable_dx12_validation()?;
     }
-    for backend in [NativeBackend::Dx12, NativeBackend::Vulkan] {
+    for backend in [super::backend()] {
         let options = NativeContextOptions {
             physical_adapter: Some(std::env::var("TILEINK_NATIVE_GPU")?),
             validation: true,
@@ -257,10 +259,11 @@ fn native_persistent_texture_preserves_untouched_pixels_across_submissions() -> 
 fn native_surface_pool_preserves_pinned_history_across_batches() -> Result<()> {
     use crate::native::runtime::compute::SurfacePool;
     use std::{cell::RefCell, rc::Rc};
+    #[cfg(feature = "dx12")]
     unsafe {
         NativeContext::enable_dx12_validation()?;
     }
-    for backend in [NativeBackend::Dx12, NativeBackend::Vulkan] {
+    for backend in [super::backend()] {
         let context = NativeContext::new(
             backend,
             &NativeContextOptions {

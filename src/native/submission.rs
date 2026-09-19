@@ -6,10 +6,7 @@ use crate::Image;
 #[derive(Debug)]
 pub struct NativeSubmission {
     backend: NativeBackend,
-    #[cfg(all(
-        target_os = "windows",
-        any(feature = "native-dx12", feature = "native-vulkan")
-    ))]
+    #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
     receipt: super::runtime::adapter::Receipt,
 }
 
@@ -21,25 +18,16 @@ impl NativeSubmission {
     /// Inspect the submission fence without waiting, mapping pixels or releasing
     /// resources. Call `wait` (or image `readback`) to retire the completed work.
     pub fn is_complete(&self) -> Result<bool, NativeError> {
-        #[cfg(all(
-            target_os = "windows",
-            any(feature = "native-dx12", feature = "native-vulkan")
-        ))]
+        #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
         {
             self.receipt.is_complete().map_err(NativeError::Completion)
         }
-        #[cfg(not(all(
-            target_os = "windows",
-            any(feature = "native-dx12", feature = "native-vulkan")
-        )))]
+        #[cfg(not(all(target_os = "windows", any(feature = "dx12", feature = "vulkan"))))]
         {
             Err(NativeError::Unavailable(self.backend.unavailable()))
         }
     }
-    #[cfg(all(
-        target_os = "windows",
-        any(feature = "native-dx12", feature = "native-vulkan")
-    ))]
+    #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
     pub(super) fn new(backend: NativeBackend, receipt: super::runtime::adapter::Receipt) -> Self {
         Self { backend, receipt }
     }
@@ -50,17 +38,11 @@ impl NativeSubmission {
     }
 
     fn readback(self) -> Result<Vec<Vec<u8>>, NativeError> {
-        #[cfg(all(
-            target_os = "windows",
-            any(feature = "native-dx12", feature = "native-vulkan")
-        ))]
+        #[cfg(all(target_os = "windows", any(feature = "dx12", feature = "vulkan")))]
         {
             self.receipt.readback().map_err(NativeError::Readback)
         }
-        #[cfg(not(all(
-            target_os = "windows",
-            any(feature = "native-dx12", feature = "native-vulkan")
-        )))]
+        #[cfg(not(all(target_os = "windows", any(feature = "dx12", feature = "vulkan"))))]
         Err(NativeError::Unavailable(self.backend.unavailable()))
     }
 }

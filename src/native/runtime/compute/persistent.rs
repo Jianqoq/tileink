@@ -113,11 +113,11 @@ impl ComputeBatch {
             {
                 texture.state.initialized.set(true);
                 match &texture.state.allocation {
-                    #[cfg(feature = "native-dx12")]
+                    #[cfg(feature = "dx12")]
                     crate::native::runtime::texture::Allocation::Dx12(allocation) => {
                         allocation.state.set(allocation.final_state)
                     }
-                    #[cfg(feature = "native-vulkan")]
+                    #[cfg(feature = "vulkan")]
                     crate::native::runtime::texture::Allocation::Vulkan(image) => {
                         image.current_layout.set(image.final_layout)
                     }
@@ -126,12 +126,12 @@ impl ComputeBatch {
                     && id.index() == index
                 {
                     match (&texture.state.allocation, sync) {
-                        #[cfg(feature = "native-dx12")]
+                        #[cfg(feature = "dx12")]
                         (
                             crate::native::runtime::texture::Allocation::Dx12(allocation),
                             crate::native::interop::Synchronization::Dx12(sync),
                         ) => allocation.state.set(sync.outgoing),
-                        #[cfg(feature = "native-vulkan")]
+                        #[cfg(feature = "vulkan")]
                         (
                             crate::native::runtime::texture::Allocation::Vulkan(image),
                             crate::native::interop::Synchronization::Vulkan(sync),
@@ -139,7 +139,7 @@ impl ComputeBatch {
                             image.current_layout.set(sync.outgoing.layout);
                             image.current_family.set(sync.outgoing.queue_family);
                         }
-                        #[cfg(all(feature = "native-dx12", feature = "native-vulkan"))]
+                        #[cfg(all(feature = "dx12", feature = "vulkan"))]
                         _ => unreachable!("validated target synchronization backend"),
                     }
                 }

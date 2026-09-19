@@ -8,9 +8,9 @@ pub struct NativeTargetUse<'a> {
 /// The outgoing state promised by an accepted target submission.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NativeTargetState {
-    #[cfg(all(target_os = "windows", feature = "native-dx12"))]
+    #[cfg(all(target_os = "windows", feature = "dx12"))]
     Dx12(windows::Win32::Graphics::Direct3D12::D3D12_RESOURCE_STATES),
-    #[cfg(all(target_os = "windows", feature = "native-vulkan"))]
+    #[cfg(all(target_os = "windows", feature = "vulkan"))]
     Vulkan(interop::vulkan::ImageState),
 }
 pub struct NativeTargetSubmission {

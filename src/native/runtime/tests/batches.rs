@@ -1,12 +1,12 @@
 use super::{Result, cases};
-use crate::native::{NativeBackend, runtime::adapter::Adapter};
+use crate::native::runtime::adapter::Adapter;
 use crate::render::commands::CommandBatch;
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn shared_batches_submit_once_stage_uniforms_and_preserve_prefixes() -> Result<()> {
     let identity = std::env::var("TILEINK_NATIVE_GPU")?;
-    for backend in [NativeBackend::Dx12, NativeBackend::Vulkan] {
+    for backend in [super::backend()] {
         let adapter = Adapter::new(backend, &identity)?;
         let fixtures = cases::cases();
         let mut batch = CommandBatch::from_adapter(adapter.clone(), "M3 multi-dispatch");
@@ -65,7 +65,7 @@ fn rejected_work_preserves_device_and_receipts_pin_the_context() -> Result<()> {
         upload::uniforms::UniformWrites,
     };
     let identity = std::env::var("TILEINK_NATIVE_GPU")?;
-    for backend in [NativeBackend::Dx12, NativeBackend::Vulkan] {
+    for backend in [super::backend()] {
         let mut adapter = Adapter::new(backend, &identity)?;
         let mut other = Adapter::new(backend, &identity)?;
         let fixtures = cases::cases();
