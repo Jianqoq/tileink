@@ -50,7 +50,8 @@ independent renderers sharing a context, reverse-order readback, resizing and dr
 renderer/context handles before readback. Focused lifecycle tests cover late debug
 activation, quarantine without a debug queue, and lazy probe failure/retry.
 
-This slice does not close M4. Configurable background clearing and the complete
-four-renderer SVG/example corpus remain required. External targets, retained history,
+This slice does not close M4. Background clearing is implemented in the subsequent
+[root clear color slice](m4-clear-color.md); the complete four-renderer SVG/example
+corpus remains required. External targets, retained history,
 automatic device-loss recovery and Mac hardware validation remain outside this slice.
 No performance comparison was run, as requested by the user.

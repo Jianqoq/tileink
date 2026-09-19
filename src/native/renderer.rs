@@ -65,6 +65,25 @@ impl NativeRenderer {
     pub fn remove_image(&mut self, key: ImageKey) -> bool {
         self.images.remove(key)
     }
+    /// Set the premultiplied background for subsequent root frames. Child canvases
+    /// and filter intermediates retain transparent initial contents.
+    pub fn set_clear_color(&mut self, clear: peniko::Color) {
+        #[cfg(all(
+            target_os = "windows",
+            any(feature = "native-dx12", feature = "native-vulkan")
+        ))]
+        {
+            self.recording.clear_color = crate::shared::image::premul_color_to_rgba8_pack(clear);
+        }
+        #[cfg(not(all(
+            target_os = "windows",
+            any(feature = "native-dx12", feature = "native-vulkan")
+        )))]
+        {
+            let _ = clear;
+        }
+    }
+
     pub fn clear_images(&mut self) -> bool {
         self.images.clear()
     }

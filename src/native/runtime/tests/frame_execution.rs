@@ -1,3 +1,4 @@
+use super::FrameOptions;
 use crate::render::output::RenderTargetId;
 use crate::{
     Canvas,
@@ -22,7 +23,10 @@ fn frame_rejects_foreign_image_upload_before_recording() -> Result<()> {
         &canvas,
         &images,
         None,
-        false,
+        crate::native::runtime::renderer::FrameOptions {
+            chunked: false,
+            clear_color: 0,
+        },
         65535,
     )
     .unwrap_err();
@@ -46,7 +50,7 @@ fn local_filter_context_restores_parent_after_scan_failure() -> Result<()> {
         &mut batch,
         &images,
         None,
-        false,
+        FrameOptions::default(),
         65535,
     )?;
     let parent = execution.targets.get(RenderTargetId::Main)?.image();
@@ -82,7 +86,7 @@ fn failed_filter_context_preparation_keeps_parent_active() -> Result<()> {
         &mut batch,
         &images,
         None,
-        false,
+        FrameOptions::default(),
         65535,
     )?;
     let parent = execution.targets.get(RenderTargetId::Main)?.image();

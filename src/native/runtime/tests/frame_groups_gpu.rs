@@ -118,7 +118,16 @@ fn four_api_frame_groups_masks_and_scratch_reuse_preserve_pixels() -> Result<()>
                 let upload = Default::default();
                 let images = Images::record(&mut batch, &upload)?;
                 let target = Execution::record(
-                    &mut cache, &mut batch, &canvas, &images, None, chunked, 65535,
+                    &mut cache,
+                    &mut batch,
+                    &canvas,
+                    &images,
+                    None,
+                    crate::native::runtime::renderer::FrameOptions {
+                        chunked,
+                        clear_color: 0,
+                    },
+                    65535,
                 )?;
                 assert!(
                     batch.outputs().is_empty(),
@@ -150,7 +159,18 @@ fn four_api_frame_groups_masks_and_scratch_reuse_preserve_pixels() -> Result<()>
     let mut batch = ComputeBatch::new();
     let upload = Default::default();
     let images = Images::record(&mut batch, &upload)?;
-    let target = Execution::record(&mut cache, &mut batch, &canvas, &images, None, false, 65535)?;
+    let target = Execution::record(
+        &mut cache,
+        &mut batch,
+        &canvas,
+        &images,
+        None,
+        crate::native::runtime::renderer::FrameOptions {
+            chunked: false,
+            clear_color: 0,
+        },
+        65535,
+    )?;
     batch.readback(target)?;
     for fine in FineVariant::ALL {
         routes.check_render(

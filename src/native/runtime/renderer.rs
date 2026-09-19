@@ -34,6 +34,13 @@ mod operations;
 mod surfaces;
 use targets::{Surface, Targets};
 
+/// Root initialization and coarse scheduling choices for one immediate frame.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct FrameOptions {
+    pub chunked: bool,
+    pub clear_color: u32,
+}
+
 /// Records one Canvas in an existing frame batch. Its image placements and scene
 /// stay associated through recursive operations; errors invalidate the whole batch.
 pub(crate) struct Execution<'a> {
@@ -58,10 +65,10 @@ impl<'a> Execution<'a> {
         canvas: &Canvas,
         images: &'a Images<'a>,
         text: Option<&'a crate::text::PreparedTextData>,
-        chunked: bool,
+        options: FrameOptions,
         limit: u32,
     ) -> Result<ResourceId> {
-        frame::record(cache, batch, canvas, images, text, chunked, limit)
+        frame::record(cache, batch, canvas, images, text, options, limit)
     }
 
     fn prepare(
@@ -69,11 +76,11 @@ impl<'a> Execution<'a> {
         batch: &'a mut ComputeBatch,
         images: &'a Images<'a>,
         text: Option<&'a crate::text::PreparedTextData>,
-        chunked: bool,
+        options: FrameOptions,
         limit: u32,
     ) -> Result<Self> {
         let size = prepared.size();
-        let targets = Targets::new(batch, [size.0, size.1])?;
+        let targets = Targets::new(batch, [size.0, size.1], options.clear_color)?;
         let scene = prepared.record(batch, text, Some(images.upload()), limit)?;
         let filters = filter_resources::FilterResources::record(batch, scene.plan(), None, images)?;
         let paths = prepare_paths(batch, scene.plan())?;
@@ -88,7 +95,7 @@ impl<'a> Execution<'a> {
             targets,
             paths,
             retained: RetainedRenderState::new(Default::default()),
-            chunked,
+            chunked: options.chunked,
             limit,
         })
     }

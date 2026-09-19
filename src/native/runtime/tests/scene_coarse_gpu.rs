@@ -84,7 +84,16 @@ pub(super) fn encode_canvas(
     chunked: bool,
 ) -> Result<crate::native::runtime::compute::ResourceId> {
     crate::native::runtime::renderer::Execution::record(
-        cache, batch, canvas, images, None, chunked, 65535,
+        cache,
+        batch,
+        canvas,
+        images,
+        None,
+        crate::native::runtime::renderer::FrameOptions {
+            chunked,
+            clear_color: 0,
+        },
+        65535,
     )
 }
 

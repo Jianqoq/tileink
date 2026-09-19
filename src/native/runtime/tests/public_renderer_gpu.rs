@@ -17,6 +17,46 @@ fn scene(width: u32, height: u32, color: Color) -> Canvas {
 
 #[test]
 #[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn four_api_public_clear_color_changes_without_stale_background() -> Result<()> {
+    let routes = routes()?;
+    let contexts = [NativeBackend::Dx12, NativeBackend::Vulkan].map(|backend| {
+        NativeContext::new(
+            backend,
+            &NativeContextOptions {
+                physical_adapter: Some(std::env::var("TILEINK_NATIVE_GPU").unwrap()),
+                validation: true,
+            },
+        )
+    });
+    let mut renderers = Vec::new();
+    for context in contexts {
+        renderers.push(NativeRenderer::with_context(&context?, 1, 1)?);
+    }
+    let scenes = [
+        super::recording::nested_scene([71, 203, 139, 127]),
+        Canvas::new(13, 9, 1.0),
+        scene(19, 11, Color::from_rgba8(71, 203, 139, 127)),
+    ];
+    for clear in [
+        Color::WHITE,
+        Color::from_rgba8(201, 93, 17, 111),
+        Color::TRANSPARENT,
+    ] {
+        for canvas in &scenes {
+            let expected = routes.canvas_clear_reference(canvas, clear)?;
+            for renderer in &mut renderers {
+                renderer.set_clear_color(clear);
+                let image = renderer.render_to_image(canvas)?.readback()?;
+                assert_eq!(bytemuck::cast_slice::<_, u8>(&image.pixels), expected);
+                renderer.context().check_validation()?;
+            }
+        }
+    }
+    routes.validate()
+}
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
 fn four_api_public_renderer_preserves_pixels_and_independent_context_clients() -> Result<()> {
     let routes = routes()?;
     let first_scene = scene(23, 17, Color::from_rgba8(201, 99, 33, 127));

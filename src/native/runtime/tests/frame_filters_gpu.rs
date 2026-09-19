@@ -114,7 +114,10 @@ fn four_api_frame_filters_backdrops_and_local_contexts_preserve_pixels() -> Resu
                 &canvas,
                 &images,
                 None,
-                kind % 2 == 0,
+                crate::native::runtime::renderer::FrameOptions {
+                    chunked: kind % 2 == 0,
+                    clear_color: 0,
+                },
                 65535,
             )?;
             assert!(batch.outputs().is_empty());

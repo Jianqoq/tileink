@@ -1,9 +1,29 @@
 use super::*;
 
 #[test]
+fn root_clear_color_does_not_leak_into_scratch_allocations() -> Result<()> {
+    let mut batch = ComputeBatch::new();
+    let color = u32::from_le_bytes([91, 47, 13, 127]);
+    let mut targets = Targets::new(&mut batch, [3, 2], color)?;
+    let root = targets.main.image().index();
+    assert_eq!(batch.resources()[root].bytes(), [91, 47, 13, 127].repeat(6));
+    let slot = targets.acquire(&mut batch)?;
+    let scratch = targets.get(slot)?.image().index();
+    assert_eq!(batch.resources()[scratch].bytes(), [0; 24]);
+    let _surface = targets.take(slot)?;
+    let replacement = targets.acquire(&mut batch)?;
+    assert_eq!(
+        batch.resources()[targets.get(replacement)?.image().index()].bytes(),
+        [0; 24]
+    );
+    assert_eq!(batch.resources()[root].bytes(), [91, 47, 13, 127].repeat(6));
+    Ok(())
+}
+
+#[test]
 fn nested_slots_reuse_only_released_allocations() -> Result<()> {
     let mut batch = ComputeBatch::new();
-    let mut targets = Targets::new(&mut batch, [3, 2])?;
+    let mut targets = Targets::new(&mut batch, [3, 2], 0)?;
     assert_eq!(targets.size(), (3, 2));
     assert_eq!(targets.main.byte_len(), 24);
     let a = targets.acquire(&mut batch)?;
@@ -25,7 +45,7 @@ fn nested_slots_reuse_only_released_allocations() -> Result<()> {
 #[test]
 fn extracted_surfaces_remain_owned_and_replacement_does_not_retire_commands() -> Result<()> {
     let mut batch = ComputeBatch::new();
-    let mut targets = Targets::new(&mut batch, [2, 1])?;
+    let mut targets = Targets::new(&mut batch, [2, 1], 0)?;
     let slot = targets.acquire(&mut batch)?;
     let surface = targets.take(slot)?;
     let saved = surface.image();
@@ -47,17 +67,17 @@ fn extracted_surfaces_remain_owned_and_replacement_does_not_retire_commands() ->
 fn invalid_surface_contexts_fail_without_changing_live_slots() -> Result<()> {
     let mut batch = ComputeBatch::new();
     for size in [[0, 1], [1, 0], [u32::MAX, 1]] {
-        assert!(Targets::new(&mut batch, size).is_err());
+        assert!(Targets::new(&mut batch, size, 0).is_err());
     }
     assert!(batch.resources().is_empty());
-    let mut targets = Targets::new(&mut batch, [2, 1])?;
+    let mut targets = Targets::new(&mut batch, [2, 1], 0)?;
     let slot = targets.acquire(&mut batch)?;
     let saved = targets.get(slot)?.image();
     let mut foreign = ComputeBatch::new();
     assert!(targets.acquire(&mut foreign).is_err());
-    let wrong_owner = Surface::allocate(&mut foreign, [2, 1])?;
+    let wrong_owner = Surface::allocate(&mut foreign, [2, 1], 0)?;
     assert!(targets.install(&batch, slot, wrong_owner).is_err());
-    let wrong_size = Surface::allocate(&mut batch, [1, 1])?;
+    let wrong_size = Surface::allocate(&mut batch, [1, 1], 0)?;
     assert!(targets.install(&batch, slot, wrong_size).is_err());
     assert_eq!(targets.get(slot)?.image(), saved);
     assert!(targets.release(RenderTargetId::Main).is_err());

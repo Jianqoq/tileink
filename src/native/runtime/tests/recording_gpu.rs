@@ -10,7 +10,7 @@ use peniko::Extend;
 use peniko::kurbo::Rect;
 use std::rc::Rc;
 
-fn nested_scene(color: [u8; 4]) -> Canvas {
+pub(super) fn nested_scene(color: [u8; 4]) -> Canvas {
     let bounds = Rect::new(0.0, 0.0, 19.0, 13.0);
     let mut leaf = Canvas::new(19, 13, 1.0);
     leaf.push_image(

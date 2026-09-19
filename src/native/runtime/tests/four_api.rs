@@ -21,6 +21,21 @@ impl Routes {
         Ok(vec![expected])
     }
 
+    pub(super) fn canvas_clear_reference(
+        &self,
+        canvas: &crate::Canvas,
+        clear: peniko::Color,
+    ) -> Result<Vec<u8>> {
+        self.used_canvas_reference.set(true);
+        let expected = self.reference[0].render_canvas_with_clear(canvas, clear)?;
+        assert_eq!(
+            self.reference[1].render_canvas_with_clear(canvas, clear)?,
+            expected,
+            "production wgpu DX12/Vulkan clear pixels"
+        );
+        Ok(expected)
+    }
+
     pub(super) fn text_reference(
         &self,
         canvas: &crate::Canvas,

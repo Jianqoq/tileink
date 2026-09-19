@@ -13,7 +13,11 @@ pub(crate) struct Surface {
 }
 
 impl Surface {
-    pub(crate) fn allocate(batch: &mut ComputeBatch, size: [u32; 2]) -> Result<Self> {
+    pub(crate) fn allocate(
+        batch: &mut ComputeBatch,
+        size: [u32; 2],
+        clear_color: u32,
+    ) -> Result<Self> {
         if size.contains(&0) || size.iter().any(|&n| n > i32::MAX as u32) {
             return Err("invalid native surface dimensions".into());
         }
@@ -24,6 +28,11 @@ impl Surface {
         let mut pixels = Vec::new();
         pixels.try_reserve_exact(bytes)?;
         pixels.resize(bytes, 0);
+        if clear_color != 0 {
+            for pixel in pixels.chunks_exact_mut(4) {
+                pixel.copy_from_slice(&clear_color.to_le_bytes());
+            }
+        }
         Ok(Self {
             image: batch.texture_rgba8(size, pixels)?,
             size,
@@ -55,9 +64,9 @@ pub(crate) struct Targets {
 }
 
 impl Targets {
-    pub(crate) fn new(batch: &mut ComputeBatch, size: [u32; 2]) -> Result<Self> {
+    pub(crate) fn new(batch: &mut ComputeBatch, size: [u32; 2], clear_color: u32) -> Result<Self> {
         Ok(Self {
-            main: Surface::allocate(batch, size)?,
+            main: Surface::allocate(batch, size, clear_color)?,
             scratch: Vec::new(),
         })
     }
@@ -86,7 +95,7 @@ impl Targets {
             .position(|slot| !slot.occupied)
             .unwrap_or(self.scratch.len());
         if index == self.scratch.len() {
-            let surface = Surface::allocate(batch, self.main.size)?;
+            let surface = Surface::allocate(batch, self.main.size, 0)?;
             self.scratch.push(Slot {
                 surface: Some(surface),
                 occupied: true,
@@ -94,7 +103,7 @@ impl Targets {
         } else {
             let slot = &mut self.scratch[index];
             if slot.surface.is_none() {
-                slot.surface = Some(Surface::allocate(batch, self.main.size)?);
+                slot.surface = Some(Surface::allocate(batch, self.main.size, 0)?);
             }
             slot.occupied = true;
         }

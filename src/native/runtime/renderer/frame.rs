@@ -1,3 +1,4 @@
+use super::FrameOptions;
 use super::*;
 use crate::{
     native::runtime::program::scene::PreparedScene,
@@ -18,7 +19,7 @@ struct Frame<'gpu, 'scene> {
     text: Option<&'gpu PreparedTextData>,
     execution: Option<Execution<'gpu>>,
     size: (u32, u32),
-    chunked: bool,
+    options: FrameOptions,
     limit: u32,
 }
 
@@ -28,7 +29,7 @@ pub(super) fn record<'gpu>(
     canvas: &Canvas,
     images: &'gpu Images<'gpu>,
     text: Option<&'gpu PreparedTextData>,
-    chunked: bool,
+    options: FrameOptions,
     limit: u32,
 ) -> Result<ResourceId> {
     // Validate before plan preparation or any native scene resources are recorded.
@@ -40,7 +41,7 @@ pub(super) fn record<'gpu>(
         text,
         execution: None,
         size: canvas.physical_size(),
-        chunked,
+        options,
         limit,
     };
     crate::render::frame::encode(&mut frame, canvas, false, false).map_err(
@@ -96,7 +97,7 @@ impl FrameAdapter for Frame<'_, '_> {
                 .ok_or("native frame batch already consumed")?,
             self.images,
             self.text,
-            self.chunked,
+            self.options,
             self.limit,
         )?);
         Ok(())
@@ -105,8 +106,8 @@ impl FrameAdapter for Frame<'_, '_> {
         if partial {
             return Err("native immediate frame cannot preserve partial history".into());
         }
-        // Surface::allocate supplies zeroed pixels; this new root is transparent
-        // already, without recording a redundant clear dispatch.
+        // The fresh root upload already contains the requested clear color.
+        // Scratch and vector-child targets are independently transparent.
         Ok(())
     }
     fn active_batch_ids(&mut self, _batch_ids: &[u32]) -> Vec<u32> {

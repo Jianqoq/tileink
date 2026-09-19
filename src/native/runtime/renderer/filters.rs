@@ -68,7 +68,7 @@ impl FilterAdapter for Execution<'_> {
         // Build the complete new context before replacing any parent state. Each
         // context owns disjoint resources, so nested recording cannot rewrite uniforms.
         let size = canvas.physical_size();
-        let targets = Targets::new(self.batch, [size.0, size.1])?;
+        let targets = Targets::new(self.batch, [size.0, size.1], 0)?;
         let filters =
             filter_resources::FilterResources::record(self.batch, plan, Some(filter), self.images)?;
         let paths = prepare_paths(self.batch, plan)?;

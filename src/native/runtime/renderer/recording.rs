@@ -73,6 +73,7 @@ mod tests {
 
 #[derive(Default)]
 pub(crate) struct Recording {
+    pub(crate) clear_color: u32,
     scene: SceneCache,
     vectors: crate::render::vector_images::VectorImageCache<Recording>,
     upload: GpuImageResourceUpload,
@@ -138,7 +139,10 @@ impl Recording {
             canvas,
             &images,
             self.text.as_ref(),
-            chunked,
+            crate::native::runtime::renderer::FrameOptions {
+                chunked,
+                clear_color: self.clear_color,
+            },
             limits.dispatch_dimension,
         )
     }

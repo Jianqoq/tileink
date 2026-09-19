@@ -11,6 +11,13 @@ Older continuation entries below are historical snapshots, not the current miles
 
 ## Windows M4 public renderer continuation — 2026-09-19
 
+Subsequent [root background clearing](docs/native/m4-clear-color.md) now matches
+four APIs for empty, translucent, resized and nested-vector/filter frames.
+Root color changes preserve transparent scratch and child canvases. The focused
+GPU test, 1,045 release library tests plus integrations, feature builds, formatting
+and strict native all-target Clippy pass. Complete four-renderer corpus acceptance
+is the remaining M4 gate.
+
 Owned `NativeContext` / `NativeRenderer` now submit Canvas and text frames through
 the native adapters, with explicit completion and premultiplied RGBA8 readback.
 See [API, ownership and validation rules](docs/native/m4-public-renderer.md).
