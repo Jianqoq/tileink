@@ -32,6 +32,14 @@ impl std::fmt::Debug for Receipt {
     }
 }
 impl Receipt {
+    pub fn is_complete(&self) -> Result<bool> {
+        match &mut *self.owner.0.borrow_mut() {
+            #[cfg(feature = "native-dx12")]
+            Device::Dx12(device) => device.is_complete(&self.ticket),
+            #[cfg(feature = "native-vulkan")]
+            Device::Vulkan(device) => device.is_complete(&self.ticket),
+        }
+    }
     pub fn readback(&self) -> Result<Vec<Vec<u8>>> {
         self.owner.readback(self)
     }
@@ -95,6 +103,17 @@ impl Encoder {
 }
 
 impl Adapter {
+    pub fn same_device(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
+    }
+    pub fn allocate_texture(&self, size: [u32; 2]) -> Result<super::texture::Allocation> {
+        match &*self.0.borrow() {
+            #[cfg(feature = "native-dx12")]
+            Device::Dx12(device) => device.allocate_texture(size),
+            #[cfg(feature = "native-vulkan")]
+            Device::Vulkan(device) => device.allocate_texture(size),
+        }
+    }
     #[cfg(test)]
     pub fn new(backend: NativeBackend, identity: &str) -> Result<Self> {
         #[cfg(feature = "native-dx12")]
@@ -142,6 +161,16 @@ impl Adapter {
         &self,
         batch: &super::compute::ComputeBatch,
     ) -> std::result::Result<Receipt, SubmitError<Box<dyn std::error::Error>>> {
+        for resource in batch.resources() {
+            if let super::compute::Resource::Texture(texture) = resource
+                && let Some(texture) = &texture.persistent
+                && !self.same_device(&texture.context.adapter)
+            {
+                return Err(SubmitError::Rejected(
+                    "persistent texture belongs to another logical device".into(),
+                ));
+            }
+        }
         let mut device = self.0.borrow_mut();
         let (result, unconfirmed) = match &mut *device {
             #[cfg(feature = "native-dx12")]
@@ -150,9 +179,12 @@ impl Adapter {
             Device::Vulkan(device) => (device.submit_compute(batch), device.unconfirmed()),
         };
         result
-            .map(|ticket| Receipt {
-                owner: self.clone(),
-                ticket,
+            .map(|ticket| {
+                batch.confirm_initialization();
+                Receipt {
+                    owner: self.clone(),
+                    ticket,
+                }
             })
             .map_err(|error| {
                 if unconfirmed {

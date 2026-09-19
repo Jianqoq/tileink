@@ -121,35 +121,13 @@ pub(super) fn upload(
     input: &Texture,
 ) -> Result<(ID3D12Resource, ID3D12Resource)> {
     unsafe {
-        let desc = D3D12_RESOURCE_DESC {
-            Dimension: D3D12_RESOURCE_DIMENSION_TEXTURE2D,
-            Width: u64::from(input.size[0]),
-            Height: input.size[1],
-            DepthOrArraySize: u16::try_from(input.layers)?,
-            MipLevels: 1,
-            Format: DXGI_FORMAT_R8G8B8A8_UNORM,
-            SampleDesc: DXGI_SAMPLE_DESC {
-                Count: 1,
-                Quality: 0,
-            },
-            Flags: D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-            ..Default::default()
-        };
-        let mut resource = None;
-        device.CreateCommittedResource(
-            &D3D12_HEAP_PROPERTIES {
-                Type: D3D12_HEAP_TYPE_DEFAULT,
-                CreationNodeMask: 1,
-                VisibleNodeMask: 1,
-                ..Default::default()
-            },
-            D3D12_HEAP_FLAG_NONE,
-            &desc,
+        let texture = allocate(
+            device,
+            input.size,
+            input.layers,
             D3D12_RESOURCE_STATE_COPY_DEST,
-            None,
-            &mut resource,
         )?;
-        let texture: ID3D12Resource = resource.unwrap();
+        let desc = texture.GetDesc();
         let layout = TextureLayout::new(device, &desc)?;
         let size = layout.size;
         let mut bytes = vec![0u8; size];
@@ -197,5 +175,44 @@ pub(super) fn readback(
             size,
             layout: Some(layout),
         })
+    }
+}
+
+pub(super) fn allocate(
+    device: &ID3D12Device,
+    size: [u32; 2],
+    layers: u32,
+    state: D3D12_RESOURCE_STATES,
+) -> Result<ID3D12Resource> {
+    unsafe {
+        let desc = D3D12_RESOURCE_DESC {
+            Dimension: D3D12_RESOURCE_DIMENSION_TEXTURE2D,
+            Width: u64::from(size[0]),
+            Height: size[1],
+            DepthOrArraySize: u16::try_from(layers)?,
+            MipLevels: 1,
+            Format: DXGI_FORMAT_R8G8B8A8_UNORM,
+            SampleDesc: DXGI_SAMPLE_DESC {
+                Count: 1,
+                Quality: 0,
+            },
+            Flags: D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+            ..Default::default()
+        };
+        let mut resource = None;
+        device.CreateCommittedResource(
+            &D3D12_HEAP_PROPERTIES {
+                Type: D3D12_HEAP_TYPE_DEFAULT,
+                CreationNodeMask: 1,
+                VisibleNodeMask: 1,
+                ..Default::default()
+            },
+            D3D12_HEAP_FLAG_NONE,
+            &desc,
+            state,
+            None,
+            &mut resource,
+        )?;
+        Ok(resource.unwrap())
     }
 }

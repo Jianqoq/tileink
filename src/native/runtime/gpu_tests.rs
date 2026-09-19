@@ -276,6 +276,8 @@ mod frame_filters;
 mod frame_svg;
 #[path = "tests/frame_text_gpu.rs"]
 mod frame_text;
+#[path = "tests/persistent_texture_gpu.rs"]
+mod persistent_texture;
 #[path = "tests/public_renderer_gpu.rs"]
 mod public_renderer;
 #[path = "tests/recording_gpu.rs"]

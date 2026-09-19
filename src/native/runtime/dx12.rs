@@ -48,6 +48,14 @@ pub struct Dx12 {
 }
 
 impl Dx12 {
+    pub fn allocate_texture(&self, size: [u32; 2]) -> Result<super::texture::Allocation> {
+        Ok(super::texture::Allocation::Dx12(compute_texture::allocate(
+            &self.gpu.device,
+            size,
+            1,
+            D3D12_RESOURCE_STATE_COMMON,
+        )?))
+    }
     pub fn validation_queue(&self) -> Validation {
         self.gpu.messages.clone()
     }
@@ -159,6 +167,17 @@ impl Dx12 {
 
     pub fn pending_count(&self) -> usize {
         self.gpu.pending.len()
+    }
+
+    pub fn is_complete(&mut self, ticket: &Ticket) -> Result<bool> {
+        self.gpu.pending.get(ticket)?;
+        self.retirement.wait_value()?;
+        let observed = unsafe { self.gpu.fence.GetCompletedValue() };
+        if observed == u64::MAX {
+            self.retirement = Retirement::Failed;
+            return Err("DX12 device removed while polling completion".into());
+        }
+        Ok(self.gpu.pending.is_completed(ticket, observed)?)
     }
 
     fn wait_until(&self, value: u64) -> Result<u64> {

@@ -11,6 +11,43 @@ use crate::{
 };
 
 #[test]
+fn frame_records_directly_into_supplied_target_without_full_frame_copy() -> Result<()> {
+    use crate::native::runtime::compute::Command;
+    let mut batch = ComputeBatch::new();
+    let target = batch.texture_rgba8([3, 2], vec![255; 24])?;
+    let upload = Default::default();
+    let images = Images::record(&mut batch, &upload)?;
+    let canvas = Canvas::new(3, 2, 1.0);
+    let output = Execution::record(
+        &mut SceneCache::default(),
+        &mut batch,
+        &canvas,
+        &images,
+        None,
+        FrameOptions {
+            target: Some(target),
+            clear_color: 0x80402010,
+            ..Default::default()
+        },
+        65535,
+    )?;
+    assert_eq!(output, target);
+    assert!(
+        !batch
+            .commands()
+            .iter()
+            .any(|command| matches!(command, Command::CopyTexture(_)))
+    );
+    assert!(
+        batch
+            .passes()
+            .iter()
+            .any(|pass| pass.shader.entry == "filter_clear_region")
+    );
+    Ok(())
+}
+
+#[test]
 fn frame_rejects_foreign_image_upload_before_recording() -> Result<()> {
     let mut owner = ComputeBatch::new();
     let upload = Default::default();
@@ -26,6 +63,7 @@ fn frame_rejects_foreign_image_upload_before_recording() -> Result<()> {
         crate::native::runtime::renderer::FrameOptions {
             chunked: false,
             clear_color: 0,
+            ..Default::default()
         },
         65535,
     )

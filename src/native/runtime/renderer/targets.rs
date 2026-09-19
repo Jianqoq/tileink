@@ -61,6 +61,30 @@ pub(crate) struct Targets {
 }
 
 impl Targets {
+    pub(crate) fn from_image(
+        batch: &ComputeBatch,
+        image: ResourceId,
+        size: [u32; 2],
+    ) -> Result<Self> {
+        batch.size(image)?;
+        let super::super::compute::Resource::Texture(texture) = &batch.resources()[image.index()]
+        else {
+            return Err("native frame target must be a texture".into());
+        };
+        if texture.size != size || texture.array || texture.layers != 1 {
+            return Err("native frame target dimensions differ from canvas".into());
+        }
+        Ok(Self {
+            main: Surface {
+                image,
+                size,
+                bytes: batch.size(image)? as u64,
+            },
+            scratch: Vec::new(),
+            slots: ScratchSlots::default(),
+        })
+    }
+
     pub(crate) fn new(batch: &mut ComputeBatch, size: [u32; 2], clear_color: u32) -> Result<Self> {
         Ok(Self {
             main: Surface::allocate(batch, size, clear_color)?,

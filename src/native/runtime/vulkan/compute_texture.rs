@@ -1,7 +1,7 @@
 use super::super::{Result, compute::Texture};
 use ash::vk;
 
-pub(super) struct Image {
+pub(crate) struct Image {
     device: std::rc::Rc<ash::Device>,
     pub image: vk::Image,
     memory: vk::DeviceMemory,
@@ -93,7 +93,7 @@ impl Image {
             )
             .image_extent(self.extent)
     }
-    fn transition(
+    pub(super) fn transition(
         &self,
         command: vk::CommandBuffer,
         before: vk::ImageLayout,

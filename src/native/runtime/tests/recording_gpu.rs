@@ -60,8 +60,17 @@ fn four_api_recording_prepares_nested_images_and_reuses_metadata() -> Result<()>
         let expected = routes.canvas_reference(&canvas)?;
         for chunked in [false, true] {
             let mut batch = ComputeBatch::new();
-            let target =
-                recording.record(&mut batch, &canvas, &resources, None, limits, chunked)?;
+            let target = recording.record(
+                &mut batch,
+                &canvas,
+                &resources,
+                None,
+                limits,
+                super::super::renderer::FrameOptions {
+                    chunked,
+                    ..Default::default()
+                },
+            )?;
             assert!(
                 batch.outputs().is_empty(),
                 "production recording must not read back"
@@ -112,7 +121,14 @@ fn four_api_recording_prepares_nested_images_and_reuses_metadata() -> Result<()>
         .unwrap();
     let expected = routes.canvas_reference(&reference)?;
     let mut batch = ComputeBatch::new();
-    let target = recording.record(&mut batch, &canvas, &resources, None, limits, false)?;
+    let target = recording.record(
+        &mut batch,
+        &canvas,
+        &resources,
+        None,
+        limits,
+        Default::default(),
+    )?;
     batch.readback(target)?;
     for fine in FineVariant::ALL {
         routes.check_render(

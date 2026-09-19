@@ -54,7 +54,14 @@ mod tests {
             let mut batch = ComputeBatch::new();
             assert!(
                 recording
-                    .record(&mut batch, &canvas, &resources, None, limits, false)
+                    .record(
+                        &mut batch,
+                        &canvas,
+                        &resources,
+                        None,
+                        limits,
+                        Default::default()
+                    )
                     .is_err()
             );
             assert!(batch.resources().is_empty());
@@ -63,7 +70,14 @@ mod tests {
         // Invalid attempts leave the same recorder usable for subsequent frames.
         let mut batch = ComputeBatch::new();
         let output = recording
-            .record(&mut batch, &canvas, &resources, None, valid, false)
+            .record(
+                &mut batch,
+                &canvas,
+                &resources,
+                None,
+                valid,
+                Default::default(),
+            )
             .unwrap();
         assert!(batch.outputs().is_empty());
         batch.readback(output).unwrap();
@@ -89,7 +103,7 @@ impl Recording {
         resources: &ImageResourceStore,
         text: Option<(&mut TextFontSystem, &mut TextContext)>,
         limits: Limits,
-        chunked: bool,
+        options: super::FrameOptions,
     ) -> Result<ResourceId> {
         if limits.image_dimension == 0 || limits.atlas_pages == 0 || limits.dispatch_dimension == 0
         {
@@ -125,7 +139,10 @@ impl Recording {
                     &ImageResourceStore::default(),
                     None,
                     limits,
-                    chunked,
+                    super::FrameOptions {
+                        chunked: options.chunked,
+                        ..Default::default()
+                    },
                 )
         })?;
         if let Some((fonts, context)) = text {
@@ -140,8 +157,8 @@ impl Recording {
             &images,
             self.text.as_ref(),
             crate::native::runtime::renderer::FrameOptions {
-                chunked,
                 clear_color: self.clear_color,
+                ..options
             },
             limits.dispatch_dimension,
         )

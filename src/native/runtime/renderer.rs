@@ -39,6 +39,7 @@ use targets::{Surface, Targets};
 pub(crate) struct FrameOptions {
     pub chunked: bool,
     pub clear_color: u32,
+    pub target: Option<ResourceId>,
 }
 
 /// Records one Canvas in an existing frame batch. Its image placements and scene
@@ -80,7 +81,11 @@ impl<'a> Execution<'a> {
         limit: u32,
     ) -> Result<Self> {
         let size = prepared.size();
-        let targets = Targets::new(batch, [size.0, size.1], options.clear_color)?;
+        let targets = if let Some(target) = options.target {
+            Targets::from_image(batch, target, [size.0, size.1])?
+        } else {
+            Targets::new(batch, [size.0, size.1], options.clear_color)?
+        };
         let scene = prepared.record(batch, text, Some(images.upload()), limit)?;
         let filters = filter_resources::FilterResources::record(batch, scene.plan(), None, images)?;
         let paths = prepare_paths(batch, scene.plan())?;

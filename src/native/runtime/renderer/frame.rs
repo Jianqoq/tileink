@@ -110,8 +110,29 @@ impl FrameAdapter for Frame<'_, '_> {
         if partial {
             return Err("native immediate frame cannot preserve partial history".into());
         }
-        // The fresh root upload already contains the requested clear color.
-        // Scratch and vector-child targets are independently transparent.
+        if self.options.target.is_some() {
+            let execution = self
+                .execution
+                .as_mut()
+                .ok_or("native frame was not scanned")?;
+            super::super::program::filter::encode(
+                execution.batch,
+                super::super::program::filter::BasicFilter::Clear,
+                crate::shared::filter_config::FilterConfig {
+                    width: self.size.0,
+                    height: self.size.1,
+                    region_width: self.size.0,
+                    region_height: self.size.1,
+                    clear_color: self.options.clear_color,
+                    ..Default::default()
+                },
+                None,
+                None,
+                execution.targets.get(RenderTargetId::Main)?.image(),
+            )?;
+        }
+        // Fresh targets are initialized by upload; persistent targets are cleared
+        // on the GPU at the shared root boundary before blending this frame.
         Ok(())
     }
     fn active_batch_ids(&mut self, _batch_ids: &[u32]) -> Vec<u32> {

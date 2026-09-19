@@ -92,6 +92,7 @@ pub(super) fn encode_canvas(
         crate::native::runtime::renderer::FrameOptions {
             chunked,
             clear_color: 0,
+            ..Default::default()
         },
         65535,
     )

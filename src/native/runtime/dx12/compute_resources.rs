@@ -50,6 +50,17 @@ impl Resources {
                     continue;
                 }
                 if let Resource::Texture(input) = input {
+                    if let Some(texture) = &input.persistent {
+                        let texture = match &texture.state.allocation {
+                            crate::native::runtime::texture::Allocation::Dx12(texture) => texture,
+                            #[cfg(feature = "native-vulkan")]
+                            crate::native::runtime::texture::Allocation::Vulkan(_) => {
+                                return Err("non-DX12 persistent texture".into());
+                            }
+                        };
+                        this.handles.push(Some(texture.clone()));
+                        continue;
+                    }
                     let (texture, upload) = compute_texture::upload(device, list, input)?;
                     this.handles.push(Some(texture));
                     this.uploads.push(upload);

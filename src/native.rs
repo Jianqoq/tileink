@@ -72,9 +72,11 @@ impl Error for BackendUnavailable {}
 mod context;
 mod renderer;
 mod submission;
+mod texture;
 pub use context::{NativeContext, NativeContextOptions, NativeError};
 pub use renderer::NativeRenderer;
 pub use submission::{NativeImageSubmission, NativeSubmission};
+pub use texture::NativeTexture;
 
 #[cfg(test)]
 mod tests {

@@ -17,6 +17,25 @@ impl NativeSubmission {
     pub fn backend(&self) -> NativeBackend {
         self.backend
     }
+
+    /// Inspect the submission fence without waiting, mapping pixels or releasing
+    /// resources. Call `wait` (or image `readback`) to retire the completed work.
+    pub fn is_complete(&self) -> Result<bool, NativeError> {
+        #[cfg(all(
+            target_os = "windows",
+            any(feature = "native-dx12", feature = "native-vulkan")
+        ))]
+        {
+            self.receipt.is_complete().map_err(NativeError::Completion)
+        }
+        #[cfg(not(all(
+            target_os = "windows",
+            any(feature = "native-dx12", feature = "native-vulkan")
+        )))]
+        {
+            Err(NativeError::Unavailable(self.backend.unavailable()))
+        }
+    }
     #[cfg(all(
         target_os = "windows",
         any(feature = "native-dx12", feature = "native-vulkan")
@@ -55,6 +74,10 @@ pub struct NativeImageSubmission {
 }
 
 impl NativeImageSubmission {
+    /// Inspect GPU progress without consuming this image or mapping its readback.
+    pub fn is_complete(&self) -> Result<bool, NativeError> {
+        self.submission.is_complete()
+    }
     pub(super) fn new(submission: NativeSubmission, size: (u32, u32)) -> Self {
         Self { submission, size }
     }

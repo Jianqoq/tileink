@@ -16,6 +16,7 @@ mod isolation;
 mod pipeline_cache;
 mod program;
 mod submissions;
+pub(super) mod texture;
 #[cfg(feature = "native-vulkan")]
 mod vulkan;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;

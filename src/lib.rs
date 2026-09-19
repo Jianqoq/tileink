@@ -112,7 +112,7 @@ mod native;
 pub use native::{
     BackendUnavailable, BackendUnavailableReason, NativeBackend, NativeContext,
     NativeContextOptions, NativeError, NativeImageSubmission, NativeRenderer, NativeShaderArtifact,
-    NativeSubmission, SHADER_ARTIFACTS as NATIVE_SHADER_ARTIFACTS,
+    NativeSubmission, NativeTexture, SHADER_ARTIFACTS as NATIVE_SHADER_ARTIFACTS,
 };
 
 #[cfg(all(feature = "wgpu", feature = "bench-internals"))]

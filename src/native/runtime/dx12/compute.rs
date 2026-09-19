@@ -33,6 +33,11 @@ impl Frame {
             };
             let gpu = super::compute_resources::Resources::record(device, &frame.list, batch)?;
             let mut states = vec![D3D12_RESOURCE_STATE_COPY_DEST; batch.resources().len()];
+            for (index, resource) in batch.resources().iter().enumerate() {
+                if matches!(resource, Resource::Texture(texture) if texture.persistent.is_some()) {
+                    states[index] = D3D12_RESOURCE_STATE_COMMON;
+                }
+            }
             let mut tables =
                 super::compute_tables::Tables::new(device, &frame.list, batch.passes())?;
             for command in batch.commands() {
@@ -60,6 +65,9 @@ impl Frame {
                     }
                 };
                 let pipeline = &pipelines[pass.shader.entry];
+                if batch.skip_initialization(pass) {
+                    continue;
+                }
                 frame._pipelines.push(pipeline.clone());
                 frame.list.SetComputeRootSignature(&pipeline.signature);
                 frame.list.SetPipelineState(&pipeline.state);
@@ -91,7 +99,7 @@ impl Frame {
             frame._heaps = tables.into_heaps();
             for id in batch.outputs() {
                 let id = id.index();
-                let size = batch.resources()[id].bytes().len();
+                let size = batch.resources()[id].byte_len();
                 if matches!(batch.resources()[id], Resource::Texture(_)) {
                     if states[id] != D3D12_RESOURCE_STATE_COPY_SOURCE {
                         buffer::transition(
@@ -130,6 +138,19 @@ impl Frame {
                     .list
                     .CopyBufferRegion(&readback, 0, gpu.get(id), 0, size as u64);
                 frame.readbacks.push(Readback::buffer(readback, size));
+            }
+            // Normalize persistent queue state even after copies or readback.
+            for (id, resource) in batch.resources().iter().enumerate() {
+                if matches!(resource, Resource::Texture(texture) if texture.persistent.is_some())
+                    && states[id] != D3D12_RESOURCE_STATE_COMMON
+                {
+                    buffer::transition(
+                        &frame.list,
+                        gpu.get(id),
+                        states[id],
+                        D3D12_RESOURCE_STATE_COMMON,
+                    );
+                }
             }
             frame._buffers = gpu.into_owners();
             frame.list.Close()?;

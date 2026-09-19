@@ -18,6 +18,7 @@ pub enum NativeError {
     Recording(Box<dyn Error>),
     SubmissionRejected(Box<dyn Error>),
     SubmissionUnconfirmed(Box<dyn Error>),
+    Completion(Box<dyn Error>),
     Readback(Box<dyn Error>),
     Validation(Box<dyn Error>),
 }
@@ -31,6 +32,7 @@ impl fmt::Display for NativeError {
             Self::SubmissionRejected(error) => ("rejected submission", error.as_ref()),
             Self::SubmissionUnconfirmed(error) => ("unconfirmed submission", error.as_ref()),
             Self::Readback(error) => ("readback", error.as_ref()),
+            Self::Completion(error) => ("completion", error.as_ref()),
             Self::Validation(error) => ("validation", error.as_ref()),
         };
         write!(f, "native {stage}: {error}")
@@ -45,6 +47,7 @@ impl Error for NativeError {
             | Self::Recording(error)
             | Self::SubmissionRejected(error)
             | Self::SubmissionUnconfirmed(error)
+            | Self::Completion(error)
             | Self::Readback(error)
             | Self::Validation(error) => error.as_ref(),
         })
@@ -63,6 +66,57 @@ pub struct NativeContext {
 }
 
 impl NativeContext {
+    #[cfg(all(
+        target_os = "windows",
+        any(feature = "native-dx12", feature = "native-vulkan")
+    ))]
+    pub(super) fn submit_compute(
+        &self,
+        batch: &super::runtime::compute::ComputeBatch,
+    ) -> Result<super::NativeSubmission, NativeError> {
+        use crate::render::backend::SubmitError;
+        self.adapter
+            .submit_compute(batch)
+            .map(|receipt| super::NativeSubmission::new(self.backend(), receipt))
+            .map_err(|error| match error {
+                SubmitError::Rejected(error) => NativeError::SubmissionRejected(error),
+                SubmitError::Unconfirmed(error) => NativeError::SubmissionUnconfirmed(error),
+            })
+    }
+    /// Allocate a persistent RGBA8 target. Its first submitted use clears it on
+    /// the GPU; subsequent submissions preserve untouched pixels without upload.
+    pub fn create_texture(
+        &self,
+        width: u32,
+        height: u32,
+    ) -> Result<super::NativeTexture, NativeError> {
+        #[cfg(all(
+            target_os = "windows",
+            any(feature = "native-dx12", feature = "native-vulkan")
+        ))]
+        {
+            super::renderer::validate_size((width, height), self.adapter.limits().image_dimension)?;
+            Ok(super::NativeTexture {
+                state: std::rc::Rc::new(super::runtime::texture::State {
+                    allocation: self
+                        .adapter
+                        .allocate_texture([width, height])
+                        .map_err(NativeError::Initialization)?,
+                    initialized: std::cell::Cell::new(false),
+                }),
+                context: self.clone(),
+                size: [width, height],
+            })
+        }
+        #[cfg(not(all(
+            target_os = "windows",
+            any(feature = "native-dx12", feature = "native-vulkan")
+        )))]
+        {
+            let _ = (width, height);
+            Err(NativeError::Unavailable(self.backend.unavailable()))
+        }
+    }
     /// Enable the process-wide DX12 layer before creating devices. Repeated calls
     /// after a successful call are no-ops; late Tileink-owned creation is rejected.
     ///

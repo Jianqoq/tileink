@@ -123,7 +123,10 @@ fn four_api_frame_text_preserves_root_and_local_glyphs() -> Result<()> {
                 &resources,
                 Some((&mut fonts, &mut context)),
                 limits,
-                mode_index == 1,
+                super::super::renderer::FrameOptions {
+                    chunked: mode_index == 1,
+                    ..Default::default()
+                },
             )?;
             assert!(batch.outputs().is_empty());
             batch.readback(target)?;
@@ -149,7 +152,10 @@ fn four_api_frame_text_preserves_root_and_local_glyphs() -> Result<()> {
                 &resources,
                 None,
                 limits,
-                mode_index == 1,
+                super::super::renderer::FrameOptions {
+                    chunked: mode_index == 1,
+                    ..Default::default()
+                },
             )?;
             batch.readback(target)?;
             for fine in FineVariant::ALL {

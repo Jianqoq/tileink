@@ -117,6 +117,7 @@ fn four_api_frame_filters_backdrops_and_local_contexts_preserve_pixels() -> Resu
                 crate::native::runtime::renderer::FrameOptions {
                     chunked: kind % 2 == 0,
                     clear_color: 0,
+                    ..Default::default()
                 },
                 65535,
             )?;

@@ -7,7 +7,7 @@ enum GpuResource {
     TextureTable,
     Buffer(vk::Buffer),
     Sampler(super::compute_sampler::Sampler),
-    Image(Image),
+    Image(std::rc::Rc<Image>),
 }
 impl GpuResource {
     fn buffer(&self) -> vk::Buffer {
@@ -201,9 +201,20 @@ impl Frame {
                     GpuResource::Sampler(super::compute_sampler::Sampler::new(shared, *filter)?)
                 }
                 Resource::Texture(texture) => {
+                    if let Some(texture) = &texture.persistent {
+                        let image = match &texture.state.allocation {
+                            crate::native::runtime::texture::Allocation::Vulkan(image) => image,
+                            #[cfg(feature = "native-dx12")]
+                            crate::native::runtime::texture::Allocation::Dx12(_) => {
+                                return Err("non-Vulkan persistent texture".into());
+                            }
+                        };
+                        this.resources.push(GpuResource::Image(image.clone()));
+                        continue;
+                    }
                     let shared =
                         resource_device.get_or_insert_with(|| std::rc::Rc::new(device.clone()));
-                    GpuResource::Image(Image::new(shared, memory, texture)?)
+                    GpuResource::Image(std::rc::Rc::new(Image::new(shared, memory, texture)?))
                 }
             });
         }
@@ -278,6 +289,20 @@ impl Frame {
                     continue;
                 }
                 if let GpuResource::Image(image) = &gpu[i] {
+                    if let Resource::Texture(texture) = buffer
+                        && let Some(texture) = &texture.persistent
+                    {
+                        image.transition(
+                            command,
+                            if texture.state.initialized.get() {
+                                vk::ImageLayout::GENERAL
+                            } else {
+                                vk::ImageLayout::UNDEFINED
+                            },
+                            vk::ImageLayout::GENERAL,
+                        );
+                        continue;
+                    }
                     image.upload(
                         command,
                         this.upload.as_ref().unwrap().buffers[0],
@@ -321,6 +346,9 @@ impl Frame {
                     }
                 };
                 let pass = &batch.passes()[index];
+                if batch.skip_initialization(pass) {
+                    continue;
+                }
                 let pipeline = &pipelines[pass.shader.entry];
                 let set = device.allocate_descriptor_sets(
                     &vk::DescriptorSetAllocateInfo::default()
@@ -365,6 +393,14 @@ impl Frame {
                 for (id, (offset, size)) in batch.outputs().iter().zip(&this.outputs) {
                     if let GpuResource::Image(image) = &gpu[id.index()] {
                         image.readback(command, readback.buffers[0], *offset as u64);
+                        if matches!(&batch.resources()[id.index()], Resource::Texture(texture) if texture.persistent.is_some())
+                        {
+                            image.transition(
+                                command,
+                                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                                vk::ImageLayout::GENERAL,
+                            );
+                        }
                         continue;
                     }
                     device.cmd_copy_buffer(

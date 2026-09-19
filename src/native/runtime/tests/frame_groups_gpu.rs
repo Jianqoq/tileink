@@ -126,6 +126,7 @@ fn four_api_frame_groups_masks_and_scratch_reuse_preserve_pixels() -> Result<()>
                     crate::native::runtime::renderer::FrameOptions {
                         chunked,
                         clear_color: 0,
+                        ..Default::default()
                     },
                     65535,
                 )?;
@@ -168,6 +169,7 @@ fn four_api_frame_groups_masks_and_scratch_reuse_preserve_pixels() -> Result<()>
         crate::native::runtime::renderer::FrameOptions {
             chunked: false,
             clear_color: 0,
+            ..Default::default()
         },
         65535,
     )?;

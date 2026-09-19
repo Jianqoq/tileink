@@ -14,12 +14,15 @@ impl ResourceId {
         self.index
     }
 }
+#[path = "compute/persistent.rs"]
+mod persistent;
 #[path = "compute/resource.rs"]
 mod resource;
 #[path = "compute/uniforms.rs"]
 pub(crate) mod uniforms;
 pub use resource::{Resource, SamplerFilter, Texture};
 pub struct Pass {
+    pub initialization: Option<ResourceId>,
     pub shader: &'static NativeShaderArtifact,
     pub bindings: Vec<(Binding, ResourceId)>,
     pub grid: [u32; 3],
@@ -109,7 +112,7 @@ impl ComputeBatch {
         }
         self.resources
             .get(id.index)
-            .map(|resource| resource.bytes().len())
+            .map(Resource::byte_len)
             .ok_or_else(|| "invalid compute resource".into())
     }
     /// # Safety
@@ -196,6 +199,7 @@ impl ComputeBatch {
         }
         self.commands.push(Command::Dispatch(self.passes.len()));
         self.passes.push(Pass {
+            initialization: None,
             shader,
             bindings: ordered,
             grid,

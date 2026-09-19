@@ -88,14 +88,18 @@ impl<T> Pending<T> {
             .ok_or(SubmissionError::UnknownTicket)
     }
     pub fn take_completed(&mut self, ticket: &Ticket, observed: u64) -> Result<T, SubmissionError> {
+        if !self.is_completed(ticket, observed)? {
+            return Err(SubmissionError::NotCompleted);
+        }
+        Ok(self.frames.remove(&ticket.serial).unwrap())
+    }
+    /// Inspect completion without retiring resources or consuming readback ownership.
+    pub fn is_completed(&self, ticket: &Ticket, observed: u64) -> Result<bool, SubmissionError> {
         self.get(ticket)?;
         if observed > self.confirmed {
             return Err(SubmissionError::InvalidCompletion);
         }
-        if ticket.serial > observed {
-            return Err(SubmissionError::NotCompleted);
-        }
-        Ok(self.frames.remove(&ticket.serial).unwrap())
+        Ok(ticket.serial <= observed)
     }
     pub fn len(&self) -> usize {
         self.frames.len()
@@ -145,6 +149,13 @@ mod tests {
         let observer = ticket.clone();
         drop(ticket);
         assert!(weak.upgrade().is_some());
+        assert_eq!(queue.is_completed(&observer, 0), Ok(false));
+        assert_eq!(queue.is_completed(&observer, 1), Ok(true));
+        assert_eq!(
+            queue.is_completed(&observer, 2),
+            Err(SubmissionError::InvalidCompletion)
+        );
+        assert_eq!(queue.len(), 1);
         assert_eq!(
             queue.take_completed(&observer, 0).unwrap_err(),
             SubmissionError::NotCompleted

@@ -41,6 +41,22 @@ pub struct Vulkan {
 }
 
 impl Vulkan {
+    pub fn allocate_texture(&self, size: [u32; 2]) -> Result<super::texture::Allocation> {
+        let descriptor = super::compute::Texture {
+            size,
+            layers: 1,
+            array: false,
+            bytes: Vec::new(),
+            persistent: None,
+        };
+        Ok(super::texture::Allocation::Vulkan(std::rc::Rc::new(
+            compute_texture::Image::new(
+                &std::rc::Rc::new(self.device.clone()),
+                &self.memory,
+                &descriptor,
+            )?,
+        )))
+    }
     pub fn validation_messages(&self) -> std::sync::Arc<std::sync::Mutex<Vec<String>>> {
         self.messages.clone()
     }
@@ -178,6 +194,20 @@ impl Vulkan {
     pub fn pending_count(&self) -> usize {
         self.pending.len()
     }
+
+    pub fn is_complete(&mut self, ticket: &Ticket) -> Result<bool> {
+        let fence = self.pending.get(ticket)?.fence()?;
+        if self.failed {
+            return Err("Vulkan context failed".into());
+        }
+        match unsafe { self.device.get_fence_status(fence) } {
+            Ok(complete) => Ok(complete),
+            Err(error) => {
+                self.failed = true;
+                Err(error.into())
+            }
+        }
+    }
 }
 
 impl Drop for Vulkan {
@@ -231,7 +261,7 @@ impl Drop for Vulkan {
 #[cfg(test)]
 mod tests;
 
-mod compute_texture;
+pub(super) mod compute_texture;
 
 #[path = "vulkan/compute_sampler.rs"]
 mod compute_sampler;
