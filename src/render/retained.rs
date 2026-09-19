@@ -46,6 +46,12 @@ pub(crate) struct RetainedRenderState<T> {
     surface_frame: Option<RetainedFrame>,
 }
 
+impl<T: SurfaceAllocation> Default for RetainedRenderState<T> {
+    fn default() -> Self {
+        Self::new(Default::default())
+    }
+}
+
 impl<T: SurfaceAllocation> RetainedRenderState<T> {
     pub(crate) fn new(config: IncrementalRenderConfig) -> Self {
         Self {

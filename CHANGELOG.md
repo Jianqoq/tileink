@@ -9,6 +9,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- Add Windows native retained rendering with dirty-range buffer uploads, persistent
+  image/offscreen caches, journal recovery, independent renderer history and
+  transient/persistent targets with explicit origins.
+- Import host DX12/Vulkan devices and images with ownership pins and consumed
+  per-use state/synchronization descriptors, including cross-queue fences and
+  Vulkan binary/timeline semaphore ownership transfers. Rejected or unconfirmed
+  work cannot publish target state/history. Add the `native_present` window example.
+
 - Expose owned Windows native contexts and immediate Canvas/text renderers with
   explicit submission completion, premultiplied image readback and configurable
   root backgrounds. Native pipelines use persistent caches; conformance-only

@@ -72,10 +72,12 @@ impl Error for BackendUnavailable {}
 mod context;
 mod renderer;
 mod submission;
+mod target;
 mod texture;
 pub use context::{NativeContext, NativeContextOptions, NativeError};
 pub use renderer::NativeRenderer;
 pub use submission::{NativeImageSubmission, NativeSubmission};
+pub use target::NativeRenderTarget;
 pub use texture::NativeTexture;
 
 #[cfg(test)]
@@ -115,3 +117,8 @@ pub use shaders::{NativeShaderArtifact, SHADER_ARTIFACTS};
     )
 )]
 mod runtime;
+
+pub mod interop;
+
+mod target_use;
+pub use target_use::{NativeTargetState, NativeTargetSubmission, NativeTargetUse};

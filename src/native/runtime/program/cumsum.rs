@@ -92,6 +92,23 @@ impl CumsumPlan {
         backdrops: ResourceId,
         maximum_dimension: u32,
     ) -> Result<Option<CumsumOutput>> {
+        self.encode_cached(
+            batch,
+            backdrops,
+            maximum_dimension,
+            &mut CumsumBuffers::default(),
+            None,
+        )
+    }
+
+    pub(crate) fn encode_cached(
+        &self,
+        batch: &mut ComputeBatch,
+        backdrops: ResourceId,
+        maximum_dimension: u32,
+        buffers: &mut CumsumBuffers,
+        dirty: Option<&crate::shared::gpu_plan::GpuPathPlanDirty>,
+    ) -> Result<Option<CumsumOutput>> {
         if batch.size(backdrops)? < self.backdrop_words * 4 {
             return Err("undersized cumsum backdrop allocation".into());
         }
@@ -118,10 +135,26 @@ impl CumsumPlan {
             })
         };
         let config = add(batch, &[self.starts.len() as u32, chunks, 0, 0])?;
-        let offsets = add(batch, &self.offsets)?;
-        let lengths = add(batch, &self.lengths)?;
-        let starts = add(batch, &self.starts)?;
-        let ends = add(batch, &self.ends)?;
+        let offsets = buffers.offsets.upload(
+            batch,
+            &self.offsets,
+            dirty.map(|dirty| dirty.cumsum_chunks.as_slice()),
+        )?;
+        let lengths = buffers.lengths.upload(
+            batch,
+            &self.lengths,
+            dirty.map(|dirty| dirty.cumsum_chunks.as_slice()),
+        )?;
+        let starts = buffers.starts.upload(
+            batch,
+            &self.starts,
+            dirty.map(|dirty| dirty.cumsum_rows.as_slice()),
+        )?;
+        let ends = buffers.ends.upload(
+            batch,
+            &self.ends,
+            dirty.map(|dirty| dirty.cumsum_rows.as_slice()),
+        )?;
         let totals = batch.buffer(vec![0; chunks as usize * 4])?;
         let carries = batch.buffer(vec![0; chunks as usize * 4])?;
         // SAFETY: construction validates disjoint backdrop writes, bounded chunk lanes,
@@ -173,3 +206,11 @@ impl CumsumPlan {
 #[cfg(test)]
 #[path = "../tests/cumsum.rs"]
 mod tests;
+
+#[derive(Default)]
+pub(crate) struct CumsumBuffers {
+    offsets: super::cached_buffer::CachedBuffer,
+    lengths: super::cached_buffer::CachedBuffer,
+    starts: super::cached_buffer::CachedBuffer,
+    ends: super::cached_buffer::CachedBuffer,
+}

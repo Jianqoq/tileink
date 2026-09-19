@@ -2078,3 +2078,20 @@ leasing/submission policy and the complete corpus runner close the M4 structural
 and acceptance gates. See [M4 closeout](docs/native/m4-completion.md) for hashes,
 device scope and reproduction commands. No performance comparisons were run.
 Native retained/interop remains M5; Mac compilation/GPU validation remains deferred.
+
+
+## Windows M5 completion ? 2026-09-19
+
+M5 is complete: native retained execution, incremental buffers/images, shared
+scratch/offscreen history, imported host contexts/targets, explicit TargetUse
+state/synchronization, and DX12/Vulkan window presentation. Real GPU tests cover
+cross-queue fences, binary/timeline semaphores, queue-family transfers, empty
+damage, rejected declarations and unconfirmed submission recovery.
+
+29 retained frames across 36 variants and the full six-route 1,712 SVG/45 example
+corpora match byte-for-byte. All 10,542 PNG hashes equal the prior baseline.
+Release tests, feature builds, strict lint, formatting and both review axes pass.
+Both native windows complete eight-frame resize/present smoke tests. See
+[M5 closeout](docs/native/m5-implementation.md) and [evidence](docs/native/m5-verification.json).
+No performance comparison was run. Mac MSL/GPU validation remains deferred;
+gfx_ui native feature integration and the wider M6 acceptance remain subsequent work.

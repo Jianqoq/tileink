@@ -32,7 +32,9 @@ impl FilterPassAdapter for Execution<'_> {
             self.batch,
             BasicFilter::Copy,
             c,
-            None,
+            self.retained
+                .active_tiles()
+                .map(crate::render::damage_tiles::DamageTiles::list),
             Some(self.targets.get(source)?.image()),
             self.targets.get(target)?.image(),
         )
@@ -112,7 +114,10 @@ impl FilterAdapter for Execution<'_> {
                 canvas,
                 self.text,
                 Some(self.images.upload()),
-                self.limit,
+                super::super::program::scene::SceneOptions {
+                    limit: self.limit,
+                    active: self.retained.active_tiles(),
+                },
                 plan,
             )?
         });
@@ -134,6 +139,7 @@ impl FilterAdapter for Execution<'_> {
         c.kernel_rows = placement.size.1;
         c.layer_stack_start = u32::try_from(stack.start)?;
         c.layer_stack_end = u32::try_from(stack.end)?;
+        let source = source.image_in(self.batch)?;
         self.scene
             .as_ref()
             .ok_or("native parent scene missing")?
@@ -142,9 +148,11 @@ impl FilterAdapter for Execution<'_> {
                 self.batch,
                 Composite::Surface,
                 c,
-                None,
+                self.retained
+                    .active_tiles()
+                    .map(crate::render::damage_tiles::DamageTiles::list),
                 Textures {
-                    source: source.image(),
+                    source,
                     auxiliary: None,
                     target: self.targets.get(target)?.image(),
                 },

@@ -70,6 +70,17 @@ impl NativeContext {
         target_os = "windows",
         any(feature = "native-dx12", feature = "native-vulkan")
     ))]
+    pub(super) fn from_adapter(
+        backend: NativeBackend,
+        adapter: super::runtime::adapter::Adapter,
+    ) -> Self {
+        Self { backend, adapter }
+    }
+
+    #[cfg(all(
+        target_os = "windows",
+        any(feature = "native-dx12", feature = "native-vulkan")
+    ))]
     pub(super) fn submit_compute(
         &self,
         batch: &super::runtime::compute::ComputeBatch,
@@ -83,6 +94,47 @@ impl NativeContext {
                 SubmitError::Unconfirmed(error) => NativeError::SubmissionUnconfirmed(error),
             })
     }
+    #[cfg(all(
+        target_os = "windows",
+        any(feature = "native-dx12", feature = "native-vulkan")
+    ))]
+    pub(crate) fn create_texture_kind(
+        &self,
+        size: [u32; 2],
+        layers: u32,
+        array: bool,
+    ) -> Result<super::NativeTexture, NativeError> {
+        let [width, height] = size;
+        if layers == 0
+            || layers > self.adapter.limits().atlas_pages
+            || (!array && layers != 1)
+            || (width as usize)
+                .checked_mul(height as usize)
+                .and_then(|n| n.checked_mul(layers as usize))
+                .and_then(|n| n.checked_mul(4))
+                .is_none()
+        {
+            return Err(NativeError::Recording(
+                "invalid native texture layers or byte extent".into(),
+            ));
+        }
+        super::renderer::validate_size((width, height), self.adapter.limits().image_dimension)?;
+        Ok(super::NativeTexture {
+            state: std::rc::Rc::new(super::runtime::texture::State {
+                allocation: self
+                    .adapter
+                    .allocate_texture([width, height], layers, array)
+                    .map_err(NativeError::Initialization)?,
+                initialized: std::cell::Cell::new(false),
+                content_version: std::cell::Cell::new(0),
+            }),
+            context: self.clone(),
+            size: [width, height],
+            layers,
+            array,
+        })
+    }
+
     /// Allocate a persistent RGBA8 target. Its first submitted use clears it on
     /// the GPU; subsequent submissions preserve untouched pixels without upload.
     pub fn create_texture(
@@ -95,18 +147,7 @@ impl NativeContext {
             any(feature = "native-dx12", feature = "native-vulkan")
         ))]
         {
-            super::renderer::validate_size((width, height), self.adapter.limits().image_dimension)?;
-            Ok(super::NativeTexture {
-                state: std::rc::Rc::new(super::runtime::texture::State {
-                    allocation: self
-                        .adapter
-                        .allocate_texture([width, height])
-                        .map_err(NativeError::Initialization)?,
-                    initialized: std::cell::Cell::new(false),
-                }),
-                context: self.clone(),
-                size: [width, height],
-            })
+            self.create_texture_kind([width, height], 1, false)
         }
         #[cfg(not(all(
             target_os = "windows",

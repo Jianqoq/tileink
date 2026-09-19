@@ -49,6 +49,35 @@ impl Resources {
                     this.handles.push(None);
                     continue;
                 }
+                if let Resource::PersistentBuffer(input) = input {
+                    let resource = match &input.buffer.state.allocation {
+                        crate::native::runtime::buffer::Allocation::Dx12(resource) => resource,
+                        #[cfg(feature = "native-vulkan")]
+                        _ => return Err("non-DX12 persistent buffer".into()),
+                    };
+                    if !input.bytes.is_empty() {
+                        let upload = buffer::create(
+                            device,
+                            input.bytes.len(),
+                            D3D12_HEAP_TYPE_UPLOAD,
+                            D3D12_RESOURCE_STATE_GENERIC_READ,
+                            D3D12_RESOURCE_FLAG_NONE,
+                            Some(&input.bytes),
+                        )?;
+                        buffer::transition(
+                            list,
+                            resource,
+                            D3D12_RESOURCE_STATE_COMMON,
+                            D3D12_RESOURCE_STATE_COPY_DEST,
+                        );
+                        for &[source, destination, size] in &input.copies {
+                            list.CopyBufferRegion(resource, destination, &upload, source, size);
+                        }
+                        this.uploads.push(upload);
+                    }
+                    this.handles.push(Some(resource.clone()));
+                    continue;
+                }
                 if let Resource::Texture(input) = input {
                     if let Some(texture) = &input.persistent {
                         let texture = match &texture.state.allocation {
@@ -58,7 +87,7 @@ impl Resources {
                                 return Err("non-DX12 persistent texture".into());
                             }
                         };
-                        this.handles.push(Some(texture.clone()));
+                        this.handles.push(Some(texture.resource.clone()));
                         continue;
                     }
                     let (texture, upload) = compute_texture::upload(device, list, input)?;

@@ -1,6 +1,6 @@
 //! Immediate scene preparation; vector children and the root share one GPU batch.
 
-use super::{Execution, Images};
+use super::Images;
 use crate::{
     Canvas, TextContext, TextFontSystem,
     native::runtime::{
@@ -88,14 +88,28 @@ mod tests {
 #[derive(Default)]
 pub(crate) struct Recording {
     pub(crate) clear_color: u32,
+    pub(crate) retained: crate::render::retained::RetainedRenderState<super::Surface>,
     scene: SceneCache,
     vectors: crate::render::vector_images::VectorImageCache<Recording>,
     upload: GpuImageResourceUpload,
+    gpu_images: Option<super::images::ImageCache>,
     signature: Option<ImageResourceUploadSignature>,
     text: Option<PreparedTextData>,
+    text_environment: Option<(crate::TextRasterOptions, u64)>,
 }
 
 impl Recording {
+    pub(crate) fn set_text_environment(&mut self, context: Option<&TextContext>) {
+        let environment =
+            context.map(|context| (context.raster_options(), context.cache_generation()));
+        if self.text_environment != environment {
+            // Text options and font-cache invalidation do not edit RetainedScene.
+            // Discard both root history and offscreen glyph pixels before damage planning.
+            self.retained.invalidate();
+            self.text_environment = environment;
+        }
+    }
+
     pub(crate) fn record(
         &mut self,
         batch: &mut ComputeBatch,
@@ -108,6 +122,17 @@ impl Recording {
         if limits.image_dimension == 0 || limits.atlas_pages == 0 || limits.dispatch_dimension == 0
         {
             return Err("native frame limits must be nonzero".into());
+        }
+        // No damaged tiles means the persistent output is already complete. Avoid
+        // rebuilding descriptors and uploading image resources for an empty frame.
+        if self
+            .retained
+            .active_tiles()
+            .is_some_and(|tiles| tiles.list().is_empty())
+        {
+            return options
+                .target
+                .ok_or_else(|| "empty native damage requires history".into());
         }
         let signature = resources.upload_signature(
             canvas.scene_image_resources(),
@@ -129,33 +154,52 @@ impl Recording {
             .retain_sources(self.upload.vectors().iter().map(|vector| &vector.canvas));
         // Children own their scene namespace, just as in the wgpu renderer. Passing
         // the parent's global store would recursively render unrelated vector images.
-        let images = Images::record_with_vectors(batch, &self.upload, |batch, child| {
-            self.vectors
-                .get_or_insert(child, Self::default)
-                .value
-                .record(
-                    batch,
-                    child,
-                    &ImageResourceStore::default(),
-                    None,
-                    limits,
-                    super::FrameOptions {
-                        chunked: options.chunked,
-                        ..Default::default()
-                    },
-                )
-        })?;
+        // Different image keys can reference the same immutable child. Its cached
+        // buffers may only be uploaded once per batch; reuse the rendered output.
+        let mut rendered = std::collections::HashMap::new();
+        let images = Images::record_cached(
+            batch,
+            &self.upload,
+            &mut self.gpu_images,
+            signature,
+            |batch, child| {
+                let identity = std::rc::Rc::as_ptr(child);
+                if let Some(&image) = rendered.get(&identity) {
+                    return Ok(image);
+                }
+                let image = self
+                    .vectors
+                    .get_or_insert(child, Self::default)
+                    .value
+                    .record(
+                        batch,
+                        child,
+                        &ImageResourceStore::default(),
+                        None,
+                        limits,
+                        super::FrameOptions {
+                            chunked: options.chunked,
+                            ..Default::default()
+                        },
+                    )?;
+                rendered.insert(identity, image);
+                Ok(image)
+            },
+        )?;
         if let Some((fonts, context)) = text {
             crate::render::prepare::prepare_text(&mut self.text, canvas, fonts, context);
         } else {
             self.text = None;
         }
-        Execution::record(
+        super::frame::record(
             &mut self.scene,
             batch,
             canvas,
-            &images,
-            self.text.as_ref(),
+            super::FrameResources {
+                images: &images,
+                text: self.text.as_ref(),
+                retained: &mut self.retained,
+            },
             crate::native::runtime::renderer::FrameOptions {
                 clear_color: self.clear_color,
                 ..options

@@ -134,21 +134,22 @@ fn main() -> Result<()> {
             routes.push(route);
         }
     }
+    let mut native_routes = native::Routes::new(
+        options.native,
+        luid.as_deref().ok_or("missing physical GPU identity")?,
+    )?;
     if options.suite == options::Suite::Retained {
         #[cfg(windows)]
         return retained::render(
             &example_inputs.as_ref().unwrap().fonts,
             &routes,
+            &native_routes,
             &options.output,
             || corpus.verify_unchanged(),
         );
         #[cfg(not(windows))]
         return Err("retained cross-API certification requires Windows DX12 and Vulkan".into());
     }
-    let mut native_routes = native::Routes::new(
-        options.native,
-        luid.as_deref().ok_or("missing physical GPU identity")?,
-    )?;
     let mut metadata: Vec<_> = routes.iter().map(|route| route.metadata.clone()).collect();
     metadata.extend(native_routes.metadata());
     let mut report = report::Report::new(&options.output, &case_names, metadata)?;

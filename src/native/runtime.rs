@@ -29,3 +29,5 @@ pub(super) unsafe fn enable_dx12_validation() -> Result<()> {
 #[path = "runtime/compute.rs"]
 pub(super) mod compute;
 pub(super) mod renderer;
+
+mod buffer;

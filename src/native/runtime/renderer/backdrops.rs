@@ -18,9 +18,13 @@ impl BackdropAdapter for Execution<'_> {
     ) -> Result<bool> {
         use super::filter_encoding::FilterEncoding;
         use crate::render::filter_program::FilterExecutor;
+        let work = self
+            .retained
+            .active_tiles()
+            .map(|tiles| tiles.list().to_vec());
         let mut encoding = FilterEncoding {
             execution: self,
-            work: None,
+            work,
             error: None,
         };
         // Use the shared direct schedule: materializing low-resolution glass first
@@ -56,8 +60,53 @@ impl BackdropAdapter for Execution<'_> {
         pass: BackdropPass<'_>,
         cursors: &mut FilterCursors,
     ) -> Result<()> {
-        if pass.partial_output.is_some() {
-            return Err("native partial backdrop history requires retained frame support".into());
+        if let Some(output) = pass.partial_output {
+            let work = self
+                .retained
+                .active_tiles()
+                .map(|tiles| tiles.list().to_vec());
+            let mut encoding = super::filter_encoding::FilterEncoding {
+                execution: self,
+                work,
+                error: None,
+            };
+            let mut executor = crate::render::filter_program::FilterExecutor::new(&mut encoding);
+            let success = match pass.filter {
+                Filter::Blur {
+                    std_dev_x,
+                    std_dev_y,
+                    ..
+                } => {
+                    cursors.advance_filter(pass.filter);
+                    executor.apply_blur_from_source_partial(
+                        pass.source,
+                        pass.target,
+                        output,
+                        pass.bounds,
+                        *std_dev_x,
+                        *std_dev_y,
+                    )
+                }
+                Filter::RectLiquidGlass(glass) if matches!(pass.region, Region::Rect { .. }) => {
+                    executor.apply_liquid_glass_from_source_partial(
+                        pass.source,
+                        pass.target,
+                        output,
+                        pass.bounds,
+                        *glass,
+                        crate::shared::layer::filter::rect_liquid_glass_region(
+                            Some(pass.region),
+                            pass.bounds,
+                        ),
+                    )
+                }
+                _ => return Err("unsupported native partial backdrop operation".into()),
+            };
+            return match encoding.error {
+                Some(error) => Err(error),
+                None if success => Ok(()),
+                None => Err("native partial backdrop recording failed".into()),
+            };
         }
         self.copy_filter_region(pass.source, pass.target, pass.bounds)?;
         self.apply_filter(
@@ -84,7 +133,8 @@ impl BackdropAdapter for Execution<'_> {
         bounds: Bounds,
         region: &Region,
     ) -> Result<()> {
-        self.composite_backdrop_image(target, source.image(), bounds, region)
+        let source = source.image_in(self.batch)?;
+        self.composite_backdrop_image(target, source, bounds, region)
     }
 }
 impl Execution<'_> {
@@ -103,7 +153,9 @@ impl Execution<'_> {
             self.batch,
             RectanglePass::Rectangle { source },
             c,
-            None,
+            self.retained
+                .active_tiles()
+                .map(crate::render::damage_tiles::DamageTiles::list),
             self.targets.get(target)?.image(),
         )
     }

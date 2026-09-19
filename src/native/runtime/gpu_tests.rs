@@ -282,3 +282,17 @@ mod persistent_texture;
 mod public_renderer;
 #[path = "tests/recording_gpu.rs"]
 mod recording;
+#[path = "tests/retained_renderer_gpu.rs"]
+mod retained_renderer;
+
+#[path = "tests/persistent_buffer_gpu.rs"]
+mod persistent_buffer;
+
+#[path = "tests/persistent_image_gpu.rs"]
+mod persistent_image;
+
+#[path = "tests/interop_gpu.rs"]
+mod interop;
+
+#[path = "tests/vulkan_target_use_gpu.rs"]
+mod vulkan_target_use;

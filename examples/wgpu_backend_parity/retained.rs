@@ -18,13 +18,13 @@ use tileink::{
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Target {
+pub(super) enum Target {
     Owned,
     Transient,
     Persistent,
 }
 impl Target {
-    fn name(self) -> &'static str {
+    pub(super) fn name(self) -> &'static str {
         match self {
             Self::Owned => "owned",
             Self::Transient => "transient",
@@ -188,68 +188,92 @@ impl Variant {
         ))
     }
     fn validate(&self, sequence: &Sequence, frame: Frame, image: &Image) -> Result<()> {
-        // Independent semantic checks catch shared failures that exact route comparison cannot.
-        if image.rgba8_at(0, 0) != sequence.background {
-            return Err(format!(
-                "{} {}: background sentinel differs: {:?}",
-                self.name,
-                frame.name(),
-                image.rgba8_at(0, 0)
-            )
-            .into());
-        }
-        if matches!(frame, Frame::Empty | Frame::EmptyStatic)
-            && image.pixels.iter().any(|pixel| *pixel != 0)
+        validate_image(
+            &self.name,
+            self.renderer.incremental_render_stats(),
+            self.kind == Target::Transient,
+            self.full,
+            sequence,
+            frame,
+            image,
+        )
+    }
+}
+
+pub(super) fn validate_image(
+    name: &str,
+    stats: &tileink::IncrementalRenderStats,
+    transient: bool,
+    full: bool,
+    sequence: &Sequence,
+    frame: Frame,
+    image: &Image,
+) -> Result<()> {
+    // Independent semantic checks catch shared failures that exact route comparison cannot.
+    if image.rgba8_at(0, 0) != sequence.background {
+        return Err(format!(
+            "{} {}: background sentinel differs: {:?}",
+            name,
+            frame.name(),
+            image.rgba8_at(0, 0)
+        )
+        .into());
+    }
+    if matches!(frame, Frame::Empty | Frame::EmptyStatic)
+        && image.pixels.iter().any(|pixel| *pixel != 0)
+    {
+        return Err(format!(
+            "{} {}: removed content left stale pixels",
+            name,
+            frame.name()
+        )
+        .into());
+    }
+
+    if matches!(frame, Frame::Geometry | Frame::Resume) {
+        validate_redraw(
+            stats,
+            if transient {
+                Target::Transient
+            } else {
+                Target::Owned
+            },
+            full,
+        )
+        .map_err(|error| format!("{} {}: {error}: {stats:?}", name, frame.name()))?;
+    }
+    if !full && !transient {
+        if matches!(frame, Frame::Static | Frame::EmptyStatic)
+            && (stats.dirty_tiles != 0
+                || stats.chunks_rebuilt != 0
+                || stats.gpu_uploaded_bytes != 0)
         {
             return Err(format!(
-                "{} {}: removed content left stale pixels",
-                self.name,
+                "{} {}: static frame did not reuse history: {stats:?}",
+                name,
                 frame.name()
             )
             .into());
         }
-        let stats = self.renderer.incremental_render_stats();
-        if matches!(frame, Frame::Geometry | Frame::Resume) {
-            validate_redraw(stats, self.kind, self.full)
-                .map_err(|error| format!("{} {}: {error}: {stats:?}", self.name, frame.name()))?;
+        if frame == Frame::JournalGap && !stats.full_scene_sync {
+            return Err(format!("{}: journal gap did not force full synchronization", name).into());
         }
-        if !self.full && self.kind != Target::Transient {
-            if matches!(frame, Frame::Static | Frame::EmptyStatic)
-                && (stats.dirty_tiles != 0
-                    || stats.chunks_rebuilt != 0
-                    || stats.gpu_uploaded_bytes != 0)
-            {
-                return Err(format!(
-                    "{} {}: static frame did not reuse history: {stats:?}",
-                    self.name,
-                    frame.name()
-                )
-                .into());
-            }
-            if frame == Frame::JournalGap && !stats.full_scene_sync {
-                return Err(format!(
-                    "{}: journal gap did not force full synchronization",
-                    self.name
-                )
-                .into());
-            }
-            if frame == Frame::Resume && stats.full_scene_sync {
-                return Err(format!(
-                    "{}: incremental updates did not resume after journal gap",
-                    self.name
-                )
-                .into());
-            }
-            if matches!(
-                frame,
-                Frame::Grow | Frame::Shrink | Frame::Tile15 | Frame::Tile16 | Frame::Tile17
-            ) && stats.chunks_rebuilt != 0
-            {
-                return Err(format!("{}: resize rebuilt unchanged geometry", self.name).into());
-            }
+        if frame == Frame::Resume && stats.full_scene_sync {
+            return Err(format!(
+                "{}: incremental updates did not resume after journal gap",
+                name
+            )
+            .into());
         }
-        Ok(())
+        if matches!(
+            frame,
+            Frame::Grow | Frame::Shrink | Frame::Tile15 | Frame::Tile16 | Frame::Tile17
+        ) && stats.chunks_rebuilt != 0
+        {
+            return Err(format!("{}: resize rebuilt unchanged geometry", name).into());
+        }
     }
+    Ok(())
 }
 
 fn validate_redraw(
@@ -272,6 +296,7 @@ fn validate_redraw(
 pub fn render(
     fonts: &Snapshot,
     routes: &[Route],
+    native: &super::native::Routes,
     output: &Path,
     validate: impl FnOnce() -> Result<()>,
 ) -> Result<()> {
@@ -292,6 +317,14 @@ pub fn render(
             }
         }
     }
+    #[cfg(feature = "native")]
+    let mut native_variants = native.retained_variants(fonts)?;
+    #[cfg(feature = "native")]
+    metadata.extend(
+        native_variants
+            .iter()
+            .map(|variant| variant.metadata.clone()),
+    );
     let mut report = Report::new(output, &names, metadata)?;
     let mut evidence_rows = Vec::new();
     let result: Result<()> = (|| {
@@ -299,6 +332,13 @@ pub fn render(
             sequence.apply(frame)?;
             let mut images = Vec::new();
             for variant in &mut variants {
+                println!("Rendering {name} through {}", variant.name);
+                let (image, row) = variant.render(&sequence, frame)?;
+                images.push(image);
+                evidence_rows.push(row);
+            }
+            #[cfg(feature = "native")]
+            for variant in &mut native_variants {
                 println!("Rendering {name} through {}", variant.name);
                 let (image, row) = variant.render(&sequence, frame)?;
                 images.push(image);
@@ -321,7 +361,11 @@ pub fn render(
         &output.join("retained-pipelines-and-stats.json"),
         &json!(evidence_rows),
     )?;
-    report.finish_checked(result.and_then(|()| validate()))
+    report.finish_checked(
+        result
+            .and_then(|()| native.validate())
+            .and_then(|()| validate()),
+    )
 }
 
 #[cfg(test)]

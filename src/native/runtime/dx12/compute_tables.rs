@@ -147,7 +147,7 @@ impl Tables {
                         binding,
                         gpu.get(index),
                         gpu.uniform_offset(index).unwrap_or(0),
-                        (inputs[index].bytes().len() / 4) as u32,
+                        (inputs[index].byte_len() / 4) as u32,
                         self.resources.as_mut().unwrap().allocate(),
                     );
                 }

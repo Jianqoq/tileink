@@ -3,6 +3,7 @@ use super::ResourceId;
 
 pub enum Resource {
     Buffer(Vec<u8>),
+    PersistentBuffer(super::BufferUpload),
     TextureTable(Vec<ResourceId>),
     Sampler(SamplerFilter),
     Texture(Texture),
@@ -10,6 +11,7 @@ pub enum Resource {
 impl Resource {
     pub fn byte_len(&self) -> usize {
         match self {
+            Self::PersistentBuffer(upload) => upload.buffer.state.size,
             Self::Texture(texture) => {
                 texture.size[0] as usize * texture.size[1] as usize * texture.layers as usize * 4
             }
@@ -19,6 +21,7 @@ impl Resource {
     pub fn bytes(&self) -> &[u8] {
         match self {
             Self::Buffer(bytes) => bytes,
+            Self::PersistentBuffer(upload) => &upload.bytes,
             Self::Sampler(_) | Self::TextureTable(_) => &[],
             Self::Texture(texture) => &texture.bytes,
         }

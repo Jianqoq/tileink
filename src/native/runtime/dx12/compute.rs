@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use windows::Win32::Graphics::Direct3D12::*;
 #[derive(Clone)]
 pub struct Frame {
+    pub synchronization: Option<crate::native::interop::dx12::TargetSynchronization>,
     pub list: ID3D12GraphicsCommandList,
     _allocator: ID3D12CommandAllocator,
     _buffers: Vec<ID3D12Resource>,
@@ -19,11 +20,31 @@ impl Frame {
         batch: &ComputeBatch,
         pipelines: &BTreeMap<&'static str, Pipeline>,
     ) -> Result<Self> {
+        let synchronization = match &batch.synchronization {
+            Some((id, crate::native::interop::Synchronization::Dx12(sync))) => Some((*id, sync)),
+            None => None,
+            #[cfg(feature = "native-vulkan")]
+            _ => return Err("Vulkan synchronization requires a Vulkan context".into()),
+        };
+        if let Some((id, sync)) = synchronization {
+            let Resource::Texture(texture) = &batch.resources()[id.index()] else {
+                unreachable!("target image")
+            };
+            let texture = texture.persistent.as_ref().expect("registered target");
+            match &texture.state.allocation {
+                crate::native::runtime::texture::Allocation::Dx12(allocation) => {
+                    super::synchronization::validate(device, &allocation.resource, sync)?
+                }
+                #[cfg(feature = "native-vulkan")]
+                _ => return Err("non-DX12 target synchronization".into()),
+            }
+        }
         unsafe {
             let allocator = device.CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT)?;
             let list: ID3D12GraphicsCommandList =
                 device.CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, &allocator, None)?;
             let mut frame = Self {
+                synchronization: synchronization.map(|(_, sync)| sync.clone()),
                 list,
                 _allocator: allocator,
                 _buffers: Vec::new(),
@@ -34,9 +55,26 @@ impl Frame {
             let gpu = super::compute_resources::Resources::record(device, &frame.list, batch)?;
             let mut states = vec![D3D12_RESOURCE_STATE_COPY_DEST; batch.resources().len()];
             for (index, resource) in batch.resources().iter().enumerate() {
-                if matches!(resource, Resource::Texture(texture) if texture.persistent.is_some()) {
+                if let Resource::Texture(texture) = resource
+                    && let Some(texture) = &texture.persistent
+                {
+                    match &texture.state.allocation {
+                        crate::native::runtime::texture::Allocation::Dx12(allocation) => {
+                            states[index] = allocation.state.get()
+                        }
+                        #[cfg(feature = "native-vulkan")]
+                        _ => unreachable!("validated DX12 allocation"),
+                    }
+                }
+            }
+            for (index, resource) in batch.resources().iter().enumerate() {
+                if matches!(resource, Resource::PersistentBuffer(upload) if upload.bytes.is_empty())
+                {
                     states[index] = D3D12_RESOURCE_STATE_COMMON;
                 }
+            }
+            if let Some((id, sync)) = synchronization {
+                states[id.index()] = sync.incoming;
             }
             let mut tables =
                 super::compute_tables::Tables::new(device, &frame.list, batch.passes())?;
@@ -139,17 +177,30 @@ impl Frame {
                     .CopyBufferRegion(&readback, 0, gpu.get(id), 0, size as u64);
                 frame.readbacks.push(Readback::buffer(readback, size));
             }
-            // Normalize persistent queue state even after copies or readback.
+            // Return imported images to the host's declared state, and owned
+            // storage to its queue-sharing state, including after readback/copies.
             for (id, resource) in batch.resources().iter().enumerate() {
-                if matches!(resource, Resource::Texture(texture) if texture.persistent.is_some())
-                    && states[id] != D3D12_RESOURCE_STATE_COMMON
+                let final_state = match resource {
+                    Resource::Texture(texture) if texture.persistent.is_some() => {
+                        match &texture.persistent.as_ref().unwrap().state.allocation {
+                            crate::native::runtime::texture::Allocation::Dx12(allocation) => {
+                                Some(allocation.final_state)
+                            }
+                            #[cfg(feature = "native-vulkan")]
+                            _ => unreachable!("validated DX12 allocation"),
+                        }
+                    }
+                    Resource::PersistentBuffer(_) => Some(D3D12_RESOURCE_STATE_COMMON),
+                    _ => None,
+                };
+                let final_state = synchronization
+                    .filter(|(target, _)| target.index() == id)
+                    .map(|(_, sync)| sync.outgoing)
+                    .or(final_state);
+                if let Some(final_state) = final_state
+                    && states[id] != final_state
                 {
-                    buffer::transition(
-                        &frame.list,
-                        gpu.get(id),
-                        states[id],
-                        D3D12_RESOURCE_STATE_COMMON,
-                    );
+                    buffer::transition(&frame.list, gpu.get(id), states[id], final_state);
                 }
             }
             frame._buffers = gpu.into_owners();

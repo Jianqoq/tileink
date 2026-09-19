@@ -50,3 +50,6 @@ impl<'a> Images<'a> {
         Ok(())
     }
 }
+
+mod cache;
+pub(crate) use cache::ImageCache;

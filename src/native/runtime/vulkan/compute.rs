@@ -29,12 +29,14 @@ use ash::vk;
 use std::collections::BTreeMap;
 
 pub struct Frame {
+    pub synchronization: Option<crate::native::interop::vulkan::TargetSynchronization>,
     device: ash::Device,
     pool: vk::CommandPool,
     descriptors: vk::DescriptorPool,
     pub fence: vk::Fence,
     pub command: vk::CommandBuffer,
     gpu: Option<Arena>,
+    persistent_buffers: Vec<std::rc::Rc<Arena>>,
     resources: Vec<GpuResource>,
     upload: Option<Arena>,
     readback: Option<Arena>,
@@ -98,13 +100,21 @@ impl Frame {
                 }
             }
         }
+        let synchronization = match &batch.synchronization {
+            Some((id, crate::native::interop::Synchronization::Vulkan(sync))) => Some((*id, sync)),
+            None => None,
+            #[cfg(feature = "native-dx12")]
+            _ => return Err("DX12 synchronization requires a DX12 context".into()),
+        };
         let mut this = Self {
+            synchronization: synchronization.map(|(_, sync)| sync.clone()),
             device: device.clone(),
             pool: vk::CommandPool::null(),
             descriptors: vk::DescriptorPool::null(),
             fence: vk::Fence::null(),
             command: vk::CommandBuffer::null(),
             gpu: None,
+            persistent_buffers: Vec::new(),
             resources: Vec::new(),
             upload: None,
             readback: None,
@@ -188,6 +198,17 @@ impl Frame {
         for (index, resource) in batch.resources().iter().enumerate() {
             this.resources.push(match resource {
                 Resource::TextureTable(_) => GpuResource::TextureTable,
+                Resource::PersistentBuffer(upload) => {
+                    let allocation = match &upload.buffer.state.allocation {
+                        crate::native::runtime::buffer::Allocation::Vulkan(allocation) => {
+                            allocation
+                        }
+                        #[cfg(feature = "native-dx12")]
+                        _ => return Err("non-Vulkan persistent buffer".into()),
+                    };
+                    this.persistent_buffers.push(allocation.clone());
+                    GpuResource::Buffer(allocation.buffers[0])
+                }
                 Resource::Buffer(_) => {
                     GpuResource::Buffer(if this.uniform_offsets[index].is_some() {
                         this.upload.as_ref().unwrap().buffers[0]
@@ -282,25 +303,67 @@ impl Frame {
             }
             device.begin_command_buffer(command, &vk::CommandBufferBeginInfo::default())?;
             let gpu = &this.resources;
+            // Queue order alone does not make previous shader writes/reads visible
+            // to range transfers in the next batch. Cover both write and reuse hazards.
+            barrier(
+                device,
+                command,
+                vk::PipelineStageFlags::ALL_COMMANDS,
+                vk::PipelineStageFlags::TRANSFER | vk::PipelineStageFlags::COMPUTE_SHADER,
+                vk::AccessFlags::MEMORY_WRITE | vk::AccessFlags::MEMORY_READ,
+                vk::AccessFlags::TRANSFER_WRITE
+                    | vk::AccessFlags::TRANSFER_READ
+                    | vk::AccessFlags::SHADER_READ
+                    | vk::AccessFlags::SHADER_WRITE,
+            );
+
             for (i, buffer) in batch.resources().iter().enumerate() {
                 if this.uniform_offsets[i].is_some()
                     || matches!(buffer, Resource::Sampler(_) | Resource::TextureTable(_))
                 {
                     continue;
                 }
+                if let Resource::PersistentBuffer(input) = buffer {
+                    if !input.copies.is_empty() {
+                        let copies: Vec<_> = input
+                            .copies
+                            .iter()
+                            .map(|&[source, destination, size]| vk::BufferCopy {
+                                src_offset: source_offsets[i] + source,
+                                dst_offset: destination,
+                                size,
+                            })
+                            .collect();
+                        device.cmd_copy_buffer(
+                            command,
+                            this.upload.as_ref().unwrap().buffers[0],
+                            gpu[i].buffer(),
+                            &copies,
+                        );
+                    }
+                    continue;
+                }
                 if let GpuResource::Image(image) = &gpu[i] {
                     if let Resource::Texture(texture) = buffer
-                        && let Some(texture) = &texture.persistent
+                        && texture.persistent.is_some()
                     {
-                        image.transition(
-                            command,
-                            if texture.state.initialized.get() {
-                                vk::ImageLayout::GENERAL
-                            } else {
-                                vk::ImageLayout::UNDEFINED
-                            },
-                            vk::ImageLayout::GENERAL,
-                        );
+                        if let Some((_, sync)) = synchronization.filter(|(id, _)| id.index() == i) {
+                            image.acquire(command, sync.incoming, family);
+                        } else {
+                            if image.current_family.get() != vk::QUEUE_FAMILY_IGNORED
+                                && image.current_family.get() != family
+                            {
+                                return Err(
+                                    "external Vulkan ownership requires an explicit target use"
+                                        .into(),
+                                );
+                            }
+                            image.transition(
+                                command,
+                                image.current_layout.get(),
+                                vk::ImageLayout::GENERAL,
+                            );
+                        }
                         continue;
                     }
                     image.upload(
@@ -422,6 +485,18 @@ impl Frame {
                     vk::AccessFlags::TRANSFER_WRITE,
                     vk::AccessFlags::HOST_READ,
                 );
+            }
+            // Restore the host's declared layout before its next queue operation.
+            for (index, resource) in batch.resources().iter().enumerate() {
+                if matches!(resource, Resource::Texture(texture) if texture.persistent.is_some())
+                    && let GpuResource::Image(image) = &gpu[index]
+                {
+                    if let Some((_, sync)) = synchronization.filter(|(id, _)| id.index() == index) {
+                        image.release(command, sync.outgoing, family);
+                    } else if image.final_layout != vk::ImageLayout::GENERAL {
+                        image.transition(command, vk::ImageLayout::GENERAL, image.final_layout);
+                    }
+                }
             }
             device.end_command_buffer(command)?;
         }

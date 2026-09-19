@@ -111,8 +111,9 @@ mod native;
 #[cfg(any(feature = "native-dx12", feature = "native-vulkan"))]
 pub use native::{
     BackendUnavailable, BackendUnavailableReason, NativeBackend, NativeContext,
-    NativeContextOptions, NativeError, NativeImageSubmission, NativeRenderer, NativeShaderArtifact,
-    NativeSubmission, NativeTexture, SHADER_ARTIFACTS as NATIVE_SHADER_ARTIFACTS,
+    NativeContextOptions, NativeError, NativeImageSubmission, NativeRenderTarget, NativeRenderer,
+    NativeShaderArtifact, NativeSubmission, NativeTexture,
+    SHADER_ARTIFACTS as NATIVE_SHADER_ARTIFACTS,
 };
 
 #[cfg(all(feature = "wgpu", feature = "bench-internals"))]
@@ -121,3 +122,9 @@ pub use wgpu::{ImageResourceUploadBenchmark, PreparedImageResourceUpload};
 
 #[cfg(all(feature = "wgpu", feature = "bench-internals"))]
 pub use wgpu::FilterCompilationBenchmark;
+
+#[cfg(any(feature = "native-dx12", feature = "native-vulkan"))]
+pub use native::interop as native_interop;
+
+#[cfg(any(feature = "native-dx12", feature = "native-vulkan"))]
+pub use native::{NativeTargetState, NativeTargetSubmission, NativeTargetUse};

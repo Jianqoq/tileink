@@ -104,3 +104,5 @@ mod resources;
 
 #[path = "program/scene.rs"]
 pub mod scene;
+
+pub(crate) mod cached_buffer;

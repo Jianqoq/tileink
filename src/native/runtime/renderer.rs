@@ -24,7 +24,7 @@ mod filter_kernels;
 mod filter_resources;
 mod filters;
 mod frame;
-mod images;
+pub(crate) mod images;
 pub(crate) mod recording;
 mod targets;
 pub(crate) use images::Images;
@@ -42,6 +42,12 @@ pub(crate) struct FrameOptions {
     pub target: Option<ResourceId>,
 }
 
+struct FrameResources<'a> {
+    images: &'a Images<'a>,
+    text: Option<&'a crate::text::PreparedTextData>,
+    retained: &'a mut RetainedRenderState<Surface>,
+}
+
 /// Records one Canvas in an existing frame batch. Its image placements and scene
 /// stay associated through recursive operations; errors invalidate the whole batch.
 pub(crate) struct Execution<'a> {
@@ -54,7 +60,7 @@ pub(crate) struct Execution<'a> {
     text: Option<&'a crate::text::PreparedTextData>,
     targets: Targets,
     paths: Option<path_mask::Paths>,
-    retained: RetainedRenderState<Surface>,
+    retained: &'a mut RetainedRenderState<Surface>,
     chunked: bool,
     limit: u32,
 }
@@ -69,24 +75,47 @@ impl<'a> Execution<'a> {
         options: FrameOptions,
         limit: u32,
     ) -> Result<ResourceId> {
-        frame::record(cache, batch, canvas, images, text, options, limit)
+        frame::record(
+            cache,
+            batch,
+            canvas,
+            FrameResources {
+                images,
+                text,
+                retained: &mut RetainedRenderState::default(),
+            },
+            options,
+            limit,
+        )
     }
 
     fn prepare(
         prepared: crate::native::runtime::program::scene::PreparedScene<'_>,
         batch: &'a mut ComputeBatch,
-        images: &'a Images<'a>,
-        text: Option<&'a crate::text::PreparedTextData>,
+        resources: FrameResources<'a>,
         options: FrameOptions,
         limit: u32,
     ) -> Result<Self> {
+        let FrameResources {
+            images,
+            text,
+            retained,
+        } = resources;
         let size = prepared.size();
         let targets = if let Some(target) = options.target {
             Targets::from_image(batch, target, [size.0, size.1])?
         } else {
             Targets::new(batch, [size.0, size.1], options.clear_color)?
         };
-        let scene = prepared.record(batch, text, Some(images.upload()), limit)?;
+        let scene = prepared.record(
+            batch,
+            text,
+            Some(images.upload()),
+            super::program::scene::SceneOptions {
+                limit,
+                active: retained.active_tiles(),
+            },
+        )?;
         let filters = filter_resources::FilterResources::record(batch, scene.plan(), None, images)?;
         let paths = prepare_paths(batch, scene.plan())?;
         Ok(Self {
@@ -99,7 +128,7 @@ impl<'a> Execution<'a> {
             text,
             targets,
             paths,
-            retained: RetainedRenderState::new(Default::default()),
+            retained,
             chunked: options.chunked,
             limit,
         })

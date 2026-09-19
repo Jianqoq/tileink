@@ -222,7 +222,17 @@ fn explicit_scene_plan_does_not_poison_cached_canvas_metadata() -> Result<()> {
         .plan_handle();
     // SAFETY: the plan above was compiled from the same unchanged Canvas.
     unsafe {
-        cache.record_with_plan(&mut ComputeBatch::new(), &local, None, None, 65535, plan)?;
+        cache.record_with_plan(
+            &mut ComputeBatch::new(),
+            &local,
+            None,
+            None,
+            super::SceneOptions {
+                limit: 65535,
+                active: None,
+            },
+            plan,
+        )?;
     }
     let b = cache.record(&mut ComputeBatch::new(), &root, None, None, 65535)?;
     assert_eq!(
@@ -257,9 +267,15 @@ fn discarded_scene_preparation_never_claims_unrecorded_metadata_is_uploaded() ->
         restored.plan.draw_order.len(),
         original.plan.draw_order.len()
     );
-    let changed = cache
-        .prepare(&changed)
-        .record(&mut ComputeBatch::new(), None, None, 65535)?;
+    let changed = cache.prepare(&changed).record(
+        &mut ComputeBatch::new(),
+        None,
+        None,
+        super::SceneOptions {
+            limit: 65535,
+            active: None,
+        },
+    )?;
     assert!(changed.plan.draw_order.len() > restored.plan.draw_order.len());
     Ok(())
 }

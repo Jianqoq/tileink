@@ -350,3 +350,9 @@ required-features = ["wgpu", "bench-internals"]
 name = "retained_frame_delta"
 harness = false
 required-features = ["bench-internals"]
+
+[[example]]
+name = "native_present"
+test = true
+path = "examples/native_window/main.rs"
+required-features = ["native"]

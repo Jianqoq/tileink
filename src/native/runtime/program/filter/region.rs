@@ -46,7 +46,10 @@ pub(super) fn record(
     }
     for (_, id) in reads.buffers {
         batch.size(*id)?;
-        if !matches!(&batch.resources()[id.index()], Resource::Buffer(_)) {
+        if !matches!(
+            &batch.resources()[id.index()],
+            Resource::Buffer(_) | Resource::PersistentBuffer(_)
+        ) {
             return Err("filter table binding requires a buffer".into());
         }
     }

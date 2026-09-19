@@ -9,18 +9,14 @@ separate under `src/native/runtime/dx12/` and `vulkan/`; named `.rs` files are t
 module roots. See [M3 closeout](docs/native/m3-completion.md) for the executable
 checks and Q16 numerical contract. Windows owned public contexts and immediate
 renderers are now available; see [public renderer contract](docs/native/m4-public-renderer.md).
-Full M4 corpus acceptance remains pending. External targets, retained history and automatic device-loss reconstruction
-below remain M5. Fail-stop quarantine does not claim automatic recovery.
-
-
-The sections below retain the complete target contract. Owned immediate rendering
-is implemented on Windows DX12 and Vulkan; imported targets and retained operations
-remain implementation requirements, not claims of available APIs.
-M1 requires executable coverage of the shared state and scheduling contracts, and
-the WGPU adapter must pass its output and semantic gates. Performance comparisons
-for this M0/M1 delivery were stopped by the user on 2026-09-13. The native context,
-target and synchronization checks listed below execute with the real M3/M5 adapters;
-M1 does not claim that those native operations are implemented.
+M4 corpus acceptance is complete. Windows M5 implements owned/imported targets,
+retained history, incremental uploads, explicit per-use synchronization and native
+window presentation examples. See [M5 implementation](docs/native/m5-implementation.md)
+and [host integration](docs/native/host-interop.md) for executable coverage.
+Device loss is terminal for a context: fail-stop quarantine protects pending
+resources, and the host reconstructs the context/renderer. Automatic device
+recreation is not provided. Mac compilation and real GPU validation remain deferred.
+Performance comparisons were stopped at the user's request.
 
 ## Context and ownership
 
@@ -31,8 +27,8 @@ GPU are not interchangeable. A renderer created from an existing context shares 
 immutable device capabilities and queue owner, while keeping independent scene,
 materializer, damage, cache and history state.
 
-API-specific import lives in `native::dx12::interop` and
-`native::vulkan::interop`. Imports do not transfer responsibility for destroying
+API-specific import lives in `tileink::native_interop::dx12` and
+`tileink::native_interop::vulkan`. Imports do not transfer responsibility for destroying
 caller-owned devices, queues or target allocations. They retain ownership pins for
 the device and allocation, including memory and allocator ownership behind a Vulkan
 image. Pins must remain alive through the last GPU use, even after the renderer,
@@ -167,7 +163,9 @@ An older confirmed receipt is never that proof. Explicit draining/closing can fa
 without discarding the unresolved owner. Last-owner destruction must retain or
 safely drain its resources; a timeout or a failed wait is not permission to free
 potentially in-flight memory. Any exceptional drain is separately observable.
-Normal render and resize have no unconditional device-idle or whole-queue wait.
+Tileink rendering and target replacement have no unconditional device-idle or
+whole-queue wait. The host controls swapchain retirement; the small window example
+uses a host wait on resize/teardown, not inside Tileink rendering.
 
 Readback is an explicit submitted copy plus completion and mapping operation.
 It returns tightly packed valid RGBA bytes after removing API-specific row padding.
@@ -177,7 +175,7 @@ No hidden readback is added to ordinary production rendering or Criterion frames
 
 The existing CPU batch tests already exercise submission rejection, unconfirmed
 attempts, confirmed prefixes and aborts. The following additional API-contract
-checks remain required when the context/target adapters are implemented:
+checks define the context/target adapter acceptance coverage:
 
 - Independent renderers sharing one device retain separate scene/history cursors.
 - Same physical GPU with different logical devices rejects cross-device targets;

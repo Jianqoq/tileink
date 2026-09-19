@@ -25,7 +25,9 @@ impl MaskAdapter for Execution<'_> {
             self.batch,
             BasicFilter::SvgMask,
             config,
-            None,
+            self.retained
+                .active_tiles()
+                .map(crate::render::damage_tiles::DamageTiles::list),
             Some(self.targets.get(source)?.image()),
             self.targets.get(target)?.image(),
         )
@@ -51,14 +53,24 @@ impl MaskAdapter for Execution<'_> {
                 config.radius_top_right = radius.top_right;
                 config.radius_bottom_left = radius.bottom_left;
                 config.radius_bottom_right = radius.bottom_right;
-                rectangle::encode(self.batch, RectanglePass::Mask, config, None, target)
+                rectangle::encode(
+                    self.batch,
+                    RectanglePass::Mask,
+                    config,
+                    self.retained
+                        .active_tiles()
+                        .map(crate::render::damage_tiles::DamageTiles::list),
+                    target,
+                )
             }
             Region::Path { .. } => {
                 config.table_index = path.ok_or("native mask path cursor missing")?;
                 path_mask::encode(
                     self.batch,
                     config,
-                    None,
+                    self.retained
+                        .active_tiles()
+                        .map(crate::render::damage_tiles::DamageTiles::list),
                     self.paths.ok_or("native mask paths missing")?,
                     target,
                 )
@@ -80,7 +92,9 @@ impl MaskAdapter for Execution<'_> {
                 mask: self.targets.get(mask)?.image(),
             },
             config,
-            None,
+            self.retained
+                .active_tiles()
+                .map(crate::render::damage_tiles::DamageTiles::list),
             self.targets.get(target)?.image(),
         )
     }

@@ -21,9 +21,13 @@ impl Execution<'_> {
         region: Option<&Region>,
         cursors: &mut FilterCursors,
     ) -> Result<()> {
+        let work = self
+            .retained
+            .active_tiles()
+            .map(|tiles| tiles.list().to_vec());
         let mut encoding = FilterEncoding {
             execution: self,
-            work: None,
+            work,
             error: None,
         };
         let success = FilterExecutor::new(&mut encoding)
@@ -88,6 +92,7 @@ impl FilterAdapter for FilterEncoding<'_, '_> {
         previous
     }
     fn restore_incremental_filter_work(&mut self, active: Option<DamageTiles>) {
+        self.work = active.as_ref().map(|tiles| tiles.list().to_vec());
         self.execution.retained.set_active_tiles(active);
     }
 }

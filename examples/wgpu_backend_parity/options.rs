@@ -149,11 +149,6 @@ impl Options {
             );
         }
         let textures = textures.unwrap_or_else(|| vec![false, true]);
-        if native && suite == Some(Suite::Retained) {
-            return Err(
-                "--native certifies immediate frames; retained native routes remain M5".into(),
-            );
-        }
         if dx12_fine == Dx12Fine::Precompiled && !textures.contains(&true) {
             return Err("precompiled DX12 fine requires a portable texture route".into());
         }
@@ -265,7 +260,7 @@ mod tests {
     }
 
     #[test]
-    fn native_routes_are_explicit_and_reject_retained_or_duplicate_requests() {
+    fn native_routes_are_explicit_and_reject_duplicate_requests() {
         assert!(!parse(&[]).unwrap().unwrap().native);
         assert!(parse(&["--native"]).unwrap().unwrap().native);
         assert!(
@@ -275,7 +270,7 @@ mod tests {
                 .native
         );
         assert!(parse(&["--native", "--suite", "examples"]).is_ok());
-        assert!(parse(&["--native", "--suite", "retained"]).is_err());
+        assert!(parse(&["--native", "--suite", "retained"]).is_ok());
         assert!(parse(&["--native", "--native"]).is_err());
     }
 

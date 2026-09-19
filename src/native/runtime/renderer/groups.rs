@@ -18,7 +18,9 @@ impl GroupAdapter for Execution<'_> {
             self.batch,
             BasicFilter::Color,
             config,
-            None,
+            self.retained
+                .active_tiles()
+                .map(crate::render::damage_tiles::DamageTiles::list),
             None,
             self.targets.get(target)?.image(),
         )
@@ -32,6 +34,13 @@ impl GroupAdapter for Execution<'_> {
             .as_ref()
             .ok_or("native scene has not been scanned")?
             .filter_geometry()
-            .mask(self.batch, config, None, self.targets.get(target)?.image())
+            .mask(
+                self.batch,
+                config,
+                self.retained
+                    .active_tiles()
+                    .map(crate::render::damage_tiles::DamageTiles::list),
+                self.targets.get(target)?.image(),
+            )
     }
 }

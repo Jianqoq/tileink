@@ -13,12 +13,20 @@ pub struct NativeTexture {
     pub(super) state: std::rc::Rc<super::runtime::texture::State>,
     pub(super) context: NativeContext,
     pub(super) size: [u32; 2],
+    pub(super) layers: u32,
+    pub(super) array: bool,
 }
 
 impl NativeTexture {
     /// Submit an explicit GPU readback copy. The returned receipt waits/maps only
     /// when its `readback` method is called; normal rendering does not read pixels.
     pub fn readback(&self) -> Result<super::NativeImageSubmission, super::NativeError> {
+        if self.array {
+            return Err(super::NativeError::Recording(
+                "array texture is not a two-dimensional output image".into(),
+            ));
+        }
+
         #[cfg(all(
             target_os = "windows",
             any(feature = "native-dx12", feature = "native-vulkan")

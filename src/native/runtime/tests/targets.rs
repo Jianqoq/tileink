@@ -54,7 +54,7 @@ fn extracted_surfaces_remain_owned_and_replacement_does_not_retire_commands() ->
     assert_eq!(targets.acquire(&mut batch)?, slot);
     let replaced = targets.get(slot)?.image();
     assert_ne!(saved, replaced);
-    targets.install(&batch, slot, surface)?;
+    targets.install(&mut batch, slot, surface)?;
     assert_eq!(targets.get(slot)?.image(), saved);
     assert_eq!(batch.size(replaced)?, 8);
     assert_eq!(batch.size(saved)?, 8);
@@ -76,9 +76,9 @@ fn invalid_surface_contexts_fail_without_changing_live_slots() -> Result<()> {
     let mut foreign = ComputeBatch::new();
     assert!(targets.acquire(&mut foreign).is_err());
     let wrong_owner = Surface::allocate(&mut foreign, [2, 1], 0)?;
-    assert!(targets.install(&batch, slot, wrong_owner).is_err());
+    assert!(targets.install(&mut batch, slot, wrong_owner).is_err());
     let wrong_size = Surface::allocate(&mut batch, [1, 1], 0)?;
-    assert!(targets.install(&batch, slot, wrong_size).is_err());
+    assert!(targets.install(&mut batch, slot, wrong_size).is_err());
     assert_eq!(targets.get(slot)?.image(), saved);
     assert!(targets.release(RenderTargetId::Main).is_err());
     assert!(targets.take(RenderTargetId::Scratch(99)).is_err());

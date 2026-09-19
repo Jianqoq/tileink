@@ -304,12 +304,14 @@ Mac 按用户决定延期，不计入本轮 Windows M3 验收；性能比较仍�
 
 ### M5 — Retained、外部目标和持续帧
 
-- [ ] 完成增量上传、损伤图、局部 filter/offscreen 复用、journal 恢复和多 Renderer 独立状态。
-- [ ] 完成自有目标、transient/persistent 外部目标、surface origin、resize、device loss 的语义和同步测试。
-- [ ] 增加原生示例展示两种 API 的上下文创建、目标获取、Tileink 渲染和提交/present 边界；不修改 gfx_ui 或 trading app。
-- [ ] 跑完整状态序列，逐帧对照四路及 Auto/ForceFull，检查旧像素保留、history 失效和提交后资源回收。
+- [x] 完成增量上传、损伤图、局部 filter/offscreen 复用、journal 恢复和多 Renderer 独立状态。
+- [x] 完成自有目标、transient/persistent 外部目标、surface origin、resize、device loss 的语义和同步测试。
+- [x] 增加原生示例展示两种 API 的上下文创建、目标获取、Tileink 渲染和提交/present 边界；不修改 gfx_ui 或 trading app。
+- [x] 跑完整状态序列，逐帧对照四路及 Auto/ForceFull，检查旧像素保留、history 失效和提交后资源回收。
 
 **退出条件：** 完整功能在持续运行和目标变化后仍保持四路零差异；原生路径可以被未来宿主提供的 device/queue/目标使用。
+
+2026-09-19?Windows M5 ????? [M5 ????](docs/native/m5-implementation.md) ? [????](docs/native/m5-verification.json)?29 ? ? 36 ? retained?1,712 SVG ? 45 ??????????????????? resize/present ????Mac ?????????gfx_ui ???????
 
 ### M6 — 全量验收、性能与文档
 

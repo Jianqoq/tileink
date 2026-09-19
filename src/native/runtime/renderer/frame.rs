@@ -8,15 +8,13 @@ use crate::{
         frame::{FrameAdapter, FrameError},
     },
     shared::execution::ExecPlan,
-    text::PreparedTextData,
 };
 use std::rc::Rc;
 
 struct Frame<'gpu, 'scene> {
     prepared: Option<PreparedScene<'scene>>,
     batch: Option<&'gpu mut ComputeBatch>,
-    images: &'gpu Images<'gpu>,
-    text: Option<&'gpu PreparedTextData>,
+    resources: Option<super::FrameResources<'gpu>>,
     execution: Option<Execution<'gpu>>,
     size: (u32, u32),
     options: FrameOptions,
@@ -27,18 +25,16 @@ pub(super) fn record<'gpu>(
     cache: &mut SceneCache,
     batch: &'gpu mut ComputeBatch,
     canvas: &Canvas,
-    images: &'gpu Images<'gpu>,
-    text: Option<&'gpu PreparedTextData>,
+    resources: super::FrameResources<'gpu>,
     options: FrameOptions,
     limit: u32,
 ) -> Result<ResourceId> {
     // Validate before plan preparation or any native scene resources are recorded.
-    images.validate(batch)?;
+    resources.images.validate(batch)?;
     let mut frame = Frame {
         prepared: Some(cache.prepare(canvas)),
         batch: Some(batch),
-        images,
-        text,
+        resources: Some(resources),
         execution: None,
         size: canvas.physical_size(),
         options,
@@ -56,22 +52,28 @@ pub(super) fn record<'gpu>(
         }
         FrameError::Adapter(error) => error,
     })?;
-    Ok(frame
-        .execution
-        .as_ref()
-        .ok_or("native frame was not scanned")?
-        .targets
-        .get(RenderTargetId::Main)?
-        .image())
+    if let Some(execution) = &frame.execution {
+        Ok(execution.targets.get(RenderTargetId::Main)?.image())
+    } else {
+        options
+            .target
+            .ok_or_else(|| "empty damage requires persistent native history".into())
+    }
 }
 
 impl FrameAdapter for Frame<'_, '_> {
     type Error = Box<dyn std::error::Error>;
-    // Immediate frames own fresh targets. Submission retirement is the adapter's
+    // Submission retirement is the adapter's
     // responsibility and must not introduce a CPU wait into frame recording.
     fn recycle_previous_frame(&mut self) {}
     fn active_tiles(&self) -> Option<&DamageTiles> {
-        None
+        if let Some(execution) = &self.execution {
+            execution.retained.active_tiles()
+        } else {
+            self.resources
+                .as_ref()
+                .and_then(|resources| resources.retained.active_tiles())
+        }
     }
     fn size(&self) -> (u32, u32) {
         self.size
@@ -91,7 +93,7 @@ impl FrameAdapter for Frame<'_, '_> {
         Ok(())
     }
     fn set_initial_root_batch_budget(&mut self, _budget: usize) {
-        unreachable!("immediate native frames disable early submission")
+        unreachable!("native frames disable early submission")
     }
     fn scan_scene(&mut self, _canvas: &Canvas) -> Result<()> {
         self.execution = Some(Execution::prepare(
@@ -99,16 +101,17 @@ impl FrameAdapter for Frame<'_, '_> {
             self.batch
                 .take()
                 .ok_or("native frame batch already consumed")?,
-            self.images,
-            self.text,
+            self.resources
+                .take()
+                .ok_or("native frame resources already consumed")?,
             self.options,
             self.limit,
         )?);
         Ok(())
     }
     fn clear_root(&mut self, partial: bool) -> Result<()> {
-        if partial {
-            return Err("native immediate frame cannot preserve partial history".into());
+        if partial && self.options.target.is_none() {
+            return Err("native partial frame requires persistent history".into());
         }
         if self.options.target.is_some() {
             let execution = self
@@ -126,7 +129,7 @@ impl FrameAdapter for Frame<'_, '_> {
                     clear_color: self.options.clear_color,
                     ..Default::default()
                 },
-                None,
+                execution.retained.active_tiles().map(DamageTiles::list),
                 None,
                 execution.targets.get(RenderTargetId::Main)?.image(),
             )?;
@@ -136,7 +139,14 @@ impl FrameAdapter for Frame<'_, '_> {
         Ok(())
     }
     fn active_batch_ids(&mut self, _batch_ids: &[u32]) -> Vec<u32> {
-        unreachable!("immediate native frames have no damage selection")
+        self.execution
+            .as_ref()
+            .expect("scanned native frame")
+            .scene
+            .as_ref()
+            .expect("native scene")
+            .active_batches
+            .clone()
     }
     fn execute_direct_root(
         &mut self,
@@ -172,7 +182,7 @@ impl FrameAdapter for Frame<'_, '_> {
         )
     }
     fn copy_history_to_output(&mut self) -> Result<()> {
-        Err("native immediate frames do not own retained history".into())
+        Err("native target routing performs history copies after frame execution".into())
     }
     fn record_filter_stats(&mut self) {}
 }

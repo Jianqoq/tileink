@@ -22,8 +22,9 @@ resource ownership, cached shaders/pipelines and four-API exact texture/numerica
 probes. Windows now exposes owned `NativeContext` / `NativeRenderer` for immediate
 Canvas and text rendering, explicit completion/readback and configurable background
 clearing. [Windows M4](docs/native/m4-completion.md) passes 1,712 SVGs and 45 example
-images with exact six-route parity on the recorded GPU/driver. Native retained and
-external-target support remain M5; Metal hardware verification is deferred.
+images with exact six-route parity on the recorded GPU/driver. Native retained rendering, incremental uploads and
+host device/target interop are documented in [M5](docs/native/m5-implementation.md).
+Metal hardware verification is deferred.
 
 This repository maintains a [shared wgpu HAL patch](WGPU_PATCHES.md), including DX12
 write-only texture synchronization. Cargo patches are not transitive: consumers must select
@@ -43,15 +44,15 @@ dependency. GPU rendering requires `wgpu` or a supported native feature.
 | --- | --- |
 | Default / `wgpu` | Existing WGPU renderer and texture interop |
 | `default-features = false` | CPU scene construction and shared renderer contracts |
-| `native-dx12` | Owned Windows DX12 immediate renderer using cached HLSL/DXIL |
-| `native-vulkan` | Owned Windows Vulkan immediate renderer using cached HLSL/SPIR-V; Linux runtime remains unavailable |
+| `native-dx12` | Windows DX12 immediate/retained renderer and host interop using cached HLSL/DXIL |
+| `native-vulkan` | Windows Vulkan immediate/retained renderer and host interop using cached HLSL/SPIR-V; Linux runtime remains unavailable |
 | `native` | Both native feature selections |
 | `wgpu` plus a native feature | Both renderers coexist; backend selection is explicit |
 
 Native constructors return explicit errors for unsupported platforms, unavailable
-adapters or insufficient capabilities; they never fall back to WGPU. Native retained
-rendering and imported targets remain M5. Persistent owned targets, direct target
-rendering and nonblocking completion queries are available; see the
+adapters or insufficient capabilities; they never fall back to WGPU. Persistent owned targets, retained rendering, typed host device/target imports
+and nonblocking completion queries are available; see the
+[host interop and presentation guide](docs/native/host-interop.md),
 [owned target guide](docs/native/owned-targets.md),
 [owned API contract](docs/native/m4-public-renderer.md) and
 [four-API corpus runner](docs/native/m4-corpus-runner.md).

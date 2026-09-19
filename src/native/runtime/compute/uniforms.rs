@@ -30,7 +30,8 @@ impl Uniforms {
         let mut bytes = Vec::new();
         let mut offsets = vec![None; eligible.len()];
         for (index, resource) in batch.resources().iter().enumerate() {
-            if !eligible[index] || !used[index] {
+            if !eligible[index] || !used[index] || matches!(resource, Resource::PersistentBuffer(_))
+            {
                 continue;
             }
             let Resource::Buffer(data) = resource else {

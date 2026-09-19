@@ -6,7 +6,7 @@ use super::super::{
 use super::{
     coarse::{self, CoarseBindings},
     fine::{self, FineBindings},
-    resources::{allocate, upload},
+    resources::allocate,
     scene_scan::{self, PreparedScan, ScanOutput},
 };
 use crate::{
@@ -28,10 +28,28 @@ use crate::{
 use std::{ops::Range, rc::Rc};
 
 #[derive(Default)]
+struct SceneBuffers {
+    coarse_text: super::cached_buffer::CachedBuffer,
+    fine_text: super::cached_buffer::CachedBuffer,
+    scan: scene_scan::ScanBuffers,
+    draws: super::cached_buffer::CachedBuffer,
+    paint: super::cached_buffer::CachedBuffer,
+    layers: super::cached_buffer::CachedBuffer,
+    batches: super::cached_buffer::CachedBuffer,
+}
+
+#[derive(Default)]
 pub(crate) struct SceneCache {
+    buffers: SceneBuffers,
+    pending: Option<std::rc::Rc<std::cell::Cell<bool>>>,
     staging: SceneUploadStaging,
     preparation: ScenePreparation,
     plan: Option<Rc<ExecPlan>>,
+}
+
+pub(crate) struct SceneOptions<'a> {
+    pub limit: u32,
+    pub active: Option<&'a crate::render::damage_tiles::DamageTiles>,
 }
 
 /// Keeps compiled metadata paired with its Canvas and cache until scan consumes it.
@@ -54,14 +72,15 @@ impl PreparedScene<'_> {
         batch: &mut ComputeBatch,
         text: Option<&PreparedTextData>,
         images: Option<&GpuImageResourceUpload>,
-        limit: u32,
+        options: SceneOptions<'_>,
     ) -> Result<Scene> {
         self.cache
-            .record_prepared(batch, self.canvas, text, images, limit, self.plan)
+            .record_prepared(batch, self.canvas, text, images, options, self.plan)
     }
 }
 
 pub(crate) struct Scene {
+    pub(crate) active_batches: Vec<u32>,
     draw_count: u32,
     plan: Rc<ExecPlan>,
     layer_count: u32,
@@ -108,7 +127,15 @@ impl SceneCache {
         images: Option<&GpuImageResourceUpload>,
         limit: u32,
     ) -> Result<Scene> {
-        self.prepare(canvas).record(batch, text, images, limit)
+        self.prepare(canvas).record(
+            batch,
+            text,
+            images,
+            SceneOptions {
+                limit,
+                active: None,
+            },
+        )
     }
 
     // Localized plans carry remapped physical indices. Compiling the Canvas again
@@ -122,7 +149,7 @@ impl SceneCache {
         canvas: &Canvas,
         text: Option<&PreparedTextData>,
         images: Option<&GpuImageResourceUpload>,
-        limit: u32,
+        options: SceneOptions<'_>,
         plan: Rc<ExecPlan>,
     ) -> Result<Scene> {
         // Root cause: explicit local metadata has no Canvas fingerprint. Retaining
@@ -135,7 +162,7 @@ impl SceneCache {
             reused_metadata: false,
             upload_filters: true,
         };
-        self.record_prepared(batch, canvas, text, images, limit, prepared)
+        self.record_prepared(batch, canvas, text, images, options, prepared)
     }
 
     fn record_prepared(
@@ -144,13 +171,34 @@ impl SceneCache {
         canvas: &Canvas,
         text: Option<&PreparedTextData>,
         images: Option<&GpuImageResourceUpload>,
-        limit: u32,
+        options: SceneOptions<'_>,
         prepared: crate::render::prepare::PreparedPlan,
     ) -> Result<Scene> {
+        if self
+            .pending
+            .as_ref()
+            .is_some_and(|accepted| !accepted.get())
+        {
+            // A failed frame may have consumed shared dirty journals before reaching
+            // every upload. Rebuild all GPU scene storage rather than apply a gap.
+            self.buffers = SceneBuffers::default();
+        }
+        self.pending = Some(batch.acceptance());
+        let limit = options.limit;
         let (scan, lengths) = PreparedScan::for_scene(canvas, &mut self.staging, text, &prepared);
         let work_words = validate_work_layout(lengths)?;
-        let scan = scene_scan::encode_scene(batch, &scan, limit)?;
-        let draws = upload(batch, &canvas.draw_records)?;
+        let output = scene_scan::encode_cached(batch, &scan, limit, &mut self.buffers.scan)?;
+        let dirty = scan.dirty;
+        self.staging.path_plans.recycle_dirty(dirty);
+        let scan = output;
+        let draws = self.buffers.draws.upload(
+            batch,
+            &canvas.draw_records,
+            canvas
+                .buffer_changes
+                .as_ref()
+                .map(|changes| changes.draws.as_slice()),
+        )?;
         let paint = self.staging.paint.prepare(canvas, images);
         let paint_offsets = (paint.shadow_base, paint.brush_base);
         let paint = match paint.data {
@@ -171,7 +219,9 @@ impl SceneCache {
                     batch.buffer(bytes)?
                 }
             }
-            PaintData::Retained { words, .. } => upload(batch, words)?,
+            PaintData::Retained { words, ranges } => {
+                self.buffers.paint.upload(batch, words, Some(&ranges))?
+            }
         };
         self.staging.text.refill(
             canvas,
@@ -180,8 +230,16 @@ impl SceneCache {
             canvas.buffer_changes.as_ref(),
             None,
         );
-        let coarse_text = upload(batch, &self.staging.text.coarse_blob)?;
-        let fine_text = upload(batch, &self.staging.text.fine_blob)?;
+        let coarse_text = self.buffers.coarse_text.upload(
+            batch,
+            &self.staging.text.coarse_blob,
+            Some(&self.staging.text.dirty_coarse),
+        )?;
+        let fine_text = self.buffers.fine_text.upload(
+            batch,
+            &self.staging.text.fine_blob,
+            Some(&self.staging.text.dirty_fine),
+        )?;
         self.staging.layer_stack.clear();
         self.staging.layer_stack.extend(
             prepared
@@ -191,13 +249,32 @@ impl SceneCache {
                 .copied()
                 .map(LayerStackRecord::from),
         );
-        let layers = upload(batch, &self.staging.layer_stack)?;
-        let batches = upload(
+        let layer_ranges = canvas
+            .buffer_changes
+            .as_ref()
+            .filter(|_| prepared.reused_metadata)
+            .map(|changes| changes.plan_layer_stack.as_slice());
+        let layers = self
+            .buffers
+            .layers
+            .upload(batch, &self.staging.layer_stack, layer_ranges)?;
+        let batch_ranges = canvas.buffer_changes.as_ref().map(|changes| {
+            crate::render::upload::ranges::merge_sorted_dirty_ranges(
+                &changes.draws,
+                &changes.painter,
+            )
+        });
+        let batches = self.buffers.batches.upload(
             batch,
             canvas
                 .stable_batch_ids
                 .as_deref()
                 .unwrap_or(&prepared.plan.draw_batch_ids),
+            if canvas.stable_batch_ids.is_some() {
+                batch_ranges.as_deref()
+            } else {
+                None
+            },
         )?;
         let mut work = Vec::<u8>::new();
         work.try_reserve_exact(work_words.max(1) * size_of::<u32>())?;
@@ -218,6 +295,29 @@ impl SceneCache {
         let indices: &[u8] = bytemuck::cast_slice(self.staging.tile_draw_bins.upload_indices());
         work[index_base * size_of::<u32>()..index_base * size_of::<u32>() + indices.len()]
             .copy_from_slice(indices);
+        let active_batches = if let Some(active) = options.active {
+            if active.dimensions() != (lengths.tiles_width as u32, lengths.tiles_height as u32) {
+                return Err("native damage dimensions differ from scene".into());
+            }
+            let offset = crate::shared::gpu_coarse::coarse_work_active_tile_list_word_offset(
+                lengths.tile_count,
+                lengths.coarse_ptcl_capacity,
+                lengths.coarse_glyph_capacity,
+                lengths.tile_draw_index_count,
+                lengths.tile_draw_chunk_count,
+            ) * size_of::<u32>();
+            let bytes: &[u8] = bytemuck::cast_slice(active.list());
+            work[offset..offset + bytes.len()].copy_from_slice(bytes);
+            self.staging.active_batch_ids(
+                active.list(),
+                canvas
+                    .stable_batch_ids
+                    .as_deref()
+                    .unwrap_or(&prepared.plan.draw_batch_ids),
+            )
+        } else {
+            Vec::new()
+        };
         let work = batch.buffer(work)?;
         let chunks = allocate(
             batch,
@@ -244,6 +344,7 @@ impl SceneCache {
         let spills = allocate(batch, spill_words, size_of::<u32>())?;
         self.plan = Some(prepared.plan.clone());
         Ok(Scene {
+            active_batches,
             layer_count: u32::try_from(prepared.plan.layer_stack_data.len())?,
             draw_count: u32::try_from(canvas.draw_records.len())?,
             plan: prepared.plan,
@@ -259,6 +360,7 @@ impl SceneCache {
             chunks,
             spills,
             fine_params: FineParams {
+                active_tile_count: options.active.map(|active| active.len()),
                 width: canvas.physical_width(),
                 height: canvas.physical_height(),
                 clip_spill_depth,
@@ -303,7 +405,7 @@ impl Scene {
                 draw_end: batches.end,
                 layer_stack_start: layers.start,
                 layer_stack_end: layers.end,
-                active_tile_count: None,
+                active_tile_count: self.fine_params.active_tile_count,
             },
             self.fine_params.paint_brush_base,
             chunked,

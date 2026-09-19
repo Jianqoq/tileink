@@ -30,11 +30,11 @@ fn native_surface_pool_reuses_only_resolved_batches_and_clears_old_pixels() -> R
             let Resource::Texture(texture) = &batch.resources()[id.index()] else {
                 panic!("surface texture")
             };
-            texture.persistent.as_ref().unwrap().state.clone()
+            Rc::downgrade(&texture.persistent.as_ref().unwrap().state)
         };
         let original = [allocation(&first, a), allocation(&first, b)];
         assert!(
-            !Rc::ptr_eq(&original[0], &original[1]),
+            !std::rc::Weak::ptr_eq(&original[0], &original[1]),
             "siblings must not alias"
         );
         first.readback(a)?;
@@ -49,7 +49,9 @@ fn native_surface_pool_reuses_only_resolved_batches_and_clears_old_pixels() -> R
             let image = second.reusable_surface([3, 2], 0)?.unwrap();
             let reused = allocation(&second, image);
             assert!(
-                original.iter().any(|old| Rc::ptr_eq(old, &reused)),
+                original
+                    .iter()
+                    .any(|old| std::rc::Weak::ptr_eq(old, &reused)),
                 "must reuse GPU storage"
             );
             second.readback(image)?;
@@ -80,10 +82,13 @@ fn native_surface_pool_reuses_only_resolved_batches_and_clears_old_pixels() -> R
                 .is_err()
         );
         drop(abandoned);
-        assert!(!unsubmitted.initialized.get());
+        assert!(!unsubmitted.upgrade().unwrap().initialized.get());
         let mut retry = ComputeBatch::with_surfaces(pool.clone());
         let resized = retry.reusable_surface([9, 4], 0)?.unwrap();
-        assert!(Rc::ptr_eq(&unsubmitted, &allocation(&retry, resized)));
+        assert!(std::rc::Weak::ptr_eq(
+            &unsubmitted,
+            &allocation(&retry, resized)
+        ));
         retry.readback(resized)?;
         let retried = context
             .adapter
@@ -160,11 +165,20 @@ fn native_persistent_texture_preserves_untouched_pixels_across_submissions() -> 
             .map_err(|e| format!("{e:?}"))?;
         let mut third = ComputeBatch::new();
         let third_image = third.import_texture(&texture)?;
+        assert!(
+            third.passes().is_empty(),
+            "initialized read-only imports must not upload clear uniforms"
+        );
         third.readback(third_image)?;
         let third_receipt = context
             .adapter
             .submit_compute(&third)
             .map_err(|e| format!("{e:?}"))?;
+        assert_eq!(
+            texture.state.content_version.get(),
+            2,
+            "readback must not publish a write"
+        );
         drop(third);
         drop(first);
         drop(second);
@@ -233,6 +247,53 @@ fn native_persistent_texture_preserves_untouched_pixels_across_submissions() -> 
         }
         edited.wait()?;
         copied.wait()?;
+        context.check_validation()?;
+    }
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires explicitly pinned physical GPU; run with --ignored"]
+fn native_surface_pool_preserves_pinned_history_across_batches() -> Result<()> {
+    use crate::native::runtime::compute::SurfacePool;
+    use std::{cell::RefCell, rc::Rc};
+    unsafe {
+        NativeContext::enable_dx12_validation()?;
+    }
+    for backend in [NativeBackend::Dx12, NativeBackend::Vulkan] {
+        let context = NativeContext::new(
+            backend,
+            &NativeContextOptions {
+                physical_adapter: Some(std::env::var("TILEINK_NATIVE_GPU")?),
+                validation: true,
+            },
+        )?;
+        let pool = Rc::new(RefCell::new(SurfacePool::new(&context)));
+        let mut first = ComputeBatch::with_surfaces(pool.clone());
+        let image = first.reusable_surface([3, 2], 0xff231347)?.unwrap();
+        let history = first.persistent_texture(image)?.unwrap().clone();
+        let submitted = context.submit_compute(&first)?;
+        drop(first);
+        let mut next = ComputeBatch::with_surfaces(pool);
+        let scratch = next.reusable_surface([3, 2], 0)?.unwrap();
+        assert!(!Rc::ptr_eq(
+            &history.state,
+            &next.persistent_texture(scratch)?.unwrap().state
+        ));
+        let imported = next.import_texture(&history)?;
+        next.readback(imported)?;
+        next.readback(scratch)?;
+        let result = context
+            .adapter
+            .submit_compute(&next)
+            .map_err(|error| format!("{error:?}"))?;
+        drop(next);
+        drop(history);
+        assert_eq!(
+            result.readback()?,
+            vec![0xff231347u32.to_le_bytes().repeat(6), vec![0; 24]]
+        );
+        submitted.wait()?;
         context.check_validation()?;
     }
     Ok(())

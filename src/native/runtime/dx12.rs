@@ -48,13 +48,31 @@ pub struct Dx12 {
 }
 
 impl Dx12 {
-    pub fn allocate_texture(&self, size: [u32; 2]) -> Result<super::texture::Allocation> {
-        Ok(super::texture::Allocation::Dx12(compute_texture::allocate(
+    pub fn allocate_buffer(&self, size: usize) -> Result<super::buffer::Allocation> {
+        Ok(super::buffer::Allocation::Dx12(buffer::create(
             &self.gpu.device,
             size,
-            1,
+            D3D12_HEAP_TYPE_DEFAULT,
             D3D12_RESOURCE_STATE_COMMON,
+            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+            None,
         )?))
+    }
+    pub fn allocate_texture(
+        &self,
+        size: [u32; 2],
+        layers: u32,
+        _array: bool,
+    ) -> Result<super::texture::Allocation> {
+        let resource =
+            compute_texture::allocate(&self.gpu.device, size, layers, D3D12_RESOURCE_STATE_COMMON)?;
+        Ok(super::texture::Allocation::Dx12(std::rc::Rc::new(
+            super::texture::Dx12Allocation {
+                resource,
+                state: std::cell::Cell::new(D3D12_RESOURCE_STATE_COMMON),
+                final_state: D3D12_RESOURCE_STATE_COMMON,
+            },
+        )))
     }
     pub fn validation_queue(&self) -> Validation {
         self.gpu.messages.clone()
@@ -107,13 +125,27 @@ impl Dx12 {
         // Record/allocate before registering; both work types use the same
         // uncertain-submission quarantine and completion contract.
         let lists = work.lists()?;
+        let synchronization = match &work {
+            work::Work::Compute(frame) => frame.synchronization.clone(),
+            _ => None,
+        };
         let ticket = self.gpu.pending.track(work)?;
         unsafe {
             self.retirement = Retirement::Unfenced;
+            if let Some(sync) = &synchronization {
+                for point in &sync.waits {
+                    self.gpu.queue.Wait(&point.fence, point.value)?;
+                }
+            }
             self.gpu.queue.ExecuteCommandLists(&lists);
             #[cfg(test)]
             if std::mem::take(&mut self.inject_signal_failure) {
                 return Err("injected Signal failure after Execute".into());
+            }
+            if let Some(sync) = &synchronization {
+                for point in &sync.signals {
+                    self.gpu.queue.Signal(&point.fence, point.value)?;
+                }
             }
             self.gpu.queue.Signal(&self.gpu.fence, ticket.serial())?;
         }
@@ -262,3 +294,27 @@ mod compute_tables;
 mod compute_copy;
 
 pub use validation::assert_valid_with_wgpu_clears;
+
+#[cfg(test)]
+impl Dx12 {
+    pub(crate) fn import_descriptor(&self) -> crate::native::interop::dx12::ContextDescriptor {
+        crate::native::interop::dx12::ContextDescriptor {
+            device: self.gpu.device.clone(),
+            queue: self.gpu.queue.clone(),
+            validation: true,
+        }
+    }
+}
+
+#[path = "dx12/import.rs"]
+mod import;
+
+#[path = "dx12/synchronization.rs"]
+mod synchronization;
+
+#[cfg(test)]
+impl Dx12 {
+    pub(crate) fn inject_signal_failure_for_test(&mut self) {
+        self.inject_signal_failure = true;
+    }
+}

@@ -2,8 +2,8 @@
 
 Windows native DX12 and Vulkan support persistent, single-mip RGBA8 targets.
 Enable `native-dx12`, `native-vulkan`, or both through `native`. The `wgpu`
-feature remains independent. This API covers owned offscreen targets; imported
-host devices, swapchain targets and retained rendering are still M5 work.
+feature remains independent. This API covers owned offscreen targets. Retained rendering and imported
+host devices/targets are described in [host interop](host-interop.md).
 
 ```rust,no_run
 use tileink::{

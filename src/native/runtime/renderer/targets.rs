@@ -9,6 +9,7 @@ use crate::render::{output::RenderTargetId, retained_surfaces::SurfaceAllocation
 /// its physical allocation, even after a scratch slot is released or replaced.
 pub(crate) struct Surface {
     image: ResourceId,
+    persistent: Option<crate::native::NativeTexture>,
     size: [u32; 2],
     bytes: u64,
 }
@@ -29,6 +30,7 @@ impl Surface {
         if let Some(image) = batch.reusable_surface(size, clear_color)? {
             return Ok(Self {
                 image,
+                persistent: batch.persistent_texture(image)?.cloned(),
                 size,
                 bytes: bytes as u64,
             });
@@ -43,6 +45,7 @@ impl Surface {
         }
         Ok(Self {
             image: batch.texture_rgba8(size, pixels)?,
+            persistent: None,
             size,
             bytes: bytes as u64,
         })
@@ -50,6 +53,15 @@ impl Surface {
 
     pub(crate) fn image(&self) -> ResourceId {
         self.image
+    }
+
+    pub(crate) fn image_in(&self, batch: &mut ComputeBatch) -> Result<ResourceId> {
+        if let Some(texture) = &self.persistent {
+            batch.import_texture(texture)
+        } else {
+            batch.size(self.image)?;
+            Ok(self.image)
+        }
     }
 }
 
@@ -84,6 +96,7 @@ impl Targets {
         Ok(Self {
             main: Surface {
                 image,
+                persistent: texture.persistent.clone(),
                 size,
                 bytes: batch.size(image)? as u64,
             },
@@ -149,12 +162,12 @@ impl Targets {
 
     pub(crate) fn install(
         &mut self,
-        batch: &ComputeBatch,
+        batch: &mut ComputeBatch,
         target: RenderTargetId,
-        surface: Surface,
+        mut surface: Surface,
     ) -> Result<()> {
         batch.size(self.main.image)?;
-        batch.size(surface.image)?;
+        surface.image = surface.image_in(batch)?;
         if surface.size != self.main.size {
             return Err("native scratch surface dimensions do not match context".into());
         }

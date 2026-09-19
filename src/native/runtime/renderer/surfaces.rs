@@ -35,7 +35,9 @@ impl Execution<'_> {
                     Composite::Over
                 },
                 config,
-                None,
+                self.retained
+                    .active_tiles()
+                    .map(crate::render::damage_tiles::DamageTiles::list),
                 Textures {
                     source,
                     auxiliary: mask,
@@ -54,10 +56,10 @@ impl SurfaceAdapter for Execution<'_> {
         self.origin
     }
     fn retained(&self) -> &RetainedRenderState<Surface> {
-        &self.retained
+        self.retained
     }
     fn retained_mut(&mut self) -> &mut RetainedRenderState<Surface> {
-        &mut self.retained
+        self.retained
     }
     fn acquire_scratch(&mut self) -> Result<RenderTargetId> {
         self.targets.acquire(self.batch)
@@ -78,7 +80,20 @@ impl SurfaceAdapter for Execution<'_> {
     }
     fn clear_target(&mut self, target: RenderTargetId) -> Result<()> {
         let (width, height) = self.size();
-        self.clear_region(target, Bounds::canvas(width, height))
+        filter::encode(
+            self.batch,
+            BasicFilter::Clear,
+            FilterConfig {
+                width,
+                height,
+                region_width: width,
+                region_height: height,
+                ..Default::default()
+            },
+            None,
+            None,
+            self.targets.get(target)?.image(),
+        )
     }
     fn clear_region(&mut self, target: RenderTargetId, bounds: Bounds) -> Result<()> {
         let Some(config) = self.config(bounds) else {
@@ -88,7 +103,9 @@ impl SurfaceAdapter for Execution<'_> {
             self.batch,
             BasicFilter::Clear,
             config,
-            None,
+            self.retained
+                .active_tiles()
+                .map(crate::render::damage_tiles::DamageTiles::list),
             None,
             self.targets.get(target)?.image(),
         )
@@ -102,10 +119,14 @@ impl SurfaceAdapter for Execution<'_> {
         stack: Range<usize>,
         blend: Option<peniko::BlendMode>,
     ) -> Result<()> {
+        let source = source.image_in(self.batch)?;
+        let mask = mask
+            .map(|surface| surface.image_in(self.batch))
+            .transpose()?;
         self.composite(
             self.targets.get(target)?.image(),
-            source.image(),
-            mask.map(Surface::image),
+            source,
+            mask,
             bounds,
             stack,
             blend,

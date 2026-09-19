@@ -119,17 +119,111 @@ impl Vulkan {
                     return Err(e.into());
                 }
             };
+            let queue = device.get_device_queue(family, 0);
+            Self::from_parts(ContextParts {
+                entry,
+                instance,
+                device,
+                physical,
+                queue,
+                family,
+                texture_tables,
+                timeline_semaphores: false,
+                validation: options.validation,
+                messages,
+                host_owner: None,
+            })
+        }
+    }
+
+    pub fn from_imported(
+        descriptor: crate::native::interop::vulkan::ContextDescriptor,
+    ) -> Result<Self> {
+        let crate::native::interop::vulkan::ContextDescriptor {
+            entry,
+            instance,
+            physical_device: physical,
+            device,
+            queue,
+            queue_family: family,
+            texture_tables,
+            timeline_semaphores,
+            validation,
+            owner,
+        } = descriptor;
+        unsafe {
+            let families = instance.get_physical_device_queue_family_properties(physical);
+            if families
+                .get(family as usize)
+                .is_none_or(|family| !family.queue_flags.contains(vk::QueueFlags::COMPUTE))
+                || queue == vk::Queue::null()
+            {
+                return Err("imported Vulkan queue must support compute".into());
+            }
+            if instance
+                .get_physical_device_properties(physical)
+                .api_version
+                < vk::API_VERSION_1_1
+            {
+                return Err("native Vulkan requires API 1.1".into());
+            }
+        }
+        Self::from_parts(ContextParts {
+            entry,
+            instance,
+            physical,
+            device,
+            queue,
+            family,
+            texture_tables,
+            timeline_semaphores,
+            validation,
+            messages: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+            host_owner: Some(owner),
+        })
+    }
+
+    fn from_parts(parts: ContextParts) -> Result<Self> {
+        let ContextParts {
+            entry,
+            instance,
+            device,
+            physical,
+            queue,
+            family,
+            texture_tables,
+            timeline_semaphores,
+            validation,
+            messages,
+            host_owner,
+        } = parts;
+        unsafe {
+            let debug_info = vk::DebugUtilsMessengerCreateInfoEXT::default()
+                .message_severity(
+                    vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
+                )
+                .message_type(
+                    vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                        | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
+                        | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
+                )
+                .pfn_user_callback(Some(validation::callback))
+                .user_data(std::sync::Arc::as_ptr(&messages).cast_mut().cast());
             let memory = instance.get_physical_device_memory_properties(physical);
             let properties = instance.get_physical_device_properties(physical);
             let limits = properties.limits;
-            let queue = device.get_device_queue(family, 0);
+            let families = instance.get_physical_device_queue_family_properties(physical);
             let debug = ash::ext::debug_utils::Instance::new(&entry, &instance);
             let mut this = Self {
+                host_owner,
                 _entry: entry,
                 debug,
                 messenger: vk::DebugUtilsMessengerEXT::null(),
                 messages,
                 instance,
+                #[cfg(test)]
+                physical,
                 device,
                 memory,
                 queue,
@@ -144,12 +238,14 @@ impl Vulkan {
                 max_image_width: limits.max_image_dimension2_d,
                 failed: false,
                 texture_tables,
+                timeline_semaphores,
+                families,
                 #[cfg(test)]
                 injected_submit_error: None,
                 #[cfg(test)]
                 inject_probe_init_failure: false,
             };
-            if options.validation {
+            if validation {
                 this.messenger = this.debug.create_debug_utils_messenger(&debug_info, None)?;
             }
             Ok(this)
@@ -170,4 +266,18 @@ impl Vulkan {
                 .min(limits.max_compute_work_group_count[1]),
         }
     }
+}
+
+struct ContextParts {
+    entry: Entry,
+    instance: ash::Instance,
+    device: ash::Device,
+    physical: vk::PhysicalDevice,
+    queue: vk::Queue,
+    family: u32,
+    texture_tables: bool,
+    timeline_semaphores: bool,
+    validation: bool,
+    messages: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    host_owner: Option<std::rc::Rc<dyn std::any::Any>>,
 }

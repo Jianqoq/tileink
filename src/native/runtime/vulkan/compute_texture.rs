@@ -5,11 +5,66 @@ pub(crate) struct Image {
     device: std::rc::Rc<ash::Device>,
     pub image: vk::Image,
     memory: vk::DeviceMemory,
+    host_owner: Option<std::rc::Rc<dyn std::any::Any>>,
+    pub current_layout: std::cell::Cell<vk::ImageLayout>,
+    pub final_layout: vk::ImageLayout,
+    pub current_family: std::cell::Cell<u32>,
     pub view: vk::ImageView,
     extent: vk::Extent3D,
     layers: u32,
 }
 impl Image {
+    pub fn import(
+        device: &std::rc::Rc<ash::Device>,
+        descriptor: crate::native::interop::vulkan::TextureDescriptor,
+    ) -> Result<Self> {
+        let allowed = |layout| {
+            matches!(
+                layout,
+                vk::ImageLayout::GENERAL
+                    | vk::ImageLayout::TRANSFER_SRC_OPTIMAL
+                    | vk::ImageLayout::TRANSFER_DST_OPTIMAL
+                    | vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+                    | vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
+                    | vk::ImageLayout::PRESENT_SRC_KHR
+            )
+        };
+        if descriptor.image == vk::Image::null()
+            || !(allowed(descriptor.initial_layout)
+                || descriptor.initial_layout == vk::ImageLayout::UNDEFINED)
+            || !allowed(descriptor.final_layout)
+            || (descriptor.initialized && descriptor.initial_layout == vk::ImageLayout::UNDEFINED)
+        {
+            return Err("invalid imported Vulkan image or layout".into());
+        }
+        let mut this = Self {
+            device: device.clone(),
+            image: descriptor.image,
+            memory: vk::DeviceMemory::null(),
+            host_owner: Some(descriptor.owner),
+            view: vk::ImageView::null(),
+            layers: 1,
+            extent: vk::Extent3D {
+                width: descriptor.size[0],
+                height: descriptor.size[1],
+                depth: 1,
+            },
+            current_layout: std::cell::Cell::new(descriptor.initial_layout),
+            final_layout: descriptor.final_layout,
+            current_family: std::cell::Cell::new(vk::QUEUE_FAMILY_IGNORED),
+        };
+        this.view = unsafe {
+            device.create_image_view(
+                &vk::ImageViewCreateInfo::default()
+                    .image(this.image)
+                    .view_type(vk::ImageViewType::TYPE_2D)
+                    .format(vk::Format::R8G8B8A8_UNORM)
+                    .subresource_range(this.range()),
+                None,
+            )?
+        };
+        Ok(this)
+    }
     pub fn new(
         device: &std::rc::Rc<ash::Device>,
         memory: &vk::PhysicalDeviceMemoryProperties,
@@ -20,6 +75,10 @@ impl Image {
             layers: texture.layers,
             image: vk::Image::null(),
             memory: vk::DeviceMemory::null(),
+            host_owner: None,
+            current_layout: std::cell::Cell::new(vk::ImageLayout::UNDEFINED),
+            final_layout: vk::ImageLayout::GENERAL,
+            current_family: std::cell::Cell::new(vk::QUEUE_FAMILY_IGNORED),
             view: vk::ImageView::null(),
             extent: vk::Extent3D {
                 width: texture.size[0],
@@ -112,9 +171,15 @@ impl Image {
                 vk::PipelineStageFlags::TRANSFER,
                 vk::AccessFlags::TRANSFER_READ,
             ),
-            vk::ImageLayout::GENERAL => (
-                vk::PipelineStageFlags::COMPUTE_SHADER,
-                vk::AccessFlags::SHADER_READ | vk::AccessFlags::SHADER_WRITE,
+            vk::ImageLayout::PRESENT_SRC_KHR => (
+                vk::PipelineStageFlags::ALL_COMMANDS,
+                vk::AccessFlags::empty(),
+            ),
+            vk::ImageLayout::GENERAL
+            | vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+            | vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL => (
+                vk::PipelineStageFlags::ALL_COMMANDS,
+                vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
             ),
             _ => unreachable!("compute image layout"),
         };
@@ -183,8 +248,10 @@ impl Drop for Image {
     fn drop(&mut self) {
         unsafe {
             self.device.destroy_image_view(self.view, None);
-            self.device.destroy_image(self.image, None);
-            self.device.free_memory(self.memory, None);
+            if self.host_owner.is_none() {
+                self.device.destroy_image(self.image, None);
+                self.device.free_memory(self.memory, None);
+            }
         }
     }
 }
@@ -249,5 +316,74 @@ impl Image {
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             vk::ImageLayout::GENERAL,
         );
+    }
+}
+
+impl Image {
+    fn compute_scope(family: u32) -> crate::native::interop::vulkan::ImageState {
+        crate::native::interop::vulkan::ImageState {
+            layout: vk::ImageLayout::GENERAL,
+            stages: vk::PipelineStageFlags::ALL_COMMANDS,
+            access: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
+            queue_family: family,
+        }
+    }
+    pub(super) fn acquire(
+        &self,
+        command: vk::CommandBuffer,
+        mut before: crate::native::interop::vulkan::ImageState,
+        family: u32,
+    ) {
+        let mut after = Self::compute_scope(family);
+        if before.queue_family != vk::QUEUE_FAMILY_IGNORED && before.queue_family != family {
+            before.stages = vk::PipelineStageFlags::TOP_OF_PIPE;
+            before.access = vk::AccessFlags::empty();
+        } else {
+            before.queue_family = vk::QUEUE_FAMILY_IGNORED;
+            after.queue_family = vk::QUEUE_FAMILY_IGNORED;
+        }
+        self.external_barrier(command, before, after);
+    }
+    pub(super) fn release(
+        &self,
+        command: vk::CommandBuffer,
+        mut after: crate::native::interop::vulkan::ImageState,
+        family: u32,
+    ) {
+        let mut before = Self::compute_scope(family);
+        if after.queue_family != vk::QUEUE_FAMILY_IGNORED && after.queue_family != family {
+            after.stages = vk::PipelineStageFlags::BOTTOM_OF_PIPE;
+            after.access = vk::AccessFlags::empty();
+        } else {
+            before.queue_family = vk::QUEUE_FAMILY_IGNORED;
+            after.queue_family = vk::QUEUE_FAMILY_IGNORED;
+        }
+        self.external_barrier(command, before, after);
+    }
+    fn external_barrier(
+        &self,
+        command: vk::CommandBuffer,
+        before: crate::native::interop::vulkan::ImageState,
+        after: crate::native::interop::vulkan::ImageState,
+    ) {
+        unsafe {
+            self.device.cmd_pipeline_barrier(
+                command,
+                before.stages,
+                after.stages,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &[vk::ImageMemoryBarrier::default()
+                    .image(self.image)
+                    .subresource_range(self.range())
+                    .old_layout(before.layout)
+                    .new_layout(after.layout)
+                    .src_access_mask(before.access)
+                    .dst_access_mask(after.access)
+                    .src_queue_family_index(before.queue_family)
+                    .dst_queue_family_index(after.queue_family)],
+            );
+        }
     }
 }

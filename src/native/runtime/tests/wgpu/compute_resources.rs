@@ -11,6 +11,9 @@ impl GpuResource {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, input: &Resource) -> Self {
         match input {
             Resource::TextureTable(_) => Self::TextureTable,
+            Resource::PersistentBuffer(_) => panic!(
+                "native persistent allocations cannot be imported into the independent wgpu oracle"
+            ),
             Resource::Sampler(filter) => {
                 let filter = match filter {
                     crate::native::runtime::compute::SamplerFilter::Nearest => {

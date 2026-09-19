@@ -1,4 +1,6 @@
-//! Optional owned native routes for the same immediate corpus and raw comparator.
+//! Native routes for the shared corpus and exact byte comparator.
+#[cfg(all(windows, feature = "native"))]
+pub mod retained;
 use super::{Result, common::capture};
 use std::rc::Rc;
 use tileink::{Canvas, Image};

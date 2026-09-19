@@ -6,6 +6,7 @@ pub struct PreparedScan<'a> {
     pub(super) canvas: &'a Canvas,
     pub(super) plans: &'a PersistentPathPlans,
     pub(super) lengths: ScanLengths,
+    pub(in crate::native::runtime::program) dirty: crate::shared::gpu_plan::GpuPathPlanDirty,
 }
 
 pub(super) struct ScanLengths {
@@ -28,7 +29,9 @@ impl<'a> PreparedScan<'a> {
             backdrop_len: canvas.backdrop_pool_capacity as usize,
             segment_capacity: canvas.tile_cnt as usize,
         };
+        let dirty = plans.take_dirty();
         Self {
+            dirty,
             canvas,
             plans,
             lengths,
@@ -51,7 +54,9 @@ impl<'a> PreparedScan<'a> {
             Some(prepared.stack_depths),
             None,
         );
+        let dirty = staging.path_plans.take_dirty();
         let scan = Self {
+            dirty,
             canvas,
             plans: &staging.path_plans,
             lengths: ScanLengths {

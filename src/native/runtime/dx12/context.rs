@@ -52,7 +52,51 @@ impl Dx12 {
                     Type: D3D12_COMMAND_LIST_TYPE_DIRECT,
                     ..Default::default()
                 })?;
-            let messages = Validation::new(if options.validation {
+            Self::from_parts(adapter, identity, device, queue, options.validation)
+        }
+    }
+
+    pub fn from_imported(
+        descriptor: crate::native::interop::dx12::ContextDescriptor,
+    ) -> Result<Self> {
+        unsafe {
+            let crate::native::interop::dx12::ContextDescriptor {
+                device,
+                queue,
+                validation,
+            } = descriptor;
+            if queue.GetDesc().Type != D3D12_COMMAND_LIST_TYPE_DIRECT {
+                return Err("Tileink requires a DIRECT DX12 queue".into());
+            }
+            let mut queue_device = None;
+            queue.GetDevice(&mut queue_device)?;
+            let queue_device: ID3D12Device = queue_device.ok_or("DX12 queue has no device")?;
+            if queue_device.cast::<windows::core::IUnknown>()?.as_raw()
+                != device.cast::<windows::core::IUnknown>()?.as_raw()
+            {
+                return Err("DX12 queue belongs to another device".into());
+            }
+            let luid = device.GetAdapterLuid();
+            let factory: IDXGIFactory4 = CreateDXGIFactory2(DXGI_CREATE_FACTORY_FLAGS(0))?;
+            let adapter: IDXGIAdapter1 = factory.EnumAdapterByLuid(luid)?;
+            let identity = [luid.LowPart.to_le_bytes(), luid.HighPart.to_le_bytes()]
+                .concat()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect();
+            Self::from_parts(adapter, identity, device, queue, validation)
+        }
+    }
+
+    fn from_parts(
+        adapter: IDXGIAdapter1,
+        identity: String,
+        device: ID3D12Device,
+        queue: ID3D12CommandQueue,
+        validation: bool,
+    ) -> Result<Self> {
+        unsafe {
+            let messages = Validation::new(if validation {
                 Some(device.cast().map_err(|error| format!(
                     "DX12 validation requires a debug layer enabled before device creation: {error}"
                 ))?)

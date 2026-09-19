@@ -11,8 +11,8 @@ use crate::shared::filter_config::FilterConfig;
 
 /// Renderer-local scratch allocation leases. The shared pool prevents siblings
 /// from reusing storage before their owning command batch is resolved.
-/// Cached retained pixels must use separate leases: this pool deliberately clears
-/// scratch contents and makes them reusable at the next frame boundary.
+/// Retained surfaces pin their allocation: the pool skips pinned entries, so a
+/// new scratch lease cannot clear pixels still serving as retained history.
 pub(crate) struct SurfacePool {
     context: NativeContext,
     resources: SceneResourcePool<NativeTexture>,
@@ -28,9 +28,14 @@ impl SurfacePool {
 
     fn acquire(&mut self, size: [u32; 2]) -> Result<NativeTexture> {
         let size = (size[0], size[1]);
-        let texture = match self.resources.acquire(size) {
-            Some(entry) if entry.allocation.size() == size => entry.allocation,
-            _ => self.context.create_texture(size.0, size.1)?,
+        let texture = loop {
+            match self.resources.acquire(size) {
+                // A retained surface still owns its pixels. Remove its pool lease
+                // instead of clearing/reusing an allocation pinned by the cache.
+                Some(entry) if Rc::strong_count(&entry.allocation.state) != 1 => continue,
+                Some(entry) if entry.allocation.size() == size => break entry.allocation,
+                _ => break self.context.create_texture(size.0, size.1)?,
+            }
         };
         self.resources.recycle(SceneResources {
             target_size: size,
@@ -41,6 +46,18 @@ impl SurfacePool {
 }
 
 impl ComputeBatch {
+    pub(crate) fn context(&self) -> Option<NativeContext> {
+        self.surface_pool
+            .as_ref()
+            .map(|pool| pool.borrow().context.clone())
+    }
+
+    pub(crate) fn adapter(&self) -> Option<crate::native::runtime::adapter::Adapter> {
+        self.surface_pool
+            .as_ref()
+            .map(|pool| pool.borrow().context.adapter.clone())
+    }
+
     /// The preceding renderer batch must have been submitted or discarded. Queue
     /// ordering protects its GPU users; this is not a completion or CPU-wait boundary.
     pub(crate) fn with_surfaces(pool: Rc<RefCell<SurfacePool>>) -> Self {

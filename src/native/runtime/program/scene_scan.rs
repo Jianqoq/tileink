@@ -28,10 +28,32 @@ pub struct ScanOutput {
     pub segments: ResourceId,
 }
 
+#[derive(Default)]
+pub(crate) struct ScanBuffers {
+    cumsum: super::cumsum::CumsumBuffers,
+    lines: super::cached_buffer::CachedBuffer,
+    paths: super::cached_buffer::CachedBuffer,
+    chunks: super::cached_buffer::CachedBuffer,
+    ranges: super::cached_buffer::CachedBuffer,
+}
 pub fn encode_scene(
     batch: &mut ComputeBatch,
     prepared: &PreparedScan<'_>,
     maximum_dimension: u32,
+) -> Result<ScanOutput> {
+    encode_cached(
+        batch,
+        prepared,
+        maximum_dimension,
+        &mut ScanBuffers::default(),
+    )
+}
+
+pub(crate) fn encode_cached(
+    batch: &mut ComputeBatch,
+    prepared: &PreparedScan<'_>,
+    maximum_dimension: u32,
+    buffers: &mut ScanBuffers,
 ) -> Result<ScanOutput> {
     if maximum_dimension == 0 || maximum_dimension > 65535 {
         return Err("invalid native scan dispatch limit".into());
@@ -40,6 +62,7 @@ pub fn encode_scene(
         canvas,
         plans,
         lengths,
+        dirty,
     } = prepared;
     let line_count = u32::try_from(lengths.line_count)?;
     let path_count = u32::try_from(lengths.path_count)?;
@@ -96,10 +119,29 @@ pub fn encode_scene(
         ])
         .to_vec(),
     )?;
-    let lines = upload(batch, &canvas.lines)?;
-    let paths = upload(batch, &canvas.path_records)?;
-    let chunks = upload(batch, plans.scan_chunks())?;
-    let chunk_ranges = upload(batch, plans.scan_ranges())?;
+    let lines = buffers.lines.upload(
+        batch,
+        &canvas.lines,
+        canvas
+            .buffer_changes
+            .as_ref()
+            .map(|changes| changes.lines.as_slice()),
+    )?;
+    let paths = buffers.paths.upload(
+        batch,
+        &canvas.path_records,
+        canvas
+            .buffer_changes
+            .as_ref()
+            .map(|changes| changes.paths.as_slice()),
+    )?;
+    let chunks = buffers
+        .chunks
+        .upload(batch, plans.scan_chunks(), Some(&dirty.scan_chunks))?;
+    let chunk_ranges =
+        buffers
+            .ranges
+            .upload(batch, plans.scan_ranges(), Some(&dirty.scan_ranges))?;
     let active = upload(batch, &[0u32])?;
     let backdrops = allocate(batch, lengths.backdrop_len, size_of::<i32>())?;
     let tile_segment_ranges = allocate(batch, lengths.backdrop_len, size_of::<TileSegmentRange>())?;
@@ -204,7 +246,13 @@ pub fn encode_scene(
             )?;
         }
     }
-    cumsum.encode(batch, backdrops, maximum_dimension)?;
+    cumsum.encode_cached(
+        batch,
+        backdrops,
+        maximum_dimension,
+        &mut buffers.cumsum,
+        Some(dirty),
+    )?;
     Ok(ScanOutput {
         paths,
         backdrops,

@@ -1,10 +1,13 @@
+mod retained;
+mod submission;
+
 use super::submission::{NativeImageSubmission, NativeSubmission};
 use super::{NativeBackend, NativeContext, NativeContextOptions, NativeError};
 use crate::shared::image_resource::ImageResourceStore;
 use crate::{Canvas, Image, ImageKey, TextContext, TextFontSystem};
 use std::rc::Rc;
 
-/// Immediate native Canvas renderer. Scene and text caches are local to this renderer.
+/// Immediate and retained native renderer. Scene and text caches are local to this renderer.
 pub struct NativeRenderer {
     context: NativeContext,
     size: (u32, u32),
@@ -24,6 +27,16 @@ pub struct NativeRenderer {
         any(feature = "native-dx12", feature = "native-vulkan")
     ))]
     recording: super::runtime::renderer::recording::Recording,
+    #[cfg(all(
+        target_os = "windows",
+        any(feature = "native-dx12", feature = "native-vulkan")
+    ))]
+    persistent_scene: Option<crate::retained_scene::PersistentSceneMaterializer>,
+    #[cfg(all(
+        target_os = "windows",
+        any(feature = "native-dx12", feature = "native-vulkan")
+    ))]
+    history: Option<output::HistoryRecord>,
 }
 
 impl NativeRenderer {
@@ -55,6 +68,8 @@ impl NativeRenderer {
                     super::runtime::compute::SurfacePool::new(context),
                 )),
                 recording: Default::default(),
+                persistent_scene: None,
+                history: None,
             })
         }
         #[cfg(not(all(
@@ -74,10 +89,18 @@ impl NativeRenderer {
         self.size
     }
     pub fn insert_image(&mut self, key: ImageKey, image: impl Into<Rc<Image>>) -> bool {
-        self.images.insert(key, image.into())
+        let changed = self.images.insert(key, image.into());
+        if changed {
+            self.invalidate_retained_history();
+        }
+        changed
     }
     pub fn remove_image(&mut self, key: ImageKey) -> bool {
-        self.images.remove(key)
+        let changed = self.images.remove(key);
+        if changed {
+            self.invalidate_retained_history();
+        }
+        changed
     }
     /// Set the premultiplied background for subsequent root frames. Child canvases
     /// and filter intermediates retain transparent initial contents.
@@ -87,7 +110,11 @@ impl NativeRenderer {
             any(feature = "native-dx12", feature = "native-vulkan")
         ))]
         {
-            self.recording.clear_color = crate::shared::image::premul_color_to_rgba8_pack(clear);
+            let clear = crate::shared::image::premul_color_to_rgba8_pack(clear);
+            if self.recording.clear_color != clear {
+                self.recording.clear_color = clear;
+                self.invalidate_retained_history();
+            }
         }
         #[cfg(not(all(
             target_os = "windows",
@@ -99,12 +126,21 @@ impl NativeRenderer {
     }
 
     pub fn clear_images(&mut self) -> bool {
-        self.images.clear()
+        let changed = self.images.clear();
+        if changed {
+            self.invalidate_retained_history();
+        }
+        changed
     }
 
     /// Submit without a CPU wait or readback copy. Explicitly wait on the returned receipt.
     pub fn render(&mut self, canvas: &Canvas) -> Result<NativeSubmission, NativeError> {
-        self.submit(canvas, None, false, None)
+        self.submit(
+            crate::render::retained::SelectedScene::Borrowed(canvas),
+            None,
+            false,
+            None,
+        )
     }
     pub fn render_with_text(
         &mut self,
@@ -112,14 +148,24 @@ impl NativeRenderer {
         fonts: &mut TextFontSystem,
         text: &mut TextContext,
     ) -> Result<NativeSubmission, NativeError> {
-        self.submit(canvas, Some((fonts, text)), false, None)
+        self.submit(
+            crate::render::retained::SelectedScene::Borrowed(canvas),
+            Some((fonts, text)),
+            false,
+            None,
+        )
     }
     /// Submit rendering and an explicit image readback copy; mapping/waiting is separate.
     pub fn render_to_image(
         &mut self,
         canvas: &Canvas,
     ) -> Result<NativeImageSubmission, NativeError> {
-        let submission = self.submit(canvas, None, true, None)?;
+        let submission = self.submit(
+            crate::render::retained::SelectedScene::Borrowed(canvas),
+            None,
+            true,
+            None,
+        )?;
         Ok(NativeImageSubmission::new(submission, self.size))
     }
     pub fn render_to_image_with_text(
@@ -128,8 +174,27 @@ impl NativeRenderer {
         fonts: &mut TextFontSystem,
         text: &mut TextContext,
     ) -> Result<NativeImageSubmission, NativeError> {
-        let submission = self.submit(canvas, Some((fonts, text)), true, None)?;
+        let submission = self.submit(
+            crate::render::retained::SelectedScene::Borrowed(canvas),
+            Some((fonts, text)),
+            true,
+            None,
+        )?;
         Ok(NativeImageSubmission::new(submission, self.size))
+    }
+
+    /// Render an immediate frame into a target rectangle without CPU readback.
+    pub fn render_to_target(
+        &mut self,
+        canvas: &Canvas,
+        target: crate::NativeRenderTarget<'_>,
+    ) -> Result<NativeSubmission, NativeError> {
+        self.submit(
+            crate::render::retained::SelectedScene::Borrowed(canvas),
+            None,
+            false,
+            Some(target),
+        )
     }
 
     /// Render into an existing same-device RGBA8 target, replacing the full frame.
@@ -139,7 +204,12 @@ impl NativeRenderer {
         canvas: &Canvas,
         target: &super::NativeTexture,
     ) -> Result<NativeSubmission, NativeError> {
-        self.submit(canvas, None, false, Some(target))
+        self.submit(
+            crate::render::retained::SelectedScene::Borrowed(canvas),
+            None,
+            false,
+            Some(target.into()),
+        )
     }
     pub fn render_with_text_to_texture(
         &mut self,
@@ -148,88 +218,12 @@ impl NativeRenderer {
         text: &mut TextContext,
         target: &super::NativeTexture,
     ) -> Result<NativeSubmission, NativeError> {
-        self.submit(canvas, Some((fonts, text)), false, Some(target))
-    }
-
-    fn submit(
-        &mut self,
-        canvas: &Canvas,
-        text: Option<(&mut TextFontSystem, &mut TextContext)>,
-        readback: bool,
-        output: Option<&super::NativeTexture>,
-    ) -> Result<NativeSubmission, NativeError> {
-        #[cfg(all(
-            target_os = "windows",
-            any(feature = "native-dx12", feature = "native-vulkan")
-        ))]
-        {
-            let limits = self.context.adapter.limits();
-            let size = canvas.physical_size();
-            validate_size(size, limits.image_dimension)?;
-            if let Some(output) = output {
-                if output.size() != size {
-                    return Err(NativeError::Recording(
-                        "native output size differs from canvas".into(),
-                    ));
-                }
-                if !self.context.adapter.same_device(&output.context.adapter) {
-                    return Err(NativeError::Recording(
-                        "native output belongs to another logical device".into(),
-                    ));
-                }
-            }
-            // Reuse the GPU root allocation across ordered frames. Resize publishes
-            // its replacement only after successful submission; old receipts keep
-            // any still-running allocation alive independently of this renderer.
-            let owned_target = if output.is_none() {
-                Some(match &self.target {
-                    Some(target) if target.size() == size => target.clone(),
-                    _ => self.context.create_texture(size.0, size.1)?,
-                })
-            } else {
-                None
-            };
-            let output = output.or(owned_target.as_ref());
-            let mut batch =
-                super::runtime::compute::ComputeBatch::with_surfaces(self.surfaces.clone());
-            let output = output
-                .map(|target| batch.import_texture(target))
-                .transpose()
-                .map_err(NativeError::Recording)?;
-            let target = self
-                .recording
-                .record(
-                    &mut batch,
-                    canvas,
-                    &self.images,
-                    text,
-                    limits,
-                    super::runtime::renderer::FrameOptions {
-                        target: output,
-                        ..Default::default()
-                    },
-                )
-                .map_err(NativeError::Recording)?;
-            if readback {
-                batch.readback(target).map_err(NativeError::Recording)?;
-            }
-            let submission = self.context.submit_compute(&batch)?;
-            if let Some(target) = owned_target {
-                self.target = Some(target);
-            }
-            self.size = size;
-            Ok(submission)
-        }
-        #[cfg(not(all(
-            target_os = "windows",
-            any(feature = "native-dx12", feature = "native-vulkan")
-        )))]
-        {
-            let _ = (canvas, text, readback, output);
-            Err(NativeError::Unavailable(
-                self.context.backend().unavailable(),
-            ))
-        }
+        self.submit(
+            crate::render::retained::SelectedScene::Borrowed(canvas),
+            Some((fonts, text)),
+            false,
+            Some(target.into()),
+        )
     }
 }
 
@@ -283,3 +277,9 @@ mod tests {
         }
     }
 }
+
+#[cfg(all(
+    target_os = "windows",
+    any(feature = "native-dx12", feature = "native-vulkan")
+))]
+mod output;

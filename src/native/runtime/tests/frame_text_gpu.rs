@@ -11,7 +11,7 @@ use peniko::{
     kurbo::{Point, Rect},
 };
 
-fn frame_fonts() -> TextFontSystem {
+pub(super) fn frame_fonts() -> TextFontSystem {
     let mut database = cosmic_text::fontdb::Database::new();
     database
         .load_font_data(include_bytes!("../../../svg/fonts/SourceSansPro-Regular.ttf").to_vec());

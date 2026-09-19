@@ -31,6 +31,8 @@ pub struct Pass {
     pub grid: [u32; 3],
 }
 pub struct ComputeBatch {
+    pub(crate) synchronization: Option<(ResourceId, crate::native::interop::Synchronization)>,
+    accepted: std::rc::Rc<std::cell::Cell<bool>>,
     surface_pool: Option<std::rc::Rc<std::cell::RefCell<SurfacePool>>>,
     owner: u64,
     resources: Vec<Resource>,
@@ -39,11 +41,17 @@ pub struct ComputeBatch {
     outputs: Vec<ResourceId>,
 }
 impl ComputeBatch {
+    pub(crate) fn acceptance(&self) -> std::rc::Rc<std::cell::Cell<bool>> {
+        self.accepted.clone()
+    }
+
     pub fn new() -> Self {
         let owner = NEXT_BATCH
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
             .expect("native batch identity exhausted");
         Self {
+            synchronization: None,
+            accepted: std::rc::Rc::new(std::cell::Cell::new(false)),
             surface_pool: None,
             owner,
             resources: Vec::new(),
@@ -243,3 +251,22 @@ mod tests;
 #[path = "compute/copy.rs"]
 mod copy;
 pub use copy::{Command, TextureCopy};
+
+#[path = "compute/buffers.rs"]
+mod buffers;
+pub use buffers::BufferUpload;
+
+#[path = "compute/snapshots.rs"]
+mod snapshots;
+
+impl ComputeBatch {
+    pub(crate) fn synchronize_target(
+        &mut self,
+        texture: &crate::NativeTexture,
+        synchronization: crate::native::interop::Synchronization,
+    ) -> Result<()> {
+        let target = self.import_texture(texture)?;
+        self.synchronization = Some((target, synchronization));
+        Ok(())
+    }
+}

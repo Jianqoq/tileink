@@ -83,11 +83,15 @@ fn local_filter_context_restores_parent_after_scan_failure() -> Result<()> {
     let images = Images::record(&mut batch, &upload)?;
     let canvas = Canvas::new(4, 4, 1.0);
     let mut cache = SceneCache::default();
+    let mut retained = Default::default();
     let mut execution = Execution::prepare(
         cache.prepare(&canvas),
         &mut batch,
-        &images,
-        None,
+        super::FrameResources {
+            images: &images,
+            text: None,
+            retained: &mut retained,
+        },
         FrameOptions::default(),
         65535,
     )?;
@@ -119,11 +123,15 @@ fn failed_filter_context_preparation_keeps_parent_active() -> Result<()> {
     let images = Images::record(&mut batch, &upload)?;
     let canvas = Canvas::new(4, 4, 1.0);
     let mut cache = SceneCache::default();
+    let mut retained = Default::default();
     let mut execution = Execution::prepare(
         cache.prepare(&canvas),
         &mut batch,
-        &images,
-        None,
+        super::FrameResources {
+            images: &images,
+            text: None,
+            retained: &mut retained,
+        },
         FrameOptions::default(),
         65535,
     )?;
