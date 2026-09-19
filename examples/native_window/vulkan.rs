@@ -1,7 +1,7 @@
 use tileink::native_interop::vulkan::{
     ImageState, SemaphorePoint, SemaphoreWait, TargetSynchronization,
 };
-use tileink::{NativeRenderTarget, NativeTargetState, NativeTargetSubmission, NativeTargetUse};
+use tileink::{NativeRenderTarget, NativeTargetSubmission, NativeTargetUse};
 #[path = "vulkan_capabilities.rs"]
 mod capabilities;
 use super::app::Result;
@@ -355,8 +355,7 @@ impl super::app::Host for Host {
         })
     }
     fn present(&mut self, submission: NativeTargetSubmission) -> Result {
-        if !matches!(submission.outgoing, NativeTargetState::Vulkan(state) if state.layout == vk::ImageLayout::PRESENT_SRC_KHR)
-        {
+        if submission.outgoing.state.layout != vk::ImageLayout::PRESENT_SRC_KHR {
             return Err("unexpected Vulkan output layout".into());
         }
         self.pending[self.slot] = Some(submission.submission);

@@ -15,9 +15,13 @@ impl Synchronization {
     pub(crate) fn outgoing(&self) -> crate::NativeTargetState {
         match *self {
             #[cfg(all(target_os = "windows", feature = "dx12"))]
-            Self::Dx12(ref sync) => crate::NativeTargetState::Dx12(sync.outgoing),
+            Self::Dx12(ref sync) => crate::NativeTargetState {
+                state: sync.outgoing,
+            },
             #[cfg(all(target_os = "windows", feature = "vulkan"))]
-            Self::Vulkan(ref sync) => crate::NativeTargetState::Vulkan(sync.outgoing),
+            Self::Vulkan(ref sync) => crate::NativeTargetState {
+                state: sync.outgoing,
+            },
         }
     }
 }

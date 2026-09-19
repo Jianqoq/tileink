@@ -207,7 +207,7 @@ fn dx12_target_use_orders_external_queues_even_without_damage() -> Result {
             )?
         };
         let frame = renderer.render_retained_to_target_use(&scene, usage)?;
-        assert_eq!(frame.outgoing, NativeTargetState::Dx12(outgoing));
+        assert_eq!(frame.outgoing, NativeTargetState { state: outgoing });
         unsafe {
             queue.Wait(&after, value)?;
             queue.Signal(&consumed, value)?;

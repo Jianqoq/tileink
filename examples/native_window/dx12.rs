@@ -4,7 +4,7 @@ use tileink::{
     NativeContext, NativeSubmission, NativeTexture,
     native_interop::dx12::{ContextDescriptor, TextureDescriptor},
 };
-use tileink::{NativeRenderTarget, NativeTargetState, NativeTargetSubmission, NativeTargetUse};
+use tileink::{NativeRenderTarget, NativeTargetSubmission, NativeTargetUse};
 use windows::{
     Win32::{
         Foundation::{HANDLE, HWND},
@@ -226,7 +226,7 @@ impl super::app::Host for Host {
     }
     fn present(&mut self, submission: NativeTargetSubmission) -> Result {
         let frame = &mut self.frames[self.index];
-        if submission.outgoing != NativeTargetState::Dx12(D3D12_RESOURCE_STATE_COPY_SOURCE) {
+        if submission.outgoing.state != D3D12_RESOURCE_STATE_COPY_SOURCE {
             return Err("unexpected DX12 output state".into());
         }
         self.incoming = D3D12_RESOURCE_STATE_COPY_SOURCE;

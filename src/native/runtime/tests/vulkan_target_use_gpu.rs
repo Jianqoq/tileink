@@ -372,7 +372,7 @@ fn vulkan_target_use_transfers_ownership_and_consumes_binary_or_timeline_waits()
                     return Err(error.into());
                 }
             };
-            assert_eq!(frame.outgoing, crate::NativeTargetState::Vulkan(outgoing));
+            assert_eq!(frame.outgoing, crate::NativeTargetState { state: outgoing });
             if value == 2 {
                 assert_eq!(renderer.incremental_render_stats().dirty_tiles, 0);
             }

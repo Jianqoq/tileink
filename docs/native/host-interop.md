@@ -28,6 +28,12 @@ Explicit host handoffs use a consumed, non-Clone `NativeTargetUse`, constructed 
 incoming state and desired outgoing state for that use. Renderer entry points
 include immediate, retained, and their text-enabled variants. They return a
 `NativeTargetSubmission` containing completion and the outgoing state.
+On supported Windows targets, `NativeTargetState` is a transparent struct. Its
+public `state` field is `D3D12_RESOURCE_STATES` with `dx12`, or Vulkan `ImageState`
+with `vulkan`.
+The mutually exclusive feature selects this type at compile time; consumers read
+the concrete state directly instead of matching a backend enum. This removes the
+unnecessary backend-selection representation without changing synchronization.
 
 DX12 descriptors carry typed resource states and fence/value waits and signals.
 Tileink validates device identity, resource flags and state combinations before
