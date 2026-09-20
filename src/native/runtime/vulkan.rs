@@ -5,6 +5,7 @@ mod context;
 mod frame;
 mod limits;
 mod pipeline;
+mod upload;
 mod validation;
 mod work;
 use super::submissions::{Pending, Ticket};

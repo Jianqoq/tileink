@@ -23,6 +23,9 @@ uniform alignment. Host writes and allocation ownership follow the same existing
 submission path as internal dispatch-grid uniforms. Both APIs retain all backing
 allocations through their submission owner until completion.
 
+Vulkan now writes these payloads directly into mapped staging memory without a frame-sized
+concatenation Vec; see [Vulkan staging uploads](vulkan-staging-upload.md).
+
 This implements aggregation at the actual native resource boundary, rather than
 merely batching CPU parameter writes. No shader behavior, hidden readback or extra
 submission is introduced. Performance comparisons remain waived by the user.

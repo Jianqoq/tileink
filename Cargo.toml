@@ -123,6 +123,11 @@ required-features = ["vulkan"]
 harness = false
 
 [[bench]]
+name = "vulkan_frame_upload"
+required-features = ["vulkan"]
+harness = false
+
+[[bench]]
 name = "retained_scale"
 required-features = ["wgpu"]
 harness = false

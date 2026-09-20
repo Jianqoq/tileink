@@ -21,7 +21,7 @@ impl GpuResource {
 }
 use super::super::{Result, compute::ComputeBatch};
 use super::{
-    compute_memory::{Arena, align},
+    compute_memory::Arena,
     compute_pipeline::{Pipeline, descriptor},
 };
 use crate::native::shaders::BindingKind;
@@ -127,7 +127,8 @@ impl Frame {
             usize::try_from(limits.min_uniform_buffer_offset_alignment.max(4))?,
         )?;
         this.uniform_offsets = uniforms.offsets;
-        let mut upload = uniforms.bytes;
+        let mut upload = super::upload::Upload::new();
+        upload.push(&uniforms.bytes, 1)?;
         let mut source_offsets = Vec::new();
         let mut grids = Vec::new();
         for (index, buffer) in batch.resources().iter().enumerate() {
@@ -135,19 +136,25 @@ impl Frame {
                 source_offsets.push(offset);
                 continue;
             }
-            source_offsets.push(upload.len() as u64);
-            upload.extend_from_slice(buffer.bytes());
+            source_offsets.push(upload.push(buffer.bytes(), 1)? as u64);
         }
-        for pass in batch.passes() {
-            let offset = usize::try_from(align(
-                upload.len() as u64,
-                limits.min_uniform_buffer_offset_alignment.max(4),
-            )?)?;
-            upload.resize(offset, 0);
-            grids.push(offset as u64);
-            for word in [pass.grid[0], pass.grid[1], pass.grid[2], 0] {
-                upload.extend_from_slice(&word.to_le_bytes());
-            }
+        let grid_bytes: Vec<[u8; 16]> = batch
+            .passes()
+            .iter()
+            .map(|pass| {
+                bytemuck::cast([
+                    pass.grid[0].to_le(),
+                    pass.grid[1].to_le(),
+                    pass.grid[2].to_le(),
+                    0u32,
+                ])
+            })
+            .collect();
+        for bytes in &grid_bytes {
+            grids.push(upload.push(
+                bytes,
+                usize::try_from(limits.min_uniform_buffer_offset_alignment.max(4))?,
+            )? as u64);
         }
         for id in batch.outputs() {
             let size = batch.size(*id)?;
@@ -158,7 +165,7 @@ impl Frame {
                 .ok_or("native readback size overflow")?;
         }
         let host = vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT;
-        if !upload.is_empty() {
+        if upload.len() != 0 {
             let arena = Arena::new(
                 device,
                 memory,

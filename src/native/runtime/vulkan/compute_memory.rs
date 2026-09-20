@@ -65,18 +65,18 @@ impl Arena {
         Ok(this)
     }
     /// Staging arenas contain exactly one host-coherent buffer at memory offset zero.
-    pub fn write(&self, bytes: &[u8]) -> Result<()> {
+    pub(super) fn write(&self, upload: &super::upload::Upload<'_>) -> Result<()> {
         unsafe {
-            let p = self.device.map_memory(
+            let pointer = self.device.map_memory(
                 self.memory,
                 0,
-                bytes.len() as u64,
+                upload.len() as u64,
                 vk::MemoryMapFlags::empty(),
             )?;
-            std::ptr::copy_nonoverlapping(bytes.as_ptr(), p.cast(), bytes.len());
+            upload.copy_to(pointer.cast());
             self.device.unmap_memory(self.memory);
-            Ok(())
         }
+        Ok(())
     }
     pub fn read(&self, size: usize) -> Result<Vec<u8>> {
         unsafe {
