@@ -39,4 +39,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-对于窗口输出，参考仓库 `examples/winit_svg_tiger.rs` 的 WGPU surface 配置与 resize 处理。
+对于原生窗口输出，参考仓库 `examples/native_window/`：使用 AppKit/Win32 直接创建窗口并处理 resize 和 GPU 呈现。

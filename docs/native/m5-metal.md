@@ -34,8 +34,10 @@ owned. This is a deterministic failure-policy test, not physical GPU removal.
 
 ## Host presentation
 
-The existing `native_present` example now supports `metal`. Winit owns the NSView
-and window events. The host owns CAMetalLayer, a persistent RGBA8 target, two Metal
+The existing `native_present` example now supports `metal`. The example owns its
+NSWindow/NSView and pumps AppKit events directly; the Windows example uses Win32.
+This removes the extra window/event-loop dependency while retaining the same host
+rendering contract. The host owns CAMetalLayer, a persistent RGBA8 target, two Metal
 queues and a shared event. Tileink receives the host device/queue and imported
 target. Per-use waits/signals order the host's previous read, Tileink's writes,
 and the next host read. Empty-damage frames still perform the handoff.

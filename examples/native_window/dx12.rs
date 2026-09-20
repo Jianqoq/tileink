@@ -1,4 +1,6 @@
 use super::app::Result;
+use super::platform::Window;
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use tileink::native_interop::dx12::TargetSynchronization;
 use tileink::{
     NativeContext, NativeSubmission, NativeTexture,
@@ -15,10 +17,6 @@ use windows::{
         },
     },
     core::Interface,
-};
-use winit::{
-    raw_window_handle::{HasWindowHandle, RawWindowHandle},
-    window::Window,
 };
 #[path = "dx12_copy.rs"]
 mod copy;

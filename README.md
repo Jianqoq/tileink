@@ -145,16 +145,17 @@ fn draw(
 }
 ```
 
-Direct surface rendering requires an `Rgba8Unorm` surface format. The complete example requests
+Direct surface rendering requires an `Rgba8Unorm` surface format. Request
 `RENDER_ATTACHMENT | STORAGE_BINDING | COPY_SRC | COPY_DST` so the same target works with Tileink's
 native and portable WGPU paths. If the surface cannot expose those usages, render to a compatible
-intermediate texture and copy or blit it to the acquired surface texture. The complete
-[`winit_svg_tiger` example](https://github.com/Jianqoq/tileink/blob/main/examples/winit_svg_tiger.rs)
-includes device creation, capability validation, resize handling, surface recovery, rendering, and
-presentation:
+intermediate texture and copy or blit it to the acquired surface texture.
 
-```powershell
-cargo run --release --example winit_svg_tiger
+For native device/queue integration, the [`native_present` example](examples/native_window/main.rs)
+uses AppKit on macOS and Win32 on Windows directly, including resize and GPU presentation.
+On macOS:
+
+```sh
+cargo run --release --no-default-features --features metal --example native_present -- metal
 ```
 
 ### Retained updates

@@ -5,15 +5,13 @@ use tileink::{NativeRenderTarget, NativeTargetSubmission, NativeTargetUse};
 #[path = "vulkan_capabilities.rs"]
 mod capabilities;
 use super::app::Result;
+use super::platform::Window;
 use ash::{Entry, vk};
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::rc::Rc;
 use tileink::{
     NativeContext, NativeSubmission, NativeTexture,
     native_interop::vulkan::{ContextDescriptor, TextureDescriptor},
-};
-use winit::{
-    raw_window_handle::{HasWindowHandle, RawWindowHandle},
-    window::Window,
 };
 struct Platform {
     entry: Entry,

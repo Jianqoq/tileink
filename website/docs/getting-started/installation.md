@@ -42,5 +42,5 @@ npm run serve
 ```powershell
 cargo test --release -- --test-threads=1
 cargo run --release --example wgpu_examples
-cargo run --release --example winit_svg_tiger
+cargo run --release --example retained
 ```

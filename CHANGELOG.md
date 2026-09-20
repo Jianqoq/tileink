@@ -102,7 +102,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Added
 
 - Documented how to render directly into an acquired WGPU surface texture and present it, with a
-  complete `winit` example covering setup, resize, surface recovery, and presentation.
+  complete window example covering setup, resize, surface recovery, and presentation.
 
 ### Fixed
 

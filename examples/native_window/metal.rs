@@ -3,11 +3,13 @@
 //! Presentation never reads pixels back or waits on the CPU; teardown is explicit.
 mod present;
 use super::app::Result;
+use super::platform::Window;
 use objc2::{rc::Retained, runtime::ProtocolObject};
 use objc2_app_kit::NSView;
 use objc2_core_foundation::CGSize;
 use objc2_metal::*;
 use objc2_quartz_core::{CAMetalDrawable, CAMetalLayer};
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::collections::VecDeque;
 use tileink::native_interop::metal::{
     ContextDescriptor, EventPoint, TargetSynchronization, TextureDescriptor,
@@ -15,10 +17,6 @@ use tileink::native_interop::metal::{
 use tileink::{
     NativeContext, NativeRenderTarget, NativeSubmission, NativeTargetSubmission, NativeTargetUse,
     NativeTexture,
-};
-use winit::{
-    raw_window_handle::{HasWindowHandle, RawWindowHandle},
-    window::Window,
 };
 type Object<T> = Retained<ProtocolObject<T>>;
 struct Frame {
@@ -77,7 +75,7 @@ impl Host {
         let RawWindowHandle::AppKit(handle) = window.window_handle()?.as_raw() else {
             return Err("expected AppKit window".into());
         };
-        // SAFETY: Winit owns a live NSView; ApplicationHandler runs on the main
+        // SAFETY: The platform host owns a live NSView and runs on the main
         // thread. The window outlives Host, and NSView retains the assigned layer.
         let view = unsafe { &*handle.ns_view.as_ptr().cast::<NSView>() };
         view.setWantsLayer(true);

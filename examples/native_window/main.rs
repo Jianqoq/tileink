@@ -30,3 +30,9 @@ fn main() {
 
 #[cfg(all(target_os = "macos", feature = "metal"))]
 mod metal;
+
+#[cfg(any(
+    all(target_os = "windows", any(feature = "dx12", feature = "vulkan")),
+    all(target_os = "macos", feature = "metal")
+))]
+mod platform;

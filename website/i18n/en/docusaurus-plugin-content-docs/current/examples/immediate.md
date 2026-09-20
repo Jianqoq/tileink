@@ -18,4 +18,4 @@ renderer.render(&canvas);
 renderer.image().save("immediate.png")?;
 ```
 
-See `examples/winit_svg_tiger.rs` for a complete WGPU surface and resize loop.
+See `examples/native_window/` for direct AppKit/Win32 window creation, resize and native GPU presentation.

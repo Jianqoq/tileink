@@ -99,7 +99,7 @@ tempfile = "3.23"
 env_logger = { version = "0.11", default-features = false }
 ash = "0.38"
 serde_json = "1"
-winit = "0.30"
+raw-window-handle = { version = "0.6", features = ["std"] }
 criterion = "0.8.2"
 sha2 = "0.11.0"
 
@@ -274,11 +274,6 @@ path = "examples/svg_tiger_vello_compare.rs"
 required-features = ["wgpu", "vello-compare"]
 
 [[example]]
-name = "winit_svg_tiger"
-required-features = ["wgpu"]
-path = "examples/winit_svg_tiger.rs"
-
-[[example]]
 name = "vello_compare"
 path = "examples/vello_compare.rs"
 required-features = ["wgpu", "vello-compare"]
@@ -378,3 +373,6 @@ required-features = ["bench-internals"]
 name = "native_present"
 test = true
 path = "examples/native_window/main.rs"
+
+[target.'cfg(windows)'.dev-dependencies]
+windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging", "Win32_System_LibraryLoader", "Win32_Graphics_Gdi"] }

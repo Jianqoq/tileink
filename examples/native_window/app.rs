@@ -1,15 +1,10 @@
+use super::platform::{Size, Window};
 use peniko::Color;
 use peniko::kurbo::{Affine, Rect};
 use std::{error::Error, rc::Rc};
 use tileink::{
     Canvas, NativeContext, NativeRenderTarget, NativeRenderer, NativeTargetSubmission,
     NativeTargetUse, NativeTexture, Radius, RetainedNodeId, RetainedParent, RetainedScene,
-};
-use winit::{
-    application::ApplicationHandler,
-    event::WindowEvent,
-    event_loop::{ActiveEventLoop, EventLoop},
-    window::{Window, WindowId},
 };
 pub type Result<T = ()> = std::result::Result<T, Box<dyn Error>>;
 pub trait Host {
@@ -37,7 +32,6 @@ struct App {
     backend: String,
     smoke: bool,
     frames: u32,
-    error: Option<Box<dyn Error>>,
     sizes: Vec<[u32; 2]>,
 }
 fn scene(size: [u32; 2]) -> Result<RetainedScene> {
@@ -67,13 +61,8 @@ fn scene(size: [u32; 2]) -> Result<RetainedScene> {
     Ok(scene)
 }
 impl App {
-    fn initialize(&mut self, event_loop: &ActiveEventLoop) -> Result {
-        let window = event_loop.create_window(
-            Window::default_attributes()
-                .with_title(format!("Tileink native {}", self.backend))
-                .with_visible(!self.smoke)
-                .with_inner_size(winit::dpi::PhysicalSize::new(640, 360)),
-        )?;
+    fn initialize(&mut self) -> Result {
+        let window = Window::new(&format!("Tileink native {}", self.backend), !self.smoke)?;
         let host: Box<dyn Host> = match self.backend.as_str() {
             #[cfg(all(target_os = "macos", feature = "metal"))]
             "metal" => Box::new(super::metal::Host::new(&window)?),
@@ -93,10 +82,6 @@ impl App {
             size,
             window,
         });
-        if self.smoke {
-            event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
-        }
-        self.state.as_ref().unwrap().window.request_redraw();
         Ok(())
     }
     fn draw(&mut self) -> Result {
@@ -131,55 +116,12 @@ impl App {
             self.sizes.push(size);
         }
         if self.smoke && self.frames == 3 {
-            let _ = state
-                .window
-                .request_inner_size(winit::dpi::PhysicalSize::new(480, 270));
+            state.window.request_inner_size(Size {
+                width: 480,
+                height: 270,
+            });
         }
-        state.window.request_redraw();
         Ok(())
-    }
-    fn fail(&mut self, event_loop: &ActiveEventLoop, error: Box<dyn Error>) {
-        self.error = Some(error);
-        event_loop.exit();
-    }
-}
-impl ApplicationHandler for App {
-    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        // Hidden smoke windows do not receive redraw events on Windows.
-        if self.smoke && self.state.is_some() {
-            if let Err(error) = self.draw() {
-                self.fail(event_loop, error);
-            }
-            if self.frames >= 8 {
-                event_loop.exit();
-            }
-        }
-    }
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.state.is_none()
-            && let Err(error) = self.initialize(event_loop)
-        {
-            self.fail(event_loop, error);
-        }
-    }
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
-        match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
-            WindowEvent::RedrawRequested => {
-                if let Err(error) = self.draw() {
-                    self.fail(event_loop, error);
-                }
-                if self.smoke && self.frames >= 8 {
-                    event_loop.exit();
-                }
-            }
-            WindowEvent::Resized(_) => {
-                if let Some(state) = &self.state {
-                    state.window.request_redraw();
-                }
-            }
-            _ => {}
-        }
     }
 }
 pub fn run() -> Result {
@@ -197,15 +139,21 @@ pub fn run() -> Result {
         }),
         smoke: args.iter().any(|s| s == "--smoke"),
         frames: 0,
-        error: None,
         sizes: Vec::new(),
     };
-    EventLoop::new()?.run_app(&mut app)?;
+    app.initialize()?;
+    loop {
+        let visible = app.state.as_ref().unwrap().window.pump();
+        if !app.smoke && !visible {
+            break;
+        }
+        app.draw()?;
+        if app.smoke && app.frames >= 8 {
+            break;
+        }
+    }
     if let Some(state) = &mut app.state {
         state.host.finish()?;
-    }
-    if let Some(error) = app.error {
-        return Err(error);
     }
     if app.smoke && (app.frames != 8 || app.sizes.len() < 2) {
         return Err(format!(
